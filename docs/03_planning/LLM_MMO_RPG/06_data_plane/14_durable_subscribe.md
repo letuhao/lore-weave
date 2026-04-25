@@ -361,7 +361,7 @@ A channel with no recent events (turn-based pacing, idle tavern at 3am in-game-t
 - [DP-A4](02_invariants.md#dp-a4--redis-is-the-cache-technology) — Redis usage extended: cache + pub/sub + **Streams** (this file)
 - [DP-A15](02_invariants.md#dp-a15--per-channel-total-event-ordering-phase-4-2026-04-25) — total-ordering invariant that resume tokens encode
 - [DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) — single-writer-per-channel publishes to both Redis Stream + Postgres in same tx
-- [DP-K6](04_kernel_api_contract.md#dp-k6--subscription-primitives) — extended with `subscribe_channel_events_durable` + `subscribe_session_channels`
+- [DP-K6](04c_subscribe_and_macros.md#dp-k6--subscription-primitives) — extended with `subscribe_channel_events_durable` + `subscribe_session_channels`
 - [DP-Ch10](12_channel_primitives.md#dp-ch10--channel-tree-change-invalidation) — `ChannelDissolved` `StreamEndReason` plugs into channel-tree-change handling
 - [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) — `event_log` schema this file consumes
 - [DP-Ch15](13_channel_ordering_and_writer.md#dp-ch15--causal-references-for-bubble-up-preview-full-design--q27) — `causal_refs` carried in stream items, foundation for Q27 bubble-up

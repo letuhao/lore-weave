@@ -7,7 +7,7 @@
 
 ## Reading this file
 
-This document answers: "when X fails, what does the data plane do, and how does it get back to healthy?" It does **not** redesign how writes or reads work — it describes what happens when the primitives from [04_kernel_api_contract.md](04_kernel_api_contract.md), the control plane from [05_control_plane_spec.md](05_control_plane_spec.md), or the cache layer from [06_cache_coherency.md](06_cache_coherency.md) enter a degraded state.
+This document answers: "when X fails, what does the data plane do, and how does it get back to healthy?" It does **not** redesign how writes or reads work — it describes what happens when the primitives from [04a_core_types_and_session.md](04a_core_types_and_session.md) + 04b/04c/04d, the control plane from [05_control_plane_spec.md](05_control_plane_spec.md), or the cache layer from [06_cache_coherency.md](06_cache_coherency.md) enter a degraded state.
 
 Every failure mode below has three parts:
 1. **Detection** — how the SDK or CP notices the fault

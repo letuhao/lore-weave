@@ -271,7 +271,7 @@ Quick reference for feature designers.
 - [DP-A4](02_invariants.md#dp-a4--redis-is-the-cache-technology) — Redis for cache + pub/sub
 - [DP-A7](02_invariants.md#dp-a7--reality-boundary-in-cache-keys) — per-reality key prefix enables channel isolation
 - [03_tier_taxonomy.md](03_tier_taxonomy.md) — per-tier consistency semantics
-- [04_kernel_api_contract.md DP-K6](04_kernel_api_contract.md#dp-k6--subscription-primitives) — `subscribe_invalidation` API
+- [04c_subscribe_and_macros.md DP-K6](04c_subscribe_and_macros.md#dp-k6--subscription-primitives) — `subscribe_invalidation` API
 - [05_control_plane_spec.md DP-C6](05_control_plane_spec.md#dp-c6--invalidation-broadcast-orchestration) — CP orchestration side
 - [08_scale_and_slos.md DP-S8](08_scale_and_slos.md#dp-s8--resource-ceilings-per-reality) — pub/sub fan-out budget
 

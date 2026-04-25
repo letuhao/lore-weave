@@ -369,7 +369,7 @@ Full aggregator spec, threshold tuning, and probabilistic-trigger details are [Q
 - [12_channel_primitives.md](12_channel_primitives.md) — channel identity + registry foundation
 - [02_storage R7](../02_storage/R07_concurrency_cross_session.md) — reality-scoped event ordering still applies for non-channel events
 - [02_storage R6](../02_storage/R06_R12_publisher_reliability.md) — outbox publisher used for invalidation broadcasts that reference channel_event_id
-- [04_kernel_api_contract.md](04_kernel_api_contract.md) — `WrongChannelWriter` `DpError` variant; transparent routing in write primitives
+- [04a_core_types_and_session.md DP-K3](04a_core_types_and_session.md#dp-k3--dperror-enum) — `WrongChannelWriter` `DpError` variant; [04b_read_write.md DP-K5](04b_read_write.md#dp-k5--write-primitives-tier-typed) — transparent routing in write primitives
 - [05_control_plane_spec.md](05_control_plane_spec.md) — CP writer assignment + handoff RPC additions
 
 ---

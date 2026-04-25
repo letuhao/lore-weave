@@ -336,7 +336,7 @@ This is feature design, not DP enforcement.
 - [DP-Ch35](17_channel_lifecycle.md#dp-ch35--channel_pause--channel_resume-primitives) — `channel_pause` used by Pattern 1 (Strict) to block writes
 - [DP-Ch13](13_channel_ordering_and_writer.md#dp-ch13--writer-handoff--epoch-fencing-protocol) — `channel_writer_state` table extended here
 - [02_storage R6](../02_storage/R06_R12_publisher_reliability.md) — outbox publisher delivers slot events to subscribers
-- [04_kernel_api_contract.md](04_kernel_api_contract.md) — primitive signatures registered
+- [04d_capability_and_lifecycle.md DP-K10](04d_capability_and_lifecycle.md#dp-k10--sdk-initialization-and-session-binding) — primitive signatures registered (`claim_turn_slot`, `release_turn_slot`, `get_turn_slot`)
 
 ---
 

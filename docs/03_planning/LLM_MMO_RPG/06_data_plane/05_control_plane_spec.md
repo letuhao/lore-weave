@@ -327,7 +327,7 @@ Monthly failover drill triggered via admin CLI:
 - [DP-A2](02_invariants.md#dp-a2--control-plane--data-plane-split) — CP/DP split axiom
 - [DP-A4](02_invariants.md#dp-a4--redis-is-the-cache-technology) — Redis for invalidation (not CP)
 - [DP-A8](02_invariants.md#dp-a8--durable-tier-delegates-to-02_storage-unchanged) — durable tier in 02_storage unchanged
-- [DP-K9](04_kernel_api_contract.md#dp-k9--capability-tokens), [DP-K10](04_kernel_api_contract.md#dp-k10--sdk-initialization-and-session-binding) — SDK side of CP interactions
+- [DP-K9](04d_capability_and_lifecycle.md#dp-k9--capability-tokens), [DP-K10](04d_capability_and_lifecycle.md#dp-k10--sdk-initialization-and-session-binding) — SDK side of CP interactions
 - [02_storage/R02](../02_storage/R02_projection_rebuild.md) — rebuild machinery DP-C5 orchestrates
 - [02_storage/R13](../02_storage/R13_admin_discipline.md), [`ADMIN_ACTION_POLICY.md`](../../02_governance/ADMIN_ACTION_POLICY.md) — admin governance DP-C10 plugs into
 - [02_storage/S11](../02_storage/S11_service_to_service_auth.md) — mTLS used by DP-C3

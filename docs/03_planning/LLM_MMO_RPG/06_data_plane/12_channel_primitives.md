@@ -36,7 +36,7 @@ impl ChannelId {
 }
 ```
 
-Parallel shape to [`RealityId`](04_kernel_api_contract.md#realityid) (see [DP-K1](04_kernel_api_contract.md#dp-k1--core-types)) — same module-privacy story, same newtype discipline, compile-time forgery prevention.
+Parallel shape to [`RealityId`](04a_core_types_and_session.md#realityid) (see [DP-K1](04a_core_types_and_session.md#dp-k1--core-types)) — same module-privacy story, same newtype discipline, compile-time forgery prevention.
 
 ### Tree structure
 
@@ -361,7 +361,7 @@ DP's concern is the SessionContext + capability refresh. Everything else is feat
 When a channel is created, updated, or dissolved, multiple caches must be coherent:
 
 1. **Per-reality DB** — authoritative, updated first (SDK write).
-2. **Redis Stream `dp:channel_changes:{reality_id}`** — delta event published in same transaction (outbox pattern via [DP-K5](04_kernel_api_contract.md#dp-k5--write-primitives-tier-typed) / [02_storage R6](../02_storage/R06_R12_publisher_reliability.md)).
+2. **Redis Stream `dp:channel_changes:{reality_id}`** — delta event published in same transaction (outbox pattern via [DP-K5](04b_read_write.md#dp-k5--write-primitives-tier-typed) / [02_storage R6](../02_storage/R06_R12_publisher_reliability.md)).
 3. **CP in-memory channel tree cache** — consumes stream, updates.
 4. **SDK-side ancestor caches on each node** — CP pushes to subscribed SDKs via `StreamChannelTreeUpdates`.
 5. **Active SessionContexts holding stale ancestor chains** — see below.
@@ -419,7 +419,7 @@ Stream retention: 7 days or 1M entries per reality. Consumers (CP + SDK instance
 - [DP-A13](02_invariants.md#dp-a13--channel-hierarchy-as-first-class-scope-phase-4-2026-04-25) — the axiom this file implements
 - [DP-A14](02_invariants.md#dp-a14--aggregate-scope-reality-scoped-vs-channel-scoped-design-time-choice-phase-4-2026-04-25) — aggregate scope companion axiom
 - [DP-A7](02_invariants.md#dp-a7--reality-boundary-in-cache-keys) — reality boundary; now extended with scope marker
-- [DP-K2](04_kernel_api_contract.md#dp-k2--sessioncontext) — SessionContext (now extended — see file 04 diff)
+- [DP-K2](04a_core_types_and_session.md#dp-k2--sessioncontext) — SessionContext (extended in file 04a)
 - [DP-C3](05_control_plane_spec.md#dp-c3--grpc-service-surface) — CP gRPC surface (now has `StreamChannelTreeUpdates`)
 - [02_storage R4](../02_storage/R04_fleet_ops.md) — per-reality Postgres; channel registry slots into existing sharding
 - [02_storage R6](../02_storage/R06_R12_publisher_reliability.md) — outbox publisher used for channel-change events

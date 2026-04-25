@@ -9,7 +9,7 @@
 
 **What:** The precise Rust trait definitions, method signatures, and module layout for the SDK (`t0_*`, `t1_*`, `t2_*`, `t3_*` + multi-aggregate transactions + subscription APIs).
 
-**Resolution:** Locked in [04_kernel_api_contract.md](04_kernel_api_contract.md) — DP-K1..K12 specify all core types, tier traits, predicate builder, read/write primitives, subscription APIs, macros, capability tokens, and SDK init/bind flow. ~24 primitives total.
+**Resolution:** Locked in [04a_core_types_and_session.md](04a_core_types_and_session.md) / [04b_read_write.md](04b_read_write.md) / [04c_subscribe_and_macros.md](04c_subscribe_and_macros.md) / [04d_capability_and_lifecycle.md](04d_capability_and_lifecycle.md) — DP-K1..K12 specify all core types, tier traits, predicate builder, read/write primitives, subscription APIs, macros, capability tokens, and SDK init/bind flow. ~42 primitives total (Phase 4 expanded).
 
 **Residual:** `#[derive(Aggregate)]` proc-macro implementation details deferred to Phase 2b (`dp-derive` crate).
 
@@ -90,7 +90,7 @@
 
 **What:** What metrics the SDK emits (per-tier latency histograms, cache hit rate, invalidation rate, backpressure events).
 
-**Partial resolution:** [DP-K8](04_kernel_api_contract.md#dp-k8--dpinstrumented-telemetry-macro) locks the `dp::instrumented!` macro which emits `dp.{op}.{tier}.{aggregate}` latency histograms, counters, and `tracing` spans. Per-scenario metric names listed in DP-X6 (in-proc cache) and DP-C9 (CP reachability). Clippy lint `dp::missing_instrumentation` enforces coverage.
+**Partial resolution:** [DP-K8](04c_subscribe_and_macros.md#dp-k8--dpinstrumented-telemetry-macro) locks the `dp::instrumented!` macro which emits `dp.{op}.{tier}.{aggregate}` latency histograms, counters, and `tracing` spans. Per-scenario metric names listed in DP-X6 (in-proc cache) and DP-C9 (CP reachability). Clippy lint `dp::missing_instrumentation` enforces coverage.
 
 **Residual:** Dashboard layout, alerting thresholds, and observability-stack integration (Prometheus / OTEL / Grafana dashboards) are operational concerns, not this folder's scope. Alert thresholds and SLO burn-rate rules land in an operator-facing doc.
 
@@ -101,7 +101,7 @@
 **What:** Does the SDK enforce per-service authorization (e.g., combat-service cannot write currency)?
 
 **Resolution:** Yes, via JWT capability tokens.
-- [DP-K9](04_kernel_api_contract.md#dp-k9--capability-tokens) defines token format (JWT with short 5-minute expiry), refresh protocol, and per-aggregate + per-tier capability claims.
+- [DP-K9](04d_capability_and_lifecycle.md#dp-k9--capability-tokens) defines token format (JWT with short 5-minute expiry), refresh protocol, and per-aggregate + per-tier capability claims.
 - [DP-C8](05_control_plane_spec.md#dp-c8--capability-issuance--rotation) defines CP-side issuance, signing key rotation (quarterly), and revocation model.
 - [DP-C4](05_control_plane_spec.md#dp-c4--tier-policy-registry) tier_capability table is the source of truth for which service can do what.
 - SDK rejects ops with `DpError::CapabilityDenied { aggregate, tier }` on mismatch.
@@ -157,13 +157,13 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 **What:** Exact Rust contract shapes for newtype, macro, error enum, session bind.
 
-**Resolution:** [04_kernel_api_contract.md](04_kernel_api_contract.md) contains contract sketches for all of:
-- `RealityId` + `SessionId` + `NodeId` newtypes ([DP-K1](04_kernel_api_contract.md#dp-k1--core-types))
-- `SessionContext` ([DP-K2](04_kernel_api_contract.md#dp-k2--sessioncontext))
-- `DpError` with 12 variants incl. `RealityMismatch`, `RateLimited`, `CircuitOpen`, `WrongWriterNode`, `TierViolation`, `CapabilityExpired`, `CapabilityDenied`, `AggregateNotFound`, `SchemaVersionMismatch`, `ControlPlaneUnavailable`, `BackendIo` ([DP-K3](04_kernel_api_contract.md#dp-k3--dperror-enum))
-- `dp::cache_key!` + `dp::instrumented!` macros ([DP-K7](04_kernel_api_contract.md#dp-k7--dpcache_key-macro), [DP-K8](04_kernel_api_contract.md#dp-k8--dpinstrumented-telemetry-macro))
-- Capability tokens ([DP-K9](04_kernel_api_contract.md#dp-k9--capability-tokens))
-- Clippy lint skeletons for R-3, R-4, R-6, R-8 ([DP-K11](04_kernel_api_contract.md#dp-k11--clippy-lint-skeletons))
+**Resolution:** [04a_core_types_and_session.md](04a_core_types_and_session.md) / [04b_read_write.md](04b_read_write.md) / [04c_subscribe_and_macros.md](04c_subscribe_and_macros.md) / [04d_capability_and_lifecycle.md](04d_capability_and_lifecycle.md) contain contract sketches for all of:
+- `RealityId` + `SessionId` + `NodeId` newtypes ([DP-K1](04a_core_types_and_session.md#dp-k1--core-types))
+- `SessionContext` ([DP-K2](04a_core_types_and_session.md#dp-k2--sessioncontext))
+- `DpError` with 21 variants incl. `RealityMismatch`, `RateLimited`, `CircuitOpen`, `WrongWriterNode`, `TierViolation`, `CapabilityExpired`, `CapabilityDenied`, `AggregateNotFound`, `SchemaVersionMismatch`, `ControlPlaneUnavailable`, `BackendIo`, plus Phase 4 channel-related ([DP-K3](04a_core_types_and_session.md#dp-k3--dperror-enum))
+- `dp::cache_key!` + `dp::instrumented!` macros ([DP-K7](04c_subscribe_and_macros.md#dp-k7--dpcache_key-macro), [DP-K8](04c_subscribe_and_macros.md#dp-k8--dpinstrumented-telemetry-macro))
+- Capability tokens ([DP-K9](04d_capability_and_lifecycle.md#dp-k9--capability-tokens))
+- Clippy lint skeletons for R-3, R-4, R-6, R-8 ([DP-K11](04d_capability_and_lifecycle.md#dp-k11--clippy-lint-skeletons))
 
 **Residual:** `#[derive(Aggregate)]` proc-macro crate (`dp-derive`) is its own implementation task — Phase 2b.
 
@@ -375,7 +375,7 @@ Slot is **advisory hint** — does NOT block writes (that's `channel_pause`'s jo
 - **[DP-A13](02_invariants.md#dp-a13--channel-hierarchy-as-first-class-scope-phase-4-2026-04-25)** Channel hierarchy as first-class scope — tree structure per reality, free-form `level_name` tag, DP agnostic to semantics.
 - **[DP-A14](02_invariants.md#dp-a14--aggregate-scope-reality-scoped-vs-channel-scoped-design-time-choice-phase-4-2026-04-25)** Aggregate scope = design-time marker trait choice (`RealityScoped` vs `ChannelScoped`).
 - **[12_channel_primitives.md](12_channel_primitives.md)** DP-Ch1..Ch10 — `ChannelId` newtype, per-reality-DB registry schema, CP cache + Redis Stream delta, scope marker traits, cache-key format with `r`/`c` marker, SessionContext extension, ancestor lookup, CRUD primitives, `move_session_to_channel`, tree-change invalidation.
-- **[DP-K1/K2/K4/K7/K10/K12 updated](04_kernel_api_contract.md)** with `ChannelId`, scope markers, scope-typed reads, scope-dispatched `cache_key!`, `move_session_to_channel` + `create_channel` + `dissolve_channel` primitives.
+- **DP-K1/K2/K4/K7/K10/K12 updated** with `ChannelId`, scope markers, scope-typed reads, scope-dispatched `cache_key!`, `move_session_to_channel` + `create_channel` + `dissolve_channel` primitives. (Across [04a](04a_core_types_and_session.md) / [04b](04b_read_write.md) / [04c](04c_subscribe_and_macros.md) / [04d](04d_capability_and_lifecycle.md).)
 - **[DP-C1/C3 updated](05_control_plane_spec.md)** — channel tree cache added to CP responsibilities; 3 new gRPC methods (`GetChannelTree`, `StreamChannelTreeUpdates`, `ResolveAncestorChain`).
 
 **Unblocked Phase 4 items:** Q17, Q30, Q34 (per-channel ordering + writer binding — next cluster), Q15, Q16, Q27 (blockers), Q18, Q19, Q28, Q31, Q32 (semantics).

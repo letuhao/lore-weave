@@ -191,7 +191,7 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 - `SessionContext` binding happens once per session at startup and is passed via request context (not thread-local, to remain async-safe).
 - Cross-reality coordination (canon propagation, cross-reality read) cannot use this axiom's mechanism — they use an explicit coordinator API owned by the cross-instance policy ([R5](../02_storage/R05_cross_instance.md)).
 
-**Cross-ref:** Implementation of **DP-R1** in [11_access_pattern_rules.md](11_access_pattern_rules.md). Concrete Rust definitions (newtype, macro, error enum) land in Phase 2 `04_kernel_api_contract.md` per Q1 and Q14.
+**Cross-ref:** Implementation of **DP-R1** in [11_access_pattern_rules.md](11_access_pattern_rules.md). Concrete Rust definitions (newtype, macro, error enum) land in Phase 2 `04a_core_types_and_session.md` (split across 04a..04d) per Q1 and Q14.
 
 ---
 
@@ -232,7 +232,7 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 - Channel-scoped reads require an explicit channel_id argument; they do not default to `ctx.current_channel_id`. This forces call-site clarity: reading tavern furniture from a cell session must explicitly pass the tavern's channel_id.
 - `t3_write_multi` accepts a mix of reality-scoped and channel-scoped aggregates in one atomic transaction, as long as the channel-scoped aggregates all sit in the same per-reality DB (which they do — see DP-A13).
 
-**Cross-ref:** [12_channel_primitives.md DP-Ch4..Ch5](12_channel_primitives.md) for trait definitions and cache key specifics. Updates [04_kernel_api_contract.md DP-K4/K5/K7](04_kernel_api_contract.md) with scope-typed primitives.
+**Cross-ref:** [12_channel_primitives.md DP-Ch4..Ch5](12_channel_primitives.md) for trait definitions and cache key specifics. Updates [04b_read_write.md](04b_read_write.md) (DP-K4/K5) and [04c_subscribe_and_macros.md DP-K7](04c_subscribe_and_macros.md#dp-k7--dpcache_key-macro) with scope-typed primitives.
 
 ---
 

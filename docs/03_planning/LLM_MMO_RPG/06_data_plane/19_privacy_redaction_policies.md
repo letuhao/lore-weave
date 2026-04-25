@@ -259,7 +259,7 @@ If a future use case needs visibility flip, it's a separate axiom-level decision
 - [DP-Ch25](16_bubble_up_aggregator.md#dp-ch25--bubbleupaggregator-trait--registerunregister-primitives) — `BubbleUpAggregator` trait + registration that this file extends with policy parameter
 - [DP-Ch29](16_bubble_up_aggregator.md#dp-ch29--cascading--recursive-bubble-up) — cascading bubble-up where redaction policies compose
 - [DP-A18](02_invariants.md#dp-a18--channel-lifecycle-state-machine--canonical-membership-events-phase-4-2026-04-25) — canonical events that flow through aggregators, including MemberJoined/MemberLeft from private channels
-- [04_kernel_api_contract.md DP-K11](04_kernel_api_contract.md) — `register_bubble_up_aggregator` signature extended with policy parameter
+- [04d_capability_and_lifecycle.md DP-K10](04d_capability_and_lifecycle.md#dp-k10--sdk-initialization-and-session-binding) — `register_bubble_up_aggregator` signature extended with policy parameter
 
 ---
 

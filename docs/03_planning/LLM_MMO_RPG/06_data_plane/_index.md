@@ -31,28 +31,31 @@ If this layer is wrong, every feature built on top of it has to be reworked. Tha
 
 Phase 2 (landed 2026-04-25):
 
-8. [04_kernel_api_contract.md](04_kernel_api_contract.md) — **DP-K1..K12** Rust SDK primitive API surface + types + macros (resolves Q1, Q14)
-9. [05_control_plane_spec.md](05_control_plane_spec.md) — **DP-C1..C10** control plane service responsibilities (partial Q5, Q6, Q9)
-10. [06_cache_coherency.md](06_cache_coherency.md) — **DP-X1..X10** invalidation and consistency protocol (resolves Q4; partial Q10)
+8. [04a_core_types_and_session.md](04a_core_types_and_session.md) — **DP-K1..K3** core types + SessionContext + DpError enum
+9. [04b_read_write.md](04b_read_write.md) — **DP-K4..K5** read + write primitives
+10. [04c_subscribe_and_macros.md](04c_subscribe_and_macros.md) — **DP-K6..K8** subscription primitives + cache_key! + instrumented! macros
+11. [04d_capability_and_lifecycle.md](04d_capability_and_lifecycle.md) — **DP-K9..K12** capability tokens + DpClient + channel/lifecycle/slot primitives + clippy lints + API surface summary  *(file 04 split on 2026-04-25 from 891-line monolith for maintainability after Phase 4 expansion; resolves Q1, Q14)*
+12. [05_control_plane_spec.md](05_control_plane_spec.md) — **DP-C1..C10** control plane service responsibilities (partial Q5, Q6, Q9)
+13. [06_cache_coherency.md](06_cache_coherency.md) — **DP-X1..X10** invalidation and consistency protocol (resolves Q4; partial Q10)
 
 Phase 3 (landed 2026-04-25):
 
-11. [07_failure_and_recovery.md](07_failure_and_recovery.md) — **DP-F1..F10** failure modes, CP outage degraded mode, node handoff, split-brain, invalidation reconciliation, backpressure token buckets, schema migration rollback, chaos drill cadence (resolves Q6, Q12; closes Q5 residual)
+14. [07_failure_and_recovery.md](07_failure_and_recovery.md) — **DP-F1..F10** failure modes, CP outage degraded mode, node handoff, split-brain, invalidation reconciliation, backpressure token buckets, schema migration rollback, chaos drill cadence (resolves Q6, Q12; closes Q5 residual)
 
 **Phase 4 — Channel-model follow-ups (in progress, 2026-04-25):**
 
 User clarified on 2026-04-25 that the game uses a **hierarchical channel** model (cell session → tavern → town → district → country → continent) with event bubble-up. Phase 1-3 contracts remain LOCKED as baseline; channel concept extends them. Backlog recorded in [99_open_questions.md](99_open_questions.md) as Q15..Q34. Resolved so far:
 
-12. [12_channel_primitives.md](12_channel_primitives.md) — **DP-Ch1..Ch10** channel identity, tree registry, CP cache + delta stream, scope marker traits, cache-key format, SessionContext extension, CRUD primitives (resolves Q26)
-13. [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) — **DP-Ch11..Ch15** per-channel `channel_event_id` allocation, writer assignment rules (cell vs non-cell), epoch fencing, cross-node write routing via gRPC, causal-ref schema for bubble-up (resolves Q17 + Q30 + Q34)
-14. [14_durable_subscribe.md](14_durable_subscribe.md) — **DP-Ch16..Ch20** durable per-channel subscribe with resume token, hybrid Redis Streams + Postgres catchup, monotonic gap-free delivery, multi-channel multiplex convenience, backpressure + reconnect (resolves Q16)
-15. [15_turn_boundary.md](15_turn_boundary.md) — **DP-Ch21..Ch24** turn boundary primitive: TurnBoundary event + advance_turn SDK API + per-event turn_number tagging + capability gating + composition with pause/bubble-up/move (resolves Q15)
-16. [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) — **DP-Ch25..Ch30** `BubbleUpAggregator` trait + register/unregister + event-sourced state + deterministic RNG + CP registry + cascading + privacy redaction patterns (resolves Q27 — last design blocker)
-17. [17_channel_lifecycle.md](17_channel_lifecycle.md) — **DP-Ch31..Ch37** lifecycle state machine (Active/Dormant/Dissolved) + auto-dormant scheduler + dissolution + canonical MemberJoined/MemberLeft + channel_pause/resume + composition rules + idempotency (resolves Q19 + Q28 + Q31)
-18. [18_causality_and_routing.md](18_causality_and_routing.md) — **DP-Ch38..Ch42** `CausalityToken` opaque newtype attached to acks + `wait_for` parameter on read primitives + projection-apply checkpoint table + session-writer transparent routing extending DP-Ch14 pattern + error taxonomy + gateway contract (resolves Q21 + Q22)
-19. [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) — **DP-Ch43..Ch45** `RedactionPolicy` enum (Transparent / SkipPrivate / AnonymizeRefs / Custom) + `RedactionFilter` trait + application semantics in aggregator runtime loop + telemetry counters + per-channel visibility no-inheritance rule (resolves Q32)
-20. [20_operational_residuals.md](20_operational_residuals.md) — **DP-Ch46..Ch50** ops handoff: histogram bucket layouts (Q23) + telemetry cardinality control (Q24) + capability signing key rotation policy with V3 monthly + revocation broadcast (Q25) + subscription fan-out batching (Q29) + per-channel-level retention (Q33). Recommended defaults locked + configurable overrides documented.
-21. [21_llm_turn_slot.md](21_llm_turn_slot.md) — **DP-Ch51..Ch53** LLM turn slot primitive: claim/release/get_turn_slot SDK + auto-timeout scheduler with TurnSlotTimedOut canonical event + 3 feature-level patterns (Strict / Concurrent / Cancellable) for LLM turn coordination. (Resolves Q20 Phần B; Phần A quantitative rescale stays V1-data-deferred.)
+15. [12_channel_primitives.md](12_channel_primitives.md) — **DP-Ch1..Ch10** channel identity, tree registry, CP cache + delta stream, scope marker traits, cache-key format, SessionContext extension, CRUD primitives (resolves Q26)
+16. [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) — **DP-Ch11..Ch15** per-channel `channel_event_id` allocation, writer assignment rules (cell vs non-cell), epoch fencing, cross-node write routing via gRPC, causal-ref schema for bubble-up (resolves Q17 + Q30 + Q34)
+17. [14_durable_subscribe.md](14_durable_subscribe.md) — **DP-Ch16..Ch20** durable per-channel subscribe with resume token, hybrid Redis Streams + Postgres catchup, monotonic gap-free delivery, multi-channel multiplex convenience, backpressure + reconnect (resolves Q16)
+18. [15_turn_boundary.md](15_turn_boundary.md) — **DP-Ch21..Ch24** turn boundary primitive: TurnBoundary event + advance_turn SDK API + per-event turn_number tagging + capability gating + composition with pause/bubble-up/move (resolves Q15)
+19. [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) — **DP-Ch25..Ch30** `BubbleUpAggregator` trait + register/unregister + event-sourced state + deterministic RNG + CP registry + cascading + privacy redaction patterns (resolves Q27 — last design blocker)
+20. [17_channel_lifecycle.md](17_channel_lifecycle.md) — **DP-Ch31..Ch37** lifecycle state machine (Active/Dormant/Dissolved) + auto-dormant scheduler + dissolution + canonical MemberJoined/MemberLeft + channel_pause/resume + composition rules + idempotency (resolves Q19 + Q28 + Q31)
+21. [18_causality_and_routing.md](18_causality_and_routing.md) — **DP-Ch38..Ch42** `CausalityToken` opaque newtype attached to acks + `wait_for` parameter on read primitives + projection-apply checkpoint table + session-writer transparent routing extending DP-Ch14 pattern + error taxonomy + gateway contract (resolves Q21 + Q22)
+22. [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) — **DP-Ch43..Ch45** `RedactionPolicy` enum (Transparent / SkipPrivate / AnonymizeRefs / Custom) + `RedactionFilter` trait + application semantics in aggregator runtime loop + telemetry counters + per-channel visibility no-inheritance rule (resolves Q32)
+23. [20_operational_residuals.md](20_operational_residuals.md) — **DP-Ch46..Ch50** ops handoff: histogram bucket layouts (Q23) + telemetry cardinality control (Q24) + capability signing key rotation policy with V3 monthly + revocation broadcast (Q25) + subscription fan-out batching (Q29) + per-channel-level retention (Q33). Recommended defaults locked + configurable overrides documented.
+24. [21_llm_turn_slot.md](21_llm_turn_slot.md) — **DP-Ch51..Ch53** LLM turn slot primitive: claim/release/get_turn_slot SDK + auto-timeout scheduler with TurnSlotTimedOut canonical event + 3 feature-level patterns (Strict / Concurrent / Cancellable) for LLM turn coordination. (Resolves Q20 Phần B; Phần A quantitative rescale stays V1-data-deferred.)
 
 **🎉🎉 Phase 4 design phase is COMPLETE — every actionable design question resolved.** Q20 Phần A (quantitative DP-S\* rescale) is purely a measurement question requiring V1 prototype data. **06_data_plane is locked baseline for feature design (DF4/DF5/DF7) and SDK implementation (Phase 2b dp/dp-derive/dp-clippy crates).**
 
@@ -66,7 +69,10 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 01 | [01_scope_and_boundary.md](01_scope_and_boundary.md) | LOCKED | — | 2026-04-24 |
 | 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A19 | 2026-04-25 |
 | 03 | [03_tier_taxonomy.md](03_tier_taxonomy.md) | LOCKED | DP-T0, DP-T1, DP-T2, DP-T3 | 2026-04-25 (DP-T1 reframed for Phase 4 channel model) |
-| 04 | [04_kernel_api_contract.md](04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 2026-04-25 |
+| 04a | [04a_core_types_and_session.md](04a_core_types_and_session.md) | LOCKED | DP-K1..K3 | 2026-04-25 (split from 04) |
+| 04b | [04b_read_write.md](04b_read_write.md) | LOCKED | DP-K4..K5 | 2026-04-25 (split from 04) |
+| 04c | [04c_subscribe_and_macros.md](04c_subscribe_and_macros.md) | LOCKED | DP-K6..K8 | 2026-04-25 (split from 04) |
+| 04d | [04d_capability_and_lifecycle.md](04d_capability_and_lifecycle.md) | LOCKED | DP-K9..K12 | 2026-04-25 (split from 04) |
 | 05 | [05_control_plane_spec.md](05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 2026-04-25 |
 | 06 | [06_cache_coherency.md](06_cache_coherency.md) | LOCKED | DP-X1..X10 | 2026-04-25 |
 | 07 | [07_failure_and_recovery.md](07_failure_and_recovery.md) | LOCKED | DP-F1..F10 | 2026-04-25 |
@@ -96,7 +102,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-T0..T3` | Tier taxonomy | [03_tier_taxonomy.md](03_tier_taxonomy.md) |
 | `DP-R*` | Access Pattern Rulebook rules (DP-R1..R8) | [11_access_pattern_rules.md](11_access_pattern_rules.md) |
 | `DP-S*` | Scale and SLO items (DP-S1..S8) | [08_scale_and_slos.md](08_scale_and_slos.md) |
-| `DP-K*` | Kernel API primitive surface (DP-K1..K12) | [04_kernel_api_contract.md](04_kernel_api_contract.md) |
+| `DP-K*` | Kernel API primitive surface (DP-K1..K12) — split into 4 files on 2026-04-25 | [04a](04a_core_types_and_session.md) (K1..K3) · [04b](04b_read_write.md) (K4..K5) · [04c](04c_subscribe_and_macros.md) (K6..K8) · [04d](04d_capability_and_lifecycle.md) (K9..K12) |
 | `DP-C*` | Control plane spec items (DP-C1..C10) | [05_control_plane_spec.md](05_control_plane_spec.md) |
 | `DP-X*` | Cache coherency / consistency items (DP-X1..X10) | [06_cache_coherency.md](06_cache_coherency.md) |
 | `DP-F*` | Failure and recovery items (DP-F1..F10) | [07_failure_and_recovery.md](07_failure_and_recovery.md) |

@@ -536,7 +536,7 @@ DP-Ch30 establishes the data shape (visibility flag exposed, redaction is featur
 - [DP-Ch15](13_channel_ordering_and_writer.md#dp-ch15--causal-references-for-bubble-up-preview-full-design--q27) — causal_refs schema (this file's full design)
 - [DP-Ch16](14_durable_subscribe.md#dp-ch16--durableeventstream-api) — durable subscribe used by aggregator runtime
 - [DP-Ch21](15_turn_boundary.md#dp-ch21--turnboundary-event--advance_turn-primitive) — TurnBoundary events arrive as `SourceEvent` like any other
-- [04_kernel_api_contract.md DP-K6](04_kernel_api_contract.md#dp-k6--subscription-primitives) — subscribe primitives
+- [04c_subscribe_and_macros.md DP-K6](04c_subscribe_and_macros.md#dp-k6--subscription-primitives) — subscribe primitives
 - [05_control_plane_spec.md DP-C3](05_control_plane_spec.md#dp-c3--grpc-service-surface) — CP gRPC surface (extended with aggregator methods)
 
 ---

@@ -188,5 +188,5 @@ Retiring a rule is rare. Retired rules keep their ID with `_withdrawn` suffix an
 - [DP-A1](02_invariants.md#dp-a1--dp-primitives--rulebook-are-the-only-sanctioned-path-to-kernel-state) — the axiom that makes this rulebook mandatory.
 - [DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries) — the axiom that scopes DP to primitives + rulebook.
 - [DP-A12](02_invariants.md#dp-a12--session-context-gated-access-via-realityid-newtype) — the axiom that DP-R1 implements.
-- Phase 2 `04_kernel_api_contract.md` — concrete Rust definitions (types, macros, error enum).
+- Phase 2 `04a..04d` (split from `04_kernel_api_contract.md` 2026-04-25) — concrete Rust definitions (types, macros, error enum).
 - Phase 2 / Phase 3 — CI tooling (clippy custom rules, test harness for rulebook assertions).

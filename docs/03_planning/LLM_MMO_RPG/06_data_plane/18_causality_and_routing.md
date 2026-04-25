@@ -254,7 +254,7 @@ The fluent form is implementation-level; the contract is the underlying free-fun
 
 ### Composition with `dp::instrumented!` macro
 
-The instrumentation macro (`dp::instrumented!`, see [DP-K8](04_kernel_api_contract.md#dp-k8--dpinstrumented-telemetry-macro)) records `causality_wait_ms` as a separate label on the read latency histogram. Distinguishes "fast read on cached projection" from "slow read waiting on causality token" in dashboards.
+The instrumentation macro (`dp::instrumented!`, see [DP-K8](04c_subscribe_and_macros.md#dp-k8--dpinstrumented-telemetry-macro)) records `causality_wait_ms` as a separate label on the read latency histogram. Distinguishes "fast read on cached projection" from "slow read waiting on causality token" in dashboards.
 
 ---
 
@@ -414,9 +414,9 @@ For Phase 5 (operator concerns) — gateway-cache-staleness rate is a metric to 
 
 - [DP-A11](02_invariants.md#dp-a11--session-node-owns-t1-writes) — session sticky writer this file extends
 - [DP-A19](02_invariants.md#dp-a19--intra-session-causality-preservation-via-opaque-token-phase-4-2026-04-25) — invariant this file implements
-- [DP-K3](04_kernel_api_contract.md#dp-k3--dperror-enum) — DpError variants extended (CausalityWaitTimeout, SessionNotFound)
-- [DP-K4](04_kernel_api_contract.md#dp-k4--read-primitives) — read primitive signatures extended
-- [DP-K8](04_kernel_api_contract.md#dp-k8--dpinstrumented-telemetry-macro) — instrumentation extended with causality_wait_ms label
+- [DP-K3](04a_core_types_and_session.md#dp-k3--dperror-enum) — DpError variants extended (CausalityWaitTimeout, SessionNotFound)
+- [DP-K4](04b_read_write.md#dp-k4--read-primitives) — read primitive signatures extended
+- [DP-K8](04c_subscribe_and_macros.md#dp-k8--dpinstrumented-telemetry-macro) — instrumentation extended with causality_wait_ms label
 - [DP-Ch14](13_channel_ordering_and_writer.md#dp-ch14--cross-node-write-routing) — channel-writer routing pattern this file mirrors for sessions
 - [02_storage R2](../02_storage/R02_projection_rebuild.md) — projection applier maintains the checkpoint table introduced here
 - [DP-F2](07_failure_and_recovery.md#dp-f2--game-node-death--session-handoff) — session migration on node death; routing-cache invalidation tracks this

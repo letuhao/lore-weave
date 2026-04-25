@@ -253,4 +253,4 @@ When in doubt between adjacent tiers, pick the safer (higher) one. T2 over T1, T
 - [08_scale_and_slos.md](08_scale_and_slos.md) — throughput and latency targets per tier, at scale.
 - [02_storage/00_overview_and_schema.md](../02_storage/00_overview_and_schema.md) — the durable-tier infrastructure T2/T3 delegate to.
 - [02_storage/R07_concurrency_cross_session.md](../02_storage/R07_concurrency_cross_session.md) — single-writer per session applies to T2/T3 writes.
-- Phase 2 `04_kernel_api_contract.md` — the Rust SDK surface that exposes `t0_*` / `t1_*` / `t2_*` / `t3_*` APIs.
+- Phase 2 `04b_read_write.md` (split from `04_kernel_api_contract.md` 2026-04-25) — the Rust SDK surface that exposes `t0_*` / `t1_*` / `t2_*` / `t3_*` APIs.

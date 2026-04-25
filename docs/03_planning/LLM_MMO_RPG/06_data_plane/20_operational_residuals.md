@@ -293,7 +293,7 @@ CP admin CLI: `set-channel-retention <channel_id> <days>` updates `channels.meta
 ## Cross-references
 
 - [DP-S4](08_scale_and_slos.md#dp-s4--per-tier-read-latency-targets-sdk-internal-p99) — latency targets DP-Ch46 buckets are sized for
-- [DP-K8](04_kernel_api_contract.md#dp-k8--dpinstrumented-telemetry-macro) — instrumentation macro that DP-Ch47 cardinality rules guide
+- [DP-K8](04c_subscribe_and_macros.md#dp-k8--dpinstrumented-telemetry-macro) — instrumentation macro that DP-Ch47 cardinality rules guide
 - [DP-C8](05_control_plane_spec.md#dp-c8--capability-issuance--rotation) — current quarterly rotation policy DP-Ch48 extends
 - [DP-Ch16](14_durable_subscribe.md#dp-ch16--durableeventstream-api) — subscribe primitive that DP-Ch49 batches behind the scenes
 - [02_storage R1](../02_storage/R01_event_volume.md) — event-log retention DP-Ch50 extends with per-channel-level overrides

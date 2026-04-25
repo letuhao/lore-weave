@@ -228,7 +228,7 @@ This makes the second TurnBoundary insert fail with a UNIQUE violation — N2's 
 
 ### JWT claim
 
-Capability tokens (per [DP-K9](04_kernel_api_contract.md#dp-k9--capability-tokens)) gain a new field in the `capabilities` array:
+Capability tokens (per [DP-K9](04d_capability_and_lifecycle.md#dp-k9--capability-tokens)) gain a new field in the `capabilities` array:
 
 ```json
 {
@@ -330,7 +330,7 @@ The first call to `advance_turn` increments from 0 to 1; the TurnBoundary event 
 - [DP-A17](02_invariants.md#dp-a17--per-channel-turn-numbering-phase-4-2026-04-25) — invariant axiom this file implements
 - [DP-A15](02_invariants.md#dp-a15--per-channel-total-event-ordering-phase-4-2026-04-25) — `channel_event_id` ordering that turn boundaries occupy positions in
 - [DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) — single-writer guarantees gapless turn allocation
-- [DP-K9](04_kernel_api_contract.md#dp-k9--capability-tokens) — capability JWT shape that DP-Ch23 extends
+- [DP-K9](04d_capability_and_lifecycle.md#dp-k9--capability-tokens) — capability JWT shape that DP-Ch23 extends
 - [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) — `event_log` schema this file extends
 - [DP-Ch13](13_channel_ordering_and_writer.md#dp-ch13--writer-handoff--epoch-fencing-protocol) — `channel_writer_state` table this file extends
 - [DP-Ch16](14_durable_subscribe.md#dp-ch16--durableeventstream-api) — `ChannelEvent` trait + durable subscribe that delivers TurnBoundary events

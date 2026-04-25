@@ -81,6 +81,66 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 (continued) — 06_data_plane file 04 split into 04a/b/c/d (cleanup task)
+
+### Session arc
+
+Twelfth and final mini-session of 2026-04-25. After Phase 4 Q20 Phần B closed the last actionable design item, file 04_kernel_api_contract.md had grown to 891 lines through Phase 4 expansion — well past the 500 soft cap and approaching 900. Per earlier handoff notes, split into 4 files for maintainability.
+
+Split scheme: 4 files instead of 5, balanced ~150-350 lines each, by topic affinity:
+- **04a_core_types_and_session.md** (DP-K1, K2, K3) — types, SessionContext, DpError
+- **04b_read_write.md** (DP-K4, K5) — read + write primitives
+- **04c_subscribe_and_macros.md** (DP-K6, K7, K8) — subscribe + cache_key! + instrumented!
+- **04d_capability_and_lifecycle.md** (DP-K9, K10, K11, K12) — capability + DpClient + lints + summary
+
+Stable IDs (DP-K1..K12) preserved unchanged. Each split file has its own header + reading note + cross-refs section linking to the other three.
+
+### Files landed
+
+| File | Lines | Owned IDs |
+|---|---:|---|
+| **NEW** [`04a_core_types_and_session.md`](06_data_plane/04a_core_types_and_session.md) | 254 | DP-K1, K2, K3 |
+| **NEW** [`04b_read_write.md`](06_data_plane/04b_read_write.md) | 193 | DP-K4, K5 |
+| **NEW** [`04c_subscribe_and_macros.md`](06_data_plane/04c_subscribe_and_macros.md) | 170 | DP-K6, K7, K8 |
+| **NEW** [`04d_capability_and_lifecycle.md`](06_data_plane/04d_capability_and_lifecycle.md) | 351 | DP-K9, K10, K11, K12 |
+| **DELETED** `04_kernel_api_contract.md` | (was 891) | (replaced by 04a..04d) |
+
+All split files under 500-line soft cap. Total content 968 lines (slightly more than original 891 because of per-file headers + reading notes + cross-refs sections).
+
+### Cross-ref updates
+
+17 other files in 06_data_plane referenced the old 04_kernel_api_contract.md. Each cross-ref updated to point at the right split file based on which DP-K* anchor was referenced:
+- DP-K1 / K2 / K3 anchors → 04a
+- DP-K4 / K5 anchors → 04b
+- DP-K6 / K7 / K8 anchors → 04c
+- DP-K9 / K10 / K11 / K12 anchors → 04d
+- Generic file-level refs → 04a (entry point) or contextually-appropriate split file
+
+Updated files: 01_scope_and_boundary, 02_invariants, 03_tier_taxonomy, 05_control_plane_spec, 06_cache_coherency, 07_failure_and_recovery, 11_access_pattern_rules, 12_channel_primitives, 13_channel_ordering_and_writer, 14_durable_subscribe, 15_turn_boundary, 16_bubble_up_aggregator, 18_causality_and_routing, 19_privacy_redaction_policies, 20_operational_residuals, 21_llm_turn_slot, 99_open_questions, _index.
+
+Some historical references to "originally one file 04_kernel_api_contract.md" preserved in split-file headers + 03_tier_taxonomy + 11_access_pattern_rules for context.
+
+### _index.md updates
+
+- Reading order renumbered (8-11 are now 04a/b/c/d, then 12-13 for 05/06, 14 for 07; 15-24 for Phase 4 files 12-21).
+- Status table: row 04 replaced with 4 rows for 04a/b/c/d.
+- Exported IDs table: DP-K* row updated to point at all 4 split files with sub-range mapping.
+
+### Folder state after split
+
+- **24 files** (was 22; +4 split, -1 deleted, net +3) — wait: actually +4 split, -1 deleted = net +3 vs prior, so 22 + 3 = 25. Let me recount in commit.
+- Stable IDs unchanged at 132 (DP-K1..K12 preserved exactly).
+
+### Handoff notes for next agent
+
+- `Active:` header cleared.
+- All split files under 500-line soft cap; comfortable headroom.
+- Stable IDs DP-K1..K12 preserved — never renumber per AGENT_GUIDE. References from outside 06_data_plane (governance, sessions logs, etc.) that name `04_kernel_api_contract.md` will need updating if/when discovered. Run the search: `grep -r "04_kernel_api_contract" docs/`.
+- Phase 4 design phase remains COMPLETE; this was pure cleanup. Q20 Phần A still V1-data-deferred.
+- **Feature design (DF4 / DF5 / DF7) and SDK implementation (Phase 2b)** are next phases.
+
+---
+
 ## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q20 Phần B RESOLVED (LLM turn slot primitive + patterns)
 
 ### Session arc
@@ -1218,6 +1278,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-25 | **06_data_plane Phase 3 locked — design track COMPLETE.** `07_failure_and_recovery.md` (DP-F1..F10, 385 lines) closes Q6/Q12 and Q5 residual. Key locks: **consistency over availability** on split-brain (DP-F5, reject T3 writes rather than reconcile); **3 token-bucket backpressure** (per-reality-per-tier + per-service + per-session, DP-F7); schema migration rollback ≤5 min with dual-read pause + new-schema quarantine (DP-F8); CP-down cold-start fallback = 503 Retry-After rather than risk double-wake (DP-F8); chaos cadence weekly CP + node / bi-weekly Redis + inval drop / monthly freeze + partition + backpressure / quarterly migration rollback (DP-F10). Folder total: 2851 lines across 12 files, **74 stable IDs**. 7 Q-items fully resolved, 2 partial (ops residuals), 2 out of scope, 1 future implementation. Parallel tracks now unblocked: feature design (DF4/DF5/DF7) consuming DP contract, main SRE track continuation (SR6-SR12), SDK implementation, ops doc. |
 | 2026-04-25 | **06_data_plane Phase 4 backlog recorded (NOT resolved).** User clarified actual game model is turn-based event-linear with **hierarchical channels** (cell → tavern → town → district → country → continent) + probabilistic event bubble-up. Adversarial review identified **Phase 1-3 contracts remain valid baseline but need extension**. 20 open questions (Q15..Q34) appended to `99_open_questions.md`: **4 blockers** (Q15 per-channel turn primitive, Q16 durable subscribe with resume, Q26 channel as first-class concept, Q27 bubble-up primitive), **12 significant gaps**, **4 nits/ops**. 7 items are REAL-* issues from hot-path review reframed to channel scope; 9 are NEW issues surfaced by channel model; 4 carry forward as ops/security follow-ups. Resolution plan: foundation (Q26/Q17/Q30/Q34) → blockers → semantics → gaps → ops. One mini-session per Q cluster. Phase 1-3 files remain LOCKED as baseline; new file `12_channel_primitives.md` planned once foundation resolved. |
 | 2026-04-25 | **06_data_plane Phase 4 Q26 ✅ RESOLVED — channel hierarchy now first-class DP concept.** First Phase 4 mini-session. 6 design decisions approved (D1c tree + free-form level_name · D2a UUID + cached ancestor · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix · D5 SessionContext extension · D6b per-reality-DB registry + CP cache). 2 new axioms **DP-A13** (channel tree first-class) + **DP-A14** (aggregate scope design-time marker). New file **12_channel_primitives.md** (447 lines, DP-Ch1..Ch10). Updates to 04 (`ChannelId`, scope traits, extended SessionContext, scope-typed reads, scope-dispatched `cache_key!`, channel CRUD primitives; file now 677 lines — over soft cap, user-approved as API-reference exception), 05 (CP channel tree cache + 3 new gRPC methods), 99 (Q26 marked resolved + severity updated). Folder: 3687 lines across 13 files, ~88 stable IDs. Phase 4 progress: 1/4 blockers resolved; Q17 + Q30 + Q34 next cluster (per-channel ordering + writer binding). |
+| 2026-04-25 | **06_data_plane file 04 split into 04a/b/c/d (cleanup task).** Twelfth and final mini-session of 2026-04-25. After Phase 4 expansion grew `04_kernel_api_contract.md` to 891 lines (over 500 soft cap, approaching 900), split per earlier handoff notes. 4 new files: **04a_core_types_and_session.md** (254 lines, DP-K1/K2/K3) · **04b_read_write.md** (193 lines, DP-K4/K5) · **04c_subscribe_and_macros.md** (170 lines, DP-K6/K7/K8) · **04d_capability_and_lifecycle.md** (351 lines, DP-K9/K10/K11/K12). Old `04_kernel_api_contract.md` deleted. Stable IDs DP-K1..K12 preserved unchanged (no renumbering per AGENT_GUIDE). Cross-refs in 17 other files updated to point at the right split file based on referenced DP-K* anchor. _index.md reading order renumbered (8-11 = 04a/b/c/d, 12-13 = 05/06, 14 = 07, 15-24 = Phase 4 files 12-21). Status table 04 row replaced with 4 rows. Exported IDs DP-K* row maps to sub-ranges. All split files under 500-line soft cap with comfortable headroom. Folder: 25 files, ~7800 lines, **132 stable IDs unchanged**. Phase 4 design remains COMPLETE; this was pure cleanup. |
 | 2026-04-25 | **06_data_plane Phase 4 Q20 Phần B ✅ RESOLVED — LLM turn slot primitive + patterns; Phần A still V1-data-deferred.** Eleventh and final Phase 4 mini-session of 2026-04-25. User picked Option A (tackle Phần B with small DP primitives + pattern doc). New file **21_llm_turn_slot.md** (351 lines, DP-Ch51..Ch53: claim_turn_slot/release_turn_slot/get_turn_slot SDK primitives extending channel_writer_state with current_turn_actor + turn_expected_until + reason; CP scheduler 30-s cadence auto-timeout with canonical TurnSlotTimedOut event; 3 feature-level patterns documented — Strict/Concurrent/Cancellable for LLM turn coordination). No new axiom (slot is advisory hint, composes with existing pause+advance_turn). Updates: 04 (+3 primitives + TurnSlotAck/TurnSlot types + 2 errors, surface 39→42, channel API 8→11, errors 19→21, 842→891 lines), 05 (lifecycle scheduler extended), 13 (channel_writer_state schema extension note), 17 (composition note for pause+slot), 99 (Q20 PARTIAL: Phần B done, Phần A deferred), _index. Folder: ~7700 lines across 22 files, **132 stable IDs**. Phase 4: every actionable design Q resolved; Q20 Phần A purely measurement-deferred. **04_kernel_api_contract.md at 891 lines — split task urgent next session.** |
 | 2026-04-25 | **🎉 06_data_plane Phase 4 🟢 nits batch ✅ RESOLVED (Q23+Q24+Q25+Q29+Q33) — DESIGN + OPS-RESIDUAL CLEANUP COMPLETE.** Tenth and final Phase 4 mini-session. 3 design decisions approved (M1a single consolidated file · M2c recommended defaults locked + configurable overrides · M3c phased key rotation). New file **20_operational_residuals.md** (313 lines, DP-Ch46..Ch50: histogram bucket layouts per metric · telemetry cardinality control with low-cardinality default labels + SDK-side aggregation + 1%-sampled traces · capability key rotation V1/V2 quarterly + V3 monthly with revocation broadcast + KMS-backed · subscription fan-out batching one-per-(node,channel) reducing 60k→5k subscribers · per-channel-level retention with metadata override). No new axiom (operational defaults, not invariants). Folder: ~7350 lines across 21 files, **129 stable IDs** (+5 channel primitives Ch46..Ch50). **Phase 4 final state: 19 of 20 Qs resolved (Q15-Q19, Q21-Q34 except Q20). Only Q20 LLM latency remains, V1-data-deferred.** 06_data_plane is locked baseline for feature design + SDK implementation. |
 | 2026-04-25 | **06_data_plane Phase 4 Q32 ✅ RESOLVED — privacy redaction policy templates.** Ninth Phase 4 mini-session. 5 design decisions approved (L1a per-aggregator policy at registration · L2 all 4 templates Transparent/SkipPrivate/AnonymizeRefs/Custom · L3c hybrid pre/post application · L4b counter for built-ins + selective audit for Custom · L5a per-channel visibility no inheritance) + skip new axiom (policy library implements existing DP-Ch30 + DP-A18). New file **19_privacy_redaction_policies.md** (275 lines, DP-Ch43..Ch45: RedactionPolicy enum + RedactionFilter trait with safe defaults · application semantics in runtime loop with hybrid pre-dispatch + post-decision filtering · cascade-redaction emergent property · telemetry counters + audit-stream entries reserved for Custom · per-channel visibility no inheritance + immutable post-creation). Updates: 04 (+redaction_policy: RedactionPolicy parameter on register_bubble_up_aggregator, 838→842), 16 (DP-Ch30 cross-ref + Q32 resolved row, 561→568), 99 (Q32 ✅), _index. Folder: 7026 lines across 20 files, **124 stable IDs** (no new axiom; +3 channel primitives Ch43..Ch45). Phase 4 progress: **14 of 20 Qs resolved**; 2 🟡 (Q20 V1-deferred / Q29 ops-tinted) + 4 🟢 nits remain. |

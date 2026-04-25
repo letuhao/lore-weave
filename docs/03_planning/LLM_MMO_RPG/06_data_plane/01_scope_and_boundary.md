@@ -55,7 +55,7 @@ A Rust library embedded in every game-layer service. The SDK exposes a **small, 
 
 **Explicitly NOT in SDK:** feature-specific queries (inventory list with filters, quest state aggregation, chat history windows, combat state rollup). Those live in feature repos, see §4 below.
 
-See [04_kernel_api_contract.md](./) (Phase 2) for concrete Rust definitions.
+See [04a_core_types_and_session.md](04a_core_types_and_session.md) (Phase 2) for concrete Rust definitions.
 
 ### 2.5. Cache coherency protocol
 
