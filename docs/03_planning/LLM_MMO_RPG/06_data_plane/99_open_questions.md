@@ -214,12 +214,12 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 ## Phase 4 severity summary
 
 - **🔴 Blockers (0):** all design blockers resolved 2026-04-25
-- **🟡 Significant gaps (5 remaining, 7 resolved):** Q20, Q21, Q22, Q29, Q32 + ~~Q17, Q18, Q19, Q28, Q30, Q31, Q34~~ ✅ resolved 2026-04-25
+- **🟡 Significant gaps (3 remaining, 9 resolved):** Q20, Q29, Q32 + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q30, Q31, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (4):** Q23, Q24, Q25, Q33
 
-**Resolved (11):** Q15, Q16, Q17, Q18, Q19, Q26, Q27, Q28, Q30, Q31, Q34 ✅
+**Resolved (13):** Q15, Q16, Q17, Q18, Q19, Q21, Q22, Q26, Q27, Q28, Q30, Q31, Q34 ✅
 
-**Phase 4 design phase complete + 4 follow-up gaps resolved.** Remaining 5 🟡 gaps are independent: Q20 LLM latency (V1 data), Q21 RYW cross-service, Q22 routing UX, Q29 fan-out tuning, Q32 privacy formalization. All non-blocking for feature design.
+**Phase 4 design phase complete + 6 follow-up gaps resolved.** Remaining 3 🟡 gaps are independent and small: Q20 LLM latency (V1-data-deferred), Q29 fan-out tuning (ops-tinted), Q32 privacy formalization (small extension to DP-Ch30). All non-blocking for feature design.
 
 ---
 
@@ -304,19 +304,31 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q21 — T2 read-your-writes across service boundary within session (D3 from prior review)
+## Q21 — T2 read-your-writes across service boundary within session (D3 from prior review) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Service A does `t2_write`, acks on cache + outbox. Service A calls Service B within the same session. B does `read_projection` — projection hasn't caught up (async ≤1 s). B sees stale. Read-your-writes is broken across service boundaries within the same session.
+**What:** Cross-service intra-session RYW broken when service B reads projection before applier catches up to service A's T2/T3 write.
 
-**Candidate resolution path:** Intra-session causality token. `T2Ack` returns a token; subsequent `read_projection` with `wait_for_token` waits until projection reflects it. Added to [DP-K4](04_kernel_api_contract.md#dp-k4--read-primitives) / [DP-K5](04_kernel_api_contract.md#dp-k5--write-primitives-tier-typed).
+**Resolution:** [DP-A19](02_invariants.md#dp-a19--intra-session-causality-preservation-via-opaque-token-phase-4-2026-04-25) + [18_causality_and_routing.md DP-Ch38..Ch40](18_causality_and_routing.md#dp-ch38--causalitytoken-type):
+- `CausalityToken` opaque newtype attached to T2/T3/Multi/Pause/Turn acks (module-private constructor — feature code cannot forge).
+- Read primitives extended with optional `wait_for: Option<&CausalityToken>` + `causality_timeout: Option<Duration>` (default 5 s).
+- Wait algorithm = poll fast checkpoint table `projection_apply_state` with backoff (10ms→100ms); never silent stale read; timeout → `DpError::CausalityWaitTimeout`.
+- Cross-scope handoff supported (Channel token waits on Reality reads in same reality); cross-reality rejected with `RealityMismatch`.
+
+4 design decisions all locked (K1b dedicated newtype · K2a poll-with-checkpoint · K3a optional `wait_for` param · K4c default 5s + caller override).
 
 ---
 
-## Q22 — WrongWriterNode retry + routing protocol (D4 from prior review)
+## Q22 — WrongWriterNode retry + routing protocol (D4 from prior review) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** SDK returns `DpError::WrongWriterNode` when a request reaches the wrong node (LB glitch, sticky cookie expired, session re-pinned). What is the retry protocol? How does the gateway learn the correct node?
+**What:** Stale gateway routing → request hits wrong session-node → `WrongWriterNode` error. Retry protocol + ergonomics.
 
-**Candidate resolution path:** SDK response includes `correct_node` hint (from CP lookup cache); gateway uses hint to re-route. Or feature-level retry with bounded attempts. Spec in Phase 4.
+**Resolution:** [18_causality_and_routing.md DP-Ch41..Ch42](18_causality_and_routing.md#dp-ch41--session-writer-transparent-routing):
+- **Session-writer transparent routing** extends [DP-Ch14](13_channel_ordering_and_writer.md#dp-ch14--cross-node-write-routing) channel-writer pattern: SDK on receiving node detects WrongWriterNode, queries CP `GetSessionNode`, auto-routes via internal gRPC `RouteSessionWrite`. 300 s session-route cache; refresh-on-fail then 1 retry.
+- **Retry budget:** 1 SDK auto-retry → `CircuitOpen { service: "session_router" }` on second failure. Caller-level retry independent.
+- **Gateway contract:** DP makes no assumption about gateway internals beyond best-effort sticky routing. Optional `X-Dp-Session-Route-Hint` response header lets gateway optionally refresh its routing cache; ignored if not consumed. SDK absorbs staleness transparently.
+- **Error taxonomy:** `WrongWriterNode` / `WrongChannelWriter` / `CircuitOpen` / `SessionNotFound` documented with caller actions.
+
+3 design decisions all locked (K5b SDK transparent routing · K6a 1 retry max · K7c gateway contract = best-effort hints, out of DP scope).
 
 ---
 

@@ -1,7 +1,7 @@
 # 02 — Invariants (Axioms)
 
 > **Status:** LOCKED. Every axiom here was decided in a user conversation and may not be changed without a superseding decision recorded in [../decisions/](../decisions/) and a cross-reference entry in [99_open_questions.md](99_open_questions.md).
-> **Stable IDs:** DP-A1..DP-A18. These IDs are referenceable from any other doc in this project. Never renumber.
+> **Stable IDs:** DP-A1..DP-A19. These IDs are referenceable from any other doc in this project. Never renumber.
 
 ---
 
@@ -335,6 +335,32 @@ DP is **agnostic to turn semantics** — what a "turn" means (D&D round, narrati
 
 ---
 
+## DP-A19 — Intra-session causality preservation via opaque token (Phase 4, 2026-04-25)
+
+**Rule:** When a service performs a T2 or T3 write within a session and successfully receives an ack, that ack carries an opaque **`CausalityToken`**. If the writer hands the token to another service (typically via inline RPC argument or message-bus payload) and that other service performs a `read_projection_*` for any aggregate touched by the original write while passing the token via the optional `wait_for: Option<CausalityToken>` parameter, DP **MUST** either:
+
+- (a) return a projection state that reflects the original write (i.e., the projection-applier has caught up to the token's underlying event), OR
+- (b) return `DpError::CausalityWaitTimeout` after the timeout (default 5 seconds, caller-overridable) — never a stale projection.
+
+Reads without `wait_for` retain prior eventual-consistency semantics — the token is opt-in.
+
+**Why:** Phase 1-3 T2 ack returns "cache + outbox committed" but the projection-applier runs async (≤1s typical). A second service in the same session that reads the projection without coordination can see stale state — read-your-writes broken across the service boundary. Features that need to chain `service_A.write → service_B.read` within a session were forced to either: (a) accept stale reads with manual retry logic, or (b) wait for an arbitrary "long enough" duration before reading, neither of which is principled. Locking causality preservation as an axiom with a token-based mechanism gives feature designers a single typed primitive that solves the class.
+
+**Enforcement:**
+- **(a) Token construction is DP-internal only** — `CausalityToken` newtype with module-private constructor; the only way to obtain a valid token is from a successful write ack (`T2Ack.causality_token`, `T3Ack.causality_token`, `MultiAck.causality_token`).
+- **(b) `wait_for` is honored or errored** — SDK polls the projection-apply checkpoint table (`projection_apply_state`); if the checkpoint's `last_applied_event_id < token.event_id` after timeout, return `CausalityWaitTimeout` with diagnostics — never silently return a stale read.
+- **(c) Token scope discipline** — token carries reality + scope (Reality/Channel) + event_id; SDK validates that `wait_for` token's reality matches the reading session's reality; otherwise `DpError::RealityMismatch`.
+
+**Consequence:**
+- Feature pattern: `let ack = dp.t2_write_*(...).await?;  rpc.call(svc_b, request).with_causality(ack.causality_token).await?;` then in svc_b: `dp.read_projection_*(ctx, id, wait_for: Some(token)).await?`.
+- Default 5-s timeout is suitable for normal projection lag (≤1 s p99). Caller can override for slow paths or shorter UX-critical waits.
+- Tokens are opaque to feature code: they cannot be inspected, compared, or composed except by passing them through `wait_for`. Feature code that hardcodes "wait 2s before reading" is replaced by typed token handoff.
+- Polling implementation acceptable for turn-based scale (1-10 events/s/channel); subscribe-based optimization deferred until V1+ data shows polling overhead.
+
+**Cross-ref:** [18_causality_and_routing.md DP-Ch38..Ch40](18_causality_and_routing.md#dp-ch38--causalitytoken-type) for `CausalityToken` definition, `wait_for` semantics, and projection-apply checkpoint table. Resolves [99_open_questions.md Q21](99_open_questions.md).
+
+---
+
 ## Locked-decision summary (for cross-reference)
 
 | ID | Short name | One-line |
@@ -357,5 +383,6 @@ DP is **agnostic to turn semantics** — what a "turn" means (D&D round, narrati
 | DP-A16 | Channel writer-node binding | One writer per active channel; cell writer = creator's session node + handoff; non-cell writer = CP-assigned, persistent; cross-node writes routed transparently via gRPC; epoch-fenced for failover. |
 | DP-A17 | Per-channel turn numbering | `turn_number: u64` monotonic gapless per channel, writer-allocated only via `advance_turn` primitive; every event tagged with current turn_number; channels not using turn semantics stay at 0. |
 | DP-A18 | Channel lifecycle + membership canonical events | `{ Active, Dormant, Dissolved }` state machine with terminal Dissolved; orthogonal `paused_until: Option<Timestamp>` flag; DP emits canonical `MemberJoined`/`MemberLeft`/`ChannelPaused`/`ChannelResumed` events that features cannot forge. |
+| DP-A19 | Intra-session causality token | T2/T3 acks carry opaque `CausalityToken`; reads can pass via `wait_for: Option<CausalityToken>` to wait for projection catchup or fail with `CausalityWaitTimeout`; never silently return stale projection. |
 
 Any change to an axiom is logged in [../decisions/](../decisions/) with a new locked-decision entry and the superseded axiom gets a `_withdrawn` suffix rather than being deleted.

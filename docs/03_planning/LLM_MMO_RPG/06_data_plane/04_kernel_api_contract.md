@@ -90,6 +90,18 @@ impl ChannelId {
 }
 ```
 
+### CausalityToken (Phase 4, DP-Ch38)
+
+```rust
+/// Opaque token issued on T2/T3/Multi/Pause/Turn write acks. Hand off to
+/// other services to preserve read-your-writes via the optional `wait_for`
+/// parameter on read primitives. Module-private constructor — cannot be
+/// forged by feature code. Full semantics in
+/// [18_causality_and_routing.md](18_causality_and_routing.md).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct CausalityToken(/* opaque internals */);
+```
+
 ### Tier enum (runtime)
 
 ```rust
@@ -189,6 +201,16 @@ pub enum DpError {
     #[error("channel already in target state: channel={channel} state={state}")]
     ChannelAlreadyInState { channel: String, state: String },
 
+    /// Phase 4 (DP-A19, DP-Ch39): wait_for token's event_id never reached
+    /// projection-applied state within the timeout window.
+    #[error("causality wait timeout: requested={requested} last_applied={last_applied} waited={waited:?}")]
+    CausalityWaitTimeout { token: CausalityToken, last_applied: u64, requested: u64, waited: Duration },
+
+    /// Phase 4 (DP-Ch42): CP has no record of the session (expired or never
+    /// bound). Caller must re-bind via bind_session.
+    #[error("session not found: session_id={session_id}")]
+    SessionNotFound { session_id: String },
+
     #[error("tier violation: {aggregate} requested={requested:?} allowed={allowed:?}")]
     TierViolation { aggregate: &'static str, requested: Tier, allowed: Tier },
 
@@ -216,19 +238,26 @@ Read primitives dispatch on aggregate scope ([DP-A14](02_invariants.md#dp-a14--a
 
 ### Single-aggregate read
 
+Phase 4 extension: optional `wait_for` for intra-session causality (DP-A19, DP-Ch40).
+
 ```rust
 /// Read a reality-scoped aggregate. Cache-first; on miss, hits projection.
+/// `wait_for = Some(token)` blocks until projection has applied the token's event
+/// or `causality_timeout` (default 5s) elapses → CausalityWaitTimeout.
 pub async fn read_projection_reality<A: RealityScoped>(
     ctx: &SessionContext,
     id: A::Id,
+    wait_for: Option<&CausalityToken>,                  // Phase 4
+    causality_timeout: Option<Duration>,                // Phase 4
 ) -> Result<A::Projection, DpError>;
 
 /// Read a channel-scoped aggregate. Requires explicit channel_id.
-/// Fails with `DpError::CapabilityDenied` if session lacks visibility on the channel.
 pub async fn read_projection_channel<A: ChannelScoped>(
     ctx: &SessionContext,
     channel: &ChannelId,
     id: A::Id,
+    wait_for: Option<&CausalityToken>,                  // Phase 4
+    causality_timeout: Option<Duration>,                // Phase 4
 ) -> Result<A::Projection, DpError>;
 ```
 
@@ -240,6 +269,8 @@ pub async fn query_scoped_reality<A: RealityScoped>(
     ctx: &SessionContext,
     predicate: Predicate<A>,
     limit: usize,
+    wait_for: Option<&CausalityToken>,                  // Phase 4
+    causality_timeout: Option<Duration>,                // Phase 4
 ) -> Result<Vec<A::Projection>, DpError>;
 
 /// Query channel-scoped aggregates within a specific channel.
@@ -248,6 +279,8 @@ pub async fn query_scoped_channel<A: ChannelScoped>(
     channel: &ChannelId,
     predicate: Predicate<A>,
     limit: usize,
+    wait_for: Option<&CausalityToken>,                  // Phase 4
+    causality_timeout: Option<Duration>,                // Phase 4
 ) -> Result<Vec<A::Projection>, DpError>;
 ```
 
@@ -349,9 +382,23 @@ pub struct T3WriteOp { /* constructed via T3WriteOp::new::<A: T3Aggregate>(...) 
 ### Acknowledgment types
 
 ```rust
-pub struct T2Ack { pub event_id: EventId, pub applied_at_projection: Option<Instant> }
-pub struct T3Ack { pub event_id: EventId, pub applied_at_projection: Instant, pub invalidation_fanout_ms: Duration }
-pub struct MultiAck { pub txn_id: TxnId, pub event_ids: Vec<EventId>, pub applied_at: Instant }
+pub struct T2Ack {
+    pub event_id: EventId,
+    pub applied_at_projection: Option<Instant>,
+    pub causality_token: CausalityToken,            // Phase 4 (DP-Ch38)
+}
+pub struct T3Ack {
+    pub event_id: EventId,
+    pub applied_at_projection: Instant,
+    pub invalidation_fanout_ms: Duration,
+    pub causality_token: CausalityToken,            // Phase 4 (DP-Ch38)
+}
+pub struct MultiAck {
+    pub txn_id: TxnId,
+    pub event_ids: Vec<EventId>,
+    pub applied_at: Instant,
+    pub causality_token: CausalityToken,            // Phase 4 (DP-Ch38) — covers all ops in txn
+}
 ```
 
 ---
@@ -754,7 +801,7 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 
 | Category | Count | Items |
 |---|---:|---|
-| Core types | 9 | `RealityId`, `ChannelId`, `SessionId`, `NodeId`, `Tier`, `Aggregate`, `T0/T1/T2/T3Aggregate` traits, `RealityScoped`/`ChannelScoped` traits, `Predicate` |
+| Core types | 10 | `RealityId`, `ChannelId`, `SessionId`, `NodeId`, `Tier`, `Aggregate`, `T0/T1/T2/T3Aggregate` traits, `RealityScoped`/`ChannelScoped` traits, `Predicate`, `CausalityToken` (Phase 4) |
 | Session | 3 | `SessionContext`, `bind_session`, `refresh_capability` |
 | Error | 1 | `DpError` (13 variants incl. `WrongChannelWriter` per Phase 4 DP-A16) |
 | Read | 4 | `read_projection_reality`, `read_projection_channel`, `query_scoped_reality`, `query_scoped_channel` |
@@ -764,7 +811,7 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 | Client | 2 | `DpClient::connect`, `DpClient::verify_reality` |
 | Channel | 8 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel`, `advance_turn`, `register_bubble_up_aggregator`, `unregister_bubble_up_aggregator`, `channel_pause`, `channel_resume` (Phase 4) |
 | Aggregator | 1 | `deterministic_rng` (Phase 4) |
-| **Error variants** | 17 | `DpError` (was 13; +4 in lifecycle: `ChannelPaused`, `ChannelDissolved`, `ChannelHasDescendants`, `ChannelAlreadyInState`) |
+| **Error variants** | 19 | `DpError` (+2 Phase 4 Q21/Q22: `CausalityWaitTimeout`, `SessionNotFound`) |
 | **Total SDK primitives** | **~39** | Feature repos compose these into domain APIs. Channel + durable subscribe + turn boundary + bubble-up + lifecycle/pause (Phase 4) are additive. |
 
 ~39 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with full channel + ordering + subscribe + turn + bubble-up + lifecycle support added in Phase 4.
