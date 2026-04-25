@@ -61,7 +61,7 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 00 | [00_preamble.md](00_preamble.md) | LOCKED | — | 2026-04-24 |
 | 01 | [01_scope_and_boundary.md](01_scope_and_boundary.md) | LOCKED | — | 2026-04-24 |
 | 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A18 | 2026-04-25 |
-| 03 | [03_tier_taxonomy.md](03_tier_taxonomy.md) | LOCKED | DP-T0, DP-T1, DP-T2, DP-T3 | 2026-04-24 |
+| 03 | [03_tier_taxonomy.md](03_tier_taxonomy.md) | LOCKED | DP-T0, DP-T1, DP-T2, DP-T3 | 2026-04-25 (DP-T1 reframed for Phase 4 channel model) |
 | 04 | [04_kernel_api_contract.md](04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 2026-04-25 |
 | 05 | [05_control_plane_spec.md](05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 2026-04-25 |
 | 06 | [06_cache_coherency.md](06_cache_coherency.md) | LOCKED | DP-X1..X10 | 2026-04-25 |
@@ -74,7 +74,7 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 15 | [15_turn_boundary.md](15_turn_boundary.md) | LOCKED | DP-Ch21..Ch24 | 2026-04-25 |
 | 16 | [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) | LOCKED | DP-Ch25..Ch30 | 2026-04-25 |
 | 17 | [17_channel_lifecycle.md](17_channel_lifecycle.md) | LOCKED | DP-Ch31..Ch37 | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 design ✅ + 3 follow-ups resolved** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (10 resolved: Q15/Q16/Q17/Q19/Q26/Q27/Q28/Q30/Q31/Q34; 6 🟡 + 4 🟢 remaining, none blocking) | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 design ✅ + 4 follow-ups resolved** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (11 resolved: Q15/Q16/Q17/Q18/Q19/Q26/Q27/Q28/Q30/Q31/Q34; 5 🟡 + 4 🟢 remaining, none blocking) | 2026-04-25 |
 
 ---
 

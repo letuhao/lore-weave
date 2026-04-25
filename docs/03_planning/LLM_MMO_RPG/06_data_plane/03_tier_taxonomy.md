@@ -72,20 +72,25 @@ In-process data structure. No SDK call needed for writes (they are just memory w
 
 In-memory live state with periodic snapshot to Redis. A crash may lose up to the last snapshot interval (≤30 seconds). **Single-writer discipline:** the game node holding the player's session is the authoritative writer for all T1 aggregates owned by that session; NPC aggregates have their writer node tracked by the control plane. See [DP-A11](02_invariants.md#dp-a11--session-node-owns-t1-writes) for the full binding and failover rule.
 
-### Eligibility rule
+### Eligibility rule (revised Phase 4 for turn-based + channel model)
 
 A feature may use T1 only if **all three** are true:
 
-1. A 30-second data loss on node crash is acceptable (replayable from player input, re-derivable from broadcast, or low-stakes re-sync).
-2. Write rate is high (≥ 1 per second sustained per aggregate) — otherwise T2 is fine and simpler.
-3. The data is per-aggregate, per-reality — not a global counter or a cross-reality state.
+1. A 30-second data loss on node crash is acceptable (re-derivable from current play state, re-emitted on reconnect, or staleness tolerable until next durable update).
+2. Data is **high-churn or explicitly transient** — frequent updates from session activity, OR ephemeral UI state that exists only during active play. (Phase 4: dropped the prior "≥1/s sustained" hard rule — it was a pre-channel-model assumption baked in MMO-realtime semantics; channel presence at lower update rates is still appropriate T1 if the data is transient.)
+3. Data is per-aggregate, scoped to either reality (`RealityScoped`) or a specific channel (`ChannelScoped`) — not a global counter or cross-reality state.
 
-### Examples
+### Examples (turn-based + channel model)
 
-- Player position during active play (30Hz client update, 5Hz server broadcast, 10s snapshot cadence)
-- Active emote / current-animation state
-- Combat tick ticks (if combat is tick-based rather than event-based)
-- Chat-presence per session
+- **Channel presence** — "actors currently in cell C" — high churn on join/leave; the live set is T1, while canonical join/leave history is T2 via DP-Ch34 `MemberJoined`/`MemberLeft` events. The two are **complementary**: T1 answers "who's here now"; T2 answers "who joined when, why did they leave".
+- **Typing indicator** — "actor X is composing in cell C" — high churn (start/stop), explicitly transient, low-stakes.
+- **Hover / cursor / target state** — UI hints during active play; ephemeral by definition.
+- **Active emote / animation state** — visible to other channel members during the current scene; resets on session end or scene boundary.
+- **Idle-since timestamp** — recomputed on every action; staleness OK because it's a bounded re-derivation.
+
+**Composition with scope traits ([DP-A14](02_invariants.md#dp-a14--aggregate-scope-reality-scoped-vs-channel-scoped-design-time-choice-phase-4-2026-04-25)):** T1 is orthogonal to scope. `T1Aggregate + RealityScoped` (e.g., player's session-wide presence flag) and `T1Aggregate + ChannelScoped` (e.g., presence-in-this-cell) are both valid. Most Phase 4 T1 use cases are channel-scoped because presence is naturally per-channel.
+
+**Examples retired (kept here for migration audit):** ~~Player position 30Hz client update / 5Hz server broadcast~~ — turn-based has no continuous-position concept; positional changes are channel events. ~~Combat tick ticks~~ — combat is event-based per turn boundaries (DP-A17); no separate tick stream. ~~Chat-presence per session~~ — supplanted by channel presence (per cell, scoped via DP-A14 `ChannelScoped`).
 
 ### Snapshot cadence
 

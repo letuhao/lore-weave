@@ -214,12 +214,12 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 ## Phase 4 severity summary
 
 - **🔴 Blockers (0):** all design blockers resolved 2026-04-25
-- **🟡 Significant gaps (6 remaining, 6 resolved):** Q18, Q20, Q21, Q22, Q29, Q32 + ~~Q17, Q19, Q28, Q30, Q31, Q34~~ ✅ resolved 2026-04-25
+- **🟡 Significant gaps (5 remaining, 7 resolved):** Q20, Q21, Q22, Q29, Q32 + ~~Q17, Q18, Q19, Q28, Q30, Q31, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (4):** Q23, Q24, Q25, Q33
 
-**Resolved (10):** Q15, Q16, Q17, Q19, Q26, Q27, Q28, Q30, Q31, Q34 ✅
+**Resolved (11):** Q15, Q16, Q17, Q18, Q19, Q26, Q27, Q28, Q30, Q31, Q34 ✅
 
-**Phase 4 design phase complete + 3 follow-up gaps resolved.** Remaining 6 🟡 gaps are smaller / independent (Q18 T1 reframe is small reframe, Q20 LLM latency = V1 data, Q21 RYW cross-service, Q22 routing UX, Q29 fan-out tuning, Q32 privacy formalization). All non-blocking for feature design.
+**Phase 4 design phase complete + 4 follow-up gaps resolved.** Remaining 5 🟡 gaps are independent: Q20 LLM latency (V1 data), Q21 RYW cross-service, Q22 routing UX, Q29 fan-out tuning, Q32 privacy formalization. All non-blocking for feature design.
 
 ---
 
@@ -266,13 +266,17 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q18 — T1 tier reframed for channel presence (REAL-4 reframed)
+## Q18 — T1 tier reframed for channel presence (REAL-4 reframed) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** [DP-T1](03_tier_taxonomy.md#dp-t1--volatile) Volatile was designed around 30Hz position updates in an MMO. Turn-based has no use case for that. In channel model, T1 has a natural home: **channel presence state** ("who is currently in this tavern", "who is typing in this cell"). Lower QPS than MMO-T1.
+**What:** T1 examples + eligibility rule baked in MMO-realtime assumption (30Hz position, "≥1/s sustained" rate). Turn-based + channel model has different T1 use cases.
 
-**Why significant (not blocker):** Current T1 eligibility rule says "write rate ≥ 1 per second sustained per aggregate" — channel presence doesn't meet that. Features will be pushed toward T2 unnecessarily; or the T1 eligibility rule needs updating.
+**Resolution:** [03_tier_taxonomy.md DP-T1](03_tier_taxonomy.md#dp-t1--volatile) revised:
+- **Eligibility rule:** dropped hard "≥1/s sustained" threshold; replaced with "high-churn OR explicitly transient" criterion.
+- **Examples replaced:** out went MMO-realtime (player position 30Hz, combat ticks); in came turn-based + channel model (channel presence, typing indicator, hover/cursor, emote/animation state, idle-since timestamp).
+- **Note added on DP-Ch34 complementarity:** T1 = "currently in" snapshot; T2 canonical `MemberJoined`/`MemberLeft` = durable history; both serve different consumers.
+- **Note added on scope orthogonality:** T1 + RealityScoped and T1 + ChannelScoped are both valid per [DP-A14](02_invariants.md#dp-a14--aggregate-scope-reality-scoped-vs-channel-scoped-design-time-choice-phase-4-2026-04-25). Most Phase 4 T1 use cases are channel-scoped (presence is per-channel).
 
-**Candidate resolution path:** Reframe [DP-T1](03_tier_taxonomy.md#dp-t1--volatile) examples and eligibility — option (c) from the review: keep 4 tiers but redefine T1 as "channel presence, typing, hover — low QPS transient state".
+4 design decisions all locked (J1a replace MMO examples · J2b drop rate threshold + use churn/transient criterion · J3a explicit DP-Ch34 relationship note · J4a explicit ChannelScoped composition note).
 
 ---
 

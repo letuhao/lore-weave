@@ -81,6 +81,53 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q18 RESOLVED (T1 reframe for channel presence)
+
+### Session arc
+
+Seventh Phase 4 mini-session. Smallest 🟡 gap — T1 tier taxonomy was written with MMO-realtime assumptions baked in (30Hz position, "≥1/s sustained" rate threshold). Turn-based + channel model has different T1 use cases (channel presence, typing indicator, hover, emote). Quick reframe of DP-T1 section in [03_tier_taxonomy.md](06_data_plane/03_tier_taxonomy.md); no new files, no new axioms.
+
+CLARIFY phase: user approved 4 design decisions (J1a replace MMO examples with turn-based · J2b drop "≥1/s" hard rate threshold, replace with "high-churn or transient" criterion · J3a explicit note on T1 / DP-Ch34 complementarity · J4a explicit note on T1 + ChannelScoped composition validity).
+
+BUILD phase: targeted edit to DP-T1 section only. Eligibility rule revised; examples replaced; 2 explanatory notes added. No supersession of axioms.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| [`03_tier_taxonomy.md`](06_data_plane/03_tier_taxonomy.md) | DP-T1 eligibility rule revised (dropped "≥1/s" hard rule); examples replaced (channel presence, typing, hover, emote, idle-since); notes added on DP-Ch34 complementarity + ChannelScoped composition | 251 → 256 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q18 ✅ resolved with cross-refs; Phase 4 severity summary updated (11 resolved) | 459 → 463 |
+| [`_index.md`](06_data_plane/_index.md) | File 03 last-touched updated with reframe note | 122 |
+
+**Folder total after this Q:** 6168 lines across 18 files. Stable IDs unchanged at 116 (no new IDs).
+
+### Q18 decisions locked
+
+| Decision | Rationale |
+|---|---|
+| Replace MMO examples (J1a) | Game is turn-based + channel-based; keeping MMO examples confuses readers |
+| Drop hard rate threshold (J2b) | "≥1/s sustained" was MMO assumption; channel presence at lower rates is still appropriate T1 if data is transient |
+| Note DP-Ch34 complementarity (J3a) | T1 = "currently in" snapshot; T2 canonical join/leave history; both serve different consumers |
+| Note ChannelScoped composition (J4a) | T1 + ChannelScoped is valid via DP-A14; most Phase 4 T1 use cases are channel-scoped |
+
+### Phase 4 progress after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **11** | Q15, Q16, Q17, **Q18**, Q19, Q26, Q27, Q28, Q30, Q31, Q34 |
+| 🟡 Significant gaps remaining | **5** | Q20 (LLM latency, V1-data-deferred), Q21 (RYW cross-service), Q22 (routing UX), Q29 (fan-out tuning), Q32 (privacy formalization) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q33 |
+
+11 / 20 Phase 4 Qs resolved. Quick win — small reframe, no new file, no new axioms, ~60 lines diff total.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared.
+- File 04 still at 791 lines, unchanged this session — split decision still pending after next 🟡 cluster (likely Q21 + Q22).
+- Q20 stays deferred until V1 prototype data; pickable independently are Q21, Q22, Q29, Q32 + 4 nits.
+
+---
+
 ## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q19+Q28+Q31 RESOLVED (lifecycle + membership + pause)
 
 ### Session arc
@@ -922,6 +969,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-25 | **06_data_plane Phase 3 locked — design track COMPLETE.** `07_failure_and_recovery.md` (DP-F1..F10, 385 lines) closes Q6/Q12 and Q5 residual. Key locks: **consistency over availability** on split-brain (DP-F5, reject T3 writes rather than reconcile); **3 token-bucket backpressure** (per-reality-per-tier + per-service + per-session, DP-F7); schema migration rollback ≤5 min with dual-read pause + new-schema quarantine (DP-F8); CP-down cold-start fallback = 503 Retry-After rather than risk double-wake (DP-F8); chaos cadence weekly CP + node / bi-weekly Redis + inval drop / monthly freeze + partition + backpressure / quarterly migration rollback (DP-F10). Folder total: 2851 lines across 12 files, **74 stable IDs**. 7 Q-items fully resolved, 2 partial (ops residuals), 2 out of scope, 1 future implementation. Parallel tracks now unblocked: feature design (DF4/DF5/DF7) consuming DP contract, main SRE track continuation (SR6-SR12), SDK implementation, ops doc. |
 | 2026-04-25 | **06_data_plane Phase 4 backlog recorded (NOT resolved).** User clarified actual game model is turn-based event-linear with **hierarchical channels** (cell → tavern → town → district → country → continent) + probabilistic event bubble-up. Adversarial review identified **Phase 1-3 contracts remain valid baseline but need extension**. 20 open questions (Q15..Q34) appended to `99_open_questions.md`: **4 blockers** (Q15 per-channel turn primitive, Q16 durable subscribe with resume, Q26 channel as first-class concept, Q27 bubble-up primitive), **12 significant gaps**, **4 nits/ops**. 7 items are REAL-* issues from hot-path review reframed to channel scope; 9 are NEW issues surfaced by channel model; 4 carry forward as ops/security follow-ups. Resolution plan: foundation (Q26/Q17/Q30/Q34) → blockers → semantics → gaps → ops. One mini-session per Q cluster. Phase 1-3 files remain LOCKED as baseline; new file `12_channel_primitives.md` planned once foundation resolved. |
 | 2026-04-25 | **06_data_plane Phase 4 Q26 ✅ RESOLVED — channel hierarchy now first-class DP concept.** First Phase 4 mini-session. 6 design decisions approved (D1c tree + free-form level_name · D2a UUID + cached ancestor · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix · D5 SessionContext extension · D6b per-reality-DB registry + CP cache). 2 new axioms **DP-A13** (channel tree first-class) + **DP-A14** (aggregate scope design-time marker). New file **12_channel_primitives.md** (447 lines, DP-Ch1..Ch10). Updates to 04 (`ChannelId`, scope traits, extended SessionContext, scope-typed reads, scope-dispatched `cache_key!`, channel CRUD primitives; file now 677 lines — over soft cap, user-approved as API-reference exception), 05 (CP channel tree cache + 3 new gRPC methods), 99 (Q26 marked resolved + severity updated). Folder: 3687 lines across 13 files, ~88 stable IDs. Phase 4 progress: 1/4 blockers resolved; Q17 + Q30 + Q34 next cluster (per-channel ordering + writer binding). |
+| 2026-04-25 | **06_data_plane Phase 4 Q18 ✅ RESOLVED — T1 tier reframed for channel presence.** Seventh Phase 4 mini-session, smallest 🟡 gap. 4 design decisions approved (J1a replace MMO examples · J2b drop "≥1/s" rate threshold + use "high-churn or transient" criterion · J3a explicit DP-Ch34 complementarity note · J4a explicit ChannelScoped composition note). DP-T1 section in 03_tier_taxonomy revised — out went MMO-realtime examples (30Hz position, combat ticks); in came turn-based + channel-model examples (channel presence, typing indicator, hover/cursor, emote/animation, idle-since). Eligibility rule simplified. No new file, no new axioms (DP-T0..T3 enum stable per DP-A5). Folder: 6168 lines across 18 files, 116 stable IDs unchanged. Phase 4 progress: 11 of 20 Qs resolved (Q15/Q16/Q17/Q18/Q19/Q26/Q27/Q28/Q30/Q31/Q34); 5 🟡 + 4 🟢 remain. |
 | 2026-04-25 | **06_data_plane Phase 4 Q19+Q28+Q31 ✅ RESOLVED — channel lifecycle + membership + pause.** Sixth Phase 4 mini-session, post-design-phase-completion cleanup of 🟡 gaps. 6 design decisions approved (I1a 3 lifecycle states + orthogonal paused_until · I2c auto-dormant cells + admin non-cell · I3a dissolution terminal · I4a DP emits canonical MemberJoined/MemberLeft · I5b pause halts game writes, allows admin/lifecycle · I6a open-ended pause reason). New axiom **DP-A18** (channel lifecycle state machine + canonical membership events). New file **17_channel_lifecycle.md** (496 lines, DP-Ch31..Ch37: 3-state machine with terminal Dissolved · auto-dormant 5-min CP scan over cells idle ≥30min · dissolution requires all-descendants-dissolved · canonical MemberJoined/MemberLeft reserved event types with typed reasons (Voluntary/Disconnected/Migrated/ChannelDissolved/TimedOut) · channel_pause/resume SDK + capability JWT can_pause_channel + auto-resume on expiry · pause survives writer failover via DB state · idempotent ops + edge-case taxonomy + canonical audit trail). Updates: 04 (+channel_pause/resume + 4 new DpError variants + PauseAck, surface 37→39, 748→791 lines — close to 800 split threshold), 05 (+lifecycle scheduler responsibility + 3 RPC methods, count 22→25, 336→342), 12 (cross-ref to file 17), 99 (Q19/Q28/Q31 ✅), _index. Folder: 6163 lines across 18 files, **116 stable IDs**. Phase 4 progress: **10 of 20 Qs resolved** (all blockers + 3 of original 12 🟡 gaps); 6 🟡 + 4 🟢 remain, all independent and non-blocking. |
 | 2026-04-25 | **🎉 06_data_plane Phase 4 Q27 ✅ RESOLVED — bubble-up aggregator. PHASE 4 DESIGN PHASE COMPLETE.** Fifth and final Phase 4 mini-session. Q27 was the last + most complex design blocker. 6 design decisions approved (H1a in-process trait on parent's writer · H2c event-sourced state with snapshots · H3a deterministic RNG seeded by channel_event_id · H4c multiple aggregators per parent with source filter · H5a CP durable registry · H6b feature-decides-redact for private sources). New file **16_bubble_up_aggregator.md** (561 lines, DP-Ch25..Ch30: BubbleUpAggregator trait + register/unregister + SourceFilter shapes + SourceEvent + EmitDecision · event-sourced state + periodic snapshots + 1MB cap + 1/s rate-limit + failure handling · deterministic_rng via blake3-seeded StdRng · CP bubble_up_aggregator registry + 3 RPC methods + 30-day GC · cascading natural with loop prevention via tree-shape + 16-level cap · channel visibility exposed via SourceEvent.source_visibility, redaction = feature decision). Updates: 04 (+3 new SDK primitives, surface 34→37, 723→748), 05 (+aggregator-registry RPC, count 19→22, 330→336), 13 (DP-Ch15 cross-ref to file 16), 99 (Q27 ✅ + Phase 4 design complete announcement), _index. Folder: 5577 lines across 17 files, **109 stable IDs** (17 axioms + 4 tiers + 8 rulebook + 8 SLO + 12 kernel API + 10 CP + 10 coherency + 10 failure + 30 channel Ch1..Ch30). Phase 4 design phase: **0 blockers remaining** (Q15/Q16/Q17/Q26/Q27/Q30/Q34 all ✅). Feature design unblocked. Remaining Phase 4 work = 9 🟡 gaps + 4 🟢 nits, none blocking gameplay design. |
 | 2026-04-25 | **06_data_plane Phase 4 Q15 ✅ RESOLVED — turn boundary primitive.** Fourth Phase 4 mini-session. 6 design decisions approved (G1a TurnBoundary as ChannelEvent impl · G2a feature explicit advance_turn + capability-gated · G3a minimal metadata turn_number + opaque turn_data · G4a no subscribe-completion gate · G5a writer auto-allocates monotonic gapless · G6a every channel event tagged with current turn_number). New axiom **DP-A17** (per-channel turn numbering invariant — monotonic gapless, writer-allocated only via advance_turn, every event tagged). New file **15_turn_boundary.md** (347 lines, DP-Ch21..Ch24: TurnBoundary event = ChannelEvent impl with `"turn_boundary"` discriminator + advance_turn(ctx, channel, turn_data, causal_refs) primitive · event_log.turn_number column + channel_writer_state.last_turn_number + writer allocation via MAX-reseed + optional UNIQUE index for failover-race · JWT can_advance_turn: Vec<level_name> capability claim · composition with pause/bubble-up/move-session). Updates: 04 (+advance_turn primitive on DpClient + TurnAck, surface 33→34, 706→723 lines), 13 (DP-Ch11 schema +turn_number column note), 99 (Q15 ✅), _index. Folder: 4972 lines across 16 files, **103 stable IDs**. Phase 4 progress: 6 resolved (Q15/Q16/Q17/Q26/Q30/Q34); **Q27 bubble-up = last design blocker** with all foundations now in place. |
