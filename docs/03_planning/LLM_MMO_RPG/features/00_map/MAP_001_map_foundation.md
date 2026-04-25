@@ -33,7 +33,7 @@ Three concrete gaps in the V1 design surface that MAP_001 closes:
 | **MapConnectionDecl** | Edge declaration on MapLayout | At non-cell tier: full edge schema (kind + distance + duration + canon_ref + bidirectional + gate_slot_id). At cell tier: empty (PF_001 cell ConnectionDecl is authoritative). |
 | **MapConnectionKind** | Closed enum 5 V1 (matches PF_001 for consistency) — Public / Private / Locked / Hidden / OneWay | Same visual treatment as PF_001 cell ConnectionKind. V1+ extensions (TimePortal/PocketDimension) tracked under MAP-D2. |
 | **distance_units** | u32 abstract leagues | Canonical book-derived; invariant across travel methods (V1+ TVL_001 derives method-modified durations from this). 1 unit = 1 abstract league per author convention; cross-tier scaling per author (continent=1000s, country=100s, region=10s — see §8). |
-| **default_fiction_duration** | FictionDuration | Canonical OnFoot baseline V1. PC's `/travel` reads this directly V1; V1+ TVL_001 layers method speed-multiplier. |
+| **default_fiction_duration** | FictionDuration | Canonical OnFoot baseline V1. PC's `/travel` reads this directly V1; V1+ TVL_001 layers method speed-multiplier. **FictionDuration shape** (cross-ref Phase 3 cleanup S2.4): defined at PL_001 §3.1 as `{ value: u32, unit: TimeUnit }` with closed `TimeUnit = Hour \| Day \| Week \| Month \| Year`. MAP_001 invariant: `value > 0` (zero = teleport-without-intent; rejects `map.connection_duration_invalid`). |
 | **ImageAssetRef** | Reference to S3/MinIO object — V1 schema, V1+ pipeline | All values None V1; UI falls back to default emoji icon + plain dark background. V1+ MAP_002 Asset Pipeline feature populates. |
 | **AssetSource** | Closed enum 4 V1 — AuthorUploaded / PlayerUploaded / LlmGenerated / CanonicalSeed | Discriminator on ImageAssetRef. V1: schema only; V1+: per-source upload/gen flow. |
 | **AssetReviewState** | Closed enum 3 — Pending / Approved / Rejected | V1+ Forge author-review queue gate. V1: assumed Approved (no values exist V1). |
@@ -113,13 +113,15 @@ pub struct MapConnectionDecl {
 **Rules:**
 - One row per `channel_id`. Primary key conflict = `map.duplicate_layout`.
 - Every channel from `root_channel_tree` (continent through cell) MUST have a `map_layout` row at bootstrap. Channels without layout reject runtime ops with `map.missing_layout_decl`.
+- `tier`: denormalized for SQL filter (sum-type variant tag isn't directly indexable); validator enforces equality with DP channel hierarchy at write-time per **Phase 3 cleanup S1.1**. Mismatch (e.g., `channel_id=country:dai_tong` per DP hierarchy but `tier=Continent` in row) rejects `map.tier_field_mismatch`. Readers SHOULD prefer DP channel-tree query over the `tier` field.
 - `tier_metadata`: Some iff `tier ∈ {Continent, Country, District, Town}`; None iff `tier == Cell`. Mismatch rejects `map.invalid_tier_metadata`.
 - `position.x` and `position.y` MUST be in `0..=1000` (inclusive); out-of-bounds rejects `map.position_out_of_bounds`.
 - `connections[]`: non-empty only for non-cell tiers; cell-tier `connections` MUST be empty (cell graph edges live on PF_001 `place.connections`). Cell-tier non-empty connections reject `map.invalid_tier_metadata` (collapsed for V1; V1+ separate rule_id if needed).
 - `connections[].to_channel` MUST resolve to existing map_layout row at SAME tier as `self` (cross-tier disallowed V1; rejects `map.cross_tier_connection_disallowed`).
 - `connections[].to_channel` MUST NOT equal `self.channel_id` (no self-loops); rejects `map.self_referential_connection`.
 - `connections[].distance_units > 0`; zero or unset rejects `map.connection_distance_invalid`.
-- All asset_ref fields are `None` V1 (schema-only; V1+ MAP_002 populates). Reads with non-None values during V1 reject `map.asset_ref_unresolved` (defensive — should never fire V1).
+- `connections[].default_fiction_duration.value > 0`; zero rejects `map.connection_duration_invalid` (Phase 3 cleanup S1.2 — distance_invalid only covered distance, not duration; teleport-without-intent prevention).
+- All asset_ref fields MUST BE `None` V1 (schema-only; V1+ MAP_002 populates). Author write attempts with non-None V1 reject `map.asset_pipeline_not_active_v1` (Phase 3 cleanup S1.3 — defensive write-time reject; rule retired when MAP_002 V1+30d lands). Reads with non-None values during V1 also reject via `map.asset_ref_unresolved`.
 
 ---
 
@@ -134,6 +136,8 @@ pub enum MapConnectionKind {                              // 5 V1 — matches PF
     OneWay,                                               // enter but not exit (reverse Travel reject)
 }
 ```
+
+**V1 Hidden ConnectionKind limitation (Phase 3 cleanup S3.4):** functionally Hidden behaves identically to Public in V1 (no per-PC discovery flags V1; tracked as MAP-D10). The differentiator is **visual styling only** (faded / dashed / 50% opacity per visual encoding table below) — author's authored intent is preserved in the schema even though traversal allows passage. V1+ when MAP-D10 lands, Hidden activates per-PC `discovered_nodes` set; until then, Hidden is "secret-but-not-yet-secret" — V1 author writes Hidden, V1+ rollout activates the gate.
 
 **Why same as PF_001:** consumer features (PL_001 Travel resolver, UI map renderer, LLM AssemblePrompt) operate on a unified ConnectionKind taxonomy at all tiers. Adding tier-specific variants (TradeRoute / CulturalLink / etc.) was rejected V1 — V1 strictly mirrors PF_001 to avoid forking the kind taxonomy. V1+ extensions tracked under MAP-D2.
 
@@ -152,11 +156,31 @@ pub enum MapConnectionKind {                              // 5 V1 — matches PF
 ## §5 Position model + viewport scaling
 
 **Author-positioned absolute** within parent viewport (Q3-a):
-- Continent-tier positions sit within reality-root viewport (0..1000 × 0..1000)
-- Country-tier positions sit within their parent continent's viewport (0..1000 × 0..1000 — reset at each tier)
+- Continent-tier positions sit within **reality-root viewport** (Phase 3 cleanup S3.1 — explicit definition: reality root has no parent channel; reality-root viewport = top-level map UI canvas, fixed `0..=1000 × 0..=1000` coordinate space; continent positions are absolute coordinates within this canvas)
+- Country-tier positions sit within their parent continent's viewport (`0..=1000 × 0..=1000` — reset at each tier; per Q3-a)
 - District-tier positions within parent country's viewport
 - Town-tier positions within parent district's viewport
 - Cell-tier positions within parent town's viewport
+
+**Lazy-cell auto-position policy V1** (Phase 3 cleanup S2.3 — fills gap left by S2.5):
+
+When a cell is lazy-created via PL_001b §16.3 (PC `/travel` to undeclared cell), `derive_lazy_map_layout(...)` computes default position:
+
+```rust
+fn derive_lazy_map_layout_position(parent_existing_children: &[MapLayout]) -> MapPosition {
+    // Strategy: place lazy cells near center of parent viewport with deterministic offset
+    // by sibling count to avoid collisions. NOT random (replay-determinism per EVT-A9).
+    let n_existing = parent_existing_children.len() as u32;
+    // Spiral-out from center using deterministic offset based on n_existing
+    let angle_rad = (n_existing as f32) * 137.5_f32.to_radians();  // golden-angle spiral
+    let radius = 50 + (n_existing * 30).min(400);                  // grows with count, capped
+    let x = (500.0 + radius as f32 * angle_rad.cos()) as u32;
+    let y = (500.0 + radius as f32 * angle_rad.sin()) as u32;
+    MapPosition { x: x.clamp(50, 950), y: y.clamp(50, 950) }       // keep inside viewport with margin
+}
+```
+
+Same policy for both lazy-cell + lazy any future runtime-channel-creation cases. Author can override later via Forge:EditMapLayout.UpdatePosition.
 
 **Why per-tier viewport reset:** UI renders one tier at a time (drill-down). Each tier's viewport is independent — author authoring a country's region layout doesn't worry about positions colliding with sibling country's regions. Demo `MAP_GUI_v1.html` validated this drill-down + viewport-reset pattern.
 
@@ -215,9 +239,48 @@ pub enum AssetReviewState {                               // closed enum 3 V1 (Q
 ```
 
 **V1 behavior:** all `ImageAssetRef` field values are `None` (icon_asset / background_asset / inline_artwork all None). UI falls back to:
-- icon: emoji per PlaceType (cell tier; from PF_001 default-affordance + per-type hints in PF_001 §4 table)
-- background: plain dark gradient (demo)
+- icon: emoji per PlaceType / ChannelTier (formalized below as **Default icon emoji map V1** per Phase 3 cleanup S3.3)
+- background: plain dark gradient (matches demo `_ui_drafts/MAP_GUI_v1.html` style)
 - inline_artwork: empty info-pane visual; just text description
+
+### 7.1 Default icon emoji map V1 (used when icon_asset = None)
+
+**Formalized closed mapping** — V1 renderer MUST use these defaults for visual consistency across all UI implementations. Demo `MAP_GUI_v1.html` validated this mapping; spec records it as authoritative.
+
+**Cell tier (per PlaceType from PF_001 §4):**
+
+| PlaceType | Default emoji | Notes |
+|---|---|---|
+| Residence | 🏠 | private dwelling |
+| Tavern | 🍵 | tea/wine emphasis (cultivation genre); Western realities may override |
+| Marketplace | 🏪 | stalls + commerce |
+| Temple | ⛩️ | religious sanctuary |
+| Workshop | 🛠️ | craft + production |
+| OfficialHall | 🏛️ | authority + ceremony |
+| Road | 🛤️ | thoroughfare |
+| Crossroads | 🔀 | path junction |
+| Wilderness | 🌲 | natural outdoor |
+| Cave | 🕳️ | subterranean |
+
+**Non-cell tier (per ChannelTier — §2):**
+
+| ChannelTier | Default emoji | Notes |
+|---|---|---|
+| Continent | 🌍 | world-scale |
+| Country | 🏯 | sovereign region |
+| District | 🗺️ | administrative subdivision |
+| Town | 🏘️ | settlement aggregator |
+
+**Status overlays (visual; cell-tier only — composes from PF_001 StructuralState):**
+
+| StructuralState | Visual treatment |
+|---|---|
+| Pristine | full-opacity emoji + standard border |
+| Damaged | full-opacity emoji + gold-dashed border + ⚠ overlay badge |
+| Destroyed | 60%-opacity emoji + red-dashed border + ✗ overlay badge |
+| Restored | full-opacity emoji + green-dashed border (V1+ if author cares to differentiate from Pristine) |
+
+V1 renderer applies these defaults uniformly. V1+ when MAP_002 Asset Pipeline lands, `icon_asset = Some(...)` overrides per-instance — fallback only fires when asset is None / Pending / Rejected.
 
 **V1 never writes ImageAssetRef.** All asset fields are schema reservations only. The 5 demo cells in `MAP_GUI_v1.html` use emoji fallbacks, validating the V1 baseline UX without art.
 
@@ -284,6 +347,22 @@ V1+: Travel resolver computes shortest path via region-tier MAP_001 connections
 
 V1 keeps it simple: PC /travel to single edge (cell-cell or region-region author-driven). Pathfinding deferred MAP-D8.
 
+### Known V1 limitations (Phase 3 cleanup S2.2)
+
+Authors writing realities MUST be aware of these V1 constraints; V1+ rollouts unblock each:
+
+| Limitation | V1 behavior | V1+ unblock |
+|---|---|---|
+| **Cell-to-cell flat duration** | All cell-to-cell `/travel` within a region takes the same time = `travel_defaults.cell_to_cell_duration` (default 1 hour). Tavern next door = 1 hour; Tavern across district = 1 hour. Narratively flat. | **MAP-D7** V1+30d PF_001 reopen to add `distance_units` + `default_fiction_duration` to PF_001 cell ConnectionDecl. Per-edge canonical durations replace the flat constant. |
+| **Hidden ConnectionKind ≡ Public V1** | Hidden visible-to-all functionally (only visual styling differs). Authors writing "hidden tunnels" get visual hint but not gating. | **MAP-D10** V1+30d per-PC `discovered_nodes` set activates Hidden gating. |
+| **Locked ConnectionKind always rejects** | V1 has no key-matching; all Locked Travel attempts reject `map.connection_locked`. | **MAP-D12** V1+ TVL_001 Travel Mechanics + Item integration enables key-fixture matching. |
+| **No V1 pathfinding** | PC `/travel` resolves single edge only. Multi-hop = sequential turns. | **MAP-D8** V1+30d multi-hop pathfinding helper. |
+| **No V1 fog-of-war** | All map nodes visible to all PCs always. | **MAP-D10** V1+30d per-PC `discovered_nodes`. |
+| **No V1 method matrix** | All travel uses `default_fiction_duration` (OnFoot baseline). Cultivation flying-sword / vehicles / FTL not V1. | **MAP-D12** V1+ TVL_001 Travel Mechanics. |
+| **Asset slots V1 always None** | UI uses emoji-icon fallback (§7) + plain dark background. No author/player/LLM art V1. | **MAP-D3/D4/D5** V1+30d → V2+ MAP_002 Asset Pipeline phased rollout. |
+
+These limitations are intentional V1 scope discipline — each has an explicit V1+ unblock plan. Authors should not work around them in V1 (e.g., declaring custom durations on every cell connection wouldn't be portable to V1+ when MAP-D7 lands).
+
 ---
 
 ## §9 RealityManifest extension + `map.*` RejectReason namespace
@@ -331,6 +410,11 @@ pub struct TravelDefaults {
 | `map.asset_review_pending` | UI requests asset that's still Pending review | "Hình ảnh đang chờ duyệt." | Yes (V1+ Forge integration; UI can fall back to icon emoji) |
 | `map.connection_distance_invalid` | `distance_units == 0` for non-cell connection | "Khoảng cách không hợp lệ." | No (write-time validator) |
 | `map.self_referential_connection` | `to_channel == self.channel_id` (self-loop) | "Kết nối không thể trỏ về chính nó." | No (write-time validator) |
+| `map.tier_field_mismatch` | denormalized `tier` field doesn't match the channel's actual tier in DP hierarchy (e.g., `channel_id=country:dai_tong` but `tier=Continent`) | "Cấp bản đồ không khớp với cấp kênh." | No (write-time validator; mirror of PF entity_type_mismatch / Phase 3 cleanup S1.1) |
+| `map.connection_duration_invalid` | `default_fiction_duration.value == 0` for non-cell connection (zero duration = teleport-without-intent) | "Thời gian di chuyển không hợp lệ." | No (write-time validator; Phase 3 cleanup S1.2) |
+| `map.asset_pipeline_not_active_v1` | author writes non-None ImageAssetRef on icon/background/inline_artwork field V1 (before MAP_002 V1+30d lands) | "Chức năng tải hình ảnh chưa khả dụng V1." | No (V1 defensive; rule retired when MAP_002 V1+30d lands; Phase 3 cleanup S1.3) |
+
+**Note on `map.asset_review_pending`** (Phase 3 cleanup S3.2): rule_id is V1+ only — fires when MAP_002 V1+30d lands and a Pending asset is requested. V1 the rule never fires (defensive — all asset values are None V1). Soft-override eligible for graceful UI fallback to icon emoji per §7.1.
 
 **V1+ rule_id reservations** (additive per I14):
 - `map.cross_reality_layout` — V1+ multiverse portal layouts spanning realities
@@ -379,6 +463,44 @@ UI invalidation + downstream feature consumption via DP-K6 subscribe.
 | Future MAP_002 Asset Pipeline | `map_layout WHERE *_asset.author_review_state = Pending` | review queue |
 
 **Validator slot considerations:** EVT-V_map_layout runs as part of write-validator pipeline for layout mutations (write-time invariant checks for position bounds, connection validation, cross-tier rejection). Slot ordering deferred to `_boundaries/03_validator_pipeline_slots.md` alignment review (extends EF-Q3 + PF-Q1; tracked as **MAP-Q1**).
+
+### 12.1 Cell-tier composition flow (Phase 3 cleanup S2.1)
+
+When UI renders cell-tier (drilled into a town's cells), it MUST compose data from BOTH MAP_001 + PF_001 — neither alone is sufficient. V1 architecture chooses **dual subscription at frontend layer** (simpler V1; world-service merge-API is V1+ optimization tracked at MAP-D16).
+
+**Frontend subscription pattern at cell tier:**
+
+```
+Frontend session at cell-tier viewport (player drilled into "Lâm An Phủ"):
+  ↓ Identify children: query DP channel-tree for cells with parent=town:lin_an
+  ↓ children = [cell:yen_vu_lau, cell:lin_an_market, cell:white_cloud_temple, ...]
+
+Subscription A (MAP_001 — visual layer):
+  subscribe map_layout WHERE channel_id IN children
+  → returns: position, icon_asset (None V1 → emoji fallback), background_asset, inline_artwork
+  → tier_metadata = None for cell-tier (PF_001 supplies display_name)
+  → connections = [] for cell-tier (PF_001 supplies cell edges)
+
+Subscription B (PF_001 — semantic layer):
+  subscribe place WHERE place_id IN children
+  → returns: place_type, structural_state, display_name, narrative_drift, fixture_seed
+  → connections = Vec<ConnectionDecl> (cell graph edges; what UI renders as lines between cells)
+
+Frontend composes both into render:
+  for each cell:
+    node.position = MAP_001.map_layout.position
+    node.icon = MAP_001.icon_asset OR §7.1 emoji map by PF_001.place_type
+    node.label = PF_001.place.display_name.vi
+    node.status_overlay = §7.1 visual treatment for PF_001.structural_state
+  for each PF_001 connection on each cell:
+    edge.from = cell_id; edge.to = connection.to_place
+    edge.style = §4 visual encoding for PF_001 ConnectionKind
+    (note: distance/duration NOT shown V1 cell-tier per S2.2 limitation; V1+ MAP-D7 unblocks)
+```
+
+**Non-cell tier rendering** uses ONLY MAP_001 (no PF_001 query needed) — non-cell tiers don't have `place` rows V1.
+
+**V1+ optimization (MAP-D16 deferral)** — world-service exposes a unified `read_map_view(channel_id) → MapViewDTO` that pre-merges MAP_001 + PF_001 server-side; frontend subscribes once. Reduces round-trips at cost of new aggregate API. V1 keeps the dual-subscription pattern (LiveQuery composition at client) for simplicity.
 
 ---
 
@@ -462,6 +584,8 @@ PL_001 §13 step ④ Travel resolution:
   ↓ DP emits MemberLeft + MemberJoined; FictionClock advances by 14 Day; LLM narrator gets canon_ref + 14-day flavor hint
 ```
 
+**Note on canon_ref None narrator fallback (Phase 3 cleanup S2.5; mirror PF_001 §6 step 11):** if the matched ConnectionDecl has `canon_ref = None` (author-added connection without book grounding), narrator falls back to `(ChannelTier-default-transition-phrase + ConnectionKind-default-phrase)`. Examples: Country + Public + Road-context → "đoàn người di chuyển qua quan đạo nối hai quốc gia"; Country + OneWay → "đi qua cổng đặc biệt, không thể quay lại"; District + Hidden → "đi theo lối nhỏ ít người biết". LLM AssemblePrompt receives both endpoint Place (or non-cell tier metadata) contexts so prose can interpolate without canon hint. Same pattern at all tiers.
+
 ### 14.4 Author-edit map layout via Forge (WA_003)
 
 ```
@@ -526,6 +650,8 @@ V1: this flow doesn't exist; all asset slots are None.
 | **MAP-D12** | V1+ TVL_001 Travel Mechanics feature (speed/method matrix) | V1: OnFoot baseline only; V1+ TVL_001 derives method-modified durations from distance_units / speed_multiplier | V1+ when first non-OnFoot method needed (cultivation flying-sword urgent for SPIKE_01 grounding) |
 | **MAP-D13** | V1+ tier-density ceiling validator (`map.layout_too_dense`) | V1 no cap; if author creates 100 sibling regions in one country, UI degrades | V1+30d profiling |
 | **MAP-D14** | `BookCanonRef` shared-schema registration | inherited from PF-D12; same boundary cleanup pass | Future boundary cleanup / IF_001 design |
+| **MAP-D15** | `ImageAssetRef.storage_uri` typed URI + `mime_type` closed enum | V1 freeform String accepts any content (security-relevant for V1+ when MAP_002 populates: path traversal, mime spoofing, malicious schemes). V1 schema-only (values None) so no exposure; V1+ MAP_002 must validate at write-time. Phase 3 cleanup S1.4 reservation. | V1+30d MAP_002 implementation |
+| **MAP-D16** | World-service unified `read_map_view(channel_id) → MapViewDTO` API merging MAP_001 + PF_001 at cell tier | V1: frontend dual-subscription (Subscription A on map_layout + Subscription B on place; client-side composition per §12.1). V1+ optimization to reduce round-trips. Phase 3 cleanup S2.1 reservation. | V1+30d profiling |
 
 ---
 
@@ -560,7 +686,7 @@ V1: this flow doesn't exist; all asset slots are None.
 - [x] Image asset architecture: 3 slot reservations + 4 source variants + 3 review states; V1 schema-only with V1+ phased pipeline
 - [x] Distance + Travel cost integration: distance_units (invariant) + default_fiction_duration (OnFoot baseline) + V1 cell-tier fallback constant; space-game pattern (EVE / Stellaris / FTL)
 - [x] RealityManifest extension `map_layout: Vec<MapLayoutDecl>` + `travel_defaults: TravelDefaults` (registered in `_boundaries/02_extension_contracts.md` §2)
-- [x] Reference safety policy: 10 V1 rule_ids in `map.*` namespace + 3 V1+ reservations
+- [x] Reference safety policy: **13 V1 rule_ids** in `map.*` namespace (Phase 3 cleanup added `tier_field_mismatch` + `connection_duration_invalid` + `asset_pipeline_not_active_v1`) + 3 V1+ reservations (cross_reality_layout / layout_too_dense / connection_method_unsupported)
 - [x] Event-model mapping: EVT-T3 Derived (`aggregate_type=map_layout`) + EVT-T4 System (`LayoutBorn`) + EVT-T8 Administrative (`Forge:EditMapLayout`); V1+ MAP_002 sub-shapes reserved; no new EVT-T*
 - [x] DP primitives: existing surface only (no new DP-K*)
 - [x] Capability JWT: existing claims (no new top-level)
@@ -568,9 +694,9 @@ V1: this flow doesn't exist; all asset slots are None.
 - [x] Cross-service handoff: ChannelId JSON shape; tier_metadata + connections embedded
 - [x] 5 representative sequences (canonical bootstrap / UI drill-down / NPC scripted-travel with canonical duration / Forge author-edit / V1+ asset upload illustrative)
 - [x] 10 V1-testable acceptance scenarios (AC-MAP-1..10)
-- [x] 14 deferrals (MAP-D1..D14) with target phases — covers V1+ asset pipeline phases · auto-layout · pathfinding · cross-tier connections · TVL_001 method matrix · LocalizedName/BookCanonRef shared-schema cleanups
+- [x] **16 deferrals (MAP-D1..D16) with target phases** — covers V1+ asset pipeline phases · auto-layout · pathfinding · cross-tier connections · TVL_001 method matrix · LocalizedName/BookCanonRef shared-schema cleanups · Phase 3 add: typed URI/mime + unified read_map_view API
 - [x] Cross-references to all 14 affected features + foundation docs
-- [ ] Phase 3 review cleanup pending
+- [x] Phase 3 review cleanup applied 2026-04-26 (Severity 1 + 2 + 3 — ChannelTier denorm validation `tier_field_mismatch` + `connection_duration_invalid` + `asset_pipeline_not_active_v1` rule_ids; FictionDuration cross-ref; cell-tier dual-subscription composition flow §12.1; V1 limitations boxout §8; lazy-cell auto-position policy §5 + PL_001b §16.3 lazy map_layout creation; canon_ref None narrator fallback §14.3; reality root viewport §5; AssetReviewState V1+ prefix; default emoji map V1 §7.1; Hidden V1 limitation §4)
 - [ ] CANDIDATE-LOCK pending closure pass + downstream updates (PCS_001 brief reading list / PL_001 §13 + §16.2 reopen confirm / demo `MAP_GUI_v2.html` update with distance labels)
 
 ---

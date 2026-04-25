@@ -415,6 +415,30 @@ on /travel to "tương_dương":
                 //   fixture_seed:              [] (no canonical fixtures for lazy cells;
                 //                              author may seed via Forge:EditPlace.UpdateFixtureSeed)
     write place row for the new cell
+
+    // MAP_001 invariant: every cell-tier channel must also have a map_layout row
+    // (added 2026-04-26 MAP_001 commit; gap caught + filled in MAP_001 Phase 3 cleanup S2.6)
+    map_layout_row = derive_lazy_map_layout(
+                      channel_id            = cell.id,
+                      parent_channel        = resolved_path[-2],
+                      parent_existing_layouts = read_siblings_map_layouts(parent_channel),
+                      reality_id            = ctx.reality_id,
+                      fiction_time          = now,
+                    )
+                    // Derivation defaults V1 (per MAP_001 §5 Lazy-cell auto-position policy):
+                    //   tier:                      Cell (denormalized; computed from DP channel-tree;
+                    //                              validates equality per map.tier_field_mismatch rule)
+                    //   position:                  spiral-from-center deterministic by sibling count
+                    //                              (golden-angle spiral; clamped 50..950 with margin;
+                    //                              replay-safe per EVT-A9 — NOT random)
+                    //   tier_metadata:             None (Cell tier; PF_001 supplies display_name)
+                    //   icon_asset:                None (V1 schema-only; V1+ MAP_002)
+                    //   background_asset:          None
+                    //   inline_artwork:            None
+                    //   connections:               [] (cell-tier; PF_001 owns cell graph edges via place.connections)
+    write map_layout row for the new cell
+    emit EVT-T4 LayoutBorn { channel_id, tier: Cell, has_tier_metadata: false }
+
   move_session_to_channel(cell)
 ```
 

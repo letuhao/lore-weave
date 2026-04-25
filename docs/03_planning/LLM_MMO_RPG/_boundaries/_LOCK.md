@@ -10,7 +10,7 @@
 - **Claimed at:** —
 - **Expected work:** —
 - **Expires at:** —
-- _Last released:_ 2026-04-26 by main session (MAP_001 Map Foundation DRAFT + RealityManifest map_layout + travel_defaults extensions + light PL_001b §16.2 reopen) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
+- _Last released:_ 2026-04-26 by main session (MAP_001 Phase 3 review cleanup S1+S2+S3 + 3 new V1 rule_ids + lazy-cell map_layout fix S2.6) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

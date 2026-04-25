@@ -6,6 +6,37 @@
 
 ---
 
+## 2026-04-26 — MAP_001 Phase 3 review cleanup (Severity 1 + 2 + 3) + 3 new V1 rule_ids + lazy-cell map_layout fix
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — MAP_001 Phase 3 cleanup post DRAFT commit c7b75a6); commit (this turn) `[boundaries-lock-claim+release]`
+- **Files modified within `_boundaries/`:**
+  - `02_extension_contracts.md` §1.4 RejectReason namespace: `map.*` rule-id list expanded 10 V1 → **13 V1**. Added 2026-04-26 Phase 3:
+    - `map.tier_field_mismatch` (denormalized `tier` field doesn't match channel's actual tier in DP hierarchy; mirror of PF entity_type_mismatch Phase 3 fix; S1.1)
+    - `map.connection_duration_invalid` (default_fiction_duration.value == 0 = teleport-without-intent prevention; S1.2)
+    - `map.asset_pipeline_not_active_v1` (V1 defensive write-time reject for non-None ImageAssetRef; rule retired when MAP_002 V1+30d lands; S1.3)
+  - No matrix changes (rule_ids documented in extension contracts only; aggregate ownership unchanged).
+- **Files modified outside `_boundaries/`** (recorded for cleanup auditability):
+  - `features/00_map/MAP_001_map_foundation.md`:
+    - **§3.1 (S1.1 / S1.2 / S1.3 / S2.1):** ChannelTier denorm validation rule explicit (mirror PF entity_type Phase 3 fix); duration > 0 invariant; V1 author-write of non-None asset_ref defensive reject. Cell-tier composition note added (forward ref to §12.1).
+    - **§2 (S2.4):** FictionDuration cross-ref to PL_001 §3.1 + invariant note.
+    - **§4 (S3.4):** Hidden ConnectionKind V1 limitation note — functionally Public V1; visual styling differentiator only; V1+ MAP-D10 activates per-PC discovery.
+    - **§5 (S3.1 / S2.3):** Reality root viewport explicit definition (no parent; top-level UI canvas 0..=1000 × 0..=1000). New "Lazy-cell auto-position policy V1" subsection with deterministic golden-angle spiral (replay-safe per EVT-A9; NOT random; clamped 50..950 with margin).
+    - **§7.1 (S3.3):** New "Default icon emoji map V1" subsection formalizing emoji per PlaceType (10 cells: 🏠 🍵 🏪 ⛩️ 🛠️ 🏛️ 🛤️ 🔀 🌲 🕳️) + per non-cell ChannelTier (4: 🌍 🏯 🗺️ 🏘️) + 4 StructuralState visual treatments (Pristine / Damaged / Destroyed / Restored). Validates demo `MAP_GUI_v1.html` mapping; spec is authoritative.
+    - **§8 (S2.2):** New "Known V1 limitations" boxout — 7 V1 constraints (cell-to-cell flat duration / Hidden ≡ Public / Locked always rejects / no V1 pathfinding / no V1 fog-of-war / no V1 method matrix / asset slots None V1) each with V1+ unblock cross-ref. Authors warned not to work around limitations in V1.
+    - **§9 (S1.1 / S1.2 / S1.3 / S3.2):** Added 3 new V1 rule_ids with full Vietnamese reject copy. Added note on `map.asset_review_pending` V1+ prefix (V1 never fires).
+    - **§12.1 (S2.1):** New "Cell-tier composition flow" subsection — V1 dual-subscription pattern (Subscription A on map_layout for visual; Subscription B on PF_001 place for semantic + cell connections). Frontend composes both at client side. V1+ MAP-D16 unified `read_map_view(channel_id) → MapViewDTO` API at world-service for round-trip optimization.
+    - **§14.3 (S2.5):** canon_ref None narrator fallback footnote (mirror PF_001 §6 step 11) — falls back to `(ChannelTier-default + ConnectionKind-default)` phrasing; LLM AssemblePrompt receives endpoint contexts for prose interpolation.
+    - **§16 (S1.4 / S2.1):** Added 2 new deferrals — MAP-D15 (typed URI + closed-enum mime_type V1+30d MAP_002 implementation; security-relevant when MAP_002 populates) · MAP-D16 (unified read_map_view API V1+30d profiling).
+    - **§18 readiness checklist:** Phase 3 cleanup line ticked with full summary; rule_id count updated 10 → 13 V1; deferral count 14 → 16; CANDIDATE-LOCK still pending closure pass.
+  - `features/04_play_loop/PL_001b_continuum_lifecycle.md` §16.3 lazy cell creation: **CRITICAL FIX (S2.6)** — added `derive_lazy_map_layout(...)` callee + `write map_layout row` + `emit EVT-T4 LayoutBorn` alongside the existing place_row creation. Prior to this commit, lazy-cells via PC `/travel` to undeclared cells would create channel + place row but NOT map_layout row → AC-MAP-1 invariant violated at runtime → `map.missing_layout_decl` would fire on subsequent map UI open. Real runtime bug closed.
+- **Reason:** MAP_001 Phase 3 adversarial review (mirror EF_001 + PF_001 cleanup pattern post-DRAFT) caught 13 defects across 3 severity tiers. User approved Option A (apply all). Severity 1 = Rust correctness + structural defects (4 fixes); Severity 2 = design gaps (6 fixes incl. real lazy-cell map_layout creation bug); Severity 3 = clarifications + cross-feature consistency (4 fixes).
+- **Most architecturally significant:** S2.1 cell-tier composition (chose V1 dual-subscription frontend pattern over V1+ unified server-merge API; explicit MAP-D16 reservation) + S2.6 lazy-cell map_layout fix (real runtime bug closed before any consumer feature attempted lazy-cell flow).
+- **No `03_validator_pipeline_slots.md` changes** — EVT-V_map_layout slot still tracked as MAP-Q1 watchpoint (joins EF-Q3 + PF-Q1 in single alignment review).
+- **Drift watchpoints unchanged** (13 active; Phase 3 cleanup resolves under-specified items inline).
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — MAP_001 Map Foundation feature registered (sibling of EF_001 + PF_001; closes map UI + Travel cost gaps)
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — MAP_001 Map Foundation DRAFT, Option C max scope per user direction "design now"); commit (this turn) `[boundaries-lock-claim+release]`
