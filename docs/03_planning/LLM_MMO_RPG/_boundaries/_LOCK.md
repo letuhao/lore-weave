@@ -7,7 +7,7 @@
 ## Current owner
 
 - **Owner:** **None** (folder unlocked; any agent may claim)
-- _Last released:_ 2026-04-25 by main session 2026-04-25 (Claude Opus 4.7) after seeding the folder with initial 5 files. See [99_changelog.md](99_changelog.md) for details.
+- _Last released:_ 2026-04-25 (afternoon) by main session 2026-04-25 (Claude Opus 4.7) after WA-boundary-shrink ownership matrix update. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

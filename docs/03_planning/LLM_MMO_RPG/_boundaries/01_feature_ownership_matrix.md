@@ -34,13 +34,13 @@ Before designing a new feature: search this matrix for the aggregates / concepts
 | `actor_contamination_decl` | T2 / Reality | **WA_002 Heresy** | Per-(actor, kind) contamination exception. |
 | `actor_contamination_state` | T2 / Reality | **WA_002 Heresy** | Per-(actor, kind) runtime budget tracking. |
 | `world_stability` | T3 / Reality singleton | **WA_002 Heresy** | 5-stage state machine. |
-| `forge_audit_log` | T2 / Reality | **WA_003 Forge** | Append-only audit; ALSO USED by WA_004 + WA_005 + WA_006 with their own AuditAction sub-shapes. |
-| `coauthor_grant` | T2 / Reality | **WA_004 Charter** | Active Co-Author grants. |
-| `coauthor_invitation` | T2 / Reality | **WA_004 Charter** | Pending invitations with TTL. |
-| `ownership_transfer` | T2 (T3 at Finalize) / Reality | **WA_005 Succession** | Multi-stage state machine. |
+| `forge_audit_log` | T2 / Reality | **WA_003 Forge** (PROVISIONAL) | Append-only audit; ALSO USED by PLT_001 + PLT_002 + WA_006 with their own AuditAction sub-shapes. WA_003 marked PROVISIONAL 2026-04-25 — generic patterns may extract to a future cross-cutting feature. |
+| `coauthor_grant` | T2 / Reality | **PLT_001 Charter** (formerly WA_004; relocated 2026-04-25) | Active Co-Author grants. |
+| `coauthor_invitation` | T2 / Reality | **PLT_001 Charter** | Pending invitations with TTL. |
+| `ownership_transfer` | T2 (T3 at Finalize) / Reality | **PLT_002 Succession** (formerly WA_005; relocated 2026-04-25) | Multi-stage state machine. |
 | `mortality_config` | T2 / Reality singleton | **WA_006 Mortality** ⚠ | Per-reality death-mode config. **Only legitimate WA_006 aggregate.** |
 | `pc_mortality_state` | T2 / Reality | ⚠ **PROVISIONAL** in WA_006; should be **PCS_001** (when designed) | See WA_006 over-extension notice. |
-| `meta_user_pending_invitations` | global meta-DB table | **WA_004 Charter** | Cross-reality denormalized; CHR-D9 watchpoint. |
+| `meta_user_pending_invitations` | global meta-DB table | **PLT_001 Charter** (formerly WA_004) | Cross-reality denormalized; CHR-D9 watchpoint. |
 
 ---
 
@@ -52,10 +52,10 @@ These are SHARED across multiple features; each has a designated ENVELOPE owner 
 |---|---|---|---|
 | `TurnEvent` payload (EVT-T1 PlayerTurn / EVT-T2 NPCTurn) | **PL_001 Continuum** §3.5 | PL_002 (`command_kind`), NPC_002 (`reaction_intent`, `aside_target`, `action_kind`), WA_006 (provisional `outcome`) | See [`02_extension_contracts.md` §1](02_extension_contracts.md#1-turnevent-envelope) — additive only per foundation I14; envelope versioned `TurnEventSchema = N`. |
 | `RealityManifest` | **(unowned — needs split)** ⚠ | PL_001 Continuum (starting_fiction_time + root_channel_tree + canonical_actors), WA_001 (LexConfig), WA_002 (contamination_allowances), WA_006 (mortality_config provisional), NPC_001 (CanonicalActorDecl extension) | See [`02_extension_contracts.md` §2](02_extension_contracts.md#2-realitymanifest) — proposal: extract to a new `IF_001_reality_manifest.md` infrastructure feature. |
-| `ForgeEditAction` enum | **WA_003 Forge** §7 | WA_004 Charter (CharterInvite/Accept/...), WA_005 Succession (Succession*), WA_006 Mortality (MortalityConfig edits — provisional) | Closed enum extended via additive variants per I14. |
-| Capability JWT (`forge.roles` + `forge.roles_version`) | **WA_004 Charter** §6.3 | extended by WA_005 (RealityOwner role), WA_006 (provisional MortalityAdmin) | Borderline with auth-service — flag for review when auth-service contributes. |
-| `EVT-T8 AdminAction` sub-shapes | event-model agent (Phase 2) | WA_003 (`ForgeEdit`), WA_004 (`Charter*`), WA_005 (`Succession*`), WA_006 (`MortalityAdminKill` provisional) | Each feature DECLARES its sub-shapes; event-model agent's Phase 2 will lock the union. |
-| `RejectReason` namespace prefixes | **PL_001 Continuum** §3.5 (envelope) | `lex.*` → WA_001, `heresy.*` → WA_002, `mortality.*` → WA_006, `world_rule.*` → cross-cutting, `oracle.*` → 05_llm_safety | Each feature owns its prefix; Continuum doesn't enumerate. **Pending Path A tightening.** |
+| `ForgeEditAction` enum | **WA_003 Forge** §7 | PLT_001 Charter (CharterInvite/Accept/...), PLT_002 Succession (Succession*), WA_006 Mortality (MortalityConfig edits — provisional) | Closed enum extended via additive variants per I14. |
+| Capability JWT (`forge.roles` + `forge.roles_version`) | **PLT_001 Charter** §6.3 | extended by PLT_002 (RealityOwner role), WA_006 (provisional MortalityAdmin) | Borderline with auth-service — flag for review when auth-service contributes. |
+| `EVT-T8 AdminAction` sub-shapes | event-model agent (Phase 2) | WA_003 (`ForgeEdit`), PLT_001 (`Charter*`), PLT_002 (`Succession*`), WA_006 (`MortalityAdminKill` provisional) | Each feature DECLARES its sub-shapes; event-model agent's Phase 2 will lock the union. |
+| `RejectReason` namespace prefixes | **PL_001 Continuum** §3.5 (envelope) | `lex.*` → WA_001, `heresy.*` → WA_002, `mortality.*` → WA_006 (provisional), `world_rule.*` → cross-cutting, `oracle.*` → 05_llm_safety A3, `canon_drift.*` → 05_llm_safety A6, `capability.*` → DP-K9, `parse.*` → PL_002, `chorus.*` → NPC_002, `forge.*` → WA_003, `charter.*` → PLT_001, `succession.*` → PLT_002 | Each feature owns its prefix; Continuum doesn't enumerate. **Path A tightening applied 2026-04-25 (commit f7c0a54).** |
 
 ---
 
@@ -74,8 +74,8 @@ Per [`../00_foundation/06_id_catalog.md`](../00_foundation/06_id_catalog.md). Re
 | `LX-D*` / `LX-Q*` | WA_001 | per-feature deferral IDs |
 | `HER-D*` / `HER-Q*` | WA_002 | per-feature deferral IDs |
 | `FRG-D*` / `FRG-Q*` | WA_003 | per-feature deferral IDs |
-| `CHR-D*` / `CHR-Q*` | WA_004 | per-feature deferral IDs |
-| `SUC-D*` / `SUC-Q*` | WA_005 | per-feature deferral IDs |
+| `CHR-D*` / `CHR-Q*` | PLT_001 | per-feature deferral IDs |
+| `SUC-D*` / `SUC-Q*` | PLT_002 | per-feature deferral IDs |
 | `MOR-D*` / `MOR-Q*` | WA_006 | per-feature deferral IDs |
 | `GR-D*` / `GR-Q*` | PL_002 | per-feature deferral IDs |
 | `CST-D*` / `CST-Q*` | NPC_001 | per-feature deferral IDs |
@@ -96,7 +96,7 @@ These are documented mismatches that require cross-feature coordination to resol
 | **LX-D5** | WA_001 | Lex slot ordering in EVT-V* | event-model agent Phase 3 |
 | **HER-D8** | WA_002 | EVT-T11 WorldTick V1+30d activation | event-model agent Phase 4 |
 | **HER-D9** | WA_002 | LexSchema v1→v2 migration sequencing | implementation phase ops |
-| **CHR-D9** | WA_004 | Cross-reality `meta_user_pending_invitations` table | platform infrastructure |
+| **CHR-D9** | PLT_001 | Cross-reality `meta_user_pending_invitations` table | platform infrastructure |
 | **WA_006 over-extension** | boundary review 2026-04-25 | 5 sections of WA_006 belong to PCS_001 / 05_llm_safety / PL_001 | rewrite WA_006 when feature owners take over |
 | **B2 RealityManifest envelope** | boundary review 2026-04-25 | No single owner of the manifest schema | propose IF_001_reality_manifest.md (deferred) |
 

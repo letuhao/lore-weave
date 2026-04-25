@@ -11,8 +11,8 @@
 Some schemas are SHARED across many features:
 - `TurnEvent` payload — extended by PL_002, NPC_002, WA_006, ...
 - `RealityManifest` — extended by PL_001, WA_001, WA_002, WA_006, NPC_001, ...
-- Capability JWT claims — extended by WA_003, WA_004, WA_005, WA_006, ...
-- `EVT-T8 AdminAction` sub-shapes — extended by WA_003, WA_004, WA_005, WA_006, ...
+- Capability JWT claims — extended by WA_003, PLT_001, PLT_002, WA_006, ...
+- `EVT-T8 AdminAction` sub-shapes — extended by WA_003, PLT_001, PLT_002, WA_006, ...
 
 Without a contract, these schemas drift:
 - Two features add the same field name with different semantics
@@ -106,8 +106,8 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `parse.*` | PL_002 Grammar |
 | `chorus.*` | NPC_002 Chorus |
 | `forge.*` | WA_003 Forge |
-| `charter.*` | WA_004 Charter |
-| `succession.*` | WA_005 Succession |
+| `charter.*` | PLT_001 Charter |
+| `succession.*` | PLT_002 Succession |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy.
 
@@ -170,7 +170,7 @@ Creating `features/01_infrastructure/IF_001_reality_manifest.md` to formally own
 
 ### Owner
 
-DP-K9 owns the base JWT shape (issuer, sub, exp, iat, capabilities, etc.). FORGE-related claims (`forge.role`, `forge.roles`, `forge.roles_version`) are owned by **WA_004 Charter** §6.3.
+DP-K9 owns the base JWT shape (issuer, sub, exp, iat, capabilities, etc.). FORGE-related claims (`forge.role`, `forge.roles`, `forge.roles_version`) are owned by **PLT_001 Charter** §6.3.
 
 ### Current shape (subset relevant to Forge)
 
@@ -199,12 +199,12 @@ DP-K9 owns the base JWT shape (issuer, sub, exp, iat, capabilities, etc.). FORGE
 ### Extension rules
 
 1. **DP-K9 owns the envelope.** Adding a top-level field requires DP-A* axiom-level change (rare).
-2. **`forge.*` namespace** is owned by Charter (WA_004); other forge-* features (Succession, Mortality) ADD claims under the same namespace via Charter's contract.
+2. **`forge.*` namespace** is owned by Charter (PLT_001); other forge-* features (Succession, Mortality) ADD claims under the same namespace via Charter's contract.
 3. **`produce: [EVT-T*]` array** is owned by event-model EVT-A4 producer-binding. Feature designs DECLARE which EVT-T* categories their service produces; event-model agent's Phase 2 reconciles the union.
 
 ### Borderline with auth-service
 
-The `forge.roles` shape implicitly requires auth-service to know per-user-per-reality role mappings. **Drift watchpoint** (also in CHR-D9 / WA_004): if auth-service prefers a different model (e.g., per-user platform DB), Charter's design needs alignment. Tracked, not blocking V1.
+The `forge.roles` shape implicitly requires auth-service to know per-user-per-reality role mappings. **Drift watchpoint** (also in CHR-D9 / PLT_001): if auth-service prefers a different model (e.g., per-user platform DB), Charter's design needs alignment. Tracked, not blocking V1.
 
 ---
 
@@ -219,20 +219,20 @@ Top-level event category EVT-T8 owned by **07_event_model agent** (Phase 1 LOCKE
 | Sub-shape | Owner feature |
 |---|---|
 | `ForgeEdit { editor, action, before, after }` | WA_003 Forge |
-| `CharterInvite` | WA_004 Charter |
-| `CharterAccept` | WA_004 Charter |
-| `CharterDecline` | WA_004 Charter |
-| `CharterCancel` | WA_004 Charter |
-| `CharterRevoke` | WA_004 Charter |
-| `CharterResign` | WA_004 Charter |
-| `SuccessionInitiate` | WA_005 Succession |
-| `SuccessionRecipientAccept` | WA_005 Succession |
-| `SuccessionRecipientDecline` | WA_005 Succession |
-| `SuccessionRecipientWithdraw` | WA_005 Succession |
-| `SuccessionAdminApprove` | WA_005 Succession |
-| `SuccessionAdminReject` | WA_005 Succession |
-| `SuccessionOwnerCancel` | WA_005 Succession |
-| `SuccessionFinalize` | WA_005 Succession |
+| `CharterInvite` | PLT_001 Charter |
+| `CharterAccept` | PLT_001 Charter |
+| `CharterDecline` | PLT_001 Charter |
+| `CharterCancel` | PLT_001 Charter |
+| `CharterRevoke` | PLT_001 Charter |
+| `CharterResign` | PLT_001 Charter |
+| `SuccessionInitiate` | PLT_002 Succession |
+| `SuccessionRecipientAccept` | PLT_002 Succession |
+| `SuccessionRecipientDecline` | PLT_002 Succession |
+| `SuccessionRecipientWithdraw` | PLT_002 Succession |
+| `SuccessionAdminApprove` | PLT_002 Succession |
+| `SuccessionAdminReject` | PLT_002 Succession |
+| `SuccessionOwnerCancel` | PLT_002 Succession |
+| `SuccessionFinalize` | PLT_002 Succession |
 | `MortalityAdminKill` (provisional) | WA_006 Mortality |
 
 ### Extension rules
