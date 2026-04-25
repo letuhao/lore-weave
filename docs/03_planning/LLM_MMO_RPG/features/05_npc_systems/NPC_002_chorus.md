@@ -39,19 +39,21 @@ After this lock: world-service can implement the orchestrator; NPCs in SPIKE_01 
 
 ---
 
-## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11)
+## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11; Option C redesign 2026-04-25)
 
-NPC_002 emits / consumes events that all map to existing categories — no new EVT-T* row needed.
+**Updated 2026-04-25 Option C redesign:** EVT-T2 NPCTurn was `_withdrawn` per I15. NPC reactions now emit as **EVT-T1 Submitted with sub-type=NPCTurn** (mechanism: actor explicitly emits with intent — same as PCTurn, just different actor variant per ActorId enum). All references below updated.
 
-| NPC_002 path | EVT-T* | Producer | Notes |
-|---|---|---|---|
-| Trigger consumption (PlayerTurn) | **EVT-T1** PlayerTurn (consumed) | gateway → roleplay → world-service (per PL_001/PL_002) | Read-only consumption via durable subscribe |
-| Reaction emission (one per reacting NPC) | **EVT-T2** NPCTurn | world-service orchestrator | Sub-shapes Speak / Action / Narration; **REQUIRED** causal_refs to Trigger per EVT-T2 spec |
-| Batched LLM proposals (one per reacting NPC) | **EVT-T6** LLMProposal | roleplay-service per orchestrator-coordinated call | Each promoted to EVT-T2 after validator chain |
-| Opinion / relationship update (V2 — defer to NPC_001) | **EVT-T3** AggregateMutation | NPC_001 owns the aggregate | NPC_002 only triggers; aggregate definition belongs to NPC_001 |
-| Cascade event (V2+ — out of scope) | **EVT-T2** NPCTurn cascade | same orchestrator | Cascade depth >1 V2+; V1 caps at 1 |
+NPC_002 emits / consumes events that all map to existing active categories — no new EVT-T* row needed.
 
-**Closed-set proof:** every Chorus-emitted event is EVT-T2 NPCTurn (or EVT-T6 → EVT-T2). All triggers are existing EVT-T1/T2 events. No new EVT-T*.
+| NPC_002 path | EVT-T* | Sub-type | Producer role | Notes |
+|---|---|---|---|---|
+| Trigger consumption (PCTurn) | **EVT-T1 Submitted** (consumed) | PCTurn | gateway → roleplay → commit-service (per PL_001/PL_002) | Read-only consumption via durable subscribe |
+| Reaction emission (one per reacting NPC) | **EVT-T1 Submitted** (formerly EVT-T2 NPCTurn — `_withdrawn` 2026-04-25, merged into T1) | NPCTurn (Speak / Action / Narration) | Orchestrator role (world-service) | **REQUIRED** causal_refs to Trigger per EVT-A6 |
+| Batched LLM proposals (one per reacting NPC) | **EVT-T6 Proposal** | NPCTurnProposal | LLM-Originator role (roleplay-service per orchestrator-coordinated call) | Each promoted to EVT-T1 Submitted/NPCTurn after validator chain |
+| Opinion / relationship update (V2 — defer to NPC_001) | **EVT-T3 Derived** | aggregate_type=npc_pc_relationship_projection | Aggregate-Owner role (NPC_001 owns the aggregate) | NPC_002 only triggers; aggregate definition belongs to NPC_001 |
+| Cascade event (V2+ — out of scope) | **EVT-T1 Submitted/NPCTurn** cascade | NPCTurn | same orchestrator | Cascade depth >1 V2+; V1 caps at 1 |
+
+**Closed-set proof:** every Chorus-emitted event is **EVT-T1 Submitted/NPCTurn** (or EVT-T6 Proposal → EVT-T1 Submitted/NPCTurn). All triggers are existing EVT-T1 Submitted events. No new EVT-T*.
 
 ---
 

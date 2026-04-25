@@ -41,17 +41,19 @@ After this lock: world-service can implement NPC orchestration; NPC_002 Chorus c
 
 ---
 
-## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11)
+## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11; Option C redesign 2026-04-25)
 
-| Cast-relevant event | EVT-T* | Producer | Notes |
-|---|---|---|---|
-| NPC speaks/acts (reaction or routine) | **EVT-T2** NPCTurn | world-service orchestrator | Cast supplies persona context for AssemblePrompt; NPC_002 Chorus orchestrates ordering |
-| NPC opinion update | **EVT-T3** AggregateMutation on `npc_pc_relationship_projection` | world-service post-validate | Causal-ref to triggering NPCTurn |
-| NPC LLM proposal (pre-validate) | **EVT-T6** LLMProposal | roleplay-service per Cast persona prompt | Promoted to EVT-T2 on validate |
-| Canonical NPC bootstrap (RealityManifest seed) | **EVT-T4** SystemEvent (`MemberJoined { joined_via: CanonicalSeed }`) | DP-internal | Per PL_001 §16.4 |
-| Cross-cell NPC handoff (V1+) | **EVT-T3** AggregateMutation on `actor_binding` + DP-emitted **EVT-T4** SystemEvent (`MemberLeft` + `MemberJoined`) | world-service current owner → new owner | See §12 |
+**Updated 2026-04-25 Option C redesign:** EVT-T2 NPCTurn was `_withdrawn` per I15; "NPCTurn" now lives as a sub-type of EVT-T1 Submitted (which generalizes "actor explicitly emits with intent" — covers PC, NPC, future quest-engine actors uniformly).
 
-No new EVT-T* row.
+| Cast-relevant event | EVT-T* | Sub-type | Producer | Notes |
+|---|---|---|---|---|
+| NPC speaks/acts (reaction or routine) | **EVT-T1 Submitted** | `NPCTurn` (formerly EVT-T2; merged 2026-04-25) | Orchestrator role (world-service) | Cast supplies persona context for AssemblePrompt; NPC_002 Chorus orchestrates ordering |
+| NPC opinion update | **EVT-T3 Derived** | aggregate_type=`npc_pc_relationship_projection` | Aggregate-Owner role (world-service) post-validate | Causal-ref to triggering NPCTurn |
+| NPC LLM proposal (pre-validate) | **EVT-T6 Proposal** | `NPCTurnProposal` | LLM-Originator role (roleplay-service) | Promoted to EVT-T1 Submitted/NPCTurn on validate |
+| Canonical NPC bootstrap (RealityManifest seed) | **EVT-T4 System** | `MemberJoined { joined_via: CanonicalSeed }` | DP-Internal | Per PL_001 §16.4 |
+| Cross-cell NPC handoff (V1+) | **EVT-T3 Derived** (`aggregate_type=actor_binding`) + DP-emitted **EVT-T4 System** (`MemberLeft` + `MemberJoined`) | (above) | Aggregate-Owner role + DP | See §12 |
+
+No new EVT-T* row. **EVT-T2 references throughout this doc** updated semantically: NPCTurn is now "EVT-T1 Submitted with sub-type=NPCTurn".
 
 ---
 

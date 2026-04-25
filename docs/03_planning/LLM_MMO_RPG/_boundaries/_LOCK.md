@@ -6,10 +6,8 @@
 
 ## Current owner
 
-- **Owner:** event-model agent (07_event_model Option C redesign — Phase 1)
-- **Claimed at:** 2026-04-25 (late evening)
-- **Expected work:** Phase 1 redesign of 07_event_model — withdraw EVT-T2/T7/T9/T10/T11 per I15 (merge into mechanism-level T1 Submitted / T3 Derived / T5 Generated); add EVT-A9..A12 axioms; update boundary matrix + changelog; update PL_002 / NPC_001 / NPC_002 citation rows. Lock-release after commit.
-- **Expires at:** 2026-04-26 02:00 (4h TTL from claim)
+- **Owner:** **None** (folder unlocked; any agent may claim)
+- _Last released:_ 2026-04-25 (late evening) by event-model agent (Option C redesign Phase 1) after redesign commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

@@ -7,7 +7,7 @@
 > **Catalog refs:** PL-2 (command grammar), PL-6 (LLM tool-call allowlist), PL-15 (3-intent classifier). Resolves [MV12-D9](../../decisions/locked_decisions.md) (`command_args` schema scope).
 > **Builds on:** [PL_001 Continuum](PL_001_continuum.md) (`TurnEvent`, `RejectReason`, idempotency_key, capability JWT)
 > **Cross-cuts:** [05_llm_safety/](../../05_llm_safety/) A5 intent classifier + A6 injection defense are the validators inside this feature's dispatch pipeline.
-> **Event-model alignment (2026-04-25):** Phase 1 of [`07_event_model/`](../../07_event_model/) landed with EVT-A1..A8 axioms + EVT-T1..T11 closed-set taxonomy. PL_002's events all map to existing categories — see §2.5 mapping table. No new EVT-T* needed.
+> **Event-model alignment (2026-04-25 + Option C redesign):** Phase 1 of [`07_event_model/`](../../07_event_model/) landed with EVT-A1..A8 axioms + EVT-T1..T11 closed-set taxonomy; Option C redesign 2026-04-25 added EVT-A9..A12 + collapsed feature-specific categories into 6 mechanism-level (T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative); T2/T7/T9/T10/T11 `_withdrawn` per I15. PL_002's events all map to existing active categories via sub-types — see §2.5 mapping table. No new EVT-T* needed.
 
 ---
 
@@ -38,23 +38,23 @@ After this lock, PL_001's §3.5 `TurnEvent.command_kind` and `TurnEvent.command_
 
 ---
 
-## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11)
+## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11; Option C redesign 2026-04-25)
 
-Every PL_002 dispatch path produces zero or more events. Mapping each path to the closed-set EVT-T* taxonomy:
+Every PL_002 dispatch path produces zero or more events. Mapping each path to the closed-set EVT-T* taxonomy. **Updated 2026-04-25 Option C redesign**: feature-specific categories (T2/T7/T9/T10/T11) collapsed into 6 mechanism-level active categories. Citations updated below.
 
-| PL_002 path | Produces event? | EVT-T* category | Sub-shape / commit primitive |
+| PL_002 path | Produces event? | EVT-T* category | Sub-type / commit primitive |
 |---|---|---|---|
-| `/verbatim <text>` (Command) | yes | **EVT-T1** PlayerTurn | sub-shape `Speak`, `command_kind=Verbatim`; commit via `dp::advance_turn` (Accepted) or `dp::t2_write` (Rejected — see GR-D8) |
-| `/prose <text>` (Command) | yes (via LLMProposal) | **EVT-T6** LLMProposal → **EVT-T1** PlayerTurn | LLM expands raw_text; world-service validates and commits PlayerTurn `Speak` with `command_kind=Prose` |
-| `/sleep [until X]` (Command) | yes | **EVT-T1** PlayerTurn + **EVT-T3** AggregateMutation (FictionClockAdvance) + **EVT-T7** CalibrationEvent (if date boundary crossed) | PlayerTurn sub-shape `FastForward` with `command_kind=Sleep`; world-service derives and commits the AggregateMutation + CalibrationEvent per PL_001 §12 |
-| `/travel to <place>` (Command) | yes | **EVT-T1** PlayerTurn + **EVT-T3** AggregateMutation (FictionClockAdvance, ActorBindingDelta, SceneStateInit) + **EVT-T7** CalibrationEvent + **EVT-T4** SystemEvent (MemberLeft + MemberJoined) | PlayerTurn sub-shape `FastForward` with `command_kind=Travel`; PL_001 §13 5-op chain emits the side-effect events |
-| `/help` (Meta-command) | **NO** | — | Pure HTTP response from gateway; nothing committed; not an event per EVT-A1 closed-set proof (matches "NOT AN EVENT" rows in 07_event_model/03_event_taxonomy.md) |
-| Free narrative (Intent::FreeNarrative) | yes (via LLMProposal) | **EVT-T6** LLMProposal → **EVT-T1** PlayerTurn (+ possibly **EVT-T2** NPCTurn for reactions) | Roleplay-service emits LLMProposal per EVT-A7; world-service validates → commits PlayerTurn `Speak` with `command_kind=None`; NPC reactions are separate EVT-T2 events with causal_refs to the PlayerTurn |
+| `/verbatim <text>` (Command) | yes | **EVT-T1 Submitted** | sub-type `PCTurn::Speak` (`command_kind=Verbatim`); commit via `dp::advance_turn` (Accepted) or `dp::t2_write` (Rejected — see GR-D8) |
+| `/prose <text>` (Command) | yes (via Proposal) | **EVT-T6 Proposal** → **EVT-T1 Submitted** | LLM expands raw_text; commit-service validates and commits Submitted/PCTurn::Speak with `command_kind=Prose` |
+| `/sleep [until X]` (Command) | yes | **EVT-T1 Submitted** + **EVT-T3 Derived** (FictionClockAdvance + calibration sub-shapes if date boundary crossed) | Submitted sub-type `PCTurn::FastForward` with `command_kind=Sleep`; commit-service derives and commits the Derived events per PL_001 §12. **Calibration sub-shapes (DayPasses/MonthPasses/YearPasses) now Derived sub-types** — formerly EVT-T7 CalibrationEvent (`_withdrawn` 2026-04-25). |
+| `/travel to <place>` (Command) | yes | **EVT-T1 Submitted** + **EVT-T3 Derived** (FictionClockAdvance, ActorBindingDelta, SceneStateInit, calibration sub-shapes) + **EVT-T4 System** (MemberLeft + MemberJoined) | Submitted sub-type `PCTurn::FastForward` with `command_kind=Travel`; PL_001 §13 5-op chain emits the side-effect events |
+| `/help` (Meta-command) | **NO** | — | Pure HTTP response from gateway; nothing committed; not an event per EVT-A1 closed-set proof |
+| Free narrative (Intent::FreeNarrative) | yes (via Proposal) | **EVT-T6 Proposal** → **EVT-T1 Submitted** (+ possibly more EVT-T1 Submitted with NPCTurn sub-type for reactions) | Roleplay-service emits Proposal per EVT-A7; commit-service validates → commits Submitted/PCTurn::Speak; **NPC reactions are EVT-T1 Submitted with sub-type=NPCTurn** (formerly EVT-T2 NPCTurn category, `_withdrawn` 2026-04-25 — collapsed into Submitted per Option C). |
 | Fact question (Intent::FactQuestion) | **NO** | — | Pure oracle query (PL-16); not committed; not an event |
 | Soft-confirm response (`ConfirmRequired`) | **NO** (yet) | — | HTTP-level dispatch state; only the user-confirmed branch commits an event |
-| Tool call within free narrative | yes, embedded in EVT-T6 → EVT-T1/T2 | **EVT-T6** LLMProposal carries tool_calls; promoted to EVT-T1 (PC) or EVT-T2 (NPC) on validation | Tool-call allowlist (§7.4) enforced during validator pipeline before commit |
+| Tool call within free narrative | yes, embedded in EVT-T6 → EVT-T1 | **EVT-T6 Proposal** carries tool_calls; promoted to EVT-T1 Submitted (PCTurn or NPCTurn sub-type) on validation | Tool-call allowlist (§7.4) enforced during validator pipeline before commit |
 
-**Closed-set proof for PL_002:** every dispatch path either produces an EVT-T* category from the closed set OR explicitly does NOT produce an event (and that's documented). No new EVT-T* row needed; PL_002 fits inside Phase 1 taxonomy.
+**Closed-set proof for PL_002:** every dispatch path either produces an active EVT-T* category from the closed set (T1/T3/T4/T6 — note T7 absorbed into T3) OR explicitly does NOT produce an event (and that's documented). No new EVT-T* row needed; PL_002 fits inside Option-C-redesigned taxonomy.
 
 ---
 

@@ -1,7 +1,8 @@
 # 03 — Event Taxonomy (EVT-T*)
 
-> **Status:** LOCKED. The closed set of event categories every event in LoreWeave's per-reality stream belongs to. Per [EVT-A1](02_invariants.md#evt-a1--closed-set-event-taxonomy), every event maps to exactly one EVT-T*; no "Other" / "Misc". Adding a category requires a superseding decision in [`../decisions/locked_decisions.md`](../decisions/locked_decisions.md).
-> **Stable IDs:** EVT-T1..EVT-T11. Never renumber. Retired IDs use `_withdrawn` suffix (foundation I15).
+> **Status:** LOCKED Phase 1 + Option C redesign 2026-04-25. The closed set of event categories every event in LoreWeave's per-reality stream belongs to. Per [EVT-A1](02_invariants.md#evt-a1--closed-set-event-taxonomy), every event maps to exactly one EVT-T*; no "Other" / "Misc". Adding a category requires a superseding decision.
+> **Stable IDs:** EVT-T1..EVT-T11 reserved; **6 active** (T1, T3, T4, T5, T6, T8) + **5 retired** (T2, T7, T9, T10, T11 — `_withdrawn` per foundation I15). Never renumber.
+> **Redesign note (Option C, 2026-04-25):** original Phase 1 taxonomy (`ce6ea97`) had 6 mechanism-level + 5 feature-specific categories. Option C redesign collapsed feature-specific categories into mechanism categories via sub-types per [EVT-A11](02_invariants.md#evt-a11--sub-type-ownership-discipline). T2 NPCTurn, T7 CalibrationEvent, T9 QuestBeat, T10 NPCRoutine, T11 WorldTick withdrawn — their concerns absorbed by T1 Submitted / T3 Derived / T5 Generated as feature-defined sub-types.
 
 ---
 
@@ -10,377 +11,308 @@
 For every event your feature emits or consumes:
 
 1. Find the matching EVT-T* row below.
-2. If no row matches, **stop** — open an [`99_open_questions.md`](99_open_questions.md) item and propose a new category. Do not proceed by inventing a 12th category locally.
-3. Cite the EVT-T* ID in your feature design's tier table (DP-R2) + producer table (EVT-P*, Phase 2).
+2. Pick or define a **sub-type** within that category (sub-types are feature-defined per [EVT-A11](02_invariants.md#evt-a11--sub-type-ownership-discipline)).
+3. Register your sub-type ownership in [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md).
+4. Cite the EVT-T* + sub-type in your feature design's tier table (DP-R2) + producer table (EVT-P*).
 
-The producer rules + per-category contract (required fields, idempotency key, max payload size) live in `04_producer_rules.md` and `06_per_category_contracts.md` (Phase 2 deliverables). This file gives the **shape and identity** of each category — semantic + lifecycle + DP commit primitive.
-
----
-
-## Quick reference table
-
-| ID | Name | V-tier | Producer (high level) | DP commit primitive | Lifecycle stage | Causal-ref policy |
-|---|---|---|---|---|---|---|
-| **EVT-T1** | PlayerTurn | V1 | gateway → roleplay-service → world-service | `dp::advance_turn` (TurnBoundary wire format) | committed canonical | optional (none for free narrative; required for chained command resolution) |
-| **EVT-T2** | NPCTurn | V1 | world-service orchestrator | `dp::advance_turn` (TurnBoundary wire format) | committed canonical | **required** — must reference triggering turn or scene-trigger |
-| **EVT-T3** | AggregateMutation | V1 | world-service / quest-service / feature service | `dp::t2_write` or `dp::t3_write` (NOT advance_turn) | committed canonical | optional (recommended when caused by a parent turn — e.g., FictionClockAdvance refs the PlayerTurn) |
-| **EVT-T4** | SystemEvent | V1 | DP itself (canonical, cannot be forged) | DP-internal emission | committed canonical | n/a (DP-internal) |
-| **EVT-T5** | BubbleUpEvent | V1 | registered aggregator on parent's writer node | aggregator runtime loop (DP-Ch26) | committed canonical at parent channel | **required** — references one or more source events at descendant channel |
-| **EVT-T6** | LLMProposal | V1 | roleplay-service (Python LLM) | bus-only (Redis Streams via I13 outbox); NOT in event log | pre-validation; promoted → PlayerTurn/NPCTurn or rejected | optional (proposal may reference a prior turn it's reacting to) |
-| **EVT-T7** | CalibrationEvent | V1 | world-service (derives from FictionClock advance) | `dp::t2_write` on the calibration sub-aggregate | committed canonical | **required** — references the parent turn whose FictionClock advance crossed a date boundary |
-| **EVT-T8** | AdminAction | V1 | admin-cli via S5 dispatch | dedicated admin primitive (e.g., `dp::channel_pause`) usually emits SystemEvent as side-effect | committed canonical | optional (refs target event when the action is "force-revert turn N") |
-| **EVT-T9** | QuestBeat | V1+ | quest engine (feature service, future) | `dp::t2_write` on quest aggregate | committed canonical | **required for Outcome** (refs Trigger); optional for Trigger |
-| **EVT-T10** | NPCRoutine | V1+30d | world-rule-scheduler service | `dp::advance_turn` on the cell channel where 0 PCs present | committed canonical | optional |
-| **EVT-T11** | WorldTick | V1+30d | world-rule-scheduler service | `dp::advance_turn` on the channel where the beat fires (typically town/country level) | committed canonical | optional (may reference quest triggers) |
-
-V-tier legend: **V1** = ships in V1 solo-RP (PL_001 / DF5 era); **V1+** = available V1 but feature-gated (depends on quest engine landing); **V1+30d** = enabled after V1 stabilization; **V2+** = coop / MMO-lite phase.
+Producer rules + per-category contracts (envelope shape, idempotency, payload limits) live in [`04_producer_rules.md`](04_producer_rules.md) and [`06_per_category_contracts.md`](06_per_category_contracts.md). This file gives the **mechanism identity** of each category — what dimension distinguishes it from others.
 
 ---
 
-## EVT-T1 — PlayerTurn
+## Active categories (6) — quick reference
 
-**Definition:** A canonical event emitted when a Player Character (PC) submits a turn through the gateway. Carries the player's intent (story / command / meta per A5-D1), narrator text (post-validation), and any state-mutation metadata.
+| ID | Name | Origination dimension | Trust model | DP commit primitive |
+|---|---|---|---|---|
+| **EVT-T1** | **Submitted** | Actor explicitly emits with intent | producer-trusted post-validation | `dp::advance_turn` (TurnBoundary wire format) |
+| **EVT-T3** | **Derived** | Side-effect state delta of another event | service-trusted (aggregate owner) | `dp::t2_write` / `dp::t3_write` (NOT advance_turn) |
+| **EVT-T4** | **System** | DP-internal lifecycle | DP-trusted by construction | DP-internal emission |
+| **EVT-T5** | **Generated** | Rule/aggregator/scheduler emits based on condition + probability | service-trusted; deterministic per [EVT-A9](02_invariants.md#evt-a9--probabilistic-generation-determinism-new-2026-04-25) | aggregator runtime / scheduler primitive |
+| **EVT-T6** | **Proposal** | Untrusted-origin pre-validation message | untrusted; lifecycle stage | bus-only (Redis Streams via I13 outbox); NOT in event log |
+| **EVT-T8** | **Administrative** | Operator-emitted via S5 dispatch | operator-trusted | dedicated admin primitive (e.g., `dp::channel_pause`); often emits T4 System as side-effect |
 
-**Producer:** gateway → roleplay-service (3-intent classification + LLM prompt assembly + LLM streaming + output filter) → world-service (validators + commit). The PlayerTurn event itself is committed by **world-service**, not roleplay-service. (Roleplay-service emits EVT-T6 LLMProposal; world-service consumes and commits the validated PlayerTurn.)
-
-**Trigger:** PC types text + presses send. WS-arrival in gateway. POST `/v1/turn` with idempotency key.
-
-**DP commitment mechanism:** `dp::advance_turn(ctx, &cell_channel, turn_data: TurnEvent { ... }, causal_refs)`. This commits a TurnBoundary channel event with the TurnEvent struct as payload. (Per Phase 0 B1 decision: TurnBoundary is the wire format; PlayerTurn is the semantic identity.)
-
-**Lifecycle stage:** committed canonical. After commit, durable subscribers (UI, world-service self-loop, bubble-up aggregators, audit-logger) observe via DP-K6.
-
-**Sub-shapes (feature-defined):** PL_001 §3.5 declares the V1 sub-shapes:
-- `Speak` — free-narrative dialogue
-- `Action` — physical action (move, take, attack — but state-mutation comes from `/verb` per A5-D3, not from LLM)
-- `MetaCommand` — system commands (`/sleep`, `/travel`, `/whisper`, `/look`)
-- `FastForward` — long-duration jump triggered by MetaCommand (Sleep / Travel) — covers MV12-D5 calibration semantics
-- `Narration` — post-fast-forward LLM-generated wakeup or arrival narration. **Marked `flavor=true` per [EVT-A8](02_invariants.md#evt-a8--flavor-narration-is-not-events)** — non-canonical text; only the structural delta of the parent FastForward is canonical.
-
-Future PL_002+ may add sub-shapes; new sub-shapes don't require a new EVT-T* row, just an EVT-S* schema bump on the PlayerTurn payload (additive per I14).
-
-**Causal-ref policy:** Optional. Free narrative typically has none. Chained commands (`/travel` resolving to multi-step move + scene-change) reference the parent /travel command's PlayerTurn from the resolution turns.
-
-**Validator chain (EVT-V*, Phase 3 reference):** schema → capability (`can_advance_turn`) → A5-D1 intent classify (cross-check) → A5 command dispatch (if MetaCommand) → A6 5-layer injection defense → world-rule lint → canon-drift check → causal-ref integrity → commit.
-
-**Cross-ref:** [PL_001 §3.5 TurnEvent](../features/04_play_loop/PL_001_continuum.md), [DP-A17 Turn numbering](../06_data_plane/02_invariants.md#dp-a17--per-channel-turn-numbering-phase-4-2026-04-25), [05_llm_safety A5/A6](../05_llm_safety/).
+**Withdrawn IDs (5):** T2 / T7 / T9 / T10 / T11 — see retirement section below.
 
 ---
 
-## EVT-T2 — NPCTurn
+## EVT-T1 — Submitted
 
-**Definition:** A canonical event emitted when an NPC takes a turn — typically reacting to a previous PlayerTurn within the same scene, but also covers NPC-initiated actions during multi-NPC scenes (per SPIKE_01 obs#6 multi-NPC reaction).
+**Mechanism:** an authorized actor (PC, NPC orchestrator, quest engine, etc.) explicitly emits an intent-bearing event via `dp::advance_turn`. The event is committed canonical after passing the EVT-V* validator pipeline.
 
-**Producer:** world-service orchestrator. The orchestrator decides which NPC reacts (per scene state + opinion graph + world-rule), assembles a prompt via `contracts/prompt/AssemblePrompt(intent=npc_reply)`, calls the LLM, runs A6 output filter, and commits. The NPC's "session" is the orchestrator's `SessionContext`, not a per-NPC SDK session (per [`../06_data_plane/99_open_questions.md`](../06_data_plane/99_open_questions.md) OOS-1).
+**Producer roles:** Player-Actor (PC submission via gateway → roleplay → trusted commit-service); Orchestrator (NPC reactions, multi-NPC chorus); future quest-engine (quest beat outcomes). See [EVT-A4](02_invariants.md#evt-a4--producer-role-binding-reframed-2026-04-25) producer-role table.
 
-**Trigger:** typically a prior PlayerTurn that includes targets the NPC observes (PC speaks to NPC, PC enters scene, PC performs visible action). Can also be triggered by world-rule (NPC challenges PC's claim, NPC attempts to leave the scene).
-
-**DP commitment mechanism:** `dp::advance_turn(ctx, &cell_channel, turn_data: TurnEvent { actor: ActorId::Npc { npc_id }, ... }, causal_refs)`. Same primitive as PlayerTurn; differs by `actor` field.
+**DP commitment mechanism:** `dp::advance_turn(ctx, &channel, turn_data, causal_refs)` — commits a TurnBoundary wire-format event with the typed payload. (Per Phase 0 B1 decision: TurnBoundary is the wire format; Submitted is the semantic identity.)
 
 **Lifecycle stage:** committed canonical.
 
-**Sub-shapes:** mirrors PlayerTurn — Speak / Action / MetaCommand (NPC executes a deterministic command-equivalent like "leave scene") / Narration. Notably **NO FastForward** for NPCs in V1 (NPCs don't `/travel` autonomously; that's V1+30d EVT-T10 NPCRoutine).
+**Sub-types** (feature-defined per [EVT-A11](02_invariants.md#evt-a11--sub-type-ownership-discipline); registered in [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md)):
 
-**Causal-ref policy:** **REQUIRED.** NPCTurn must reference either (a) the triggering PlayerTurn / NPCTurn, or (b) the scene-trigger event (e.g., MemberJoined when the PC entered the scene). This is enforced by the validator pipeline; missing causal-ref → `DpError::CausalRefMissing`.
+| Sub-type | Owning feature | Notes |
+|---|---|---|
+| `PCTurn` (Speak / Action / MetaCommand / FastForward) | PL_001 Continuum + PL_002 Grammar | actor=PC; PL_002 owns command sub-shapes |
+| `NPCTurn` (Speak / Action / MetaCommand-Whisper-Look / Narration) | NPC_001 Cast (envelope) + NPC_002 Chorus (multi-NPC ordering) | actor=NPC; **causal-ref required** to triggering event |
+| `QuestOutcome` (V1+) | future quest-service | actor=quest-engine synthetic; refs QuestTrigger |
 
-**Validator chain:** schema → capability (`can_advance_turn` for actor=Npc category — orchestrator-only) → A5-D3 tool-call allowlist (NPCs cannot emit state-mutation tool calls per A5-D3) → A6 5-layer injection defense → world-rule lint (NPC can-do this action?) → canon-drift check (does NPC speech contradict L1/L2/L3?) → causal-ref integrity → commit.
+**Causal-ref policy:** per sub-type. PCTurn typically optional; NPCTurn always required (refs the triggering PCTurn or scene-trigger); QuestOutcome required (refs QuestTrigger).
 
-**SPIKE_01 obs#6 multi-NPC handling:** when a PlayerTurn implicitly demands multiple NPCs react (turn 5 — PC's literacy slip is observed by Du sĩ + Tiểu Thúy + Lão Ngũ), orchestrator emits NPCTurn events in deterministic order (per scene-NPC ordering rule, defined by feature in PL_003). Each NPCTurn references the same triggering PlayerTurn. Rate-limit applies per orchestrator-session, not per-NPC.
+**Validator chain:** schema → capability → A5 intent classify → A5 command dispatch (if MetaCommand) → A6 5-layer (if originated from EVT-T6 Proposal) → world-rule lint → canon-drift → causal-ref integrity → commit. Order locked per `_boundaries/03_validator_pipeline_slots.md`.
 
-**Cross-ref:** [PL_001 §3.5](../features/04_play_loop/PL_001_continuum.md), SPIKE_01 obs#6, [`../05_llm_safety/02_command_dispatch.md`](../05_llm_safety/02_command_dispatch.md).
-
----
-
-## EVT-T3 — AggregateMutation
-
-**Definition:** A canonical event emitted when a feature service writes to a per-reality aggregate as a **side-effect** of a parent event (PlayerTurn / NPCTurn / WorldTick / AdminAction), but distinct from the parent's commit. Examples: FictionClockAdvance after a turn, ActorBindingDelta::MoveTo after a /travel chain, SceneStateDelta::AmbientUpdate when LLM emits a weather change, NPC-PC opinion update.
-
-**Producer:** world-service (most common) or other feature services that own specific aggregates (quest-service for quest aggregate writes, etc.). The producer must be authorized for the target aggregate's tier+scope per DP-K9.
-
-**Trigger:** explicit decision by the producer following a parent event. The parent event itself may be EVT-T1 / EVT-T2 / EVT-T8 / EVT-T11.
-
-**DP commitment mechanism:** `dp::t2_write::<A>(ctx, id, delta)` for T2 aggregates, `dp::t3_write::<A>(ctx, id, delta)` for T3, `dp::t3_write_multi(ctx, ops)` for atomic multi-aggregate. NOT `dp::advance_turn` — AggregateMutation does not advance turn_number.
-
-**Lifecycle stage:** committed canonical. Each AggregateMutation gets its own `channel_event_id` (per DP-A15) and `causality_token` (per DP-A19).
-
-**Causal-ref policy:** Optional but **strongly recommended** when caused by a parent turn. PL_001's FictionClockAdvance after each turn references the PlayerTurn's `channel_event_id`; this is what enables "what state changed because of turn N?" queries via causal-graph walk.
-
-**Why this is its own category and not a sub-type of the parent:** Per Phase 0 B3 decision. Each `t2_write` commits as a separate channel event with its own ID; treating it as part of the parent collapses information that's actually distinct. Replay must restore each AggregateMutation independently. Validator pipeline runs per-event, not per-cluster.
-
-**Validator chain:** schema → capability (write to specific aggregate-type/tier/scope) → world-rule lint (does this state delta make sense given current state?) → causal-ref integrity → commit. **No A6 injection defense** — AggregateMutation is producer-trusted output, not LLM input.
-
-**Edge case — "implicit" mutations:** if a producer would emit dozens of AggregateMutations per parent turn (e.g., 50 NPCs in a market square each updating their idle_since_turn), this should be either (a) consolidated into a single AggregateMutation with a batched delta, or (b) modeled as a different category if the volume is structural. PL_002 / PL_003 will surface specific cases.
-
-**Cross-ref:** [PL_001 §3.1 / §3.2 / §3.6](../features/04_play_loop/PL_001_continuum.md), [DP-K5 Write primitives](../06_data_plane/04b_read_write.md#dp-k5--write-primitives-tier-typed).
+**Cross-ref:** [PL_001 §3.5 TurnEvent](../features/04_play_loop/PL_001_continuum.md), [PL_002 §6 commands](../features/04_play_loop/PL_002_command_grammar.md), [NPC_001 §2.5](../features/05_npc_systems/NPC_001_cast.md), [NPC_002 §2.5](../features/05_npc_systems/NPC_002_chorus.md), [DP-A17](../06_data_plane/02_invariants.md#dp-a17--per-channel-turn-numbering-phase-4-2026-04-25).
 
 ---
 
-## EVT-T4 — SystemEvent
+## EVT-T3 — Derived
 
-**Definition:** Canonical events emitted by the Data Plane itself, not by any feature service. SystemEvents represent DP-internal lifecycle facts that features observe but cannot forge.
+**Mechanism:** a side-effect state delta committed via `dp::t2_write` or `dp::t3_write` (NOT `advance_turn`) by an aggregate-owner feature service, in response to a parent event (typically EVT-T1 Submitted, EVT-T8 Administrative, or EVT-T5 Generated). Causal-refs the parent.
 
-**Producer:** **DP itself.** Cannot be emitted from feature code; SDK rejects attempts (per DP-A18 / DP-Ch52 reserved discriminators).
+**Producer roles:** Aggregate-Owner per-feature. Each feature owns specific aggregate types listed in [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md).
 
-**Trigger:** specific DP operations — `bind_session`, `move_session_to_channel`, `channel_pause`, `channel_resume`, `dissolve_channel`, `claim_turn_slot`, `release_turn_slot`, scheduler timeouts, `advance_turn`.
+**DP commitment mechanism:** `dp::t2_write::<A>(ctx, id, delta)` for T2 aggregates, `dp::t3_write::<A>(ctx, id, delta)` for T3, `dp::t3_write_multi(ctx, ops)` for atomic multi-aggregate. Each write commits its own channel event with own `channel_event_id` per DP-A15.
 
-**DP commitment mechanism:** DP-internal emission as part of the operation's transactional commit. Always at the channel where the operation occurred.
+**Lifecycle stage:** committed canonical.
+
+**Sub-types:** discriminated by the **`aggregate_type`** field rather than a sub-shape name. Each aggregate-type × delta-kind combination is a sub-type. Feature designs declare their `aggregate_type` + delta-kinds in their own doc and register in the boundary matrix.
+
+V1 aggregate types currently registered (see boundary matrix for full list): `fiction_clock` (PL_001) · `scene_state` (PL_001) · `actor_binding` (PL_001) · `participant_presence` (PL_001) · `npc_pc_relationship_projection` (NPC_001) · `npc_node_binding` (NPC_001) · `tool_call_allowlist` (PL_002) · plus calibration sub-shapes (DayPasses / MonthPasses / YearPasses, derived from FictionClock advance per MV12-D5).
+
+**Causal-ref policy:** optional but **strongly recommended** when caused by a parent turn (FictionClockAdvance after PCTurn refs the PCTurn; ActorBindingDelta after `move_session_to_channel` refs the parent FastForward). Calibration sub-shapes always reference the parent FictionClock advance.
+
+**Note on absorbed `_withdrawn` ID:** EVT-T7 CalibrationEvent (original Phase 1) was withdrawn 2026-04-25 — calibration is mechanically a Derived event from FictionClock T2 commit. It now lives as a Derived sub-type (with its own causal-ref-required policy + envelope shape) rather than a separate category. See retirement section.
+
+**Validator chain:** schema → capability (write to specific aggregate-type/tier/scope) → world-rule lint (does the delta make sense?) → causal-ref integrity → commit. **No A6 injection defense** — Derived is producer-trusted output of a trusted aggregate-owner, not LLM input.
+
+**Cross-ref:** [PL_001 §3](../features/04_play_loop/PL_001_continuum.md), [DP-K5](../06_data_plane/04b_read_write.md#dp-k5--write-primitives-tier-typed), [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md).
+
+---
+
+## EVT-T4 — System
+
+**Mechanism:** events emitted by the Data Plane itself, not by any feature service. SystemEvents represent DP-internal lifecycle facts that features observe but cannot forge.
+
+**Producer roles:** **DP-Internal only.** Cannot be emitted from feature code; SDK rejects attempts (per DP-A18 / DP-Ch52 reserved discriminators).
+
+**DP commitment mechanism:** DP-internal emission as part of the operation's transactional commit.
 
 **Lifecycle stage:** committed canonical, immutable.
 
-**Sub-shapes (locked by DP, NOT redesigned here):**
+**Sub-types** (locked by DP, NOT redesigned here — Event Model classifies, does NOT redesign):
 
-| Sub-shape | DP source | Trigger |
+| Sub-type | DP source | Emits when |
 |---|---|---|
-| `MemberJoined { actor, joined_at, joined_via }` | DP-A18 / DP-Ch34 | `bind_session` / `move_session_to_channel` arrival |
-| `MemberLeft { actor, left_at, reason }` | DP-A18 / DP-Ch34 | move-away / disconnect / dissolution / timeout |
-| `ChannelPaused { reason, paused_until }` | DP-A18 / DP-Ch35 | `channel_pause` |
-| `ChannelResumed { resumed_at, by }` | DP-A18 / DP-Ch35 | `channel_resume` or auto-expiry |
-| `TurnSlotClaimed { actor, expected_until, reason }` | DP-Ch51 | `claim_turn_slot` |
-| `TurnSlotReleased { actor, release_kind }` | DP-Ch51 | `release_turn_slot` or auto-timeout |
-| `TurnSlotTimedOut { actor, expected_until, actual_at }` | DP-Ch52 | CP scheduler 30-s auto-timeout |
-| `TurnBoundary { turn_number, turn_data }` | DP-A17 / DP-Ch21 | every `advance_turn` call (note: **the `turn_data` payload IS what we semantically call PlayerTurn / NPCTurn / NPCRoutine / WorldTick**) |
+| `MemberJoined` | DP-A18 / DP-Ch34 | `bind_session` / `move_session_to_channel` arrival |
+| `MemberLeft` | DP-A18 / DP-Ch34 | move-away / disconnect / dissolution / timeout |
+| `ChannelPaused` | DP-A18 / DP-Ch35 | `channel_pause` |
+| `ChannelResumed` | DP-A18 / DP-Ch35 | `channel_resume` or auto-expiry |
+| `TurnSlotClaimed` | DP-Ch51 | `claim_turn_slot` |
+| `TurnSlotReleased` | DP-Ch51 | `release_turn_slot` or auto-timeout |
+| `TurnSlotTimedOut` | DP-Ch52 | CP scheduler 30-s auto-timeout |
+| `TurnBoundary` | DP-A17 | every `advance_turn` call (carries the EVT-T1 Submitted payload as `turn_data`) |
 
-**Causal-ref policy:** n/a — DP-internal. SystemEvents don't carry feature-level causal_refs (DP may carry its own internal references like `route_session_id` for handoff events, but those are DP-internal).
+**Causal-ref policy:** N/A — DP-internal. SystemEvents don't carry feature-level causal_refs (DP may carry its own internal references; out of EVT scope).
 
-**Validator chain:** **none** — SystemEvents are trusted by construction. They are the output of DP operations that have already passed DP's own checks (capability, single-writer, epoch-fence, etc.).
+**Validator chain:** **none** — SystemEvents are trusted by construction.
 
-**Note on TurnBoundary:** Per Phase 0 B1 decision, TurnBoundary is the **wire-format SystemEvent** that carries a PlayerTurn / NPCTurn / NPCRoutine / WorldTick as its payload. When you emit `dp::advance_turn(turn_data=X)` where `X: TurnEvent`, DP commits a TurnBoundary SystemEvent with `turn_data=X`. The semantic identity of the event is the EVT-T* category implied by X's actor + producer; the wire format is TurnBoundary. Both are valid lenses: feature designers think "this is a PlayerTurn"; wire-protocol consumers see "TurnBoundary with payload".
+**Note on TurnBoundary:** `turn_data` IS the EVT-T1 Submitted payload as defined in PL_001 / PL_002 / NPC_001 / NPC_002. Two lenses, same wire bytes: feature designers think "this is a Submitted event"; wire-protocol consumers see "TurnBoundary with payload".
 
-**Cross-ref:** [DP-A18 Channel lifecycle + canonical events](../06_data_plane/02_invariants.md#dp-a18--channel-lifecycle-state-machine--canonical-membership-events-phase-4-2026-04-25), [DP-Ch51 Turn slot](../06_data_plane/21_llm_turn_slot.md), [DP-A17 Turn numbering](../06_data_plane/02_invariants.md#dp-a17--per-channel-turn-numbering-phase-4-2026-04-25).
-
----
-
-## EVT-T5 — BubbleUpEvent
-
-**Definition:** A canonical event emitted at a parent channel level by a registered `BubbleUpAggregator` (DP-Ch25), aggregating descendant events probabilistically per the aggregator's policy.
-
-**Producer:** the aggregator implementation, running on the parent channel's writer node (DP-Ch26 in-process trait + runtime loop).
-
-**Trigger:** descendant events match the aggregator's `SourceFilter`; the aggregator's `on_event` returns an `EmitDecision::Emit { ... }`.
-
-**DP commitment mechanism:** aggregator runtime loop calls `dp::t2_write` on the parent channel for the aggregator's emit aggregate-type. Carries `causal_refs` to the source event(s) at the descendant channel.
-
-**Lifecycle stage:** committed canonical at parent channel.
-
-**Causal-ref policy:** **REQUIRED.** Every BubbleUpEvent must reference at least one source event at a descendant channel. Single-source (one rumor → one upper event) and multi-source (10 cell events aggregated → one tavern bubble) both supported.
-
-**Sub-shapes (feature-defined per aggregator):** the aggregator's `register_bubble_up_aggregator` call declares the emit type; PL_002 (gossip aggregator) will define types like `RumorBubble`, `CrowdDensityChange`, `FactionReputationDrift`. Each is its own aggregate type per DP-Ch25.
-
-**Privacy redaction:** per registered `RedactionPolicy` (DP-Ch43). Transparent / SkipPrivate / AnonymizeRefs / Custom. Choice is a per-aggregator-registration parameter.
-
-**Validator chain:** **subset** — aggregator-emitted events bypass A6 injection-defense (no LLM input on the emit path; aggregator code is feature-trusted). Schema + capability + causal-ref integrity remain. World-rule lint optional per aggregator (some bubble-ups are pure stats, some carry narrative).
-
-**Cross-ref:** [DP-A15 Per-channel ordering](../06_data_plane/02_invariants.md#dp-a15--per-channel-total-event-ordering-phase-4-2026-04-25), [DP-Ch25..Ch30 BubbleUp aggregator](../06_data_plane/16_bubble_up_aggregator.md), [DP-Ch43 Redaction](../06_data_plane/19_privacy_redaction_policies.md).
+**Cross-ref:** [DP-A18](../06_data_plane/02_invariants.md#dp-a18--channel-lifecycle-state-machine--canonical-membership-events-phase-4-2026-04-25), [DP-Ch51](../06_data_plane/21_llm_turn_slot.md), [DP-A17](../06_data_plane/02_invariants.md#dp-a17--per-channel-turn-numbering-phase-4-2026-04-25).
 
 ---
 
-## EVT-T6 — LLMProposal
+## EVT-T5 — Generated
 
-**Definition:** An event emitted by an LLM-driven service (Python `roleplay-service`) onto the proposal bus, carrying a proposed PlayerTurn or NPCTurn that has NOT yet been validated by the EVT-V* pipeline.
+**Mechanism:** events emitted by a registered rule/aggregator/scheduler based on **condition + probability + deterministic RNG** (per [EVT-A9](02_invariants.md#evt-a9--probabilistic-generation-determinism-new-2026-04-25)). The producer is a feature-registered Generator (Synthetic actor); the trigger is some upstream event or fiction-time threshold.
 
-**Producer:** roleplay-service (and future LLM services). Producer JWT carries `produce: [LLMProposal]` only — never direct PlayerTurn/NPCTurn (per [EVT-A4](02_invariants.md#evt-a4--producer-category-binding) + [EVT-A7](02_invariants.md#evt-a7--llm-proposals-are-pre-validation-only-never-authoritative)).
+**Producer roles:** Generator (Synthetic actor — `BubbleUpAggregator`, `Scheduler`, `RealityBootstrapper`, plus future Generator types). The registering feature service holds the JWT claim; the runtime emit happens via DP aggregator runtime (DP-Ch26) or scheduler primitive.
 
-**Trigger:** LLM-generated output post-sanitize from roleplay-service. After `AssemblePrompt(intent=session_turn|npc_reply)` + LLM stream + A6 output filter, the proposal is published to the bus.
+**DP commitment mechanism:** depends on Generator sub-type:
+- BubbleUp aggregator → `dp::t2_write` on parent channel for the aggregator's emit aggregate-type (DP-Ch25..Ch30)
+- Scheduler beat → `dp::advance_turn` on the target channel for the beat (Phase 4 [`08_scheduled_events.md`](08_scheduled_events.md))
+- Future probabilistic generators (combat damage RNG, loot drop RNG, weather drift) → `dp::t2_write` typically
 
-**DP commitment mechanism:** **NOT DP.** LLMProposal lives on the proposal bus (Redis Streams via I13 outbox), NOT in any per-reality channel event log. Once validated, the world-service consumer commits a fresh PlayerTurn / NPCTurn via `dp::advance_turn` — the original proposal is referenced from the committed event's metadata but not retained as a canonical event.
+**Lifecycle stage:** committed canonical.
 
-**Lifecycle stage:** **pre-validation.** Three terminal states:
-- `Validated` — promoted to PlayerTurn or NPCTurn; this is what consumers see in the channel log.
-- `Rejected { reason }` — validator rejected; logged + dead-lettered. The proposal is NOT promoted; the original PC turn submission gets a soft-fail UX (see PL_001 §9 and per A5-D4 fallback).
-- `Expired` — validator did not consume the proposal within the bus retention window (default 60s).
+**Sub-types** (feature-defined; registered in boundary matrix):
 
-**Causal-ref policy:** Optional. A proposal may reference a prior turn it's reacting to (NPCReply proposal ref'ing the triggering PlayerTurn). Once validated and promoted to NPCTurn, the causal-ref carries through to the committed event.
+| Sub-type pattern | Owning feature | Trigger |
+|---|---|---|
+| `BubbleUp:RumorBubble` | future gossip aggregator (PL_002+) | descendant events match aggregator filter + RNG threshold |
+| `BubbleUp:CrowdDensity` | future ambient aggregator | descendant member-count changes |
+| `Scheduled:NPCRoutine` (V1+30d) | future world-rule-scheduler | fiction-clock matches NPC routine schedule |
+| `Scheduled:WorldTick` (V1+30d) | future world-rule-scheduler | fiction-clock crosses author-placed beat threshold |
+| `Scheduled:QuestTrigger` (V1+) | future quest-engine | quest precondition met (calibration / turn / event) |
 
-**Sub-shapes (Phase 3 contract):** `PlayerTurnProposal { actor: pc_id, intent: TurnIntent, narrator_text: Option<String>, fiction_duration_proposed }` and `NPCTurnProposal { actor: npc_id, intent, narrator_text }`. Schema mirrors the underlying turn types but adds `proposal_id`, `proposed_at`, `producer_service` envelope fields.
+**Note on absorbed `_withdrawn` IDs:** EVT-T9 QuestBeat (original Phase 1) was withdrawn — QuestBeat:Trigger is a Generated sub-type (rule-based); QuestBeat:Outcome is a Submitted sub-type (quest-engine actor). Splitting clarifies the mechanism. EVT-T10 NPCRoutine and EVT-T11 WorldTick were withdrawn — both are Generated by scheduler (different sub-types). See retirement section.
+
+**Causal-ref policy:** **REQUIRED.** Every Generated event must reference at least one source event (the trigger). For BubbleUp: source events at descendant channels. For Scheduled: the CalibrationEvent (Derived sub-type) or other fiction-time-marker that crossed threshold.
+
+**Validator chain:** **subset** — Generated bypasses A6 injection-defense (no LLM input on emit path; aggregator/scheduler code is feature-trusted). Schema + capability + causal-ref integrity remain. World-rule lint optional per Generator type. **EVT-A9 RNG determinism** enforced at lint time + replay test.
+
+**Cross-ref:** [EVT-A9 RNG determinism](02_invariants.md#evt-a9--probabilistic-generation-determinism-new-2026-04-25), [DP-A15](../06_data_plane/02_invariants.md#dp-a15--per-channel-total-event-ordering-phase-4-2026-04-25), [DP-Ch25..Ch30 BubbleUp aggregator](../06_data_plane/16_bubble_up_aggregator.md), [DP-Ch43 Redaction](../06_data_plane/19_privacy_redaction_policies.md).
+
+---
+
+## EVT-T6 — Proposal
+
+**Mechanism:** a pre-validation message emitted by an **untrusted-origin** producer (LLM-driven service today; future agentic/plugin services) onto the proposal bus. Carries a proposed Submitted event that has NOT yet been validated. The trusted commit-service consumes the proposal, runs EVT-V* validator pipeline, and either commits a fresh EVT-T1 Submitted (proposal "Validated") or rejects + dead-letters (proposal "Rejected").
+
+**Producer roles:** LLM-Originator (V1: Python `roleplay-service`; future LLM/agentic services). Producer JWT carries `produce: [Proposal]` ONLY — never canonical categories. Per [EVT-A7](02_invariants.md#evt-a7--untrusted-origin-events-require-pre-validation-lifecycle-reframed-2026-04-25).
+
+**DP commitment mechanism:** **NOT DP** — Proposal lives on the proposal bus (Redis Streams via I13 outbox), NOT in any per-reality channel event log. Once validated, the trusted commit-service commits a fresh EVT-T1 Submitted via `dp::advance_turn` — the original proposal is referenced from the committed event's metadata but not retained as a canonical event.
+
+**Lifecycle stages (3 terminal):**
+- `Validated` — promoted to EVT-T1 Submitted; consumers see the committed event.
+- `Rejected { reason }` — validator rejected; logged + dead-lettered. Producer/PC sees soft-fail UX.
+- `Expired` — bus retention window elapsed (default 60s) without validator consume.
+
+**Sub-types** (feature-defined; based on which Submitted shape they're proposing):
+
+| Sub-type | Promoted to | Owning feature |
+|---|---|---|
+| `PCTurnProposal` | EVT-T1 Submitted/PCTurn | roleplay-service (originator) + PL_002 (envelope shape) |
+| `NPCTurnProposal` | EVT-T1 Submitted/NPCTurn | roleplay-service (originator) + NPC_001 (envelope) + NPC_002 (orchestration) |
+
+**Causal-ref policy:** optional. NPCTurnProposal typically references the triggering Submitted event.
 
 **Validator chain:** the FULL EVT-V* pipeline runs ON the proposal as input. Output is `Validated → commit` or `Rejected → dead-letter`.
 
-**Cross-ref:** [EVT-A7](02_invariants.md#evt-a7--llm-proposals-are-pre-validation-only-never-authoritative), [DP-A6](../06_data_plane/02_invariants.md#dp-a6--python-is-event-producer-only-for-game-state), [`07_llm_proposal_bus.md`](07_llm_proposal_bus.md) (Phase 3).
+**Cross-ref:** [EVT-A7](02_invariants.md#evt-a7--untrusted-origin-events-require-pre-validation-lifecycle-reframed-2026-04-25), [DP-A6](../06_data_plane/02_invariants.md#dp-a6--python-is-event-producer-only-for-game-state), [`07_llm_proposal_bus.md`](07_llm_proposal_bus.md) (Phase 3).
 
 ---
 
-## EVT-T7 — CalibrationEvent
+## EVT-T8 — Administrative
 
-**Definition:** A canonical event emitted when a fiction-time advancement crosses a date boundary (`day_passes` / `month_passes` / `year_passes`), per MV12-D5. Per Phase 0 B4 decision, the producer is **world-service** (derives from FictionClock advance), not DP — DP must remain content-agnostic.
+**Mechanism:** events emitted by an operator (admin / human / authorized service-account) via S5 admin-action policy dispatch. Different validator chain than EVT-T1 Submitted (S5 dual-actor + impact-class gating; no A6 since admin input is operator-authenticated).
 
-**Producer:** world-service. After committing a FictionClockAdvance AggregateMutation (per EVT-T3), world-service inspects the before/after `current_fiction_ts` and, if any date boundary was crossed, emits one CalibrationEvent per crossing in the same transactional cluster (or as immediate follow-ups — exact ordering specified in Phase 4 EVT-L*).
-
-**Trigger:** FictionClockAdvance crossing a date boundary. SPIKE_01 turn 16 example: `/travel 23 days` crosses 23 day-boundaries + 1 month-boundary → emits 23 `day_passes` + 1 `month_passes`.
-
-**DP commitment mechanism:** `dp::t2_write::<CalibrationEvent>(ctx, id, delta)` on a dedicated calibration aggregate, OR (alternative under consideration) commit them as channel events tagged with the event-type discriminator `calibration` without a backing aggregate. **Locked: dedicated aggregate** (Phase 2 EVT-S* will specify the aggregate shape) so calibration becomes queryable as state, not just stream.
-
-**Lifecycle stage:** committed canonical.
-
-**Causal-ref policy:** **REQUIRED.** Each CalibrationEvent references the PlayerTurn / NPCTurn / WorldTick whose FictionClockAdvance caused the boundary crossing. This makes "which turn caused day_passes 1256-09-30 → 1256-10-01?" answerable via causal walk.
-
-**Sub-shapes:** `DayPasses { from_date, to_date }` / `MonthPasses { from_month, to_month }` / `YearPasses { from_year, to_year }`. Big jumps emit multiple CalibrationEvents in chronological order.
-
-**Validator chain:** schema → capability (world-service-only producer) → causal-ref integrity → commit. No A6 (no LLM input on this path). World-rule lint optional (could check "year cannot decrease" but FictionClock monotonicity already guarantees).
-
-**Use cases (downstream consumers):** scheduled-event scheduler (EVT-T11 WorldTick) wakes on month_passes / year_passes / specific-day matchers. Bubble-up aggregators may aggregate across day boundaries (gossip half-life). Quest engine triggers beats on time markers.
-
-**Why this is its own category (not a sub-type of AggregateMutation):** SPIKE_01 obs#15 explicitly distinguished `turn.time_advancement` from `turn.player_action`. CalibrationEvents have a fixed shape (no feature-defined sub-types), a fixed producer (world-service only), and a specific downstream consumer pattern (schedulers). Folding them into AggregateMutation would mix structural deltas with calendar markers.
-
-**Cross-ref:** [MV12-D5](../decisions/locked_decisions.md#L570), SPIKE_01 obs#15, [PL_001 §12 fast-forward example](../features/04_play_loop/PL_001_continuum.md).
-
----
-
-## EVT-T8 — AdminAction
-
-**Definition:** A canonical event emitted when an operator (admin / human / authorized service-account) performs an admin command via the S5 admin-action policy. Examples: pause channel, force-end scene, override world-rule, force-revert turn N (V2+).
-
-**Producer:** `admin-cli` via S5 `AttemptStateTransition` / dispatch. Capability JWT carries `produce: [AdminAction]` exclusive to admin-cli.
-
-**Trigger:** operator-initiated. S5 enforces actor authorization, reason length, dual-actor (Tier 1) or single-actor (Tier 2/3), cooldown.
+**Producer roles:** Administrative (admin-cli via S5 dispatch).
 
 **DP commitment mechanism:** depends on the admin operation:
-- `channel_pause` / `channel_resume` → `dp::channel_pause` / `dp::channel_resume`; DP emits SystemEvent ChannelPaused/Resumed as side effect; AdminAction event committed alongside as audit anchor (EVT-T8 references the SystemEvent).
-- `force_end_scene` → admin-cli triggers cell channel dissolve + emits AdminAction.
-- `world_rule_override` → admin-cli writes to a world-rule-override aggregate via `dp::t3_write`; AdminAction is the event that commits.
-- `force_revert_turn` (V2+) — out of V1 scope; will be designed when DF8 / canon-rollback lands.
+- `channel_pause` / `channel_resume` → `dp::channel_pause` / `dp::channel_resume`; emits EVT-T4 System (ChannelPaused/Resumed) as side-effect; Administrative event committed alongside as audit anchor (refs the System event)
+- `force_end_scene` → admin-cli triggers cell channel dissolve + emits Administrative
+- `world_rule_override` → `dp::t3_write` on world-rule-override aggregate
+- `force_revert_turn` (V2+) — out of V1 scope
 
 **Lifecycle stage:** committed canonical, immutable, audit-grade. `admin_action_audit` table mirrors per S5.
 
-**Causal-ref policy:** Optional. When the action targets a specific event (e.g., force-revert turn N), the AdminAction references that event.
+**Sub-types** (feature-defined; registered in `_boundaries/02_extension_contracts.md` §4 — already locked for Charter / Succession / Forge / Mortality features):
 
-**Sub-shapes:** `Pause { channel, reason, paused_until }` / `Resume { channel }` / `ForceEndScene { channel, reason }` / `WorldRuleOverride { rule_id, override_value, reason, expires_at }` / future sub-types per S5 admin-command registry.
+| Sub-type | Owning feature |
+|---|---|
+| `Pause` / `Resume` / `ForceEndScene` / `WorldRuleOverride` | core admin (V1) |
+| `ForgeEdit { editor, action, before, after }` | WA_003 Forge |
+| `Charter*` (Invite/Accept/Decline/Cancel/Revoke/Resign) | PLT_001 Charter |
+| `Succession*` (Initiate/RecipientAccept/etc., 8 sub-shapes) | PLT_002 Succession |
+| `MortalityAdminKill` (provisional) | WA_006 Mortality |
 
-**Validator chain:** schema → capability (S5 actor authentication; impact-class gating) → S5 dual-actor (Tier 1 only) → world-rule lint (optional — the admin may explicitly override, in which case lint becomes audit-only) → causal-ref integrity → commit. **No A6 injection defense** — admin input is operator-authenticated, not adversarial.
+See `_boundaries/02_extension_contracts.md` §4 for the full union.
 
-**Cross-ref:** S5 [02_storage S05_admin_command_classification.md](../02_storage/S05_admin_command_classification.md), [DP-Ch35 channel_pause](../06_data_plane/17_channel_lifecycle.md#dp-ch35--channel_pause--channel_resume-primitives).
+**Causal-ref policy:** optional. Used when admin action targets a specific event (e.g., force-revert turn N).
 
----
+**Validator chain:** schema → capability (S5 actor authentication; impact-class gating) → S5 dual-actor (Tier 1 only) → world-rule lint (optional — admin may explicitly override) → causal-ref integrity → commit. **No A6 injection defense** — admin input is operator-authenticated.
 
-## EVT-T9 — QuestBeat
-
-**Definition:** A canonical event emitted by the quest engine when a quest scaffold transitions: trigger fires, beat advances, or outcome resolves. Per catalog Q-1..Q-9.
-
-**Producer:** quest engine (feature service, future). Capability JWT carries `produce: [QuestBeat]`. V1 placeholder; full implementation gated on quest engine landing.
-
-**Trigger:** depends on sub-shape:
-- `Trigger` — quest entry condition met (fiction-clock crossed marker; PlayerTurn matched a quest predicate; CalibrationEvent fired). Producer: quest engine evaluates triggers on FictionClock advance and on each turn commit.
-- `Advance` — quest beat completed, next beat unlocked. Producer: quest engine on consumer of triggering events.
-- `Outcome` — quest resolved (success/failure/abandon). Producer: quest engine on terminal beat completion.
-
-**DP commitment mechanism:** `dp::t2_write` on quest aggregate (per-quest-instance state). Causal-ref to triggering event.
-
-**Lifecycle stage:** committed canonical.
-
-**Causal-ref policy:**
-- `Trigger`: optional (may reference the calibration / turn that triggered).
-- `Advance`: **required** — references the previous QuestBeat (the last `Advance` or `Trigger` for this quest).
-- `Outcome`: **required** — references the `Trigger` for chain provenance.
-
-**Validator chain:** schema → capability → world-rule lint (quest pre-conditions met?) → causal-ref integrity → commit. No A6.
-
-**Note on "QuestBeat causes WorldTick":** when a quest outcome triggers a world-level beat (PC saves Tương Dương → siege outcome reverses), the QuestBeat::Outcome causal-refs a follow-up WorldTick that the scheduler emits. This is the canonical use case the brief §S7 mentioned.
-
-**Cross-ref:** catalog Q-1..Q-9 (when quest engine lands).
+**Cross-ref:** S5 [02_storage S05_admin_command_classification.md](../02_storage/S05_admin_command_classification.md), [DP-Ch35](../06_data_plane/17_channel_lifecycle.md#dp-ch35--channel_pause--channel_resume-primitives), [`../_boundaries/02_extension_contracts.md`](../_boundaries/02_extension_contracts.md) §4.
 
 ---
 
-## EVT-T10 — NPCRoutine (V1+30d)
+## Retired IDs (5)
 
-**Definition:** A canonical event emitted when a scheduler-driven NPC autonomous routine fires — e.g., "Lão Ngũ opens shutters at dawn" / "Tiểu Thúy fetches water at noon". Per MV12-D2 source #2 + SPIKE_01 obs#21.
+Per foundation I15 stable-ID retirement rule: retired IDs use `_withdrawn` suffix, never reused. The original Phase 1 categories (commit `ce6ea97`) were redesigned 2026-04-25 (Option C) to mechanism-level. Five IDs withdrawn.
 
-**Producer:** `world-rule-scheduler` service (feature service, future V1+30d). Capability JWT carries `produce: [NPCRoutine]`.
+### EVT-T2_withdrawn — was "NPCTurn"
 
-**Trigger:** fiction-clock matches a pre-declared routine schedule (NPC sheet + routine table). Scheduler polls on FictionClock advance (or subscribes to CalibrationEvent stream).
+**Reason for retirement:** mechanically identical to EVT-T1 Submitted with `actor=ActorId::Npc` sub-type. Maintaining T2 as a separate category embedded the assumption that "PC vs NPC" is a category-level distinction; in reality, they share the same envelope, validator chain, and DP commit primitive — only the actor variant differs. Per Option C redesign, "NPCTurn" is now a sub-type of EVT-T1 Submitted.
 
-**DP commitment mechanism:** `dp::advance_turn(ctx, &cell_channel, turn_data: TurnEvent { actor: ActorId::Npc, intent: ... })`. Same as NPCTurn, but with `producer_service = world-rule-scheduler` envelope and no PC trigger.
+**Migration:** features that cited EVT-T2 NPCTurn now cite EVT-T1 Submitted (sub-type=NPCTurn). NPC_001 + NPC_002 §2.5 mapping rows updated to new ID. Stable ID `EVT-T2` permanently retired — never reused.
 
-**Lifecycle stage:** committed canonical.
+**See:** [EVT-T1 Submitted sub-types](#evt-t1--submitted) for current home.
 
-**Sub-shapes:** mirrors NPCTurn (Speak / Action / Narration). The narration during a routine when no PC observes is **flavor** per [EVT-A8](02_invariants.md#evt-a8--flavor-narration-is-not-events) — only the structural deltas (NPC location, NPC state) are canonical.
+### EVT-T7_withdrawn — was "CalibrationEvent"
 
-**Causal-ref policy:** Optional. May reference a CalibrationEvent (if scheduled by date) or a WorldTick.
+**Reason for retirement:** mechanically identical to EVT-T3 Derived with sub-type discriminator `calibration_kind`. Calibration is a side-effect of FictionClock T2 commit when a date boundary is crossed — same producer (Aggregate-Owner of FictionClock), same DP primitive (`t2_write`), same validator chain. Maintaining T7 as a separate category embedded the assumption that fiction-time was a category-level concern; in reality, it's a feature-level concern (PL_001 / 03_multiverse).
 
-**Why a separate category (not NPCTurn):** different producer (scheduler vs orchestrator), different trigger (no PC interaction), different lifecycle (V1+30d, not V1). Conflating with NPCTurn would muddy producer rules + JWT claims.
+**Migration:** features that cited EVT-T7 CalibrationEvent now cite EVT-T3 Derived (sub-type=DayPasses / MonthPasses / YearPasses). PL_002 §2.5 updated. Stable ID `EVT-T7` permanently retired.
 
-**Validator chain:** schema → capability (`world-rule-scheduler` only) → world-rule lint (NPC routine consistent?) → canon-drift (does routine contradict canon?) → causal-ref integrity → commit. **No A6** — scheduler is feature-trusted, not LLM-input.
+**See:** [EVT-T3 Derived sub-types](#evt-t3--derived).
 
-**V1 status:** **placeholder.** No NPCRoutine emission in V1. SPIKE_01 obs#21 explicitly leaves NPCRoutine as V1+30d future work. Taxonomy reserves the slot.
+### EVT-T9_withdrawn — was "QuestBeat"
 
-**Cross-ref:** [MV12-D2 source #2](../decisions/locked_decisions.md#L567), SPIKE_01 obs#21, [`08_scheduled_events.md`](08_scheduled_events.md) (Phase 4).
+**Reason for retirement:** QuestBeat had three sub-shapes (Trigger / Advance / Outcome) with distinct mechanisms — Trigger fires from rule-condition (Generated), Advance is internal quest-engine state delta (Derived), Outcome is quest-engine actor-submitted decision (Submitted). Maintaining T9 as a single category papered over the mechanism difference. Per Option C redesign, the three sub-shapes split:
 
----
+- `QuestTrigger` → EVT-T5 Generated sub-type (Scheduled:QuestTrigger)
+- `QuestAdvance` → EVT-T3 Derived sub-type (aggregate_type=quest_state)
+- `QuestOutcome` → EVT-T1 Submitted sub-type
 
-## EVT-T11 — WorldTick (V1+30d)
+**Migration:** when quest engine feature lands (V1+), it cites the three new homes. Stable ID `EVT-T9` permanently retired.
 
-**Definition:** A canonical event emitted when a fiction-time-triggered scheduled author beat fires. Per MV12-D2 source #3 + brief §S6. Author places a beat at design time ("Mongol siege of Tương Dương begins on day 1257-thu-3"); the scheduler fires the WorldTick when the FictionClock crosses that threshold.
+**See:** [EVT-T1](#evt-t1--submitted), [EVT-T3](#evt-t3--derived), [EVT-T5](#evt-t5--generated).
 
-**Producer:** `world-rule-scheduler` service (same as NPCRoutine; different sub-type / different aggregate).
+### EVT-T10_withdrawn — was "NPCRoutine"
 
-**Trigger:** FictionClock crosses an author-placed threshold (stored in a `world_tick_schedule` aggregate at reality creation, mutable via author UI). Scheduler subscribes to CalibrationEvent stream + checks pending threshold list.
+**Reason for retirement:** NPCRoutine fires from a scheduler matching fiction-time + per-NPC routine declaration with optional probability. Mechanically a Generated event (Scheduler kind, not BubbleUp). Maintaining T10 as a separate category split the Generated mechanism into two redundant categories.
 
-**DP commitment mechanism:** `dp::advance_turn` on the channel where the beat fires (typically town/country/continent — the level depends on beat scope). Often emits as side effect a fresh ChannelLifecycle event (e.g., siege spawns a new "battlefield" channel).
+**Migration:** when world-rule-scheduler lands (V1+30d), NPC routines emit as EVT-T5 Generated sub-type `Scheduled:NPCRoutine`. Stable ID `EVT-T10` permanently retired.
 
-**Lifecycle stage:** committed canonical.
+**See:** [EVT-T5 Generated](#evt-t5--generated).
 
-**Sub-shapes (feature-defined):** scheduled-events feature (Phase 4) defines the contract — typical shapes are `MajorEvent { event_id, scope_channel, narrative_seed }` / `WeatherChange { weather_kind }` / `FactionMovement { faction, action }`.
+### EVT-T11_withdrawn — was "WorldTick"
 
-**Causal-ref policy:** Optional. May reference a triggering QuestBeat::Outcome (per §EVT-T9 example) or be standalone (author-placed beat).
+**Reason for retirement:** WorldTick fires from author-placed beats when fiction-clock crosses threshold, optionally with probability gate. Same Generator mechanism as NPCRoutine — only differs in sub-type (Scheduled:WorldTick vs Scheduled:NPCRoutine).
 
-**Idempotency:** **CRITICAL.** A big-jump fast-forward (PC `/travel` 23 days) may cross multiple WorldTick thresholds in one FictionClock advance. Idempotency key includes `(reality_id, world_tick_id)` so each beat fires exactly once even if the scheduler is replayed. Specified in Phase 4 EVT-S* + `08_scheduled_events.md`.
+**Migration:** when world-rule-scheduler lands (V1+30d), author-placed beats emit as EVT-T5 Generated sub-type `Scheduled:WorldTick`. Stable ID `EVT-T11` permanently retired.
 
-**Recovery:** if scheduler is down for 6 hours wall-clock, missed beats fire on restart in fiction-chronological order. No skip-on-restart.
-
-**Validator chain:** schema → capability (`world-rule-scheduler` only) → world-rule lint (beat preconditions met given current world state?) → canon-drift (beat consistent with current canon?) → causal-ref integrity → commit. No A6.
-
-**V1 status:** **placeholder.** No WorldTick emission in V1 (V1 paused-when-solo per MV12-D4). V1+30d activation.
-
-**Cross-ref:** [MV12-D2 source #3](../decisions/locked_decisions.md#L567), brief §S6, [`08_scheduled_events.md`](08_scheduled_events.md) (Phase 4).
+**See:** [EVT-T5 Generated](#evt-t5--generated).
 
 ---
 
 ## Closed-set proof
 
-Per [EVT-A1](02_invariants.md#evt-a1--closed-set-event-taxonomy), every event from PL_001 + every observation in SPIKE_01 + every DP-emitted canonical event maps to exactly one EVT-T*. This table is the proof.
+Per [EVT-A1](02_invariants.md#evt-a1--closed-set-event-taxonomy), every event from PL_001 + PL_002 + NPC_001 + NPC_002 + every observation in SPIKE_01 + every DP-emitted canonical event maps to exactly one **active** EVT-T*. This table is the proof under the redesigned (6-active-category) taxonomy.
 
-| Source | Event | → Category |
-|---|---|---|
-| PL_001 §3.5 TurnEvent | Speak | **EVT-T1** PlayerTurn (sub-shape Speak) |
-| PL_001 §3.5 TurnEvent | Action | **EVT-T1** PlayerTurn (sub-shape Action) |
-| PL_001 §3.5 TurnEvent | MetaCommand | **EVT-T1** PlayerTurn (sub-shape MetaCommand) |
-| PL_001 §12 / SPIKE_01 turn 11 | FastForward (`/sleep until dawn`) | **EVT-T1** PlayerTurn (sub-shape FastForward) + flavor Narration sub-shape (per EVT-A8) |
-| PL_001 §10 / SPIKE_01 turn 16 | FastForward (`/travel to Tương Dương`) | **EVT-T1** PlayerTurn (sub-shape FastForward) |
-| PL_001 §11 NPC react | NPC reaction (Lão Ngũ, Tiểu Thúy responding) | **EVT-T2** NPCTurn |
-| PL_001 §3.4 / DP-A18 | MemberJoined / MemberLeft | **EVT-T4** SystemEvent |
-| DP-A18 / DP-Ch35 | ChannelPaused / ChannelResumed | **EVT-T4** SystemEvent |
-| DP-Ch51 | TurnSlotClaimed / TurnSlotReleased / TurnSlotTimedOut | **EVT-T4** SystemEvent |
-| DP-A17 | TurnBoundary (wire format only) | **EVT-T4** SystemEvent (payload IS EVT-T1/T2/T10/T11 per Phase 0 B1) |
-| PL_001 §5.2 | SceneStateDelta::AmbientUpdate | **EVT-T3** AggregateMutation |
-| PL_001 §3.6 | ActorBindingDelta::MoveTo | **EVT-T3** AggregateMutation |
-| PL_001 §3.1 | FictionClockAdvance | **EVT-T3** AggregateMutation (with EVT-T7 follow-ups when crossing date boundaries) |
-| MV12-D5 / SPIKE_01 obs#15 | day_passes / month_passes / year_passes | **EVT-T7** CalibrationEvent |
-| DP-A15 + DP-Ch25 | Bubble-up rumor at parent channel | **EVT-T5** BubbleUpEvent |
-| DP-A6 | Python LLM proposal events (pre-validation) | **EVT-T6** LLMProposal |
-| brief §S6 / SPIKE_01 obs#15 | "Siege Tương Dương starts day X-thu-1257" | **EVT-T11** WorldTick (V1+30d) |
-| SPIKE_01 obs#21 | "Lão Ngũ opens shutters at dawn" routine | **EVT-T10** NPCRoutine (V1+30d) |
-| DP-Ch35 + S5 | Admin pause / force-end-scene / world-rule override | **EVT-T8** AdminAction (also emits EVT-T4 SystemEvent as side-effect) |
-| catalog Q-1..Q-9 | Quest trigger / beat advance / outcome | **EVT-T9** QuestBeat (V1+) |
-| SPIKE_01 obs#9, obs#17 | NPC opinion update (Lão Ngũ trust+1 after turn 7) | **EVT-T3** AggregateMutation (state delta on `npc_pc_relationship` aggregate) |
-| SPIKE_01 obs#16 | Long-skip flavor narration ("Hai mươi ba ngày đường sau") | **NOT AN EVENT** per EVT-A8 — non-canonical text, regenerable, audit-log only |
-| SPIKE_01 obs#14 turn 14 | NPC speech becomes L3 canon (du sĩ "đi cổng Bắc") | **EVT-T2** NPCTurn (canonical L3-canon emergence is a side-effect of the committed event, not a separate category) |
-| SPIKE_01 obs#11 | L2 canon seeding (Dương Quá reference at turn 7) | **EVT-T2** NPCTurn (seeding is a side-effect of NPC speech) |
-| SPIKE_01 obs#22 | Player intent vs PC plausibility tension | **NOT A TAXONOMY ITEM** — meta-design concern, not an event |
-| SPIKE_01 obs#19 | Weather/ambient state transitions during time-skip | **EVT-T3** AggregateMutation (V1: LLM-improvised per turn, no separate event) |
-| SPIKE_01 obs#13 | Session-resume UX choice (continue / sleep / wake) | **NOT AN EVENT** — UX flow generates a PlayerTurn (FastForward sub-shape) once user chooses |
-| SPIKE_01 obs#22 / Session-resume | session.action_resolved (per A5 dispatch) | This is implementation detail of EVT-T1 PlayerTurn with command_kind=verb; not separate category |
-| Future DF3 (V2+) | L3 → L2 canon promotion | **EXCLUDED from EVT-T*** per Phase 0 B6 — owned by [`../03_multiverse/`](../03_multiverse/) + meta-worker, not Event Model |
-| Future DF12 (withdrawn) | Cross-reality coordination | **EXCLUDED** — withdrawn feature; would not be EVT-T* even if reinstated |
+| Source | Event | → Category | Sub-type |
+|---|---|---|---|
+| PL_001 §3.5 / PL_002 §6 | TurnEvent::Speak (PC) | **EVT-T1** Submitted | PCTurn::Speak |
+| PL_001 / PL_002 | TurnEvent::Action (PC) | **EVT-T1** Submitted | PCTurn::Action |
+| PL_002 §6 | TurnEvent::MetaCommand (Verbatim/Prose/Sleep/Travel/Help) | **EVT-T1** Submitted | PCTurn::MetaCommand |
+| PL_001b §12 / SPIKE_01 turn 11/16 | TurnEvent::FastForward (`/sleep`, `/travel`) | **EVT-T1** Submitted | PCTurn::FastForward |
+| PL_001 §11 / NPC_002 | NPC reaction (Lão Ngũ, Tiểu Thúy responding) | **EVT-T1** Submitted | NPCTurn (per NPC_001/NPC_002) |
+| Future quest engine | Quest outcome decision | **EVT-T1** Submitted | QuestOutcome |
+| PL_001 §3.4 / DP-A18 | MemberJoined / MemberLeft | **EVT-T4** System | (DP-locked) |
+| DP-A18 / DP-Ch35 | ChannelPaused / ChannelResumed | **EVT-T4** System | (DP-locked) |
+| DP-Ch51 | TurnSlot* | **EVT-T4** System | (DP-locked) |
+| DP-A17 | TurnBoundary (wire format) | **EVT-T4** System | (payload IS EVT-T1 Submitted) |
+| PL_001 §5.2 | SceneStateDelta::AmbientUpdate | **EVT-T3** Derived | aggregate_type=scene_state |
+| PL_001 §3.6 | ActorBindingDelta::MoveTo | **EVT-T3** Derived | aggregate_type=actor_binding |
+| PL_001 §3.1 | FictionClockAdvance | **EVT-T3** Derived | aggregate_type=fiction_clock |
+| MV12-D5 / SPIKE_01 obs#15 | day_passes / month_passes / year_passes | **EVT-T3** Derived | calibration sub-shapes (was T7) |
+| NPC_001 §2.5 | NPC opinion update on `npc_pc_relationship_projection` | **EVT-T3** Derived | aggregate_type=npc_pc_relationship_projection |
+| DP-A15 + DP-Ch25 | Bubble-up rumor at parent channel | **EVT-T5** Generated | BubbleUp::RumorBubble |
+| Future scheduler | Author-placed siege beat | **EVT-T5** Generated | Scheduled:WorldTick (was T11) |
+| Future scheduler | NPC daily routine fire | **EVT-T5** Generated | Scheduled:NPCRoutine (was T10) |
+| Future quest engine | Quest precondition met | **EVT-T5** Generated | Scheduled:QuestTrigger (was T9 Trigger sub-shape) |
+| Future combat / loot | Damage RNG / loot RNG roll | **EVT-T5** Generated | per-feature sub-type |
+| DP-A6 / EVT-A7 | Python LLM proposal events | **EVT-T6** Proposal | PCTurnProposal / NPCTurnProposal |
+| DP-Ch35 + S5 | Admin pause / force-end-scene / world-rule override | **EVT-T8** Administrative | Pause / Resume / ForceEndScene / WorldRuleOverride |
+| WA_003 / Charter / Succession / Mortality | Author edits via Forge | **EVT-T8** Administrative | ForgeEdit / Charter* / Succession* / MortalityAdminKill |
+| SPIKE_01 obs#16 | Long-skip flavor narration | **NOT AN EVENT** per EVT-A8 — non-canonical, audit-log only |
+| SPIKE_01 obs#22 | Player intent vs PC plausibility tension | **NOT A TAXONOMY ITEM** — meta-design concern |
+| SPIKE_01 obs#13 | Session-resume UX choice | **NOT AN EVENT** — UX flow generates a Submitted/PCTurn::FastForward once user chooses |
+| Future DF3 (V2+) | L3 → L2 canon promotion | **EXCLUDED from EVT-T*** per Phase 0 B6 — multiverse-scoped |
+| Future DF12 (withdrawn) | Cross-reality coordination | **EXCLUDED** — withdrawn feature |
 
-**Result:** Every observable event maps to exactly one EVT-T* row. Closed-set property satisfied.
+**Result:** every observable event maps to exactly one active EVT-T* (T1 / T3 / T4 / T5 / T6 / T8). Closed-set property satisfied under the redesigned taxonomy.
 
 ---
 
 ## Cross-references
 
-- [EVT-A1..A8 axioms](02_invariants.md) — invariants this taxonomy implements
-- [`04_producer_rules.md`](04_producer_rules.md) — EVT-P* per category (Phase 2)
-- [`05_validator_pipeline.md`](05_validator_pipeline.md) — EVT-V* validator chain per category (Phase 3)
-- [`06_per_category_contracts.md`](06_per_category_contracts.md) — required/optional fields per category (Phase 2)
-- [`07_llm_proposal_bus.md`](07_llm_proposal_bus.md) — LLMProposal bus protocol (Phase 3)
-- [`08_scheduled_events.md`](08_scheduled_events.md) — NPCRoutine + WorldTick scheduler (Phase 4)
-- [`09_causal_references.md`](09_causal_references.md) — causal-ref shape used across categories (Phase 4)
-- [PL_001 §3.5](../features/04_play_loop/PL_001_continuum.md) — first feature consuming EVT-T1
+- [EVT-A1..A12 axioms](02_invariants.md) — invariants this taxonomy implements
+- [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md) — sub-type ownership SSOT (per [EVT-A11](02_invariants.md#evt-a11--sub-type-ownership-discipline))
+- [`../_boundaries/02_extension_contracts.md`](../_boundaries/02_extension_contracts.md) — TurnEvent envelope §1, AdminAction sub-shapes §4
+- [`04_producer_rules.md`](04_producer_rules.md) — EVT-P* per category
+- [`06_per_category_contracts.md`](06_per_category_contracts.md) — envelope + extensibility framework
+- [`07_llm_proposal_bus.md`](07_llm_proposal_bus.md) — Proposal lifecycle protocol (Phase 3)
+- [`08_scheduled_events.md`](08_scheduled_events.md) — Generated::Scheduled mechanics (Phase 4)
+- [`09_causal_references.md`](09_causal_references.md) — `CausalRef` shape (Phase 4)
+- [PL_001 §3](../features/04_play_loop/PL_001_continuum.md) — Submitted/PCTurn sub-types + Derived aggregates
+- [PL_002 §6](../features/04_play_loop/PL_002_command_grammar.md) — PCTurn::MetaCommand sub-types (5 V1 commands)
+- [NPC_001 §2.5](../features/05_npc_systems/NPC_001_cast.md) — Submitted/NPCTurn + ActorId enum + producer roles
+- [NPC_002 §2.5](../features/05_npc_systems/NPC_002_chorus.md) — Submitted/NPCTurn batch ordering
 - [SPIKE_01 §6 + §9](../features/_spikes/SPIKE_01_two_sessions_reality_time.md) — 22 observations grounding the categories

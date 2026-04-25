@@ -2,7 +2,7 @@
 
 > **Purpose:** Domain-shaped layer above the Data Plane. Owns event TAXONOMY, PRODUCER rules, VALIDATOR pipeline, per-category CONTRACTS, LIFECYCLE (proposal → validation → commit → fan-out), and SCHEMA VERSIONING. Sits on top of [`../06_data_plane/`](../06_data_plane/) (LOCKED) which owns transport (ordering, durability, fan-out, channel hierarchy).
 >
-> **Status:** **Phase 1 LOCKED 2026-04-25** (Phase 0 → Phase 1 ceremony complete). Foundation locked: 8 axioms (EVT-A1..A8) + 11-category taxonomy (EVT-T1..T11) with closed-set proof. Feature authors MAY cite EVT-A* / EVT-T* IDs starting now. Phase 2 (producers + contracts), Phase 3 (validators + LLM bus), Phase 4 (scheduling + causal + replay + versioning), Phase 5 (quickstart) pending.
+> **Status:** **Phase 1 LOCKED 2026-04-25 + Option C redesign 2026-04-25.** Foundation: **12 axioms** (EVT-A1..A12 — A4/A7/A8 reframed mechanism-level; A9/A10/A11/A12 added) + **6 active mechanism-level categories** (EVT-T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative) + 5 retired (T2/T7/T9/T10/T11 `_withdrawn` per I15). Closed-set proof against PL_001 / PL_002 / NPC_001 / NPC_002 / SPIKE_01 holds under redesigned taxonomy. Feature authors MAY cite EVT-A* / EVT-T* IDs. Phase 2 (producers + contracts) thin-rewrite pending; Phase 3 (validators + LLM bus), Phase 4 (scheduling + causal + replay + versioning), Phase 5 (quickstart) pending.
 >
 > **Relationship to DP:** DP is "TCP/IP for game state". Event Model is "HTTP semantic for game state". DP guarantees a totally-ordered durable event stream per channel; Event Model defines what TYPES of events exist, who produces them, how they're validated, and how their schemas evolve.
 
@@ -58,11 +58,11 @@ Without this folder, every feature has to relitigate event semantics. With it, f
 | 00 | [`00_AGENT_BRIEF.md`](00_AGENT_BRIEF.md) | LOCKED (commission) | — | 2026-04-25 |
 | 00 | [`00_preamble.md`](00_preamble.md) | LOCKED Phase 1 | — | 2026-04-25 |
 | 01 | [`01_scope_and_boundary.md`](01_scope_and_boundary.md) | LOCKED Phase 1 | — | 2026-04-25 |
-| 02 | [`02_invariants.md`](02_invariants.md) | LOCKED Phase 1 | EVT-A1..A8 | 2026-04-25 |
-| 03 | [`03_event_taxonomy.md`](03_event_taxonomy.md) | LOCKED Phase 1 | EVT-T1..T11 | 2026-04-25 |
-| 04 | [`04_producer_rules.md`](04_producer_rules.md) | LOCKED Phase 2a | EVT-P1..P11 | 2026-04-25 |
-| 05 | `05_validator_pipeline.md` | PENDING Phase 3 | EVT-V* | — |
-| 06 | [`06_per_category_contracts.md`](06_per_category_contracts.md) | LOCKED Phase 2b | — (resolves MV12-D8 + MV12-D9) | 2026-04-25 |
+| 02 | [`02_invariants.md`](02_invariants.md) | LOCKED Phase 1 + Option C redesign | EVT-A1..A12 | 2026-04-25 (redesign) |
+| 03 | [`03_event_taxonomy.md`](03_event_taxonomy.md) | LOCKED Phase 1 + Option C redesign | EVT-T1/T3/T4/T5/T6/T8 active; T2/T7/T9/T10/T11 `_withdrawn` per I15 | 2026-04-25 (redesign) |
+| 04 | [`04_producer_rules.md`](04_producer_rules.md) | SUPERSEDED 2026-04-25 by Option C redesign — Phase 2a thin-rewrite pending | EVT-P1..P11 (will retire feature-specific entries) | 2026-04-25 (will rewrite) |
+| 05 | `05_validator_pipeline.md` | PENDING Phase 3 mechanism-only | EVT-V* | — |
+| 06 | [`06_per_category_contracts.md`](06_per_category_contracts.md) | SUPERSEDED 2026-04-25 by Option C redesign — Phase 2b thin-rewrite pending | — (will cite `_boundaries/` + per-feature for sub-shapes) | 2026-04-25 (will rewrite) |
 | 07 | `07_llm_proposal_bus.md` | PENDING Phase 3 | EVT-L* | — |
 | 08 | `08_scheduled_events.md` | PENDING Phase 4 | — | — |
 | 09 | `09_causal_references.md` | PENDING Phase 4 | EVT-L* | — |
