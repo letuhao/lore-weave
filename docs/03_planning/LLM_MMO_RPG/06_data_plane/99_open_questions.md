@@ -214,12 +214,12 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 ## Phase 4 severity summary
 
 - **🔴 Blockers (0):** all design blockers resolved 2026-04-25
-- **🟡 Significant gaps (3 remaining, 9 resolved):** Q20, Q29, Q32 + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q30, Q31, Q34~~ ✅ resolved 2026-04-25
+- **🟡 Significant gaps (2 remaining, 10 resolved):** Q20 (V1-data-deferred), Q29 (ops-tinted) + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q30, Q31, Q32, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (4):** Q23, Q24, Q25, Q33
 
-**Resolved (13):** Q15, Q16, Q17, Q18, Q19, Q21, Q22, Q26, Q27, Q28, Q30, Q31, Q34 ✅
+**Resolved (14):** Q15, Q16, Q17, Q18, Q19, Q21, Q22, Q26, Q27, Q28, Q30, Q31, Q32, Q34 ✅
 
-**Phase 4 design phase complete + 6 follow-up gaps resolved.** Remaining 3 🟡 gaps are independent and small: Q20 LLM latency (V1-data-deferred), Q29 fan-out tuning (ops-tinted), Q32 privacy formalization (small extension to DP-Ch30). All non-blocking for feature design.
+**Phase 4 design phase complete + 7 follow-up gaps resolved.** Remaining 2 🟡 gaps: Q20 LLM latency (V1-data-deferred, no design action) + Q29 fan-out tuning (ops-doc territory). All non-blocking for feature design.
 
 ---
 
@@ -432,11 +432,18 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q32 — Privacy bubble-up (NEW-7)
+## Q32 — Privacy bubble-up (NEW-7) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** A private cell (secret meeting) emits events. Aggregator reads them for bubble-up. Does bubble-up leak the private cell's existence into tavern events?
+**What:** Formalize redaction policy library so features don't reinvent privacy logic in every aggregator.
 
-**Candidate resolution path:** Channels have visibility flag; aggregator respects visibility — skips private-channel events OR emits tavern event with redacted source. Feature-level design refinement; DP primitive exposes the visibility flag.
+**Resolution:** New file [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) DP-Ch43..Ch45:
+- **DP-Ch43** `RedactionPolicy` enum with 4 templates: `Transparent` (default, no redaction) · `SkipPrivate` (drop private-source events before dispatch) · `AnonymizeRefs` (pass events to on_event, strip causal_refs from private sources before emit) · `Custom(Arc<dyn RedactionFilter>)` (feature-defined hook with safe-default trait methods).
+- **DP-Ch44** Application semantics in runtime loop — Transparent/SkipPrivate are pre-dispatch filters; AnonymizeRefs is post-decision filter; Custom uses both. Cascade-redaction is emergent: each level's policy must be set sensibly for end-to-end secrecy.
+- **DP-Ch45** Telemetry counters per policy + reason; full audit-stream entries reserved for Custom (where filter logic could be buggy); per-channel visibility (no inheritance — feature copies to children explicitly); visibility immutable post-creation.
+
+`register_bubble_up_aggregator` extended with `redaction_policy: RedactionPolicy` parameter; default = `Transparent` (preserves backward compat).
+
+5 design decisions all locked (L1a per-aggregator at registration · L2 all 4 templates · L3c hybrid pre/post application · L4b counter for built-ins + selective audit for Custom · L5a per-channel visibility, no inheritance). **No new axiom** — Q32 is policy library implementing existing DP-Ch30 + DP-A18.
 
 ---
 

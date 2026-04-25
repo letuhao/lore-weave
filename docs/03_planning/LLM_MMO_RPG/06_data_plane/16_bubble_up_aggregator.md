@@ -500,9 +500,16 @@ let emit = EmitDecision {
 - DP does NOT auto-redact — feature decides per `EmitDecision.causal_refs`.
 - Subscribers reading the parent channel's events see whatever causal_refs the aggregator emitted. There is no DP-level "decode private references differently for different subscribers."
 
-### Q32 follow-up
+### Policy templates (Phase 4 Q32 — see [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md))
 
-[Q32](99_open_questions.md) (privacy bubble-up) extends this with policy templates and standardized redaction modes — not part of Q27. DP-Ch30 establishes the data shape; Q32 adds the policy library.
+DP-Ch30 establishes the data shape (visibility flag exposed, redaction is feature-level). Phase 4 Q32 / DP-Ch43..Ch45 builds on this with a **RedactionPolicy library** so most features pick a standard policy at registration:
+
+- **Transparent** — no redaction (default)
+- **SkipPrivate** — drop events from Private sources before dispatch (aggregator never sees them)
+- **AnonymizeRefs** — pass events to on_event but strip causal_refs from private sources before commit
+- **Custom(filter)** — feature-defined `RedactionFilter` trait
+
+`register_bubble_up_aggregator` now takes a `redaction_policy: RedactionPolicy` parameter. SDK applies the policy in the runtime loop around `on_event` (DP-Ch44).
 
 ---
 
@@ -541,7 +548,7 @@ let emit = EmitDecision {
 | **Q19 channel pause** | Aggregator-on-paused-channel: SDK pauses dispatch to `on_event`; resume restores. Concrete `channel_pause` primitive = Q19. |
 | **Q28 channel membership ops** | Aggregator may consume `member_join`/`member_leave` events as `SourceEvent`; specific event shapes = Q28. |
 | **Q31 channel lifecycle** | Aggregator on dissolved parent: unregistered automatically with final snapshot; on dissolved source: subscription branch ends gracefully. Full lifecycle = Q31. |
-| **Q32 privacy bubble-up** | DP-Ch30 establishes the data shape (visibility flag exposed) and capability gating; Q32 adds policy templates + standardized redaction modes. |
+| **Q32 privacy bubble-up** | ✅ Resolved 2026-04-25 in [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) DP-Ch43..Ch45 — RedactionPolicy enum (Transparent / SkipPrivate / AnonymizeRefs / Custom) + telemetry + per-channel visibility (no inheritance). |
 | **Q27** | ✅ Resolved here. **Last design blocker — all Phase 4 design blockers now complete.** |
 
 ---

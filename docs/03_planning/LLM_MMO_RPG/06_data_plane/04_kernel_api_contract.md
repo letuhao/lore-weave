@@ -695,13 +695,17 @@ impl DpClient {
     /// Phase 4 (DP-Ch25): register a bubble-up aggregator on a parent channel.
     /// Aggregator persists in CP registry; SDK manages subscribe + dispatch +
     /// snapshot + restart. Capability-gated by `can_register_aggregator` claim.
-    /// See 16_bubble_up_aggregator.md for full semantics.
+    /// `redaction_policy` (Phase 4 Q32, DP-Ch43) controls how SDK handles
+    /// events from Private-visibility source channels: Transparent (default,
+    /// no redaction) / SkipPrivate / AnonymizeRefs / Custom. See
+    /// 16_bubble_up_aggregator.md + 19_privacy_redaction_policies.md.
     pub async fn register_bubble_up_aggregator<A: BubbleUpAggregator>(
         &self,
         ctx: &SessionContext,
         parent_channel: ChannelId,
         aggregator: A,
         config: AggregatorConfig,
+        redaction_policy: RedactionPolicy,           // Phase 4 Q32
     ) -> Result<AggregatorHandle, DpError>;
 
     pub async fn unregister_bubble_up_aggregator(
