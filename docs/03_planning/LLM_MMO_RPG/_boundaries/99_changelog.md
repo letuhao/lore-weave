@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-04-26 — PL_005 Interaction feature registered
+
+- **Lock claim:** main session (PL_005 Interaction feature design — core gameplay primitive) at 2026-04-26; commit `990eea3` `[boundaries-lock-claim]`
+- **Files modified:**
+  - `01_feature_ownership_matrix.md` "Schema/envelope ownership" section, EVT-T1 Submitted sub-types row: added **PL_005 Interaction** owns 5 V1 sub-types (`Interaction:Speak` / `Interaction:Strike` / `Interaction:Give` / `Interaction:Examine` / `Interaction:Use`); V1+ kinds (Collide/Shoot/Cast/Embrace/Threaten) reserved.
+  - `02_extension_contracts.md` §1.4 RejectReason namespace prefix table: added `interaction.*` owned by PL_005 Interaction.
+- **Reason:** PL_005 Interaction is the core gameplay primitive (4-role pattern + ProposedOutputs/ActualOutputs split + 5 V1 InteractionKinds) per user direction "core của gameplay". Phase 0 deliverable approved with defaults: B1 NPC mortality deferred to NPC_003 future + V1 placeholder · B2 Item aggregate deferred V1 (refs only) · B3 self-output simple (agent in direct_targets) · B4 atomic outputs (world-rule WA_001 Lex derives ActualOutputs at validator stage) · B5 catalog placement = `features/04_play_loop/PL_005_interaction.md` · B6 phase plan accepted. **Zero new aggregates V1** (deliberate scope discipline; references existing aggregates from PL_001/NPC_001/PCS_001/WA_001/WA_006/PL_002).
+- **PL_005 deliverable:** new `features/04_play_loop/PL_005_interaction.md` (491 lines under 500-line soft cap), 19 sections covering Domain concepts + Event-model mapping + Aggregate inventory (zero new V1) + DP primitives + Capability + Subscribe pattern + Pattern choices + Failure UX + Cross-service handoff (CausalityToken chain) + 5 sequences (Speak/Strike/Give/Examine/Use) + 6 acceptance criteria scenarios + 9 deferrals (INT-D1..D9) + cross-references + readiness checklist.
+- **Closes original-goal context** for "interaction" core gameplay: provides the dispatch contract that turns user input into committed canonical events with role-typed inputs + world-rule-derived outputs + downstream cascade hooks.
+- **Drift watchpoints unchanged** (8 still active; no new boundary review items)
+- **Lock release:** at end of PL_005 commit (this turn)
+
+---
+
 ## 2026-04-25 (late evening, post-closure) — 07_event_model Phase 6 Generation Framework
 
 - **Lock claim:** event-model agent (Phase 6 Generator Framework + Coordinator service spec) at 2026-04-25 (late evening, post-folder-closure reopening); commit `03560eb` `[boundaries-lock-claim]`

@@ -108,6 +108,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `forge.*` | WA_003 Forge |
 | `charter.*` | PLT_001 Charter |
 | `succession.*` | PLT_002 Succession |
+| `interaction.*` | PL_005 Interaction (added 2026-04-26) |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy.
 

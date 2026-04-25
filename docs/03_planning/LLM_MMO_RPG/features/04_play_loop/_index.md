@@ -4,7 +4,7 @@
 > **Catalog reference:** [`catalog/cat_04_PL_play_loop.md`](../../catalog/cat_04_PL_play_loop.md) (owns `PL-*` stable-ID namespace)
 > **Purpose:** The moment-to-moment core gameplay — turn submission, response, session-tick, time-advancement, scene transitions. High-touch with hot-path SDK (being designed by another agent).
 
-**Active:** PL_001 — **Continuum** (DRAFT 2026-04-25 — first concrete implementation-ready feature design after DP Phase 4 LOCK)
+**Active:** PL_005 — **Interaction** (DRAFT 2026-04-26 — core gameplay primitive)
 
 ---
 
@@ -16,6 +16,7 @@
 | PL_001b | Continuum lifecycle (CON-L) | Lifecycle layer §11-§20: 5 sequences (normal/sleep/travel/reconnect/rejection) + bootstrap + 16 acceptance criteria. §18 deferrals updated 2026-04-25 with G1/G3/G4/G5 + B2/B3 boundary-review items. | CANDIDATE-LOCK 2026-04-25 (boundary-tightened) | [`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md) | a4f2d26 → tightening pending |
 | PL_002 | **Grammar** (GR) | Command grammar (5 V1 commands: /verbatim /prose /sleep /travel /help) + intent classifier dispatch + tool-call allowlist + per-rule_id Vietnamese reject copy. Resolves MV12-D9. Option C event-model terminology applied (§2.5 by event-model agent). §13 acceptance criteria added 2026-04-25 (10 scenarios). | **CANDIDATE-LOCK** 2026-04-25 | [`PL_002_command_grammar.md`](PL_002_command_grammar.md) | f89aa48 → closure pending |
 | ~~PL_003~~ → **NPC_002** | (relocated) | Multi-NPC turn ordering — was originally drafted here as PL_003 Chorus, then relocated to `05_npc_systems/` because catalog NPC-7 ("Multi-NPC conversation turn arbitration") is the correct domain. See [`../05_npc_systems/NPC_002_chorus.md`](../05_npc_systems/NPC_002_chorus.md). | RELOCATED 2026-04-25 | (moved) | d11dea0 (original) → relocate pending |
+| PL_005 | **Interaction** (INT) | Core gameplay primitive — 4-role pattern (agent / tool / direct_targets / indirect_targets) + 5 V1 InteractionKinds (Speak / Strike / Give / Examine / Use) + ProposedOutputs/ActualOutputs split (world-rule WA_001 Lex derives ActualOutputs at validator stage) + downstream cascade hooks via EVT-G Generator framework. Zero new aggregates V1 (deliberate scope discipline; references existing aggregates from PL_001/NPC_001/PCS_001/WA_001/WA_006/PL_002). 6 acceptance scenarios + 9 deferrals (INT-D1..D9). Builds on Continuum + Grammar + Cast + Chorus + Lex + Mortality. | DRAFT 2026-04-26 | [`PL_005_interaction.md`](PL_005_interaction.md) | (this commit) |
 
 ---
 

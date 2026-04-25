@@ -6,10 +6,8 @@
 
 ## Current owner
 
-- **Owner:** main session (PL_005 Interaction feature design — core gameplay primitive)
-- **Claimed at:** 2026-04-26
-- **Expected work:** register PL_005 Interaction sub-types under EVT-T1 Submitted ownership row (`Interaction:Speak` / `Interaction:Strike` / `Interaction:Give` / `Interaction:Examine` / `Interaction:Use` — 5 V1 kinds; V1+ Collide / Shoot / Cast deferred); add `interaction.*` prefix to RejectReason namespace ownership table; reflect in changelog.
-- **Expires at:** 2026-04-26 (4h TTL from claim)
+- **Owner:** **None** (folder unlocked; any agent may claim)
+- _Last released:_ 2026-04-26 by main session (PL_005 Interaction feature) after PL_005 commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 
