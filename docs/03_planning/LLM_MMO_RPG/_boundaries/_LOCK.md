@@ -6,10 +6,10 @@
 
 ## Current owner
 
-- **Owner:** None
-- **Claimed at:** —
-- **Expected work:** —
-- **Expires at:** —
+- **Owner:** main session (PL_006 Status Effects feature design — status foundation per user direction)
+- **Claimed at:** 2026-04-26
+- **Expected work:** register PL_006 Status Effects under aggregate ownership (`actor_status` T2/Reality) + StatusFlag closed-set enum ownership in EVT-T3 Derived sub-types row (sub-discriminator `aggregate_type=actor_status`); add `status.*` prefix to RejectReason namespace; reflect in changelog.
+- **Expires at:** 2026-04-26 (4h TTL from claim)
 
 ---
 
