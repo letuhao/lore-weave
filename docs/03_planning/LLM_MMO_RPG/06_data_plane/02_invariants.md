@@ -1,7 +1,7 @@
 # 02 — Invariants (Axioms)
 
 > **Status:** LOCKED. Every axiom here was decided in a user conversation and may not be changed without a superseding decision recorded in [../decisions/](../decisions/) and a cross-reference entry in [99_open_questions.md](99_open_questions.md).
-> **Stable IDs:** DP-A1..DP-A17. These IDs are referenceable from any other doc in this project. Never renumber.
+> **Stable IDs:** DP-A1..DP-A18. These IDs are referenceable from any other doc in this project. Never renumber.
 
 ---
 
@@ -313,6 +313,28 @@ DP is **agnostic to turn semantics** — what a "turn" means (D&D round, narrati
 
 ---
 
+## DP-A18 — Channel lifecycle state machine + canonical membership events (Phase 4, 2026-04-25)
+
+**Rule:** Every channel has exactly one lifecycle state at any time, drawn from the closed set **`{ Active, Dormant, Dissolved }`**. Transitions follow a fixed state machine (see [17_channel_lifecycle.md DP-Ch31](17_channel_lifecycle.md#dp-ch31--lifecycle-states--transitions)). `Dissolved` is **terminal** — a dissolved channel cannot be reactivated; resurrecting the same purpose creates a new `ChannelId`. Orthogonal to lifecycle, an `Active` channel may carry a transient `paused_until: Option<Timestamp>` flag; pause is meaningless on `Dormant` or `Dissolved`. Membership transitions (sessions joining or leaving a channel) are recorded as **canonical channel events** (`MemberJoined`, `MemberLeft`) emitted by DP itself — features observe them via durable subscribe ([Q16](14_durable_subscribe.md)) but cannot forge them.
+
+**Why:** A clear closed-set state machine prevents invalid intermediate states from being expressible. Treating dissolution as terminal removes "is this channel really dead?" ambiguity from feature design. Canonical membership events emitted by DP — not by features — guarantee a consistent, audit-grade record across all features that consume channels (UI showing presence, the bubble-up aggregator counting members, world-rules engines tracking quorums). Pause-as-flag separates transient operational concerns (LLM thinking, admin freeze, drain coordination) from the durable lifecycle.
+
+**Enforcement:**
+- **(a) DB constraint** — `channels.lifecycle TEXT NOT NULL CHECK (lifecycle IN ('active','dormant','dissolved'))`. Constraint already added in [DP-Ch2](12_channel_primitives.md#dp-ch2--channel-registry-per-reality-db-schema).
+- **(b) Transition validator** — SDK rejects invalid transitions (e.g., `dissolved → active`); pre-condition checks (e.g., dissolution requires all descendants already dissolved) enforced before DB write.
+- **(c) Canonical event emission** — only DP writes `MemberJoined` / `MemberLeft` / `ChannelPaused` / `ChannelResumed` events; feature code attempting to write these via raw `t2_write_channel` is rejected by SDK type system (event type discriminator is reserved).
+- **(d) Pause flag** — `paused_until` is set only via the `channel_pause` SDK primitive ([DP-Ch35](17_channel_lifecycle.md#dp-ch35--channel_pause--channel_resume-primitives)); auto-clears at expiry; survives writer failover (state in DB).
+
+**Consequence:**
+- Cell channels auto-transition to `Dormant` after a configurable inactivity window (default 30 minutes); non-cell channels transition only via admin action. See [DP-Ch32](17_channel_lifecycle.md#dp-ch32--auto-dormant-trigger).
+- `MemberJoined` / `MemberLeft` events carry `actor: ActorId`, timestamp, and a typed reason (`JoinMethod` / `LeaveReason`) so consumers can distinguish voluntary departure from disconnect, migration from initial join, etc.
+- Pause halts game writes (`advance_turn`, ChannelScoped writes) but **allows** lifecycle and administrative operations (member departures, drain, dissolution) — practical: a player must be able to leave a paused channel.
+- Lifecycle transitions are themselves canonical events — feature design that wants to react to "channel went dormant" subscribes to them via durable subscribe, just like any other channel event.
+
+**Cross-ref:** [17_channel_lifecycle.md](17_channel_lifecycle.md) DP-Ch31..Ch37 for the full state machine, transition rules, dissolution + archival, canonical event shapes, pause primitives, and recovery semantics. Resolves [99_open_questions.md Q19, Q28, Q31](99_open_questions.md).
+
+---
+
 ## Locked-decision summary (for cross-reference)
 
 | ID | Short name | One-line |
@@ -334,5 +356,6 @@ DP is **agnostic to turn semantics** — what a "turn" means (D&D round, narrati
 | DP-A15 | Per-channel total event ordering | `channel_event_id: u64` monotonic per channel, gapless; subscribers catch up gaps before live delivery; reality-scoped events use existing R7 ordering. |
 | DP-A16 | Channel writer-node binding | One writer per active channel; cell writer = creator's session node + handoff; non-cell writer = CP-assigned, persistent; cross-node writes routed transparently via gRPC; epoch-fenced for failover. |
 | DP-A17 | Per-channel turn numbering | `turn_number: u64` monotonic gapless per channel, writer-allocated only via `advance_turn` primitive; every event tagged with current turn_number; channels not using turn semantics stay at 0. |
+| DP-A18 | Channel lifecycle + membership canonical events | `{ Active, Dormant, Dissolved }` state machine with terminal Dissolved; orthogonal `paused_until: Option<Timestamp>` flag; DP emits canonical `MemberJoined`/`MemberLeft`/`ChannelPaused`/`ChannelResumed` events that features cannot forge. |
 
 Any change to an axiom is logged in [../decisions/](../decisions/) with a new locked-decision entry and the superseded axiom gets a `_withdrawn` suffix rather than being deleted.

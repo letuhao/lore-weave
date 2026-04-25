@@ -172,6 +172,23 @@ pub enum DpError {
     #[error("wrong channel writer: channel={channel} expected_node={expected} stale_epoch={stale_epoch}")]
     WrongChannelWriter { channel: String, expected: NodeId, stale_epoch: u64 },
 
+    /// Phase 4 (DP-Ch35): channel is paused; game writes blocked until resume
+    /// (or paused_until expiry). Lifecycle/admin ops still accepted.
+    #[error("channel paused: channel={channel} reason={reason} until={paused_until:?}")]
+    ChannelPaused { channel: String, reason: String, paused_until: Option<Timestamp> },
+
+    /// Phase 4 (DP-Ch37): operation targeting a Dissolved channel.
+    #[error("channel dissolved: channel={channel}")]
+    ChannelDissolved { channel: String },
+
+    /// Phase 4 (DP-Ch37): cannot dissolve a channel that has non-dissolved descendants.
+    #[error("cannot dissolve: channel {channel} has {descendant_count} non-dissolved descendants")]
+    ChannelHasDescendants { channel: String, descendant_count: u32 },
+
+    /// Phase 4 (DP-Ch37): operation already applied; result returned without effect.
+    #[error("channel already in target state: channel={channel} state={state}")]
+    ChannelAlreadyInState { channel: String, state: String },
+
     #[error("tier violation: {aggregate} requested={requested:?} allowed={allowed:?}")]
     TierViolation { aggregate: &'static str, requested: Tier, allowed: Tier },
 
@@ -645,6 +662,31 @@ impl DpClient {
         ctx: &SessionContext,
         handle: &AggregatorHandle,
     ) -> Result<(), DpError>;
+
+    /// Phase 4 (DP-Ch35): pause a channel. Game writes (advance_turn,
+    /// ChannelScoped writes, bubble-up emits) reject with ChannelPaused.
+    /// Lifecycle and admin ops continue. Capability-gated by
+    /// `can_pause_channel: Vec<level_name>` JWT claim.
+    /// `paused_until = None` is indefinite. Idempotent.
+    pub async fn channel_pause(
+        &self,
+        ctx: &SessionContext,
+        channel: &ChannelId,
+        reason: String,
+        paused_until: Option<Timestamp>,
+    ) -> Result<PauseAck, DpError>;
+
+    /// Clear the pause flag. Idempotent.
+    pub async fn channel_resume(
+        &self,
+        ctx: &SessionContext,
+        channel: &ChannelId,
+    ) -> Result<(), DpError>;
+}
+
+pub struct PauseAck {
+    pub channel_event_id: u64,
+    pub paused_until: Option<Timestamp>,
 }
 
 pub struct TurnAck {
@@ -720,11 +762,12 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 | Subscription | 4 | `subscribe_invalidation` (pub/sub) · `subscribe_broadcast<T1>` (pub/sub) · `subscribe_channel_events_durable<S>` (Streams + DB catchup, Phase 4) · `subscribe_session_channels<S>` (multiplex, Phase 4) |
 | Macros | 2 | `cache_key!` (scope-dispatched), `instrumented!` |
 | Client | 2 | `DpClient::connect`, `DpClient::verify_reality` |
-| Channel | 6 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel`, `advance_turn`, `register_bubble_up_aggregator`, `unregister_bubble_up_aggregator` (Phase 4) |
+| Channel | 8 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel`, `advance_turn`, `register_bubble_up_aggregator`, `unregister_bubble_up_aggregator`, `channel_pause`, `channel_resume` (Phase 4) |
 | Aggregator | 1 | `deterministic_rng` (Phase 4) |
-| **Total SDK primitives** | **~37** | Feature repos compose these into domain APIs. Channel + durable subscribe + turn boundary + bubble-up aggregator (Phase 4) are additive; earlier scope APIs subsumed into the scope-typed reads. |
+| **Error variants** | 17 | `DpError` (was 13; +4 in lifecycle: `ChannelPaused`, `ChannelDissolved`, `ChannelHasDescendants`, `ChannelAlreadyInState`) |
+| **Total SDK primitives** | **~39** | Feature repos compose these into domain APIs. Channel + durable subscribe + turn boundary + bubble-up + lifecycle/pause (Phase 4) are additive. |
 
-~37 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with full channel + ordering + subscribe + turn + bubble-up support added in Phase 4.
+~39 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with full channel + ordering + subscribe + turn + bubble-up + lifecycle support added in Phase 4.
 
 ---
 

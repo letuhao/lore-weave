@@ -213,13 +213,13 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ## Phase 4 severity summary
 
-- **🔴 Blockers (0 remaining, 4 resolved):** ~~Q15 turn boundary~~ ✅ · ~~Q16 durable subscribe~~ ✅ · ~~Q26 channel as first-class concept~~ ✅ · ~~Q27 event bubble-up primitive~~ ✅ — **all design blockers resolved 2026-04-25**
-- **🟡 Significant gaps (9 remaining, 3 resolved):** Q18, Q19, Q20, Q21, Q22, Q28, Q29, Q31, Q32 + ~~Q17, Q30, Q34~~ ✅
+- **🔴 Blockers (0):** all design blockers resolved 2026-04-25
+- **🟡 Significant gaps (6 remaining, 6 resolved):** Q18, Q20, Q21, Q22, Q29, Q32 + ~~Q17, Q19, Q28, Q30, Q31, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (4):** Q23, Q24, Q25, Q33
 
-**Resolved (7):** Q15, Q16, Q17, Q26, Q27, Q30, Q34 ✅
+**Resolved (10):** Q15, Q16, Q17, Q19, Q26, Q27, Q28, Q30, Q31, Q34 ✅
 
-**Phase 4 design phase is functionally complete.** Feature design (DF4 / DF5 / DF7) can now consume the locked DP contract. Phase 4 cleanup of the remaining 🟡 gaps + 🟢 nits proceeds in parallel without blocking gameplay design.
+**Phase 4 design phase complete + 3 follow-up gaps resolved.** Remaining 6 🟡 gaps are smaller / independent (Q18 T1 reframe is small reframe, Q20 LLM latency = V1 data, Q21 RYW cross-service, Q22 routing UX, Q29 fan-out tuning, Q32 privacy formalization). All non-blocking for feature design.
 
 ---
 
@@ -276,13 +276,17 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q19 — Per-channel pause / reality-pause semantics (REAL-5 reframed)
+## Q19 — Per-channel pause / reality-pause semantics (REAL-5 reframed) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** When an NPC LLM is "thinking" in a cell, is the cell paused (no writes accepted)? Do other cells in the same tavern continue? Does a tavern-level pause (narration pause) freeze all child cells?
+**What:** Per-channel pause primitive for LLM-thinking, admin freeze, drain coordination.
 
-**Why significant:** LLM turn coordination + channel freeze are central game mechanics. DP contract has no primitive; features will invent inconsistent approaches.
-
-**Candidate resolution path:** **DP-K15** `channel_pause(ctx, channel_id, reason, expected_resume_at)` + `channel_resume` + `SessionContext.paused_channels` flag set. Writes to paused channel return `DpError::ChannelPaused`.
+**Resolution:** [DP-A18](02_invariants.md#dp-a18--channel-lifecycle-state-machine--canonical-membership-events-phase-4-2026-04-25) + [17_channel_lifecycle.md DP-Ch35..Ch36](17_channel_lifecycle.md#dp-ch35--channel_pause--channel_resume-primitives):
+- `channel_pause(ctx, channel, reason, paused_until)` + `channel_resume` SDK primitives.
+- Capability JWT `can_pause_channel: Vec<level_name>`.
+- Pause halts game writes (advance_turn, ChannelScoped writes, bubble-up emits) but allows lifecycle/admin ops (member_left for disconnects, dissolve).
+- `paused_until = None` indefinite, requires explicit resume; `Some(t)` auto-resumes at expiry via CP scheduler (60-s cadence).
+- Pause persists across writer failover (state in DB).
+- Canonical `ChannelPaused` / `ChannelResumed` events emitted by DP, readable via durable subscribe.
 
 ---
 
@@ -369,11 +373,14 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q28 — Channel membership ops (NEW-3)
+## Q28 — Channel membership ops (NEW-3) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Player joins cell / leaves tavern / NPC migrates between cells. Frequency: medium. Membership change tier? Validation ownership (feature vs DP)? Privacy (who can see "player X entered tavern Y")?
+**What:** Canonical events for member join/leave + ownership of validation rules.
 
-**Candidate resolution path:** Membership ops are T3 writes (canonical: "player X entered tavern Y at channel_event_id N"). DP exposes `join_channel(ctx, channel_id)` / `leave_channel(ctx, channel_id)` primitives. Validation rules (capacity, prerequisites) are feature-level.
+**Resolution:** [DP-A18](02_invariants.md#dp-a18--channel-lifecycle-state-machine--canonical-membership-events-phase-4-2026-04-25) + [17_channel_lifecycle.md DP-Ch34](17_channel_lifecycle.md#dp-ch34--canonical-memberjoined--memberleft-events):
+- DP emits canonical `MemberJoined { actor, joined_at, joined_via: SessionBind | Migrated{from} | Reactivated }` + `MemberLeft { actor, left_at, reason: Voluntary | Disconnected | Migrated{to} | ChannelDissolved | TimedOut }` events automatically on `bind_session` / `move_session_to_channel` / disconnect / dissolution. Feature code cannot forge these — reserved event types.
+- Features read via durable subscribe ([Q16](99_open_questions.md)); bubble-up aggregators consume them as `SourceEvent`.
+- Membership validation rules (capacity, prerequisites, RP eligibility) remain feature-level per [DP-Ch8](12_channel_primitives.md#dp-ch8--channel-crud-primitives) — DP only emits the canonical events when transitions occur, doesn't enforce who CAN join.
 
 ---
 
@@ -393,11 +400,19 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q31 — Channel lifecycle (NEW-6)
+## Q31 — Channel lifecycle (NEW-6) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Cell sessions are created when a conversation starts, dissolved when members leave. Tavern/town/country: persist for reality lifetime? Can a channel freeze and reactivate independently of its reality's freeze?
+**What:** Full state machine for channel lifecycle (create / dormant / wakeup / dissolve / archive).
 
-**Candidate resolution path:** Channel lifecycle state machine: `active → dormant → dissolved`. Plug into [02_storage R9](../02_storage/R09_safe_reality_closure.md) lifecycle. Events in dissolved channels archived but searchable.
+**Resolution:** [DP-A18](02_invariants.md#dp-a18--channel-lifecycle-state-machine--canonical-membership-events-phase-4-2026-04-25) + [17_channel_lifecycle.md DP-Ch31..Ch33, Ch37](17_channel_lifecycle.md#dp-ch31--lifecycle-states--transitions):
+- 3-state machine `{ Active, Dormant, Dissolved }` with terminal Dissolved; transitions table specified; DB CHECK invariants.
+- Auto-dormant scheduler for cells (default 30 min idle, per-channel tunable); non-cell admin-only.
+- Wakeup on first bind_session to Dormant channel (≤2 s p99 latency).
+- Dissolution requires all-descendants-dissolved + no-active-sessions; emits canonical `MemberLeft { ChannelDissolved }` for any remaining sessions; final aggregator snapshots.
+- Event log retention per [02_storage R1](../02_storage/R01_event_volume.md) (default 1 year); aggregator snapshots GC'd at +90 days post-dissolution.
+- Re-create != resurrect: dissolved ChannelId never reused; new channel = new UUID.
+- Idempotent ops + edge-case taxonomy (bind-to-dormant wakes up, bind-to-dissolved hard-errors, etc.) in DP-Ch37.
+- Plugs into [02_storage R9](../02_storage/R09_safe_reality_closure.md) reality lifecycle as a sub-machine.
 
 ---
 

@@ -21,6 +21,7 @@ The control plane (CP) owns exactly these concerns. Anything not listed is expli
 | **Channel tree cache (Phase 4)** | Per-reality in-memory cache of the channel tree + ancestor-chain lookups. Consumed by SDKs at `bind_session` and updated via Redis Stream consumption. Authoritative source is per-reality DB, not CP. See [DP-Ch3](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream). |
 | **Channel writer binding + handoff (Phase 4)** | One writer node per active channel; CP issues + revokes leases (epoch tokens), assigns writer at channel creation, coordinates cell handoff on creator-leave, reassigns on node death. Cached in same channel-tree structure. See [DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) + [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md). |
 | **Bubble-up aggregator registry (Phase 4)** | Per-reality persistent registry of registered bubble-up aggregators. Restart-resilient: writer-node assignment loads aggregators + snapshots from per-reality DB. Delta updates flow on the channel-tree-update stream. See [DP-Ch28](16_bubble_up_aggregator.md#dp-ch28--cp-aggregator-registry--restart-restoration). |
+| **Lifecycle scheduler + pause auto-expiry (Phase 4)** | Periodic scan over each active reality (5-min cadence) for cell channels eligible for auto-dormant transition; 60-s cadence for pause auto-resume on `paused_until` expiry. Coordinates transitions through writer nodes; emits canonical `ChannelStateTransition` / `ChannelResumed` events. See [DP-Ch32](17_channel_lifecycle.md#dp-ch32--auto-dormant-trigger-cell-only) + [DP-Ch35](17_channel_lifecycle.md#dp-ch35--channel_pause--channel_resume-primitives). |
 | **Degraded-mode signaling** | On CP outage or partition, signal data plane to enter degraded mode (DP-C9). |
 
 **NOT CP responsibilities:**
@@ -86,6 +87,11 @@ service DpControlPlane {
   rpc RegisterBubbleUpAggregator (RegisterAggregatorRequest) returns (AggregatorHandle);
   rpc UnregisterBubbleUpAggregator (UnregisterAggregatorRequest) returns (Empty);
   rpc ListAggregatorsForChannel (ListAggregatorsRequest) returns (AggregatorList);
+
+  // Channel lifecycle + pause (Phase 4 DP-Ch31..Ch37)
+  rpc TransitionChannelLifecycle (TransitionLifecycleRequest) returns (Empty);
+  rpc PauseChannel (PauseChannelRequest) returns (PauseAck);
+  rpc ResumeChannel (ResumeChannelRequest) returns (Empty);
 
   // Session stickiness + NPC binding
   rpc GetSessionNode (GetSessionNodeRequest) returns (NodeAssignment);
@@ -304,7 +310,7 @@ Monthly failover drill triggered via admin CLI:
 |---|---|
 | DP-C1 | CP responsibilities enumerated; non-responsibilities explicit |
 | DP-C2 | 2-node active-passive, own Postgres, ≤60s failover |
-| DP-C3 | gRPC surface — 22 methods (13 Phase 2 + 3 Phase 4 channel-tree + 3 Phase 4 writer-binding + 3 Phase 4 aggregator-registry), low-QPS |
+| DP-C3 | gRPC surface — 25 methods (13 Phase 2 + 3 Phase 4 channel-tree + 3 Phase 4 writer-binding + 3 Phase 4 aggregator-registry + 3 Phase 4 lifecycle/pause), low-QPS |
 | DP-C4 | Tier policy registry schema + registration flow |
 | DP-C5 | Expand / Migrate / Contract schema migration protocol |
 | DP-C6 | Invalidation broadcast through Redis pub/sub, CP off hot path |

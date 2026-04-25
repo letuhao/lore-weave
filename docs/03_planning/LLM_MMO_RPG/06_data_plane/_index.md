@@ -47,9 +47,10 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 13. [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) — **DP-Ch11..Ch15** per-channel `channel_event_id` allocation, writer assignment rules (cell vs non-cell), epoch fencing, cross-node write routing via gRPC, causal-ref schema for bubble-up (resolves Q17 + Q30 + Q34)
 14. [14_durable_subscribe.md](14_durable_subscribe.md) — **DP-Ch16..Ch20** durable per-channel subscribe with resume token, hybrid Redis Streams + Postgres catchup, monotonic gap-free delivery, multi-channel multiplex convenience, backpressure + reconnect (resolves Q16)
 15. [15_turn_boundary.md](15_turn_boundary.md) — **DP-Ch21..Ch24** turn boundary primitive: TurnBoundary event + advance_turn SDK API + per-event turn_number tagging + capability gating + composition with pause/bubble-up/move (resolves Q15)
-16. [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) — **DP-Ch25..Ch30** `BubbleUpAggregator` trait + register/unregister + event-sourced state + deterministic RNG + CP registry + cascading + privacy redaction patterns (resolves Q27 — **last design blocker**)
+16. [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) — **DP-Ch25..Ch30** `BubbleUpAggregator` trait + register/unregister + event-sourced state + deterministic RNG + CP registry + cascading + privacy redaction patterns (resolves Q27 — last design blocker)
+17. [17_channel_lifecycle.md](17_channel_lifecycle.md) — **DP-Ch31..Ch37** lifecycle state machine (Active/Dormant/Dissolved) + auto-dormant scheduler + dissolution + canonical MemberJoined/MemberLeft + channel_pause/resume + composition rules + idempotency (resolves Q19 + Q28 + Q31)
 
-**🎉 Phase 4 design phase complete.** All design blockers (Q15 / Q16 / Q26 / Q27) resolved. Remaining Phase 4 work is 9 🟡 significant gaps + 4 🟢 nits/ops items that don't block feature design. **Feature design (DF4 / DF5 / DF7) can now consume the locked DP contract.**
+**🎉 Phase 4 design phase complete + 3 follow-up gaps resolved.** Remaining Phase 4 work is 6 🟡 significant gaps + 4 🟢 nits/ops items, all non-blocking. **Feature design (DF4 / DF5 / DF7) can now consume the locked DP contract.**
 
 ---
 
@@ -59,7 +60,7 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 |---:|---|---|---|---|
 | 00 | [00_preamble.md](00_preamble.md) | LOCKED | — | 2026-04-24 |
 | 01 | [01_scope_and_boundary.md](01_scope_and_boundary.md) | LOCKED | — | 2026-04-24 |
-| 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A17 | 2026-04-25 |
+| 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A18 | 2026-04-25 |
 | 03 | [03_tier_taxonomy.md](03_tier_taxonomy.md) | LOCKED | DP-T0, DP-T1, DP-T2, DP-T3 | 2026-04-24 |
 | 04 | [04_kernel_api_contract.md](04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 2026-04-25 |
 | 05 | [05_control_plane_spec.md](05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 2026-04-25 |
@@ -72,7 +73,8 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 14 | [14_durable_subscribe.md](14_durable_subscribe.md) | LOCKED | DP-Ch16..Ch20 | 2026-04-25 |
 | 15 | [15_turn_boundary.md](15_turn_boundary.md) | LOCKED | DP-Ch21..Ch24 | 2026-04-25 |
 | 16 | [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) | LOCKED | DP-Ch25..Ch30 | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 design phase ✅ complete** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (Q15/Q16/Q17/Q26/Q27/Q30/Q34 ✅ resolved 2026-04-25; remaining = 🟡 gaps + 🟢 nits, none blocking feature design) | 2026-04-25 |
+| 17 | [17_channel_lifecycle.md](17_channel_lifecycle.md) | LOCKED | DP-Ch31..Ch37 | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 design ✅ + 3 follow-ups resolved** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (10 resolved: Q15/Q16/Q17/Q19/Q26/Q27/Q28/Q30/Q31/Q34; 6 🟡 + 4 🟢 remaining, none blocking) | 2026-04-25 |
 
 ---
 
@@ -82,7 +84,7 @@ Outside docs may cross-link unambiguously to:
 
 | Prefix | Scope | Owned by |
 |---|---|---|
-| `DP-A*` | Axioms / invariants (DP-A1..A17) | [02_invariants.md](02_invariants.md) |
+| `DP-A*` | Axioms / invariants (DP-A1..A18) | [02_invariants.md](02_invariants.md) |
 | `DP-T0..T3` | Tier taxonomy | [03_tier_taxonomy.md](03_tier_taxonomy.md) |
 | `DP-R*` | Access Pattern Rulebook rules (DP-R1..R8) | [11_access_pattern_rules.md](11_access_pattern_rules.md) |
 | `DP-S*` | Scale and SLO items (DP-S1..S8) | [08_scale_and_slos.md](08_scale_and_slos.md) |
@@ -95,6 +97,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-Ch*` | Durable per-channel subscribe (DP-Ch16..Ch20) | [14_durable_subscribe.md](14_durable_subscribe.md) |
 | `DP-Ch*` | Turn boundary primitive (DP-Ch21..Ch24) | [15_turn_boundary.md](15_turn_boundary.md) |
 | `DP-Ch*` | Bubble-up aggregator (DP-Ch25..Ch30) | [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) |
+| `DP-Ch*` | Channel lifecycle + membership + pause (DP-Ch31..Ch37) | [17_channel_lifecycle.md](17_channel_lifecycle.md) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.
 

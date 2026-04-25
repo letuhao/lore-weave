@@ -50,7 +50,7 @@ pub struct Channel {
     pub level_name: String,        // free-form tag ("tavern", "cell", ...)
     pub display_name: Option<String>, // human-readable, optional
     pub depth: u8,                 // root = 0
-    pub lifecycle: ChannelLifecycle, // see Q31 for full lifecycle; Phase 4 mini cover: Active | Dormant | Dissolved
+    pub lifecycle: ChannelLifecycle, // Active | Dormant | Dissolved — full state machine in [17_channel_lifecycle.md](17_channel_lifecycle.md)
     pub metadata: serde_json::Value, // feature-level bag; DP does not interpret
     pub created_at: Timestamp,
     pub dissolved_at: Option<Timestamp>,
@@ -439,7 +439,7 @@ DP-Ch1..Ch10 give channels a concrete home in the DP contract. Other Phase 4 Qs 
 | **Q16** durable per-channel subscribe | `subscribe_channel_events_durable(ctx, channel_id, from_event_id)` | Unblocked |
 | **Q27** event bubble-up | Aggregator at parent channel reading descendant events | Unblocked |
 | **Q28** membership ops | T3 events for join/leave; feature-level validation | Unblocked (Ch8/Ch9 give structural primitives) |
-| **Q31** channel lifecycle | Active/Dormant/Dissolved transitions + archive | Partially covered (Ch8); full lifecycle Phase 4 |
+| **Q31** channel lifecycle | Active/Dormant/Dissolved transitions + archive | ✅ resolved 2026-04-25 in [17_channel_lifecycle.md](17_channel_lifecycle.md) DP-Ch31..Ch37 |
 | **Q18** T1 reframe for channel presence | T1 aggregate examples (typing indicator, presence) | Unblocked |
 | **Q19** per-channel pause | `channel_pause(ctx, channel_id, reason)` + write-rejection | Unblocked |
 | **Q32** privacy bubble-up | Channel visibility flag in metadata; bubble-up respects | Unblocked (metadata field supports it) |
