@@ -33,12 +33,6 @@ entities:
   - name: Dr. Grimesby Roylott
     kind: person
     aliases: ["Dr. Roylott", "Roylott", "the Doctor", "Grimesby Roylott"]
-  - name: Honoria Westphail
-    kind: person
-    aliases: []
-  - name: Percy Armitage
-    kind: person
-    aliases: ["Armitage"]
   - name: Stoke Moran
     kind: place
     aliases: ["Stoke Moran Manor House"]
@@ -48,9 +42,6 @@ entities:
   - name: Crown Inn
     kind: place
     aliases: ["the Crown"]
-  - name: Leatherhead
-    kind: place
-    aliases: []
 
 relations:
   # Anchor relations from prior fixture pattern (sherlock_scandal_ch01).
@@ -104,6 +95,20 @@ events:
     participants: [Sherlock Holmes, Watson, Dr. Grimesby Roylott]
 
 traps:
+  # C-PROMPT-SCENE alignment (2026-04-26): moved 3 borderline entities
+  # from `entities` to `traps` after C-PROMPT-SCENE prompt update told
+  # the LLM to filter backstory mentions. The fixture had been
+  # over-inclusive on these — they are mentioned in 1-2 paragraphs
+  # but never appear in any scene, never speak, never act.
+  - kind: entity
+    name: Honoria Westphail
+    reason: "C-PROMPT-SCENE — Helen's aunt, mentioned in one backstory paragraph (where Julia met her fiancé at Christmas); never present in any scene"
+  - kind: entity
+    name: Percy Armitage
+    reason: "C-PROMPT-SCENE — Helen's off-stage fiancé, mentioned in one paragraph as the future husband; never present, never speaks"
+  - kind: entity
+    name: Leatherhead
+    reason: "C-PROMPT-SCENE — train station Helen passed through to reach London; geographic aside, not a scene setting"
   # People mentioned only in backstory or by reference, never present
   # as actors in this story's events.
   - kind: entity
