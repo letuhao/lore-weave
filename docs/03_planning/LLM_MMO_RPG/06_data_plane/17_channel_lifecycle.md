@@ -413,6 +413,14 @@ Pause state lives in `channels` table (DB), not in writer's in-memory state. Fai
 
 If an indefinite pause is in effect (paused_until = NULL) and the writer goes through reassignment, pause persists until explicit `channel_resume`. There is no auto-clear on failover — pause is a feature-driven state, not an operational one.
 
+### Composition with LLM turn slot ([DP-Ch51](21_llm_turn_slot.md#dp-ch51--turn-slot-primitive))
+
+`channel_pause` and `claim_turn_slot` are **orthogonal**:
+- **Pause** halts game writes (advance_turn, ChannelScoped writes, bubble-up emits)
+- **Slot** is an advisory hint — does NOT block writes, just records "actor X is expected to act, until time T"
+
+Feature pattern recipes for LLM turns (Pattern 1 Strict / Pattern 2 Concurrent / Pattern 3 Cancellable) compose them differently — see [DP-Ch53](21_llm_turn_slot.md#dp-ch53--three-llm-turn-slot-patterns). Pause is for hard "no writes during NPC think"; slot is for "show NPC is thinking" + auto-timeout safety.
+
 ---
 
 ## DP-Ch37 — Recovery + idempotency

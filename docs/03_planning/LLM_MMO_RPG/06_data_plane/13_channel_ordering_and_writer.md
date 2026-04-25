@@ -189,6 +189,12 @@ CREATE TABLE channel_writer_state (
 
 CP updates this table on every reassignment. Writer node updates `last_heartbeat` periodically (every 10s); CP detects stale heartbeats as a secondary signal in addition to gRPC health probes.
 
+**Phase 4 extensions to this table:**
+- [DP-Ch22](#dp-ch22--schema-extensions-and-writer-allocation) added `last_turn_number BIGINT NOT NULL DEFAULT 0` for turn-number allocator state.
+- [DP-Ch51](21_llm_turn_slot.md#dp-ch51--turn-slot-primitive) added `current_turn_actor JSONB`, `turn_started_at TIMESTAMPTZ`, `turn_expected_until TIMESTAMPTZ`, `turn_slot_reason TEXT` for the LLM turn slot hint.
+
+All Phase 4 columns nullable; default to NULL = no slot held / no turn advanced. Together they let writer node serve `get_turn_slot` queries without scanning event log.
+
 ### Race scenarios + protocol behavior
 
 | Scenario | Behavior |

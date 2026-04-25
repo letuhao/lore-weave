@@ -214,12 +214,12 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 ## Phase 4 severity summary — FINAL
 
 - **🔴 Blockers (0):** all design blockers resolved 2026-04-25
-- **🟡 Significant gaps (1 remaining, 11 resolved):** Q20 LLM latency (V1-data-deferred, no design action available) + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q29, Q30, Q31, Q32, Q34~~ ✅ resolved 2026-04-25
+- **🟡 Significant gaps (0 remaining outright, 1 partial):** Q20 Phần A V1-data-deferred (quantitative DP-S\* rescale; no design action available); Phần B ✅ resolved + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q29, Q30, Q31, Q32, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (0 remaining, 4 resolved):** ~~Q23, Q24, Q25, Q33~~ ✅ resolved 2026-04-25 (consolidated into [20_operational_residuals.md](20_operational_residuals.md))
 
-**Resolved (19):** Q15, Q16, Q17, Q18, Q19, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34 ✅
+**Resolved (19) + 1 partial (Q20 Phần B done; Phần A V1-deferred):** Q15, Q16, Q17, Q18, Q19, Q20-B, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34 ✅
 
-**🎉 Phase 4 design + ops-residual cleanup is FUNCTIONALLY COMPLETE.** 19 of 20 Phase 4 questions resolved. Only Q20 (LLM latency) remains, deferred until V1 prototype data exists — no design action available now. **06_data_plane is locked baseline for feature design.** SDK implementation (Phase 2b proc-macros, clippy lints, dp/dp-derive crates) is the next phase of work, pursued when V1 game services begin coding.
+**🎉🎉 Phase 4 design phase is COMPLETE — every design action that could be taken has been taken.** Q20 Phần A is purely a measurement question requiring V1 prototype data. **06_data_plane is locked baseline for feature design + SDK implementation.** No further design work available until V1 measurement informs DP-S\* recalibration.
 
 ---
 
@@ -294,13 +294,24 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q20 — LLM turn latency is the real hot-path bottleneck (REAL-6 unchanged)
+## Q20 — LLM turn latency is the real hot-path bottleneck (REAL-6 unchanged) 🟡 PARTIAL (Phase 4, 2026-04-25)
 
-**What:** LLM calls 1–10 s dominate any DP latency. [DP-S*](08_scale_and_slos.md) numbers (50 ms T3 ack, 500 CCU per reality throughput targets) are over-specced relative to what the game actually needs. Real perf concern is LLM throughput per reality and queue depth per player.
+**What:** LLM calls 1-10s dominate. Two parts: (A) quantitative DP-S\* rescale + (B) LLM turn slot primitive design.
 
-**Why significant:** May indicate DP-S numbers should be rescaled downward (less over-engineering) — but premature to rescale without V1 data.
+### Phần A — Quantitative DP-S\* rescale 🟡 STILL DEFERRED
 
-**Candidate resolution path:** Defer quantitative rescale to V1 prototype data. In parallel, design **LLM turn slot** primitive: reservation + cancellation + priority queue per channel. Out of DP SDK scope; feature-level (roleplay-service), but DP may need to expose channel-pause + event cancellation hooks.
+DP-S\* numbers (500 CCU, 50ms T3 ack, 10k events/s/reality) anchor on MMO scale. Turn-based + channel model may be over-specced. **No design action available without V1 prototype measurement.** Defer until V1 data exists.
+
+### Phần B — LLM turn slot primitive + pattern doc ✅ RESOLVED (Phase 4, 2026-04-25)
+
+[21_llm_turn_slot.md](21_llm_turn_slot.md) DP-Ch51..Ch53:
+- **DP-Ch51** `claim_turn_slot` / `release_turn_slot` / `get_turn_slot` SDK primitives + schema extension on `channel_writer_state` (current_turn_actor + turn_started_at + turn_expected_until + turn_slot_reason); canonical `TurnSlotClaimed` / `TurnSlotReleased` reserved events; per-channel slot uniqueness; capability-gated by existing `can_advance_turn`.
+- **DP-Ch52** CP scheduler 30-s cadence auto-times-out expired slots; emits canonical `TurnSlotTimedOut` + `TurnSlotReleased{Timeout}`; feature catches event for retry/cancel/skip; 5-min hard ceiling on `expected_duration`.
+- **DP-Ch53** Three feature-level patterns documented: **Strict** (slot + pause + advance, classic turn-based), **Concurrent** (slot only, social RP), **Cancellable** (slot + cancellation token, mixed/player-friendly). Pattern-choice decision matrix; cross-channel composition allowed.
+
+Slot is **advisory hint** — does NOT block writes (that's `channel_pause`'s job per Q19); orthogonal composition with pause covered in [DP-Ch36](17_channel_lifecycle.md#dp-ch36--pause--lifecycle-composition-rules).
+
+**Phần A note:** Even after Phần B, quantitative DP-S\* rescale stays deferred. The DP-S\* targets remain the SLO contract for V1/V2 implementation; V1 measurement decides whether to relax them at V2/V3.
 
 ---
 

@@ -52,8 +52,9 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 18. [18_causality_and_routing.md](18_causality_and_routing.md) — **DP-Ch38..Ch42** `CausalityToken` opaque newtype attached to acks + `wait_for` parameter on read primitives + projection-apply checkpoint table + session-writer transparent routing extending DP-Ch14 pattern + error taxonomy + gateway contract (resolves Q21 + Q22)
 19. [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) — **DP-Ch43..Ch45** `RedactionPolicy` enum (Transparent / SkipPrivate / AnonymizeRefs / Custom) + `RedactionFilter` trait + application semantics in aggregator runtime loop + telemetry counters + per-channel visibility no-inheritance rule (resolves Q32)
 20. [20_operational_residuals.md](20_operational_residuals.md) — **DP-Ch46..Ch50** ops handoff: histogram bucket layouts (Q23) + telemetry cardinality control (Q24) + capability signing key rotation policy with V3 monthly + revocation broadcast (Q25) + subscription fan-out batching (Q29) + per-channel-level retention (Q33). Recommended defaults locked + configurable overrides documented.
+21. [21_llm_turn_slot.md](21_llm_turn_slot.md) — **DP-Ch51..Ch53** LLM turn slot primitive: claim/release/get_turn_slot SDK + auto-timeout scheduler with TurnSlotTimedOut canonical event + 3 feature-level patterns (Strict / Concurrent / Cancellable) for LLM turn coordination. (Resolves Q20 Phần B; Phần A quantitative rescale stays V1-data-deferred.)
 
-**🎉🎉 Phase 4 design + ops-residual cleanup is FUNCTIONALLY COMPLETE.** 19 of 20 Phase 4 questions resolved (Q15-Q19, Q21-Q34 except Q20). Only Q20 LLM latency remains — V1-data-deferred with no design action available. **06_data_plane is locked baseline for feature design (DF4/DF5/DF7) and SDK implementation (Phase 2b dp/dp-derive/dp-clippy crates).**
+**🎉🎉 Phase 4 design phase is COMPLETE — every actionable design question resolved.** Q20 Phần A (quantitative DP-S\* rescale) is purely a measurement question requiring V1 prototype data. **06_data_plane is locked baseline for feature design (DF4/DF5/DF7) and SDK implementation (Phase 2b dp/dp-derive/dp-clippy crates).**
 
 ---
 
@@ -80,7 +81,8 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 18 | [18_causality_and_routing.md](18_causality_and_routing.md) | LOCKED | DP-Ch38..Ch42 | 2026-04-25 |
 | 19 | [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) | LOCKED | DP-Ch43..Ch45 | 2026-04-25 |
 | 20 | [20_operational_residuals.md](20_operational_residuals.md) | LOCKED | DP-Ch46..Ch50 | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN — **Phase 4 functionally COMPLETE** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (19 resolved; only Q20 LLM latency remains, V1-data-deferred) | 2026-04-25 |
+| 21 | [21_llm_turn_slot.md](21_llm_turn_slot.md) | LOCKED | DP-Ch51..Ch53 | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN — **Phase 4 design COMPLETE** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (19 resolved + Q20 Phần B done; only Q20 Phần A V1-data-deferred — purely a measurement question) | 2026-04-25 |
 
 ---
 
@@ -107,6 +109,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-Ch*` | Causality token + routing UX (DP-Ch38..Ch42) | [18_causality_and_routing.md](18_causality_and_routing.md) |
 | `DP-Ch*` | Privacy redaction policy templates (DP-Ch43..Ch45) | [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) |
 | `DP-Ch*` | Operational residuals (DP-Ch46..Ch50) | [20_operational_residuals.md](20_operational_residuals.md) |
+| `DP-Ch*` | LLM turn slot primitive + patterns (DP-Ch51..Ch53) | [21_llm_turn_slot.md](21_llm_turn_slot.md) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.
 

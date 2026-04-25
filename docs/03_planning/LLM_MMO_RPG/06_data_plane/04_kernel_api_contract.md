@@ -211,6 +211,15 @@ pub enum DpError {
     #[error("session not found: session_id={session_id}")]
     SessionNotFound { session_id: String },
 
+    /// Phase 4 (DP-Ch51): turn slot already held by a different actor.
+    #[error("turn slot held by other actor: actor={actor:?} expected_until={expected_until:?}")]
+    TurnSlotHeldBy { actor: ActorId, expected_until: Timestamp },
+
+    /// Phase 4 (DP-Ch52): claimed expected_duration exceeds the 5-minute hard
+    /// ceiling. Reduce expected_duration or split into multiple slots.
+    #[error("turn slot expected_duration too long: requested={requested:?} max=5min")]
+    ExpectedDurationTooLong { requested: Duration },
+
     #[error("tier violation: {aggregate} requested={requested:?} allowed={allowed:?}")]
     TierViolation { aggregate: &'static str, requested: Tier, allowed: Tier },
 
@@ -714,6 +723,32 @@ impl DpClient {
         handle: &AggregatorHandle,
     ) -> Result<(), DpError>;
 
+    /// Phase 4 (DP-Ch51): claim turn slot for `actor` on `channel` with
+    /// expected duration. Hint only — does NOT block writes (use channel_pause
+    /// for that). Capability-gated by `can_advance_turn`. Idempotent on same
+    /// actor; fails if a different actor holds the slot.
+    /// See 21_llm_turn_slot.md for full semantics + patterns.
+    pub async fn claim_turn_slot(
+        &self,
+        ctx: &SessionContext,
+        channel: &ChannelId,
+        actor: ActorId,
+        expected_duration: Duration,
+        reason: String,
+    ) -> Result<TurnSlotAck, DpError>;
+
+    pub async fn release_turn_slot(
+        &self,
+        ctx: &SessionContext,
+        channel: &ChannelId,
+    ) -> Result<(), DpError>;
+
+    pub async fn get_turn_slot(
+        &self,
+        ctx: &SessionContext,
+        channel: &ChannelId,
+    ) -> Result<Option<TurnSlot>, DpError>;
+
     /// Phase 4 (DP-Ch35): pause a channel. Game writes (advance_turn,
     /// ChannelScoped writes, bubble-up emits) reject with ChannelPaused.
     /// Lifecycle and admin ops continue. Capability-gated by
@@ -744,6 +779,20 @@ pub struct TurnAck {
     pub channel_event_id: u64,
     pub turn_number: u64,
     pub applied_at: Timestamp,
+}
+
+/// Phase 4 (DP-Ch51): turn slot claim ack.
+pub struct TurnSlotAck {
+    pub channel_event_id: u64,
+    pub expected_until: Timestamp,
+}
+
+/// Phase 4 (DP-Ch51): turn slot read.
+pub struct TurnSlot {
+    pub actor: ActorId,
+    pub started_at: Timestamp,
+    pub expected_until: Timestamp,
+    pub reason: String,
 }
 
 /// Phase 4 (DP-Ch27): deterministic RNG seeded by a channel event id.
@@ -813,12 +862,12 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 | Subscription | 4 | `subscribe_invalidation` (pub/sub) · `subscribe_broadcast<T1>` (pub/sub) · `subscribe_channel_events_durable<S>` (Streams + DB catchup, Phase 4) · `subscribe_session_channels<S>` (multiplex, Phase 4) |
 | Macros | 2 | `cache_key!` (scope-dispatched), `instrumented!` |
 | Client | 2 | `DpClient::connect`, `DpClient::verify_reality` |
-| Channel | 8 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel`, `advance_turn`, `register_bubble_up_aggregator`, `unregister_bubble_up_aggregator`, `channel_pause`, `channel_resume` (Phase 4) |
+| Channel | 11 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel`, `advance_turn`, `register_bubble_up_aggregator`, `unregister_bubble_up_aggregator`, `channel_pause`, `channel_resume`, `claim_turn_slot`, `release_turn_slot`, `get_turn_slot` (Phase 4) |
 | Aggregator | 1 | `deterministic_rng` (Phase 4) |
-| **Error variants** | 19 | `DpError` (+2 Phase 4 Q21/Q22: `CausalityWaitTimeout`, `SessionNotFound`) |
-| **Total SDK primitives** | **~39** | Feature repos compose these into domain APIs. Channel + durable subscribe + turn boundary + bubble-up + lifecycle/pause (Phase 4) are additive. |
+| **Error variants** | 21 | `DpError` (+2 Phase 4 Q20: `TurnSlotHeldBy`, `ExpectedDurationTooLong`) |
+| **Total SDK primitives** | **~42** | Feature repos compose these into domain APIs. Channel + durable subscribe + turn boundary + bubble-up + lifecycle/pause + turn-slot (Phase 4) are additive. |
 
-~39 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with full channel + ordering + subscribe + turn + bubble-up + lifecycle support added in Phase 4.
+~42 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with full channel + ordering + subscribe + turn + bubble-up + lifecycle + turn-slot support added in Phase 4.
 
 ---
 
