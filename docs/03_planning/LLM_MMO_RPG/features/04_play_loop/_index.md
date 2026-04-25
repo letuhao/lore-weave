@@ -4,7 +4,7 @@
 > **Catalog reference:** [`catalog/cat_04_PL_play_loop.md`](../../catalog/cat_04_PL_play_loop.md) (owns `PL-*` stable-ID namespace)
 > **Purpose:** The moment-to-moment core gameplay — turn submission, response, session-tick, time-advancement, scene transitions. High-touch with hot-path SDK (being designed by another agent).
 
-**Active:** (empty — no agent currently editing)
+**Active:** PL_001 (DRAFT 2026-04-25 — first concrete implementation-ready feature design after DP Phase 4 LOCK)
 
 ---
 
@@ -12,8 +12,7 @@
 
 | ID | Title | Status | File | Commit |
 |---|---|---|---|---|
-
-(No features designed yet. First feature will live at `PL_001_<name>.md`.)
+| PL_001 | Place + Time Foundation (channels, fiction_clock, scene_state, turn-slot, CausalityToken chain) | DRAFT 2026-04-25 | [`PL_001_place_time_foundation.md`](PL_001_place_time_foundation.md) | (uncommitted) |
 
 ---
 
@@ -40,4 +39,4 @@ See root [`../_index.md`](../_index.md) § "How to add a new feature".
 
 ## Coordination note
 
-Play-loop features have highest coupling with hot-path SDK. When SDK design is still in flux, features in this category should describe **what they need from the SDK** (capabilities + data shapes) rather than specific function calls. Adapt to actual SDK API when it's published.
+~~Play-loop features have highest coupling with hot-path SDK. When SDK design is still in flux...~~ **2026-04-25 update:** the hot-path SDK design landed as the LOCKED DP contract in [`../../06_data_plane/`](../../06_data_plane/) (Phase 1-4 complete: DP-A1..A19 + DP-T0..T3 + DP-R1..R8 + DP-K1..K12 + DP-Ch1..Ch53). PL features now reference DP primitives by name and use [`22_feature_design_quickstart.md`](../../06_data_plane/22_feature_design_quickstart.md) as the authoring template. PL_001 is the first feature to do this and serves as the example for subsequent PL_NNN docs.
