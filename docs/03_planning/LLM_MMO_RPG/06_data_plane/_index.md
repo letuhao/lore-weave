@@ -46,8 +46,9 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 12. [12_channel_primitives.md](12_channel_primitives.md) — **DP-Ch1..Ch10** channel identity, tree registry, CP cache + delta stream, scope marker traits, cache-key format, SessionContext extension, CRUD primitives (resolves Q26)
 13. [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) — **DP-Ch11..Ch15** per-channel `channel_event_id` allocation, writer assignment rules (cell vs non-cell), epoch fencing, cross-node write routing via gRPC, causal-ref schema for bubble-up (resolves Q17 + Q30 + Q34)
 14. [14_durable_subscribe.md](14_durable_subscribe.md) — **DP-Ch16..Ch20** durable per-channel subscribe with resume token, hybrid Redis Streams + Postgres catchup, monotonic gap-free delivery, multi-channel multiplex convenience, backpressure + reconnect (resolves Q16)
+15. [15_turn_boundary.md](15_turn_boundary.md) — **DP-Ch21..Ch24** turn boundary primitive: TurnBoundary event + advance_turn SDK API + per-event turn_number tagging + capability gating + composition with pause/bubble-up/move (resolves Q15)
 
-Phase 4 blockers remaining: Q15 (turn boundary), Q27 (bubble-up primitive). Both consume the Q16 durable subscribe foundation just landed.
+Phase 4 blocker remaining: **Q27 (bubble-up primitive)** — last design blocker. All foundations now in place: Q16 (durable subscribe over descendants), Q34 (writer for emit), DP-Ch15 (causal refs), DP-A17 (turn boundary as natural aggregation window).
 
 ---
 
@@ -57,7 +58,7 @@ Phase 4 blockers remaining: Q15 (turn boundary), Q27 (bubble-up primitive). Both
 |---:|---|---|---|---|
 | 00 | [00_preamble.md](00_preamble.md) | LOCKED | — | 2026-04-24 |
 | 01 | [01_scope_and_boundary.md](01_scope_and_boundary.md) | LOCKED | — | 2026-04-24 |
-| 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A16 | 2026-04-25 |
+| 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A17 | 2026-04-25 |
 | 03 | [03_tier_taxonomy.md](03_tier_taxonomy.md) | LOCKED | DP-T0, DP-T1, DP-T2, DP-T3 | 2026-04-24 |
 | 04 | [04_kernel_api_contract.md](04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 2026-04-25 |
 | 05 | [05_control_plane_spec.md](05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 2026-04-25 |
@@ -68,7 +69,8 @@ Phase 4 blockers remaining: Q15 (turn boundary), Q27 (bubble-up primitive). Both
 | 12 | [12_channel_primitives.md](12_channel_primitives.md) | LOCKED | DP-Ch1..Ch10 | 2026-04-25 |
 | 13 | [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) | LOCKED | DP-Ch11..Ch15 | 2026-04-25 |
 | 14 | [14_durable_subscribe.md](14_durable_subscribe.md) | LOCKED | DP-Ch16..Ch20 | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 in progress** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (Q16/Q17/Q26/Q30/Q34 ✅ resolved 2026-04-25) | 2026-04-25 |
+| 15 | [15_turn_boundary.md](15_turn_boundary.md) | LOCKED | DP-Ch21..Ch24 | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 in progress** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (Q15/Q16/Q17/Q26/Q30/Q34 ✅ resolved 2026-04-25) | 2026-04-25 |
 
 ---
 
@@ -78,7 +80,7 @@ Outside docs may cross-link unambiguously to:
 
 | Prefix | Scope | Owned by |
 |---|---|---|
-| `DP-A*` | Axioms / invariants (DP-A1..A16) | [02_invariants.md](02_invariants.md) |
+| `DP-A*` | Axioms / invariants (DP-A1..A17) | [02_invariants.md](02_invariants.md) |
 | `DP-T0..T3` | Tier taxonomy | [03_tier_taxonomy.md](03_tier_taxonomy.md) |
 | `DP-R*` | Access Pattern Rulebook rules (DP-R1..R8) | [11_access_pattern_rules.md](11_access_pattern_rules.md) |
 | `DP-S*` | Scale and SLO items (DP-S1..S8) | [08_scale_and_slos.md](08_scale_and_slos.md) |
@@ -89,6 +91,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-Ch*` | Channel primitives (DP-Ch1..Ch10) | [12_channel_primitives.md](12_channel_primitives.md) |
 | `DP-Ch*` | Channel ordering + writer binding (DP-Ch11..Ch15) | [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) |
 | `DP-Ch*` | Durable per-channel subscribe (DP-Ch16..Ch20) | [14_durable_subscribe.md](14_durable_subscribe.md) |
+| `DP-Ch*` | Turn boundary primitive (DP-Ch21..Ch24) | [15_turn_boundary.md](15_turn_boundary.md) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.
 

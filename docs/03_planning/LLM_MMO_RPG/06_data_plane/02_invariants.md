@@ -1,7 +1,7 @@
 # 02 — Invariants (Axioms)
 
 > **Status:** LOCKED. Every axiom here was decided in a user conversation and may not be changed without a superseding decision recorded in [../decisions/](../decisions/) and a cross-reference entry in [99_open_questions.md](99_open_questions.md).
-> **Stable IDs:** DP-A1..DP-A16. These IDs are referenceable from any other doc in this project. Never renumber.
+> **Stable IDs:** DP-A1..DP-A17. These IDs are referenceable from any other doc in this project. Never renumber.
 
 ---
 
@@ -288,6 +288,31 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 
 ---
 
+## DP-A17 — Per-channel turn numbering (Phase 4, 2026-04-25)
+
+**Rule:** Every active channel has a monotonically increasing **`turn_number: u64`** allocated by its writer node ([DP-A16](#dp-a16--channel-writer-node-binding-phase-4-2026-04-25)). The number advances **only** via the explicit `advance_turn` primitive — never auto-derived from event count, time, or any other implicit signal. **Every channel event committed by the writer is tagged with the channel's *current* turn_number** (the last-advanced value, or 0 if `advance_turn` has never been called for the channel). Turn numbers are gap-less per channel; the existence of turn `N` implies all turns `0..N` exist.
+
+**Why:** The user's clarified game model is turn-based event-linear time — every reality is a book with discrete page flips. "Turn boundary" is the central sync primitive of the game: a recognized point in the channel's timeline where state advances. Locking turn semantics into DP at the axiom level (rather than letting each feature invent its own turn counter) gives a single referenceable concept for player UX, NPC scheduling, narrative beats, and bubble-up triggering.
+
+DP is **agnostic to turn semantics** — what a "turn" means (D&D round, narrative scene, conversation back-and-forth, real-time tick) is feature-defined via the opaque `turn_data: serde_json::Value` payload. DP only guarantees the numbering invariant.
+
+**Enforcement:**
+- **(a)** Channel writer maintains in-memory `last_turn_number` per channel, persisted on every commit (in the `channel_writer_state` table extended with `last_turn_number BIGINT NOT NULL DEFAULT 0`). Recovery on writer takeover seeds via `SELECT MAX(turn_number) FROM event_log WHERE channel_id = $1`.
+- **(b)** Writer increments `last_turn_number` only when handling an `advance_turn` SDK call; rejects manual / out-of-band increments.
+- **(c)** Every other channel-event commit reads `last_turn_number` (no increment) and tags the event with that value before insertion.
+- **(d)** `advance_turn` is capability-gated — JWT must include `can_advance_turn` for the target channel level, else `DpError::CapabilityDenied`.
+
+**Consequence:**
+- **Channels that never call `advance_turn`** keep all their events at `turn_number = 0`. Tavern / town / country channels typically do not use turn semantics; cell channels (player conversations, combat scenes) typically do. Both work without special config.
+- **"Events in turn N" is a queryable concept** — `SELECT * FROM event_log WHERE channel_id = $1 AND turn_number = $2 ORDER BY channel_event_id`. Used by UI for turn replay, by features for "what happened in this round".
+- **Bubble-up aggregator ([Q27](99_open_questions.md))** can use turn boundaries as natural aggregation windows — accumulate descendant events between turns, decide on bubble-up at turn advance.
+- **Pause ([Q19](99_open_questions.md))** is orthogonal — pause stops ALL events including turn advances; resume continues from current turn_number without resetting.
+- **Total stored cost:** one `BIGINT` per event log row (~8 bytes). Negligible.
+
+**Cross-ref:** [15_turn_boundary.md](15_turn_boundary.md) DP-Ch21..Ch24 for the `advance_turn` primitive, `TurnBoundary` event shape, and writer allocation algorithm. Resolves [99_open_questions.md Q15](99_open_questions.md).
+
+---
+
 ## Locked-decision summary (for cross-reference)
 
 | ID | Short name | One-line |
@@ -308,5 +333,6 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 | DP-A14 | Aggregate scope is design-time | Aggregates declare `RealityScoped` or `ChannelScoped` via marker trait; scope determines cache key shape + API signature; compile-time enforced. |
 | DP-A15 | Per-channel total event ordering | `channel_event_id: u64` monotonic per channel, gapless; subscribers catch up gaps before live delivery; reality-scoped events use existing R7 ordering. |
 | DP-A16 | Channel writer-node binding | One writer per active channel; cell writer = creator's session node + handoff; non-cell writer = CP-assigned, persistent; cross-node writes routed transparently via gRPC; epoch-fenced for failover. |
+| DP-A17 | Per-channel turn numbering | `turn_number: u64` monotonic gapless per channel, writer-allocated only via `advance_turn` primitive; every event tagged with current turn_number; channels not using turn semantics stay at 0. |
 
 Any change to an axiom is logged in [../decisions/](../decisions/) with a new locked-decision entry and the superseded axiom gets a `_withdrawn` suffix rather than being deleted.

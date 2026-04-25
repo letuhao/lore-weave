@@ -616,6 +616,23 @@ impl DpClient {
         ctx: &SessionContext,
         channel: ChannelId,
     ) -> Result<(), DpError>;
+
+    /// Phase 4 (DP-Ch21): advance the channel's turn counter by 1 and emit
+    /// a TurnBoundary event. Capability-gated by `can_advance_turn` JWT claim.
+    /// See 15_turn_boundary.md for full semantics.
+    pub async fn advance_turn(
+        &self,
+        ctx: &SessionContext,
+        channel: &ChannelId,
+        turn_data: serde_json::Value,
+        causal_refs: Vec<EventRef>,
+    ) -> Result<TurnAck, DpError>;
+}
+
+pub struct TurnAck {
+    pub channel_event_id: u64,
+    pub turn_number: u64,
+    pub applied_at: Timestamp,
 }
 ```
 
@@ -679,10 +696,10 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 | Subscription | 4 | `subscribe_invalidation` (pub/sub) · `subscribe_broadcast<T1>` (pub/sub) · `subscribe_channel_events_durable<S>` (Streams + DB catchup, Phase 4) · `subscribe_session_channels<S>` (multiplex, Phase 4) |
 | Macros | 2 | `cache_key!` (scope-dispatched), `instrumented!` |
 | Client | 2 | `DpClient::connect`, `DpClient::verify_reality` |
-| Channel | 3 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel` |
-| **Total SDK primitives** | **~33** | Feature repos compose these into domain APIs. Channel primitives + durable subscribe (Phase 4) are additive; earlier scope APIs subsumed into the scope-typed reads. |
+| Channel | 4 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel`, `advance_turn` (Phase 4) |
+| **Total SDK primitives** | **~34** | Feature repos compose these into domain APIs. Channel primitives + durable subscribe + turn boundary (Phase 4) are additive; earlier scope APIs subsumed into the scope-typed reads. |
 
-~33 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with channel support + durable subscribe added in Phase 4.
+~34 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with channel support + durable subscribe + turn boundary added in Phase 4.
 
 ---
 

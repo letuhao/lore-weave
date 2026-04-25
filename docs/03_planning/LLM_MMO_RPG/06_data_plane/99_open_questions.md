@@ -213,23 +213,29 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ## Phase 4 severity summary
 
-- **🔴 Blockers (2 remaining, 2 resolved):** Q15 page/turn per-channel · Q27 event bubble-up primitive · ~~Q16 durable subscribe~~ ✅ resolved 2026-04-25 · ~~Q26 channel as first-class concept~~ ✅ resolved 2026-04-25
+- **🔴 Blockers (1 remaining, 3 resolved):** Q27 event bubble-up primitive · ~~Q15 turn boundary~~ ✅ resolved 2026-04-25 · ~~Q16 durable subscribe~~ ✅ resolved 2026-04-25 · ~~Q26 channel as first-class concept~~ ✅ resolved 2026-04-25
 - **🟡 Significant gaps (9 remaining, 3 resolved):** Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 + ~~Q17, Q30, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (4):** Q23–Q25, Q29, Q33
 
-**Resolved (5):** Q16, Q17, Q26, Q30, Q34 ✅
+**Resolved (6):** Q15, Q16, Q17, Q26, Q30, Q34 ✅
 
 ---
 
-## Q15 — Per-channel page/turn boundary primitive (REAL-1 reframed)
+## Q15 — Per-channel page/turn boundary primitive (REAL-1 reframed) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Each channel (cell, tavern, town, ...) has its own turn/page boundary — a canonical sync event that "advances" the channel and all members must see before the next channel-scoped event. DP contract currently has no first-class primitive for this; features would have to encode it via convention (ad-hoc T3 write of a `page_flip` aggregate).
+**What:** First-class turn-boundary primitive in DP rather than ad-hoc convention.
 
-**Why blocker:** Page-flip / turn-boundary is the central sync mechanism of the game. If not a first-class DP concept, every feature invents its own; consistency across features breaks.
+**Resolution:** Locked as 1 axiom + 1 file:
+- **[DP-A17](02_invariants.md#dp-a17--per-channel-turn-numbering-phase-4-2026-04-25)** Per-channel turn numbering — monotonic gapless `turn_number: u64` per channel, writer-allocated only via `advance_turn`, every event tagged with current turn_number.
+- **[15_turn_boundary.md](15_turn_boundary.md)** DP-Ch21..Ch24:
+  - Ch21 `TurnBoundary` event = `ChannelEvent` impl with discriminator `"turn_boundary"`; `advance_turn(ctx, channel, turn_data, causal_refs)` SDK primitive; transparent routing to writer; non-blocking on subscribers.
+  - Ch22 `event_log.turn_number BIGINT` column + `channel_writer_state.last_turn_number`; writer allocation algorithm; recovery via `MAX(turn_number)` reseed; optional UNIQUE index for failover-race safety.
+  - Ch23 JWT claim `can_advance_turn: Vec<level_name>` gates the primitive; SDK enforces; concrete assignments per service at deploy time.
+  - Ch24 Composition: pause rejects advance; bubble-up observes turns as inputs; reality-scoped events excluded; turn 0 = "never advanced" sentinel.
 
-**Candidate resolution path:** Add **DP-K13** `advance_channel_turn(ctx, channel_id, boundary_event)` primitive + **DP-R9** rule "writes to a channel require subscribe-completion of the last turn_boundary". Supersede [DP-K5](04_kernel_api_contract.md#dp-k5--write-primitives-tier-typed)-scoped scopes to include channel dimension.
+**[Note on candidate-path supersession]:** earlier proposal mentioned a "DP-R9 subscribe-completion before next event" rule — rejected (G4a decision). Subscribers consume at own pace; turn boundary is just an ordered event, no write-blocking gate.
 
-**Blocks:** All feature design (they need turn semantics).
+**Unblocks Q27 bubble-up** (aggregator now has turn boundaries as observable inputs) and **Q19 channel pause** (composition specified — pause stops all events including advance).
 
 ---
 

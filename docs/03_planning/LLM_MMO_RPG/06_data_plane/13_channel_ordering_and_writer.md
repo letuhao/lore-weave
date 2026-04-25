@@ -27,7 +27,8 @@ ALTER TABLE event_log
     ADD COLUMN channel_id          UUID,            -- NULL = reality-scoped event
     ADD COLUMN channel_event_id    BIGINT,          -- NULL = reality-scoped event
     ADD COLUMN writer_epoch        BIGINT,          -- monotonic per channel; for fence
-    ADD COLUMN causal_refs         JSONB DEFAULT '[]'::jsonb;  -- see DP-Ch15
+    ADD COLUMN causal_refs         JSONB DEFAULT '[]'::jsonb,  -- see DP-Ch15
+    ADD COLUMN turn_number         BIGINT NOT NULL DEFAULT 0;   -- per-channel turn counter (DP-A17 / DP-Ch22)
 
 -- Channel-scoped events have a strict total order per channel:
 ALTER TABLE event_log

@@ -81,6 +81,69 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q15 RESOLVED (turn boundary primitive)
+
+### Session arc
+
+Fourth Phase 4 mini-session. Picked Q15 (turn boundary primitive) — the simpler of the two remaining blockers, used as a warm-up before tackling the more complex Q27 bubble-up. Both consume Q16's durable subscribe foundation; Q15 first lets Q27 reuse the established pattern.
+
+CLARIFY phase: user approved 6 design decisions (G1a TurnBoundary as `ChannelEvent` impl with discriminator · G2a feature explicitly calls `advance_turn`, capability-gated · G3a minimal metadata = turn_number + opaque turn_data · G4a no subscribe-completion enforcement · G5a writer auto-allocates monotonic gapless · G6a every channel event tagged with current turn_number).
+
+BUILD phase: 1 new axiom (DP-A17) + 1 new file (15_turn_boundary.md, DP-Ch21..Ch24) + targeted updates to 4 existing files. No re-design of any prior locked content.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`15_turn_boundary.md`](06_data_plane/15_turn_boundary.md) | LOCKED, DP-Ch21..Ch24 | 347 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A17 per-channel turn numbering invariant; summary table row | 312 → 338 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`advance_turn` primitive on `DpClient` + `TurnAck`; surface count 33 → 34 | 706 → 723 |
+| [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | DP-Ch11 schema extension cite `turn_number BIGINT` column added in DP-Ch22 | 381 → 382 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q15 ✅ resolved with cross-refs; severity summary updated (6 resolved) | 428 → 434 |
+| [`_index.md`](06_data_plane/_index.md) | File 15 row + DP-Ch fourth range; DP-A range → A17; Phase 4 progress entry; status row reflects Q15/Q16/Q17/Q26/Q30/Q34 resolved | 113 → 116 |
+
+**Folder total after this Q:** 4972 lines across 16 files. **103 stable IDs** total: 17 axioms · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API · 10 CP · 10 coherency · 10 failure · **24 channel** (Ch1..Ch24).
+
+### Q15 decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| TurnBoundary as ChannelEvent impl | DP-Ch21 | Reuses Q16 stream + Q17 ordering uniformly; no separate event log path |
+| Feature explicit `advance_turn` + capability-gated | DP-Ch21 / DP-Ch23 | DP agnostic to "when to advance" rules; capability check via JWT `can_advance_turn` claim |
+| Minimal metadata: turn_number + opaque turn_data | DP-Ch21 | Feature populates turn_data with whatever it needs (D&D round, scene title, "player A's turn"); DP doesn't interpret |
+| No subscribe-completion gate on writes | DP-Ch24 | Slow consumers fall behind in stream; feature/UX decides "wait for all players" — DP doesn't gate on potentially disconnected clients |
+| Writer auto-allocates monotonic gapless | DP-Ch22 | Per-channel `last_turn_number` in `channel_writer_state`; recovery via `MAX(turn_number)` reseed; in-tx with TurnBoundary insert |
+| Every channel event tagged with current turn_number | DP-Ch22 | "Events in turn N" becomes a queryable concept via single index; channels not using turn semantics stay at 0 |
+| DP-A17 axiom level invariant | DP-A17 | Future features can rely on "turn boundaries exist + per-channel monotonic" without re-deriving from primitives |
+
+### Phase 4 progress after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **6** | Q15 · Q16 · Q17 · Q26 · Q30 · Q34 |
+| 🔴 Blockers remaining | **1** | **Q27 bubble-up primitive (last design blocker)** |
+| 🟡 Significant gaps | 9 | Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 (Q20 deferred V1 data) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q29, Q33 |
+
+**All foundations now in place for Q27:**
+- Q16 durable subscribe → aggregator can subscribe to descendant channels
+- Q34 writer binding → aggregator runs on parent channel's writer node
+- DP-Ch15 causal_refs → bubble-up events can cite source events
+- DP-A17 turn boundary → natural aggregation window between turn advances
+- DP-Ch11 channel_event_id → deterministic RNG seed source for replay-safe random thresholds
+
+Q27 is the **last design blocker**. After it lands, Phase 4 design phase is complete (residual 🟡 gaps and 🟢 nits are smaller items that don't block feature design from starting).
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 + all Phase 4 work to date (Q26 / Q17/Q30/Q34 / Q16 / Q15) is LOCKED. Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md is now 723 lines, still under 1500 hard cap. Q27 will likely add 1-2 more primitives. **Plan a split after Q27** if file approaches 800; tentative split: `04a_core_types_and_session.md` + `04b_read_write_subscribe.md` + `04c_channel_primitives_macros.md`. Don't split speculatively before Q27.
+- DP-A17 turn invariant means every channel-event row in `event_log` must carry `turn_number`. Phase 2b SDK implementation must enforce this; missing turn_number on a write is a bug.
+- File 15's `TurnBoundary` event shape uses serde_json::Value for opaque turn_data — implementation will need a typed-decoder helper for features that want to deserialize their turn_data into a known struct.
+
+---
+
 ## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q16 RESOLVED (durable per-channel subscribe)
 
 ### Session arc
@@ -724,6 +787,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-25 | **06_data_plane Phase 3 locked — design track COMPLETE.** `07_failure_and_recovery.md` (DP-F1..F10, 385 lines) closes Q6/Q12 and Q5 residual. Key locks: **consistency over availability** on split-brain (DP-F5, reject T3 writes rather than reconcile); **3 token-bucket backpressure** (per-reality-per-tier + per-service + per-session, DP-F7); schema migration rollback ≤5 min with dual-read pause + new-schema quarantine (DP-F8); CP-down cold-start fallback = 503 Retry-After rather than risk double-wake (DP-F8); chaos cadence weekly CP + node / bi-weekly Redis + inval drop / monthly freeze + partition + backpressure / quarterly migration rollback (DP-F10). Folder total: 2851 lines across 12 files, **74 stable IDs**. 7 Q-items fully resolved, 2 partial (ops residuals), 2 out of scope, 1 future implementation. Parallel tracks now unblocked: feature design (DF4/DF5/DF7) consuming DP contract, main SRE track continuation (SR6-SR12), SDK implementation, ops doc. |
 | 2026-04-25 | **06_data_plane Phase 4 backlog recorded (NOT resolved).** User clarified actual game model is turn-based event-linear with **hierarchical channels** (cell → tavern → town → district → country → continent) + probabilistic event bubble-up. Adversarial review identified **Phase 1-3 contracts remain valid baseline but need extension**. 20 open questions (Q15..Q34) appended to `99_open_questions.md`: **4 blockers** (Q15 per-channel turn primitive, Q16 durable subscribe with resume, Q26 channel as first-class concept, Q27 bubble-up primitive), **12 significant gaps**, **4 nits/ops**. 7 items are REAL-* issues from hot-path review reframed to channel scope; 9 are NEW issues surfaced by channel model; 4 carry forward as ops/security follow-ups. Resolution plan: foundation (Q26/Q17/Q30/Q34) → blockers → semantics → gaps → ops. One mini-session per Q cluster. Phase 1-3 files remain LOCKED as baseline; new file `12_channel_primitives.md` planned once foundation resolved. |
 | 2026-04-25 | **06_data_plane Phase 4 Q26 ✅ RESOLVED — channel hierarchy now first-class DP concept.** First Phase 4 mini-session. 6 design decisions approved (D1c tree + free-form level_name · D2a UUID + cached ancestor · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix · D5 SessionContext extension · D6b per-reality-DB registry + CP cache). 2 new axioms **DP-A13** (channel tree first-class) + **DP-A14** (aggregate scope design-time marker). New file **12_channel_primitives.md** (447 lines, DP-Ch1..Ch10). Updates to 04 (`ChannelId`, scope traits, extended SessionContext, scope-typed reads, scope-dispatched `cache_key!`, channel CRUD primitives; file now 677 lines — over soft cap, user-approved as API-reference exception), 05 (CP channel tree cache + 3 new gRPC methods), 99 (Q26 marked resolved + severity updated). Folder: 3687 lines across 13 files, ~88 stable IDs. Phase 4 progress: 1/4 blockers resolved; Q17 + Q30 + Q34 next cluster (per-channel ordering + writer binding). |
+| 2026-04-25 | **06_data_plane Phase 4 Q15 ✅ RESOLVED — turn boundary primitive.** Fourth Phase 4 mini-session. 6 design decisions approved (G1a TurnBoundary as ChannelEvent impl · G2a feature explicit advance_turn + capability-gated · G3a minimal metadata turn_number + opaque turn_data · G4a no subscribe-completion gate · G5a writer auto-allocates monotonic gapless · G6a every channel event tagged with current turn_number). New axiom **DP-A17** (per-channel turn numbering invariant — monotonic gapless, writer-allocated only via advance_turn, every event tagged). New file **15_turn_boundary.md** (347 lines, DP-Ch21..Ch24: TurnBoundary event = ChannelEvent impl with `"turn_boundary"` discriminator + advance_turn(ctx, channel, turn_data, causal_refs) primitive · event_log.turn_number column + channel_writer_state.last_turn_number + writer allocation via MAX-reseed + optional UNIQUE index for failover-race · JWT can_advance_turn: Vec<level_name> capability claim · composition with pause/bubble-up/move-session). Updates: 04 (+advance_turn primitive on DpClient + TurnAck, surface 33→34, 706→723 lines), 13 (DP-Ch11 schema +turn_number column note), 99 (Q15 ✅), _index. Folder: 4972 lines across 16 files, **103 stable IDs**. Phase 4 progress: 6 resolved (Q15/Q16/Q17/Q26/Q30/Q34); **Q27 bubble-up = last design blocker** with all foundations now in place. |
 | 2026-04-25 | **06_data_plane Phase 4 Q16 ✅ RESOLVED — durable per-channel subscribe with resume token.** Third Phase 4 mini-session. 6 design decisions approved (F1c hybrid Redis Streams + Postgres catchup · F2a client-side cursor SDK stateless · F3 catchup→live merge with event_id dedup · F4a only ChannelScoped events · F5b per-channel API + multiplex convenience · F6b TCP backpressure + 60s stall). DP-A4 axiom extended (Redis = cache + pub/sub + Streams). New file **14_durable_subscribe.md** (381 lines, DP-Ch16..Ch20: subscribe primitive + DurableStreamItem enum · hybrid backing Redis Streams 7-day + Postgres event_log historical catchup · client-side resume token with monotonic gap-free delivery · catchup→live merge algorithm · multiplex convenience auto-subscribing ancestor chain · TCP backpressure + heartbeats + StreamEndReason taxonomy). Updates: 04 (DP-K6 + 2 new subscribe primitives, surface 31→33, 685→706 lines), 06 (DP-X2 explicit 5-keyspace table separating pub/sub vs Streams), 99 (Q16 ✅), _index. Folder: 4572 lines across 15 files, **98 stable IDs**. Phase 4 progress: 5 resolved (Q16/Q17/Q26/Q30/Q34); 2 blockers remain (Q15 turn boundary, Q27 bubble-up) — both consume Q16's durable subscribe foundation. |
 | 2026-04-25 | **06_data_plane Phase 4 Q17 + Q30 + Q34 ✅ RESOLVED — per-channel total ordering + writer-node binding.** Second Phase 4 mini-session. 5 design decisions approved (E1a per-channel total order applies only to ChannelScoped · E2b single-writer in-memory counter + DB UNIQUE backstop · E3b cell writer = creator's node + handoff, non-cell writer = CP-assigned + persistent · E4b SDK transparent cross-node routing via gRPC · E5a CP detects writer death and pushes via channel-tree-update stream). 2 new axioms **DP-A15** (per-channel total event ordering) + **DP-A16** (channel writer-node binding). New file **13_channel_ordering_and_writer.md** (381 lines, DP-Ch11..Ch15: `channel_event_id` allocation with MAX-reseed recovery + DB UNIQUE gaplessness · cell vs non-cell writer assignment + handoff p99 ≤200ms · epoch fence via `channel_writer_state` table + `dp:writer_audit:{reality_id}` stream · transparent gRPC routing with ~5ms LAN hop · `causal_refs: Vec<EventRef>` schema for Q27 bubble-up). Updates: 04 (+`WrongChannelWriter` `DpError` + DP-K5 routing note; 685 lines), 05 (+writer-binding responsibility + 3 RPC methods, surface 16→19), 12 (cross-refs to file 13), 99 (Q17/Q30/Q34 ✅), _index. Folder: 4142 lines across 14 files, **93 stable IDs**. Phase 4 progress: 4 resolved (Q17/Q26/Q30/Q34); 3 blockers remain (Q15 turn boundary, Q16 durable subscribe, Q27 bubble-up primitive) — likely tackled as Q16-first cluster since Q15 and Q27 both consume the durable subscribe. |
 | 2026-04-24 | **H/M/P tier concerns batch-locked — all 21 SA+DE adversarial concerns resolved.** §12R added as consolidated follow-up. **H3 reversed from original batch** per user directive: doppelganger pattern REJECTED, NPC single-session becomes PERMANENT (not V2+ deferred), session caps + queue UX first-class (§12R.1). H5 adds new `seeding` lifecycle state + bootstrap worker + locale translation (§12R.2). H4 adds upcaster requirement for deprecated event types (§12C.5 amended). Plus observability metrics for H1/H2/H6/M-REV-6, HNSW pre-warm on thaw (§12R.5), projection rebuild determinism rule (§12R.7), admin command discoverability (§12R.9), and various polish. 25 decisions locked (H1-H6-D1/H3-NEW-D1..D6, M-REV-1..6-D1, P1-P4-D1). Storage + multiverse design **fully locked** pending V1 prototype data. |
