@@ -1,5 +1,28 @@
 # WA_006 — Mortality (Death Model)
 
+> **⚠ OVER-EXTENSION NOTICE (added 2026-04-25, post-DRAFT review):** This feature design was flagged as over-extended into territories owned by other features. Specifically:
+>
+> | Section | Content | Should be owned by |
+> |---|---|---|
+> | §3.2 | `pc_mortality_state` aggregate (per-PC state) | **PCS_001** (PC substrate, when designed) |
+> | §6.1 | LLM death-detection sub-validator (keyword match in A6 output filter) | **05_llm_safety** (A6 internals) |
+> | §6.3 | Hot-path mortality check on every turn submission | **PL_001 / PL_002** (turn submission flow) |
+> | §7.2, §10.2 | Respawn sweeper task + sweeper-driven Dying→Alive transition + move_session_to_channel | **PL_001 / PCS_001** (lifecycle + PC state) |
+> | §9.1 | False-positive dispute flow (admin review queue) | **05_llm_safety** + admin-tooling |
+>
+> **Legitimate WA_006 scope** when rewritten will be:
+> - §3.1 `mortality_config` aggregate (per-reality singleton; author-declared) ✓
+> - §7 closed-set `DeathMode` enum (Permadeath / RespawnAtLocation / Ghost) ✓
+> - V1 default = Permadeath ✓
+> - Per-PC overrides via Forge ✓
+> - Cross-references to where mechanics live (no design of those mechanics here)
+>
+> **Status:** PROVISIONAL. Pending rewrite to a thin config-only feature (~180 lines instead of 730). Until rewritten, the over-extended sections are advisory only — feature owners (PCS_001, 05_llm_safety, PL_001) may revise when they take over the relevant aggregates / validators / hot paths.
+>
+> The user explicitly chose to defer the rewrite to keep working momentum; this notice is the marker. See review thread 2026-04-25 in conversation history.
+>
+> ---
+>
 > **Conversational name:** "Mortality" (MOR). Per-reality declaration of what happens when a PC dies — Permadeath / RespawnAtLocation / Ghost — plus the death-trigger detection layer (LLM-narrated death or admin-forced) and the post-death state aggregate. Resolves PC-B1 + PC-A3 + PC-E3 locked decisions.
 >
 > **Category:** WA — World Authoring
