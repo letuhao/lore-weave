@@ -61,9 +61,9 @@ Without this folder, every feature has to relitigate event semantics. With it, f
 | 02 | [`02_invariants.md`](02_invariants.md) | LOCKED Phase 1 + Option C redesign | EVT-A1..A12 | 2026-04-25 (redesign) |
 | 03 | [`03_event_taxonomy.md`](03_event_taxonomy.md) | LOCKED Phase 1 + Option C redesign | EVT-T1/T3/T4/T5/T6/T8 active; T2/T7/T9/T10/T11 `_withdrawn` per I15 | 2026-04-25 (redesign) |
 | 04 | [`04_producer_rules.md`](04_producer_rules.md) | LOCKED Phase 2a thin-rewrite (Option C) | EVT-P1/P3/P4/P5/P6/P8 active; P2/P7/P9/P10/P11 `_withdrawn` per I15 | 2026-04-25 |
-| 05 | `05_validator_pipeline.md` | PENDING Phase 3 mechanism-only | EVT-V* | — |
+| 05 | [`05_validator_pipeline.md`](05_validator_pipeline.md) | LOCKED Phase 3a (Option C) — framework rules; cite `_boundaries/03_validator_pipeline_slots.md` for stage list SSOT | EVT-V1..V7; resolves MV12-D11 | 2026-04-25 |
 | 06 | [`06_per_category_contracts.md`](06_per_category_contracts.md) | LOCKED Phase 2b thin-rewrite (Option C) — envelope mechanism + extensibility framework only; sub-shape SSOT in `_boundaries/` + feature docs | — | 2026-04-25 |
-| 07 | `07_llm_proposal_bus.md` | PENDING Phase 3 | EVT-L* | — |
+| 07 | [`07_llm_proposal_bus.md`](07_llm_proposal_bus.md) | LOCKED Phase 3b (Option C) — bus framework mechanism; specific config (topics, retention) operational | EVT-L1..L6; resolves DP-A6 framework | 2026-04-25 |
 | 08 | `08_scheduled_events.md` | PENDING Phase 4 | — | — |
 | 09 | `09_causal_references.md` | PENDING Phase 4 | EVT-L* | — |
 | 10 | `10_replay_semantics.md` | PENDING Phase 4 | EVT-L* | — |
