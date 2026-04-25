@@ -1,28 +1,36 @@
 # WA_003 — Forge (Author Console)
 
-> **⚠ OVER-EXTENSION NOTICE (added 2026-04-25, post-WA boundary review):** This feature is BORDERLINE. Half of its content is legitimately WA-scoped (UI/API for editing Lex + Heresy data); the other half is generic author-console pattern (RBAC matrix × ImpactClass, dual-actor approval flow, audit-log infrastructure, pending-edit T1 state) that belongs in a cross-cutting feature (likely future `CC_NNN_authoring_console_pattern.md` in `11_cross_cutting/`).
+> **📐 PATTERNS-FOR-FUTURE-EXTRACTION NOTICE (added 2026-04-25 post-WA boundary review; reframed 2026-04-25 closure pass):**
+> This feature contains design patterns that are USABLE AS-IS for V1 but may be extracted to a reusable cross-cutting feature in V2+ when other author-console UIs need them. Specifically:
 >
-> **Sections that are legitimate WA scope:**
-> - §1 user story (Lex/Heresy editing scenarios) ✓
-> - §3.1 `forge_audit_log` aggregate (WA-specific to Lex/Heresy edits) ✓
-> - §7 EditAction closed set (when scoped to Lex/Heresy operations) ✓
-> - §11/§12 Lex/Heresy edit sequences ✓
+> - §6 RBAC matrix × ImpactClass classification
+> - §7.4 dual-actor approval flow + pending_edit T1 state
+> - §10 cross-service handoff template
 >
-> **Sections that should extract to a cross-cutting pattern:**
-> - §6 RBAC matrix + ImpactClass classification (generic)
-> - §7.4 Dual-actor approval flow + pending_edit T1 (generic)
-> - §10 Cross-service handoff template (generic)
+> These patterns are **V1-ESSENTIAL** for Forge — they enable Lex/Heresy editing — and are NOT boundary violations. The future extraction is an OPTIMIZATION (deduplicate when other features need similar consoles), NOT a fix (the patterns are correctly placed for V1).
 >
-> **Status:** PROVISIONAL. Pending future split where the GENERIC patterns extract to a `CC_NNN_*` cross-cutting feature; the LEX/HERESY-specific portions stay here as the WA author-console for those two features. Until the split, the over-extended sections are advisory only — future cross-cutting feature owners may revise.
+> **Status interpretation:** WA_003 is CANDIDATE-LOCK with normal V1 stability. The earlier "PROVISIONAL" status (commit `4be727d` over-extension marker) was reframed in this closure pass — the framing was too harsh; the patterns are legitimate WA design used to enable the Lex/Heresy editing console. See [`_boundaries/99_changelog.md`](../../_boundaries/99_changelog.md) for the audit trail.
 >
-> Companion files PLT_001 Charter + PLT_002 Succession (formerly WA_004/005, relocated 2026-04-25) consume Forge's RBAC pattern but live in `10_platform_business/` because they're identity/account-level concerns.
+> **Sections that are core WA scope (the editing functionality):**
+> - §1 user story (Lex/Heresy editing scenarios)
+> - §3.1 `forge_audit_log` aggregate
+> - §7 EditAction closed set (Lex/Heresy operations)
+> - §11/§12 Lex/Heresy edit sequences
+> - §13 admin stage transition sequence
+>
+> **Sections that USE patterns extractable to future CC_NNN:**
+> - §6 RBAC matrix (generic per-feature; usable verbatim by future console UIs)
+> - §7.4 dual-actor (generic Tier1 approval flow)
+> - §10 cross-service handoff (generic template)
+>
+> Companion files PLT_001 Charter + PLT_002 Succession (formerly WA_004/005, relocated 2026-04-25) already consume Forge's RBAC pattern as USERS — they didn't redesign, they cited. That's the pattern-reuse model V2+ may formalize.
 >
 > ---
 >
 > **Conversational name:** "Forge" (FRG). The author-facing console where world authors view + edit their reality's Lex axioms, declare per-actor Heresy contamination exceptions, and (with admin escalation) trigger WorldStability stage transitions. Pairs with Lex (the law) + Heresy (the violation): Forge is where authors WRITE the law and the exceptions.
 >
 > **Category:** WA — World Authoring
-> **Status:** DRAFT 2026-04-25
+> **Status:** **CANDIDATE-LOCK 2026-04-25** (DRAFT → PROVISIONAL → CANDIDATE-LOCK across boundary review + closure pass; §14 acceptance criteria added — 10 scenarios). LOCK granted after the 10 §14 acceptance scenarios have passing integration tests.
 > **Catalog refs:** **DF4 World Rules** (sub-feature: author UI for axioms + contamination + stability monitoring). Resolves [WA_001 LX-D4](WA_001_lex.md) (author UI to edit LexConfig) and [WA_002 HER-D10](WA_002_heresy.md) (author UI for ContaminationDecl + WorldStability monitoring).
 > **Builds on:** [WA_001 Lex](WA_001_lex.md), [WA_002 Heresy](WA_002_heresy.md) (consumes their aggregates; does NOT redesign), [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) (rejection copy localization pattern), [02_storage S05](../../02_storage/) (S5 admin action policy for stage transitions)
 > **Defers to:** future PCS_001 for `PcId` (Forge references abstractly), future quest engine for narrative-recovery flows.
@@ -694,7 +702,40 @@ UI banner across all reality sessions:
 
 ---
 
-## §14 Open questions deferred
+## §14 Acceptance criteria (LOCK gate)
+
+The design is implementation-ready when gateway-bff + world-service + admin tooling can pass these scenarios. Each scenario is one row in the integration test suite. LOCK is granted after all 10 pass.
+
+### 14.1 Happy-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-FRG-1 OWNER MINOR EDIT** | RealityOwner Tâm-Anh executes §11 sequence: flips `Firearms: Allowed → Forbidden` (Minor solo). | RBAC check: RealityOwner + Minor = Ok solo; `t2_write LexConfig` commits with new axiom; `advance_turn` at reality root with EVT-T8 AdminAction `ForgeEdit { editor: tam_anh, action: EditAxiom { Firearms, Forbidden, ... } }`; `t2_write ForgeAuditEntry` with full snapshot before/after; UI toast confirms; subsequent turns reject Firearms attempts (per WA_001 §11 pattern). |
+| **AC-FRG-2 OWNER MAJOR EDIT WITH AUTO-BUMP** | RealityOwner executes §12 sequence: creates ContaminationDecl for `pc_yangguo MagicSpells` while LexConfig has `MagicSpells: Forbidden`. | Confirmation modal shown to author; on confirm: `t3_write_multi` atomic with [LexConfig::EditAxiom (Forbidden → AllowedWithBudget(default_template)), ActorContaminationDecl::Create]; both writes either succeed or both rollback; EVT-T8 ForgeEdit with `auto_bump=true`; audit entry `before/after` shows the LexConfig delta + new decl. |
+| **AC-FRG-3 CO-AUTHOR MINOR EDIT** | Co-Author (granted via PLT_001 Charter) executes a Minor-impact axiom edit. | RBAC check: Co-Author + Minor = Ok solo; same commit flow as AC-FRG-1; audit entry records Co-Author identity + role. |
+| **AC-FRG-4 READ-ONLY VIEW LOAD** | All 4 roles (RealityOwner / Co-Author / Admin / ReadOnly) load the Forge UI; each role queries `lex_config` + `actor_contamination_decl` + `world_stability` per their JWT capability. | RealityOwner sees full edit-enabled UI; Co-Author sees axioms + decls (edit-enabled per role) + audit; Admin sees all + cross-reality view; ReadOnly sees axioms + WorldStability summary only (no decls / audit / edit buttons). |
+
+### 14.2 Failure-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-FRG-5 READ-ONLY ATTEMPTS EDIT** | ReadOnly user clicks Edit (UI shouldn't expose the button, but defensive backend check); POST `/v1/forge/realities/{R}/edits` with EditAxiom payload. | gateway-bff JWT capability check rejects: `forge.role[R] = ReadOnly`; returns `CapabilityDenied`; UI toast: "Bạn không có quyền thực hiện việc này..." (per §9). No write committed. |
+| **AC-FRG-6 CO-AUTHOR ATTEMPTS TIER1** | Co-Author calls `AdvanceWorldStability` (Tier1). | RBAC matrix §6.1: Co-Author cannot trigger AdvanceWorldStability (admin-only). Reject with `CapabilityDenied`; UI surfaces "Chỉ admin mới có thể thực hiện việc này.". (Tier1 NeedsDualActor flow does NOT engage because the requester isn't even authorized to initiate.) |
+| **AC-FRG-7 CONCURRENT EDIT CONFLICT** | Two RealityOwner-class users (e.g., RealityOwner + Admin) submit `EditAxiom` for the same `kind: Firearms` within 50ms. | First write commits; second write succeeds based on stale read but the underlying `LexConfig` row reflects last-write-wins; UI of second author auto-reloads after detecting `lex_config.last_authored_at` is newer than their pre-edit read; UI shows "Đã có thay đổi mới hơn từ <author>. Đang tải lại..."; user can re-apply their edit if still desired. |
+| **AC-FRG-8 PENDING TTL EXPIRY** | RealityOwner initiates a Tier1 edit (e.g., AdvanceWorldStability); `pending_edit` T1 row created with TTL 5 min; no second-actor approval arrives within 5 minutes. | Background sweeper (or T1 TTL expiry) drops the pending_edit silently; ForgeAuditEntry NOT logged (only Accepted edits land in audit per §8.2); submitter's UI shows "Yêu cầu đã hết hạn. Vui lòng gửi lại nếu vẫn cần."; submitter can re-initiate from scratch. |
+
+### 14.3 Boundary scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-FRG-9 TIER1 DUAL-ACTOR APPROVAL** | §13 sequence end-to-end: operator A initiates `AdvanceWorldStability { to_stage: Cracking{1} }`; operator B approves within 5 min. | A's POST creates `pending_edit` T1 row; A's UI shows "Awaiting approval"; B's UI surfaces in "Pending approvals" tab; B's approve POST completes the edit: t3_write WorldStability AdvanceStage + advance_turn at reality root with WorldTick (or EVT-T8 AdminAction-only V1 per HER-D8) + ForgeAuditEntry with `approval_chain: [op_A, op_B]`. UI banners reach all reality sessions per WA_002 §9.2. |
+| **AC-FRG-10 AUDIT-LOG NON-ATOMIC RECOVERY** | Edit's `t2_write LexConfig` succeeds and EVT-T8 AdminAction emits, but the subsequent `t2_write ForgeAuditEntry` fails (transient DB error). | Per §8.2 design (audit append separate from edit): the LexConfig edit STANDS; missing audit row is logged as a SEV3 ops alert; reconciliation tooling can replay the missing audit from the EVT-T8 AdminAction event log via `correlation_event_id` lookup. (Verifies the design's intentional non-atomicity is observable + recoverable.) |
+
+**Lock criterion:** all 10 scenarios have a corresponding integration test that passes. Until then, status is `CANDIDATE-LOCK` (post-acceptance criteria + reframing) → `LOCKED` (after tests).
+
+---
+
+## §15 Open questions deferred
 
 | ID | Question | Defer to |
 |---|---|---|
@@ -713,7 +754,7 @@ UI banner across all reality sessions:
 
 ---
 
-## §15 Cross-references
+## §16 Cross-references
 
 - [WA_001 Lex](WA_001_lex.md) — provides LexConfig + AxiomKind + Allowance enum that Forge edits
 - [WA_002 Heresy](WA_002_heresy.md) — provides ActorContaminationDecl + WorldStability that Forge edits
@@ -728,7 +769,7 @@ UI banner across all reality sessions:
 
 ---
 
-## §16 Implementation readiness checklist
+## §17 Implementation readiness checklist
 
 - [x] **§2** Domain concepts (AuthorRole, EditAction, EditOutcome, ForgeAuditEntry, ImpactClass)
 - [x] **§2.5** EVT-T* mapping (EVT-T8 AdminAction for edits; EVT-T11/T8 for stage transitions per HER-D8)
@@ -743,7 +784,8 @@ UI banner across all reality sessions:
 - [x] **§11** Sequence: Minor solo edit (Firearms flip)
 - [x] **§12** Sequence: Major solo edit with auto-bump (CreateContaminationDecl)
 - [x] **§13** Sequence: Tier1 dual-actor edit (AdvanceWorldStability)
-- [x] **§14** Deferrals (FRG-D1..D12)
+- [x] **§14** Acceptance criteria (10 scenarios across happy-path / failure-path / boundary)
+- [x] **§15** Deferrals (FRG-D1..D12)
 
 **Deferred:** acceptance criteria (intentionally not in V1 of this doc).
 

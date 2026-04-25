@@ -1,81 +1,57 @@
-# WA_006 — Mortality (Death Model)
+# WA_006 — Mortality (Per-Reality Death Mode Config)
 
-> **⚠ OVER-EXTENSION NOTICE (added 2026-04-25, post-DRAFT review):** This feature design was flagged as over-extended into territories owned by other features. Specifically:
+> **🪶 THIN-REWRITE NOTICE (2026-04-25 closure pass):** This file was thin-rewritten from 730 lines → ~280 lines as part of the WA folder closure pass. The original draft over-extended into territories owned by other features:
 >
-> | Section | Content | Should be owned by |
-> |---|---|---|
-> | §3.2 | `pc_mortality_state` aggregate (per-PC state) | **PCS_001** (PC substrate, when designed) |
-> | §6.1 | LLM death-detection sub-validator (keyword match in A6 output filter) | **05_llm_safety** (A6 internals) |
-> | §6.3 | Hot-path mortality check on every turn submission | **PL_001 / PL_002** (turn submission flow) |
-> | §7.2, §10.2 | Respawn sweeper task + sweeper-driven Dying→Alive transition + move_session_to_channel | **PL_001 / PCS_001** (lifecycle + PC state) |
-> | §9.1 | False-positive dispute flow (admin review queue) | **05_llm_safety** + admin-tooling |
+> - `pc_mortality_state` aggregate (per-PC state) → **PCS_001** (when designed)
+> - LLM death-detection sub-validator (A6 keyword match) → **05_llm_safety**
+> - Hot-path mortality check on every turn submission → **PL_001 / PL_002**
+> - Respawn sweeper task + sweeper-driven Dying→Alive transitions + move_session_to_channel → **PL_001 / PCS_001**
+> - False-positive dispute flow (admin review queue) → **05_llm_safety** + admin-tooling
 >
-> **Legitimate WA_006 scope** when rewritten will be:
-> - §3.1 `mortality_config` aggregate (per-reality singleton; author-declared) ✓
-> - §7 closed-set `DeathMode` enum (Permadeath / RespawnAtLocation / Ghost) ✓
-> - V1 default = Permadeath ✓
-> - Per-PC overrides via Forge ✓
-> - Cross-references to where mechanics live (no design of those mechanics here)
+> Those mechanics are NOT redesigned here. WA_006 now owns ONLY the per-reality config layer (which death mode applies in this reality + per-PC overrides). Cross-references in §14 point at where mechanics live.
 >
-> **Status:** PROVISIONAL. Pending rewrite to a thin config-only feature (~180 lines instead of 730). Until rewritten, the over-extended sections are advisory only — feature owners (PCS_001, 05_llm_safety, PL_001) may revise when they take over the relevant aggregates / validators / hot paths.
->
-> The user explicitly chose to defer the rewrite to keep working momentum; this notice is the marker. See review thread 2026-04-25 in conversation history.
+> Original draft history: see commit `8aed4fa` (initial 730-line draft) + commit `de9cf1a` (over-extension marker added) + this thin-rewrite commit. Stable ID `WA_006` retained per foundation I15 — "WA_006 Mortality" still refers to this feature, just shrunk to its legitimate scope.
 >
 > ---
 >
-> **Conversational name:** "Mortality" (MOR). Per-reality declaration of what happens when a PC dies — Permadeath / RespawnAtLocation / Ghost — plus the death-trigger detection layer (LLM-narrated death or admin-forced) and the post-death state aggregate. Resolves PC-B1 + PC-A3 + PC-E3 locked decisions.
+> **Conversational name:** "Mortality" (MOR). Per-reality declaration of what death MODE applies — `Permadeath` (V1 default), `RespawnAtLocation`, `Ghost` — plus per-PC overrides. The DATA + AUTHOR-FACING CONFIG only; the runtime mechanics (state machine, detection, hot-path check, respawn flow) live in PCS_001 / 05_llm_safety / PL_001/002 when those features land.
 >
 > **Category:** WA — World Authoring
-> **Status:** DRAFT 2026-04-25
-> **Catalog refs:** **DF4 World Rules** (sub-feature: PC death behavior). Resolves [PC-B1](../../decisions/locked_decisions.md) (PC death behavior) + partial [PC-E3](../../decisions/locked_decisions.md) (paradox acceptance — death is the most extreme paradox case).
-> **Builds on:** [WA_001 Lex](WA_001_lex.md) (companion validator slot pattern), [WA_002 Heresy](WA_002_heresy.md) (Catastrophic/Shattered cascade may trigger mass death V2+), [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) (uses scaffold; death is committed as a TurnEvent extension), [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) (rejection copy pattern), [05_llm_safety/](../../05_llm_safety/) A6 output filter (where LLM-narrated death detection lives)
-> **Defers to:** future PCS_001 for `PcId` + HP/stats system + combat death; future DL_001 for NPC-conversion mode (NPC-8 catalog).
+> **Status:** **CANDIDATE-LOCK 2026-04-25** (thin-rewrite + §12 acceptance criteria added closure pass). LOCK granted after the 6 §12 acceptance scenarios have passing integration tests.
+> **Catalog refs:** **DF4 World Rules** (sub-feature: PC death mode config). Resolves [PC-B1](../../decisions/locked_decisions.md) (PC death behavior config layer only) — the runtime enforcement of death is PCS_001 territory.
+> **Builds on:** [WA_003 Forge](WA_003_forge.md) (author UI for editing MortalityConfig — extends Forge's EditAction set), [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §16 RealityManifest (Mortality extends manifest with `mortality_config` field per `_boundaries/02_extension_contracts.md` §2)
+> **Mechanics handed off to:**
+> - [PCS_001](../06_pc_systems/) — per-PC mortality state aggregate, respawn lifecycle (when PCS_001 ships)
+> - [05_llm_safety/](../../05_llm_safety/) — A6 death-detection sub-validator, false-positive dispute flow
+> - [PL_001 / PL_002](../04_play_loop/) — hot-path mortality check on turn submission, move_session_to_channel for respawn
 
 ---
 
-## §1 User story (concrete)
+## §1 User story (config layer only)
 
-**Scenario A — Permadeath in wuxia (V1 default):**
+**Author Tâm-Anh creates reality `R-tdd-h-2026-04` with default Permadeath:**
 
-Reality `R-tdd-h-2026-04`. MortalityConfig:
-- `default_death_mode: Permadeath`
+She doesn't declare a `mortality_config` in the RealityManifest → reality defaults to `Permadeath` per V1 + locked PC-B1.
 
-PC `Lý Minh` is in a brawl. LLM narrates: "Lưỡi đao cứa qua cổ Lý Minh, máu phun ra... anh gục xuống, hơi thở dứt..."
+**Author Hoài-Linh creates reality `R-fantasy-tutorial` with respawn:**
 
-A6 output filter death-detection sub-validator catches the death keywords + scene context → flags `death_trigger: { actor: pc_ly_minh, kind: NarrativeDeath }`. world-service:
-1. Commits the LLM PlayerTurn normally (with `outcome=Accepted`)
-2. POST-COMMIT: emits a separate `MortalityDeath` event tagged on the actor
-3. Updates `pc_mortality_state(pc_ly_minh) = Dead { mode: Permadeath, died_at_turn: N, died_at_cell: C }`
-4. Bumps `forge_roles_version` for the user → next session bind shows the PC as dead
-5. UI receives via subscribe: scene shows Lý Minh's body; PC's player gets terminal modal: "Lý Minh đã hy sinh. Thực tại này theo chế độ Permadeath — bạn không thể tiếp tục với nhân vật này."
+She wants forgiving deaths for new players. Via Forge (WA_003) → "Mortality config" tab:
 
-Player can create a NEW PC in the same reality (subject to author rules) but Lý Minh is gone.
+```
+default_death_mode: RespawnAtLocation {
+  spawn_cell: "town_square",
+  fiction_delay_days: 1,
+  memory_retention: FullMemory,
+}
+```
 
-**Scenario B — Respawn in a more forgiving fantasy reality:**
+Saved → MortalityConfig committed via Forge's EditAction; invalidation broadcast propagates ≤100ms; downstream PCS_001 / PL_001 mechanics consume the new config on next death event.
 
-Reality `R-fantasy-tutorial`. MortalityConfig:
-- `default_death_mode: RespawnAtLocation { spawn_cell: town_square, fiction_delay_days: 1 }`
+**Author Tâm-Anh later adds plot armor for protagonist PC:**
 
-Same PC dies in a brawl. Death-trigger fires. world-service:
-1. Same PlayerTurn commit + MortalityDeath event
-2. PC enters `Dying { mode: RespawnAtLocation, will_respawn_at_fiction_time: <current+1d>, spawn_cell }` state
-3. PC's session is paused; UI shows "Bạn đã ngã xuống. Hồi sinh sau 1 ngày..."
-4. Background sweeper checks every fiction-clock advance; when `will_respawn_at_fiction_time <= current_fiction_clock`, transitions to `Alive` state
-5. PC respawns at `spawn_cell`; emits a `MortalityRespawn` event; UI shows "Bạn tỉnh dậy ở quảng trường... ký ức cuối cùng là cảnh máu và đau..."
+Reality stays default Permadeath but author wants `pc_protagonist` to be Ghost-mode instead of Permadeath. Via Forge → "Per-PC overrides" sub-tab → adds `MortalityOverride { pc_id: pc_protagonist, mode: Ghost }`.
 
-**Scenario C — Ghost mode in narrative-driven realities:**
-
-Reality `R-narrative-mystery`. MortalityConfig:
-- `default_death_mode: Ghost`
-
-PC dies. Becomes a ghost spectator:
-1. `pc_mortality_state = Dead { mode: Ghost, died_at_turn: N }`
-2. PC retains read-only access: subscribe streams continue; can see scene events
-3. PC cannot submit turns; UI shows "Bạn là một bóng ma. Chỉ có thể quan sát."
-4. Other PCs / NPCs cannot interact with the ghost (V1 stub; V2+ may add ghost-NPC interaction)
-5. Ghost can be exorcised / freed by world events (V2+ resurrection paths)
-
-**This feature design specifies:** the closed-set DeathMode enum; the death-trigger detection layer (LLM-narrated + admin-forced); the `pc_mortality_state` aggregate state machine; the post-death effects per mode; the V1 default behavior (Permadeath); per-PC overrides (V2+); and integration with existing PC turn-submission flow.
+**This feature design specifies:** the `mortality_config` aggregate shape, the closed-set DeathMode enum, the V1 default (Permadeath), per-PC overrides via Forge, and the contract that downstream features consume this config when they implement death mechanics. WA_006 does NOT design death detection, state machine, or respawn flow — those are external owners' territory per the thin-rewrite notice.
 
 ---
 
@@ -83,30 +59,29 @@ PC dies. Becomes a ghost spectator:
 
 | Concept | Maps to | Notes |
 |---|---|---|
-| **DeathMode** | Closed enum: `Permadeath \| RespawnAtLocation { spawn_cell, fiction_delay_days } \| Ghost` | V1: 3 modes. V2+: Reincarnation, NpcConversion (depends on PCS_001 / DL_001). |
-| **MortalityConfig** | Per-reality declaration of default DeathMode + per-PC overrides | One row per reality. Default = `Permadeath` if no config exists. |
-| **MortalityState** | Per-PC current state | `Alive \| Dying { will_respawn_at } \| Dead { mode, died_at } \| Ghost`. |
-| **DeathTrigger** | What caused the death | Closed set: `NarrativeDeath` (LLM-detected) \| `AdminForced` \| `WorldShatterCascade` (V2+) \| `CombatDamage` (V2+ — depends on PCS_001 HP system). |
-| **DeathTriggerDetector** | A6 output filter sub-validator that scans LLM-narrated turns for death keywords + scene context | V1: deterministic keyword match + LLM-confidence threshold. V2+: dedicated death-classifier model. |
-| **RespawnTrigger** | Background sweeper task that wakes PCs in `Dying` state when fiction-clock crosses their respawn time | Hourly sweep cadence V1 (matches PLT_002 Succession sweeper pattern, formerly WA_005). |
+| **DeathMode** | Closed enum: `Permadeath \| RespawnAtLocation { spawn_cell, fiction_delay_days, memory_retention } \| Ghost` | V1: 3 modes. V2+: Reincarnation, NpcConversion deferred. |
+| **MortalityConfig** | Per-reality singleton aggregate; declares default DeathMode + per-PC overrides | Default = `Permadeath` if no config row exists (per PC-B1 lock). |
+| **MortalityOverride** | Per-(reality, pc_id) override; takes precedence over reality default | Useful for plot-armored protagonists, boss NPCs, etc. |
+| **MemoryRetention** | Closed enum: `FullMemory \| LastNDays(u32) \| NoMemory` | V1 default = FullMemory; LastNDays + NoMemory deferred to V2+ (MOR-D7). |
 
 ---
 
 ## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11)
 
-| Mortality output | EVT-T* | Producer | Notes |
+WA_006 emits no runtime events. Config edits emit:
+
+| WA_006 path | EVT-T* | Producer | Notes |
 |---|---|---|---|
-| Death detected during PC turn | (the original turn commits as normal) **EVT-T1** PlayerTurn | normal pipeline | Death is a SIDE-EFFECT, not a replacement event. |
-| Death event emitted post-commit | **EVT-T3** AggregateMutation on `pc_mortality_state` (causal_ref to the triggering PlayerTurn) | world-service post-validator | New sub-shape: `MortalityDeath { mode, trigger_kind }`. |
-| Admin-forced death | **EVT-T8** AdminAction (sub-shape `MortalityAdminKill`) + EVT-T3 mutation as side-effect | admin-cli via S5 dual-actor | Tier1 ImpactClass per WA_003. |
-| Respawn (sweeper-triggered) | **EVT-T3** AggregateMutation on `pc_mortality_state` (transition Dying → Alive) | world-service sweeper | New sub-shape: `MortalityRespawn`. PC re-bound to spawn_cell via PL_001 §13 move pattern. |
-| Mass-death cascade (Catastrophic / Shattered Heresy stage transition) | per-PC **EVT-T3** AggregateMutations + sweeper batch | world-service responding to WorldStability transition | V2+ only (deferred MOR-D5). |
+| Author edits MortalityConfig via Forge | **EVT-T8** AdminAction (sub-shape `ForgeEdit { action: EditMortalityConfig \| AddMortalityOverride \| RemoveMortalityOverride, ... }`) | Forge / world-service | Extends WA_003 Forge's EditAction enum. |
+| RealityManifest seed (bootstrap) | (no event — embedded in PL_001 §16 bootstrap chain) | knowledge-service ingestion → world-service | Extends PL_001 RealityManifest per `_boundaries/02_extension_contracts.md` §2. |
+
+Runtime events (death triggers, mortality state transitions, respawns) are emitted by PCS_001 / 05_llm_safety / PL when those features ship. Not WA_006.
 
 ---
 
 ## §3 Aggregate inventory
 
-Two new aggregates.
+**One** aggregate. The thin scope.
 
 ### 3.1 `mortality_config`
 
@@ -114,9 +89,9 @@ Two new aggregates.
 #[derive(Aggregate)]
 #[dp(type_name = "mortality_config", tier = "T2", scope = "reality")]
 pub struct MortalityConfig {
-    pub reality_id: RealityId,                       // singleton per reality
+    pub reality_id: RealityId,                       // (also from key — singleton per reality)
     pub default_death_mode: DeathMode,
-    pub per_pc_overrides: Vec<MortalityOverride>,    // V1: empty Vec by default; author may declare
+    pub per_pc_overrides: Vec<MortalityOverride>,    // empty Vec by default
     pub schema_version: u32,
 }
 
@@ -125,94 +100,28 @@ pub enum DeathMode {
     RespawnAtLocation {
         spawn_cell: ChannelId,                        // existing cell channel
         fiction_delay_days: u32,                      // 0..=30 V1
-        memory_retention: MemoryRetention,            // FullMemory | LastNDays(u32) | NoMemory
+        memory_retention: MemoryRetention,
     },
-    Ghost,                                            // become spectator; no turn submissions
+    Ghost,                                            // observer-only; no turn submissions
 }
 
 pub enum MemoryRetention {
     FullMemory,                                       // V1 default for RespawnAtLocation
-    LastNDays(u32),                                   // V2+
+    LastNDays(u32),                                   // V2+ (MOR-D7)
     NoMemory,                                         // V2+
 }
 
 pub struct MortalityOverride {
-    pub pc_id: PcId,
-    pub mode: DeathMode,                              // overrides the default for this specific PC
-    pub note: Option<String>,                         // author rationale
+    pub pc_id: PcId,                                  // referenced abstractly; PcId type owned by PCS_001
+    pub mode: DeathMode,                              // overrides the reality default for this PC
+    pub note: Option<String>,                         // ≤500 chars; author rationale
 }
 ```
 
-- T2 + RealityScoped: per-reality singleton; small (~5 KB typical).
-- Read at every death-trigger detection; cached for 5 minutes per world-service node.
-- Default = `Permadeath` if no `MortalityConfig` exists at all (no row in the table).
-
-### 3.2 `pc_mortality_state`
-
-```rust
-#[derive(Aggregate)]
-#[dp(type_name = "pc_mortality_state", tier = "T2", scope = "reality")]
-pub struct PcMortalityState {
-    #[dp(indexed)] pub pc_id: PcId,                   // primary key per (reality, pc)
-    pub state: MortalityState,
-    pub last_transition_at_turn: u64,
-    pub last_transition_at_fiction_time: FictionTimeTuple,
-    pub history: Vec<MortalityTransition>,            // up to 10 most recent transitions
-}
-
-pub enum MortalityState {
-    Alive,
-    Dying {                                           // RespawnAtLocation mode only
-        will_respawn_at_fiction_time: FictionTimeTuple,
-        spawn_cell: ChannelId,
-        died_at_cell: ChannelId,
-        death_trigger: DeathTrigger,
-    },
-    Dead {                                            // Permadeath mode (terminal)
-        mode: DeathMode,                              // always Permadeath here
-        died_at_turn: u64,
-        died_at_cell: ChannelId,
-        death_trigger: DeathTrigger,
-    },
-    Ghost {                                           // Ghost mode (read-only-spectator; not strictly "dead")
-        died_at_turn: u64,
-        died_at_cell: ChannelId,
-        death_trigger: DeathTrigger,
-    },
-}
-
-pub enum DeathTrigger {
-    NarrativeDeath {                                  // LLM-narrated; A6 detected
-        triggering_turn_event_id: u64,                // the PlayerTurn or NPCTurn that contained the death narration
-        detection_confidence: f32,                    // 0.0..=1.0; A6's confidence score
-    },
-    AdminForced {                                     // admin-cli /kill
-        admin_user_id: UserId,
-        reason: String,
-    },
-    // V2+ variants (not in V1 closed set):
-    // WorldShatterCascade,
-    // CombatDamage { final_blow_actor: ActorId },
-}
-
-pub struct MortalityTransition {
-    pub from_state: MortalityState,
-    pub to_state: MortalityState,
-    pub at_turn: u64,
-    pub at_fiction_time: FictionTimeTuple,
-    pub trigger: DeathTrigger,                        // for Alive→Dying/Dead/Ghost; ignored for Dying→Alive (respawn)
-}
-```
-
-- T2 + RealityScoped: per-PC state; durable; ~2-5 KB per row.
-- Default = `Alive` if no row exists (lazy-create on first death).
-- Read at every PC turn submission (per §6.3 hot-path check); cached aggressively.
-
-### 3.3 References (no other new aggregates)
-
-- **`forge_audit_log`** (WA_003): MortalityConfig edits + admin kills logged here
-- **`actor_binding`** (PL_001 §3.6): updated on respawn (PC moves to spawn_cell)
-- **`npc_session_memory`** (R8 / NPC_001): NPCs in the cell remember the death (post-Mortality V2+ adds emotional memory facets)
+- T2 + RealityScoped: per-reality singleton; small (~5 KB typical even with 100 overrides).
+- Created at reality bootstrap from RealityManifest (per PL_001 §16) OR lazy-default via Forge's first edit.
+- Read by downstream features (PCS_001 / 05_llm_safety / PL) when they need to apply the death mode at runtime.
+- One row per reality; identified by `reality_id` (singleton like `fiction_clock` and `lex_config`).
 
 ---
 
@@ -220,10 +129,9 @@ pub struct MortalityTransition {
 
 | Aggregate | Read tier | Write tier | Scope | Read freq | Write freq | Eligibility |
 |---|---|---|---|---|---|---|
-| `mortality_config` | T2 | T2 | Reality | ~1/turn (cached >95%) for death-trigger lookup | rare (author edits) | Per-reality singleton; durable; eventual consistency on edit OK. |
-| `pc_mortality_state` | T2 | T2 | Reality | ~1/turn for active PCs (cached) | rare (transitions only) | Per-PC durable; lazy-created on first death. |
+| `mortality_config` | T2 | T2 | Reality | ~1 per death event in downstream features (cached) | rare (author edits via Forge) | Per-reality singleton; durable; eventual-consistency on author edit OK. |
 
-No T0/T1/T3 in this feature. Death is a major canon event but doesn't require T3 atomicity (single-aggregate write per transition; eventual consistency on read OK during the ~1s projection lag).
+No T0/T1/T3. Author edits don't need atomicity with other writes.
 
 ---
 
@@ -232,522 +140,264 @@ No T0/T1/T3 in this feature. Death is a major canon event but doesn't require T3
 ### 5.1 Reads
 
 ```rust
-// Per turn submission (PL_001 §11 hot path)
-let mortality = dp::read_projection_reality::<PcMortalityState>(
-    ctx,
-    PcMortalityStateId::derive(pc_id),
-    wait_for=None, ...
-).await?.unwrap_or_default();  // default = Alive
-
-// At death-trigger time
+// Downstream features (PCS_001 / 05_llm_safety / PL) read this at death time.
+// WA_006 itself doesn't read at hot-path — it's the config DATA.
 let config = dp::read_projection_reality::<MortalityConfig>(
     ctx,
     MortalityConfigId::singleton(reality_id),
     wait_for=None, ...
-).await?.unwrap_or_default();  // default = MortalityConfig { default_death_mode: Permadeath, ... }
+).await?.unwrap_or_default();  // unwrap_or_default = Permadeath fallback
 ```
 
-### 5.2 Writes (death transition)
+### 5.2 Writes (only via Forge EditAction)
 
 ```rust
-// On detected death (post the triggering PlayerTurn commit)
-dp::t2_write::<PcMortalityState>(ctx, state_id, MortalityDelta::Transition {
-    new_state: MortalityState::Dead { mode: Permadeath, died_at_turn, ... },
-    trigger,
-}).await?;
+// At RealityManifest bootstrap (PL_001 §16.2 t3_write_multi extension)
+dp::t2_write::<MortalityConfig>(ctx, MortalityConfigId::singleton(reality_id),
+    MortalityDelta::Initialize { default_mode, ... }).await?;
 
-// Side-effect EVT-T3 emission via event log:
-// (no separate advance_turn here — the t2_write itself commits the channel event with causal_ref)
+// Author edits via Forge (WA_003 EditAction extension)
+dp::t2_write::<MortalityConfig>(ctx, ..., MortalityDelta::EditDefaultMode { ... }).await?;
+dp::t2_write::<MortalityConfig>(ctx, ..., MortalityDelta::AddOverride { pc_id, mode, note }).await?;
+dp::t2_write::<MortalityConfig>(ctx, ..., MortalityDelta::RemoveOverride { pc_id }).await?;
 ```
 
-### 5.3 Writes (respawn — sweeper)
-
-```rust
-// Sweeper finds PCs in Dying state where will_respawn_at_fiction_time <= current_fiction_clock
-dp::t2_write::<PcMortalityState>(ctx, state_id, MortalityDelta::Transition {
-    new_state: MortalityState::Alive,
-    trigger: /* respawn — uses last transition's trigger for history */,
-}).await?;
-
-// Move PC to spawn_cell (PL_001 §13 pattern)
-dp::move_session_to_channel(ctx, &spawn_cell).await?;
-```
-
-### 5.4 Admin force-kill
-
-```rust
-// Admin via S5 dual-actor
-dp::advance_turn(ctx, &ChannelId::reality_root(reality_id),
-    TurnEvent::AdminAction { sub_shape: MortalityAdminKill { ... } }, ...).await?;
-// Then proceeds same as detected death path.
-```
+Author edits emit invalidation broadcast (DP-X*) so all consuming services pick up new config within ≤100 ms.
 
 ---
 
-## §6 Death-trigger detection layer
+## §6 Closed-set DeathMode (V1)
 
-Death is detected by ONE of two paths in V1:
+V1 ships 3 modes. Adding a 4th requires a superseding decision in [`../../decisions/locked_decisions.md`](../../decisions/locked_decisions.md).
 
-### 6.1 LLM-narrated death (most common path)
+| Mode | V1 status | Used when |
+|---|---|---|
+| `Permadeath` | ✅ V1 default (per PC-B1 lock) | Wuxia, classic RPG, narrative-stakes-matter realities |
+| `RespawnAtLocation { spawn_cell, fiction_delay_days, memory_retention }` | ✅ V1 | Forgiving fantasy, tutorials, casual realities |
+| `Ghost` | ✅ V1 (basic — observer only) | Narrative-driven mysteries, post-mortem participation |
+| `Reincarnation { keep_memory }` | V2+ deferred (MOR-D3) | RPG with reincarnation cycles |
+| `NpcConversion` | V2+ deferred (MOR-D4) | Depends on DL_001 NPC routine + DF1 |
 
-Lives inside A6 output filter (PL-20 catalog). When PL_001 / PL_003 commits a PlayerTurn or NPCTurn with `narrator_text`, A6 runs a sub-validator:
-
-```text
-fn detect_death(narrator_text: &str, scene_state: &SceneState, current_actors: &[ActorId])
-    -> Option<DeathDetection>
-{
-    // V1: deterministic keyword match + LLM confidence
-    let death_keywords_vi = ["chết", "ngã xuống", "tắt thở", "hơi thở dứt", "máu phun", "qua đời", ...];
-    let death_keywords_en = ["died", "perished", "fell dead", "killed", "slain", ...];
-
-    let matches: Vec<_> = find_keyword_matches(narrator_text, death_keywords_vi, death_keywords_en);
-    if matches.is_empty() { return None; }
-
-    // For each match, identify the SUBJECT actor
-    for match in matches {
-        let subject = identify_subject_actor(match, scene_state, current_actors);
-        if let Some(actor) = subject {
-            return Some(DeathDetection {
-                actor,
-                detection_confidence: 0.85,                        // V1 fixed; V2+ classifier-driven
-                triggering_excerpt: narrator_text[match.range].to_string(),
-            });
-        }
-    }
-    None
-}
-```
-
-V2+ (MOR-D6): replace deterministic keyword match with a dedicated death-classifier LLM call. V1 keyword approach has false-positive risk ("PC laughed to death" idiom) — mitigation: false-positive correction flow §9.
-
-### 6.2 Admin force-kill
-
-```text
-admin-cli operator → POST /v1/admin/.../mortality/force-kill
-    body: { pc_id, reason }
-    │
-S5 dual-actor: requires operator B approval within 5min
-    │
-on approval:
-    advance_turn at reality root: AdminAction MortalityAdminKill
-    proceeds as detected death (same post-commit handler)
-```
-
-### 6.3 Hot-path check on every turn submission
-
-Before processing a PC turn (PL_001 §11), world-service checks `pc_mortality_state`:
-
-```text
-on POST /v1/turn:
-    let state = read_projection_reality::<PcMortalityState>(pc_id);
-    match state.state {
-        Alive    => proceed normally,
-        Dying    => return TurnEvent { outcome: Rejected { reason: "Bạn đã ngã xuống. Hồi sinh sau ..." } },
-        Dead     => return TurnEvent { outcome: Rejected { reason: "Nhân vật này đã chết." } },
-        Ghost    => return TurnEvent { outcome: Rejected { reason: "Bạn là bóng ma — chỉ có thể quan sát." } },
-    }
-```
-
-Adds ~5 ms p99 to every turn submission (1 cache-hit read).
+Per-PC overrides can use any V1 mode independently of the reality default. E.g., reality default `Permadeath` + protagonist PC override `Ghost` is valid and useful.
 
 ---
 
-## §7 Death modes (V1 closed set)
+## §7 Pattern choices
 
-### 7.1 Permadeath (V1 default)
+### 7.1 V1 default = Permadeath
 
-- PC enters `Dead { mode: Permadeath }` — terminal state
-- Player's session for this PC is closed
-- UI shows terminal modal: "<PC name> đã hy sinh. Bạn không thể tiếp tục với nhân vật này."
-- Player retains LoreWeave account; can create a new PC if reality permits
-- PC's grant (in PLT_001 Charter sense, formerly WA_004) is preserved as historical record
-- NPCs in the cell may emit reactive Chorus events (per NPC_002) on the death
+Per PC-B1 locked decision: a reality without `MortalityConfig` defaults to Permadeath. Authors opt INTO softer modes via Forge.
 
-### 7.2 RespawnAtLocation
+### 7.2 Per-PC overrides additive only
 
-- PC enters `Dying { will_respawn_at_fiction_time, spawn_cell }`
-- Player's session is paused (read-only; cannot submit turns)
-- UI shows: "Bạn đã ngã xuống. Hồi sinh sau {fiction_delay_days} ngày..."
-- Background sweeper checks hourly: when current fiction-clock crosses `will_respawn_at_fiction_time`, transitions to `Alive`
-- PC re-bound to `spawn_cell` (PL_001 §13 move flow); MemberJoined emitted
-- LLM generates wakeup narration (similar to PL_001 §12 sleep wakeup pattern, marked `flavor: true` per EVT-A8)
-- Memory retention per `MortalityConfig.RespawnAtLocation.memory_retention` (V1 default `FullMemory`)
+Per-PC overrides DO NOT modify the reality default; they SUPPLEMENT it. `MortalityConfig.per_pc_overrides: Vec<MortalityOverride>` is queried by `pc_id`; if no match, reality default applies.
 
-### 7.3 Ghost
+### 7.3 Author UI is Forge (WA_003)
 
-- PC enters `Ghost` — non-terminal but non-active
-- Player's session retains read-only access:
-  - Subscribe streams continue
-  - Can see scene events
-  - Cannot submit turns
-- UI shows: "Bạn là một bóng ma. Chỉ có thể quan sát."
-- Other actors cannot interact with the ghost in V1 (V2+ may add)
-- V2+ exorcism / resurrection quest may transition Ghost → Alive (deferred MOR-D2)
+WA_006 does not design its own UI. Forge's EditAction enum extends with:
+- `EditMortalityConfig { default_mode }`
+- `AddMortalityOverride { pc_id, mode, note }`
+- `RemoveMortalityOverride { pc_id }`
 
-### 7.4 V1 / V2+ split
+Forge's RBAC matrix governs who can edit (RealityOwner / Co-Author per ImpactClass — Major for default mode change; Minor for adding overrides).
 
-| Mode | V1 status |
-|---|---|
-| `Permadeath` | ✓ V1 default |
-| `RespawnAtLocation` | ✓ V1 |
-| `Ghost` | ✓ V1 (basic — observer only) |
-| `Reincarnation { keep_memory: bool }` | V2+ (MOR-D3) |
-| `NpcConversion` | V2+ (depends on DL_001 NPC routine + DF1) |
+### 7.4 Mechanics not designed here
+
+The runtime DeathTrigger detection, MortalityState aggregate, hot-path turn check, respawn sweeper, dispute flow, and NPC death-reaction integration ALL live in their respective feature owners' design docs (PCS_001 / 05_llm_safety / PL_001/002 / NPC_002). WA_006 only provides the CONFIG that those features consume.
 
 ---
 
-## §8 Pattern choices
-
-### 8.1 V1 default = Permadeath
-
-Locked V1: a reality without `MortalityConfig` defaults to Permadeath. Reasons:
-- Per PC-B1 locked decision
-- Aligns with classic RPG / wuxia narrative stakes (death = real)
-- Encourages authors to opt INTO softer modes explicitly via Forge
-
-### 8.2 Death is an EVT-T3 side-effect, NOT a replacement event
-
-The triggering PlayerTurn / NPCTurn commits NORMALLY (with `outcome=Accepted`). Death is a separate EVT-T3 AggregateMutation with `causal_ref` to the triggering event. This:
-- Preserves the LLM narration for canon
-- Keeps `turn_number` advancing as expected
-- Allows multiple deaths in one narrative beat (e.g., LLM narrates "all three guards fell" → 3 separate EVT-T3 mutations causal_ref'ing the same triggering turn)
-
-### 8.3 LLM-narrated death detection is keyword-based V1
-
-Locked V1: detection uses a deterministic keyword dictionary (~50 entries Vietnamese + ~50 English). False-positive risk acceptable because:
-- Player can dispute via §9 false-positive correction (admin reverses within 5 minutes)
-- Death is a major event — over-detection is preferable to under-detection (false negative = "I died but game says I'm alive")
-- V2+ replaces with classifier model (MOR-D6)
-
-### 8.4 Hot-path check is mandatory; cannot be skipped
-
-Every PC turn submission MUST check `pc_mortality_state` before validators. Reasons:
-- Prevents Dead/Ghost PCs from submitting turns and bypassing the rejection path
-- ~5 ms cost per turn is acceptable
-- Lazy-default `Alive` keeps the code simple (no row = Alive)
-
-### 8.5 Per-PC overrides are author-only, V1 trivial
-
-`MortalityConfig.per_pc_overrides` is set by RealityOwner/Co-Author via Forge (using extended EditAction). V1 use case: author declares a "boss NPC" with different death rules, OR a "protagonist PC with plot armor" given Ghost mode while everyone else is Permadeath.
-
-V2+ may add: dynamic per-PC override based on quest state, achievement unlocks, etc.
-
-### 8.6 Ghost is non-terminal but blocks turn submission
-
-Locked V1: Ghost state retains LoreWeave account access but blocks turn submission. The ghost can be observed by NPCs (V2+ memory facet) but cannot directly interact. V1 ghost-PC-relationship is asymmetric: ghost sees living, living doesn't see ghost.
-
-V2+ adds: ghost-NPC interaction (NPC dialog with the ghost, exorcism rituals). MOR-D2 captures.
-
-### 8.7 Respawn memory retention V1 default = FullMemory
-
-Locked V1: RespawnAtLocation default memory = `FullMemory` (PC remembers everything that happened before death). Reasons:
-- Simplest implementation (no memory truncation logic)
-- Most respawning RPGs retain memory by default
-- Authors who want amnesia / fresh-start respawn can configure via Forge (V2+)
-
-V2+: `LastNDays(n)` and `NoMemory` modes (MOR-D7).
-
-### 8.8 No /yield or /die command in V1
-
-V1 doesn't expose a player command for self-induced death. Death must come through narrative or admin path. Reasons:
-- Player intent ambiguity (typo / accident / regret)
-- Adds attack surface
-- Players who want to "exit" can simply abandon the session; their PC remains alive in the world
-
-V2+ may add `/yield` (in combat) or `/end-character` (with confirmation); deferred MOR-D8.
-
----
-
-## §9 Failure-mode UX
+## §8 Failure-mode UX
 
 | Failure | When | UX | Recovery |
 |---|---|---|---|
-| `MortalityHotPathReject` (turn submitted while Dead/Dying/Ghost) | PC's state ≠ Alive | Modal per state: "Nhân vật đã chết." / "Đang hồi sinh, đợi {time} nữa..." / "Bạn là bóng ma, không thể hành động" | Wait for respawn (Dying), or create new PC (Dead — Permadeath) |
-| `FalsePositiveDeathDetection` | A6 keyword detector flags death incorrectly (e.g., LLM narrated "PC laughed to death" idiom) | Player can dispute within 5 minutes via "Dispute death" button | If disputed: world-service marks PC as `Alive` again + emits MortalityRevive (audit-log); admin reviews |
-| `RespawnLocationDissolved` | spawn_cell channel was dissolved between death and respawn | Sweeper falls back to reality root channel + emits operator-alert | Operator manually relocates PC via S5 admin action |
-| `DeathDuringPause` | Reality-wide pause (DP-Ch35) was active when LLM emitted death narration | Death detection still fires (pause doesn't gate detection); but the t2_write to mortality_state respects the pause | Once pause lifts, the death takes effect retroactively |
-| `MultipleDeathsOneTurn` | LLM narrates 3 deaths in one beat ("all guards fell") | All 3 mortality_state writes fire (separate EVT-T3 mutations causal_ref'ing same turn) | Each PC handled independently per their `default_death_mode` |
-| `AdminKillCapabilityDenied` | Non-admin tries `force-kill` | Toast: "Chỉ admin mới có thể buộc nhân vật chết." | (out of role) |
-| `PermadeathInPermadeathReality` (no recovery) | PC dies in Permadeath reality | Terminal modal; player must create new PC | (no recovery) |
-
-### 9.1 False-positive death-detection correction flow
-
-This is the most common UX concern. After death detection:
-
-```text
-T0:   A6 detects death keywords in LLM-narrated turn
-      world-service writes pc_mortality_state.Dead
-      UI shows terminal modal
-
-T0+5s: Modal also shows "Đây là nhầm lẫn? Tranh chấp ngay."
-
-(within 5 minutes)
-Player clicks "Dispute death":
-    POST /v1/forge/.../mortality/dispute
-    body: { pc_id, dispute_reason }
-    │
-world-service:
-    creates pending_dispute T1 row
-    notifies admin queue
-    UI shows: "Đang chờ admin xem xét. Bạn có thể tiếp tục chơi nếu đã hồi sinh."
-
-(meanwhile: PC remains in Dead state pending review)
-
-Admin reviews narration excerpt:
-  IF false-positive confirmed:
-    revert mortality_state to last Alive snapshot
-    emit MortalityRevive event (audit-log)
-    notify player + restore session
-  IF death stands:
-    notify player; modal shows admin's reasoning
-    (no revert; PC remains dead per intended narrative)
-
-V1 dispute window: 5 minutes from death event. After 5 min, dispute is harder
-(requires full admin review, not the fast-path).
-```
-
-V2+ may add: classifier-based death detection (MOR-D6) reduces false-positive rate enough to remove dispute-flow, OR formalizes dispute as a multi-step quest-recovery flow (MOR-D2).
+| Author tries to set `RespawnAtLocation { spawn_cell }` to a non-existent cell | Validation at Forge EditAction time | Toast: "Spawn cell không tồn tại. Hãy chọn cell hợp lệ." | Author picks valid cell |
+| `fiction_delay_days` out of range (V1 0..=30) | Validation | Toast: "Số ngày phải trong khoảng 0..30." | Author corrects |
+| Per-PC override added for non-existent PC | Validation | Toast: "PC không tồn tại trong reality này." | Author selects from autocomplete |
+| Concurrent author edits | Last-write-wins (per Forge §9) | Standard Forge concurrent-edit handling | Auto-reload |
+| Removing all overrides while a Ghost-PC is still "Ghost" mid-life | Deletion is allowed — runtime mechanics handle the implication when next death event fires (uses new default) | (no UX issue here; runtime concern) | n/a |
 
 ---
 
-## §10 Cross-service handoff
-
-### 10.1 Death detection flow (LLM-narrated)
+## §9 Cross-service handoff
 
 ```text
-PC submits turn → roleplay-service → A5 → A6 sanitize → LLM → A6 output filter
+Author in Forge → POST /v1/forge/realities/{R}/edits
+    body: { action: EditMortalityConfig { default_mode: ... }, reason: "..." }
     │
-A6 output filter pipeline:
-    canon-drift check ✓
-    NSFW check ✓
-    ★ death-detection sub-validator (THIS FEATURE) ★
-        scan narrator_text for death keywords
-        if matched + subject identified:
-            attach DeathDetection { actor, confidence, excerpt } to the proposal envelope
+gateway-bff → world-service:
+    Forge RBAC check (Major / Minor / Tier1 per Forge §6)
+    t2_write MortalityConfig
+    advance_turn at reality root with EVT-T8 AdminAction ForgeEdit
+    t2_write ForgeAuditEntry
     │
     ▼
-world-service consumer:
-    main pipeline: schema → capability → A5 → A6 → Lex → Heresy → A6 filter → canon-drift → causal-ref
-    on Accept:
-        advance_turn(PlayerTurn { ... })  → channel_event_id = N
+DP cache invalidation broadcast (~100ms propagation)
     │
-    POST-COMMIT (in-process; same handler):
-    if DeathDetection attached:
-        for each detected actor:
-            read MortalityConfig (cached)
-            determine effective DeathMode (per-PC override OR default)
-            t2_write PcMortalityState transition (Alive → Dying/Dead/Ghost) with causal_ref [N]
-            bump forge_roles_version for the PC's user (if Dead/Dying — invalidate session)
-            emit advance_turn at reality root with EVT-T3 sub-shape MortalityDeath (for bubble-up)
+    ▼
+Downstream consumers (PCS_001 / 05_llm_safety / PL_001/002) refresh their cache
+on next death event for this reality
 ```
 
-### 10.2 Respawn flow (sweeper)
+Wall-clock: edit propagation ≤100ms via DP cache invalidation; downstream reads see new config on subsequent death events.
+
+---
+
+## §10 Sequence: author creates RespawnAtLocation reality
 
 ```text
-Sweeper task (every 1 hour wall-clock):
-    query PcMortalityState WHERE state=Dying AND will_respawn_at_fiction_time <= current_fiction_clock
-    for each:
-        t2_write PcMortalityState { Alive }
-        dp::move_session_to_channel(ctx, spawn_cell) — if PC has active session bound
-        IF PC has no active session: just update state; PC respawns next time user logs in
-        emit EVT-T3 MortalityRespawn at reality root
-        notify user (V1: in-app banner on next session bind; V2+ push)
-```
+T0: Hoài-Linh creates reality `R-fantasy-tutorial`
+    RealityManifest carries (knowledge-service ingestion):
+      mortality_config: {
+        default_death_mode: RespawnAtLocation {
+          spawn_cell: "town_square",
+          fiction_delay_days: 1,
+          memory_retention: FullMemory,
+        },
+        per_pc_overrides: [],
+      }
 
-### 10.3 Admin force-kill flow
+T0+50ms: world-service bootstraps (PL_001 §16):
+    t3_write_multi atomic [
+      RealityRegistry::Create,
+      ChannelTree::Create (per PL_001),
+      MortalityConfig::Initialize { default_death_mode, per_pc_overrides: [] },
+      LexConfig::Initialize (if any),
+      ...
+    ]
 
-```text
-Admin op_A → POST /v1/admin/.../mortality/force-kill
-    S5 dual-actor: op_B approves
-    │
-world-service:
-    advance_turn at reality root: AdminAction MortalityAdminKill { pc_id, reason }
-    proceed as detected death path (POST-COMMIT mortality_state write)
+T0+200ms: Reality activated; PCs may bind sessions.
+
+────── later, first PC death occurs ──────
+
+T+30d: PC `Hero_Alice` dies in dungeon (LLM narrates death)
+    → PCS_001 / 05_llm_safety / PL detection mechanics fire
+    → mechanics read MortalityConfig(R-fantasy-tutorial)
+    → decode: default_death_mode = RespawnAtLocation { spawn_cell: town_square,
+              fiction_delay_days: 1, memory_retention: FullMemory }
+    → mechanics apply: Alice → Dying state with respawn at town_square in 1 fiction-day
+    (mechanics are NOT WA_006 territory; this is just where the config gets consumed)
 ```
 
 ---
 
-## §11 Sequence: PC dies via narrative, Permadeath mode
+## §11 Sequence: per-PC override added
 
 ```text
-Reality: R-tdd-h-2026-04 (default Permadeath; no per-PC overrides)
-PC: Lý Minh, currently Alive, in cell:yen_vu_lau
+T+60d: Tâm-Anh decides protagonist `pc_yangguo` should have plot armor (Ghost mode
+       instead of reality default Permadeath).
 
-T0:    Lý Minh submits turn: "/verbatim Tôi rút đao đối đầu với du sĩ"
-T0:    LLM narrates: "...lưỡi đao của du sĩ cứa qua cổ Lý Minh, máu phun ra... anh gục xuống, hơi thở dứt..."
-T0:    A6 output filter pipeline:
-         keyword match: "máu phun" + "hơi thở dứt" + "gục xuống" → 3 matches
-         subject identification: "Lý Minh" + the narrator's "anh" pronoun → actor = pc_ly_minh
-         DeathDetection { actor: pc_ly_minh, confidence: 0.92, excerpt: "..." }
-         attached to LLMProposal envelope
-T0:    world-service main pipeline:
-         all validators pass → Accepted
-         advance_turn(PlayerTurn { ... }) → channel_event_id = 1247
-T0+30ms:  POST-COMMIT handler:
-            read MortalityConfig: default Permadeath, no override for pc_ly_minh
-            determine mode: Permadeath
-            t2_write PcMortalityState {
-              pc_id: pc_ly_minh,
-              state: Dead { mode: Permadeath, died_at_turn: 1247, died_at_cell: yen_vu_lau,
-                            death_trigger: NarrativeDeath { triggering_turn_event_id: 1247, confidence: 0.92 } },
-              last_transition_at_turn: 1247,
-              ...
-            }
-            advance_turn at reality root: EVT-T3 MortalityDeath { pc_id, mode, ... }
-              (this propagates via bubble-up to NPCs in cell — they may react via NPC_002 Chorus on next turn)
+Forge UI → "Mortality config" → "Per-PC overrides" → "+ Add override"
+    pick PC: pc_yangguo
+    pick mode: Ghost
+    note: "Protagonist; plot armor through arc 3"
 
-T0+50ms:  UI receives via subscribe stream:
-            - PlayerTurn rendered (full LLM narration)
-            - then EVT-T3 MortalityDeath event
-          UI modal: "⚠ Lý Minh đã hy sinh. Thực tại theo chế độ Permadeath — bạn không thể tiếp tục với nhân vật này."
-          [Tranh chấp tử vong (5 phút)]  [Tạo nhân vật mới]  [Quay lại trang chính]
-
-(meanwhile, NPC_002 Chorus orchestrator at cell yen_vu_lau picks up trigger 1247:
-   priority algorithm runs; Tier-1 candidates = {Lão Ngũ, Tiểu Thúy, du sĩ}
-   each may emit a reaction NPCTurn — "Du sĩ wipes blade", "Tiểu Thúy gasps",
-   "Lão Ngũ silently observes" — per PL_003 Chorus pattern)
-
-T+5min:  Dispute window closes. PC permanently Dead.
-```
-
----
-
-## §12 Sequence: PC dies and respawns (RespawnAtLocation mode)
-
-```text
-Reality: R-fantasy-tutorial
-MortalityConfig: default RespawnAtLocation { spawn_cell: town_square, fiction_delay_days: 1, memory_retention: FullMemory }
-PC: Hero_Alice, currently Alive in cell:dungeon_boss_room
-Current fiction time: 1450-mùa-thu-day10-Tý-sơ
-
-T0: LLM narrates Alice's death in boss fight
-    DeathDetection fires
-    advance_turn(PlayerTurn { final battle narration }) → event_id = 5601
-
-T0+30ms: POST-COMMIT:
-         read MortalityConfig: default RespawnAtLocation
-         determine mode: RespawnAtLocation { spawn_cell: town_square, days: 1 }
-         compute will_respawn_at = 1450-mùa-thu-day11-Tý-sơ
-         t2_write PcMortalityState {
-           state: Dying { will_respawn_at_fiction_time, spawn_cell: town_square,
-                          died_at_cell: dungeon_boss_room, ... },
-           ...
-         }
-         emit EVT-T3 MortalityDeath at reality root
-
-T0+50ms: UI shows: "⚔ Bạn đã ngã xuống ở phòng boss. Hồi sinh ở quảng trường thành phố sau 1 ngày..."
-         Session enters read-only mode; can observe events but cannot submit turns
-
-────── Game world advances; other PCs continue play ──────
-
-(suppose fiction-clock advances 1 day worth via other PCs' turns or scheduled events)
-
-Sweeper at hourly wall-clock cadence:
-  query PcMortalityState WHERE state=Dying AND will_respawn_at_fiction_time <= current_fiction
-  finds Alice
-  t2_write PcMortalityState { state: Alive } (transition Dying→Alive)
-  dp::move_session_to_channel(town_square) for Alice's bound session
-  emit EVT-T3 MortalityRespawn
-
-Alice's UI: "🌅 Bạn tỉnh dậy ở quảng trường thành phố. Ký ức cuối cùng là cảnh máu và đau ở phòng boss..."
-  (LLM-generated wakeup narration, marked flavor=true per EVT-A8)
-  Session re-enters write mode; turn submission re-enabled
-```
-
----
-
-## §13 Sequence: false-positive dispute
-
-```text
-LLM narrates: "Lý Minh laughed so hard he could die" (idiomatic phrase, NOT actual death)
-
-A6 keyword match: "die" → triggers DeathDetection { confidence: 0.88 } (V1 keyword-based; can't disambiguate idiom)
-
-Death pipeline fires; UI shows terminal modal.
-
-Player immediately clicks "Tranh chấp tử vong (5 phút)":
-    POST /v1/forge/.../mortality/dispute
-    body: { pc_id: pc_ly_minh, dispute_reason: "It's an idiom — Lý Minh không thực sự chết" }
+POST /v1/forge/.../edits
+    body: { action: AddMortalityOverride { pc_id: pc_yangguo, mode: Ghost,
+                                            note: "..." } }
 
 world-service:
-  creates pending_dispute T1 row (5min TTL)
-  flag PC's mortality_state.dispute_pending = true
-  notify admin queue
-  UI: "Đang chờ admin xem xét... Bạn có thể tiếp tục chơi nếu admin xác nhận hồi sinh."
+    Forge RBAC: RealityOwner + Minor (adding override is Minor) = Ok solo
+    t2_write MortalityConfig (delta: AddOverride)
+    advance_turn EVT-T8 AdminAction ForgeEdit
+    t2_write ForgeAuditEntry
 
-Admin reviews narrator excerpt within 5 min:
-  Reads "laughed so hard he could die" → idiom, not real death
-  Approves dispute:
-    t2_write PcMortalityState { state: Alive } (revert)
-    emit MortalityRevive event
-    notify player
+UI: "✓ Saved. pc_yangguo will now go to Ghost mode on death (overriding reality default Permadeath)."
 
-UI: "✓ Admin đã xác nhận đây là cách nói bóng. Lý Minh vẫn còn sống."
-    Session re-enters normal write mode.
+────── later, pc_yangguo dies ──────
 
-Audit log: dispute resolved, MortalityRevive committed, admin reviewer recorded.
+PCS_001 / 05_llm_safety / PL mechanics fire:
+    read MortalityConfig
+    look up overrides: pc_yangguo → mode = Ghost
+    apply Ghost state to pc_yangguo (instead of reality default Permadeath)
 ```
 
 ---
 
-## §14 Open questions deferred
+## §12 Acceptance criteria (LOCK gate)
 
-| ID | Question | Defer to |
+The design is implementation-ready when world-service + Forge can pass these scenarios. Each is one row in the integration test suite. LOCK granted after all 6 pass.
+
+### 12.1 Config-layer scenarios
+
+| ID | Scenario | Pass criteria |
 |---|---|---|
-| MOR-D1 | HP / stats system — combat damage as DeathTrigger | PCS_001 (PC stats) + future combat feature |
+| **AC-MOR-1 BOOTSTRAP DEFAULT PERMADEATH** | Reality created via RealityManifest WITHOUT `mortality_config` field. | `read_projection_reality::<MortalityConfig>` returns None (or DefaultRow); `unwrap_or_default()` → `Permadeath`. PC-B1 default honored. |
+| **AC-MOR-2 BOOTSTRAP WITH RESPAWN** | RealityManifest carries `mortality_config: { default_death_mode: RespawnAtLocation { spawn_cell, fiction_delay_days: 1, memory_retention: FullMemory } }`. | `MortalityConfig` row created at bootstrap; subsequent reads return the configured RespawnAtLocation; downstream consumers can decode all three RespawnAtLocation fields. |
+| **AC-MOR-3 PER-PC OVERRIDE ADDED** | RealityOwner via Forge adds `MortalityOverride { pc_id: pc_protagonist, mode: Ghost, note: "plot armor" }`. | Forge RBAC accepts Minor solo; `t2_write MortalityConfig` commits with override appended; ForgeAuditEntry logged; subsequent override-lookup for `pc_protagonist` returns `Ghost`. |
+| **AC-MOR-4 INVALIDATION BROADCAST** | Author flips reality `default_death_mode` from `Permadeath` to `RespawnAtLocation` via Forge; downstream consumer reads on different node within 100ms. | DP cache invalidation broadcast propagates; second-node read returns new config; no stale-cache mismatch. |
+| **AC-MOR-5 RBAC ENFORCED** | ReadOnly user attempts `EditMortalityConfig` POST. | Forge rejects with `CapabilityDenied`; UI toast surfaces; no write committed. |
+| **AC-MOR-6 OVERRIDE REMOVAL** | Author calls `RemoveMortalityOverride { pc_id: pc_protagonist }`. | Override entry removed from `MortalityConfig.per_pc_overrides`; ForgeAuditEntry logs removal; subsequent override-lookup for `pc_protagonist` returns None → reality default applies. |
+
+**Lock criterion:** all 6 scenarios have a corresponding integration test that passes. Until then, status is `CANDIDATE-LOCK` (post-thin-rewrite + acceptance criteria) → `LOCKED` (after tests).
+
+---
+
+## §13 Open questions deferred (post thin-rewrite)
+
+All previous MOR-D1..D12 deferrals are PRESERVED but most are now explicitly **NOT WA_006 territory** — they belong to the mechanics owners.
+
+| ID | Question | Owner |
+|---|---|---|
+| MOR-D1 | HP / stats system → combat damage as DeathTrigger | **PCS_001** when designed |
 | MOR-D2 | Resurrection / exorcism quests for Ghost mode | V2+ — depends on quest engine |
-| MOR-D3 | Reincarnation mode (PC respawns as different character) | V2+ |
-| MOR-D4 | NpcConversion mode (PC body becomes an NPC) | V2+ — depends on DL_001 NPC routines + DF1 |
+| MOR-D3 | Reincarnation mode | V2+ WA_006 schema bump (closed-set extension) |
+| MOR-D4 | NpcConversion mode | V2+ — depends on DL_001 / DF1 |
 | MOR-D5 | Mass-death cascade on WorldStability Catastrophic / Shattered | V2+ — extends WA_002 Heresy |
-| MOR-D6 | Replace keyword-match death detection with classifier model | V2+ — needs LLM infrastructure for cheap classifier calls |
-| MOR-D7 | RespawnAtLocation memory retention modes (LastNDays, NoMemory) | V2+ |
-| MOR-D8 | Player-initiated death commands (/yield, /end-character) | V2+ — needs careful UX to prevent accidental loss |
-| MOR-D9 | Multi-language death keyword dictionary (Chinese for wuxia, beyond Vi+En) | V2+ ops; expand `i18n_death_keywords` resource |
-| MOR-D10 | Per-fiction-time-window respawn caps (N respawns per fiction-week) | V2+ |
-| MOR-D11 | Death triggering NPC opinion shifts (PC who killed many NPCs gets reputation) | V2+ — extends NPC_001 NpcOpinion |
-| MOR-D12 | Ghost-NPC interaction (V2+ exorcism, dialogue, etc.) | V2+ — extends NPC_002 Chorus |
+| MOR-D6 | Replace keyword-match death detection with classifier model | **05_llm_safety** when V2+ |
+| MOR-D7 | RespawnAtLocation memory retention modes (LastNDays, NoMemory) | V2+ WA_006 schema bump |
+| MOR-D8 | Player-initiated death commands (/yield, /end-character) | **PL_002 Grammar** future |
+| MOR-D9 | Multi-language death keyword dictionary | **05_llm_safety** ops |
+| MOR-D10 | Per-fiction-time-window respawn caps | V2+ WA_006 + **PCS_001** |
+| MOR-D11 | Death triggering NPC opinion shifts | **NPC_001 Cast** (NpcOpinion extension) |
+| MOR-D12 | Ghost-NPC interaction | **NPC_002 Chorus** future |
 
 ---
 
-## §15 Cross-references
+## §14 Cross-references
 
-- [WA_001 Lex](WA_001_lex.md) — Mortality is a separate validator slot; Lex catches forbidden-ability use that would have killed the PC, before Mortality
-- [WA_002 Heresy](WA_002_heresy.md) — V2+ Mass-death cascade on Catastrophic / Shattered (MOR-D5)
-- [WA_003 Forge](WA_003_forge.md) — author edits MortalityConfig via existing EditAction patterns; new sub-shape EditMortalityConfig added to the closed set
-- [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — turn submission hot-path (§6.3 Mortality check); §13 move_session_to_channel pattern reused for respawn
-- [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) — rejection copy table format
-- [NPC_001 Cast](../05_npc_systems/NPC_001_cast.md) — `actor_binding` updated on respawn
-- [NPC_002 Chorus](../05_npc_systems/NPC_002_chorus.md) — NPCs may react to death via Chorus (Tier-1 priority — directly addressed by death event)
-- [05_llm_safety/](../../05_llm_safety/) — A6 output filter (PL-20) where death-detection sub-validator lives
-- [07_event_model/03_event_taxonomy.md](../../07_event_model/03_event_taxonomy.md) — EVT-T3 AggregateMutation (death events); EVT-T8 AdminAction (admin force-kill)
-- [decisions/locked_decisions.md](../../decisions/locked_decisions.md) — PC-A3, PC-B1, PC-E3 (this feature implements the runtime enforcement)
+**Mechanics owners (V1):**
+- [PCS_001](../06_pc_systems/) — owns `pc_mortality_state` aggregate, respawn lifecycle, hot-path turn check (when designed)
+- [05_llm_safety/](../../05_llm_safety/) — owns A6 death-detection sub-validator + false-positive dispute flow
+- [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — owns turn submission flow + move_session_to_channel for respawn
+- [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) — owns hot-path mortality check + (future MOR-D8) death-related commands
+
+**Companion / consumer:**
+- [WA_001 Lex](WA_001_lex.md) — sibling per-reality config feature
+- [WA_002 Heresy](WA_002_heresy.md) — sibling; V2+ MOR-D5 connects to Catastrophic/Shattered cascade
+- [WA_003 Forge](WA_003_forge.md) — author UI; extends EditAction with MortalityConfig operations
+- [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §16 — RealityManifest extension point per `_boundaries/02_extension_contracts.md` §2
+- [NPC_002 Chorus](../05_npc_systems/NPC_002_chorus.md) — V2+: NPCs may react to PC deaths (MOR-D11/D12)
+
+**Reference:**
+- [decisions/locked_decisions.md](../../decisions/locked_decisions.md) — PC-A3, PC-B1, PC-E3 (config layer locked here; runtime in mechanics owners)
 - [decisions/deferred_DF01_DF15.md](../../decisions/deferred_DF01_DF15.md) — DF4 World Rules umbrella
+- [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md) — `mortality_config` ownership = WA_006; `pc_mortality_state` ownership = PCS_001 (when designed)
 
 ---
 
-## §16 Implementation readiness checklist
+## §15 Implementation readiness checklist
 
-- [x] **§2** Domain concepts (DeathMode, MortalityConfig, MortalityState, DeathTrigger, DeathTriggerDetector, RespawnTrigger)
-- [x] **§2.5** EVT-T* mapping (death = EVT-T3 side-effect on triggering EVT-T1/T2; admin kill = EVT-T8 + EVT-T3)
-- [x] **§3** Aggregate inventory (2 new: `mortality_config`, `pc_mortality_state`)
+- [x] **§2** Domain concepts (DeathMode, MortalityConfig, MortalityOverride, MemoryRetention)
+- [x] **§2.5** EVT-T* mapping (config edits via Forge → EVT-T8 ForgeEdit; runtime events owned by other features)
+- [x] **§3** Aggregate inventory — 1 aggregate (`mortality_config`)
 - [x] **§4** Tier+scope table (DP-R2)
-- [x] **§5** DP primitives by name
-- [x] **§6** Death-trigger detection (V1 keyword-match in A6 output filter; admin force-kill path; hot-path mortality check on turn submission)
-- [x] **§7** V1 closed-set DeathMode (Permadeath default + RespawnAtLocation + Ghost)
-- [x] **§8** Pattern choices (V1 default Permadeath, death = side-effect not replacement, keyword detection V1, hot-path mandatory, no /yield V1)
-- [x] **§9** Failure-mode UX (7 cases) + §9.1 dispute flow for false-positive correction
-- [x] **§10** Cross-service handoff (detection / respawn sweeper / admin force-kill)
-- [x] **§11** Sequence: Permadeath via narrative
-- [x] **§12** Sequence: Respawn cycle
-- [x] **§13** Sequence: false-positive dispute
-- [x] **§14** Deferrals (MOR-D1..D12)
+- [x] **§5** DP primitives by name (config reads + Forge-routed writes)
+- [x] **§6** Closed-set DeathMode V1 (Permadeath default + RespawnAtLocation + Ghost; Reincarnation/NpcConversion V2+ deferred)
+- [x] **§7** Pattern choices (V1 default Permadeath; per-PC overrides additive; UI via Forge; mechanics elsewhere)
+- [x] **§8** Failure UX (config edit validation only)
+- [x] **§9** Cross-service handoff (Forge-routed config edits)
+- [x] **§10/§11** Sequences (bootstrap with RespawnAtLocation; per-PC override added)
+- [x] **§12** Acceptance criteria (6 scenarios for the config layer)
+- [x] **§13** Deferrals — most explicitly handed off to mechanics owners
+- [x] **§14** Cross-references with explicit mechanics ownership map
 
-**Deferred:** acceptance criteria (intentionally not in V1 of this doc).
+**Status transition:** DRAFT (`8aed4fa`) → PROVISIONAL (`de9cf1a` over-extension marker) → **CANDIDATE-LOCK** (this thin-rewrite, ~280 lines from original 730).
 
-**Resolves:** PC-B1 (PC death behavior) ✓, partial PC-E3 (paradox / death extreme case) ✓.
+LOCK granted after all 6 §12 acceptance scenarios have passing integration tests.
 
-**Status:** DRAFT 2026-04-25.
+**Resolves:** PC-B1 config-layer ✓ (runtime enforcement is PCS_001's territory).
 
-**Drift watchpoint:** §6.1 keyword-based detection has known false-positive risk (idioms, hyperbole); §9.1 dispute flow mitigates but doesn't eliminate. V2+ classifier replacement (MOR-D6) is the proper fix.
+**Deferred to mechanics owners:** MOR-D1, D6, D8, D9, D10, D11, D12 each explicitly point at the right feature when it lands.
 
-**Next** (when this doc locks): A6 output filter adds death-detection sub-validator; world-service implements mortality state machine + respawn sweeper + admin force-kill handler; Forge UI exposes MortalityConfig editor (extends WA_003 EditAction set); admin console exposes dispute review queue. Vertical-slice target: SPIKE_01 reality booted with Permadeath default; Lý Minh's hypothetical death scenario reproduces deterministically.
+**Next** (when this doc locks): downstream features (PCS_001 / 05_llm_safety / PL_001/002 / NPC_001/002) implement the mechanics that consume this config; book-ingestion pipeline (knowledge-service) extends RealityManifest with `mortality_config` field per `_boundaries/02_extension_contracts.md` §2; admin-cli Forge UI exposes the EditMortalityConfig actions. Vertical-slice target: hypothetical reality boots with RespawnAtLocation + 1 per-PC Ghost override; 6 §12 acceptance scenarios reproduce deterministically.

@@ -3,8 +3,8 @@
 > **Conversational name:** "Lex" (LX). Per-reality declaration of physics + ability + energy axioms — what is allowed to exist and to be done in this reality. The DATA + VALIDATOR. Author UI to edit Lex is deferred to WA_002 Axiom Editor; this feature locks the underlying schema, validator slot, and reject UX.
 >
 > **Category:** WA — World Authoring
-> **Status:** DRAFT 2026-04-25
-> **Catalog refs:** **DF4 World Rules** (sub-feature: physics/ability/energy axioms only). Sibling DF4 sub-features (death model PC-B1, PvP consent PC-D2, voice mode lock C1-D3, session caps H3-NEW-D1, queue policy S7-D6, disconnect policy SR11-D4, turn fairness SR11-D7, time model MV12-D6) live in separate WA_* docs to be designed later. WA_002 Axiom Editor (author UI) is forward-link only.
+> **Status:** **CANDIDATE-LOCK 2026-04-25** (DRAFT → CANDIDATE-LOCK after §14 acceptance criteria locked 2026-04-25 closure pass). LOCK granted after the 10 §14 acceptance scenarios have passing integration tests.
+> **Catalog refs:** **DF4 World Rules** (sub-feature: physics/ability/energy axioms only). Sibling DF4 sub-features (death model PC-B1, PvP consent PC-D2, voice mode lock C1-D3, session caps H3-NEW-D1, queue policy S7-D6, disconnect policy SR11-D4, turn fairness SR11-D7, time model MV12-D6) live in separate WA_* docs to be designed later. Note: WA_004 + WA_005 originally drafted here as Charter + Succession were RELOCATED 2026-04-25 to `10_platform_business/` (PLT_001, PLT_002) per WA boundary review — those concerns are identity/account, not "validate rules of reality".
 > **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §16 RealityManifest (Lex extends the manifest), [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) §15 rejection path (Lex rejection follows the same shape), [05_llm_safety/](../../05_llm_safety/) A6 canon-drift (sibling validator, not Lex)
 > **Resolves:** the "world-rule + forbidden-knowledge" question raised after PL_003 relocation. **Companion feature:** WA_002 Forbidden Knowledge & Cross-Reality Contamination (separate file, designed later) — Lex does NOT design contamination semantics.
 
@@ -562,7 +562,40 @@ V1 default = "narrative reality" — Lex passes through, canon-drift does the he
 
 ---
 
-## §14 Open questions deferred
+## §14 Acceptance criteria (LOCK gate)
+
+The design is implementation-ready when world-service can pass these scenarios. Each scenario is one row in the integration test suite. LOCK is granted after all 10 pass.
+
+### 14.1 Happy-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-LX-1 ALLOWED ACTION** | Reality declares `LexConfig { Qigong: Allowed }`; PC submits "/verbatim Lý Minh vận khí". | `classify_action` returns `[Qigong]`; axiom check `Qigong=Allowed` passes; pipeline continues to A6 output filter; no Lex rejection. |
+| **AC-LX-2 MUNDANE ACTION** | PC submits "/verbatim Lý Minh nâng chén trà uống một ngụm". | `classify_action` returns empty kind list (no AxiomKind matched); Lex returns Ok(()) immediately; pipeline continues. |
+| **AC-LX-3 EMPTY/PERMISSIVE REALITY** | Reality has no `LexConfig` row at all OR has `LexConfig { axioms: [], default_disposition: Permissive }`; PC submits any action. | Lex passes through (Permissive default = unlisted is allowed); A6 canon-drift handles narrative inconsistencies downstream. |
+
+### 14.2 Failure-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-LX-4 HARD REJECT** | Reality declares `LexConfig { MagicSpells: Forbidden }`; PC submits "/verbatim Hỏa cầu thuật!". | `classify_action` returns `[MagicSpells]`; Lex returns `Err(LexViolation { axiom_kind: MagicSpells, rule_id: "lex.ability_forbidden.magic_spells", ... })`; world-service commits `TurnEvent { outcome: Rejected { reason: { rule_id: "lex.ability_forbidden.magic_spells", detail: { vi, en } } } }` via `t2_write` (NOT advance_turn); `turn_number` UNCHANGED; `fiction_clock` UNCHANGED. |
+| **AC-LX-5 RESTRICTIVE DEFAULT** | Reality declares `LexConfig { axioms: [], default_disposition: Restrictive }`; PC submits any classifiable action. | `classify_action` returns at least one kind; that kind is NOT in axioms list; under Restrictive default, treated as Forbidden; reject with `rule_id: "lex.unlisted_kind_restrictive.<kind>"`. |
+| **AC-LX-6 MULTI-KIND** | PC's narrator_text triggers multiple AxiomKinds (e.g., quotes mana-spell + draws blade simultaneously); reality has `MagicSpells: Forbidden, SwordArts: Allowed`. | `classify_action` returns `[MagicSpells, SwordArts]`; Lex iterates kinds; rejects on first forbidden match (`MagicSpells`); does NOT continue to subsequent kinds; rejection rule_id reflects the first forbidden kind found. |
+| **AC-LX-7 INVALIDATION BROADCAST** | Author edits LexConfig (flip `Firearms` from `Allowed` to `Forbidden`); turn submitted on different world-service node within 100ms. | LexConfig invalidation broadcast (DP-X*) propagates to all nodes ≤100ms; subsequent turn on second node uses new config; no stale-cache rejection passes. |
+
+### 14.3 Boundary scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-LX-8 BOOTSTRAP DEFAULT** | Reality created via RealityManifest WITHOUT `lex_config` field. | `read_projection_reality::<LexConfig>` returns None; lex_check defaults to Permissive (no-op); A6 canon-drift remains the active narrative-consistency layer. |
+| **AC-LX-9 NON-RETROACTIVE EDIT** | Reality previously had `MagicSpells: Allowed`; PC cast Fireball at turn N, committed canonical. Author edits to `MagicSpells: Forbidden` at turn N+5. PC tries Fireball at turn N+10. | Past committed event at turn N is UNCHANGED in event log (canonical); turn N+10 Fireball is REJECTED with rule_id `lex.ability_forbidden.magic_spells`. |
+| **AC-LX-10 CLASSIFICATION MISS** | LLM uses a synonym not in classify_action dictionary (e.g., narrator_text says "thi triển bí thuật phun lửa" — "secret-art spit fire" — not in V1 keyword dictionary). | `classify_action` returns empty kind list; Lex passes through; A6 canon-drift downstream catches the narrative contradiction with the reality's `MagicSpells: Forbidden` axiom. Graceful degradation: missed classification doesn't bypass safety. |
+
+**Lock criterion:** all 10 scenarios have a corresponding integration test that passes. Until then, status is `CANDIDATE-LOCK` (post-acceptance criteria) → `LOCKED` (after tests).
+
+---
+
+## §15 Open questions deferred
 
 | ID | Question | Defer to |
 |---|---|---|
@@ -570,7 +603,7 @@ V1 default = "narrative reality" — Lex passes through, canon-drift does the he
 | LX-D2 | Budget model: actor X gets 3 fireballs per fiction-day | **WA_002** |
 | LX-D3 | Cascade-consequence on violation: world degradation events when budget exceeded | **WA_002** + EVT-T11 WorldTick |
 | LX-D4 | Author UI to edit LexConfig at runtime (with consequence preview) | **WA_002** Axiom Editor (UI-layer) — separate from rule data |
-| LX-D5 | Slot ordering in EVT-V* — agreement with event-model agent's Phase 3 | event-model agent Phase 3 (`05_validator_pipeline.md`) |
+| LX-D5 | Slot ordering in EVT-V* — agreement with event-model agent's Phase 3 | **Tracked in [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) §6.1** (proposed ordering pending event-model agent's Phase 3 lock). The boundary folder is the single source of truth; this row is audit-trail. Resolution lands when event-model agent ships Phase 3 `05_validator_pipeline.md`. |
 | LX-D6 | Time-gated axioms: "magic only available after fiction-day Y" | V2+; needs WA_002 budget primitives first |
 | LX-D7 | LLM-classified action kinds (V2+ second classification layer with confidence threshold) | V2+ optimization |
 | LX-D8 | EnergyKind validation: "this MagicSpell costs 50 mana; does PC have it?" | WA_003 (future) Energy/Cost Model — depends on PC stats system (DF7) |
@@ -579,7 +612,7 @@ V1 default = "narrative reality" — Lex passes through, canon-drift does the he
 
 ---
 
-## §15 Cross-references
+## §16 Cross-references
 
 - [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — §16 RealityManifest extension point; §15 rejection path contract
 - [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) — §15 rejection sequence Lex follows; reject copy table format
@@ -594,7 +627,7 @@ V1 default = "narrative reality" — Lex passes through, canon-drift does the he
 
 ---
 
-## §16 Implementation readiness checklist
+## §17 Implementation readiness checklist
 
 - [x] **§2** Domain concepts (Axiom, AxiomKind, Disposition, EnergyKind, LexViolation)
 - [x] **§2.5** EVT-T* mapping (validator, no events emitted; rejection path via PL_001/PL_002 §15)
@@ -609,7 +642,8 @@ V1 default = "narrative reality" — Lex passes through, canon-drift does the he
 - [x] **§11** Sequence: hard reject (Fireball in wuxia)
 - [x] **§12** Sequence: pass-through (qigong in wuxia)
 - [x] **§13** Sequence: empty/permissive reality
-- [x] **§14** Deferrals (LX-D1..D10)
+- [x] **§14** Acceptance criteria (10 scenarios across happy-path / failure-path / boundary)
+- [x] **§15** Deferrals (LX-D1..D10)
 
 **Deferred:** acceptance criteria (intentionally not in V1 of this doc).
 
