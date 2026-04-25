@@ -6,6 +6,35 @@
 
 ---
 
+## 2026-04-26 — CSC_001 Cell Scene Composition feature registered (4-layer architecture; closes V1 foundation tier)
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — CSC_001 Cell Scene Composition DRAFT, 4-layer architecture validated by v3→v4 demo pivot evidence per user direction "design now"); commit (this turn) `[boundaries-lock-claim+release]`
+- **New folder + catalog created** (outside `_boundaries/`):
+  - `features/00_cell_scene/_index.md` (foundation tier folder index — sibling of `00_entity/` + `00_place/` + `00_map/`)
+  - `features/00_cell_scene/CSC_001_cell_scene_composition.md` (790 lines under 800 cap; 20 sections including 4-layer architecture in §4-§7)
+  - `catalog/cat_00_CSC_cell_scene_composition.md` (CSC-1..CSC-25 catalog entries; owns `CSC-*` namespace; CSC-A1 architectural axiom recorded)
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - **New aggregate:** `cell_scene_layout` (T2 / Channel-cell scope; cell-tier only V1). Owned by **CSC_001 Cell Scene Composition** (DRAFT 2026-04-26). Owns 4-layer composition pipeline (skeleton + procedural + LLM zones + LLM narration); each layer's failure mode bounded with canonical fallback; cell scene always renders V1.
+    - **Schema/envelope ownership new rows (2):**
+      - EVT-T4 System sub-type `SceneLayoutBorn` owned by CSC_001 (emitted at first cell entry / RealityManifest bootstrap; one per cell-tier channel)
+      - EVT-T8 Administrative sub-shape `Forge:EditCellScene` owned by CSC_001 (5 edit kinds V1: ChangeSkeleton/RerollSeed/ForceLayer3Refresh/ForceLayer4Refresh/ResetToCanonicalDefaults)
+    - **RealityManifest ownership row updated:** CSC_001 added as OPTIONAL V1 contributor (`scene_skeleton_overrides: HashMap<ChannelId, SkeletonId>`)
+    - **RejectReason namespace prefix table:** added `csc.*` → CSC_001
+    - **Stable-ID prefix ownership:** new row for `CSC-*` (foundation tier; CSC-A* axioms / CSC-D* deferrals / CSC-Q* open questions)
+    - **Drift watchpoints:** added **CSC-Q2** (validator slot ordering — extends EF-Q3 + PF-Q1 + MAP-Q1; single alignment review pass for all 4 watchpoints)
+  - `02_extension_contracts.md`:
+    - §2 RealityManifest current shape: added `scene_skeleton_overrides: HashMap<ChannelId, SkeletonId>` OPTIONAL V1 field with note (per-cell author override; engine fallback when absent; unknown SkeletonId logs `csc.skeleton_not_found`)
+    - §1.4 RejectReason namespace prefix table: added `csc.*` owned by CSC_001 with 8 V1 rule_ids enumerated (skeleton_not_found / invalid_zone_assignment / zone_overlap / actor_on_non_walkable / item_on_non_placeable / entity_missing_from_assignment / layer3_retry_exhausted / placetype_no_skeleton_v1) + 3 V1+ reservations (skeleton_invalid / procedural_density_too_high / narration_unsafe_content)
+- **No `03_validator_pipeline_slots.md` changes** — EVT-V_cell_scene slot tracked as CSC-Q2 watchpoint (joins EF-Q3 + PF-Q1 + MAP-Q1 in single alignment review).
+- **Reason:** v3→v4 demo pivot at `_ui_drafts/CELL_SCENE_v1..v4` (committed 0e4a230) validated 4-layer architecture: v3 LLM-as-grid-generator approach failed (Qwen 3.6 35B-A3B: 30,000 reasoning tokens, hit 4K limit, 0 successful outputs); v4 LLM-as-zone-classifier succeeded (2,471 total tokens including reasoning, all 6 entities placed correctly, validators passed attempt 1). **12.7× cost reduction** with higher reliability. Architectural axiom CSC-A1 captures lesson: LLM tasks confined to categorical (Layer 3) + creative (Layer 4); spatial coordinate manipulation handled by deterministic engine code (Layer 1+2). 17 sub-decisions locked at Phase 0 CLARIFY before draft (folder placement / single feature with 4 internal layers / cell_scene_layout aggregate / V1 only Tavern + default_generic_room fallback / V1 fixtures only / named zone catalog / LLM JSON contract with retry / free-form narration / lazy-cached / blake3 seed determinism / 4 layer failure mode chains / RealityManifest scene_skeleton_overrides / 8 csc.* rule_ids).
+- **Closes V1 foundation tier completeness:** 4 foundation features now in flight (EF + PF + MAP + CSC) covering WHO + WHERE-semantic + WHERE-visual + WHAT-inside-cell. PCS_001 (when designed) builds on this complete foundation; spawn flow per CSC_001 §15.1 lazy first-entry sequence.
+- **Total at CANDIDATE-LOCK after this commit cycle remains:** 15 features (EF + PF + 13 prior). CSC_001 enters DRAFT; future Phase 3 review + closure pass → CANDIDATE-LOCK promotion would bring foundation tier to 4/4 closed.
+- **Drift watchpoints:** 13 → 14 active (CSC-Q2 added).
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — MAP_001 Phase 3 review cleanup (Severity 1 + 2 + 3) + 3 new V1 rule_ids + lazy-cell map_layout fix
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — MAP_001 Phase 3 cleanup post DRAFT commit c7b75a6); commit (this turn) `[boundaries-lock-claim+release]`
