@@ -77,6 +77,32 @@ P=0.368→0.556, R=0.438→0.625 — best chapter post-alignment).
 | **son_tinh_thuy_tinh_vi**  | **10**| 7 | 6 | **0.556** | **0.625** | 0.143    | **+0.19** (direction flip + canonical worked) |
 | tam_cam_vi                 | 5  | 12 | 12 | 0.294     | 0.294  | 0.0          | +0.06      |
 
+### Big-fixture diagnostic — Speckled Band (53KB / ~13K tokens, 2026-04-25)
+
+Added in C-BIG-FIXTURE cycle to expose production-scale behavior. Pipeline survived end-to-end without crash, ~7-8 min/chapter latency. Per-chapter score:
+
+| Chapter                    | TP | FP | FN | Precision | Recall | FP-trap rate | Notes |
+|----------------------------|----|----|----|-----------|--------|--------------|-------|
+| sherlock_speckled_band     | 15 | 33 | 11 | 0.278     | 0.577  | 0.267        | P drops ~50% vs sherlock_scandal_ch01 baseline (0.571) due to over-extraction |
+
+**Failure mode confirmed**: hypothesis #3 (entity over-extraction explodes), NOT context overflow nor instruction-following degradation. Recall stays solid (R=0.58 in line with English baseline).
+
+**Over-extraction breakdown** (entity FPs):
+- 11 backstory places never present in any scene: London, Calcutta, Berkshire, Hampshire, Surrey, Crewe, Harrow, Reading, India, Waterloo, Crane Water
+- 4 backstory people: Mrs. Stoner (dead mother), Major-General Stoner (dead biological father), Miss Honoria Westphail (extracted in honorific form), Mrs. Hudson (Baker Street landlady)
+- 3 organizations/artifacts: Bengal Artillery, Scotland Yard, Eley's No. 2 revolver
+- 1 duplicate-form (Percy Armitage extracted twice as "Mr. Armitage" + "Percy Armitage")
+
+**Decisive insight for chunking**: pipeline does NOT degrade with longer context — LLM correctly extracts more entities BECAUSE chapter contains more named mentions. The fixture's conservative annotation philosophy (scene-actors only) does not match the prompt's instruction to "extract named entities in TEXT". **Chunking would not directly help**. Real lever is **prompt scene-vs-backstory tightening**.
+
+Full attribution dump available at `chat-history/eval_dump_bigfix_20260425_232710/sherlock_speckled_band/`.
+
+### Aggregate after big-fixture addition
+
+| Model                      | Precision | Recall | FP-trap | Lenient P | Note |
+|----------------------------|-----------|--------|---------|-----------|------|
+| google/gemma-4-26b-a4b (10 chapters) | **0.394** | **0.552** | 0.274 | **0.437** | Speckled Band drags strict P down −0.013 from 9-chapter baseline; R holds steady |
+
 ## Findings worth recording
 
 1. **Model choice matters more than parameters at this scale.** Coder-14b had
@@ -217,12 +243,15 @@ to all 3 prompts is a moderate-leverage cycle.
 ### Recommended next actions (priority order)
 
 1. ~~**Predicate alignment cycle** (Finding 1)~~ — **DONE 2026-04-25 (C-PRED-ALIGN cycle)**. P 0.251→0.311 (+24%), R 0.356→0.429 (+20%).
-2. **Trap expansion** (Finding 2) — fixtures already touched in #1, but trap lists were intentionally NOT expanded; do as separate cycle.
-3. **Eval test parallelism** — eval is serial (`for fixture` loop) and within-chapter R+E+F is serial too (drift from production orchestrator that uses `asyncio.gather`). LM Studio 0.4.0+ continuous batching makes this 2-3x throughput win at no quality cost.
-4. **Multi-language few-shot** in prompts (architectural Finding) — Chinese + Vietnamese examples added to all 3 extractor prompts.
-5. **Cloud LLM baseline** — claude-haiku-4-5 / gpt-4o-mini run, ONE-OFF for hard-gate calibration only (cost-controlled per local-LLM-first stance).
-6. **LLM-as-judge scoring** (Finding 3) — defer; needs design ADR.
-7. **Chunking for large chapters** — defer until 10KB+ fixture appears.
+2. ~~**Form-mismatch fixes (entity kind + event Jaccard + predicate synonyms + annotation gap)**~~ — **DONE 2026-04-25 (C-EVAL-FIX-FORM cycle, A+C bundle)**. P 0.311→0.407 (+31%), R 0.429→0.549 (+29%); lenient P 0.453.
+3. ~~**Add big chapter fixture to expose production reality**~~ — **DONE 2026-04-25 (C-BIG-FIXTURE cycle)**. Speckled Band 53KB / ~13K tokens. Pipeline survived end-to-end without crash; chapter scored P=0.28 R=0.58. **Failure mode: entity over-extraction (11 backstory places + 4 backstory people emitted)**. Chunking would NOT address this — confirmed by data. Real lever is prompt scene-vs-backstory distinction.
+4. **Prompt scene-vs-backstory tightening** (next cycle, derived from C-BIG-FIXTURE finding) — entity prompt currently says "extract named entities in TEXT", which correctly extracts backstory mentions. Tighten to "extract entities that ACT in the chapter's scenes, not entities mentioned only in backstory or asides".
+5. **Multi-language few-shot** in prompts — Chinese + Vietnamese examples to lift Vietnamese bare-noun recognition (dì ghẻ, vua, cá bống).
+6. ~~**Trap expansion** (Finding 2)~~ — DEMOTED to LOW priority. Adding traps doesn't lift precision (same denominator); only adds explicit FP labels. Real lever for over-extraction is prompt tightening (#4).
+7. **Eval test parallelism** — eval is serial (`for fixture` loop) and within-chapter R+E+F is serial too (drift from production orchestrator that uses `asyncio.gather`). LM Studio 0.4.0+ continuous batching makes this 2-3x throughput win at no quality cost.
+8. **Cloud LLM baseline** — claude-haiku-4-5 / gpt-4o-mini run, ONE-OFF for hard-gate calibration only (cost-controlled per local-LLM-first stance).
+9. **LLM-as-judge scoring** (Finding 3) — defer; needs design ADR.
+10. ~~**Chunking for large chapters**~~ — **CONFIRMED DEFERRED** by C-BIG-FIXTURE data. 13K-token chapter survived without quality degradation from context length; over-extraction is the failure mode, not context degradation. Re-evaluate when 30KB+ fixture is needed.
 
 ## Reproducing
 

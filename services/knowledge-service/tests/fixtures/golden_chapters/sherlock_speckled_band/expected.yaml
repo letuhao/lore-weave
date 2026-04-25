@@ -1,0 +1,160 @@
+# C-BIG-FIXTURE — golden fixture: "The Adventure of the Speckled Band"
+# Source: Project Gutenberg #1661 (Arthur Conan Doyle, 1892). Public domain.
+# v1 annotation (illustrative — first big-fixture stress test for production-scale extraction).
+#
+# Diagnostic role: ~54KB story body (~14K tokens) — well past LLM "comfort zone"
+# (~8K effective context for instruction-following). Tests whether quality
+# degrades with scale before chunking is implemented.
+#
+# Annotation philosophy: CONSERVATIVE — list only the principal characters
+# and locations that are actors in the narrative, not every mentioned name.
+# Backstory references (dead mother, Calcutta butler, Mrs. Farintosh prior
+# case) and props (revolver, dog-cart) move to traps.
+
+source:
+  title: "The Adventures of Sherlock Holmes — The Adventure of the Speckled Band"
+  author: "Arthur Conan Doyle"
+  chapter: 8
+  license: "Public domain (Project Gutenberg #1661, 1892)"
+
+entities:
+  - name: Sherlock Holmes
+    kind: person
+    aliases: ["Holmes", "Mr. Holmes"]
+  - name: Watson
+    kind: person
+    aliases: ["Dr. Watson", "I", "narrator"]
+  - name: Helen Stoner
+    kind: person
+    aliases: ["Miss Stoner", "Miss Roylott"]
+  - name: Julia
+    kind: person
+    aliases: []
+  - name: Dr. Grimesby Roylott
+    kind: person
+    aliases: ["Dr. Roylott", "Roylott", "the Doctor", "Grimesby Roylott"]
+  - name: Honoria Westphail
+    kind: person
+    aliases: []
+  - name: Percy Armitage
+    kind: person
+    aliases: ["Armitage"]
+  - name: Stoke Moran
+    kind: place
+    aliases: ["Stoke Moran Manor House"]
+  - name: Baker Street
+    kind: place
+    aliases: []
+  - name: Crown Inn
+    kind: place
+    aliases: ["the Crown"]
+  - name: Leatherhead
+    kind: place
+    aliases: []
+
+relations:
+  # Anchor relations from prior fixture pattern (sherlock_scandal_ch01).
+  - subject: Watson
+    predicate: lives_with
+    object: Sherlock Holmes
+  - subject: Sherlock Holmes
+    predicate: resides_at
+    object: Baker Street
+  # Family structure — both daughters are stepchildren of Roylott
+  # (their mother re-married Roylott; biological father was Major-General
+  # Stoner, dead before the story).
+  - subject: Helen Stoner
+    predicate: stepchild_of
+    object: Dr. Grimesby Roylott
+  - subject: Julia
+    predicate: stepchild_of
+    object: Dr. Grimesby Roylott
+  # Twin sisters.
+  - subject: Julia
+    predicate: sibling_of
+    object: Helen Stoner
+  # Residency.
+  - subject: Dr. Grimesby Roylott
+    predicate: resides_at
+    object: Stoke Moran
+  - subject: Helen Stoner
+    predicate: resides_at
+    object: Stoke Moran
+  # Investigation arc — Holmes takes the case to help Helen.
+  - subject: Sherlock Holmes
+    predicate: helps
+    object: Helen Stoner
+
+events:
+  # 7 key plot beats spanning the narrative arc. Conservative list —
+  # LLMs will likely extract many more fine-grained events.
+  - summary: "Helen Stoner arrives at Baker Street and consults Holmes about her sister's mysterious death"
+    participants: [Helen Stoner, Sherlock Holmes, Watson]
+  - summary: "Helen recounts Julia's death two years earlier with the dying words 'the speckled band'"
+    participants: [Helen Stoner, Julia]
+  - summary: "Dr. Roylott bursts into Baker Street and threatens Holmes by bending the steel poker"
+    participants: [Dr. Grimesby Roylott, Sherlock Holmes, Watson]
+  - summary: "Holmes and Watson investigate Helen's bedroom at Stoke Moran and find the dummy bell-rope and ventilator"
+    participants: [Sherlock Holmes, Watson, Helen Stoner]
+  - summary: "Holmes and Watson keep watch in Helen's bedroom overnight at Stoke Moran"
+    participants: [Sherlock Holmes, Watson]
+  - summary: "Holmes lashes at the bell-rope when he hears the whistle and the swamp adder bites Roylott"
+    participants: [Sherlock Holmes, Watson, Dr. Grimesby Roylott]
+  - summary: "Holmes and Watson find Roylott dead in his chair with the speckled band around his head"
+    participants: [Sherlock Holmes, Watson, Dr. Grimesby Roylott]
+
+traps:
+  # People mentioned only in backstory or by reference, never present
+  # as actors in this story's events.
+  - kind: entity
+    name: Mrs. Farintosh
+    reason: "Prior client mentioned only by name; her case is not part of this story"
+  - kind: entity
+    name: Mrs. Hudson
+    reason: "Baker Street landlady, mentioned in passing as morning gatekeeper; not a participant in the case"
+  - kind: entity
+    name: Mrs. Stoner
+    reason: "Helen's mother; died years before the story and is referenced only in backstory"
+  - kind: entity
+    name: Major-General Stoner
+    reason: "Helen and Julia's biological father; dead before the story, mentioned only in family background"
+  - kind: entity
+    name: native butler
+    reason: "Indian servant Roylott killed in Calcutta backstory; not a character in this case"
+  - kind: entity
+    name: local blacksmith
+    reason: "Village blacksmith Roylott assaulted in backstory; not a participant in this case"
+  # Animals as named pets — they are mentioned multiple times but are
+  # plot devices, not characters in the narrative-graph sense.
+  - kind: entity
+    name: cheetah
+    reason: "Roylott's pet cheetah — mentioned as ambiance/threat but not an actor"
+  - kind: entity
+    name: baboon
+    reason: "Roylott's pet baboon — startles Watson once but is not a story-graph entity"
+  - kind: entity
+    name: swamp adder
+    reason: "The murder weapon — story-critical but as a TOOL not a named character entity (referenced as 'the speckled band' or 'the snake')"
+  # Red herring — gipsies are repeatedly invoked by Helen and Holmes
+  # as the suspected source of the whistle but are NOT the cause.
+  - kind: entity
+    name: gipsies
+    reason: "Red herring — repeatedly mentioned as suspected cause but innocent of any crime in the story"
+  # Props mentioned by name.
+  - kind: entity
+    name: dog-cart
+    reason: "Vehicle Helen used to reach the station; prop, not an entity"
+  - kind: entity
+    name: revolver
+    reason: "Watson's Eley's No. 2 revolver; prop, not a story-graph entity"
+  - kind: entity
+    name: speckled band
+    reason: "The phrase used as the title and Julia's dying words — refers to the swamp adder; not an entity in its own right"
+  # Counterfactual / unrealized event.
+  - kind: event
+    summary: "Helen Stoner marries Percy Armitage"
+    reason: "Engagement is mentioned but the wedding is FUTURE/intent, not happening in the story"
+  # The Calcutta past event is referenced in backstory only.
+  - kind: event
+    summary: "Dr. Roylott beats his Indian butler to death"
+    reason: "Backstory event in Calcutta, not happening in this chapter"
