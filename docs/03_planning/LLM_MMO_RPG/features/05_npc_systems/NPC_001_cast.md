@@ -3,7 +3,7 @@
 > **Conversational name:** "Cast" (CST). The cast of NPCs in a reality — their identity, persona, owner-node binding, handoff protocol, opinion-with-PC stub, and the EVT-T2 NPCTurn producer contract. Pairs with NPC_002 Chorus (which orchestrates multiple NPCs reacting): Cast designs the actors; Chorus directs them.
 >
 > **Category:** NPC — NPC Systems
-> **Status:** DRAFT 2026-04-25
+> **Status:** **CANDIDATE-LOCK 2026-04-26** (DRAFT 2026-04-25 → Option C terminology applied by event-model agent → CANDIDATE-LOCK 2026-04-26 closure pass: §14 acceptance criteria added)
 > **Catalog refs:** NPC-1 (proxy derivation), NPC-2 (persona assembly), NPC-10 (tool calling). NPC-3a/b/c/e/f (R8 storage) consumed unchanged.
 > **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §3.6 actor_binding (resolves NPC handoff defer), [NPC_002 Chorus](NPC_002_chorus.md) (consumer of `npc_reaction_priority` + `NpcOpinion::for_pc` stub), [02_storage R8](../../02_storage/R08_npc_memory_split.md) (locks `npc` core + `npc_session_memory` + `npc_pc_relationship_projection`)
 > **Resolves:** PL_001 §3.6 NPC handoff defer; NPC_002 §3 NPC_001 dependency stub; OOS-1 NPC↔SessionContext mapping (the part Event Model said belongs to features); ActorId variant model (used by NPC_002 §11)
@@ -545,7 +545,40 @@ On session-end signal (PC closes browser, idle timeout, /signoff):
 
 ---
 
-## §14 Open questions deferred
+## §14 Acceptance criteria (LOCK gate)
+
+The design is implementation-ready when world-service can pass these scenarios. Each is one row in the integration test suite. LOCK granted after all 10 pass.
+
+### 14.1 Happy-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CST-1 BOOTSTRAP CANONICAL NPCs** | RealityManifest activates `R-tdd-h` with 3 canonical actors (Lão Ngũ, Tiểu Thúy, Du sĩ at `cell:yen_vu_lau`). | Bootstrap atomic `t3_write_multi` creates: 3 `npc` core rows + 3 `npc_node_binding` rows (deterministic owner via `hash(npc_id) mod live_nodes`) + 3 `actor_binding` rows + 3 `npc_reaction_priority` rows (knowledge_tags pre-populated from canonical_actors decl). First PC into `cell:yen_vu_lau` sees 3 `MemberJoined { join_method: CanonicalSeed }` events for the canonical NPCs. |
+| **AC-CST-2 PERSONA ASSEMBLY (Du sĩ reaction prompt)** | NPC_002 Chorus invokes Cast persona-assembly for Du sĩ with `reaction_intent=PhysicalAction`, trigger=PC literacy-slip turn 105. | Deterministic combiner reads 4 inputs (npc + npc_session_memory + npc_pc_relationship_projection + scene_state); produces `PromptSlots { system_voice, scene_context, intent_directive, canon_grounding, forbidden_paraphrase }`. system_voice references Du sĩ's `flexible_state.voice_register=FormalClassical`. Memory fact selection: top-5 by `importance_score + relevance + recency_decay` (deterministic; reproducible). |
+| **AC-CST-3 OPINION-WITH-PC LOOKUP** | Chorus calls `NpcOpinion::for_pc(du_si, pc_ly_minh)` at start of priority resolution. | Read returns `OpinionScore` from `npc_pc_relationship_projection` row (lazy-default neutral=0 if no row exists; subsequent updates derived at session-end per §13). Used by Chorus Tier-2 priority. |
+
+### 14.2 Failure-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CST-4 NODE-BINDING WRONG NODE** | Cluster has nodes A, B; NPC_X owner=A; B-side service attempts a write for NPC_X. | SDK `require_npc_owner_or_route` reads `npc_node_binding` cache, detects owner=A; transparently RPCs to A via gRPC. If A unreachable + retries exhausted, surfaces `WrongChannelWriter`; SDK retries with backoff. |
+| **AC-CST-5 PERSONA OVERFLOW** | NPC has 100 facts; combined system_voice + memory + scene + trigger > LLM context window. | Persona assembly truncates: top-3 facts (was top-5) + shortened summary preview (1 KB cap); logs `persona_overflow` warning telemetry; LLM call proceeds with reduced context. NPC-3g catalog item tracks for V1-prototype tuning. |
+| **AC-CST-6 NPC HANDOFF EPOCH RACE** | Concurrent failover: nodes A and B both try to claim NPC_X writer role. | First T3 write of `NpcNodeBinding::HandoffStart { new_epoch }` succeeds; second loses on epoch fence (Postgres rejects stale epoch). Loser observes rejection, drops attempt, lets winner proceed. No duplicate commits. |
+| **AC-CST-7 ORPHANED CANONICAL NPC** | RealityManifest declares `CanonicalActorDecl` with `glossary_entity_id` that doesn't exist. | Bootstrap rejects with `BootstrapError::OrphanedActor { actor_id, glossary_entity_id }`; reality stays in `Initializing` state; operator alerted; no PC can bind until manifest fixed + re-applied (idempotent re-run). |
+
+### 14.3 Boundary scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CST-8 NPC RESPAWN AFTER NODE FAILOVER** | Owner-node A dies; CP detects (≤30s); reassigns NPC_X to node B with `new_epoch`. | CP delta-stream pushes `NpcNodeBinding` change to all SDKs within ≤35s; subsequent writes route to B; old A's writes (if any in flight) Postgres-rejected by epoch fence. NPC_X's `npc` core + `npc_session_memory` continue from last commit; no data loss. |
+| **AC-CST-9 LAZY MEMORY CREATE** | First-ever interaction between PC X and NPC Y in any session. | `npc_session_memory(npc=Y, session=S)` lookup returns None; lazy-create empty memory row; persona-assembly combiner falls back to "no prior knowledge of this PC"; first-encounter NPCs get clean slate. Subsequent interactions populate facts. |
+| **AC-CST-10 SESSION-END OPINION DERIVATION** | Session ends (PC `/signoff` or 30-min idle timeout). | World-service iterates each (NPC, PC) pair the session interacted with; computes `trust_delta = sum(fact.importance × valence_sign) over session_facts`; merges with existing `npc_pc_relationship_projection` row; commits via `t2_write` per §13 sequence. Causal_ref to session-end SystemEvent. PC sees opinion shift on next session bind (per §8.3 acceptable staleness). |
+
+**Lock criterion:** all 10 scenarios have a corresponding integration test that passes. Until then, status is `CANDIDATE-LOCK` (post-acceptance criteria) → `LOCKED` (after tests).
+
+---
+
+## §15 Open questions deferred
 
 | ID | Question | Defer to |
 |---|---|---|
@@ -562,7 +595,7 @@ On session-end signal (PC closes browser, idle timeout, /signoff):
 
 ---
 
-## §15 Cross-references
+## §16 Cross-references
 
 - [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — §3.6 actor_binding (NPC handoff defer resolved here)
 - [PL_001b Continuum lifecycle](../04_play_loop/PL_001b_continuum_lifecycle.md) — §16 bootstrap which Cast extends
@@ -576,7 +609,7 @@ On session-end signal (PC closes browser, idle timeout, /signoff):
 
 ---
 
-## §16 Implementation readiness checklist
+## §17 Implementation readiness checklist
 
 - [x] **§2** ActorId closed enum locked (Pc, Npc, Synthetic, Admin)
 - [x] **§2.5** EVT-T* mapping (every Cast event maps to existing categories)
@@ -591,12 +624,13 @@ On session-end signal (PC closes browser, idle timeout, /signoff):
 - [x] **§11** Bootstrap sequence (CanonicalActorDecl extension)
 - [x] **§12** NPC cross-node handoff (resolves PL_001 §3.6)
 - [x] **§13** Opinion update derivation (session-end)
-- [x] **§14** Deferrals (CST-D1..D10)
+- [x] **§14** Acceptance criteria (10 scenarios across happy-path / failure-path / boundary)
+- [x] **§15** Deferrals (CST-D1..D10)
 
-**Deferred:** acceptance criteria (intentionally not in V1 of this doc). Promote to CANDIDATE-LOCK after acceptance criteria added (in a future extension or NPC_001b if needed).
+**Unblocks:** NPC_002 Chorus's `NpcOpinion::for_pc` stub becomes real. PL_001 §3.6 NPC handoff defer resolved. EVT-T1 Submitted/NPCTurn producer JWT claim shape locked (post Option C reframe). ActorId variant closed-set locked (Pc deferred to PCS_001 for the PcId newtype itself; PCS brief at `06_pc_systems/00_AGENT_BRIEF.md`).
 
-**Unblocks:** NPC_002 Chorus's `NpcOpinion::for_pc` stub becomes real. PL_001 §3.6 NPC handoff defer resolved. EVT-T2 producer JWT claim shape locked. ActorId variant closed-set locked (Pc deferred to PCS_001 for the PcId newtype itself).
+**Status transition:** DRAFT 2026-04-25 → Option C terminology applied by event-model agent → **CANDIDATE-LOCK 2026-04-26** (closure pass: §14 acceptance criteria added).
 
-**Status:** DRAFT 2026-04-25.
+LOCK granted after the 10 §14 acceptance scenarios have passing integration tests.
 
 **Next** (when this doc locks): world-service adds Cast persona-assembly module; book-ingestion pipeline (knowledge-service) extends RealityManifest with Cast's CanonicalActorDecl fields; CP gains NPC node-binding registry (Phase 5 ops). Vertical-slice target: SPIKE_01 turn 5 with real (not stub) opinion data feeding NPC_002 Chorus Tier-2 selection.

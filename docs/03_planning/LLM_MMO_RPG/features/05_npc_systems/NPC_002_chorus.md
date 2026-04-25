@@ -3,7 +3,7 @@
 > **Conversational name:** "Chorus" (CHO). Multiple NPCs in a cell reacting to a PlayerTurn — like a Greek chorus, ordered, deterministic, capped. Resolves how SPIKE_01 turn 5 (PC literacy slip observed by Du sĩ + Tiểu Thúy + Lão Ngũ) becomes a sequence of EVT-T2 NPCTurn events without violating Continuum's Strict turn-slot.
 >
 > **Category:** NPC — NPC Systems
-> **Status:** DRAFT 2026-04-25 (originally drafted 2026-04-25 as `PL_003_chorus.md` in `04_play_loop/`; relocated 2026-04-25 to `05_npc_systems/` because catalog NPC-7 "Multi-NPC conversation turn arbitration" is the correct domain — multi-NPC reaction is NPC behavior, not place/time scaffold)
+> **Status:** **CANDIDATE-LOCK 2026-04-26** (originally drafted 2026-04-25 as `PL_003_chorus.md` in `04_play_loop/`; relocated 2026-04-25 to `05_npc_systems/` per boundary review; Option C terminology applied 2026-04-25 by event-model agent; closure pass 2026-04-26 added §14 acceptance criteria — 10 scenarios)
 > **Catalog refs:** NPC-7 (multi-NPC turn arbitration). Resolves [MV12-D8](../../decisions/locked_decisions.md) (narration taxonomy / NPC turn sub-shapes).
 > **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) (turn-slot Strict, channel ordering, causal_refs), [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) (PlayerTurn sub-shapes), [NPC_001 Cast](NPC_001_cast.md) (NPC identity, persona assembly, ActorId variants, owner-node binding, NpcOpinion::for_pc realization), [07_event_model EVT-T2](../../07_event_model/03_event_taxonomy.md) (NPCTurn category — already mandates "deterministic order, defined by feature in PL_003" — that note in 03_event_taxonomy.md predates this rename and refers to this file)
 > **Stable ID rename:** PL_003 → NPC_002. Old ID `PL_003` MUST NOT be reused for a different feature (foundation I15 stable-ID rule); references in event-model agent's files (`07_event_model/03_event_taxonomy.md`, `04_producer_rules.md`) and SPIKE_01 graduation map will be reconciled when those files next update.
@@ -535,7 +535,40 @@ The trade-off: less reactive scenes; more predictable cost. Acceptable for V1.
 
 ---
 
-## §14 Open questions deferred
+## §14 Acceptance criteria (LOCK gate)
+
+The design is implementation-ready when world-service can pass these scenarios. Each is one row in the integration test suite. LOCK granted after all 10 pass.
+
+### 14.1 Happy-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CHO-1 SPIKE_01 TURN 5 REPRODUCIBILITY** | PC `Lý Minh` types literacy-slip narrator at `cell:yen_vu_lau` (turn 105). 3 NPCs co-present (Lão Ngũ, Tiểu Thúy, Du sĩ). | Priority algorithm runs deterministically: Du sĩ → Tier 3 (knowledge_tag overlap "daoist_text") → ReactionIntent=PhysicalAction; Lão Ngũ → Tier 4 hash 731 (top 1/3) → SilentObservation; Tiểu Thúy → Tier 4 hash 412 (NOT top 1/3) → filtered. Sequential LLM calls; 2 **EVT-T1 Submitted/NPCTurn** events committed at event_id 106 + 107 with `causal_refs=[105]` per EVT-A6. UI multiplex stream delivers events in order. |
+| **AC-CHO-2 EMPTY BATCH** | PC submits a quiet action ("Lý Minh sips tea silently"); content-tag extraction returns empty trigger_tags; no NPC priority match. | All NPCs in scene fall to Tier 4; hash quantile filter (top 1/3) selects 0 candidates OR all candidates are filtered. Chorus orchestrator commits empty batch (no NPCTurn events); `chorus_batch_state.state = Completed` with `committed_count=0`; turn-slot released cleanly. |
+| **AC-CHO-3 MEMBER-JOINED TRIGGER** | PC `/travel`s into a new cell; DP emits `MemberJoined { actor: pc_id }` SystemEvent. | Chorus picks up MemberJoined as Trigger per §12; priority assignment with `TriggerContext { kind: MembershipChange }`: greeting_obligation NPCs → Tier 1; cap=1 for membership triggers (tighter than cap=3 for PlayerTurns); single greeting NPCTurn committed with `reaction_intent=DialogueResponse`. |
+
+### 14.2 Failure-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CHO-4 LLM TIMEOUT MID-BATCH** | NPC #2's LLM call exceeds 30s timeout. | Skip that NPC; commit a placeholder `EVT-T1 Submitted/NPCTurn { reaction_intent: SilentObservation, narrator_text: "<NPC name> im lặng quan sát" }`; continue batch with NPC #3; `chorus_batch_state.aborted_actors += [npc_2]` for audit. Rest of batch unaffected. |
+| **AC-CHO-5 CASCADE-DEPTH OVERFLOW** | NPC #1's reaction includes content that COULD trigger another NPC's reaction (e.g., a glare at NPC #2). | V1 cascade=1 enforced: orchestrator does NOT recursively trigger Chorus on NPC #1's reaction. NPC #2's potential reaction lands in NEXT PlayerTurn cycle (when PC submits next turn) per §13 V1 boundary. |
+| **AC-CHO-6 ORCHESTRATOR CRASH MID-BATCH** | Writer-node death at NPC #2's commit (between #1 and #3). | New writer node takes over per DP-A11 failover; reads `chorus_batch_state` T1 from snapshot (≤30s loss); resumes batch from `committed_count=1`; emits NPC #2 + #3 fresh. No duplicate commits because each `EVT-T1 Submitted/NPCTurn` has unique `channel_event_id`. |
+| **AC-CHO-7 ALL-CANDIDATES-LOW-PRIORITY** | 8 NPCs in scene; all Tier-4 (no addressed, no high-rel, no knowledge match); hash quantile filter applies. | Top 1/3 quantile = top 2-3 NPCs by hash; cap V1=3; commits up to 3 reactions; rest filtered out. `npc_reaction_priority.last_reacted_turn` rotation ensures next Trigger gives skipped NPCs higher rotational priority (fairness). |
+
+### 14.3 Boundary scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CHO-8 STRICT TURN-SLOT** | While Chorus orchestrator holds turn-slot under `ChorusOrchestrator` synthetic actor, a PlayerTurn from another PC submit arrives at the same cell. | Concurrent submit detected by turn-slot Strict pattern (PL_001 §8.1); rejects with `world_rule.concurrent_turn` per PL_002 AC-GR-7-style; second PC's UI shows "Đợi nhân vật khác hành động xong"; first batch completes uninterrupted. |
+| **AC-CHO-9 SEQUENTIAL LLM CALLS** | Batch with 3 candidates; verify LLM call ordering. | NPC #1 prompt has `prev_reactions=[]`; NPC #2 prompt has `prev_reactions=[<event_id of NPC #1>]`; NPC #3 prompt has `prev_reactions=[<event_id #1, event_id #2>]`. Each subsequent NPC's narration sees prior reactions; narrative consistency verified by integration test scoring. |
+| **AC-CHO-10 EVENT-MODEL CITATION VALIDITY** | All 2 reactions from AC-CHO-1 verified at event-log level. | `query_scoped_channel<TurnEvent>(... predicate=field_eq(actor.is_npc, true))` returns 2 rows; each carries `event_kind=EVT-T1 Submitted` with `sub_type=NPCTurn`; no events with stale `EVT-T2` discriminator (Option C compliance). Causal_refs exactly `[105]` for both. |
+
+**Lock criterion:** all 10 scenarios have a corresponding integration test that passes. Until then, status is `CANDIDATE-LOCK` (post-acceptance criteria) → `LOCKED` (after tests).
+
+---
+
+## §15 Open questions deferred
 
 | ID | Question | Defer to |
 |---|---|---|
@@ -550,7 +583,7 @@ The trade-off: less reactive scenes; more predictable cost. Acceptable for V1.
 
 ---
 
-## §15 Cross-references
+## §16 Cross-references
 
 - [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — turn-slot Strict, channel ordering, causal_refs
 - [PL_001b Continuum lifecycle](../04_play_loop/PL_001b_continuum_lifecycle.md) — sequence patterns this feature mirrors
@@ -563,7 +596,7 @@ The trade-off: less reactive scenes; more predictable cost. Acceptable for V1.
 
 ---
 
-## §16 Implementation readiness checklist
+## §17 Implementation readiness checklist
 
 - [x] **§2.5** EVT-T* mapping (all events map to existing categories)
 - [x] **§3** Aggregate inventory (2 new: `npc_reaction_priority`, `chorus_batch_state`)
@@ -577,10 +610,11 @@ The trade-off: less reactive scenes; more predictable cost. Acceptable for V1.
 - [x] **§11** SPIKE_01 turn 5 sequence (3-NPC scene, 2 commits)
 - [x] **§12** Membership trigger sequence
 - [x] **§13** Cascade-rejection sequence (V1 boundary)
-- [x] **§14** Deferrals (CHO-D1..D8)
+- [x] **§14** Acceptance criteria (10 scenarios across happy-path / failure-path / boundary; SPIKE_01 turn 5 reproducibility verified by AC-CHO-1)
+- [x] **§15** Deferrals (CHO-D1..D8)
 
-**Deferred:** acceptance criteria (intentionally not in V1 of this doc). Promote to CANDIDATE-LOCK after acceptance criteria added in NPC_002b or extension. NPC_001 dependency (opinion/relationship aggregates) blocks full implementation; NPC_002 contracts the interface.
+**Status transition:** DRAFT 2026-04-25 (originally drafted as PL_003 Chorus then relocated to NPC_002 per boundary review) → Option C terminology applied by event-model agent (EVT-T2 → EVT-T1 sub-type=NPCTurn) → **CANDIDATE-LOCK 2026-04-26** (closure pass: §14 acceptance criteria added).
 
-**Status:** DRAFT 2026-04-25.
+LOCK granted after the 10 §14 acceptance scenarios have passing integration tests. NPC_001 Cast (now CANDIDATE-LOCK) provides the real `NpcOpinion::for_pc` projection that Tier-2 priority resolution consumes.
 
 **Next** (when this doc locks): world-service adds Chorus orchestrator module; roleplay-service adds NPC reaction prompt template; gateway no change (Chorus is server-internal). Vertical-slice target: SPIKE_01 turn 5 reproduces with deterministic 2-NPC reaction order.
