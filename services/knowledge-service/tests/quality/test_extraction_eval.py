@@ -45,13 +45,17 @@ import pytest
 from app.extraction.llm_entity_extractor import extract_entities
 from app.extraction.llm_event_extractor import extract_events
 from app.extraction.llm_relation_extractor import extract_relations
+from dataclasses import asdict
 from tests.quality.eval_harness import (
     ActualExtraction,
     AggregateScore,
+    ChapterAttribution,
+    ChapterFixture,
     ChapterScore,
     aggregate_scores,
     iter_chapter_fixtures,
     score_chapter,
+    score_chapter_with_attribution,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,6 +113,78 @@ def _write_report(agg: AggregateScore, report_path: Path) -> None:
     report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _write_chapter_dump(
+    dump_root: Path,
+    fixture: ChapterFixture,
+    actual: ActualExtraction,
+    attribution: ChapterAttribution,
+) -> None:
+    """Write per-chapter diagnostic dump under {dump_root}/{chapter}/.
+
+    Files: actual.json (LLM output), expected.json (fixture content),
+    attribution.json (per-item TP/FP/FN with reasons). Opt-in via
+    ``KNOWLEDGE_EVAL_DUMP_PATH`` env var; not written otherwise.
+    """
+    chapter_dir = dump_root / fixture.name
+    chapter_dir.mkdir(parents=True, exist_ok=True)
+
+    actual_payload = {
+        "entities": [
+            {"name": n, "kind": k} for n, k in actual.entities
+        ],
+        "relations": [
+            {"subject": s, "predicate": p, "object": o, "polarity": pol}
+            for s, p, o, pol in actual.relations
+        ],
+        "events": [
+            {"summary": s, "participants": list(p)} for s, p in actual.events
+        ],
+    }
+    expected_payload = {
+        "entities": [
+            {"name": e.name, "kind": e.kind, "aliases": list(e.aliases)}
+            for e in fixture.entities
+        ],
+        "relations": [
+            {
+                "subject": r.subject,
+                "predicate": r.predicate,
+                "object": r.object,
+                "polarity": r.polarity,
+            }
+            for r in fixture.relations
+        ],
+        "events": [
+            {"summary": e.summary, "participants": list(e.participants)}
+            for e in fixture.events
+        ],
+        "traps": [
+            {
+                k: v for k, v in {
+                    "kind": t.kind, "name": t.name, "subject": t.subject,
+                    "predicate": t.predicate, "object": t.object,
+                    "summary": t.summary,
+                    "participants": list(t.participants) if t.participants else None,
+                    "reason": t.reason,
+                }.items() if v not in (None, [], "")
+            }
+            for t in fixture.traps
+        ],
+    }
+    (chapter_dir / "actual.json").write_text(
+        json.dumps(actual_payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (chapter_dir / "expected.json").write_text(
+        json.dumps(expected_payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (chapter_dir / "attribution.json").write_text(
+        json.dumps(asdict(attribution), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 @pytest.mark.quality
 @pytest.mark.asyncio
 async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
@@ -128,6 +204,16 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
     min_precision = _env_float("KNOWLEDGE_EVAL_MIN_PRECISION", 0.80)
     min_recall = _env_float("KNOWLEDGE_EVAL_MIN_RECALL", 0.70)
     max_fp_trap = _env_float("KNOWLEDGE_EVAL_MAX_FP_TRAP", 0.15)
+
+    # Diagnostic dump — opt-in. When set, write per-chapter
+    # actual.json + expected.json + attribution.json so each FP/FN
+    # can be analyzed semantically without re-running the eval.
+    dump_root_env = _env("KNOWLEDGE_EVAL_DUMP_PATH")
+    dump_root: Path | None = None
+    if dump_root_env:
+        dump_root = Path(dump_root_env).resolve()
+        dump_root.mkdir(parents=True, exist_ok=True)
+        logger.info("Diagnostic dump enabled at: %s", dump_root)
 
     assert GOLDEN_ROOT.is_dir(), f"Missing golden fixtures: {GOLDEN_ROOT}"
 
@@ -173,7 +259,11 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
             relations=[(r.subject, r.predicate, r.object, r.polarity) for r in relations],
             events=[(ev.summary, tuple(ev.participants)) for ev in events],
         )
-        score = score_chapter(fixture, actual)
+        if dump_root is not None:
+            score, attribution = score_chapter_with_attribution(fixture, actual)
+            _write_chapter_dump(dump_root, fixture, actual, attribution)
+        else:
+            score = score_chapter(fixture, actual)
         scores.append(score)
         print(_format_score(score))  # visible with pytest -s
 

@@ -37,10 +37,13 @@ __all__ = [
     "ChapterFixture",
     "ActualExtraction",
     "ChapterScore",
+    "ChapterAttribution",
+    "CategoryAttribution",
     "AggregateScore",
     "load_chapter_fixture",
     "iter_chapter_fixtures",
     "score_chapter",
+    "score_chapter_with_attribution",
     "aggregate_scores",
     "DEFAULT_EVENT_OVERLAP_THRESHOLD",
 ]
@@ -130,6 +133,32 @@ class AggregateScore:
     avg_precision: float = 0.0
     avg_recall: float = 0.0
     avg_fp_trap_rate: float = 0.0
+
+
+@dataclass
+class CategoryAttribution:
+    """Per-item TP/FP/FN attribution for one extraction category.
+
+    Each list element is a JSON-serializable dict carrying enough
+    info (indices + content snapshots) to read the dump file in
+    isolation without cross-referencing actual.json. Field shapes
+    differ by category — see _build_*_attribution for the schema.
+    """
+
+    tp: list[dict] = field(default_factory=list)
+    fp: list[dict] = field(default_factory=list)
+    fn: list[dict] = field(default_factory=list)
+    fp_trap: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class ChapterAttribution:
+    """Diagnostic attribution dump for one chapter — companion to ChapterScore."""
+
+    chapter: str
+    entities: CategoryAttribution = field(default_factory=CategoryAttribution)
+    relations: CategoryAttribution = field(default_factory=CategoryAttribution)
+    events: CategoryAttribution = field(default_factory=CategoryAttribution)
 
 
 # ── Fixture loading ─────────────────────────────────────────────────
@@ -246,11 +275,30 @@ def score_chapter(
     each extraction as one "item" so the chapter-level rates don't
     get skewed by the ratio between entities / relations / events.
     """
+    score, _attribution = score_chapter_with_attribution(
+        fixture, actual, event_overlap_threshold=event_overlap_threshold,
+    )
+    return score
+
+
+def score_chapter_with_attribution(
+    fixture: ChapterFixture,
+    actual: ActualExtraction,
+    *,
+    event_overlap_threshold: float = DEFAULT_EVENT_OVERLAP_THRESHOLD,
+) -> tuple[ChapterScore, ChapterAttribution]:
+    """Identical match logic to ``score_chapter`` but also returns
+    per-item TP/FP/FN attribution suitable for diagnostic dump.
+
+    The attribution payload is intentionally JSON-friendly — every
+    list element is a plain dict so callers can serialize directly
+    via ``json.dumps`` without custom encoders.
+    """
+    attribution = ChapterAttribution(chapter=fixture.name)
+
     # Entities — match on canonical name AND kind (lowercased).
     matched_expected_ents: set[int] = set()
-    ent_tp = 0
-    ent_fp = 0
-    for act_name, act_kind in actual.entities:
+    for act_idx, (act_name, act_kind) in enumerate(actual.entities):
         hit = False
         for i, exp in enumerate(fixture.entities):
             if i in matched_expected_ents:
@@ -260,12 +308,37 @@ def score_chapter(
                 and act_kind.lower() == exp.kind.lower()
             ):
                 matched_expected_ents.add(i)
-                ent_tp += 1
+                attribution.entities.tp.append({
+                    "actual_idx": act_idx,
+                    "expected_idx": i,
+                    "actual_name": act_name,
+                    "actual_kind": act_kind,
+                    "expected_name": exp.name,
+                    "expected_kind": exp.kind,
+                    "matched_via": (
+                        "canonical_name" if _canon_name(act_name) == _canon_name(exp.name)
+                        else "alias"
+                    ),
+                })
                 hit = True
                 break
         if not hit:
-            ent_fp += 1
-    ent_fn = len(fixture.entities) - len(matched_expected_ents)
+            attribution.entities.fp.append({
+                "actual_idx": act_idx,
+                "actual_name": act_name,
+                "actual_kind": act_kind,
+            })
+    for i, exp in enumerate(fixture.entities):
+        if i not in matched_expected_ents:
+            attribution.entities.fn.append({
+                "expected_idx": i,
+                "expected_name": exp.name,
+                "expected_kind": exp.kind,
+                "expected_aliases": list(exp.aliases),
+            })
+    ent_tp = len(attribution.entities.tp)
+    ent_fp = len(attribution.entities.fp)
+    ent_fn = len(attribution.entities.fn)
 
     # Relations — exact triple equality on canonical form. Subject/
     # object match either the expected entity's canonical name or any
@@ -286,9 +359,7 @@ def score_chapter(
         return False
 
     matched_expected_rels: set[int] = set()
-    rel_tp = 0
-    rel_fp = 0
-    for act_subj, act_pred, act_obj, act_polarity in actual.relations:
+    for act_idx, (act_subj, act_pred, act_obj, act_polarity) in enumerate(actual.relations):
         hit = False
         for i, exp in enumerate(fixture.relations):
             if i in matched_expected_rels:
@@ -300,71 +371,131 @@ def score_chapter(
                 and act_polarity == exp.polarity
             ):
                 matched_expected_rels.add(i)
-                rel_tp += 1
+                attribution.relations.tp.append({
+                    "actual_idx": act_idx,
+                    "expected_idx": i,
+                    "actual": [act_subj, act_pred, act_obj, act_polarity],
+                    "expected": [exp.subject, exp.predicate, exp.object, exp.polarity],
+                })
                 hit = True
                 break
         if not hit:
-            rel_fp += 1
-    rel_fn = len(fixture.relations) - len(matched_expected_rels)
+            attribution.relations.fp.append({
+                "actual_idx": act_idx,
+                "actual": [act_subj, act_pred, act_obj, act_polarity],
+            })
+    for i, exp in enumerate(fixture.relations):
+        if i not in matched_expected_rels:
+            attribution.relations.fn.append({
+                "expected_idx": i,
+                "expected": [exp.subject, exp.predicate, exp.object, exp.polarity],
+            })
+    rel_tp = len(attribution.relations.tp)
+    rel_fp = len(attribution.relations.fp)
+    rel_fn = len(attribution.relations.fn)
 
     # Events — strict participant-set equality (not subset/superset)
     # on canonical form + token-overlap on summary above threshold.
     # An extra or missing participant makes the event FP+FN, not TP.
     matched_expected_evts: set[int] = set()
-    evt_tp = 0
-    evt_fp = 0
-    for act_summary, act_participants in actual.events:
+    for act_idx, (act_summary, act_participants) in enumerate(actual.events):
         a_part_canons = {_canon_name(p) for p in act_participants}
         hit = False
         for i, exp in enumerate(fixture.events):
             if i in matched_expected_evts:
                 continue
             e_part_canons = {_canon_name(p) for p in exp.participants}
-            if (
-                a_part_canons == e_part_canons
-                and _event_overlap(act_summary, exp.summary)
-                >= event_overlap_threshold
-            ):
+            overlap = _event_overlap(act_summary, exp.summary)
+            if a_part_canons == e_part_canons and overlap >= event_overlap_threshold:
                 matched_expected_evts.add(i)
-                evt_tp += 1
+                attribution.events.tp.append({
+                    "actual_idx": act_idx,
+                    "expected_idx": i,
+                    "actual_summary": act_summary,
+                    "actual_participants": list(act_participants),
+                    "expected_summary": exp.summary,
+                    "expected_participants": list(exp.participants),
+                    "overlap_score": round(overlap, 3),
+                })
                 hit = True
                 break
         if not hit:
-            evt_fp += 1
-    evt_fn = len(fixture.events) - len(matched_expected_evts)
+            attribution.events.fp.append({
+                "actual_idx": act_idx,
+                "actual_summary": act_summary,
+                "actual_participants": list(act_participants),
+            })
+    for i, exp in enumerate(fixture.events):
+        if i not in matched_expected_evts:
+            attribution.events.fn.append({
+                "expected_idx": i,
+                "expected_summary": exp.summary,
+                "expected_participants": list(exp.participants),
+            })
+    evt_tp = len(attribution.events.tp)
+    evt_fp = len(attribution.events.fp)
+    evt_fn = len(attribution.events.fn)
 
     # Traps — actual extractions matching a trap entry.
     fp_trap = 0
-    for trap in fixture.traps:
+    for trap_idx, trap in enumerate(fixture.traps):
         if trap.kind == "entity" and trap.name:
             tname = _canon_name(trap.name)
-            if any(_canon_name(n) == tname for n, _ in actual.entities):
-                fp_trap += 1
+            for a_idx, (a_name, a_kind) in enumerate(actual.entities):
+                if _canon_name(a_name) == tname:
+                    fp_trap += 1
+                    attribution.entities.fp_trap.append({
+                        "actual_idx": a_idx,
+                        "actual_name": a_name,
+                        "actual_kind": a_kind,
+                        "trap_idx": trap_idx,
+                        "trap_name": trap.name,
+                        "trap_reason": trap.reason,
+                    })
+                    break
         elif trap.kind == "relation" and trap.subject and trap.predicate and trap.object:
-            for a_s, a_p, a_o, _a_pol in actual.relations:
+            for a_idx, (a_s, a_p, a_o, _a_pol) in enumerate(actual.relations):
                 if (
                     _canon_name(a_s) == _canon_name(trap.subject)
                     and _canon_pred(a_p) == _canon_pred(trap.predicate)
                     and _canon_name(a_o) == _canon_name(trap.object)
                 ):
                     fp_trap += 1
+                    attribution.relations.fp_trap.append({
+                        "actual_idx": a_idx,
+                        "actual": [a_s, a_p, a_o, _a_pol],
+                        "trap_idx": trap_idx,
+                        "trap": [trap.subject, trap.predicate, trap.object],
+                        "trap_reason": trap.reason,
+                    })
                     break
         elif trap.kind == "event" and trap.summary:
-            for a_sum, a_parts in actual.events:
+            for a_idx, (a_sum, a_parts) in enumerate(actual.events):
                 overlap_ok = (
                     _event_overlap(a_sum, trap.summary) >= event_overlap_threshold
                 )
                 # If trap specifies participants, require set match too
                 # (symmetric with event TP matching). If no participants
                 # on the trap, summary overlap alone triggers the hit.
+                hit_trap = False
                 if trap.participants:
                     trap_parts = {_canon_name(p) for p in trap.participants}
                     actual_parts = {_canon_name(p) for p in a_parts}
                     if overlap_ok and actual_parts == trap_parts:
-                        fp_trap += 1
-                        break
+                        hit_trap = True
                 elif overlap_ok:
+                    hit_trap = True
+                if hit_trap:
                     fp_trap += 1
+                    attribution.events.fp_trap.append({
+                        "actual_idx": a_idx,
+                        "actual_summary": a_sum,
+                        "actual_participants": list(a_parts),
+                        "trap_idx": trap_idx,
+                        "trap_summary": trap.summary,
+                        "trap_participants": list(trap.participants),
+                        "trap_reason": trap.reason,
+                    })
                     break
 
     tp = ent_tp + rel_tp + evt_tp
@@ -380,7 +511,7 @@ def score_chapter(
     trap_total = len(fixture.traps)
     fp_trap_rate = fp_trap / trap_total if trap_total else 0.0
 
-    return ChapterScore(
+    score = ChapterScore(
         chapter=fixture.name,
         tp=tp,
         fp=fp,
@@ -391,6 +522,7 @@ def score_chapter(
         recall=recall,
         fp_trap_rate=fp_trap_rate,
     )
+    return score, attribution
 
 
 def aggregate_scores(scores: list[ChapterScore]) -> AggregateScore:
