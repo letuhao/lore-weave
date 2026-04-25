@@ -213,11 +213,11 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ## Phase 4 severity summary
 
-- **🔴 Blockers (3 remaining, 1 resolved):** Q15 page/turn per-channel · Q16 durable subscribe per channel · Q27 event bubble-up primitive · ~~Q26 channel as first-class concept~~ ✅ resolved 2026-04-25
+- **🔴 Blockers (2 remaining, 2 resolved):** Q15 page/turn per-channel · Q27 event bubble-up primitive · ~~Q16 durable subscribe~~ ✅ resolved 2026-04-25 · ~~Q26 channel as first-class concept~~ ✅ resolved 2026-04-25
 - **🟡 Significant gaps (9 remaining, 3 resolved):** Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 + ~~Q17, Q30, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (4):** Q23–Q25, Q29, Q33
 
-**Resolved (4):** Q17, Q26, Q30, Q34 ✅
+**Resolved (5):** Q16, Q17, Q26, Q30, Q34 ✅
 
 ---
 
@@ -233,15 +233,20 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q16 — Durable per-channel event-stream subscribe with resume token (REAL-2 reframed)
+## Q16 — Durable per-channel event-stream subscribe with resume token (REAL-2 reframed) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** [DP-K6](04_kernel_api_contract.md#dp-k6--subscription-primitives) `subscribe_broadcast` and `subscribe_invalidation` use Redis pub/sub (fire-and-forget per [DP-X2](06_cache_coherency.md#dp-x2--invalidation-message-protocol)). Player disconnect 30s → reconnect → events in gap are lost. In an event-linear game where the event log IS the story, this is semantic data loss. Under channel model the gap multiplies: player subscribes to multiple channel levels simultaneously and must resume each on reconnect.
+**What:** Phase 1-3 subscribe APIs were fire-and-forget pub/sub; reconnect after disconnect lost gap events. In event-linear game, this is semantic data loss.
 
-**Why blocker:** No feature that depends on "seeing the full story" can rely on the current subscribe APIs. Reconnect is a common operation, not an edge case.
+**Resolution:** New file [14_durable_subscribe.md](14_durable_subscribe.md) DP-Ch16..Ch20:
+- **DP-Ch16** `subscribe_channel_events_durable<S: ChannelEvent>(ctx, channel, from_event_id)` returns `DurableEventStream<S>`; visibility check via session capability + ancestor chain.
+- **DP-Ch17** Hybrid backing — Redis Streams `dp:events:{reality}:{channel}` for live tail (7-day retention) + Postgres `event_log` direct query for historical catchup; populated by channel writer in same tx as commit.
+- **DP-Ch18** Resume token = `channel_event_id`, client-side cursor; gap-free monotonic delivery; explicit `ResumeTokenExpired` rather than silent gap; catchup → live transition via parallel DB-page + Stream merge with `channel_event_id` deduplication.
+- **DP-Ch19** `subscribe_session_channels` convenience auto-multiplexes ancestor chain; per-channel ordering preserved, cross-channel arbitrary; `resubscribe_for_new_context` helper on `move_session_to_channel`.
+- **DP-Ch20** TCP-level backpressure + 60s stall threshold; idle heartbeat every 30s; explicit reconnect (no auto-reconnect by SDK); `StreamEndReason` taxonomy (retryable vs not).
 
-**Candidate resolution path:** Add **DP-K14** `subscribe_channel_events_durable(ctx, channel_id, from_event_id) -> DurableStream` backed by Postgres LISTEN + catch-up query (or Redis Streams). Keep pub/sub for invalidation (idempotent, drop-safe). Split coherency protocol accordingly.
+[DP-A4](02_invariants.md#dp-a4--redis-is-the-cache--pubsub--streams-technology) extended with Streams role; existing `subscribe_invalidation` (cache coherency) and `subscribe_broadcast` (T1 fan-out) remain as pub/sub fire-and-forget — durable subscribe is a third primitive.
 
-**Blocks:** Feature design that handles player disconnect-reconnect correctly.
+**Unblocks Q15 turn boundary** (turn boundary = `ChannelEvent` impl on this stream) and **Q27 bubble-up** (aggregator subscribes to descendant streams via this primitive).
 
 ---
 

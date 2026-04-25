@@ -45,8 +45,9 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 
 12. [12_channel_primitives.md](12_channel_primitives.md) — **DP-Ch1..Ch10** channel identity, tree registry, CP cache + delta stream, scope marker traits, cache-key format, SessionContext extension, CRUD primitives (resolves Q26)
 13. [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) — **DP-Ch11..Ch15** per-channel `channel_event_id` allocation, writer assignment rules (cell vs non-cell), epoch fencing, cross-node write routing via gRPC, causal-ref schema for bubble-up (resolves Q17 + Q30 + Q34)
+14. [14_durable_subscribe.md](14_durable_subscribe.md) — **DP-Ch16..Ch20** durable per-channel subscribe with resume token, hybrid Redis Streams + Postgres catchup, monotonic gap-free delivery, multi-channel multiplex convenience, backpressure + reconnect (resolves Q16)
 
-Phase 4 blockers remaining: Q15 (turn boundary), Q16 (durable subscribe), Q27 (bubble-up primitive). Next cluster: Q15 + Q16 + Q27 (the remaining blockers).
+Phase 4 blockers remaining: Q15 (turn boundary), Q27 (bubble-up primitive). Both consume the Q16 durable subscribe foundation just landed.
 
 ---
 
@@ -66,7 +67,8 @@ Phase 4 blockers remaining: Q15 (turn boundary), Q16 (durable subscribe), Q27 (b
 | 11 | [11_access_pattern_rules.md](11_access_pattern_rules.md) | LOCKED | DP-R1..R8 | 2026-04-24 |
 | 12 | [12_channel_primitives.md](12_channel_primitives.md) | LOCKED | DP-Ch1..Ch10 | 2026-04-25 |
 | 13 | [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) | LOCKED | DP-Ch11..Ch15 | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 in progress** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (Q17/Q26/Q30/Q34 ✅ resolved 2026-04-25) | 2026-04-25 |
+| 14 | [14_durable_subscribe.md](14_durable_subscribe.md) | LOCKED | DP-Ch16..Ch20 | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 in progress** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (Q16/Q17/Q26/Q30/Q34 ✅ resolved 2026-04-25) | 2026-04-25 |
 
 ---
 
@@ -86,6 +88,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-F*` | Failure and recovery items (DP-F1..F10) | [07_failure_and_recovery.md](07_failure_and_recovery.md) |
 | `DP-Ch*` | Channel primitives (DP-Ch1..Ch10) | [12_channel_primitives.md](12_channel_primitives.md) |
 | `DP-Ch*` | Channel ordering + writer binding (DP-Ch11..Ch15) | [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) |
+| `DP-Ch*` | Durable per-channel subscribe (DP-Ch16..Ch20) | [14_durable_subscribe.md](14_durable_subscribe.md) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.
 

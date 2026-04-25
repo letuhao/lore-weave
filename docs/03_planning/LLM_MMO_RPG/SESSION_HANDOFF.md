@@ -81,6 +81,67 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q16 RESOLVED (durable per-channel subscribe)
+
+### Session arc
+
+Third Phase 4 mini-session. Picked Q16 (durable per-channel subscribe with resume token) standalone — it is the foundation that the remaining two Phase 4 blockers (Q15 turn boundary, Q27 bubble-up) both consume, so resolving it first unblocks both follow-ups.
+
+CLARIFY phase: user approved 6 design decisions (F1c hybrid Redis Streams + Postgres catchup · F2a client-side cursor with SDK stateless w.r.t. subscriptions · F3 catchup→live transition via parallel DB-page + stream merge with event_id dedup · F4a only ChannelScoped events streamed durably · F5b per-channel API + ancestor-chain multiplex convenience · F6b TCP-level backpressure with 60 s stall threshold).
+
+BUILD phase: 1 new file (14_durable_subscribe.md, 5 mechanism specs DP-Ch16..Ch20) + extension of DP-A4 axiom (Redis serves three roles: cache + pub/sub + Streams) + targeted updates to 3 existing files (subscribe primitives in 04, keyspace clarification in 06, axiom row in 02).
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`14_durable_subscribe.md`](06_data_plane/14_durable_subscribe.md) | LOCKED, DP-Ch16..Ch20 | 381 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | DP-A4 extended (Redis cache + pub/sub + **Streams**); summary table row updated | 306 → 312 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | DP-K6 + `subscribe_channel_events_durable<S>` + `subscribe_session_channels<S>`; surface count 31 → 33 | 685 → 706 (still over soft cap; user-approved API-reference exception) |
+| [`06_cache_coherency.md`](06_data_plane/06_cache_coherency.md) | DP-X2 explicit 5-keyspace table separating cache invalidation pub/sub from durable Streams from audit streams (Phase 4 clarification) | 271 → 285 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q16 ✅ resolved with full cross-refs; Phase 4 severity summary updated (5 resolved) | 423 → 428 |
+| [`_index.md`](06_data_plane/_index.md) | File 14 row + DP-Ch third range; Phase 4 progress entry | 110 → 113 |
+
+**Folder total after this Q:** 4572 lines across 15 files. **98 stable IDs** total: 16 axioms · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API · 10 CP · 10 coherency · 10 failure · **20 channel** (Ch1..Ch20).
+
+### Q16 decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| Hybrid backing: Redis Streams + Postgres catchup | DP-Ch17 | 7-day Redis retention covers 99 % of resume cases; Postgres event_log for older catchup; one canonical source (DB) + one fast tail (Streams) |
+| Client-side cursor, SDK stateless | DP-Ch18 | Scales without CP-side state; client tracks last-seen `channel_event_id`; explicit reconnect protocol |
+| Catchup → live merge with event_id dedup | DP-Ch18 | Buffer Stream events during DB query, deliver DB events first, drain buffer with dedup by `channel_event_id`, then live-tail |
+| Only ChannelScoped events streamed | DP-Ch16 | RealityScoped events use existing `read_projection` path; durable subscribe is the channel-timeline primitive |
+| Per-channel API + multiplex convenience | DP-Ch19 | `subscribe_channel_events_durable` per-channel + `subscribe_session_channels` auto-multiplex over ancestor chain; per-channel ordering preserved, cross-channel arbitrary |
+| TCP backpressure + 60 s stall threshold | DP-Ch20 | Turn-based 1-10 events/s rate makes slow consumer rare; 60 s buffer + disconnect; reconnect with last token = no loss |
+| Idle heartbeat every 30 s | DP-Ch20 | Lets clients distinguish "channel quiet" from "connection broken"; 90 s without event/heartbeat = client treats stream as dead |
+| Explicit `ResumeTokenExpired` error rather than silent gap | DP-Ch18 | Client decides skip-ahead vs abort; never silent data loss |
+
+### Phase 4 progress after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | 5 | Q16 · Q17 · Q26 · Q30 · Q34 |
+| 🔴 Blockers remaining | 2 | Q15 turn boundary · Q27 bubble-up primitive |
+| 🟡 Significant gaps | 9 | Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 (Q20 deferred V1 data) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q29, Q33 |
+
+**Both remaining blockers depend on Q16's foundation:**
+- Q15 turn boundary = a `ChannelEvent` impl with discriminator `"turn_boundary"`, occupying a specific `channel_event_id`; subscribers see it via `subscribe_channel_events_durable`.
+- Q27 bubble-up = aggregator at parent channel uses `subscribe_channel_events_durable` over each descendant cell, consumes events, emits parent events via writer.
+
+User flagged that Q27 is more complex (aggregator state + RNG seed + threshold + privacy) than Q15 (special event type). Tackling order is open — Q27 first lets Q15 reuse the same protocol scaffolding; Q15 first is simpler and could be a warm-up.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 + Q26 + Q17/Q30/Q34 + Q16 work is LOCKED. Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md is now 706 lines, still under 1500 hard cap. If Q15+Q27 cluster pushes it past 800, plan a split.
+- DP-A4 now mentions three Redis roles — make sure any Phase 4+ work that touches Redis cites the right keyspace family (cache invalidation pub/sub vs durable Streams vs audit Streams).
+- File 14's `ChannelEvent` trait is intentionally generic; concrete event-type taxonomy + tagged-enum decoder land in Phase 2b proc-macro work, not in design phase.
+
+---
+
 ## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q17+Q30+Q34 RESOLVED (per-channel ordering + writer binding)
 
 ### Session arc
@@ -663,6 +724,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-25 | **06_data_plane Phase 3 locked — design track COMPLETE.** `07_failure_and_recovery.md` (DP-F1..F10, 385 lines) closes Q6/Q12 and Q5 residual. Key locks: **consistency over availability** on split-brain (DP-F5, reject T3 writes rather than reconcile); **3 token-bucket backpressure** (per-reality-per-tier + per-service + per-session, DP-F7); schema migration rollback ≤5 min with dual-read pause + new-schema quarantine (DP-F8); CP-down cold-start fallback = 503 Retry-After rather than risk double-wake (DP-F8); chaos cadence weekly CP + node / bi-weekly Redis + inval drop / monthly freeze + partition + backpressure / quarterly migration rollback (DP-F10). Folder total: 2851 lines across 12 files, **74 stable IDs**. 7 Q-items fully resolved, 2 partial (ops residuals), 2 out of scope, 1 future implementation. Parallel tracks now unblocked: feature design (DF4/DF5/DF7) consuming DP contract, main SRE track continuation (SR6-SR12), SDK implementation, ops doc. |
 | 2026-04-25 | **06_data_plane Phase 4 backlog recorded (NOT resolved).** User clarified actual game model is turn-based event-linear with **hierarchical channels** (cell → tavern → town → district → country → continent) + probabilistic event bubble-up. Adversarial review identified **Phase 1-3 contracts remain valid baseline but need extension**. 20 open questions (Q15..Q34) appended to `99_open_questions.md`: **4 blockers** (Q15 per-channel turn primitive, Q16 durable subscribe with resume, Q26 channel as first-class concept, Q27 bubble-up primitive), **12 significant gaps**, **4 nits/ops**. 7 items are REAL-* issues from hot-path review reframed to channel scope; 9 are NEW issues surfaced by channel model; 4 carry forward as ops/security follow-ups. Resolution plan: foundation (Q26/Q17/Q30/Q34) → blockers → semantics → gaps → ops. One mini-session per Q cluster. Phase 1-3 files remain LOCKED as baseline; new file `12_channel_primitives.md` planned once foundation resolved. |
 | 2026-04-25 | **06_data_plane Phase 4 Q26 ✅ RESOLVED — channel hierarchy now first-class DP concept.** First Phase 4 mini-session. 6 design decisions approved (D1c tree + free-form level_name · D2a UUID + cached ancestor · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix · D5 SessionContext extension · D6b per-reality-DB registry + CP cache). 2 new axioms **DP-A13** (channel tree first-class) + **DP-A14** (aggregate scope design-time marker). New file **12_channel_primitives.md** (447 lines, DP-Ch1..Ch10). Updates to 04 (`ChannelId`, scope traits, extended SessionContext, scope-typed reads, scope-dispatched `cache_key!`, channel CRUD primitives; file now 677 lines — over soft cap, user-approved as API-reference exception), 05 (CP channel tree cache + 3 new gRPC methods), 99 (Q26 marked resolved + severity updated). Folder: 3687 lines across 13 files, ~88 stable IDs. Phase 4 progress: 1/4 blockers resolved; Q17 + Q30 + Q34 next cluster (per-channel ordering + writer binding). |
+| 2026-04-25 | **06_data_plane Phase 4 Q16 ✅ RESOLVED — durable per-channel subscribe with resume token.** Third Phase 4 mini-session. 6 design decisions approved (F1c hybrid Redis Streams + Postgres catchup · F2a client-side cursor SDK stateless · F3 catchup→live merge with event_id dedup · F4a only ChannelScoped events · F5b per-channel API + multiplex convenience · F6b TCP backpressure + 60s stall). DP-A4 axiom extended (Redis = cache + pub/sub + Streams). New file **14_durable_subscribe.md** (381 lines, DP-Ch16..Ch20: subscribe primitive + DurableStreamItem enum · hybrid backing Redis Streams 7-day + Postgres event_log historical catchup · client-side resume token with monotonic gap-free delivery · catchup→live merge algorithm · multiplex convenience auto-subscribing ancestor chain · TCP backpressure + heartbeats + StreamEndReason taxonomy). Updates: 04 (DP-K6 + 2 new subscribe primitives, surface 31→33, 685→706 lines), 06 (DP-X2 explicit 5-keyspace table separating pub/sub vs Streams), 99 (Q16 ✅), _index. Folder: 4572 lines across 15 files, **98 stable IDs**. Phase 4 progress: 5 resolved (Q16/Q17/Q26/Q30/Q34); 2 blockers remain (Q15 turn boundary, Q27 bubble-up) — both consume Q16's durable subscribe foundation. |
 | 2026-04-25 | **06_data_plane Phase 4 Q17 + Q30 + Q34 ✅ RESOLVED — per-channel total ordering + writer-node binding.** Second Phase 4 mini-session. 5 design decisions approved (E1a per-channel total order applies only to ChannelScoped · E2b single-writer in-memory counter + DB UNIQUE backstop · E3b cell writer = creator's node + handoff, non-cell writer = CP-assigned + persistent · E4b SDK transparent cross-node routing via gRPC · E5a CP detects writer death and pushes via channel-tree-update stream). 2 new axioms **DP-A15** (per-channel total event ordering) + **DP-A16** (channel writer-node binding). New file **13_channel_ordering_and_writer.md** (381 lines, DP-Ch11..Ch15: `channel_event_id` allocation with MAX-reseed recovery + DB UNIQUE gaplessness · cell vs non-cell writer assignment + handoff p99 ≤200ms · epoch fence via `channel_writer_state` table + `dp:writer_audit:{reality_id}` stream · transparent gRPC routing with ~5ms LAN hop · `causal_refs: Vec<EventRef>` schema for Q27 bubble-up). Updates: 04 (+`WrongChannelWriter` `DpError` + DP-K5 routing note; 685 lines), 05 (+writer-binding responsibility + 3 RPC methods, surface 16→19), 12 (cross-refs to file 13), 99 (Q17/Q30/Q34 ✅), _index. Folder: 4142 lines across 14 files, **93 stable IDs**. Phase 4 progress: 4 resolved (Q17/Q26/Q30/Q34); 3 blockers remain (Q15 turn boundary, Q16 durable subscribe, Q27 bubble-up primitive) — likely tackled as Q16-first cluster since Q15 and Q27 both consume the durable subscribe. |
 | 2026-04-24 | **H/M/P tier concerns batch-locked — all 21 SA+DE adversarial concerns resolved.** §12R added as consolidated follow-up. **H3 reversed from original batch** per user directive: doppelganger pattern REJECTED, NPC single-session becomes PERMANENT (not V2+ deferred), session caps + queue UX first-class (§12R.1). H5 adds new `seeding` lifecycle state + bootstrap worker + locale translation (§12R.2). H4 adds upcaster requirement for deprecated event types (§12C.5 amended). Plus observability metrics for H1/H2/H6/M-REV-6, HNSW pre-warm on thaw (§12R.5), projection rebuild determinism rule (§12R.7), admin command discoverability (§12R.9), and various polish. 25 decisions locked (H1-H6-D1/H3-NEW-D1..D6, M-REV-1..6-D1, P1-P4-D1). Storage + multiverse design **fully locked** pending V1 prototype data. |
 | 2026-04-24 | **Security Review S1+S2+S3 locked — §12H per-pair memory model SUPERSEDED by session-scoped capability-based design.** §12S added (7 subsections). S1: reality creation rate limit (5/hour + 50 active per user). **S2 architectural shift**: events carry session_id + visibility (5 values) + whisper_target; session_participants capability table; NPC memory split into `npc_session_memory` (knowledge, per-session, replaces per-pair) + `npc_pc_relationship` (derived stance, per-pair). Cross-PC leak becomes **structurally impossible** via capability-based prompt assembly contract. **S3 full tier privacy** (Option A): cascade_policy + privacy_level (normal/sensitive/confidential) with per-tier retention (30d/7d), force-propagate block, cascade auto-constrain, tiered whisper UX + fork inheritance warning. 14 decisions locked (S1-D1, S2-NEW-D1..D5, S3-NEW-D1..D8). §4.2 events schema + §5.2 projections + §12H.2 updated accordingly. Per-event encryption + admin-tier gating deferred V2+. Remaining Security (S4-S13) + SRE review queued. |

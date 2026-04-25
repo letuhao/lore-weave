@@ -384,6 +384,27 @@ pub struct BroadcastStream<A: T1Aggregate> { /* ... */ }
 
 **Visibility filtering** (e.g., stealth / GM-invisible) is NOT part of this primitive — it is a feature-repo concern applied **before** broadcast. SDK delivers everything the subscriber is entitled to by capability; the feature decides what to emit. See [99_open_questions.md](99_open_questions.md) F2 follow-up.
 
+### Durable per-channel event subscribe (Phase 4, [DP-Ch16](14_durable_subscribe.md#dp-ch16--durableeventstream-api))
+
+```rust
+/// Subscribe to a channel's durable event stream from a resume point.
+/// Replays missed events on reconnect; gap-free delivery guaranteed within
+/// retention. See 14_durable_subscribe.md for full semantics.
+pub async fn subscribe_channel_events_durable<S: ChannelEvent>(
+    ctx: &SessionContext,
+    channel: &ChannelId,
+    from_event_id: u64,
+) -> Result<DurableEventStream<S>, DpError>;
+
+/// Auto-multiplex over current_channel + ancestor chain.
+pub async fn subscribe_session_channels<S: ChannelEvent>(
+    ctx: &SessionContext,
+    from_tokens: HashMap<ChannelId, u64>,
+) -> Result<MultiplexedDurableStream<S>, DpError>;
+```
+
+These complement (not replace) `subscribe_invalidation` (cache coherency) and `subscribe_broadcast<A: T1Aggregate>` (T1 fan-out) — those remain pub/sub fire-and-forget. Durable subscribe is for canonical channel events that are part of the game's story and must not be lost.
+
 ---
 
 ## DP-K7 — `dp::cache_key!` macro
@@ -655,13 +676,13 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 | Error | 1 | `DpError` (13 variants incl. `WrongChannelWriter` per Phase 4 DP-A16) |
 | Read | 4 | `read_projection_reality`, `read_projection_channel`, `query_scoped_reality`, `query_scoped_channel` |
 | Write | 5 | `t0_write`, `t1_write`, `t2_write`, `t3_write`, `t3_write_multi` |
-| Subscription | 2 | `subscribe_invalidation`, `subscribe_broadcast` |
+| Subscription | 4 | `subscribe_invalidation` (pub/sub) · `subscribe_broadcast<T1>` (pub/sub) · `subscribe_channel_events_durable<S>` (Streams + DB catchup, Phase 4) · `subscribe_session_channels<S>` (multiplex, Phase 4) |
 | Macros | 2 | `cache_key!` (scope-dispatched), `instrumented!` |
 | Client | 2 | `DpClient::connect`, `DpClient::verify_reality` |
 | Channel | 3 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel` |
-| **Total SDK primitives** | **~31** | Feature repos compose these into domain APIs. Channel primitives (Phase 4) are additive; earlier scope APIs subsumed into the scope-typed reads. |
+| **Total SDK primitives** | **~33** | Feature repos compose these into domain APIs. Channel primitives + durable subscribe (Phase 4) are additive; earlier scope APIs subsumed into the scope-typed reads. |
 
-~31 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with channel support added in Phase 4.
+~33 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with channel support + durable subscribe added in Phase 4.
 
 ---
 

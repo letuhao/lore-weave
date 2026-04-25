@@ -62,13 +62,19 @@ Axioms are not principles. They are mechanically checked at design review.
 
 ---
 
-## DP-A4 — Redis is the cache technology
+## DP-A4 — Redis is the cache + pub/sub + streams technology
 
-**Rule:** The shared hot-path cache is Redis. Pub/sub for invalidation broadcast is Redis pub/sub. In-process (per-node) caches are permitted as an optional second layer but must be invalidated by Redis pub/sub messages — they are not a separate tier.
+**Rule:** Redis serves three distinct DP roles:
 
-**Why:** Redis is mature, already in the LoreWeave stack, supports pub/sub and TTL natively, and has battle-tested Rust clients (redis-rs, fred). No alternative (NATS JetStream, etcd, custom in-process) offers a strong enough advantage to justify adding a new dependency to the stack.
+1. **Shared hot-path cache** (T0 ephemeral excluded; T1/T2/T3 cache hits served from Redis)
+2. **Pub/sub for cache invalidation broadcast** (fire-and-forget, idempotent — see [DP-X2](06_cache_coherency.md#dp-x2--invalidation-message-protocol))
+3. **Streams for durable per-channel event delivery** (Phase 4 — see [14_durable_subscribe.md DP-Ch17](14_durable_subscribe.md#dp-ch17--hybrid-backing-store))
 
-**Topology constraints (partial — full decision deferred):** Per [99_open_questions.md](99_open_questions.md) Q3, the exact Redis topology (single cluster vs per-reality instance vs Redis Cluster sharded by reality_id) is open. All DP designs must work under any of these topologies — cache keys always include `reality_id` as the first component to allow sharding later.
+In-process (per-node) caches are permitted as an optional second cache layer but must be invalidated by Redis pub/sub messages — they are not a separate tier.
+
+**Why:** Redis is mature, already in the LoreWeave stack, supports pub/sub + Streams + TTL natively, and has battle-tested Rust clients (redis-rs, fred). No alternative (NATS JetStream, etcd, custom in-process) offers a strong enough advantage to justify adding a new dependency to the stack. Streams add per-channel event durability (7-day default retention) without introducing a new infrastructure component.
+
+**Topology constraints (partial — full decision deferred):** Per [99_open_questions.md Q3](99_open_questions.md#q3--redis-topology), the exact Redis topology (single cluster vs per-reality instance vs Redis Cluster sharded by reality_id) is open. All DP designs must work under any of these topologies — cache keys and stream keys always include `reality_id` as the first component to allow sharding later.
 
 ---
 
@@ -289,7 +295,7 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 | DP-A1 | Primitives + Rulebook = sanctioned path | Kernel state reached only via DP primitives following Rulebook; threat model labeled (accidental bypass in scope; RCE out of scope; sidecar proxy deferred). |
 | DP-A2 | CP/DP split | Policy in control plane, data in embedded SDK; CP not on hot path. |
 | DP-A3 | Rust game layer | All new game services in Rust; SDK Rust-only. |
-| DP-A4 | Redis cache | Redis for cache + pub/sub invalidation; per-reality key prefix. |
+| DP-A4 | Redis cache + pub/sub + streams | Redis serves three roles: hot-path cache, pub/sub invalidation, durable per-channel event streams (Phase 4); per-reality key prefix. |
 | DP-A5 | Four tiers only | DP-T0..T3, closed set, design-time choice. |
 | DP-A6 | Python event-only | LLM emits proposals, Rust validates and applies. |
 | DP-A7 | Reality-scoped keys | `reality_id` first in every cache key. |

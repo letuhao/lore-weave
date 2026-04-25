@@ -22,7 +22,21 @@ Each tier has a distinct coherency model. Features pick a tier ([DP-T0..T3](03_t
 
 ## DP-X2 — Invalidation message protocol
 
-### Channels
+### Three Redis roles, distinct keyspaces (Phase 4 clarification)
+
+Redis serves DP in three roles per [DP-A4](02_invariants.md#dp-a4--redis-is-the-cache--pubsub--streams-technology). The keyspaces and protocols are distinct and must not be conflated:
+
+| Role | Channel/key pattern | Protocol | Durability | Use |
+|---|---|---|---|---|
+| Cache invalidation | `dp:inval:{reality_id}` | pub/sub | fire-and-forget | This file (DP-X2) — drop stale cache entries |
+| Cache invalidation audit | `dp:inval:audit:{reality_id}` | Redis Stream | retained for debugging | This file — observability |
+| **Durable channel events** | `dp:events:{reality_id}:{channel_id}` | **Redis Stream** | **7-day or 1M-entry retention** | **[14_durable_subscribe.md DP-Ch17](14_durable_subscribe.md#dp-ch17--hybrid-backing-store)** — canonical event delivery |
+| Channel-tree changes | `dp:channel_changes:{reality_id}` | Redis Stream | 7-day | [DP-Ch3](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream) — channel tree delta |
+| Writer audit | `dp:writer_audit:{reality_id}` | Redis Stream | 7-day | [DP-Ch13](13_channel_ordering_and_writer.md#dp-ch13--writer-handoff--epoch-fencing-protocol) — handoff audit |
+
+**Invalidation pub/sub is intentionally fire-and-forget** — losing one invalidation is bounded by stale-while-revalidate (DP-X4) + cache TTL (DP-X7). It is **not** the channel event stream. Channel events that are part of the game's story go through the durable Streams path (file 14), which has gap-free delivery semantics.
+
+### Channels (cache invalidation)
 
 One Redis pub/sub channel per reality for invalidations: `dp:inval:{reality_id}`.
 
