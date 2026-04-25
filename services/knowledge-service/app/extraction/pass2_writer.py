@@ -34,6 +34,7 @@ from pydantic import BaseModel
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.events import merge_event
 from app.db.neo4j_repos.facts import merge_fact
+from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.neo4j_repos.provenance import add_evidence, upsert_extraction_source
 from app.db.neo4j_repos.relations import create_relation
 from app.extraction.anchor_loader import Anchor
@@ -93,6 +94,7 @@ async def write_pass2_extraction(
     facts: list[LLMFactCandidate] | None = None,
     extraction_model: str = "llm-v1",
     anchors: list[Anchor] | None = None,
+    alias_map_repo: EntityAliasMapRepo | None = None,
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -156,6 +158,7 @@ async def write_pass2_extraction(
             kind=ent.kind,
             source_type=source_type,
             confidence=ent.confidence,
+            alias_map_repo=alias_map_repo,
         )
         merged_entity_ids.add(entity.id)
         entities_merged += 1

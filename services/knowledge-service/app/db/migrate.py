@@ -500,6 +500,47 @@ CREATE TABLE IF NOT EXISTS knowledge_summary_spending (
 
 CREATE INDEX IF NOT EXISTS idx_summary_spending_user_month
   ON knowledge_summary_spending(user_id, month_key);
+
+-- ═══════════════════════════════════════════════════════════════
+-- C17 — entity_alias_map: post-merge alias→target redirect lookup.
+-- Closes D-K19d-γb-03: extraction's canonical_id is a SHA hash of the
+-- name, so a re-extracted source alias post-merge resurrects the
+-- merged-away entity. This table is the redirect index the resolver
+-- consults BEFORE the SHA hash so future mentions of "Alice" land on
+-- the merge target rather than re-creating Alice.
+--
+-- Key shape mirrors entity_canonical_id: (user_id, project_scope, kind,
+-- canonical_alias). project_scope is TEXT carrying either project_id::text
+-- or the literal string 'global' so the table doesn't need a sentinel
+-- UUID for global-scope entries.
+--
+-- reason discriminates merge-driven rows (authoritative, written at
+-- merge_entities surgery time) from backfill rows (best-effort post-deploy
+-- reconstruction from existing :Entity.aliases arrays). FE/audit can show
+-- different UI for each.
+--
+-- source_entity_id nullable because backfill cannot reconstruct the
+-- pre-merge source's id; merge writes the source.id for forensics.
+--
+-- No FK to :Entity.id (cross-DB convention — entity lives in Neo4j).
+--
+-- See ADR docs/03_planning/KNOWLEDGE_SERVICE_ENTITY_ALIAS_MAP_ADR.md
+-- and KSA §5.0 "Alias-redirect on merge" for full design rationale.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS entity_alias_map (
+  user_id           UUID NOT NULL,
+  project_scope     TEXT NOT NULL,
+  kind              TEXT NOT NULL,
+  canonical_alias   TEXT NOT NULL,
+  target_entity_id  TEXT NOT NULL,
+  source_entity_id  TEXT,
+  reason            TEXT NOT NULL CHECK (reason IN ('merge', 'backfill')),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_scope, kind, canonical_alias)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_alias_map_target
+  ON entity_alias_map(target_entity_id);
 """
 
 

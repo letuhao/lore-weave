@@ -22,12 +22,15 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_helpers import run_read
+from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import (
     ENTITIES_MAX_LIMIT,
     Entity,
     EntityDetail,
     MergeEntitiesError,
     archive_entity,
+    get_entity,
     get_entity_with_relations,
     list_entities_filtered,
     list_user_entities,
@@ -36,6 +39,8 @@ from app.db.neo4j_repos.entities import (
     update_entity_fields,
 )
 from app.db.repositories import VersionMismatchError
+from app.db.repositories.entity_alias_map import EntityAliasMapRepo
+from app.deps import get_entity_alias_map_repo
 from app.middleware.jwt_auth import get_current_user
 
 
@@ -417,6 +422,7 @@ async def unlock_entity(
 
 class EntityMergeResponse(BaseModel):
     target: Entity
+    aliases_redirected: int = 0  # C17 — count of alias-map rows written
 
 
 _MERGE_ERROR_HTTP_STATUS: dict[str, int] = {
@@ -424,7 +430,28 @@ _MERGE_ERROR_HTTP_STATUS: dict[str, int] = {
     "entity_not_found": status.HTTP_404_NOT_FOUND,
     "entity_archived": status.HTTP_409_CONFLICT,
     "glossary_conflict": status.HTTP_409_CONFLICT,
+    "alias_collision": status.HTTP_409_CONFLICT,  # C17
 }
+
+
+# C17 — collision pre-check. For each alias on source, verify NO other
+# live entity in the same scope+kind already claims that canonical_name.
+# If hit, the merge is ambiguous (a third entity already exists with
+# that identity); refuse with 409 alias_collision so the user resolves
+# the third entity first.
+_C17_COLLISION_PRECHECK_CYPHER = """
+UNWIND $candidate_canonicals AS ca
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND coalesce(e.project_id, '') = coalesce($project_id, '')
+  AND e.kind = $kind
+  AND e.canonical_name = ca
+  AND e.id <> $source_id
+  AND e.id <> $target_id
+  AND e.archived_at IS NULL
+RETURN e.id AS id, e.name AS name, ca AS conflicting_alias
+LIMIT 1
+"""
 
 
 @entities_router.post(
@@ -435,8 +462,9 @@ async def merge_entity_into(
     entity_id: str = Path(min_length=1, max_length=200),
     other_id: str = Path(min_length=1, max_length=200),
     user_id: UUID = Depends(get_current_user),
+    alias_map_repo: EntityAliasMapRepo = Depends(get_entity_alias_map_repo),
 ) -> EntityMergeResponse:
-    """K19d.6 — merge `entity_id` (source) into `other_id` (target).
+    """K19d.6 + C17 — merge `entity_id` (source) into `other_id` (target).
 
     Re-homes every RELATES_TO and EVIDENCED_BY edge from source to
     target, combines aliases + source_types + mention_count +
@@ -444,21 +472,99 @@ async def merge_entity_into(
     with `user_edited=true` so extraction doesn't silently undo
     the merge by re-adding removed alias variants.
 
+    C17 (D-K19d-γb-03 closer): on success, every alias on source
+    (plus source's canonical_name) is registered in
+    ``entity_alias_map`` so future re-extraction of those names
+    redirects to target instead of resurrecting source. If user
+    previously merged X→source, those redirects are repointed onto
+    target. Pre-merge collision check refuses the merge if any
+    source alias already names a third live entity (ambiguity).
+
     Error envelope — structured `detail.error_code` lets the FE
     switch on the failure class:
       - 400 ``same_entity``        — source_id == other_id
       - 404 ``entity_not_found``   — either missing / cross-user
       - 409 ``entity_archived``    — either archived
       - 409 ``glossary_conflict``  — anchored to different glossary
-                                      entries (merge would lose one
-                                      anchor — user must resolve
-                                      anchor conflict manually first)
+                                      entries
+      - 409 ``alias_collision``    — a source alias names a third
+                                      live entity; resolve that
+                                      entity first (C17)
     """
+    user_id_str = str(user_id)
+
+    # C17 review-impl HIGH-1 — handle the trivial self-merge BEFORE
+    # the collision precheck. Otherwise a user typing
+    # /X/merge-into/X against an entity sharing canonical_name with
+    # any sibling would surface 409 alias_collision instead of the
+    # correct 400 same_entity (the collision filter excludes only
+    # source AND target ids, which collapse to the same exclusion
+    # under self-merge — siblings still match).
+    if entity_id == other_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "same_entity",
+                "message": "source and target must be distinct entities",
+            },
+        )
+
     async with neo4j_session() as session:
+        # C17 step 1 — capture source pre-merge so we can write
+        # alias-map rows after surgery (the source node is gone by
+        # then). get_entity already enforces user-id ownership; if
+        # source is missing/cross-user the merge_entities call below
+        # raises entity_not_found.
+        source = await get_entity(
+            session, user_id=user_id_str, canonical_id=entity_id,
+        )
+
+        # C17 step 2 — collision pre-check (only if source loaded).
+        if source is not None:
+            project_scope = source.project_id or "global"
+            candidate_canonicals = sorted({
+                ca for ca in (
+                    canonicalize_entity_name(a) for a in source.aliases
+                ) if ca
+            })
+            # Add source's canonical_name to the precheck if not
+            # already in aliases-derived set (defensive).
+            if source.canonical_name and source.canonical_name not in candidate_canonicals:
+                candidate_canonicals.append(source.canonical_name)
+            if candidate_canonicals:
+                collision_result = await run_read(
+                    session,
+                    _C17_COLLISION_PRECHECK_CYPHER,
+                    user_id=user_id_str,
+                    project_id=source.project_id,
+                    kind=source.kind,
+                    candidate_canonicals=candidate_canonicals,
+                    source_id=entity_id,
+                    target_id=other_id,
+                )
+                collision_row = await collision_result.single()
+                if collision_row is not None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "error_code": "alias_collision",
+                            "message": (
+                                "Source alias collides with another live "
+                                f"entity '{collision_row['name']}' "
+                                f"(id={collision_row['id']}). Merge or "
+                                "rename that entity first."
+                            ),
+                            "colliding_entity_id": collision_row["id"],
+                            "colliding_entity_name": collision_row["name"],
+                            "conflicting_alias": collision_row["conflicting_alias"],
+                        },
+                    )
+
+        # C17 step 3 — run existing surgery.
         try:
             target = await merge_entities(
                 session,
-                user_id=str(user_id),
+                user_id=user_id_str,
                 source_id=entity_id,
                 target_id=other_id,
             )
@@ -473,8 +579,75 @@ async def merge_entity_into(
                     "message": str(exc),
                 },
             )
+
+    # C17 step 4 — alias-map writes + chain re-point. Outside the
+    # neo4j_session block because Postgres I/O is independent. The
+    # Neo4j surgery is already committed; alias-map writes are
+    # best-effort per ADR §5.4. Review-impl HIGH-2: wrap in try so
+    # a transient Postgres failure doesn't surface as 500 (which
+    # would mislead the user into a retry that 404s because source
+    # is already gone). Failures log a WARNING; ops can recover via
+    # scripts/backfill_entity_alias_map.py.
+    aliases_redirected = 0
+    if source is not None:
+        project_scope = source.project_id or "global"
+        # Union of source's aliases + source.canonical_name. Skip
+        # aliases that canonicalize to the empty string (defensive —
+        # extraction shouldn't produce these but a stray honorific-
+        # only alias would).
+        canonicals_to_register = set()
+        for alias in source.aliases:
+            ca = canonicalize_entity_name(alias)
+            if ca:
+                canonicals_to_register.add(ca)
+        if source.canonical_name:
+            canonicals_to_register.add(source.canonical_name)
+
+        for ca in canonicals_to_register:
+            try:
+                await alias_map_repo.record_merge(
+                    user_id=user_id,
+                    project_scope=project_scope,
+                    kind=source.kind,
+                    canonical_alias=ca,
+                    target_entity_id=other_id,
+                    source_entity_id=entity_id,
+                )
+                aliases_redirected += 1
+            except Exception:
+                logger.warning(
+                    "C17 record_merge failed (best-effort): "
+                    "user=%s alias=%s target=%s — backfill recovers",
+                    user_id, ca, other_id,
+                    exc_info=True,
+                )
+
+        # C17 step 5 — chain re-point. If user previously merged X
+        # into source, those rows still point at source.id (now
+        # deleted). Repoint onto target so multi-step merge chains
+        # (REVIEW-DESIGN catch) keep redirecting consistently.
+        try:
+            repointed = await alias_map_repo.repoint_target(
+                user_id=user_id,
+                old_target_entity_id=entity_id,
+                new_target_entity_id=other_id,
+            )
+            if repointed:
+                logger.info(
+                    "C17: re-pointed %d existing redirects from %s → %s",
+                    repointed, entity_id, other_id,
+                )
+        except Exception:
+            logger.warning(
+                "C17 repoint_target failed (best-effort): "
+                "user=%s old=%s new=%s — backfill recovers",
+                user_id, entity_id, other_id,
+                exc_info=True,
+            )
+
     logger.info(
-        "K19d.6: user merged entity user_id=%s source=%s target=%s",
-        user_id, entity_id, other_id,
+        "K19d.6 + C17: user merged entity user_id=%s source=%s target=%s "
+        "aliases_redirected=%d",
+        user_id, entity_id, other_id, aliases_redirected,
     )
-    return EntityMergeResponse(target=target)
+    return EntityMergeResponse(target=target, aliases_redirected=aliases_redirected)

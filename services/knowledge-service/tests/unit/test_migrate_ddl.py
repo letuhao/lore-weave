@@ -295,3 +295,62 @@ def test_summary_spending_user_month_index():
     user_id=$1 AND month_key=$2. Composite index covers it."""
     assert "idx_summary_spending_user_month" in DDL
     assert "ON knowledge_summary_spending(user_id, month_key)" in DDL
+
+
+# ── C17 entity_alias_map regression locks ──────────────────────────
+
+
+def test_entity_alias_map_table_present():
+    """Source-scan lock for the C17 alias-redirect table. A future
+    migration that drops or renames it would silently break post-merge
+    extraction redirect — the lookup gates on this exact table name."""
+    assert "CREATE TABLE IF NOT EXISTS entity_alias_map" in DDL
+
+
+def test_entity_alias_map_pk_shape():
+    """Composite PK = covering index for the resolver hot path
+    (lookup-before-SHA-hash on every extracted entity)."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS entity_alias_map\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "entity_alias_map table body not found"
+    body = m.group(1)
+    assert (
+        "PRIMARY KEY (user_id, project_scope, kind, canonical_alias)"
+        in body
+    )
+
+
+def test_entity_alias_map_check_constraint_on_reason():
+    """CHECK locks reason vocabulary in sync with the Pydantic Literal
+    in entity_alias_map.py (closed enum). Adding a value requires
+    coordinated update of both."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS entity_alias_map\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    assert "CHECK (reason IN ('merge', 'backfill'))" in body
+
+
+def test_entity_alias_map_no_cross_db_fk():
+    """No FK on user_id (auth-service) or target_entity_id (Neo4j) —
+    cross-DB references forbidden."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS entity_alias_map\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    assert "REFERENCES" not in body
+
+
+def test_entity_alias_map_target_index():
+    """Reverse-lookup index for list_for_entity (FE display + audit)."""
+    assert "idx_entity_alias_map_target" in DDL
+    assert "ON entity_alias_map(target_entity_id)" in DDL

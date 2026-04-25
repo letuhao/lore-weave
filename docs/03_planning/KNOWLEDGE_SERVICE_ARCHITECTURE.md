@@ -2034,6 +2034,53 @@ ON MATCH SET
 RETURN e
 ```
 
+#### Alias-redirect on merge (C17 amendment, 2026-04-25)
+
+The canonicalization function above is **deterministic by name only**. After a user merges entity A ("Alice") into B ("Captain Brave"), Neo4j has one node B with `aliases = ["Captain Brave", "Alice"]`. But the next time extraction sees the literal string "Alice", `entity_canonical_id(name="Alice")` re-derives A's old SHA hash → no node at that id → `MERGE ... ON CREATE` resurrects A as a brand-new entity, disconnected from B.
+
+Aliases are display denormalization, **not** a resolution index. To make merges stick across re-extraction, every merge writes redirect rows to a Postgres lookup table that the resolver consults BEFORE the SHA hash:
+
+```sql
+CREATE TABLE entity_alias_map (
+  user_id           UUID NOT NULL,
+  project_scope     TEXT NOT NULL,    -- project_id::text OR 'global'
+  kind              TEXT NOT NULL,
+  canonical_alias   TEXT NOT NULL,    -- canonicalize_entity_name(alias)
+  target_entity_id  TEXT NOT NULL,    -- :Entity.id (32-hex)
+  source_entity_id  TEXT,             -- nullable for backfill rows
+  reason            TEXT NOT NULL,    -- 'merge' | 'backfill'
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_scope, kind, canonical_alias)
+);
+```
+
+**Resolver flow** (replaces the simple SHA-hash-and-MERGE in extraction):
+
+```python
+async def resolve_or_merge_entity(...):
+    if glossary_entity_id:                                # 1. glossary anchor wins
+        if existing := await find_by_glossary_id(...):
+            return existing
+    canonical_alias = canonicalize_entity_name(name)      # 2. alias-map redirect
+    project_scope = project_id or "global"
+    target_id = await alias_map_repo.lookup(
+        user_id, project_scope, kind, canonical_alias,
+    )
+    if target_id is not None:
+        return await merge_entity_at_id(session, id=target_id, ...)
+    return await merge_entity(session, ...)               # 3. SHA-hash MERGE
+```
+
+**Merge surgery flow** (`merge_entities(source, target)`):
+
+1. **Collision pre-check**: for each alias on source, refuse merge with HTTP 409 `alias_collision` if any other live entity in the same scope+kind already has `canonical_name = canonicalize(alias)`. The user is asserting "these are the same"; a third entity already claiming that identity is ambiguous and must be resolved first.
+2. Run existing Cypher surgery (rewire edges, glossary anchor pre-clear, `DETACH DELETE` source).
+3. **Write alias-map rows**: for each alias in `source.aliases ∪ {source.canonical_name}`, insert `(user_id, project_scope, kind, canonicalize(alias), target.id, source.id, reason='merge')` with `ON CONFLICT DO NOTHING`.
+
+**Backfill**: a one-shot script walks every existing `:Entity` and writes alias-map rows for each alias != canonical_name (`reason='backfill'`). Idempotent. Required to close the bug for entities created before C17 ship.
+
+**Why Postgres, not Neo4j**: extraction's hot path already does Postgres lookups (glossary_entity_id, project ownership) before Neo4j contact; adding a Neo4j round-trip BEFORE the SHA-hash decision would add latency on every extracted name. Postgres b-tree on the composite PK is the correct boundary for "lookup → decide which Cypher MERGE id to use." See [`KNOWLEDGE_SERVICE_ENTITY_ALIAS_MAP_ADR.md`](./KNOWLEDGE_SERVICE_ENTITY_ALIAS_MAP_ADR.md) for the rejected alternatives.
+
 #### Conflict Resolution (properties disagree across sources)
 
 When multiple sources set different values for the same property (e.g., age):

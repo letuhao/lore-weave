@@ -28,6 +28,7 @@ from app.db.repositories.extraction_pending import ExtractionPendingRepo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
+from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
 from app.db.repositories.user_budgets import UserBudgetsRepo
 from app.db.repositories.user_data import UserDataRepo
@@ -44,6 +45,19 @@ async def get_summary_spending_repo() -> SummarySpendingRepo:
     post-success recorder that the K20.3 scheduler loops use.
     Without this dep, manual regens silently bypass the cap."""
     return SummarySpendingRepo(get_knowledge_pool())
+
+
+async def get_entity_alias_map_repo() -> EntityAliasMapRepo:
+    """C17: D-K19d-γb-03 closer. Wires the post-merge alias→target
+    redirect index into router DI so:
+      - the merge endpoint writes alias-map rows + repoints chain
+        merges after surgery, and
+      - extraction writers (via the resolver) consult the table
+        BEFORE the SHA-hash MERGE so re-extracted aliases land at
+        the merge target rather than resurrecting source.
+    Without this dep, every merge is a one-shot — extraction
+    re-extraction silently re-creates the merged-away source."""
+    return EntityAliasMapRepo(get_knowledge_pool())
 
 
 async def get_projects_repo() -> ProjectsRepo:

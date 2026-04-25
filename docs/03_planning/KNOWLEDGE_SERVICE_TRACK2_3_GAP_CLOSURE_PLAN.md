@@ -62,7 +62,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C14b** | Resumable scheduler cursor state (`sweeper_state` table + resume-from-mid-user-list) | D-K11.9-01 cursor-state, P-K15.10-01 cursor-state | ~~M~~ **L** (reclassified at CLARIFY: 7 files trips 6+ threshold) | `[x]` | sweeper_state Postgres table + SweeperStateRepo + reconciler integration with seek predicate + per-user upsert + natural-completion clear + back-compat repo=None path; quarantine cursor doc-only per decision. 14 new tests |
 | **C15** | Neo4j fulltext index for entity search (Perf) | P-K19d-01 | S | `[ ]` | fire only when user >10k entities — defer trigger |
 | **C16** 🏗 | Budget attribution for global-scope regen (DESIGN-first → BUILD) | D-K20α-01 (cleared) | XL | `[x]` | **DESIGN: ADR shipped** ([KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md](./KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md)) — Option B chosen. **BUILD: shipped C16-BUILD cycle 47** — `knowledge_summary_spending` table + `SummarySpendingRepo` + `check_user_monthly_budget` cross-table SUM + `regenerate_*_summary` pre-check + post-success recorder branching by scope_type + `no_op_budget_exceeded` status + scheduler 4-fn wire-through + main.py + 3 router call sites (public global + project + internal). 1523 unit tests pass (+22 from baseline 1501: 8 repo + 5 DDL + 3 scheduler + 3 regen integration + 3 router wire-through). /review-impl found HIGH-1 (router call sites bypassed gate) — fixed in-cycle |
-| **C17** 🏗 | Entity-merge canonical-alias mapping (DESIGN-first) | D-K19d-γb-03 | XL | `[ ]` | KSA §3.4.E amendment |
+| **C17** 🏗 | Entity-merge canonical-alias mapping (DESIGN+BUILD bundle) | D-K19d-γb-03 (cleared) | XL | `[x]` | **DESIGN: ADR shipped** ([KNOWLEDGE_SERVICE_ENTITY_ALIAS_MAP_ADR.md](./KNOWLEDGE_SERVICE_ENTITY_ALIAS_MAP_ADR.md)) — Postgres `entity_alias_map` table, mirror-scope key, error-on-conflict, one-shot backfill. **BUILD: shipped C17 cycle 48** — DDL + EntityAliasMapRepo + merge_entity_at_id + resolver alias-map lookup-before-hash + 2 writer plumbing + router collision-precheck + post-merge writes + chain re-point + best-effort failure handling + one-shot backfill helper + KSA §5.0 amendment. 1557 unit tests pass (+34 from baseline 1523: 13 repo + 5 DDL + 5 resolver + 5 backfill + 6 router). /review-impl found HIGH-1 (self-merge wrong error code) + HIGH-2 (Postgres failure surfaced 500 even though Neo4j committed) — both fixed in-cycle |
 | **C18** 🏗 | Event wall-clock date (DESIGN-first) | D-K19e-α-02 | XL | `[ ]` | KSA §3.4 amendment + LLM prompt change + migration |
 | **C19** | Multilingual golden-set v2 | D-K17.10-02 | S | `[⏸]` | **USER-PROVIDED** 2 xianxia + 2 VN chapter text |
 | **C20** | Gate-13 human walkthrough | T2-close-2 | — | `[⏸]` | **USER-ATTESTED** live BYOK walk-through |
@@ -547,10 +547,10 @@ Once text arrives:
 | P2 (C3–C9) | 0 items | **15 items / 7 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅ + C9 ✅)** | 0 |
 | P3 (C10–C13) | 0 | **✅ 12 items / 8 cycles DONE (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅ + C12b-b ✅ + C13 ✅ + C12c-a ✅ + C12c-b ✅)** | 0 |
 | P4 (C14a+C14b+C15) | 1 item / 1 cycle (C15 trigger-gated) | **2 items / 2 cycles (C14a ✅ + C14b ✅)** | 0 |
-| P5 (C16–C18) | 2 items / 2 cycles (C17+C18 DESIGN-first) | **1 cycle DONE (C16 ✅ DESIGN+BUILD)** | 0 |
+| P5 (C16–C18) | 1 item / 1 cycle (C18 DESIGN-first) | **2 cycles DONE (C16 ✅ + C17 ✅)** | 0 |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 35 item-closures across 23 cycles (C14 split into C14a/C14b). Completed: 34 items / 21 cycles. P1 tier done · P2 tier DONE (7/7) · **P3 tier DONE (12/12)** · **P4 C14 DONE (C14a ✅ + C14b ✅)** · **P5 1/3 DONE (C16 ✅ DESIGN+BUILD shipped)** · remaining: C15 (trigger-gated), C17+C18 DESIGN-first, user-gated × 2.**
+**Total plan: 35 item-closures across 23 cycles (C14 split into C14a/C14b). Completed: 35 items / 22 cycles. P1 tier done · P2 tier DONE (7/7) · **P3 tier DONE (12/12)** · **P4 C14 DONE (C14a ✅ + C14b ✅)** · **P5 2/3 DONE (C16 ✅ + C17 ✅ DESIGN+BUILD shipped)** · remaining: C15 (trigger-gated), C18 DESIGN-first, user-gated × 2.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---
