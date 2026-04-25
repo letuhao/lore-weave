@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>LoreWeave LLM MMO RPG — Map GUI Draft v2 (Phase 3 design + distances + asset placeholders)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: #0d1117; color: #e6edf3; display: flex; flex-direction: column; }
+
+  header.topbar {
+    padding: 12px 20px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header.topbar h1 {
+    font-size: 14px;
+    font-weight: 500;
+    color: #7d8590;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  nav.breadcrumb { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 200px; font-size: 14px; }
+  nav.breadcrumb button {
+    background: none;
+    border: none;
+    color: #58a6ff;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font: inherit;
+  }
+  nav.breadcrumb button:hover { background: #1f6feb22; }
+  nav.breadcrumb .sep { color: #484f58; }
+  nav.breadcrumb .current { color: #e6edf3; font-weight: 500; }
+
+  .toggles { display: flex; gap: 8px; align-items: center; }
+  .toggle-btn {
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #b8b8b8;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .toggle-btn:hover { border-color: #58a6ff; color: #e6edf3; }
+  .toggle-btn.on { background: #1f6feb; border-color: #58a6ff; color: white; }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    overflow: hidden;
+  }
+
+  section.viewport {
+    position: relative;
+    background:
+      radial-gradient(ellipse at center, #161b22 0%, #0d1117 70%),
+      repeating-linear-gradient(0deg, #161b22 0 1px, transparent 1px 60px),
+      repeating-linear-gradient(90deg, #161b22 0 1px, transparent 1px 60px);
+    overflow: hidden;
+  }
+
+  /* V1+ background placeholder layer */
+  section.viewport.show-bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #5d3825 0%, #3a2510 50%, #1d130a 100%);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+  section.viewport.show-bg::after {
+    content: "🖼  background_asset placeholder (V1+ MAP_002)";
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
+    color: #d29922;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    pointer-events: none;
+    z-index: 1;
+  }
+  section.viewport svg { width: 100%; height: 100%; cursor: grab; position: relative; z-index: 1; }
+  section.viewport svg:active { cursor: grabbing; }
+
+  /* Edge styles */
+  .edge { stroke: #30363d; stroke-width: 2; fill: none; transition: stroke 0.2s; }
+  .edge.public { stroke: #4d5762; stroke-dasharray: none; }
+  .edge.private { stroke: #6e3a8a; stroke-dasharray: 6,4; }
+  .edge.locked { stroke: #d29922; stroke-dasharray: 2,4; }
+  .edge.hidden { stroke: #484f58; stroke-dasharray: 1,3; opacity: 0.5; }
+  .edge.oneway { stroke: #f85149; }
+  .edge:hover { stroke: #58a6ff; stroke-width: 3; }
+
+  /* Edge labels (distance + duration) */
+  .edge-label {
+    pointer-events: none;
+    user-select: none;
+  }
+  .edge-label rect {
+    fill: rgba(13, 17, 23, 0.9);
+    stroke: #30363d;
+    stroke-width: 1;
+    rx: 3;
+  }
+  .edge-label text {
+    fill: #b8b8b8;
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+  .edge-label .distance { fill: #58a6ff; }
+  .edge-label .duration { fill: #d29922; }
+
+  /* Node styles */
+  .node { cursor: pointer; transition: transform 0.15s; }
+  .node:hover { transform: scale(1.08); transform-origin: center; transform-box: fill-box; }
+  .node circle {
+    fill: #21262d;
+    stroke: #30363d;
+    stroke-width: 2;
+    transition: all 0.2s;
+  }
+  .node:hover circle { stroke: #58a6ff; fill: #1f6feb22; }
+  .node.selected circle { stroke: #58a6ff; stroke-width: 3; fill: #1f6feb44; }
+  .node.tier-country circle { r: 36; }
+  .node.tier-region circle { r: 28; }
+  .node.tier-cell circle { r: 22; fill: #2d2618; stroke: #d29922; }
+
+  .node text.label {
+    fill: #e6edf3;
+    font-size: 13px;
+    font-weight: 500;
+    text-anchor: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+  .node text.sublabel {
+    fill: #7d8590;
+    font-size: 11px;
+    text-anchor: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Node icons / emoji */
+  .node text.icon {
+    font-size: 18px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+    user-select: none;
+  }
+  .node text.tier-icon {
+    font-size: 22px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* V1+ icon_asset placeholder badge on nodes */
+  .node .asset-placeholder {
+    pointer-events: none;
+  }
+  .node .asset-placeholder rect {
+    fill: #d2992233;
+    stroke: #d29922;
+    stroke-width: 1;
+    stroke-dasharray: 3,2;
+    rx: 2;
+  }
+  .node .asset-placeholder text {
+    fill: #d29922;
+    font-size: 8px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    user-select: none;
+  }
+
+  /* Status overlays (per §7.1 cleanup) */
+  .node.damaged circle { stroke: #d29922; stroke-dasharray: 4,2; }
+  .node.destroyed circle { stroke: #f85149; stroke-dasharray: 4,3; opacity: 0.6; }
+  .node.restored circle { stroke: #2ea043; stroke-dasharray: 6,3; }
+  .node .status-badge {
+    pointer-events: none;
+    user-select: none;
+  }
+  .node .status-badge text {
+    font-size: 12px;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+
+  /* Sidebar */
+  aside.sidebar {
+    background: #161b22;
+    border-left: 1px solid #30363d;
+    padding: 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  aside.sidebar h2 { font-size: 12px; color: #7d8590; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+  .info-card {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 14px;
+  }
+  .info-card h3 { font-size: 16px; margin-bottom: 8px; color: #e6edf3; }
+  .info-card .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    background: #1f6feb33;
+    color: #58a6ff;
+    margin-right: 6px;
+    margin-bottom: 4px;
+  }
+  .info-card .badge.canon { background: #d2992233; color: #d29922; }
+  .info-card .badge.author { background: #6e3a8a33; color: #b481d4; }
+  .info-card .badge.damaged { background: #d2992233; color: #d29922; }
+  .info-card .badge.destroyed { background: #f8514933; color: #f85149; }
+  .info-card .badge.restored { background: #2ea04333; color: #3fb950; }
+  .info-card p { color: #b8b8b8; font-size: 13px; line-height: 1.5; margin-top: 8px; }
+  .info-card .field {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 12px;
+    color: #7d8590;
+  }
+  .info-card .field strong { color: #e6edf3; font-weight: 500; }
+
+  /* Inline artwork placeholder */
+  .inline-artwork {
+    margin-top: 10px;
+    width: 100%;
+    height: 140px;
+    background: linear-gradient(135deg, #2d2618 0%, #161b22 100%);
+    border: 1px dashed #d29922;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #d29922;
+    font-size: 11px;
+    text-align: center;
+    gap: 4px;
+  }
+  .inline-artwork.hidden { display: none; }
+  .inline-artwork .icon { font-size: 28px; }
+
+  .sidebar-empty {
+    color: #7d8590;
+    font-style: italic;
+    font-size: 13px;
+    text-align: center;
+    padding: 40px 20px;
+    border: 1px dashed #30363d;
+    border-radius: 6px;
+  }
+
+  button.enter-cell, button.drill {
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    margin-top: 10px;
+    width: 100%;
+    font: inherit;
+  }
+  button.enter-cell { background: #2ea043; }
+  button.enter-cell:hover { background: #3fb950; }
+  button.drill { background: #1f6feb; }
+  button.drill:hover { background: #388bfd; }
+
+  /* Legend */
+  .legend {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 12px;
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0;
+    color: #b8b8b8;
+  }
+  .legend-swatch {
+    width: 24px;
+    height: 2px;
+    background: #4d5762;
+    flex-shrink: 0;
+  }
+  .legend-swatch.private { background: #6e3a8a; height: 0; border-top: 2px dashed #6e3a8a; }
+  .legend-swatch.locked { background: #d29922; height: 0; border-top: 2px dashed #d29922; }
+  .legend-swatch.hidden { background: #484f58; opacity: 0.5; }
+  .legend-swatch.oneway { background: #f85149; }
+
+  /* V1 Limitations panel */
+  .limitations {
+    background: #0d1117;
+    border: 1px solid #d2992244;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 11px;
+  }
+  .limitations h2 { color: #d29922; margin-bottom: 8px; }
+  .limitations details { margin: 4px 0; }
+  .limitations summary {
+    cursor: pointer;
+    color: #b8b8b8;
+    padding: 2px 0;
+  }
+  .limitations summary:hover { color: #d29922; }
+  .limitations .lim-detail {
+    padding: 6px 12px;
+    color: #7d8590;
+    font-size: 11px;
+    line-height: 1.4;
+    border-left: 2px solid #d2992244;
+    margin: 4px 0;
+  }
+  .limitations .lim-unblock {
+    color: #58a6ff;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+  }
+
+  /* Bottom bar */
+  footer.bottombar {
+    padding: 8px 20px;
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #7d8590;
+  }
+  footer.bottombar .meta { display: flex; gap: 16px; }
+  footer.bottombar code { background: #0d1117; padding: 2px 6px; border-radius: 3px; color: #b8b8b8; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>LoreWeave Map v2</h1>
+    <nav class="breadcrumb" id="breadcrumb"></nav>
+    <div class="toggles">
+      <button class="toggle-btn" id="toggle-distance" title="Show distance + duration labels on edges">📏 distance</button>
+      <button class="toggle-btn" id="toggle-assets" title="Preview V1+ MAP_002 asset placeholders">🖼 assets V1+</button>
+      <button class="toggle-btn" id="toggle-bg" title="Preview V1+ background_asset for current view">🌄 bg V1+</button>
+    </div>
+    <div style="font-size: 12px; color: #7d8590; flex-shrink: 0;">
+      Reality: <code style="background: #0d1117; padding: 2px 6px; border-radius: 3px; color: #58a6ff;">r_tien_nghich_001</code>
+    </div>
+  </header>
+
+  <main>
+    <section class="viewport" id="viewport">
+      <svg id="map" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#f85149" />
+          </marker>
+        </defs>
+        <g id="edges-layer"></g>
+        <g id="edge-labels-layer"></g>
+        <g id="nodes-layer"></g>
+      </svg>
+    </section>
+
+    <aside class="sidebar">
+      <div>
+        <h2>Selected Node</h2>
+        <div id="info-pane">
+          <div class="sidebar-empty">Click a node to inspect</div>
+        </div>
+      </div>
+
+      <div>
+        <h2>Edge Legend</h2>
+        <div class="legend">
+          <div class="legend-row"><span class="legend-swatch"></span> Public</div>
+          <div class="legend-row"><span class="legend-swatch private"></span> Private (resident-gated)</div>
+          <div class="legend-row"><span class="legend-swatch locked"></span> Locked (gate fixture; V1: always rejects)</div>
+          <div class="legend-row"><span class="legend-swatch hidden"></span> Hidden (V1: ≡ Public; V1+ MAP-D10 fog)</div>
+          <div class="legend-row"><span class="legend-swatch oneway"></span> One-way</div>
+        </div>
+      </div>
+
+      <div>
+        <h2>V1 Limitations (§8 boxout)</h2>
+        <div class="limitations">
+          <div style="font-size: 11px; color: #d29922; margin-bottom: 6px;">⚠ Authors must know these V1 constraints:</div>
+          <details>
+            <summary>Cell-to-cell flat duration</summary>
+            <div class="lim-detail">All cell-cell /travel = 1 hour V1. Tavern next door = Tavern across district. Narratively flat.<br><span class="lim-unblock">→ MAP-D7 V1+30d</span></div>
+          </details>
+          <details>
+            <summary>Hidden ≡ Public V1</summary>
+            <div class="lim-detail">Hidden visible-to-all V1; only visual styling differs. V1+ activates fog.<br><span class="lim-unblock">→ MAP-D10 V1+30d</span></div>
+          </details>
+          <details>
+            <summary>Locked always rejects V1</summary>
+            <div class="lim-detail">No key-matching V1; all Locked travel rejects.<br><span class="lim-unblock">→ MAP-D12 V1+ TVL_001</span></div>
+          </details>
+          <details>
+            <summary>No V1 pathfinding</summary>
+            <div class="lim-detail">Single-edge /travel only; multi-hop = sequential turns.<br><span class="lim-unblock">→ MAP-D8 V1+30d</span></div>
+          </details>
+          <details>
+            <summary>No V1 method matrix</summary>
+            <div class="lim-detail">All travel = OnFoot baseline. Cultivation flying-sword / vehicle / FTL not V1.<br><span class="lim-unblock">→ MAP-D12 V1+ TVL_001</span></div>
+          </details>
+          <details>
+            <summary>Asset slots None V1</summary>
+            <div class="lim-detail">UI emoji + plain bg V1 (toggle "🖼 assets V1+" above to preview future state).<br><span class="lim-unblock">→ MAP-D3/D4/D5 V1+30d → V2+</span></div>
+          </details>
+        </div>
+      </div>
+
+      <div>
+        <h2>Tier hint</h2>
+        <div style="font-size: 12px; color: #b8b8b8; line-height: 1.5;">
+          <div>🌍 = continent</div>
+          <div>🏯 = country</div>
+          <div>🗺️ = district / region</div>
+          <div>🏘️ = town</div>
+          <div style="color: #d29922;">● cell tier = §7.1 PlaceType emoji</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="bottombar">
+    <div class="meta">
+      <span>Tier: <strong id="current-tier">—</strong></span>
+      <span>Nodes: <strong id="node-count">—</strong></span>
+      <span>Edges: <strong id="edge-count">—</strong></span>
+      <span>distance toggle: <strong id="dist-state">off</strong></span>
+      <span>asset placeholders: <strong id="asset-state">off</strong></span>
+    </div>
+    <div>
+      Demo v2 — Phase 3 design — 2026-04-26
+    </div>
+  </footer>
+
+  <script>
+    // ─── Demo data with Phase 3 distance + duration on edges ───
+    const REALITY = {
+      reality_id: "r_tien_nghich_001",
+      hierarchy: {
+        id: "continent:chu_tuoc_tinh",
+        tier: "continent",
+        display_name: "Chu Tước Tinh",
+        canon_ref: { type: "BookCanon", chapter: "Quyển 1 — Hồng Hoang" },
+        description: "Một trong tứ thánh thiên tinh cầu của Đông Cực. Trú ngụ của các tu sĩ Nhân tộc.",
+        children: [
+          {
+            id: "country:dai_tong",
+            tier: "country",
+            display_name: "Đại Tống",
+            position: { x: 200, y: 180 },
+            canon_source: "canon",
+            description: "Trung tâm văn hóa, ngàn năm hưng thịnh. Nhiều tông môn lớn.",
+            children: [
+              { id: "region:lin_an_district", display_name: "Lâm An Phủ", tier: "region", position: { x: 150, y: 230 } },
+              { id: "region:hangzhou_district", display_name: "Hàng Châu Phủ", tier: "region", position: { x: 250, y: 130 } },
+            ],
+            connections: [
+              { to: "country:tay_van", kind: "public", canon_ref: "Quan đạo cổ", distance_units: 350, default_fiction_duration: { value: 14, unit: "Day" } },
+              { to: "country:bac_chau", kind: "private", canon_ref: "Đường biên ải", distance_units: 280, default_fiction_duration: { value: 21, unit: "Day" } },
+            ],
+          },
+          {
+            id: "country:tay_van",
+            tier: "country",
+            display_name: "Tây Vân Quốc",
+            position: { x: 450, y: 220 },
+            canon_source: "canon",
+            description: "Quốc gia phía tây, đa dạng kỳ trận.",
+            children: [
+              { id: "region:tay_van_capital", display_name: "Vân Hải Đô", tier: "region", position: { x: 450, y: 270 } },
+            ],
+            connections: [
+              { to: "country:nam_man", kind: "locked", canon_ref: "Đại sơn cổng môn", distance_units: 420, default_fiction_duration: { value: 30, unit: "Day" } },
+            ],
+          },
+          {
+            id: "country:bac_chau",
+            tier: "country",
+            display_name: "Bắc Châu Hàn Quốc",
+            position: { x: 350, y: 90 },
+            canon_source: "canon",
+            description: "Lạnh giá quanh năm, cường tộc hùng mạnh.",
+            children: [],
+            connections: [
+              { to: "country:dai_tong", kind: "private", distance_units: 280, default_fiction_duration: { value: 21, unit: "Day" } },
+            ],
+          },
+          {
+            id: "country:nam_man",
+            tier: "country",
+            display_name: "Nam Man",
+            position: { x: 600, y: 380 },
+            canon_source: "canon",
+            description: "Vùng hoang mạc phía nam, ma tu chi địa.",
+            children: [],
+            connections: [
+              { to: "country:tay_van", kind: "locked", distance_units: 420, default_fiction_duration: { value: 30, unit: "Day" } },
+              { to: "country:dao_thien", kind: "oneway", canon_ref: "Cổng cấm địa", distance_units: 600, default_fiction_duration: { value: 2, unit: "Month" } },
+            ],
+          },
+          {
+            id: "country:dao_thien",
+            tier: "country",
+            display_name: "Đảo Thiên Quốc",
+            position: { x: 680, y: 480 },
+            canon_source: "author",
+            description: "Quốc đảo, Co-Author thêm vào (drift).",
+            children: [],
+            connections: [],
+          },
+        ],
+      },
+    };
+
+    // Region drilldown — cells; PF_001 owns connections (per Phase 3 §12.1 cell-tier composition)
+    const REGION_DRILLDOWN = {
+      "region:lin_an_district": {
+        id: "region:lin_an_district",
+        tier: "region",
+        display_name: "Lâm An Phủ",
+        canon_ref: { type: "BookCanon", chapter: "Q3 C12" },
+        description: "Phủ lớn ven sông; nhiều tông môn nhỏ + thị trấn buôn bán sầm uất.",
+        children: [
+          { id: "cell:lin_an_market", display_name: "Lâm An Chợ", tier: "cell", place_type: "Marketplace", position: { x: 200, y: 200 }, structural_state: "Pristine", icon: "🏪" },
+          { id: "cell:yen_vu_lau", display_name: "Yên Vũ Lâu", tier: "cell", place_type: "Tavern", position: { x: 380, y: 280 }, structural_state: "Pristine", icon: "🍵" },
+          { id: "cell:white_cloud_temple", display_name: "Bạch Vân Tự", tier: "cell", place_type: "Temple", position: { x: 540, y: 180 }, structural_state: "Damaged", icon: "⛩️" },
+          { id: "cell:south_road", display_name: "Quan Đạo Nam", tier: "cell", place_type: "Road", position: { x: 200, y: 400 }, structural_state: "Pristine", icon: "🛤️" },
+          { id: "cell:abandoned_workshop", display_name: "Cũ Lò Rèn", tier: "cell", place_type: "Workshop", position: { x: 600, y: 400 }, structural_state: "Destroyed", icon: "🛠️" },
+          { id: "cell:rebuilt_inn", display_name: "Tân Khách Lữ", tier: "cell", place_type: "Tavern", position: { x: 400, y: 500 }, structural_state: "Restored", icon: "🍵" },
+        ],
+        // V1: cell-tier connections live on PF_001 place.connections — duration from RealityManifest.travel_defaults (1 hour V1)
+        // Phase 3 cleanup §8: known V1 limitation — flat cell-cell duration; MAP-D7 V1+30d
+        connections: [
+          { from: "cell:lin_an_market", to: "cell:yen_vu_lau", kind: "public", duration_v1: { value: 1, unit: "Hour" } },
+          { from: "cell:lin_an_market", to: "cell:white_cloud_temple", kind: "public", duration_v1: { value: 1, unit: "Hour" } },
+          { from: "cell:yen_vu_lau", to: "cell:south_road", kind: "public", duration_v1: { value: 1, unit: "Hour" } },
+          { from: "cell:white_cloud_temple", to: "cell:abandoned_workshop", kind: "hidden", duration_v1: { value: 1, unit: "Hour" } },
+          { from: "cell:south_road", to: "cell:abandoned_workshop", kind: "locked", duration_v1: { value: 1, unit: "Hour" } },
+          { from: "cell:rebuilt_inn", to: "cell:south_road", kind: "public", duration_v1: { value: 1, unit: "Hour" } },
+        ],
+      },
+      "region:hangzhou_district": {
+        id: "region:hangzhou_district",
+        tier: "region",
+        display_name: "Hàng Châu Phủ",
+        canon_ref: { type: "BookCanon", chapter: "Q4 C2" },
+        description: "Trung tâm thương mại, vô cùng phát triển. Nhiều cell ẩn.",
+        children: [
+          { id: "cell:hangzhou_west_lake", display_name: "Tây Hồ", tier: "cell", place_type: "Wilderness", position: { x: 250, y: 200 }, structural_state: "Pristine", icon: "🌲" },
+          { id: "cell:hangzhou_market", display_name: "Hàng Châu Đại Chợ", tier: "cell", place_type: "Marketplace", position: { x: 450, y: 250 }, structural_state: "Pristine", icon: "🏪" },
+        ],
+        connections: [
+          { from: "cell:hangzhou_west_lake", to: "cell:hangzhou_market", kind: "public", duration_v1: { value: 1, unit: "Hour" } },
+        ],
+      },
+      "region:tay_van_capital": {
+        id: "region:tay_van_capital",
+        tier: "region",
+        display_name: "Vân Hải Đô",
+        canon_ref: { type: "BookCanon", chapter: "Q5 C1" },
+        description: "Thủ đô Tây Vân Quốc.",
+        children: [
+          { id: "cell:tay_van_throne", display_name: "Cung Điện", tier: "cell", place_type: "OfficialHall", position: { x: 400, y: 250 }, structural_state: "Pristine", icon: "🏛️" },
+        ],
+        connections: [],
+      },
+    };
+
+    // Per-tier emoji per Phase 3 §7.1
+    const TIER_EMOJI = {
+      continent: "🌍",
+      country: "🏯",
+      district: "🗺️",
+      region: "🗺️",
+      town: "🏘️",
+    };
+
+    // Per-StructuralState badge per Phase 3 §7.1
+    const STATE_BADGE = {
+      Pristine: null,
+      Damaged: "⚠",
+      Destroyed: "✗",
+      Restored: "↻",
+    };
+
+    // ─── State ───
+    let breadcrumb = [
+      { id: REALITY.hierarchy.id, name: REALITY.hierarchy.display_name, tier: "continent" },
+    ];
+    let currentNode = REALITY.hierarchy;
+    let selectedNodeId = null;
+    let showDistance = false;
+    let showAssets = false;
+    let showBg = false;
+
+    // ─── Render ───
+    function render() {
+      // Breadcrumb
+      const bc = document.getElementById("breadcrumb");
+      bc.innerHTML = "";
+      breadcrumb.forEach((entry, i) => {
+        if (i === breadcrumb.length - 1) {
+          const span = document.createElement("span");
+          span.className = "current";
+          span.textContent = entry.name;
+          bc.appendChild(span);
+        } else {
+          const btn = document.createElement("button");
+          btn.textContent = entry.name;
+          btn.onclick = () => navigateTo(i);
+          bc.appendChild(btn);
+          const sep = document.createElement("span");
+          sep.className = "sep";
+          sep.textContent = "▸";
+          bc.appendChild(sep);
+        }
+      });
+
+      // SVG layers
+      const edgesLayer = document.getElementById("edges-layer");
+      const labelsLayer = document.getElementById("edge-labels-layer");
+      const nodesLayer = document.getElementById("nodes-layer");
+      edgesLayer.innerHTML = "";
+      labelsLayer.innerHTML = "";
+      nodesLayer.innerHTML = "";
+
+      const children = currentNode.children || [];
+
+      // Build edges list
+      let edges = [];
+      const isCellTier = children.length > 0 && children[0].tier === "cell";
+
+      if (currentNode.tier === "continent" || currentNode.tier === "country") {
+        children.forEach(child => {
+          (child.connections || []).forEach(conn => {
+            const target = children.find(c => c.id === conn.to);
+            if (target) {
+              edges.push({ from: child, to: target, conn });
+            }
+          });
+        });
+      } else if (currentNode.connections) {
+        // Cell tier — connections come from PF_001 place.connections (here mocked on parent region's children data)
+        currentNode.connections.forEach(conn => {
+          const fromNode = children.find(c => c.id === conn.from);
+          const toNode = children.find(c => c.id === conn.to);
+          if (fromNode && toNode) {
+            edges.push({ from: fromNode, to: toNode, conn });
+          }
+        });
+      }
+
+      // Render edges
+      edges.forEach(e => {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        path.setAttribute("class", `edge ${e.conn.kind}`);
+        path.setAttribute("x1", e.from.position.x);
+        path.setAttribute("y1", e.from.position.y);
+        path.setAttribute("x2", e.to.position.x);
+        path.setAttribute("y2", e.to.position.y);
+        if (e.conn.kind === "oneway") path.setAttribute("marker-end", "url(#arrow)");
+        path.addEventListener("click", () => {
+          const dist = e.conn.distance_units ? `\nDistance: ${e.conn.distance_units} leagues` : "\nDistance: (cell-tier; PF_001 unchanged V1 — see MAP-D7)";
+          const dur = e.conn.default_fiction_duration
+            ? `\nCanonical duration (OnFoot): ${e.conn.default_fiction_duration.value} ${e.conn.default_fiction_duration.unit}`
+            : (e.conn.duration_v1 ? `\nV1 cell-tier flat: ${e.conn.duration_v1.value} ${e.conn.duration_v1.unit} (RealityManifest.travel_defaults)` : "");
+          alert(`Connection: ${e.from.display_name} → ${e.to.display_name}\nKind: ${e.conn.kind}\nCanon: ${e.conn.canon_ref || "(author-added; narrator falls back to ChannelTier+Kind defaults per §14.3)"}${dist}${dur}`);
+        });
+        edgesLayer.appendChild(path);
+      });
+
+      // Render edge labels (toggleable)
+      if (showDistance) {
+        edges.forEach(e => {
+          const midX = (e.from.position.x + e.to.position.x) / 2;
+          const midY = (e.from.position.y + e.to.position.y) / 2;
+
+          const distText = e.conn.distance_units || "—";
+          const durObj = e.conn.default_fiction_duration || e.conn.duration_v1;
+          const durText = durObj ? `${durObj.value}${durObj.unit[0]}` : "—";
+          const isCellEdge = !e.conn.distance_units && e.conn.duration_v1;
+
+          const labelGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          labelGroup.setAttribute("class", "edge-label");
+          labelGroup.setAttribute("transform", `translate(${midX}, ${midY})`);
+
+          const widthPerLabel = 36;
+          const totalW = widthPerLabel * 2;
+
+          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("x", -totalW / 2);
+          rect.setAttribute("y", -10);
+          rect.setAttribute("width", totalW);
+          rect.setAttribute("height", 20);
+          labelGroup.appendChild(rect);
+
+          // Distance label (left half)
+          const distLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          distLabel.setAttribute("class", "distance");
+          distLabel.setAttribute("x", -widthPerLabel / 2);
+          distLabel.setAttribute("y", 1);
+          distLabel.textContent = isCellEdge ? "(cell)" : `${distText}ℓ`;
+          labelGroup.appendChild(distLabel);
+
+          // Separator line
+          const sep = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          sep.setAttribute("x1", 0);
+          sep.setAttribute("y1", -8);
+          sep.setAttribute("x2", 0);
+          sep.setAttribute("y2", 8);
+          sep.setAttribute("stroke", "#30363d");
+          sep.setAttribute("stroke-width", "1");
+          labelGroup.appendChild(sep);
+
+          // Duration label (right half)
+          const durLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          durLabel.setAttribute("class", "duration");
+          durLabel.setAttribute("x", widthPerLabel / 2);
+          durLabel.setAttribute("y", 1);
+          durLabel.textContent = durText;
+          labelGroup.appendChild(durLabel);
+
+          labelsLayer.appendChild(labelGroup);
+        });
+      }
+
+      // Render nodes
+      children.forEach(child => {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        const stateClass = child.structural_state ? child.structural_state.toLowerCase() : "";
+        g.setAttribute("class", `node tier-${child.tier} ${stateClass}`);
+        g.setAttribute("transform", `translate(${child.position.x}, ${child.position.y})`);
+        if (selectedNodeId === child.id) g.classList.add("selected");
+
+        const r = child.tier === "country" ? 36 : (child.tier === "region" ? 28 : 22);
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("r", r);
+        g.appendChild(circle);
+
+        // Icon: cell-tier emoji per PlaceType OR non-cell tier emoji
+        const isCell = child.tier === "cell";
+        if (isCell && child.icon) {
+          const icon = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          icon.setAttribute("class", "icon");
+          icon.setAttribute("y", 2);
+          icon.textContent = child.icon;
+          g.appendChild(icon);
+        } else if (TIER_EMOJI[child.tier]) {
+          const tierIcon = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          tierIcon.setAttribute("class", "tier-icon");
+          tierIcon.setAttribute("y", 3);
+          tierIcon.textContent = TIER_EMOJI[child.tier];
+          g.appendChild(tierIcon);
+        }
+
+        // V1+ icon_asset placeholder badge (when toggle on)
+        if (showAssets) {
+          const ph = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          ph.setAttribute("class", "asset-placeholder");
+          ph.setAttribute("transform", `translate(${r - 4}, ${-(r - 2)})`);
+          const phRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          phRect.setAttribute("x", -10);
+          phRect.setAttribute("y", -8);
+          phRect.setAttribute("width", 20);
+          phRect.setAttribute("height", 16);
+          ph.appendChild(phRect);
+          const phText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          phText.setAttribute("y", 1);
+          phText.textContent = "🖼";
+          ph.appendChild(phText);
+          g.appendChild(ph);
+        }
+
+        // Status badge
+        const badge = STATE_BADGE[child.structural_state];
+        if (badge) {
+          const badgeG = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          badgeG.setAttribute("class", "status-badge");
+          badgeG.setAttribute("transform", `translate(${-(r - 4)}, ${-(r - 2)})`);
+          const badgeT = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          badgeT.setAttribute("y", 1);
+          badgeT.setAttribute("fill", child.structural_state === "Damaged" ? "#d29922" : (child.structural_state === "Destroyed" ? "#f85149" : "#3fb950"));
+          badgeT.textContent = badge;
+          badgeG.appendChild(badgeT);
+          g.appendChild(badgeG);
+        }
+
+        // Display name label
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("class", "label");
+        label.setAttribute("y", r + 14);
+        label.textContent = child.display_name;
+        g.appendChild(label);
+
+        if (child.tier === "cell" && child.place_type) {
+          const sublabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          sublabel.setAttribute("class", "sublabel");
+          sublabel.setAttribute("y", r + 28);
+          sublabel.textContent = child.place_type;
+          g.appendChild(sublabel);
+        }
+
+        g.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          onNodeClick(child);
+        });
+
+        nodesLayer.appendChild(g);
+      });
+
+      // Footer counts
+      document.getElementById("current-tier").textContent = currentNode.tier || "—";
+      document.getElementById("node-count").textContent = children.length;
+      document.getElementById("edge-count").textContent = edges.length;
+      document.getElementById("dist-state").textContent = showDistance ? "on" : "off";
+      document.getElementById("asset-state").textContent = showAssets ? "on (V1+ preview)" : "off (V1 emoji)";
+    }
+
+    function onNodeClick(node) {
+      selectedNodeId = node.id;
+
+      const pane = document.getElementById("info-pane");
+      const isCell = node.tier === "cell";
+      let badges = "";
+      if (node.canon_source === "canon") badges += '<span class="badge canon">📖 book canon</span>';
+      else if (node.canon_source === "author") badges += '<span class="badge author">✏ author</span>';
+      if (node.tier) badges += `<span class="badge">${node.tier}</span>`;
+      if (node.place_type) badges += `<span class="badge">${node.place_type}</span>`;
+      if (node.structural_state === "Damaged") badges += '<span class="badge damaged">⚠ Damaged</span>';
+      if (node.structural_state === "Destroyed") badges += '<span class="badge destroyed">✗ Destroyed</span>';
+      if (node.structural_state === "Restored") badges += '<span class="badge restored">↻ Restored</span>';
+
+      const description = node.description || `(no description; ${node.tier} node)`;
+
+      const inlineArtworkHtml = showAssets
+        ? `<div class="inline-artwork">
+             <div class="icon">🖼</div>
+             <div>inline_artwork placeholder</div>
+             <div style="opacity: 0.6; font-size: 10px;">V1+ MAP_002 Asset Pipeline (deferred)</div>
+           </div>`
+        : `<div class="inline-artwork hidden"></div>`;
+
+      const sourceHint = isCell
+        ? `<div class="field"><span style="color: #58a6ff; font-size: 10px;">§12.1 dual-sub:</span><strong style="font-size: 10px;">map_layout (visual) + place (semantic + edges)</strong></div>`
+        : `<div class="field"><span style="color: #58a6ff; font-size: 10px;">§12.1 source:</span><strong style="font-size: 10px;">map_layout only</strong></div>`;
+
+      pane.innerHTML = `
+        <div class="info-card">
+          <h3>${node.display_name}</h3>
+          <div>${badges}</div>
+          ${inlineArtworkHtml}
+          <p>${description}</p>
+          <div class="field"><span>id</span><strong><code style="font-size:11px">${node.id}</code></strong></div>
+          ${node.canon_ref && node.canon_ref.chapter ? `<div class="field"><span>canon</span><strong>${node.canon_ref.chapter}</strong></div>` : ""}
+          ${sourceHint}
+          ${isCell ? `
+            <button class="enter-cell" onclick="alert('Enter cell scene — UI for cell-level scene is OUT OF SCOPE for this map demo. PCS_001 / NPC_001 spawn happens here.')">▶ Enter scene</button>
+          ` : `
+            <button class="drill" onclick="drillDown('${node.id}')">⇲ Drill into ${node.tier === "country" ? "regions" : "cells"}</button>
+          `}
+        </div>
+      `;
+
+      render();
+    }
+
+    function drillDown(nodeId) {
+      let next;
+
+      if (currentNode.children) {
+        const child = currentNode.children.find(c => c.id === nodeId);
+        if (child) {
+          if (child.tier === "country" && child.children && child.children.length > 0) {
+            next = {
+              id: child.id,
+              tier: "country",
+              display_name: child.display_name,
+              children: child.children.map(r => ({ ...r, canon_source: "canon" })),
+              connections: [],
+            };
+          } else if (child.tier === "region" && REGION_DRILLDOWN[child.id]) {
+            next = REGION_DRILLDOWN[child.id];
+          }
+        }
+      }
+
+      if (!next) {
+        alert(`No drill-down data for ${nodeId} in this demo. (Real impl would query PF_001 + DP channel hierarchy.)`);
+        return;
+      }
+
+      breadcrumb.push({ id: next.id, name: next.display_name, tier: next.tier });
+      currentNode = next;
+      selectedNodeId = null;
+      document.getElementById("info-pane").innerHTML = '<div class="sidebar-empty">Click a node to inspect</div>';
+      render();
+    }
+
+    function navigateTo(crumbIndex) {
+      breadcrumb = breadcrumb.slice(0, crumbIndex + 1);
+      const targetId = breadcrumb[breadcrumb.length - 1].id;
+      if (targetId === REALITY.hierarchy.id) {
+        currentNode = REALITY.hierarchy;
+      } else {
+        const country = REALITY.hierarchy.children.find(c => c.id === targetId);
+        if (country) {
+          currentNode = {
+            id: country.id,
+            tier: "country",
+            display_name: country.display_name,
+            children: country.children.map(r => ({ ...r, canon_source: "canon" })),
+            connections: [],
+          };
+        }
+      }
+      selectedNodeId = null;
+      document.getElementById("info-pane").innerHTML = '<div class="sidebar-empty">Click a node to inspect</div>';
+      render();
+    }
+
+    // Toggle handlers
+    document.getElementById("toggle-distance").addEventListener("click", (e) => {
+      showDistance = !showDistance;
+      e.target.classList.toggle("on", showDistance);
+      render();
+    });
+
+    document.getElementById("toggle-assets").addEventListener("click", (e) => {
+      showAssets = !showAssets;
+      e.target.classList.toggle("on", showAssets);
+      // Re-render info pane if a node is selected (to show/hide inline_artwork)
+      const sel = currentNode.children?.find(c => c.id === selectedNodeId);
+      if (sel) onNodeClick(sel);
+      else render();
+    });
+
+    document.getElementById("toggle-bg").addEventListener("click", (e) => {
+      showBg = !showBg;
+      e.target.classList.toggle("on", showBg);
+      document.getElementById("viewport").classList.toggle("show-bg", showBg);
+    });
+
+    // Init
+    render();
+  </script>
+</body>
+</html>
