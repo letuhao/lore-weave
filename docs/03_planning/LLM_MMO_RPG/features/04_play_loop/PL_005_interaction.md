@@ -2,6 +2,8 @@
 
 > **Conversational name:** "Interaction" (INT). Core gameplay primitive — formalizes how an actor explicitly does something to the world (speaks, strikes, gives, examines, uses) with explicit roles for agent / tool / target / receivers + outputs that gate downstream cascades. Sits on top of [Continuum (PL_001)](PL_001_continuum.md) + [Grammar (PL_002)](PL_002_command_grammar.md) as the **action layer** that turns command/free-narrative into committed canonical change.
 >
+> **Two-file structure:** This file (PL_005 root) holds the **conceptual layer** (§1-§19): 4-role pattern + 5 V1 InteractionKinds + closed-set proof + Event-model mapping + DP primitives + capability + subscribe + pattern choices + failure UX + cross-service handoff + 5 high-level sequences + 6 acceptance criteria + deferrals. Companion [`PL_005b_interaction_contracts.md`](PL_005b_interaction_contracts.md) holds the **contract layer** (§1-§12): concrete payload schemas per kind + OutputDecl taxonomy + per-kind validator subset + per-kind reject rule_ids + 16 expanded acceptance scenarios. Read this file FIRST.
+>
 > **Category:** PL — Play Loop (core runtime)
 > **Status:** DRAFT 2026-04-26
 > **Catalog refs:** PL-2 (command grammar consumes Interaction), PL-7 (event emission), PL-8 (action resolution). Resolves the "how does an action interact with the world?" question that PL_001/002 deferred.
