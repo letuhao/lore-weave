@@ -1,12 +1,13 @@
-# WA_005 — Succession (Reality Ownership Transfer)
+# PLT_002 — Succession (Reality Ownership Transfer)
 
 > **Conversational name:** "Succession" (SUC). The formal handover of RealityOwner role from current owner to an existing Co-Author. High-stakes; multi-stage state machine with recipient consent + admin oversight + cooldown. Closes the V1 gap where RealityOwner could not self-resign without admin S5 intervention.
 >
-> **Category:** WA — World Authoring
-> **Status:** DRAFT 2026-04-25
-> **Catalog refs:** **DF4 World Rules** (sub-feature: ownership lifecycle). Resolves [WA_004 CHR-D1](WA_004_charter.md) (ownership transfer feature).
-> **Builds on:** [WA_004 Charter](WA_004_charter.md) (recipients must be existing Co-Authors V1), [WA_003 Forge](WA_003_forge.md) (UI surface; reuses ImpactClass / EditOutcome pattern), [02_storage C03 reality_registry](../../02_storage/) (owner ground-truth that gets mutated)
-> **Defers to:** future WA_006 for "transfer to non-Co-Author" (skip-the-Charter-step flow); future audit retention policy for transfer history.
+> **Category:** PLT — Platform / Business (relocated 2026-04-25 from `02_world_authoring/`; original PLT_002 ID retired per foundation I15)
+> **Status:** DRAFT 2026-04-25 (originally drafted as WA_005; relocated 2026-04-25 to `10_platform_business/` because account ownership lifecycle is platform/account territory, not "validate rules of reality" which is WA's original intent)
+> **Stable ID rename:** WA_005 → PLT_002. Old ID `WA_005` MUST NOT be reused for a different feature (foundation I15).
+> **Catalog refs:** PLT-*. Resolves [PLT_001 CHR-D1](PLT_001_charter.md) (ownership transfer feature).
+> **Builds on:** [PLT_001 Charter](PLT_001_charter.md) (recipients must be existing Co-Authors V1), [WA_003 Forge](../02_world_authoring/WA_003_forge.md) (UI surface; reuses ImpactClass / EditOutcome pattern), [02_storage C03 reality_registry](../../02_storage/) (owner ground-truth that gets mutated)
+> **Defers to:** future PLT_NNN for "transfer to non-Co-Author" (skip-the-Charter-step flow); future audit retention policy for transfer history.
 
 ---
 
@@ -64,7 +65,7 @@ Admin reviewing the transfer notices Tâm-Anh's account had a recent password re
 
 ## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11)
 
-Succession operations are AdminAction-class (per WA_003 / WA_004 pattern).
+Succession operations are AdminAction-class (per WA_003 / PLT_001 pattern).
 
 | Action | EVT-T* | Producer | Notes |
 |---|---|---|---|
@@ -165,7 +166,7 @@ To start a new transfer, any active one must complete (Finalized or Aborted) fir
 ### 3.2 References (no other new aggregates)
 
 - **`reality_registry`** (`02_storage/C03_meta_registry_ha.md`): the ultimate target. `owner_id` is mutated atomically at Finalize.
-- **`coauthor_grant`** (WA_004 §3.1): mutated at Finalize — outgoing owner's grant created (if `BecomesCoAuthor`) or recipient's grant deleted (recipient is no longer a Co-Author since they ARE the owner now).
+- **`coauthor_grant`** (PLT_001 §3.1): mutated at Finalize — outgoing owner's grant created (if `BecomesCoAuthor`) or recipient's grant deleted (recipient is no longer a Co-Author since they ARE the owner now).
 - **`forge_audit_log`** (WA_003 §3.1): every action emits an audit entry.
 
 ---
@@ -441,7 +442,7 @@ Triggered by background sweeper when `cooldown_entered_at + 7d < now`. Atomic pe
 
 - `ViewActiveTransfer(reality_id)` — visible to RealityOwner + recipient + admins. Shows current state + countdown.
 - `ViewTransferHistory(reality_id)` — visible to RealityOwner + admins. All past transfers (Aborted/Finalized).
-- `ViewMyOfferedTransfers(user_id)` — cross-reality query. Shows Pending transfers offered TO requesting user. (Reuses meta-table pattern from WA_004 §8.4.)
+- `ViewMyOfferedTransfers(user_id)` — cross-reality query. Shows Pending transfers offered TO requesting user. (Reuses meta-table pattern from PLT_001 §8.4.)
 - `ViewAdminPendingTransfers(admin)` — admin queue of Pending transfers awaiting review.
 
 ---
@@ -453,7 +454,7 @@ Triggered by background sweeper when `cooldown_entered_at + 7d < now`. Atomic pe
 Locked: `to_user_id` must have an active `coauthor_grant` for the target reality at initiate time. Reasons:
 - Reduces social-engineering risk (attacker can't transfer reality to a fresh sock-puppet account)
 - Recipient has demonstrated investment via Co-Author tenure
-- New users go through Charter (WA_004) first; transfer is the next step
+- New users go through Charter (PLT_001) first; transfer is the next step
 
 V2+ may allow direct transfer to non-Co-Author with extra friction (CHR-D1 stretched + verification challenges).
 
@@ -741,9 +742,9 @@ T2h+1s:  Both UIs notified:
 
 ## §15 Cross-references
 
-- [WA_004 Charter](WA_004_charter.md) — Co-Author lifecycle; Succession requires recipient to be Co-Author at initiate
-- [WA_003 Forge](WA_003_forge.md) — UI surface; Succession UX lives in Forge
-- [WA_002 Heresy](WA_002_heresy.md) — `world_stability` consulted at initiate (block during Catastrophic/Shattered)
+- [PLT_001 Charter](PLT_001_charter.md) — Co-Author lifecycle; Succession requires recipient to be Co-Author at initiate
+- [WA_003 Forge](../02_world_authoring/WA_003_forge.md) — UI surface; Succession UX lives in Forge
+- [WA_002 Heresy](../02_world_authoring/WA_002_heresy.md) — `world_stability` consulted at initiate (block during Catastrophic/Shattered)
 - [02_storage C03 reality_registry] — owner_id ground-truth; mutated atomically at Finalize
 - [02_storage S05 admin classification] — S5 dual-actor for admin approve
 - [auth-service] — UserId resolution; account-status checks
@@ -772,7 +773,7 @@ T2h+1s:  Both UIs notified:
 
 **Deferred:** acceptance criteria (intentionally not in V1 of this doc).
 
-**Resolves:** WA_004 CHR-D1 ✓ (in-product ownership transfer feature).
+**Resolves:** PLT_001 CHR-D1 ✓ (in-product ownership transfer feature).
 
 **Status:** DRAFT 2026-04-25.
 

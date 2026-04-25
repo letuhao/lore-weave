@@ -1,12 +1,13 @@
-# WA_004 — Charter (Co-Author Management)
+# PLT_001 — Charter (Co-Author Management)
 
 > **Conversational name:** "Charter" (CHR). The formal grant of co-authoring rights — RealityOwner invites another LoreWeave user as Co-Author, with explicit invitation lifecycle, audit log, and revocation flow. Pairs with WA_003 Forge: Forge is the WHERE (the console); Charter is the WHO (the people allowed to use it).
 >
-> **Category:** WA — World Authoring
-> **Status:** DRAFT 2026-04-25
-> **Catalog refs:** **DF4 World Rules** (sub-feature: author identity + role management). Resolves [WA_003 FRG-D5](WA_003_forge.md) (Co-Author invitation flow).
-> **Builds on:** [WA_003 Forge](WA_003_forge.md) (consumes its RBAC roles + EditOutcome pattern), [WA_001 Lex](WA_001_lex.md) + [WA_002 Heresy](WA_002_heresy.md) (no direct interaction; Charter just gates who can call into them via Forge), [02_storage C03 reality_registry](../../02_storage/) (ownership ground-truth)
-> **Defers to:** auth-service for `UserId` newtype + user lookup; future WA_005 for ownership transfer + Co-Author tier system.
+> **Category:** PLT — Platform / Business (relocated 2026-04-25 from `02_world_authoring/`; original PLT_001 ID retired per foundation I15)
+> **Status:** DRAFT 2026-04-25 (originally drafted as WA_004; relocated 2026-04-25 to `10_platform_business/` because identity / co-author management is platform/account territory, not "validate rules of reality" which is WA's original intent)
+> **Stable ID rename:** WA_004 → PLT_001. Old ID `WA_004` MUST NOT be reused for a different feature (foundation I15).
+> **Catalog refs:** PLT-* (this feature is the first PLT entry). Resolves [WA_003 FRG-D5](../02_world_authoring/WA_003_forge.md) (Co-Author invitation flow).
+> **Builds on:** [WA_003 Forge](../02_world_authoring/WA_003_forge.md) (consumes its RBAC roles + EditOutcome pattern), [WA_001 Lex](../02_world_authoring/WA_001_lex.md) + [WA_002 Heresy](../02_world_authoring/WA_002_heresy.md) (no direct interaction; Charter just gates who can call into them via Forge), [02_storage C03 reality_registry](../../02_storage/) (ownership ground-truth)
+> **Defers to:** auth-service for `UserId` newtype + user lookup; companion **PLT_002 Succession** (formerly PLT_002) for ownership transfer + Co-Author tier system.
 
 ---
 
@@ -16,7 +17,7 @@
 
 Tâm-Anh owns reality `R-tdd-h-2026-04`. She wants Hoài-Linh (a friend) to help curate the world's NPC personas. She:
 
-1. Opens Forge → "Co-Authors" tab (introduced by WA_004)
+1. Opens Forge → "Co-Authors" tab (introduced by PLT_001)
 2. Sees current grants: only herself (RealityOwner)
 3. Clicks "+ Invite Co-Author"
 4. Enters Hoài-Linh's email (or LoreWeave username) → backend resolves to `UserId(hoai_linh)`
@@ -82,7 +83,7 @@ Charter operations are AdminAction-class privileged writes (per WA_003 §2.5 pat
 | Cancel invitation (inviter cancels before invitee responds) | **EVT-T8** AdminAction (sub-shape `CharterCancel`) | gateway → world-service | RealityOwner privilege. |
 | Revoke grant | **EVT-T8** AdminAction (sub-shape `CharterRevoke`) | gateway → world-service | RealityOwner privilege. |
 | Resign grant | **EVT-T8** AdminAction (sub-shape `CharterResign`) | gateway → world-service | Co-Author privilege; self-only. |
-| (V2+) Ownership transfer | **EVT-T8** AdminAction (sub-shape `CharterTransfer`) | gateway → world-service + admin oversight | Tier1 + 14-day cooldown; deferred to WA_005. |
+| (V2+) Ownership transfer | **EVT-T8** AdminAction (sub-shape `CharterTransfer`) | gateway → world-service + admin oversight | Tier1 + 14-day cooldown; deferred to PLT_002. |
 
 EVT-T8 sub-shapes locked here; new sub-shapes added in V2+ via additive schema bump.
 
@@ -642,7 +643,7 @@ Tâm-Anh's UI on next check (V1: passive; V2+: push):
 
 | ID | Question | Defer to |
 |---|---|---|
-| CHR-D1 | Ownership transfer — RealityOwner hands over to a Co-Author or new user. Tier1 + 14-day cooldown + dual-confirm + admin oversight | **WA_005** Future ownership-transfer feature |
+| CHR-D1 | Ownership transfer — RealityOwner hands over to a Co-Author or new user. Tier1 + 14-day cooldown + dual-confirm + admin oversight | **PLT_002** Future ownership-transfer feature |
 | CHR-D2 | Co-Author tier system (Junior / Senior / Reviewer with different impact-class limits) | V2+ — requires WA_003 RBAC matrix expansion |
 | CHR-D3 | Per-reality configurable invitation TTL (7d default, range 1d-30d) | V2+ ops |
 | CHR-D4 | Sweeper cadence tuning for expired invitations | Phase 5 ops |
@@ -659,14 +660,14 @@ Tâm-Anh's UI on next check (V1: passive; V2+: push):
 
 ## §15 Cross-references
 
-- [WA_001 Lex](WA_001_lex.md) — gated by Charter (Co-Authors who can edit Lex)
-- [WA_002 Heresy](WA_002_heresy.md) — gated by Charter
-- [WA_003 Forge](WA_003_forge.md) — Charter's UX lives in Forge's "Co-Authors" tab; reuses `forge_audit_log`; reuses `EditAction` + EVT-T8 sub-shape pattern
+- [WA_001 Lex](../02_world_authoring/WA_001_lex.md) — gated by Charter (Co-Authors who can edit Lex)
+- [WA_002 Heresy](../02_world_authoring/WA_002_heresy.md) — gated by Charter
+- [WA_003 Forge](../02_world_authoring/WA_003_forge.md) — Charter's UX lives in Forge's "Co-Authors" tab; reuses `forge_audit_log`; reuses `EditAction` + EVT-T8 sub-shape pattern
 - [02_storage C03 reality_registry] — RealityOwner ground-truth for authorization checks
-- [auth-service] — UserId resolution from email/username (out of WA_004 scope)
+- [auth-service] — UserId resolution from email/username (out of PLT_001 scope)
 - [07_event_model/03_event_taxonomy.md](../../07_event_model/03_event_taxonomy.md) — EVT-T8 AdminAction with new sub-shapes Charter*
 - [decisions/deferred_DF01_DF15.md](../../decisions/deferred_DF01_DF15.md) — DF4 World Rules umbrella
-- (Future) **WA_005** — ownership transfer (CHR-D1)
+- (Future) **PLT_002** — ownership transfer (CHR-D1)
 
 ---
 

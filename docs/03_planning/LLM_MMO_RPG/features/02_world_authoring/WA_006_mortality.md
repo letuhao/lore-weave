@@ -88,7 +88,7 @@ PC dies. Becomes a ghost spectator:
 | **MortalityState** | Per-PC current state | `Alive \| Dying { will_respawn_at } \| Dead { mode, died_at } \| Ghost`. |
 | **DeathTrigger** | What caused the death | Closed set: `NarrativeDeath` (LLM-detected) \| `AdminForced` \| `WorldShatterCascade` (V2+) \| `CombatDamage` (V2+ — depends on PCS_001 HP system). |
 | **DeathTriggerDetector** | A6 output filter sub-validator that scans LLM-narrated turns for death keywords + scene context | V1: deterministic keyword match + LLM-confidence threshold. V2+: dedicated death-classifier model. |
-| **RespawnTrigger** | Background sweeper task that wakes PCs in `Dying` state when fiction-clock crosses their respawn time | Hourly sweep cadence V1 (matches WA_005 Succession sweeper pattern). |
+| **RespawnTrigger** | Background sweeper task that wakes PCs in `Dying` state when fiction-clock crosses their respawn time | Hourly sweep cadence V1 (matches PLT_002 Succession sweeper pattern, formerly WA_005). |
 
 ---
 
@@ -360,7 +360,7 @@ Adds ~5 ms p99 to every turn submission (1 cache-hit read).
 - Player's session for this PC is closed
 - UI shows terminal modal: "<PC name> đã hy sinh. Bạn không thể tiếp tục với nhân vật này."
 - Player retains LoreWeave account; can create a new PC if reality permits
-- PC's grant (in WA_004 Charter sense) is preserved as historical record
+- PC's grant (in PLT_001 Charter sense, formerly WA_004) is preserved as historical record
 - NPCs in the cell may emit reactive Chorus events (per NPC_002) on the death
 
 ### 7.2 RespawnAtLocation

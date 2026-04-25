@@ -1,5 +1,24 @@
 # WA_003 — Forge (Author Console)
 
+> **⚠ OVER-EXTENSION NOTICE (added 2026-04-25, post-WA boundary review):** This feature is BORDERLINE. Half of its content is legitimately WA-scoped (UI/API for editing Lex + Heresy data); the other half is generic author-console pattern (RBAC matrix × ImpactClass, dual-actor approval flow, audit-log infrastructure, pending-edit T1 state) that belongs in a cross-cutting feature (likely future `CC_NNN_authoring_console_pattern.md` in `11_cross_cutting/`).
+>
+> **Sections that are legitimate WA scope:**
+> - §1 user story (Lex/Heresy editing scenarios) ✓
+> - §3.1 `forge_audit_log` aggregate (WA-specific to Lex/Heresy edits) ✓
+> - §7 EditAction closed set (when scoped to Lex/Heresy operations) ✓
+> - §11/§12 Lex/Heresy edit sequences ✓
+>
+> **Sections that should extract to a cross-cutting pattern:**
+> - §6 RBAC matrix + ImpactClass classification (generic)
+> - §7.4 Dual-actor approval flow + pending_edit T1 (generic)
+> - §10 Cross-service handoff template (generic)
+>
+> **Status:** PROVISIONAL. Pending future split where the GENERIC patterns extract to a `CC_NNN_*` cross-cutting feature; the LEX/HERESY-specific portions stay here as the WA author-console for those two features. Until the split, the over-extended sections are advisory only — future cross-cutting feature owners may revise.
+>
+> Companion files PLT_001 Charter + PLT_002 Succession (formerly WA_004/005, relocated 2026-04-25) consume Forge's RBAC pattern but live in `10_platform_business/` because they're identity/account-level concerns.
+>
+> ---
+>
 > **Conversational name:** "Forge" (FRG). The author-facing console where world authors view + edit their reality's Lex axioms, declare per-actor Heresy contamination exceptions, and (with admin escalation) trigger WorldStability stage transitions. Pairs with Lex (the law) + Heresy (the violation): Forge is where authors WRITE the law and the exceptions.
 >
 > **Category:** WA — World Authoring

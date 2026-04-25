@@ -192,7 +192,7 @@ pub struct RejectReason {                         // Continuum-owned envelope sh
 - `capability.*` → DP-K9 / 05_llm_safety
 - `parse.*` → PL_002 Grammar
 - `chorus.*` → NPC_002 Chorus
-- `forge.*` / `charter.*` / `succession.*` → WA_003 / WA_004 / WA_005
+- `forge.*` / `charter.*` / `succession.*` → WA_003 / PLT_001 (formerly WA_004) / PLT_002 (formerly WA_005)
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy.
 
