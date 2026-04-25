@@ -6,8 +6,10 @@
 
 ## Current owner
 
-- **Owner:** **None** (folder unlocked; any agent may claim)
-- _Last released:_ 2026-04-26 by main session (PL_005 Interaction feature) after PL_005 commit. See [99_changelog.md](99_changelog.md) for details.
+- **Owner:** None
+- **Claimed at:** —
+- **Expected work:** —
+- **Expires at:** —
 
 ---
 

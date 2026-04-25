@@ -23,24 +23,24 @@ Before designing a new feature: search this matrix for the aggregates / concepts
 | `participant_presence` | T1 / Channel (cell) | **PL_001 Continuum** | Live "who's here" view; re-derived from DP-emitted MemberJoined/Left. |
 | `actor_binding` | T2 / Reality | **PL_001 Continuum** | "Where is X" reality-global lookup, covers PCs + NPCs uniformly. |
 | `turn_idempotency_log` | T2 / Reality | **PL_001 Continuum** | Reconnect/idempotency safety. *Borderline; may relocate to PL_004 session lifecycle when designed.* |
-| `tool_call_allowlist` | T2 / Reality | **PL_002 Grammar** | Per-actor-type LLM tool-call allowlist. |
-| `npc_reaction_priority` | T2 / Channel (cell) | **NPC_002 Chorus** | Per-(cell, NPC) priority hint for multi-NPC reactions. |
-| `chorus_batch_state` | T1 / Channel (cell) | **NPC_002 Chorus** | Transient orchestrator coordination. |
-| `npc` (R8 import) | T2 / Reality | **NPC_001 Cast** | DP-A14 annotations only; aggregate body locked by 02_storage R8. |
-| `npc_session_memory` (R8 import) | T2 / Reality | **NPC_001 Cast** | DP-A14 annotations only; body locked by 02_storage R8. |
-| `npc_pc_relationship_projection` (R8 import) | T2 / Reality | **NPC_001 Cast** | DP-A14 annotations only; body locked by 02_storage R8. |
-| `npc_node_binding` | T2 (T3 on handoff) / Reality | **NPC_001 Cast** | NPC owner-node mapping with epoch fence. |
-| `lex_config` | T2 / Reality singleton | **WA_001 Lex** | Per-reality physics/ability/energy axioms. |
-| `actor_contamination_decl` | T2 / Reality | **WA_002 Heresy** | Per-(actor, kind) contamination exception. |
-| `actor_contamination_state` | T2 / Reality | **WA_002 Heresy** | Per-(actor, kind) runtime budget tracking. |
-| `world_stability` | T3 / Reality singleton | **WA_002 Heresy** | 5-stage state machine. |
-| `forge_audit_log` | T2 / Reality | **WA_003 Forge** (CANDIDATE-LOCK) | Append-only audit; ALSO USED by PLT_001 + PLT_002 + WA_006 with their own AuditAction sub-shapes. WA_003 closure-reframed 2026-04-25 — patterns extractable to future CC_NNN are V1-essential here, V2+ optimization not boundary fix. §14 acceptance: 10 scenarios. |
-| `coauthor_grant` | T2 / Reality | **PLT_001 Charter** (formerly WA_004; relocated 2026-04-25) | Active Co-Author grants. |
-| `coauthor_invitation` | T2 / Reality | **PLT_001 Charter** | Pending invitations with TTL. |
-| `ownership_transfer` | T2 (T3 at Finalize) / Reality | **PLT_002 Succession** (formerly WA_005; relocated 2026-04-25) | Multi-stage state machine. |
-| `mortality_config` | T2 / Reality singleton | **WA_006 Mortality** (CANDIDATE-LOCK) | Per-reality death-mode config. WA_006 thin-rewritten 2026-04-25 closure pass (730 → 403 lines); only legitimate WA scope kept. §12 acceptance: 6 scenarios. |
+| `tool_call_allowlist` | T2 / Reality | **PL_002 Grammar** (CANDIDATE-LOCK 2026-04-25) | Per-actor-type LLM tool-call allowlist. §13 acceptance: 10 scenarios. |
+| `npc_reaction_priority` | T2 / Channel (cell) | **NPC_002 Chorus** (CANDIDATE-LOCK 2026-04-26) | Per-(cell, NPC) priority hint for multi-NPC reactions. §14 acceptance: 10 scenarios (SPIKE_01 turn 5 reproducibility verified). |
+| `chorus_batch_state` | T1 / Channel (cell) | **NPC_002 Chorus** (CANDIDATE-LOCK 2026-04-26) | Transient orchestrator coordination. |
+| `npc` (R8 import) | T2 / Reality | **NPC_001 Cast** (CANDIDATE-LOCK 2026-04-26) | DP-A14 annotations only; aggregate body locked by 02_storage R8. §14 acceptance: 10 scenarios. |
+| `npc_session_memory` (R8 import) | T2 / Reality | **NPC_001 Cast** (CANDIDATE-LOCK 2026-04-26) | DP-A14 annotations only; body locked by 02_storage R8. |
+| `npc_pc_relationship_projection` (R8 import) | T2 / Reality | **NPC_001 Cast** (CANDIDATE-LOCK 2026-04-26) | DP-A14 annotations only; body locked by 02_storage R8. |
+| `npc_node_binding` | T2 (T3 on handoff) / Reality | **NPC_001 Cast** (CANDIDATE-LOCK 2026-04-26) | NPC owner-node mapping with epoch fence. |
+| `lex_config` | T2 / Reality singleton | **WA_001 Lex** (CANDIDATE-LOCK 2026-04-25) | Per-reality physics/ability/energy axioms. §14 acceptance: 10 scenarios. |
+| `actor_contamination_decl` | T2 / Reality | **WA_002 Heresy** (CANDIDATE-LOCK 2026-04-25) | Per-(actor, kind) contamination exception. |
+| `actor_contamination_state` | T2 / Reality | **WA_002 Heresy** (CANDIDATE-LOCK 2026-04-25) | Per-(actor, kind) runtime budget tracking. |
+| `world_stability` | T3 / Reality singleton | **WA_002 Heresy** (CANDIDATE-LOCK 2026-04-25) | 5-stage state machine. |
+| `forge_audit_log` | T2 / Reality | **WA_003 Forge** (CANDIDATE-LOCK 2026-04-25) | Append-only audit; ALSO USED by PLT_001 + PLT_002 + WA_006 with their own AuditAction sub-shapes. WA_003 closure-reframed 2026-04-25 — patterns extractable to future CC_NNN are V1-essential here, V2+ optimization not boundary fix. §14 acceptance: 10 scenarios. |
+| `coauthor_grant` | T2 / Reality | **PLT_001 Charter** (CANDIDATE-LOCK 2026-04-25; formerly WA_004; relocated 2026-04-25) | Active Co-Author grants. §14 acceptance: 10 scenarios AC-CHR-1..10. |
+| `coauthor_invitation` | T2 / Reality | **PLT_001 Charter** (CANDIDATE-LOCK 2026-04-25) | Pending invitations with TTL. |
+| `ownership_transfer` | T2 (T3 at Finalize) / Reality | **PLT_002 Succession** (CANDIDATE-LOCK 2026-04-25; formerly WA_005; relocated 2026-04-25) | Multi-stage state machine. PLT_002b lifecycle split 2026-04-25 — §14 acceptance: 10 scenarios AC-SUC-1..10. |
+| `mortality_config` | T2 / Reality singleton | **WA_006 Mortality** (CANDIDATE-LOCK 2026-04-25) | Per-reality death-mode config. WA_006 thin-rewritten 2026-04-25 closure pass (730 → 403 lines); only legitimate WA scope kept. §12 acceptance: 6 scenarios. |
 | `pc_mortality_state` | T2 / Reality | **PCS_001** (when designed) | Mechanics handed off from WA_006 in closure pass — over-extended sections removed from WA_006 entirely; future PCS_001 owner has clean slate. |
-| `meta_user_pending_invitations` | global meta-DB table | **PLT_001 Charter** (formerly WA_004) | Cross-reality denormalized; CHR-D9 watchpoint. |
+| `meta_user_pending_invitations` | global meta-DB table | **PLT_001 Charter** (CANDIDATE-LOCK 2026-04-25; formerly WA_004) | Cross-reality denormalized; CHR-D9 watchpoint. |
 
 ---
 

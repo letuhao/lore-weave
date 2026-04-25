@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-04-26 — Closure-pass status promotions: PL_002 + NPC + PLT folders
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7, this conversation — closure pass continuation) at 2026-04-26 (after PL_005 agent released); commit `[boundaries-lock-claim+release]` (this turn)
+- **Files modified:**
+  - `01_feature_ownership_matrix.md`:
+    - `tool_call_allowlist` row: PL_002 Grammar status → **CANDIDATE-LOCK 2026-04-25**; §13 acceptance: 10 scenarios
+    - `npc_reaction_priority` row: NPC_002 Chorus status → **CANDIDATE-LOCK 2026-04-26**; §14 acceptance: 10 scenarios (SPIKE_01 turn 5 reproducibility verified)
+    - `chorus_batch_state` row: NPC_002 Chorus status → **CANDIDATE-LOCK 2026-04-26**
+    - `npc` (R8 import) row: NPC_001 Cast status → **CANDIDATE-LOCK 2026-04-26**; §14 acceptance: 10 scenarios
+    - `npc_session_memory` (R8 import) row: NPC_001 Cast status → **CANDIDATE-LOCK 2026-04-26**
+    - `npc_pc_relationship_projection` (R8 import) row: NPC_001 Cast status → **CANDIDATE-LOCK 2026-04-26**
+    - `npc_node_binding` row: NPC_001 Cast status → **CANDIDATE-LOCK 2026-04-26**
+    - `lex_config` row: WA_001 Lex status → **CANDIDATE-LOCK 2026-04-25** (date stamp added; status was set in WA closure pass)
+    - `actor_contamination_decl` / `actor_contamination_state` / `world_stability` rows: WA_002 Heresy status → **CANDIDATE-LOCK 2026-04-25** (date stamp added)
+    - `forge_audit_log` row: WA_003 Forge status → **CANDIDATE-LOCK 2026-04-25** (date stamp added)
+    - `coauthor_grant` row: PLT_001 Charter status → **CANDIDATE-LOCK 2026-04-25**; §14 acceptance: 10 scenarios AC-CHR-1..10
+    - `coauthor_invitation` row: PLT_001 Charter status → **CANDIDATE-LOCK 2026-04-25**
+    - `ownership_transfer` row: PLT_002 Succession status → **CANDIDATE-LOCK 2026-04-25**; PLT_002b lifecycle split noted; §14 acceptance: 10 scenarios AC-SUC-1..10
+    - `mortality_config` row: WA_006 Mortality status → **CANDIDATE-LOCK 2026-04-25** (date stamp added)
+    - `meta_user_pending_invitations` row: PLT_001 Charter status → **CANDIDATE-LOCK 2026-04-25**
+- **No other boundary files modified** — `02_extension_contracts.md` unchanged (PL_005 agent already added `interaction.*`); `03_validator_pipeline_slots.md` unchanged (no slot changes from closure pass).
+- **Reason:** sequential closure passes (Q1-Q5 across PL_002 / NPC / PLT folders) brought 6 additional features to **CANDIDATE-LOCK** status with §13/§14 acceptance criteria. Boundary matrix updated to reflect new statuses + acceptance scenario counts. PL_005 Interaction (DRAFT 2026-04-26 by parallel agent) is intentionally NOT included in this status promotion; PL_005 is in DRAFT and will be CANDIDATE-LOCK'd in a separate future closure pass.
+- **Closure pass summary** (mirrored from feature folder `_index.md` files):
+  - **PL folder (04_play_loop):** PL_001/001b Continuum CANDIDATE-LOCK (boundary-tightened) · PL_002 Grammar CANDIDATE-LOCK 2026-04-25 (§13: 10 scenarios) · PL_005/005b/005c Interaction DRAFT 2026-04-26 (parallel agent)
+  - **NPC folder (05_npc_systems):** CLOSED for V1 design 2026-04-26 — NPC_001 Cast CANDIDATE-LOCK 2026-04-26 (§14: 10 scenarios AC-CST-1..10) · NPC_002 Chorus CANDIDATE-LOCK 2026-04-26 (§14: 10 scenarios AC-CHO-1..10 incl. SPIKE_01 turn 5 reproducibility)
+  - **PLT folder (10_platform_business):** PLT_001 Charter CANDIDATE-LOCK 2026-04-25 (§14: 10 scenarios AC-CHR-1..10) · PLT_002/002b Succession CANDIDATE-LOCK 2026-04-25 (§14: 10 scenarios AC-SUC-1..10)
+  - **Total at CANDIDATE-LOCK after this pass:** 13 features across 4 closed folders (WA: 5 · PL: 3 · NPC: 2 · PLT: 3) — full V1 design surface for these folders
+- **Sibling work landed in same window** (informational, not part of this lock claim):
+  - 07_event_model agent: Phase 1-6 LOCKED + Option C redesign + EVT-G* Generator Framework (own changelog entries above)
+  - PL_005 Interaction agent: PL_005/005b/005c DRAFT 2026-04-26 (own changelog entry above)
+  - PCS_001 PC substrate brief seeded at `features/06_pc_systems/00_AGENT_BRIEF.md` for parallel agent (no boundary-folder edits required for brief seeding)
+- **Drift watchpoints unchanged** (8 still active; status promotions don't introduce new drift)
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — PL_005 Interaction feature registered
 
 - **Lock claim:** main session (PL_005 Interaction feature design — core gameplay primitive) at 2026-04-26; commit `990eea3` `[boundaries-lock-claim]`
