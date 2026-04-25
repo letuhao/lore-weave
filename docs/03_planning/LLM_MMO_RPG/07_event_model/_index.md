@@ -66,8 +66,8 @@ Without this folder, every feature has to relitigate event semantics. With it, f
 | 07 | [`07_llm_proposal_bus.md`](07_llm_proposal_bus.md) | LOCKED Phase 3b (Option C) — bus framework mechanism; specific config (topics, retention) operational | EVT-L1..L6; resolves DP-A6 framework | 2026-04-25 |
 | 08 | [`08_scheduled_events.md`](08_scheduled_events.md) | LOCKED Phase 4a (Option C) | EVT-L7..L11; resolves EVT-Q4/Q8 + MV12-D10 | 2026-04-25 |
 | 09 | [`09_causal_references.md`](09_causal_references.md) | LOCKED Phase 4a (Option C) | EVT-L12..L15; resolves EVT-Q5 | 2026-04-25 |
-| 10 | `10_replay_semantics.md` | PENDING Phase 4 | EVT-L* | — |
-| 11 | `11_schema_versioning.md` | PENDING Phase 4 | EVT-S* | — |
+| 10 | [`10_replay_semantics.md`](10_replay_semantics.md) | LOCKED Phase 4b (Option C) | EVT-L16..L19; resolves EVT-Q6/Q10 | 2026-04-25 |
+| 11 | [`11_schema_versioning.md`](11_schema_versioning.md) | LOCKED Phase 4b (Option C); resolves DP Q5 + EVT-Q7/Q9 | EVT-S1..S6 | 2026-04-25 |
 | 22 | `22_event_design_quickstart.md` | PENDING Phase 5 | — | — |
 | 99 | [`99_open_questions.md`](99_open_questions.md) | OPEN — Phase 1 seed (EVT-Q1..Q10 + MV12-D8..D11 cross-refs) | EVT-Q* | 2026-04-25 |
 
