@@ -60,7 +60,7 @@ Without this folder, every feature has to relitigate event semantics. With it, f
 | 01 | [`01_scope_and_boundary.md`](01_scope_and_boundary.md) | LOCKED Phase 1 | — | 2026-04-25 |
 | 02 | [`02_invariants.md`](02_invariants.md) | LOCKED Phase 1 | EVT-A1..A8 | 2026-04-25 |
 | 03 | [`03_event_taxonomy.md`](03_event_taxonomy.md) | LOCKED Phase 1 | EVT-T1..T11 | 2026-04-25 |
-| 04 | `04_producer_rules.md` | PENDING Phase 2 | EVT-P* | — |
+| 04 | [`04_producer_rules.md`](04_producer_rules.md) | LOCKED Phase 2a | EVT-P1..P11 | 2026-04-25 |
 | 05 | `05_validator_pipeline.md` | PENDING Phase 3 | EVT-V* | — |
 | 06 | `06_per_category_contracts.md` | PENDING Phase 2 | — | — |
 | 07 | `07_llm_proposal_bus.md` | PENDING Phase 3 | EVT-L* | — |
