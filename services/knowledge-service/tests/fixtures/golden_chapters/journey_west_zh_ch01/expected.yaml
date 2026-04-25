@@ -14,16 +14,16 @@ source:
 # references (三皇 / 五帝 / 十洲 / 三島) and numerological idioms move to traps.
 entities:
   - name: 花果山
-    kind: location
+    kind: place
     aliases: []
   - name: 傲來國
-    kind: location
+    kind: place
     aliases: ["傲來小國"]
   - name: 東勝神洲
-    kind: location
+    kind: place
     aliases: []
   - name: 仙石
-    kind: object
+    kind: artifact
     aliases: []
   - name: 石猴
     kind: person
@@ -38,10 +38,10 @@ entities:
     kind: person
     aliases: []
   - name: 靈霄寶殿
-    kind: location
+    kind: place
     aliases: ["金闕雲宮靈霄寶殿"]
   - name: 南天門
-    kind: location
+    kind: place
     aliases: []
 
 relations:

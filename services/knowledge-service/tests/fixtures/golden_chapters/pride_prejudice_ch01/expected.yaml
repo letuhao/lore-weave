@@ -19,7 +19,7 @@ entities:
     kind: person
     aliases: ["Mr. Bingley"]
   - name: Netherfield Park
-    kind: location
+    kind: place
     aliases: ["Netherfield"]
 
 relations:

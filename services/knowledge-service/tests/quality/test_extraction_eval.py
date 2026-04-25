@@ -83,9 +83,11 @@ def _env_float(name: str, default: float) -> float:
 def _format_score(score: ChapterScore) -> str:
     return (
         f"{score.chapter:<30} "
-        f"P={score.precision:.2f} R={score.recall:.2f} "
+        f"P={score.precision:.2f} (P_lenient={score.precision_lenient:.2f}) "
+        f"R={score.recall:.2f} "
         f"FP-trap={score.fp_trap_rate:.2f} "
         f"(tp={score.tp} fp={score.fp} fn={score.fn} "
+        f"gap={score.fp_annotation_gap} "
         f"trap={score.fp_trap}/{score.trap_total})"
     )
 
@@ -93,17 +95,20 @@ def _format_score(score: ChapterScore) -> str:
 def _write_report(agg: AggregateScore, report_path: Path) -> None:
     payload = {
         "avg_precision": agg.avg_precision,
+        "avg_precision_lenient": agg.avg_precision_lenient,
         "avg_recall": agg.avg_recall,
         "avg_fp_trap_rate": agg.avg_fp_trap_rate,
         "per_chapter": [
             {
                 "chapter": s.chapter,
                 "precision": s.precision,
+                "precision_lenient": s.precision_lenient,
                 "recall": s.recall,
                 "fp_trap_rate": s.fp_trap_rate,
                 "tp": s.tp,
                 "fp": s.fp,
                 "fn": s.fn,
+                "fp_annotation_gap": s.fp_annotation_gap,
                 "fp_trap": s.fp_trap,
                 "trap_total": s.trap_total,
             }
@@ -272,6 +277,7 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
 
     print(
         f"\nAggregate: P={agg.avg_precision:.3f} "
+        f"(P_lenient={agg.avg_precision_lenient:.3f}) "
         f"R={agg.avg_recall:.3f} "
         f"FP-trap={agg.avg_fp_trap_rate:.3f} "
         f"(model={model_ref})"

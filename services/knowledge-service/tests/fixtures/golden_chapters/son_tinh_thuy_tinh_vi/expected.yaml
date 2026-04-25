@@ -32,10 +32,10 @@ entities:
     kind: person
     aliases: ["Vua Hùng", "vua cha", "vua", "Hùng Vương thứ mười tám"]
   - name: núi Tản Viên
-    kind: location
+    kind: place
     aliases: ["Tản Viên"]
   - name: đồng bằng Bắc Bộ
-    kind: location
+    kind: place
     aliases: []
 
 relations:

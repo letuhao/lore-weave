@@ -42,7 +42,7 @@ entities:
     kind: person
     aliases: ["bống"]
   - name: yếm đỏ
-    kind: object
+    kind: artifact
     aliases: []
 
 relations:

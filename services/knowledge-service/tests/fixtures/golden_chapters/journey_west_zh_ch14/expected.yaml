@@ -38,16 +38,16 @@ entities:
     kind: person
     aliases: ["我佛如來", "如來"]
   - name: 靈山
-    kind: location
+    kind: place
     aliases: []
   - name: 東土
-    kind: location
+    kind: place
     aliases: []
   - name: 西方
-    kind: location
+    kind: place
     aliases: ["西天"]
   - name: 唵嘛呢叭𠺗吽
-    kind: object
+    kind: artifact
     aliases: ["六個金字", "金字壓帖"]
 
 relations:

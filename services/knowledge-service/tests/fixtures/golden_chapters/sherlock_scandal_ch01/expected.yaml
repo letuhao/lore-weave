@@ -19,7 +19,7 @@ entities:
     kind: person
     aliases: ["I", "narrator"]
   - name: Baker Street
-    kind: location
+    kind: place
     aliases: []
 
 relations:
