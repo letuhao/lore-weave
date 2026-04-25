@@ -358,7 +358,7 @@ What MUST work for PL_005 + PL_005b CANDIDATE-LOCK:
 | **AC-INT-3** + **AC-INT-EXM-1..2** | EXAMINE Oracle + DeepStudy | A3 World Oracle (PL-16) integration |
 | **AC-INT-4** + **AC-INT-USE-1** | SELF-USE wine | PCS_001 stat stub (status_flag) |
 | **AC-INT-5** + **AC-INT-USE-3** | LEX REJECT | WA_001 Lex deployed with realistic axioms |
-| **AC-INT-6** | TARGET UNREACHABLE | PL_001 cell state + actor_binding integration |
+| **AC-INT-6** | TARGET UNREACHABLE | PL_001 cell state + entity_binding integration |
 
 **Vertical-slice = 13 V1-testable scenarios from 22 total.** Minimum viable Interaction implementation runs against SPIKE_01 fixtures + small Lex test config.
 
@@ -416,7 +416,7 @@ Beyond [PL_005 §17](PL_005_interaction.md#17-open-questions-deferred--landing-p
 - [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md) — sub-type ownership + aggregate ownership SSOT
 - [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `interaction.*` rule_id namespace
 - [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) — current validator stage ordering
-- [`PL_001 Continuum`](PL_001_continuum.md) §3.6 + §14 — actor_binding + idempotency cache
+- [`PL_001 Continuum`](PL_001_continuum.md) §3.6 + §14 — entity_binding + idempotency cache
 - [`PL_001b lifecycle`](PL_001b_continuum_lifecycle.md) §15 — rejection-path + idempotency
 - [`PL_002 Grammar`](PL_002_command_grammar.md) — command-driven Interactions
 - [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum + NpcOpinion::for_pc

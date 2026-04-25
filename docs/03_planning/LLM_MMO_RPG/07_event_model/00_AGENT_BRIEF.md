@@ -448,7 +448,7 @@ For your taxonomy seeding, here is what PL_001 + DP already mention:
 | `BubbleUpEvent` | DP-A15 + DP-Ch25 | (TBD — could be its own category or projection of source events) |
 | `TurnBoundary` | DP-A17 | (TBD — boundary marker, not a content event) |
 | `AmbientUpdate` (scene_state delta) | PL_001 §5.2 | NPCRoutine? WorldTick? |
-| `ActorBindingDelta::MoveTo` | PL_001 §5.2 | PlayerTurn / NPCRoutine (depends on actor) |
+| `EntityBindingDelta::MoveTo` | PL_001 §5.2 | PlayerTurn / NPCRoutine (depends on actor) |
 | `FictionClockAdvance` | PL_001 §3.1 | (TBD — derived event from PlayerTurn / WorldTick / FastForward) |
 | `TurnEvent::FastForward` (sleep/travel) | PL_001 §12 | PlayerTurn (subtype) |
 | LLM proposal events | DP-A6 deferred | LLMProposal |

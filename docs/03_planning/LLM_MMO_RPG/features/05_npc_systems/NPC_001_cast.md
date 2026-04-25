@@ -5,7 +5,7 @@
 > **Category:** NPC — NPC Systems
 > **Status:** **CANDIDATE-LOCK 2026-04-26** (DRAFT 2026-04-25 → Option C terminology applied by event-model agent → CANDIDATE-LOCK 2026-04-26 closure pass: §14 acceptance criteria added)
 > **Catalog refs:** NPC-1 (proxy derivation), NPC-2 (persona assembly), NPC-10 (tool calling). NPC-3a/b/c/e/f (R8 storage) consumed unchanged.
-> **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §3.6 actor_binding (resolves NPC handoff defer), [NPC_002 Chorus](NPC_002_chorus.md) (consumer of `npc_reaction_priority` + `NpcOpinion::for_pc` stub), [02_storage R8](../../02_storage/R08_npc_memory_split.md) (locks `npc` core + `npc_session_memory` + `npc_pc_relationship_projection`)
+> **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §3.6 entity_binding (resolves NPC handoff defer), [NPC_002 Chorus](NPC_002_chorus.md) (consumer of `npc_reaction_priority` + `NpcOpinion::for_pc` stub), [02_storage R8](../../02_storage/R08_npc_memory_split.md) (locks `npc` core + `npc_session_memory` + `npc_pc_relationship_projection`)
 > **Resolves:** PL_001 §3.6 NPC handoff defer; NPC_002 §3 NPC_001 dependency stub; OOS-1 NPC↔SessionContext mapping (the part Event Model said belongs to features); ActorId variant model (used by NPC_002 §11)
 > **Defers to:** [PCS_001](../06_pc_systems/) (not yet designed) for `PcId` newtype + xuyên không soul-body model — Cast references `PcId` abstractly. [DL_001](../12_daily_life/) (not yet) for NPC routine scenes (NPC-8 → DF1).
 
@@ -51,7 +51,7 @@ After this lock: world-service can implement NPC orchestration; NPC_002 Chorus c
 | NPC opinion update | **EVT-T3 Derived** | aggregate_type=`npc_pc_relationship_projection` | Aggregate-Owner role (world-service) post-validate | Causal-ref to triggering NPCTurn |
 | NPC LLM proposal (pre-validate) | **EVT-T6 Proposal** | `NPCTurnProposal` | LLM-Originator role (roleplay-service) | Promoted to EVT-T1 Submitted/NPCTurn on validate |
 | Canonical NPC bootstrap (RealityManifest seed) | **EVT-T4 System** | `MemberJoined { joined_via: CanonicalSeed }` | DP-Internal | Per PL_001 §16.4 |
-| Cross-cell NPC handoff (V1+) | **EVT-T3 Derived** (`aggregate_type=actor_binding`) + DP-emitted **EVT-T4 System** (`MemberLeft` + `MemberJoined`) | (above) | Aggregate-Owner role + DP | See §12 |
+| Cross-cell NPC handoff (V1+) | **EVT-T3 Derived** (`aggregate_type=entity_binding`) + DP-emitted **EVT-T4 System** (`MemberLeft` + `MemberJoined`) | (above) | Aggregate-Owner role + DP | See §12 |
 
 No new EVT-T* row. **EVT-T2 references throughout this doc** updated semantically: NPCTurn is now "EVT-T1 Submitted with sub-type=NPCTurn".
 
@@ -130,7 +130,7 @@ pub struct NpcPcRelationshipProjection {
 pub struct NpcNodeBinding {
     #[dp(indexed)] pub npc_id: NpcId,
     pub owner_node: NodeId,                     // current owner node (writes EVT-T2 NPCTurn for this NPC)
-    pub current_cell: ChannelId,                // current cell location (denormalized from actor_binding for fast lookup; reconciled per turn)
+    pub current_cell: ChannelId,                // current cell location (denormalized from entity_binding for fast lookup; reconciled per turn)
     pub epoch: u64,                             // bumps on handoff; old owner's writes rejected after bump
     pub last_handoff_at_turn: Option<u64>,
 }
@@ -203,7 +203,7 @@ The handoff write is T3 because it carries epoch fencing — must be globally vi
 ### 5.3 Channel ops (handoff only)
 
 - `dp::DpClient::move_session_to_channel` — NOT applicable (NPCs are not sessions).
-- Custom NPC-cell move: `dp::t2_write::<actor_binding>` (PL_001 §3.6) updates location; if cell change crosses node boundaries, follow §12 handoff protocol.
+- Custom NPC-cell move: `dp::t2_write::<entity_binding>` (PL_001 §3.6) updates location; if cell change crosses node boundaries, follow §12 handoff protocol.
 
 ---
 
@@ -304,7 +304,7 @@ The world-service backend session that writes EVT-T2 NPCTurn on behalf of NPCs n
     { "aggregate": "npc_session_memory",               "tiers": ["T2"] },
     { "aggregate": "npc_pc_relationship_projection",   "tiers": ["T2"] },
     { "aggregate": "npc_node_binding",                 "tiers": ["T2", "T3"] },
-    { "aggregate": "actor_binding",                    "tiers": ["T2"] }
+    { "aggregate": "entity_binding",                    "tiers": ["T2"] }
   ],
   "read": [
     { "aggregate": "npc",                              "tiers": ["T2"] },
@@ -449,7 +449,7 @@ For each CanonicalActorDecl:
   ① t2_write::<Npc> { npc_id, glossary_entity_id, core_beliefs: CanonRef, flexible_state, mood: Neutral, current_region_id: <to-be-resolved>, current_session_id: None }
   ② t2_write::<NpcNodeBinding> { npc_id, owner_node: hash(npc_id) % live_nodes, current_cell: <path-resolved>, epoch: 0 }
   ③ t2_write::<NpcReactionPriority> { ... } at the cell channel (NPC_002 §3.1)
-  ④ t2_write::<actor_binding> { actor: ActorId::Npc(npc_id), current_channel: cell, ... }
+  ④ t2_write::<entity_binding> { actor: ActorId::Npc(npc_id), current_channel: cell, ... }
 
   (npc_session_memory NOT created here — lazy on first session bind)
 
@@ -471,7 +471,7 @@ NPC `du_si` is owned by node A. PC `/travel`s du_si to a cell on node B's territ
 
 ```text
 ①  Source node A (current owner) detects move:
-   needs to write actor_binding(du_si, new_cell=tuong_duong_west)
+   needs to write entity_binding(du_si, new_cell=tuong_duong_west)
    look up new_cell's writer node: B (per DP-A16 channel writer binding)
    NPC's owner is A; channel writer is B → handoff required.
 
@@ -489,7 +489,7 @@ NPC `du_si` is owned by node A. PC `/travel`s du_si to a cell on node B's territ
    B begins accepting writes for du_si
 
 ⑤  Move execution (now on B):
-   t2_write::<actor_binding>(du_si, MoveTo { new_cell: tương_dương_west, turn: N })
+   t2_write::<entity_binding>(du_si, MoveTo { new_cell: tương_dương_west, turn: N })
    DP emits MemberLeft(gia_hung_inn, du_si) + MemberJoined(tương_dương_west, du_si)
 
 ⑥  Cleanup:
@@ -553,7 +553,7 @@ The design is implementation-ready when world-service can pass these scenarios. 
 
 | ID | Scenario | Pass criteria |
 |---|---|---|
-| **AC-CST-1 BOOTSTRAP CANONICAL NPCs** | RealityManifest activates `R-tdd-h` with 3 canonical actors (Lão Ngũ, Tiểu Thúy, Du sĩ at `cell:yen_vu_lau`). | Bootstrap atomic `t3_write_multi` creates: 3 `npc` core rows + 3 `npc_node_binding` rows (deterministic owner via `hash(npc_id) mod live_nodes`) + 3 `actor_binding` rows + 3 `npc_reaction_priority` rows (knowledge_tags pre-populated from canonical_actors decl). First PC into `cell:yen_vu_lau` sees 3 `MemberJoined { join_method: CanonicalSeed }` events for the canonical NPCs. |
+| **AC-CST-1 BOOTSTRAP CANONICAL NPCs** | RealityManifest activates `R-tdd-h` with 3 canonical actors (Lão Ngũ, Tiểu Thúy, Du sĩ at `cell:yen_vu_lau`). | Bootstrap atomic `t3_write_multi` creates: 3 `npc` core rows + 3 `npc_node_binding` rows (deterministic owner via `hash(npc_id) mod live_nodes`) + 3 `entity_binding` rows + 3 `npc_reaction_priority` rows (knowledge_tags pre-populated from canonical_actors decl). First PC into `cell:yen_vu_lau` sees 3 `MemberJoined { join_method: CanonicalSeed }` events for the canonical NPCs. |
 | **AC-CST-2 PERSONA ASSEMBLY (Du sĩ reaction prompt)** | NPC_002 Chorus invokes Cast persona-assembly for Du sĩ with `reaction_intent=PhysicalAction`, trigger=PC literacy-slip turn 105. | Deterministic combiner reads 4 inputs (npc + npc_session_memory + npc_pc_relationship_projection + scene_state); produces `PromptSlots { system_voice, scene_context, intent_directive, canon_grounding, forbidden_paraphrase }`. system_voice references Du sĩ's `flexible_state.voice_register=FormalClassical`. Memory fact selection: top-5 by `importance_score + relevance + recency_decay` (deterministic; reproducible). |
 | **AC-CST-3 OPINION-WITH-PC LOOKUP** | Chorus calls `NpcOpinion::for_pc(du_si, pc_ly_minh)` at start of priority resolution. | Read returns `OpinionScore` from `npc_pc_relationship_projection` row (lazy-default neutral=0 if no row exists; subsequent updates derived at session-end per §13). Used by Chorus Tier-2 priority. |
 
@@ -597,7 +597,7 @@ The design is implementation-ready when world-service can pass these scenarios. 
 
 ## §16 Cross-references
 
-- [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — §3.6 actor_binding (NPC handoff defer resolved here)
+- [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — §3.6 entity_binding (NPC handoff defer resolved here)
 - [PL_001b Continuum lifecycle](../04_play_loop/PL_001b_continuum_lifecycle.md) — §16 bootstrap which Cast extends
 - [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) — tool-call allowlist for actor_type=NPC_Reactive
 - [NPC_002 Chorus](NPC_002_chorus.md) — primary consumer; resolves §3 NPC_001 dependency stub + §6 NpcOpinion::for_pc trait

@@ -200,35 +200,50 @@ Continuum DOES NOT enumerate every variant. Each feature's design doc owns its p
 
 **Why `idempotency_key`:** prevents duplicate-turn commits when client retries after disconnect (§14). Server-side cache at gateway: `(session_id, idempotency_key) → response` for 60 seconds; second submit with same key returns the cached response without re-running the LLM/validator chain.
 
-### 3.6 `actor_binding`
+### 3.6 `entity_binding` (transferred to EF_001 2026-04-26)
+
+> **OWNERSHIP TRANSFERRED:** `entity_binding` was originally owned by PL_001 (PC + NPC only). Transferred to **[EF_001 Entity Foundation](../00_entity/EF_001_entity_foundation.md)** 2026-04-26 and renamed `entity_binding` with extended scope: 4 EntityType variants (Pc/Npc/Item/EnvObject) + 4-state `LocationKind` (InCell/HeldBy/InContainer/Embedded) + 4-state `LifecycleState` (Existing/Suspended/Destroyed/Removed). See [EF_001 §3.1](../00_entity/EF_001_entity_foundation.md#31-entity_binding-t2--reality--primary) for the V1+ struct definition. PL_001 retains operational responsibility for PC turn-time movement (the writer flow); EF_001 owns the aggregate + lifecycle + cross-entity addressability.
+
+V1 PC+NPC subset shape (full struct in EF_001):
 
 ```rust
+// see EF_001 §3.1 for full V1+ struct (4-state LocationKind + LifecycleState + affordance_overrides)
 #[derive(Aggregate)]
-#[dp(type_name = "actor_binding", tier = "T2", scope = "reality")]
-pub struct ActorBinding {
-    #[dp(indexed)] pub actor: ActorId,            // PC or NPC
-    pub current_channel: ChannelId,               // cell where this actor is "physically" present
-    pub last_moved_turn: u64,                     // channel-event-id at last move (for ordering)
-    pub binding_kind: BindingKind,                // PC | NPC_OwnerNode_<node_id> | NPC_AmbientFloating
+#[dp(type_name = "entity_binding", tier = "T2", scope = "reality")]
+pub struct EntityBinding {
+    #[dp(indexed)] pub entity_id: EntityId,       // V1: Pc | Npc; V1+: Item | EnvObject (per EF_001)
+    pub entity_type: EntityType,
+    pub location: EntityLocation,                 // InCell { cell_id } V1 default for PC/NPC
+    pub owner_node: NodeId,
+    pub lifecycle_state: LifecycleState,
+    pub last_moved_fiction_time: FictionTime,
+    pub last_lifecycle_change_fiction_time: FictionTime,
+    pub affordance_overrides: Option<AffordanceSet>,
 }
 ```
 
-- T2 + RealityScoped: every actor in a reality has exactly one current location at any time. Querying "where is Tiểu Thúy?" = `read_projection_reality<ActorBinding>(ctx, actor_id)`.
-- Updated whenever `move_actor_to_cell` is invoked (which is itself a feature method that wraps `move_session_to_channel` for PCs and an internal NPC handoff for NPCs).
-- Required because cells can host actors who don't have an SDK session (NPCs without active LLM interaction). Channel `MemberJoined`/`MemberLeft` covers session-bound presence; `actor_binding` covers everyone else.
+- T2 + RealityScoped: every entity in a reality has exactly one current location at any time. Querying "where is Tiểu Thúy?" = `read_projection_reality<EntityBinding>(ctx, EntityId::Npc(npc_id))`.
+- Updated whenever `move_entity_to_cell` is invoked (which is itself a feature method that wraps `move_session_to_channel` for PCs and an internal NPC handoff for NPCs).
+- Required because cells can host entities who don't have an SDK session (NPCs without active LLM interaction; Items dropped in cell). Channel `MemberJoined`/`MemberLeft` covers session-bound presence; `entity_binding` covers everyone else.
 
-**NPC handoff — explicitly DEFERRED to NPC_001:** when an NPC physically moves between cells whose writer nodes differ (e.g., NPC walks from tavern T1 to tavern T2 in another district owned by node B), the handoff protocol — old-node releases, new-node binds, intermediate state during transit — is NOT designed in PL_001. PL_001 only locks the read-side contract: `actor_binding` is the SSOT for "where is X". The write side for cross-node NPC moves is NPC_001's responsibility. V1 mitigation: NPCs are statically bound to a single cell at reality-bootstrap and do not migrate; only PC `/travel` triggers cross-cell moves, and PCs are session-sticky to their own node (DP-A11) which simplifies the protocol to a single `move_session_to_channel` call.
+**NPC handoff — explicitly DEFERRED to NPC_001:** when an NPC physically moves between cells whose writer nodes differ (e.g., NPC walks from tavern T1 to tavern T2 in another district owned by node B), the handoff protocol — old-node releases, new-node binds, intermediate state during transit — is NOT designed in PL_001. PL_001 only locks the read-side contract: `entity_binding` is the SSOT for "where is X". The write side for cross-node NPC moves is NPC_001's responsibility. V1 mitigation: NPCs are statically bound to a single cell at reality-bootstrap and do not migrate; only PC `/travel` triggers cross-cell moves, and PCs are session-sticky to their own node (DP-A11) which simplifies the protocol to a single `move_session_to_channel` call.
 
-**Actor removal hook (resolves boundary-review G2):** when an actor is REMOVED from the reality (PC enters Permadeath state per WA_006 Mortality, account deleted, NPC dissolved), `actor_binding(actor_id)` MUST be cleaned up. The cleanup itself is PCS_001 / NPC_001 territory (per-actor lifecycle); PL_001 provides only the cleanup HOOK contract:
+**Entity removal hook (resolves boundary-review G2; superseded by EF_001 lifecycle 2026-04-26):** when an entity is REMOVED from the reality (PC enters Permadeath state per WA_006 Mortality, account deleted, NPC dissolved), `entity_binding(entity_id)` MUST transition to `LifecycleState::Destroyed` or `LifecycleState::Removed` per EF_001 §6. The transition itself is PCS_001 / NPC_001 / WA_002 territory (per-entity lifecycle owners); PL_001 provides only the cleanup HOOK contract:
 
 ```rust
-// PCS_001 / NPC_001 calls this when an actor is permanently removed
-pub async fn remove_actor_binding(ctx: &SessionContext, actor: ActorId) -> Result<(), DpError>;
-// world-service deletes the actor_binding row + emits a corresponding
-// MemberLeft event on the actor's current cell (for audit + bubble-up)
+// PCS_001 / NPC_001 / WA_002 calls this when an entity is permanently removed
+// EF_001 §6 forbids hard delete: lifecycle_state transitions to Destroyed (in-fiction) or Removed (out-of-fiction)
+pub async fn transition_entity_lifecycle(
+    ctx: &SessionContext,
+    entity_id: EntityId,
+    new_state: LifecycleState,    // Destroyed | Removed
+    reason_kind: LifecycleReasonKind,
+) -> Result<(), DpError>;
+// world-service updates the entity_binding row + appends to entity_lifecycle_log + emits
+// MemberLeft event on the entity's current cell (for audit + bubble-up)
 ```
 
-V1 implementation: deletion is a hard delete (history preserved in event log via the MemberLeft canonical event). V2+ may add a "tombstone" pattern if cross-feature lookups need to know "this actor used to exist".
+V1 implementation: NO hard delete (audit trail preserved in `entity_lifecycle_log` per EF_001 §3.2). The `entity_binding` row stays with `lifecycle_state = Destroyed | Removed`; `location` is FROZEN at last value for forensic value.
 
 ### 3.7 Hard limits (V1)
 
@@ -237,7 +252,7 @@ Locked to keep the design analyzable. Any value crossed at runtime → `WorldRul
 | Limit | Value | Why | Enforcement point |
 |---|---|---|---|
 | Max channel tree depth | 16 | Per DP-Ch1 invariant. | DP — `create_channel` rejects deeper trees. |
-| Max actors per cell | 32 | Cell is a "scene"; >32 actors degrades narrative coherence and LLM context-window usability. Tavern-or-bigger channels host crowds via bubble-up summaries, not full presence. | world-service before `move_actor_to_cell`; rejects with `RejectReason::WorldRuleViolation { rule_id: "cell_capacity" }`. |
+| Max actors per cell | 32 | Cell is a "scene"; >32 actors degrades narrative coherence and LLM context-window usability. Tavern-or-bigger channels host crowds via bubble-up summaries, not full presence. | world-service before `move_entity_to_cell`; rejects with `RejectReason::WorldRuleViolation { rule_id: "cell_capacity" }`. |
 | Max active turn-slots per writer node | 64 | Memory bound on outstanding LLM streams. Exceeded → new claims get `RateLimited`. | DP-A11 writer node. |
 | Max `fiction_duration` per single turn | 30 days fiction-time | Prevents accidental "/sleep for 1000 years" wedging the world. `/travel` caps at 30 days; longer journeys split across multiple turns or use a dedicated `/long_journey` command (V2). | world-service validator. |
 | Max idempotency-key TTL | 60 seconds wall-clock | §14 reconnect window. Beyond TTL, retry is treated as a new turn. | gateway in-memory cache. |
@@ -257,7 +272,7 @@ These are V1 caps. Tuning happens in Phase 5 ops — but any change is a design 
 | `participant_presence` | T1 | T1 | Channel (cell) | high (every render frame in UI) | ~1 on enter/leave/idle | Live "who's here"; 30s loss OK because re-derivable from `MemberJoined` log. |
 | Canonical `MemberJoined`/`MemberLeft` | n/a (subscribe) | DP-internal | Channel | streamed | DP-emitted only (DP-A18 §c) | Audit-grade canonical, gap-free durable subscribe. |
 | `TurnEvent` (channel event) | n/a (event log) | T2 (via `advance_turn`) | Channel (cell) | streamed | 1 per turn | Per DP-A17 every channel event is tagged with `turn_number`; SSOT is event log. |
-| `actor_binding` | T2 | T2 | Reality | ~1 per turn for resolved participants | ~1 per move | Reality-global query "where is X". |
+| `entity_binding` | T2 | T2 | Reality | ~1 per turn for resolved participants | ~1 per move | Reality-global query "where is X". |
 
 No T0, no T3. Justification:
 - **No T0:** PC turns persist across sessions (T2 minimum — DP-T0 eligibility rule fails clause 3 "lifetime bounded by single session").
@@ -273,7 +288,7 @@ By name, with arity. No raw `sqlx` / `redis` (DP-R3).
 
 - `dp::read_projection_reality::<FictionClock>(ctx, FictionClockId::SINGLETON, wait_for=None, ...)` — every turn-render in UI.
 - `dp::read_projection_channel::<SceneState>(ctx, &cell, scene_state_id, wait_for=None, ...)` — at session bind + after each turn for ambient updates.
-- `dp::read_projection_reality::<ActorBinding>(ctx, actor_id, wait_for=Some(turn_token), ...)` — when world-service resolves "is NPC X in this cell?" right after a movement turn. **CausalityToken use case.**
+- `dp::read_projection_reality::<EntityBinding>(ctx, entity_id, wait_for=Some(turn_token), ...)` — when world-service resolves "is NPC X in this cell?" right after a movement turn. **CausalityToken use case.**
 - `dp::query_scoped_channel::<ParticipantPresence>(ctx, &cell, Predicate::field_eq(state, Active), limit=8)` — UI list of who's-here.
 
 ### 5.2 Writes
@@ -282,7 +297,7 @@ By name, with arity. No raw `sqlx` / `redis` (DP-R3).
 - `dp::t2_write::<FictionClock>(ctx, FictionClockId::SINGLETON, FictionClockAdvance { fiction_duration })` — same RPC handler, after `advance_turn` succeeds, advances the fiction clock by the proposed duration.
 - `dp::t2_write::<SceneState>(ctx, scene_id, SceneStateDelta::AmbientUpdate { ambient })` — when ambient changes (weather, crowd).
 - `dp::t1_write::<ParticipantPresence>(ctx, presence_id, PresenceDelta::Transition { from, to })` — on enter/leave/idle, in response to `MemberJoined`/`MemberLeft` durable events.
-- `dp::t2_write::<ActorBinding>(ctx, actor_id, ActorBindingDelta::MoveTo { new_cell, turn })` — on PC `/travel` or NPC handoff.
+- `dp::t2_write::<EntityBinding>(ctx, entity_id, EntityBindingDelta::MoveTo { new_cell, turn })` — on PC `/travel` or NPC handoff.
 
 ### 5.3 Channel ops
 
@@ -312,12 +327,12 @@ Each session's JWT (DP-K9) must declare the following capabilities for this feat
 |---|---|---|
 | `read: fiction_clock @ T2` | every PC session | UI clock display + Oracle ground-truth. |
 | `read: scene_state @ T2 @ cell-channel` | every PC session | ambient render. |
-| `read: actor_binding @ T2` | every PC session | "who is in this cell" resolution. |
+| `read: entity_binding @ T2` | every PC session | "who is in this cell" resolution. |
 | `read: participant_presence @ T1 @ cell-channel` | every PC session | live presence list. |
 | `subscribe: channel_events @ cell + ancestor_chain` | every PC session | turn render + bubble-up. |
 | `write: fiction_clock @ T2` | world-service backend session ONLY (NOT PC sessions) | Per DP-A6: PCs propose via Python LLM bus → Rust validates → Rust writes. |
 | `write: scene_state @ T2 @ cell-channel` | world-service backend ONLY | same. |
-| `write: actor_binding @ T2` | world-service backend ONLY | same. |
+| `write: entity_binding @ T2` | world-service backend ONLY | same. |
 | `write: participant_presence @ T1 @ cell-channel` | world-service backend ONLY (driven by MemberJoined/Left subscribe) | same. |
 | `can_advance_turn @ level=cell` | world-service backend ONLY | `advance_turn` is capability-gated per DP-A17 §d. PC sessions never call it directly. |
 | `can_register_aggregator @ level=tavern,town` | world-service backend ONLY (one registration per parent at startup) | bubble-up gossip aggregators (deferred to PL_002). |
@@ -395,7 +410,7 @@ Per [19_privacy_redaction_policies.md](../../06_data_plane/19_privacy_redaction_
 ### 8.3 Causality wait timeout: **default 5s** for cross-service reads, **20s** for `/travel` chains
 
 - Standard turn read-after-write: 5s default (DP-A19) is fine — projection-applier p99 is ≤1s.
-- `/travel` is a multi-step chain (advance_turn → fiction_clock advance → actor_binding move → create_channel → move_session_to_channel → MemberJoined emit). UI's first read after the chain may need to wait longer; UI passes `causality_timeout=Some(Duration::from_secs(20))` on the first `read_projection_reality<ActorBinding>` after a travel.
+- `/travel` is a multi-step chain (advance_turn → fiction_clock advance → entity_binding move → create_channel → move_session_to_channel → MemberJoined emit). UI's first read after the chain may need to wait longer; UI passes `causality_timeout=Some(Duration::from_secs(20))` on the first `read_projection_reality<EntityBinding>` after a travel.
 - Beyond 20s → `CausalityWaitTimeout` → UI surfaces "đường đi gặp trở ngại, thử lại?" with a retry button. Never silently render stale.
 
 ---
@@ -452,8 +467,8 @@ Concrete example: PC submits `/travel to Tương Dương` (SPIKE_01 turn 16-17).
   3d. new_ctx = dp.move_session_to_channel(ctx, new_cell)  →  SessionContext'
        (DP emits MemberLeft on old_cell + MemberJoined on new_cell automatically per DP-A18 §c)
 
-  3e. dp.t2_write::<ActorBinding>(new_ctx, pc_id,
-        ActorBindingDelta::MoveTo { new_cell, turn: T1.turn_number })  →  T2Ack { causality_token = T3 }
+  3e. dp.t2_write::<EntityBinding>(new_ctx, pc_id,
+        EntityBindingDelta::MoveTo { new_cell, turn: T1.turn_number })  →  T2Ack { causality_token = T3 }
 
   3f. dp.release_turn_slot(new_ctx, &new_cell)
 
@@ -471,7 +486,7 @@ Concrete example: PC submits `/travel to Tương Dương` (SPIKE_01 turn 16-17).
      render new scene
 ```
 
-**Token chain:** T1 (advance_turn ack) → T2 (clock ack) → T3 (actor_binding ack). Step 5 passes T3 — the latest in the chain — to `wait_for`. DP guarantees that any read with `wait_for=T3` reflects T1, T2, T3 because they were committed in sequence within the same writer's session and `last_applied_event_id` is monotonic per channel + monotonic per reality outbox.
+**Token chain:** T1 (advance_turn ack) → T2 (clock ack) → T3 (entity_binding ack). Step 5 passes T3 — the latest in the chain — to `wait_for`. DP guarantees that any read with `wait_for=T3` reflects T1, T2, T3 because they were committed in sequence within the same writer's session and `last_applied_event_id` is monotonic per channel + monotonic per reality outbox.
 
 V1 can simplify by passing T2 to UI (since T3 is reality-scoped and T2 is also reality-scoped after the cell exists); but the safest contract is "always pass the last token in the chain". Locked: world-service returns the LAST `causality_token` from the chain.
 

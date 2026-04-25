@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-04-26 — EF_001 Entity Foundation feature registered (object foundation; actor_binding → entity_binding transfer)
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — EF_001 Entity Foundation DRAFT, Option C max scope per user direction "object foundation trước PC/NPC/Item") at 2026-04-26 (after PL_006 Status Effects agent released); commit (this turn) `[boundaries-lock-claim+release]`
+- **New folder + catalog created** (outside `_boundaries/`):
+  - `features/00_entity/_index.md` (foundation tier folder index)
+  - `features/00_entity/EF_001_entity_foundation.md` (546 lines — single file under 800 cap; 18 sections)
+  - `catalog/cat_00_EF_entity_foundation.md` (EF-1..EF-18 catalog entries; owns `EF-*` namespace)
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - **Aggregate ownership transfer:** `actor_binding` → `entity_binding` from PL_001 Continuum to **EF_001 Entity Foundation** (DRAFT 2026-04-26). Extended scope: 4 EntityType variants (Pc/Npc/Item/EnvObject) + 4-state LocationKind (InCell/HeldBy/InContainer/Embedded) + 4-state LifecycleState (Existing/Suspended/Destroyed/Removed) + per-instance affordance_overrides. PL_001 §3.6 reopens to reference EF_001 as new owner.
+    - **New aggregate:** `entity_lifecycle_log` (T2 / Reality, append-only) — per-entity audit trail with 8 LifecycleReasonKind variants. Owned by EF_001.
+    - **Schema/envelope ownership new rows (2):** EVT-T4 System sub-type `EntityBorn` owned by EF_001 + **EntityKind trait** (5 methods; PCS_001/NPC_001/future Item/future EnvObject implement; type_default_affordances() required no-default to force explicit declaration).
+    - **EVT-T3 Derived sub-types row updated:** PL_001 owns fiction_clock/scene_state/participant_presence (actor_binding removed; now under EF_001 as entity_binding) + EF_001 owns entity_binding + entity_lifecycle_log.
+    - **RejectReason namespace prefix table:** added `entity.*` → EF_001.
+    - **Stable-ID prefix ownership:** new row for `EF-*` (foundation tier; EF-A* axioms / EF-D* deferrals / EF-Q* open questions) owned by cat_00_EF_entity_foundation.md.
+    - **Drift watchpoints:** CST-D1 row updated to cross-ref EF-Q2 (npc.current_region_id may migrate to entity_binding post-EF_001) + new **EF-Q3** row (validator slot ordering EVT-V_entity_affordance vs EVT-V_lex).
+  - `02_extension_contracts.md` §1.4 RejectReason namespace prefix table: added `entity.*` owned by EF_001 with 7 V1 rule_ids enumerated (entity_destroyed / entity_removed / entity_suspended / affordance_missing / invalid_entity_type / invalid_lifecycle_transition / unknown_entity).
+- **No `03_validator_pipeline_slots.md` changes in this commit** — EVT-V_entity_affordance slot insertion deferred to slot-table alignment review (tracked as EF-Q3 watchpoint). EF_001 §11 declares the slot conceptually; physical slot ordering to be locked in alignment pass.
+- **Sweeping mechanical rename `actor_binding` → `entity_binding`** across 10 files (42 occurrences):
+  - `features/04_play_loop/PL_001_continuum.md` (12 refs; §3.6 reopen — PL_001 now references EF_001 as owner)
+  - `features/04_play_loop/PL_001b_continuum_lifecycle.md` (6 refs)
+  - `features/04_play_loop/PL_002_command_grammar.md` (1 ref)
+  - `features/04_play_loop/PL_005_interaction.md` (2 refs)
+  - `features/04_play_loop/PL_005c_interaction_integration.md` (2 refs)
+  - `features/05_npc_systems/NPC_001_cast.md` (10 refs; CANDIDATE-LOCK feature — pure mechanical rename, no design content change)
+  - `features/05_npc_systems/NPC_002_chorus.md` (2 refs; CANDIDATE-LOCK feature — same)
+  - `features/06_pc_systems/00_AGENT_BRIEF.md` (3 refs; brief updated incl. §4 Required reading addition)
+  - `07_event_model/03_event_taxonomy.md` (2 refs)
+- **Reason:** user identified V1 design gap during planning post-PL_006: PL_005 Interaction defers Item aggregate "refs only V1" but Strike/Give/Use all reference Item as tool/target → not V1-implementable without Item entity model. ActorId enum (NPC_001 §2) covers Pc+Npc only; Items + EnvObjects unaddressable. Per-feature ad-hoc lifecycle invention (drift trap WA_006 originally hit). User direction "đi sâu vào thiết kế từ đầu để phát hiện vấn đề từ sớm" → Option C max scope. 8 sub-decisions locked: Q1 4 EntityId variants V1 / Q2 4-state LocationKind / Q3 4-state LifecycleState / Q4 closed AffordanceFlag enum + per-type defaults / Q5 Concrete aggregates + EntityKind trait (NOT full ECS — preserves "feature owns its aggregate" boundary discipline) / Q6 hard-reject + per-kind soft-override (Examine tolerates Destroyed) / Q7 single file (split EF_001b only if crosses 700 lines; current 546) / Q8 new catalog cat_00_EF_entity_foundation.md owns EF-* namespace.
+- **Process note on CANDIDATE-LOCK feature touch:** NPC_001 + NPC_002 are CANDIDATE-LOCK; this commit modifies them ONLY for the actor_binding → entity_binding mechanical rename (no design-content change). Per matrix "When ownership changes" protocol, transfers require updating both giving (PL_001) + receiving (EF_001) feature docs + downstream references. Mechanical sweep across 10 files is structural refactor, not redesign.
+- **Closes V1 design gap** for PL_005 Item references (entity addressability) + ActorId scope-creep + per-feature lifecycle drift. PCS_001 brief updated to add EF_001 to required reading; PCS_001 agent (when spawned) builds on EF_001 contracts.
+- **Drift watchpoints:** 8 → 9 active (EF-Q3 added); CST-D1 cross-refs EF-Q2.
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — PL_006 Status Effects feature registered (status foundation)
 
 - **Lock claim:** main session (PL_006 Status Effects feature design — status foundation per user direction "status foundation?") at 2026-04-26 (after closure-pass agent released); commit `a39d880` `[boundaries-lock-claim]`

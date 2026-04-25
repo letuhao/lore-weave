@@ -72,9 +72,9 @@ Producer rules + per-category contracts (envelope shape, idempotency, payload li
 
 **Sub-types:** discriminated by the **`aggregate_type`** field rather than a sub-shape name. Each aggregate-type × delta-kind combination is a sub-type. Feature designs declare their `aggregate_type` + delta-kinds in their own doc and register in the boundary matrix.
 
-V1 aggregate types currently registered (see boundary matrix for full list): `fiction_clock` (PL_001) · `scene_state` (PL_001) · `actor_binding` (PL_001) · `participant_presence` (PL_001) · `npc_pc_relationship_projection` (NPC_001) · `npc_node_binding` (NPC_001) · `tool_call_allowlist` (PL_002) · plus calibration sub-shapes (DayPasses / MonthPasses / YearPasses, derived from FictionClock advance per MV12-D5).
+V1 aggregate types currently registered (see boundary matrix for full list): `fiction_clock` (PL_001) · `scene_state` (PL_001) · `entity_binding` (PL_001) · `participant_presence` (PL_001) · `npc_pc_relationship_projection` (NPC_001) · `npc_node_binding` (NPC_001) · `tool_call_allowlist` (PL_002) · plus calibration sub-shapes (DayPasses / MonthPasses / YearPasses, derived from FictionClock advance per MV12-D5).
 
-**Causal-ref policy:** optional but **strongly recommended** when caused by a parent turn (FictionClockAdvance after PCTurn refs the PCTurn; ActorBindingDelta after `move_session_to_channel` refs the parent FastForward). Calibration sub-shapes always reference the parent FictionClock advance.
+**Causal-ref policy:** optional but **strongly recommended** when caused by a parent turn (FictionClockAdvance after PCTurn refs the PCTurn; EntityBindingDelta after `move_session_to_channel` refs the parent FastForward). Calibration sub-shapes always reference the parent FictionClock advance.
 
 **Note on absorbed `_withdrawn` ID:** EVT-T7 CalibrationEvent (original Phase 1) was withdrawn 2026-04-25 — calibration is mechanically a Derived event from FictionClock T2 commit. It now lives as a Derived sub-type (with its own causal-ref-required policy + envelope shape) rather than a separate category. See retirement section.
 
@@ -279,7 +279,7 @@ Per [EVT-A1](02_invariants.md#evt-a1--closed-set-event-taxonomy), every event fr
 | DP-Ch51 | TurnSlot* | **EVT-T4** System | (DP-locked) |
 | DP-A17 | TurnBoundary (wire format) | **EVT-T4** System | (payload IS EVT-T1 Submitted) |
 | PL_001 §5.2 | SceneStateDelta::AmbientUpdate | **EVT-T3** Derived | aggregate_type=scene_state |
-| PL_001 §3.6 | ActorBindingDelta::MoveTo | **EVT-T3** Derived | aggregate_type=actor_binding |
+| PL_001 §3.6 | EntityBindingDelta::MoveTo | **EVT-T3** Derived | aggregate_type=entity_binding |
 | PL_001 §3.1 | FictionClockAdvance | **EVT-T3** Derived | aggregate_type=fiction_clock |
 | MV12-D5 / SPIKE_01 obs#15 | day_passes / month_passes / year_passes | **EVT-T3** Derived | calibration sub-shapes (was T7) |
 | NPC_001 §2.5 | NPC opinion update on `npc_pc_relationship_projection` | **EVT-T3** Derived | aggregate_type=npc_pc_relationship_projection |

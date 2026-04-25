@@ -120,7 +120,7 @@ PC types "/travel..." ──► gateway ──►│ roleplay-service│  intent
                                               │     MemberLeft(old_cell, pc_id, Move)
                                               │     MemberJoined(new_cell, pc_id, Move)
                                               │
-   ⑥ t2_write::<ActorBinding>(pc_id,          ┼─► T4
+   ⑥ t2_write::<EntityBinding>(pc_id,          ┼─► T4
         MoveTo{ target_cell, T1.turn_number}) │
                                               │
    ⑦ t2_write::<SceneState>(target_cell,      ┼─► T5 (LAST — return this to gateway)
@@ -150,7 +150,7 @@ PC types "/travel..." ──► gateway ──►│ roleplay-service│  intent
 - **Target cell already exists** (e.g., another PC was there): step ④ skips `create_channel`; both PCs may now share the cell as long as cardinality < 32 (PL_001 §3.7 limit).
 - **`MemberLeft`/`MemberJoined` ordering across the move:** DP guarantees the pair is atomic per DP-A18 §c — both are emitted as a single channel-event-pair on the source/target cell respectively, ordered by `move_session_to_channel`'s implementation.
 - **Failure between ④ and ⑤:** new cell created, session not moved → cell goes Dormant per DP-Ch32 if no session ever joins; world-service GC sweeps Dormant cells with no membership history after 24h wall-clock.
-- **Failure between ⑤ and ⑥/⑦:** session moved, ActorBinding/SceneState not committed → next read of `actor_binding` returns the OLD cell, but the session's `current_channel_id` says new cell. Inconsistency window ≤5s. world-service replays from outbox on writer-node restart — pending writes complete or compensate. UI sees "đường đi đang dệt..." per PL_001 §9 `CausalityWaitTimeout`.
+- **Failure between ⑤ and ⑥/⑦:** session moved, EntityBinding/SceneState not committed → next read of `entity_binding` returns the OLD cell, but the session's `current_channel_id` says new cell. Inconsistency window ≤5s. world-service replays from outbox on writer-node restart — pending writes complete or compensate. UI sees "đường đi đang dệt..." per PL_001 §9 `CausalityWaitTimeout`.
 - **Target cell at max capacity:** step ④ rejects with `WorldRuleViolation { rule_id: "cell_capacity" }`; entire chain aborted; turn-slot released; `fiction_clock` UNCHANGED (per §15 rejection path); UI shows "quán đông quá, chọn nơi khác?".
 
 ---
@@ -341,8 +341,8 @@ on RealityManifest received:
   ① t3_write_multi atomic:
        a. write fiction_clock SINGLETON with starting_fiction_time
        b. create_channel for every node in root_channel_tree (DFS, parents first)
-       c. write actor_binding for each canonical_actor (binding to the cell-path
-          BEFORE that cell exists — actor_binding stores the path; cell row is
+       c. write entity_binding for each canonical_actor (binding to the cell-path
+          BEFORE that cell exists — entity_binding stores the path; cell row is
           created lazily on first PC entry)
   ② emit ChannelEvent::RealityActivated on the reality root channel
   ③ subscribe ready: PCs may now `bind_session` and `move_session_to_channel`
@@ -379,7 +379,7 @@ on bind_session into newly-created cell:
         primary_actor: first_pc,
         ambient: <derived from canon: book passage referencing this place at this fiction-time>,
       })
-  ② for each canonical_actor with actor_binding pointing to this cell:
+  ② for each canonical_actor with entity_binding pointing to this cell:
        emit MemberJoined({actor: canonical_actor, join_method: CanonicalSeed})
   ③ scene is live
 ```
@@ -404,7 +404,7 @@ The design is implementation-ready when world-service + roleplay-service + gatew
 | **AC-2 SLEEP CROSSES DAY** | Turn 11 of SPIKE_01: `/sleep until dawn` at 23h crosses midnight. | `fiction_clock.day` increments by 1; `fiction_clock.sub_day = MãoSơ`; one `TurnEvent::FastForward` event; bubble-up events from tavern dropped per §12 fast-forward rule. |
 | **AC-3 TRAVEL CHAIN** | Turn 16-17: `/travel to Tương Dương`. | All 5 ops (§13 ① through ⑦) commit; UI's post-travel reads with `wait_for=T5` return new cell + new fiction_time; old cell not auto-dissolved (Dormant within 30min if no other session). |
 | **AC-4 LAZY CELL CREATE** | First PC ever to visit "Tương Dương West Gate". | Cell channel created; `SceneState` initialized; canonical NPCs at this cell `MemberJoined`; PC sees them in presence list. |
-| **AC-5 CANONICAL NPC LOAD** | At reality activation, Lão Ngũ + Tiểu Thúy `actor_binding` populated; first PC into `cell:yen_vu_lau` sees `MemberJoined` for both NPCs. | Presence list shows both NPCs `state=Active`. |
+| **AC-5 CANONICAL NPC LOAD** | At reality activation, Lão Ngũ + Tiểu Thúy `entity_binding` populated; first PC into `cell:yen_vu_lau` sees `MemberJoined` for both NPCs. | Presence list shows both NPCs `state=Active`. |
 
 ### 17.2 Failure-path scenarios
 
@@ -423,7 +423,7 @@ The design is implementation-ready when world-service + roleplay-service + gatew
 | ID | Scenario | Pass criteria |
 |---|---|---|
 | **AC-13 RECONNECT MID-TURN** | UI loses WebSocket between submit and ack; reconnects 10s later. | `GET /v1/turn/status` returns `Committed` (or `InFlight` if still running); UI resumes from `causality_token`; multiplex stream replays missed events from resume token. No duplicate render. |
-| **AC-14 BOOKEND DISCONNECT** | UI submits turn; client closes browser; never returns. | Server commits the turn (no client cancellation). On a NEW session bind by the same user later, `actor_binding` reflects post-turn state. |
+| **AC-14 BOOKEND DISCONNECT** | UI submits turn; client closes browser; never returns. | Server commits the turn (no client cancellation). On a NEW session bind by the same user later, `entity_binding` reflects post-turn state. |
 | **AC-15 BOOTSTRAP IDEMPOTENT** | Operator re-runs reality activation with same `reality_id`. | No second `RealityActivated` event; no duplicate channels; no duplicate canonical actor bindings. |
 | **AC-16 SCHEMA EVOLUTION** | RealityManifest with `schema_version=2` ingested; world-service running on `schema_version=1` codebase. | Bind rejects with `SchemaVersionMismatch`; operator alerted; world-service deploys v2 → bind succeeds without manifest edit. |
 

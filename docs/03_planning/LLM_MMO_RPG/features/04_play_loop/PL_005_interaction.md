@@ -60,7 +60,7 @@ Every PL_005 Interaction emits zero or more events. Mapping each path to active 
 |---|---|---|---|---|
 | Interaction emitted (any V1 kind) | **EVT-T1 Submitted** | `Interaction:Speak` \| `Interaction:Strike` \| `Interaction:Give` \| `Interaction:Examine` \| `Interaction:Use` | Player-Actor (gateway → roleplay → commit-service) for PC; Orchestrator (NPC_002) for NPC | Carries 4-role payload + ProposedOutputs (intent) + ActualOutputs (validator-derived per Lex) |
 | Interaction proposal (LLM-mediated path: free narrative or LLM-rephrased command) | **EVT-T6 Proposal** → **EVT-T1 Submitted** | `PCTurnProposal` (sub-shape declares Interaction kind via inner payload) | LLM-Originator (roleplay-service) | Promoted to Submitted/Interaction:* after validator chain |
-| Side-effect outputs (committed actual_outputs) | **EVT-T3 Derived** | per `aggregate_type` of each OutputDecl (e.g., `pc_mortality_state` / `pc_stats_v1_stub` / `npc_pc_relationship_projection` / `actor_binding`) | Aggregate-Owner role per feature (PCS_001 / NPC_001 / etc.) | Causal-ref REQUIRED to parent Interaction event |
+| Side-effect outputs (committed actual_outputs) | **EVT-T3 Derived** | per `aggregate_type` of each OutputDecl (e.g., `pc_mortality_state` / `pc_stats_v1_stub` / `npc_pc_relationship_projection` / `entity_binding`) | Aggregate-Owner role per feature (PCS_001 / NPC_001 / etc.) | Causal-ref REQUIRED to parent Interaction event |
 | NPC reaction to Interaction (Chorus orchestration) | **EVT-T1 Submitted** | `NPCTurn` (per NPC_002) | Orchestrator role | Causal-ref REQUIRED to triggering Interaction; not part of PL_005 output but visible cascade |
 | Downstream Generator triggered (V1+ butterfly) | **EVT-T5 Generated** | per Generator registry (e.g., `Investigation:PoliceCallout` / `GriefDrift:FamilyOpinion` / `RumorSeed:CrimeWitness` — all V1+) | Generator role per [EVT-G1](../../07_event_model/12_generation_framework.md#evt-g1--generator-registry-as-first-class-concept) | Triggered conditionally; replay-deterministic per EVT-A9 |
 | Rejected Interaction (Lex/world-rule violation) | **EVT-T1 Submitted** with `outcome=Rejected` | `Interaction:*` sub-type with `actual_outputs=[]` + `RejectReason::WorldRuleViolation { rule_id: "interaction.*" \| "lex.*" \| "world_rule.*" }` | Player-Actor / Orchestrator | Per [EVT-V4 rejection-path](../../07_event_model/05_validator_pipeline.md#evt-v4--rejection-path-semantics-resolves-mv12-d11): commit via `t2_write` not advance_turn; turn_number unchanged |
@@ -78,7 +78,7 @@ References to existing aggregates:
 | Aggregate | Owner | How Interaction uses |
 |---|---|---|
 | `participant_presence` (T1 / Channel) | PL_001 Continuum | SceneRoster read at validate stage (who's in cell to be a target / bystander) |
-| `actor_binding` (T2 / Reality) | PL_001 Continuum | Resolve target locations; validate "target is in same cell as agent" |
+| `entity_binding` (T2 / Reality) | PL_001 Continuum | Resolve target locations; validate "target is in same cell as agent" |
 | `npc` core (T2 / Reality) | NPC_001 Cast (R8-locked) | Read NPC state for reaction-eligibility + opinion lookups |
 | `npc_pc_relationship_projection` (T2 / Reality) | NPC_001 Cast (R8-locked) | Output target — opinion deltas as EVT-T3 Derived side-effects |
 | `pc_mortality_state` (T2 / Reality) | PCS_001 (brief seeded) | Output target — Alive→Dying / Dying→Dead transitions on Strike outputs |
@@ -106,7 +106,7 @@ By name. No raw `sqlx` / `redis` (DP-R3).
 ### 5.1 Reads (at validator stage)
 
 - `dp::query_scoped_channel::<ParticipantPresence>(ctx, &cell, predicate, limit)` — SceneRoster
-- `dp::read_projection_reality::<ActorBinding>(ctx, agent_id)` + per-target `read_projection_reality::<ActorBinding>` — verify same-cell co-location
+- `dp::read_projection_reality::<EntityBinding>(ctx, agent_id)` + per-target `read_projection_reality::<EntityBinding>` — verify same-cell co-location
 - `dp::read_projection_reality::<LexConfig>(ctx, SINGLETON)` — read world axioms for Lex check
 - `dp::read_projection_reality::<MortalityConfig>(ctx, SINGLETON)` — read death mode for Strike outcomes
 - `dp::read_projection_reality::<NpcPcRelationshipProjection>(ctx, (npc_id, pc_id))` — current opinion (input to LLM persona for NPC reactions; input to Give-acceptance threshold)

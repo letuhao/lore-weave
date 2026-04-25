@@ -10,7 +10,7 @@
 - **Claimed at:** —
 - **Expected work:** —
 - **Expires at:** —
-- _Last released:_ 2026-04-26 by main session (PL_006 Status Effects feature) after PL_006 commit. See [99_changelog.md](99_changelog.md) for details.
+- _Last released:_ 2026-04-26 by main session (EF_001 Entity Foundation DRAFT + actor_binding → entity_binding transfer) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

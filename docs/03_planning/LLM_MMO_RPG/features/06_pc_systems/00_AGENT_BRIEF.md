@@ -27,7 +27,7 @@ Many features designed during 2026-04-25 reference PCs but defer the PC substrat
 | **NPC_001 Cast** §6.4 | Persona memory-fact selection assumes `PcId` is identifiable + comparable |
 | **WA_006 Mortality** thin-rewrite | `pc_mortality_state` aggregate ownership EXPLICITLY HANDED OFF from WA_006 to PCS_001 (per WA closure pass) |
 | **WA_003 Forge** §7.3 | Per-PC overrides in `MortalityConfig.per_pc_overrides` reference `pc_id: PcId` |
-| **PL_001 Continuum** §3.6 | `actor_binding.actor: ActorId` includes `Pc(PcId)`; runtime location lookup needs PcId |
+| **PL_001 Continuum** §3.6 | `entity_binding.actor: ActorId` includes `Pc(PcId)`; runtime location lookup needs PcId |
 | **PL_002 Grammar** §3.1 | Tool-call allowlist for `actor_type=PC` references PC concept abstractly |
 | **NPC_002 Chorus** §6 | Priority algorithm reads `NpcOpinion::for_pc(npc_id, pc_id)`; PC-side identity required |
 | **SPIKE_01** obs#5 | Lý Minh xuyên không (soul=2026 Saigon student, body=1256 Hàng Châu peasant) — concrete PC scenario UNDESIGNED at data-model level |
@@ -180,7 +180,7 @@ This is a READ-ONLY interface backed by `npc_pc_relationship_projection`. No new
 Mirror NPC_001 / WA_001 / WA_002 / WA_003 / WA_006 pattern. Target ~10 scenarios:
 - **Happy-path**: native PC creation; transmigrator PC with soul+body; mortality state Alive→Dying→Alive cycle; stats stub HP modification; PC-NPC relationship read
 - **Failure-path**: invalid soul/body combination; canon-drift detection on body-knowledge mismatch (SPIKE_01 turn 5 case); attempting to read `pc_mortality_state` for invalid PcId
-- **Boundary**: PC permanently removed → `actor_binding` cleanup hook (PL_001 §3.6); migration v1 stub → DF7 (V2+)
+- **Boundary**: PC permanently removed → `entity_binding` cleanup hook (PL_001 §3.6); migration v1 stub → DF7 (V2+)
 
 **SPIKE_01 obs#5 acceptance scenario is REQUIRED.** PCS_001 must reproduce Lý Minh's literacy slip detection. If it can't, the body-memory model is wrong.
 
@@ -252,7 +252,11 @@ Before drafting PCS_001:
 
 ### 4.4 PL_001 Continuum (consumer)
 
-`docs/03_planning/LLM_MMO_RPG/features/04_play_loop/PL_001_continuum.md` §3.6 actor_binding + §3.7 hard limits. PCS_001's actor removal hook (per PL_001 §3.6 boundary tightening) needs awareness.
+`docs/03_planning/LLM_MMO_RPG/features/04_play_loop/PL_001_continuum.md` §3.6 entity_binding (transferred to EF_001 2026-04-26 — see 4.4b) + §3.7 hard limits. PCS_001's entity lifecycle hook (per PL_001 §3.6 + EF_001 §6) needs awareness.
+
+### 4.4b EF_001 Entity Foundation (mandatory — PCS_001 builds on this) (added 2026-04-26)
+
+`docs/03_planning/LLM_MMO_RPG/features/00_entity/EF_001_entity_foundation.md` — defines `EntityId` 4-variant sum type (Pc/Npc/Item/EnvObject), `entity_binding` aggregate (transferred from PL_001 §3.6), 4-state `LifecycleState` machine, 6 V1 `AffordanceFlag` closed enum, and the **`EntityKind` trait** (5 methods). PCS_001 MUST implement `EntityKind for Pc` including `type_default_affordances() = be_spoken_to + be_struck + be_examined + be_given + be_received + be_used` (full V1 set — PCs do everything). PC mortality cascades into EF_001 lifecycle `Existing → Destroyed` per §6; references to Destroyed PC reject `entity.entity_destroyed` per §8 (PCS_001's V1+ Respawn would transition `Destroyed → Existing` as a PCS-owned operation).
 
 ### 4.5 02_storage R8 (NPC memory pattern reference)
 

@@ -31,7 +31,7 @@ After this lock: world-service can implement the orchestrator; NPCs in SPIKE_01 
 | Concept | Maps to | Notes |
 |---|---|---|
 | **Trigger** | The committed EVT-T1 PlayerTurn (or rarely EVT-T2 NPCTurn) that may demand reactions. | Trigger event_id is the value used as causal_ref on each emitted reaction. |
-| **SceneRoster** | Set of `ActorId` currently in the cell, with their `actor_type` (PC \| NPC). Derived from PL_001's `participant_presence` T1 + `actor_binding` T2. | Read once per Chorus invocation, cached for the duration of the batch. |
+| **SceneRoster** | Set of `ActorId` currently in the cell, with their `actor_type` (PC \| NPC). Derived from PL_001's `participant_presence` T1 + `entity_binding` T2. | Read once per Chorus invocation, cached for the duration of the batch. |
 | **ReactionCandidate** | A potential `(actor: NpcId, priority_tier: u8, priority_score: u32, reaction_intent: ReactionIntent)` produced by the priority algorithm. | Closed set of `ReactionIntent` in §3.3. |
 | **ReactionBatch** | Ordered list of `ReactionCandidate`, capped at V1=3, that the orchestrator commits as N back-to-back EVT-T2 NPCTurns under a single held turn-slot. | Empty batch valid (no NPC reacts; Chorus completes immediately). |
 | **CascadeDepth** | Counter incremented when an EVT-T2 commit triggers further reactions. V1 cap = 1 (initial reactions only; reactions don't trigger further reactions). V2+ may raise. | Enforced at orchestrator level. |
@@ -118,7 +118,7 @@ pub enum AbortReason {
 NPC_002 reads/writes the following aggregates without redefining them:
 
 - **`participant_presence`** (PL_001 §3.3) — to find NPCs in scene
-- **`actor_binding`** (PL_001 §3.6) — to confirm NPC location
+- **`entity_binding`** (PL_001 §3.6) — to confirm NPC location
 - **`scene_state`** (PL_001 §3.2) — to read scene metadata for context (combat? private?)
 - **NPC opinion / relationship aggregates** — owned by **NPC_001** (not yet designed); NPC_002 reads via abstract trait `NpcOpinion::for_pc(npc_id, pc_id) → OpinionScore`. V1 stub returns neutral.
 - **`tool_call_allowlist`** (PL_002 §3.1) — for actor_type=NPC_Reactive when each NPC's reaction goes to LLM

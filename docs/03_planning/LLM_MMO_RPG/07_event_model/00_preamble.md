@@ -26,7 +26,7 @@ The metaphor: **DP is "TCP/IP for game state". 07_event_model is "HTTP semantic 
 
 ## 2. Why this folder exists, concretely
 
-The first feature consuming events — [`PL_001_continuum.md`](../features/04_play_loop/PL_001_continuum.md), committed 2026-04-25 — treats "events" as a primitive concept inherited from DP. It mentions `TurnEvent`, `MembershipEvent`, `BubbleUpEvent`, `AmbientEvent`, `ActorBindingDelta::MoveTo`, `FictionClockAdvance`, calibration events, and at least 5 other shapes — but has no shared taxonomy to anchor them.
+The first feature consuming events — [`PL_001_continuum.md`](../features/04_play_loop/PL_001_continuum.md), committed 2026-04-25 — treats "events" as a primitive concept inherited from DP. It mentions `TurnEvent`, `MembershipEvent`, `BubbleUpEvent`, `AmbientEvent`, `EntityBindingDelta::MoveTo`, `FictionClockAdvance`, calibration events, and at least 5 other shapes — but has no shared taxonomy to anchor them.
 
 Without this folder:
 
