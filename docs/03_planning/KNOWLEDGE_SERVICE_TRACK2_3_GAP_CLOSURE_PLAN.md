@@ -549,8 +549,9 @@ Once text arrives:
 | P4 (C14a+C14b+C15) | 1 item / 1 cycle (C15 trigger-gated) | **2 items / 2 cycles (C14a ✅ + C14b ✅)** | 0 |
 | P5 (C16–C18) | 0 | **3 cycles DONE (C16 ✅ + C17 ✅ + C18 ✅) — TIER COMPLETE** | 0 |
 | User-gated (C19–C20) | 1 item / 1 cycle | **1 cycle DONE (C19 ✅)** | 1 ⏸ (C20) |
+| Post-C19 quality polish (off-plan, Track-2 extension) | 0 | **5 cycles DONE 2026-04-25/26 (C-PRED-ALIGN ✅ + C-EVAL-DUMP ✅ + C-EVAL-FIX-FORM ✅ + C-BIG-FIXTURE ✅ + C-PROMPT-SCENE ✅)** | 0 |
 
-**Total plan: 35 item-closures across 23 cycles (C14 split into C14a/C14b). Completed: 37 items / 24 cycles. P1 tier done · P2 tier DONE (7/7) · **P3 tier DONE (12/12)** · **P4 C14 DONE (C14a ✅ + C14b ✅)** · **P5 DONE (C16 ✅ + C17 ✅ + C18 ✅) — TIER COMPLETE** · **User-gated 1/2 DONE (C19 ✅)** · remaining: C15 (trigger-gated), C20 user-gated. **Gap-closure plan is now ONLY blocked on user attestation walkthrough (C20) and C15 perf trigger.**
+**Total plan: 35 item-closures across 23 cycles (C14 split into C14a/C14b). Completed: 37 items / 24 cycles within plan + 5 off-plan quality cycles 2026-04-25/26. P1 tier done · P2 tier DONE (7/7) · **P3 tier DONE (12/12)** · **P4 C14 DONE (C14a ✅ + C14b ✅)** · **P5 DONE (C16 ✅ + C17 ✅ + C18 ✅) — TIER COMPLETE** · **User-gated 1/2 DONE (C19 ✅)** · remaining: C15 (trigger-gated), C20 user-gated. **Gap-closure plan itself is ONLY blocked on user attestation walkthrough (C20) and C15 perf trigger.** Post-C19 quality polish cycles addressed extraction-quality issues exposed by running the eval against real BYOK LM Studio: P 0.251→0.435 (+73% rel), R 0.356→0.573 (+61%), FP-trap 0.275→0.175 (−36%) on gemma-4-26b-a4b. See `services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md` for cycle-by-cycle breakdown.
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---
