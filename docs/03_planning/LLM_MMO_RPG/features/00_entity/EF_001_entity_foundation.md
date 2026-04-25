@@ -77,7 +77,9 @@ Replaces PL_001's `actor_binding` (transferred 2026-04-26) with extended scope: 
 #[dp(type_name = "entity_binding", tier = "T2", scope = "reality")]
 pub struct EntityBinding {
     pub entity_id: EntityId,                    // primary key — covers Pc/Npc/Item/EnvObject
-    pub entity_type: EntityType,                // discriminator (matches entity_id variant)
+    pub entity_type: EntityType,                // denormalized discriminator: stored as TEXT col for SQL filter
+                                                // (sum-type variant tag isn't directly indexable); validator
+                                                // enforces equality with entity_id variant per write
     pub location: EntityLocation,               // see below
     pub owner_node: NodeId,                     // writer-node binding (epoch-fenced; same model as PL_001 §3.6)
     pub lifecycle_state: LifecycleState,        // Existing | Suspended | Destroyed | Removed
@@ -96,9 +98,10 @@ pub enum EntityLocation {
 
 **Rules:**
 - One row per `entity_id`. Primary key conflict = invariant violation.
-- `entity_type` MUST match `entity_id` variant (validated at write-time per DP-A14).
+- `entity_type` MUST match `entity_id` variant (validated at write-time per DP-A14). Field is denormalized for SQL indexing only; readers SHOULD prefer the variant tag of `entity_id` over the `entity_type` field.
 - `location` transitions are atomic: an entity is in EXACTLY one place at a time.
 - `lifecycle_state = Destroyed | Removed` → `location` is FROZEN at last value (audit trail); references to this entity from new EVT-T1 Submitted reject per §8.
+- **Scene-roster vs audit-location split:** for `lifecycle_state ∈ {Destroyed, Removed}` the `entity_binding.location` field continues to return last-known cell for AUDIT/forensic queries. UI / scene roster / participant_presence / `who-is-here` queries MUST gate on `lifecycle_state = Existing` BEFORE listing the entity in the cell — DP emits `MemberLeft` on the lifecycle transition (§13.5), so participant_presence already reflects the absence; the binding's frozen location is for audit-only reads (e.g., "where did Lý Minh die?").
 - `owner_node` resolution + handoff follows PL_001 §3.6 epoch-fence model unchanged (transferred wholesale).
 
 ### 3.2 `entity_lifecycle_log` (T2 / Reality, append-only)
@@ -125,21 +128,27 @@ pub enum LifecycleReasonKind {
     CanonicalSeed,                              // EntityBorn from RealityManifest
     RuntimeSpawn,                               // author Forge create / scheduled spawn
     PcMortalityKill,                            // PCS_001 mortality (Destroyed)
-    NpcCold,                                    // NPC_001 R8 cold-decay → Suspended
-    AdminDecanonize,                            // WA_002 Heresy admin removal → Removed
-    AdminRestore,                               // admin restore Suspended/Destroyed → Existing (audit'd)
-    InteractionDestructive,                     // PL_005 Interaction Strike Lethal / Use destructive
+    NpcCold,                                    // NPC_001 R8 cold-decay → Suspended (auto)
+    AdminDecanonize,                            // WA_002 Heresy admin removal → Removed (audit'd, double-approval)
+    AutoRestoreOnCellLoad,                      // Suspended → Existing on PC arrival / cell-load (auto, no admin)
+    AdminRestoreFromRemoved,                    // Removed → Existing via WA_003 Forge admin (RARE; double-approval audit'd)
+    InteractionDestructive,                     // PL_005 Interaction Strike Lethal / Use destructive (Destroyed)
+    HolderCascade,                              // entity transitioned because its holder/parent transitioned (see §6 cascade rules)
     Unknown,                                    // fallback; should be rare
 }
 ```
 
 **Why split from `entity_binding`:** lifecycle log is append-only audit; `entity_binding` is current-state with frequent location updates. Splitting prevents log growth from inflating snapshot size. Mirrors R8 split pattern (NPC core vs npc_session_memory).
 
+**Bounded growth (V1+ archiving — tracked as EF-D10 §15):** `events: Vec<LifecycleEvent>` grows unboundedly per row in V1. For high-churn entities (V1+ respawning Items, NPC cold-cycling), inflation is real (mirrors R1 event-volume risk inside a snapshot). V1+ archiving rule (deferred): events older than 90 fiction-days OR row size > 100 events split to cold-storage `entity_lifecycle_log_archive` table; current row keeps last 20 events for fast-path audit. Profiling threshold V1+30d.
+
 ---
 
 ## §4 EntityKind trait specification
 
 The contract every aggregate-owner feature implements to be addressable as an Entity. EF_001 owns the trait definition; consumer features own the implementations.
+
+**Trait scope (Phase 3 cleanup 2026-04-26):** the trait describes properties the aggregate BODY owns — identity, type discriminator, type-level affordance default, display rendering. Lifecycle state and effective affordances are properties of the **binding** (an entity can change cell + lifecycle without the body changing) — they are NOT on the trait. Use `EntityBindingExt` (below) for those reads. This separation keeps the trait composable with `&dyn EntityKind` dyn dispatch (binding-borrowed methods would have forced lifetime parameters into the vtable).
 
 ```rust
 pub trait EntityKind: Aggregate {
@@ -149,27 +158,40 @@ pub trait EntityKind: Aggregate {
     /// Discriminator (matches entity_id variant 1:1).
     fn entity_type(&self) -> EntityType;
 
-    /// Current lifecycle state (sourced from entity_binding row, not the aggregate body itself —
-    /// this method delegates to the binding lookup; default impl provided).
-    fn lifecycle_state(&self, binding: &EntityBinding) -> LifecycleState {
-        binding.lifecycle_state
-    }
-
-    /// Affordance set (default declared at TYPE level; per-instance override via
-    /// entity_binding.affordance_overrides). Default impl combines:
-    fn affordances(&self, binding: &EntityBinding) -> AffordanceSet {
-        binding.affordance_overrides.unwrap_or_else(|| Self::type_default_affordances())
-    }
+    /// Type-level affordance default. PCS_001 / NPC_001 / Item / EnvObject MUST declare.
+    /// `&self` parameter is unused but required to enable `&dyn EntityKind` dynamic dispatch
+    /// (associated functions without `&self` cannot be called on trait objects).
+    /// No default impl — forces every consumer to declare the default explicitly.
+    fn type_default_affordances(&self) -> AffordanceSet;
 
     /// Human-readable display name in the requested locale. Used by failure UX,
-    /// LLM prompt assembly, narrator text. Locale = "vi" V1; "en" V1+.
+    /// LLM prompt assembly, narrator text. Locale codes: `"vi"` V1; `"en"` V1+.
+    /// Caller-allocated return; consumers should cache at AssemblePrompt boundary.
     fn display_name(&self, locale: &str) -> String;
-
-    /// Type-level affordance default. PCS_001 / NPC_001 / Item / EnvObject MUST declare.
-    /// Required (no default impl) — forces every consumer to think about it.
-    fn type_default_affordances() -> AffordanceSet;
 }
 ```
+
+**Binding-side queries** (read directly from `&EntityBinding`; convenience extension trait):
+
+```rust
+pub trait EntityBindingExt {
+    /// Current lifecycle state.
+    fn lifecycle_state(&self) -> LifecycleState;
+
+    /// Effective affordance set: per-instance override if Some, else type-default.
+    /// Caller must supply the type-default (looked up once per entity_type at registry).
+    fn effective_affordances(&self, type_default: AffordanceSet) -> AffordanceSet;
+}
+
+impl EntityBindingExt for EntityBinding {
+    fn lifecycle_state(&self) -> LifecycleState { self.lifecycle_state }
+    fn effective_affordances(&self, type_default: AffordanceSet) -> AffordanceSet {
+        self.affordance_overrides.unwrap_or(type_default)
+    }
+}
+```
+
+**Why split:** lifecycle and affordance-effective are derivable from a single `&EntityBinding` borrow (no body needed). The body trait stays minimal — body-only properties — which lets world-service hold `Box<dyn EntityKind>` heterogeneous registries cheaply. EVT-V_entity_affordance validator looks up `entity_type → type_default_affordances` from a registry (PCS_001/NPC_001/Item/EnvObject register their concrete impls) then combines with `&binding.effective_affordances(type_default)`.
 
 **Implementation requirement matrix** (locked at EF_001; tracked in feature design docs):
 
@@ -212,6 +234,44 @@ pub struct EnvObjectId(pub Uuid);
 
 **Why sum type over generic ID:** compile-time exhaustiveness — Rust pattern-match on `EntityId` forces every consumer to handle all 4 variants OR explicitly mark `_ => …` as catch-all. Catches new-variant-not-handled bugs at compile time. V1+ adding `Vehicle` will surface every match site that needs updating.
 
+### 5.1 Relationship to `ActorId` (NPC_001 §2)
+
+`ActorId` and `EntityId` are **two distinct types** with overlapping but non-coincident variant sets. They serve different API surfaces and intentionally do NOT collapse into one — collapsing would corrupt either "things in the world" or "agents that submit turns" semantics.
+
+```rust
+// EF_001 §5 — addressable things in the world
+pub enum EntityId { Pc(PcId), Npc(NpcId), Item(ItemId), EnvObject(EnvObjectId) }
+
+// NPC_001 §2 — actors with turn-submission capability
+pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind }, Admin(AdminId) }
+```
+
+| Variant | In ActorId | In EntityId | Reason |
+|---|---|---|---|
+| Pc | ✓ | ✓ | PCs are both turn-submitting actors AND addressable entities |
+| Npc | ✓ | ✓ | Same as PCs |
+| Synthetic (orchestrator, scheduler, BubbleUpAggregator, RealityBootstrapper) | ✓ | ✗ | System actors that emit events but aren't "things in the world" — no `entity_binding` row, no spatial location, no lifecycle |
+| Admin | ✓ | ✗ | S5 admin actors emit events but aren't in-fiction entities |
+| Item | ✗ | ✓ | Items are addressable (PL_005 tool / target) but don't submit turns — no agency |
+| EnvObject | ✗ | ✓ | Same as Items — passive |
+
+**Conversion contract:** `From<ActorId> for Option<EntityId>` (Pc/Npc → Some; Synthetic/Admin → None) and `From<EntityId> for Option<ActorId>` (Pc/Npc → Some; Item/EnvObject → None). Standard library provides infallible conversion only for the Pc + Npc intersection:
+
+```rust
+impl From<PcId> for ActorId { ... }     // ActorId::Pc
+impl From<PcId> for EntityId { ... }    // EntityId::Pc
+impl From<NpcId> for ActorId { ... }
+impl From<NpcId> for EntityId { ... }
+// no infallible ActorId -> EntityId or vice versa (information loss possible)
+```
+
+**API guidance:**
+- "submitter of a turn" → use `ActorId` (covers Synthetic + Admin which Items can't do)
+- "target of an interaction" / "thing in scene" / "addressable for entity_binding" → use `EntityId`
+- "subject of a status effect" (PL_006 actor_status) → uses `ActorId` (only Pc/Npc have status V1; Synthetic/Admin are in-scope as future targets of admin-applied buffs/debuffs but Items/EnvObjects are NOT)
+
+**No drift trap:** the two types describe genuinely different sets, not redundant copies. PL_006 keying on ActorId is correct (statuses apply to actors, not items). EF_001 keying on EntityId is correct (entity_binding tracks all addressable things). The Pc/Npc intersection is handled via explicit `From` impls; mismatched conversions fail at compile time.
+
 ---
 
 ## §6 LifecycleState state machine
@@ -243,37 +303,58 @@ pub struct EnvObjectId(pub Uuid);
 
 **Transitions (allowed):**
 
-| From → To | Trigger | Owner feature | Notes |
-|---|---|---|---|
-| `Existing` → `Suspended` | NPC scheduler cold-decay; Item dropped + un-loaded | NPC_001 / future Item | Reversible without admin; auto-restore on cell-load |
-| `Suspended` → `Existing` | NPC re-loaded on PC arrival; Item picked up | NPC_001 / Item | Auto-restore |
-| `Existing` → `Destroyed` | PC mortality (PCS_001) · Item destruction (Strike with sufficient damage) · NPC death | PCS_001 / future Item / NPC_001 | In-fiction; persists in `entity_lifecycle_log` |
-| `Suspended` → `Destroyed` | rare: time-decay destruction (rotted food, expired potion) | future Item | Audit'd |
-| `Existing` → `Removed` | admin: WA_002 Heresy decanonize · WA_003 Forge admin remove | WA_002 / WA_003 | Out-of-fiction; "this entity never was" semantics |
-| `Suspended` → `Removed` | admin removal of suspended entity | WA_002 / WA_003 | Audit'd |
-| `Destroyed` → `Existing` | rare: PCS_001 V1+ Respawn · Item resurrection (magic) | PCS_001 / future Item | New `entity_lifecycle_log` event with `reason_kind=AdminRestore` or feature-specific |
-| `Removed` → `Existing` | RARE admin: WA_003 admin restore (regret operation) | WA_003 | Double-approval workflow (mirrors R9 9-state lifecycle) |
+| From → To | Trigger | Owner feature | reason_kind | Notes |
+|---|---|---|---|---|
+| `Existing` → `Suspended` | NPC scheduler cold-decay (NPC at distant cell with no PC for 14 fiction-days) | NPC_001 | `NpcCold` | Reversible without admin; auto-restore on cell-load. **V1 only NPCs go Suspended** — Items + EnvObjects stay `Existing` even at distant cells V1 (cold-loading deferred to future Item/EnvObject feature) |
+| `Suspended` → `Existing` | NPC re-loaded on PC arrival at suspended-NPC's cell | NPC_001 | `AutoRestoreOnCellLoad` | No admin; in-fiction-time invisible |
+| `Existing` → `Destroyed` | PC mortality (PCS_001) · Item destruction (Strike with sufficient damage; future Item) · NPC death (NPC_001 V1+30d) | PCS_001 / future Item / NPC_001 | `PcMortalityKill` / `InteractionDestructive` / feature-specific | In-fiction; persists in `entity_lifecycle_log` |
+| `Suspended` → `Destroyed` | rare V1+: time-decay destruction (rotted food, expired potion) | future Item | `InteractionDestructive` (or dedicated feature variant) | V1+ only |
+| `Existing` → `Removed` | admin: WA_002 Heresy decanonize · WA_003 Forge admin remove | WA_002 / WA_003 | `AdminDecanonize` | Out-of-fiction; "this entity never was" semantics |
+| `Suspended` → `Removed` | admin removal of suspended entity | WA_002 / WA_003 | `AdminDecanonize` | Audit'd |
+| `Destroyed` → `Existing` | rare: PCS_001 V1+ Respawn · Item resurrection (magic) | PCS_001 / future Item | feature-specific (`PcRespawn` / `ItemResurrect`) | NOT `AutoRestoreOnCellLoad` — destruction-restore is feature-specific not auto |
+| `Removed` → `Existing` | RARE admin: WA_003 admin restore (regret operation) | WA_003 | `AdminRestoreFromRemoved` | Double-approval workflow (mirrors R9 9-state lifecycle); distinct from `AutoRestoreOnCellLoad` to preserve audit precision |
 
 **Forbidden transitions** (validated at write-time; rejected with `entity.invalid_lifecycle_transition`):
 - `Destroyed` → `Suspended` (must restore to `Existing` first)
 - `Removed` → `Suspended` (admin restore goes to `Existing`)
 - `Removed` → `Destroyed` (a removed-entity has no in-fiction state to destroy)
 
+### 6.1 Cascade rules (holder/parent → held/child propagation)
+
+When an entity transitions, entities REFERENCED by its `EntityLocation` (HeldBy holder, InContainer container, Embedded parent) need cascading transitions to keep the location graph consistent. Cascade is computed in a **single atomic write** alongside the trigger transition; lifecycle_log entries for cascaded entities use `reason_kind = HolderCascade` with `causal_ref` pointing at the trigger event.
+
+| Trigger | Cascade |
+|---|---|
+| `Existing → Suspended` (holder/container/parent) | All directly-held + contained + embedded entities transition `Existing → Suspended` (composed lifecycle); their `location` fields are NOT updated (still `HeldBy(holder)` etc.) — they're un-loaded together with their holder |
+| `Suspended → Existing` (holder cell-load) | Held + contained + embedded entities cascade `Suspended → Existing`; reason_kind `AutoRestoreOnCellLoad` |
+| `Existing → Destroyed` (holder mortality / item smashed) | Held items DROP TO GROUND: their `location` flips `HeldBy(holder) → InCell(holder.last_cell_id)` AND lifecycle_state stays `Existing` (the items survive their owner). `InContainer` items behave the same (container destroyed → contents drop to last cell). `Embedded` children CASCADE-DESTROY (`Existing → Destroyed`, reason_kind `HolderCascade`) — embedded keys/inscriptions don't outlive their parent EnvObject. |
+| `Existing → Removed` (admin decanonize) | All held + contained + embedded entities CASCADE-REMOVE (`Existing → Removed`, reason_kind `HolderCascade`). Admin removal is "this never existed" — held descendants follow. |
+
+**Why differing semantics** (Destroyed cascades drop, Removed cascades remove): `Destroyed` is in-fiction; corpses leave their inventory behind for narrative/economic continuity. `Removed` is out-of-fiction; the entity and all its descendants must vanish from canon to maintain "never was" semantics.
+
+**Validator enforcement:** EF_001 owns a `cascade_lifecycle_transition()` helper called by transition writers (PCS_001 / NPC_001 / WA_002 / WA_003 / future Item). The helper computes the cascade tree, emits the corresponding `entity_binding` deltas + `entity_lifecycle_log` events as a single atomic batch. Cycles in the holder graph are rejected at write-time (`entity.cyclic_holder_graph` rule_id, V1+ if needed).
+
 ---
 
 ## §7 AffordanceFlag closed enum + enforcement
 
 ```rust
+#[bitflags]                     // enumflags2 macro (NOT the bitflags crate; bitflags crate
+                                // generates a struct from a non-enum macro and lacks the
+                                // `BitFlags<T>` generic ergonomics this design relies on)
+#[repr(u8)]                     // 6 V1 + 7 V1+ reserved → fits in u16; u8 only safe V1 (6 bits)
 pub enum AffordanceFlag {
-    BeSpokenTo,    // Speak target — addressee
-    BeStruck,      // Strike target
-    BeExamined,    // Examine target
-    BeGiven,       // Give recipient (active receiver — accepts gifts)
-    BeReceived,    // Give → received-by-target (passive — can BE the held item)
-    BeUsed,        // Use target — instrument or toolable thing
+    BeSpokenTo  = 0b00000001,   // Speak target — addressee
+    BeStruck    = 0b00000010,   // Strike target
+    BeExamined  = 0b00000100,   // Examine target
+    BeGiven     = 0b00001000,   // Give recipient (active receiver — accepts gifts)
+    BeReceived  = 0b00010000,   // Give → received-by-target (passive — can BE the held item)
+    BeUsed      = 0b00100000,   // Use target — instrument or toolable thing
 }
 
-pub type AffordanceSet = bitflags::BitFlags<AffordanceFlag>;
+pub type AffordanceSet = enumflags2::BitFlags<AffordanceFlag>;
+// V1+ extension: when reserved flags (§7 V1+ list) are activated, repr widens to u16.
+// Migration is non-breaking on disk (u8 zero-pads to u16 cleanly).
 ```
 
 **Mapping to PL_005 InteractionKind validators:**
@@ -286,7 +367,7 @@ pub type AffordanceSet = bitflags::BitFlags<AffordanceFlag>;
 | `Give` | recipient direct_target — `BeGiven`; tool (the gifted item) — `BeReceived` | same |
 | `Use` | tool — `BeUsed`; direct_targets (if any) — `BeUsed` (if tool used ON something) | same |
 
-Validator runs BEFORE PL_005's per-kind validator chain (§11 of this doc explains slot ordering). Failure → reject with `entity.affordance_missing { entity_id, required_flag }` per §8.
+Validator runs at the EVT-V_entity_affordance slot (placement TBD — see EF-Q3 in §18; structural-affordance check ordering relative to EVT-V_lex / EVT-V_heresy is open). Convention follows "structural-before-semantic" — affordance check happens before per-kind business logic (Lex world-rule, Heresy contamination, kind-specific validators). Failure → reject with `entity.affordance_missing { entity_id, required_flag }` per §8.
 
 **V1+ flag reservations** (closed enum extends additively per I14):
 - `BeCollidedWith` — Collide kind (V1+ Interaction)
@@ -494,6 +575,7 @@ Future EVT-T1 Submitted referencing Pc(ly_minh) as agent reject with `entity.ent
 | **EF-D7** | Hidden / fog-of-war 5th lifecycle state | not V1; current 4-state covers Mortality + R8 + admin | V1+30d if quest/exploration needs |
 | **EF-D8** | Entity component registry (full ECS) | concrete-aggregate + EntityKind trait approach chosen V1 (Q5); ECS is V2+ if entity zoo grows beyond manageable concrete types | V2+ when entity zoo exceeds ~6 types |
 | **EF-D9** | Per-affordance grant policy (e.g., `be_spoken_to` requires shared language) | V1: affordance is pure boolean; nuance pushed to per-kind validators (PL_005 + WA_001 Lex) | V1+ social/language expansion |
+| **EF-D10** | `entity_lifecycle_log` archiving (split events older than 90 fiction-days OR row size > 100 events to `entity_lifecycle_log_archive`) | V1: per-entity Vec grows unboundedly; high-churn entities (V1+ respawning Items, NPC cold-cycle) inflate row size — mirrors R1 event-volume risk inside a snapshot | V1+30d profiling threshold; ops review |
 
 ---
 
@@ -502,8 +584,8 @@ Future EVT-T1 Submitted referencing Pc(ly_minh) as agent reject with `entity.ent
 - **PL_001 Continuum** §3.6 — `actor_binding` transferred to EF_001 as `entity_binding` (renamed + scope-grown 2026-04-26). PL_001 reopen: §3.6 now references EF_001 as owner; PL_001's role is referencer.
 - **PL_005 Interaction** §3.X — 5 V1 InteractionKinds reference `EntityId` (replacing `ActorId | ItemRef`) for tool / direct_targets / indirect_targets. Affordance validation runs at EF_001 EVT-V_entity_affordance slot before per-kind validator chain.
 - **PL_005c Interaction integration** §V1-scope — Item "refs only V1" gap CLOSED by EF_001 owning ItemId variant + `entity_binding` row for Items. Future Item feature owns Item body; PL_005 V1 implementable against EF_001 contract.
-- **PL_006 Status Effects** — `actor_status` row keyed by ActorId, not EntityId — V1 OK (status applies only to PC+NPC, not Items/EnvObjects). V1+ if Item buffs/debuffs designed: extend PL_006 keying to EntityId.
-- **NPC_001 Cast** — implements `EntityKind for Npc`. ActorId enum (NPC_001 §2) becomes a sub-set of EntityId (Pc + Npc only) for actor-only contexts (turn submission); cross-entity references use EntityId.
+- **PL_006 Status Effects** — `actor_status` keyed by `ActorId` is correct and NOT a drift trap (clarified 2026-04-26 review per §5.1): ActorId and EntityId are genuinely different sets — Items/EnvObjects don't have status V1 (they aren't actors), and Synthetic/Admin actors aren't entity-addressable. PL_006 stays as designed; if V1+ Item buffs/debuffs become a thing, that's a PL_006 reopen with explicit scope expansion (not a forced rekey).
+- **NPC_001 Cast** — implements `EntityKind for Npc`. ActorId enum (NPC_001 §2) is a SIBLING type to EntityId (NOT a subset — see §5.1): ActorId carries Synthetic + Admin variants which EntityId lacks; EntityId carries Item + EnvObject which ActorId lacks. The Pc + Npc intersection has explicit `From` impls. NPC_001's `ActorId` definition stays in NPC_001 §2 as the canonical actor-context type; EF_001 §5.1 documents the relationship.
 - **NPC_002 Chorus** — subscribes to `entity_binding` filtered by entity_type=Npc + cell for scene roster.
 - **PCS_001** (when designed) — implements `EntityKind for Pc`; mortality state machine cascades into EF_001 lifecycle transitions; brief at `features/06_pc_systems/00_AGENT_BRIEF.md` updated to require EF_001 reading.
 - **WA_002 Heresy** — admin decanonize → EF_001 lifecycle Existing/Suspended → Removed.
@@ -518,20 +600,22 @@ Future EVT-T1 Submitted referencing Pc(ly_minh) as agent reject with `entity.ent
 ## §17 Readiness checklist
 
 - [x] Domain concepts table covers EntityId / EntityType / LifecycleState / AffordanceFlag / EntityKind trait
-- [x] Aggregate inventory: 2 aggregates (`entity_binding` primary + `entity_lifecycle_log` audit-only)
-- [x] EntityKind trait specified with 5 methods + per-type default-affordance matrix
-- [x] LifecycleState 4-state machine with allowed/forbidden transitions
-- [x] AffordanceFlag 6 V1 flags + V1+ reservations + per-kind enforcement mapping
+- [x] Aggregate inventory: 2 aggregates (`entity_binding` primary + `entity_lifecycle_log` audit-only); audit-log archiving deferral logged (EF-D10)
+- [x] EntityKind trait specified — body-only methods (id / type / type_default_affordances / display_name); lifecycle + affordance-effective live on `EntityBinding` via `EntityBindingExt`; per-type default-affordance matrix
+- [x] LifecycleState 4-state machine with allowed/forbidden transitions; cascade rules for HeldBy/InContainer/Embedded propagation (§6.1)
+- [x] AffordanceFlag 6 V1 flags + V1+ reservations + per-kind enforcement mapping; bitflag repr explicit (`enumflags2::BitFlags<AffordanceFlag>` over u8 V1, u16 V1+)
 - [x] Reference safety policy: hard-reject + per-kind soft-override; 7 rule_ids in `entity.*` namespace
 - [x] Event-model mapping: EVT-T3 Derived + EVT-T4 System + EVT-T6 Proposal (V1+); no new EVT-T*
 - [x] DP primitives: existing surface only (no new DP-K*)
 - [x] Capability JWT: existing claims (no new top-level)
 - [x] Subscribe pattern: 4 subscribers V1 (Frontend / NPC_002 / PL_005c / WA_002)
 - [x] Cross-service handoff: EntityId JSON shape + CausalityToken chain
+- [x] ActorId / EntityId relationship documented (§5.1); explicit "no drift" with PL_006 ActorId keying
 - [x] 5 representative sequences
 - [x] 10 V1-testable acceptance scenarios (AC-EF-1..10)
-- [x] 9 deferrals (EF-D1..D9) with target phases
+- [x] 10 deferrals (EF-D1..D10) with target phases
 - [x] Cross-references to all 11 affected features + foundation docs
+- [x] Phase 3 review cleanup applied 2026-04-26 (Severity 1 + 2 + 3 — Rust correctness on `type_default_affordances` `&self` + `enumflags2` syntax; EntityKind trait shape split; cascade rules; AdminRestore split into AutoRestoreOnCellLoad + AdminRestoreFromRemoved + HolderCascade; ActorId/EntityId relationship; participant_presence reconciliation rule; entity_type denorm justification; EF-D10 archiving deferral)
 - [ ] CANDIDATE-LOCK — pending closure pass + downstream rename verification + PCS_001 brief update
 
 ---
