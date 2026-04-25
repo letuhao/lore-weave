@@ -59,6 +59,12 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 
 **🎉🎉 Phase 4 design phase is COMPLETE — every actionable design question resolved.** Q20 Phần A (quantitative DP-S\* rescale) is purely a measurement question requiring V1 prototype data. **06_data_plane is locked baseline for feature design (DF4/DF5/DF7) and SDK implementation (Phase 2b dp/dp-derive/dp-clippy crates).**
 
+**Bridging doc for feature designers (post-Phase-4, 2026-04-25):**
+
+25. [22_feature_design_quickstart.md](22_feature_design_quickstart.md) — **Feature designer's entry point.** 5-min mental model + worked example (Tavern Notice Board) + decision flowchart (tier? scope? capability? subscribe pattern?) + pattern cheatsheets (turn-slot Strict/Concurrent/Cancellable, redaction Transparent/SkipPrivate/AnonymizeRefs/Custom, tier × scope matrix) + anti-pattern catalog + governance review checklist. **NOT an axiom or primitive** — a how-to-design bridging doc. If it disagrees with locked spec (02 / 04a-d / 11-21), the locked spec wins.
+
+**For agents about to design DF4 / DF5 / DF7:** read [22_feature_design_quickstart.md](22_feature_design_quickstart.md) FIRST, then drill down into the locked spec via the cross-reference table at its end.
+
 ---
 
 ## Status table
@@ -88,7 +94,8 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 19 | [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) | LOCKED | DP-Ch43..Ch45 | 2026-04-25 |
 | 20 | [20_operational_residuals.md](20_operational_residuals.md) | LOCKED | DP-Ch46..Ch50 | 2026-04-25 |
 | 21 | [21_llm_turn_slot.md](21_llm_turn_slot.md) | LOCKED | DP-Ch51..Ch53 | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN — **Phase 4 design COMPLETE** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (19 resolved + Q20 Phần B done; only Q20 Phần A V1-data-deferred — purely a measurement question) | 2026-04-25 |
+| 22 | [22_feature_design_quickstart.md](22_feature_design_quickstart.md) | LOCKED (bridging doc) | — (no axiom/primitive IDs) | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN — **Phase 4 design COMPLETE** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (19 resolved + Q20 Phần B done; only Q20 Phần A V1-data-deferred — purely a measurement question) + **OOS-1, OOS-2** out-of-scope pointers (NPC↔SessionContext mapping, cross-service aggregate type sharing) | 2026-04-25 |
 
 ---
 

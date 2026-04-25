@@ -491,3 +491,37 @@ Work through the list in dependency order:
 6. **Defer:** Q20 (LLM turn latency) — V1 prototype data needed.
 
 Each Phase 4 mini-session picks one Q (or a tight cluster), resolves it, locks new axioms / rules / primitives, adds a new file or extends existing ones. Status tracked here.
+
+---
+
+# Out-of-Scope Pointers (post-Phase-4 completeness review, 2026-04-25)
+
+> Two micro-concerns surfaced during the post-Phase-4 hot-path + SDK completeness review. Neither is a DP gap — both have natural homes in other tracks. Recorded here so feature-design agents pick them up at the correct layer.
+
+## OOS-1 — NPC ↔ SessionContext mapping (deferred to roleplay-service / DF1 design)
+
+**Concern:** [DP-Ch34](17_channel_lifecycle.md#dp-ch34--canonical-memberjoined--memberleft-events) `ActorId::Npc { npc_id }` does not carry a `session_id`. Feature code reading "which session does this NPC belong to" must answer it at the orchestrator layer.
+
+**Why this is NOT a DP gap:**
+- DP provides the primitives: `ActorId::Npc` for identity + arbitrary orchestrator `SessionContext` for write authority.
+- Mapping policy (1 NPC = 1 dedicated session vs. N NPCs share orchestrator session vs. NPC pool sharded by region) is application-level — the right answer depends on NPC volume, LLM call concurrency, and capability scope per NPC.
+- Locking a policy in DP would prematurely bind the roleplay-service redesign that's already flagged as a draft (per [Q2](#q2--python--rust-event-bus-protocol)).
+
+**Where it resolves:** roleplay-service redesign or DF1 (NPC behavior feature) — whichever lands first specifies the orchestrator session-mapping pattern.
+
+**For feature-design agents:** when designing an NPC-emitting feature, do NOT invent a "DP NPC session" abstraction. Use your service's existing `SessionContext` and tag emitted events with `ActorId::Npc { npc_id }`. The orchestrator owns the npc → session relationship; DP doesn't need to know.
+
+---
+
+## OOS-2 — Cross-service aggregate type sharing (deferred to workspace layout decision)
+
+**Concern:** Service A defines `PlayerInventory` aggregate Rust type. Service B needs to read `PlayerInventory` projections via the SDK. Compile-time type discovery across service crates is a Rust workspace concern.
+
+**Why this is NOT a DP gap:**
+- DP runtime side already covered: [DP-C4](05_control_plane_spec.md#dp-c4--tier-policy-registry) `tier_policy` table tracks aggregate-type → tier + capability mappings; CP enforces at write time; SDK rejects mismatches.
+- Compile-time type sharing is standard Rust workspace pattern: shared crate (`crates/loreweave-aggregates/`) + Cargo workspace dependencies. Not a DP contract — it's repo organization.
+- DP already specifies the trait shape (`#[derive(Aggregate)]` per [DP-K1 residual](#q14--concrete-rust-definitions-for-newtype-macro-and-error-enum-resolved-phase-2-2026-04-25)); how those types travel between services is a build-system concern.
+
+**Where it resolves:** workspace layout decision when V1 game services begin coding (Phase 2b SDK crate work). Likely answer: shared `loreweave-aggregates` crate that all DP-using services depend on; ownership per aggregate-type via CODEOWNERS.
+
+**For feature-design agents:** when your feature reads an aggregate owned by another service, assume the type is importable via a shared workspace crate. Do NOT design a "runtime aggregate type registry" — that's a Rust monomorphization mismatch waiting to happen. If the type isn't in a shared crate yet, that's a workspace-organization PR, not a DP redesign.
