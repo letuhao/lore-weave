@@ -32,6 +32,8 @@ __all__ = [
     "summary_regen_duration_seconds",
     "summary_regen_cost_usd_total",
     "summary_regen_tokens_total",
+    "reconcile_sweep_total",
+    "quarantine_sweep_total",
 ]
 
 registry = CollectorRegistry()
@@ -383,3 +385,57 @@ for _scope in _REGEN_SCOPES:
         summary_regen_tokens_total.labels(
             scope_type=_scope, token_kind=_kind
         )
+
+
+# ── C14a — scheduler sweep outcome counters ──────────────────────────
+# One counter per scheduler, labelled by outcome. Lets operators alert
+# on e.g. `reconcile_sweep_total{outcome="errored"}` firing unexpectedly.
+# Mirrors the observability pattern established by K20.3's
+# summary_regen_total (which labels by scope+status).
+#
+# **Counter semantics** (/review-impl MED#3 clarification):
+#   - `completed`     — +1 per sweep that finished without a sweep-
+#                       level exception (advisory-lock fetch, user-list
+#                       query, etc.). Increments regardless of per-user
+#                       errors inside the sweep.
+#   - `lock_skipped`  — +1 per sweep that bailed because another
+#                       worker/replica held the advisory lock.
+#   - `errored`       — +1 per sweep that had ≥1 per-user (reconcile)
+#                       or sweep-level (quarantine) error. This is NOT
+#                       a per-user error count — a sweep with 5 users
+#                       all erroring increments `errored` by 1, not 5.
+#                       For per-user error totals, query the sum of
+#                       `users_errored` from structured logs.
+#
+# Useful derived metrics:
+#   rate(completed[1d])                — sweep throughput
+#   rate(errored[1d]) / rate(completed[1d]) — fraction of sweeps with errors
+#   rate(lock_skipped[1d])             — worker contention signal
+
+# K11.9 evidence-count drift reconciler — one sweep = one full scan of
+# active users. `errored` fires once per sweep when ≥1 user errored
+# (not per user error). Per-user error detail lives in logs.
+reconcile_sweep_total = Counter(
+    "knowledge_reconcile_sweep_total",
+    "C14a reconcile-evidence-count scheduler sweep outcomes. "
+    "`errored` fires once per sweep that had ≥1 per-user error "
+    "(not per per-user error). See comment in metrics.py for detail.",
+    ["outcome"],
+    registry=registry,
+)
+for _outcome in ("completed", "lock_skipped", "errored"):
+    reconcile_sweep_total.labels(outcome=_outcome)
+
+# K15.10 quarantine TTL auto-invalidator — one sweep may loop multiple
+# Cypher drain iterations under a single advisory lock. `errored`
+# fires once if the drain loop or helper raised.
+quarantine_sweep_total = Counter(
+    "knowledge_quarantine_sweep_total",
+    "C14a quarantine-cleanup scheduler sweep outcomes. "
+    "`errored` fires once per sweep where the drain loop raised "
+    "(not per failed drain iteration). See comment in metrics.py.",
+    ["outcome"],
+    registry=registry,
+)
+for _outcome in ("completed", "lock_skipped", "errored"):
+    quarantine_sweep_total.labels(outcome=_outcome)

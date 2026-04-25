@@ -1,6 +1,7 @@
 import type { Preview, Decorator } from '@storybook/react-vite';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import { initialize, mswLoader } from 'msw-storybook-addon';
 import { MockAuthProvider } from './MockAuthProvider';
 
 // Tailwind base styles + project css (needed so state cards render
@@ -9,6 +10,15 @@ import '../src/index.css';
 // i18n init side-effect — gives every story a usable `useTranslation`
 // without having to wrap individually.
 import '../src/i18n';
+
+// C13 — bootstrap MSW once at Storybook preview-iframe load. Stories
+// that need network mocks supply `parameters.msw.handlers` and the
+// addon's loader wires them before the story renders. `onUnhandledRequest`
+// set to 'warn' (not 'error') so stories that accidentally let an
+// unmocked call slip through get a console warning in devtools instead
+// of a thrown fetch — less noisy while we're adding coverage story by
+// story.
+initialize({ onUnhandledRequest: 'warn' });
 
 // K19a.8 — One global decorator to wrap every story in the providers
 // components expect:
@@ -61,6 +71,7 @@ const preview: Preview = {
     },
   },
   decorators: [withProviders],
+  loaders: [mswLoader],
 };
 
 export default preview;

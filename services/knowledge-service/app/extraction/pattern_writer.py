@@ -54,6 +54,7 @@ from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.facts import merge_fact
+from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.neo4j_repos.provenance import (
     add_evidence,
     upsert_extraction_source,
@@ -115,6 +116,7 @@ async def write_extraction(
     negations: Iterable[NegationFact] = (),
     extraction_model: str = _EXTRACTION_MODEL,
     anchors: Iterable[Anchor] = (),
+    alias_map_repo: "EntityAliasMapRepo | None" = None,
 ) -> ExtractionWriteResult:
     """Persist a Pass 1 extraction batch to Neo4j.
 
@@ -220,6 +222,7 @@ async def write_extraction(
             kind=kind,
             source_type=source_type,
             confidence=cand.confidence,
+            alias_map_repo=alias_map_repo,
         )
         entity_ids_by_folded.setdefault(folded, {})[kind] = entity.id
         entities_merged += 1

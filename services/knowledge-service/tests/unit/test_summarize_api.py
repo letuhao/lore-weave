@@ -41,10 +41,19 @@ def _clear_overrides():
 
 def _make_client() -> TestClient:
     from app.main import app
-    from app.deps import get_provider_client, get_summaries_repo
+    from app.deps import (
+        get_provider_client,
+        get_summaries_repo,
+        get_summary_spending_repo,
+    )
 
     app.dependency_overrides[get_provider_client] = lambda: MagicMock()
     app.dependency_overrides[get_summaries_repo] = lambda: MagicMock()
+    # C16-BUILD: stub the spending repo too — get_summary_spending_repo
+    # touches the DB pool which isn't initialised in unit tests. Without
+    # the override the dep raises "knowledge pool not initialised" at
+    # request time and FastAPI surfaces a 500 before the handler runs.
+    app.dependency_overrides[get_summary_spending_repo] = lambda: MagicMock()
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -225,3 +234,42 @@ def test_summarize_rejects_invalid_trigger():
         },
     )
     assert resp.status_code == 422
+
+
+# ── C16-BUILD: spending repo wire-through (review-impl HIGH-1) ──────
+
+
+@patch(
+    "app.routers.internal_summarize.get_knowledge_pool",
+    new=MagicMock(return_value=MagicMock()),
+)
+@patch("app.routers.internal_summarize.regenerate_global_summary", new_callable=AsyncMock)
+def test_summarize_internal_forwards_spending_repo(mock_regen):
+    """C16-BUILD review-impl regression lock: the internal summarize
+    endpoint MUST pass ``summary_spending_repo`` to the helper so
+    worker-ai-driven regens (and any future cross-service caller) get
+    the same budget pre-check + recorder coverage as the K20.3
+    scheduler. Without this, D-K20α-01 would only be enforced on the
+    scheduler path."""
+    sentinel = MagicMock(name="SummarySpendingRepoSentinel")
+    from app.deps import get_summary_spending_repo
+    from app.main import app
+
+    mock_regen.return_value = RegenerationResult(
+        status="regenerated", summary=None,
+    )
+    client = _make_client()
+    # Override AFTER _make_client — it sets a default stub; dict
+    # assignment is last-write-wins.
+    app.dependency_overrides[get_summary_spending_repo] = lambda: sentinel
+    resp = client.post(
+        "/internal/summarize",
+        headers=_auth_headers(),
+        json={
+            "user_id": str(_USER_ID),
+            "scope_type": "global",
+            "model_ref": "gpt-4o-mini",
+        },
+    )
+    assert resp.status_code == 200, resp.json()
+    assert mock_regen.await_args.kwargs["summary_spending_repo"] is sentinel

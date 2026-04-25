@@ -1,0 +1,125 @@
+# C19 / K17.10-v2 — golden fixture: 西遊記 第十四回 (Journey to the West, Ch. 14)
+# "心猿歸正 六賊無蹤" — Sun Wukong meets Tang Sanzang and is named 行者.
+# Source: zh.wikisource.org/wiki/西游记/第014回 — Wu Cheng'en, c. 1592.
+# Public domain worldwide (author died 1582).
+# v2 annotation (illustrative) — re-verify before pinning as hard gate.
+
+source:
+  title: "西遊記"
+  author: "吳承恩"
+  chapter: 14
+  license: "Public domain (Ming dynasty work, author d. 1582)"
+
+# Multi-alias entity test — Sun Wukong has 5 aliases active in the text
+# (那猴 / 猴王 / 孫 / 孫悟空 / 行者 / 孫行者 / 齊天大聖) and Tang Sanzang
+# has 2 (三藏 / 陳玄奘). Tests the canonicalization layer's alias union.
+entities:
+  # Review-impl F8: added 神猴 (the seal-prayer reference to Wukong).
+  - name: 孫悟空
+    kind: person
+    aliases: ["那猴", "猴王", "齊天大聖", "行者", "孫行者", "悟空", "神猴"]
+  # Review-impl F5: removed 唐僧 + 長老 — neither appears in this excerpt
+  # (長老 appears in the post-naming Boqin-departure scene which is OUT OF
+  # this fixture). 弟子 IS Sanzang's self-reference in the prayer
+  # ("弟子陳玄奘，特奉旨意求經"), kept as alias.
+  - name: 三藏
+    kind: person
+    aliases: ["陳玄奘", "師父", "弟子"]
+  # Review-impl F6: renamed canonical to 伯欽 (the form in this excerpt).
+  # Removed 太保 / 大哥 / 劉伯欽 — those titles appear in the post-naming
+  # Boqin-departure scene which is OUT OF this fixture.
+  - name: 伯欽
+    kind: person
+    aliases: []
+  - name: 觀音菩薩
+    kind: person
+    aliases: ["菩薩"]
+  - name: 佛祖
+    kind: person
+    aliases: ["我佛如來", "如來"]
+  - name: 靈山
+    kind: place
+    aliases: []
+  - name: 東土
+    kind: place
+    aliases: []
+  - name: 西方
+    kind: place
+    aliases: ["西天"]
+  - name: 唵嘛呢叭𠺗吽
+    kind: artifact
+    aliases: ["六個金字", "金字壓帖"]
+
+relations:
+  # Master-disciple anchor relation. THIS is the core event of Ch. 14.
+  # C-PRED-ALIGN: renamed becomes_disciple_of → disciple_of (canonical
+  # kinship/mentorship vocab); names_disciple → mentor_of (canonical
+  # inverse direction).
+  - subject: 孫悟空
+    predicate: disciple_of
+    object: 三藏
+  - subject: 三藏
+    predicate: mentor_of
+    object: 孫悟空
+  # Past relation: Wukong was imprisoned by the Buddha 500 years prior.
+  # C-PRED-ALIGN: flipped subject/object + renamed to imprisoned_by
+  # (passive direction, prisoner is subject — matches prompt rule).
+  - subject: 孫悟空
+    predicate: imprisoned_by
+    object: 佛祖
+  # Past relation: Guanyin sought a scripture-fetcher from the East.
+  - subject: 觀音菩薩
+    predicate: instructs
+    object: 孫悟空
+
+events:
+  # Self-introduction speech is the diegetic exposition event.
+  - summary: "孫悟空向三藏自述身份為齊天大聖，請求做徒弟保護取經"
+    participants: [孫悟空, 三藏]
+  # Sanzang lifts the Buddha's seal — the unbinding event.
+  - summary: "三藏揭起金字壓帖救出孫悟空"
+    participants: [三藏, 孫悟空]
+  # Review-impl F9: name disclosure is a distinct beat (Wukong reveals
+  # 孫悟空 as his existing dharma-name BEFORE Sanzang grants 行者).
+  - summary: "孫悟空告知三藏自己原有法名孫悟空"
+    participants: [孫悟空, 三藏]
+  # Naming scene — Sanzang grants 孫悟空 the alias 行者.
+  - summary: "三藏為孫悟空起混名稱為行者"
+    participants: [三藏, 孫悟空]
+
+traps:
+  # Generic class references — appear once but don't anchor as named entities.
+  - kind: entity
+    name: 家僮
+    reason: "Generic 'servant boy' reference, not a named individual"
+  - kind: entity
+    name: 馬匹
+    reason: "Generic 'horses', not the named White Dragon Horse (which appears later in the novel)"
+  # Numerological references that aren't entities.
+  - kind: entity
+    name: 五百年前
+    reason: "Temporal phrase '500 years ago', not a named entity"
+  # Big honorific titles that decompose into proper-noun parts but are not
+  # standalone entities. The bigger entity (玉皇大天尊) only appears in Ch. 1.
+  - kind: entity
+    name: 沙門
+    reason: "Buddhist sangha generic reference, not an organization-as-entity here"
+  # Review-impl F7: 弟子 was previously listed as BOTH a Sanzang alias
+  # AND a trap — internally inconsistent. Resolved as alias (folds into
+  # 三藏 entity), removed from traps.
+  # 大鬧天宮 is the famous past event but happens 500 years before this chapter
+  # — it's referenced, not happening here.
+  - kind: event
+    summary: "大鬧天宮"
+    reason: "Past event referenced in Wukong's speech, not happening in this chapter"
+  # 沒斧鑿 — Sanzang says he has no tools — a non-event (counterfactual).
+  - kind: event
+    summary: "三藏 用 斧鑿 救 孫悟空"
+    reason: "Sanzang explicitly says he has NO chisel — counterfactual, not an event"
+  # Review-impl F10: missing simile + activity-noun traps.
+  - kind: entity
+    name: 小頭陀
+    reason: "Comparison/simile reference ('like a young wandering monk'), not a named entity"
+  - kind: entity
+    name: 求經
+    reason: "Verb phrase / activity ('seeking scriptures'), not an entity"

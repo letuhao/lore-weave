@@ -110,3 +110,93 @@ func TestRewriteJSONBodyModel_RejectsInvalidJSON(t *testing.T) {
 		t.Fatalf("expected error for non-marshalable map, got nil")
 	}
 }
+
+// C-LM-STUDIO-FIX — unit tests for normalizeResponseFormatForKind,
+// which works around LM Studio's response_format quirk (rejects
+// json_object, accepts only json_schema or text). Discovered during
+// C19 quality eval — without this normalization, every knowledge-
+// service extraction call against an LM Studio model fails with
+// HTTP 400.
+
+func TestNormalizeResponseFormat_LMStudioJSONObjectBecomesText(t *testing.T) {
+	parsed := map[string]any{
+		"model":           "doesnt-matter",
+		"messages":        []any{},
+		"response_format": map[string]any{"type": "json_object"},
+	}
+	normalizeResponseFormatForKind(parsed, "lm_studio")
+	rf, ok := parsed["response_format"].(map[string]any)
+	if !ok {
+		t.Fatalf("response_format dropped or wrong type: %#v", parsed["response_format"])
+	}
+	if rf["type"] != "text" {
+		t.Fatalf("expected type=text, got %v", rf["type"])
+	}
+	if len(rf) != 1 {
+		t.Fatalf("expected single 'type' key (no leakage), got %#v", rf)
+	}
+}
+
+func TestNormalizeResponseFormat_OpenAIJSONObjectUntouched(t *testing.T) {
+	parsed := map[string]any{
+		"model":           "gpt-4o-mini",
+		"messages":        []any{},
+		"response_format": map[string]any{"type": "json_object"},
+	}
+	normalizeResponseFormatForKind(parsed, "openai")
+	rf := parsed["response_format"].(map[string]any)
+	if rf["type"] != "json_object" {
+		t.Fatalf("openai path must NOT rewrite — got %v", rf["type"])
+	}
+}
+
+func TestNormalizeResponseFormat_LMStudioWithoutResponseFormatNoOp(t *testing.T) {
+	parsed := map[string]any{
+		"model":    "doesnt-matter",
+		"messages": []any{},
+	}
+	normalizeResponseFormatForKind(parsed, "lm_studio")
+	if _, exists := parsed["response_format"]; exists {
+		t.Fatalf("response_format must NOT be added when caller didn't supply it")
+	}
+}
+
+func TestNormalizeResponseFormat_LMStudioJSONSchemaIdempotent(t *testing.T) {
+	// json_schema is what LM Studio actually accepts — must NOT rewrite
+	// it to text (would silently drop the schema spec).
+	original := map[string]any{
+		"type":        "json_schema",
+		"json_schema": map[string]any{"name": "Foo", "schema": map[string]any{}},
+	}
+	parsed := map[string]any{
+		"response_format": original,
+	}
+	normalizeResponseFormatForKind(parsed, "lm_studio")
+	rf := parsed["response_format"].(map[string]any)
+	if !reflect.DeepEqual(rf, original) {
+		t.Fatalf("json_schema must be left untouched; got %#v", rf)
+	}
+}
+
+func TestNormalizeResponseFormat_LMStudioTextIdempotent(t *testing.T) {
+	parsed := map[string]any{
+		"response_format": map[string]any{"type": "text"},
+	}
+	normalizeResponseFormatForKind(parsed, "lm_studio")
+	rf := parsed["response_format"].(map[string]any)
+	if rf["type"] != "text" {
+		t.Fatalf("text must remain text; got %v", rf["type"])
+	}
+}
+
+func TestNormalizeResponseFormat_LMStudioMalformedResponseFormatNoOp(t *testing.T) {
+	// Defensive: if response_format is a bare string or other shape,
+	// don't crash — leave as-is. Upstream will reject if it's invalid.
+	parsed := map[string]any{
+		"response_format": "json",
+	}
+	normalizeResponseFormatForKind(parsed, "lm_studio")
+	if parsed["response_format"] != "json" {
+		t.Fatalf("malformed response_format must be left alone; got %v", parsed["response_format"])
+	}
+}

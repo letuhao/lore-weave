@@ -436,6 +436,111 @@ CREATE TABLE IF NOT EXISTS user_knowledge_budgets (
   ai_monthly_budget_usd  NUMERIC(10,4),
   updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- C14b — sweeper_state: per-sweeper resumable cursor.
+-- Wraps any tenant-wide offline sweeper that iterates users so a
+-- mid-sweep crash resumes from the last-processed user on restart.
+-- One row per sweeper (sweeper_name PK). Row absent = sweep runs
+-- from scratch (fresh start or post-completion clear).
+--
+-- Currently used by:
+--   - reconcile_evidence_count_scheduler (C14a) — sweeper_name =
+--     'reconcile_evidence_count'. last_user_id advances per-user;
+--     natural-completion path deletes the row.
+--
+-- Not used by the C14a quarantine-cleanup sweeper: its Cypher filter
+-- (pending_validation=true) is self-advancing — invalidated facts drop
+-- out on the next call, so cursor state would be redundant.
+--
+-- `last_scope JSONB` is the escape hatch for future sweepers that
+-- need cursor state beyond user_id (e.g. per-user-per-project
+-- pagination). Default empty {} keeps existing callers simple.
+-- No FK on user_id — users table lives in auth-service (cross-DB).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS sweeper_state (
+  sweeper_name  TEXT PRIMARY KEY,
+  last_user_id  UUID,
+  last_scope    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ═══════════════════════════════════════════════════════════════
+-- C16 — knowledge_summary_spending: per-user-per-scope monthly spend.
+-- Closes D-K20α-01: global L0 regen has no project_id and so can't
+-- be recorded against knowledge_projects.current_month_spent_usd.
+-- This table is the authoritative ledger for non-project-attributable
+-- AI spend.
+--
+-- scope_type CHECK is currently restricted to 'global' only — project-
+-- scope regen records via the existing K16.11 record_spending path
+-- (uses project_id we already have). When a future cycle introduces
+-- another non-project-attributable scope, expand the CHECK enum + the
+-- Pydantic Literal in summary_spending.py in one coordinated PR.
+--
+-- Each (user_id, scope_type, month_key) is a single row. Inserted on
+-- first spend of the month; updated atomically on subsequent. Month
+-- rollover is in-place via PK shape (a new month creates a new row,
+-- no manual reset) — same pattern as sweeper_state.
+--
+-- check_user_monthly_budget aggregates this table's matching-month
+-- rows alongside knowledge_projects.current_month_spent_usd to
+-- enforce the user-wide cap.
+--
+-- No FK on user_id (cross-DB convention).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS knowledge_summary_spending (
+  user_id      UUID NOT NULL,
+  scope_type   TEXT NOT NULL CHECK (scope_type IN ('global')),
+  month_key    TEXT NOT NULL,
+  spent_usd    NUMERIC(10,4) NOT NULL DEFAULT 0,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, scope_type, month_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_summary_spending_user_month
+  ON knowledge_summary_spending(user_id, month_key);
+
+-- ═══════════════════════════════════════════════════════════════
+-- C17 — entity_alias_map: post-merge alias→target redirect lookup.
+-- Closes D-K19d-γb-03: extraction's canonical_id is a SHA hash of the
+-- name, so a re-extracted source alias post-merge resurrects the
+-- merged-away entity. This table is the redirect index the resolver
+-- consults BEFORE the SHA hash so future mentions of "Alice" land on
+-- the merge target rather than re-creating Alice.
+--
+-- Key shape mirrors entity_canonical_id: (user_id, project_scope, kind,
+-- canonical_alias). project_scope is TEXT carrying either project_id::text
+-- or the literal string 'global' so the table doesn't need a sentinel
+-- UUID for global-scope entries.
+--
+-- reason discriminates merge-driven rows (authoritative, written at
+-- merge_entities surgery time) from backfill rows (best-effort post-deploy
+-- reconstruction from existing :Entity.aliases arrays). FE/audit can show
+-- different UI for each.
+--
+-- source_entity_id nullable because backfill cannot reconstruct the
+-- pre-merge source's id; merge writes the source.id for forensics.
+--
+-- No FK to :Entity.id (cross-DB convention — entity lives in Neo4j).
+--
+-- See ADR docs/03_planning/KNOWLEDGE_SERVICE_ENTITY_ALIAS_MAP_ADR.md
+-- and KSA §5.0 "Alias-redirect on merge" for full design rationale.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS entity_alias_map (
+  user_id           UUID NOT NULL,
+  project_scope     TEXT NOT NULL,
+  kind              TEXT NOT NULL,
+  canonical_alias   TEXT NOT NULL,
+  target_entity_id  TEXT NOT NULL,
+  source_entity_id  TEXT,
+  reason            TEXT NOT NULL CHECK (reason IN ('merge', 'backfill')),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_scope, kind, canonical_alias)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_alias_map_target
+  ON entity_alias_map(target_entity_id);
 """
 
 

@@ -442,6 +442,40 @@ async def vector_search_entities(project_id: str, query_text: str, limit: int = 
 projects use different embedding models — vector spaces are model-specific.
 Memory queries always run within one project's model.
 
+#### B-bis. Event wall-clock date (C18 amendment, 2026-04-25)
+
+`(:Event)` carries TWO orthogonal time axes for narrative fiction:
+
+- `event_order: Int` (existing) — the order events appear in the text (the read order). Stable across the project's life.
+- `chronological_order: Int` (existing, optional) — in-story sequence accounting for flashbacks. Set by the LLM when the order can be inferred from context.
+
+Neither expresses **wall-clock dates**. Fiction set in 1880 vs the Third Age vs a contemporary thriller all share the same `event_order` axis but want different filter UX. C18 adds a third optional axis:
+
+```cypher
+(:Event {
+  ...
+  event_date_iso: String,  // nullable; ISO with optional truncation:
+                           //   "1880" (year-only)
+                           //   "1880-06" (year-month)
+                           //   "1880-06-15" (full ISO date)
+                           // String NOT date — preserves precision
+                           // ("summer 1880" → "1880-06" carries the
+                           // "I don't actually know the day" signal,
+                           // which a strict date('1880-06-15') loses).
+                           // Sort-stable lexicographically because ISO.
+})
+```
+
+**Source of truth**: the K17.6 LLM event extractor. The prompt (see §5.1) emits `event_date` ONLY when TEXT contains an explicit calendar date or year. Vague hints ("the next morning", "in his youth") and fictional eras ("TA 3019", "Year of the Dragon") stay in the existing `time_cue` free-text field for narrative display.
+
+**Backfill**: a one-shot Python parser walks existing `:Event` nodes, parsing the existing `time_cue` string for explicit dates and writing `event_date_iso` where parseable. Idempotent (skips rows with non-null `event_date_iso`). Best-effort — LLM re-extraction is the gold standard but $$$.
+
+**Filter exposure** (timeline endpoint): `event_date_from` + `event_date_to` Query params accept ISO truncated strings; reversed range (`from > to`) → 422. Events with `event_date_iso = NULL` are EXCLUDED when either filter is active (no-date events have no business answering "what happened in 1880?").
+
+**Out of scope for v1**: fictional-era prefixes ("TA 3019"). String-sort breaks across non-numeric prefixes; per-project calendar systems are a meatier design needing user opt-in. Fictional eras stay as `time_cue` free text only.
+
+See [`KNOWLEDGE_SERVICE_EVENT_WALL_CLOCK_DATE_ADR.md`](./KNOWLEDGE_SERVICE_EVENT_WALL_CLOCK_DATE_ADR.md) for the full design rationale + rejected alternatives.
+
 #### C. Provenance Edges (for partial extraction operations)
 
 Every extracted entity/fact must know its source(s) so that partial re-extraction,
@@ -2033,6 +2067,53 @@ ON MATCH SET
   e.updated_at = datetime()
 RETURN e
 ```
+
+#### Alias-redirect on merge (C17 amendment, 2026-04-25)
+
+The canonicalization function above is **deterministic by name only**. After a user merges entity A ("Alice") into B ("Captain Brave"), Neo4j has one node B with `aliases = ["Captain Brave", "Alice"]`. But the next time extraction sees the literal string "Alice", `entity_canonical_id(name="Alice")` re-derives A's old SHA hash → no node at that id → `MERGE ... ON CREATE` resurrects A as a brand-new entity, disconnected from B.
+
+Aliases are display denormalization, **not** a resolution index. To make merges stick across re-extraction, every merge writes redirect rows to a Postgres lookup table that the resolver consults BEFORE the SHA hash:
+
+```sql
+CREATE TABLE entity_alias_map (
+  user_id           UUID NOT NULL,
+  project_scope     TEXT NOT NULL,    -- project_id::text OR 'global'
+  kind              TEXT NOT NULL,
+  canonical_alias   TEXT NOT NULL,    -- canonicalize_entity_name(alias)
+  target_entity_id  TEXT NOT NULL,    -- :Entity.id (32-hex)
+  source_entity_id  TEXT,             -- nullable for backfill rows
+  reason            TEXT NOT NULL,    -- 'merge' | 'backfill'
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_scope, kind, canonical_alias)
+);
+```
+
+**Resolver flow** (replaces the simple SHA-hash-and-MERGE in extraction):
+
+```python
+async def resolve_or_merge_entity(...):
+    if glossary_entity_id:                                # 1. glossary anchor wins
+        if existing := await find_by_glossary_id(...):
+            return existing
+    canonical_alias = canonicalize_entity_name(name)      # 2. alias-map redirect
+    project_scope = project_id or "global"
+    target_id = await alias_map_repo.lookup(
+        user_id, project_scope, kind, canonical_alias,
+    )
+    if target_id is not None:
+        return await merge_entity_at_id(session, id=target_id, ...)
+    return await merge_entity(session, ...)               # 3. SHA-hash MERGE
+```
+
+**Merge surgery flow** (`merge_entities(source, target)`):
+
+1. **Collision pre-check**: for each alias on source, refuse merge with HTTP 409 `alias_collision` if any other live entity in the same scope+kind already has `canonical_name = canonicalize(alias)`. The user is asserting "these are the same"; a third entity already claiming that identity is ambiguous and must be resolved first.
+2. Run existing Cypher surgery (rewire edges, glossary anchor pre-clear, `DETACH DELETE` source).
+3. **Write alias-map rows**: for each alias in `source.aliases ∪ {source.canonical_name}`, insert `(user_id, project_scope, kind, canonicalize(alias), target.id, source.id, reason='merge')` with `ON CONFLICT DO NOTHING`.
+
+**Backfill**: a one-shot script walks every existing `:Entity` and writes alias-map rows for each alias != canonical_name (`reason='backfill'`). Idempotent. Required to close the bug for entities created before C17 ship.
+
+**Why Postgres, not Neo4j**: extraction's hot path already does Postgres lookups (glossary_entity_id, project ownership) before Neo4j contact; adding a Neo4j round-trip BEFORE the SHA-hash decision would add latency on every extracted name. Postgres b-tree on the composite PK is the correct boundary for "lookup → decide which Cypher MERGE id to use." See [`KNOWLEDGE_SERVICE_ENTITY_ALIAS_MAP_ADR.md`](./KNOWLEDGE_SERVICE_ENTITY_ALIAS_MAP_ADR.md) for the rejected alternatives.
 
 #### Conflict Resolution (properties disagree across sources)
 

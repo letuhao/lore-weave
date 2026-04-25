@@ -815,3 +815,125 @@ async def test_sweep_emits_completion_log_with_counter_breakdown(
         "skipped=", "no_model=", "errored=",
     ):
         assert counter_name in msg, f"log missing {counter_name!r}: {msg}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# C16-BUILD — summary_spending_repo wire-through
+# ═══════════════════════════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_sweep_projects_forwards_summary_spending_repo(monkeypatch):
+    """C16-BUILD: project sweep must thread the SummarySpendingRepo
+    kwarg into ``regenerate_project_summary``. Without this, the
+    regen helper's spending recorder branch sees ``None`` and silently
+    skips recording — global-scope budget enforcement would degrade
+    to project-only and regress the C16 ADR contract.
+    """
+    user_id = str(uuid4())
+    project_id = str(uuid4())
+    conn = FakeConn(
+        try_lock=True,
+        projects=[_project(user_id, project_id)],
+        model_lookup={(user_id, project_id): "gpt-4o-mini"},
+    )
+    pool = FakePool(conn)
+    regen_mock = AsyncMock(return_value=_regen_result("regenerated"))
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_project_summary",
+        regen_mock,
+    )
+    sentinel_repo = MagicMock(name="SummarySpendingRepo")
+    await sweep_projects_once(
+        pool=pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+        summary_spending_repo=sentinel_repo,
+    )
+    regen_mock.assert_awaited_once()
+    kwargs = regen_mock.await_args.kwargs
+    assert kwargs["summary_spending_repo"] is sentinel_repo
+
+
+@pytest.mark.asyncio
+async def test_sweep_global_forwards_summary_spending_repo(monkeypatch):
+    """C16-BUILD: same wire-through contract for the global sweep.
+    Global scope is the *primary* consumer of the new repo (project
+    spend already lands in ``knowledge_projects.current_month_spent``
+    via K16.11) so a regression here would silently break the entire
+    feature."""
+    user_id = str(uuid4())
+    conn = FakeConn(
+        try_lock=True,
+        users=[_user(user_id)],
+        user_model_lookup={user_id: "gpt-4o-mini"},
+    )
+    pool = FakePool(conn)
+    regen_mock = AsyncMock(return_value=_regen_result("regenerated"))
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_global_summary",
+        regen_mock,
+    )
+    sentinel_repo = MagicMock(name="SummarySpendingRepo")
+    await sweep_global_once(
+        pool=pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+        summary_spending_repo=sentinel_repo,
+    )
+    regen_mock.assert_awaited_once()
+    kwargs = regen_mock.await_args.kwargs
+    assert kwargs["summary_spending_repo"] is sentinel_repo
+
+
+@pytest.mark.asyncio
+async def test_sweeps_default_summary_spending_repo_to_none(monkeypatch):
+    """C16-BUILD: default ``None`` propagates to both regen helpers
+    when caller omits the kwarg. Locks the DI-consistent gating —
+    regen helpers' pre-check + recorder must be no-ops when the repo
+    isn't wired (legacy tests, dev environments without the migration
+    applied yet)."""
+    user_id = str(uuid4())
+    project_id = str(uuid4())
+
+    # Project sweep — None default.
+    proj_conn = FakeConn(
+        try_lock=True,
+        projects=[_project(user_id, project_id)],
+        model_lookup={(user_id, project_id): "gpt-4o-mini"},
+    )
+    proj_pool = FakePool(proj_conn)
+    proj_regen_mock = AsyncMock(return_value=_regen_result("regenerated"))
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_project_summary",
+        proj_regen_mock,
+    )
+    await sweep_projects_once(
+        pool=proj_pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+    )
+    assert proj_regen_mock.await_args.kwargs["summary_spending_repo"] is None
+
+    # Global sweep — None default.
+    glob_conn = FakeConn(
+        try_lock=True,
+        users=[_user(user_id)],
+        user_model_lookup={user_id: "gpt-4o-mini"},
+    )
+    glob_pool = FakePool(glob_conn)
+    glob_regen_mock = AsyncMock(return_value=_regen_result("regenerated"))
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_global_summary",
+        glob_regen_mock,
+    )
+    await sweep_global_once(
+        pool=glob_pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+    )
+    assert glob_regen_mock.await_args.kwargs["summary_spending_repo"] is None

@@ -13,7 +13,7 @@ import logging
 
 import asyncpg
 
-from app.clients import BookClient, KnowledgeClient
+from app.clients import BookClient, GlossaryClient, KnowledgeClient
 from app.config import settings
 from app.runner import poll_and_run
 
@@ -45,11 +45,19 @@ async def main() -> None:
         internal_token=settings.internal_service_token,
         timeout_s=settings.book_client_timeout_s,
     )
+    # C12c-a: client for the scope='glossary_sync' branch + all-scope tail.
+    glossary_client = GlossaryClient(
+        base_url=settings.glossary_service_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.glossary_client_timeout_s,
+    )
 
     try:
         while True:
             try:
-                count = await poll_and_run(pool, knowledge_client, book_client)
+                count = await poll_and_run(
+                    pool, knowledge_client, book_client, glossary_client,
+                )
                 if count > 0:
                     logger.info("Poll cycle: processed %d job(s)", count)
             except Exception:
@@ -61,6 +69,7 @@ async def main() -> None:
     finally:
         await knowledge_client.aclose()
         await book_client.aclose()
+        await glossary_client.aclose()
         await pool.close()
         logger.info("worker-ai stopped")
 

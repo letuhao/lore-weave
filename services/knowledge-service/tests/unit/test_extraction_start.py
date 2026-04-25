@@ -280,6 +280,39 @@ def test_start_job_active_job_exists_returns_409():
     assert "active extraction job" in resp.json()["detail"]
 
 
+def test_start_job_glossary_sync_without_book_returns_422():
+    """C12c-a /review-impl MED#1 — scope='glossary_sync' requires the
+    project to have a linked book. Matches the estimate endpoint's
+    book_id guard at line 230. Without this check, the job is
+    created + the worker silently no-ops (book_id=None defensive
+    skip), misleading the user with a 'success' state."""
+    client = _make_client(project=_project_stub(book_id=None))
+    resp = _post_start(client, scope="glossary_sync")
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["detail"]["error_code"] == "glossary_sync_requires_book"
+
+
+def test_start_job_glossary_sync_with_book_still_runs():
+    """Counterpart to the 422 test — confirms the guard is scope-
+    specific: scope='glossary_sync' + book_id set does NOT 422."""
+    client = _make_client(project=_project_stub(book_id=_TEST_BOOK))
+    resp = _post_start(client, scope="glossary_sync")
+    # No book_id guard fires → request proceeds through the normal
+    # path (benchmark gate + transaction). Expect 201 because the
+    # default _make_client wires a passing benchmark + allowed budget.
+    assert resp.status_code == 201
+
+
+def test_start_job_all_scope_without_book_does_not_422():
+    """C12c-a /review-impl MED#1 — only glossary_sync hard-requires
+    a book. scope='all' without book_id still runs (chapters tail
+    is empty, chat + glossary tails are no-op)."""
+    client = _make_client(project=_project_stub(book_id=None))
+    resp = _post_start(client, scope="all")
+    assert resp.status_code == 201
+
+
 def test_start_job_concurrent_start_unique_violation_409():
     """Concurrent start: unique partial index rejects the second INSERT."""
     client = _make_client(

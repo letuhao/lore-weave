@@ -4,11 +4,20 @@ Merges a glossary entity into Neo4j as a high-confidence :Entity node.
 User-curated glossary entities bypass quarantine (confidence=1.0,
 source_type='glossary'). Called when:
   - A glossary.entity_updated event arrives (future K14 event pipeline)
-  - Manual sync is triggered via an internal endpoint
+  - Manual sync is triggered via an internal endpoint (C12c-a)
   - Startup reconciler detects drift (K11.10)
 
-The event subscriber wiring (K14) is deferred — this module provides
-the sync logic as a callable function.
+C12c-a (first production caller): activated via worker-ai's
+`scope='glossary_sync'` job branch + the tail of `scope='all'`.
+
+MERGE key is `(user_id, glossary_entity_id)` — glossary entities are
+shared across a user's projects when the underlying book is shared.
+C12c-a /review-impl MED#2: `project_id` is now updated on ON MATCH
+(latest-sync wins) in addition to ON CREATE, so a user with two
+projects sharing a book sees project_id reflect whichever project
+last synced the entity rather than being stuck at the first-sync
+value. Downstream queries that filter on project_id now see the
+most recent owner.
 """
 
 from __future__ import annotations
@@ -81,6 +90,7 @@ async def sync_glossary_entity_to_neo4j(
           e.aliases = $aliases,
           e.short_description = $short_description,
           e.confidence = 1.0,
+          e.project_id = $project_id,
           e.updated_at = datetime()
         RETURN e.glossary_entity_id AS id, e.created_at = e.updated_at AS created
         """,

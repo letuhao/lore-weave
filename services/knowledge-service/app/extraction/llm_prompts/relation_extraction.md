@@ -41,13 +41,37 @@ Return a single JSON object and nothing else.
 
 ## Rules
 
-1. **Both endpoints required.** Drop relations where either subject
-   or object is unnamed, pronoun-only, or merely implied.
+1. **Both endpoints required — OMIT, do not null.** Drop relations
+   where either subject or object is unnamed, pronoun-only, or
+   merely implied. **Do NOT emit `"object": null` or `"subject": null`.**
+   **Do NOT emit empty strings.** If you cannot identify a specific
+   named entity for either endpoint, do not include the relation in
+   the output at all. Intransitive verbs ("Tấm cries", "the monkey
+   bows") have no object — skip them entirely.
 2. **Predicate canonicalization.** Use snake_case verb phrases.
-   Prefer the smallest set of predicates that still captures meaning:
-   `knows`, `trusts`, `works_for`, `lives_in`, `owns`, `married_to`,
-   `child_of`, `member_of`, `enemy_of`, `located_in`. Invent new
-   predicates only when none of the above fit.
+   Prefer predicates from this set, organized by category:
+
+   - **Kinship (always kid→parent direction)**: `child_of`,
+     `stepchild_of`, `sibling_of`, `stepsibling_of`, `married_to`.
+     Write `(Mary, child_of, John)`, NOT `(John, parent_of, Mary)`.
+     For step-relationships, the stepchild is the subject.
+   - **Mentorship**: `mentor_of`, `disciple_of`, `instructs`.
+     Direction: `(disciple, disciple_of, master)` and the inverse
+     `(master, mentor_of, disciple)`.
+   - **Authority/affiliation**: `commands`, `serves`, `imprisoned_by`,
+     `works_for`, `member_of`. `imprisoned_by` is passive — the
+     prisoner is the subject: `(prisoner, imprisoned_by, jailer)`.
+   - **Spatial**: `located_in`, `located_on`, `lives_in`, `lives_with`,
+     `resides_at`, `sits_by`.
+   - **Action/plot**: `helps`, `follows`, `courts`, `rents`, `owns`,
+     `born_from`.
+   - **Social/state**: `knows`, `trusts`, `enemy_of`.
+
+   Invent new predicates only when none of the above fit.
+
+   **Skip pure intent or wish predicates** — only emit relations
+   that the text states as fact. "Mrs. Bennet wants her daughters
+   to marry Bingley" is intent, not a relation worth extracting.
 3. **Polarity captures negation.** "Alice does not trust Bob" →
    polarity `negate`. "Alice trusts Bob" → polarity `affirm`.
 4. **Modality captures evidentiality.**

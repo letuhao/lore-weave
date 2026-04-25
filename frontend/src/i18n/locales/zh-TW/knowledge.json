@@ -531,8 +531,9 @@
         "label": "範圍",
         "chapters": "書籍章節",
         "chat": "聊天記錄",
+        "glossary_sync": "詞彙表同步",
         "all": "全部",
-        "noBookHint": "此專案未連結書籍 — 章節範圍已隱藏。"
+        "noBookHint": "此專案未連結書籍 — 章節範圍與詞彙表同步範圍已隱藏。"
       },
       "chapterRange": {
         "label": "章節範圍(選填)",

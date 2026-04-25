@@ -68,11 +68,12 @@ def _event(
     participant_ids: list[str | None] | None = None,
     confidence: float = 0.9,
     summary: str = "Something happened.",
+    event_date: str | None = None,
 ) -> LLMEventCandidate:
     return LLMEventCandidate(
         name=name, kind="action", participants=participants,
         participant_ids=participant_ids or [f"eid-{p.lower()}" for p in participants],
-        location=None, time_cue=None, summary=summary,
+        location=None, time_cue=None, event_date=event_date, summary=summary,
         confidence=confidence, event_id=f"evid-{name.lower()}",
     )
 
@@ -292,9 +293,40 @@ async def test_events_merged_with_evidence(
     assert result.evidence_edges == 1
     # Intentional drop: ``location`` / ``time_cue`` are not forwarded to
     # merge_event (K11.7 has no such params; tracked for K18+).
+    # C18: ``event_date`` IS forwarded — verify the kwarg threading
+    # below.
     kwargs = mock_merge_event.call_args.kwargs
     assert "location" not in kwargs
     assert "time_cue" not in kwargs
+    # event_date defaulted to None in this fixture; the kwarg IS
+    # passed to merge_event (None just means "no date for this event").
+    assert "event_date_iso" in kwargs
+    assert kwargs["event_date_iso"] is None
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_event_date_threaded_to_merge_event(
+    mock_upsert_source, mock_merge_event, mock_evidence,
+):
+    """C18: when LLMEventCandidate.event_date is non-null, the value
+    is threaded as event_date_iso to merge_event() so the structured
+    date lands on the :Event node."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge_event.return_value = _make_event_result("evid-dated")
+    mock_evidence.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1",
+        job_id=JOB_ID,
+        events=[_event("Battle of Iron Gate", ["Kai"], event_date="1880-06")],
+    )
+    kwargs = mock_merge_event.call_args.kwargs
+    assert kwargs["event_date_iso"] == "1880-06"
 
 
 @pytest.mark.asyncio

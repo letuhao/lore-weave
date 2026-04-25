@@ -22,9 +22,12 @@ from __future__ import annotations
 import logging
 from typing import Iterable, Mapping
 
+from uuid import UUID
+
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
-from app.db.neo4j_repos.entities import Entity, merge_entity
+from app.db.neo4j_repos.entities import Entity, merge_entity, merge_entity_at_id
+from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.extraction.anchor_loader import Anchor
 from app.metrics import (
     anchor_resolver_hits_total,
@@ -132,6 +135,7 @@ async def resolve_or_merge_entity(
     kind: str,
     source_type: str,
     confidence: float = 0.0,
+    alias_map_repo: EntityAliasMapRepo | None = None,
 ) -> Entity:
     """Anchor-aware wrapper around `merge_entity`.
 
@@ -142,6 +146,21 @@ async def resolve_or_merge_entity(
     lightweight Entity is sufficient.
 
     On miss, falls through to `merge_entity` (existing behavior).
+
+    C17 alias-map redirect (D-K19d-γb-03 closer): between glossary
+    anchor lookup and the SHA-hash MERGE, consult the post-merge
+    alias-map. If a previous user merge registered ``name`` as an
+    alias of an existing entity, MERGE on that entity's id instead of
+    re-deriving the SHA hash (which would resurrect the merged-away
+    source). Gated on ``alias_map_repo is not None`` for back-compat
+    with extraction call sites that haven't been wired yet — those
+    fall through to the original SHA-hash path.
+
+    Stale-row fall-through: if the alias-map row points at an entity
+    that has been deleted from Neo4j, ``merge_entity_at_id`` returns
+    None; we log a WARNING and fall through to ``merge_entity``. The
+    fall-through resurrects the alias as a fresh node — same as
+    pre-C17 behavior, but ops gets a clear log line.
     """
     lookup_kind = normalize_kind_for_anchor_lookup(kind)
     anchor = index.get((_fold(name), lookup_kind))
@@ -165,6 +184,38 @@ async def resolve_or_merge_entity(
     # but the extraction is still working as intended.
     if index:
         anchor_resolver_misses_total.labels(kind=lookup_kind).inc()
+
+    # C17 alias-map redirect.
+    if alias_map_repo is not None:
+        canonical_alias = canonicalize_entity_name(name)
+        if canonical_alias:
+            project_scope = project_id or "global"
+            target_id = await alias_map_repo.lookup(
+                UUID(user_id), project_scope, kind, canonical_alias,
+            )
+            if target_id is not None:
+                redirected = await merge_entity_at_id(
+                    session,
+                    user_id=user_id,
+                    id=target_id,
+                    project_id=project_id,
+                    name=name,
+                    kind=kind,
+                    source_type=source_type,
+                    confidence=confidence,
+                )
+                if redirected is not None:
+                    return redirected
+                # Stale row — target was deleted. Log + fall through
+                # to SHA hash. Ops can find these via the WARNING
+                # filter on this exact message.
+                logger.warning(
+                    "C17 alias_map points to missing entity user=%s "
+                    "kind=%s alias=%s target=%s — falling through "
+                    "to SHA-hash MERGE",
+                    user_id, kind, canonical_alias, target_id,
+                )
+
     return await merge_entity(
         session,
         user_id=user_id,

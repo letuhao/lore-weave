@@ -373,6 +373,26 @@ async def start_extraction_job(
             detail="project not found",
         )
 
+    # 1.5. C12c-a /review-impl MED#1 — guard scope='glossary_sync' (or
+    # scope='all' explicitly expecting glossary) against projects
+    # without a linked book. The estimate endpoint at line 230 already
+    # skips glossary counting when book_id is null; the start endpoint
+    # must match or it creates a no-op job the worker silently
+    # completes. Only glossary_sync hard-requires a book — scope='all'
+    # still works for chapters+chat without one (the glossary tail is
+    # the only part that needs book_id, and the worker guards that).
+    if body.scope == "glossary_sync" and project.book_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "glossary_sync_requires_book",
+                "message": (
+                    "scope='glossary_sync' requires a project with a "
+                    "linked book; create or attach a book first"
+                ),
+            },
+        )
+
     # 2. Fast-path check for active job (avoids transaction overhead).
     # Uses list_active which already filters status IN ('pending','running','paused').
     active_jobs = await jobs_repo.list_active(user_id)

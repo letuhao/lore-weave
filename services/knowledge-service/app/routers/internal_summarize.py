@@ -38,7 +38,12 @@ from app.clients.provider_client import ProviderClient
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.summaries import SummariesRepo
-from app.deps import get_provider_client, get_summaries_repo
+from app.db.repositories.summary_spending import SummarySpendingRepo
+from app.deps import (
+    get_provider_client,
+    get_summaries_repo,
+    get_summary_spending_repo,
+)
 from app.jobs.regenerate_summaries import (
     RegenTrigger,
     RegenerationResult,
@@ -84,6 +89,9 @@ async def summarize(
     req: SummarizeRequest,
     provider_client: ProviderClient = Depends(get_provider_client),
     summaries_repo: SummariesRepo = Depends(get_summaries_repo),
+    summary_spending_repo: SummarySpendingRepo = Depends(
+        get_summary_spending_repo
+    ),
 ) -> RegenerationResult:
     """K20.4 — regenerate a summary for the given scope.
 
@@ -111,6 +119,7 @@ async def summarize(
             session_factory=neo4j_session,
             provider_client=provider_client,
             summaries_repo=summaries_repo,
+            summary_spending_repo=summary_spending_repo,
             trigger=req.trigger,
         )
     assert req.scope_id is not None  # validator ensures this
@@ -123,5 +132,6 @@ async def summarize(
         session_factory=neo4j_session,
         provider_client=provider_client,
         summaries_repo=summaries_repo,
+        summary_spending_repo=summary_spending_repo,
         trigger=req.trigger,
     )

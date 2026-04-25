@@ -35,7 +35,12 @@ from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
-from app.deps import get_provider_client, get_summaries_repo
+from app.db.repositories.summary_spending import SummarySpendingRepo
+from app.deps import (
+    get_provider_client,
+    get_summaries_repo,
+    get_summary_spending_repo,
+)
 from app.jobs.regenerate_summaries import (
     RegenerationResult,
     regenerate_global_summary,
@@ -538,6 +543,7 @@ async def regenerate_global_bio(
     user_id: UUID = Depends(get_current_user),
     provider_client: ProviderClient = Depends(get_provider_client),
     repo: SummariesRepo = Depends(get_summaries_repo),
+    spending_repo: SummarySpendingRepo = Depends(get_summary_spending_repo),
     cooldown: aioredis.Redis | None = Depends(get_cooldown_client),
 ) -> RegenerateResponse:
     """K20α — regenerate the caller's L0 global bio from raw chat turns.
@@ -545,6 +551,10 @@ async def regenerate_global_bio(
     JWT-scoped — the body never carries user_id. Response mapping:
     see `_regen_http_envelope`. C2 cooldown: 60s SETNX guard armed at
     check time; subsequent calls within the window → 429.
+
+    C16-BUILD: ``spending_repo`` enables the D-K20α-01 budget pre-check
+    + post-success spend recorder. Without it, manual regen would
+    bypass the cap entirely.
     """
     await _check_regen_cooldown(cooldown, user_id, "global", None)
     try:
@@ -556,6 +566,7 @@ async def regenerate_global_bio(
             session_factory=neo4j_session,
             provider_client=provider_client,
             summaries_repo=repo,
+            summary_spending_repo=spending_repo,
             trigger="manual",
         )
     except ProviderError as exc:
@@ -591,6 +602,7 @@ async def regenerate_project_bio(
     user_id: UUID = Depends(get_current_user),
     provider_client: ProviderClient = Depends(get_provider_client),
     repo: SummariesRepo = Depends(get_summaries_repo),
+    spending_repo: SummarySpendingRepo = Depends(get_summary_spending_repo),
     cooldown: aioredis.Redis | None = Depends(get_cooldown_client),
 ) -> RegenerateResponse:
     """K20α — regenerate an L1 project summary.
@@ -600,6 +612,9 @@ async def regenerate_project_bio(
     `no_op_guardrail` (422) rather than leaking existence as 404, per
     KSA §6.4 anti-leak rules. C2 cooldown: keyed on project_id so a
     user on cooldown for one project can still regen a sibling.
+
+    C16-BUILD: ``spending_repo`` ungates the budget pre-check; project
+    spend itself records via the existing K16.11 path.
     """
     await _check_regen_cooldown(cooldown, user_id, "project", project_id)
     try:
@@ -612,6 +627,7 @@ async def regenerate_project_bio(
             session_factory=neo4j_session,
             provider_client=provider_client,
             summaries_repo=repo,
+            summary_spending_repo=spending_repo,
             trigger="manual",
         )
     except ProviderError as exc:

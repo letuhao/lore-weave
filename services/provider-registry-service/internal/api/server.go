@@ -325,11 +325,11 @@ WHERE platform_model_id=$1 AND status='active'
 		return
 	}
 
-	// providerKind is resolved but unused by the generic proxy path.
-	// Provider-specific rewriting (e.g. Anthropic `system` handling,
-	// Ollama `options` mapping) would read this field. Kept in scope
-	// so a future edit can use it without touching the SELECT.
-	_ = providerKind
+	// providerKind drives per-provider request-body rewrites in the
+	// JSON path below (see normalizeResponseFormatForKind for the
+	// LM Studio response_format quirk discovered during C19 eval).
+	// Other potential per-kind rewrites (Anthropic `system` handling,
+	// Ollama `options` mapping) would read this field too.
 
 	// K17.2a — defensive guard. provider_model_name is NOT NULL in the
 	// schema and every live adapter populates it, but a bad migration
@@ -435,6 +435,9 @@ WHERE platform_model_id=$1 AND status='active'
 				"request body is not valid JSON")
 			return
 		}
+		// Per-kind rewrites applied to the parsed map BEFORE the final
+		// marshal so all rewrites end up in a single re-marshaled body.
+		normalizeResponseFormatForKind(parsed, providerKind)
 		rewritten, err := rewriteJSONBodyModel(parsed, providerModelName)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "PROXY_REMARSHAL_FAILED",
@@ -507,6 +510,47 @@ WHERE platform_model_id=$1 AND status='active'
 func rewriteJSONBodyModel(parsed map[string]any, providerModelName string) ([]byte, error) {
 	parsed["model"] = providerModelName
 	return json.Marshal(parsed)
+}
+
+// normalizeResponseFormatForKind mutates parsed["response_format"] in place
+// to work around per-provider quirks in the OpenAI-compat shim layer.
+// Discovered during C19 quality eval: LM Studio (llama.cpp backend) rejects
+// the OpenAI-standard {"type":"json_object"} with HTTP 400 — it only accepts
+// "json_schema" (with explicit JSON schema spec) or "text" (no constraint
+// at API level). Knowledge-service extractors universally send "json_object"
+// because every other provider in the registry accepts it.
+//
+// Rewrite for lm_studio kind: {"type":"json_object"} → {"type":"text"}.
+// "text" loosens API-level JSON validation but preserves intent — the
+// extractor prompts already include explicit "Return only the JSON object"
+// instructions, so the model still produces JSON. Pure-prompt JSON mode
+// matches what OpenAI's json_object provides at the LLM behaviour layer
+// even when the API-level validation differs.
+//
+// Why not json_schema: would require an explicit schema spec which the
+// extractor doesn't have at the call site (each call uses a different
+// shape). Why not drop the field entirely: keeping it makes intent
+// explicit in the wire trace and is extensible to future LM Studio
+// versions that may tighten validation.
+//
+// Other provider kinds (openai, anthropic, ollama, custom) are NOT
+// touched: openai accepts json_object natively; anthropic doesn't use
+// response_format at all (different field structure); ollama silently
+// ignores it. Idempotent — repeated calls or unknown response_format
+// values are no-ops.
+func normalizeResponseFormatForKind(parsed map[string]any, kind string) {
+	if kind != "lm_studio" {
+		return
+	}
+	rf, ok := parsed["response_format"].(map[string]any)
+	if !ok {
+		return
+	}
+	if rfType, _ := rf["type"].(string); rfType == "json_object" {
+		// Replace with a fresh map so any extra keys
+		// (json_schema spec, etc.) don't leak through.
+		parsed["response_format"] = map[string]any{"type": "text"}
+	}
 }
 
 type errorBody struct {

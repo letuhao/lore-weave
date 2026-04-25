@@ -484,3 +484,98 @@ def test_timeline_all_three_filters_combined(mock_get_entity, mock_list):
     assert call["before_chronological"] == 100
     assert call["participant_candidates"] is not None
     assert len(call["participant_candidates"]) >= 2  # name + canonical_name at minimum
+
+
+# ── C18 event_date_iso filter ──────────────────────────────────────
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_event_date_from_filter_forwarded(mock_list):
+    """C18: event_date_from accepts truncated ISO and forwards to repo."""
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?event_date_from=1880")
+    assert resp.status_code == 200, resp.json()
+    call = mock_list.await_args.kwargs
+    assert call["event_date_from"] == "1880"
+    assert call["event_date_to"] is None
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_event_date_to_filter_forwarded(mock_list):
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?event_date_to=1882-12-31")
+    assert resp.status_code == 200
+    call = mock_list.await_args.kwargs
+    assert call["event_date_from"] is None
+    assert call["event_date_to"] == "1882-12-31"
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_both_event_date_filters_compose(mock_list):
+    """C18: event_date_from AND event_date_to together form a closed
+    range; both forwarded to the repo."""
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get(
+        "/v1/knowledge/timeline?event_date_from=1880&event_date_to=1882"
+    )
+    assert resp.status_code == 200
+    call = mock_list.await_args.kwargs
+    assert call["event_date_from"] == "1880"
+    assert call["event_date_to"] == "1882"
+
+
+def test_timeline_event_date_reversed_range_returns_422():
+    """C18: from > to → 422 with from/to in the detail. Strict '>'
+    not '>=' (inclusive bounds, from == to is valid)."""
+    client = _make_client()
+    resp = client.get(
+        "/v1/knowledge/timeline?event_date_from=1882&event_date_to=1880"
+    )
+    assert resp.status_code == 422
+    assert "1882" in resp.json()["detail"]
+    assert "1880" in resp.json()["detail"]
+
+
+def test_timeline_event_date_equal_bounds_accepted():
+    """C18: from == to is VALID (selects events with that exact
+    truncated date) — strict '>' check, not '>='."""
+    with patch(
+        "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock,
+    ) as mock_list, patch(
+        "app.routers.public.timeline.neo4j_session", new=lambda: _noop_session(),
+    ):
+        mock_list.return_value = ([], 0)
+        client = _make_client()
+        resp = client.get(
+            "/v1/knowledge/timeline?event_date_from=1880&event_date_to=1880"
+        )
+        assert resp.status_code == 200
+        call = mock_list.await_args.kwargs
+        assert call["event_date_from"] == "1880"
+        assert call["event_date_to"] == "1880"
+
+
+def test_timeline_event_date_invalid_month_pattern_rejected():
+    """C18 REVIEW-DESIGN catch: tightened regex catches month=13."""
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?event_date_from=1880-13")
+    assert resp.status_code == 422
+
+
+def test_timeline_event_date_invalid_day_pattern_rejected():
+    """Day=32 caught by the regex (structural validation)."""
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?event_date_from=1880-06-32")
+    assert resp.status_code == 422

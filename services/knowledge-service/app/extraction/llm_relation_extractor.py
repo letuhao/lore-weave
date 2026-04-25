@@ -58,11 +58,24 @@ Modality = Literal["asserted", "reported", "hypothetical"]
 
 
 class _LLMRelation(BaseModel):
-    """Single relation from the LLM response — raw, pre-resolution."""
+    """Single relation from the LLM response — raw, pre-resolution.
 
-    subject: str
+    C-LM-STUDIO-FIX scope expansion: ``subject``/``object_`` accept
+    ``str | None`` even though the prompt explicitly tells the LLM to
+    omit relations with missing endpoints. Discovered during C19 quality
+    eval: every local LLM tested (qwen2.5-coder-14b, phi-4, gemma-3-27b,
+    qwen3-coder-30b) emitted ``null`` objects for intransitive
+    narrative verbs ("Tấm khóc" / "石猴 拜了四方") instead of dropping
+    the relation as instructed. Cloud LLMs may behave differently but
+    the schema must tolerate the broader observed behavior so a single
+    null in 22 relations doesn't bloc the entire extraction. The
+    ``_postprocess`` step filters out null/empty endpoints downstream
+    (see line near ``if not subject_name or not object_name``).
+    """
+
+    subject: str | None = None
     predicate: str
-    object_: str = Field(alias="object")
+    object_: str | None = Field(default=None, alias="object")
     polarity: Polarity = "affirm"
     modality: Modality = "asserted"
     confidence: float = Field(ge=0.0, le=1.0)
@@ -255,8 +268,12 @@ def _postprocess(
         if not predicate:
             continue
 
-        subject_name = rel.subject.strip()
-        object_name = rel.object_.strip()
+        # C-LM-STUDIO-FIX: rel.subject / rel.object_ can be None when
+        # the LLM emits null instead of dropping a partial relation
+        # (see _LLMRelation docstring). Coerce to '' so the existing
+        # filter handles both cases uniformly.
+        subject_name = (rel.subject or "").strip()
+        object_name = (rel.object_ or "").strip()
         if not subject_name or not object_name:
             continue
 

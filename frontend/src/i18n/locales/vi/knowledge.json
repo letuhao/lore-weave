@@ -531,8 +531,9 @@
         "label": "Phạm vi",
         "chapters": "Chương sách",
         "chat": "Lịch sử trò chuyện",
+        "glossary_sync": "Đồng bộ bảng từ vựng",
         "all": "Tất cả",
-        "noBookHint": "Dự án này chưa liên kết với sách — phạm vi chương bị ẩn."
+        "noBookHint": "Dự án này chưa liên kết với sách — các phạm vi dựa trên sách (chương, đồng bộ bảng từ vựng) bị ẩn."
       },
       "chapterRange": {
         "label": "Khoảng chương (tuỳ chọn)",

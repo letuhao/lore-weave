@@ -352,3 +352,245 @@ async def test_resolve_does_not_bump_miss_counter_when_index_empty(monkeypatch):
     )
     after = anchor_resolver_misses_total.labels(kind="character")._value.get()
     assert after == before  # NOT incremented
+
+
+# ── C17 alias-map redirect tests ───────────────────────────────────
+# C17 tests construct a real UUID for user_id because the resolver
+# calls ``UUID(user_id)`` to parameterize the alias-map lookup. The
+# pre-C17 ``USER_ID = "user-1"`` works for non-alias-map paths because
+# merge_entity passes user_id through as-is to Cypher.
+_C17_USER_ID = str(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_resolver_alias_map_hit_redirects_to_target(monkeypatch):
+    """C17: when alias_map_repo.lookup returns a target id, the
+    resolver calls merge_entity_at_id (not the SHA-hash merge_entity).
+    Ensures post-merge re-extraction lands on target rather than
+    resurrecting source."""
+    target_id = "tgt-id-32hex"
+    redirected_entity = Entity(
+        id=target_id,
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        name="Captain Brave",
+        canonical_name="brave",
+        kind="person",
+        aliases=["Captain Brave", "Alice"],
+        glossary_entity_id=None,
+        anchor_score=0.0,
+    )
+    alias_repo = MagicMock()
+    alias_repo.lookup = AsyncMock(return_value=target_id)
+
+    merge_at_id_mock = AsyncMock(return_value=redirected_entity)
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity_at_id",
+        merge_at_id_mock,
+    )
+    merge_mock = AsyncMock()
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity",
+        merge_mock,
+    )
+
+    result = await resolve_or_merge_entity(
+        session=MagicMock(),
+        index={},
+        user_id=_C17_USER_ID,
+        project_id=PROJECT_ID,
+        name="Alice",
+        kind="person",
+        source_type="chapter",
+        alias_map_repo=alias_repo,
+    )
+
+    assert result.id == target_id
+    merge_at_id_mock.assert_awaited_once()
+    # SHA-hash path NOT taken.
+    merge_mock.assert_not_awaited()
+    # Repo lookup keyed on canonicalize_entity_name("Alice") == "alice".
+    lookup_kwargs = alias_repo.lookup.await_args
+    # positional: (user_id, project_scope, kind, canonical_alias)
+    assert lookup_kwargs.args[1] == PROJECT_ID  # project_scope = PROJECT_ID
+    assert lookup_kwargs.args[2] == "person"
+    assert lookup_kwargs.args[3] == "alice"
+
+
+@pytest.mark.asyncio
+async def test_resolver_alias_map_miss_falls_through_to_sha_hash(
+    monkeypatch,
+):
+    """C17: lookup miss → standard SHA-hash MERGE path. Pre-C17
+    behavior preserved when no merge has registered the alias."""
+    fresh_entity = Entity(
+        id="fresh-sha-id",
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        name="Brand New",
+        canonical_name="brand new",
+        kind="person",
+        aliases=["Brand New"],
+        glossary_entity_id=None,
+        anchor_score=0.0,
+    )
+    alias_repo = MagicMock()
+    alias_repo.lookup = AsyncMock(return_value=None)
+
+    merge_at_id_mock = AsyncMock()
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity_at_id",
+        merge_at_id_mock,
+    )
+    merge_mock = AsyncMock(return_value=fresh_entity)
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity",
+        merge_mock,
+    )
+
+    result = await resolve_or_merge_entity(
+        session=MagicMock(),
+        index={},
+        user_id=_C17_USER_ID,
+        project_id=PROJECT_ID,
+        name="Brand New",
+        kind="person",
+        source_type="chapter",
+        alias_map_repo=alias_repo,
+    )
+
+    assert result is fresh_entity
+    merge_mock.assert_awaited_once()
+    merge_at_id_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resolver_stale_alias_row_logs_warning_and_falls_through(
+    monkeypatch, caplog,
+):
+    """C17 REVIEW-DESIGN catch: alias_map points at deleted entity →
+    merge_entity_at_id returns None → resolver logs WARNING + falls
+    through to SHA-hash MERGE so extraction still produces an entity.
+    Ops can find these via the WARNING log filter."""
+    import logging
+
+    fresh_entity = Entity(
+        id="fresh-sha-id",
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        name="Alice",
+        canonical_name="alice",
+        kind="person",
+        aliases=["Alice"],
+        glossary_entity_id=None,
+        anchor_score=0.0,
+    )
+    alias_repo = MagicMock()
+    alias_repo.lookup = AsyncMock(return_value="stale-target-id")
+
+    # Stale: at_id helper returns None (target not found).
+    merge_at_id_mock = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity_at_id",
+        merge_at_id_mock,
+    )
+    merge_mock = AsyncMock(return_value=fresh_entity)
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity",
+        merge_mock,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.extraction.entity_resolver"):
+        result = await resolve_or_merge_entity(
+            session=MagicMock(),
+            index={},
+            user_id=_C17_USER_ID,
+            project_id=PROJECT_ID,
+            name="Alice",
+            kind="person",
+            source_type="chapter",
+            alias_map_repo=alias_repo,
+        )
+
+    assert result is fresh_entity
+    merge_at_id_mock.assert_awaited_once()
+    merge_mock.assert_awaited_once()  # fall-through
+    # WARNING log emitted with the alias-map message.
+    stale_logs = [
+        r for r in caplog.records
+        if "C17 alias_map points to missing entity" in r.getMessage()
+    ]
+    assert len(stale_logs) == 1
+
+
+@pytest.mark.asyncio
+async def test_resolver_none_alias_map_repo_keeps_pre_c17_behavior(
+    monkeypatch,
+):
+    """C17 back-compat: alias_map_repo=None (default for ~6 test
+    sites that haven't been wired) skips the lookup entirely and
+    behaves exactly as pre-C17."""
+    fresh_entity = Entity(
+        id="fresh-sha-id",
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        name="Alice",
+        canonical_name="alice",
+        kind="person",
+        aliases=["Alice"],
+        glossary_entity_id=None,
+        anchor_score=0.0,
+    )
+    merge_mock = AsyncMock(return_value=fresh_entity)
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity",
+        merge_mock,
+    )
+
+    result = await resolve_or_merge_entity(
+        session=MagicMock(),
+        index={},
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        name="Alice",
+        kind="person",
+        source_type="chapter",
+        # alias_map_repo deliberately not passed.
+    )
+
+    assert result is fresh_entity
+    merge_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resolver_global_scope_uses_global_string_in_lookup(
+    monkeypatch,
+):
+    """C17 scope semantics: project_id=None → project_scope='global'
+    in the lookup key (mirrors entity_canonical_id's shape)."""
+    target_id = "tgt-global"
+    redirected = Entity(
+        id=target_id, user_id=USER_ID, project_id=None,
+        name="Global Alice", canonical_name="global alice", kind="person",
+        aliases=["Global Alice"], glossary_entity_id=None, anchor_score=0.0,
+    )
+    alias_repo = MagicMock()
+    alias_repo.lookup = AsyncMock(return_value=target_id)
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity_at_id",
+        AsyncMock(return_value=redirected),
+    )
+
+    await resolve_or_merge_entity(
+        session=MagicMock(),
+        index={},
+        user_id=_C17_USER_ID,
+        project_id=None,
+        name="Alice",
+        kind="person",
+        source_type="chapter",
+        alias_map_repo=alias_repo,
+    )
+
+    # project_scope arg = literal 'global' (not None, not empty).
+    assert alias_repo.lookup.await_args.args[1] == "global"

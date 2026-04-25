@@ -29,15 +29,16 @@ entities:
     aliases: []
 
 relations:
+  # C-PRED-ALIGN: renamed is_eldest_sister_of → sibling_of (canonical
+  # kinship vocab; "eldest" qualifier was over-specific and not
+  # extractable from text without world knowledge).
   - subject: Meg
-    predicate: is_eldest_sister_of
+    predicate: sibling_of
     object: Jo
-  - subject: Jo
-    predicate: wants_to_fight_with
-    object: Father
-  - subject: Beth
-    predicate: is_peacemaker_among
-    object: Jo
+  # C-PRED-ALIGN: dropped (Jo, wants_to_fight_with, Father) and
+  # (Beth, is_peacemaker_among, Jo) — both are intent/role predicates,
+  # not factual relations stated in the text. LLMs correctly do not
+  # emit such predicates per updated prompt rule.
 
 events:
   - summary: "The four March sisters discuss not having Christmas presents because their father is away at war"

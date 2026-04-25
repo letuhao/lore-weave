@@ -1,0 +1,110 @@
+# C19 / K17.10-v2 — golden fixture: Tấm Cám (Vietnamese folk tale, opening arc)
+# Source: Vietnamese oral folk tradition (no individual author). The retelling
+# above is an original paraphrase composed for test-fixture use — standard
+# story beats present in every published version (parallels Cinderella variants
+# across cultures: ATU 510A in the Aarne-Thompson-Uther index).
+# v2 annotation (illustrative) — re-verify before pinning as hard gate.
+
+source:
+  title: "Tấm Cám"
+  author: "Truyện cổ tích Việt Nam (oral folk tradition)"
+  chapter: 1
+  license: "Public domain (Vietnamese folklore, no individual author; retelling original)"
+
+# Tests honorific-strip + alias-merge under Vietnamese kinship terms.
+# canonicalize_entity_name strips trailing/leading honorifics from a fixed
+# tuple — Vietnamese kinship terms ("dì", "mẹ", "cô") are NOT in the default
+# HONORIFICS tuple, so "dì ghẻ" canonicalizes intact (different from English
+# "Master Kai" → "kai"). The fixture exercises this Vietnamese-specific path.
+entities:
+  # Review-impl F17: removed synthetic aliases "chị Tấm" / "em Cám" —
+  # the text uses "Người chị" + "Người em" descriptively but never
+  # combines them with the proper names. Bare proper nouns only.
+  - name: Tấm
+    kind: person
+    aliases: []
+  - name: Cám
+    kind: person
+    aliases: []
+  - name: dì ghẻ
+    kind: person
+    aliases: []
+  - name: Bụt
+    kind: person
+    aliases: []
+  - name: vua
+    kind: person
+    aliases: []
+  # Review-impl F18: cá bống is a sentient character (story arc gives it
+  # agency: it's befriended by Tấm, then killed; its bones produce magical
+  # garments). Better classified as person/animate than object.
+  - name: cá bống
+    kind: person
+    aliases: ["bống"]
+  - name: yếm đỏ
+    kind: artifact
+    aliases: []
+
+relations:
+  # Family structure anchors the antagonism.
+  # C-PRED-ALIGN: renamed stepsister_of → stepsibling_of (canonical
+  # kinship vocab, gender-neutral).
+  - subject: Tấm
+    predicate: stepsibling_of
+    object: Cám
+  # C-PRED-ALIGN: flipped + renamed mother_of → child_of and
+  # stepmother_of → stepchild_of (kid→parent direction).
+  - subject: Cám
+    predicate: child_of
+    object: dì ghẻ
+  - subject: Tấm
+    predicate: stepchild_of
+    object: dì ghẻ
+  # Helper-supernatural relation.
+  - subject: Bụt
+    predicate: helps
+    object: Tấm
+  # Outcome: vua marries Tấm.
+  # C-PRED-ALIGN: renamed marries → married_to (canonical).
+  - subject: vua
+    predicate: married_to
+    object: Tấm
+
+events:
+  # Five-event narrative arc:
+  - summary: "Cám lừa Tấm xuống tắm rồi cướp giỏ tép của Tấm"
+    participants: [Tấm, Cám]
+  - summary: "Bụt cho Tấm con cá bống làm bạn"
+    participants: [Bụt, Tấm, cá bống]
+  - summary: "Dì ghẻ và Cám lừa Tấm đi chăn trâu rồi giết cá bống"
+    participants: [dì ghẻ, Cám, Tấm, cá bống]
+  - summary: "Bụt sai đàn chim sẻ xuống giúp Tấm nhặt thóc"
+    participants: [Bụt, Tấm]
+  - summary: "Vua ướm giày tìm chủ nhân và cưới Tấm về làm hoàng hậu"
+    participants: [vua, Tấm]
+
+traps:
+  # Birth parents are dead before the story starts — referenced in
+  # backstory, not actors in the narrative.
+  - kind: entity
+    name: cha Tấm
+    reason: "Backstory reference — father died before the events; not an actor"
+  - kind: entity
+    name: mẹ ruột Tấm
+    reason: "Backstory reference — birth mother died before the events; not an actor"
+  # Generic flock — narrative agency belongs to Bụt, not the birds individually.
+  - kind: entity
+    name: đàn chim sẻ
+    reason: "Generic flock helping Tấm; agency belongs to Bụt who summoned them"
+  # Counterfactual / unrealized goal.
+  - kind: event
+    summary: "Cám bắt được nhiều tép hơn Tấm"
+    reason: "The opposite happens — Cám doesn't bother bắt tép, just steals from Tấm"
+  # Hyped-up titles that aren't real entities.
+  - kind: entity
+    name: hoàng hậu
+    reason: "Title bestowed on Tấm at the end; folds into Tấm's role, not a separate entity"
+  # The pond/well/giếng — important location but unnamed.
+  - kind: entity
+    name: giếng
+    reason: "Unnamed common-noun location ('the well'), not a proper-noun entity"

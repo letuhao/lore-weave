@@ -73,3 +73,37 @@ async def test_sync_uses_canonical_name():
 
     # canonicalize_entity_name strips "dr. " honorific
     assert result["canonical_name"] == "watson"
+
+
+@pytest.mark.asyncio
+async def test_on_match_cypher_updates_project_id():
+    """C12c-a /review-impl MED#2 — ON MATCH SET now includes
+    e.project_id so latest-sync wins. Before this fix, a user with
+    two projects sharing a book saw the first-synced project's id
+    baked into the node permanently. Source-scan regression lock:
+    greps the Cypher literal at test time to catch future refactors
+    that drop the project_id assignment from ON MATCH.
+    """
+    mock_result = AsyncMock()
+    mock_result.single = AsyncMock(return_value={"id": "g1", "created": False})
+    mock_session = AsyncMock()
+    mock_session.run = AsyncMock(return_value=mock_result)
+
+    await sync_glossary_entity_to_neo4j(
+        mock_session,
+        user_id=str(uuid4()),
+        project_id=str(uuid4()),
+        glossary_entity_id="g1",
+        name="Alice",
+        kind="character",
+    )
+
+    cypher = mock_session.run.call_args.args[0]
+    # Split on ON MATCH to isolate just that branch, then assert the
+    # project_id assignment is present. Catches drift where a refactor
+    # re-introduces the first-call-wins bug.
+    assert "ON MATCH SET" in cypher
+    on_match_block = cypher.split("ON MATCH SET", 1)[1].split("RETURN", 1)[0]
+    assert "e.project_id = $project_id" in on_match_block, (
+        f"ON MATCH branch missing project_id update:\n{on_match_block}"
+    )

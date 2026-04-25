@@ -176,6 +176,7 @@ async def lifespan(app: FastAPI):
         try:
             from app.db.neo4j import neo4j_session
             from app.db.repositories.summaries import SummariesRepo
+            from app.db.repositories.summary_spending import SummarySpendingRepo
             from app.jobs.summary_regen_scheduler import (
                 run_global_regen_loop,
                 run_project_regen_loop,
@@ -184,6 +185,12 @@ async def lifespan(app: FastAPI):
             def _summary_session_factory():
                 return neo4j_session()
 
+            # C16-BUILD — single SummarySpendingRepo instance shared
+            # across both regen loops. Wires D-K20α-01 budget pre-check
+            # + global spend recorder. Project loop also uses it to
+            # ungate K16.11 record_spending in the project regen path.
+            _summary_spending_repo = SummarySpendingRepo(get_knowledge_pool())
+
             # K20.3 α — project-scope (L1) regen, daily cadence.
             summary_regen_task = asyncio.create_task(
                 run_project_regen_loop(
@@ -191,6 +198,7 @@ async def lifespan(app: FastAPI):
                     _summary_session_factory,
                     get_provider_client(),
                     SummariesRepo(get_knowledge_pool()),
+                    summary_spending_repo=_summary_spending_repo,
                 )
             )
             logger.info(
@@ -206,6 +214,7 @@ async def lifespan(app: FastAPI):
                     _summary_session_factory,
                     get_provider_client(),
                     SummariesRepo(get_knowledge_pool()),
+                    summary_spending_repo=_summary_spending_repo,
                 )
             )
             logger.info(
@@ -214,6 +223,58 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.warning(
                 "K20.3: summary regen loops failed to start (non-fatal)",
+                exc_info=True,
+            )
+
+    # C14a — reconcile-evidence-count + quarantine-cleanup schedulers.
+    # Both wrap existing per-user/global Neo4j functions (K11.9 + K15.10)
+    # in periodic sweeps. Gated on neo4j_uri same as summary regen
+    # loops (both need working Cypher sessions). Advisory-lock keys
+    # 20_310_004 (reconcile) + 20_310_005 (quarantine) distinct from
+    # 001-003 so all schedulers can run concurrently without blocking.
+    reconcile_sweep_task = None
+    quarantine_sweep_task = None
+    if settings.neo4j_uri:
+        try:
+            from app.db.neo4j import neo4j_session
+            from app.db.repositories.sweeper_state import SweeperStateRepo
+            from app.jobs.reconcile_evidence_count_scheduler import (
+                run_reconcile_loop,
+            )
+            from app.jobs.quarantine_cleanup_scheduler import (
+                run_quarantine_loop,
+            )
+
+            def _scheduler_session_factory():
+                return neo4j_session()
+
+            # C14b — pass the sweeper_state repo so reconciler's
+            # per-user cursor resumes mid-sweep on restart.
+            _sweeper_state_repo = SweeperStateRepo(get_knowledge_pool())
+
+            reconcile_sweep_task = asyncio.create_task(
+                run_reconcile_loop(
+                    get_knowledge_pool(),
+                    _scheduler_session_factory,
+                    sweeper_state_repo=_sweeper_state_repo,
+                )
+            )
+            logger.info(
+                "C14a: reconcile-evidence-count loop started as background task"
+            )
+
+            quarantine_sweep_task = asyncio.create_task(
+                run_quarantine_loop(
+                    get_knowledge_pool(),
+                    _scheduler_session_factory,
+                )
+            )
+            logger.info(
+                "C14a: quarantine-cleanup loop started as background task"
+            )
+        except Exception:
+            logger.warning(
+                "C14a: reconcile/quarantine loops failed to start (non-fatal)",
                 exc_info=True,
             )
 
@@ -319,6 +380,30 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.warning(
                     "C3: error stopping job_logs retention loop",
+                    exc_info=True,
+                )
+
+        # C14a: stop reconcile + quarantine sweepers.
+        if reconcile_sweep_task is not None:
+            reconcile_sweep_task.cancel()
+            try:
+                await reconcile_sweep_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "C14a: error stopping reconcile sweep loop",
+                    exc_info=True,
+                )
+        if quarantine_sweep_task is not None:
+            quarantine_sweep_task.cancel()
+            try:
+                await quarantine_sweep_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "C14a: error stopping quarantine sweep loop",
                     exc_info=True,
                 )
 

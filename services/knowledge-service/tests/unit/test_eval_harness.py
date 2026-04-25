@@ -493,3 +493,251 @@ def test_iter_chapter_fixtures_sorted(tmp_path: Path):
         (d / "expected.yaml").write_text("{}", encoding="utf-8")
     loaded = [f.name for f in iter_chapter_fixtures(tmp_path)]
     assert loaded == ["a_ch", "b_ch", "c_ch"]
+
+
+# ── C-EVAL-FIX-FORM regression coverage ─────────────────────────────
+
+
+def test_predicate_synonym_lives_at_matches_resides_at():
+    """Fix #3 — `lives_at` (LLM) and `resides_at` (fixture) must score TP."""
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="Holmes", kind="person"),
+            ExpectedEntity(name="Baker Street", kind="place"),
+        ],
+        relations=[
+            ExpectedRelation(
+                subject="Holmes", predicate="resides_at", object="Baker Street",
+            ),
+        ],
+    )
+    actual = ActualExtraction(
+        entities=[("Holmes", "person"), ("Baker Street", "place")],
+        relations=[("Holmes", "lives_at", "Baker Street", "affirm")],
+        events=[],
+    )
+    score = score_chapter(fixture, actual)
+    assert score.tp == 3  # 2 entities + 1 relation
+    assert score.fp == 0
+    assert score.fp_annotation_gap == 0
+
+
+def test_predicate_synonym_marries_matches_married_to():
+    """Fix #3 — `marries` (LLM verb form) and `married_to` (fixture state form) must score TP."""
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="A", kind="person"),
+            ExpectedEntity(name="B", kind="person"),
+        ],
+        relations=[
+            ExpectedRelation(subject="A", predicate="married_to", object="B"),
+        ],
+    )
+    actual = ActualExtraction(
+        entities=[("A", "person"), ("B", "person")],
+        relations=[("A", "marries", "B", "affirm")],
+        events=[],
+    )
+    score = score_chapter(fixture, actual)
+    assert score.tp == 3
+    assert score.fp == 0
+
+
+def test_event_participants_jaccard_tolerates_one_off():
+    """Fix #2 — Event with 2/3 participant overlap (Jaccard ~0.67) above default 0.6 threshold scores TP."""
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="A", kind="person"),
+            ExpectedEntity(name="B", kind="person"),
+            ExpectedEntity(name="C", kind="person"),
+        ],
+        events=[
+            ExpectedEvent(
+                summary="A and B and C have a long discussion about the situation",
+                participants=("A", "B", "C"),
+            ),
+        ],
+    )
+    actual = ActualExtraction(
+        entities=[("A", "person"), ("B", "person"), ("C", "person")],
+        relations=[],
+        events=[
+            (
+                "A and B have a long discussion about the situation",
+                ("A", "B"),
+            ),
+        ],
+    )
+    score = score_chapter(fixture, actual)
+    # 3 entities + 1 event TP. Without Fix #2 this would be FP+FN (strict equality).
+    assert score.tp == 4
+    assert score.fp == 0
+    assert score.fn == 0
+
+
+def test_event_participants_jaccard_rejects_disjoint_sets():
+    """Fix #2 — completely different participant sets must NOT match even if summary tokens overlap."""
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="A", kind="person"),
+            ExpectedEntity(name="X", kind="person"),
+        ],
+        events=[
+            ExpectedEvent(
+                summary="A discusses the weather one quiet afternoon",
+                participants=("A",),
+            ),
+        ],
+    )
+    actual = ActualExtraction(
+        entities=[("A", "person"), ("X", "person")],
+        relations=[],
+        events=[
+            ("X discusses the weather one quiet afternoon", ("X",)),
+        ],
+    )
+    score = score_chapter(fixture, actual)
+    # Different participants → Jaccard 0 → no event TP. Event is FP+FN.
+    assert score.fn >= 1
+    assert score.fp >= 1
+
+
+def test_relation_annotation_gap_classified_when_endpoints_in_fixture():
+    """Fix #4 — LLM-extracted relation with both endpoints + canonical predicate
+    + affirm polarity is classified as fp_annotation_gap, not fp.
+
+    Lenient precision excludes the gap; strict precision still includes it.
+    """
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="Beth", kind="person"),
+            ExpectedEntity(name="Jo", kind="person"),
+            ExpectedEntity(name="Meg", kind="person"),
+        ],
+        relations=[
+            # Fixture conservatively annotates only ONE sibling pair.
+            ExpectedRelation(subject="Meg", predicate="sibling_of", object="Jo"),
+        ],
+    )
+    actual = ActualExtraction(
+        entities=[("Beth", "person"), ("Jo", "person"), ("Meg", "person")],
+        relations=[
+            ("Meg", "sibling_of", "Jo", "affirm"),    # TP
+            ("Beth", "sibling_of", "Jo", "affirm"),   # annotation gap
+            ("Beth", "sibling_of", "Meg", "affirm"),  # annotation gap
+        ],
+        events=[],
+    )
+    score = score_chapter(fixture, actual)
+    # 3 entity TP + 1 relation TP = 4
+    assert score.tp == 4
+    assert score.fp == 0
+    assert score.fp_annotation_gap == 2
+    # Lenient precision: 4 / (4 + 0 + 0) = 1.0
+    # Strict precision: 4 / (4 + 0 + 2 + 0) = 4/6 ≈ 0.67
+    assert score.precision_lenient == pytest.approx(1.0)
+    assert score.precision == pytest.approx(4 / 6)
+
+
+def test_relation_fp_when_endpoint_unknown_not_gap():
+    """Fix #4 negative — endpoint outside fixture entity list keeps FP classification."""
+    fixture = _fixture(
+        entities=[ExpectedEntity(name="Alice", kind="person")],
+        relations=[],
+    )
+    actual = ActualExtraction(
+        entities=[("Alice", "person")],
+        relations=[("Alice", "sibling_of", "RandomStranger", "affirm")],
+        events=[],
+    )
+    score = score_chapter(fixture, actual)
+    assert score.fp_annotation_gap == 0  # Object not in fixture → not a gap
+    assert score.fp == 1
+
+
+def test_relation_fp_when_predicate_not_canonical_not_gap():
+    """Fix #4 negative — non-canonical predicate keeps FP classification."""
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="Alice", kind="person"),
+            ExpectedEntity(name="Bob", kind="person"),
+        ],
+        relations=[],
+    )
+    actual = ActualExtraction(
+        entities=[("Alice", "person"), ("Bob", "person")],
+        # `gossips_about` not in canonical 28-vocab nor in synonym map
+        relations=[("Alice", "gossips_about", "Bob", "affirm")],
+        events=[],
+    )
+    score = score_chapter(fixture, actual)
+    assert score.fp_annotation_gap == 0
+    assert score.fp == 1
+
+
+def test_relation_negate_polarity_not_gap():
+    """Fix #4 negative — polarity 'negate' does NOT auto-qualify as annotation gap."""
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="Alice", kind="person"),
+            ExpectedEntity(name="Bob", kind="person"),
+        ],
+        relations=[],
+    )
+    actual = ActualExtraction(
+        entities=[("Alice", "person"), ("Bob", "person")],
+        relations=[("Alice", "trusts", "Bob", "negate")],
+        events=[],
+    )
+    score = score_chapter(fixture, actual)
+    assert score.fp_annotation_gap == 0
+    assert score.fp == 1
+
+
+def test_relation_fp_when_trap_match_not_gap():
+    """Fix #4 negative — relation that hits a trap is fp_trap, not annotation gap."""
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="A", kind="person"),
+            ExpectedEntity(name="B", kind="person"),
+        ],
+        relations=[],
+        traps=[
+            ExpectedTrap(
+                kind="relation",
+                subject="A",
+                predicate="enemy_of",
+                object="B",
+                reason="story actually shows them as friends",
+            ),
+        ],
+    )
+    actual = ActualExtraction(
+        entities=[("A", "person"), ("B", "person")],
+        relations=[("A", "enemy_of", "B", "affirm")],
+        events=[],
+    )
+    score = score_chapter(fixture, actual)
+    assert score.fp_annotation_gap == 0
+    assert score.fp_trap == 1
+
+
+def test_aggregate_includes_avg_precision_lenient():
+    """Aggregate exposes avg_precision_lenient alongside strict avg_precision."""
+    fixture = _fixture(
+        entities=[
+            ExpectedEntity(name="A", kind="person"),
+            ExpectedEntity(name="B", kind="person"),
+        ],
+        relations=[],
+    )
+    actual = ActualExtraction(
+        entities=[("A", "person"), ("B", "person")],
+        relations=[("A", "knows", "B", "affirm")],  # annotation gap
+        events=[],
+    )
+    score = score_chapter(fixture, actual)
+    agg = aggregate_scores([score])
+    assert agg.avg_precision == score.precision
+    assert agg.avg_precision_lenient == score.precision_lenient
+    assert agg.avg_precision_lenient > agg.avg_precision  # gap excluded

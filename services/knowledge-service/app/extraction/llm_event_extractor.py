@@ -30,9 +30,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.clients.provider_client import ProviderClient
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
@@ -55,6 +56,14 @@ EventKind = Literal[
 ]
 
 
+# C18 — truncated ISO date pattern. Months 01-12, days 01-31.
+# Doesn't catch Feb 30 (would need calendar awareness) but catches
+# the dominant typo class.
+_EVENT_DATE_RE = re.compile(
+    r"^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$"
+)
+
+
 class _LLMEvent(BaseModel):
     """Single event from the LLM response — raw, pre-resolution."""
 
@@ -63,8 +72,26 @@ class _LLMEvent(BaseModel):
     participants: list[str] = []
     location: str | None = None
     time_cue: str | None = None
+    # C18 (D-K19e-α-02 closer) — structured ISO date the LLM emits
+    # when TEXT contains an explicit calendar date. Truncated ISO:
+    # YYYY / YYYY-MM / YYYY-MM-DD. Vague hints stay in time_cue;
+    # fictional eras stay in time_cue. Validator coerces malformed
+    # → None rather than rejecting the whole event (the rest of the
+    # event metadata is still useful even if the date is wrong-format).
+    event_date: str | None = None
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("event_date", mode="before")
+    @classmethod
+    def _coerce_malformed_date(cls, v: object) -> str | None:
+        if v is None or v == "":
+            return None
+        if not isinstance(v, str):
+            return None
+        if not _EVENT_DATE_RE.match(v):
+            return None
+        return v
 
 
 class EventExtractionResponse(BaseModel):
@@ -93,6 +120,8 @@ class LLMEventCandidate(BaseModel):
     participant_ids: list[str | None]
     location: str | None
     time_cue: str | None
+    # C18 — threaded from _LLMEvent; truncated ISO or None.
+    event_date: str | None = None
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
     event_id: str | None
@@ -281,6 +310,7 @@ def _postprocess(
             participant_ids=participant_ids,
             location=evt.location,
             time_cue=evt.time_cue,
+            event_date=evt.event_date,
             summary=summary,
             confidence=evt.confidence,
             event_id=eid,

@@ -11,7 +11,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.clients import BookClient, ChapterInfo, ExtractionResult, KnowledgeClient
+from app.clients import (
+    BookClient, ChapterInfo, ExtractionResult,
+    GlossaryClient, GlossaryEntity, GlossaryPage, GlossarySyncResult,
+    KnowledgeClient,
+)
 from app.runner import JobRow, process_job, poll_and_run, _get_running_jobs
 
 
@@ -96,6 +100,44 @@ def _mock_book_client(chapters=None, text="Chapter text here."):
     return client
 
 
+def _mock_glossary_client(pages=None):
+    """C12c-a — mock GlossaryClient. Default returns a single empty
+    page. `pages` is a list of (items, next_cursor) tuples returned
+    in order via side_effect.
+    """
+    client = AsyncMock(spec=GlossaryClient)
+    if pages is None:
+        client.list_book_entities = AsyncMock(
+            return_value=GlossaryPage(items=(), next_cursor=None),
+        )
+    else:
+        client.list_book_entities = AsyncMock(
+            side_effect=[
+                GlossaryPage(items=tuple(items), next_cursor=nc)
+                for items, nc in pages
+            ],
+        )
+    return client
+
+
+def _glossary_entity(entity_id: str, name: str = "Alice") -> GlossaryEntity:
+    return GlossaryEntity(
+        entity_id=entity_id,
+        name=name,
+        kind_code="character",
+        aliases=(),
+        short_description=None,
+    )
+
+
+def _glossary_sync_ok(entity_id: str) -> GlossarySyncResult:
+    return GlossarySyncResult(
+        glossary_entity_id=entity_id,
+        action="created",
+        canonical_name="alice",
+    )
+
+
 # ── process_job: chapters scope ──────────────────────────────────────
 
 
@@ -106,8 +148,9 @@ async def test_process_job_chapters_success():
     pool = _mock_pool()
     kc = _mock_knowledge_client()
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     # Should have called extract_item once
     kc.extract_item.assert_called_once()
@@ -128,8 +171,9 @@ async def test_process_job_chapters_records_spending_on_success():
     pool = _mock_pool()
     kc = _mock_knowledge_client()
     bc = _mock_book_client(chapters=chapters)
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     # Collect the SQL text of every execute call; count how many
     # target knowledge_projects with the monthly-spend + all-time
@@ -156,8 +200,9 @@ async def test_process_job_appends_log_on_chapter_success():
     pool = _mock_pool()
     kc = _mock_knowledge_client()
     bc = _mock_book_client(chapters=chapters)
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     log_calls = [
         c for c in pool.execute.call_args_list
@@ -180,8 +225,9 @@ async def test_process_job_appends_error_log_on_fatal_failure():
     pool = _mock_pool()
     kc = _mock_knowledge_client(result=_error_result(retryable=False))
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     error_logs = [
         c for c in pool.execute.call_args_list
@@ -205,8 +251,9 @@ async def test_process_job_chat_records_spending_on_success():
     ])
     kc = _mock_knowledge_client()
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     spending_calls = [
         c for c in pool.execute.call_args_list
@@ -228,8 +275,9 @@ async def test_process_job_multiple_chapters():
     pool = _mock_pool()
     kc = _mock_knowledge_client()
     bc = _mock_book_client(chapters=chapters)
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     assert kc.extract_item.call_count == 3
 
@@ -247,8 +295,9 @@ async def test_process_job_pause_detected():
     pool.fetchval = AsyncMock(side_effect=[_TEST_BOOK_ID, "running", "paused"])
     kc = _mock_knowledge_client()
     bc = _mock_book_client(chapters=chapters)
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     # Only 1 chapter processed before pause detected
     assert kc.extract_item.call_count == 1
@@ -263,8 +312,9 @@ async def test_process_job_cancel_detected():
     pool.fetchval = AsyncMock(side_effect=[_TEST_BOOK_ID, "cancelled"])
     kc = _mock_knowledge_client()
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     kc.extract_item.assert_not_called()
 
@@ -279,8 +329,9 @@ async def test_process_job_budget_auto_pause():
     )
     kc = _mock_knowledge_client()
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     kc.extract_item.assert_not_called()
 
@@ -292,8 +343,9 @@ async def test_process_job_permanent_error_fails_job():
     pool = _mock_pool()
     kc = _mock_knowledge_client(result=_error_result(retryable=False))
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     # Should have called execute for fail_job + update_project
     fail_calls = [
@@ -311,8 +363,9 @@ async def test_process_job_retryable_error_stops_run_for_retry():
     pool = _mock_pool()
     kc = _mock_knowledge_client(result=_error_result(retryable=True))
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     # Only one extraction attempt this run
     kc.extract_item.assert_called_once()
@@ -331,9 +384,10 @@ async def test_process_job_no_book_id():
     pool = _mock_pool()
     kc = _mock_knowledge_client()
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
     bc.list_chapters = AsyncMock(return_value=None)
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     kc.extract_item.assert_not_called()
 
@@ -347,8 +401,9 @@ async def test_poll_no_jobs_returns_zero():
     pool.fetch = AsyncMock(return_value=[])
     kc = _mock_knowledge_client()
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    count = await poll_and_run(pool, kc, bc)
+    count = await poll_and_run(pool, kc, bc, gc)
     assert count == 0
 
 
@@ -359,8 +414,9 @@ async def test_process_job_chapter_text_unavailable_skips():
     pool = _mock_pool()
     kc = _mock_knowledge_client()
     bc = _mock_book_client(text=None)
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     kc.extract_item.assert_not_called()  # skipped
 
@@ -379,8 +435,9 @@ async def test_backfill_sets_items_total_when_none():
     pool = _mock_pool()
     kc = _mock_knowledge_client()
     bc = _mock_book_client(chapters=chapters)
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     # items_total should be set via _set_items_total (execute call)
     set_total_calls = [
@@ -399,8 +456,9 @@ async def test_backfill_skips_items_total_when_already_set():
     pool = _mock_pool()
     kc = _mock_knowledge_client()
     bc = _mock_book_client()
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     # _set_items_total should NOT be called
     set_total_calls = [
@@ -429,8 +487,224 @@ async def test_backfill_scope_all_counts_chapters_and_chat():
     pool.fetch = AsyncMock(return_value=pending_rows)
     kc = _mock_knowledge_client()
     bc = _mock_book_client(chapters=chapters)
+    gc = _mock_glossary_client()
 
-    await process_job(pool, kc, bc, job)
+    await process_job(pool, kc, bc, gc, job)
 
     # 3 chapters + 2 chat turns = 5 extract calls
     assert kc.extract_item.call_count == 5
+
+
+# ── process_job: glossary_sync scope (C12c-a) ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_process_job_glossary_sync_success():
+    """C12c-a happy path: scope='glossary_sync' iterates glossary
+    entities and calls knowledge_client.glossary_sync_entity per
+    entity. No LLM extract_item calls."""
+    job = _job(scope="glossary_sync")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    # Mirror the knowledge-service result wire for glossary-sync.
+    kc.glossary_sync_entity = AsyncMock(
+        side_effect=lambda **kwargs: _glossary_sync_ok(kwargs["glossary_entity_id"]),
+    )
+    bc = _mock_book_client()
+    gc = _mock_glossary_client(pages=[
+        (
+            [_glossary_entity("e1", "Alice"), _glossary_entity("e2", "Bob")],
+            None,
+        ),
+    ])
+
+    await process_job(pool, kc, bc, gc, job)
+
+    # No LLM extract_item — only the two glossary sync calls.
+    kc.extract_item.assert_not_called()
+    assert kc.glossary_sync_entity.call_count == 2
+
+    # Glossary endpoint called once (single page).
+    gc.list_book_entities.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_process_job_all_scope_includes_glossary():
+    """C12c-a behaviour change: scope='all' now iterates glossary
+    after chapters+chat. The TODO at line 621 is removed; a user
+    who runs `all` gets chapters + chat + glossary end-to-end."""
+    chapters = [ChapterInfo(chapter_id="ch-1", title="Ch 1", sort_order=1)]
+    job = _job(scope="all")
+    pool = _mock_pool()
+    # Return one pending chat turn to exercise the chat branch too.
+    pending_rows = [{
+        "pending_id": uuid4(),
+        "event_id": uuid4(),
+        "event_type": "chat.turn.created",
+        "aggregate_type": "chat_turn",
+        "aggregate_id": uuid4(),
+    }]
+    pool.fetch = AsyncMock(return_value=pending_rows)
+    kc = _mock_knowledge_client()
+    kc.glossary_sync_entity = AsyncMock(
+        side_effect=lambda **kwargs: _glossary_sync_ok(kwargs["glossary_entity_id"]),
+    )
+    bc = _mock_book_client(chapters=chapters)
+    gc = _mock_glossary_client(pages=[
+        ([_glossary_entity("e1", "Arthur")], None),
+    ])
+
+    await process_job(pool, kc, bc, gc, job)
+
+    # chapters + chat → 2 extract_item; glossary → 1 glossary_sync_entity.
+    assert kc.extract_item.call_count == 2
+    assert kc.glossary_sync_entity.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_process_job_items_total_includes_glossary():
+    """C12c-a: when items_total is None (backfill), the pre-count
+    covers chapters + chat + glossary pages."""
+    chapters = [ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i) for i in range(2)]
+    job = _job(scope="all", items_total=None)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    kc.glossary_sync_entity = AsyncMock(
+        side_effect=lambda **kwargs: _glossary_sync_ok(kwargs["glossary_entity_id"]),
+    )
+    bc = _mock_book_client(chapters=chapters)
+    gc = _mock_glossary_client(pages=[
+        (
+            [_glossary_entity(f"e{i}", f"Entity{i}") for i in range(3)],
+            None,
+        ),
+    ])
+
+    await process_job(pool, kc, bc, gc, job)
+
+    # _set_items_total sends an UPDATE with SET items_total = $X.
+    set_total_calls = [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str)
+        and "UPDATE extraction_jobs" in c.args[0]
+        and "items_total" in c.args[0]
+    ]
+    assert len(set_total_calls) == 1
+    # Total = 2 chapters + 0 pending + 3 glossary = 5.
+    # The bound value is at position [1] after the SQL string; skip
+    # past user_id/job_id to reach the total arg.
+    call = set_total_calls[0]
+    assert 5 in call.args, f"expected total=5 in args, got {call.args}"
+
+
+@pytest.mark.asyncio
+async def test_process_job_glossary_sync_empty_book_no_op():
+    """C12c-a: glossary-service returning an empty first page ends
+    the branch immediately. Job still completes (no items to sync
+    is a valid terminal state)."""
+    job = _job(scope="glossary_sync")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    kc.glossary_sync_entity = AsyncMock()
+    bc = _mock_book_client()
+    gc = _mock_glossary_client()  # default: empty page
+
+    await process_job(pool, kc, bc, gc, job)
+
+    kc.glossary_sync_entity.assert_not_called()
+    kc.extract_item.assert_not_called()
+    # Job completion sets status=complete.
+    complete_calls = [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str)
+        and "UPDATE extraction_jobs" in c.args[0]
+        and "status = 'complete'" in c.args[0].replace('"', "'")
+    ]
+    assert len(complete_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_process_job_glossary_partial_enumeration_skips_items_total():
+    """/review-impl LOW#5 — when glossary-service returns None on a
+    later page, the enumerator returns the partial list + complete=False.
+    The runner then MUST skip _set_items_total (or the bar would
+    freeze at the wrong total). Any entities already fetched from
+    earlier pages are still processed."""
+    chapters: list[ChapterInfo] = []
+    job = _job(scope="glossary_sync", items_total=None)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    kc.glossary_sync_entity = AsyncMock(
+        side_effect=lambda **kwargs: _glossary_sync_ok(kwargs["glossary_entity_id"]),
+    )
+    bc = _mock_book_client(chapters=chapters)
+    # Page 1 returns 2 entities with next_cursor="p2"; page 2 returns
+    # None (glossary-service flake). Enumerator keeps page 1's entities
+    # and reports complete=False.
+    gc = AsyncMock(spec=GlossaryClient)
+    gc.list_book_entities = AsyncMock(
+        side_effect=[
+            GlossaryPage(
+                items=(_glossary_entity("e1", "Alpha"), _glossary_entity("e2", "Bravo")),
+                next_cursor="p2",
+            ),
+            None,  # mid-enumeration failure
+        ],
+    )
+
+    await process_job(pool, kc, bc, gc, job)
+
+    # 2 entities synced (page 1 survived).
+    assert kc.glossary_sync_entity.call_count == 2
+    # items_total SHOULD NOT be set — complete=False gates it.
+    set_total_calls = [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str)
+        and "UPDATE extraction_jobs" in c.args[0]
+        and "items_total" in c.args[0]
+    ]
+    assert len(set_total_calls) == 0, f"expected no items_total update on partial enum, got {len(set_total_calls)}"
+
+
+@pytest.mark.asyncio
+async def test_process_job_glossary_retry_exhaustion_skips_entity():
+    """/review-impl MED#3 — bounded retry. Retryable error for the
+    same entity 3 times (persisted via cursor.retry_glossary_<id>)
+    causes the entity to be SKIPPED on the 3rd attempt + cursor
+    advances past it. Prevents infinite retry loops when
+    glossary-service flaps on a specific entity."""
+    entity_id = "e1"
+    # Simulate third attempt — cursor already has retry count 2.
+    job = _job(
+        scope="glossary_sync",
+        current_cursor={f"retry_glossary_{entity_id}": 2, "scope": "glossary_sync"},
+    )
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    kc.glossary_sync_entity = AsyncMock(
+        return_value=GlossarySyncResult(
+            glossary_entity_id=entity_id,
+            action="",
+            canonical_name="",
+            retryable=True,
+            error="glossary-service 502",
+        ),
+    )
+    bc = _mock_book_client(chapters=[])
+    gc = _mock_glossary_client(pages=[
+        ([_glossary_entity(entity_id, "Flaky")], None),
+    ])
+
+    await process_job(pool, kc, bc, gc, job)
+
+    # One attempt this run — reaches retry count 3 == _MAX_RETRIES_PER_ITEM
+    # → skipped. Error log with retry_exhausted event emitted.
+    retry_exhausted_logs = [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str)
+        and "INSERT INTO job_logs" in c.args[0]
+        and c.args[3] == "error"
+        and "retry_exhausted" in str(c.args[5])
+    ]
+    assert len(retry_exhausted_logs) == 1, \
+        f"expected 1 retry_exhausted log, got {len(retry_exhausted_logs)}"

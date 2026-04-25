@@ -170,7 +170,25 @@ async def check_user_monthly_budget(
     )
     # SQL COALESCE(..., 0) guarantees a non-null Decimal; no Python
     # fallback needed.
-    spent: Decimal = spent_row["total"]
+    project_spent: Decimal = spent_row["total"]
+
+    # C16 — fold non-project-attributable summary regen spend into
+    # the user-wide aggregation. See ADR
+    # docs/03_planning/KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md.
+    # `knowledge_summary_spending` is keyed (user_id, scope_type,
+    # month_key); summing across scope_types for the current month
+    # gives the same shape as the per-project aggregation above.
+    summary_row = await pool.fetchrow(
+        """
+        SELECT COALESCE(SUM(spent_usd), 0) AS total
+        FROM knowledge_summary_spending
+        WHERE user_id = $1 AND month_key = $2
+        """,
+        user_id,
+        month_key,
+    )
+    summary_spent: Decimal = summary_row["total"]
+    spent: Decimal = project_spent + summary_spent
 
     if budget is None:
         return BudgetCheck(

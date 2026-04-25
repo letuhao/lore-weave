@@ -194,3 +194,163 @@ def test_benchmark_runs_raw_report_jsonb_with_default():
     """raw_report is NOT NULL with an empty-object default so queries
     don't need to guard against NULL when digging into the payload."""
     assert "raw_report             JSONB NOT NULL DEFAULT '{}'::jsonb" in DDL
+
+
+# ── C14b — sweeper_state resumable-cursor table ────────────────────
+
+
+def test_sweeper_state_table_present():
+    """C14b — `sweeper_state` wraps a resumable per-user cursor for
+    tenant-wide offline sweepers (reconcile_evidence_count_scheduler
+    today; future sweepers keyed on their own sweeper_name PK).
+    Regression-lock against a migration that drops the table."""
+    assert "CREATE TABLE IF NOT EXISTS sweeper_state" in DDL
+
+
+def test_sweeper_state_schema_shape():
+    """C14b — scoped columns: sweeper_name TEXT PK, last_user_id UUID
+    (nullable for 'cursor cleared' state), last_scope JSONB NOT NULL
+    DEFAULT '{}' (escape hatch for per-user-per-sub-scope iteration),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS sweeper_state\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "sweeper_state table body not found"
+    body = m.group(1)
+    assert "sweeper_name  TEXT PRIMARY KEY" in body
+    assert "last_user_id  UUID" in body
+    assert "last_scope    JSONB NOT NULL DEFAULT '{}'::jsonb" in body
+    assert "updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()" in body
+
+
+def test_sweeper_state_no_cross_db_fk():
+    """C14b — `last_user_id` has no FK on users (users table lives in
+    auth-service; cross-DB FKs forbidden). Repo tests exercise the
+    upsert without a FK-violation path."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS sweeper_state\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    # No `REFERENCES` clause anywhere in the body.
+    assert "REFERENCES" not in body, (
+        "sweeper_state must not declare an FK to users "
+        "(cross-DB forbidden)"
+    )
+
+
+# ── C16-BUILD — knowledge_summary_spending table ───────────────────
+
+
+def test_summary_spending_table_present():
+    """C16 closes D-K20α-01 BUILD-blocker. Regression-lock against
+    a future migration that drops the table."""
+    assert "CREATE TABLE IF NOT EXISTS knowledge_summary_spending" in DDL
+
+
+def test_summary_spending_check_constraint_global_only():
+    """C16-BUILD CLARIFY decision Q1/Option α — `scope_type` restricted
+    to 'global' only (project-scope regen reuses K16.11). Adding new
+    scope values requires migrating both the CHECK and
+    summary_spending.py's ScopeType Literal in one PR."""
+    assert "scope_type   TEXT NOT NULL CHECK (scope_type IN ('global'))" in DDL
+
+
+def test_summary_spending_pk_includes_month_key():
+    """PK shape (user_id, scope_type, month_key) — month rollover is
+    in-place via new-row insert (a new month_key creates a new row,
+    no UPDATE chain). Same pattern as sweeper_state."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS knowledge_summary_spending\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "knowledge_summary_spending table body not found"
+    body = m.group(1)
+    assert "PRIMARY KEY (user_id, scope_type, month_key)" in body
+
+
+def test_summary_spending_no_cross_db_fk():
+    """No FK on user_id — users live in auth-service (cross-DB
+    forbidden convention shared across all knowledge-service tables)."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS knowledge_summary_spending\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    assert "REFERENCES" not in body, (
+        "knowledge_summary_spending must not declare an FK to users "
+        "(cross-DB forbidden)"
+    )
+
+
+def test_summary_spending_user_month_index():
+    """check_user_monthly_budget hot path: SUM(spent_usd) WHERE
+    user_id=$1 AND month_key=$2. Composite index covers it."""
+    assert "idx_summary_spending_user_month" in DDL
+    assert "ON knowledge_summary_spending(user_id, month_key)" in DDL
+
+
+# ── C17 entity_alias_map regression locks ──────────────────────────
+
+
+def test_entity_alias_map_table_present():
+    """Source-scan lock for the C17 alias-redirect table. A future
+    migration that drops or renames it would silently break post-merge
+    extraction redirect — the lookup gates on this exact table name."""
+    assert "CREATE TABLE IF NOT EXISTS entity_alias_map" in DDL
+
+
+def test_entity_alias_map_pk_shape():
+    """Composite PK = covering index for the resolver hot path
+    (lookup-before-SHA-hash on every extracted entity)."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS entity_alias_map\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "entity_alias_map table body not found"
+    body = m.group(1)
+    assert (
+        "PRIMARY KEY (user_id, project_scope, kind, canonical_alias)"
+        in body
+    )
+
+
+def test_entity_alias_map_check_constraint_on_reason():
+    """CHECK locks reason vocabulary in sync with the Pydantic Literal
+    in entity_alias_map.py (closed enum). Adding a value requires
+    coordinated update of both."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS entity_alias_map\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    assert "CHECK (reason IN ('merge', 'backfill'))" in body
+
+
+def test_entity_alias_map_no_cross_db_fk():
+    """No FK on user_id (auth-service) or target_entity_id (Neo4j) —
+    cross-DB references forbidden."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS entity_alias_map\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    assert "REFERENCES" not in body
+
+
+def test_entity_alias_map_target_index():
+    """Reverse-lookup index for list_for_entity (FE display + audit)."""
+    assert "idx_entity_alias_map_target" in DDL
+    assert "ON entity_alias_map(target_entity_id)" in DDL

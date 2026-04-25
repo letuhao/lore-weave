@@ -101,15 +101,24 @@ async def test_record_spending(mock_key):
 def _mock_user_pool(
     user_budget: Decimal | None,
     project_totals: Decimal,
+    summary_totals: Decimal = Decimal("0"),
 ) -> AsyncMock:
-    """Two fetchrow calls in sequence: (1) the user_knowledge_budgets
-    SELECT, (2) the SUM-across-projects SELECT. Queue responses via
-    ``side_effect`` so they fire in order."""
+    """Three fetchrow calls in sequence:
+      1. user_knowledge_budgets SELECT
+      2. SUM-across-projects (knowledge_projects)
+      3. SUM-across-summary (knowledge_summary_spending) — C16-BUILD
+
+    Queue responses via ``side_effect`` so they fire in order. The
+    third query was added in C16-BUILD when check_user_monthly_budget
+    was extended to fold non-project-attributable summary regen spend
+    into the user-wide aggregation. Existing tests get summary=0 by
+    default, preserving their assertions."""
     pool = AsyncMock()
     pool.fetchrow = AsyncMock(
         side_effect=[
             {"ai_monthly_budget_usd": user_budget},
             {"total": project_totals},
+            {"total": summary_totals},
         ],
     )
     return pool

@@ -75,6 +75,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
+		r.Get("/books/{book_id}/entities", s.internalListEntities)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

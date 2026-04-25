@@ -497,3 +497,43 @@ async def test_mixed_resolved_and_unresolved_participants():
     assert result[0].participant_ids[0] is not None  # Kai resolved
     assert result[0].participant_ids[1] is None       # Stranger not
     assert result[0].event_id is not None  # at least one resolved
+
+
+# ── C18 event_date validation ──────────────────────────────────────
+
+
+def test_llm_event_event_date_truncated_iso_accepted():
+    """C18: _LLMEvent accepts year-only, year-month, full date."""
+    from app.extraction.llm_event_extractor import _LLMEvent
+    for v in ("1880", "1880-06", "1880-06-15"):
+        ev = _LLMEvent(
+            name="x", kind="action", participants=["a"],
+            summary="s", confidence=0.9, event_date=v,
+        )
+        assert ev.event_date == v
+
+
+def test_llm_event_event_date_malformed_coerced_to_none():
+    """C18: invalid date strings (free-text leak from LLM, missing
+    leading zeros, fictional eras) coerce to None instead of
+    rejecting the whole event. The rest of the event metadata is
+    still useful."""
+    from app.extraction.llm_event_extractor import _LLMEvent
+    for bad in ("summer 1880", "TA 3019", "1880-13", "1880-06-32",
+                "1880-6", "1880/06/15", "", "not a date"):
+        ev = _LLMEvent(
+            name="x", kind="action", participants=["a"],
+            summary="s", confidence=0.9, event_date=bad,
+        )
+        assert ev.event_date is None, f"{bad!r} should coerce to None"
+
+
+def test_llm_event_event_date_default_none():
+    """C18: omitting event_date defaults to None (back-compat — pre-C18
+    LLM responses without the field still parse)."""
+    from app.extraction.llm_event_extractor import _LLMEvent
+    ev = _LLMEvent(
+        name="x", kind="action", participants=["a"],
+        summary="s", confidence=0.9,
+    )
+    assert ev.event_date is None

@@ -19,10 +19,10 @@ entities:
     kind: person
     aliases: ["the Duchess"]
   - name: hall
-    kind: location
+    kind: place
     aliases: []
   - name: garden
-    kind: location
+    kind: place
     aliases: []
 
 relations:

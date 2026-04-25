@@ -277,6 +277,83 @@ async def merge_entity(
     return _node_to_entity(record["e"])
 
 
+# ── merge_entity_at_id (C17 alias-map redirect target) ────────────────
+
+
+async def merge_entity_at_id(
+    session: CypherSession,
+    *,
+    user_id: str,
+    id: str,
+    project_id: str | None,
+    name: str,
+    kind: str,
+    source_type: str,
+    confidence: float = 0.0,
+) -> "Entity | None":
+    """C17 — upsert at a caller-supplied entity id (no SHA derivation).
+
+    Used by ``resolve_or_merge_entity`` after an alias-map redirect
+    hit: the lookup said "name X redirects to id Y", so MATCH on Y
+    directly + apply the standard ON MATCH alias/source_type/confidence
+    union semantics inline. Cannot delegate to ``_MERGE_ENTITY_CYPHER``
+    because that helper's ``ON CREATE`` branch would resurrect a
+    deleted target as a fresh shell with the supplied name+kind,
+    silently corrupting the redirect.
+
+    Returns ``None`` when the supplied id does not match any existing
+    node (caller should fall through to the SHA-hash path with a
+    WARNING log — alias-map row points at a deleted target). Distinct
+    from ``merge_entity`` which always creates if missing.
+
+    The canonical_name is derived from the supplied name so the ON
+    MATCH branch correctly registers the new spelling as an alias.
+    canonical_version is fixed at 1 because the redirect target was
+    written under the same version that resolved it.
+    """
+    canonical_name = canonicalize_entity_name(name)
+    # We deliberately use a different Cypher than _MERGE_ENTITY_CYPHER
+    # because ON CREATE here would resurrect a deleted target — the
+    # alias-map row pointed at it, so creating a fresh shell with the
+    # SUPPLIED name+kind would silently corrupt the redirect.
+    # Instead: MATCH-only; if the node doesn't exist, return None and
+    # let the caller fall through.
+    result = await run_write(
+        session,
+        """
+        MATCH (e:Entity {id: $id})
+        WHERE e.user_id = $user_id
+        SET e.aliases = CASE
+              WHEN coalesce(e.user_edited, false) = true THEN e.aliases
+              WHEN $name IN e.aliases THEN e.aliases
+              ELSE e.aliases + $name
+            END,
+            e.source_types = CASE
+              WHEN $source_type IN e.source_types THEN e.source_types
+              ELSE e.source_types + $source_type
+            END,
+            e.confidence = CASE
+              WHEN $confidence > e.confidence THEN $confidence
+              ELSE e.confidence
+            END,
+            e.version = coalesce(e.version, 1) + 1,
+            e.updated_at = datetime()
+        RETURN e
+        """,
+        user_id=user_id,
+        id=id,
+        name=name,
+        canonical_name=canonical_name,
+        kind=kind,
+        source_type=source_type,
+        confidence=confidence,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])
+
+
 # ── upsert_glossary_anchor ────────────────────────────────────────────
 
 

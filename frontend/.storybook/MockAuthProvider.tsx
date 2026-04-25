@@ -19,10 +19,17 @@ import { createContext, useContext, type ReactNode } from 'react';
 //   - `useAuth()` — returns the fake context; throws if called outside
 //   - `RequireAuth({children})` — passthrough (stories always "logged in")
 
+// /review-impl LOW #3 — shape MUST mirror production `UserProfile` in
+// src/auth.tsx (`user_id`, `display_name`, `email`). Earlier K19a.8
+// mock used `id` which made `user?.user_id` resolve to undefined in
+// every consumer — latent bug that didn't surface because the one
+// existing consumer (`useUserCosts`) falls back to `'anon'` for its
+// queryKey. C13 expanded the consumer surface (every BuildGraphDialog
+// story now calls useUserCosts), making the mismatch more impactful.
 interface MockAuth {
   accessToken: string | null;
   refreshToken: string | null;
-  user: { id: string; display_name: string; email: string } | null;
+  user: { user_id: string; display_name: string | null; email: string } | null;
   setTokens: (access: string, refresh: string) => void;
   logoutLocal: () => void;
   updateUser: (u: Partial<MockAuth['user']>) => void;
@@ -34,7 +41,7 @@ const value: MockAuth = {
   accessToken: 'storybook-fake-token',
   refreshToken: 'storybook-fake-refresh',
   user: {
-    id: '00000000-0000-0000-0000-000000000001',
+    user_id: '00000000-0000-0000-0000-000000000001',
     display_name: 'Storybook User',
     email: 'storybook@example.local',
   },

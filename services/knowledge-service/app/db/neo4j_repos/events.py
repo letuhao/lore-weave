@@ -113,6 +113,13 @@ class Event(BaseModel):
     chapter_title: str | None = None
     event_order: int | None = None
     chronological_order: int | None = None
+    # C18 (D-K19e-α-02 closer) — in-story wall-clock date as ISO with
+    # optional truncation: "YYYY" / "YYYY-MM" / "YYYY-MM-DD". String
+    # not date so partial-precision dates ("summer 1880" → "1880-06")
+    # preserve the "I don't know the day" signal. Sort-stable
+    # lexicographically. Distinct from `time_cue` (free-text narrative
+    # hint, kept for display).
+    event_date_iso: str | None = None
     participants: list[str] = Field(default_factory=list)
     confidence: float = 0.0
     source_types: list[str] = Field(default_factory=list)
@@ -148,6 +155,7 @@ ON CREATE SET
   e.chapter_id = $chapter_id,
   e.event_order = $event_order,
   e.chronological_order = $chronological_order,
+  e.event_date_iso = $event_date_iso,
   e.participants = $participants,
   e.confidence = $confidence,
   e.source_types = [$source_type],
@@ -160,6 +168,17 @@ ON MATCH SET
   e.summary = coalesce($summary, e.summary),
   e.event_order = coalesce($event_order, e.event_order),
   e.chronological_order = coalesce($chronological_order, e.chronological_order),
+  // C18 review-impl HIGH-1: prefer MORE precise (longer ISO string)
+  // when both non-null. Otherwise the same event re-mentioned in a
+  // different chapter with less detail (e.g. "1880" vs an earlier
+  // "1880-06-15") would silently downgrade the stored precision.
+  // Mirrors confidence's max-wins semantic.
+  e.event_date_iso = CASE
+    WHEN $event_date_iso IS NULL THEN e.event_date_iso
+    WHEN e.event_date_iso IS NULL THEN $event_date_iso
+    WHEN size($event_date_iso) > size(e.event_date_iso) THEN $event_date_iso
+    ELSE e.event_date_iso
+  END,
   e.participants = CASE
     WHEN size($participants) = 0 THEN e.participants
     ELSE e.participants + [p IN $participants WHERE NOT p IN e.participants]
@@ -189,6 +208,7 @@ async def merge_event(
     chapter_id: str | None = None,
     event_order: int | None = None,
     chronological_order: int | None = None,
+    event_date_iso: str | None = None,
     participants: list[str] | None = None,
     source_type: str = "book_content",
     confidence: float = 0.0,
@@ -253,6 +273,7 @@ async def merge_event(
         chapter_id=chapter_id,
         event_order=event_order,
         chronological_order=chronological_order,
+        event_date_iso=event_date_iso,
         participants=deduped_participants,
         source_type=source_type,
         confidence=confidence,
@@ -499,6 +520,8 @@ WHERE e.user_id = $user_id
   AND ($before_order IS NULL OR e.event_order < $before_order)
   AND ($after_chronological IS NULL OR e.chronological_order > $after_chronological)
   AND ($before_chronological IS NULL OR e.chronological_order < $before_chronological)
+  AND ($event_date_from IS NULL OR e.event_date_iso >= $event_date_from)
+  AND ($event_date_to IS NULL OR e.event_date_iso <= $event_date_to)
   AND ($participant_candidates IS NULL OR ANY(c IN $participant_candidates WHERE c IN e.participants))
 """
 
@@ -522,6 +545,8 @@ async def list_events_filtered(
     before_order: int | None,
     after_chronological: int | None = None,
     before_chronological: int | None = None,
+    event_date_from: str | None = None,
+    event_date_to: str | None = None,
     participant_candidates: list[str] | None = None,
     limit: int,
     offset: int,
@@ -584,6 +609,19 @@ async def list_events_filtered(
             f"after_chronological ({after_chronological}) must be "
             f"< before_chronological ({before_chronological})"
         )
+    # C18 — date-range bounds are INCLUSIVE both ends (vs the EXCLUSIVE
+    # semantic on event_order/chronological_order). So reversed-range
+    # check uses strict '>' (from > to is invalid; from == to is valid
+    # and selects events with that exact date).
+    if (
+        event_date_from is not None
+        and event_date_to is not None
+        and event_date_from > event_date_to
+    ):
+        raise ValueError(
+            f"event_date_from ({event_date_from!r}) must be "
+            f"<= event_date_to ({event_date_to!r})"
+        )
     effective_limit = min(limit, EVENTS_MAX_LIMIT)
     count_result = await run_read(
         session,
@@ -594,6 +632,8 @@ async def list_events_filtered(
         before_order=before_order,
         after_chronological=after_chronological,
         before_chronological=before_chronological,
+        event_date_from=event_date_from,
+        event_date_to=event_date_to,
         participant_candidates=participant_candidates,
     )
     count_record = await count_result.single()
@@ -609,6 +649,8 @@ async def list_events_filtered(
         before_order=before_order,
         after_chronological=after_chronological,
         before_chronological=before_chronological,
+        event_date_from=event_date_from,
+        event_date_to=event_date_to,
         participant_candidates=participant_candidates,
         offset=offset,
         limit=effective_limit,

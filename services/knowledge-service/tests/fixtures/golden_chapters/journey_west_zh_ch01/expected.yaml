@@ -1,0 +1,127 @@
+# C19 / K17.10-v2 — golden fixture: 西遊記 第一回 (Journey to the West, Ch. 1)
+# Source: zh.wikisource.org/wiki/西游记/第001回 — Wu Cheng'en, c. 1592.
+# Public domain worldwide (author died 1582, well past 70-year posthumous term).
+# v2 annotation (illustrative) — re-verify before pinning as hard gate.
+
+source:
+  title: "西遊記"
+  author: "吳承恩"
+  chapter: 1
+  license: "Public domain (Ming dynasty work, author d. 1582)"
+
+# Entities deliberately conservative: only items NAMED with multiple-character
+# proper nouns that the LLM should detect as canonical entities. Generic
+# references (三皇 / 五帝 / 十洲 / 三島) and numerological idioms move to traps.
+entities:
+  - name: 花果山
+    kind: place
+    aliases: []
+  - name: 傲來國
+    kind: place
+    aliases: ["傲來小國"]
+  - name: 東勝神洲
+    kind: place
+    aliases: []
+  - name: 仙石
+    kind: artifact
+    aliases: []
+  - name: 石猴
+    kind: person
+    aliases: ["猴"]
+  - name: 玉皇大天尊
+    kind: person
+    aliases: ["玉帝", "玄穹高上帝"]
+  - name: 千里眼
+    kind: person
+    aliases: []
+  - name: 順風耳
+    kind: person
+    aliases: []
+  - name: 靈霄寶殿
+    kind: place
+    aliases: ["金闕雲宮靈霄寶殿"]
+  - name: 南天門
+    kind: place
+    aliases: []
+
+relations:
+  # Geography is_in chains anchor the spatial graph. Two-step: 花果山 is in
+  # 傲來國 which is in 東勝神洲 (review-impl F2 — original skipped middle).
+  - subject: 花果山
+    predicate: located_in
+    object: 傲來國
+  - subject: 傲來國
+    predicate: located_in
+    object: 東勝神洲
+  - subject: 仙石
+    predicate: located_on
+    object: 花果山
+  # Entity-of-origin: the stone monkey emerges from the magic stone.
+  - subject: 石猴
+    predicate: born_from
+    object: 仙石
+  # Command relation: the Jade Emperor sends his two scouts.
+  - subject: 玉皇大天尊
+    predicate: commands
+    object: 千里眼
+  - subject: 玉皇大天尊
+    predicate: commands
+    object: 順風耳
+
+events:
+  - summary: "石猴從仙石中破殼而出，五官四肢俱全"
+    participants: [石猴, 仙石]
+  - summary: "石猴拜了四方，目射金光直沖斗府"
+    participants: [石猴]
+  - summary: "玉帝命千里眼與順風耳開南天門觀看金光來源"
+    participants: [玉皇大天尊, 千里眼, 順風耳]
+  - summary: "千里眼與順風耳回報石猴金光來自花果山仙石"
+    participants: [千里眼, 順風耳, 玉皇大天尊]
+  # Review-impl F3 — closing dialogue is a meaningful narrative beat.
+  - summary: "玉帝判定石猴金光乃天地精華所生不足為異"
+    participants: [玉皇大天尊]
+
+traps:
+  # Cosmological numerology — descriptive scaffolding, not entities.
+  - kind: entity
+    name: 周天三百六十五度
+    reason: "Numerological description of the stone's height; not a named entity"
+  - kind: entity
+    name: 二十四氣
+    reason: "Numerological description of the stone's circumference; not an entity"
+  - kind: entity
+    name: 九宮八卦
+    reason: "Geomancy framework reference; not a named entity in this scene"
+  # Generic class references — appear once but don't anchor the graph.
+  - kind: entity
+    name: 三皇
+    reason: "Generic ruler-class reference, not specific named individuals here"
+  - kind: entity
+    name: 五帝
+    reason: "Generic ruler-class reference, not specific named individuals here"
+  - kind: entity
+    name: 十洲
+    reason: "Mythic geographical idiom referenced in passing, not a real location entity"
+  - kind: entity
+    name: 三島
+    reason: "Mythic geographical idiom referenced in passing, not a real location entity"
+  # Review-impl F1 — three of the four continents are listed for cosmological
+  # context but only 東勝神洲 is the chapter's narrative scope.
+  - kind: entity
+    name: 西牛賀洲
+    reason: "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+  - kind: entity
+    name: 南贍部洲
+    reason: "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+  - kind: entity
+    name: 北俱蘆洲
+    reason: "Listed in four-continents enumeration; narrative narrows to 東勝神洲 only"
+  # The proverb quote is descriptive narration, not an event.
+  - kind: event
+    summary: "山中無甲子寒盡不知年"
+    reason: "Proverb quote narrating the timeless state, not an event happening in this scene"
+  # Pangu / Three Sovereigns / Five Emperors are mentioned in cosmological setup,
+  # not as agents in this scene's events.
+  - kind: entity
+    name: 盤古
+    reason: "Mentioned in opening cosmology, not an actor in this chapter's narrative"
