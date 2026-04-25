@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>LoreWeave Cell Scene v3 — single-char alphabet + few-shot + retry loop</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: #0d1117; color: #e6edf3; display: flex; flex-direction: column; }
+
+  header.topbar {
+    padding: 10px 20px; background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+  }
+  header.topbar h1 { font-size: 18px; font-weight: 500; }
+  header.topbar .place-meta { color: #7d8590; font-size: 12px; display: flex; gap: 12px; }
+  header.topbar .place-meta .badge {
+    padding: 2px 8px; border-radius: 12px; background: #1f6feb33; color: #58a6ff; font-size: 11px;
+  }
+  header.topbar .place-meta .badge.canon { background: #d2992233; color: #d29922; }
+  header.topbar .place-meta .v3-tag {
+    background: #6e3a8a33; color: #b481d4; padding: 2px 8px; border-radius: 12px; font-size: 11px;
+  }
+
+  /* LM Studio config bar */
+  .llm-bar {
+    background: #1a1a1f; border-bottom: 1px solid #30363d;
+    padding: 10px 20px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+  }
+  .llm-bar label { font-size: 11px; color: #7d8590; text-transform: uppercase; letter-spacing: 0.3px; }
+  .llm-bar input, .llm-bar select {
+    background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+    padding: 6px 10px; border-radius: 4px; font: inherit; font-size: 12px;
+  }
+  .llm-bar input:focus, .llm-bar select:focus { outline: none; border-color: #58a6ff; }
+  .llm-bar input.url { width: 240px; }
+  .llm-bar input.model { width: 180px; }
+  .llm-bar input.num-input { width: 70px; }
+  .llm-bar button.gen {
+    background: linear-gradient(135deg, #6e3a8a 0%, #1f6feb 100%);
+    border: none; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-weight: 500; font-size: 13px;
+  }
+  .llm-bar button.gen:disabled { opacity: 0.6; cursor: wait; }
+  .llm-bar button.alt {
+    background: #21262d; border: 1px solid #30363d; color: #b8b8b8;
+    padding: 8px 12px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px;
+  }
+  .llm-bar button.alt:hover { color: #e6edf3; border-color: #58a6ff; }
+  .llm-bar .status {
+    font-size: 11px; font-family: 'Courier New', monospace; color: #7d8590; margin-left: auto;
+  }
+  .llm-bar .status.ok { color: #3fb950; }
+  .llm-bar .status.err { color: #f85149; }
+  .llm-bar .status.busy { color: #d29922; }
+
+  main { flex: 1; display: grid; grid-template-columns: 1fr 360px; overflow: hidden; min-height: 0; }
+
+  section.grid-viewport {
+    position: relative;
+    background: radial-gradient(ellipse at center, #1a1a1f 0%, #0d1117 80%);
+    display: flex; align-items: center; justify-content: center; padding: 14px; overflow: hidden;
+  }
+  section.grid-viewport svg.cell-grid {
+    max-width: 100%; max-height: 100%;
+    background: #161b22; border: 2px solid #30363d; border-radius: 8px;
+    box-shadow: 0 0 60px #58a6ff11;
+  }
+
+  .tile-floor { fill: #3d2c1a; }
+  .tile-floor-carpet { fill: #4d2818; }
+  .tile-wall { fill: #1a1a1f; stroke: #30363d; stroke-width: 0.5; }
+  .tile-counter { fill: #6b4226; stroke: #8b5a36; stroke-width: 1; }
+  .tile-table { fill: #5a3a1f; stroke: #7a4f2c; stroke-width: 1; }
+  .tile-chair { fill: #3d2c1a; stroke: #5a3a1f; stroke-width: 0.5; }
+  .tile-fireplace { fill: #4a1010; stroke: #722; stroke-width: 1; }
+  .tile-window { fill: #2a4a6a; stroke: #4a6a8a; stroke-width: 1; }
+  .tile-door { fill: #6b4226; stroke: #d29922; stroke-width: 2; }
+  .tile-threshold { fill: #4d3320; stroke: #d29922; stroke-width: 0.5; stroke-dasharray: 2,1; }
+  .tile { cursor: pointer; transition: filter 0.15s; }
+  .tile:hover { filter: brightness(1.4); }
+
+  .entity { cursor: pointer; transition: transform 0.15s; }
+  .entity:hover { transform: scale(1.15); transform-origin: center; transform-box: fill-box; }
+  .entity text.emoji { font-size: 22px; text-anchor: middle; dominant-baseline: central; user-select: none; pointer-events: none; }
+  .entity.is-pc circle { fill: #1f6feb44; stroke: #58a6ff; stroke-width: 1.5; }
+  .entity.is-npc circle { fill: #2a1f3a; stroke: #b481d4; stroke-width: 1.5; }
+  .entity.is-item circle { fill: #2a2410; stroke: #d29922; stroke-width: 1; stroke-dasharray: 2,1; }
+  .entity text.label { font-size: 9px; fill: #b8b8b8; text-anchor: middle; user-select: none; pointer-events: none; }
+
+  .llm-gen-badge {
+    position: absolute; top: 24px; right: 24px;
+    background: rgba(13, 17, 23, 0.85);
+    padding: 4px 10px; border-radius: 12px;
+    font-size: 10px; font-family: 'Courier New', monospace; max-width: 60%;
+    text-align: right;
+  }
+  .llm-gen-badge.default { border: 1px solid #30363d; color: #7d8590; }
+  .llm-gen-badge.llm-gen { border: 1px solid #6e3a8a; color: #b481d4; }
+  .llm-gen-badge.llm-gen.retried { border-color: #d29922; color: #d29922; }
+
+  /* Sidebar */
+  aside.sidebar {
+    background: #161b22; border-left: 1px solid #30363d;
+    overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px;
+  }
+  aside.sidebar h2 { font-size: 11px; color: #7d8590; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+  .panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; }
+  .panel h3 { font-size: 14px; margin-bottom: 8px; color: #e6edf3; }
+  .panel .meta-row { font-size: 12px; color: #b8b8b8; line-height: 1.5; margin: 3px 0; }
+  .panel .badge {
+    display: inline-block; padding: 2px 7px; border-radius: 10px;
+    background: #1f6feb33; color: #58a6ff; font-size: 10px; margin: 0 4px 3px 0;
+  }
+  .panel .badge.npc { background: #6e3a8a33; color: #b481d4; }
+  .panel .badge.item { background: #d2992233; color: #d29922; }
+  .panel .badge.affordance { background: #21262d; color: #b8b8b8; border: 1px solid #30363d; }
+  .empty-pane {
+    color: #7d8590; font-size: 12px; font-style: italic; text-align: center;
+    padding: 18px; border: 1px dashed #30363d; border-radius: 6px;
+  }
+
+  /* Token alphabet legend */
+  .alphabet {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; font-size: 10px;
+  }
+  .alphabet .row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 5px; background: #21262d; border-radius: 3px;
+  }
+  .alphabet .row .key {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #161b22; border: 1px solid #30363d; border-radius: 2px;
+    font-family: 'Courier New', monospace; font-weight: bold; color: #58a6ff;
+    flex-shrink: 0;
+  }
+
+  /* LLM debug drawer */
+  .debug-drawer {
+    background: #1a1a1f; border-top: 1px solid #30363d;
+    max-height: 0; overflow: hidden; transition: max-height 0.25s;
+    flex-shrink: 0;
+  }
+  .debug-drawer.expanded { max-height: 320px; }
+  .debug-drawer .debug-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr 280px;
+    gap: 12px; padding: 12px; height: 320px; overflow: hidden;
+  }
+  .debug-drawer .debug-section {
+    display: flex; flex-direction: column;
+    background: #0d1117; border: 1px solid #30363d;
+    border-radius: 6px; padding: 10px; overflow: hidden;
+  }
+  .debug-drawer .debug-section h4 {
+    font-size: 11px; color: #7d8590; text-transform: uppercase;
+    letter-spacing: 0.3px; margin-bottom: 6px;
+  }
+  .debug-drawer .debug-content pre {
+    flex: 1; overflow: auto; background: transparent; color: #b8b8b8;
+    font-size: 10px; font-family: 'Courier New', monospace;
+    line-height: 1.4; white-space: pre-wrap; word-break: break-all;
+  }
+  .validator-row {
+    display: flex; align-items: center; gap: 8px; padding: 3px 0;
+    border-bottom: 1px dashed #21262d;
+  }
+  .validator-row:last-child { border-bottom: none; }
+  .validator-row .check { font-size: 14px; flex-shrink: 0; }
+  .validator-row.pass .check { color: #3fb950; }
+  .validator-row.fail .check { color: #f85149; }
+  .validator-row .label { color: #b8b8b8; font-size: 11px; flex: 1; }
+  .validator-row .label small { color: #7d8590; display: block; }
+
+  .attempts-strip {
+    display: flex; gap: 6px; margin-bottom: 8px;
+  }
+  .attempt-chip {
+    padding: 3px 8px; border-radius: 10px;
+    font-size: 10px; font-family: 'Courier New', monospace;
+    background: #21262d; color: #7d8590; border: 1px solid #30363d;
+  }
+  .attempt-chip.busy { background: #d2992222; color: #d29922; border-color: #d29922; }
+  .attempt-chip.pass { background: #2ea04322; color: #3fb950; border-color: #3fb950; }
+  .attempt-chip.fail { background: #f8514922; color: #f85149; border-color: #f85149; }
+
+  .debug-toggle {
+    background: #161b22; padding: 4px 16px;
+    border-top: 1px solid #30363d;
+    cursor: pointer; font-size: 11px; color: #7d8590;
+    display: flex; justify-content: center; align-items: center; gap: 6px;
+    flex-shrink: 0;
+  }
+  .debug-toggle:hover { color: #58a6ff; }
+
+  .event-log {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 8px; font-size: 11px; color: #b8b8b8;
+    line-height: 1.4; font-family: 'Courier New', monospace;
+    max-height: 100px; overflow-y: auto;
+  }
+  .event-log .ev { margin: 3px 0; padding: 1px 0; border-bottom: 1px dashed #21262d; }
+  .event-log .ev.system { color: #58a6ff; }
+  .event-log .ev.narrator { color: #e6edf3; font-family: 'Segoe UI', sans-serif; font-style: italic; }
+  .event-log .ev.action { color: #d29922; }
+  .event-log .ev .ts { color: #7d8590; font-size: 9px; }
+
+  .tooltip {
+    position: absolute; background: rgba(13, 17, 23, 0.95);
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 6px 10px; font-size: 11px; color: #b8b8b8;
+    pointer-events: none; opacity: 0;
+    z-index: 100; white-space: nowrap;
+  }
+  .tooltip.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Yên Vũ Lâu</h1>
+    <div class="place-meta">
+      <span class="badge">Tavern</span>
+      <span class="badge canon">Pristine · Q3 C12</span>
+      <span class="v3-tag">v3 · single-char + few-shot + retry</span>
+      <span>ambient: dusk · light rain</span>
+    </div>
+  </header>
+
+  <div class="llm-bar">
+    <label>URL:</label>
+    <input type="text" class="url" id="lm-url" value="http://localhost:1234/v1/chat/completions">
+    <label>Model:</label>
+    <input type="text" class="model" id="lm-model" placeholder="qwen3.6-35b-a3b">
+    <label>Temp:</label>
+    <input type="number" class="num-input" id="lm-temp" min="0" max="2" step="0.1" value="0.5">
+    <label>Max tokens:</label>
+    <input type="number" class="num-input" id="lm-max-tokens" min="500" max="32000" step="500" value="8000" title="Set higher for thinking models / 30B+ class">
+    <label>Retries:</label>
+    <input type="number" class="num-input" id="lm-max-retries" min="1" max="5" step="1" value="3" title="Retry with validator feedback if previous attempt fails">
+    <button class="gen" id="lm-gen-btn" onclick="generateLayout()">⚙ Generate</button>
+    <button class="alt" onclick="testConnection()">🔌 Test</button>
+    <button class="alt" onclick="resetToDefault()">↺ Reset</button>
+    <span class="status" id="lm-status">idle</span>
+  </div>
+
+  <main>
+    <section class="grid-viewport">
+      <div class="llm-gen-badge default" id="gen-badge">⚙ DefaultTemplate · single-char alphabet</div>
+      <svg class="cell-grid" id="cell-grid" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet">
+        <g id="tiles-layer"></g>
+        <g id="entities-layer"></g>
+      </svg>
+    </section>
+
+    <aside class="sidebar">
+      <div>
+        <h2>Selected Entity</h2>
+        <div id="info-pane">
+          <div class="empty-pane">Click an entity</div>
+        </div>
+      </div>
+      <div>
+        <h2>Token alphabet (single-char)</h2>
+        <div class="panel">
+          <div class="alphabet">
+            <div class="row"><span class="key">W</span> Wall</div>
+            <div class="row"><span class="key">F</span> Floor</div>
+            <div class="row"><span class="key">C</span> Carpet</div>
+            <div class="row"><span class="key">B</span> Bar/Counter</div>
+            <div class="row"><span class="key">T</span> Table</div>
+            <div class="row"><span class="key">H</span> cHair</div>
+            <div class="row"><span class="key">P</span> firePlace</div>
+            <div class="row"><span class="key">N</span> wiNdow</div>
+            <div class="row"><span class="key">D</span> Door</div>
+            <div class="row"><span class="key">R</span> thReshold</div>
+          </div>
+          <div class="meta-row" style="margin-top: 8px; font-size: 10px; color: #7d8590;">
+            10 single-char tokens · each row = exactly 16 chars · no multi-char ambiguity
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2>Recent Events</h2>
+        <div class="event-log" id="event-log">
+          <div class="ev system">[init] cell:yen_vu_lau · v3 demo</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="debug-toggle" onclick="toggleDebug()" id="debug-toggle">▼ LLM Debug Panel (prompts · responses · validators · attempts)</div>
+  <div class="debug-drawer" id="debug-drawer">
+    <div class="debug-content">
+      <div class="debug-section">
+        <h4>📝 Latest prompt sent</h4>
+        <pre id="dbg-prompt">(generate to see)</pre>
+      </div>
+      <div class="debug-section">
+        <h4>🤖 Latest LLM response</h4>
+        <pre id="dbg-raw">(generate to see)</pre>
+      </div>
+      <div class="debug-section">
+        <h4>✓ Validators · Attempts</h4>
+        <div class="attempts-strip" id="attempts-strip"></div>
+        <div id="dbg-validators" style="overflow:auto;flex:1;">
+          <div style="color: #7d8590; font-size: 11px; font-style: italic;">Run a generation to see validator results.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const GRID_SIZE = 16;
+    const TILE_PX = 32;
+
+    // ─── Single-char alphabet (v3) ───
+    const TILE_TYPES = {
+      W: { kind: 'wall',        walkable: false, item_placeable: false, label: 'Wall' },
+      F: { kind: 'floor',       walkable: true,  item_placeable: true,  label: 'Floor' },
+      C: { kind: 'floor-carpet',walkable: true,  item_placeable: true,  label: 'Carpet' },
+      B: { kind: 'counter',     walkable: false, item_placeable: true,  label: 'Bar/Counter (items allowed)' },
+      T: { kind: 'table',       walkable: false, item_placeable: true,  label: 'Table (items allowed)' },
+      H: { kind: 'chair',       walkable: true,  item_placeable: true,  label: 'Chair (sittable)' },
+      P: { kind: 'fireplace',   walkable: false, item_placeable: false, label: 'Fireplace' },
+      N: { kind: 'window',      walkable: false, item_placeable: false, label: 'Window' },
+      D: { kind: 'door',        walkable: true,  item_placeable: true,  label: 'Door' },
+      R: { kind: 'threshold',   walkable: true,  item_placeable: true,  label: 'Threshold' },
+    };
+
+    // ─── Default hand-crafted layout in single-char alphabet ───
+    const DEFAULT_LAYOUT_TILES = [
+      'WWWWWWWWWWWWWWWW',
+      'WBBBBFFFFFFFNFFW',
+      'WFFFFFFFFFFFFFFW',
+      'WFFFFFFFFFFFFFFW',
+      'WFHTTHFFHTTHFFFW',
+      'WFFTTFFFFTTFFFFW',
+      'WFHHFFFFFHHFFPPW',
+      'WFFFFFFFFFFFFPPW',
+      'WCFFFFFFFFFFFFCW',
+      'WCFFFFFFFFFFFFCW',
+      'WCFFFFFFFFFFFFCW',
+      'WFFFFFFFFFFFFFFW',
+      'WFFFFFFFFFFFFFFW',
+      'WFFFFFFFFFFFFFFW',
+      'WWWWWWDDWWWWWWWW',
+      'WWWWWWRRWWWWWWWW',
+    ];
+
+    const REQUIRED_ENTITIES = [
+      { id: 'pc:ly_minh',   kind: 'pc',  emoji: '🧑', display_name: 'Lý Minh',   affordances: ['BeSpokenTo','BeStruck','BeExamined','BeGiven','BeReceived','BeUsed'], description: 'PC · xuyên không' },
+      { id: 'npc:lao_ngu',  kind: 'npc', emoji: '👴', display_name: 'Lão Ngũ',   affordances: ['BeSpokenTo','BeStruck','BeExamined','BeGiven','BeReceived'], description: 'Tavern keeper, ex-jianghu' },
+      { id: 'npc:tieu_thuy',kind: 'npc', emoji: '👧', display_name: 'Tiểu Thúy', affordances: ['BeSpokenTo','BeStruck','BeExamined','BeGiven','BeReceived'], description: 'Waitress, illiterate' },
+      { id: 'npc:du_si',    kind: 'npc', emoji: '🧙', display_name: 'Du sĩ',     affordances: ['BeSpokenTo','BeStruck','BeExamined','BeGiven','BeReceived'], description: 'Scholar reading Đạo Đức Kinh' },
+      { id: 'item:tea_pot', kind: 'item',emoji: '🫖', display_name: 'Bộ ấm trà', affordances: ['BeExamined','BeUsed','BeGiven','BeReceived'], description: 'Bộ ấm trà gốm sứ cổ' },
+      { id: 'item:scroll',  kind: 'item',emoji: '📜', display_name: 'Đạo Đức Kinh chú', affordances: ['BeExamined','BeUsed','BeGiven','BeReceived'], description: 'Cuộn chú giải Đạo Đức Kinh' },
+    ];
+
+    const DEFAULT_ENTITY_POSITIONS = {
+      'pc:ly_minh':    { x: 6, y: 14 },
+      'npc:lao_ngu':   { x: 2, y: 2 },
+      'npc:tieu_thuy': { x: 4, y: 5 },
+      'npc:du_si':     { x: 11, y: 5 },
+      'item:tea_pot':  { x: 4, y: 1 },   // on counter B (item_placeable=true)
+      'item:scroll':   { x: 11, y: 4 },  // on table T near du_si
+    };
+
+    // ─── State ───
+    let currentTiles = parseLayout(DEFAULT_LAYOUT_TILES);
+    let currentEntities = REQUIRED_ENTITIES.map(e => ({ ...e, ...DEFAULT_ENTITY_POSITIONS[e.id] }));
+    let selectedEntityId = null;
+
+    // Simple per-char parse (single-char alphabet — no regex needed)
+    function parseLayout(rows) {
+      const grid = [];
+      for (const row of rows) {
+        const tokens = [];
+        for (let i = 0; i < row.length && tokens.length < GRID_SIZE; i++) {
+          tokens.push(row[i]);
+        }
+        while (tokens.length < GRID_SIZE) tokens.push('F');
+        grid.push(tokens);
+      }
+      while (grid.length < GRID_SIZE) grid.push(new Array(GRID_SIZE).fill('F'));
+      return grid.slice(0, GRID_SIZE);
+    }
+
+    // ─── Prompt builder with few-shot example ───
+    function buildPrompt() {
+      const system = `You are a procedural game layout designer. You generate strict JSON describing top-down 16x16 grid layouts for cells in an LLM-driven RPG. You output ONLY valid JSON. No prose, no markdown fences, no commentary.`;
+
+      const fewShotExample = JSON.stringify({
+        tiles: DEFAULT_LAYOUT_TILES,
+        entities: REQUIRED_ENTITIES.map(e => ({ id: e.id, ...DEFAULT_ENTITY_POSITIONS[e.id] })),
+        rationale: "Tavern with 4-tile counter along north wall (B), 4 tables (T) with chairs (H) in middle, fireplace (P) east wall, window (N) on north, carpet (C) running through middle, door (D) and threshold (R) south. PC at door, Lao Ngu behind counter (F adjacent to B), Tieu Thuy at table 1, Du si at table 4, tea pot on counter (B allowed for items), scroll on Du si table (T allowed for items).",
+      }, null, 2);
+
+      const user = `GRID FORMAT (CRITICAL — read carefully):
+- 16 rows × 16 columns. Each row is a STRING of EXACTLY 16 CHARACTERS.
+- Each character is ONE tile. SINGLE-CHARACTER alphabet ONLY (one letter per tile):
+
+  W = wall (border + interior walls; non-walkable)
+  F = floor (default; walkable)
+  C = carpet (decorative floor; walkable)
+  B = bar/counter (long surface; non-walkable for actors but ITEMS allowed on it)
+  T = table (small fixture; non-walkable for actors but ITEMS allowed on it)
+  H = chair (walkable; sittable)
+  P = fireplace (decorative; non-walkable)
+  N = window (wall variant; non-walkable)
+  D = door (entry; walkable)
+  R = threshold (just inside door; walkable)
+
+CRITICAL: Use ONLY these 10 single characters. Do NOT use multi-character codes like "Co", "Wn", "Ch" — those are WRONG. Only single letters W F C B T H P N D R.
+
+CONSTRAINTS:
+1. Border walls: row 0 = all W; col 0 and col 15 = all W (except possibly D/R/N at row 14-15); row 15 = mostly W.
+2. South door: 1-2 D tiles in row 14 (replacing W in some positions).
+3. Threshold: optional R tiles below door (row 15 or 13).
+4. Each row exactly 16 characters — count carefully.
+5. Use ONLY the 10-token alphabet above.
+
+PLACE: Yên Vũ Lâu (Tavern, Tiên Nghịch Q3 C12)
+- ambient: dusk, light rain, 4 patrons
+- structural_state: Pristine
+- description: Tea-and-rice tavern in Hangzhou region, Song Dynasty 1256. Owner Lao Ngu (ex-jianghu).
+
+FIXTURES TO INCLUDE:
+- 1 counter: 3-5 B tiles wide along north wall area
+- 3-5 tables (T tiles) with chairs (H tiles) adjacent
+- 1 fireplace: 1-2 P tiles, against an interior or outer wall
+- 1 window: at least 1 N tile on outer wall
+- South door: 1-2 D tiles in row 14
+- Optional carpet (C) for atmosphere
+
+ENTITIES (exactly 6, with these EXACT ids):
+- pc:ly_minh — PC, near south door (on D, R, or F adjacent to door)
+- npc:lao_ngu — NPC tavern keeper, on F tile ADJACENT TO a B counter tile (not ON the counter)
+- npc:tieu_thuy — NPC waitress, on F or H tile near a table
+- npc:du_si — NPC scholar, on H or F tile near a table away from counter
+- item:tea_pot — on a B (counter) tile; items ARE allowed on B
+- item:scroll — on a T (table) tile near du_si; items ARE allowed on T
+
+ENTITY VALIDATION RULES:
+- ACTORS (pc, npc) MUST be on walkable tiles: F, C, H, D, R
+- ITEMS can be on F, C, H, D, R OR on furniture B, T (items NOT allowed on W, P, N)
+- All 6 entities have UNIQUE (x, y); no two entities at same position
+- Coordinates: x in 0..15, y in 0..15 (y=0 is north/top, y=15 is south/bottom)
+
+EXAMPLE (valid layout — your output should be DIFFERENT but follow same structure):
+${fewShotExample}
+
+NOW GENERATE A NEW VALID LAYOUT for the same Yên Vũ Lâu cell. Make it DIFFERENT from the example (different positions, different fixture arrangement) but follow ALL constraints above. Output ONLY the JSON object (no markdown fences, no commentary):`;
+
+      return { system, user };
+    }
+
+    function buildRequestBody(model, system, user, temp, maxTokens, history) {
+      const messages = [{ role: 'system', content: system }, { role: 'user', content: user }];
+      // Append retry history (assistant + user feedback alternating)
+      for (const m of history || []) messages.push(m);
+      return {
+        model,
+        messages,
+        temperature: temp,
+        max_tokens: maxTokens,
+        stream: false,
+      };
+    }
+
+    function extractContent(data) {
+      if (data?.choices?.[0]?.message?.content) return data.choices[0].message.content;
+      if (data?.choices?.[0]?.text) return data.choices[0].text;
+      if (typeof data?.output === 'string') return data.output;
+      if (typeof data?.response === 'string') return data.response;
+      if (typeof data?.text === 'string') return data.text;
+      if (typeof data?.content === 'string') return data.content;
+      if (data?.message?.content) return data.message.content;
+      return JSON.stringify(data, null, 2);
+    }
+
+    function extractJson(text) {
+      let s = text.trim();
+      s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+      const firstBrace = s.indexOf('{');
+      if (firstBrace < 0) return { ok: false, error: 'no { found in response' };
+      let depth = 0, end = -1;
+      for (let i = firstBrace; i < s.length; i++) {
+        if (s[i] === '{') depth++;
+        else if (s[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end < 0) return { ok: false, error: 'no closing } found' };
+      const jsonStr = s.slice(firstBrace, end + 1);
+      try { return { ok: true, value: JSON.parse(jsonStr), raw: jsonStr }; }
+      catch (e) { return { ok: false, error: e.message, raw: jsonStr }; }
+    }
+
+    // ─── Validators (v3 — actor vs item distinction) ───
+    function runValidators(parsed) {
+      const results = [];
+      const addResult = (pass, label, detail) => results.push({ pass, label, detail });
+
+      const tilesOk = Array.isArray(parsed.tiles) && parsed.tiles.length === 16;
+      addResult(tilesOk, '16-row tiles array', tilesOk ? 'OK' : `Got ${parsed.tiles?.length ?? 'undef'} rows`);
+      if (!tilesOk) return { ok: false, results, parsed };
+
+      // Raw chars check (v3 catches Wn / Co etc. AT SOURCE, not after parse)
+      let allCharsValid = true;
+      let badChars = [];
+      for (let y = 0; y < 16; y++) {
+        const row = parsed.tiles[y] || '';
+        for (let i = 0; i < Math.min(row.length, 16); i++) {
+          if (!TILE_TYPES[row[i]]) {
+            allCharsValid = false;
+            if (badChars.length < 5) badChars.push(`'${row[i]}'@(${i},${y})`);
+          }
+        }
+      }
+      addResult(allCharsValid, 'All chars valid (single-char alphabet)',
+        allCharsValid ? 'OK' : `Bad: ${badChars.join(' ')}${badChars.length >= 5 ? '...' : ''}`);
+
+      // Each row exactly 16 chars
+      const rowLengthOk = parsed.tiles.every(row => typeof row === 'string' && row.length === 16);
+      addResult(rowLengthOk, 'Each row exactly 16 chars',
+        rowLengthOk ? 'OK' : `Lengths: ${parsed.tiles.map(r => r?.length ?? '?').join(',')}`);
+
+      const grid = parseLayout(parsed.tiles);
+
+      // Border walls
+      const top = grid[0].every(t => t === 'W');
+      const bottom = grid[15].every(t => ['W','D','R'].includes(t));
+      const left = grid.every(row => ['W','D','R'].includes(row[0]));
+      const right = grid.every(row => ['W','D','R','N'].includes(row[15]));
+      const borderOk = top && bottom && left && right;
+      addResult(borderOk, 'Border walls intact',
+        borderOk ? 'OK' : `top:${top} bottom:${bottom} left:${left} right:${right}`);
+
+      // South door
+      const southDoorOk = grid[14].some(t => t === 'D');
+      addResult(southDoorOk, 'Door (D) on row 14', southDoorOk ? 'OK' : 'No D in south wall');
+
+      // Required fixture coverage
+      const counts = {};
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const t = grid[y][x]; counts[t] = (counts[t] || 0) + 1;
+      }
+      const hasCounter = (counts.B || 0) >= 3;
+      addResult(hasCounter, 'At least 3 counter tiles (B)', hasCounter ? `${counts.B || 0} tiles` : `only ${counts.B || 0}`);
+      const hasTables = (counts.T || 0) >= 3;
+      addResult(hasTables, 'At least 3 table tiles (T)', hasTables ? `${counts.T || 0} tiles` : `only ${counts.T || 0}`);
+      const hasFireplace = (counts.P || 0) >= 1;
+      addResult(hasFireplace, 'At least 1 fireplace tile (P)', hasFireplace ? `${counts.P || 0} tiles` : 'none');
+      const hasWindow = (counts.N || 0) >= 1;
+      addResult(hasWindow, 'At least 1 window tile (N)', hasWindow ? `${counts.N || 0} tiles` : 'none');
+
+      // Entities
+      const entitiesOk = Array.isArray(parsed.entities) && parsed.entities.length === 6;
+      addResult(entitiesOk, '6 entities present', entitiesOk ? 'OK' : `Got ${parsed.entities?.length ?? 'undef'}`);
+      if (!entitiesOk) return { ok: false, results, parsed, grid };
+
+      const requiredIds = REQUIRED_ENTITIES.map(e => e.id).sort();
+      const gotIds = parsed.entities.map(e => e.id).sort();
+      const idsMatch = JSON.stringify(requiredIds) === JSON.stringify(gotIds);
+      addResult(idsMatch, 'All required entity ids',
+        idsMatch ? 'OK' : `Missing: ${requiredIds.filter(i => !gotIds.includes(i)).join(',') || 'unknown'}`);
+
+      const coordsOk = parsed.entities.every(e =>
+        Number.isInteger(e.x) && Number.isInteger(e.y) &&
+        e.x >= 0 && e.x < 16 && e.y >= 0 && e.y < 16);
+      addResult(coordsOk, 'Coords in 0..15', coordsOk ? 'OK' : 'Some coords out of range');
+
+      // Walkable for actors; placeable for items (v3 distinction)
+      const isItem = (id) => id.startsWith('item:');
+      const placementBad = [];
+      for (const e of parsed.entities) {
+        if (!coordsOk) break;
+        const t = grid[e.y][e.x];
+        const tt = TILE_TYPES[t];
+        if (!tt) { placementBad.push(`${e.id}@(${e.x},${e.y})=unknown:'${t}'`); continue; }
+        if (isItem(e.id)) {
+          if (!tt.item_placeable) placementBad.push(`${e.id}@(${e.x},${e.y})=${t}(${tt.kind})not_placeable`);
+        } else {
+          if (!tt.walkable) placementBad.push(`${e.id}@(${e.x},${e.y})=${t}(${tt.kind})not_walkable`);
+        }
+      }
+      const placementOk = placementBad.length === 0;
+      addResult(placementOk, 'Entities at valid tiles (actor walkable / item placeable)',
+        placementOk ? 'OK' : placementBad.slice(0, 3).join(' '));
+
+      // No overlap
+      const seen = new Set();
+      let overlap = false;
+      for (const e of parsed.entities) {
+        const k = `${e.x},${e.y}`;
+        if (seen.has(k)) { overlap = true; break; }
+        seen.add(k);
+      }
+      addResult(!overlap, 'No two entities at same tile', !overlap ? 'OK' : 'Overlap detected');
+
+      const allPass = results.every(r => r.pass);
+      return { ok: allPass, results, parsed, grid };
+    }
+
+    // ─── Build feedback message for retry ───
+    function buildFeedback(results) {
+      const failed = results.filter(r => !r.pass);
+      const lines = failed.map(r => `  - ${r.label}: ${r.detail}`);
+      return `Your previous attempt failed these validators:
+${lines.join('\n')}
+
+Please correct the issues and output ONLY the corrected JSON object. Pay attention to:
+- Use ONLY single-character tokens: W F C B T H P N D R (no multi-char like Co, Wn, Ch)
+- Each row exactly 16 characters
+- Border walls (col 0, col 15, row 0; row 15 mostly W)
+- All 6 required entities at valid positions (actors on walkable F/C/H/D/R; items also allowed on B/T)
+- No overlap (each entity at unique x,y)
+- All 4 fixture types present (B counter, T tables, P fireplace, N window)
+
+Output the corrected JSON object only:`;
+    }
+
+    // ─── Connection test ───
+    async function testConnection() {
+      const url = document.getElementById('lm-url').value.trim();
+      let modelsUrl;
+      try {
+        const u = new URL(url);
+        modelsUrl = `${u.protocol}//${u.host}/v1/models`;
+      } catch { setStatus('invalid URL', 'err'); return; }
+
+      const log = document.getElementById('event-log');
+      setStatus(`testing GET ${modelsUrl}...`, 'busy');
+      log.innerHTML = `<div class="ev system">[test] GET ${modelsUrl}</div>` + log.innerHTML;
+      try {
+        const res = await fetch(modelsUrl);
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, 'err');
+          log.innerHTML = `<div class="ev" style="color:#f85149;">[test] HTTP ${res.status}</div>` + log.innerHTML;
+          return;
+        }
+        const data = await res.json();
+        const ids = (data?.data || []).map(m => m.id);
+        setStatus(`✓ ${ids.length} model(s)`, 'ok');
+        log.innerHTML = `<div class="ev" style="color:#3fb950;">[test] ✓ models: ${ids.join(', ') || '(none)'}</div>` + log.innerHTML;
+      } catch (err) {
+        setStatus(err.message, 'err');
+        log.innerHTML = `<div class="ev" style="color:#f85149;">[test] ${err.message} — likely CORS not enabled</div>` + log.innerHTML;
+      }
+    }
+
+    // ─── Main generate flow with retry loop ───
+    async function generateLayout() {
+      const url = document.getElementById('lm-url').value.trim();
+      const model = document.getElementById('lm-model').value.trim();
+      const temp = parseFloat(document.getElementById('lm-temp').value) || 0.5;
+      const maxTokens = parseInt(document.getElementById('lm-max-tokens').value, 10) || 8000;
+      const maxRetries = Math.max(1, Math.min(5, parseInt(document.getElementById('lm-max-retries').value, 10) || 3));
+      const btn = document.getElementById('lm-gen-btn');
+      const log = document.getElementById('event-log');
+      const strip = document.getElementById('attempts-strip');
+
+      if (!url) { setStatus('error: URL required', 'err'); return; }
+      if (!model) { setStatus('error: model id required', 'err'); return; }
+
+      const { system, user } = buildPrompt();
+
+      document.getElementById('debug-drawer').classList.add('expanded');
+      document.getElementById('debug-toggle').textContent = '▲ LLM Debug Panel (click to collapse)';
+
+      // Init attempts strip
+      strip.innerHTML = '';
+      for (let i = 0; i < maxRetries; i++) {
+        const chip = document.createElement('span');
+        chip.className = 'attempt-chip';
+        chip.textContent = `attempt ${i + 1}/${maxRetries}`;
+        chip.id = `attempt-chip-${i}`;
+        strip.appendChild(chip);
+      }
+
+      btn.disabled = true;
+      log.innerHTML = `<div class="ev system">[gen] start · model=${model} · temp=${temp} · max_tokens=${maxTokens} · retries=${maxRetries}</div>` + log.innerHTML;
+
+      const history = []; // assistant message + user feedback for each retry
+      let lastSuccess = null;
+      let totalElapsed = 0;
+      let lastRaw = '';
+
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const chip = document.getElementById(`attempt-chip-${attempt}`);
+        chip.classList.add('busy');
+        setStatus(`attempt ${attempt + 1}/${maxRetries} POST...`, 'busy');
+
+        const body = buildRequestBody(model, system, user, temp, maxTokens, history);
+        document.getElementById('dbg-prompt').textContent = `attempt ${attempt + 1}/${maxRetries}\n\n` + JSON.stringify(body, null, 2).slice(0, 4000);
+
+        const t0 = performance.now();
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+
+          const elapsed = Math.round(performance.now() - t0);
+          totalElapsed += elapsed;
+
+          if (!res.ok) {
+            const errTxt = await res.text();
+            chip.classList.remove('busy'); chip.classList.add('fail');
+            document.getElementById('dbg-raw').textContent = `attempt ${attempt + 1}: HTTP ${res.status}\n${errTxt}`;
+            log.innerHTML = `<div class="ev" style="color:#f85149;">[attempt ${attempt + 1}] HTTP ${res.status}: ${errTxt.slice(0, 200)}</div>` + log.innerHTML;
+            if (res.status === 400 && /max.*token|context/i.test(errTxt)) {
+              setStatus(`HTTP ${res.status} · token limit — bump Max tokens?`, 'err');
+              break; // don't retry token-limit failures
+            }
+            continue;
+          }
+
+          const data = await res.json();
+          const content = extractContent(data);
+          lastRaw = content;
+          document.getElementById('dbg-raw').textContent = `attempt ${attempt + 1} · ${elapsed}ms\n\n${content}`;
+
+          const extracted = extractJson(content);
+          if (!extracted.ok) {
+            chip.classList.remove('busy'); chip.classList.add('fail');
+            log.innerHTML = `<div class="ev" style="color:#f85149;">[attempt ${attempt + 1}] ${elapsed}ms · JSON parse failed: ${extracted.error}</div>` + log.innerHTML;
+            // Append to history for retry (assistant content + user feedback)
+            history.push({ role: 'assistant', content });
+            history.push({ role: 'user', content: `Your previous response was not valid JSON (parse error: ${extracted.error}). Output ONLY a single JSON object matching the schema, no markdown fences, no commentary:` });
+            continue;
+          }
+
+          const v = runValidators(extracted.value);
+          renderValidatorList(v.results);
+
+          if (v.ok) {
+            chip.classList.remove('busy'); chip.classList.add('pass');
+            lastSuccess = { parsed: extracted.value, grid: v.grid, attempt: attempt + 1, elapsed, totalElapsed, model, temp };
+            log.innerHTML = `<div class="ev" style="color:#3fb950;">[attempt ${attempt + 1}] ${elapsed}ms · ✓ all validators pass</div>` + log.innerHTML;
+            break;
+          } else {
+            chip.classList.remove('busy'); chip.classList.add('fail');
+            const failed = v.results.filter(r => !r.pass).map(r => r.label).join(', ');
+            log.innerHTML = `<div class="ev" style="color:#d29922;">[attempt ${attempt + 1}] ${elapsed}ms · validators failed: ${failed}</div>` + log.innerHTML;
+            history.push({ role: 'assistant', content });
+            history.push({ role: 'user', content: buildFeedback(v.results) });
+          }
+        } catch (err) {
+          chip.classList.remove('busy'); chip.classList.add('fail');
+          document.getElementById('dbg-raw').textContent = `attempt ${attempt + 1}: ${err.message}`;
+          setStatus(err.message, 'err');
+          log.innerHTML = `<div class="ev" style="color:#f85149;">[attempt ${attempt + 1}] ${err.message}</div>` + log.innerHTML;
+          break;
+        }
+      }
+
+      btn.disabled = false;
+
+      if (lastSuccess) {
+        currentTiles = lastSuccess.grid;
+        currentEntities = REQUIRED_ENTITIES.map(req => {
+          const placed = lastSuccess.parsed.entities.find(e => e.id === req.id);
+          return { ...req, x: placed.x, y: placed.y };
+        });
+        const badge = document.getElementById('gen-badge');
+        const retried = lastSuccess.attempt > 1;
+        badge.className = `llm-gen-badge llm-gen ${retried ? 'retried' : ''}`;
+        badge.textContent = `⚙ LlmGenerated · ${lastSuccess.model} · attempt ${lastSuccess.attempt} · ${lastSuccess.totalElapsed}ms`;
+        renderTiles(); renderEntities();
+        setStatus(`✓ generated (${lastSuccess.attempt}/${maxRetries}, ${lastSuccess.totalElapsed}ms)`, 'ok');
+        if (lastSuccess.parsed.rationale) {
+          log.innerHTML = `<div class="ev narrator">${lastSuccess.parsed.rationale}</div>` + log.innerHTML;
+        }
+      } else {
+        setStatus(`✗ all ${maxRetries} attempts failed`, 'err');
+        log.innerHTML = `<div class="ev" style="color:#f85149;">[gen] gave up after ${maxRetries} attempts; layout unchanged</div>` + log.innerHTML;
+      }
+    }
+
+    function renderValidatorList(results) {
+      const c = document.getElementById('dbg-validators');
+      c.innerHTML = results.map(r => `
+        <div class="validator-row ${r.pass ? 'pass' : 'fail'}">
+          <span class="check">${r.pass ? '✓' : '✗'}</span>
+          <div class="label">${r.label}<small>${r.detail}</small></div>
+        </div>`).join('');
+    }
+
+    function setStatus(text, kind) {
+      const s = document.getElementById('lm-status');
+      s.textContent = text; s.className = `status ${kind || ''}`;
+    }
+
+    function resetToDefault() {
+      currentTiles = parseLayout(DEFAULT_LAYOUT_TILES);
+      currentEntities = REQUIRED_ENTITIES.map(e => ({ ...e, ...DEFAULT_ENTITY_POSITIONS[e.id] }));
+      const badge = document.getElementById('gen-badge');
+      badge.className = 'llm-gen-badge default';
+      badge.textContent = '⚙ DefaultTemplate · single-char alphabet';
+      renderTiles(); renderEntities();
+      setStatus('reset to default', '');
+      document.getElementById('event-log').innerHTML = '<div class="ev system">[init] reset</div>' + document.getElementById('event-log').innerHTML;
+    }
+
+    function toggleDebug() {
+      const d = document.getElementById('debug-drawer');
+      const t = document.getElementById('debug-toggle');
+      const expanded = d.classList.toggle('expanded');
+      t.textContent = expanded ? '▲ LLM Debug Panel (click to collapse)'
+                                : '▼ LLM Debug Panel (prompts · responses · validators · attempts)';
+    }
+
+    // ─── Render ───
+    function renderTiles() {
+      const layer = document.getElementById('tiles-layer');
+      layer.innerHTML = '';
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const key = currentTiles[y][x];
+          const tile = TILE_TYPES[key] || TILE_TYPES.F;
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('class', `tile tile-${tile.kind}`);
+          rect.setAttribute('x', x * TILE_PX); rect.setAttribute('y', y * TILE_PX);
+          rect.setAttribute('width', TILE_PX); rect.setAttribute('height', TILE_PX);
+          rect.addEventListener('mouseenter', (ev) => showTooltip(ev, `(${x},${y}) '${key}' ${tile.label}`));
+          rect.addEventListener('mouseleave', hideTooltip);
+          layer.appendChild(rect);
+        }
+      }
+    }
+
+    function renderEntities() {
+      const layer = document.getElementById('entities-layer');
+      layer.innerHTML = '';
+      for (const ent of currentEntities) {
+        const cx = ent.x * TILE_PX + TILE_PX / 2;
+        const cy = ent.y * TILE_PX + TILE_PX / 2;
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', `entity is-${ent.kind} ${selectedEntityId === ent.id ? 'selected' : ''}`);
+        g.setAttribute('transform', `translate(${cx}, ${cy})`);
+        if (ent.kind !== 'envobject') {
+          const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          bg.setAttribute('r', 13); g.appendChild(bg);
+        }
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('class', 'emoji'); text.setAttribute('y', 1);
+        text.textContent = ent.emoji; g.appendChild(text);
+        if (ent.kind === 'pc' || ent.kind === 'npc') {
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('class', 'label'); label.setAttribute('y', 24);
+          label.textContent = ent.display_name; g.appendChild(label);
+        }
+        g.addEventListener('click', (ev) => { ev.stopPropagation(); onEntityClick(ent); });
+        g.addEventListener('mouseenter', (ev) => showTooltip(ev, `${ent.emoji} ${ent.display_name}`));
+        g.addEventListener('mouseleave', hideTooltip);
+        layer.appendChild(g);
+      }
+    }
+
+    function onEntityClick(ent) {
+      selectedEntityId = ent.id;
+      renderEntities();
+      const pane = document.getElementById('info-pane');
+      pane.innerHTML = `
+        <div class="panel">
+          <h3>${ent.emoji} ${ent.display_name}</h3>
+          <div><span class="badge ${ent.kind}">${ent.kind}</span></div>
+          <div class="meta-row" style="margin-top: 6px;">${ent.description}</div>
+          <div class="meta-row"><strong>Position:</strong> (${ent.x}, ${ent.y}) · tile '${currentTiles[ent.y][ent.x]}'</div>
+          <div class="meta-row" style="font-size: 10px;">${ent.affordances.map(a => `<span class="badge affordance">${a}</span>`).join('')}</div>
+        </div>`;
+    }
+
+    const tooltip = document.getElementById('tooltip');
+    function showTooltip(ev, text) {
+      tooltip.textContent = text; tooltip.classList.add('show');
+      tooltip.style.left = (ev.clientX + 12) + 'px';
+      tooltip.style.top  = (ev.clientY + 12) + 'px';
+    }
+    function hideTooltip() { tooltip.classList.remove('show'); }
+
+    renderTiles(); renderEntities();
+  </script>
+</body>
+</html>
