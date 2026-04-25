@@ -432,9 +432,9 @@ DP-Ch1..Ch10 give channels a concrete home in the DP contract. Other Phase 4 Qs 
 
 | Q | What it adds | Progress |
 |---|---|---|
-| **Q17** per-channel total event ordering | `channel_event_id BIGSERIAL` scoped by `(reality_id, channel_id)`; invariant axiom | Unblocked, foundation in place |
-| **Q30** ordering mechanism | Concrete implementation of Q17 at the event-log level | Unblocked |
-| **Q34** channel writer node binding | Which node writes events for a given channel; handoff protocol | Unblocked |
+| **Q17** per-channel total event ordering | `channel_event_id` invariant + axiom DP-A15 | ✅ resolved 2026-04-25 in [13_channel_ordering_and_writer.md DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) |
+| **Q30** ordering mechanism | Single-writer in-memory counter + DB UNIQUE constraint | ✅ resolved 2026-04-25 in [13 DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) |
+| **Q34** channel writer node binding | Cell = creator's node + handoff; non-cell = CP-assigned + epoch fence | ✅ resolved 2026-04-25 in [13 DP-Ch12..Ch14](13_channel_ordering_and_writer.md#dp-ch12--writer-assignment-rules) |
 | **Q15** per-channel turn/page boundary | First-class event type + subscribe-completion rule | Unblocked |
 | **Q16** durable per-channel subscribe | `subscribe_channel_events_durable(ctx, channel_id, from_event_id)` | Unblocked |
 | **Q27** event bubble-up | Aggregator at parent channel reading descendant events | Unblocked |

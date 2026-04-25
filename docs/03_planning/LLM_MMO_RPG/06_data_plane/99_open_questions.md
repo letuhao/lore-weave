@@ -214,10 +214,10 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 ## Phase 4 severity summary
 
 - **🔴 Blockers (3 remaining, 1 resolved):** Q15 page/turn per-channel · Q16 durable subscribe per channel · Q27 event bubble-up primitive · ~~Q26 channel as first-class concept~~ ✅ resolved 2026-04-25
-- **🟡 Significant gaps (12):** Q17–Q22, Q28–Q32, Q34
+- **🟡 Significant gaps (9 remaining, 3 resolved):** Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 + ~~Q17, Q30, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (4):** Q23–Q25, Q29, Q33
 
-**Resolved (1):** Q26 ✅
+**Resolved (4):** Q17, Q26, Q30, Q34 ✅
 
 ---
 
@@ -245,13 +245,11 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q17 — Per-channel total event ordering invariant (REAL-3 reframed)
+## Q17 — Per-channel total event ordering invariant (REAL-3 reframed) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Game intent: everyone in a channel sees events in the same order. Currently [02_storage R7](../02_storage/R07_concurrency_cross_session.md) gives per-session ordering via single-writer command processor; reality-wide is not required; **per-channel** ordering is implicit but not guaranteed.
+**What:** Game intent — everyone in a channel sees events in the same order.
 
-**Why significant:** Without per-channel total order, two cell members could see events in different order — breaks "same story" invariant.
-
-**Candidate resolution path:** **DP-A13** new axiom "Per-channel total event ordering". Mechanical: per-channel `channel_event_id` BIGSERIAL column. Enforced at write time by channel's single-writer (see Q34).
+**Resolution:** [DP-A15](02_invariants.md#dp-a15--per-channel-total-event-ordering-phase-4-2026-04-25) locks per-channel total ordering as an axiom. `channel_event_id: u64` monotonic per channel, gapless, enforced via DB UNIQUE constraint `(reality_id, channel_id, channel_event_id)`. Reality-scoped events retain per-aggregate / per-session ordering per [02_storage R7](../02_storage/R07_concurrency_cross_session.md). Concrete mechanism in [13_channel_ordering_and_writer.md DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism).
 
 ---
 
@@ -366,11 +364,11 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q30 — Per-channel total ordering mechanism (NEW-5)
+## Q30 — Per-channel total ordering mechanism (NEW-5) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Implementation of Q17's invariant. Postgres SERIAL / BIGSERIAL per channel? Single shared sequence with channel predicate? Separate sequences?
+**What:** Concrete implementation of Q17's invariant.
 
-**Candidate resolution path:** Per-channel `channel_event_id BIGSERIAL` column in event log, scoped by `(reality_id, channel_id)`. Single writer per channel (see Q34) ensures gapless monotonic allocation.
+**Resolution:** [13_channel_ordering_and_writer.md DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism). Single writer maintains in-memory counter per channel, seeded from `MAX(channel_event_id)` query at writer takeover, gaplessness via DB UNIQUE constraint. Reality-scoped events keep `channel_id = NULL` and use existing R7 ordering. Recovery on writer crash via re-query MAX. Schema extension to `event_log` documented in DP-Ch11.
 
 ---
 
@@ -398,11 +396,16 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q34 — Channel writer node binding (NEW-9)
+## Q34 — Channel writer node binding (NEW-9) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** [DP-A11](02_invariants.md#dp-a11--session-node-owns-t1-writes) binds T1 writes to session's node. For channel events (not session-scoped): which node is the writer? Options: (a) originating session's node writes; (b) dedicated channel writer node; (c) no binding, rely on per-channel DB SERIAL for ordering.
+**What:** Single-writer-per-channel discipline + assignment + handoff protocol.
 
-**Candidate resolution path:** Channel has a designated writer node (option b) — single writer ensures gapless per-channel ordering (Q30). Cell's writer node = one of its member sessions' nodes; tavern+ writer node assigned by CP on activation. Handoff protocol on member departure.
+**Resolution:** [DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) axiom locks single-writer per active channel. Detailed in [13_channel_ordering_and_writer.md DP-Ch12..Ch14](13_channel_ordering_and_writer.md#dp-ch12--writer-assignment-rules):
+- **Cell channels:** writer = creator's session node; CP coordinates handoff on creator-leave; handoff p99 ≤200ms.
+- **Non-cell channels (tavern+):** writer = CP-assigned at creation, persistent for lifetime; reassigned on node death (≤35s).
+- **Cross-node writes:** SDK transparently routes via gRPC `RouteChannelWrite` (DP-Ch14); ~5ms LAN hop cost. Feature code unchanged.
+- **Epoch fencing:** monotonic per channel, stored in `channel_writer_state` table; rejects writes from stale writers (DP-Ch13).
+- **Composes with [DP-A11](02_invariants.md#dp-a11--session-node-owns-t1-writes):** T1 writer = session node; ChannelScoped T2/T3 writer = channel-bound node. No conflict.
 
 ---
 

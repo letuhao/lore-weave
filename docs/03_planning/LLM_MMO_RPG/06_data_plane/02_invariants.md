@@ -1,7 +1,7 @@
 # 02 — Invariants (Axioms)
 
 > **Status:** LOCKED. Every axiom here was decided in a user conversation and may not be changed without a superseding decision recorded in [../decisions/](../decisions/) and a cross-reference entry in [99_open_questions.md](99_open_questions.md).
-> **Stable IDs:** DP-A1..DP-A14. These IDs are referenceable from any other doc in this project. Never renumber.
+> **Stable IDs:** DP-A1..DP-A16. These IDs are referenceable from any other doc in this project. Never renumber.
 
 ---
 
@@ -230,6 +230,58 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 
 ---
 
+## DP-A15 — Per-channel total event ordering (Phase 4, 2026-04-25)
+
+**Rule:** Every active channel has a **strict total order** over its channel-scoped events, expressed as `channel_event_id: u64` monotonically increasing per channel (no gaps, no duplicates). Subscribers receive events in this order; gaps detected during subscribe-resume MUST trigger catch-up before live delivery. Reality-scoped events are NOT covered by this axiom — they retain per-aggregate / per-session ordering as defined in [02_storage R7](../02_storage/R07_concurrency_cross_session.md).
+
+**Why:** The user's clarified game model requires "everyone in a channel sees the same story in the same order" — a total order per channel is the simplest mechanism that encodes this invariant. Without total order, two members of the same cell could see events shuffled differently, breaking the "shared story" guarantee that makes the channel meaningful as a social context.
+
+**Enforcement:**
+- **(a) DB level** — `event_log` table extended with composite UNIQUE constraint `(reality_id, channel_id, channel_event_id)`. Duplicate or non-monotonic insert rejected by Postgres.
+- **(b) Single-writer level** — [DP-A16](#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) ensures only one node allocates `channel_event_id` for a given channel at any time, making monotonic allocation trivial.
+- **(c) Subscriber level** — durable subscribe ([Q16](99_open_questions.md), to be designed) carries `from_channel_event_id` resume token; subscriber catches up gaps before delivering live events.
+
+**Consequence:**
+- **Bubble-up causal references** ([Q27](99_open_questions.md)) record source events as `(child_channel_id, child_channel_event_id)` tuples — a stable reference because child events are totally ordered.
+- **Deterministic RNG seed for bubble-up triggers** ([Q27](99_open_questions.md)) = `channel_event_id` of triggering child event; replay reproduces same RNG output.
+- **Turn boundary events** ([Q15](99_open_questions.md), to be designed) occupy specific `channel_event_id` positions, making "page flip" a queryable point in the event log.
+- Total-ordering invariant scopes to channel — there is NO global "events across all channels in a reality" ordering, intentionally.
+
+**Cross-ref:** [13_channel_ordering_and_writer.md DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) for concrete allocation + recovery algorithm. Resolves [99_open_questions.md Q17](99_open_questions.md).
+
+---
+
+## DP-A16 — Channel writer-node binding (Phase 4, 2026-04-25)
+
+**Rule:** Each **active** channel has exactly **one writer node** at any time. All channel-scoped writes (T2/T3 ChannelScoped aggregates) and channel events (turn boundaries, bubble-up emits) for that channel MUST execute on that node. Non-writer-node writes are routed transparently by the SDK via gRPC. Writer assignment differs by channel level:
+
+- **Cell channels:** writer = creator's session node by default. CP coordinates handoff if creator's session leaves while the cell still has active sessions; cell goes dormant if no active sessions remain.
+- **Non-cell channels (tavern / town / district / country / continent / any non-cell level):** writer = CP-assigned at channel creation time, persistent for the channel's lifetime; reassigned only on writer-node death.
+
+**Why:** Single-writer discipline gives gapless monotonic `channel_event_id` allocation ([DP-A15](#dp-a15--per-channel-total-event-ordering-phase-4-2026-04-25)) without distributed-coordination overhead. It also provides a natural home for turn-boundary discipline ([Q15](99_open_questions.md)) and bubble-up aggregator state ([Q27](99_open_questions.md)). Cell writer = creator's node leverages session stickiness ([DP-A11](#dp-a11--session-node-owns-t1-writes)) — writes are local to the originating session in the common case. Non-cell writer is CP-assigned because non-cell channels (tavern, town, ...) are not tied to a specific user session.
+
+**Enforcement:**
+- **(a)** CP holds writer assignment per channel in its [channel-tree cache](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream); SDK queries CP at session bind + on writer-change push events.
+- **(b)** SDK detects "is this node the writer?" before each channel-scoped write. If yes, write directly. If no, SDK transparently RPCs to the writer node via a `route_channel_write` gRPC method.
+- **(c) Direct write attempt on a non-writer node bypassing the SDK** fails at the DB layer because the writer's epoch token is required to insert into `event_log`. Non-SDK paths cannot forge an epoch.
+- **(d)** Writer reassignment goes through CP's existing health-probe + channel-tree-delta-stream infrastructure ([DP-Ch3](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream)). Failover budget: ≤35 s (30 s detection per [DP-F2](07_failure_and_recovery.md#dp-f2--game-node-death--session-handoff) + 5 s reassignment + push-out delta).
+
+**Consequence:**
+- **Cell creator leave is a feature-relevant event** (creator's departure may trigger handoff + a "creator-changed" event that participants see). Feature designs must declare how their cell creator-leave flow interacts with handoff.
+- **Non-cell writer reassignment is invisible to features.** During the ≤35 s failover window, writes to that channel return `DpError::WrongChannelWriter` (transient) or `RateLimited` if the SDK's route cache is stale; SDK retries with backoff.
+- **Writer fencing via epoch token** prevents split-brain double-write during transient overlap (old writer unaware it has been replaced). Postgres rejects writes carrying an expired epoch.
+- Cross-node write adds **one LAN hop** (~5 ms) when the calling node is not the channel's writer. Acceptable in turn-based gameplay (1–10 events/s/channel typical, well below latency-sensitive realtime thresholds).
+
+**Composition with [DP-A11](#dp-a11--session-node-owns-t1-writes):**
+- DP-A11 binds **T1 + RealityScoped writes** to the session's node.
+- DP-A16 binds **T2/T3 + ChannelScoped writes** to the channel's writer node.
+- T0 has no writer concept (in-process only).
+- A session may participate in writes to multiple channels (its current cell + ancestors via bubble-up); each routes to that channel's writer. A session's own node remains writer for its own session's T1 / RealityScoped state.
+
+**Cross-ref:** [13_channel_ordering_and_writer.md DP-Ch12..Ch14](13_channel_ordering_and_writer.md#dp-ch12--writer-assignment-rules) for assignment rules, handoff protocol, and routing implementation. Resolves [99_open_questions.md Q34](99_open_questions.md).
+
+---
+
 ## Locked-decision summary (for cross-reference)
 
 | ID | Short name | One-line |
@@ -248,5 +300,7 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 | DP-A12 | RealityId newtype | `SessionContext`-gated access; `RealityId` constructor is DP-module-private; cross-reality violations fail type-check or runtime-check. |
 | DP-A13 | Channel hierarchy first-class | Per-reality tree of channels with `ChannelId` newtype + free-form `level_name`; DP agnostic to level semantics; registry in per-reality DB, cache in CP. |
 | DP-A14 | Aggregate scope is design-time | Aggregates declare `RealityScoped` or `ChannelScoped` via marker trait; scope determines cache key shape + API signature; compile-time enforced. |
+| DP-A15 | Per-channel total event ordering | `channel_event_id: u64` monotonic per channel, gapless; subscribers catch up gaps before live delivery; reality-scoped events use existing R7 ordering. |
+| DP-A16 | Channel writer-node binding | One writer per active channel; cell writer = creator's session node + handoff; non-cell writer = CP-assigned, persistent; cross-node writes routed transparently via gRPC; epoch-fenced for failover. |
 
 Any change to an axiom is logged in [../decisions/](../decisions/) with a new locked-decision entry and the superseded axiom gets a `_withdrawn` suffix rather than being deleted.

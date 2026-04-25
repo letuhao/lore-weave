@@ -81,6 +81,69 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q17+Q30+Q34 RESOLVED (per-channel ordering + writer binding)
+
+### Session arc
+
+Second Phase 4 mini-session. Picked the next foundation cluster (Q17 per-channel total event ordering · Q30 ordering mechanism · Q34 channel writer-node binding) — these three are conceptually one unit since ordering needs a mechanism and a mechanism needs a single writer.
+
+CLARIFY phase: user approved 5 design decisions (E1a per-channel total order applies only to ChannelScoped events · E2b single writer maintains in-memory counter with DB UNIQUE constraint as gaplessness backstop · E3b cell writer = creator's session node with handoff, non-cell writer = CP-assigned and persistent · E4b SDK transparently routes cross-node writes via gRPC · E5a CP detects writer death and pushes reassignment via existing channel-tree-update stream).
+
+BUILD phase: 2 new axioms (DP-A15 ordering invariant + DP-A16 writer binding) + 1 new file (13_channel_ordering_and_writer.md, 5 mechanism specs DP-Ch11..Ch15) + targeted updates to 4 existing files. No re-design of Phase 1-3 or Q26 work.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | LOCKED, DP-Ch11..Ch15 | 381 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A15 + DP-A16, summary table rows | 252 → 306 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | `WrongChannelWriter` `DpError` variant + transparent-routing note in DP-K5 + surface count update | 677 → 685 (still over soft cap; user-approved API-reference exception) |
+| [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | Writer-binding responsibility added to DP-C1; 3 new gRPC methods (`GetChannelWriter`, `RequestWriterHandoff`, `HeartbeatWriterLease`) in DP-C3; count 16 → 19 | 324 → 330 |
+| [`12_channel_primitives.md`](06_data_plane/12_channel_primitives.md) | Cross-refs in "leaves to other items" table marking Q17/Q30/Q34 resolved with pointers to file 13 | 447 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q17/Q30/Q34 ✅ resolved with full cross-refs; Phase 4 severity summary updated | 420 → 423 |
+| [`_index.md`](06_data_plane/_index.md) | File 13 row + DP-Ch second range, DP-A range → A16, Phase 4 progress entry | 107 → 110 |
+
+**Folder total after this cluster:** 4142 lines across 14 files. **93 stable IDs** total: 16 axioms (+2) · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API (with WrongChannelWriter variant) · 10 CP (3 new RPC) · 10 coherency · 10 failure · 15 channel (Ch1..Ch15).
+
+### Cluster decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| Per-channel total event ordering as axiom | DP-A15 | Encodes "everyone in channel sees same story in same order"; reality-scoped events keep R7 ordering, no global cross-channel order |
+| Single writer per active channel | DP-A16 | Gapless monotonic `channel_event_id` allocation; natural home for turn-boundary discipline (Q15) and bubble-up aggregator (Q27) |
+| Writer = creator's session node for cells | DP-Ch12 | Leverages session stickiness DP-A11; writes local in common case; handoff on creator-leave |
+| Writer = CP-assigned for non-cell channels | DP-Ch12 | Non-cell channels not tied to specific user session; persistent writer simplifies reasoning |
+| Cross-node writes transparent via gRPC | DP-Ch14 | Feature signature unchanged; ~5 ms LAN hop acceptable for turn-based |
+| Epoch fence via `channel_writer_state` table | DP-Ch13 | App-level check (Postgres trigger upgrade is future hardening) prevents split-brain double-write |
+| `MAX(channel_event_id)` re-seed on writer takeover | DP-Ch11 | Recovery without dedicated coordination; UNIQUE constraint as backstop |
+| Causal-ref schema for bubble-up | DP-Ch15 | Foundation for Q27; descendant-only refs prevent circular causality; replay-deterministic |
+
+### Phase 4 progress after this cluster
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | 4 | Q17 · Q26 · Q30 · Q34 |
+| 🔴 Blockers remaining | 3 | Q15 turn boundary · Q16 durable subscribe · Q27 bubble-up primitive |
+| 🟡 Significant gaps | 9 | Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 (Q20 deferred V1 data) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q29, Q33 |
+
+**Next cluster:** Q15 + Q16 + Q27 (the remaining Phase 4 blockers). All three depend on the channel + ordering + writer foundation just landed:
+- Q15 turn boundary = special channel event at well-defined `channel_event_id` positions
+- Q16 durable subscribe = consumer cursor over per-channel ordered stream, resume token = `channel_event_id`
+- Q27 bubble-up primitive = aggregator running on parent channel's writer, consumes descendant events via durable subscribe (Q16), emits with causal_refs (Ch15)
+
+These are tightly coupled but can be tackled either as one cluster or sequentially Q16 → Q15 → Q27. Q16 first is probably cleanest since both Q15 and Q27 consume the durable subscribe.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 + Q26 + Q17/Q30/Q34 work is LOCKED. Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md is now 685 lines, still under 1500 hard cap. If Q15+Q16+Q27 cluster pushes it past 800, plan a split (likely separate `04b_subscribe_apis.md` or similar).
+- Postgres trigger upgrade for epoch-fence (DP-Ch13) is a future hardening item, not blocker.
+- Writer audit stream `dp:writer_audit:{reality_id}` schema in DP-Ch13 is a new ops concern — observability dashboard can be added when SDK implementation begins.
+
+---
+
 ## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q26 RESOLVED (channel first-class)
 
 ### Session arc
@@ -600,6 +663,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-25 | **06_data_plane Phase 3 locked — design track COMPLETE.** `07_failure_and_recovery.md` (DP-F1..F10, 385 lines) closes Q6/Q12 and Q5 residual. Key locks: **consistency over availability** on split-brain (DP-F5, reject T3 writes rather than reconcile); **3 token-bucket backpressure** (per-reality-per-tier + per-service + per-session, DP-F7); schema migration rollback ≤5 min with dual-read pause + new-schema quarantine (DP-F8); CP-down cold-start fallback = 503 Retry-After rather than risk double-wake (DP-F8); chaos cadence weekly CP + node / bi-weekly Redis + inval drop / monthly freeze + partition + backpressure / quarterly migration rollback (DP-F10). Folder total: 2851 lines across 12 files, **74 stable IDs**. 7 Q-items fully resolved, 2 partial (ops residuals), 2 out of scope, 1 future implementation. Parallel tracks now unblocked: feature design (DF4/DF5/DF7) consuming DP contract, main SRE track continuation (SR6-SR12), SDK implementation, ops doc. |
 | 2026-04-25 | **06_data_plane Phase 4 backlog recorded (NOT resolved).** User clarified actual game model is turn-based event-linear with **hierarchical channels** (cell → tavern → town → district → country → continent) + probabilistic event bubble-up. Adversarial review identified **Phase 1-3 contracts remain valid baseline but need extension**. 20 open questions (Q15..Q34) appended to `99_open_questions.md`: **4 blockers** (Q15 per-channel turn primitive, Q16 durable subscribe with resume, Q26 channel as first-class concept, Q27 bubble-up primitive), **12 significant gaps**, **4 nits/ops**. 7 items are REAL-* issues from hot-path review reframed to channel scope; 9 are NEW issues surfaced by channel model; 4 carry forward as ops/security follow-ups. Resolution plan: foundation (Q26/Q17/Q30/Q34) → blockers → semantics → gaps → ops. One mini-session per Q cluster. Phase 1-3 files remain LOCKED as baseline; new file `12_channel_primitives.md` planned once foundation resolved. |
 | 2026-04-25 | **06_data_plane Phase 4 Q26 ✅ RESOLVED — channel hierarchy now first-class DP concept.** First Phase 4 mini-session. 6 design decisions approved (D1c tree + free-form level_name · D2a UUID + cached ancestor · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix · D5 SessionContext extension · D6b per-reality-DB registry + CP cache). 2 new axioms **DP-A13** (channel tree first-class) + **DP-A14** (aggregate scope design-time marker). New file **12_channel_primitives.md** (447 lines, DP-Ch1..Ch10). Updates to 04 (`ChannelId`, scope traits, extended SessionContext, scope-typed reads, scope-dispatched `cache_key!`, channel CRUD primitives; file now 677 lines — over soft cap, user-approved as API-reference exception), 05 (CP channel tree cache + 3 new gRPC methods), 99 (Q26 marked resolved + severity updated). Folder: 3687 lines across 13 files, ~88 stable IDs. Phase 4 progress: 1/4 blockers resolved; Q17 + Q30 + Q34 next cluster (per-channel ordering + writer binding). |
+| 2026-04-25 | **06_data_plane Phase 4 Q17 + Q30 + Q34 ✅ RESOLVED — per-channel total ordering + writer-node binding.** Second Phase 4 mini-session. 5 design decisions approved (E1a per-channel total order applies only to ChannelScoped · E2b single-writer in-memory counter + DB UNIQUE backstop · E3b cell writer = creator's node + handoff, non-cell writer = CP-assigned + persistent · E4b SDK transparent cross-node routing via gRPC · E5a CP detects writer death and pushes via channel-tree-update stream). 2 new axioms **DP-A15** (per-channel total event ordering) + **DP-A16** (channel writer-node binding). New file **13_channel_ordering_and_writer.md** (381 lines, DP-Ch11..Ch15: `channel_event_id` allocation with MAX-reseed recovery + DB UNIQUE gaplessness · cell vs non-cell writer assignment + handoff p99 ≤200ms · epoch fence via `channel_writer_state` table + `dp:writer_audit:{reality_id}` stream · transparent gRPC routing with ~5ms LAN hop · `causal_refs: Vec<EventRef>` schema for Q27 bubble-up). Updates: 04 (+`WrongChannelWriter` `DpError` + DP-K5 routing note; 685 lines), 05 (+writer-binding responsibility + 3 RPC methods, surface 16→19), 12 (cross-refs to file 13), 99 (Q17/Q30/Q34 ✅), _index. Folder: 4142 lines across 14 files, **93 stable IDs**. Phase 4 progress: 4 resolved (Q17/Q26/Q30/Q34); 3 blockers remain (Q15 turn boundary, Q16 durable subscribe, Q27 bubble-up primitive) — likely tackled as Q16-first cluster since Q15 and Q27 both consume the durable subscribe. |
 | 2026-04-24 | **H/M/P tier concerns batch-locked — all 21 SA+DE adversarial concerns resolved.** §12R added as consolidated follow-up. **H3 reversed from original batch** per user directive: doppelganger pattern REJECTED, NPC single-session becomes PERMANENT (not V2+ deferred), session caps + queue UX first-class (§12R.1). H5 adds new `seeding` lifecycle state + bootstrap worker + locale translation (§12R.2). H4 adds upcaster requirement for deprecated event types (§12C.5 amended). Plus observability metrics for H1/H2/H6/M-REV-6, HNSW pre-warm on thaw (§12R.5), projection rebuild determinism rule (§12R.7), admin command discoverability (§12R.9), and various polish. 25 decisions locked (H1-H6-D1/H3-NEW-D1..D6, M-REV-1..6-D1, P1-P4-D1). Storage + multiverse design **fully locked** pending V1 prototype data. |
 | 2026-04-24 | **Security Review S1+S2+S3 locked — §12H per-pair memory model SUPERSEDED by session-scoped capability-based design.** §12S added (7 subsections). S1: reality creation rate limit (5/hour + 50 active per user). **S2 architectural shift**: events carry session_id + visibility (5 values) + whisper_target; session_participants capability table; NPC memory split into `npc_session_memory` (knowledge, per-session, replaces per-pair) + `npc_pc_relationship` (derived stance, per-pair). Cross-PC leak becomes **structurally impossible** via capability-based prompt assembly contract. **S3 full tier privacy** (Option A): cascade_policy + privacy_level (normal/sensitive/confidential) with per-tier retention (30d/7d), force-propagate block, cascade auto-constrain, tiered whisper UX + fork inheritance warning. 14 decisions locked (S1-D1, S2-NEW-D1..D5, S3-NEW-D1..D8). §4.2 events schema + §5.2 projections + §12H.2 updated accordingly. Per-event encryption + admin-tier gating deferred V2+. Remaining Security (S4-S13) + SRE review queued. |
 | 2026-04-24 | **Security Review S4 locked — Meta Integrity & Access Control (§12T, 12 subsections).** Closes meta-write audit gap left by C5 (which covered only lifecycle status transitions). **Canonical `MetaWrite()` helper** in `contracts/meta/` generalizes §12Q — ALL meta-table writes go through it. §12Q `AttemptStateTransition()` refactored as specialization (adds transition-graph + mutual-exclusion on top). Append-only audit via Postgres REVOKE UPDATE/DELETE on audit tables + dedicated `audit_retention_role`. Schema CHECK constraints encode business invariants (db_host pattern, status enum, locale, session caps). Per-service Postgres roles (8 roles: world-service, roleplay-service, publisher, meta-worker, event-handler, migration-orchestrator, admin-cli, audit_retention_cron) — credential blast radius bounded. `meta_write_audit` table (retention 5y) + `meta_read_audit` for enumerated sensitive paths (retention 2y). Anomaly monitoring: routing-change PAGE alerts, audit-divergence, bulk-read spikes, out-of-scope writes. 10 decisions locked (S4-D1..D8 + C5→S4 + S4-governance). V2+: WORM cold archive + hash-chain tamper detection + ML anomaly. ADMIN_ACTION_POLICY amendment for MetaWrite governance. Remaining Security (S5-S13) + SRE review queued. |

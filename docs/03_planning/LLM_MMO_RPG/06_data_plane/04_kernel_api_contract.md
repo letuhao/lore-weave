@@ -166,6 +166,12 @@ pub enum DpError {
     #[error("wrong writer node: session_owner={owner} current={current}")]
     WrongWriterNode { owner: NodeId, current: NodeId },
 
+    /// Phase 4 (DP-A16): channel-scoped write attempted on a non-writer node
+    /// AND transparent routing failed or is disabled. Normally SDK auto-routes;
+    /// this surfaces only on routing failure.
+    #[error("wrong channel writer: channel={channel} expected_node={expected} stale_epoch={stale_epoch}")]
+    WrongChannelWriter { channel: String, expected: NodeId, stale_epoch: u64 },
+
     #[error("tier violation: {aggregate} requested={requested:?} allowed={allowed:?}")]
     TierViolation { aggregate: &'static str, requested: Tier, allowed: Tier },
 
@@ -262,6 +268,8 @@ The derive macro generates `Field<PlayerInventory>` impls only for fields marked
 ---
 
 ## DP-K5 — Write primitives (tier-typed)
+
+**Phase 4 routing note:** for `ChannelScoped` writes (T2/T3), the SDK transparently routes to the channel's writer node ([DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25), [13_channel_ordering_and_writer.md DP-Ch14](13_channel_ordering_and_writer.md#dp-ch14--cross-node-write-routing)) when the calling node is not the writer. Feature code does not see this — the call signature is unchanged. Surfaced errors include `DpError::WrongChannelWriter` only when transparent routing itself fails (writer unreachable + retry exhausted). `RealityScoped` writes follow [DP-A11](02_invariants.md#dp-a11--session-node-owns-t1-writes) (session-node sticky) for T1 and 02_storage R7 for T2/T3.
 
 ### T0 / T1 / T2 single-aggregate write
 
@@ -644,7 +652,7 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 |---|---:|---|
 | Core types | 9 | `RealityId`, `ChannelId`, `SessionId`, `NodeId`, `Tier`, `Aggregate`, `T0/T1/T2/T3Aggregate` traits, `RealityScoped`/`ChannelScoped` traits, `Predicate` |
 | Session | 3 | `SessionContext`, `bind_session`, `refresh_capability` |
-| Error | 1 | `DpError` (12+ variants incl. channel-related) |
+| Error | 1 | `DpError` (13 variants incl. `WrongChannelWriter` per Phase 4 DP-A16) |
 | Read | 4 | `read_projection_reality`, `read_projection_channel`, `query_scoped_reality`, `query_scoped_channel` |
 | Write | 5 | `t0_write`, `t1_write`, `t2_write`, `t3_write`, `t3_write_multi` |
 | Subscription | 2 | `subscribe_invalidation`, `subscribe_broadcast` |

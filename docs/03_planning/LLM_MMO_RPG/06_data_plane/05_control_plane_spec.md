@@ -19,6 +19,7 @@ The control plane (CP) owns exactly these concerns. Anything not listed is expli
 | **Session stickiness routing table** | NPC-to-node binding (DP-A11) and session-to-node lookup. Low-QPS, cache-friendly. |
 | **Reality registry** | Maps `reality_id` → per-reality Postgres/Redis endpoints. Consumed at `DpClient::connect` and on reality open/freeze transitions. |
 | **Channel tree cache (Phase 4)** | Per-reality in-memory cache of the channel tree + ancestor-chain lookups. Consumed by SDKs at `bind_session` and updated via Redis Stream consumption. Authoritative source is per-reality DB, not CP. See [DP-Ch3](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream). |
+| **Channel writer binding + handoff (Phase 4)** | One writer node per active channel; CP issues + revokes leases (epoch tokens), assigns writer at channel creation, coordinates cell handoff on creator-leave, reassigns on node death. Cached in same channel-tree structure. See [DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) + [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md). |
 | **Degraded-mode signaling** | On CP outage or partition, signal data plane to enter degraded mode (DP-C9). |
 
 **NOT CP responsibilities:**
@@ -74,6 +75,11 @@ service DpControlPlane {
   rpc GetChannelTree (GetChannelTreeRequest) returns (ChannelTreeSnapshot);
   rpc StreamChannelTreeUpdates (StreamChannelTreeRequest) returns (stream ChannelTreeDelta);
   rpc ResolveAncestorChain (ResolveAncestorChainRequest) returns (AncestorChain);
+
+  // Channel writer binding (Phase 4 DP-A16)
+  rpc GetChannelWriter (GetChannelWriterRequest) returns (ChannelWriterLease);
+  rpc RequestWriterHandoff (RequestWriterHandoffRequest) returns (Empty);
+  rpc HeartbeatWriterLease (HeartbeatWriterLeaseRequest) returns (Empty);
 
   // Session stickiness + NPC binding
   rpc GetSessionNode (GetSessionNodeRequest) returns (NodeAssignment);
@@ -292,7 +298,7 @@ Monthly failover drill triggered via admin CLI:
 |---|---|
 | DP-C1 | CP responsibilities enumerated; non-responsibilities explicit |
 | DP-C2 | 2-node active-passive, own Postgres, ≤60s failover |
-| DP-C3 | gRPC surface — 16 methods (13 Phase 2 + 3 Phase 4 channel-tree), low-QPS |
+| DP-C3 | gRPC surface — 19 methods (13 Phase 2 + 3 Phase 4 channel-tree + 3 Phase 4 writer-binding), low-QPS |
 | DP-C4 | Tier policy registry schema + registration flow |
 | DP-C5 | Expand / Migrate / Contract schema migration protocol |
 | DP-C6 | Invalidation broadcast through Redis pub/sub, CP off hot path |
