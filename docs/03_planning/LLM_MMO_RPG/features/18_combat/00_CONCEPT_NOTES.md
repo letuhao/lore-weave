@@ -1,6 +1,6 @@
 # COMB_001 Combat Foundation — Concept Notes
 
-> **Status:** CONCEPT 2026-04-27 — Q-LOCKED matrix Q1-Q9 ALL LOCKED via 4-batch deep-dive 2026-04-27 (Batch 1: Q1+Q5+Q9 / Batch 2: Q2+Q3 / Batch 3: Q4+Q6+Q8 / Batch 4: Q7). User approved each batch with "1" approval. Captures user combat V1 framing + market combat survey + LLM-zero-math constraint LOCKED + 3-layer architecture + V1 4-step damage law chain (chaos-backend adoption) + module decomposition map (7-file V1 + 6-bridge pattern) + 9 LOCKED architectural decisions with concrete invariants + 10 closure-pass-extensions surfaced. Ready for COMB_001 DRAFT promotion.
+> **Status:** CONCEPT 2026-04-27 — Q-LOCKED matrix Q1-Q9 ALL LOCKED via 4-batch deep-dive 2026-04-27 (Batch 1: Q1+Q5+Q9 / Batch 2: Q2+Q3 / Batch 3: Q4+Q6+Q8 / Batch 4: Q7). User approved each batch with "1" approval. **Stress-test pass (iteration 4) applied 2026-04-27**: 3-scenario walkthrough (Tavern Newbie Zone Ambush + Cultivation Chamber Boss + Untracked Bandit Swarm) surfaced 2 edge cases → Q4 + Q8 amendments applied + 2 AC scenarios added (AC-COMB-11/12). Captures user combat V1 framing + market combat survey + LLM-zero-math constraint LOCKED + 3-layer architecture + V1 4-step damage law chain (chaos-backend adoption) + module decomposition map (7-file V1 + 6-bridge pattern) + 9 LOCKED architectural decisions with concrete invariants (post-stress-test amendments) + 10 closure-pass-extensions surfaced + 12 V1 AC scenarios. Ready for COMB_001 DRAFT promotion.
 >
 > **Purpose:** Capture brainstorm + reference games review + LLM-engine separation discipline + Q-LOCKED architectural decisions for COMB_001 Combat Foundation. NOT a design doc; the seed material for the eventual `COMB_001_combat_foundation.md` design with all critical Qs already locked.
 >
@@ -781,31 +781,40 @@ V1+ deferrals (COMB-D1..COMB-D10 anticipated): social skirmish / surrender / cap
 
 **Original options:** (A) Pure stat math · (B) Hard-cap Lex · (C) Author-configured
 
-**LOCK: (C++) Reality + Lex + PlaceMetadata composition**
+**LOCK: (C++) Reality + Lex + PlaceMetadata composition** (amended 2026-04-27 stress-test iteration: PvE in NewbieZone now caps to fix anti-grief leak)
 
 **Invariants:**
 - Cap formula V1: flat 50% — `damage = min(damage, target.hp × 0.5)` when conditions met
-- Conditions V1 (ALL must hold): `attacker.kind=PC && defender.kind=PC && both_in_safe_zone && tier_disparity ≥ 3`
+- Conditions V1 (ANY of these triggers cap):
+  - PvP path: `attacker.kind=PC && defender.kind=PC && both_in_safe_zone && tier_disparity ≥ 3`
+  - PvE-in-safe-zone path: `defender.kind=PC && both_in_safe_zone && tier_disparity ≥ 3 && reality.apply_to_pve_in_safe_zone=true`
 - Reality config: NEW `combat_disparity_cap: CombatDisparityCapConfig`:
   - `enabled: bool` (V1 default true; tu tiên reality override false for harsh realism)
   - `tier_disparity_threshold: u8` (V1 default 3 progression tiers)
   - `cap_pct_of_target_hp: f32` (V1 default 0.50)
-  - `apply_to_pc_vs_pc_only: bool` (V1 default true)
+  - `apply_to_pc_vs_pc_only: bool` (**V1 default false** — amended 2026-04-27 stress-test; was `true` in initial lock)
+  - `apply_to_pve_in_safe_zone: bool` (NEW; **V1 default true** — protect PC newbies from NPC ambush in safe zones; tu tiên reality opts to `false` for harsh realism alongside `enabled=false`)
 - PF_001 closure-pass-extension: NEW `combat_safety: CombatSafetyLevel { None | NewbieZone | Sanctuary | NoPvP }` field on PlaceDecl
 - Auto-default per place_type V1:
   - `town_square` / `marketplace` / `temple` / `inn` → NewbieZone (cap on)
   - `wilderness` / `cave` / `mountain` → None (cap off; harsh)
   - `sect_arena` / `dueling_grounds` → NoPvP-cap-bypass (sect duel rules)
+- PF_001 closure-pass-extension (NEW from stress-test): NewbieZone cell **canonical seed validator** — rejects spawning Major actor (PC or NPC) with `progression_tier > newbie_threshold` (V1 default threshold=2; configurable per reality) unless cell.allow_high_tier_actors=true explicit override (for quest-driven boss invasion scenarios)
 - WA_001 closure-pass-extension: NEW Lex axiom `combat_damage_cap_in_safe_zone` (engine-driven enforcement)
-- Asymmetric cap policy:
+- Cap policy V1 (post-amendment):
   - PC ↔ PC PvP in safe zone: ✅ cap (anti-grief)
-  - PC ↔ NPC: ❌ no cap (NPC may legitimately be 元嬰)
+  - NPC → PC in NewbieZone: ✅ cap (anti-grief; NEW behavior — fixes stress-test edge case 1)
+  - PC → NPC: ❌ no cap (PC may legitimately attack 元嬰 boss; tu tiên realistic)
   - NPC ↔ NPC: ❌ no cap (immersion-first)
+  - Tu tiên reality config: opts out of all caps (full harsh realism)
+
+**Stress-test edge case 1 RESOLVED:** Original Q4 PvP-only cap leaked anti-grief intent when NPC ambushed PC newbie in tavern (Scenario A: Mã Tông 元嬰 sect master 1-shotting Lý Minh 練氣 PC). Fix: PvE cap in safe zones (V1 default on; reality opt-out for harsh realism) + canonical seed validator preventing high-tier NPC spawn in NewbieZone.
 
 **V1+ extension path:**
 - V1+30d diminishing-returns formula: `damage × (1 / (1 + tier_disparity × 0.2))`
 - V1+ asymptotic formula: `damage × min(1, sqrt(target_tier / attacker_tier))`
 - V1+30d faction-specific arena overrides (sect duel rule sets)
+- V1+ "quest-driven boss invasion" Lex axiom override (named villain bypasses NewbieZone validator with explicit author flag)
 
 ### §14.5 — Q5 LOCKED · Multi-side
 
@@ -897,10 +906,13 @@ V1+ deferrals (COMB-D1..COMB-D10 anticipated): social skirmish / surrender / cap
 
 **Original options:** (A) Hidden · (B) Visible · (C) Allow savescum
 
-**LOCK: (A++) Hidden seed V1 + atomic encounter + action-keyed determinism**
+**LOCK: (A++) Hidden seed V1 + atomic encounter + action-keyed determinism** (amended 2026-04-27 stress-test iteration: `action_idx` semantic specified as monotonic per-combat-session counter)
 
 **Invariants:**
 - Seed scheme: `(reality_id, turn_id, actor_id, action_idx, role)` where `role ∈ {damage, hit, crit, dodge, ko_duration}`
+- **`action_idx` semantic (amended 2026-04-27 stress-test edge case 2)**: monotonic counter starting at **0** at `CombatSessionBorn`; increments by **+1** on every successful action **resolution** (rejected actions do NOT increment); scoped to `combat_session.session_id`. NOT per-actor counter. NOT per-round counter.
+  - Rationale: per-actor counter (i) collides if same actor acts twice in one round (HSR baton-pass V1+30d would break); per-round counter (ii) collides across rounds if same actor at same queue position. Only monotonic-per-session (iii) guarantees uniqueness across all actions.
+  - Example: Scenario B 10-round boss fight with 3 actors averages ~30 actions → action_idx ranges 0..29; each unique seed despite Boss acting 10 times.
 - Hidden by default V1 (player UI never shows seed)
 - Combat encounter atomic V1 (no mid-combat save)
 - Disconnect/reconnect → replay from current round start (engine state checkpointed at round boundary)
@@ -908,6 +920,7 @@ V1+ deferrals (COMB-D1..COMB-D10 anticipated): social skirmish / surrender / cap
 - State-prediction abuse defeated: changing action invalidates predicted roll (`action_idx` in seed)
 - Event log captures `(turn_id, actor_id, action_idx, action_kind, status_events)`; replay engine reconstructs seed from these inputs
 - NO seed-storage in event log (seed is computed; not stored)
+- `combat_session` aggregate stores `next_action_idx: u32` field (reset on session born; incremented on each action resolution; checkpointed at round boundary for crash recovery)
 
 **V1+ extension path:**
 - V1+30d per-round checkpoint UX feature (mid-combat save/load; doesn't affect determinism)
@@ -951,8 +964,8 @@ V1+ deferrals (COMB-D1..COMB-D10 anticipated): social skirmish / surrender / cap
 |---|---|
 | Q1 + Q3 | Party Major companion permadeath would be grief vector → Q3 KO-revivable mandatory (LOCKED) |
 | Q3 + Q7 | KO duration tick = round increment; round = "all non-KO actors acted ≥1 AV pop"; engine-internal detail (LOCKED) |
-| Q4 + PF_001 | NEW `combat_safety: CombatSafetyLevel` field on PlaceDecl (closure-pass-extension at COMB_001 DRAFT) |
-| Q4 + WA_001 | NEW Lex axiom `combat_damage_cap_in_safe_zone` (closure-pass-extension at COMB_001 DRAFT) |
+| Q4 + PF_001 | NEW `combat_safety: CombatSafetyLevel` field on PlaceDecl + NEW NewbieZone canonical seed validator rejecting high-tier Major NPC spawn unless explicit override (closure-pass-extension at COMB_001 DRAFT; amended 2026-04-27 stress-test) |
+| Q4 + WA_001 | NEW Lex axiom `combat_damage_cap_in_safe_zone` — V1 enforces both PvP-in-safe-zone AND PvE-in-safe-zone paths (closure-pass-extension at COMB_001 DRAFT; amended 2026-04-27 stress-test from PvP-only) |
 | Q3 + WA_006 | KO state via PL_006 status (no WA_006 schema change; on-expire trigger calls WA_006 Dying transition) |
 | Q3 + ACT_001 | NEW `mortality_role: MortalityRole` field on CanonicalActorDecl (closure-pass-extension at COMB_001 DRAFT) |
 | Q9 + ACT_001 | NEW `combat_role: CombatRoleHint` field on actor_chorus_metadata (closure-pass-extension at COMB_001 DRAFT) |
@@ -972,10 +985,10 @@ V1+ deferrals (COMB-D1..COMB-D10 anticipated): social skirmish / surrender / cap
 4. **NPC_002 Chorus** — add combat-mode AssemblePrompt template (3 tiers Trivial/Standard/Boss; structured ActionDecl response schema; LLM Layer 3 narration coherence constraint Q6)
 5. **AIT_001** — add `minor_behavior_scripts.combat_reaction_table` extension; CombatRoleHint dispatch
 6. **WA_006 Mortality** — KO-intermediate semantic via PL_006 (no schema change; doc update only)
-7. **WA_001 Lex** — register NEW Lex axiom `combat_damage_cap_in_safe_zone` (Q4)
-8. **PF_001 Place Foundation** — NEW field `combat_safety: CombatSafetyLevel` on PlaceDecl (Q4)
+7. **WA_001 Lex** — register NEW Lex axiom `combat_damage_cap_in_safe_zone` (Q4); V1 enforces both PvP-in-safe-zone AND PvE-in-safe-zone paths (amended 2026-04-27 stress-test)
+8. **PF_001 Place Foundation** — NEW field `combat_safety: CombatSafetyLevel` on PlaceDecl (Q4) + NEW canonical seed validator: NewbieZone cell rejects high-tier Major NPC spawn unless `cell.allow_high_tier_actors=true` explicit override (amended 2026-04-27 stress-test for quest-driven boss invasion bypass)
 9. **ACT_001 Actor Foundation** — NEW field `mortality_role: MortalityRole` on CanonicalActorDecl (Q3) + NEW field `combat_role: CombatRoleHint` on actor_chorus_metadata (Q9)
-10. **RealityManifest** — NEW fields: `combat_disparity_cap: CombatDisparityCapConfig` (Q4) + `combat_mortality_config: CombatMortalityConfig` (Q3) + `combat_seed_visible: bool` (Q8 dev-mode V1+)
+10. **RealityManifest** — NEW fields: `combat_disparity_cap: CombatDisparityCapConfig` with **5 sub-fields** including new `apply_to_pve_in_safe_zone: bool` (Q4; amended 2026-04-27 stress-test) + `combat_mortality_config: CombatMortalityConfig` (Q3) + `combat_seed_visible: bool` (Q8 dev-mode V1+)
 
 ### §14.12 — Original Q phrasing (Appendix; for traceability)
 
@@ -1127,16 +1140,18 @@ If user wants `01_REFERENCE_GAMES_SURVEY.md` companion:
 
 (To be finalized at COMB_001 DRAFT; preview only)
 
-- AC-COMB-1: Strike resolution determinism (same seed + same stats = same damage on replay)
-- AC-COMB-2: HSR action value queue ordering correctness (speed ratios produce expected turn frequency)
-- AC-COMB-3: 2-row positioning damage modifier applied
-- AC-COMB-4: FAC_001-derived side allegiance auto-assignment
-- AC-COMB-5: Major NPC LLM action selection structured response validation (rejects + fallback Defend on hallucinated action)
-- AC-COMB-6: Minor NPC scripted reaction lookup (zero LLM call)
-- AC-COMB-7: Untracked NPC bulk resolution (group HP pool; group flees)
-- AC-COMB-8: KO → WA_006 Dying state transition (per reality config)
-- AC-COMB-9: PL_006 status effect application during combat (e.g., bleed DoT correct)
-- AC-COMB-10: A6 canon-drift detection on narration that contradicts ResolutionResult
+- AC-COMB-1: Strike resolution determinism (same seed + same stats = same damage on replay); seed scheme `(reality_id, turn_id, actor_id, action_idx, role)` with monotonic-per-combat-session `action_idx`
+- AC-COMB-2: HSR action value queue ordering correctness (speed ratios produce expected turn frequency); 3 PL_006 status AV mutations validated (slowed +20%, hasted -20%, stunned +100%)
+- AC-COMB-3: 2-row positioning damage modifier applied (Front/Back row; -25% melee from Back; -25% melee taken in Back from Front attacker)
+- AC-COMB-4: FAC_001-derived side allegiance auto-assignment; 2-side bucketing into `sides: Vec<Side>` cap=2 schema; encounter-local alliance (multi-faction Hostile-to-PC bucket together)
+- AC-COMB-5: Major NPC LLM action selection structured response validation (rejects + fallback Defend on hallucinated action); 3 tiers Trivial/Standard/Boss with IDF_003 archetype constraint
+- AC-COMB-6: Minor NPC scripted reaction lookup (zero LLM call); reaction_table priority resolution
+- AC-COMB-7: Untracked NPC bulk resolution (group HP pool; group flees on HP=0; no individual KO state; single AV entry with mean-speed)
+- AC-COMB-8: KO → WA_006 Dying state transition (per reality config); PL_006 status `knocked_out` 5-round duration; on-expire→Dying transition
+- AC-COMB-9: PL_006 status effect application during combat (e.g., bleed DoT correct); status apply AFTER damage calculation (4-step law chain order invariant)
+- AC-COMB-10: A6 canon-drift detection on narration that contradicts ResolutionResult; LLM Layer 3 narration coherence (5-tier vague label discipline for hostile actors)
+- **AC-COMB-11** (added 2026-04-27 stress-test Scenario A): **Newbie-zone ambush anti-grief enforcement** — When NPC attacker with `progression_tier ≥ 5` ambushes PC with `progression_tier ≤ 2` in cell with `combat_safety: NewbieZone`, AND reality `combat_disparity_cap.apply_to_pve_in_safe_zone=true` (V1 default), THEN damage is capped at `target.hp × 0.50` per blow. Verifies: PvE cap path (NEW post-amendment) + PF_001 `combat_safety` field correctness + WA_001 Lex axiom enforcement on NPC-vs-PC + PF_001 NewbieZone canonical seed validator rejects high-tier NPC spawn unless explicit override. Test reality config: tu tiên harsh (`apply_to_pve_in_safe_zone=false`) → no cap → 1-shot occurs (verifies opt-out path).
+- **AC-COMB-12** (added 2026-04-27 stress-test Scenario B): **Boss `Bypass` + PC `Standard` mortality_role asymmetry** — Boss-tier NPC declared with `mortality_role: Bypass` AND PC declared with `mortality_role: Standard`, both engage in combat in cell with `time_flow_rate=365×` (Dragon Ball chamber). When PC HP=0 → PC enters PL_006 `knocked_out` for 5 rounds; Tiểu Thúy companion uses revive_pill at R10 → PC revives at 1 HP. When Boss HP=0 → immediate WA_006 Dying state (no KO; "kill confirmed"). Verifies: per-actor mortality_role override correctness + PL_006 status `knocked_out` lifecycle + Q7 round semantic ("round = until all non-KO actors acted ≥1 AV pop") for KO duration tick + TDIL-A3 per-turn O(1) (10 rounds inside chamber = ~10 days fiction = ~28 min wall outside; engine ticks per turn not per fiction-day).
 
 ---
 
@@ -1186,5 +1201,9 @@ If user wants `01_REFERENCE_GAMES_SURVEY.md` companion:
 - **2026-04-27**: Concept-notes written post-TDIL_001 DRAFT closure
 - **2026-04-27 (iteration 2)**: chaos-backend-service review applied — §5.1 damage 4-step law chain LOCKED + §15.1 module decomposition map (7-file V1 + 6-bridge pattern + pre-calc cache) + §17 cross-repo reference + impl maturity caveat (combat-core 0 LOC docs-only; only actor-core/element-core/condition-core have production code)
 - **2026-04-27 (iteration 3)**: Q-deep-dive Q1-Q9 ALL LOCKED via 4-batch (Batch 1: Q1+Q5+Q9 / Batch 2: Q2+Q3 / Batch 3: Q4+Q6+Q8 / Batch 4: Q7); §14 fully restructured with LOCKED matrix + invariants + cross-Q dependencies + 10 closure-pass-extensions surfaced
+- **2026-04-27 (iteration 4)**: Stress-test 3-scenario walkthrough applied (Tavern Newbie Zone Ambush + Cultivation Chamber Boss Fight + Untracked Bandit Swarm). 2 edge cases surfaced + amended:
+  - Q4 amendment: `apply_to_pc_vs_pc_only` flipped from V1 default `true` → `false`; NEW `apply_to_pve_in_safe_zone: bool` field (V1 default `true` — fixes anti-grief leak when NPC ambushes PC newbie); NEW PF_001 NewbieZone canonical seed validator preventing high-tier Major NPC spawn unless explicit override
+  - Q8 amendment: `action_idx` semantic specified — monotonic per-combat-session counter (NOT per-actor, NOT per-round); `combat_session.next_action_idx: u32` field for crash-recovery checkpointing
+- §16 AC additions: AC-COMB-11 (newbie-zone ambush anti-grief enforcement) + AC-COMB-12 (boss Bypass + PC Standard mortality_role asymmetry in time-dilated chamber)
 - **Next**: COMB_001 DRAFT promotion (single combined `[boundaries-lock-claim+release]` commit) — schedule when boundary lock window opens; carries 10 closure-pass-extensions across PROG_001 / PL_005 / PL_006 / NPC_002 / AIT_001 / WA_006 / WA_001 / PF_001 / ACT_001 / RealityManifest
 - **After COMB_001 DRAFT**: PCS_001 PC Substrate kickoff (consumes 6 V1 foundations + IDF + FF + FAC + REP + ACT + AIT + TDIL + PROG + COMB; full V1 vertical slice)
