@@ -530,8 +530,14 @@ services:
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_notification?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 2d — consume async LLM job terminal events from
+      # `loreweave.events` topic and persist as notifications rows.
+      # Empty/unset disables the consumer (REST API stays usable).
+      RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8091/health"]

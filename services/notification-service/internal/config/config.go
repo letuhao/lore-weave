@@ -10,6 +10,11 @@ type Config struct {
 	DatabaseURL          string
 	JWTSecret            string
 	InternalServiceToken string
+
+	// Phase 2d — optional. Empty disables the LLM-jobs consumer (the
+	// REST API stays usable; FE just falls back to polling job status
+	// directly via provider-registry until the broker is configured).
+	RabbitMQURL string
 }
 
 func Load() (*Config, error) {
@@ -18,6 +23,7 @@ func Load() (*Config, error) {
 		DatabaseURL:          os.Getenv("DATABASE_URL"),
 		JWTSecret:            os.Getenv("JWT_SECRET"),
 		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		RabbitMQURL:          os.Getenv("RABBITMQ_URL"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
