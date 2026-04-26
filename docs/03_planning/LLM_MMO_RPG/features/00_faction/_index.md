@@ -4,9 +4,9 @@
 > **Catalog reference:** `catalog/cat_00_FAC_faction_foundation.md` (NOT YET CREATED — defer to FAC_001 DRAFT promotion)
 > **Purpose:** The substrate for **factions / sects / orders / clans / guilds** — actor-level membership with role + rank + ideology binding. Resolves V1+ deferrals from FF_001 (sect/master-disciple/sworn brotherhood per Q4 LOCKED) + IDF_005 (sect membership requirement per IDL-D2). Wuxia critical (sect rivalries / master-disciple / Wulin Meng).
 
-**Active:** FAC_001 — **Faction Foundation** (CONCEPT 2026-04-26 — Phase 0 concept-notes + market survey; Q1-Q10 OPEN)
+**Active:** FAC_001 — **Faction Foundation** (DRAFT 2026-04-26 — Q1-Q10 LOCKED via 49a17ed; full §1-§19 spec + boundary registered this commit 2/4)
 
-**Folder closure status:** Open — concept-notes + market-survey phase. FAC_001 not yet drafted.
+**Folder closure status:** Open — DRAFT phase. Phase 3 + closure pass cycle pending (commits 3/4 + 4/4).
 
 **V1+ priority signal:**
 - IDF_005 IDL-D2 LOCKED: "Sect / order / giáo phái membership (faction system) → V1+ FAC_001 Faction Foundation"
@@ -21,7 +21,7 @@
 |---|---|---|---|---|---|
 | (concept) | **00_CONCEPT_NOTES.md** — FAC_001 brainstorm capture | CONCEPT 2026-04-26 — captures user framing (wuxia priority + sect/master-disciple resolution from FF_001+IDF_005) + 12-dimension gap analysis + Q1-Q10 critical scope questions | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | (this commit) |
 | (research) | **01_REFERENCE_GAMES_SURVEY.md** — reference games survey | DRAFT 2026-04-26 — Wuxia sect mechanics primary (Sands of Salzaar / Path of Wuxia / Sword & Fairy) + CK3 court/vassalage + Bannerlord clan + VtM clans+sects + Total War 3K sworn brotherhood + EU4 estates + Stellaris factions | [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) | (this commit) |
-| FAC_001 | **Faction Foundation** (FAC) | (awaiting Q1-Q10 lock + reference materials review) — Per-reality faction declarative entity + per-actor faction_membership aggregate (role + rank + ideology binding) + V1+ faction-faction relations + V1+ succession rules. Resolves FF-D6/D7 sworn/master-disciple + IDL-D2 sect membership. | NOT YET DRAFTED | (to be created) | n/a |
+| FAC_001 | **Faction Foundation** (FAC) | Per-reality faction declarative entity (sparse) + per-actor actor_faction_membership (V1 cap=1 per Q2 REVISION; Vec future-proofs V1+ multi). 6-variant FactionKind (Sect/Order/Clan/Guild/Coalition/Other). Author-declared role taxonomy per FactionDecl (Q3). Numeric rank u16 only V1 (Q4 REVISION). master_actor_id field RESOLVES FF-D7. FactionDecl.requires_ideology RESOLVES IDL-D2. Static default_relations (3-variant Hostile/Neutral/Allied) per Q5; V1+ DIPL_001 dynamic. **Q7 REVISION: defer sworn brotherhood V1+** via FAC-D10. RealityManifest extension `canonical_factions` + `canonical_faction_memberships` REQUIRED V1. 8 V1 reject rules (faction.* namespace) + 4 V1+ reservations. 10 V1-testable AC + 4 V1+ deferred. 17 deferrals (FAC-D1..D17). | **DRAFT** 2026-04-26 (Q1-Q10 LOCKED 49a17ed; full spec + boundary register this commit 2/4) | [`FAC_001_faction_foundation.md`](FAC_001_faction_foundation.md) | (this commit) |
 
 ---
 

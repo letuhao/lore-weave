@@ -6,6 +6,45 @@
 
 ---
 
+## 2026-04-26 — FAC_001 Faction Foundation DRAFT promotion + boundary register (commit 2/4)
+
+- **Lock claim:** main session 2026-04-26 (FAC_001 single-feature 4-commit cycle: lock-Q-decisions [done 49a17ed] + DRAFT [this] + Phase 3 + closure+release); this commit `[boundaries-lock-claim]`
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claimed by main session 2026-04-26 (FAC_001 DRAFT promotion cycle)
+  - `01_feature_ownership_matrix.md`:
+    - NEW row: `faction` aggregate (T2/Reality sparse, FAC_001 DRAFT 2026-04-26)
+    - NEW row: `actor_faction_membership` aggregate (T2/Reality, FAC_001 DRAFT 2026-04-26)
+    - EVT-T4 System sub-types: NEW `FactionBorn` + `FactionMembershipBorn` (FAC_001 owns; emitted at canonical seed)
+    - EVT-T8 Administrative sub-shapes: NEW `Forge:RegisterFaction` + `Forge:EditFaction` + `Forge:EditFactionMembership` (FAC_001 owns; uses forge_audit_log)
+    - Stable-ID prefix table: NEW `FAC-*` row (axioms / deferrals / decisions; catalog/cat_00_FAC_faction_foundation.md TBD)
+  - `02_extension_contracts.md`:
+    - §1.4 RejectReason namespace: NEW `faction.*` row with 8 V1 rule_ids (unknown_faction_id / unknown_role_id / multi_membership_forbidden_v1 [per Q2 REVISION cap=1] / master_cross_sect_forbidden / master_authority_violation / cyclic_master_chain / ideology_binding_violation [RESOLVES IDL-D2] / synthetic_actor_forbidden) + 4 V1+ reservations (cross_reality_mismatch / lex_axiom_forbidden / sworn_bond_unsupported_v1 / member_role_count_exceeded)
+    - §2 RealityManifest: NEW `canonical_factions: Vec<FactionDecl>` + `canonical_faction_memberships: Vec<FactionMembershipDecl>` REQUIRED V1 (sparse storage allowed); 6-variant FactionKind closed enum (Sect/Order/Clan/Guild/Coalition/Other); 3-variant RelationStance (Hostile/Neutral/Allied)
+- **FAC_001 file:** created `FAC_001_faction_foundation.md` (~870 lines DRAFT spec mirroring EF/PF/MAP/CSC/RES/IDF/FF pattern). 10 V1-testable AC-FAC-1..10 + 4 V1+ deferred. 17 deferrals FAC-D1..D17.
+- **Q1-Q10 LOCKED** (per commit 49a17ed):
+  - Q1 (A) 2 aggregates (faction sparse + actor_faction_membership)
+  - Q2 REVISION: Vec<FactionMembershipEntry> schema V1 + V1 validator cap=1 (V1+ relax cap = NO schema migration)
+  - Q3 (A) Author-declared role taxonomy per FactionDecl
+  - Q4 REVISION: Numeric u16 only V1; named computed display
+  - Q5 (A) V1 static default_relations; V1+ DIPL_001 dynamic
+  - Q6 (A) master_actor_id field on actor_faction_membership; FF-D7 RESOLVED
+  - Q7 REVISION: Defer sworn brotherhood V1+ via FAC-D10 (NOT V1 schema slot)
+  - Q8 (A) V1 strict single-reality
+  - Q9 (A) Schema-present hook V1+ (AxiomDecl.requires_faction reserved)
+  - Q10 (A) Synthetic forbidden V1
+- **Cross-feature deferrals RESOLVED:**
+  - FF-D7 Master-disciple sect lineage → FAC_001 master_actor_id field
+  - IDL-D2 Sect membership ideology binding → FAC_001 FactionDecl.requires_ideology
+- **Cross-feature deferrals JOINTLY V1+:**
+  - FF-D5 Marriage as faction alliance → V1+ FAC_001 + V1+ DIPL_001 (FAC-D3)
+  - FF-D6 Sworn brotherhood → V1+ FAC-D10 (NOT V1 schema slot per Q7 REVISION)
+  - FF-D8 Title inheritance → V1+ TIT_001 reads FAC_001 + FF_001 (FAC-D6)
+- **Reason:** Tier 5 Actor Substrate Foundation post-IDF + post-FF_001 priority. FAC_001 resolves multiple V1+ deferrals from FF_001 + IDF_005. Single-feature lock cycle (3 commits remaining: this + Phase 3 + closure+release).
+- **Drift watchpoints unchanged at 8 active.**
+- **Lock continues:** still claimed for FAC_001 Phase 3 (commit 3/4) + closure pass (commit 4/4 with `[boundaries-lock-release]` prefix).
+
+---
+
 ## 2026-04-26 — PROG_001 Progression Foundation DRAFT promotion (6th V1 foundation; closes V1 foundation tier 6/6)
 
 - **Lock claim:** main session 2026-04-26 (PROG_001 DRAFT promotion); single `[boundaries-lock-claim+release]` commit cycle

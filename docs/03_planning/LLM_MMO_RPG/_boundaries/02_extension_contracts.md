@@ -138,6 +138,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `ideology.*` | IDF_005 Ideology Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 3 V1 rule_ids — unknown_ideology_id / duplicate_stance_entry / lex_axiom_forbidden (V1+ active; V1 reserved); +5 V1+ reservations: tenet_violation (V1+ IDL-D1) / sect_membership_required (V1+ FAC_001 IDL-D2) / conflict_auto_drop_required / invalid_fervor_transition / conversion_cost_unmet (V1+ IDL-D11). **ONLY mutable IDF aggregate V1.** Multi-stance V1 per IDL-Q2 (Wuxia syncretism). Atheist = empty Vec. **Free V1 conversion per IDL-Q13 LOCKED (POST-SURVEY-Q3)** — cost mechanic V1+ IDL-D11. i18n: V1 ships I18nBundle from day 1. |
 | `family.*` | FF_001 Family Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate post-IDF priority per IDF_004 ORG-D12); 8 V1 rule_ids — unknown_actor_ref / unknown_dynasty_id / bidirectional_sync_violation / cyclic_relation / duplicate_relation / relation_kind_mismatch / deceased_target / synthetic_actor_forbidden; +4 V1+ reservations: cross_reality_mismatch (V2+ Heresy per Q7) / cyclic_lineage_traversal (V1+ traversal API FF-D2) / dynasty_extinction (V1+ cleanup) / adoption_consent_violation (V1+ V2+ consent system). V1 user-facing reject: deceased_target only (Marriage/Adoption attempts on deceased); others schema-level canonical seed validation. **Boundary discipline:** FF_001 = biological + adoption only; V1+ FAC_001 owns sect/master-disciple/sworn (per Q4 LOCKED). i18n: V1 ships I18nBundle from day 1. |
 | `progression.*` | PROG_001 Progression Foundation (added 2026-04-26 DRAFT — 6th V1 foundation; multi-genre dynamic progression substrate; closes V1 foundation tier); 7 V1 rule_ids — training.kind_unknown / training.rule_invalid / breakthrough.condition_unmet / breakthrough.invalid_tier / cap.exceeded / combat.formula_invalid / combat.stat_term_unknown; +6 V1+ reservations: atrophy.no_practice (PROG-D5) / deviation.cultivation_failed (PROG-D2 走火入魔) / training.prereq_unmet (Q3j V1+30d) / combat.proposed_out_of_range (Q7e V1+30d) / combat.element_resistance_invalid (V1+ DF7 PROG-D24) / combat.critical_threshold_invalid (V1+ PROG-D25). V1 user-facing rejects: cap.exceeded (HardCap) + breakthrough.condition_unmet (Forge-triggered fail). All Q1-Q7 LOCKED via 6-batch deep-dive 2026-04-26. **Hybrid observation-driven NPC model (Q4 REVISED)**: PCs eager + Tracked NPCs lazy + Untracked = no aggregate (future AI Tier feature). chaos-backend reference: actor-core Subsystem→Contribution V1+30d lift (PROG-D6); damage law chain V1+ DF7-equivalent (PROG-D24). DF7 PC Stats placeholder SUPERSEDED. i18n: V1 ships I18nBundle from day 1 per RES_001 §2 cross-cutting contract. |
+| `faction.*` | FAC_001 Faction Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate post-IDF + post-FF_001 priority); 8 V1 rule_ids — unknown_faction_id / unknown_role_id / multi_membership_forbidden_v1 (per Q2 REVISION cap=1) / master_cross_sect_forbidden / master_authority_violation / cyclic_master_chain / ideology_binding_violation (RESOLVES IDF_005 IDL-D2) / synthetic_actor_forbidden; +4 V1+ reservations: cross_reality_mismatch (V2+ Heresy per Q8) / lex_axiom_forbidden (V1+ when first faction-gated axiom ships per Q9) / sworn_bond_unsupported_v1 (V1+ FAC-D10 enrichment activation per Q7 REVISION) / member_role_count_exceeded (V1+ when RoleDecl.max_actors_in_role enrichment ships). V1 user-facing rejects: multi_membership_forbidden_v1 + ideology_binding_violation only (others schema-level canonical seed validation). **3 Q-REVISIONS:** Q2 Vec+cap=1 / Q4 numeric-only V1 / Q7 defer sworn V1+. **RESOLVES:** IDF_005 IDL-D2 (sect membership ideology binding) + FF_001 FF-D7 (master-disciple). **Boundary discipline:** FAC_001 = sect/order/clan-retinue/guild + master-disciple + V1+ sworn brotherhood; FF_001 = biological/adoption only (separated). i18n: V1 ships I18nBundle from day 1. |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
@@ -326,6 +327,30 @@ pub struct RealityManifest {
     // Bidirectional sync validated at canonical seed (Lão Ngũ.children includes Tiểu Thúy AND
     // Tiểu Thúy.parents includes Lão Ngũ). Cyclic relations rejected. Duplicate refs rejected.
     pub canonical_family_relations: Vec<FamilyRelationDecl>, // see FF_001 §1; sparse — declared per actor
+
+    // ─── FAC_001 Faction Foundation extensions (added 2026-04-26 DRAFT — Tier 5 Actor Substrate post-IDF + post-FF_001) ───
+    // REQUIRED V1: every reality declares canonical_factions + canonical_faction_memberships (sparse
+    // storage allowed; empty Vec valid for sandbox / faction-less reality). RESOLVES IDF_005 IDL-D2
+    // (sect membership ideology binding) + FF_001 FF-D7 (master-disciple sect lineage).
+    //
+    // FactionDecl shape per FAC_001 §3.1: { faction_id, display_name (I18nBundle), faction_kind
+    // (6-variant: Sect/Order/Clan/Guild/Coalition/Other), roles: Vec<RoleDecl> author-declared per
+    // Q3 LOCKED, requires_ideology: Option<Vec<(IdeologyId, FervorLevel)>> validated against
+    // actor_ideology_stance at canonical seed, default_relations: HashMap<FactionId, RelationStance>
+    // (3-variant Hostile/Neutral/Allied; static V1 per Q5 LOCKED), founder_actor_id (Option),
+    // current_head_actor_id (Option), canon_ref }. RoleDecl: { role_id, display_name (I18nBundle),
+    // authority_level: u8 (0-100 for ordering) }.
+    // Wuxia preset 5 sects (Đông Hải Đạo Cốc / Tây Sơn Phật Tự / Ma Tông / Trung Nguyên Võ Hiệp /
+    // Tán Tu Đồng Minh); Modern preset 1-2 factions (police / civilian); Sci-fi 1-2 corporate houses.
+    pub canonical_factions: Vec<FactionDecl>,      // see FAC_001 §3.1; sparse — only declared factions
+
+    // FactionMembershipDecl shape per FAC_001 §1: { actor_id, faction_id, role_id, rank_within_role:
+    // u16 (numeric V1 per Q4 REVISION), master_actor_id: Option<ActorId> (RESOLVES FF-D7) }.
+    // V1 cap=1 validator per Q2 REVISION (each actor has 0-1 membership V1; V1+ relax cap = NO
+    // schema migration). Bidirectional sync: faction.current_head_actor_id ↔ membership with role
+    // authority_level=100 (sect_master). Master-disciple chain validated (same faction + authority
+    // higher + no cycle). Synthetic actors forbidden V1 per Q10 LOCKED.
+    pub canonical_faction_memberships: Vec<FactionMembershipDecl>, // see FAC_001 §1; sparse — declared per actor
 
     // ─── PROG_001 Progression Foundation extensions (added 2026-04-26 DRAFT — 6th V1 foundation feature) ───
     // ALL OPTIONAL V1 — empty default = NO progression in reality (sandbox/freeplay valid V1).
