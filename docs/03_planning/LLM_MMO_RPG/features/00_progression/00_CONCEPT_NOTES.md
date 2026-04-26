@@ -807,12 +807,188 @@ V1+ reservations:
 - `progression.deviation.cultivation_failed` (PROG-D2 走火入魔)
 - `progression.training.prereq_unmet` (Q3j V1+30d if action-rejection enabled — currently silent V1)
 
-### §11.6 — Q4 / Q5 / Q7 still open
+### §11.6 — Q4 REVISED LOCKED 2026-04-26 (Hybrid observation-driven NPC model)
 
-After Q1+Q6+Q2+Q3 deep-dive, remaining:
+**User correction 2026-04-26:** Initial Q4 attempt (Train V1 eager) was REJECTED. Key insight: at scale (billions of NPCs vision), eager Generator iteration doesn't work. Quantum-observation principle applies — NPC state stale-until-observed (Schrödinger pattern; reference Stellaris pops / CK3 background characters / Skyrim distance culling).
 
-- **Q4 — NPC progression V1** (next deep-dive; Q3 unblocks): train (M&B) vs static (CK3) vs hybrid. Q3 makes both feasible. Decides whether `Scheduled:CultivationTick` Generator iterates NPCs or only PCs.
-- **Q5 — Skill atrophy V1**: likely NO V1 (defer V1+30d / PROG-D5).
-- **Q7 — Combat damage formula V1 vs V1+**: chaos-backend damage law direct lift candidate; defines DF7-equivalent reading ProgressionInstance.raw_value.
+#### 3-tier NPC architecture (future AI Tier feature scope)
 
-Q3 LOCKED unblocks Q4 (NPC progression behavior decision now informed by training mechanism shape).
+| Tier | Storage V1 | Update model | V1 owner |
+|---|---|---|---|
+| **PC** | `ActorProgression` aggregate (full) | **Eager** — daily Generator iterates | PROG_001 V1 |
+| **Tracked NPC (Major)** | `ActorProgression` aggregate (full) | **Lazy** — materialize on observation | PROG_001 V1 ships hooks; future AI Tier feature owns tier-tracking semantics |
+| **Untracked NPC (Background)** | NO aggregate | LLM/RNG-generated per session; discarded | **future AI Tier feature** (out of PROG_001 scope V1; PROG_001 silently skips) |
+
+PROG_001 V1 ships PC eager + Tracked NPC lazy hooks. Untracked NPC = absence of aggregate (clean default).
+
+**Future AI Tier feature** (`16_ai_tier/` placeholder reserved; not creating V2_RESERVATION now — defer to user's explicit kickoff after PROG_001 DRAFT):
+- `NpcTrackingTier` enum (Major / Minor / etc.)
+- Tier promotion mechanics (Untracked → Tracked when significance threshold reached)
+- Untracked NPC procedural generation (LLM persona + stat synthesis on-demand)
+- Discard policies (session-end / cell-leave / etc.)
+
+#### Q4 LOCKED sub-decisions (revised)
+
+| Sub | Decision |
+|---|---|
+| Q4a Generator iteration | **PC only eager** (daily Generator iterates all PCs); **Tracked NPCs lazy** (no Generator participation) |
+| Q4b Tracked NPC update trigger | **Observation events**: PC enters cell with NPC / PL_005 interaction targets NPC / LLM-driven NPC action initiates / Forge edit references NPC |
+| Q4c Untracked NPC progression | **NO aggregate stored** — future AI Tier feature owns; PROG_001 silently skips actors without ActorProgression |
+| Q4d Tracked NPC materialization | **Lazy compute on observation** — apply elapsed-day training accrual + breakthrough checks at observation moment |
+| Q4e Cascade events from NPC progression | Emit at materialization moment (deferred from "real" fiction-time); causal-ref includes `materialized_at` annotation |
+| Q4f Materialization optimization V1 | **Conservative** — assume NPC in last-known location/status for entire elapsed period (no intermediate-state tracking) |
+| Q4g Tier promotion (Untracked → Tracked) | **NOT V1** — future AI Tier feature owns. V1 tracking_tier is author-declared at NPC creation (RealityManifest) or via Forge V1+ |
+
+#### NEW V1 schema fields (Q4 revised)
+
+```rust
+pub struct ProgressionInstance {
+    pub kind_id: ProgressionKindId,
+    pub raw_value: u64,
+    pub current_tier: Option<TierIndex>,
+    pub last_trained_at_fiction_ts: i64,                  // existing
+    pub last_observed_at_fiction_ts: i64,                 // ⭐ NEW Q4 revised — quantum-observation reference
+    pub training_log_window: VecDeque<TrainingRecord>,
+}
+
+pub struct ActorProgression {
+    pub reality_id: RealityId,
+    pub actor_ref: ActorRef,
+    pub values: Vec<ProgressionInstance>,
+    pub last_modified_at_turn: u64,
+    pub schema_version: u32,
+    pub tracking_tier: Option<NpcTrackingTier>,           // ⭐ NEW Q4 revised — None V1; future AI Tier populates V1+
+}
+
+// Reserved for future AI Tier feature (NOT defined in PROG_001):
+// pub enum NpcTrackingTier {
+//     Major,   // full progression + LLM-driven decisions
+//     Minor,   // progression but rule-based actions
+//     // Untracked NPCs don't have ActorProgression at all
+// }
+```
+
+PCs: tracking_tier=None always (PCs implicitly "always tracked"; eager Generator).
+Tracked NPCs: tracking_tier=Some(...) declared by future AI Tier feature; lazy materialization.
+Untracked NPCs: NO ActorProgression aggregate.
+
+#### Generator behavior V1 (revised)
+
+```pseudo
+Scheduled:CultivationTick (day-boundary; sequenced 5th per EVT-G6):
+  for each actor in reality where ActorProgression exists AND actor_type == PC:
+    // PC eager — same as Q3 original design
+    apply training rules + auto-breakthrough check
+    emit ProgressionDelta events
+  
+  // Tracked NPCs SKIPPED at Generator (lazy)
+  // Untracked NPCs absent from store (no aggregate)
+```
+
+#### Materialization computation (Q4 revised observation-driven)
+
+```pseudo
+on observation_event(npc, current_fiction_ts):
+  if npc.actor_progression is None: return  // untracked; no progression
+  
+  for each ProgressionInstance in npc.actor_progression:
+    elapsed_days = current_fiction_ts.day_count() - instance.last_observed_at.day_count()
+    if elapsed_days <= 0: continue  // already up-to-date
+    
+    // Conservative V1: replay each day applying Time-source training rules
+    for day in 0..elapsed_days:
+      simulated_ts = instance.last_observed_at + (day + 1) * fiction_day
+      
+      for rule in npc_kind.training_rules where rule.source matches Time:
+        if all rule.conditions match (using NPC's last-known location/status):
+          apply rule.amount to instance.raw_value
+          // Auto-breakthrough check (Q2 mechanic)
+          if at-tier-max + breakthrough_condition met:
+            advance tier; emit ProgressionDelta::TierAdvance with materialized_at=current_fiction_ts
+    
+    instance.last_observed_at_fiction_ts = current_fiction_ts
+    emit aggregated ProgressionDelta::RawValueIncrement event with materialized_at causal-ref
+```
+
+V1 simplification: NPC stays in last-known state for entire elapsed period. V1+30d adds intermediate-state interpolation (PROG-D20).
+
+#### NEW EVT-T3 sub-shape (Q4 revised)
+
+**`ActorProgressionMaterialized { actor_ref, materialized_at_fiction_ts, deltas: Vec<ProgressionDelta> }`** — EVT-T3 Derived sub-shape capturing lazy-materialization batch as single audit-able event. Cascade-ref: triggering observation event.
+
+Distinguished from per-day ProgressionDelta events (which are emitted PER day during materialization replay). ActorProgressionMaterialized is the "wrapper" event for batch correlation.
+
+#### RES_001 alignment concern (downstream V1+30d)
+
+**RES_001 NPC owner auto-collect Generator** (`Scheduled:NPCAutoCollect` daily for ALL NPCs) is architecturally inconsistent with quantum-observation principle for the same reason original Q4 was wrong.
+
+**Decision:** RES_001 keeps eager V1 (already CANDIDATE-LOCK; not modifying). V1+30d closure pass migrates RES_001 NPC economy to lazy materialization (matches PROG_001 pattern). Tracked as **NEW deferral PROG-D19** and downstream RES_001 closure-pass concern.
+
+### §11.7 — Q5 REVISED LOCKED 2026-04-26 (Lazy atrophy at materialization)
+
+**User correction:** Initial Q5 LOCKED mechanism (Generator-based atrophy V1+30d) was wrong locality. In observation model, atrophy applies at materialization time (lazy), not Generator. V1 still NO atrophy ships, but mechanism shape revised.
+
+| Sub | Decision |
+|---|---|
+| Q5a V1 atrophy | **NO V1** — confirmed defer V1+30d (PROG-D5) |
+| Q5b V1+ atrophy mechanism | **Lazy at materialization** — NOT Generator. At materialization, compute time-since-last-trained; apply atrophy delta if `atrophy_rule` declared. PCs eager-apply at daily Generator (since PCs eager); Tracked NPCs lazy-apply at observation. |
+| Q5c V1 schema reservation | **`last_trained_at_fiction_ts`** (existing) distinguished from **`last_observed_at_fiction_ts`** (Q4 revised). Atrophy uses last-trained (skill-specific decay); observation uses last-observed (NPC-scope refresh). Both fields V1 active. |
+| Q5d TierRegress vs Atrophy distinction | **YES distinct mechanisms**: TierRegress (PROG-D2 V1+30d) = failed breakthrough deviation (走火入魔); Atrophy (PROG-D5 V1+30d) = gradual no-practice decay. Different triggers; both V1+30d. |
+| Q5e Atrophy applies to PCs too? | **YES** — both PCs and Tracked NPCs subject. PCs: applied at daily Generator. Tracked NPCs: applied at observation materialization. Untracked NPCs: not applicable (no aggregate). |
+
+#### Lazy atrophy computation V1+30d
+
+```pseudo
+on observation_event(npc, current_fiction_ts):
+  // Q4 revised materialization first applies training accrual:
+  apply_training_materialization(npc, current_fiction_ts)
+  
+  // V1+30d adds atrophy:
+  for each ProgressionInstance in npc.actor_progression:
+    if instance.kind has atrophy_rule:
+      days_since_last_trained = current_fiction_ts.day_count() - instance.last_trained_at.day_count()
+      if days_since_last_trained > atrophy_rule.threshold_days:
+        decay_amount = (days_since_last_trained - threshold) * atrophy_rule.daily_decay
+        apply RawValueDecrement(decay_amount) clamped to floor
+```
+
+For PCs (eager daily Generator): same logic but runs at Generator instead of observation.
+
+### §11.8 — V1+ deferrals NEW from Q4+Q5 revised
+
+| ID | Deferral | Trigger to revisit |
+|---|---|---|
+| **PROG-D19** | RES_001 NPC eager → lazy materialization alignment | V1+30d when AI Tier feature ships; RES_001 closure pass aligns with quantum-observation pattern |
+| **PROG-D20** | Intermediate-state interpolation (NPC "had" cultivation visits during elapsed period) | V1+ for richer realism; V1 conservative single-state assumption acceptable |
+| **PROG-D21** | NPC-to-NPC cascade during un-observed period | V2 — complex determinism concern; multi-NPC observation chains |
+| **PROG-D22** | Untracked → Tracked tier promotion logic | **Future AI Tier feature** owns (out of PROG_001 scope) |
+| **PROG-D23** | Materialization computation closed-form math (skip per-day replay for simple training rules) | V1+30d optimization; only matters when elapsed_days > 100 |
+
+### §11.9 — Future AI Tier feature reservation
+
+User noted: "kiến trúc phân tầng AI mà chúng ta chưa design, sẽ có design sau progression system".
+
+**Future placeholder:** `features/16_ai_tier/` — V2_RESERVATION pattern (mirror QST/CFT/ORG). Not creating now; defer to user's explicit kickoff after PROG_001 DRAFT lands.
+
+**AI Tier feature responsibilities (sketch only):**
+- Define `NpcTrackingTier` enum (Major / Minor / Generated / etc.)
+- Tier promotion mechanics (Untracked NPC becomes Tracked when significance threshold)
+- Untracked NPC procedural generation (LLM-driven persona + stat synthesis at first observation)
+- Discard policies (session-end / cell-leave / N-day no-observation)
+- Integration with PROG_001's `tracking_tier` field
+- Integration with NPC_001 ActorId (which subset is tracked)
+- Integration with billion-NPC scaling vision
+
+PROG_001 V1 ships READY for AI Tier integration:
+- `tracking_tier: Option<NpcTrackingTier>` field reserved (None V1)
+- `last_observed_at_fiction_ts` field active V1
+- Materialization computation function (testable V1)
+- "Untracked NPC = absence of aggregate" semantic clean
+
+### §11.10 — Q7 still open
+
+After Q1+Q6+Q2+Q3+Q4+Q5 LOCKED, only **Q7 remains**:
+
+- **Q7 — Combat damage formula V1 vs V1+**: chaos-backend damage law direct lift candidate (per `02_CHAOS_BACKEND_REFERENCE.md` §4); defines DF7-equivalent reading ProgressionInstance.raw_value for combat outcomes.
+
+Q4+Q5 revised LOCKED unblocks Q7 (combat formula now reads "current materialized" ProgressionInstance values; observation event triggers materialization before formula reads value).
