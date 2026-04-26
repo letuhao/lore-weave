@@ -4,9 +4,9 @@
 > **Catalog reference:** [`catalog/cat_00_ACT_actor_foundation.md`](../../catalog/cat_00_ACT_actor_foundation.md) (will be added with ACT_001 DRAFT 2/4)
 > **Purpose:** UNIFIED actor identity + AI-drive metadata + bilateral opinion + session memory substrate. Eliminates the `npc` aggregate anomaly (only Tier 5 feature NOT per-actor unified pre-ACT_001) by lifting per-NPC aggregates to per-actor symmetric pattern. Future-proofs **AI-controls-PC-offline V1+** + **multi-PC realities** + **NPC↔NPC drama V1+** simultaneously.
 
-**Active:** ACT_001 — **Actor Foundation** (Q-LOCKED 2026-04-27 — Phase 0 + Q1-Q6 LOCKED via main session deep-dive; DRAFT 2/4 next)
+**Active:** ACT_001 — **Actor Foundation** (DRAFT 2026-04-27 — commit 2/5 `[boundaries-lock-claim]` DRAFT promotion + boundary register; commits 3-5/5 next)
 
-**Folder closure status:** **OPEN** — Phase 0 commit 1/4 (this commit; Q1-Q6 LOCKED) → commit 2/4 DRAFT + boundary register + 02_storage R8 update + NPC_001/002/003 closure-pass-extensions → commit 3/4 Phase 3 cleanup → commit 4/4 closure + lock release.
+**Folder closure status:** **OPEN** — Phase 0 commit 1/5 (1c0d2d7; Q1-Q6 LOCKED) → commit 2/5 DRAFT + boundary register (this commit) → commit 3/5 cascading closure-pass-extensions (R8 + NPC_001/002/003) → commit 4/5 Phase 3 cleanup → commit 5/5 closure + lock release.
 
 **Origin signal:**
 - Main session insight 2026-04-27: substrate already unified Tier 5 (8+ features per-actor); `npc` aggregate anomaly identified
@@ -21,7 +21,7 @@
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
 | (concept) | **00_CONCEPT_NOTES.md** — ACT_001 unification analysis + Q1-Q6 LOCKED | Q-LOCKED 2026-04-27 — captures 3-layer architectural model + 4-aggregate decomposition + Q1-Q6 LOCKED via main session deep-dive (Q3 REVISION + Q6 user-revised to full unify) | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | (this commit) |
-| ACT_001 | **Actor Foundation** (ACT) | Unified per-actor substrate aggregating identity + AI-drive metadata + bilateral opinion + session memory. Replaces `npc` (R8 anomaly) with `actor_core` (L1 identity, always present) + `actor_chorus_metadata` (L3 AI-drive metadata, sparse — NPCs always; PCs V1+ when AI-driven). Replaces `npc_pc_relationship_projection` with `actor_actor_opinion` (bilateral; per-(observer, target)). Replaces `npc_session_memory` with `actor_session_memory` (per-(actor, session); supports AI-controls-PC-offline LLM context continuity V1+). NPC_001 closure-pass-extension transfers 3 aggregates to ACT_001; keeps `npc_node_binding` (NPC writer-node owner mapping with epoch fence — PC uses entity_binding from PL_001/EF_001). Synthetic actors forbidden V1 (universal substrate discipline). Future-proofs AI-controls-PC-offline V1+ + multi-PC realities + NPC↔NPC drama V1+. | (DRAFT pending commit 2/4) | (defer) | (defer) |
+| ACT_001 | **Actor Foundation** (ACT) | Unified per-actor substrate aggregating identity + AI-drive metadata + bilateral opinion + session memory. Replaces `npc` (R8 anomaly) with `actor_core` (L1 identity, always present) + `actor_chorus_metadata` (L3 AI-drive metadata, sparse — NPCs always; PCs V1+ when AI-driven). Replaces `npc_pc_relationship_projection` with `actor_actor_opinion` (bilateral; per-(observer, target)). Replaces `npc_session_memory` with `actor_session_memory` (per-(actor, session); supports AI-controls-PC-offline LLM context continuity V1+). NPC_001 closure-pass-extension transfers 3 aggregates to ACT_001; keeps `npc_node_binding`. Synthetic actors forbidden V1. 6 V1 reject rules (`actor.*` namespace) + 3 V1+ reservations. RealityManifest CanonicalActorDecl ownership transfers to ACT_001 + chorus_metadata field additive. 2 EVT-T4 + 4 EVT-T8 + 2 EVT-T3 sub-types. 10 V1 AC + 4 V1+ deferred. 10 deferrals (ACT-D1..ACT-D10). | **DRAFT** 2026-04-27 (commit 2/5 `[boundaries-lock-claim]` DRAFT promotion + boundary register) | [`ACT_001_actor_foundation.md`](ACT_001_actor_foundation.md) | 1c0d2d7 → (this commit 2/5) |
 
 ---
 

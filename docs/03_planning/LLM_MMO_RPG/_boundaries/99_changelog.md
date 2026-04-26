@@ -6,6 +6,85 @@
 
 ---
 
+## 2026-04-27 — ACT_001 Actor Foundation DRAFT promotion + boundary register (commit 2/5)
+
+- **Lock CLAIMED** at start of this commit (`[boundaries-lock-claim]`); release deferred to commit 5/5 closure pass per ACT_001 5-commit cycle (large refactor; commit 2/5 boundary docs + commit 3/5 cascading closure-pass-extensions for R8 + NPC_001/002/003)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None → main session 2026-04-27 (ACT_001 unification cycle; 4h TTL)
+  - `01_feature_ownership_matrix.md`:
+    - 4 NEW aggregate rows: actor_core + actor_chorus_metadata + actor_actor_opinion + actor_session_memory (ALL ACT_001-owned)
+    - REMOVED: 3 NPC_001 R8 import rows (npc + npc_session_memory + npc_pc_relationship_projection) — REPLACED by ACT_001 unified equivalents above
+    - PRESERVED: npc_node_binding (NPC_001-owned; closure-pass-extension note added 2026-04-27)
+    - 2 NEW EVT-T4 sub-type entries: ActorBorn + ActorChorusMetadataBorn (ACT_001 owner)
+    - 4 NEW EVT-T8 sub-shape entries: Forge:EditActorCore + Forge:EditChorusMetadata + Forge:EditActorOpinion + Forge:EditActorSessionMemory (ACT_001 owner; uses WA_003 forge_audit_log)
+    - 1 NEW EVT-T3 entry: 2 V1 active delta_kinds (Update on actor_actor_opinion + Update on actor_session_memory; preserved from NPC_001 §13 session-end derivation; renamed) + V1+ delta_kinds reserved (ActorControlSourceChange + bilateral V1+ patterns)
+    - RealityManifest envelope row UPDATED: canonical_actors ownership transfers from PL_001+NPC_001 → ACT_001 + chorus_metadata field additive (ACT-D1 V1+ activation)
+    - RejectReason namespace: appended `actor.*` → ACT_001
+    - NEW stable-ID prefix: `ACT-*`
+  - `02_extension_contracts.md`:
+    - §1.4 namespace registration: `actor.*` (6 V1 rules + 3 V1+ reservations)
+    - §2 RealityManifest CanonicalActorDecl ownership transferred to ACT_001 + chorus_metadata extension fields documented (kind-agnostic; sparse — Some for NPCs V1; None for PCs V1; V1+ AI-controls-PC-offline activation)
+  - `99_changelog.md`: this entry
+
+### ACT_001 DRAFT MILESTONE SUMMARY (commit 2/5 of 5-commit cycle)
+
+Files created/modified outside `_boundaries/` (commit 2/5 only — commit 3/5 will do closure-pass-extensions for R8 + NPC_001/002/003):
+- features/00_actor/_index.md (DRAFT row updated; ACT_001 active)
+- features/00_actor/00_CONCEPT_NOTES.md (already at Q-LOCKED status; commit 1/5 1c0d2d7)
+- features/00_actor/ACT_001_actor_foundation.md (~1000 line DRAFT spec — NEW THIS COMMIT)
+- catalog/cat_00_ACT_actor_foundation.md (ACT-* namespace catalog; ACT-A1..A8 axioms + ACT-D1..D10 deferrals + 16 catalog entries — NEW THIS COMMIT)
+
+Boundary expansions (commit 2/5):
+- 4 NEW ACT_001-owned aggregates (replaces 3 R8-locked NPC_001 imports + adds 1 sparse extension)
+- 2 NEW EVT-T4 System sub-types (ActorBorn + ActorChorusMetadataBorn)
+- 4 NEW EVT-T8 Administrative sub-shapes (Forge:EditActorCore + Forge:EditChorusMetadata + Forge:EditActorOpinion + Forge:EditActorSessionMemory)
+- 2 NEW EVT-T3 Derived delta_kinds active V1 (Update on actor_actor_opinion + actor_session_memory; preserved from NPC_001 §13)
+- 1 NEW namespace: `actor.*` (6 V1 rules + 3 V1+ reservations)
+- 1 NEW stable-ID prefix: `ACT-*`
+- RealityManifest envelope ownership transfer (CanonicalActorDecl now ACT_001-owned)
+
+Q-LOCKED summary (Q1-Q6 LOCKED via main session deep-dive 2026-04-27 user "approve all but revise Q6 to (A) full unify all 3 now"):
+- Q1 (C): NEW feature ACT_001 Actor Foundation in features/00_actor/
+- Q2 (A): Sequential — ACT_001 cycle → PCS_001 cycle on stable base
+- Q3 ⚠ REVISION (NEW C): Rename npc_chorus_metadata → actor_chorus_metadata; own under ACT_001 substrate; sparse storage; future-proofs AI-controls-PC-offline V1+
+- Q4 (B): Synthetic actors excluded V1 (universal substrate discipline)
+- Q5 (B): 02_storage R08 update WITHIN ACT_001 cycle (deferred to commit 3/5)
+- Q6 ⚠ REVISION (A) user-revised: Full unify all 3 opportunities NOW (actor_core + actor_chorus_metadata + actor_actor_opinion + actor_session_memory)
+
+3-layer architectural model LOCKED (ACT-A2):
+- L1 Identity (actor_core; always present post-creation)
+- L2 Capability/Kind (encoded in ActorId variant; stable post-creation)
+- L3 Control source (dynamic; sparse aggregate population)
+  - Control = User → PC online → no actor_chorus_metadata row
+  - Control = AI → NPC always; PC offline V1+ → actor_chorus_metadata row populated
+  - Control = Engine → Synthetic → no narrative substrate V1
+
+Cross-feature deferrals RESOLVED (commit 5/5 closure will note):
+- **NPC_001 R8 import anomaly** — `npc` aggregate (per-NPC) was only Tier 5 substrate not unified per-actor → ✅ RESOLVED via actor_core + actor_chorus_metadata split
+- **npc_pc_relationship_projection one-directional** — only NPC→PC opinion → ✅ RESOLVED via actor_actor_opinion bilateral
+- **npc_session_memory NPC-scoped** — PC session memory fragmented in chat-service → ✅ RESOLVED via actor_session_memory unified
+
+Cascading closure-pass-extensions DEFERRED to commit 3/5:
+- 02_storage R08_npc_memory_split.md — schema split + rename
+- features/05_npc_systems/NPC_001_cast.md — 3 aggregates ownership transfer + persona §6 update + AC names
+- features/05_npc_systems/NPC_002_chorus.md — read paths updated (NpcOpinion::for_pc → ActorOpinion::for_target)
+- features/05_npc_systems/NPC_003_desires.md — desires field ownership transfer + type rename
+
+V1 quantitative summary:
+- 4 ACT_001 aggregates (actor_core + actor_chorus_metadata sparse + actor_actor_opinion sparse bilateral + actor_session_memory)
+- 1 NPC_001-kept aggregate (npc_node_binding only)
+- 3 PCS_001-future aggregates (pc_user_binding + pc_mortality_state + pc_stats_v1_stub)
+- 6 V1 reject rules (actor.* namespace) + 3 V1+ reservations
+- RealityManifest CanonicalActorDecl ownership transfer + chorus_metadata fields additive
+- 2 EVT-T4 System + 4 EVT-T8 Forge + 2 EVT-T3 Derived (V1 active; V1+ patterns reserved)
+- 10 V1 AC + 4 V1+ deferred + 10 deferrals (ACT-D1..ACT-D10)
+- ~1000 line DRAFT spec
+- 5-commit cycle (Phase 0 1c0d2d7 + DRAFT 2/5 this commit + closure-pass-extensions 3/5 + Phase 3 4/5 + closure+release 5/5)
+
+Next: commit 3/5 cascading closure-pass-extensions for R08 + NPC_001/002/003.
+
+---
+
 ## 2026-04-27 — REP_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 4/4 FINAL)
 
 - **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
