@@ -11,7 +11,7 @@
 > These three layers are COMPLEMENTARY, NOT duplicative. NPC_002 Chorus consumes ALL THREE for priority resolution.
 >
 > **Category:** REP — Reputation Foundation (Tier 5 Actor Substrate post-FAC_001 priority)
-> **Status:** DRAFT 2026-04-27 (Phase 0 CONCEPT 6b7d931 → Q1-Q10 LOCKED 1/4 commit 61e5019 → DRAFT 2/4 this commit; 1 REVISION on Q4 — Always Neutral V1, V1+ hybrid alongside Q6 cascade)
+> **Status:** CANDIDATE-LOCK 2026-04-27 (4-commit cycle complete: Phase 0 6b7d931 → Q-LOCKED 1/4 61e5019 → DRAFT 2/4 b2025a1 → Phase 3 cleanup 3/4 b321f74 → closure pass 4/4 this commit; Q1-Q10 LOCKED via 5-batch deep-dive; 1 REVISION on Q4 — Always Neutral V1, V1+ hybrid alongside Q6 cascade)
 > **Stable IDs in this file:** `REP-A*` axioms · `REP-D*` deferrals · `REP-Q*` decisions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types) (sibling pattern); [FAC_001 §3.1](../00_faction/FAC_001_faction_foundation.md#31-faction-t2--reality-scope--sparse) (FactionId source-of-truth); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md) (Wuxia tier display labels); [07_event_model EVT-A10](../../07_event_model/02_invariants.md) (event log = universal SSOT); [WA_003 Forge](../02_world_authoring/WA_003_forge.md) (forge_audit_log).
 > **Defers to:** V1+ runtime gameplay rep events (PL_005 Strike on faction member triggers REP_001 delta); V1+ NPC_002 Tier 4 priority modifier (rival-faction NPCs read REP_001); V1+ WA_001 AxiomDecl.requires_reputation hook (faction-gated abilities require min rep tier); V1+ TIT_001 title-grant requires min rep; V1+ CULT_001 cultivation method requires min rep; V2+ DIPL_001 inter-faction war affects rep cascade; V2+ 13_quests quest reward = rep delta; V2+ WA_002 Heresy cross-reality migration per Q8 LOCKED.
@@ -626,6 +626,6 @@ All Q1-Q10 LOCKED via 5-batch deep-dive 2026-04-27 (1 REVISION on Q4). No outsta
 - [ ] **§18** Cross-references: 1 RESOLVED upstream (FAC-D7) + 7 consumed-from + 7 consumed-by-future
 - [ ] **§19** This checklist (filling at Phase 3 cleanup commit 3/4)
 
-**Status transition:** DRAFT 2026-04-27 (commit 2/4 this commit) → Phase 3 cleanup (commit 3/4) → **CANDIDATE-LOCK** in commit 4/4 → **LOCK** when AC-REP-1..8 pass integration tests + V1+ scenarios after V1+ runtime reputation milestone ships.
+**Status transition:** DRAFT 2026-04-27 (commit 2/4 b2025a1) → Phase 3 cleanup applied (commit 3/4 b321f74) → **CANDIDATE-LOCK 2026-04-27** (commit 4/4 this commit) → **LOCK** when AC-REP-1..8 pass integration tests + V1+ scenarios after V1+ runtime reputation milestone ships.
 
 **Next** (when CANDIDATE-LOCK granted): world-service can scaffold actor_faction_reputation aggregate + Forge admin handlers; V1+ NPC_002 Tier 4 priority + V1+ WA_001 requires_reputation hook + V1+ TIT_001 + V1+ CULT_001 consumers wire up. WA_001 closure pass V1+ adds AxiomDecl.requires_reputation field (4-companion-fields uniformly: requires_race + requires_ideology + requires_faction + requires_reputation).

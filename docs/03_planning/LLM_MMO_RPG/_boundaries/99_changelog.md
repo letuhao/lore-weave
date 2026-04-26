@@ -6,6 +6,89 @@
 
 ---
 
+## 2026-04-27 — REP_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 4/4 FINAL)
+
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session 2026-04-27 → None (RELEASE after 4-commit REP_001 cycle)
+  - `01_feature_ownership_matrix.md`:
+    - `actor_faction_reputation` row: DRAFT → **CANDIDATE-LOCK 2026-04-27 closure pass 4/4**
+- **REP_001 status header** in `REP_001_reputation_foundation.md`: DRAFT → CANDIDATE-LOCK 2026-04-27
+- **REP_001 §19 status transition note** updated to reflect CANDIDATE-LOCK 4/4
+- **`features/00_reputation/_index.md` REP_001 row** updated: status CANDIDATE-LOCK + 4-commit cycle reference
+- **`features/00_reputation/_index.md` folder status:** OPEN → COMPLETE 2026-04-27
+
+### REP_001 FOUNDATION FOLDER MILESTONE SUMMARY (4 commits across single lock-cycle)
+
+Files created (cumulative across 4 commits + Phase 0):
+- features/00_reputation/_index.md (folder index; updated to COMPLETE)
+- features/00_reputation/00_CONCEPT_NOTES.md (Q1-Q10 LOCKED + V1 scope populated)
+- features/00_reputation/01_REFERENCE_GAMES_SURVEY.md (14 game references: D&D 5e + WoW + Fallout: NV + Skyrim + CK3 + Bannerlord + Sands of Salzaar + Path of Wuxia + Stellaris + Pillars of Eternity + Tyranny + Mass Effect + Dragon Age + Wuxia novels — 10-dimension comparison table)
+- features/00_reputation/REP_001_reputation_foundation.md (~625 line DRAFT spec; §1-§19 sections; 8 V1 AC; 17 deferrals)
+- catalog/cat_00_REP_reputation_foundation.md (REP-* namespace catalog; REP-A1..A7 axioms + REP-D1..D17 deferrals + 14 catalog entries)
+
+Boundary expansions:
+- 1 NEW aggregate: `actor_faction_reputation` (T2/Reality, sparse — per-(actor, faction) bounded standing)
+- 1 NEW EVT-T4 System sub-type: `ReputationBorn` (canonical seed only)
+- 2 NEW EVT-T8 Administrative sub-shapes: `Forge:SetReputation` + `Forge:ResetReputation` (V1 active per Q5 LOCKED)
+- 3 V1+ EVT-T3 delta_kinds reserved: Delta + CascadeDelta + DecayTick (V1+ runtime reputation milestone Q5+Q6+Q7 ships coherently together)
+- 1 NEW namespace: `reputation.*` (6 V1 rules + 4 V1+ reservations)
+- 1 NEW RealityManifest extension: `canonical_actor_faction_reputations: Vec<ActorFactionReputationDecl>` (OPTIONAL V1; sparse opt-in)
+- 1 NEW stable-ID prefix: `REP-*`
+
+Q-LOCKED summary (Q1-Q10 LOCKED via 5-batch deep-dive 2026-04-27 user "approve" across all batches; 1 REVISION on Q4):
+- Q1 (A): Materialized aggregate `actor_faction_reputation` (FAC_001 Q1 pattern)
+- Q2 (A): Sparse storage + V1+ lazy-create on first delta touch
+- Q3 (A): Bounded i16 [-1000, +1000] + 8-tier engine-fixed (asymmetric thresholds; Wuxia I18n labels)
+- Q4 ⚠ REVISION (A): Always Neutral (0) V1 (vs initial hybrid (C)); V1+ hybrid via REP-D16 alongside Q6 cascade
+- Q5 (B): Forge admin V1 + canonical seed V1; runtime gameplay V1+
+- Q6 (A): No cascade V1; V1+ via REP-D2 (FactionDecl.rep_cascade_config)
+- Q7 (A): No decay V1; V1+ via REP-D3 (FactionDecl.rep_decay_per_week)
+- Q8 (A): V1 strict single-reality; V2+ Heresy via WA_002 (universal discipline)
+- Q9 (A): Synthetic actor forbidden V1 (universal discipline)
+- Q10 (A): Coexist with RES_001 SocialCurrency::Reputation via 3-layer separation discipline
+
+Cross-feature deferral RESOLVED:
+- **FAC-D7** (FAC_001) — Per-(actor, faction) reputation projection → ✅ RESOLVED via REP_001 actor_faction_reputation aggregate
+
+3-layer separation discipline LOCKED (REP-A4 + Q10):
+- L1 NPC_001 npc_pc_relationship_projection = per-(NPC, PC) personal opinion
+- L2 RES_001 SocialCurrency::Reputation = per-actor unbounded global "danh tiếng" sum scalar
+- L3 REP_001 actor_faction_reputation = per-(actor, faction) bounded standing per faction
+- These three layers are COMPLEMENTARY, NOT duplicative; NPC_002 Chorus consumes ALL THREE for V1+ priority resolution (Tier 2 NPC opinion + Tier 4 V1+ rep + Tier 5 V1+ fame)
+
+Phase 3 cleanup applied (commit 3/4 b321f74) — 7 fixes:
+- S1.1 §1 Wuxia table: Du sĩ × Ma Tông score -100 → -300 (correctly maps to Hostile tier per Q3 thresholds)
+- S1.2 §1 Wuxia defaults: clarified zero-row engine fallback semantics
+- S1.3 §3.1 Mutability: tightened V1+ delta lazy-create cross-ref + V1+ runtime reputation milestone coherence note
+- S1.4 §11 Sequence: fixed score -100 → -300 in canonical seed example + Authoring discipline guidance
+- S1.5 §15 AC-REP-1: aligned with -300 corrected score
+- S1.6 §15 AC-REP-2: fixed score=-100 example confusion + boundary case tests (-251 / -250)
+- S1.7 §17 REP-D1/D2/D3: V1+ runtime reputation milestone coherent activation note
+
+V1 quantitative summary:
+- 1 aggregate (actor_faction_reputation sparse) — smaller than FAC_001's 2-aggregate scope
+- 1 enum (ReputationTier 8-variant display layer; not stored)
+- score: i16 in [-1000, +1000] (clamped silently per REP-A1)
+- Asymmetric tier thresholds: Hated -1000..-501 / Hostile -500..-251 / Unfriendly -250..-101 / Neutral -100..+100 / Friendly +101..+250 / Honored +251..+500 / Revered +501..+900 / Exalted +901..+1000
+- Wuxia I18n labels: Đại nghịch / Nghịch tặc / Kẻ thù / Người lạ / Đệ tử / Trưởng lão / Tôn sư / Đại Thánh nhân
+- 6 V1 reject rule_ids in `reputation.*` namespace + 4 V1+ reservations
+- 1 RealityManifest extension (canonical_actor_faction_reputations OPTIONAL — sparse; empty Vec valid)
+- 2 EVT-T8 Forge sub-shapes + 1 EVT-T4 System sub-type
+- 3 V1+ EVT-T3 delta_kinds reserved
+- 8 V1 AC + 4 V1+ deferred + 17 deferrals (REP-D1..REP-D17)
+- ~625 line DRAFT spec
+- 4-commit cycle (Phase 0 6b7d931 + lock-Q 1/4 61e5019 + DRAFT 2/4 b2025a1 + Phase 3 3/4 b321f74 + closure+release 4/4 this commit)
+
+NEW V1+ priority post-REP_001:
+- **PCS_001 PC Substrate** — consumes IDF + RES_001 + FF_001 + FAC_001 + REP_001 + PROG_001 (PC creation form)
+- **CULT_001 Cultivation Foundation** — wuxia-genre cultivation method binding to sect via FAC_001 (V1+ requires REP_001 min rep)
+- **TIT_001 Title Foundation** — heir succession via FF_001 dynasty.current_head + FAC_001 sect_leader_role + min REP_001 rep
+- **DIPL_001 Diplomacy Foundation** — V2+ inter-faction relations / treaties / wars (consumes FAC_001 + REP_001)
+- **AIT_001 AI Tier Foundation** — already DRAFT 88404f0 (architecture-scale 3-tier NPC for billion-NPC scaling)
+
+---
+
 ## 2026-04-27 — REP_001 Reputation Foundation DRAFT promotion + boundary register (commit 2/4)
 
 - **Lock CLAIMED** at start of this commit (`[boundaries-lock-claim]`); release deferred to commit 4/4 closure pass per FAC_001 4-commit cycle pattern
