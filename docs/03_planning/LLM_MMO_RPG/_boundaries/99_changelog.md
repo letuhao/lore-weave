@@ -6,6 +6,24 @@
 
 ---
 
+## 2026-04-26 — PL folder closure (commit 7/8): PL_006 Phase 3 cleanup + status.* namespace V1 enumeration
+
+- **Lock continues** from commit 1
+- **Files modified within `_boundaries/`:**
+  - `02_extension_contracts.md` §1.4 RejectReason namespace: `status.*` row expanded prefix-only → 3 V1 rule_ids — unknown_flag / dispel_not_present / invalid_magnitude (+3 V1+ reservations: flag_forbidden_in_reality / scheduled_expire_collision / stack_policy_violation). Note added: `status.target_dead` is allocated to `entity.lifecycle_dead` per Stage 3.5.a entity_affordance namespace, NOT `status.*` — same pattern as `interaction.*` namespace allocation.
+- **PL_006 Phase 3 findings applied:**
+  - S1.1 §2 Domain concepts + §3.1 ActorStatus struct + §11 sequence — ActorId cross-ref to EF_001 §5.1 (single source of truth)
+  - S1.2 §11 Apply Drunk sequence dual OutputDecl resolved — legacy pc_stats_v1_stub.StatusFlagDelta path RETIRED V1 in favor of actor_status canonical; PCS_001 brief §S5 read-side projection note (still references PL_006 enum but resolves via actor_status query; writes target actor_status directly)
+  - S2.1 §9 Failure UX — Stage column added; per-reject Stage allocation; `status.target_dead` re-allocated to canonical `entity.lifecycle_dead` (Stage 3.5.a EF_001 owner) avoiding duplicate rule between PL_006 and EF_001
+  - S2.2 §17 Cross-refs reorganized into 4 categorized blocks (foundation tier / play-loop substrate / event model + boundaries / NPC + PCS consumers / world-authoring + spikes); foundation tier EF_001 (ActorId + Stage 3.5.a) + PF_001 (V1+ place co-location) added
+  - S3.1 §15 Status transition criteria split DRAFT→CANDIDATE-LOCK vs CANDIDATE-LOCK→LOCK
+  - S3.2 §9 status.* V1 enumeration (3 rules + 3 V1+ reservations) added; boundary file synchronized in same commit
+- AC-STA-6 acceptance scenario rule_id alignment: `status.target_dead` → canonical `entity.lifecycle_dead` (Stage 3.5.a)
+- **Drift watchpoints unchanged** (no new resolutions in this commit)
+- **Lock continues:** released at commit 8 with `[boundaries-lock-release]` prefix
+
+---
+
 ## 2026-04-26 — PL folder closure (commit 6/8): PL_005c closure pass → CANDIDATE-LOCK
 
 - **Lock continues** from commit 1

@@ -35,7 +35,7 @@ After this lock: Use:wine outcome locked; Strike intents Stun/Restrain unblocked
 |---|---|---|
 | **StatusFlag** | Closed enum V1: `{ Drunk, Exhausted, Wounded, Frightened }` | V1 = 4 kinds (per D3 sub-decision). V1+ extensions ADDITIVE per I14: `Stunned`, `Bleeding`, `Poisoned`, `Charmed`, `Encumbered`, `Buffed`, `Tired`, `Hungry`, `Restrained`. New kinds register in `_boundaries/01_feature_ownership_matrix.md` per EVT-A11. |
 | **StatusInstance** | Per-(actor, flag) record: `{ flag: StatusFlag, magnitude: u8, applied_at_turn: u64, applied_at_fiction_ts: i64, expires_at_fiction_ts: Option<i64>, source_event_id: u64 }` | Magnitude scales effect intensity (Drunk magnitude=1 mild buzz; magnitude=5 stumbling drunk). `expires_at_fiction_ts: None` = no auto-expire (manual dispel only V1; auto-expire V1+30d scheduler). |
-| **actor_status** | T2 / Reality aggregate; per-(reality, actor_id) row holds `Vec<StatusInstance>` | Generic for PC + NPC (D6 — cross-actor uniformity). Covers both ActorId::Pc and ActorId::Npc; Synthetic actors don't accumulate status (V1). |
+| **actor_status** | T2 / Reality aggregate; per-(reality, actor_id) row holds `Vec<StatusInstance>` | Generic for PC + NPC (D6 — cross-actor uniformity). Covers both `ActorId::Pc` and `ActorId::Npc` per [EF_001 §5.1](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types) ActorId source-of-truth (sibling of EntityId; closed-set Pc/Npc/Synthetic); Synthetic actors don't accumulate status (V1). |
 | **StatusLifecycle** | `Apply` (add or merge instance) → `Tick` (V1+ fiction-time-driven effect; V1 no tick) → `Expire` (auto-remove at fiction-time threshold V1+30d, or manual Dispel) → `Dispel` (V1: explicit OutputDecl removes instance) | V1 minimum: Apply + Dispel via OutputDecl. Tick + Expire deferred to V1+30d scheduler. |
 | **ApplyStatusDelta** | `OutputDecl` delta_kind for `aggregate_type=actor_status` | `ApplyStatus { flag, magnitude, expires_at_fiction_ts: Option<i64>, source_event_id }` |
 | **DispelStatusDelta** | OutputDecl delta_kind | `DispelStatus { flag }` (single instance per flag V1; V1+ may target specific source_event_id) |
@@ -70,7 +70,7 @@ PL_006 emits / consumes events that all map to existing active categories — no
 #[dp(type_name = "actor_status", tier = "T2", scope = "reality")]
 pub struct ActorStatus {
     pub reality_id: RealityId,                  // (also from key)
-    pub actor_id: ActorId,                      // PC or NPC; identifies actor
+    pub actor_id: ActorId,                      // PC or NPC; identifies actor (per EF_001 §5.1 ActorId source-of-truth)
     pub instances: Vec<StatusInstance>,         // active statuses; empty = no statuses
     pub last_modified_at_turn: u64,             // for staleness telemetry
     pub schema_version: u32,
@@ -222,15 +222,27 @@ WA_001 Lex may forbid certain statuses per reality (e.g., "no Frightened in stoi
 
 ## §9 Failure-mode UX
 
-| Reject reason | When | Vietnamese reject copy |
-|---|---|---|
-| `status.flag_forbidden_in_reality` (V1+) | Lex axiom rejects status flag for this reality | "[Status] không tồn tại trong thế giới này." |
-| `status.target_dead` | Apply on actor with Mortality≠Alive | "Không thể áp dụng trạng thái cho người đã khuất." |
-| `status.unknown_flag` | flag value not in V1 closed enum | (Should not reach validator — schema check at stage 0) |
-| `status.dispel_not_present` | Dispel a flag the actor doesn't have | (V1: silent no-op + audit-log; not user-facing reject) |
-| `status.invalid_magnitude` | magnitude outside 1..=10 V1 range | (Schema check; not user-facing) |
+| Reject reason | Stage | Owner | When | Vietnamese reject copy |
+|---|---|---|---|---|
+| `entity.lifecycle_dead` | **Stage 3.5.a** | EF_001 | Apply Status on actor with Mortality≠Alive (canonical reject path) | "Không thể áp dụng trạng thái cho người đã khuất." (resolved via EF_001 entity_affordance namespace per Phase 3 cleanup) |
+| `status.flag_forbidden_in_reality` (V1+) | Stage 4 lex_check | WA_001 (V1+) | Lex axiom rejects status flag for this reality | "[Status] không tồn tại trong thế giới này." |
+| `status.unknown_flag` | Stage 0 schema | DP-K9 | flag value not in V1 closed enum | (Schema check; not user-facing) |
+| `status.dispel_not_present` | Stage 7 world-rule | PL_006 | Dispel a flag the actor doesn't have | (V1: silent no-op + audit-log; not user-facing reject) |
+| `status.invalid_magnitude` | Stage 0 schema | DP-K9 | magnitude outside 1..=10 V1 range | (Schema check; not user-facing) |
 
-V1 most rejects are schema-level (unreachable in normal operation). User-facing rejects only for `target_dead`.
+**Phase 3 cleanup note:** `status.target_dead` (originally proposed under `status.*` namespace) is RE-ALLOCATED to `entity.lifecycle_dead` per Stage 3.5.a entity_affordance ownership — same pattern as PL_005's `interaction.*` namespace where target_dead checks land at Stage 3.5.a (EF_001 owns the canonical rule_id). This avoids duplicate rule between PL_006 and EF_001.
+
+V1 most rejects are schema-level (unreachable in normal operation). User-facing reject only for `entity.lifecycle_dead`.
+
+**`status.*` V1 rule_id enumeration** (PL_006-owned; registered in [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4):
+
+1. `status.unknown_flag` — schema-level (Stage 0)
+2. `status.dispel_not_present` — silent no-op V1 (Stage 7)
+3. `status.invalid_magnitude` — schema-level (Stage 0)
+
+V1+ reservations: `status.flag_forbidden_in_reality` (Stage 4 Lex extension); `status.scheduled_expire_collision` (V1+30d scheduler); `status.stack_policy_violation` (V1+ if stack policies become per-reality configurable).
+
+**Note on `status.target_dead`:** Originally proposed; ALLOCATED to `entity.lifecycle_dead` per Stage 3.5.a entity_affordance namespace (EF_001 catches dead targets BEFORE PL_006 status apply fires; avoids duplicate rule between PL_006 and EF_001).
 
 ---
 
@@ -267,17 +279,21 @@ PC `/use rượu` (Interaction:Use, UseIntent=Consume, target=self)
 
 world-service (per PL_005c §1 validator chain):
   a. claim_turn_slot
-  b. validator stages 0-9 ✓
+  b. validator stages 0-3.5-9 ✓
+     Stage 3.5.a entity_affordance: LM01 lifecycle Existing + Usable affordance ✓
      world-rule (stage 7): Use rượu on self → ActualOutputs include:
-       [{ target: Actor(LM01), aggregate: pc_stats_v1_stub,
-          delta: StatusFlagDelta(add Drunk via PL_006) },        // legacy reference
-        { target: Actor(LM01), aggregate: actor_status,           // PL_006 path
+       [{ target: Actor(LM01), aggregate: actor_status,           // PL_006 canonical path V1
           delta: ApplyStatus { flag: Drunk, magnitude: 2,
                                applied_at_turn: <current>,
                                applied_at_fiction_ts: <current>,
                                expires_at_fiction_ts: None,        // V1: no auto-expire
                                source_event_id: <Interaction T1>,
                                source_kind: Interaction { kind: Use } } }]
+     // Status migration note (Phase 3 cleanup 2026-04-26): legacy pc_stats_v1_stub.status_flags
+     // path (StatusFlagDelta) RETIRED V1 in favor of actor_status. PCS_001 brief §S5
+     // pc_stats_v1_stub.status_flags field still references PL_006 enum but RESOLVES via
+     // actor_status query (read-side projection); writes target actor_status directly.
+     // Single source of truth = actor_status aggregate.
   c. dp.advance_turn → Submitted T1 (Interaction:Use commit)
   d. PL_006 owner-service (in world-service) emits Derived:
      dp.t2_write::<ActorStatus>(ctx, LM01, ApplyStatusDelta { ... })  → T2
@@ -381,7 +397,7 @@ PL_006 implementation-ready when world-service can pass these scenarios.
 
 | ID | Scenario | Pass criteria |
 |---|---|---|
-| **AC-STA-6 TARGET DEAD** | Apply Drunk to NPC with Mortality=Dead | rejected with `status.target_dead`; Vietnamese reject copy |
+| **AC-STA-6 TARGET DEAD** | Apply Drunk to NPC with Mortality=Dead | rejected at Stage 3.5.a with canonical `entity.lifecycle_dead` (per Phase 3 cleanup namespace allocation; not `status.target_dead`); Vietnamese reject copy from EF_001 §9 |
 | **AC-STA-7 INVALID MAGNITUDE** | ApplyStatusDelta with magnitude=20 (out of 1..=10 range) | rejected at schema check (stage 0); not user-facing |
 
 ### 15.3 V1+ scenarios (deferred)
@@ -392,7 +408,11 @@ PL_006 implementation-ready when world-service can pass these scenarios.
 | **AC-STA-V1+2** | Wounded magnitude=10 triggers MortalityTransition | combat feature design |
 | **AC-STA-V1+3** | Lex forbids Drunk in alcohol-prohibition reality | WA_001 Lex extension to status axioms |
 
-**Total V1-testable: 7 (AC-STA-1 to AC-STA-7).** PL_006 → CANDIDATE-LOCK when 7 V1 scenarios pass integration tests.
+**Total V1-testable: 7 (AC-STA-1 to AC-STA-7).**
+
+**Status transition criteria** (matches EF/PF/MAP/CSC closure-pass pattern):
+- **DRAFT → CANDIDATE-LOCK:** design complete + boundary registered (`status.*` V1 enumeration in `_boundaries/02_extension_contracts.md` §1.4; `actor_status` aggregate ownership; StatusFlag enum ownership). All AC-STA-1..7 specified.
+- **CANDIDATE-LOCK → LOCK:** all 7 V1-testable acceptance scenarios pass integration tests in world-service against SPIKE_01 fixtures + co-deployed PL_005 Use:wine vertical-slice. V1+ scenarios (AC-STA-V1+1..3) deferred per §16.
 
 ---
 
@@ -413,24 +433,36 @@ PL_006 implementation-ready when world-service can pass these scenarios.
 
 ## §17 Cross-references
 
+**Foundation tier (Stage 3.5 group + ActorId source):**
+- [`EF_001 Entity Foundation`](../00_entity/EF_001_entity_foundation.md) §5.1 — ActorId source-of-truth (sibling of EntityId; closed-set Pc/Npc/Synthetic); entity_affordance Stage 3.5.a validator owns `entity.lifecycle_dead` reject for status apply on dead/destroyed targets (canonical path replacing originally-proposed `status.target_dead`)
+- [`PF_001 Place Foundation`](../00_place/PF_001_place_foundation.md) — V1+ Frightened-from-observation status apply requires place co-location check at Stage 3.5.b (place_structural)
+
+**Play-loop substrate:**
 - [`PL_001 Continuum`](PL_001_continuum.md) — turn-slot + fiction-clock substrate
 - [`PL_001b lifecycle`](PL_001b_continuum_lifecycle.md) — fast-forward chain (sleep dispel pattern)
 - [`PL_002 Grammar`](PL_002_command_grammar.md) — `/sleep` MetaCommand triggers Dispel
 - [`PL_005 Interaction`](PL_005_interaction.md) — Use kind applies statuses; Strike applies Wounded V1+
 - [`PL_005b contracts`](PL_005b_interaction_contracts.md) §6 — Use kind ProposedOutputs reference actor_status
-- [`PL_005c integration`](PL_005c_interaction_integration.md) §3-§4 — mortality flow + opinion drift parallel patterns
+- [`PL_005c integration`](PL_005c_interaction_integration.md) §3-§4 — mortality flow + opinion drift parallel patterns; §1.1 post-commit side-effects shows actor_status migration
+
+**Event model + boundaries:**
 - [`07_event_model/02_invariants.md`](../../07_event_model/02_invariants.md) — EVT-A6 typed causal-refs + EVT-A9 RNG determinism + EVT-A11 sub-type ownership
 - [`07_event_model/03_event_taxonomy.md`](../../07_event_model/03_event_taxonomy.md) — EVT-T3 Derived (status apply/dispel) + EVT-T5 Generated (auto-expire V1+30d)
 - [`07_event_model/05_validator_pipeline.md`](../../07_event_model/05_validator_pipeline.md) EVT-V6 — post-commit side-effect framework
 - [`07_event_model/08_scheduled_events.md`](../../07_event_model/08_scheduled_events.md) EVT-L7..L11 — scheduler trigger sources for V1+30d auto-expire
 - [`07_event_model/12_generation_framework.md`](../../07_event_model/12_generation_framework.md) — Generator Registry (V1+30d scheduler registration)
 - [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md) — `actor_status` aggregate ownership + StatusFlag enum ownership
-- [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `status.*` rule_id namespace registered
-- [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum (status applies to both Pc and Npc variants)
+- [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `status.*` V1 rule_id enumeration (3 V1 rules + 3 V1+ reservations)
+- [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) — Stage 3.5.a entity_affordance owns `entity.lifecycle_dead` for status apply guard
+
+**NPC + PCS consumers:**
+- [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum (now sourced from EF_001 §5.1)
 - [`NPC_002 Chorus`](../05_npc_systems/NPC_002_chorus.md) — reads actor_status for SceneRoster context
-- [`PCS_001 brief`](../06_pc_systems/00_AGENT_BRIEF.md) §S5 — `pc_stats_v1_stub.status_flags` references PL_006 enum
-- Future `NPC_003 mortality` — references same StatusFlag enum (cross-actor uniformity)
-- [`WA_001 Lex`](../02_world_authoring/WA_001_lex.md) — V1+ status axiom integration
+- [`PCS_001 brief`](../06_pc_systems/00_AGENT_BRIEF.md) §S5 — `pc_stats_v1_stub.status_flags` references PL_006 enum (read-side projection resolves via actor_status query; writes target actor_status directly per §11 migration note)
+- Future `NPC_003 mortality` — references same StatusFlag enum (cross-actor uniformity per D6)
+
+**World-authoring + spikes:**
+- [`WA_001 Lex`](../02_world_authoring/WA_001_lex.md) — V1+ status axiom integration (`status.flag_forbidden_in_reality`)
 - [`SPIKE_01`](../_spikes/SPIKE_01_two_sessions_reality_time.md) — narrative grounding (Drunk via Use; Exhausted via /sleep flow)
 
 ---
@@ -439,24 +471,32 @@ PL_006 implementation-ready when world-service can pass these scenarios.
 
 PL_006 satisfies DP-R2 + 22_feature_design_quickstart.md required items:
 
-- [x] §2 Domain concepts + StatusFlag closed enum + StatusInstance + StatusSource + Stack policy table
+- [x] §2 Domain concepts + StatusFlag closed enum + StatusInstance + StatusSource + Stack policy table — Phase 3: ActorId cross-ref to EF_001 §5.1 (sibling of EntityId)
 - [x] §2.5 Event-model mapping (T3 apply/dispel + T5 V1+30d auto-expire; no new EVT-T*)
-- [x] §3 Aggregate inventory (1 new: `actor_status` T2/Reality)
+- [x] §3 Aggregate inventory (1 new: `actor_status` T2/Reality) — Phase 3: ActorId source-of-truth EF_001 cross-ref
 - [x] §4 Tier+scope (per DP-R2)
 - [x] §5 DP primitives by name
 - [x] §6 Capability JWT requirements
 - [x] §7 Subscribe pattern (UI invalidation + Chorus read at SceneRoster build)
 - [x] §8 Pattern choices (closed-set / cross-actor uniformity / stack policy / magnitude / V1 lifecycle simplification / source tracking / Lex V1+)
-- [x] §9 Failure UX (Vietnamese reject copy in `status.*` namespace)
+- [x] §9 Failure UX — Phase 3: Stage column added; `status.target_dead` re-allocated to canonical `entity.lifecycle_dead` (Stage 3.5.a entity_affordance owner); status.* V1 enumeration (3 rules) + V1+ reservations (3) explicit
 - [x] §10 Cross-service handoff (inherits PL_005 §10 Strike pattern)
-- [x] §11-§14 Sequences (Apply Drunk / Apply Exhausted / Dispel via /sleep / V1+30d auto-expire deferred)
-- [x] §15 Acceptance criteria (7 V1-testable + 3 V1+ deferred)
+- [x] §11-§14 Sequences — Phase 3: §11 Apply Drunk dual OutputDecl resolved (legacy pc_stats_v1_stub.StatusFlagDelta path RETIRED V1; actor_status canonical; PCS_001 brief §S5 read-side projection note)
+- [x] §15 Acceptance criteria (7 V1-testable + 3 V1+ deferred) — Phase 3: AC-STA-6 canonical entity.lifecycle_dead allocation; LOCK criterion split DRAFT→CANDIDATE-LOCK vs CANDIDATE-LOCK→LOCK
 - [x] §16 Deferrals STA-D1..D8
-- [x] §17 Cross-references
+- [x] §17 Cross-references — Phase 3: foundation tier (EF_001 ActorId + Stage 3.5.a; PF_001 V1+ place co-location) + Stage 3.5 boundary added; categorized into 4 blocks
 - [x] §18 Readiness (this section)
 
-**Status transition:** DRAFT 2026-04-26 → CANDIDATE-LOCK after 7 V1 acceptance scenarios pass integration tests.
+**Phase 3 cleanup applied 2026-04-26 (PL folder closure):**
+- S1.1 §2 Domain concepts + §3.1 ActorStatus struct + §11 sequence — ActorId cross-ref to EF_001 §5.1 (single source of truth)
+- S1.2 §11 Apply Drunk sequence — dual OutputDecl resolved; legacy pc_stats_v1_stub.StatusFlagDelta path RETIRED V1 in favor of actor_status canonical; PCS_001 brief §S5 still references PL_006 enum but resolves via actor_status query (read-side projection); writes target actor_status directly. Single source of truth = actor_status aggregate.
+- S2.1 §9 Failure UX — Stage column added; per-reject Stage allocation; `status.target_dead` re-allocated to canonical `entity.lifecycle_dead` (Stage 3.5.a EF_001 owner) avoiding duplicate rule
+- S2.2 §17 Cross-refs — foundation tier EF_001 (ActorId + Stage 3.5.a) + PF_001 (V1+ place co-location for Frightened-from-observation) added; categorized into 4 blocks
+- S3.1 §15 Status transition criteria split DRAFT→CANDIDATE-LOCK vs CANDIDATE-LOCK→LOCK (matches EF/PF/MAP/CSC closure-pass pattern)
+- S3.2 `status.*` V1 enumeration (3 rules: unknown_flag / dispel_not_present / invalid_magnitude; +3 V1+ reservations: flag_forbidden_in_reality / scheduled_expire_collision / stack_policy_violation) added in §9; boundary `_boundaries/02_extension_contracts.md` §1.4 expanded in same commit
 
-**Boundary registration in same commit:** `_boundaries/01_feature_ownership_matrix.md` adds `actor_status` aggregate ownership row + StatusFlag enum ownership note in EVT-T3 Derived sub-types row; `_boundaries/02_extension_contracts.md` §1.4 adds `status.*` prefix.
+**Status transition:** DRAFT 2026-04-26 → **CANDIDATE-LOCK 2026-04-26** (Phase 3 + closure pass) → LOCK after 7 V1 acceptance scenarios pass integration tests.
 
-**Next** (when CANDIDATE-LOCK granted): world-service can implement Status apply/dispel as part of PL_005 Interaction outcome processing. First vertical-slice target = AC-STA-1 (APPLY DRUNK) reusing wine-Use scenario. AC-STA-4 (DISPEL VIA /SLEEP) integrates with PL_001b §12 fast-forward chain. V1+30d work (auto-expire) defers to scheduler service ship.
+**Boundary registration in same commit chain:** `_boundaries/01_feature_ownership_matrix.md` `actor_status` aggregate ownership row + StatusFlag enum ownership note in EVT-T3 Derived sub-types row (already registered DRAFT commit); `_boundaries/02_extension_contracts.md` §1.4 `status.*` prefix expanded to V1 enumeration (3 rules) Phase 3.
+
+**Next** (when CANDIDATE-LOCK): world-service can implement Status apply/dispel as part of PL_005 Interaction outcome processing. First vertical-slice target = AC-STA-1 (APPLY DRUNK) reusing wine-Use scenario. AC-STA-4 (DISPEL VIA /SLEEP) integrates with PL_001b §12 fast-forward chain. V1+30d work (auto-expire) defers to scheduler service ship.
