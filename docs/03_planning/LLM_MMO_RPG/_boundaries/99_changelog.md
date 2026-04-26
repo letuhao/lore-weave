@@ -6,6 +6,83 @@
 
 ---
 
+## 2026-04-26 — FF_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 4/4 FINAL)
+
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session → None (RELEASE after 4-commit FF_001 cycle)
+  - `01_feature_ownership_matrix.md`:
+    - `family_node` row: DRAFT → **CANDIDATE-LOCK 2026-04-26 closure pass 4/4**
+    - `dynasty` row: DRAFT → **CANDIDATE-LOCK 2026-04-26 closure pass 4/4**
+- **FF_001 status header DRAFT → CANDIDATE-LOCK 2026-04-26**
+- **`_index.md` FF_001 row updated:** status CANDIDATE-LOCK + 4-commit cycle reference
+- **`_index.md` folder status:** Open → COMPLETE 2026-04-26
+
+### FF_001 FOUNDATION FOLDER MILESTONE SUMMARY (4 commits across single lock-cycle)
+
+Files created (cumulative):
+- features/00_family/_index.md (folder index; updated to COMPLETE)
+- features/00_family/00_CONCEPT_NOTES.md (Q1-Q8 LOCKED + V1 scope populated)
+- features/00_family/01_REFERENCE_GAMES_SURVEY.md (8-system market survey)
+- features/00_family/FF_001_family_foundation.md (~700 lines DRAFT spec)
+
+Boundary expansions:
+- 2 NEW aggregates: family_node (T2/Reality) + dynasty (T2/Reality sparse)
+- 1 NEW EVT-T4 sub-type: FamilyBorn
+- 2 NEW EVT-T8 sub-shapes: Forge:EditFamily + Forge:RegisterDynasty
+- 1 NEW namespace: family.* (8 V1 rule_ids + 4 V1+ reservations)
+- 2 NEW RealityManifest extensions: canonical_dynasties + canonical_family_relations (REQUIRED V1; sparse)
+- 1 NEW Stable-ID prefix: FF-*
+
+Q1-Q8 LOCKED (per 2db3fc2 deep-dive):
+- Q1 (A) Separate family_node aggregate
+- Q2 (B2) Explicit direct relations V1; extended computed V1+
+- Q3 (A) Separate dynasty aggregate sparse
+- Q4 (A) V1+ FAC_001 owns sect lineage
+- Q5 (B) Materialized only; events in channel stream per EVT-A10 (REVISION: no separate family_event_log)
+- Q6 (B) Adoption flag via 6-variant RelationKind enum
+- Q7 (A) V1 strict single-reality
+- Q8 (A) V1+ deferred bloodline traits
+
+Cross-feature integration resolved:
+- IDF_004 ORG-D12 lineage_id opaque V1 tag → FF_001 V1+ family_node + dynasty resolution
+- WA_006 mortality death events → FF_001 EVT-T3 MarkDeceased on family_node
+- V1+ NPC_002 family-cascade opinion drift hook reserved (FF-D10)
+- V1+ TIT_001 Title Foundation hook reserved (FF-D8)
+- V1+ RAC-D3 + V1+ CULT_001 bloodline trait inheritance hook reserved (FF-D1)
+
+V1 quantitative summary:
+- 2 aggregates V1 (revised down from initial 3 estimate per Q5)
+- 6-variant RelationKind enum
+- 8 V1 family.* rule_ids + 4 V1+ reservations
+- 10 V1-testable AC-FF-1..10 + 4 V1+ deferred
+- 12 deferrals (FF-D1..D12)
+- ~700-line DRAFT spec
+
+V1 reality presets coverage:
+- Wuxia: Lý dynasty + 4 family_node rows (LM01 orphan + Tiểu Thúy/Lão Ngũ family + Du sĩ wandering)
+- Modern: 0-1 dynasty + 3-5 family_node rows
+- Sci-fi: deferred V1+
+
+i18n: V1 ships I18nBundle from day 1 per RES_001 §2 contract.
+
+CANDIDATE-LOCK → LOCK gate: AC-FF-1..10 V1-testable scenarios pass integration tests against Wuxia + Modern reality fixtures + WA_006 death cascade integration.
+
+NEW V1+ priority roadmap (locked order; per IDF + FF_001 closure):
+1. ✓ IDF folder closure (15 commits) — DONE
+2. ✓ FF_001 Family Foundation (4 commits) — DONE (this commit)
+3. **PCS_001 PC substrate** (next; consumes IDF + RES_001 + FF_001 + PROG_001-when-ready) — BLOCKED on PROG_001 by parallel agent
+4. NPC_NNN mortality (mirrors PCS_001 mortality state machine)
+5. FAC_001 Faction Foundation (sect/order/clan/guild; consumes IDF_004/005 + FF_001 dynasty)
+6. REP_001 Reputation Foundation (per-(actor, faction) reputation)
+7. CULT_001 Cultivation Foundation (wuxia-genre-specific; defer)
+
+Drift watchpoints unchanged at 8 active.
+
+Lock RELEASED at end of this commit.
+
+---
+
 ## 2026-04-26 — FF_001 Phase 3 cleanup (commit 3/4)
 
 - Lock continues from commit 2/4
