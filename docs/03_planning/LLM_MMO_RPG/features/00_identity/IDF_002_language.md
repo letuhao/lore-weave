@@ -5,7 +5,7 @@
 > **Critical distinction:** `LanguageId` (IDF_002 — in-fiction) ≠ `LangCode` (RES_001 — engine UI translation ISO-639-1). Runtime newtype prevents accidental cross-type assignment.
 >
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
-> **Status:** DRAFT 2026-04-26 (Phase 0 CONCEPT promoted to DRAFT after POST-SURVEY-Q1..Q7 user "A" confirmation; Q-decisions LNG-Q1..Q11 locked per concept-note)
+> **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 0 CONCEPT → DRAFT → Phase 3 cleanup → closure pass; Q-decisions LNG-Q1..Q11 locked per concept-note)
 > **Stable IDs in this file:** `LNG-A*` axioms · `LNG-D*` deferrals · `LNG-Q*` decisions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types); [SPIKE_01 turn 5 literacy slip](../_spikes/SPIKE_01_two_sessions_reality_time.md); [PL_005b §2.1 InteractionSpeakPayload.language](../04_play_loop/PL_005b_interaction_contracts.md); [RES_001 §2.3 I18nBundle + LangCode](../00_resource/RES_001_resource_foundation.md); [IDF_001 RaceId pattern](IDF_001_race.md).
 > **Defers to:** future PCS_001 (PC language proficiency at creation); NPC_001/`NPC_NNN` (NPC language declared at canonical seed); 05_llm_safety A6 (canon-drift literacy mismatch detector V1+); V1+ dialect/accent feature.

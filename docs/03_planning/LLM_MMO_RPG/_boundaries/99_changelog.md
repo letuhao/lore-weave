@@ -6,6 +6,16 @@
 
 ---
 
+## 2026-04-26 — IDF folder 6/15: IDF_002 closure pass → CANDIDATE-LOCK
+
+- Lock continues from commit 1/15
+- `01_feature_ownership_matrix.md` actor_language_proficiency row: DRAFT → **CANDIDATE-LOCK 2026-04-26**
+- IDF_002 status header DRAFT → CANDIDATE-LOCK
+- `_index.md` IDF_002 row updated CANDIDATE-LOCK
+- 2/5 IDF features now CANDIDATE-LOCK
+
+---
+
 ## 2026-04-26 — IDF folder 5/15: IDF_002 Phase 3 cleanup
 
 - Lock continues from commit 1/15
