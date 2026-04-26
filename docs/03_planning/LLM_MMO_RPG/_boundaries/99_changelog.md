@@ -6,6 +6,36 @@
 
 ---
 
+## 2026-04-26 — FF_001 Family Foundation DRAFT promotion + boundary register (commit 2/4)
+
+- **Lock claim:** main session 2026-04-26 (FF_001 single-feature 4-commit cycle: lock-Q-decisions [done 2db3fc2] + DRAFT [this] + Phase 3 + closure+release); this commit `[boundaries-lock-claim]`
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claimed by main session 2026-04-26 (FF_001 DRAFT promotion cycle)
+  - `01_feature_ownership_matrix.md`:
+    - NEW row: `family_node` aggregate (T2/Reality, FF_001 DRAFT 2026-04-26 — Tier 5 Actor Substrate post-IDF priority per IDF_004 ORG-D12)
+    - NEW row: `dynasty` aggregate (T2/Reality sparse storage, FF_001 DRAFT)
+    - EVT-T4 System sub-type ownership: NEW `FamilyBorn` (FF_001 owns; emitted alongside EF_001 EntityBorn at canonical seed)
+    - EVT-T8 Administrative sub-shape ownership: NEW `Forge:EditFamily` + `Forge:RegisterDynasty` (FF_001 owns)
+    - Stable-ID prefix table: NEW `FF-*` row (axioms / deferrals / decisions; catalog/cat_00_FF_family_foundation.md TBD)
+  - `02_extension_contracts.md`:
+    - §1.4 RejectReason namespace: NEW `family.*` row with 8 V1 rule_ids (unknown_actor_ref / unknown_dynasty_id / bidirectional_sync_violation / cyclic_relation / duplicate_relation / relation_kind_mismatch / deceased_target / synthetic_actor_forbidden) + 4 V1+ reservations (cross_reality_mismatch / cyclic_lineage_traversal / dynasty_extinction / adoption_consent_violation)
+    - §2 RealityManifest: NEW `canonical_dynasties: Vec<DynastyDecl>` + `canonical_family_relations: Vec<FamilyRelationDecl>` REQUIRED V1 extensions; 6-variant RelationKind enum locked (BiologicalParent / AdoptedParent / Spouse / BiologicalChild / AdoptedChild / Sibling)
+- **FF_001 file:** created `FF_001_family_foundation.md` (~700 lines DRAFT spec mirroring EF/PF/MAP/CSC/RES/IDF pattern). 10 V1-testable AC-FF-1..10 + 4 V1+ deferred. 12 deferrals FF-D1..D12.
+- **Q1-Q8 LOCKED** (per commit 2db3fc2):
+  - Q1 (A) Separate family_node aggregate
+  - Q2 (B2) Explicit direct relations V1
+  - Q3 (A) Separate dynasty aggregate (sparse)
+  - Q4 (A) V1+ FAC_001 owns sect lineage; FF_001 = biological/adoption only
+  - Q5 (B) Materialized only; events in channel stream per EVT-A10 (NO separate family_event_log)
+  - Q6 (B) Adoption flag via 6-variant RelationKind enum
+  - Q7 (A) V1 strict single-reality
+  - Q8 (A) V1+ deferred bloodline traits (FF-D1)
+- **Reason:** Tier 5 Actor Substrate Foundation post-IDF priority. FF_001 resolves IDF_004 lineage_id opaque V1 tag per ORG-D12. Wuxia critical (sect lineage / family inheritance / dynasty politics). Single-feature lock cycle (3 commits remaining: this + Phase 3 + closure+release).
+- **Drift watchpoints unchanged at 8 active.**
+- **Lock continues:** still claimed for FF_001 Phase 3 (commit 3/4) + closure pass (commit 4/4 with `[boundaries-lock-release]` prefix).
+
+---
+
 ## 2026-04-26 — IDF folder 15/15 FINAL: IDF_005 closure pass → CANDIDATE-LOCK + lock RELEASE
 
 - **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)

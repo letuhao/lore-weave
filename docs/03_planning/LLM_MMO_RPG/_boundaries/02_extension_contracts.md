@@ -136,6 +136,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `personality.*` | IDF_003 Personality Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 3 V1 rule_ids — unknown_archetype_id / assignment_immutable / opinion_modifier_invalid; +2 V1+ reservations: archetype_evolution_invalid_path / overlay_conflict. V1 user-facing rejects: unknown_archetype_id + assignment_immutable only (opinion_modifier_invalid schema-level). 12 V1 archetypes per POST-SURVEY-Q1 LOCKED (Stoic/Hothead/Cunning/Innocent/Pious/Cynic/Worldly/Idealist + Loyal/Aloof/Ambitious/Compassionate). Resolves PL_005b §2.1 speaker_voice orphan ref + PL_005c INT-INT-D5 per-personality opinion modifier. i18n: V1 ships I18nBundle from day 1. |
 | `origin.*` | IDF_004 Origin Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 4 V1 rule_ids — unknown_native_language / unknown_birthplace / assignment_immutable / unknown_ideology_ref; +2 V1+ reservations: lineage_graph_invalid (V1+ FF_001) / pack_not_in_registry (V1+ origin packs). V1 user-facing rejects: assignment_immutable only (others schema-level canonical seed validation). V1 minimal stub 4 fields (birthplace + lineage_id opaque + native_language + default_ideology_refs) per ORG-Q1 LOCKED. **V1+ FF_001 Family Foundation HIGH priority post-IDF closure** per POST-SURVEY-Q4 + ORG-D12. i18n: V1 ships I18nBundle from day 1. |
 | `ideology.*` | IDF_005 Ideology Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 3 V1 rule_ids — unknown_ideology_id / duplicate_stance_entry / lex_axiom_forbidden (V1+ active; V1 reserved); +5 V1+ reservations: tenet_violation (V1+ IDL-D1) / sect_membership_required (V1+ FAC_001 IDL-D2) / conflict_auto_drop_required / invalid_fervor_transition / conversion_cost_unmet (V1+ IDL-D11). **ONLY mutable IDF aggregate V1.** Multi-stance V1 per IDL-Q2 (Wuxia syncretism). Atheist = empty Vec. **Free V1 conversion per IDL-Q13 LOCKED (POST-SURVEY-Q3)** — cost mechanic V1+ IDL-D11. i18n: V1 ships I18nBundle from day 1. |
+| `family.*` | FF_001 Family Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate post-IDF priority per IDF_004 ORG-D12); 8 V1 rule_ids — unknown_actor_ref / unknown_dynasty_id / bidirectional_sync_violation / cyclic_relation / duplicate_relation / relation_kind_mismatch / deceased_target / synthetic_actor_forbidden; +4 V1+ reservations: cross_reality_mismatch (V2+ Heresy per Q7) / cyclic_lineage_traversal (V1+ traversal API FF-D2) / dynasty_extinction (V1+ cleanup) / adoption_consent_violation (V1+ V2+ consent system). V1 user-facing reject: deceased_target only (Marriage/Adoption attempts on deceased); others schema-level canonical seed validation. **Boundary discipline:** FF_001 = biological + adoption only; V1+ FAC_001 owns sect/master-disciple/sworn (per Q4 LOCKED). i18n: V1 ships I18nBundle from day 1. |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
@@ -304,6 +305,26 @@ pub struct RealityManifest {
     // (post_religious / corporate_ethics / cosmic_nihilism). Multi-stance per actor V1 per IDL-Q2
     // LOCKED — actor_ideology_stance.stances Vec supports wuxia syncretism.
     pub ideologies: Vec<IdeologyDecl>,             // see IDF_005 §3.2
+
+    // ─── FF_001 Family Foundation extensions (added 2026-04-26 DRAFT — Tier 5 Actor Substrate post-IDF) ───
+    // REQUIRED V1: every reality declares canonical_dynasties + canonical_family_relations (sparse
+    // storage allowed; empty Vec valid for sandbox / family-less reality). Per Q5 LOCKED + EVT-A10:
+    // NO separate family_event_log aggregate; events in channel stream as EVT-T3/T4 sub-types.
+    //
+    // DynastyDecl shape per FF_001 §3.2 + 00_CONCEPT_NOTES §7:
+    // { dynasty_id, display_name (I18nBundle), founder_actor_id (Option), canon_ref }.
+    // V1+ enrichment additive (parent_dynasty_id for cadet branches; traditions; perks).
+    pub canonical_dynasties: Vec<DynastyDecl>,     // see FF_001 §3.2; sparse — only declared dynasties
+
+    // FamilyRelationDecl shape per FF_001 §1 + 00_CONCEPT_NOTES §7:
+    // { actor_id, parent_actor_ids: Vec<(ActorId, RelationKind)>, sibling_actor_ids: Vec<ActorId>,
+    //   spouse_actor_ids: Vec<ActorId>, children_actor_ids: Vec<(ActorId, RelationKind)>,
+    //   dynasty_id: Option<DynastyId>, is_deceased: bool }.
+    // 6-variant RelationKind enum: BiologicalParent / AdoptedParent / Spouse / BiologicalChild /
+    // AdoptedChild / Sibling per Q6 LOCKED.
+    // Bidirectional sync validated at canonical seed (Lão Ngũ.children includes Tiểu Thúy AND
+    // Tiểu Thúy.parents includes Lão Ngũ). Cyclic relations rejected. Duplicate refs rejected.
+    pub canonical_family_relations: Vec<FamilyRelationDecl>, // see FF_001 §1; sparse — declared per actor
 
     // ─── Future feature extensions ───
 }

@@ -4,9 +4,9 @@
 > **Catalog reference:** `catalog/cat_00_FF_family_foundation.md` (NOT YET CREATED — defer to FF_001 DRAFT promotion)
 > **Purpose:** The substrate for **biological/adoption family graph + dynasty + family events** that resolves IDF_004 lineage_id opaque tag. Wuxia critical (sect lineage / family inheritance / dynasty politics). Mirrors CK3 dynasty + Bannerlord clan + Total War 3K family + VtM clan-as-family pattern.
 
-**Active:** FF_001 — **Family Foundation** (CONCEPT 2026-04-26 — Phase 0 concept-notes + market survey; Q1-Q8 OPEN)
+**Active:** FF_001 — **Family Foundation** (DRAFT 2026-04-26 — Q1-Q8 LOCKED via 2db3fc2 deep-dive; full §1-§19 spec + boundary registered this commit)
 
-**Folder closure status:** Open — concept-notes + market-survey phase. FF_001 not yet drafted.
+**Folder closure status:** Open — DRAFT phase. Phase 3 + closure pass cycle pending (commits 3/4 + 4/4).
 
 **V1+ priority signal (per IDF folder closure):**
 > POST-SURVEY-Q4 LOCKED + IDF_004 ORG-D12: **FF_001 Family Foundation = HIGH priority post-IDF closure (BEFORE PCS_001).** Wuxia content REQUIRES family graph (sect lineage / family inheritance / dynasty politics).
@@ -19,7 +19,7 @@
 |---|---|---|---|---|---|
 | (concept) | **00_CONCEPT_NOTES.md** — FF_001 brainstorm capture | CONCEPT 2026-04-26 — captures user framing (wuxia priority + IDF_004 lineage_id resolution) + 12-dimension gap analysis + 8 critical Q1-Q8 + cross-feature integration table | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | (this commit) |
 | (research) | **01_REFERENCE_GAMES_SURVEY.md** — reference games survey | DRAFT 2026-04-26 — CK3 dynasty system + Bannerlord clan + Total War 3K family + xianxia sect lineage + D&D background + VtM clan-as-family + Stellaris ruler succession + Pillars of Eternity tabletop precedent | [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) | (this commit) |
-| FF_001 | **Family Foundation** (FF) | (awaiting Q1-Q8 lock + reference materials review) — Per-actor family graph (parent/sibling/spouse/child) + Dynasty (multi-generational house) + Family event log (Birth/Marriage/Death/Divorce/Adoption). Resolves IDF_004 lineage_id opaque tag. V1+ inheritance rules (TIT_001 Title Foundation extension). | NOT YET DRAFTED | (to be created) | n/a |
+| FF_001 | **Family Foundation** (FF) | Per-actor family graph (parent/sibling/spouse/child explicit V1 + extended computed V1+) + Dynasty (sparse storage; multi-generational house) + 5 V1 family events (1 EVT-T4 FamilyBorn + 4 EVT-T3 Derived: AddSpouse + MarkDeceased + V1+ AddChild/RemoveSpouse/AddAdoptedParent). Resolves IDF_004 lineage_id opaque tag per ORG-D12. 6-variant RelationKind enum (adoption flag per Q6). Boundary discipline: FF_001 = biological + adoption only; V1+ FAC_001 owns sect/master-disciple/sworn (per Q4). 10 V1-testable AC + 4 V1+ deferred. 12 deferrals (FF-D1..D12). | **DRAFT** 2026-04-26 (Q1-Q8 LOCKED 2db3fc2; full spec + boundary register this commit) | [`FF_001_family_foundation.md`](FF_001_family_foundation.md) | (this commit) |
 
 ---
 
