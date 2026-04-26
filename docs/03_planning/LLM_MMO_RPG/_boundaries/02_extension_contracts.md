@@ -67,8 +67,24 @@ pub enum TurnOutcome {  // Continuum-owned closed set
 
 pub struct RejectReason {  // Continuum-owned envelope shape
     pub rule_id: String,                          // namespaced — see §1.4 below
+    pub user_message: I18nBundle,                 // RES_001 DRAFT 2026-04-26 — multi-language user-facing
+                                                  // text per i18n contract (RES_001 §2.3). English `default`
+                                                  // required; per-locale `translations: HashMap<LangCode, String>`.
+                                                  // Existing features' Vietnamese hardcoded reject copy
+                                                  // backfills into `default` (English) as cross-cutting audit
+                                                  // (deferred — low-priority cosmetic). PL_001 closure pass
+                                                  // folds in (additive per I14).
     pub detail: serde_json::Value,                // feature-defined per rule_id namespace
 }
+
+// I18nBundle — engine-wide cross-cutting type introduced by RES_001 §2 (2026-04-26).
+// Used by any feature for user-facing display strings.
+pub struct I18nBundle {
+    pub default: String,                          // English-required fallback
+    pub translations: HashMap<LangCode, String>,  // ISO-639-1 lowercase ("vi", "zh", ...)
+                                                  // ("en" forbidden — use `default` field)
+}
+pub type LangCode = String;
 ```
 
 ### Extension rules
@@ -114,8 +130,9 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `place.*` | PF_001 Place Foundation (added 2026-04-26 DRAFT; expanded 2026-04-26 Phase 3 cleanup to 12 V1 rule_ids — missing_decl / duplicate_place / invalid_structural_transition / unknown_place / connection_target_unknown / connection_locked / connection_private / connection_hidden / no_reverse_connection / fixture_seed_uid_collision / invalid_place_type_for_channel_tier / **self_referential_connection**; +4 V1+ reservations: scheduled_decay_collision / cross_reality_connection / procedural_generation_rejected / **connection_gate_unresolved**) |
 | `map.*` | MAP_001 Map Foundation (added 2026-04-26 DRAFT; expanded 2026-04-26 Phase 3 cleanup to 13 V1 rule_ids — missing_layout_decl / duplicate_layout / position_out_of_bounds / connection_target_unknown / cross_tier_connection_disallowed / invalid_tier_metadata / asset_ref_unresolved / asset_review_pending / connection_distance_invalid / self_referential_connection / **tier_field_mismatch** / **connection_duration_invalid** / **asset_pipeline_not_active_v1**; +3 V1+ reservations: cross_reality_layout / layout_too_dense / connection_method_unsupported) |
 | `csc.*` | CSC_001 Cell Scene Composition (added 2026-04-26 DRAFT; expanded 2026-04-26 Phase 3 cleanup to 9 V1 rule_ids — skeleton_not_found / invalid_zone_assignment / zone_overlap / actor_on_non_walkable / item_on_non_placeable / entity_missing_from_assignment / layer3_retry_exhausted / placetype_no_skeleton_v1 / **zone_empty_fallback_used**; +4 V1+ reservations: skeleton_invalid / procedural_density_too_high / narration_unsafe_content / **layer3_occupant_set_changed**) |
+| `resource.*` | RES_001 Resource Foundation (added 2026-04-26 DRAFT; 12 V1 rule_ids — balance.insufficient / balance.invalid_owner / balance.negative_amount_forbidden / vital.below_zero / vital.body_bound_transfer_forbidden / trade.npc_insufficient_funds / trade.npc_insufficient_goods / trade.pc_insufficient_funds / trade.pc_insufficient_goods / trade.invalid_price / harvest.empty_cell / harvest.not_owner_or_orphan; +3 V1+ reservations: balance.cap_exceeded / trade.bargaining_failed / item.instance_not_found) |
 
-Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy.
+Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
 ---
 
@@ -174,6 +191,51 @@ pub struct RealityManifest {
     // takes priority. Unknown SkeletonId in override falls back to default_generic_room (logs
     // `csc.skeleton_not_found`). See CSC_001 §10.1.
     pub scene_skeleton_overrides: HashMap<ChannelId, SkeletonId>,
+
+    // ─── RES_001 Resource Foundation extensions (added 2026-04-26 DRAFT) ───
+    // ALL OPTIONAL V1 — engine defaults apply when omitted (per RES_001 §3.5 + §9.2).
+    // Empty/None = single-currency default + universal vital max + no producers + no maintenance.
+
+    /// Author-declared resource kinds. Empty → engine V1 defaults (Copper currency + Food/Water
+    /// consumables + Wood/Iron/Stone materials + Reputation social currency + Hp/Stamina vitals).
+    pub resource_kinds: Vec<ResourceKindDecl>,
+
+    /// Author-declared currencies (Q10). Empty → single default Copper (rate=1).
+    /// Multi-tier example (Vietnamese xianxia): [copper(rate=1), silver(rate=100), gold(rate=10000)].
+    /// Each CurrencyDecl carries `display_name: I18nBundle` per RES_001 §2 i18n contract.
+    pub currencies: Vec<CurrencyDecl>,
+
+    /// Author-declared vital profiles per actor-class (Q3e). Empty → engine defaults (PC: 100/100
+    /// Hp/Stamina with TimeBased/RestBased regen; NPC peasant: 50/50). PCS_001 + NPC_001 may
+    /// declare per-actor-class overrides referencing this vector.
+    pub vital_profiles: Vec<VitalProfileDecl>,
+
+    /// Cell production rates per PlaceType (Q4d). Empty → no cells produce. Each ProducerProfile
+    /// declares: `place_type` + `outputs: Vec<ProductionOutput>` + `stockpile_cap`.
+    pub producers: Vec<ProducerProfile>,
+
+    /// Trade pricing per kind (Q12a global V1). Empty → no trade allowed (V1+30d adds per-cell
+    /// variance). Each PriceDecl: `{ kind, base_buy_price, base_sell_price, primary_currency }`
+    /// with invariant base_buy_price >= base_sell_price (NPC profit margin = sink #3).
+    pub prices: Vec<PriceDecl>,
+
+    /// Cell stockpile cap per PlaceType (Q2c production constraint). Empty → engine default 1000
+    /// units per cell. Production halts when stockpile reaches cap.
+    pub cell_storage_caps: HashMap<PlaceTypeRef, u64>,
+
+    /// Cell maintenance cost per PlaceType (Q2c sink #2). Empty/None per type → no maintenance
+    /// required. Daily maintenance Generator deducts from owner inventory; insufficient → cell
+    /// production halts.
+    pub cell_maintenance_profiles: HashMap<PlaceTypeRef, MaintenanceCost>,
+
+    /// Initial resource distribution at reality bootstrap. Empty → all entities start with empty
+    /// inventories (NPCs spawn with 0 of everything). Authors typically seed NPCs with starter gold
+    /// + food.
+    pub initial_resource_distribution: Vec<InitialDistributionDecl>,
+
+    /// Initial Reputation distribution (SocialCurrency Q1c V1). Empty → all actors start at 0.
+    /// HashMap<ActorRef, i64> — value can be negative (notorious) or positive (renowned).
+    pub social_initial_distribution: HashMap<ActorRef, i64>,
 
     // ─── Future feature extensions ───
 }

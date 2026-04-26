@@ -6,6 +6,64 @@
 
 ---
 
+## 2026-04-26 — RES_001 Resource Foundation DRAFT promotion + i18n cross-cutting pattern introduction
+
+- **Lock claim:** main session 2026-04-26 (RES_001 DRAFT promotion); this commit `[boundaries-lock-claim+release]` (single-commit cycle)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None → main session 2026-04-26 (RES_001 DRAFT) → None at release
+  - `01_feature_ownership_matrix.md`:
+    - **NEW aggregate rows:** `vital_pool` (T2/Reality, body-bound, actor-only, NON-TRANSFERABLE) + `resource_inventory` (T2/Reality, portable, EntityRef-any) — both owned by RES_001 DRAFT
+    - **Updated `actor_status` row:** flag downstream impact — PL_006 closure pass promotes Hungry from V1+reserved → V1 active with magnitude semantics 1/4/7 thresholds (Q5 LOCKED)
+    - **Updated `RealityManifest` extension row:** RES_001 contributes 9 OPTIONAL V1 fields (resource_kinds / currencies / vital_profiles / producers / prices / cell_storage_caps / cell_maintenance_profiles / initial_resource_distribution / social_initial_distribution) with engine defaults
+    - **Updated `RejectReason` namespace prefixes row:** added `resource.*` → RES_001 (12 V1 rule_ids); flagged i18n envelope-extension (`user_message: I18nBundle`)
+    - **NEW row `i18n I18nBundle cross-cutting type`:** RES_001 §2 introduces engine-wide pattern (English `snake_case` stable IDs + `I18nBundle` for user-facing strings)
+    - **NEW EVT-T3/T5/T8 sub-type ownership rows:** `aggregate_type=vital_pool` + `aggregate_type=resource_inventory` (T3 Derived); 4 V1 Generators `Scheduled:CellProduction`/`NPCAutoCollect`/`CellMaintenance`/`HungerTick` (T5 Generated); 4 AdminAction sub-shapes `Forge:EditCellProducerProfile`/`Forge:EditPriceDecl`/`Forge:EditCellMaintenanceCost`/`Forge:GrantInitialResources` (T8 Administrative; WA_003 Forge ForgeEditAction enum extension at WA closure)
+    - **Stable-ID prefix:** added `RES-*` foundation tier (catalog/cat_00_RES_resource.md created)
+  - `02_extension_contracts.md` §1 (TurnEvent envelope): added `RejectReason.user_message: I18nBundle` field + `I18nBundle` type definition (introduces engine-wide cross-cutting i18n type)
+  - `02_extension_contracts.md` §1.4 (RejectReason rule_id namespace): added `resource.*` row with 12 V1 rule_ids enumerated + 3 V1+ reservations + i18n update note
+  - `02_extension_contracts.md` §2 (RealityManifest): added 9 RES_001 OPTIONAL V1 extension fields with inline doc comments + engine defaults
+- **Files created within `features/00_resource/`:**
+  - `_index.md` — folder index with status DRAFT 2026-04-26 + Q1-Q12 LOCKED summary + reference-games-survey link + i18n notice
+  - `00_CONCEPT_NOTES.md` — concept brainstorm + 5-axiom user definition + 10-dimension gap analysis (A-J) + 5-feature boundary intersection table + Q1-Q7 original recommendations + 12-step promotion checklist + §10 Q1-Q5 LOCKED decisions matrix + §10.5 17-item downstream impacts + §10.6 Q6-Q12 status
+  - `01_REFERENCE_GAMES_SURVEY.md` — 10 reference games (CK3 / M&B Bannerlord / Anno 1800 / Civ VI / Stellaris / DF / RimWorld / Vic3 / EU4 / Patrician) with per-game LoreWeave applicability mapping; 12 recurring patterns synthesized (P1-P12); V1 / V1+30d / V2 / V3 phase mapping; revised Q1-Q7 + new Q8-Q12; V1 scope summary post-survey
+  - `RES_001_resource_foundation.md` — DRAFT (this promotion) — 18 sections covering: §1 Purpose / §2 i18n contract NEW / §3 ResourceKind ontology / §4 Aggregates split (vital_pool + resource_inventory) / §5 Ownership semantics / §6 Production model / §7 Consumption model / §8 Transfer/trade model / §9 RealityManifest extensions / §10 Generator bindings / §11 Validator chain / §12 Cascade integration / §13 RejectReason rule_id catalog / §14 10 V1 acceptance scenarios AC-RES-1..10 / §15 27 deferrals (RES-D1..27 across V1+30d/V2/V3) / §16 6 open questions / §17 Coordination + downstream / §18 Status
+- **Files created within `catalog/`:**
+  - `cat_00_RES_resource.md` — feature catalog with stable-ID namespace `RES-*` (RES_001..N + RES-A* axioms + RES-D* deferrals + RES-Q* open questions)
+- **Q1-Q12 deep-dive decisions LOCKED (full matrix in `00_CONCEPT_NOTES.md` §10):**
+  - **Q1**: 5 V1 categories (Vital / Consumable / Currency / Material / **SocialCurrency** — added for wuxia/xianxia danh tiếng); ResourceBalance shape locks `instance_id: Option<ItemInstanceId>` from V1 (None V1, Some V1+30d Item kind — zero migration); Property NOT in ResourceKind (handled by EF_001 entity_binding)
+  - **Q2**: Open economy + 3 V1 sinks (food consumption + cell maintenance cost + trade buy/sell spread); cell_maintenance_profiles RealityManifest extension; cell with owner=None → production halts
+  - **Q3**: **Split 2 aggregates** (was unified) — vital_pool (body-bound, type-system-enforced non-transferable) + resource_inventory (portable, EntityRef-any). VitalKind V1 = Hp + Stamina (Mana V1+ reserved); VitalProfile shape RES_001-owned, per-actor-class declared via PCS_001/NPC_001 + RealityManifest vital_profiles
+  - **Q4**: Hybrid production: cell auto-produces + NPC owner auto-collects (Generator daily) + PC owner manual-harvests (PL_005 Use kind harvest sub-intent) + no-owner halts. Day-boundary tick model (no float arithmetic V1). 3 V1 production-side Generators registered as EVT-T5 sub-types
+  - **Q5**: Soft hunger PC+NPC symmetric. Reuse PL_006 Hungry (reserved → V1 active downstream impact). Magnitude scaling 1=mild / 4=severe / 7+=mortality trigger via WA_006 Starvation cause_kind. Day-boundary HungerTick Generator. Narrative-only effect V1, NO hydration V1, universal 1 food/day rate V1
+  - **Q6**: NO PC inventory cap enforcement V1; SCHEMA RESERVED on EF_001 entity_binding (`inventory_cap: Option<CapacityProfile>`) — None V1 → Some V1+30d slot cap (zero migration)
+  - **Q7**: NO quality/grade variation V1 (V2 with crafting module)
+  - **Q8** (resolved by Q3+Q4): Both per-character + per-cell ownership tier (resource_inventory.owner = EntityRef any)
+  - **Q9**: Author-declared cell ownership V1 + Forge transfer (WA_003) + **body-substitution inheritance via xuyên không (PCS_001 mechanic — Q9c LOCKED)** + NPC death → orphan. PC-to-PC trade + PC-buy-from-NPC V1+30d
+  - **Q10**: Author-configurable currencies in RealityManifest (default single Copper); multi-tier display via I18nBundle formatter; storage = total smallest unit V1; per-denomination tracking V1+30d
+  - **Q11** (resolved by Q4d): Production rate canonical in RealityManifest (fixed V1; modifier chain V1+30d)
+  - **Q12**: Global pricing V1 with **buy/sell spread** (sink #3 — was missing in original recommendation) + **NPC finite liquidity** validator-enforced (was implicit assumption — now explicit via RES-V3); per-cell variance V1+30d
+- **i18n NEW cross-cutting pattern:**
+  - User direction 2026-04-26: "game của chúng ta là game quốc tế, lấy tiếng anh làm chuẩn"
+  - English `snake_case` for all stable IDs (rule_ids, aggregate_type, sub-types, enum variants) — RES_001 introduces engine standard
+  - `I18nBundle { default: String, translations: HashMap<LangCode, String> }` for user-facing strings — English `default` required, per-locale translations optional
+  - RES_001 conformance: CurrencyDecl.display_name + ResourceKindDecl.display_name + RejectReason.user_message (envelope extension)
+  - Existing features (PL_006 / NPC_001 / NPC_002 / PL_002 / WA_*) currently use Vietnamese hardcoded reject copy — **i18n cross-cutting audit DEFERRED** (low priority cosmetic, doesn't block V1 functionality; tracked in RES_001 §17.2)
+- **Foundation tier completion: 5/5 V1 foundation features now have DRAFT or higher status:**
+  - EF_001 Entity Foundation (CANDIDATE-LOCK) — WHO
+  - PF_001 Place Foundation (CANDIDATE-LOCK) — WHERE-semantic
+  - MAP_001 Map Foundation (CANDIDATE-LOCK) — WHERE-graph
+  - CSC_001 Cell Scene Composition (DRAFT) — WHAT-inside-cell
+  - **RES_001 Resource Foundation (DRAFT 2026-04-26)** — WHAT-flows-through-entity
+- **17 downstream impact items deferred to follow-up commits** (per RES_001 §17.2):
+  - HIGH priority: PL_006 Hungry promotion / WA_006 Starvation cause_kind / PL_005 trade+harvest rule_ids / EF_001 cell_owner+inventory_cap fields / PCS_001 brief body-substitution + RES_001 reading / 07_event_model 4 EVT-T5 sub-types
+  - MEDIUM priority: NPC_001 auto-collect doc / WA_003 4 ForgeEditAction sub-shapes / PL_001 user_message envelope field
+  - LOW priority: PF_001 cell-as-economic-entity cross-ref / i18n cross-cutting audit
+- **Drift watchpoints: 8 active** (no change from PL folder closure). RES_001 doesn't introduce new watchpoints — Q1-Q12 fully resolved before DRAFT promotion (CONCEPT phase discipline worked).
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-claim+release]` single-cycle)
+- **Reason / handoff:** RES_001 DRAFT closes V1 foundation tier (5/5). i18n NEW pattern propagates engine-wide as future features ship. Next priorities: (a) PCS_001 PC Substrate (parallel agent commission already seeded — body-substitution mechanic now blocked on RES_001 LOCK reading), (b) PO_001 PC Creation flow (V1-blocking, depends on PCS_001), (c) downstream Phase 2 commits applying RES_001 §17.2 to PL_006 / WA_006 / PL_005 / EF_001 / 07_event_model.
+
+---
+
 ## 2026-04-26 — PL folder closure (commit 8/8): PL_006 closure pass → CANDIDATE-LOCK + final lock release
 
 - **Lock claim:** main session 2026-04-26 (PL folder closure 8-commit cycle); this commit `[boundaries-lock-release]` (FINAL release after 8-commit chain)
