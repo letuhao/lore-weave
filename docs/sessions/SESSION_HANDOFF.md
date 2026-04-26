@@ -1,9 +1,133 @@
-# Session Handoff — Session 51 (14 cycles shipped · Track 2/3 Gap Closure P2 DONE + **P3 DONE 12/12** + **P4 C14 DONE** + **P5 🏗 1/3 DESIGN-signed-off** · session closed)
+# Session Handoff — Session 52 (20 cycles shipped · LLM Pipeline Unified Contract Phase 1+2+3 TIERS COMPLETE + Phase 1c-anthropic ✅ + Phase 3b-followup ✅ · session closed)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-30 (session 51, closed at cycle 46 / C16 🏗 DESIGN)
-> **HEAD:** `953d331` (C16 ADR for budget-attribution global-scope regen DESIGN-first; C14b @ `b2ccc0f`; C14a @ `c2acf18`; C12c-b @ `7f31931`; C12c-a @ `5fd8a54`; C13 @ `5fabf87`; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
-> **Branch:** `main` (ahead of origin by sessions 38–51 commits — user pushes manually)
+> **Date:** 2026-04-26 (session 52, closed at 20th cycle / Phase 3b-followup per-op JSON aggregators)
+> **HEAD:** `c0420d2` (Phase 3b-followup per-op aggregators; 1c-anthropic @ `2c7c9a2`; max_tokens-policy @ `1ae3158`; 3c worker chunked @ `842e1bf`; 3b multi-chunk agg @ `388d2ac`; 3a chunker @ `5c72133`; 2f FE EventSource @ `141fb01`; 2e SSE bridge @ `2b411a2`; 2d notif consumer @ `83a255a`; 2c RabbitMQ pub @ `9afb5bf`; 2b job lifecycle @ `64ff7d6`; 2a llm_jobs DDL @ `f28f4a3`; 1e lint rule @ `936724b`; 1c-ii chat-svc drops litellm @ `200a794`; 1c-i ReasoningEvent @ `d43d508`; 1b Python SDK @ `58b2024`; 1a Gateway streaming @ `aaff5e1`; 0a OpenAPI spec @ `4d1a1e0`; refactor plan @ `870b683`; pre-plan proxy fix @ `e63f90f`; session 52 prior demo-track HEAD `568cbfd`)
+> **Branch:** `main` (ahead of origin — user pushes manually)
+
+## Session 52 — 20 cycles shipped · **Pivot from extraction quality polish to LLM pipeline architecture refactor** · **Phase 1+2+3 TIERS COMPLETE**
+
+**Pivot story:** session opened intending to "continue C19/C20 extraction quality cycles" against gemma-4-26b-a4b baseline. User asked to register + use `qwen/qwen3.6-35b-a3b` (their strongest local model). Eval timed out at 1500s × 2 retries — I incorrectly concluded "model not viable on this hardware". User pushed back firmly: timeouts on LLM pipelines are the wrong abstraction, system needs unified async + chunking + notification contract. Audit revealed 3 distinct LLM contracts in production (chat-service direct litellm bypass, knowledge-service transparent-proxy, translation-service typed invoke) plus 60s default timeout in knowledge-service mathematically incompatible with thinking-model workloads. Spent the rest of the session shipping the unified-contract refactor end-to-end.
+
+**Highlights:**
+- **🎯 Phase 1 tier COMPLETE** (1a Gateway streaming + 1b Python SDK + 1c-i ReasoningEvent + 1c-ii chat-service drops litellm + 1e lint rule). chat-service no longer imports `litellm` or `openai` — gateway invariant from CLAUDE.md restored for streaming code path.
+- **🎯 Phase 2 tier COMPLETE** (2a llm_jobs DDL + 2b lifecycle handlers/worker + 2c RabbitMQ publisher + 2d notification-service consumer + 2e SSE bridge + 2f FE EventSource). Full async-job pipeline live end-to-end: provider-registry submit → goroutine streams → DB terminal → RabbitMQ user.<id>.llm.<op>.<status> → notification-service persist + api-gateway-bff SSE → FE bell badge bumps real-time.
+- **🎯 Phase 3 tier COMPLETE** (3a chunker primitives + 3b multi-chunk aggregator + 3c worker chunked dispatch). Original user complaint (qwen3.6-35b-a3b on 13K-token chapters) technically unblocked — sequential per-chunk dispatch + JSON-merging aggregators ready for Phase 4a knowledge-service migration.
+- **🚀 Deferred regression closed: Phase 1c-anthropic** — Anthropic SSE streamer with thinking_delta → ReasoningEvent for Claude 3.7+ extended thinking. Closes D-PHASE-1C-ANTHROPIC.
+- **🚀 max_tokens=0 means omit** — caller policy enforcement at SDK + gateway-handler + adapter (3-layer defense-in-depth) so deep-reasoning tasks let the model decide token budget. Anthropic exception preserved (API requires max_tokens).
+- **🚀 Phase 3b-followup per-op JSON aggregators** — final unblocker for Phase 4a. jsonListAggregator merges entity/relation/event JSON outputs across chunks with soft-fail on malformed chunks; without this Phase 4a was blocked because chatAggregator concatenates with `\n\n` producing invalid JSON.
+- **18 commits new code + 1 commit refactor plan + 1 commit pre-plan proxy fix = 20 commits total**.
+- **~6000+ LOC** new code across provider-registry-service (Go), api-gateway-bff (TS/NestJS), notification-service (Go), chat-service (Python), frontend (React/TS), sdks/python (NEW), contracts/api/llm-gateway (NEW).
+- **NEW package `sdks/python/loreweave_llm/`** — first shared SDK in monorepo. Other services consume via `pip install -e ../../sdks/python` from their requirements.txt + Dockerfile multi-stage COPY pattern (chat-service Phase 1c-ii is the reference impl).
+- **NEW contract `contracts/api/llm-gateway/v1/openapi.yaml`** — 17 schemas, 6 paths covering POST /v1/llm/stream + POST /v1/llm/jobs + GET/DELETE /v1/llm/jobs/{id} × public/internal pair. spectral lint clean.
+- **NEW planning doc `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md`** — 8 sections covering principles, audit findings, target architecture, 7-phase migration plan, 8 user-decision questions Q1-Q8 (all approved with recommended defaults).
+
+### Cycle 20 — C-LLM-AGG-PEROP Phase 3b-followup [BE M] — per-operation JSON aggregators
+
+Final unblocker for Phase 4a. NEW `jsonListAggregator` in `internal/jobs/aggregator.go` parses per-chunk `{<list_field>:[...]}` JSON and merges items by caller-supplied keyFn. Three operation routes: `entity_extraction` (key = name+kind, aliases array gets union semantic on tie), `relation_extraction` (key = subject+predicate+object+polarity), `event_extraction` (key = name+time_cue). Higher confidence wins on tie; soft-fail per chunk so 1/N malformed output doesn't fail the whole job (errors captured in `result.chunk_errors[]`). Insertion-order preserved for deterministic results. **2 bugs discovered + fixed mid-cycle**: (a) `mergeKnownKeys` argument-order swap was making low-confidence existing rows win over higher-confidence new rows; (b) `chunkBuffer` not reset in EndChunk caused Finalize defensive-flush to re-parse already-handled chunks producing duplicate `chunk_errors`. **+8 tests**: Entity merge with alias union, Relation tuple-dedup, Polarity-distinct, Event by name+cue, malformed-chunk soft-fail, missing-list-field error, unchunked single-parse backward-compat. **Files: 2** (aggregator.go + test). **Verify**: jobs pkg 31 tests PASS (+8); api/chunker/provider all green.
+
+### Cycle 19 — C-LLM-ANTHROPIC-STREAM Phase 1c-anthropic [BE M] — Anthropic SSE streamer
+
+Closes deferred regression D-PHASE-1C-ANTHROPIC. Anthropic chat models now stream end-to-end through gateway's `/v1/llm/stream` instead of returning LLM_STREAM_NOT_SUPPORTED. NEW `internal/provider/anthropic_streamer.go` — streamAnthropicSSE parser dispatches per Anthropic event type: message_start captures input_tokens, content_block_delta with text_delta → TokenEvent + thinking_delta → ReasoningEvent (Claude 3.7+ extended thinking), message_delta emits UsageEvent + captures stop_reason, message_stop terminates emitting DoneEvent with mapped finish_reason, ping events filtered, error events surface as canonical StreamErrorEvent + stop. mapAnthropicStopReason translates end_turn|stop_sequence→stop, max_tokens→length, tool_use→tool_calls. openAnthropicStream POSTs `/v1/messages` with `x-api-key` + `anthropic-version: 2023-06-01` headers, forces stream:true. anthropicAdapter.Stream replaces the ErrStreamNotSupported stub; max_tokens 8192 default preserved (API requires). **Files: 3** (anthropic_streamer.go + adapters.go + anthropic_streamer_test.go). **Verify**: provider pkg PASS — 7 new Anthropic tests + existing AnthropicInvoke + adapters/streamer tests all green; live smoke deferred (needs Anthropic API key not configured in dev).
+
+### Cycle 18 — C-LLM-MAXTOKEN-POLICY [BE+SDK M] — max_tokens=0 means omit
+
+User-driven policy clarification: caller-omitted OR caller-zero `max_tokens` means "let the model decide" — must NOT appear in upstream payload. Critical for thinking models where reasoning + answer combined exceeds any reasonable arbitrary cap. **3-layer defense-in-depth**: (1) SDK `to_request_body` drops max_tokens when 0; (2) gateway `stream_handler.go` gate `if *MaxTokens > 0`; (3) adapters' Stream + Invoke methods drop unless > 0. Anthropic Invoke documented exception keeps 8192 default (API requires). **Files: 5** (SDK models.py + tests + stream_handler.go + adapters.go + new max_tokens_policy_test.go with 6 httptest-based tests verifying exact wire bytes).
+
+### Cycle 17 — C-LLM-WORKER-CHUNK Phase 3c [BE L] — worker chunked dispatch
+
+Phase 3 tier complete. Worker now reads chunking config from llm_jobs row, splits last user message via Phase 3a chunker, dispatches per-chunk adapter.Stream calls bracketed by aggregator StartChunk/EndChunk (Phase 3b), reports per-chunk progress. **Sequential dispatch** for MVP — chatAggregator state isn't goroutine-safe across chunks; parallel is Phase 3c-followup or Phase 6. **Files: 5** (chunked_input.go + tests + worker.go + jobs_handler.go + repo.go). **Verify**: live smoke 4-paragraph chunked job with size=2 → 2 chunks dispatched sequentially → progress 0/None → 1/2 → 2/2 → completed; content concatenated with `\n\n` separator; reasoning keeps last chunk per Phase 3b design.
+
+### Cycle 16 — C-LLM-AGG-MULTICHUNK Phase 3b [BE M] — multi-chunk aggregator
+
+chatAggregator gains StartChunk/EndChunk hooks. Per-chunk content+reasoning buffers reset on StartChunk, flushed on EndChunk with chunkSeparator='\\n\\n' between non-empty chunks (counter avoids leading sep + skips empty chunks). Reasoning-keep-last-chunk semantic. Usage SUMMED across chunks. Backward-compat: no Start/End calls = single-chunk Phase 2b behavior identical. **Files: 2**. **Verify**: 14 tests (+5 new) PASS.
+
+### Cycle 15 — C-LLM-CHUNKER Phase 3a [BE M] — chunker primitives
+
+Foundation for >8K-token inputs. NEW `internal/chunker/chunker.go` — Strategy enum (tokens/paragraphs/sentences/none), tiktoken-go cl100k_base for token counting, regex `(?:\\r?\\n\\s*\\r?\\n)+` for paragraphs, `[.!?。！？]+\\s*` for ASCII+CJK sentences. **CJK regex bug discovered + fixed mid-cycle** (original `\\s+|$` requirement failed for CJK which has no inter-sentence whitespace). **Files: 2 + tiktoken-go dep**. **Verify**: 15 chunker tests PASS.
+
+### Cycle 14 — C-LLM-FE-STREAM Phase 2f [FE M] — EventSource subscriber
+
+Phase 2 tier complete. `useNotificationStream` self-contained hook with EventSource + exponential-backoff reconnect (1s→30s cap) + ref-stable onEvent + accessToken-null teardown. NotificationBell drops 30s poll for live SSE; initial unread fetch becomes one-shot. **Files: 4**. **Verify**: vitest 8/8 PASS; tsc clean.
+
+### Cycle 13 — C-LLM-SSE-BRIDGE Phase 2e [BE M] — api-gateway-bff SSE bridge
+
+NEW NotificationsController @Sse('stream') at `/v1/notifications/stream` with JWT-via-query auth. Reuses existing AmqpService that consumes loreweave.events; routes by `event.user_id ?? event.owner_user_id` (back-compat with translation-service AND Phase 2c TerminalEvent). gateway-setup.ts excludes /stream path from upstream proxy filter. **Files: 7**. **Verify**: jest 5/5 PASS; live E2E full chain captured `id:1\\ndata:{full TerminalEvent JSON}` on FE-side curl.
+
+### Cycle 12 — C-LLM-NOTIF-CONSUMER Phase 2d [BE L] — notification-service consumer
+
+Closes the half between provider-registry's RabbitMQ publisher (Phase 2c) and FE EventSource subscription (Phase 2f). Notifications row created automatically for every LLM job terminal transition. NEW `internal/consumer/consumer.go` — durable queue `notification-service.llm-jobs` bound `user.*.llm.#`; `transformTerminalEvent` pure helper builds notifications row args; nack-no-requeue on malformed (poison-message guard) + requeue on transient DB error (at-least-once). **Files: 6**. **Verify**: 6 transform tests PASS; live E2E completed + cancelled flows produce notifications rows with category=llm_job.
+
+### Cycle 11 — C-LLM-JOBS-NOTIFY Phase 2c [BE L] — RabbitMQ terminal-event publisher
+
+Terminal-state events publish to `loreweave.events` topic exchange with exactly-once semantic via rowsAffected gate. NEW `internal/jobs/notifier.go` — Notifier interface + rabbitMQNotifier (amqp091-go) + NoopNotifier fallback. TerminalEvent envelope with RoutingKey = `user.<id>.llm.<op>.<status>`. Worker.finalizeAndNotify helper publishes IFF Repo.Finalize rowsAffected > 0 — race protection prevents duplicate event when cancel beats stream completion. **Files: 11**. **Verify**: live cancel-race regression — 25s wait after cancel confirms queue stays empty (no late completed event after cancel won).
+
+### Cycle 10 — C-LLM-JOBS-LIFECYCLE Phase 2b [BE L] — async job handlers + worker
+
+Submit → 202 with job_id → goroutine drives MarkRunning → adapter.Stream → Finalize → caller polls GET. NEW `internal/jobs/{repo,aggregator,worker}.go`; NEW `internal/api/jobs_handler.go` with 6 handlers (POST/GET/DELETE × JWT/internal pair). Phase 2b cuts: only chat/completion ops; non-chat → LLM_OPERATION_NOT_SUPPORTED. **Bug fixed in cycle**: Repo.Finalize originally had no status guard — goroutine could overwrite cancelled→completed when user cancels mid-stream. Fixed: `WHERE status='running'`. **Files: 7**. **Verify**: 13 new tests; live smoke happy path + cancel race regression.
+
+### Cycle 9 — C-LLM-JOBS-DDL Phase 2a [BE M] — llm_jobs table foundation
+
+NEW `llm_jobs` table appended to provider-registry schemaSQL. 23 columns mirroring openapi Job + SubmitJobRequest verbatim. operation enum (10 values), status enum default 'pending', `expires_at default now()+'7 days'` per Q8. **CHECK `llm_jobs_terminal_consistency` locks the invariant** `status terminal ↔ completed_at NOT NULL` at DB layer. 4 indexes including partial on expires_at WHERE terminal for future Phase 6 sweeper. **Files: 1**. **Verify**: live INSERT verifies CHECK rejects status='completed', completed_at=NULL.
+
+### Cycle 8 — C-LLM-LINT-RULE Phase 1e [INFRA XS] — forbid direct provider-SDK imports
+
+Enforcement gate locking in P3+P4. `scripts/lint-no-direct-llm-imports.sh` greps `services/`+`frontend/` for `(import|from) (litellm|openai|anthropic)` outside allowlist (`services/provider-registry-service/`, `sdks/python/`). Phase 1 COMPLETE. **Verify**: regression-tested by injecting `from litellm import acompletion` in chat-service path → exit 1 with offender output; cleanup → exit 0.
+
+### Cycle 7 — C-LLM-CHAT-MIGRATE Phase 1c-ii [BE L] — chat-service drops litellm
+
+Largest architectural deliverable of Phase 1. chat-service no longer bypasses gateway via direct provider SDK. CLAUDE.md gateway invariant restored for streaming chat. NEW `_stream_via_gateway` helper using SDK; title-gen migrates to SDK accumulation. Drop `_stream_openai_compatible`/`_stream_litellm`/`_resolve_model`. Dockerfile build context shifted to repo root for SDK COPY. requirements.txt drops `litellm>=1.40`. **Bug fixed in cycle**: passing `temperature=gen_params.get('temperature')` overrode pydantic StreamRequest default 0.0 with None → validation error. Fix: kwargs sparsity. **Files: 6 + 4 test files migrated**. **Verify**: chat-service pytest 177/177 PASS; live E2E `POST /v1/chat/sessions/{id}/messages` → 194 reasoning-delta + 6 text-delta = `'\\n\\n{"ok":true}'` zero litellm in path.
+
+### Cycle 6 — C-LLM-REASONING-EVENT Phase 1c-i [BE+SDK M] — ReasoningEvent canonical
+
+Closes silent Phase 1a regression. Discovered via direct LM Studio probe: thinking models stream `delta.reasoning_content` per-token but the parser was DROPPING those chunks (only emitting `delta.content`). NEW `StreamChunkReasoning` kind in canonical envelope. SDK adds ReasoningEvent pydantic class to discriminated union. **Files: 5**. **Verify**: live smoke against qwen3.6 — 146 reasoning chunks + 2 token chunks streamed separately end-to-end.
+
+### Cycle 5 — C-LLM-SDK-PY Phase 1b [SDK L] — Python SDK loreweave_llm
+
+First shared SDK in the monorepo. NEW `sdks/python/loreweave_llm/` package. Client.stream(StreamRequest) → AsyncIterator[StreamEvent]. 2 auth modes (jwt → /v1/llm/stream, internal → /internal/llm/stream + user_id query). httpx.Timeout(None, connect=5, read=120) — no wall-clock cap on whole stream. SSE parser handles event/data/comment lines. Error consistency: HTTP-level + SSE-frame `event: error` both surface as same typed exception via from_code factory. submit_job() stub raises NotImplementedError (Phase 2). **Files: 8**. **Verify**: pytest 14/14 PASS in 0.27s; live smoke against gateway+LM Studio qwen3.6 reconstructed `'\\n\\n{"ok":true}'`.
+
+### Cycle 4 — C-LLM-STREAM-IMPL Phase 1a [BE L] — gateway streaming
+
+First runtime piece of unified contract. NEW `POST /v1/llm/stream` (JWT) + `POST /internal/llm/stream` (X-Internal-Token + user_id query). SSE end-to-end with **no wall-clock timeout**. Closes the gap that forced chat-service to bypass via litellm. NEW `streamer.go` with canonical types + `streamOpenAICompat` parser shared by openai/lm_studio/ollama-compat. Anthropic stub returns ErrStreamNotSupported. NEW `stream_handler.go` with emit closure that JSON-marshals chunk + writes `event: <kind>\\ndata: <json>\\n\\n` + flushes. **Files: 5**. **Verify**: 9 streamer unit tests + live smoke through `/internal/llm/stream` against qwen3.6-35b-a3b emitted 6 token events + 1 done event.
+
+### Cycle 3 — C-LLM-CONTRACT-OAS Phase 0a [DOC M] — OpenAPI spec
+
+NEW `contracts/api/llm-gateway/v1/openapi.yaml` (~740 lines). 17 schemas covering streaming + async jobs + canonical SSE event envelope. Plan Q1-Q8 approved decisions baked in. spectral lint clean (initial run caught 4 nullable+$ref siblings + 1 unused ProviderKind, all fixed in-cycle). **Files: 2**.
+
+### Cycle 2 — C-LLM-PIPELINE-PLAN [DOC XL] — refactor plan + audit
+
+User-driven full-system architecture plan. Audit revealed 3 distinct LLM contracts in production, gateway-hardcoded `stream:false` forcing chat bypass, timeout-chain math fail. NEW `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — 8 sections covering principles (P1 streaming no-timeout, P2 async-jobs unified, P3 shared SDK, P4 gateway-only invariant), audit findings, target architecture (2 flavors at gateway), 7-phase migration plan, 8 open questions. **Files: 2**. User approved plan + Q1-Q8 defaults via "approve" reply.
+
+### Cycle 1 — LM-STUDIO-PROXY-FIX [BE M] — transparent proxy strips trailing /v1
+
+Pre-plan cycle. Closes the half that earlier LM-STUDIO-URL-FIX (commit 74da52c) missed: doProxy code path in api/server.go was still building `/v1/v1/chat/completions` for users who store endpoint as `http://host:1234/v1`. Discovered when running quality eval against qwen3.6-35b-a3b. Export NormalizeLmStudioBase + extract buildProxyTargetURL helper + 5 unit tests. **Files: 5**. **Verify**: live POST /internal/proxy/v1/chat/completions returns proper {choices, usage, stats} struct after rebuild.
+
+### What's NEXT for the next agent
+
+**Phase 4a is the natural next cycle but it is XL+ regardless of slice.** Knowledge-service has ~600 LOC `provider_client.py` business logic + ~1500 LOC test surface (test_provider_client.py 909 LOC + test_llm_json_parser.py 627 LOC). The migration target options:
+
+1. **Surface-preserving rewrite (XL)**: chat_completion internals swap from JSON→SSE; ~30 test mocks need adjustment.
+2. **Abandon provider_client.py (XL)**: 4 extractors use SDK directly; delete wrapper + tests; rewrite extractor mock pattern.
+3. **Job-pattern + chunking (XL+)**: extractors become `submit_job + wait`; RabbitMQ subscriber inside knowledge-service or polling. **This is the cycle that actually fixes the original user complaint** (qwen3.6-35b-a3b on 13K-token chapters).
+
+Phase 4a should open with a **DESIGN-first cycle** (like C16/C17/C18 of session 51) to choose the path + ADR before BUILD. Phase 3b-followup per-op aggregators + Phase 3c worker chunked dispatch are ready to consume.
+
+**Other deferred items** (lower priority):
+- Phase 3c-followup: parallel chunk dispatch (needs goroutine-safe aggregator) — Phase 6 hardening territory.
+- Phase 4b/4c/4d: worker-ai/translation-service migrations + drop legacy invoke endpoints.
+- Phase 5: Audio/STT/TTS migration to unified contract.
+- Phase 6: rate-limit + retry + tracing + cancel-context propagation + crash-recovery.
+- Phase 1c-anthropic-followup: Anthropic tool-use input_json_delta mapping (when tool-calling support lands).
+
+**Read in this order to onboard:**
+1. `docs/sessions/SESSION_PATCH.md` — full state with cycle-by-cycle metadata in header
+2. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — 8 sections + 7-phase plan + Q1-Q8 (user-approved)
+3. This handoff file (you're reading) — cycle summaries with HEAD refs
+4. `contracts/api/llm-gateway/v1/openapi.yaml` — canonical wire contract for the unified pipeline
+
+**Session 52 closed at HEAD `c0420d2`. Session 53 opens fresh on Phase 4a DESIGN-first.**
+
+---
 
 ## Session 51 — 14 cycles shipped (all Track 2/3 Gap Closure: C7..C16) · **P2 DONE (7/7)** · **P3 DONE (12/12)** · **P4 C14 DONE** · **P5 🏗 1/3 DESIGN-signed-off** · session closed
 
