@@ -6,6 +6,19 @@
 
 ---
 
+## 2026-04-26 — IDF folder 13/15: IDF_005 Ideology Foundation DRAFT + boundary register
+
+- Lock continues from commit 1/15
+- `01_feature_ownership_matrix.md`: NEW row actor_ideology_stance (T2/Reality, IDF_005 DRAFT — **ONLY mutable IDF aggregate V1**); EVT-T8 Forge:EditIdeologyStance; IDL-* prefix
+- `02_extension_contracts.md`: §1.4 ideology.* (3 V1 rules + 5 V1+); §2 RealityManifest ideologies REQUIRED V1
+- IDF_005 file: renamed concept → DRAFT; full §1-§19 spec
+- IDL-Q13 NEW LOCKED: free V1 conversion per POST-SURVEY-Q3
+- IDL-D11 NEW: conversion cost mechanic V1+ (when scheduler V1+30d ships OR IDL-D3 ideology-conflict modifier ships)
+- Multi-stance V1 per IDL-Q2 LOCKED (Wuxia syncretism)
+- 10 V1-testable AC + 2 V1+ deferred; 11 deferrals (IDL-D1..D11)
+
+---
+
 ## 2026-04-26 — IDF folder 12/15: IDF_004 closure pass → CANDIDATE-LOCK
 
 4/5 IDF features now CANDIDATE-LOCK. Lock continues claimed for IDF_005 final cycle (commits 13-15).

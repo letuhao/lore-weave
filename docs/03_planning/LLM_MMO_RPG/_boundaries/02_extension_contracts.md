@@ -135,6 +135,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `language.*` | IDF_002 Language Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 4 V1 rule_ids — unknown_language_id / speaker_proficiency_insufficient / listener_proficiency_insufficient (V1+ active; V1 warning only per LNG-Q6 LOCKED) / proficiency_axis_invalid; +2 V1+ reservations: dialect_mismatch / code_switch_unsupported. V1 user-facing rejects: unknown_language_id + speaker_proficiency_insufficient. SPIKE_01 turn 5 literacy slip canonical reproducibility gate — A6 canon-drift detector consumes proficiency at Stage 8 V1+. **LanguageId distinct from RES_001 LangCode** (in-fiction vs engine UI; runtime newtype assert V1; LNG-D8 compile-time V1+). i18n: V1 ships I18nBundle from day 1. |
 | `personality.*` | IDF_003 Personality Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 3 V1 rule_ids — unknown_archetype_id / assignment_immutable / opinion_modifier_invalid; +2 V1+ reservations: archetype_evolution_invalid_path / overlay_conflict. V1 user-facing rejects: unknown_archetype_id + assignment_immutable only (opinion_modifier_invalid schema-level). 12 V1 archetypes per POST-SURVEY-Q1 LOCKED (Stoic/Hothead/Cunning/Innocent/Pious/Cynic/Worldly/Idealist + Loyal/Aloof/Ambitious/Compassionate). Resolves PL_005b §2.1 speaker_voice orphan ref + PL_005c INT-INT-D5 per-personality opinion modifier. i18n: V1 ships I18nBundle from day 1. |
 | `origin.*` | IDF_004 Origin Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 4 V1 rule_ids — unknown_native_language / unknown_birthplace / assignment_immutable / unknown_ideology_ref; +2 V1+ reservations: lineage_graph_invalid (V1+ FF_001) / pack_not_in_registry (V1+ origin packs). V1 user-facing rejects: assignment_immutable only (others schema-level canonical seed validation). V1 minimal stub 4 fields (birthplace + lineage_id opaque + native_language + default_ideology_refs) per ORG-Q1 LOCKED. **V1+ FF_001 Family Foundation HIGH priority post-IDF closure** per POST-SURVEY-Q4 + ORG-D12. i18n: V1 ships I18nBundle from day 1. |
+| `ideology.*` | IDF_005 Ideology Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 3 V1 rule_ids — unknown_ideology_id / duplicate_stance_entry / lex_axiom_forbidden (V1+ active; V1 reserved); +5 V1+ reservations: tenet_violation (V1+ IDL-D1) / sect_membership_required (V1+ FAC_001 IDL-D2) / conflict_auto_drop_required / invalid_fervor_transition / conversion_cost_unmet (V1+ IDL-D11). **ONLY mutable IDF aggregate V1.** Multi-stance V1 per IDL-Q2 (Wuxia syncretism). Atheist = empty Vec. **Free V1 conversion per IDL-Q13 LOCKED (POST-SURVEY-Q3)** — cost mechanic V1+ IDL-D11. i18n: V1 ships I18nBundle from day 1. |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
@@ -293,6 +294,16 @@ pub struct RealityManifest {
     // default_birthplace_channel, default_native_language, default_ideology_refs, naming_convention
     // (V1+ ORG-D3), values_list (V1+ ORG-D2), canon_ref }.
     pub origin_packs: Vec<OriginPackDecl>,         // see IDF_004 §3.2; OPTIONAL V1 (empty Vec valid)
+
+    // ─── IDF_005 Ideology Foundation extension (added 2026-04-26 DRAFT — Tier 5 Actor Substrate) ───
+    // REQUIRED V1: every reality declares ≥1 ideology (atheist-only is still a declared landscape).
+    // IdeologyDecl shape per IDF_005 §3.2: { ideology_id, display_name (I18nBundle),
+    // parent_ideology_id (V1+ hierarchy schema slot per IDL-Q4), lex_axiom_tags (Vec<String> for
+    // V1+ Lex gate per IDL-Q5), canon_ref }. Wuxia preset 5 ideologies (Đạo / Phật / Nho /
+    // pure-martial / animism); Modern 3 (secular_humanism / theist / atheist); Sci-fi 3
+    // (post_religious / corporate_ethics / cosmic_nihilism). Multi-stance per actor V1 per IDL-Q2
+    // LOCKED — actor_ideology_stance.stances Vec supports wuxia syncretism.
+    pub ideologies: Vec<IdeologyDecl>,             // see IDF_005 §3.2
 
     // ─── Future feature extensions ───
 }
