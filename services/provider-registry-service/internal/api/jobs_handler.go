@@ -111,11 +111,26 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		return
 	}
 
+	// Phase 3c — decode the optional chunking config now so the worker
+	// goroutine doesn't need to re-parse the JSONB. Decode failure here
+	// is non-fatal: we fall back to single-call mode (caller's
+	// chunking field is malformed but the job itself can still run).
+	chunkCfg, decodeErr := jobs.DecodeChunkConfig(in.Chunking)
+	if decodeErr != nil {
+		// Treat as caller error rather than silent fallback so the
+		// caller learns their config was malformed. Job already
+		// inserted — finalize as failed.
+		_, _ = s.jobsRepo.Cancel(r.Context(), jobID, userID)
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"invalid chunking config: "+decodeErr.Error())
+		return
+	}
+
 	// Spawn the worker goroutine. Use a fresh context detached from the
 	// inbound HTTP request so the goroutine survives the response.
 	go func() {
 		bgCtx := context.Background()
-		s.jobsWorker.Process(bgCtx, jobID, userID, in.Operation, in.ModelSource, modelRef, in.Input)
+		s.jobsWorker.Process(bgCtx, jobID, userID, in.Operation, in.ModelSource, modelRef, in.Input, chunkCfg)
 	}()
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
