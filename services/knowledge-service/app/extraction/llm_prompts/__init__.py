@@ -42,7 +42,12 @@ __all__ = [
 # R1/I4: real Literal type so static checkers flag typoed callers
 # (e.g. `load_prompt("entitiy", ...)`) instead of relying only on
 # the runtime KeyError from _load_raw.
-PromptName = Literal["entity", "relation", "event", "fact"]
+#
+# Phase 4a-α-followup adds `entity_system` — a system-message variant
+# of the entity prompt that excludes the chapter `{text}` block, used
+# alongside a separate user-message text payload so the gateway's
+# chunker can split the user message without shredding instructions.
+PromptName = Literal["entity", "relation", "event", "fact", "entity_system"]
 
 # R2/I2: derive the runtime closed-set from the Literal so a future
 # edit that adds a prompt kind in one place but forgets the other
@@ -72,7 +77,12 @@ def _load_raw(name: str) -> str:
             f"unknown prompt '{name}'; allowed: "
             f"{sorted(ALLOWED_PROMPT_NAMES)}"
         )
-    path = _PROMPTS_DIR / f"{name}_extraction.md"
+    # Phase 4a-α-followup: `entity_system` maps to entity_extraction_system.md;
+    # other names follow the legacy `<name>_extraction.md` pattern.
+    if name == "entity_system":
+        path = _PROMPTS_DIR / "entity_extraction_system.md"
+    else:
+        path = _PROMPTS_DIR / f"{name}_extraction.md"
     return path.read_text(encoding="utf-8")
 
 

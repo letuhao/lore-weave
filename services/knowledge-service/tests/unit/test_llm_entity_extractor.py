@@ -550,15 +550,29 @@ async def test_extract_entities_via_llm_client_happy_path():
     assert len(result) == 2
     names = {c.name for c in result}
     assert names == {"Holmes", "Baker Street"}
-    # Verify operation + job_meta routed correctly
+    # Verify operation + job_meta + chunking + 2-message structure
+    # (system instructions + user text) per Phase 4a-α-followup.
     assert len(fake.calls) == 1
     call = fake.calls[0]
     assert call["operation"] == "entity_extraction"
-    # /review-impl HIGH#1 — chunking disabled in 4a-α (prompt structure
-    # would shred under the gateway chunker). Re-enable in a 4a-α-followup
-    # after the prompt is restructured as system+user.
-    assert call["chunking"] is None
+    # 4a-α-followup re-enables chunking on the user message; system
+    # message is preserved across chunks by the gateway.
+    assert call["chunking"] is not None
+    assert call["chunking"].strategy == "paragraphs"
+    assert call["chunking"].size == 15
     assert call["job_meta"]["extractor"] == "entity"
+    # Messages must be 2-element [system, user] so the gateway chunker
+    # only chunks the user (text) message — chunks 2..N preserve system
+    # instructions verbatim. /review-impl cycle 2 HIGH#1 root cause.
+    msgs = call["input"]["messages"]
+    assert len(msgs) == 2, f"expected [system, user], got {len(msgs)} messages"
+    assert msgs[0]["role"] == "system"
+    assert "Entity Extraction" in msgs[0]["content"]
+    assert "{known_entities}" not in msgs[0]["content"], (
+        "system prompt should have known_entities substituted, not literal"
+    )
+    assert msgs[1]["role"] == "user"
+    assert msgs[1]["content"] == "Holmes lived at Baker Street."
 
 
 @pytest.mark.asyncio
@@ -660,3 +674,102 @@ async def test_extract_entities_legacy_client_path_unchanged_when_llm_client_is_
     )
     assert len(result) == 1
     assert result[0].name == "Holmes"
+
+
+# ── Phase 4a-α-followup /review-impl regression locks ────────────────
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_via_llm_client_chunking_invariant_for_multi_paragraph_input():
+    """/review-impl LOW#2 — pin the invariant that the extractor ALWAYS
+    sends ChunkingConfig regardless of input length. The gateway decides
+    chunk count (chunker may return 1 chunk for short inputs); the
+    extractor must always opt in.
+
+    Earlier happy-path test used 1-paragraph text — a regression that
+    accidentally set chunking=None on multi-paragraph inputs would not
+    be caught there. This test exercises a 30-paragraph input."""
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="completed",
+        entities=[{"name": "Holmes", "kind": "person", "confidence": 0.9}],
+    )
+    long_text = "\n\n".join(f"Paragraph {i}: Holmes acted." for i in range(30))
+    await extract_entities(
+        text=long_text,
+        known_entities=[],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref=USER_ID,
+        llm_client=cast(Any, fake),
+    )
+    call = fake.calls[0]
+    assert call["chunking"] is not None, (
+        "extractor must opt-in to chunking regardless of input length"
+    )
+    assert call["chunking"].strategy == "paragraphs"
+    assert call["chunking"].size == 15
+    # Verify the user message carries the FULL text (not pre-chunked
+    # by knowledge-service — that's the gateway's job).
+    user_msg = call["input"]["messages"][1]
+    assert user_msg["content"] == long_text
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_via_llm_client_cross_chunk_alias_variant_known_limitation():
+    """/review-impl MED#1 — REGRESSION-LOCK for the known cross-chunk
+    discovered-entity priming gap.
+
+    System message KNOWN_ENTITIES is preserved across chunks (good), so
+    pre-existing graph entities prime every chunk. But entities
+    DISCOVERED in chunk N are NOT fed to chunk N+1's prompt — the
+    gateway dispatches chunks independently.
+
+    Concrete failure mode: a character introduced as 'Helen Stoner' in
+    chunk 0 and referred to as 'Miss Stoner' in chunk 1 would be
+    EXTRACTED AS TWO DISTINCT ENTITIES because:
+      - chunk 1's LLM never sees 'Helen Stoner' so it can't snap to it
+      - aggregator's (name, kind) dedup key won't merge them
+      - knowledge-service's _postprocess only anchors against the
+        caller-supplied known_entities, not against earlier extractions
+        from the same job
+
+    This test pins the limitation by simulating the failure mode at
+    the result-shape layer: when the LLM returns name variants of one
+    person across chunks, the extractor surfaces both. Phase 6 fix:
+    gateway carries chunk-N entities into chunk-N+1 prompt OR
+    knowledge-service adds a post-aggregation alias-substring pass."""
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="completed",
+        entities=[
+            # Simulates what the gateway aggregator would emit when
+            # chunks 0 and 1 each independently extracted the same
+            # person under different names.
+            {"name": "Helen Stoner", "kind": "person", "confidence": 0.95},
+            {"name": "Miss Stoner", "kind": "person", "confidence": 0.9},
+        ],
+    )
+    result = await extract_entities(
+        text="(simulated multi-chunk chapter — see test docstring)",
+        known_entities=[],  # no prior graph entries to anchor against
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref=USER_ID,
+        llm_client=cast(Any, fake),
+    )
+    # CURRENT BEHAVIOR (4a-α-followup): both variants survive as
+    # distinct LLMEntityCandidate rows because canonical_id hashes
+    # over the full name. When Phase 6 (or knowledge-service post-
+    # aggregation alias merge) lands, this test should FLIP to assert
+    # they were merged into one candidate with aliases=['Miss Stoner'].
+    names = sorted(c.name for c in result)
+    assert names == ["Helen Stoner", "Miss Stoner"], (
+        "regression-lock: cross-chunk alias variants currently survive "
+        "as distinct entities. If this test fails after a future change, "
+        "either Phase 6 cross-chunk priming shipped (good — flip the "
+        "assertion to expect a merge) OR a regression silently changed "
+        "the dedup contract (bad — investigate)."
+    )

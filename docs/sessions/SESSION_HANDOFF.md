@@ -1,9 +1,77 @@
-# Session Handoff — Session 53 (2 cycles shipped · Phase 4a-α BUILD live + chunked-extraction deferred to followup · cycle closed)
+# Session Handoff — Session 53 (3 cycles shipped · Phase 4a-α COMPLETE — chunked entity extraction live · 4a-β next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-27 (session 53, cycles 1-2 shipped)
-> **HEAD:** `<pending>` (Phase 4a-α BUILD; ADR @ `b2f577e`; Session 52 closed at `c0420d2`)
+> **Date:** 2026-04-27 (session 53, cycles 1-3 shipped)
+> **HEAD:** `<pending>` (Phase 4a-α-followup; Phase 4a-α BUILD @ `6697d8d6`; ADR @ `b2f577e`; Session 52 closed at `c0420d2`)
 > **Branch:** `main` (ahead of origin — user pushes manually)
+
+## Session 53 cycle 3 — Phase 4a-α-followup · chunked entity extraction LIVE
+
+**What shipped:** 5 files restructure entity prompt as system+user + re-enable `ChunkingConfig(strategy='paragraphs', size=15)`. Closes /review-impl cycle 2 HIGH#1 (chunking-shreds-combined-prompt) end-to-end. Live smoke on Speckled Band first 30 paragraphs (10854 chars) → gateway dispatches **2 sequential chunks** → **34 deduped entities** → no `chunk_errors[]`. **The original-complaint cycle (qwen3.6-35b-a3b on 13K-token chapters) is now FULLY supported.**
+
+**Files (5)**:
+- NEW `entity_extraction_system.md` — system-only template (instructions + KNOWN_ENTITIES + rules + examples) with chunking-self-contained directive; NO `{text}` placeholder
+- MOD `llm_prompts/__init__.py` — PromptName Literal +'entity_system' + _load_raw mapping
+- MOD `llm_entity_extractor.py` — SDK path now sends `[{role:system,content:system_prompt},{role:user,content:text}]` with chunking re-enabled; legacy K17.2 combined-template path preserved
+- MOD `test_llm_entity_extractor.py` — assert chunking + 2-message structure + 2 new regression-lock tests
+- MOD `test_llm_prompts.py` — TEXT_BEARING_PROMPT_NAMES skips entity_system + 2 entity_system-dedicated tests + 1 silent-drop regression-lock
+
+### `/review-impl` round 3 — caught 1 MED + 3 LOW + 1 COSMETIC; all 4 actionable findings fixed inline
+
+| # | Sev | Issue | Fix |
+|---|-----|-------|-----|
+| 1 | 🟡 MED | Cross-chunk discovered-entity priming gap — system message KNOWN_ENTITIES preserved across chunks but entities discovered in chunk N NOT propagated to chunk N+1 prompt; "Helen Stoner" in chunk 0 + "Miss Stoner" in chunk 1 → 2 distinct entities | NEW regression-lock test pins current behavior with explicit Phase 6 fix path; deferred D-PHASE6-XCHUNK-PRIMING |
+| 2 | 🟢 LOW | Unit tests don't exercise multi-chunk dispatch | NEW test `test_extract_entities_via_llm_client_chunking_invariant_for_multi_paragraph_input` asserts extractor SENDS ChunkingConfig on 30-paragraph input |
+| 3 | 🟢 LOW | System prompt's "Chunking note" misleading on single-call path | Wording softened: "may be a chunk OR the entire chapter" + explicit "do NOT caveat" |
+| 4 | 🟢 LOW | `load_prompt("entity_system", text=...)` silently drops `text` kwarg | NEW regression test documents the silent-drop gotcha + cross-references intended use site |
+| 5 | 🔵 COSMETIC | Example A KNOWN_ENTITIES literal | Skip |
+
+### Verify evidence
+```
+ks-svc unit tests: 1611/1611 PASS in 10.63s (was 1608; +3 new)
+LIVE SMOKE: Speckled Band 30 paragraphs (10854 chars)
+  → 2 chunks dispatched sequentially (chunks_done 0→1/2→2/2)
+  → 34 deduped entities returned
+  → no chunk_errors[]
+  → high-confidence proper nouns merged correctly across chunks
+```
+
+### What's NEXT for the next agent
+
+**4a-β (L)** — migrate relation/event/fact extractors to the SDK pattern. Same surface as 4a-α (extractor signature + tolerant parser + orchestrator threading) × 3 extractors. Gateway changes:
+- Add `fact_extraction` to `JobOperation` enum in [openapi.yaml](contracts/api/llm-gateway/v1/openapi.yaml)
+- Add `factKey(subject + predicate + claim)` to gateway's `jsonListAggregator` switch + 5 new aggregator tests
+- Worker whitelist already covers entity/relation/event_extraction; +`fact_extraction` to `streamableOperations` map
+
+Knowledge-service changes:
+- Restructure relation/event/fact prompts as system+user (mirror entity_extraction_system.md pattern) — system has rules + KNOWN_ENTITIES, user has chapter text only
+- 3 extractors get `llm_client | None = None` param + new SDK path branch + tolerant parser
+- `pass2_orchestrator` threads `llm_client` to all 4 extractors (legacy `client: ProviderClient` removed from extractor signatures only after 4a-δ)
+- ~66 test mocks adjust (3 files × ~22 each)
+
+**Reference impl:** Phase 4a-α at HEAD `6697d8d6` (entity migration) + this cycle's followup pattern. Each extractor follows the same shape.
+
+**5 ADR §6 deferred questions still relevant:**
+- Q3 cross-chunk known_entities priming (now D-PHASE6-XCHUNK-PRIMING; document only, fix in Phase 6)
+- Q4 polling DB load profile (knowledge_llm_poll_total metric exists; needs measurement)
+- Q5 gateway concurrency limit (knowledge_llm_inflight_jobs gauge exists; cap deferred to Phase 6a)
+- Q6 fact_extraction prompt template (own vs share with event) — RESOLVE in 4a-β CLARIFY
+- Q7 on-demand summarize: P1 stream vs P2 jobs (4a-γ)
+
+**Read in this order to onboard:**
+1. `docs/sessions/SESSION_PATCH.md` — full state with cycle metadata at top
+2. `docs/03_planning/KNOWLEDGE_SERVICE_LLM_MIGRATION_ADR.md`
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` §4 Phase 4a sub-cycle rows
+4. This handoff file
+5. **For 4a-β reference**: `services/knowledge-service/app/extraction/llm_prompts/entity_extraction_system.md` (the system+user split pattern to mirror)
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` to confirm prior cycle closed
+2. For 4a-β: `python scripts/workflow-gate.py size L 8 5 1` then `phase clarify`
+3. Infra: `docker ps --filter name=infra-` — provider-registry + knowledge-service + LM Studio reachable
+4. Live smoke target: `019dc738-a6b7-7bff-b953-b47868ae7db0` (qwen3.6-35b-a3b user_model registered for `019d5e3c-7cc5-7e6a-8b27-1344e148bf7c`)
+
+---
 
 ## Session 53 cycle 2 — Phase 4a-α BUILD live · /review-impl caught 9 issues all fixed inline
 

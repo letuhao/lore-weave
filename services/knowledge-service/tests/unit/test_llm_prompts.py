@@ -13,11 +13,16 @@ from app.extraction.llm_prompts import (
     load_prompt,
 )
 
+# Phase 4a-α-followup — entity_system is a SYSTEM-message-only template
+# without `{text}` (the chapter text rides as the user message via the
+# SDK path). Tests that assume `{text}` substitution need to skip it.
+TEXT_BEARING_PROMPT_NAMES = sorted(ALLOWED_PROMPT_NAMES - {"entity_system"})
+
 
 # ── happy path: every prompt loads and substitutes ───────────────────
 
 
-@pytest.mark.parametrize("name", sorted(ALLOWED_PROMPT_NAMES))
+@pytest.mark.parametrize("name", TEXT_BEARING_PROMPT_NAMES)
 def test_k17_1_load_every_prompt(name):
     out = load_prompt(
         name,
@@ -29,6 +34,20 @@ def test_k17_1_load_every_prompt(name):
     assert "{known_entities}" not in out
     # Each prompt must instruct "return only the JSON object" so
     # K17.3 parser can rely on a stable marker.
+    assert "Return only the JSON object" in out or "return only the JSON object" in out.lower()
+
+
+def test_k17_1_load_entity_system_prompt_substitutes_known_entities_only():
+    """Phase 4a-α-followup — entity_system has no {text} placeholder.
+    The chapter text rides as the user message; the system message
+    only declares instructions + known_entities."""
+    out = load_prompt("entity_system", known_entities='["Kai", "Harbin"]')
+    assert '["Kai", "Harbin"]' in out
+    assert "{known_entities}" not in out
+    # MUST NOT have {text}: that placeholder would silently leak as
+    # literal `{text}` in the prompt sent to the LLM.
+    assert "{text}" not in out
+    # Still has the JSON-only directive.
     assert "Return only the JSON object" in out or "return only the JSON object" in out.lower()
 
 
@@ -75,7 +94,7 @@ def test_k17_1_path_traversal_rejected():
 # ── R1/I3: every prompt must declare both placeholders ────────────
 
 
-@pytest.mark.parametrize("name", sorted(ALLOWED_PROMPT_NAMES))
+@pytest.mark.parametrize("name", TEXT_BEARING_PROMPT_NAMES)
 def test_k17_1_every_prompt_has_required_placeholders(name):
     """A future edit that accidentally deletes `{text}` or
     `{known_entities}` from a template would let `load_prompt`
@@ -90,7 +109,43 @@ def test_k17_1_every_prompt_has_required_placeholders(name):
     )
 
 
-@pytest.mark.parametrize("name", sorted(ALLOWED_PROMPT_NAMES))
+def test_entity_system_prompt_has_known_entities_but_no_text_placeholder():
+    """Phase 4a-α-followup — pin the SYSTEM-only contract: known_entities
+    placeholder MUST be present; text placeholder MUST be absent. Drift
+    in either direction is a regression."""
+    from app.extraction.llm_prompts import _load_raw
+    raw = _load_raw("entity_system")
+    assert "{known_entities}" in raw
+    assert "{text}" not in raw, (
+        "entity_system must NOT have {text} — text rides as user message"
+    )
+
+
+def test_entity_system_load_silently_drops_text_kwarg_documented_behavior():
+    """Phase 4a-α-followup /review-impl LOW#4 — `load_prompt` accepts
+    `**substitutions` and silently ignores keys the template doesn't
+    reference. For the entity_system prompt (which has no `{text}`),
+    a future maintainer might pass `text=...` thinking it gets
+    substituted somewhere — it would be silently dropped.
+
+    This test PINS the silent-drop behavior so the contributor reading
+    the test file sees the explicit warning. If we ever decide to add
+    a strict mode (`load_prompt(..., strict=True)`) that rejects
+    unknown keys, this test should flip to assert that mode."""
+    out = load_prompt(
+        "entity_system",
+        known_entities="[]",
+        text="THIS WILL BE SILENTLY DROPPED",  # not in template
+    )
+    # Confirm the dropped text is NOT in the output (no surprise leak).
+    assert "THIS WILL BE SILENTLY DROPPED" not in out
+    # The intended use site (llm_entity_extractor._extract_via_llm_client)
+    # passes `text` as the user message content, NOT as a load_prompt
+    # kwarg — so this drop is benign in production. The test exists
+    # purely to document the gotcha.
+
+
+@pytest.mark.parametrize("name", TEXT_BEARING_PROMPT_NAMES)
 def test_k17_1_json_fences_survive_substitution(name):
     """The markdown examples contain `{` and `}` which MUST be
     escaped as `{{` `}}` so format_map leaves them as literal

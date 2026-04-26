@@ -39,6 +39,7 @@ from app.extraction.llm_json_parser import ExtractionError, extract_json
 from app.extraction.llm_prompts import load_prompt
 from app.metrics import knowledge_extraction_dropped_total
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
+from loreweave_llm.models import ChunkingConfig
 
 __all__ = [
     "EntityExtractionResponse",
@@ -144,28 +145,36 @@ async def extract_entities(
     # { or } in the text (common in code-quoting novels, system-prompt
     # fiction, or entity names like "The {Ancient} One") would be
     # misinterpreted as format placeholders and raise KeyError.
-    safe_text = text.replace("{", "{{").replace("}", "}}")
     safe_known = json.dumps(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
 
-    user_prompt = load_prompt(
-        "entity",
-        text=safe_text,
-        known_entities=safe_known,
-    )
-
     if llm_client is not None:
+        # Phase 4a-α-followup: route through SDK with system+user
+        # messages so the gateway chunker can split the user message
+        # (chapter text) without shredding the system instructions.
+        # Unlike the legacy combined-template path, the SDK path does
+        # NOT escape `{`/`}` in `text` because we pass it directly as
+        # the user message content — no str.format_map() runs on it.
+        system_prompt = load_prompt("entity_system", known_entities=safe_known)
         raw_entities = await _extract_via_llm_client(
             llm_client=llm_client,
             user_id=user_id,
             project_id=project_id,
             model_source=model_source,
             model_ref=model_ref,
-            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            text=text,
         )
     else:
         # Legacy K17.2 path — preserved through 4a-α, removed in 4a-δ.
+        # Combined-template format requires `{}`-escape in text.
+        safe_text = text.replace("{", "{{").replace("}", "}}")
+        user_prompt = load_prompt(
+            "entity",
+            text=safe_text,
+            known_entities=safe_known,
+        )
         response = await extract_json(
             EntityExtractionResponse,
             user_id=user_id,
@@ -196,7 +205,8 @@ async def _extract_via_llm_client(
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    user_prompt: str,
+    system_prompt: str,
+    text: str,
 ) -> list["_LLMEntity"]:
     """Submit entity_extraction job + wait_terminal + tolerant-parse the
     `result.entities` envelope into a list of `_LLMEntity` records.
@@ -205,18 +215,21 @@ async def _extract_via_llm_client(
     transient retry exhaustion or non-transient failure, raises
     ExtractionError so the orchestrator can surface a job-level error.
 
-    **Chunking is INTENTIONALLY DISABLED in 4a-α** (per /review-impl
-    HIGH#1). The current K17.1 prompt template
-    (``llm_prompts/entity_extraction.md``) is a single-string user
-    message with instructions + rules + examples + ``{text}`` inlined.
-    The gateway's chunker splits the LAST user message's content on
-    ``\n\n`` paragraph boundaries — which would shred the prompt:
-    chunk 0 keeps part of the instructions + first N paragraphs of
-    text, chunks 1..N would be raw paragraph fragments with NO
-    instructions, leading to invalid JSON / hallucinations / quality
-    collapse. Chunked entity extraction is deferred to a 4a-α-followup
-    (or 4a-β) cycle that restructures the prompt as a SYSTEM message
-    (preserved across chunks) + user message (text only, chunked).
+    **Phase 4a-α-followup — chunking IS enabled.** Messages are
+    structured as ``[{role:system, content:system_prompt}, {role:user,
+    content:text}]``. The gateway's ``ExtractChattableText`` finds the
+    LAST user message and chunks ITS content; system messages are
+    preserved verbatim across all per-chunk dispatches via
+    ``SubstituteLastUserMessage`` (which only mutates the user message).
+    So chunks 0..N each receive: full instructions + KNOWN_ENTITIES
+    (in system) + their slice of chapter text (in user). The cycle 20
+    jsonListAggregator then dedups entities across chunks by
+    ``(name, kind)`` with higher confidence winning on ties.
+
+    ChunkingConfig(strategy='paragraphs', size=15) per ADR §6 Q1
+    recommendation: 15 paragraphs covers most chapters in a single
+    chunk while bounding chunk-0 size for the rare 70+ paragraph
+    chapter (Speckled Band ≈ 70 → ~5 chunks).
 
     Per ADR §3.3 D6 — `job_meta` carries the reverse-lookup keys so a
     future business-job query can find all LLM jobs for an extraction.
@@ -228,12 +241,14 @@ async def _extract_via_llm_client(
             model_source=model_source,
             model_ref=model_ref,
             input={
-                "messages": [{"role": "user", "content": user_prompt}],
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text},
+                ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.0,
             },
-            # chunking=None per /review-impl HIGH#1 — see docstring above.
-            chunking=None,
+            chunking=ChunkingConfig(strategy="paragraphs", size=15),
             job_meta={
                 "extractor": "entity",
                 "project_id": project_id or "",
