@@ -365,4 +365,11 @@ DRAFT promotion registers:
 
 Complete per EF_001 pattern. 10 V1-testable AC + 3 V1+ deferred. 12 deferrals (ORG-D1..D12).
 
-**Status transition:** DRAFT 2026-04-26 → CANDIDATE-LOCK after Phase 3 + closure pass → LOCK after AC-ORG-1..10 pass.
+**Phase 3 cleanup applied 2026-04-26 (IDF_004 commit 11/15):**
+- S1.1 §2 OriginPackId + LineageId typed newtypes confirmed
+- S1.2 §3.1 Synthetic actor exclusion confirmed (ORG-Q7 LOCKED)
+- S2.1 §10 Cross-feature seed flow explicit (IDF_002 + IDF_005 read at canonical seed)
+- S2.2 §15.4 LOCK criterion split
+- S3.1 §17 ORG-D12 FF_001 priority signal confirmed (HIGH; first post-IDF closure)
+
+**Status transition:** DRAFT 2026-04-26 (Phase 3 applied) → **CANDIDATE-LOCK** in next commit (12/15) → LOCK after AC-ORG-1..10 pass.

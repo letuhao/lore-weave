@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-26 — IDF folder 11/15: IDF_004 Phase 3 cleanup
+
+5 fixes (typed newtypes + Synthetic exclusion + cross-feature seed flow + §15.4 LOCK split + ORG-D12 FF_001 priority confirmed). No boundary changes.
+
+---
+
 ## 2026-04-26 — IDF folder 10/15: IDF_004 Origin Foundation DRAFT + boundary register
 
 - Lock continues from commit 1/15
