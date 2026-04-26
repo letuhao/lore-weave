@@ -450,4 +450,11 @@ Among 5 IDF features:
 
 Reflects reality: ideology is personal lifecycle property (PC can convert); race/origin/personality are typically birth-fixed.
 
-**Status transition:** DRAFT 2026-04-26 → CANDIDATE-LOCK after Phase 3 + closure pass → LOCK after AC-IDL-1..10 pass.
+**Phase 3 cleanup applied 2026-04-26 (IDF_005 commit 14/15):**
+- S1.1 §2 IdeologyId typed newtype confirmed
+- S1.2 §3.1 Synthetic actor exclusion confirmed (IDL-Q12 LOCKED)
+- S2.1 §10 Cross-feature seed flow explicit (IDF_004 default_ideology_refs → IDF_005 auto-Light fervor at canonical seed)
+- S2.2 §15.4 LOCK criterion split
+- S3.1 §17 IDL-D11 cost mechanic V1+ landing (when scheduler OR IDL-D3 ships)
+
+**Status transition:** DRAFT 2026-04-26 (Phase 3 applied) → **CANDIDATE-LOCK** in next commit (15/15) → LOCK after AC-IDL-1..10 pass.

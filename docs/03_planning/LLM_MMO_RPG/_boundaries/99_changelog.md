@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-26 — IDF folder 14/15: IDF_005 Phase 3 cleanup
+
+5 fixes (IdeologyId typed newtype confirmed + Synthetic exclusion + cross-feature seed flow + §15.4 LOCK split + IDL-D11 cost mechanic V1+ landing). No boundary changes.
+
+---
+
 ## 2026-04-26 — IDF folder 13/15: IDF_005 Ideology Foundation DRAFT + boundary register
 
 - Lock continues from commit 1/15
