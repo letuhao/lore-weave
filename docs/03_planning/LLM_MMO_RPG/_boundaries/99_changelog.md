@@ -6,6 +6,16 @@
 
 ---
 
+## 2026-04-26 — PL folder closure (commit 4/8): PL_005b closure pass → CANDIDATE-LOCK
+
+- **Lock continues** from commit 1
+- **Files modified within `_boundaries/`:** none (PL_005b closure pass is metadata-only — file status header bump + `_index.md` row update; no aggregate or namespace boundary changes since PL_005b inherits all PL_005-owned envelopes/namespaces)
+- **PL_005b status header DRAFT → CANDIDATE-LOCK 2026-04-26**
+- **`_index.md` PL_005b row updated:** status CANDIDATE-LOCK + §8 Stage 0-9 pipeline + §8.1 sub-stage applicability + §8.2 lex severity + §8.3 world-rule actions + §9.0 namespace allocation + 10 deferrals (was 8)
+- **Reason:** PL_005b contracts complete + Stage 3.5 sub-stage allocation in §8 + namespace canonicalization in §9.0 + ExamineTarget extension consumed in §5.3. Ready for AC-INT-SPK/STK/GIV/EXM/USE-* integration tests.
+
+---
+
 ## 2026-04-26 — PL folder closure (commit 3/8): PL_005b Phase 3 cleanup (Stage 3.5 sub-stage allocation + §8 pipeline expansion + §9.0 namespace allocation)
 
 - **Lock continues** from commit 1

@@ -5,7 +5,7 @@
 > **Conversational name:** "Interaction contracts" (INT-C). Read [`PL_005_interaction.md`](PL_005_interaction.md) FIRST — this file assumes you know the 4-role pattern and 5 V1 kinds.
 >
 > **Category:** PL — Play Loop (core runtime)
-> **Status:** DRAFT 2026-04-26 (Phase 2 of PL_005 design)
+> **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 2 of PL_005 design + Phase 3 cleanup + closure pass — Stage 3.5 sub-stage allocation in §8 + §9.0 namespace allocation note + ExamineTarget extension in §5.3)
 > **Stable IDs in this file:** none new — references PL_005 §2 domain concepts. All sub-type ownership already registered in [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md).
 > **Builds on:** PL_005 §1-§19. Same DP contracts + same Event-model mappings.
 
