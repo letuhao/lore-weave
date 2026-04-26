@@ -28,6 +28,15 @@ class TokenEvent(_BaseEvent):
     index: int = 0
 
 
+class ReasoningEvent(_BaseEvent):
+    """Thinking-model intermediate output (Qwen3.x, DeepSeek-R1, OpenAI
+    o-series, etc.). Indexes are independent of TokenEvent indexes."""
+
+    event_type: Literal["reasoning"] = Field("reasoning", alias="event")
+    delta: str
+    index: int = 0
+
+
 class UsageEvent(_BaseEvent):
     event_type: Literal["usage"] = Field("usage", alias="event")
     input_tokens: int = 0
@@ -48,7 +57,7 @@ class ErrorEvent(_BaseEvent):
 
 # Discriminated union of all canonical events.
 StreamEvent = Annotated[
-    Union[TokenEvent, UsageEvent, DoneEvent, ErrorEvent],
+    Union[TokenEvent, ReasoningEvent, UsageEvent, DoneEvent, ErrorEvent],
     Field(discriminator="event_type"),
 ]
 

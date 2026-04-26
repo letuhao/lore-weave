@@ -30,10 +30,11 @@ import (
 type StreamChunkKind string
 
 const (
-	StreamChunkToken StreamChunkKind = "token"
-	StreamChunkUsage StreamChunkKind = "usage"
-	StreamChunkDone  StreamChunkKind = "done"
-	StreamChunkError StreamChunkKind = "error"
+	StreamChunkToken     StreamChunkKind = "token"
+	StreamChunkReasoning StreamChunkKind = "reasoning"
+	StreamChunkUsage     StreamChunkKind = "usage"
+	StreamChunkDone      StreamChunkKind = "done"
+	StreamChunkError     StreamChunkKind = "error"
 )
 
 // StreamChunk is one canonical event emitted by an adapter's Stream() impl.
@@ -42,7 +43,10 @@ const (
 type StreamChunk struct {
 	Kind StreamChunkKind `json:"event"`
 
-	// Token fields (Kind == StreamChunkToken)
+	// Token + Reasoning fields share Delta + Index (different Kind discriminator).
+	// Reasoning carries thinking-model intermediate output (separate from
+	// the user-visible answer); chat consumers typically display this in a
+	// distinct UI surface.
 	Delta string `json:"delta,omitempty"`
 	Index int    `json:"index,omitempty"`
 
@@ -142,6 +146,7 @@ var errStreamDone = fmt.Errorf("stream done")
 // [DONE].
 func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error {
 	tokenIdx := 0
+	reasoningIdx := 0
 	finishReason := ""
 	usageEmitted := false
 
@@ -176,6 +181,19 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 			return errStreamDone
 		}
 		for _, choice := range parsed.Choices {
+			// Thinking-model reasoning chunks (Qwen3.x, DeepSeek-R1, etc.).
+			// Emit BEFORE content so consumers see thought stream first
+			// in the same wire-order LM Studio sends.
+			if choice.Delta.ReasoningContent != "" {
+				if err := emit(StreamChunk{
+					Kind:  StreamChunkReasoning,
+					Delta: choice.Delta.ReasoningContent,
+					Index: reasoningIdx,
+				}); err != nil {
+					return err
+				}
+				reasoningIdx++
+			}
 			if choice.Delta.Content != "" {
 				if err := emit(StreamChunk{
 					Kind:  StreamChunkToken,

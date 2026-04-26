@@ -41,6 +41,7 @@ from loreweave_llm.errors import (
 from loreweave_llm.models import (
     DoneEvent,
     ErrorEvent,
+    ReasoningEvent,
     StreamEvent,
     StreamRequest,
     TokenEvent,
@@ -53,6 +54,7 @@ __all__ = [
     "StreamRequest",
     "StreamEvent",
     "TokenEvent",
+    "ReasoningEvent",
     "UsageEvent",
     "DoneEvent",
     "ErrorEvent",

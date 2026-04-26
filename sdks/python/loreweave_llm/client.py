@@ -28,6 +28,7 @@ from loreweave_llm.errors import (
 from loreweave_llm.models import (
     DoneEvent,
     ErrorEvent,
+    ReasoningEvent,
     StreamEvent,
     StreamRequest,
     TokenEvent,
@@ -189,6 +190,8 @@ class Client:
         kind = parsed.get("event")
         if kind == "token":
             return TokenEvent.model_validate(parsed)
+        if kind == "reasoning":
+            return ReasoningEvent.model_validate(parsed)
         if kind == "usage":
             return UsageEvent.model_validate(parsed)
         if kind == "done":

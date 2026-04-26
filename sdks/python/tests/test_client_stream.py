@@ -24,6 +24,7 @@ from loreweave_llm import (
     LLMQuotaExceeded,
     LLMRateLimited,
     LLMUpstreamError,
+    ReasoningEvent,
     StreamRequest,
     TokenEvent,
     UsageEvent,
@@ -297,6 +298,37 @@ def test_constructor_validates_auth_inputs():
         Client(base_url=GATEWAY, auth_mode="internal")
     with pytest.raises(ValueError, match="internal_token and user_id"):
         Client(base_url=GATEWAY, auth_mode="internal", internal_token="x")
+
+
+@pytest.mark.asyncio
+async def test_stream_reasoning_event_distinct_from_token():
+    # Phase 1c-i — gateway emits StreamChunkReasoning for thinking-model
+    # delta.reasoning_content. SDK must surface as ReasoningEvent so
+    # consumers (chat-service) can route to a separate UI surface.
+    body = sse_body(
+        ("reasoning", '{"event":"reasoning","delta":"Let me think","index":0}'),
+        ("reasoning", '{"event":"reasoning","delta":" about it","index":1}'),
+        ("token", '{"event":"token","delta":"Here","index":0}'),
+        ("token", '{"event":"token","delta":" is","index":1}'),
+        ("done", '{"event":"done","finish_reason":"stop"}'),
+    )
+    with respx.mock(base_url=GATEWAY) as mock:
+        mock.post("/internal/llm/stream").respond(
+            status_code=200,
+            headers={"Content-Type": "text/event-stream"},
+            content=body,
+        )
+        client = make_internal_client()
+        reasoning_chunks, token_chunks = [], []
+        async for ev in client.stream(make_request()):
+            if isinstance(ev, ReasoningEvent):
+                reasoning_chunks.append(ev.delta)
+            elif isinstance(ev, TokenEvent):
+                token_chunks.append(ev.delta)
+        await client.aclose()
+
+    assert reasoning_chunks == ["Let me think", " about it"]
+    assert token_chunks == ["Here", " is"]
 
 
 @pytest.mark.asyncio

@@ -420,6 +420,7 @@ components:
     StreamEventEnvelope:
       oneOf:
         - $ref: '#/components/schemas/TokenEvent'
+        - $ref: '#/components/schemas/ReasoningEvent'
         - $ref: '#/components/schemas/UsageEvent'
         - $ref: '#/components/schemas/DoneEvent'
         - $ref: '#/components/schemas/StreamErrorEvent'
@@ -427,6 +428,7 @@ components:
         propertyName: event
         mapping:
           token: '#/components/schemas/TokenEvent'
+          reasoning: '#/components/schemas/ReasoningEvent'
           usage: '#/components/schemas/UsageEvent'
           done: '#/components/schemas/DoneEvent'
           error: '#/components/schemas/StreamErrorEvent'
@@ -445,6 +447,26 @@ components:
         delta:
           type: string
           description: Incremental text content from the model.
+        index:
+          type: integer
+          description: Optional zero-based event index for ordering verification.
+
+    ReasoningEvent:
+      type: object
+      required: [event, delta]
+      description: |
+        Thinking-model intermediate output (Qwen3.x, DeepSeek-R1, OpenAI
+        o-series, etc.). Populated when the upstream provider streams a
+        `delta.reasoning_content` field. Consumers typically display this
+        in a separate UI surface from token events. Indexes are independent
+        of TokenEvent indexes — chat-service uses both streams concurrently.
+      properties:
+        event:
+          type: string
+          enum: [reasoning]
+        delta:
+          type: string
+          description: Incremental reasoning content from the model.
         index:
           type: integer
           description: Optional zero-based event index for ordering verification.

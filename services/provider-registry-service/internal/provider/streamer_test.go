@@ -213,6 +213,90 @@ data: [DONE]
 	}
 }
 
+func TestStreamOpenAICompat_ReasoningContentEmitsReasoningChunks(t *testing.T) {
+	// LM Studio thinking models (qwen3.x) stream reasoning_content
+	// per-token in delta. Each reasoning delta must produce a
+	// StreamChunkReasoning event distinct from token events.
+	body := `data: {"choices":[{"delta":{"role":"assistant","reasoning_content":"Let"},"index":0,"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"reasoning_content":" me"},"index":0,"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"reasoning_content":" think"},"index":0,"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"content":"Answer"},"index":0,"finish_reason":null}]}
+
+data: {"choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`
+	chunks := collectChunks(t, body)
+	var reasoning []string
+	var tokens []string
+	for _, c := range chunks {
+		switch c.Kind {
+		case StreamChunkReasoning:
+			reasoning = append(reasoning, c.Delta)
+		case StreamChunkToken:
+			tokens = append(tokens, c.Delta)
+		}
+	}
+	if len(reasoning) != 3 || reasoning[0] != "Let" || reasoning[2] != " think" {
+		t.Errorf("reasoning chunks not emitted as expected: %v", reasoning)
+	}
+	if len(tokens) != 1 || tokens[0] != "Answer" {
+		t.Errorf("token chunks wrong: %v", tokens)
+	}
+	// Reasoning indexes should be independent of token indexes.
+	var reasoningIdxs, tokenIdxs []int
+	for _, c := range chunks {
+		if c.Kind == StreamChunkReasoning {
+			reasoningIdxs = append(reasoningIdxs, c.Index)
+		}
+		if c.Kind == StreamChunkToken {
+			tokenIdxs = append(tokenIdxs, c.Index)
+		}
+	}
+	for i, idx := range reasoningIdxs {
+		if idx != i {
+			t.Errorf("reasoning index %d expected %d, got %d", i, i, idx)
+		}
+	}
+	for i, idx := range tokenIdxs {
+		if idx != i {
+			t.Errorf("token index %d expected %d, got %d", i, i, idx)
+		}
+	}
+}
+
+func TestStreamOpenAICompat_ReasoningAndContentInSameDelta(t *testing.T) {
+	// Some chunks may carry BOTH reasoning_content and content (rare but
+	// not forbidden by the spec). Both must produce events.
+	body := `data: {"choices":[{"delta":{"reasoning_content":"thinking","content":"answer"},"index":0,"finish_reason":null}]}
+
+data: {"choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`
+	chunks := collectChunks(t, body)
+	var hasReasoning, hasToken bool
+	for _, c := range chunks {
+		if c.Kind == StreamChunkReasoning && c.Delta == "thinking" {
+			hasReasoning = true
+		}
+		if c.Kind == StreamChunkToken && c.Delta == "answer" {
+			hasToken = true
+		}
+	}
+	if !hasReasoning {
+		t.Errorf("reasoning chunk missing: %#v", chunks)
+	}
+	if !hasToken {
+		t.Errorf("token chunk missing: %#v", chunks)
+	}
+}
+
 func TestReadSSELines_HandlesEventNamePrefix(t *testing.T) {
 	// Anthropic-style SSE has event: lines that we don't use yet but
 	// shouldn't crash on.
