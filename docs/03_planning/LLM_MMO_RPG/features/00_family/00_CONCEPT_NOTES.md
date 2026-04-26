@@ -227,72 +227,106 @@ When FF_001 DRAFT lands, these boundaries need careful handling:
 
 ---
 
-## §5 — Q1-Q8 critical scope questions
+## §5 — Q1-Q8 critical scope questions — ✅ ALL LOCKED 2026-04-26 (user "A" confirmation)
 
-These 8 questions lock V1 scope. Once user has reviewed market survey + answered (or approved recommendations), FF_001 DRAFT can proceed.
+User confirmed "A" on all 8 Q-decisions 2026-04-26 with deep-dive analysis. Locked decisions below; FF_001 DRAFT promotion ready to proceed.
 
 ### Q1 — Aggregate model: separate family_node vs extension to actor_origin?
 
-- **(A) Separate family_node aggregate** (T2/Reality, per-actor) — clean separation; matches IDF discipline
-- **(B) Extend actor_origin** (IDF_004) with family_relations field — embedded; no new aggregate
-- **(C) Hybrid** — family_node aggregate for graph; lineage_id stays in actor_origin as legacy ref
+✅ **LOCKED 2026-04-26: (A) Separate `family_node` aggregate** (T2/Reality, per-(reality, actor_id))
 
-**Open** — recommendation likely (A) for clean separation; matches IDF_005 ideology vs IDF_004 origin discipline.
+**Reasoning:**
+- Lifecycle differs: actor_origin immutable V1; family_node MUTABLE (Marriage/Death/Adoption events)
+- Mixing immutable + mutable in one aggregate = anti-pattern (we avoided IDF_005 vs IDF_004 same way)
+- Access patterns differ: actor_origin read once at canonical seed; family_node read frequently runtime
+- Schema growth differs: orthogonal V1+ enrichment; "god struct" anti-pattern avoided
+- Matches IDF Origin/Ideology split discipline established 2026-04-26
 
 ### Q2 — Family graph V1 scope: minimal direct vs full extended?
 
-- **(A) Minimal V1** — parent / sibling / spouse / child only (4 direct relations); cousins/uncles/in-laws V1+
-- **(B) Direct + computed extended V1** — store direct; compute extended on-demand traversal
-- **(C) Full V1** — store all relation kinds explicit; expensive but no traversal cost
+✅ **LOCKED 2026-04-26: (B2) Explicit direct relations V1** (parent + sibling + spouse + child); extended computed V1+
 
-**Open** — likely (A) or (B). (A) is narrowest; (B) is reasonable hybrid.
+**Reasoning:**
+- Direct stored explicit (parent_actor_ids + sibling_actor_ids + spouse_actor_ids + children_actor_ids — Vec<(ActorId, RelationKind)> per Q6 LOCKED)
+- Bidirectional sync at canonical seed validation + Forge admin events
+- O(1) hot-path lookup matters for NPC_002 reaction priority
+- Half-sibling support (Wuxia common: same father different mother) via explicit refs
+- Extended V1+ (cousins/uncles/aunts/in-laws/grandparents): computed via `family_node.cousins() = parent.siblings().children()` traversal API
+- Matches CK3 + Bannerlord + DF storage pattern
 
 ### Q3 — Dynasty representation: separate aggregate vs derived from family graph?
 
-- **(A) Separate `dynasty` aggregate** (T2/Reality, per-dynasty_id) — explicit clustering; supports cross-actor dynasty queries
-- **(B) Derived from family graph traversal** — no dynasty aggregate; clustering computed
-- **(C) Tag on family_node** — dynasty_id field per family_node; no separate aggregate
+✅ **LOCKED 2026-04-26: (A) Separate `dynasty` aggregate V1** (T2/Reality, per-(reality, dynasty_id)) with minimal fields V1; sparse storage (only declared dynasties)
 
-**Open** — likely (A) for V1+ TIT_001 + V1+ FAC_001 consumers; (C) defensible if V1 dynasty mechanics are minimal.
+**Reasoning:**
+- V1 minimal schema: `dynasty_id` + `display_name` (I18nBundle) + `founder_actor_id: Option<ActorId>` + `current_head_actor_id: Option<ActorId>` + `member_count: u32` (sparse query helper)
+- Cross-actor query "all members of House Lý" needs dynasty-as-entity; tag-only would require O(N) scan
+- V1+ TIT_001 heir selection reads `dynasty.current_head_actor_id`
+- V1+ enrichment additive (parent_dynasty_id for cadet branches; traditions; perks)
+- Sparse storage: SPIKE_01 V1 may have 0-2 dynasties total
+- Matches CK3 dynasty entity + Bannerlord clan pattern
 
 ### Q4 — Sect lineage (master-disciple): FF_001 V1 or V1+ FAC_001?
 
-- **(A) V1+ FAC_001** — sect membership lives in FAC_001; master-disciple = sect role/rank; FF_001 = biological/adoption only (cleanest separation)
-- **(B) FF_001 V1 with relation_kind enum** — Family relation includes BiologicalParent / AdoptedParent / SpiritualParent (sect master); unified graph
-- **(C) FF_001 V1 with sect_lineage_id field** — separate sect lineage tag; biological in family_node; sect in sect_lineage
+✅ **LOCKED 2026-04-26: (A) V1+ FAC_001 owns sect lineage; FF_001 V1 = biological + adoption only**
 
-**Open** — recommendation (A) per separation discipline (IDF_004 origin vs IDF_005 ideology pattern). Wuxia narrative treats master-disciple as quasi-family but mechanics differ (rank progression vs heredity).
+**Reasoning:**
+- Mechanical separation: family = blood/heredity/inheritance; sect = role/rank/ideology
+- "Sư phụ" / "sư huynh đệ" = sect ROLE (rank-based), not biological sibling
+- Master-disciple inheritance = sect-leadership succession (V1+ TIT_001 + V1+ FAC_001), NOT bloodline
+- All references support: CK3 (vassalage ≠ dynasty); Bannerlord (clan-retinue ≠ family); Total War 3K (sworn brotherhood ≠ family); VtM (clan-bloodline ≠ Sire — actually these are quasi-family but in CLAN system not family system)
+- SPIKE_01 V1 has NO active master-disciple; V1+ wuxia content (cultivation training) needs FAC_001 V1+ first per roadmap
+- Mixing biological + sect in single graph = god-feature anti-pattern; FF_001 V1 schema bloats; coupling to V1+ CULT_001 sect cultivation method
 
-### Q5 — Family event log V1 vs V1+?
+### Q5 — Family event log V1 vs V1+? ⚠ REVISION
 
-- **(A) V1 append-only event_log** (Birth/Marriage/Death/Divorce/Adoption) — full audit + replay-deterministic graph derivation
-- **(B) V1 materialized only** (family_node holds direct refs; no event log) — V1+ adds event log
-- **(C) V1 hybrid** — family_node for hot-path reads + event_log for audit (matches actor_status / actor_ideology_stance pattern)
+✅ **LOCKED 2026-04-26: (B) Materialized `family_node` aggregate only**; events emitted as EVT-T3 Derived + EVT-T4 System sub-types in channel stream (NO separate `family_event_log` aggregate)
 
-**Open** — recommendation (C) per established pattern. V1 materialized + event_log audit; V1+ scheduler reads event_log for derivative analytics.
+**Reasoning (key revision from initial recommendation):**
+- Per [EVT-A10](../../07_event_model/02_invariants.md) (event log = universal SSOT), channel event stream IS the append-only audit log
+- Separate `family_event_log` aggregate would be REDUNDANT with channel stream
+- 5 V1 family event sub-types in channel stream (NOT separate aggregate):
+  - **EVT-T4 System `FamilyBorn`** at canonical seed (per actor; emitted alongside EF_001 EntityBorn)
+  - **EVT-T3 Derived** `aggregate_type=family_node`, delta_kind=`AddChild` (V1+ runtime birth)
+  - **EVT-T3 Derived** delta_kind=`AddSpouse` (Marriage)
+  - **EVT-T3 Derived** delta_kind=`MarkDeceased` (Death)
+  - **EVT-T3 Derived** delta_kind=`RemoveSpouse` (Divorce V1+)
+  - **EVT-T3 Derived** delta_kind=`AddAdoptedParent` (Adoption V1+)
+- Pattern matches PL_006 actor_status + IDF_005 actor_ideology_stance (materialized + EVT-T3 events; no separate event log aggregate)
+- V1 aggregate count drops 3 → 2 (family_node + dynasty)
 
 ### Q6 — Adoption representation V1?
 
-- **(A) Same as biological V1** — single parent_actor_ids field; no flag (hides adoption fact V1)
-- **(B) Adoption flag V1** — parent_actor_ids: Vec<(ActorId, RelationKind)> with BiologicalParent / AdoptedParent variants
-- **(C) Defer V1+** — V1 biological only; adoption V1+ enrichment
+✅ **LOCKED 2026-04-26: (B) Adoption flag V1 via RelationKind enum** on parent_actor_ids + children_actor_ids
 
-**Open** — recommendation (B) for clarity (wuxia adoption is narrative-significant). V1+ may add full adoption-event flow.
+**Reasoning:**
+- Schema: `parent_actor_ids: Vec<(ActorId, RelationKind)>` with closed-set 6-variant RelationKind enum
+- 6-variant `RelationKind`: BiologicalParent / AdoptedParent / Spouse / BiologicalChild / AdoptedChild / Sibling
+- Symmetric on parent + child sides (BiologicalParent ↔ BiologicalChild; AdoptedParent ↔ AdoptedChild)
+- Future-proofs without V1+ schema migration (vs single-field V1 → tagged-tuple V1+ migration would be expensive)
+- Wuxia adoption (clan adopts orphan as heir) narrative-significant; adoption flag preserves history
+- Master-disciple sect adoption is V1+ FAC_001 per Q4 boundary (NOT FF_001 adoption)
 
 ### Q7 — Cross-reality family migration (V1 vs V2+)?
 
-- **(A) V1 strict** — actor's family is bound to one reality; cross-reality migration V2+ Heresy
-- **(B) V1+ remap policy** — when actor moves realities, family graph remap rules
+✅ **LOCKED 2026-04-26: (A) V1 strict single-reality family**; V2+ Heresy migration
 
-**Open** — recommendation (A) per IDF folder discipline (POST-SURVEY-Q6 LOCKED V2+ for cross-reality migration).
+**Reasoning:**
+- All IDF features locked V2+ for cross-reality (POST-SURVEY-Q6 LOCKED 2026-04-26); FF_001 inherits same discipline
+- V2+ WA_002 Heresy migration handles cross-reality remap policy
+- No mainstream game does cross-engine family migration; engine doesn't need precedent V1
+- V1 reject `family.cross_reality_mismatch` (V2+ reservation; V1 unused)
 
 ### Q8 — Bloodline traits (cultivator spirit roots) V1 or V1+?
 
-- **(A) V1+ deferred** — RAC-D3 hybrid races + V1+ CULT_001 cultivation spirit roots; FF_001 V1 just provides graph for V1+ traits to consume
-- **(B) V1 minimal trait** — one inherited trait field (e.g., `inherited_traits: Vec<String>`) for V1+ activation
-- **(C) V1 full** — bloodline trait system shipped V1 with race + cultivation hooks
+✅ **LOCKED 2026-04-26: (A) V1+ deferred bloodline traits** (FF-D1 NEW); FF_001 V1 = pure graph
 
-**Open** — recommendation (A) per "narrow V1 + define NOW for V+" philosophy. FF_001 V1 = pure graph; trait inheritance V1+ when first feature needs.
+**Reasoning:**
+- V1 inclusion would couple FF_001 to V1+ RAC-D3 (hybrid races) + V1+ CULT_001 (spirit roots) — neither feature ships V1
+- V1+ trait-inheritance features READ FF_001 graph; FF_001 graph doesn't NEED to know about traits
+- Schema impact V1: zero. V1+ RAC-D3 + CULT_001 activation read FF_001 graph without modifying FF_001 schema
+- FF_001 V1 = pure graph (parents/siblings/spouse/child + dynasty)
+- Trait inheritance V1+ when first feature consumes per FF-D1
 
 ---
 
@@ -312,23 +346,133 @@ This section reserved for:
 
 ---
 
-## §7 — Provisional V1 scope (placeholder — finalized after Q1-Q8 lock)
+## §7 — V1 scope ✅ LOCKED 2026-04-26 (post Q1-Q8 deep-dive + user "A" confirmation)
 
-This section is INTENTIONALLY EMPTY pending Q1-Q8 + reference materials review. Premature V1 scope locking before deep-dive risks RES_001-pattern issues (original recommendations changed during Q1-Q5 batch deep-dive).
+### V1 aggregates (2 — revised down from 3 per Q5)
 
-When user provides references + answers Q1-Q8, populate with:
-- Aggregate decision (per Q1) + storage model (per Q5)
-- Family graph V1 scope (per Q2) — minimal direct vs full extended
-- Dynasty representation (per Q3)
-- Master-disciple boundary (per Q4) — FF_001 V1 vs V1+ FAC_001
-- Family event taxonomy V1 (per Q5)
-- Adoption representation (per Q6)
-- Cross-reality V1 stance (per Q7)
-- Bloodline trait inheritance V1 vs V1+ (per Q8)
-- RealityManifest extensions (canonical_dynasties + canonical_family_relations)
-- Validator chain (`family.*` namespace)
-- EVT-T sub-types (T3 Derived family_node + T4 System FamilyBorn / Marriage / Death — V1 mapping per Q5)
-- Acceptance criteria sketch (10 V1-testable AC)
+1. **`family_node`** (T2/Reality, per-(reality, actor_id))
+   - Direct relations: parent_actor_ids + sibling_actor_ids + spouse_actor_ids + children_actor_ids — all `Vec<(ActorId, RelationKind)>` per Q2 + Q6
+   - dynasty_id: Option<DynastyId> (membership; None for non-dynasty actors)
+   - is_deceased: bool + deceased_at_turn / deceased_at_fiction_ts (V1 mark deceased; preserve refs)
+   - last_modified_at_turn + schema_version
+   - **Mutable** via Apply/MarkDeceased events per Q5
+
+2. **`dynasty`** (T2/Reality, per-(reality, dynasty_id); sparse — only declared dynasties)
+   - dynasty_id + display_name (I18nBundle per RES_001) + founder_actor_id (Option) + current_head_actor_id (Option) + member_count (sparse query helper)
+   - V1+ enrichment: parent_dynasty_id (cadet branch); traditions; perks
+   - **Mutable** via succession events V1+
+
+### V1 closed enums
+
+- **`RelationKind`** (6 variants per Q6): BiologicalParent / AdoptedParent / Spouse / BiologicalChild / AdoptedChild / Sibling
+
+### V1 events (in channel stream per Q5; NOT separate aggregate per EVT-A10)
+
+| Event | EVT-T* | Sub-type / delta_kind | Producer role |
+|---|---|---|---|
+| Canonical seed family birth | EVT-T4 System | `FamilyBorn { actor_id, parent_refs, dynasty_id }` | Bootstrap (RealityBootstrapper) |
+| V1+ runtime birth | EVT-T3 Derived | `aggregate_type=family_node`, `delta_kind=AddChild` | Aggregate-Owner (FF_001 owner-service) |
+| Marriage | EVT-T3 Derived | `delta_kind=AddSpouse` | Aggregate-Owner |
+| Death | EVT-T3 Derived | `delta_kind=MarkDeceased` | Aggregate-Owner (consumes WA_006 mortality death) |
+| Divorce (V1+) | EVT-T3 Derived | `delta_kind=RemoveSpouse` | Aggregate-Owner |
+| Adoption (V1+) | EVT-T3 Derived | `delta_kind=AddAdoptedParent` | Aggregate-Owner |
+| Forge admin override | EVT-T8 Administrative | `Forge:EditFamily { actor_id, edit_kind, before, after, reason }` | Forge (WA_003) |
+| Forge dynasty register | EVT-T8 Administrative | `Forge:RegisterDynasty { dynasty_id, display_name, founder, reason }` | Forge (WA_003) |
+
+### V1 `family.*` reject rule_ids (8 V1 + V1+ reservations)
+
+V1 rules:
+1. `family.unknown_actor_ref` — Stage 0 schema (parent/sibling/spouse/child ref not in EF_001 entity_binding)
+2. `family.unknown_dynasty_id` — Stage 0 schema (dynasty_id not in RealityManifest.canonical_dynasties + dynasty aggregate)
+3. `family.bidirectional_sync_violation` — Stage 0 schema (LM01 says X is parent but X doesn't list LM01 as child)
+4. `family.cyclic_relation` — Stage 0 schema (LM01 is parent of X is parent of LM01 — cycle)
+5. `family.duplicate_relation` — Stage 0 schema (same actor twice in parent_actor_ids)
+6. `family.relation_kind_mismatch` — Stage 0 schema (parent_actor_ids has BiologicalChild variant — wrong side)
+7. `family.deceased_target` — Stage 7 world-rule (V1+ Marriage event with deceased target)
+8. `family.synthetic_actor_forbidden` — Stage 0 schema (Synthetic actor cannot have family — matches IDF discipline)
+
+V1+ reservations:
+- `family.cross_reality_mismatch` (V2+ Heresy migration per Q7)
+- `family.cyclic_lineage_traversal` (V1+ when extended traversal API ships)
+- `family.dynasty_extinction` (V1+ when no living members; cleanup rule)
+- `family.adoption_consent_violation` (V1+ V2+ if consent system ships)
+
+### V1 RealityManifest extensions (REQUIRED V1)
+
+- `canonical_dynasties: Vec<DynastyDecl>` — per-reality declared dynasties (sparse; empty Vec valid for sandbox / family-less reality)
+- `canonical_family_relations: Vec<FamilyRelationDecl>` — per-reality declared family relations at canonical seed (sparse; empty Vec valid for orphan-PC reality)
+
+`DynastyDecl` shape:
+```rust
+pub struct DynastyDecl {
+    pub dynasty_id: DynastyId,
+    pub display_name: I18nBundle,
+    pub founder_actor_id: Option<ActorId>,
+    pub canon_ref: Option<GlossaryEntityId>,
+}
+```
+
+`FamilyRelationDecl` shape:
+```rust
+pub struct FamilyRelationDecl {
+    pub actor_id: ActorId,
+    pub parent_actor_ids: Vec<(ActorId, RelationKind)>,    // V1 RelationKind: BiologicalParent | AdoptedParent
+    pub sibling_actor_ids: Vec<ActorId>,
+    pub spouse_actor_ids: Vec<ActorId>,
+    pub children_actor_ids: Vec<(ActorId, RelationKind)>,  // V1 RelationKind: BiologicalChild | AdoptedChild
+    pub dynasty_id: Option<DynastyId>,
+    pub is_deceased: bool,                                  // for canonical-seed dead ancestors
+}
+```
+
+### V1 acceptance criteria (10 V1-testable + 4 V1+ deferred)
+
+V1:
+- AC-FF-1: Wuxia canonical bootstrap declares 1 dynasty (Lý clan) + 1 actor (Lý Minh) with parent_actor_ids=[] (orphan)
+- AC-FF-2: Wuxia canonical bootstrap declares Lão Ngũ (parent of Tiểu Thúy); FF_001 derives bidirectional refs
+- AC-FF-3: Bidirectional sync violation rejected at canonical seed (LM01 says Tiểu Thúy is sibling but Tiểu Thúy doesn't list LM01)
+- AC-FF-4: Cyclic relation rejected (canonical seed validation)
+- AC-FF-5: Duplicate relation rejected
+- AC-FF-6: Relation kind mismatch rejected (BiologicalChild on parent side)
+- AC-FF-7: Modern reality canonical bootstrap with 1 PC + 2 parents alive + 0 dynasty
+- AC-FF-8: Marriage event emits EVT-T3 Derived AddSpouse; spouse_actor_ids updated bidirectionally
+- AC-FF-9: Death event emits EVT-T3 Derived MarkDeceased; family_node.is_deceased=true; refs preserved
+- AC-FF-10: I18nBundle resolves dynasty display_name across locales
+
+V1+ deferred:
+- AC-FF-V1+1: Extended traversal API (cousins / uncles / aunts)
+- AC-FF-V1+2: V1+ runtime birth event (PC has child)
+- AC-FF-V1+3: V1+ Divorce event flow
+- AC-FF-V1+4: V1+ Adoption runtime event flow
+
+### V1 deferrals (12 — FF-D1..D12)
+
+- FF-D1: Bloodline traits inheritance (V1+ RAC-D3 hybrid races + V1+ CULT_001 spirit roots consume FF_001 graph)
+- FF-D2: Extended traversal API (cousins / uncles / aunts / in-laws / grandparents)
+- FF-D3: Cadet dynasty branches (parent_dynasty_id field)
+- FF-D4: Dynasty traditions / perks (V1+ V2+ enrichment matching CK3)
+- FF-D5: Marriage as faction alliance currency (V1+ FAC_001 + V1+ DIPL_001)
+- FF-D6: Sworn brotherhood (V1+ FAC_001 — NOT FF_001 per Q4)
+- FF-D7: Master-disciple sect lineage (V1+ FAC_001 — NOT FF_001 per Q4)
+- FF-D8: Title inheritance rules (V1+ TIT_001)
+- FF-D9: Cross-reality family migration (V2+ WA_002 Heresy per Q7)
+- FF-D10: Family-driven cascade opinion drift (V1+ NPC_002 enrichment)
+- FF-D11: V1+ runtime birth/divorce/adoption event flows (V1 canonical seed only V1)
+- FF-D12: Family-shared inventory / clan treasury (V2+ RES_001 enrichment)
+
+### V1 quantitative summary
+
+- 2 aggregates (family_node + dynasty)
+- 6-variant RelationKind enum
+- 5 V1 family event variants (FamilyBorn EVT-T4 System + 4 EVT-T3 Derived: AddChild/AddSpouse/MarkDeceased/RemoveSpouse/AddAdoptedParent — V1 ships 3 actively: AddSpouse + MarkDeceased + canonical FamilyBorn; AddChild/RemoveSpouse/AddAdoptedParent V1+ runtime activation)
+- 8 V1 reject rule_ids in `family.*` namespace + 4 V1+ reservations
+- 2 RealityManifest extensions (canonical_dynasties + canonical_family_relations)
+- 2 EVT-T8 Forge sub-shapes (Forge:EditFamily + Forge:RegisterDynasty)
+- 1 EVT-T4 System sub-type (FamilyBorn)
+- 10 V1 AC + 4 V1+ deferred
+- 12 deferrals (FF-D1..D12)
+- ~700-line DRAFT spec estimate
+- 4-commit cycle (lock-Qs → DRAFT → Phase 3 → closure+release)
 
 ---
 
