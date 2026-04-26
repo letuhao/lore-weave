@@ -6,6 +6,17 @@
 
 ---
 
+## 2026-04-26 — PL folder closure (commit 2/8): PL_005 closure pass → CANDIDATE-LOCK
+
+- **Lock continues** from commit 1 (still claimed by main session 2026-04-26)
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md` EVT-T1 Submitted sub-types row: PL_005 status DRAFT → **CANDIDATE-LOCK 2026-04-26 PL folder closure**; ExamineTarget enum noted (resolves PF-Q4 + MAP-Q3); Stage 3.5 group integration noted; 11 deferrals INT-D1..D11
+- **PL_005 status header DRAFT → CANDIDATE-LOCK 2026-04-26** (Phase 3 cleanup + closure pass complete in commit 1+2 chain)
+- **`_index.md` PL_005 row updated:** status CANDIDATE-LOCK + ExamineTarget extension note + 11 deferrals + 5 V1 interaction.* rules
+- **Reason:** PL_005 design complete + boundary registered + foundation tier integrated (Stage 3.5 + ExamineTarget) + V1 namespace enumerated. Ready for AC-INT-1..6 integration tests against SPIKE_01 fixtures (CANDIDATE-LOCK → LOCK gate).
+
+---
+
 ## 2026-04-26 — PL folder closure (commit 1/8): PL_005 Phase 3 cleanup + PF-Q4 + MAP-Q3 watchpoints RESOLVED + interaction.* namespace V1 enumeration
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — PL folder closure per user direction "Option A"); this commit `[boundaries-lock-claim]` (claim only — release at end of commit 8)
