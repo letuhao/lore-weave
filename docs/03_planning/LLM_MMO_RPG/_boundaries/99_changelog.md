@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-04-26 — IDF folder 3/15: IDF_001 closure pass → CANDIDATE-LOCK
+
+- **Lock continues** from commit 1/15
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md` race_assignment row: status DRAFT → **CANDIDATE-LOCK 2026-04-26 IDF folder closure 3/15**
+- **IDF_001 status header DRAFT → CANDIDATE-LOCK 2026-04-26**
+- **`_index.md` IDF_001 row updated:** status CANDIDATE-LOCK + Phase 3 + closure pass note
+- **Reason:** IDF_001 design complete + Phase 3 cleanup applied (5 fixes) + boundary registered (race_assignment aggregate + RaceBorn EVT-T4 + Forge:EditRaceAssignment EVT-T8 + race.* namespace + races RealityManifest extension + RAC-* stable-ID prefix). Ready for AC-RAC-1..10 integration tests. CANDIDATE-LOCK → LOCK gate when all V1-testable scenarios pass against Wuxia + Modern reality fixtures.
+- **Lock continues claimed** for IDF_002 cycle (commits 4-6/15) + IDF_003 (7-9) + IDF_004 (10-12) + IDF_005 (13-15 + final lock release).
+
+---
+
 ## 2026-04-26 — IDF folder 2/15: IDF_001 Phase 3 cleanup
 
 - **Lock continues** from commit 1/15 (still claimed by main session 2026-04-26 IDF folder cycle)
