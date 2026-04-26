@@ -985,10 +985,208 @@ PROG_001 V1 ships READY for AI Tier integration:
 - Materialization computation function (testable V1)
 - "Untracked NPC = absence of aggregate" semantic clean
 
-### §11.10 — Q7 still open
+### §11.10 — Q7 LOCKED 2026-04-26 (Hybrid combat damage V1; DF7-full V1+)
 
-After Q1+Q6+Q2+Q3+Q4+Q5 LOCKED, only **Q7 remains**:
+**Cross-reference:** chaos-backend damage law chain (per `02_CHAOS_BACKEND_REFERENCE.md` §4) — concept lift candidate for V1+ DF7-equivalent. V1 ships intentionally minimal hybrid (LLM proposes within engine bounds).
 
-- **Q7 — Combat damage formula V1 vs V1+**: chaos-backend damage law direct lift candidate (per `02_CHAOS_BACKEND_REFERENCE.md` §4); defines DF7-equivalent reading ProgressionInstance.raw_value for combat outcomes.
+| Sub | Decision |
+|---|---|
+| Q7a Combat scope V1 | **Hybrid** — LLM proposes damage_amount in PL_005 Strike payload; engine validator computes bounds [min, max] from PROG_001 stats; clamps LLM value silently. Full mechanical chain V1+ DF7. |
+| Q7b Formula declaration | **Per-reality** via RealityManifest `strike_formula: Option<StrikeFormulaDecl>`. Per-instrument override V1+30d (PROG-D28). |
+| Q7c Element/resistance V1 | **NO** — V1+ DF7-equivalent (chaos-backend law chain PROG-D24/D30) |
+| Q7d Critical hits V1 | **NO** — V1+ deferred (PROG-D25) |
+| Q7e Out-of-range LLM proposal | **Silent clamp** — preserves narrative flow; no reject V1. V1+30d optional reject via `progression.combat.proposed_out_of_range` |
+| Q7f Status application from damage V1 | **Author-declared `PostDamageHook`** in formula — simple "if damage ≥ threshold → apply StatusFlag mag=N" rules. Rich effects V1+ via PL_006 extensions. |
+| Q7g Multi-target AoE V1 | **NO** — single-target Strike V1; AoE V1+ (PROG-D26) |
 
-Q4+Q5 revised LOCKED unblocks Q7 (combat formula now reads "current materialized" ProgressionInstance values; observation event triggers materialization before formula reads value).
+#### Concrete V1 shape (Q7)
+
+```rust
+// RealityManifest extension (V1) — adds to PROG extension block:
+RealityManifest {
+    // ... existing PROG fields per Q1+Q6+Q2+Q3+Q4 ...
+    
+    /// Strike damage formula. None V1 = default formula (LLM proposes 1..=defender_hp/2).
+    pub strike_formula: Option<StrikeFormulaDecl>,
+}
+
+pub struct StrikeFormulaDecl {
+    pub offense_terms: Vec<StatTerm>,             // sum these → attacker offense
+    pub defense_terms: Vec<StatTerm>,             // sum these → defender defense
+    pub min_damage_factor: f32,                   // min_dmg = (offense - defense) * min_factor
+    pub max_damage_factor: f32,                   // max_dmg = (offense - defense) * max_factor
+    pub damage_floor: u32,                        // absolute minimum (weak attacker still scratches)
+    pub post_damage_hooks: Vec<PostDamageHook>,   // Q7f status application rules
+}
+
+pub struct StatTerm {
+    pub kind_id: ProgressionKindId,               // reads ProgressionInstance.raw_value
+    pub weight: f32,                              // multiplier
+    pub instrument_match: Option<ResourceKind>,   // optional — only apply if matching instrument used
+}
+
+pub struct PostDamageHook {
+    pub damage_threshold: u32,                    // trigger if final_damage >= threshold
+    pub apply_status: StatusFlag,                 // PL_006 status to apply
+    pub magnitude: u8,                            // PL_006 magnitude
+}
+```
+
+#### Cascade pseudocode (V1)
+
+```pseudo
+on Strike action(attacker, defender, instrument):
+  // Q4 revised: if defender is Tracked NPC, observation triggers materialization first
+  materialize_if_needed(defender, current_fiction_ts)
+  
+  let formula = reality.strike_formula.unwrap_or(default_strike_formula);
+  
+  let attacker_offense = formula.offense_terms.iter()
+    .filter(|term| term.instrument_match.is_none() || matches(instrument))
+    .map(|term| attacker.progression[term.kind_id].raw_value as f32 * term.weight)
+    .sum();
+  
+  let defender_defense = formula.defense_terms.iter()
+    .map(|term| defender.progression[term.kind_id].raw_value as f32 * term.weight)
+    .sum();
+  
+  let raw_potential = (attacker_offense - defender_defense).max(0.0);
+  let min_dmg = max(formula.damage_floor, (raw_potential * formula.min_damage_factor) as u32);
+  let max_dmg = (raw_potential * formula.max_damage_factor) as u32;
+  
+  let final_damage = llm_proposed_damage.clamp(min_dmg, max_dmg);   // Q7e silent clamp
+  
+  emit VitalDelta { actor_ref: defender, kind: VitalKind::Hp, delta: -final_damage };  // RES_001
+  
+  for hook in formula.post_damage_hooks where final_damage >= hook.damage_threshold:
+    emit ApplyStatus { actor_ref: defender, flag: hook.apply_status, magnitude: hook.magnitude };  // PL_006
+  
+  // Q3 attacker training cascade (existing):
+  for rule in attacker.kinds.training_rules where source matches Strike action:
+    apply training amount to attacker
+```
+
+#### V1 default formula (no author declaration)
+
+```rust
+fn default_strike_formula() -> StrikeFormulaDecl {
+    StrikeFormulaDecl {
+        offense_terms: vec![],          // no stat reading
+        defense_terms: vec![],          // no stat reading
+        min_damage_factor: 0.0,
+        max_damage_factor: 0.0,
+        damage_floor: 1,                // at least 1 damage
+        post_damage_hooks: vec![],
+    }
+}
+// Engine adds outer cap: min_dmg=1; max_dmg=defender_hp/2 (prevent insta-kill)
+```
+
+→ Realities without progression schema OR without strike_formula still playable PvE-light. LLM proposes within safe bounds.
+
+#### Worked examples (3 genres)
+
+**Modern fistfight** (PC STR=15, boxing=10) vs (NPC CON=12, dodge=5):
+- offense = 15*1.0 + 10*0.5 = 20; defense = 12*0.8 + 5*0.3 = 11.1
+- raw_potential = 8.9; bounds [3, 6]
+- LLM proposes 5 → clamped → 5 ✓
+
+**Tu tiên qi-blast** (筑基 cultivator qi=400) vs (练气 opponent body=80):
+- offense = 400*1.5 = 600; defense = 80*1.2 = 96
+- raw_potential = 504; bounds [252, 605]
+- LLM proposes 350 → clamped → 350; 350 > 100 threshold → Wounded mag=5 applied
+
+**D&D sword swing** — author declares STR + swordsmanship offense; armor_value defense; wider damage_factor variance for "dice roll" feel.
+
+### §11.11 — V1+ deferrals from Q7
+
+| ID | Deferral | Trigger to revisit |
+|---|---|---|
+| **PROG-D24** | DF7-equivalent full damage law chain (chaos-backend element multiplier + resistance + penetration + status chain) | V1+ when full combat ships |
+| **PROG-D25** | Critical hit mechanic | V1+ DF7 territory |
+| **PROG-D26** | Multi-target AoE Strike | V1+ DF7 territory |
+| **PROG-D27** | Damage type variety (physical / magical / spiritual / true) | V1+ DF7 |
+| **PROG-D28** | Per-instrument formula override | V1+30d simple extension (StrikeFormulaDecl per instrument_kind) |
+| **PROG-D29** | `Forge:EditStrikeFormula` AdminAction (runtime formula editing) | V1+30d author UX |
+| **PROG-D30** | Element-stat multiplicative chain (chaos-backend invariant: omni ADD, element MULTIPLY) | V1+ DF7 |
+
+### §11.12 — Q7 rule_ids (V1 namespace)
+
+`progression.*` continues:
+- `progression.combat.formula_invalid` — RealityManifest bootstrap rejects malformed StrikeFormulaDecl
+- `progression.combat.stat_term_unknown` — formula references non-existent kind_id
+
+V1+ reservations:
+- `progression.combat.proposed_out_of_range` (Q7e V1+30d if reject mode enabled)
+- `progression.combat.element_resistance_invalid` (DF7 V1+)
+- `progression.combat.critical_threshold_invalid` (V1+ critical hit)
+
+### §11.13 — ALL 7 Qs LOCKED — PROG_001 ready for DRAFT promotion
+
+After 6 deep-dive batches (Q1+Q6 / Q2 / Q3 / Q4+Q5 batched / Q4+Q5 REVISED / Q7), all 7 critical scope questions are LOCKED.
+
+| Q | Topic | Status | Section |
+|---|---|---|---|
+| Q1 | Ontology (Unified ProgressionKind + 3 types + BodyOrSoul + derives_from) | ✅ LOCKED | §11 |
+| Q6 | Storage (NEW aggregate `actor_progression`) | ✅ LOCKED | §11 |
+| Q2 | Curves (Linear / Log / Stage + 4 CapRules + flat tiers) | ✅ LOCKED | §11.1 |
+| Q3 | Training triggers (Action + Time + day-boundary CultivationTick Generator) | ✅ LOCKED | §11.3 |
+| Q4 | NPC progression (Hybrid observation-driven; PC eager + Tracked NPC lazy) | ✅ LOCKED REVISED | §11.6 |
+| Q5 | Atrophy (NO V1; V1+ lazy at materialization) | ✅ LOCKED REVISED | §11.7 |
+| Q7 | Combat damage (Hybrid V1; DF7-full V1+) | ✅ LOCKED | §11.10 |
+
+#### Cumulative V1 architecture
+
+**Aggregates:** 1 NEW (`actor_progression`)
+
+**RealityManifest extensions V1:** 4 fields
+- `progression_kinds: Vec<ProgressionKindDecl>` (Q1)
+- `progression_class_defaults: HashMap<ActorClassRef, Vec<ClassDefaultDecl>>` (Q1)
+- `progression_actor_overrides: HashMap<ActorRef, Vec<ActorOverrideDecl>>` (Q1)
+- `strike_formula: Option<StrikeFormulaDecl>` (Q7)
+
+**Generators V1:** 1 NEW
+- `Scheduled:CultivationTick` (day-boundary; sequenced 5th after RES_001's 4)
+
+**Events V1:** 2 NEW EVT-T3 sub-shapes + 1 cascade-trigger
+- `ProgressionDelta` (RawValueIncrement / TierAdvance / TierRegress V1+ / DirectSet)
+- `ActorProgressionMaterialized` (lazy-materialization batch wrapper)
+- `BreakthroughAdvance` cascade-trigger
+
+**Rule_ids V1:** 7 in `progression.*` namespace
+- training.kind_unknown / training.rule_invalid / breakthrough.condition_unmet / breakthrough.invalid_tier / cap.exceeded / combat.formula_invalid / combat.stat_term_unknown
+
+**AdminAction sub-shapes V1:** 2
+- `Forge:GrantProgression` (Q3 author-Forge override)
+- `Forge:TriggerBreakthrough` (Q2 author-Forge breakthrough trigger)
+
+#### Future AI Tier feature reservation
+
+`features/16_ai_tier/` placeholder pending user kickoff post-DRAFT. PROG_001 V1 ships HOOKS (tracking_tier field + last_observed_at + materialization function); does NOT design AI Tier semantics.
+
+#### Total deferrals catalog
+
+**PROG-D1..D30** across V1+30d / V2 / V3:
+- PROG-D1..D7 from Q2
+- PROG-D8..D15 from Q3
+- PROG-D16..D18 from Q4 original (deprecated by Q4 revised)
+- PROG-D19..D23 from Q4+Q5 revised (NEW)
+- PROG-D24..D30 from Q7
+
+(PROG-D16..D18 deprecated by revision; renumber at DRAFT promotion if needed.)
+
+#### Promotion blocker
+
+Lock state: `_boundaries/_LOCK.md` held by IDF agent (parallel session). DRAFT promotion blocked until lock free.
+
+Concept phase complete. PROG_001 DRAFT promotion ready when:
+1. Lock free
+2. Estimated 6-8 hours focused design work writing `PROG_001_progression_foundation.md` (~1500-2000 lines projected — larger than RES_001's 900 due to multi-genre coverage + chaos-backend reference + 7 Q LOCKED decisions)
+3. Lock-coordinated commit per pattern: register aggregate + namespace + RealityManifest extensions + EVT-T3/T5 sub-types + AdminAction sub-shapes + catalog file + folder index update + DF7 placeholder retirement note + 14+ downstream impact items tracked
+
+#### Next action options
+
+(a) **Pause + push branch** — 24+ commits ahead origin
+(b) **Continue with downstream MEDIUM/LOW priority items** while waiting for lock (PCS_001 brief update / WA_003 ForgeEditAction enum / NPC_001 closure pass)
+(c) **Wait for lock** — start PROG_001 DRAFT writing immediately when IDF agent releases
+(d) **Other priorities** — user direction
