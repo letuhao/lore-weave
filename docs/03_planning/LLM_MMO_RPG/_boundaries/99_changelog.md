@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-04-26 — FAC_001 Phase 3 cleanup (commit 3/4)
+
+- Lock continues from commit 2/4
+- No boundary changes (Phase 3 = internal documentation cleanup)
+- 7 Phase 3 fixes applied: FactionId+RoleId typed newtypes confirmed + RelationStance opinion modifier values explicit + bidirectional sync explicit + empty memberships Vec valid + V1+ TIT_001 dependency noted + §15.4 LOCK criterion split + cross-feature deferral cross-references tightened
+- §19 readiness checklist updated
+
+---
+
 ## 2026-04-26 — FAC_001 Faction Foundation DRAFT promotion + boundary register (commit 2/4)
 
 - **Lock claim:** main session 2026-04-26 (FAC_001 single-feature 4-commit cycle: lock-Q-decisions [done 49a17ed] + DRAFT [this] + Phase 3 + closure+release); this commit `[boundaries-lock-claim]`

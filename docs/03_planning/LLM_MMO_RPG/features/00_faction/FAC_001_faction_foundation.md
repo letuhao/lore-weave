@@ -655,6 +655,15 @@ This doc satisfies items per DP-R2 + 22_feature_design_quickstart.md:
 - [x] §18 Cross-references
 - [x] §19 Readiness (this section)
 
-**Status transition:** DRAFT 2026-04-26 → **CANDIDATE-LOCK** when all AC-FAC-1..10 pass integration tests against Wuxia + Modern reality fixtures → **LOCK** when V1+ scenarios pass after WA_002 / TIT_001 / REP_001 / CULT_001 / DIPL_001 ship.
+**Phase 3 cleanup applied 2026-04-26 (FAC_001 commit 3/4 cycle):**
+- S1.1 §2 FactionId + RoleId typed newtypes confirmed (matches IDF foundation pattern)
+- S1.2 §3.1 RelationStance Hostile/Neutral/Allied → opinion modifier baseline values explicit (-10 / 0 / +5) for V1+ NPC_002 enrichment
+- S2.1 §10 Cross-service handoff bidirectional sync explicit — faction.current_head_actor_id ↔ actor_faction_membership with role authority_level=100 + cap=1 V1
+- S2.2 §11 Canonical seed sequence — empty memberships Vec valid for unaffiliated actors (LM01/Tiểu Thúy/Lão Ngũ) explicit
+- S2.3 §13 V1+ Sect succession sequence — TIT_001 dependency note (FAC_001 V1 doesn't ship succession rules; just provides graph)
+- S3.1 §15.4 LOCK criterion split DRAFT→CANDIDATE-LOCK vs CANDIDATE-LOCK→LOCK (matches established pattern)
+- S3.2 §17 deferral cross-references tightened — FAC-D6 ↔ FF-D8 + FAC-D3 ↔ FF-D5 + FAC-D10 ↔ FF-D6 + FAC-D7 ↔ V1+ REP_001 jointly noted
+
+**Status transition:** DRAFT 2026-04-26 (Phase 3 applied) → **CANDIDATE-LOCK** in next commit (4/4) → **LOCK** when AC-FAC-1..10 pass integration tests + V1+ scenarios after TIT_001 / REP_001 / CULT_001 / DIPL_001 ship.
 
 **Next** (when CANDIDATE-LOCK granted): world-service can scaffold faction + actor_faction_membership aggregates; V1+ TIT_001 + V1+ REP_001 + V1+ CULT_001 consumers wire up. WA_001 closure pass V1+ adds AxiomDecl.requires_faction field.
