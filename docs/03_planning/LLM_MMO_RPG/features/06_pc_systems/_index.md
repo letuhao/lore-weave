@@ -2,9 +2,20 @@
 
 > **Category:** PCS — PC Systems
 > **Catalog reference:** [`catalog/cat_06_PCS_pc_systems.md`](../../catalog/cat_06_PCS_pc_systems.md) (owns `PCS-*` stable-ID namespace)
-> **Purpose:** PC sheet design — identity layers, inventory, relationships, simple state fields (no RPG mechanics per F4 ACCEPTED). Feeds into DF7 PC Stats & Capabilities.
+> **Purpose:** PC-specific substrate post-ACT_001 unification — `pc_user_binding` (user_id + current_session + body_memory xuyên không) + `pc_mortality_state` (handoff from WA_006) + (V1+ pc_stats_v1_stub TBD) + `PcXuyenKhongCompleted` event integrating TDIL_001 clock-split. Builds on ACT_001 stable base for IDENTITY (actor_core absorbs persona + canonical_traits + flexible_state) + bilateral opinion (actor_actor_opinion) + session memory (actor_session_memory).
 
-**Active:** **awaiting parallel agent** (PCS_001 design commissioned via [`00_AGENT_BRIEF.md`](00_AGENT_BRIEF.md) — folder seeded 2026-04-25, brief LOCKED, design pass not yet started)
+**Active:** PCS_001 — **PC Substrate** (CONCEPT 2026-04-27 — Phase 0 commit 1/4 this commit; main session post-ACT_001+TDIL_001 reconciliation)
+
+**Folder closure status:** **OPEN** — Phase 0 commit 1/4 (this commit; concept-notes + Q1-Q10 + reference survey) → Q-deep-dive batches → commit 2/4 DRAFT + boundary register → commit 3/4 Phase 3 cleanup → commit 4/4 closure + lock release.
+
+**Origin signal:**
+- Brief commissioned 2026-04-25 (`00_AGENT_BRIEF.md`) for parallel agent design
+- Multiple Tier 5 feature designs since (IDF + FF + FAC + REP + PROG + RES + ACT + AIT + TDIL) absorbed parts of brief
+- Main session 2026-04-27 picks up PCS_001 directly post-ACT_001 cycle (Q2 LOCKED sequencing — ACT_001 first, PCS_001 on stable base)
+- Brief §S2 (PC persona) + §S6 (PC-NPC relationship read) ABSORBED by ACT_001
+- Brief §S5 (pc_stats_v1_stub) PROBABLY SUPERSEDED by PROG_001 (Q-decision pending)
+- Brief §S3 (xuyên không body-memory) + §S8 (xuyên không body-substitution) STILL CORE PCS_001 territory
+- TDIL_001 clock-split (soul_clock + body_clock) integrates with §S3 + §S8
 
 ---
 
@@ -12,8 +23,10 @@
 
 | ID | Title | Status | File | Commit |
 |---|---|---|---|---|
-| (commission) | **00_AGENT_BRIEF.md** — PCS_001 PC substrate design commission | LOCKED brief 2026-04-25 (ready for parallel agent) | [`00_AGENT_BRIEF.md`](00_AGENT_BRIEF.md) | seeding pending |
-| PCS_001 | (awaiting parallel agent) — PC substrate (PcId + persona + xuyên không body-memory + pc_mortality_state handoff from WA_006 + V1 stats stub + PC-NPC relationship read-side) | NOT YET STARTED | (to be created by agent) | n/a |
+| (commission) | **00_AGENT_BRIEF.md** — PCS_001 PC substrate design commission | LOCKED brief 2026-04-25 (HISTORICAL; superseded by main session ACT_001-aware design 2026-04-27) | [`00_AGENT_BRIEF.md`](00_AGENT_BRIEF.md) | seeding pending |
+| (concept) | **00_CONCEPT_NOTES.md** — PCS_001 brainstorm + Q1-Q10 + ACT_001/TDIL_001 reconciliation | CONCEPT 2026-04-27 — captures user framing + post-ACT_001 reconciliation (8 brief sections audited; 2 absorbed by ACT_001, 1 superseded by PROG_001, 5 still PCS_001 V1 scope) + Q1-Q10 critical scope questions | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | (this commit) |
+| (research) | **01_REFERENCE_GAMES_SURVEY.md** — PC substrate + xuyên không reference games | DRAFT 2026-04-27 — Wuxia transmigration novels (primary; xuyên không canon basis) + Persona series multi-persona + Mass Effect Shepard customization + D&D party multi-PC + WoW respawn pattern + Permadeath genre + CRPG character creation | [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) | (this commit) |
+| PCS_001 | **PC Substrate** (PCS) | Per-PC user binding + xuyên không body-memory (SoulLayer + BodyLayer + LeakagePolicy) + pc_mortality_state (handoff from WA_006) + PcXuyenKhongCompleted event (TDIL_001 clock-split integration). 3 V1 aggregates (pc_user_binding + pc_mortality_state + V1+/Q-decision pc_stats_v1_stub). Synthetic actors forbidden V1. Cross-reality strict V1; V2+ Heresy. Multi-PC reality cap=1 V1 (charter coauthors V1+). Resolves PCS_001 brief §S1 + §S3 + §S4 + §S7 + §S8. ABSORBED by ACT_001: §S2 + §S6. POSSIBLY SUPERSEDED by PROG_001: §S5. | (DRAFT pending Q-deep-dive) | (defer) | (defer) |
 
 ---
 
