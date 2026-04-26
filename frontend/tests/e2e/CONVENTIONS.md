@@ -67,6 +67,16 @@ Rule of thumb: a Page Object's locator list = the test surface = the test ID lis
 
 Place `data-testid` adjacent to other props (close to `type` / `className`), not in the middle of conditional logic.
 
+### Shared components (cross-feature)
+
+Components in `src/components/` (e.g., `PageHeader`, `FormDialog`, `DataTable`) are used by multiple features. Their stable elements get a **component-scoped** testid using the kebab-cased component name:
+
+| Component | testid | Where used |
+|---|---|---|
+| `PageHeader` | `page-header-title` | The H1 — every page that uses PageHeader gets a stable title hook for free |
+
+When a shared-component testid would collide with a feature testid (e.g., a generic button class), prefer the more specific feature-level testid in the feature component itself.
+
 ## 2. Page Object Model (PoM)
 
 ### Pattern

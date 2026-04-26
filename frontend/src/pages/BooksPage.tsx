@@ -117,6 +117,7 @@ export function BooksPage() {
         actions={
           <button
             onClick={() => setCreateOpen(true)}
+            data-testid="book-create-button"
             className="btn-glow inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
@@ -191,6 +192,7 @@ export function BooksPage() {
             <Link
               key={book.book_id}
               to={`/books/${book.book_id}`}
+              data-testid="book-row"
               className="group flex items-center gap-4 rounded-lg border p-4 transition-all hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-card"
             >
               {/* Cover */}
@@ -274,6 +276,7 @@ export function BooksPage() {
           <>
             <button
               onClick={() => setCreateOpen(false)}
+              data-testid="book-create-cancel"
               className="rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-secondary"
             >
               {t('common.cancel', { ns: 'common' })}
@@ -281,6 +284,7 @@ export function BooksPage() {
             <button
               onClick={() => void handleCreate()}
               disabled={creating || !newTitle.trim()}
+              data-testid="book-create-submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               {t('create.submit')}
@@ -295,6 +299,7 @@ export function BooksPage() {
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder={t('create.book_title_placeholder')}
+              data-testid="book-title-input"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
               autoFocus
             />
@@ -305,6 +310,7 @@ export function BooksPage() {
               value={newLang}
               onChange={(e) => setNewLang(e.target.value)}
               placeholder="ja, en, vi, zh-TW..."
+              data-testid="book-language-input"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
           </div>
@@ -315,6 +321,7 @@ export function BooksPage() {
               onChange={(e) => setNewDesc(e.target.value)}
               placeholder={t('create.book_description_placeholder')}
               rows={3}
+              data-testid="book-description-input"
               className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
           </div>
