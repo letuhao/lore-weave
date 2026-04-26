@@ -26,7 +26,10 @@ features/
 ├── 09_emergent/                               # EM namespace
 ├── 10_platform_business/                      # PLT namespace
 ├── 11_cross_cutting/                          # CC namespace
-└── 12_daily_life/                             # DL namespace (DF1 umbrella)
+├── 12_daily_life/                             # DL namespace (DF1 umbrella)
+├── 13_quests/                                 # QST namespace (V2 reserved 2026-04-26)
+├── 14_crafting/                               # CFT namespace (V2 reserved 2026-04-26)
+└── 15_organization/                           # ORG namespace (V3 reserved 2026-04-26)
 ```
 
 **Numbering** matches `catalog/cat_NN_*.md` (01 = IF = already kernel-level in `02_storage/`, so skipped here).
@@ -76,6 +79,9 @@ Features consume stable IDs from catalog (each category chunk owns its letter-ID
 | `10_platform_business/` | `cat_10_PLT_platform_business.md` | PLT-* |
 | `11_cross_cutting/` | `cat_11_CC_cross_cutting.md` | CC-* |
 | `12_daily_life/` | `cat_12_DL_daily_life.md` | DL-* |
+| `13_quests/` | (V2 reserved — `cat_13_QST_quests.md` deferred) | QST-* (V2 reserved 2026-04-26) |
+| `14_crafting/` | (V2 reserved — `cat_14_CFT_crafting.md` deferred) | CFT-* (V2 reserved 2026-04-26) |
+| `15_organization/` | (V3 reserved — `cat_15_ORG_organization.md` deferred) | ORG-* (V3 reserved 2026-04-26) |
 | `DF/` | `decisions/deferred_DF01_DF15.md` | DF1..DF15 |
 | `_spikes/` | — (cross-category) | no owned IDs |
 
