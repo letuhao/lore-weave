@@ -5,7 +5,7 @@
 > **Distinct from IDF_004 Origin:** Origin = **immutable birth-context**; Ideology = **mutable belief stance** (PC can convert; ONLY mutable IDF aggregate).
 >
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
-> **Status:** DRAFT 2026-04-26 (Q-decisions IDL-Q1..Q13 locked; IDL-Q13 NEW per POST-SURVEY-Q3 — free V1 conversion; cost V1+ via IDL-D11)
+> **Status:** CANDIDATE-LOCK 2026-04-26 (CONCEPT → DRAFT → Phase 3 → closure pass; Q-decisions IDL-Q1..Q13 locked; IDL-Q13 NEW per POST-SURVEY-Q3 — free V1 conversion; cost V1+ via IDL-D11)
 > **Stable IDs:** `IDL-A*` axioms · `IDL-D*` deferrals · `IDL-Q*` decisions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types); [WA_001 Lex AxiomDecl](../02_world_authoring/WA_001_lex.md); [IDF_004 default_ideology_refs](IDF_004_origin.md); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md).
 > **Defers to:** future PCS_001 (PC creation form); NPC_001/`NPC_NNN` (NPC canonical seed); V1+ tenet system (IDL-D1); V1+ sect/order/giáo phái membership (IDL-D2); V1+ ideology-conflict opinion drift (IDL-D3); V1+ conversion cost mechanic (IDL-D11 NEW).

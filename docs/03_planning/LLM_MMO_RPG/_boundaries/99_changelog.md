@@ -6,6 +6,64 @@
 
 ---
 
+## 2026-04-26 — IDF folder 15/15 FINAL: IDF_005 closure pass → CANDIDATE-LOCK + lock RELEASE
+
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session 2026-04-26 → None (RELEASE after 15-commit cycle)
+  - `01_feature_ownership_matrix.md` actor_ideology_stance row: DRAFT → **CANDIDATE-LOCK 2026-04-26 IDF folder closure 15/15 FINAL**
+- **IDF_005 status header:** DRAFT → CANDIDATE-LOCK
+- **`_index.md` IDF_005 row + folder status:** updated CANDIDATE-LOCK + folder closure COMPLETE
+- **5/5 IDF features now CANDIDATE-LOCK** — Tier 5 Actor Substrate Foundation milestone
+
+### IDF FOLDER CLOSURE MILESTONE SUMMARY (15 commits)
+
+5 features at CANDIDATE-LOCK 2026-04-26:
+- IDF_001 Race (commits 1-3): RaceId + 6-variant SizeCategory + race_assignment + races RealityManifest extension
+- IDF_002 Language (commits 4-6): LanguageId distinct from LangCode + actor_language_proficiency 4-axis × 5-level + languages RealityManifest extension; SPIKE_01 turn 5 reproducibility gate
+- IDF_003 Personality (commits 7-9): 12 V1 archetypes per POST-SURVEY-Q1 + actor_personality + 5-variant VoiceRegister + personality_archetypes RealityManifest extension; resolves PL_005b speaker_voice orphan ref + PL_005c INT-INT-D5
+- IDF_004 Origin (commits 10-12): V1 minimal stub 4 fields + actor_origin + origin_packs OPTIONAL V1; ORG-D12 FF_001 V1+ HIGH priority
+- IDF_005 Ideology (commits 13-15): ONLY mutable IDF aggregate + actor_ideology_stance multi-stance + ideologies REQUIRED V1; free V1 conversion per IDL-Q13 (POST-SURVEY-Q3); IDL-D11 cost mechanic V1+
+
+Boundary expansions (cumulative across 15 commits):
+- 5 NEW aggregates registered in 01_feature_ownership_matrix.md
+- 5 NEW EVT-T8 sub-shapes (Forge:Edit{Race,Language,Personality,Origin,Ideology}*)
+- 1 NEW EVT-T4 sub-type (RaceBorn for IDF_001)
+- 5 NEW namespaces in 02_extension_contracts.md §1.4 (race.* / language.* / personality.* / origin.* / ideology.*) — total 19 V1 rule_ids + 15 V1+ reservations
+- 5 NEW RealityManifest extensions in §2 (4 REQUIRED V1 + 1 OPTIONAL V1)
+- 5 NEW Stable-ID prefixes (RAC-* / LNG-* / PRS-* / ORG-* / IDL-*)
+
+Cross-feature integration resolved:
+- PL_005b §2.1 speaker_voice orphan ref → resolved by IDF_003
+- PL_005c INT-INT-D5 per-personality opinion modifier → resolved by IDF_003 opinion_modifier_table
+- PL_005c §4 cross-cutting opinion calculation → V1+ formula: base + agent_personality_mod[recipient] + recipient_personality_mod[agent] + agent_race_mod[recipient] (V1+ RAC-D2) + agent_origin_mod[recipient] (V1+ ORG-D8) + agent_ideology_mod[recipient] (V1+ IDL-D3)
+
+Total V1 acceptance scenarios: 50 (10 per feature × 5 features) + 12 V1+ deferred.
+Total deferrals: 51 (RAC-D1..D11 + LNG-D1..D9 + PRS-D1..D7+D-NEW + ORG-D1..D12 + IDL-D1..D11).
+
+Reality presets ship V1:
+- Wuxia: 5 races / 4 languages / 12 archetypes (universal) / origin packs empty V1 / 5 ideologies
+- Modern: 1 race / 3 languages / 12 archetypes / origin packs empty V1 / 3 ideologies
+- Sci-fi: 3 races / 3 languages / 12 archetypes / origin packs empty V1 / 3 ideologies
+
+i18n cross-cutting (RES_001 §2.3 I18nBundle): all 5 IDF features ship I18nBundle from day 1 for declarative names (greenfield; no legacy backfill per IDF-FOLDER-Q7).
+
+NEW V1+ feature roadmap (locked priority order; per POST-SURVEY survey + IDF folder closure):
+1. **FF_001 Family Foundation** — HIGH PRIORITY post-IDF (BEFORE PCS_001) per POST-SURVEY-Q4 + ORG-D12. Owns family_graph + dynasty + Birth/Marriage/Death/Divorce/Adoption events + family-driven opinion modifier. Wuxia REQUIRES (sect lineage / family inheritance / dynasty politics).
+2. **PCS_001 PC substrate** — consumes IDF (Race/Language/Personality/Origin/Ideology) + RES_001 vital_pool + FF_001 family_graph. PC creation form selects from reality's allowed sets.
+3. **NPC_NNN mortality** — replaces NPC_003 mortality references (NPC_003 was re-purposed to NPC Desires per `9068543`); mirrors PCS_001 mortality state machine pattern.
+4. **FAC_001 Faction Foundation** — sect / order / clan / guild membership; depends on FF_001 + IDF_004/005.
+5. **REP_001 Reputation Foundation** — per-(actor, faction) reputation projection; depends on FAC_001.
+6. **CULT_001 Cultivation Foundation** — Wuxia-genre-specific mutable cultivation realm tier (per RAC-D11 / POST-SURVEY-Q5); defer until first non-SPIKE_01 wuxia content.
+
+Society V1 ready (PCS+NPC+FF+FAC+REP) = ~44 commits across ~7-9 lock-cycles total.
+
+Drift watchpoints unchanged at 8 active.
+
+Lock RELEASED with `[boundaries-lock-release]` prefix at end of this commit.
+
+---
+
 ## 2026-04-26 — IDF folder 14/15: IDF_005 Phase 3 cleanup
 
 5 fixes (IdeologyId typed newtype confirmed + Synthetic exclusion + cross-feature seed flow + §15.4 LOCK split + IDL-D11 cost mechanic V1+ landing). No boundary changes.
