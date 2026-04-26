@@ -1,5 +1,29 @@
 # NPC_003 — NPC Desires (LIGHT)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — ACT_001 Actor Foundation unification refactor:**
+>
+> Per ACT_001 unification (commits 1c0d2d7 + 74b2854 + 3/5 this update), NPC_003's `desires` field has been TRANSFERRED from `npc` aggregate to `actor_chorus_metadata`:
+>
+> | OLD field path | NEW field path | Type rename |
+> |---|---|---|
+> | `npc.desires: Vec<NpcDesireDecl>` | **`actor_chorus_metadata.desires: Vec<DesireDecl>`** | `NpcDesireDecl` → `DesireDecl` (kind-agnostic) |
+>
+> **Why:** desires is L3 AI-drive metadata (per ACT-A2 3-layer model) — applicable to any AI-driven actor (NPCs always; PCs V1+ when AI-driven offline). Belongs on `actor_chorus_metadata` substrate, not on per-NPC aggregate.
+>
+> **Sparse storage:** V1 NPCs always have `actor_chorus_metadata` row → desires populated. PCs never have row V1 → desires not applicable. V1+ AI-controls-PC-offline activation (ACT-D1) creates `actor_chorus_metadata` row for offline PCs → desires populated by author/AI.
+>
+> **NPC_003 ROLE POST-UNIFY:** Owns `DesireDecl` shape + lifecycle semantics + canonical declaration pattern + RealityManifest declaration (`canonical_actors[*].chorus_metadata.desires` instead of separate `npc_desires` HashMap). NO state machine / NO objective tracking / NO rewards / 5-desires cap / i18n via I18nBundle / author-only satisfaction toggle V1 via Forge — all preserved.
+>
+> **RealityManifest extension simplified:** Pre-unify, NPC_003 had separate `npc_desires: HashMap<NpcId, Vec<NpcDesireDecl>>` extension. Post-unify, desires nested inside `canonical_actors[*].chorus_metadata.desires` (additive on CanonicalActorDecl). NPC_003 still owns the field shape + cap + i18n contract.
+>
+> **Authoritative spec (post-unify):** [ACT_001 §3.2](../../features/00_actor/ACT_001_actor_foundation.md#32-actor_chorus_metadata-t2--reality-scope--sparse-ai-drive-metadata) (actor_chorus_metadata aggregate hosts desires) + NPC_003 §1..§16 (DesireDecl shape + lifecycle + Forge contract preserved).
+>
+> **Acceptance scenarios (§16):** AC names updated to actor_chorus_metadata.desires terminology in commit 4/5 Phase 3 cleanup. Functional behavior preserved V1 (desires drive LLM-context for NPC; sandbox-mitigation V1 feature unchanged).
+>
+> See [`_boundaries/99_changelog.md`](../../_boundaries/99_changelog.md) 2026-04-27 ACT_001 entries for full unification details.
+
+---
+
 > **Conversational name:** "Desires" (DSR). Light author-declared NPC goal scaffolding — what each NPC wants. Pure data + LLM-context integration; NO state machine, NO objective tracking, NO rewards, NO completion logic.
 >
 > **Category:** NPC — NPC Systems (5th catalog category; sibling of NPC_001 Cast + NPC_002 Chorus)

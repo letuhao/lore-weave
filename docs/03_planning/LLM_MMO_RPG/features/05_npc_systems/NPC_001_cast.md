@@ -1,5 +1,30 @@
 # NPC_001 — Cast (NPC Foundation)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — ACT_001 Actor Foundation unification refactor:**
+>
+> Per ACT_001 unification (commits 1c0d2d7 + 74b2854 + 3/5 this update), 3 of NPC_001's 5 aggregates have been TRANSFERRED to ACT_001 substrate:
+>
+> | OLD NPC_001 aggregate | NEW ACT_001 aggregate | NPC_001 status |
+> |---|---|---|
+> | `npc` core (R8 import; §3.1) | **`actor_core` + `actor_chorus_metadata`** (split per L1/L3 layer model) | TRANSFERRED to ACT_001 |
+> | `npc_session_memory` (R8 import; §3.2) | **`actor_session_memory`** (per-(actor, session); kind-agnostic) | TRANSFERRED to ACT_001 |
+> | `npc_pc_relationship_projection` (R8 import; §3.3) | **`actor_actor_opinion`** (per-(observer, target); BILATERAL) | TRANSFERRED to ACT_001 |
+> | `npc_node_binding` (NPC_001-owned; §3.4) | (UNCHANGED — `npc_node_binding`) | KEPT — NPC-specific writer-node binding mechanism |
+>
+> **NPC_001 ROLE POST-UNIFY:** Persona assembly contract (§6 — 4-input combiner) + EVT-T2 NPCTurn producer + npc_node_binding ownership (§3.4) + canonical NPC declaration (§1 SPIKE_01 cast) — all preserved. NPC_001 NO LONGER owns `npc` core / session memory / opinion projection — those are ACT_001 substrate.
+>
+> **Persona assembly §6 update:** `assemble_persona(npc_id)` → kind-agnostic `assemble_persona(actor_id)`; 4 inputs renamed actor_* (actor_core + actor_chorus_metadata + actor_session_memory + actor_actor_opinion). Combiner logic preserved; LLM prompt assembly behavior identical V1.
+>
+> **NpcOpinion::for_pc trait:** Renamed `ActorOpinion::for_target(observer, target)` (kind-agnostic; bilateral). Implementation reads `actor_actor_opinion` (was npc_pc_relationship_projection). NPC_002 Chorus closure-pass-extension updates read paths.
+>
+> **Authoritative spec (post-unify):** [ACT_001 §3](../../features/00_actor/ACT_001_actor_foundation.md#3-aggregate-inventory) (4 substrate aggregates) + NPC_001 §3.4 (npc_node_binding kept) + NPC_001 §1 + §5 + §7 + §8 + §10..14 (NPC-specific behavior preserved).
+>
+> **Acceptance scenarios (§14):** AC names updated to actor_* terminology in commit 4/5 Phase 3 cleanup. Functional behavior preserved V1.
+>
+> See [`_boundaries/99_changelog.md`](../../_boundaries/99_changelog.md) 2026-04-27 ACT_001 entries for full unification details.
+
+---
+
 > **Conversational name:** "Cast" (CST). The cast of NPCs in a reality — their identity, persona, owner-node binding, handoff protocol, opinion-with-PC stub, and the EVT-T2 NPCTurn producer contract. Pairs with NPC_002 Chorus (which orchestrates multiple NPCs reacting): Cast designs the actors; Chorus directs them.
 >
 > **Category:** NPC — NPC Systems

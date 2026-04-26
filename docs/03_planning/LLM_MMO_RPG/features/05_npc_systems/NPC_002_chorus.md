@@ -1,5 +1,28 @@
 # NPC_002 — Chorus (Multi-NPC Turn Ordering)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — ACT_001 Actor Foundation unification refactor:**
+>
+> Per ACT_001 unification (commits 1c0d2d7 + 74b2854 + 3/5 this update), NPC_002 read paths updated to consume ACT_001 substrate aggregates (replaces NPC_001 R8 imports):
+>
+> | OLD read path | NEW read path | Notes |
+> |---|---|---|
+> | `npc.knowledge_tags` (Tier 2-3 priority filtering) | **`actor_core.knowledge_tags`** | Kind-agnostic; works for any AI-driven actor |
+> | `NpcOpinion::for_pc(npc_id, pc_id)` (Tier 2 priority) | **`ActorOpinion::for_target(observer_actor_id, target_actor_id)`** | Bilateral pattern; same trait shape but kind-agnostic; reads `actor_actor_opinion` |
+> | `npc.greeting_obligation` + `npc.priority_tier_hint` (priority hints) | **`actor_chorus_metadata.greeting_obligation` + `actor_chorus_metadata.priority_tier_hint`** | Sparse — populated when actor's control source = AI (NPCs always V1; PCs V1+ when AI-controls-PC-offline activates) |
+> | `npc_pc_relationship_projection` (session-end derivation; §13 sequence) | **`actor_actor_opinion`** (bilateral; preserved derivation logic) | Same session-end derivation flow; aggregate type renamed; key composite generalized |
+>
+> **NPC_002 OWNERSHIP POST-UNIFY UNCHANGED:** `npc_reaction_priority` (Tier 2-3 cell-level priority cache) + `chorus_batch_state` (transient orchestrator coordination) — still NPC_002-owned. NPC_002 reads ACT_001 substrate aggregates as CONSUMER (not OWNER).
+>
+> **V1+ enrichment:** Chorus orchestration EXTENDS to AI-driven PCs V1+ via same path — when AI-controls-PC-offline activates (ACT-D1), `actor_chorus_metadata` PC row populated; NPC_002 priority resolution treats PC as AI-driven actor uniformly. NO new orchestrator code needed.
+>
+> **Tier 4 V1+ rival-faction priority modifier:** Reads REP_001 `actor_faction_reputation` (FAC_001 default_relations + REP_001 score) — independent of ACT_001 changes; preserved.
+>
+> **Authoritative spec (post-unify):** [ACT_001 §3](../../features/00_actor/ACT_001_actor_foundation.md#3-aggregate-inventory) (substrate aggregates) + NPC_002 §3..14 (priority algorithm + chorus orchestration preserved with renamed reads).
+>
+> **Acceptance scenarios (§14):** AC names updated to actor_* terminology in commit 4/5 Phase 3 cleanup. Functional behavior preserved V1.
+
+---
+
 > **Conversational name:** "Chorus" (CHO). Multiple NPCs in a cell reacting to a PlayerTurn — like a Greek chorus, ordered, deterministic, capped. Resolves how SPIKE_01 turn 5 (PC literacy slip observed by Du sĩ + Tiểu Thúy + Lão Ngũ) becomes a sequence of EVT-T2 NPCTurn events without violating Continuum's Strict turn-slot.
 >
 > **Category:** NPC — NPC Systems

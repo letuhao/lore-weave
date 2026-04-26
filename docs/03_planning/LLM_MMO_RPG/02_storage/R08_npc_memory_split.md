@@ -4,9 +4,34 @@ chunk: R08_npc_memory_split.md
 byte_range: 103908-116616
 sha256: 988f285e95ad81a6684568e8d2aa5adf3a7ffaa4dab82b1c02421b5765d21519
 generated_by: scripts/chunk_doc.py
+last_updated: 2026-04-27 ACT_001 unification refactor (main session attribution; additive split)
 -->
 
-## 12H. NPC Memory Aggregate Split (R8 mitigation, A1 foundation)
+> **⚠ R8 UPDATE 2026-04-27 — ACT_001 Actor Foundation unification refactor:**
+>
+> Per ACT_001 unification (commits 1c0d2d7 + 74b2854 + 3/5 this update), R8's per-NPC aggregate ownership has been generalized to per-actor unified pattern. Schema split + rename applied:
+>
+> | OLD R8 aggregate | NEW ACT_001 aggregate | Change type |
+> |---|---|---|
+> | `npc` core (per-NPC) | **`actor_core`** (per-actor; PC + NPC unified) + **`actor_chorus_metadata`** (per-actor sparse; AI-drive metadata extracted) | SPLIT (additive — old `npc` body decomposed into 2 aggregates) |
+> | `npc_session_memory` (per-(NPC, session)) | **`actor_session_memory`** (per-(actor, session)) | RENAMED (key: NpcId → ActorId; semantics preserved) |
+> | `npc_pc_relationship_projection` (per-(NPC, PC)) | **`actor_actor_opinion`** (per-(observer_actor, target_actor); BILATERAL) | RENAMED + KEY GENERALIZED (bilateral key composite enables symmetric pair patterns) |
+> | `npc_node_binding` (per-NPC writer-node) | **`npc_node_binding`** (UNCHANGED) | KEPT — NPC-specific writer-node binding mechanism (PC uses entity_binding from PL_001/EF_001; different mechanism); V1+ may consolidate per ACT-D10 |
+>
+> **Why:** NPC was the only Tier 5 substrate aggregate NOT per-actor unified pre-ACT_001 (8+ other Tier 5 features per-actor). ACT_001 unification resolves the pattern drift + future-proofs AI-controls-PC-offline V1+ + multi-PC realities V1+ + NPC↔NPC drama V1+.
+>
+> **Storage impact:** Additive split — existing R8 capacity analysis (Elena ~75MB without split → ~225MB with snapshots) PRESERVED post-ACT_001 (same actor-pair memory aggregate count + same R8-L2 bounds). The R8 mitigation goal is UNCHANGED; only ownership + aggregate naming changes.
+>
+> **Backward compatibility:** Schema migration is paper-only V1 (no real data yet). Implementation rolls forward with new aggregate names. The 12H sections below describe the ORIGINAL NPC-specific design; treat as historical context. ACT_001 §3.1-§3.4 is the authoritative current spec.
+>
+> **R8 changelog:**
+> - 2026-04-27 ACT_001 unification — schema split (npc → actor_core + actor_chorus_metadata) + rename (npc_session_memory → actor_session_memory; npc_pc_relationship_projection → actor_actor_opinion bilateral). NPC_001 closure-pass-extension transfers ownership to ACT_001. `npc_node_binding` KEPT under NPC_001. Main session attribution (additive, not destructive).
+>
+> **Authoritative spec:** [ACT_001 §3](../features/00_actor/ACT_001_actor_foundation.md#3-aggregate-inventory) (4 ACT_001 aggregates) + [NPC_001 §3.4](../features/05_npc_systems/NPC_001_cast.md#34-npc_node_binding-new-owned-by-cast) (npc_node_binding kept).
+
+---
+
+## 12H. NPC Memory Aggregate Split (R8 mitigation, A1 foundation) — HISTORICAL CONTEXT
 
 NPC state grows linearly with interaction count. A popular NPC (tavern keeper) after 1 year with 10K PCs would have ~75MB state per snapshot in a naive design. Resolution: split NPC into core aggregate + per-pair memory aggregates. This is also the storage foundation for A1 (NPC memory at scale) — A1's semantic layer builds on this infrastructure.
 
