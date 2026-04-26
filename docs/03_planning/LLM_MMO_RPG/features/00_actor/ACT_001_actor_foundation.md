@@ -12,7 +12,7 @@
 >   - Control = Engine → Synthetic → no narrative substrate V1
 >
 > **Category:** ACT — Actor Foundation (Tier 5 Actor Substrate; unification refactor 2026-04-27)
-> **Status:** DRAFT 2026-04-27 (Phase 0 CONCEPT 1c0d2d7 → DRAFT 2/5 this commit; Q1-Q6 LOCKED via main session deep-dive 2 REVISIONS — Q3 REVISION on AI-controls-PC-offline insight + Q6 user-revised to full unify all 3 opportunities)
+> **Status:** CANDIDATE-LOCK 2026-04-27 (5-commit cycle complete: Phase 0 1c0d2d7 → DRAFT 2/5 74b2854 → closure-pass-extensions 3/5 d12a86f → Phase 3 cleanup 4/5 d5ad7af → closure + lock release 5/5 this commit; Q1-Q6 LOCKED via main session deep-dive 2 REVISIONS — Q3 REVISION on AI-controls-PC-offline insight + Q6 user-revised to full unify all 3 opportunities)
 > **Stable IDs in this file:** `ACT-A*` axioms · `ACT-D*` deferrals · `ACT-Q*` decisions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types) (sibling pattern; ActorKind discrimination); [02_storage R08](../../02_storage/R08_npc_memory_split.md) (schema split UPDATED in commit 3/5); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md) (display strings); [07_event_model EVT-A10](../../07_event_model/02_invariants.md) (event log = universal SSOT); [WA_003 Forge](../02_world_authoring/WA_003_forge.md) (forge_audit_log).
 > **Defers to:** future PCS_001 (PC Substrate; owns pc_user_binding + pc_mortality_state + pc_stats_v1_stub on ACT_001 stable base); V1+ AI-controls-PC-offline activation feature (populates `actor_chorus_metadata` for offline PCs); V1+ multi-PC realities (bilateral PC↔PC opinion); V1+ NPC↔NPC drama (sect rivalry opinion); V2+ WA_002 Heresy (cross-reality migration).
@@ -788,6 +788,6 @@ All Q1-Q6 LOCKED via main session deep-dive 2026-04-27 (Q3 REVISION + Q6 user-re
 - [ ] **§18** Cross-references: 3 RESOLVED upstream (NPC_001 anomalies) + 5 consumed-from + 9 consumed-by-future
 - [ ] **§19** This checklist (filling at Phase 3 cleanup commit 4/5)
 
-**Status transition:** DRAFT 2026-04-27 (commit 2/5 this commit) → cascading closure-pass-extensions (commit 3/5) → Phase 3 cleanup (commit 4/5) → **CANDIDATE-LOCK** in commit 5/5 → **LOCK** when AC-ACT-1..10 pass integration tests + V1+ scenarios after V1+ enrichment ships.
+**Status transition:** DRAFT 2026-04-27 (commit 2/5 74b2854) → cascading closure-pass-extensions applied (commit 3/5 d12a86f) → Phase 3 cleanup applied (commit 4/5 d5ad7af) → **CANDIDATE-LOCK 2026-04-27** (commit 5/5 this commit) → **LOCK** when AC-ACT-1..10 pass integration tests + V1+ scenarios after V1+ enrichment ships.
 
 **Next** (when CANDIDATE-LOCK granted): world-service can scaffold 4 ACT_001 aggregates + Forge admin handlers; NPC_001 + NPC_002 + NPC_003 closure-pass-extensions applied in commit 3/5; PCS_001 unblocked to build on stable ACT_001 base (separate cycle Q2 LOCKED).

@@ -6,6 +6,90 @@
 
 ---
 
+## 2026-04-27 — ACT_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 5/5 FINAL)
+
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session 2026-04-27 → None (RELEASE after 5-commit ACT_001 cycle)
+  - `01_feature_ownership_matrix.md`:
+    - 4 ACT_001 aggregate rows: DRAFT → **CANDIDATE-LOCK 2026-04-27 closure pass 5/5**
+- **ACT_001 status header** in `ACT_001_actor_foundation.md`: DRAFT → CANDIDATE-LOCK 2026-04-27 (5-commit cycle complete)
+- **ACT_001 §19 status transition note** updated to reflect CANDIDATE-LOCK 5/5
+- **`features/00_actor/_index.md` ACT_001 row** updated: status CANDIDATE-LOCK + 5-commit cycle reference
+- **`features/00_actor/_index.md` folder status:** OPEN → COMPLETE 2026-04-27
+
+### ACT_001 FOUNDATION FOLDER MILESTONE SUMMARY (5 commits across single lock-cycle)
+
+Files created (cumulative across 5 commits):
+- features/00_actor/_index.md (folder index; updated to COMPLETE)
+- features/00_actor/00_CONCEPT_NOTES.md (Q1-Q6 LOCKED; 3-layer architectural model + 4-aggregate decomposition)
+- features/00_actor/ACT_001_actor_foundation.md (~1000 line DRAFT spec; §1-§19 sections; 10 V1 AC; 10 deferrals)
+- catalog/cat_00_ACT_actor_foundation.md (ACT-* namespace catalog; ACT-A1..A8 axioms + ACT-D1..D10 deferrals + 16 catalog entries)
+
+Files modified (cascading closure-pass-extensions in commit 3/5 d12a86f):
+- 02_storage/R08_npc_memory_split.md (schema split + rename forwarding note; main session attribution; additive)
+- features/05_npc_systems/NPC_001_cast.md (closure-pass-extension forwarding note; 3 aggregate ownership transfer to ACT_001; npc_node_binding KEPT)
+- features/05_npc_systems/NPC_002_chorus.md (read path migration; NpcOpinion::for_pc → ActorOpinion::for_target; chorus extends to AI-driven PCs V1+)
+- features/05_npc_systems/NPC_003_desires.md (desires field path migration npc.desires → actor_chorus_metadata.desires; type rename DesireDecl)
+
+Boundary expansions (commit 2/5 + 5/5):
+- 4 NEW ACT_001-owned aggregates (replaces 3 R8-locked NPC_001 imports + adds 1 sparse extension)
+- 2 NEW EVT-T4 System sub-types (ActorBorn + ActorChorusMetadataBorn)
+- 4 NEW EVT-T8 Administrative sub-shapes (Forge:EditActorCore + Forge:EditChorusMetadata + Forge:EditActorOpinion + Forge:EditActorSessionMemory)
+- 2 V1 active EVT-T3 delta_kinds (Update on actor_actor_opinion + actor_session_memory; preserved from NPC_001 §13)
+- V1+ EVT-T3 delta_kinds reserved (ActorControlSourceChange + bilateral V1+ patterns ACT-D2..D4)
+- 1 NEW namespace: `actor.*` (6 V1 rules + 3 V1+ reservations)
+- 1 NEW stable-ID prefix: `ACT-*`
+- RealityManifest envelope ownership transfer (CanonicalActorDecl now ACT_001-owned) + chorus_metadata field additive
+
+Q-LOCKED summary (Q1-Q6 LOCKED via main session deep-dive 2026-04-27 user "approve all but revise Q6 to (A) full unify all 3 now"; 2 REVISIONS):
+- Q1 (C): NEW feature ACT_001 in features/00_actor/
+- Q2 (A): Sequential — ACT_001 cycle → PCS_001 cycle on stable base
+- Q3 ⚠ REVISION (NEW C): Rename to actor_chorus_metadata; own under ACT_001 substrate; sparse; future-proofs AI-controls-PC-offline V1+
+- Q4 (B): Synthetic actors excluded V1
+- Q5 (B): R08 update WITHIN cycle
+- Q6 ⚠ REVISION (A) user-revised: Full unify all 3 opportunities NOW
+
+3-layer architectural model LOCKED (ACT-A2):
+- L1 Identity (actor_core; always present post-creation)
+- L2 Capability/Kind (encoded in ActorId variant; stable)
+- L3 Control source (DYNAMIC; sparse aggregate population)
+  - Control = User → PC online → no actor_chorus_metadata row
+  - Control = AI → NPC always V1; PC offline V1+ → actor_chorus_metadata row populated
+  - Control = Engine → Synthetic → no narrative substrate V1
+
+Cross-feature deferrals RESOLVED:
+- **NPC_001 R8 import anomaly** (only Tier 5 substrate feature NOT per-actor unified pre-ACT_001) → ✅ RESOLVED via actor_core + actor_chorus_metadata split
+- **npc_pc_relationship_projection one-directional** (only NPC→PC opinion) → ✅ RESOLVED via actor_actor_opinion bilateral
+- **npc_session_memory NPC-scoped** (PC session memory fragmented in chat-service) → ✅ RESOLVED via actor_session_memory unified
+- **npc.desires field misplacement** (L3 AI-drive metadata on per-NPC aggregate) → ✅ RESOLVED via actor_chorus_metadata ownership
+
+Phase 3 cleanup applied (commit 4/5 d5ad7af) — 5 fixes:
+- S1.1 §15 AC-ACT-1: Wuxia preset NO Synthetic; PC actor_core but NO actor_chorus_metadata V1
+- S1.2 §3.1 ActorCore Renamed-from comment: current_session_id semantics + ActorMood range + preserved fields list
+- S1.3 §11 sequence: validation flow detail (CanonicalActorDecl init fields → aggregate fields)
+- S1.4 ACT-A4 axiom: sparse population is L3 control-state-driven (NOT L2 kind-driven)
+- S1.5 §4 tier+scope: actor_chorus_metadata read frequency clarified (only when AI-driven actor in scene)
+
+V1 quantitative summary:
+- 4 ACT_001 aggregates (actor_core + actor_chorus_metadata sparse + actor_actor_opinion sparse bilateral + actor_session_memory)
+- 1 NPC_001-kept aggregate (npc_node_binding only)
+- 3 PCS_001-future aggregates (pc_user_binding + pc_mortality_state + pc_stats_v1_stub)
+- 6 V1 reject rules (actor.* namespace) + 3 V1+ reservations
+- 2 EVT-T4 + 4 EVT-T8 + 2 EVT-T3 sub-types
+- 10 V1 AC (AC-ACT-1..10) + 4 V1+ deferred (AC-ACT-V1+1..V1+4)
+- 10 deferrals (ACT-D1..ACT-D10)
+- ~1000 line DRAFT spec
+- 5-commit cycle (Phase 0 1c0d2d7 + DRAFT 2/5 74b2854 + closure-pass-extensions 3/5 d12a86f + Phase 3 4/5 d5ad7af + closure 5/5 this commit)
+
+NEW V1+ priority post-ACT_001:
+- **PCS_001 PC Substrate** — consumes ACT_001 stable base (actor_core + actor_chorus_metadata + actor_actor_opinion + actor_session_memory) + IDF + RES_001 + FF_001 + FAC_001 + REP_001 + PROG_001; owns pc_user_binding + pc_mortality_state + pc_stats_v1_stub; xuyên không body_memory in pc_user_binding; SPIKE_01 obs#5 literacy slip detection
+- **AI-controls-PC-offline V1+ (ACT-D1)** — activates actor_chorus_metadata PC population when control source transitions User → AI
+- **Multi-PC realities V1+ (ACT-D4)** — bilateral PC↔PC opinion via actor_actor_opinion
+- **Sect rivalry NPC↔NPC drama V1+ (ACT-D3)** — bilateral NPC↔NPC opinion
+
+---
+
 ## 2026-04-27 — ACT_001 Actor Foundation DRAFT promotion + boundary register (commit 2/5)
 
 - **Lock CLAIMED** at start of this commit (`[boundaries-lock-claim]`); release deferred to commit 5/5 closure pass per ACT_001 5-commit cycle (large refactor; commit 2/5 boundary docs + commit 3/5 cascading closure-pass-extensions for R8 + NPC_001/002/003)
