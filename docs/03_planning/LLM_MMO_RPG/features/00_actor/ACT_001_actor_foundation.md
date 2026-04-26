@@ -78,7 +78,7 @@ After this lock: NPC_001 closure-pass-extension transfers 3 aggregates to ACT_00
 - **ACT-A1** (Per-actor unified pattern) — All ACT_001 aggregates keyed by ActorId (or composite (ActorId, _) for relationship/session). NO per-NPC-only or per-PC-only ACT_001 aggregates V1. Pattern matches all Tier 5 substrate features (IDF + FF + FAC + REP + PROG + RES + PL_006).
 - **ACT-A2** (3-layer architectural model) — L1 Identity (always present), L2 Capability/Kind (stable; encoded in ActorId), L3 Control source (dynamic; sparse aggregate population). Layer assignment determines storage density.
 - **ACT-A3** (`actor_core` always present post-creation) — Every non-Synthetic actor has `actor_core` row from creation event onward. Read fallback: missing row = creation event not yet processed (transient; not "default"). Synthetic actors have NO `actor_core` row V1.
-- **ACT-A4** (`actor_chorus_metadata` sparse — control-source-driven population) — Row populated ONLY when actor's current control source = AI. V1: NPCs always have row (always AI); PCs never have row (always User-controlled V1). V1+ AI-controls-PC-offline: PCs populate row when offline; row removed/inactive when online.
+- **ACT-A4** (`actor_chorus_metadata` sparse — control-source-driven population) — Row populated ONLY when actor's current control source = AI (NOT just because actor is NPC kind). V1: NPCs always have row (control source = AI always V1); PCs never have row (control source = User always V1). V1+ AI-controls-PC-offline (ACT-D1): PCs populate row when control source transitions User → AI (offline); row removed/inactive when control source transitions AI → User (re-online). Layer assignment is L3 (control state), NOT L2 (kind).
 - **ACT-A5** (`actor_actor_opinion` bilateral) — Per-(observer_actor, target_actor) opinion stored. Observer ≠ target enforced (Stage 0 schema reject `actor.opinion_self_target_forbidden`). V1 active patterns: NPC→PC (preserved from npc_pc_relationship_projection); V1+ patterns: PC→NPC + NPC→NPC + PC→PC.
 - **ACT-A6** (`actor_session_memory` per-(actor, session)) — Memory facts scoped to specific session; supports LLM context continuity. V1: NPCs populated; V1+ AI-controls-PC-offline: PCs populated when offline (chat-service handoff to world-service via V1+ unification design).
 - **ACT-A7** (Synthetic actor forbidden V1) — Universal substrate discipline (matches IDF + FF + FAC + REP + PROG + RES + PL_006). V1+ may relax IF admin-faction synthetic narrative identity needed.
@@ -140,8 +140,9 @@ pub struct ActorCore {
 
 **Renamed from NPC_001 §3.1 `npc`:**
 - Field `npc_id: NpcId` → `actor_id: ActorId` (sibling pattern allows ActorKind discrimination)
-- Field `mood: NpcMood` → `mood: ActorMood` (type renamed; same shape; kind-agnostic)
-- All other fields preserved; semantics preserved
+- Field `mood: NpcMood` → `mood: ActorMood` (type renamed; same shape; kind-agnostic; -100..+100)
+- Field `current_session_id: Option<SessionId>` SEMANTICS preserved: None = actor not in session (NPC idle/ambient; PC offline)
+- All other fields preserved; semantics preserved (current_region_id + glossary_entity_id + core_beliefs + flexible_state)
 
 **Synthetic actors forbidden V1 (ACT-A7):**
 - Reject `actor.synthetic_actor_forbidden` Stage 0 schema for actor.kind == ActorKind::Synthetic.
@@ -276,7 +277,7 @@ pub struct ActorSessionMemory {
 | Aggregate | Tier | Scope | Read frequency | Write frequency | Storage notes |
 |---|---|---|---|---|---|
 | `actor_core` | T2 | Reality | ~5-10 per turn (NPC_002 Tier 2-3 priority + persona assembly + V1+ many features read identity) | ~0.01 V1 (canonical seed only); V1+ runtime mood/flexible_state drift via session-end derivation | ALWAYS PRESENT post-creation; ~10-20 KB per row |
-| `actor_chorus_metadata` | T2 | Reality | ~2-5 per turn (NPC_002 Chorus priority + persona assembly when AI-driven) | ~0.001 V1 (canonical seed only); V1+ runtime drift | Sparse: NPCs only V1; PCs V1+ when AI-driven offline |
+| `actor_chorus_metadata` | T2 | Reality | ~2-5 per turn (NPC_002 Chorus priority + persona assembly; only when AI-driven actor in scene; PC scenes V1 don't read this aggregate) | ~0.001 V1 (canonical seed only); V1+ runtime drift via Forge / orchestrator | Sparse: NPCs only V1; PCs V1+ when AI-driven offline (ACT-D1) |
 | `actor_actor_opinion` | T2 | Reality | ~1-3 per turn per active scene (NpcOpinion::for_target reads; NPC_002 Tier 2 priority) | ~1 per session-end per (observer, target) interacted | Sparse: per-(observer, target) when interactions create opinion |
 | `actor_session_memory` | T2 | Reality | ~5-10 per session (LLM context assembly per turn for AI-driven actor) | ~1 per turn (rolling fact append; rolling summary every 50 events per R8-L2) | Per-(actor, session); bounded R8-L2 (≤100 facts; ≤2000 char summary) |
 
@@ -541,14 +542,14 @@ RealityManifest {
 **Validation flow:**
 1. Stage 0 schema validation per actor:
    - actor_id valid → ✓
-   - kind ∈ {Pc, Npc} (Synthetic rejected) → ✓
-   - chorus_metadata Some for NPCs / None for PCs → ✓
+   - kind ∈ {Pc, Npc} (Synthetic rejected per Q4 LOCKED `actor.synthetic_actor_forbidden`) → ✓
+   - chorus_metadata Some for NPCs / None for PCs (V1 control source discipline; V1+ AI-controls-PC-offline relaxes for offline PCs) → ✓
 2. RealityBootstrapper emits per actor:
    - 1 EVT-T4 ActorBorn (all 5 actors: 1 PC + 4 NPCs)
-   - 4 EVT-T4 ActorChorusMetadataBorn (NPCs only)
+   - 4 EVT-T4 ActorChorusMetadataBorn (NPCs only V1)
 3. ACT_001 owner-service writes:
-   - 5 rows in actor_core (PC + 4 NPCs)
-   - 4 rows in actor_chorus_metadata (NPCs only)
+   - 5 rows in actor_core (PC + 4 NPCs); each row populates from CanonicalActorDecl.flexible_state_init → ActorCore.flexible_state, mood_init → ActorCore.mood, etc.
+   - 4 rows in actor_chorus_metadata (NPCs only); each row populates from CanonicalActorDecl.chorus_metadata.{greeting_obligation, priority_tier_hint, desires}
 4. Causal-ref chain: bootstrap_event → ActorBorn → row_insert → ActorChorusMetadataBorn (NPC only) → row_insert
 
 **Read examples post-bootstrap:**
@@ -630,7 +631,7 @@ V1 (10 testable scenarios):
 
 | AC | Scenario | Expected outcome |
 |---|---|---|
-| **AC-ACT-1** | Wuxia canonical bootstrap declares 5 actors (1 PC + 4 NPCs) | RealityBootstrapper emits 5 EVT-T4 ActorBorn events + 4 EVT-T4 ActorChorusMetadataBorn events; 5 actor_core rows + 4 actor_chorus_metadata rows written |
+| **AC-ACT-1** | Wuxia canonical bootstrap declares 5 actors (1 PC + 4 NPCs; NO Synthetic per Q4 LOCKED) | RealityBootstrapper emits 5 EVT-T4 ActorBorn events + 4 EVT-T4 ActorChorusMetadataBorn events (NPCs only); 5 actor_core rows + 4 actor_chorus_metadata rows written; PC Lý Minh has actor_core but NO actor_chorus_metadata row V1 (control source = User; sparse storage discipline) |
 | **AC-ACT-2** | actor_core read returns identity for any kind (PC + NPC) | Read path uniform; PC + NPC return same shape (canonical_traits + flexible_state + knowledge_tags + voice_register + core_beliefs_ref + mood) |
 | **AC-ACT-3** | actor_chorus_metadata sparse storage validated | PC has NO row V1; NPC has row; missing row read returns None (not "not AI-driven" by hard code; semantics) |
 | **AC-ACT-4** | actor_actor_opinion bilateral keys validated | observer ≠ target enforced (`actor.opinion_self_target_forbidden`); bilateral pair (du_si, ly_minh) and (ly_minh, du_si) stored separately |
