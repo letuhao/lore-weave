@@ -155,7 +155,10 @@ WHERE platform_model_id=$1 AND status='active'
 	if in.Temperature != nil {
 		input["temperature"] = *in.Temperature
 	}
-	if in.MaxTokens != nil {
+	// Policy: max_tokens=0 means "let the model decide" — same as
+	// omitting. Prevents the footgun of sending `max_tokens: 0` to
+	// upstream providers that interpret it as "cap output at 0".
+	if in.MaxTokens != nil && *in.MaxTokens > 0 {
 		input["max_tokens"] = *in.MaxTokens
 	}
 	if in.Tools != nil {

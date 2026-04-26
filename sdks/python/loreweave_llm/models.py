@@ -83,8 +83,12 @@ class StreamRequest(BaseModel):
     trace_id: str | None = None
 
     def to_request_body(self) -> dict[str, Any]:
-        """Serialize to the wire JSON body, respecting `model_ref` UUID
-        formatting and dropping None fields."""
+        """Serialize to the wire JSON body. Drops `max_tokens` when it's
+        None OR 0 — caller policy: omit means 'let the model decide'.
+        Sending `max_tokens=0` to most providers means 'cap output at 0
+        tokens' which is never what the caller wants; treating 0 as
+        omit prevents that footgun. UUID stringified via mode='json'."""
         data = self.model_dump(mode="json", exclude_none=True)
-        # Pydantic stringifies UUID via mode="json" — already correct.
+        if data.get("max_tokens") == 0:
+            data.pop("max_tokens", None)
         return data

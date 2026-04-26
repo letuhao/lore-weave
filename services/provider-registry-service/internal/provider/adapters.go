@@ -254,16 +254,17 @@ func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, mod
 	if base == "" {
 		base = openaiBaseURL
 	}
-	maxTokens := 8192
+	payload := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	// Policy: include max_tokens only when caller passes a positive
+	// value. Caller-omitted / 0 → let the model decide (no upstream
+	// cap). OpenAI accepts requests without max_tokens.
 	if v, ok := input["max_tokens"]; ok {
 		if mt := int(toFloat(v)); mt > 0 {
-			maxTokens = mt
+			payload["max_tokens"] = mt
 		}
-	}
-	payload := map[string]any{
-		"model":      modelName,
-		"messages":   extractMessages(input),
-		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
 		payload["temperature"] = v
@@ -305,7 +306,10 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	if v, ok := input["temperature"]; ok {
 		body["temperature"] = v
 	}
-	if v, ok := input["max_tokens"]; ok {
+	// Policy: max_tokens=0 means omit (let the model decide). Phase 3c
+	// enforced at SDK + gateway-handler; this is the final guard for
+	// callers posting directly to /internal/proxy or future SDKs.
+	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		body["max_tokens"] = v
 	}
 	if v, ok := input["tools"]; ok {
@@ -414,6 +418,9 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	if base == "" {
 		base = anthropicBaseURL
 	}
+	// Anthropic requires max_tokens (returns 400 if missing). Keep
+	// the 8192 default for caller-omitted/0; honor positive caller
+	// value when supplied.
 	maxTokens := 8192
 	if v, ok := input["max_tokens"]; ok {
 		if mt := int(toFloat(v)); mt > 0 {
@@ -519,7 +526,10 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, m
 	if v, ok := input["temperature"]; ok {
 		options["temperature"] = v
 	}
-	if v, ok := input["max_tokens"]; ok {
+	// Policy: include num_predict (Ollama's max_tokens equivalent)
+	// only on positive caller value. Caller-omitted / 0 → Ollama
+	// streams to natural stop.
+	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		options["num_predict"] = v
 	}
 	if len(options) > 0 {
@@ -557,7 +567,10 @@ func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, m
 	if v, ok := input["temperature"]; ok {
 		body["temperature"] = v
 	}
-	if v, ok := input["max_tokens"]; ok {
+	// Policy: max_tokens=0 means omit (let the model decide). Phase 3c
+	// enforced at SDK + gateway-handler; this is the final guard for
+	// callers posting directly to /internal/proxy or future SDKs.
+	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		body["max_tokens"] = v
 	}
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", nil, body)
@@ -689,16 +702,17 @@ func parseLMStudioNativeModels(mList []any) []ModelInventory {
 
 func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error) {
 	base := NormalizeLmStudioBase(endpointBaseURL)
-	maxTokens := 8192
+	payload := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	// Policy: include max_tokens only on positive caller value. Caller-
+	// omitted / 0 → let the model decide. LM Studio accepts requests
+	// without max_tokens (defaults to model's natural stop).
 	if v, ok := input["max_tokens"]; ok {
 		if mt := int(toFloat(v)); mt > 0 {
-			maxTokens = mt
+			payload["max_tokens"] = mt
 		}
-	}
-	payload := map[string]any{
-		"model":      modelName,
-		"messages":   extractMessages(input),
-		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
 		payload["temperature"] = v
@@ -741,7 +755,10 @@ func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, m
 	if v, ok := input["temperature"]; ok {
 		body["temperature"] = v
 	}
-	if v, ok := input["max_tokens"]; ok {
+	// Policy: max_tokens=0 means omit (let the model decide). Phase 3c
+	// enforced at SDK + gateway-handler; this is the final guard for
+	// callers posting directly to /internal/proxy or future SDKs.
+	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		body["max_tokens"] = v
 	}
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)

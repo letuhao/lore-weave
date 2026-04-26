@@ -291,6 +291,34 @@ def test_request_body_serialization_omits_none_fields():
     assert body["stream_format"] == "openai"
 
 
+def test_request_body_omits_max_tokens_when_zero():
+    # Policy (post-Phase 3c): max_tokens=0 means "let the model
+    # decide" — same as omitting. Prevents the footgun of sending
+    # `max_tokens: 0` to upstream providers that interpret it as
+    # "cap output at 0 tokens".
+    req = StreamRequest(
+        model_source="user_model",
+        model_ref=MODEL_REF,
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=0,
+    )
+    body = req.to_request_body()
+    assert "max_tokens" not in body, (
+        f"max_tokens=0 should be omitted, got body={body}"
+    )
+
+
+def test_request_body_keeps_positive_max_tokens():
+    req = StreamRequest(
+        model_source="user_model",
+        model_ref=MODEL_REF,
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=512,
+    )
+    body = req.to_request_body()
+    assert body.get("max_tokens") == 512
+
+
 def test_constructor_validates_auth_inputs():
     with pytest.raises(ValueError, match="bearer_token"):
         Client(base_url=GATEWAY, auth_mode="jwt")
