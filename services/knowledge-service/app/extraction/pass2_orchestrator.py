@@ -190,6 +190,9 @@ async def _run_pipeline(
     all_known = list(set(known_entities + entity_names))
 
     # Steps 2-4 — K17.5/K17.6/K17.7 run concurrently.
+    # Phase 4a-β: thread llm_client to all 3 — when supplied, each
+    # extractor routes through SDK + chunking + jsonListAggregator.
+    # Legacy `client` retained for back-compat (4a-δ removes it).
     extractor_kwargs = dict(
         text=text,
         entities=entities,
@@ -199,6 +202,7 @@ async def _run_pipeline(
         model_source=model_source,
         model_ref=model_ref,
         client=client,
+        llm_client=llm_client,
     )
 
     gather_started = time.perf_counter()

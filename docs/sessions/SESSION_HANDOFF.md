@@ -1,9 +1,65 @@
-# Session Handoff — Session 53 (3 cycles shipped · Phase 4a-α COMPLETE — chunked entity extraction live · 4a-β next)
+# Session Handoff — Session 53 (4 cycles shipped · Phase 4a-α/β COMPLETE — all 4 Pass 2 extractors migrated · 4a-γ next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-27 (session 53, cycles 1-3 shipped)
-> **HEAD:** `<pending>` (Phase 4a-α-followup; Phase 4a-α BUILD @ `6697d8d6`; ADR @ `b2f577e`; Session 52 closed at `c0420d2`)
+> **Date:** 2026-04-27 (session 53, cycles 1-4 shipped)
+> **HEAD:** `<pending>` (Phase 4a-β; Phase 4a-α-followup @ `309913bb`; Phase 4a-α BUILD @ `6697d8d6`; ADR @ `b2f577e`; Session 52 closed at `c0420d2`)
 > **Branch:** `main` (ahead of origin — user pushes manually)
+
+## Session 53 cycle 4 — Phase 4a-β · relation/event/fact extractors migrated · /review-impl caught 7 issues (all 6 actionable fixed inline)
+
+**What shipped:** All 3 remaining Pass 2 extractors (relation/event/fact) now route through unified LLM gateway with the same SDK + chunking + system+user prompt + tolerant-parser pattern as entity extractor. Gateway gains `fact_extraction` operation + `factKey` aggregator + 2 mid-cycle bug fixes (validJobOperations + DB CHECK constraint). **Phase 4a-α tier COMPLETE**: all 4 Pass 2 extractors uniformly migrated.
+
+**24 files** across gateway/contracts/ks-svc/SDK/tests. Reference impl: this cycle's 3 extractor migrations follow entity extractor's 4a-α + followup pattern verbatim. Live smoke verified: `entities=5, relations=5, events=2, facts=2` — all 4 ops complete end-to-end against qwen3.6-35b-a3b.
+
+### `/review-impl` round 4 — caught 7 issues, all 6 actionable fixed inline
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | factKey docstring claimed "polarity contradictions surface as separate rows" but actually merges → corrected docstring + test name + cross-ref to D-PHASE6-FACT-POLARITY-IN-KEY |
+| 2 | 🟡 MED | mergeKnownKeys silently overwrote non-null with null when winner had null value (data loss for fact subject + entity evidence_passage_id) → fix prefers loser-non-null + 2 regression-lock tests |
+| 3 | 🟡 MED | 5-place sync invariant (worker / API / DB CHECK / openapi / SDK Literal) only locked worker↔API → widened test to grep openapi.yaml + migrate.go + jobs_handler.go in one Go test |
+| 4 | 🟢 LOW | Multi-chunk only verified at unit-test level for entity → 3 NEW per-extractor multi-paragraph chunking-invariant tests |
+| 5 | 🟢 LOW | Null-enum cases not tested → `kind=None` / `type=None` added to drops_malformed tests |
+| 6 | 🟢 LOW | Duplicate `import pytest` in appended sections → cleaned |
+| 7 | 🔵 COSMETIC | Test naming clarity | Skip |
+
+### Mid-cycle bugs caught + fixed during BUILD
+- jobs_handler.go `validJobOperations` rejected fact_extraction → fixed + locked
+- DB CHECK constraint on `llm_jobs.operation` rejected fact_extraction insert → additive ALTER migration
+
+### Verify evidence
+```
+gateway:  go test ./internal/... → ALL GREEN
+sdk:      pytest tests/ → 37 passed in 0.32s
+ks-svc:   pytest tests/unit/ → 1633 passed in 10.99s (was 1611 cycle-3 baseline; +22)
+live smoke: 4/4 ops completed (no chunk_errors)
+```
+
+### What's NEXT for the next agent
+
+**4a-γ (L)** — migrate `regenerate_summaries.py` + `routers/public/summaries.py` + `routers/internal_summarize.py` to use SDK with `chat` operation (no chunking — summaries fit single call). Reference impl: 4a-β pattern × 3 sites.
+
+ADR §6 Q7 to resolve in 4a-γ CLARIFY: does on-demand FE summarize benefit from `/v1/llm/stream` (P1) instead of `/v1/llm/jobs` (P2)? If yes, split 4a-γ into γ1 (regen scheduler → jobs) + γ2 (FE summarize → stream).
+
+**Deferred items added in cycles 2-4:**
+- D-PHASE6-XCHUNK-PRIMING — cross-chunk known_entities priming (cycle 3 MED#1)
+- D-PHASE6-FACT-POLARITY-IN-KEY — adding polarity to factKey (cycle 4 MED#1)
+- D-PHASE6-AGGREGATOR-NULL-MERGE — mostly mitigated by MED#2 fix; track residual for parallel-chunk aggregator design
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state
+2. `docs/03_planning/KNOWLEDGE_SERVICE_LLM_MIGRATION_ADR.md`
+3. This handoff file
+4. **Reference for 4a-γ**: Phase 4a-β at HEAD `<this-commit>` — extractor pattern; summaries are simpler (no `entities` param, no chunking)
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For 4a-γ: `python scripts/workflow-gate.py size L 6 4 1` then `phase clarify`
+3. Live smoke target: `019dc738-a6b7-7bff-b953-b47868ae7db0` (qwen3.6-35b-a3b for `019d5e3c-7cc5-7e6a-8b27-1344e148bf7c`)
+
+---
+
+## Session 53 cycle 3 — Phase 4a-α-followup · chunked entity extraction LIVE
 
 ## Session 53 cycle 3 — Phase 4a-α-followup · chunked entity extraction LIVE
 

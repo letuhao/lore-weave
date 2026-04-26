@@ -75,6 +75,8 @@ func NewAggregator(operation string) Aggregator {
 		return newJSONListAggregator("relations", relationKey)
 	case "event_extraction":
 		return newJSONListAggregator("events", eventKey)
+	case "fact_extraction":
+		return newJSONListAggregator("facts", factKey)
 	default:
 		return &chatAggregator{} // default to text-concat
 	}
@@ -111,6 +113,49 @@ func eventKey(ev map[string]any) string {
 	name, _ := ev["name"].(string)
 	cue, _ := ev["time_cue"].(string)
 	return name + "\x00" + cue
+}
+
+// factKey dedups by (type, normalized content). Phase 4a-β knowledge-
+// service emits facts as `{content, type, subject?, polarity, modality,
+// confidence}`. Two chunks restating the same factual claim ("Holmes
+// is a detective") collapse to one row; differently-typed claims about
+// the same content stay distinct ("type: trait" vs "type: profession").
+//
+// Polarity is INTENTIONALLY EXCLUDED from the key — contradicting
+// polarities (affirm/negate) of the same content COLLAPSE to a single
+// row (last-writer-wins on polarity). This matches knowledge-service's
+// `_postprocess` which derives fact_id from content alone, so the two
+// layers stay consistent end-to-end. Conflict detection is downstream's
+// concern — Pass 2 writer or future quality-eval can flag content with
+// observed polarity flips by querying the raw chunk emissions in
+// telemetry; the aggregated row only carries the latest verdict.
+// (Adding polarity to the key would surface contradictions but would
+// require a matching change to Python's `_normalize_content` + a
+// fact_id schema migration — out of scope for 4a-β; tracked as
+// D-PHASE6-FACT-POLARITY-IN-KEY.)
+//
+// Subject is also excluded because facts can be subject-less (universal
+// claims) and the same factual content emitted with vs. without a
+// subject in different chunks should dedup to the higher-confidence
+// variant. Note: when winner emits subject=null and loser emits
+// subject=<name>, the merged row currently keeps null (winner wins) —
+// see D-PHASE6-AGGREGATOR-NULL-MERGE.
+//
+// Content is whitespace-collapsed + lowercased to mirror knowledge-
+// service's `_normalize_content` (services/knowledge-service/app/
+// extraction/llm_fact_extractor.py:_normalize_content) so a chunk
+// emitting "Holmes  is a  detective" matches "Holmes is a detective".
+func factKey(f map[string]any) string {
+	content, _ := f["content"].(string)
+	factType, _ := f["type"].(string)
+	return factType + "\x00" + normalizeFactContent(content)
+}
+
+// normalizeFactContent lowercases + collapses internal whitespace runs
+// to single spaces. Mirrors knowledge-service's `_normalize_content`
+// helper so the gateway-side dedup matches caller-side fact_id hashing.
+func normalizeFactContent(s string) string {
+	return strings.Join(strings.Fields(strings.ToLower(s)), " ")
 }
 
 // chatAggregator accumulates token deltas + reasoning + usage with
@@ -367,8 +412,20 @@ func (a *jsonListAggregator) mergeChunkJSON(idx int, raw string) {
 }
 
 // mergeKnownKeys returns a copy of `winner` with any keys present in
-// `loser` (but missing from `winner`) carried over. The "aliases" key
-// gets union semantic when both rows have it.
+// `loser` (but missing from `winner`) carried over.
+//
+// /review-impl Phase 4a-β MED#2 fix — non-null preference: when winner
+// has a key with a NULL value AND loser has the same key with a non-null
+// value, prefer loser's non-null. Without this, fact_extraction's
+// nullable `subject` field would silently lose data: chunk A emits
+// {content:"X", subject:null, conf:0.95} + chunk B emits {content:"X",
+// subject:"Holmes", conf:0.9} → A wins by confidence → merged subject
+// stays null and Holmes attribution is lost. This rule is generally
+// safe across ops because winner-selection is by confidence, not by
+// completeness — a higher-confidence row that omitted a field shouldn't
+// erase a lower-confidence row's contribution.
+//
+// The "aliases" key still gets union semantic when both rows have it.
 func mergeKnownKeys(winner, loser map[string]any) map[string]any {
 	out := make(map[string]any, len(winner))
 	for k, v := range winner {
@@ -382,6 +439,11 @@ func mergeKnownKeys(winner, loser map[string]any) map[string]any {
 		// Aliases: union the two arrays preserving order.
 		if k == "aliases" {
 			out[k] = unionStringList(out[k], v)
+			continue
+		}
+		// MED#2 — winner-null + loser-non-null → prefer loser.
+		if out[k] == nil && v != nil {
+			out[k] = v
 		}
 	}
 	return out

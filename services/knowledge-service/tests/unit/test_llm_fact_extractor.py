@@ -503,3 +503,135 @@ async def test_whitespace_variant_dedup():
 
     assert len(result) == 1
     assert result[0].confidence == 0.95
+
+
+# ── Phase 4a-β SDK-path tests ────────────────────────────────────────
+
+
+from typing import Any, cast
+
+
+class FakeLLMClientForFacts:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.next_job: Any = None
+
+    def queue_job(self, *, status: str, facts: list[dict[str, Any]] | None = None,
+                  error_code: str | None = None, error_message: str = "") -> None:
+        from loreweave_llm.models import Job, JobError
+        result = {"facts": facts} if facts is not None else None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="fact_extraction",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
+
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        return self.next_job
+
+
+def _make_entity_for_fact(name: str = "Holmes") -> Any:
+    from app.extraction.llm_entity_extractor import LLMEntityCandidate
+    return LLMEntityCandidate(
+        name=name, kind="person", aliases=[], confidence=0.95,
+        canonical_name=name.lower(), canonical_id=f"cid-{name}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_extract_facts_via_llm_client_happy_path():
+    fake = FakeLLMClientForFacts()
+    fake.queue_job(
+        status="completed",
+        facts=[
+            {"content": "Holmes is a detective.", "type": "description",
+             "subject": "Holmes", "polarity": "affirm", "modality": "asserted",
+             "confidence": 0.9},
+        ],
+    )
+    result = await extract_facts(
+        text="Holmes is a detective.",
+        entities=[_make_entity_for_fact("Holmes")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    assert len(result) == 1
+    call = fake.calls[0]
+    assert call["operation"] == "fact_extraction"
+    assert call["chunking"].size == 15
+    msgs = call["input"]["messages"]
+    assert msgs[0]["role"] == "system" and msgs[1]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_extract_facts_via_llm_client_drops_malformed():
+    fake = FakeLLMClientForFacts()
+    fake.queue_job(
+        status="completed",
+        facts=[
+            {"content": "Holmes is brilliant.", "type": "description", "confidence": 0.9},  # ✓
+            {"type": "description"},  # ✗ missing content
+            {"content": "  ", "type": "description"},  # ✗ whitespace-only
+            {"content": "Bad type", "type": "INVALID_TYPE"},  # ✗ FactType not in Literal
+            # /review-impl LOW#5 — explicit-null type
+            {"content": "Null type", "type": None},  # ✗
+        ],
+    )
+    result = await extract_facts(
+        text="...", entities=[],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    contents = [c.content for c in result]
+    assert "Holmes is brilliant." in contents
+    assert "Bad type" not in contents
+    assert "Null type" not in contents  # LOW#5 — explicit-null type dropped
+
+
+@pytest.mark.asyncio
+async def test_extract_facts_via_llm_client_cancelled_raises():
+    fake = FakeLLMClientForFacts()
+    fake.queue_job(status="cancelled")
+    with pytest.raises(ExtractionError) as exc:
+        await extract_facts(
+            text="...", entities=[], known_entities=[],
+            user_id="user-1", project_id="project-1",
+            model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+            llm_client=cast(Any, fake),
+        )
+    assert exc.value.stage == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_extract_facts_via_llm_client_chunking_invariant_for_multi_paragraph_input():
+    """/review-impl LOW#4 — pin the invariant that the extractor ALWAYS
+    sends ChunkingConfig regardless of input length."""
+    fake = FakeLLMClientForFacts()
+    fake.queue_job(
+        status="completed",
+        facts=[{"content": "X is Y.", "type": "description", "subject": None,
+                "polarity": "affirm", "modality": "asserted", "confidence": 0.9}],
+    )
+    long_text = "\n\n".join(f"Paragraph {i}: X is Y." for i in range(30))
+    await extract_facts(
+        text=long_text, entities=[],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    call = fake.calls[0]
+    assert call["chunking"] is not None
+    assert call["chunking"].strategy == "paragraphs"
+    assert call["chunking"].size == 15
+    user_msg = call["input"]["messages"][1]
+    assert user_msg["content"] == long_text

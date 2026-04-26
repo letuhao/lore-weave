@@ -33,7 +33,8 @@ var validJobOperations = map[string]struct{}{
 	"chat": {}, "completion": {}, "embedding": {},
 	"stt": {}, "tts": {}, "image_gen": {},
 	"entity_extraction": {}, "relation_extraction": {},
-	"event_extraction": {}, "translation": {},
+	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
+	"translation": {},
 }
 
 // jobSubmitRequest mirrors openapi SubmitJobRequest.

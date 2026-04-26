@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -26,6 +29,7 @@ func TestIsStreamableOperation_WhitelistedOps(t *testing.T) {
 		"entity_extraction",
 		"relation_extraction",
 		"event_extraction",
+		"fact_extraction", // Phase 4a-β
 	}
 	for _, op := range cases {
 		if !isStreamableOperation(op) {
@@ -43,7 +47,6 @@ func TestIsStreamableOperation_RejectsNonStreamable(t *testing.T) {
 		"stt",
 		"tts",
 		"image_gen",
-		"fact_extraction", // wires in 4a-β
 		"",
 		"unknown_operation",
 	}
@@ -52,6 +55,76 @@ func TestIsStreamableOperation_RejectsNonStreamable(t *testing.T) {
 			t.Errorf("expected %q to NOT be streamable; whitelist over-promotion", op)
 		}
 	}
+}
+
+func TestStreamableOperations_AlsoInValidJobOperations(t *testing.T) {
+	// Phase 4a-β regression-lock: every streamable op MUST also be in
+	// the API-layer validJobOperations whitelist. Otherwise jobs_handler
+	// rejects the submit with LLM_INVALID_REQUEST before reaching the
+	// worker — a silent gap that bit fact_extraction during 4a-β BUILD
+	// (worker accepted it, validator didn't).
+	//
+	// /review-impl MED#3 widening: this test now also asserts the op
+	// appears in (a) jobs_handler.go's validJobOperations source, (b)
+	// migrate.go's CHECK constraint, (c) openapi.yaml's JobOperation
+	// enum. Source-grep approach (not import) because cross-package
+	// import would either circularize or require exporting the
+	// validator. This pins the 5-place invariant: worker whitelist +
+	// API validator + DB CHECK + openapi enum + (Python SDK Literal,
+	// covered separately by import-time validation in pydantic).
+	rootPath := findRepoRoot(t)
+	apiHandlerSrc := readFile(t, rootPath+"/services/provider-registry-service/internal/api/jobs_handler.go")
+	migrateSrc := readFile(t, rootPath+"/services/provider-registry-service/internal/migrate/migrate.go")
+	openapiSrc := readFile(t, rootPath+"/contracts/api/llm-gateway/v1/openapi.yaml")
+
+	for op := range streamableOperations {
+		quoted := `"` + op + `"`
+		yamlEntry := "        - " + op
+		if !strings.Contains(apiHandlerSrc, quoted) {
+			t.Errorf("streamable op %q missing from jobs_handler.go validJobOperations — "+
+				"submit would fail with LLM_INVALID_REQUEST", op)
+		}
+		// migrate.go references ops as quoted SQL strings: 'op_name'.
+		sqlQuoted := `'` + op + `'`
+		if !strings.Contains(migrateSrc, sqlQuoted) {
+			t.Errorf("streamable op %q missing from migrate.go CHECK constraint — "+
+				"INSERT would fail with constraint violation (LLM_INTERNAL_ERROR)", op)
+		}
+		if !strings.Contains(openapiSrc, yamlEntry) {
+			t.Errorf("streamable op %q missing from openapi.yaml JobOperation enum — "+
+				"contract drift; SDK clients won't accept this op", op)
+		}
+	}
+}
+
+// findRepoRoot walks up from the test binary's working directory to find
+// the repo root (the dir containing both `services` and `contracts`).
+// Tests run from package dir; repo root is 3 levels up
+// (services/provider-registry-service/internal/jobs).
+func findRepoRoot(t *testing.T) string {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for d := cwd; d != filepath.Dir(d); d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, "services")); err == nil {
+			if _, err := os.Stat(filepath.Join(d, "contracts")); err == nil {
+				return d
+			}
+		}
+	}
+	t.Fatalf("could not find repo root from %s", cwd)
+	return ""
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("readFile %s: %v", path, err)
+	}
+	return string(data)
 }
 
 func TestStreamableOperations_MatchesAggregatorFactory(t *testing.T) {

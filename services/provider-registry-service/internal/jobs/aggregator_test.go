@@ -335,6 +335,184 @@ func TestEventAggregator_DedupsByNameAndTimeCue(t *testing.T) {
 	}
 }
 
+// Phase 4a-β — fact_extraction aggregator tests.
+
+func TestFactAggregator_DedupsByTypeAndNormalizedContent(t *testing.T) {
+	a := NewAggregator("fact_extraction")
+	// Chunk 0 emits a trait-type fact about Holmes.
+	feedJSON(a, 0, `{"facts":[
+		{"content":"Holmes is a detective","type":"trait","subject":"Holmes","polarity":"affirm","modality":"asserted","confidence":0.7}
+	]}`, 20, 8)
+	// Chunk 1 emits the SAME content (whitespace/case variation) +
+	// SAME type → must dedup, higher confidence wins.
+	// Plus a profession-type fact about same content → distinct row
+	// (type is part of the key).
+	feedJSON(a, 1, `{"facts":[
+		{"content":"Holmes  IS a Detective","type":"trait","subject":"Holmes","polarity":"affirm","modality":"asserted","confidence":0.95},
+		{"content":"Holmes is a detective","type":"profession","subject":"Holmes","polarity":"affirm","modality":"asserted","confidence":0.9}
+	]}`, 20, 10)
+
+	result, _, _ := a.Finalize()
+	facts := result["facts"].([]any)
+	if len(facts) != 2 {
+		t.Errorf("expected 2 facts (trait + profession), got %d: %#v", len(facts), facts)
+	}
+	for _, item := range facts {
+		f := item.(map[string]any)
+		if f["type"] == "trait" {
+			if floatOrZero(f["confidence"]) != 0.95 {
+				t.Errorf("trait fact confidence should be 0.95 (chunk 1 wins), got %v", f["confidence"])
+			}
+		}
+	}
+}
+
+func TestFactAggregator_PolarityCollapsesByDesign(t *testing.T) {
+	// Phase 4a-β /review-impl MED#1 — factKey EXCLUDES polarity by
+	// design, so contradicting polarities (affirm/negate) of the same
+	// (type, content) MERGE into a single row. This matches knowledge-
+	// service's `_postprocess` which derives fact_id from content
+	// alone — the two layers stay consistent end-to-end.
+	//
+	// Conflict detection is downstream's concern (Pass 2 writer or
+	// quality-eval), NOT this aggregator's. If a future cycle decides
+	// to surface contradictions at aggregator-level, it MUST also
+	// migrate Python's _normalize_content + fact_id derivation to keep
+	// the layers in sync — tracked as D-PHASE6-FACT-POLARITY-IN-KEY.
+	//
+	// This test pins the design choice so a future change that adds
+	// polarity to the key (without migrating Python) flips this test
+	// loud.
+	a := NewAggregator("fact_extraction")
+	feedJSON(a, 0, `{"facts":[
+		{"content":"Holmes is a detective","type":"trait","polarity":"affirm","modality":"asserted","confidence":0.9}
+	]}`, 10, 5)
+	feedJSON(a, 1, `{"facts":[
+		{"content":"Holmes is a detective","type":"trait","polarity":"negate","modality":"asserted","confidence":0.8}
+	]}`, 10, 5)
+
+	result, _, _ := a.Finalize()
+	facts := result["facts"].([]any)
+	if len(facts) != 1 {
+		t.Errorf("regression-lock: factKey currently excludes polarity so "+
+			"affirm+negate MERGE to 1 row, got %d. If this fails, polarity "+
+			"may have been added to factKey — confirm Python _normalize_content "+
+			"+ fact_id were migrated in the same cycle (D-PHASE6-FACT-POLARITY-IN-KEY).",
+			len(facts))
+	}
+}
+
+func TestFactAggregator_NoSubjectStillDedupsByContent(t *testing.T) {
+	// Universal claims have no subject; factKey is (type, content) only
+	// so subjectless facts dedup correctly.
+	a := NewAggregator("fact_extraction")
+	feedJSON(a, 0, `{"facts":[
+		{"content":"The Empire was vast","type":"world","polarity":"affirm","modality":"asserted","confidence":0.7}
+	]}`, 10, 5)
+	feedJSON(a, 1, `{"facts":[
+		{"content":"The empire was vast","type":"world","polarity":"affirm","modality":"asserted","confidence":0.85}
+	]}`, 10, 5)
+
+	result, _, _ := a.Finalize()
+	facts := result["facts"].([]any)
+	if len(facts) != 1 {
+		t.Errorf("expected 1 deduped subjectless fact, got %d: %#v", len(facts), facts)
+	}
+	if floatOrZero(facts[0].(map[string]any)["confidence"]) != 0.85 {
+		t.Errorf("higher-confidence chunk should win, got %v", facts[0].(map[string]any)["confidence"])
+	}
+}
+
+func TestFactAggregator_DistinctTypesNotMerged(t *testing.T) {
+	a := NewAggregator("fact_extraction")
+	feedJSON(a, 0, `{"facts":[
+		{"content":"Holmes uses cocaine","type":"habit","polarity":"affirm","modality":"asserted","confidence":0.9},
+		{"content":"Holmes uses cocaine","type":"backstory","polarity":"affirm","modality":"asserted","confidence":0.8}
+	]}`, 20, 10)
+
+	result, _, _ := a.Finalize()
+	facts := result["facts"].([]any)
+	if len(facts) != 2 {
+		t.Errorf("type difference must keep facts distinct, got %d: %#v", len(facts), facts)
+	}
+}
+
+func TestFactAggregator_NullSubjectFromWinnerFilledByLoser(t *testing.T) {
+	// /review-impl Phase 4a-β MED#2 — when the higher-confidence row
+	// has subject=null and the lower-confidence row has subject="Holmes"
+	// for the same (type, content), the merge MUST keep "Holmes"
+	// (loser's non-null beats winner's null). Earlier behavior dropped
+	// the subject silently — see mergeKnownKeys docstring.
+	a := NewAggregator("fact_extraction")
+	feedJSON(a, 0, `{"facts":[
+		{"content":"X is brilliant","type":"description","subject":null,"polarity":"affirm","modality":"asserted","confidence":0.95}
+	]}`, 10, 5)
+	feedJSON(a, 1, `{"facts":[
+		{"content":"X is brilliant","type":"description","subject":"Holmes","polarity":"affirm","modality":"asserted","confidence":0.9}
+	]}`, 10, 5)
+
+	result, _, _ := a.Finalize()
+	facts := result["facts"].([]any)
+	if len(facts) != 1 {
+		t.Fatalf("expected 1 merged fact, got %d", len(facts))
+	}
+	merged := facts[0].(map[string]any)
+	if merged["subject"] != "Holmes" {
+		t.Errorf("MED#2: expected subject='Holmes' (loser non-null beats winner null), got %#v", merged["subject"])
+	}
+	// Winner's confidence still wins (this is unchanged by the fix).
+	if floatOrZero(merged["confidence"]) != 0.95 {
+		t.Errorf("expected winner confidence 0.95, got %v", merged["confidence"])
+	}
+}
+
+func TestEntityAggregator_NullPreferenceAppliesAcrossOps(t *testing.T) {
+	// MED#2 fix is in mergeKnownKeys (shared across all jsonListAggregator
+	// ops), so verify it also helps entity_extraction. Not strictly
+	// needed today (entity has no nullable fields used as identifiers)
+	// but pins the cross-op behavior in case a future schema adds one.
+	a := NewAggregator("entity_extraction")
+	feedJSON(a, 0, `{"entities":[
+		{"name":"Holmes","kind":"person","aliases":[],"confidence":0.95,"evidence_passage_id":null}
+	]}`, 10, 5)
+	feedJSON(a, 1, `{"entities":[
+		{"name":"Holmes","kind":"person","aliases":["Sherlock"],"confidence":0.9,"evidence_passage_id":"p-42"}
+	]}`, 10, 5)
+	result, _, _ := a.Finalize()
+	entities := result["entities"].([]any)
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 merged entity, got %d", len(entities))
+	}
+	merged := entities[0].(map[string]any)
+	if merged["evidence_passage_id"] != "p-42" {
+		t.Errorf("MED#2: expected evidence_passage_id='p-42' (loser non-null), got %#v", merged["evidence_passage_id"])
+	}
+}
+
+func TestFactAggregator_RoutesToJSONListAggregatorViaFactsField(t *testing.T) {
+	// Pin the wire contract: fact_extraction op routes through
+	// jsonListAggregator and emits result.facts (not result.entities
+	// or any other field) so caller's tolerant parser knows where to
+	// look.
+	a := NewAggregator("fact_extraction")
+	feedJSON(a, 0, `{"facts":[{"content":"X","type":"trait","polarity":"affirm","modality":"asserted","confidence":0.8}]}`, 5, 3)
+	result, _, _ := a.Finalize()
+	if _, ok := result["facts"]; !ok {
+		t.Errorf("fact_extraction result must carry 'facts' key, got keys: %v", mapKeys(result))
+	}
+	if _, ok := result["entities"]; ok {
+		t.Errorf("fact_extraction must NOT emit 'entities' key (wrong op routing)")
+	}
+}
+
+func mapKeys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 func TestJSONListAggregator_MalformedChunkSurfacedAsErrorAndOthersStillMerge(t *testing.T) {
 	// Phase 4a goal: knowledge-service still completes a chapter even
 	// if one chunk's LLM output was malformed.

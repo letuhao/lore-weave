@@ -111,6 +111,7 @@ JobOperation = Literal[
     "entity_extraction",
     "relation_extraction",
     "event_extraction",
+    "fact_extraction",  # Phase 4a-β
     "translation",
 ]
 

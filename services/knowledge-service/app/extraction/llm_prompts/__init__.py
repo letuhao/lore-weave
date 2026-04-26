@@ -43,11 +43,21 @@ __all__ = [
 # (e.g. `load_prompt("entitiy", ...)`) instead of relying only on
 # the runtime KeyError from _load_raw.
 #
-# Phase 4a-α-followup adds `entity_system` — a system-message variant
+# Phase 4a-α-followup added `entity_system` — a system-message variant
 # of the entity prompt that excludes the chapter `{text}` block, used
 # alongside a separate user-message text payload so the gateway's
 # chunker can split the user message without shredding instructions.
-PromptName = Literal["entity", "relation", "event", "fact", "entity_system"]
+# Phase 4a-β extends the same pattern to relation/event/fact extractors.
+PromptName = Literal[
+    "entity",
+    "relation",
+    "event",
+    "fact",
+    "entity_system",
+    "relation_system",
+    "event_system",
+    "fact_system",
+]
 
 # R2/I2: derive the runtime closed-set from the Literal so a future
 # edit that adds a prompt kind in one place but forgets the other
@@ -77,10 +87,12 @@ def _load_raw(name: str) -> str:
             f"unknown prompt '{name}'; allowed: "
             f"{sorted(ALLOWED_PROMPT_NAMES)}"
         )
-    # Phase 4a-α-followup: `entity_system` maps to entity_extraction_system.md;
-    # other names follow the legacy `<name>_extraction.md` pattern.
-    if name == "entity_system":
-        path = _PROMPTS_DIR / "entity_extraction_system.md"
+    # Phase 4a-α-followup + 4a-β: `*_system` maps to
+    # `<base>_extraction_system.md`; other names follow the legacy
+    # `<name>_extraction.md` pattern.
+    if name.endswith("_system"):
+        base = name[: -len("_system")]
+        path = _PROMPTS_DIR / f"{base}_extraction_system.md"
     else:
         path = _PROMPTS_DIR / f"{name}_extraction.md"
     return path.read_text(encoding="utf-8")

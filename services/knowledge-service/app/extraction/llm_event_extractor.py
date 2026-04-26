@@ -31,14 +31,18 @@ import hashlib
 import json
 import logging
 import re
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from app.clients.llm_client import LLMClient
 from app.clients.provider_client import ProviderClient
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
 from app.extraction.llm_json_parser import ExtractionError, extract_json
 from app.extraction.llm_prompts import load_prompt
+from app.metrics import knowledge_extraction_dropped_total
+from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
+from loreweave_llm.models import ChunkingConfig
 
 __all__ = [
     "LLMEventCandidate",
@@ -163,6 +167,7 @@ async def extract_events(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
 ) -> list[LLMEventCandidate]:
     """Extract narrative events from *text* via the user's BYOK LLM.
 
@@ -192,31 +197,44 @@ async def extract_events(
     if not text or not text.strip():
         return []
 
-    # K17.4-R2 I1/I7: escape curly braces in caller-supplied values.
-    safe_text = text.replace("{", "{{").replace("}", "}}")
     safe_known = json.dumps(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
 
-    user_prompt = load_prompt(
-        "event",
-        text=safe_text,
-        known_entities=safe_known,
-    )
-
-    response = await extract_json(
-        EventExtractionResponse,
-        user_id=user_id,
-        model_source=model_source,
-        model_ref=model_ref,
-        system=None,
-        user_prompt=user_prompt,
-        response_format={"type": "json_object"},
-        client=client,
-    )
+    if llm_client is not None:
+        # Phase 4a-β SDK path: system+user 2-message + chunking.
+        system_prompt = load_prompt("event_system", known_entities=safe_known)
+        raw_events = await _extract_via_llm_client(
+            llm_client=llm_client,
+            user_id=user_id,
+            project_id=project_id,
+            model_source=model_source,
+            model_ref=model_ref,
+            system_prompt=system_prompt,
+            text=text,
+        )
+    else:
+        # Legacy K17.2 path — preserved through 4a-β, removed in 4a-δ.
+        safe_text = text.replace("{", "{{").replace("}", "}}")
+        user_prompt = load_prompt(
+            "event",
+            text=safe_text,
+            known_entities=safe_known,
+        )
+        response = await extract_json(
+            EventExtractionResponse,
+            user_id=user_id,
+            model_source=model_source,
+            model_ref=model_ref,
+            system=None,
+            user_prompt=user_prompt,
+            response_format={"type": "json_object"},
+            client=client,
+        )
+        raw_events = response.events
 
     return _postprocess(
-        response.events,
+        raw_events,
         entities=entities,
         known_entities=known_entities,
         user_id=user_id,
@@ -327,3 +345,123 @@ def _postprocess(
         seen.values(),
         key=lambda c: (-c.confidence, c.name),
     )
+
+
+# ── Phase 4a-β SDK-routed path ────────────────────────────────────────
+
+
+async def _extract_via_llm_client(
+    *,
+    llm_client: LLMClient,
+    user_id: str,
+    project_id: str | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    system_prompt: str,
+    text: str,
+) -> list[_LLMEvent]:
+    """Submit event_extraction job + wait_terminal + tolerant-parse
+    `result.events`. Mirrors entity extractor's SDK path."""
+    try:
+        job = await llm_client.submit_and_wait(
+            user_id=user_id,
+            operation="event_extraction",
+            model_source=model_source,
+            model_ref=model_ref,
+            input={
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0,
+            },
+            chunking=ChunkingConfig(strategy="paragraphs", size=15),
+            job_meta={
+                "extractor": "event",
+                "project_id": project_id or "",
+            },
+            transient_retry_budget=1,
+        )
+    except LLMTransientRetryNeededError as exc:
+        raise ExtractionError(
+            f"event_extraction failed after transient retry: {exc.underlying_code}",
+            stage="provider_exhausted",
+            last_error=exc,
+        ) from exc
+    except LLMError as exc:
+        raise ExtractionError(
+            f"event_extraction SDK error: {exc}",
+            stage="provider",
+            last_error=exc,
+        ) from exc
+
+    if job.status == "cancelled":
+        raise ExtractionError(
+            f"event_extraction job cancelled (job_id={job.job_id})",
+            stage="cancelled",  # type: ignore[arg-type]
+        )
+    if job.status != "completed":
+        err_code = job.error.code if job.error else "LLM_UNKNOWN_ERROR"
+        err_msg = job.error.message if job.error else ""
+        raise ExtractionError(
+            f"event_extraction job ended status={job.status} code={err_code}: {err_msg}",
+            stage="provider",
+        )
+
+    raw_items: list[Any] = []
+    if job.result is not None:
+        items = job.result.get("events", [])
+        if isinstance(items, list):
+            raw_items = items
+    return _tolerant_parse_events(raw_items)
+
+
+def _tolerant_parse_events(raw_items: list[Any]) -> list[_LLMEvent]:
+    """Drop items missing `name` or `summary` or `confidence`; tolerate
+    null location/time_cue/event_date (validator coerces malformed
+    event_date to None — preserved); clamp confidence; drop on enum
+    validation failure (kind not in EventKind Literal)."""
+    parsed: list[_LLMEvent] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            knowledge_extraction_dropped_total.labels(
+                operation="event_extraction", reason="validation"
+            ).inc()
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            knowledge_extraction_dropped_total.labels(
+                operation="event_extraction", reason="missing_name"
+            ).inc()
+            continue
+        summary = item.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            knowledge_extraction_dropped_total.labels(
+                operation="event_extraction", reason="missing_kind"
+            ).inc()
+            continue
+        confidence = item.get("confidence")
+        if not isinstance(confidence, (int, float)):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, float(confidence)))
+        participants = item.get("participants") or []
+        if not isinstance(participants, list):
+            participants = []
+        try:
+            parsed.append(_LLMEvent(
+                name=name,
+                kind=item.get("kind", "other"),  # Literal validates
+                participants=[p for p in participants if isinstance(p, str)],
+                location=item.get("location"),
+                time_cue=item.get("time_cue"),
+                event_date=item.get("event_date"),  # _coerce_malformed_date validator
+                summary=summary,
+                confidence=confidence,
+            ))
+        except ValidationError:
+            knowledge_extraction_dropped_total.labels(
+                operation="event_extraction", reason="validation"
+            ).inc()
+            continue
+    return parsed

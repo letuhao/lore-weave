@@ -537,3 +537,137 @@ def test_llm_event_event_date_default_none():
         summary="s", confidence=0.9,
     )
     assert ev.event_date is None
+
+
+# ── Phase 4a-β SDK-path tests ────────────────────────────────────────
+
+
+from typing import Any, cast
+
+
+class FakeLLMClientForEvents:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.next_job: Any = None
+
+    def queue_job(self, *, status: str, events: list[dict[str, Any]] | None = None,
+                  error_code: str | None = None, error_message: str = "") -> None:
+        from loreweave_llm.models import Job, JobError
+        result = {"events": events} if events is not None else None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="event_extraction",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
+
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        return self.next_job
+
+
+def _make_entity_for_event(name: str = "Holmes") -> Any:
+    from app.extraction.llm_entity_extractor import LLMEntityCandidate
+    return LLMEntityCandidate(
+        name=name, kind="person", aliases=[], confidence=0.95,
+        canonical_name=name.lower(), canonical_id=f"cid-{name}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_extract_events_via_llm_client_happy_path():
+    fake = FakeLLMClientForEvents()
+    fake.queue_job(
+        status="completed",
+        events=[
+            {"name": "Holmes investigates", "kind": "action", "participants": ["Holmes"],
+             "summary": "Holmes investigates the case.", "confidence": 0.9},
+        ],
+    )
+    result = await extract_events(
+        text="Holmes investigates the case.",
+        entities=[_make_entity_for_event("Holmes")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    assert len(result) == 1
+    call = fake.calls[0]
+    assert call["operation"] == "event_extraction"
+    assert call["chunking"].size == 15
+    msgs = call["input"]["messages"]
+    assert msgs[0]["role"] == "system" and msgs[1]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_extract_events_via_llm_client_drops_malformed():
+    fake = FakeLLMClientForEvents()
+    fake.queue_job(
+        status="completed",
+        events=[
+            {"name": "Investigation", "kind": "action", "participants": ["Holmes"],
+             "summary": "valid event", "confidence": 0.9},  # ✓
+            {"kind": "action", "summary": "no name", "confidence": 0.9},  # ✗ missing name
+            {"name": "Battle", "kind": "battle", "summary": "", "confidence": 0.9},  # ✗ empty summary
+            {"name": "Bad enum", "kind": "INVALID_KIND", "summary": "x", "confidence": 0.9},  # ✗ kind not in Literal
+            # /review-impl LOW#5 — explicit-null enum (LLMs do this under some prompts)
+            {"name": "Null kind", "kind": None, "summary": "x", "confidence": 0.9},  # ✗
+        ],
+    )
+    result = await extract_events(
+        text="...", entities=[_make_entity_for_event("Holmes")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    names = [c.name for c in result]
+    assert "Investigation" in names
+    assert "Battle" not in names
+    assert "Bad enum" not in names
+    assert "Null kind" not in names  # LOW#5 — explicit-null enum dropped
+
+
+@pytest.mark.asyncio
+async def test_extract_events_via_llm_client_cancelled_raises():
+    fake = FakeLLMClientForEvents()
+    fake.queue_job(status="cancelled")
+    with pytest.raises(ExtractionError) as exc:
+        await extract_events(
+            text="...", entities=[], known_entities=[],
+            user_id="user-1", project_id="project-1",
+            model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+            llm_client=cast(Any, fake),
+        )
+    assert exc.value.stage == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_extract_events_via_llm_client_chunking_invariant_for_multi_paragraph_input():
+    """/review-impl LOW#4 — pin the invariant that the extractor ALWAYS
+    sends ChunkingConfig regardless of input length."""
+    fake = FakeLLMClientForEvents()
+    fake.queue_job(
+        status="completed",
+        events=[{"name": "Investigation", "kind": "action", "participants": ["Holmes"],
+                 "summary": "valid", "confidence": 0.9}],
+    )
+    long_text = "\n\n".join(f"Paragraph {i}: Holmes investigates." for i in range(30))
+    await extract_events(
+        text=long_text,
+        entities=[_make_entity_for_event("Holmes")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    call = fake.calls[0]
+    assert call["chunking"] is not None
+    assert call["chunking"].strategy == "paragraphs"
+    assert call["chunking"].size == 15
+    user_msg = call["input"]["messages"][1]
+    assert user_msg["content"] == long_text

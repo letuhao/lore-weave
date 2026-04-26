@@ -562,3 +562,166 @@ async def test_all_null_relations_returns_empty():
         client=_as_client(fake),
     )
     assert result == []
+
+
+# ── Phase 4a-β SDK-path tests ────────────────────────────────────────
+
+
+from typing import Any, cast
+
+
+class FakeLLMClientForRelations:
+    """Stand-in for app.clients.llm_client.LLMClient — captures
+    submit_and_wait kwargs + replays a scripted Job."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.next_job: Any = None
+        self.next_exc: Exception | None = None
+
+    def queue_job(self, *, status: str, relations: list[dict[str, Any]] | None = None,
+                  error_code: str | None = None, error_message: str = "") -> None:
+        from loreweave_llm.models import Job, JobError
+        result = {"relations": relations} if relations is not None else None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="relation_extraction",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
+
+    def queue_exception(self, exc: Exception) -> None:
+        self.next_exc = exc
+
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        if self.next_exc is not None:
+            exc = self.next_exc
+            self.next_exc = None
+            raise exc
+        return self.next_job
+
+
+def _make_entity_for_relation(name: str = "Holmes") -> Any:
+    from app.extraction.llm_entity_extractor import LLMEntityCandidate
+    return LLMEntityCandidate(
+        name=name, kind="person", aliases=[], confidence=0.95,
+        canonical_name=name.lower(), canonical_id=f"cid-{name}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_extract_relations_via_llm_client_happy_path():
+    fake = FakeLLMClientForRelations()
+    fake.queue_job(
+        status="completed",
+        relations=[
+            {"subject": "Holmes", "predicate": "lives_in", "object": "Baker Street",
+             "polarity": "affirm", "modality": "asserted", "confidence": 0.9},
+        ],
+    )
+    result = await extract_relations(
+        text="Holmes lives at Baker Street.",
+        entities=[_make_entity_for_relation("Holmes"), _make_entity_for_relation("Baker Street")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    assert len(result) == 1
+    call = fake.calls[0]
+    assert call["operation"] == "relation_extraction"
+    assert call["chunking"].strategy == "paragraphs"
+    assert call["chunking"].size == 15
+    msgs = call["input"]["messages"]
+    assert len(msgs) == 2 and msgs[0]["role"] == "system" and msgs[1]["role"] == "user"
+    assert msgs[1]["content"] == "Holmes lives at Baker Street."
+
+
+@pytest.mark.asyncio
+async def test_extract_relations_via_llm_client_drops_malformed():
+    fake = FakeLLMClientForRelations()
+    fake.queue_job(
+        status="completed",
+        relations=[
+            {"subject": "Holmes", "predicate": "lives_in", "object": "Baker Street", "confidence": 0.9},  # ✓
+            {"subject": "Watson"},  # ✗ missing predicate
+            {"predicate": "knows"},  # ✓ tolerated null subject/object (postprocess filters)
+            "not-a-dict",  # ✗
+        ],
+    )
+    result = await extract_relations(
+        text="...", entities=[_make_entity_for_relation("Holmes"), _make_entity_for_relation("Baker Street")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    # postprocess filters null endpoints — only Holmes/Baker Street survives
+    preds = [c.predicate for c in result]
+    assert "lives_in" in preds
+
+
+@pytest.mark.asyncio
+async def test_extract_relations_via_llm_client_cancelled_raises():
+    fake = FakeLLMClientForRelations()
+    fake.queue_job(status="cancelled")
+    with pytest.raises(ExtractionError) as exc:
+        await extract_relations(
+            text="...", entities=[], known_entities=[],
+            user_id="user-1", project_id="project-1",
+            model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+            llm_client=cast(Any, fake),
+        )
+    assert exc.value.stage == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_extract_relations_legacy_path_unchanged_when_llm_client_none():
+    """Regression lock: legacy K17.2 path still works when llm_client omitted."""
+    fake = FakeProviderClient()
+    fake.queue_response(
+        '{"relations":[{"subject":"Holmes","predicate":"lives_in","object":"Baker Street",'
+        '"polarity":"affirm","modality":"asserted","confidence":0.9}]}'
+    )
+    result = await extract_relations(
+        text="Holmes lives at Baker Street.",
+        entities=[_make_entity_for_relation("Holmes"), _make_entity_for_relation("Baker Street")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="test-model",
+        client=_as_client(fake),
+    )
+    assert len(result) == 1
+    assert result[0].predicate == "lives_in"
+
+
+@pytest.mark.asyncio
+async def test_extract_relations_via_llm_client_chunking_invariant_for_multi_paragraph_input():
+    """/review-impl LOW#4 — pin the invariant that the extractor ALWAYS
+    sends ChunkingConfig regardless of input length. Mirrors entity
+    extractor's regression-lock from 4a-α-followup."""
+    fake = FakeLLMClientForRelations()
+    fake.queue_job(
+        status="completed",
+        relations=[{"subject": "A", "predicate": "knows", "object": "B",
+                    "polarity": "affirm", "modality": "asserted", "confidence": 0.9}],
+    )
+    long_text = "\n\n".join(f"Paragraph {i}: A knows B." for i in range(30))
+    await extract_relations(
+        text=long_text,
+        entities=[_make_entity_for_relation("A"), _make_entity_for_relation("B")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+    )
+    call = fake.calls[0]
+    assert call["chunking"] is not None
+    assert call["chunking"].strategy == "paragraphs"
+    assert call["chunking"].size == 15
+    user_msg = call["input"]["messages"][1]
+    assert user_msg["content"] == long_text

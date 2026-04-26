@@ -96,7 +96,9 @@ CREATE TABLE IF NOT EXISTS llm_jobs (
   owner_user_id UUID NOT NULL,
   operation TEXT NOT NULL CHECK (operation IN (
     'chat','completion','embedding','stt','tts','image_gen',
-    'entity_extraction','relation_extraction','event_extraction','translation'
+    'entity_extraction','relation_extraction','event_extraction',
+    'fact_extraction', -- Phase 4a-β
+    'translation'
   )),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
     'pending','running','completed','failed','cancelled'
@@ -144,6 +146,16 @@ CREATE INDEX IF NOT EXISTS idx_llm_jobs_owner_status ON llm_jobs(owner_user_id, 
 -- bloating the index over still-running jobs.
 CREATE INDEX IF NOT EXISTS idx_llm_jobs_expires_at ON llm_jobs(expires_at)
   WHERE status IN ('completed','failed','cancelled');
+
+-- Phase 4a-β: drop + recreate operation CHECK to add fact_extraction.
+-- CREATE TABLE IF NOT EXISTS doesn't update an existing constraint;
+-- this ALTER is idempotent across cold + warm schemas.
+ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
+ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
+  'chat','completion','embedding','stt','tts','image_gen',
+  'entity_extraction','relation_extraction','event_extraction',
+  'fact_extraction','translation'
+));
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

@@ -13,10 +13,13 @@ from app.extraction.llm_prompts import (
     load_prompt,
 )
 
-# Phase 4a-α-followup — entity_system is a SYSTEM-message-only template
+# Phase 4a-α-followup + 4a-β — *_system templates are SYSTEM-message-only
 # without `{text}` (the chapter text rides as the user message via the
-# SDK path). Tests that assume `{text}` substitution need to skip it.
-TEXT_BEARING_PROMPT_NAMES = sorted(ALLOWED_PROMPT_NAMES - {"entity_system"})
+# SDK path). Tests that assume `{text}` substitution need to skip them.
+SYSTEM_ONLY_PROMPT_NAMES = sorted(
+    {n for n in ALLOWED_PROMPT_NAMES if n.endswith("_system")}
+)
+TEXT_BEARING_PROMPT_NAMES = sorted(ALLOWED_PROMPT_NAMES - set(SYSTEM_ONLY_PROMPT_NAMES))
 
 
 # ── happy path: every prompt loads and substitutes ───────────────────
@@ -37,11 +40,12 @@ def test_k17_1_load_every_prompt(name):
     assert "Return only the JSON object" in out or "return only the JSON object" in out.lower()
 
 
-def test_k17_1_load_entity_system_prompt_substitutes_known_entities_only():
-    """Phase 4a-α-followup — entity_system has no {text} placeholder.
-    The chapter text rides as the user message; the system message
-    only declares instructions + known_entities."""
-    out = load_prompt("entity_system", known_entities='["Kai", "Harbin"]')
+@pytest.mark.parametrize("name", SYSTEM_ONLY_PROMPT_NAMES)
+def test_k17_1_load_system_only_prompt_substitutes_known_entities_only(name):
+    """Phase 4a-α-followup + 4a-β — *_system prompts have no {text}
+    placeholder. The chapter text rides as the user message; the
+    system message only declares instructions + known_entities."""
+    out = load_prompt(name, known_entities='["Kai", "Harbin"]')
     assert '["Kai", "Harbin"]' in out
     assert "{known_entities}" not in out
     # MUST NOT have {text}: that placeholder would silently leak as
@@ -109,22 +113,25 @@ def test_k17_1_every_prompt_has_required_placeholders(name):
     )
 
 
-def test_entity_system_prompt_has_known_entities_but_no_text_placeholder():
-    """Phase 4a-α-followup — pin the SYSTEM-only contract: known_entities
-    placeholder MUST be present; text placeholder MUST be absent. Drift
-    in either direction is a regression."""
+@pytest.mark.parametrize("name", SYSTEM_ONLY_PROMPT_NAMES)
+def test_system_only_prompt_has_known_entities_but_no_text_placeholder(name):
+    """Phase 4a-α-followup + 4a-β — pin the SYSTEM-only contract per
+    extractor: known_entities placeholder MUST be present; text
+    placeholder MUST be absent. Drift in either direction is a
+    regression."""
     from app.extraction.llm_prompts import _load_raw
-    raw = _load_raw("entity_system")
-    assert "{known_entities}" in raw
+    raw = _load_raw(name)
+    assert "{known_entities}" in raw, f"{name} missing {{known_entities}}"
     assert "{text}" not in raw, (
-        "entity_system must NOT have {text} — text rides as user message"
+        f"{name} must NOT have {{text}} — text rides as user message"
     )
 
 
-def test_entity_system_load_silently_drops_text_kwarg_documented_behavior():
-    """Phase 4a-α-followup /review-impl LOW#4 — `load_prompt` accepts
-    `**substitutions` and silently ignores keys the template doesn't
-    reference. For the entity_system prompt (which has no `{text}`),
+@pytest.mark.parametrize("name", SYSTEM_ONLY_PROMPT_NAMES)
+def test_system_only_load_silently_drops_text_kwarg_documented_behavior(name):
+    """Phase 4a-α-followup /review-impl LOW#4 + 4a-β — `load_prompt`
+    accepts `**substitutions` and silently ignores keys the template
+    doesn't reference. For *_system prompts (which have no `{text}`),
     a future maintainer might pass `text=...` thinking it gets
     substituted somewhere — it would be silently dropped.
 
@@ -133,13 +140,13 @@ def test_entity_system_load_silently_drops_text_kwarg_documented_behavior():
     a strict mode (`load_prompt(..., strict=True)`) that rejects
     unknown keys, this test should flip to assert that mode."""
     out = load_prompt(
-        "entity_system",
+        name,
         known_entities="[]",
         text="THIS WILL BE SILENTLY DROPPED",  # not in template
     )
     # Confirm the dropped text is NOT in the output (no surprise leak).
     assert "THIS WILL BE SILENTLY DROPPED" not in out
-    # The intended use site (llm_entity_extractor._extract_via_llm_client)
+    # The intended use site (llm_*_extractor._extract_via_llm_client)
     # passes `text` as the user message content, NOT as a load_prompt
     # kwarg — so this drop is benign in production. The test exists
     # purely to document the gotcha.

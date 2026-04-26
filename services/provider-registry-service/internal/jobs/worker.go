@@ -371,7 +371,7 @@ var streamableOperations = map[string]struct{}{
 	"entity_extraction":   {},
 	"relation_extraction": {},
 	"event_extraction":    {},
-	// fact_extraction wires in 4a-β alongside the openapi enum addition.
+	"fact_extraction":     {}, // Phase 4a-β
 }
 
 // isStreamableOperation reports whether the worker can dispatch the given

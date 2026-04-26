@@ -33,15 +33,19 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
+from app.clients.llm_client import LLMClient
 from app.clients.provider_client import ProviderClient
 from app.db.neo4j_repos.relations import relation_id as compute_relation_id
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
 from app.extraction.llm_json_parser import ExtractionError, extract_json
 from app.extraction.llm_prompts import load_prompt
+from app.metrics import knowledge_extraction_dropped_total
+from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
+from loreweave_llm.models import ChunkingConfig
 
 __all__ = [
     "LLMRelationCandidate",
@@ -143,6 +147,7 @@ async def extract_relations(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
 ) -> list[LLMRelationCandidate]:
     """Extract relations from *text* via the user's BYOK LLM.
 
@@ -172,36 +177,167 @@ async def extract_relations(
     if not text or not text.strip():
         return []
 
-    # K17.4-R2 I1/I7: escape curly braces in caller-supplied values.
-    safe_text = text.replace("{", "{{").replace("}", "}}")
     safe_known = json.dumps(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
 
-    user_prompt = load_prompt(
-        "relation",
-        text=safe_text,
-        known_entities=safe_known,
-    )
-
-    response = await extract_json(
-        RelationExtractionResponse,
-        user_id=user_id,
-        model_source=model_source,
-        model_ref=model_ref,
-        system=None,
-        user_prompt=user_prompt,
-        response_format={"type": "json_object"},
-        client=client,
-    )
+    if llm_client is not None:
+        # Phase 4a-β: SDK path with system+user 2-message structure
+        # so the gateway chunker can split chapter text without
+        # shredding instructions. Mirrors entity extractor pattern.
+        system_prompt = load_prompt("relation_system", known_entities=safe_known)
+        raw_relations = await _extract_via_llm_client(
+            llm_client=llm_client,
+            user_id=user_id,
+            project_id=project_id,
+            model_source=model_source,
+            model_ref=model_ref,
+            system_prompt=system_prompt,
+            text=text,
+        )
+    else:
+        # Legacy K17.2 path — preserved through 4a-β, removed in 4a-δ.
+        safe_text = text.replace("{", "{{").replace("}", "}}")
+        user_prompt = load_prompt(
+            "relation",
+            text=safe_text,
+            known_entities=safe_known,
+        )
+        response = await extract_json(
+            RelationExtractionResponse,
+            user_id=user_id,
+            model_source=model_source,
+            model_ref=model_ref,
+            system=None,
+            user_prompt=user_prompt,
+            response_format={"type": "json_object"},
+            client=client,
+        )
+        raw_relations = response.relations
 
     return _postprocess(
-        response.relations,
+        raw_relations,
         entities=entities,
         known_entities=known_entities,
         user_id=user_id,
         project_id=project_id,
     )
+
+
+# ── Phase 4a-β SDK-routed path ────────────────────────────────────────
+
+
+async def _extract_via_llm_client(
+    *,
+    llm_client: LLMClient,
+    user_id: str,
+    project_id: str | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    system_prompt: str,
+    text: str,
+) -> list[_LLMRelation]:
+    """Submit relation_extraction job + wait_terminal + tolerant-parse
+    `result.relations`. Mirrors entity extractor's SDK path:
+      - system message preserved across chunks (instructions + KNOWN_ENTITIES)
+      - user message = chapter text (chunked on \\n\\n at gateway)
+      - ChunkingConfig(strategy=paragraphs, size=15) per ADR §6 Q1
+      - Cancelled job raises ExtractionError(stage='cancelled')
+      - Tolerant parser drops items missing required fields per LOW#11
+    """
+    try:
+        job = await llm_client.submit_and_wait(
+            user_id=user_id,
+            operation="relation_extraction",
+            model_source=model_source,
+            model_ref=model_ref,
+            input={
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0,
+            },
+            chunking=ChunkingConfig(strategy="paragraphs", size=15),
+            job_meta={
+                "extractor": "relation",
+                "project_id": project_id or "",
+            },
+            transient_retry_budget=1,
+        )
+    except LLMTransientRetryNeededError as exc:
+        raise ExtractionError(
+            f"relation_extraction failed after transient retry: {exc.underlying_code}",
+            stage="provider_exhausted",
+            last_error=exc,
+        ) from exc
+    except LLMError as exc:
+        raise ExtractionError(
+            f"relation_extraction SDK error: {exc}",
+            stage="provider",
+            last_error=exc,
+        ) from exc
+
+    if job.status == "cancelled":
+        raise ExtractionError(
+            f"relation_extraction job cancelled (job_id={job.job_id})",
+            stage="cancelled",  # type: ignore[arg-type]
+        )
+    if job.status != "completed":
+        err_code = job.error.code if job.error else "LLM_UNKNOWN_ERROR"
+        err_msg = job.error.message if job.error else ""
+        raise ExtractionError(
+            f"relation_extraction job ended status={job.status} code={err_code}: {err_msg}",
+            stage="provider",
+        )
+
+    raw_items: list[Any] = []
+    if job.result is not None:
+        items = job.result.get("relations", [])
+        if isinstance(items, list):
+            raw_items = items
+    return _tolerant_parse_relations(raw_items)
+
+
+def _tolerant_parse_relations(raw_items: list[Any]) -> list[_LLMRelation]:
+    """Drop items missing `predicate` or `confidence`; tolerate
+    null subject/object endpoints (post-processed downstream); clamp
+    confidence to [0, 1]; drop on enum-validation failure."""
+    parsed: list[_LLMRelation] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            knowledge_extraction_dropped_total.labels(
+                operation="relation_extraction", reason="validation"
+            ).inc()
+            continue
+        predicate = item.get("predicate")
+        if not isinstance(predicate, str) or not predicate.strip():
+            knowledge_extraction_dropped_total.labels(
+                operation="relation_extraction", reason="missing_name"
+            ).inc()
+            continue
+        confidence = item.get("confidence")
+        if not isinstance(confidence, (int, float)):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, float(confidence)))
+        # subject/object are tolerated as None — _postprocess filters
+        # out null endpoints (relation_extractor C-LM-STUDIO-FIX scope).
+        try:
+            parsed.append(_LLMRelation(
+                subject=item.get("subject"),
+                predicate=predicate,
+                object_=item.get("object"),  # alias='object' in pydantic
+                polarity=item.get("polarity", "affirm"),
+                modality=item.get("modality", "asserted"),
+                confidence=confidence,
+            ))
+        except ValidationError:
+            knowledge_extraction_dropped_total.labels(
+                operation="relation_extraction", reason="validation"
+            ).inc()
+            continue
+    return parsed
 
 
 # ── Post-processing ─────────────────────────────────────────────────

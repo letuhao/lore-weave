@@ -527,6 +527,7 @@ components:
         - entity_extraction
         - relation_extraction
         - event_extraction
+        - fact_extraction
         - translation
       description: |
         The semantic operation. The gateway uses this to:
