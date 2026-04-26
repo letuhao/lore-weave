@@ -55,7 +55,10 @@ export function LoginPage() {
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div
+            data-testid="auth-error-message"
+            className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          >
             {error}
           </div>
         )}
@@ -67,6 +70,7 @@ export function LoginPage() {
             type="email"
             autoComplete="email"
             placeholder="you@example.com"
+            data-testid="auth-email-input"
             className="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
           />
           {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
@@ -84,6 +88,7 @@ export function LoginPage() {
             type="password"
             autoComplete="current-password"
             placeholder="••••••••"
+            data-testid="auth-password-input"
             className="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
           />
           {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
@@ -92,6 +97,7 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={isSubmitting}
+          data-testid="auth-submit-button"
           className="flex w-full items-center justify-center gap-2 rounded-md bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
         >
           {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
