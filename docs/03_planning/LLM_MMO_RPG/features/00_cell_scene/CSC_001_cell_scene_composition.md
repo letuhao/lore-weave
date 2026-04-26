@@ -82,12 +82,13 @@ One aggregate owned by CSC_001 V1:
 pub struct CellSceneLayout {
     pub channel_id: ChannelId,                            // primary key (cell-tier only V1; mirrors PF_001 §3.1)
     pub skeleton_id: SkeletonId,                          // Layer 1 selected template
-    pub procedural_seed: u64,                             // Layer 2 input (deterministic per blake3 hash)
+    pub procedural_seed: u64,                             // Layer 2 input (deterministic per blake3 hash); see §14 cross-service for JSON string-serialization
     pub procedural_params: ProceduralParams,              // Layer 2 input (table_count, density, fireplace_side)
     pub fixture_positions: Vec<FixturePosition>,          // Layer 2 output; cached
-    pub zone_catalog_serialized: serde_json::Value,       // Layer 2 output zone catalog (HashMap<String, Vec<TileCoord>>)
+    pub zone_catalog: HashMap<String, Vec<TileCoord>>,    // Layer 2 output (Phase 3 S1.1 — was untyped serde_json::Value; now strongly-typed)
     pub entity_zone_assignments: Option<EntityZoneAssignmentMap>,  // Layer 3 output (None = use canonical fallback)
     pub layer3_source: Layer3Source,                      // CanonicalDefault | LlmGenerated{...}
+    pub prompt_template_version: u32,                     // Phase 3 S2.8 — cache invalidator on prompt schema upgrades; V1 = 1
     pub last_layout_change_fiction_time: FictionTime,
 }
 
@@ -97,6 +98,14 @@ pub struct ProceduralParams {
     pub table_count: u32,                                 // 2..=6 V1
     pub density: f32,                                     // 0.1..=1.0 V1 (drives counter_size + decoration intensity)
     pub fireplace_side: FireplaceSide,                    // east | west | north (interior wall placement)
+}
+
+// V1 defaults applied at first row creation (Phase 3 S2.7 — was undocumented).
+// Author can override via Forge:EditCellScene; per-PlaceType per-skeleton tuning V1+ (CSC-Q5).
+impl Default for ProceduralParams {
+    fn default() -> Self {
+        Self { table_count: 4, density: 0.6, fireplace_side: FireplaceSide::East }
+    }
 }
 
 pub enum FireplaceSide {
@@ -140,11 +149,13 @@ pub struct TileCoord {
 
 **Rules:**
 - One row per `channel_id` (cell-tier only V1; non-cell channels have no `cell_scene_layout`). PF_001 1:1 cell invariant inherited.
-- `skeleton_id` MUST resolve to a registered skeleton template OR fall back to `default_generic_room`. Unknown id → reject `csc.skeleton_not_found` at write; runtime read returns fallback.
-- `procedural_seed` is computed at row-creation time as `blake3(reality_id, channel_id, structural_state, fiction_time_bucket).truncate_to_u64()`. Authors may override seed via `Forge:EditCellScene.RerollSeed { new_seed }`.
-- `fixture_positions` + `zone_catalog_serialized` are computed by Layer 2 at row creation; cached. Recomputed only on (skeleton_id, procedural_seed, procedural_params) change.
-- `entity_zone_assignments`: None means engine uses canonical default at read-time (always succeeds; deterministic). Some(...) means LLM-generated assignment cached; invalidated when occupant set changes (entity entry/exit at cell).
+- `skeleton_id` MUST resolve to a registered skeleton template OR fall back to `default_generic_room`. Unknown id → engine logs `csc.skeleton_not_found` and uses fallback at runtime (NOT a user-facing reject; see §10.2 Phase 3 S3.3 framing tightening).
+- `procedural_seed` is computed at row-creation time as `blake3(b"csc-procedural-seed", reality_id, channel_id, structural_state, fiction_time_bucket).truncate_to_u64()`. Authors may override via `Forge:EditCellScene.RerollSeed { new_seed }`. Cross-service serialized as **string** (Phase 3 S1.5 — JS Number precision loss prevention; see §14).
+- `procedural_params`: defaults to `ProceduralParams::default()` at first row creation (Phase 3 S2.7); author override via Forge.
+- `fixture_positions` + `zone_catalog` are computed by Layer 2 at row creation; cached. Recomputed only on (skeleton_id, procedural_seed, procedural_params) change.
+- `entity_zone_assignments`: None means engine uses canonical default at read-time (always succeeds; deterministic). Some(...) means LLM-generated assignment cached; invalidated when occupant set changes (entity entry/exit at cell) OR `prompt_template_version` mismatches current.
 - `layer3_source`: tracks provenance for audit + cache invalidation.
+- `prompt_template_version`: V1 = 1; bumped on Layer 3 / Layer 4 prompt schema changes that may invalidate cached LLM outputs (Phase 3 S2.8). Cache miss on version mismatch triggers re-call.
 
 ---
 
@@ -193,16 +204,22 @@ fn select_skeleton(cell_id: ChannelId, place_type: PlaceType, manifest_overrides
         .filter(|t| t.place_type_compat.contains(&place_type))
         .collect();
     // 3. If no compatible templates, fall back to default_generic_room
+    //    (V1+ S3.4: when V1+ adds new PlaceTypes that no template claims compat for,
+    //    default_generic_room MUST be updated to include them; default_generic_room is
+    //    the universal fallback contract.)
     if compatible.is_empty() {
         return SkeletonId("default_generic_room".to_string());
     }
-    // 4. Pick deterministically by hash(cell_id) % compatible.len()
-    let idx = (hash_u64(cell_id.as_str()) % (compatible.len() as u64)) as usize;
+    // 4. Pick deterministically (Phase 3 S1.3 — explicit blake3 for replay-determinism)
+    let hash_input = format!("csc-skeleton-select:{}", cell_id.as_str());
+    let hash_bytes = blake3::hash(hash_input.as_bytes());
+    let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[0..8].try_into().unwrap());
+    let idx = (hash_u64 % (compatible.len() as u64)) as usize;
     compatible[idx].id.clone()
 }
 ```
 
-V1+ extensions tracked at CSC-D1 (per-PlaceType libraries) + CSC-D5 (author skeleton uploads via Forge V2).
+V1+ extensions tracked at CSC-D1 (per-PlaceType libraries) + CSC-D5 (author skeleton uploads via Forge V2). **V1+ PlaceType extension semantics (Phase 3 S3.4):** when EF-D1 adds new EntityId variants AND new PlaceType variants land, `default_generic_room.place_type_compat` MUST be updated to include the new variants in the same boundary review. Treat `default_generic_room` as the open-ended fallback that absorbs new PlaceTypes by default.
 
 ---
 
@@ -213,18 +230,22 @@ Engine code; no LLM. Deterministic given `(skeleton, procedural_seed, procedural
 ### 5.1 Algorithm
 
 ```rust
+use rand_chacha::ChaCha8Rng;       // Phase 3 S1.4 — explicit RNG for replay-determinism
+use rand::SeedableRng;
+
 fn run_layer_2(
     skeleton: &SkeletonTemplate,
     seed: u64,
     params: &ProceduralParams,
 ) -> Layer2Output {
     let mut grid = skeleton.tiles.clone();
-    let mut rng = SeededRng::from_seed(seed);
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);  // ChaCha8 — deterministic, NOT thread-local random
     let mut fixtures = Vec::new();
     let mut zones = resolve_zone_decls(&skeleton.zones_decl);  // decl → tile lists
 
     // 5.1.a Counter: place 3..=5 contiguous B tiles in counter zone
-    let counter_size = clamp(3, 5, (3.0 + params.density * 2.0).round() as u32);
+    // Phase 3 S1.2 — Rust idiomatic clamp: value.clamp(min, max)
+    let counter_size = ((3.0 + params.density * 2.0).round() as u32).clamp(3, 5);
     let counter_tiles = place_counter(&mut grid, &zones["counter"], counter_size, &mut rng);
     for t in &counter_tiles { fixtures.push(FixturePosition { kind: Counter, position: *t, size: 1, group_id: None }); }
     zones.insert("counter:on".into(), counter_tiles.clone());
@@ -278,9 +299,9 @@ fn run_layer_2(
 ### 5.2 Determinism guarantees
 
 - Same `(skeleton, seed, params)` → byte-identical Layer 2 output (replay-safe per EVT-A9)
-- `SeededRng` uses ChaCha8 or similar (NOT thread-local random)
-- Insertion order in Vec/HashMap preserved (sort outputs lexicographically before serialize for canonicalization if needed)
-- No floating-point arithmetic in critical path (use integer math; `f32` only for params.density which is converted to integer thresholds)
+- **RNG: `ChaCha8Rng` from `rand_chacha` crate** (Phase 3 S1.4 — explicit choice; NOT thread-local random; cross-implementation reproducible)
+- Insertion order in Vec preserved; `HashMap` iteration NOT used in critical path (any HashMap-derived output sorted by key before canonicalization)
+- No floating-point arithmetic in critical path (use integer math; `f32` only for `params.density` which is converted to integer thresholds via `((3.0 + density * 2.0).round() as u32).clamp(3, 5)` pattern)
 
 ### 5.3 Failure modes
 
@@ -370,11 +391,22 @@ Validators run on parsed JSON output (mirrors v4 demo validators):
 ```rust
 fn run_layer_3_with_retry(request: Layer3Request, max_attempts: u32) -> Layer3Output {
     let mut history: Vec<ChatMessage> = vec![system_message(), user_message(&request)];
+
+    // Phase 3 S2.2 — capture occupant snapshot at call start; verify unchanged at write
+    let occupant_snapshot_hash = hash_occupant_set(&request.entities_to_place);
+
     for attempt in 1..=max_attempts {
         let response = llm_call(&history)?;
         let parsed = parse_json(&response)?;
         let validators = run_layer3_validators(&parsed, &request);
         if validators.all_pass() {
+            // Phase 3 S2.2 — PC race check: re-fetch current occupant set; if changed mid-call, abort write
+            let current_hash = hash_current_occupants(&request.channel_id);
+            if current_hash != occupant_snapshot_hash {
+                log::info!("csc.layer3_occupant_set_changed: aborting write; will re-trigger on next entry");
+                // V1: abort + skip write; canonical fallback already in place from §15.1 lazy-create
+                return Layer3Output::AbortedRaceCondition;
+            }
             return Layer3Output::Success {
                 assignments: parsed.assignments,
                 source: Layer3Source::LlmGenerated { model: ..., attempts: attempt, generated_at: now() },
@@ -386,34 +418,114 @@ fn run_layer_3_with_retry(request: Layer3Request, max_attempts: u32) -> Layer3Ou
     }
     // All retries exhausted; fall back to canonical default
     Layer3Output::Fallback {
-        assignments: canonical_default_assignment(&request),
+        assignments: canonical_default_assignment(&request, &request.zone_catalog),
         source: Layer3Source::CanonicalDefault,
         last_error: Some("layer3_retry_exhausted".to_string()),
     }
 }
 ```
 
+**PC race condition policy V1 (Phase 3 S2.2):** Layer 3 LLM calls are async (typically 2-30s); occupants may change mid-call (PC leaves cell, another PC enters, NPC moves). Policy:
+- **Capture occupant snapshot** at LLM call start (`hash_occupant_set` over sorted entity_id list)
+- **At write commit**, re-fetch current occupant set; compare hash to snapshot
+- **If unchanged**: write LLM result to aggregate
+- **If changed**: abort + skip write (canonical fallback already populated by §15.1 lazy-create flow); log `csc.layer3_occupant_set_changed` (V1+ rule_id reservation; V1 logged only for ops observability); next cell entry re-triggers Layer 3 invocation against fresh occupants
+
+Trade-off: occasional re-LLM cost on race vs guaranteed consistency. Single-PC realities rarely race; multi-PC tavern scenarios may re-trigger frequently — V1+30d profiling decides if a different policy (last-write-wins, merge, etc.) is preferable.
+
 ### 6.5 Canonical default assignment (no LLM; fallback)
 
 ```rust
-fn canonical_default_assignment(request: &Layer3Request) -> HashMap<EntityId, String> {
+fn canonical_default_assignment(
+    request: &Layer3Request,
+    zone_catalog: &HashMap<String, Vec<TileCoord>>,
+) -> HashMap<EntityId, String> {
     let mut out = HashMap::new();
     for spec in &request.entities_to_place {
-        out.insert(spec.entity_id.clone(), spec.canonical_default_zone_hint.clone());
+        // Phase 3 S2.1 — empty-zone fallback chain
+        // If hinted zone is empty (Layer 2 produced 0 tiles for it), walk fallback list
+        // to find first non-empty zone matching entity's placement constraint.
+        let resolved_zone = resolve_with_fallback(
+            &spec.canonical_default_zone_hint,
+            zone_catalog,
+            &spec.placement_constraint,
+            &fallback_chain_for(&spec.entity_id, &spec.kind),
+        );
+        out.insert(spec.entity_id.clone(), resolved_zone);
     }
     out
 }
+
+fn fallback_chain_for(entity_id: &EntityId, kind: &EntityType) -> Vec<&'static str> {
+    // Per-entity fallback chain (priority list; first non-empty zone wins)
+    match (entity_id.id_str(), kind) {
+        // PC: door/threshold area → any walkable
+        (id, _) if id.starts_with("pc:") =>
+            vec!["south_entry:just_inside", "threshold", "door", "center_floor:open"],
+
+        // NPC tavern keeper: behind counter → near table → open floor
+        (id, _) if id.contains("lao_ngu") =>
+            vec!["counter:behind", "table_1:near", "center_floor:open"],
+
+        // NPC waitress: near table → open floor
+        (id, _) if id.contains("tieu_thuy") =>
+            vec!["table_1:near", "table_2:near", "center_floor:open"],
+
+        // NPC scholar: seated at far table → near far table → open floor
+        (id, _) if id.contains("du_si") =>
+            vec!["table_N:seated", "table_N:near", "table_1:seated", "center_floor:open"],
+
+        // Item tea_pot: on counter → on table → open floor (last resort)
+        (id, _) if id.contains("tea_pot") =>
+            vec!["counter:on", "table_1:on", "center_floor:open"],
+
+        // Item scroll: on far table → on counter → open floor
+        (id, _) if id.contains("scroll") =>
+            vec!["table_N:on", "counter:on", "table_1:on", "center_floor:open"],
+
+        // Generic NPC default
+        (_, EntityType::Npc) => vec!["center_floor:open", "south_entry:just_inside"],
+
+        // Generic item default
+        (_, EntityType::Item) => vec!["counter:on", "table_1:on", "center_floor:open"],
+
+        _ => vec!["center_floor:open"],
+    }
+}
+
+fn resolve_with_fallback(
+    primary: &str,
+    catalog: &HashMap<String, Vec<TileCoord>>,
+    constraint: &PlacementConstraint,
+    chain: &[&str],
+) -> String {
+    // Try primary first
+    if zone_has_valid_tile(primary, catalog, constraint) {
+        return primary.to_string();
+    }
+    // Walk fallback chain
+    for zone_name in chain {
+        if zone_has_valid_tile(zone_name, catalog, constraint) {
+            // Phase 3 S2.1 — log csc.zone_empty_fallback_used (defensive ops signal)
+            log::warn!("csc.zone_empty_fallback_used: primary={} fallback={}", primary, zone_name);
+            return zone_name.to_string();
+        }
+    }
+    // Last resort: any walkable/placeable tile in catalog
+    log::error!("csc.zone_empty_fallback_used: no zone in fallback chain has tiles; using catalog scan");
+    "center_floor:open".to_string()  // engine guarantees this zone always has at least 1 tile
+}
 ```
 
-Engine's default hint per entity:
-- pc → "south_entry:just_inside" (or first F tile near door)
-- npc tavern_keeper → "counter:behind"
-- npc waitress → "table_1:near"
-- npc scholar → "table_N:seated" (last table)
-- item tea_pot → "counter:on"
-- item scroll → "table_N:on" (where scholar sits)
+**Engine's default hint per entity** (V1 baseline; per-entity chain in `fallback_chain_for`):
+- pc → `south_entry:just_inside` (then door/threshold/center_floor as fallbacks)
+- npc tavern_keeper → `counter:behind` (then table_1:near/center_floor:open)
+- npc waitress → `table_1:near` (then table_2:near/center_floor:open)
+- npc scholar → `table_N:seated` for last-table N (then table_N:near/table_1:seated/center_floor:open)
+- item tea_pot → `counter:on` (then table_1:on/center_floor:open)
+- item scroll → `table_N:on` (then counter:on/table_1:on/center_floor:open)
 
-These defaults are always-walkable / always-placeable (engine guarantee). Canonical fallback = always succeeds.
+These defaults guarantee the canonical fallback NEVER fails — `center_floor:open` is the universal last-resort which Layer 2 invariantly populates with at least 1 tile (per §5.3 algorithm: even degenerate skeletons produce some F floor tile in the center zone).
 
 ---
 
@@ -459,7 +571,37 @@ Length guideline (NOT enforced): 2-3 sentences (V1); V1+ may add length controls
 ### 7.4 Cache strategy
 
 ```rust
-cache_key = blake3(channel_id, place_metadata.serialized, ambient.serialized, occupant_set_hash)
+// Phase 3 S3.1 — explicit canonical hash algorithms
+fn cache_key_layer_4(
+    channel_id: &ChannelId,
+    place_metadata: &PlaceMetadata,
+    ambient: &AmbientState,
+    occupants: &[OccupantSummary],
+    prompt_template_version: u32,        // Phase 3 S2.8 — invalidates cache on prompt schema change
+) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"csc-layer4-narration-cache");
+    hasher.update(channel_id.as_bytes());
+    // Canonicalize place_metadata + ambient via serde_json with sort_keys=true for stability
+    hasher.update(canonical_json_bytes(place_metadata).as_bytes());
+    hasher.update(canonical_json_bytes(ambient).as_bytes());
+    // Phase 3 S3.1 — occupant_set_hash: canonical sort by entity_id, then blake3
+    hasher.update(&occupant_set_hash(occupants));
+    hasher.update(&prompt_template_version.to_le_bytes());
+    hasher.finalize().into()
+}
+
+fn occupant_set_hash(occupants: &[OccupantSummary]) -> [u8; 32] {
+    // Sort by entity_id lexicographically (canonical order)
+    let mut sorted: Vec<&OccupantSummary> = occupants.iter().collect();
+    sorted.sort_by(|a, b| a.entity_id.as_str().cmp(b.entity_id.as_str()));
+    let mut hasher = blake3::Hasher::new();
+    for occ in sorted {
+        hasher.update(occ.entity_id.as_bytes());
+        hasher.update(canonical_json_bytes(occ).as_bytes());
+    }
+    hasher.finalize().into()
+}
 ```
 
 Cached value: `NarrationText` + `generated_at_fiction_time`.
@@ -468,8 +610,13 @@ Invalidation triggers:
 - Structural state change (PF_001 place.structural_state delta)
 - Occupant set change (entity entry/exit at cell)
 - Forge:EditCellScene.ForceLayer4Refresh
+- `prompt_template_version` bump (Phase 3 S2.8 — global invalidation on prompt schema upgrade)
 
-V1: cache stored in-memory at world-service (LRU eviction; not persisted aggregate). V1+ persistent cache aggregate `cell_scene_narration_cache` (CSC-D11 reservation).
+**V1 storage + replay-determinism caveat (Phase 3 S2.4):** cache stored in-memory at world-service (LRU eviction; not persisted aggregate). **Replay-determinism for Layer 4 is BEST-EFFORT V1** — across world-service restarts OR LRU eviction, cache loss triggers re-LLM call which may produce different prose at temperature > 0. Document V1 limitation:
+- Same session window → same cache key → same narration ✓
+- Cross-session OR cross-restart → cache miss → LLM re-call (different output if temp > 0) ✗
+
+V1+ persistent cache aggregate `cell_scene_narration_cache` (CSC-D11 reservation) closes this gap. V1 acceptable since Layer 4 narration is creative-flavor, not structural; subtle prose variation across sessions doesn't break gameplay.
 
 ---
 
@@ -486,9 +633,11 @@ Per EVT-A9 + CSC-A1 (architectural axiom: layered determinism):
 | L4 Narration | `(place_metadata, ambient, occupants)` | `text` cached per cache_key; replay reads cached value |
 
 **Replay semantics:**
-- Same reality + same fiction_time → same `cell_scene_layout` aggregate state (Layers 1+2 + cached Layers 3+4)
+- Same reality + same fiction_time → same `cell_scene_layout` aggregate state (Layers 1+2 + cached Layer 3 in aggregate; Layer 4 cached in memory)
 - Different replay session → same Layer 1+2 output (deterministic); Layer 3+4 may re-call LLM if cache lost (rare; treated as cache miss)
 - LLM model upgrades (different model id) invalidate cache (cache key includes model id)
+- **Layer 4 cross-session replay-determinism is BEST-EFFORT V1 (Phase 3 S2.4):** V1 in-memory LRU cache means world-service restart OR LRU eviction loses Layer 4 narration → re-LLM call may produce different prose at temperature > 0. Acceptable V1 since narration is creative flavor (not structural); persistent cache via CSC-D11 V1+ closes the gap. Layer 1+2 strict replay-determinism + Layer 3 aggregate-cached replay-determinism are NOT affected.
+- **Prompt template version (Phase 3 S2.8):** Layer 3 cache key + Layer 4 cache key both include `prompt_template_version: u32`. Bumped on Layer 3 / Layer 4 prompt schema changes that invalidate cached LLM outputs. V1 = 1; V1+ versions monotonic per I14 additive evolution.
 
 ---
 
@@ -526,21 +675,25 @@ pub struct RealityManifest {
 
 ### 10.2 `csc.*` RejectReason namespace V1
 
-| rule_id | Trigger | Vietnamese reject copy V1 | Soft-override eligible |
+**Phase 3 S3.3 framing tightened:** rule_ids in this namespace fall into 2 categories — (1) **engine-internal** rule_ids (logged for ops observability; never returned to user-facing reject path; engine handles via fallback), and (2) **write-time-validator** rule_ids (rejected at LLM Layer 3 commit; trigger retry loop). The "Soft-override eligible" column is replaced with "Visibility" column for clearer intent.
+
+| rule_id | Trigger | Vietnamese reject copy V1 | Visibility |
 |---|---|---|---|
-| `csc.skeleton_not_found` | `skeleton_id` not in SKELETON_REGISTRY (manifest override or runtime read) | "Mẫu khung cảnh không tồn tại." | Yes (UI falls back to default_generic_room; no user-facing error V1) |
-| `csc.invalid_zone_assignment` | Layer 3 LLM output zone_name not in catalog | "Phân vùng không hợp lệ trong gán LLM." | No (write-time validator; retry trigger) |
-| `csc.zone_overlap` | Two entities resolve to same TileCoord after zone resolution | "Hai đối tượng được gán cùng vị trí." | No (write-time validator; retry trigger) |
-| `csc.actor_on_non_walkable` | Layer 3 placement violates walkable invariant for actor entity | "Nhân vật được đặt trên ô không đi được." | No (write-time validator; retry trigger) |
-| `csc.item_on_non_placeable` | Layer 3 placement violates placeable invariant for item entity (item on W/P/N) | "Vật phẩm được đặt trên ô không cho phép." | No (write-time validator; retry trigger) |
-| `csc.entity_missing_from_assignment` | Layer 3 LLM output omits required entity_id | "Thiếu phân vùng cho đối tượng yêu cầu." | No (write-time validator; retry trigger) |
-| `csc.layer3_retry_exhausted` | All 3 LLM retry attempts failed; canonical fallback applied | "Tất cả lần thử LLM đều thất bại; dùng mặc định." | Yes (logged; canonical fallback applied; no user-facing error) |
-| `csc.placetype_no_skeleton_v1` | PlaceType has no V1 skeleton library (Wilderness/Cave/Marketplace/etc.) | "Loại nơi này chưa có thư viện khung cảnh V1." | Yes (logged; falls back to default_generic_room) |
+| `csc.skeleton_not_found` | `skeleton_id` not in SKELETON_REGISTRY (manifest override or runtime read) | "Mẫu khung cảnh không tồn tại." | **Engine-internal** (logged; UI falls back to default_generic_room; never returned to user) |
+| `csc.invalid_zone_assignment` | Layer 3 LLM output zone_name not in catalog | "Phân vùng không hợp lệ trong gán LLM." | **Write-time validator** (retry trigger; never user-facing) |
+| `csc.zone_overlap` | Two entities resolve to same TileCoord after zone resolution | "Hai đối tượng được gán cùng vị trí." | **Write-time validator** (retry trigger; never user-facing) |
+| `csc.actor_on_non_walkable` | Layer 3 placement violates walkable invariant for actor entity | "Nhân vật được đặt trên ô không đi được." | **Write-time validator** (retry trigger; never user-facing) |
+| `csc.item_on_non_placeable` | Layer 3 placement violates placeable invariant for item entity (item on W/P/N) | "Vật phẩm được đặt trên ô không cho phép." | **Write-time validator** (retry trigger; never user-facing) |
+| `csc.entity_missing_from_assignment` | Layer 3 LLM output omits required entity_id | "Thiếu phân vùng cho đối tượng yêu cầu." | **Write-time validator** (retry trigger; never user-facing) |
+| `csc.layer3_retry_exhausted` | All 3 LLM retry attempts failed; canonical fallback applied | "Tất cả lần thử LLM đều thất bại; dùng mặc định." | **Engine-internal** (logged; canonical fallback applied) |
+| `csc.placetype_no_skeleton_v1` | (Phase 3 S2.3 clarified: defensive ceiling) PlaceType has no compatible skeleton AND default_generic_room compat doesn't cover the requested PlaceType. **V1: should never fire** since default_generic_room.place_type_compat covers all non-Tavern V1 PlaceTypes per §4.1; rule kept as defensive ceiling for V1+ when default_generic_room compat may shrink. | "Loại nơi này chưa có thư viện khung cảnh V1." | **Engine-internal** (logged; falls back regardless) |
+| **`csc.zone_empty_fallback_used`** (Phase 3 S2.1 NEW) | Canonical default fallback chain triggered because primary hint zone is empty (Layer 2 produced 0 tiles for it); engine walks per-entity fallback chain to find non-empty alternative | "Phân vùng mặc định chuyển hướng do thiếu ô khả dụng." | **Engine-internal** (logged for ops observability; resolution still succeeds via fallback chain) |
 
 **V1+ rule_id reservations:**
 - `csc.skeleton_invalid` — V1+ author-uploaded skeleton fails template validators (uploaded via Forge V2)
 - `csc.procedural_density_too_high` — V1+ ceiling check for fixture density
 - `csc.narration_unsafe_content` — V1+ content moderation gate on Layer 4 output
+- **`csc.layer3_occupant_set_changed`** (Phase 3 S2.2 NEW) — V1 logged-only race-detection signal; V1+ may promote to user-facing reject if author wants to surface "scene refresh deferred due to mid-call PC movement"
 
 ---
 
@@ -564,7 +717,23 @@ CSC_001 declares no new top-level capability claim. Reuses existing claims:
 - `produce: ["AggregateMutation", "AdminAction"]` — required for cell_scene_layout writes + Forge admin
 - Per-aggregate write capability under `capabilities[]` per DP-K9 — needs `cell_scene_layout:write`
 
-**Service binding:** world-service is the canonical writer for `cell_scene_layout`. LLM invocations (Layer 3+4) routed through provider-registry-service per CLAUDE.md provider-gateway invariant.
+**Provider-registry routing (Phase 3 S3.2 — JWT contract specified):** Layer 3+4 LLM invocations routed through provider-registry-service per CLAUDE.md provider-gateway invariant. JWT claims required for LLM call routing:
+
+```json
+{
+  "produce": [..., "LlmCall"],            // V1+ added; world-service must declare LlmCall
+  "llm_call_kind": "csc.layer3_zones",     // OR "csc.layer4_narration"
+  "llm_call_budget": {                     // V1+30d cost gating per CSC-D3
+    "tokens_max": 8000,
+    "cost_max_usd": 0.05,
+    "model_allowlist": ["qwen/qwen3.6-35b-a3b", "claude-3-5-haiku", ...]
+  }
+}
+```
+
+V1: `LlmCall` claim + `llm_call_kind` discriminator only; budget gating reserved V1+30d (CSC-D3). Provider-registry-service validates the call, routes to user's BYOK provider per their registered config, returns response. Direct provider SDK calls from world-service are forbidden per CLAUDE.md.
+
+**Service binding:** world-service is the canonical writer for `cell_scene_layout`.
 
 ---
 
@@ -589,17 +758,26 @@ ChannelId is the natural identifier; cross-service serialization reuses channel-
 {
   "channel_id": "cell:yen_vu_lau",
   "skeleton_id": "tavern_compact",
-  "procedural_seed": 12345678901234567890,
+  "procedural_seed": "12345678901234567890",
+  "_seed_serialization_note": "u64 procedural_seed serialized as STRING at JSON boundary per Phase 3 S1.5 — JS Number.MAX_SAFE_INTEGER ~9e15 < u64 max ~1.8e19 → integer JSON would lose precision; backend deserializes from string back to u64. Same convention applies anywhere u64 crosses to JS frontend.",
   "fixture_positions": [
     {"kind": "Counter", "position": {"x": 1, "y": 1}, "size": 1, "group_id": null},
     {"kind": "Table", "position": {"x": 4, "y": 4}, "size": 1, "group_id": 0},
     ...
   ],
-  "entity_zone_assignments": {
-    "assignments": {"pc:ly_minh": "south_entry:just_inside", "npc:lao_ngu": "counter:behind", ...},
-    "generated_at_fiction_time": {...}
+  "zone_catalog": {
+    "counter:on": [{"x": 1, "y": 1}, {"x": 2, "y": 1}, ...],
+    "counter:behind": [{"x": 1, "y": 2}, ...],
+    "table_1:seated": [{"x": 3, "y": 4}, ...],
+    "...": "..."
   },
-  "layer3_source": {"LlmGenerated": {"model": "qwen/qwen3.6-35b-a3b", "attempts": 1, ...}}
+  "entity_zone_assignments": {
+    "assignments": {"pc:ly_minh": "south_entry:just_inside", "npc:lao_ngu": "counter:behind", "...": "..."},
+    "generated_at_fiction_time": {"...": "..."}
+  },
+  "layer3_source": {"LlmGenerated": {"model": "qwen/qwen3.6-35b-a3b", "attempts": 1, "...": "..."}},
+  "prompt_template_version": 1,
+  "last_layout_change_fiction_time": {"...": "..."}
 }
 ```
 
@@ -611,20 +789,28 @@ Causality token chain: `cell_scene_layout` mutations include CausalityToken refe
 
 ### 15.1 First PC entry to cell (lazy compute; canonical Layer 3 default)
 
+**Phase 3 S2.6 — explicit ordering: layout creation tied to PC entry, NOT subscribe.** Subscribe is read-only per DP convention; world-service `ensure_cell_scene_layout(cell_id)` RPC fires during PL_001 §13 travel sequence (BEFORE MemberJoined emit), guaranteeing layout exists by the time frontend subscribes.
+
 ```
 PC issues /travel destination=cell:yen_vu_lau (PL_002 Grammar)
   ↓ EVT-T1 Submitted PCTurn { kind: Travel } commits per PL_001 §13
-  ↓ entity_binding updated per EF_001 §13
+  ↓ PL_001 §13 step ④: entity_binding updated per EF_001 §13
+  ↓ PL_001 §13 step ⑤ (NEW per Phase 3 S2.6): ensure_cell_scene_layout(cell:yen_vu_lau)
+       → world-service checks if cell_scene_layout row exists for channel_id
+       → if NOT exists, lazy-create:
+         L1: select_skeleton(cell:yen_vu_lau, Tavern, manifest_overrides) → "tavern_compact"
+         L2: run_layer_2(tavern_compact, seed=blake3(...), ProceduralParams::default()) → grid + fixtures + zones
+         L3 (canonical default): canonical_default_assignment(zone_catalog, occupants) → assignments
+         L4: skipped (lazy; on-demand only V1)
+       → t2_write cell_scene_layout { skeleton_id, seed, params, fixtures, zone_catalog, entity_zone_assignments=Some(canonical), layer3_source=CanonicalDefault, prompt_template_version=1 }
+       → emit EVT-T4 System SceneLayoutBorn { channel_id, skeleton_id, procedural_seed }
+  ↓ PL_001 §13 step ⑥: DP emits MemberJoined for cell channel
   ↓ Frontend subscribes cell_scene_layout WHERE channel_id=cell:yen_vu_lau
-  ↓ no row exists yet (lazy); world-service creates:
-    L1: select_skeleton(cell:yen_vu_lau, Tavern, manifest_overrides) → "tavern_compact"
-    L2: run_layer_2(tavern_compact, seed=blake3(...), default_params) → grid + fixtures + zones
-    L3 (canonical default): canonical_default_assignment(zone_catalog, occupants) → assignments
-    L4: skipped (lazy; on-demand only V1)
-  ↓ t2_write cell_scene_layout { skeleton_id, seed, fixtures, zone_catalog, entity_zone_assignments=Some(canonical), layer3_source=CanonicalDefault }
-  ↓ emit EVT-T4 SceneLayoutBorn
+  ↓ row already exists (created in step ⑤); subscribe responds with full data
   ↓ Frontend renders scene with canonical entity placement
 ```
+
+This eager-create-on-PC-entry pattern eliminates the subscribe-trigger ambiguity from prior draft. See §15.6 below for the corresponding lazy-cell-flow update at PL_001b §16.3 (Phase 3 S2.5).
 
 ### 15.2 LLM-augmented Layer 3 (after canonical default)
 
@@ -692,7 +878,7 @@ Reality clone: r_tien_nghich_001 → r_tien_nghich_002 (snapshot fork per MV12)
 
 2. **AC-CSC-2 — Layer 2 deterministic:** running `run_layer_2(skeleton=tavern_compact, seed=12345, params=defaults)` twice produces byte-identical `(grid, fixtures, zone_catalog)`. Tests §5.2 + §8 replay invariant.
 
-3. **AC-CSC-3 — Canonical Layer 3 default always succeeds:** for any (skeleton, fixtures) pair, `canonical_default_assignment(zone_catalog, REQUIRED_ENTITIES)` returns assignments where every entity is on a tile passing its `placement_constraint` (Walkable for actors / Placeable for items). No overlap. Tests §6.5.
+3. **AC-CSC-3 — Canonical Layer 3 default always succeeds (incl. degenerate empty-zone case per Phase 3 S2.1):** for any (skeleton, fixtures) pair INCLUDING degenerate cases where Layer 2 produces empty `counter:on` / `table_X:on` zones (e.g., counter zone too small in skeleton design), `canonical_default_assignment(request, zone_catalog)` walks the per-entity fallback chain (§6.5 `fallback_chain_for`) and returns assignments where every entity resolves to a tile passing its `placement_constraint` (Walkable for actors / Placeable for items). No overlap. **Test variants:** (a) normal Tavern with all zones populated → primary hints used; (b) degenerate skeleton with counter_zone_too_small → tea_pot falls through to table_1:on; (c) extreme degenerate where ALL fixture zones empty → all entities resolve to center_floor:open (last-resort guarantee). Tests §6.5 + Phase 3 S2.1 fallback chain.
 
 4. **AC-CSC-4 — Layer 3 LLM success path:** LLM (Qwen 3.6 35B-A3B per v4 demo evidence) returns valid JSON in attempt 1; all 4 validators pass; assignments commit to aggregate. Tests §6.1-§6.3 + §6.4 happy path.
 
@@ -700,13 +886,15 @@ Reality clone: r_tien_nghich_001 → r_tien_nghich_002 (snapshot fork per MV12)
 
 6. **AC-CSC-6 — Layer 3 retry exhaustion → fallback:** LLM 3 retries all fail (e.g., persistent JSON parse failure); engine applies canonical default; logs `csc.layer3_retry_exhausted`; cell renders with canonical placement. Tests §9 fallback chain.
 
-7. **AC-CSC-7 — Layer 4 narration cache:** first Layer 4 LLM call returns text; subsequent reads with same `(cell, scene_state, occupants)` return cached value (no LLM call). Cache invalidated on occupant change → next read triggers re-LLM. Tests §7.4.
+7. **AC-CSC-7 — Layer 4 narration cache + occupant invalidation (Phase 3 S3.5 expanded):** **(a)** first Layer 4 LLM call returns text; subsequent reads with same `(cell, scene_state, occupants, prompt_template_version)` return cached value (no LLM call) — observable via call counter at provider-registry-service. **(b)** entity entry/exit at cell → occupant_set_hash changes → cache miss → next read triggers re-LLM. **(c)** prompt_template_version bump (V1+ schema upgrade) → all caches invalidated globally. **(d)** in-memory LRU eviction → cache miss → re-LLM (acceptable per §7.4 V1 limitation). Tests §7.4 cache_key_layer_4 + Phase 3 S2.4 + S2.8.
 
 8. **AC-CSC-8 — Replay-determinism per EVT-A9:** same `(reality_id, cell_id, structural_state, fiction_time_bucket)` inputs produce identical Layer 2 output across separate sessions. Replay reads cached Layer 3 + Layer 4 verbatim. Tests §8.
 
 9. **AC-CSC-9 — Forge:EditCellScene atomic transaction:** Forge:EditCellScene executes 3 writes in a single Postgres transaction: (a) update cell_scene_layout row, (b) emit EVT-T8 Administrative, (c) append to forge_audit_log. Mid-transaction failure → all 3 rollback. Tests §15.4 + WA_003 integration (mirror EF/PF/MAP atomicity ACs).
 
-10. **AC-CSC-10 — Non-Tavern PlaceType renders via default_generic_room:** PlaceType `Wilderness` cell attempts to load → engine selects `default_generic_room` template (no Tavern-compatible templates fit Wilderness V1). Cell renders with door + open floor + canonical entity placements. Logs `csc.placetype_no_skeleton_v1`. Tests §4.3 + §6 V1 PlaceType coverage limitation + §9.
+10. **AC-CSC-10 — Non-Tavern PlaceType renders via default_generic_room:** PlaceType `Wilderness` cell attempts to load → engine selects `default_generic_room` template (no Tavern-compatible templates fit Wilderness V1; default_generic_room.place_type_compat covers all non-Tavern V1 PlaceTypes per Phase 3 S3.4). Cell renders with door + open floor + canonical entity placements. **Phase 3 S2.3:** `csc.placetype_no_skeleton_v1` rule does NOT fire here (default_generic_room compat covers Wilderness); rule remains for defensive ceiling V1+. Tests §4.3 + §3.4 V1+ PlaceType extension semantics + §9.
+
+11. **AC-CSC-11 — PC race condition during async Layer 3 call (Phase 3 S2.2 — NEW):** PC enters cell → ensure_cell_scene_layout creates row with canonical defaults; Layer 3 LLM call invoked async with occupant_snapshot_hash captured. **(a)** Mid-LLM-call, PC `/travel` to different cell → entity_binding updated; original cell occupant set hash changes. **(b)** LLM completes, world-service compares current occupant_set_hash to snapshot → mismatch detected → write aborted, log `csc.layer3_occupant_set_changed` (V1 logged-only). **(c)** Original cell renders with canonical default Layer 3 (from initial lazy-create). **(d)** When some other PC re-enters original cell, Layer 3 re-invoked with fresh occupants. Tests §6.4 race policy + Phase 3 S2.2.
 
 ---
 
@@ -763,18 +951,18 @@ Reality clone: r_tien_nghich_001 → r_tien_nghich_002 (snapshot fork per MV12)
 - [x] Replay-determinism §8: layered seed + cache key strategy
 - [x] Failure modes §9: 4 layers × bounded fallback chains; cell scene always renders
 - [x] RealityManifest extension `scene_skeleton_overrides` (optional V1; per-cell override)
-- [x] Reference safety policy: 8 V1 rule_ids in `csc.*` namespace + 3 V1+ reservations
+- [x] Reference safety policy: **9 V1 rule_ids** in `csc.*` namespace (Phase 3 cleanup added `zone_empty_fallback_used` per S2.1) + 4 V1+ reservations (added `layer3_occupant_set_changed` per S2.2)
 - [x] Event-model mapping: EVT-T4 SceneLayoutBorn + EVT-T3 aggregate_type=cell_scene_layout + EVT-T8 Forge:EditCellScene; no new EVT-T*
 - [x] DP primitives: existing surface only (no new DP-K*)
 - [x] Capability JWT: existing claims (no new top-level)
 - [x] Subscribe pattern: 4 subscribers V1
 - [x] Cross-service handoff: ChannelId JSON shape
 - [x] 5 representative sequences (lazy first entry / LLM-augmented Layer 3 / Layer 4 on demand / Forge edit / replay-determinism)
-- [x] 10 V1-testable acceptance scenarios (AC-CSC-1..10)
+- [x] **11 V1-testable acceptance scenarios** (AC-CSC-1..11; Phase 3 cleanup added AC-CSC-11 for PC race condition; AC-CSC-3 + AC-CSC-7 expanded with multi-variant tests for empty-zone fallback + cache invalidation)
 - [x] 13 deferrals (CSC-D1..D13) with target phases
 - [x] Cross-references to all 14 affected features + foundation docs
 - [x] v3→v4 demo evidence cited as design grounding (token economy, architectural pivot rationale)
-- [ ] Phase 3 review cleanup pending
+- [x] Phase 3 review cleanup applied 2026-04-26 (Severity 1+2+3 — 13 fixes — typed zone_catalog · clamp arg order · blake3 explicit · ChaCha8Rng explicit · u64 JSON string-serialize · empty-zone fallback chain + new csc.zone_empty_fallback_used · PC race condition policy + csc.layer3_occupant_set_changed reservation · placetype_no_skeleton_v1 defensive clarification · Layer 4 best-effort replay-determinism · PL_001b §16.3 lazy cell_scene_layout creation · ensure_cell_scene_layout RPC ordering · ProceduralParams V1 defaults · prompt_template_version cache key · occupant_set_hash canonical algorithm · provider-registry JWT contract · RejectReason visibility framing · V1+ PlaceType extension fallback · 3 AC additions/expansions)
 - [ ] CANDIDATE-LOCK pending closure pass + downstream updates
 
 ---

@@ -10,7 +10,7 @@
 - **Claimed at:** —
 - **Expected work:** —
 - **Expires at:** —
-- _Last released:_ 2026-04-26 by main session (CSC_001 Cell Scene Composition DRAFT — 4-layer architecture closing V1 foundation tier completeness) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
+- _Last released:_ 2026-04-26 by main session (CSC_001 Phase 3 review cleanup S1+S2+S3 — 13 fixes incl. lazy-cell creation bug fix S2.5 + 1 new V1 rule_id) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

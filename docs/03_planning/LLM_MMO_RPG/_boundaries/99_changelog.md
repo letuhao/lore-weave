@@ -6,6 +6,38 @@
 
 ---
 
+## 2026-04-26 — CSC_001 Phase 3 review cleanup (Severity 1+2+3) + lazy-cell fix S2.5 + 1 new V1 rule_id
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — CSC_001 Phase 3 cleanup post DRAFT commit 23b03d9); commit (this turn) `[boundaries-lock-claim+release]`
+- **Files modified within `_boundaries/`:**
+  - `02_extension_contracts.md` §1.4 RejectReason namespace: `csc.*` rule-id list expanded 8 V1 → **9 V1**. Added 2026-04-26 Phase 3:
+    - `csc.zone_empty_fallback_used` (Phase 3 S2.1 — engine-internal log signal when canonical fallback chain triggers because primary hint zone is empty)
+  - V1+ reservation also added: `csc.layer3_occupant_set_changed` (Phase 3 S2.2 — V1 logged-only race-detection signal; V1+ may promote to user-facing reject)
+  - No `01_feature_ownership_matrix.md` changes (rule_ids documented in extension contracts only; aggregate ownership unchanged).
+- **Files modified outside `_boundaries/`** (recorded for cleanup auditability):
+  - `features/00_cell_scene/CSC_001_cell_scene_composition.md`:
+    - **§3.1 (S1.1 / S1.5 / S2.7 / S2.8):** zone_catalog typed (was untyped `serde_json::Value`; now `HashMap<String, Vec<TileCoord>>`); procedural_seed JSON serialization documented as string (JS precision); ProceduralParams V1 defaults documented (`{ table_count: 4, density: 0.6, fireplace_side: East }` with `Default` impl); prompt_template_version field added for cache invalidation.
+    - **§4.3 (S1.3 / S3.4):** explicit blake3 hash for skeleton selection (was `hash_u64`); V1+ PlaceType extension fallback semantics documented.
+    - **§5.1 + §5.2 (S1.2 / S1.4):** Rust idiomatic clamp (`value.clamp(min, max)`); explicit `ChaCha8Rng::seed_from_u64` import for replay-determinism (was undefined `SeededRng`).
+    - **§6.4 (S2.2):** PC race condition policy — capture occupant_snapshot_hash at LLM call start; verify unchanged at write commit; abort + log `csc.layer3_occupant_set_changed` if changed; canonical fallback already in place from §15.1 lazy-create.
+    - **§6.5 (S2.1):** empty-zone fallback chain via `fallback_chain_for(entity_id, kind)` per-entity priority list (e.g., counter:on → table_1:on → center_floor:open). New rule_id `csc.zone_empty_fallback_used` for ops observability. `center_floor:open` is universal last-resort guarantee (Layer 2 invariant always populates ≥ 1 tile).
+    - **§7.4 (S3.1 / S2.4 / S2.8):** explicit `cache_key_layer_4` algorithm with blake3 + canonical_json_bytes + occupant_set_hash via sorted-by-entity_id + prompt_template_version; Layer 4 cross-session replay-determinism documented as BEST-EFFORT V1 (in-memory LRU; persistent cache via CSC-D11 V1+).
+    - **§8 (S2.4 / S2.8):** replay-determinism table updated — Layer 4 best-effort V1 caveat; prompt_template_version inclusion in both Layer 3 + Layer 4 cache keys.
+    - **§12 (S3.2):** provider-registry JWT contract specified — `produce: ["LlmCall"]` + `llm_call_kind: "csc.layer3_zones" | "csc.layer4_narration"` + V1+ `llm_call_budget` (CSC-D3 dependency).
+    - **§14 (S1.5):** cross-service handoff JSON example — procedural_seed as STRING with explicit note about JS Number.MAX_SAFE_INTEGER precision constraint.
+    - **§15.1 (S2.6):** sequence ordering fix — `ensure_cell_scene_layout(cell_id)` RPC fires during PL_001 §13 step ⑤ (BEFORE MemberJoined), guaranteeing layout exists by subscribe time. Eliminates subscribe-trigger ambiguity.
+    - **§16 (S3.5):** AC tightening — AC-CSC-3 expanded with 3 variants (normal / counter-too-small / extreme-degenerate); AC-CSC-7 expanded with 4 sub-tests (cache hit / occupant invalidation / prompt_version invalidation / LRU eviction); AC-CSC-10 clarified per S2.3; **new AC-CSC-11** for PC race condition coverage.
+    - **§10.2 (S3.3 / S2.3):** RejectReason table reframed — "Soft-override eligible" column → "Visibility" column (engine-internal vs write-time-validator categories); placetype_no_skeleton_v1 explicitly clarified as defensive ceiling (V1 should never fire). Added `csc.zone_empty_fallback_used` row.
+    - **§17 readiness checklist:** Phase 3 cleanup line ticked with full summary; rule_id count updated 8 → 9 V1; AC count updated 10 → 11.
+  - `features/04_play_loop/PL_001b_continuum_lifecycle.md` §16.3 lazy cell creation: **CRITICAL FIX (Phase 3 S2.5)** — added `ensure_cell_scene_layout(...)` callee + write cell_scene_layout row + emit EVT-T4 SceneLayoutBorn alongside the existing place_row + map_layout_row creations. Same pattern as MAP_001 Phase 3 S2.6 fix. Prior to this commit, lazy-cells via PC `/travel` to undeclared cells would create channel + place + map_layout but NOT cell_scene_layout → next frontend cell scene render → invariant violation.
+- **Reason:** CSC_001 Phase 3 adversarial review (mirror EF/PF/MAP cleanup pattern post-DRAFT) caught 13 defects across 3 severity tiers. User approved Option A (apply all). Severity 1 = Rust correctness + structural defects (5 fixes); Severity 2 = design gaps (8 fixes incl. real lazy-cell map_layout creation bug); Severity 3 = clarifications + cross-feature consistency (5 fixes consolidated within other groupings).
+- **Most architecturally significant:** S2.1 (empty-zone fallback chain — closes correctness hole in canonical default; AC-CSC-3 invariant now provable in degenerate cases) + S2.5 (lazy-cell `cell_scene_layout` creation — real runtime bug, mirrors MAP_001 Phase 3 S2.6) + S2.6 (subscribe-trigger ambiguity → eager-create-on-PC-entry pattern).
+- **No `03_validator_pipeline_slots.md` changes** — EVT-V_cell_scene slot still tracked as CSC-Q2 watchpoint (joins EF-Q3 + PF-Q1 + MAP-Q1 in single alignment review).
+- **Drift watchpoints unchanged** (14 active; Phase 3 cleanup resolves under-specified items inline rather than adding watchpoints).
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — CSC_001 Cell Scene Composition feature registered (4-layer architecture; closes V1 foundation tier)
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — CSC_001 Cell Scene Composition DRAFT, 4-layer architecture validated by v3→v4 demo pivot evidence per user direction "design now"); commit (this turn) `[boundaries-lock-claim+release]`

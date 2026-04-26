@@ -439,6 +439,31 @@ on /travel to "tương_dương":
     write map_layout row for the new cell
     emit EVT-T4 LayoutBorn { channel_id, tier: Cell, has_tier_metadata: false }
 
+    // CSC_001 invariant: every cell-tier channel must also have a cell_scene_layout row
+    // (added 2026-04-26 CSC_001 Phase 3 S2.5; same pattern as MAP_001 Phase 3 S2.6)
+    cell_scene_layout_row = ensure_cell_scene_layout(
+                              channel_id   = cell.id,
+                              place_type   = place_row.place_type,
+                              reality_id   = ctx.reality_id,
+                              fiction_time = now,
+                              manifest_overrides = ctx.manifest.scene_skeleton_overrides,
+                            )
+                            // Computed defaults V1 (per CSC_001 §3.1 + §4.3 + §5):
+                            //   skeleton_id:               select_skeleton(cell.id, place_row.place_type, manifest_overrides)
+                            //                              → "tavern_compact" for Tavern; "default_generic_room" for non-Tavern
+                            //   procedural_seed:           blake3(reality_id, cell.id, place_row.structural_state, fiction_time_bucket).truncate_to_u64()
+                            //   procedural_params:         ProceduralParams::default() { table_count: 4, density: 0.6, fireplace_side: East }
+                            //   fixture_positions:         run_layer_2(skeleton, seed, params) — Counter/Tables/Chairs/Fireplace/Window
+                            //   zone_catalog:              run_layer_2 zone_catalog output
+                            //   entity_zone_assignments:   Some(canonical_default_assignment(...)) — engine fallback (no LLM at lazy-cell time)
+                            //   layer3_source:             CanonicalDefault
+                            //   prompt_template_version:   1
+                            //
+                            // Layer 3 LLM call deferred to first PC turn after entry (V1: lazy
+                            // optional enhancement; canonical defaults always rendered first)
+    write cell_scene_layout row for the new cell
+    emit EVT-T4 SceneLayoutBorn { channel_id, skeleton_id, procedural_seed }
+
   move_session_to_channel(cell)
 ```
 
