@@ -238,3 +238,9 @@ infra/test-data/
 .workflow-state.json
 
 tests/test_data/
+
+chat-history/
+
+.claude/scheduled_tasks.lock
+
+chat.txt
