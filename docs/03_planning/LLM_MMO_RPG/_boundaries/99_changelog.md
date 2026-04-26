@@ -6,6 +6,47 @@
 
 ---
 
+## 2026-04-26 — Foundation tier 4/4 milestone: MAP_001 + CSC_001 closure passes → CANDIDATE-LOCK
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — combined closure pass for MAP_001 + CSC_001 to complete foundation tier 4/4 CANDIDATE-LOCK milestone); commit (this turn) `[boundaries-lock-claim+release]`
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - `map_layout` row: status DRAFT → **CANDIDATE-LOCK 2026-04-26**; AC count updated 10 → 11
+    - `cell_scene_layout` row: status DRAFT → **CANDIDATE-LOCK 2026-04-26**; AC count noted 11
+    - `EVT-T4 LayoutBorn` (MAP_001) row: status note CANDIDATE-LOCK 2026-04-26
+    - `EVT-T8 Forge:EditMapLayout` (MAP_001) row: status note CANDIDATE-LOCK 2026-04-26
+    - `EVT-T4 SceneLayoutBorn` (CSC_001) row: status note CANDIDATE-LOCK 2026-04-26 + Phase 3 S2.6 ensure_cell_scene_layout RPC pattern noted
+    - `EVT-T8 Forge:EditCellScene` (CSC_001) row: status note CANDIDATE-LOCK 2026-04-26
+- **No `02_extension_contracts.md` changes** — namespaces stable post Phase 3 (map.* 13 V1; csc.* 9 V1; both unchanged at closure pass).
+- **Files modified outside `_boundaries/`** (recorded for closure-pass auditability):
+  - `features/00_map/MAP_001_map_foundation.md`:
+    - Header status DRAFT → **CANDIDATE-LOCK 2026-04-26**
+    - §15 acceptance criteria: AC-MAP-7 expanded (covers both `connection_distance_invalid` + new `connection_duration_invalid` rule_ids); AC-MAP-9 expanded (covers V1 asset None + new defensive `asset_pipeline_not_active_v1` rule); new **AC-MAP-11** added for `tier_field_mismatch` coverage (mirror PF entity_type_mismatch pattern). AC count 10 → 11.
+    - §17 readiness checklist: closure-pass walk-through line added; CANDIDATE-LOCK box ticked
+  - `features/00_map/_index.md`: Active cleared, folder closure status → **CLOSED for V1 design 2026-04-26**, MAP_001 row updated with full feature description reflecting Phase 3 + closure-pass state (13 V1 rule_ids, 11 ACs, 16 deferrals)
+  - `features/00_cell_scene/CSC_001_cell_scene_composition.md`:
+    - Header status DRAFT → **CANDIDATE-LOCK 2026-04-26**
+    - §17 readiness checklist: closure-pass walk-through line added (0 rule_id mismatches at closure — Phase 3 cleanup proactively aligned ACs to new rule_ids); CANDIDATE-LOCK box ticked
+    - **No AC tightening at closure** — Phase 3 cleanup already expanded AC-CSC-3 + AC-CSC-7 + added AC-CSC-11 with new rule_id coverage. Closure pass found no mismatches (cleaner trajectory than EF_001 closure which discovered 3; mirrors PF_001 closure which found 0).
+  - `features/00_cell_scene/_index.md`: Active cleared, folder closure status → **CLOSED for V1 design 2026-04-26**, CSC_001 row updated with full feature description (9 V1 rule_ids, 11 ACs, 13 deferrals)
+- **Reason:** Combined closure pass per user direction (C — both passes). MAP_001 closure walked AC-MAP-1..10 against §1.4 namespace (13 V1 post Phase 3); found 3 ACs needed expansion to cover Phase 3 added rule_ids (`connection_duration_invalid` from S1.2; `asset_pipeline_not_active_v1` from S1.3; `tier_field_mismatch` from S1.1 — covered via new AC-MAP-11). CSC_001 closure walked AC-CSC-1..11 against §1.4 namespace (9 V1 post Phase 3); found **0 rule_id mismatches** because Phase 3 cleanup proactively aligned ACs (AC-CSC-3 already covered `zone_empty_fallback_used`; AC-CSC-11 already covered `layer3_occupant_set_changed` V1+ reservation). MAP closure-pass mirrored EF_001 closure pattern (3 mismatches found); CSC closure-pass mirrored PF_001 closure pattern (0 mismatches; AC tightening only).
+- **Foundation tier 4/4 CANDIDATE-LOCK milestone achieved:**
+
+  | Foundation | Status | Aggregate | AC count | rule_ids V1 |
+  |---|---|---|---|---|
+  | EF_001 Entity Foundation | CANDIDATE-LOCK | entity_binding | 10 | 10 |
+  | PF_001 Place Foundation | CANDIDATE-LOCK | place | 10 | 12 |
+  | MAP_001 Map Foundation | **CANDIDATE-LOCK** | map_layout | 11 | 13 |
+  | CSC_001 Cell Scene Composition | **CANDIDATE-LOCK** | cell_scene_layout | 11 | 9 |
+
+  Coverage: WHO (EF) + WHERE-semantic (PF) + WHERE-visual-graph (MAP) + WHAT-inside-cell (CSC). 4 foundations compose cleanly without overlap. PCS_001 (when designed) builds on complete foundation tier; spawn flow per CSC_001 §15.1 ensure_cell_scene_layout pattern.
+
+- **Total at CANDIDATE-LOCK after this commit cycle:** 17 features (15 prior + MAP + CSC promotions). Foundation tier 4/4 closed; domain folders prior closed (WA: 5 / NPC: 2 / PLT: 3); PL folder open (PL_005 series + PL_006 DRAFT).
+- **Drift watchpoints:** 14 active (unchanged; closure-pass found no new drift).
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — CSC_001 Phase 3 review cleanup (Severity 1+2+3) + lazy-cell fix S2.5 + 1 new V1 rule_id
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — CSC_001 Phase 3 cleanup post DRAFT commit 23b03d9); commit (this turn) `[boundaries-lock-claim+release]`
