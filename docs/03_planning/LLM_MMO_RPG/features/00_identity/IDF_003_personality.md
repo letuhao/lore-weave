@@ -385,4 +385,11 @@ DRAFT promotion registers:
 - [x] PL_005b speaker_voice orphan ref RESOLVED
 - [x] PL_005c INT-INT-D5 per-personality opinion modifier RESOLVED
 
-**Status transition:** DRAFT 2026-04-26 → CANDIDATE-LOCK after Phase 3 + closure pass → LOCK after AC-PRS-1..10 pass + V1+ scenarios.
+**Phase 3 cleanup applied 2026-04-26 (IDF_003 commit 8/15):**
+- S1.1 §2 PersonalityArchetypeId typed newtype clarification
+- S1.2 §3.1 Synthetic actor exclusion confirmed (PRS-Q11 LOCKED)
+- S2.1 §10 Cross-feature opinion drift formula explicit (final = base + agent_mod[recipient] + recipient_mod[agent])
+- S2.2 §15.4 LOCK criterion split
+- S3.1 §17 PRS-D-NEW deferral for context-aware voice register modifier system
+
+**Status transition:** DRAFT 2026-04-26 (Phase 3 applied) → **CANDIDATE-LOCK** in next commit (9/15) → LOCK after AC-PRS-1..10 pass.

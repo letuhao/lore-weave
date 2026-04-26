@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-26 — IDF folder 8/15: IDF_003 Phase 3 cleanup
+
+5 Phase 3 fixes (PersonalityArchetypeId typed newtype + Synthetic exclusion confirmed + opinion drift formula explicit + §15.4 LOCK criterion split + PRS-D-NEW deferral). No boundary changes.
+
+---
+
 ## 2026-04-26 — IDF folder 7/15: IDF_003 Personality Foundation DRAFT + boundary register
 
 - Lock continues from commit 1/15
