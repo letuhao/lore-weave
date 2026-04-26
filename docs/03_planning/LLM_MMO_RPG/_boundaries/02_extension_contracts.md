@@ -137,6 +137,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `origin.*` | IDF_004 Origin Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 4 V1 rule_ids — unknown_native_language / unknown_birthplace / assignment_immutable / unknown_ideology_ref; +2 V1+ reservations: lineage_graph_invalid (V1+ FF_001) / pack_not_in_registry (V1+ origin packs). V1 user-facing rejects: assignment_immutable only (others schema-level canonical seed validation). V1 minimal stub 4 fields (birthplace + lineage_id opaque + native_language + default_ideology_refs) per ORG-Q1 LOCKED. **V1+ FF_001 Family Foundation HIGH priority post-IDF closure** per POST-SURVEY-Q4 + ORG-D12. i18n: V1 ships I18nBundle from day 1. |
 | `ideology.*` | IDF_005 Ideology Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 3 V1 rule_ids — unknown_ideology_id / duplicate_stance_entry / lex_axiom_forbidden (V1+ active; V1 reserved); +5 V1+ reservations: tenet_violation (V1+ IDL-D1) / sect_membership_required (V1+ FAC_001 IDL-D2) / conflict_auto_drop_required / invalid_fervor_transition / conversion_cost_unmet (V1+ IDL-D11). **ONLY mutable IDF aggregate V1.** Multi-stance V1 per IDL-Q2 (Wuxia syncretism). Atheist = empty Vec. **Free V1 conversion per IDL-Q13 LOCKED (POST-SURVEY-Q3)** — cost mechanic V1+ IDL-D11. i18n: V1 ships I18nBundle from day 1. |
 | `family.*` | FF_001 Family Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate post-IDF priority per IDF_004 ORG-D12); 8 V1 rule_ids — unknown_actor_ref / unknown_dynasty_id / bidirectional_sync_violation / cyclic_relation / duplicate_relation / relation_kind_mismatch / deceased_target / synthetic_actor_forbidden; +4 V1+ reservations: cross_reality_mismatch (V2+ Heresy per Q7) / cyclic_lineage_traversal (V1+ traversal API FF-D2) / dynasty_extinction (V1+ cleanup) / adoption_consent_violation (V1+ V2+ consent system). V1 user-facing reject: deceased_target only (Marriage/Adoption attempts on deceased); others schema-level canonical seed validation. **Boundary discipline:** FF_001 = biological + adoption only; V1+ FAC_001 owns sect/master-disciple/sworn (per Q4 LOCKED). i18n: V1 ships I18nBundle from day 1. |
+| `progression.*` | PROG_001 Progression Foundation (added 2026-04-26 DRAFT — 6th V1 foundation; multi-genre dynamic progression substrate; closes V1 foundation tier); 7 V1 rule_ids — training.kind_unknown / training.rule_invalid / breakthrough.condition_unmet / breakthrough.invalid_tier / cap.exceeded / combat.formula_invalid / combat.stat_term_unknown; +6 V1+ reservations: atrophy.no_practice (PROG-D5) / deviation.cultivation_failed (PROG-D2 走火入魔) / training.prereq_unmet (Q3j V1+30d) / combat.proposed_out_of_range (Q7e V1+30d) / combat.element_resistance_invalid (V1+ DF7 PROG-D24) / combat.critical_threshold_invalid (V1+ PROG-D25). V1 user-facing rejects: cap.exceeded (HardCap) + breakthrough.condition_unmet (Forge-triggered fail). All Q1-Q7 LOCKED via 6-batch deep-dive 2026-04-26. **Hybrid observation-driven NPC model (Q4 REVISED)**: PCs eager + Tracked NPCs lazy + Untracked = no aggregate (future AI Tier feature). chaos-backend reference: actor-core Subsystem→Contribution V1+30d lift (PROG-D6); damage law chain V1+ DF7-equivalent (PROG-D24). DF7 PC Stats placeholder SUPERSEDED. i18n: V1 ships I18nBundle from day 1 per RES_001 §2 cross-cutting contract. |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
@@ -325,6 +326,32 @@ pub struct RealityManifest {
     // Bidirectional sync validated at canonical seed (Lão Ngũ.children includes Tiểu Thúy AND
     // Tiểu Thúy.parents includes Lão Ngũ). Cyclic relations rejected. Duplicate refs rejected.
     pub canonical_family_relations: Vec<FamilyRelationDecl>, // see FF_001 §1; sparse — declared per actor
+
+    // ─── PROG_001 Progression Foundation extensions (added 2026-04-26 DRAFT — 6th V1 foundation feature) ───
+    // ALL OPTIONAL V1 — empty default = NO progression in reality (sandbox/freeplay valid V1).
+    // (Different from RES_001 which ships engine defaults — PROG schema inherently genre-specific;
+    //  modern game ≠ tu tiên ≠ D&D — no universal default.)
+
+    /// Author-declared progression kinds per reality (Q1+Q2+Q3+Q7 LOCKED).
+    /// Each ProgressionKindDecl: { kind_id, display_name (I18nBundle), description, progression_type
+    /// (Attribute/Skill/Stage), body_or_soul (Body/Soul/Both for xuyên không), curve (Linear/Log/Stage),
+    /// cap_rule (SoftCap/HardCap/TierBased/Unbounded), training_rules: Vec<TrainingRuleDecl>,
+    /// initial_value, initial_tier, derives_from: Option<DerivationDecl> }.
+    /// Validity matrix Q2j: Linear/Log allow SoftCap/HardCap/Unbounded; Stage REQUIRES TierBased.
+    pub progression_kinds: Vec<ProgressionKindDecl>,
+
+    /// Per-actor-class default initial values (overrides ProgressionKindDecl.initial_value per class).
+    /// E.g., "warrior" actor-class STR=15 default; "scholar" INT=15 default.
+    pub progression_class_defaults: HashMap<ActorClassRef, Vec<ClassDefaultDecl>>,
+
+    /// Per-actor override (rare V1; common V1+ for protagonist NPCs).
+    pub progression_actor_overrides: HashMap<ActorRef, Vec<ActorOverrideDecl>>,
+
+    /// Strike damage formula per reality (Q7 LOCKED). None V1 = default formula (LLM proposes
+    /// 1..=defender_hp/2 with no stat reading). Hybrid combat: LLM proposes damage_amount in PL_005
+    /// Strike payload; engine validator computes bounds from offense/defense stat sums; clamps silently.
+    /// Full chaos-backend law chain V1+ DF7-equivalent (PROG-D24).
+    pub strike_formula: Option<StrikeFormulaDecl>,
 
     // ─── Future feature extensions ───
 }

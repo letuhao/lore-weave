@@ -6,6 +6,70 @@
 
 ---
 
+## 2026-04-26 — PROG_001 Progression Foundation DRAFT promotion (6th V1 foundation; closes V1 foundation tier 6/6)
+
+- **Lock claim:** main session 2026-04-26 (PROG_001 DRAFT promotion); single `[boundaries-lock-claim+release]` commit cycle
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None → main session 2026-04-26 (PROG_001 DRAFT) → None at release
+  - `01_feature_ownership_matrix.md`:
+    - **NEW aggregate row:** `actor_progression` (T2/Reality, owner=Actor only V1; Item V1+30d reserved) — owned by PROG_001 DRAFT 2026-04-26
+    - **NEW Stable-ID prefix:** `PROG-*` foundation tier (catalog/cat_00_PROG_progression.md created)
+  - `02_extension_contracts.md` §1.4: NEW `progression.*` rule_id namespace (7 V1 + 6 V1+ reservations)
+  - `02_extension_contracts.md` §2: 4 NEW OPTIONAL V1 RealityManifest extensions (progression_kinds + progression_class_defaults + progression_actor_overrides + strike_formula)
+  - `99_changelog.md`: this entry
+- **Files created within `features/00_progression/`:**
+  - `PROG_001_progression_foundation.md` — DRAFT (this commit) — 21 sections / ~1700 lines / 12 V1-testable acceptance scenarios AC-PROG-1..12 / 30+ deferrals PROG-D1..D32 / 6 open questions PROG-Q1..Q6 (companion to existing CONCEPT_NOTES + REFERENCE_GAMES_SURVEY + CHAOS_BACKEND_REFERENCE)
+- **Files modified within `features/00_progression/`:**
+  - `_index.md`: replaced concept-row with DRAFT row; folder closure status updated
+  - `00_CONCEPT_NOTES.md` §10: status DRAFT promoted (was CONCEPT awaiting lock)
+- **Files created within `catalog/`:**
+  - `cat_00_PROG_progression.md` — feature catalog with PROG-* namespace (37 catalog entries: 26 V1 ✅ + 5 V1+30d 📦 + 6 V2/V3 📦)
+- **Q1-Q7 ALL LOCKED** via 6-batch deep-dive 2026-04-26 (full matrix in `00_CONCEPT_NOTES.md` §11):
+  - Q1 Unified ProgressionKind + 3 types (Attribute/Skill/Stage) + BodyOrSoul + derives_from
+  - Q6 NEW aggregate `actor_progression` (T2/Reality, owner=Actor)
+  - Q2 3 V1 curve types (Linear/Log/Stage) + 4 CapRules + flat tier list + per-tier WithinTierCurve override + Q2j validity matrix
+  - Q3 Action + Time training; day-boundary `Scheduled:CultivationTick` Generator (5th after RES_001's 4); 3 V1 TrainingConditions
+  - Q4 REVISED **Hybrid observation-driven NPC model** (PCs eager + Tracked NPCs lazy + Untracked = no aggregate; future AI Tier feature owns 3-tier semantics)
+  - Q5 REVISED NO atrophy V1; V1+ lazy at materialization (NOT Generator)
+  - Q7 Hybrid combat damage V1 (LLM proposes within engine bounds; silent clamp); DF7-full V1+
+- **Major architectural insights LOCKED:**
+  - **Quantum-observation NPC model** (PROG-A4) — Schrödinger pattern; solves billion-NPC scaling
+  - **Future AI Tier feature reservation** (`16_ai_tier/` placeholder) — 3-tier NPC architecture; user kickoff post PROG_001 DRAFT
+  - **chaos-backend Subsystem pattern** lift candidate V1+30d (PROG-D6)
+  - **DF7 PC Stats placeholder SUPERSEDED** at DRAFT (DF7-V1+ becomes "Combat Damage Formulas Full" sub-feature)
+  - **RES_001 alignment concern** flagged (PROG-D19) — RES_001 NPC eager auto-collect inconsistent với quantum-observation; V1+30d closure pass migrates to lazy materialization
+  - **i18n compliance** throughout (RES_001 §2 cross-cutting pattern)
+  - **BodyOrSoul discriminator NEW** (PROG-A5) — xuyên không cross-reality stat translation hint
+- **NEW EVT-T3 sub-shapes** (registered at next 07_event_model agent pass):
+  - `ProgressionDelta { actor_ref, kind_id, delta_kind: RawValueIncrement / TierAdvance / TierRegress V1+ / DirectSet }`
+  - `ActorProgressionMaterialized { actor_ref, materialized_at_fiction_ts, deltas: Vec<ProgressionDelta> }` (lazy-materialization batch wrapper)
+  - `BreakthroughAdvance { actor_ref, kind_id, from_tier, to_tier }` (cascade-trigger)
+- **NEW EVT-T5 sub-type:**
+  - `Scheduled:CultivationTick` (day-boundary; sequenced 5th after RES_001's 4 Generators)
+- **NEW EVT-T8 AdminAction sub-shapes:**
+  - `Forge:GrantProgression` (DirectSet variant; author override)
+  - `Forge:TriggerBreakthrough` (Forge-triggered breakthrough check)
+- **NEW PROG-V1..V4 validator slots** (registered at `_boundaries/03_validator_pipeline_slots.md` next pass):
+  - PROG-V1 ProgressionDeltaValidator
+  - PROG-V2 BreakthroughConditionCheck
+  - PROG-V3 StrikeFormulaBoundsCheck
+  - PROG-V4 ProgressionSchemaValidator
+- **9 downstream impact items deferred to follow-up commits** (per PROG_001 §20.2):
+  - HIGH: WA_003 ForgeEditAction enum (2 new sub-shapes) / PCS_001 brief §4.4 + §S5 + §S8 update / PL_005 closure §9.1 cascade reference / 07_event_model agent registration
+  - MEDIUM: NPC_001 closure §6 persona assembly + Tracked NPC lazy doc / DF7 placeholder retirement in `decisions/deferred_DF01_DF15.md`
+  - LOW: PL_006 closure note Hungry≥4 forbid cultivation V1+ / WA_006 closure note progression reset on death V1+
+  - V1+30d: RES_001 closure pass NPC eager → lazy migration (PROG-D19 alignment)
+- **Future feature reservations:**
+  - `features/16_ai_tier/` placeholder (3-tier NPC architecture; pending user kickoff)
+  - CULT_001 Cultivation Foundation V1+ priority (per IDF folder closure roadmap; PROG_001 ships substrate sufficient for tu tiên without CULT_001; CULT_001 V1+ adds wuxia-specific extensions)
+- **Foundation tier 6/6 COMPLETE 2026-04-26:** EF_001 (WHO) + PF_001 (WHERE-semantic) + MAP_001 (WHERE-graph) + CSC_001 (WHAT-inside-cell) + RES_001 (WHAT-flows-through-entity) + **PROG_001 (HOW-actors-grow)** all DRAFT or higher. Tier 5 Actor Substrate (IDF/FF) coexisting tier.
+- **ORG-* namespace alignment concern noted:** `15_organization/` was V3 reserved with ORG-*; IDF_004 Origin Foundation also took ORG-*. Conflict; `15_organization/` may need rename (FAC-* per FF_001 closure changelog suggestion). Not PROG_001 scope; flagged for cross-feature coordination at next IDF closure pass review.
+- **Drift watchpoints:** unchanged. PROG_001 doesn't introduce new watchpoints (Q1-Q7 fully resolved before DRAFT promotion via 6-batch deep-dive discipline).
+- **Lock RELEASED** at end of this commit
+- **Reason / handoff:** PROG_001 DRAFT closes V1 foundation tier (6/6). Q4 REVISED + Q5 REVISED via user-corrected quantum-observation principle (Schrödinger pattern); chaos-backend reference lifted (actor-core aggregation pattern V1+30d candidate; damage law chain V1+ DF7-equivalent). 30+ deferrals catalog spans V1+30d → V3 with future AI Tier feature placeholder. Next priorities: (a) follow-up commits for HIGH downstream items (WA_003 / PCS_001 brief / PL_005 closure / 07_event_model agent), (b) future AI Tier feature kickoff (`16_ai_tier/`), (c) PCS_001 PC Substrate parallel agent kickoff (brief now references 6 foundation features post-PROG_001), (d) push branch to origin (24+ commits ahead).
+
+---
+
 ## 2026-04-26 — FF_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 4/4 FINAL)
 
 - **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)

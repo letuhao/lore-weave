@@ -361,7 +361,9 @@ Before drafting `PROG_001_progression_foundation.md`:
 ## §10 — Status
 
 - **Created:** 2026-04-26 by main session
-- **Phase:** CONCEPT — Q1+Q6 LOCKED 2026-04-26 (see §11); Q2-Q5 + Q7 still open + chaos-backend reference doc landed
+- **Phase:** ~~CONCEPT~~ → **DRAFT 2026-04-26** (PROG_001 promoted via single `[boundaries-lock-claim+release]` commit). Q1-Q7 ALL LOCKED via 6-batch deep-dive (Q1+Q6 / Q2 / Q3 / Q4+Q5 batched / Q4+Q5 REVISED quantum-observation / Q7).
+- **Promoted file:** [`PROG_001_progression_foundation.md`](PROG_001_progression_foundation.md) — 21 sections / ~1700 lines / 12 AC / 30+ deferrals / 6 open questions
+- **Phase status:** DRAFT — CANDIDATE-LOCK pending Phase 3 review cleanup + 9 §20.2 downstream items applied
 - **Lock state:** `_boundaries/_LOCK.md` held by IDF agent (parallel session, IDF folder Phase 1 — 5 features DRAFT). PROG_001 DRAFT promotion blocked until lock free.
 - **Reference materials landed:**
   - [`02_CHAOS_BACKEND_REFERENCE.md`](02_CHAOS_BACKEND_REFERENCE.md) — chaos-backend repo analysis 2026-04-26 (10 sections / ~2400 words). Key finding: `actor-core` aggregation pipeline (Subsystem → Vec<Contribution> + bucket-processor → Snapshot + CapContribution AcrossLayerPolicy) is the load-bearing pattern; chaos-backend is mostly placeholder (5 of 17 crates have real Rust code).
