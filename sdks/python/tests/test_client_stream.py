@@ -20,6 +20,7 @@ from loreweave_llm import (
     DoneEvent,
     LLMAuthFailed,
     LLMDecodeError,
+    LLMInvalidRequest,
     LLMModelNotFound,
     LLMQuotaExceeded,
     LLMRateLimited,
@@ -320,12 +321,13 @@ def test_request_body_keeps_positive_max_tokens():
 
 
 def test_constructor_validates_auth_inputs():
+    # Phase 4a-α Step 1 — internal auth_mode now allows user_id=None
+    # at construction (multi-tenant pattern); user_id is enforced
+    # per-call via _jobs_endpoint when omitted at both layers.
     with pytest.raises(ValueError, match="bearer_token"):
         Client(base_url=GATEWAY, auth_mode="jwt")
-    with pytest.raises(ValueError, match="internal_token and user_id"):
+    with pytest.raises(ValueError, match="internal_token"):
         Client(base_url=GATEWAY, auth_mode="internal")
-    with pytest.raises(ValueError, match="internal_token and user_id"):
-        Client(base_url=GATEWAY, auth_mode="internal", internal_token="x")
 
 
 @pytest.mark.asyncio
@@ -359,9 +361,58 @@ async def test_stream_reasoning_event_distinct_from_token():
     assert token_chunks == ["Here", " is"]
 
 
+# Phase 4a-α Step 1: submit_job is now implemented; covered in test_client_jobs.py.
+# The Phase 1b NotImplementedError stub test was retired in this cycle.
+
+
+# ── Phase 4a-α /review-impl MED#4 — multi-tenant per-call user_id ────
+
+
 @pytest.mark.asyncio
-async def test_submit_job_raises_not_implemented():
-    client = make_internal_client()
-    with pytest.raises(NotImplementedError):
-        await client.submit_job()
+async def test_stream_internal_auth_requires_user_id_per_call_or_construction():
+    # Mirrors the jobs-side multi-tenant pattern. Constructing a Client
+    # with user_id=None (knowledge-service multi-tenant) and calling
+    # stream() WITHOUT per-call user_id MUST raise (clear error, not
+    # silent empty user_id query).
+    client = Client(
+        base_url=GATEWAY,
+        auth_mode="internal",
+        internal_token="svc-token",
+        user_id=None,  # multi-tenant
+    )
+    with pytest.raises(LLMInvalidRequest, match="user_id"):
+        async for _ in client.stream(make_request()):
+            pass
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_stream_per_call_user_id_overrides_construction_default():
+    body = (
+        b"event: token\ndata: {\"event\":\"token\",\"delta\":\"hi\"}\n\n"
+        b"event: done\ndata: {\"event\":\"done\"}\n\n"
+    )
+    captured: dict[str, str] = {}
+
+    with respx.mock(base_url=GATEWAY) as mock:
+        def handler(req):
+            captured["url"] = str(req.url)
+            return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, content=body)
+        mock.post("/internal/llm/stream").mock(side_effect=handler)
+        client = Client(
+            base_url=GATEWAY,
+            auth_mode="internal",
+            internal_token="svc-token",
+            user_id="00000000-0000-0000-0000-000000000DEF",  # default
+        )
+        events = []
+        async for ev in client.stream(
+            make_request(),
+            user_id="11111111-1111-1111-1111-111111111111",  # per-call override
+        ):
+            events.append(ev)
+        await client.aclose()
+
+    assert "user_id=11111111" in captured["url"], (
+        f"per-call user_id must win over constructor default; got {captured['url']}"
+    )

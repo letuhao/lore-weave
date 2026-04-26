@@ -485,3 +485,178 @@ async def test_canonical_name_computed():
     # "Master" is an honorific stripped by canonicalize_entity_name
     assert result[0].canonical_name == "kai"
     assert result[0].name == "Master Kai"  # display name preserved
+
+
+# ── Phase 4a-α Step 2 — SDK-routed path tests ────────────────────────
+
+
+class FakeLLMClient:
+    """Duck-typed stand-in for app.clients.llm_client.LLMClient that
+    captures submit_and_wait args + replays a scripted Job. Uses the
+    minimum surface the entity extractor depends on so unit tests don't
+    need the SDK's httpx scaffolding."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.next_job: Any = None
+        self.next_exc: Exception | None = None
+
+    def queue_job(self, *, status: str, entities: list[dict[str, Any]] | None = None,
+                  error_code: str | None = None, error_message: str = "") -> None:
+        from loreweave_llm.models import Job, JobError, JobProgress
+        result = {"entities": entities} if entities is not None else None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="entity_extraction",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
+
+    def queue_exception(self, exc: Exception) -> None:
+        self.next_exc = exc
+
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        if self.next_exc is not None:
+            exc = self.next_exc
+            self.next_exc = None
+            raise exc
+        return self.next_job
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_via_llm_client_happy_path():
+    """SDK path returns parsed entities when job completes with valid result."""
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="completed",
+        entities=[
+            {"name": "Holmes", "kind": "person", "aliases": ["Sherlock"], "confidence": 0.95},
+            {"name": "Baker Street", "kind": "place", "aliases": [], "confidence": 0.8},
+        ],
+    )
+    result = await extract_entities(
+        text="Holmes lived at Baker Street.",
+        known_entities=[],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref=USER_ID,  # any UUID-shaped string
+        llm_client=cast(Any, fake),
+    )
+    assert len(result) == 2
+    names = {c.name for c in result}
+    assert names == {"Holmes", "Baker Street"}
+    # Verify operation + job_meta routed correctly
+    assert len(fake.calls) == 1
+    call = fake.calls[0]
+    assert call["operation"] == "entity_extraction"
+    # /review-impl HIGH#1 — chunking disabled in 4a-α (prompt structure
+    # would shred under the gateway chunker). Re-enable in a 4a-α-followup
+    # after the prompt is restructured as system+user.
+    assert call["chunking"] is None
+    assert call["job_meta"]["extractor"] == "entity"
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_via_llm_client_drops_malformed_items():
+    """Tolerant parser drops items missing required fields (LOW#11)."""
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="completed",
+        entities=[
+            {"name": "Holmes", "kind": "person", "confidence": 0.9},  # ✓ valid
+            {"kind": "person"},  # ✗ missing name
+            {"name": "Watson"},  # ✗ missing kind
+            {"name": "  ", "kind": "person"},  # ✗ whitespace-only name
+            "not-a-dict",  # ✗ wrong type
+            {"name": "Moriarty", "kind": "person", "confidence": 1.5},  # ✓ confidence clamped
+        ],
+    )
+    result = await extract_entities(
+        text="...", known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref=USER_ID,
+        llm_client=cast(Any, fake),
+    )
+    names = {c.name for c in result}
+    assert "Holmes" in names
+    assert "Moriarty" in names
+    assert "Watson" not in names
+    moriarty = next(c for c in result if c.name == "Moriarty")
+    assert moriarty.confidence == 1.0  # clamped from 1.5
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_via_llm_client_cancelled_raises_with_stage():
+    """Per /review-impl MED#3 — cancelled job MUST raise a distinct
+    ExtractionError(stage='cancelled') so the orchestrator/runner can
+    flip extraction_jobs.status to cancelled (NOT completed-with-zero-
+    entities, which would lie to the user about the cancel result)."""
+    fake = FakeLLMClient()
+    fake.queue_job(status="cancelled")
+    with pytest.raises(ExtractionError) as excinfo:
+        await extract_entities(
+            text="...", known_entities=[],
+            user_id=USER_ID, project_id=PROJECT_ID,
+            model_source="user_model", model_ref=USER_ID,
+            llm_client=cast(Any, fake),
+        )
+    assert excinfo.value.stage == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_via_llm_client_failed_raises_extraction_error():
+    """status=failed (non-transient code) raises ExtractionError."""
+    fake = FakeLLMClient()
+    fake.queue_job(status="failed", error_code="LLM_INVALID_REQUEST", error_message="bad model")
+    with pytest.raises(ExtractionError, match="entity_extraction"):
+        await extract_entities(
+            text="...", known_entities=[],
+            user_id=USER_ID, project_id=PROJECT_ID,
+            model_source="user_model", model_ref=USER_ID,
+            llm_client=cast(Any, fake),
+        )
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_via_llm_client_transient_retry_exhausted_raises():
+    """LLMTransientRetryNeededError from SDK bubbles as ExtractionError(provider_exhausted)."""
+    from loreweave_llm.errors import LLMTransientRetryNeededError
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMTransientRetryNeededError(
+        "transient retry exhausted",
+        job_id="00000000-0000-0000-0000-000000000001",
+        underlying_code="LLM_UPSTREAM_ERROR",
+    ))
+    with pytest.raises(ExtractionError, match="transient retry"):
+        await extract_entities(
+            text="...", known_entities=[],
+            user_id=USER_ID, project_id=PROJECT_ID,
+            model_source="user_model", model_ref=USER_ID,
+            llm_client=cast(Any, fake),
+        )
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_legacy_client_path_unchanged_when_llm_client_is_none():
+    """Regression lock: omitting llm_client falls back to legacy K17.2
+    path so 4a-α doesn't break callers that haven't been migrated yet
+    (other 3 extractors + summary jobs)."""
+    fake = FakeProviderClient()
+    fake.queue_response(_make_response(_entity("Holmes", "person", 0.9)))
+    result = await extract_entities(
+        text="Holmes is a detective.",
+        known_entities=[],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        client=_as_client(fake),
+        # llm_client omitted → legacy path
+    )
+    assert len(result) == 1
+    assert result[0].name == "Holmes"

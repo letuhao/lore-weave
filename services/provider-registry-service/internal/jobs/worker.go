@@ -8,8 +8,10 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -135,9 +137,15 @@ func (w *Worker) Process(
 		return
 	}
 
-	// Phase 2b cuts: only chat/completion are wired through the streaming
-	// adapter. Other operations get a clean LLM_OPERATION_NOT_SUPPORTED.
-	if operation != "chat" && operation != "completion" {
+	// Phase 4a-α Step 0 — op-whitelist. The chat-streaming machinery +
+	// per-op aggregator (cycle 20 jsonListAggregator) is the same wire
+	// shape for chat/completion AND for the *_extraction operations:
+	// adapter.Stream emits StreamChunks; aggregator routes them to the
+	// right result map. The only difference is the aggregator factory
+	// (see NewAggregator below). Embedding/translation/stt/tts/image_gen
+	// use different upstream HTTP shapes — those stay gated until their
+	// dedicated cycles wire adapters.
+	if !isStreamableOperation(operation) {
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
 			"LLM_OPERATION_NOT_SUPPORTED",
 			fmt.Sprintf("operation %q not yet implemented in async-job mode", operation),
@@ -186,14 +194,11 @@ func (w *Worker) Process(
 			return
 		}
 	} else {
-		// Single-call Phase 2b path.
-		streamErr := adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, inputMap, emit)
+		// Single-call Phase 2b path with Phase 4a-α Step 0b transient retry.
+		streamErr := w.streamWithRetry(ctx, adapter, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
 		if streamErr != nil {
 			logger.Error("stream failed", "err", streamErr)
-			errCode := "LLM_UPSTREAM_ERROR"
-			if streamErr == provider.ErrStreamNotSupported {
-				errCode = "LLM_STREAM_NOT_SUPPORTED"
-			}
+			errCode := classifyStreamErrorCode(streamErr)
 			w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, errCode, streamErr.Error(), "")
 			return
 		}
@@ -232,6 +237,12 @@ func (w *Worker) maybeChunk(inputMap map[string]any, cfg *ChunkConfig, logger *s
 // processChunks dispatches one adapter.Stream call per chunk, bracketed
 // by agg.StartChunk/EndChunk so the aggregator builds a multi-chunk
 // result. Sequential for now; goroutine-safe parallel is a follow-up.
+//
+// Phase 4a-α Step 0b + /review-impl MED#5 — transient retry budget is
+// JOB-LEVEL (shared across all chunks), NOT per-chunk. A 9-chunk job
+// gets ONE retry total, not 9. This bounds upstream-call amplification
+// under sustained transient errors and matches the SDK's caller-side
+// budget=1 contract.
 func (w *Worker) processChunks(
 	ctx context.Context,
 	jobID uuid.UUID,
@@ -245,13 +256,14 @@ func (w *Worker) processChunks(
 ) error {
 	total := len(chunks)
 	totalPtr := &total
+	budget := 1 // shared across all chunks
 	for i, piece := range chunks {
 		perChunkInput, err := SubstituteLastUserMessage(inputMap, piece)
 		if err != nil {
 			return fmt.Errorf("substitute chunk %d: %w", i, err)
 		}
 		agg.StartChunk(i)
-		streamErr := adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+		streamErr := w.streamWithBudget(ctx, adapter, endpointBaseURL, secret, providerModelName, perChunkInput, emit, &budget, logger)
 		agg.EndChunk(i)
 		if streamErr != nil {
 			logger.Error("chunk stream failed", "chunk", i, "err", streamErr)
@@ -263,8 +275,111 @@ func (w *Worker) processChunks(
 	return nil
 }
 
+// streamWithRetry — single-call (unchunked) path. Owns its own budget=1
+// because there are no other chunks to share with. Wraps streamWithBudget.
+func (w *Worker) streamWithRetry(
+	ctx context.Context,
+	adapter provider.Adapter,
+	endpointBaseURL, secret, providerModelName string,
+	input map[string]any,
+	emit EmitFn,
+	logger *slog.Logger,
+) error {
+	budget := 1
+	return w.streamWithBudget(ctx, adapter, endpointBaseURL, secret, providerModelName, input, emit, &budget, logger)
+}
+
+// streamWithBudget calls adapter.Stream with retry on transient upstream
+// errors (rate-limit / 5xx / network timeout) consuming from a SHARED
+// budget pointer. The pointer enables job-level (cross-chunk) budget per
+// /review-impl MED#5: a 9-chunk job gets ONE retry total, not 9.
+//
+// Honors `Retry-After` from rate-limit responses; falls back to a fixed
+// 1s backoff otherwise. Non-transient errors (4xx other than 429,
+// ErrStreamNotSupported, etc.) propagate immediately without retry.
+//
+// When *budget reaches 0 a transient error propagates as failure — caller
+// (worker.processChunks or worker.Process single-call path) finalizes
+// the job with the appropriate error code. Budget is NOT replenished
+// across chunks so a slow drain still terminates.
+//
+// Replaces knowledge-service's K17.3 caller-side retry loop — Phase 4a
+// migration drops K17.3 so this gateway-side retry MUST cover the same
+// quality contract. Phase 6b will replace with exponential backoff +
+// per-user budget.
+func (w *Worker) streamWithBudget(
+	ctx context.Context,
+	adapter provider.Adapter,
+	endpointBaseURL, secret, providerModelName string,
+	input map[string]any,
+	emit EmitFn,
+	budget *int,
+	logger *slog.Logger,
+) error {
+	const fixedBackoffS = 1.0
+	for {
+		err := adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+		if err == nil {
+			return nil
+		}
+		if !provider.IsTransientUpstreamError(err) {
+			return err
+		}
+		if *budget <= 0 {
+			logger.Warn("transient retry budget exhausted (job-level)", "err", err)
+			return err
+		}
+		*budget--
+		wait := provider.RetryAfter(err)
+		if wait <= 0 {
+			wait = fixedBackoffS
+		}
+		logger.Info("transient upstream error — retrying", "err", err, "wait_s", wait, "remaining_budget", *budget)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(wait * float64(time.Second))):
+		}
+	}
+}
+
+// classifyStreamErrorCode picks the canonical LLM_* error code for a
+// stream failure so finalizeAndNotify can emit a stable error envelope.
+func classifyStreamErrorCode(err error) string {
+	if err == provider.ErrStreamNotSupported {
+		return "LLM_STREAM_NOT_SUPPORTED"
+	}
+	var rl *provider.ErrUpstreamRateLimited
+	if errors.As(err, &rl) {
+		return "LLM_RATE_LIMITED"
+	}
+	return "LLM_UPSTREAM_ERROR"
+}
+
 // EmitFn aliases provider.EmitFn so the worker doesn't redeclare types.
 type EmitFn = func(provider.StreamChunk) error
+
+// streamableOperations is the whitelist of Job operations that the worker
+// dispatches through adapter.Stream. They share the same wire shape (chat
+// messages → SSE token deltas) but get different per-op aggregators via
+// NewAggregator(operation). Operations not in this set fail fast with
+// LLM_OPERATION_NOT_SUPPORTED — kept that way until their dedicated
+// adapters land (embedding/translation/stt/tts/image_gen).
+var streamableOperations = map[string]struct{}{
+	"chat":                {},
+	"completion":          {},
+	"entity_extraction":   {},
+	"relation_extraction": {},
+	"event_extraction":    {},
+	// fact_extraction wires in 4a-β alongside the openapi enum addition.
+}
+
+// isStreamableOperation reports whether the worker can dispatch the given
+// operation through the chat-streaming machinery + per-op aggregator.
+func isStreamableOperation(op string) bool {
+	_, ok := streamableOperations[op]
+	return ok
+}
 
 // chunkText is a thin wrapper that calls into the chunker package using
 // the worker's ChunkConfig. Kept package-internal so the chunker import

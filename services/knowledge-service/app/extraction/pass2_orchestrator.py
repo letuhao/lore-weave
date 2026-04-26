@@ -34,6 +34,7 @@ from collections.abc import Iterable
 from typing import Any, Literal
 from uuid import UUID
 
+from app.clients.llm_client import LLMClient
 from app.clients.provider_client import ProviderClient
 from app.db.neo4j_helpers import CypherSession
 from app.db.repositories.job_logs import JobLogsRepo
@@ -99,6 +100,7 @@ async def _run_pipeline(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
@@ -127,6 +129,10 @@ async def _run_pipeline(
     started = time.perf_counter()
 
     # Step 1 — K17.4: extract entities (must run first).
+    # Phase 4a-α: when llm_client is supplied, this routes through the
+    # SDK + gateway job pattern (entity_extraction op + paragraphs/15
+    # chunking + per-op JSON aggregator). Other 3 extractors stay on
+    # legacy provider_client until 4a-β.
     entities = await extract_entities(
         text=text,
         known_entities=known_entities,
@@ -135,6 +141,7 @@ async def _run_pipeline(
         model_source=model_source,
         model_ref=model_ref,
         client=client,
+        llm_client=llm_client,
     )
 
     entities_elapsed = time.perf_counter() - started
@@ -284,6 +291,7 @@ async def extract_pass2_chat_turn(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
@@ -317,6 +325,7 @@ async def extract_pass2_chat_turn(
         model_source=model_source,
         model_ref=model_ref,
         client=client,
+        llm_client=llm_client,
         anchors=anchors,
         job_logs_repo=job_logs_repo,
     )
@@ -335,6 +344,7 @@ async def extract_pass2_chapter(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
@@ -345,6 +355,11 @@ async def extract_pass2_chapter(
 
     `anchors`: optional K13.0 glossary-anchor index (see
     ``extract_pass2_chat_turn`` for details).
+
+    Phase 4a-α: when ``llm_client`` is supplied, the entity extraction
+    step routes through the loreweave_llm SDK (job pattern + chunking
+    + per-op JSON aggregator). Other 3 extractors stay on legacy
+    ``client`` until 4a-β.
     """
     return await _run_pipeline(
         session,
@@ -358,6 +373,7 @@ async def extract_pass2_chapter(
         model_source=model_source,
         model_ref=model_ref,
         client=client,
+        llm_client=llm_client,
         anchors=anchors,
         job_logs_repo=job_logs_repo,
     )

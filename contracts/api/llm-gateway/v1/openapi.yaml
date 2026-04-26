@@ -604,10 +604,21 @@ components:
           type: object
           additionalProperties: true
           description: |
-            Operation-specific payload. Examples:
-            - `chat`: `{ messages: [...], tools: [...], temperature, max_tokens }`
+            Operation-specific payload.
+
+            **Streaming-backed ops** (`chat`, `completion`, `entity_extraction`,
+            `relation_extraction`, `event_extraction`, `fact_extraction`)
+            ALL share the OpenAI chat-completion wire shape:
+              `{ messages: [...], tools: [...], temperature, max_tokens, response_format }`
+            The operation enum picks the per-op aggregator (chat = concat,
+            entity_extraction = jsonListAggregator over `entities`, etc.) —
+            it does NOT change the input schema. Callers that want to send
+            extraction prompts route them via the `messages` field; the
+            extraction op's name only signals which aggregator to apply
+            to the streamed JSON output.
+
+            **Other ops** have op-specific input shapes:
             - `embedding`: `{ texts: ["...", "..."] }`
-            - `entity_extraction`: `{ text: "...", known_entities: [...], language: "en" }`
             - `translation`: `{ text: "...", source_lang: "en", target_lang: "vi", glossary: [...] }`
             - `image_gen`: `{ prompt: "...", size: "1024x1024", n: 1 }`
             - `stt`: `{ audio_url: "...", language: "auto" }`

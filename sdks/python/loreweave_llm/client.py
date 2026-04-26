@@ -1,16 +1,19 @@
 """loreweave_llm.Client — thin async wrapper over the gateway's
 `/v1/llm/stream` and `/internal/llm/stream` endpoints.
 
-Phase 1b deliverable. `submit_job()` lives in this file too as a stub
-returning NotImplementedError; it ships in Phase 2.
+Phase 1b shipped streaming. Phase 4a-α Step 1 wires async-job APIs
+(submit_job + get_job + wait_terminal + cancel_job) so knowledge-service
+extractors can route LLM calls through the unified job pipeline.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Literal
+from uuid import UUID
 
 import httpx
 
@@ -18,19 +21,27 @@ from loreweave_llm.errors import (
     LLMAuthFailed,
     LLMDecodeError,
     LLMError,
+    LLMHttpError,
     LLMInvalidRequest,
+    LLMJobNotFound,
+    LLMJobTerminal,
     LLMModelNotFound,
     LLMQuotaExceeded,
     LLMRateLimited,
+    LLMTransientRetryNeededError,
     LLMUpstreamError,
+    TRANSIENT_RETRY_CODES,
     from_code,
 )
 from loreweave_llm.models import (
     DoneEvent,
     ErrorEvent,
+    Job,
     ReasoningEvent,
     StreamEvent,
     StreamRequest,
+    SubmitJobRequest,
+    SubmitJobResponse,
     TokenEvent,
     UsageEvent,
 )
@@ -70,8 +81,12 @@ class Client:
     ) -> None:
         if auth_mode == "jwt" and not bearer_token:
             raise ValueError("auth_mode='jwt' requires bearer_token")
-        if auth_mode == "internal" and not (internal_token and user_id):
-            raise ValueError("auth_mode='internal' requires internal_token and user_id")
+        if auth_mode == "internal" and not internal_token:
+            raise ValueError("auth_mode='internal' requires internal_token")
+        # Phase 4a-α Step 1 — user_id is OPTIONAL at construction for
+        # multi-tenant services (knowledge-service routes many users
+        # through one Client). Per-call methods accept user_id override;
+        # constructor user_id is only the default for single-tenant clients.
 
         self._base_url = base_url.rstrip("/")
         self._auth_mode = auth_mode
@@ -94,7 +109,12 @@ class Client:
 
     # ── Streaming (P1) ────────────────────────────────────────────────
 
-    async def stream(self, request: StreamRequest) -> AsyncIterator[StreamEvent]:
+    async def stream(
+        self,
+        request: StreamRequest,
+        *,
+        user_id: str | None = None,
+    ) -> AsyncIterator[StreamEvent]:
         """Open a streaming chat session.
 
         Yields canonical `StreamEvent` instances (TokenEvent / UsageEvent /
@@ -104,6 +124,12 @@ class Client:
         **No wall-clock timeout.** The iterator runs until the gateway
         emits `done`, errors, or the consumer cancels via the standard
         async-iter close protocol.
+
+        `user_id` per-call override (multi-tenant pattern, mirrors the
+        jobs methods). Required when auth_mode='internal' AND constructor
+        user_id was None. Per /review-impl MED#4 — without this, multi-
+        tenant services (knowledge-service) couldn't safely call stream()
+        even though the constructor accepts user_id=None.
 
         Usage:
             async for ev in client.stream(StreamRequest(...)):
@@ -119,9 +145,14 @@ class Client:
             headers = {"Authorization": f"Bearer {self._bearer_token}"}
             params: dict[str, str] = {}
         else:
+            effective_user_id = user_id if user_id is not None else self._user_id
+            if not effective_user_id:
+                raise LLMInvalidRequest(
+                    "internal auth_mode requires user_id (per-call or at construction)"
+                )
             url = f"{self._base_url}/internal/llm/stream"
             headers = {"X-Internal-Token": self._internal_token or ""}
-            params = {"user_id": self._user_id or ""}
+            params = {"user_id": effective_user_id}
 
         body = request.to_request_body()
 
@@ -144,10 +175,192 @@ class Client:
                 if isinstance(ev, DoneEvent):
                     return
 
-    # ── Async jobs (P2) — Phase 2 deliverable ─────────────────────────
+    # ── Async jobs (P2) — Phase 4a-α Step 1 ───────────────────────────
 
-    async def submit_job(self, *args, **kwargs):  # pragma: no cover
-        raise NotImplementedError("submit_job() lands in Phase 2 of the refactor plan")
+    async def submit_job(
+        self,
+        request: SubmitJobRequest,
+        *,
+        user_id: str | None = None,
+    ) -> SubmitJobResponse:
+        """Submit an async LLM job. Returns the 202 envelope.
+
+        Validates `request.model_ref` is UUID-shaped before hitting the
+        wire (per ADR §5.1 MED#5 — extractor signatures stay `str`, SDK
+        is the boundary). Raises LLMInvalidRequest on malformed UUID,
+        LLMAuthFailed/LLMQuotaExceeded/LLMRateLimited on respective HTTP
+        statuses, LLMHttpError on transport-level failures.
+
+        `user_id` overrides the Client's default for this call. Required
+        when auth_mode='internal' AND constructor user_id was None
+        (multi-tenant pattern).
+        """
+        try:
+            UUID(request.model_ref)
+        except (TypeError, ValueError) as exc:
+            raise LLMInvalidRequest(
+                f"model_ref must be a UUID-shaped string, got {request.model_ref!r}",
+            ) from exc
+
+        url, params, headers = self._jobs_endpoint("submit", user_id=user_id)
+        body = request.to_request_body()
+        try:
+            resp = await self._http.post(url, params=params, headers=headers, json=body)
+        except httpx.RequestError as exc:
+            raise LLMHttpError(f"submit_job transport failure: {exc}") from exc
+        if resp.status_code >= 400:
+            await self._raise_http_error(resp)
+        try:
+            return SubmitJobResponse.model_validate(resp.json())
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise LLMDecodeError(f"submit_job response decode failed: {exc}") from exc
+
+    async def get_job(self, job_id: str | UUID, *, user_id: str | None = None) -> Job:
+        """Fetch current Job state. Single GET — caller does the polling
+        loop (see wait_terminal for a managed loop).
+
+        Per-poll httpx.Timeout is overridden via the shared client's
+        timeout policy; for fast pings under load callers should accept
+        that a slow poll fails with LLMHttpError and retry from the
+        backoff schedule.
+
+        `user_id` per-call override (see submit_job).
+        """
+        job_id_str = str(job_id)
+        url, params, headers = self._jobs_endpoint("get", job_id=job_id_str, user_id=user_id)
+        try:
+            resp = await self._http.get(url, params=params, headers=headers)
+        except httpx.RequestError as exc:
+            raise LLMHttpError(f"get_job transport failure: {exc}") from exc
+        if resp.status_code == 404:
+            raise LLMJobNotFound(f"job {job_id_str} not found", status_code=404)
+        if resp.status_code >= 400:
+            await self._raise_http_error(resp)
+        try:
+            return Job.model_validate(resp.json())
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise LLMDecodeError(f"get_job response decode failed: {exc}") from exc
+
+    async def wait_terminal(
+        self,
+        job_id: str | UUID,
+        *,
+        user_id: str | None = None,
+        poll_interval_s: float = 0.25,
+        max_poll_interval_s: float = 5.0,
+        poll_backoff: float = 1.5,
+        transient_retry_budget: int = 1,
+    ) -> Job:
+        """Poll get_job until status ∈ {completed, failed, cancelled}.
+
+        Exponential backoff between polls (clamped to max_poll_interval_s).
+        NO wall-clock timeout — polling continues until terminal or
+        repeated HTTP failure.
+
+        Per ADR §3.3 D3c — when the terminal job has status=failed AND
+        error.code is transient (LLM_RATE_LIMITED, LLM_UPSTREAM_ERROR),
+        AND transient_retry_budget>0, raises LLMTransientRetryNeededError
+        carrying job_id + underlying_code + retry_after_s. Caller owns
+        resubmission with the same args; SDK does NOT auto-resubmit
+        because inputs aren't retained client-side.
+
+        Per-poll HTTP failures (LLMHttpError) consume transient_retry_budget;
+        at zero, propagates the LLMHttpError to caller.
+
+        Returns the terminal Job (status ∈ {completed, cancelled}, OR
+        status=failed with non-transient error code) — caller distinguishes
+        by inspecting Job.status / Job.error.
+
+        Cancel-race correctness (per ADR §5.5): if the user/UI calls
+        DELETE /v1/llm/jobs/{id} while we're polling, the next poll
+        returns status=cancelled and we return that Job — caller
+        handles the 'cancelled' terminal outcome.
+        """
+        job_id_str = str(job_id)
+        interval = poll_interval_s
+        http_failures = 0
+        while True:
+            try:
+                job = await self.get_job(job_id_str, user_id=user_id)
+            except LLMHttpError:
+                http_failures += 1
+                if http_failures > transient_retry_budget:
+                    raise
+                await asyncio.sleep(interval)
+                interval = min(interval * poll_backoff, max_poll_interval_s)
+                continue
+
+            if job.is_terminal():
+                if (
+                    job.status == "failed"
+                    and job.error is not None
+                    and job.error.code in TRANSIENT_RETRY_CODES
+                    and transient_retry_budget > 0
+                ):
+                    raise LLMTransientRetryNeededError(
+                        f"job {job_id_str} failed with transient {job.error.code}: {job.error.message}",
+                        job_id=job_id_str,
+                        underlying_code=job.error.code,
+                        retry_after_s=job.error.retry_after_s,
+                    )
+                return job
+
+            await asyncio.sleep(interval)
+            interval = min(interval * poll_backoff, max_poll_interval_s)
+
+    async def cancel_job(self, job_id: str | UUID, *, user_id: str | None = None) -> None:
+        """Cancel an in-flight job. Idempotent: 204 (cancel accepted) and
+        409 (already terminal) both return None — caller's desired state
+        (job not running) is true in both cases.
+
+        Raises LLMJobNotFound on 404 so callers can distinguish 'never
+        existed' from 'already done'.
+
+        `user_id` per-call override (see submit_job).
+        """
+        job_id_str = str(job_id)
+        url, params, headers = self._jobs_endpoint("cancel", job_id=job_id_str, user_id=user_id)
+        try:
+            resp = await self._http.delete(url, params=params, headers=headers)
+        except httpx.RequestError as exc:
+            raise LLMHttpError(f"cancel_job transport failure: {exc}") from exc
+        if resp.status_code in (204, 409):
+            return
+        if resp.status_code == 404:
+            raise LLMJobNotFound(f"job {job_id_str} not found", status_code=404)
+        await self._raise_http_error(resp)
+
+    def _jobs_endpoint(
+        self,
+        kind: Literal["submit", "get", "cancel"],
+        *,
+        job_id: str | None = None,
+        user_id: str | None = None,
+    ) -> tuple[str, dict[str, str], dict[str, str]]:
+        """Resolve URL + params + headers for jobs endpoints honoring
+        auth_mode (jwt vs internal). Internal-token paths add user_id
+        query param per openapi spec.
+
+        `user_id` per-call override > constructor default. Required for
+        internal auth when constructor user_id is None (multi-tenant).
+        """
+        if self._auth_mode == "jwt":
+            base = f"{self._base_url}/v1/llm/jobs"
+            headers = {"Authorization": f"Bearer {self._bearer_token}"}
+            params: dict[str, str] = {}
+        else:
+            effective_user_id = user_id if user_id is not None else self._user_id
+            if not effective_user_id:
+                raise LLMInvalidRequest(
+                    "internal auth_mode requires user_id (per-call or at construction)"
+                )
+            base = f"{self._base_url}/internal/llm/jobs"
+            headers = {"X-Internal-Token": self._internal_token or ""}
+            params = {"user_id": effective_user_id}
+
+        if kind == "submit":
+            return base, params, headers
+        return f"{base}/{job_id}", params, headers
 
     # ── Internals ─────────────────────────────────────────────────────
 

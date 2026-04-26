@@ -1,11 +1,84 @@
-# Session Handoff — Session 53 (1 cycle shipped · Phase 4a knowledge-service migration ADR DESIGN-first · cycle closed)
+# Session Handoff — Session 53 (2 cycles shipped · Phase 4a-α BUILD live + chunked-extraction deferred to followup · cycle closed)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-26 (session 53, opened with Phase 4a ADR DESIGN-first cycle)
-> **HEAD:** `<pending>` (Phase 4a ADR — current cycle; Session 52 closed at `c0420d2` Phase 3b-followup per-op aggregators)
+> **Date:** 2026-04-27 (session 53, cycles 1-2 shipped)
+> **HEAD:** `<pending>` (Phase 4a-α BUILD; ADR @ `b2f577e`; Session 52 closed at `c0420d2`)
 > **Branch:** `main` (ahead of origin — user pushes manually)
 
-## Session 53 — Phase 4a ADR DESIGN-first cycle · /review-impl validated 3 HIGH gaps before commit
+## Session 53 cycle 2 — Phase 4a-α BUILD live · /review-impl caught 9 issues all fixed inline
+
+**What shipped:** Knowledge-service entity extraction now routes through the unified LLM gateway end-to-end. Live smoke against qwen/qwen3.6-35b-a3b returned `{Sherlock Holmes/Person, 221B Baker Street/Location, Dr. Watson/Person, Professor Moriarty/Person}` — **the original-complaint cycle that triggered the entire refactor is PROVEN end-to-end through the unified contract.**
+
+**22 files** (gateway 6 + SDK 5 + ks-svc 9 + infra 1 + contracts 1) implementing ADR §5.1 Steps 0-5:
+- **Step 0a — gateway worker op-whitelist** (`worker.go:140`): chat/completion/entity_extraction/relation_extraction/event_extraction now route past the gate; isStreamableOperation map + 3 routing tests
+- **Step 0b — typed transient errors + gateway-side retry** (`provider/errors.go` NEW): ErrUpstreamRateLimited+Transient+Timeout+Permanent + IsTransientUpstreamError + RetryAfter + ClassifyUpstreamHTTP factory; openCompletionStream + anthropic_streamer classify HTTP status into typed shape; worker.streamWithRetry/streamWithBudget honor Retry-After + 1 retry per /review-impl MED#5 SHARED across chunks (not per-chunk)
+- **Step 1 — SDK jobs API** (`sdks/python/loreweave_llm/`): submit_job/get_job/wait_terminal/cancel_job + multi-tenant per-call user_id on jobs AND stream methods; LLMTransientRetryNeededError raised when budget>0; httpx polling 250ms→5s
+- **Step 2 — entity extractor migration**: `_extract_via_llm_client` routes via SDK when llm_client param supplied; `chunking=None` per /review-impl HIGH#1 — chunked extraction deferred to 4a-α-followup because current K17.1 prompt as single user message would shred under gateway's `\n\n` chunker; cancelled job RAISES ExtractionError(stage=cancelled) per /review-impl MED#3; tolerant parser drops items missing required fields with metric-bumped reasons
+- **Step 3 — knowledge-service wrapper** (`app/clients/llm_client.py` NEW): LLMClient.submit_and_wait owns caller-side retry budget — fixed per /review-impl HIGH#2 to forward budget=1 to SDK so LLMTransientRetryNeededError actually fires + asyncio.sleep on retry_after_s + bumps outcome=transient_retry AND outcome=failed on exhaustion per LOW#7
+- **Step 4 — orchestrator** threads llm_client to entity step ONLY; other 3 extractors stay on legacy provider_client until 4a-β
+- **Step 5 — cancel-race regression test**: covered at SDK level (test_cancel_race_polling_observes_external_cancel) + extractor level (test_extract_entities_via_llm_client_cancelled_raises_with_stage)
+
+### `/review-impl` round 2 — caught 9 issues, all fixed inline
+
+| # | Sev | Issue | Fix |
+|---|-----|-------|-----|
+| 1 | 🔴 HIGH | Chunking shreds entity prompt (single user message contains instructions+rules+examples+text inline; gateway splits on `\n\n` → chunks 2..N have NO instructions → quality collapse on 13K-token chapters). My live smoke didn't trigger because input was 1 paragraph. | `chunking=None` + deferred 4a-α-followup that restructures prompt as system+user before re-enabling |
+| 2 | 🔴 HIGH | Wrapper transient retry was DEAD CODE — passed budget=0 to SDK so LLMTransientRetryNeededError never fired; K17.3 quality contract (the entire reason ADR §3.3 D3c exists) NOT preserved | Forward budget=1 to SDK + new `test_llm_client_wrapper.py` (6 tests pin REAL retry-loop semantics; previous tests bypassed wrapper by mocking LLMClient directly) |
+| 3 | 🟡 MED | Cancelled job conflated with "0 entities found" — orchestrator wrote empty Pass 2 + flipped extraction_jobs to completed, lying to user about cancel | Raise ExtractionError(stage='cancelled') instead of returning [] |
+| 4 | 🟡 MED | Client.stream() didn't accept per-call user_id (multi-tenant pattern incomplete) | Mirror jobs methods; +2 SDK tests |
+| 5 | 🟡 MED | Worker per-chunk retry budget (9 chunks × 2 attempts = 18 upstream calls under sustained transient errors) | Refactor to streamWithBudget shared-pointer; +2 budget regression tests |
+| 6 | 🟢 LOW | openCompletionStream → typed error mapping not unit-tested directly (a regression to fmt.Errorf would silently disable streamWithRetry) | NEW open_completion_stream_test.go — 7 httptest tests pin status→type mapping |
+| 7 | 🟢 LOW | knowledge_llm_job_total{outcome="failed"} didn't include exhausted-transient | Bump `outcome="failed"` ALSO on exhaustion |
+| 8 | 🟢 LOW | openapi entity_extraction.input description claimed `{text, known_entities, language}` but real wire shape is chat-message | Updated description to clarify all extraction ops use chat-message wire; operation enum picks aggregator only |
+| 9 | 🔵 COSMETIC | Unreachable `assert last_job is not None` | Auto-fixed by HIGH#2 refactor |
+
+### Test deltas
+- **Gateway:** +15 (8 worker_test.go: 3 whitelist + 5 retry + 2 shared-budget; 7 open_completion_stream_test.go httptest typed-error mapping)
+- **SDK:** +21 (19 test_client_jobs.py: submit/get/wait/cancel/budget/cancel-race/multi-tenant; 2 test_client_stream.py: stream user_id)
+- **knowledge-service:** +12 (6 test_llm_entity_extractor.py SDK-path; 6 test_llm_client_wrapper.py wrapper REAL retry semantics)
+
+### Verify evidence
+```
+gateway:  go test ./internal/... → ALL GREEN
+sdk:      pytest tests/ → 37 passed in 0.34s
+ks-svc:   pytest tests/unit/ → 1606 passed in 10.53s
+                              (19 pre-existing host-env failures unrelated; confirmed via git stash on b2f577e)
+live smoke (post-fixes): qwen3.6-35b-a3b entity_extraction → 1 entity, status=completed
+```
+
+### What's NEXT for the next agent
+
+**Two equally-valid next cycles** — pick based on quality-eval priority vs migration-velocity:
+
+**Option A — 4a-α-followup (S/M)**: re-enable chunking by restructuring entity prompt as system+user. Touches `app/extraction/llm_prompts/entity_extraction.md` (split into a system block and a `{text}`-only user block) + `app/extraction/llm_entity_extractor.py` (build messages as `[{role:system, content:instructions}, {role:user, content:text}]` + set chunking=ChunkingConfig(strategy='paragraphs', size=15)). Re-run quality eval on Speckled Band (13K tokens) to validate chunked extraction matches single-call quality. **This is the cycle that finally fixes the original 13K-chapter complaint at production quality.**
+
+**Option B — 4a-β (L)**: migrate relation/event/fact extractors to SDK pattern. Same surface as 4a-α (extractor signature + tolerant parser + orchestrator threading) × 3 extractors. Adds `fact_extraction` to openapi `JobOperation` enum + `factKey(subject+predicate+claim)` to gateway's jsonListAggregator + +5 aggregator tests. Includes the `_build_extraction_messages` consolidation decision (per ADR §5.1 LOW#10) when 3 extractors all need the same helper.
+
+**Recommend Option A first** — closes the original-complaint loop end-to-end before scaling to 3 more extractors. 4a-β can ship after.
+
+**5 ADR §6 deferred questions still open for 4a-β/γ/δ:**
+- Q3 cross-chunk known_entities priming (still relevant once chunking re-enabled)
+- Q4 polling DB load profile (knowledge_llm_poll_total metric exists; needs measurement)
+- Q5 gateway concurrency limit (knowledge_llm_inflight_jobs gauge exists; cap deferred to Phase 6a)
+- Q6 fact_extraction prompt template (own vs share with event)
+- Q7 on-demand summarize: P1 stream vs P2 jobs (4a-γ)
+
+**Read in this order to onboard:**
+1. `docs/sessions/SESSION_PATCH.md` — full state with cycle metadata at top
+2. `docs/03_planning/KNOWLEDGE_SERVICE_LLM_MIGRATION_ADR.md` — 8 sections + 25 subsections + 9-item closing checklist
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` §4 Phase 4a sub-cycle rows
+4. This handoff file (you're reading)
+5. **For 4a-α-followup**: `services/knowledge-service/app/extraction/llm_prompts/entity_extraction.md` (~135 lines; needs system+user split)
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` to confirm prior cycle closed
+2. For 4a-α-followup: size S/M (`size S 3 2 0` then `phase clarify`); for 4a-β: size L (`size L 8 5 1`)
+3. Infra: `docker ps --filter name=infra-` — provider-registry + knowledge-service + LM Studio reachable
+4. Live smoke target: `019dc738-a6b7-7bff-b953-b47868ae7db0` (qwen3.6-35b-a3b user_model registered for `019d5e3c-7cc5-7e6a-8b27-1344e148bf7c`)
+
+---
+
+## Session 53 cycle 1 — Phase 4a ADR DESIGN-first · /review-impl validated 3 HIGH gaps before commit
 
 **Story:** Session opened on the natural Phase-4a-next path identified at session 52 close. Per CLAUDE.md "DESIGN-first cycle (like C16/C17/C18)", shipped a 394-LOC ADR pinning Path C (job-pattern + chunking) over Path A (surface-preserving) and Path B (SDK-direct). 4-cycle slicing 4a-α XL / 4a-β L / 4a-γ L / 4a-δ M bounds the ~407 mock-site test churn at <30% per PR. D1-D7 all resolved with rationale + 8 deferred Qs to BUILD-cycle CLARIFY.
 

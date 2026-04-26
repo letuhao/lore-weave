@@ -18,9 +18,11 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -269,14 +271,40 @@ func openCompletionStream(
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("http: %w", err)
+		// Phase 4a-α Step 0b — classify network errors. net.Error.Timeout()
+		// is the canonical signal for transport-level timeouts (httpx's
+		// equivalent of TimeoutException). Anything else (DNS, connection
+		// refused, TLS handshake) is treated as transient too — they're
+		// just-as-likely caused by transient infra issues.
+		var netErr interface{ Timeout() bool }
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return nil, &ErrUpstreamTimeout{Underlying: err}
+		}
+		return nil, &ErrUpstreamTransient{StatusCode: 0, Body: err.Error()}
 	}
 	if resp.StatusCode >= 400 {
 		// Drain a small sample for the error message, then close.
 		buf := make([]byte, 512)
 		n, _ := resp.Body.Read(buf)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("provider %d: %s", resp.StatusCode, string(buf[:n]))
+		body := string(buf[:n])
+		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+		return nil, ClassifyUpstreamHTTP(resp.StatusCode, body, retryAfter)
 	}
 	return resp, nil
+}
+
+// parseRetryAfter parses the "Retry-After: N" header (delta-seconds form
+// only). Returns nil when the header is absent or unparseable. HTTP-date
+// form (RFC 7231) is intentionally ignored — rare in LLM providers and
+// the worker falls back to fixed backoff when this is nil.
+func parseRetryAfter(raw string) *float64 {
+	if raw == "" {
+		return nil
+	}
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || v < 0 {
+		return nil
+	}
+	return &v
 }

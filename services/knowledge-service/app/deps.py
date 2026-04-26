@@ -19,6 +19,8 @@ from app.clients.embedding_client import EmbeddingClient
 from app.clients.embedding_client import get_embedding_client as _get_embedding_client_singleton
 from app.clients.glossary_client import GlossaryClient
 from app.clients.glossary_client import get_glossary_client as _get_glossary_client_singleton
+from app.clients.llm_client import LLMClient
+from app.clients.llm_client import get_llm_client as _get_llm_client_singleton
 from app.clients.provider_client import ProviderClient
 from app.clients.provider_client import get_provider_client as _get_provider_client_singleton
 from app.db.pool import get_knowledge_pool
@@ -90,6 +92,12 @@ async def get_embedding_client() -> EmbeddingClient:
 
 async def get_provider_client() -> ProviderClient:
     return _get_provider_client_singleton()
+
+
+async def get_llm_client() -> LLMClient:
+    """Phase 4a-α Step 3 — wraps loreweave_llm SDK Client.
+    Replaces get_provider_client at extractor call sites once 4a-δ ships."""
+    return _get_llm_client_singleton()
 
 
 async def get_benchmark_runs_repo() -> BenchmarkRunsRepo:

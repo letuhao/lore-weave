@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app.clients.book_client import close_book_client, get_book_client
 from app.clients.embedding_client import close_embedding_client, get_embedding_client
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
+from app.clients.llm_client import close_llm_client, get_llm_client
 from app.clients.provider_client import close_provider_client, get_provider_client
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -52,6 +53,7 @@ async def _close_all_startup_resources() -> None:
     """
     for close_fn_name, close_fn in (
         ("cooldown_client", close_cooldown_client),
+        ("llm_client", close_llm_client),  # Phase 4a-α Step 3
         ("provider_client", close_provider_client),
         ("embedding_client", close_embedding_client),
         ("book_client", close_book_client),
@@ -90,6 +92,11 @@ async def lifespan(app: FastAPI):
         # call, but we touch it here so a misconfigured base URL surfaces at
         # startup rather than at first extraction job.
         get_provider_client()
+        # Phase 4a-α Step 3 — loreweave_llm SDK wrapper. Touched here so
+        # SDK construction errors (bad base_url, missing internal_token)
+        # surface at startup. Lifecycle close paired with provider_client
+        # in _close_all_startup_resources + the post-yield teardown.
+        get_llm_client()
         # K11.2 — Neo4j driver. No-op in Track 1 mode (NEO4J_URI empty);
         # fail-fast on unreachable Neo4j when configured.
         await init_neo4j_driver()
@@ -423,6 +430,7 @@ async def lifespan(app: FastAPI):
         # C2: close the cooldown Redis client ahead of other resources
         # since it's self-contained (no inbound dependencies).
         await close_cooldown_client()
+        await close_llm_client()  # Phase 4a-α Step 3
         await close_provider_client()
         await close_embedding_client()
         await close_book_client()

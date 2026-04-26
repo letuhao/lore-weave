@@ -1,23 +1,33 @@
 # ── Stage 1: deps ─────────────────────────────────────────────
 # Install production dependencies into a cached layer.
+#
+# Phase 4a-α: build context is repo root (set in docker-compose.yml)
+# so we can COPY the local loreweave_llm SDK alongside the service
+# code. Reference impl: services/chat-service/Dockerfile (Phase 1c-ii).
 FROM python:3.12-slim AS deps
 
 WORKDIR /app
-COPY requirements.txt .
+COPY services/knowledge-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install the local LLM SDK. Service code imports `loreweave_llm` which
+# resolves to this package — direct provider-SDK calls (litellm, openai,
+# anthropic) are forbidden per CLAUDE.md gateway invariant.
+COPY sdks/python /sdk
+RUN pip install --no-cache-dir /sdk
 
 # ── Stage 2: test ─────────────────────────────────────────────
 # CI target: docker build --target test .
 # Installs test deps, copies source + tests, runs pytest.
 FROM deps AS test
 
-COPY requirements-test.txt .
+COPY services/knowledge-service/requirements-test.txt .
 RUN pip install --no-cache-dir -r requirements-test.txt
 
-COPY app/ ./app/
-COPY eval/ ./eval/
-COPY tests/ ./tests/
-COPY pytest.ini .
+COPY services/knowledge-service/app/ ./app/
+COPY services/knowledge-service/eval/ ./eval/
+COPY services/knowledge-service/tests/ ./tests/
+COPY services/knowledge-service/pytest.ini .
 
 RUN KNOWLEDGE_DB_URL=postgresql://u:p@localhost:5432/knowledge \
     GLOSSARY_DB_URL=postgresql://u:p@localhost:5432/glossary \
@@ -29,7 +39,7 @@ RUN KNOWLEDGE_DB_URL=postgresql://u:p@localhost:5432/knowledge \
 # Slim final image — no tests, no test deps.
 FROM deps AS production
 
-COPY app/ ./app/
+COPY services/knowledge-service/app/ ./app/
 
 RUN adduser --system --group --no-create-home app \
     && chown -R app:app /app

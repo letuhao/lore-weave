@@ -8,6 +8,10 @@ httpx>=0.27
 PyJWT>=2.8
 cachetools>=5.3
 prometheus-client>=0.20
+
+# loreweave_llm SDK (Phase 4a-α) — installed via Dockerfile COPY of
+# sdks/python (build context is repo root). For host-side pytest:
+#   pip install -e ../../sdks/python   (from services/knowledge-service)
 PyYAML>=6.0
 # K11.2 — Neo4j driver for Track 2 extraction graph. Lifespan is
 # gated on NEO4J_URI being set; the import itself is unconditional

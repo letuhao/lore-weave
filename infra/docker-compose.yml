@@ -400,8 +400,10 @@ services:
 
   knowledge-service:
     build:
-      context: ../services/knowledge-service
-      dockerfile: Dockerfile
+      # Phase 4a-α: context is repo root so Dockerfile can COPY sdks/python.
+      # Mirrors chat-service Phase 1c-ii setup.
+      context: ..
+      dockerfile: services/knowledge-service/Dockerfile
     environment:
       PORT: "8092"
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge

@@ -105,6 +105,7 @@ ExtractionStage = Literal[
     "retry_validate",
     "provider",
     "provider_exhausted",
+    "cancelled",  # /review-impl MED#3 — Phase 4a-α SDK path can produce a cancelled terminal
 ]
 
 # Phase 3 review issue 4 — cap ValidationError text in fix-up prompts

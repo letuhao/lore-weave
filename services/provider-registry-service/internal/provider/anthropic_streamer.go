@@ -37,6 +37,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -254,13 +255,20 @@ func doStreamPOST(
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("http: %w", err)
+		// Phase 4a-α Step 0b — same classify treatment as openCompletionStream.
+		var netErr interface{ Timeout() bool }
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return nil, &ErrUpstreamTimeout{Underlying: err}
+		}
+		return nil, &ErrUpstreamTransient{StatusCode: 0, Body: err.Error()}
 	}
 	if resp.StatusCode >= 400 {
 		buf := make([]byte, 512)
 		n, _ := resp.Body.Read(buf)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("provider %d: %s", resp.StatusCode, string(buf[:n]))
+		body := string(buf[:n])
+		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+		return nil, ClassifyUpstreamHTTP(resp.StatusCode, body, retryAfter)
 	}
 	return resp, nil
 }

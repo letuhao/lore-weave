@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
+from app.clients.llm_client import LLMClient
 from app.clients.provider_client import ProviderClient
 from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
@@ -36,6 +37,8 @@ from app.db.neo4j_repos.canonical import (
 )
 from app.extraction.llm_json_parser import ExtractionError, extract_json
 from app.extraction.llm_prompts import load_prompt
+from app.metrics import knowledge_extraction_dropped_total
+from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 
 __all__ = [
     "EntityExtractionResponse",
@@ -98,6 +101,7 @@ async def extract_entities(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
 ) -> list[LLMEntityCandidate]:
     """Extract named entities from *text* via the user's BYOK LLM.
 
@@ -111,8 +115,13 @@ async def extract_entities(
         project_id: project scope (``None`` for global).
         model_source: ``"user_model"`` or ``"platform_model"``.
         model_ref: model reference key in provider-registry.
-        client: injectable ``ProviderClient`` for testing. Production
-            callers leave this ``None``.
+        client: injectable ``ProviderClient`` for testing of the legacy
+            K17.2 path. Used when ``llm_client`` is None (back-compat
+            during 4a-α; removed in 4a-δ).
+        llm_client: Phase 4a-α — when supplied, routes the extraction
+            through the loreweave_llm SDK (job pattern + chunking +
+            gateway-side retry + per-op JSON aggregator). When None,
+            falls back to the legacy K17.2 sync path.
 
     Returns:
         Deduplicated list of ``LLMEntityCandidate`` sorted by
@@ -125,7 +134,7 @@ async def extract_entities(
 
     Raises:
         ExtractionError: on terminal LLM / parse / validation failure
-            (propagated from K17.3).
+            (propagated from K17.3 OR synthesized from new path).
     """
     if not text or not text.strip():
         return []
@@ -146,23 +155,186 @@ async def extract_entities(
         known_entities=safe_known,
     )
 
-    response = await extract_json(
-        EntityExtractionResponse,
-        user_id=user_id,
-        model_source=model_source,
-        model_ref=model_ref,
-        system=None,
-        user_prompt=user_prompt,
-        response_format={"type": "json_object"},
-        client=client,
-    )
+    if llm_client is not None:
+        raw_entities = await _extract_via_llm_client(
+            llm_client=llm_client,
+            user_id=user_id,
+            project_id=project_id,
+            model_source=model_source,
+            model_ref=model_ref,
+            user_prompt=user_prompt,
+        )
+    else:
+        # Legacy K17.2 path — preserved through 4a-α, removed in 4a-δ.
+        response = await extract_json(
+            EntityExtractionResponse,
+            user_id=user_id,
+            model_source=model_source,
+            model_ref=model_ref,
+            system=None,
+            user_prompt=user_prompt,
+            response_format={"type": "json_object"},
+            client=client,
+        )
+        raw_entities = response.entities
 
     return _postprocess(
-        response.entities,
+        raw_entities,
         user_id=user_id,
         project_id=project_id,
         known_entities=known_entities,
     )
+
+
+# ── Phase 4a-α Step 2 — new SDK-routed path ─────────────────────────
+
+
+async def _extract_via_llm_client(
+    *,
+    llm_client: LLMClient,
+    user_id: str,
+    project_id: str | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    user_prompt: str,
+) -> list["_LLMEntity"]:
+    """Submit entity_extraction job + wait_terminal + tolerant-parse the
+    `result.entities` envelope into a list of `_LLMEntity` records.
+
+    Uses caller-side retry budget (1) per ADR §3.3 D3c bridge. On
+    transient retry exhaustion or non-transient failure, raises
+    ExtractionError so the orchestrator can surface a job-level error.
+
+    **Chunking is INTENTIONALLY DISABLED in 4a-α** (per /review-impl
+    HIGH#1). The current K17.1 prompt template
+    (``llm_prompts/entity_extraction.md``) is a single-string user
+    message with instructions + rules + examples + ``{text}`` inlined.
+    The gateway's chunker splits the LAST user message's content on
+    ``\n\n`` paragraph boundaries — which would shred the prompt:
+    chunk 0 keeps part of the instructions + first N paragraphs of
+    text, chunks 1..N would be raw paragraph fragments with NO
+    instructions, leading to invalid JSON / hallucinations / quality
+    collapse. Chunked entity extraction is deferred to a 4a-α-followup
+    (or 4a-β) cycle that restructures the prompt as a SYSTEM message
+    (preserved across chunks) + user message (text only, chunked).
+
+    Per ADR §3.3 D6 — `job_meta` carries the reverse-lookup keys so a
+    future business-job query can find all LLM jobs for an extraction.
+    """
+    try:
+        job = await llm_client.submit_and_wait(
+            user_id=user_id,
+            operation="entity_extraction",
+            model_source=model_source,
+            model_ref=model_ref,
+            input={
+                "messages": [{"role": "user", "content": user_prompt}],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0,
+            },
+            # chunking=None per /review-impl HIGH#1 — see docstring above.
+            chunking=None,
+            job_meta={
+                "extractor": "entity",
+                "project_id": project_id or "",
+            },
+            transient_retry_budget=1,
+        )
+    except LLMTransientRetryNeededError as exc:
+        raise ExtractionError(
+            f"entity_extraction failed after transient retry: {exc.underlying_code}",
+            stage="provider_exhausted",
+            last_error=exc,
+        ) from exc
+    except LLMError as exc:
+        raise ExtractionError(
+            f"entity_extraction SDK error: {exc}",
+            stage="provider",
+            last_error=exc,
+        ) from exc
+
+    if job.status == "cancelled":
+        # /review-impl MED#3 fix — cancelled job MUST surface as a
+        # distinct terminal so orchestrator can flip extraction_jobs
+        # status correctly, NOT collapse to "0 entities found" which
+        # would lie to the user about cancel result. Raise with a
+        # `cancelled` stage marker; orchestrator/runner can handle.
+        raise ExtractionError(
+            f"entity_extraction job cancelled (job_id={job.job_id})",
+            stage="cancelled",  # type: ignore[arg-type]
+        )
+
+    if job.status != "completed":
+        err_code = job.error.code if job.error else "LLM_UNKNOWN_ERROR"
+        err_msg = job.error.message if job.error else ""
+        raise ExtractionError(
+            f"entity_extraction job ended status={job.status} code={err_code}: {err_msg}",
+            stage="provider",
+        )
+
+    raw_items: list[Any] = []
+    if job.result is not None:
+        items = job.result.get("entities", [])
+        if isinstance(items, list):
+            raw_items = items
+
+    return _tolerant_parse_entities(raw_items)
+
+
+def _tolerant_parse_entities(raw_items: list[Any]) -> list["_LLMEntity"]:
+    """Per /review-impl LOW#11 — required name+kind; optional aliases
+    (default []) + confidence (default 0.5). Items missing required
+    fields are dropped + counted in metrics so quality regressions
+    surface in dashboards before users notice missing entities.
+
+    `evidence_passage_id` is mentioned in the ADR as required-by-anchoring
+    BUT the current K17.4 prompt doesn't ask for it (anchoring uses
+    canonical_name match against `known_entities` instead). Leaving as
+    optional for 4a-α parity with legacy path; revisit when anchor
+    loader changes (Phase 4a-β or later)."""
+    parsed: list[_LLMEntity] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            knowledge_extraction_dropped_total.labels(
+                operation="entity_extraction", reason="validation"
+            ).inc()
+            continue
+        name = item.get("name")
+        kind = item.get("kind")
+        if not isinstance(name, str) or not name.strip():
+            knowledge_extraction_dropped_total.labels(
+                operation="entity_extraction", reason="missing_name"
+            ).inc()
+            continue
+        if not isinstance(kind, str) or not kind.strip():
+            knowledge_extraction_dropped_total.labels(
+                operation="entity_extraction", reason="missing_kind"
+            ).inc()
+            continue
+        # Defaults for optional fields per ADR §5.1 Step 3.
+        aliases = item.get("aliases") or []
+        if not isinstance(aliases, list):
+            aliases = []
+        confidence = item.get("confidence")
+        if not isinstance(confidence, (int, float)):
+            confidence = 0.5
+        # Clamp confidence to [0, 1] so a sloppy LLM emitting 1.2 doesn't
+        # trip the Pydantic ge/le validator below.
+        confidence = max(0.0, min(1.0, float(confidence)))
+        try:
+            parsed.append(_LLMEntity(
+                name=name,
+                kind=kind,  # type: ignore[arg-type]  — Literal validated by Pydantic
+                aliases=[a for a in aliases if isinstance(a, str)],
+                confidence=confidence,
+            ))
+        except ValidationError:
+            # Wrong-shape kind (not in EntityKind Literal) lands here.
+            knowledge_extraction_dropped_total.labels(
+                operation="entity_extraction", reason="validation"
+            ).inc()
+            continue
+    return parsed
 
 
 # ── Post-processing ─────────────────────────────────────────────────

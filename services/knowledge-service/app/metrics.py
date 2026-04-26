@@ -226,6 +226,68 @@ for _o in _PROVIDER_OUTCOMES:
         # histogram observation is recorded for that outcome.
         provider_chat_completion_duration_seconds.labels(outcome=_o)
 
+# ── Phase 4a-α — unified-LLM-pipeline observability ──────────────────
+#
+# These metrics replace `provider_chat_completion_*` once 4a-δ deletes
+# provider_client.py. Live in parallel during 4a-α/β/γ for both-paths
+# coverage. Per /review-impl MED#8 — sunset-not-deletion plan.
+
+_LLM_JOB_OUTCOMES = (
+    "completed",
+    "failed",
+    "cancelled",
+    "transient_retry",   # caller-side retry consumed (D3c bridge)
+    "sdk_error",         # LLMError that wasn't a normal terminal
+)
+
+knowledge_llm_job_total = Counter(
+    "knowledge_llm_job_total",
+    "Phase 4a-α — async LLM job terminations dispatched via loreweave_llm SDK. "
+    "Replaces knowledge_provider_chat_completion_total once 4a-δ ships.",
+    ["operation", "outcome"],
+    registry=registry,
+)
+
+# Pre-seed common (operation, outcome) pairs so dashboards don't show
+# blank panels until first traffic. Operations covered: chat (summaries)
+# + entity_extraction (4a-α) + relation_extraction/event_extraction/
+# fact_extraction (4a-β placeholder).
+for _op in ("chat", "entity_extraction", "relation_extraction", "event_extraction"):
+    for _o in _LLM_JOB_OUTCOMES:
+        knowledge_llm_job_total.labels(operation=_op, outcome=_o)
+
+knowledge_llm_poll_total = Counter(
+    "knowledge_llm_poll_total",
+    "Phase 4a-α — wait_terminal poll outcomes. Per /review-impl MED#7 — "
+    "polling DB-load measurement so cap decisions become data-driven.",
+    ["outcome"],
+    registry=registry,
+)
+for _o in ("terminal", "http_error"):
+    knowledge_llm_poll_total.labels(outcome=_o)
+
+# Gauge — current concurrent in-flight jobs initiated by this knowledge-
+# service worker process. Per /review-impl MED#9 — visibility into
+# per-chapter 3-job burst BEFORE Phase 6a hard cap ships.
+knowledge_llm_inflight_jobs = Gauge(
+    "knowledge_llm_inflight_jobs",
+    "Phase 4a-α — concurrent LLM jobs in flight from this worker process",
+    registry=registry,
+)
+
+# Per /review-impl Q3 (cross-chunk known_entities / tolerant parser drops)
+# — visibility into items dropped by tolerant parser so a quality
+# regression surfaces in metrics before users notice missing entities.
+knowledge_extraction_dropped_total = Counter(
+    "knowledge_extraction_dropped_total",
+    "Phase 4a-α — items dropped by tolerant parser (missing required field)",
+    ["operation", "reason"],
+    registry=registry,
+)
+for _op in ("entity_extraction", "relation_extraction", "event_extraction"):
+    for _r in ("missing_name", "missing_kind", "missing_evidence_passage_id", "validation"):
+        knowledge_extraction_dropped_total.labels(operation=_op, reason=_r)
+
 # K17.3 LLM JSON extraction wrapper metrics. Counter-only — per-call
 # latency is already captured by provider_chat_completion_duration_seconds
 # at the HTTP layer, and a second histogram here would double-count
