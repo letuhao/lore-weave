@@ -12,6 +12,8 @@ package jobs
 // contracts/api/llm-gateway/v1/openapi.yaml under `Job.result`.
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/loreweave/provider-registry-service/internal/provider"
@@ -67,9 +69,48 @@ func NewAggregator(operation string) Aggregator {
 	switch operation {
 	case "chat", "completion":
 		return &chatAggregator{}
+	case "entity_extraction":
+		return newJSONListAggregator("entities", entityKey)
+	case "relation_extraction":
+		return newJSONListAggregator("relations", relationKey)
+	case "event_extraction":
+		return newJSONListAggregator("events", eventKey)
 	default:
 		return &chatAggregator{} // default to text-concat
 	}
+}
+
+// entityKey produces a dedup key for entity rows. Same (name, kind)
+// across chunks → keep highest-confidence entry. Aliases array, if
+// present, is merged on tie.
+func entityKey(e map[string]any) string {
+	name, _ := e["name"].(string)
+	kind, _ := e["kind"].(string)
+	return name + "\x00" + kind
+}
+
+// relationKey dedups by (subject, predicate, object, polarity). Phase
+// 4a knowledge-service uses this when chunks of one chapter are
+// processed independently — the same relation surfacing in two
+// adjacent chunks (overlap region) collapses to one.
+func relationKey(r map[string]any) string {
+	subj, _ := r["subject"].(string)
+	pred, _ := r["predicate"].(string)
+	obj, _ := r["object"].(string)
+	polarity, _ := r["polarity"].(string)
+	if polarity == "" {
+		polarity = "affirm"
+	}
+	return subj + "\x00" + pred + "\x00" + obj + "\x00" + polarity
+}
+
+// eventKey dedups by (name, time_cue) — events with the same name at
+// the same narrative cue are likely the same beat surfacing across
+// adjacent chunks. Different cues → distinct events.
+func eventKey(ev map[string]any) string {
+	name, _ := ev["name"].(string)
+	cue, _ := ev["time_cue"].(string)
+	return name + "\x00" + cue
 }
 
 // chatAggregator accumulates token deltas + reasoning + usage with
@@ -195,3 +236,225 @@ func (a *chatAggregator) Finalize() (map[string]any, int, int) {
 	}
 	return result, a.inputTokens, a.outputTokens
 }
+
+// jsonListAggregator collects token deltas into per-chunk JSON-string
+// buffers, parses each chunk on EndChunk, and merges the named list
+// field by a caller-supplied dedup key. Used by entity / relation /
+// event extraction operations that all return `{<list_field>: [...]}`
+// shaped JSON.
+//
+// Soft-fail design: a chunk whose buffer parses as invalid JSON
+// contributes no items but doesn't fail the whole job — its error is
+// captured in the result envelope's `errors` array so the caller can
+// see partial-extraction quality. This matches the Phase 4a goal of
+// "knowledge-service should still complete a chapter even if one
+// chunk's LLM output was malformed".
+type jsonListAggregator struct {
+	listField string
+	keyFn     func(map[string]any) string
+
+	// Per-chunk
+	chunkBuffer strings.Builder
+	inChunk     bool
+
+	// Cross-chunk
+	merged          map[string]map[string]any // dedup key → row
+	order           []string                  // preserve insertion order
+	chunkErrors     []string
+	inputTokens     int
+	outputTokens   int
+	reasoningTokens int
+	finishReason    string
+}
+
+func newJSONListAggregator(field string, keyFn func(map[string]any) string) *jsonListAggregator {
+	return &jsonListAggregator{
+		listField: field,
+		keyFn:     keyFn,
+		merged:    map[string]map[string]any{},
+	}
+}
+
+func (a *jsonListAggregator) StartChunk(_ int) {
+	a.inChunk = true
+	a.chunkBuffer.Reset()
+}
+
+func (a *jsonListAggregator) EndChunk(idx int) {
+	if !a.inChunk {
+		return
+	}
+	a.inChunk = false
+	raw := a.chunkBuffer.String()
+	a.chunkBuffer.Reset() // Belt: prevents Finalize defensive-flush from re-parsing.
+	if raw == "" {
+		return
+	}
+	a.mergeChunkJSON(idx, raw)
+}
+
+// Accept routes Token deltas into the per-chunk buffer (chunked) or
+// directly into a shared buffer (unchunked Phase 2b backward-compat).
+// Reasoning is captured for billing tokens only — extraction ops
+// don't surface reasoning_content (the parsed result is the value-add).
+func (a *jsonListAggregator) Accept(chunk provider.StreamChunk) bool {
+	switch chunk.Kind {
+	case provider.StreamChunkToken:
+		// Both chunked + unchunked paths write to chunkBuffer; the
+		// distinction is whether StartChunk/EndChunk frames the parse,
+		// or Finalize handles a single trailing parse for unchunked.
+		a.chunkBuffer.WriteString(chunk.Delta)
+	case provider.StreamChunkReasoning:
+		// Extraction-op reasoning is not surfaced; only count tokens.
+	case provider.StreamChunkUsage:
+		a.inputTokens += chunk.InputTokens
+		a.outputTokens += chunk.OutputTokens
+		if chunk.ReasoningTokens != nil {
+			a.reasoningTokens += *chunk.ReasoningTokens
+		}
+	case provider.StreamChunkDone:
+		a.finishReason = chunk.FinishReason
+	case provider.StreamChunkError:
+		// Errors surface via worker → repo.Finalize, not here.
+	}
+	return true
+}
+
+// mergeChunkJSON parses a chunk's JSON output and merges its list
+// items into `merged` keyed by keyFn. Tie-break: keep highest
+// confidence; on equal confidence, first writer wins (insertion
+// order preserved via `order` slice).
+func (a *jsonListAggregator) mergeChunkJSON(idx int, raw string) {
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		a.chunkErrors = append(a.chunkErrors,
+			fmt.Sprintf("chunk %d: %s", idx, err.Error()))
+		return
+	}
+	rawList, ok := parsed[a.listField].([]any)
+	if !ok {
+		a.chunkErrors = append(a.chunkErrors,
+			fmt.Sprintf("chunk %d: missing or non-array %q field", idx, a.listField))
+		return
+	}
+	for _, item := range rawList {
+		row, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		key := a.keyFn(row)
+		existing, dup := a.merged[key]
+		if !dup {
+			a.merged[key] = row
+			a.order = append(a.order, key)
+			continue
+		}
+		// Tie-break by confidence — keep higher value's row, but merge
+		// any keys the existing row has that the new row doesn't (e.g.
+		// aliases that surfaced in chunk 0 but not chunk 2).
+		newConf := floatOrZero(row["confidence"])
+		oldConf := floatOrZero(existing["confidence"])
+		// `mergeKnownKeys(winner, loser)` — winner's keys take
+		// precedence; loser fills in fields the winner doesn't have.
+		// Higher confidence wins; on tie, existing (insertion-order
+		// first) wins.
+		if newConf > oldConf {
+			a.merged[key] = mergeKnownKeys(row, existing)
+		} else {
+			a.merged[key] = mergeKnownKeys(existing, row)
+		}
+	}
+}
+
+// mergeKnownKeys returns a copy of `winner` with any keys present in
+// `loser` (but missing from `winner`) carried over. The "aliases" key
+// gets union semantic when both rows have it.
+func mergeKnownKeys(winner, loser map[string]any) map[string]any {
+	out := make(map[string]any, len(winner))
+	for k, v := range winner {
+		out[k] = v
+	}
+	for k, v := range loser {
+		if _, has := out[k]; !has {
+			out[k] = v
+			continue
+		}
+		// Aliases: union the two arrays preserving order.
+		if k == "aliases" {
+			out[k] = unionStringList(out[k], v)
+		}
+	}
+	return out
+}
+
+func unionStringList(a, b any) []any {
+	seen := map[string]bool{}
+	var out []any
+	add := func(v any) {
+		s, ok := v.(string)
+		if !ok {
+			return
+		}
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	if al, ok := a.([]any); ok {
+		for _, v := range al {
+			add(v)
+		}
+	}
+	if bl, ok := b.([]any); ok {
+		for _, v := range bl {
+			add(v)
+		}
+	}
+	return out
+}
+
+func floatOrZero(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case int:
+		return float64(x)
+	case int64:
+		return float64(x)
+	}
+	return 0
+}
+
+func (a *jsonListAggregator) Finalize() (map[string]any, int, int) {
+	// Defensive flush: caller forgot EndChunk before Finalize. Treat
+	// the trailing buffer as the implicit last chunk (or the only
+	// chunk in unchunked-mode where StartChunk was never called).
+	if a.inChunk || (len(a.merged) == 0 && a.chunkBuffer.Len() > 0) {
+		a.mergeChunkJSON(len(a.order), a.chunkBuffer.String())
+		a.inChunk = false
+		a.chunkBuffer.Reset()
+	}
+	items := make([]any, 0, len(a.order))
+	for _, k := range a.order {
+		items = append(items, a.merged[k])
+	}
+	usage := map[string]any{
+		"input_tokens":  a.inputTokens,
+		"output_tokens": a.outputTokens,
+	}
+	if a.reasoningTokens > 0 {
+		usage["reasoning_tokens"] = a.reasoningTokens
+	}
+	result := map[string]any{
+		a.listField: items,
+		"usage":     usage,
+	}
+	if a.finishReason != "" {
+		result["finish_reason"] = a.finishReason
+	}
+	if len(a.chunkErrors) > 0 {
+		result["chunk_errors"] = a.chunkErrors
+	}
+	return result, a.inputTokens, a.outputTokens
+}
+

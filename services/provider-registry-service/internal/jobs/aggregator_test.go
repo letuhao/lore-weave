@@ -209,6 +209,177 @@ func TestChatAggregator_FinalizeFlushesUnclosedChunk(t *testing.T) {
 	}
 }
 
+// ── Phase 3b-followup: per-operation JSON-merging aggregators ────────
+
+func feedJSON(a Aggregator, chunkIdx int, jsonContent string, inputTokens, outputTokens int) {
+	a.StartChunk(chunkIdx)
+	a.Accept(provider.StreamChunk{
+		Kind: provider.StreamChunkToken, Delta: jsonContent,
+	})
+	a.Accept(provider.StreamChunk{
+		Kind: provider.StreamChunkUsage, InputTokens: inputTokens, OutputTokens: outputTokens,
+	})
+	a.Accept(provider.StreamChunk{Kind: provider.StreamChunkDone, FinishReason: "stop"})
+	a.EndChunk(chunkIdx)
+}
+
+func TestEntityAggregator_MergesAcrossChunks(t *testing.T) {
+	a := NewAggregator("entity_extraction")
+	feedJSON(a, 0, `{"entities":[
+		{"name":"Holmes","kind":"person","aliases":["Sherlock"],"confidence":0.9},
+		{"name":"Watson","kind":"person","aliases":[],"confidence":0.85}
+	]}`, 100, 30)
+	feedJSON(a, 1, `{"entities":[
+		{"name":"Holmes","kind":"person","aliases":["Mr. Holmes"],"confidence":0.95},
+		{"name":"London","kind":"place","aliases":[],"confidence":0.7}
+	]}`, 100, 25)
+
+	result, in, out := a.Finalize()
+	if in != 200 || out != 55 {
+		t.Errorf("usage summed wrong: in=%d out=%d", in, out)
+	}
+	entities, ok := result["entities"].([]any)
+	if !ok || len(entities) != 3 {
+		t.Fatalf("expected 3 deduped entities, got %d: %#v", len(entities), result["entities"])
+	}
+	// Holmes appears once with higher confidence kept + aliases unioned.
+	for _, item := range entities {
+		row := item.(map[string]any)
+		if row["name"] != "Holmes" {
+			continue
+		}
+		if floatOrZero(row["confidence"]) != 0.95 {
+			t.Errorf("Holmes confidence should be 0.95 (chunk 1's), got %v", row["confidence"])
+		}
+		aliases, _ := row["aliases"].([]any)
+		got := map[string]bool{}
+		for _, a := range aliases {
+			if s, ok := a.(string); ok {
+				got[s] = true
+			}
+		}
+		if !got["Sherlock"] || !got["Mr. Holmes"] {
+			t.Errorf("aliases not unioned: %v", aliases)
+		}
+	}
+}
+
+func TestRelationAggregator_DedupsByTuple(t *testing.T) {
+	a := NewAggregator("relation_extraction")
+	feedJSON(a, 0, `{"relations":[
+		{"subject":"Holmes","predicate":"works_at","object":"221B","polarity":"affirm","confidence":0.9},
+		{"subject":"Watson","predicate":"helps","object":"Holmes","polarity":"affirm","confidence":0.85}
+	]}`, 50, 20)
+	feedJSON(a, 1, `{"relations":[
+		{"subject":"Holmes","predicate":"works_at","object":"221B","polarity":"affirm","confidence":0.95},
+		{"subject":"Holmes","predicate":"investigates","object":"crime","polarity":"affirm","confidence":0.8}
+	]}`, 50, 15)
+
+	result, _, _ := a.Finalize()
+	relations := result["relations"].([]any)
+	if len(relations) != 3 {
+		t.Errorf("expected 3 deduped relations, got %d: %#v", len(relations), relations)
+	}
+	// Holmes works_at 221B should keep confidence 0.95 (chunk 1 won).
+	for _, item := range relations {
+		r := item.(map[string]any)
+		if r["subject"] == "Holmes" && r["predicate"] == "works_at" {
+			if floatOrZero(r["confidence"]) != 0.95 {
+				t.Errorf("works_at confidence should be 0.95, got %v", r["confidence"])
+			}
+		}
+	}
+}
+
+func TestRelationAggregator_DistinctPolarityNotDeduped(t *testing.T) {
+	// `(A loves B, affirm)` and `(A loves B, negate)` are distinct
+	// — polarity is part of the dedup key.
+	a := NewAggregator("relation_extraction")
+	feedJSON(a, 0, `{"relations":[
+		{"subject":"A","predicate":"loves","object":"B","polarity":"affirm","confidence":0.9},
+		{"subject":"A","predicate":"loves","object":"B","polarity":"negate","confidence":0.7}
+	]}`, 10, 5)
+
+	result, _, _ := a.Finalize()
+	if len(result["relations"].([]any)) != 2 {
+		t.Errorf("polarity-distinct relations should not dedup")
+	}
+}
+
+func TestEventAggregator_DedupsByNameAndTimeCue(t *testing.T) {
+	a := NewAggregator("event_extraction")
+	feedJSON(a, 0, `{"events":[
+		{"name":"murder","kind":"crime","participants":["X"],"time_cue":"midnight","summary":"old summary","confidence":0.7}
+	]}`, 30, 10)
+	feedJSON(a, 1, `{"events":[
+		{"name":"murder","kind":"crime","participants":["X","Y"],"time_cue":"midnight","summary":"new summary","confidence":0.9},
+		{"name":"murder","kind":"crime","participants":["Z"],"time_cue":"dawn","summary":"different event","confidence":0.8}
+	]}`, 30, 12)
+
+	result, _, _ := a.Finalize()
+	events := result["events"].([]any)
+	if len(events) != 2 {
+		t.Errorf("expected 2 events (murder@midnight + murder@dawn), got %d: %#v", len(events), events)
+	}
+	// midnight murder should win with confidence=0.9 + new summary.
+	for _, item := range events {
+		ev := item.(map[string]any)
+		if ev["time_cue"] == "midnight" {
+			if floatOrZero(ev["confidence"]) != 0.9 {
+				t.Errorf("midnight murder confidence should be 0.9, got %v", ev["confidence"])
+			}
+			if ev["summary"] != "new summary" {
+				t.Errorf("higher-confidence summary should win, got %v", ev["summary"])
+			}
+		}
+	}
+}
+
+func TestJSONListAggregator_MalformedChunkSurfacedAsErrorAndOthersStillMerge(t *testing.T) {
+	// Phase 4a goal: knowledge-service still completes a chapter even
+	// if one chunk's LLM output was malformed.
+	a := NewAggregator("entity_extraction")
+	feedJSON(a, 0, `{"entities":[{"name":"A","kind":"person","aliases":[],"confidence":0.9}]}`, 10, 5)
+	feedJSON(a, 1, `not-valid-json{{`, 10, 5)
+	feedJSON(a, 2, `{"entities":[{"name":"B","kind":"person","aliases":[],"confidence":0.9}]}`, 10, 5)
+
+	result, _, _ := a.Finalize()
+	entities := result["entities"].([]any)
+	if len(entities) != 2 {
+		t.Errorf("expected 2 entities (A from chunk 0, B from chunk 2), got %d: %#v", len(entities), entities)
+	}
+	errors, ok := result["chunk_errors"].([]string)
+	if !ok || len(errors) != 1 {
+		t.Errorf("expected 1 chunk_errors entry for chunk 1, got %#v", result["chunk_errors"])
+	}
+}
+
+func TestJSONListAggregator_MissingListFieldSurfacedAsError(t *testing.T) {
+	a := NewAggregator("entity_extraction")
+	feedJSON(a, 0, `{"wrong_field":[]}`, 10, 5)
+	result, _, _ := a.Finalize()
+	if errs, ok := result["chunk_errors"].([]string); !ok || len(errs) != 1 {
+		t.Errorf("expected chunk_errors for missing list field, got %#v", result["chunk_errors"])
+	}
+}
+
+func TestJSONListAggregator_UnchunkedSingleParseStillWorks(t *testing.T) {
+	// Backward-compat: caller skips StartChunk/EndChunk (Phase 2b
+	// pattern). Aggregator should treat the entire token stream as
+	// one implicit chunk and parse on Finalize.
+	a := NewAggregator("entity_extraction")
+	a.Accept(provider.StreamChunk{
+		Kind: provider.StreamChunkToken,
+		Delta: `{"entities":[{"name":"X","kind":"person","aliases":[],"confidence":0.5}]}`,
+	})
+	a.Accept(provider.StreamChunk{Kind: provider.StreamChunkDone, FinishReason: "stop"})
+	result, _, _ := a.Finalize()
+	entities := result["entities"].([]any)
+	if len(entities) != 1 {
+		t.Errorf("unchunked path should parse 1 entity, got %d: %#v", len(entities), entities)
+	}
+}
+
 func TestIsTerminal(t *testing.T) {
 	for _, s := range []string{"completed", "failed", "cancelled"} {
 		if !IsTerminal(s) {
