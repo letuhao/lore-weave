@@ -1,10 +1,10 @@
 # REP_001 Reputation Foundation — Concept Notes
 
-> **Status:** CONCEPT 2026-04-26 — captures user framing (post-FAC_001 priority + 3-layer separation discipline) + 10-dimension gap analysis + Q1-Q10 critical scope questions. Awaits user reference materials review + Q-deep-dive before DRAFT promotion.
+> **Status:** Q1-Q10 LOCKED 2026-04-27 — user "approve" on all 5 Q-deep-dive batches; 1 REVISION on Q4 (Always Neutral V1; V1+ hybrid enrichment alongside Q6 cascade). DRAFT promotion ready when `_boundaries/_LOCK.md` free.
 >
-> **Purpose:** Capture brainstorm + gap analysis + open questions for REP_001 Reputation Foundation. NOT a design doc; the seed material for the eventual `REP_001_reputation_foundation.md` design.
+> **Purpose:** Capture brainstorm + gap analysis + locked Q-decisions for REP_001 Reputation Foundation. The seed material for the eventual `REP_001_reputation_foundation.md` design.
 >
-> **Promotion gate:** When (a) Q1-Q10 locked via deep-dive discussion, (b) `_boundaries/_LOCK.md` free → main session drafts `REP_001_reputation_foundation.md` with locked V1 scope, registers ownership, creates catalog file.
+> **Promotion gate:** ✓ Q1-Q10 locked via 5-batch deep-dive 2026-04-27. ✓ `_boundaries/_LOCK.md` free at this commit. → Next commit (2/4): main session drafts `REP_001_reputation_foundation.md` with locked V1 scope, registers ownership, creates catalog file.
 
 ---
 
@@ -231,9 +231,12 @@ When REP_001 DRAFT lands, these boundaries need careful handling:
 
 ---
 
-## §5 — Q1-Q10 critical scope questions (PENDING — for user deep-dive)
+## §5 — Q1-Q10 critical scope questions — ✅ ALL LOCKED 2026-04-27 (user "approve" confirmation across 5 batches; 1 REVISION on Q4)
 
-These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT promotion.
+User confirmed "approve" on all 10 Q-decisions 2026-04-27 across 5 deep-dive batches. **1 REVISION** from initial concept-notes recommendation:
+- Q4 REVISION: Always Neutral V1 (vs hybrid V1); V1+ activation of hybrid alongside Q6 cascade enrichment
+
+Locked decisions below; REP_001 DRAFT promotion ready when `_LOCK.md` free.
 
 ### Q1 — Aggregate vs projection (storage model)?
 
@@ -244,11 +247,13 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (B) **Projection** `actor_faction_reputation_projection` (derived from EVT-T3 events; session-end derived) — matches NPC_001 NpcOpinion pattern
 - (C) **Hybrid** — materialized aggregate + projection view (for AI Tier billion-NPC scaling)
 
-**Recommendation:** (A) Materialized aggregate, **NOT projection**. Reasoning:
+✅ **LOCKED 2026-04-27: (A) Materialized aggregate** `actor_faction_reputation` (T2/Reality, sparse)
+
+**Reasoning:**
 - FAC_001 V1 already chose materialized over projection (Q1 LOCKED) — same trade-off applies
 - Projection works for NPC_001 (per-NPC, PC) because opinion is high-volume from session-end derivation; reputation is rare event (canonical seed V1; V1+ runtime sparse)
-- Direct mutation keeps event flow simple V1; AI Tier projection optimization is V1+30d if needed
-- Term "projection" in FAC_001 docs was loose — actual implementation will be materialized aggregate per pattern
+- Direct mutation keeps event flow simple V1; AI Tier projection optimization is V1+30d if needed (consumed by AIT_001 layered tier scheduling)
+- Term "projection" in FAC_001 docs was loose terminology — actual implementation = materialized aggregate per FAC_001 pattern
 
 ### Q2 — Sparse vs dense storage?
 
@@ -259,11 +264,14 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (B) **Dense** — every (actor, faction) pair gets row at canonical seed default 0
 - (C) **On-demand sparse** — sparse storage; lazy-create row at first touch event (V1+ runtime)
 
-**Recommendation:** (A) **Sparse**. Reasoning:
+✅ **LOCKED 2026-04-27: (A) Sparse + (C) lazy-create V1+ runtime combined** — V1 sparse (canonical seed declarative + missing-row=Neutral fallback); V1+ runtime events lazy-create rows at first delta touch
+
+**Reasoning:**
 - Wuxia V1 has ~3 declared rep rows; dense would create N×F rows (1000s) for SPIKE_01 → wasteful
-- AI Tier billion-NPC scaling: dense = O(NPC × Faction) storage = catastrophic
+- AI Tier billion-NPC scaling: dense = O(NPC × Faction) storage = catastrophic; AIT_001 quantum-observation pattern + sparse = touched-only
 - Sparse + Neutral default = cheap; matches FAC_001 sparse storage discipline
 - V1+ on-demand row creation when first delta event fires for unseen (actor, faction)
+- Read fallback: missing row → Neutral default (per Q4 LOCKED)
 
 ### Q3 — Numeric range and tier mapping?
 
@@ -275,14 +283,30 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (C) **Unbounded sum-style** — i64 raw score; matches RES_001 SocialCurrency::Reputation Sum policy; tier computed by display rules
 - (D) **Author-declared per-faction tier thresholds** — FactionDecl.rep_tiers HashMap<i64, TierName>; max flexibility V1+
 
-**Recommendation:** (A) Bounded i16 [-1000, +1000] + engine-fixed 8-tier (Hated/Hostile/Unfriendly/Neutral/Friendly/Honored/Revered/Exalted). Reasoning:
-- Bounded prevents inflation (CK3-style runaway prestige); narrative authenticity holds
-- 8-tier WoW pattern most expressive for wuxia (Hated→Exalted maps to 江湖恩怨 spectrum)
-- i16 range fits 8 tiers cleanly: -1000..-501 Hated / -500..-251 Hostile / -250..-101 Unfriendly / -100..+100 Neutral / +101..+250 Friendly / +251..+500 Honored / +501..+900 Revered / +901..+1000 Exalted
-- Tier mapping engine-fixed (display layer) means LLM/UI computes label; storage minimal
-- V1+ author-declared tiers via FactionDecl extension (REP-D-N enrichment)
+✅ **LOCKED 2026-04-27: (A) Bounded i16 [-1000, +1000] + 8-tier engine-fixed** (Hated/Hostile/Unfriendly/Neutral/Friendly/Honored/Revered/Exalted); asymmetric thresholds; Wuxia I18n display labels
 
-### Q4 — Default initial value (no row case)?
+**Asymmetric tier thresholds (engine-fixed):**
+
+| Score range | English tier | Vietnamese (Wuxia display) | Width |
+|---|---|---|---|
+| -1000..=-501 | Hated | Đại nghịch (mortal enemy) | 500 |
+| -500..=-251 | Hostile | Nghịch tặc (rebel/foe) | 250 |
+| -250..=-101 | Unfriendly | Kẻ thù (foe) | 150 |
+| -100..=+100 | Neutral | Người lạ (stranger) | 200 |
+| +101..=+250 | Friendly | Đệ tử (disciple) | 150 |
+| +251..=+500 | Honored | Trưởng lão (elder) | 250 |
+| +501..=+900 | Revered | Tôn sư (master) | 400 |
+| +901..=+1000 | Exalted | Đại Thánh nhân (saint) | 100 |
+
+**Reasoning:**
+- Bounded prevents inflation (CK3-style runaway prestige); narrative authenticity holds
+- 8-tier WoW pattern most expressive for wuxia (Hated→Exalted maps to 江湖恩怨 spectrum); D&D 5e + Sands of Salzaar + Path of Wuxia validate
+- Asymmetric thresholds: wide Neutral (200) = default zone; narrow Exalted (100) = rare apex; wide Hated (500) = "mortal enemy" deeper; wide Revered (400) = elder threshold takes effort
+- i16 storage minimal; sparse storage trivial cost
+- Tier mapping engine-fixed (display layer); LLM/UI computes label
+- V1+ author-declared per-faction tier display labels via FactionDecl.rep_tier_overrides: HashMap<i16, I18nBundle> (additive REP-D enrichment)
+
+### Q4 — Default initial value (no row case)? ⚠ REVISION
 
 **Question:** What's the implicit value when no actor_faction_reputation row exists?
 
@@ -292,11 +316,14 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (C) **Hybrid** — declared in canonical seed overrides; otherwise computed-from-membership; otherwise 0
 - (D) **Origin-pack-driven** — IDF_004 origin pack declares default rep with starting sect
 
-**Recommendation:** (C) Hybrid (declared override → computed-from-membership → 0). Reasoning:
-- (A) too simple — Wuxia member of Đông Hải should start Friendly with their own sect, not Neutral
-- (B) reasonable but loses canonical-seed authoring flexibility (e.g., outer disciple +250 vs elder +500)
-- (D) too coupled to IDF_004; origin packs are V1+ activation
-- Hybrid: canonical seed wins (most explicit) → fall back to FAC_001-derived (member +250 / rival -250 / Neutral 0) → fall back to 0
+✅ **LOCKED 2026-04-27: REVISION — (A) Always Neutral (0) V1**; V1+ activation of hybrid (C) via REP-D enrichment alongside Q6 cascade
+
+**Reasoning (REVISION from initial (C) hybrid):**
+- Q6 (cascade) defers V1+; without cascade reads of FAC_001 default_relations, hybrid Layer 2 semantics underspecified V1
+- V1 simplicity wins: `unwrap_or(0)` everywhere; declared rows in canonical seed override
+- Wuxia V1 SPIKE_01 — Du sĩ outer disciple author EXPLICITLY DECLARES rep row +250 in canonical_actor_faction_reputations; no need for Layer 2 derivation V1
+- V1+ enrichment trivial: add Layer 2 read function consulting actor_faction_membership + faction.default_relations; activates with Q6 cascade enrichment together (coherent V1+ runtime reputation milestone)
+- Avoids premature coupling of REP_001 V1 read path to FAC_001 default_relations interpretation
 
 ### Q5 — V1 runtime events vs canonical seed only?
 
@@ -308,11 +335,15 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (C) **PL_005 Strike → rep delta V1 active** — single runtime event V1; full taxonomy V1+
 - (D) **Full runtime taxonomy V1** — all event sources active V1
 
-**Recommendation:** (B) Forge admin V1 + canonical seed V1; runtime gameplay V1+. Reasoning:
-- (A) too narrow — admin override is needed V1 for narrative authoring (admin "Lý Minh insults Đông Hải elder" → SetReputation)
+✅ **LOCKED 2026-04-27: (B) Forge admin V1 + canonical seed V1**; runtime gameplay events (PL_005 Strike, etc.) V1+
+
+**Reasoning:**
+- Forge admin universal V1 — every foundation feature (FAC_001 + FF_001 + RES_001 + IDF + PROG_001) ships own EVT-T8 Forge sub-shapes V1; pattern is universal substrate discipline
+- Author needs admin override from day 1 ("Lý Minh insults Đông Hải elder" → Forge:SetReputation -100)
+- Gameplay events (PL_005 Strike on faction member) need cascade design first (Q6 LOCKED V1+); coupling = runtime gameplay activates V1+ alongside cascade + decay (V1+ runtime reputation milestone)
+- (A) too narrow — admin override is needed V1 for narrative authoring
 - (D) too broad — runtime cascade design needs Q6 + Q7 lock first; expand V1+
-- (B) middle ground: admin can set rep V1; runtime delta V1+ Single source of truth via Forge V1
-- Matches FAC_001 V1 pattern (Forge:RegisterFaction V1 active)
+- Matches FAC_001 V1 pattern (Forge:RegisterFaction V1 active; runtime JoinFaction/LeaveFaction V1+ per FAC-D11)
 
 ### Q6 — Cascade reputation (rival-faction's enemy bonus)?
 
@@ -323,11 +354,18 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (B) **Cascade via FAC_001 default_relations V1** — rep delta with A triggers inverse delta with default_relations[A] = Hostile factions
 - (C) **Cascade with attenuation V1** — primary delta full strength; cascade delta scaled (e.g., 25% of primary)
 
-**Recommendation:** (A) No cascade V1; V1+ via REP-D-N enrichment. Reasoning:
-- Cascade design is wide (cascade depth limit / attenuation factor / loop prevention) → V1+ scope
-- V1 simple: rep changes only for explicitly-targeted (actor, faction) pair
-- V1+ cascade enrichment: scope cascade attenuation factor, loop prevention via visited-set, cascade depth limit
-- Authoring discipline: V1 author declares each rep change explicitly; V1+ engine derives cascades
+✅ **LOCKED 2026-04-27: (A) No cascade V1**; V1+ via REP-D2 enrichment
+
+**Reasoning:**
+- Cascade design space is wide and not yet tested in narrative:
+  - Cascade depth (only direct rivals vs rivals-of-rivals)
+  - Attenuation factor (full vs scaled e.g. 25%)
+  - Loop prevention (A-Hostile-B-Hostile-A → infinite)
+  - Gameplay event filtering (Forge cascades? Or only PL_005 deltas?)
+- V1 LLM-emitted cascade is acceptable workaround: author/LLM emits multiple Forge:SetReputation calls to model cascade narratively; engine doesn't auto-derive
+- Q5 gameplay events V1+ defers alongside; when V1+ activates, cascade ships coherently together
+- V1+ REP-D2 enrichment scope: FactionDecl.rep_cascade_config: Option<RepCascadeConfig> (additive)
+- RepCascadeConfig { attenuation_factor: f32, max_depth: u8, loop_prevention: VisitedSet }
 
 ### Q7 — Reputation decay over time?
 
@@ -338,11 +376,19 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (B) **Linear decay V1** — rep moves toward 0 by N points per fiction-week; configurable per faction
 - (C) **Tier-anchored decay V1** — Honored+ decays slower; Hated+ decays faster
 
-**Recommendation:** (A) No decay V1; V1+ via REP-D-N enrichment. Reasoning:
-- Decay design is wide (linear vs exponential / per-faction config / fiction-time scaling) → V1+ scope
+✅ **LOCKED 2026-04-27: (A) No decay V1**; V1+ via REP-D3 enrichment
+
+**Reasoning:**
+- Decay design space is wide:
+  - Linear vs exponential
+  - Per-faction config or global
+  - Fiction-time scaling (game days vs years)
+  - Decay floor (to 0 vs membership-derived default)
+  - Tick mechanism (lazy-on-read vs session-end vs scheduled cron)
 - V1 narrative: rep persists explicitly until explicitly changed
-- V1+ decay activation = additive enrichment (FactionDecl.rep_decay_per_week field)
-- Bannerlord Renown decays; CK3 Prestige doesn't — design space is wide; defer
+- D&D 5e + WoW + Sands of Salzaar + Path of Wuxia all NO decay default — market consensus matches
+- V1+ activation = additive field on FactionDecl (rep_decay_per_week: Option<i16>); cheap V1+ migration
+- Tick mechanism could leverage AIT_001 tier scheduling (Tier 2 NPCs lazy decay; Tier 3 untracked = no decay; coherent with quantum-observation)
 
 ### Q8 — Cross-reality reputation migration (V1 vs V2+)?
 
@@ -353,9 +399,12 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (B) **V1 reset on migration** — actor enters new reality with no rep rows
 - (C) **V1 migrate by default** — actor carries rep rows (subject to faction_id collision)
 
-**Recommendation:** (A) V1 strict single-reality. Reasoning:
+✅ **LOCKED 2026-04-27: (A) V1 strict single-reality**; V2+ Heresy migration via WA_002
+
+**Reasoning:**
 - Inherits IDF + FF + FAC discipline (RAC-Q1 + IDL-Q12 + FF-Q7 + FAC-Q8 all LOCKED V2+ Heresy)
-- V1 reject `reputation.cross_reality_mismatch` (V2+ reservation)
+- V1 reject `reputation.cross_reality_mismatch` (V2+ reservation slot)
+- Universal substrate discipline; no design-space deviation warranted
 
 ### Q9 — Synthetic actor reputation?
 
@@ -365,9 +414,12 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (A) **Forbidden V1** — Synthetic actors don't have faction reputation
 - (B) **Permitted V1** — admin/system reputation reserved for engine entities
 
-**Recommendation:** (A) Forbidden V1 (consistent with IDF + FF + FAC discipline). Reasoning:
-- IDF + FF + FAC all forbid synthetic actor V1 (RAC-Q1 + PRS-Q11 + ORG-Q7 + IDL-Q12 + FF synthetic exclusion + FAC-Q10)
-- V1+ may relax if admin-faction reputation needed
+✅ **LOCKED 2026-04-27: (A) Forbidden V1**
+
+**Reasoning:**
+- IDF + FF + FAC + RES_001 + PROG_001 all forbid synthetic actor V1 (RAC-Q1 + PRS-Q11 + ORG-Q7 + IDL-Q12 + FF synthetic exclusion + FAC-Q10)
+- V1 reject `reputation.synthetic_actor_forbidden` — Stage 0 schema (actor.kind == ActorKind::Synthetic)
+- V1+ may relax IF admin/system-faction reputation needed (e.g., engine-attributed reputation with ChorusOrchestrator for orchestration-feedback metrics) — defer to V1+ enrichment if real use case emerges
 
 ### Q10 — Reconciliation with RES_001 SocialCurrency::Reputation?
 
@@ -381,16 +433,28 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 - (B) **REP_001 supersedes** — deprecate RES_001 SocialCurrency::Reputation; REP_001 owns all rep V1
 - (C) **Merge into RES_001** — REP_001 just adds faction_id index to existing SocialCurrency::Reputation Sum
 
-**Recommendation:** (A) Coexist with explicit 3-layer separation. Reasoning:
-- RES_001 SocialCurrency::Reputation has different semantics (global "danh tiếng" sum that NPCs accumulate from heroic deeds)
-- REP_001 has different semantics (per-faction standing tier; bounded; cascade-aware V1+)
-- (B) breaks RES_001 V1 lock — too disruptive
-- (C) breaks RES_001 SUM stack policy — bounded i16 ≠ i64 sum
-- Three layers serve different gameplay loops:
-  - "How does this NPC personally feel about you?" → NPC_001 NpcOpinion
-  - "How famous are you in the wuxia world overall?" → RES_001 SocialCurrency::Reputation
-  - "What's your standing with Đông Hải Đạo Cốc specifically?" → REP_001 actor_faction_reputation
-- REP_001 DRAFT must include §-boundary-discipline section explicitly distinguishing these three
+✅ **LOCKED 2026-04-27: (A) Coexist with explicit 3-layer separation discipline**
+
+**3-layer canonical reference (REP_001 DRAFT §1 must document):**
+
+| Layer | Owner aggregate | Key | Semantic | Sample query |
+|---|---|---|---|---|
+| **L1: Personal opinion** | NPC_001 `npc_pc_relationship_projection` | (NPC, PC) | This NPC's specific feeling toward this PC | "Du sĩ now distrusts Lý Minh after meta-knowledge moment" |
+| **L2: Global fame** | RES_001 `resource_inventory` SocialCurrency::Reputation | (actor) | Actor's overall wuxia world fame ("danh tiếng") | "Lý Minh has 1500 fame from heroic deeds; villagers hear of him" |
+| **L3: Faction standing** | REP_001 `actor_faction_reputation` | (actor, faction) | Actor's standing with specific faction | "Lý Minh has +250 Friendly with Đông Hải Đạo Cốc; -100 Hostile with Ma Tông" |
+
+**LLM authoring discipline V1:** REP_001 DRAFT §1 explicit boundary statement; LLM prompts disambiguate "faction reputation" (REP_001) vs "global fame" (RES_001) vs "NPC opinion" (NPC_001).
+
+**Reasoning:**
+- Three semantically distinct concepts validated by wuxia novel canon (all three usages routine)
+- NPC_002 Chorus consumes ALL THREE for priority resolution: Tier 2 (L1 NpcOpinion) + V1+ Tier 4 (L3 REP_001 rival-faction) + V1+ Tier 5 (L2 SocialCurrency::Reputation famous-actor)
+- (B) supersedes — RES_001 V1 lock break disruptive; loses global-fame semantic; hack workaround (synthetic faction_id "wuxia_world") breaks declarative discipline
+- (C) merge — Sum stack policy (i64 unbounded) ≠ Bounded clamp (i16 in [-1000, +1000]); resource_inventory.entries shape would explode; RES_001 V1 lock break
+
+**V1+ REP-D17 enrichment** (deferred; NOT V1 scope):
+- Consider rename `RES_001 SocialCurrency::Reputation` → `Fame` for clarity (additive enum variant; alias old name for compat)
+- Add cross-cutting documentation in `11_cross_cutting/` clarifying L1/L2/L3 layer convention
+- RES_001 closure-pass §-cross-reference to REP_001 (doc-only additive edit)
 
 ---
 
@@ -407,17 +471,16 @@ When references arrive:
 
 ---
 
-## §7 — V1 scope (PROVISIONAL — pending Q-deep-dive)
-
-This section will be LOCKED after Q1-Q10 confirmed. Provisional V1 scope below assuming recommendations approved as-is:
+## §7 — V1 scope ✅ LOCKED 2026-04-27 (post Q1-Q10 deep-dive + user "approve" confirmation across 5 batches; 1 REVISION on Q4)
 
 ### V1 aggregates (1)
 
-1. **`actor_faction_reputation`** (T2/Reality, sparse — per Q2)
-   - actor_id + faction_id + score: i16 (in [-1000, +1000] per Q3) + last_updated_at_turn: u64 + last_event_id: Option<EventId>
-   - **Mutable** via Apply events (canonical seed + Forge V1 active per Q5; runtime delta V1+)
-   - Synthetic actors forbidden V1 per Q9
-   - Cross-reality forbidden V1 per Q8
+1. **`actor_faction_reputation`** (T2/Reality, sparse per Q2 LOCKED + lazy-create V1+ runtime)
+   - actor_id + faction_id + score: i16 (bounded [-1000, +1000] per Q3 LOCKED) + last_updated_at_turn: u64 + last_event_id: Option<EventId>
+   - **Mutable** via Apply events (canonical seed + Forge V1 active per Q5 LOCKED; runtime delta V1+)
+   - Synthetic actors forbidden V1 per Q9 LOCKED
+   - Cross-reality forbidden V1 per Q8 LOCKED
+   - Default Neutral (0) for missing rows per Q4 LOCKED REVISION; V1+ hybrid (membership-derived) alongside Q6 cascade
 
 ### Tier mapping (engine-fixed; display layer)
 
@@ -497,42 +560,43 @@ V1+:
 - AC-REP-V1+3: V1+ decay tick (linear decay toward 0 per fiction-week)
 - AC-REP-V1+4: V1+ author-declared per-faction tier thresholds (FactionDecl.rep_tiers extension)
 
-### V1 deferrals (placeholder count — finalized at Q-lock)
+### V1 deferrals (17 — REP-D1..REP-D17)
 
-(REP-D1..REP-D-N to be enumerated post Q-deep-dive)
-
-Anticipated:
-- REP-D1: V1+ runtime gameplay delta events (per Q5)
-- REP-D2: V1+ cascade rep via FAC_001 default_relations (per Q6)
-- REP-D3: V1+ decay over fiction-time (per Q7)
-- REP-D4: V1+ author-declared per-faction tier thresholds (per Q3)
-- REP-D5: V1+ multi-axis reputation (CK3 Prestige + Piety; deferred to V2+ via RES_001 SocialCurrency expansion)
-- REP-D6: V2+ cross-reality migration (per Q8)
-- REP-D7: V1+ NPC_002 Tier 4 priority modifier integration (rival-faction NPCs)
-- REP-D8: V1+ WA_001 AxiomDecl.requires_reputation hook
-- REP-D9: V1+ TIT_001 title-grant requires min rep
+- REP-D1: V1+ runtime gameplay delta events (per Q5 LOCKED — V1+ activates with Q6 + Q7 together as "V1+ runtime reputation milestone")
+- REP-D2: V1+ cascade rep via FAC_001 default_relations (per Q6 LOCKED; FactionDecl.rep_cascade_config additive)
+- REP-D3: V1+ decay over fiction-time (per Q7 LOCKED; FactionDecl.rep_decay_per_week + DecayTick EVT-T3)
+- REP-D4: V1+ author-declared per-faction tier display labels (per Q3 LOCKED enrichment; FactionDecl.rep_tier_overrides: HashMap<i16, I18nBundle>)
+- REP-D5: V1+ multi-axis reputation (CK3 Prestige + Piety; deferred to V2+ via RES_001 SocialKind expansion; schema migration `score: HashMap<SocialKind, i16>`)
+- REP-D6: V2+ cross-reality migration (per Q8 LOCKED; V2+ Heresy WA_002)
+- REP-D7: V1+ NPC_002 Tier 4 priority modifier integration (rival-faction NPCs read REP_001)
+- REP-D8: V1+ WA_001 AxiomDecl.requires_reputation hook (faction-gated abilities require min rep tier)
+- REP-D9: V1+ TIT_001 title-grant requires min rep (Honored+ for sect-elder title)
 - REP-D10: V1+ CULT_001 sect cultivation method requires min rep
 - REP-D11: V2+ DIPL_001 inter-faction war affects member rep cascade
-- REP-D12: V2+ quest reward = REP_001 rep delta
+- REP-D12: V2+ quest reward = REP_001 rep delta (13_quests integration)
 - REP-D13: V1+ rep as currency (burn rep for favor; V2+ ECON feature)
-- REP-D14: V1+ origin-pack default rep declaration (IDF_004 enrichment)
-- REP-D15: V1+ rep history audit trail (separate aggregate vs event log query)
+- REP-D14: V1+ origin-pack default rep declaration (IDF_004 origin_pack.default_reputations enrichment)
+- REP-D15: V1+ rep history audit trail (separate aggregate vs event log query; analytics over rep changes)
+- REP-D16: V1+ Q4 hybrid default activation — Layer 2 membership-derived (member +250 / rival -250 / non-member 0); ships alongside Q6 cascade enrichment
+- REP-D17: V1+ RES_001 cross-cutting cleanup (per Q10 LOCKED) — consider rename SocialCurrency::Reputation → Fame; add 11_cross_cutting/ documentation for L1/L2/L3 layer convention; RES_001 closure-pass §-cross-reference to REP_001 (doc-only additive edit)
 
-### V1 quantitative summary (provisional)
+### V1 quantitative summary ✅ LOCKED 2026-04-27
 
-- 1 aggregate (actor_faction_reputation sparse)
-- 1 enum (ReputationTier 8-variant — display layer; not stored)
-- score: i16 in [-1000, +1000] per Q3 (bounded)
-- Sparse storage per Q2; default Neutral implicit per Q4 hybrid
+- 1 aggregate (`actor_faction_reputation` sparse) — smaller than FAC_001's 2-aggregate scope
+- 1 enum (`ReputationTier` 8-variant — display layer; not stored): Hated/Hostile/Unfriendly/Neutral/Friendly/Honored/Revered/Exalted
+- score: i16 in [-1000, +1000] per Q3 LOCKED (bounded; asymmetric thresholds)
+- Sparse storage per Q2 LOCKED + V1+ lazy-create on first delta touch
+- Default Neutral (0) for missing rows per Q4 LOCKED REVISION; V1+ hybrid via REP-D16 alongside Q6 cascade
 - 6 V1 reject rule_ids in `reputation.*` namespace + 4 V1+ reservations
-- 1 RealityManifest extension (canonical_actor_faction_reputations OPTIONAL)
-- 2 EVT-T8 Forge sub-shapes (Forge:SetReputation + Forge:ResetReputation)
-- 1 EVT-T4 System sub-type (ReputationBorn)
-- 3 EVT-T3 delta_kinds (Delta + CascadeDelta + DecayTick — V1+ runtime; V1 ships canonical seed + Forge only per Q5)
+- 1 RealityManifest extension (canonical_actor_faction_reputations OPTIONAL — sparse; empty Vec valid)
+- 2 EVT-T8 Forge sub-shapes (Forge:SetReputation + Forge:ResetReputation) per Q5 LOCKED
+- 1 EVT-T4 System sub-type (ReputationBorn at canonical seed)
+- 3 EVT-T3 delta_kinds reserved (Delta + CascadeDelta + DecayTick — V1+ runtime per Q5+Q6+Q7 LOCKED)
 - 8 V1 AC + 4 V1+ deferred
-- ~15 deferrals (REP-D1..REP-D15)
-- ~500-700 line DRAFT spec estimate (smaller than FAC_001's ~870 — single aggregate)
-- 4-commit cycle (lock-Q + DRAFT + Phase 3 + closure+release)
+- 17 deferrals (REP-D1..REP-D17)
+- 3-layer separation discipline locked per Q10 (REP_001 ≠ RES_001 SocialCurrency::Reputation ≠ NPC_001 NpcOpinion)
+- ~500-700 line DRAFT spec estimate
+- 4-commit cycle (lock-Q this commit 1/4 + DRAFT 2/4 + Phase 3 3/4 + closure+release 4/4)
 
 ---
 
@@ -571,12 +635,13 @@ Before drafting `REP_001_reputation_foundation.md`:
 
 ## §10 — Status
 
-- **Created:** 2026-04-26 by main session (commit this turn)
-- **Phase:** CONCEPT — awaiting Q1-Q10 deep-dive + market survey review
-- **Lock state:** `_boundaries/_LOCK.md` FREE (released at FAC_001 closure 9d8f94c). REP_001 DRAFT NOT blocked when ready.
-- **Estimated time to DRAFT (post-Q-deep-dive):** 2-3 hours focused design work; ~500-700 line spec
-- **Co-design dependencies (when DRAFT):**
-  - FAC_001 closure pass extension marks FAC-D7 RESOLVED via REP_001
+- **Created:** 2026-04-26 by main session (Phase 0 commit 6b7d931)
+- **Q-locked:** 2026-04-27 by main session (commit 1/4 this turn) — Q1-Q10 ALL LOCKED via 5-batch deep-dive; 1 REVISION on Q4
+- **Phase:** Q-LOCKED → DRAFT promotion ready (commit 2/4 next)
+- **Lock state:** `_boundaries/_LOCK.md` FREE (last released by AIT_001 88404f0). REP_001 DRAFT 2/4 commit will claim+release in single `[boundaries-lock-claim]` cycle.
+- **Estimated time to DRAFT 2/4:** 2-3 hours focused design work; ~500-700 line spec
+- **Co-design dependencies (at DRAFT 2/4):**
+  - FAC_001 closure pass extension marks FAC-D7 RESOLVED via REP_001 (commit 4/4 will note jointly)
   - Future PCS_001 PC creation form may set initial rep
   - Future TIT_001 + V1+ CULT_001 + V1+ DIPL_001 + V1+ NPC_002 Tier 4 + V1+ WA_001 requires_reputation consume REP_001
-- **Next action:** User reviews market survey + answers Q1-Q10 (or approves recommendations) → DRAFT promotion when lock free
+- **Next action:** Commit 1/4 this turn — concept-notes §5 LOCKED + §7 V1 scope finalized. Then commit 2/4 — DRAFT promotion + boundary register.

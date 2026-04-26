@@ -4,9 +4,9 @@
 > **Catalog reference:** `catalog/cat_00_REP_reputation_foundation.md` (NOT YET CREATED — defer to REP_001 DRAFT promotion)
 > **Purpose:** The substrate for **per-(actor, faction) reputation** — captures one actor's *standing with a specific faction* (group). Distinct from NPC_001 NpcOpinion (per-(NPC, PC) personal feeling) and from RES_001 SocialCurrency::Reputation (per-actor *global* scalar — wuxia "danh tiếng"). Resolves FAC-D7 from FAC_001 (per-(actor, faction) reputation projection deferred). Wuxia critical (sect standing / Wulin reputation per sect / "thanh dự" tier-by-faction). D&D faction reputation pattern primary.
 
-**Active:** REP_001 — **Reputation Foundation** (CONCEPT 2026-04-26 — Phase 0 brainstorm capture)
+**Active:** REP_001 — **Reputation Foundation** (Q-LOCKED 2026-04-27 — Q1-Q10 ALL LOCKED via 5-batch deep-dive; 1 REVISION on Q4; DRAFT 2/4 next)
 
-**Folder closure status:** **OPEN** — Phase 0 in progress (concept-notes + reference survey). Awaits user Q-deep-dive + DRAFT cycle. Resolves FAC-D7.
+**Folder closure status:** **OPEN** — Phase 0 complete (commit 6b7d931); commit 1/4 Q-lock this turn; commit 2/4 DRAFT next. Resolves FAC-D7.
 
 **V1+ priority signal:**
 - FAC_001 FAC-D7 LOCKED: "Per-(actor, faction) reputation projection → V1+ REP_001 Reputation Foundation separate aggregate"
@@ -21,9 +21,9 @@
 
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
-| (concept) | **00_CONCEPT_NOTES.md** — REP_001 brainstorm capture | CONCEPT 2026-04-26 — captures user framing (post-FAC_001 priority + 3-layer separation discipline against NPC_001 opinion + RES_001 SocialCurrency) + 10-dimension gap analysis + Q1-Q10 critical scope questions | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | (this commit) |
-| (research) | **01_REFERENCE_GAMES_SURVEY.md** — reference games survey | DRAFT 2026-04-26 — D&D 5e Faction Reputation (6-tier) primary + WoW (8-tier Hated→Exalted) + Fallout: NV (7-tier Vilified→Idolized) + Skyrim (per-hold bounty + faction questline rep) + CK3 (Prestige + Piety + Renown multi-axis) + Bannerlord (Renown) + Sands of Salzaar / Path of Wuxia (sect reputation) + EU4 (estate reputation) + Stellaris (empire-empire opinion) | [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) | (this commit) |
-| REP_001 | **Reputation Foundation** (REP) | Per-(actor, faction) reputation projection — separate aggregate from FAC_001 actor_faction_membership. Engine-fixed bounded score range (proposed [-1000, +1000]). Tier mapping for display (Hated/Hostile/Unfriendly/Neutral/Friendly/Honored/Revered/Exalted; D&D + WoW pattern). V1 ships canonical seed only; V1+ runtime events. Resolves FAC-D7. | (DRAFT pending Q-deep-dive) | (defer) | (defer) |
+| (concept) | **00_CONCEPT_NOTES.md** — REP_001 brainstorm capture | Q1-Q10 LOCKED 2026-04-27 — captures user framing + 10-dimension gap analysis + Q1-Q10 LOCKED via 5-batch deep-dive (1 REVISION on Q4) | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | 6b7d931 → (this commit 1/4) |
+| (research) | **01_REFERENCE_GAMES_SURVEY.md** — reference games survey | DRAFT 2026-04-26 — D&D 5e + WoW (8-tier) + Fallout: NV + Skyrim + CK3 + Bannerlord + Sands of Salzaar / Path of Wuxia + Stellaris + 6 more — anchor: WoW + D&D + Wuxia novels hybrid 8-tier i16 [-1000,+1000] | [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) | 6b7d931 |
+| REP_001 | **Reputation Foundation** (REP) | Per-(actor, faction) reputation projection — separate `actor_faction_reputation` aggregate (T2/Reality, sparse) from FAC_001 actor_faction_membership. Bounded i16 [-1000, +1000] + 8-tier engine-fixed (Hated/Hostile/Unfriendly/Neutral/Friendly/Honored/Revered/Exalted; asymmetric thresholds; Wuxia I18n display). Default Neutral (0) V1 per Q4 REVISION; V1+ hybrid (membership-derived) alongside Q6 cascade. V1 ships canonical seed + Forge admin (Q5 LOCKED); runtime gameplay V1+. NO cascade V1 (Q6 LOCKED); NO decay V1 (Q7 LOCKED). 3-layer separation discipline (Q10 LOCKED): REP_001 ≠ RES_001 SocialCurrency::Reputation ≠ NPC_001 NpcOpinion. Resolves FAC-D7. | **Q-LOCKED** 2026-04-27 (commit 1/4); DRAFT 2/4 next | [`REP_001_reputation_foundation.md`](REP_001_reputation_foundation.md) (pending DRAFT 2/4) | 6b7d931 → (this commit 1/4) |
 
 ---
 
