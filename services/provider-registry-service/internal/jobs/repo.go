@@ -182,22 +182,26 @@ WHERE job_id = $1
 // Finalize transitions the job to a terminal state. The DB-level
 // llm_jobs_terminal_consistency CHECK enforces that completed_at is
 // non-NULL on terminal status, so we stamp it here.
+// Finalize transitions the job to a terminal state. Returns
+// rowsAffected so callers can gate side-effects (notifier emission)
+// on actually-took-effect transitions — the WHERE-status='running'
+// guard means a late finalize after cancel returns 0 and emits nothing.
 func (r *Repo) Finalize(
 	ctx context.Context,
 	jobID uuid.UUID,
 	status string, // 'completed' | 'failed' | 'cancelled'
 	result any, // marshaled to JSONB; nil leaves NULL
 	errorCode, errorMessage, finishReason string,
-) error {
+) (int64, error) {
 	if status != "completed" && status != "failed" && status != "cancelled" {
-		return fmt.Errorf("invalid terminal status: %q", status)
+		return 0, fmt.Errorf("invalid terminal status: %q", status)
 	}
 	var resultJSON []byte
 	var err error
 	if result != nil {
 		resultJSON, err = json.Marshal(result)
 		if err != nil {
-			return fmt.Errorf("marshal result: %w", err)
+			return 0, fmt.Errorf("marshal result: %w", err)
 		}
 	}
 	var ec, em, fr *string
@@ -216,7 +220,7 @@ func (r *Repo) Finalize(
 	// overwrite cancelled → completed. The WHERE clause means a
 	// late-arriving Finalize is dropped on the floor, which matches
 	// the user-visible semantic ("cancel won").
-	_, err = r.pool.Exec(ctx, `
+	tag, err := r.pool.Exec(ctx, `
 UPDATE llm_jobs
 SET status = $2,
     completed_at = now(),
@@ -227,9 +231,9 @@ SET status = $2,
 WHERE job_id = $1 AND status = 'running'
 `, jobID, status, resultJSON, ec, em, fr)
 	if err != nil {
-		return fmt.Errorf("finalize: %w", err)
+		return 0, fmt.Errorf("finalize: %w", err)
 	}
-	return nil
+	return tag.RowsAffected(), nil
 }
 
 // Cancel transitions a pre-terminal job to cancelled and stamps

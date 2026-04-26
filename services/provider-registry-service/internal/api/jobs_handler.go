@@ -211,6 +211,20 @@ func (s *Server) cancelLlmJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "LLM_JOB_TERMINAL", "job already terminal")
 		return
 	}
+	// Phase 2c — emit terminal event so notification-service can fan out.
+	// Best-effort: DB row is the source of truth; failure here just means
+	// FE has to poll. Re-read the row to fold operation/trace_id into
+	// the envelope without trusting client-supplied fields.
+	if s.jobsNotifier != nil {
+		if job, getErr := s.jobsRepo.Get(r.Context(), jobID, userID); getErr == nil {
+			_ = s.jobsNotifier.PublishTerminal(r.Context(), jobs.TerminalEvent{
+				JobID:       job.JobID,
+				OwnerUserID: job.OwnerUserID,
+				Operation:   job.Operation,
+				Status:      "cancelled",
+			})
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

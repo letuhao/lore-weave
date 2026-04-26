@@ -38,11 +38,15 @@ type Server struct {
 	// Phase 2b — async LLM job lifecycle. Both nil-safe so unit tests
 	// that construct a router-only Server (no pool, no jobs subsystem)
 	// keep working; handlers return 503 LLM_INTERNAL_ERROR when nil.
-	jobsRepo   *jobs.Repo
-	jobsWorker *jobs.Worker
+	jobsRepo     *jobs.Repo
+	jobsWorker   *jobs.Worker
+	jobsNotifier jobs.Notifier
 }
 
-func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
+// NewServer constructs the HTTP server. notifier may be nil (router-only
+// tests, dev runs without RabbitMQ); falls back to NoopNotifier so the
+// jobs subsystem stays functional without a broker.
+func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier) *Server {
 	key := []byte(cfg.JWTSecret)
 	if len(key) > 32 {
 		key = key[:32]
@@ -60,9 +64,13 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		client:       &http.Client{Timeout: 15 * time.Second},
 		invokeClient: &http.Client{}, // no Timeout — context deadline from request controls cancellation
 	}
+	if notifier == nil {
+		notifier = jobs.NoopNotifier{}
+	}
+	s.jobsNotifier = notifier
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
-		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), nil)
+		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil)
 	}
 	return s
 }

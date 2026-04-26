@@ -20,7 +20,7 @@ func testServer(secret string) *Server {
 	return NewServer(nil, &config.Config{
 		JWTSecret:              secret,
 		UsageBillingServiceURL: "http://localhost:8086",
-	})
+	}, nil)
 }
 
 func signedToken(t *testing.T, secret string, userID uuid.UUID, role string) string {

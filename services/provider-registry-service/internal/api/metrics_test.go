@@ -17,7 +17,7 @@ func newMetricsTestServer(t *testing.T) *Server {
 	return NewServer(nil, &config.Config{
 		JWTSecret:            "metrics-test-secret-32-characters",
 		InternalServiceToken: "metrics-test-internal-token",
-	})
+	}, nil)
 }
 
 func TestMetricsEndpointServes(t *testing.T) {

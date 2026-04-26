@@ -55,7 +55,7 @@ func integrationServer(t *testing.T) (*Server, *pgxpool.Pool) {
 		JWTSecret:              integrationJWTSecret,
 		UsageBillingServiceURL: "http://localhost:8086",
 		InternalServiceToken:   "integration-internal-token",
-	})
+	}, nil)
 	t.Cleanup(func() { pool.Close() })
 	return srv, pool
 }

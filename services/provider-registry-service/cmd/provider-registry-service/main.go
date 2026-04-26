@@ -13,6 +13,7 @@ import (
 
 	"github.com/loreweave/provider-registry-service/internal/api"
 	"github.com/loreweave/provider-registry-service/internal/config"
+	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/migrate"
 )
 
@@ -51,7 +52,23 @@ func main() {
 		slog.Error("migrate", "error", err)
 		os.Exit(1)
 	}
-	srv := api.NewServer(pool, cfg)
+
+	// Phase 2c — RabbitMQ notifier for async-job terminal events.
+	// Optional: empty RABBITMQ_URL falls back to NoopNotifier so dev
+	// runs without a broker keep working.
+	var notifier jobs.Notifier = jobs.NoopNotifier{}
+	if cfg.RabbitMQURL != "" {
+		n, err := jobs.NewRabbitMQNotifier(cfg.RabbitMQURL, slog.Default())
+		if err != nil {
+			slog.Error("rabbitmq notifier init failed", "error", err)
+			os.Exit(1)
+		}
+		notifier = n
+		slog.Info("rabbitmq notifier connected", "exchange", "loreweave.events")
+		defer func() { _ = notifier.Close() }()
+	}
+
+	srv := api.NewServer(pool, cfg, notifier)
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

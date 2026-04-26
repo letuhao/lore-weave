@@ -192,10 +192,15 @@ services:
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 2c — async LLM job terminal events publish to
+      # `loreweave.events` topic exchange. Empty/unset = NoopNotifier
+      # (caller polls GET /v1/llm/jobs/{id}; no broker dependency).
+      RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
     depends_on:
       postgres:
         condition: service_healthy
-
+      rabbitmq:
+        condition: service_healthy
       usage-billing-service:
         condition: service_healthy
     healthcheck:

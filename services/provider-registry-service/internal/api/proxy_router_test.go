@@ -30,7 +30,7 @@ func newRouterOnlyServer(t *testing.T) *Server {
 	return NewServer(nil, &config.Config{
 		JWTSecret:            "router-test-secret-32-characters-01",
 		InternalServiceToken: routerTestInternalToken,
-	})
+	}, nil)
 }
 
 func TestInternalProxyRequiresInternalToken(t *testing.T) {
