@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-26 — IDF folder 12/15: IDF_004 closure pass → CANDIDATE-LOCK
+
+4/5 IDF features now CANDIDATE-LOCK. Lock continues claimed for IDF_005 final cycle (commits 13-15).
+
+---
+
 ## 2026-04-26 — IDF folder 11/15: IDF_004 Phase 3 cleanup
 
 5 fixes (typed newtypes + Synthetic exclusion + cross-feature seed flow + §15.4 LOCK split + ORG-D12 FF_001 priority confirmed). No boundary changes.

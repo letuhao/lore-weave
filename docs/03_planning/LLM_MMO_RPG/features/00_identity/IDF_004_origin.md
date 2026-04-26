@@ -5,7 +5,7 @@
 > **V1+ FF_001 Family Foundation = first priority post-IDF closure** per POST-SURVEY-Q4 LOCKED — IDF_004 V1 lineage_id stays opaque tag (no parent/sibling refs); FF_001 V1+ designs full graph + dynasty.
 >
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
-> **Status:** DRAFT 2026-04-26 (Q-decisions ORG-Q1..Q10 locked + Q4 family graph LOCKED to V1 opaque only per POST-SURVEY-Q4)
+> **Status:** CANDIDATE-LOCK 2026-04-26 (CONCEPT → DRAFT → Phase 3 → closure pass; Q-decisions ORG-Q1..Q10 locked + Q4 family graph LOCKED to V1 opaque only per POST-SURVEY-Q4)
 > **Stable IDs:** `ORG-A*` axioms · `ORG-D*` deferrals · `ORG-Q*` decisions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types); [PF_001 §3.1 ChannelId](../00_place/PF_001_place_foundation.md); [IDF_001 RaceId](IDF_001_race.md); [IDF_002 LanguageId](IDF_002_language.md); [IDF_005 IdeologyId](IDF_005_ideology_concept.md); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md).
 > **Defers to:** future PCS_001 (PC origin at creation); NPC_001/`NPC_NNN` (NPC canonical seed origin); V1+ FF_001 Family Foundation (lineage graph + dynasty; HIGH priority); V1+ cultural_tradition_pack (naming convention + values + arts); V1+ multi-cultural origin V2+.
