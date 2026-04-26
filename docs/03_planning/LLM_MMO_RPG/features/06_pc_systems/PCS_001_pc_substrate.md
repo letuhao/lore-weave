@@ -154,6 +154,28 @@ pub struct PcUserBinding {
     // V1+ extensions (additive per I14)
     // pub previous_actor_ids: Vec<ActorId>,           // V1+ track prior actor_ids across xuyên không lineage (PCS-D-N)
 }
+
+/// Native PC default body_memory (no xuyên không; soul + body aligned).
+/// Used when CanonicalActorDecl.body_memory_init = None for kind=Pc (fallback per Q5 LOCKED).
+impl PcBodyMemory {
+    pub fn native_default(native_language: LanguageId, knowledge_tags: Vec<KnowledgeTag>) -> Self {
+        Self {
+            soul: SoulLayer {
+                origin_world_ref: None,                        // native; no xuyên không
+                knowledge_tags: knowledge_tags.clone(),        // soul + body aligned
+                native_skills: vec![],                          // V1 empty Vec reserved
+                native_language: native_language.clone(),
+            },
+            body: BodyLayer {
+                host_body_ref: None,                            // body created at canonical seed (no former occupant)
+                knowledge_tags,                                 // matches soul
+                motor_skills: vec![],                           // V1 empty Vec reserved
+                native_language,
+            },
+            leakage_policy: LeakagePolicy::NoLeakage,           // V1 default for native PC
+        }
+    }
+}
 ```
 
 **Key:** `(reality_id, pc_id)`. Sparse storage: 0 rows (sandbox reality with no PC) or 1 row V1 cap (per Q9 LOCKED).
@@ -406,7 +428,8 @@ dp::t2_write(ctx, "DyingTransition",
 | Aggregate | Subscribe to | Use case |
 |---|---|---|
 | `pc_user_binding` | `aggregate_type=actor_core` (ACT_001) | When ACT_001 actor_core PC row updated, PCS_001 may need to propagate (rare V1 — actor_core is L1 identity; pc_user_binding is L3) |
-| `pc_user_binding` | EVT-T1 `PcTransmigrationCompleted` (V1+) | Updates body_memory + last_xuyenkhong_at_turn at runtime xuyên không transition |
+| `pc_user_binding` | EVT-T1 `PcTransmigrationCompleted` (V1+) | Updates body_memory + last_xuyenkhong_at_turn at runtime xuyên không transition (cross-feature with TDIL_001 actor_clocks per Q10 LOCKED) |
+| ACT_001 `actor_chorus_metadata` | `aggregate_type=pc_user_binding` (current_session field changes) | V1+ AI-controls-PC-offline (ACT-D1) — when pc_user_binding.current_session transitions Some → None (logout), ACT_001 owner-service creates actor_chorus_metadata row for PC; reverse on login |
 | `pc_mortality_state` | EVT-T3 PROG_001 strike damage | When HP=0 detected, transition to Dying/Dead/Ghost per mortality_config |
 | `pc_mortality_state` | EVT-T3 RES_001 vital_pool changes | Hp=0 → MortalityTransitionTrigger; Stamina=0 → Exhausted (PL_006) but not death |
 | `pc_mortality_state` | EVT-T5 RES_001 hunger tick | Hunger=critical → starvation MortalityTransitionTrigger |
@@ -637,9 +660,10 @@ RealityManifest {
    - actor_id valid + kind=Pc → ✓
    - spawn_cell ∈ RealityManifest.places → ✓ (PF_001 declared)
    - glossary_entity_id ∈ knowledge-service canon → ✓
-   - body_memory_init Some for PC kind → ✓ (Required V1 per Q5)
-   - user_id_init None acceptable V1 → ✓
-   - V1 cap=1 enforcement (only 1 PC declared) → ✓
+   - body_memory_init Some for PC kind → ✓ (REQUIRED V1 per Q5; if None, fallback to PcBodyMemory::native_default for native PC pattern)
+   - user_id_init None acceptable V1 → ✓ (bound via Forge:BindPcUser V1 OR runtime login V1+)
+   - V1 cap=1 enforcement: count canonical_actors with kind=Pc → must be ≤1 (per PCS-A9 + Q9 LOCKED); reject `pc.multi_pc_per_reality_forbidden_v1` if > 1
+   - mortality_config validation: if mortality_config.mode = RespawnAtLocation declared but V1+ Respawn flow PCS-D2 not active → reject `pc.respawn_unsupported_v1` (V1 reality must use Permadeath or Ghost mode)
 2. RealityBootstrapper emits per PC actor:
    - 1 EVT-T4 EF_001 EntityBorn { entity_id: pc_id, entity_type: Actor(Pc), cell_id: spawn_cell }
    - 1 EVT-T4 ACT_001 ActorBorn { actor_id: pc_id, kind: Pc, traits_summary: ... }
@@ -763,6 +787,12 @@ Mid-play scenario: ancient cultivator dies; soul transmigrates to modern body vi
   → AC-PCS-V1+1 covers full xuyên không runtime flow (deferred V1+)
 ```
 
+**"Schema active V1 / Emission V1+" semantic clarification:**
+- V1: PCS_001 spec DEFINES PcTransmigrationCompleted EVT-T1 sub-type schema (engine knows the shape; subscribers like TDIL_001 know how to consume)
+- V1: NO RUNTIME emission of PcTransmigrationCompleted V1 (canonical seed declares pre-split state; no transition event needed)
+- V1+: Runtime emission unlocked when PCS-D-N enrichment ships (mid-play xuyên không scenarios; A6 detector active; full event flow + cross-feature cascade)
+- Pre-V1+ activation: realities with xuyên không actors must declare in canonical seed; mid-play xuyên không transitions REJECTED V1
+
 V1: schema for PcTransmigrationCompleted DEFINED + canonical seed declares pre-split state; runtime emission V1+ requires:
 - V1+ A6 canon-drift detector (PCS-D7) for body-soul knowledge mismatch detection
 - V1+ multi-PC reality cap relax (PCS-D3) if new_pc adds to existing reality
@@ -778,7 +808,7 @@ V1 (10 testable scenarios):
 |---|---|---|
 | **AC-PCS-1** | Wuxia canonical bootstrap declares Lý Minh PC with body_memory_init Some(SoulPrimary{...}) → actor_core + pc_user_binding + pc_mortality_state + actor_clocks rows written | RealityBootstrapper emits 4 EVT-T4 events; 4 rows written; cross-aggregate consistency at canonical seed |
 | **AC-PCS-2** | Lý Minh xuyên không SoulLayer.knowledge_tags=["modern_stem", "classical_chinese_reading"] + BodyLayer.knowledge_tags=["regional_hangzhou_dialect", "manual_labor"] → schema validates; A6 V1+ detector reads correctly | body_memory schema fields populated; knowledge_tag overlap analysis ready for A6 V1+ |
-| **AC-PCS-3** | SPIKE_01 turn 5 literacy slip reproducible — Lý Minh body cannot read but soul leaks knowledge → SoulPrimary { body_blurts_threshold: 0.05 } configured; A6 V1+ detector ready | Schema verified; A6 detector V1+ activation reads body_memory.{soul, body}.knowledge_tags |
+| **AC-PCS-3** | SPIKE_01 turn 5 literacy slip schema verification (V1 schema test; full detection V1+) | Schema fields populated correctly: SoulLayer.knowledge_tags includes "classical_chinese_reading"; BodyLayer.knowledge_tags MISSING "literacy"; LeakagePolicy::SoulPrimary { body_blurts_threshold: 0.05 } configured. A6 detector V1+ activation reads schema (PCS-D7); V1 only validates schema integrity, not detection logic. |
 | **AC-PCS-4** | Multi-PC reality rejected V1 (`pc.multi_pc_per_reality_forbidden_v1`) | Stage 0 schema validator counts pc_user_binding rows; rejects > 1 |
 | **AC-PCS-5** | Synthetic actor PC rejected (`pc.synthetic_actor_forbidden`) | Stage 0 schema validator |
 | **AC-PCS-6** | Cross-reality PC migration rejected (`pc.cross_reality_mismatch`) | Stage 0 schema validator |
