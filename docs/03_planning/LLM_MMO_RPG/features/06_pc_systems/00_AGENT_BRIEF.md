@@ -183,6 +183,13 @@ When PC's soul transmigrates into another body (xuyên không event), PCS_001 me
 
 **Boundary:** PCS_001 OWNS the xuyên không mechanic + event sequence + soul/body model. RES_001 OWNS the resource-side semantics (what follows body vs soul vs actor identity). PF_001 + EF_001 OWN the cell + entity_binding shapes. PL_001 + PL_005 are notified via standard event subscription.
 
+**TDIL_001 clock-split contract (added 2026-04-27 DRAFT):** Per [TDIL_001 §8 Xuyên không clock-split contract](../17_time_dilation/TDIL_001_time_dilation_foundation.md#8-xuyên-không-clock-split-contract-q11-locked) (Q11 LOCKED), the xuyên không mechanic MUST initialize the new PC's `actor_clocks` aggregate (T2/Reality, owner=Actor; ALWAYS-PRESENT V1) with:
+- `actor_clock = 0` (proper time τ resets — the new actor begins integrating from this moment)
+- `soul_clock = source_a.soul_clock` (soul brings its accumulated soul-time from origin reality — preserves twin paradox; soul-bound progressions like cultivation are preserved)
+- `body_clock = source_b.body_clock` (body keeps its accumulated body-time from host reality — preserves body-bound progressions + future aging V2+)
+
+Twin paradox preserved: a 2026 modern student soul (soul_clock=22 years) entering a 1256 Hàng Châu peasant body (body_clock=18 years) yields a new PC with actor_clock=0 + soul_clock=22yr + body_clock=18yr. LLM narrates the discrepancy ("body feels younger than mind"). Worldline monotonicity (TDIL-A8) applies to the new actor going forward; Forge edits to past clock values FORBIDDEN PERMANENTLY V1+. PCS_001 emits the standard `PcXuyenKhongCompleted` event; TDIL_001 acceptance criterion AC-TDIL-7 verifies the 3-clock initialization.
+
 ### S6. PC-NPC relationship read-side
 
 NPC_001 §3.3 owns `npc_pc_relationship_projection` (write side, derived at session-end). PCS_001 owns the PC-side READ:

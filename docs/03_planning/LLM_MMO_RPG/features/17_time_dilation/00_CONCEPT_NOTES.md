@@ -1,10 +1,10 @@
 # TDIL_001 Time Dilation Foundation — Concept Notes
 
-> **Status:** CONCEPT 2026-04-27 — captures user 4 concerns + 4 architectural insights + Einstein-relativity analysis + 4-clock model + Convention B `time_flow_rate` semantic. Awaits Q-deep-dive batched (mirror PROG_001 / AIT_001 pattern).
+> **Status:** SUPERSEDED → DRAFT 2026-04-27 — All 12 questions LOCKED via 4-batch deep-dive 2026-04-27 (Q1+Q2+Q3 / Q4+Q5 / Q6+Q7+Q8 / Q9+Q10+Q11+Q12). Promoted to DRAFT in [`TDIL_001_time_dilation_foundation.md`](TDIL_001_time_dilation_foundation.md) (~700 lines, 20 sections, 17 V1 catalog entries TDIL-1..17 + 6 V1+30d TDIL-18..23 + 4 V2/V3+ TDIL-24..27; 10 axioms TDIL-A1..A10; 4 V1 + 6 V1+30d RejectReason rule_ids). Closure-pass mechanical revisions applied to PROG_001 Q3f + RES_001 Q4 + AIT_001 §7.5 day-boundary → turn-boundary semantic. Single combined `[boundaries-lock-claim+release]` commit 2026-04-27. This concept-notes file retained for archival reference of brainstorm process.
 >
 > **Purpose:** Capture brainstorm + gap analysis + open questions for TDIL_001 Time Dilation Foundation. NOT a design doc; the seed material for the eventual `TDIL_001_time_dilation_foundation.md` design.
 >
-> **Promotion gate:** When (a) Q1-Q12 LOCKED via deep-dive, (b) `_boundaries/_LOCK.md` is free, (c) PROG_001 + RES_001 + AIT_001 closure-pass revisions ready (turn-boundary Generator semantic) → main session drafts `TDIL_001_time_dilation_foundation.md` in single combined boundary commit.
+> **Promotion gate:** ✅ Met 2026-04-27 — (a) Q1-Q12 ALL LOCKED via 4-batch deep-dive, (b) `_boundaries/_LOCK.md` claimed by main session, (c) PROG_001 + RES_001 + AIT_001 closure-pass revisions applied. Single combined boundary commit shipped.
 
 ---
 

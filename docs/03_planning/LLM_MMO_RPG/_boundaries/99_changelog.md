@@ -6,6 +6,92 @@
 
 ---
 
+## 2026-04-27 — TDIL_001 Time Dilation Foundation DRAFT promotion + closure-pass cascade (single combined `[boundaries-lock-claim+release]` commit)
+
+- **Lock CLAIMED then RELEASED** in single combined commit (`[boundaries-lock-claim+release]`)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None → main session 2026-04-27 (claim) → None (release after combined commit)
+  - `01_feature_ownership_matrix.md`:
+    - NEW T2/Reality aggregate row `actor_clocks` (owner=Actor; ALWAYS-PRESENT V1; mirror actor_core pattern; 3 clocks i64: actor_clock + soul_clock + body_clock)
+    - NEW stable-ID prefix row `TDIL-*` (TDIL_001 ownership)
+  - `02_extension_contracts.md`:
+    - §1.4 NEW namespace `time_dilation.*` (4 V1 rule_ids + 6 V1+30d reservations)
+    - §2 RealityManifest INLINE field additions block (TDIL_001 extensions): MAP_001 MapLayoutDecl `time_flow_rate: f32` + PF_001 PlaceDecl `time_flow_rate_override: Option<f32>` + ACT_001 CanonicalActorDecl `initial_clocks: Option<InitialClocksDecl>`; NEW T2/Reality aggregate `actor_clocks` cited (NOT a RealityManifest field)
+- **Files created:**
+  - `features/17_time_dilation/TDIL_001_time_dilation_foundation.md` (~700 lines, 20 sections, 17 V1 catalog entries TDIL-1..17 + 6 V1+30d TDIL-18..23 + 4 V2/V3+ TDIL-24..27; 10 axioms TDIL-A1..A10; 10 V1 acceptance scenarios AC-TDIL-1..10; 4 V1 + 6 V1+30d RejectReason rule_ids)
+  - `catalog/cat_17_TDIL_time_dilation.md` (27 entries; 17 V1 + 6 V1+30d + 4 V2/V3+; architecture-scale catalog seed)
+- **Files modified outside `_boundaries/` (closure-pass cascade):**
+  - `features/17_time_dilation/_index.md` — TDIL_001 status CONCEPT → DRAFT 2026-04-27; catalog reference activated
+  - `features/17_time_dilation/00_CONCEPT_NOTES.md` — status SUPERSEDED → DRAFT 2026-04-27 (Q1-Q12 ALL LOCKED via 4-batch deep-dive)
+  - `features/00_progression/PROG_001_progression_foundation.md` — closure-pass-extension notice: Q3f day-boundary Generator → per-turn O(1) per TDIL-A3 (Scheduled:CultivationTick reads body_clock or soul_clock per BodyOrSoul; PROG-D19 RES_001 alignment resolved)
+  - `features/00_resource/RES_001_resource_foundation.md` — closure-pass-extension notice: Q4 day-boundary 4-Generators → per-turn O(1) per TDIL-A3 (channel-bound vs actor-bound matrix added; CellProduction/NPCAutoCollect/CellMaintenance read wall_clock; HungerTick reads body_clock)
+  - `features/16_ai_tier/AIT_001_ai_tier_foundation.md` — closure-pass-extension notice: §7.5 Tracked NPC lazy materialization per-day replay → O(1) elapsed-time computation per TDIL-A3 + TDIL-A7 (cross-realm observation O(1) regardless of magnitude)
+  - `features/06_pc_systems/00_AGENT_BRIEF.md` §S8 — TDIL_001 clock-split contract reference: xuyên không initializes new PC actor_clock=0 + soul_clock=source_a.soul_clock + body_clock=source_b.body_clock per TDIL_001 §8 (Q11 LOCKED)
+
+### TDIL_001 architecture-scale feature MILESTONE SUMMARY
+
+NOT a foundation tier feature (foundation 6/6 closed at PROG_001). TDIL_001 is **architecture-scale Tier 5+ Actor Substrate scaling/architecture feature** mirroring AIT_001 + ACT_001 pattern. Opt-in per reality:
+- Modern social reality → no time dilation (default 1.0 everywhere; engine-canonical real-time)
+- Tu tiên reality → rich time dilation config (heaven 0.0027× / Dragon Ball chamber 365× / per-cell overrides)
+
+User concerns RESOLVED 2026-04-27:
+1. **Cultivation rate mismatch** (newbie 練氣 vs 元嬰 elder same-clock) → ✅ RESOLVED via per-channel `time_flow_rate` + per-cell `time_flow_rate_override` + actor_clocks aggregate
+2. **Multi-realm time variance** (Tây Du Ký 天上一日人間一年) → ✅ RESOLVED via per-channel `time_flow_rate` + per-realm turn streams (TDIL-A6)
+3. **Time chambers** (Dragon Ball 精神時光屋 1 day = 1 year) → ✅ RESOLVED via cell-level `time_flow_rate_override` (REPLACE semantic)
+4. **PvP newbie-gank prevention** → ✅ RESOLVED via Lex axiom (existing) + newbie-zone slow rate (high-tier wastes time visiting)
+
+User architectural insights LOCKED 2026-04-27:
+1. **Per-turn O(1) Generator semantic** (TDIL-A3) — corrects PROG/RES/AIT day-boundary lock; computation = base × elapsed × multiplier
+2. **Atomic-per-turn travel** (TDIL-A5) — actor in EXACTLY ONE channel per turn; no mid-turn cross-channel
+3. **Per-realm turn streams** (TDIL-A6) — heaven_clock independent from mortal_clock; idle channels frozen
+4. **4-clock model** (TDIL-A2) — realm + actor + soul + body; soul/body separability enables xuyên không state preservation
+
+Q-LOCKED summary (Q1-Q12 ALL LOCKED via 4-batch deep-dive 2026-04-27):
+- Batch 1: Q1 (Convention B) + Q2 (4-clock model) + Q3 (channel + cell layering REPLACE)
+- Batch 2: Q4 (per-turn O(1) Generator) + Q5 (atomic-per-turn travel)
+- Batch 3: Q6 (clock-source matrix locked) + Q7 (atomic travel detail) + Q8 (cross-realm observation O(1))
+- Batch 4: Q9 (LLM context dilation hint) + Q10 (replay determinism FREE) + Q11 (xuyên không clock-split) + Q12 (worldline monotonicity)
+
+10 architectural axioms LOCKED (TDIL-A1..A10):
+- TDIL-A1 Convention B time_flow_rate (proper time per wall time; range V1 [0.001, 1000.0])
+- TDIL-A2 4-clock model (realm + actor + soul + body)
+- TDIL-A3 Per-turn O(1) Generator semantic (replaces PROG/RES/AIT day-boundary)
+- TDIL-A4 Channel-bound vs actor-bound generator discipline
+- TDIL-A5 Atomic-per-turn travel
+- TDIL-A6 Per-realm turn streams
+- TDIL-A7 Cross-realm observation O(1)
+- TDIL-A8 Worldline monotonicity (Forge past-clock edits FORBIDDEN PERMANENTLY V1+)
+- TDIL-A9 Replay determinism FREE V1 (static rates + per-channel turn streams + atomic travel + monotonic clocks)
+- TDIL-A10 Xuyên không clock-split (soul→soul; body→body; actor=0; twin paradox preserved)
+
+V1 quantitative summary:
+- 1 NEW T2/Reality aggregate (actor_clocks; ALWAYS-PRESENT V1; mirror actor_core pattern)
+- 0 NEW EVT-T4 (clocks born inline with actor_core via existing ActorBorn — no separate ClocksBorn)
+- 0 NEW EVT-T8 V1 (Forge:EditChannelTimeFlowRate + Forge:AdvanceChannelClock V1+30d per TDIL-D1 + TDIL-D2)
+- 0 NEW EVT-T3 V1 (clock advancement is per-turn synchronous — not delta event)
+- 1 NEW namespace: `time_dilation.*` (4 V1 rules + 6 V1+30d reservations)
+- 1 NEW stable-ID prefix: `TDIL-*`
+- 3 RealityManifest extensions (INLINE on existing structs — NOT new top-level fields): MapLayoutDecl.time_flow_rate + PlaceDecl.time_flow_rate_override + CanonicalActorDecl.initial_clocks
+- 4 NEW validators (TDIL-V1..V4): AtomicTravel + RateBounds + InitialClocks + WorldlineMonotonicity
+- 10 V1 AC (AC-TDIL-1..10) + 0 V1+ deferred (AC-TDIL coverage complete V1)
+- 16 deferrals (TDIL-D1..TDIL-D16; 6 V1+30d active + 4 V2/V3+ + 6 long-tail)
+
+Closure-pass mechanical revisions APPLIED (no semantic change to user-facing behavior):
+- **PROG_001 Q3f**: DailyBoundary Generator → per-turn O(1); CultivationTick reads body_clock/soul_clock per BodyOrSoul
+- **RES_001 Q4**: 4 day-boundary Generators → per-turn O(1); channel-bound vs actor-bound matrix added
+- **AIT_001 §7.5**: per-day materialization replay → O(1) elapsed-time computation; cross-realm observation O(1) per TDIL-A7
+- **PCS_001 §S8**: xuyên không clock-split contract reference (soul→soul_clock; body→body_clock; actor=0)
+
+Einstein relativity origin VERIFIED PHYSICS-CORRECT (concept-notes §3 analysis):
+- Convention B `time_flow_rate` = proper time τ per coordinate time t (matches Einstein SR/GR)
+- 4-clock model generalizes twin paradox to soul/body separation (xuyên không)
+- Worldline monotonicity (TDIL-A8) prevents closed timelike curves V1; CTC time-travel V2+ separate feature (TDIL-D8)
+- Replay determinism FREE V1 (static rates + monotonic clocks)
+
+NEW priority post-TDIL_001 DRAFT: PCS_001 PC Substrate kickoff (consumes 6 V1 foundations + IDF + FF + FAC + REP + PROG + ACT + AIT + TDIL clocks). Future V1+: CULT_001 Cultivation Foundation (wuxia-genre cultivation method binding to sect via FAC_001 + tu tiên rate via TDIL_001) / V2+ AGE feature (aging reads body_clock per TDIL-D6) / V2+ QST_001 cross-realm quest deadlines (TDIL-D7) / V2+ CTC time travel (TDIL-D8 separate feature) / V3+ DF7-equivalent Lorentz-aware combat (TDIL-D10).
+
+---
+
 ## 2026-04-27 — ACT_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 5/5 FINAL)
 
 - **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)

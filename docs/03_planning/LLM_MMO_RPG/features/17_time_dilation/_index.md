@@ -1,12 +1,12 @@
 # 17_time_dilation — Index
 
 > **Category:** TDIL — Time Dilation (architecture-scale; 4-clock relativity model for cross-realm time + cultivation rate variance + xuyên không clock-split)
-> **Catalog reference:** `catalog/cat_17_TDIL_time_dilation.md` (NOT YET CREATED — defer to TDIL_001 DRAFT promotion)
+> **Catalog reference:** [`catalog/cat_17_TDIL_time_dilation.md`](../../catalog/cat_17_TDIL_time_dilation.md) (27 entries; 17 V1 ✅ + 6 V1+30d 📦 + 4 V2/V3+ 📦; 10 axioms TDIL-A1..A10)
 > **Purpose:** Defines how fiction-time flows differently across realms/cells/actors. Solves 4 user-raised concerns: (1) tu tiên cultivation rate mismatch (newbie vs 元嬰 incompatible same-clock); (2) multi-realm time variance (Tây Du Ký 天上一日人間一年); (3) time chambers (Dragon Ball 精神時光屋); (4) PvP newbie-gank prevention. Architecture maps cleanly to Einstein's special + general relativity (proper time vs coordinate time). 4-clock model (realm + actor + soul + body) generalizes twin paradox to soul-body separation (xuyên không clock-split).
 
-**Active:** TDIL_001 — **Time Dilation Foundation** (CONCEPT 2026-04-27 — captures user 4 concerns + Einstein-aligned semantics + 4-clock model)
+**Active:** TDIL_001 — **Time Dilation Foundation** (DRAFT 2026-04-27 — Q1-Q12 LOCKED via 4-batch deep-dive; 17 V1 catalog entries; 27 total architecture-scale entries; 10 axioms TDIL-A1..A10; closure-pass cascade applied to PROG_001/RES_001/AIT_001 day-boundary → turn-boundary semantic)
 
-**Folder closure status:** Open — concept-notes phase. TDIL_001 not yet drafted. User kickoff confirmed 2026-04-27 post AIT_001 DRAFT closure.
+**Folder closure status:** Open — TDIL_001 DRAFT promoted 2026-04-27. CANDIDATE-LOCK pending Phase 3 cleanup + closure cycle. User kickoff confirmed 2026-04-27 post AIT_001 DRAFT closure.
 
 **NOT a foundation tier feature:** Foundation tier remains 6/6 (closed at PROG_001). TDIL_001 is **architecture-scale Tier 5+ Actor Substrate scaling/architecture feature** (mirrors AIT_001 pattern). Opt-in per reality — modern social reality = no time dilation; tu tiên reality = rich time dilation config.
 
