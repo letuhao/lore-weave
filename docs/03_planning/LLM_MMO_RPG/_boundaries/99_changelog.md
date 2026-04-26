@@ -6,6 +6,27 @@
 
 ---
 
+## 2026-04-26 — EVT-V slot alignment review: 4 drift watchpoints resolved (EF-Q3 + PF-Q1 + MAP-Q1 + CSC-Q2)
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — EVT-V slot alignment review per user direction "E"); commit (this turn) `[boundaries-lock-claim+release]`
+- **Files modified within `_boundaries/`:**
+  - `03_validator_pipeline_slots.md`:
+    - **Inserted Stage 3.5 group** between existing Stage 3 (A6 sanitize) and Stage 4 (lex_check) — preserves locked LX-D5 numbering. 4 sub-stages: 3.5.a entity_affordance (EF_001) · 3.5.b place_structural (PF_001) · 3.5.c map_layout (MAP_001) · 3.5.d cell_scene (CSC_001). Order = "fail-fast common-case-first; specific checks last."
+    - **New section "Stage 3.5 sub-stage applicability"** — per-sub-stage predicate table specifying when each runs vs early-exits (e.g., entity_affordance applies to EVT-T1 with entity targets; map_layout applies to Travel events; cell_scene applies to write events modifying cell state).
+    - **New section "Soft-override mechanism"** — INTERNAL to entity_affordance validator (Stage 3.5.a); PL_005 InteractionKindSpec declares `tolerates_destroyed`/`tolerates_suspended` per kind; pipeline downstream sees pass/fail only.
+    - **New section "Stage → rule_id namespace matrix"** — onboarding lookup table mapping each stage to its rule_id prefix + V1 namespace count + V1+ reservations. Total 44+ V1 rule_ids in entity/place/map/csc namespaces alone (Stage 3.5 group).
+    - **Post-commit side-effects table:** added 2 new entries — PlaceDestroyed cascade (PF_001 §6.1) + EntityLifecycle HolderCascade (EF_001 §6.1).
+    - **Drift Resolutions table:** 4 new RESOLVED entries (EF-Q3 / PF-Q1 / MAP-Q1 / CSC-Q2) with cross-ref to Stage 3.5 sub-stages.
+    - **Status note** at top of file updated to reflect alignment review completion.
+  - `01_feature_ownership_matrix.md` Drift Watchpoints table: 4 watchpoints struck-through with RESOLVED markers cross-referencing Stage 3.5.a/b/c/d in `03_validator_pipeline_slots.md`.
+- **No `02_extension_contracts.md` changes** — no new namespaces or schemas; alignment review is pure ordering decision.
+- **Reason:** 4 drift watchpoints (EF-Q3 + PF-Q1 + MAP-Q1 + CSC-Q2) all referenced `_boundaries/03_validator_pipeline_slots.md` alignment review for resolution. Foundation tier 4/4 CANDIDATE-LOCK milestone (commit 3e9d6bb) made all 4 ready for slot resolution. User direction "E" approved Q1-Q6 sub-decision defaults: ordering entity→place→map→cell (fail-fast); preserve existing stage numbering (LX-D5 still stage 4); per-sub-stage applicability rules; soft-override INTERNAL to entity_affordance; cascade-triggers POST-COMMIT; rule_id prefix matrix added.
+- **Architectural pattern locked:** "structural validators run as Stage 3.5 group between A6 sanitize and lex_check" — cheaper than lex (lookup + invariant check vs axiom evaluation); fail-fast principle (reject malformed-world-state references before semantic Lex check). Each sub-stage has applicability predicate (early-exit when not relevant to event kind). Soft-override is a PER-RULE_ID property handled INTERNAL to validator; pipeline downstream sees pass/fail only.
+- **Drift watchpoints: 14 → 10 active** (4 RESOLVED in this commit). Remaining 10 watchpoints unrelated to validator slot ordering (GR-D8 / CST-D1 / LX-D5 already locked / HER-D8 / HER-D9 / CHR-D9 / WA_006 over-extension already mitigated / B2 RealityManifest envelope / EF-Q2 / PF-Q4 / MAP-Q3 — wait counts may differ; see updated matrix).
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — Foundation tier 4/4 milestone: MAP_001 + CSC_001 closure passes → CANDIDATE-LOCK
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — combined closure pass for MAP_001 + CSC_001 to complete foundation tier 4/4 CANDIDATE-LOCK milestone); commit (this turn) `[boundaries-lock-claim+release]`

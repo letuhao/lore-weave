@@ -10,7 +10,7 @@
 - **Claimed at:** —
 - **Expected work:** —
 - **Expires at:** —
-- _Last released:_ 2026-04-26 by main session (combined closure pass MAP_001 + CSC_001 → CANDIDATE-LOCK; **foundation tier 4/4 milestone achieved**) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
+- _Last released:_ 2026-04-26 by main session (EVT-V slot alignment review — Stage 3.5 group inserted; 4 drift watchpoints RESOLVED) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

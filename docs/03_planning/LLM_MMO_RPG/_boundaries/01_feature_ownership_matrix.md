@@ -115,12 +115,12 @@ These are documented mismatches that require cross-feature coordination to resol
 | **GR-D8** | PL_002 | Rejected-turn commit primitive (`t2_write` per PL_001 §15 vs `advance_turn` per EVT-T1 spec) | event-model agent Phase 2 to absorb per-outcome sub-spec |
 | **CST-D1** | NPC_001 | `npc.current_session_id` semantic (R8 wording vs OOS-1 in DP); also see EF-Q2 — npc.current_region_id may migrate to entity_binding post-EF_001 | reconcile with 02_storage agent + EF_001 review |
 | **LX-D5** | WA_001 | Lex slot ordering in EVT-V* | event-model agent Phase 3 |
-| **EF-Q3** | EF_001 | Validator slot ordering: EVT-V_entity_affordance vs EVT-V_lex (structural-before-semantic suggests entity first) | `_boundaries/03_validator_pipeline_slots.md` alignment update |
-| **PF-Q1** | PF_001 | Validator slot ordering: EVT-V_place_structural relative to EVT-V_entity_affordance + EVT-V_lex (extends EF-Q3 — same alignment review) | `_boundaries/03_validator_pipeline_slots.md` alignment update |
+| ~~**EF-Q3**~~ | EF_001 | ~~Validator slot ordering: EVT-V_entity_affordance vs EVT-V_lex~~ | **RESOLVED 2026-04-26 alignment review** → Stage 3.5.a per `_boundaries/03_validator_pipeline_slots.md` |
+| ~~**PF-Q1**~~ | PF_001 | ~~Validator slot ordering: EVT-V_place_structural relative to EVT-V_entity_affordance + EVT-V_lex~~ | **RESOLVED 2026-04-26 alignment review** → Stage 3.5.b per `_boundaries/03_validator_pipeline_slots.md` |
 | **PF-Q4** | PF_001 | Place addressability: separate ExamineTarget discriminator (V1) vs 5th EntityId variant (V1+) — requires PL_005 closure-pass extension to add ExamineTarget enum | PL_005 closure pass + V1+ reconsideration if Place ends up being struck/used |
-| **MAP-Q1** | MAP_001 | Validator slot ordering: EVT-V_map_layout relative to EVT-V_place_structural + EVT-V_entity_affordance + EVT-V_lex (extends EF-Q3 + PF-Q1) | `_boundaries/03_validator_pipeline_slots.md` alignment review (single pass for all 3 watchpoints) |
+| ~~**MAP-Q1**~~ | MAP_001 | ~~Validator slot ordering: EVT-V_map_layout relative to EVT-V_place_structural + EVT-V_entity_affordance + EVT-V_lex~~ | **RESOLVED 2026-04-26 alignment review** → Stage 3.5.c per `_boundaries/03_validator_pipeline_slots.md` |
 | **MAP-Q3** | MAP_001 | PL_005 Examine of non-cell-tier map node ("examine the country") — requires PL_005 ExamineTarget extension to accept ChannelId at non-cell tier (extends PF-Q4) | PL_005 closure pass + V1+ if author content needs |
-| **CSC-Q2** | CSC_001 | Validator slot ordering: EVT-V_cell_scene relative to EVT-V_map_layout / EVT-V_place_structural / EVT-V_entity_affordance / EVT-V_lex (extends EF-Q3 + PF-Q1 + MAP-Q1) | `_boundaries/03_validator_pipeline_slots.md` alignment review (single pass for all 4 watchpoints) |
+| ~~**CSC-Q2**~~ | CSC_001 | ~~Validator slot ordering: EVT-V_cell_scene relative to EVT-V_map_layout / EVT-V_place_structural / EVT-V_entity_affordance / EVT-V_lex~~ | **RESOLVED 2026-04-26 alignment review** → Stage 3.5.d per `_boundaries/03_validator_pipeline_slots.md` |
 | **HER-D8** | WA_002 | EVT-T11 WorldTick V1+30d activation | event-model agent Phase 4 |
 | **HER-D9** | WA_002 | LexSchema v1→v2 migration sequencing | implementation phase ops |
 | **CHR-D9** | PLT_001 | Cross-reality `meta_user_pending_invitations` table | platform infrastructure |
