@@ -361,13 +361,200 @@ Before drafting `PROG_001_progression_foundation.md`:
 ## §10 — Status
 
 - **Created:** 2026-04-26 by main session
-- **Phase:** CONCEPT — awaiting user reference materials + Q1-Q7 deep-dive
+- **Phase:** CONCEPT — Q1+Q6 LOCKED 2026-04-26 (see §11); Q2-Q5 + Q7 still open + chaos-backend reference doc landed
 - **Lock state:** `_boundaries/_LOCK.md` held by IDF agent (parallel session, IDF folder Phase 1 — 5 features DRAFT). PROG_001 DRAFT promotion blocked until lock free.
-- **Estimated time to DRAFT (post-references-Q-deep-dive):** 4-6 hours focused design work (likely larger than RES_001 due to multi-genre coverage — modern + tu tiên + traditional RPG + sandbox simultaneously)
+- **Reference materials landed:**
+  - [`02_CHAOS_BACKEND_REFERENCE.md`](02_CHAOS_BACKEND_REFERENCE.md) — chaos-backend repo analysis 2026-04-26 (10 sections / ~2400 words). Key finding: `actor-core` aggregation pipeline (Subsystem → Vec<Contribution> + bucket-processor → Snapshot + CapContribution AcrossLayerPolicy) is the load-bearing pattern; chaos-backend is mostly placeholder (5 of 17 crates have real Rust code).
+- **Estimated time to DRAFT (post-Q2-Q7 lock):** 4-6 hours focused design work (likely larger than RES_001 due to multi-genre coverage — modern + tu tiên + traditional RPG + sandbox simultaneously)
 - **Co-design dependencies (when DRAFT):**
   - PCS_001 brief §S5 stats stub → PROG_001 reference (downstream)
   - NPC_001 closure pass folds NPC progression (per Q4)
   - DF7 PC Stats placeholder retired in favor of PROG_001 (V1) + DF7-equivalent V1+ "combat damage formulas" sub-feature
   - RealityManifest extension (lock-coordinated commit)
   - 07_event_model registers PROG sub-types
-- **Next action:** User reviews this concept-notes file → provides reference materials → Q-deep-dive begins
+- **Next action:** Q2 Curves deep-dive (next priority per dependency tree — Q2 needs Q1+Q6 locked which is now done)
+
+---
+
+## §11 — Q1+Q6 LOCKED decisions (2026-04-26 deep-dive paired)
+
+> **Note:** §5 original Q1+Q6 recommendations are SUPERSEDED by this section. Q2-Q5 + Q7 in §5 remain open pending subsequent deep-dives.
+>
+> **Reference materials cited:** [`02_CHAOS_BACKEND_REFERENCE.md`](02_CHAOS_BACKEND_REFERENCE.md) §2 (actor-core aggregation pipeline) + §7 (Q1+Q6 mapping). Cross-reference with locked LoreWeave precedent: RES_001 Q3 split discipline (different invariants → split) + PL_006 unified discipline (same invariants → unified).
+
+### Q1 LOCKED — Unified ProgressionKind with type discriminator + optional `derives_from`
+
+| Sub | Decision |
+|---|---|
+| Q1a | Ontology architecture | **Unified (Option A)** — single aggregate with type discriminator. Reasoning: invariants giống nhau across Attribute/Skill/Stage (non-transferable + growth-driven + capped + actor-scoped + author-declared). Pattern matches PL_006 unified actor_status. RES_001 split discipline does NOT apply (vital_pool body-bound type-system enforced — different invariant). chaos-backend actor-core 12k LOC uses unified Subsystem→Contribution→Snapshot pattern. |
+| Q1b | ProgressionType variants V1 | 3 variants: `Attribute` / `Skill` / `Stage`. V1+ reserved: `ResourceBound` (mana-pool-like progression with resource consumption per use). |
+| Q1c | `derives_from` field V1 ship | YES — lightweight optional field; modern + D&D + xianxia genres benefit. Cost: ~5 lines schema. |
+| Q1d | Derivation direction V1 | **Skill ← Attribute only** (no circular references). 智 (INT) → 谈判 (Negotiation) ✓; reverse forbidden V1. |
+| Q1e | Derivation effect V1 | `training_rate_factor: f32` only (simpler) — INT high → negotiation grows faster. V1+30d may extend to query-value bonus (INT high → negotiation check bonus directly). |
+
+### Q6 LOCKED — NEW T2/Reality aggregate `actor_progression` (owner=Actor only V1)
+
+| Sub | Decision |
+|---|---|
+| Q6a | Storage architecture | **New aggregate (Option A)** `actor_progression` (T2/Reality scope). Reject (B) extend PCS/NPC cores (modifies locked aggregates; bloats; I14 stress at scale). Reject (C) reuse RES_001 (semantic mismatch — progression is non-transferable, RES axiom #1 is transferability). |
+| Q6b | `actor_ref` type V1 | `Actor only` (PC + NPC). V1+30d reserved for `Item` (weapon's own progression — sword's "kill count" or sentient-weapon cultivation). |
+| Q6c | Subsystem stacking V1 ship | **NO** — V1 stores `raw_value` only. V1+30d adds chaos-backend Subsystem→Contribution pattern for Race/Item/Mentor/Status modifiers. Schema reservation V1 cost: zero (added at V1+30d as additive evolution per I14). |
+| Q6d | Snapshot caching V1 | **NO** — V1 query-time computation acceptable (turn-based latency budget hundreds-of-ms-to-minutes per turn; computation cheap). V1+30d may add Snapshot cache when subsystem stacking ships. |
+
+### Q1+Q6 NEW: `BodyOrSoul` field for xuyên không cross-reality stat translation
+
+Surfaced 2026-04-26 deep-dive — D4 gap from §3 gap analysis. Per RES_001 Q9c body-substitution semantics (vital follows body; resource_inventory.owner=Actor follows actor identity), progression needs analogous declaration:
+
+```rust
+pub enum BodyOrSoul {
+    Body,      // martial / body-cultivation / motor skills (e.g., 炼体, 剑术, athletic)
+    Soul,      // academic / social / cognitive (e.g., 智力 INT, 谈判, language fluency)
+    Both,      // hybrid — rare, mostly authorial choice
+}
+```
+
+Field added to `ProgressionKindDecl`:
+```rust
+pub struct ProgressionKindDecl {
+    // ... fields above ...
+    pub body_or_soul: BodyOrSoul,         // V1 default: Body (most progressions are physical)
+}
+```
+
+xuyên không event behavior (PCS_001 mechanic):
+- **Body progressions** stay with body (new soul inherits martial skills)
+- **Soul progressions** travel with soul (academic knowledge follows soul to new body)
+- **Both progressions** keep on both — author choice (rare)
+
+V1 author default: `Body`. Soul-bound = explicit author declaration for cognitive/academic/social kinds.
+
+### Concrete V1 Rust struct sketch
+
+```rust
+// ─── Q6 storage: NEW T2/Reality aggregate ───
+
+#[derive(Aggregate)]
+#[dp(type_name = "actor_progression", tier = "T2", scope = "reality")]
+pub struct ActorProgression {
+    pub reality_id: RealityId,
+    pub actor_ref: ActorRef,                          // PC + NPC V1; Item V1+30d reserved (Q6b)
+    pub values: Vec<ProgressionInstance>,
+    pub last_modified_at_turn: u64,
+    pub schema_version: u32,                          // V1 = 1
+}
+
+pub struct ProgressionInstance {
+    pub kind_id: ProgressionKindId,                   // matches RealityManifest schema
+    pub raw_value: u64,                               // base accrued; subsystem bonuses ADDED at query V1+30d (Q6c)
+    pub current_tier: Option<TierIndex>,              // None for Attribute/Skill; Some(N) for Stage type
+    pub last_trained_at_fiction_ts: i64,
+    pub training_log_window: VecDeque<TrainingRecord>, // bounded ring buffer for replay determinism (per EVT-A9)
+}
+
+// ─── Q1 ontology: UNIFIED with type discriminator ───
+
+pub enum ProgressionType {
+    Attribute,    // V1 active — innate, slow-changing, soft cap
+    Skill,        // V1 active — learned, action-driven, soft cap (V1+ tier-locked)
+    Stage,        // V1 active — tier-based with breakthrough (tu tiên 练气九层 → 筑基)
+    // V1+ reserved: ResourceBound (mana-pool style with consumption-per-use)
+}
+
+pub enum BodyOrSoul {
+    Body,    // V1 default — martial / body-cultivation / motor skills
+    Soul,    // academic / social / cognitive
+    Both,    // hybrid — author choice
+}
+
+pub struct ProgressionKindDecl {                      // RealityManifest declaration
+    pub kind_id: ProgressionKindId,
+    pub display_name: I18nBundle,                     // i18n per RES_001 §2
+    pub description: I18nBundle,
+    pub progression_type: ProgressionType,
+    pub body_or_soul: BodyOrSoul,                     // xuyên không inheritance hint (default Body)
+    pub curve: CurveDecl,                             // Q2 — TBD
+    pub cap_rule: CapRule,                            // Q2 — TBD
+    pub training_rules: Vec<TrainingRuleDecl>,        // Q3 — TBD
+    pub initial_value: u64,
+    pub derives_from: Option<DerivationDecl>,         // Q1c hybrid — skill ← attribute scaling
+}
+
+pub struct DerivationDecl {
+    pub source_kind_id: ProgressionKindId,            // typically Attribute kind
+    pub training_rate_factor: f32,                    // training rate multiplier; e.g., 1.0 + INT*0.05
+    // V1: derivation only affects training rate (Q1e)
+    // V1+30d: may extend to query-value bonus
+}
+
+pub struct ProgressionKindId(pub String);             // e.g., "physical_strength" / "negotiation" / "qi_cultivation"
+
+// ─── chaos-backend Subsystem pattern (V1+30d schema reservation only) ───
+
+// V1 NOT shipping but pattern documented in 02_CHAOS_BACKEND_REFERENCE.md §2
+// V1+30d will add:
+// - Subsystem registry (Race / Class / Element / Item-equip / Status / Mentor)
+// - Vec<Contribution> { source: SubsystemId, kind: ProgressionKindId, bucket: Bucket, value: f64 }
+// - Bucket enum { Flat, Mult, PostAdd, Override }
+// - bucket-processor: query-time merge; deterministic order
+// - CapContribution + AcrossLayerPolicy for multi-source caps
+```
+
+### RealityManifest extension (V1)
+
+```rust
+RealityManifest {
+    // ... existing fields per `_boundaries/02_extension_contracts.md` §2 ...
+
+    /// PROG_001 Progression Foundation extensions (will register at PROG_001 DRAFT).
+    /// Empty default = NO progression in reality (sandbox/freeplay realities valid V1).
+    /// (Different from RES_001 which ships engine defaults — PROG schema inherently genre-specific;
+    /// modern game ≠ tu tiên ≠ D&D — no universal default.)
+    pub progression_kinds: Vec<ProgressionKindDecl>,
+
+    /// Per-actor-class default initial values (overrides ProgressionKindDecl.initial_value per class).
+    /// E.g., "warrior" actor-class STR=15 default; "scholar" INT=15 default.
+    pub progression_class_defaults: HashMap<ActorClassRef, Vec<ClassDefaultDecl>>,
+
+    /// Optional per-actor override (rare V1; common in V1+ for protagonist NPCs).
+    pub progression_actor_overrides: HashMap<ActorRef, Vec<ActorOverrideDecl>>,
+}
+
+pub struct ClassDefaultDecl {
+    pub kind_id: ProgressionKindId,
+    pub initial_value: u64,
+    pub initial_tier: Option<TierIndex>,
+}
+
+pub struct ActorOverrideDecl {
+    pub kind_id: ProgressionKindId,
+    pub override_value: u64,
+    pub override_tier: Option<TierIndex>,
+}
+```
+
+### Boundary clarifications (per Q1+Q6 sketch)
+
+| Touched feature | PROG_001 owns | Other feature owns | Boundary |
+|---|---|---|---|
+| **EF_001** | (none) | EntityRef + entity_binding + cell_owner | PROG references EntityRef (Actor variant only V1) |
+| **RES_001** | (none) | vital_pool (HP/Stamina) + resource_inventory + Consumable kinds | Vital ≠ Progression — vital is transient state, progression is permanent growth |
+| **PCS_001 brief** | (none) | PC identity + xuyên không mechanic + body/soul model | PCS_001 §S8 body-substitution applies BodyOrSoul rule (PROG owns rule decl; PCS owns mechanic) |
+| **NPC_001** | (none) | NPC identity + persona + flexible_state | NPC_001 references PROG values in persona assembly |
+| **PL_005** | (none yet — Q3 deferred) | InteractionKind + OutputDecl mechanism | PL_005 cascade emits ProgressionDelta event when training triggered (Q3 specifies which interactions train what) |
+| **PL_006** | (none) | actor_status (TEMPORARY modifiers — Drunk/Wounded) | Status modifiers TEMPORARY (PL_006); progression PERMANENT (PROG); orthogonal but composable (Drunk reduces 经商 effective skill V1+) |
+| **WA_006** | (none) | Death state machine | Death may reset progression V1+ (per author-declared mortality mode); V1 progression unaffected by death |
+| **WA_001 Lex** | (none) | Reality physics axioms | Lex declares which progression systems are valid per reality (e.g., "no qi-cultivation in modern reality" rejected by Lex schema validation) |
+| **DF7 PC Stats placeholder** | **SUPERSEDED** | (existing placeholder retired) | DF7 placeholder retired; PROG_001 covers all actors not just PC. DF7-V1+ becomes "combat damage formulas" sub-feature (Q7) |
+| **RealityManifest envelope** | `progression_kinds` + `progression_class_defaults` + `progression_actor_overrides` | Envelope contract | New OPTIONAL V1 fields per `_boundaries/02_extension_contracts.md` §2 additive evolution |
+
+### §11.1 — Q2-Q5 + Q7 still open
+
+After Q1+Q6 deep-dive, these remain pending user decision (per dependency tree §5 priority):
+
+- **Q2 — Curves V1** (next deep-dive): linear / log / tier-stage breakthrough / threshold / discrete-levelup. Defines `CurveDecl` shape; tu tiên Stage type needs breakthrough mechanic.
+- **Q3 — Training triggers V1**: action-driven / time-cultivation / mentor / item-elixir / quest-V2. Defines `TrainingRuleDecl` shape.
+- **Q4 — NPC progression V1**: train (M&B) vs static (CK3) vs hybrid. Affects whether NPC writes to ActorProgression.
+- **Q5 — Skill atrophy V1**: NO atrophy V1 likely (defer V1+30d).
+- **Q7 — Combat damage formula V1 vs V1+**: DF7-equivalent reads ProgressionInstance.raw_value.
+
+Q1+Q6 LOCKED unblocks Q2 deep-dive (curves can be specified now that ontology + storage are clear).
