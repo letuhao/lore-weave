@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/provider-registry-service/internal/config"
+	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
 )
 
@@ -33,6 +34,12 @@ type Server struct {
 	secretKey    []byte
 	client       *http.Client // short-timeout: sync/billing calls (15s)
 	invokeClient *http.Client // no timeout: AI generation can take minutes
+
+	// Phase 2b — async LLM job lifecycle. Both nil-safe so unit tests
+	// that construct a router-only Server (no pool, no jobs subsystem)
+	// keep working; handlers return 503 LLM_INTERNAL_ERROR when nil.
+	jobsRepo   *jobs.Repo
+	jobsWorker *jobs.Worker
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -45,13 +52,72 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		copy(padded, key)
 		key = padded
 	}
-	return &Server{
+	s := &Server{
 		pool:         pool,
 		cfg:          cfg,
 		secret:       []byte(cfg.JWTSecret),
 		secretKey:    key,
 		client:       &http.Client{Timeout: 15 * time.Second},
 		invokeClient: &http.Client{}, // no Timeout — context deadline from request controls cancellation
+	}
+	if pool != nil {
+		s.jobsRepo = jobs.NewRepo(pool)
+		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), nil)
+	}
+	return s
+}
+
+// resolveJobCreds — adapter for jobs.Worker. Mirrors the inline logic
+// in invokeModel/internalInvokeModel/doProxy without dragging the
+// http.Server through the jobs package.
+func (s *Server) resolveJobCreds(
+	ctx context.Context,
+	ownerUserID, modelRef uuid.UUID,
+	modelSource string,
+) (string, string, string, string, error) {
+	if s.pool == nil {
+		return "", "", "", "", fmt.Errorf("no DB pool")
+	}
+	var providerKind, providerModelName, endpointBaseURL, secret string
+	if modelSource == "user_model" {
+		var secretCipher string
+		err := s.pool.QueryRow(ctx, `
+SELECT um.provider_kind, um.provider_model_name,
+       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelRef, ownerUserID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+		if err != nil {
+			return "", "", "", "", err
+		}
+		if secretCipher != "" {
+			secret, err = s.decryptSecret(secretCipher)
+			if err != nil {
+				return "", "", "", "", err
+			}
+		}
+	} else if modelSource == "platform_model" {
+		err := s.pool.QueryRow(ctx, `
+SELECT provider_kind, provider_model_name
+FROM platform_models
+WHERE platform_model_id=$1 AND status='active'
+`, modelRef).Scan(&providerKind, &providerModelName)
+		if err != nil {
+			return "", "", "", "", err
+		}
+	} else {
+		return "", "", "", "", fmt.Errorf("invalid model_source: %q", modelSource)
+	}
+	return providerKind, providerModelName, endpointBaseURL, secret, nil
+}
+
+// jobsAdapterFactory closes over the invoke http client so jobs.Worker
+// can resolve adapters without importing the api package's dependency
+// graph.
+func jobsAdapterFactory(client *http.Client) jobs.AdapterFactory {
+	return func(providerKind string) (provider.Adapter, error) {
+		return provider.ResolveAdapter(providerKind, client)
 	}
 }
 
@@ -133,6 +199,11 @@ func (s *Server) Router() http.Handler {
 	// endpoint. SSE response, no timeout. JWT auth.
 	r.Post("/v1/llm/stream", s.llmStream)
 
+	// Phase 2b — async LLM job lifecycle (JWT auth).
+	r.Post("/v1/llm/jobs", s.submitLlmJob)
+	r.Get("/v1/llm/jobs/{job_id}", s.getLlmJob)
+	r.Delete("/v1/llm/jobs/{job_id}", s.cancelLlmJob)
+
 	// Internal service-to-service routes — NOT proxied by api-gateway-bff.
 	// Protected by X-Internal-Token middleware instead of user JWT.
 	r.Route("/internal", func(r chi.Router) {
@@ -146,6 +217,10 @@ func (s *Server) Router() http.Handler {
 
 		// Phase 1a — service-to-service streaming endpoint.
 		r.Post("/llm/stream", s.internalLlmStream)
+
+		// Phase 2b — service-to-service async LLM job lifecycle.
+		r.Post("/llm/jobs", s.internalSubmitLlmJob)
+		r.Get("/llm/jobs/{job_id}", s.internalGetLlmJob)
 	})
 
 	return r
