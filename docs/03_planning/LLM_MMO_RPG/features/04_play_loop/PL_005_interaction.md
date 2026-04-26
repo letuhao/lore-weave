@@ -41,9 +41,10 @@ After this lock: world-service can implement Interaction validation + commit + s
 |---|---|---|
 | **Interaction** | Top-level abstraction; an actor explicitly does something with role-typed inputs producing typed outputs | Always emits as **EVT-T1 Submitted** with sub-shape `Interaction:<Kind>`. Per [EVT-A1](../../07_event_model/02_invariants.md#evt-a1--closed-set-event-taxonomy) closed-set + [EVT-A11](../../07_event_model/02_invariants.md#evt-a11--sub-type-ownership-discipline-new-2026-04-25) sub-type ownership. |
 | **InteractionKind** (closed enum V1) | `enum { Speak, Strike, Give, Examine, Use }` | V1 closed set of 5. V1+ extensions (Collide / Shoot / Cast / Embrace / Threaten) ADDITIVE per I14 — new variants registered in boundary matrix without envelope bump. |
-| **4-role pattern** | `agent` (indirect interactor — ActorId) + `tools` (direct interactors — Vec\<InstrumentRef\>) + `direct_targets` (direct receivers — Vec\<TargetRef\>) + `indirect_targets` (indirect receivers — bystanders Vec\<TargetRef\>) | Locked schema — every InteractionKind payload extends this base. `agent: Option<ActorId>` per Q2 (None ⇒ shifts to EVT-T5 Generated). |
-| **InstrumentRef** | Typed enum: `Item(GlossaryEntityId)` \| `BodyPart(BodyPartKind)` \| `Verbal(VerbalKind)` \| `Ability(AbilityRef)` | V1 supports Item refs (no runtime Item aggregate per B2; refs by glossary-entity-id only) + BodyPart + Verbal. Ability deferred to V1+ when Lex axioms more concrete. |
-| **TargetRef** | Typed enum: `Actor(ActorId)` \| `Item(GlossaryEntityId)` \| `Place(ChannelId)` | V1 closed set. V2+ adds: `Concept` (idea / belief), `Faction`, `Relationship` (the social bond between two actors). |
+| **4-role pattern** | `agent` (indirect interactor — `ActorId` per [EF_001 §5.1](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types)) + `tools` (direct interactors — Vec\<InstrumentRef\>) + `direct_targets` (direct receivers — Vec\<TargetRef\>) + `indirect_targets` (indirect receivers — bystanders Vec\<TargetRef\>) | Locked schema — every InteractionKind payload extends this base. `agent: Option<ActorId>` per Q2 (None ⇒ shifts to EVT-T5 Generated). ActorId source-of-truth: EF_001 §5.1 (sibling of EntityId; closed-set Pc/Npc/Synthetic). |
+| **InstrumentRef** | Typed enum: `Item(GlossaryEntityId)` \| `BodyPart(BodyPartKind)` \| `Verbal(VerbalKind)` \| `Ability(AbilityRef)` | V1 supports Item refs (no runtime Item aggregate per B2; refs by glossary-entity-id only — even when conceptually an EnvObject like a door-lock or wine-bottle, V1 references via glossary-id since EnvObject runtime state aggregate doesn't exist V1) + BodyPart + Verbal. Ability deferred to V1+ when Lex axioms more concrete. |
+| **TargetRef** | Typed enum: `Actor(ActorId)` \| `Item(GlossaryEntityId)` \| `Place(PlaceId)` | V1 closed set. `Place(PlaceId)` uses [PF_001 §3.1](../00_place/PF_001_place_foundation.md#31-place-t2--channel-cell-scope--primary) `PlaceId(ChannelId)` newtype (cell-tier per V1). V2+ adds: `Concept` (idea / belief), `Faction`, `Relationship` (the social bond between two actors). |
+| **ExamineTarget** (V1 — resolves PF-Q4 + MAP-Q3) | Typed enum: `Actor(ActorId)` \| `Item(GlossaryEntityId)` \| `Place(PlaceId)` \| `MapNode(ChannelId, ChannelTier)` | Examine-only target discriminator extending TargetRef. V1: Place via `PlaceId` (cell-tier "examine the inn") + MapNode via raw ChannelId + ChannelTier (non-cell "examine the country") per [MAP_001 §3.1](../00_map/MAP_001_map_foundation.md#31-map_layout-t2--channel-scope--primary). MapNode rejected for non-Examine kinds at Stage 3.5.c map_layout. V1+ may collapse into 5th `EntityId::Place` variant if Place becomes target of Strike/Use/Give. |
 | **ProposedOutputs** | What the agent / orchestrator INTENDS as outputs at emit time | `Vec<OutputDecl>` in payload. Player intent ≠ actual outcome. |
 | **ActualOutputs** | What the world-rule (WA_001 Lex + physics validator) DERIVES as actual outputs at validator stage | Computed pre-commit by validator; populated in committed event payload. Replay-deterministic. |
 | **OutputDecl** | `OutputDecl { target: TargetRef, aggregate_type: String, delta: serde_json::Value }` | Each output declares which aggregate it touches + the delta. Side-effect EVT-T3 Derived events emitted post-commit per [EVT-V6](../../07_event_model/05_validator_pipeline.md#evt-v6--post-commit-side-effects). |
@@ -197,17 +198,36 @@ Per PL_001 §8.3. Multi-output side-effect chain may need 10-15s for cascading C
 
 ## §9 Failure-mode UX
 
-| DpError / RejectReason | When | UX |
-|---|---|---|
-| `LexViolation { rule_id: "lex.ability_forbidden" }` | Interaction:Use with item that violates reality axioms (e.g., spell scroll in Reality 2 sci-fi) | Reject copy from WA_001 (Vietnamese: "Trong thế giới này [item] không có tác dụng"). turn_number unchanged. |
-| `WorldRuleViolation { rule_id: "interaction.target_unreachable" }` | Strike target moved out of cell mid-turn; Examine target dissolved (cell GC'd) | Toast: "Mục tiêu đã rời đi". 1 free retry. turn_number unchanged. |
-| `WorldRuleViolation { rule_id: "interaction.tool_unavailable" }` | Give item not in agent's inventory (per PCS_001 inventory check); Use key not held | Reject: "Bạn không có [item] trong tay". |
-| `WorldRuleViolation { rule_id: "interaction.target_invalid" }` | Speak to a Place (concept-level only V2+); Strike a non-actor (V1 closed-set rejects) | Reject with kind-specific copy. |
-| `MortalityViolation { rule_id: "interaction.target_dead" }` | Strike a Dead actor; Give to Ghost actor | Reject: "Mục tiêu đã không còn ở thế giới này." (per WA_006 mortality_config) |
-| `CapabilityDenied` | Service tries to emit without `produce: [Submitted]` claim | Standard DP-K9 rejection; should not surface to user (security misconfig) |
-| `CausalityWaitTimeout` (post-Interaction read) | Multi-output chain still propagating after 15s | Toast: "Hệ quả đang được dệt..." 1 free retry. |
+Reject paths split by validator stage owner per [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) Stage 3.5 group + Stage 4 lex_check + post-stage namespaces. PL_005 OWNS `interaction.*` namespace; other namespaces (`entity.*` / `place.*` / `map.*` / `csc.*` / `lex.*` / `mortality.*`) are foundation-owned and merely OBSERVED here for end-to-end UX.
 
-All copy locked in `interaction.*` rule_id namespace per `_boundaries/02_extension_contracts.md` §1.4 (registered in §boundary update of this commit).
+| DpError / RejectReason | Stage | Owner | When | UX |
+|---|---|---|---|---|
+| `RejectReason::EntityAffordanceViolation { rule_id: "entity.lifecycle_dead" }` | **Stage 3.5.a** | EF_001 | Strike a Dead/Ghost target; Give to Removed actor | Reject: "Mục tiêu đã không còn ở thế giới này." (Vietnamese reject copy from EF_001 §9). turn_number unchanged. |
+| `RejectReason::EntityAffordanceViolation { rule_id: "entity.entity_suspended" }` | Stage 3.5.a | EF_001 | Speak to NPC in cold storage | Reject: "Đối tượng đang ngủ đông, không thể tương tác." |
+| `RejectReason::EntityAffordanceViolation { rule_id: "entity.affordance_missing" }` | Stage 3.5.a | EF_001 | Speak to non-talking object (e.g., a stone); Use a non-tool | Reject: "[X] không phản ứng theo cách đó." |
+| `RejectReason::PlaceStructuralViolation { rule_id: "place.connection_locked" }` | Stage 3.5.b | PF_001 | Strike target in adjacent locked cell (V2+ cross-cell) | Per PF_001 §9. |
+| `RejectReason::MapLayoutViolation { rule_id: "map.cross_tier_connection_disallowed" }` | Stage 3.5.c | MAP_001 | Examine target = MapNode at unreachable tier | Per MAP_001 §9. |
+| `RejectReason::CellSceneViolation { rule_id: "csc.actor_on_non_walkable" }` | Stage 3.5.d | CSC_001 | Strike target on tile flagged non-walkable mid-turn | Per CSC_001 §9. |
+| `RejectReason::LexViolation { rule_id: "lex.ability_forbidden" }` | **Stage 4** (lex_check) | WA_001 | Interaction:Use with item that violates reality axioms (e.g., spell scroll in Reality 2 sci-fi) | Reject copy from WA_001 (Vietnamese: "Trong thế giới này [item] không có tác dụng"). turn_number unchanged. |
+| `RejectReason::WorldRuleViolation { rule_id: "interaction.target_unreachable" }` | **Stage 7** (world-rule physics) | **PL_005** | Strike target moved out of cell mid-turn; Examine target dissolved post-Stage 3.5 (rare) | Toast: "Mục tiêu đã rời đi". 1 free retry. turn_number unchanged. |
+| `RejectReason::WorldRuleViolation { rule_id: "interaction.tool_unavailable" }` | Stage 7 | **PL_005** | Give item not in agent's inventory (per PCS_001 inventory check); Use key not held | Reject: "Bạn không có [item] trong tay". |
+| `RejectReason::WorldRuleViolation { rule_id: "interaction.tool_invalid" }` | Stage 7 | **PL_005** | Use wrong key on lock; Use Verbal as Strike instrument | Reject: "[Tool] không thể dùng cho việc đó." |
+| `RejectReason::WorldRuleViolation { rule_id: "interaction.target_invalid" }` | Stage 7 | **PL_005** | Speak to a Place (concept-level only V2+); Strike a non-actor (V1 closed-set rejects); Examine MapNode at non-Examine kind | Reject with kind-specific copy. |
+| `RejectReason::WorldRuleViolation { rule_id: "interaction.intent_unsupported" }` | Stage 7 | **PL_005** | Strike Stun/Restrain (V1 rejects); Examine Hidden focus (V1); Use:Combine (V1) | Reject: "Hành động này chưa khả dụng." (V1 simplification; V1+ unblocks). |
+| `RejectReason::CapabilityDenied` | Stage 1 | DP-K9 | Service tries to emit without `produce: [Submitted]` claim | Standard DP-K9 rejection; should not surface to user (security misconfig) |
+| `CausalityWaitTimeout` (post-Interaction read) | post-commit | DP | Multi-output chain still propagating after 15s | Toast: "Hệ quả đang được dệt..." 1 free retry. |
+
+**`interaction.*` V1 rule_id enumeration** (PL_005-owned; registered in [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4):
+
+1. `interaction.target_unreachable` — target moved/dissolved post-Stage 3.5 (rare race)
+2. `interaction.tool_unavailable` — agent doesn't possess required tool
+3. `interaction.tool_invalid` — tool incompatible with kind/target (wrong-key-on-lock pattern)
+4. `interaction.target_invalid` — target type doesn't match kind contract (Speak to Place V1)
+5. `interaction.intent_unsupported` — V1 intent variant not yet implemented (Strike Stun, Examine Hidden, Use:Combine)
+
+V1+ reservations: `interaction.cross_cell_disallowed` (V2+ cross-cell Interaction); `interaction.cascade_depth_exceeded` (already covered by EVT-G3 generic at framework level — may not need PL_005 namespace entry).
+
+**Note on `target_dead`:** Originally proposed as `interaction.target_dead`; ALLOCATED to `entity.lifecycle_dead` per Stage 3.5.a entity_affordance ownership (EF_001 catches dead targets BEFORE PL_005 world-rule physics fires; avoids duplicate rule between PL_005 and EF_001).
 
 ---
 
@@ -232,13 +252,19 @@ Concrete example: PC `/strike bandit_001 with jian` (V1+ but illustrates pattern
 
 3. world-service (consumer):
      a. claim_turn_slot(cell, LM01, 15s)
-     b. validator pipeline:
-        - schema ✓ / capability ✓ / A5 classify Command ✓ / A6 sanitize ✓
-        - Lex check: jian_001 = Item; Strike with Sword = within Wuxia axioms ✓
-        - world-rule physics: read pc_stats_v1_stub for bandit_001 (current_hp=50);
+     b. validator pipeline (per `_boundaries/03_validator_pipeline_slots.md`):
+        - Stage 0-3: schema ✓ / capability ✓ / A5 classify Command ✓ / A6 sanitize ✓
+        - **Stage 3.5 group** (foundation-tier structural validators; fail-fast order):
+          · Stage 3.5.a entity_affordance: bandit_001 lifecycle=Existing ✓ + Strikable affordance ✓
+          · Stage 3.5.b place_structural: bandit_001 in same cell as LM01 ✓
+          · Stage 3.5.c map_layout: not Travel-related, skipped
+          · Stage 3.5.d cell_scene: bandit_001 on walkable tile ✓
+        - Stage 4 lex_check: jian_001 = Item; Strike with Sword = within Wuxia axioms ✓
+        - Stage 5-6: heresy_check (no-op V1) / output filter ✓
+        - Stage 7 world-rule physics: read pc_stats_v1_stub for bandit_001 (current_hp=50);
           actual_outputs = [HpDelta(-30)] (no clamp); if hp would reach 0,
           add MortalityTransition(Alive→Dying)
-        - canon-drift ✓ / causal-ref ✓
+        - Stage 8-9: canon-drift ✓ / causal-ref ✓
      c. dp.advance_turn(ctx, &cell, turn_data: TurnEvent {
           sub_shape: "Interaction:Strike",
           payload: InteractionStrikePayload {
@@ -309,6 +335,13 @@ NPC_002 Chorus consumes T1:
 
 UI: stream delivers T1 (Speak) + 2 NPCTurn reactions + opinion-delta Deriveds.
     Renders Lý Minh's quote → Du sĩ sharp look (NPCTurn 1) → Lão Ngũ silent observation (NPCTurn 2).
+
+    **Note (CSC_001 Layer 4 integration):** narrator_text in the Speak payload + reaction NPCTurn
+    payloads flow through CSC_001 §[layer 4] LLM creative narration as input context for in-scene
+    rendering. The LLM Layer 4 narrator weaves narrator_text into Vietnamese xianxia free-form
+    prose anchored to the cell's skeleton + procedural fixture placement. PL_005 supplies the
+    canonical text; CSC_001 supplies the rendering context. See
+    [CSC_001 §3.1](../00_cell_scene/CSC_001_cell_scene_composition.md#31-cell_scene_layout-t2--channel-cell-scope--primary).
 ```
 
 ---
@@ -361,10 +394,12 @@ Chorus consume:
 
 ```
 PC `/look at du_si_book` or free narrative "nhìn vào quyển sách của du sĩ"
-(roleplay-service classifies → Interaction:Examine)
+(roleplay-service classifies → Interaction:Examine; target = ExamineTarget::Item(book_dao_de_kinh_chu))
 
 world-service:
   a. validator: schema / capability / A5 / A6 ✓
+     Stage 3.5.a entity_affordance: book_dao_de_kinh_chu Examinable affordance ✓
+     Stage 3.5.b place_structural: target in same cell ✓
      Lex no-op (Examine is mundane)
      world-rule: ActualOutputs depend on what's seen:
        - target.is_canonical → Oracle query (PL-16) returns book metadata
@@ -378,6 +413,48 @@ world-service:
 
 Note: V1 KnowledgeAccrual aggregate may not exist; V1 minimum is just Oracle return + audit log.
 Knowledge effects defer to V1+ when PCS_001 knowledge_tags structure ships.
+```
+
+### §14.1 Examine variant: Examine Place (resolves PF-Q4)
+
+```
+PC `/examine yen_vu_lau` (free narrative "nhìn quanh quán trọ")
+(roleplay-service classifies → Interaction:Examine; target = ExamineTarget::Place(PlaceId(yen_vu_lau_cell)))
+
+world-service:
+  a. Stage 3.5.a entity_affordance: skipped (target is Place, not Entity)
+     Stage 3.5.b place_structural: yen_vu_lau StructuralState=Pristine ✓ (Damaged/Destroyed reject)
+     Stage 3.5.c map_layout: skipped (cell-tier examine; target tier matches agent's)
+     Lex no-op
+     world-rule: ActualOutputs:
+       - Oracle query returns place canon (PF_001 §3.1 narrative_drift + PlaceType + 11-variant EnvObjectKinds in fixtures)
+       - CSC_001 Layer 4 narration synthesizes scene description
+  b. advance_turn(... Interaction:Examine ...)  → T1
+  c. side-effects:
+     - Oracle return: yen_vu_lau Tavern with 5 fixtures (counter, 3 tables, fireplace)
+     - NPC_002 Chorus may react: NPCs observable note PC's deliberate gaze
+```
+
+### §14.2 Examine variant: Examine MapNode (resolves MAP-Q3, V1+ author content)
+
+```
+PC `/examine sword_sect_country` (free narrative "nghĩ về quốc gia kiếm tông")
+(roleplay-service classifies → Interaction:Examine; target = ExamineTarget::MapNode(country_id, ChannelTier::Country))
+
+world-service:
+  a. Stage 3.5.a entity_affordance: skipped (target is MapNode)
+     Stage 3.5.b place_structural: skipped (non-cell-tier; PF_001 only owns cell-tier)
+     Stage 3.5.c map_layout: target ChannelTier=Country present in map_layout aggregate ✓
+                              (rejects with `map.missing_layout_decl` if author content missing)
+     Lex no-op
+     world-rule: ActualOutputs:
+       - Oracle query returns country canon (MAP_001 §3.1 TierMetadata.display_name + canon_ref)
+       - CSC_001 NOT involved (non-cell tier; no scene to render)
+  b. advance_turn(... Interaction:Examine ...)  → T1
+
+V1 status: ExamineTarget::MapNode reserved for V1+ author content (currently no realities define
+non-cell-tier examine flows). Validator schema accepts the variant; world-rule rejects with
+`interaction.intent_unsupported` until first author reality registers MapNode-examine flow.
 ```
 
 ---
@@ -426,7 +503,10 @@ The design is implementation-ready when world-service + roleplay-service + gatew
 | **AC-INT-5 LEX REJECT** | LM01 tries Interaction:Use with spell scroll in Wuxia world (Lex forbids MagicSpells) | Reject with `LexViolation { rule_id: "lex.ability_forbidden" }`; turn_number UNCHANGED; outcome=Rejected committed via t2_write per EVT-V4 |
 | **AC-INT-6 TARGET UNREACHABLE** | Strike target left cell mid-turn-slot | Reject with `WorldRuleViolation { rule_id: "interaction.target_unreachable" }`; turn-slot released; PC sees retry toast |
 
-**Lock criterion:** all 6 scenarios have corresponding integration tests passing. CANDIDATE-LOCK status until tests green-light.
+**Status transition criteria** (matches EF/PF/MAP/CSC closure-pass pattern):
+
+- **DRAFT → CANDIDATE-LOCK:** design complete + boundary registered (`interaction.*` namespace V1 enumeration in `_boundaries/02_extension_contracts.md` §1.4 + EVT-T1 sub-type ownership in `_boundaries/01_feature_ownership_matrix.md` + Stage 3.5 group references aligned). All AC-INT-* scenarios specified with concrete fixtures.
+- **CANDIDATE-LOCK → LOCK:** all 6 V1-testable scenarios pass integration tests in world-service + roleplay-service against SPIKE_01 fixtures + small Lex test config. V1+ scenarios deferred per §17.
 
 ---
 
@@ -443,26 +523,45 @@ The design is implementation-ready when world-service + roleplay-service + gatew
 | **INT-D7** | V1+ Interaction kinds (Collide / Shoot / Cast / Embrace / Threaten) | Per-modern-setting feature (V1+ when modern-reality realities supported) |
 | **INT-D8** | Cross-cell Interaction (LM01 throws stone from cell A into cell B) | V2+ — V1 strict same-cell agent+target invariant |
 | **INT-D9** | Self-Speak (PC talks to self / monologue) | V1+ — V1 requires direct_targets non-empty for Speak |
+| **INT-D10** (NEW Phase 3) | ExamineTarget V1+ collapse: 5th `EntityId::Place` variant if Place becomes Strike/Use/Give target | V1+ — current §2 ExamineTarget enum reserves Place + MapNode discriminator V1; decision deferred until first reality content makes Place a non-Examine target |
+| **INT-D11** (NEW Phase 3) | ExamineTarget::MapNode runtime activation | V1+ author content — V1 schema accepts but world-rule rejects with `interaction.intent_unsupported` until first reality registers MapNode-examine flow per §14.2 |
+
+**Resolved Phase 3 (formerly active drift watchpoints):**
+- ~~PF-Q4~~ (PF_001 watchpoint; ExamineTarget discriminator V1) — **RESOLVED 2026-04-26 PL folder closure** via §2 ExamineTarget enum + §14.1 Examine Place sequence
+- ~~MAP-Q3~~ (MAP_001 watchpoint; ExamineTarget MapNode at non-cell tier) — **RESOLVED 2026-04-26 PL folder closure** via §2 ExamineTarget::MapNode variant + §14.2 Examine MapNode sequence (V1+ author-content-gated activation per INT-D11)
 
 ---
 
 ## §18 Cross-references
 
+**Foundation tier (load-bearing for Stage 3.5 group + ActorId source):**
+- [`EF_001 Entity Foundation`](../00_entity/EF_001_entity_foundation.md) — ActorId/EntityId source-of-truth (§5.1) + entity_affordance Stage 3.5.a validator + entity_binding aggregate references
+- [`PF_001 Place Foundation`](../00_place/PF_001_place_foundation.md) — PlaceId(ChannelId) newtype (§3.1) + place_structural Stage 3.5.b validator + StructuralState 4-state machine (Pristine/Damaged/Restored/Destroyed)
+- [`MAP_001 Map Foundation`](../00_map/MAP_001_map_foundation.md) — map_layout Stage 3.5.c validator + ChannelTier 5-variant enum (Country/Region/Province/District/Cell) + ExamineTarget::MapNode tier validation
+- [`CSC_001 Cell Scene Composition`](../00_cell_scene/CSC_001_cell_scene_composition.md) — cell_scene Stage 3.5.d validator + Layer 4 LLM narration consumes Speak narrator_text
+
+**Play-loop substrate:**
 - [`PL_001 Continuum`](PL_001_continuum.md) — turn-slot, channel, fiction-clock substrate
 - [`PL_001b lifecycle`](PL_001b_continuum_lifecycle.md) §15 — rejection-path pattern (Interaction inherits)
 - [`PL_002 Grammar`](PL_002_command_grammar.md) — command-driven Interactions emerge through PL_002 dispatch
-- [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum + npc_pc_relationship_projection target
+- [`PL_006 Status Effects`](PL_006_status_effects.md) — actor_status aggregate; Use:wine outcomes apply Drunk via OutputDecl
+
+**NPC + world-authoring consumers:**
+- [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum (now sourced from EF_001) + npc_pc_relationship_projection target
 - [`NPC_002 Chorus`](../05_npc_systems/NPC_002_chorus.md) — consumes Interaction events as Triggers
-- [`WA_001 Lex`](../02_world_authoring/WA_001_lex.md) — validator slot + actual_outputs derivation
+- [`WA_001 Lex`](../02_world_authoring/WA_001_lex.md) — validator slot at Stage 4 + actual_outputs derivation
 - [`WA_002 Heresy`](../02_world_authoring/WA_002_heresy.md) — cross-reality contamination (V2+)
 - [`WA_006 Mortality`](../02_world_authoring/WA_006_mortality.md) — death-mode config (input to Strike outcomes)
 - [`PCS_001 brief`](../06_pc_systems/00_AGENT_BRIEF.md) — pc_mortality_state + pc_stats_v1_stub output targets
+
+**Event model + boundaries:**
 - [`07_event_model/02_invariants.md`](../../07_event_model/02_invariants.md) EVT-A1..A12 — taxonomy + extensibility
 - [`07_event_model/03_event_taxonomy.md`](../../07_event_model/03_event_taxonomy.md) — EVT-T1 Submitted (Interaction sub-types)
 - [`07_event_model/05_validator_pipeline.md`](../../07_event_model/05_validator_pipeline.md) EVT-V4 — rejection-path semantics
 - [`07_event_model/12_generation_framework.md`](../../07_event_model/12_generation_framework.md) — V1+ butterfly Generators
 - [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md) — sub-type ownership SSOT
-- [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `interaction.*` rule_id namespace registered
+- [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `interaction.*` rule_id namespace V1 enumeration
+- [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) — Stage 3.5 group + applicability matrix
 - [`SPIKE_01`](../_spikes/SPIKE_01_two_sessions_reality_time.md) — narrative grounding (Speak / Examine / Give scenarios)
 
 ---
@@ -483,11 +582,22 @@ This doc satisfies items per DP-R2 + 22_feature_design_quickstart.md:
 - [x] §10 Cross-service handoff with CausalityToken chain (Strike example)
 - [x] §11-15 End-to-end sequences for 5 V1 kinds
 - [x] §16 Acceptance criteria (6 scenarios)
-- [x] §17 Deferrals named with landing point (9 deferrals INT-D1..D9)
-- [x] §18 Cross-references
+- [x] §17 Deferrals named with landing point (9 original INT-D1..D9 + 2 new INT-D10..D11 from Phase 3 ExamineTarget extension; 11 total)
+- [x] §18 Cross-references (Phase 3: foundation tier EF/PF/MAP/CSC + Stage 3.5 boundary added)
 
-**Status transition:** DRAFT 2026-04-26 → CANDIDATE-LOCK after §16 acceptance scenarios have integration tests → LOCK after green tests.
+**Phase 3 cleanup applied 2026-04-26 (PL folder closure):**
+- S1.1 TargetRef::Place uses `PlaceId(ChannelId)` newtype per PF_001 §3.1 (was raw ChannelId)
+- S1.2 ActorId source-of-truth cross-ref to EF_001 §5.1 added in §2
+- S2.1 Stage 3.5 group integrated in §10 sequence + §9 reject paths split between `interaction.*` (PL_005-owned) vs `entity.*`/`place.*`/`map.*`/`csc.*`/`lex.*` (foundation-owned, observed)
+- S2.2 ExamineTarget enum (V1: Place via PlaceId; V1+: MapNode) added in §2 + §14.1 + §14.2 sequences — **resolves PF-Q4 + MAP-Q3 watchpoints**
+- S2.3 CSC_001 Layer 4 LLM narration cross-ref in §11 Speak sequence
+- S2.4 Foundation tier (EF/PF/MAP/CSC) + PL_006 + Stage 3.5 cross-refs added in §18
+- S3.1 §16 LOCK criterion split DRAFT→CANDIDATE-LOCK vs CANDIDATE-LOCK→LOCK
+- S3.2 `interaction.*` V1 enumeration (5 rules) added in §9; boundary `_boundaries/02_extension_contracts.md` §1.4 expanded in same commit
+- New deferrals: INT-D10 (ExamineTarget collapse to EntityId::Place V1+) + INT-D11 (ExamineTarget::MapNode runtime activation V1+ author-content-gated)
 
-**Boundary registration in same commit:** EVT-T1 Submitted sub-type ownership row updated in `_boundaries/01_feature_ownership_matrix.md` to include 5 V1 Interaction:* kinds owned by PL_005; `interaction.*` prefix added to `_boundaries/02_extension_contracts.md` §1.4 RejectReason namespace.
+**Status transition:** DRAFT 2026-04-26 → **CANDIDATE-LOCK 2026-04-26** (Phase 3 + closure pass) → LOCK after AC-INT-1..6 integration tests pass.
 
-**Next** (when this doc CANDIDATE-LOCKs): world-service can scaffold against this contract. First vertical-slice target = AC-INT-1 (SPEAK MULTI-NPC) reusing SPIKE_01 turn 5 fixture; AC-INT-2 (GIVE) reusing SPIKE_01 turn 8 fixture. AC-INT-5 (LEX REJECT) requires WA_001 Lex implementation co-deployed.
+**Boundary registration in same commit chain:** EVT-T1 Submitted sub-type ownership in `_boundaries/01_feature_ownership_matrix.md` (5 V1 Interaction:* kinds — already registered DRAFT commit); `interaction.*` V1 rule_id enumeration in `_boundaries/02_extension_contracts.md` §1.4 (5 rules — expanded Phase 3); PF-Q4 + MAP-Q3 watchpoints struck-through with RESOLVED markers in `_boundaries/01_feature_ownership_matrix.md`.
+
+**Next** (when CANDIDATE-LOCK): world-service can scaffold against this contract. First vertical-slice target = AC-INT-1 (SPEAK MULTI-NPC) reusing SPIKE_01 turn 5 fixture; AC-INT-2 (GIVE) reusing SPIKE_01 turn 8 fixture. AC-INT-5 (LEX REJECT) requires WA_001 Lex implementation co-deployed.

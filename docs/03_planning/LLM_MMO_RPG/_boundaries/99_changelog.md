@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-04-26 — PL folder closure (commit 1/8): PL_005 Phase 3 cleanup + PF-Q4 + MAP-Q3 watchpoints RESOLVED + interaction.* namespace V1 enumeration
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — PL folder closure per user direction "Option A"); this commit `[boundaries-lock-claim]` (claim only — release at end of commit 8)
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md` Drift Watchpoints table: 2 watchpoints struck-through with RESOLVED markers
+    - **PF-Q4** ~~Place addressability ExamineTarget discriminator~~ → RESOLVED via PL_005 §2 ExamineTarget enum + §14.1 Examine Place sequence; V1+ collapse to `EntityId::Place` deferred per INT-D10
+    - **MAP-Q3** ~~Examine non-cell-tier map node~~ → RESOLVED via PL_005 §2 ExamineTarget::MapNode(ChannelId, ChannelTier) variant + §14.2 Examine MapNode sequence; V1+ author-content-gated activation per INT-D11
+  - `02_extension_contracts.md` §1.4 RejectReason namespace: `interaction.*` row expanded prefix-only → 5 V1 rule_ids — target_unreachable / tool_unavailable / tool_invalid / target_invalid / intent_unsupported (+1 V1+ reservation cross_cell_disallowed). Note added: `target_dead` is allocated to `entity.lifecycle_dead` per Stage 3.5.a entity_affordance namespace, NOT `interaction.*` — avoids duplicate rule between PL_005 and EF_001.
+- **PL_005 Phase 3 cleanup (in same commit):** S1.1 PlaceId(ChannelId) newtype + S1.2 ActorId source-of-truth EF_001 §5.1 + S2.1 Stage 3.5 group integration in §10 sequence + §9 reject paths split between PL_005-owned vs foundation-owned namespaces + S2.2 ExamineTarget enum (V1: Place; V1+: MapNode) + S2.3 CSC_001 Layer 4 cross-ref in §11 + S2.4 foundation tier cross-refs in §18 + S3.1 §16 LOCK criterion split + S3.2 boundary `interaction.*` enumeration. New deferrals INT-D10 + INT-D11.
+- **Drift watchpoints: 10 → 8 active** (2 RESOLVED in this commit). Remaining 8 watchpoints: GR-D8 / CST-D1 / LX-D5 (already locked at Stage 4) / HER-D8 / HER-D9 / CHR-D9 / WA_006 over-extension / B2 RealityManifest envelope / EF-Q2.
+- **Lock continues:** still claimed for commit 2 (PL_005 closure pass) → 3-7 (PL_005b/c + PL_006 cleanup + closures) → 8 (final release). 4 lock-claim+release cycles total per planned commit cadence.
+
+---
+
 ## 2026-04-26 — EVT-V slot alignment review: 4 drift watchpoints resolved (EF-Q3 + PF-Q1 + MAP-Q1 + CSC-Q2)
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — EVT-V slot alignment review per user direction "E"); commit (this turn) `[boundaries-lock-claim+release]`
