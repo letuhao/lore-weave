@@ -1,0 +1,501 @@
+/*
+ * GitHub-dark theme matching docs/03_planning/LLM_MMO_RPG/_ui_drafts/MAP_GUI_v1/v2.html
+ * pattern. When porting to frontend/, swap to existing Tailwind + shadcn tokens.
+ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  display: flex;
+  flex-direction: column;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.topbar {
+  padding: 10px 20px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.topbar h1 {
+  font-size: 13px;
+  font-weight: 500;
+  color: #7d8590;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.breadcrumb {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: #58a6ff;
+  flex: 1;
+}
+
+.breadcrumb .current {
+  color: #e6edf3;
+  font-weight: 500;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.toolbar label {
+  font-size: 11px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar input[type='number'] {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  width: 90px;
+  text-align: right;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.toolbar input[type='number']:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.toolbar button {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.toolbar button:hover {
+  background: #30363d;
+  border-color: #484f58;
+}
+
+.toolbar button:active {
+  background: #161b22;
+}
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#game-container {
+  position: relative;
+  background: #0d1117;
+  overflow: hidden;
+}
+
+#game-container canvas {
+  display: block;
+}
+
+#sidebar {
+  background: #161b22;
+  border-left: 1px solid #30363d;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#sidebar h2 {
+  font-size: 10px;
+  color: #7d8590;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+#sidebar h2:first-child {
+  margin-top: 0;
+}
+
+#info,
+#stats,
+#terrain-dist,
+.arch-note {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c9d1d9;
+}
+
+#info em {
+  color: #7d8590;
+}
+
+#info strong {
+  color: #e6edf3;
+  font-size: 13px;
+}
+
+#info code,
+#stats code,
+.arch-note code {
+  background: #161b22;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 10px;
+  color: #79c0ff;
+}
+
+#info .hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #30363d;
+  color: #58a6ff;
+  font-style: italic;
+  font-size: 11px;
+}
+
+.terrain-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+}
+
+.terrain-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid #30363d;
+  flex-shrink: 0;
+}
+
+.terrain-name {
+  flex: 1;
+  color: #c9d1d9;
+}
+
+.terrain-pct {
+  color: #7d8590;
+  font-size: 10px;
+}
+
+.arch-note {
+  font-size: 11px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  line-height: 1.4;
+}
+
+.arch-note div + div {
+  padding-left: 10px;
+  color: #8b949e;
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+
+.arch-note .muted {
+  color: #6e7681;
+  font-style: italic;
+}
+
+#status {
+  padding: 6px 20px;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+  font-size: 11px;
+  color: #7d8590;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── LLM Dialog modal ─────────────────────────────────────────────────── */
+
+.llm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.llm-dialog-overlay.hidden {
+  display: none;
+}
+
+.llm-dialog {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  width: min(720px, 92vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.llm-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+
+.llm-dialog-header h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6edf3;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.llm-dialog-close {
+  background: transparent;
+  border: none;
+  color: #7d8590;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 8px;
+  line-height: 1;
+}
+.llm-dialog-close:hover {
+  color: #e6edf3;
+}
+
+.llm-dialog-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.llm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.llm-field label {
+  font-size: 10px;
+  color: #7d8590;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.llm-field input[type='text'],
+.llm-field textarea {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.llm-field textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.llm-field input[type='text']:focus,
+.llm-field textarea:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.llm-hint {
+  font-size: 10px;
+  color: #7d8590;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.llm-hint code {
+  background: #161b22;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.llm-probe {
+  background: #161b22;
+  border: 1px solid #30363d;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: #c9d1d9;
+}
+.llm-probe.ok {
+  border-color: #2ea043;
+  color: #4ac26b;
+  background: #082c19;
+}
+.llm-probe.fail {
+  border-color: #da3633;
+  color: #ff7b72;
+  background: #2d0b0b;
+}
+
+.llm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.llm-btn-primary,
+.llm-btn-secondary {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid;
+  transition: background 0.1s;
+}
+
+.llm-btn-primary {
+  background: #238636;
+  color: #ffffff;
+  border-color: #2ea043;
+}
+.llm-btn-primary:hover:not(:disabled) {
+  background: #2ea043;
+}
+.llm-btn-primary:disabled {
+  background: #21262d;
+  color: #484f58;
+  border-color: #30363d;
+  cursor: not-allowed;
+}
+
+.llm-btn-secondary {
+  background: #21262d;
+  color: #c9d1d9;
+  border-color: #30363d;
+}
+.llm-btn-secondary:hover {
+  background: #30363d;
+}
+
+.llm-status-log {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 10px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.llm-log-line {
+  padding: 3px 0;
+  border-bottom: 1px solid #21262d;
+}
+.llm-log-line:last-child {
+  border-bottom: none;
+}
+.llm-log-line.info {
+  color: #79c0ff;
+}
+.llm-log-line.ok {
+  color: #4ac26b;
+}
+.llm-log-line.error {
+  color: #ff7b72;
+}
+
+.llm-result {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.llm-result.hidden {
+  display: none;
+}
+.llm-result h3 {
+  font-size: 11px;
+  color: #7d8590;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+.llm-result pre {
+  background: #010409;
+  border: 1px solid #21262d;
+  border-radius: 4px;
+  padding: 10px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 10px;
+  max-height: 220px;
+  overflow: auto;
+  color: #c9d1d9;
+}

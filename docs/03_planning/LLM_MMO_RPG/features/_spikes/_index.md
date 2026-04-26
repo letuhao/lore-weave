@@ -11,6 +11,8 @@
 | ID | Title | Status | Target categories | Commit |
 |---|---|---|---|---|
 | [SPIKE_01](SPIKE_01_two_sessions_reality_time.md) | Two-Sessions Reality Time (Thần Điêu Đại Hiệp, Yên Vũ Lâu) | DRAFT Session 1 | PL + NPC + PCS; exercises MV12 | pending |
+| [SPIKE_02](SPIKE_02_reference_games_gap_analysis.md) | Reference Games Gap Analysis (RPG/strategy/sim/adventure backlog) | DRAFT 2026-04-27 | cross-cat — A..N domains; informs V1+30d / V2 / V3 / V4+ feature triage | pending |
+| [SPIKE_03](SPIKE_03_tilemap_world_view.md) | Tilemap World View (HOMM3-style camera-rendered map) | DRAFT 2026-04-27 Session 1; Session 2 PoC pending | new TMP_* namespace candidate; sibling of MAP/PF/CSC; PoC `_ui_drafts/TILEMAP_v1.html` | pending |
 
 ---
 
