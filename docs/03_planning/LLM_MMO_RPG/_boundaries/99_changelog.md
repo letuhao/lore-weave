@@ -6,6 +6,21 @@
 
 ---
 
+## 2026-04-26 — IDF folder 2/15: IDF_001 Phase 3 cleanup
+
+- **Lock continues** from commit 1/15 (still claimed by main session 2026-04-26 IDF folder cycle)
+- **Files modified within `_boundaries/`:** none (Phase 3 is internal IDF_001 documentation cleanup; no aggregate/namespace/RealityManifest changes)
+- **IDF_001 Phase 3 findings applied (5 items):**
+  - S1.1 §2 RaceId clarified as typed newtype `pub struct RaceId(pub String)` (matches PlaceId / ChannelId foundation tier pattern); cross-type collision avoidance noted vs LangCode (RES_001) + LanguageId (IDF_002)
+  - S1.2 §2 MortalityKind clarified as WA_006-owned (IDF_001 imports; does not redefine); Ghost AlreadyDead override semantics
+  - S2.1 §11 Wuxia bootstrap Ghost lifespan changed from `0 (immortal)` → `1 (placeholder; AlreadyDead bypasses)` to comply with `lifespan_years ≥ 1` schema rule
+  - S2.2 §11 Validate step rewording — Ghost lifespan=1 placeholder + override=AlreadyDead path documented
+  - S3.1 §2 cross-feature distinction for RaceId vs LangCode vs LanguageId
+- **§19 readiness checklist updated** with Phase 3 cleanup items per section
+- **Lock continues claimed** for IDF_001 closure pass (commit 3/15) + IDF_002..005 cycle
+
+---
+
 ## 2026-04-26 — IDF folder DRAFT promotion 1/15: IDF_001 Race Foundation DRAFT + boundary register
 
 - **Lock claim:** main session 2026-04-26 (IDF folder Phase 1 — 5 IDF features DRAFT promotion + Phase 3 + closure pass cycle); this commit `[boundaries-lock-claim]` (claim only — release at IDF_005 closure final commit per PL folder pattern; ~15 commits total)

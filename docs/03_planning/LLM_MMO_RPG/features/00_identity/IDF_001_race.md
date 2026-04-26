@@ -37,12 +37,12 @@ After this lock: every PC and NPC has a deterministic race assignment driving li
 
 | Concept | Maps to | Notes |
 |---|---|---|
-| **RaceId** | Stable-ID newtype `String` (e.g., `race_cultivator_tusi`, `race_human_phamnhan`, `race_alien_x`) | Opaque language-neutral; per-reality scope. NOT a Rust enum — closed-set per reality declared in RealityManifest. Cross-reality `RaceId` collision allowed (Wuxia `race_human_phamnhan` ≠ Modern `race_human_modern` semantically; same string OK). |
+| **RaceId** | `pub struct RaceId(pub String);` typed newtype wrapping `String` (e.g., `RaceId("race_cultivator_tusi".to_string())`) | Opaque language-neutral; per-reality scope. NOT a Rust enum — closed-set per reality declared in RealityManifest. Cross-reality `RaceId` collision allowed (Wuxia `race_human_phamnhan` ≠ Modern `race_human_modern` semantically; same string OK). **Distinct from RES_001 `LangCode`** (engine UI translation ISO-639-1 string) AND **distinct from future IDF_002 `LanguageId`** (in-fiction language stable-ID) — runtime newtype prevents accidental cross-type assignment per LNG-D8 / LNG-Q11 future deferral. |
 | **RaceDecl** | Author-declared per-reality entry (in RealityManifest.races) | Declarative metadata: display_name (I18nBundle) + default_lifespan_years (u16) + size_category (SizeCategory) + default_mortality_kind_override (Option<MortalityKind> per WA_006) + allowed_lex_axiom_tags (Vec<String> for V1+ Lex gate) + canon_ref (Option<GlossaryEntityId>). |
 | **race_assignment** | T2 / Reality aggregate; per-(reality, actor_id) row | Generic for PC + NPC. Birth-fixed V1 — single immutable RaceId field + AssignmentReason audit. ActorId source = [EF_001 §5.1](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types). |
 | **AssignmentReason** | Closed enum: `CanonicalSeed / PcCreation / NpcSpawn / AdminOverride { reason: String }` | Audit trail for race assignment. V1+ adds `Reincarnation` + `RaceTransformation`. |
 | **SizeCategory** | Closed enum 6-variant: `Tiny / Small / Medium / Large / Huge / Gargantuan` (Pathfinder 2e full coverage per POST-SURVEY-Q2 LOCKED) | V1 closed set. Wuxia coverage: Tiny=Linh xà / Linh thử (spirit creatures); Medium=Cultivator / Phàm nhân; Large=Tigers / Wolves / Beast cultivators; Huge=large beast cultivators; Gargantuan=Long (Dragons) / Linh quy (Giant turtles). Consumed by V1+ combat (size-vs-size modifier; 6×6 = 36-entry matrix). |
-| **MortalityKind** | Closed enum (per WA_006): `Permadeath / RespawnAtLocation / Ghost / AlreadyDead` (V1+ may extend) | Used as race-default override; resolves at runtime via per-event lookup (per RAC-Q9). |
+| **MortalityKind** | Closed enum **owned by WA_006 Mortality**: `Permadeath / RespawnAtLocation / Ghost / AlreadyDead` (V1+ may extend) | IDF_001 imports type from WA_006; does NOT redefine. RaceDecl.default_mortality_kind_override is the override hook — WA_006 mortality_config consumer reads at runtime per-event lookup (per RAC-Q9). Phase 3 cleanup note: AlreadyDead variant special-case applies to Ghost race where `default_lifespan_years` is conventionally set to 1 (minimum schema-valid) but never consumed (Ghost actors bypass age tracking via override=AlreadyDead path). See §11 Wuxia bootstrap sequence Phase 3 note. |
 
 **Cross-feature consumers:**
 - WA_001 Lex (V1+ closure) — `AxiomDecl.requires_race: Option<Vec<RaceId>>` axiom-gate at Stage 4 lex_check
@@ -311,14 +311,14 @@ RealityBootstrapper service @ reality-bootstrap event for Wuxia reality:
       RaceDecl { race_id: "race_human_phamnhan", display_name: I18nBundle{"Mortal" / "vi": "Phàm nhân" / "zh": "凡人"}, lifespan: 80, size: Medium, override: None, axiom_tags: [] },
       RaceDecl { race_id: "race_cultivator_tusi", display_name: I18nBundle{"Cultivator" / "vi": "Tu sĩ" / "zh": "修士"}, lifespan: 600, size: Medium, override: Some(Permadeath), axiom_tags: ["qigong", "spirit_sense"] },
       RaceDecl { race_id: "race_demon_yao", lifespan: 1200, size: Large, override: Some(Permadeath), axiom_tags: ["natural_weapons", "demonic_arts"] },
-      RaceDecl { race_id: "race_ghost_qui", lifespan: 0 (immortal), size: Medium, override: Some(AlreadyDead), axiom_tags: ["incorporeal"] },
+      RaceDecl { race_id: "race_ghost_qui", lifespan: 1 (placeholder; AlreadyDead override bypasses age tracking), size: Medium, override: Some(AlreadyDead), axiom_tags: ["incorporeal"] },
       RaceDecl { race_id: "race_beast_thuyao", lifespan: 200, size: Large, override: Some(Permadeath), axiom_tags: ["natural_weapons"] },
     ]
   Validate:
     - All RaceDecl entries pass schema (Stage 0)
     - All race_id strings unique within RealityManifest.races
     - All size_category values valid (6-variant enum)
-    - All lifespan_years ≥ 1 (Ghost lifespan=0 reject — must use override=AlreadyDead path V1+)
+    - All lifespan_years ≥ 1 (lifespan=0 reject; Ghost race uses lifespan=1 placeholder + override=AlreadyDead bypasses age tracking — Phase 3 cleanup note)
   ✓ schema OK
 
   For canonical actor Lý Minh (race=Cultivator):
@@ -545,6 +545,13 @@ This doc satisfies items per DP-R2 + 22_feature_design_quickstart.md:
 - [x] §18 Cross-references
 - [x] §19 Readiness (this section)
 
-**Status transition:** DRAFT 2026-04-26 → **CANDIDATE-LOCK** when all AC-RAC-1..10 pass integration tests against Wuxia + Modern reality fixtures → **LOCK** when V1+ scenarios pass after WA_001 closure pass + V1+30d scheduler ships.
+**Phase 3 cleanup applied 2026-04-26 (in IDF_001 commit 2/15 cycle):**
+- S1.1 §2 RaceId clarified as typed newtype `pub struct RaceId(pub String)` (matches PlaceId / ChannelId pattern from foundation tier); cross-type collision avoidance noted vs LangCode + LanguageId
+- S1.2 §2 MortalityKind clarified as **WA_006-owned** (IDF_001 imports; does not redefine); Ghost AlreadyDead override semantics documented (§11 Phase 3 note)
+- S2.1 §11 Wuxia bootstrap sequence Ghost lifespan changed from `0 (immortal)` → `1 (placeholder; AlreadyDead bypasses)` to comply with `lifespan_years ≥ 1` schema rule
+- S2.2 §11 Validate step rewording — Ghost lifespan=1 placeholder + override=AlreadyDead path documented (no schema rule violation)
+- S3.1 §2 cross-feature distinction for RaceId vs LangCode (RES_001) vs LanguageId (IDF_002) — runtime newtype prevents accidental cross-type assignment
+
+**Status transition:** DRAFT 2026-04-26 (Phase 3 applied) → **CANDIDATE-LOCK** in next commit (3/15) → **LOCK** when AC-RAC-1..10 pass integration tests + V1+ scenarios pass after WA_001 closure pass + V1+30d scheduler ships.
 
 **Next** (when CANDIDATE-LOCK granted): world-service can scaffold race assignment for canonical seed + PC creation; WA_006 mortality_config consumer wired up; V1+ Lex axiom gate hook reserved at WA_001 closure pass.
