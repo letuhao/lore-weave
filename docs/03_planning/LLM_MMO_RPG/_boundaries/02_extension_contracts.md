@@ -237,6 +237,20 @@ pub struct RealityManifest {
     /// HashMap<ActorRef, i64> — value can be negative (notorious) or positive (renowned).
     pub social_initial_distribution: HashMap<ActorRef, i64>,
 
+    // ─── NPC_003 NPC Desires LIGHT extensions (added 2026-04-26 DRAFT) ───
+    // OPTIONAL V1 — sandbox-mitigation Path A. NPC desires are author-declared narrative scaffolding
+    // (NO state machine; NO objective tracking; NO rewards — just LLM-context goal hints).
+    // Empty default → NPCs have no declared desires; LLM falls back to core_beliefs / flexible_state.
+
+    /// Per-NPC initial desires. Indexed by NpcId. Each NPC ≤ 5 desires (validator-enforced).
+    /// NpcDesireDecl: { desire_id, kind: I18nBundle, intensity: u8 (1-10), satisfied: bool, references: Vec<EntityRef> }.
+    /// LLM AssemblePrompt persona context renders top-N intensity-sorted desires per active locale.
+    pub npc_desires: HashMap<NpcId, Vec<NpcDesireDecl>>,
+
+    /// AssemblePrompt N — top-N highest-intensity desires included in NPC persona context.
+    /// Default: 3 (matches PL_001 §17 prompt-budget discipline). Author-tunable per reality.
+    pub desires_prompt_top_n: u8,
+
     // ─── Future feature extensions ───
 }
 ```

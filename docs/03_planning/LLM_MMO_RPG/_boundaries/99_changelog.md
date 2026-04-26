@@ -6,6 +6,37 @@
 
 ---
 
+## 2026-04-26 — NPC_003 NPC Desires LIGHT DRAFT (sandbox-mitigation Path A V1)
+
+- **Lock claim:** main session 2026-04-26 (NPC_003 Desires LIGHT — Path A V1 from `13_quests/00_V2_RESERVATION.md` §5); this commit `[boundaries-lock-claim+release]` (single-cycle)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release
+  - `01_feature_ownership_matrix.md`:
+    - **Updated `npc` (R8 import) row:** added 2026-04-26 NPC_003 extension note — `desires: Vec<NpcDesireDecl>` field per I14 additive evolution; NPC_001 still owns aggregate, NPC_003 owns desires field shape + lifecycle
+    - **Updated `RealityManifest` extension row:** added NPC_003 contribution (`npc_desires: HashMap<NpcId, Vec<NpcDesireDecl>>` + `desires_prompt_top_n: u8`, OPTIONAL V1)
+    - **Stable-ID prefix:** added `DSR-D*` / `DSR-Q*` deferral/question prefix owned by NPC_003
+  - `02_extension_contracts.md` §2 (RealityManifest): added 2 OPTIONAL V1 fields (`npc_desires` + `desires_prompt_top_n`) with inline doc comments
+  - `99_changelog.md`: this entry
+- **Files created within `features/05_npc_systems/`:**
+  - `NPC_003_desires.md` — DRAFT (this commit) — 11 sections / ~280 lines / 5 V1-testable acceptance scenarios AC-DSR-1..5 / 8 deferrals DSR-D1..D8 / 3 open questions DSR-Q1..Q3
+- **Files modified within `features/05_npc_systems/`:**
+  - `_index.md`: re-opened folder closure status (was CLOSED 2026-04-26 with NPC_001 + NPC_002 CANDIDATE-LOCK; NPC_003 ADDS to folder without modifying existing locks per I14 additive evolution); added NPC_003 row to feature list
+- **Files modified within `catalog/`:**
+  - `cat_05_NPC_systems.md`: added NPC-12 entry pointing at NPC_003 design file
+- **Q-resolution / decision LOCKED:**
+  - **Path A approach** (NPC desires LIGHT) selected over Path B (Reality scenario seed V1+30d) and Path C (full quest system V2) for V1 sandbox-mitigation
+  - **NO state machine / NO objective tracking / NO rewards** — discipline maintained; this is LLM-context scaffolding only
+  - **5 desires/NPC cap V1** — focuses authors on driving traits, not exhaustive goal lists
+  - **i18n discipline** — desire.kind: I18nBundle (RES_001 §2 cross-cutting pattern adopted)
+  - **Top-N filtering** — RealityManifest.desires_prompt_top_n (default 3) controls prompt budget impact (per PL_001 §17 prompt-budget discipline)
+  - **Author-only satisfaction toggle V1** — Forge `ToggleNpcDesire` AdminAction (NEW; WA_003 closure pass folds into ForgeEditAction enum); LLM-detection-with-author-confirm V1+30d (DSR-D3)
+  - **Satisfied desires PERSIST in Vec** — not removed; LLM may narratively reference past achievements
+- **Drift watchpoints: 8 active** (no change). NPC_003 doesn't introduce new watchpoints — light feature with clear boundary.
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-claim+release]` single-cycle)
+- **Reason / handoff:** NPC_003 closes the V1 sandbox-mitigation gap raised by user 2026-04-26 ("game giống sandbox, chả có gì để làm"). Foundation tier 5/5 + V1 vertical mechanics + V1 sandbox-mitigation now complete. NPCs have author-declared goals → LLM uses goals → game has direction without full quest system. QST_001 V2 quest system can later integrate via DSR-D4 bridge (quest completion auto-toggles desire) — boundary clean. Next priorities: PCS_001 parallel agent kickoff (brief ready) / PO_001 PC creation flow (V1-blocking, depends on PCS_001) / WA_003 closure pass to fold in `ToggleNpcDesire` AdminAction sub-shape.
+
+---
+
 ## 2026-04-26 — RES_001 downstream HIGH-priority impacts applied (Phase 2 of foundation tier completion)
 
 - **Lock claim:** main session 2026-04-26 (RES_001 §17.2 HIGH priority downstream); this commit `[boundaries-lock-claim+release]` (single-cycle)
