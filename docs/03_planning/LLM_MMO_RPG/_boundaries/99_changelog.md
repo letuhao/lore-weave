@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-04-26 — IDF folder 7/15: IDF_003 Personality Foundation DRAFT + boundary register
+
+- Lock continues from commit 1/15
+- Files modified within `_boundaries/`:
+  - `01_feature_ownership_matrix.md`: NEW row actor_personality (T2/Reality, IDF_003 DRAFT); EVT-T8 Forge:EditPersonality; PRS-* prefix
+  - `02_extension_contracts.md`: §1.4 personality.* namespace (3 V1 rules + 2 V1+); §2 RealityManifest personality_archetypes REQUIRED V1
+- IDF_003 file: renamed concept → DRAFT; full §1-§19 spec
+- 12 V1 archetypes locked per POST-SURVEY-Q1 (Stoic/Hothead/Cunning/Innocent/Pious/Cynic/Worldly/Idealist + Loyal/Aloof/Ambitious/Compassionate)
+- 5-variant VoiceRegister locked per POST-SURVEY-Q7 (Formal/Neutral/Casual/Crude/Archaic)
+- Resolves PL_005b §2.1 speaker_voice orphan ref + PL_005c INT-INT-D5 per-personality opinion modifier
+- 10 V1-testable AC + 2 V1+ deferred; 8 deferrals (PRS-D1..D7 + PRS-D-NEW)
+
+---
+
 ## 2026-04-26 — IDF folder 6/15: IDF_002 closure pass → CANDIDATE-LOCK
 
 - Lock continues from commit 1/15

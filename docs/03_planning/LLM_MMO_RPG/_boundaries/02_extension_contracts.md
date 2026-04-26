@@ -133,6 +133,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `resource.*` | RES_001 Resource Foundation (added 2026-04-26 DRAFT; 12 V1 rule_ids — balance.insufficient / balance.invalid_owner / balance.negative_amount_forbidden / vital.below_zero / vital.body_bound_transfer_forbidden / trade.npc_insufficient_funds / trade.npc_insufficient_goods / trade.pc_insufficient_funds / trade.pc_insufficient_goods / trade.invalid_price / harvest.empty_cell / harvest.not_owner_or_orphan; +3 V1+ reservations: balance.cap_exceeded / trade.bargaining_failed / item.instance_not_found) |
 | `race.*` | IDF_001 Race Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 5 V1 rule_ids — unknown_race_id / assignment_immutable / lex_axiom_forbidden (V1+ reserved; V1 schema-present but always None axiom requires_race) / size_category_invalid / lifespan_invalid; +4 V1+ reservations: cross_reality_mismatch / transformation_invalid / reincarnation_invalid_target / cyclic_lineage_v1plus. V1 user-facing rejects: unknown_race_id + assignment_immutable only (size + lifespan are schema-level canonical seed validation, unreachable in normal operation). i18n: V1 ships `user_message: I18nBundle` per RES_001 §2 contract from day 1. |
 | `language.*` | IDF_002 Language Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 4 V1 rule_ids — unknown_language_id / speaker_proficiency_insufficient / listener_proficiency_insufficient (V1+ active; V1 warning only per LNG-Q6 LOCKED) / proficiency_axis_invalid; +2 V1+ reservations: dialect_mismatch / code_switch_unsupported. V1 user-facing rejects: unknown_language_id + speaker_proficiency_insufficient. SPIKE_01 turn 5 literacy slip canonical reproducibility gate — A6 canon-drift detector consumes proficiency at Stage 8 V1+. **LanguageId distinct from RES_001 LangCode** (in-fiction vs engine UI; runtime newtype assert V1; LNG-D8 compile-time V1+). i18n: V1 ships I18nBundle from day 1. |
+| `personality.*` | IDF_003 Personality Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 3 V1 rule_ids — unknown_archetype_id / assignment_immutable / opinion_modifier_invalid; +2 V1+ reservations: archetype_evolution_invalid_path / overlay_conflict. V1 user-facing rejects: unknown_archetype_id + assignment_immutable only (opinion_modifier_invalid schema-level). 12 V1 archetypes per POST-SURVEY-Q1 LOCKED (Stoic/Hothead/Cunning/Innocent/Pious/Cynic/Worldly/Idealist + Loyal/Aloof/Ambitious/Compassionate). Resolves PL_005b §2.1 speaker_voice orphan ref + PL_005c INT-INT-D5 per-personality opinion modifier. i18n: V1 ships I18nBundle from day 1. |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
@@ -273,6 +274,16 @@ pub struct RealityManifest {
     // preset 4 languages (Quan thoại / Cổ ngữ / Tiếng địa phương / Đạo ngôn); Modern 3 (Tiếng
     // Việt / Tiếng Anh / Tiếng Trung); Sci-fi 3 (Common Tongue / AlienXLanguage / AlienYLanguage).
     pub languages: Vec<LanguageDecl>,              // see IDF_002 §3.2 for LanguageDecl shape
+
+    // ─── IDF_003 Personality Foundation extension (added 2026-04-26 DRAFT — Tier 5 Actor Substrate) ───
+    // REQUIRED V1: 12 universal archetypes per POST-SURVEY-Q1 LOCKED. PersonalityArchetypeDecl
+    // shape per IDF_003 §3.2: { archetype_id, display_name (I18nBundle), voice_register (5-variant),
+    // opinion_modifier_table (HashMap<PersonalityArchetypeId, i8> -10..=+10; 12×12=144 entries
+    // required per PRS-Q9 LOCKED), speech_pattern_hints (Vec<String> for V1+ NPC_002 LLM prompt),
+    // canon_ref }. 12 V1 archetypes universal across all reality presets (Wuxia/Modern/Sci-fi):
+    // Stoic / Hothead / Cunning / Innocent / Pious / Cynic / Worldly / Idealist + Loyal / Aloof /
+    // Ambitious / Compassionate. Resolves PL_005b §2.1 speaker_voice orphan ref + PL_005c INT-INT-D5.
+    pub personality_archetypes: Vec<PersonalityArchetypeDecl>,    // see IDF_003 §3.2
 
     // ─── Future feature extensions ───
 }
