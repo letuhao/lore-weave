@@ -6,6 +6,24 @@
 
 ---
 
+## 2026-04-26 — IDF folder 4/15: IDF_002 Language Foundation DRAFT + boundary register
+
+- **Lock continues** from commit 1/15
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - NEW row: `actor_language_proficiency` aggregate (T2/Reality, IDF_002 DRAFT 2026-04-26)
+    - Fix: race_assignment Notes column restored (commit 3/15 inadvertently truncated; now restored)
+    - EVT-T8 Administrative sub-shape: NEW `Forge:EditLanguageProficiency` (IDF_002 owns)
+    - Stable-ID prefix: NEW `LNG-*` row
+  - `02_extension_contracts.md`:
+    - §1.4 `language.*` namespace: 4 V1 rule_ids (unknown_language_id / speaker_proficiency_insufficient / listener_proficiency_insufficient (V1+ active) / proficiency_axis_invalid) + 2 V1+ reservations (dialect_mismatch / code_switch_unsupported)
+    - §2 RealityManifest: NEW `languages: Vec<LanguageDecl>` REQUIRED V1
+- **IDF_002 file:** renamed concept → DRAFT; full §1-§19 spec (~530 lines). 10 V1-testable AC + 2 V1+ deferred. 9 deferrals LNG-D1..D9. SPIKE_01 turn 5 literacy slip canonical reproducibility gate (LM01 Quan thoại Native + Cổ ngữ Read=None).
+- **Survey-informed adjustments locked** — concept-note IDF_002 already had no survey-mandated changes (Q's locked at original concept).
+- **Critical distinction:** LanguageId (IDF_002 in-fiction) vs LangCode (RES_001 engine UI ISO-639-1) — runtime newtype assert V1; LNG-D8 compile-time V1+.
+
+---
+
 ## 2026-04-26 — IDF folder 3/15: IDF_001 closure pass → CANDIDATE-LOCK
 
 - **Lock continues** from commit 1/15
