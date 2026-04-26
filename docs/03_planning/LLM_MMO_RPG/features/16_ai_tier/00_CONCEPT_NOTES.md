@@ -299,15 +299,125 @@ Before drafting `AIT_001_ai_tier_foundation.md`:
 ## §15 — Status
 
 - **Created:** 2026-04-26 by main session post PROG_001 DRAFT closure (commit `9908940`)
-- **Phase:** CONCEPT — awaiting Q1-Q12 deep-dive
-- **Lock state:** `_boundaries/_LOCK.md` free as of PROG_001 DRAFT commit. AIT_001 DRAFT promotion can proceed when Q-lock complete.
-- **Estimated time to DRAFT (post-Q-deep-dive):** 5-7 hours focused design work; ~1200-1500 lines projected (smaller than PROG_001 since AIT is architecture-scale not multi-genre-coverage)
-- **Dependencies (when DRAFT):**
-  - PROG_001 `tracking_tier` field activation (currently `None` V1 default; AIT_001 populates enum)
-  - NPC_001 closure pass folds tier-aware persona assembly
-  - PL_005 closure pass adds tier-aware action availability
-  - CSC_001 closure pass for Untracked procedural generation
-  - WA_003 closure pass folds Forge:PromoteToTracked / DemoteToUntracked AdminActions
-  - 07_event_model agent registers AIT_001 sub-types
-  - V1+30d RES_001 closure pass aligns NPC eager → lazy migration (PROG-D19)
-- **Next action:** User decides Q-deep-dive batching strategy (mirror PROG_001 6-batch pattern OR alternative)
+- **Phase:** CONCEPT — Q1+Q2 LOCKED 2026-04-26 (see §16); Q3 implicitly resolved by Q2c-e; Q4-Q12 batched deep-dive ongoing
+- **Lock state:** `_boundaries/_LOCK.md` free as of PROG_001 DRAFT commit + FAC_001 closure (commits `9908940` then FAC_001 4-commit cycle). AIT_001 DRAFT promotion can proceed when Q-lock complete.
+
+---
+
+## §16 — Q1 + Q2 LOCKED 2026-04-26 (Tier ontology + assignment rules paired)
+
+### §16.1 Q1 LOCKED — 2-variant `NpcTrackingTier` enum (Untracked = no aggregate)
+
+| Sub | Decision |
+|---|---|
+| Q1a | Tier enum variants V1 | **2 variants**: `Major` / `Minor` (Untracked = absence of ActorProgression aggregate; type-system enforced via PROG_001 §3.1 storage model) |
+| Q1b | V1+ tier extensibility | Reserved (`Legendary` for fully-simulated historical figures DF Legends mode V2; `Faction` for collective entity tier V3) — additive per I14 |
+| Q1c | PC vs NPC distinction | PC has `tracking_tier=None` on actor_progression (always tracked, eager Generator); NPC has `Some(Major\|Minor)` (lazy materialization); Untracked NPC = no aggregate at all |
+
+```rust
+pub enum NpcTrackingTier {
+    Major,    // V1 — LLM-driven; full PC-like agency; max ≤20 default
+    Minor,    // V1 — Rule-based scripted; max ≤100 default
+    // Untracked = absence of ActorProgression aggregate (PROG_001 §3.1 semantic)
+    // V1+ reserved: Legendary (V2 DF Legends mode); Faction (V3 collective tier)
+}
+```
+
+### §16.2 Q2 LOCKED — Tier assignment rules
+
+| Sub | Decision |
+|---|---|
+| Q2a | Canonical NPCs tier source | **Author-declared REQUIRED on `CanonicalActorDecl.tracking_tier`** at NPC_001 closure pass — forces explicit choice (no default; prevents accidental Major-tier overuse → LLM cost) |
+| Q2b | Untracked NPCs source | **NEVER in canonical_actor_decl** — Untracked is purely ephemeral; generated on-demand at observation events (Q4-Q5 deferred batch) |
+| Q2c | Promotion Untracked → Tracked V1 | **Forge admin action only** — NEW `Forge:PromoteUntrackedToTracked { ephemeral_npc_id, cell_id, new_tier }` AdminAction (WA_003 closure folds in). Effect: ephemeral NpcId becomes persistent; persona+stats crystallize into NPC_001 npc core aggregate; ActorProgression created with author-declared tracking_tier |
+| Q2d | Auto-promotion V1 | **NO V1** — V1+30d significance threshold mechanism (AIT-D1 deferral); LLM-propose with author-confirm V1+30d (AIT-D7 deferral) |
+| Q2e | Demotion Tracked → Untracked V1 | **NO V1 — disabled** — Tracked is permanent V1; V1+30d via Forge `Forge:DemoteTrackedToUntracked` (AIT-D2 deferral); use cases: deceased NPC simplified to memorial / sect dissolved members lose Major status |
+| Q2f | Untracked NpcId scoping V1 | **Session-ephemeral + deterministic blake3 seed** — `NpcId(blake3(reality_id \|\| cell_id \|\| fiction_day \|\| slot_index))`; replay determinism per EVT-A9 |
+| Q2g | Untracked NpcId reclaim V1 | **Cell-leave + session-end (hybrid)** — Q6 deep-dive deferred for full discard policy specification; V1 default per these 2 triggers + causal-ref pin override (V1+ defer details) |
+| Q2h | Tier capacity caps V1 | **Author-declared `tier_capacity_caps: Option<TierCapacityCaps>` on RealityManifest** — engine defaults: `max_major_tracked: 20`, `max_minor_tracked: 100`, Untracked unlimited (per-cell density Q8 deferred) |
+
+### §16.3 Q3 IMPLICITLY RESOLVED by Q2c-e
+
+Per Q2 LOCKED sub-decisions, Q3 (promotion mechanism) is fully covered:
+- **V1 promotion**: Forge admin action only (Q2c)
+- **V1 auto-promotion**: NO (Q2d → AIT-D1 V1+30d)
+- **V1 LLM-propose**: NO (Q2d → AIT-D7 V1+30d)
+- **V1 demotion**: NO disabled (Q2e → AIT-D2 V1+30d)
+
+No additional Q3 deep-dive needed. Status: LOCKED via Q2.
+
+### §16.4 Concrete V1 shape from Q1+Q2
+
+```rust
+// ─── Q1 enum ───
+pub enum NpcTrackingTier {
+    Major,
+    Minor,
+}
+
+// ─── Q2a NPC_001 closure pass extension (downstream) ───
+pub struct CanonicalActorDecl {
+    // ... existing fields per NPC_001 ...
+    pub tracking_tier: NpcTrackingTier,    // V1 REQUIRED
+}
+
+// ─── Q2c WA_003 closure pass extension (downstream) ───
+pub enum ForgeEditAction {
+    // ... existing ...
+    PromoteUntrackedToTracked {
+        ephemeral_npc_id: NpcId,           // session-ephemeral; stable per blake3 seed
+        cell_id: ChannelId,                // observation cell
+        new_tier: NpcTrackingTier,         // Major or Minor (must respect tier_capacity_caps)
+    },
+}
+
+// ─── Q2f deterministic Untracked ID generation ───
+fn untracked_npc_id_for(
+    reality_id: RealityId,
+    cell_id: ChannelId,
+    fiction_day: u64,
+    slot_index: u8,
+) -> NpcId {
+    NpcId(blake3_hash(reality_id, cell_id, fiction_day, slot_index))
+}
+
+// ─── Q2h RealityManifest extension ───
+pub struct RealityManifest {
+    // ... existing PROG_001 + NPC_001 + IDF + FF + FAC fields ...
+    pub tier_capacity_caps: Option<TierCapacityCaps>,
+}
+
+pub struct TierCapacityCaps {
+    pub max_major_tracked: u32,    // engine default 20
+    pub max_minor_tracked: u32,    // engine default 100
+    // Untracked unlimited (per-cell density Q8)
+}
+```
+
+### §16.5 V1+ deferrals from Q1+Q2
+
+| ID | Deferral | Trigger to revisit |
+|---|---|---|
+| **AIT-D1** | Auto-promotion via significance threshold | V1+30d significance heuristic |
+| **AIT-D2** | Demotion Tracked → Untracked via Forge | V1+30d narrative use cases |
+| **AIT-D3** | Legendary tier (DF Legends mode) | V2 worldbuilding extension |
+| **AIT-D4** | Faction tier (V3 collective entity) | V3 with future ORG/FAC integration |
+| **AIT-D5** | Tier capacity dynamic adjustment (LLM proposes increase based on narrative load) | V2+ |
+| **AIT-D6** | Untracked NpcId persistence beyond cell-leave (causal-ref pin) | V1+30d when QST_001 V2 needs it |
+| **AIT-D7** | LLM-propose-promotion with author-confirm | V1+30d UX iteration |
+
+### §16.6 Q4-Q12 still open
+
+After Q1+Q2 LOCKED (with Q3 implicitly resolved), these remain pending user decision:
+
+- **Q4 — Untracked NPC generation mechanism** (next deep-dive — paired with Q5+Q11): pure LLM / template / hybrid
+- **Q5 — Generation timing**: cell-entry / on-demand / bootstrap; deterministic seed already locked at Q2f
+- **Q6 — Discard policy V1**: cell-leave / session-end / time-based / hybrid (already partial via Q2g)
+- **Q7 — Behavior model per tier**: PC/Major/Minor/Untracked closed-set capability
+- **Q8 — Per-cell-type Untracked density** declared in RealityManifest (per PlaceType)
+- **Q9 — Action availability per tier**: PL_005 InteractionKind subset per tier
+- **Q10 — Replay determinism for Untracked**: already locked by Q2f deterministic seed
+- **Q11 — Untracked promotion preserves identity** (paired with Q4+Q5 in next batch)
+- **Q12 — Tier-aware AssemblePrompt budget**: Major full persona / Untracked summary-line only
+
+Q1+Q2 LOCKED unblocks Q4+Q5+Q11 batch (Untracked generation mechanism + timing + promotion identity preservation).
