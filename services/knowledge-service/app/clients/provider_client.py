@@ -78,6 +78,7 @@ __all__ = [
     "ProviderUpstreamError",
     "ProviderTimeout",
     "ProviderDecodeError",
+    "ProviderCancelled",  # Phase 4a-γ /review-impl LOW#1
     "get_provider_client",
     "close_provider_client",
 ]
@@ -198,6 +199,19 @@ class ProviderTimeout(ProviderError):
 
 class ProviderDecodeError(ProviderError):
     """2xx but body was missing `choices[0].message.content`. Non-retryable."""
+
+
+class ProviderCancelled(ProviderError):
+    """Phase 4a-γ /review-impl LOW#1 — operator-initiated cancel, NOT a fault.
+
+    Surfaces when a Phase 4a SDK job ends with status='cancelled' (user
+    or admin called DELETE /v1/llm/jobs/{id} mid-flight). Subclasses
+    ProviderError so the routers' 502 handler catches it via the
+    existing `except ProviderError` clause, but the distinct class lets
+    the handler emit a "cancelled" message rather than the misleading
+    "your provider had an error" copy. Legacy chat_completion path can't
+    raise this (no cancellation surface) — added for the SDK path only.
+    """
 
 
 # ── Response models ───────────────────────────────────────────────────

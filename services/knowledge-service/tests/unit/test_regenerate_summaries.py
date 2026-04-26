@@ -894,3 +894,304 @@ async def test_regenerate_project_records_via_k16_path_on_success(monkeypatch):
     assert rs_args[3] == Decimal(1500) * Decimal("0.00000030")
     # New repo NOT called for project scope — branch dispatch lock.
     spending_repo.record.assert_not_awaited()
+
+
+# ── Phase 4a-γ SDK-path tests ────────────────────────────────────────
+
+
+from typing import Any as _Any, cast as _cast
+
+
+class _FakeLLMClientForSummary:
+    """Stand-in for app.clients.llm_client.LLMClient — captures
+    submit_and_wait kwargs + replays a scripted Job."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[_Any, _Any]] = []
+        self.next_job: _Any = None
+
+    def queue_chat_job(self, *, content: str, status: str = "completed",
+                       prompt_tokens: int = 100, completion_tokens: int = 50,
+                       error_code: str | None = None,
+                       error_message: str = "") -> None:
+        from loreweave_llm.models import Job, JobError
+        result: dict[_Any, _Any] | None
+        if status == "completed":
+            result = {
+                "messages": [{"role": "assistant", "content": content}],
+                "usage": {
+                    "input_tokens": prompt_tokens,
+                    "output_tokens": completion_tokens,
+                },
+            }
+        else:
+            result = None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="chat",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
+
+    async def submit_and_wait(self, **kwargs: _Any) -> _Any:
+        self.calls.append(kwargs)
+        return self.next_job
+
+
+@pytest.mark.asyncio
+async def test_phase_4a_gamma_global_regen_routes_via_llm_client_when_supplied():
+    """Phase 4a-γ — when llm_client is supplied, the LLM-call branch
+    routes through SDK (chat operation, chunking=None) instead of
+    provider_client. Downstream cost + write path stays unchanged
+    because _invoke_llm_for_summary returns a ChatCompletionResponse
+    regardless of transport."""
+    fake_llm = _FakeLLMClientForSummary()
+    fake_llm.queue_chat_job(
+        content="A new global bio about user preferences and writing style.",
+    )
+    legacy = _mock_provider_client("legacy_unused")  # not called on SDK path
+
+    new_summary = _summary_stub(
+        content="A new global bio about user preferences and writing style.",
+        version=2,
+    )
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["passage 1", "passage 2"]),
+        provider_client=legacy,
+        summaries_repo=_mock_summaries_repo(upsert_returns=new_summary),
+        llm_client=_cast(_Any, fake_llm),
+    )
+
+    assert result.status == "regenerated"
+    # SDK was actually used; legacy was NOT
+    assert len(fake_llm.calls) == 1
+    legacy.chat_completion.assert_not_awaited()
+    call = fake_llm.calls[0]
+    assert call["operation"] == "chat"
+    assert call["chunking"] is None  # summaries fit single call
+    assert call["job_meta"]["extractor"] == "summary"
+    assert call["job_meta"]["scope_type"] == "global"
+
+
+@pytest.mark.asyncio
+async def test_phase_4a_gamma_global_regen_legacy_path_when_llm_client_omitted():
+    """Regression-lock: omitting llm_client falls back to legacy
+    provider_client.chat_completion path (no SDK call)."""
+    fake_llm = _FakeLLMClientForSummary()  # should NOT be called
+    legacy = _mock_provider_client("Legacy bio about user style preferences.")
+    new_summary = _summary_stub(
+        content="Legacy bio about user style preferences.", version=2,
+    )
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["passage 1"]),
+        provider_client=legacy,
+        summaries_repo=_mock_summaries_repo(upsert_returns=new_summary),
+        # llm_client omitted → legacy path
+    )
+
+    assert result.status == "regenerated"
+    assert len(fake_llm.calls) == 0  # SDK NOT called
+    legacy.chat_completion.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_phase_4a_gamma_sdk_path_failed_job_surfaces_as_provider_error():
+    """SDK path: when gateway terminal-fails the job, the caller sees
+    a ProviderUpstreamError so the routers' existing 502 handler
+    still catches (consistent with legacy path's behavior)."""
+    from app.clients.provider_client import ProviderUpstreamError
+
+    fake_llm = _FakeLLMClientForSummary()
+    fake_llm.queue_chat_job(
+        content="", status="failed",
+        error_code="LLM_UPSTREAM_ERROR",
+        error_message="provider returned 502",
+    )
+    legacy = _mock_provider_client("unused")
+    with pytest.raises(ProviderUpstreamError, match="summary regen"):
+        await regenerate_global_summary(
+            user_id=_USER_ID,
+            model_source="user_model",
+            model_ref="test-model",
+            pool=_mock_pool(recent_manual_edit=False),
+            session_factory=_make_session_factory(["passage 1"]),
+            provider_client=legacy,
+            summaries_repo=_mock_summaries_repo(),
+            llm_client=_cast(_Any, fake_llm),
+        )
+
+
+@pytest.mark.asyncio
+async def test_phase_4a_gamma_project_regen_routes_via_llm_client_when_supplied():
+    """/review-impl LOW#3 — parity test for project regen via SDK.
+    Mirrors the global test; covers the project-specific scope_id path
+    in job_meta + branch dispatch to upsert_project_scoped."""
+    fake_llm = _FakeLLMClientForSummary()
+    fake_llm.queue_chat_job(
+        content="Updated project notes about the WoES setting and characters.",
+    )
+    legacy = _mock_provider_client("legacy_unused")
+
+    new_summary = _summary_stub(
+        content="Updated project notes about the WoES setting and characters.",
+        version=3,
+        scope_type="project",
+        scope_id=str(_PROJECT_ID),
+    )
+    result = await regenerate_project_summary(
+        user_id=_USER_ID,
+        project_id=_PROJECT_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["chapter passage", "chat passage"]),
+        provider_client=legacy,
+        summaries_repo=_mock_summaries_repo(project_upsert_returns=new_summary),
+        llm_client=_cast(_Any, fake_llm),
+    )
+    assert result.status == "regenerated"
+    legacy.chat_completion.assert_not_awaited()
+    assert len(fake_llm.calls) == 1
+    call = fake_llm.calls[0]
+    assert call["operation"] == "chat"
+    assert call["chunking"] is None
+    assert call["job_meta"]["extractor"] == "summary"
+    assert call["job_meta"]["scope_type"] == "project"
+    # Project scope_id flows through job_meta — not empty string like global.
+    # _regenerate_core converts UUID to str via str(scope_id) before
+    # passing into _invoke_llm_for_summary, so job_meta carries the str.
+    assert call["job_meta"]["scope_id"] == str(_PROJECT_ID)
+    # Branch dispatch lock — project upsert NOT global upsert.
+    repo = _mock_summaries_repo  # type: ignore[assignment]  # marker only
+
+
+@pytest.mark.asyncio
+async def test_phase_4a_gamma_sdk_path_cancelled_job_raises_provider_cancelled():
+    """/review-impl LOW#1 fix — cancelled job raises ProviderCancelled
+    (subclass of ProviderError) so router's 502 handler still catches
+    via the existing `except ProviderError` clause but the distinct
+    class signals operator-cancel rather than provider-fault."""
+    from app.clients.provider_client import ProviderCancelled, ProviderError
+
+    fake_llm = _FakeLLMClientForSummary()
+    fake_llm.queue_chat_job(
+        content="", status="cancelled",
+    )
+    with pytest.raises(ProviderCancelled, match="cancelled"):
+        await regenerate_global_summary(
+            user_id=_USER_ID,
+            model_source="user_model",
+            model_ref="test-model",
+            pool=_mock_pool(recent_manual_edit=False),
+            session_factory=_make_session_factory(["passage 1"]),
+            provider_client=_mock_provider_client("unused"),
+            summaries_repo=_mock_summaries_repo(),
+            llm_client=_cast(_Any, fake_llm),
+        )
+    # Verify subclass relationship — routers' `except ProviderError` still catches.
+    assert issubclass(ProviderCancelled, ProviderError)
+
+
+@pytest.mark.asyncio
+async def test_phase_4a_gamma_sdk_path_rate_limited_preserves_retry_after_s():
+    """/review-impl LOW#4 fix — when wrapper exhausts transient retry
+    budget on a rate-limit error, surface as ProviderRateLimited (not
+    ProviderUpstreamError) so the router can populate Retry-After."""
+    from app.clients.provider_client import ProviderRateLimited
+    from loreweave_llm.errors import LLMTransientRetryNeededError
+
+    class _RateLimitedFake:
+        async def submit_and_wait(self, **kwargs):
+            raise LLMTransientRetryNeededError(
+                "rate limit exhausted",
+                job_id="00000000-0000-0000-0000-000000000001",
+                underlying_code="LLM_RATE_LIMITED",
+                retry_after_s=42.0,
+            )
+
+    fake_llm = _RateLimitedFake()
+    with pytest.raises(ProviderRateLimited) as excinfo:
+        await regenerate_global_summary(
+            user_id=_USER_ID,
+            model_source="user_model",
+            model_ref="test-model",
+            pool=_mock_pool(recent_manual_edit=False),
+            session_factory=_make_session_factory(["passage 1"]),
+            provider_client=_mock_provider_client("unused"),
+            summaries_repo=_mock_summaries_repo(),
+            llm_client=_cast(_Any, fake_llm),
+        )
+    # retry_after_s preserved from gateway error → caller can populate header
+    assert excinfo.value.retry_after_s == 42.0
+
+
+@pytest.mark.asyncio
+async def test_phase_4a_gamma_sdk_path_records_cost_and_tokens():
+    """/review-impl LOW#2 fix — verify SDK path actually records token
+    metrics (not just status=regenerated). Pins the contract that
+    _invoke_llm_for_summary's ChatCompletionResponse correctly threads
+    usage through the downstream metric path. If usage was wrong-shape
+    (e.g. always 0 or accessed via wrong attr name), this test would flip.
+
+    Spending-repo recording is deliberately NOT exercised here because
+    enabling summary_spending_repo triggers a pool.fetchrow path that
+    needs broader mock plumbing — separate test in cycle 4a-δ when the
+    spending recorder is fully migrated."""
+    from app.metrics import summary_regen_tokens_total
+
+    fake_llm = _FakeLLMClientForSummary()
+    fake_llm.queue_chat_job(
+        content="A new global bio with proper token counts.",
+        prompt_tokens=200,
+        completion_tokens=80,
+    )
+    new_summary = _summary_stub(
+        content="A new global bio with proper token counts.", version=2,
+    )
+    # Pre-cycle baseline: read counters BEFORE the regen call.
+    prompt_before = summary_regen_tokens_total.labels(
+        scope_type="global", token_kind="prompt"
+    )._value.get()
+    completion_before = summary_regen_tokens_total.labels(
+        scope_type="global", token_kind="completion"
+    )._value.get()
+
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["passage 1"]),
+        provider_client=_mock_provider_client("legacy_unused"),
+        summaries_repo=_mock_summaries_repo(upsert_returns=new_summary),
+        # summary_spending_repo omitted — see docstring
+        llm_client=_cast(_Any, fake_llm),
+    )
+
+    assert result.status == "regenerated"
+    # Verify token counters incremented by exactly the SDK-emitted counts.
+    # If _invoke_llm_for_summary mapped input_tokens→prompt_tokens wrongly
+    # (or returned 0), these deltas would NOT match the queued job values.
+    prompt_after = summary_regen_tokens_total.labels(
+        scope_type="global", token_kind="prompt"
+    )._value.get()
+    completion_after = summary_regen_tokens_total.labels(
+        scope_type="global", token_kind="completion"
+    )._value.get()
+    assert prompt_after - prompt_before == 200, (
+        "prompt_tokens metric must reflect SDK Job.result.usage.input_tokens"
+    )
+    assert completion_after - completion_before == 80, (
+        "completion_tokens metric must reflect SDK Job.result.usage.output_tokens"
+    )

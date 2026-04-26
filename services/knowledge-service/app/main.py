@@ -199,6 +199,8 @@ async def lifespan(app: FastAPI):
             _summary_spending_repo = SummarySpendingRepo(get_knowledge_pool())
 
             # K20.3 α — project-scope (L1) regen, daily cadence.
+            # Phase 4a-γ: pass llm_client so the scheduler routes regen
+            # through the unified gateway (chat operation).
             summary_regen_task = asyncio.create_task(
                 run_project_regen_loop(
                     get_knowledge_pool(),
@@ -206,6 +208,7 @@ async def lifespan(app: FastAPI):
                     get_provider_client(),
                     SummariesRepo(get_knowledge_pool()),
                     summary_spending_repo=_summary_spending_repo,
+                    llm_client=get_llm_client(),
                 )
             )
             logger.info(
@@ -222,6 +225,7 @@ async def lifespan(app: FastAPI):
                     get_provider_client(),
                     SummariesRepo(get_knowledge_pool()),
                     summary_spending_repo=_summary_spending_repo,
+                    llm_client=get_llm_client(),
                 )
             )
             logger.info(

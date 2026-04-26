@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from typing import Literal
 
+from app.clients.llm_client import LLMClient
 from app.clients.provider_client import ProviderClient, ProviderError
 from app.config import settings
 from app.db.models import Summary, SummaryContent, SummaryVersion
@@ -37,6 +38,7 @@ from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
 from app.deps import (
+    get_llm_client,
     get_provider_client,
     get_summaries_repo,
     get_summary_spending_repo,
@@ -542,6 +544,7 @@ async def regenerate_global_bio(
     body: RegenerateRequest,
     user_id: UUID = Depends(get_current_user),
     provider_client: ProviderClient = Depends(get_provider_client),
+    llm_client: LLMClient = Depends(get_llm_client),
     repo: SummariesRepo = Depends(get_summaries_repo),
     spending_repo: SummarySpendingRepo = Depends(get_summary_spending_repo),
     cooldown: aioredis.Redis | None = Depends(get_cooldown_client),
@@ -565,6 +568,7 @@ async def regenerate_global_bio(
             pool=get_knowledge_pool(),
             session_factory=neo4j_session,
             provider_client=provider_client,
+            llm_client=llm_client,
             summaries_repo=repo,
             summary_spending_repo=spending_repo,
             trigger="manual",
@@ -601,6 +605,7 @@ async def regenerate_project_bio(
     body: RegenerateRequest,
     user_id: UUID = Depends(get_current_user),
     provider_client: ProviderClient = Depends(get_provider_client),
+    llm_client: LLMClient = Depends(get_llm_client),
     repo: SummariesRepo = Depends(get_summaries_repo),
     spending_repo: SummarySpendingRepo = Depends(get_summary_spending_repo),
     cooldown: aioredis.Redis | None = Depends(get_cooldown_client),
@@ -626,6 +631,7 @@ async def regenerate_project_bio(
             pool=get_knowledge_pool(),
             session_factory=neo4j_session,
             provider_client=provider_client,
+            llm_client=llm_client,
             summaries_repo=repo,
             summary_spending_repo=spending_repo,
             trigger="manual",

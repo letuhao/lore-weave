@@ -1,9 +1,75 @@
-# Session Handoff — Session 53 (4 cycles shipped · Phase 4a-α/β COMPLETE — all 4 Pass 2 extractors migrated · 4a-γ next)
+# Session Handoff — Session 53 (5 cycles shipped · Phase 4a-α/β/γ COMPLETE — all extractor + summary regen call sites migrated · 4a-δ next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-27 (session 53, cycles 1-4 shipped)
-> **HEAD:** `<pending>` (Phase 4a-β; Phase 4a-α-followup @ `309913bb`; Phase 4a-α BUILD @ `6697d8d6`; ADR @ `b2f577e`; Session 52 closed at `c0420d2`)
+> **Date:** 2026-04-27 (session 53, cycles 1-5 shipped)
+> **HEAD:** `<pending>` (Phase 4a-γ; Phase 4a-β @ `44715550`; 4a-α-followup @ `309913bb`; 4a-α BUILD @ `6697d8d6`; ADR @ `b2f577e`; Session 52 closed at `c0420d2`)
 > **Branch:** `main` (ahead of origin — user pushes manually)
+
+## Session 53 cycle 5 — Phase 4a-γ · summary regen migrated · /review-impl caught 6 issues + bonus type-drift bug (all fixed inline)
+
+**What shipped:** Summary regen path (regenerate_summaries.py + 2 routers + scheduler) now routes through unified gateway via SDK chat operation. Q7 resolved: P2 jobs (cost+cooldown need terminal). All Pass 2 extractor + summary regen call sites in knowledge-service now uniformly route through the gateway when llm_client is supplied.
+
+**Files (8)**:
+- MOD `app/jobs/regenerate_summaries.py` — NEW `_invoke_llm_for_summary` helper branches on `ctx.llm_client`; SDK path uses operation=chat + chunking=None + transient_retry_budget=1; cancelled→ProviderCancelled; rate-limit-exhaustion→ProviderRateLimited preserves retry_after_s; defensive `_safe_int` helper; `_RegenContext.llm_client` field
+- MOD `app/clients/provider_client.py` — NEW `ProviderCancelled` exception subclass
+- MOD `app/jobs/summary_regen_scheduler.py` — 4 functions thread `llm_client` through
+- MOD `app/main.py` — lifespan passes `get_llm_client()` to scheduler
+- MOD `app/routers/public/summaries.py` + `app/routers/internal_summarize.py` — DI + thread-through
+- MOD `tests/unit/test_regenerate_summaries.py` — +7 SDK-path tests
+
+### `/review-impl` round 5 — caught 4 LOW + 2 COSMETIC + 1 bonus MED, all 7 fixed inline
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟢 LOW | Cancelled job → NEW ProviderCancelled subclass (not generic ProviderUpstreamError) |
+| 2 | 🟢 LOW | Token-counter metric Prometheus before/after delta assertion |
+| 3 | 🟢 LOW + bonus 🟡 MED | NEW project regen SDK-path parity test — **also surfaced** UUID-in-job_meta type drift; fixed via `str()` coercion + signature widening |
+| 4 | 🟢 LOW | Retry-exhaust split: LLM_RATE_LIMITED → ProviderRateLimited(retry_after_s=...) preserved; other → ProviderUpstreamError |
+| 5 | 🔵 COSMETIC | Module-top imports |
+| 6 | 🔵 COSMETIC | NEW `_safe_int` helper defends against malformed gateway token shape |
+
+### Verify evidence
+```
+ks-svc unit tests: 1640/1640 PASS in 10.61s (was 1636 cycle-4; +4 net new)
+gateway:           ALL GREEN
+sdk:               37/37 PASS (no SDK changes this cycle)
+back-compat:       100 existing summary tests still pass
+```
+
+### What's NEXT for the next agent
+
+**4a-δ (M)** — final cleanup cycle. Per ADR §5.4:
+- Delete `services/knowledge-service/app/clients/provider_client.py`
+- Delete `services/knowledge-service/app/extraction/llm_json_parser.py`
+- Delete `tests/unit/test_provider_client.py` + `test_llm_json_parser.py`
+- Remove `client: ProviderClient | None = None` param from 4 extractor signatures + pass2_orchestrator + regenerate_summaries + summary routers
+- Sunset `provider_chat_completion_total` / `_duration_seconds` Prometheus counters → keep with caller-side `knowledge_llm_job_total` replacement
+- Update `KNOWLEDGE_SERVICE_ARCHITECTURE.md` §LLM-pipeline reference
+- **Pre-delete grep** (per ADR §6 Q8): `git grep -rn "ProviderError\|Provider*Error" outside services/knowledge-service/` MUST return zero before deletion
+
+**Reference impl**: this cycle's _RegenContext.llm_client default-None pattern survives until 4a-δ; that cycle removes the legacy path entirely.
+
+**Plan progress**: 4a-α / 4a-α-followup / 4a-β / 4a-γ all ✅. Only 4a-δ left to close Phase 4a fully.
+
+**Deferred items**:
+- D-PHASE6-FACT-POLARITY-IN-KEY (cycle 4)
+- D-PHASE6-AGGREGATOR-NULL-MERGE (mostly mitigated cycle 4 MED#2; residual for parallel-chunk)
+- D-PHASE6-XCHUNK-PRIMING (cycle 3)
+- D-PHASE6-RETRY-AFTER-PRESERVATION (mostly mitigated cycle 5 LOW#4; residual for parallel-chunk Retry-After conflicts)
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state
+2. `docs/03_planning/KNOWLEDGE_SERVICE_LLM_MIGRATION_ADR.md` §5.4 (4a-δ closing-checklist)
+3. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For 4a-δ: `python scripts/workflow-gate.py size M 5 3 0` then `phase clarify`
+3. Pre-flight `git grep -rn "ProviderError" services/ contracts/ sdks/ | grep -v knowledge-service` to confirm safe deletion
+
+---
+
+## Session 53 cycle 4 — Phase 4a-β · relation/event/fact extractors migrated · /review-impl caught 7 issues (all 6 actionable fixed inline)
 
 ## Session 53 cycle 4 — Phase 4a-β · relation/event/fact extractors migrated · /review-impl caught 7 issues (all 6 actionable fixed inline)
 

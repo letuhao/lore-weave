@@ -49,6 +49,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app.clients.llm_client import LLMClient
 from app.clients.provider_client import ProviderClient
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
@@ -141,6 +142,7 @@ async def sweep_projects_once(
     provider_client: ProviderClient,
     summaries_repo: SummariesRepo,
     summary_spending_repo: SummarySpendingRepo | None = None,
+    llm_client: LLMClient | None = None,
 ) -> SweepResult:
     """Iterate every non-archived + extraction-enabled project and
     fire a regen for each. Returns aggregate counts for logging.
@@ -213,6 +215,7 @@ async def sweep_projects_once(
                         pool=pool,
                         session_factory=session_factory,
                         provider_client=provider_client,
+                        llm_client=llm_client,  # Phase 4a-γ
                         summaries_repo=summaries_repo,
                         summary_spending_repo=summary_spending_repo,
                         trigger="scheduled",
@@ -271,6 +274,7 @@ async def run_project_regen_loop(
     summaries_repo: SummariesRepo,
     *,
     summary_spending_repo: SummarySpendingRepo | None = None,
+    llm_client: LLMClient | None = None,
     interval_s: int = DEFAULT_INTERVAL_S,
     startup_delay_s: int = DEFAULT_STARTUP_DELAY_S,
 ) -> None:
@@ -298,7 +302,7 @@ async def run_project_regen_loop(
         try:
             await sweep_projects_once(
                 pool, session_factory, provider_client, summaries_repo,
-                summary_spending_repo,
+                summary_spending_repo, llm_client=llm_client,
             )
         except asyncio.CancelledError:
             logger.info("K20.3: project regen loop cancelled during sweep")
@@ -362,6 +366,7 @@ async def sweep_global_once(
     provider_client: ProviderClient,
     summaries_repo: SummariesRepo,
     summary_spending_repo: SummarySpendingRepo | None = None,
+    llm_client: LLMClient | None = None,
 ) -> SweepResult:
     """Iterate eligible users and fire ``regenerate_global_summary``
     per-user. Structure + error isolation mirror
@@ -426,6 +431,7 @@ async def sweep_global_once(
                         pool=pool,
                         session_factory=session_factory,
                         provider_client=provider_client,
+                        llm_client=llm_client,  # Phase 4a-γ
                         summaries_repo=summaries_repo,
                         summary_spending_repo=summary_spending_repo,
                         trigger="scheduled",
@@ -480,6 +486,7 @@ async def run_global_regen_loop(
     summaries_repo: SummariesRepo,
     *,
     summary_spending_repo: SummarySpendingRepo | None = None,
+    llm_client: LLMClient | None = None,
     interval_s: int = DEFAULT_GLOBAL_INTERVAL_S,
     startup_delay_s: int = DEFAULT_GLOBAL_STARTUP_DELAY_S,
 ) -> None:
@@ -500,7 +507,7 @@ async def run_global_regen_loop(
         try:
             await sweep_global_once(
                 pool, session_factory, provider_client, summaries_repo,
-                summary_spending_repo,
+                summary_spending_repo, llm_client=llm_client,
             )
         except asyncio.CancelledError:
             logger.info("K20.3: global regen loop cancelled during sweep")
