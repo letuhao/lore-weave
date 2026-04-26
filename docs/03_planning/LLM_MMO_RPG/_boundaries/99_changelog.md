@@ -6,6 +6,84 @@
 
 ---
 
+## 2026-04-27 — PCS_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 4/4 FINAL)
+
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session 2026-04-27 → None (RELEASE after 4-commit PCS_001 cycle)
+  - `01_feature_ownership_matrix.md`:
+    - 2 PCS_001 aggregate rows: DRAFT → **CANDIDATE-LOCK 2026-04-27 closure pass 4/4** (pc_user_binding + pc_mortality_state)
+- **PCS_001 status header** in `PCS_001_pc_substrate.md`: DRAFT → CANDIDATE-LOCK 2026-04-27 (4-commit cycle complete)
+- **PCS_001 §20 status transition note** updated to reflect CANDIDATE-LOCK 4/4
+- **`features/06_pc_systems/_index.md` PCS_001 row** updated: status CANDIDATE-LOCK + 4-commit cycle reference
+- **`features/06_pc_systems/_index.md` folder status:** OPEN → COMPLETE 2026-04-27
+
+### PCS_001 FOUNDATION FOLDER MILESTONE SUMMARY (4 commits across single lock-cycle)
+
+Files created (cumulative across 4 commits):
+- features/06_pc_systems/_index.md (folder index; updated to COMPLETE)
+- features/06_pc_systems/00_CONCEPT_NOTES.md (Q1-Q10 LOCKED + V1 scope finalized; 6-batch deep-dive 2026-04-27 reasoning)
+- features/06_pc_systems/01_REFERENCE_GAMES_SURVEY.md (Phase 0 commit 3c76f33; 10 game references + Wuxia novel canon)
+- features/06_pc_systems/PCS_001_pc_substrate.md (~900 line DRAFT spec; §1-§20 sections; 10 V1 AC; 10 deferrals)
+- catalog/cat_06_PCS_pc_systems.md (PCS_001 DRAFT appendage with PCS-A1..A10 axioms + PCS-D1..D10 deferrals + PCS-11..PCS-20 V1 catalog entries; existing PCS-1..PCS-10 historical entries preserved)
+
+Boundary expansions (commits 2/4 + 4/4):
+- 2 NEW PCS_001-owned aggregates (pc_user_binding + pc_mortality_state)
+- 1 NEW EVT-T4 System sub-type (PcRegistered)
+- 5 NEW EVT-T8 Administrative sub-shapes (Forge:RegisterPc + Forge:BindPcUser + Forge:EditPcUserBinding + Forge:EditBodyMemory + Forge:EditPcMortalityState)
+- 3 V1 active EVT-T3 Derived delta_kinds (DyingTransition + DeathTransition + GhostTransition); 3 V1+ reserved (RespawnTransition + ResurrectionTransition + GhostDispersedTransition)
+- 1 NEW EVT-T1 Submitted sub-type (PcTransmigrationCompleted; renamed from PcXuyenKhongCompleted per user direction; schema V1; emission V1+)
+- 1 NEW namespace: `pc.*` (7 V1 rules + 3 V1+ reservations)
+- 2 NEW RealityManifest CanonicalActorDecl additive fields (body_memory_init + user_id_init; REQUIRED V1 for kind=Pc)
+- PCS-* stable-ID prefix already registered (line 148 catalog-file-per-category list); cat_06_PCS_pc_systems.md formalized with PCS-A1..A10 axioms
+
+Q-LOCKED summary (Q1-Q10 LOCKED via 6-batch deep-dive 2026-04-27 user "approve" across all batches; 1 REFINEMENT + 1 RENAME):
+- Q1 (A): PcId(Uuid) mirror NpcId + DP-A12 module-private constructor
+- Q2 (A): Single pc_user_binding aggregate
+- Q3 (C): Canonical seed + Forge admin V1; runtime login V1+ via PO_001 PCS-D1
+- Q4 (B): Defer pc_stats_v1_stub V1+ — PROG_001 + RES_001 + PL_006 cover stats
+- Q5 ⚠ REFINEMENT (D): Full PcBodyMemory schema with native_skills/motor_skills V1 empty Vec reserved
+- Q6 (A): Full 4-variant LeakagePolicy V1
+- Q7 (A): Full 4-state pc_mortality_state V1; V1+ Respawn flow + Resurrection deferred PCS-D2
+- Q8 (A): V1 strict single-reality; V2+ Heresy via WA_002 (universal substrate discipline)
+- Q9 (C): V1 cap=1 PC per reality via row count Stage 0 schema validator; V1+ relax via RealityManifest.max_pc_count Optional (PCS-D3); FAC_001 Q2 REVISION pattern
+- Q10 (A): Single event PcTransmigrationCompleted; PCS_001 EVT-T1 owns; TDIL_001 actor_clocks subscribes per TDIL §10 clock-split contract
+
+3-layer architectural model post-ACT_001 (PCS-A1..A10):
+- L1 Identity (ACT_001 actor_core; PCS_001 reads)
+- L2 Capability/Kind (ActorId::Pc variant; PCS_001 owns PcId newtype)
+- L3 PC-specific (PCS_001 owns pc_user_binding + pc_mortality_state)
+
+Cross-feature deferrals RESOLVED:
+- **WA_006 §6 closure pass pc_mortality_state aggregate handoff** → ✅ RESOLVED via PCS_001 §3.2
+
+Phase 3 cleanup applied (commit 3/4 7e3218e) — 5 fixes:
+- S1.1 §3.1: PcBodyMemory::native_default constructor helper for native PC fallback
+- S1.2 §11 sequence: extended Stage 0 schema validation flow with V1 cap=1 + mortality_config validation + body_memory_init fallback semantics
+- S1.3 §15: clarified "Schema active V1 / Emission V1+" semantic distinction
+- S1.4 §16 AC-PCS-3: SPIKE_01 turn 5 literacy slip AC scope clarified (V1 schema verification; V1+ A6 detection)
+- S1.5 §7 subscribe pattern: V1+ AI-controls-PC-offline cross-reference (ACT-D1)
+
+V1 quantitative summary:
+- 2 PCS_001 aggregates (pc_user_binding + pc_mortality_state)
+- 1 EVT-T4 + 5 EVT-T8 + 3 V1 EVT-T3 + 3 V1+ EVT-T3 + 1 EVT-T1
+- 7 V1 reject rules (pc.* namespace) + 3 V1+ reservations
+- 2 RealityManifest CanonicalActorDecl additive fields
+- PcBodyMemory schema (SoulLayer + BodyLayer + LeakagePolicy 4-variant)
+- MortalityStateValue 4-state schema + 6-variant TransitionTrigger
+- 10 V1 AC + 4 V1+ deferred + 10 deferrals (PCS-D1..PCS-D10)
+- ~900 line DRAFT spec
+- 4-commit cycle complete
+
+NEW V1+ priorities post-PCS_001:
+- **PO_001 Player Onboarding** — UI flow consumes PCS_001 primitives (Forge:RegisterPc + Forge:BindPcUser per PCS-D1)
+- **AI-controls-PC-offline V1+** — activates ACT_001 actor_chorus_metadata for PC when offline (cross-ref ACT-D1; pc_user_binding.current_session = None trigger)
+- **PCS-D2 Respawn flow** — Dying → Alive transition activation (V1 Dying state FROZEN)
+- **PCS-D7 A6 canon-drift detector** — body_memory.{soul, body}.knowledge_tags integration for SPIKE_01 turn 5 literacy slip detection (05_llm_safety V1+)
+- **PCS-D5 NPC body-substitution** — V1+ shared body_memory schema (cross-ref ACT-D5)
+
+---
+
 ## 2026-04-27 — PCS_001 PC Substrate DRAFT promotion + boundary register (commit 2/4)
 
 - **Lock CLAIMED** at start of this commit (`[boundaries-lock-claim]`); release deferred to commit 4/4 closure pass per PCS_001 4-commit cycle
