@@ -131,6 +131,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `map.*` | MAP_001 Map Foundation (added 2026-04-26 DRAFT; expanded 2026-04-26 Phase 3 cleanup to 13 V1 rule_ids — missing_layout_decl / duplicate_layout / position_out_of_bounds / connection_target_unknown / cross_tier_connection_disallowed / invalid_tier_metadata / asset_ref_unresolved / asset_review_pending / connection_distance_invalid / self_referential_connection / **tier_field_mismatch** / **connection_duration_invalid** / **asset_pipeline_not_active_v1**; +3 V1+ reservations: cross_reality_layout / layout_too_dense / connection_method_unsupported) |
 | `csc.*` | CSC_001 Cell Scene Composition (added 2026-04-26 DRAFT; expanded 2026-04-26 Phase 3 cleanup to 9 V1 rule_ids — skeleton_not_found / invalid_zone_assignment / zone_overlap / actor_on_non_walkable / item_on_non_placeable / entity_missing_from_assignment / layer3_retry_exhausted / placetype_no_skeleton_v1 / **zone_empty_fallback_used**; +4 V1+ reservations: skeleton_invalid / procedural_density_too_high / narration_unsafe_content / **layer3_occupant_set_changed**) |
 | `resource.*` | RES_001 Resource Foundation (added 2026-04-26 DRAFT; 12 V1 rule_ids — balance.insufficient / balance.invalid_owner / balance.negative_amount_forbidden / vital.below_zero / vital.body_bound_transfer_forbidden / trade.npc_insufficient_funds / trade.npc_insufficient_goods / trade.pc_insufficient_funds / trade.pc_insufficient_goods / trade.invalid_price / harvest.empty_cell / harvest.not_owner_or_orphan; +3 V1+ reservations: balance.cap_exceeded / trade.bargaining_failed / item.instance_not_found) |
+| `race.*` | IDF_001 Race Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate); 5 V1 rule_ids — unknown_race_id / assignment_immutable / lex_axiom_forbidden (V1+ reserved; V1 schema-present but always None axiom requires_race) / size_category_invalid / lifespan_invalid; +4 V1+ reservations: cross_reality_mismatch / transformation_invalid / reincarnation_invalid_target / cyclic_lineage_v1plus. V1 user-facing rejects: unknown_race_id + assignment_immutable only (size + lifespan are schema-level canonical seed validation, unreachable in normal operation). i18n: V1 ships `user_message: I18nBundle` per RES_001 §2 contract from day 1. |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
@@ -250,6 +251,17 @@ pub struct RealityManifest {
     /// AssemblePrompt N — top-N highest-intensity desires included in NPC persona context.
     /// Default: 3 (matches PL_001 §17 prompt-budget discipline). Author-tunable per reality.
     pub desires_prompt_top_n: u8,
+
+    // ─── IDF_001 Race Foundation extension (added 2026-04-26 DRAFT — Tier 5 Actor Substrate) ───
+    // REQUIRED V1: every reality MUST declare ≥1 race in races (Modern reality with single
+    // Human race still explicit). RaceDecl shape per IDF_001 §3.2: { race_id, display_name (I18nBundle),
+    // default_lifespan_years (u16), size_category (6-variant Tiny/Small/Medium/Large/Huge/Gargantuan),
+    // default_mortality_kind_override (Option<MortalityKind>), allowed_lex_axiom_tags (Vec<String>
+    // for V1+ Lex gate; V1 always populated but never consumed), canon_ref (Option<GlossaryEntityId>) }.
+    // Cross-reality RaceId collision allowed (different realities have different race semantics for
+    // same string). Wuxia preset ships 5 races (Phàm nhân/Cultivator/Demon/Ghost/Beast); Modern 1
+    // (Human); Sci-fi 3 (Human/AlienX/AlienY).
+    pub races: Vec<RaceDecl>,                      // see IDF_001 §3.2 for RaceDecl shape
 
     // ─── Future feature extensions ───
 }

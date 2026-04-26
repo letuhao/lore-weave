@@ -6,6 +6,29 @@
 
 ---
 
+## 2026-04-26 — IDF folder DRAFT promotion 1/15: IDF_001 Race Foundation DRAFT + boundary register
+
+- **Lock claim:** main session 2026-04-26 (IDF folder Phase 1 — 5 IDF features DRAFT promotion + Phase 3 + closure pass cycle); this commit `[boundaries-lock-claim]` (claim only — release at IDF_005 closure final commit per PL folder pattern; ~15 commits total)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claimed by main session 2026-04-26 (IDF folder DRAFT promotion cycle)
+  - `01_feature_ownership_matrix.md`:
+    - NEW row: `race_assignment` aggregate (T2/Reality, owner=IDF_001 Race Foundation DRAFT 2026-04-26 — Tier 5 Actor Substrate)
+    - EVT-T4 System sub-type ownership: NEW `RaceBorn` (IDF_001 owns; emitted alongside EF_001 EntityBorn at canonical seed)
+    - EVT-T8 Administrative sub-shape ownership: NEW `Forge:EditRaceAssignment` (IDF_001 owns; uses forge_audit_log)
+    - Stable-ID prefix table: NEW `RAC-*` row (axioms / deferrals / decisions; catalog/cat_00_IDF_identity_foundation.md to be added)
+  - `02_extension_contracts.md`:
+    - §1.4 RejectReason namespace: NEW `race.*` row with 5 V1 rule_ids (unknown_race_id / assignment_immutable / lex_axiom_forbidden / size_category_invalid / lifespan_invalid) + 4 V1+ reservations (cross_reality_mismatch / transformation_invalid / reincarnation_invalid_target / cyclic_lineage_v1plus). V1 user-facing rejects: unknown_race_id + assignment_immutable only. i18n: ships I18nBundle from day 1 per RES_001 §2 contract.
+    - §2 RealityManifest: NEW `races: Vec<RaceDecl>` REQUIRED V1 extension entry. Wuxia preset 5 races; Modern 1; Sci-fi 3. Cross-reality RaceId collision allowed (different semantics).
+- **IDF_001 file:** renamed `IDF_001_race_concept.md` → `IDF_001_race.md`; rewritten as full §1-§19 DRAFT spec mirroring EF_001 structure. Status header CONCEPT → DRAFT 2026-04-26. 10 V1-testable acceptance scenarios AC-RAC-1..10 + 3 V1+ deferred (AC-RAC-V1+1..3). 11 deferrals RAC-D1..D11.
+- **Survey-informed adjustments locked** (per `ae7d280` POST-SURVEY confirmations):
+  - RAC-Q4 (size categories) LOCKED 6 V1: Tiny/Small/Medium/Large/Huge/Gargantuan (Pathfinder 2e full coverage; POST-SURVEY-Q2)
+  - RAC-D11 NEW: cultivation realm = SEPARATE V1+ feature CULT_001 (NOT IDF_001 expansion; POST-SURVEY-Q5)
+- **Reason:** Tier 5 Actor Substrate Foundation start. IDF_001 is first of 5 IDF features. Mirrors PL folder closure pattern (lock-claim once; release at last commit). Ready for AC-RAC-1..10 integration tests against Wuxia + Modern reality fixtures.
+- **Drift watchpoints unchanged at 8 active.**
+- **Lock continues:** still claimed for IDF_001 Phase 3 + closure + IDF_002/003/004/005 cycle. Release at IDF_005 closure final commit with `[boundaries-lock-release]` prefix.
+
+---
+
 ## 2026-04-26 — NPC_003 NPC Desires LIGHT DRAFT (sandbox-mitigation Path A V1)
 
 - **Lock claim:** main session 2026-04-26 (NPC_003 Desires LIGHT — Path A V1 from `13_quests/00_V2_RESERVATION.md` §5); this commit `[boundaries-lock-claim+release]` (single-cycle)
