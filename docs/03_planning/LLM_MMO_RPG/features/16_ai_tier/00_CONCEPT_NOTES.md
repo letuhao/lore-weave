@@ -406,18 +406,132 @@ pub struct TierCapacityCaps {
 | **AIT-D6** | Untracked NpcId persistence beyond cell-leave (causal-ref pin) | V1+30d when QST_001 V2 needs it |
 | **AIT-D7** | LLM-propose-promotion with author-confirm | V1+30d UX iteration |
 
-### §16.6 Q4-Q12 still open
+### §16.6 Q4+Q5+Q11 LOCKED 2026-04-27 (Untracked generation pipeline)
 
-After Q1+Q2 LOCKED (with Q3 implicitly resolved), these remain pending user decision:
+| Sub | Decision |
+|---|---|
+| Q4a | Generation architecture | **Hybrid 2-stage** — Stage 1 template+RNG (deterministic, cheap) at cell-entry; Stage 2 LLM-flavor (lazy, on first PL_005 interaction) |
+| Q4b | Stage 1 template declaration | Author declares `UntrackedTemplateDecl` per PlaceType in RealityManifest with role list (role_id + display_name_template + actor_class + name_pool + stat_ranges + appearance_hints + default_dialogue_register) |
+| Q4c | Stage 1 RNG seed | `blake3(reality_id \|\| cell_id \|\| fiction_day \|\| slot_index)` — same as Q2f for replay determinism |
+| Q4d | Stage 2 LLM trigger | **First PL_005 interaction targeting Untracked** (lazy on-demand) |
+| Q4e | Stage 2 cache | In-memory per session; discarded with NPC at cell-leave / session-end |
+| Q4f | Author UX V1 | RealityManifest editing via WA_003 Forge; richer template editor V1+30d |
+| Q5a | Generation timing V1 | **Cell-entry** (PC entity_binding location change INTO cell triggers); on-demand AIT-D8 V1+30d |
+| Q5b | Batched per cell entry | YES — single Stage 1 batch per cell+day; all density slots filled at observation moment |
+| Q5c | Re-entry within same day | Same blake3 seed → same Untracked NPCs (deterministic) |
+| Q5d | Re-entry new day | Different seed → DIFFERENT Untracked (natural crowd rotation) |
+| Q5e | Generation event | NEW EVT-T5 sub-type `Generated:UntrackedNpcSpawn { reality_id, cell_id, fiction_day, slot_index, npc_id, role_id }` |
+| Q5f | Stage 2 LLM-flavor timing | Lazy first-interaction only; one LLM call per Untracked per session |
+| Q11a | NpcId continuity at promotion | **STABLE** — ephemeral blake3-derived NpcId becomes persistent in same NPC_001 namespace |
+| Q11b | Persona crystallization | Stage 1 stats + Stage 2 LLM-flavor (if cached; else synthesized at promotion moment) snapshot into NPC_001 npc core aggregate |
+| Q11c | Causal-ref preservation | Events with `actor: NpcId` from pre-promotion remain valid; full history queryable post-promotion |
+| Q11d | Demotion reverse path | V1+30d (AIT-D2) — TBD when AIT-D2 designed |
+| Q11e | Promotion timing | Atomic at turn-boundary; ActorProgression aggregate created with Stage 1 stats as initial_value per kind_id |
 
-- **Q4 — Untracked NPC generation mechanism** (next deep-dive — paired with Q5+Q11): pure LLM / template / hybrid
-- **Q5 — Generation timing**: cell-entry / on-demand / bootstrap; deterministic seed already locked at Q2f
-- **Q6 — Discard policy V1**: cell-leave / session-end / time-based / hybrid (already partial via Q2g)
-- **Q7 — Behavior model per tier**: PC/Major/Minor/Untracked closed-set capability
-- **Q8 — Per-cell-type Untracked density** declared in RealityManifest (per PlaceType)
-- **Q9 — Action availability per tier**: PL_005 InteractionKind subset per tier
-- **Q10 — Replay determinism for Untracked**: already locked by Q2f deterministic seed
-- **Q11 — Untracked promotion preserves identity** (paired with Q4+Q5 in next batch)
-- **Q12 — Tier-aware AssemblePrompt budget**: Major full persona / Untracked summary-line only
+**Concrete shape additions (Q4+Q5+Q11):**
 
-Q1+Q2 LOCKED unblocks Q4+Q5+Q11 batch (Untracked generation mechanism + timing + promotion identity preservation).
+```rust
+pub struct UntrackedTemplateDecl {
+    pub place_type: PlaceTypeRef,
+    pub roles: Vec<UntrackedRoleDecl>,
+}
+
+pub struct UntrackedRoleDecl {
+    pub role_id: String,
+    pub display_name_template: I18nBundle,           // {name} substituted from name_pool
+    pub actor_class: ActorClassRef,
+    pub name_pool: Vec<String>,                      // RNG picks per slot_index
+    pub stat_ranges: Vec<StatRangeDecl>,             // PROG_001 ProgressionInstance min/max
+    pub appearance_hints: I18nBundle,
+    pub default_dialogue_register: DialogueRegister,
+}
+
+pub struct StatRangeDecl {
+    pub kind_id: ProgressionKindId,
+    pub min: u64,
+    pub max: u64,
+}
+
+// V1 NEW EVT-T5 sub-types:
+//   Generated:UntrackedNpcSpawn { reality_id, cell_id, fiction_day, slot_index, npc_id, role_id }
+//   Generated:UntrackedNpcDiscarded — see Q6 §16.7
+```
+
+### §16.7 Q6+Q12 LOCKED 2026-04-27 (Discard policy + LLM context budget)
+
+| Sub | Decision |
+|---|---|
+| Q6a | Cell-leave trigger | **EF_001 entity_binding location change AWAY from cell** — atomic at turn-boundary |
+| Q6b | Session-end trigger | PL_001 §session lifecycle: disconnect / sleep major (8h+) / explicit `/end` MetaCommand / 24h idle timeout |
+| Q6c | Causal-ref pin V1 | **NO** — defer V1+30d (AIT-D6); V1 simple discard regardless; Forge promotion is V1 escape valve |
+| Q6d | Time-based discard V1 | **NO** — daily rotation Q5d covers ephemeral feel |
+| Q6e | Discard event | NEW EVT-T5 sub-type `Generated:UntrackedNpcDiscarded { reality_id, cell_id, fiction_day, slot_index, npc_id, reason }` (mirror spawn for audit symmetry) |
+| Q12a | Per-tier persona detail | **PC: FullPersona / Major: FullPersona / Minor: CondensedPersona / Untracked: SummaryLine** (V1 defaults) |
+| Q12b | Untracked summary composition | Stage 1 template `display_name_template` + `actor_class` + `appearance_hints` + Stage 2 cached flavor (if available) |
+| Q12c | Roster ordering | Tier-priority (PC > Major > Minor > Untracked); within tier: NPC_002 Chorus priority |
+| Q12d | Roster caps V1 | **5 FullPersona + 8 Condensed + 12 Summary** defaults; author-tunable in `tier_roster_caps: Option<TierRosterCaps>` |
+| Q12e | Overflow handling | **Aggregate format**: "...and N other patrons go about their business" |
+| Q12f | Author per-NPC bump | V1+30d (AIT-D12) |
+
+**Concrete shape additions (Q6+Q12):**
+
+```rust
+pub enum UntrackedDiscardReason {
+    CellLeave,                                       // V1 — Q6a
+    SessionEnd,                                      // V1 — Q6b
+    PromotedToTracked,                               // V1 — Q11
+    StaleTimeout,                                    // V1+30d — AIT-D8
+    CausalRefExpired,                                // V1+30d — AIT-D6
+}
+
+pub enum PromptDetail {
+    FullPersona,                                     // ~300-500 tokens
+    CondensedPersona,                                // ~80-150 tokens
+    SummaryLine,                                     // ~20-40 tokens
+    Hidden,                                          // 0 tokens
+}
+
+pub struct TierRosterCaps {
+    pub max_full_persona: u8,                        // V1 default 5 (PC + Major shared cap)
+    pub max_condensed: u8,                           // V1 default 8 (Minor)
+    pub max_summary: u8,                             // V1 default 12 (Untracked)
+    pub overflow_format: OverflowFormat,
+}
+
+pub enum OverflowFormat {
+    Truncate,
+    Aggregate,                                       // V1 default — "...and N other patrons"
+}
+```
+
+### §16.8 V1+ deferrals (cumulative AIT-D1..D15 from Q1-Q6+Q11+Q12)
+
+| ID | Deferral | Trigger |
+|---|---|---|
+| AIT-D1 | Auto-promotion via significance threshold | V1+30d |
+| AIT-D2 | Demotion via Forge | V1+30d |
+| AIT-D3 | Legendary tier (DF Legends mode) | V2 |
+| AIT-D4 | Faction tier collective | V3 |
+| AIT-D5 | Dynamic capacity adjustment | V2+ |
+| AIT-D6 | Untracked NpcId persistence beyond cell-leave (causal-ref pin) | V1+30d |
+| AIT-D7 | LLM-propose-promotion with author-confirm | V1+30d |
+| AIT-D8 | On-demand generation beyond cell-entry | V1+30d |
+| AIT-D9 | Multi-day Untracked persistence | V1+30d |
+| AIT-D10 | Stage 2 LLM-flavor cache cross-session | V2 |
+| AIT-D11 | Untracked-to-Untracked interactions | V2 |
+| AIT-D12 | Author per-NPC persona-detail bump | V1+30d |
+| AIT-D13 | Dynamic roster caps | V2 |
+| AIT-D14 | Adaptive PromptDetail | V2 |
+| AIT-D15 | Untracked summary localization variants | V1+30d |
+
+### §16.9 Q7-Q9 still open
+
+After Q1-Q6+Q11+Q12 LOCKED, remaining:
+
+- **Q7 — Behavior model per tier** (next deep-dive batched with Q8+Q9): closed-set capability per PC/Major/Minor/Untracked
+- **Q8 — Per-cell-type Untracked density** (full DensityDecl shape; Q5 already set up RealityManifest field)
+- **Q9 — Action availability per tier** (PL_005 InteractionKind subset per tier)
+
+Q7+Q8+Q9 are tightly coupled (all about per-tier behavior/availability). Natural next batch.
+
+Q10 already locked by Q2f (deterministic blake3 seed for Untracked replay). No deep-dive needed.
