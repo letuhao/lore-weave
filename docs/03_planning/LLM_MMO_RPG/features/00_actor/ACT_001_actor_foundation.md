@@ -117,8 +117,8 @@ ACT_001 ships **4 aggregates** V1 (replaces 3 from NPC_001 R8 imports + adds 1 n
 #[dp(type_name = "actor_core", tier = "T2", scope = "reality")]
 pub struct ActorCore {
     pub actor_id: ActorId,                      // EF_001 §5.1 sibling pattern
-    pub glossary_entity_id: GlossaryEntityId,   // canon ref
-    pub current_region_id: ChannelId,           // points to a cell channel
+    pub glossary_entity_id: GlossaryEntityId,   // canon ref; populated from CanonicalActorDecl.glossary_entity_id (P2 LOCKED 2026-04-27)
+    pub current_region_id: ChannelId,           // cell-tier channel; populated from CanonicalActorDecl.spawn_cell at canonical seed (P2 LOCKED 2026-04-27); runtime updates via cell migration events
     pub current_session_id: Option<SessionId>,  // NPC: ≤1 session at a time per R8-L1; PC: present when online; Synthetic: None
     pub mood: ActorMood,                        // multi-axis emotional state (B1 LOCKED 2026-04-27 type lockdown; was NpcMood single-axis)
     pub core_beliefs: CanonRef,                 // L1 canon reference (book-derived, immutable per realities)
@@ -709,6 +709,8 @@ ACT-A7 Synthetic forbidden V1 + ACT-A8 Cross-reality strict V1.
 | `actor.kind_specific_field_mismatch` | 0 schema | (Schema-level; not user-facing) | chorus_metadata for non-AI-driven actor V1 (e.g., PC online attempting populate) |
 | `actor.opinion_self_target_forbidden` | 0 schema | "Actor không thể có opinion về chính mình" (Actor can't opine self) | observer == target in actor_actor_opinion |
 | `actor.duplicate_session_memory` | 0 schema | (Schema-level; not user-facing) | Multi-row per (actor, session) pair |
+| `actor.spawn_cell_unknown` | 0 schema | (Schema-level; canonical seed) | CanonicalActorDecl.spawn_cell ∉ RealityManifest.places (P2 LOCKED 2026-04-27) |
+| `actor.glossary_entity_unknown` | 0 schema | (Schema-level; canonical seed) | CanonicalActorDecl.glossary_entity_id ∉ knowledge-service canon (P2 LOCKED 2026-04-27) |
 
 V1+ reservation rules:
 - `actor.bilateral_opinion_unsupported_v1` — V1+ when NPC→NPC + PC→PC events ship (currently V1 NPC→PC only)
@@ -725,15 +727,35 @@ ACT_001 canonical seed flows through standard RealityBootstrapper pipeline:
 
 1. **knowledge-service** ingests book canon → emits `RealityManifest` with `canonical_actors: Vec<CanonicalActorDecl>` (extends with ACT_001 fields)
 2. **world-service RealityBootstrapper** validates manifest:
-   - Stage 0 schema validation per actor: actor_id valid; kind in {Pc, Npc, (Synthetic excluded V1)}; cross-reality consistency; chorus_metadata fields populated for NPCs (greeting_obligation + priority_tier_hint + desires)
-   - Stage 1: emit `ActorBorn` per actor (PC + NPC; NOT Synthetic)
-   - Stage 2: emit `ActorChorusMetadataBorn` per NPC (chorus_metadata fields populated)
-3. **ACT_001 owner-service** (world-service module) writes `actor_core` rows + `actor_chorus_metadata` rows (NPCs only V1)
+   - Stage 0 schema validation per actor:
+     - `actor_id` valid + `kind` in {Pc, Npc} (Synthetic excluded V1 per ACT-A7)
+     - **`spawn_cell` ∈ RealityManifest.places** (must reference declared cell-tier channel; reject `actor.spawn_cell_unknown` if missing)
+     - **`glossary_entity_id` ∈ knowledge-service canon** (must reference valid glossary entry; reject `actor.glossary_entity_unknown` if missing)
+     - cross-reality consistency
+     - `chorus_metadata` Some for NPCs / None for PCs (V1 control source discipline)
+   - Stage 1: emit EF_001 `EntityBorn { entity_id: actor_id, entity_type: Actor(kind), cell_id: spawn_cell }` (cell membership populated from spawn_cell)
+   - Stage 2: emit ACT_001 `ActorBorn { actor_id, kind, traits_summary }` per actor (PC + NPC; NOT Synthetic)
+   - Stage 3: emit ACT_001 `ActorChorusMetadataBorn` per NPC (chorus_metadata fields populated)
+3. **ACT_001 owner-service** (world-service module) writes:
+   - `actor_core` row per actor — `current_region_id ← spawn_cell` + `glossary_entity_id ← decl.glossary_entity_id` + `mood ← mood_init` + `flexible_state ← flexible_state_init` + `core_beliefs ← core_beliefs_ref.unwrap_or(default)`
+   - `actor_chorus_metadata` row per NPC (sparse; NPCs only V1)
 4. Downstream features V1+ consume actor substrate:
    - NPC_002 Chorus Tier 2-3 priority reads `actor_core` + `actor_chorus_metadata`
    - V1+ NPC↔NPC drama reads `actor_actor_opinion` for sect rivalry
    - V1+ AI-controls-PC-offline activates `actor_chorus_metadata` PC population
    - PCS_001 future builds on top of ACT_001 stable base
+
+### Field-mapping table: CanonicalActorDecl → ActorCore
+
+| ActorCore field | CanonicalActorDecl source field | Notes |
+|---|---|---|
+| `actor_id` | `actor_id` | Direct copy |
+| `glossary_entity_id` | `glossary_entity_id` | Direct copy; REQUIRED V1 (P2 LOCKED 2026-04-27) |
+| `current_region_id` | `spawn_cell` | Initial cell location; REQUIRED V1 (P2 LOCKED 2026-04-27) |
+| `current_session_id` | (none) | None at bootstrap; runtime populates per session lifecycle |
+| `mood` | `mood_init` | Initial mood (multi-axis ActorMood B1 LOCKED) |
+| `core_beliefs` | `core_beliefs_ref.unwrap_or(default)` | Optional in decl; unwraps to default canon if None |
+| `flexible_state` | `flexible_state_init` | Initial mutable state (typed standard fields B2 LOCKED) |
 
 ---
 
@@ -746,24 +768,38 @@ RealityManifest {
         CanonicalActorDecl {
             actor_id: ActorId::Pc(PcId(uuid_lm)),
             kind: ActorKind::Pc,
+            glossary_entity_id: glossary_entity_id("ly_minh_actor_canon"),  // P2 LOCKED 2026-04-27
+            spawn_cell: channel_id("hangzhou_tieu_diem_inn_cell"),          // P2 LOCKED 2026-04-27
             canonical_traits: CanonicalTraits { name: "Lý Minh", role: "PC", ... },
-            flexible_state_init: FlexibleState::default(),
+            flexible_state_init: FlexibleState::empty(),
             knowledge_tags: vec![knowledge_tag("modern_tech"), knowledge_tag("wuxia_lore")],
             voice_register: VoiceRegister::TerseFirstPerson,
-            core_beliefs_ref: Some(canon_ref("ly_minh_canon")),
-            // chorus_metadata fields = None (PC always user-driven V1)
-            chorus_metadata: None,
+            core_beliefs_ref: Some(glossary_entity_id("ly_minh_belief_set")),
+            mood_init: ActorMood::NEUTRAL,                                  // multi-axis B1 LOCKED
+            chorus_metadata: None,                                          // PC always user-driven V1
         },
 
         // NPC Du sĩ — actor_core + chorus_metadata
         CanonicalActorDecl {
             actor_id: ActorId::Npc(NpcId(uuid_dusi)),
             kind: ActorKind::Npc,
+            glossary_entity_id: glossary_entity_id("du_si_actor_canon"),    // P2 LOCKED 2026-04-27
+            spawn_cell: channel_id("hangzhou_tieu_diem_inn_cell"),          // P2 LOCKED 2026-04-27 (same cell as Lý Minh)
             canonical_traits: CanonicalTraits { name: "Du sĩ", role: "scholar", ... },
-            flexible_state_init: FlexibleState::default(),
+            flexible_state_init: FlexibleState {
+                current_disposition: Disposition::Neutral,                  // typed standard field B2 LOCKED
+                last_interacted_with: None,
+                last_emotional_event: None,
+                recent_event_refs: vec![],
+                secret_held: None,
+                extensions: HashMap::new(),
+            },
             knowledge_tags: vec![knowledge_tag("daoist_scripture"), knowledge_tag("wuxia_lore")],
             voice_register: VoiceRegister::Novel3rdPerson,
-            core_beliefs_ref: Some(canon_ref("du_si_canon")),
+            core_beliefs_ref: Some(glossary_entity_id("du_si_belief_set")),
+            mood_init: ActorMood {                                          // multi-axis B1 LOCKED
+                joy: 30, anger: 0, sadness: 10, fear: 0,                    // moderate cheerful baseline
+            },
             chorus_metadata: Some(ChorusMetadataDecl {
                 greeting_obligation: GreetingObligation::Required,
                 priority_tier_hint: PriorityTierHint::High,
@@ -771,7 +807,7 @@ RealityManifest {
             }),
         },
 
-        // Tiểu Thúy + Lão Ngũ NPCs — similar shape
+        // Tiểu Thúy + Lão Ngũ NPCs — similar shape with spawn_cell + glossary_entity_id
         // ...
     ],
 }
@@ -781,14 +817,17 @@ RealityManifest {
 1. Stage 0 schema validation per actor:
    - actor_id valid → ✓
    - kind ∈ {Pc, Npc} (Synthetic rejected per Q4 LOCKED `actor.synthetic_actor_forbidden`) → ✓
+   - **`spawn_cell` ∈ RealityManifest.places** (cell-tier channel must be declared per PF_001) → ✓ (reject `actor.spawn_cell_unknown` if missing; P2 LOCKED 2026-04-27)
+   - **`glossary_entity_id` ∈ knowledge-service canon** (must reference valid glossary entry) → ✓ (reject `actor.glossary_entity_unknown` if missing; P2 LOCKED 2026-04-27)
    - chorus_metadata Some for NPCs / None for PCs (V1 control source discipline; V1+ AI-controls-PC-offline relaxes for offline PCs) → ✓
 2. RealityBootstrapper emits per actor:
-   - 1 EVT-T4 ActorBorn (all 5 actors: 1 PC + 4 NPCs)
-   - 4 EVT-T4 ActorChorusMetadataBorn (NPCs only V1)
+   - 1 EVT-T4 EF_001 EntityBorn `{ entity_id: actor_id, entity_type: Actor(kind), cell_id: spawn_cell }` (cell membership)
+   - 1 EVT-T4 ACT_001 ActorBorn (all 5 actors: 1 PC + 4 NPCs)
+   - 4 EVT-T4 ACT_001 ActorChorusMetadataBorn (NPCs only V1)
 3. ACT_001 owner-service writes:
-   - 5 rows in actor_core (PC + 4 NPCs); each row populates from CanonicalActorDecl.flexible_state_init → ActorCore.flexible_state, mood_init → ActorCore.mood, etc.
+   - 5 rows in actor_core (PC + 4 NPCs); each row populates from CanonicalActorDecl: `glossary_entity_id ← decl.glossary_entity_id`, `current_region_id ← decl.spawn_cell`, `flexible_state ← decl.flexible_state_init`, `mood ← decl.mood_init`, `core_beliefs ← decl.core_beliefs_ref.unwrap_or(default)`, etc.
    - 4 rows in actor_chorus_metadata (NPCs only); each row populates from CanonicalActorDecl.chorus_metadata.{greeting_obligation, priority_tier_hint, desires}
-4. Causal-ref chain: bootstrap_event → ActorBorn → row_insert → ActorChorusMetadataBorn (NPC only) → row_insert
+4. Causal-ref chain: bootstrap_event → EntityBorn → entity_binding row_insert → ActorBorn → actor_core row_insert → ActorChorusMetadataBorn (NPC only) → actor_chorus_metadata row_insert
 
 **Read examples post-bootstrap:**
 - `read_actor_core(ly_minh)` → PC core (canonical_traits + knowledge_tags + voice_register + ...)
@@ -908,8 +947,22 @@ This DRAFT cycle (commits 2-3/5) adds the following boundary entries:
 
 ### `_boundaries/02_extension_contracts.md` (commit 2/5)
 
-- §1.4 namespace registration: `actor.*` (6 V1 rules + 3 V1+ reservations)
+- §1.4 namespace registration: `actor.*` (6 V1 rules + 3 V1+ reservations; +2 added 2026-04-27 P2 LOCKDOWN: spawn_cell_unknown + glossary_entity_unknown)
 - §2 RealityManifest CanonicalActorDecl extension: chorus_metadata fields (Optional; populated for NPCs)
+
+### Phase 2 P2 follow-up (deferred until boundary lock free)
+
+The following boundary §2 update is NEEDED but DEFERRED to a follow-up commit when boundary lock is free (TDIL_001 currently holds lock 2026-04-27):
+
+- `_boundaries/02_extension_contracts.md` §2 CanonicalActorDecl shape: ADD 2 fields
+  * `pub spawn_cell: ChannelId` — REQUIRED V1; references RealityManifest.places cell-tier channel; cross-validated at canonical seed
+  * `pub glossary_entity_id: GlossaryEntityId` — REQUIRED V1; references knowledge-service canon entry
+- `_boundaries/02_extension_contracts.md` §1.4 `actor.*` namespace: ADD 2 V1 reject rules
+  * `actor.spawn_cell_unknown` — Stage 0 schema (canonical seed validation)
+  * `actor.glossary_entity_unknown` — Stage 0 schema (canonical seed validation)
+- `_boundaries/99_changelog.md`: append P2 closure-pass-extension entry
+
+This Phase 2 update is mechanical (additive to existing locked schema; no new aggregate; no new EVT sub-type). Targeted as small single-commit when lock free.
 
 ### `_boundaries/99_changelog.md` (commits 2/5 + 5/5)
 
