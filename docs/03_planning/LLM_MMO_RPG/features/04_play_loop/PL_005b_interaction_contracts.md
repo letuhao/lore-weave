@@ -13,14 +13,16 @@
 
 ## §1 Common payload base (inherited by all 5 V1 kinds)
 
-Every Interaction sub-type extends this base. Per [PL_005 §2](PL_005_interaction.md#2-domain-concepts) 4-role pattern + ProposedOutputs/ActualOutputs split.
+Every Interaction sub-type extends this base. Per [PL_005 §2](PL_005_interaction.md#2-domain-concepts) 4-role pattern + ProposedOutputs/ActualOutputs split. **TargetRef + ActorId types inherit from PL_005 §2** — PlaceId(ChannelId) newtype per PF_001 §3.1; ActorId from EF_001 §5.1.
 
 ```rust
 pub struct InteractionPayloadBase {
     // 4-role pattern (PL_005 §2)
     pub agent: Option<ActorId>,             // None ⇒ shifts to EVT-T5 Generated category (per Q2/B3)
+                                            // ActorId source-of-truth: EF_001 §5.1 (sibling of EntityId)
     pub tools: Vec<InstrumentRef>,          // 0+ — empty for body/non-physical
     pub direct_targets: Vec<TargetRef>,     // 1+ — receivers of direct interaction
+                                            // TargetRef::Place uses PlaceId(ChannelId) newtype per PF_001 §3.1
     pub indirect_targets: Vec<TargetRef>,   // 0+ V1 — bystanders observable in cell at fire-time
 
     // Outputs (atomic at validator stage per Q6/B4)
@@ -29,7 +31,8 @@ pub struct InteractionPayloadBase {
 
     // Audit + canon
     pub canon_drift_flags: Vec<DriftFlag>,  // populated by A6 (PL_001 §3.5 inherit)
-    pub narrator_text: Option<String>,      // post-validation LLM narration (≤2 KB after A6 sanitize)
+    pub narrator_text: Option<String>,      // post-validation LLM narration (≤2 KB after A6 sanitize);
+                                            // Speak-kind narrator_text flows through CSC_001 §[layer 4] LLM creative narration
     pub causal_refs: Vec<CausalRef>,        // EVT-A6 typed causal-refs (REQUIRED for NPCTurn-type Interactions)
 }
 
@@ -386,16 +389,21 @@ pub enum ExamineFocus {
 | BodyPart | ❌ | (eyes are implicit) |
 | Ability | ❌ V1 | (V1+ — DetectMagic / TrueSight abilities) |
 
-### 5.3 Allowed TargetRef
+### 5.3 Allowed TargetRef (ExamineTarget extension)
+
+Examine uses the **ExamineTarget enum** (PL_005 §2 — extends TargetRef with `MapNode` variant, resolves PF-Q4 + MAP-Q3).
 
 | Variant | direct_targets | Notes |
 |---|:---:|---|
-| Actor | ✅ exactly 1 | examining a person |
-| Item | ✅ exactly 1 | examining an object |
-| Place | ✅ exactly 1 | examining a location/scene |
+| `ExamineTarget::Actor(ActorId)` | ✅ exactly 1 | examining a person |
+| `ExamineTarget::Item(GlossaryEntityId)` | ✅ exactly 1 | examining an object (glossary-id ref V1; runtime Item aggregate V1+) |
+| `ExamineTarget::Place(PlaceId)` | ✅ exactly 1 | examining a location/scene at cell tier (per PF_001 §3.1; resolves PF-Q4) — see PL_005 §14.1 sequence |
+| `ExamineTarget::MapNode(ChannelId, ChannelTier)` | ✅ exactly 1 V1+ | examining non-cell map node ("examine the country") — V1 schema accepts; V1+ author-content-gated runtime activation per INT-D11 (resolves MAP-Q3) — see PL_005 §14.2 sequence |
 | (multi-target) | ❌ V1 | one-thing-at-a-time |
 
 `indirect_targets`: V2+ when bystander-observer feature ships (see §11 INT-D4).
+
+**ExamineTarget::MapNode V1 semantics:** schema accepts the variant + Stage 3.5.c map_layout validates ChannelTier matches map_layout aggregate; world-rule (Stage 7) rejects with `interaction.intent_unsupported` until first author reality registers MapNode-examine flow.
 
 ### 5.4 Allowed agent
 
@@ -465,9 +473,9 @@ pub enum UseIntent {
 
 | Variant | direct_targets | Notes |
 |---|:---:|---|
-| Actor | ✅ exactly 1 | potion on someone (self or other) |
-| Item | ✅ exactly 1 | key on lock; tool on object |
-| Place | ✅ exactly 1 | torch lit in dark cell |
+| Actor(ActorId) | ✅ exactly 1 | potion on someone (self or other); ActorId from EF_001 §5.1 |
+| Item(GlossaryEntityId) | ✅ exactly 1 | key on lock; tool on object — **V1 includes EnvObject targets (door-locks, wine-bottles, etc.) referenced via glossary-entity-id per B2.** No runtime Item or EnvObject state aggregate V1; world-rule simulates state transitions in audit-log only until V1+ Item substrate ships. PF_001 §3.1 EnvObject fixtures are author-declared; runtime mutation deferred. |
+| Place(PlaceId) | ✅ exactly 1 | torch lit in dark cell (PlaceId per PF_001 §3.1) — extends scene_state via PL_001 §3.5 envelope |
 
 ### 6.4 Allowed agent
 
@@ -533,23 +541,86 @@ Cross-kind summary of `aggregate_type` allowed in `proposed_outputs` / `actual_o
 
 ## §8 Per-kind validator subset
 
-Beyond the framework-level pipeline (per [`07_event_model/05_validator_pipeline.md`](../../07_event_model/05_validator_pipeline.md) + [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md)), each kind has additional rules at the **world-rule** stage:
+Beyond the framework-level pipeline (per [`07_event_model/05_validator_pipeline.md`](../../07_event_model/05_validator_pipeline.md) + [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md)), each kind hits **Stage 3.5 group** (foundation-tier structural validators; fail-fast before Lex) + **Stage 4 lex_check** + **Stage 7 world-rule physics**.
+
+Pipeline order (canonical):
+
+```
+Stage 0  schema          → InteractionPayloadBase + per-kind extension fields
+Stage 1  capability      → DP-K9 produce: [Submitted] + write claims per OutputDecl
+Stage 2  A5 intent       → Story / Command classification per A5-D1
+Stage 3  A6 sanitize     → narrator_text + utterance.raw_text injection scan
+Stage 3.5 GROUP          → foundation-tier structural validators (fail-fast)
+  3.5.a entity_affordance → EF_001 (lifecycle_dead/destroyed; affordance_missing)
+  3.5.b place_structural  → PF_001 (place destroyed; connection target unknown)
+  3.5.c map_layout        → MAP_001 (Travel-related cross-cell reach checks)
+  3.5.d cell_scene        → CSC_001 (actor_on_non_walkable; item_on_non_placeable)
+Stage 4  lex_check        → WA_001 axiom evaluation (KIND-SPECIFIC severity below)
+Stage 5  heresy_check     → WA_002 (V1 no-op; V2+ contamination budget)
+Stage 6  A6 output filter → narrator_text cross-PC leak / persona-break / NSFW
+Stage 7  world-rule       → ProposedOutputs → ActualOutputs derivation (KIND-SPECIFIC physics below)
+Stage 8  canon-drift      → A6 body-knowledge mismatch; conflicting Oracle facts
+Stage 9  causal-ref       → EVT-A6 typed causal-refs (REQUIRED for NPCTurn / orchestrated)
+[commit] dp::advance_turn → Submitted T1
+[post-commit]              → side-effect EVT-T3 Derived events per OutputDecl
+```
+
+### §8.1 Per-kind Stage 3.5 sub-stage applicability
+
+| Kind | Stage 3.5.a entity_affordance | Stage 3.5.b place_structural | Stage 3.5.c map_layout | Stage 3.5.d cell_scene |
+|---|---|---|---|---|
+| **Speak** | ✅ for each Actor target — affordance_listening / lifecycle Existing | ✅ same-cell agent+target | ❌ skipped (not Travel) | ❌ skipped (no cell write) |
+| **Strike** | ✅ for direct_target — affordance_strikable / lifecycle Existing (target_dead → `entity.lifecycle_dead`) | ✅ same-cell | ❌ skipped (V1 no cross-cell) | ✅ target on walkable tile (V1+ refinement) |
+| **Give** | ✅ for recipient — affordance_acceptable / lifecycle Existing | ✅ same-cell | ❌ skipped | ❌ skipped (no cell write) |
+| **Examine** | ✅ for Actor/Item targets — affordance_examinable / Existing; SKIPPED for Place + MapNode targets | ✅ same-cell for Actor/Item; **REQUIRED for ExamineTarget::Place** (StructuralState ≠ Destroyed) | **REQUIRED for ExamineTarget::MapNode** (ChannelId + ChannelTier present in map_layout) | ❌ skipped (Examine non-mutating) |
+| **Use** | ✅ for direct_target — affordance_usable; ✅ for tool — agent holds | ✅ same-cell | ❌ skipped (V1) | ✅ target on placeable/walkable tile when applicable (V1 minimal) |
+
+### §8.2 Per-kind Stage 4 (lex_check) severity
+
+| Kind | Lex severity | Notes |
+|---|---|---|
+| **Speak** | no-op | Speak mundane in all V1 realities |
+| **Strike** | medium | StrikeKind/StrikeIntent axiom-allowed (e.g., MagicSpell strike rejects in non-magic reality) |
+| **Give** | no-op | Give mundane |
+| **Examine** | no-op | Examine mundane |
+| **Use** | **CRITICAL** | item × reality compatibility matrix; primary reject path for cross-reality items |
+
+### §8.3 Per-kind Stage 7 (world-rule physics) actions
 
 | Kind | World-rule stage actions |
 |---|---|
-| **Speak** | Lex no-op (Speak mundane in all V1 realities); A6 canon-drift detector flags body-knowledge mismatch (SPIKE_01 turn 5); ActualOutputs typically empty |
-| **Strike** | Lex check (StrikeKind axiom-allowed); read mortality_config for outcome semantics; physics damage calculation with HP clamping; MortalityTransition derivation |
-| **Give** | Lex no-op (mundane); read NPC opinion to determine acceptance threshold; opinion delta calculation per GiveIntent + relationship history |
-| **Examine** | Lex no-op; Oracle query if target is canonical; KnowledgeAccrual derivation (V1+) |
-| **Use** | **Lex CRITICAL** — item × reality compatibility matrix; per-item effect derivation; target compatibility check (V1+ table) |
-
-All kinds inherit the framework pipeline order: schema → capability → A5 intent classify → A6 (input + output) → world-rule (above) → canon-drift → causal-ref → commit.
+| **Speak** | A6 canon-drift detector flags body-knowledge mismatch (SPIKE_01 turn 5); ActualOutputs typically empty |
+| **Strike** | read mortality_config for outcome semantics; physics damage calculation with HP clamping; MortalityTransition derivation if hp would reach 0 (note: target_dead pre-rejected at Stage 3.5.a, so this stage assumes target Alive) |
+| **Give** | read NPC opinion to determine acceptance threshold; opinion delta calculation per GiveIntent + relationship history |
+| **Examine** | Oracle query if target is canonical (Actor/Item/Place/MapNode); KnowledgeAccrual derivation (V1+); MapNode targets reject with `interaction.intent_unsupported` until V1+ author content registers |
+| **Use** | per-item effect derivation; target compatibility check (V1+ table); cross-namespace early-return: tool_unavailable / target_invalid checked here (not Stage 3.5) |
 
 ---
 
 ## §9 Expanded acceptance criteria
 
 Extends [PL_005 §16](PL_005_interaction.md#16-acceptance-criteria-lock-gate) with kind-specific scenarios. **PL_005 + PL_005b combined = 16 acceptance scenarios.**
+
+### §9.0 Namespace allocation note (Phase 3 cleanup)
+
+PL_005b reject rule_ids in §2.8 / §3.8 / §4.8 / §5.8 / §6.8 use the **descriptive sub-namespace pattern** `interaction.{kind}.{specific}` for UX-readability. At validator-runtime, each reject scenario maps to one of:
+
+| Sub-namespace pattern | Canonical namespace | Stage | Owner |
+|---|---|---|---|
+| `interaction.{kind}.target_not_in_cell` | `place.connection_target_unknown` | Stage 3.5.b | PF_001 |
+| `interaction.{kind}.target_dead` / `recipient_unable` | `entity.lifecycle_dead` | Stage 3.5.a | EF_001 |
+| `interaction.{kind}.target_destroyed` | `entity.entity_destroyed` | Stage 3.5.a | EF_001 |
+| `interaction.{kind}.target_suspended` | `entity.entity_suspended` | Stage 3.5.a | EF_001 |
+| `interaction.{kind}.target_not_visible` | `entity.affordance_missing` | Stage 3.5.a | EF_001 |
+| `interaction.{kind}.lex_forbidden` | `lex.ability_forbidden` | Stage 4 | WA_001 |
+| `interaction.{kind}.tool_not_held` | `interaction.tool_unavailable` | Stage 7 | PL_005 |
+| `interaction.{kind}.target_incompatible` | `interaction.target_invalid` | Stage 7 | PL_005 |
+| `interaction.{kind}.intent_unsupported` / `effect_unsupported` / `shout_unsupported` / `hidden_focus_unsupported` / `deep_study_unavailable` | `interaction.intent_unsupported` | Stage 7 | PL_005 |
+| `interaction.{kind}.recipient_refused` | `interaction.target_invalid` (Give-specific opinion threshold) | Stage 7 | PL_005 |
+| `interaction.{kind}.empty_utterance` / `zero_count` / `whisper_multi_target` | (schema-level) | Stage 0 | DP-K9 |
+| `interaction.{kind}.self_monologue` / `no_targets` | `interaction.target_invalid` | Stage 0 (schema) or Stage 7 | PL_005 |
+
+The sub-namespaced IDs are NOT individually registered in `_boundaries/02_extension_contracts.md` §1.4 (would explode the 5 V1 root rules into 25+). Per-kind sub-IDs are PL_005b-internal UX hints; canonical resolution is the right column.
 
 ### 9.1 Speak-specific (4)
 
@@ -565,16 +636,16 @@ Extends [PL_005 §16](PL_005_interaction.md#16-acceptance-criteria-lock-gate) wi
 | ID | Scenario | Pass criteria |
 |---|---|---|
 | **AC-INT-STK-1** (V1+) | PC strikes bandit with sword; HP→0 lethal | HpDelta committed; MortalityTransition Alive→Dying (per RespawnAtLocation default) committed; Chorus reaction from bandit_companions |
-| **AC-INT-STK-2** (V1+) | PC strikes Dead actor | rejected with `interaction.strike.target_dead`; turn_number unchanged |
-| **AC-INT-STK-3** (V1+) | PC tries Strike with item not held | rejected with `interaction.strike.tool_not_held` |
+| **AC-INT-STK-2** (V1+) | PC strikes Dead actor | rejected at Stage 3.5.a with canonical `entity.lifecycle_dead` (sub-namespaced as `interaction.strike.target_dead` in §3.8); turn_number unchanged |
+| **AC-INT-STK-3** (V1+) | PC tries Strike with item not held | rejected with canonical `interaction.tool_unavailable` (sub-namespaced as `interaction.strike.tool_not_held` in §3.8) |
 
 ### 9.3 Give-specific (3)
 
 | ID | Scenario | Pass criteria |
 |---|---|---|
 | **AC-INT-GIV-1** | SPIKE_01 turn 8 — Lý Minh pays 30 đồng to Lão Ngũ for lodging | OpinionDelta(+small) committed on npc_pc_relationship_projection; Chorus reaction from lao_ngu (gives key) |
-| **AC-INT-GIV-2** | Give to Dead actor | rejected with `interaction.give.recipient_unable` |
-| **AC-INT-GIV-3** | Give 0 count | rejected with `interaction.give.zero_count` |
+| **AC-INT-GIV-2** | Give to Dead actor | rejected at Stage 3.5.a with canonical `entity.lifecycle_dead` (sub-namespaced as `interaction.give.recipient_unable` in §4.8) |
+| **AC-INT-GIV-3** | Give 0 count | rejected at Stage 0 schema check (sub-namespaced as `interaction.give.zero_count` in §4.8; not user-facing) |
 
 ### 9.4 Examine-specific (2)
 
@@ -600,7 +671,7 @@ Extends [PL_005 §16](PL_005_interaction.md#16-acceptance-criteria-lock-gate) wi
 
 ## §10 Phase 2 deferrals + landing points
 
-Beyond [PL_005 §17](PL_005_interaction.md#17-open-questions-deferred--landing-point) (INT-D1..D9):
+Beyond [PL_005 §17](PL_005_interaction.md#17-open-questions-deferred--landing-point) (INT-D1..D11 incl. Phase 3 ExamineTarget extensions):
 
 | ID | Question | Defer to |
 |---|---|---|
@@ -612,26 +683,41 @@ Beyond [PL_005 §17](PL_005_interaction.md#17-open-questions-deferred--landing-p
 | **INT-CON-D6** | Speak with `volume=Shout` propagating to ancestor channel | V1+ when bubble-up + ancestor visibility feature ships |
 | **INT-CON-D7** | Use with V1+ items (potion / scroll / key) — full effect catalog | V1+ Item substrate + per-item effect registry |
 | **INT-CON-D8** | NPC Strike outcome when target NPC dies (placeholder npc liveness vs V1+ NPC_003) | When NPC_003 mortality ships per B1 |
+| **INT-CON-D9** (NEW Phase 3) | ProposedOutputs vs ActualOutputs serialization rules per EVT-T category — Proposal payload includes proposed_outputs only? Submitted carries both? Derived inherits from Submitted's actual_outputs? | When event-model agent Phase 4 hardens per-T category-specific payload contracts |
+| **INT-CON-D10** (NEW Phase 3) | Sub-namespace pattern (`interaction.{kind}.{specific}`) registry — formal mapping table beyond §9.0 OR retire pattern entirely in favor of canonical-only | V1+ when first integration test discovers UX needs sub-IDs vs canonical-only |
 
 ---
 
 ## §11 Cross-references
 
-- [`PL_005 Interaction`](PL_005_interaction.md) — root file (§1-§19): conceptual layer + 4-role pattern + 5 V1 kind list + sequences
-- [`07_event_model/02_invariants.md`](../../07_event_model/02_invariants.md) EVT-A1..A12 — taxonomy + extensibility
-- [`07_event_model/03_event_taxonomy.md`](../../07_event_model/03_event_taxonomy.md) EVT-T1 Submitted — sub-type ownership
-- [`07_event_model/05_validator_pipeline.md`](../../07_event_model/05_validator_pipeline.md) — framework pipeline; Interaction adds kind-specific world-rule rules at validator stage
-- [`07_event_model/06_per_category_contracts.md`](../../07_event_model/06_per_category_contracts.md) — common envelope
-- [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md) — sub-type ownership for `Interaction:*`; aggregate_type ownership for OutputDecl targets
-- [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `interaction.*` rule_id namespace registered
+**Foundation tier (Stage 3.5 group + ActorId source):**
+- [`EF_001 Entity Foundation`](../00_entity/EF_001_entity_foundation.md) — ActorId/EntityId source-of-truth (§5.1); entity_affordance Stage 3.5.a validator owner; `entity.lifecycle_dead` canonical reject for target-dead scenarios
+- [`PF_001 Place Foundation`](../00_place/PF_001_place_foundation.md) — PlaceId(ChannelId) newtype (§3.1); place_structural Stage 3.5.b validator owner; `place.connection_target_unknown` canonical reject for cross-cell scenarios
+- [`MAP_001 Map Foundation`](../00_map/MAP_001_map_foundation.md) — map_layout Stage 3.5.c validator owner; ExamineTarget::MapNode tier validation
+- [`CSC_001 Cell Scene Composition`](../00_cell_scene/CSC_001_cell_scene_composition.md) — cell_scene Stage 3.5.d validator owner; Layer 4 LLM narration consumes Speak narrator_text per §1 base note
+
+**Play-loop substrate:**
+- [`PL_005 Interaction`](PL_005_interaction.md) — root file (§1-§19): conceptual layer + 4-role pattern + 5 V1 kind list + sequences + ExamineTarget enum (§2) + Phase 3 cleanup
 - [`PL_001 Continuum`](PL_001_continuum.md) §3.5 — TurnEvent envelope inherited
 - [`PL_001b lifecycle`](PL_001b_continuum_lifecycle.md) §15 — rejection-path semantics inherited
 - [`PL_002 Grammar`](PL_002_command_grammar.md) — command-driven Interactions emerge through PL_002 dispatch
-- [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum + npc_pc_relationship_projection
+- [`PL_006 Status Effects`](PL_006_status_effects.md) — actor_status aggregate; Use:wine outcome applies Drunk via OutputDecl
+
+**NPC + world-authoring consumers:**
+- [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum (now sourced from EF_001) + npc_pc_relationship_projection
 - [`NPC_002 Chorus`](../05_npc_systems/NPC_002_chorus.md) — consumes Interaction events as Triggers
-- [`WA_001 Lex`](../02_world_authoring/WA_001_lex.md) — validator slot; Use kind has CRITICAL Lex check
+- [`WA_001 Lex`](../02_world_authoring/WA_001_lex.md) — Stage 4 lex_check; Use kind has CRITICAL Lex check per §8.2
 - [`WA_006 Mortality`](../02_world_authoring/WA_006_mortality.md) — `mortality_config` input to Strike outcomes
 - [`PCS_001 brief`](../06_pc_systems/00_AGENT_BRIEF.md) — `pc_mortality_state` + `pc_stats_v1_stub` output targets
+
+**Event model + boundaries:**
+- [`07_event_model/02_invariants.md`](../../07_event_model/02_invariants.md) EVT-A1..A12 — taxonomy + extensibility
+- [`07_event_model/03_event_taxonomy.md`](../../07_event_model/03_event_taxonomy.md) EVT-T1 Submitted — sub-type ownership
+- [`07_event_model/05_validator_pipeline.md`](../../07_event_model/05_validator_pipeline.md) — framework pipeline; Interaction adds kind-specific Stage 3.5/4/7 rules
+- [`07_event_model/06_per_category_contracts.md`](../../07_event_model/06_per_category_contracts.md) — common envelope
+- [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md) — sub-type ownership for `Interaction:*`; aggregate_type ownership for OutputDecl targets
+- [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `interaction.*` V1 rule_id enumeration (5 root rules)
+- [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) — Stage 3.5 group + applicability matrix per §8 + §8.1
 - [`SPIKE_01`](../_spikes/SPIKE_01_two_sessions_reality_time.md) turns 5 + 8 — narrative grounding (Speak / Give canonical scenarios)
 
 ---
@@ -656,15 +742,23 @@ PL_005 (root):
 - [x] §19 Readiness
 
 PL_005b (this file):
-- [x] §1 Common payload base struct
-- [x] §2-§6 Per-kind contracts (Speak / Strike / Give / Examine / Use)
+- [x] §1 Common payload base struct (Phase 3: PlaceId + ActorId source-of-truth notes; Speak narrator_text → CSC_001 Layer 4)
+- [x] §2-§6 Per-kind contracts (Speak / Strike / Give / Examine / Use); Phase 3: §5.3 Examine ExamineTarget extension; §6.3 Use V1 EnvObject simplification note
 - [x] §7 OutputDecl taxonomy
-- [x] §8 Per-kind validator subset
-- [x] §9 Expanded acceptance (16 kind-specific scenarios — combined 22 total)
-- [x] §10 Phase 2 deferrals INT-CON-D1..D8
-- [x] §11 Cross-references
+- [x] §8 Per-kind validator subset (Phase 3: full Stage 0-9 pipeline + §8.1 Stage 3.5 sub-stage applicability matrix + §8.2 Stage 4 lex severity + §8.3 Stage 7 world-rule actions)
+- [x] §9 Expanded acceptance (16 kind-specific scenarios — combined 22 total); Phase 3: §9.0 namespace allocation note + AC-INT-STK-2 + AC-INT-GIV-2 + AC-INT-GIV-3 canonical rule_id alignment
+- [x] §10 Phase 2 deferrals INT-CON-D1..D10 (Phase 3 added D9 + D10)
+- [x] §11 Cross-references (Phase 3: foundation tier EF/PF/MAP/CSC + Stage 3.5 boundary added; categorized)
 - [x] §12 Readiness (this section)
 
-**Status transition:** PL_005 DRAFT 2026-04-26 + PL_005b DRAFT 2026-04-26 → **CANDIDATE-LOCK** when ≥14 V1-testable acceptance scenarios pass integration tests → **LOCK** when remaining V1+ scenarios pass after consumer features (Item aggregate, NPC_003 mortality, full combat) ship.
+**Phase 3 cleanup applied 2026-04-26 (PL folder closure):**
+- S1.1 PlaceId(ChannelId) inheritance noted in §1 base
+- S1.2 §6.3 EnvObject targets via Item(GlossaryEntityId) per B2 (V1 no runtime EnvObject state)
+- S2.1 Stage 3.5 group integration in §8 (full pipeline) + §8.1 sub-stage applicability matrix
+- S2.2 §9.0 namespace allocation note + per-kind reject rule_id canonical mapping
+- S2.3 16 acceptance scenarios — 3 (STK-2/GIV-2/GIV-3) updated with canonical rule_id allocation
+- S3.1 ProposedOutputs vs ActualOutputs deferral INT-CON-D9 (per-EVT-T category serialization rules) added
+
+**Status transition:** PL_005 + PL_005b DRAFT 2026-04-26 → **CANDIDATE-LOCK 2026-04-26** (Phase 3 + closure pass; PL_005 already CANDIDATE-LOCK in commit 2; PL_005b promotes in next commit). LOCK when ≥14 V1-testable acceptance scenarios pass integration tests against SPIKE_01 fixtures + small Lex test config.
 
 **Next** (when CANDIDATE-LOCK granted): world-service can implement Interaction validation + commit using these contracts. Vertical-slice target = AC-INT-1 (SPEAK MULTI-NPC) reusing SPIKE_01 turn 5 fixture. AC-INT-GIV-1 (SPIKE_01 turn 8 fixture) is second target. AC-INT-EXM-1 third.

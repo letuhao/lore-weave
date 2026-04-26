@@ -6,6 +6,21 @@
 
 ---
 
+## 2026-04-26 — PL folder closure (commit 3/8): PL_005b Phase 3 cleanup (Stage 3.5 sub-stage allocation + §8 pipeline expansion + §9.0 namespace allocation)
+
+- **Lock continues** from commit 1
+- **Files modified within `_boundaries/`:** none (PL_005b Phase 3 is internal — sub-namespace allocation note in §9.0 documents canonical mapping but does NOT add new V1 enumeration entries to `02_extension_contracts.md` §1.4 since the 5 V1 root rules already cover all Stage 7 PL_005-owned rejects; sub-namespaced IDs explicitly noted as PL_005b-internal UX hints, not boundary-registered)
+- **PL_005b Phase 3 findings applied:**
+  - S1.1 `InteractionPayloadBase` doc-comment notes — TargetRef::Place uses PlaceId(ChannelId) per PF_001 §3.1; ActorId from EF_001 §5.1
+  - S1.2 §6.3 Use TargetRef table — V1 EnvObject targets (door-locks, wine-bottles, etc.) referenced via Item(GlossaryEntityId) per B2; no runtime EnvObject state aggregate V1
+  - S2.1 §8 expanded to full Stage 0-9 pipeline including Stage 3.5 group; new §8.1 per-kind Stage 3.5 sub-stage applicability matrix; new §8.2 per-kind Stage 4 lex severity; new §8.3 per-kind Stage 7 world-rule actions
+  - S2.2 §9.0 namespace allocation note added — sub-namespaced rule_ids (`interaction.{kind}.{specific}`) map to canonical namespaces at validator runtime (entity.* / place.* / map.* / csc.* / lex.* / interaction.* / schema-level); PL_005b-internal UX pattern, not boundary-registered
+  - S2.3 §5.3 Examine TargetRef table extended with ExamineTarget enum reference (PL_005 §2 — Place via PlaceId V1 + MapNode V1+ author-content-gated)
+  - S3.1 New deferrals INT-CON-D9 (ProposedOutputs vs ActualOutputs per-EVT-T category serialization rules) + INT-CON-D10 (sub-namespace pattern formal registry vs retire)
+  - Acceptance scenario rule_id alignment: AC-INT-STK-2 + AC-INT-GIV-2 + AC-INT-GIV-3 updated to show canonical Stage 3.5.a / Stage 0 allocation
+
+---
+
 ## 2026-04-26 — PL folder closure (commit 2/8): PL_005 closure pass → CANDIDATE-LOCK
 
 - **Lock continues** from commit 1 (still claimed by main session 2026-04-26)
