@@ -120,9 +120,9 @@ pub struct ActorCore {
     pub glossary_entity_id: GlossaryEntityId,   // canon ref
     pub current_region_id: ChannelId,           // points to a cell channel
     pub current_session_id: Option<SessionId>,  // NPC: ≤1 session at a time per R8-L1; PC: present when online; Synthetic: None
-    pub mood: ActorMood,                        // emotional state (-100..+100); generic across kinds (was NpcMood)
+    pub mood: ActorMood,                        // multi-axis emotional state (B1 LOCKED 2026-04-27 type lockdown; was NpcMood single-axis)
     pub core_beliefs: CanonRef,                 // L1 canon reference (book-derived, immutable per realities)
-    pub flexible_state: FlexibleState,          // L3 reality-local drift (per-reality emergent)
+    pub flexible_state: FlexibleState,          // L3 reality-local drift (B2 LOCKED 2026-04-27 — typed standard fields + extension HashMap)
     // V1+ extensions (additive per I14)
     // pub canon_drift_flags: Vec<CanonDriftFlag>,  // V1+ A6 detector integration (ACT-D7)
 }
@@ -140,7 +140,7 @@ pub struct ActorCore {
 
 **Renamed from NPC_001 §3.1 `npc`:**
 - Field `npc_id: NpcId` → `actor_id: ActorId` (sibling pattern allows ActorKind discrimination)
-- Field `mood: NpcMood` → `mood: ActorMood` (type renamed; same shape; kind-agnostic; -100..+100)
+- Field `mood: NpcMood` → `mood: ActorMood` (type REVISED to multi-axis V1 per B1 LOCKED 2026-04-27 type lockdown; was single-axis i16 [-100, +100]; now 4-axis u8 [0, 100] supporting mixed feelings)
 - Field `current_session_id: Option<SessionId>` SEMANTICS preserved: None = actor not in session (NPC idle/ambient; PC offline)
 - All other fields preserved; semantics preserved (current_region_id + glossary_entity_id + core_beliefs + flexible_state)
 
@@ -149,6 +149,194 @@ pub struct ActorCore {
 
 **Cross-reality strict V1 (ACT-A8):**
 - Reject `actor.cross_reality_mismatch` Stage 0 schema for cross-reality reads.
+
+### §3.1.1 `ActorMood` type (V1 LOCKED 2026-04-27 — type lockdown; B1 multi-axis REVISED)
+
+```rust
+/// Per-actor multi-axis emotional state. 4 independent intensity axes (Wuxia 喜怒哀乐 + 惧 fear).
+/// Each axis represents PRESENCE/INTENSITY (0 = absent; 100 = peak).
+/// Independent axes allow mixed feelings (e.g., joy=70 + anger=80 = "furious laughter at betrayed victory").
+pub struct ActorMood {
+    pub joy: u8,          // 0..=100 (absent ↔ peak euphoria) — Wuxia 喜
+    pub anger: u8,        // 0..=100 (calm ↔ peak fury) — Wuxia 怒
+    pub sadness: u8,      // 0..=100 (unbothered ↔ peak grief) — Wuxia 哀
+    pub fear: u8,         // 0..=100 (brave ↔ peak terror) — Wuxia 惧 (extended from 喜怒哀乐 4-emotion)
+}
+
+impl ActorMood {
+    pub const NEUTRAL: ActorMood = ActorMood { joy: 0, anger: 0, sadness: 0, fear: 0 };
+    pub const MAX_INTENSITY: u8 = 100;
+
+    /// Engine clamps at write boundary (saturating arithmetic on delta).
+    pub fn from_clamped(joy: i32, anger: i32, sadness: i32, fear: i32) -> Self {
+        Self {
+            joy: joy.clamp(0, 100) as u8,
+            anger: anger.clamp(0, 100) as u8,
+            sadness: sadness.clamp(0, 100) as u8,
+            fear: fear.clamp(0, 100) as u8,
+        }
+    }
+
+    /// Returns the dominant axis (highest intensity); None if all axes 0.
+    pub fn dominant_axis(&self) -> Option<MoodAxis> {
+        let max = [
+            (MoodAxis::Joy, self.joy),
+            (MoodAxis::Anger, self.anger),
+            (MoodAxis::Sadness, self.sadness),
+            (MoodAxis::Fear, self.fear),
+        ].into_iter().max_by_key(|&(_, v)| v);
+        match max {
+            Some((_, 0)) => None,        // all axes 0 = neutral
+            Some((axis, _)) => Some(axis),
+            None => None,
+        }
+    }
+
+    /// Composite intensity (sum across axes; 0..=400).
+    pub fn total_intensity(&self) -> u16 {
+        self.joy as u16 + self.anger as u16 + self.sadness as u16 + self.fear as u16
+    }
+
+    /// Display tier per axis (read-side; not stored).
+    pub fn tier(&self, axis: MoodAxis) -> MoodIntensityTier {
+        let value = match axis {
+            MoodAxis::Joy => self.joy,
+            MoodAxis::Anger => self.anger,
+            MoodAxis::Sadness => self.sadness,
+            MoodAxis::Fear => self.fear,
+        };
+        match value {
+            0..=10 => MoodIntensityTier::Absent,
+            11..=33 => MoodIntensityTier::Mild,
+            34..=66 => MoodIntensityTier::Moderate,
+            67..=89 => MoodIntensityTier::Strong,
+            90..=100 => MoodIntensityTier::Peak,
+            _ => unreachable!("clamped to [0, 100] at write"),
+        }
+    }
+}
+
+pub enum MoodAxis {
+    Joy,        // Wuxia 喜
+    Anger,      // Wuxia 怒
+    Sadness,    // Wuxia 哀
+    Fear,       // Wuxia 惧 (extended)
+}
+
+pub enum MoodIntensityTier {
+    Absent,     // 0..=10
+    Mild,       // 11..=33
+    Moderate,   // 34..=66
+    Strong,     // 67..=89
+    Peak,       // 90..=100
+}
+```
+
+**Why multi-axis (vs single i16) per B1 LOCKED REVISION:**
+- Mixed feelings supported (joy=70 + anger=80 = "furious laughter")
+- Wuxia 喜怒哀乐 classic 4-emotion + 惧 fear = 5 traditional Buddhist emotions; canonical wuxia narrative basis
+- LLM authoring clean — each axis = intensity of that emotion; no negative-direction confusion
+- Storage: 4 × u8 = 4 bytes per actor (within R8-L1 budget)
+
+V1+ enrichment: Plutchik's 8-emotion wheel (add surprise/anticipation/trust/disgust); mood decay per fiction-time (ACT-D-N); mood contagion (NPC mood affects nearby NPCs).
+
+### §3.1.2 `FlexibleState` type (V1 LOCKED 2026-04-27 — type lockdown; B2 typed standard fields + extension)
+
+```rust
+/// Per-actor reality-local mutable state. Typed standard fields V1 + extension HashMap escape hatch.
+/// V1 standard fields cover ~80% LLM persona context; extensions cover author-emergent narrative state.
+pub struct FlexibleState {
+    /// Current disposition toward narrative-relevant subjects (default Neutral).
+    pub current_disposition: Disposition,
+
+    /// Most recent actor-of-interaction (last meaningful interaction; LLM context anchor).
+    pub last_interacted_with: Option<ActorId>,
+
+    /// Text description of last narrative-significant event affecting this actor (I18nBundle per RES_001 §2).
+    pub last_emotional_event: Option<I18nBundle>,
+
+    /// Last N narrative events as causal anchors for LLM context window (V1 cap: ≤5; LRU).
+    pub recent_event_refs: Vec<EventId>,
+
+    /// Hidden knowledge for narrative reveal (I18nBundle; e.g., "Du sĩ knows Lý Minh xuyên không").
+    pub secret_held: Option<I18nBundle>,
+
+    /// Author-emergent extension fields (kvs; engine doesn't validate keys).
+    /// V1 soft cap: ≤2 KB serialized; documented not engine-enforced.
+    pub extensions: HashMap<String, FlexibleValue>,
+}
+
+impl FlexibleState {
+    pub const RECENT_EVENT_REFS_CAP: usize = 5;
+    pub const EXTENSIONS_SOFT_CAP_BYTES: usize = 2 * 1024;
+
+    pub fn empty() -> Self {
+        Self {
+            current_disposition: Disposition::Neutral,
+            last_interacted_with: None,
+            last_emotional_event: None,
+            recent_event_refs: Vec::new(),
+            secret_held: None,
+            extensions: HashMap::new(),
+        }
+    }
+
+    /// LRU push to recent_event_refs (drops oldest when cap exceeded).
+    pub fn push_recent_event(&mut self, event_id: EventId) {
+        self.recent_event_refs.push(event_id);
+        if self.recent_event_refs.len() > Self::RECENT_EVENT_REFS_CAP {
+            self.recent_event_refs.remove(0);
+        }
+    }
+}
+
+/// Closed-set disposition enum V1; covers 7 V1 narrative dispositions.
+pub enum Disposition {
+    Hostile,        // Active hostility (will attack/oppose)
+    Wary,           // Suspicious; expects bad faith; defensive posture
+    Anxious,        // Nervous; uncertain; may flee
+    Neutral,        // Default; no leaning
+    Curious,        // Interest-driven; wants to learn/observe
+    Friendly,       // Positive default; collaborative
+    Respectful,     // Acknowledges authority/status; deferential
+}
+
+/// Author-extensible value variants for FlexibleState.extensions HashMap.
+pub enum FlexibleValue {
+    Text(I18nBundle),                // User-facing text per RES_001 §2 i18n contract
+    Number(f64),                     // Numeric (intensity / temperature / count)
+    Bool(bool),                      // Flag
+    ActorRef(ActorId),               // Reference to another actor
+    PlaceRef(ChannelId),             // Reference to place (cell-tier channel)
+    EventRef(EventId),               // Causal anchor to past event
+    List(Vec<FlexibleValue>),        // Ordered list (composition)
+}
+```
+
+### V1 standard fields rationale
+
+| Field | Purpose | LLM context use |
+|---|---|---|
+| `current_disposition` | Quick narrative shorthand for actor stance | "Du sĩ is currently [Wary] toward strangers" |
+| `last_interacted_with` | Most recent interaction anchor | "Du sĩ last spoke with Lý Minh" |
+| `last_emotional_event` | Narrative-significant recent moment | "Du sĩ remembers when Lý Minh quoted forbidden text" |
+| `recent_event_refs` | Causal anchors for context window (LRU ≤5) | "Recent events: [event_id_1, ...]" — LLM references past |
+| `secret_held` | Hidden narrative reveal trigger | "Du sĩ knows but won't say: Lý Minh's master is Mr. Trần Phong" |
+| `extensions` | Author-emergent narrative state (≤2 KB soft cap) | Whatever specific keys reality needs |
+
+### V1 documented extension keys (NOT engine-validated; author guidance)
+
+- `relationship_drift_with_<actor_id>` → Number (intensity)
+- `oath_taken_to_<actor_id>` → Text (oath text)
+- `region_familiarity_<channel_id>` → Number (0..1.0)
+- `ritual_state_<ritual_id>` → Text (ritual progress text)
+
+V1+ enrichment: Lift commonly-used extension patterns to typed fields when 50%+ realities adopt the same key.
+
+### Storage cost
+- Typed fields: ~200-500 bytes per row
+- extensions HashMap: variable; soft cap ≤2 KB
+- Total: ~2-3 KB per actor → well within R8-L1 ~10-20 KB budget
 
 ### §3.2 `actor_chorus_metadata` (T2 / Reality scope — sparse; AI-drive metadata)
 
@@ -181,6 +369,56 @@ pub struct ActorChorusMetadata {
 - Was `npc.desires: Vec<NpcDesireDecl>` (npc aggregate field added 2026-04-26)
 - Now `actor_chorus_metadata.desires: Vec<DesireDecl>` (renamed type; transferred field)
 - NPC_003 closure-pass-extension transfers ownership in commit 3/5
+
+### §3.2.1 `GreetingObligation` enum (V1 LOCKED 2026-04-27 — type lockdown)
+
+```rust
+/// AI-driven actor's greeting obligation when PC enters scene.
+/// Read by NPC_002 Chorus Tier 1 priority filter.
+/// V1: NPCs declare in canonical seed; PCs N/A V1 (sparse storage); V1+ AI-controls-PC-offline PC may declare.
+pub enum GreetingObligation {
+    /// Must greet on arrival (innkeeper / shopkeeper / quest-giver / authority figure).
+    /// Forces NPC into Tier 1 priority queue on PC arrival.
+    Required,
+
+    /// May greet on arrival (commoner / acquaintance / passive role).
+    /// NPC_002 Tier 2-3 priority based on knowledge_tags + opinion + mood.
+    Optional,
+
+    /// Will NOT greet (hostile / suspicious / disengaged / busy).
+    /// NPC_002 will skip unless explicitly addressed by PC (Tier 5+ fallback).
+    None,
+}
+```
+
+V1+ enrichment: `ConditionalOnPriority` variant if Tier 1 priority can override based on context (defer when needed).
+
+### §3.2.2 `PriorityTierHint` enum (V1 LOCKED 2026-04-27 — type lockdown)
+
+```rust
+/// AI-driven actor's chorus priority tier hint.
+/// Read by NPC_002 Chorus Tier 2-3 priority resolver.
+/// V1: NPCs declare in canonical seed; PCs N/A V1; V1+ AI-controls-PC-offline PC may declare.
+pub enum PriorityTierHint {
+    /// Tier 2 priority candidate — relevance-driven (knowledge_tags match + opinion + mood positive).
+    /// Du sĩ scholar when PC quotes scripture (knowledge_tag="daoist_scripture" matches PC behavior).
+    High,
+
+    /// Tier 3 priority candidate — ambient role (ambient NPC; non-specialist).
+    /// Lão Ngũ innkeeper general presence.
+    Medium,
+
+    /// Tier 4 priority candidate — background (low-engagement; commoner).
+    /// Random market commoner.
+    Low,
+
+    /// Tier 5 fallback — will NOT be selected unless no other candidates.
+    /// NPCs explicitly declared minimal-engagement.
+    None,
+}
+```
+
+V1+ enrichment: `priority_score: Option<u8>` numeric override field if narrative needs sub-tier ordering within a tier.
 
 ### §3.3 `actor_actor_opinion` (T2 / Reality scope — sparse bilateral)
 
