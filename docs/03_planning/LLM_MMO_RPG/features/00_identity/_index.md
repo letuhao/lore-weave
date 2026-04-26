@@ -98,19 +98,55 @@ These two concepts MUST NOT collide. IDF_002 design clarifies this in §2 domain
 
 ---
 
-## Open questions (folder-level)
+## Open questions (folder-level) — LOCKED 2026-04-26 per market survey + user "A" confirmation
 
-These cross-cutting questions need user confirmation BEFORE individual DRAFT promotion:
+All 7 folder-level Q-decisions VALIDATED by [`_research_character_systems_market_survey.md`](_research_character_systems_market_survey.md) §9.6 + user confirmation. **Locked per survey defaults below.**
 
-| ID | Question | Default proposal |
+| ID | Question | Locked answer | Validation source |
+|---|---|---|---|
+| **IDF-FOLDER-Q1** | Folder name | ✅ **`00_identity/`** | shorter; matches `IDF_*` prefix |
+| **IDF-FOLDER-Q2** | 5 features vs 4 (merge Origin+Ideology) | ✅ **5 features** | CK3 + Pathfinder 2e + VtM all explicitly separate culture from faith |
+| **IDF-FOLDER-Q3** | Voice register own feature? | ✅ **Stay under IDF_003** | VtM Nature has voice; CK3 personality has speech pattern; couples to personality |
+| **IDF-FOLDER-Q4** | Skills/Abilities = IDF_006? | ✅ **NO — V1+ combat feature** | Disco Elysium's skills-as-personality is novel but couples to combat too tightly |
+| **IDF-FOLDER-Q5** | Knowledge inventory in IDF? | ✅ **NO — PCS_001 internal** | D&D knowledge proficiencies are class-based; matches PCS_001-internal V1+ scope |
+| **IDF-FOLDER-Q6** | Cross-reality migration | ✅ **V2+ defer** | No mainstream game does cross-engine migration; per WA_002 Heresy |
+| **IDF-FOLDER-Q7** | Existing-features i18n audit | ✅ **DEFER** | RES_001 §2.3 already locked this; IDF features ship I18nBundle from day 1 |
+
+---
+
+## Post-survey adjustments LOCKED 2026-04-26 (per `_research_character_systems_market_survey.md` §9 + §10)
+
+User confirmed "A" on POST-SURVEY-Q1..Q7 — survey-informed adjustments locked into folder + per-feature concept-notes:
+
+| Q | Adjustment | Files affected |
 |---|---|---|
-| **IDF-FOLDER-Q1** | Folder name: `00_identity/` (current proposal) vs `00_actor_substrate/`? | `00_identity/` — shorter, matches `IDF_*` prefix |
-| **IDF-FOLDER-Q2** | 5 features (D-5) vs 4 features merging IDF_004 + IDF_005 (D-4)? | **5 features (D-5)** — Origin (immutable) and Ideology (mutable) have different lifecycles + Lex coupling differs |
-| **IDF-FOLDER-Q3** | Should Voice register be its own feature (IDF_006) or stay intersect under IDF_003 Personality? | Stay under IDF_003 — voice is personality-coupled (Stoic actor speaks differently from Hothead); separate feature is over-design V1 |
-| **IDF-FOLDER-Q4** | Should Skills/Abilities be IDF_006 V1+ or land elsewhere (combat feature)? | Land in V1+ combat feature, NOT IDF folder — abilities are reality-specific (qigong / firearm) and tightly coupled to Lex axioms; IDF stays at "demographic substrate" abstraction layer |
-| **IDF-FOLDER-Q5** | Should Knowledge inventory (PCS_001 brief INT-D6 / knowledge_tags) be IDF_007 V1+ or stay PCS_001-internal? | Stay PCS_001-internal V1+ — knowledge accrual is PC-dynamic, not actor-static; NPC has separate `npc_session_memory` per NPC_001 | 
-| **IDF-FOLDER-Q6** | Cross-reality race/language/ideology — what happens when PC moves between realities (Wuxia → Modern)? Does race get re-mapped, hidden, or rejected? | Defer to V2+ cross-reality contamination layer (per WA_002 Heresy); V1 PC bound to one reality |
-| **IDF-FOLDER-Q7** | I18nBundle integration — apply to ALL existing features' Vietnamese hardcoded reject copy in same wave, or defer existing features audit? | **Defer existing features audit** per RES_001 §2.3 stance (low-priority cosmetic); IDF features ship I18nBundle from day 1 (greenfield) |
+| **POST-SURVEY-Q1** | IDF_003 archetype count V1: 8 → **12** (add Loyal/Aloof/Ambitious/Compassionate — all wuxia-relevant universal archetypes) | IDF_003 §6 + §8 Q1 locked |
+| **POST-SURVEY-Q2** | IDF_001 size categories: 4 → **6** (Tiny/Small/Medium/Large/Huge/Gargantuan; Pathfinder 2e full coverage) | IDF_001 §2 SizeCategory + §8 Q4 locked |
+| **POST-SURVEY-Q3** | IDF_005 conversion cost V1: **Free V1**; cost mechanic deferred V1+ via NEW IDL-D11 | IDF_005 §8 Q3 locked + §9 NEW IDL-D11 deferral |
+| **POST-SURVEY-Q4** | Family graph: V1 IDF_004 lineage_id **opaque only** (no parent/sibling refs); V1+ FF_001 Family Foundation = **first priority post-IDF closure** (before PCS_001) | IDF_004 §3.1 lineage_id contract + §8 Q4 locked + §9 NEW ORG-D11/D12 |
+| **POST-SURVEY-Q5** | Cultivation realm: **V1+ separate CULT_001** confirmed (NOT in IDF_001) | IDF_001 §9 NEW RAC-D11 deferral signal |
+| **POST-SURVEY-Q6** | Reputation: **V1+ separate REP_001** confirmed (NOT within FAC_001) | Folder-level V1+ roadmap (this _index.md) |
+| **POST-SURVEY-Q7** | Voice register: **5 V1** (current); Eloquent + Hesitant V1+ as context modifiers (NOT archetype defaults) | IDF_003 §8 Q3 locked |
+
+### V1+ feature roadmap (post-IDF closure — locked priority order)
+
+```
+IDF folder closure (5 features × ~3 commits) ~15 commits
+    ↓
+FF_001 Family Foundation         ★ NEW PRIORITY 1 (wuxia-critical; insertion before PCS_001)
+    ↓
+PCS_001 + NPC_003 (consume IDF + RES_001 + FF_001)
+    ↓
+FAC_001 Faction Foundation       ★ Priority 2 (sect / order / clan)
+    ↓
+REP_001 Reputation Foundation    ★ Priority 3 (per-(actor, faction) rep projection)
+    ↓
+CULT_001 Cultivation Foundation  ★ Wuxia-genre-specific (defer until first non-SPIKE_01 wuxia content)
+    ↓
+[V1+ second wave: DIPL_001 / SCH_001 / TIT_001 / WAR_001 / etc.]
+```
+
+**Society V1 ready** (PCS + NPC + FF + FAC + REP) = ~44 commits across 7-9 lock-cycles.
 
 ---
 

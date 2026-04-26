@@ -3,7 +3,7 @@
 > **Conversational name:** "Personality" (PRS). Tier 5 Actor Substrate Foundation feature owning the per-reality `personality_archetype` closed-set enum (8-12 V1 archetypes) + per-actor `actor_personality` aggregate. Voice register field intersects (single source of truth for [PL_005b §2.1](../04_play_loop/PL_005b_interaction_contracts.md) `speaker_voice` field). NPC_002 §6 priority algorithm Tier 2-3 + opinion drift modifier consume; resolves [PL_005c INT-INT-D5](../04_play_loop/PL_005c_interaction_integration.md) (per-personality opinion modifier) deferral.
 >
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
-> **Status:** CONCEPT 2026-04-26
+> **Status:** CONCEPT 2026-04-26 (Q-decisions LOCKED 2026-04-26 per market survey + user "A" confirmation; ready for DRAFT promotion)
 > **Stable IDs:** `PRS-A*` axioms · `PRS-D*` deferrals · `PRS-Q*` open questions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md); [PL_005b §2.1 InteractionSpeakPayload](../04_play_loop/PL_005b_interaction_contracts.md) speaker_voice; [NPC_002 §6 priority algorithm](../05_npc_systems/NPC_002_chorus.md); [PL_005c INT-INT-D5](../04_play_loop/PL_005c_interaction_integration.md) per-personality opinion modifier; [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md).
 > **Defers to:** PCS_001 (PC personality at creation); NPC_001/003 (NPC archetype canonical seed); V1+ Big-Five trait system; V1+ archetype evolution.
@@ -15,22 +15,27 @@
 Every actor has a personality archetype affecting Speak voice register + NPC_002 reaction priority + opinion drift calibration. V1 ships 8-12 closed-set archetypes (drawn from xianxia/wuxia tradition + Western literature crossover). Voice register integrates here (was orphan reference in PL_005b §2.1).
 
 **V1 must-ship:**
-- Closed-set `PersonalityArchetypeId` per reality (8-12 archetypes)
+- Closed-set `PersonalityArchetypeId` per reality (**12 archetypes V1 LOCKED 2026-04-26 per POST-SURVEY-Q1**)
 - Per-actor `actor_personality` aggregate (T2/Reality scope)
 - `PersonalityArchetypeDecl` declarative metadata: display_name (I18nBundle) + voice_register (5-variant enum) + opinion_modifier_table (per-other-archetype baseline) + speech_pattern_hints (V1+ NPC_002 prompt)
 - NPC_002 §6 Tier 2-3 priority hook (consume archetype for reaction filtering)
 - Opinion drift modifier per-personality table (resolves PL_005c INT-INT-D5)
 - RealityManifest extension `personality_archetypes: Vec<PersonalityArchetypeDecl>` REQUIRED V1
-- Default V1 archetypes (8-12 universal — apply to all reality presets):
-  - Stoic / Lãnh diện
-  - Hothead / Nóng nảy
-  - Cunning / Xảo trá
-  - Innocent / Ngây thơ
-  - Pious / Mộ đạo
-  - Cynic / Hoài nghi
-  - Worldly / Thế tục
-  - Idealist / Lý tưởng
-  - (V1 optional 4 more) Loyal / Trung nghĩa · Aloof / Lạnh nhạt · Ambitious / Tham vọng · Compassionate / Từ bi
+- Default V1 archetypes (**12 universal** — applied to all reality presets per POST-SURVEY-Q1; opinion modifier matrix = 12×12 = 144 entries):
+  - **Core 8** (POST-SURVEY base):
+    - Stoic / Lãnh diện
+    - Hothead / Nóng nảy
+    - Cunning / Xảo trá
+    - Innocent / Ngây thơ
+    - Pious / Mộ đạo
+    - Cynic / Hoài nghi
+    - Worldly / Thế tục
+    - Idealist / Lý tưởng
+  - **Wuxia + universal coverage 4** (LOCKED V1 per POST-SURVEY-Q1):
+    - Loyal / Trung nghĩa (sect-disciple archetype)
+    - Aloof / Lạnh nhạt (recluse / hermit / assassin archetype)
+    - Ambitious / Tham vọng (power-seeker / antagonist archetype)
+    - Compassionate / Từ bi (Buddhist / healer archetype)
 
 **V1+ deferred:**
 - Big-Five trait vector (Openness/Conscientiousness/Extraversion/Agreeableness/Neuroticism × 0..100) (PRS-D1)
@@ -162,15 +167,15 @@ pub struct RealityManifest {
 
 REQUIRED V1.
 
-**V1 default 8 archetypes** (universal — applied to Wuxia + Modern + Sci-fi presets uniformly; reality-specific archetypes V1+):
+**V1 default 12 archetypes** (universal — applied to Wuxia + Modern + Sci-fi presets uniformly per POST-SURVEY-Q1 LOCKED 2026-04-26; reality-specific archetypes V1+):
 
 ```
-[Stoic, Hothead, Cunning, Innocent, Pious, Cynic, Worldly, Idealist]
+Core 8:    [Stoic, Hothead, Cunning, Innocent, Pious, Cynic, Worldly, Idealist]
+Wuxia+universal 4: [Loyal, Aloof, Ambitious, Compassionate]
+Total V1:  12 archetypes
 ```
 
-Optional 4 more if user approves expansion to 12: [Loyal, Aloof, Ambitious, Compassionate].
-
-Reality presets ship with these 8/12 + opinion_modifier_table populated with realistic baselines.
+Reality presets ship with these 12 + opinion_modifier_table populated with realistic baselines (12×12 = 144 entries; populate iteratively at DRAFT — start with diagonal-zero matrix, fill quadrants per-archetype-pair semantics).
 
 ---
 
@@ -178,7 +183,7 @@ Reality presets ship with these 8/12 + opinion_modifier_table populated with rea
 
 | ID | Scenario | Pass criteria |
 |---|---|---|
-| **AC-PRS-1** | Reality declares 8 V1 archetypes; LM01 created with archetype=Idealist | actor_personality row committed; voice_register=Neutral; UI displays Lý tưởng badge |
+| **AC-PRS-1** | Reality declares 12 V1 archetypes; LM01 created with archetype=Idealist | actor_personality row committed; voice_register=Neutral; UI displays Lý tưởng badge |
 | **AC-PRS-2** | NPC tieu_thuy declared with archetype=Innocent | actor_personality row committed; voice_register=Casual |
 | **AC-PRS-3** | LM01 Speaks utterance with no explicit speaker_voice | Speak validator resolves voice_register from actor_personality.archetype.voice_register = Neutral |
 | **AC-PRS-4** | LM01 (Idealist) Gives coins to Lão Ngũ (Worldly) for lodging | OpinionDelta computed = base(+1) + idealist→worldly(+0) + worldly→idealist(+1) = +2 trust |
@@ -193,9 +198,9 @@ Reality presets ship with these 8/12 + opinion_modifier_table populated with rea
 
 | ID | Question | Default proposal |
 |---|---|---|
-| **PRS-Q1** | Archetype count V1 — 8 (current) vs 12 (add Loyal/Aloof/Ambitious/Compassionate)? | **8 V1** — narrower closed-set easier to test + balance; 12 is V1+ additive expansion |
+| **PRS-Q1** | Archetype count V1 — 8 (current) vs 12 (add Loyal/Aloof/Ambitious/Compassionate)? | ✅ **LOCKED 2026-04-26 per POST-SURVEY-Q1:** **12 V1** — all 4 optional archetypes (Loyal/Aloof/Ambitious/Compassionate) are universal + wuxia-relevant. Without them: sect-disciple → Loyal exact (vs Idealist loose); Ma đạo antagonist → Ambitious exact (vs Cunning loose); Buddhist healer → Compassionate exact (vs Pious loose); recluse → Aloof exact (vs Cynic loose). Opinion modifier matrix 12×12 = 144 entries (manageable). |
 | **PRS-Q2** | Multi-archetype overlay V1 (primary + secondary) vs single V1? | **Single V1** — overlay = PRS-D3 V1+ enrichment; single archetype sufficient for SPIKE_01 NPC reactions |
-| **PRS-Q3** | Voice register count — 5 (current) vs 7 (add Eloquent + Hesitant)? | **5 V1** — covers core spectrum; V1+ extends additively |
+| **PRS-Q3** | Voice register count — 5 (current) vs 7 (add Eloquent + Hesitant)? | ✅ **LOCKED 2026-04-26 per POST-SURVEY-Q7:** **5 V1** (Formal/Neutral/Casual/Crude/Archaic). Eloquent + Hesitant feel like CONTEXT modifiers (not archetype defaults) — V1+ landing as overlay layer (PRS-D-NEW: context-aware voice register modifier system). |
 | **PRS-Q4** | Opinion modifier range — i8 -10..=+10 (current) vs -5..=+5 vs -100..=+100? | **i8 -10..=+10 V1** — narrow range forces meaningful baselines; opinion delta is small mods on top of kind base; V1+ may widen if needed |
 | **PRS-Q5** | Mutation V1 — strict immutable (current) vs allow Admin override V1? | **Strict immutable V1** with AdminOverride audit-only edit (matches IDF_001 RAC-Q1 pattern) |
 | **PRS-Q6** | Per-reality archetype packs (Wuxia archetypes vs Modern archetypes) vs universal 8 archetypes (current)? | **Universal 8 V1** — simplifies V1; reality-specific archetype packs V1+ enrichment |

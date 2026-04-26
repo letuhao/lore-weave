@@ -3,7 +3,7 @@
 > **Conversational name:** "Origin" (ORG). Tier 5 Actor Substrate Foundation feature owning per-actor `actor_origin` aggregate (V1 minimal stub: birthplace + lineage_id + native_language ref + default ideology refs) + `OriginPackDecl` reality-specific cultural pack (V1+ deep). Origin is **immutable birth-context**; distinct from IDF_005 Ideology which is **mutable belief stance**.
 >
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
-> **Status:** CONCEPT 2026-04-26
+> **Status:** CONCEPT 2026-04-26 (Q-decisions LOCKED 2026-04-26 per market survey + user "A" confirmation; ready for DRAFT promotion)
 > **Stable IDs:** `ORG-A*` axioms · `ORG-D*` deferrals · `ORG-Q*` open questions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md); [PF_001 §3.1 ChannelId](../00_place/PF_001_place_foundation.md) (birthplace ref); [IDF_001 Race](IDF_001_race_concept.md); [IDF_002 Language](IDF_002_language_concept.md) (native_language ref); [IDF_005 Ideology](IDF_005_ideology_concept.md) (default suggestions); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md).
 > **Defers to:** PCS_001 (PC origin at creation); NPC_001/003 (NPC canonical seed origin); V1+ family graph + lineage; V1+ cultural_tradition_pack with naming convention + values + arts; V1+ multi-cultural origin (V2+).
@@ -178,7 +178,7 @@ V1: schema slot present so V1+ doesn't need migration. `actor_origin.origin_pack
 | **ORG-Q1** | V1 scope — minimal stub (4 fields current) vs slightly richer (add gender + age + appearance hints)? | **Minimal stub V1** — 4 fields sufficient for IDF_002 + IDF_005 wiring; gender/age/appearance V1+ cosmetic enrichment |
 | **ORG-Q2** | OriginPackDecl V1 — schema slot empty (current) vs ship 2-3 example packs for SPIKE_01? | **Schema slot empty V1** — origin packs are content (Wuxia: Yến Vũ Lâu villager / Đông Hải sect disciple / etc.) — content authoring V1+; V1 schema-only |
 | **ORG-Q3** | birthplace ref — strict cell-tier ChannelId (current) vs allow non-cell-tier? | **Strict cell-tier V1** — V1+ extends to non-cell ("born in Country X without specific village") |
-| **ORG-Q4** | LineageId — opaque tag V1 (current) vs structured graph V1? | **Opaque tag V1** — graph is FF_001 Family Foundation V1+ feature; V1 just stores ID for forensic |
+| **ORG-Q4** | LineageId — opaque tag V1 (current) vs structured graph V1? vs mini-stub with parent/sibling refs? | ✅ **LOCKED 2026-04-26 per POST-SURVEY-Q4:** **Opaque tag V1 ONLY** (no parent_actor_id / mother_actor_id / sibling refs in V1). All family graph access deferred to V1+ FF_001 Family Foundation. Mini-stub with parent refs WAS considered + rejected — partial design creates refactor pain when FF_001 ships. FF_001 is **first priority post-IDF closure** (before PCS_001) per `_index.md` V1+ roadmap. |
 | **ORG-Q5** | default_ideology_refs at actor_origin (current) vs at OriginPackDecl only (look up via origin_pack_id)? | **At actor_origin V1** — V1 origin_pack_id often None; storing direct refs avoids lookup. V1+ when origin packs populated, OriginPackDecl.default_ideology_refs is canonical and actor_origin.default_ideology_refs is per-actor override. |
 | **ORG-Q6** | Mutation V1 — strict immutable (current) vs allow Admin override V1? | **Strict immutable** with AdminOverride audit-only (matches IDF_001 RAC-Q1 pattern) |
 | **ORG-Q7** | actor_origin REQUIRED for every actor (current) vs OPTIONAL for Synthetic actors? | **Forbidden for Synthetic V1** — Synthetic actors don't have origin (matches IDF_003 PRS-Q11) |
@@ -202,6 +202,8 @@ V1: schema slot present so V1+ doesn't need migration. `actor_origin.origin_pack
 | **ORG-D8** | Origin-conflict opinion modifier (rival-sect NPCs baseline -opinion) | V1+ NPC personality enrichment |
 | **ORG-D9** | Origin lifecycle events (migration / exile / cultural drift) | V2+ |
 | **ORG-D10** | Birthplace non-cell-tier ref (born in Country X) | V1+ when first author content needs |
+| **ORG-D11** (NEW Phase 0 survey) | Birth event metadata — wuxia narrative tags like "thiên kiêu chi tử" (heavenly-talented offspring), born-during-eclipse, born-of-virgin, born-during-cataclysm | V1+ origin enrichment when first reality content needs narrative birth markers; CK3 traits like "Born in the Purple" precedent |
+| **ORG-D12** (NEW Phase 0 survey — V1+ FF_001 priority signal) | FF_001 Family Foundation V1+ feature — first priority post-IDF closure (BEFORE PCS_001). Owns: family_graph aggregate (parents/siblings/children/cousins/dynasty); BirthEvent / MarriageEvent / DeathEvent / DivorceEvent / AdoptionEvent log; family-driven opinion modifier (CK3 pattern); inheritance-readiness for V1+ TIT_001 Title Foundation | V1+ FF_001 Family Foundation feature spec — per POST-SURVEY-Q4 + `_index.md` V1+ roadmap. Wuxia content REQUIRES this (sect lineage / family inheritance / dynasty politics). Locked HIGH priority. |
 
 ---
 

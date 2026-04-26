@@ -5,7 +5,7 @@
 > **Distinct from IDF_004 Origin:** Origin is **immutable birth-context**; Ideology is **mutable belief stance** (PC can convert; NPC's stance evolves per story events).
 >
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
-> **Status:** CONCEPT 2026-04-26
+> **Status:** CONCEPT 2026-04-26 (Q-decisions LOCKED 2026-04-26 per market survey + user "A" confirmation; ready for DRAFT promotion)
 > **Stable IDs:** `IDL-A*` axioms · `IDL-D*` deferrals · `IDL-Q*` open questions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md); [WA_001 Lex AxiomDecl](../02_world_authoring/WA_001_lex.md) (ideology gate at Stage 4); [IDF_004 Origin default_ideology_refs](IDF_004_origin_concept.md) (suggestion ref); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md).
 > **Defers to:** PCS_001 (PC creation form); NPC_001/003 (NPC canonical seed ideology); V1+ tenet system (ideology declares behavioral tenets); V1+ sect/order/giáo phái membership (faction system); V1+ ideology-conflict opinion drift; V2+ missionary mechanic.
@@ -264,6 +264,7 @@ ideologies: vec![
 | **IDL-Q10** | Convert reason from-tracking — `Convert { from: Option<IdeologyId> }` (current) vs separate event types Convert vs ColdAdoption? | **Single Convert with from-Optional V1** — conversions are bidirectional (could be from nothing); Optional From handles atheist-to-Daoist case |
 | **IDL-Q11** | Mutation of actor_ideology_stance V1 — allowed (current per Apply/Drop) vs immutable like other IDF? | **Mutable V1 per Apply/Drop** — only IDF feature with mutability V1 because ideology IS lifecycle-mutable; matches reality where conversion happens |
 | **IDL-Q12** | Synthetic actor ideology — required (Synthetic-default empty) vs forbidden? | **Forbidden V1** — Synthetic actors have no beliefs (matches IDF_003 PRS-Q11 + IDF_004 ORG-Q7) |
+| **IDL-Q13** (NEW Phase 0 survey) | Conversion cost mechanic V1 — free Apply/Drop/AdjustFervor (no cost) vs CK3-style cost (piety penalty + opinion penalty + 6-month period)? | ✅ **LOCKED 2026-04-26 per POST-SURVEY-Q3:** **Free V1** — forced by V1 dependency graph (cost mechanic blocked on V1+30d scheduler service + V1+ ideology-conflict opinion modifier IDL-D3). Conversion mechanically free V1; narrative weight via story-events. Cost mechanic deferred V1+ via NEW IDL-D11 (lands when EITHER scheduler service ships OR IDL-D3 ships, whichever first). DRAFT documents: "V1 conversion is mechanically free; authors writing V1 content should treat conversions as plot points (story-weight) but expect mechanical free-form V1." |
 
 ---
 
@@ -281,6 +282,7 @@ ideologies: vec![
 | **IDL-D8** | Cross-reality ideology mapping (Wuxia Đạo ≠ Modern Daoism conceptually) | V2+ Heresy migration |
 | **IDL-D9** | Per-tenet violation event flow (NPC sees PC violate Buddhist tenet → -opinion drift) | V1+ tenet system |
 | **IDL-D10** | Fervor drift over time (slow drift Devout → Moderate from inactivity) | V1+ scheduler V1+30d |
+| **IDL-D11** (NEW Phase 0 survey — POST-SURVEY-Q3) | Conversion cost mechanic — CK3-style piety cost + opinion penalty + 6-month period for ideology conversions; soft-cost variants (opinion-only without time period) also deferred | V1+ when EITHER (a) V1+30d scheduler service ships (enables time-period delay) OR (b) IDL-D3 ideology-conflict opinion modifier ships (enables opinion penalty), whichever first. V1 mechanically free per IDL-Q13. |
 
 ---
 

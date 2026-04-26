@@ -579,19 +579,21 @@ Based on §4-§7 survey, here are validations + adjustments to current IDF conce
 
 ---
 
-## §10 Open questions for user discussion (post-survey)
+## §10 Open questions for user discussion (post-survey) — ALL CONFIRMED 2026-04-26 (user "A")
 
-Based on survey, these are NEW questions worth user decision:
+User confirmed "A" on all 7 POST-SURVEY questions 2026-04-26 with deep-dive analysis. Locked answers below; concept-notes updated in same lock-adjustments commit.
 
-| Q ID | Question | Survey-informed default |
+| Q ID | Question | ✅ LOCKED answer (per user "A" 2026-04-26) |
 |---|---|---|
-| **POST-SURVEY-Q1** | IDF_003 archetype count V1 — confirm 8 (current) or pre-emptively expand to 12 to match CK3 16-trait depth half? | **Defer Q1 to DRAFT** — author Wuxia preset content reveals if 8 is sufficient |
-| **POST-SURVEY-Q2** | IDF_001 race size — 4 categories V1 (current) or 5 (add Tiny / Gargantuan)? | Wuxia Demons can be Huge/Gargantuan + Beasts can be Tiny → **expand to 5** at DRAFT (Small/Medium/Large/Huge/Gargantuan), revisit Tiny if first content demands |
-| **POST-SURVEY-Q3** | IDF_005 conversion cost mechanic V1 (CK3-style piety cost + delay) vs free Apply/Drop V1? | **Free V1** (current), conversion cost V1+ IDL-D11 NEW |
-| **POST-SURVEY-Q4** | Family graph (FF_001) — V1+ priority feature OR V1 sub-stub in IDF_004? | **V1+ separate FF_001 feature** (wuxia priority); IDF_004 lineage_id stays opaque |
-| **POST-SURVEY-Q5** | Cultivation realm — V1+ CULT_001 feature OR V1 within IDF_001 race expansion? | **V1+ separate CULT_001** — race is biological category; cultivation is mutable rank within race; clear separation matches all wuxia game patterns |
-| **POST-SURVEY-Q6** | Reputation — V1+ REP_001 feature OR V1 within FAC_001? | **V1+ separate REP_001** — reputation is per-(actor, faction) projection; deserves own aggregate; matches CK3 + Bannerlord pattern |
-| **POST-SURVEY-Q7** | Voice register expansion — 5 variants V1 (current) or 7 (add Eloquent / Hesitant) per Q-PRS-Q3? | **5 V1** confirmed — covers core spectrum per VtM/CK3 patterns; V1+ extends |
+| **POST-SURVEY-Q1** | IDF_003 archetype count V1 — 8 (current) or 12? | ✅ **12 V1** — all 4 optional archetypes (Loyal/Aloof/Ambitious/Compassionate) lock at V1; cover wuxia narrative gaps (sect-disciple/recluse/antagonist/Buddhist-healer); 12×12=144 opinion matrix manageable. Locked into IDF_003 §6 + §8 PRS-Q1. |
+| **POST-SURVEY-Q2** | IDF_001 race size — 4 vs 5 vs 6? | ✅ **6 V1** (Pathfinder 2e full: Tiny/Small/Medium/Large/Huge/Gargantuan) — wuxia content needs Tiny (spirit creatures) + Gargantuan (Dragons / Giant turtles); cheap to expand at concept stage. Locked into IDF_001 §2 SizeCategory + §8 RAC-Q4. |
+| **POST-SURVEY-Q3** | IDF_005 conversion cost V1 — free vs CK3-style cost? | ✅ **Free V1; cost V1+ IDL-D11** — forced by V1 dependency graph (cost requires V1+30d scheduler + IDL-D3 ideology-conflict modifier; both V1+). Locked into IDF_005 §8 IDL-Q13 + §9 IDL-D11. |
+| **POST-SURVEY-Q4** | Family graph — V1+ FF_001 vs V1 mini-stub? | ✅ **V1 IDF_004 lineage_id opaque only; V1+ FF_001 first priority post-IDF closure** (BEFORE PCS_001) — mini-stub creates partial design + refactor pain; FF_001 V1+ does it right. Locked into IDF_004 §8 ORG-Q4 + §9 ORG-D11/D12 + folder _index.md V1+ roadmap. |
+| **POST-SURVEY-Q5** | Cultivation realm — V1+ CULT_001 vs V1 within IDF_001? | ✅ **V1+ separate CULT_001** — clean separation; all wuxia game refs (Sands of Salzaar / Path of Wuxia / Sword & Fairy) treat realm as mutable rank within race, not race-tier expansion. Locked into IDF_001 §9 RAC-D11. |
+| **POST-SURVEY-Q6** | Reputation — V1+ REP_001 vs within FAC_001? | ✅ **V1+ separate REP_001** — per-(actor, faction) projection; phantom-membership avoided; mirrors NPC_001 R8 pattern. Locked into folder _index.md V1+ roadmap. |
+| **POST-SURVEY-Q7** | Voice register expansion — 5 V1 vs 7? | ✅ **5 V1** (current) — Eloquent + Hesitant are CONTEXT modifiers, not archetype defaults; V1+ landing as overlay layer. Locked into IDF_003 §8 PRS-Q3. |
+
+**Result:** All 7 questions locked. Concept-notes updated to reflect decisions. Ready for IDF_001 → IDF_005 DRAFT promotion sequence (5 features × 3 commits = ~15 commits across 5 lock-cycles).
 
 ---
 

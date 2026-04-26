@@ -3,7 +3,7 @@
 > **Conversational name:** "Race" (RAC). Tier 5 Actor Substrate Foundation feature owning the per-reality `race` closed-set enum + per-actor `race_assignment` aggregate. Cross-actor uniformity: same enum + aggregate referenced by future PCS_001 (PC) + NPC_003 (NPC). Foundation discipline mirrors EF_001's ActorId pattern — own the closed-set once, consume from many.
 >
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
-> **Status:** CONCEPT 2026-04-26 (Phase 0 — awaiting user Q-decision approval before DRAFT promotion)
+> **Status:** CONCEPT 2026-04-26 (Phase 0 — Q-decisions LOCKED 2026-04-26 per market survey + user "A" confirmation; ready for DRAFT promotion)
 > **Stable IDs:** `RAC-A*` axioms · `RAC-D*` deferrals · `RAC-Q*` open questions (per ID catalog convention; registered in `_boundaries/02_extension_contracts.md` Stable-ID prefix table on DRAFT promotion)
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md) (sibling pattern); [WA_001 Lex AxiomDecl](../02_world_authoring/WA_001_lex.md) (race-gate hook at V1 Stage 4); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md) (display name type).
 > **Defers to:** PCS_001 (PC race assignment via existing aggregate); NPC_003 mortality (race-affected lifespan / mortality_kind override); V1+ combat (race-affected ability access).
@@ -41,7 +41,7 @@ Every actor (PC + NPC) has exactly ONE race assignment per reality. Race is **bi
 | **RaceId** | Stable-ID newtype `String` (e.g., `race_cultivator`, `race_human_modern`, `race_alien_x`) | Opaque language-neutral; per-reality scope. NOT an enum — closed-set per reality declared in RealityManifest. |
 | **RaceDecl** | Author-declared per-reality entry | Declarative metadata: display_name (I18nBundle) + default_lifespan_years (u16; ~80 for Human, ~600 for Cultivator V1) + size_category (Small / Medium / Large / Huge) + default_mortality_kind_override (Option<MortalityKind> per WA_006 — e.g., Ghost → already-dead state) + allowed_lex_axiom_tags (Vec<String> for V1+ Lex gate). |
 | **race_assignment** | T2 / Reality aggregate; per-(reality, actor_id) row | Generic for PC + NPC. Birth-fixed V1 — single immutable RaceId field + rationale field for audit. |
-| **SizeCategory** | Closed enum: `Small / Medium / Large / Huge` | V1 closed set. Consumed by V1+ combat (size-vs-size modifier). |
+| **SizeCategory** | Closed enum 6-variant: `Tiny / Small / Medium / Large / Huge / Gargantuan` | V1 closed set per Pathfinder 2e full coverage (locked 2026-04-26 per POST-SURVEY-Q2). Consumed by V1+ combat (size-vs-size modifier; 6×6 = 36-entry matrix). Wuxia coverage: Tiny=Linh xà / Linh thử (spirit creatures); Medium=Cultivator/Phàm nhân; Large=Tigers/Wolves/Beast cultivators; Gargantuan=Long (Dragons) / Linh quy (Giant turtles). |
 
 **Cross-feature consumers:**
 - Lex axiom (WA_001) — `requires_race` gate at Stage 4 lex_check
@@ -208,7 +208,7 @@ RealityManifest {
 | **RAC-Q1** | Race assignment — birth-fixed V1 (current proposal) vs allow Admin override V1? | **Birth-fixed V1** with `AdminOverride` reason variant for forensic-only edits (V1 ships AdminOverride path; not user-facing) |
 | **RAC-Q2** | RaceId namespace — opaque string per reality (current) vs global enum across realities? | **Opaque string per reality** — different realities have different races; no cross-reality enum collision |
 | **RAC-Q3** | Default lifespan — single u16 years (current) vs distribution (mean + stddev)? | **Single u16 V1** — distribution is V1+ enrichment (RAC-D5); deterministic per-actor lifespan only when needed for scheduler V1+30d |
-| **RAC-Q4** | SizeCategory — 4 variants (Small/Medium/Large/Huge) vs 5 (add Tiny) vs 6 (add Tiny + Gargantuan)? | **4 variants V1** (Small/Medium/Large/Huge); V1+ extends additively |
+| **RAC-Q4** | SizeCategory — 4 variants (Small/Medium/Large/Huge) vs 5 (add Tiny) vs 6 (add Tiny + Gargantuan)? | ✅ **LOCKED 2026-04-26 per POST-SURVEY-Q2:** **6 variants V1** (Tiny/Small/Medium/Large/Huge/Gargantuan; Pathfinder 2e full coverage). Wuxia content needs Tiny (spirit creatures) + Gargantuan (Dragons / Giant turtles). |
 | **RAC-Q5** | `allowed_lex_axiom_tags` — list of strings (current) vs typed `Vec<AxiomTag>` enum? | **List of strings V1** — axiom tags evolve with WA_001; typed enum couples too tightly. V1+ may type. |
 | **RAC-Q6** | RealityManifest `races` REQUIRED (every reality declares ≥1 race) vs OPTIONAL (default to "Human" implicit)? | **REQUIRED V1** — explicit always; mirrors PF_001 places REQUIRED pattern |
 | **RAC-Q7** | Cross-reality PC migration — V1 strict (PC bound to one reality) vs V2+ (race remap on migration)? | **V1 strict per WA_002 Heresy contamination boundary**; V2+ migration adds remap policy |
@@ -232,6 +232,7 @@ RealityManifest {
 | **RAC-D8** | Race-driven appearance defaults (height range / typical features) | V1+ IDF_005 Appearance feature OR cosmetic V1+ |
 | **RAC-D9** | Race-driven name pattern (Cultivator daoist names vs Phàm nhân village names) | V1+ IDF_004 Origin enrichment |
 | **RAC-D10** | Race lifespan vs mortality interaction (Cultivator 600yr but death-by-Strike treated equally) | V1+ combat + WA_006 cross-design |
+| **RAC-D11** (NEW Phase 0 survey) | Cultivation realm (mutable rank-tier within Cultivator race: Phàm nhân → Trúc Cơ → Kim Đan → Nguyên Anh → Hóa Thần → Đại Thừa → Tiên/Ma) — NOT IDF_001 expansion; SEPARATE V1+ feature CULT_001 Cultivation Foundation per POST-SURVEY-Q5 | V1+ CULT_001 Cultivation Foundation (separate feature; defer until first non-SPIKE_01 wuxia content needs realm progression). All wuxia game references (Sands of Salzaar / Path of Wuxia / Sword & Fairy) treat realm as mutable rank within race — NOT as race-tier expansion. IDF_001 ships immutable race only V1. |
 
 ---
 
