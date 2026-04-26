@@ -95,9 +95,9 @@ func TestNormalizeLmStudioBase(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := normalizeLmStudioBase(tc.in)
+			got := NormalizeLmStudioBase(tc.in)
 			if got != tc.want {
-				t.Fatalf("normalizeLmStudioBase(%q) = %q, want %q", tc.in, got, tc.want)
+				t.Fatalf("NormalizeLmStudioBase(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}

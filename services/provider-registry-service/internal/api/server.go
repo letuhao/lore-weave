@@ -379,8 +379,7 @@ WHERE platform_model_id=$1 AND status='active'
 		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "target path required")
 		return
 	}
-	baseURL := strings.TrimRight(endpointBaseURL, "/")
-	targetURL := baseURL + "/" + targetPath
+	targetURL := buildProxyTargetURL(providerKind, endpointBaseURL, targetPath)
 
 	// K17.2a — transparent model rewrite for JSON bodies.
 	//
@@ -551,6 +550,24 @@ func normalizeResponseFormatForKind(parsed map[string]any, kind string) {
 		// (json_schema spec, etc.) don't leak through.
 		parsed["response_format"] = map[string]any{"type": "text"}
 	}
+}
+
+// buildProxyTargetURL joins the resolved provider's endpoint base URL with
+// the per-request target path. For lm_studio it strips a trailing "/v1" off
+// the base — users frequently store the full OpenAI-style URL like
+// http://host:1234/v1, but doProxy receives a target path that already begins
+// with "v1/...", so a naïve join would produce /v1/v1/chat/completions.
+//
+// The typed adapter Invoke() path was fixed in LM-STUDIO-URL-FIX (cycle
+// 74da52c) but the transparent proxy was missed; this helper closes the gap.
+func buildProxyTargetURL(providerKind, endpointBaseURL, targetPath string) string {
+	var base string
+	if providerKind == "lm_studio" {
+		base = provider.NormalizeLmStudioBase(endpointBaseURL)
+	} else {
+		base = strings.TrimRight(endpointBaseURL, "/")
+	}
+	return base + "/" + targetPath
 }
 
 type errorBody struct {

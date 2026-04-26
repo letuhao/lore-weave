@@ -67,6 +67,12 @@ INSERT INTO user_models (
     'qwen/qwen2.5-coder-14b',
     'Qwen2.5 Coder 14B (24K context — coder bias, weak on narrative)',
     true, 24000, '{}'::jsonb
+  ),
+  (
+    :owner_user_id, :provider_credential_id, 'lm_studio',
+    'qwen/qwen3.6-35b-a3b',
+    'Qwen3.6 35B-A3B (120K context — MoE, active 3B params; user-strongest local model)',
+    true, 120000, '{}'::jsonb
   )
 ON CONFLICT DO NOTHING
 RETURNING user_model_id, provider_model_name, context_length;
