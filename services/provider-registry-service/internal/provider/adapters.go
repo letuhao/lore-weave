@@ -52,7 +52,20 @@ type Adapter interface {
 	ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error)
 	Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error)
 	HealthCheck(ctx context.Context, endpointBaseURL, secret string) error
+
+	// Stream — Phase 1a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN). Open a
+	// streaming chat completion against the provider and emit canonical
+	// StreamChunk events via emit. Adapters that don't support streaming
+	// return ErrStreamNotSupported; the route handler maps that to 501.
+	//
+	// emit returning an error means the downstream caller is gone; the
+	// adapter MUST stop streaming and return that error.
+	Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error
 }
+
+// ErrStreamNotSupported — returned by adapters that don't yet implement
+// Stream(). Route handler maps this to HTTP 501 Not Implemented.
+var ErrStreamNotSupported = fmt.Errorf("streaming not supported by this provider adapter")
 
 type ModelInventory struct {
 	ProviderModelName string         `json:"provider_model_name"`
@@ -276,6 +289,36 @@ func (a *openaiAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret
 	return err
 }
 
+func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = openaiBaseURL
+	}
+	headers := map[string]string{}
+	if secret != "" {
+		headers["Authorization"] = "Bearer " + secret
+	}
+	body := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	if v, ok := input["temperature"]; ok {
+		body["temperature"] = v
+	}
+	if v, ok := input["max_tokens"]; ok {
+		body["max_tokens"] = v
+	}
+	if v, ok := input["tools"]; ok {
+		body["tools"] = v
+	}
+	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return streamOpenAICompat(ctx, resp.Body, emit)
+}
+
 // ── Anthropic adapter ─────────────────────────────────────────────────────────
 
 type anthropicAdapter struct {
@@ -409,6 +452,15 @@ func (a *anthropicAdapter) HealthCheck(ctx context.Context, endpointBaseURL, sec
 	return err
 }
 
+// Stream — Anthropic streaming uses different SSE event names
+// (content_block_delta, message_delta, message_stop) than OpenAI. Deferred
+// to a follow-up cycle (Phase 1a-followup); for now this returns 501 so
+// chat-service migration in Phase 1c can target lm_studio + openai-compat
+// providers first.
+func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
+	return ErrStreamNotSupported
+}
+
 // ── Ollama adapter ────────────────────────────────────────────────────────────
 
 type ollamaAdapter struct {
@@ -487,6 +539,33 @@ func (a *ollamaAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret
 	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "",
 		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
 	return err
+}
+
+// Stream — Ollama supports streaming via its OpenAI-compatible
+// /v1/chat/completions endpoint (separate from the /api/chat NDJSON path
+// used by Invoke). This implementation uses the OpenAI-compat path so it
+// shares the SSE parser with openai/lm_studio.
+func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, modelName string, input map[string]any, emit EmitFn) error {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = ollamaDefaultBase
+	}
+	body := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	if v, ok := input["temperature"]; ok {
+		body["temperature"] = v
+	}
+	if v, ok := input["max_tokens"]; ok {
+		body["max_tokens"] = v
+	}
+	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", nil, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return streamOpenAICompat(ctx, resp.Body, emit)
 }
 
 // ── LM Studio adapter (OpenAI-compatible) ────────────────────────────────────
@@ -644,6 +723,33 @@ func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secr
 	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "",
 		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
 	return err
+}
+
+// Stream — LM Studio is OpenAI-compatible on /v1/chat/completions, so this
+// delegates to the shared streamOpenAICompat parser. Uses NormalizeLmStudioBase
+// to strip a possible trailing /v1 (mirrors Invoke).
+func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
+	base := NormalizeLmStudioBase(endpointBaseURL)
+	headers := map[string]string{}
+	if secret != "" {
+		headers["Authorization"] = "Bearer " + secret
+	}
+	body := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	if v, ok := input["temperature"]; ok {
+		body["temperature"] = v
+	}
+	if v, ok := input["max_tokens"]; ok {
+		body["max_tokens"] = v
+	}
+	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return streamOpenAICompat(ctx, resp.Body, emit)
 }
 
 // ── factory ───────────────────────────────────────────────────────────────────

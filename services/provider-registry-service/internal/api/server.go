@@ -129,6 +129,10 @@ func (s *Server) Router() http.Handler {
 		r.HandleFunc("/proxy/*", s.publicProxy)
 	})
 
+	// Phase 1a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN) — unified streaming
+	// endpoint. SSE response, no timeout. JWT auth.
+	r.Post("/v1/llm/stream", s.llmStream)
+
 	// Internal service-to-service routes — NOT proxied by api-gateway-bff.
 	// Protected by X-Internal-Token middleware instead of user JWT.
 	r.Route("/internal", func(r chi.Router) {
@@ -139,6 +143,9 @@ func (s *Server) Router() http.Handler {
 		// with credential injection. Used for STT (file upload) and TTS (binary response).
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
+
+		// Phase 1a — service-to-service streaming endpoint.
+		r.Post("/llm/stream", s.internalLlmStream)
 	})
 
 	return r
