@@ -6,6 +6,78 @@
 
 ---
 
+## 2026-04-27 — REP_001 Reputation Foundation DRAFT promotion + boundary register (commit 2/4)
+
+- **Lock CLAIMED** at start of this commit (`[boundaries-lock-claim]`); release deferred to commit 4/4 closure pass per FAC_001 4-commit cycle pattern
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None → main session 2026-04-27 (REP_001 DRAFT promotion + boundary register; 4h TTL)
+  - `01_feature_ownership_matrix.md`:
+    - 1 NEW aggregate row: `actor_faction_reputation` (REP_001 DRAFT 2026-04-27)
+    - 1 NEW EVT-T4 sub-type entry: `ReputationBorn` (REP_001 owner)
+    - 2 NEW EVT-T8 sub-shape entries: `Forge:SetReputation` + `Forge:ResetReputation` (REP_001 owner; uses WA_003 forge_audit_log)
+    - 1 NEW EVT-T3 entry: 3 V1+ delta_kinds reserved for `aggregate_type=actor_faction_reputation` (Delta + CascadeDelta + DecayTick)
+    - RealityManifest envelope row: appended `REP_001 Reputation Foundation (canonical_actor_faction_reputations: Vec<ActorFactionReputationDecl>, OPTIONAL V1, added 2026-04-27)`
+    - RejectReason namespace row: appended `reputation.* → REP_001` (also ensured `race.* → IDF_001`, `language.*`, `personality.*`, `origin.*`, `ideology.*`, `family.*`, `faction.*`, `progression.*` listed for completeness)
+    - Stable-ID prefix row: NEW `REP-*` entry (foundation tier — Tier 5 Actor Substrate post-FAC_001)
+  - `02_extension_contracts.md`:
+    - §1.4 namespace registration: `reputation.*` (6 V1 rules + 4 V1+ reservations)
+    - §2 RealityManifest extension: `canonical_actor_faction_reputations: Vec<ActorFactionReputationDecl>` (OPTIONAL V1; sparse opt-in)
+  - `99_changelog.md`: this entry
+
+### REP_001 DRAFT MILESTONE SUMMARY (commit 2/4 of 4-commit cycle)
+
+Files created/modified outside `_boundaries/`:
+- features/00_reputation/_index.md (DRAFT row updated; catalog reference added)
+- features/00_reputation/00_CONCEPT_NOTES.md (already at Q-LOCKED status; commit 1/4 61e5019)
+- features/00_reputation/01_REFERENCE_GAMES_SURVEY.md (Phase 0 commit 6b7d931)
+- features/00_reputation/REP_001_reputation_foundation.md (~625 line DRAFT spec — NEW THIS COMMIT)
+- catalog/cat_00_REP_reputation_foundation.md (REP-* namespace catalog; REP-A1..A7 axioms + REP-D1..D17 deferrals — NEW THIS COMMIT)
+
+Boundary expansions:
+- 1 NEW aggregate: `actor_faction_reputation` (T2/Reality, sparse — per-(actor, faction) bounded standing)
+- 1 NEW EVT-T4 System sub-type: `ReputationBorn` (canonical seed only)
+- 2 NEW EVT-T8 Administrative sub-shapes: `Forge:SetReputation` + `Forge:ResetReputation` (V1 active per Q5 LOCKED)
+- 3 V1+ EVT-T3 delta_kinds reserved: Delta + CascadeDelta + DecayTick (V1+ runtime reputation milestone per Q5+Q6+Q7 V1+ enrichment)
+- 1 NEW namespace: `reputation.*` (6 V1 rules + 4 V1+ reservations)
+- 1 NEW RealityManifest extension: `canonical_actor_faction_reputations: Vec<ActorFactionReputationDecl>` (OPTIONAL V1; sparse opt-in)
+- 1 NEW stable-ID prefix: `REP-*`
+
+Q-LOCKED summary (Q1-Q10 LOCKED via 5-batch deep-dive 2026-04-27 user "approve" across all batches; 1 REVISION on Q4):
+- Q1 (A): Materialized aggregate `actor_faction_reputation` (FAC_001 Q1 pattern)
+- Q2 (A): Sparse storage + V1+ lazy-create on first delta touch
+- Q3 (A): Bounded i16 [-1000, +1000] + 8-tier engine-fixed (asymmetric thresholds; Wuxia I18n labels)
+- Q4 ⚠ REVISION (A): Always Neutral (0) V1 (vs initial hybrid (C)); V1+ hybrid via REP-D16 alongside Q6 cascade
+- Q5 (B): Forge admin V1 + canonical seed V1; runtime gameplay V1+
+- Q6 (A): No cascade V1; V1+ via REP-D2 (FactionDecl.rep_cascade_config)
+- Q7 (A): No decay V1; V1+ via REP-D3 (FactionDecl.rep_decay_per_week)
+- Q8 (A): V1 strict single-reality; V2+ Heresy via WA_002 (universal discipline)
+- Q9 (A): Synthetic actor forbidden V1 (universal discipline)
+- Q10 (A): Coexist with RES_001 SocialCurrency::Reputation via 3-layer separation discipline
+
+Cross-feature deferrals RESOLVED:
+- **FAC-D7** (FAC_001) — Per-(actor, faction) reputation projection → ✅ RESOLVED via REP_001 actor_faction_reputation aggregate
+
+3-layer separation discipline LOCKED (REP-A4 + Q10):
+- L1 NPC_001 npc_pc_relationship_projection = per-(NPC, PC) personal opinion
+- L2 RES_001 SocialCurrency::Reputation = per-actor unbounded global "danh tiếng" sum scalar
+- L3 REP_001 actor_faction_reputation = per-(actor, faction) bounded standing per faction
+- These three layers are COMPLEMENTARY, NOT duplicative; NPC_002 Chorus consumes ALL THREE for V1+ priority resolution
+
+V1 quantitative summary:
+- 1 aggregate (actor_faction_reputation sparse) — smaller than FAC_001's 2-aggregate scope
+- 1 enum (ReputationTier 8-variant display layer; not stored)
+- 6 V1 reject rule_ids in `reputation.*` namespace + 4 V1+ reservations
+- 1 RealityManifest extension (canonical_actor_faction_reputations OPTIONAL — sparse; empty Vec valid)
+- 2 EVT-T8 Forge sub-shapes + 1 EVT-T4 System sub-type
+- 3 V1+ EVT-T3 delta_kinds reserved (Delta + CascadeDelta + DecayTick)
+- 8 V1 AC + 4 V1+ deferred + 17 deferrals (REP-D1..REP-D17)
+- ~625 line DRAFT spec
+- 4-commit cycle (Phase 0 6b7d931 + lock-Q 1/4 61e5019 + DRAFT 2/4 this commit + Phase 3 3/4 + closure+release 4/4)
+
+Next: commit 3/4 Phase 3 cleanup, then commit 4/4 closure pass + lock release. New V1+ priority post-REP_001: PCS_001 PC Substrate (consumes IDF + RES_001 + FF_001 + FAC_001 + REP_001 + PROG_001) OR CULT_001 Cultivation Foundation (wuxia-genre cultivation method binding to sect via FAC_001) OR TIT_001 Title Foundation (heir succession via FF_001 + FAC_001 + min REP_001 rep).
+
+---
+
 ## 2026-04-26 — FAC_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 4/4 FINAL)
 
 - **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
