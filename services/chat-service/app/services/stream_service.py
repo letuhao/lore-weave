@@ -1,117 +1,127 @@
 """Streaming service — emits AI SDK data stream protocol v1 SSE lines.
 
-Uses OpenAI AsyncClient directly (not LiteLLM) so we get raw delta fields
-including reasoning_content from thinking models (Qwen3, DeepSeek-R1).
-Falls back to LiteLLM for Anthropic and other non-OpenAI-compatible providers.
+Phase 1c-ii (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN): all LLM streaming flows
+through provider-registry's `/internal/llm/stream` via the
+`loreweave_llm` SDK. Direct provider-SDK calls (litellm, openai-python,
+anthropic) are forbidden per CLAUDE.md gateway invariant.
+
+Anthropic streaming temporarily emits LLM_STREAM_NOT_SUPPORTED until
+the anthropic adapter Stream() impl ships (deferral
+D-PHASE-1C-ANTHROPIC).
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from typing import AsyncGenerator
 from uuid import uuid4
 
 import asyncpg
-from openai import AsyncOpenAI
-from litellm import acompletion
+from loreweave_llm import (
+    Client,
+    DoneEvent,
+    LLMError,
+    ReasoningEvent,
+    StreamRequest,
+    TokenEvent,
+    UsageEvent,
+)
 
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
+from app.config import settings
 from app.models import ProviderCredentials
 from app.services.output_extractor import extract_outputs
 
 logger = logging.getLogger(__name__)
 
 
-def _is_openai_compatible(provider_kind: str) -> bool:
-    """Providers that speak the OpenAI chat/completions SSE protocol."""
-    return provider_kind != "anthropic"
+@dataclass
+class _Usage:
+    """Mirror the shape of openai's CompletionUsage so existing
+    `getattr(last_usage, 'prompt_tokens', None)` call sites keep working
+    after the SDK migration."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
-async def _stream_openai_compatible(
-    model_name: str,
+async def _stream_via_gateway(
+    model_source: str,
+    model_ref: str,
+    user_id: str,
     messages: list[dict],
-    api_key: str,
-    base_url: str | None,
     gen_params: dict,
 ) -> AsyncGenerator[dict, None]:
-    """Stream via openai.AsyncOpenAI — preserves reasoning_content."""
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    """Stream via provider-registry `/internal/llm/stream` using the
+    loreweave_llm SDK. Single replacement for the legacy
+    `_stream_openai_compatible` and `_stream_litellm` helpers — gateway
+    invariant restored.
+
+    Yields dicts of the same shape consumers expected from the legacy
+    helpers (`content` / `reasoning_content` / `finish_reason` / `usage`)
+    so `stream_response` and `voice_stream_response` don't need
+    restructuring.
+    """
+    client = Client(
+        base_url=settings.provider_registry_internal_url,
+        auth_mode="internal",
+        internal_token=settings.internal_service_token,
+        user_id=user_id,
+    )
     try:
-        kwargs: dict = {
-            "model": model_name,
+        max_tokens = gen_params.get("max_tokens")
+        if max_tokens is not None and max_tokens <= 0:
+            max_tokens = None
+        # Build kwargs sparsely so None values don't override SDK schema
+        # defaults (StreamRequest.temperature defaults to 0.0; passing
+        # None fails pydantic validation).
+        request_kwargs: dict = {
+            "model_source": model_source,
+            "model_ref": model_ref,
             "messages": messages,
-            "stream": True,
-            "stream_options": {"include_usage": True},
         }
         if gen_params.get("temperature") is not None:
-            kwargs["temperature"] = gen_params["temperature"]
-        if gen_params.get("top_p") is not None:
-            kwargs["top_p"] = gen_params["top_p"]
-        if gen_params.get("max_tokens") is not None and gen_params["max_tokens"] > 0:
-            kwargs["max_tokens"] = gen_params["max_tokens"]
-
-        response = await client.chat.completions.create(**kwargs)
-        async for chunk in response:
-            if not chunk.choices and not getattr(chunk, "usage", None):
-                continue
-            # Final chunk may have usage but no choices
-            if not chunk.choices:
+            request_kwargs["temperature"] = gen_params["temperature"]
+        if max_tokens is not None:
+            request_kwargs["max_tokens"] = max_tokens
+        request = StreamRequest(**request_kwargs)
+        last_usage: _Usage | None = None
+        finish_reason: str | None = None
+        async for ev in client.stream(request):
+            if isinstance(ev, TokenEvent):
+                yield {
+                    "content": ev.delta,
+                    "reasoning_content": "",
+                    "finish_reason": None,
+                    "usage": None,
+                }
+            elif isinstance(ev, ReasoningEvent):
                 yield {
                     "content": "",
-                    "reasoning_content": "",
-                    "finish_reason": "stop",
-                    "usage": getattr(chunk, "usage", None),
+                    "reasoning_content": ev.delta,
+                    "finish_reason": None,
+                    "usage": None,
                 }
-                continue
-            delta = chunk.choices[0].delta
-            # OpenAI SDK preserves extra fields in model_extra
-            raw = getattr(delta, "model_extra", {}) or {}
-            yield {
-                "content": delta.content or "",
-                "reasoning_content": raw.get("reasoning_content", "") or "",
-                "finish_reason": chunk.choices[0].finish_reason,
-                "usage": getattr(chunk, "usage", None),
-            }
-    finally:
-        await client.close()
-
-
-async def _stream_litellm(
-    model: str,
-    messages: list[dict],
-    api_key: str,
-    base_url: str | None,
-    gen_params: dict,
-) -> AsyncGenerator[dict, None]:
-    """Stream via LiteLLM — for Anthropic and non-OpenAI providers."""
-    kwargs: dict = {
-        "model": model,
-        "messages": messages,
-        "stream": True,
-        "api_key": api_key,
-        "base_url": base_url or None,
-        "timeout": 300,
-    }
-    if gen_params.get("temperature") is not None:
-        kwargs["temperature"] = gen_params["temperature"]
-    if gen_params.get("top_p") is not None:
-        kwargs["top_p"] = gen_params["top_p"]
-    if gen_params.get("max_tokens") is not None and gen_params["max_tokens"] > 0:
-        kwargs["max_tokens"] = gen_params["max_tokens"]
-
-    response = await acompletion(**kwargs)
-    async for chunk in response:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
+            elif isinstance(ev, UsageEvent):
+                last_usage = _Usage(
+                    prompt_tokens=ev.input_tokens,
+                    completion_tokens=ev.output_tokens,
+                )
+            elif isinstance(ev, DoneEvent):
+                finish_reason = ev.finish_reason
+        # Trailing chunk so consumer's billing path picks up usage +
+        # finish_reason exactly the way the legacy code did.
         yield {
-            "content": delta.content or "",
-            "reasoning_content": getattr(delta, "reasoning_content", "") or "",
-            "finish_reason": chunk.choices[0].finish_reason,
-            "usage": getattr(chunk, "usage", None),
+            "content": "",
+            "reasoning_content": "",
+            "finish_reason": finish_reason or "stop",
+            "usage": last_usage,
         }
+    finally:
+        await client.aclose()
 
 
 async def stream_response(
@@ -244,24 +254,9 @@ async def stream_response(
     if context:
         messages.insert(-1, {"role": "system", "content": f"The user has attached the following context:\n\n{context}"})
 
-    # ── Resolve model string + base_url ─────────────────────────────────────
-    api_key = creds.api_key if creds.api_key else "lw-no-key"
-    base_url = creds.base_url or None
-
-    # For OpenAI-compatible providers, use the raw model name with OpenAI SDK
-    # For Anthropic, use LiteLLM with anthropic/ prefix
-    use_openai_sdk = _is_openai_compatible(creds.provider_kind)
-
-    if creds.provider_kind == "anthropic":
-        model_string = f"anthropic/{creds.provider_model_name}"
-    elif creds.provider_kind == "openai" and not base_url:
-        model_string = creds.provider_model_name
-        base_url = "https://api.openai.com/v1"
-    else:
-        # LM Studio, Ollama, custom — raw model name for OpenAI SDK
-        model_string = creds.provider_model_name
-        if creds.provider_kind == "lm_studio" and base_url and not base_url.rstrip("/").endswith("/v1"):
-            base_url = base_url.rstrip("/") + "/v1"
+    # ── Phase 1c-ii: gateway resolves api_key / base_url / model_string
+    # internally; service no longer needs them. We keep `creds.provider_kind`
+    # for the Anthropic cache_control branch above.
 
     # ── Stream ──────────────────────────────────────────────────────────────
     full_content: list[str] = []
@@ -279,10 +274,13 @@ async def stream_response(
     yield f'data: {json.dumps({"type": "memory-mode", "mode": fe_memory_mode})}\n\n'
 
     try:
-        if use_openai_sdk:
-            chunk_stream = _stream_openai_compatible(model_string, messages, api_key, base_url, gen_params)
-        else:
-            chunk_stream = _stream_litellm(model_string, messages, api_key, base_url, gen_params)
+        chunk_stream = _stream_via_gateway(
+            model_source=model_source,
+            model_ref=model_ref,
+            user_id=user_id,
+            messages=messages,
+            gen_params=gen_params,
+        )
 
         async for chunk_data in chunk_stream:
             reasoning = chunk_data["reasoning_content"]
@@ -422,13 +420,12 @@ async def stream_response(
             asyncio.create_task(
                 _auto_generate_title(
                     session_id=session_id,
+                    user_id=user_id,
                     user_message=user_message_content,
                     assistant_message=final_text[:500],
-                    model_name=model_string,
-                    api_key=api_key,
-                    base_url=base_url,
+                    model_source=model_source,
+                    model_ref=model_ref,
                     pool=pool,
-                    use_openai_sdk=use_openai_sdk,
                 )
             )
 
@@ -462,15 +459,17 @@ async def stream_response(
 
 async def _auto_generate_title(
     session_id: str,
+    user_id: str,
     user_message: str,
     assistant_message: str,
-    model_name: str,
-    api_key: str,
-    base_url: str | None,
+    model_source: str,
+    model_ref: str,
     pool: asyncpg.Pool,
-    use_openai_sdk: bool = True,
 ) -> None:
-    """Generate a short title for the session based on the first exchange."""
+    """Generate a short title via the LLM gateway. Phase 1c-ii: routes
+    through `loreweave_llm.Client.stream()` and accumulates tokens
+    instead of calling AsyncOpenAI/litellm directly. Title generation is
+    short enough (≤200 tokens) that streaming-then-collect is cheap."""
     title_messages = [
         {
             "role": "system",
@@ -483,42 +482,47 @@ async def _auto_generate_title(
         {"role": "user", "content": "Title:"},
     ]
     try:
-        if use_openai_sdk:
-            client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-            resp = await client.chat.completions.create(
-                model=model_name,
+        client = Client(
+            base_url=settings.provider_registry_internal_url,
+            auth_mode="internal",
+            internal_token=settings.internal_service_token,
+            user_id=user_id,
+        )
+        try:
+            request = StreamRequest(
+                model_source=model_source,
+                model_ref=model_ref,
                 messages=title_messages,
-                stream=False,
-                max_tokens=200,  # Extra budget so thinking models have room for content
                 temperature=0.3,
-            )
-            msg = resp.choices[0].message
-            # Thinking models (Qwen3) may put answer in content, or content may be empty
-            # if all tokens went to reasoning. Check both.
-            raw_content = (msg.content or "").strip()
-            raw_extra = getattr(msg, "model_extra", {}) or {}
-            raw_reasoning = (raw_extra.get("reasoning_content", "") or "").strip()
-            # Prefer content; fall back to last line of reasoning
-            if raw_content:
-                title = raw_content.strip().strip('"').strip("'")
-            elif raw_reasoning:
-                # Extract last meaningful line from reasoning as title
-                lines = [l.strip() for l in raw_reasoning.split("\n") if l.strip() and not l.strip().startswith("Okay") and not l.strip().startswith("Let me")]
-                title = lines[-1].strip().strip('"').strip("'") if lines else ""
-            else:
-                title = ""
-            await client.close()
+                max_tokens=200,  # Extra budget for thinking models
+            )  # noqa — title gen has explicit non-None values, no kwargs sparsity needed
+            content_parts: list[str] = []
+            reasoning_parts: list[str] = []
+            async for ev in client.stream(request):
+                if isinstance(ev, TokenEvent):
+                    content_parts.append(ev.delta)
+                elif isinstance(ev, ReasoningEvent):
+                    reasoning_parts.append(ev.delta)
+        finally:
+            await client.aclose()
+
+        raw_content = "".join(content_parts).strip()
+        raw_reasoning = "".join(reasoning_parts).strip()
+
+        # Prefer content; fall back to last meaningful line of reasoning.
+        if raw_content:
+            title = raw_content.strip().strip('"').strip("'")
+        elif raw_reasoning:
+            lines = [
+                l.strip()
+                for l in raw_reasoning.split("\n")
+                if l.strip()
+                and not l.strip().startswith("Okay")
+                and not l.strip().startswith("Let me")
+            ]
+            title = lines[-1].strip().strip('"').strip("'") if lines else ""
         else:
-            resp = await acompletion(
-                model=model_name,
-                messages=title_messages,
-                stream=False,
-                api_key=api_key,
-                base_url=base_url,
-                max_tokens=100,
-                temperature=0.3,
-            )
-            title = (resp.choices[0].message.content or "").strip().strip('"').strip("'")
+            title = ""
 
         if title and len(title) <= 100:
             await pool.execute(

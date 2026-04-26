@@ -350,8 +350,12 @@ services:
 
   chat-service:
     build:
-      context: ../services/chat-service
-      dockerfile: Dockerfile
+      # Phase 1c-ii: build context shifted to repo root so the Dockerfile
+      # can COPY both `services/chat-service/...` AND `sdks/python` (the
+      # local loreweave_llm SDK). Other services keep their per-service
+      # context until they migrate to the SDK.
+      context: ..
+      dockerfile: services/chat-service/Dockerfile
     environment:
       PORT: "8090"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
