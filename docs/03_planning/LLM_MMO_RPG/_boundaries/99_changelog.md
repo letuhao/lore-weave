@@ -147,6 +147,25 @@ Lock RELEASED at end of this commit.
 
 ---
 
+## 2026-04-27 — AIT_001 AI Tier Foundation DRAFT promotion (architecture-scale; 3-tier NPC architecture for billion-NPC scaling)
+
+- **Lock claim:** main session 2026-04-27 (AIT_001 DRAFT promotion); single `[boundaries-lock-claim+release]` commit cycle
+- **Files modified:** `_LOCK.md` (claim+release) + `01_feature_ownership_matrix.md` (AIT-* prefix) + `02_extension_contracts.md` §1.4 (`ai_tier.*` namespace 8 V1 + 4 V1+ rule_ids) + §2 (5 NEW OPTIONAL V1 RealityManifest extensions: tier_capacity_caps + untracked_templates + cell_untracked_density + tier_roster_caps + minor_behavior_scripts) + `99_changelog.md`
+- **Files created:** `features/16_ai_tier/AIT_001_ai_tier_foundation.md` (~1300 lines / 21 sections / 12 AC / 21 deferrals) + `catalog/cat_16_AIT_ai_tier.md` (36 catalog entries)
+- **Files updated in features:** `features/16_ai_tier/_index.md` (DRAFT row) + `features/16_ai_tier/00_CONCEPT_NOTES.md` §17 status DRAFT
+- **All 12 Qs LOCKED** via 4-batch deep-dive 2026-04-26..27 (Q3 + Q10 implicit). 2-variant NpcTrackingTier (Major / Minor); Untracked = no aggregate (PROG_001 §3.1 semantic). Author-required tier on CanonicalActorDecl. Hybrid 2-stage Untracked generation (template+RNG Stage 1 / LLM-flavor Stage 2 lazy). Cell-entry timing with daily rotation. Forge promotion preserves NpcId. 4-tier × 4-capability behavior matrix. MinorBehaviorScript per actor_class. AIT-V1 TierActionValidator at PL_005 pre-validation. Tier-aware AssemblePrompt budget (5 Full + 8 Condensed + 12 Summary defaults; aggregate overflow).
+- **Major architectural insights:** Quantum-observation NPC model (Schrödinger pattern; PROG_001 Q4 REVISED activated) + Stellaris pops vs named characters reference + future AI Tier feature reservation FULFILLED + i18n compliance throughout.
+- **NEW EVT sub-types/shapes:** EVT-T5 `Generated:UntrackedNpcSpawn` + `Generated:UntrackedNpcDiscarded` (deterministic blake3 per EVT-A9); EVT-T3 cascade-trigger `TrackingTierTransition`; EVT-T8 `Forge:PromoteUntrackedToTracked`. AIT-V1..V4 validator slots.
+- **PROG_001 tracking_tier field activated** (was Option<NpcTrackingTier> None V1; AIT_001 populates Major/Minor variants).
+- **10 downstream impact items deferred:** HIGH (NPC_001 closure tier-aware / NPC_002 Chorus tier filter / PL_005 AIT-V1 + Untracked target / WA_003 PromoteUntrackedToTracked / PL_001 session lifecycle / 07_event_model registration); MEDIUM (PROG_001 doc update / EF_001 cascade hook); LOW (CSC_001 Layer 3); V1+30d (RES_001 PROG-D19 NPC eager → lazy migration).
+- **Foundation tier remains 6/6** (closed at PROG_001). AIT_001 is architecture-scale Tier 5+ Actor Substrate scaling/architecture feature.
+- **Cumulative deferrals AIT-D1..D21** (10 V1+30d / 5 V2 / 1 V3 + future feature coordination CULT_001 / REP_001 / FAC_001 expansion).
+- **Drift watchpoints:** unchanged. ORG-* namespace alignment concern noted (cross-feature coordination at next IDF closure pass review).
+- **Lock RELEASED** at end of this commit
+- **Reason / handoff:** AIT_001 DRAFT activates billion-NPC scaling architecture. Quantum-observation principle implemented. PCS_001 PC Substrate parallel agent kickoff next priority. Future V1+ priorities: CULT_001 / REP_001. RES_001 V1+30d closure pass aligns PROG-D19.
+
+---
+
 ## 2026-04-26 — PROG_001 Progression Foundation DRAFT promotion (6th V1 foundation; closes V1 foundation tier 6/6)
 
 - **Lock claim:** main session 2026-04-26 (PROG_001 DRAFT promotion); single `[boundaries-lock-claim+release]` commit cycle

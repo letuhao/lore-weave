@@ -127,6 +127,7 @@ Per [`../00_foundation/06_id_catalog.md`](../00_foundation/06_id_catalog.md). Re
 | `FF-*` (foundation tier — Tier 5 Actor Substrate post-IDF; `FF-A*` axioms · `FF-D*` deferrals · `FF-Q*` decisions) | catalog/cat_00_FF_family_foundation.md (NOT YET CREATED — defer to first DRAFT-stable cycle) | FF_001 Family Foundation |
 | `FAC-*` (foundation tier — Tier 5 Actor Substrate post-IDF + post-FF_001; `FAC-A*` axioms · `FAC-D*` deferrals · `FAC-Q*` decisions) | catalog/cat_00_FAC_faction_foundation.md (NOT YET CREATED — defer to first DRAFT-stable cycle) | FAC_001 Faction Foundation |
 | `PROG-*` (foundation tier — 6th V1 foundation; multi-genre dynamic progression substrate; `PROG-A*` axioms · `PROG-D*` deferrals · `PROG-Q*` decisions) | catalog/cat_00_PROG_progression.md (added 2026-04-26 with PROG_001 DRAFT) | PROG_001 Progression Foundation |
+| `AIT-*` (architecture-scale; NOT foundation tier — 3-tier NPC architecture for billion-NPC scaling; `AIT-A*` axioms · `AIT-D*` deferrals · `AIT-Q*` decisions) | catalog/cat_16_AIT_ai_tier.md (added 2026-04-27 with AIT_001 DRAFT) | AIT_001 AI Tier Foundation |
 | `PL-*` / `WA-*` / `PO-*` / `NPC-*` / `PCS-*` / `SOC-*` / `NAR-*` / `EM-*` / `PLT-*` / `CC-*` / `DL-*` | catalog/cat_NN_*.md per category | each catalog file owns its prefix |
 | `LX-D*` / `LX-Q*` | WA_001 | per-feature deferral IDs |
 | `HER-D*` / `HER-Q*` | WA_002 | per-feature deferral IDs |

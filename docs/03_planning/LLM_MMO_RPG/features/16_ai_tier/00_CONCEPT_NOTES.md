@@ -524,14 +524,75 @@ pub enum OverflowFormat {
 | AIT-D14 | Adaptive PromptDetail | V2 |
 | AIT-D15 | Untracked summary localization variants | V1+30d |
 
-### §16.9 Q7-Q9 still open
+### §16.9 Q7+Q8+Q9 LOCKED 2026-04-27 (Behavior + density + action availability per tier)
 
-After Q1-Q6+Q11+Q12 LOCKED, remaining:
+| Sub | Decision |
+|---|---|
+| Q7a | 4-tier × 4-capability matrix | PC/Major full-range; Minor rule-based scripted; Untracked narrative-only (no event init) |
+| Q7b | Minor canned source | `MinorBehaviorScript` per actor_class — DialogueTemplate + ScheduledActionDecl + ReactionDecl |
+| Q7c | PC fallback when abandoned V1 | NO V1+ AIT-D16 reserved |
+| Q7d | Cross-tier interactions | YES — any tier as TARGET; only Major/PC initiate freely; Minor scripted-only |
+| Q7e | NPC_002 Chorus tier filter | Major full; Minor low-priority; Untracked excluded |
+| Q8a | DensityDecl V1 shape | Fixed `count: u8` per PlaceType |
+| Q8b | Engine default density | tavern=4 / residence=2 / marketplace=8 / temple=2 / workshop=1 / cave=0 / road=0 / wilderness=0 / official_hall=3 / crossroads=2 |
+| Q8c | Density caps V1 | Max 12 per cell (aligns Q12d) |
+| Q8d | Time-of-day variance V1 | NO — V1+30d AIT-D17 |
+| Q8e | Empty cells | count=0 allowed (wilderness/cave default) |
+| Q8f | Author opt-out | Engine defaults if PlaceType not declared in `cell_untracked_density` |
+| Q9a | Tier × Kind matrix | Locked (PC/Major full; Minor Speak-canned + Use-training + passive Examine; Untracked target-only Examine) |
+| Q9b | Untracked as TARGET | YES — Examine returns Stage 1 + Stage 2 cached flavor; first Examine triggers Stage 2 synthesis |
+| Q9c | Untracked as INSTRUMENT/AGENT | NO — V1+30d AIT-D19 |
+| Q9d | Minor scripted action set V1 | Speak (canned) + Use (training only) + passive Examine target |
+| Q9e | Tier check validator | NEW **AIT-V1 TierActionValidator** at PL_005 cascade pre-validation |
+| Q9f | PL_005 closure pass | Adds tier check BEFORE PROG_001 Q3 training cascade |
 
-- **Q7 — Behavior model per tier** (next deep-dive batched with Q8+Q9): closed-set capability per PC/Major/Minor/Untracked
-- **Q8 — Per-cell-type Untracked density** (full DensityDecl shape; Q5 already set up RealityManifest field)
-- **Q9 — Action availability per tier** (PL_005 InteractionKind subset per tier)
+### §16.10 ALL 12 Qs LOCKED — AIT_001 ready for DRAFT
 
-Q7+Q8+Q9 are tightly coupled (all about per-tier behavior/availability). Natural next batch.
+| Q | LOCKED | Section |
+|---|---|---|
+| Q1 | 2-variant NpcTrackingTier (Major/Minor); Untracked = no aggregate | §16.1 |
+| Q2 | Author-required canonical; Untracked never declared; Forge promotion stable; deterministic blake3 NpcId; tier_capacity_caps | §16.2 |
+| Q3 | IMPLICIT — resolved by Q2c-e (Forge V1; auto-promote V1+30d; demotion V1+30d) | §16.3 |
+| Q4 | Hybrid 2-stage generation (template+RNG Stage 1; LLM-flavor Stage 2 lazy) | §16.6 |
+| Q5 | Cell-entry timing; daily rotation; deterministic seed; NEW EVT-T5 UntrackedNpcSpawn | §16.6 |
+| Q6 | Cell-leave + session-end discard V1; NO causal-ref pin V1; NEW EVT-T5 UntrackedNpcDiscarded | §16.7 |
+| Q7 | 4-tier × 4-capability matrix; MinorBehaviorScript pattern | §16.9 |
+| Q8 | DensityDecl V1 fixed count + engine defaults per PlaceType + 12 cap | §16.9 |
+| Q9 | Tier × InteractionKind matrix; AIT-V1 TierActionValidator | §16.9 |
+| Q10 | IMPLICIT — resolved by Q2f deterministic blake3 seed | §16.2 |
+| Q11 | NpcId stable at promotion; persona crystallization to NPC_001 | §16.6 |
+| Q12 | Tier-aware AssemblePrompt budget; PromptDetail enum + TierRosterCaps | §16.7 |
 
-Q10 already locked by Q2f (deterministic blake3 seed for Untracked replay). No deep-dive needed.
+### §16.11 V1+ deferrals cumulative AIT-D1..D21
+
+| ID | Deferral | Phase |
+|---|---|---|
+| AIT-D1 | Auto-promotion via significance threshold | V1+30d |
+| AIT-D2 | Demotion via Forge | V1+30d |
+| AIT-D3 | Legendary tier (DF Legends mode) | V2 |
+| AIT-D4 | Faction tier collective | V3 |
+| AIT-D5 | Dynamic capacity adjustment | V2+ |
+| AIT-D6 | Untracked NpcId persistence beyond cell-leave (causal-ref pin) | V1+30d |
+| AIT-D7 | LLM-propose-promotion with author-confirm | V1+30d |
+| AIT-D8 | On-demand generation beyond cell-entry | V1+30d |
+| AIT-D9 | Multi-day Untracked persistence | V1+30d |
+| AIT-D10 | Stage 2 LLM-flavor cache cross-session | V2 |
+| AIT-D11 | Untracked-to-Untracked interactions | V2 |
+| AIT-D12 | Author per-NPC persona-detail bump | V1+30d |
+| AIT-D13 | Dynamic roster caps | V2 |
+| AIT-D14 | Adaptive PromptDetail | V2 |
+| AIT-D15 | Untracked summary localization variants | V1+30d |
+| AIT-D16 | PC fallback when abandoned | V1+30d |
+| AIT-D17 | Time-of-day density variance | V1+30d |
+| AIT-D18 | Minor scripted attacks (Strike/Give/full Examine) | V1+30d |
+| AIT-D19 | Untracked as instrument | V1+30d |
+| AIT-D20 | Forge:EditMinorBehaviorScript author runtime | V1+30d |
+| AIT-D21 | KilledByCombat discard reason (proper death event sub-shape) | V1+30d |
+
+---
+
+## §17 — Status
+
+- **Phase:** ~~CONCEPT~~ → **DRAFT 2026-04-27** (AIT_001 promoted via single `[boundaries-lock-claim+release]` commit). All 12 Qs LOCKED via 4-batch deep-dive (Q1+Q2 / Q4+Q5+Q11 / Q6+Q12 / Q7+Q8+Q9; Q3 + Q10 implicit).
+- **Promoted file:** [`AIT_001_ai_tier_foundation.md`](AIT_001_ai_tier_foundation.md) — projected ~1200-1500 lines, 21 sections, 12 AC, 21 deferrals
+- **Lock-coordinated commit:** This concept-notes update + AIT_001 DRAFT + boundary updates + catalog + folder _index = single combined commit

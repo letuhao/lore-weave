@@ -139,6 +139,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `family.*` | FF_001 Family Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate post-IDF priority per IDF_004 ORG-D12); 8 V1 rule_ids — unknown_actor_ref / unknown_dynasty_id / bidirectional_sync_violation / cyclic_relation / duplicate_relation / relation_kind_mismatch / deceased_target / synthetic_actor_forbidden; +4 V1+ reservations: cross_reality_mismatch (V2+ Heresy per Q7) / cyclic_lineage_traversal (V1+ traversal API FF-D2) / dynasty_extinction (V1+ cleanup) / adoption_consent_violation (V1+ V2+ consent system). V1 user-facing reject: deceased_target only (Marriage/Adoption attempts on deceased); others schema-level canonical seed validation. **Boundary discipline:** FF_001 = biological + adoption only; V1+ FAC_001 owns sect/master-disciple/sworn (per Q4 LOCKED). i18n: V1 ships I18nBundle from day 1. |
 | `progression.*` | PROG_001 Progression Foundation (added 2026-04-26 DRAFT — 6th V1 foundation; multi-genre dynamic progression substrate; closes V1 foundation tier); 7 V1 rule_ids — training.kind_unknown / training.rule_invalid / breakthrough.condition_unmet / breakthrough.invalid_tier / cap.exceeded / combat.formula_invalid / combat.stat_term_unknown; +6 V1+ reservations: atrophy.no_practice (PROG-D5) / deviation.cultivation_failed (PROG-D2 走火入魔) / training.prereq_unmet (Q3j V1+30d) / combat.proposed_out_of_range (Q7e V1+30d) / combat.element_resistance_invalid (V1+ DF7 PROG-D24) / combat.critical_threshold_invalid (V1+ PROG-D25). V1 user-facing rejects: cap.exceeded (HardCap) + breakthrough.condition_unmet (Forge-triggered fail). All Q1-Q7 LOCKED via 6-batch deep-dive 2026-04-26. **Hybrid observation-driven NPC model (Q4 REVISED)**: PCs eager + Tracked NPCs lazy + Untracked = no aggregate (future AI Tier feature). chaos-backend reference: actor-core Subsystem→Contribution V1+30d lift (PROG-D6); damage law chain V1+ DF7-equivalent (PROG-D24). DF7 PC Stats placeholder SUPERSEDED. i18n: V1 ships I18nBundle from day 1 per RES_001 §2 cross-cutting contract. |
 | `faction.*` | FAC_001 Faction Foundation (added 2026-04-26 DRAFT — Tier 5 Actor Substrate post-IDF + post-FF_001 priority); 8 V1 rule_ids — unknown_faction_id / unknown_role_id / multi_membership_forbidden_v1 (per Q2 REVISION cap=1) / master_cross_sect_forbidden / master_authority_violation / cyclic_master_chain / ideology_binding_violation (RESOLVES IDF_005 IDL-D2) / synthetic_actor_forbidden; +4 V1+ reservations: cross_reality_mismatch (V2+ Heresy per Q8) / lex_axiom_forbidden (V1+ when first faction-gated axiom ships per Q9) / sworn_bond_unsupported_v1 (V1+ FAC-D10 enrichment activation per Q7 REVISION) / member_role_count_exceeded (V1+ when RoleDecl.max_actors_in_role enrichment ships). V1 user-facing rejects: multi_membership_forbidden_v1 + ideology_binding_violation only (others schema-level canonical seed validation). **3 Q-REVISIONS:** Q2 Vec+cap=1 / Q4 numeric-only V1 / Q7 defer sworn V1+. **RESOLVES:** IDF_005 IDL-D2 (sect membership ideology binding) + FF_001 FF-D7 (master-disciple). **Boundary discipline:** FAC_001 = sect/order/clan-retinue/guild + master-disciple + V1+ sworn brotherhood; FF_001 = biological/adoption only (separated). i18n: V1 ships I18nBundle from day 1. |
+| `ai_tier.*` | AIT_001 AI Tier Foundation (added 2026-04-27 DRAFT — architecture-scale; NOT foundation tier — 3-tier NPC architecture for billion-NPC scaling); 8 V1 rule_ids — canonical_tier_required / capacity_exceeded / density_exceeded / template_invalid / action_forbidden_for_tier / untracked_cannot_initiate / promotion_target_not_observed / untracked_role_unknown; +4 V1+ reservations: scripted_attack_invalid (AIT-D18) / tier_promotion_rejected (AIT-D1 V1+30d significance threshold) / demotion_forbidden (AIT-D2 V1+30d) / causal_ref_pin_violation (AIT-D6 V1+30d). V1 user-facing rejects: capacity_exceeded + action_forbidden_for_tier + untracked_cannot_initiate + promotion_target_not_observed (others schema-level canonical seed validation). All 12 Qs LOCKED via 4-batch deep-dive 2026-04-26..27 (Q1+Q2 / Q4+Q5+Q11 / Q6+Q12 / Q7+Q8+Q9; Q3 + Q10 implicit). **Quantum-observation NPC model**: PCs eager + Tracked NPCs lazy + Untracked = no aggregate (Schrödinger pattern; activates PROG_001 §3.1 reserved tracking_tier field). 3-tier hierarchy: PC + Major (LLM-driven; cap≤20) + Minor (rule-based scripted; cap≤100) + Untracked (ephemeral; deterministic blake3 NpcId; daily rotation). chaos-backend reference: Stellaris pops vs named characters pattern. PROG-D19 cross-feature alignment with RES_001 NPC eager auto-collect → lazy migration V1+30d. i18n: V1 ships I18nBundle from day 1. |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy. **i18n update 2026-04-26 (RES_001 DRAFT):** Going forward, new feature designs SHOULD use `RejectReason.user_message: I18nBundle` (English `default` field required + per-locale `translations` HashMap) per RES_001 §2 i18n contract. Existing features' Vietnamese hardcoded reject copy is functional V1 (cross-cutting i18n audit deferred — low priority cosmetic).
 
@@ -377,6 +378,36 @@ pub struct RealityManifest {
     /// Strike payload; engine validator computes bounds from offense/defense stat sums; clamps silently.
     /// Full chaos-backend law chain V1+ DF7-equivalent (PROG-D24).
     pub strike_formula: Option<StrikeFormulaDecl>,
+
+    // ─── AIT_001 AI Tier Foundation extensions (added 2026-04-27 DRAFT — architecture-scale; NOT foundation tier) ───
+    // ALL OPTIONAL V1 — empty default = no tier-aware NPC simulation (sandbox/freeplay valid V1).
+    // Activates PROG_001 §3.1 reserved `tracking_tier: Option<NpcTrackingTier>` field on actor_progression aggregate.
+
+    /// Tier capacity caps per reality (Q2h LOCKED). None = engine defaults Major≤20 / Minor≤100; Untracked unlimited.
+    /// AIT-V2 TierCapacityValidator at RealityManifest bootstrap rejects if canonical_actor_decl Tracked exceeds caps.
+    pub tier_capacity_caps: Option<TierCapacityCaps>,
+
+    /// Untracked NPC templates per PlaceType (Q4b LOCKED). Empty = NO Untracked generation in those PlaceTypes.
+    /// Each UntrackedTemplateDecl: place_type + roles: Vec<UntrackedRoleDecl> with role_id + display_name_template
+    /// (I18nBundle with {name} substitution) + actor_class + name_pool + stat_ranges (PROG_001 ProgressionInstance min/max)
+    /// + appearance_hints (I18nBundle) + default_dialogue_register (Formal/Casual/Rough/Refined).
+    pub untracked_templates: Vec<UntrackedTemplateDecl>,
+
+    /// Per-PlaceType Untracked density (Q8 LOCKED). HashMap<PlaceTypeRef, DensityDecl { count: u8 }>.
+    /// V1 max 12 per cell (Q8c cap aligns with tier_roster_caps.max_summary). Empty = engine defaults
+    /// (tavern=4 / residence=2 / marketplace=8 / temple=2 / workshop=1 / cave=0 / road=0 / wilderness=0
+    /// / official_hall=3 / crossroads=2). Time-of-day variance V1+30d (AIT-D17).
+    pub cell_untracked_density: HashMap<PlaceTypeRef, DensityDecl>,
+
+    /// Tier-aware AssemblePrompt budget caps (Q12d LOCKED). None = engine defaults 5 FullPersona +
+    /// 8 CondensedPersona + 12 SummaryLine; OverflowFormat::Aggregate ("...and N other patrons").
+    pub tier_roster_caps: Option<TierRosterCaps>,
+
+    /// Minor NPC behavior scripts per actor_class (Q7b LOCKED). Empty = Minor NPCs silently fall back
+    /// to no canned response (LLM narrator may improvise). Each MinorBehaviorScript: actor_class +
+    /// canned_dialogue_templates: Vec<DialogueTemplate> + scheduled_actions: Vec<ScheduledActionDecl>
+    /// (V1: StartTraining only; V1+30d AIT-D18 expansion) + reaction_table: Vec<ReactionDecl>.
+    pub minor_behavior_scripts: Vec<MinorBehaviorScript>,
 
     // ─── Future feature extensions ───
 }
