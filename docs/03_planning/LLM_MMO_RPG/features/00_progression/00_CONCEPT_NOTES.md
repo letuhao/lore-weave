@@ -547,14 +547,135 @@ pub struct ActorOverrideDecl {
 | **DF7 PC Stats placeholder** | **SUPERSEDED** | (existing placeholder retired) | DF7 placeholder retired; PROG_001 covers all actors not just PC. DF7-V1+ becomes "combat damage formulas" sub-feature (Q7) |
 | **RealityManifest envelope** | `progression_kinds` + `progression_class_defaults` + `progression_actor_overrides` | Envelope contract | New OPTIONAL V1 fields per `_boundaries/02_extension_contracts.md` §2 additive evolution |
 
-### §11.1 — Q2-Q5 + Q7 still open
+### §11.1 — Q2 LOCKED 2026-04-26 (Curves V1)
 
-After Q1+Q6 deep-dive, these remain pending user decision (per dependency tree §5 priority):
+| Sub | Decision |
+|---|---|
+| Q2a | V1 curve types | **3 types**: `Linear` / `Log` / `Stage`. Discrete-levelup deferred V1+30d (PROG-D1). |
+| Q2b | Threshold (B4) separate variant | NO — collapsed into `Stage` 1-tier degenerate case (saves engine surface; author wraps via macro V1+) |
+| Q2c | Breakthrough trigger V1 | **Automatic check at training-tick + author-Forge override**. `Forge:TriggerBreakthrough` AdminAction (WA_003 closure folds in). |
+| Q2d | Failed breakthrough V1 | **Silent** — raw_value clamped at tier_max; no narrative event V1. V1+30d (PROG-D2) adds 走火入魔 deviation narrative |
+| Q2e | CapRule V1 types | **4 types**: `SoftCap` / `HardCap` / `TierBased` / `Unbounded` |
+| Q2f | Within-tier curve for Stage | **Per-tier override allowed** — `TierDecl` carries `WithinTierCurve { Linear / Log }`. Tu tiên scenarios may want different rate per realm. |
+| Q2g | Initial-value-on-advance | **Author-declared per TierDecl** `initial_value_on_advance: u64` (typically 0; rare carry-over) |
+| Q2h | Per-class caps | **Via RealityManifest `progression_class_defaults`** (Q1+Q6 sketch) — NOT in CurveDecl |
+| Q2i | Stage tier hierarchy | **Flat tier list** (chaos-backend ElementMasteryLevel pattern — concept reused, hardcoding rejected). Author NAMES tiers via I18nBundle. |
+| Q2j | Validity matrix | **Enforced at RealityManifest bootstrap**: Linear allows SoftCap/HardCap/Unbounded; Log allows SoftCap/HardCap; Stage REQUIRES TierBased |
 
-- **Q2 — Curves V1** (next deep-dive): linear / log / tier-stage breakthrough / threshold / discrete-levelup. Defines `CurveDecl` shape; tu tiên Stage type needs breakthrough mechanic.
-- **Q3 — Training triggers V1**: action-driven / time-cultivation / mentor / item-elixir / quest-V2. Defines `TrainingRuleDecl` shape.
+### Concrete V1 Rust shape (Q2)
+
+```rust
+pub enum CurveDecl {
+    Linear {
+        rate_per_train_unit: f32,                     // 1.0 standard; <1 slow; >1 fast
+    },
+    Log {
+        base_rate: f32,                               // initial gain per unit
+        difficulty_factor: f32,                       // higher = sharper diminishing approach to cap
+    },
+    Stage {
+        tiers: Vec<TierDecl>,                         // author-declared ordered; flat list (no realm-stage nesting)
+    },
+}
+
+pub struct TierDecl {
+    pub tier_index: TierIndex,                        // 0-based
+    pub name: I18nBundle,                             // "练气一层" / "Apprentice" — i18n per RES_001 §2
+    pub tier_max: u64,                                // raw_value cap at this tier
+    pub within_tier_curve: WithinTierCurve,           // Q2f per-tier override
+    pub breakthrough_condition: BreakthroughCondition,
+    pub initial_value_on_advance: u64,                // typically 0
+}
+
+pub enum WithinTierCurve {
+    Linear { rate_per_train_unit: f32 },
+    Log { base_rate: f32, difficulty_factor: f32 },
+}
+
+pub enum BreakthroughCondition {
+    AtMax,                                            // raw_value == tier_max alone is enough (auto-advance)
+    AtMaxPlus {
+        item_consumption: Option<ResourceCost>,        // e.g., 灵丹 (RES_001 Consumable)
+        location_required: Option<PlaceTypeRef>,       // e.g., CultivationChamber (PF_001 PlaceType)
+        mentor_required: Option<MentorRequirement>,    // V1+30d (PROG-D3)
+        fiction_time_window: Option<FictionTimeWindow>, // V1+30d (PROG-D4)
+    },
+    AuthorOnly,                                       // author must trigger via Forge (no auto-advance)
+}
+
+pub enum CapRule {
+    SoftCap { cap: u64 },                             // training accrues with diminishing returns
+    HardCap { cap: u64 },                             // training rejected past cap
+    TierBased,                                        // cap = current_tier.tier_max; advances on breakthrough
+    Unbounded,                                        // no cap (rare; V1+ Knowledge kind)
+}
+```
+
+### CapRule × CurveDecl validity matrix
+
+| CurveDecl | Valid CapRule(s) |
+|---|---|
+| `Linear` | `SoftCap` / `HardCap` / `Unbounded` (NOT `TierBased`) |
+| `Log` | `SoftCap` / `HardCap` (Log inherently bounded; not `Unbounded`) |
+| `Stage` | **`TierBased` only** (cap derives from tiers) |
+
+### Tu tiên xianxia hierarchy worked example
+
+```rust
+// 24-tier flat list spanning 练气一层 → 化神
+ProgressionKindDecl {
+    kind_id: "qi_cultivation",
+    progression_type: ProgressionType::Stage,
+    body_or_soul: BodyOrSoul::Body,
+    curve: CurveDecl::Stage {
+        tiers: vec![
+            // 练气 (9 tiers)
+            TierDecl { tier_index: 0, name: I18nBundle::en("Qi Refining 1").with_zh("练气一层"),
+                       tier_max: 100, within_tier_curve: WithinTierCurve::Linear { rate_per_train_unit: 1.0 },
+                       breakthrough_condition: BreakthroughCondition::AtMax,
+                       initial_value_on_advance: 0 },
+            // ... 练气二层 .. 九层 ...
+            // 筑基 (4 stages)
+            TierDecl { tier_index: 9, name: I18nBundle::en("Foundation Building").with_zh("筑基"),
+                       tier_max: 500,
+                       within_tier_curve: WithinTierCurve::Log { base_rate: 1.5, difficulty_factor: 1.2 },
+                       breakthrough_condition: BreakthroughCondition::AtMaxPlus {
+                           item_consumption: Some(ResourceCost {
+                               kind: ResourceKind::Consumable("foundation_pill".into()),
+                               amount: 1,
+                           }),
+                           location_required: Some(PlaceTypeRef("cultivation_chamber".into())),
+                           mentor_required: None,
+                           fiction_time_window: None,
+                       },
+                       initial_value_on_advance: 0 },
+            // ... 金丹, 元婴, 化神 ...
+        ],
+    },
+    cap_rule: CapRule::TierBased,
+    // ... derives_from / training_rules (Q3) etc. ...
+}
+```
+
+### §11.2 — V1+ deferrals from Q2
+
+| ID | Deferral | Trigger to revisit |
+|---|---|---|
+| **PROG-D1** | DiscreteLevelup curve (D&D-style player point allocation) | V1+30d if D&D-faithful realities requested |
+| **PROG-D2** | Failed breakthrough narrative event (走火入魔 cultivation deviation) | V1+30d when narrative integration designed |
+| **PROG-D3** | `mentor_required` BreakthroughCondition active | V1+30d (depends on Q3 mentor training source) |
+| **PROG-D4** | `fiction_time_window` BreakthroughCondition active (full-moon-only breakthrough) | V1+30d when scheduler-Generator integration designed |
+| **PROG-D5** | Skill atrophy/decay (Q5) | V1+30d (likely; user can override Q5) |
+| **PROG-D6** | Subsystem stacking (chaos-backend Contribution pattern) | V2 — multi-source stat modifier merging |
+| **PROG-D7** | Realm-stage nested hierarchy | V2 — only if flat tier list proves limiting (unlikely; chaos-backend used flat) |
+
+### §11.3 — Q3 / Q4 / Q5 / Q7 still open
+
+After Q1+Q6+Q2 deep-dive, these remain pending user decision:
+
+- **Q3 — Training triggers V1** (next deep-dive — heavily coupled to PL_005 + EVT-G Generator): action-driven / time-cultivation / mentor / item-elixir / quest-V2. Defines `TrainingRuleDecl` shape.
 - **Q4 — NPC progression V1**: train (M&B) vs static (CK3) vs hybrid. Affects whether NPC writes to ActorProgression.
-- **Q5 — Skill atrophy V1**: NO atrophy V1 likely (defer V1+30d).
+- **Q5 — Skill atrophy V1**: NO atrophy V1 likely (defer V1+30d / PROG-D5).
 - **Q7 — Combat damage formula V1 vs V1+**: DF7-equivalent reads ProgressionInstance.raw_value.
 
-Q1+Q6 LOCKED unblocks Q2 deep-dive (curves can be specified now that ontology + storage are clear).
+Q2 LOCKED unblocks Q3 (training trigger sources can specify what cascades emit ProgressionDelta now that curves are defined).
