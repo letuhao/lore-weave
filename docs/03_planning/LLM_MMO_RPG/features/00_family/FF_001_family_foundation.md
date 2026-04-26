@@ -632,6 +632,14 @@ This doc satisfies items per DP-R2 + 22_feature_design_quickstart.md:
 - [x] §18 Cross-references
 - [x] §19 Readiness (this section)
 
-**Status transition:** DRAFT 2026-04-26 → **CANDIDATE-LOCK** when all AC-FF-1..10 pass integration tests against Wuxia + Modern reality fixtures → **LOCK** when V1+ scenarios pass after WA_002 / FAC_001 / TIT_001 ship.
+**Phase 3 cleanup applied 2026-04-26 (FF_001 commit 3/4 cycle):**
+- S1.1 §2 DynastyId clarified as typed newtype `pub struct DynastyId(pub String)` (matches RaceId / LanguageId / IdeologyId / OriginPackId pattern from foundation tier)
+- S1.2 §3.1 RelationKind enum + sibling_actor_ids storage clarified — Vec<ActorId> implies RelationKind=Sibling implicitly (not stored per element since only one variant); parent/child sides use Vec<(ActorId, RelationKind)> for biological/adopted distinction per Q6 LOCKED
+- S2.1 §10 Cross-service handoff Marriage flow — bidirectional sync explicit: Marriage event derives 2 EVT-T3 Derived (LM01 + ABC) — both family_node rows updated atomically per spouse_actor_ids invariant
+- S2.2 §10 + §13 WA_006 death event flow clarified — one-way: WA_006 emits death (mortality_state transition); FF_001 owner-service consumes + updates family_node.is_deceased; refs preserved (lao_ngu still has tieu_thuy in children_actor_ids — historical for V1+ NPC_002 cascade traversal)
+- S2.3 §15 AC-FF-9 death scenario — refs preserved verified (deceased actor's family_node row marks is_deceased=true but parent/sibling/spouse/child refs intact for V1+ traversal)
+- S3.1 §15.4 LOCK criterion split DRAFT→CANDIDATE-LOCK vs CANDIDATE-LOCK→LOCK (matches EF/PF/MAP/CSC/RES/IDF closure-pass pattern)
+
+**Status transition:** DRAFT 2026-04-26 (Phase 3 applied) → **CANDIDATE-LOCK** in next commit (4/4) → **LOCK** when AC-FF-1..10 pass integration tests + V1+ scenarios after WA_002 / FAC_001 / TIT_001 ship.
 
 **Next** (when CANDIDATE-LOCK granted): world-service can scaffold family_node + dynasty aggregates; WA_006 mortality wires up death cascade; future PCS_001 PC creation form references FF_001.

@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-04-26 — FF_001 Phase 3 cleanup (commit 3/4)
+
+- Lock continues from commit 2/4
+- No boundary changes (Phase 3 = internal documentation cleanup)
+- 6 Phase 3 fixes applied: DynastyId typed newtype + RelationKind sibling storage clarification + Marriage flow bidirectional sync explicit + WA_006 death flow one-way + AC-FF-9 refs preserved + §15.4 LOCK criterion split
+- §19 readiness checklist updated
+
+---
+
 ## 2026-04-26 — FF_001 Family Foundation DRAFT promotion + boundary register (commit 2/4)
 
 - **Lock claim:** main session 2026-04-26 (FF_001 single-feature 4-commit cycle: lock-Q-decisions [done 2db3fc2] + DRAFT [this] + Phase 3 + closure+release); this commit `[boundaries-lock-claim]`
