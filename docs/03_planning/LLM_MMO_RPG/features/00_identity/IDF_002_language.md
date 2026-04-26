@@ -424,4 +424,11 @@ DRAFT promotion registers:
 - [x] §18 Cross-references
 - [x] §19 Readiness
 
-**Status transition:** DRAFT 2026-04-26 → **CANDIDATE-LOCK** when all AC-LNG-1..10 pass + V1+ scenarios after 05_llm_safety A6 + V1+30d scheduler ships.
+**Phase 3 cleanup applied 2026-04-26 (in IDF_002 commit 5/15 cycle):**
+- S1.1 §2 LanguageId clarified as typed newtype `pub struct LanguageId(pub String)`; runtime newtype distinct from RES_001 LangCode
+- S1.2 §3.1 Synthetic actor exclusion clarified (no proficiency rows V1)
+- S2.1 §10 + §13 Stage 7 Speak validator threshold note (Speak ≥ Basic per LNG-Q5 LOCKED)
+- S2.2 §17 LNG-D9 deferral wording tightened (per-language script vs spoken split — Cổ ngữ deeper V1+)
+- S3.1 §15.4 LOCK criterion split (DRAFT→CANDIDATE-LOCK vs CANDIDATE-LOCK→LOCK)
+
+**Status transition:** DRAFT 2026-04-26 (Phase 3 applied) → **CANDIDATE-LOCK** in next commit (6/15) → **LOCK** when AC-LNG-1..10 pass + V1+ scenarios after 05_llm_safety A6 + V1+30d scheduler ships.

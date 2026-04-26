@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-04-26 — IDF folder 5/15: IDF_002 Phase 3 cleanup
+
+- Lock continues from commit 1/15
+- No boundary changes (Phase 3 = internal cleanup)
+- 5 Phase 3 findings applied: LanguageId typed newtype + Synthetic actor exclusion + Speak validator threshold note + LNG-D9 deferral tightening + §15.4 LOCK criterion split
+- §19 readiness checklist updated
+
+---
+
 ## 2026-04-26 — IDF folder 4/15: IDF_002 Language Foundation DRAFT + boundary register
 
 - **Lock continues** from commit 1/15
