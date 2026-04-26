@@ -11,25 +11,47 @@
 
 ---
 
-## §1 User story (concrete — V1 Wuxia + Modern + Sci-fi presets)
+## §1 User story (concrete — V1 minimal content per Path C 2026-04-26)
 
-A reality is born from Thần Điêu Đại Hiệp (Wuxia preset). Its RealityManifest declares 5 races: Phàm nhân / Cultivator / Demon / Ghost / Beast.
+**Path C V1 scope decision (per user "approve option C" 2026-04-26):** schema preserved; **content lightened V1**. SPIKE_01 V1 doesn't actively differentiate races mechanically; lighter authoring + future-proof schema for V1+ activation.
 
-1. **Lý Minh** (PC) — race=Cultivator (Tu sĩ); lifespan=600yr; size=Medium; allowed_lex_axiom_tags=["qigong", "spirit_sense"]; default_mortality_kind_override=Permadeath.
-2. **Tiểu Thúy** (NPC) — race=Phàm nhân; lifespan=80yr; size=Medium; no axiom tags (mortal NPC has no special abilities).
-3. **Du sĩ** (NPC) — race=Cultivator; lifespan=600yr; size=Medium; same axiom tags as LM01 (Cultivator class).
+### V1 Wuxia preset (2 races)
+
+A reality is born from Thần Điêu Đại Hiệp (Wuxia preset). Its RealityManifest declares **2 races V1** (3 V1+ deferred per RAC-D12 NEW):
+
+1. **Lý Minh** (PC) — race=Cultivator (Tu sĩ); lifespan=600yr; size=Medium; allowed_lex_axiom_tags=["qigong", "spirit_sense"] (V1 schema-present; V1+ Lex consumes); default_mortality_kind_override=Permadeath (V1 schema-present; WA_006 single default works V1).
+2. **Tiểu Thúy** (NPC) — race=Phàm nhân; lifespan=80yr; size=Medium; no axiom tags.
+3. **Du sĩ** (NPC) — race=Cultivator; lifespan=600yr; size=Medium.
 4. **Lão Ngũ** (NPC) — race=Phàm nhân; lifespan=80yr; size=Medium.
-5. **Hypothetical bandit ghost** (V1+ NPC) — race=Ghost; size=Medium; default_mortality_kind_override=AlreadyDead (Ghost actors never enter Alive state).
-6. **Hypothetical demon-beast** (V1+ NPC) — race=Beast; size=Large; allowed_lex_axiom_tags=["natural_weapons"].
-7. **Hypothetical Long (Dragon)** (V1+ canonical boss) — race=Demon; size=Gargantuan; allowed_lex_axiom_tags=["dragon_breath", "flight"].
 
-**A second reality is born from a Modern Saigon detective novel.** RealityManifest declares 1 race: Human. Every actor (PC + NPC) has race=Human; lifespan=80yr; size=Medium.
+### V1+ Wuxia preset extensions (deferred per RAC-D12)
 
-**A third reality is born from a Sci-fi space-opera.** RealityManifest declares 3 races: Human / AlienX / AlienY. Each race has different lifespans, sizes, and axiom tags.
+5. **Hypothetical bandit ghost** (V1+) — race=Ghost; size=Medium; default_mortality_kind_override=AlreadyDead.
+6. **Hypothetical demon-beast** (V1+) — race=Beast; size=Large; axiom_tags=["natural_weapons"].
+7. **Hypothetical Long (Dragon)** (V1+ canonical boss) — race=Demon; size=Gargantuan; axiom_tags=["dragon_breath", "flight"].
 
-**This feature design specifies:** the closed-set `RaceId` per reality declared in `RealityManifest.races`; the per-actor `race_assignment` aggregate with reason audit; the V1 immutable assignment policy (V1+ reincarnation lifts); the V1+ Lex axiom gate hook (`AxiomDecl.requires_race`); the WA_006 default_mortality_kind_override resolution; the rejection UX with Vietnamese reject copy in `race.*` namespace per `_boundaries/02_extension_contracts.md` §1.4; the cross-service handoff for canonical bootstrap + PC creation flows.
+**V1+ activation trigger:** first author content beyond SPIKE_01 needs Demon/Ghost/Beast races (combat encounters / supernatural NPCs / boss fights). At that point, additive `RaceDecl` entries to RealityManifest (per I14 additive evolution; no schema migration).
 
-After this lock: every PC and NPC has a deterministic race assignment driving lifespan + size + axiom access; WA_001 Lex (V1+ closure) can gate axioms by race; WA_006 mortality_config resolves per-race death-mode override; UI can display localized race badges via I18nBundle.
+### V1 Modern preset (1 race)
+
+A second reality is born from a Modern Saigon detective novel. RealityManifest declares **1 race V1**: Human. Every actor (PC + NPC) has race=Human; lifespan=80yr; size=Medium. Single-race default — Race feature schema overhead minimal for Modern.
+
+### V1+ Sci-fi preset (deferred V1)
+
+V1 Sci-fi reality not actively shipped V1 (low priority vs Wuxia + Modern). When V1+ Sci-fi reality designs first author content, RealityManifest declares Human / AlienX / AlienY (3 races) with appropriate lifespans + sizes + axiom_tags.
+
+### V1 active consumers (light)
+
+Path C V1 keeps schema; LIGHTENS active consumption:
+
+- **UI race badge** (cosmetic) — V1 active for Wuxia 2 races (Tu sĩ / Phàm nhân differentiation in tooltips)
+- **WA_006 mortality_config** — V1 schema-present but `default_mortality_kind_override` always None V1 (single default Permadeath / RespawnAtLocation per reality manifest); V1+ Wuxia with Demon/Ghost activates per-race override
+- **PC creation form** — V1+ when PCS_001 ships; V1 Wuxia form would offer 2 race dropdown choice (Phàm nhân / Cultivator)
+- **V1+ WA_001 Lex axiom gate** — schema reserved per RAC-Q5 LOCKED; V1 always None
+
+**This feature design specifies:** the closed-set `RaceId` per reality declared in `RealityManifest.races`; the per-actor `race_assignment` aggregate with reason audit; the V1 immutable assignment policy (V1+ reincarnation lifts); the V1+ Lex axiom gate hook; the WA_006 default_mortality_kind_override resolution; the rejection UX with Vietnamese reject copy in `race.*` namespace; the cross-service handoff for canonical bootstrap + PC creation flows.
+
+After this lock + Path C V1 light content: every PC and NPC has deterministic race assignment driving cosmetic UI + future-proof V1+ Lex axiom hook + WA_006 mortality override slot; foundation tier discipline preserved; V1+ activation cheap (additive RaceDecl entries).
 
 ---
 
@@ -301,24 +323,25 @@ Concrete example: Wuxia reality bootstrap with 5 races + 4 canonical actors (Lý
 
 ---
 
-## §11 Sequence: Canonical seed (Wuxia 5-race bootstrap)
+## §11 Sequence: Canonical seed (Wuxia V1 — 2-race bootstrap per Path C)
 
 ```
 RealityBootstrapper service @ reality-bootstrap event for Wuxia reality:
 
-  Read RealityManifest:
+  Read RealityManifest (V1 per Path C — 2 races; 3 V1+ deferred per RAC-D12):
     races: [
       RaceDecl { race_id: "race_human_phamnhan", display_name: I18nBundle{"Mortal" / "vi": "Phàm nhân" / "zh": "凡人"}, lifespan: 80, size: Medium, override: None, axiom_tags: [] },
-      RaceDecl { race_id: "race_cultivator_tusi", display_name: I18nBundle{"Cultivator" / "vi": "Tu sĩ" / "zh": "修士"}, lifespan: 600, size: Medium, override: Some(Permadeath), axiom_tags: ["qigong", "spirit_sense"] },
-      RaceDecl { race_id: "race_demon_yao", lifespan: 1200, size: Large, override: Some(Permadeath), axiom_tags: ["natural_weapons", "demonic_arts"] },
-      RaceDecl { race_id: "race_ghost_qui", lifespan: 1 (placeholder; AlreadyDead override bypasses age tracking), size: Medium, override: Some(AlreadyDead), axiom_tags: ["incorporeal"] },
-      RaceDecl { race_id: "race_beast_thuyao", lifespan: 200, size: Large, override: Some(Permadeath), axiom_tags: ["natural_weapons"] },
+      RaceDecl { race_id: "race_cultivator_tusi", display_name: I18nBundle{"Cultivator" / "vi": "Tu sĩ" / "zh": "修士"}, lifespan: 600, size: Medium, override: None, axiom_tags: ["qigong", "spirit_sense"] },
+      // V1+ RAC-D12 deferred (additive when first content needs):
+      // RaceDecl { race_id: "race_demon_yao", size: Large, override: Some(Permadeath), axiom_tags: ["natural_weapons", "demonic_arts"] },
+      // RaceDecl { race_id: "race_ghost_qui", lifespan: 1 placeholder, size: Medium, override: Some(AlreadyDead), axiom_tags: ["incorporeal"] },
+      // RaceDecl { race_id: "race_beast_thuyao", size: Large, override: Some(Permadeath), axiom_tags: ["natural_weapons"] },
     ]
   Validate:
     - All RaceDecl entries pass schema (Stage 0)
     - All race_id strings unique within RealityManifest.races
     - All size_category values valid (6-variant enum)
-    - All lifespan_years ≥ 1 (lifespan=0 reject; Ghost race uses lifespan=1 placeholder + override=AlreadyDead bypasses age tracking — Phase 3 cleanup note)
+    - All lifespan_years ≥ 1
   ✓ schema OK
 
   For canonical actor Lý Minh (race=Cultivator):
@@ -331,9 +354,14 @@ RealityBootstrapper service @ reality-bootstrap event for Wuxia reality:
     }) → T1 Derived
     causal_refs = [reality_bootstrap_event_id]
 
-  Repeat for Tiểu Thúy / Du sĩ / Lão Ngũ (all races declared in their canonical seed entries).
+  Repeat for:
+    - Tiểu Thúy → race_human_phamnhan
+    - Du sĩ → race_cultivator_tusi
+    - Lão Ngũ → race_human_phamnhan
 
-UI receives RaceBorn + AssignRace events; renders race badges per actor.
+UI receives RaceBorn + AssignRace events; renders race badges per actor (Tu sĩ vs Phàm nhân).
+
+Path C V1 light note: WA_006 mortality lookup reads default_mortality_kind_override (V1 None for both Wuxia races → uses reality default mortality_kind, e.g., RespawnAtLocation). Per-race override activates V1+ when Demon/Ghost added (Demon Permadeath / Ghost AlreadyDead).
 ```
 
 ---
@@ -425,13 +453,13 @@ The design is implementation-ready when world-service can pass these scenarios.
 
 | ID | Scenario | Pass criteria |
 |---|---|---|
-| **AC-RAC-1** | Wuxia reality declares 5-race preset; canonical bootstrap assigns races to 4 canonical actors | 4 race_assignment rows committed; each with AssignmentReason=CanonicalSeed; RaceBorn events emitted alongside EF_001 EntityBorn |
+| **AC-RAC-1** | Wuxia reality declares **2-race preset V1 per Path C** (Phàm nhân + Cultivator); canonical bootstrap assigns races to 4 canonical actors (Lý Minh=Cultivator; Tiểu Thúy/Lão Ngũ=Phàm nhân; Du sĩ=Cultivator) | 4 race_assignment rows committed; each with AssignmentReason=CanonicalSeed; RaceBorn events emitted alongside EF_001 EntityBorn |
 | **AC-RAC-2** | LM01 (PC) created via V1+ PC creation form with race=Cultivator | race_assignment row committed with AssignmentReason=PcCreation; UI displays Tu sĩ badge; tooltip shows lifespan=600yr + axiom_tags |
 | **AC-RAC-3** | Tiểu Thúy (NPC) declared at canonical seed with race=Phàm nhân | row committed; UI tooltip shows Phàm nhân + lifespan=80yr |
 | **AC-RAC-4** | Modern reality declares 1-race preset (Human only); single PC + 3 NPCs all assigned race=Human | 4 race_assignment rows; all race_id="race_human_modern" |
 | **AC-RAC-5** | I18nBundle resolves race display_name correctly across locales | display_name.translations["vi"]="Tu sĩ" / default="Cultivator" / translations["zh"]="修士" |
-| **AC-RAC-6** | WA_006 mortality lookup for race=Ghost target | resolves MortalityKind=AlreadyDead per race override |
-| **AC-RAC-7** | WA_006 mortality lookup for race=Cultivator target with hp→0 | resolves MortalityKind=Permadeath; no respawn |
+| **AC-RAC-6** | (Path C V1 light) WA_006 mortality lookup for race=Cultivator target with hp→0; per-race override is None V1 | falls through to reality default mortality_kind (e.g., RespawnAtLocation per author config); per-race override activates V1+ AC-RAC-V1+4 |
+| **AC-RAC-7** | (Path C V1 light) WA_006 mortality lookup for race=Phàm nhân target with hp→0 | falls through to reality default mortality_kind; per-race override remains None V1 |
 
 ### 15.2 V1+ scenarios (deferred)
 
@@ -440,6 +468,9 @@ The design is implementation-ready when world-service can pass these scenarios.
 | **AC-RAC-V1+1** | V1+ Lex axiom requires_race=[Cultivator]; LM01 (Cultivator) Use qigong scroll passes | V1+ when first race-gated axiom ships in WA_001 closure pass |
 | **AC-RAC-V1+2** | Phàm nhân attempts qigong Use (race-gated axiom) | V1+ rejected with `race.lex_axiom_forbidden` |
 | **AC-RAC-V1+3** | Reincarnation event Reincarnate { from: Cultivator, to: Phàm nhân child } | V1+ when scheduler V1+30d ships |
+| **AC-RAC-V1+4** (Path C deferral) | Wuxia V1+ adds Demon race; WA_006 mortality lookup race=Demon target hp→0 → per-race override Permadeath fires | V1+ when first content beyond SPIKE_01 needs Demon race per RAC-D12 |
+| **AC-RAC-V1+5** (Path C deferral) | Wuxia V1+ adds Ghost race; WA_006 lookup race=Ghost → MortalityKind=AlreadyDead (Ghost actors never enter Alive state) | V1+ per RAC-D12 |
+| **AC-RAC-V1+6** (Path C deferral) | Wuxia V1+ adds Beast race; size=Large + axiom_tags=["natural_weapons"] consumed by V1+ combat feature | V1+ per RAC-D12 + V1+ combat |
 
 ### 15.3 Failure-path
 
@@ -487,6 +518,7 @@ DRAFT promotion registers:
 | **RAC-D9** | Race-driven name pattern (Cultivator daoist names vs Phàm nhân village names) | V1+ FF_001 + cultural_tradition_pack enrichment |
 | **RAC-D10** | Race lifespan vs mortality interaction (Cultivator 600yr but death-by-Strike treated equally) | V1+ combat + WA_006 cross-design |
 | **RAC-D11** (Phase 0 survey) | Cultivation realm (mutable rank-tier within Cultivator race) — NOT IDF_001 expansion; SEPARATE V1+ feature CULT_001 Cultivation Foundation per POST-SURVEY-Q5 | V1+ CULT_001 Cultivation Foundation (separate feature; defer until first non-SPIKE_01 wuxia content needs realm progression). All wuxia game references separate race from realm. |
+| **RAC-D12** (Path C 2026-04-26) | Wuxia V1+ races — Demon (Yêu) / Ghost (Quỷ) / Beast (Thú yêu) with full axiom_tags + size + mortality_kind override semantics. V1 Path C ships only 2 races (Phàm nhân + Cultivator); V1+ adds 3 more via additive RealityManifest extension per I14. Trigger: first author content beyond SPIKE_01 needing Demon/Ghost/Beast (combat encounters / supernatural NPCs / boss fights). Cost: light authoring (3 RaceDecl entries + I18nBundle 3-language strings) + activation of WA_006 per-race override + AC-RAC-V1+4..V1+6 acceptance scenarios. | V1+ when first reality content beyond SPIKE_01 demands Demon / Ghost / Beast race differentiation. Per Path C philosophy "narrow V1 + define NOW for V+" (lock schema; light V1 content; future-proof). |
 
 ---
 
@@ -551,6 +583,15 @@ This doc satisfies items per DP-R2 + 22_feature_design_quickstart.md:
 - S2.1 §11 Wuxia bootstrap sequence Ghost lifespan changed from `0 (immortal)` → `1 (placeholder; AlreadyDead bypasses)` to comply with `lifespan_years ≥ 1` schema rule
 - S2.2 §11 Validate step rewording — Ghost lifespan=1 placeholder + override=AlreadyDead path documented (no schema rule violation)
 - S3.1 §2 cross-feature distinction for RaceId vs LangCode (RES_001) vs LanguageId (IDF_002) — runtime newtype prevents accidental cross-type assignment
+
+**Path C V1 light content applied 2026-04-26 (post-CANDIDATE-LOCK scope revision per user "approve option C"):**
+- §1 user story split into V1 (Wuxia 2 races: Phàm nhân + Cultivator) + V1+ deferred (Demon/Ghost/Beast 3 additional)
+- §11 Wuxia bootstrap sequence updated to 2-race V1 ship; V1+ RAC-D12 commented in code block
+- §15.1 AC-RAC-1 description: "5-race preset" → "2-race preset V1 per Path C"
+- §15.1 AC-RAC-6 + AC-RAC-7: rewritten as "V1 light" pass scenarios (per-race override None → falls through to reality default)
+- §15.2 NEW V1+ scenarios AC-RAC-V1+4..V1+6 (Demon/Ghost/Beast race-driven mortality + combat traits when V1+ activates)
+- §17 NEW deferral RAC-D12 — Wuxia V1+ races (Demon/Ghost/Beast) with activation trigger + cost analysis
+- Schema PRESERVED (no boundary changes; `races: Vec<RaceDecl>` REQUIRED V1 unchanged); foundation tier discipline maintained; V1+ activation cheap (additive RealityManifest extension per I14)
 
 **Status transition:** DRAFT 2026-04-26 (Phase 3 applied) → **CANDIDATE-LOCK** in next commit (3/15) → **LOCK** when AC-RAC-1..10 pass integration tests + V1+ scenarios pass after WA_001 closure pass + V1+30d scheduler ships.
 
