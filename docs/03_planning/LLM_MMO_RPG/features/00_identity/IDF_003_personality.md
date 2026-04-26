@@ -3,7 +3,7 @@
 > **Conversational name:** "Personality" (PRS). Tier 5 Actor Substrate Foundation feature owning per-reality `PersonalityArchetypeId` closed-set (12 V1 archetypes per POST-SURVEY-Q1 LOCKED) + per-actor `actor_personality` aggregate + voice register integration (resolves [PL_005b §2.1](../04_play_loop/PL_005b_interaction_contracts.md) `speaker_voice` orphan ref). NPC_002 §6 priority algorithm Tier 2-3 + opinion drift modifier consume; resolves [PL_005c INT-INT-D5](../04_play_loop/PL_005c_interaction_integration.md) (per-personality opinion modifier) deferral.
 >
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
-> **Status:** DRAFT 2026-04-26 (Phase 0 CONCEPT promoted to DRAFT after POST-SURVEY-Q1..Q7 user "A" confirmation; Q-decisions PRS-Q1..Q11 locked + Q1 expanded to 12 archetypes per POST-SURVEY-Q1)
+> **Status:** CANDIDATE-LOCK 2026-04-26 (CONCEPT → DRAFT → Phase 3 cleanup → closure pass; Q-decisions PRS-Q1..Q11 locked + Q1 expanded to 12 archetypes per POST-SURVEY-Q1)
 > **Stable IDs:** `PRS-A*` axioms · `PRS-D*` deferrals · `PRS-Q*` decisions
 > **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types); [PL_005b §2.1 InteractionSpeakPayload](../04_play_loop/PL_005b_interaction_contracts.md) speaker_voice; [NPC_002 §6 priority algorithm](../05_npc_systems/NPC_002_chorus.md); [PL_005c INT-INT-D5](../04_play_loop/PL_005c_interaction_integration.md); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md); [IDF_001 RaceId pattern](IDF_001_race.md).
 > **Defers to:** future PCS_001 (PC personality at creation); NPC_001/`NPC_NNN` (NPC archetype canonical seed); V1+ Big-Five trait system; V1+ archetype evolution.
