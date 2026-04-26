@@ -5,7 +5,7 @@
 > **Conversational name:** "Interaction integration" (INT-I). Read PL_005 + PL_005b FIRST — this file shows how those contracts COMPOSE with consumer features.
 >
 > **Category:** PL — Play Loop (core runtime)
-> **Status:** DRAFT 2026-04-26 (Phase 3 of PL_005 design)
+> **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 3 of PL_005 design + Phase 3 cleanup + closure pass — Stage 3.5 group integrated in §1.1; §1.2 timing refresh; §3.1 Strike pre-condition; §6.1 stage allocation; actor_status post-commit)
 > **Stable IDs:** none new — references PL_005 §2 + PL_005b §1 domain concepts. No boundary lock claim needed (no new aggregate types or sub-types introduced).
 > **Builds on:** PL_005 + PL_005b. Same DP contracts + same Event-model mappings.
 

@@ -6,6 +6,16 @@
 
 ---
 
+## 2026-04-26 — PL folder closure (commit 6/8): PL_005c closure pass → CANDIDATE-LOCK
+
+- **Lock continues** from commit 1
+- **Files modified within `_boundaries/`:** none (PL_005c closure pass is metadata-only — file status header bump + `_index.md` row update; no aggregate or namespace boundary changes since PL_005c is integration layer, no new owned items)
+- **PL_005c status header DRAFT → CANDIDATE-LOCK 2026-04-26**
+- **`_index.md` PL_005c row updated:** status CANDIDATE-LOCK + Stage 3.5 group + §1.2 timing + §3.1 pre-condition + §6.1 stage allocation + actor_status post-commit + 27 total deferrals across PL_005/b/c
+- **Reason:** PL_005c integration documentation aligned with Stage 3.5 boundary (already locked); Strike race eliminated via §3.1 pre-condition; per-stage namespace allocation in §6.1 failure scenarios. Combined PL_005 + PL_005b + PL_005c form complete Interaction feature (root + contracts + integration) all at CANDIDATE-LOCK.
+
+---
+
 ## 2026-04-26 — PL folder closure (commit 5/8): PL_005c Phase 3 cleanup (Stage 3.5 group inserted in §1.1 common chain + §1.2 timing refresh + §3.1 Strike pre-condition + §6.1 stage allocation)
 
 - **Lock continues** from commit 1
