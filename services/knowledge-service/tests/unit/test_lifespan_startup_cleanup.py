@@ -3,6 +3,11 @@
 If any pre-yield step raises, the lifespan should run every
 close_* before re-raising so pools / drivers / clients don't leak
 across a restart loop.
+
+Phase 4a-δ: ``close_provider_client`` is gone (legacy module
+deleted); the lifespan now closes ``llm_client`` (loreweave_llm SDK
+wrapper) instead, and adds ``cooldown_client`` to the head of the
+teardown list.
 """
 from __future__ import annotations
 
@@ -28,8 +33,10 @@ async def test_startup_failure_closes_everything(monkeypatch):
         return _close
 
     # Patch all close_* entries so we can observe order + invocation.
-    monkeypatch.setattr(main_mod, "close_provider_client",
-                        await mk_close("provider_client"))
+    monkeypatch.setattr(main_mod, "close_cooldown_client",
+                        await mk_close("cooldown_client"))
+    monkeypatch.setattr(main_mod, "close_llm_client",
+                        await mk_close("llm_client"))
     monkeypatch.setattr(main_mod, "close_embedding_client",
                         await mk_close("embedding_client"))
     monkeypatch.setattr(main_mod, "close_book_client",
@@ -49,7 +56,7 @@ async def test_startup_failure_closes_everything(monkeypatch):
     monkeypatch.setattr(main_mod, "init_glossary_client", lambda: None)
     monkeypatch.setattr(main_mod, "get_book_client", lambda: "fake")
     monkeypatch.setattr(main_mod, "get_embedding_client", lambda: "fake")
-    monkeypatch.setattr(main_mod, "get_provider_client", lambda: "fake")
+    monkeypatch.setattr(main_mod, "get_llm_client", lambda: "fake")
     monkeypatch.setattr(main_mod, "init_neo4j_driver", AsyncMock(return_value=None))
     monkeypatch.setattr(main_mod, "get_neo4j_driver", lambda: "fake-driver")
 
@@ -63,9 +70,11 @@ async def test_startup_failure_closes_everything(monkeypatch):
             async with main_mod.lifespan(main_mod.app):
                 pass  # pragma: no cover — shouldn't reach yield
 
-    # Reverse-dependency teardown order is preserved.
+    # Reverse-dependency teardown order is preserved (matches the tuple
+    # in `_close_all_startup_resources`).
     assert closed == [
-        "provider_client",
+        "cooldown_client",
+        "llm_client",
         "embedding_client",
         "book_client",
         "glossary_client",
@@ -84,7 +93,8 @@ async def test_startup_failure_close_exceptions_dont_mask_original(monkeypatch):
     async def failing_close():
         raise RuntimeError("close also blew up")
 
-    monkeypatch.setattr(main_mod, "close_provider_client", ok_close)
+    monkeypatch.setattr(main_mod, "close_cooldown_client", ok_close)
+    monkeypatch.setattr(main_mod, "close_llm_client", ok_close)
     monkeypatch.setattr(main_mod, "close_embedding_client", failing_close)
     monkeypatch.setattr(main_mod, "close_book_client", ok_close)
     monkeypatch.setattr(main_mod, "close_glossary_client", ok_close)

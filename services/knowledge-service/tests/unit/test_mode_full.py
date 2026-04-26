@@ -1,9 +1,14 @@
-"""K18.1 — unit tests for the Mode 3 builder scaffold."""
+"""K18.1 — unit tests for the Mode 3 builder scaffold.
+
+Phase 4a-δ: rerank now routes through the loreweave_llm SDK
+(``llm_client.submit_and_wait`` returning a Job) instead of the
+removed ``provider_client.chat_completion`` path."""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -20,6 +25,30 @@ from app.context.selectors.passages import (
     select_l3_passages as _REAL_SELECT_L3_PASSAGES,
 )
 from app.db.models import Project, Summary
+from loreweave_llm.models import Job
+
+
+class _FakeLLMClient:
+    """Stand-in for ``app.clients.llm_client.LLMClient`` exposing only
+    the ``submit_and_wait`` surface the rerank path uses."""
+
+    def __init__(self, *, content: str = '{"order": []}') -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._content = content
+
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="chat",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": self._content}],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
 
 USER_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -573,23 +602,16 @@ def _patch_l3_with_hits(monkeypatch, n: int = 3):
 @pytest.mark.asyncio
 async def test_rerank_model_from_extraction_config_triggers_rerank(monkeypatch):
     """D-K18.3-02: project.extraction_config['rerank_model'] flows all
-    the way from build_full_mode → _safe_l3_passages → real
-    select_l3_passages → rerank_passages → provider.chat_completion.
-    Proves the opt-in config key actually reaches the LLM call site."""
+    the way from build_full_mode -> _safe_l3_passages -> real
+    select_l3_passages -> rerank_passages -> llm_client.submit_and_wait.
+    Proves the opt-in config key reaches the LLM call site."""
     # Full Mode 3 pipeline — but we use a REAL select_l3_passages, not
     # a mock, so the rerank code path executes.
     _patch_mode3_pieces(monkeypatch)  # L0/L1/L2 stubs
     _patch_l3_with_hits(monkeypatch, n=3)
 
     from app.clients.embedding_client import EmbeddingResult
-    from app.clients.provider_client import (
-        ChatCompletionResponse, ChatCompletionUsage,
-    )
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock(return_value=ChatCompletionResponse(
-        content='{"order": [2, 0, 1]}',
-        usage=ChatCompletionUsage(), model="rerank-test", raw={},
-    ))
+    fake_llm = _FakeLLMClient(content='{"order": [2, 0, 1]}')
 
     embedding = MagicMock()
     embedding.embed = AsyncMock(return_value=EmbeddingResult(
@@ -604,27 +626,27 @@ async def test_rerank_model_from_extraction_config_triggers_rerank(monkeypatch):
         summaries_repo=MagicMock(),
         glossary_client=MagicMock(),
         embedding_client=embedding,
-        provider_client=provider,
+        llm_client=fake_llm,
         user_id=USER_ID,
         project=project,
         message="who is arthur",
     )
-    assert provider.chat_completion.await_count == 1
-    assert provider.chat_completion.await_args.kwargs["model_ref"] == "llama-3-rerank"
+    assert len(fake_llm.calls) == 1
+    assert fake_llm.calls[0]["model_ref"] == "llama-3-rerank"
+    assert fake_llm.calls[0]["operation"] == "chat"
 
 
 @pytest.mark.asyncio
 async def test_rerank_skipped_when_extraction_config_has_no_rerank_model(
     monkeypatch,
 ):
-    """Default config (no rerank_model key) must not invoke the
-    provider. Projects without opt-in pay zero LLM cost."""
+    """Default config (no rerank_model key) must not invoke the LLM
+    gateway. Projects without opt-in pay zero LLM cost."""
     from app.clients.embedding_client import EmbeddingResult
     _patch_mode3_pieces(monkeypatch)
     _patch_l3_with_hits(monkeypatch, n=3)
 
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock()
+    fake_llm = _FakeLLMClient()
     embedding = MagicMock()
     embedding.embed = AsyncMock(return_value=EmbeddingResult(
         embeddings=[[0.1] * 1024], dimension=1024, model="bge-m3",
@@ -638,12 +660,12 @@ async def test_rerank_skipped_when_extraction_config_has_no_rerank_model(
         summaries_repo=MagicMock(),
         glossary_client=MagicMock(),
         embedding_client=embedding,
-        provider_client=provider,
+        llm_client=fake_llm,
         user_id=USER_ID,
         project=project,
         message="test",
     )
-    provider.chat_completion.assert_not_called()
+    assert fake_llm.calls == []
 
 
 @pytest.mark.asyncio

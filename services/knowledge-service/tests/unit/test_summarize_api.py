@@ -42,12 +42,12 @@ def _clear_overrides():
 def _make_client() -> TestClient:
     from app.main import app
     from app.deps import (
-        get_provider_client,
+        get_llm_client,
         get_summaries_repo,
         get_summary_spending_repo,
     )
 
-    app.dependency_overrides[get_provider_client] = lambda: MagicMock()
+    app.dependency_overrides[get_llm_client] = lambda: MagicMock()
     app.dependency_overrides[get_summaries_repo] = lambda: MagicMock()
     # C16-BUILD: stub the spending repo too — get_summary_spending_repo
     # touches the DB pool which isn't initialised in unit tests. Without

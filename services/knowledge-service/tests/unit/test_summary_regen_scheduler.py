@@ -162,7 +162,7 @@ async def test_sweep_lock_skipped_returns_zeroed():
     result = await sweep_projects_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.lock_skipped is True
@@ -179,7 +179,7 @@ async def test_sweep_empty_project_list_returns_zero_counters_and_releases_lock(
     result = await sweep_projects_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.lock_skipped is False
@@ -206,7 +206,7 @@ async def test_sweep_no_prior_extraction_job_skips_as_no_model(monkeypatch):
     result = await sweep_projects_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.projects_considered == 1
@@ -247,7 +247,7 @@ async def test_sweep_maps_regen_status_to_counter(
     result = await sweep_projects_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.projects_considered == 1
@@ -293,7 +293,7 @@ async def test_sweep_unknown_regen_status_counts_as_errored_with_warning(
         result = await sweep_projects_once(
             pool=pool,  # type: ignore[arg-type]
             session_factory=lambda: MagicMock(),
-            provider_client=MagicMock(),
+            llm_client=MagicMock(),
             summaries_repo=MagicMock(),
         )
     assert result.errored == 1
@@ -333,7 +333,7 @@ async def test_sweep_per_project_regen_exception_is_isolated(monkeypatch):
     result = await sweep_projects_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.projects_considered == 2
@@ -365,7 +365,7 @@ async def test_sweep_model_lookup_error_counts_as_errored(monkeypatch):
     result = await sweep_projects_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.projects_considered == 2
@@ -392,7 +392,7 @@ async def test_sweep_lock_released_on_mid_sweep_exception(monkeypatch):
         await sweep_projects_once(
             pool=pool,  # type: ignore[arg-type]
             session_factory=lambda: MagicMock(),
-            provider_client=MagicMock(),
+            llm_client=MagicMock(),
             summaries_repo=MagicMock(),
         )
     # Lock was released even though the sweep raised.
@@ -415,7 +415,7 @@ async def test_loop_cancellation_during_startup_delay(monkeypatch):
         await run_project_regen_loop(
             pool=MagicMock(),
             session_factory=lambda: MagicMock(),
-            provider_client=MagicMock(),
+            llm_client=MagicMock(),
             summaries_repo=MagicMock(),
             startup_delay_s=1,
         )
@@ -451,7 +451,7 @@ async def test_loop_runs_one_sweep_then_cancels_during_interval_sleep(
         await run_project_regen_loop(
             pool=MagicMock(),
             session_factory=lambda: MagicMock(),
-            provider_client=MagicMock(),
+            llm_client=MagicMock(),
             summaries_repo=MagicMock(),
             startup_delay_s=1,
             interval_s=100,
@@ -468,7 +468,7 @@ async def test_loop_continues_when_sweep_raises_non_cancel(monkeypatch):
 
     async def raising_sweep(*_args, **_kwargs):
         # sweep_projects_once is called positionally with
-        # (pool, session_factory, provider_client, summaries_repo);
+        # (pool, session_factory, llm_client, summaries_repo);
         # accept *_args so the stub absorbs any call shape.
         call_count["sweep"] += 1
         if call_count["sweep"] == 1:
@@ -497,7 +497,7 @@ async def test_loop_continues_when_sweep_raises_non_cancel(monkeypatch):
         await run_project_regen_loop(
             pool=MagicMock(),
             session_factory=lambda: MagicMock(),
-            provider_client=MagicMock(),
+            llm_client=MagicMock(),
             summaries_repo=MagicMock(),
             startup_delay_s=1,
             interval_s=100,
@@ -531,7 +531,7 @@ async def test_sweep_global_lock_skipped_returns_zeroed():
     result = await sweep_global_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.lock_skipped is True
@@ -547,7 +547,7 @@ async def test_sweep_global_empty_eligibility_releases_lock():
     result = await sweep_global_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.lock_skipped is False
@@ -577,7 +577,7 @@ async def test_sweep_global_no_extraction_anywhere_skips_as_no_model(
     result = await sweep_global_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.projects_considered == 1
@@ -618,7 +618,7 @@ async def test_sweep_global_maps_regen_status_to_counter(
     result = await sweep_global_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.projects_considered == 1
@@ -658,7 +658,7 @@ async def test_sweep_global_per_user_regen_exception_isolated(monkeypatch):
     result = await sweep_global_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.projects_considered == 2
@@ -689,7 +689,7 @@ async def test_sweep_global_user_model_lookup_error_counts_as_errored(
     result = await sweep_global_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert result.projects_considered == 2
@@ -722,7 +722,7 @@ async def test_sweep_global_emits_completion_log_with_counter_breakdown(
         await sweep_global_once(
             pool=pool,  # type: ignore[arg-type]
             session_factory=lambda: MagicMock(),
-            provider_client=MagicMock(),
+            llm_client=MagicMock(),
             summaries_repo=MagicMock(),
         )
     completion_logs = [
@@ -749,7 +749,7 @@ async def test_global_loop_cancellation_during_startup_delay(monkeypatch):
         await run_global_regen_loop(
             pool=MagicMock(),
             session_factory=lambda: MagicMock(),
-            provider_client=MagicMock(),
+            llm_client=MagicMock(),
             summaries_repo=MagicMock(),
             startup_delay_s=1,
         )
@@ -794,7 +794,7 @@ async def test_sweep_emits_completion_log_with_counter_breakdown(
         await sweep_projects_once(
             pool=pool,  # type: ignore[arg-type]
             session_factory=lambda: MagicMock(),
-            provider_client=MagicMock(),
+            llm_client=MagicMock(),
             summaries_repo=MagicMock(),
         )
     # One INFO log line per sweep with the 5-counter breakdown.
@@ -847,7 +847,7 @@ async def test_sweep_projects_forwards_summary_spending_repo(monkeypatch):
     await sweep_projects_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
         summary_spending_repo=sentinel_repo,
     )
@@ -879,7 +879,7 @@ async def test_sweep_global_forwards_summary_spending_repo(monkeypatch):
     await sweep_global_once(
         pool=pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
         summary_spending_repo=sentinel_repo,
     )
@@ -913,7 +913,7 @@ async def test_sweeps_default_summary_spending_repo_to_none(monkeypatch):
     await sweep_projects_once(
         pool=proj_pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert proj_regen_mock.await_args.kwargs["summary_spending_repo"] is None
@@ -933,7 +933,7 @@ async def test_sweeps_default_summary_spending_repo_to_none(monkeypatch):
     await sweep_global_once(
         pool=glob_pool,  # type: ignore[arg-type]
         session_factory=lambda: MagicMock(),
-        provider_client=MagicMock(),
+        llm_client=MagicMock(),
         summaries_repo=MagicMock(),
     )
     assert glob_regen_mock.await_args.kwargs["summary_spending_repo"] is None

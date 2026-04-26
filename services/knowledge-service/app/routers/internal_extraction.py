@@ -22,32 +22,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.clients.glossary_client import get_glossary_client
-from app.clients.provider_client import (
-    ProviderAuthError,
-    ProviderDecodeError,
-    ProviderError,
-    ProviderInvalidRequest,
-    ProviderModelNotFound,
-    ProviderRateLimited,
-    ProviderTimeout,
-    ProviderUpstreamError,
-    get_provider_client,
-)
+from app.clients.llm_client import get_llm_client
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
+from app.extraction.errors import ExtractionError
 from app.extraction.pass2_orchestrator import (
     extract_pass2_chapter,
     extract_pass2_chat_turn,
 )
 from app.middleware.internal_auth import require_internal_token
 
-# Errors that the worker should retry (transient upstream issues).
-_RETRYABLE_ERRORS = (ProviderTimeout, ProviderRateLimited, ProviderUpstreamError)
-# Errors that are permanent — retrying won't help.
-_PERMANENT_ERRORS = (ProviderAuthError, ProviderModelNotFound, ProviderInvalidRequest, ProviderDecodeError)
+# Phase 4a-δ — retryable map keyed on `ExtractionError.stage`. The
+# gateway already retried transients before raising `provider_exhausted`
+# at the SDK boundary, so a worker-level retry is the second attempt.
+# `provider` (non-transient terminal) and `cancelled` are not retried.
+_RETRYABLE_STAGES = {"provider_exhausted"}
 
 logger = logging.getLogger(__name__)
 
@@ -215,12 +207,12 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
         )
 
     started = time.perf_counter()
-    provider_client = get_provider_client()
+    llm_client = get_llm_client()
 
     # C3 (D-K19b.8-02) — stage producer for the FE JobLogsPanel.
     # Inlined like `_try_spend` elsewhere rather than Depends() since
     # the rest of this router already resolves collaborators inline
-    # (module-level neo4j_session, get_provider_client, etc.). Matches
+    # (module-level neo4j_session, get_llm_client, etc.). Matches
     # the "internal router, no DI" convention. Best-effort: if the
     # pool isn't initialised (unit tests that only mock the extractor
     # helpers, or a pre-migration boot), the producer is silently
@@ -260,7 +252,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     known_entities=body.known_entities,
                     model_source=body.model_source,
                     model_ref=body.model_ref,
-                    client=provider_client,
+                    llm_client=llm_client,
                     anchors=anchors,
                     job_logs_repo=job_logs_repo,
                 )
@@ -282,39 +274,25 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     known_entities=body.known_entities,
                     model_source=body.model_source,
                     model_ref=body.model_ref,
-                    client=provider_client,
+                    llm_client=llm_client,
                     anchors=anchors,
                     job_logs_repo=job_logs_repo,
                 )
     except HTTPException:
         raise  # re-raise validation errors (422)
-    except _RETRYABLE_ERRORS as exc:
+    except ExtractionError as exc:
+        retryable = exc.stage in _RETRYABLE_STAGES
         logger.warning(
-            "K16.6a: retryable extraction error source_id=%s: %s",
-            body.source_id, exc,
+            "K16.6a: extraction error source_id=%s stage=%s retryable=%s: %s",
+            body.source_id, exc.stage, retryable, exc,
         )
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"retryable": True, "error": str(exc)},
-        )
-    except _PERMANENT_ERRORS as exc:
-        logger.error(
-            "K16.6a: permanent extraction error source_id=%s: %s",
-            body.source_id, exc,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={"retryable": False, "error": str(exc)},
-        )
-    except ProviderError as exc:
-        # Catch-all for any future ProviderError subclass
-        logger.error(
-            "K16.6a: unknown provider error source_id=%s: %s",
-            body.source_id, exc,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"retryable": True, "error": str(exc)},
+            status_code=(
+                status.HTTP_502_BAD_GATEWAY
+                if retryable
+                else status.HTTP_422_UNPROCESSABLE_CONTENT
+            ),
+            detail={"retryable": retryable, "error": str(exc)},
         )
 
     elapsed = time.perf_counter() - started

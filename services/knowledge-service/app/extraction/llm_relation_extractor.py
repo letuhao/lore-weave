@@ -38,10 +38,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from app.clients.llm_client import LLMClient
-from app.clients.provider_client import ProviderClient
 from app.db.neo4j_repos.relations import relation_id as compute_relation_id
+from app.extraction.errors import ExtractionError
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_json_parser import ExtractionError, extract_json
 from app.extraction.llm_prompts import load_prompt
 from app.metrics import knowledge_extraction_dropped_total
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
@@ -146,8 +145,7 @@ async def extract_relations(
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    client: ProviderClient | None = None,
-    llm_client: LLMClient | None = None,
+    llm_client: LLMClient,
 ) -> list[LLMRelationCandidate]:
     """Extract relations from *text* via the user's BYOK LLM.
 
@@ -162,7 +160,7 @@ async def extract_relations(
         project_id: project scope (``None`` for global).
         model_source: ``"user_model"`` or ``"platform_model"``.
         model_ref: model reference key in provider-registry.
-        client: injectable ``ProviderClient`` for testing.
+        llm_client: loreweave_llm SDK wrapper.
 
     Returns:
         List of ``LLMRelationCandidate`` sorted by confidence
@@ -171,8 +169,7 @@ async def extract_relations(
         ``relation_id=None``.
 
     Raises:
-        ExtractionError: on terminal LLM / parse / validation failure
-            (propagated from K17.3).
+        ExtractionError: on terminal LLM / parse / validation failure.
     """
     if not text or not text.strip():
         return []
@@ -181,39 +178,16 @@ async def extract_relations(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
 
-    if llm_client is not None:
-        # Phase 4a-β: SDK path with system+user 2-message structure
-        # so the gateway chunker can split chapter text without
-        # shredding instructions. Mirrors entity extractor pattern.
-        system_prompt = load_prompt("relation_system", known_entities=safe_known)
-        raw_relations = await _extract_via_llm_client(
-            llm_client=llm_client,
-            user_id=user_id,
-            project_id=project_id,
-            model_source=model_source,
-            model_ref=model_ref,
-            system_prompt=system_prompt,
-            text=text,
-        )
-    else:
-        # Legacy K17.2 path — preserved through 4a-β, removed in 4a-δ.
-        safe_text = text.replace("{", "{{").replace("}", "}}")
-        user_prompt = load_prompt(
-            "relation",
-            text=safe_text,
-            known_entities=safe_known,
-        )
-        response = await extract_json(
-            RelationExtractionResponse,
-            user_id=user_id,
-            model_source=model_source,
-            model_ref=model_ref,
-            system=None,
-            user_prompt=user_prompt,
-            response_format={"type": "json_object"},
-            client=client,
-        )
-        raw_relations = response.relations
+    system_prompt = load_prompt("relation_system", known_entities=safe_known)
+    raw_relations = await _extract_via_llm_client(
+        llm_client=llm_client,
+        user_id=user_id,
+        project_id=project_id,
+        model_source=model_source,
+        model_ref=model_ref,
+        system_prompt=system_prompt,
+        text=text,
+    )
 
     return _postprocess(
         raw_relations,

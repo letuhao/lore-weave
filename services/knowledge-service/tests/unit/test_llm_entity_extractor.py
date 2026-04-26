@@ -1,89 +1,90 @@
-"""Unit tests for K17.4 — LLM entity extractor.
+"""Unit tests for K17.4 — LLM entity extractor (SDK path only).
 
-Uses a FakeProviderClient (same duck-typed pattern as
-test_llm_json_parser.py) to test extract_entities without any
-network calls. Validates:
+Phase 4a-δ: legacy ProviderClient path was removed; the extractor now
+takes only ``llm_client: LLMClient``. Uses a FakeLLMClient (duck-typed
+stand-in for ``app.clients.llm_client.LLMClient``) to drive the
+extractor without any network calls. Validates:
   - Happy path with canonical ID stability
-  - Empty/whitespace input → no LLM call
+  - Empty/whitespace input -> no LLM call
   - Known entities anchoring
   - Deduplication by canonical_id with alias merging
-  - Idempotent re-run (same input → same canonical_ids)
+  - Idempotent re-run (same input -> same canonical_ids)
   - All entity kinds
-  - ExtractionError propagation from K17.3
+  - ExtractionError propagation (provider / provider_exhausted /
+    cancelled stages)
   - Whitespace-only name filtering
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any, cast
 
 import pytest
 
-from app.clients.provider_client import (
-    ChatCompletionResponse,
-    ChatCompletionUsage,
-    ProviderClient,
-    ProviderAuthError,
-)
 from app.db.neo4j_repos.canonical import entity_canonical_id
+from app.extraction.errors import ExtractionError
 from app.extraction.llm_entity_extractor import (
     EntityExtractionResponse,
     LLMEntityCandidate,
     extract_entities,
 )
-from app.extraction.llm_json_parser import ExtractionError
+from loreweave_llm.errors import LLMTransientRetryNeededError
+from loreweave_llm.models import Job, JobError
 
 
-# ── FakeProviderClient (duck-typed, same pattern as K17.3 tests) ─────
+# -- FakeLLMClient (duck-typed stand-in for LLMClient) ---------------
 
 
-class FakeProviderClient:
-    """Pre-seed responses; pops head on each chat_completion call."""
+class FakeLLMClient:
+    """Captures submit_and_wait kwargs + replays a scripted Job.
+
+    Mirrors ``_FakeLLMClientForSummary`` in test_regenerate_summaries.py
+    but tailored to the entity_extraction operation envelope."""
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
-        self.responses: list[Any] = []
+        self.next_job: Any = None
+        self.next_exc: Exception | None = None
 
-    def queue_response(self, content: str, model: str = "test-model") -> None:
-        self.responses.append(
-            ChatCompletionResponse(
-                content=content,
-                model=model,
-                usage=ChatCompletionUsage(),
-                raw={},
-            )
+    def queue_job(
+        self,
+        *,
+        status: str = "completed",
+        entities: list[dict[str, Any]] | None = None,
+        error_code: str | None = None,
+        error_message: str = "",
+    ) -> None:
+        result = {"entities": entities} if entities is not None else None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="entity_extraction",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
         )
 
     def queue_exception(self, exc: Exception) -> None:
-        self.responses.append(exc)
+        self.next_exc = exc
 
-    async def chat_completion(self, **kwargs: Any) -> ChatCompletionResponse:
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
         self.calls.append(kwargs)
-        if not self.responses:
-            raise AssertionError(
-                f"FakeProviderClient ran out of queued responses "
-                f"(already had {len(self.calls)} calls)"
-            )
-        result = self.responses.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        return result
+        if self.next_exc is not None:
+            exc = self.next_exc
+            self.next_exc = None
+            raise exc
+        return self.next_job
 
 
-def _as_client(fake: FakeProviderClient) -> ProviderClient:
-    return cast(ProviderClient, fake)
+def _as_client(fake: FakeLLMClient) -> Any:
+    return cast(Any, fake)
 
 
-# ── Fixtures ─────────────────────────────────────────────────────────
+# -- Fixtures --------------------------------------------------------
 
 USER_ID = "test-user-001"
 PROJECT_ID = "test-project-001"
-
-
-def _make_response(*entities: dict[str, Any]) -> str:
-    """Build a JSON string matching EntityExtractionResponse schema."""
-    return json.dumps({"entities": list(entities)})
 
 
 def _entity(
@@ -100,20 +101,18 @@ def _entity(
     }
 
 
-# ── Tests ────────────────────────────────────────────────────────────
+# -- Tests -----------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_happy_path_three_entities():
     """Basic extraction returns three entities with canonical IDs."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _entity("Kai", "person", 1.0),
-            _entity("Harbin", "place", 0.95),
-            _entity("Jade Seal", "artifact", 0.9),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[
+        _entity("Kai", "person", 1.0),
+        _entity("Harbin", "place", 0.95),
+        _entity("Jade Seal", "artifact", 0.9),
+    ])
 
     result = await extract_entities(
         text="Kai left Harbin carrying the Jade Seal.",
@@ -122,7 +121,7 @@ async def test_happy_path_three_entities():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 3
@@ -146,7 +145,7 @@ async def test_happy_path_three_entities():
 @pytest.mark.asyncio
 async def test_empty_text_returns_empty_no_llm_call():
     """Empty or whitespace text should return [] without calling LLM."""
-    fake = FakeProviderClient()
+    fake = FakeLLMClient()
 
     for text in ["", "   ", "\n\t  "]:
         result = await extract_entities(
@@ -156,7 +155,7 @@ async def test_empty_text_returns_empty_no_llm_call():
             project_id=PROJECT_ID,
             model_source="user_model",
             model_ref="test-model",
-            client=_as_client(fake),
+            llm_client=_as_client(fake),
         )
         assert result == []
 
@@ -165,13 +164,11 @@ async def test_empty_text_returns_empty_no_llm_call():
 
 @pytest.mark.asyncio
 async def test_known_entities_anchoring():
-    """LLM returns 'kai' but known_entities has 'Kai' → canonical spelling used."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _entity("kai", "person", 0.95),  # lowercase from LLM
-        )
-    )
+    """LLM returns 'kai' but known_entities has 'Kai' -> canonical spelling used."""
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[
+        _entity("kai", "person", 0.95),  # lowercase from LLM
+    ])
 
     result = await extract_entities(
         text="kai walked through the forest.",
@@ -180,7 +177,7 @@ async def test_known_entities_anchoring():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -189,14 +186,12 @@ async def test_known_entities_anchoring():
 
 @pytest.mark.asyncio
 async def test_deduplication_merges_aliases():
-    """LLM returns 'Kai' and 'KAI' → deduplicated into one, alias merged."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _entity("Kai", "person", 0.9, aliases=["Kai-kun"]),
-            _entity("KAI", "person", 0.95, aliases=["Master Kai"]),
-        )
-    )
+    """LLM returns 'Kai' and 'KAI' -> deduplicated into one, alias merged."""
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[
+        _entity("Kai", "person", 0.9, aliases=["Kai-kun"]),
+        _entity("KAI", "person", 0.95, aliases=["Master Kai"]),
+    ])
 
     result = await extract_entities(
         text="Kai, also known as KAI, entered the room.",
@@ -205,7 +200,7 @@ async def test_deduplication_merges_aliases():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -219,15 +214,14 @@ async def test_deduplication_merges_aliases():
 
 @pytest.mark.asyncio
 async def test_idempotent_canonical_ids():
-    """Same input twice → same canonical_ids."""
-    fake = FakeProviderClient()
-    response = _make_response(
+    """Same input twice -> same canonical_ids."""
+    fake = FakeLLMClient()
+    entities_payload = [
         _entity("Kai", "person", 0.9),
         _entity("Harbin", "place", 0.8),
-    )
-    fake.queue_response(response)
-    fake.queue_response(response)
+    ]
 
+    fake.queue_job(entities=entities_payload)
     kwargs = dict(
         text="Kai traveled to Harbin.",
         known_entities=[],
@@ -235,10 +229,11 @@ async def test_idempotent_canonical_ids():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
-
     result1 = await extract_entities(**kwargs)
+
+    fake.queue_job(entities=entities_payload)
     result2 = await extract_entities(**kwargs)
 
     assert len(result1) == len(result2)
@@ -250,17 +245,15 @@ async def test_idempotent_canonical_ids():
 @pytest.mark.asyncio
 async def test_all_entity_kinds():
     """All six entity kinds are accepted."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _entity("Kai", "person", 0.9),
-            _entity("Harbin", "place", 0.9),
-            _entity("Imperial Academy", "organization", 0.9),
-            _entity("Jade Seal", "artifact", 0.9),
-            _entity("Honor", "concept", 0.8),
-            _entity("The Anomaly", "other", 0.7),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[
+        _entity("Kai", "person", 0.9),
+        _entity("Harbin", "place", 0.9),
+        _entity("Imperial Academy", "organization", 0.9),
+        _entity("Jade Seal", "artifact", 0.9),
+        _entity("Honor", "concept", 0.8),
+        _entity("The Anomaly", "other", 0.7),
+    ])
 
     result = await extract_entities(
         text="Chapter text with many entities.",
@@ -269,7 +262,7 @@ async def test_all_entity_kinds():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 6
@@ -279,10 +272,12 @@ async def test_all_entity_kinds():
 
 @pytest.mark.asyncio
 async def test_extraction_error_propagation():
-    """ProviderAuthError from K17.3 surfaces as ExtractionError."""
-    fake = FakeProviderClient()
-    fake.queue_exception(
-        ProviderAuthError("invalid API key")
+    """A failed Job (provider error) surfaces as ExtractionError(stage=provider)."""
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="failed",
+        error_code="LLM_INVALID_REQUEST",
+        error_message="invalid API key",
     )
 
     with pytest.raises(ExtractionError) as exc_info:
@@ -293,7 +288,7 @@ async def test_extraction_error_propagation():
             project_id=PROJECT_ID,
             model_source="user_model",
             model_ref="test-model",
-            client=_as_client(fake),
+            llm_client=_as_client(fake),
         )
 
     assert exc_info.value.stage == "provider"
@@ -301,9 +296,9 @@ async def test_extraction_error_propagation():
 
 @pytest.mark.asyncio
 async def test_empty_entities_from_llm():
-    """LLM returns empty entities list → empty result."""
-    fake = FakeProviderClient()
-    fake.queue_response(json.dumps({"entities": []}))
+    """LLM returns empty entities list -> empty result."""
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[])
 
     result = await extract_entities(
         text="A paragraph with no named entities at all.",
@@ -312,7 +307,7 @@ async def test_empty_entities_from_llm():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert result == []
@@ -321,11 +316,9 @@ async def test_empty_entities_from_llm():
 @pytest.mark.asyncio
 async def test_project_id_none_uses_global_scope():
     """project_id=None produces a different canonical_id than a real project."""
-    fake = FakeProviderClient()
-    response = _make_response(_entity("Kai", "person", 0.9))
-    fake.queue_response(response)
-    fake.queue_response(response)
+    fake = FakeLLMClient()
 
+    fake.queue_job(entities=[_entity("Kai", "person", 0.9)])
     result_global = await extract_entities(
         text="Kai speaks.",
         known_entities=[],
@@ -333,8 +326,10 @@ async def test_project_id_none_uses_global_scope():
         project_id=None,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
+
+    fake.queue_job(entities=[_entity("Kai", "person", 0.9)])
     result_project = await extract_entities(
         text="Kai speaks.",
         known_entities=[],
@@ -342,7 +337,7 @@ async def test_project_id_none_uses_global_scope():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result_global) == 1
@@ -352,9 +347,9 @@ async def test_project_id_none_uses_global_scope():
 
 @pytest.mark.asyncio
 async def test_known_entities_passed_in_prompt():
-    """Known entities are serialized as JSON in the LLM prompt."""
-    fake = FakeProviderClient()
-    fake.queue_response(_make_response(_entity("Kai", "person", 0.9)))
+    """Known entities are serialized as JSON in the LLM system prompt."""
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[_entity("Kai", "person", 0.9)])
 
     await extract_entities(
         text="Kai enters.",
@@ -363,27 +358,25 @@ async def test_known_entities_passed_in_prompt():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
-    # Verify the user_prompt sent to the LLM contains the known entities
+    # Verify the system prompt sent to the LLM contains the known entities
     assert len(fake.calls) == 1
-    messages = fake.calls[0]["messages"]
-    user_msg = next(m for m in messages if m["role"] == "user")
-    assert '["Kai", "Harbin"]' in user_msg["content"]
+    messages = fake.calls[0]["input"]["messages"]
+    sys_msg = next(m for m in messages if m["role"] == "system")
+    assert '["Kai", "Harbin"]' in sys_msg["content"]
 
 
 @pytest.mark.asyncio
 async def test_confidence_ordering():
     """Results are sorted by confidence descending."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _entity("Low", "person", 0.5),
-            _entity("High", "person", 1.0),
-            _entity("Mid", "person", 0.75),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[
+        _entity("Low", "person", 0.5),
+        _entity("High", "person", 1.0),
+        _entity("Mid", "person", 0.75),
+    ])
 
     result = await extract_entities(
         text="Low, High, and Mid appeared.",
@@ -392,7 +385,7 @@ async def test_confidence_ordering():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     confidences = [c.confidence for c in result]
@@ -404,12 +397,10 @@ async def test_r2_i1_text_with_curly_braces_does_not_crash():
     """R2 I1/I7: text or known_entities containing { } must not crash
     load_prompt's str.format_map. Common in code-quoting novels or
     entity names like 'The {Ancient} One'."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _entity("Config Server", "artifact", 0.8),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[
+        _entity("Config Server", "artifact", 0.8),
+    ])
 
     result = await extract_entities(
         text='The config was {host: "localhost", port: 8080}.',
@@ -418,17 +409,18 @@ async def test_r2_i1_text_with_curly_braces_does_not_crash():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
     assert result[0].name == "Config Server"
-    # Verify the curly braces survived into the prompt text
+    # Verify the curly braces survived into the user message text
     assert len(fake.calls) == 1
-    messages = fake.calls[0]["messages"]
+    messages = fake.calls[0]["input"]["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
     assert "{host:" in user_msg["content"]
-    assert "{Ancient}" in user_msg["content"]
+    sys_msg = next(m for m in messages if m["role"] == "system")
+    assert "{Ancient}" in sys_msg["content"]
 
 
 @pytest.mark.asyncio
@@ -436,13 +428,11 @@ async def test_r2_i12_same_name_different_kind_produces_two_candidates():
     """R2 I3/I12: same display name with different kinds should produce
     two separate candidates (different canonical_id because kind is
     part of the hash)."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _entity("Kai", "person", 0.9),
-            _entity("Kai", "concept", 0.7),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[
+        _entity("Kai", "person", 0.9),
+        _entity("Kai", "concept", 0.7),
+    ])
 
     result = await extract_entities(
         text="Kai is both a person and a concept.",
@@ -451,7 +441,7 @@ async def test_r2_i12_same_name_different_kind_produces_two_candidates():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 2
@@ -464,12 +454,10 @@ async def test_r2_i12_same_name_different_kind_produces_two_candidates():
 @pytest.mark.asyncio
 async def test_canonical_name_computed():
     """canonical_name is the output of canonicalize_entity_name."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _entity("Master Kai", "person", 0.9),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[
+        _entity("Master Kai", "person", 0.9),
+    ])
 
     result = await extract_entities(
         text="Master Kai arrived.",
@@ -478,7 +466,7 @@ async def test_canonical_name_computed():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -487,44 +475,7 @@ async def test_canonical_name_computed():
     assert result[0].name == "Master Kai"  # display name preserved
 
 
-# ── Phase 4a-α Step 2 — SDK-routed path tests ────────────────────────
-
-
-class FakeLLMClient:
-    """Duck-typed stand-in for app.clients.llm_client.LLMClient that
-    captures submit_and_wait args + replays a scripted Job. Uses the
-    minimum surface the entity extractor depends on so unit tests don't
-    need the SDK's httpx scaffolding."""
-
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.next_job: Any = None
-        self.next_exc: Exception | None = None
-
-    def queue_job(self, *, status: str, entities: list[dict[str, Any]] | None = None,
-                  error_code: str | None = None, error_message: str = "") -> None:
-        from loreweave_llm.models import Job, JobError, JobProgress
-        result = {"entities": entities} if entities is not None else None
-        error = JobError(code=error_code, message=error_message) if error_code else None
-        self.next_job = Job(
-            job_id="00000000-0000-0000-0000-000000000001",
-            operation="entity_extraction",
-            status=status,  # type: ignore[arg-type]
-            result=result,
-            error=error,
-            submitted_at="2026-04-27T00:00:00Z",
-        )
-
-    def queue_exception(self, exc: Exception) -> None:
-        self.next_exc = exc
-
-    async def submit_and_wait(self, **kwargs: Any) -> Any:
-        self.calls.append(kwargs)
-        if self.next_exc is not None:
-            exc = self.next_exc
-            self.next_exc = None
-            raise exc
-        return self.next_job
+# -- Phase 4a-α Step 2 — SDK-routed path tests -----------------------
 
 
 @pytest.mark.asyncio
@@ -582,12 +533,12 @@ async def test_extract_entities_via_llm_client_drops_malformed_items():
     fake.queue_job(
         status="completed",
         entities=[
-            {"name": "Holmes", "kind": "person", "confidence": 0.9},  # ✓ valid
-            {"kind": "person"},  # ✗ missing name
-            {"name": "Watson"},  # ✗ missing kind
-            {"name": "  ", "kind": "person"},  # ✗ whitespace-only name
-            "not-a-dict",  # ✗ wrong type
-            {"name": "Moriarty", "kind": "person", "confidence": 1.5},  # ✓ confidence clamped
+            {"name": "Holmes", "kind": "person", "confidence": 0.9},  # valid
+            {"kind": "person"},  # missing name
+            {"name": "Watson"},  # missing kind
+            {"name": "  ", "kind": "person"},  # whitespace-only name
+            "not-a-dict",  # wrong type
+            {"name": "Moriarty", "kind": "person", "confidence": 1.5},  # confidence clamped
         ],
     )
     result = await extract_entities(
@@ -639,44 +590,23 @@ async def test_extract_entities_via_llm_client_failed_raises_extraction_error():
 @pytest.mark.asyncio
 async def test_extract_entities_via_llm_client_transient_retry_exhausted_raises():
     """LLMTransientRetryNeededError from SDK bubbles as ExtractionError(provider_exhausted)."""
-    from loreweave_llm.errors import LLMTransientRetryNeededError
     fake = FakeLLMClient()
     fake.queue_exception(LLMTransientRetryNeededError(
         "transient retry exhausted",
         job_id="00000000-0000-0000-0000-000000000001",
         underlying_code="LLM_UPSTREAM_ERROR",
     ))
-    with pytest.raises(ExtractionError, match="transient retry"):
+    with pytest.raises(ExtractionError, match="transient retry") as excinfo:
         await extract_entities(
             text="...", known_entities=[],
             user_id=USER_ID, project_id=PROJECT_ID,
             model_source="user_model", model_ref=USER_ID,
             llm_client=cast(Any, fake),
         )
+    assert excinfo.value.stage == "provider_exhausted"
 
 
-@pytest.mark.asyncio
-async def test_extract_entities_legacy_client_path_unchanged_when_llm_client_is_none():
-    """Regression lock: omitting llm_client falls back to legacy K17.2
-    path so 4a-α doesn't break callers that haven't been migrated yet
-    (other 3 extractors + summary jobs)."""
-    fake = FakeProviderClient()
-    fake.queue_response(_make_response(_entity("Holmes", "person", 0.9)))
-    result = await extract_entities(
-        text="Holmes is a detective.",
-        known_entities=[],
-        user_id=USER_ID,
-        project_id=PROJECT_ID,
-        model_source="user_model",
-        model_ref="test-model",
-        client=_as_client(fake),
-        # llm_client omitted → legacy path
-    )
-    assert len(result) == 1
-    assert result[0].name == "Holmes"
-
-
-# ── Phase 4a-α-followup /review-impl regression locks ────────────────
+# -- Phase 4a-α-followup /review-impl regression locks ---------------
 
 
 @pytest.mark.asyncio

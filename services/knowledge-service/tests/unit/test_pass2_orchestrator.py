@@ -18,8 +18,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.extraction.errors import ExtractionError
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_json_parser import ExtractionError
 from app.extraction.pass2_orchestrator import (
     extract_pass2_chapter,
     extract_pass2_chat_turn,
@@ -58,6 +58,13 @@ def _full_write_result() -> Pass2WriteResult:
     )
 
 
+def _fake_llm_client() -> Any:
+    """Phase 4a-δ: orchestrator now requires llm_client positionally
+    via the extractor stack. Extractors are mocked here so the client
+    object is never used — a plain MagicMock satisfies the signature."""
+    return MagicMock()
+
+
 # ── Tests ───────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -73,6 +80,7 @@ async def test_empty_text_skips_extractors(mock_entities, mock_write):
         source_type="chapter", source_id="ch-1",
         job_id="j-1", chapter_text="",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
     )
 
     assert result.entities_merged == 0
@@ -99,6 +107,7 @@ async def test_zero_entities_gates_downstream(
         source_type="chapter", source_id="ch-1",
         job_id="j-1", chapter_text="A quiet passage.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
     )
 
     mock_entities.assert_called_once()
@@ -130,6 +139,7 @@ async def test_happy_path_full_pipeline(
         source_type="chapter", source_id="ch-1",
         job_id="j-1", chapter_text="Kai and Zhao met at the gate.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
     )
 
     mock_entities.assert_called_once()
@@ -171,6 +181,7 @@ async def test_chat_turn_concatenates_messages(
         user_message="Who is Kai?",
         assistant_message="Kai is a warrior.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
     )
 
     # Entity extractor receives concatenated text
@@ -193,6 +204,7 @@ async def test_chat_turn_empty_messages_skip(mock_entities, mock_write):
         job_id="j-1",
         user_message=None, assistant_message="   ",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
     )
 
     mock_entities.assert_not_called()
@@ -205,7 +217,7 @@ async def test_chat_turn_empty_messages_skip(mock_entities, mock_write):
 async def test_extraction_error_propagates(mock_entities, mock_write):
     """ExtractionError from K17.4 propagates to caller."""
     mock_entities.side_effect = ExtractionError(
-        stage="provider", message="bad key",
+        "bad key", stage="provider",
     )
 
     with pytest.raises(ExtractionError) as exc_info:
@@ -215,6 +227,7 @@ async def test_extraction_error_propagates(mock_entities, mock_write):
             source_type="chapter", source_id="ch-1",
             job_id="j-1", chapter_text="Some text.",
             model_source="user_model", model_ref="test-model",
+            llm_client=_fake_llm_client(),
         )
 
     assert exc_info.value.stage == "provider"
@@ -244,6 +257,7 @@ async def test_known_entities_merged_with_extracted(
         job_id="j-1", chapter_text="Kai met Zhao.",
         known_entities=["Zhao"],
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
     )
 
     # Downstream extractors get merged known_entities
@@ -294,6 +308,7 @@ async def test_happy_path_emits_four_stage_events(
         source_type="chapter", source_id="ch-1",
         job_id=_JID, chapter_text="Kai met Zhao.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
         job_logs_repo=fake_repo,
     )
 
@@ -331,6 +346,7 @@ async def test_gate_emits_pass2_entities_plus_gate(
         source_type="chapter", source_id="ch-1",
         job_id=_JID, chapter_text="No entities here.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
         job_logs_repo=fake_repo,
     )
 
@@ -359,6 +375,7 @@ async def test_empty_text_emits_no_events(mock_entities, mock_write):
         source_type="chapter", source_id="ch-1",
         job_id=_JID, chapter_text="",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
         job_logs_repo=fake_repo,
     )
 
@@ -396,6 +413,7 @@ async def test_log_emit_failure_does_not_break_extraction(
         source_type="chapter", source_id="ch-1",
         job_id=_JID, chapter_text="Kai lived.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
         job_logs_repo=fake_repo,
     )
 
@@ -432,6 +450,7 @@ async def test_repo_none_is_back_compat_no_emit(
         source_type="chapter", source_id="ch-1",
         job_id="j-1", chapter_text="Kai lived.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
     )
 
     assert result.entities_merged == 2  # from _full_write_result
@@ -465,6 +484,7 @@ async def test_pass2_entities_event_carries_duration_and_count(
         source_type="chapter", source_id="ch-1",
         job_id=_JID, chapter_text="Kai met Zhao.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
         job_logs_repo=fake_repo,
     )
 
@@ -510,6 +530,7 @@ async def test_pass2_gather_event_payload_shape(
         source_type="chat_turn", source_id="turn-42",
         job_id=_JID, chapter_text="Kai met Zhao.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
         job_logs_repo=fake_repo,
     )
 
@@ -564,6 +585,7 @@ async def test_pass2_write_event_payload_shape(
         source_type="chapter", source_id="ch-7",
         job_id=_JID, chapter_text="Kai met Zhao.",
         model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
         job_logs_repo=fake_repo,
     )
 

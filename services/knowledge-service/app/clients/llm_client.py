@@ -32,6 +32,7 @@ from loreweave_llm.models import (
     JobOperation,
     SubmitJobRequest,
 )
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
 from app.metrics import (
@@ -44,7 +45,96 @@ __all__ = [
     "LLMClient",
     "get_llm_client",
     "close_llm_client",
+    "ProviderError",
+    "ProviderRateLimited",
+    "ProviderUpstreamError",
+    "ProviderCancelled",
+    "ChatCompletionUsage",
+    "ChatCompletionResponse",
 ]
+
+
+# ── Provider error hierarchy (Phase 4a-δ — migrated from deleted
+# provider_client.py; only by-class-caught classes survive). ─────────
+
+class ProviderError(Exception):
+    """Base for every LLM-pipeline error surfaced through this wrapper.
+
+    Carries `trace_id` (snapshotted at raise time) and `status_code` so
+    job-failure rows and router 502 handlers log without a second
+    ContextVar lookup. Routers and summary callers catch this base
+    class; subclasses below add per-mode metadata."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        trace_id: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.trace_id = trace_id
+        self.status_code = status_code
+
+
+class ProviderUpstreamError(ProviderError):
+    """5xx, gateway upstream error, or non-rate-limited transient.
+    Retry-eligible at the gateway; surfaces here only after the SDK
+    wrapper exhausts its caller-side retry budget."""
+
+
+class ProviderRateLimited(ProviderError):
+    """429 — `retry_after_s` honors the upstream provider's requested
+    backoff (parsed from the `Retry-After` header by the gateway and
+    forwarded through `LLMTransientRetryNeededError.retry_after_s`)."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        trace_id: str | None = None,
+        status_code: int | None = None,
+        retry_after_s: float | None = None,
+    ) -> None:
+        super().__init__(message, trace_id=trace_id, status_code=status_code)
+        self.retry_after_s = retry_after_s
+
+
+class ProviderCancelled(ProviderError):
+    """Operator-initiated cancel (Phase 4a-γ). Surfaces when an SDK job
+    ends with status='cancelled' (DELETE /v1/llm/jobs/{id} mid-flight).
+    Subclasses ProviderError so the existing router `except ProviderError`
+    catches it, but the distinct class lets the handler emit a
+    'cancelled' message rather than the misleading 'provider error' copy."""
+
+
+# ── Response models (built from Job.result by callers needing the
+# legacy ChatCompletionResponse shape — see regenerate_summaries.py). ─
+
+class ChatCompletionUsage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+class ChatCompletionResponse(BaseModel):
+    """Wrapper-side adapter shape — built from `Job.result` by callers
+    that prefer the legacy chat-completion field layout.
+
+    `content` carries the text body. JSON-mode callers read `content`
+    and ignore `tool_calls`. `model` echoes the upstream's resolved
+    model. `usage` carries token counts when the gateway includes them
+    in `Job.result.usage`."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    content: str
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    model: str = ""
+    usage: ChatCompletionUsage = Field(default_factory=ChatCompletionUsage)
+    raw: dict[str, Any] = Field(default_factory=dict)
 
 logger = logging.getLogger(__name__)
 

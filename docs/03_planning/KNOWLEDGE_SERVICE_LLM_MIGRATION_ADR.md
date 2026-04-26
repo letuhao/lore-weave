@@ -323,14 +323,18 @@ async def get_llm_client() -> LLMClient:
 
 ### 5.4 Sub-cycle 4a-δ — cleanup
 
+> **SUPERSEDED 2026-04-27** by [`KNOWLEDGE_SERVICE_4ADELTA_PLAN.md`](./KNOWLEDGE_SERVICE_4ADELTA_PLAN.md). The original §5.4 sketch missed the K18.3 L3 passage rerank caller (`app/context/selectors/passages.py:592`) and undersized the test surface. The follow-up plan covers the full retirement (Option A — single XL+ cycle) including K18.3 migration. **Shipped:** 1598 unit tests passed, zero `provider_client` references in knowledge-service.
+
+Original §5.4 sketch (kept for record):
+
 - Delete [`app/clients/provider_client.py`](../../services/knowledge-service/app/clients/provider_client.py).
 - Delete [`app/extraction/llm_json_parser.py`](../../services/knowledge-service/app/extraction/llm_json_parser.py).
-- Delete `tests/unit/test_provider_client.py` + `test_llm_json_parser.py` (~86 tests gone, NOT replacements — the SDK has its own test suite in `sdks/python/tests/`).
+- Delete `tests/unit/test_provider_client.py` + `test_llm_json_parser.py`.
 - Remove `client: ProviderClient | None = None` param from all 4 extractor signatures + `pass2_orchestrator` + `regenerate_summaries` + summarize routers.
-- **Metrics sunset (per /review-impl MED#8)**: `provider_chat_completion_total{outcome}` + `provider_chat_completion_duration_seconds{outcome}` → REPLACED, not deleted. Add equivalent caller-side counters to [`app/metrics.py`](../../services/knowledge-service/app/metrics.py): `knowledge_llm_job_total{operation, outcome}` + `knowledge_llm_job_duration_seconds{operation, outcome}` recorded around `wait_terminal` calls. Outcome enum extended: `ok`, `failed_provider`, `failed_decode`, `failed_transient_after_retry`, `cancelled`. Plus a parallel sunset note in the dashboard JSON: knowledge-service Grafana panels referencing `provider_chat_completion_*` need updating in the same PR — list the panel IDs in commit body. Gateway-side `llm_jobs_terminal_total{operation, status}` (already shipped Phase 2c) provides the system-wide view; per-service caller counter gives extraction-team-local view.
+- Metrics: `provider_chat_completion_*` + `llm_json_extraction_*` deleted (gateway-side `llm_jobs_terminal_total` covers; caller-side `knowledge_llm_job_total{operation, outcome}` lives on).
 - Update [`KNOWLEDGE_SERVICE_ARCHITECTURE.md`](./KNOWLEDGE_SERVICE_ARCHITECTURE.md) §LLM-pipeline reference.
 
-**Verify:** knowledge-service `pytest` regression-budget = `count_at_4a-δ_entry - 86` (per /review-impl LOW#12 — the 1466 figure was the session-51 close baseline; by 4a-δ entry the count grows from 4a-α/β/γ test additions, so the literal 1380 number is misleading). Concretely: capture pytest count at the start of the 4a-δ CLARIFY phase, subtract 86 (deletions), assert post-δ count ≥ that. Live smoke: full extraction E2E + summary regen scheduler tick.
+**Actual scope shipped (per follow-up plan §3):** also migrated `app/context/selectors/passages.py` rerank to SDK, dropped `provider_client` thread from `app/context/builder.py` + `app/context/modes/full.py` + `app/routers/context.py`, mass-rewrote 14 test files to FakeLLMClient pattern. Surviving Provider* exception classes (`ProviderError`, `ProviderRateLimited`, `ProviderCancelled`, `ProviderUpstreamError`) + response models (`ChatCompletionResponse`, `ChatCompletionUsage`) consolidated into `app/clients/llm_client.py`. `ExtractionError` + `ExtractionStage` hoisted to new `app/extraction/errors.py`. 5 unused subclasses dropped (`ProviderInvalidRequest`, `ProviderModelNotFound`, `ProviderAuthError`, `ProviderTimeout`, `ProviderDecodeError`).
 
 ### 5.5 Recording-order semantic + cancel-race correctness (cross-cycle)
 

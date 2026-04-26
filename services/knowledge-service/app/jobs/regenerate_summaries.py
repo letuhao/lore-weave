@@ -44,12 +44,11 @@ from uuid import UUID
 import asyncpg
 from pydantic import BaseModel
 
-from app.clients.llm_client import LLMClient
-from app.clients.provider_client import (
+from app.clients.llm_client import (
     ChatCompletionResponse,
     ChatCompletionUsage,
-    ProviderClient,
-    ProviderError,
+    LLMClient,
+    ProviderCancelled,
     ProviderRateLimited,
     ProviderUpstreamError,
 )
@@ -344,18 +343,12 @@ class _RegenContext:
 
     pool: asyncpg.Pool
     session_factory: Any  # called as `session_factory()` → async CM
-    provider_client: ProviderClient
+    llm_client: LLMClient
     summaries_repo: SummariesRepo
     summary_spending_repo: "SummarySpendingRepo | None" = None
-    # Phase 4a-γ: when supplied, summary regen routes through the
-    # unified LLM gateway (chat operation, no chunking — summaries fit
-    # one call). Legacy provider_client path retained for back-compat
-    # through 4a-δ. Default None mirrors summary_spending_repo defaulting
-    # so existing test sites that don't yet pass it still work.
-    llm_client: LLMClient | None = None
 
 
-# ── Phase 4a-γ — central LLM-call helper (SDK or legacy) ────────────
+# ── Central LLM-call helper (unified-gateway SDK path) ─────────────
 
 
 async def _invoke_llm_for_summary(
@@ -368,35 +361,16 @@ async def _invoke_llm_for_summary(
     scope_type: str,
     scope_id: UUID | str | None,
 ) -> ChatCompletionResponse:
-    """Issue the LLM call for summary regen via SDK (when llm_client is
-    present in ctx) or via legacy provider_client path. Returns a
-    ChatCompletionResponse so downstream usage + cost recording is the
-    same code path regardless of transport.
+    """Issue the summary-regen LLM call via the SDK (operation=chat,
+    chunking=None — summaries fit one call). Returns a synthetic
+    ChatCompletionResponse so downstream usage + cost recording stay
+    on a single code path.
 
-    SDK path uses operation="chat", chunking=None (summaries fit one
-    call). On gateway-side transient failure → caller-side retry budget
-    in LLMClient.submit_and_wait. On terminal-failed → ProviderError-
-    like exception so the routers' existing 502 handler still catches.
-
-    Per /review-impl LOW#1: cancelled jobs raise ProviderCancelled (not
-    ProviderUpstreamError) so router error messages reflect the cancel
-    rather than misleading "your provider had an error" copy.
-    Per /review-impl LOW#4: rate-limited transient retry exhaustion
-    surfaces as ProviderRateLimited (preserves retry_after_s for FE);
-    other transient exhaustion stays as ProviderUpstreamError.
+    On caller-side retry exhaustion: rate-limit → ProviderRateLimited
+    (preserves retry_after_s); other transient → ProviderUpstreamError.
+    Cancelled job → ProviderCancelled (router emits "cancelled" copy).
+    Non-completed terminal → ProviderUpstreamError.
     """
-    if ctx.llm_client is None:
-        # Legacy K17.2 path — preserved through 4a-γ, removed in 4a-δ.
-        return await ctx.provider_client.chat_completion(
-            user_id=str(user_id),
-            model_source=model_source,  # type: ignore[arg-type]
-            model_ref=model_ref,
-            messages=messages,
-            temperature=0.0,
-            max_tokens=_MAX_OUTPUT_TOKENS,
-        )
-
-    # SDK path — submit chat job + wait_terminal.
     try:
         job: Job = await ctx.llm_client.submit_and_wait(
             user_id=str(user_id),
@@ -420,8 +394,6 @@ async def _invoke_llm_for_summary(
             transient_retry_budget=1,
         )
     except LLMTransientRetryNeededError as exc:
-        # /review-impl LOW#4: split rate-limit vs other transient so the
-        # router can populate Retry-After header on rate-limit.
         if exc.underlying_code == "LLM_RATE_LIMITED":
             raise ProviderRateLimited(
                 f"summary regen rate-limited (retry exhausted): {exc}",
@@ -436,10 +408,6 @@ async def _invoke_llm_for_summary(
         ) from exc
 
     if job.status == "cancelled":
-        # /review-impl LOW#1: distinct exception so router emits "cancelled"
-        # message rather than misleading "your provider had an error".
-        from app.clients.provider_client import ProviderCancelled
-
         raise ProviderCancelled(
             f"summary regen job cancelled (job_id={job.job_id})",
         )
@@ -641,11 +609,10 @@ async def _regenerate_core_inner(
                 ),
             )
 
-    # 4. LLM call via BYOK proxy.
-    # Phase 4a-γ: route through SDK (chat operation, no chunking) when
-    # llm_client is supplied; else fall back to legacy provider_client
-    # path. Both return a ChatCompletionResponse so downstream usage +
-    # cost recording stay unchanged.
+    # 4. LLM call via the unified gateway (chat operation, no chunking
+    #    — summaries fit one call). Returns a ChatCompletionResponse-
+    #    shaped object so downstream usage + cost recording stay on a
+    #    single code path.
     messages = _build_messages(scope=scope_type, passages=passages)
     response = await _invoke_llm_for_summary(
         ctx=ctx,
@@ -806,22 +773,18 @@ async def regenerate_global_summary(
     model_ref: str,
     pool: asyncpg.Pool,
     session_factory: Any,
-    provider_client: ProviderClient,
+    llm_client: LLMClient,
     summaries_repo: SummariesRepo,
     summary_spending_repo: SummarySpendingRepo | None = None,
-    llm_client: LLMClient | None = None,
     trigger: RegenTrigger = "manual",
 ) -> RegenerationResult:
     """K20.2 — regenerate the user's L0 global bio.
 
-    Reads raw global-scope chat turns (`project_id IS NULL`), calls
-    the user's BYOK model with the L0 system prompt, runs drift +
-    quality guardrails, and writes the result as a new `global`-scope
-    summary version on success.
-
-    Phase 4a-γ: ``llm_client`` (optional) routes the LLM call through
-    the unified gateway when supplied; legacy ``provider_client`` path
-    used otherwise. Both yield the same RegenerationResult shape.
+    Reads raw global-scope chat turns (`project_id IS NULL`), calls the
+    user's BYOK model via the unified gateway (chat operation, no
+    chunking — summaries fit one call), runs drift + quality guardrails,
+    and writes the result as a new `global`-scope summary version on
+    success.
 
     C16-BUILD: ``summary_spending_repo`` enables D-K20α-01's budget
     pre-check + post-success spend recorder. ``None`` (back-compat
@@ -831,10 +794,9 @@ async def regenerate_global_summary(
     ctx = _RegenContext(
         pool=pool,
         session_factory=session_factory,
-        provider_client=provider_client,
+        llm_client=llm_client,
         summaries_repo=summaries_repo,
         summary_spending_repo=summary_spending_repo,
-        llm_client=llm_client,
     )
     return await _regenerate_core(
         ctx,
@@ -856,22 +818,17 @@ async def regenerate_project_summary(
     model_ref: str,
     pool: asyncpg.Pool,
     session_factory: Any,
-    provider_client: ProviderClient,
+    llm_client: LLMClient,
     summaries_repo: SummariesRepo,
     summary_spending_repo: SummarySpendingRepo | None = None,
-    llm_client: LLMClient | None = None,
     trigger: RegenTrigger = "manual",
 ) -> RegenerationResult:
     """K20.1 — regenerate a project's L1 summary.
 
     Reads raw project-scoped chat turns + chapter passages, calls the
-    user's BYOK model with the L1 system prompt, runs drift + quality
+    user's BYOK model via the unified gateway, runs drift + quality
     guardrails, and writes the result via `upsert_project_scoped`
     (which carries its own ownership check).
-
-    Phase 4a-γ: ``llm_client`` (optional) routes the LLM call through
-    the unified gateway when supplied; legacy ``provider_client`` path
-    used otherwise.
 
     C16-BUILD: ``summary_spending_repo`` enables D-K20α-01's budget
     pre-check. Project-scope spend records via the existing K16.11
@@ -883,10 +840,9 @@ async def regenerate_project_summary(
     ctx = _RegenContext(
         pool=pool,
         session_factory=session_factory,
-        provider_client=provider_client,
+        llm_client=llm_client,
         summaries_repo=summaries_repo,
         summary_spending_repo=summary_spending_repo,
-        llm_client=llm_client,
     )
     return await _regenerate_core(
         ctx,

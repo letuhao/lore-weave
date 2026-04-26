@@ -1,36 +1,30 @@
-"""Unit tests for K17.5 — LLM relation extractor.
+"""Unit tests for K17.5 — LLM relation extractor (SDK path only).
 
-Uses FakeProviderClient + pre-built LLMEntityCandidate fixtures to
-test extract_relations without network calls. Validates:
+Phase 4a-δ: legacy ProviderClient path was removed; the extractor now
+takes only ``llm_client: LLMClient``. Validates:
   - Happy path with entity resolution + relation_id
-  - Empty text → no LLM call
+  - Empty text -> no LLM call
   - Known entities anchoring in subject/object
-  - Unresolvable endpoints → None IDs
+  - Unresolvable endpoints -> None IDs
   - Predicate normalization
   - Polarity/modality preservation
   - Deduplication by relation_id
   - Idempotent re-run
-  - ExtractionError propagation
+  - ExtractionError propagation (provider / cancelled / provider_exhausted)
   - Curly braces in text don't crash
   - Entity alias resolution
-  - Empty relations from LLM
+  - C-LM-STUDIO-FIX null-endpoint filtering
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any, cast
 
 import pytest
 
-from app.clients.provider_client import (
-    ChatCompletionResponse,
-    ChatCompletionUsage,
-    ProviderClient,
-    ProviderAuthError,
-)
 from app.db.neo4j_repos.canonical import entity_canonical_id
 from app.db.neo4j_repos.relations import relation_id as compute_relation_id
+from app.extraction.errors import ExtractionError
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
 from app.extraction.llm_relation_extractor import (
     LLMRelationCandidate,
@@ -38,43 +32,58 @@ from app.extraction.llm_relation_extractor import (
     extract_relations,
     _normalize_predicate,
 )
-from app.extraction.llm_json_parser import ExtractionError
+from loreweave_llm.errors import LLMTransientRetryNeededError
+from loreweave_llm.models import Job, JobError
 
 
-# ── FakeProviderClient ───────────────────────────────────────────────
+# -- FakeLLMClient (duck-typed stand-in for LLMClient) ---------------
 
 
-class FakeProviderClient:
+class FakeLLMClient:
+    """Captures submit_and_wait kwargs + replays a scripted Job for the
+    relation_extraction operation."""
+
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
-        self.responses: list[Any] = []
+        self.next_job: Any = None
+        self.next_exc: Exception | None = None
 
-    def queue_response(self, content: str, model: str = "test-model") -> None:
-        self.responses.append(
-            ChatCompletionResponse(
-                content=content, model=model,
-                usage=ChatCompletionUsage(), raw={},
-            )
+    def queue_job(
+        self,
+        *,
+        status: str = "completed",
+        relations: list[dict[str, Any]] | None = None,
+        error_code: str | None = None,
+        error_message: str = "",
+    ) -> None:
+        result = {"relations": relations} if relations is not None else None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="relation_extraction",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
         )
 
     def queue_exception(self, exc: Exception) -> None:
-        self.responses.append(exc)
+        self.next_exc = exc
 
-    async def chat_completion(self, **kwargs: Any) -> ChatCompletionResponse:
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
         self.calls.append(kwargs)
-        if not self.responses:
-            raise AssertionError("FakeProviderClient exhausted")
-        result = self.responses.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        return result
+        if self.next_exc is not None:
+            exc = self.next_exc
+            self.next_exc = None
+            raise exc
+        return self.next_job
 
 
-def _as_client(fake: FakeProviderClient) -> ProviderClient:
-    return cast(ProviderClient, fake)
+def _as_client(fake: FakeLLMClient) -> Any:
+    return cast(Any, fake)
 
 
-# ── Fixtures ─────────────────────────────────────────────────────────
+# -- Fixtures --------------------------------------------------------
 
 USER_ID = "test-user-001"
 PROJECT_ID = "test-project-001"
@@ -111,14 +120,10 @@ ENTITIES = [
 ]
 
 
-def _make_response(*relations: dict[str, Any]) -> str:
-    return json.dumps({"relations": list(relations)})
-
-
 def _rel(
-    subject: str,
+    subject: str | None,
     predicate: str,
-    obj: str,
+    obj: str | None,
     confidence: float = 0.9,
     polarity: str = "affirm",
     modality: str = "asserted",
@@ -133,20 +138,18 @@ def _rel(
     }
 
 
-# ── Tests ────────────────────────────────────────────────────────────
+# -- Tests -----------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_happy_path_three_relations():
     """Basic extraction with entity resolution and relation_id."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _rel("Kai", "works_for", "Imperial Academy", 0.95),
-            _rel("Kai", "trusts", "Zhao", 0.9, polarity="negate"),
-            _rel("Alice", "knows", "Bob", 0.85),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        _rel("Kai", "works_for", "Imperial Academy", 0.95),
+        _rel("Kai", "trusts", "Zhao", 0.9, polarity="negate"),
+        _rel("Alice", "knows", "Bob", 0.85),
+    ])
 
     result = await extract_relations(
         text="Kai works for the Imperial Academy but doesn't trust Zhao. Alice knows Bob.",
@@ -156,7 +159,7 @@ async def test_happy_path_three_relations():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 3
@@ -183,15 +186,15 @@ async def test_happy_path_three_relations():
 
 @pytest.mark.asyncio
 async def test_empty_text_returns_empty():
-    """Empty or whitespace text → no LLM call."""
-    fake = FakeProviderClient()
+    """Empty or whitespace text -> no LLM call."""
+    fake = FakeLLMClient()
 
     for text in ["", "   ", "\n"]:
         result = await extract_relations(
             text=text, entities=ENTITIES,
             known_entities=[], user_id=USER_ID,
             project_id=PROJECT_ID, model_source="user_model",
-            model_ref="test-model", client=_as_client(fake),
+            model_ref="test-model", llm_client=_as_client(fake),
         )
         assert result == []
 
@@ -200,13 +203,11 @@ async def test_empty_text_returns_empty():
 
 @pytest.mark.asyncio
 async def test_unresolvable_endpoints_get_none_ids():
-    """Subject/object not in entities → None IDs."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _rel("Unknown Person", "owns", "Mystery Artifact", 0.8),
-        )
-    )
+    """Subject/object not in entities -> None IDs."""
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        _rel("Unknown Person", "owns", "Mystery Artifact", 0.8),
+    ])
 
     result = await extract_relations(
         text="Unknown Person owns Mystery Artifact.",
@@ -216,7 +217,7 @@ async def test_unresolvable_endpoints_get_none_ids():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -246,12 +247,10 @@ def test_predicate_normalization_non_latin():
 @pytest.mark.asyncio
 async def test_polarity_and_modality_preserved():
     """Polarity and modality from LLM response are preserved."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _rel("Kai", "knows", "Zhao", 0.9, polarity="negate", modality="reported"),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        _rel("Kai", "knows", "Zhao", 0.9, polarity="negate", modality="reported"),
+    ])
 
     result = await extract_relations(
         text="Someone said Kai doesn't know Zhao.",
@@ -261,7 +260,7 @@ async def test_polarity_and_modality_preserved():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -271,14 +270,12 @@ async def test_polarity_and_modality_preserved():
 
 @pytest.mark.asyncio
 async def test_deduplication_by_relation_id():
-    """Same triple twice → deduplicated, higher confidence wins."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _rel("Kai", "works_for", "Imperial Academy", 0.8),
-            _rel("Kai", "works_for", "Imperial Academy", 0.95),
-        )
-    )
+    """Same triple twice -> deduplicated, higher confidence wins."""
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        _rel("Kai", "works_for", "Imperial Academy", 0.8),
+        _rel("Kai", "works_for", "Imperial Academy", 0.95),
+    ])
 
     result = await extract_relations(
         text="Kai works for the Imperial Academy.",
@@ -288,7 +285,7 @@ async def test_deduplication_by_relation_id():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -297,14 +294,11 @@ async def test_deduplication_by_relation_id():
 
 @pytest.mark.asyncio
 async def test_idempotent_relation_ids():
-    """Same input twice → same relation_ids."""
-    fake = FakeProviderClient()
-    response = _make_response(
-        _rel("Kai", "trusts", "Zhao", 0.9),
-    )
-    fake.queue_response(response)
-    fake.queue_response(response)
+    """Same input twice -> same relation_ids."""
+    fake = FakeLLMClient()
+    payload = [_rel("Kai", "trusts", "Zhao", 0.9)]
 
+    fake.queue_job(relations=payload)
     kwargs = dict(
         text="Kai trusts Zhao.",
         entities=ENTITIES,
@@ -313,10 +307,11 @@ async def test_idempotent_relation_ids():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
-
     r1 = await extract_relations(**kwargs)
+
+    fake.queue_job(relations=payload)
     r2 = await extract_relations(**kwargs)
 
     assert len(r1) == 1 and len(r2) == 1
@@ -325,16 +320,16 @@ async def test_idempotent_relation_ids():
 
 @pytest.mark.asyncio
 async def test_extraction_error_propagation():
-    """ProviderAuthError surfaces as ExtractionError."""
-    fake = FakeProviderClient()
-    fake.queue_exception(ProviderAuthError("bad key"))
+    """A failed Job (provider error) surfaces as ExtractionError(stage=provider)."""
+    fake = FakeLLMClient()
+    fake.queue_job(status="failed", error_code="LLM_INVALID_REQUEST", error_message="bad key")
 
     with pytest.raises(ExtractionError) as exc_info:
         await extract_relations(
             text="Some text.", entities=ENTITIES,
             known_entities=[], user_id=USER_ID,
             project_id=PROJECT_ID, model_source="user_model",
-            model_ref="test-model", client=_as_client(fake),
+            model_ref="test-model", llm_client=_as_client(fake),
         )
 
     assert exc_info.value.stage == "provider"
@@ -343,10 +338,10 @@ async def test_extraction_error_propagation():
 @pytest.mark.asyncio
 async def test_curly_braces_in_text_do_not_crash():
     """R2 I1/I7: text with {curly braces} must not crash load_prompt."""
-    fake = FakeProviderClient()
-    fake.queue_response(_make_response(
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
         _rel("Kai", "owns", "Zhao", 0.8),
-    ))
+    ])
 
     result = await extract_relations(
         text='Config was {host: "localhost"}. Kai owns something.',
@@ -356,12 +351,12 @@ async def test_curly_braces_in_text_do_not_crash():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
-    # Verify braces survived into prompt
-    messages = fake.calls[0]["messages"]
+    # Verify braces survived into prompt (in user message)
+    messages = fake.calls[0]["input"]["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
     assert "{host:" in user_msg["content"]
 
@@ -369,12 +364,10 @@ async def test_curly_braces_in_text_do_not_crash():
 @pytest.mark.asyncio
 async def test_entity_alias_resolution():
     """Subject/object resolved via entity alias, not just display name."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _rel("Ali", "knows", "Kai", 0.85),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        _rel("Ali", "knows", "Kai", 0.85),
+    ])
 
     result = await extract_relations(
         text="Ali knows Kai well.",
@@ -384,7 +377,7 @@ async def test_entity_alias_resolution():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -396,9 +389,9 @@ async def test_entity_alias_resolution():
 
 @pytest.mark.asyncio
 async def test_empty_relations_from_llm():
-    """LLM returns empty relations list → empty result."""
-    fake = FakeProviderClient()
-    fake.queue_response(json.dumps({"relations": []}))
+    """LLM returns empty relations list -> empty result."""
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[])
 
     result = await extract_relations(
         text="A quiet scene with no interactions.",
@@ -408,7 +401,7 @@ async def test_empty_relations_from_llm():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert result == []
@@ -417,13 +410,11 @@ async def test_empty_relations_from_llm():
 @pytest.mark.asyncio
 async def test_mixed_resolved_and_unresolved():
     """One relation resolved, one not — both returned."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _rel("Kai", "works_for", "Imperial Academy", 0.95),
-            _rel("Stranger", "visits", "Dark Forest", 0.7),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        _rel("Kai", "works_for", "Imperial Academy", 0.95),
+        _rel("Stranger", "visits", "Dark Forest", 0.7),
+    ])
 
     result = await extract_relations(
         text="Kai works at the Academy. A stranger visited the Dark Forest.",
@@ -433,7 +424,7 @@ async def test_mixed_resolved_and_unresolved():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 2
@@ -443,7 +434,7 @@ async def test_mixed_resolved_and_unresolved():
     assert unresolved.subject_id is None
 
 
-# ── C-LM-STUDIO-FIX: null-endpoint handling ────────────────────────
+# -- C-LM-STUDIO-FIX: null-endpoint handling -----------------------
 
 
 @pytest.mark.asyncio
@@ -455,22 +446,16 @@ async def test_null_object_relation_is_filtered_not_rejected():
     relation. The other relations in the batch are NOT lost — this
     is the key contract: one bad LLM-emitted relation can't poison
     the whole extraction."""
-    fake = FakeProviderClient()
-    fake.queue_response(json.dumps({
-        "relations": [
-            # Good relation — should survive postprocess.
-            _rel("Kai", "works_for", "Imperial Academy", 0.95),
-            # Null-object relation — LLM violation of prompt rule;
-            # must be silently dropped by postprocess.
-            {
-                "subject": "Tấm", "predicate": "cries", "object": None,
-                "polarity": "affirm", "modality": "asserted",
-                "confidence": 0.9,
-            },
-            # Another good relation — still survives.
-            _rel("Alice", "knows", "Bob", 0.85),
-        ],
-    }))
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        # Good relation — should survive postprocess.
+        _rel("Kai", "works_for", "Imperial Academy", 0.95),
+        # Null-object relation — LLM violation of prompt rule;
+        # must be silently dropped by postprocess.
+        _rel("Tấm", "cries", None, 0.9),
+        # Another good relation — still survives.
+        _rel("Alice", "knows", "Bob", 0.85),
+    ])
     result = await extract_relations(
         text="Some chapter text.",
         entities=ENTITIES,
@@ -479,7 +464,7 @@ async def test_null_object_relation_is_filtered_not_rejected():
         project_id="project-1",
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
     assert len(result) == 2  # null-object dropped, 2 good ones kept
     subjects = {r.subject for r in result}
@@ -489,22 +474,16 @@ async def test_null_object_relation_is_filtered_not_rejected():
 @pytest.mark.asyncio
 async def test_null_subject_relation_is_filtered():
     """Symmetric: null subject also filtered."""
-    fake = FakeProviderClient()
-    fake.queue_response(json.dumps({
-        "relations": [
-            {
-                "subject": None, "predicate": "exists", "object": "Kai",
-                "polarity": "affirm", "modality": "asserted",
-                "confidence": 0.7,
-            },
-            _rel("Kai", "works_for", "Imperial Academy", 0.95),
-        ],
-    }))
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        _rel(None, "exists", "Kai", 0.7),
+        _rel("Kai", "works_for", "Imperial Academy", 0.95),
+    ])
     result = await extract_relations(
         text="x", entities=ENTITIES, known_entities=[],
         user_id="user-1", project_id="project-1",
         model_source="user_model", model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
     assert len(result) == 1
     assert result[0].subject == "Kai"
@@ -515,23 +494,21 @@ async def test_omitted_subject_field_defaults_to_none_then_filtered():
     """If LLM omits the subject field entirely (not just null), Pydantic
     default kicks in (None) and postprocess filters. Same outcome as
     explicit null."""
-    fake = FakeProviderClient()
-    fake.queue_response(json.dumps({
-        "relations": [
-            # Missing 'subject' key entirely.
-            {
-                "predicate": "loves", "object": "Bob",
-                "polarity": "affirm", "modality": "asserted",
-                "confidence": 0.6,
-            },
-            _rel("Kai", "trusts", "Zhao", 0.9),
-        ],
-    }))
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        # Missing 'subject' key entirely.
+        {
+            "predicate": "loves", "object": "Bob",
+            "polarity": "affirm", "modality": "asserted",
+            "confidence": 0.6,
+        },
+        _rel("Kai", "trusts", "Zhao", 0.9),
+    ])
     result = await extract_relations(
         text="x", entities=ENTITIES, known_entities=[],
         user_id="user-1", project_id="project-1",
         model_source="user_model", model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
     assert len(result) == 1
     assert result[0].subject == "Kai"
@@ -539,74 +516,25 @@ async def test_omitted_subject_field_defaults_to_none_then_filtered():
 
 @pytest.mark.asyncio
 async def test_all_null_relations_returns_empty():
-    """Edge case: every relation has null endpoint → empty list, no crash."""
-    fake = FakeProviderClient()
-    fake.queue_response(json.dumps({
-        "relations": [
-            {
-                "subject": "x", "predicate": "y", "object": None,
-                "polarity": "affirm", "modality": "asserted",
-                "confidence": 0.8,
-            },
-            {
-                "subject": None, "predicate": "z", "object": "w",
-                "polarity": "affirm", "modality": "asserted",
-                "confidence": 0.8,
-            },
-        ],
-    }))
+    """Edge case: every relation has null endpoint -> empty list, no crash."""
+    fake = FakeLLMClient()
+    fake.queue_job(relations=[
+        _rel("x", "y", None, 0.8),
+        _rel(None, "z", "w", 0.8),
+    ])
     result = await extract_relations(
         text="x", entities=ENTITIES, known_entities=[],
         user_id="user-1", project_id="project-1",
         model_source="user_model", model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
     assert result == []
 
 
-# ── Phase 4a-β SDK-path tests ────────────────────────────────────────
-
-
-from typing import Any, cast
-
-
-class FakeLLMClientForRelations:
-    """Stand-in for app.clients.llm_client.LLMClient — captures
-    submit_and_wait kwargs + replays a scripted Job."""
-
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.next_job: Any = None
-        self.next_exc: Exception | None = None
-
-    def queue_job(self, *, status: str, relations: list[dict[str, Any]] | None = None,
-                  error_code: str | None = None, error_message: str = "") -> None:
-        from loreweave_llm.models import Job, JobError
-        result = {"relations": relations} if relations is not None else None
-        error = JobError(code=error_code, message=error_message) if error_code else None
-        self.next_job = Job(
-            job_id="00000000-0000-0000-0000-000000000001",
-            operation="relation_extraction",
-            status=status,  # type: ignore[arg-type]
-            result=result,
-            error=error,
-            submitted_at="2026-04-27T00:00:00Z",
-        )
-
-    def queue_exception(self, exc: Exception) -> None:
-        self.next_exc = exc
-
-    async def submit_and_wait(self, **kwargs: Any) -> Any:
-        self.calls.append(kwargs)
-        if self.next_exc is not None:
-            exc = self.next_exc
-            self.next_exc = None
-            raise exc
-        return self.next_job
+# -- Phase 4a-β SDK-path tests --------------------------------------
 
 
 def _make_entity_for_relation(name: str = "Holmes") -> Any:
-    from app.extraction.llm_entity_extractor import LLMEntityCandidate
     return LLMEntityCandidate(
         name=name, kind="person", aliases=[], confidence=0.95,
         canonical_name=name.lower(), canonical_id=f"cid-{name}",
@@ -615,7 +543,7 @@ def _make_entity_for_relation(name: str = "Holmes") -> Any:
 
 @pytest.mark.asyncio
 async def test_extract_relations_via_llm_client_happy_path():
-    fake = FakeLLMClientForRelations()
+    fake = FakeLLMClient()
     fake.queue_job(
         status="completed",
         relations=[
@@ -643,14 +571,14 @@ async def test_extract_relations_via_llm_client_happy_path():
 
 @pytest.mark.asyncio
 async def test_extract_relations_via_llm_client_drops_malformed():
-    fake = FakeLLMClientForRelations()
+    fake = FakeLLMClient()
     fake.queue_job(
         status="completed",
         relations=[
-            {"subject": "Holmes", "predicate": "lives_in", "object": "Baker Street", "confidence": 0.9},  # ✓
-            {"subject": "Watson"},  # ✗ missing predicate
-            {"predicate": "knows"},  # ✓ tolerated null subject/object (postprocess filters)
-            "not-a-dict",  # ✗
+            {"subject": "Holmes", "predicate": "lives_in", "object": "Baker Street", "confidence": 0.9},  # valid
+            {"subject": "Watson"},  # missing predicate
+            {"predicate": "knows"},  # tolerated null subject/object (postprocess filters)
+            "not-a-dict",
         ],
     )
     result = await extract_relations(
@@ -667,7 +595,7 @@ async def test_extract_relations_via_llm_client_drops_malformed():
 
 @pytest.mark.asyncio
 async def test_extract_relations_via_llm_client_cancelled_raises():
-    fake = FakeLLMClientForRelations()
+    fake = FakeLLMClient()
     fake.queue_job(status="cancelled")
     with pytest.raises(ExtractionError) as exc:
         await extract_relations(
@@ -680,23 +608,22 @@ async def test_extract_relations_via_llm_client_cancelled_raises():
 
 
 @pytest.mark.asyncio
-async def test_extract_relations_legacy_path_unchanged_when_llm_client_none():
-    """Regression lock: legacy K17.2 path still works when llm_client omitted."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        '{"relations":[{"subject":"Holmes","predicate":"lives_in","object":"Baker Street",'
-        '"polarity":"affirm","modality":"asserted","confidence":0.9}]}'
-    )
-    result = await extract_relations(
-        text="Holmes lives at Baker Street.",
-        entities=[_make_entity_for_relation("Holmes"), _make_entity_for_relation("Baker Street")],
-        known_entities=[],
-        user_id="user-1", project_id="project-1",
-        model_source="user_model", model_ref="test-model",
-        client=_as_client(fake),
-    )
-    assert len(result) == 1
-    assert result[0].predicate == "lives_in"
+async def test_extract_relations_via_llm_client_transient_retry_exhausted_raises():
+    """LLMTransientRetryNeededError from SDK bubbles as ExtractionError(provider_exhausted)."""
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMTransientRetryNeededError(
+        "transient retry exhausted",
+        job_id="00000000-0000-0000-0000-000000000001",
+        underlying_code="LLM_UPSTREAM_ERROR",
+    ))
+    with pytest.raises(ExtractionError, match="transient retry") as excinfo:
+        await extract_relations(
+            text="...", entities=[], known_entities=[],
+            user_id="user-1", project_id="project-1",
+            model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+            llm_client=cast(Any, fake),
+        )
+    assert excinfo.value.stage == "provider_exhausted"
 
 
 @pytest.mark.asyncio
@@ -704,7 +631,7 @@ async def test_extract_relations_via_llm_client_chunking_invariant_for_multi_par
     """/review-impl LOW#4 — pin the invariant that the extractor ALWAYS
     sends ChunkingConfig regardless of input length. Mirrors entity
     extractor's regression-lock from 4a-α-followup."""
-    fake = FakeLLMClientForRelations()
+    fake = FakeLLMClient()
     fake.queue_job(
         status="completed",
         relations=[{"subject": "A", "predicate": "knows", "object": "B",

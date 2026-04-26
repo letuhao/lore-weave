@@ -35,7 +35,6 @@ from typing import Any, Literal
 from uuid import UUID
 
 from app.clients.llm_client import LLMClient
-from app.clients.provider_client import ProviderClient
 from app.db.neo4j_helpers import CypherSession
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
@@ -99,8 +98,7 @@ async def _run_pipeline(
     known_entities: list[str],
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    client: ProviderClient | None = None,
-    llm_client: LLMClient | None = None,
+    llm_client: LLMClient,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
@@ -129,10 +127,8 @@ async def _run_pipeline(
     started = time.perf_counter()
 
     # Step 1 — K17.4: extract entities (must run first).
-    # Phase 4a-α: when llm_client is supplied, this routes through the
-    # SDK + gateway job pattern (entity_extraction op + paragraphs/15
-    # chunking + per-op JSON aggregator). Other 3 extractors stay on
-    # legacy provider_client until 4a-β.
+    # Routes through SDK + gateway job pattern (entity_extraction op +
+    # paragraphs/15 chunking + per-op JSON aggregator).
     entities = await extract_entities(
         text=text,
         known_entities=known_entities,
@@ -140,7 +136,6 @@ async def _run_pipeline(
         project_id=project_id,
         model_source=model_source,
         model_ref=model_ref,
-        client=client,
         llm_client=llm_client,
     )
 
@@ -190,9 +185,7 @@ async def _run_pipeline(
     all_known = list(set(known_entities + entity_names))
 
     # Steps 2-4 — K17.5/K17.6/K17.7 run concurrently.
-    # Phase 4a-β: thread llm_client to all 3 — when supplied, each
-    # extractor routes through SDK + chunking + jsonListAggregator.
-    # Legacy `client` retained for back-compat (4a-δ removes it).
+    # All three extractors route through SDK + chunking + jsonListAggregator.
     extractor_kwargs = dict(
         text=text,
         entities=entities,
@@ -201,7 +194,6 @@ async def _run_pipeline(
         project_id=project_id,
         model_source=model_source,
         model_ref=model_ref,
-        client=client,
         llm_client=llm_client,
     )
 
@@ -294,8 +286,7 @@ async def extract_pass2_chat_turn(
     known_entities: Iterable[str] | None = None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    client: ProviderClient | None = None,
-    llm_client: LLMClient | None = None,
+    llm_client: LLMClient,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
@@ -328,7 +319,6 @@ async def extract_pass2_chat_turn(
         known_entities=list(known_entities or ()),
         model_source=model_source,
         model_ref=model_ref,
-        client=client,
         llm_client=llm_client,
         anchors=anchors,
         job_logs_repo=job_logs_repo,
@@ -347,8 +337,7 @@ async def extract_pass2_chapter(
     known_entities: Iterable[str] | None = None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    client: ProviderClient | None = None,
-    llm_client: LLMClient | None = None,
+    llm_client: LLMClient,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
@@ -360,10 +349,8 @@ async def extract_pass2_chapter(
     `anchors`: optional K13.0 glossary-anchor index (see
     ``extract_pass2_chat_turn`` for details).
 
-    Phase 4a-α: when ``llm_client`` is supplied, the entity extraction
-    step routes through the loreweave_llm SDK (job pattern + chunking
-    + per-op JSON aggregator). Other 3 extractors stay on legacy
-    ``client`` until 4a-β.
+    All 4 extractors route through the loreweave_llm SDK (job pattern +
+    chunking + per-op JSON aggregator).
     """
     return await _run_pipeline(
         session,
@@ -376,7 +363,6 @@ async def extract_pass2_chapter(
         known_entities=list(known_entities or ()),
         model_source=model_source,
         model_ref=model_ref,
-        client=client,
         llm_client=llm_client,
         anchors=anchors,
         job_logs_repo=job_logs_repo,

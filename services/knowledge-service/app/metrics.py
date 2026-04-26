@@ -179,58 +179,11 @@ quarantine_auto_invalidated_total = Counter(
 )
 quarantine_auto_invalidated_total.inc(0)
 
-# K17.2 provider-registry BYOK LLM client. One counter + one histogram,
-# both keyed on the same `outcome` label so a Grafana panel can join
-# them on a single query. Label is closed at 8 values:
-#   ok              — 2xx with a parseable body
-#   not_found       — 404 PROXY_MODEL_NOT_FOUND
-#   auth            — 401/403 provider auth failure
-#   rate_limited    — 429
-#   upstream        — 5xx (incl. 502 PROXY_UPSTREAM_ERROR) and transport errors
-#   timeout         — httpx.TimeoutException
-#   decode          — 2xx with missing/invalid choices
-#   invalid_request — local validation failure before the HTTP call
-_PROVIDER_OUTCOMES = (
-    "ok",
-    "not_found",
-    "auth",
-    "rate_limited",
-    "upstream",
-    "timeout",
-    "decode",
-    "invalid_request",
-)
-
-provider_chat_completion_total = Counter(
-    "knowledge_provider_chat_completion_total",
-    "K17.2 provider-registry chat-completion calls from knowledge-service",
-    ["outcome"],
-    registry=registry,
-)
-for _o in _PROVIDER_OUTCOMES:
-    provider_chat_completion_total.labels(outcome=_o)
-
-provider_chat_completion_duration_seconds = Histogram(
-    "knowledge_provider_chat_completion_duration_seconds",
-    "K17.2 provider-registry chat-completion latency (seconds)",
-    ["outcome"],
-    # Extraction LLM calls are the slowest thing the service does;
-    # top bucket is 120s because 60s is the per-call budget and we
-    # want at least one bucket above the budget to catch overruns.
-    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0),
-    registry=registry,
-)
-for _o in _PROVIDER_OUTCOMES:
-    if _o != "invalid_request":
-        # invalid_request fails before the timer starts, so no
-        # histogram observation is recorded for that outcome.
-        provider_chat_completion_duration_seconds.labels(outcome=_o)
-
-# ── Phase 4a-α — unified-LLM-pipeline observability ──────────────────
+# ── Unified-LLM-pipeline observability (Phase 4a) ────────────────────
 #
-# These metrics replace `provider_chat_completion_*` once 4a-δ deletes
-# provider_client.py. Live in parallel during 4a-α/β/γ for both-paths
-# coverage. Per /review-impl MED#8 — sunset-not-deletion plan.
+# Replaces the deleted `provider_chat_completion_*` counters; gateway-
+# side equivalents in provider-registry-service cover the HTTP-layer
+# detail, and these counters cover the SDK-wrapper layer.
 
 _LLM_JOB_OUTCOMES = (
     "completed",
@@ -243,7 +196,7 @@ _LLM_JOB_OUTCOMES = (
 knowledge_llm_job_total = Counter(
     "knowledge_llm_job_total",
     "Phase 4a-α — async LLM job terminations dispatched via loreweave_llm SDK. "
-    "Replaces knowledge_provider_chat_completion_total once 4a-δ ships.",
+    "Async LLM job terminations dispatched via the loreweave_llm SDK.",
     ["operation", "outcome"],
     registry=registry,
 )
@@ -287,47 +240,6 @@ knowledge_extraction_dropped_total = Counter(
 for _op in ("entity_extraction", "relation_extraction", "event_extraction"):
     for _r in ("missing_name", "missing_kind", "missing_evidence_passage_id", "validation"):
         knowledge_extraction_dropped_total.labels(operation=_op, reason=_r)
-
-# K17.3 LLM JSON extraction wrapper metrics. Counter-only — per-call
-# latency is already captured by provider_chat_completion_duration_seconds
-# at the HTTP layer, and a second histogram here would double-count
-# when K17.9 golden-set harness aggregates the data.
-#
-# `outcome` label semantics measure JSON QUALITY, not HTTP retry
-# count: `ok_first_try` means the first 2xx response parsed + validated
-# on the first attempt, even if the HTTP call itself took a retry due
-# to a transient provider error. HTTP retry is captured separately in
-# `retry_total{reason=rate_limited|upstream|timeout}`.
-_LLM_JSON_OUTCOMES = (
-    "ok_first_try",
-    "ok_after_retry",
-    "parse_exhausted",
-    "validate_exhausted",
-    "provider_exhausted",
-    "provider_non_retry",
-)
-
-llm_json_extraction_total = Counter(
-    "knowledge_llm_json_extraction_total",
-    "K17.3 LLM JSON extraction attempts by outcome (JSON quality, "
-    "not HTTP retry count)",
-    ["outcome"],
-    registry=registry,
-)
-for _o in _LLM_JSON_OUTCOMES:
-    llm_json_extraction_total.labels(outcome=_o)
-
-_LLM_JSON_RETRY_REASONS = ("parse", "validate", "rate_limited", "upstream", "timeout")
-
-llm_json_extraction_retry_total = Counter(
-    "knowledge_llm_json_extraction_retry_total",
-    "K17.3 LLM JSON extraction retry attempts by reason",
-    ["reason"],
-    registry=registry,
-)
-for _r in _LLM_JSON_RETRY_REASONS:
-    llm_json_extraction_retry_total.labels(reason=_r)
-
 
 # ── K13.0 anchor resolver ──────────────────────────────────────────
 

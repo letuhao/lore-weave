@@ -30,12 +30,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from app.clients.llm_client import LLMClient
-from app.clients.provider_client import ProviderClient
 from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
 )
-from app.extraction.llm_json_parser import ExtractionError, extract_json
+from app.extraction.errors import ExtractionError
 from app.extraction.llm_prompts import load_prompt
 from app.metrics import knowledge_extraction_dropped_total
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
@@ -101,8 +100,7 @@ async def extract_entities(
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    client: ProviderClient | None = None,
-    llm_client: LLMClient | None = None,
+    llm_client: LLMClient,
 ) -> list[LLMEntityCandidate]:
     """Extract named entities from *text* via the user's BYOK LLM.
 
@@ -116,13 +114,8 @@ async def extract_entities(
         project_id: project scope (``None`` for global).
         model_source: ``"user_model"`` or ``"platform_model"``.
         model_ref: model reference key in provider-registry.
-        client: injectable ``ProviderClient`` for testing of the legacy
-            K17.2 path. Used when ``llm_client`` is None (back-compat
-            during 4a-α; removed in 4a-δ).
-        llm_client: Phase 4a-α — when supplied, routes the extraction
-            through the loreweave_llm SDK (job pattern + chunking +
-            gateway-side retry + per-op JSON aggregator). When None,
-            falls back to the legacy K17.2 sync path.
+        llm_client: loreweave_llm SDK wrapper (job pattern + chunking +
+            gateway-side retry + per-op JSON aggregator).
 
     Returns:
         Deduplicated list of ``LLMEntityCandidate`` sorted by
@@ -134,58 +127,31 @@ async def extract_entities(
         same-name-different-kind duplicates if that's undesirable.
 
     Raises:
-        ExtractionError: on terminal LLM / parse / validation failure
-            (propagated from K17.3 OR synthesized from new path).
+        ExtractionError: on terminal LLM / parse / validation failure.
     """
     if not text or not text.strip():
         return []
 
     # I1/I7 (R2): escape curly braces in caller-supplied values before
     # substitution. load_prompt uses str.format_map internally — literal
-    # { or } in the text (common in code-quoting novels, system-prompt
-    # fiction, or entity names like "The {Ancient} One") would be
-    # misinterpreted as format placeholders and raise KeyError.
+    # { or } in known_entities (e.g. "The {Ancient} One") would be
+    # misinterpreted as format placeholders and raise KeyError. `text`
+    # is NOT escaped because it goes directly into the user message
+    # without str.format_map().
     safe_known = json.dumps(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
 
-    if llm_client is not None:
-        # Phase 4a-α-followup: route through SDK with system+user
-        # messages so the gateway chunker can split the user message
-        # (chapter text) without shredding the system instructions.
-        # Unlike the legacy combined-template path, the SDK path does
-        # NOT escape `{`/`}` in `text` because we pass it directly as
-        # the user message content — no str.format_map() runs on it.
-        system_prompt = load_prompt("entity_system", known_entities=safe_known)
-        raw_entities = await _extract_via_llm_client(
-            llm_client=llm_client,
-            user_id=user_id,
-            project_id=project_id,
-            model_source=model_source,
-            model_ref=model_ref,
-            system_prompt=system_prompt,
-            text=text,
-        )
-    else:
-        # Legacy K17.2 path — preserved through 4a-α, removed in 4a-δ.
-        # Combined-template format requires `{}`-escape in text.
-        safe_text = text.replace("{", "{{").replace("}", "}}")
-        user_prompt = load_prompt(
-            "entity",
-            text=safe_text,
-            known_entities=safe_known,
-        )
-        response = await extract_json(
-            EntityExtractionResponse,
-            user_id=user_id,
-            model_source=model_source,
-            model_ref=model_ref,
-            system=None,
-            user_prompt=user_prompt,
-            response_format={"type": "json_object"},
-            client=client,
-        )
-        raw_entities = response.entities
+    system_prompt = load_prompt("entity_system", known_entities=safe_known)
+    raw_entities = await _extract_via_llm_client(
+        llm_client=llm_client,
+        user_id=user_id,
+        project_id=project_id,
+        model_source=model_source,
+        model_ref=model_ref,
+        system_prompt=system_prompt,
+        text=text,
+    )
 
     return _postprocess(
         raw_entities,
@@ -304,9 +270,8 @@ def _tolerant_parse_entities(raw_items: list[Any]) -> list["_LLMEntity"]:
 
     `evidence_passage_id` is mentioned in the ADR as required-by-anchoring
     BUT the current K17.4 prompt doesn't ask for it (anchoring uses
-    canonical_name match against `known_entities` instead). Leaving as
-    optional for 4a-α parity with legacy path; revisit when anchor
-    loader changes (Phase 4a-β or later)."""
+    canonical_name match against `known_entities` instead). Left optional
+    until the anchor loader needs it."""
     parsed: list[_LLMEntity] = []
     for item in raw_items:
         if not isinstance(item, dict):

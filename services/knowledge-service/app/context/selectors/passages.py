@@ -46,8 +46,9 @@ from uuid import UUID
 from cachetools import TTLCache
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
-from app.clients.provider_client import ProviderClient, ProviderError
+from app.clients.llm_client import LLMClient
 from app.context.intent.classifier import Intent, IntentResult
+from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.passages import (
     PassageSearchHit,
@@ -179,7 +180,7 @@ async def select_l3_passages(
     user_uuid,   # UUID, needed by embedding_client
     model_source: str = "user_model",
     current_chapter_index: int | None = None,
-    provider_client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
     rerank_model: str | None = None,
 ) -> list[L3Passage]:
     """Run K18.3 semantic retrieval.
@@ -309,17 +310,17 @@ async def select_l3_passages(
 
     # 8. Optional generative rerank (D-K18.3-02). Opt-in via
     #    project.extraction_config["rerank_model"]; skipped when the
-    #    provider_client isn't injected OR the model is unset OR the
+    #    llm_client isn't injected OR the model is unset OR the
     #    final cut is < 2 passages (nothing to reorder). Any failure
     #    inside rerank_passages falls back to the MMR order — the
     #    caller never sees an exception.
     if (
         rerank_model
-        and provider_client is not None
+        and llm_client is not None
         and len(passages) >= 2
     ):
         passages = await rerank_passages(
-            provider_client,
+            llm_client,
             query=message,
             passages=passages,
             model=rerank_model,
@@ -551,7 +552,7 @@ def _parse_rerank_order(raw: str, n: int) -> list[int]:
 
 
 async def rerank_passages(
-    provider_client: ProviderClient,
+    llm_client: LLMClient,
     *,
     query: str,
     passages: list[L3Passage],
@@ -560,12 +561,14 @@ async def rerank_passages(
     model_source: str = "user_model",
     timeout_s: float = _RERANK_TIMEOUT_S,
 ) -> list[L3Passage]:
-    """Listwise LLM rerank after MMR.
+    """Listwise LLM rerank after MMR via the unified LLM gateway
+    (operation=chat, no chunking — rerank prompt is bounded by
+    `_rerank_max_tokens(n)` < 2K).
 
     The MMR output is already a strong signal-diverse list; this pass
     asks a chat model to reorder it against the user's exact query.
     Used when the project opts in via
-    `extraction_config["rerank_model"]`. On any failure — provider
+    `extraction_config["rerank_model"]`. On any failure — gateway
     error, timeout, non-JSON body, wrong shape — falls back to the
     input order so the caller never sees an exception.
 
@@ -576,10 +579,6 @@ async def rerank_passages(
     NO passages — strictly worse than the MMR result they'd have
     gotten without rerank. Enabling rerank must never degrade context
     below the no-rerank baseline, so we clamp the rerank hop itself.
-
-    Uses `response_format={"type":"json_object"}` where providers
-    honour it (OpenAI, Anthropic); other providers just return text
-    that happens to be JSON because the system prompt asks for it.
     """
     n = len(passages)
     system = {"role": "system", "content": _RERANK_SYSTEM_PROMPT}
@@ -588,15 +587,21 @@ async def rerank_passages(
         "content": _build_rerank_user_prompt(query, passages),
     }
     try:
-        result = await asyncio.wait_for(
-            provider_client.chat_completion(
+        job = await asyncio.wait_for(
+            llm_client.submit_and_wait(
                 user_id=str(user_id),
+                operation="chat",
                 model_source=model_source,
                 model_ref=model,
-                messages=[system, user],
-                response_format={"type": "json_object"},
-                temperature=0.0,
-                max_tokens=_rerank_max_tokens(n),
+                input={
+                    "messages": [system, user],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.0,
+                    "max_tokens": _rerank_max_tokens(n),
+                },
+                chunking=None,
+                job_meta={"extractor": "passage_rerank"},
+                transient_retry_budget=1,
             ),
             timeout=timeout_s,
         )
@@ -606,19 +611,34 @@ async def rerank_passages(
             timeout_s, model,
         )
         return passages
-    except ProviderError as exc:
+    except (LLMError, LLMTransientRetryNeededError) as exc:
         logger.warning(
-            "K18.3 rerank: provider call failed model=%s err=%s — keeping MMR order",
+            "K18.3 rerank: gateway call failed model=%s err=%s — keeping MMR order",
             model, exc,
         )
         return passages
 
+    if job.status != "completed":
+        logger.warning(
+            "K18.3 rerank: job ended status=%s model=%s — keeping MMR order",
+            job.status, model,
+        )
+        return passages
+
+    result_payload = job.result or {}
+    messages_out = result_payload.get("messages") or []
+    content = ""
+    if isinstance(messages_out, list) and messages_out:
+        first = messages_out[0]
+        if isinstance(first, dict):
+            content = first.get("content", "") or ""
+
     try:
-        order = _parse_rerank_order(result.content, n)
+        order = _parse_rerank_order(content, n)
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         logger.warning(
             "K18.3 rerank: parse failed model=%s err=%s body=%r — keeping MMR order",
-            model, exc, result.content[:200],
+            model, exc, content[:200],
         )
         return passages
 

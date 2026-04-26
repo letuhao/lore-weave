@@ -1,16 +1,16 @@
-"""Unit tests for K17.7 — LLM fact extractor.
+"""Unit tests for K17.7 — LLM fact extractor (SDK path only).
 
-Uses FakeProviderClient + pre-built LLMEntityCandidate fixtures to
-test extract_facts without network calls. Validates:
+Phase 4a-δ: legacy ProviderClient path was removed; the extractor now
+takes only ``llm_client: LLMClient``. Validates:
   - Happy path with subject resolution + fact_id
-  - Empty text → no LLM call
+  - Empty text -> no LLM call
   - Facts without subject (universal claims)
-  - Unresolvable subject → None subject_id
+  - Unresolvable subject -> None subject_id
   - All fact types
   - Polarity/modality preservation
   - Deduplication by fact_id
   - Idempotent re-run
-  - ExtractionError propagation
+  - ExtractionError propagation (provider / cancelled / provider_exhausted)
   - Curly braces in text don't crash
   - Entity alias resolution for subject
   - Empty facts from LLM
@@ -18,59 +18,66 @@ test extract_facts without network calls. Validates:
 
 from __future__ import annotations
 
-import json
 from typing import Any, cast
 
 import pytest
 
-from app.clients.provider_client import (
-    ChatCompletionResponse,
-    ChatCompletionUsage,
-    ProviderClient,
-    ProviderAuthError,
-)
+from app.extraction.errors import ExtractionError
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
 from app.extraction.llm_fact_extractor import (
     LLMFactCandidate,
     FactExtractionResponse,
     extract_facts,
 )
-from app.extraction.llm_json_parser import ExtractionError
+from loreweave_llm.errors import LLMTransientRetryNeededError
+from loreweave_llm.models import Job, JobError
 
 
-# ── FakeProviderClient ───────────────────────────────────────────
+# -- FakeLLMClient (duck-typed stand-in for LLMClient) ---------------
 
-class FakeProviderClient:
+
+class FakeLLMClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
-        self.responses: list[Any] = []
+        self.next_job: Any = None
+        self.next_exc: Exception | None = None
 
-    def queue_response(self, content: str, model: str = "test-model") -> None:
-        self.responses.append(
-            ChatCompletionResponse(
-                content=content, model=model,
-                usage=ChatCompletionUsage(), raw={},
-            )
+    def queue_job(
+        self,
+        *,
+        status: str = "completed",
+        facts: list[dict[str, Any]] | None = None,
+        error_code: str | None = None,
+        error_message: str = "",
+    ) -> None:
+        result = {"facts": facts} if facts is not None else None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="fact_extraction",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
         )
 
     def queue_exception(self, exc: Exception) -> None:
-        self.responses.append(exc)
+        self.next_exc = exc
 
-    async def chat_completion(self, **kwargs: Any) -> ChatCompletionResponse:
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
         self.calls.append(kwargs)
-        if not self.responses:
-            raise AssertionError("FakeProviderClient exhausted")
-        result = self.responses.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        return result
+        if self.next_exc is not None:
+            exc = self.next_exc
+            self.next_exc = None
+            raise exc
+        return self.next_job
 
 
-def _as_client(fake: FakeProviderClient) -> ProviderClient:
-    return cast(ProviderClient, fake)
+def _as_client(fake: FakeLLMClient) -> Any:
+    return cast(Any, fake)
 
 
-# ── Fixtures ─────────────────────────────────────────────────────
+# -- Fixtures --------------------------------------------------------
 
 USER_ID = "test-user-001"
 PROJECT_ID = "test-project-001"
@@ -107,10 +114,6 @@ ENTITIES = [
 ]
 
 
-def _make_response(*facts: dict[str, Any]) -> str:
-    return json.dumps({"facts": list(facts)})
-
-
 def _fact(
     content: str,
     type: str = "description",
@@ -129,23 +132,22 @@ def _fact(
     }
 
 
-# ── Tests ────────────────────────────────────────────────────────
+# -- Tests -----------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_happy_path_three_facts():
     """Basic extraction with subject resolution and fact_id."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _fact("The Jade Seal was priceless.", "description",
-                  subject="Jade Seal", confidence=0.95),
-            _fact("Kai did not trust Zhao.", "negation",
-                  subject="Kai", confidence=0.9,
-                  polarity="negate"),
-            _fact("The Empire was vast.", "description",
-                  subject=None, confidence=0.85),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
+        _fact("The Jade Seal was priceless.", "description",
+              subject="Jade Seal", confidence=0.95),
+        _fact("Kai did not trust Zhao.", "negation",
+              subject="Kai", confidence=0.9,
+              polarity="negate"),
+        _fact("The Empire was vast.", "description",
+              subject=None, confidence=0.85),
+    ])
 
     result = await extract_facts(
         text="The Jade Seal was priceless. Kai did not trust Zhao. The Empire was vast.",
@@ -155,7 +157,7 @@ async def test_happy_path_three_facts():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 3
@@ -183,15 +185,15 @@ async def test_happy_path_three_facts():
 
 @pytest.mark.asyncio
 async def test_empty_text_returns_empty():
-    """Empty or whitespace text → no LLM call."""
-    fake = FakeProviderClient()
+    """Empty or whitespace text -> no LLM call."""
+    fake = FakeLLMClient()
 
     for text in ["", "   ", "\n"]:
         result = await extract_facts(
             text=text, entities=ENTITIES,
             known_entities=[], user_id=USER_ID,
             project_id=PROJECT_ID, model_source="user_model",
-            model_ref="test-model", client=_as_client(fake),
+            model_ref="test-model", llm_client=_as_client(fake),
         )
         assert result == []
 
@@ -201,13 +203,11 @@ async def test_empty_text_returns_empty():
 @pytest.mark.asyncio
 async def test_facts_without_subject_are_valid():
     """Facts with subject=null are kept (universal claims)."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _fact("The Empire was vast.", "description",
-                  subject=None, confidence=0.9),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
+        _fact("The Empire was vast.", "description",
+              subject=None, confidence=0.9),
+    ])
 
     result = await extract_facts(
         text="The Empire was vast.",
@@ -217,7 +217,7 @@ async def test_facts_without_subject_are_valid():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -227,14 +227,12 @@ async def test_facts_without_subject_are_valid():
 
 @pytest.mark.asyncio
 async def test_unresolvable_subject_keeps_display_name():
-    """Subject not in entities → subject_id=None, display name preserved."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _fact("The Unknown King was mighty.", "description",
-                  subject="Unknown King", confidence=0.8),
-        )
-    )
+    """Subject not in entities -> subject_id=None, display name preserved."""
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
+        _fact("The Unknown King was mighty.", "description",
+              subject="Unknown King", confidence=0.8),
+    ])
 
     result = await extract_facts(
         text="The Unknown King was mighty.",
@@ -244,7 +242,7 @@ async def test_unresolvable_subject_keeps_display_name():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -255,13 +253,13 @@ async def test_unresolvable_subject_keeps_display_name():
 @pytest.mark.asyncio
 async def test_all_fact_types():
     """All five fact types are accepted."""
-    fake = FakeProviderClient()
+    fake = FakeLLMClient()
     types = ["description", "attribute", "negation", "temporal", "causal"]
     facts = [
         _fact(f"Fact about {t}.", t, subject="Kai", confidence=0.9)
         for t in types
     ]
-    fake.queue_response(_make_response(*facts))
+    fake.queue_job(facts=facts)
 
     result = await extract_facts(
         text="Many facts about Kai.",
@@ -271,7 +269,7 @@ async def test_all_fact_types():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 5
@@ -282,14 +280,12 @@ async def test_all_fact_types():
 @pytest.mark.asyncio
 async def test_polarity_and_modality_preserved():
     """Polarity and modality from LLM response are preserved."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _fact("Alice claimed the Seal was fake.", "description",
-                  subject="Jade Seal", confidence=0.7,
-                  polarity="affirm", modality="reported"),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
+        _fact("Alice claimed the Seal was fake.", "description",
+              subject="Jade Seal", confidence=0.7,
+              polarity="affirm", modality="reported"),
+    ])
 
     result = await extract_facts(
         text="Alice claimed the Seal was fake.",
@@ -299,7 +295,7 @@ async def test_polarity_and_modality_preserved():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -309,16 +305,14 @@ async def test_polarity_and_modality_preserved():
 
 @pytest.mark.asyncio
 async def test_deduplication_by_fact_id():
-    """Same fact twice → deduplicated, higher confidence wins."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _fact("The Jade Seal was priceless.", "description",
-                  subject="Jade Seal", confidence=0.8),
-            _fact("The Jade Seal was priceless.", "description",
-                  subject="Jade Seal", confidence=0.95),
-        )
-    )
+    """Same fact twice -> deduplicated, higher confidence wins."""
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
+        _fact("The Jade Seal was priceless.", "description",
+              subject="Jade Seal", confidence=0.8),
+        _fact("The Jade Seal was priceless.", "description",
+              subject="Jade Seal", confidence=0.95),
+    ])
 
     result = await extract_facts(
         text="The Jade Seal was priceless.",
@@ -328,7 +322,7 @@ async def test_deduplication_by_fact_id():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -337,14 +331,11 @@ async def test_deduplication_by_fact_id():
 
 @pytest.mark.asyncio
 async def test_idempotent_fact_ids():
-    """Same input twice → same fact_ids."""
-    fake = FakeProviderClient()
-    response = _make_response(
-        _fact("Kai is brave.", "attribute", subject="Kai", confidence=0.9),
-    )
-    fake.queue_response(response)
-    fake.queue_response(response)
+    """Same input twice -> same fact_ids."""
+    fake = FakeLLMClient()
+    payload = [_fact("Kai is brave.", "attribute", subject="Kai", confidence=0.9)]
 
+    fake.queue_job(facts=payload)
     kwargs = dict(
         text="Kai is brave.",
         entities=ENTITIES,
@@ -353,10 +344,11 @@ async def test_idempotent_fact_ids():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
-
     r1 = await extract_facts(**kwargs)
+
+    fake.queue_job(facts=payload)
     r2 = await extract_facts(**kwargs)
 
     assert len(r1) == 1 and len(r2) == 1
@@ -365,16 +357,16 @@ async def test_idempotent_fact_ids():
 
 @pytest.mark.asyncio
 async def test_extraction_error_propagation():
-    """ProviderAuthError surfaces as ExtractionError."""
-    fake = FakeProviderClient()
-    fake.queue_exception(ProviderAuthError("bad key"))
+    """A failed Job (provider error) surfaces as ExtractionError."""
+    fake = FakeLLMClient()
+    fake.queue_job(status="failed", error_code="LLM_INVALID_REQUEST", error_message="bad key")
 
     with pytest.raises(ExtractionError) as exc_info:
         await extract_facts(
             text="Some text.", entities=ENTITIES,
             known_entities=[], user_id=USER_ID,
             project_id=PROJECT_ID, model_source="user_model",
-            model_ref="test-model", client=_as_client(fake),
+            model_ref="test-model", llm_client=_as_client(fake),
         )
 
     assert exc_info.value.stage == "provider"
@@ -383,10 +375,10 @@ async def test_extraction_error_propagation():
 @pytest.mark.asyncio
 async def test_curly_braces_in_text_do_not_crash():
     """R2 I1/I7: text with {curly braces} must not crash load_prompt."""
-    fake = FakeProviderClient()
-    fake.queue_response(_make_response(
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
         _fact("Kai is brave.", "attribute", subject="Kai"),
-    ))
+    ])
 
     result = await extract_facts(
         text='Config was {host: "localhost"}. Kai is brave.',
@@ -396,11 +388,11 @@ async def test_curly_braces_in_text_do_not_crash():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
-    messages = fake.calls[0]["messages"]
+    messages = fake.calls[0]["input"]["messages"]
     user_msg = next(m for m in messages if m["role"] == "user")
     assert "{host:" in user_msg["content"]
 
@@ -408,12 +400,10 @@ async def test_curly_braces_in_text_do_not_crash():
 @pytest.mark.asyncio
 async def test_entity_alias_resolution_for_subject():
     """Subject resolved via entity alias."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _fact("Ali is kind.", "attribute", subject="Ali"),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
+        _fact("Ali is kind.", "attribute", subject="Ali"),
+    ])
 
     result = await extract_facts(
         text="Ali is kind.",
@@ -423,7 +413,7 @@ async def test_entity_alias_resolution_for_subject():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -434,9 +424,9 @@ async def test_entity_alias_resolution_for_subject():
 
 @pytest.mark.asyncio
 async def test_empty_facts_from_llm():
-    """LLM returns empty facts list → empty result."""
-    fake = FakeProviderClient()
-    fake.queue_response(json.dumps({"facts": []}))
+    """LLM returns empty facts list -> empty result."""
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[])
 
     result = await extract_facts(
         text="A quiet passage with no facts.",
@@ -446,7 +436,7 @@ async def test_empty_facts_from_llm():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert result == []
@@ -455,14 +445,12 @@ async def test_empty_facts_from_llm():
 @pytest.mark.asyncio
 async def test_empty_content_facts_are_skipped():
     """R2 I3: Facts with empty or whitespace-only content are dropped."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _fact("", "description", subject="Kai", confidence=0.9),
-            _fact("   ", "attribute", subject="Kai", confidence=0.8),
-            _fact("Kai is brave.", "attribute", subject="Kai", confidence=0.7),
-        )
-    )
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
+        _fact("", "description", subject="Kai", confidence=0.9),
+        _fact("   ", "attribute", subject="Kai", confidence=0.8),
+        _fact("Kai is brave.", "attribute", subject="Kai", confidence=0.7),
+    ])
 
     result = await extract_facts(
         text="Kai is brave.",
@@ -472,7 +460,7 @@ async def test_empty_content_facts_are_skipped():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
@@ -481,14 +469,12 @@ async def test_empty_content_facts_are_skipped():
 
 @pytest.mark.asyncio
 async def test_whitespace_variant_dedup():
-    """R2 I4: Facts differing only in whitespace produce same fact_id → dedup."""
-    fake = FakeProviderClient()
-    fake.queue_response(
-        _make_response(
-            _fact("Kai  is   brave.", "attribute", subject="Kai", confidence=0.8),
-            _fact("Kai is brave.", "attribute", subject="Kai", confidence=0.95),
-        )
-    )
+    """R2 I4: Facts differing only in whitespace produce same fact_id -> dedup."""
+    fake = FakeLLMClient()
+    fake.queue_job(facts=[
+        _fact("Kai  is   brave.", "attribute", subject="Kai", confidence=0.8),
+        _fact("Kai is brave.", "attribute", subject="Kai", confidence=0.95),
+    ])
 
     result = await extract_facts(
         text="Kai is brave.",
@@ -498,45 +484,17 @@ async def test_whitespace_variant_dedup():
         project_id=PROJECT_ID,
         model_source="user_model",
         model_ref="test-model",
-        client=_as_client(fake),
+        llm_client=_as_client(fake),
     )
 
     assert len(result) == 1
     assert result[0].confidence == 0.95
 
 
-# ── Phase 4a-β SDK-path tests ────────────────────────────────────────
-
-
-from typing import Any, cast
-
-
-class FakeLLMClientForFacts:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.next_job: Any = None
-
-    def queue_job(self, *, status: str, facts: list[dict[str, Any]] | None = None,
-                  error_code: str | None = None, error_message: str = "") -> None:
-        from loreweave_llm.models import Job, JobError
-        result = {"facts": facts} if facts is not None else None
-        error = JobError(code=error_code, message=error_message) if error_code else None
-        self.next_job = Job(
-            job_id="00000000-0000-0000-0000-000000000001",
-            operation="fact_extraction",
-            status=status,  # type: ignore[arg-type]
-            result=result,
-            error=error,
-            submitted_at="2026-04-27T00:00:00Z",
-        )
-
-    async def submit_and_wait(self, **kwargs: Any) -> Any:
-        self.calls.append(kwargs)
-        return self.next_job
+# -- Phase 4a-β SDK-path tests --------------------------------------
 
 
 def _make_entity_for_fact(name: str = "Holmes") -> Any:
-    from app.extraction.llm_entity_extractor import LLMEntityCandidate
     return LLMEntityCandidate(
         name=name, kind="person", aliases=[], confidence=0.95,
         canonical_name=name.lower(), canonical_id=f"cid-{name}",
@@ -545,7 +503,7 @@ def _make_entity_for_fact(name: str = "Holmes") -> Any:
 
 @pytest.mark.asyncio
 async def test_extract_facts_via_llm_client_happy_path():
-    fake = FakeLLMClientForFacts()
+    fake = FakeLLMClient()
     fake.queue_job(
         status="completed",
         facts=[
@@ -572,16 +530,16 @@ async def test_extract_facts_via_llm_client_happy_path():
 
 @pytest.mark.asyncio
 async def test_extract_facts_via_llm_client_drops_malformed():
-    fake = FakeLLMClientForFacts()
+    fake = FakeLLMClient()
     fake.queue_job(
         status="completed",
         facts=[
-            {"content": "Holmes is brilliant.", "type": "description", "confidence": 0.9},  # ✓
-            {"type": "description"},  # ✗ missing content
-            {"content": "  ", "type": "description"},  # ✗ whitespace-only
-            {"content": "Bad type", "type": "INVALID_TYPE"},  # ✗ FactType not in Literal
+            {"content": "Holmes is brilliant.", "type": "description", "confidence": 0.9},  # valid
+            {"type": "description"},  # missing content
+            {"content": "  ", "type": "description"},  # whitespace-only
+            {"content": "Bad type", "type": "INVALID_TYPE"},  # FactType not in Literal
             # /review-impl LOW#5 — explicit-null type
-            {"content": "Null type", "type": None},  # ✗
+            {"content": "Null type", "type": None},
         ],
     )
     result = await extract_facts(
@@ -599,7 +557,7 @@ async def test_extract_facts_via_llm_client_drops_malformed():
 
 @pytest.mark.asyncio
 async def test_extract_facts_via_llm_client_cancelled_raises():
-    fake = FakeLLMClientForFacts()
+    fake = FakeLLMClient()
     fake.queue_job(status="cancelled")
     with pytest.raises(ExtractionError) as exc:
         await extract_facts(
@@ -612,10 +570,28 @@ async def test_extract_facts_via_llm_client_cancelled_raises():
 
 
 @pytest.mark.asyncio
+async def test_extract_facts_via_llm_client_transient_retry_exhausted_raises():
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMTransientRetryNeededError(
+        "transient retry exhausted",
+        job_id="00000000-0000-0000-0000-000000000001",
+        underlying_code="LLM_UPSTREAM_ERROR",
+    ))
+    with pytest.raises(ExtractionError, match="transient retry") as excinfo:
+        await extract_facts(
+            text="...", entities=[], known_entities=[],
+            user_id="user-1", project_id="project-1",
+            model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+            llm_client=cast(Any, fake),
+        )
+    assert excinfo.value.stage == "provider_exhausted"
+
+
+@pytest.mark.asyncio
 async def test_extract_facts_via_llm_client_chunking_invariant_for_multi_paragraph_input():
     """/review-impl LOW#4 — pin the invariant that the extractor ALWAYS
     sends ChunkingConfig regardless of input length."""
-    fake = FakeLLMClientForFacts()
+    fake = FakeLLMClient()
     fake.queue_job(
         status="completed",
         facts=[{"content": "X is Y.", "type": "description", "subject": None,
