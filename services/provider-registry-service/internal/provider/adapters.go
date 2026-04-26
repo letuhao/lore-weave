@@ -459,13 +459,43 @@ func (a *anthropicAdapter) HealthCheck(ctx context.Context, endpointBaseURL, sec
 	return err
 }
 
-// Stream — Anthropic streaming uses different SSE event names
-// (content_block_delta, message_delta, message_stop) than OpenAI. Deferred
-// to a follow-up cycle (Phase 1a-followup); for now this returns 501 so
-// chat-service migration in Phase 1c can target lm_studio + openai-compat
-// providers first.
+// Stream — Phase 1c-anthropic. Closes D-PHASE-1C-ANTHROPIC. Anthropic's
+// /v1/messages SSE format differs from OpenAI's /v1/chat/completions
+// (separate event names, content_block_delta with text_delta vs
+// thinking_delta, message_delta carries usage+stop_reason); the
+// per-event mapping lives in anthropic_streamer.go.
 func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
-	return ErrStreamNotSupported
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = anthropicBaseURL
+	}
+	// Anthropic API REQUIRES max_tokens (returns 400 if missing). The
+	// max_tokens-policy fix at the SDK + gateway-handler layer strips
+	// 0/missing values upstream of us; if we still don't see one here,
+	// fall back to 8192 default to avoid a hard 400 from Anthropic.
+	maxTokens := 8192
+	if v, ok := input["max_tokens"]; ok {
+		if mt := int(toFloat(v)); mt > 0 {
+			maxTokens = mt
+		}
+	}
+	body := map[string]any{
+		"model":      modelName,
+		"messages":   extractMessages(input),
+		"max_tokens": maxTokens,
+	}
+	if v, ok := input["temperature"]; ok {
+		body["temperature"] = v
+	}
+	if v, ok := input["system"]; ok {
+		body["system"] = v
+	}
+	resp, err := openAnthropicStream(ctx, a.client, base, secret, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return streamAnthropicSSE(ctx, resp.Body, emit)
 }
 
 // ── Ollama adapter ────────────────────────────────────────────────────────────
