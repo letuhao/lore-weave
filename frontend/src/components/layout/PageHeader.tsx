@@ -36,7 +36,7 @@ export function PageHeader({ title, subtitle, breadcrumbs, actions, tabs }: Page
       {/* Title + Actions */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h1 className="font-serif text-xl font-semibold">{title}</h1>
+          <h1 data-testid="page-header-title" className="font-serif text-xl font-semibold">{title}</h1>
           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}

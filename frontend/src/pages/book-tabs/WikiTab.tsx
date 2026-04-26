@@ -131,6 +131,7 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
                 onClick={onGenerate}
                 disabled={generating}
                 title={t('generateStubs')}
+                data-testid="wiki-generate-trigger"
                 className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
               >
                 <Sparkles className="h-3 w-3" />
@@ -200,6 +201,7 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
               <button
                 key={a.article_id}
                 onClick={() => onSelect(a.article_id)}
+                data-testid="wiki-article-row"
                 className={cn(
                   'flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-[13px] transition-colors last:border-b-0',
                   selectedId === a.article_id
@@ -614,6 +616,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
               <button
                 onClick={handleGenerate}
                 disabled={generating}
+                data-testid="wiki-generate-empty"
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50"
               >
                 <Sparkles className="h-3.5 w-3.5" />

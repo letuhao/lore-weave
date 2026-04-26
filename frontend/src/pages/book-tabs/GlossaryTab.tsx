@@ -148,6 +148,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         <div className="flex items-center gap-2">
           <button
             onClick={() => setExtractionOpen(true)}
+            data-testid="glossary-extract-trigger"
             className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
           >
             <Sparkles className="h-3.5 w-3.5" />
@@ -208,6 +209,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             value={filters.searchQuery}
             onChange={(e) => setFilters((f) => ({ ...f, searchQuery: e.target.value }))}
             placeholder="Search entities..."
+            data-testid="glossary-search-input"
             className="w-full rounded-md border bg-background pl-9 pr-3 py-1.5 text-xs focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
@@ -292,6 +294,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             <div
               key={e.entity_id}
               onClick={() => setSelectedEntityId(e.entity_id)}
+              data-testid="glossary-entity-row"
               className={cn(
                 'flex items-center gap-3 px-4 py-3 hover:bg-card/50 transition-colors group cursor-pointer',
                 selectedEntityId === e.entity_id && 'bg-primary/5 border-l-2 border-l-primary',

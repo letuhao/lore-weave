@@ -497,11 +497,23 @@ type lmStudioAdapter struct {
 
 const lmStudioDefaultBase = "http://localhost:1234"
 
-func (a *lmStudioAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
+// normalizeLmStudioBase strips the trailing slash AND a trailing "/v1" segment.
+// Users frequently paste full OpenAI-style URLs like http://localhost:1234/v1
+// into the ProvidersTab UI, but the adapter appends "/v1/chat/completions" or
+// "/api/v1/models" itself. Without normalization the request becomes
+// /v1/v1/chat/completions which 404s and LM Studio returns {"error": ...} body
+// that downstream extract_content() can't parse. Empty input → default base.
+func normalizeLmStudioBase(endpointBaseURL string) string {
 	base := strings.TrimRight(endpointBaseURL, "/")
+	base = strings.TrimSuffix(base, "/v1")
 	if base == "" {
-		base = lmStudioDefaultBase
+		return lmStudioDefaultBase
 	}
+	return base
+}
+
+func (a *lmStudioAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
+	base := normalizeLmStudioBase(endpointBaseURL)
 	headers := map[string]string{}
 	if secret != "" {
 		headers["Authorization"] = "Bearer " + secret
@@ -592,10 +604,7 @@ func parseLMStudioNativeModels(mList []any) []ModelInventory {
 }
 
 func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error) {
-	base := strings.TrimRight(endpointBaseURL, "/")
-	if base == "" {
-		base = lmStudioDefaultBase
-	}
+	base := normalizeLmStudioBase(endpointBaseURL)
 	maxTokens := 8192
 	if v, ok := input["max_tokens"]; ok {
 		if mt := int(toFloat(v)); mt > 0 {
