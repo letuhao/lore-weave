@@ -6,6 +6,99 @@
 
 ---
 
+## 2026-04-26 — FAC_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 4/4 FINAL)
+
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session → None (RELEASE after 4-commit FAC_001 cycle)
+  - `01_feature_ownership_matrix.md`:
+    - `faction` row: DRAFT → **CANDIDATE-LOCK 2026-04-26 closure pass 4/4**
+    - `actor_faction_membership` row: DRAFT → **CANDIDATE-LOCK 2026-04-26 closure pass 4/4**
+- **FAC_001 status header DRAFT → CANDIDATE-LOCK 2026-04-26**
+- **`_index.md` FAC_001 row updated:** status CANDIDATE-LOCK + 4-commit cycle reference
+- **`_index.md` folder status:** Open → COMPLETE 2026-04-26
+
+### FAC_001 FOUNDATION FOLDER MILESTONE SUMMARY (4 commits across single lock-cycle)
+
+Files created (cumulative across 4 commits + Phase 0):
+- features/00_faction/_index.md (folder index; updated to COMPLETE)
+- features/00_faction/00_CONCEPT_NOTES.md (Q1-Q10 LOCKED + V1 scope populated)
+- features/00_faction/01_REFERENCE_GAMES_SURVEY.md (10-system market survey: Wuxia primary + grand-strategy + tabletop)
+- features/00_faction/FAC_001_faction_foundation.md (~870 lines DRAFT spec)
+
+Boundary expansions:
+- 2 NEW aggregates: faction (T2/Reality sparse) + actor_faction_membership (T2/Reality)
+- 2 NEW EVT-T4 sub-types: FactionBorn + FactionMembershipBorn
+- 3 NEW EVT-T8 sub-shapes: Forge:RegisterFaction + Forge:EditFaction + Forge:EditFactionMembership
+- 1 NEW namespace: faction.* (8 V1 rule_ids + 4 V1+ reservations)
+- 2 NEW RealityManifest extensions: canonical_factions + canonical_faction_memberships (REQUIRED V1; sparse)
+- 1 NEW Stable-ID prefix: FAC-*
+
+Q1-Q10 LOCKED (per 49a17ed deep-dive; 3 REVISIONS):
+- Q1 (A) 2 aggregates (faction sparse + actor_faction_membership)
+- Q2 REVISION: Vec<T> schema V1 + V1 validator cap=1 (V1+ relax cap = NO migration)
+- Q3 (A) Author-declared role taxonomy per FactionDecl
+- Q4 REVISION: Numeric u16 only V1; named computed display
+- Q5 (A) V1 static default_relations; V1+ DIPL_001 dynamic
+- Q6 (A) master_actor_id field on actor_faction_membership; FF-D7 RESOLVED
+- Q7 REVISION: Defer sworn brotherhood V1+ via FAC-D10 (NOT V1 schema slot)
+- Q8 (A) V1 strict single-reality
+- Q9 (A) Schema-present hook V1+; AxiomDecl.requires_faction reserved
+- Q10 (A) Synthetic forbidden V1
+
+Cross-feature integration RESOLVED:
+- IDF_005 IDL-D2 → FAC_001 FactionDecl.requires_ideology validation (sect membership ideology binding)
+- FF_001 FF-D7 → FAC_001 master_actor_id field (master-disciple sect lineage)
+
+Cross-feature integration JOINTLY V1+:
+- FF-D5 Marriage as faction alliance → V1+ FAC_001 + V1+ DIPL_001 (FAC-D3)
+- FF-D6 Sworn brotherhood → V1+ FAC-D10 (NOT V1 schema slot)
+- FF-D8 Title inheritance → V1+ TIT_001 reads FAC_001 + FF_001 (FAC-D6)
+
+V1 quantitative summary:
+- 2 aggregates V1 (faction sparse + actor_faction_membership)
+- 6-variant FactionKind enum (Sect/Order/Clan/Guild/Coalition/Other)
+- 3-variant RelationStance enum (Hostile/Neutral/Allied)
+- 4-variant JoinReason enum (CanonicalSeed/PcCreation/NpcSpawn/AdminOverride)
+- Vec<FactionMembershipEntry> with V1 cap=1 validator
+- Author-declared roles per FactionDecl (RoleDecl: role_id + display_name + authority_level)
+- Numeric u16 rank only V1; named computed display
+- master_actor_id field
+- NO sworn_bond_id field V1 (FAC-D10 V1+)
+- Static default_relations HashMap<FactionId, RelationStance>
+- 8 V1 reject rule_ids in faction.* + 4 V1+ reservations
+- 2 RealityManifest extensions (canonical_factions + canonical_faction_memberships)
+- 3 EVT-T8 Forge sub-shapes
+- 2 EVT-T4 System sub-types (FactionBorn + FactionMembershipBorn)
+- 7 EVT-T3 delta_kinds (V1+ runtime; V1 ships canonical seed only)
+- 10 V1-testable AC-FAC-1..10 + 4 V1+ deferred
+- 17 deferrals (FAC-D1..D17)
+- ~870-line DRAFT spec
+
+V1 reality presets coverage:
+- Wuxia: 5 sects (Đông Hải Đạo Cốc / Tây Sơn Phật Tự / Ma Tông / Trung Nguyên Võ Hiệp / Tán Tu Đồng Minh) + Du sĩ membership
+- Modern: 1-2 factions
+- Sci-fi: deferred V1+
+
+i18n: V1 ships I18nBundle from day 1 per RES_001 §2 contract.
+
+CANDIDATE-LOCK → LOCK gate: AC-FAC-1..10 V1-testable scenarios pass integration tests against Wuxia + Modern reality fixtures + V1+ TIT_001 / REP_001 / CULT_001 / DIPL_001 ship.
+
+NEW V1+ priority roadmap (locked order; per FAC_001 closure):
+1. ✓ IDF folder closure (15 commits) DONE
+2. ✓ FF_001 Family Foundation (4 commits) DONE
+3. ✓ FAC_001 Faction Foundation (4 commits) DONE (this commit)
+4. **REP_001 Reputation Foundation** (next post-IDF social tier; per-(actor, faction) rep projection)
+5. PCS_001 PC substrate (BLOCKED on PROG_001 — DONE, but PCS_001 needs full integration design)
+6. NPC_NNN mortality
+7. CULT_001 Cultivation Foundation (wuxia-genre-specific; defer)
+
+Drift watchpoints unchanged at 8 active.
+
+Lock RELEASED at end of this commit.
+
+---
+
 ## 2026-04-26 — FAC_001 Phase 3 cleanup (commit 3/4)
 
 - Lock continues from commit 2/4
