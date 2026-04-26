@@ -669,13 +669,150 @@ ProgressionKindDecl {
 | **PROG-D6** | Subsystem stacking (chaos-backend Contribution pattern) | V2 — multi-source stat modifier merging |
 | **PROG-D7** | Realm-stage nested hierarchy | V2 — only if flat tier list proves limiting (unlikely; chaos-backend used flat) |
 
-### §11.3 — Q3 / Q4 / Q5 / Q7 still open
+### §11.3 — Q3 LOCKED 2026-04-26 (Training triggers V1)
 
-After Q1+Q6+Q2 deep-dive, these remain pending user decision:
+| Sub | Decision |
+|---|---|
+| Q3a | V1 training sources | **Action + Time** (2 sources). Item collapses into Action with `target_match=ResourceKindMatch(Consumable)`. |
+| Q3b | C3 Mentor V1 | NO — V1+30d (PROG-D8). Requires NPC relationship + Subsystem stacking (PROG-D6). |
+| Q3c | C5 Quest V1 | NO — V2 (QST_001 dependency PROG-D14). |
+| Q3d | TrainingAmount V1 variants | **`Fixed` only V1**. Variable + Random V1+30d (PROG-D9). |
+| Q3e | TrainingCondition V1 variants | **3 V1**: `LocationMatch` + `StatusRequired` + `StatusForbidden`. ActorClassMatch + TimeWindow + RelationshipRequired V1+30d (PROG-D10/D11/D12). |
+| Q3f | Time-cultivation tick period V1 | **Day-boundary** (matches RES_001 4 V1 Generators pattern). Hourly + custom V1+30d (PROG-D13). |
+| Q3g | Item training architecture | Collapsed into Action `target_match` (saves engine surface — Use Consumable already auto-consumes via PL_005 §9.1) |
+| Q3h | ProgressionDelta event shape | EVT-T3 Derived sub-shape with 4 variants: `RawValueIncrement` (V1) / `TierAdvance` (V1) / `TierRegress` (V1+30d) / `DirectSet` (V1 author-Forge) |
+| Q3i | Action training validator location | PL_005 cascade **post-validation** — hot-path indexed by InteractionKind for O(1) lookup |
+| Q3j | Failure handling | **Silent skip** for both Action + Time when conditions unmet (consistent; no rejection) |
 
-- **Q3 — Training triggers V1** (next deep-dive — heavily coupled to PL_005 + EVT-G Generator): action-driven / time-cultivation / mentor / item-elixir / quest-V2. Defines `TrainingRuleDecl` shape.
-- **Q4 — NPC progression V1**: train (M&B) vs static (CK3) vs hybrid. Affects whether NPC writes to ActorProgression.
-- **Q5 — Skill atrophy V1**: NO atrophy V1 likely (defer V1+30d / PROG-D5).
-- **Q7 — Combat damage formula V1 vs V1+**: DF7-equivalent reads ProgressionInstance.raw_value.
+### Concrete V1 Rust shape (Q3)
 
-Q2 LOCKED unblocks Q3 (training trigger sources can specify what cascades emit ProgressionDelta now that curves are defined).
+```rust
+pub struct TrainingRuleDecl {
+    pub rule_id: TrainingRuleId,                  // diagnostic / Forge reference
+    pub source: TrainingSource,
+    pub amount: TrainingAmount,
+    pub conditions: Vec<TrainingCondition>,       // ALL must match (AND-semantic)
+}
+
+pub enum TrainingSource {
+    Action {
+        interaction_kind: InteractionKind,        // PL_005 enum
+        target_match: Option<TargetMatch>,
+        instrument_match: Option<InstrumentMatch>,
+    },
+    Time {
+        period: TickPeriod,                       // V1: DailyBoundary only
+    },
+    // V1+30d reserved: Mentor (PROG-D8) / Quest (PROG-D14)
+}
+
+pub enum TickPeriod {
+    DailyBoundary,                                // V1 active
+    // HourlyBoundary, Custom { fiction_seconds } — V1+30d (PROG-D13)
+}
+
+pub enum TargetMatch {
+    Any,
+    EntityKind(EntityType),
+    ResourceKindMatch(ResourceKind),              // for Item training (Use Consumable)
+    PlaceTypeMatch(PlaceTypeRef),
+    Specific(EntityId),
+}
+
+pub enum InstrumentMatch {
+    Any,
+    Specific(ResourceKind),                       // training Sword skill requires Sword item
+    // InstrumentClass V1+30d (PROG-D15)
+}
+
+pub enum TrainingAmount {
+    Fixed { amount: u32 },                        // V1 active
+    // Variable / Random V1+30d (PROG-D9)
+}
+
+pub enum TrainingCondition {
+    LocationMatch(PlaceTypeRef),                  // V1
+    StatusRequired(StatusFlag),                   // V1
+    StatusForbidden(StatusFlag),                  // V1 — Drunk reduces 经商
+    // ActorClassMatch / TimeWindow / RelationshipRequired V1+30d
+}
+
+// ─── ProgressionDelta event (EVT-T3 Derived sub-shape PROG_001-owned) ───
+
+pub struct ProgressionDelta {
+    pub actor_ref: ActorRef,
+    pub kind_id: ProgressionKindId,
+    pub delta_kind: ProgressionDeltaKind,
+    pub source_event_id: u64,                     // causal-ref per EVT-A6
+}
+
+pub enum ProgressionDeltaKind {
+    RawValueIncrement { amount: u32 },            // V1 — Action or Time training accrual
+    TierAdvance { from: TierIndex, to: TierIndex }, // V1 — breakthrough event (Q2)
+    TierRegress { from: TierIndex, to: TierIndex }, // V1+30d — 走火入魔 deviation (PROG-D2)
+    DirectSet { new_value: u64 },                 // V1 — author Forge override
+}
+```
+
+### Generator binding (Q3 NEW)
+
+NEW EVT-T5 Generated sub-type owned by PROG_001:
+- **`Scheduled:CultivationTick`** (day-boundary trigger via EVT-G2 FictionTimeMarker)
+
+Coordinator sequencing per EVT-G6 — PROG_001 CultivationTick is **5th and last** in day-boundary chain:
+
+1. `Scheduled:CellProduction` (RES_001)
+2. `Scheduled:NPCAutoCollect` (RES_001)
+3. `Scheduled:CellMaintenance` (RES_001)
+4. `Scheduled:HungerTick` (RES_001)
+5. **`Scheduled:CultivationTick` (PROG_001)** — last, reads end-of-day actor state (post-status-applied)
+
+Determinism per EVT-A9: RNG seed `blake3(reality_id || day_marker || "cultivation")` — deterministic for replay.
+
+### NEW cascade-trigger sub-shape (Q3)
+
+**`BreakthroughAdvance { actor_ref, kind_id, from_tier, to_tier }`** — EVT-T3 Derived cascade-trigger (mentioned earlier in Q2 §11 boundary). Emitted on tier advance for downstream consumers (NPC reaction / quest gate V2 / narrative beat V1+).
+
+### Worked examples (in §11.3 — kept brief; full examples in earlier discussion)
+
+**Tu tiên cultivation** — combines Time training (passive in cultivation_chamber) + Action training (Use spirit_pill burst) with LocationMatch condition.
+
+**Modern social** — Action training (Speak to NPC) with StatusForbidden(Drunk) condition + Q1 derives_from(INT) for rate scaling.
+
+### §11.4 — V1+ deferrals from Q3
+
+| ID | Deferral | Trigger to revisit |
+|---|---|---|
+| **PROG-D8** | TrainingSource::Mentor — NPC mentor multiplier | V1+30d (depends Subsystem stacking PROG-D6) |
+| **PROG-D9** | TrainingAmount Variable / Random | V1+30d when fairness/RNG needed |
+| **PROG-D10** | TrainingCondition::ActorClassMatch | V1+30d when class-locked training needed |
+| **PROG-D11** | TrainingCondition::FictionTimeWindow | V1+30d (full-moon-only cultivation; PROG-D4 same scope) |
+| **PROG-D12** | TrainingCondition::RelationshipRequired | V1+30d (depends NPC relationship V1+ extension) |
+| **PROG-D13** | TickPeriod::HourlyBoundary / Custom | V1+30d when finer cultivation period needed |
+| **PROG-D14** | TrainingSource::Quest | V2 (QST_001 dependency) |
+| **PROG-D15** | InstrumentMatch::InstrumentClass (broader category) | V1+30d when item categorization V1+ ships |
+
+### §11.5 — Q3 rule_ids (V1 namespace registration)
+
+`progression.*` V1 rule_ids — registered at PROG_001 DRAFT:
+
+- `progression.training.kind_unknown` — invalid kind_id reference in TrainingRuleDecl (RealityManifest validator)
+- `progression.training.rule_invalid` — malformed TrainingRuleDecl (e.g., empty TrainingRuleDecl.rule_id, or InteractionKind not in PL_005 closed set)
+- `progression.breakthrough.condition_unmet` — Forge-triggered breakthrough failed condition check
+- `progression.breakthrough.invalid_tier` — invalid tier_index for actor's current state
+- `progression.cap.exceeded` — value would exceed HardCap (Linear/Log curves)
+
+V1+ reservations:
+- `progression.atrophy.no_practice` (Q5; likely V1+30d)
+- `progression.deviation.cultivation_failed` (PROG-D2 走火入魔)
+- `progression.training.prereq_unmet` (Q3j V1+30d if action-rejection enabled — currently silent V1)
+
+### §11.6 — Q4 / Q5 / Q7 still open
+
+After Q1+Q6+Q2+Q3 deep-dive, remaining:
+
+- **Q4 — NPC progression V1** (next deep-dive; Q3 unblocks): train (M&B) vs static (CK3) vs hybrid. Q3 makes both feasible. Decides whether `Scheduled:CultivationTick` Generator iterates NPCs or only PCs.
+- **Q5 — Skill atrophy V1**: likely NO V1 (defer V1+30d / PROG-D5).
+- **Q7 — Combat damage formula V1 vs V1+**: chaos-backend damage law direct lift candidate; defines DF7-equivalent reading ProgressionInstance.raw_value.
+
+Q3 LOCKED unblocks Q4 (NPC progression behavior decision now informed by training mechanism shape).
