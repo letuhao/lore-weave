@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-04-26 — PL folder closure (commit 5/8): PL_005c Phase 3 cleanup (Stage 3.5 group inserted in §1.1 common chain + §1.2 timing refresh + §3.1 Strike pre-condition + §6.1 stage allocation)
+
+- **Lock continues** from commit 1
+- **Files modified within `_boundaries/`:** none (PL_005c Phase 3 is internal documentation alignment with already-locked Stage 3.5 boundary; no new aggregate or namespace registration)
+- **PL_005c Phase 3 findings applied:**
+  - S1.1 §1.1 common chain — Stage 3.5 group with 4 sub-stages (entity_affordance EF_001 · place_structural PF_001 · map_layout MAP_001 · cell_scene CSC_001) inserted between Stage 3 A6 sanitize and Stage 4 lex_check; per-kind applicability rules per Stage 3.5 sub-stage; canonical reject namespaces noted (entity.lifecycle_dead, place.connection_target_unknown, map.missing_layout_decl, csc.actor_on_non_walkable, lex.ability_forbidden, interaction.* PL_005-owned at Stage 7)
+  - S1.2 §1.2 timing summary — target-dead/target-absent rejects MOVED from Stage 7 (world-rule physics) to Stage 3.5.a (entity_affordance); per-kind "most-likely-reject" column updated for all 5 kinds
+  - S2.1 §3.1 Strike Lethal pre-condition — Stage 3.5.a target Existing (Alive) gates BEFORE Stage 7 physics derivation; eliminates Stage 7 race re-deriving MortalityTransition for already-Dying targets
+  - S2.2 §6.1 failure scenarios — "Validator stage 0-9 fail" reworded "Validator stage 0-3.5-9 fail" with per-stage namespace allocation (3.5.a→entity.* / 3.5.b→place.* / 3.5.c→map.* / 3.5.d→csc.* / 4→lex.* / 7 PL_005→interaction.*)
+  - S2.3 §10 cross-refs reorganized into 4 categorized blocks (foundation tier / play-loop substrate / NPC+world-authoring / event model + boundaries) — added EF/PF/MAP/CSC/PL_006/Stage 3.5 boundary
+- §1.1 also added: post-commit side-effects entry for actor_status (PL_006) — Use:wine outcome migrates from legacy pc_stats_v1_stub.status_flags to actor_status aggregate
+
+---
+
 ## 2026-04-26 — PL folder closure (commit 4/8): PL_005b closure pass → CANDIDATE-LOCK
 
 - **Lock continues** from commit 1

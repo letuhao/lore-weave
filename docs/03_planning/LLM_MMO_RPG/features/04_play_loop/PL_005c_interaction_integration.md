@@ -38,12 +38,36 @@ incoming Interaction:<Kind> candidate (from EVT-T6 Proposal validation OR direct
    ├─► narrator_text + utterance.raw_text scanned for jailbreak patterns
    └─► Speak Whisper: extra audit-log per privacy V1+
    │
-[stage 4] ★ lex_check ★ (WA_001) — KIND-SPECIFIC SEVERITY
+[stage 3.5] ★ STRUCTURAL VALIDATORS GROUP ★ (foundation tier; fail-fast common-case-first per EVT-V alignment review 2026-04-26 inserted between A6 sanitize and lex_check; preserves locked LX-D5 numbering at Stage 4)
+   │
+   [stage 3.5.a] entity_affordance (EF_001) — applicability: ANY Interaction kind with entity targets
+   │  ├─► Speak: each Actor target lifecycle Existing + listening affordance
+   │  ├─► Strike: direct_target lifecycle Existing + Strikable affordance
+   │  │           (target Mortality≠Alive → REJECTS HERE with `entity.lifecycle_dead`,
+   │  │            NOT at stage 7 — pre-empts physics derivation for already-dead targets)
+   │  ├─► Give: recipient lifecycle Existing + Acceptable affordance
+   │  ├─► Examine: Actor/Item targets affordance Examinable; SKIPPED for Place + MapNode targets
+   │  └─► Use: direct_target Usable affordance; tool referenced by agent (V1 placeholder via inventory check)
+   │
+   [stage 3.5.b] place_structural (PF_001) — applicability: ANY Interaction with same-cell invariant V1
+   │  ├─► Speak/Strike/Give/Use: assert agent + targets in same cell
+   │  │                          (cross-cell reject `place.connection_target_unknown`)
+   │  └─► Examine: REQUIRED for ExamineTarget::Place (StructuralState ≠ Destroyed; reject `place.invalid_structural_transition`)
+   │
+   [stage 3.5.c] map_layout (MAP_001) — applicability: Travel-related events + ExamineTarget::MapNode
+   │  └─► Examine MapNode: assert ChannelId + ChannelTier present in map_layout aggregate
+   │                        (reject `map.missing_layout_decl` if author content missing)
+   │
+   [stage 3.5.d] cell_scene (CSC_001) — applicability: write events modifying cell state
+   │  ├─► Strike: target on walkable tile per Layer 1 skeleton (V1+ refinement; V1 minimal)
+   │  └─► Use: target on placeable tile when applicable (V1 minimal)
+   │
+[stage 4] ★ lex_check ★ (WA_001) — KIND-SPECIFIC SEVERITY (assumes Stage 3.5 passed)
    ├─► Speak: no-op (Speak mundane in V1 realities)
    ├─► Strike: check StrikeKind axiom-allowed in this reality (Slash with sword OK; firearm in Wuxia REJECTS)
    ├─► Give: no-op (Give mundane)
    ├─► Examine: no-op (Examine mundane)
-   ├─► Use: ★ CRITICAL ★ — item × reality compatibility per LexConfig.axioms; e.g. spell scroll in Reality 2 sci-fi REJECTS with `interaction.use.lex_forbidden`
+   ├─► Use: ★ CRITICAL ★ — item × reality compatibility per LexConfig.axioms; e.g. spell scroll in Reality 2 sci-fi REJECTS with `lex.ability_forbidden`
    │
 [stage 5] ★ heresy_check ★ (WA_002 — V1+ contamination)
    └─► Currently no-op for V1 Interaction; V2+ contamination budget tracking on cross-reality items
@@ -78,21 +102,24 @@ incoming Interaction:<Kind> candidate (from EVT-T6 Proposal validation OR direct
    ├─► For each entry in actual_outputs, emit EVT-T3 Derived via Aggregate-Owner role:
    │     ├─► npc_pc_relationship_projection delta → NPC_001 owner-service emits
    │     ├─► pc_mortality_state transition → PCS_001 owner-service emits
-   │     ├─► pc_stats_v1_stub HpDelta or StatusFlagDelta → PCS_001 owner-service emits
+   │     ├─► pc_stats_v1_stub HpDelta → PCS_001 owner-service emits
+   │     ├─► actor_status ApplyStatus / DispelStatus → PL_006 owner-service emits (legacy pc_stats_v1_stub.status_flags path migrated to actor_status per PL_006 §11)
    │     └─► oracle_audit_log entry → DP-internal / 05_llm_safety A3 owner emits
    ├─► Each Derived event carries causal_refs = [Submitted event_id]
    └─► Side-effect failure does NOT roll back parent (per §6 below)
 ```
 
-### 1.2 Kind-specific Validation timing summary
+### 1.2 Kind-specific Validation timing summary (Phase 3 cleanup 2026-04-26)
 
 | Kind | Most-likely-reject stage | Primary actual_outputs source |
 |---|---|---|
-| **Speak** | stage 8 (canon-drift flag, but NOT hard-reject) OR stage 0 (empty utterance) | A6 detector populates canon_drift_flags |
-| **Strike** | stage 4 (Lex axiom) OR stage 7 (target Mortality≠Alive) | physics: HpDelta clamped + MortalityTransition |
-| **Give** | stage 7 (recipient refused via opinion threshold) | opinion delta calculation |
-| **Examine** | stage 0 (target_not_in_cell) OR stage 7 (target_not_visible — V1+ stealth) | Oracle query |
-| **Use** | **stage 4 (Lex CRITICAL)** OR stage 7 (target incompatible) | per-item effect (Lex-derived) |
+| **Speak** | stage 3.5.b (target_not_in_cell → `place.connection_target_unknown`) OR stage 8 (canon-drift flag, NOT hard-reject) OR stage 0 (empty utterance schema-level) | A6 detector populates canon_drift_flags |
+| **Strike** | **stage 3.5.a (target Mortality≠Alive → `entity.lifecycle_dead`)** OR stage 4 (Lex axiom forbidden) OR stage 7 (clamped HpDelta + MortalityTransition derivation) | physics: HpDelta clamped + MortalityTransition (assumes target Alive post-Stage 3.5.a) |
+| **Give** | stage 3.5.a (recipient Dead → `entity.lifecycle_dead`) OR stage 3.5.b (target_not_in_cell) OR stage 7 (recipient refused via opinion threshold → `interaction.target_invalid`) | opinion delta calculation |
+| **Examine** | stage 3.5.b (Place destroyed → `place.invalid_structural_transition`) OR stage 3.5.c (MapNode tier missing → `map.missing_layout_decl`) OR stage 7 (V1+ stealth target_not_visible) | Oracle query |
+| **Use** | **stage 4 (Lex CRITICAL → `lex.ability_forbidden`)** OR stage 3.5.a (target affordance_missing) OR stage 7 (tool_unavailable / target_invalid PL_005-owned) | per-item effect (Lex-derived) |
+
+**Phase 3 cleanup note:** target-dead / target-absent rejects MOVED from stage 7 (world-rule physics) to stage 3.5.a (entity_affordance) per EVT-V slot alignment review. Stage 7 now assumes targets passed Stage 3.5 (target Alive + same-cell + structural OK + scene OK).
 
 ---
 
@@ -143,6 +170,8 @@ If PL_005 Interaction rejects (per EVT-V4 — committed via t2_write with outcom
 When Interaction:Strike actual_outputs contain MortalityTransition (when target hp would reach 0), PCS_001 owner-service consumes the Derived event and updates `pc_mortality_state` aggregate. Per [PCS_001 brief §S4](../06_pc_systems/00_AGENT_BRIEF.md), the state machine is closed-set: `Alive` / `Dying { will_respawn_at_fiction_time, spawn_cell }` / `Dead { died_at_turn, died_at_cell }` / `Ghost { died_at_turn, died_at_cell }`.
 
 ### 3.1 Strike Lethal sequence (mortality flow)
+
+**Pre-condition (Stage 3.5.a)**: target lifecycle = Existing (Alive). If target already Dead/Dying/Ghost, Stage 3.5.a entity_affordance REJECTS with `entity.lifecycle_dead` BEFORE this sequence runs — physics derivation is never re-invoked for already-dead targets per Phase 3 cleanup ordering. This eliminates the prior race where Stage 7 would re-derive MortalityTransition for an actor already mid-Dying.
 
 ```
 1. PL_005 Interaction:Strike commits with actual_outputs = [
@@ -287,7 +316,7 @@ Per [EVT-V7 dead-letter framework](../../07_event_model/05_validator_pipeline.md
 
 | Failure point | Handling |
 |---|---|
-| **Validator stage 0-9 fail** | Submitted commit with `outcome=Rejected` per EVT-V4; turn_number unchanged; PC sees soft-fail UX; no side-effects fire (parent NEVER committed Accepted) |
+| **Validator stage 0-3.5-9 fail** (Stage 0/1/2/3 framework + Stage 3.5.a-d structural + Stage 4 lex + Stage 5/6/7/8/9 framework) | Submitted commit with `outcome=Rejected` per EVT-V4; turn_number unchanged; PC sees soft-fail UX; no side-effects fire (parent NEVER committed Accepted). Reject reason carries owning namespace: Stage 3.5.a → `entity.*`, Stage 3.5.b → `place.*`, Stage 3.5.c → `map.*`, Stage 3.5.d → `csc.*`, Stage 4 → `lex.*`, Stage 7 PL_005-owned → `interaction.*`. |
 | **dp::advance_turn fails (DP-internal error mid-commit)** | Idempotency cache (PL_001 §14) returns existing event_id on retry; if first commit truly failed, retry succeeds; if first commit partially completed, DP-Ch11 channel_event_id allocation prevents duplicate |
 | **First Derived event commits but second fails** | Parent Submitted T1 committed Accepted; T2 (HpDelta) committed; T3 (MortalityTransition) failed → dead-letter (EVT-V7); audit-log SEV2; **state inconsistency window** until operator reconciles |
 | **All Derived events fail (network outage to Aggregate-Owner)** | Parent T1 committed; all Deriveds dead-lettered; UI sees parent but state not reflected in projections; **operator-driven reconcile via admin-cli** (V1+ admin command) |
@@ -406,24 +435,36 @@ Beyond [PL_005 §17](PL_005_interaction.md#17-open-questions-deferred--landing-p
 
 ## §10 Cross-references
 
-- [`PL_005 Interaction`](PL_005_interaction.md) — root file (§1-§19): conceptual layer + 4-role pattern + 5 V1 kind list + sequences
-- [`PL_005b Interaction contracts`](PL_005b_interaction_contracts.md) — contracts (§1-§12): per-kind payload schemas + OutputDecl taxonomy + acceptance scenarios
+**Foundation tier (Stage 3.5 group + ActorId source — Phase 3 added):**
+- [`EF_001 Entity Foundation`](../00_entity/EF_001_entity_foundation.md) — entity_affordance Stage 3.5.a validator owner; `entity.lifecycle_dead` canonical reject for target-dead path; ActorId/EntityId source
+- [`PF_001 Place Foundation`](../00_place/PF_001_place_foundation.md) — place_structural Stage 3.5.b validator owner; PlaceId(ChannelId) newtype; HolderCascade on PlaceDestroyed
+- [`MAP_001 Map Foundation`](../00_map/MAP_001_map_foundation.md) — map_layout Stage 3.5.c validator owner; ExamineTarget::MapNode tier validation
+- [`CSC_001 Cell Scene Composition`](../00_cell_scene/CSC_001_cell_scene_composition.md) — cell_scene Stage 3.5.d validator owner; Layer 4 narration consumes Speak narrator_text
+
+**Play-loop substrate:**
+- [`PL_005 Interaction`](PL_005_interaction.md) — root file (§1-§19): conceptual layer + 4-role pattern + 5 V1 kind list + ExamineTarget enum + sequences
+- [`PL_005b Interaction contracts`](PL_005b_interaction_contracts.md) — contracts (§1-§12): per-kind payload schemas + OutputDecl taxonomy + Stage 3.5 sub-stage applicability matrix (§8.1) + namespace allocation note (§9.0) + acceptance scenarios
+- [`PL_001 Continuum`](PL_001_continuum.md) §3.6 + §14 — entity_binding + idempotency cache
+- [`PL_001b lifecycle`](PL_001b_continuum_lifecycle.md) §15 — rejection-path + idempotency
+- [`PL_002 Grammar`](PL_002_command_grammar.md) — command-driven Interactions
+- [`PL_006 Status Effects`](PL_006_status_effects.md) — actor_status aggregate apply/dispel via PL_005 OutputDecl
+
+**NPC + world-authoring consumers:**
+- [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum (sourced from EF_001) + NpcOpinion::for_pc
+- [`NPC_002 Chorus`](../05_npc_systems/NPC_002_chorus.md) §6 + §11 — priority algorithm + multi-NPC reaction batching
+- [`WA_001 Lex`](../02_world_authoring/WA_001_lex.md) — validator slot at Stage 4; CRITICAL for Use kind
+- [`WA_006 Mortality`](../02_world_authoring/WA_006_mortality.md) — mortality_config input to Strike outcomes
+- [`PCS_001 brief`](../06_pc_systems/00_AGENT_BRIEF.md) §S4-S5 — pc_mortality_state + pc_stats_v1_stub aggregates
+
+**Event model + boundaries:**
 - [`07_event_model/02_invariants.md`](../../07_event_model/02_invariants.md) EVT-A1..A12 — taxonomy + extensibility + RNG determinism (A9) + universal SSOT (A10)
 - [`07_event_model/05_validator_pipeline.md`](../../07_event_model/05_validator_pipeline.md) EVT-V1..V7 — pipeline framework (V4 rejection-path; V6 post-commit side-effects; V7 dead-letter)
 - [`07_event_model/08_scheduled_events.md`](../../07_event_model/08_scheduled_events.md) EVT-L11 — phasing for V1+30d scheduler (Respawn beat)
 - [`07_event_model/11_schema_versioning.md`](../../07_event_model/11_schema_versioning.md) EVT-S5 — replay-test CI gate
 - [`07_event_model/12_generation_framework.md`](../../07_event_model/12_generation_framework.md) EVT-G1..G6 — Generator Framework (G2 trigger sources / G3 cycle / G4 capacity / G5 coordinator)
 - [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md) — sub-type ownership + aggregate ownership SSOT
-- [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `interaction.*` rule_id namespace
-- [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) — current validator stage ordering
-- [`PL_001 Continuum`](PL_001_continuum.md) §3.6 + §14 — entity_binding + idempotency cache
-- [`PL_001b lifecycle`](PL_001b_continuum_lifecycle.md) §15 — rejection-path + idempotency
-- [`PL_002 Grammar`](PL_002_command_grammar.md) — command-driven Interactions
-- [`NPC_001 Cast`](../05_npc_systems/NPC_001_cast.md) — ActorId enum + NpcOpinion::for_pc
-- [`NPC_002 Chorus`](../05_npc_systems/NPC_002_chorus.md) §6 + §11 — priority algorithm + multi-NPC reaction batching
-- [`WA_001 Lex`](../02_world_authoring/WA_001_lex.md) — validator slot at stage 4; CRITICAL for Use kind
-- [`WA_006 Mortality`](../02_world_authoring/WA_006_mortality.md) — mortality_config input to Strike outcomes
-- [`PCS_001 brief`](../06_pc_systems/00_AGENT_BRIEF.md) §S4-S5 — pc_mortality_state + pc_stats_v1_stub aggregates
+- [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 — `interaction.*` V1 rule_id enumeration (5 root rules)
+- [`_boundaries/03_validator_pipeline_slots.md`](../../_boundaries/03_validator_pipeline_slots.md) — Stage 3.5 group + applicability matrix + soft-override mechanism
 - [`SPIKE_01`](../_spikes/SPIKE_01_two_sessions_reality_time.md) turns 5 + 8 — replay-test corpus
 
 ---
@@ -439,19 +480,26 @@ PL_005b (contracts):
 - [x] §1-§12 — see PL_005b §12 readiness checklist
 
 PL_005c (this file, integration):
-- [x] §1 Validator pipeline integration per kind (full chain detail)
+- [x] §1 Validator pipeline integration per kind (full chain detail) — Phase 3: §1.1 Stage 3.5 group inserted between Stage 3 A6 sanitize and Stage 4 lex_check (4 sub-stages with applicability rules); §1.2 timing summary updated — target_dead/target_absent move from Stage 7 → Stage 3.5.a
 - [x] §2 NPC_002 Chorus consumption flow (sequence + cascade depth + rejected-Interaction handling)
-- [x] §3 PCS_001 mortality side-effect flow (Strike Lethal → MortalityTransition → state machine + V1 NPC placeholder + V1+ Respawn)
+- [x] §3 PCS_001 mortality side-effect flow — Phase 3: §3.1 added pre-condition note (Stage 3.5.a target Existing assumed; eliminates Stage 7 re-derivation race for already-dead targets)
 - [x] §4 NPC_001 opinion drift flow (sequence + per-kind opinion delta calibration + read-in-subsequent-reactions)
 - [x] §5 V1+ Generator triggers (4 example Generators + capacity governance + cycle detection)
-- [x] §6 Failure compensation (5 failure scenarios + operator reconcile + idempotency boundary)
+- [x] §6 Failure compensation — Phase 3: §6.1 stage 0-9 → "stage 0-3.5-9" rewording with per-stage namespace allocation
 - [x] §7 Replay determinism (5-layer scope table + replay-test CI corpus suggestions)
 - [x] §8 V1 minimum implementation scope (vertical-slice 13 testable scenarios + deferred to consumer features + V1 hardcoded simplifications + acceptance gate)
 - [x] §9 Phase 3 deferrals INT-INT-D1..D8 (8 items)
-- [x] §10 Cross-references
+- [x] §10 Cross-references — Phase 3: foundation tier EF/PF/MAP/CSC + Stage 3.5 boundary added; categorized
 - [x] §11 Readiness (this section)
 
-**Status transition:** PL_005 + PL_005b + PL_005c all DRAFT 2026-04-26 → **CANDIDATE-LOCK** when 13 V1-testable acceptance scenarios pass integration tests against SPIKE_01 fixtures → **LOCK** when V1+ scenarios pass after consumer features ship.
+**Phase 3 cleanup applied 2026-04-26 (PL folder closure):**
+- S1.1 §1.1 common chain — Stage 3.5 group inserted (4 sub-stages: entity_affordance / place_structural / map_layout / cell_scene) per EVT-V slot alignment review; per-kind applicability documented in chain
+- S1.2 §1.2 timing summary — target-dead / target-absent rejects moved from Stage 7 to Stage 3.5.a; new "most-likely-reject" stage column updated for all 5 kinds
+- S2.1 §3.1 Strike Lethal pre-condition note — Stage 3.5.a entity_affordance gates target Existing BEFORE Stage 7 physics derivation (eliminates duplicate MortalityTransition derivation for mid-Dying targets)
+- S2.2 §6.1 failure scenarios — Stage 0-9 wording extended to "Stage 0-3.5-9" with per-stage namespace ownership
+- S2.3 §10 cross-refs — foundation tier EF/PF/MAP/CSC + Stage 3.5 boundary + PL_006 added (categorized into 4 blocks)
+
+**Status transition:** PL_005 + PL_005b + PL_005c all DRAFT 2026-04-26 → **CANDIDATE-LOCK 2026-04-26** (Phase 3 + closure pass; PL_005 + PL_005b already CANDIDATE-LOCK; PL_005c promotes in next commit) → **LOCK** when 13 V1-testable acceptance scenarios pass integration tests against SPIKE_01 fixtures → V1+ scenarios pass after consumer features ship.
 
 **Total acceptance scenarios:** 22 (6 PL_005 + 16 PL_005b). V1-testable: 13. V1+ deferred: 9.
 
