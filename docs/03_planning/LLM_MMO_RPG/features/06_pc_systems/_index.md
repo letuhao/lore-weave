@@ -4,9 +4,9 @@
 > **Catalog reference:** [`catalog/cat_06_PCS_pc_systems.md`](../../catalog/cat_06_PCS_pc_systems.md) (owns `PCS-*` stable-ID namespace)
 > **Purpose:** PC-specific substrate post-ACT_001 unification — `pc_user_binding` (user_id + current_session + body_memory xuyên không) + `pc_mortality_state` (handoff from WA_006) + (V1+ pc_stats_v1_stub TBD) + `PcXuyenKhongCompleted` event integrating TDIL_001 clock-split. Builds on ACT_001 stable base for IDENTITY (actor_core absorbs persona + canonical_traits + flexible_state) + bilateral opinion (actor_actor_opinion) + session memory (actor_session_memory).
 
-**Active:** PCS_001 — **PC Substrate** (CONCEPT 2026-04-27 — Phase 0 commit 1/4 this commit; main session post-ACT_001+TDIL_001 reconciliation)
+**Active:** PCS_001 — **PC Substrate** (Q-LOCKED 2026-04-27 — Q1-Q10 ALL LOCKED via 6-batch deep-dive; 1 REFINEMENT on Q5 + 1 RENAME PcXuyenKhongCompleted → PcTransmigrationCompleted; DRAFT 2/4 next)
 
-**Folder closure status:** **OPEN** — Phase 0 commit 1/4 (this commit; concept-notes + Q1-Q10 + reference survey) → Q-deep-dive batches → commit 2/4 DRAFT + boundary register → commit 3/4 Phase 3 cleanup → commit 4/4 closure + lock release.
+**Folder closure status:** **OPEN** — Phase 0 (3c76f33) → commit 1/4 Q-LOCKED + rename (this commit) → commit 2/4 DRAFT + boundary register → commit 3/4 Phase 3 cleanup → commit 4/4 closure + lock release.
 
 **Origin signal:**
 - Brief commissioned 2026-04-25 (`00_AGENT_BRIEF.md`) for parallel agent design

@@ -1,10 +1,10 @@
 # PCS_001 PC Substrate — Concept Notes
 
-> **Status:** CONCEPT 2026-04-27 — captures user framing + post-ACT_001+TDIL_001 reconciliation (PCS brief 8 sections audited; 2 ABSORBED by ACT_001, 1 POSSIBLY SUPERSEDED by PROG_001, 5 still PCS_001 V1 scope) + Q1-Q10 critical scope questions PENDING. Awaits user Q-deep-dive before DRAFT promotion.
+> **Status:** Q1-Q10 LOCKED 2026-04-27 — user "approve" across 6 deep-dive batches (Batch 1 Q1+Q2 / Batch 2 Q3+Q4 / Batch 3 Q5+Q6 / Batch 4 Q7 / Batch 5 Q8+Q9 / Batch 6 Q10); 1 REFINEMENT noted (Q5 sub-option D — full schema with native_skills/motor_skills V1 empty Vec reserved); 1 RENAME (PcTransmigrationCompleted → PcTransmigrationCompleted per user direction; xuyên không Vietnamese term preserved as parenthetical narrative annotation). DRAFT promotion ready when `_boundaries/_LOCK.md` free.
 >
-> **Purpose:** Capture brainstorm + reconciliation analysis + Q1-Q10 for PCS_001 PC Substrate. The seed material for the eventual `PCS_001_pc_substrate.md` design.
+> **Purpose:** Capture brainstorm + reconciliation analysis + Q1-Q10 LOCKED for PCS_001 PC Substrate. The seed material for the eventual `PCS_001_pc_substrate.md` design.
 >
-> **Promotion gate:** When (a) Q1-Q10 LOCKED via deep-dive discussion, (b) `_boundaries/_LOCK.md` free → main session drafts `PCS_001_pc_substrate.md` with locked V1 scope, registers ownership, creates catalog file.
+> **Promotion gate:** ✓ Q1-Q10 LOCKED via 6-batch deep-dive 2026-04-27. → Next commit (2/4): main session drafts `PCS_001_pc_substrate.md` with locked V1 scope, registers ownership, creates catalog file when `_boundaries/_LOCK.md` free.
 
 ---
 
@@ -73,7 +73,7 @@ SPIKE_01 Lý Minh PC scenarios:
 - **Schemas**:
   - PcBodyMemory (SoulLayer + BodyLayer + LeakagePolicy) — Q5+Q6 deep-dive
 - **Events**:
-  - 1 EVT-T1 PcXuyenKhongCompleted (xuyên không transition; integrates TDIL_001 clock-split)
+  - 1 EVT-T1 PcTransmigrationCompleted (xuyên không transition; integrates TDIL_001 clock-split)
   - 4 EVT-T8 Forge sub-shapes (Forge:RegisterPc + Forge:EditPcUserBinding + Forge:EditBodyMemory + Forge:EditPcMortalityState)
 - **Namespace**: `pc.*` (~6-8 V1 reject rules)
 - **RealityManifest extension**: PC creation pathway (canonical seed + V1+ runtime login + V1 Forge admin)
@@ -97,9 +97,40 @@ This explains the scope reduction (5 → 3 aggregates): persona (S2) lifted to L
 
 ---
 
-## §4 — Q1-Q10 critical scope questions (PENDING — for user deep-dive)
+## §4 — Q1-Q10 critical scope questions — ✅ ALL LOCKED 2026-04-27 (user "approve" across 6 deep-dive batches; 1 REFINEMENT + 1 RENAME)
 
-These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT promotion.
+User confirmed "approve" on all 10 Q-decisions 2026-04-27 across 6 deep-dive batches:
+- Batch 1: Q1 + Q2 (identity primitives)
+- Batch 2: Q3 + Q4 (creation pathway + stats stub deferral)
+- Batch 3: Q5 + Q6 (body-memory xuyên không THE NOVEL DESIGN)
+- Batch 4: Q7 (mortality 4-state)
+- Batch 5: Q8 + Q9 (universal substrate discipline + multi-PC cap)
+- Batch 6: Q10 (TDIL_001 clock-split integration)
+
+**1 REFINEMENT** noted:
+- Q5 sub-option D (full schema with native_skills/motor_skills V1 empty Vec reserved); refined from initial (A) full-per-brief to be V1-minimal-but-V1+-ready
+
+**1 RENAME** per user direction 2026-04-27:
+- `PcXuyenKhongCompleted` → `PcTransmigrationCompleted` (English type name)
+- `XuyenKhongReason` → `TransmigrationReason`
+- Wuxia Vietnamese term "xuyên không" preserved as parenthetical narrative annotation in comments/discussion (not in type names)
+
+Locked decisions below; PCS_001 DRAFT promotion ready when `_LOCK.md` free.
+
+### Q1-Q10 LOCKED summary (2026-04-27)
+
+| Q | LOCKED decision | Note |
+|---|---|---|
+| **Q1** | (A) `pub struct PcId(pub Uuid)` mirror NpcId pattern + DP-A12 module-private constructor | — |
+| **Q2** | (A) Single `pc_user_binding` aggregate (user_id + current_session + body_memory + last_login_at_turn + last_xuyenkhong_at_turn timestamps) | V1+ split if NPC body-substitution PCS-D5 ships |
+| **Q3** | (C) Canonical seed + Forge admin V1 (`Forge:RegisterPc` + `Forge:BindPcUser`); runtime login flow V1+ via PO_001 (PCS-D1) | — |
+| **Q4** | (B) Defer `pc_stats_v1_stub` V1+ — PROG_001 `actor_progression` + RES_001 `vital_pool` + PL_006 `actor_status` cover stats | PCS_001 V1 = 2 aggregates (was brief 3) |
+| **Q5** | ⚠ REFINEMENT (D) Full PcBodyMemory schema V1 with native_skills/motor_skills V1 empty Vec reserved (V1+ A6 detector populates) | Refined from (A); V1-minimal but V1+ ready |
+| **Q6** | (A) Full 4-variant LeakagePolicy V1 (NoLeakage / SoulPrimary { body_blurts_threshold } / BodyPrimary { soul_slips_threshold } / Balanced) | Wuxia narrative full coverage |
+| **Q7** | (A) Full 4-state pc_mortality_state V1 (Alive / Dying / Dead / Ghost); V1 active death transitions Alive→{Dead, Dying, Ghost}; V1+ Respawn flow + Resurrection deferred PCS-D2 | Dying state V1 FROZEN (no exit until V1+); reject `pc.respawn_unsupported_v1` if mortality_config = RespawnAtLocation V1 |
+| **Q8** | (A) V1 strict single-reality; V2+ Heresy migration via WA_002 (universal substrate discipline) | xuyên không origin_world_ref is GlossaryEntityId, not RealityId |
+| **Q9** | (C) V1 cap=1 PC per reality via row count Stage 0 schema validator; V1+ relax via single-line validator change reading RealityManifest.max_pc_count Optional (PCS-D3); FAC_001 Q2 REVISION pattern | — |
+| **Q10** | (A) Single event `PcTransmigrationCompleted` (renamed from PcXuyenKhongCompleted per user direction) — PCS_001 EVT-T1 Submitted owns; TDIL_001 actor_clocks subscribes per TDIL §10 clock-split contract; canonical seed Lý Minh declares pre-split state (no transition event V1); cross-feature integration map locked across TDIL + RES + EF + ACT + WA_006 | Schema active V1; runtime emission V1+ deferred PCS-D-N |
 
 ### Q1 — `PcId` newtype shape?
 
@@ -202,14 +233,14 @@ These determine V1 scope. NOT yet locked. User confirmation needed before DRAFT 
 
 ### Q10 — Xuyên không TDIL_001 clock-split integration?
 
-**Question:** PCS_001 §S8 PcXuyenKhongCompleted event triggers TDIL_001 clock-split (soul_clock follows soul; body_clock follows body; actor_clock=0 reset)?
+**Question:** PCS_001 §S8 PcTransmigrationCompleted event triggers TDIL_001 clock-split (soul_clock follows soul; body_clock follows body; actor_clock=0 reset)?
 
 **Options:**
-- (A) PcXuyenKhongCompleted EVT-T1 emits → TDIL_001 actor_clocks aggregate consumes → splits clocks per TDIL §10
+- (A) PcTransmigrationCompleted EVT-T1 emits → TDIL_001 actor_clocks aggregate consumes → splits clocks per TDIL §10
 - (B) PCS_001 directly writes actor_clocks (cross-aggregate write at xuyên không event)
-- (C) Two-stage event flow — PCS_001 emits PcXuyenKhongCompleted → TDIL_001 emits ActorClockSplit follow-up event → actor_clocks updated
+- (C) Two-stage event flow — PCS_001 emits PcTransmigrationCompleted → TDIL_001 emits ActorClockSplit follow-up event → actor_clocks updated
 
-**Recommendation:** (A) Single event PcXuyenKhongCompleted; TDIL_001 actor_clocks subscribes to EVT-T1 and updates per TDIL §10 contract. Single event simpler; aggregate-owner (TDIL) writes its own aggregate.
+**Recommendation:** (A) Single event PcTransmigrationCompleted; TDIL_001 actor_clocks subscribes to EVT-T1 and updates per TDIL §10 contract. Single event simpler; aggregate-owner (TDIL) writes its own aggregate.
 
 ---
 
@@ -226,11 +257,11 @@ When PCS_001 DRAFT lands, these boundaries need careful handling:
 | RES_001 Resource | DRAFT | (none) | vital_pool + resource_inventory | PC consumes vital_pool HP via PROG_001; PC inventory follows actor_id |
 | PROG_001 Progression | DRAFT | (none) | actor_progression | PC consumes actor_progression for stats; supersedes pc_stats_v1_stub V1+ per Q4 |
 | PL_006 Status | CANDIDATE-LOCK | (none) | actor_status | PC status_flags read from actor_status (kind-agnostic per PL_006) |
-| TDIL_001 Time Dilation | DRAFT 2026-04-27 | (none) | actor_clocks (3 clocks) | PCS_001 PcXuyenKhongCompleted triggers TDIL_001 clock-split per Q10 |
+| TDIL_001 Time Dilation | DRAFT 2026-04-27 | (none) | actor_clocks (3 clocks) | PCS_001 PcTransmigrationCompleted triggers TDIL_001 clock-split per Q10 |
 | AIT_001 AI Tier | DRAFT 2026-04-27 | (none) | tier semantics | PC always Tier 0 (eager full simulation); not subject to NPC tiering |
 | auth-service | external | (none — user_id is auth-service ref) | user_id namespace | PCS_001 user_id field references auth-service identity |
 | 03_player_onboarding (PO_001) | not started | (none — PCS_001 owns PC substrate; PO_001 owns onboarding flow UI) | PC creation form UI | PO_001 V1+ feature consumes PCS_001 PC primitives |
-| 07_event_model | LOCKED | EVT-T1 Submitted sub-type (PcXuyenKhongCompleted) + EVT-T8 Administrative (4 Forge sub-shapes) | Event taxonomy | Per EVT-A11 sub-type ownership |
+| 07_event_model | LOCKED | EVT-T1 Submitted sub-type (PcTransmigrationCompleted) + EVT-T8 Administrative (4 Forge sub-shapes) | Event taxonomy | Per EVT-A11 sub-type ownership |
 | RealityManifest envelope | unowned | PC entries in canonical_actors with pc-specific fields (kind=Pc + body_memory init) | Envelope contract | Additive on CanonicalActorDecl |
 | `pc.*` rule_id namespace | not yet registered | All PC RejectReason variants | RejectReason envelope (Continuum) | Per `02_extension_contracts.md` §1.4 — register at PCS_001 DRAFT |
 | Future PO_001 Player Onboarding | not started | (none) | Onboarding UI flow | V1+ PC creation form via PO_001 consumes PCS_001 |
@@ -252,15 +283,15 @@ When references arrive:
 
 ---
 
-## §7 — V1 scope (PROVISIONAL — pending Q-deep-dive)
+## §7 — V1 scope ✅ LOCKED 2026-04-27 (post Q1-Q10 6-batch deep-dive; 1 REFINEMENT + 1 RENAME)
 
-This section will be LOCKED after Q1-Q10 confirmed. Provisional V1 scope below assuming recommendations approved as-is:
+This section LOCKED after Q1-Q10 6-batch deep-dive 2026-04-27 (user "approve" all batches). V1 scope finalized per locked decisions:
 
 ### V1 aggregates (2; potentially 3 per Q4)
 
 1. **`pc_user_binding`** (T2/Reality, sparse PC-only)
    - pc_id (PcId; FK to actor_core via ActorId::Pc) + user_id (Option<UserId>; auth-service ref) + current_session (Option<SessionId>) + body_memory (PcBodyMemory)
-   - **Mutable** via canonical seed (PcRegistered) + Forge admin (Forge:EditPcUserBinding + Forge:EditBodyMemory) + runtime login/logout (V1+ AI-controls-PC-offline) + xuyên không event (PcXuyenKhongCompleted)
+   - **Mutable** via canonical seed (PcRegistered) + Forge admin (Forge:EditPcUserBinding + Forge:EditBodyMemory) + runtime login/logout (V1+ AI-controls-PC-offline) + xuyên không event (PcTransmigrationCompleted)
    - Synthetic actors forbidden V1
    - Cross-reality forbidden V1 (V2+ Heresy)
 
@@ -309,7 +340,7 @@ pub enum LeakagePolicy {                              // (Q6 PENDING — full 4-
 | PC user-binding edited | **EVT-T8 Administrative** | `Forge:EditPcUserBinding { pc_id, edit_kind, before, after, reason }` | Forge | ✓ V1 |
 | PC body memory edited | **EVT-T8 Administrative** | `Forge:EditBodyMemory { pc_id, edit_kind, before, after, reason }` | Forge | ✓ V1 |
 | PC mortality state edited | **EVT-T8 Administrative** | `Forge:EditPcMortalityState { pc_id, edit_kind, before, after, reason }` | Forge | ✓ V1 |
-| PC xuyên không completed | **EVT-T1 Submitted** | `PcXuyenKhongCompleted { old_actor_id, new_pc_id, body_actor_id, soul_origin_ref, ... }` | World-service (xuyên không transition) | ✓ V1 (per Q10 LOCKED) |
+| PC xuyên không completed | **EVT-T1 Submitted** | `PcTransmigrationCompleted { old_actor_id, new_pc_id, body_actor_id, soul_origin_ref, ... }` | World-service (xuyên không transition) | ✓ V1 (per Q10 LOCKED) |
 | PC mortality transition (V1 events from WA_006) | **EVT-T3 Derived** | `aggregate_type=pc_mortality_state` + delta_kinds (DyingTransition / DeathTransition / GhostTransition) | Aggregate-Owner (PCS_001 owner-service); WA_006 mortality_config consumes | ✓ V1 |
 | PC respawn transition | **EVT-T3 Derived** | `delta_kind=RespawnTransition` | Aggregate-Owner | V1+ (Q7 RespawnFlow) |
 | PC offline session change (V1+) | **EVT-T3 Derived** | `delta_kind=SessionChange` | Aggregate-Owner | V1+ (AI-controls-PC-offline ACT-D1) |
@@ -320,7 +351,7 @@ V1 rules:
 1. `pc.unknown_pc_id` — Stage 0 schema (pc_id not in pc_user_binding)
 2. `pc.synthetic_actor_forbidden` — Stage 0 schema (consistent universal discipline)
 3. `pc.cross_reality_mismatch` — Stage 0 schema (V2+ Heresy reservation)
-4. `pc.invalid_xuyenkhong_combination` — Stage 0 schema (soul/body inconsistency at PcXuyenKhongCompleted; e.g., soul knowledge_tags overlap body knowledge_tags inconsistently)
+4. `pc.invalid_transmigration_combination` — Stage 0 schema (soul/body inconsistency at PcTransmigrationCompleted; e.g., soul knowledge_tags overlap body knowledge_tags inconsistently)
 5. `pc.user_id_already_bound` — Stage 0 schema (one user_id can't bind to multi PCs V1 cap=1)
 6. `pc.mortality_invalid_transition` — Stage 0 schema (e.g., Dead → Alive without RespawnTransition)
 7. `pc.multi_pc_per_reality_forbidden_v1` — Stage 0 schema (per Q9 cap=1 V1 validator)
@@ -349,7 +380,7 @@ V1:
 - AC-PCS-6: Cross-reality PC migration rejected (`pc.cross_reality_mismatch`)
 - AC-PCS-7: Forge admin RegisterPc 3-write atomic
 - AC-PCS-8: Mortality transition Alive → Dying validated
-- AC-PCS-9: PcXuyenKhongCompleted event emit triggers TDIL_001 clock-split (soul_clock + body_clock + actor_clock=0)
+- AC-PCS-9: PcTransmigrationCompleted event emit triggers TDIL_001 clock-split (soul_clock + body_clock + actor_clock=0)
 - AC-PCS-10: PcId newtype module-private constructor enforced (DP-A12 pattern)
 
 V1+ deferred:
@@ -371,18 +402,21 @@ V1+ deferred:
 - PCS-D9: V1+ Possession pattern (temporary occupation by another soul)
 - PCS-D10: V1+ PO_001 Player Onboarding integration (UI flow consumes PCS_001 primitives)
 
-### V1 quantitative summary (provisional)
+### V1 quantitative summary ✅ LOCKED 2026-04-27
 
-- 2 PCS_001 aggregates (pc_user_binding + pc_mortality_state); Q4 may add 3rd or defer
-- 1 EVT-T1 PcXuyenKhongCompleted event sub-type
-- 4 EVT-T8 Forge sub-shapes (RegisterPc + EditPcUserBinding + EditBodyMemory + EditPcMortalityState)
-- 7 V1 reject rule_ids in `pc.*` namespace + 3 V1+ reservations
-- 2 RealityManifest CanonicalActorDecl additive fields (body_memory_init + user_id_init); both Optional
-- PcBodyMemory schema (3 nested types: SoulLayer + BodyLayer + LeakagePolicy)
-- 10 V1 AC + 4 V1+ deferred
-- 10 deferrals (PCS-D1..PCS-D10)
-- ~700-900 line DRAFT spec estimate
-- 4-commit cycle (Phase 0 this commit + DRAFT 2/4 + Phase 3 3/4 + closure+release 4/4)
+- **2 PCS_001 aggregates** (pc_user_binding + pc_mortality_state per Q4 LOCKED; pc_stats_v1_stub deferred V1+ PCS-D4)
+- **1 EVT-T4 System sub-type**: PcRegistered (canonical seed PC creation; PCS_001-owned per Q3 LOCKED)
+- **5 EVT-T8 Forge sub-shapes** (Forge:RegisterPc + Forge:BindPcUser + Forge:EditPcUserBinding + Forge:EditBodyMemory + Forge:EditPcMortalityState per Q3 LOCKED — added Forge:BindPcUser)
+- **1 EVT-T3 Derived sub-type**: pc_mortality_state delta_kinds (DeathTransition + DyingTransition + GhostTransition V1 active per Q7 LOCKED; V1+ RespawnTransition + ResurrectionTransition + GhostDispersedTransition deferred)
+- **1 EVT-T1 Submitted sub-type**: PcTransmigrationCompleted (renamed from PcXuyenKhongCompleted; schema active V1; runtime emission V1+ deferred PCS-D-N per Q10 LOCKED)
+- **7 V1 reject rule_ids** in `pc.*` namespace (unknown_pc_id + synthetic_actor_forbidden + cross_reality_mismatch + invalid_transmigration_combination + user_id_already_bound + mortality_invalid_transition + multi_pc_per_reality_forbidden_v1) + 3 V1+ reservations (runtime_login_unsupported_v1 + respawn_unsupported_v1 + body_substitution_unsupported_v1)
+- **2 RealityManifest CanonicalActorDecl additive fields**: body_memory_init Optional + user_id_init Optional (both Optional V1; populated for PC kind only V1)
+- **PcBodyMemory schema** per Q5 REFINED LOCKED: SoulLayer (origin_world_ref Optional<GlossaryEntityId> + knowledge_tags + native_skills V1 empty Vec reserved + native_language) + BodyLayer (host_body_ref + knowledge_tags + motor_skills V1 empty Vec reserved + native_language) + LeakagePolicy 4-variant per Q6 LOCKED
+- **MortalityStateValue schema** per Q7 LOCKED: 4-state (Alive / Dying { died_at_turn, died_at_cell, will_respawn_at_fiction_time, spawn_cell } / Dead { died_at_turn, died_at_cell } / Ghost { died_at_turn, died_at_cell })
+- **10 V1 AC** + 4 V1+ deferred
+- **10 deferrals** (PCS-D1..PCS-D10)
+- **~700-900 line DRAFT** spec estimate
+- **4-commit cycle** (Phase 0 3c76f33 + Q-LOCKED 1/4 this commit + DRAFT 2/4 + Phase 3 3/4 + closure+release 4/4)
 
 ---
 
@@ -412,7 +446,7 @@ Before drafting `PCS_001_pc_substrate.md`:
 10. [ ] Update `catalog/cat_06_PCS_pc_systems.md` — fill catalog entries
 11. [ ] Update `06_pc_systems/_index.md` — replace concept row with PCS_001 DRAFT row
 12. [ ] Coordinate with WA_006 closure pass extension to mark pc_mortality_state handoff RESOLVED
-13. [ ] Coordinate with TDIL_001 to confirm Q10 PcXuyenKhongCompleted clock-split contract
+13. [ ] Coordinate with TDIL_001 to confirm Q10 PcTransmigrationCompleted clock-split contract
 14. [ ] Release `_boundaries/_LOCK.md`
 15. [ ] Commit cycle (Phase 0 this commit + DRAFT 2/4 + Phase 3 3/4 + closure+release 4/4)
 
@@ -420,12 +454,13 @@ Before drafting `PCS_001_pc_substrate.md`:
 
 ## §10 — Status
 
-- **Created:** 2026-04-27 by main session (commit 1/4 this turn)
-- **Phase:** CONCEPT — awaiting Q1-Q10 deep-dive + market survey review
-- **Lock state:** `_boundaries/_LOCK.md` FREE (last released by ACT_001 Phase 2 P2 closure 2026-04-27 commit f4d0258)
-- **Estimated time to DRAFT 2/4:** 3-5 hours focused design work (~700-900 line spec; smaller than ACT_001's ~1000 since 2-3 aggregates only + L3 PC-specific only)
-- **Co-design dependencies (when DRAFT):**
+- **Created:** 2026-04-27 by main session (Phase 0 commit 3c76f33)
+- **Q-LOCKED:** 2026-04-27 by main session (commit 1/4 this turn) — Q1-Q10 ALL LOCKED via 6-batch deep-dive; 1 REFINEMENT on Q5 + 1 RENAME (PcXuyenKhongCompleted → PcTransmigrationCompleted)
+- **Phase:** Q-LOCKED → DRAFT promotion ready (commit 2/4 next)
+- **Lock state:** `_boundaries/_LOCK.md` FREE (last released by ACT_001 Phase 2 P2 closure 2026-04-27 commit f4d0258). PCS_001 DRAFT 2/4 will claim+release in `[boundaries-lock-claim]` cycle.
+- **Estimated time to DRAFT 2/4:** 3-5 hours focused design work (~700-900 line spec)
+- **Co-design dependencies (when DRAFT 2/4):**
   - WA_006 closure pass extension confirms pc_mortality_state handoff
-  - TDIL_001 confirms PcXuyenKhongCompleted → actor_clocks split contract
+  - TDIL_001 confirms PcTransmigrationCompleted → actor_clocks split contract per Q10 LOCKED
   - ACT_001 actor_core stable base (CANDIDATE-LOCK 2026-04-27)
-- **Next action:** User reviews reference survey + answers Q1-Q10 (or approves recommendations) → DRAFT promotion when lock free
+- **Next action:** Commit 1/4 this turn — concept-notes §4 LOCKED + §7 V1 scope finalized + xuyên không → transmigration rename. Then commit 2/4 — DRAFT promotion + boundary register.

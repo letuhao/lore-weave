@@ -75,7 +75,7 @@ LoreWeave is unique in computationally modeling xuyên không as a TYPED schema 
 - A6 canon-drift detection (body cannot know what soul knows)
 - LLM persona assembly (combine soul knowledge + body skills correctly)
 - Cross-reality reference tracking (soul.origin_world_ref)
-- xuyên không event flow (PcXuyenKhongCompleted with TDIL_001 clock-split)
+- xuyên không event flow (PcTransmigrationCompleted with TDIL_001 clock-split)
 
 ---
 
@@ -264,7 +264,7 @@ PCS_001 V1 = Wuxia transmigration novel canon (primary anchor) + WoW mortality 4
 | Q7 pc_mortality_state 4-state | (A) Full Alive/Dying/Dead/Ghost | WoW mortality + Wuxia ghost narrative |
 | Q8 cross-reality V1 | (A) V1 strict; V2+ Heresy | Universal discipline (IDF + FF + FAC + REP + ACT) |
 | Q9 multi-PC reality cap=1 V1 | (C) Vec + cap=1 validator V1 | FAC_001 Q2 REVISION pattern; future-proof |
-| Q10 xuyên không clock-split | (A) PcXuyenKhongCompleted EVT-T1 → TDIL_001 actor_clocks consume | TDIL_001 §10 clock-split contract |
+| Q10 xuyên không clock-split | (A) PcTransmigrationCompleted EVT-T1 → TDIL_001 actor_clocks consume | TDIL_001 §10 clock-split contract |
 
 All 10 recommendations align with established discipline + market patterns + Wuxia novel canon. Q-deep-dive may revise.
 
