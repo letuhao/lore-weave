@@ -35,7 +35,7 @@ generated_by: hand-authored (foundation-tier catalog seed)
 
 | ID | Feature | Status | Tier | Dep | Design ref |
 |---|---|---|---|---|---|
-| REP-1 | `actor_faction_reputation` aggregate (T2/Reality, sparse — per-(actor, faction) bounded standing) | ✅ | V1 | EF-1 (ActorId), FAC-1 (FactionId), DP-A14 | [REP_001 §3.1](../features/00_reputation/REP_001_reputation_foundation.md#31-actor_faction_reputation-t2--reality-scope--primary) |
+| REP-1 | `actor_faction_reputation` aggregate (T2/Reality, sparse — per-(actor, faction) bounded standing) | ✅ | V1 | EF-1, FAC-1, DP-A14 | [REP_001 §3.1](../features/00_reputation/REP_001_reputation_foundation.md#31-actor_faction_reputation-t2--reality-scope--primary) |
 | REP-2 | `ReputationTier` enum (8-variant Hated/Hostile/Unfriendly/Neutral/Friendly/Honored/Revered/Exalted; display layer; not stored) | ✅ | V1 | REP-1 | [REP_001 §2](../features/00_reputation/REP_001_reputation_foundation.md#2-domain-concepts) |
 | REP-3 | Asymmetric tier thresholds (engine-fixed) | ✅ | V1 | REP-2 | [REP_001 §2](../features/00_reputation/REP_001_reputation_foundation.md#2-domain-concepts) |
 | REP-4 | Wuxia I18n display labels (Đại nghịch / Nghịch tặc / Kẻ thù / Người lạ / Đệ tử / Trưởng lão / Tôn sư / Đại Thánh nhân) | ✅ | V1 | REP-2, RES-23 (i18n contract) | [REP_001 §2](../features/00_reputation/REP_001_reputation_foundation.md#2-domain-concepts) |

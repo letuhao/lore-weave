@@ -26,14 +26,16 @@
 | Actor | Faction | Score | Tier (display) | Wuxia label | Notes |
 |---|---|---|---|---|---|
 | Du sĩ | Đông Hải Đạo Cốc | +250 | Friendly | Đệ tử (disciple) | Outer disciple sect standing; matches FAC_001 membership role_id="outer_disciple" |
-| Du sĩ | Ma Tông | -100 | Hostile | Nghịch tặc (rebel/foe) | Demonic-sect rival baseline; matches FAC_001 default_relations Hostile |
-| Du sĩ | Tây Sơn Phật Tự | +25 | Neutral | Người lạ (stranger) | Daoist+Buddhist friendly cooperation; slight positive lean |
+| Du sĩ | Ma Tông | -300 | Hostile | Nghịch tặc (rebel/foe) | Demonic-sect rival baseline; score -300 falls in Hostile tier (-500..=-251); matches FAC_001 default_relations Hostile narrative |
+| Du sĩ | Tây Sơn Phật Tự | +25 | Neutral | Người lạ (stranger) | Daoist+Buddhist friendly cooperation; score in Neutral default zone |
 
 **Sparse storage discipline:** Only ~3 declared rep rows V1. Most (actor, faction) pairs have NO row → "Neutral default" implied per Q4 LOCKED. PC Lý Minh has 0 rep rows V1 (no faction history yet).
 
 ### V1 canonical actor reputation defaults (no rows)
 
-- **Lý Minh** (PC) — 0 rep rows V1 (PC unaffiliated; default Neutral with all factions)
+Actors below have ZERO declared rep rows V1 → engine `read_rep(actor, faction)` returns `unwrap_or(0)` = score=0, tier=Neutral, label="Người lạ" per Q4 LOCKED. NO entries written to canonical_actor_faction_reputations Vec for these actors.
+
+- **Lý Minh** (PC) — 0 rep rows V1 (PC unaffiliated; default Neutral with all factions on read)
 - **Tiểu Thúy** (NPC, innkeeper daughter) — 0 rep rows V1 (commoner; no faction history)
 - **Lão Ngũ** (NPC, innkeeper) — 0 rep rows V1 (commoner; no faction history)
 
@@ -164,8 +166,8 @@ pub struct ActorFactionReputation {
 - **V1+ lazy-create:** When first runtime delta event fires for unseen pair (V1+ Q5 enrichment), owner-service inserts row with `score = 0 + delta` then continues normal flow.
 
 **Mutability:**
-- V1: Mutable via canonical seed (ReputationBorn) + Forge admin (SetReputation / ResetReputation) only.
-- V1+: Mutable via runtime gameplay (Delta) + cascade (CascadeDelta) + decay (DecayTick) — Q5+Q6+Q7 V1+ runtime reputation milestone (all 3 enrichments ship together coherently).
+- V1: Mutable via canonical seed (ReputationBorn) + Forge admin (SetReputation / ResetReputation) only per REP-A5.
+- V1+: Mutable via runtime gameplay (Delta — REP-D1) + cascade (CascadeDelta — REP-D2) + decay (DecayTick — REP-D3) — Q5+Q6+Q7 V1+ runtime reputation milestone. **Coherence note:** all 3 V1+ enrichments ship together in single milestone — Delta without Cascade is partial; Cascade without configurable attenuation creates loops; Decay without scheduled tick mechanism is a stub. Lazy-create row pattern (Q2-(C)) activates with REP-D1 (V1+ runtime gameplay): owner-service inserts row with `score = 0 + delta` on first delta touch then updates on subsequent deltas.
 
 **Score clamping (REP-A1):**
 - Engine clamps `score: i16` to [-1000, +1000] at write boundary.
@@ -374,7 +376,7 @@ RealityManifest {
         ActorFactionReputationDecl {
             actor_id: "du_si",
             faction_id: "ma_tong",
-            score: -100,
+            score: -300,                              // Hostile tier (-500..=-251)
             canon_ref: None,
         },
         ActorFactionReputationDecl {
@@ -402,12 +404,12 @@ RealityManifest {
 
 **Read examples post-bootstrap:**
 - `read_rep("du_si", "dong_hai_dao_coc")` → score=+250, tier=Friendly (Đệ tử)
-- `read_rep("du_si", "ma_tong")` → score=-100, tier=Hostile (Nghịch tặc) — wait, score=-100 maps to Neutral (-100..=+100). Adjusting: per Q3 thresholds, score=-100 falls into Neutral tier. Du sĩ rep with Ma Tông is technically Neutral baseline (rivalry expressed via FAC_001 default_relations Hostile, NOT REP_001 score). Score must be ≤ -101 to land Unfriendly. Seed should be -150 if narrative intent is Unfriendly. (Author can adjust at canonical seed.)
+- `read_rep("du_si", "ma_tong")` → score=-300, tier=Hostile (Nghịch tặc)
 - `read_rep("du_si", "tay_son_phat_tu")` → score=+25, tier=Neutral (Người lạ)
 - `read_rep("ly_minh", "dong_hai_dao_coc")` → no row → unwrap_or(0) = score=0, tier=Neutral (Người lạ)
 - `read_rep("tieu_thuy", "ma_tong")` → no row → unwrap_or(0) = score=0, tier=Neutral
 
-(Authors should design canonical seed scores aligned with desired tier thresholds; engine validates score is in range, not tier semantics.)
+**Authoring discipline:** Score must align with desired tier per Q3 thresholds (engine validates score range, not tier semantics). Wuxia narrative "Hostile rival sect" requires score ≤ -251; Du sĩ × Ma Tông uses -300 (mid-Hostile range) for narrative robustness. Author can fine-tune; rivalry baseline LOCKED via FAC_001 default_relations is independent of REP_001 score (author-set per actor).
 
 ---
 
@@ -485,8 +487,8 @@ V1 (8 testable scenarios):
 
 | AC | Scenario | Expected outcome |
 |---|---|---|
-| **AC-REP-1** | Wuxia canonical bootstrap declares 3 rep rows (Du sĩ × 3 sects) | RealityBootstrapper emits 3 EVT-T4 ReputationBorn events; 3 rows written; sparse storage validated (~3 rows total V1) |
-| **AC-REP-2** | Tier mapping computed correctly | score=+250 → Friendly (Đệ tử); score=-100 → Neutral (-100..=+100 range; per thresholds); score=0 → Neutral; score=+1000 → Exalted (Đại Thánh nhân); score=-1000 → Hated (Đại nghịch) |
+| **AC-REP-1** | Wuxia canonical bootstrap declares 3 rep rows (Du sĩ × Đông Hải +250 / Ma Tông -300 / Tây Sơn +25) | RealityBootstrapper emits 3 EVT-T4 ReputationBorn events; 3 rows written; sparse storage validated (~3 rows total V1; PC Lý Minh + Tiểu Thúy + Lão Ngũ have 0 rep rows) |
+| **AC-REP-2** | Tier mapping computed correctly per Q3 thresholds | score=+250 → Friendly (Đệ tử); score=-300 → Hostile (Nghịch tặc); score=-100 → Neutral (boundary; -100 within Neutral range -100..=+100); score=0 → Neutral; score=+1000 → Exalted (Đại Thánh nhân); score=-1000 → Hated (Đại nghịch); boundary cases score=-251 → Hostile / score=-250 → Unfriendly enforce asymmetric threshold split |
 | **AC-REP-3** | Sparse storage validated | PC Lý Minh has NO rep rows V1; `read_rep("ly_minh", any_faction)` → Neutral (score=0 default) per Q4 LOCKED |
 | **AC-REP-4** | Score-out-of-range clamped silently per REP-A1 | Forge:SetReputation { after_score: 1500 } → engine clamps to 1000 (no reject; preserves narrative flow) |
 | **AC-REP-5** | Unknown faction_id rejected at canonical seed | `reputation.unknown_faction_id` Stage 0 schema rejection |
@@ -549,9 +551,9 @@ This DRAFT commit (2/4) adds the following boundary entries:
 
 | ID | Item | Landing point |
 |---|---|---|
-| **REP-D1** | V1+ runtime gameplay delta events | Q5 V1+ runtime reputation milestone (ships with REP-D2 + REP-D3 coherently) |
-| **REP-D2** | V1+ cascade rep via FAC_001 default_relations | Q6 V1+ enrichment; FactionDecl.rep_cascade_config additive |
-| **REP-D3** | V1+ decay over fiction-time | Q7 V1+ enrichment; FactionDecl.rep_decay_per_week additive + DecayTick EVT-T3 |
+| **REP-D1** | V1+ runtime gameplay delta events (PL_005 Strike on faction member; Help/Quest reward; etc.) | Q5 V1+ runtime reputation milestone (REP-D1 + REP-D2 + REP-D3 + REP-D16 ALL ship together — coherent activation; partial activation creates broken state) |
+| **REP-D2** | V1+ cascade rep via FAC_001 default_relations | Q6 V1+ enrichment; FactionDecl.rep_cascade_config additive (attenuation + max_depth + loop_prevention); ships with REP-D1 |
+| **REP-D3** | V1+ decay over fiction-time | Q7 V1+ enrichment; FactionDecl.rep_decay_per_week additive + DecayTick EVT-T3; tick mechanism leverages AIT_001 tier scheduling (Tier 2 lazy decay; Tier 3 untracked = no decay); ships with REP-D1 |
 | **REP-D4** | V1+ author-declared per-faction tier display labels | Q3 V1+ enrichment; FactionDecl.rep_tier_overrides: HashMap<i16, I18nBundle> |
 | **REP-D5** | V2+ multi-axis reputation (CK3 Prestige + Piety) | RES_001 SocialKind expansion V2; schema migration `score: HashMap<SocialKind, i16>` |
 | **REP-D6** | V2+ cross-reality migration | Q8 V2+ Heresy WA_002 |
