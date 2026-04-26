@@ -6,6 +6,19 @@
 
 ---
 
+## 2026-04-26 — IDF folder 10/15: IDF_004 Origin Foundation DRAFT + boundary register
+
+- Lock continues from commit 1/15
+- `01_feature_ownership_matrix.md`: NEW row actor_origin (T2/Reality, IDF_004 DRAFT); EVT-T8 Forge:EditOrigin; ORG-* prefix
+- `02_extension_contracts.md`: §1.4 origin.* (4 V1 rules + 2 V1+); §2 RealityManifest origin_packs OPTIONAL V1
+- IDF_004 file: renamed concept → DRAFT; full §1-§19 spec
+- V1 minimal stub 4 fields (birthplace + lineage_id opaque + native_language + default_ideology_refs) per POST-SURVEY-Q4
+- ORG-D11 NEW: birth event metadata V1+ (thiên kiêu chi tử markers)
+- ORG-D12 NEW: FF_001 Family Foundation V1+ HIGH PRIORITY post-IDF closure
+- 10 V1-testable AC + 3 V1+ deferred; 12 deferrals (ORG-D1..D12)
+
+---
+
 ## 2026-04-26 — IDF folder 9/15: IDF_003 closure pass → CANDIDATE-LOCK
 
 3/5 IDF features now CANDIDATE-LOCK. Lock continues claimed.
