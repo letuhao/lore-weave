@@ -319,7 +319,11 @@ provider-registry → RabbitMQ topic "user.{user_id}.llm.{op}.{event}"
 
 | Cycle | Deliverable | Effort |
 |-------|-------------|--------|
-| **4a** | knowledge-service migration: `extract_pass2_chapter` becomes "submit job to gateway, listen for done event, persist to Neo4j on done"; drop `provider_client.py` | XL |
+| **4a** | knowledge-service migration — see [LLM_MIGRATION_ADR](./KNOWLEDGE_SERVICE_LLM_MIGRATION_ADR.md). Sliced into 4 sub-cycles below. | XL (4 sub-cycles) |
+| **4a-α** | Gateway prereqs (worker op-whitelist + transient-retry, per ADR §5.1 Step 0); SDK `submit_job` + `wait_terminal` + `cancel_job` with caller-side retry budget; entity_extraction E2E proof-of-concept; cancel-race regression test; `provider_client.py` retained. | XL |
+| **4a-β** | Migrate relation/event/fact extractors. Adds `fact_extraction` to openapi `JobOperation` enum + jsonListAggregator + worker dispatch. | L |
+| **4a-γ** | Migrate regenerate_summaries.py + on-demand summarize routers. Uses `chat` operation (no chunking). | L |
+| **4a-δ** | Drop `provider_client.py` + `llm_json_parser.py` + `client: ProviderClient` extractor params. Cleanup tests + metrics. | M |
 | **4b** | worker-ai migration: drops sync HTTP call to knowledge; instead listens on `user.{id}.llm.entity-extraction.done` RabbitMQ topic to persist | L |
 | **4c** | translation-service migration: drops its own invoke + chunking, uses gateway job pattern; existing `translation_jobs` table becomes business-job table referencing `llm_jobs.job_id` | XL |
 | **4d** | Drop deprecated `/v1/model-registry/invoke` + `/internal/invoke` + `/internal/proxy/v1/chat/completions` (after grep confirms zero callers); keep `/internal/proxy/v1/audio/*` until audio adapter ships | M |
