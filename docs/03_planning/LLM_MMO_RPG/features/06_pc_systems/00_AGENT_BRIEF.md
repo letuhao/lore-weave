@@ -159,6 +159,30 @@ pub enum StatusFlag {
 
 V1 stub is intentionally minimal. DF7 V2+ replaces with full stats. PCS_001 documents the V1→V2 migration path.
 
+### S8. Xuyên không body-substitution + cell-ownership inheritance (NEW 2026-04-26 RES_001 downstream)
+
+When PC's soul transmigrates into another body (xuyên không event), PCS_001 mechanic MUST handle:
+
+**Soul-replacement (PCS_001 owns):**
+- New PC = soul of original-PC-of-other-reality + body of host-reality NPC
+- Body-memory model carries body's prior knowledge (motor skills, native language, regional knowledge) per S3
+- Soul brings cognitive knowledge from origin (per `SoulLayer.knowledge_tags + native_skills`)
+- Literacy slip detection (SPIKE_01 obs#5) reproducible per §4.1 grounding
+
+**Body-bound resource inheritance (RES_001 §5.3 LOCKED):**
+- `vital_pool` (HP/Stamina/Mana V1+) follows BODY — new PC inherits body's current vital values + body's class-default max_value (PC class may differ from original NPC class — author/lex policy decides)
+- `resource_inventory` where owner=Actor follows ACTOR IDENTITY — body-substitution preserves actor_id (the body's actor_id; soul's prior actor_id is "lost" or "frozen" depending on origin reality state)
+- `cell_owner` field on entity_binding (RES_001 Q9c) follows BODY — cells previously owned by host body now belong to new PC. **IMPORTANT:** This is auto-inheritance, NOT a transfer event. No EVT-T8 AdminAction; no PL_005 Trade. Pure ownership-chain preservation.
+- Soul-bound resources (V1+ Knowledge kind, V3) follow SOUL — soul retains "knows the secret of the Ming dynasty" even after body change. V1 has no soul-bound resources, so no immediate impact.
+
+**Validation contract:**
+- PCS_001 emits `PcXuyenKhongCompleted { old_actor_id, new_pc_id, body_actor_id, soul_origin_ref }` event (EVT-T1 Submitted sub-type — PCS_001 owns)
+- RES_001 consumes the event; verifies vital_pool + resource_inventory + cell_owner all properly transferred
+- WA_006 mortality config applies new PC's per-PC override (if any) over reality default
+- AC scenario in PCS_001 §S7 acceptance: "Lý Minh xuyên không takes over Trần Phong's body inherits Trần Phong's tiểu điếm cell ownership + tiểu điếm continues NPC auto-collect Generator firing daily for Lý Minh"
+
+**Boundary:** PCS_001 OWNS the xuyên không mechanic + event sequence + soul/body model. RES_001 OWNS the resource-side semantics (what follows body vs soul vs actor identity). PF_001 + EF_001 OWN the cell + entity_binding shapes. PL_001 + PL_005 are notified via standard event subscription.
+
 ### S6. PC-NPC relationship read-side
 
 NPC_001 §3.3 owns `npc_pc_relationship_projection` (write side, derived at session-end). PCS_001 owns the PC-side READ:
@@ -256,7 +280,19 @@ Before drafting PCS_001:
 
 ### 4.4b EF_001 Entity Foundation (mandatory — PCS_001 builds on this) (added 2026-04-26)
 
-`docs/03_planning/LLM_MMO_RPG/features/00_entity/EF_001_entity_foundation.md` — defines `EntityId` 4-variant sum type (Pc/Npc/Item/EnvObject), `entity_binding` aggregate (transferred from PL_001 §3.6), 4-state `LifecycleState` machine, 6 V1 `AffordanceFlag` closed enum, and the **`EntityKind` trait** (5 methods). PCS_001 MUST implement `EntityKind for Pc` including `type_default_affordances() = be_spoken_to + be_struck + be_examined + be_given + be_received + be_used` (full V1 set — PCs do everything). PC mortality cascades into EF_001 lifecycle `Existing → Destroyed` per §6; references to Destroyed PC reject `entity.entity_destroyed` per §8 (PCS_001's V1+ Respawn would transition `Destroyed → Existing` as a PCS-owned operation).
+`docs/03_planning/LLM_MMO_RPG/features/00_entity/EF_001_entity_foundation.md` — defines `EntityId` 4-variant sum type (Pc/Npc/Item/EnvObject), `entity_binding` aggregate (transferred from PL_001 §3.6), 4-state `LifecycleState` machine, 6 V1 `AffordanceFlag` closed enum, and the **`EntityKind` trait** (5 methods). PCS_001 MUST implement `EntityKind for Pc` including `type_default_affordances() = be_spoken_to + be_struck + be_examined + be_given + be_received + be_used` (full V1 set — PCs do everything). PC mortality cascades into EF_001 lifecycle `Existing → Destroyed` per §6; references to Destroyed PC reject `entity.entity_destroyed` per §8 (PCS_001's V1+ Respawn would transition `Destroyed → Existing` as a PCS-owned operation). **2026-04-26 RES_001 downstream:** EF_001 §3.1 entity_binding extended with `cell_owner: Option<EntityRef>` (Q9 LOCKED) + `inventory_cap: Option<CapacityProfile>` (Q6 reservation) — PCS_001 reads these fields for body-substitution ownership inheritance (per §S8 below) + future inventory cap V1+30d.
+
+### 4.4f RES_001 Resource Foundation (mandatory — PCS_001 declares per-actor-class vital max + body-substitution ownership inheritance) (added 2026-04-26)
+
+`docs/03_planning/LLM_MMO_RPG/features/00_resource/RES_001_resource_foundation.md` — defines `vital_pool` aggregate (body-bound, actor-only, NON-TRANSFERABLE) + `resource_inventory` aggregate (portable, EntityRef-any) + 5 V1 ResourceKind categories (Vital/Consumable/Currency/Material/SocialCurrency) + `VitalProfile` shape per actor-class + body-bound cell ownership semantics for xuyên không (Q9c) + i18n cross-cutting pattern (English IDs + I18nBundle).
+
+**PCS_001 MUST:**
+1. **Declare per-PC `VitalProfile` defaults** — RES_001 owns the SHAPE; PCS_001 declares `max_value` per actor-class (e.g., PC default Hp=100, Stamina=100; xianxia hero PC may override Hp=200). PCS_001 RealityManifest extension references RES_001 `vital_profiles: Vec<VitalProfileDecl>` field.
+2. **Implement xuyên không body-substitution mechanic** with explicit cell-ownership inheritance (see §S8 below — NEW IN-scope clause).
+3. **Reference VitalKind by name only** — DO NOT redefine VitalKind enum (RES_001 owns).
+4. **NPC_001's pattern adopted in PCS_001** — `pc_inventory` follows the same EntityRef-any-as-owner model; pc_mortality_state V1+ may consume vital_pool Hp=0 → MortalityTransitionTrigger.
+
+Boundary clarity: RES_001 owns aggregates + enums + transfer mechanics; PCS_001 owns per-PC declaration + xuyên không soul/body model + state machine consumption.
 
 ### 4.5 02_storage R8 (NPC memory pattern reference)
 

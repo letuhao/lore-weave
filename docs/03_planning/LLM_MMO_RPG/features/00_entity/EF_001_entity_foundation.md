@@ -1,6 +1,7 @@
 # EF_001 — Entity Foundation
 
 > **Conversational name:** "Entity Foundation" (EF). The substrate that defines what counts as an addressable thing in the world — a unified `EntityId` taxonomy, spatial presence (`entity_binding`), lifecycle state machine, affordance enum, and the `EntityKind` trait that PC / NPC / Item / EnvObject aggregates implement.
+> **2026-04-26 RES_001 downstream Phase 2 update:** §3.1 entity_binding extended with `cell_owner: Option<EntityRef>` (Q9 LOCKED — body-bound cell ownership, V1 active) + `inventory_cap: Option<CapacityProfile>` (Q6 LOCKED — schema reservation V1, enforcement V1+30d) + `EntityRef` enum (Actor/Cell/Item/Faction discriminator used by RES_001 ownership semantics).
 >
 > **Category:** EF — Entity Foundation (foundation tier; precedes feature folders)
 > **Status:** **CANDIDATE-LOCK 2026-04-26** (DRAFT 2026-04-26 → Phase 3 review cleanup 2026-04-26 → CANDIDATE-LOCK 2026-04-26 closure pass: §14 acceptance criteria walked + 3 rule_id mismatches resolved by §8 namespace expansion 7 → 10 V1 + 1 V1+ reservations + 3 ACs precision-tightened. Option C max scope per user direction "object foundation trước PC/NPC/Item")
@@ -86,6 +87,38 @@ pub struct EntityBinding {
     pub affordance_overrides: Option<AffordanceSet>,  // None = use type default; Some = per-instance override
     pub last_moved_fiction_time: FictionTime,   // for movement audit + V1+ proximity computations
     pub last_lifecycle_change_fiction_time: FictionTime,
+
+    // ─── RES_001 Resource Foundation extensions (added 2026-04-26 RES_001 DRAFT downstream) ───
+    /// Cell ownership reference (RES_001 Q9 LOCKED). Applies ONLY when `entity_type == EntityType::Cell`
+    /// (V2+ — currently cells live as ChannelId per PF_001, but EF_001 may absorb cell-as-entity in V1+
+    /// migration). For non-Cell entities, MUST be None. Body-bound cell ownership for xuyên không (Q9c):
+    /// when soul transmigrates into another body, this field follows the body, not the soul.
+    /// V1 transfer paths: Author Forge (WA_003 `Forge:EditCellOwnership`) / body-substitution via
+    /// PCS_001 mechanic / NPC death → orphan (set to None). V1+30d adds PC-to-PC trade + PC-buy-from-NPC.
+    /// See [RES_001 §5.2](../00_resource/RES_001_resource_foundation.md#52-cell-ownership-q9-locked).
+    pub cell_owner: Option<EntityRef>,
+
+    /// Inventory capacity profile (RES_001 Q6 LOCKED — schema reservation V1; enforcement V1+30d).
+    /// V1: ALWAYS None — no PC inventory cap V1. V1+30d: slot cap (`max_slots`); V2: weight cap.
+    /// When None, resource_inventory has unbounded entries. When Some, validator checks at insert.
+    /// LLM context bloat mitigated V1 via AssemblePrompt summarization (top-N entries per kind).
+    /// See [RES_001 §4.2](../00_resource/RES_001_resource_foundation.md#42-resource_inventory-aggregate).
+    pub inventory_cap: Option<CapacityProfile>,
+}
+
+/// Reserved schema for V1+30d inventory cap enforcement (Q6b LOCKED).
+pub struct CapacityProfile {
+    pub max_slots: u32,                         // distinct ResourceKind count cap V1+30d
+    pub max_weight: Option<u32>,                // V2 weight cap (per-kind weight metadata required)
+}
+
+/// EntityRef discriminator used by RES_001 ownership semantics + cascade rules.
+/// Mirrors EntityId variants; alias for clarity in resource ownership context.
+pub enum EntityRef {
+    Actor(ActorId),                             // PC + NPC (per NPC_001 ActorId enum)
+    Cell(ChannelId),                            // cell-as-entity (per PF_001 cell tier)
+    Item(ItemInstanceId),                       // V1+30d (RES_001 Item kind)
+    Faction(FactionId),                         // V3 (RES_001 Faction tier)
 }
 
 pub enum EntityLocation {

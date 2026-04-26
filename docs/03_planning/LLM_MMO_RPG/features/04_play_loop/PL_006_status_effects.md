@@ -3,7 +3,7 @@
 > **Conversational name:** "Status" (STA). Closed-set foundation for actor status effects (Drunk / Exhausted / Wounded / Frightened V1 + reserved V1+ kinds) — owns `StatusFlag` enum + `actor_status` aggregate + apply/tick/expire/dispel lifecycle. Cross-actor uniformity: same enum + lifecycle covers PCs (referenced by PCS_001) AND NPCs (referenced by future NPC_003). Foundation discipline mirrors NPC_001's ActorId enum pattern — own the closed-set once, consume from many features.
 >
 > **Category:** PL — Play Loop (core runtime)
-> **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 3 cleanup + closure pass — ActorId source-of-truth EF_001 §5.1; legacy pc_stats_v1_stub.StatusFlagDelta path retired V1 in favor of actor_status canonical; Stage 3.5.a entity.lifecycle_dead allocation; status.* V1 enumeration locked at 3 rules)
+> **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 3 cleanup + closure pass — ActorId source-of-truth EF_001 §5.1; legacy pc_stats_v1_stub.StatusFlagDelta path retired V1 in favor of actor_status canonical; Stage 3.5.a entity.lifecycle_dead allocation; status.* V1 enumeration locked at 3 rules) + **2026-04-26 RES_001 downstream Phase 2 update: `Hungry` promoted from V1+ reserved → V1 active (5 V1 kinds total) per RES_001 Q5 LOCKED hunger loop; magnitude 1/4/7 semantics documented; HungerTick Generator (RES_001 §7.2) consumes; magnitude 7+ → emit MortalityTransitionTrigger Starvation (WA_006 cause_kind extension).**
 > **Catalog refs:** Inferred from V1 vertical-slice gaps (Use:wine outcome / Strike Stun intent / Exhausted post-/sleep). No catalog row pre-existed; PL category extension.
 > **Builds on:** [PL_001 Continuum](PL_001_continuum.md) (turn-slot + fiction-clock substrate for tick/expire), [PL_005 Interaction](PL_005_interaction.md) + [PL_005b contracts](PL_005b_interaction_contracts.md) (Interaction OutputDecl applies statuses), [PL_005c integration](PL_005c_interaction_integration.md) §4 (opinion drift parallel pattern), [WA_001 Lex](../02_world_authoring/WA_001_lex.md) (axiom enforcement at validator stage).
 > **Defers to:** [PCS_001 brief](../06_pc_systems/00_AGENT_BRIEF.md) (`pc_stats_v1_stub.status_flags: Vec<StatusFlag>` references PL_006 enum); future [`NPC_003 mortality`](../05_npc_systems/) (will reference same enum for NPC statuses); V1+30d scheduler (auto-expire via Scheduled:StatusExpire generator).
@@ -33,13 +33,13 @@ After this lock: Use:wine outcome locked; Strike intents Stun/Restrain unblocked
 
 | Concept | Maps to | Notes |
 |---|---|---|
-| **StatusFlag** | Closed enum V1: `{ Drunk, Exhausted, Wounded, Frightened }` | V1 = 4 kinds (per D3 sub-decision). V1+ extensions ADDITIVE per I14: `Stunned`, `Bleeding`, `Poisoned`, `Charmed`, `Encumbered`, `Buffed`, `Tired`, `Hungry`, `Restrained`. New kinds register in `_boundaries/01_feature_ownership_matrix.md` per EVT-A11. |
+| **StatusFlag** | Closed enum V1: `{ Drunk, Exhausted, Wounded, Frightened, Hungry }` | V1 = **5 kinds** (`Hungry` promoted from reserved → V1 active 2026-04-26 per RES_001 DRAFT Q5 LOCKED hunger loop). V1+ extensions ADDITIVE per I14: `Stunned`, `Bleeding`, `Poisoned`, `Charmed`, `Encumbered`, `Buffed`, `Tired`, `Restrained`. New kinds register in `_boundaries/01_feature_ownership_matrix.md` per EVT-A11. |
 | **StatusInstance** | Per-(actor, flag) record: `{ flag: StatusFlag, magnitude: u8, applied_at_turn: u64, applied_at_fiction_ts: i64, expires_at_fiction_ts: Option<i64>, source_event_id: u64 }` | Magnitude scales effect intensity (Drunk magnitude=1 mild buzz; magnitude=5 stumbling drunk). `expires_at_fiction_ts: None` = no auto-expire (manual dispel only V1; auto-expire V1+30d scheduler). |
 | **actor_status** | T2 / Reality aggregate; per-(reality, actor_id) row holds `Vec<StatusInstance>` | Generic for PC + NPC (D6 — cross-actor uniformity). Covers both `ActorId::Pc` and `ActorId::Npc` per [EF_001 §5.1](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types) ActorId source-of-truth (sibling of EntityId; closed-set Pc/Npc/Synthetic); Synthetic actors don't accumulate status (V1). |
 | **StatusLifecycle** | `Apply` (add or merge instance) → `Tick` (V1+ fiction-time-driven effect; V1 no tick) → `Expire` (auto-remove at fiction-time threshold V1+30d, or manual Dispel) → `Dispel` (V1: explicit OutputDecl removes instance) | V1 minimum: Apply + Dispel via OutputDecl. Tick + Expire deferred to V1+30d scheduler. |
 | **ApplyStatusDelta** | `OutputDecl` delta_kind for `aggregate_type=actor_status` | `ApplyStatus { flag, magnitude, expires_at_fiction_ts: Option<i64>, source_event_id }` |
 | **DispelStatusDelta** | OutputDecl delta_kind | `DispelStatus { flag }` (single instance per flag V1; V1+ may target specific source_event_id) |
-| **StatusStackPolicy** | `enum { ReplaceIfHigher, Sum, Coexist }` per flag | V1: Drunk = `Sum` (multiple drinks accumulate magnitude); Exhausted = `ReplaceIfHigher` (one Exhausted instance with max magnitude); Wounded = `Sum` (multiple wounds stack); Frightened = `ReplaceIfHigher`. |
+| **StatusStackPolicy** | `enum { ReplaceIfHigher, Sum, Coexist }` per flag | V1: Drunk = `Sum` (multiple drinks accumulate magnitude); Exhausted = `ReplaceIfHigher` (one Exhausted instance with max magnitude); Wounded = `Sum` (multiple wounds stack); Frightened = `ReplaceIfHigher`; **Hungry = `ReplaceIfHigher`** (one Hungry instance; magnitude scales 1→7 via HungerTick Generator increments — RES_001 Q5 LOCKED). |
 | **StatusEffect** | Behavioral effect from a status (e.g., Drunk reduces Speak coherence) | Per-flag effect descriptor. V1: descriptive only (text in feature design); V1+ formalized as effect-trait that subsequent validators / Chorus consume programmatically. |
 
 ---
@@ -87,11 +87,12 @@ pub struct StatusInstance {
 }
 
 pub enum StatusFlag {
-    // V1 closed set (4 kinds)
+    // V1 closed set (5 kinds — Hungry promoted from reserved → V1 active 2026-04-26 RES_001 DRAFT downstream)
     Drunk,
     Exhausted,
     Wounded,
     Frightened,
+    Hungry,        // ⭐ V1 active (RES_001 hunger loop Q5 LOCKED) — applied by Scheduled:HungerTick Generator
     // V1+ additions (additive per I14; reserved namespace; not active V1)
     // Stunned,
     // Bleeding,
@@ -100,7 +101,6 @@ pub enum StatusFlag {
     // Encumbered,
     // Buffed,
     // Tired,
-    // Hungry,
     // Restrained,
 }
 
@@ -189,6 +189,7 @@ Single `actor_status` aggregate covers PC + NPC. PCS_001 references via `pc_stat
 | Flag | Stack policy | Rationale |
 |---|---|---|
 | Drunk | **Sum** (magnitudes accumulate) | drinking more increases drunkenness |
+| Hungry | **ReplaceIfHigher** (single instance; magnitude scales 1→7 via HungerTick Generator increments) | RES_001 Q5 LOCKED — applied/incremented daily by `Scheduled:HungerTick` Generator; reset on eating nutritional consumable; magnitude 7+ = MortalityTransitionTrigger Starvation |
 | Exhausted | **ReplaceIfHigher** | exhausted is a state, not a count |
 | Wounded | **Sum** (multiple wounds stack) | each wound accumulates |
 | Frightened | **ReplaceIfHigher** | frightened is a state |
@@ -202,6 +203,7 @@ V1+ kinds declare their stack policy at registration in boundary matrix.
 - Wounded magnitude 1-3: minor; 4-7: significant; 8-10: critical (V1+ may trigger MortalityTransition)
 - Exhausted magnitude scales recovery time
 - Frightened magnitude scales reaction intensity
+- **Hungry magnitude 1-3 = mild ("feels hungry"); 4-6 = severe (narratively "starving / weakened"); 7+ = critical → emit `MortalityTransitionTrigger { actor, cause_kind: Starvation }` (RES_001 Q5 LOCKED + WA_006 closure pass adds `Starvation` cause_kind variant)**. Magnitude incremented daily by `Scheduled:HungerTick` Generator (RES_001 §7.2) when actor has no nutritional consumable in inventory; reset to 0 on eating any nutritional consumable. V1 effect = narrative-only (LLM aware via context); V1+30d adds -10% Stamina max while magnitude ≥ 4.
 
 ### 8.5 Lifecycle: V1 simplification
 

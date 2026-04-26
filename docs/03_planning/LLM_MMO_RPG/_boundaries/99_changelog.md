@@ -6,6 +6,35 @@
 
 ---
 
+## 2026-04-26 — RES_001 downstream HIGH-priority impacts applied (Phase 2 of foundation tier completion)
+
+- **Lock claim:** main session 2026-04-26 (RES_001 §17.2 HIGH priority downstream); this commit `[boundaries-lock-claim+release]` (single-cycle)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None → main session 2026-04-26 (RES_001 downstream Phase 2) → None at release
+  - `99_changelog.md`: this entry (small — most downstream changes happen in feature design files, not boundary files)
+- **Files modified within `features/` and `07_event_model/`** (HIGH priority downstream from RES_001 §17.2):
+  - `features/04_play_loop/PL_006_status_effects.md`: **promoted Hungry from V1+reserved → V1 active** (5 V1 status kinds total); StatusFlag enum + StatusStackPolicy table + magnitude semantics §10 documented (1-3 mild / 4-6 severe-narrative-Starving / 7+ critical = MortalityTransitionTrigger Starvation); header status note added
+  - `features/02_world_authoring/WA_006_mortality.md`: **§6.5 added MortalityCauseKind catalog** documenting V1 cause kinds (KilledBy / Starvation / AdminKill / + V1+ reserved Suicide / EnvironmentalHazard); enum implementation deferred to PCS_001 first design pass per thin-rewrite ownership boundary; header status updated
+  - `features/04_play_loop/PL_005_interaction.md`: **§9.1 added RES_001 cross-reference** documenting (a) Use kind Harvest sub-intent for cell harvesting + (b) Trade flow as Give-reciprocal pair V1 (dedicated Trade kind V1+30d); clarifies `interaction.*` (PL_005-owned) vs `resource.*` (RES_001-owned) namespace boundary; PL_005 cascade emits `resource.*` rejects when RES-V3 fires; header status updated
+  - `features/00_entity/EF_001_entity_foundation.md`: **§3.1 entity_binding extended** with `cell_owner: Option<EntityRef>` (Q9 LOCKED — body-bound cell ownership) + `inventory_cap: Option<CapacityProfile>` (Q6 schema reservation; enforcement V1+30d) + `EntityRef` enum (Actor/Cell/Item/Faction discriminator used by RES_001 ownership semantics) + `CapacityProfile` reserved struct; header status updated
+  - `features/06_pc_systems/00_AGENT_BRIEF.md`: **§4.4f mandatory RES_001 reading added** + **§S8 NEW IN-scope clause "Xuyên không body-substitution + cell-ownership inheritance"** documenting body-bound vital_pool + actor-identity resource_inventory + body-bound cell_owner inheritance semantics during xuyên không event (PCS_001 owns mechanic; RES_001 owns resource-side semantics); validation contract via `PcXuyenKhongCompleted` event; AC scenario "Lý Minh xuyên không inherits Trần Phong's tiểu điếm cell ownership"
+  - `07_event_model/03_event_taxonomy.md`: **EVT-T3 Derived V1 aggregate types list expanded** (added `vital_pool` + `resource_inventory` from RES_001) + **EVT-T5 Generated sub-types table expanded** (added 4 V1 RES_001 generators: Scheduled:CellProduction / Scheduled:NPCAutoCollect / Scheduled:CellMaintenance / Scheduled:HungerTick with day-boundary trigger + Coordinator sequencing) + Phase 5 examples table extended with 6 RES_001 mappings (4 EVT-T5 + 2 EVT-T3)
+- **Downstream impact items resolved (6 of 17 from RES_001 §17.2):**
+  - ✅ HIGH: PL_006 Hungry V1+reserved → V1 active (5 V1 status kinds)
+  - ✅ HIGH: WA_006 §6.5 MortalityCauseKind catalog (Starvation reserved for PCS_001 implementation)
+  - ✅ HIGH: PL_005 §9.1 harvest sub-intent + trade flow + namespace boundary clarity
+  - ✅ HIGH: EF_001 §3.1 cell_owner + inventory_cap fields + EntityRef enum + CapacityProfile struct
+  - ✅ HIGH: PCS_001 brief §4.4f + §S8 body-substitution mechanic + RES_001 mandatory reading
+  - ✅ HIGH: 07_event_model 4 EVT-T5 + 2 EVT-T3 RES_001 sub-types registered
+- **Remaining downstream items deferred** (11 of 17 — MEDIUM/LOW priority follow-ups):
+  - MEDIUM: NPC_001 auto-collect Generator doc / WA_003 4 ForgeEditAction sub-shapes / PL_001 RejectReason user_message envelope field / PCS_001 first design pass (parallel agent)
+  - LOW: PF_001 cell-as-economic-entity cross-reference / NPC_001 vital_profiles per-class declaration / i18n cross-cutting audit (existing Vietnamese reject copy migration)
+- **Drift watchpoints: 8 active** (no change). RES_001 downstream Phase 2 doesn't introduce new watchpoints — all changes were targeted edits to already-LOCKED features.
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-claim+release]` single-cycle)
+- **Reason / handoff:** RES_001 downstream Phase 2 closes the 6 HIGH priority impact items from RES_001 §17.2. Foundation tier 5/5 + foundation-tier-cross-feature-integration is now consistent across all V1 LOCK/DRAFT features. Next priorities: (a) PCS_001 PC Substrate parallel agent kickoff (brief §4.4f + §S8 ready; xuyên không mechanic now formally specified; can start design pass), (b) MEDIUM/LOW downstream cleanups in subsequent commits as time permits, (c) PO_001 PC Creation flow design (V1-blocking; depends on PCS_001).
+
+---
+
 ## 2026-04-26 — RES_001 Resource Foundation DRAFT promotion + i18n cross-cutting pattern introduction
 
 - **Lock claim:** main session 2026-04-26 (RES_001 DRAFT promotion); this commit `[boundaries-lock-claim+release]` (single-commit cycle)

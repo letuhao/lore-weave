@@ -17,7 +17,7 @@
 > **Conversational name:** "Mortality" (MOR). Per-reality declaration of what death MODE applies — `Permadeath` (V1 default), `RespawnAtLocation`, `Ghost` — plus per-PC overrides. The DATA + AUTHOR-FACING CONFIG only; the runtime mechanics (state machine, detection, hot-path check, respawn flow) live in PCS_001 / 05_llm_safety / PL_001/002 when those features land.
 >
 > **Category:** WA — World Authoring
-> **Status:** **CANDIDATE-LOCK 2026-04-25** (thin-rewrite + §12 acceptance criteria added closure pass). LOCK granted after the 6 §12 acceptance scenarios have passing integration tests.
+> **Status:** **CANDIDATE-LOCK 2026-04-25** (thin-rewrite + §12 acceptance criteria added closure pass). LOCK granted after the 6 §12 acceptance scenarios have passing integration tests. **2026-04-26 RES_001 downstream Phase 2 update:** §6.5 added — MortalityCauseKind catalog with `Starvation` (RES_001 HungerTick magnitude≥7), `KilledBy` (RES_001 vital_pool Hp=0), `AdminKill` (existing); enum implementation deferred to PCS_001 first design pass.
 > **Catalog refs:** **DF4 World Rules** (sub-feature: PC death mode config). Resolves [PC-B1](../../decisions/locked_decisions.md) (PC death behavior config layer only) — the runtime enforcement of death is PCS_001 territory.
 > **Builds on:** [WA_003 Forge](WA_003_forge.md) (author UI for editing MortalityConfig — extends Forge's EditAction set), [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §16 RealityManifest (Mortality extends manifest with `mortality_config` field per `_boundaries/02_extension_contracts.md` §2)
 > **Mechanics handed off to:**
@@ -179,6 +179,24 @@ V1 ships 3 modes. Adding a 4th requires a superseding decision in [`../../decisi
 | `NpcConversion` | V2+ deferred (MOR-D4) | Depends on DL_001 NPC routine + DF1 |
 
 Per-PC overrides can use any V1 mode independently of the reality default. E.g., reality default `Permadeath` + protagonist PC override `Ghost` is valid and useful.
+
+### §6.5 MortalityCauseKind catalog (downstream coordination — 2026-04-26 RES_001 DRAFT)
+
+WA_006 is config-only (per thin-rewrite); the state machine + actual `cause_kind` enum implementation lives in **PCS_001** (deferred). However, WA_006 SHOULD catalog the V1 cause kinds that downstream features will emit, so PCS_001 (when designed) implements a complete enum without missing variants.
+
+V1 cause kinds (RESERVED — to be implemented by PCS_001 when it ships):
+
+| `cause_kind` variant | Emitter feature | Trigger | Notes |
+|---|---|---|---|
+| `KilledBy { attacker_ref: ActorRef }` | RES_001 (vital_pool Hp=0 from PL_005 Strike kind) | Hp depleted to 0 via combat damage | Standard combat death. Attacker recorded for legal/social fallout (V1+). |
+| `Starvation` | **RES_001 (HungerTick Generator magnitude≥7)** | Actor not eating for ~7+ fiction-days; Hungry status magnitude 7 threshold | **NEW 2026-04-26 RES_001 DRAFT downstream — added to WA_006 catalog.** Triggered by `Scheduled:HungerTick` (RES_001 §7.2). |
+| `AdminKill { admin_ref }` | WA_006 (`MortalityAdminKill` AdminAction sub-shape) | Admin force-kills via Forge | Already V1 per WA_006 thin-rewrite. |
+| `Suicide { method }` | (V1+ deferred — reserved) | PC-initiated death | V1+30d feature. |
+| `EnvironmentalHazard { hazard_kind }` | (V1+ deferred — reserved) | Falling, drowning, fire, etc. | V1+30d feature; depends on environmental hazard system. |
+
+**Implication:** RES_001 emits `MortalityTransitionTrigger { actor: ActorRef, cause_kind: MortalityCauseKind }` events. The `MortalityCauseKind` enum is currently UNDEFINED (PCS_001 will own it). For V1 scaffolding, downstream consumers can stub-handle the event by inspecting `cause_kind` discriminator. Full state machine integration locks at PCS_001 first design pass.
+
+**Boundary:** WA_006 reserves the cause kind catalog (config-adjacent — authors may want to know which death sources can fire); PCS_001 owns the actual enum + state machine consumption. Pattern matches "WA_006 owns DeathMode catalog; PCS_001 owns state machine application" already established in thin-rewrite.
 
 ---
 

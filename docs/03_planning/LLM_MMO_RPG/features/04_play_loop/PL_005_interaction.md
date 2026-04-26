@@ -5,7 +5,7 @@
 > **Three-file structure:** This file (PL_005 root) holds the **conceptual layer** (§1-§19): 4-role pattern + 5 V1 InteractionKinds + closed-set proof + Event-model mapping + DP primitives + capability + subscribe + pattern choices + failure UX + cross-service handoff + 5 high-level sequences + 6 acceptance criteria + deferrals. Companion [`PL_005b_interaction_contracts.md`](PL_005b_interaction_contracts.md) holds the **contract layer** (§1-§12): concrete payload schemas per kind + OutputDecl taxonomy + per-kind validator subset + per-kind reject rule_ids + 16 expanded acceptance scenarios. Companion [`PL_005c_interaction_integration.md`](PL_005c_interaction_integration.md) holds the **cross-feature integration layer** (§1-§11): full validator chain per kind + NPC_002 Chorus consumption flow + PCS_001 mortality side-effect flow + NPC_001 opinion drift flow + V1+ Generator triggers (butterfly cascades) + failure compensation + replay determinism + V1 minimum implementation scope. Read this file FIRST, then PL_005b for contracts, then PL_005c for integration.
 >
 > **Category:** PL — Play Loop (core runtime)
-> **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 3 cleanup + closure pass — PF-Q4/MAP-Q3 watchpoints RESOLVED via ExamineTarget extension; foundation tier integration for Stage 3.5 group; interaction.* V1 enumeration locked at 5 rules)
+> **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 3 cleanup + closure pass — PF-Q4/MAP-Q3 watchpoints RESOLVED via ExamineTarget extension; foundation tier integration for Stage 3.5 group; interaction.* V1 enumeration locked at 5 rules) + **2026-04-26 RES_001 downstream Phase 2 update: §9.1 added documenting Use kind Harvest sub-intent + Trade flow via Give-reciprocal pair (V1) emitting `resource.*` rule_ids (RES_001-owned namespace).**
 > **Catalog refs:** PL-2 (command grammar consumes Interaction), PL-7 (event emission), PL-8 (action resolution). Resolves the "how does an action interact with the world?" question that PL_001/002 deferred.
 > **Builds on:** [PL_001 Continuum](PL_001_continuum.md) (turn-slot, channel, fiction-clock), [PL_002 Grammar](PL_002_command_grammar.md) (5 V1 commands — `/verbatim`/`/prose` typically produce Interaction:Speak; `/sleep`/`/travel` are FastForward not Interaction), [NPC_001 Cast](../05_npc_systems/NPC_001_cast.md) (ActorId enum), [NPC_002 Chorus](../05_npc_systems/NPC_002_chorus.md) (consumes Interaction events as Triggers for multi-NPC reactions), [WA_001 Lex](../02_world_authoring/WA_001_lex.md) (validator slot for axiom-rejection + actual_outputs derivation).
 > **Defers to:** [PCS_001](../06_pc_systems/00_AGENT_BRIEF.md) (`pc_mortality_state` + `pc_stats_v1_stub` aggregates that Interaction outputs target); future `NPC_003_mortality` (NPC death state — V1 placeholder via npc.flexible_state liveness flag); future Item aggregate (V1+ — V1 Items referenced abstractly via glossary-entity-id, no runtime per-reality Item state).
@@ -228,6 +228,19 @@ Reject paths split by validator stage owner per [`_boundaries/03_validator_pipel
 V1+ reservations: `interaction.cross_cell_disallowed` (V2+ cross-cell Interaction); `interaction.cascade_depth_exceeded` (already covered by EVT-G3 generic at framework level — may not need PL_005 namespace entry).
 
 **Note on `target_dead`:** Originally proposed as `interaction.target_dead`; ALLOCATED to `entity.lifecycle_dead` per Stage 3.5.a entity_affordance ownership (EF_001 catches dead targets BEFORE PL_005 world-rule physics fires; avoids duplicate rule between PL_005 and EF_001).
+
+### §9.1 — RES_001 Resource Foundation cross-reference (2026-04-26 RES_001 DRAFT downstream)
+
+PL_005 Interaction integrates with RES_001 Resource Foundation through 2 V1 mechanics that emit `resource.*` rule_ids (RES_001-owned namespace; PL_005 does NOT register these):
+
+**(a) Use kind — Harvest sub-intent (V1 active):** PC executes `/use harvest <cell_ref>` to harvest a cell's accumulated stockpile. Use kind payload extended with sub-intent discriminator. Validator chain (RES-V1 + EF_001 + PF_001 + PL_005 standard validators) per RES_001 §7.4. Reject via `resource.harvest.empty_cell` (cell has no stockpile) or `resource.harvest.not_owner_or_orphan` (PC neither owner nor cell is orphan). PC-owned cells are exempt from NPC auto-collect (Q4g) — PC must visit + harvest manually.
+
+**(b) Trade flow — Give kind reciprocal pair (V1 minimum):** V1 trade implements as TWO reciprocal Give kind interactions in same turn (PC Gives gold to NPC; NPC Gives goods to PC). Atomicity: both Give events committed in single turn-event sequence per atomic invariant. RES-V3 TradePricingValidator enforces NPC finite liquidity (Q12c) — rejects with `resource.trade.npc_insufficient_funds` / `resource.trade.npc_insufficient_goods` / `resource.trade.pc_insufficient_funds` / `resource.trade.pc_insufficient_goods` / `resource.trade.invalid_price`. V1+30d ships dedicated Trade kind variant (`InteractionKind::Trade`) with single atomic payload — V1 uses Give-pair pattern to avoid envelope bump.
+
+**Boundary clarity:**
+- `interaction.*` rule_ids = PL_005 owns (5 V1 enumerated above)
+- `resource.*` rule_ids = RES_001 owns (12 V1 — see [`_boundaries/02_extension_contracts.md`](../../_boundaries/02_extension_contracts.md) §1.4 + RES_001 §13.1)
+- PL_005 cascade EMITS `resource.*` rejects when RES_001 validators fire; doesn't OWN them
 
 ---
 
