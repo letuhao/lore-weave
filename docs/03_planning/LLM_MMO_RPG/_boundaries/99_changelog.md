@@ -6,6 +6,63 @@
 
 ---
 
+## 2026-04-27 — ACT_001 Phase 2 P2 closure-pass-extension — CanonicalActorDecl spawn_cell + glossary_entity_id ADD (single `[boundaries-lock-claim+release]` commit)
+
+- **Lock CLAIMED + RELEASED** in single combined commit — small additive P2 closure-pass-extension; no new aggregate; no new EVT sub-type; no new namespace; just additive fields + 2 V1 reject rules
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in single commit
+  - `02_extension_contracts.md`:
+    - §2 CanonicalActorDecl shape (post-unify): ADD 2 REQUIRED V1 fields:
+      * `pub spawn_cell: ChannelId` — initial cell location (cell-tier channel from RealityManifest.places); cross-validated at canonical seed; populates ActorCore.current_region_id at bootstrap; EF_001 EntityBorn cell_id sourced from this field
+      * `pub glossary_entity_id: GlossaryEntityId` — actor's primary glossary entry (DISTINCT from core_beliefs_ref); populates ActorCore.glossary_entity_id at bootstrap
+    - §1.4 `actor.*` namespace: 6 V1 → 8 V1 rules (ADD `actor.spawn_cell_unknown` + `actor.glossary_entity_unknown`); V1+ reservations unchanged at 3
+  - `99_changelog.md`: this entry
+
+### Background
+
+P2 audit gap discovered in main session 2026-04-27 deep-dive "actor canonical seed init readiness review":
+- ActorCore §3.1 has `glossary_entity_id` + `current_region_id` fields (renamed from old `npc` schema)
+- But CanonicalActorDecl shape post-unify was MISSING source fields
+- Without these, RealityBootstrapper had no source-of-truth for "where does Du sĩ start?" or "what's Du sĩ's primary glossary entry?"
+
+### Phase 1 P2 (commit 079976c — feature-folder + catalog)
+
+Applied ACT_001 spec changes (no boundary lock needed):
+- §3.1 ActorCore: clarified glossary_entity_id + current_region_id source fields
+- §10 Cross-service handoff: extended Stage 0 schema validation rules + 7-row field-mapping table
+- §11 Sequence: Wuxia 5-actor canonical seed example REVISED with explicit spawn_cell + glossary_entity_id
+- §9 Failure-mode UX: 2 NEW V1 reject rules (spawn_cell_unknown + glossary_entity_unknown)
+- §16 Boundary registrations: noted Phase 2 P2 follow-up needed
+- catalog/cat_00_ACT_actor_foundation.md: ACT-20 entry for CanonicalActorDecl shape
+
+### Phase 2 P2 (this commit — boundary §2)
+
+Mechanical additive boundary update:
+- §2 CanonicalActorDecl shape: ADD 2 fields (spawn_cell + glossary_entity_id; both REQUIRED V1)
+- §1.4 actor.* namespace: ADD 2 V1 reject rules
+- Closes P2 audit gap completely (Phase 1 + Phase 2 = full P2 resolution)
+
+### Cross-feature impact
+
+- EF_001 EntityBorn `cell_id` payload sourced from CanonicalActorDecl.spawn_cell at canonical seed (no API change to EF_001; just source clarification)
+- PF_001 places cross-validated at canonical seed (reject `actor.spawn_cell_unknown` if spawn_cell ∉ RealityManifest.places)
+- knowledge-service canon cross-validated at canonical seed (reject `actor.glossary_entity_unknown` if missing)
+- ACT_001 ActorBorn carries actor_id + kind + traits_summary (unchanged)
+- ACT_001 owner-service writes actor_core row populating glossary_entity_id + current_region_id from CanonicalActorDecl source fields
+
+### V1 quantitative summary (ACT_001 post-Phase-2 P2)
+
+- 4 ACT_001 aggregates (UNCHANGED)
+- 8 V1 reject rules (`actor.*` namespace) + 3 V1+ reservations (was 6 V1; +2 from P2)
+- RealityManifest CanonicalActorDecl shape: 11 V1 fields (was 9; +2 from P2)
+- EF_001 EntityBorn cell_id source clarified (was implicit; now explicit from CanonicalActorDecl.spawn_cell)
+
+P1 + P2 (now both complete) close the type definition + spawn_cell audit gaps. Remaining P-priorities:
+- P4 cross-feature consistency validator rules + ACT_001 validator slot in 03_validator_pipeline_slots.md
+- P3 PCS_001 PC Substrate cycle (BLOCKED gap from audit; biggest impact)
+
+---
+
 ## 2026-04-27 — TDIL_001 Time Dilation Foundation DRAFT promotion + closure-pass cascade (single combined `[boundaries-lock-claim+release]` commit)
 
 - **Lock CLAIMED then RELEASED** in single combined commit (`[boundaries-lock-claim+release]`)

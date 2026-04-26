@@ -950,19 +950,19 @@ This DRAFT cycle (commits 2-3/5) adds the following boundary entries:
 - §1.4 namespace registration: `actor.*` (6 V1 rules + 3 V1+ reservations; +2 added 2026-04-27 P2 LOCKDOWN: spawn_cell_unknown + glossary_entity_unknown)
 - §2 RealityManifest CanonicalActorDecl extension: chorus_metadata fields (Optional; populated for NPCs)
 
-### Phase 2 P2 follow-up (deferred until boundary lock free)
+### Phase 2 P2 follow-up — APPLIED 2026-04-27 (single `[boundaries-lock-claim+release]` commit)
 
-The following boundary §2 update is NEEDED but DEFERRED to a follow-up commit when boundary lock is free (TDIL_001 currently holds lock 2026-04-27):
+Applied immediately after Phase 1 P2 (079976c) — TDIL_001 released lock just prior, so Phase 2 went in same session:
 
-- `_boundaries/02_extension_contracts.md` §2 CanonicalActorDecl shape: ADD 2 fields
+- `_boundaries/02_extension_contracts.md` §2 CanonicalActorDecl shape: ADDED 2 fields ✅
   * `pub spawn_cell: ChannelId` — REQUIRED V1; references RealityManifest.places cell-tier channel; cross-validated at canonical seed
   * `pub glossary_entity_id: GlossaryEntityId` — REQUIRED V1; references knowledge-service canon entry
-- `_boundaries/02_extension_contracts.md` §1.4 `actor.*` namespace: ADD 2 V1 reject rules
+- `_boundaries/02_extension_contracts.md` §1.4 `actor.*` namespace: ADDED 2 V1 reject rules ✅
   * `actor.spawn_cell_unknown` — Stage 0 schema (canonical seed validation)
   * `actor.glossary_entity_unknown` — Stage 0 schema (canonical seed validation)
-- `_boundaries/99_changelog.md`: append P2 closure-pass-extension entry
+- `_boundaries/99_changelog.md`: P2 closure-pass-extension entry appended ✅
 
-This Phase 2 update is mechanical (additive to existing locked schema; no new aggregate; no new EVT sub-type). Targeted as small single-commit when lock free.
+P2 audit gap CLOSED COMPLETELY (Phase 1 + Phase 2 = full P2 resolution).
 
 ### `_boundaries/99_changelog.md` (commits 2/5 + 5/5)
 
