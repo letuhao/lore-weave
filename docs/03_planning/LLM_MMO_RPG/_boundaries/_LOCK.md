@@ -6,11 +6,11 @@
 
 ## Current owner
 
-- **Owner:** main session 2026-04-26 (PL folder closure)
-- **Claimed at:** 2026-04-26T (current)
-- **Expected work:** PL folder closure — Phase 3 cleanup + closure pass for PL_005 / PL_005b / PL_005c / PL_006; resolves PF-Q4 + MAP-Q3 watchpoints via PL_005 ExamineTarget extension; expands `interaction.*` + `status.*` rule_id namespace registration to V1 enumeration matching EF/PF/MAP/CSC pattern. ~8 commits across 4 lock-claim+release cycles.
-- **Expires at:** 2026-04-26T+4h
-- _Last released:_ 2026-04-26 by main session (EVT-V slot alignment review — Stage 3.5 group inserted; 4 drift watchpoints RESOLVED) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
+- **Owner:** None
+- **Claimed at:** —
+- **Expected work:** —
+- **Expires at:** —
+- _Last released:_ 2026-04-26 by main session (PL folder closure — 8 commits: PL_005/b/c + PL_006 Phase 3 cleanup + closure pass; PF-Q4 + MAP-Q3 watchpoints RESOLVED via PL_005 ExamineTarget extension; `interaction.*` (5 V1) + `status.*` (3 V1) namespace enumerations expanded matching EF/PF/MAP/CSC pattern; Stage 3.5 group fully integrated across all 4 files). See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

@@ -6,6 +6,31 @@
 
 ---
 
+## 2026-04-26 — PL folder closure (commit 8/8): PL_006 closure pass → CANDIDATE-LOCK + final lock release
+
+- **Lock claim:** main session 2026-04-26 (PL folder closure 8-commit cycle); this commit `[boundaries-lock-release]` (FINAL release after 8-commit chain)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session 2026-04-26 → None; release timestamp + summary added
+  - `01_feature_ownership_matrix.md` `actor_status` row: PL_006 status DRAFT → **CANDIDATE-LOCK 2026-04-26 PL folder closure** + ActorId EF_001 §5.1 source note + status.target_dead → entity.lifecycle_dead allocation note + PCS_001 read-side projection note
+- **PL_006 status header DRAFT → CANDIDATE-LOCK 2026-04-26**
+- **`_index.md` PL_006 row updated:** status CANDIDATE-LOCK + ActorId EF_001 + Stage 3.5.a entity.lifecycle_dead allocation + status.* V1 enumeration (3 rules) + PCS_001 read-side projection note
+- **`_index.md` Active note updated:** PL folder closure COMPLETE 2026-04-26
+- **PL folder closure milestone summary:**
+  - 4 files at CANDIDATE-LOCK: PL_005 + PL_005b + PL_005c (commits 1-6) + PL_006 (commits 7-8)
+  - PF-Q4 + MAP-Q3 drift watchpoints RESOLVED via PL_005 ExamineTarget extension (commit 1)
+  - `interaction.*` namespace expanded to 5 V1 rules (commit 1) + sub-namespace canonical mapping (commit 3)
+  - `status.*` namespace expanded to 3 V1 rules (commit 7)
+  - Stage 3.5 group fully integrated across all 4 files (commits 1, 3, 5, 7)
+  - actor_status post-commit migration note added in PL_005c §1.1 (commit 5)
+  - PCS_001 brief §S5 read-side projection pattern documented in PL_006 §11 + §17 (commit 7)
+  - 27 total deferrals across PL_005 (INT-D1..D11) + PL_005b (INT-CON-D1..D10) + PL_005c (INT-INT-D1..D8) + PL_006 (STA-D1..D8) — 35 deferrals total counting PL_006
+  - 22 acceptance scenarios for PL_005 family (6 root + 16 contracts) + 7 PL_006 = 29 total acceptance scenarios
+- **Drift watchpoints: 8 active** (after Phase 3 cleanup commits 1-8). Remaining: GR-D8 / CST-D1 / LX-D5 (locked at Stage 4) / HER-D8 / HER-D9 / CHR-D9 / WA_006 over-extension / B2 RealityManifest envelope / EF-Q2.
+- **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
+- **Reason / handoff:** PL folder is the second domain folder to fully close (after foundation tier 4/4 milestone). All 4 files at CANDIDATE-LOCK with consistent boundary integration, namespace enumeration, and Stage 3.5 alignment. Next domain folders for closure: NPC folder (NPC_001/002 already at CANDIDATE-LOCK; NPC_003 mortality V1+ deferred to PL_006 §16 STA-D timeline); WA folder (WA_001..006 various states); foundation tier complete (4/4); 05_llm_safety folder design pending; PCS_001 spawn pending.
+
+---
+
 ## 2026-04-26 — PL folder closure (commit 7/8): PL_006 Phase 3 cleanup + status.* namespace V1 enumeration
 
 - **Lock continues** from commit 1

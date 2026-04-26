@@ -3,7 +3,7 @@
 > **Conversational name:** "Status" (STA). Closed-set foundation for actor status effects (Drunk / Exhausted / Wounded / Frightened V1 + reserved V1+ kinds) — owns `StatusFlag` enum + `actor_status` aggregate + apply/tick/expire/dispel lifecycle. Cross-actor uniformity: same enum + lifecycle covers PCs (referenced by PCS_001) AND NPCs (referenced by future NPC_003). Foundation discipline mirrors NPC_001's ActorId enum pattern — own the closed-set once, consume from many features.
 >
 > **Category:** PL — Play Loop (core runtime)
-> **Status:** DRAFT 2026-04-26
+> **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 3 cleanup + closure pass — ActorId source-of-truth EF_001 §5.1; legacy pc_stats_v1_stub.StatusFlagDelta path retired V1 in favor of actor_status canonical; Stage 3.5.a entity.lifecycle_dead allocation; status.* V1 enumeration locked at 3 rules)
 > **Catalog refs:** Inferred from V1 vertical-slice gaps (Use:wine outcome / Strike Stun intent / Exhausted post-/sleep). No catalog row pre-existed; PL category extension.
 > **Builds on:** [PL_001 Continuum](PL_001_continuum.md) (turn-slot + fiction-clock substrate for tick/expire), [PL_005 Interaction](PL_005_interaction.md) + [PL_005b contracts](PL_005b_interaction_contracts.md) (Interaction OutputDecl applies statuses), [PL_005c integration](PL_005c_interaction_integration.md) §4 (opinion drift parallel pattern), [WA_001 Lex](../02_world_authoring/WA_001_lex.md) (axiom enforcement at validator stage).
 > **Defers to:** [PCS_001 brief](../06_pc_systems/00_AGENT_BRIEF.md) (`pc_stats_v1_stub.status_flags: Vec<StatusFlag>` references PL_006 enum); future [`NPC_003 mortality`](../05_npc_systems/) (will reference same enum for NPC statuses); V1+30d scheduler (auto-expire via Scheduled:StatusExpire generator).
