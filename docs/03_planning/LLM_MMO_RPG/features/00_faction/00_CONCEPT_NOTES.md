@@ -217,87 +217,127 @@ When FAC_001 DRAFT lands, these boundaries need careful handling:
 
 ---
 
-## §5 — Q1-Q10 critical scope questions
+## §5 — Q1-Q10 critical scope questions — ✅ ALL LOCKED 2026-04-26 (user "A" confirmation; 3 REVISIONS noted)
 
-These 10 questions lock V1 scope. Once user has reviewed market survey + answered (or approved recommendations), FAC_001 DRAFT can proceed.
+User confirmed "A" on all 10 Q-decisions 2026-04-26 with deep-dive analysis. **3 REVISIONS** from initial survey recommendations:
+- Q2 REVISION: Vec schema V1 with cap=1 validator (vs Option<T> single)
+- Q4 REVISION: Numeric u16 only V1; named computed display (vs both fields)
+- Q7 REVISION: Defer sworn brotherhood entirely V1+ FAC-D10 (vs V1 schema slot)
+
+Locked decisions below; FAC_001 DRAFT promotion ready when `_LOCK.md` free.
 
 ### Q1 — Aggregate model: 1 or 2 or 3 aggregates V1?
 
-- **(A) 2 aggregates** — `faction` (T2/Reality sparse; per-faction metadata) + `actor_faction_membership` (T2/Reality; per-(actor, faction_id) — possibly multi-faction)
-- **(B) 1 aggregate** — `actor_faction_membership` only; faction "data" stays in RealityManifest declarative (no runtime aggregate)
-- **(C) 3 aggregates** — add separate `faction_relations` aggregate V1 (faction-faction Hostile/Neutral/Allied table)
+✅ **LOCKED 2026-04-26: (A) 2 aggregates** — `faction` (T2/Reality sparse) + `actor_faction_membership` (T2/Reality)
 
-**Open** — recommendation likely (A) for V1+ TIT_001 + V1+ REP_001 + V1+ DIPL_001 consumer support; (C) only if V1 ships faction-faction relations.
+**Reasoning:**
+- faction.current_head_actor_id is MUTABLE on succession events (V1+ TIT_001 sect-leader heir); RealityManifest declarative bootstrap-only — needs runtime aggregate
+- V1+ REP_001 reputation projection per-(actor, faction) needs faction-as-entity for query keys
+- Cross-actor query "all members of Đông Hải Đạo Cốc" requires sparse faction aggregate
+- Q5 LOCKED static V1 default_relations → embed as field on faction aggregate (no separate faction_relations aggregate needed V1)
+- Matches FF_001 pattern (family_node + dynasty)
 
-### Q2 — Multi-faction membership V1?
+### Q2 — Multi-faction membership V1? ⚠ REVISION
 
-- **(A) Single faction V1** — each actor 0-1 faction; matches Wuxia common (1 sect per actor)
-- **(B) Multi-faction V1** — Vec<FactionMembership>; matches Modern + D&D (multiple guild/faction memberships)
-- **(C) Multi-faction with primary flag V1** — Vec but one flagged primary
+✅ **LOCKED 2026-04-26: REVISION — Vec<FactionMembershipEntry> schema V1; V1 validator cap=1; V1+ relax cap**
 
-**Open** — recommendation depends on V1 reality preset priority. Wuxia primary suggests (A); Modern flexibility suggests (B); (C) compromise.
+**Reasoning (REVISION from initial single Option<T>):**
+- Schema V1 ships `actor_faction_membership.memberships: Vec<FactionMembershipEntry>` (Vec from day 1)
+- V1 validator rule: `memberships.len() > 1` rejects with `faction.multi_membership_forbidden_v1`
+- V1+ cap relax = single-line validator change; NO schema migration
+- Wuxia common single-sect semantics preserved V1 (cap=1 enforced)
+- Modern + D&D multi-faction unblocked V1+ via cap relax
+- Trade-off: 1 extra capacity field vs Option; minimal cost; significant V1+ migration savings
 
 ### Q3 — Role taxonomy: closed enum vs author-declared per-faction?
 
-- **(A) Author-declared per-faction** — FactionDecl includes `roles: Vec<RoleDecl>`; sect declares own role taxonomy (sect_master / inner_disciple / etc.)
-- **(B) V1 closed enum** — engine ships generic FactionRole closed-set 6-variant (Master / Officer / Member / Recruit / Affiliate / Honorary)
-- **(C) Hybrid** — closed-set V1 + author override V1+
+✅ **LOCKED 2026-04-26: (A) Author-declared per-faction** — RoleDecl with role_id + display_name (I18nBundle) + authority_level (u8 0-100)
 
-**Open** — wuxia complexity suggests (A); V1 simplicity suggests (B). Tradeoff.
+**Reasoning:**
+- Wuxia narrative authenticity REQUIRES sect-specific naming (sect_master / elder / inner_disciple / outer_disciple ≠ Master / Officer / Member generic)
+- Engine doesn't lose information via generic enum
+- Authoring cost ~25 RoleDecl entries V1 Wuxia (5 sects × 5 roles); small content cost
+- Matches D&D 5e per-faction-rank pattern (each faction has own reputation rank semantics)
+- V1+ extensions additive: max_actors_in_role + allowed_succession_kinds
 
-### Q4 — Rank within faction: numeric vs named V1?
+### Q4 — Rank within faction: numeric vs named V1? ⚠ REVISION
 
-- **(A) V1 numeric rank u16** — 1, 2, 3... ordered ranks; "sư huynh" = lower number than "sư đệ"; V1 simple
-- **(B) V1 named rank Vec<String>** — author declares per-faction rank names; "Đại sư huynh" / "Nhị sư đệ"
-- **(C) Both V1** — numeric_rank + named_rank fields
+✅ **LOCKED 2026-04-26: REVISION — (A) Numeric u16 only V1**; named computed on display layer; V1+ explicit name override
 
-**Open** — wuxia narrative needs named ranks; numeric is simpler V1.
+**Reasoning (REVISION from initial both-fields):**
+- Wuxia named rank IS DERIVED from numeric ordering ("Đại" = 1; "Nhị" = 2; "Tam" = 3; etc.)
+- Named rank is presentation layer (LLM/UI computes from numeric + RoleDecl + locale)
+- V1 storage minimal: 1 u16 field per membership
+- V1+ enrichment: explicit_rank_name: Option<I18nBundle> field for narrative override (sect declares specific names beyond auto-derived)
+- Numeric encodes ordering for traversal queries (find disciple senior to LM01 = numeric_rank < LM01.rank)
 
 ### Q5 — Faction-faction relations: V1 minimal vs V1+ DIPL_001?
 
-- **(A) V1 minimal default_relations** — per-faction HashMap<FactionId, RelationStance> (Hostile/Neutral/Allied) at canonical seed; static V1
-- **(B) V1+ DIPL_001 full** — V1 FAC_001 doesn't ship faction-faction relations; V1+ DIPL_001 owns dynamic
-- **(C) V1 default + V1+ dynamic override** — static defaults V1 + dynamic relation events V1+ DIPL_001
+✅ **LOCKED 2026-04-26: (A) V1 static default_relations** — per-faction HashMap<FactionId, RelationStance> at canonical seed; V1+ DIPL_001 dynamic
 
-**Open** — recommendation (A) static V1 for opinion modifier baseline; V1+ DIPL_001 adds dynamic.
+**Reasoning:**
+- V1 use case: rival-sect NPCs Tier 4 priority modifier + opinion baseline (-5 / 0 / +5 per Hostile/Neutral/Allied)
+- V1+ DIPL_001 layers dynamic events (treaties / wars / alliance changes) without schema migration
+- 3-variant RelationStance enum: Hostile / Neutral / Allied
+- Authoring cost Wuxia preset: 5 sects × ~3 declared relations = 15 entries (sparse HashMap; default Neutral implicit)
+- Self-relation faction.default_relations[self.faction_id] not declared (implicit Allied)
 
 ### Q6 — Master-disciple representation V1?
 
-- **(A) `master_actor_id: Option<ActorId>` field on actor_faction_membership** — V1 simple; sect lineage chain via traversal
-- **(B) Separate `master_disciple_relation` aggregate V1+** — explicit relation aggregate; richer than field
-- **(C) Within ActorFactionMembership.role + rank fields V1** — role=disciple + master derived from rank ordering
+✅ **LOCKED 2026-04-26: (A) `master_actor_id: Option<ActorId>` field on actor_faction_membership** — V1 simple; sect lineage chain via traversal V1+
 
-**Open** — recommendation (A) for V1 simplicity; matches FF-D7 RESOLVED scope.
+**Reasoning:**
+- **FF-D7 RESOLVED:** Master-disciple = FAC_001 actor_faction_membership.master_actor_id (NOT FF_001 family relation)
+- Sect lineage chain via traversal: LM01.master = du_si → du_si.master = some_elder → some_elder.master = founder
+- V1 validation:
+  - master_actor_id MUST be member of same faction (not cross-sect master)
+  - master_actor_id MUST have higher authority_level (master ranks above disciple)
+  - Cyclic master chain rejected with `faction.cyclic_master_chain`
+- V1+ extended traversal API (find sư tổ = master's master)
+- Matches Sands of Salzaar + Path of Wuxia + wuxia novel canon pattern
 
-### Q7 — Sworn brotherhood (FF-D6) representation V1?
+### Q7 — Sworn brotherhood (FF-D6) representation V1? ⚠ REVISION
 
-- **(A) Within FAC_001 as sworn_bond_id field on actor_faction_membership** — bonded actors share sworn_bond_id; V1 minimal
-- **(B) Separate sworn_bonds aggregate V1+** — multi-actor bond entity; richer
-- **(C) Defer V1+** — FAC_001 V1 doesn't ship sworn brotherhood; V1+ separate feature OR FAC_001 enhancement
+✅ **LOCKED 2026-04-26: REVISION — (C) Defer V1+ via FAC-D10**; V1 doesn't ship sworn_bond_id field
 
-**Open** — recommendation depends on Wuxia content priority. (A) lightweight V1; (C) defers.
+**Reasoning (REVISION from initial sworn_bond_id field V1):**
+- V1 SPIKE_01 has NO sworn brotherhood (Lý Minh + canonical actors no Peach Garden Oath)
+- Adding field to V1 schema without V1 use case = schema bloat
+- V1+ activation can add field via additive I14 (no schema migration; new optional field)
+- V1+ FAC-D10 enrichment scope:
+  - Add `sworn_bond_id: Option<SwornBondId>` field on actor_faction_membership (additive)
+  - Add separate `sworn_bonds` aggregate (per-bond metadata: founding_at_turn + member_actor_ids + oath_text I18nBundle)
+  - Multi-actor bond traversal: scan actor_faction_memberships for matching sworn_bond_id
+- Discipline: V1 ships what's actively consumed; defer schema otherwise
+- Cleaner V1 (focused on sect membership + master-disciple)
+- **FF-D6 partially deferred:** V1+ FAC-D10 owns sworn brotherhood (NOT V1 FAC_001)
 
 ### Q8 — Cross-reality faction migration V1 vs V2+?
 
-- **(A) V1 strict single-reality** — matches all IDF + FF discipline
-- **(B) V1+ remap policy** — V2+ Heresy migration
+✅ **LOCKED 2026-04-26: (A) V1 strict single-reality**; V2+ Heresy migration
 
-**Open** — recommendation (A); inherits IDF/FF pattern.
+**Reasoning:**
+- All IDF features locked V2+ for cross-reality (POST-SURVEY-Q6 + ORG-Q8 + IDL); FF_001 Q7 LOCKED V2+; FAC_001 inherits same discipline
+- V1 reject `faction.cross_reality_mismatch` (V2+ reservation; V1 unused)
 
 ### Q9 — Faction-driven Lex axiom gate V1 or V1+?
 
-- **(A) V1+ schema-present hook** — AxiomDecl.requires_faction: Option<Vec<FactionId>>; V1 always None
-- **(B) V1 active gate** — V1 ships first faction-gated axiom example
-- **(C) Defer V1++** — schema later
+✅ **LOCKED 2026-04-26: (A) Schema-present hook V1+**; V1 always None
 
-**Open** — recommendation (A) future-proof hook; V1 reserved.
+**Reasoning:**
+- Pattern matches IDF_001 RAC-Q5 + IDF_005 (`requires_race` / `requires_ideology` reserved V1+; V1 always None)
+- WA_001 closure pass extension (V1+) adds 3 companion fields uniformly: requires_race + requires_ideology + requires_faction
+- V1+ first faction-gated axiom example: "Đông Hải Đạo Cốc Phong Vân Quyết — only sect members can invoke"
+- V1 schema cost: tiny (Option<Vec<FactionId>> field on AxiomDecl); V1 always None
 
 ### Q10 — Synthetic actor faction membership?
 
-- **(A) Forbidden V1** — Synthetic actors don't have faction membership (matches IDF/FF discipline)
-- **(B) Allowed V1** — Synthetic actors can be faction members (admin/system entities)
+✅ **LOCKED 2026-04-26: (A) Forbidden V1** — Synthetic actors don't have faction membership
 
-**Open** — recommendation (A) per IDF/FF pattern.
+**Reasoning:**
+- Inherits IDF + FF discipline (RAC-Q1 + PRS-Q11 + ORG-Q7 + IDL-Q12 + FF_001 synthetic exclusion)
+- Synthetic actors (ChorusOrchestrator / BubbleUpAggregator / mechanical entities) have no narrative faction allegiance V1
+- V1+ may relax if admin/system faction needed
 
 ---
 
@@ -314,25 +354,178 @@ When references arrive:
 
 ---
 
-## §7 — Provisional V1 scope (placeholder — finalized after Q1-Q10 lock)
+## §7 — V1 scope ✅ LOCKED 2026-04-26 (post Q1-Q10 deep-dive + user "A" confirmation; 3 REVISIONS noted)
 
-INTENTIONALLY EMPTY pending Q1-Q10 + reference materials review. Premature locking risks design churn (RES_001 + IDF folder pattern proven).
+### V1 aggregates (2)
 
-When user provides references + answers Q1-Q10, populate with:
-- Aggregate count (per Q1) + storage model
-- Multi-faction membership decision (per Q2)
-- Role taxonomy (per Q3) — closed-set vs author-declared
-- Rank representation (per Q4) — numeric vs named
-- Faction-faction relations V1 stance (per Q5)
-- Master-disciple representation (per Q6)
-- Sworn brotherhood representation (per Q7)
-- Cross-reality V1 stance (per Q8)
-- Faction-driven Lex axiom V1 vs V1+ (per Q9)
-- Synthetic actor membership (per Q10)
-- RealityManifest extensions (canonical_factions + canonical_faction_memberships)
-- Validator chain (`faction.*` namespace)
-- EVT-T sub-types (T3 Derived + T4 System + T8 Administrative — V1 mapping)
-- Acceptance criteria sketch (10 V1-testable AC)
+1. **`faction`** (T2/Reality, sparse — only declared factions get rows)
+   - faction_id + display_name (I18nBundle) + faction_kind (closed-set: Sect / Order / Clan / Guild / Coalition / Other) + roles: Vec<RoleDecl> per Q3 + requires_ideology (Option<Vec<(IdeologyId, FervorLevel)>> per IDL-D2 RESOLVED) + default_relations: HashMap<FactionId, RelationStance> per Q5 + canon_ref + founder_actor_id (Option) + current_head_actor_id (Option) + member_count (sparse query helper)
+   - **Mutable** via succession events V1+ (current_head_actor_id) + V1+ DIPL_001 dynamic relation overlay
+   - Sparse storage (5 sects per Wuxia preset; 1-2 per Modern; 0 V1 sandbox)
+
+2. **`actor_faction_membership`** (T2/Reality, per-(reality, actor_id))
+   - memberships: Vec<FactionMembershipEntry> per Q2 REVISION (V1 cap=1 validator; V1+ relax)
+   - **Mutable** via Apply events (JoinFaction / LeaveFaction / ChangeRole / ChangeRank / SetMaster / RemoveMaster)
+   - Synthetic actors forbidden V1 per Q10
+
+### FactionMembershipEntry V1 schema
+
+```rust
+pub struct FactionMembershipEntry {
+    pub faction_id: FactionId,
+    pub role_id: RoleId,                       // ref to FactionDecl.roles[*].role_id
+    pub rank_within_role: u16,                 // numeric V1 per Q4 REVISION; ordered ascending (1 = highest authority within role)
+    pub master_actor_id: Option<ActorId>,      // sect lineage chain per Q6; FF-D7 RESOLVED
+    pub joined_at_turn: u64,
+    pub joined_at_fiction_ts: i64,
+    pub joined_reason: JoinReason,
+    // V1+ extensions (additive per I14)
+    // pub sworn_bond_id: Option<SwornBondId>,           // V1+ FAC-D10 per Q7 REVISION
+    // pub explicit_rank_name: Option<I18nBundle>,        // V1+ override per Q4 enrichment
+}
+
+pub enum JoinReason {
+    CanonicalSeed,
+    PcCreation,
+    NpcSpawn,
+    AdminOverride { reason: String },
+    // V1+ extensions
+    // Defection { from_faction: FactionId, reason: String },
+    // Recruitment { recruited_by: ActorId },
+}
+```
+
+### V1 closed enums
+
+- **`FactionKind`** (6 variants V1): Sect / Order / Clan / Guild / Coalition / Other
+- **`RelationStance`** (3 variants V1): Hostile / Neutral / Allied
+- **`JoinReason`** (4 variants V1): CanonicalSeed / PcCreation / NpcSpawn / AdminOverride
+
+### V1 events (in channel stream per EVT-A10; NOT separate aggregate)
+
+| Event | EVT-T* | Sub-type / delta_kind | Producer role | V1 active? |
+|---|---|---|---|---|
+| Faction registered at canonical seed | **EVT-T4 System** | `FactionBorn { faction_id, faction_kind, roles_count }` | Bootstrap (RealityBootstrapper) | ✓ V1 |
+| Membership at canonical seed | **EVT-T4 System** | `FactionMembershipBorn { actor_id, faction_id, role_id, rank }` | Bootstrap | ✓ V1 |
+| Join faction | **EVT-T3 Derived** | `aggregate_type=actor_faction_membership`, `delta_kind=JoinFaction` | Aggregate-Owner (FAC_001 owner-service) | V1+ runtime |
+| Leave faction | **EVT-T3 Derived** | `delta_kind=LeaveFaction` | Aggregate-Owner | V1+ runtime |
+| Change role | **EVT-T3 Derived** | `delta_kind=ChangeRole` | Aggregate-Owner | V1+ runtime |
+| Change rank | **EVT-T3 Derived** | `delta_kind=ChangeRank` | Aggregate-Owner | V1+ runtime |
+| Set master (master-disciple bond formed) | **EVT-T3 Derived** | `delta_kind=SetMaster` | Aggregate-Owner | V1+ runtime |
+| Remove master (master-disciple bond broken) | **EVT-T3 Derived** | `delta_kind=RemoveMaster` | Aggregate-Owner | V1+ runtime |
+| Faction succession (head change) | **EVT-T3 Derived** | `aggregate_type=faction`, `delta_kind=SetCurrentHead` | Aggregate-Owner (V1+ TIT_001 trigger) | V1+ runtime |
+| Forge admin register faction | **EVT-T8 Administrative** | `Forge:RegisterFaction` | Forge (WA_003) | ✓ V1 |
+| Forge admin edit faction | **EVT-T8 Administrative** | `Forge:EditFaction` | Forge | ✓ V1 |
+| Forge admin edit membership | **EVT-T8 Administrative** | `Forge:EditFactionMembership` | Forge | ✓ V1 |
+
+### V1 `faction.*` reject rule_ids (8 V1 + V1+ reservations)
+
+V1 rules:
+1. `faction.unknown_faction_id` — Stage 0 schema (faction_id not in RealityManifest.canonical_factions + faction aggregate)
+2. `faction.unknown_role_id` — Stage 0 schema (role_id not in FactionDecl.roles)
+3. `faction.multi_membership_forbidden_v1` — Stage 0 schema (Vec.len() > 1; per Q2 REVISION cap=1)
+4. `faction.master_cross_sect_forbidden` — Stage 0 schema (master_actor_id member of different faction)
+5. `faction.master_authority_violation` — Stage 0 schema (master.authority_level <= disciple.authority_level)
+6. `faction.cyclic_master_chain` — Stage 0 schema (LM01 master-of-X master-of-LM01)
+7. `faction.ideology_binding_violation` — Stage 0 schema (actor's ideology stance doesn't satisfy FactionDecl.requires_ideology)
+8. `faction.synthetic_actor_forbidden` — Stage 0 schema (Synthetic actor cannot have faction membership per Q10)
+
+V1+ reservations:
+- `faction.cross_reality_mismatch` (V2+ Heresy migration per Q8)
+- `faction.lex_axiom_forbidden` (V1+ when first faction-gated axiom ships per Q9)
+- `faction.sworn_bond_unsupported_v1` (V1+ FAC-D10 enrichment activation reject)
+- `faction.member_role_count_exceeded` (V1+ when RoleDecl.max_actors_in_role enrichment ships)
+
+### V1 RealityManifest extensions (REQUIRED V1)
+
+- `canonical_factions: Vec<FactionDecl>` — per-reality declared factions (sparse; empty Vec valid for sandbox)
+- `canonical_faction_memberships: Vec<FactionMembershipDecl>` — per-actor declared faction memberships at canonical seed (sparse; empty Vec valid)
+
+`FactionDecl` shape:
+```rust
+pub struct FactionDecl {
+    pub faction_id: FactionId,
+    pub display_name: I18nBundle,
+    pub faction_kind: FactionKind,
+    pub roles: Vec<RoleDecl>,
+    pub requires_ideology: Option<Vec<(IdeologyId, FervorLevel)>>,
+    pub default_relations: HashMap<FactionId, RelationStance>,
+    pub canon_ref: Option<GlossaryEntityId>,
+    pub founder_actor_id: Option<ActorId>,
+    pub current_head_actor_id: Option<ActorId>,
+}
+```
+
+`FactionMembershipDecl` shape:
+```rust
+pub struct FactionMembershipDecl {
+    pub actor_id: ActorId,
+    pub faction_id: FactionId,
+    pub role_id: RoleId,
+    pub rank_within_role: u16,
+    pub master_actor_id: Option<ActorId>,
+}
+```
+
+### V1 acceptance criteria (10 V1-testable + 4 V1+ deferred)
+
+V1:
+- AC-FAC-1: Wuxia canonical bootstrap declares 5 sects + ~10 NPC memberships (Du sĩ in Đông Hải Đạo Cốc as outer_disciple rank=1)
+- AC-FAC-2: Faction.requires_ideology validated against actor's ideology stance at canonical seed (Du sĩ has ideology_dao Devout → meets Đông Hải Đạo Cốc requires_ideology=[(ideology_dao, Devout)])
+- AC-FAC-3: Master-disciple chain validated (Du sĩ.master = old_elder_npc; old_elder_npc same faction; authority_level higher)
+- AC-FAC-4: Cyclic master chain rejected (`faction.cyclic_master_chain`)
+- AC-FAC-5: Multi-membership rejected V1 (`faction.multi_membership_forbidden_v1` on Vec.len()>1)
+- AC-FAC-6: Unknown faction_id rejected (`faction.unknown_faction_id`)
+- AC-FAC-7: Unknown role_id rejected (`faction.unknown_role_id`)
+- AC-FAC-8: Ideology binding violation rejected (`faction.ideology_binding_violation`)
+- AC-FAC-9: I18nBundle resolves faction display_name + role display_name across locales
+- AC-FAC-10: Forge admin register faction (3-write atomic: faction row + EVT-T8 + forge_audit_log)
+
+V1+:
+- AC-FAC-V1+1: V1+ runtime JoinFaction event (PC defects mid-story)
+- AC-FAC-V1+2: V1+ TIT_001 sect succession (sect_master dies → heir disciple becomes head)
+- AC-FAC-V1+3: V1+ multi-faction membership (cap relax)
+- AC-FAC-V1+4: V1+ FAC-D10 sworn brotherhood (sworn_bond_id field activation)
+
+### V1 deferrals (17 — FAC-D1..D17)
+
+- FAC-D1: Multi-faction membership V1+ cap relax (Q2 REVISION; cap=1 → cap=N)
+- FAC-D2: Sect cultivation method binding (V1+ CULT_001)
+- FAC-D3: Marriage as faction alliance (V1+ DIPL_001 — FF-D5 deferred jointly)
+- FAC-D4: Faction-faction dynamic relations (V1+ DIPL_001)
+- FAC-D5: Wulin Meng parent_faction_id (V1+ enrichment for hierarchical faction)
+- FAC-D6: Sect succession rules (V1+ TIT_001 — FF-D8 jointly)
+- FAC-D7: Per-(actor, faction) reputation projection (V1+ REP_001)
+- FAC-D8: Faction-driven Lex axiom gate ACTIVE (V1+ when first axiom uses; Q9)
+- FAC-D9: Cross-reality faction migration (V2+ WA_002 Heresy per Q8)
+- **FAC-D10: Sworn brotherhood (Q7 REVISION; sworn_bond_id field + sworn_bonds aggregate; V1+ enrichment)**
+- FAC-D11: V1+ runtime defection / join / leave event flows (V1 ships canonical seed only)
+- FAC-D12: Faction cultivation method registry (V1+ CULT_001)
+- FAC-D13: Faction treasury / clan-shared inventory (V2+ RES_001)
+- FAC-D14: Hierarchical faction parent_faction_id (cadet branches)
+- FAC-D15: Faction-conflict opinion modifier non-member NPCs (V1+ NPC_002 enrichment)
+- **FAC-D16: Multi-faction membership cap relax (Q2 REVISION enrichment; same as FAC-D1)**
+- **FAC-D17: Explicit named rank override (Q4 REVISION enrichment; explicit_rank_name field)**
+
+### V1 quantitative summary
+
+- 2 aggregates (faction sparse + actor_faction_membership)
+- 6-variant FactionKind enum + 3-variant RelationStance enum + 4-variant JoinReason enum
+- Vec<FactionMembershipEntry> with V1 validator cap=1 per Q2 REVISION
+- Author-declared roles per FactionDecl (RoleDecl) per Q3
+- Numeric u16 rank only V1 per Q4 REVISION
+- master_actor_id field per Q6
+- NO sworn_bond_id field V1 per Q7 REVISION (FAC-D10)
+- Static default_relations HashMap<FactionId, RelationStance> per Q5
+- 8 V1 reject rule_ids in `faction.*` namespace + 4 V1+ reservations
+- 2 RealityManifest extensions (canonical_factions + canonical_faction_memberships)
+- 3 EVT-T8 Forge sub-shapes (Forge:RegisterFaction + Forge:EditFaction + Forge:EditFactionMembership)
+- 2 EVT-T4 System sub-types (FactionBorn + FactionMembershipBorn)
+- 7 EVT-T3 delta_kinds (JoinFaction / LeaveFaction / ChangeRole / ChangeRank / SetMaster / RemoveMaster / SetCurrentHead — V1+ runtime; V1 ships canonical seed only)
+- 10 V1 AC + 4 V1+ deferred
+- 17 deferrals (FAC-D1..D17)
+- ~700-900 line DRAFT spec estimate
+- 4-commit cycle (lock-Q this commit + DRAFT + Phase 3 + closure+release)
 
 ---
 
