@@ -179,7 +179,7 @@ Helps onboarding — quick lookup "which stage owns my rule_id":
 
 | Stage | Validator | rule_id prefix | Owner namespace V1 count | V1+ reservations |
 |---|---|---|---|---|
-| 0 | schema validate | (none — engine error) | — | — |
+| 0 | schema validate (incl. canonical seed cross-aggregate consistency — see §"Stage 0 canonical seed cross-aggregate consistency rules" below) | (engine error + Tier 5 substrate namespaces) | event-model + Tier 5 features | — |
 | 1 | capability check | `capability.*` | DP-K9 | — |
 | 2 | A5 intent classification | (logged) | 05_llm_safety A5 | — |
 | 3 | A6 sanitize | `oracle.*` / `canon_drift.*` (input layer subset) | 05_llm_safety | — |
@@ -194,7 +194,69 @@ Helps onboarding — quick lookup "which stage owns my rule_id":
 | 8 | causal-ref integrity | (event-model) | event-model EVT-A6 | — |
 | 9 | world-rule lint | `world_rule.*` | cross-cutting | — |
 
-**Total V1 rule_ids in pipeline:** 10 + 12 + 13 + 9 + (existing pre-3.5 stages) = 44+ in `entity/place/map/csc` namespaces alone.
+### Tier 5 Actor Substrate namespaces (added 2026-04-27 P4 closure-pass-extension)
+
+These namespaces validate at **Stage 0 schema** (canonical seed validation + Forge admin events; cross-aggregate consistency rules below); they don't have dedicated pipeline slots. Most don't run during LLM-output pipeline (they're bootstrap-time + Forge-time validators):
+
+| Namespace | Owner feature | V1 rules count | V1+ reservations | Validation timing |
+|---|---|---|---|---|
+| `resource.*` | RES_001 Resource Foundation | 12 V1 | 3 V1+ | Stage 0 canonical seed + Forge admin + PL_005 transfer flows |
+| `race.*` | IDF_001 Race Foundation | 5 V1 | 4 V1+ | Stage 0 canonical seed + Forge admin |
+| `language.*` | IDF_002 Language Foundation | 4 V1 | 2 V1+ | Stage 0 canonical seed + Stage 7 Speak validator V1+ |
+| `personality.*` | IDF_003 Personality Foundation | 3 V1 | 2 V1+ | Stage 0 canonical seed + Forge admin |
+| `origin.*` | IDF_004 Origin Foundation | 4 V1 | 2 V1+ | Stage 0 canonical seed + Forge admin |
+| `ideology.*` | IDF_005 Ideology Foundation | 3 V1 | 5 V1+ | Stage 0 canonical seed + Forge admin |
+| `family.*` | FF_001 Family Foundation | 8 V1 | 4 V1+ | Stage 0 canonical seed + Forge admin |
+| `faction.*` | FAC_001 Faction Foundation | 8 V1 | 4 V1+ | Stage 0 canonical seed + Forge admin |
+| `progression.*` | PROG_001 Progression Foundation | 7 V1 | 6 V1+ | Stage 0 canonical seed + PL_005 cascade hot-path + V1+ Stage 4 lex_check (axiom-gated abilities) |
+| `reputation.*` | REP_001 Reputation Foundation | 6 V1 | 4 V1+ | Stage 0 canonical seed + Forge admin + V1+ runtime delta events |
+| `actor.*` | ACT_001 Actor Foundation | 8 V1 (P2 added: spawn_cell_unknown + glossary_entity_unknown) | 3 V1+ | Stage 0 canonical seed cross-aggregate consistency (see §below) |
+| `pc.*` | PCS_001 PC Substrate | 7 V1 | 3 V1+ | Stage 0 canonical seed cross-aggregate consistency + Forge admin |
+| `ai_tier.*` | AIT_001 AI Tier Foundation | 8 V1 | 4 V1+ | Stage 0 canonical seed + V1+ runtime tier transitions |
+| `time_dilation.*` | TDIL_001 Time Dilation Foundation | 4 V1 | 6 V1+30d | Stage 0 canonical seed + per-turn channel boundary checks |
+
+**Total V1 rule_ids across all namespaces:** ~44+ (entity/place/map/csc) + ~87+ (Tier 5 substrate) = ~131 V1 reject rules total across the engine. ~90+ are **Stage 0 schema validators** (canonical seed + Forge admin); ~44+ are LLM-output pipeline validators (Stage 3.5+).
+
+---
+
+## Stage 0 canonical seed cross-aggregate consistency rules (added 2026-04-27 P4 closure-pass-extension)
+
+Cross-aggregate consistency rules run at **bootstrap time** (canonical seed validation; NOT in LLM-output pipeline). When RealityBootstrapper validates a `RealityManifest`, these rules ensure cross-aggregate coherence post-bootstrap. Each rule's owner-feature is responsible for the validation logic; cross-references documented here for boundary review convenience.
+
+### Rules at canonical seed bootstrap
+
+| Rule | Owner | Cross-references | Reject |
+|---|---|---|---|
+| **C1: actor_core ↔ entity_binding scope_id consistency** | EF_001 + ACT_001 | `actor_core.current_region_id` (cell-tier ChannelId) MUST match `entity_binding.scope_id` (when scope_tier = Channel/cell) for the same actor_id post-bootstrap | `actor.cell_binding_mismatch` (V1+ activation if pain emerges; V1 implicit via shared `spawn_cell` source field per P2) |
+| **C2: CanonicalActorDecl.spawn_cell ∈ RealityManifest.places** | ACT_001 + PF_001 | spawn_cell (cell-tier ChannelId) MUST reference declared place per PF_001 places extension | `actor.spawn_cell_unknown` (P2 LOCKED 2026-04-27) |
+| **C3: CanonicalActorDecl.glossary_entity_id ∈ knowledge-service canon** | ACT_001 + knowledge-service | glossary_entity_id MUST reference valid canonical glossary entry | `actor.glossary_entity_unknown` (P2 LOCKED 2026-04-27) |
+| **C4: actor_origin.native_language ∈ RealityManifest.languages** | IDF_004 + IDF_002 | actor_origin.native_language LanguageId MUST be declared in RealityManifest.languages per IDF_002 LanguageDecl | `language.unknown_language_id` (IDF_002 namespace) |
+| **C5: actor_origin.default_ideology_refs ∈ RealityManifest.ideologies** | IDF_004 + IDF_005 | All IdeologyId refs MUST be in RealityManifest.ideologies | `origin.unknown_ideology_ref` (IDF_004 namespace) |
+| **C6: actor_origin.birthplace_channel ∈ RealityManifest.places** | IDF_004 + PF_001 | birthplace_channel ChannelId (cell-tier) MUST be declared place | `origin.unknown_birthplace` (IDF_004 namespace) |
+| **C7: actor_faction_membership.faction_id ∈ canonical_factions** | FAC_001 | faction_id MUST be in RealityManifest.canonical_factions | `faction.unknown_faction_id` (FAC_001 namespace) |
+| **C8: actor_faction_membership ideology binding (resolves IDL-D2)** | FAC_001 + IDF_005 | If FactionDecl.requires_ideology Some, actor's ideology stance MUST satisfy each (IdeologyId, MinFervorLevel) per Q LOCKED FAC | `faction.ideology_binding_violation` (FAC_001 namespace) |
+| **C9: actor_faction_reputation references (FAC_001 + EF_001)** | REP_001 + FAC_001 + EF_001 | actor_id ∈ canonical_actors AND faction_id ∈ canonical_factions; sparse storage discipline | `reputation.unknown_actor_id` + `reputation.unknown_faction_id` (REP_001 namespace) |
+| **C10: actor_progression.kind_id ∈ progression_kinds** | PROG_001 | All ProgressionKindId refs in actor_progression MUST be declared in RealityManifest.progression_kinds | `progression.training.kind_unknown` (PROG_001 namespace) |
+| **C11: PcBodyMemory languages ∈ RealityManifest.languages** | PCS_001 + IDF_002 | PcBodyMemory.{soul, body}.native_language LanguageId MUST be declared per IDF_002 | `language.unknown_language_id` (cross-feature; PCS_001 emits for body_memory) |
+| **C12: PcBodyMemory references ∈ knowledge-service canon** | PCS_001 + knowledge-service | SoulLayer.origin_world_ref (Optional GlossaryEntityId) + BodyLayer.host_body_ref (Optional GlossaryEntityId) MUST be valid canon entries when Some | `pc.invalid_transmigration_combination` (PCS_001 namespace; renamed from invalid_xuyenkhong_combination per user direction) |
+| **C13: V1 cap=1 PC per reality** | PCS_001 | Stage 0 schema validator counts canonical_actors with kind=Pc + pc_user_binding rows; cap=1 V1; V1+ relax via RealityManifest.max_pc_count Optional (PCS-D3) | `pc.multi_pc_per_reality_forbidden_v1` (PCS_001 namespace) |
+| **C14: actor_chorus_metadata sparse population matches ActorKind** | ACT_001 | chorus_metadata Some ↔ ActorKind = NPC V1 (control source = AI always V1); chorus_metadata None ↔ ActorKind = PC V1 (User-control); V1+ AI-controls-PC-offline relaxes for offline PCs | `actor.kind_specific_field_mismatch` (ACT_001 namespace) |
+| **C15: mortality_config.mode = RespawnAtLocation V1 forbidden** | PCS_001 + WA_006 | If mortality_config.mode = RespawnAtLocation declared but PCS-D2 Respawn flow V1+ not active, reject canonical seed bootstrap; reality must use Permadeath or Ghost mode V1 | `pc.respawn_unsupported_v1` (PCS_001 namespace; per Q7 LOCKED) |
+| **C16: actor_clocks initialization from body_memory canonical** | TDIL_001 + PCS_001 + ACT_001 | TDIL_001 actor_clocks initialized at canonical seed reading body_memory.{soul, body} state if PC has xuyên không origin_world_ref Some; otherwise actor_clock + soul_clock + body_clock all start at 0 (native PC + native NPC) | `time_dilation.invalid_initial_clocks` (TDIL_001 namespace) |
+| **C17: AIT_001 tier_hint at canonical seed** | AIT_001 + ACT_001 | If AIT_001 tier semantics declared on CanonicalActorDecl, validate tier_hint matches NpcTrackingTier V1 enum (Major / Minor / Untracked); PC always Tier 0 (no tier_hint declared); cross-validate with capacity caps (≤20 Major, ≤100 Minor per AIT_001 §11) | `ai_tier.canonical_tier_required` + `ai_tier.capacity_exceeded` (AIT_001 namespace) |
+
+### Rule application discipline
+
+- **Stage 0 schema validation runs at canonical seed bootstrap** (RealityBootstrapper) AND at Forge admin events (mid-runtime). Rules that reference RealityManifest fields validate against the manifest at bootstrap; runtime Forge edits validate against current aggregate state.
+- **Each rule's owner feature** is responsible for the validation logic in their owner-service (e.g., FAC_001 owner-service runs C7 + C8; PCS_001 owner-service runs C13 + C15).
+- **Cross-reference rules** (e.g., C4 validates IDF_004 actor_origin against IDF_002 languages) — ownership belongs to the FIRST feature in the dependency direction (IDF_004 owns C4 logic since actor_origin is IDF_004's aggregate).
+- **C1 implicit V1, explicit V1+** — C1 (actor_core ↔ entity_binding scope_id) is enforced V1 implicitly via shared `spawn_cell` source field (P2 LOCKED 2026-04-27); both aggregates populate from the same CanonicalActorDecl.spawn_cell field. Explicit cross-aggregate validation V1+ if drift detected.
+
+### What's NOT in this list
+
+- **Within-aggregate schema validation** — handled by individual feature's namespace (`<feature>.unknown_*`, `<feature>.invalid_*`); not "cross-aggregate"
+- **LLM-output pipeline validation** — Stage 1+ (capability / A5 / A6 / structural / lex / heresy / etc.) is separate from Stage 0 canonical seed; those rules apply to PC turn submissions + NPC reactions, not bootstrap
+- **V1+ runtime cascade rules** (e.g., NPC_002 Tier 4 priority modifier reading REP_001) — V1+ enrichment when respective features ship runtime activations
 
 ---
 

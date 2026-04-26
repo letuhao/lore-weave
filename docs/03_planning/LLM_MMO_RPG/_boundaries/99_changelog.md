@@ -6,6 +6,85 @@
 
 ---
 
+## 2026-04-27 — P4 Cross-feature consistency validator rules + Tier 5 namespace registry update (single `[boundaries-lock-claim+release]` commit)
+
+- **Lock CLAIMED + RELEASED** in single combined commit — P4 closure-pass-extension; small additive update to validator pipeline slots boundary doc
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in single commit
+  - `03_validator_pipeline_slots.md`:
+    - **EXPANDED** §"Stage → rule_id namespace matrix" with 14 NEW Tier 5 namespace entries (resource/race/language/personality/origin/ideology/family/faction/progression/reputation/actor/pc/ai_tier/time_dilation); shows V1 rule counts + V1+ reservations + validation timing (Stage 0 canonical seed + Stage 3.5 + Forge admin + V1+ runtime per namespace)
+    - Stage 0 row updated to reference NEW §"Stage 0 canonical seed cross-aggregate consistency rules"
+    - **NEW SECTION** "Stage 0 canonical seed cross-aggregate consistency rules" documenting 17 cross-aggregate rules (C1-C17) with owner-feature attribution + reject rule references
+  - `99_changelog.md`: this entry
+
+### Background
+
+P4 audit gap discovered in main session 2026-04-27 audit "actor canonical seed init readiness review":
+- Cross-aggregate consistency rules at canonical seed not explicitly documented (C1 actor_core.current_region_id ↔ entity_binding.scope_id; C2 spawn_cell ∈ places; C3 glossary_entity_id ∈ canon)
+- ACT_001 + PCS_001 + AIT_001 + TDIL_001 namespaces not added to validator pipeline matrix (~87+ V1 reject rules across 14 Tier 5 features absent from registry)
+
+### What's documented
+
+**14 namespaces added to Stage → rule_id matrix** (Tier 5 substrate):
+- resource.* (RES_001) — 12 V1 + 3 V1+
+- race.* / language.* / personality.* / origin.* / ideology.* (IDF_001..005) — 19 V1 + 15 V1+ total
+- family.* (FF_001) — 8 V1 + 4 V1+
+- faction.* (FAC_001) — 8 V1 + 4 V1+
+- progression.* (PROG_001) — 7 V1 + 6 V1+
+- reputation.* (REP_001) — 6 V1 + 4 V1+
+- actor.* (ACT_001) — 8 V1 + 3 V1+ (P2 LOCKED added spawn_cell_unknown + glossary_entity_unknown)
+- pc.* (PCS_001) — 7 V1 + 3 V1+
+- ai_tier.* (AIT_001) — 8 V1 + 4 V1+
+- time_dilation.* (TDIL_001) — 4 V1 + 6 V1+30d
+
+**Total V1 reject rules across engine:** ~131 rules (~44 LLM-output pipeline Stage 3.5+ + ~87 Tier 5 substrate Stage 0 + Forge admin).
+
+**17 cross-aggregate consistency rules at Stage 0 canonical seed** (NEW §):
+- C1: actor_core.current_region_id ↔ entity_binding.scope_id (cell-tier; implicit V1 via shared spawn_cell field per P2 LOCKED; explicit V1+ if drift)
+- C2: spawn_cell ∈ RealityManifest.places (P2 LOCKED 2026-04-27 — actor.spawn_cell_unknown)
+- C3: glossary_entity_id ∈ knowledge-service canon (P2 LOCKED 2026-04-27 — actor.glossary_entity_unknown)
+- C4: actor_origin.native_language ∈ RealityManifest.languages (IDF_002 + IDF_004)
+- C5: actor_origin.default_ideology_refs ∈ RealityManifest.ideologies
+- C6: actor_origin.birthplace_channel ∈ RealityManifest.places
+- C7: actor_faction_membership.faction_id ∈ canonical_factions
+- C8: actor_faction_membership ideology binding (resolves IDL-D2 per FAC_001 Q LOCKED)
+- C9: actor_faction_reputation references (FAC_001 + EF_001)
+- C10: actor_progression.kind_id ∈ progression_kinds
+- C11: PcBodyMemory languages ∈ RealityManifest.languages (PCS_001 + IDF_002 cross-feature)
+- C12: PcBodyMemory references ∈ knowledge-service canon (PCS_001 + knowledge-service)
+- C13: V1 cap=1 PC per reality (PCS-A9 + Q9 LOCKED)
+- C14: actor_chorus_metadata sparse population matches ActorKind (chorus_metadata Some ↔ NPC V1; None ↔ PC V1; ACT-A4)
+- C15: mortality_config.mode = RespawnAtLocation V1 forbidden (PCS-D2 not active V1; reject pc.respawn_unsupported_v1)
+- C16: actor_clocks initialization from body_memory canonical (TDIL_001 + PCS_001 + ACT_001)
+- C17: AIT_001 tier_hint at canonical seed (NpcTrackingTier validation + capacity caps ≤20 Major / ≤100 Minor)
+
+### Rule application discipline LOCKED
+
+- Stage 0 schema validation runs at canonical seed bootstrap + Forge admin events
+- Each rule's owner feature is responsible for validation logic
+- Cross-reference rules belong to FIRST feature in dependency direction (e.g., IDF_004 owns C4 since actor_origin is IDF_004's aggregate)
+- C1 implicit V1 via shared spawn_cell source field (P2 LOCKED); explicit V1+ if drift detected
+
+### Closes P4 audit gap
+
+P4 audit gap from main session 2026-04-27 audit (actor canonical seed init readiness review) now CLOSED:
+- ✅ Cross-aggregate consistency rules explicitly documented (17 rules C1-C17)
+- ✅ Tier 5 namespaces registered in validator pipeline matrix (14 namespaces)
+- ✅ ACT_001 validator slot reflected (Stage 0 canonical seed cross-aggregate; not new pipeline stage)
+- ✅ Total V1 rule registry: ~131 reject rules across engine
+
+### Audit completion summary
+
+Main session 2026-04-27 actor canonical seed init readiness audit closed with all 4 priorities resolved:
+- P1 ACT_001 type lockdown (commit 40e853a) — ActorMood multi-axis + FlexibleState typed + GreetingObligation + PriorityTierHint
+- P2 ACT_001 spawn_cell + glossary_entity_id (commits 079976c + f4d0258) — Phase 1 + Phase 2 BOTH applied
+- P3 PCS_001 PC Substrate (commits 3c76f33 + 5c34b93 + 67b53cd + 7e3218e + af025eb) — 4-commit cycle complete
+- P4 Cross-feature validator rules (this commit) — Tier 5 namespace registry + Stage 0 cross-aggregate consistency rules
+
+NEW V1+ priorities post-P1+P2+P3+P4: PO_001 Player Onboarding + AI-controls-PC-offline + PCS-D2 Respawn flow + PCS-D7 A6 canon-drift detector + CULT_001 Cultivation Foundation (wuxia genre) + TIT_001 Title Foundation (heir succession) + DIPL_001 Diplomacy Foundation (V2+).
+
+---
+
 ## 2026-04-27 — PCS_001 closure pass → CANDIDATE-LOCK + lock RELEASE (commit 4/4 FINAL)
 
 - **Lock RELEASED** at end of this commit (`[boundaries-lock-release]`)
