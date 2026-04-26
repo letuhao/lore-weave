@@ -6,6 +6,79 @@
 
 ---
 
+## 2026-04-27 — PCS_001 PC Substrate DRAFT promotion + boundary register (commit 2/4)
+
+- **Lock CLAIMED** at start of this commit (`[boundaries-lock-claim]`); release deferred to commit 4/4 closure pass per PCS_001 4-commit cycle
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None → main session 2026-04-27 (PCS_001 DRAFT 2/4 promotion + boundary register; 5h TTL)
+  - `01_feature_ownership_matrix.md`:
+    - 2 NEW aggregate rows: pc_user_binding + pc_mortality_state (BOTH PCS_001-owned; pc_mortality_state with WA_006 §6 closure pass handoff RESOLVED)
+    - PRESERVED: 4 existing aggregates (pc_user_binding REPLACES old "(when designed)" stub; pc_mortality_state REPLACES old WA_006-handoff stub)
+    - 1 NEW EVT-T4 sub-type entry: PcRegistered (PCS_001 owner)
+    - 5 NEW EVT-T8 sub-shape entries: Forge:RegisterPc + Forge:BindPcUser + Forge:EditPcUserBinding + Forge:EditBodyMemory + Forge:EditPcMortalityState (PCS_001 owner; uses WA_003 forge_audit_log)
+    - 1 NEW EVT-T3 entry: pc_mortality_state delta_kinds (DyingTransition + DeathTransition + GhostTransition V1 active; RespawnTransition + ResurrectionTransition + GhostDispersedTransition V1+ reserved)
+    - 1 NEW EVT-T1 sub-type entry: PcTransmigrationCompleted (renamed from PcXuyenKhongCompleted per user direction 2026-04-27; English type name; schema active V1; emission V1+ deferred PCS-D-N)
+    - RealityManifest envelope row UPDATED: PCS_001 CanonicalActorDecl additive fields (body_memory_init Option<PcBodyMemory> + user_id_init Option<UserId>; REQUIRED V1 for kind=Pc; sparse PC-only)
+    - RejectReason namespace: appended `pc.*` → PCS_001
+    - PCS-* stable-ID prefix: already registered (line 148 catalog-file-per-category list); cat_06_PCS_pc_systems.md updated this commit with PCS-A1..A10 axioms + PCS-D1..D10 deferrals + PCS-11..PCS-20 V1 catalog entries
+  - `02_extension_contracts.md`:
+    - §1.4 namespace registration: `pc.*` (7 V1 rules + 3 V1+ reservations)
+    - §2 RealityManifest CanonicalActorDecl additive fields documented (body_memory_init + user_id_init REQUIRED for kind=Pc V1) + V1+ max_pc_count Optional reservation note (PCS-D3)
+  - `99_changelog.md`: this entry
+
+### PCS_001 DRAFT MILESTONE SUMMARY (commit 2/4 of 4-commit cycle)
+
+Files created/modified outside `_boundaries/` (commit 2/4):
+- features/06_pc_systems/_index.md (DRAFT row updated; PCS_001 active)
+- features/06_pc_systems/00_CONCEPT_NOTES.md (already at Q-LOCKED status; commit 1/4 5c34b93)
+- features/06_pc_systems/01_REFERENCE_GAMES_SURVEY.md (Phase 0 commit 3c76f33)
+- features/06_pc_systems/PCS_001_pc_substrate.md (~900 line DRAFT spec — NEW THIS COMMIT)
+- catalog/cat_06_PCS_pc_systems.md (PCS_001 DRAFT appendage with PCS-A1..A10 + PCS-D1..D10 + PCS-11..PCS-20 entries)
+
+Boundary expansions (commit 2/4):
+- 2 NEW PCS_001-owned aggregates (pc_user_binding + pc_mortality_state)
+- 1 NEW EVT-T4 System sub-type (PcRegistered)
+- 5 NEW EVT-T8 Administrative sub-shapes (Forge:RegisterPc + Forge:BindPcUser + Forge:EditPcUserBinding + Forge:EditBodyMemory + Forge:EditPcMortalityState)
+- 3 V1 active EVT-T3 Derived delta_kinds (DyingTransition + DeathTransition + GhostTransition); 3 V1+ reserved (RespawnTransition + ResurrectionTransition + GhostDispersedTransition)
+- 1 NEW EVT-T1 Submitted sub-type (PcTransmigrationCompleted; schema V1; emission V1+)
+- 1 NEW namespace: `pc.*` (7 V1 rules + 3 V1+ reservations)
+- 2 NEW RealityManifest CanonicalActorDecl additive fields (body_memory_init + user_id_init); REQUIRED V1 for kind=Pc
+
+Q-LOCKED summary (Q1-Q10 LOCKED via 6-batch deep-dive 2026-04-27 user "approve" across all batches; 1 REFINEMENT + 1 RENAME):
+- Q1 (A): PcId(Uuid) mirror NpcId + DP-A12 module-private constructor
+- Q2 (A): Single pc_user_binding aggregate (user_id + current_session + body_memory + last_login + last_xuyenkhong)
+- Q3 (C): Canonical seed + Forge admin V1 (Forge:RegisterPc + Forge:BindPcUser); runtime login V1+ via PO_001 PCS-D1
+- Q4 (B): Defer pc_stats_v1_stub V1+ — PROG_001 + RES_001 + PL_006 cover stats
+- Q5 ⚠ REFINEMENT (D): Full PcBodyMemory schema with native_skills/motor_skills V1 empty Vec reserved
+- Q6 (A): Full 4-variant LeakagePolicy V1 (NoLeakage / SoulPrimary / BodyPrimary / Balanced)
+- Q7 (A): Full 4-state pc_mortality_state V1 (Alive/Dying/Dead/Ghost); V1 active death transitions; V1+ Respawn flow + Resurrection deferred PCS-D2
+- Q8 (A): V1 strict single-reality; V2+ Heresy via WA_002 (universal substrate discipline)
+- Q9 (C): V1 cap=1 PC per reality via row count Stage 0 schema validator; V1+ relax via RealityManifest.max_pc_count Optional (PCS-D3); FAC_001 Q2 REVISION pattern
+- Q10 (A): Single event PcTransmigrationCompleted (renamed from PcXuyenKhongCompleted per user direction); PCS_001 EVT-T1 owns; TDIL_001 actor_clocks subscribes per TDIL §10 clock-split contract
+
+3-layer architectural model post-ACT_001 (PCS-A1..A10):
+- L1 Identity (ACT_001 actor_core; PCS_001 reads)
+- L2 Capability/Kind (ActorId::Pc variant; PCS_001 owns PcId newtype)
+- L3 PC-specific (PCS_001 owns pc_user_binding + pc_mortality_state)
+
+Cross-feature deferrals RESOLVED (commit 4/4 closure will note):
+- WA_006 §6 closure pass pc_mortality_state aggregate handoff → ✅ RESOLVED via PCS_001 §3.2
+
+V1 quantitative summary:
+- 2 PCS_001 aggregates (pc_user_binding + pc_mortality_state)
+- 1 EVT-T4 + 5 EVT-T8 + 3 V1 EVT-T3 + 3 V1+ EVT-T3 + 1 EVT-T1 (schema V1 / emission V1+)
+- 7 V1 reject rules (pc.* namespace) + 3 V1+ reservations
+- 2 RealityManifest CanonicalActorDecl additive fields (body_memory_init + user_id_init); REQUIRED V1 for kind=Pc
+- PcBodyMemory schema (SoulLayer + BodyLayer + LeakagePolicy 4-variant)
+- MortalityStateValue 4-state schema + 6-variant TransitionTrigger
+- 10 V1 AC + 4 V1+ deferred + 10 deferrals (PCS-D1..PCS-D10)
+- ~900 line DRAFT spec
+- 4-commit cycle (Phase 0 3c76f33 + Q-LOCKED 1/4 5c34b93 + DRAFT 2/4 this commit + Phase 3 3/4 + closure+release 4/4)
+
+Lock CLAIMED this commit; release deferred to commit 4/4 closure pass.
+
+---
+
 ## 2026-04-27 — ACT_001 Phase 2 P2 closure-pass-extension — CanonicalActorDecl spawn_cell + glossary_entity_id ADD (single `[boundaries-lock-claim+release]` commit)
 
 - **Lock CLAIMED + RELEASED** in single combined commit — small additive P2 closure-pass-extension; no new aggregate; no new EVT sub-type; no new namespace; just additive fields + 2 V1 reject rules
