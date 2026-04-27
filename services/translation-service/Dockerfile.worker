@@ -1,6 +1,15 @@
+# Phase 4c-α: build context is the repo root (set in docker-compose.yml)
+# so we can COPY the local SDKs alongside the worker code.
 FROM python:3.12-slim
 WORKDIR /app
-COPY requirements.txt .
+COPY services/translation-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+
+# Install the local SDKs (loreweave_llm + loreweave_extraction) for
+# the AMQP worker. 4c-β/γ migrate session_translator + extraction_worker
+# to use loreweave_llm.Client.stream() / submit_job().
+COPY sdks/python /sdk
+RUN pip install --no-cache-dir /sdk
+
+COPY services/translation-service/ .
 CMD ["python", "worker.py"]

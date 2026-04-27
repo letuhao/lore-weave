@@ -8,6 +8,11 @@ PyJWT>=2.8
 python-dotenv>=1.0
 aio-pika>=9.4
 
+# Phase 4c-α: loreweave_llm + loreweave_extraction SDKs are installed
+# via Dockerfile COPY of sdks/python (build context is repo root).
+# For host-side pytest:
+#   pip install -e ../../sdks/python   (from services/translation-service)
+
 # test
 pytest>=8.0
 pytest-asyncio>=0.23

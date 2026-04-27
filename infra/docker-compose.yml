@@ -249,14 +249,20 @@ services:
       retries: 10
 
   translation-service:
+    # Phase 4c-α: context bumped to repo root so the Dockerfile can
+    # COPY sdks/python alongside the service code (mirrors knowledge-
+    # service Phase 4a-α + worker-ai Phase 4b-γ pattern).
     build:
-      context: ../services/translation-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/translation-service/Dockerfile
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      # Phase 4c-α: SDK install. Same host as legacy URL but separate
+      # env var for naming consistency with knowledge-service + worker-ai.
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
@@ -282,14 +288,17 @@ services:
       - "8210:8087"
 
   translation-worker:
+    # Phase 4c-α: context bumped to repo root for SDK install.
     build:
-      context: ../services/translation-service
-      dockerfile: Dockerfile.worker
+      context: ..
+      dockerfile: services/translation-service/Dockerfile.worker
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      # Phase 4c-α: SDK install. Same host as legacy URL.
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091

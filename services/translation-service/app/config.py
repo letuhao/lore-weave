@@ -24,7 +24,14 @@ class Settings(BaseSettings):
     database_url: str
     jwt_secret: str
     book_service_internal_url: str = "http://book-service:8082"
+    # Phase 4c-α: legacy URL used by remaining /v1/model-registry/invoke
+    # + /internal/invoke callers (4c-β/γ migrate them out).
     provider_registry_service_url: str = "http://provider-registry-service:8085"
+    # Phase 4c-α: SDK install. Same host as legacy URL — naming aligns
+    # with knowledge-service + worker-ai for cross-service consistency.
+    # When 4c-γ retires the last legacy caller, we'll drop the legacy
+    # field and consolidate.
+    provider_registry_internal_url: str = "http://provider-registry-service:8085"
     glossary_service_internal_url: str = "http://glossary-service:8088"
     rabbitmq_url: str
     notification_service_internal_url: str = "http://notification-service:8091"
