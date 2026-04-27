@@ -3,3 +3,8 @@ httpx>=0.27
 pydantic>=2.6
 pydantic-settings>=2.2
 python-json-logger>=2.0
+
+# Phase 4b-γ: loreweave_llm + loreweave_extraction SDKs are installed
+# via Dockerfile COPY of sdks/python (build context is repo root).
+# For host-side pytest:
+#   pip install -e ../../sdks/python   (from services/worker-ai)

@@ -24,13 +24,18 @@ from uuid import UUID
 
 import asyncpg
 
+from loreweave_extraction import extract_pass2
+from loreweave_extraction.errors import ExtractionError
+
 from app.clients import (
     BookClient,
     ChapterInfo,
+    ExtractionResult,
     GlossaryClient,
     GlossaryEntity,
     KnowledgeClient,
 )
+from app.llm_client import LLMClient
 
 __all__ = ["process_job", "poll_and_run"]
 
@@ -469,12 +474,87 @@ async def _mark_pending_processed(
     )
 
 
+# ── Phase 4b-γ — extract+persist helper ─────────────────────────────
+
+
+async def _extract_and_persist(
+    *,
+    knowledge_client: KnowledgeClient,
+    llm_client: LLMClient,
+    user_id: UUID,
+    project_id: UUID | None,
+    source_type: str,
+    source_id: str,
+    job_id: UUID,
+    model_ref: str,
+    text: str,
+) -> ExtractionResult:
+    """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
+
+    Two-step flow:
+      1. Worker-ai runs Pass 2 LLM extraction in-process via
+         ``loreweave_extraction.extract_pass2`` — no longer blocked by
+         knowledge-service's 120s extract_item HTTP timeout.
+      2. Resulting candidates are POSTed to knowledge-service's thin
+         ``/internal/extraction/persist-pass2`` endpoint, which only
+         does Neo4j writes (bounded latency).
+
+    `ExtractionError` from the LLM stage maps to the same retryable /
+    non-retryable contract the legacy `extract_item` exposed:
+      - stage='provider_exhausted' → retryable=True (worker retries)
+      - all other stages → retryable=False (skip / fail per caller)
+
+    Empty / whitespace `text` → empty Pass2Candidates (library
+    short-circuits without calling LLM); persist-pass2 still writes
+    the source row for idempotency.
+    """
+    try:
+        candidates = await extract_pass2(
+            text=text,
+            known_entities=[],
+            user_id=str(user_id),
+            project_id=str(project_id) if project_id else None,
+            model_source="user_model",
+            model_ref=model_ref,
+            llm_client=llm_client,
+        )
+    except ExtractionError as exc:
+        retryable = exc.stage == "provider_exhausted"
+        logger.warning(
+            "extract_pass2 failed source_id=%s stage=%s retryable=%s: %s",
+            source_id, exc.stage, retryable, exc,
+        )
+        return ExtractionResult(
+            source_id=source_id,
+            entities_merged=0,
+            relations_created=0,
+            events_merged=0,
+            facts_merged=0,
+            retryable=retryable,
+            error=f"extraction failed (stage={exc.stage}): {exc}",
+        )
+
+    return await knowledge_client.persist_pass2(
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+        job_id=job_id,
+        extraction_model=model_ref,
+        entities=candidates.entities,
+        relations=candidates.relations,
+        events=candidates.events,
+        facts=candidates.facts,
+    )
+
+
 # ── Core job processing ─────────────────────────────────────────────
 
 
 async def process_job(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,
+    llm_client: LLMClient,
     book_client: BookClient,
     glossary_client: GlossaryClient,
     job: JobRow,
@@ -591,17 +671,19 @@ async def process_job(
                     )
                     continue
 
-                # Extract
-                result = await knowledge_client.extract_item(
+                # Extract: Phase 4b-γ — worker-ai now runs the LLM
+                # stage in-process via loreweave_extraction.extract_pass2,
+                # then POSTs candidates to /persist-pass2.
+                result = await _extract_and_persist(
+                    knowledge_client=knowledge_client,
+                    llm_client=llm_client,
                     user_id=job.user_id,
                     project_id=job.project_id,
-                    item_type="chapter",
                     source_type="chapter",
                     source_id=ch.chapter_id,
                     job_id=job.job_id,
-                    model_source="user_model",
                     model_ref=job.llm_model,
-                    chapter_text=text,
+                    text=text,
                 )
 
                 if result.error:
@@ -701,20 +783,21 @@ async def process_job(
 
                 # Chat turns don't have text in extraction_pending — the
                 # worker would need to fetch from chat-service. For v1,
-                # we call extract-item with source_id and let knowledge-
-                # service's orchestrator handle it. This is a placeholder
-                # that will be fleshed out when chat-service exposes a
-                # message-text endpoint.
-                result = await knowledge_client.extract_item(
+                # we pass empty text; loreweave_extraction.extract_pass2
+                # short-circuits to empty Pass2Candidates without calling
+                # the LLM, then persist-pass2 writes the source row for
+                # idempotency. Will be fleshed out when chat-service
+                # exposes a message-text endpoint.
+                result = await _extract_and_persist(
+                    knowledge_client=knowledge_client,
+                    llm_client=llm_client,
                     user_id=job.user_id,
                     project_id=job.project_id,
-                    item_type="chat_turn",
                     source_type="chat_turn",
                     source_id=str(turn["aggregate_id"]),
                     job_id=job.job_id,
-                    model_source="user_model",
                     model_ref=job.llm_model,
-                    user_message="",  # placeholder — needs chat-service integration
+                    text="",  # placeholder — needs chat-service integration
                 )
 
                 if result.error and not result.retryable:
@@ -868,6 +951,7 @@ async def process_job(
 async def poll_and_run(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,
+    llm_client: LLMClient,
     book_client: BookClient,
     glossary_client: GlossaryClient,
 ) -> int:
@@ -882,7 +966,7 @@ async def poll_and_run(
 
     for job in jobs:
         await process_job(
-            pool, knowledge_client, book_client, glossary_client, job,
+            pool, knowledge_client, llm_client, book_client, glossary_client, job,
         )
 
     return len(jobs)
