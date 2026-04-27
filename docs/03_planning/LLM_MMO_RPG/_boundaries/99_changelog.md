@@ -6,6 +6,77 @@
 
 ---
 
+## 2026-04-27 — PROG_001 closure-pass-extension: 5 NEW deferrals D33..D37 for cross-cultivation extensibility (single `[boundaries-lock-claim+release]` commit)
+
+- **Lock CLAIMED + RELEASED** in single combined commit — small additive deferral catalog growth; no V1 behavior change; no PROG_001 LOCK boundary touch (PROG_001 status DRAFT)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in single commit
+  - `99_changelog.md`: this entry
+- **Files modified outside `_boundaries/`:**
+  - `features/00_progression/PROG_001_progression_foundation.md`:
+    - **§1 V1 NOT shipping table** — APPENDED 5 new rows (PROG-D33..D37)
+    - **§18 Deferrals Catalog** — header updated `PROG-D1..D30` → `PROG-D1..D37`; PROG-D33/D34/D36 added to V1+30d category; PROG-D35/D37 added to V2 category
+    - **NEW §18.1** "PROG-D33..D37 cross-cultivation extensibility audit (2026-04-27 closure-pass-extension)" — documents 5 gap-filling deferrals + 11-system stress-test verdict + 3 NATIVELY-supported V1 systems + 1 already-reserved V1+30d (PROG-D2) + 1 already-reserved V1+30d (Q6b Item ActorRef) + 1 covered by FAC_001+PROG-D10 (sect ActorClassMatch)
+  - `catalog/cat_00_PROG_progression.md`:
+    - APPENDED 5 new catalog rows PROG-38..42 after PROG-37 (V3+ ResourceBound)
+    - Section header updates: V1+30d count 5 → 8 (PROG-27..31 + 38-40); V2+ count 6 → 8 (PROG-32..37 + 41-42)
+
+### Background
+
+User-driven CULT_001 stress-test pre-audit 2026-04-27: BEFORE locking CULT_001 as thin specialization layer on top of PROG_001 (per PROG_001 §14.15 boundary clarity "CULT_001 is a SUB-FEATURE of PROG_001 (V1+ extension); not a competing foundation"), user requested verification that PROG_001's design is future-proof against exotic cultivation systems beyond standard tu tiên realm progression.
+
+Web survey + analysis covered 11 cultivation systems from xianxia/xuanhuan/wuxia genre:
+1. Body cultivation parallel-axis (Cầu Ma 求魔 Wang Lin Ancient Body / Hoàn Mỹ 完美世界 Chen Dong)
+2. Wuxia neigong/waigong (kiếm hiệp internal/external martial arts; Shaolin/Wudang/Wudang sect philosophy)
+3. Dual cultivation (Mị ma song tu / yin-yang / charm demon / Su Yang dual-cultivation novels)
+4. Family/clan cultivation (đa phúc đa tử — many-wives-many-sons cultivation tropes)
+5. Rebirth cultivation (chết trùng sinh — Rebirth of the God Emperor / Villainous Rebirth / Path of Lazy Immortal)
+6. Lifespan-burn cultivation (Cultivation Too Hard / Lifespan Burning System / Cultivation: I Can Steal Lifespan from Spirit Beasts)
+7. Demonic cultivation 魔修 (Wei Wuxian Mo Dao Zu Shi cauldron / human cauldron mechanics)
+8. Heart demon / karma cultivation (心魔 / 功德 / 业力 — Inner Demon Tribulation)
+9. Alchemy / Talisman / Array cultivation (orthogonal axes 丹道 / 符箓 / 阵法)
+10. Pet/beast bond cultivation (Đấu Phá Pokemon-like beast tier cultivation)
+11. Sword spirit / 御剑 cultivation (Cultivation of Weapon Spirits / artifact-spirit growth)
+
+### Verdict
+
+**PROG_001 design IS future-proof.** Stress-test results:
+- ✅ **3 NATIVELY supported V1**: body cultivation parallel-axis (multiple ProgressionKindDecls + BodyOrSoul=Body each); alchemy/talisman/array orthogonal axes (multiple ProgressionKindDecls); lifespan-burn one-actor self-sacrifice (Action interaction_kind + cross-aggregate hook to actor_core.lifespan_remaining)
+- ✅ **2 already-reserved V1+30d** (no new deferral): demonic tribulation/deviation 走火入魔 → PROG-D2; sword-spirit / artifact growth → Q6b PROG_001 §3.1 Item ActorRef reserved
+- ✅ **1 covered by FAC_001 + PROG-D10**: wuxia neigong/waigong sect martial arts via FAC_001 sect membership + ActorClassMatch condition deferred V1+30d
+- ⚠️ **5 require NEW deferrals (D33..D37; all schema-additive per I14 invariant — zero PROG_001 redesign)**:
+  - PROG-D33 V1+30d: Cross-actor `TrainingSource::CrossActor` (dual cult / demonic absorb / master-pet / family-bond)
+  - PROG-D34 V1+30d: `ProgressionDeltaKind::RawValueDecrement` active (drain/leech for cauldron mechanics + lifespan-burn)
+  - PROG-D35 V2: `derives_from` cross-feature source (FF_001/FAC_001/REL_001 state → rate multiplier; family-count-multiplies-power)
+  - PROG-D36 V1+30d: `BreakthroughCondition::KarmaThreshold` variant (heart demon karma gating)
+  - PROG-D37 V2: `RebirthBonusDecl` RealityManifest extension (rebirth cumulative per-death bonus)
+
+### Discipline / rationale for adding deferrals NOW (vs CULT_001 closure-pass propagation later)
+
+Per user direction 2026-04-27: "nên làm A từ bây giờ — để sau này có thêm hệ thống tu luyện mới thì cũng giảm khả năng refactor của PROG_001". Pre-emptive registration of 5 deferrals reduces future refactor risk because:
+1. **Visible in PROG_001 catalog** — future agents reading PROG_001 see all extensibility gaps documented up-front
+2. **Cross-feature audit trail** — each deferral cites cultivation system + novel reference for context
+3. **Schema-additive only** — no V1 behavior change; PROG_001 LOCK boundary preserved
+4. **CULT_001 + future cultivation features (REBIRTH_001 / KARMA_001) inherit clean foundation** — extensions follow already-documented seams, not retroactive patches
+
+### V1 PROG_001 behavior unchanged
+
+This commit does NOT modify any V1 PROG_001 mechanism, schema, or aggregate. Pure documentation growth (deferral catalog + audit findings). PROG_001 status remains DRAFT (unchanged); no LOCK promotion; no closure pass on PROG_001 itself.
+
+### Cross-feature impact (none V1; all V1+)
+
+- CULT_001 V1+ may reference PROG-D33..D37 in its DRAFT for clarity but is NOT blocked by them
+- WA_001 Lex axiom hook may reference PROG-D36 (KarmaThreshold) when V1+ karma feature ships
+- WA_006 Mortality may reference PROG-D37 (RebirthBonusDecl) when V2 rebirth feature ships
+- FAC_001 + REP_001 + REL_001 (V1+) may reference PROG-D35 when cross-feature derives_from V2 ships
+- Future REBIRTH_001 / KARMA_001 / DUAL_CULT_001 features inherit pre-documented seams
+
+### Next priority post this commit
+
+CULT_001 Cultivation Foundation Phase 0 kickoff (per user direction 2026-04-27 "tiếp theo tới CULT_001 wuxia"). CULT_001 proceeds as thin specialization layer on PROG_001 + ACT_001 + RES_001 + IDF_001..005 + FAC_001 + REP_001 + PCS_001 + TDIL_001 + AIT_001 + FF_001. Q-deep-dive 8 questions (Q1 2D realm+stage encoding via tier_id bijection / Q2 Cultivation Method as separate ProgressionKindId / Q3 Spirit Root + Aptitude on actor_core canonical_traits / Q4 Lifespan coupling cross-aggregate validator C-rule / Q5 V1 realm scope 7 First Step / Q6 Breakthrough trigger LLM-narrated V1 / Q7 Multi-method cap=1 V1 / Q8 Deviation V1 schema-reserved). 4-commit cycle estimated. Reference materials confirmed: chaos-actor-module/jindan-stats-bundle (Tiên Nghịch 12-realm hierarchy + Stage Early/Mid/Late/Peak + 7 Kim Đan primary stats + exponential B^r scaling) + chaos-backend-service/race-core (Tinh 5 constitutional stats + Talent system + Racial Element Integration via Element-Core registry pattern).
+
+---
+
 ## 2026-04-27 — P4 Cross-feature consistency validator rules + Tier 5 namespace registry update (single `[boundaries-lock-claim+release]` commit)
 
 - **Lock CLAIMED + RELEASED** in single combined commit — P4 closure-pass-extension; small additive update to validator pipeline slots boundary doc

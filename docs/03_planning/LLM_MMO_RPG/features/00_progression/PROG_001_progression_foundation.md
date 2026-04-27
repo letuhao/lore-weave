@@ -78,6 +78,11 @@ PROG_001 establishes the value-substrate for ALL actor progression dimensions ac
 | Per-instrument formula override | V1+30d (PROG-D28) | Q7 — simple extension |
 | `Forge:EditStrikeFormula` AdminAction | V1+30d (PROG-D29) | Q7 — runtime formula authoring |
 | Element-stat multiplicative chain | V1+ (PROG-D30) | Q7c — chaos-backend invariant |
+| Cross-actor `TrainingSource::CrossActor` (one action affects 2 actors) | V1+30d (PROG-D33) | CULT_001 stress-test pre-audit 2026-04-27 — supports dual cultivation (mị ma song tu) + demonic absorption (魔修) + master-pet bond + family-bond cultivation. Schema-additive new TrainingSource enum variant. |
+| `ProgressionDeltaKind::RawValueDecrement` V1+ active (drain/leech semantic) | V1+30d (PROG-D34) | CULT_001 stress-test pre-audit 2026-04-27 — supports dual cultivation cauldron drain + demonic essence absorption + lifespan-burn forbidden technique. Schema-additive (variant already implied in §8.2 V1+ atrophy decay; PROG-D34 promotes to first-class drain delta_kind). Distinct from PROG-D2 走火入魔 tier regress (different mechanic). |
+| `derives_from` cross-feature source (FF_001 / FAC_001 / REL_001 state → rate multiplier) | V2 (PROG-D35) | CULT_001 stress-test pre-audit 2026-04-27 — supports family-count-multiplies-power (đa phúc đa tử) + sect-membership-multiplies-cultivation-rate. Currently DerivationDecl only references PROG_001 self-attributes; V2 extends source kind to cross-feature aggregate state observers. |
+| `BreakthroughCondition::KarmaThreshold` variant (heart demon / 心魔 gating) | V1+30d (PROG-D36) | CULT_001 stress-test pre-audit 2026-04-27 — supports heart-demon karma cultivation (good/bad karma thresholds gating breakthroughs). Schema-additive new BreakthroughCondition enum variant. Karma source = WA_001 Lex axiom or future KARMA_001 feature. |
+| `RebirthBonusDecl` RealityManifest extension (cumulative per-death bonus) | V2 (PROG-D37) | CULT_001 stress-test pre-audit 2026-04-27 — supports rebirth cultivation (chết trùng sinh mạnh hơn) where each death adds permanent stat/tier bonus to next incarnation. Cross-feature dependency: WA_006 mortality death event + PCS_001 xuyên không soul-layer + new aggregate `actor_rebirth_count`. Author declares `per_death_bonus: HashMap<ProgressionKindId, u64>` per reality. |
 
 ---
 
@@ -1366,9 +1371,9 @@ Author can express V1:
 
 ---
 
-## §18 — Deferrals Catalog (PROG-D1..D30)
+## §18 — Deferrals Catalog (PROG-D1..D37)
 
-Already enumerated in CONCEPT_NOTES §11.2 / §11.4 / §11.8 / §11.11. Summary:
+Already enumerated in CONCEPT_NOTES §11.2 / §11.4 / §11.8 / §11.11. PROG-D33..D37 added 2026-04-27 closure-pass-extension via CULT_001 stress-test pre-audit. Summary:
 
 **V1+30d (RES-D-equivalent fast-follow):**
 - PROG-D1 DiscreteLevelup curve
@@ -1387,6 +1392,9 @@ Already enumerated in CONCEPT_NOTES §11.2 / §11.4 / §11.8 / §11.11. Summary:
 - PROG-D23 Closed-form materialization optimization
 - PROG-D28 Per-instrument formula override
 - PROG-D29 Forge:EditStrikeFormula AdminAction
+- **PROG-D33** Cross-actor `TrainingSource::CrossActor` (dual cult / demonic absorb / master-pet bond / family-bond) — *added 2026-04-27 CULT_001 stress-test*
+- **PROG-D34** `ProgressionDeltaKind::RawValueDecrement` active (drain/leech / lifespan-burn) — *added 2026-04-27 CULT_001 stress-test*
+- **PROG-D36** `BreakthroughCondition::KarmaThreshold` (heart demon / 心魔 gating) — *added 2026-04-27 CULT_001 stress-test*
 
 **V2 (Economy/Strategy module-tier):**
 - PROG-D6 Subsystem stacking (chaos-backend Contribution pattern)
@@ -1398,12 +1406,37 @@ Already enumerated in CONCEPT_NOTES §11.2 / §11.4 / §11.8 / §11.11. Summary:
 - PROG-D26 AoE multi-target Strike
 - PROG-D27 Damage type variety
 - PROG-D30 Element-stat multiplicative chain
+- **PROG-D35** `derives_from` cross-feature source (FF_001 / FAC_001 / REL_001 state → rate multiplier) — *added 2026-04-27 CULT_001 stress-test*
+- **PROG-D37** `RebirthBonusDecl` RealityManifest extension (cumulative per-death bonus) — *added 2026-04-27 CULT_001 stress-test*
 
 **V3 (Strategy module / Future AI Tier feature):**
 - PROG-D7 Realm-stage nested hierarchy
 - PROG-D22 Untracked → Tracked tier promotion (future AI Tier)
 - PROG-D31 ResourceBound ProgressionType (mana-pool)
 - PROG-D32 Bloodline progression bonuses (FF_001 + PROG_001 V2+ bridge)
+
+### §18.1 PROG-D33..D37 cross-cultivation extensibility audit (2026-04-27 closure-pass-extension)
+
+Discovered via CULT_001 stress-test pre-audit against 11 exotic cultivation systems from xianxia/xuanhuan/wuxia genre (dual-cultivation, demonic absorption, family/clan cultivation, rebirth cultivation, lifespan-burn, heart-demon karma, alchemy/talisman/array, pet-beast bond, sword-spirit, body-refining parallel-axis, neigong-waigong wuxia). **Verdict**: PROG_001 design is future-proof — 5 of 11 NATIVELY supported V1; 6 require V1+ schema-additive extensions (D33-D37 + existing D2/D10/D12/D24/etc.). NO PROG_001 redesign required; all gaps additive per I14 invariant.
+
+| Gap | Affected systems (cultivation novels reference) | Deferral ID |
+|---|---|---|
+| Cross-actor delta (one action's effect on 2 actors) | Dual cultivation (Mị ma song tu) / Demonic absorption (Mo Dao Zu Shi 魔修) / Master-pet bond (Đấu Phá Pokemon-like) / Family-bond cultivation (đa phúc đa tử) | PROG-D33 |
+| Negative delta / drain semantic (victim loses progression) | Cauldron mechanics (human cauldron) / Demonic absorption / Lifespan-burn forbidden technique (Cultivation Too Hard / Lifespan Burning System) | PROG-D34 |
+| Cross-feature derives_from (state from FF_001/FAC_001/REL_001 multiplies cultivation rate) | Family-count-multiplies-power (đa phúc đa tử) / Sect-membership-rate-bonus (kiếm hiệp neigong) / Marriage-state cultivation | PROG-D35 |
+| KarmaThreshold breakthrough condition | Heart demon (心魔) / Karma cultivation (功德 / 业力) / Buddhist-Devil parallel paths | PROG-D36 |
+| Rebirth cumulative bonus (each death = permanent next-life bonus) | Rebirth cultivation (chết trùng sinh mạnh hơn — Rebirth of the God Emperor / Villainous Rebirth / Path of Lazy Immortal) | PROG-D37 |
+
+**3 systems remain NATIVELY supported V1** (no deferral needed):
+- Body cultivation parallel-axis (Cầu Ma Wang Lin Ancient Body / Hoàn Mỹ) → multiple ProgressionKindDecls + BodyOrSoul=Body each
+- Alchemy/Talisman/Array orthogonal axes → multiple ProgressionKindDecls
+- Lifespan-burn (one-actor self-sacrifice) → Action interaction_kind="burn_lifespan" + cross-aggregate hook to actor_core.lifespan_remaining
+
+**1 system already has reservation V1+30d** (PROG-D2 Failed breakthrough narrative 走火入魔 covers tribulation/deviation for demonic cultivation).
+
+**1 system already has reservation V1+30d** (Q6b PROG_001 §3.1 Item ActorRef reserved) → covers sword-spirit / artifact growth (御剑 cultivation).
+
+**1 system covered by FAC_001 + PROG-D10** (Wuxia neigong/waigong sect martial arts) → ActorClassMatch condition deferred.
 
 ---
 

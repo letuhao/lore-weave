@@ -72,18 +72,23 @@ generated_by: hand-authored (foundation-tier catalog seed)
 | PROG-35 | V3 — Realm-stage nested hierarchy (only if flat tier list proves limiting) | 📦 | V3 | PROG-7 | [PROG_001 §1 PROG-D7](../features/00_progression/PROG_001_progression_foundation.md#v1-not-shipping-deferred-per-q-decisions) |
 | PROG-36 | V3 — Untracked → Tracked tier promotion (future AI Tier feature owns) | 📦 | V3 | future `16_ai_tier/` | [PROG_001 §7.2 PROG-D22](../features/00_progression/PROG_001_progression_foundation.md#72-future-ai-tier-feature-reservation) |
 | PROG-37 | V3+ — `ResourceBound` ProgressionType (mana-pool style with consumption-per-use) | 📦 | V3+ | PROG-2 | [PROG_001 §4.2](../features/00_progression/PROG_001_progression_foundation.md#42-progressiontype-enum) |
+| PROG-38 | V1+30d — Cross-actor `TrainingSource::CrossActor` (dual cult / demonic absorb / master-pet / family-bond) | 📦 | V1+ | PROG-9, REL_001 (V1+) | [PROG_001 §1 PROG-D33 + §18.1](../features/00_progression/PROG_001_progression_foundation.md#181-prog-d33d37-cross-cultivation-extensibility-audit-2026-04-27-closure-pass-extension) |
+| PROG-39 | V1+30d — `ProgressionDeltaKind::RawValueDecrement` active (drain/leech semantic) | 📦 | V1+ | PROG-20, PROG-D2 distinct | [PROG_001 §1 PROG-D34 + §18.1](../features/00_progression/PROG_001_progression_foundation.md#181-prog-d33d37-cross-cultivation-extensibility-audit-2026-04-27-closure-pass-extension) |
+| PROG-40 | V1+30d — `BreakthroughCondition::KarmaThreshold` variant (heart demon / 心魔 gating) | 📦 | V1+ | PROG-7, WA_001 Lex axiom or future KARMA_001 | [PROG_001 §1 PROG-D36 + §18.1](../features/00_progression/PROG_001_progression_foundation.md#181-prog-d33d37-cross-cultivation-extensibility-audit-2026-04-27-closure-pass-extension) |
+| PROG-41 | V2 — `derives_from` cross-feature source (FF_001/FAC_001/REL_001 state → rate multiplier) | 📦 | V2 | PROG-5, FF_001, FAC_001, REL_001 (V1+) | [PROG_001 §1 PROG-D35 + §18.1](../features/00_progression/PROG_001_progression_foundation.md#181-prog-d33d37-cross-cultivation-extensibility-audit-2026-04-27-closure-pass-extension) |
+| PROG-42 | V2 — `RebirthBonusDecl` RealityManifest extension (cumulative per-death bonus) | 📦 | V2 | WA_006 mortality, PCS_001 xuyên không, future REBIRTH_001 | [PROG_001 §1 PROG-D37 + §18.1](../features/00_progression/PROG_001_progression_foundation.md#181-prog-d33d37-cross-cultivation-extensibility-audit-2026-04-27-closure-pass-extension) |
 
 ### V1 minimum delivery
 
 26 V1 catalog entries (PROG-1..26 all ✅ V1). Foundation tier closure: 6/6 V1 foundation features when PROG_001 lands DRAFT (EF/PF/MAP/CSC/RES/PROG).
 
-### V1+30d deferrals (PROG-27..31)
+### V1+30d deferrals (PROG-27..31, 38-40)
 
-5 V1+30d items planned for the 30-day fast-follow window after V1 ship. Most schema reservations already in place — zero schema migration cost.
+8 V1+30d items planned for the 30-day fast-follow window after V1 ship. Most schema reservations already in place — zero schema migration cost. PROG-38/39/40 added 2026-04-27 closure-pass-extension via CULT_001 stress-test pre-audit (cross-actor delta, drain/leech, KarmaThreshold).
 
-### V2+ deferrals (PROG-32..37)
+### V2+ deferrals (PROG-32..37, 41-42)
 
-6 V2/V3 deferrals tied to **DF7-equivalent** full combat (PROG-32) + future feature dependencies (CULT_001 / AI Tier / QST_001).
+8 V2/V3 deferrals tied to **DF7-equivalent** full combat (PROG-32) + future feature dependencies (CULT_001 / AI Tier / QST_001 / FF_001 / REBIRTH_001 V2+). PROG-41/42 added 2026-04-27 closure-pass-extension via CULT_001 stress-test pre-audit (cross-feature derives_from, rebirth cumulative bonus).
 
 ### Coordination / discipline notes
 
