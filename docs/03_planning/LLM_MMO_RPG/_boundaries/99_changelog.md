@@ -6,6 +6,66 @@
 
 ---
 
+## 2026-04-27 — AIT_001 AI Tier CANDIDATE-LOCK closure pass
+
+- **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit. DRAFT 88404f08 → CANDIDATE-LOCK closure pass (TDIL closure-pass-extension §7.5 O(1) revision applied at TDIL DRAFT bdc8d8e1; DF5 closure-pass-extension annotation 5e9233d8 already applied).
+- **Phase 3 + AC walkthrough:** §16 AC-AIT-1..12 walked; all 12 acceptance scenarios concrete + testable.
+- **2 open questions RESOLVED at closure:**
+  - **AIT-Q1** (Stage 2 LLM-flavor synthesis prompt structure) → deferred to PL_005 closure as new **AIT-D21 V1+30d**; PL_005 owns trigger (Examine/Speak/Strike target = Untracked NPC fires Stage 2 synthesis); prompt structure designed at PL_005 closure pass alongside other LLM-call patterns; token budget per call ~500 tokens.
+  - **AIT-Q2** (UntrackedRuntimeState ephemeral storage location) → marked **OUT-OF-SCOPE** for AIT_001; pure DP-engineering choice; deferred to DP-team closure (06_data_plane); recommended starter: session memory cache (in-process per session-service) since Untracked discard at session-end per Q6 LOCKED; Redis Streams ephemeral V2+ if cross-service Untracked observation needed.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None; full closure summary in _Last released_ entry
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/16_ai_tier/AIT_001_ai_tier_foundation.md`: status header DRAFT → CANDIDATE-LOCK with closure pass rationale + AIT-Q1/Q2 strikethrough RESOLVED annotations
+  - `features/16_ai_tier/_index.md`: folder closure status Open → COMPLETE 2026-04-27
+
+### AIT_001 final summary
+
+- **Status:** CANDIDATE-LOCK 2026-04-27
+- **Architecture-scale:** 3-tier NPC architecture for billion-NPC scaling + Schrödinger / quantum-observation pattern
+- **10 axioms:** AIT-A1..A10 (3-tier architecture / quantum-observation / deterministic Untracked / hybrid 2-stage / daily rotation / author-required tier / NpcId stable / tier-aware actions / tier-aware AssemblePrompt budget / i18n)
+- **Catalog entries:** 27 V1 (AIT-1..AIT-27) + 7 V1+30d/V2 deferrals (AIT-28..AIT-34) = 34 total
+- **Reject rule_ids:** 8 V1 (canonical_tier_required + capacity_exceeded + density_exceeded + template_invalid + action_forbidden_for_tier + untracked_cannot_initiate + promotion_target_not_observed + untracked_role_unknown) + 4 V1+ reservations
+- **RealityManifest extensions:** 5 OPTIONAL V1 (tier_capacity_caps + untracked_templates + cell_untracked_density + tier_roster_caps + minor_behavior_scripts)
+- **Acceptance criteria:** 12 V1-testable AC-AIT-1..12
+
+### Cross-feature closure-pass-extensions applied (history)
+
+| Source | Effect on AIT_001 | When |
+|---|---|---|
+| TDIL_001 DRAFT promotion (`bdc8d8e1`) | §7.5 Tracked NPC lazy materialization revised: per-day replay → O(1) elapsed-time computation per TDIL-A3 + TDIL-A7 (cross-realm observation 1 calculation regardless of magnitude — preserves billion-NPC scale) | 2026-04-27 (DRAFT phase) |
+| DF05_001 CANDIDATE-LOCK + closure-pass-extensions cascade (`5e9233d8`) | AIT-A8 capability matrix annotated as ground-truth for DF5-A6 tier eligibility; DF5-A8 per-cell session capacity coordinates with TierCapacityCaps; MemoryProvider capability gate consumer; AIT-D7 V1+30d Untracked promotion path interacts with `/chat @untracked` | 2026-04-27 (post-DF5 cascade) |
+
+### Cross-feature closure-pass-extensions consumed by AIT_001 at DRAFT
+
+| Target | AIT_001 effect | Status |
+|---|---|---|
+| NPC_001 Cast | REQUIRED `tracking_tier` field on CanonicalActorDecl + tier-aware persona assembly | ✅ applied via ACT_001 unification cascade `d12a86f0` |
+| NPC_002 Chorus | tier filter in priority calculation (Major full / Minor low / Untracked excluded) | ✅ applied via DF05 closure-pass cascade `5e9233d8` |
+| PL_005 Interaction | AIT-V1 TierActionValidator slot reference + Untracked target handling + Stage 2 synthesis hook AIT-D21 V1+30d | ✅ applied via DF05 closure-pass cascade `5e9233d8` |
+| WA_003 Forge | Add `Forge:PromoteUntrackedToTracked` AdminAction sub-shape | ✅ applied via DF05 closure-pass cascade `5e9233d8` |
+| PROG_001 | tracking_tier field documentation update | ✅ existing PROG_001 §3.1 reserves the field; activation V1 |
+| PL_001 Continuum | Session lifecycle hooks for AIT discard | ✅ implicit via DF5 close cascade per `5e9233d8` |
+
+### NEW priority candidates post AIT closure (Architecture-scale closure COMPLETE)
+
+1. **PROG_001 + RES_001 DRAFT closure passes** — both adopted TDIL-A3 per-turn O(1) Generator semantic at TDIL DRAFT; awaiting Phase 3 + CANDIDATE-LOCK
+2. **PO_001 Player Onboarding** — V1-blocking; Phase 0 wireframes committed `19855a5b`; concept-notes pending
+3. **DF5 implementation scaffold** — `contracts/api/session/v1/` (~600 LoC traits + DTOs + ContractTestSuite ~30 scenarios) + `services/session-service/src/adapters/lru_distill.rs` LruDistillProvider V1 backend
+4. **SPIKE_01 turn 5 integration test design** — DF5 + TDIL + AIT all CANDIDATE-LOCK now; can validate multi-channel + multi-session + tier-eligibility mechanics in concrete scenario
+5. **V1+ milestone activations** — AIT-D1 (auto-promotion via significance) + AIT-D2 (demotion) + AIT-D7 (LLM-propose-promotion) + AIT-D21 (Stage 2 synthesis prompt) — all V1+30d items
+
+### Architecture-scale tier closure status
+
+- ✅ ACT_001 Actor Foundation — CANDIDATE-LOCK 2026-04-27 (a1ce3c8a)
+- ✅ AIT_001 AI Tier Foundation — **CANDIDATE-LOCK 2026-04-27 (THIS commit)**
+- ✅ TDIL_001 Time Dilation Foundation — CANDIDATE-LOCK 2026-04-27 (261391ab; just preceded)
+- 🟡 PROG_001 Progression Foundation — DRAFT (closure pending; consumed TDIL-A3)
+- 🟡 RES_001 Resource Foundation — DRAFT (closure pending; consumed TDIL-A3)
+
+---
+
 ## 2026-04-27 — TDIL_001 Time Dilation CANDIDATE-LOCK closure pass
 
 - **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit. DRAFT bdc8d8e1 → CANDIDATE-LOCK closure pass.
