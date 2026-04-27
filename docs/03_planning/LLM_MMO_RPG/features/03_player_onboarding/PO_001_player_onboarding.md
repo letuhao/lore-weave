@@ -2,7 +2,7 @@
 
 > **Category:** PO — Player Onboarding (first user-visible feature post-foundation closure)
 > **Catalog reference:** [`catalog/cat_03_PO_player_onboarding.md`](../../catalog/cat_03_PO_player_onboarding.md) (owns `PO-*` stable-ID namespace)
-> **Status:** DRAFT 2026-04-27 — All 10 critical scope questions LOCKED via 4-batch deep-dive 2026-04-27 zero revisions. Companion documents: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + Q1-Q10 LOCKED matrix §10) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (9-system survey; BG3 + Disco Elysium + AI Dungeon hybrid V1 anchor) + [`wireframes/`](wireframes/) (12 files HTML/CSS/MD; FE-first design committed 19855a5b + 4c4fd6d7) + [`wireframes/ACTOR_SETTINGS_AUDIT.md`](wireframes/ACTOR_SETTINGS_AUDIT.md) (46 V1 actor settings × 14 features inventory).
+> **Status:** CANDIDATE-LOCK 2026-04-27 — 4-commit cycle complete (wireframes Phase 0 19855a5b + 4c4fd6d7 + Phase 0 backend kickoff 9245666c + DRAFT 2/4 4106410c + Phase 3 cleanup 3/4 f41077f4 + closure 4/4 this commit). All 10 critical scope questions LOCKED via 4-batch deep-dive 2026-04-27 zero revisions. Companion documents: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + Q1-Q10 LOCKED matrix §10) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (9-system survey; BG3 + Disco Elysium + AI Dungeon hybrid V1 anchor) + [`wireframes/`](wireframes/) (12 files HTML/CSS/MD; FE-first design committed 19855a5b + 4c4fd6d7) + [`wireframes/ACTOR_SETTINGS_AUDIT.md`](wireframes/ACTOR_SETTINGS_AUDIT.md) (46 V1 actor settings × 14 features inventory).
 >
 > **i18n compliance:** Conforms to RES_001 §2 cross-cutting i18n contract — all stable IDs English `snake_case` / `PascalCase`; all user-facing strings `I18nBundle`.
 > **V1 testable acceptance:** 12 scenarios AC-PO-1..12 (§10).
@@ -845,8 +845,8 @@ User clicks "Bước Vào Thế Giới":
 ## §14 — Status
 
 - **Created:** 2026-04-27 by main session
-- **Phase:** DRAFT 2026-04-27 — Q1-Q10 LOCKED via 4-batch deep-dive zero revisions; wireframes Phase 0 preceded (commits 19855a5b + 4c4fd6d7)
-- **Status target:** CANDIDATE-LOCK after Phase 3 review cleanup + closure pass + downstream coordination notes
+- **Phase:** CANDIDATE-LOCK 2026-04-27 — 4-commit cycle complete; Q1-Q10 LOCKED zero revisions; Phase 3 cleanup applied
+- **Status target:** LOCK when AC-PO-1..12 V1-testable scenarios pass integration tests against Wuxia + Modern + D&D reality fixtures + chat-service integration + auth-service email/password flow
 - **Companion docs:**
   - [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + Q1-Q10 LOCKED matrix §10)
   - [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (9-system survey; BG3 + Disco Elysium + AI Dungeon hybrid V1 anchor)

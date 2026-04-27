@@ -4,9 +4,9 @@
 > **Catalog reference:** `catalog/cat_03_PO_player_onboarding.md` (planned; created at DRAFT 2/4 commit per established pattern)
 > **Purpose:** First-user UX — account creation, first-PC creation (3 V1 modes: Canonical / Custom / Xuyên Không), first-reality-entry, tutorial/tooltips, first-run scenarios. **First user-visible feature; gateway from auth-service to actual gameplay.**
 
-**Active:** PO_001 — **Player Onboarding** (DRAFT 2026-04-27 — Q-LOCKED 4-batch deep-dive 2026-04-27 zero revisions; DRAFT 2/4 commit this commit with boundary updates + catalog seed)
+**Active:** PO_001 — **Player Onboarding** (CANDIDATE-LOCK 2026-04-27 — 4-commit cycle complete: wireframes Phase 0 19855a5b + 4c4fd6d7 + Phase 0 backend 9245666c + DRAFT 2/4 4106410c + Phase 3 cleanup 3/4 f41077f4 + closure 4/4 this commit)
 
-**Folder closure status:** **OPEN — DRAFT 2/4 IN PROGRESS 2026-04-27** — wireframes Phase 0 (commits 19855a5b + 4c4fd6d7) + Phase 0 backend kickoff (commit 9245666c) + DRAFT 2/4 (this commit) complete; next: Phase 3 cleanup (commit 3/4) + CANDIDATE-LOCK closure (commit 4/4).
+**Folder closure status:** **COMPLETE 2026-04-27** — PO_001 at CANDIDATE-LOCK. Folder ready. RESOLVES PCS-D1 (full V1) + PCS-D10 (full V1). First user-visible feature post-foundation closure delivered. Next priority candidates: DIPL_001 Diplomacy V2+ (consumes FAC + REP + V1+ FactionElect TIT-D1) / AI-controls-PC-offline activation (cross-ref ACT-D1) / DRAFT closure passes for remaining DRAFT features / SPIKE_01 turn 5 integration test design / V1+ runtime reputation milestone (REP-D1 activates TIT-D2 + REP-D9 runtime gating; activates PO-D3 auto-save).
 
 **V1+ priority signal:**
 - PCS_001 PCS-D1 LOCKED: "V1+ runtime login flow PC creation → PO_001 Player Onboarding feature when concrete"

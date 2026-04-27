@@ -6,6 +6,86 @@
 
 ---
 
+## 2026-04-27 — PO_001 Player Onboarding CANDIDATE-LOCK closure commit 4/4 — final lock release + cross-feature deferral RESOLVED annotations
+
+- **Lock RELEASED** — 4-commit cycle complete (wireframes Phase 0 19855a5b + 4c4fd6d7 + Phase 0 backend kickoff 9245666c + DRAFT 2/4 4106410c + Phase 3 cleanup 3/4 f41077f4 + closure 4/4 this commit); single combined `[boundaries-lock-release]` commit
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner reverted to None; _Last released_ entry with full 4-commit cycle summary
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/03_player_onboarding/PO_001_player_onboarding.md`: status header DRAFT → CANDIDATE-LOCK; §14 Status section updated (Phase: CANDIDATE-LOCK; LOCK target after AC-PO-1..12 V1-testable scenarios + chat-service integration + auth-service email/password flow validated)
+  - `features/03_player_onboarding/_index.md`: folder closure status COMPLETE; CANDIDATE-LOCK status row populated với full 4-commit chain
+  - `features/06_pc_systems/PCS_001_pc_substrate.md`: PCS-D1 marked ✅ RESOLVED 2026-04-27 by PO_001 V1; PCS-D10 marked ✅ RESOLVED 2026-04-27 by PO_001 V1
+  - `catalog/cat_06_PCS_pc_systems.md`: PCS-D1 + PCS-D10 rows updated với V1 RESOLVED annotation
+
+### Cross-feature deferrals RESOLVED at this commit
+
+| Deferral | Source | Resolution |
+|---|---|---|
+| **PCS-D1** ✅ FULL V1 | PCS_001 PC Substrate | V1+ runtime login flow PC creation → PO_001 V1 RESOLVES via Forge:CompleteOnboarding orchestrating Forge:RegisterPc + Forge:BindPcUser cascade through 14-feature chain per PO-C1 |
+| **PCS-D10** ✅ FULL V1 | PCS_001 PC Substrate | V1+ PO_001 Player Onboarding integration → PO_001 V1 RESOLVES via 3-mode UI flow (Mode A Canonical PC + Mode B Custom 8-step + Advanced + AI Assistant + Mode C Xuyên Không Arrival) consuming PCS_001 primitives |
+
+### PO_001 4-commit cycle summary
+
+| # | Commit | What |
+|---|---|---|
+| 0a/4 | 19855a5b Wireframes Phase 0 | FE-first HTML mockup — 8 main screens (landing/reality select/path choice/3 modes/confirm/first turn) + shared wuxia ink-wash + reality-themed accent CSS + index navigation hub |
+| 0b/4 | 4c4fd6d7 Wireframes Power-User Mode | Advanced Settings (~46 V1 fields edit grid) + AI Character Assistant full-screen modal + ACTOR_SETTINGS_AUDIT.md inventory + Mode B 3-level UX integration |
+| 1/4 | 9245666c Phase 0 backend kickoff | concept notes (~428 lines; user framing + worked examples + 14-feature integration audit + Q1-Q10 with pre-recommendations) + reference survey (~309 lines; 9-system formalized: BG3 PRIMARY + Cyberpunk + Disco Elysium + AI Dungeon + NovelAI + FFXIV + Lost Ark + Pathfinder + Persona) + folder _index.md update |
+| 2/4 | 4106410c DRAFT | PO_001_player_onboarding.md spec ~862 lines + cat_03_PO_player_onboarding.md catalog seed (8 axioms PO-A1..A8 + 24 V1 entries PO-1..PO-24 + 12 V1+/V2/V2+ entries PO-25..PO-36 + 12 deferrals PO-D1..D12 + 6 cross-aggregate consistency rules PO-C1..C6) + boundary updates (01_feature_ownership_matrix.md actor_user_session aggregate row + RejectReason namespace + PO-* stable-ID prefix; 02_extension_contracts.md §1.4 onboarding.* namespace + §2 RealityManifest 2 OPTIONAL V1 extensions) + 99_changelog.md DRAFT entry + concept notes Q-LOCKED matrix + _index.md status update + `[boundaries-lock-claim]` |
+| 3/4 | f41077f4 Phase 3 cleanup | Validator pipeline slots PO-C1..C6 / C30-C35 registration (NEW namespace row + 6 cross-aggregate consistency rules; total V1 reject rules count 154 → 161; C30 is SECOND RUNTIME cascade C-rule post P4 commit). Zero drift detected — spec internally consistent. Lock STAYS CLAIMED. |
+| 4/4 | (this commit) closure | Status DRAFT → CANDIDATE-LOCK; cross-feature RESOLVED annotations on PCS-D1 + PCS-D10 (PCS_001 spec + catalog); folder _index.md COMPLETE; lock RELEASED via `[boundaries-lock-release]`. |
+
+### V1 Summary
+
+- **1 NEW sparse aggregate** — actor_user_session (T2/Reality, sparse per-(actor, session))
+- **2 RealityManifest extensions** — onboarding_config + canonical_pcs ref list (both OPTIONAL V1)
+- **5 new event sub-types** — 3 EVT-T8 (CompleteOnboarding V1 active + 2 V1+30d schema) + 1 EVT-T1 (OnboardingCompleted) + 1 EVT-T3 (OnboardingDraftUpdated V1+30d)
+- **6 cross-aggregate consistency rules** PO-C1..C6 (global C30-C35; C30 RUNTIME cascade unique pattern)
+- **8 axioms** PO-A1..A8
+- **12 V1 acceptance scenarios** AC-PO-1..12 + 4 V1+ deferred
+- **12 deferrals** PO-D1..D12
+- **PO-* stable-ID prefix**
+
+### Discipline observed across 4-commit cycle
+
+- **FE-first design discipline (PO-A1)** — UX validated via wireframes Phase 0 (12 files HTML/CSS/MD) BEFORE backend feature spec; user direction "thiết kế FE trước - thảo luận FE sau đó chúng ta quyết định draft html trước khi đi sâu vào thiết kế tính năng" honored
+- **Per-reality author-declared discipline (PO-A6)** — mirrors PROG-A1 + REP_001 + FAC_001 + TIT_001 author-discipline
+- **3-mode onboarding architecture (PO-A2)** — Canonical (BG3 Origin) + Custom (BG3 + Cyberpunk lifepath) + XuyenKhong (Disco Elysium amnesia + wuxia)
+- **3-level Mode B UX progression (PO-A3)** — Basic Wizard + Advanced Settings + AI Character Assistant
+- **AI Character Assistant V1 active (PO-A4)** — chat-service + LiteLLM + knowledge-service constraint awareness
+- **PC creation cascade orchestration (PO-A5 + PO-C1)** — synchronous 14-feature chain on Forge:CompleteOnboarding same turn (joins existing C1-C29 + C30-C35 = 35 cross-aggregate consistency rules total post this commit)
+- **Schema-stable / activation-deferred V1+ discipline (PO-A8)** — mirrors TIT-A8 + REP_001 deferred-validator pattern
+- **3-write atomic Forge admin pattern reused** (consistent with WA_003 / FAC_001 / REP_001 / ACT_001 / PCS_001 / TIT_001 / DF05_001 prior)
+- **No new substrate required** — V1 consumes 14 locked features as DECLARATIVE inputs
+
+### V1 unchanged for other features
+
+This commit is purely additive per I14 invariant. Pure documentation closure annotations + status promotion. No changes to existing aggregates / EVT sub-shapes / RealityManifest fields owned by other features (beyond marking PCS-D1 + PCS-D10 RESOLVED). PROG_001 / RES_001 / IDF_001..005 / FF_001 / FAC_001 / REP_001 / TIT_001 / ACT_001 / PCS_001 / AIT_001 / TDIL_001 / DF05_001 status unchanged.
+
+### CANDIDATE-LOCK → LOCK gate
+
+PO_001 transitions to LOCK when:
+- AC-PO-1..12 V1-testable scenarios pass integration tests against Wuxia + Modern + D&D reality fixtures
+- chat-service integration validated (AI Character Assistant LLM calls succeed; constraint awareness verified)
+- auth-service email/password flow validated (account creation + JWT issuance + onboarding flow E2E)
+- Forge:CompleteOnboarding 14-feature cascade validated (14 events emit correctly same turn; OnboardingCompleted EVT-T1 reaches LLM scene narration)
+
+### NEW priority candidates post PO_001 CANDIDATE-LOCK
+
+| Candidate | Justification |
+|---|---|
+| **DIPL_001 Diplomacy Foundation V2+** | Inter-faction politics; consumes FAC + REP + V1+ FactionElect TIT-D1 |
+| **AI-controls-PC-offline activation** | Cross-ref ACT-D1; chorus_metadata sparse PC V1+ activation |
+| **DRAFT closure passes for remaining DRAFT features** | Promote DRAFT → CANDIDATE-LOCK; resolve §20.2 deferred follow-ups |
+| **SPIKE_01 turn 5 integration test design** | First end-to-end turn pipeline test; validates 6 foundations + 9 Tier 5 substrate + DF05 + PO_001 = 17 features integrated |
+| **V1+30d milestone batch** | REP-D1 runtime reputation milestone activates TIT-D2 + REP-D9 + PO-D3 (auto-save) simultaneously |
+| **V1+30d implementation phase** | Begin actual coding (services scaffold + frontend implementation following wireframes) |
+
+User to pick next priority post this commit.
+
+---
+
 ## 2026-04-27 — PO_001 Phase 3 cleanup commit 3/4 — validator pipeline slots PO-C1..C6 / C30-C35 registration
 
 - **Lock STAYS CLAIMED** — Phase 3 cleanup commit; release at closure 4/4 commit

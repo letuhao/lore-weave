@@ -880,7 +880,7 @@ This DRAFT commit (2/4) adds:
 
 | ID | Item | Landing point |
 |---|---|---|
-| **PCS-D1** | V1+ runtime login flow PC creation | PO_001 Player Onboarding feature when concrete |
+| **PCS-D1** ✅ RESOLVED 2026-04-27 by PO_001 V1 (CANDIDATE-LOCK) | V1+ runtime login flow PC creation | PO_001 V1 RESOLVES (full active via Forge:CompleteOnboarding orchestrating Forge:RegisterPc + Forge:BindPcUser cascade through 14-feature chain per PO-C1; first user-visible feature post-foundation closure with FE-first design via wireframes Phase 0 commits 19855a5b + 4c4fd6d7) |
 | **PCS-D2** | V1+ Respawn transition flow (Dying → Alive) | When mortality_config respawn semantics ship |
 | **PCS-D3** | V1+ multi-PC reality cap relax | charter coauthors (PLT_001) — single-line validator change |
 | **PCS-D4** | V1+ pc_stats_v1_stub cache layer | If combat hot-path performance demands |
@@ -889,7 +889,7 @@ This DRAFT commit (2/4) adds:
 | **PCS-D7** | V1+ A6 canon-drift detector body_memory integration | 05_llm_safety A6 V1+ |
 | **PCS-D8** | V1+ Reincarnation pattern (body resets each death; soul preserves) | When narrative use case concrete |
 | **PCS-D9** | V1+ Possession pattern (temporary occupation by another soul) | When narrative use case concrete |
-| **PCS-D10** | V1+ PO_001 Player Onboarding integration | UI flow consumes PCS_001 primitives |
+| **PCS-D10** ✅ RESOLVED 2026-04-27 by PO_001 V1 (CANDIDATE-LOCK) | V1+ PO_001 Player Onboarding integration | PO_001 V1 RESOLVES (full active; UI flow consumes PCS_001 primitives via Mode A canonical PC picker + Mode B Custom 8-step wizard + Advanced Settings ~46 V1 fields + AI Character Assistant + Mode C Xuyên Không Arrival 5-step amnesia flow; 12 wireframe HTML files + ACTOR_SETTINGS_AUDIT.md inventory) |
 
 ### Open questions (NONE V1)
 

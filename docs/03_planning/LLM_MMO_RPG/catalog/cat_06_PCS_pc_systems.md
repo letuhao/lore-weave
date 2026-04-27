@@ -74,7 +74,7 @@ generated_by: scripts/chunk_doc.py
 
 | Deferral | Description | Phase |
 |---|---|---|
-| PCS-D1 | V1+ runtime login flow PC creation | PO_001 Player Onboarding feature when concrete |
+| PCS-D1 ✅ RESOLVED 2026-04-27 by PO_001 V1 | V1+ runtime login flow PC creation | PO_001 V1 RESOLVES via Forge:CompleteOnboarding orchestrating Forge:RegisterPc + Forge:BindPcUser cascade through 14-feature chain per PO-C1 |
 | PCS-D2 | V1+ Respawn transition flow (Dying → Alive) | When mortality_config respawn semantics ship |
 | PCS-D3 | V1+ multi-PC reality cap relax via RealityManifest.max_pc_count Optional | charter coauthors (PLT_001) — single-line validator change |
 | PCS-D4 | V1+ pc_stats_v1_stub cache layer | If combat hot-path performance demands |
@@ -83,7 +83,7 @@ generated_by: scripts/chunk_doc.py
 | PCS-D7 | V1+ A6 canon-drift detector body_memory integration | 05_llm_safety A6 V1+ |
 | PCS-D8 | V1+ Reincarnation pattern (body resets each death; soul preserves) | When narrative use case concrete |
 | PCS-D9 | V1+ Possession pattern (temporary occupation by another soul) | When narrative use case concrete |
-| PCS-D10 | V1+ PO_001 Player Onboarding integration | UI flow consumes PCS_001 primitives |
+| PCS-D10 ✅ RESOLVED 2026-04-27 by PO_001 V1 | V1+ PO_001 Player Onboarding integration | PO_001 V1 RESOLVES via 3-mode UI flow (Mode A Canonical PC + Mode B Custom 8-step + Advanced + AI Assistant + Mode C Xuyên Không Arrival) consuming PCS_001 primitives |
 
 ### Open questions (PCS-Q*)
 
