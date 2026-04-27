@@ -4,7 +4,7 @@
 > **Catalog reference:** `catalog/cat_00_RES_resource.md` (PENDING — to be created at RES_001 DRAFT promotion)
 > **Purpose:** Defines what counts as ownable, transferable, producible, consumable value across the game world. Resources flow through entities (PC/NPC/cell/town) per the user's 5-axiom definition: (1) resource = units-of-value owned by entity, (2) entities consume 0+ resources, (3) entities produce 0+ resources, (4) NPC/PC own 1+ resources, (5) resources are either directly-consumed OR exchange-mediums. Foundation for HP/Stamina/lương thực, currency, materials, items, cell-production, town-economy, and trade.
 
-**Active:** RES_001 — **Resource Foundation** (DRAFT 2026-04-26 — Q1-Q12 ALL LOCKED + i18n cross-cutting pattern introduced)
+**Active:** (empty — folder closure 2026-04-27)
 
 **Genre clarification (2026-04-26):** Per user — LoreWeave is **simulation/strategy game with RPG core**, not pure RPG. V1 ships RPG vertical slice; V2+ expands to complex resource economy + giao thương + kinh tế module. RES_001 must accommodate both V1 simplicity AND V2+ extensibility without schema migration. See [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) §1.
 
@@ -23,7 +23,11 @@
 
 Full decision matrix in [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) §10. Full design in [`RES_001_resource_foundation.md`](RES_001_resource_foundation.md).
 
-**Folder closure status:** Open — DRAFT 2026-04-26. CANDIDATE-LOCK pending Phase 3 review cleanup + closure pass + 17 downstream impacts applied (per RES_001 §17.2).
+**Folder closure status:** **COMPLETE 2026-04-27** — RES_001 **CANDIDATE-LOCK 2026-04-27** (DRAFT 2026-04-26 → TDIL closure-pass-extension Q4 day-boundary → turn-boundary applied at TDIL DRAFT bdc8d8e1 → CANDIDATE-LOCK closure pass single combined `[boundaries-lock-claim+release]` commit). All Q1-Q12 LOCKED via 2-batch deep-dive 2026-04-26. §14 AC-RES-1..10 walkthrough verified all 10 acceptance scenarios concrete + testable. RES-Q1..Q6 closure pass items ALL RESOLVED: RES-Q1 deferred to PCS_001 + NPC_001 first-design-pass (PCS_001 already CANDIDATE-LOCK 2026-04-27 `af025ebb`) / RES-Q2 user-facing message LOCKED `cell_production_halted_storage_full` I18nBundle / RES-Q3 deferred to PL_005 closure pass (OutputDecl pattern V1 supports both Give-reciprocal + Trade kind) / RES-Q4 V1 default author-declared `consumable_priority` + fallback declaration-order / RES-Q5 deferred to i18n cross-cutting commit (engine-wide migration) / RES-Q6 V1 PC starting Reputation default = 0 (REP_001 CANDIDATE-LOCK owns runtime gating V1+).
+
+**Foundation tier 6/6 COMPLETE** — RES_001 was the final DRAFT foundation feature; with this CANDIDATE-LOCK promotion, foundation tier closure status: **EF + PF + MAP + CSC + RES + PROG all CANDIDATE-LOCK 2026-04-27**. Foundation tier complete: WHO (EF_001) + WHERE-semantic (PF_001) + WHERE-graph (MAP_001) + WHAT-inside-cell (CSC_001) + WHAT-flows-through-entity (RES_001) + HOW-actors-grow (PROG_001).
+
+**LOCK target after** acceptance scenarios pass integration tests + V1+30d follow-on commits (PL_006 Hungry V1 promotion / WA_006 Starvation cause / EF_001 cell_owner field / 07_event_model EVT-T5/T3 sub-types — already mostly applied via subsequent closure-pass commits per §17.2).
 
 ---
 

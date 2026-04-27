@@ -6,6 +6,89 @@
 
 ---
 
+## 2026-04-27 — RES_001 Resource Foundation CANDIDATE-LOCK closure pass (FOUNDATION TIER 6/6 COMPLETE)
+
+- **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit. DRAFT 2026-04-26 → TDIL closure-pass-extension Q4 day-boundary → turn-boundary semantic applied at TDIL DRAFT `bdc8d8e1` → CANDIDATE-LOCK closure pass (this commit).
+- **Phase 3 + AC walkthrough:** §14 AC-RES-1..10 walked; all 10 V1-testable acceptance scenarios concrete + verifiable; no drift detected post-TDIL closure-pass-extension.
+- **6 open questions RESOLVED at closure as deferrals to consumer feature closures:**
+  - **RES-Q1** (Default vital_pool VitalProfile per-actor-class) → deferred to **PCS_001 + NPC_001 first-design-pass**; PCS_001 already CANDIDATE-LOCK 2026-04-27 `af025ebb`; NPC_001 CANDIDATE-LOCK; both consume `vital_pool` aggregate via standard pattern.
+  - **RES-Q2** (Cell stockpile overflow handling) → drop (production halts at cap per Q4 + Q2c LOCKED); user-facing I18nBundle message `cell_production_halted_storage_full` with default English `"storage full, production paused"` + Vietnamese translation `"kho đầy, sản xuất tạm dừng"`.
+  - **RES-Q3** (Trade reciprocity Give-kind vs dedicated Trade kind) → deferred to **PL_005 closure pass**; PL_005 owns interaction-kind ontology; RES_001 V1 OutputDecl pattern supports both (schema-additive either way).
+  - **RES-Q4** (food-priority determinism) → V1 default author-declared `consumable_priority` (RealityManifest extension OPTIONAL); fallback to declaration-order in `resource_kinds` if author empty. Deterministic per replay-determinism invariant.
+  - **RES-Q5** (i18n cross-cutting audit timing) → deferred to **i18n cross-cutting commit** (engine-wide migration); RES_001 V1 introduces I18nBundle pattern locally per §2; existing Vietnamese hardcoded reject copy V1 functional + cosmetic-only migration.
+  - **RES-Q6** (`social_initial_distribution` PC vs NPC scope) → PC + NPC both (HashMap<ActorRef, i64> covers both, no schema change); PC starting Reputation default = 0. REP_001 CANDIDATE-LOCK 2026-04-27 owns PC reputation runtime gating V1+.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None; full closure summary in _Last released_ entry
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_resource/RES_001_resource_foundation.md`: status header DRAFT 2026-04-26 → CANDIDATE-LOCK 2026-04-27 with closure pass rationale + RES-Q1..Q6 marked RESOLVED + §18 Status block updated
+  - `features/00_resource/_index.md`: Active RES_001 DRAFT → empty (folder closure 2026-04-27); folder closure status Open → COMPLETE 2026-04-27 with foundation tier 6/6 confirmation
+
+### RES_001 final summary
+
+- **Status:** CANDIDATE-LOCK 2026-04-27
+- **Foundation tier 6/6 COMPLETE** — RES_001 was the final DRAFT foundation feature; with this closure: EF + PF + MAP + CSC + RES + PROG all CANDIDATE-LOCK 2026-04-27
+- **Substrate:** value flow through entities (HP/Stamina/lương thực, currency, materials, items, cell-production, town-economy, trade) — simulation/strategy core enabler
+- **5 ResourceKind categories V1:** Vital / Consumable / Currency / Material / SocialCurrency (V1+30d Item / V2 Recipe / V3 Knowledge+Influence reserved)
+- **2 aggregates:** `vital_pool` (T2/Reality, body-bound, actor-only, NON-TRANSFERABLE) + `resource_inventory` (T2/Reality, portable, EntityRef-any)
+- **3 V1 sinks:** food consumption + cell maintenance cost + trade buy-sell spread
+- **4 V1 Generators (per TDIL closure-pass-extension shifted to per-turn fire):** CellProduction (channel-bound) + NPCAutoCollect (channel-bound; V1+30d lazy migration via PROG-D19) + CellMaintenance (channel-bound) + HungerTick (actor-bound; reads body_clock per BodyOrSoul)
+- **Reject rule_ids:** 12 V1 in `resource.*` namespace + V1+ reservations
+- **RealityManifest extensions:** 9 OPTIONAL V1 (all engine-defaulted; sandbox/freeplay valid with empty default)
+- **i18n cross-cutting pattern introduced:** English `snake_case` stable IDs + `I18nBundle` user-facing strings (engine-wide standard); RejectReason envelope extended with `user_message: I18nBundle` field (NEW contract §2.3)
+- **Acceptance criteria:** 10 V1-testable AC-RES-1..10
+- **Deferrals:** 27 across V1+30d/V2/V3 (RES-D1..D27)
+
+### Cross-feature closure-pass-extensions applied (history)
+
+| Source | Effect on RES_001 | When |
+|---|---|---|
+| TDIL_001 DRAFT promotion (`bdc8d8e1`) | Q4 4-Generator day-boundary → per-turn fire elapsed-time parameter; channel-bound vs actor-bound clock-source matrix per TDIL-A4 (CellProduction/NPCAutoCollect/CellMaintenance read channel `wall_clock`; HungerTick reads actor `body_clock`); cross-realm production correctly handled by elapsed-time multiplication; PROG-D19 NPC eager auto-collect → lazy migration V1+30d preserved | 2026-04-27 (DRAFT phase mechanical revision) |
+
+### Downstream impacts §17.2 status
+
+Most §17.2 downstream items already applied via subsequent closure-pass commits before RES_001 CANDIDATE-LOCK:
+
+| Feature | Update applied | Status |
+|---|---|---|
+| PL_006 | Hungry V1 promotion + magnitude semantics 1/4/7 thresholds | ✅ applied via subsequent closure |
+| WA_006 | §6.5 MortalityCauseKind catalog with `Starvation` | ✅ applied via subsequent closure |
+| PL_005 | §9.1 harvest sub-intent + trade flow registration | ✅ applied via subsequent closure |
+| EF_001 | §3.1 cell_owner + inventory_cap + EntityRef fields | ✅ applied via subsequent closure |
+| PCS_001 | brief §4.4f + §S8 xuyên không body-substitution | ✅ applied via PCS_001 CANDIDATE-LOCK `af025ebb` |
+| 07_event_model | 4 EVT-T5 + 2 EVT-T3 RES_001 sub-types registered | ✅ applied via subsequent commits |
+| WA_003 Forge | 4 AdminAction sub-shapes (EditCellProducerProfile + EditPriceDecl + EditCellMaintenanceCost + GrantInitialResources) | 🟡 partial — V1+30d follow-on |
+| NPC_001 | NPC owner auto-collect Generator + NPC consumption tick + VitalProfile NPC-class declarations | 🟡 partial — V1+30d follow-on |
+| PL_001 Continuum | RejectReason.user_message: I18nBundle field per §2.3 | 🟡 partial — i18n cross-cutting commit |
+| i18n cross-cutting audit | Migrate existing Vietnamese hardcoded reject copy to I18nBundle | 🟡 deferred to dedicated cross-cutting commit |
+
+### NEW priority candidates post RES closure (FOUNDATION TIER COMPLETE)
+
+1. **PO_001 Player Onboarding** — V1-blocking; Phase 0 wireframes committed `19855a5b` + `4c4fd6d7`; concept-notes + Q-deep-dive pending
+2. **DF5 implementation scaffold** — `contracts/api/session/v1/` (~600 LoC traits + DTOs + ContractTestSuite ~30 scenarios) + `services/session-service/src/adapters/lru_distill.rs` LruDistillProvider V1 backend
+3. **SPIKE_01 turn 5 integration test design** — DF5 + TDIL + AIT + PROG + RES all CANDIDATE-LOCK now (foundation + architecture-scale all closed); can validate full V1 vertical slice in concrete scenario
+4. **V1+30d milestone activations across foundations** — RES-D1..D5 (PC inventory cap + decay/spoilage RES_002 + per-cell price variance + equipment wear + hydration loop) + PROG-D1..D5 (cultivation method declarations + Item ActorRef as progression owner + cross-reality stat translation rules + atrophy + offline mode)
+5. **i18n cross-cutting commit** — engine-wide migration of Vietnamese hardcoded reject copy to I18nBundle pattern (PL_006 / NPC_001 / NPC_002 / PL_002 / WA_*); cosmetic; doesn't block V1 functionality
+
+### Foundation tier closure status
+
+- ✅ EF_001 Entity Foundation — CANDIDATE-LOCK
+- ✅ PF_001 Place Foundation — CANDIDATE-LOCK
+- ✅ MAP_001 Map Foundation — CANDIDATE-LOCK
+- ✅ CSC_001 Cell Scene Composition — CANDIDATE-LOCK
+- ✅ RES_001 Resource Foundation — **CANDIDATE-LOCK 2026-04-27 (THIS commit)**
+- ✅ PROG_001 Progression Foundation — CANDIDATE-LOCK 2026-04-27 (`15d20036`; just preceded)
+
+### Architecture-scale tier closure status (companion summary)
+
+- ✅ ACT_001 Actor Foundation — CANDIDATE-LOCK 2026-04-27
+- ✅ AIT_001 AI Tier Foundation — CANDIDATE-LOCK 2026-04-27
+- ✅ TDIL_001 Time Dilation Foundation — CANDIDATE-LOCK 2026-04-27
+
+**🎉 V1 substrate tier (foundation 6/6 + architecture-scale 3/3) closure COMPLETE 2026-04-27.** Next priority: PO_001 Player Onboarding (V1-blocking UI flow consuming all 9 substrate features).
+
+---
+
 ## 2026-04-27 — PROG_001 Progression Foundation CANDIDATE-LOCK closure pass
 
 - **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit. DRAFT 2026-04-26 → 5 NEW deferrals D33..D37 cross-cultivation extensibility audit `b20c4dcb` → CULT_001 V2+ entirely deferred `d57fb7fc` → TDIL closure-pass-extension Q3f day-boundary → turn-boundary semantic applied at TDIL DRAFT `bdc8d8e1` → CANDIDATE-LOCK closure pass (this commit).

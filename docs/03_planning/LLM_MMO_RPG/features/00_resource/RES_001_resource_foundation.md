@@ -2,7 +2,7 @@
 
 > **Category:** RES — Resource Foundation (foundation tier; sibling of EF_001 / PF_001 / MAP_001 / CSC_001; 5th and final V1 foundation feature)
 > **Catalog reference:** [`catalog/cat_00_RES_resource.md`](../../catalog/cat_00_RES_resource.md) (owns `RES-*` stable-ID namespace)
-> **Status:** DRAFT 2026-04-26 — Q1-Q12 LOCKED via `00_CONCEPT_NOTES.md` §10 + Q6-Q12 deep-dive. Companion documents: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + gap analysis) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (10-game survey + 12-pattern synthesis + V1/V1+30d/V2/V3 phase mapping).
+> **Status:** **CANDIDATE-LOCK 2026-04-27** (DRAFT 2026-04-26 → TDIL closure-pass-extension Q4 day-boundary → turn-boundary applied at TDIL DRAFT bdc8d8e1 → CANDIDATE-LOCK 2026-04-27 closure pass: §14 AC-RES-1..10 walked; RES-Q1..Q6 noted as deferred to consumer feature closures — RES-Q1 to PCS_001 + NPC_001 first-design-pass / RES-Q2 user-facing message confirmed "kho đầy, sản xuất tạm dừng" / RES-Q3 to PL_005 closure pass / RES-Q4 V1 default `consumable_priority` author-declared + fallback declaration-order / RES-Q5 i18n cross-cutting commit / RES-Q6 V1 PC starting Reputation default = 0). Q1-Q12 LOCKED via `00_CONCEPT_NOTES.md` §10 + Q6-Q12 deep-dive. **Foundation tier 6/6 closure feature** — final V1 foundation feature CANDIDATE-LOCK promotion (PROG_001 6th foundation added 2026-04-26 superseded original "5th and final" framing; foundation tier closes EF + PF + MAP + CSC + RES + PROG all CANDIDATE-LOCK). Companion documents: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + gap analysis) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (10-game survey + 12-pattern synthesis + V1/V1+30d/V2/V3 phase mapping).
 >
 > **CLOSURE-PASS-EXTENSION 2026-04-27 (TDIL_001 DRAFT promotion):** Q4 "DailyBoundary Generator" semantic SUPERSEDED by TDIL-A3 per-turn O(1) Generator semantic (architecture-scale TDIL_001 Time Dilation Foundation). Mechanical revision: 4 Generators (`Scheduled:CellProduction`, `Scheduled:NPCAutoCollect`, `Scheduled:CellMaintenance`, `Scheduled:HungerTick`) shift from `EVT-G2 FictionTimeMarker (day-boundary)` to **per-turn fire** with elapsed-time parameter. Computation invariant: `delta = base_rate × elapsed_time × multiplier` (O(1) regardless of `time_flow_rate` magnitude). Per TDIL-A4 channel-bound vs actor-bound clock-source matrix:
 > - **Channel-bound** (read channel `wall_clock` advance): `Scheduled:CellProduction`, `Scheduled:NPCAutoCollect` (V1+30d lazy migration via PROG-D19), `Scheduled:CellMaintenance`
@@ -1045,14 +1045,16 @@ PL_001 Continuum closure pass folds in (additive per I14 — `user_message` is n
 
 ## §16 — Open Questions (closure pass items)
 
-| ID | Question | Resolution path |
+> **CANDIDATE-LOCK 2026-04-27 closure pass:** All 6 RES-Q* RESOLVED as deferrals to consumer feature closures (mirror AIT-Q1/Q2 + PROG-Q1..Q5 closure pattern). RES_001 V1 substrate complete; consumer features own seed-time/runtime decisions on each axis.
+
+| ID | Question | Resolution at CANDIDATE-LOCK 2026-04-27 |
 |---|---|---|
-| RES-Q1 | Default vital_pool VitalProfile — what max_value for PC vs NPC peasant vs NPC noble? | PCS_001 + NPC_001 first-design-pass declares per-actor-class defaults; RES_001 closure pass folds in citation |
-| RES-Q2 | Cell stockpile overflow handling V1: drop or queue? | Q4 implies "drop" (production halts at cap); confirmed Q2c. Closure pass documents user-facing message ("kho đầy, sản xuất tạm dừng") |
-| RES-Q3 | Trade reciprocity: V1 uses Give-kind reciprocal pair OR dedicated Trade kind? | PL_005 closure pass decides; RES_001 supports both via OutputDecl pattern |
-| RES-Q4 | Determinism of "any nutritional consumable" food-priority — author-declared vs deterministic-id-order? | Default V1 = author-declared `consumable_priority`; if author empty, fallback to declaration-order in resource_kinds |
-| RES-Q5 | i18n cross-cutting audit — when do existing features (PL_006/NPC_001/PL_002/WA_*) migrate? | Separate cross-cutting commit post-RES_001 LOCK; tracked in §17 downstream |
-| RES-Q6 | Should `social_initial_distribution` apply to NPCs only or PC + NPC? | Currently HashMap<ActorRef, i64> covers both; closure pass confirms PC starting Reputation default = 0 |
+| RES-Q1 | Default vital_pool VitalProfile — what max_value for PC vs NPC peasant vs NPC noble? | **RESOLVED: deferred to PCS_001 + NPC_001 first-design-pass** — consumer features own per-actor-class default declarations; RES_001 V1 schema-stable for any per-class profile. PCS_001 already CANDIDATE-LOCK 2026-04-27 (`af025ebb`); NPC_001 CANDIDATE-LOCK; both consume `vital_pool` aggregate via standard pattern. |
+| RES-Q2 | Cell stockpile overflow handling V1: drop or queue? | **RESOLVED: drop** (production halts at cap per Q4 + Q2c LOCKED); user-facing I18nBundle message `cell_production_halted_storage_full` with default English `"storage full, production paused"` + Vietnamese translation `"kho đầy, sản xuất tạm dừng"` per §2 i18n contract. |
+| RES-Q3 | Trade reciprocity: V1 uses Give-kind reciprocal pair OR dedicated Trade kind? | **RESOLVED: deferred to PL_005 closure pass** — PL_005 owns interaction-kind ontology; RES_001 V1 supports both via OutputDecl pattern (schema-additive either way). |
+| RES-Q4 | Determinism of "any nutritional consumable" food-priority — author-declared vs deterministic-id-order? | **RESOLVED: V1 default author-declared `consumable_priority`** (RealityManifest extension OPTIONAL); fallback to declaration-order in `resource_kinds` if author empty. Deterministic per replay-determinism invariant. |
+| RES-Q5 | i18n cross-cutting audit — when do existing features (PL_006/NPC_001/PL_002/WA_*) migrate? | **RESOLVED: deferred to i18n cross-cutting commit** (engine-wide migration post-RES_001 LOCK); RES_001 V1 introduces I18nBundle pattern locally per §2; existing Vietnamese hardcoded reject copy V1 functional + cosmetic-only migration. |
+| RES-Q6 | Should `social_initial_distribution` apply to NPCs only or PC + NPC? | **RESOLVED: PC + NPC both** — `HashMap<ActorRef, i64>` covers both (no schema change); PC starting Reputation default = 0 confirmed. REP_001 CANDIDATE-LOCK 2026-04-27 owns PC reputation runtime gating V1+. |
 
 ---
 
@@ -1121,7 +1123,8 @@ V1 design surface for foundation tier is COMPLETE pending:
 ## §18 — Status
 
 - **Created:** 2026-04-26 by main session
-- **Phase:** DRAFT 2026-04-26
-- **Status target:** CANDIDATE-LOCK after Phase 3 review cleanup + closure pass + 17.2 downstream applied
+- **Phase:** **CANDIDATE-LOCK 2026-04-27** (DRAFT 2026-04-26 → TDIL closure-pass-extension applied at TDIL DRAFT bdc8d8e1 → CANDIDATE-LOCK closure pass this commit)
+- **Closure pass evidence:** §14 AC-RES-1..10 walked + RES-Q1..Q6 all RESOLVED as deferrals to consumer feature closures (§16); §17.2 downstream impacts mostly applied via subsequent feature closures (PL_006 Hungry V1 promotion / WA_006 Starvation cause / EF_001 cell_owner field / 07_event_model EVT-T5/T3 sub-types — all completed in subsequent closure-pass commits).
+- **Foundation tier 6/6 closure feature** — final V1 foundation feature CANDIDATE-LOCK promotion (PROG_001 added 2026-04-26 as 6th foundation; foundation tier closes EF + PF + MAP + CSC + RES + PROG all CANDIDATE-LOCK).
 - **Companion docs:** [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + Q1-Q12 deep-dive locked) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (10-game survey + V1/V1+30d/V2/V3 phase mapping)
-- **Lock-coordinated commit:** This commit + 6 sibling boundary file updates under single `[boundaries-lock-claim+release]` prefix
+- **Lock-coordinated commit:** Single `[boundaries-lock-claim+release]` commit (CANDIDATE-LOCK closure pass) — annotation-only spec update + folder closure + lock release + changelog entry.
