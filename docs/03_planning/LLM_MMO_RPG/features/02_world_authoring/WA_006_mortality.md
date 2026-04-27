@@ -1,5 +1,9 @@
 # WA_006 — Mortality (Per-Reality Death Mode Config)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> V1+30d combat-in-session integration: when combat shipping (per COMB_001 V1 + DF5-D3 PvP V2): PC dies in session → cascade `SessionParticipation.left_reason = Killed` (NEW LeftReason variant V1+30d alongside existing Explicit/MovedCell/DisconnectTimeout/Inactive/SessionClosed/AnchorPcLeft/Kicked). DF5-A4 PC anchor invariant interaction: if last PC in session dies → session closes via `CloseReason::LastPcLeft` (existing); POV-distill cascade fires for all participants per DF5-A9 (alice/bob remember PC's death). WA_006 mortality EVT-T3 `actor_dies` cascade is the source signal (existing per WA_006); session-service consumes additive per closure-pass. NO change to WA_006 mortality state machine (Alive/Dying/Dead/Ghost) or per-reality MortalityConfig schema; CANDIDATE-LOCK status PRESERVED. Q15 retention LOCKED — death = freeze not delete per Q6-D5: actor_session_memory frozen at death fiction_time; sessions accessible by Forge audit only; retention same as alive. LOW magnitude — V1+30d combat-in-session deferral; V1 ships without combat-in-session integration. Reference: [DF05_001 §15.3 Death = freeze](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#153-death--freeze-q6-d5-locked).
+
 > **🪶 THIN-REWRITE NOTICE (2026-04-25 closure pass):** This file was thin-rewritten from 730 lines → ~280 lines as part of the WA folder closure pass. The original draft over-extended into territories owned by other features:
 >
 > - `pc_mortality_state` aggregate (per-PC state) → **PCS_001** (when designed)

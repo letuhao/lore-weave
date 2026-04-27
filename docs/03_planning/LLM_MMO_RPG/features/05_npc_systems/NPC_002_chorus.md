@@ -1,5 +1,9 @@
 # NPC_002 — Chorus (Multi-NPC Turn Ordering)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 (2nd) — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> Chorus turn-ordering integrates within DF05_001 session scope per `session_id` filter. Existing tier-aware priority calculation (Major full / Minor low-priority / Untracked excluded per AIT-A15) preserved; sessions add scoping filter only. NPC_002 reads MemoryProvider trait per DF05_001 §16 SDK contract for tier-aware persona retrieval (consumers depend on `contracts/api/session/v1/memory_provider.rs` only). Multi-PC turn arbitration V2+ via DF5-D1 (Chorus + SR11 turn-state coordinate when multi-PC sessions ship). NO change to NPC_002 priority algorithm; CANDIDATE-LOCK status PRESERVED. LOW magnitude — session_id filter is additive scoping. Reference: [DF05_001 §3.1 + §10.4 per-actor budget](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#104-per-actor-budget-q8-d4-locked).
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — ACT_001 Actor Foundation unification refactor:**
 >
 > Per ACT_001 unification (commits 1c0d2d7 + 74b2854 + 3/5 this update), NPC_002 read paths updated to consume ACT_001 substrate aggregates (replaces NPC_001 R8 imports):

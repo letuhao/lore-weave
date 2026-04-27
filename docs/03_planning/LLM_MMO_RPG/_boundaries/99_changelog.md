@@ -6,6 +6,78 @@
 
 ---
 
+## 2026-04-27 — DF05 closure-pass-extensions cascade — 13 consumer feature specs annotation
+
+- **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit (mirror TIT_001 closure-pass pattern for cross-feature deferral RESOLVED batches)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None; full closure-pass cascade summary in _Last released_
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`** (13 consumer feature specs):
+
+| Feature | Magnitude | Integration point |
+|---|---|---|
+| `features/04_play_loop/PL_001_continuum.md` | MEDIUM | §13 Travel sequence cascades into session-service for cell-leave; DF5-A4 anchor invariant trigger |
+| `features/04_play_loop/PL_002_command_grammar.md` | LOW | `/chat @actor` + `/leave` V1 commands added; rate-limit serves as anti-spam per Q4-D4 |
+| `features/04_play_loop/PL_005_interaction.md` | LOW-MEDIUM | EVT-T1 PCTurn/NPCTurn schema-additive `session_id: Option<SessionId>` field V1+30d; DF5-V1..V4 validator slots |
+| `features/05_npc_systems/NPC_001_cast.md` | MEDIUM | NPC eligibility check (Q4-D1 reputation-gated) + DF5-V4 TierEligibilityValidator + MemoryProvider trait import per §16 SDK |
+| `features/05_npc_systems/NPC_002_chorus.md` | LOW | Turn-ordering within session_id scope; tier-aware persona via MemoryProvider; multi-PC V2+ via DF5-D1 |
+| `features/05_npc_systems/NPC_003_desires.md` | LOW | V1 read-only consumer; V2+ desire-driven session creation via DF5-D7 |
+| `features/00_actor/ACT_001_actor_foundation.md` | MEDIUM | actor_session_memory R8 PRIMARY post-close store; POV-distill cache in EVT-T3 SessionPovDistill payload per Q12-D1; Q7 cross-session bleed; LruDistillProvider V1 backend consumes R8 LRU |
+| `features/00_reputation/REP_001_reputation_foundation.md` | LOW | 8-tier ReputationTier consumed by Q4-D1 consent; Wuxia I18n labels reused for refusal template Q4-D3 |
+| `features/02_world_authoring/WA_003_forge.md` | LOW | 9 NEW V1 AdminAction sub-shapes registered (CreateSession/CloseSession/KickFromSession/EditActorSessionMemory/RegenSessionDistill/PurgeActorSessionMemory/AnonymizePcInSessions/BulkRegenSessionDistill/BulkPurgeStaleSessions); 3-write atomic pattern preserved |
+| `features/02_world_authoring/WA_006_mortality.md` | LOW | V1+30d PC-dies-in-session cascade (NEW LeftReason::Killed variant); Q6-D5 death = freeze; actor_dies EVT-T3 cascade additive consumer |
+| `features/16_ai_tier/AIT_001_ai_tier_foundation.md` | LOW-MEDIUM | AIT-A8 capability matrix = ground-truth for DF5-A6 tier eligibility; DF5-A8 capacity coordinates with TierCapacityCaps; MemoryProvider capability gate; AIT-D7 V1+30d Untracked promotion interacts |
+| `features/06_pc_systems/PCS_001_pc_substrate.md` | MEDIUM | pc_user_binding.current_session: Option<SessionId> consumer; body_memory feeds prompt-assembly via MemoryProvider trait; per-PC active-session lookup; DF5-C1 cross-aggregate validator |
+| `features/00_place/PF_001_place_foundation.md` | LOW | Cell-tier session capacity ≤50 V1 (DF5-A8); cell display "N active conversations" V1+30d cosmetic; DF5-C2 cell-tier-only verifies via §5 |
+
+### Closure-pass discipline preserved
+
+- **Annotation-only** — no architectural changes to any consumer feature
+- **CANDIDATE-LOCK / DRAFT status PRESERVED** for all 13 specs (no reopens; pure additive `> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 ...**` header annotations after the title line)
+- **No new aggregates / EVT-T sub-types / RealityManifest extensions** in this commit (those landed in DF05_001 cycle commit 2/4 5d5dddd3)
+- **No new reject rule_ids** in this commit (those landed in commit 2/4 + Phase 3 cleanup 60536f19)
+- **Mirror TIT_001 cross-feature deferral RESOLVED pattern** — closure-pass-extensions cascade after CANDIDATE-LOCK release
+
+### Cross-feature integration map (the 13 specs annotated)
+
+```
+DF05_001 Session/Group Chat (CANDIDATE-LOCK 71a60346)
+    │
+    ├── Play loop (3 specs):
+    │   ├── PL_001 Continuum — cell-leave cascade
+    │   ├── PL_002 Grammar — /chat + /leave commands
+    │   └── PL_005 Interaction — session_id field + validators
+    │
+    ├── Inhabitants (5 specs):
+    │   ├── NPC_001 Cast — eligibility + MemoryProvider trait
+    │   ├── NPC_002 Chorus — turn-ordering within session
+    │   ├── NPC_003 Desires — V1 read; V2+ desire-driven
+    │   ├── ACT_001 Actor — actor_session_memory R8 primary
+    │   └── PCS_001 PC Substrate — body_memory + active-session lookup
+    │
+    ├── Authoring + Cross-cutting (3 specs):
+    │   ├── REP_001 Reputation — 8-tier consent gating reuse
+    │   ├── WA_003 Forge — 9 V1 AdminAction sub-shapes
+    │   └── WA_006 Mortality — V1+30d PC-dies-in-session
+    │
+    └── Engine + Place (2 specs):
+        ├── AIT_001 AI Tier — capability matrix + tier capacity coordination
+        └── PF_001 Place — cell-tier session capacity tracking
+```
+
+(Boundary registries already updated in DF05_001 cycle commit 2/4: 07_event_model EVT-T sub-types + RealityManifest canonical_sessions + 01_feature_ownership_matrix.md aggregates + 02_extension_contracts.md §1.4 + §2 + 03_validator_pipeline_slots.md namespace matrix + C26-C29 cross-aggregate rules. EM-7 Reality Close already covers session cascade per existing reality close logic.)
+
+### NEW priority candidates post DF5 closure-pass-extensions
+
+1. **PO_001 Player Onboarding** (V1-blocking; folder placeholder; consumes PCS_001 PCS-D1 runtime login + DF05_001 session lifecycle)
+2. **Architecture-scale closure** — TDIL_001 + AIT_001 still DRAFT (Phase 3 + CANDIDATE-LOCK closure pending)
+3. **DF5 implementation scaffold** — `contracts/api/session/v1/` (~600 LoC traits + DTOs + ContractTestSuite ~30 scenarios) + `services/session-service/src/adapters/lru_distill.rs` LruDistillProvider V1 backend + CI lint rule blocking adapter imports outside service
+4. **SPIKE_01 turn 5 integration test design** (DF05_001 enables — multi-session memory verification)
+5. **DRAFT closure passes** for PROG_001 / RES_001 / AIT_001 / TDIL_001
+6. **DIPL_001 Diplomacy** V2+ (consumes FAC_001 + REP_001 + V1+ FactionElect TIT-D1)
+
+---
+
 ## 2026-04-27 — DF05 Session/Group Chat CANDIDATE-LOCK closure commit 4/4 — final lock release
 
 - **Lock RELEASED** — 4-commit cycle COMPLETE: Phase 0 0080b533 + commit 1/4 745e9f6e + DRAFT 2/4 5d5dddd3 + Phase 3 cleanup 3/4 60536f19 + closure 4/4 this commit; single combined `[boundaries-lock-release]` commit

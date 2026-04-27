@@ -1,5 +1,9 @@
 # NPC_001 — Cast (NPC Foundation)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 (2nd) — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> NPC eligibility check at `/chat` invite per Q4-D1 LOCKED reputation-gated consent (Hated/Hostile reject; Unfriendly accepts reluctantly with mood=Sour). DF5-V4 TierEligibilityValidator — Major + Minor NPC accept; Untracked rejected per AIT-A8 + DF5-A6. Personal opinion overrides faction reputation per Q4-D2 (gradient ±2 tiers shift). Persona prompt assembly switches consumer code from direct ACT_001 actor_session_memory reads → MemoryProvider trait import per DF05_001 §16 SDK contract (consumers depend on `contracts/api/session/v1/memory_provider.rs` only). Tier-aware persona via MemoryProvider capability gate per AIT integration. Refusal message Q4-D3: LLM-flavored persona refusal (~100 tokens) + engine template fallback when LLM budget exhausted. NO change to NPC_001 aggregates; CANDIDATE-LOCK status PRESERVED. MEDIUM magnitude — consumer trait import + session-aware eligibility check. Reference: [DF05_001 §8](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#8--npc-consent--reputation-gating-q4-locked).
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — ACT_001 Actor Foundation unification refactor:**
 >
 > Per ACT_001 unification (commits 1c0d2d7 + 74b2854 + 3/5 this update), 3 of NPC_001's 5 aggregates have been TRANSFERRED to ACT_001 substrate:

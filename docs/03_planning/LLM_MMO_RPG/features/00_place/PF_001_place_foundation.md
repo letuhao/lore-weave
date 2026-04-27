@@ -1,5 +1,9 @@
 # PF_001 — Place Foundation
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> Cell-tier session capacity tracking — DF05_001 enforces ≤50 Active sessions per cell V1 per DF5-A8 (cross-validator C28 in `_boundaries/03_validator_pipeline_slots.md`). PF_001 cell display UI may surface "5 active conversations" indicator at cell-tier (V1+30d cosmetic UX; not blocking V1 ship). DF5-C2 cross-aggregate validator: session.channel_id MUST be cell-tier (non-cell channels rejected) — DF05_001 verifies via PF_001 §5 cell-only invariant. NO change to PF_001 aggregate or cell-tier 1:1 invariant; CANDIDATE-LOCK status PRESERVED. LOW magnitude — pure consumer of cell-tier semantics + display UX hook. Reference: [DF05_001 §3.1 session aggregate](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#31-session-t2--reality-sparse--active-hot-closed-archival--primary) + [DF05_001 §7 Multi-session-per-cell](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#7--multi-session-per-cell-architecture-the-big-shift).
+
 > **Conversational name:** "Place Foundation" (PF). The semantic substrate that defines what counts as a meaningful in-fiction location — a `place` aggregate per cell channel, a closed `PlaceType` taxonomy, an explicit connection graph for Travel, structural state machine for in-fiction degradation, fixture seed declarations for canonical EnvObjects, RealityManifest extension for bootstrap, and time-lapse evolution hooks (author-edit + in-fiction-event V1; scheduled decay V1+30d).
 >
 > **Category:** PF — Place Foundation (foundation tier; sibling of EF_001 Entity Foundation)

@@ -1,5 +1,9 @@
 # REP_001 — Reputation Foundation
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> 8-tier ReputationTier (Hated / Hostile / Unfriendly / Neutral / Friendly / Honored / Revered / Exalted) + Wuxia I18n display labels (Đại nghịch / Nghịch tặc / Kẻ thù / Người lạ / Đệ tử / Trưởng lão / Tôn sư / Đại Thánh nhân) per REP-2 + REP-4 are consumed by DF05_001 §8 NPC consent + reputation gating per Q4 LOCKED. DF5 NPC consent algorithm reads `actor_faction_reputation` (PC ↔ NPC's faction) + ACT_001 bilateral `actor_actor_opinion` (NPC's personal feelings about PC); applies gradient ±2 tiers shift per Q4-D2 (personal opinion overrides faction); maps result tier to consent outcome (Hated/Hostile reject `session.npc_refused`; Unfriendly reluctant accept with mood=Sour; Neutral+ accept). Tier display labels reused for refusal message engine template fallback per Q4-D3 (when LLM budget exhausted). REP_001 V1 schema-active (declared canonical seed + Forge admin); REP-D1 V1+ runtime delta milestone unaffected by DF5 (DF5 is read-only consumer of reputation values). NO change to REP_001 aggregate or 8-tier semantics; CANDIDATE-LOCK status PRESERVED. LOW magnitude — pure consumer reuse of existing REP-2 + REP-4 tier semantics. Reference: [DF05_001 §8.1 Consent decision algorithm](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#81-consent-decision-algorithm).
+
 > **Conversational name:** "Reputation" (REP). Tier 5 Actor Substrate Foundation feature owning per-(actor, faction) `actor_faction_reputation` aggregate (sparse — only declared/touched rows). Resolves V1+ deferral from FAC_001 (FAC-D7 per-(actor, faction) reputation projection separate aggregate). Wuxia critical (sect standing / Wulin reputation per sect / "thanh dự" tier-by-faction). D&D 5e + WoW + Sands of Salzaar pattern.
 >
 > **Boundary discipline (3-layer separation per Q10 LOCKED):**

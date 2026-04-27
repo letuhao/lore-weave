@@ -1,5 +1,9 @@
 # PL_002 — Command Grammar (Parse + Dispatch + Tool-call Allowlist)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> Command surface adds 2 V1 commands per Q1 LOCKED: `/chat @actor [@actor...]` (creates session per DF05_001 §7 multi-session-per-cell sparse architecture; PL_002 grammar parser routes to session-service via existing TurnEvent PCTurn pattern) + `/leave` (instant explicit session-leave per DF5-A4). V2+ adds `/whisper @actor message` (DF5-D2 multi-PC whisper). Existing `/travel` cascades into session-service for cell-leave per PL_001 §13 closure-pass-extension. NO change to PL_002 closed-set vocabulary discipline; commands are additive per I14. PL_002 grammar-layer rate-limit serves as anti-spam for `/chat` per Q4-D4 LOCKED (no per-NPC cooldown V1). LOW magnitude — pure command surface additions; CANDIDATE-LOCK status PRESERVED. Reference: [DF05_001 §7.5 Session creation grammar](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#75-pc-moves-cell-during-active-session).
+
 > **Conversational name:** "Grammar" (GR). The closed-set vocabulary of typed commands a PC can issue and an LLM can propose. Sits on top of [Continuum (PL_001)](PL_001_continuum.md) as the input layer that turns user text into a typed `TurnEvent`.
 >
 > **Category:** PL — Play Loop (core runtime)

@@ -1,5 +1,9 @@
 # NPC_003 — NPC Desires (LIGHT)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 (2nd) — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> V1: Desires read-only consumer of DF05_001 session lifecycle (NPC desires inform LLM persona prompt assembly during session turns; influence dialogue toward desire fulfillment). V2+ via DF5-D7 (DF5-41 catalog): NPC desire-driven session creation — alice's desire to find brother triggers `Forge:CreateSession { anchor_pc_id: closest_PC, ... }` if PC reputation/proximity threshold met (NPC walks up to PC autonomously). NPC desire fulfillment may transition `satisfied: bool` field via `Forge:ToggleNpcDesire` AdminAction within session context (existing pattern preserved). NO change to NPC_003 LIGHT scope (no state machine / no objective tracking / no rewards V1); CANDIDATE-LOCK status PRESERVED. LOW magnitude — session-scope read-only V1; desire-driven creation V2+ deferral. Reference: [DF05_001 §9 V1 scope cut DF5-D7](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#9--v1-scope-cut).
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — ACT_001 Actor Foundation unification refactor:**
 >
 > Per ACT_001 unification (commits 1c0d2d7 + 74b2854 + 3/5 this update), NPC_003's `desires` field has been TRANSFERRED from `npc` aggregate to `actor_chorus_metadata`:

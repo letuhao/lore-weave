@@ -1,5 +1,9 @@
 # PL_001 — Continuum (Place + Time + Reality Foundation)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> §13 Travel sequence consumes DF05_001 multi-session-per-cell sparse architecture. Cell-leave cascade (PC issues `/travel destination=other_cell`) cascades into session-service: for each session containing PC at current cell, mark `session_participation.left_fiction_time = now`, `left_reason = MovedCell`, then `check_anchor_invariant_after_leave()` fires per DF5-A4 — if PC was anchor PC, session enters ClosingTransition cascade with POV-distill × N participants per DF5-A9. NO change to PL_001 cell-channel transition logic; pure additive cascade hook published via existing EVT-T1 PCTurn. Reference: [DF05_001 §5 PC anchor invariant + close trigger](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#5--pc-anchor-invariant--close-trigger-df5-a4) and [DF05_001 §7.5 Cell-leave cascade](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#75-pc-moves-cell-during-active-session). MEDIUM magnitude — no PL_001 schema/aggregate/EVT change; CANDIDATE-LOCK status PRESERVED.
+
 > **Conversational name:** "Continuum" (CON). The fabric of place + time + reality that all play sits on. PC at any moment is at one cell channel + one fiction-time tuple within one reality — that joint state is "PC's continuum position". Use "Continuum" in conversation; the file ID `PL_001` is the stable referenceable ID.
 >
 > **Category:** PL — Play Loop (core runtime)
