@@ -6,6 +6,31 @@
 
 ---
 
+## 2026-04-27 — DF05 Session/Group Chat DRAFT cycle commit 1/4 — lock claim
+
+- **Lock CLAIMED** — `[boundaries-lock-claim]` start of DF05 4-commit cycle (Phase 0 0080b533 preceded; this is commit 1/4)
+- **TTL:** 4-hour (expires 2026-04-28T02:00:00Z)
+- **Owner:** main session 2026-04-27
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner DF05 claim + Expected work full description + Expires at 4h TTL
+  - `99_changelog.md`: this entry top-anchored
+
+### Cycle plan post-claim
+
+- **Commit 2/4 (next)** — DRAFT promotion + boundary register: author `DF05_001_session_foundation.md` spec ~1180 lines + `cat_18_DF5_session_group_chat.md` catalog seed + `_boundaries/01_feature_ownership_matrix.md` + `_boundaries/02_extension_contracts.md` §1.4 + §2 + `_boundaries/03_validator_pipeline_slots.md` + `99_changelog.md` entry + `features/DF/DF05_session_group_chat/_index.md` status DRAFT promoted
+- **Commit 3/4** — Phase 3 cleanup: self-review walk through AC-DF5-1..N + fix typos + expand thin sections + `99_changelog.md` entry
+- **Commit 4/4** — `[boundaries-lock-release]` CANDIDATE-LOCK closure: `_LOCK.md` Owner None + final cycle summary + `_index.md` DRAFT → CANDIDATE-LOCK + `99_changelog.md` release entry
+
+### Concept-notes preceded (Phase 0 0080b533)
+
+- 4-batch Q-deep-dive Q1-Q12 ALL LOCKED 2026-04-27 zero revisions
+- §15 SDK Architecture LOCKED (3-layer + 5 migration patterns + contract test suite)
+- 11 invariants DF5-A1..A11 proposed
+- Multi-session-per-cell sparse architecture (vs initial single-session-per-cell rejected)
+- 16 cross-feature closure-pass-extensions queued (PL_002 + PL_005 + NPC_001..003 + ACT_001 + REP_001 + WA_003 + WA_006 + AIT_001 + PCS_001 + PL_001 + PF_001 + EM-7 + 07_event_model + RealityManifest) + 2 NEW directories (contracts/api/session/v1/ + services/session-service/)
+
+---
+
 ## 2026-04-27 — TIT_001 Title Foundation CANDIDATE-LOCK closure commit 4/4 — final lock release + cross-feature deferral RESOLVED annotations
 
 - **Lock RELEASED** — 4-commit cycle complete (Phase 0 f9e7600f + DRAFT 2/4 9456a446 + Phase 3 cleanup 3/4 2c00400f + closure 4/4 this commit); single combined `[boundaries-lock-release]` commit
