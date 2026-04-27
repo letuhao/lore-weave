@@ -22,6 +22,7 @@ import aio_pika
 
 from app.config import settings
 from app.database import create_pool, get_pool
+from app.llm_client import close_llm_client, get_llm_client
 from app.migrate import run_migrations
 from app.broker import connect_broker, publish, publish_event
 from app.workers.coordinator import handle_job_message
@@ -93,6 +94,13 @@ async def main() -> None:
     await connect_broker()
     log.info("Broker connected, topology declared")
 
+    # Phase 4c-β: loreweave_llm SDK wrapper for in-process Pass 2
+    # translation. Construction errors (bad base_url, missing
+    # internal_token) surface here at startup instead of at the first
+    # AMQP message.
+    llm_client = get_llm_client()
+    log.info("LLM client ready (provider-registry SDK)")
+
     # Separate connection for consuming — keeps publish and consume channels independent
     conn    = await aio_pika.connect_robust(settings.rabbitmq_url)
     channel = await conn.channel()
@@ -123,7 +131,7 @@ async def main() -> None:
                 "Chapter worker: job %s chapter %s (retry %d)",
                 msg["job_id"], chapter_id, retry_count,
             )
-            await handle_chapter_message(msg, get_pool(), publish_event, retry_count)
+            await handle_chapter_message(msg, get_pool(), publish_event, llm_client, retry_count)
             log.info("Chapter worker: chapter %s done", chapter_id)
             await message.ack()
 
@@ -170,7 +178,13 @@ async def main() -> None:
     await extraction_queue.consume(on_extraction)
     log.info("Worker ready — consuming translation.jobs, translation.chapters, extraction.jobs")
 
-    await asyncio.Future()  # run forever
+    try:
+        await asyncio.Future()  # run forever
+    finally:
+        # Phase 4c-β: best-effort SDK client teardown on shutdown
+        # signal. Process-exit cleanup would handle httpx connections
+        # anyway, but close_llm_client() drains them more gracefully.
+        await close_llm_client()
 
 
 if __name__ == "__main__":

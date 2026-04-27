@@ -1,8 +1,11 @@
 """
 Unit tests for session_translator — Plan §9 (Verification).
 
+Phase 4c-β: rewritten to mock the loreweave_llm SDK via FakeLLMClient
+instead of the legacy /v1/model-registry/invoke httpx + JWT path.
+
 Covers:
-- Single-chunk chapter: one invoke call, body returned as-is
+- Single-chunk chapter: one SDK call, body returned as-is
 - Multi-chunk chapter: chunks concatenated with double-newline
 - Compaction trigger: fires when history tokens exceed context_window // 2
 - Compact model fallback: uses translation model when compact_model_ref is None
@@ -10,10 +13,13 @@ Covers:
 - Chunk rows written to DB for each chunk
 - Token counts aggregated across all chunks
 """
-import json
+from typing import Any
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4, UUID
+
+from loreweave_llm.errors import LLMError
+from loreweave_llm.models import Job, JobError
 
 from app.workers.chunk_splitter import split_chapter, TOKEN_CHAR_RATIO, _LATIN_CHARS_PER_TOKEN
 
@@ -23,39 +29,60 @@ from app.workers.chunk_splitter import split_chapter, TOKEN_CHAR_RATIO, _LATIN_C
 _DEFAULT_COMPACT_SYSTEM_EXCERPT = "Translation Memo"   # from _DEFAULT_COMPACT_SYSTEM
 
 
-def _invoke_response(text: str, in_tok: int = 10, out_tok: int = 8) -> bytes:
-    """Serialise a provider-registry invoke response (OpenAI format)."""
-    return json.dumps({
-        "output": {"choices": [{"message": {"content": text}}]},
-        "usage":  {"input_tokens": in_tok, "output_tokens": out_tok},
-    }).encode()
+class FakeLLMClient:
+    """Stand-in for app.llm_client.LLMClient. Captures submit_and_wait
+    kwargs + replays scripted Jobs (or pre-queued exceptions).
 
+    Phase 4c-β replacement for the legacy httpx.AsyncClient.stream(...)
+    mocks. Mirrors knowledge-service's _FakeLLMClient pattern.
+    """
 
-class _StreamCM:
-    """Fake async context manager returned by client.stream(...)."""
-    def __init__(self, resp):
-        self._resp = resp
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.queued_jobs: list[Any] = []
 
-    async def __aenter__(self):
-        return self._resp
+    def queue_translation(
+        self,
+        *,
+        content: str = "",
+        status: str = "completed",
+        input_tokens: int = 100,
+        output_tokens: int = 50,
+        error_code: str | None = None,
+        error_message: str = "",
+    ) -> None:
+        result: dict[str, Any] | None
+        if status == "completed":
+            result = {
+                "messages": [{"role": "assistant", "content": content}],
+                "usage": {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                },
+            }
+        else:
+            result = None
+        error = JobError(code=error_code, message=error_message) if error_code else None
+        self.queued_jobs.append(Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=error,
+            submitted_at="2026-04-27T00:00:00Z",
+        ))
 
-    async def __aexit__(self, *_):
-        pass
+    def queue_exception(self, exc: Exception) -> None:
+        self.queued_jobs.append(exc)
 
-
-def _make_stream_resp(text: str, status: int = 200, in_tok: int = 10, out_tok: int = 8) -> MagicMock:
-    """Build a fake httpx Response for streaming."""
-    async def _aiter():
-        yield json.dumps({
-            "output": {"choices": [{"message": {"content": text}}]},
-            "usage":  {"input_tokens": in_tok, "output_tokens": out_tok},
-        }).encode()
-
-    r = MagicMock()
-    r.status_code = status
-    r.raise_for_status = MagicMock()
-    r.aiter_bytes = MagicMock(return_value=_aiter())
-    return r
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        if not self.queued_jobs:
+            raise AssertionError("FakeLLMClient: no queued response")
+        item = self.queued_jobs.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
 
 
 def _make_pool(chunk_row_id: UUID | None = None) -> MagicMock:
@@ -86,9 +113,9 @@ def _make_msg(**overrides) -> dict:
     return {**base, **overrides}
 
 
-def _is_compact_call(payload: dict) -> bool:
-    """Return True if a stream() call payload is a compact (not translation) request."""
-    messages = payload.get("input", {}).get("messages", [])
+def _is_compact_call(call_kwargs: dict) -> bool:
+    """Return True if a submit_and_wait call kwargs is a compact (not translation) request."""
+    messages = call_kwargs.get("input", {}).get("messages", [])
     return any(
         _DEFAULT_COMPACT_SYSTEM_EXCERPT in m.get("content", "")
         for m in messages
@@ -96,84 +123,52 @@ def _is_compact_call(payload: dict) -> bool:
     )
 
 
-def _build_mock_http_client(stream_side_effect):
-    """
-    Build a mock httpx.AsyncClient that delegates client.stream() calls
-    to stream_side_effect(method, url, **kwargs).
-    """
-    mock_client = MagicMock()
-    mock_client.stream = MagicMock(side_effect=stream_side_effect)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__  = AsyncMock(return_value=False)
-    return mock_client
-
-
 # ── Single-chunk chapter ───────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_single_chunk_returns_translated_body():
-    """Short chapter fits in one chunk → exactly one invoke call, body returned."""
+    """Short chapter fits in one chunk → exactly one SDK call, body returned."""
     pool = _make_pool()
     msg  = _make_msg(chunk_size_tokens=1000)   # huge chunk — whole chapter fits
     chapter_text = "Hello world. This is a short chapter."
 
-    stream_calls = []
+    fake = FakeLLMClient()
+    fake.queue_translation(content="Xin chào thế giới.")
 
-    def side_effect(method, url, **kwargs):
-        stream_calls.append(kwargs.get("json", {}))
-        return _StreamCM(_make_stream_resp("Xin chào thế giới."))
-
-    mock_client = _build_mock_http_client(side_effect)
-
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import translate_chapter
-        body, in_tok, out_tok = await translate_chapter(
-            chapter_text=chapter_text,
-            source_lang="en",
-            msg=msg,
-            pool=pool,
-            chapter_translation_id=uuid4(),
-            context_window=8192,
-        )
+    from app.workers.session_translator import translate_chapter
+    body, in_tok, out_tok = await translate_chapter(
+        chapter_text=chapter_text,
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=8192,
+    )
 
     assert body == "Xin chào thế giới."
-    assert len(stream_calls) == 1   # exactly one invoke — no compaction
+    assert len(fake.calls) == 1   # exactly one SDK call — no compaction
 
 
 @pytest.mark.asyncio
 async def test_single_chunk_aggregates_token_counts():
-    """Token counts from the invoke response are returned."""
+    """Token counts from the SDK Job result are returned."""
     pool = _make_pool()
     msg  = _make_msg(chunk_size_tokens=1000)
 
-    async def _aiter():
-        yield json.dumps({
-            "output": {"choices": [{"message": {"content": "Translated."}}]},
-            "usage":  {"input_tokens": 42, "output_tokens": 17},
-        }).encode()
+    fake = FakeLLMClient()
+    fake.queue_translation(content="Translated.", input_tokens=42, output_tokens=17)
 
-    stream_resp = MagicMock()
-    stream_resp.status_code = 200
-    stream_resp.raise_for_status = MagicMock()
-    stream_resp.aiter_bytes = MagicMock(return_value=_aiter())
-
-    def side_effect(method, url, **kwargs):
-        return _StreamCM(stream_resp)
-
-    mock_client = _build_mock_http_client(side_effect)
-
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import translate_chapter
-        _, in_tok, out_tok = await translate_chapter(
-            chapter_text="Short.",
-            source_lang="en",
-            msg=msg,
-            pool=pool,
-            chapter_translation_id=uuid4(),
-            context_window=8192,
-        )
+    from app.workers.session_translator import translate_chapter
+    _, in_tok, out_tok = await translate_chapter(
+        chapter_text="Short.",
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=8192,
+    )
 
     assert in_tok  == 42
     assert out_tok == 17
@@ -201,27 +196,21 @@ async def test_multi_chunk_concatenated_with_double_newline():
     chunk_count   = len(split_chapter(chapter_text, chunk_tokens))
     assert chunk_count >= 2, "Test setup: chapter must produce multiple chunks"
 
-    call_idx = 0
+    fake = FakeLLMClient()
+    # Pre-queue one job per expected translation chunk (compaction won't fire — context_window=8192)
+    for i in range(chunk_count):
+        fake.queue_translation(content=f"TRANSLATED_{i}")
 
-    def side_effect(method, url, **kwargs):
-        nonlocal call_idx
-        text = f"TRANSLATED_{call_idx}"
-        call_idx += 1
-        return _StreamCM(_make_stream_resp(text))
-
-    mock_client = _build_mock_http_client(side_effect)
-
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import translate_chapter
-        body, _, _ = await translate_chapter(
-            chapter_text=chapter_text,
-            source_lang="en",
-            msg=msg,
-            pool=pool,
-            chapter_translation_id=uuid4(),
-            context_window=8192,
-        )
+    from app.workers.session_translator import translate_chapter
+    body, _, _ = await translate_chapter(
+        chapter_text=chapter_text,
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=8192,
+    )
 
     parts = body.split("\n\n")
     assert len(parts) == chunk_count
@@ -242,25 +231,47 @@ async def test_multi_chunk_token_counts_summed():
     num_chunks = len(split_chapter(chapter_text, effective_chunk))
     assert num_chunks >= 2
 
-    def side_effect(method, url, **kwargs):
-        payload = kwargs.get("json", {})
-        if _is_compact_call(payload):
-            return _StreamCM(_make_stream_resp("[memo]", in_tok=1, out_tok=1))
-        return _StreamCM(_make_stream_resp("Translated.", in_tok=5, out_tok=3))
+    fake = FakeLLMClient()
 
-    mock_client = _build_mock_http_client(side_effect)
-
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import translate_chapter
-        _, in_tok, out_tok = await translate_chapter(
-            chapter_text=chapter_text,
-            source_lang="en",
-            msg=msg,
-            pool=pool,
-            chapter_translation_id=uuid4(),
-            context_window=8192,
+    # Override submit_and_wait to differentiate compact vs translation jobs on the fly
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        if _is_compact_call(kwargs):
+            return Job(
+                job_id="00000000-0000-0000-0000-0000000000c0",
+                operation="translation",
+                status="completed",
+                result={
+                    "messages": [{"role": "assistant", "content": "[memo]"}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+                error=None,
+                submitted_at="2026-04-27T00:00:00Z",
+            )
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": "Translated."}],
+                "usage": {"input_tokens": 5, "output_tokens": 3},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
         )
+
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
+
+    from app.workers.session_translator import translate_chapter
+    _, in_tok, out_tok = await translate_chapter(
+        chapter_text=chapter_text,
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=8192,
+    )
 
     # Compact calls contribute 1 each; translation calls contribute 5/3 each
     assert in_tok  >= num_chunks * 5
@@ -283,22 +294,33 @@ async def test_compaction_fires_when_history_exceeds_half_context():
     chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)         # 175 chars
     chapter_text = "A" * (chunk_chars + 10) + "\n\n" + "B" * (chunk_chars + 10)
 
-    pool        = _make_pool()
-    msg         = _make_msg(chunk_size_tokens=chunk_tokens)
-    stream_calls: list[dict] = []
+    pool = _make_pool()
+    msg  = _make_msg(chunk_size_tokens=chunk_tokens)
 
-    def side_effect(method, url, **kwargs):
-        payload = kwargs.get("json", {})
-        stream_calls.append(payload)
-        is_compact = _is_compact_call(payload)
-        text = "[MEMO: key names]" if is_compact else "Translated chunk."
-        return _StreamCM(_make_stream_resp(text))
+    fake = FakeLLMClient()
 
-    mock_client = _build_mock_http_client(side_effect)
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        if _is_compact_call(kwargs):
+            text = "[MEMO: key names]"
+        else:
+            text = "Translated chunk."
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": text}],
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"), \
-         patch("app.workers.session_translator.estimate_tokens", return_value=60):
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
+
+    from unittest.mock import patch
+    with patch("app.workers.session_translator.estimate_tokens", return_value=60):
         from app.workers.session_translator import translate_chapter
         body, _, _ = await translate_chapter(
             chapter_text=chapter_text,
@@ -306,15 +328,15 @@ async def test_compaction_fires_when_history_exceeds_half_context():
             msg=msg,
             pool=pool,
             chapter_translation_id=uuid4(),
+            llm_client=fake,
             context_window=200,   # threshold = 100; history 120 > 100 → compact
         )
 
-    num_chunks = len(split_chapter(chapter_text, chunk_tokens))
-    compact_calls = [c for c in stream_calls if _is_compact_call(c)]
+    compact_calls = [c for c in fake.calls if _is_compact_call(c)]
 
     assert len(compact_calls) >= 1, (
         f"Expected at least 1 compact call, got {len(compact_calls)}. "
-        f"Total stream calls: {len(stream_calls)}"
+        f"Total SDK calls: {len(fake.calls)}"
     )
 
 
@@ -326,27 +348,37 @@ async def test_no_compaction_when_history_below_threshold():
 
     pool = _make_pool()
     msg  = _make_msg(chunk_size_tokens=chunk_tokens)
-    stream_calls: list[dict] = []
 
-    def side_effect(method, url, **kwargs):
-        stream_calls.append(kwargs.get("json", {}))
-        return _StreamCM(_make_stream_resp("Translated."))
+    fake = FakeLLMClient()
 
-    mock_client = _build_mock_http_client(side_effect)
-
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import translate_chapter
-        await translate_chapter(
-            chapter_text=chapter_text,
-            source_lang="en",
-            msg=msg,
-            pool=pool,
-            chapter_translation_id=uuid4(),
-            context_window=1_000_000,   # huge — compact never fires
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": "Translated."}],
+                "usage": {"input_tokens": 5, "output_tokens": 3},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
         )
 
-    compact_calls = [c for c in stream_calls if _is_compact_call(c)]
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
+
+    from app.workers.session_translator import translate_chapter
+    await translate_chapter(
+        chapter_text=chapter_text,
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=1_000_000,   # huge — compact never fires
+    )
+
+    compact_calls = [c for c in fake.calls if _is_compact_call(c)]
     assert compact_calls == [], "Compaction must NOT fire when context window is huge"
 
 
@@ -371,19 +403,28 @@ async def test_compact_uses_translation_model_when_compact_ref_is_none():
     chapter_text = "A" * (chunk_chars + 5) + "\n\n" + "B" * (chunk_chars + 5)
 
     pool = _make_pool()
-    compact_payload_seen: list[dict] = []
 
-    def side_effect(method, url, **kwargs):
-        payload = kwargs.get("json", {})
-        if _is_compact_call(payload):
-            compact_payload_seen.append(payload)
-        return _StreamCM(_make_stream_resp("[memo]" if _is_compact_call(payload) else "Translated."))
+    fake = FakeLLMClient()
 
-    mock_client = _build_mock_http_client(side_effect)
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        text = "[memo]" if _is_compact_call(kwargs) else "Translated."
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": text}],
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"), \
-         patch("app.workers.session_translator.estimate_tokens", return_value=60):
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
+
+    from unittest.mock import patch
+    with patch("app.workers.session_translator.estimate_tokens", return_value=60):
         from app.workers.session_translator import translate_chapter
         await translate_chapter(
             chapter_text=chapter_text,
@@ -391,11 +432,13 @@ async def test_compact_uses_translation_model_when_compact_ref_is_none():
             msg=msg,
             pool=pool,
             chapter_translation_id=uuid4(),
+            llm_client=fake,
             context_window=200,
         )
 
-    assert compact_payload_seen, "Expected at least one compact call to occur"
-    for cp in compact_payload_seen:
+    compact_calls = [c for c in fake.calls if _is_compact_call(c)]
+    assert compact_calls, "Expected at least one compact call to occur"
+    for cp in compact_calls:
         assert cp["model_source"] == "platform_model"
         assert cp["model_ref"]    == translation_model_ref
 
@@ -416,19 +459,28 @@ async def test_compact_uses_dedicated_compact_model_when_configured():
     chapter_text = "A" * (chunk_chars + 5) + "\n\n" + "B" * (chunk_chars + 5)
 
     pool = _make_pool()
-    compact_payload_seen: list[dict] = []
 
-    def side_effect(method, url, **kwargs):
-        payload = kwargs.get("json", {})
-        if _is_compact_call(payload):
-            compact_payload_seen.append(payload)
-        return _StreamCM(_make_stream_resp("[memo]" if _is_compact_call(payload) else "Translated."))
+    fake = FakeLLMClient()
 
-    mock_client = _build_mock_http_client(side_effect)
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        text = "[memo]" if _is_compact_call(kwargs) else "Translated."
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": text}],
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"), \
-         patch("app.workers.session_translator.estimate_tokens", return_value=60):
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
+
+    from unittest.mock import patch
+    with patch("app.workers.session_translator.estimate_tokens", return_value=60):
         from app.workers.session_translator import translate_chapter
         await translate_chapter(
             chapter_text=chapter_text,
@@ -436,11 +488,13 @@ async def test_compact_uses_dedicated_compact_model_when_configured():
             msg=msg,
             pool=pool,
             chapter_translation_id=uuid4(),
+            llm_client=fake,
             context_window=200,
         )
 
-    assert compact_payload_seen, "Expected at least one compact call to occur"
-    for cp in compact_payload_seen:
+    compact_calls = [c for c in fake.calls if _is_compact_call(c)]
+    assert compact_calls, "Expected at least one compact call to occur"
+    for cp in compact_calls:
         assert cp["model_source"] == "user_model"
         assert cp["model_ref"]    == compact_model_ref
 
@@ -450,8 +504,9 @@ async def test_compact_uses_dedicated_compact_model_when_configured():
 @pytest.mark.asyncio
 async def test_compact_failure_does_not_abort_translation():
     """
-    Plan §9: If the compact model call raises an exception (or returns 4xx/5xx),
-    translation must continue to completion — compaction is best-effort.
+    Plan §9: If the compact model call raises an exception (or returns
+    a non-completed Job), translation must continue to completion —
+    compaction is best-effort.
     """
     chunk_tokens = 50
     chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)
@@ -460,18 +515,29 @@ async def test_compact_failure_does_not_abort_translation():
     pool = _make_pool()
     msg  = _make_msg(chunk_size_tokens=chunk_tokens)
 
-    def side_effect(method, url, **kwargs):
-        payload = kwargs.get("json", {})
-        if _is_compact_call(payload):
-            # Compact call fails hard
+    fake = FakeLLMClient()
+
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        if _is_compact_call(kwargs):
+            # Compact call fails hard — _compact_history must swallow it
             raise Exception("compact model unreachable")
-        return _StreamCM(_make_stream_resp("Translated."))
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": "Translated."}],
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
-    mock_client = _build_mock_http_client(side_effect)
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
 
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"), \
-         patch("app.workers.session_translator.estimate_tokens", return_value=60):
+    from unittest.mock import patch
+    with patch("app.workers.session_translator.estimate_tokens", return_value=60):
         from app.workers.session_translator import translate_chapter
         # Must NOT raise — compact errors are swallowed
         body, _, _ = await translate_chapter(
@@ -480,6 +546,7 @@ async def test_compact_failure_does_not_abort_translation():
             msg=msg,
             pool=pool,
             chapter_translation_id=uuid4(),
+            llm_client=fake,
             context_window=200,
         )
 
@@ -491,7 +558,8 @@ async def test_compact_failure_does_not_abort_translation():
 
 @pytest.mark.asyncio
 async def test_compact_http_error_does_not_abort_translation():
-    """Compact returning 500 must be swallowed; translation continues."""
+    """Compact returning a non-completed Job (failed status) must be
+    swallowed; translation continues."""
     chunk_tokens = 50
     chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)
     chapter_text = "A" * (chunk_chars + 5) + "\n\n" + "B" * (chunk_chars + 5)
@@ -499,17 +567,36 @@ async def test_compact_http_error_does_not_abort_translation():
     pool = _make_pool()
     msg  = _make_msg(chunk_size_tokens=chunk_tokens)
 
-    def side_effect(method, url, **kwargs):
-        payload = kwargs.get("json", {})
-        if _is_compact_call(payload):
-            return _StreamCM(_make_stream_resp("error", status=500))
-        return _StreamCM(_make_stream_resp("Translated."))
+    fake = FakeLLMClient()
 
-    mock_client = _build_mock_http_client(side_effect)
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        if _is_compact_call(kwargs):
+            # Compact returns a failed Job — _compact_history returns old_memo
+            return Job(
+                job_id="00000000-0000-0000-0000-0000000000c0",
+                operation="translation",
+                status="failed",
+                result=None,
+                error=JobError(code="LLM_UPSTREAM_ERROR", message="500"),
+                submitted_at="2026-04-27T00:00:00Z",
+            )
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": "Translated."}],
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"), \
-         patch("app.workers.session_translator.estimate_tokens", return_value=60):
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
+
+    from unittest.mock import patch
+    with patch("app.workers.session_translator.estimate_tokens", return_value=60):
         from app.workers.session_translator import translate_chapter
         body, _, _ = await translate_chapter(
             chapter_text=chapter_text,
@@ -517,6 +604,7 @@ async def test_compact_http_error_does_not_abort_translation():
             msg=msg,
             pool=pool,
             chapter_translation_id=uuid4(),
+            llm_client=fake,
             context_window=200,
         )
 
@@ -545,25 +633,35 @@ async def test_chunk_rows_inserted_for_each_chunk():
     num_chunks = len(split_chapter(chapter_text, effective_chunk))
     assert num_chunks >= 2
 
-    def side_effect(method, url, **kwargs):
-        payload = kwargs.get("json", {})
-        if _is_compact_call(payload):
-            return _StreamCM(_make_stream_resp("[memo]"))
-        return _StreamCM(_make_stream_resp("Translated."))
+    fake = FakeLLMClient()
 
-    mock_client = _build_mock_http_client(side_effect)
-
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import translate_chapter
-        await translate_chapter(
-            chapter_text=chapter_text,
-            source_lang="en",
-            msg=msg,
-            pool=pool,
-            chapter_translation_id=uuid4(),
-            context_window=8192,
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        text = "[memo]" if _is_compact_call(kwargs) else "Translated."
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": text}],
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
         )
+
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
+
+    from app.workers.session_translator import translate_chapter
+    await translate_chapter(
+        chapter_text=chapter_text,
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=8192,
+    )
 
     # fetchrow = INSERT (one per chunk)
     assert pool.fetchrow.call_count == num_chunks, (
@@ -604,29 +702,214 @@ async def test_chunk_size_clamped_to_quarter_context():
     pool = _make_pool()
     msg  = _make_msg(chunk_size_tokens=2000)
 
-    stream_calls: list = []
+    fake = FakeLLMClient()
 
-    def side_effect(method, url, **kwargs):
-        payload = kwargs.get("json", {})
-        if not _is_compact_call(payload):
-            stream_calls.append(1)
-        return _StreamCM(_make_stream_resp("T."))
+    async def _smart_submit(**kwargs: Any) -> Any:
+        fake.calls.append(kwargs)
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": "T."}],
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
-    mock_client = _build_mock_http_client(side_effect)
+    fake.submit_and_wait = _smart_submit  # type: ignore[assignment]
 
-    with patch("app.workers.session_translator.httpx.AsyncClient", return_value=mock_client), \
-         patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import translate_chapter
+    from app.workers.session_translator import translate_chapter
+    await translate_chapter(
+        chapter_text=chapter_text,
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=context_window,
+    )
+
+    translation_calls = [c for c in fake.calls if not _is_compact_call(c)]
+    assert len(translation_calls) == clamped_chunks, (
+        f"Expected {clamped_chunks} translation SDK calls (chunk_size clamped to "
+        f"context_window//4={clamped_size}), got {len(translation_calls)}"
+    )
+
+
+# ── Phase 4c-β /review-impl MED#1 — wire-format pin tests ──────────────────────
+
+@pytest.mark.asyncio
+async def test_translate_chapter_sdk_request_body_shape():
+    """Phase 4c-β /review-impl MED#1 — pin the full submit_and_wait
+    kwargs shape against server-side gateway PersistJobRequest. If a
+    future SDK rename or settings drift breaks model_source / model_ref
+    / chunking / job_meta, this catches it in CI rather than at
+    production submit time (where it would silently 422)."""
+    pool = _make_pool()
+    msg  = _make_msg(
+        chunk_size_tokens=1000,
+        model_source="user_model",
+        model_ref="qwen-test-translation",
+    )
+
+    fake = FakeLLMClient()
+    fake.queue_translation(content="translated")
+
+    from app.workers.session_translator import translate_chapter
+    await translate_chapter(
+        chapter_text="One short paragraph.",
+        source_lang="en",
+        msg=msg,
+        pool=pool,
+        chapter_translation_id=uuid4(),
+        llm_client=fake,
+        context_window=8192,
+    )
+
+    assert len(fake.calls) == 1
+    call = fake.calls[0]
+    assert call["operation"] == "translation"
+    assert call["model_source"] == "user_model"
+    assert call["model_ref"] == "qwen-test-translation"
+    # Caller already chunked via split_chapter — gateway must not re-chunk
+    assert call["chunking"] is None
+    # job_meta carries reverse-lookup keys per Phase 4a ADR §3.3 D6
+    assert "chapter_translation_id" in call["job_meta"]
+    assert "chunk_idx" in call["job_meta"]
+    assert call["job_meta"]["chunk_idx"] == 0
+    # 2-message structure (system + user) — matches gateway chunker
+    # SubstituteLastUserMessage invariant
+    msgs = call["input"]["messages"]
+    assert len(msgs) >= 2
+    assert msgs[0]["role"] == "system"
+    assert msgs[-1]["role"] == "user"
+
+
+# ── Phase 4c-β /review-impl HIGH#1 — permanent-error mapping ──────────────────
+
+@pytest.mark.asyncio
+async def test_translate_chunk_quota_exceeded_raises_permanent_billing_rejected():
+    """Phase 4c-β /review-impl HIGH#1 — LLMQuotaExceeded (402 billing)
+    must surface as _PermanentError('billing_rejected'), NOT as
+    _TransientError. Otherwise the runner's 3-retry loop wastes calls
+    on misconfigured BYOK that will never resolve."""
+    from loreweave_llm.errors import LLMQuotaExceeded
+    from app.workers.chapter_worker import _PermanentError
+
+    pool = _make_pool()
+    msg  = _make_msg(chunk_size_tokens=1000)
+
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMQuotaExceeded("402 billing rejected"))
+
+    from app.workers.session_translator import translate_chapter
+    with pytest.raises(_PermanentError, match="billing_rejected"):
         await translate_chapter(
-            chapter_text=chapter_text,
+            chapter_text="text",
             source_lang="en",
             msg=msg,
             pool=pool,
             chapter_translation_id=uuid4(),
-            context_window=context_window,
+            llm_client=fake,
+            context_window=8192,
         )
 
-    assert len(stream_calls) == clamped_chunks, (
-        f"Expected {clamped_chunks} translation invoke calls (chunk_size clamped to "
-        f"context_window//4={clamped_size}), got {len(stream_calls)}"
-    )
+
+@pytest.mark.asyncio
+async def test_translate_chunk_model_not_found_raises_permanent_model_not_found():
+    """Phase 4c-β /review-impl HIGH#1 — LLMModelNotFound (404) must
+    surface as _PermanentError('model_not_found'), NOT transient."""
+    from loreweave_llm.errors import LLMModelNotFound
+    from app.workers.chapter_worker import _PermanentError
+
+    pool = _make_pool()
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMModelNotFound("404 model not found"))
+
+    from app.workers.session_translator import translate_chapter
+    with pytest.raises(_PermanentError, match="model_not_found"):
+        await translate_chapter(
+            chapter_text="text",
+            source_lang="en",
+            msg=_make_msg(chunk_size_tokens=1000),
+            pool=pool,
+            chapter_translation_id=uuid4(),
+            llm_client=fake,
+            context_window=8192,
+        )
+
+
+@pytest.mark.asyncio
+async def test_translate_chunk_auth_failed_raises_permanent():
+    """Phase 4c-β /review-impl HIGH#1 — LLMAuthFailed (401/403) is a
+    config error; PERMANENT, no retry."""
+    from loreweave_llm.errors import LLMAuthFailed
+    from app.workers.chapter_worker import _PermanentError
+
+    pool = _make_pool()
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMAuthFailed("401 unauthorized"))
+
+    from app.workers.session_translator import translate_chapter
+    with pytest.raises(_PermanentError, match="LLMAuthFailed"):
+        await translate_chapter(
+            chapter_text="text",
+            source_lang="en",
+            msg=_make_msg(chunk_size_tokens=1000),
+            pool=pool,
+            chapter_translation_id=uuid4(),
+            llm_client=fake,
+            context_window=8192,
+        )
+
+
+@pytest.mark.asyncio
+async def test_translate_chunk_invalid_request_raises_permanent():
+    """Phase 4c-β /review-impl HIGH#1 — LLMInvalidRequest (400) is
+    body-validation; PERMANENT, no retry."""
+    from loreweave_llm.errors import LLMInvalidRequest
+    from app.workers.chapter_worker import _PermanentError
+
+    pool = _make_pool()
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMInvalidRequest("400 bad body"))
+
+    from app.workers.session_translator import translate_chapter
+    with pytest.raises(_PermanentError, match="LLMInvalidRequest"):
+        await translate_chapter(
+            chapter_text="text",
+            source_lang="en",
+            msg=_make_msg(chunk_size_tokens=1000),
+            pool=pool,
+            chapter_translation_id=uuid4(),
+            llm_client=fake,
+            context_window=8192,
+        )
+
+
+@pytest.mark.asyncio
+async def test_translate_chunk_upstream_error_remains_transient():
+    """Phase 4c-β /review-impl HIGH#1 — generic LLMError (transport,
+    upstream 5xx, etc.) STAYS transient so the runner retries.
+    Regression-locks the existing semantic — only the permanent
+    subclasses got demoted to _PermanentError."""
+    from loreweave_llm.errors import LLMUpstreamError
+    from app.workers.chapter_worker import _TransientError
+
+    pool = _make_pool()
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMUpstreamError("502 bad gateway"))
+
+    from app.workers.session_translator import translate_chapter
+    with pytest.raises(_TransientError, match="invoke unreachable"):
+        await translate_chapter(
+            chapter_text="text",
+            source_lang="en",
+            msg=_make_msg(chunk_size_tokens=1000),
+            pool=pool,
+            chapter_translation_id=uuid4(),
+            llm_client=fake,
+            context_window=8192,
+        )

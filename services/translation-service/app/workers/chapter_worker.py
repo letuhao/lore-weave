@@ -4,8 +4,8 @@ from uuid import UUID
 
 import httpx
 
-from ..auth import mint_user_jwt
 from ..config import settings
+from ..llm_client import LLMClient
 from .session_translator import translate_chapter
 
 log = logging.getLogger(__name__)
@@ -14,7 +14,13 @@ log = logging.getLogger(__name__)
 _FALLBACK_CONTEXT_WINDOW = 8192
 
 
-async def handle_chapter_message(msg: dict, pool, publish_event, retry_count: int = 0) -> None:
+async def handle_chapter_message(
+    msg: dict,
+    pool,
+    publish_event,
+    llm_client: LLMClient,
+    retry_count: int = 0,
+) -> None:
     """
     Heavy worker: processes exactly one chapter via session-based chunked translation.
     - Splits chapter into chunks (≤ 1/4 of model context window)
@@ -22,13 +28,16 @@ async def handle_chapter_message(msg: dict, pool, publish_event, retry_count: in
     - Compacts history with the configured compact model when it grows too large
     - Updates DB atomically after all chunks complete
     - Checks if job is complete after each chapter
+
+    Phase 4c-β: llm_client threaded from worker.py — replaces the
+    legacy mint_user_jwt + httpx-direct call to /v1/model-registry/invoke.
     """
     job_id     = UUID(msg["job_id"])
     chapter_id = UUID(msg["chapter_id"])
     user_id    = msg["user_id"]
 
     try:
-        await _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event)
+        await _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event, llm_client)
     except _TransientError as exc:
         log.warning("chapter %s: transient error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"transient: {exc}")
@@ -43,7 +52,7 @@ async def handle_chapter_message(msg: dict, pool, publish_event, retry_count: in
         raise
 
 
-async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event) -> None:
+async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event, llm_client: LLMClient) -> None:
     log.info("chapter %s [job %s]: starting", chapter_id, job_id)
 
     # Check for cancellation before doing any work
@@ -131,6 +140,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             msg=msg,
             pool=pool,
             chapter_translation_id=chapter_translation_id,
+            llm_client=llm_client,
             context_window=context_window,
         )
         # Store as JSONB
@@ -152,6 +162,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             msg=msg,
             pool=pool,
             chapter_translation_id=chapter_translation_id,
+            llm_client=llm_client,
             context_window=context_window,
         )
         translated_body_json = None
