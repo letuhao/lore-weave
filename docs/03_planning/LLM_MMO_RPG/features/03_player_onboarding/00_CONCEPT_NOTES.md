@@ -1,6 +1,6 @@
 # PO_001 Player Onboarding — Concept Notes
 
-> **Status:** CONCEPT 2026-04-27 — Phase 0 capture; Q-deep-dive batched decisions pending; transitions to LOCKED matrix when Q1-Q10 close.
+> **Status:** Q-LOCKED 2026-04-27 — 4-batch deep-dive complete; all 10 Qs LOCKED zero revisions; transitions to DRAFT 2/4 commit immediately following this lock.
 > **Companion docs:** [`_index.md`](_index.md) (folder index) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (reference materials) + [`wireframes/`](wireframes/) (12 HTML/CSS/MD files; FE-first design committed 19855a5b + 4c4fd6d7) + [`wireframes/ACTOR_SETTINGS_AUDIT.md`](wireframes/ACTOR_SETTINGS_AUDIT.md) (46 V1 actor settings × 14 features audit)
 > **Stable-ID prefix:** `PO-*` (anticipated)
 > **Catalog:** `catalog/cat_03_PO_player_onboarding.md` (planned at DRAFT 2/4 commit)
@@ -410,19 +410,26 @@ Cross-genre:
   - [`wireframes/`](wireframes/) — 12 files HTML/CSS/MD; FE-first design committed 19855a5b + 4c4fd6d7
   - [`wireframes/ACTOR_SETTINGS_AUDIT.md`](wireframes/ACTOR_SETTINGS_AUDIT.md) — 46 V1 actor settings × 14 features inventory
 
-## §10 — Q-LOCKED matrix (FILLED at Q-deep-dive completion)
+## §10 — Q-LOCKED matrix (4-batch deep-dive 2026-04-27)
 
-| Q | LOCKED decision | Variants | Justification |
+All 10 Qs LOCKED via 4-batch deep-dive 2026-04-27 zero revisions.
+
+| Q | LOCKED decision | Variant | Justification |
 |---|---|---|---|
-| Q1 | TBD | TBD | TBD |
-| Q2 | TBD | TBD | TBD |
-| Q3 | TBD | TBD | TBD |
-| Q4 | TBD | TBD | TBD |
-| Q5 | TBD | TBD | TBD |
-| Q6 | TBD | TBD | TBD |
-| Q7 | TBD | TBD | TBD |
-| Q8 | TBD | TBD | TBD |
-| Q9 | TBD | TBD | TBD |
-| Q10 | TBD | TBD | TBD |
+| Q1 | **A — 3 modes V1** | Canonical (A) + Custom (B) + XuyenKhong (C) | All 3 use existing PCS_001 primitives (no extra backend); Mode A casual/lazy + Mode B builder + Mode C narrative-driven cover 3 distinct user personas; XuyenKhong is LoreWeave-unique differentiator |
+| Q2 | **A — 3-level Custom PC** | Basic Wizard (8 steps) + Advanced Settings (~46 V1 fields) + AI Character Assistant | chat-service is V1 platform service; AI Assistant adds significant value; wireframes already validated full UX; graceful degradation order (AI fail → Advanced manual → Basic defaults) |
+| Q3 | **A — AI Character Assistant V1 active** | chat-service + LiteLLM + knowledge-service constraint awareness; reality-aware constraint checking; iterative tweak; 6 quick actions | LLM cost negligible per-user (~3-5 calls per onboarding); reality-aware via knowledge-service prevents AI hallucinations; "AI-native MMO RPG" positioning; graceful fallback if chat-service down |
+| Q4 | **A — Email + password V1; OAuth V1+ (PO-D1)** | auth-service email/password registration; JWT issuance; OAuth V1+ when auth-service ships provider integrations | auth-service MVP scope ships email/password as primary; OAuth requires Google + Discord SDK integrations + provider-app registrations; V1 wireframes show OAuth disabled stubs |
+| Q5 | **A — Cap=1 V1 per PCS-A9 LOCKED** | Single PC per reality (each reality has 1 PC slot per user) | Auto-resolved by PCS-A9 LOCK 2026-04-27 (PCS_001 CANDIDATE-LOCK); Stage 0 schema validator C13 enforces cap=1; PO-D2 deferral covers multi-PC activation when PCS-D3 cap relaxed V1+ |
+| Q6 | **A — Locked-in per session V1; mid-session switch V2+ (PO-D5)** | One-time selection at landing; user must logout to switch reality | Matches PCS_001 V1 cap=1 architecture; simple session model; matches MMO conventions (FFXIV character = server-locked); V2+ ships when PCS-D3 cap relaxed |
+| Q7 | **A — All-or-nothing submit V1; auto-save V1+30d (PO-D3)** | Final submit at confirm screen creates everything atomically; refresh/close = lost progress V1 | Simplest backend (no draft state aggregate V1); matches single-PC-per-reality lifecycle; 5-15 min creation flow acceptable in one session; V1+30d ships actor_user_session.onboarding_draft schema extension |
+| Q8 | **A — Desktop-only V1; mobile responsive V1+30d (PO-D4)** | Layout optimized for desktop (1024px+); mobile users see desktop layout (functional but not ideal) | Wireframes desktop-optimized (3-column Advanced; 2-column AI Assistant); onboarding is one-time event — desktop bias acceptable for V1; V1+30d ships responsive breakpoints |
+| Q9 | **A — Immediate spawn cell drop-in + LLM scene narration** | Confirm → cascade fires → drop into first turn với SR11 turn UX state machine + LLM scene narration | Fastest path to gameplay (highest user retention); 04_confirm.html screen ALREADY serves as summary; Mode C Step 5 reveal narration handles "prologue" need; LLM scene narration on turn 1 IS the prologue |
+| Q10 | **A — Inline tooltips minimal V1; richer tutorial V1+30d (PO-D10)** | Hover-tooltips on form fields + minimal "Tutorial overlay" on first turn explaining 5-action grammar | Wireframes already show tooltip pattern; LLM scene narration IS implicit tutorial; UI_COPY_STYLEGUIDE governs first-run copy; V1+30d ships richer overlay (~10-15 step interactive tutorial) when content authored |
 
-(Filled when batched Q-deep-dive locks all 10.)
+**Discipline observed:**
+- **V1 minimum scope** — backend conservative (chat-service + auth-service email-only); UX aggressive (3 modes + 3-level Mode B + AI Assistant)
+- **Wireframes-first validation** — all 10 Qs anchored on commits 19855a5b + 4c4fd6d7 demonstrating concrete UX
+- **Locked feature respect** — Q5 auto-resolved by PCS-A9 LOCK; Q6 matches PCS_001 V1 architecture
+- **Schema-stable / activation-deferred V1+ pattern** — Q7 (auto-save V1+30d) + Q8 (mobile V1+30d) + Q10 (richer tutorial V1+30d) all defer activation while shipping minimum schema V1
+- **Cross-feature integration ready** — V1 consumes 14 locked features without requiring substrate changes

@@ -6,6 +6,77 @@
 
 ---
 
+## 2026-04-27 — PO_001 Player Onboarding DRAFT 2/4 — first user-visible feature post-foundation closure (single `[boundaries-lock-claim]` commit; release at closure 4/4)
+
+- **Lock CLAIMED** — PO_001 DRAFT 2/4 commit; release at closure 4/4 commit per established 4-commit cycle (wireframes Phase 0 + Phase 0 backend kickoff + DRAFT 2/4 + Phase 3 + closure)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim active
+  - `01_feature_ownership_matrix.md`:
+    - **NEW row** — `actor_user_session` aggregate (T2/Reality, sparse per-(actor, session)); registers PO-A1..A8 axioms summary + Q1-Q10 LOCKED + 3-mode architecture + 3-level UX progression Mode B + AI Character Assistant V1 active + 14-feature cascade orchestration PO-C1 + cross-feature deferral resolutions (PCS-D1 + PCS-D10)
+    - **RejectReason namespace registry** — added `onboarding.*` → PO_001
+    - **Stable-ID prefix ownership** — added `PO-*` row (first user-visible feature post-foundation closure)
+  - `02_extension_contracts.md`:
+    - **§1.4 onboarding.* namespace** — 7 V1 reject rule_ids (reality_unauthorized + mode_unsupported + draft_invalid + pc_cap_exceeded + canonical_pc_unavailable + spawn_cell_unauthorized + user_already_has_pc) + 5 V1+ reservations (draft_resume_failed / oauth_provider_invalid / ai_assistant_unavailable / tutorial_step_invalid / cross_reality_migration_unsupported_v1); all Q1-Q10 LOCKED matrix summary
+    - **§2 RealityManifest extensions** — 2 OPTIONAL V1 fields: `onboarding_config: Option<OnboardingConfigDecl>` + `canonical_pcs: Vec<ActorRef>` (subset of canonical_actors[kind=Pc]); full OnboardingConfigDecl shape documented (modes_enabled 3-variant + canonical_pcs ref list + ai_assistant_enabled bool + default_spawn_cell + V1+ schema-reserved onboarding_skin + tutorial_steps)
+  - `99_changelog.md`: this entry top-anchored
+- **Files created/modified outside `_boundaries/`:**
+  - `features/03_player_onboarding/PO_001_player_onboarding.md` (NEW; ~700 lines): full spec — §1 Purpose & V1 minimum scope + §2 Domain concepts (OnboardingConfigDecl + actor_user_session + 14-feature cascade pseudocode + AI Assistant flow) + §3 Aggregates + §4 RealityManifest extensions + §5 Events (T8/T1/T3) + §6 AI Character Assistant + §7 Cross-aggregate validator (PC creation cascade) + §8 V1 reject rules + §9 Sequence diagrams (3 modes — Canonical + Custom + XuyenKhong) + §10 Acceptance Criteria (12 V1 + 4 V1+ deferred) + §11 V1 Minimum Delivery Summary + §12 Deferrals Catalog (PO-D1..D12) + §13 Cross-references + §14 Status
+  - `catalog/cat_03_PO_player_onboarding.md` REPLACED (legacy archived multiverse content from `FEATURE_CATALOG.ARCHIVED.md` superseded by new PO_001 design): 8 axioms PO-A1..A8 + 24 V1 catalog entries (PO-1..PO-24) + 12 V1+/V2/V2+ entries (PO-25..PO-36) + 12 deferrals (PO-D1..PO-D12) + 6 cross-aggregate consistency rules (PO-C1..PO-C6) + cross-feature integration map covering 14 features
+  - `features/03_player_onboarding/_index.md`: status row update CONCEPT → DRAFT
+  - `features/03_player_onboarding/00_CONCEPT_NOTES.md`: status header update Q-LOCKED 2026-04-27; §10 Q-LOCKED matrix populated with all 10 LOCKED decisions zero revisions
+
+### Background
+
+User-driven 4-batch Q-deep-dive 2026-04-27 LOCKED all 10 critical scope questions zero revisions:
+
+- **Batch 1/4 Q1+Q2+Q3** (mode architecture + AI Assistant timing): Q1 A 3 modes V1 (Canonical+Custom+XuyenKhong) / Q2 A 3-level Custom PC (Basic+Advanced+AI Assistant) / Q3 A AI Assistant V1 active (chat-service+knowledge-service)
+- **Batch 2/4 Q4+Q5+Q6** (account + multi-PC + reality switcher): Q4 A email+password V1; OAuth V1+ / Q5 A cap=1 V1 per PCS-A9 LOCKED / Q6 A locked-in per session V1; mid-session V2+
+- **Batch 3/4 Q7+Q8** (persistence + device support): Q7 A all-or-nothing V1; auto-save V1+30d / Q8 A desktop-only V1; mobile V1+30d
+- **Batch 4/4 Q9+Q10** (first turn + tutorial): Q9 A immediate spawn cell drop-in / Q10 A inline tooltips minimal V1; richer tutorial V1+30d
+
+FE-first approach validated UX direction via wireframes Phase 0 commits (19855a5b + 4c4fd6d7) BEFORE backend feature spec — 12 HTML/CSS/MD files demonstrating concrete UI; 46 V1 actor settings audited across 14 features.
+
+### Cross-feature deferrals RESOLVED post PO_001 CANDIDATE-LOCK (closure 4/4)
+
+- **PCS-D1** (PCS_001): V1+ runtime login flow PC creation → V1 RESOLVES (full active via Forge:CompleteOnboarding orchestrating Forge:RegisterPc + Forge:BindPcUser cascade)
+- **PCS-D10** (PCS_001): V1+ PO_001 Player Onboarding integration → V1 RESOLVES (full active via 14-feature cascade orchestration PO-C1)
+
+### V1 minimum delivery summary
+
+- **1 NEW sparse aggregate** — actor_user_session (T2/Reality, sparse per-(actor, session))
+- **2 RealityManifest extensions** — onboarding_config (OPTIONAL V1) + canonical_pcs ref list
+- **3 EVT-T8 sub-shapes** — Forge:CompleteOnboarding (V1 active) + Forge:CreateOnboardingDraft + Forge:UpdateOnboardingDraft (V1 schema-reserved; V1+30d active per PO-D3)
+- **1 EVT-T1** — OnboardingCompleted narrative milestone (LLM scene narration context)
+- **1 EVT-T3** — OnboardingDraftUpdated (V1 schema-reserved; V1+30d active per PO-D3)
+- **1 cross-aggregate validator PO-C1** (PC creation cascade orchestration; synchronous 14-feature chain on Forge:CompleteOnboarding) + 5 schema validators PO-C2..C6
+- **7 V1 reject rules** in `onboarding.*` namespace + 5 V1+ reservations
+- **12 V1 acceptance scenarios** AC-PO-1..12 + 4 V1+ deferred
+- **12 deferrals** (PO-D1..D12)
+- **PO-* stable-ID prefix**
+
+### V1 unchanged for other features
+
+This commit is purely additive per I14 invariant. No changes to existing aggregates / EVT sub-shapes / RealityManifest fields owned by other features. PROG_001 / RES_001 / IDF_001..005 / FF_001 / FAC_001 / REP_001 / TIT_001 / ACT_001 / PCS_001 / AIT_001 / TDIL_001 / DF05_001 status unchanged.
+
+### Discipline observed
+
+- **FE-first design discipline (PO-A1)** — UX validated via wireframes BEFORE backend spec
+- **Per-reality author-declared discipline (PO-A6)** — mirrors PROG-A1 + REP_001 + FAC_001 author-discipline
+- **3-mode onboarding architecture (PO-A2)** — Canonical (BG3 Origin) + Custom (BG3 + Cyberpunk lifepath) + XuyenKhong (Disco Elysium amnesia + wuxia)
+- **3-level Mode B UX progression (PO-A3)** — Basic Wizard + Advanced Settings + AI Character Assistant
+- **AI Character Assistant V1 active (PO-A4)** — chat-service + LiteLLM + knowledge-service constraint awareness
+- **PC creation cascade orchestration (PO-A5 + PO-C1)** — synchronous 14-feature chain on Forge:CompleteOnboarding same turn (joins existing C1-C29 cross-aggregate consistency rules from prior commits)
+- **Schema-stable / activation-deferred V1+ discipline (PO-A8)** — actor_user_session.onboarding_draft + 2 EVT-T8 sub-shapes schema-reserved V1
+- **3-write atomic Forge admin pattern reused** (consistent with WA_003 / FAC_001 / REP_001 / ACT_001 / PCS_001 / TIT_001 prior)
+- **No new substrate required** — V1 consumes 14 locked features as DECLARATIVE inputs
+
+### Next steps
+
+- **Commit 3/4 Phase 3 cleanup**: self-review fixes + downstream coordination notes + validator pipeline slots PO-C1..C6 / C30-C35 registration
+- **Commit 4/4 CANDIDATE-LOCK closure**: final lock + RESOLVES PCS-D1 + PCS-D10 declarations + `[boundaries-lock-release]`
+
+---
+
 ## 2026-04-27 — RES_001 Resource Foundation CANDIDATE-LOCK closure pass (FOUNDATION TIER 6/6 COMPLETE)
 
 - **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit. DRAFT 2026-04-26 → TDIL closure-pass-extension Q4 day-boundary → turn-boundary semantic applied at TDIL DRAFT `bdc8d8e1` → CANDIDATE-LOCK closure pass (this commit).

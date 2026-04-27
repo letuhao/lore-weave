@@ -4,9 +4,9 @@
 > **Catalog reference:** `catalog/cat_03_PO_player_onboarding.md` (planned; created at DRAFT 2/4 commit per established pattern)
 > **Purpose:** First-user UX — account creation, first-PC creation (3 V1 modes: Canonical / Custom / Xuyên Không), first-reality-entry, tutorial/tooltips, first-run scenarios. **First user-visible feature; gateway from auth-service to actual gameplay.**
 
-**Active:** PO_001 — **Player Onboarding** (CONCEPT 2026-04-27 — Phase 0 kickoff this commit; wireframes Phase 0 already committed 19855a5b + 4c4fd6d7)
+**Active:** PO_001 — **Player Onboarding** (DRAFT 2026-04-27 — Q-LOCKED 4-batch deep-dive 2026-04-27 zero revisions; DRAFT 2/4 commit this commit with boundary updates + catalog seed)
 
-**Folder closure status:** **OPEN — Phase 0 IN PROGRESS 2026-04-27** — wireframes (12 files: 10 HTML + 1 CSS + 1 audit MD) + concept notes + reference survey + index seeded; next: Q1-Q10 batched deep-dive → DRAFT 2/4 với boundary updates → Phase 3 cleanup → CANDIDATE-LOCK closure 4/4.
+**Folder closure status:** **OPEN — DRAFT 2/4 IN PROGRESS 2026-04-27** — wireframes Phase 0 (commits 19855a5b + 4c4fd6d7) + Phase 0 backend kickoff (commit 9245666c) + DRAFT 2/4 (this commit) complete; next: Phase 3 cleanup (commit 3/4) + CANDIDATE-LOCK closure (commit 4/4).
 
 **V1+ priority signal:**
 - PCS_001 PCS-D1 LOCKED: "V1+ runtime login flow PC creation → PO_001 Player Onboarding feature when concrete"
