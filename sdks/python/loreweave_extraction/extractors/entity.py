@@ -1,24 +1,22 @@
-"""K17.4 — LLM-powered entity extractor.
+"""LLM-powered entity extractor (moved from knowledge-service in Phase 4b-α).
 
-Extracts named entities from text using a BYOK LLM via the K17.1→K17.3
-stack (prompt loader → JSON extraction wrapper with retry). Returns
-post-processed candidates with deterministic canonical IDs (K15.1) so
-re-running extraction on the same source is idempotent.
+Extracts named entities from text using a BYOK LLM via the
+loreweave_llm SDK (job pattern + chunking + per-op JSON aggregator).
+Returns post-processed candidates with deterministic canonical IDs
+so re-running extraction on the same source is idempotent.
 
-**This module does NOT write to Neo4j.** It produces `LLMEntityCandidate`
-records that K17.8 (Pass 2 orchestrator) feeds into K15.7's write layer.
+**This module does NOT write to Neo4j.** It produces
+`LLMEntityCandidate` records that the caller (knowledge-service Pass 2
+writer, or any future persistence service) feeds into its own write
+layer.
 
-**Relationship to K15.2 (pattern-based entity detector):**
-  - K15.2 is Pass 1 (fast, regex-based, quarantined at low confidence)
-  - K17.4 is Pass 2 (LLM-powered, higher confidence, validates/refines
-    Pass 1 candidates)
-  - Both produce candidate lists; K17.8 orchestrator reconciles them.
+**Relationship to pattern-based detectors:** the LLM extractor is
+typically Pass 2 (higher confidence, multilingual). Pass 1 (regex /
+heuristic) results live in the caller; this library does not own
+reconciliation across passes.
 
-Dependencies: K17.1 (prompt loader), K17.3 (extract_json), K15.1
-(canonicalize_entity_name, entity_canonical_id).
-
-Reference: KSA §5.1.6, K17.4 plan row in
-KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
+Dependencies: loreweave_llm SDK, loreweave_extraction prompts +
+canonical helpers + errors + protocol types.
 """
 
 from __future__ import annotations
@@ -29,16 +27,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.clients.llm_client import LLMClient
-from app.db.neo4j_repos.canonical import (
+from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
+from loreweave_llm.models import ChunkingConfig
+
+from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
 )
-from app.extraction.errors import ExtractionError
-from app.extraction.llm_prompts import load_prompt
-from app.metrics import knowledge_extraction_dropped_total
-from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
-from loreweave_llm.models import ChunkingConfig
+from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.prompts import load_prompt
 
 __all__ = [
     "EntityExtractionResponse",
@@ -76,9 +74,10 @@ class EntityExtractionResponse(BaseModel):
 class LLMEntityCandidate(BaseModel):
     """Entity candidate with deterministic canonical ID.
 
-    Ready for K15.7 write layer / K17.8 Pass 2 orchestrator.
-    `canonical_id` is derived via K15.1 so re-running extraction on
-    the same source text produces the same IDs — idempotent.
+    Ready for the persistence layer (knowledge-service write_pass2_extraction
+    or any equivalent). `canonical_id` is derived via `entity_canonical_id`
+    so re-running extraction on the same source text produces the same
+    IDs — idempotent.
     """
 
     name: str
@@ -100,7 +99,8 @@ async def extract_entities(
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    llm_client: LLMClient,
+    llm_client: LLMClientProtocol,
+    on_dropped: DroppedHandler | None = None,
 ) -> list[LLMEntityCandidate]:
     """Extract named entities from *text* via the user's BYOK LLM.
 
@@ -114,8 +114,12 @@ async def extract_entities(
         project_id: project scope (``None`` for global).
         model_source: ``"user_model"`` or ``"platform_model"``.
         model_ref: model reference key in provider-registry.
-        llm_client: loreweave_llm SDK wrapper (job pattern + chunking +
-            gateway-side retry + per-op JSON aggregator).
+        llm_client: any object satisfying ``LLMClientProtocol``
+            (knowledge-service's `LLMClient` wrapper, or a custom
+            adapter around `loreweave_llm.Client`).
+        on_dropped: optional callback invoked once per dropped item
+            with ``(operation, reason)`` — wire to your Prometheus
+            counter for quality observability.
 
     Returns:
         Deduplicated list of ``LLMEntityCandidate`` sorted by
@@ -123,8 +127,8 @@ async def extract_entities(
         which hashes ``(user_id, project_id, name, kind)``. Two
         candidates CAN share the same display ``name`` if their
         ``kind`` differs (e.g. "Kai" as person vs. concept). The
-        caller (K17.8 orchestrator) is responsible for reconciling
-        same-name-different-kind duplicates if that's undesirable.
+        caller is responsible for reconciling same-name-different-
+        kind duplicates if that's undesirable.
 
     Raises:
         ExtractionError: on terminal LLM / parse / validation failure.
@@ -132,12 +136,12 @@ async def extract_entities(
     if not text or not text.strip():
         return []
 
-    # I1/I7 (R2): escape curly braces in caller-supplied values before
-    # substitution. load_prompt uses str.format_map internally — literal
-    # { or } in known_entities (e.g. "The {Ancient} One") would be
-    # misinterpreted as format placeholders and raise KeyError. `text`
-    # is NOT escaped because it goes directly into the user message
-    # without str.format_map().
+    # Escape curly braces in caller-supplied values before substitution.
+    # load_prompt uses str.format_map internally — literal { or } in
+    # known_entities (e.g. "The {Ancient} One") would be misinterpreted
+    # as format placeholders and raise KeyError. `text` is NOT escaped
+    # because it goes directly into the user message without
+    # str.format_map().
     safe_known = json.dumps(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
@@ -151,6 +155,7 @@ async def extract_entities(
         model_ref=model_ref,
         system_prompt=system_prompt,
         text=text,
+        on_dropped=on_dropped,
     )
 
     return _postprocess(
@@ -161,44 +166,45 @@ async def extract_entities(
     )
 
 
-# ── Phase 4a-α Step 2 — new SDK-routed path ─────────────────────────
+# ── SDK-routed path ─────────────────────────────────────────────────
 
 
 async def _extract_via_llm_client(
     *,
-    llm_client: LLMClient,
+    llm_client: LLMClientProtocol,
     user_id: str,
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     system_prompt: str,
     text: str,
+    on_dropped: DroppedHandler | None,
 ) -> list["_LLMEntity"]:
     """Submit entity_extraction job + wait_terminal + tolerant-parse the
     `result.entities` envelope into a list of `_LLMEntity` records.
 
-    Uses caller-side retry budget (1) per ADR §3.3 D3c bridge. On
-    transient retry exhaustion or non-transient failure, raises
-    ExtractionError so the orchestrator can surface a job-level error.
+    Uses caller-side retry budget (1) for transient errors. On retry
+    exhaustion or non-transient failure, raises ExtractionError so the
+    orchestrator can surface a job-level error.
 
-    **Phase 4a-α-followup — chunking IS enabled.** Messages are
-    structured as ``[{role:system, content:system_prompt}, {role:user,
-    content:text}]``. The gateway's ``ExtractChattableText`` finds the
-    LAST user message and chunks ITS content; system messages are
-    preserved verbatim across all per-chunk dispatches via
-    ``SubstituteLastUserMessage`` (which only mutates the user message).
-    So chunks 0..N each receive: full instructions + KNOWN_ENTITIES
-    (in system) + their slice of chapter text (in user). The cycle 20
-    jsonListAggregator then dedups entities across chunks by
-    ``(name, kind)`` with higher confidence winning on ties.
+    **Chunking is enabled.** Messages are structured as
+    ``[{role:system, content:system_prompt}, {role:user, content:text}]``.
+    The gateway's ``ExtractChattableText`` finds the LAST user message
+    and chunks ITS content; system messages are preserved verbatim
+    across all per-chunk dispatches via ``SubstituteLastUserMessage``
+    (which only mutates the user message). So chunks 0..N each
+    receive: full instructions + KNOWN_ENTITIES (in system) + their
+    slice of chapter text (in user). The gateway's jsonListAggregator
+    then dedups entities across chunks by ``(name, kind)`` with higher
+    confidence winning on ties.
 
-    ChunkingConfig(strategy='paragraphs', size=15) per ADR §6 Q1
-    recommendation: 15 paragraphs covers most chapters in a single
-    chunk while bounding chunk-0 size for the rare 70+ paragraph
-    chapter (Speckled Band ≈ 70 → ~5 chunks).
+    ChunkingConfig(strategy='paragraphs', size=15) — 15 paragraphs
+    covers most chapters in a single chunk while bounding chunk-0 size
+    for the rare 70+ paragraph chapter (e.g. Speckled Band ≈ 70 →
+    ~5 chunks).
 
-    Per ADR §3.3 D6 — `job_meta` carries the reverse-lookup keys so a
-    future business-job query can find all LLM jobs for an extraction.
+    `job_meta` carries the reverse-lookup keys so a future business-
+    job query can find all LLM jobs for an extraction.
     """
     try:
         job = await llm_client.submit_and_wait(
@@ -235,11 +241,9 @@ async def _extract_via_llm_client(
         ) from exc
 
     if job.status == "cancelled":
-        # /review-impl MED#3 fix — cancelled job MUST surface as a
-        # distinct terminal so orchestrator can flip extraction_jobs
-        # status correctly, NOT collapse to "0 entities found" which
-        # would lie to the user about cancel result. Raise with a
-        # `cancelled` stage marker; orchestrator/runner can handle.
+        # Cancelled job MUST surface as a distinct terminal so caller
+        # can flip job status correctly, NOT collapse to "0 entities
+        # found" which would lie to the user about cancel result.
         raise ExtractionError(
             f"entity_extraction job cancelled (job_id={job.job_id})",
             stage="cancelled",  # type: ignore[arg-type]
@@ -259,39 +263,36 @@ async def _extract_via_llm_client(
         if isinstance(items, list):
             raw_items = items
 
-    return _tolerant_parse_entities(raw_items)
+    return _tolerant_parse_entities(raw_items, on_dropped=on_dropped)
 
 
-def _tolerant_parse_entities(raw_items: list[Any]) -> list["_LLMEntity"]:
-    """Per /review-impl LOW#11 — required name+kind; optional aliases
-    (default []) + confidence (default 0.5). Items missing required
-    fields are dropped + counted in metrics so quality regressions
-    surface in dashboards before users notice missing entities.
-
-    `evidence_passage_id` is mentioned in the ADR as required-by-anchoring
-    BUT the current K17.4 prompt doesn't ask for it (anchoring uses
-    canonical_name match against `known_entities` instead). Left optional
-    until the anchor loader needs it."""
+def _tolerant_parse_entities(
+    raw_items: list[Any],
+    *,
+    on_dropped: DroppedHandler | None,
+) -> list["_LLMEntity"]:
+    """Required name+kind; optional aliases (default []) + confidence
+    (default 0.5). Items missing required fields are dropped + counted
+    via `on_dropped` so quality regressions surface in dashboards
+    before users notice missing entities.
+    """
     parsed: list[_LLMEntity] = []
     for item in raw_items:
         if not isinstance(item, dict):
-            knowledge_extraction_dropped_total.labels(
-                operation="entity_extraction", reason="validation"
-            ).inc()
+            if on_dropped:
+                on_dropped("entity_extraction", "validation")
             continue
         name = item.get("name")
         kind = item.get("kind")
         if not isinstance(name, str) or not name.strip():
-            knowledge_extraction_dropped_total.labels(
-                operation="entity_extraction", reason="missing_name"
-            ).inc()
+            if on_dropped:
+                on_dropped("entity_extraction", "missing_name")
             continue
         if not isinstance(kind, str) or not kind.strip():
-            knowledge_extraction_dropped_total.labels(
-                operation="entity_extraction", reason="missing_kind"
-            ).inc()
+            if on_dropped:
+                on_dropped("entity_extraction", "missing_kind")
             continue
-        # Defaults for optional fields per ADR §5.1 Step 3.
+        # Defaults for optional fields.
         aliases = item.get("aliases") or []
         if not isinstance(aliases, list):
             aliases = []
@@ -310,9 +311,8 @@ def _tolerant_parse_entities(raw_items: list[Any]) -> list["_LLMEntity"]:
             ))
         except ValidationError:
             # Wrong-shape kind (not in EntityKind Literal) lands here.
-            knowledge_extraction_dropped_total.labels(
-                operation="entity_extraction", reason="validation"
-            ).inc()
+            if on_dropped:
+                on_dropped("entity_extraction", "validation")
             continue
     return parsed
 

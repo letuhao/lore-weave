@@ -2,17 +2,19 @@
 # Install production dependencies into a cached layer.
 #
 # Phase 4a-α: build context is repo root (set in docker-compose.yml)
-# so we can COPY the local loreweave_llm SDK alongside the service
-# code. Reference impl: services/chat-service/Dockerfile (Phase 1c-ii).
+# so we can COPY the local SDKs alongside the service code. Reference
+# impl: services/chat-service/Dockerfile (Phase 1c-ii).
 FROM python:3.12-slim AS deps
 
 WORKDIR /app
 COPY services/knowledge-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install the local LLM SDK. Service code imports `loreweave_llm` which
-# resolves to this package — direct provider-SDK calls (litellm, openai,
-# anthropic) are forbidden per CLAUDE.md gateway invariant.
+# Install the local SDKs. The pyproject ships two top-level packages:
+#   - loreweave_llm — gateway client (streaming + async jobs)
+#   - loreweave_extraction — Pass 2 extraction library (Phase 4b-α)
+# Service code imports both. Direct provider-SDK calls (litellm,
+# openai, anthropic) are forbidden per CLAUDE.md gateway invariant.
 COPY sdks/python /sdk
 RUN pip install --no-cache-dir /sdk
 

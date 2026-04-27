@@ -1,9 +1,10 @@
-"""K17.1 — LLM extraction prompt loader.
+"""Pass 2 extraction prompt loader (moved from knowledge-service in Phase 4b-α).
 
 Loads markdown prompt templates from this package directory and
-performs strict placeholder substitution. Used by K17.4..K17.7 LLM
-extractors (entity / relation / event / fact) and Pass 2
-orchestrator (K17.8) to build the prompts sent to the BYOK provider.
+performs strict placeholder substitution. Used by the extractor
+modules (entity / relation / event / fact) and the high-level
+`extract_pass2` orchestrator to build the prompts sent to the BYOK
+provider via the loreweave_llm SDK.
 
 **Strict substitution:** `load_prompt` uses `str.format_map` with a
 dict that raises on missing keys. This catches typos in caller
@@ -13,18 +14,15 @@ would only surface as confusing model output hours later.
 
 **LRU-cached raw loads:** the markdown files are read once per
 process via `@lru_cache` on `_load_raw`. Prompt content is
-effectively immutable at runtime (baked into the container image),
-so re-reading on every extract call would be pure waste. Tests
-that hot-swap prompt files must call `_load_raw.cache_clear()`
-to see fresh contents.
+effectively immutable at runtime, so re-reading on every extract
+call would be pure waste. Tests that hot-swap prompt files must
+call `_load_raw.cache_clear()` to see fresh contents.
 
-**Closed prompt name set:** `_ALLOWED_NAMES` is a frozenset of the
-four extractor kinds. Attempting to load anything else raises
-`KeyError` to prevent user-controlled prompt injection via dynamic
-file paths (e.g. `name=../../etc/passwd`).
-
-Reference: KSA §5.1.6 (LLM extraction), K17.1 plan row in
-KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
+**Closed prompt name set:** `ALLOWED_PROMPT_NAMES` is a frozenset
+of the four extractor kinds plus their `_system` variants.
+Attempting to load anything else raises `KeyError` to prevent
+user-controlled prompt injection via dynamic file paths
+(e.g. `name=../../etc/passwd`).
 """
 
 from __future__ import annotations
@@ -39,15 +37,13 @@ __all__ = [
     "ALLOWED_PROMPT_NAMES",
 ]
 
-# R1/I4: real Literal type so static checkers flag typoed callers
-# (e.g. `load_prompt("entitiy", ...)`) instead of relying only on
-# the runtime KeyError from _load_raw.
+# Real Literal type so static checkers flag typoed callers at
+# compile-time instead of relying only on the runtime KeyError.
 #
-# Phase 4a-α-followup added `entity_system` — a system-message variant
-# of the entity prompt that excludes the chapter `{text}` block, used
-# alongside a separate user-message text payload so the gateway's
-# chunker can split the user message without shredding instructions.
-# Phase 4a-β extends the same pattern to relation/event/fact extractors.
+# `*_system` variants are system-message-only prompts that exclude
+# the chapter `{text}` block, used alongside a separate user-message
+# text payload so the gateway's chunker can split the user message
+# without shredding instructions.
 PromptName = Literal[
     "entity",
     "relation",
@@ -59,9 +55,6 @@ PromptName = Literal[
     "fact_system",
 ]
 
-# R2/I2: derive the runtime closed-set from the Literal so a future
-# edit that adds a prompt kind in one place but forgets the other
-# can't drift.
 ALLOWED_PROMPT_NAMES: frozenset[str] = frozenset(get_args(PromptName))
 
 _PROMPTS_DIR = Path(__file__).parent
@@ -87,9 +80,8 @@ def _load_raw(name: str) -> str:
             f"unknown prompt '{name}'; allowed: "
             f"{sorted(ALLOWED_PROMPT_NAMES)}"
         )
-    # Phase 4a-α-followup + 4a-β: `*_system` maps to
-    # `<base>_extraction_system.md`; other names follow the legacy
-    # `<name>_extraction.md` pattern.
+    # `*_system` maps to `<base>_extraction_system.md`; other names
+    # follow the legacy `<name>_extraction.md` pattern.
     if name.endswith("_system"):
         base = name[: -len("_system")]
         path = _PROMPTS_DIR / f"{base}_extraction_system.md"
@@ -102,22 +94,18 @@ def load_prompt(name: PromptName, **substitutions: str) -> str:
     """Load a prompt template and substitute placeholders.
 
     Args:
-        name: one of `ALLOWED_PROMPT_NAMES`
-            ({entity, relation, event, fact}).
+        name: one of `ALLOWED_PROMPT_NAMES`.
         **substitutions: template variables to interpolate. Missing
             keys raise `KeyError` — callers must supply every
             placeholder the template declares.
 
     Returns:
-        The fully-substituted prompt text ready to pass to the
-        LLM provider.
+        The fully-substituted prompt text ready to pass to the LLM.
 
     Raises:
-        KeyError: if `name` is not in `ALLOWED_PROMPT_NAMES`, or
-            if the template references a placeholder not provided
-            in `substitutions`.
+        KeyError: if `name` is not in `ALLOWED_PROMPT_NAMES`, or if
+            the template references a placeholder not provided in
+            `substitutions`.
     """
     template = _load_raw(name)
     return template.format_map(_StrictDict(substitutions))
-
-

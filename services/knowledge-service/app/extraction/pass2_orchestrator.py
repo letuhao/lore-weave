@@ -1,12 +1,12 @@
 """K17.8 — Pass 2 (LLM) extraction orchestrator.
 
-Top-level entry points for running the K17.4–K17.7 LLM extraction
-pipeline and persisting results to Neo4j via the Pass 2 writer.
+Top-level entry points for running the LLM extraction pipeline and
+persisting results to Neo4j via the Pass 2 writer.
 
 Pipeline:
-  1. K17.4 ``extract_entities`` → entity candidates
-  2. **Gate:** if no entities, skip steps 3–4 (nothing to anchor)
-  3. K17.5/K17.6/K17.7 run concurrently via ``asyncio.gather``
+  1. ``extract_entities`` → entity candidates
+  2. **Gate:** if no entities, skip steps 3-4 (nothing to anchor)
+  3. relation/event/fact extractors run concurrently via ``asyncio.gather``
   4. ``write_pass2_extraction`` persists everything
 
 **Mirrors K15.8** (Pass 1 orchestrator) with two entry points:
@@ -19,10 +19,10 @@ Pipeline:
   - Pass 1 reconciliation — deferred to K18 validator (promotes
     quarantined Pass 1 facts when Pass 2 confirms them)
 
-Dependencies: K17.4–K17.7 (extractors), K17.8 writer, K11 (Neo4j).
-
-Reference: KSA §5.2, K17.8 plan row in
-KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
+Phase 4b-α: extractor logic moved to ``loreweave_extraction``. This
+module orchestrates the per-stage telemetry pattern + glossary anchor
+loading + Neo4j write — keeps service-side concerns at the service
+boundary while the library owns the LLM/SDK plumbing.
 """
 
 from __future__ import annotations
@@ -34,15 +34,17 @@ from collections.abc import Iterable
 from typing import Any, Literal
 from uuid import UUID
 
+from loreweave_extraction.extractors.entity import extract_entities
+from loreweave_extraction.extractors.event import extract_events
+from loreweave_extraction.extractors.fact import extract_facts
+from loreweave_extraction.extractors.relation import extract_relations
+
 from app.clients.llm_client import LLMClient
 from app.db.neo4j_helpers import CypherSession
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
-from app.extraction.llm_entity_extractor import extract_entities
-from app.extraction.llm_event_extractor import extract_events
-from app.extraction.llm_fact_extractor import extract_facts
-from app.extraction.llm_relation_extractor import extract_relations
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
+from app.metrics import knowledge_extraction_dropped_total
 
 __all__ = [
     "extract_pass2_chat_turn",
@@ -50,6 +52,16 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+def _on_dropped(operation: str, reason: str) -> None:
+    """Phase 4b-α — bridge the library's `on_dropped` callback to the
+    service-side Prometheus counter. Keeps the existing
+    `knowledge_extraction_dropped_total{operation, reason}` time series
+    intact so dashboards don't need updating."""
+    knowledge_extraction_dropped_total.labels(
+        operation=operation, reason=reason
+    ).inc()
 
 
 async def _emit_log(
@@ -126,9 +138,10 @@ async def _run_pipeline(
 
     started = time.perf_counter()
 
-    # Step 1 — K17.4: extract entities (must run first).
-    # Routes through SDK + gateway job pattern (entity_extraction op +
-    # paragraphs/15 chunking + per-op JSON aggregator).
+    # Step 1 — extract entities first (must run before R/E/F so they
+    # can anchor against entity_names + known_entities). Routes through
+    # SDK + gateway job pattern (entity_extraction op + paragraphs/15
+    # chunking + per-op JSON aggregator).
     entities = await extract_entities(
         text=text,
         known_entities=known_entities,
@@ -137,6 +150,7 @@ async def _run_pipeline(
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,
+        on_dropped=_on_dropped,
     )
 
     entities_elapsed = time.perf_counter() - started
@@ -184,8 +198,8 @@ async def _run_pipeline(
     entity_names = [e.name for e in entities]
     all_known = list(set(known_entities + entity_names))
 
-    # Steps 2-4 — K17.5/K17.6/K17.7 run concurrently.
-    # All three extractors route through SDK + chunking + jsonListAggregator.
+    # Steps 2-4 — relation/event/fact run concurrently. All three
+    # extractors route through SDK + chunking + jsonListAggregator.
     extractor_kwargs = dict(
         text=text,
         entities=entities,
@@ -195,6 +209,7 @@ async def _run_pipeline(
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,
+        on_dropped=_on_dropped,
     )
 
     gather_started = time.perf_counter()
@@ -254,10 +269,6 @@ async def _run_pipeline(
         f"events={write_result.events_merged}, "
         f"facts={write_result.facts_merged} "
         f"in {write_elapsed:.2f}s",
-        # /review-impl L2: duration_ms on write event for symmetry
-        # with the entities + gather events. Writes can be the slow
-        # step on large batches (50+ relations + evidence edges);
-        # operators benefit from seeing its share of the total.
         context={
             "event": "pass2_write",
             "source_type": source_type,
@@ -293,8 +304,8 @@ async def extract_pass2_chat_turn(
     """Run the Pass 2 LLM pipeline on a chat turn.
 
     Concatenates user + assistant messages, then runs the full
-    K17.4→K17.7 pipeline. Same source_type/source_id pattern as
-    K15.8's ``extract_from_chat_turn``.
+    pipeline. Same source_type/source_id pattern as K15.8's
+    ``extract_from_chat_turn``.
 
     `anchors`: optional K13.0 glossary-anchor index. When supplied,
     extraction candidates matching a curated anchor (by folded

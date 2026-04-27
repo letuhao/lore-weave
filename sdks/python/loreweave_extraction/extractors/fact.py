@@ -1,28 +1,27 @@
-"""K17.7 — LLM-powered fact extractor.
+"""LLM-powered fact extractor (moved from knowledge-service in Phase 4b-α).
 
 Extracts standalone factual claims from text using a BYOK LLM via the
-K17.1→K17.3 stack. Post-processes with subject resolution (resolving
-the optional subject name to a K17.4 entity canonical ID) and
-deterministic ``fact_id`` derivation.
+loreweave_llm SDK (job pattern + chunking + per-op JSON aggregator).
+Post-processes with subject resolution (resolving the optional
+subject name to an entity canonical ID) and deterministic
+``fact_id`` derivation.
 
 **This module does NOT write to Neo4j.** It produces
-``LLMFactCandidate`` records that K17.8 (Pass 2 orchestrator)
-feeds into the write layer.
+``LLMFactCandidate`` records that the caller (knowledge-service
+Pass 2 writer, or any future persistence service) feeds into its own
+write layer.
 
-**Relationship to K15.5 (pattern-based fact extractor):**
-  - K15.5 is Pass 1 (regex, English-only, quarantined)
-  - K17.7 is Pass 2 (LLM, multilingual, higher confidence)
-  - Both produce fact lists; K17.8 orchestrator reconciles.
+**Relationship to pattern-based detectors:** the LLM extractor is
+typically Pass 2 (higher confidence, multilingual). Pass 1 (regex /
+heuristic) results live in the caller; this library does not own
+reconciliation across passes.
 
-**Entity resolution:** K17.8 runs K17.4 (entity extraction) first,
-then passes the resulting ``LLMEntityCandidate`` list to K17.7 so
-the optional subject name can be resolved to a canonical ID.
+**Entity resolution:** the caller runs ``extract_entities`` first,
+then passes the resulting ``LLMEntityCandidate`` list here so the
+optional subject name can be resolved to a canonical ID.
 
-Dependencies: K17.1 (prompt loader), K17.3 (extract_json), K17.4
-(LLMEntityCandidate).
-
-Reference: KSA §5.1, K17.7 plan row in
-KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
+Dependencies: loreweave_llm SDK, loreweave_extraction prompts +
+canonical helpers + errors + protocol types.
 """
 
 from __future__ import annotations
@@ -34,13 +33,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.clients.llm_client import LLMClient
-from app.extraction.errors import ExtractionError
-from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_prompts import load_prompt
-from app.metrics import knowledge_extraction_dropped_total
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from loreweave_llm.models import ChunkingConfig
+
+from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.prompts import load_prompt
 
 __all__ = [
     "LLMFactCandidate",
@@ -106,7 +105,7 @@ class LLMFactCandidate(BaseModel):
 def _compute_fact_id(user_id: str, content_normalized: str) -> str:
     """Deterministic fact ID from (user_id, content).
 
-    Same hashing approach as K11.6 ``relation_id``.
+    Same hashing approach as canonical ``relation_id``.
     """
     raw = f"v1:{user_id}:{content_normalized}"
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -128,22 +127,26 @@ async def extract_facts(
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    llm_client: LLMClient,
+    llm_client: LLMClientProtocol,
+    on_dropped: DroppedHandler | None = None,
 ) -> list[LLMFactCandidate]:
     """Extract factual claims from *text* via the user's BYOK LLM.
 
     Args:
         text: chapter or passage text. Empty/whitespace returns ``[]``
             without calling the LLM.
-        entities: entity candidates from K17.4's ``extract_entities``.
-            Used to resolve the optional subject to a canonical ID.
+        entities: entity candidates from ``extract_entities``. Used to
+            resolve the optional subject to a canonical ID.
         known_entities: canonical entity names already in the graph.
             Passed through to the LLM prompt for anchoring.
         user_id: tenant scope.
         project_id: project scope (``None`` for global).
         model_source: ``"user_model"`` or ``"platform_model"``.
         model_ref: model reference key in provider-registry.
-        llm_client: loreweave_llm SDK wrapper.
+        llm_client: any object satisfying ``LLMClientProtocol``.
+        on_dropped: optional callback invoked once per dropped item
+            with ``(operation, reason)`` — wire to your Prometheus
+            counter for quality observability.
 
     Returns:
         List of ``LLMFactCandidate`` sorted by confidence descending.
@@ -169,6 +172,7 @@ async def extract_facts(
         model_ref=model_ref,
         system_prompt=system_prompt,
         text=text,
+        on_dropped=on_dropped,
     )
 
     return _postprocess(
@@ -267,18 +271,19 @@ def _postprocess(
     )
 
 
-# ── Phase 4a-β SDK-routed path ────────────────────────────────────────
+# ── SDK-routed path ─────────────────────────────────────────────────
 
 
 async def _extract_via_llm_client(
     *,
-    llm_client: LLMClient,
+    llm_client: LLMClientProtocol,
     user_id: str,
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     system_prompt: str,
     text: str,
+    on_dropped: DroppedHandler | None,
 ) -> list[_LLMFact]:
     """Submit fact_extraction job + wait_terminal + tolerant-parse
     `result.facts`. Mirrors entity extractor's SDK path."""
@@ -335,25 +340,27 @@ async def _extract_via_llm_client(
         items = job.result.get("facts", [])
         if isinstance(items, list):
             raw_items = items
-    return _tolerant_parse_facts(raw_items)
+    return _tolerant_parse_facts(raw_items, on_dropped=on_dropped)
 
 
-def _tolerant_parse_facts(raw_items: list[Any]) -> list[_LLMFact]:
+def _tolerant_parse_facts(
+    raw_items: list[Any],
+    *,
+    on_dropped: DroppedHandler | None,
+) -> list[_LLMFact]:
     """Drop items missing `content` or with empty content; tolerate
     null subject; clamp confidence; drop on FactType validation
     failure (kind not in Literal)."""
     parsed: list[_LLMFact] = []
     for item in raw_items:
         if not isinstance(item, dict):
-            knowledge_extraction_dropped_total.labels(
-                operation="fact_extraction", reason="validation"
-            ).inc()
+            if on_dropped:
+                on_dropped("fact_extraction", "validation")
             continue
         content = item.get("content")
         if not isinstance(content, str) or not content.strip():
-            knowledge_extraction_dropped_total.labels(
-                operation="fact_extraction", reason="missing_name"
-            ).inc()
+            if on_dropped:
+                on_dropped("fact_extraction", "missing_name")
             continue
         confidence = item.get("confidence")
         if not isinstance(confidence, (int, float)):
@@ -369,8 +376,7 @@ def _tolerant_parse_facts(raw_items: list[Any]) -> list[_LLMFact]:
                 confidence=confidence,
             ))
         except ValidationError:
-            knowledge_extraction_dropped_total.labels(
-                operation="fact_extraction", reason="validation"
-            ).inc()
+            if on_dropped:
+                on_dropped("fact_extraction", "validation")
             continue
     return parsed

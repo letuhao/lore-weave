@@ -1,7 +1,7 @@
 """Unit tests for K17.6 — LLM event extractor (SDK path only).
 
-Phase 4a-δ: legacy ProviderClient path was removed; the extractor now
-takes only ``llm_client: LLMClient``. Validates:
+Phase 4b-α: extractor moved into ``loreweave_extraction`` library; this
+test file moved alongside. Validates:
   - Happy path with participant resolution + event_id
   - Empty text -> no LLM call
   - Unresolvable participants -> None IDs
@@ -23,9 +23,13 @@ from typing import Any, cast
 
 import pytest
 
-from app.extraction.errors import ExtractionError
-from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_event_extractor import (
+from loreweave_extraction.canonical import (
+    canonicalize_entity_name,
+    entity_canonical_id,
+)
+from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.extractors.event import (
     LLMEventCandidate,
     EventExtractionResponse,
     extract_events,
@@ -34,7 +38,7 @@ from loreweave_llm.errors import LLMTransientRetryNeededError
 from loreweave_llm.models import Job, JobError
 
 
-# -- FakeLLMClient (duck-typed stand-in for LLMClient) ---------------
+# -- FakeLLMClient (duck-typed stand-in for LLMClientProtocol) -------
 
 
 class FakeLLMClient:
@@ -90,10 +94,6 @@ def _make_entity(
     confidence: float = 0.9,
     aliases: list[str] | None = None,
 ) -> LLMEntityCandidate:
-    from app.db.neo4j_repos.canonical import (
-        canonicalize_entity_name,
-        entity_canonical_id,
-    )
     canonical_name = canonicalize_entity_name(name)
     cid = entity_canonical_id(USER_ID, PROJECT_ID, name, kind)
     return LLMEntityCandidate(
@@ -493,7 +493,7 @@ async def test_mixed_resolved_and_unresolved_participants():
 
 def test_llm_event_event_date_truncated_iso_accepted():
     """C18: _LLMEvent accepts year-only, year-month, full date."""
-    from app.extraction.llm_event_extractor import _LLMEvent
+    from loreweave_extraction.extractors.event import _LLMEvent
     for v in ("1880", "1880-06", "1880-06-15"):
         ev = _LLMEvent(
             name="x", kind="action", participants=["a"],
@@ -507,7 +507,7 @@ def test_llm_event_event_date_malformed_coerced_to_none():
     leading zeros, fictional eras) coerce to None instead of
     rejecting the whole event. The rest of the event metadata is
     still useful."""
-    from app.extraction.llm_event_extractor import _LLMEvent
+    from loreweave_extraction.extractors.event import _LLMEvent
     for bad in ("summer 1880", "TA 3019", "1880-13", "1880-06-32",
                 "1880-6", "1880/06/15", "", "not a date"):
         ev = _LLMEvent(
@@ -520,7 +520,7 @@ def test_llm_event_event_date_malformed_coerced_to_none():
 def test_llm_event_event_date_default_none():
     """C18: omitting event_date defaults to None (back-compat — pre-C18
     LLM responses without the field still parse)."""
-    from app.extraction.llm_event_extractor import _LLMEvent
+    from loreweave_extraction.extractors.event import _LLMEvent
     ev = _LLMEvent(
         name="x", kind="action", participants=["a"],
         summary="s", confidence=0.9,
@@ -591,6 +591,46 @@ async def test_extract_events_via_llm_client_drops_malformed():
     assert "Battle" not in names
     assert "Bad enum" not in names
     assert "Null kind" not in names  # LOW#5 — explicit-null enum dropped
+
+
+@pytest.mark.asyncio
+async def test_extract_events_on_dropped_callback_invoked_per_dropped_item():
+    """Phase 4b-α /review-impl MED#2 — verify on_dropped fires once per
+    malformed event item with the right (operation, reason) tuple.
+    Note: empty/missing summary maps to 'missing_kind' reason in the
+    event tolerant parser (preserves the original metric label)."""
+    from unittest.mock import MagicMock
+
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="completed",
+        events=[
+            {"name": "Investigation", "kind": "action",
+             "participants": ["Holmes"], "summary": "valid",
+             "confidence": 0.9},  # valid
+            {"kind": "action", "summary": "no name",
+             "confidence": 0.9},  # missing_name
+            {"name": "Battle", "kind": "battle", "summary": "",
+             "confidence": 0.9},  # missing_kind (empty summary path)
+            {"name": "Bad enum", "kind": "INVALID_KIND",
+             "summary": "x", "confidence": 0.9},  # validation
+            "not-a-dict",  # validation
+        ],
+    )
+    on_dropped = MagicMock()
+    await extract_events(
+        text="...", entities=[_make_entity_for_event("Holmes")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+        on_dropped=on_dropped,
+    )
+    calls = {c.args for c in on_dropped.call_args_list}
+    assert ("event_extraction", "missing_name") in calls
+    assert ("event_extraction", "missing_kind") in calls
+    assert ("event_extraction", "validation") in calls
+    assert on_dropped.call_count == 4
 
 
 @pytest.mark.asyncio

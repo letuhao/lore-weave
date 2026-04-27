@@ -1,7 +1,7 @@
 """Unit tests for K17.5 — LLM relation extractor (SDK path only).
 
-Phase 4a-δ: legacy ProviderClient path was removed; the extractor now
-takes only ``llm_client: LLMClient``. Validates:
+Phase 4b-α: extractor moved into ``loreweave_extraction`` library; this
+test file moved alongside. Validates:
   - Happy path with entity resolution + relation_id
   - Empty text -> no LLM call
   - Known entities anchoring in subject/object
@@ -22,11 +22,14 @@ from typing import Any, cast
 
 import pytest
 
-from app.db.neo4j_repos.canonical import entity_canonical_id
-from app.db.neo4j_repos.relations import relation_id as compute_relation_id
-from app.extraction.errors import ExtractionError
-from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_relation_extractor import (
+from loreweave_extraction.canonical import (
+    canonicalize_entity_name,
+    entity_canonical_id,
+    relation_id as compute_relation_id,
+)
+from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.extractors.relation import (
     LLMRelationCandidate,
     RelationExtractionResponse,
     extract_relations,
@@ -36,7 +39,7 @@ from loreweave_llm.errors import LLMTransientRetryNeededError
 from loreweave_llm.models import Job, JobError
 
 
-# -- FakeLLMClient (duck-typed stand-in for LLMClient) ---------------
+# -- FakeLLMClient (duck-typed stand-in for LLMClientProtocol) -------
 
 
 class FakeLLMClient:
@@ -95,10 +98,6 @@ def _make_entity(
     confidence: float = 0.9,
     aliases: list[str] | None = None,
 ) -> LLMEntityCandidate:
-    from app.db.neo4j_repos.canonical import (
-        canonicalize_entity_name,
-        entity_canonical_id,
-    )
     canonical_name = canonicalize_entity_name(name)
     cid = entity_canonical_id(USER_ID, PROJECT_ID, name, kind)
     return LLMEntityCandidate(
@@ -591,6 +590,36 @@ async def test_extract_relations_via_llm_client_drops_malformed():
     # postprocess filters null endpoints — only Holmes/Baker Street survives
     preds = [c.predicate for c in result]
     assert "lives_in" in preds
+
+
+@pytest.mark.asyncio
+async def test_extract_relations_on_dropped_callback_invoked_per_dropped_item():
+    """Phase 4b-α /review-impl MED#2 — verify on_dropped fires once per
+    malformed relation item with the right (operation, reason) tuple."""
+    from unittest.mock import MagicMock
+
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="completed",
+        relations=[
+            {"subject": "Holmes", "predicate": "lives_in", "object": "Baker Street", "confidence": 0.9},  # valid
+            {"subject": "Watson"},  # missing_name (predicate)
+            "not-a-dict",  # validation
+        ],
+    )
+    on_dropped = MagicMock()
+    await extract_relations(
+        text="...", entities=[_make_entity_for_relation("Holmes")],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+        on_dropped=on_dropped,
+    )
+    calls = {c.args for c in on_dropped.call_args_list}
+    assert ("relation_extraction", "missing_name") in calls
+    assert ("relation_extraction", "validation") in calls
+    assert on_dropped.call_count == 2
 
 
 @pytest.mark.asyncio

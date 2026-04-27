@@ -1,7 +1,7 @@
 """Unit tests for K17.7 — LLM fact extractor (SDK path only).
 
-Phase 4a-δ: legacy ProviderClient path was removed; the extractor now
-takes only ``llm_client: LLMClient``. Validates:
+Phase 4b-α: extractor moved into ``loreweave_extraction`` library; this
+test file moved alongside. Validates:
   - Happy path with subject resolution + fact_id
   - Empty text -> no LLM call
   - Facts without subject (universal claims)
@@ -22,9 +22,13 @@ from typing import Any, cast
 
 import pytest
 
-from app.extraction.errors import ExtractionError
-from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_fact_extractor import (
+from loreweave_extraction.canonical import (
+    canonicalize_entity_name,
+    entity_canonical_id,
+)
+from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.extractors.fact import (
     LLMFactCandidate,
     FactExtractionResponse,
     extract_facts,
@@ -33,7 +37,7 @@ from loreweave_llm.errors import LLMTransientRetryNeededError
 from loreweave_llm.models import Job, JobError
 
 
-# -- FakeLLMClient (duck-typed stand-in for LLMClient) ---------------
+# -- FakeLLMClient (duck-typed stand-in for LLMClientProtocol) -------
 
 
 class FakeLLMClient:
@@ -89,10 +93,6 @@ def _make_entity(
     confidence: float = 0.9,
     aliases: list[str] | None = None,
 ) -> LLMEntityCandidate:
-    from app.db.neo4j_repos.canonical import (
-        canonicalize_entity_name,
-        entity_canonical_id,
-    )
     canonical_name = canonicalize_entity_name(name)
     cid = entity_canonical_id(USER_ID, PROJECT_ID, name, kind)
     return LLMEntityCandidate(
@@ -553,6 +553,41 @@ async def test_extract_facts_via_llm_client_drops_malformed():
     assert "Holmes is brilliant." in contents
     assert "Bad type" not in contents
     assert "Null type" not in contents  # LOW#5 — explicit-null type dropped
+
+
+@pytest.mark.asyncio
+async def test_extract_facts_on_dropped_callback_invoked_per_dropped_item():
+    """Phase 4b-α /review-impl MED#2 — verify on_dropped fires once per
+    malformed fact item with the right (operation, reason) tuple.
+    Note: empty/missing content maps to 'missing_name' reason in the
+    fact tolerant parser (preserves the original metric label)."""
+    from unittest.mock import MagicMock
+
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="completed",
+        facts=[
+            {"content": "Holmes is brilliant.", "type": "description",
+             "confidence": 0.9},  # valid
+            {"type": "description"},  # missing_name (no content)
+            {"content": "  ", "type": "description"},  # missing_name (whitespace)
+            {"content": "Bad type", "type": "INVALID_TYPE"},  # validation
+            "not-a-dict",  # validation
+        ],
+    )
+    on_dropped = MagicMock()
+    await extract_facts(
+        text="...", entities=[],
+        known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=cast(Any, fake),
+        on_dropped=on_dropped,
+    )
+    calls = {c.args for c in on_dropped.call_args_list}
+    assert ("fact_extraction", "missing_name") in calls
+    assert ("fact_extraction", "validation") in calls
+    assert on_dropped.call_count == 4
 
 
 @pytest.mark.asyncio

@@ -16,7 +16,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.extraction.errors import ExtractionError
+from loreweave_extraction.errors import ExtractionError
 from app.extraction.pass2_writer import Pass2WriteResult
 
 

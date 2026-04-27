@@ -42,9 +42,9 @@ from typing import Literal, cast
 
 import pytest
 
-from app.extraction.llm_entity_extractor import extract_entities
-from app.extraction.llm_event_extractor import extract_events
-from app.extraction.llm_relation_extractor import extract_relations
+from loreweave_extraction.extractors.entity import extract_entities
+from loreweave_extraction.extractors.event import extract_events
+from loreweave_extraction.extractors.relation import extract_relations
 from dataclasses import asdict
 from tests.quality.eval_harness import (
     ActualExtraction,

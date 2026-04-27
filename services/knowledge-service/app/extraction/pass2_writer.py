@@ -43,10 +43,10 @@ from app.extraction.entity_resolver import (
     resolve_or_merge_entity,
 )
 from app.extraction.injection_defense import neutralize_injection
-from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_event_extractor import LLMEventCandidate
-from app.extraction.llm_fact_extractor import LLMFactCandidate
-from app.extraction.llm_relation_extractor import LLMRelationCandidate
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.extractors.event import LLMEventCandidate
+from loreweave_extraction.extractors.fact import LLMFactCandidate
+from loreweave_extraction.extractors.relation import LLMRelationCandidate
 
 __all__ = [
     "Pass2WriteResult",

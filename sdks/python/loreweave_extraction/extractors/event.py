@@ -1,28 +1,27 @@
-"""K17.6 — LLM-powered event extractor.
+"""LLM-powered event extractor (moved from knowledge-service in Phase 4b-α).
 
 Extracts narrative events (time-indexed happenings with participants)
-from text using a BYOK LLM via the K17.1→K17.3 stack. Post-processes
-with participant resolution (resolving participant names to K17.4
-entity canonical IDs) and deterministic ``event_id`` derivation.
+from text using a BYOK LLM via the loreweave_llm SDK (job pattern +
+chunking + per-op JSON aggregator). Post-processes with participant
+resolution (resolving participant names to entity canonical IDs) and
+deterministic ``event_id`` derivation.
 
 **This module does NOT write to Neo4j.** It produces
-``LLMEventCandidate`` records that K17.8 (Pass 2 orchestrator)
-feeds into the write layer.
+``LLMEventCandidate`` records that the caller (knowledge-service
+Pass 2 writer, or any future persistence service) feeds into its own
+write layer.
 
-**Relationship to K15.3 (pattern-based event extractor):**
-  - K15.3 is Pass 1 (regex, English-only, quarantined)
-  - K17.6 is Pass 2 (LLM, multilingual, higher confidence)
-  - Both produce event lists; K17.8 orchestrator reconciles.
+**Relationship to pattern-based detectors:** the LLM extractor is
+typically Pass 2 (higher confidence, multilingual). Pass 1 (regex /
+heuristic) results live in the caller; this library does not own
+reconciliation across passes.
 
-**Entity resolution:** K17.8 runs K17.4 (entity extraction) first,
-then passes the resulting ``LLMEntityCandidate`` list to K17.6 so
+**Entity resolution:** the caller runs ``extract_entities`` first,
+then passes the resulting ``LLMEntityCandidate`` list here so
 participant names can be resolved to canonical IDs.
 
-Dependencies: K17.1 (prompt loader), K17.3 (extract_json), K17.4
-(LLMEntityCandidate).
-
-Reference: KSA §5.1, K17.6 plan row in
-KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
+Dependencies: loreweave_llm SDK, loreweave_extraction prompts +
+canonical helpers + errors + protocol types.
 """
 
 from __future__ import annotations
@@ -35,13 +34,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from app.clients.llm_client import LLMClient
-from app.extraction.errors import ExtractionError
-from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_prompts import load_prompt
-from app.metrics import knowledge_extraction_dropped_total
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from loreweave_llm.models import ChunkingConfig
+
+from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.prompts import load_prompt
 
 __all__ = [
     "LLMEventCandidate",
@@ -75,12 +74,12 @@ class _LLMEvent(BaseModel):
     participants: list[str] = []
     location: str | None = None
     time_cue: str | None = None
-    # C18 (D-K19e-α-02 closer) — structured ISO date the LLM emits
-    # when TEXT contains an explicit calendar date. Truncated ISO:
-    # YYYY / YYYY-MM / YYYY-MM-DD. Vague hints stay in time_cue;
-    # fictional eras stay in time_cue. Validator coerces malformed
-    # → None rather than rejecting the whole event (the rest of the
-    # event metadata is still useful even if the date is wrong-format).
+    # C18 — structured ISO date the LLM emits when TEXT contains an
+    # explicit calendar date. Truncated ISO: YYYY / YYYY-MM /
+    # YYYY-MM-DD. Vague hints stay in time_cue; fictional eras stay
+    # in time_cue. Validator coerces malformed → None rather than
+    # rejecting the whole event (the rest of the event metadata is
+    # still useful even if the date is wrong-format).
     event_date: str | None = None
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
@@ -110,7 +109,8 @@ class LLMEventCandidate(BaseModel):
 
     ``participant_ids`` mirrors ``participants`` positionally: each
     entry is the canonical entity ID when resolved, ``None`` when
-    the participant could not be matched against K17.4 output.
+    the participant could not be matched against entity-extractor
+    output.
 
     ``event_id`` is a deterministic hash of
     ``(user_id, name_normalized, sorted_participant_display_names)``.
@@ -165,22 +165,26 @@ async def extract_events(
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    llm_client: LLMClient,
+    llm_client: LLMClientProtocol,
+    on_dropped: DroppedHandler | None = None,
 ) -> list[LLMEventCandidate]:
     """Extract narrative events from *text* via the user's BYOK LLM.
 
     Args:
         text: chapter or passage text. Empty/whitespace returns ``[]``
             without calling the LLM.
-        entities: entity candidates from K17.4's ``extract_entities``.
-            Used to resolve participant names to canonical IDs.
+        entities: entity candidates from ``extract_entities``. Used to
+            resolve participant names to canonical IDs.
         known_entities: canonical entity names already in the graph.
             Passed through to the LLM prompt for anchoring.
         user_id: tenant scope.
         project_id: project scope (``None`` for global).
         model_source: ``"user_model"`` or ``"platform_model"``.
         model_ref: model reference key in provider-registry.
-        llm_client: loreweave_llm SDK wrapper.
+        llm_client: any object satisfying ``LLMClientProtocol``.
+        on_dropped: optional callback invoked once per dropped item
+            with ``(operation, reason)`` — wire to your Prometheus
+            counter for quality observability.
 
     Returns:
         List of ``LLMEventCandidate`` sorted by confidence descending.
@@ -207,6 +211,7 @@ async def extract_events(
         model_ref=model_ref,
         system_prompt=system_prompt,
         text=text,
+        on_dropped=on_dropped,
     )
 
     return _postprocess(
@@ -224,7 +229,7 @@ def _build_entity_lookup(
 ) -> dict[str, LLMEntityCandidate]:
     """Case-insensitive lookup: name/alias → entity candidate.
 
-    Same pattern as K17.5's ``_build_entity_lookup``.
+    Same pattern as relation extractor's ``_build_entity_lookup``.
     """
     lookup: dict[str, LLMEntityCandidate] = {}
     for ent in entities:
@@ -323,18 +328,19 @@ def _postprocess(
     )
 
 
-# ── Phase 4a-β SDK-routed path ────────────────────────────────────────
+# ── SDK-routed path ─────────────────────────────────────────────────
 
 
 async def _extract_via_llm_client(
     *,
-    llm_client: LLMClient,
+    llm_client: LLMClientProtocol,
     user_id: str,
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     system_prompt: str,
     text: str,
+    on_dropped: DroppedHandler | None,
 ) -> list[_LLMEvent]:
     """Submit event_extraction job + wait_terminal + tolerant-parse
     `result.events`. Mirrors entity extractor's SDK path."""
@@ -390,10 +396,14 @@ async def _extract_via_llm_client(
         items = job.result.get("events", [])
         if isinstance(items, list):
             raw_items = items
-    return _tolerant_parse_events(raw_items)
+    return _tolerant_parse_events(raw_items, on_dropped=on_dropped)
 
 
-def _tolerant_parse_events(raw_items: list[Any]) -> list[_LLMEvent]:
+def _tolerant_parse_events(
+    raw_items: list[Any],
+    *,
+    on_dropped: DroppedHandler | None,
+) -> list[_LLMEvent]:
     """Drop items missing `name` or `summary` or `confidence`; tolerate
     null location/time_cue/event_date (validator coerces malformed
     event_date to None — preserved); clamp confidence; drop on enum
@@ -401,21 +411,18 @@ def _tolerant_parse_events(raw_items: list[Any]) -> list[_LLMEvent]:
     parsed: list[_LLMEvent] = []
     for item in raw_items:
         if not isinstance(item, dict):
-            knowledge_extraction_dropped_total.labels(
-                operation="event_extraction", reason="validation"
-            ).inc()
+            if on_dropped:
+                on_dropped("event_extraction", "validation")
             continue
         name = item.get("name")
         if not isinstance(name, str) or not name.strip():
-            knowledge_extraction_dropped_total.labels(
-                operation="event_extraction", reason="missing_name"
-            ).inc()
+            if on_dropped:
+                on_dropped("event_extraction", "missing_name")
             continue
         summary = item.get("summary")
         if not isinstance(summary, str) or not summary.strip():
-            knowledge_extraction_dropped_total.labels(
-                operation="event_extraction", reason="missing_kind"
-            ).inc()
+            if on_dropped:
+                on_dropped("event_extraction", "missing_kind")
             continue
         confidence = item.get("confidence")
         if not isinstance(confidence, (int, float)):
@@ -436,8 +443,7 @@ def _tolerant_parse_events(raw_items: list[Any]) -> list[_LLMEvent]:
                 confidence=confidence,
             ))
         except ValidationError:
-            knowledge_extraction_dropped_total.labels(
-                operation="event_extraction", reason="validation"
-            ).inc()
+            if on_dropped:
+                on_dropped("event_extraction", "validation")
             continue
     return parsed

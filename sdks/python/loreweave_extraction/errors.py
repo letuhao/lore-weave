@@ -1,8 +1,9 @@
-"""Phase 4a-δ — extraction-pipeline error types.
+"""Phase 4b-α — extraction-pipeline error types (moved from knowledge-service).
 
-Hoisted out of the deleted `llm_json_parser.py` so the 4 extractors and
-their tests have a stable home for `ExtractionError` / `ExtractionStage`
-after the K17.3 wrapper module retires.
+`ExtractionError` is the terminal failure type raised by the four
+extractors when the SDK call fails (transient retry exhausted,
+provider non-retry, cancelled, etc.). The `stage` field tells callers
+whether the failure is retryable at the worker level.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ class ExtractionError(Exception):
 
     `last_error` chains the underlying exception (LLMError subclass,
     JSONDecodeError, or ValidationError). `raw_content` carries the
-    last LLM output (even if malformed) so K16 job failure rows can
+    last LLM output (even if malformed) so job-failure rows can
     persist it for post-mortem debugging.
     """
 

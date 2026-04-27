@@ -1,31 +1,30 @@
-"""K17.5 — LLM-powered relation extractor.
+"""LLM-powered relation extractor (moved from knowledge-service in Phase 4b-α).
 
 Extracts (subject, predicate, object) relations from text using a
-BYOK LLM via the K17.1→K17.3 stack. Post-processes with entity
-anchoring (resolving subject/object to K17.4 entity canonical IDs)
-and deterministic `relation_id` derivation (K11.6).
+BYOK LLM via the loreweave_llm SDK (job pattern + chunking + per-op
+JSON aggregator). Post-processes with entity anchoring (resolving
+subject/object to entity canonical IDs) and deterministic
+``relation_id`` derivation.
 
 **This module does NOT write to Neo4j.** It produces
-`LLMRelationCandidate` records that K17.8 (Pass 2 orchestrator)
-feeds into K11.6's write layer.
+``LLMRelationCandidate`` records that the caller (knowledge-service
+Pass 2 writer, or any future persistence service) feeds into its own
+write layer.
 
-**Relationship to K15.4 (pattern-based triple extractor):**
-  - K15.4 is Pass 1 (SVO regex, English-only, quarantined)
-  - K17.5 is Pass 2 (LLM, multilingual, higher confidence)
-  - Both produce relation lists; K17.8 orchestrator reconciles.
+**Relationship to pattern-based detectors:** the LLM extractor is
+typically Pass 2 (higher confidence, multilingual). Pass 1 (regex /
+heuristic) results live in the caller; this library does not own
+reconciliation across passes.
 
-**Entity resolution:** K17.8 runs K17.4 (entity extraction) first,
-then passes the resulting `LLMEntityCandidate` list to K17.5 so
+**Entity resolution:** the caller runs ``extract_entities`` first,
+then passes the resulting ``LLMEntityCandidate`` list here so
 subject/object names can be resolved to canonical IDs. Relations
-whose subject or object cannot be resolved get `subject_id=None` /
-`object_id=None` / `relation_id=None` — the caller decides whether
-to create ad-hoc entity nodes or drop the relation.
+whose subject or object cannot be resolved get ``subject_id=None`` /
+``object_id=None`` / ``relation_id=None`` — the caller decides
+whether to create ad-hoc entity nodes or drop the relation.
 
-Dependencies: K17.1 (prompt loader), K17.3 (extract_json), K17.4
-(LLMEntityCandidate), K15.1 (entity_canonical_id), K11.6 (relation_id).
-
-Reference: KSA §5.1, K17.5 plan row in
-KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
+Dependencies: loreweave_llm SDK, loreweave_extraction prompts +
+canonical helpers + errors + protocol types.
 """
 
 from __future__ import annotations
@@ -37,14 +36,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.clients.llm_client import LLMClient
-from app.db.neo4j_repos.relations import relation_id as compute_relation_id
-from app.extraction.errors import ExtractionError
-from app.extraction.llm_entity_extractor import LLMEntityCandidate
-from app.extraction.llm_prompts import load_prompt
-from app.metrics import knowledge_extraction_dropped_total
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from loreweave_llm.models import ChunkingConfig
+
+from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction.canonical import (
+    relation_id as compute_relation_id,
+)
+from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.prompts import load_prompt
 
 __all__ = [
     "LLMRelationCandidate",
@@ -100,11 +101,13 @@ class LLMRelationCandidate(BaseModel):
 
     `subject_id` / `object_id` are canonical entity IDs when the
     subject/object name could be resolved against the entities
-    extracted by K17.4. ``None`` when unresolvable — K17.8 decides
-    whether to create ad-hoc entity nodes or drop the relation.
+    extracted by the entity extractor. ``None`` when unresolvable —
+    the caller decides whether to create ad-hoc entity nodes or drop
+    the relation.
 
     `relation_id` is only set when both endpoints are resolved
-    (K11.6 `relation_id` requires both `subject_id` and `object_id`).
+    (the canonical ``relation_id`` derivation requires both
+    `subject_id` and `object_id`).
     """
 
     subject: str
@@ -145,22 +148,26 @@ async def extract_relations(
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
-    llm_client: LLMClient,
+    llm_client: LLMClientProtocol,
+    on_dropped: DroppedHandler | None = None,
 ) -> list[LLMRelationCandidate]:
     """Extract relations from *text* via the user's BYOK LLM.
 
     Args:
         text: chapter or passage text. Empty/whitespace returns ``[]``
             without calling the LLM.
-        entities: entity candidates from K17.4's ``extract_entities``.
-            Used to resolve subject/object names to canonical IDs.
+        entities: entity candidates from ``extract_entities``. Used to
+            resolve subject/object names to canonical IDs.
         known_entities: canonical entity names already in the graph.
             Passed through to the LLM prompt for anchoring.
         user_id: tenant scope.
         project_id: project scope (``None`` for global).
         model_source: ``"user_model"`` or ``"platform_model"``.
         model_ref: model reference key in provider-registry.
-        llm_client: loreweave_llm SDK wrapper.
+        llm_client: any object satisfying ``LLMClientProtocol``.
+        on_dropped: optional callback invoked once per dropped item
+            with ``(operation, reason)`` — wire to your Prometheus
+            counter for quality observability.
 
     Returns:
         List of ``LLMRelationCandidate`` sorted by confidence
@@ -187,6 +194,7 @@ async def extract_relations(
         model_ref=model_ref,
         system_prompt=system_prompt,
         text=text,
+        on_dropped=on_dropped,
     )
 
     return _postprocess(
@@ -198,26 +206,27 @@ async def extract_relations(
     )
 
 
-# ── Phase 4a-β SDK-routed path ────────────────────────────────────────
+# ── SDK-routed path ─────────────────────────────────────────────────
 
 
 async def _extract_via_llm_client(
     *,
-    llm_client: LLMClient,
+    llm_client: LLMClientProtocol,
     user_id: str,
     project_id: str | None,
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     system_prompt: str,
     text: str,
+    on_dropped: DroppedHandler | None,
 ) -> list[_LLMRelation]:
     """Submit relation_extraction job + wait_terminal + tolerant-parse
     `result.relations`. Mirrors entity extractor's SDK path:
       - system message preserved across chunks (instructions + KNOWN_ENTITIES)
       - user message = chapter text (chunked on \\n\\n at gateway)
-      - ChunkingConfig(strategy=paragraphs, size=15) per ADR §6 Q1
+      - ChunkingConfig(strategy=paragraphs, size=15)
       - Cancelled job raises ExtractionError(stage='cancelled')
-      - Tolerant parser drops items missing required fields per LOW#11
+      - Tolerant parser drops items missing required fields
     """
     try:
         job = await llm_client.submit_and_wait(
@@ -271,25 +280,27 @@ async def _extract_via_llm_client(
         items = job.result.get("relations", [])
         if isinstance(items, list):
             raw_items = items
-    return _tolerant_parse_relations(raw_items)
+    return _tolerant_parse_relations(raw_items, on_dropped=on_dropped)
 
 
-def _tolerant_parse_relations(raw_items: list[Any]) -> list[_LLMRelation]:
+def _tolerant_parse_relations(
+    raw_items: list[Any],
+    *,
+    on_dropped: DroppedHandler | None,
+) -> list[_LLMRelation]:
     """Drop items missing `predicate` or `confidence`; tolerate
     null subject/object endpoints (post-processed downstream); clamp
     confidence to [0, 1]; drop on enum-validation failure."""
     parsed: list[_LLMRelation] = []
     for item in raw_items:
         if not isinstance(item, dict):
-            knowledge_extraction_dropped_total.labels(
-                operation="relation_extraction", reason="validation"
-            ).inc()
+            if on_dropped:
+                on_dropped("relation_extraction", "validation")
             continue
         predicate = item.get("predicate")
         if not isinstance(predicate, str) or not predicate.strip():
-            knowledge_extraction_dropped_total.labels(
-                operation="relation_extraction", reason="missing_name"
-            ).inc()
+            if on_dropped:
+                on_dropped("relation_extraction", "missing_name")
             continue
         confidence = item.get("confidence")
         if not isinstance(confidence, (int, float)):
@@ -307,9 +318,8 @@ def _tolerant_parse_relations(raw_items: list[Any]) -> list[_LLMRelation]:
                 confidence=confidence,
             ))
         except ValidationError:
-            knowledge_extraction_dropped_total.labels(
-                operation="relation_extraction", reason="validation"
-            ).inc()
+            if on_dropped:
+                on_dropped("relation_extraction", "validation")
             continue
     return parsed
 
@@ -323,8 +333,8 @@ def _build_entity_lookup(
     """Case-insensitive lookup: name/alias → entity candidate.
 
     Priority order via setdefault: first-inserted wins. Entities are
-    ordered by confidence (K17.4 sorts descending), so higher-confidence
-    entities claim the key first.
+    ordered by confidence (entity extractor sorts descending), so
+    higher-confidence entities claim the key first.
     """
     lookup: dict[str, LLMEntityCandidate] = {}
     for ent in entities:

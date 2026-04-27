@@ -1,5 +1,8 @@
 """K17.1 — unit tests for the LLM extraction prompt loader.
 
+Phase 4b-α: prompt loader moved from knowledge-service into the
+``loreweave_extraction`` library; this test moved alongside.
+
 Pure-python, no LLM calls. Exercises substitution, strict-missing-key
 behavior, unknown-prompt rejection, and the closed-set guard.
 """
@@ -8,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.extraction.llm_prompts import (
+from loreweave_extraction.prompts import (
     ALLOWED_PROMPT_NAMES,
     load_prompt,
 )
@@ -22,7 +25,7 @@ SYSTEM_ONLY_PROMPT_NAMES = sorted(
 TEXT_BEARING_PROMPT_NAMES = sorted(ALLOWED_PROMPT_NAMES - set(SYSTEM_ONLY_PROMPT_NAMES))
 
 
-# ── happy path: every prompt loads and substitutes ───────────────────
+# happy path: every prompt loads and substitutes
 
 
 @pytest.mark.parametrize("name", TEXT_BEARING_PROMPT_NAMES)
@@ -55,7 +58,7 @@ def test_k17_1_load_system_only_prompt_substitutes_known_entities_only(name):
     assert "Return only the JSON object" in out or "return only the JSON object" in out.lower()
 
 
-# ── strict-missing-key ───────────────────────────────────────────────
+# strict-missing-key
 
 
 def test_k17_1_missing_substitution_raises():
@@ -77,7 +80,7 @@ def test_k17_1_extra_substitution_is_ignored():
     assert "x" in out
 
 
-# ── unknown-name guard ───────────────────────────────────────────────
+# unknown-name guard
 
 
 def test_k17_1_unknown_prompt_raises():
@@ -92,10 +95,7 @@ def test_k17_1_path_traversal_rejected():
         load_prompt("../../../etc/passwd", text="x", known_entities="[]")
 
 
-# ── JSON fence integrity (no accidental format_map expansion) ───────
-
-
-# ── R1/I3: every prompt must declare both placeholders ────────────
+# R1/I3: every prompt must declare both placeholders
 
 
 @pytest.mark.parametrize("name", TEXT_BEARING_PROMPT_NAMES)
@@ -105,7 +105,7 @@ def test_k17_1_every_prompt_has_required_placeholders(name):
     silently return a half-substituted string. Catch that drift
     by asserting both placeholders appear in the pre-substitution
     source."""
-    from app.extraction.llm_prompts import _load_raw
+    from loreweave_extraction.prompts import _load_raw
     raw = _load_raw(name)
     assert "{text}" in raw, f"{name}: missing {{text}} placeholder"
     assert "{known_entities}" in raw, (
@@ -119,7 +119,7 @@ def test_system_only_prompt_has_known_entities_but_no_text_placeholder(name):
     extractor: known_entities placeholder MUST be present; text
     placeholder MUST be absent. Drift in either direction is a
     regression."""
-    from app.extraction.llm_prompts import _load_raw
+    from loreweave_extraction.prompts import _load_raw
     raw = _load_raw(name)
     assert "{known_entities}" in raw, f"{name} missing {{known_entities}}"
     assert "{text}" not in raw, (
@@ -146,10 +146,10 @@ def test_system_only_load_silently_drops_text_kwarg_documented_behavior(name):
     )
     # Confirm the dropped text is NOT in the output (no surprise leak).
     assert "THIS WILL BE SILENTLY DROPPED" not in out
-    # The intended use site (llm_*_extractor._extract_via_llm_client)
-    # passes `text` as the user message content, NOT as a load_prompt
-    # kwarg — so this drop is benign in production. The test exists
-    # purely to document the gotcha.
+    # The intended use site (extractors._extract_via_llm_client) passes
+    # `text` as the user message content, NOT as a load_prompt kwarg —
+    # so this drop is benign in production. The test exists purely to
+    # document the gotcha.
 
 
 @pytest.mark.parametrize("name", TEXT_BEARING_PROMPT_NAMES)

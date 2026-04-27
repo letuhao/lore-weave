@@ -1,9 +1,9 @@
 """Unit tests for K17.4 — LLM entity extractor (SDK path only).
 
-Phase 4a-δ: legacy ProviderClient path was removed; the extractor now
-takes only ``llm_client: LLMClient``. Uses a FakeLLMClient (duck-typed
-stand-in for ``app.clients.llm_client.LLMClient``) to drive the
-extractor without any network calls. Validates:
+Phase 4b-α: extractor moved into ``loreweave_extraction`` library; this
+test file moved alongside. Uses a FakeLLMClient (duck-typed stand-in
+for the SDK ``LLMClientProtocol``) to drive the extractor without any
+network calls. Validates:
   - Happy path with canonical ID stability
   - Empty/whitespace input -> no LLM call
   - Known entities anchoring
@@ -21,9 +21,9 @@ from typing import Any, cast
 
 import pytest
 
-from app.db.neo4j_repos.canonical import entity_canonical_id
-from app.extraction.errors import ExtractionError
-from app.extraction.llm_entity_extractor import (
+from loreweave_extraction.canonical import entity_canonical_id
+from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.extractors.entity import (
     EntityExtractionResponse,
     LLMEntityCandidate,
     extract_entities,
@@ -32,14 +32,11 @@ from loreweave_llm.errors import LLMTransientRetryNeededError
 from loreweave_llm.models import Job, JobError
 
 
-# -- FakeLLMClient (duck-typed stand-in for LLMClient) ---------------
+# -- FakeLLMClient (duck-typed stand-in for LLMClientProtocol) -------
 
 
 class FakeLLMClient:
-    """Captures submit_and_wait kwargs + replays a scripted Job.
-
-    Mirrors ``_FakeLLMClientForSummary`` in test_regenerate_summaries.py
-    but tailored to the entity_extraction operation envelope."""
+    """Captures submit_and_wait kwargs + replays a scripted Job."""
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -556,6 +553,41 @@ async def test_extract_entities_via_llm_client_drops_malformed_items():
 
 
 @pytest.mark.asyncio
+async def test_extract_entities_on_dropped_callback_invoked_per_dropped_item():
+    """Phase 4b-α /review-impl MED#2 — verify the on_dropped callback
+    fires once per malformed item with the right (operation, reason)
+    tuple. Locks the contract that allows knowledge-service to keep
+    its Prometheus counter populated through the library boundary."""
+    from unittest.mock import MagicMock
+
+    fake = FakeLLMClient()
+    fake.queue_job(
+        status="completed",
+        entities=[
+            {"name": "Holmes", "kind": "person", "confidence": 0.9},  # valid
+            {"kind": "person"},  # missing_name
+            {"name": "Watson"},  # missing_kind
+            "not-a-dict",  # validation
+            {"name": "Bad", "kind": "alien"},  # validation (kind not in Literal)
+        ],
+    )
+    on_dropped = MagicMock()
+    await extract_entities(
+        text="...", known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref=USER_ID,
+        llm_client=cast(Any, fake),
+        on_dropped=on_dropped,
+    )
+    calls = {c.args for c in on_dropped.call_args_list}
+    assert ("entity_extraction", "missing_name") in calls
+    assert ("entity_extraction", "missing_kind") in calls
+    assert ("entity_extraction", "validation") in calls
+    # Total drops: 4 (missing_name, missing_kind, validation x2)
+    assert on_dropped.call_count == 4
+
+
+@pytest.mark.asyncio
 async def test_extract_entities_via_llm_client_cancelled_raises_with_stage():
     """Per /review-impl MED#3 — cancelled job MUST raise a distinct
     ExtractionError(stage='cancelled') so the orchestrator/runner can
@@ -661,7 +693,7 @@ async def test_extract_entities_via_llm_client_cross_chunk_alias_variant_known_l
     EXTRACTED AS TWO DISTINCT ENTITIES because:
       - chunk 1's LLM never sees 'Helen Stoner' so it can't snap to it
       - aggregator's (name, kind) dedup key won't merge them
-      - knowledge-service's _postprocess only anchors against the
+      - the library's _postprocess only anchors against the
         caller-supplied known_entities, not against earlier extractions
         from the same job
 
@@ -669,7 +701,7 @@ async def test_extract_entities_via_llm_client_cross_chunk_alias_variant_known_l
     the result-shape layer: when the LLM returns name variants of one
     person across chunks, the extractor surfaces both. Phase 6 fix:
     gateway carries chunk-N entities into chunk-N+1 prompt OR
-    knowledge-service adds a post-aggregation alias-substring pass."""
+    extraction library adds a post-aggregation alias-substring pass."""
     fake = FakeLLMClient()
     fake.queue_job(
         status="completed",
@@ -692,7 +724,7 @@ async def test_extract_entities_via_llm_client_cross_chunk_alias_variant_known_l
     )
     # CURRENT BEHAVIOR (4a-α-followup): both variants survive as
     # distinct LLMEntityCandidate rows because canonical_id hashes
-    # over the full name. When Phase 6 (or knowledge-service post-
+    # over the full name. When Phase 6 (or extraction library post-
     # aggregation alias merge) lands, this test should FLIP to assert
     # they were merged into one candidate with aliases=['Miss Stoner'].
     names = sorted(c.name for c in result)

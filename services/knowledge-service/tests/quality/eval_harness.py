@@ -27,7 +27,7 @@ from app.db.neo4j_repos.canonical import canonicalize_entity_name
 # K17.5 predicate normalizer — intentional private-API import so the
 # eval uses the EXACT normalization the extractor applies. Duplicating
 # this would cause silent quality-eval drift if K17.5 changes.
-from app.extraction.llm_relation_extractor import _normalize_predicate
+from loreweave_extraction.extractors.relation import _normalize_predicate
 
 __all__ = [
     "ExpectedEntity",
