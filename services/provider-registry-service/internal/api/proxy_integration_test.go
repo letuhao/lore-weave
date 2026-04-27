@@ -165,7 +165,10 @@ func TestDoProxyRewritesJSONModelField(t *testing.T) {
 	userID, userModelID := seedUserModel(t, srv, pool, upstream.URL, "gpt-4-real", "sk-test")
 
 	clientBody := []byte(`{"model":"client-sent-this","messages":[{"role":"user","content":"hi"}],"temperature":0.3}`)
-	req := buildProxyRequest(t, "POST", "v1/chat/completions", clientBody, "application/json")
+	// Phase 4d: chat/completions was retired; tests exercise rewrite
+	// mechanics through v1/audio/speech (TTS — JSON body, still
+	// allowed via proxy until audio adapter ships in Phase 5b).
+	req := buildProxyRequest(t, "POST", "v1/audio/speech", clientBody, "application/json")
 
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, userID, "user_model", userModelID.String())
@@ -174,9 +177,9 @@ func TestDoProxyRewritesJSONModelField(t *testing.T) {
 		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
 	}
 
-	// Upstream path should be {base}/v1/chat/completions.
-	if capturedPath != "/v1/chat/completions" {
-		t.Errorf("upstream path = %q, want /v1/chat/completions", capturedPath)
+	// Upstream path should be {base}/v1/audio/speech.
+	if capturedPath != "/v1/audio/speech" {
+		t.Errorf("upstream path = %q, want /v1/audio/speech", capturedPath)
 	}
 
 	// The rewritten body should have model="gpt-4-real", not "client-sent-this".
@@ -208,7 +211,8 @@ func TestDoProxyForwardsAuthorizationHeader(t *testing.T) {
 
 	userID, userModelID := seedUserModel(t, srv, pool, upstream.URL, "gpt-4", "sk-secret-123")
 
-	req := buildProxyRequest(t, "POST", "v1/chat/completions",
+	// Phase 4d: see TestDoProxyRewritesJSONModelField — path swap.
+	req := buildProxyRequest(t, "POST", "v1/audio/speech",
 		[]byte(`{"model":"x","messages":[]}`), "application/json")
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, userID, "user_model", userModelID.String())
@@ -240,7 +244,8 @@ func TestDoProxyBodyTooLargeRejected(t *testing.T) {
 	body = append(body, big...)
 	body = append(body, []byte(`"}]}`)...)
 
-	req := buildProxyRequest(t, "POST", "v1/chat/completions", body, "application/json")
+	// Phase 4d: see TestDoProxyRewritesJSONModelField — path swap.
+	req := buildProxyRequest(t, "POST", "v1/audio/speech", body, "application/json")
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, userID, "user_model", userModelID.String())
 
@@ -262,7 +267,8 @@ func TestDoProxyInvalidJSONRejected(t *testing.T) {
 
 	userID, userModelID := seedUserModel(t, srv, pool, upstream.URL, "gpt-4", "sk-test")
 
-	req := buildProxyRequest(t, "POST", "v1/chat/completions",
+	// Phase 4d: see TestDoProxyRewritesJSONModelField — path swap.
+	req := buildProxyRequest(t, "POST", "v1/audio/speech",
 		[]byte(`not valid json at all`), "application/json")
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, userID, "user_model", userModelID.String())
@@ -352,7 +358,10 @@ func TestDoProxyUserModelWithEmptyCredentialRejected(t *testing.T) {
 			`DELETE FROM provider_credentials WHERE provider_credential_id=$1`, credentialID)
 	})
 
-	req := buildProxyRequest(t, "POST", "v1/chat/completions",
+	// Phase 4d /review-impl LOW#6 follow-up: deprecation guard now
+	// fires before credential resolution, so this test must use a
+	// non-deprecated path or it'd 410 instead of 500.
+	req := buildProxyRequest(t, "POST", "v1/audio/speech",
 		[]byte(`{"model":"x","messages":[]}`), "application/json")
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, userID, "user_model", userModelID.String())
@@ -372,7 +381,8 @@ func TestDoProxyModelNotFound(t *testing.T) {
 	userID := uuid.New()
 	randomModelID := uuid.New()
 
-	req := buildProxyRequest(t, "POST", "v1/chat/completions",
+	// Phase 4d /review-impl LOW#6 follow-up: see above.
+	req := buildProxyRequest(t, "POST", "v1/audio/speech",
 		[]byte(`{"model":"x","messages":[]}`), "application/json")
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, userID, "user_model", randomModelID.String())
@@ -392,7 +402,8 @@ func TestDoProxyModelNotFound(t *testing.T) {
 func TestDoProxyInvalidModelSourceRejected(t *testing.T) {
 	srv, _ := integrationServer(t)
 
-	req := buildProxyRequest(t, "POST", "v1/chat/completions",
+	// Phase 4d /review-impl LOW#6 follow-up: see above.
+	req := buildProxyRequest(t, "POST", "v1/audio/speech",
 		[]byte(`{"model":"x","messages":[]}`), "application/json")
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, uuid.New(), "garbage_source", uuid.NewString())
@@ -443,7 +454,8 @@ func TestDoProxyPlatformModelBypassesC10Guard(t *testing.T) {
 			`DELETE FROM platform_models WHERE platform_model_id=$1`, platformModelID)
 	})
 
-	req := buildProxyRequest(t, "POST", "v1/chat/completions",
+	// Phase 4d: see TestDoProxyRewritesJSONModelField — path swap.
+	req := buildProxyRequest(t, "POST", "v1/audio/speech",
 		[]byte(`{"model":"x","messages":[]}`), "application/json")
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, uuid.New(), "platform_model", platformModelID.String())
@@ -528,7 +540,10 @@ func TestDoProxyDecryptFailedOnCorruptCiphertext(t *testing.T) {
 			`DELETE FROM provider_credentials WHERE provider_credential_id=$1`, credentialID)
 	})
 
-	req := buildProxyRequest(t, "POST", "v1/chat/completions",
+	// Phase 4d /review-impl LOW#6 follow-up: deprecation guard now
+	// fires before credential resolution, so this test must use a
+	// non-deprecated path or it'd 410 instead of 500.
+	req := buildProxyRequest(t, "POST", "v1/audio/speech",
 		[]byte(`{"model":"x","messages":[]}`), "application/json")
 	rr := httptest.NewRecorder()
 	srv.doProxy(rr, req, userID, "user_model", userModelID.String())
@@ -538,5 +553,88 @@ func TestDoProxyDecryptFailedOnCorruptCiphertext(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "PROXY_DECRYPT_FAILED") {
 		t.Errorf("expected error code PROXY_DECRYPT_FAILED in body, got %s", rr.Body.String())
+	}
+}
+
+// Phase 4d — defense-in-depth: paths retired by isDeprecatedProxyPath
+// must reject with 410 Gone + PROXY_PATH_DEPRECATED rather than
+// silently forwarding to the upstream provider. Credential resolution
+// must still succeed first (unrelated paths still proxy through), so
+// we seed a real user_model and verify the 410 fires AFTER decrypt
+// but BEFORE the URL build / upstream call.
+func TestDoProxyDeprecatedPathsReturn410(t *testing.T) {
+	srv, pool := integrationServer(t)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream MUST NOT be called for deprecated path: %s", r.URL.Path)
+	}))
+	t.Cleanup(upstream.Close)
+
+	userID, userModelID := seedUserModel(t, srv, pool, upstream.URL, "gpt-4", "sk-test")
+
+	cases := []struct {
+		name string
+		path string
+	}{
+		{"chat-completions", "v1/chat/completions"},
+		{"completions", "v1/completions"},
+		{"embeddings", "v1/embeddings"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			req := buildProxyRequest(t, "POST", tc.path,
+				[]byte(`{"model":"x","messages":[]}`), "application/json")
+			rr := httptest.NewRecorder()
+			srv.doProxy(rr, req, userID, "user_model", userModelID.String())
+
+			if rr.Code != http.StatusGone {
+				t.Fatalf("expected 410, got %d body=%s", rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "PROXY_PATH_DEPRECATED") {
+				t.Errorf("expected error code PROXY_PATH_DEPRECATED in body, got %s", rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "/v1/llm/jobs") {
+				t.Errorf("expected error message to point at /v1/llm/jobs, got %s", rr.Body.String())
+			}
+		})
+	}
+}
+
+// Phase 4d — sibling: audio paths MUST still pass through (chat-service
+// voice STT/TTS depend on this until Phase 5b ships the audio adapter).
+// This pins the carve-out so a future "expand the deny-list" change
+// doesn't accidentally break voice.
+func TestDoProxyAudioPathsNotDeprecated(t *testing.T) {
+	srv, pool := integrationServer(t)
+
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(200)
+	}))
+	t.Cleanup(upstream.Close)
+
+	userID, userModelID := seedUserModel(t, srv, pool, upstream.URL, "whisper-1", "sk-test")
+
+	for _, path := range []string{"v1/audio/transcriptions", "v1/audio/speech"} {
+		path := path
+		t.Run(path, func(t *testing.T) {
+			upstreamCalled = false
+			req := buildProxyRequest(t, "POST", path,
+				[]byte("--b\r\nContent-Disposition: form-data; name=\"x\"\r\n\r\nx\r\n--b--\r\n"),
+				"multipart/form-data; boundary=b")
+			rr := httptest.NewRecorder()
+			srv.doProxy(rr, req, userID, "user_model", userModelID.String())
+
+			if rr.Code == http.StatusGone {
+				t.Fatalf("audio path %q wrongly rejected as deprecated: %s",
+					path, rr.Body.String())
+			}
+			if !upstreamCalled {
+				t.Errorf("audio path %q never reached upstream (got %d %s)",
+					path, rr.Code, rr.Body.String())
+			}
+		})
 	}
 }

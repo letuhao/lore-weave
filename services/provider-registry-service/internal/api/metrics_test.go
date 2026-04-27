@@ -44,7 +44,10 @@ func TestMetricsEndpointExposesProxyCounters(t *testing.T) {
 	body := w.Body.String()
 	for _, want := range []string{
 		"provider_registry_proxy_requests_total",
-		"provider_registry_invoke_requests_total",
+		// provider_registry_invoke_requests_total — Phase 4d:
+		// retired alongside invokeModel / internalInvokeModel
+		// handlers; the unified /v1/llm/jobs gateway exposes its
+		// own per-operation metrics.
 		"provider_registry_embed_requests_total",
 		"provider_registry_verify_requests_total",
 	} {

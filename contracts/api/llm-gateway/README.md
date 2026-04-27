@@ -26,6 +26,7 @@ for principles, audit findings, and migration phases.
 - **Phase 1** (next) — gateway implementation of `POST /v1/llm/stream`
 - **Phase 2** — gateway implementation of `POST /v1/llm/jobs`
 - **Phase 3+** — chunking, aggregation, service migrations
+- **Phase 4d** ✅ — legacy buffered-invoke endpoints retired (see below)
 
 ## Coexistence with `model-registry` contract
 
@@ -33,8 +34,23 @@ for principles, audit findings, and migration phases.
 endpoints (`POST /v1/model-registry/providers`, `GET /v1/model-registry/user-models`,
 etc.). It still owns those concerns.
 
-The legacy `POST /v1/model-registry/invoke` endpoint is the **buffered
-sync invoke** that this contract replaces. Per the refactor plan §4d,
-`/v1/model-registry/invoke` and `/internal/invoke` will be removed in
-Phase 4d after grep+log confirms zero callers. Until then, both contracts
-coexist.
+### Phase 4d retirement
+
+The following legacy endpoints have been removed:
+
+- `POST /v1/model-registry/invoke` — buffered sync invoke (public)
+- `POST /internal/invoke` — buffered sync invoke (service-to-service)
+- `POST /internal/proxy/v1/chat/completions` — transparent proxy (chat)
+- `POST /internal/proxy/v1/completions` — transparent proxy (legacy)
+- `POST /internal/proxy/v1/embeddings` — transparent proxy (embeddings)
+
+The proxy paths above now respond with `410 Gone` + error code
+`PROXY_PATH_DEPRECATED` as defense-in-depth so any future caller that
+slips past code review fails loudly.
+
+Audio paths (`/internal/proxy/v1/audio/transcriptions`,
+`/internal/proxy/v1/audio/speech`) still pass through; chat-service
+voice depends on them until the audio adapter ships in Phase 5b.
+
+All non-audio LLM operations now go through `POST /v1/llm/jobs` (or
+`POST /v1/llm/stream` for SSE) via the `loreweave_llm` SDK.

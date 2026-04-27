@@ -20,9 +20,9 @@ import (
 )
 
 // CredResolver looks up the provider details a job needs before
-// invocation. Server already has this logic inline (see
-// invokeModel/internalInvokeModel/doProxy); the worker uses a small
-// callback to avoid pulling those into this package.
+// invocation. Server already has this logic inline (see doProxy);
+// the worker uses a small callback to avoid pulling those into this
+// package. (invokeModel / internalInvokeModel removed in Phase 4d.)
 type CredResolver func(
 	ctx context.Context,
 	ownerUserID, modelRef uuid.UUID,

@@ -435,38 +435,10 @@ paths:
         '404':
           $ref: '#/components/responses/ErrorResponse'
 
-  /v1/model-registry/invoke:
-    post:
-      tags: [invoke]
-      summary: Invoke model through strict provider gateway route
-      operationId: invokeModel
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/InvokeModelRequest'
-      responses:
-        '200':
-          description: Invocation result accepted for caller
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InvokeModelResponse'
-        '400':
-          $ref: '#/components/responses/ErrorResponse'
-        '401':
-          $ref: '#/components/responses/ErrorResponse'
-        '402':
-          $ref: '#/components/responses/ErrorResponse'
-        '409':
-          $ref: '#/components/responses/ErrorResponse'
-        '429':
-          $ref: '#/components/responses/ErrorResponse'
-        '502':
-          $ref: '#/components/responses/ErrorResponse'
+  # Phase 4d: /v1/model-registry/invoke retired. All callers migrated
+  # to the unified async-job gateway at /v1/llm/jobs (see
+  # contracts/api/llm-gateway/v1/openapi.yaml). The InvokeModel*
+  # schemas were removed in the same change.
 
 components:
   securitySchemes:
@@ -849,33 +821,8 @@ components:
         capability_flags:
           $ref: '#/components/schemas/ModelCapabilityFlags'
 
-    InvokeModelRequest:
-      type: object
-      required: [model_source, model_ref, input]
-      properties:
-        model_source:
-          type: string
-          enum: [user_model, platform_model]
-        model_ref:
-          type: string
-          format: uuid
-        input:
-          type: object
-          additionalProperties: true
-        trace_context:
-          type: object
-          additionalProperties: true
 
-    InvokeModelResponse:
-      type: object
-      required: [request_id, usage_log_id, output]
-      properties:
-        request_id:
-          type: string
-          format: uuid
-        usage_log_id:
-          type: string
-          format: uuid
-        output:
-          type: object
-          additionalProperties: true
+    # Phase 4d: InvokeModelRequest + InvokeModelResponse schemas
+    # removed alongside the /v1/model-registry/invoke path retirement.
+    # Use the SubmitJobRequest / Job schemas in
+    # contracts/api/llm-gateway/v1/openapi.yaml instead.

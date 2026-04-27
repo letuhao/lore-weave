@@ -94,9 +94,10 @@ func (s *Server) doLlmStream(w http.ResponseWriter, r *http.Request, userID uuid
 		return
 	}
 
-	// Resolve credentials. Mirrors invokeModel's pattern but inlined here
+	// Resolve credentials. Mirrors doProxy's pattern but inlined here
 	// to keep the diff focused; the duplication will be eliminated in a
-	// later cleanup cycle if it bothers us.
+	// later cleanup cycle if it bothers us. (Originally referenced
+	// invokeModel, retired in Phase 4d.)
 	var providerKind, providerModelName, endpointBaseURL, secret string
 	if in.ModelSource == "user_model" {
 		var secretCipher string

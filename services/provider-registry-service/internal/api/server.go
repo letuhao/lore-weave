@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -75,9 +76,10 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier) *
 	return s
 }
 
-// resolveJobCreds — adapter for jobs.Worker. Mirrors the inline logic
-// in invokeModel/internalInvokeModel/doProxy without dragging the
-// http.Server through the jobs package.
+// resolveJobCreds — adapter for jobs.Worker. Mirrors the inline
+// credential-resolution logic in doProxy without dragging the
+// http.Server through the jobs package. (invokeModel /
+// internalInvokeModel handlers retired in Phase 4d.)
 func (s *Server) resolveJobCreds(
 	ctx context.Context,
 	ownerUserID, modelRef uuid.UUID,
@@ -196,7 +198,9 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/platform-models/{platform_model_id}", s.patchPlatformModel)
 		r.Delete("/platform-models/{platform_model_id}", s.deletePlatformModel)
 
-		r.Post("/invoke", s.invokeModel)
+		// Phase 4d: /v1/model-registry/invoke retired. All callers
+		// migrated to /v1/llm/jobs (Phase 4a/b/c). Use the SDK's
+		// submit_job + wait_terminal pattern instead.
 		r.Get("/models/{model_ref}/context-window", s.getModelContextWindow)
 		// Public proxy — forwards any content-type to provider with JWT auth.
 		// Used for STT (multipart file upload) and TTS (binary response).
@@ -217,9 +221,13 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Get("/credentials/{model_source}/{model_ref}", s.getInternalCredentials)
-		r.Post("/invoke", s.internalInvokeModel)
+		// Phase 4d: /internal/invoke retired. Service-to-service
+		// callers use /internal/llm/jobs via the loreweave_llm SDK.
 		// Transparent proxy — forwards any content-type (multipart, binary, JSON) to provider
 		// with credential injection. Used for STT (file upload) and TTS (binary response).
+		// Phase 4d: chat-completion paths through this proxy are
+		// blocked at request time by doProxy (defense-in-depth);
+		// audio paths (transcriptions, speech) pass through.
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
 
@@ -322,9 +330,50 @@ WHERE platform_model_id=$1 AND status='active'
 	writeJSON(w, http.StatusOK, out)
 }
 
+// isDeprecatedProxyPath returns true for any path that the Phase 4d
+// retirement closed. Currently catches chat-completion + embeddings
+// (all callers migrated to /v1/llm/jobs). Audio paths
+// (transcriptions, speech) and any other future-allowed path return
+// false and pass through to the upstream provider unchanged.
+//
+// Defense-in-depth normalization (caught by /review-impl on the
+// initial Phase 4d implementation):
+//   - leading slashes trimmed so "//v1/chat/..." can't bypass
+//   - path.Clean collapses "./" and "../" so "v1/audio/../chat/completions"
+//     can't bypass (Go net/http and chi do NOT normalize by default)
+//   - lowercased before compare so "V1/CHAT/COMPLETIONS" can't bypass
+//     against case-insensitive upstreams
+func isDeprecatedProxyPath(targetPath string) bool {
+	for len(targetPath) > 0 && targetPath[0] == '/' {
+		targetPath = targetPath[1:]
+	}
+	if targetPath == "" {
+		return false
+	}
+	// path.Clean operates on slash-paths and collapses .. / . / //.
+	// It can re-introduce a leading "/" (e.g. ".//x" → "/x") so we
+	// re-trim afterwards.
+	cleaned := strings.ToLower(path.Clean(targetPath))
+	for len(cleaned) > 0 && cleaned[0] == '/' {
+		cleaned = cleaned[1:]
+	}
+	deprecated := []string{
+		"v1/chat/completions",
+		"v1/completions",
+		"v1/embeddings",
+	}
+	for _, p := range deprecated {
+		if cleaned == p {
+			return true
+		}
+	}
+	return false
+}
+
 // publicProxy is the JWT-authenticated version of the transparent proxy.
 // Used by the frontend via gateway: POST /v1/model-registry/proxy/v1/audio/transcriptions?model_source=user_model&model_ref=...
-// The user_id is extracted from the JWT token (same as invokeModel).
+// Phase 4d: chat-completion paths via this proxy are blocked at request
+// time by isDeprecatedProxyPath in doProxy.
 func (s *Server) publicProxy(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
@@ -375,6 +424,26 @@ func (s *Server) internalProxy(w http.ResponseWriter, r *http.Request) {
 // unchanged, injects the decrypted provider API key as Authorization, and streams the
 // upstream response back.
 func (s *Server) doProxy(w http.ResponseWriter, r *http.Request, userID uuid.UUID, modelSource string, modelRefStr string) {
+	// Phase 4d defense-in-depth: deprecated LLM paths (chat-completions,
+	// completions, embeddings) are blocked here BEFORE any DB work so
+	// developers mid-migration get a 410 with a clear "use /v1/llm/jobs"
+	// hint, rather than a misleading 404 from credential resolution if
+	// their stale request happens to carry stale creds. Audio paths
+	// pass through because the audio adapter hasn't shipped yet.
+	// /review-impl LOW#6 follow-up.
+	targetPath := chi.URLParam(r, "*")
+	if targetPath == "" {
+		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
+		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "target path required")
+		return
+	}
+	if isDeprecatedProxyPath(targetPath) {
+		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
+		writeError(w, http.StatusGone, "PROXY_PATH_DEPRECATED",
+			"this proxy path was retired in Phase 4d — use /v1/llm/jobs (or /v1/llm/stream for SSE) via the loreweave_llm SDK instead")
+		return
+	}
+
 	modelRef, err := uuid.Parse(modelRefStr)
 	if err != nil {
 		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
@@ -463,12 +532,7 @@ WHERE platform_model_id=$1 AND status='active'
 	}
 
 	// Build target URL: {base_url}/{target_path}
-	targetPath := chi.URLParam(r, "*")
-	if targetPath == "" {
-		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "target path required")
-		return
-	}
+	// (targetPath was extracted + Phase-4d-guarded at the top of doProxy.)
 	targetURL := buildProxyTargetURL(providerKind, endpointBaseURL, targetPath)
 
 	// K17.2a — transparent model rewrite for JSON bodies.
@@ -1710,297 +1774,6 @@ func (s *Server) deletePlatformModel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) invokeModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
-	if !ok {
-		InvokeRequestsTotal.WithLabelValues(OutcomeAuthFailed).Inc()
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	var in struct {
-		ModelSource string         `json:"model_source"`
-		ModelRef    string         `json:"model_ref"`
-		Input       map[string]any `json:"input"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
-		return
-	}
-	modelRef, err := uuid.Parse(in.ModelRef)
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_ref")
-		return
-	}
-	var providerKind, providerModelName, endpointBaseURL, secret string
-	var modelID uuid.UUID
-	if in.ModelSource == "user_model" {
-		var secretCipher string
-		err = s.pool.QueryRow(r.Context(), `
-SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
-FROM user_models um
-JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
-WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(&modelID, &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
-		if err == pgx.ErrNoRows {
-			InvokeRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
-			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "user model not found or inactive")
-			return
-		}
-		if err != nil {
-			InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
-			return
-		}
-		// D-PROXY-01 — see doProxy comment. Invalid state that would
-		// otherwise hit upstream 401 with an unhelpful error body.
-		if secretCipher == "" {
-			InvokeRequestsTotal.WithLabelValues(OutcomeMissingCredential).Inc()
-			writeError(w, http.StatusInternalServerError,
-				"M03_MISSING_CREDENTIAL",
-				"user_model has no provider credential ciphertext")
-			return
-		}
-		secret, err = s.decryptSecret(secretCipher)
-		if err != nil {
-			InvokeRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
-			return
-		}
-	} else if in.ModelSource == "platform_model" {
-		err = s.pool.QueryRow(r.Context(), `
-SELECT platform_model_id, provider_kind, provider_model_name
-FROM platform_models
-WHERE platform_model_id=$1 AND status='active'
-`, modelRef).Scan(&modelID, &providerKind, &providerModelName)
-		if err == pgx.ErrNoRows {
-			InvokeRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
-			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "platform model not found or inactive")
-			return
-		}
-		if err != nil {
-			InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve platform model")
-			return
-		}
-		// Platform model route intentionally requires adapter path only; secret/endpoint handled by adapter config.
-	} else {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_source")
-		return
-	}
-	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "model route violation")
-		return
-	}
-	output, usage, err := adapter.Invoke(r.Context(), endpointBaseURL, secret, providerModelName, in.Input)
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
-		writeError(w, http.StatusBadGateway, "M03_PROVIDER_INVOKE_FAILED", "provider invoke failed")
-		return
-	}
-	requestID := uuid.New()
-	logID, decision, billedCost, err := s.recordInvocation(r.Context(), map[string]any{
-		"request_id":     requestID,
-		"owner_user_id":  userID,
-		"provider_kind":  providerKind,
-		"model_source":   in.ModelSource,
-		"model_ref":      modelID,
-		"input_tokens":   usage.InputTokens,
-		"output_tokens":  usage.OutputTokens,
-		"input_payload":  in.Input,
-		"output_payload": output,
-		"request_status": "success",
-	})
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-		writeError(w, http.StatusBadGateway, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
-		return
-	}
-	if decision == "rejected" {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusPaymentRequired, "M03_BILLING_REJECTED", "quota and credits exhausted")
-		return
-	}
-	InvokeRequestsTotal.WithLabelValues(OutcomeOK).Inc()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"request_id":    requestID,
-		"usage_log_id":  logID,
-		"output":        output,
-		"usage": map[string]any{
-			"input_tokens":  usage.InputTokens,
-			"output_tokens": usage.OutputTokens,
-		},
-		"billing_cost":  billedCost,
-		"billing_mode":  decision,
-		"provider_kind": providerKind,
-	})
-}
-
-// internalInvokeModel handles service-to-service model invocation.
-// Accepts user_id as query param (required). The request body uses a flat format:
-// { model_source, model_ref, messages, temperature, max_tokens }
-// which gets remapped to the adapter's input map.
-func (s *Server) internalInvokeModel(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("user_id")
-	if userIDStr == "" {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "user_id query param required")
-		return
-	}
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid user_id")
-		return
-	}
-
-	var in struct {
-		ModelSource string         `json:"model_source"`
-		ModelRef    string         `json:"model_ref"`
-		Input       map[string]any `json:"input"`
-		// Flat fields (extraction worker format) — remapped into Input if Input is nil
-		Messages    any     `json:"messages"`
-		Temperature *float64 `json:"temperature"`
-		MaxTokens   *int     `json:"max_tokens"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
-		return
-	}
-
-	// Support flat format: remap messages/temperature/max_tokens into input map
-	if in.Input == nil {
-		in.Input = make(map[string]any)
-		if in.Messages != nil {
-			in.Input["messages"] = in.Messages
-		}
-		if in.Temperature != nil {
-			in.Input["temperature"] = *in.Temperature
-		}
-		if in.MaxTokens != nil {
-			in.Input["max_tokens"] = *in.MaxTokens
-		}
-	}
-
-	modelRef, err := uuid.Parse(in.ModelRef)
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_ref")
-		return
-	}
-
-	var providerKind, providerModelName, endpointBaseURL, secret string
-	var modelID uuid.UUID
-	if in.ModelSource == "user_model" {
-		var secretCipher string
-		err = s.pool.QueryRow(r.Context(), `
-SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
-FROM user_models um
-JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
-WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(&modelID, &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
-		if err == pgx.ErrNoRows {
-			InvokeRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
-			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "user model not found or inactive")
-			return
-		}
-		if err != nil {
-			InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
-			return
-		}
-		// D-PROXY-01 — see doProxy comment.
-		if secretCipher == "" {
-			InvokeRequestsTotal.WithLabelValues(OutcomeMissingCredential).Inc()
-			writeError(w, http.StatusInternalServerError,
-				"M03_MISSING_CREDENTIAL",
-				"user_model has no provider credential ciphertext")
-			return
-		}
-		secret, err = s.decryptSecret(secretCipher)
-		if err != nil {
-			InvokeRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
-			return
-		}
-	} else if in.ModelSource == "platform_model" {
-		err = s.pool.QueryRow(r.Context(), `
-SELECT platform_model_id, provider_kind, provider_model_name
-FROM platform_models
-WHERE platform_model_id=$1 AND status='active'
-`, modelRef).Scan(&modelID, &providerKind, &providerModelName)
-		if err == pgx.ErrNoRows {
-			InvokeRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
-			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "platform model not found or inactive")
-			return
-		}
-		if err != nil {
-			InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve platform model")
-			return
-		}
-	} else {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_source")
-		return
-	}
-
-	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "model route violation")
-		return
-	}
-	output, usage, err := adapter.Invoke(r.Context(), endpointBaseURL, secret, providerModelName, in.Input)
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
-		writeError(w, http.StatusBadGateway, "M03_PROVIDER_INVOKE_FAILED", "provider invoke failed")
-		return
-	}
-
-	requestID := uuid.New()
-	logID, decision, billedCost, err := s.recordInvocation(r.Context(), map[string]any{
-		"request_id":     requestID,
-		"owner_user_id":  userID,
-		"provider_kind":  providerKind,
-		"model_source":   in.ModelSource,
-		"model_ref":      modelID,
-		"input_tokens":   usage.InputTokens,
-		"output_tokens":  usage.OutputTokens,
-		"input_payload":  in.Input,
-		"output_payload": output,
-		"request_status": "success",
-	})
-	if err != nil {
-		InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-		writeError(w, http.StatusBadGateway, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
-		return
-	}
-	if decision == "rejected" {
-		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
-		writeError(w, http.StatusPaymentRequired, "M03_BILLING_REJECTED", "quota and credits exhausted")
-		return
-	}
-	InvokeRequestsTotal.WithLabelValues(OutcomeOK).Inc()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"request_id":    requestID,
-		"usage_log_id":  logID,
-		"output":        output,
-		"usage": map[string]any{
-			"input_tokens":  usage.InputTokens,
-			"output_tokens": usage.OutputTokens,
-		},
-		"billing_cost":  billedCost,
-		"billing_mode":  decision,
-		"provider_kind": providerKind,
-	})
-}
-
 func (s *Server) verifyUserModel(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
@@ -2480,7 +2253,9 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve credentials — same pattern as internalInvokeModel
+	// Resolve credentials — same pattern as doProxy (the
+	// invokeModel / internalInvokeModel reference was retired in
+	// Phase 4d alongside the handlers themselves).
 	var providerKind, providerModelName, endpointBaseURL, secret string
 	if in.ModelSource == "user_model" {
 		var secretCipher string
