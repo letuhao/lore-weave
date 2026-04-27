@@ -1,6 +1,6 @@
 # TIT_001 Title Foundation — Concept Notes
 
-> **Status:** CONCEPT 2026-04-27 — Phase 0 capture; Q-deep-dive batched decisions pending; transitions to LOCKED matrix when Q1-Q10 close.
+> **Status:** Q-LOCKED 2026-04-27 — 4-batch deep-dive complete; all 10 Qs LOCKED zero revisions; transitions to DRAFT 2/4 commit immediately following this lock.
 > **Companion docs:** [`_index.md`](_index.md) (folder index) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (reference materials)
 > **Stable-ID prefix:** `TIT-*` (anticipated)
 > **Catalog:** `catalog/cat_00_TIT_title_foundation.md` (planned at DRAFT 2/4 commit)
@@ -431,19 +431,23 @@ User-provided sources: pending. Reference games surveyed in [`01_REFERENCE_GAMES
   - [`_index.md`](_index.md) (folder index)
   - [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (reference materials)
 
-## §10 — Q-LOCKED matrix (FILLED at Q-deep-dive completion)
+## §10 — Q-LOCKED matrix (4-batch deep-dive 2026-04-27)
 
-| Q | LOCKED decision | Variants | Justification |
+All 10 Qs LOCKED via 4-batch deep-dive 2026-04-27 (zero revisions; all pre-recommendations approved).
+
+| Q | LOCKED decision | Variant | Justification |
 |---|---|---|---|
-| Q1 | TBD | TBD | TBD |
-| Q2 | TBD | TBD | TBD |
-| Q3 | TBD | TBD | TBD |
-| Q4 | TBD | TBD | TBD |
-| Q5 | TBD | TBD | TBD |
-| Q6 | TBD | TBD | TBD |
-| Q7 | TBD | TBD | TBD |
-| Q8 | TBD | TBD | TBD |
-| Q9 | TBD | TBD | TBD |
-| Q10 | TBD | TBD | TBD |
+| Q1 | **A — `actor_title_holdings` sparse per-(actor, title_id)** | Edge aggregate | Matches REP_001 / FAC_001 / IDF actor_*_assignment sparse-edge pattern; multi-hold trivial; sparse storage cheap (~3-5 V1) |
+| Q2 | **B — Discriminated `enum TitleBinding { Faction(FactionId) / Dynasty(DynastyId) / Standalone }`** | 3-variant enum | Type-safe; impossible invalid combos; matches LoreWeave enum patterns (FactionKind / ReputationTier) |
+| Q3 | **A — 3 V1 + 1 V1+** | `Eldest` / `Designated` / `Vacate` V1; `FactionElect` V1+ DIPL_001 dependency | Vacate distinct from VacancySemantic::Disabled (no auto-succession ever); FactionElect needs procedural vote V2+ |
+| Q4 | **C — V1 schema-reserved min_reputation_required** | TitleDecl.min_reputation_required: Option<MinRepGate> field exists; validator V1+ alongside REP-D1 runtime delta milestone | Stable schema V1; zero migration to V1+ activation; partial RESOLVES REP-D9 |
+| Q5 | **C — Per-title `MultiHoldPolicy`** | Exclusive / StackableUnlimited / StackableMax(N) | Author declares per-title; emperor=Exclusive, generic=StackableUnlimited, CK3-cap=StackableMax(3); default StackableUnlimited |
+| Q6 | **C — Both author canonical + Forge admin runtime override** | TitleHoldingDecl.designated_heir field V1 + Forge:DesignateHeir admin sub-shape V1 | Covers canonical-bootstrap + runtime narrative-driven heir change; both wuxia + D&D + modern need both |
+| Q7 | **A — Immediate cascade on WA_006 mortality EVT-T3** | Cross-aggregate validator C-rule fires synchronously | Political succession is narrative-critical; matches WA_006 mortality_state + vital_pool cascade pattern; RESOLVES WA_006 sect-leader-death cascade gap |
+| Q8 | **A + narrative_hint — FAC role grant V1 + LLM narrative_hint** | TitleAuthorityDecl: `faction_role_grant: Option<FactionRoleGrant>` (V1 active) + `narrative_hint: I18nBundle` (V1 active) + `lex_axiom_unlock_refs: Vec<AxiomDeclRef>` (V1 schema-reserved per Q10) | Wuxia canonical (sect-master IS sect role=master); Standalone titles use narrative_hint only; cross-aggregate effect via 3-write atomic Forge pattern |
+| Q9 | **D — Per-title `VacancySemantic`** | PersistsNone / Disabled / Destroyed | Different titles need different semantics; PersistsNone default; Destroyed for fallen empires; Disabled for election offices |
+| Q10 | **B — V1 schema-reserved lex_axiom_unlock_refs** | TitleAuthorityDecl.lex_axiom_unlock_refs: Vec<AxiomDeclRef> field exists V1; validator V1+ via WA_001 closure pass adding 5-companion-fields uniformly (race + ideology + faction + reputation + title) | Mirror Q4 schema-reserved pattern; decouples TIT_001 V1 from WA_001 closure pass timing |
 
-(Filled when batched Q-deep-dive locks all 10.)
+**Schema-stable / activation-deferred discipline (Q4 + Q10):** TIT_001 V1 declares all cross-feature gate fields stably; activation happens at consumer feature's milestone (REP-D1 runtime delta + WA_001 closure pass). Zero migration V1 → V1+.
+
+**Per-title author-declared policy discipline (Q5 + Q8 + Q9):** Each TitleDecl carries own MultiHoldPolicy + TitleAuthorityDecl + VacancySemantic. Most flexible V1 design; covers wuxia + D&D + modern + sci-fi reality use cases.

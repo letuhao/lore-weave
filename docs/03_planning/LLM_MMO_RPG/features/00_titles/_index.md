@@ -4,9 +4,9 @@
 > **Catalog reference:** `catalog/cat_00_TIT_title_foundation.md` (planned; created at DRAFT 2/4 commit per established pattern)
 > **Purpose:** The substrate for **per-(actor, title) political/social rank holding** — captures one actor's *title-grant from a reality* (king / emperor / sect master 掌门 / family patriarch 族长 / lord / regent / etc.). Distinct from FAC_001 actor_faction_membership (per-(actor, faction) sect/order/guild membership with role) AND from REP_001 actor_faction_reputation (per-(actor, faction) bounded standing). Resolves FF-D8 (title inheritance rules + heir succession) + FAC-D6 (sect succession rules) + WA_006 sect-leader-death cascade gap. Wuxia-critical (sect-master inheritance / emperor succession / family-patriarch passing); D&D-critical (noble background + lord titles); CK3-pattern primary.
 
-**Active:** TIT_001 — **Title Foundation** (CONCEPT 2026-04-27 — Phase 0 kickoff this commit; awaiting Q-deep-dive batched decisions before DRAFT 2/4)
+**Active:** TIT_001 — **Title Foundation** (DRAFT 2026-04-27 — Q-LOCKED 4-batch deep-dive 2026-04-27 zero revisions; DRAFT 2/4 commit this commit with boundary updates + catalog seed)
 
-**Folder closure status:** **OPEN — Phase 0 IN PROGRESS 2026-04-27** — concept notes + reference survey + index seeded; next: Q1-Q10 batched deep-dive → DRAFT 2/4 with boundary updates → Phase 3 cleanup → CANDIDATE-LOCK closure 4/4.
+**Folder closure status:** **OPEN — DRAFT 2/4 IN PROGRESS 2026-04-27** — Phase 0 (commit f9e7600f) + DRAFT 2/4 (this commit) complete; next: Phase 3 cleanup (commit 3/4) + CANDIDATE-LOCK closure (commit 4/4).
 
 **V1+ priority signal:**
 - FF_001 FF-D8 LOCKED: "Title inheritance rules + heir succession → V1+ TIT_001 Title Foundation reads FF_001 dynasty.current_head_actor_id"

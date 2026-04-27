@@ -6,6 +6,78 @@
 
 ---
 
+## 2026-04-27 — TIT_001 Title Foundation DRAFT 2/4 — boundary updates + catalog seed + namespace registration (single `[boundaries-lock-claim]` commit; release at closure 4/4)
+
+- **Lock CLAIMED** — TIT_001 DRAFT 2/4 commit; release at closure 4/4 commit per established 4-commit cycle (Phase 0 + DRAFT 2/4 + Phase 3 + closure)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim active
+  - `01_feature_ownership_matrix.md`:
+    - **NEW row** — `actor_title_holdings` aggregate (T2/Reality, sparse per-(actor, title_id) edge); registers TIT-A1..A8 axioms summary + Q1-Q10 LOCKED + 3-layer separation discipline + TIT-C1 cross-aggregate validator + cross-feature deferral resolutions (FF-D8 / FAC-D6 / REP-D9 partial / WA_006 sect-leader-death cascade gap)
+    - **NEW EVT-T4 row** — TitleGranted system event (canonical seed + Forge admin + SuccessionCascade V1)
+    - **NEW EVT-T8 row** — Forge:GrantTitle + Forge:RevokeTitle + Forge:DesignateHeir admin sub-shapes (3 V1)
+    - **NEW EVT-T3 row** — TitleSuccessionTriggered derived event (sparse on cascade)
+    - **NEW EVT-T1 row** — TitleSuccessionCompleted narrative milestone (LLM)
+    - **RejectReason namespace registry** — added `title.*` → TIT_001
+    - **Stable-ID prefix ownership** — added `TIT-*` row (foundation tier — Tier 5 Actor Substrate post-FF/FAC/REP; closes the political-rank triangle)
+  - `02_extension_contracts.md`:
+    - **§1.4 title.* namespace** — 7 V1 reject rule_ids (declared.unknown / binding.faction_unknown / binding.dynasty_unknown / holding.actor_unknown / holding.multi_hold_violation / holding.exclusive_violation / succession.heir_invalid) + 5 V1+ reservations (grant.rep_too_low / grant.progression_tier_too_low / lex_axiom.unknown / faction_election.invalid_vote / cross_reality_mismatch); all Q1-Q10 LOCKED matrix summary
+    - **§2 RealityManifest extensions** — 2 OPTIONAL V1 fields: `canonical_titles: Vec<TitleDecl>` + `canonical_title_holdings: Vec<TitleHoldingDecl>`; full TitleDecl shape documented (TitleBinding 3-variant + SuccessionRule 3 V1 + 1 V1+ + MinRepGate schema-reserved + TitleAuthorityDecl with faction_role_grant V1 active + narrative_hint V1 active + lex_axiom_unlock_refs V1 schema-reserved + MultiHoldPolicy 3-variant + VacancySemantic 3-variant)
+  - `99_changelog.md`: this entry
+- **Files created/modified outside `_boundaries/`:**
+  - `features/00_titles/TIT_001_title_foundation.md` (NEW; ~700 lines): full spec — §1 Purpose & V1 minimum scope + §2 Domain concepts (TitleDecl + TitleHoldingDecl + actor_title_holdings shapes) + §3 Aggregates + §4 RealityManifest extensions + §5 Events (T4/T3/T1) + §6 Forge Admin sub-shapes + §7 Cross-aggregate validator (succession cascade) + §8 V1 reject rules + §9 Sequence diagrams (canonical seed bootstrap + Forge admin grant + succession cascade on death) + §10 Acceptance Criteria (10 V1 + 4 V1+ deferred) + §11 V1 Minimum Delivery Summary + §12 Deferrals Catalog (TIT-D1..D12) + §13 Cross-references + §14 Status
+  - `catalog/cat_00_TIT_title_foundation.md` (NEW): catalog seed with TIT-A1..A8 axioms + 22 V1 entries (TIT-1..22) + 12 V1+/V2/V2+ entries (TIT-23..34) + 12 deferrals (TIT-D1..D12) + 8 cross-aggregate consistency rules (TIT-C1..C8) + cross-feature integration map
+  - `features/00_titles/_index.md`: status row update CONCEPT → DRAFT
+  - `features/00_titles/00_CONCEPT_NOTES.md`: status header update Q-LOCKED 2026-04-27; §10 Q-LOCKED matrix populated with all 10 LOCKED decisions zero revisions
+
+### Background
+
+User-driven 4-batch Q-deep-dive 2026-04-27 LOCKED all 10 critical scope questions zero revisions (highly disciplined):
+
+- **Batch 1/4 Q1+Q2** (foundational schema): Q1 A actor_title_holdings sparse per-(actor, title_id) edge / Q2 B Discriminated TitleBinding 3-variant enum (Faction(FactionId) / Dynasty(DynastyId) / Standalone)
+- **Batch 2/4 Q3+Q6+Q7** (succession + heir designation + cascade timing): Q3 A 3 V1 SuccessionRule (Eldest FF_001 dynasty traversal / Designated canonical+Forge / Vacate) + 1 V1+ FactionElect DIPL_001 V2+ dependency / Q6 C Both author canonical declaration + Forge admin runtime override / Q7 A Immediate cascade synchronously on WA_006 mortality EVT-T3 actor_dies
+- **Batch 3/4 Q4+Q10** (cross-feature schema seams REP_001 + WA_001): Q4 C V1 schema-reserved min_reputation_required (TitleDecl.min_reputation_required Option<MinRepGate> field active V1; runtime validator V1+ alongside REP-D1 runtime delta milestone) / Q10 B V1 schema-reserved lex_axiom_unlock_refs (TitleAuthorityDecl.lex_axiom_unlock_refs Vec<AxiomDeclRef> field active V1; validator V1+ via WA_001 closure pass adding 5-companion-fields uniformly: race + ideology + faction + reputation + title)
+- **Batch 4/4 Q5+Q8+Q9** (multi-hold + authority + vacancy): Q5 C Per-title MultiHoldPolicy author-declared (Exclusive / StackableUnlimited default / StackableMax(N)) / Q8 A + narrative_hint TitleAuthorityDecl V1 active fields: faction_role_grant Option<FactionRoleGrant> + narrative_hint I18nBundle + lex_axiom_unlock_refs schema-reserved per Q10 / Q9 D Per-title VacancySemantic author-declared (PersistsNone default / Disabled / Destroyed)
+
+### Cross-feature deferrals RESOLVED post TIT_001 CANDIDATE-LOCK (closure 4/4)
+
+- **FF-D8** (FF_001): Title inheritance rules + heir succession → V1 RESOLVES (full active via SuccessionRule::Eldest reading dynasty.current_head_actor_id traversal)
+- **FAC-D6** (FAC_001): Sect succession rules → V1 RESOLVES (full active via SuccessionRule::Designated + sect-master title binding to FactionId)
+- **REP-D9** (REP_001): V1+ TIT_001 title-grant requires min rep → V1 PARTIAL RESOLVES (TitleDecl.min_reputation_required schema active V1; runtime gating V1+ alongside REP-D1)
+- **WA_006 sect-leader-death cascade gap** (FAC_001 _index.md kernel touchpoint): Sect-leader death triggers V1+ TIT_001 succession → V1 RESOLVES (full active via TIT-C1 cross-aggregate validator C-rule joining existing C1-C17 from P4 commit)
+
+### V1 minimum delivery summary
+
+- **1 NEW sparse aggregate** — actor_title_holdings (T2/Reality, sparse per-(actor, title_id) edge)
+- **2 RealityManifest extensions** — canonical_titles + canonical_title_holdings (both OPTIONAL V1 per composability discipline)
+- **1 EVT-T4** TitleGranted (canonical seed + runtime active V1)
+- **3 EVT-T8** Forge:GrantTitle + Forge:RevokeTitle + Forge:DesignateHeir (V1 active)
+- **1 EVT-T3** TitleSuccessionTriggered (sparse on cascade)
+- **1 EVT-T1** TitleSuccessionCompleted (narrative milestone for LLM)
+- **1 cross-aggregate validator** TIT-C1 (immediate cascade on WA_006 mortality EVT-T3 actor_dies same turn) + 7 schema validators TIT-C2..C8
+- **7 V1 reject rules** in `title.*` namespace + 5 V1+ reservations
+- **10 V1 acceptance scenarios** AC-TIT-1..10 + 4 V1+ deferred
+- **12 deferrals** (TIT-D1..D12)
+- **TIT-* stable-ID prefix**
+
+### V1 unchanged for other features
+
+This commit is purely additive per I14 invariant. No changes to existing aggregates / EVT sub-shapes / RejectReason rules / RealityManifest fields owned by other features. PROG_001 / RES_001 / IDF_001..005 / FF_001 / FAC_001 / REP_001 / ACT_001 / PCS_001 / AIT_001 / TDIL_001 status unchanged.
+
+### Discipline observed
+
+- **Schema-stable / activation-deferred V1+ discipline (TIT-A8)**: TIT_001 V1 declares cross-feature gate fields stably (REP min_reputation_required + WA_001 lex_axiom_unlock_refs); activation V1+ via consumer feature milestone. Zero migration V1 → V1+. Mirror pattern from PROG_001 deferred-validator approach.
+- **Per-reality author-declared discipline (TIT-A1)**: Engine schema generic; reality declares own title list (Wuxia 掌门/族长/皇帝 / Modern President/CEO / D&D King/Knight). Mirrors PROG-A1 + REP_001 + FAC_001 author-discipline.
+- **3-layer separation discipline (TIT-A4)**: TIT_001 actor_title_holdings ≠ FAC_001 actor_faction_membership ≠ REP_001 actor_faction_reputation. Distinct shapes; distinct semantics; distinct queries; distinct LLM authoring prompts.
+- **Per-title author-declared policy (TIT-A5)**: Each TitleDecl carries own MultiHoldPolicy + TitleAuthorityDecl + VacancySemantic; covers wuxia + D&D + modern + sci-fi reality use cases.
+- **Cross-aggregate cascade pattern (TIT-C1)**: Title-holder death triggers synchronous succession cascade same turn via WA_006 mortality EVT-T3. Joins existing C1-C17 cross-aggregate consistency rules from P4 commit. Matches WA_006 mortality_state + vital_pool cascade pattern.
+
+### Next steps
+
+- **Commit 3/4 Phase 3 cleanup**: self-review fixes + downstream coordination notes
+- **Commit 4/4 CANDIDATE-LOCK closure**: final lock + RESOLVES FF-D8/FAC-D6/REP-D9-partial/WA_006-cascade-gap; `[boundaries-lock-release]`
+
+---
+
 ## 2026-04-27 — CULT_001 V2+ ENTIRELY DEFERRED (self-correction; PROG-A1 axiom preservation; single `[boundaries-lock-claim+release]` commit)
 
 - **Lock CLAIMED + RELEASED** in single combined commit — pure documentation correction; zero schema/aggregate/EVT change
