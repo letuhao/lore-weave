@@ -6,6 +6,41 @@
 
 ---
 
+## 2026-04-27 — DF05 Session/Group Chat DRAFT cycle commit 2/4 — DRAFT promotion + boundary register
+
+- **DRAFT promoted** — `DF05_001_session_foundation.md` ~1446 lines (25 sections incl. §16 SDK Architecture)
+- **Catalog seed created** — `catalog/cat_18_DF5_session_group_chat.md` (DF5-A1..A11 axioms + 48 catalog entries DF5-1..DF5-48; 33 V1 + 4 V1+30d + 11 V2/V2+/V3/V3+ deferrals)
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - 2 NEW Aggregate ownership rows: `session` (T2/Reality) + `session_participation` (T2/Reality, sparse per-(session, actor))
+    - NEW EVT-T4 System sub-type row: `SessionBorn` (DF05_001-owned)
+    - NEW EVT-T8 Administrative sub-shapes row: 9 V1 Forge AdminActions (CreateSession + CloseSession + KickFromSession + EditActorSessionMemory + RegenSessionDistill + PurgeActorSessionMemory + AnonymizePcInSessions + BulkRegenSessionDistill + BulkPurgeStaleSessions)
+    - NEW EVT-T3 Derived sub-types row: `aggregate_type=session` (Born/ClosingTransition/ClosedTransition) + `aggregate_type=session_participation` (Born/Update LeftTransition) + POV-distill cache `aggregate_type=actor_session_memory` SessionPovDistill payload (Q12-D1 LOCKED full JSON V1; cache invalidation per Q12-D2; replay reads cache per Q12-D3)
+    - RejectReason namespace prefixes row updated: appended `session.* → DF05_001`
+    - NEW Stable-ID prefix row: `DF5-*` (V1-blocking biggest unknown RESOLVED 2026-04-27; multi-session-per-cell sparse architecture)
+  - `02_extension_contracts.md`:
+    - §1.4 NEW `session.*` namespace row: 13 V1 reject rule_ids (duplicate_session_id / participant_cap_exceeded / cell_session_overload / actor_not_eligible_untracked / actor_busy_in_other_session / npc_refused / invalid_state_transition / empty_participant_list_invalid / anchor_must_be_pc / cross_channel_participation_forbidden / closed_session_immutable / distill_cache_version_mismatch / cell_session_creation_rate_limited) + 5 V1+ reservations (cross_reality_session / npc_only_session_disallowed / session_resume_disallowed / summary_corruption_detected / distill_quota_exceeded)
+    - §2 NEW `canonical_sessions: Vec<CanonicalSessionDecl>` RealityManifest extension OPTIONAL V1 (sparse opt-in for V1+ author-scripted set-piece sessions)
+  - `03_validator_pipeline_slots.md`:
+    - §"Tier 5 Actor Substrate namespaces" matrix updated: NEW `session.*` row (13 V1 + 5 V1+; Stage 0 canonical seed + Stage 1 runtime + Stage 7 Forge admin + Stage 8 close cascade + cross-aggregate cascades C26-C29)
+    - §"Stage 0 canonical seed cross-aggregate consistency rules" — 4 NEW rules C26-C29: C26 (DF5-C1) anchor_pc_id MUST be PC kind / C27 (DF5-C2) channel_id MUST be cell-tier / C28 (DF5-C3) per-cell session capacity ≤50 V1 / C29 (DF5-C4) per-actor one Active session V1
+    - Total V1 reject rules: ~140 → ~153 (+13 DF5)
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/DF/DF05_session_group_chat/DF05_001_session_foundation.md` (NEW; 1446 lines)
+  - `features/DF/DF05_session_group_chat/_index.md`: status CONCEPT COMPLETE → DRAFT (commit 2/4 of 4-commit cycle)
+  - `catalog/cat_18_DF5_session_group_chat.md` (NEW; DF5-A1..A11 axioms + 48 catalog entries)
+
+### Cycle plan continuation
+
+- ✅ Phase 0 (commit 0080b533): concept-notes Q-LOCKED + SDK LOCKED
+- ✅ Commit 1/4 (745e9f6e): `[boundaries-lock-claim]` lock + cycle plan
+- ✅ Commit 2/4 (THIS): DRAFT promotion + boundary register + catalog seed
+- 🟡 Commit 3/4 (next): Phase 3 cleanup — AC-DF5-1..25 walkthrough + typo fixes + thin-section expansion
+- ⏳ Commit 4/4: `[boundaries-lock-release]` CANDIDATE-LOCK closure
+
+---
+
 ## 2026-04-27 — DF05 Session/Group Chat DRAFT cycle commit 1/4 — lock claim
 
 - **Lock CLAIMED** — `[boundaries-lock-claim]` start of DF05 4-commit cycle (Phase 0 0080b533 preceded; this is commit 1/4)

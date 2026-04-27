@@ -215,8 +215,9 @@ These namespaces validate at **Stage 0 schema** (canonical seed validation + For
 | `ai_tier.*` | AIT_001 AI Tier Foundation | 8 V1 | 4 V1+ | Stage 0 canonical seed + V1+ runtime tier transitions |
 | `time_dilation.*` | TDIL_001 Time Dilation Foundation | 4 V1 | 6 V1+30d | Stage 0 canonical seed + per-turn channel boundary checks |
 | `title.*` | TIT_001 Title Foundation | 9 V1 (Phase 3 cleanup added 2 binding-membership-required rules) | 5 V1+ | Stage 0 canonical seed + Forge admin + cross-aggregate cascade C18 (synchronous on WA_006 mortality EVT-T3) |
+| `session.*` | DF05_001 Session/Group Chat Foundation | 13 V1 | 5 V1+ | Stage 0 canonical seed (canonical_sessions OPTIONAL V1) + Stage 1 runtime (PC `/chat` create + actor join/leave) + Stage 7 Forge admin (9 sub-shapes) + Stage 8 close cascade (POV-distill + actor_session_memory writes) + cross-aggregate cascades C26-C29 (anchor_pc_kind + same_channel + cell_capacity + one_active_per_actor) |
 
-**Total V1 rule_ids across all namespaces:** ~44+ (entity/place/map/csc) + ~96+ (Tier 5 substrate; ~87 prior + 9 TIT) = ~140 V1 reject rules total across the engine. ~99+ are **Stage 0 schema validators** (canonical seed + Forge admin + cross-aggregate cascade); ~44+ are LLM-output pipeline validators (Stage 3.5+).
+**Total V1 rule_ids across all namespaces:** ~44+ (entity/place/map/csc) + ~109+ (Tier 5 substrate; ~96 prior + 13 DF5) = ~153 V1 reject rules total across the engine. ~112+ are **Stage 0 schema validators** (canonical seed + Forge admin + cross-aggregate cascade); ~44+ are LLM-output pipeline validators (Stage 3.5+).
 
 ---
 
@@ -253,6 +254,10 @@ Cross-aggregate consistency rules run at **bootstrap time** (canonical seed vali
 | **C23 (TIT-C6): MultiHoldPolicy compliance per actor** | TIT_001 | Stage 0 schema validator counts rows per actor_ref; rejects if violates declared MultiHoldPolicy::StackableMax(N) cap | `title.holding.multi_hold_violation` (TIT_001 namespace) |
 | **C24 (TIT-C7): Exclusive policy compliance per title** | TIT_001 | Stage 0 schema validator counts rows per title_id; rejects if MultiHoldPolicy::Exclusive title has >1 holder concurrently | `title.holding.exclusive_violation` (TIT_001 namespace) |
 | **C25 (TIT-C8): designated_heir alive at succession cascade time** | TIT_001 | At cascade trigger (C18), validate designated_heir alive (mortality_state ≠ Dead/Dying); if invalid, set new_holder=None with trigger_reason=HeirIneligible per §7.2 cascade pseudocode | `title.succession.heir_invalid` (TIT_001 namespace; OR sets None gracefully per cascade flow) |
+| **C26 (DF5-C1): session.anchor_pc_id MUST be PC kind** | DF05_001 | At session creation (`/chat` runtime OR canonical seed), verify anchor_actor_id resolves to ACT_001 actor_core where ActorKind::Pc; reject if non-PC | `session.anchor_must_be_pc` (DF05_001 namespace) |
+| **C27 (DF5-C2): session.channel_id MUST be cell-tier** | DF05_001 | At session creation, verify channel_id resolves to PF_001 cell-tier place row (NOT continent/country/district/town aggregation tier); reject if higher-tier channel | `session.cross_channel_participation_forbidden` (DF05_001 namespace; alt phrasing for tier mismatch) |
+| **C28 (DF5-C3): per-cell session capacity ≤50 V1** | DF05_001 | At session creation, count Active sessions where channel_id matches; reject if ≥50 V1 per DF5-A8 soft cap | `session.cell_session_overload` (DF05_001 namespace) |
+| **C29 (DF5-C4): per-actor one Active session V1** | DF05_001 | At session_participation Born, verify actor has no other Active session_participation row where left_fiction_time IS NULL; reject if found per DF5-A5 | `session.actor_busy_in_other_session` (DF05_001 namespace) |
 
 ### Rule application discipline
 

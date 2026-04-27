@@ -1,8 +1,8 @@
 # DF05 — Session / Group Chat — Index
 
-> **Status:** **CONCEPT COMPLETE 2026-04-27 — Q-LOCKED + SDK-LOCKED — READY FOR DRAFT** — concept-notes at [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md). Q1-Q12 ALL LOCKED via 4-batch deep-dive 2026-04-27 ([§10 Q-LOCKED matrix](00_CONCEPT_NOTES.md#10--q1-q12-locked-matrix-4-batch-deep-dive-2026-04-27)). §15 SDK Architecture LOCKED. **Architecture pivoted from initial single-session-per-cell to multi-session-per-cell sparse model** per user direction 2026-04-27 (scaling concern with billion-NPC AIT + real-life conversation parallel). 11 invariants DF5-A1..A11 proposed.
+> **Status:** **DRAFT 2026-04-27 (commit 2/4 of 4-commit cycle)** — concept-notes at [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (Phase 0 0080b533). Lock claimed via [`commit 1/4 745e9f6e`](../../../_boundaries/_LOCK.md). DRAFT spec at [`DF05_001_session_foundation.md`](DF05_001_session_foundation.md) (~1446 lines, 25 sections including SDK §16). Catalog at [`cat_18_DF5_session_group_chat.md`](../../../catalog/cat_18_DF5_session_group_chat.md) (DF5-A1..A11 axioms + 48 catalog entries DF5-1..DF5-48). Q1-Q12 ALL LOCKED via 4-batch deep-dive 2026-04-27. §16 SDK Architecture LOCKED. **Architecture pivoted from initial single-session-per-cell to multi-session-per-cell sparse model** per user direction 2026-04-27 (scaling concern with billion-NPC AIT + real-life conversation parallel). 11 invariants DF5-A1..A11.
 >
-> **V1-blocking, biggest V1 unknown — promotion gate FULLY MET.** Main session can claim `_boundaries/_LOCK.md` and schedule DRAFT cycle.
+> **V1-blocking biggest unknown RESOLVED.** Promotion to CANDIDATE-LOCK requires Phase 3 cleanup commit 3/4 + closure release commit 4/4.
 >
 > **Scope preview (revised post-pivot):** Sparse multi-session-per-cell architecture; Active/Closed lifecycle V1 (Idle V1+30d / Frozen V2+); per-actor POV memory distill on close (LLM × N participants); cross-session privacy enforced; PC anchor invariant; tier-aware participation (Untracked excluded per AIT-A8); same-channel constraint per TDIL-A5.
 >
