@@ -6,6 +6,60 @@
 
 ---
 
+## 2026-04-27 — PO_001 Phase 3 cleanup commit 3/4 — validator pipeline slots PO-C1..C6 / C30-C35 registration
+
+- **Lock STAYS CLAIMED** — Phase 3 cleanup commit; release at closure 4/4 commit
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: lock claim active (no claim/release change this commit)
+  - `03_validator_pipeline_slots.md`:
+    - **NEW row** in §"Tier 5 Actor Substrate namespaces" — onboarding.* (7 V1 + 5 V1+ reservations)
+    - Total V1 reject rules count updated: 154 → 161 (added 7 PO rules)
+    - **NEW 6 rows** in §"Stage 0 canonical seed cross-aggregate consistency rules" — C30 (PO-C1) RUNTIME PC creation cascade orchestration + C31-C35 (PO-C2..C6) canonical seed bootstrap-time validators
+  - `99_changelog.md`: this entry top-anchored
+
+### Phase 3 self-review verdict
+
+**Zero drift detected** in PO_001 spec post DRAFT 2/4 commit `4106410c`:
+- AC count: §1 declares "12 V1 testable acceptance scenarios" → §10 has exactly 12 (AC-PO-1..12) ✓
+- Reject rule count: §1 declares "7 V1 + 5 V1+ reservations" → §8.1 has 7 V1 rules + §8.2 has 5 V1+ reservations ✓
+- Catalog entries: catalog declares "24 V1 catalog entries" → §11 V1 Minimum Delivery Summary matches ✓
+- Cross-feature deferrals: §1 + §13.1 + catalog §coordination notes consistent on PCS-D1 + PCS-D10 (full V1 RESOLVES) ✓
+
+No pseudocode reject rules referenced outside §8.1 V1 list (unlike TIT_001 Phase 3 which had 2 missing rules). PO_001 spec internally consistent at DRAFT 2/4 commit time.
+
+### Validator pipeline slots boundary doc updated
+
+Following established TIT_001 + DF05_001 Phase 3 pattern, PO_001 V1 cross-aggregate consistency rules registered in `03_validator_pipeline_slots.md`:
+
+**RUNTIME cascade rule added (C30; second runtime cascade C-rule post P4 commit; first was C18 TIT-C1):**
+- **C30 (PO-C1)**: PC creation cascade orchestration. Forge:CompleteOnboarding EVT-T8 triggers synchronous 14-feature chain same turn (PCS_001 → ACT_001 → EF_001 → IDF_001..005 → FF_001 → FAC_001 → REP_001 → TIT_001 V1+ → PROG_001 → RES_001 → TDIL_001 → SR11 → emit OnboardingCompleted EVT-T1). No reject; cascade applies all events atomically; per-feature reject rules fire if individual stage validation fails.
+
+**Stage 0 canonical seed bootstrap rules added (C31-C35; mirror prior C2-C29 patterns):**
+- **C31 (PO-C2)**: OnboardingConfigDecl.canonical_pcs subset of canonical_actors[kind=Pc] at RealityManifest bootstrap
+- **C32 (PO-C3)**: OnboardingConfigDecl.default_spawn_cell ∈ RealityManifest.places (cell-tier)
+- **C33 (PO-C4)**: Mode B/C draft_data per-feature schema validation (delegates to per-feature validators across 11 fields)
+- **C34 (PO-C5)**: PC cap=1 V1 per actor_user_session.user_id (matches PCS-C13)
+- **C35 (PO-C6)**: Mode A canonical PC binding — actor.user_id_init must be None at bind time
+
+C30 is RUNTIME (every Forge:CompleteOnboarding admin event), unlike C31-C35 (canonical seed bootstrap). Joins existing C18 (TIT-C1) as second runtime cascade C-rule registered post P4 commit.
+
+### Impact summary
+
+- 7 V1 reject rules in onboarding.* namespace (no count change from DRAFT 2/4)
+- Total V1 reject rules across engine: 161 (was 154; added 7 PO rules)
+- 6 new cross-aggregate consistency rules in `03_validator_pipeline_slots.md` (C30-C35; total now 35 rules)
+- All PO_001 spec/catalog/boundary docs internally consistent post Phase 3
+
+### V1 unchanged for other features
+
+This commit is purely additive per I14 invariant. Pure validator pipeline slots registration. No changes to existing aggregates / EVT sub-shapes / RealityManifest fields owned by other features.
+
+### Next steps
+
+- **Commit 4/4 CANDIDATE-LOCK closure**: status DRAFT → CANDIDATE-LOCK + cross-feature RESOLVED annotations on PCS-D1 + PCS-D10 source docs (PCS_001 spec + catalog) + folder _index.md COMPLETE + `[boundaries-lock-release]`
+
+---
+
 ## 2026-04-27 — PO_001 Player Onboarding DRAFT 2/4 — first user-visible feature post-foundation closure (single `[boundaries-lock-claim]` commit; release at closure 4/4)
 
 - **Lock CLAIMED** — PO_001 DRAFT 2/4 commit; release at closure 4/4 commit per established 4-commit cycle (wireframes Phase 0 + Phase 0 backend kickoff + DRAFT 2/4 + Phase 3 + closure)
