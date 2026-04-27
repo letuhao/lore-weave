@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03B Custom PC — PO_001</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+  <div class="nav-strip">
+    <a href="02_path_choice.html" style="color: var(--ink-muted); text-decoration: none; font-size: 0.875rem;">← Quay lại</a>
+    <span class="subtle">Mode B · Tạo nhân vật riêng · Đông Phong Cõi</span>
+    <div class="lang-switch">
+      <a href="#" class="active">VI</a><a href="#">EN</a><a href="#">ZH</a>
+    </div>
+  </div>
+
+  <main style="flex: 1;">
+    <div style="margin-bottom: 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <h2 style="font-size: 1.125rem; margin: 0;">Tạo Nhân Vật — Bước <span style="color: var(--accent);">4</span> / 8</h2>
+        <span class="subtle">Bước 4 · Cá tính</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-step completed"></div>
+        <div class="progress-step completed"></div>
+        <div class="progress-step completed"></div>
+        <div class="progress-step active"></div>
+        <div class="progress-step"></div>
+        <div class="progress-step"></div>
+        <div class="progress-step"></div>
+        <div class="progress-step"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.75rem; color: var(--ink-muted);">
+        <span>Tên</span>
+        <span>Chủng tộc</span>
+        <span>Origin</span>
+        <span style="color: var(--accent); font-weight: 600;">Cá tính</span>
+        <span>Tổ chức</span>
+        <span>Diện mạo</span>
+        <span>Vị trí</span>
+        <span>Xác nhận</span>
+      </div>
+    </div>
+
+    <article style="margin-bottom: 2rem;">
+      <h1 style="font-size: 1.75rem; margin: 0 0 0.5rem 0;">Cá Tính Của Bạn</h1>
+      <p class="subtle" style="margin: 0 0 2rem 0;">Chọn 1 trong 12 nguyên mẫu — định hình cách Lý Minh nhìn thế giới và phản ứng. Cá tính ảnh hưởng dialogue NPCs, opinion modifier, và LLM persona briefing. <span class="tooltip">?</span></p>
+
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.875rem;">
+
+        <div class="card card-hoverable" onclick="selectPersonality('stoic', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🪨</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Khắc kỷ</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Stoic</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Bình tĩnh trước bão giông. Suy nghĩ trước khi nói.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('hothead', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🔥</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Nóng vội</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Hothead</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Phản ứng tức thì với cảm xúc. Hành động trước khi nghĩ.</p>
+        </div>
+
+        <div class="card card-selected" onclick="selectPersonality('cunning', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🦊</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Mưu mô</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Cunning</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Tính toán trước khi nói. Mọi lời đều có dụng ý.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('innocent', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🌸</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Trong trắng</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Innocent</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Tin người ban đầu. Nhìn thấy điều tốt trong người khác.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('pious', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🙏</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Mộ đạo</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Pious</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Đặt niềm tin tôn giáo lên trên cá nhân.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('cynic', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🥀</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Hoài nghi</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Cynic</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Nhìn thấy sự thật xấu xí. Không tin vào lý tưởng.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('worldly', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🍷</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Đời thực</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Worldly</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Thực dụng. Biết cách thế giới vận hành.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('idealist', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">⭐</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Lý tưởng</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Idealist</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Tin vào điều tốt đẹp. Sẵn sàng chiến đấu vì giá trị.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('loyal', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🛡</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Trung thành</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Loyal</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Bảo vệ những ai mình tin. Đi tới cùng vì bạn bè.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('aloof', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🌙</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Lạnh lùng</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Aloof</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Giữ khoảng cách. Không gắn bó dễ dàng.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('ambitious', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">🗻</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Tham vọng</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Ambitious</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Khao khát quyền lực. Luôn nhìn lên cao.</p>
+        </div>
+
+        <div class="card card-hoverable" onclick="selectPersonality('compassionate', this)" style="padding: 1rem; cursor: pointer;">
+          <div style="font-size: 1.875rem; margin-bottom: 0.5rem;">💝</div>
+          <strong style="display: block; font-size: 0.9375rem; margin-bottom: 0.25rem;">Nhân hậu</strong>
+          <span class="subtle" style="font-size: 0.75rem;">Compassionate</span>
+          <p style="font-size: 0.8125rem; margin: 0.5rem 0 0 0; line-height: 1.5;">Cảm thông với nỗi đau người khác. Sẵn sàng giúp đỡ.</p>
+        </div>
+
+      </div>
+    </article>
+
+    <div style="margin-top: 2rem; padding: 1rem 1.25rem; background: var(--accent-bg); border-radius: 0.5rem; border-left: 3px solid var(--accent);">
+      <p style="margin: 0 0 0.5rem 0;"><strong>Đã chọn: Mưu mô (Cunning) 🦊</strong></p>
+      <p style="margin: 0; font-size: 0.875rem;">"Suy tính kĩ trước khi mở miệng. NPCs có thể coi bạn là người 'không thể đoán' — vừa cuốn hút vừa nguy hiểm. Tăng modifier với cảnh giới Du sĩ + Mưu sĩ; giảm với Khắc kỷ Pháp sư."</p>
+      <p class="subtle" style="margin: 0.5rem 0 0 0; font-size: 0.8125rem;">IDF_003 PersonalityArchetype = Cunning · opinion_modifier_table active</p>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; gap: 1rem; margin-top: 2rem;">
+      <div>
+        <button class="btn-secondary" onclick="window.location.href='02_path_choice.html?reality=' + document.body.dataset.reality">Đổi mode</button>
+      </div>
+      <div style="display: flex; gap: 0.75rem;">
+        <button class="btn-secondary" onclick="alert('V1+: Use Origin Pack default (skip detailed customization)')">⏭ Skip → defaults</button>
+        <button class="btn-secondary">← Bước 3</button>
+        <button class="btn-primary" onclick="window.location.href='04_confirm.html?reality=' + document.body.dataset.reality + '&mode=custom'">Bước 5 →</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+
+  function selectPersonality(key, cardEl) {
+    document.querySelectorAll('.card-selected').forEach(c => { c.classList.remove('card-selected'); c.classList.add('card-hoverable'); });
+    cardEl.classList.add('card-selected');
+    cardEl.classList.remove('card-hoverable');
+  }
+</script>
+</body>
+</html>

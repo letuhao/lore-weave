@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>05 First Turn — PO_001</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .turn-shell {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 1.5rem;
+    flex: 1;
+  }
+  .scene-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .turn-state-machine {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.5rem 0.875rem;
+    background: var(--paper-soft);
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+  }
+  .turn-state {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    color: var(--ink-muted);
+  }
+  .turn-state.active {
+    background: var(--accent);
+    color: var(--paper);
+    font-weight: 600;
+  }
+  .turn-state.complete { color: var(--accent-soft); }
+  .input-area {
+    background: var(--paper-soft);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--ink-soft);
+  }
+  .quick-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+  .quick-action {
+    padding: 0.375rem 0.875rem;
+    background: var(--paper);
+    border: 1px solid var(--ink-soft);
+    border-radius: 1rem;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .quick-action:hover { background: var(--accent-bg); border-color: var(--accent); }
+  .sidebar-card { padding: 1rem; }
+  .sidebar-card h4 { font-size: 0.875rem; margin: 0 0 0.5rem 0; color: var(--accent); }
+  .sidebar-card p { margin: 0; font-size: 0.8125rem; line-height: 1.5; }
+</style>
+</head>
+<body data-reality="dongphong">
+<div class="app-shell" style="max-width: 1280px;">
+  <div class="nav-strip">
+    <span style="font-weight: 600;">Lý Minh · Đông Hải Đạo Cốc nội môn đệ tử · Luyện Khí thất tầng</span>
+    <span class="subtle">Turn 1 · Đông Hải Đạo Cốc tu luyện thất · 6h sáng</span>
+    <div class="lang-switch">
+      <a href="#" class="active">VI</a><a href="#">EN</a><a href="#">ZH</a>
+    </div>
+  </div>
+
+  <div class="turn-shell">
+
+    <main class="scene-area">
+      <div class="turn-state-machine">
+        <span class="turn-state complete">✓ Idle</span>
+        <span style="color: var(--ink-muted);">→</span>
+        <span class="turn-state active">▶ Composing</span>
+        <span style="color: var(--ink-muted);">→</span>
+        <span class="turn-state">⏳ Submitted</span>
+        <span style="color: var(--ink-muted);">→</span>
+        <span class="turn-state">📡 NPC Reacting</span>
+        <span style="color: var(--ink-muted);">→</span>
+        <span class="turn-state">✏ Narration</span>
+        <span style="color: var(--ink-muted); margin-left: auto;">SR11 turn UX state machine V1</span>
+      </div>
+
+      <div class="scene-narration">
+        <p style="margin: 0 0 0.75rem 0;">"Sương sớm phủ kín đỉnh Hàn Tuyết Phong. Lý Minh ngồi kiết già trên thảm cỏ. Tu vi vừa đột phá Luyện khí đệ thất tầng — kinh mạch run rẩy nhẹ. <strong style="color: var(--accent); font-style: normal;">Đại Trưởng Lão sư phụ Lý Lão Tổ</strong> đang đợi sau cánh cửa gỗ tử đàn — có vẻ như sư phụ muốn nói chuyện gì đó quan trọng."</p>
+        <p style="margin: 0;">"Mặt trời đã lên cao, cánh chim hồng hạc bay qua đỉnh núi. Bạn cảm thấy một cảm giác mới — vừa lo sợ vừa háo hức..."</p>
+      </div>
+
+      <div style="padding: 0.875rem 1.125rem; background: var(--accent-bg); border-radius: 0.5rem; border-left: 3px solid var(--accent); font-size: 0.875rem;">
+        <strong style="color: var(--accent);">🎯 Tutorial overlay (V1 minimal):</strong> Bạn có 5 loại hành động — Speak (nói), Action (làm), MetaCommand (dùng lệnh /), FastForward (tua thời gian), Narration (kể chuyện). Bắt đầu thử Speak với sư phụ?
+        <button style="float: right; background: transparent; border: none; color: var(--ink-muted); cursor: pointer; padding: 0; font-size: 1rem;">×</button>
+      </div>
+
+      <div class="input-area">
+        <div class="quick-actions">
+          <button class="quick-action">💬 Speak</button>
+          <button class="quick-action">⚔ Action</button>
+          <button class="quick-action">/  MetaCommand</button>
+          <button class="quick-action">⏩ FastForward</button>
+          <button class="quick-action">📜 Narration</button>
+        </div>
+        <textarea class="input" placeholder="Nhập hành động hoặc lời nói của Lý Minh..." rows="3"></textarea>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+          <span class="subtle" style="font-size: 0.75rem;">Mẹo: gõ <code>/help</code> để xem các lệnh meta · turn budget remaining: 1/3 fiction-hours</span>
+          <button class="btn-primary" style="padding: 0.5rem 1.25rem;">Gửi turn →</button>
+        </div>
+      </div>
+    </main>
+
+    <aside style="display: flex; flex-direction: column; gap: 1rem;">
+      <div class="card sidebar-card">
+        <h4>👤 Persona</h4>
+        <p><strong>Lý Minh</strong> · Mưu mô · 22t<br><span class="subtle">Đông Hải Đạo Cốc nội môn đệ tử</span></p>
+      </div>
+
+      <div class="card sidebar-card">
+        <h4>⚖ Tổ chức (FAC_001)</h4>
+        <p><strong>Đông Hải Đạo Cốc</strong><br><span class="subtle">vai trò: nội môn đệ tử<br>master: Lý Lão Tổ</span></p>
+      </div>
+
+      <div class="card sidebar-card">
+        <h4>📊 Reputation (REP_001)</h4>
+        <p><strong>Đông Hải Đạo Cốc:</strong> +250 Đệ tử<br><span class="subtle">Friendly tier</span></p>
+      </div>
+
+      <div class="card sidebar-card">
+        <h4>🏷 Tước hiệu (TIT_001)</h4>
+        <p class="subtle">— (chưa có)</p>
+      </div>
+
+      <div class="card sidebar-card">
+        <h4>🎒 Inventory (RES_001)</h4>
+        <p style="font-size: 0.8125rem;">• Trúc kiếm × 1<br>• Đan dược thấp × 3<br>• Bạc 5 lượng<br><span class="subtle">cap: 12/30 slots</span></p>
+      </div>
+
+      <div class="card sidebar-card">
+        <h4>🌀 Cảnh giới (PROG_001)</h4>
+        <p><strong>Luyện Khí thất tầng</strong><br><span class="subtle">raw_value: 720/1000<br>tier 7/9 within Luyện Khí</span></p>
+        <div style="margin-top: 0.5rem; height: 4px; background: var(--paper-soft); border-radius: 2px; overflow: hidden;">
+          <div style="height: 100%; width: 72%; background: var(--accent);"></div>
+        </div>
+      </div>
+
+      <div class="card sidebar-card">
+        <h4>⏱ Đồng hồ (TDIL_001)</h4>
+        <p style="font-size: 0.75rem; line-height: 1.7;">
+          <span class="subtle">actor:</span> 0d 0h<br>
+          <span class="subtle">soul:</span> 0d 0h<br>
+          <span class="subtle">body:</span> 0d 0h<br>
+          <span class="subtle">channel rate:</span> 1.0×
+        </p>
+      </div>
+
+      <div style="text-align: center; padding-top: 0.5rem;">
+        <a href="index.html" class="subtle" style="font-size: 0.75rem;">← Wireframes index</a>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+</script>
+</body>
+</html>

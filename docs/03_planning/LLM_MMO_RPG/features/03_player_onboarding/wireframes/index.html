@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PO_001 Wireframes — Navigation Hub</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+  <header style="margin-bottom: 2rem;">
+    <h1 style="font-size: 2rem; margin: 0 0 0.5rem 0;">PO_001 Player Onboarding — Wireframes</h1>
+    <p class="subtle">Static HTML mockup · Phase 0 FE design · Anchor: BG3 dual-mode + Disco Elysium amnesia + AI Dungeon freedom</p>
+    <div class="brush-divider"></div>
+  </header>
+
+  <section style="margin-bottom: 2.5rem;">
+    <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Common pre-flow</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+      <a href="00_landing.html" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>00 — Landing / Login</strong>
+        <p class="subtle" style="margin: 0.5rem 0 0 0;">Account creation + returning login. Email + password V1; OAuth V1+.</p>
+      </a>
+      <a href="01_reality_select.html" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>01 — Reality Selection</strong>
+        <p class="subtle" style="margin: 0.5rem 0 0 0;">Pick world (Đông Phong / Saigon 2026 / Faerûn). Per-reality theme switches.</p>
+      </a>
+    </div>
+  </section>
+
+  <section style="margin-bottom: 2.5rem;">
+    <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Path choice (3 V1 modes)</h2>
+    <a href="02_path_choice.html" class="card card-hoverable" style="text-decoration: none; color: inherit; display: block; margin-bottom: 1rem;">
+      <strong>02 — Path Choice</strong>
+      <p class="subtle" style="margin: 0.5rem 0 0 0;">Pick (A) Canonical PC / (B) Custom PC / (C) Xuyên Không Arrival.</p>
+    </a>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+      <a href="03a_canonical_pc.html" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>03A — Canonical PC</strong>
+        <p class="subtle" style="margin: 0.5rem 0 0 0;">BG3 Origin pattern — pick from preset PCs. 5 NPCs + portraits + bios.</p>
+      </a>
+      <a href="03b_custom_pc.html" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>03B — Custom PC</strong>
+        <p class="subtle" style="margin: 0.5rem 0 0 0;">8-step wizard — name → race → origin → personality → faction → appearance → spawn → review.</p>
+      </a>
+      <a href="03c_xuyen_khong.html" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>03C — Xuyên Không Arrival</strong>
+        <p class="subtle" style="margin: 0.5rem 0 0 0;">Disco Elysium amnesia + wuxia transmigration. Soul + Body + LeakagePolicy.</p>
+      </a>
+    </div>
+  </section>
+
+  <section style="margin-bottom: 2.5rem;">
+    <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Common post-flow</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+      <a href="04_confirm.html" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>04 — Confirm & Bind</strong>
+        <p class="subtle" style="margin: 0.5rem 0 0 0;">Summary card + LLM-generated opening preview. Forge:RegisterPc + BindPcUser cascade.</p>
+      </a>
+      <a href="05_first_turn.html" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>05 — First Turn</strong>
+        <p class="subtle" style="margin: 0.5rem 0 0 0;">Drop into spawn cell. SR11 turn UX visible from turn 1.</p>
+      </a>
+    </div>
+  </section>
+
+  <section>
+    <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Reality theme preview</h2>
+    <p class="subtle" style="margin-bottom: 1rem;">Reality-themed dynamic accent — visit landing with different <code>?reality=</code> query param to preview themes.</p>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+      <a href="01_reality_select.html?reality=dongphong" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>Đông Phong Cõi</strong> (jade/cream wuxia) <span class="subtle">Default</span>
+      </a>
+      <a href="01_reality_select.html?reality=saigon" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>Saigon 2026</strong> (neon pink/cyan dark mode)
+      </a>
+      <a href="01_reality_select.html?reality=faerun" class="card card-hoverable" style="text-decoration: none; color: inherit;">
+        <strong>Faerûn</strong> (parchment/burgundy D&D)
+      </a>
+    </div>
+  </section>
+
+  <footer style="margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--ink-soft); font-size: 0.75rem; color: var(--ink-muted);">
+    <p>PO_001 wireframes Phase 0 · 2026-04-27 · LoreWeave LLM MMO RPG · See <code>features/03_player_onboarding/_index.md</code> for spec.</p>
+  </footer>
+</div>
+
+<script>
+  // Apply ?reality= query param to data-reality attribute on body
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+</script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>01 Reality Select — PO_001</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+  <div class="nav-strip">
+    <a href="00_landing.html" style="color: var(--ink-muted); text-decoration: none; font-size: 0.875rem;">← Quay lại</a>
+    <span class="subtle">Bước 1/3 · Chọn thế giới</span>
+    <div class="lang-switch">
+      <a href="#" class="active">VI</a><a href="#">EN</a><a href="#">ZH</a>
+    </div>
+  </div>
+
+  <main style="flex: 1;">
+    <header style="text-align: center; margin-bottom: 2rem;">
+      <h1 style="font-size: 2rem; margin: 0 0 0.5rem 0;">Chọn Thế Giới Của Bạn</h1>
+      <p class="subtle">Mỗi thế giới có quy luật, chủng tộc, tổ chức và câu chuyện riêng.</p>
+    </header>
+
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; margin-bottom: 2rem;">
+
+      <div class="card card-hoverable card-selected" onclick="selectReality('dongphong', this)">
+        <div style="aspect-ratio: 4/3; background: linear-gradient(135deg, #d8e4dd, #4a8b7e); border-radius: 0.375rem; margin-bottom: 0.875rem; display: flex; align-items: center; justify-content: center; font-family: 'Source Serif Pro', serif; font-size: 3rem; color: rgba(255,255,255,0.85); letter-spacing: 0.15em;">東風</div>
+        <h3 style="margin: 0 0 0.25rem 0; font-size: 1.125rem;">Đông Phong Cõi</h3>
+        <p class="subtle" style="margin: 0 0 0.75rem 0; font-size: 0.8125rem;">Tu Tiên Wuxia · Tiên Nghịch hierarchy</p>
+        <div style="display: flex; gap: 0.25rem; align-items: center; font-size: 0.75rem; color: var(--ink-muted);">
+          <span style="color: var(--accent);">●●●○○</span> Hoạt động vừa
+        </div>
+        <div class="brush-divider" style="margin: 0.75rem 0;"></div>
+        <ul style="font-size: 0.8125rem; color: var(--ink-muted); padding-left: 1rem; margin: 0;">
+          <li>5 sect (Đông Hải / Vấn Đỉnh / ...)</li>
+          <li>Imperial Court + 12 titles</li>
+          <li>7-realm cultivation V1</li>
+          <li>Xuyên không enabled</li>
+        </ul>
+      </div>
+
+      <div class="card card-hoverable" onclick="selectReality('saigon', this)">
+        <div style="aspect-ratio: 4/3; background: linear-gradient(135deg, #1a1a20, #c026d3); border-radius: 0.375rem; margin-bottom: 0.875rem; display: flex; align-items: center; justify-content: center; font-size: 1.75rem; color: #e879f9; font-weight: 700; letter-spacing: 0.05em;">SAIGON 2026</div>
+        <h3 style="margin: 0 0 0.25rem 0; font-size: 1.125rem;">Saigon 2026</h3>
+        <p class="subtle" style="margin: 0 0 0.75rem 0; font-size: 0.8125rem;">Modern noir · Cyberpunk-leaning</p>
+        <div style="display: flex; gap: 0.25rem; align-items: center; font-size: 0.75rem; color: var(--ink-muted);">
+          <span style="color: var(--warning);">●●○○○</span> Bản beta
+        </div>
+        <div class="brush-divider" style="margin: 0.75rem 0;"></div>
+        <ul style="font-size: 0.8125rem; color: var(--ink-muted); padding-left: 1rem; margin: 0;">
+          <li>Cảnh sát + 3 tổ chức ngầm</li>
+          <li>8 chính trị/cartel titles</li>
+          <li>XP + Level (no cultivation)</li>
+          <li>Modern realism</li>
+        </ul>
+      </div>
+
+      <div class="card card-hoverable" onclick="selectReality('faerun', this)">
+        <div style="aspect-ratio: 4/3; background: linear-gradient(135deg, #f4e8d4, #92400e); border-radius: 0.375rem; margin-bottom: 0.875rem; display: flex; align-items: center; justify-content: center; font-family: 'Source Serif Pro', serif; font-size: 1.5rem; color: #4a2511; font-weight: 700; letter-spacing: 0.05em;">FAERÛN</div>
+        <h3 style="margin: 0 0 0.25rem 0; font-size: 1.125rem;">Faerûn</h3>
+        <p class="subtle" style="margin: 0 0 0.75rem 0; font-size: 0.8125rem;">High fantasy · D&D 5e ruleset</p>
+        <div style="display: flex; gap: 0.25rem; align-items: center; font-size: 0.75rem; color: var(--ink-muted);">
+          <span style="color: var(--success);">●●●●○</span> Hoạt động cao
+        </div>
+        <div class="brush-divider" style="margin: 0.75rem 0;"></div>
+        <ul style="font-size: 0.8125rem; color: var(--ink-muted); padding-left: 1rem; margin: 0;">
+          <li>11 races + 31 subraces</li>
+          <li>Kingdoms + 15 noble titles</li>
+          <li>Class-based progression</li>
+          <li>BG3-inspired</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="card" style="margin-bottom: 2rem;">
+      <strong>Đã chọn: <span id="selected-name">Đông Phong Cõi</span></strong>
+      <p class="subtle" style="margin: 0.5rem 0 0 0;" id="selected-desc">
+        Một thế giới Đại Đường-style. 5 sect cạnh tranh trong Wulin Meng. Hoàng đế trị vì Đông Phong; Đông Hải Đạo Cốc đứng đầu khu vực ven biển. Tu vi 7-realm: Ngưng Khí → Trúc Cơ → Kết Đan → Nguyên Anh → Hóa Thần → Anh Biến → Vấn Đỉnh. Xuyên không (transmigration) là cơ chế đặc thù. Phù hợp cho người mới hoặc fan tu tiên.
+      </p>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 1rem;">
+      <button class="btn-secondary" onclick="window.location.href='00_landing.html'">Quay lại</button>
+      <button class="btn-primary" onclick="window.location.href='02_path_choice.html?reality=' + document.body.dataset.reality">Tiếp tục →</button>
+    </div>
+  </main>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+
+  function selectReality(realityKey, cardEl) {
+    document.querySelectorAll('.card-selected').forEach(c => c.classList.remove('card-selected'));
+    cardEl.classList.add('card-selected');
+    document.body.dataset.reality = realityKey;
+
+    const names = { dongphong: 'Đông Phong Cõi', saigon: 'Saigon 2026', faerun: 'Faerûn' };
+    const descs = {
+      dongphong: 'Một thế giới Đại Đường-style. 5 sect cạnh tranh trong Wulin Meng. Hoàng đế trị vì Đông Phong; Đông Hải Đạo Cốc đứng đầu khu vực ven biển. Tu vi 7-realm: Ngưng Khí → Trúc Cơ → Kết Đan → Nguyên Anh → Hóa Thần → Anh Biến → Vấn Đỉnh. Xuyên không (transmigration) là cơ chế đặc thù. Phù hợp cho người mới hoặc fan tu tiên.',
+      saigon: 'Sài Gòn năm 2026 — biên giới giữa cảnh sát quận 1 và 3 tổ chức ngầm (Hồng Long Cartel / Triệu Phong Đoàn / Thanh Xà Hội). Modern realism — không có tu vi/phép thuật; XP + level + skill-based progression. Phù hợp cho fan noir/crime fiction.',
+      faerun: 'Faerûn — vùng đất thần thoại của Forgotten Realms. 11 chủng tộc + 31 subraces. Kingdoms (Cormyr / Waterdeep / Baldur\'s Gate). 15 quý tộc & hiệp sĩ titles. D&D 5e ruleset — class-based progression. BG3-inspired adaptation.'
+    };
+    document.getElementById('selected-name').textContent = names[realityKey];
+    document.getElementById('selected-desc').textContent = descs[realityKey];
+  }
+</script>
+</body>
+</html>
