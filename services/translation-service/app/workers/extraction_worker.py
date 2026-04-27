@@ -15,8 +15,19 @@ from uuid import UUID
 
 import httpx
 
+from loreweave_llm.errors import (
+    LLMAuthFailed,
+    LLMDecodeError,
+    LLMError,
+    LLMInvalidRequest,
+    LLMModelNotFound,
+    LLMQuotaExceeded,
+    LLMStreamNotSupported,
+    LLMTransientRetryNeededError,
+)
+
 from ..config import settings
-from .content_extractor import extract_content
+from ..llm_client import LLMClient
 from .extraction_preprocessor import prepare_chapter_text
 from .extraction_prompt import (
     build_extraction_prompt,
@@ -34,16 +45,19 @@ from .glossary_client import (
 log = logging.getLogger(__name__)
 
 
-async def handle_extraction_job(msg: dict, pool, publish, publish_event) -> None:
+async def handle_extraction_job(msg: dict, pool, publish, publish_event, llm_client: LLMClient) -> None:
     """Coordinator: receives extraction job, marks running, processes chapters sequentially.
 
     Unlike translation jobs which fan out chapters in parallel,
     extraction processes chapters sequentially to accumulate known entities.
+
+    Phase 4c-γ: llm_client threaded from worker.py — replaces the
+    legacy /internal/invoke httpx call.
     """
     job_id = UUID(msg["job_id"])
     user_id = msg["user_id"]
     try:
-        await _run_extraction_job(msg, job_id, user_id, pool, publish, publish_event)
+        await _run_extraction_job(msg, job_id, user_id, pool, publish, publish_event, llm_client)
     except Exception as exc:
         log.exception("extraction_worker: job %s failed unexpectedly: %s", job_id, exc)
         async with pool.acquire() as db:
@@ -59,7 +73,7 @@ async def handle_extraction_job(msg: dict, pool, publish, publish_event) -> None
         })
 
 
-async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publish, publish_event) -> None:
+async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publish, publish_event, llm_client: LLMClient) -> None:
     """Inner extraction job runner — separated for top-level error handling."""
     book_id = msg["book_id"]
     chapter_ids = msg["chapter_ids"]
@@ -147,6 +161,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 model_ref=model_ref,
                 max_entities_per_kind=max_entities_per_kind,
                 pool=pool,
+                llm_client=llm_client,
             )
             # Update known entities with newly created entities (capped at 200 to prevent
             # unbounded prompt growth — design §7 says ~50 entities ≈ 250 tokens)
@@ -260,6 +275,7 @@ async def _process_extraction_chapter(
     model_ref: str | None,
     max_entities_per_kind: int,
     pool,
+    llm_client: LLMClient,
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -310,51 +326,76 @@ async def _process_extraction_chapter(
         )
         user_prompt = build_user_prompt(chapter_text)
 
-        # 5. LLM call via provider-registry
-        invoke_payload = {
-            "model_source": model_source,
-            "model_ref": model_ref,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.1,
-            "max_tokens": 12000,
-        }
-
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=300, write=10, pool=5)) as client:
-            resp = await client.post(
-                f"{settings.provider_registry_service_url}/internal/invoke",
-                params={"user_id": str(owner_user_id)},
-                json=invoke_payload,
-                headers={"X-Internal-Token": settings.internal_service_token},
+        # 5. LLM call via SDK (replaces /internal/invoke).
+        # Phase 4c-γ: HIGH#1 lesson from cycle 11 applied — catch
+        # permanent SDK subclasses BEFORE generic LLMError so a
+        # misconfigured BYOK doesn't poison the whole batch loop.
+        try:
+            sdk_job = await llm_client.submit_and_wait(
+                user_id=str(owner_user_id),
+                # /review-impl MED#1 — operation="chat" routes to the
+                # SAME chatAggregator as "translation" but accurately
+                # labels glossary entity extraction in gateway telemetry/
+                # billing dashboards. "translation" would mislabel.
+                operation="chat",
+                model_source=model_source,
+                model_ref=str(model_ref),
+                input={
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 12000,
+                },
+                chunking=None,
+                job_meta={
+                    "extractor": "glossary",
+                    "extraction_job_id": str(job_id),
+                    "chapter_id": str(chapter_id),
+                    "batch_idx": batch_idx,
+                },
+                transient_retry_budget=1,
             )
-
-        if resp.status_code != 200:
+        except (LLMQuotaExceeded, LLMModelNotFound, LLMAuthFailed,
+                LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
             log.error(
-                "extraction: LLM invoke failed status=%d for chapter %s batch %d/%d — skipping batch (kinds: %s)",
-                resp.status_code, chapter_id, batch_idx + 1, len(batches), batch,
+                "extraction: permanent SDK error %s for chapter %s batch %d/%d — failing batch",
+                exc.__class__.__name__, chapter_id, batch_idx + 1, len(batches),
+            )
+            continue
+        except (LLMTransientRetryNeededError, LLMError) as exc:
+            log.error(
+                "extraction: transient SDK error for chapter %s batch %d/%d: %s",
+                chapter_id, batch_idx + 1, len(batches), exc,
             )
             continue
 
-        resp_data = resp.json()
-        raw_output = resp_data.get("output", {})
-        response_text = extract_content(raw_output)
-        input_tokens = resp_data.get("usage", {}).get("input_tokens", 0)
-        output_tokens = resp_data.get("usage", {}).get("output_tokens", 0)
+        if sdk_job.status != "completed":
+            err_code = sdk_job.error.code if sdk_job.error else "unknown"
+            log.error(
+                "extraction: LLM job ended status=%s code=%s for chapter %s batch %d/%d — skipping batch (kinds: %s)",
+                sdk_job.status, err_code, chapter_id, batch_idx + 1, len(batches), batch,
+            )
+            continue
+
+        # chatAggregator output: {"messages": [{"role":"assistant","content":...}], "usage": {...}}
+        result = sdk_job.result or {}
+        messages_out = result.get("messages") or []
+        response_text = ""
+        if isinstance(messages_out, list) and messages_out:
+            first = messages_out[0]
+            if isinstance(first, dict):
+                response_text = first.get("content", "") or ""
+        usage = result.get("usage") or {}
+        input_tokens = int(usage.get("input_tokens") or 0)
+        output_tokens = int(usage.get("output_tokens") or 0)
         total_input_tokens += input_tokens
         total_output_tokens += output_tokens
 
-        # Log LLM response stats for monitoring model quality / token budget tuning
-        choices = raw_output.get("choices", []) if isinstance(raw_output, dict) else []
-        if choices and isinstance(choices[0], dict):
-            msg = choices[0].get("message", {})
-            content_len = len(msg.get("content", "") or "")
-            reasoning_len = len(msg.get("reasoning_content", "") or "")
-            source = "content" if content_len > 0 else "reasoning"
-            log.info("extraction: chapter %s batch %d/%d — in=%d out=%d response=%d chars (source=%s, reasoning=%d chars)",
-                     chapter_id, batch_idx + 1, len(batches), input_tokens, output_tokens,
-                     len(response_text), source, reasoning_len)
+        log.info("extraction: chapter %s batch %d/%d — in=%d out=%d response=%d chars",
+                 chapter_id, batch_idx + 1, len(batches), input_tokens, output_tokens,
+                 len(response_text))
 
         # 6. Parse + validate
         entities = parse_and_validate(response_text, batch, extraction_profile)

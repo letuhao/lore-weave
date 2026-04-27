@@ -170,7 +170,7 @@ async def main() -> None:
         async with message.process(requeue=True):
             msg = json.loads(message.body)
             log.info("Extraction worker: job %s (%d chapters)", msg["job_id"], len(msg["chapter_ids"]))
-            await handle_extraction_job(msg, get_pool(), publish, publish_event)
+            await handle_extraction_job(msg, get_pool(), publish, publish_event, llm_client)
             log.info("Extraction worker: job %s done", msg["job_id"])
 
     await job_queue.consume(on_job)
