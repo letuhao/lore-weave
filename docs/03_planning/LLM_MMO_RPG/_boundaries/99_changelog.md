@@ -6,6 +6,92 @@
 
 ---
 
+## 2026-04-27 — CULT_001 V2+ ENTIRELY DEFERRED (self-correction; PROG-A1 axiom preservation; single `[boundaries-lock-claim+release]` commit)
+
+- **Lock CLAIMED + RELEASED** in single combined commit — pure documentation correction; zero schema/aggregate/EVT change
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in single commit
+  - `99_changelog.md`: this entry
+- **Files modified outside `_boundaries/`:**
+  - `features/00_progression/PROG_001_progression_foundation.md`:
+    - **§14.15 REWRITTEN** — heading changed from "Future CULT_001 Cultivation Foundation (V1+ priority per IDF roadmap)" to "CULT_001 Cultivation Foundation — V2+ ENTIRELY DEFERRED (2026-04-27 stress-test correction)"; full rationale section added (PROG-A1 axiom citation + 9-system realm-hierarchy comparison + 4 sub-sections §14.15.1 V1 cultivation realities mechanism / §14.15.2 V2+ CULT_001 reframing as template library / §14.15.3 stress-test verdict 11-system audit / §14.15.4 V1 sufficiency guarantee)
+    - **§20.3 future-features list updated** — CULT_001 entry rewritten from "V1+ extension; PROG_001 V1 sufficient for tu tiên without CULT_001" to "V2+ ENTIRELY DEFERRED" with reframed scope (template/convention library only) + cross-reference to §14.15
+  - `catalog/cat_00_PROG_progression.md`:
+    - **Coordination/discipline notes section** — added CULT_001 V2+ entirely deferred bullet documenting stress-test correction + PROG-A1 axiom + 11-system audit + V2+ template-library reframing + downstream propagation note (REP_001/FAC_001/FF_001/IDF/AIT_001/TDIL_001 references "V1+ CULT_001" become "V2+ CULT_001" naturally; deferral semantics unchanged)
+
+### Background — what triggered the self-correction
+
+User question 2026-04-27 (after PROG-D33..D37 commit b20c4dcb): *"tôi quên mất là chúng ta sai rồi — CULT_001 đang fix stage nhưng mỗi reality có cách tu luyện khác nhau, cảnh giới và chỉ số sức mạnh mỗi cảnh giới cũng khác nhau?"*
+
+Tôi đã propose CULT_001 V1 với:
+- "7-realm × 4-stage taxonomy (Ngưng Khí → Vấn Đỉnh)" — HARDCODED Tiên Nghịch realms vào engine
+- "Spirit Root (Linh Căn) 5-element Kim/Mộc/Thủy/Hỏa/Thổ" — HARDCODED Đông Á ngũ hành
+- "I18nBundle realm names — Vietnamese cultivation names" — HARDCODED genre labels
+
+Đây là **violation of PROG-A1 axiom** ("Engine cannot fix progression schema; modern social ≠ tu tiên cultivation ≠ traditional D&D. Author declares ProgressionKindDecl per reality. Empty schema = sandbox/freeplay reality with no progression valid V1").
+
+### 11-system stress-test verdict — different realities have different cultivation systems
+
+Each reality declares own cultivation hierarchy + stat axes + power scaling per-reality, NOT engine-fixed:
+
+- **Tiên Nghịch (Xian Ni)**: 12 realms (Ngưng Khí → Vấn Đỉnh → Âm Hư + Dương Thực transition → Khuy Niết → Tịnh Niết → Toái Niết) + Step 4 Đạp Thiên 9-tier extension
+- **Đấu Phá Thương Khung**: 9-tier (Đấu Giả → Đấu Sư → Đấu Linh → Đấu Vương → Đấu Hoàng → Đấu Tông → Đấu Tôn → Đấu Thánh → Đấu Đế)
+- **Phàm Nhân Tu Tiên Truyện**: 8-tier (Luyện Khí → Trúc Cơ → Kết Tinh → Nguyên Anh → Hóa Thần → Luyện Hư → Đại Thừa → Độ Kiếp)
+- **Tru Tiên (Zhu Xian)**: dual-axis sword-cultivation + spirit-cultivation
+- **Cầu Ma (Renegade Immortal sequel)**: Body Ancient parallel-axis to Qi cultivation
+- **Thế Giới Hoàn Mỹ**: Dragon Transformation Realm hierarchy
+- **Kim Dung wuxia (kiếm hiệp)**: 1st rate / 2nd rate / 3rd rate experts (no realms; no immortality)
+- **Modern realities**: XP + Level only (no cultivation)
+- **Sci-fi cyberpunk**: cybernetic implant tiers, AI assimilation ranks (no qi)
+
+PROG_001 V1 substrate ALREADY handles ALL of these via per-reality `ProgressionKindDecl` + `TierDecl` (flat list bijection for 2D realm+stage) + `I18nBundle` (per-locale realm names) + `derives_from` (Spirit Root → cultivation rate) + `BreakthroughCondition` (item + location + mentor + time-window) + canonical_traits (Spirit Root attribute) + cross-aggregate validators (lifespan-realm coupling). NO new feature needed V1.
+
+### Decision
+
+**CULT_001 V2+ entirely deferred.** Reframed as **template/convention library** (non-engine, out-of-features/ folder):
+- Pre-built `ProgressionKindDecl` templates for common genres (TienNghiPath12 / DauPhaPath9 / PhamNhanPath8 / KimDungWuxia3Rate / ModernLevelOnly / SciFiCyberRanks)
+- Authoring design guide markdown for reality authors writing custom cultivation
+- Convention catalog (standardized canonical_traits field naming if author opts-in)
+- Cross-cutting helper utilities (MultiMethodPolicy, lifespan-realm coupling, tribulation event templates) — emerge from V1 author feedback NOT engine prescription
+
+**No engine schema/aggregates/EVTs/namespace.** NOT a foundation/Tier-5+ feature.
+
+### What's preserved (committed b20c4dcb still valid)
+
+PROG-D33..D37 cross-cultivation extensibility deferrals committed b20c4dcb stand UNCHANGED — they future-proof PROG_001 against ANY per-reality cultivation system authors might invent V1+, regardless of CULT_001 existence. Specifically:
+- PROG-D33 V1+30d: Cross-actor TrainingSource (dual cult / demonic absorb / master-pet / family-bond) — applies to per-reality declarations
+- PROG-D34 V1+30d: RawValueDecrement active (drain/leech for cauldron mechanics + lifespan-burn) — per-reality
+- PROG-D35 V2: derives_from cross-feature source (FF/FAC/REL state → rate multiplier) — per-reality
+- PROG-D36 V1+30d: BreakthroughCondition::KarmaThreshold variant (heart demon karma gating) — per-reality
+- PROG-D37 V2: RebirthBonusDecl RealityManifest extension (rebirth cumulative per-death bonus) — per-reality
+
+### Downstream propagation (not blocking; natural decay)
+
+25 docs reference "CULT_001 V1+ priority" or similar across REP_001 / FAC_001 / FF_001 / IDF_001..005 / AIT_001 / TDIL_001 / catalog files / concept notes / reference surveys. These references remain VALID with semantic change "V1+ → V2+" — the deferral concept (CULT_001 ships later) is unchanged; only the timing label updates. Mass-rewrite NOT performed in this commit (would be churn for naturally-out-of-date references). Each downstream doc updates organically when its closure pass / next-priority commit fires.
+
+PROG_001 §14.15 + §20.3 + cat_00_PROG_progression.md are the AUTHORITATIVE sources for CULT_001 boundary clarity; all downstream docs defer to these for current status.
+
+### V1 PROG_001 behavior unchanged
+
+Pure documentation correction. Zero schema change. PROG_001 status remains DRAFT. No LOCK promotion. No new aggregate/EVT/namespace.
+
+### Next priority (post this commit)
+
+CULT_001 was the listed "next priority" in multiple folder closure roadmaps. With V2+ defer, next priority candidates:
+
+| Candidate | Justification | Readiness |
+|---|---|---|
+| **TIT_001 Title Foundation** | Heir succession via FF_001 + FAC_001 + min REP_001 rep; pre-recommended in REP_001/FAC_001 closure changelogs | Foundation 6/6 + Tier 5 ACT_001/PCS_001/IDF/RES/REP/FAC/FF complete; ready |
+| **PO_001 Player Onboarding** | UI flow consumes PCS_001 primitives Forge:RegisterPc + Forge:BindPcUser per PCS-D1; resolves "V1 character creation" gap | Pre-recommended in PCS_001 folder closure roadmap; ready |
+| **DIPL_001 Diplomacy Foundation** | Inter-faction politics V1+ priority; consumes FAC_001 + REP_001 | Tier 5+ scope; ready |
+| **AI-controls-PC-offline activation** | Cross-ref ACT-D1; chorus_metadata sparse PC V1+ activation | Schema-additive only; ready |
+| **PROG_001 / RES_001 / AIT_001 / TDIL_001 closure passes** | Promote DRAFT → CANDIDATE-LOCK; resolves §20.2 deferred follow-ups | Ongoing closure-pass discipline |
+| **SPIKE_01 turn 5 integration test** | First end-to-end turn pipeline test; validates 6 foundations + 8 Tier 5 features integrated | Integration test design phase |
+
+User to pick next priority post this commit.
+
+---
+
 ## 2026-04-27 — PROG_001 closure-pass-extension: 5 NEW deferrals D33..D37 for cross-cultivation extensibility (single `[boundaries-lock-claim+release]` commit)
 
 - **Lock CLAIMED + RELEASED** in single combined commit — small additive deferral catalog growth; no V1 behavior change; no PROG_001 LOCK boundary touch (PROG_001 status DRAFT)

@@ -1230,14 +1230,67 @@ EVT-G6 Coordinator: PROG_001 CultivationTick sequenced 5th in day-boundary chain
 
 PROG_001 reserves `tracking_tier: Option<NpcTrackingTier>` field; AI Tier feature owns enum + tier promotion logic + Untracked NPC procedural generation. Boundary: PROG_001 ships HOOKS; AI Tier feature ships SEMANTICS.
 
-### §14.15 Future CULT_001 Cultivation Foundation (V1+ priority per IDF roadmap)
+### §14.15 CULT_001 Cultivation Foundation — V2+ ENTIRELY DEFERRED (2026-04-27 stress-test correction)
 
-Boundary clarity for CULT_001 (mentioned as V1+ priority in IDF folder closure changelog):
-- **PROG_001 owns cultivation SUBSTRATE** — Stage type with breakthrough mechanic, training rules, RealityManifest declarations cover tu tiên cultivation generically
-- **CULT_001 V1+ may add** wuxia-specific extensions: cultivation method registry (luyện khí method 1 vs method 2), 灵根 talent typing, dual-cultivation mechanics, sect-specific cultivation paths
-- CULT_001 is a SUB-FEATURE of PROG_001 (V1+ extension); not a competing foundation
+**Status (2026-04-27 closure-pass-extension):** CULT_001 originally listed as V1+ priority per IDF folder closure changelog. **REVISED 2026-04-27 stress-test pre-audit finding:** CULT_001 V1+ design would VIOLATE **PROG-A1 axiom** ("Engine cannot fix progression schema; modern social ≠ tu tiên cultivation ≠ traditional D&D. Author declares ProgressionKindDecl per reality"). Each reality has different realm hierarchy + stat axes + power scaling — engine cannot hardcode wuxia conventions:
 
-V1 PROG_001 ships sufficient for tu tiên realities WITHOUT CULT_001. CULT_001 V1+ enriches without redesigning.
+- **Tiên Nghịch (Xian Ni)**: 12 realms (Ngưng Khí → Vấn Đỉnh → Âm Hư + Dương Thực transition → Khuy Niết → Tịnh Niết → Toái Niết) + Step 4 Đạp Thiên 9-tier extension
+- **Đấu Phá Thương Khung**: 9-tier (Đấu Giả → Đấu Sư → Đấu Linh → Đấu Vương → Đấu Hoàng → Đấu Tông → Đấu Tôn → Đấu Thánh → Đấu Đế)
+- **Phàm Nhân Tu Tiên Truyện**: 8-tier (Luyện Khí → Trúc Cơ → Kết Tinh → Nguyên Anh → Hóa Thần → Luyện Hư → Đại Thừa → Độ Kiếp)
+- **Tru Tiên (Zhu Xian)**: dual-axis sword-cultivation + spirit-cultivation
+- **Cầu Ma (Renegade Immortal sequel)**: Body Ancient parallel-axis to Qi cultivation
+- **Thế Giới Hoàn Mỹ**: Dragon Transformation Realm hierarchy
+- **Kim Dung wuxia (kiếm hiệp)**: 1st rate / 2nd rate / 3rd rate experts (no realms; no immortality)
+- **Modern realities**: XP + Level only (no cultivation)
+- **Sci-fi cyberpunk**: cybernetic implant tiers, AI assimilation ranks (no qi)
+
+**Decision: Defer CULT_001 to V2+ entirely.** PROG_001 V1 substrate is sufficient per §14.15 original boundary statement; per-reality declaration via ProgressionKindDecl + TierDecl + I18nBundle handles ALL cultivation systems generically. V2+ formalize CULT_001 as **template/convention library** (non-engine; out-of-features/ folder) after V1 author feedback. NOT a foundation feature; NOT a Tier 5+ feature; not a feature with engine schema/aggregates/EVTs/namespace.
+
+#### §14.15.1 What V1 cultivation realities DO
+
+Each reality author declares own cultivation system via existing PROG_001 primitives (NO new feature needed):
+
+| Wuxia concept | PROG_001 V1 mechanism |
+|---|---|
+| Realm + Stage taxonomy | `ProgressionKindDecl { progression_type: Stage, curve: CurveDecl::Stage { tiers: Vec<TierDecl> } }` flat tier list (1 tier per (realm, stage) bijection) |
+| Realm names (per locale) | `TierDecl.name: I18nBundle` per RES_001 §2 i18n contract (e.g., `default: "QiRefining1"`, `vi: "Ngưng Khí Nhất Tầng"`, `zh: "凝气一层"`) |
+| Spirit Root (灵根 / Linh Căn) | `ProgressionKindDecl` of `progression_type: Attribute` + `body_or_soul: Body`; cultivation methods `derives_from { source_kind_id: spirit_root, training_rate_factor: 0.05 }` |
+| Cultivation Aptitude (根基 / Căn Cơ) | Same — Attribute kind |
+| Cultivation Method (功法 / Công Pháp) | Each method = separate ProgressionKindId; multi-method semantic via `TrainingCondition::StatusForbidden(active_other_method)` |
+| Breakthrough events | `BreakthroughCondition::AtMaxPlus { item_consumption + location_required + mentor_required + fiction_time_window }` (V1 active item+location; mentor/time V1+30d) |
+| Realm-gated abilities (V1+ Lex hook) | `WA_001 AxiomDecl.requires_progression_tier { kind_id, min_tier_index }` (V1+ closure pass) |
+| Lifespan coupling | Reality author declares cross-aggregate validator C-rule (lifespan_remaining_years += realm_breakthrough_lifespan_bonus) per Forge admin |
+| Deviation (走火入魔) | PROG-D2 V1+30d (existing reservation) |
+| Cross-actor cultivation (dual cult / demonic absorb) | PROG-D33 V1+30d (committed b20c4dcb) |
+| Drain/leech semantics | PROG-D34 V1+30d (committed b20c4dcb) |
+| Karma-gated breakthrough | PROG-D36 V1+30d (committed b20c4dcb) |
+| Rebirth cumulative bonus | PROG-D37 V2 (committed b20c4dcb) |
+
+#### §14.15.2 V2+ CULT_001 reframing (when ships V2+)
+
+**NOT** a new foundation feature. **NOT** a new aggregate / EVT / namespace. CULT_001 V2+ becomes:
+
+- **Template library** (non-engine): pre-built `ProgressionKindDecl` templates for common genres (TienNghiPath12 / DauPhaPath9 / PhamNhanPath8 / KimDungWuxia3Rate / ModernLevelOnly / SciFiCyberRanks) as Forge import seeds
+- **Authoring design guide**: markdown documentation for reality authors writing custom cultivation systems
+- **Convention catalog**: standardized canonical_traits field name conventions (e.g., "spirit_root" / "cultivation_aptitude" naming), opt-in only
+- **Cross-cutting helpers** (if author feedback warrants): MultiMethodPolicy enum, Lifespan-realm coupling utility validator, Tribulation event narrative templates
+
+**Scope: documentation/templates layer only.** Engine schema unchanged.
+
+#### §14.15.3 Stress-test verdict
+
+Stress-test against 11 exotic cultivation systems (Cầu Ma / Tiên Nghịch / Đấu Phá / Phàm Nhân / Tru Tiên / Hoàn Mỹ / Kim Dung wuxia / Mo Dao Zu Shi demonic / Lifespan-burning / Heart demon karma / Rebirth) confirmed:
+- **3 NATIVELY supported V1**: body cultivation parallel-axis / alchemy-talisman-array orthogonal / lifespan-burn one-actor self-sacrifice — all via per-reality ProgressionKindDecl
+- **3 already-reserved V1+30d** (no new deferral): demonic 走火入魔 → PROG-D2; sword spirit → Q6b Item ActorRef; sect martial arts → PROG-D10 ActorClassMatch
+- **5 NEW deferrals D33..D37** (committed b20c4dcb) cover dual-cult / drain / family-state-multiplier / heart-demon / rebirth cumulative
+
+**No PROG_001 redesign required.** PROG_001 V1 is the cultivation substrate; CULT_001 V2+ is templates only.
+
+#### §14.15.4 V1 sufficiency guarantee
+
+**V1 PROG_001 ships sufficient for ALL cultivation realities WITHOUT CULT_001.** Reality author commissions wuxia world via Forge admin tool: declares ProgressionKindDecls + I18nBundle realm names + TrainingRules + BreakthroughConditions + canonical_traits Spirit Root attribute + cross-aggregate lifespan validator. Engine validates per RealityManifest bootstrap; LLM narrates via I18nBundle; cultivation works fully V1.
+
+CULT_001 V2+ deferral is intentional **per-reality content discipline preservation**. Templates emerge from V1 author feedback, NOT engine prescription.
 
 ---
 
@@ -1493,11 +1546,12 @@ These features need updates AFTER PROG_001 LOCK (separate commits, lock-coordina
 - Discard policies
 - Defer creation until user explicit kickoff post PROG_001 DRAFT
 
-**Future CULT_001 Cultivation Foundation** (V1+ priority per IDF folder closure roadmap):
-- Wuxia-specific cultivation method registry
-- 灵根 talent typing
-- Sect-specific cultivation paths
-- V1+ extension; PROG_001 V1 sufficient for tu tiên without CULT_001
+**CULT_001 Cultivation Foundation — V2+ ENTIRELY DEFERRED** (2026-04-27 stress-test correction; previously listed as V1+ priority per IDF folder closure roadmap):
+- **Reframed as V2+ template/convention library** (non-engine; out-of-features/ folder) per §14.15 stress-test finding
+- **NOT a foundation/Tier-5+ feature**; no engine schema/aggregates/EVTs/namespace
+- V1 cultivation realities self-declare via PROG_001 ProgressionKindDecl + I18nBundle + canonical_traits + cross-aggregate validators per PROG-A1 axiom (per-reality declaration discipline)
+- V2+ CULT_001 ships pre-built ProgressionKindDecl templates (TienNghiPath12 / DauPhaPath9 / PhamNhanPath8 / KimDungWuxia3Rate / ModernLevelOnly / SciFiCyberRanks) + design guide + opt-in convention names — emerge from V1 author feedback NOT engine prescription
+- See §14.15 for full stress-test verdict (11-system audit) + V1 sufficiency guarantee
 
 ### §20.4 ORG-* prefix alignment concern
 
