@@ -62,7 +62,7 @@ generated_by: hand-authored (foundation-tier catalog seed)
 | REP-D6 | V2+ cross-reality migration via WA_002 Heresy | V2+ |
 | REP-D7 | V1+ NPC_002 Tier 4 priority modifier integration (rival-faction NPCs read REP_001) | V1+ enrichment |
 | REP-D8 | V1+ WA_001 AxiomDecl.requires_reputation hook (faction-gated abilities require min rep tier) | V1+ enrichment |
-| REP-D9 | V1+ TIT_001 title-grant requires min rep | V1+ when TIT_001 ships |
+| REP-D9 ✅ V1 PARTIAL RESOLVED 2026-04-27 by TIT_001 V1 | V1+ TIT_001 title-grant requires min rep | TitleDecl.min_reputation_required: Option<MinRepGate> field schema-active V1 per Q4 C LOCKED; runtime validator V1+ alongside REP-D1 runtime delta milestone (TIT-D2). Schema-stable / activation-deferred V1+ discipline (TIT-A8). |
 | REP-D10 | V1+ CULT_001 sect cultivation method requires min rep | V1+ when CULT_001 ships |
 | REP-D11 | V2+ DIPL_001 inter-faction war affects member rep cascade | V2+ when DIPL_001 ships |
 | REP-D12 | V2+ quest reward = REP_001 rep delta (13_quests integration) | V2+ |

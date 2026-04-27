@@ -566,7 +566,7 @@ DRAFT promotion registers:
 | **FF-D5** | Marriage as faction alliance currency | V1+ FAC_001 + V1+ DIPL_001 (NOT FF_001) |
 | **FF-D6** | Sworn brotherhood (Total War 3K pattern) | V1+ FAC_001 (NOT FF_001 per Q4) |
 | **FF-D7** | Master-disciple sect lineage (Wuxia) | V1+ FAC_001 (NOT FF_001 per Q4) |
-| **FF-D8** | Title inheritance rules + heir succession | V1+ TIT_001 Title Foundation reads FF_001 dynasty.current_head_actor_id |
+| **FF-D8** ✅ RESOLVED 2026-04-27 by TIT_001 V1 (CANDIDATE-LOCK) | Title inheritance rules + heir succession | TIT_001 V1 RESOLVES (full active via SuccessionRule::Eldest reading FF_001 dynasty.current_head_actor_id traversal + per-title VacancySemantic + cross-aggregate validator TIT-C1 cascades synchronously on WA_006 mortality EVT-T3 same turn) |
 | **FF-D9** | Cross-reality family migration | V2+ WA_002 Heresy migration per Q7 LOCKED |
 | **FF-D10** | Family-driven cascade opinion drift on death | V1+ NPC_002 enrichment reads FF_001 graph at NPC reaction priority |
 | **FF-D11** | V1+ runtime birth/divorce/adoption event flows (V1 ships canonical seed only V1) | V1+ when PCS_001 + life-event simulation features ship |

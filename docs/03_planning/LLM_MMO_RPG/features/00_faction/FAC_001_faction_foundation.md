@@ -582,7 +582,7 @@ DRAFT promotion registers:
 | **FAC-D3** (FF-D5) | Marriage as faction alliance | V1+ FAC_001 + V1+ DIPL_001 (resolves jointly with FF-D5) |
 | **FAC-D4** | Faction-faction dynamic relations (treaties / wars / alliance changes) | V1+ DIPL_001 Diplomacy Foundation layers on top of FAC_001 static default_relations |
 | **FAC-D5** | Wulin Meng parent_faction_id (hierarchical faction; cadet branches) | V1+ enrichment when first content needs parent faction |
-| **FAC-D6** (FF-D8) | Sect succession rules (gavelkind / primogeniture / elective) | V1+ TIT_001 Title Foundation reads FAC_001 + FF_001 |
+| **FAC-D6** ✅ RESOLVED 2026-04-27 by TIT_001 V1 (CANDIDATE-LOCK) (FF-D8 jointly RESOLVED) | Sect succession rules (gavelkind / primogeniture / elective) | TIT_001 V1 RESOLVES (full active via SuccessionRule::Designated for sect-master + master-disciple succession; TitleBinding::Faction(faction_id) cross-validates against canonical_factions; TitleAuthorityDecl.faction_role_grant atomically updates actor_faction_membership.role_id on title-grant via 3-write atomic pattern; TIT-C1 cross-aggregate cascade synchronously on WA_006 mortality EVT-T3 same turn). V1+ FactionElect SuccessionRule remains deferred via TIT-D1 alongside DIPL_001 V2+ procedural voting. |
 | **FAC-D7** | Per-(actor, faction) reputation projection | V1+ REP_001 Reputation Foundation separate aggregate |
 | **FAC-D8** (Q9) | Faction-driven Lex axiom gate ACTIVE | V1+ when first faction-gated axiom ships in WA_001 closure pass |
 | **FAC-D9** (Q8) | Cross-reality faction migration | V2+ WA_002 Heresy migration |

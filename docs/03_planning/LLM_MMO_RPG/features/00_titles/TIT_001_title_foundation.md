@@ -2,7 +2,7 @@
 
 > **Category:** TIT — Title Foundation (foundation tier; Tier 5 Actor Substrate post-FF_001 + FAC_001 + REP_001; closes the political-rank triangle)
 > **Catalog reference:** [`catalog/cat_00_TIT_title_foundation.md`](../../catalog/cat_00_TIT_title_foundation.md) (owns `TIT-*` stable-ID namespace)
-> **Status:** DRAFT 2026-04-27 — All 10 critical scope questions LOCKED via 4-batch deep-dive 2026-04-27 zero revisions. Companion documents: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + Q1-Q10 LOCKED matrix §10) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (CK3 + Wuxia hybrid V1 anchor reference materials).
+> **Status:** CANDIDATE-LOCK 2026-04-27 — 4-commit cycle complete (Phase 0 f9e7600f + DRAFT 2/4 9456a446 + Phase 3 cleanup 3/4 2c00400f + closure 4/4 this commit). All 10 critical scope questions LOCKED via 4-batch deep-dive 2026-04-27 zero revisions. Companion documents: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + Q1-Q10 LOCKED matrix §10) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (CK3 + Wuxia hybrid V1 anchor reference materials) + [`catalog/cat_00_TIT_title_foundation.md`](../../catalog/cat_00_TIT_title_foundation.md) (8 axioms TIT-A1..A8 + 22 V1 entries TIT-1..22 + 12 V1+/V2/V2+ entries TIT-23..34 + 12 deferrals TIT-D1..D12 + 8 cross-aggregate consistency rules TIT-C1..C8).
 >
 > **i18n compliance:** Conforms to RES_001 §2 cross-cutting i18n contract — all stable IDs English `snake_case` / `PascalCase`; all user-facing strings `I18nBundle`.
 > **V1 testable acceptance:** 10 scenarios AC-TIT-1..10 (§10).
@@ -727,15 +727,15 @@ WA_006 mortality_state transition Alive → Dead for actor_X (sect master Lý L�
 ## §14 — Status
 
 - **Created:** 2026-04-27 by main session
-- **Phase:** DRAFT 2026-04-27 — Q1-Q10 LOCKED via 4-batch deep-dive zero revisions
-- **Status target:** CANDIDATE-LOCK after Phase 3 review cleanup + closure pass + downstream coordination notes
+- **Phase:** CANDIDATE-LOCK 2026-04-27 — 4-commit cycle complete; Q1-Q10 LOCKED zero revisions; Phase 3 cleanup applied
+- **Status target:** LOCK when AC-TIT-1..10 V1-testable scenarios pass integration tests against Wuxia + Modern + D&D reality fixtures + V1+ TIT-D2 runtime min_rep validator + V1+ TIT-D3 requires_title Lex axiom validator ship
 - **Companion docs:**
   - [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + Q1-Q10 LOCKED matrix §10)
   - [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (CK3 + Wuxia hybrid V1 anchor)
   - [`catalog/cat_00_TIT_title_foundation.md`](../../catalog/cat_00_TIT_title_foundation.md) (axioms + entries + deferrals)
   - [`_index.md`](_index.md) (folder index)
-- **4-commit cycle:**
+- **4-commit cycle COMPLETE 2026-04-27:**
   - 1/4 Phase 0 (commit f9e7600f) — concept notes + reference survey + index
-  - 2/4 DRAFT (this commit) — TIT_001_title_foundation.md spec + boundary updates + catalog seed; WITH `[boundaries-lock-claim]`
-  - 3/4 Phase 3 cleanup (next commit) — self-review fixes + downstream coordination notes
-  - 4/4 CANDIDATE-LOCK closure (next commit) — final lock + RESOLVES FF-D8/FAC-D6/REP-D9-partial/WA_006-cascade-gap; `[boundaries-lock-release]`
+  - 2/4 DRAFT (commit 9456a446) — TIT_001_title_foundation.md spec + boundary updates + catalog seed; `[boundaries-lock-claim]`
+  - 3/4 Phase 3 cleanup (commit 2c00400f) — drift fixes (added 2 reject rules) + validator pipeline slots TIT-C1..C8 / C18-C25 registration
+  - 4/4 CANDIDATE-LOCK closure (this commit) — status DRAFT → CANDIDATE-LOCK + RESOLVED annotations on FF-D8 / FAC-D6 / REP-D9 (V1 partial) source docs + WA_006 sect-leader-death cascade gap closure note + folder _index.md COMPLETE; `[boundaries-lock-release]`

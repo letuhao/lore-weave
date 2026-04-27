@@ -559,7 +559,7 @@ This DRAFT commit (2/4) adds the following boundary entries:
 | **REP-D6** | V2+ cross-reality migration | Q8 V2+ Heresy WA_002 |
 | **REP-D7** | V1+ NPC_002 Tier 4 priority modifier integration | NPC_002 V1+ enrichment; reads REP_001 for rival-faction NPCs |
 | **REP-D8** | V1+ WA_001 AxiomDecl.requires_reputation hook | WA_001 closure pass V1+ extension; AxiomDecl 4-companion-fields-uniform pattern (race + ideology + faction + reputation) |
-| **REP-D9** | V1+ TIT_001 title-grant requires min rep | TIT_001 design when feature ships |
+| **REP-D9** ✅ V1 PARTIAL RESOLVED 2026-04-27 by TIT_001 V1 (CANDIDATE-LOCK; runtime gating remains V1+ alongside REP-D1) | V1+ TIT_001 title-grant requires min rep | TIT_001 V1 PARTIAL RESOLVES — TitleDecl.min_reputation_required: Option<MinRepGate> field schema-active V1 per Q4 C LOCKED (declarations stored at canonical seed + Forge admin); runtime validator V1+ alongside REP-D1 runtime delta milestone (when REP_001 ships runtime gameplay delta events, TIT-D2 runtime min_rep validator activates simultaneously). Schema-stable / activation-deferred V1+ discipline (TIT-A8). |
 | **REP-D10** | V1+ CULT_001 sect cultivation method requires min rep | CULT_001 design when feature ships |
 | **REP-D11** | V2+ DIPL_001 inter-faction war affects member rep cascade | DIPL_001 V2+ design |
 | **REP-D12** | V2+ quest reward = REP_001 rep delta | 13_quests V2+ integration |

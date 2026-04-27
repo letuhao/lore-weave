@@ -6,6 +6,84 @@
 
 ---
 
+## 2026-04-27 — TIT_001 Title Foundation CANDIDATE-LOCK closure commit 4/4 — final lock release + cross-feature deferral RESOLVED annotations
+
+- **Lock RELEASED** — 4-commit cycle complete (Phase 0 f9e7600f + DRAFT 2/4 9456a446 + Phase 3 cleanup 3/4 2c00400f + closure 4/4 this commit); single combined `[boundaries-lock-release]` commit
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner reverted to None; _Last released_ entry with full 4-commit cycle summary
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_titles/TIT_001_title_foundation.md`: status header DRAFT → CANDIDATE-LOCK; §14 Status section updated (Phase: CANDIDATE-LOCK; LOCK target after AC-TIT-1..10 V1-testable scenarios + V1+ TIT-D2/TIT-D3 ship; 4-commit cycle COMPLETE)
+  - `features/00_titles/_index.md`: folder closure status COMPLETE; feature list TIT_001 row populated with full V1 spec summary + 4-commit chain
+  - `features/00_family/FF_001_family_foundation.md`: FF-D8 marked ✅ RESOLVED 2026-04-27 by TIT_001 V1 (CANDIDATE-LOCK); description updated (TIT_001 V1 RESOLVES via SuccessionRule::Eldest + per-title VacancySemantic + cross-aggregate validator TIT-C1)
+  - `features/00_faction/FAC_001_faction_foundation.md`: FAC-D6 marked ✅ RESOLVED 2026-04-27 by TIT_001 V1 (CANDIDATE-LOCK); FF-D8 jointly RESOLVED; description updated (TIT_001 V1 RESOLVES via SuccessionRule::Designated + TitleBinding::Faction cross-validation + TitleAuthorityDecl.faction_role_grant atomic role update via 3-write atomic pattern + TIT-C1 cross-aggregate cascade)
+  - `features/00_reputation/REP_001_reputation_foundation.md`: REP-D9 marked ✅ V1 PARTIAL RESOLVED 2026-04-27 by TIT_001 V1 (CANDIDATE-LOCK; runtime gating remains V1+ alongside REP-D1); description updated (schema-active V1; runtime validator V1+ alongside REP-D1 runtime delta milestone; TIT-D2 simultaneous activation; Schema-stable / activation-deferred V1+ discipline TIT-A8)
+  - `catalog/cat_00_REP_reputation_foundation.md`: REP-D9 row updated with V1 PARTIAL RESOLVED annotation
+
+### Cross-feature deferrals RESOLVED at this commit
+
+| Deferral | Source | Resolution |
+|---|---|---|
+| **FF-D8** ✅ FULL V1 | FF_001 Family Foundation | Title inheritance rules + heir succession → TIT_001 V1 RESOLVES via SuccessionRule::Eldest reading FF_001 dynasty.current_head_actor_id traversal + per-title VacancySemantic (PersistsNone/Disabled/Destroyed) + cross-aggregate validator TIT-C1 cascades synchronously on WA_006 mortality EVT-T3 same turn |
+| **FAC-D6** ✅ FULL V1 (FF-D8 jointly) | FAC_001 Faction Foundation | Sect succession rules → TIT_001 V1 RESOLVES via SuccessionRule::Designated for sect-master + master-disciple succession + TitleBinding::Faction(faction_id) cross-validates against canonical_factions + TitleAuthorityDecl.faction_role_grant atomically updates actor_faction_membership.role_id on title-grant via 3-write atomic pattern + TIT-C1 cross-aggregate cascade. V1+ FactionElect SuccessionRule remains deferred via TIT-D1 alongside DIPL_001 V2+ procedural voting. |
+| **REP-D9** ✅ V1 PARTIAL (runtime gating V1+ alongside REP-D1) | REP_001 Reputation Foundation | V1+ TIT_001 title-grant requires min rep → TIT_001 V1 PARTIAL RESOLVES via TitleDecl.min_reputation_required: Option<MinRepGate> field schema-active V1 per Q4 C LOCKED (declarations stored at canonical seed + Forge admin); runtime validator V1+ alongside REP-D1 runtime delta milestone (when REP_001 ships runtime gameplay delta events, TIT-D2 runtime min_rep validator activates simultaneously). Schema-stable / activation-deferred V1+ discipline (TIT-A8). |
+| **WA_006 sect-leader-death cascade gap** ✅ FULL V1 | FAC_001 _index.md kernel touchpoint | Sect-leader death triggers V1+ TIT_001 succession → TIT_001 V1 RESOLVES via TIT-C1 cross-aggregate validator C-rule (registered as global C18 in `03_validator_pipeline_slots.md`; FIRST RUNTIME cascade C-rule registered post P4 commit). Synchronous same-turn cascade on WA_006 mortality EVT-T3 actor_dies; emits TitleSuccessionTriggered EVT-T3 + TitleGranted EVT-T4 (if heir) + TitleSuccessionCompleted EVT-T1 narrative milestone; atomic FAC_001 actor_faction_membership.role_id update if TitleAuthorityDecl.faction_role_grant Some. |
+
+### TIT_001 4-commit cycle summary
+
+| # | Commit | What |
+|---|---|---|
+| 1/4 | f9e7600f Phase 0 | Folder structure (`features/00_titles/`) + concept notes (~450 lines; Q1-Q10 placeholder) + reference survey (~400 lines; CK3 + Wuxia hybrid V1 anchor; 9-system survey: CK3/Bannerlord/GoT/Wuxia novels canon/Imperator Rome/Stellaris/WoW/Dwarf Fortress/D&D 5e) + index. NO boundary lock. |
+| 2/4 | 9456a446 DRAFT | TIT_001_title_foundation.md spec (~739 lines; 14 sections) + cat_00_TIT_title_foundation.md catalog seed (8 axioms TIT-A1..A8 + 22 V1 catalog entries TIT-1..22 + 12 V1+/V2/V2+ entries TIT-23..34 + 12 deferrals TIT-D1..D12 + 8 cross-aggregate consistency rules TIT-C1..C8 + cross-feature integration map) + boundary updates (01_feature_ownership_matrix.md actor_title_holdings aggregate row + 4 EVT sub-type rows TitleGranted T4 / Forge admin T8 / TitleSuccessionTriggered T3 / TitleSuccessionCompleted T1 / RejectReason namespace title.* / TIT-* stable-ID prefix; 02_extension_contracts.md §1.4 title.* namespace 7 V1 + §2 RealityManifest 2 OPTIONAL V1 extensions canonical_titles + canonical_title_holdings) + 99_changelog.md DRAFT entry + concept notes Q-LOCKED matrix populated zero revisions + _index.md status update CONCEPT → DRAFT + `[boundaries-lock-claim]`. |
+| 3/4 | 2c00400f Phase 3 cleanup | Drift fixes (added 2 missing reject rules `title.binding.faction_membership_required` + `title.binding.dynasty_membership_required` referenced in §6.2 + §9.1 pseudocode; updated count 7 V1 → 9 V1 across spec + catalog + boundary docs) + 03_validator_pipeline_slots.md TIT registration (NEW namespace row + 8 cross-aggregate consistency rules C18-C25; C18 is FIRST RUNTIME cascade C-rule post P4 commit; total V1 reject rules count 138 → 140; rule application discipline updated). Lock STAYS CLAIMED. |
+| 4/4 | (this commit) closure | Status DRAFT → CANDIDATE-LOCK; cross-feature RESOLVED annotations on FF-D8/FAC-D6/REP-D9-partial source docs + WA_006 cascade gap closure note; folder _index.md COMPLETE; lock RELEASED via `[boundaries-lock-release]`. |
+
+### V1 Summary
+
+- **1 NEW sparse aggregate** — actor_title_holdings (T2/Reality, sparse per-(actor, title_id) edge)
+- **2 RealityManifest extensions** — canonical_titles + canonical_title_holdings (both OPTIONAL V1)
+- **6 new event sub-types** — 1 EVT-T4 + 3 EVT-T8 + 1 EVT-T3 + 1 EVT-T1 narrative
+- **9 V1 reject rules** in title.* namespace + 5 V1+ reservations
+- **8 cross-aggregate consistency rules** TIT-C1..C8 (global C18-C25; C18 RUNTIME cascade unique pattern)
+- **8 axioms** TIT-A1..A8
+- **10 V1 acceptance scenarios** AC-TIT-1..10 + 4 V1+ deferred
+- **12 deferrals** TIT-D1..D12
+- **TIT-* stable-ID prefix**
+
+### Discipline observed across 4-commit cycle
+
+- **Schema-stable / activation-deferred V1+ discipline (TIT-A8)** preserved across spec + catalog + boundary docs
+- **Per-reality author-declared discipline (TIT-A1)** mirrors PROG-A1 + REP_001 + FAC_001
+- **3-layer separation discipline (TIT-A4)**: TIT_001 ≠ FAC_001 actor_faction_membership ≠ REP_001 actor_faction_reputation
+- **Per-title author-declared policy (TIT-A5)**: MultiHoldPolicy + TitleAuthorityDecl + VacancySemantic
+- **Cross-aggregate cascade pattern (TIT-C1)**: title-holder death → synchronous succession cascade same turn via WA_006 mortality EVT-T3 (FIRST RUNTIME cascade C-rule registered post P4 commit)
+- **3-write atomic Forge admin pattern** reused (consistent with WA_003 / FAC_001 / REP_001 / ACT_001 / PCS_001 prior)
+
+### V1 unchanged for other features
+
+This commit is purely additive per I14 invariant. Pure documentation closure annotations + status promotion. No changes to existing aggregates / EVT sub-shapes / RealityManifest fields owned by other features (beyond marking deferrals RESOLVED). PROG_001 / RES_001 / IDF_001..005 / FF_001 / FAC_001 / REP_001 / ACT_001 / PCS_001 / AIT_001 / TDIL_001 status unchanged.
+
+### CANDIDATE-LOCK → LOCK gate
+
+TIT_001 transitions to LOCK when:
+- AC-TIT-1..10 V1-testable scenarios pass integration tests against Wuxia + Modern + D&D reality fixtures
+- V1+ TIT-D2 runtime min_rep validator ships (alongside REP-D1)
+- V1+ TIT-D3 requires_title Lex axiom validator ships (alongside WA_001 closure pass adding 5-companion-fields uniformly)
+
+### NEW priority candidates post TIT_001 CANDIDATE-LOCK
+
+| Candidate | Justification |
+|---|---|
+| **PO_001 Player Onboarding** | UI flow consumes PCS_001 primitives Forge:RegisterPc + Forge:BindPcUser per PCS-D1; resolves "V1 character creation" gap |
+| **DIPL_001 Diplomacy Foundation V2+** | Inter-faction politics; consumes FAC + REP + V1+ FactionElect (TIT-D1); enables war/treaty/alliance dynamics |
+| **AI-controls-PC-offline activation** | Cross-ref ACT-D1; chorus_metadata sparse PC V1+ activation; "PC continues offline" pattern |
+| **DRAFT closure passes for PROG_001 / RES_001 / AIT_001 / TDIL_001** | Promote DRAFT → CANDIDATE-LOCK; resolve §20.2 deferred follow-ups |
+| **SPIKE_01 turn 5 integration test design** | First end-to-end turn pipeline test; validates 6 foundations + 9 Tier 5 features integrated (now including TIT_001) |
+
+User to pick next priority post this commit.
+
+---
+
 ## 2026-04-27 — TIT_001 Phase 3 cleanup commit 3/4 — drift fixes + validator pipeline slots TIT-C1..C8 / C18-C25 registration
 
 - **Lock STAYS CLAIMED** — Phase 3 cleanup commit; release at closure 4/4 commit
