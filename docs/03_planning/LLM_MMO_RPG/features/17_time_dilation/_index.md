@@ -4,9 +4,11 @@
 > **Catalog reference:** [`catalog/cat_17_TDIL_time_dilation.md`](../../catalog/cat_17_TDIL_time_dilation.md) (27 entries; 17 V1 ✅ + 6 V1+30d 📦 + 4 V2/V3+ 📦; 10 axioms TDIL-A1..A10)
 > **Purpose:** Defines how fiction-time flows differently across realms/cells/actors. Solves 4 user-raised concerns: (1) tu tiên cultivation rate mismatch (newbie vs 元嬰 incompatible same-clock); (2) multi-realm time variance (Tây Du Ký 天上一日人間一年); (3) time chambers (Dragon Ball 精神時光屋); (4) PvP newbie-gank prevention. Architecture maps cleanly to Einstein's special + general relativity (proper time vs coordinate time). 4-clock model (realm + actor + soul + body) generalizes twin paradox to soul-body separation (xuyên không clock-split).
 
-**Active:** TDIL_001 — **Time Dilation Foundation** (DRAFT 2026-04-27 — Q1-Q12 LOCKED via 4-batch deep-dive; 17 V1 catalog entries; 27 total architecture-scale entries; 10 axioms TDIL-A1..A10; closure-pass cascade applied to PROG_001/RES_001/AIT_001 day-boundary → turn-boundary semantic)
+**Active:** (empty — folder closure 2026-04-27)
 
-**Folder closure status:** Open — TDIL_001 DRAFT promoted 2026-04-27. CANDIDATE-LOCK pending Phase 3 cleanup + closure cycle. User kickoff confirmed 2026-04-27 post AIT_001 DRAFT closure.
+**Folder closure status:** **COMPLETE 2026-04-27** — TDIL_001 **CANDIDATE-LOCK 2026-04-27** (DRAFT bdc8d8e1 → CANDIDATE-LOCK closure pass single combined `[boundaries-lock-claim+release]` commit; Phase 3 detected no drift). Q1-Q12 ALL LOCKED via 4-batch deep-dive (zero revisions). 17 V1 catalog entries TDIL-1..TDIL-17 + 6 V1+30d TDIL-18..23 + 4 V2/V3+ TDIL-24..27. 10 axioms TDIL-A1..A10. 4 V1 reject rule_ids in `time_dilation.*` namespace + 6 V1+30d reservations. 5 RealityManifest extensions OPTIONAL V1. Cross-feature closure-pass-extensions to PROG_001 / RES_001 / AIT_001 confirmed applied at DRAFT promotion via `bdc8d8e1` (mechanical day-boundary → turn-boundary semantic per TDIL-A3). 10 V1 acceptance scenarios AC-TDIL-1..10 walkthrough verified.
+
+**LOCK target after** AC-TDIL-1..10 V1-testable scenarios pass integration tests + V1+ TDIL-D1..D5 ship (Forge:AdvanceActorClock + Option B subjective rate + DilationTarget enum + soul wandering — V1+30d items). Implementation phase post-CANDIDATE-LOCK consumes `time_dilation.*` namespace + `actor_clocks` aggregate + 5 RealityManifest extensions.
 
 **NOT a foundation tier feature:** Foundation tier remains 6/6 (closed at PROG_001). TDIL_001 is **architecture-scale Tier 5+ Actor Substrate scaling/architecture feature** (mirrors AIT_001 pattern). Opt-in per reality — modern social reality = no time dilation; tu tiên reality = rich time dilation config.
 

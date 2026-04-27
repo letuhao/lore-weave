@@ -6,6 +6,47 @@
 
 ---
 
+## 2026-04-27 — TDIL_001 Time Dilation CANDIDATE-LOCK closure pass
+
+- **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit. DRAFT bdc8d8e1 → CANDIDATE-LOCK closure pass.
+- **No Phase 3 drift detected** — cross-feature closure-pass-extensions to PROG_001 / RES_001 / AIT_001 already applied at DRAFT promotion via `bdc8d8e1`. AC-TDIL-1..10 walkthrough verified all 10 acceptance scenarios concrete + testable.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None; full closure summary in _Last released_ entry
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/17_time_dilation/TDIL_001_time_dilation_foundation.md`: status header DRAFT → CANDIDATE-LOCK with closure pass rationale (Phase 3 detected no drift; AC walkthrough verified)
+  - `features/17_time_dilation/_index.md`: folder closure status Open → COMPLETE 2026-04-27
+
+### TDIL_001 final summary
+
+- **Status:** CANDIDATE-LOCK 2026-04-27
+- **Architecture-scale:** 4-clock relativity model (realm + actor + soul + body) with Convention B time_flow_rate semantic
+- **10 axioms:** TDIL-A1..A10 (Convention B / 4-clock model / per-turn O(1) Generator / channel-bound vs actor-bound / atomic travel / per-realm turn streams / cross-realm O(1) / worldline monotonicity / replay-deterministic / xuyên không clock-split)
+- **Catalog entries:** 17 V1 (TDIL-1..TDIL-17) + 6 V1+30d (TDIL-18..23) + 4 V2/V3+ (TDIL-24..27) = 27 total
+- **Reject rule_ids:** 4 V1 (rate_out_of_bounds + invalid_initial_clocks + mid_turn_channel_cross_forbidden + past_clock_edit_forbidden) + 6 V1+30d reservations
+- **RealityManifest extensions:** 5 OPTIONAL V1 (time_flow_rate on MAP_001 MapLayoutDecl + time_flow_rate_override on PF_001 PlaceDecl + actor_clocks aggregate + InitialClocksDecl on CanonicalActorDecl + DilationChamberDecl V1+30d)
+- **Acceptance criteria:** 10 V1-testable AC-TDIL-1..10
+- **Cross-feature closure-pass-extensions applied at DRAFT (`bdc8d8e1`):** PROG_001 Q3f + RES_001 Q4 + AIT_001 §7.5 day-boundary → turn-boundary (mechanical revision per TDIL-A3 per-turn O(1) semantic)
+
+### 4 user-raised concerns RESOLVED
+
+| Concern (user 2026-04-27) | Resolution |
+|---|---|
+| Tu tiên cultivation rate mismatch (newbie vs 元嬰 incompatible same-clock) | TDIL-A2 4-clock model; per-actor `actor_clocks.body_clock` allows different cultivation pace per actor |
+| Multi-realm time variance (Tây Du Ký 天上一日人間一年) | TDIL-A1 Convention B time_flow_rate; Tây Du Ký heaven channel time_flow_rate ≈ 0.0027 (1 wall-day = 365 fiction-days at heaven; mortal channel = 1.0 baseline) |
+| Time chambers (Dragon Ball 精神時光屋) | TDIL-A1 cell-tier `time_flow_rate_override` on PF_001 PlaceDecl (REPLACE semantic, NOT multiply); chamber cell time_flow_rate = 365.0 (1 wall-day = 365 fiction-days inside) |
+| PvP newbie-gank prevention | TDIL-A1 + TDIL-A6 per-realm turn streams — high-tier elder must spend their proper time at newbie zones (cannot exploit faster channels for free turns); economic disincentive |
+
+### NEW priority candidates post TDIL closure
+
+1. **AIT_001 CANDIDATE-LOCK closure** (next immediate; defer AIT-Q1 + AIT-Q2 to NPC_001 closure / DP engineering respectively)
+2. **PROG_001 + RES_001 DRAFT closure passes** (both have closure-pass-extensions from TDIL applied; awaiting Phase 3 + CANDIDATE-LOCK)
+3. **PO_001 Player Onboarding** (V1-blocking; Phase 0 wireframes committed `19855a5b`)
+4. **DF5 implementation scaffold** (`contracts/api/session/v1/` + `services/session-service/`)
+5. **SPIKE_01 turn 5 integration test design** (validate DF5 + TDIL multi-channel mechanics)
+
+---
+
 ## 2026-04-27 — DF05 closure-pass-extensions cascade — 13 consumer feature specs annotation
 
 - **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit (mirror TIT_001 closure-pass pattern for cross-feature deferral RESOLVED batches)

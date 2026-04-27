@@ -2,7 +2,7 @@
 
 > **Category:** TDIL — Time Dilation (architecture-scale; 4-clock relativity model for cross-realm time + cultivation pace + xuyên không clock-split)
 > **Catalog reference:** [`catalog/cat_17_TDIL_time_dilation.md`](../../catalog/cat_17_TDIL_time_dilation.md) (owns `TDIL-*` stable-ID namespace)
-> **Status:** DRAFT 2026-04-27 — All 12 Qs LOCKED via 4-batch deep-dive 2026-04-27 (Q1+Q2+Q3 / Q4+Q5 / Q6+Q7+Q8 / Q9+Q10+Q11+Q12). Companion: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md).
+> **Status:** **CANDIDATE-LOCK 2026-04-27** (DRAFT bdc8d8e1 → Phase 3 cleanup 2026-04-27 → CANDIDATE-LOCK 2026-04-27 closure pass: §13 AC-TDIL-1..10 walked; cross-feature closure-pass-extensions to PROG_001 / RES_001 / AIT_001 confirmed applied at DRAFT promotion via `bdc8d8e1` single combined commit — mechanical day-boundary → turn-boundary semantic per TDIL-A3; no Phase 3 drift detected). All 12 Qs LOCKED via 4-batch deep-dive 2026-04-27 (Q1+Q2+Q3 / Q4+Q5 / Q6+Q7+Q8 / Q9+Q10+Q11+Q12) zero revisions. Companion: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md).
 > **i18n compliance:** Conforms to RES_001 §2 cross-cutting pattern.
 > **V1 testable acceptance:** 10 scenarios AC-TDIL-1..10 (§13).
 > **NOT a foundation tier feature:** Foundation tier remains 6/6 (closed at PROG_001). TDIL_001 is **architecture-scale** (mirror AIT_001 / ACT_001 pattern). Opt-in per reality.
