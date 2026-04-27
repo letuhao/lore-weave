@@ -214,8 +214,9 @@ These namespaces validate at **Stage 0 schema** (canonical seed validation + For
 | `pc.*` | PCS_001 PC Substrate | 7 V1 | 3 V1+ | Stage 0 canonical seed cross-aggregate consistency + Forge admin |
 | `ai_tier.*` | AIT_001 AI Tier Foundation | 8 V1 | 4 V1+ | Stage 0 canonical seed + V1+ runtime tier transitions |
 | `time_dilation.*` | TDIL_001 Time Dilation Foundation | 4 V1 | 6 V1+30d | Stage 0 canonical seed + per-turn channel boundary checks |
+| `title.*` | TIT_001 Title Foundation | 9 V1 (Phase 3 cleanup added 2 binding-membership-required rules) | 5 V1+ | Stage 0 canonical seed + Forge admin + cross-aggregate cascade C18 (synchronous on WA_006 mortality EVT-T3) |
 
-**Total V1 rule_ids across all namespaces:** ~44+ (entity/place/map/csc) + ~87+ (Tier 5 substrate) = ~131 V1 reject rules total across the engine. ~90+ are **Stage 0 schema validators** (canonical seed + Forge admin); ~44+ are LLM-output pipeline validators (Stage 3.5+).
+**Total V1 rule_ids across all namespaces:** ~44+ (entity/place/map/csc) + ~96+ (Tier 5 substrate; ~87 prior + 9 TIT) = ~140 V1 reject rules total across the engine. ~99+ are **Stage 0 schema validators** (canonical seed + Forge admin + cross-aggregate cascade); ~44+ are LLM-output pipeline validators (Stage 3.5+).
 
 ---
 
@@ -244,6 +245,14 @@ Cross-aggregate consistency rules run at **bootstrap time** (canonical seed vali
 | **C15: mortality_config.mode = RespawnAtLocation V1 forbidden** | PCS_001 + WA_006 | If mortality_config.mode = RespawnAtLocation declared but PCS-D2 Respawn flow V1+ not active, reject canonical seed bootstrap; reality must use Permadeath or Ghost mode V1 | `pc.respawn_unsupported_v1` (PCS_001 namespace; per Q7 LOCKED) |
 | **C16: actor_clocks initialization from body_memory canonical** | TDIL_001 + PCS_001 + ACT_001 | TDIL_001 actor_clocks initialized at canonical seed reading body_memory.{soul, body} state if PC has xuyên không origin_world_ref Some; otherwise actor_clock + soul_clock + body_clock all start at 0 (native PC + native NPC) | `time_dilation.invalid_initial_clocks` (TDIL_001 namespace) |
 | **C17: AIT_001 tier_hint at canonical seed** | AIT_001 + ACT_001 | If AIT_001 tier semantics declared on CanonicalActorDecl, validate tier_hint matches NpcTrackingTier V1 enum (Major / Minor / Untracked); PC always Tier 0 (no tier_hint declared); cross-validate with capacity caps (≤20 Major, ≤100 Minor per AIT_001 §11) | `ai_tier.canonical_tier_required` + `ai_tier.capacity_exceeded` (AIT_001 namespace) |
+| **C18 (TIT-C1): title-holder death → synchronous succession cascade** | TIT_001 (consumer of WA_006 mortality EVT-T3) | RUNTIME cross-aggregate cascade (NOT canonical seed) — title-holder death (WA_006 mortality_state Alive → Dying / Dead) synchronously fires TIT_001 succession cascade same turn per Q7 A LOCKED; cascade applies SuccessionRule (Eldest FF_001 dynasty traversal / Designated heir / Vacate); emits TitleSuccessionTriggered EVT-T3 + TitleGranted EVT-T4 (if heir) + TitleSuccessionCompleted EVT-T1 narrative; atomic FAC_001 actor_faction_membership.role_id update if TitleAuthorityDecl.faction_role_grant Some | (no reject; cascade applies VacancySemantic when ineligible) |
+| **C19 (TIT-C2): TitleHoldingDecl + Forge:GrantTitle title_id ∈ canonical_titles** | TIT_001 | TitleHoldingDecl.title_id (canonical seed) + Forge:GrantTitle.title_id (runtime) MUST be declared in RealityManifest.canonical_titles | `title.declared.unknown` (TIT_001 namespace) |
+| **C20 (TIT-C3): TitleHoldingDecl + Forge:GrantTitle actor_id ∈ canonical_actors** | TIT_001 + EF_001 | actor_id MUST be declared in RealityManifest.canonical_actors | `title.holding.actor_unknown` (TIT_001 namespace) |
+| **C21 (TIT-C4): TitleBinding::Faction(faction_id) → faction_id ∈ canonical_factions** | TIT_001 + FAC_001 | If TitleDecl.binding == Faction(faction_id), faction_id MUST be in RealityManifest.canonical_factions | `title.binding.faction_unknown` (TIT_001 namespace) |
+| **C22 (TIT-C5): TitleBinding::Dynasty(dynasty_id) → dynasty_id ∈ canonical_dynasties** | TIT_001 + FF_001 | If TitleDecl.binding == Dynasty(dynasty_id), dynasty_id MUST be in RealityManifest.canonical_dynasties | `title.binding.dynasty_unknown` (TIT_001 namespace) |
+| **C23 (TIT-C6): MultiHoldPolicy compliance per actor** | TIT_001 | Stage 0 schema validator counts rows per actor_ref; rejects if violates declared MultiHoldPolicy::StackableMax(N) cap | `title.holding.multi_hold_violation` (TIT_001 namespace) |
+| **C24 (TIT-C7): Exclusive policy compliance per title** | TIT_001 | Stage 0 schema validator counts rows per title_id; rejects if MultiHoldPolicy::Exclusive title has >1 holder concurrently | `title.holding.exclusive_violation` (TIT_001 namespace) |
+| **C25 (TIT-C8): designated_heir alive at succession cascade time** | TIT_001 | At cascade trigger (C18), validate designated_heir alive (mortality_state ≠ Dead/Dying); if invalid, set new_holder=None with trigger_reason=HeirIneligible per §7.2 cascade pseudocode | `title.succession.heir_invalid` (TIT_001 namespace; OR sets None gracefully per cascade flow) |
 
 ### Rule application discipline
 
@@ -251,6 +260,8 @@ Cross-aggregate consistency rules run at **bootstrap time** (canonical seed vali
 - **Each rule's owner feature** is responsible for the validation logic in their owner-service (e.g., FAC_001 owner-service runs C7 + C8; PCS_001 owner-service runs C13 + C15).
 - **Cross-reference rules** (e.g., C4 validates IDF_004 actor_origin against IDF_002 languages) — ownership belongs to the FIRST feature in the dependency direction (IDF_004 owns C4 logic since actor_origin is IDF_004's aggregate).
 - **C1 implicit V1, explicit V1+** — C1 (actor_core ↔ entity_binding scope_id) is enforced V1 implicitly via shared `spawn_cell` source field (P2 LOCKED 2026-04-27); both aggregates populate from the same CanonicalActorDecl.spawn_cell field. Explicit cross-aggregate validation V1+ if drift detected.
+- **C18 (TIT-C1) is RUNTIME cascade, not canonical seed** — Unlike C1-C17 + C19-C25 (all canonical seed bootstrap-time validators), C18 fires at RUNTIME on every WA_006 mortality EVT-T3 actor_dies event for any title-holder. Synchronous same-turn cascade (per Q7 A LOCKED) — title-holder death triggers TitleSuccessionTriggered + (optional) TitleGranted + (optional) TitleSuccessionCompleted within the same turn-event's commit window. Joins the pattern of WA_006 cross-aggregate cascades (mortality_state + vital_pool zeroing) but extends to political-rank layer.
+- **C19-C25 mirror earlier patterns** — C19/C20 (declared.unknown / actor_unknown) follow C2/C3 ACT_001 patterns; C21/C22 (faction_unknown / dynasty_unknown) follow C7/C5 FAC_001/IDF_004 patterns; C23/C24 (multi-hold / exclusive) are TIT-specific multi-row count validators; C25 (heir_invalid) supports C18 cascade flow.
 
 ### What's NOT in this list
 

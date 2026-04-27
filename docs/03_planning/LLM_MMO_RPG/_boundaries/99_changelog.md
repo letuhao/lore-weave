@@ -6,6 +6,66 @@
 
 ---
 
+## 2026-04-27 — TIT_001 Phase 3 cleanup commit 3/4 — drift fixes + validator pipeline slots TIT-C1..C8 / C18-C25 registration
+
+- **Lock STAYS CLAIMED** — Phase 3 cleanup commit; release at closure 4/4 commit
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: lock claim active (no claim/release change this commit)
+  - `01_feature_ownership_matrix.md`: actor_title_holdings row updated (7 V1 → 9 V1 reject rules with Phase 3 added 2 binding-membership-required rules)
+  - `02_extension_contracts.md`: §1.4 title.* namespace updated 7 V1 → 9 V1 (added binding.faction_membership_required + binding.dynasty_membership_required for canonical seed + Forge:GrantTitle binding-actor membership validation)
+  - `03_validator_pipeline_slots.md`:
+    - **NEW row** in §"Tier 5 Actor Substrate namespaces" — title.* (9 V1 + 5 V1+ reservations)
+    - Total V1 reject rules count updated: 138 → 140 (added 2 TIT rules)
+    - **NEW 8 rows** in §"Stage 0 canonical seed cross-aggregate consistency rules" — C18 (TIT-C1) RUNTIME cascade synchronously on WA_006 mortality EVT-T3 + C19-C25 (TIT-C2..C8) canonical seed bootstrap-time validators
+    - Rule application discipline updated with TIT-specific notes (C18 is RUNTIME cascade not bootstrap; C19-C25 mirror earlier patterns)
+  - `99_changelog.md`: this entry
+- **Files modified outside `_boundaries/`:**
+  - `features/00_titles/TIT_001_title_foundation.md`: §8.1 V1 rule_ids updated 7 → 9 (added binding.faction_membership_required + binding.dynasty_membership_required); §1 V1 minimum scope summary updated 7 → 9; §11 V1 Minimum Delivery Summary updated 7 → 9
+  - `catalog/cat_00_TIT_title_foundation.md`: TIT-18 entry updated 7 V1 → 9 V1 with Phase 3 cleanup note
+
+### Background
+
+Phase 3 cleanup self-review pass identified drift in TIT_001 §6.2 Forge admin pseudocode — referenced 2 reject rules NOT in §8.1 V1 namespace list:
+- `title.binding.faction_membership_required` (referenced in §6.2 + §9.1 canonical seed bootstrap; not in §8.1 V1 list)
+- `title.binding.dynasty_membership_required` (same problem)
+
+Validation logic was correct (canonical seed §9.1 + Forge admin §6.2 both check binding-actor faction/dynasty membership) but reject rules weren't formally registered. Phase 3 fix: ADD the 2 rules to V1 namespace (option chosen over removing checks; preserving canonical seed validation discipline).
+
+### Validator pipeline slots boundary doc updated
+
+Following P4 closure-pass-extension pattern (commit 379f5b40), TIT_001 V1 cross-aggregate consistency rules registered in `03_validator_pipeline_slots.md`:
+
+**Stage 0 canonical seed bootstrap rules added (C19-C25; mirror prior C2-C17 patterns):**
+- C19 (TIT-C2): TitleHoldingDecl + Forge:GrantTitle title_id ∈ canonical_titles
+- C20 (TIT-C3): actor_id ∈ canonical_actors
+- C21 (TIT-C4): TitleBinding::Faction(faction_id) → faction_id ∈ canonical_factions
+- C22 (TIT-C5): TitleBinding::Dynasty(dynasty_id) → dynasty_id ∈ canonical_dynasties
+- C23 (TIT-C6): MultiHoldPolicy compliance per actor (StackableMax(N) cap)
+- C24 (TIT-C7): Exclusive policy compliance per title (only 1 holder concurrently)
+- C25 (TIT-C8): designated_heir alive at succession cascade time
+
+**RUNTIME cascade rule added (C18; UNIQUE pattern — first runtime cascade C-rule registered post P4 commit):**
+- C18 (TIT-C1): title-holder death (WA_006 mortality EVT-T3 actor_dies) → synchronous succession cascade same turn (per Q7 A LOCKED); cascade applies SuccessionRule (Eldest FF_001 / Designated heir / Vacate); emits TitleSuccessionTriggered EVT-T3 + TitleGranted EVT-T4 (if heir) + TitleSuccessionCompleted EVT-T1 narrative; atomic FAC_001 actor_faction_membership.role_id update if TitleAuthorityDecl.faction_role_grant Some
+
+C18 is RUNTIME (every WA_006 actor_dies), unlike C1-C17 + C19-C25 (canonical seed bootstrap). Discipline note: rule application discipline section updated to clarify the runtime vs bootstrap distinction.
+
+### Impact summary
+
+- 9 V1 reject rules in title.* namespace (was 7); 5 V1+ reservations unchanged
+- Total V1 reject rules across engine: 140 (was 138)
+- 8 new cross-aggregate consistency rules in `03_validator_pipeline_slots.md` (C18-C25; total now 25 rules)
+- All TIT_001 spec/catalog/boundary docs internally consistent post Phase 3
+
+### V1 unchanged for other features
+
+This commit is purely additive per I14 invariant. Pure documentation drift fix + validator pipeline slots registration. No changes to existing aggregates / EVT sub-shapes / RealityManifest fields owned by other features.
+
+### Next steps
+
+- **Commit 4/4 CANDIDATE-LOCK closure**: final lock + RESOLVES FF-D8/FAC-D6/REP-D9-partial/WA_006-cascade-gap declarations + `[boundaries-lock-release]`
+
+---
+
 ## 2026-04-27 — TIT_001 Title Foundation DRAFT 2/4 — boundary updates + catalog seed + namespace registration (single `[boundaries-lock-claim]` commit; release at closure 4/4)
 
 - **Lock CLAIMED** — TIT_001 DRAFT 2/4 commit; release at closure 4/4 commit per established 4-commit cycle (Phase 0 + DRAFT 2/4 + Phase 3 + closure)
