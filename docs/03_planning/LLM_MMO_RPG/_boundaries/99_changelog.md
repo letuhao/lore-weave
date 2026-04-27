@@ -6,6 +6,60 @@
 
 ---
 
+## 2026-04-27 — DF05 Session/Group Chat CANDIDATE-LOCK closure commit 4/4 — final lock release
+
+- **Lock RELEASED** — 4-commit cycle COMPLETE: Phase 0 0080b533 + commit 1/4 745e9f6e + DRAFT 2/4 5d5dddd3 + Phase 3 cleanup 3/4 60536f19 + closure 4/4 this commit; single combined `[boundaries-lock-release]` commit
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner reverted to None; _Last released_ entry with full 4-commit cycle summary
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/DF/DF05_session_group_chat/DF05_001_session_foundation.md`: status header DRAFT → CANDIDATE-LOCK with closure pass rationale (Phase 3 4 fixes + AC walkthrough complete)
+  - `features/DF/DF05_session_group_chat/_index.md`: folder closure status COMPLETE; DRAFT cycle 4-commit chain populated; NEW priority candidates listed (16 closure-pass-extensions + 2 NEW directories scaffold + V1+30d implementation phase)
+
+### V1-blocking biggest unknown RESOLVED
+
+DF05 was marked V1-blocking biggest unknown 2026-04-25 in placeholder. After 2026-04-27 closure cycle:
+- Architecture pivoted from initial single-session-per-cell (rejected) to multi-session-per-cell sparse model
+- Q1-Q12 ALL LOCKED via 4-batch deep-dive (zero revisions)
+- §16 SDK Architecture LOCKED — versioned contract + swappable backends
+- 14 V1 reject rule_ids registered in `session.*` namespace
+- 11 invariants DF5-A1..A11 codified
+- 4 cross-aggregate consistency rules DF5-C1..C4 (global C26-C29)
+- 25 V1-testable AC scenarios + 5 worked sequences
+- 17 deferrals to V1+30d / V2 / V3 / V3+
+- 48 catalog entries DF5-1..DF5-48
+
+### Cross-feature deferrals RESOLVED at this commit
+
+| Deferral | Source | Resolution |
+|---|---|---|
+| PC-D1 (multi-PC parties) | PCS / DF placeholder | Redirected to V2 multi-PC join via DF5-D1 (separate from V1 solo RP scope) |
+| PC-D2 (PvP consent) | PCS / DF placeholder | V2 deferred via DF5-D3 (depends on DF4 World Rules consent flow) |
+| PC-D3 (no global chat) | PCS / DF placeholder | RESOLVED architecturally — multi-session-per-cell sparse model precludes "global chat" concept (each session is explicit social act with isolated participants) |
+| B4 PARTIAL (multi-NPC turn arbitration) | catalog/cat_05_NPC | RESOLVED via NPC_002 Chorus integration in DF5_001 (existing NPC_002 turn-ordering integrated into session lifecycle) |
+| V1-blocking biggest unknown | SESSION_HANDOFF agenda | RESOLVED — DF05 promoted CANDIDATE-LOCK 2026-04-27; remaining V1-blocking concerns now cluster around PO_001 + Architecture-scale closure (TDIL/AIT) |
+
+### NEW priority candidates post DF5_001 CANDIDATE-LOCK
+
+1. **PO_001 Player Onboarding** (consumes PCS_001 PCS-D1 runtime login flow + DF5_001 session lifecycle) — V1-blocking; folder placeholder only; concept-notes pending
+2. **Architecture-scale closure** — TDIL_001 + AIT_001 still DRAFT (both have promotion gate ✅ Met but Phase 3 cleanup + CANDIDATE-LOCK closure pending)
+3. **DF5 closure-pass-extensions** — 16 cross-feature follow-up commits cascading to PL_002 + PL_005 + NPC_001..003 + ACT_001 + REP_001 + WA_003 + WA_006 + AIT_001 + PCS_001 + PL_001 + PF_001 + EM-7 + 07_event_model + RealityManifest (each adds session_id reference field / tier check / persona-assembly trait import / etc.)
+4. **DF5 implementation scaffold** — `contracts/api/session/v1/` directory + 7 files (~600 LoC traits + DTOs + ~30 contract test scenarios) + `services/session-service/` initial structure (V1 LruDistillProvider) + CI lint rule blocking adapter imports outside service
+5. **DIPL_001 Diplomacy Foundation** V2+ (consumes FAC_001 + REP_001 + V1+ FactionElect TIT-D1)
+6. **AI-controls-PC-offline activation** (cross-ref ACT-D1)
+7. **DRAFT closure passes** for PROG_001 / RES_001 / AIT_001 / TDIL_001 (all DRAFT pending CANDIDATE-LOCK closure)
+8. **SPIKE_01 turn 5 integration test design** (DF5_001 enables this — multi-session memory + session_participation cascades verifiable)
+
+### Cycle plan COMPLETE
+
+- ✅ Phase 0 (commit 0080b533): concept-notes Q-LOCKED + SDK LOCKED
+- ✅ Commit 1/4 (745e9f6e): `[boundaries-lock-claim]` lock + cycle plan
+- ✅ Commit 2/4 (5d5dddd3): DRAFT promotion + boundary register + catalog seed
+- ✅ Commit 3/4 (60536f19): Phase 3 cleanup — 4 fixes (LeftReason 6→7 + 14th rule + boundary consistency + AC walkthrough)
+- ✅ Commit 4/4 (THIS): `[boundaries-lock-release]` CANDIDATE-LOCK closure — final lock release + cross-feature deferral RESOLVED annotations
+
+---
+
 ## 2026-04-27 — DF05 Session/Group Chat DRAFT cycle commit 3/4 — Phase 3 cleanup
 
 - **Phase 3 cleanup applied** — self-review walkthrough surfaced 4 issues; all fixed
