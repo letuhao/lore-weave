@@ -192,10 +192,15 @@ services:
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 2c — async LLM job terminal events publish to
+      # `loreweave.events` topic exchange. Empty/unset = NoopNotifier
+      # (caller polls GET /v1/llm/jobs/{id}; no broker dependency).
+      RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
     depends_on:
       postgres:
         condition: service_healthy
-
+      rabbitmq:
+        condition: service_healthy
       usage-billing-service:
         condition: service_healthy
     healthcheck:
@@ -244,14 +249,20 @@ services:
       retries: 10
 
   translation-service:
+    # Phase 4c-α: context bumped to repo root so the Dockerfile can
+    # COPY sdks/python alongside the service code (mirrors knowledge-
+    # service Phase 4a-α + worker-ai Phase 4b-γ pattern).
     build:
-      context: ../services/translation-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/translation-service/Dockerfile
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      # Phase 4c-α: SDK install. Same host as legacy URL but separate
+      # env var for naming consistency with knowledge-service + worker-ai.
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
@@ -277,14 +288,17 @@ services:
       - "8210:8087"
 
   translation-worker:
+    # Phase 4c-α: context bumped to repo root for SDK install.
     build:
-      context: ../services/translation-service
-      dockerfile: Dockerfile.worker
+      context: ..
+      dockerfile: services/translation-service/Dockerfile.worker
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      # Phase 4c-α: SDK install. Same host as legacy URL.
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
@@ -350,8 +364,12 @@ services:
 
   chat-service:
     build:
-      context: ../services/chat-service
-      dockerfile: Dockerfile
+      # Phase 1c-ii: build context shifted to repo root so the Dockerfile
+      # can COPY both `services/chat-service/...` AND `sdks/python` (the
+      # local loreweave_llm SDK). Other services keep their per-service
+      # context until they migrate to the SDK.
+      context: ..
+      dockerfile: services/chat-service/Dockerfile
     environment:
       PORT: "8090"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
@@ -391,8 +409,10 @@ services:
 
   knowledge-service:
     build:
-      context: ../services/knowledge-service
-      dockerfile: Dockerfile
+      # Phase 4a-α: context is repo root so Dockerfile can COPY sdks/python.
+      # Mirrors chat-service Phase 1c-ii setup.
+      context: ..
+      dockerfile: services/knowledge-service/Dockerfile
     environment:
       PORT: "8092"
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
@@ -461,14 +481,21 @@ services:
     restart: unless-stopped
 
   worker-ai:
+    # Phase 4b-γ: context bumped to repo root so the Dockerfile can
+    # COPY sdks/python alongside the service code (mirrors knowledge-
+    # service Phase 4a-α pattern). Worker-ai now runs Pass 2 LLM
+    # extraction in-process via the loreweave_extraction library.
     build:
-      context: ../services/worker-ai
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/worker-ai/Dockerfile
     environment:
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       BOOK_SERVICE_URL: http://book-service:8082
+      # Phase 4b-γ: SDK posts to provider-registry's internal LLM
+      # gateway for entity/relation/event/fact extraction jobs.
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       LOG_LEVEL: INFO
       POLL_INTERVAL_S: "5"
     depends_on:
@@ -521,8 +548,14 @@ services:
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_notification?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 2d — consume async LLM job terminal events from
+      # `loreweave.events` topic and persist as notifications rows.
+      # Empty/unset disables the consumer (REST API stays usable).
+      RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8091/health"]

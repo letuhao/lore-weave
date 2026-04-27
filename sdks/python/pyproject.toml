@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loreweave_llm"
+version = "0.1.0"
+description = "Python SDKs for the LoreWeave platform: loreweave_llm (gateway client) + loreweave_extraction (Pass 2 extraction library)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+  "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "respx>=0.21",
+]
+
+# Phase 4b-α — two top-level packages ship under this distribution.
+# `loreweave_extraction` depends on `loreweave_llm` (LLM SDK); they're
+# tightly coupled by design (extraction always uses the LLM gateway),
+# so a single `pip install /sdk` brings both.
+[tool.setuptools.packages.find]
+include = ["loreweave_llm*", "loreweave_extraction*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

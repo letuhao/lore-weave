@@ -103,26 +103,35 @@ def test_safe_format_map_empty_mapping_preserves_all_placeholders():
 
 # ── _compact_history: uses custom prompts from job msg ─────────────────────────
 
-def _make_stream_resp(text: str, status: int = 200) -> MagicMock:
-    async def _aiter():
-        yield json.dumps({
-            "output": {"choices": [{"message": {"content": text}}]},
-            "usage":  {"input_tokens": 5, "output_tokens": 5},
-        }).encode()
+# Phase 4c-β: legacy httpx.AsyncClient + JWT-based mocks replaced with a
+# loreweave_llm SDK FakeLLMClient mirror. _compact_history now consumes
+# llm_client + user_id (no client/token kwargs).
 
-    r = MagicMock()
-    r.status_code = status
-    r.aiter_bytes = MagicMock(return_value=_aiter())
-    return r
+from typing import Any
+from loreweave_llm.models import Job, JobError
 
 
-class _StreamCM:
-    def __init__(self, resp):
-        self._resp = resp
-    async def __aenter__(self):
-        return self._resp
-    async def __aexit__(self, *_):
-        pass
+class _CompactFakeLLMClient:
+    """Minimal stand-in for app.llm_client.LLMClient — captures
+    submit_and_wait kwargs and returns a single completed memo Job."""
+
+    def __init__(self, memo_text: str = "[memo]") -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._memo_text = memo_text
+
+    async def submit_and_wait(self, **kwargs: Any) -> Job:
+        self.calls.append(kwargs)
+        return Job(
+            job_id="00000000-0000-0000-0000-0000000000c0",
+            operation="translation",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": self._memo_text}],
+                "usage": {"input_tokens": 5, "output_tokens": 5},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
 
 @pytest.mark.asyncio
@@ -140,27 +149,19 @@ async def test_compact_history_uses_custom_system_prompt():
     }
     history = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
 
-    payloads_sent: list[dict] = []
+    fake = _CompactFakeLLMClient()
 
-    def side_effect(method, url, **kwargs):
-        payloads_sent.append(kwargs.get("json", {}))
-        return _StreamCM(_make_stream_resp("[memo]"))
+    from app.workers.session_translator import _compact_history
+    await _compact_history(
+        llm_client=fake,
+        session_history=history,
+        old_memo="",
+        msg=msg,
+        user_id=USER_ID,
+    )
 
-    mock_client = MagicMock()
-    mock_client.stream = MagicMock(side_effect=side_effect)
-
-    with patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import _compact_history
-        await _compact_history(
-            client=mock_client,
-            session_history=history,
-            old_memo="",
-            msg=msg,
-            token="jwt",
-        )
-
-    assert len(payloads_sent) == 1
-    messages = payloads_sent[0]["input"]["messages"]
+    assert len(fake.calls) == 1
+    messages = fake.calls[0]["input"]["messages"]
     system_msgs = [m for m in messages if m["role"] == "system"]
     assert len(system_msgs) == 1
     assert system_msgs[0]["content"] == custom_sys
@@ -181,26 +182,19 @@ async def test_compact_history_falls_back_to_default_when_field_empty():
         "user_id": USER_ID,
     }
     history = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
-    payloads_sent: list[dict] = []
 
-    def side_effect(method, url, **kwargs):
-        payloads_sent.append(kwargs.get("json", {}))
-        return _StreamCM(_make_stream_resp("[memo]"))
+    fake = _CompactFakeLLMClient()
 
-    mock_client = MagicMock()
-    mock_client.stream = MagicMock(side_effect=side_effect)
+    from app.workers.session_translator import _compact_history
+    await _compact_history(
+        llm_client=fake,
+        session_history=history,
+        old_memo="",
+        msg=msg,
+        user_id=USER_ID,
+    )
 
-    with patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import _compact_history
-        await _compact_history(
-            client=mock_client,
-            session_history=history,
-            old_memo="",
-            msg=msg,
-            token="jwt",
-        )
-
-    messages = payloads_sent[0]["input"]["messages"]
+    messages = fake.calls[0]["input"]["messages"]
     system_msgs = [m for m in messages if m["role"] == "system"]
     assert system_msgs[0]["content"] == DEFAULT_COMPACT_SYSTEM_PROMPT
 
@@ -219,26 +213,19 @@ async def test_compact_history_falls_back_when_field_absent():
         "user_id": USER_ID,
     }
     history = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
-    payloads_sent: list[dict] = []
 
-    def side_effect(method, url, **kwargs):
-        payloads_sent.append(kwargs.get("json", {}))
-        return _StreamCM(_make_stream_resp("[memo]"))
+    fake = _CompactFakeLLMClient()
 
-    mock_client = MagicMock()
-    mock_client.stream = MagicMock(side_effect=side_effect)
+    from app.workers.session_translator import _compact_history
+    await _compact_history(
+        llm_client=fake,
+        session_history=history,
+        old_memo="",
+        msg=msg,
+        user_id=USER_ID,
+    )
 
-    with patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import _compact_history
-        await _compact_history(
-            client=mock_client,
-            session_history=history,
-            old_memo="",
-            msg=msg,
-            token="jwt",
-        )
-
-    messages = payloads_sent[0]["input"]["messages"]
+    messages = fake.calls[0]["input"]["messages"]
     system_msgs = [m for m in messages if m["role"] == "system"]
     assert system_msgs[0]["content"] == DEFAULT_COMPACT_SYSTEM_PROMPT
 
@@ -256,26 +243,19 @@ async def test_compact_history_custom_user_prompt_tpl_substitutes_history():
         "user_id": USER_ID,
     }
     history = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
-    payloads_sent: list[dict] = []
 
-    def side_effect(method, url, **kwargs):
-        payloads_sent.append(kwargs.get("json", {}))
-        return _StreamCM(_make_stream_resp("[memo]"))
+    fake = _CompactFakeLLMClient()
 
-    mock_client = MagicMock()
-    mock_client.stream = MagicMock(side_effect=side_effect)
+    from app.workers.session_translator import _compact_history
+    await _compact_history(
+        llm_client=fake,
+        session_history=history,
+        old_memo="",
+        msg=msg,
+        user_id=USER_ID,
+    )
 
-    with patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import _compact_history
-        await _compact_history(
-            client=mock_client,
-            session_history=history,
-            old_memo="",
-            msg=msg,
-            token="jwt",
-        )
-
-    messages = payloads_sent[0]["input"]["messages"]
+    messages = fake.calls[0]["input"]["messages"]
     user_msgs = [m for m in messages if m["role"] == "user"]
     assert len(user_msgs) == 1
     assert user_msgs[0]["content"].startswith("WRAP:")
@@ -299,26 +279,19 @@ async def test_compact_history_history_text_in_user_message():
         {"role": "user",      "content": "SOURCE CHUNK TEXT"},
         {"role": "assistant", "content": "TRANSLATED CHUNK TEXT"},
     ]
-    payloads_sent: list[dict] = []
 
-    def side_effect(method, url, **kwargs):
-        payloads_sent.append(kwargs.get("json", {}))
-        return _StreamCM(_make_stream_resp("[memo]"))
+    fake = _CompactFakeLLMClient()
 
-    mock_client = MagicMock()
-    mock_client.stream = MagicMock(side_effect=side_effect)
+    from app.workers.session_translator import _compact_history
+    await _compact_history(
+        llm_client=fake,
+        session_history=history,
+        old_memo="",
+        msg=msg,
+        user_id=USER_ID,
+    )
 
-    with patch("app.workers.session_translator.mint_user_jwt", return_value="jwt"):
-        from app.workers.session_translator import _compact_history
-        await _compact_history(
-            client=mock_client,
-            session_history=history,
-            old_memo="",
-            msg=msg,
-            token="jwt",
-        )
-
-    messages = payloads_sent[0]["input"]["messages"]
+    messages = fake.calls[0]["input"]["messages"]
     user_msgs = [m for m in messages if m["role"] == "user"]
     combined = user_msgs[0]["content"]
     assert "SOURCE CHUNK TEXT" in combined

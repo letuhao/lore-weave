@@ -23,7 +23,7 @@ from uuid import UUID
 
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
-from app.clients.provider_client import ProviderClient
+from app.clients.llm_client import LLMClient
 from app.context.modes.full import build_full_mode
 from app.context.modes.no_project import BuiltContext, build_no_project_mode
 from app.context.modes.static import build_static_mode
@@ -51,7 +51,7 @@ async def build_context(
     project_id: UUID | None,
     message: str,
     embedding_client: EmbeddingClient | None = None,
-    provider_client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
 ) -> BuiltContext:
     if project_id is None:
         return await build_no_project_mode(summaries_repo, user_id)
@@ -68,7 +68,7 @@ async def build_context(
             project=project,
             message=message,
             embedding_client=embedding_client,
-            provider_client=provider_client,
+            llm_client=llm_client,
         )
 
     return await build_static_mode(

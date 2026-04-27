@@ -29,8 +29,14 @@ export class AmqpService implements OnModuleInit, OnModuleDestroy {
       await this.channel.consume(this.queueName, (msg) => {
         if (!msg) return;
         try {
-          const event  = JSON.parse(msg.content.toString()) as { user_id?: string };
-          const userId = event.user_id;
+          // Phase 2e — provider-registry's TerminalEvent uses
+          // `owner_user_id`; translation-service's events use `user_id`.
+          // Accept either so this single subscriber serves both.
+          const event = JSON.parse(msg.content.toString()) as {
+            user_id?: string;
+            owner_user_id?: string;
+          };
+          const userId = event.user_id ?? event.owner_user_id;
           if (userId) {
             this.handlers.get(userId)?.forEach((cb) => cb(event));
           }

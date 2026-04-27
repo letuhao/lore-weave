@@ -3,6 +3,10 @@
 // VITE_API_BASE override for custom setups
 const base = () => import.meta.env.VITE_API_BASE || '';
 
+/** Same base URL `apiJson` uses — exported for callers that bypass
+ *  fetch (EventSource, WebSocket, direct multipart upload, etc.) */
+export const apiBase = base;
+
 export type ApiError = { code: string; message: string };
 
 export async function apiJson<T>(

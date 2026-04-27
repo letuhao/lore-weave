@@ -109,7 +109,7 @@ async def test_chapter_worker_writes_translated_body_to_db():
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
         from app.workers.chapter_worker import handle_chapter_message
-        await handle_chapter_message(msg, pool, publish_event, retry_count=0)
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
 
     all_sql = " ".join(c.args[0] for c in db.execute.call_args_list)
     assert "completed" in all_sql
@@ -130,7 +130,7 @@ async def test_chapter_worker_emits_chapter_done_event():
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
         from app.workers.chapter_worker import handle_chapter_message
-        await handle_chapter_message(msg, pool, publish_event, retry_count=0)
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
 
     events = [c.args[1]["event"] for c in publish_event.call_args_list]
     assert "job.chapter_done" in events
@@ -150,7 +150,7 @@ async def test_chapter_worker_calls_translate_chapter():
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
         from app.workers.chapter_worker import handle_chapter_message
-        await handle_chapter_message(msg, pool, publish_event, retry_count=0)
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
 
     mock_translate.assert_called_once()
     call_kwargs = mock_translate.call_args.kwargs
@@ -181,7 +181,7 @@ async def test_chapter_worker_book_service_uses_finite_read_timeout():
          patch("app.workers.chapter_worker.translate_chapter",
                new_callable=AsyncMock, return_value=("Translated body.", 10, 8)):
         from app.workers.chapter_worker import handle_chapter_message
-        await handle_chapter_message(msg, pool, publish_event, retry_count=0)
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
 
     # First AsyncClient call is for book-service; it must use httpx.Timeout (not a plain float)
     assert captured, "httpx.AsyncClient must be called at least once"
@@ -211,7 +211,7 @@ async def test_chapter_worker_connect_timeout_is_set():
          patch("app.workers.chapter_worker.translate_chapter",
                new_callable=AsyncMock, return_value=("Translated body.", 10, 8)):
         from app.workers.chapter_worker import handle_chapter_message
-        await handle_chapter_message(_chapter_msg(), pool, AsyncMock(), retry_count=0)
+        await handle_chapter_message(_chapter_msg(), pool, AsyncMock(), MagicMock(), retry_count=0)
 
     book_timeout = captured[0]
     assert isinstance(book_timeout, httpx.Timeout)
@@ -236,7 +236,7 @@ async def test_chapter_worker_skips_ai_call_when_job_cancelled():
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
         from app.workers.chapter_worker import handle_chapter_message
-        await handle_chapter_message(msg, pool, publish_event, retry_count=0)
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
 
     mock_http.get.assert_not_called()
     mock_translate.assert_not_called()
@@ -261,7 +261,7 @@ async def test_chapter_not_found_raises_permanent_error():
 
         from app.workers.chapter_worker import _PermanentError, handle_chapter_message
         with pytest.raises(_PermanentError):
-            await handle_chapter_message(msg, pool, AsyncMock(), retry_count=0)
+            await handle_chapter_message(msg, pool, AsyncMock(), MagicMock(), retry_count=0)
 
 
 @pytest.mark.asyncio
@@ -280,7 +280,7 @@ async def test_billing_rejected_raises_permanent_error():
 
         from app.workers.chapter_worker import handle_chapter_message
         with pytest.raises(_PermanentError):
-            await handle_chapter_message(msg, pool, AsyncMock(), retry_count=0)
+            await handle_chapter_message(msg, pool, AsyncMock(), MagicMock(), retry_count=0)
 
 
 @pytest.mark.asyncio
@@ -299,7 +299,7 @@ async def test_model_not_found_raises_permanent_error():
 
         from app.workers.chapter_worker import handle_chapter_message
         with pytest.raises(_PermanentError):
-            await handle_chapter_message(msg, pool, AsyncMock(), retry_count=0)
+            await handle_chapter_message(msg, pool, AsyncMock(), MagicMock(), retry_count=0)
 
 
 @pytest.mark.asyncio
@@ -315,7 +315,7 @@ async def test_book_service_connection_error_raises_transient_error():
 
         from app.workers.chapter_worker import _TransientError, handle_chapter_message
         with pytest.raises(_TransientError):
-            await handle_chapter_message(_chapter_msg(), pool, AsyncMock(), retry_count=0)
+            await handle_chapter_message(_chapter_msg(), pool, AsyncMock(), MagicMock(), retry_count=0)
 
 
 @pytest.mark.asyncio
@@ -333,7 +333,7 @@ async def test_provider_5xx_raises_transient_error():
 
         from app.workers.chapter_worker import handle_chapter_message
         with pytest.raises(_TransientError):
-            await handle_chapter_message(_chapter_msg(), pool, AsyncMock(), retry_count=0)
+            await handle_chapter_message(_chapter_msg(), pool, AsyncMock(), MagicMock(), retry_count=0)
 
 
 # ── _fail_chapter_idempotent ──────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import (
 
 	"github.com/loreweave/notification-service/internal/api"
 	"github.com/loreweave/notification-service/internal/config"
+	"github.com/loreweave/notification-service/internal/consumer"
 	"github.com/loreweave/notification-service/internal/migrate"
 )
 
@@ -62,6 +63,20 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// Phase 2d — LLM-jobs consumer. Optional: empty RABBITMQ_URL skips
+	// the subscription so dev-without-broker keeps working.
+	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+	defer consumerCancel()
+	var llmConsumer *consumer.Consumer
+	if cfg.RabbitMQURL != "" {
+		llmConsumer, err = consumer.Start(consumerCtx, cfg.RabbitMQURL, pool, slog.Default())
+		if err != nil {
+			slog.Error("llm-jobs consumer failed to start", "error", err)
+			os.Exit(1)
+		}
+		defer func() { _ = llmConsumer.Close() }()
+	}
+
 	go func() {
 		slog.Info("listening", "addr", cfg.HTTPAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -74,6 +89,7 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
+	consumerCancel() // stop consumer goroutine before HTTP shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {

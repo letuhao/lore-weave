@@ -4,6 +4,7 @@ from fastapi.responses import PlainTextResponse
 
 from .config import settings
 from .database import create_pool, close_pool
+from .llm_client import close_llm_client, get_llm_client
 from .migrate import run_migrations
 from .broker import connect_broker, close_broker
 from .routers import settings as settings_router
@@ -29,8 +30,15 @@ async def lifespan(app: FastAPI):
 
     await connect_broker()
 
+    # Phase 4c-α: loreweave_llm SDK wrapper. Touched here so SDK
+    # construction errors (bad base_url, missing internal_token)
+    # surface at startup. 4c-β/γ migrate the actual translation
+    # workers to use this client.
+    get_llm_client()
+
     yield
 
+    await close_llm_client()
     await close_broker()
     await close_pool()
 

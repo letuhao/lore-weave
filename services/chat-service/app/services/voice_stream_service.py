@@ -28,7 +28,7 @@ from app.events.voice_events import emit_voice_turn
 from app.models import ProviderCredentials
 from app.services.sentence_buffer import SentenceBuffer
 from app.services.text_normalizer import TextNormalizer
-from app.services.stream_service import _is_openai_compatible, _stream_openai_compatible, _stream_litellm
+from app.services.stream_service import _stream_via_gateway
 from app.storage.minio_client import upload_file
 
 logger = logging.getLogger(__name__)
@@ -54,25 +54,6 @@ VOICE_SYSTEM_PROMPT = (
 def _sse(event_type: str, data: dict) -> str:
     """Format an SSE event line."""
     return f'data: {json.dumps({"type": event_type, **data})}\n\n'
-
-
-def _resolve_model(creds: ProviderCredentials) -> tuple[str, str | None, str, bool]:
-    """Resolve model string, base_url, api_key, and whether to use OpenAI SDK."""
-    api_key = creds.api_key if creds.api_key else "lw-no-key"
-    base_url = creds.base_url or None
-    use_openai_sdk = _is_openai_compatible(creds.provider_kind)
-
-    if creds.provider_kind == "anthropic":
-        model_string = f"anthropic/{creds.provider_model_name}"
-    elif creds.provider_kind == "openai" and not base_url:
-        model_string = creds.provider_model_name
-        base_url = "https://api.openai.com/v1"
-    else:
-        model_string = creds.provider_model_name
-        if creds.provider_kind == "lm_studio" and base_url and not base_url.rstrip("/").endswith("/v1"):
-            base_url = base_url.rstrip("/") + "/v1"
-
-    return api_key, base_url, model_string, use_openai_sdk
 
 
 async def _transcribe_audio(
@@ -367,9 +348,8 @@ async def voice_stream_response(
         {"role": "system", "content": VOICE_SYSTEM_PROMPT},
     )
 
-    # Resolve model
-    api_key, base_url, model_string, use_openai_sdk = _resolve_model(creds)
-
+    # Phase 1c-ii: gateway resolves api_key / base_url / model_string
+    # internally — no per-service resolution needed.
     full_content: list[str] = []
     msg_id = str(uuid4())
     stream_start = time.monotonic()
@@ -380,10 +360,13 @@ async def voice_stream_response(
     pending_segments: list[tuple[int, str, bytes]] = []  # (index, text, audio_data)
 
     try:
-        if use_openai_sdk:
-            chunk_stream = _stream_openai_compatible(model_string, messages, api_key, base_url, gen_params)
-        else:
-            chunk_stream = _stream_litellm(model_string, messages, api_key, base_url, gen_params)
+        chunk_stream = _stream_via_gateway(
+            model_source=model_source,
+            model_ref=model_ref,
+            user_id=user_id,
+            messages=messages,
+            gen_params=gen_params,
+        )
 
         async for chunk_data in chunk_stream:
             content = chunk_data["content"]

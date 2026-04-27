@@ -52,7 +52,20 @@ type Adapter interface {
 	ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error)
 	Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error)
 	HealthCheck(ctx context.Context, endpointBaseURL, secret string) error
+
+	// Stream — Phase 1a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN). Open a
+	// streaming chat completion against the provider and emit canonical
+	// StreamChunk events via emit. Adapters that don't support streaming
+	// return ErrStreamNotSupported; the route handler maps that to 501.
+	//
+	// emit returning an error means the downstream caller is gone; the
+	// adapter MUST stop streaming and return that error.
+	Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error
 }
+
+// ErrStreamNotSupported — returned by adapters that don't yet implement
+// Stream(). Route handler maps this to HTTP 501 Not Implemented.
+var ErrStreamNotSupported = fmt.Errorf("streaming not supported by this provider adapter")
 
 type ModelInventory struct {
 	ProviderModelName string         `json:"provider_model_name"`
@@ -241,16 +254,17 @@ func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, mod
 	if base == "" {
 		base = openaiBaseURL
 	}
-	maxTokens := 8192
+	payload := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	// Policy: include max_tokens only when caller passes a positive
+	// value. Caller-omitted / 0 → let the model decide (no upstream
+	// cap). OpenAI accepts requests without max_tokens.
 	if v, ok := input["max_tokens"]; ok {
 		if mt := int(toFloat(v)); mt > 0 {
-			maxTokens = mt
+			payload["max_tokens"] = mt
 		}
-	}
-	payload := map[string]any{
-		"model":      modelName,
-		"messages":   extractMessages(input),
-		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
 		payload["temperature"] = v
@@ -274,6 +288,39 @@ func (a *openaiAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret
 	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "gpt-4o-mini",
 		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
 	return err
+}
+
+func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = openaiBaseURL
+	}
+	headers := map[string]string{}
+	if secret != "" {
+		headers["Authorization"] = "Bearer " + secret
+	}
+	body := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	if v, ok := input["temperature"]; ok {
+		body["temperature"] = v
+	}
+	// Policy: max_tokens=0 means omit (let the model decide). Phase 3c
+	// enforced at SDK + gateway-handler; this is the final guard for
+	// callers posting directly to /internal/proxy or future SDKs.
+	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
+		body["max_tokens"] = v
+	}
+	if v, ok := input["tools"]; ok {
+		body["tools"] = v
+	}
+	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return streamOpenAICompat(ctx, resp.Body, emit)
 }
 
 // ── Anthropic adapter ─────────────────────────────────────────────────────────
@@ -371,6 +418,9 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	if base == "" {
 		base = anthropicBaseURL
 	}
+	// Anthropic requires max_tokens (returns 400 if missing). Keep
+	// the 8192 default for caller-omitted/0; honor positive caller
+	// value when supplied.
 	maxTokens := 8192
 	if v, ok := input["max_tokens"]; ok {
 		if mt := int(toFloat(v)); mt > 0 {
@@ -407,6 +457,45 @@ func (a *anthropicAdapter) HealthCheck(ctx context.Context, endpointBaseURL, sec
 	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "claude-3-5-sonnet-20241022",
 		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
 	return err
+}
+
+// Stream — Phase 1c-anthropic. Closes D-PHASE-1C-ANTHROPIC. Anthropic's
+// /v1/messages SSE format differs from OpenAI's /v1/chat/completions
+// (separate event names, content_block_delta with text_delta vs
+// thinking_delta, message_delta carries usage+stop_reason); the
+// per-event mapping lives in anthropic_streamer.go.
+func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = anthropicBaseURL
+	}
+	// Anthropic API REQUIRES max_tokens (returns 400 if missing). The
+	// max_tokens-policy fix at the SDK + gateway-handler layer strips
+	// 0/missing values upstream of us; if we still don't see one here,
+	// fall back to 8192 default to avoid a hard 400 from Anthropic.
+	maxTokens := 8192
+	if v, ok := input["max_tokens"]; ok {
+		if mt := int(toFloat(v)); mt > 0 {
+			maxTokens = mt
+		}
+	}
+	body := map[string]any{
+		"model":      modelName,
+		"messages":   extractMessages(input),
+		"max_tokens": maxTokens,
+	}
+	if v, ok := input["temperature"]; ok {
+		body["temperature"] = v
+	}
+	if v, ok := input["system"]; ok {
+		body["system"] = v
+	}
+	resp, err := openAnthropicStream(ctx, a.client, base, secret, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return streamAnthropicSSE(ctx, resp.Body, emit)
 }
 
 // ── Ollama adapter ────────────────────────────────────────────────────────────
@@ -467,7 +556,10 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, m
 	if v, ok := input["temperature"]; ok {
 		options["temperature"] = v
 	}
-	if v, ok := input["max_tokens"]; ok {
+	// Policy: include num_predict (Ollama's max_tokens equivalent)
+	// only on positive caller value. Caller-omitted / 0 → Ollama
+	// streams to natural stop.
+	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		options["num_predict"] = v
 	}
 	if len(options) > 0 {
@@ -489,6 +581,36 @@ func (a *ollamaAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret
 	return err
 }
 
+// Stream — Ollama supports streaming via its OpenAI-compatible
+// /v1/chat/completions endpoint (separate from the /api/chat NDJSON path
+// used by Invoke). This implementation uses the OpenAI-compat path so it
+// shares the SSE parser with openai/lm_studio.
+func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, modelName string, input map[string]any, emit EmitFn) error {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = ollamaDefaultBase
+	}
+	body := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	if v, ok := input["temperature"]; ok {
+		body["temperature"] = v
+	}
+	// Policy: max_tokens=0 means omit (let the model decide). Phase 3c
+	// enforced at SDK + gateway-handler; this is the final guard for
+	// callers posting directly to /internal/proxy or future SDKs.
+	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
+		body["max_tokens"] = v
+	}
+	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", nil, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return streamOpenAICompat(ctx, resp.Body, emit)
+}
+
 // ── LM Studio adapter (OpenAI-compatible) ────────────────────────────────────
 
 type lmStudioAdapter struct {
@@ -497,11 +619,28 @@ type lmStudioAdapter struct {
 
 const lmStudioDefaultBase = "http://localhost:1234"
 
-func (a *lmStudioAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
+// NormalizeLmStudioBase strips the trailing slash AND a trailing "/v1" segment.
+// Users frequently paste full OpenAI-style URLs like http://localhost:1234/v1
+// into the ProvidersTab UI, but the adapter appends "/v1/chat/completions" or
+// "/api/v1/models" itself. Without normalization the request becomes
+// /v1/v1/chat/completions which 404s and LM Studio returns {"error": ...} body
+// that downstream extract_content() can't parse. Empty input → default base.
+//
+// Exported so the transparent proxy in api/server.go (doProxy) can apply the
+// same normalization — the proxy builds URLs as `baseURL + "/" + targetPath`
+// where targetPath already starts with "v1/...", so the same /v1/v1/ duplication
+// happens via that code path too.
+func NormalizeLmStudioBase(endpointBaseURL string) string {
 	base := strings.TrimRight(endpointBaseURL, "/")
+	base = strings.TrimSuffix(base, "/v1")
 	if base == "" {
-		base = lmStudioDefaultBase
+		return lmStudioDefaultBase
 	}
+	return base
+}
+
+func (a *lmStudioAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
+	base := NormalizeLmStudioBase(endpointBaseURL)
 	headers := map[string]string{}
 	if secret != "" {
 		headers["Authorization"] = "Bearer " + secret
@@ -592,20 +731,18 @@ func parseLMStudioNativeModels(mList []any) []ModelInventory {
 }
 
 func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error) {
-	base := strings.TrimRight(endpointBaseURL, "/")
-	if base == "" {
-		base = lmStudioDefaultBase
+	base := NormalizeLmStudioBase(endpointBaseURL)
+	payload := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
 	}
-	maxTokens := 8192
+	// Policy: include max_tokens only on positive caller value. Caller-
+	// omitted / 0 → let the model decide. LM Studio accepts requests
+	// without max_tokens (defaults to model's natural stop).
 	if v, ok := input["max_tokens"]; ok {
 		if mt := int(toFloat(v)); mt > 0 {
-			maxTokens = mt
+			payload["max_tokens"] = mt
 		}
-	}
-	payload := map[string]any{
-		"model":      modelName,
-		"messages":   extractMessages(input),
-		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
 		payload["temperature"] = v
@@ -630,6 +767,36 @@ func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secr
 	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "",
 		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
 	return err
+}
+
+// Stream — LM Studio is OpenAI-compatible on /v1/chat/completions, so this
+// delegates to the shared streamOpenAICompat parser. Uses NormalizeLmStudioBase
+// to strip a possible trailing /v1 (mirrors Invoke).
+func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
+	base := NormalizeLmStudioBase(endpointBaseURL)
+	headers := map[string]string{}
+	if secret != "" {
+		headers["Authorization"] = "Bearer " + secret
+	}
+	body := map[string]any{
+		"model":    modelName,
+		"messages": extractMessages(input),
+	}
+	if v, ok := input["temperature"]; ok {
+		body["temperature"] = v
+	}
+	// Policy: max_tokens=0 means omit (let the model decide). Phase 3c
+	// enforced at SDK + gateway-handler; this is the final guard for
+	// callers posting directly to /internal/proxy or future SDKs.
+	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
+		body["max_tokens"] = v
+	}
+	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return streamOpenAICompat(ctx, resp.Body, emit)
 }
 
 // ── factory ───────────────────────────────────────────────────────────────────

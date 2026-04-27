@@ -74,3 +74,31 @@ func TestToFloat(t *testing.T) {
 		t.Fatal("nil")
 	}
 }
+
+func TestNormalizeLmStudioBase(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty defaults", "", lmStudioDefaultBase},
+		{"trailing slash", "http://localhost:1234/", "http://localhost:1234"},
+		{"bare host", "http://localhost:1234", "http://localhost:1234"},
+		{"trailing v1", "http://localhost:1234/v1", "http://localhost:1234"},
+		{"trailing v1 slash", "http://localhost:1234/v1/", "http://localhost:1234"},
+		{"docker host", "http://host.docker.internal:1234", "http://host.docker.internal:1234"},
+		{"docker host with v1", "http://host.docker.internal:1234/v1", "http://host.docker.internal:1234"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := NormalizeLmStudioBase(tc.in)
+			if got != tc.want {
+				t.Fatalf("NormalizeLmStudioBase(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

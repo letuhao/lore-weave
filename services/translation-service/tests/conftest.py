@@ -6,6 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Provide required env vars before any app module is imported
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("JWT_SECRET", "test_secret_for_unit_tests_32chars!!")
+# Phase 4c-α: app.llm_client imports app.config at module load, which
+# instantiates Settings() — these are required for tests that touch
+# the SDK wrapper. Other test modules patch around config so they
+# weren't sensitive to missing values; new tests that touch
+# llm_client need them set up-front.
+os.environ.setdefault("RABBITMQ_URL", "amqp://test:test@localhost:5672/")
+os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_internal_token")
 
 
 class FakeRecord(dict):

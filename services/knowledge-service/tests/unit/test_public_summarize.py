@@ -17,7 +17,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.clients.provider_client import ProviderUpstreamError
+from app.clients.llm_client import ProviderUpstreamError
 from app.db.models import Summary
 from app.jobs.regenerate_summaries import RegenerationResult
 
@@ -54,14 +54,14 @@ def _make_client(*, cooldown=None) -> TestClient:
     from app.main import app
     from app.middleware.jwt_auth import get_current_user
     from app.deps import (
-        get_provider_client,
+        get_llm_client,
         get_summaries_repo,
         get_summary_spending_repo,
     )
     from app.routers.public.summaries import get_cooldown_client
 
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
-    app.dependency_overrides[get_provider_client] = lambda: MagicMock()
+    app.dependency_overrides[get_llm_client] = lambda: MagicMock()
     app.dependency_overrides[get_summaries_repo] = lambda: MagicMock()
     # C16-BUILD: stub the spending repo so get_knowledge_pool() isn't hit.
     app.dependency_overrides[get_summary_spending_repo] = lambda: MagicMock()

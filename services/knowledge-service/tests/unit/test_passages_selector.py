@@ -1,6 +1,12 @@
-"""K18.3 — unit tests for the L3 semantic passage selector."""
+"""K18.3 — unit tests for the L3 semantic passage selector.
+
+Phase 4a-δ: rerank now routes through the loreweave_llm SDK
+(``llm_client.submit_and_wait`` returning a Job) instead of the
+removed ``provider_client.chat_completion`` path."""
 from __future__ import annotations
 
+import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -14,6 +20,8 @@ from app.context.selectors.passages import (
     select_l3_passages,
 )
 from app.db.neo4j_repos.passages import Passage, PassageSearchHit
+from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
+from loreweave_llm.models import Job
 
 
 USER_ID = "user-1"
@@ -73,6 +81,61 @@ def _embed_result(dim: int = 1024) -> EmbeddingResult:
     return EmbeddingResult(
         embeddings=[[0.1] * dim], dimension=dim, model="bge-m3",
     )
+
+
+# -- Phase 4a-δ — fake LLM client for rerank tests ------------------
+
+
+class FakeLLMClient:
+    """Stand-in for ``app.clients.llm_client.LLMClient`` exposing only
+    ``submit_and_wait``. Rerank tests script a single Job (or exception)
+    per call."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.next_job: Any = None
+        self.next_exc: Exception | None = None
+        self._side_effect: Any = None
+
+    def queue_chat_job(
+        self,
+        *,
+        content: str,
+        status: str = "completed",
+    ) -> None:
+        result: dict[str, Any] | None
+        if status == "completed":
+            result = {
+                "messages": [{"role": "assistant", "content": content}],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        else:
+            result = None
+        self.next_job = Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="chat",
+            status=status,  # type: ignore[arg-type]
+            result=result,
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
+
+    def queue_exception(self, exc: Exception) -> None:
+        self.next_exc = exc
+
+    def set_side_effect(self, fn: Any) -> None:
+        """Use a callable as the side-effect (e.g. for slow simulation)."""
+        self._side_effect = fn
+
+    async def submit_and_wait(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        if self._side_effect is not None:
+            return await self._side_effect(**kwargs)
+        if self.next_exc is not None:
+            exc = self.next_exc
+            self.next_exc = None
+            raise exc
+        return self.next_job
 
 
 @pytest.mark.asyncio
@@ -190,14 +253,14 @@ async def test_hub_penalty_drops_hub_passages_for_specific_entity(monkeypatch):
         embedding_model="bge-m3", embedding_dim=1024,
         user_uuid=USER_UUID,
     )
-    # Non-hub passage (raw 0.80) wins over hub (raw 0.92 × 0.3 = 0.276).
+    # Non-hub passage (raw 0.80) wins over hub (raw 0.92 x 0.3 = 0.276).
     assert result[0].text == "Arthur is knighted."
     assert result[0].is_hub is False
 
 
 @pytest.mark.asyncio
 async def test_historical_intent_inverts_recency_preference(monkeypatch):
-    """HISTORICAL intent has recency_weight=-1 → older chapter wins
+    """HISTORICAL intent has recency_weight=-1 -> older chapter wins
     even when both passages have the same raw score."""
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
@@ -227,10 +290,7 @@ async def test_historical_intent_inverts_recency_preference(monkeypatch):
 @pytest.mark.asyncio
 async def test_recency_auto_anchors_to_newest_passage(monkeypatch):
     """When caller doesn't supply current_chapter_index, the selector
-    auto-anchors "now" to max(chapter_index) in the hit pool. Without
-    this fallback, every passage sees age=0 and recency weighting is
-    dead in production (no caller currently passes the param).
-    """
+    auto-anchors "now" to max(chapter_index) in the hit pool."""
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
 
@@ -252,7 +312,7 @@ async def test_recency_auto_anchors_to_newest_passage(monkeypatch):
         user_uuid=USER_UUID,
         # NOTE: no current_chapter_index passed — selector auto-anchors.
     )
-    # Historical intent + pool-anchored recency → oldest wins.
+    # Historical intent + pool-anchored recency -> oldest wins.
     assert result[0].text == "Oldest."
 
 
@@ -272,8 +332,6 @@ async def test_mmr_drops_near_duplicate_passages(monkeypatch):
         AsyncMock(return_value=hits),
     )
 
-    # SPECIFIC_ENTITY top_n=5 → all three could fit; MMR should still
-    # prefer the diverse Merlin passage over the near-dup.
     result = await select_l3_passages(
         MagicMock(), client,
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -282,8 +340,6 @@ async def test_mmr_drops_near_duplicate_passages(monkeypatch):
         embedding_model="bge-m3", embedding_dim=1024,
         user_uuid=USER_UUID,
     )
-    # Near-duplicate "again" passage should come AFTER Merlin due to MMR
-    # redundancy penalty.
     texts = [r.text for r in result]
     assert texts[0] == "Arthur rides into Camelot at dawn."
     # Merlin's passage beats the near-dup.
@@ -324,21 +380,13 @@ async def test_pool_size_intent_aware(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mmr_uses_cosine_when_vectors_present(monkeypatch):
-    """P-K18.3-02: when hits carry vectors, MMR redundancy uses cosine.
-
-    Crafted case: two hits whose TEXT is word-distinct (low Jaccard)
-    but whose VECTORS are nearly identical (high cosine). Jaccard-
-    based MMR would keep both in top-N; cosine-based MMR drops the
-    semantic duplicate in favor of the third, genuinely distinct hit.
-    """
+    """P-K18.3-02: when hits carry vectors, MMR redundancy uses cosine."""
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
 
-    # Two near-identical vectors (the "semantic duplicates"), one
-    # orthogonal vector (the diverse passage).
     vec_a = [1.0, 0.0, 0.0, 0.0]
     vec_a_prime = [0.99, 0.01, 0.0, 0.0]  # cosine ~0.9999 with vec_a
-    vec_b = [0.0, 1.0, 0.0, 0.0]  # orthogonal to vec_a → cosine 0.0
+    vec_b = [0.0, 1.0, 0.0, 0.0]  # orthogonal -> cosine 0.0
 
     hits = [
         _hit("alpha beta gamma delta", 0.95, pid="a", vector=vec_a),
@@ -350,8 +398,6 @@ async def test_mmr_uses_cosine_when_vectors_present(monkeypatch):
         AsyncMock(return_value=hits),
     )
 
-    # SPECIFIC_ENTITY → top_n=5 so all three fit; ordering is what we're
-    # asserting, not truncation.
     result = await select_l3_passages(
         MagicMock(), client,
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -360,15 +406,8 @@ async def test_mmr_uses_cosine_when_vectors_present(monkeypatch):
         embedding_model="bge-m3", embedding_dim=1024,
         user_uuid=USER_UUID,
     )
-    pids = [r.source_id for r in result]  # source_id carries chap-1 for all
-    # Instead of source_id, we track by text since all share the same chap.
     texts = [r.text for r in result]
-    # The highest-relevance hit "alpha beta gamma delta" wins the first seat.
     assert texts[0] == "alpha beta gamma delta"
-    # The diverse-vector passage ("iota ...") must beat the near-duplicate
-    # vector passage ("epsilon ..."): cosine says vec_a_prime ≈ vec_a so
-    # "epsilon ..." gets the redundancy hit even though its text has zero
-    # word overlap with "alpha beta gamma delta" (Jaccard = 0).
     assert texts.index("iota kappa lambda mu") < texts.index(
         "epsilon zeta eta theta"
     )
@@ -376,17 +415,10 @@ async def test_mmr_uses_cosine_when_vectors_present(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mmr_falls_back_to_jaccard_when_vectors_missing(monkeypatch):
-    """P-K18.3-02 backward-compat: hits without vectors use text
-    Jaccard exactly as before, so `test_mmr_drops_near_duplicate_passages`
-    behavior is preserved when include_vectors is False at the call site
-    (or for any hit where the vector didn't project).
-    """
+    """P-K18.3-02 backward-compat: hits without vectors use text Jaccard."""
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
 
-    # Same text shape as test_mmr_drops_near_duplicate_passages, but
-    # vectors are explicitly None — this is the path the selector sees
-    # if include_vectors=False is ever wired in via config.
     hits = [
         _hit("Arthur rides into Camelot at dawn.", 0.95, pid="a", vector=None),
         _hit("Arthur rides into Camelot at dawn again.", 0.94, pid="b", vector=None),
@@ -406,7 +438,6 @@ async def test_mmr_falls_back_to_jaccard_when_vectors_missing(monkeypatch):
         user_uuid=USER_UUID,
     )
     texts = [r.text for r in result]
-    # Near-duplicate "again" passage should come AFTER Merlin via Jaccard.
     assert texts.index("Merlin casts a protection spell.") < texts.index(
         "Arthur rides into Camelot at dawn again."
     )
@@ -414,10 +445,7 @@ async def test_mmr_falls_back_to_jaccard_when_vectors_missing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mmr_handles_mixed_vector_presence(monkeypatch):
-    """Defensive: if one hit has a vector and another doesn't, per-pair
-    branch uses cosine when both sides have vectors, Jaccard otherwise.
-    Shouldn't crash, shouldn't produce nonsensical ordering.
-    """
+    """Defensive: mixed vector / no-vector hits per-pair branch."""
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
 
@@ -443,18 +471,9 @@ async def test_mmr_handles_mixed_vector_presence(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mmr_stops_at_top_n_not_full_pool(monkeypatch):
-    """Review-impl catch: MMR must early-exit at top_n so ranking the
-    tail of a large pool doesn't eat the L3 timeout budget.
-
-    Benchmark at DIM=3072 showed full-pool MMR takes ~1.2 s; capping
-    to top_n cuts that to ~57 ms. Assertion here is behavioural — that
-    the returned list has len == top_n + 1 is NOT claimed (returned
-    list size == top_n). The caller truncates anyway so the contract
-    is "don't rank past top_n".
-    """
+    """Review-impl catch: MMR must early-exit at top_n."""
     from app.context.selectors.passages import _mmr_rerank
 
-    # 40 hits, each with a small unique vector (bit-pattern in 8 dims).
     hits = [
         (
             0.9 - i * 0.01,
@@ -467,11 +486,9 @@ async def test_mmr_stops_at_top_n_not_full_pool(monkeypatch):
         for i in range(40)
     ]
 
-    # top_n caps selected count.
     result = _mmr_rerank(hits, lam=0.7, top_n=10)
     assert len(result) == 10
 
-    # top_n=None returns the full ranking (back-compat path).
     all_ranked = _mmr_rerank(hits, lam=0.7, top_n=None)
     assert len(all_ranked) == 40
 
@@ -484,21 +501,7 @@ def test_cosine_zero_magnitude_is_safe():
     assert _cosine([0.0, 0.0], 0.0, [0.0, 0.0], 0.0) == 0.0
 
 
-# ── D-K18.3-02 generative rerank ─────────────────────────────────────
-
-
-def _rerank_response(content: str):
-    """Build a ChatCompletionResponse-shaped mock return value."""
-    from app.clients.provider_client import (
-        ChatCompletionResponse,
-        ChatCompletionUsage,
-    )
-    return ChatCompletionResponse(
-        content=content,
-        usage=ChatCompletionUsage(),
-        model="test-rerank",
-        raw={},
-    )
+# -- D-K18.3-02 generative rerank (SDK path) -----------------------
 
 
 def _l3(text: str, score: float = 0.5) -> "object":
@@ -519,13 +522,11 @@ async def test_rerank_reorders_passages_per_llm_response():
     from app.context.selectors.passages import rerank_passages
 
     passages = [_l3("first"), _l3("second"), _l3("third")]
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock(
-        return_value=_rerank_response('{"order": [2, 0, 1]}')
-    )
+    fake = FakeLLMClient()
+    fake.queue_chat_job(content='{"order": [2, 0, 1]}')
 
     out = await rerank_passages(
-        provider,
+        fake,
         query="test",
         passages=passages,
         model="llama-3",
@@ -537,22 +538,19 @@ async def test_rerank_reorders_passages_per_llm_response():
 @pytest.mark.asyncio
 async def test_rerank_prompt_carries_query_and_numbered_passages():
     """Review-design guard: the LLM prompt must include `Query:` and
-    numbered `[i]` markers so a future prompt refactor that removes
-    them (and silently breaks the parse contract) is caught here."""
+    numbered `[i]` markers."""
     from app.context.selectors.passages import rerank_passages
 
     passages = [_l3("alpha"), _l3("beta")]
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock(
-        return_value=_rerank_response('{"order": [0, 1]}')
-    )
+    fake = FakeLLMClient()
+    fake.queue_chat_job(content='{"order": [0, 1]}')
 
     await rerank_passages(
-        provider, query="where is alpha",
+        fake, query="where is alpha",
         passages=passages, model="llama-3", user_id=USER_UUID,
     )
-    call = provider.chat_completion.await_args
-    user_msg = call.kwargs["messages"][1]["content"]
+    call = fake.calls[0]
+    user_msg = call["input"]["messages"][1]["content"]
     assert "Query: where is alpha" in user_msg
     assert "[0] alpha" in user_msg
     assert "[1] beta" in user_msg
@@ -560,17 +558,15 @@ async def test_rerank_prompt_carries_query_and_numbered_passages():
 
 @pytest.mark.asyncio
 async def test_rerank_fallback_on_non_json_response():
-    """Any non-JSON body → keep original MMR order; never raises."""
+    """Any non-JSON body -> keep original MMR order; never raises."""
     from app.context.selectors.passages import rerank_passages
 
     passages = [_l3("first"), _l3("second")]
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock(
-        return_value=_rerank_response("not json at all")
-    )
+    fake = FakeLLMClient()
+    fake.queue_chat_job(content="not json at all")
 
     out = await rerank_passages(
-        provider, query="q", passages=passages,
+        fake, query="q", passages=passages,
         model="llama-3", user_id=USER_UUID,
     )
     assert [p.text for p in out] == ["first", "second"]  # unchanged
@@ -579,17 +575,15 @@ async def test_rerank_fallback_on_non_json_response():
 @pytest.mark.asyncio
 async def test_rerank_handles_partial_order_by_appending_missing_indices():
     """LLM returned [2] only — we should rerank [2] first, then fill
-    in the missing indices in original MMR order at the tail."""
+    missing indices in original MMR order."""
     from app.context.selectors.passages import rerank_passages
 
     passages = [_l3("a"), _l3("b"), _l3("c"), _l3("d")]
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock(
-        return_value=_rerank_response('{"order": [2]}')
-    )
+    fake = FakeLLMClient()
+    fake.queue_chat_job(content='{"order": [2]}')
 
     out = await rerank_passages(
-        provider, query="q", passages=passages,
+        fake, query="q", passages=passages,
         model="llama-3", user_id=USER_UUID,
     )
     assert [p.text for p in out] == ["c", "a", "b", "d"]
@@ -601,42 +595,48 @@ async def test_rerank_drops_out_of_range_and_duplicate_indices():
     from app.context.selectors.passages import rerank_passages
 
     passages = [_l3("a"), _l3("b"), _l3("c")]
-    provider = MagicMock()
+    fake = FakeLLMClient()
     # out-of-range 99, duplicate 0, negative -1, bool True — all dropped.
-    provider.chat_completion = AsyncMock(
-        return_value=_rerank_response('{"order": [1, 99, 0, -1, 0, true]}')
-    )
+    fake.queue_chat_job(content='{"order": [1, 99, 0, -1, 0, true]}')
 
     out = await rerank_passages(
-        provider, query="q", passages=passages,
+        fake, query="q", passages=passages,
         model="llama-3", user_id=USER_UUID,
     )
-    # Valid picks: [1, 0]; missing: [2] → appended at tail.
+    # Valid picks: [1, 0]; missing: [2] -> appended at tail.
     assert [p.text for p in out] == ["b", "a", "c"]
 
 
 @pytest.mark.asyncio
 async def test_rerank_timeout_falls_back_to_mmr_order():
-    """Review-impl MED catch: a slow rerank model must NOT eat the L3
-    timeout and leave Mode 3 with zero passages. The inner timeout
-    fires first so the MMR order stays as the fallback — enabling
-    rerank never degrades context below the no-rerank baseline."""
+    """Review-impl MED: a slow rerank model must NOT eat the L3 timeout."""
     import asyncio as _asyncio
 
     from app.context.selectors.passages import rerank_passages
 
     passages = [_l3("first"), _l3("second"), _l3("third")]
 
-    async def slow_chat(**kwargs):
+    async def slow_submit(**kwargs):
         # Sleep past the 50ms inner-timeout window used by this test.
         await _asyncio.sleep(0.2)
-        return _rerank_response('{"order": [2, 1, 0]}')
+        # Build a "successful" job that should be ignored by timeout.
+        return Job(
+            job_id="00000000-0000-0000-0000-000000000001",
+            operation="chat",
+            status="completed",
+            result={
+                "messages": [{"role": "assistant", "content": '{"order": [2, 1, 0]}'}],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            },
+            error=None,
+            submitted_at="2026-04-27T00:00:00Z",
+        )
 
-    provider = MagicMock()
-    provider.chat_completion = slow_chat  # real coroutine, not AsyncMock
+    fake = FakeLLMClient()
+    fake.set_side_effect(slow_submit)
 
     out = await rerank_passages(
-        provider, query="q", passages=passages,
+        fake, query="q", passages=passages,
         model="slow-llm", user_id=USER_UUID,
         timeout_s=0.05,
     )
@@ -646,19 +646,35 @@ async def test_rerank_timeout_falls_back_to_mmr_order():
 
 @pytest.mark.asyncio
 async def test_rerank_fallback_on_provider_error():
-    """Provider errors (timeout, upstream down) keep MMR order; the
-    selector never bubbles the exception up."""
-    from app.clients.provider_client import ProviderUpstreamError
+    """SDK-side LLMError keeps MMR order; the selector never bubbles."""
     from app.context.selectors.passages import rerank_passages
 
     passages = [_l3("first"), _l3("second")]
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock(
-        side_effect=ProviderUpstreamError("503"),
-    )
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMError("503"))
 
     out = await rerank_passages(
-        provider, query="q", passages=passages,
+        fake, query="q", passages=passages,
+        model="llama-3", user_id=USER_UUID,
+    )
+    assert [p.text for p in out] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_rerank_fallback_on_transient_retry_exhausted():
+    """LLMTransientRetryNeededError also falls back."""
+    from app.context.selectors.passages import rerank_passages
+
+    passages = [_l3("first"), _l3("second")]
+    fake = FakeLLMClient()
+    fake.queue_exception(LLMTransientRetryNeededError(
+        "exhausted",
+        job_id="00000000-0000-0000-0000-000000000001",
+        underlying_code="LLM_UPSTREAM_ERROR",
+    ))
+
+    out = await rerank_passages(
+        fake, query="q", passages=passages,
         model="llama-3", user_id=USER_UUID,
     )
     assert [p.text for p in out] == ["first", "second"]
@@ -666,7 +682,8 @@ async def test_rerank_fallback_on_provider_error():
 
 @pytest.mark.asyncio
 async def test_select_l3_skips_rerank_when_model_unset(monkeypatch):
-    """Default path: rerank_model=None → provider_client never called."""
+    """Default path: rerank_model=None -> llm_client.submit_and_wait
+    never called."""
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     hits = [_hit("a", 0.9), _hit("b", 0.8)]
@@ -674,8 +691,7 @@ async def test_select_l3_skips_rerank_when_model_unset(monkeypatch):
         "app.context.selectors.passages.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock()
+    fake_llm = FakeLLMClient()
 
     await select_l3_passages(
         MagicMock(), client,
@@ -684,10 +700,10 @@ async def test_select_l3_skips_rerank_when_model_unset(monkeypatch):
         intent=_intent(),
         embedding_model="bge-m3", embedding_dim=1024,
         user_uuid=USER_UUID,
-        provider_client=provider,
+        llm_client=fake_llm,
         rerank_model=None,  # opt-out
     )
-    provider.chat_completion.assert_not_called()
+    assert fake_llm.calls == []
 
 
 @pytest.mark.asyncio
@@ -700,8 +716,7 @@ async def test_select_l3_skips_rerank_when_only_one_passage(monkeypatch):
         "app.context.selectors.passages.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
-    provider = MagicMock()
-    provider.chat_completion = AsyncMock()
+    fake_llm = FakeLLMClient()
 
     await select_l3_passages(
         MagicMock(), client,
@@ -710,10 +725,10 @@ async def test_select_l3_skips_rerank_when_only_one_passage(monkeypatch):
         intent=_intent(),
         embedding_model="bge-m3", embedding_dim=1024,
         user_uuid=USER_UUID,
-        provider_client=provider,
+        llm_client=fake_llm,
         rerank_model="llama-3",
     )
-    provider.chat_completion.assert_not_called()
+    assert fake_llm.calls == []
 
 
 def test_embedding_model_to_dim_covers_supported_models():
@@ -721,10 +736,6 @@ def test_embedding_model_to_dim_covers_supported_models():
     OR the selector must be wise enough to skip unknown dims."""
     from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
     for model, dim in EMBEDDING_MODEL_TO_DIM.items():
-        # Not all mapped dims are supported — nomic-embed (768) won't be,
-        # which is exactly why the selector short-circuits on unsupported
-        # dims. But at least ONE mapped model must match a supported dim
-        # or the feature is dead.
         _ = model  # silence unused
     assert any(
         dim in SUPPORTED_PASSAGE_DIMS

@@ -1,4 +1,11 @@
-"""Tests for the LiteLLM stream service."""
+"""Tests for stream_service.
+
+Phase 1c-ii: stream_service migrated from direct litellm/AsyncOpenAI to
+`loreweave_llm.Client.stream()` via the new `_stream_via_gateway`
+helper. Tests now patch `_stream_via_gateway` instead of `acompletion` /
+`AsyncOpenAI`. Chunks yielded by `_stream_via_gateway` are plain dicts:
+`{content, reasoning_content, finish_reason, usage}`.
+"""
 from __future__ import annotations
 
 import json
@@ -9,7 +16,7 @@ from uuid import uuid4
 import pytest
 
 from app.models import ProviderCredentials
-from app.services.stream_service import stream_response
+from app.services.stream_service import stream_response, _Usage
 from tests.conftest import TEST_SESSION_ID, TEST_USER_ID, TEST_MODEL_REF
 
 
@@ -25,21 +32,39 @@ def _make_creds(**overrides) -> ProviderCredentials:
     return ProviderCredentials(**defaults)
 
 
-def _make_chunk(content: str | None = None, usage=None, finish_reason=None):
-    """Create a fake LiteLLM streaming chunk with proper attribute access."""
-    class FakeDelta:
-        def __init__(self, c):
-            self.content = c
-            self.reasoning_content = ""
-    class FakeChoice:
-        def __init__(self, c, fr):
-            self.delta = FakeDelta(c)
-            self.finish_reason = fr
-    class FakeChunk:
-        def __init__(self, c, u, fr):
-            self.choices = [FakeChoice(c, fr)] if c is not None else []
-            self.usage = u
-    return FakeChunk(content, usage, finish_reason)
+def _dict_chunk(content: str | None = None, reasoning: str = "", usage=None, finish_reason=None) -> dict:
+    """Build a dict in the shape `_stream_via_gateway` yields. Replaces
+    the legacy `_make_chunk` litellm-shape helper."""
+    return {
+        "content": content or "",
+        "reasoning_content": reasoning,
+        "finish_reason": finish_reason,
+        "usage": usage,
+    }
+
+
+def _make_chunk(content: str | None = None, usage=None, finish_reason=None) -> dict:
+    """Back-compat shim — same args, dict shape now. Existing tests pass
+    `content=None` to mark "end of stream"; we map that to a final dict
+    with finish_reason='stop' so consumer's billing path triggers."""
+    if content is None:
+        return {
+            "content": "",
+            "reasoning_content": "",
+            "finish_reason": finish_reason or "stop",
+            "usage": usage,
+        }
+    return _dict_chunk(content=content, usage=usage, finish_reason=finish_reason)
+
+
+def _fake_gateway(chunks: list[dict]):
+    """Return an async-generator factory matching `_stream_via_gateway`
+    signature. Patch with `side_effect=_fake_gateway(chunks)` so each
+    test invocation yields the prepared chunks."""
+    async def _gen(**kwargs):
+        for c in chunks:
+            yield c
+    return _gen
 
 
 def _make_pool_with_conn():
@@ -80,7 +105,7 @@ class TestStreamResponse:
             for c in chunks:
                 yield c
 
-        with patch("app.services.stream_service.acompletion", return_value=fake_acompletion()):
+        with patch("app.services.stream_service._stream_via_gateway", return_value=fake_acompletion()):
             events = []
             async for event in stream_response(
                 session_id=TEST_SESSION_ID,
@@ -118,7 +143,7 @@ class TestStreamResponse:
         async def fake_acompletion(**kwargs):
             yield _make_chunk("Response text")
 
-        with patch("app.services.stream_service.acompletion", return_value=fake_acompletion()):
+        with patch("app.services.stream_service._stream_via_gateway", return_value=fake_acompletion()):
             events = []
             async for event in stream_response(
                 session_id=TEST_SESSION_ID,
@@ -155,7 +180,7 @@ class TestStreamResponse:
         async def fake_acompletion(**kwargs):
             yield _make_chunk(response_text)
 
-        with patch("app.services.stream_service.acompletion", return_value=fake_acompletion()):
+        with patch("app.services.stream_service._stream_via_gateway", return_value=fake_acompletion()):
             events = []
             async for event in stream_response(
                 session_id=TEST_SESSION_ID,
@@ -184,7 +209,7 @@ class TestStreamResponse:
 
         billing = AsyncMock()
 
-        with patch("app.services.stream_service.acompletion", side_effect=Exception("API down")):
+        with patch("app.services.stream_service._stream_via_gateway", side_effect=Exception("API down")):
             events = []
             async for event in stream_response(
                 session_id=TEST_SESSION_ID,
@@ -204,19 +229,23 @@ class TestStreamResponse:
         assert events[-1] == "data: [DONE]\n\n"
 
     @pytest.mark.asyncio
-    async def test_lm_studio_model_string(self):
+    async def test_lm_studio_routes_to_gateway_with_model_ref(self):
+        # Phase 1c-ii: chat-service no longer derives model_string /
+        # base_url itself — gateway resolves them. The test now asserts
+        # that model_source + model_ref + user_id are forwarded to
+        # _stream_via_gateway unchanged.
         pool, conn = _make_pool_with_conn()
         pool.fetch.return_value = []
         conn.fetchval.return_value = 1
 
         billing = AsyncMock()
-        captured_kwargs = []
+        captured: list[dict] = []
 
-        async def fake_stream(model, messages, api_key, base_url, gen_params):
-            captured_kwargs.append({"model": model, "base_url": base_url})
+        async def fake_gateway(**kwargs):
+            captured.append(kwargs)
             yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": None}
 
-        with patch("app.services.stream_service._stream_openai_compatible", side_effect=fake_stream):
+        with patch("app.services.stream_service._stream_via_gateway", side_effect=fake_gateway):
             async for _ in stream_response(
                 session_id=TEST_SESSION_ID,
                 user_message_content="Hi",
@@ -229,8 +258,9 @@ class TestStreamResponse:
             ):
                 pass
 
-        assert captured_kwargs[0]["model"] == "local-model"
-        assert captured_kwargs[0]["base_url"].endswith("/v1")
+        assert captured[0]["model_source"] == "user_model"
+        assert captured[0]["model_ref"] == TEST_MODEL_REF
+        assert captured[0]["user_id"] == TEST_USER_ID
 
     @pytest.mark.asyncio
     async def test_parent_message_id_in_assistant_insert(self):
@@ -244,7 +274,7 @@ class TestStreamResponse:
         async def fake_acompletion(**kwargs):
             yield _make_chunk("Response")
 
-        with patch("app.services.stream_service.acompletion", return_value=fake_acompletion()):
+        with patch("app.services.stream_service._stream_via_gateway", return_value=fake_acompletion()):
             events = []
             async for event in stream_response(
                 session_id=TEST_SESSION_ID,
@@ -279,7 +309,7 @@ class TestStreamResponse:
         async def fake_acompletion(**kwargs):
             yield _make_chunk("Response text")
 
-        with patch("app.services.stream_service.acompletion", return_value=fake_acompletion()):
+        with patch("app.services.stream_service._stream_via_gateway", return_value=fake_acompletion()):
             async for _ in stream_response(
                 session_id=TEST_SESSION_ID,
                 user_message_content="Hello",
@@ -331,7 +361,7 @@ class TestStreamResponse:
             captured_messages.extend(kwargs["messages"])
             yield _make_chunk("ok")
 
-        with patch("app.services.stream_service.acompletion", side_effect=fake_acompletion):
+        with patch("app.services.stream_service._stream_via_gateway", side_effect=fake_acompletion):
             async for _ in stream_response(
                 session_id=TEST_SESSION_ID,
                 user_message_content="new msg",
@@ -402,7 +432,7 @@ class TestK18_9PromptCaching:
             "app.services.stream_service.get_knowledge_client",
             return_value=_patched_knowledge(stable=stable, volatile=volatile),
         ), _patch(
-            "app.services.stream_service.acompletion",
+            "app.services.stream_service._stream_via_gateway",
             side_effect=fake_acompletion_wrapper,
         ):
             async for _ in stream_response(
@@ -466,7 +496,7 @@ class TestK18_9PromptCaching:
             "app.services.stream_service.get_knowledge_client",
             return_value=_patched_knowledge(stable=stable, volatile=volatile),
         ), _patch(
-            "app.services.stream_service.acompletion",
+            "app.services.stream_service._stream_via_gateway",
             side_effect=fake_wrapper,
         ):
             async for _ in stream_response(
@@ -520,7 +550,7 @@ class TestK18_9PromptCaching:
             "app.services.stream_service.get_knowledge_client",
             return_value=_patched_knowledge(stable=stable, volatile="", mode="no_project"),
         ), _patch(
-            "app.services.stream_service.acompletion",
+            "app.services.stream_service._stream_via_gateway",
             side_effect=fake_wrapper,
         ):
             async for _ in stream_response(
@@ -553,40 +583,20 @@ class TestK18_9PromptCaching:
         stable = "<memory><project/>\n"
         volatile = "<instructions>x</instructions></memory>"
 
-        captured_messages = []
+        captured_messages: list[dict] = []
 
-        chunks = [_make_chunk("ok"), _make_chunk(None)]
-
-        # Non-Anthropic uses the OpenAI SDK path; patch AsyncOpenAI.
-        class FakeStream:
-            def __init__(self, cs): self.cs = cs
-            def __aiter__(self):
-                async def gen():
-                    for c in self.cs:
-                        # Force chunk shape so stream_service's model_extra
-                        # access doesn't crash. Re-use _make_chunk's shape.
-                        yield c
-                return gen()
-
-        class FakeCompletions:
-            async def create(self_, **kwargs):
-                captured_messages.extend(kwargs.get("messages", []))
-                return FakeStream(chunks)
-
-        class FakeChat:
-            completions = FakeCompletions()
-
-        class FakeClient:
-            chat = FakeChat()
-            async def close(self): pass
+        async def fake_gateway(**kwargs):
+            captured_messages.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
 
         from unittest.mock import patch as _patch
         with _patch(
             "app.services.stream_service.get_knowledge_client",
             return_value=_patched_knowledge(stable=stable, volatile=volatile),
         ), _patch(
-            "app.services.stream_service.AsyncOpenAI",
-            return_value=FakeClient(),
+            "app.services.stream_service._stream_via_gateway",
+            side_effect=fake_gateway,
         ):
             async for _ in stream_response(
                 session_id=TEST_SESSION_ID,
@@ -638,7 +648,7 @@ class TestK18_9PromptCaching:
                 context="<memory>legacy blob</memory>",
             ),
         ), _patch(
-            "app.services.stream_service.acompletion",
+            "app.services.stream_service._stream_via_gateway",
             side_effect=fake_wrapper,
         ):
             async for _ in stream_response(

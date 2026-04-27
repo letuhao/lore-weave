@@ -1,0 +1,736 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave LLM Gateway API
+  version: 1.0.0
+  description: |
+    Unified LLM contract for the LoreWeave platform. Two flavors:
+
+    1. **`POST /v1/llm/stream`** — interactive streaming chat (P1).
+       Server-Sent Events end-to-end. **No wall-clock timeout.**
+       Token-level deltas reach the caller as the upstream provider
+       emits them.
+
+    2. **`POST /v1/llm/jobs`** — fire-and-forget async LLM job (P2).
+       Returns 202 with `job_id` immediately. Job runs to completion
+       on the gateway side (with chunking, parallel chunk dispatch,
+       and aggregation). Completion is signaled out-of-band via the
+       caller-supplied callback (RabbitMQ topic or webhook URL); the
+       caller never blocks on HTTP for the result. `GET /v1/llm/jobs/{id}`
+       is for status polling; `DELETE /v1/llm/jobs/{id}` cancels.
+
+    Every other LLM call site in the monorepo MUST use one of these
+    two endpoints (or their `/internal/llm/*` service-to-service
+    counterparts). Direct provider-SDK calls (`litellm`, `openai`,
+    `anthropic`) are forbidden by the SDK lint layer.
+
+    See [LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md](../../../docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md)
+    for principles, audit findings, and migration phases.
+
+servers:
+  - url: http://localhost:3000
+    description: API Gateway (BFF) for browser callers
+  - url: http://provider-registry-service:8085
+    description: Direct gateway URL for in-cluster service-to-service calls (use /internal/llm/* paths)
+
+tags:
+  - name: streaming
+    description: Interactive streaming LLM operations (chat, voice). No timeout. SSE.
+  - name: jobs
+    description: Async LLM jobs with notification on completion.
+  - name: jobs-internal
+    description: Service-to-service async job submission. X-Internal-Token auth.
+
+paths:
+  # ──────────────────────────────────────────────────────────────────────
+  # Streaming (P1)
+  # ──────────────────────────────────────────────────────────────────────
+  /v1/llm/stream:
+    post:
+      tags: [streaming]
+      summary: Open a streaming LLM session (chat or completion)
+      description: |
+        SSE response. The gateway opens an upstream provider connection
+        and re-emits the provider's tokens as canonical SSE events.
+
+        **Important properties:**
+        - No wall-clock timeout. The connection lives until the upstream
+          completes, the caller disconnects, or the upstream errors.
+        - Caller cancellation: closing the HTTP connection propagates
+          a cancellation signal to the upstream provider call.
+        - The gateway re-frames provider-specific delta formats (OpenAI
+          `delta.content`, Anthropic `content_block_delta`, etc.) into
+          one canonical SSE envelope (see `StreamFormat`).
+      operationId: openLlmStream
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamRequest'
+      responses:
+        '200':
+          description: |
+            SSE stream. Content-Type is `text/event-stream`. Events follow
+            the canonical envelope (see schema descriptions). Keep-alive
+            comments (`: ping`) may appear at any time.
+
+            Event sequence (typical):
+              event: token   data: <TokenEvent JSON>
+              event: token   data: <TokenEvent JSON>
+              ...
+              event: usage   data: <UsageEvent JSON>
+              event: done    data: <DoneEvent JSON>
+
+            On error, the stream terminates with:
+              event: error   data: <ErrorEvent JSON>
+          headers:
+            X-LLM-Trace-Id:
+              schema:
+                type: string
+              description: End-to-end trace identifier for the streaming session.
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/StreamEventEnvelope'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '402':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /internal/llm/stream:
+    post:
+      tags: [streaming]
+      summary: Service-to-service streaming (X-Internal-Token auth)
+      description: |
+        Identical semantics to `/v1/llm/stream` but authenticated with
+        `X-Internal-Token` and requiring an explicit `user_id` query
+        parameter (the user the call is on behalf of, for billing).
+      operationId: openInternalLlmStream
+      security:
+        - internalServiceToken: []
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamRequest'
+      responses:
+        '200':
+          description: SSE stream (see `/v1/llm/stream` response description)
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/StreamEventEnvelope'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Async jobs (P2)
+  # ──────────────────────────────────────────────────────────────────────
+  /v1/llm/jobs:
+    post:
+      tags: [jobs]
+      summary: Submit an async LLM job
+      description: |
+        Returns 202 with `job_id` immediately. The job runs on the gateway
+        with optional chunking + parallel dispatch + aggregation.
+
+        Completion is signaled via the caller-supplied callback:
+        - **RabbitMQ topic** (`callback.kind = "rabbitmq"`): an event is
+          published to `routing_key` on the platform's `loreweave.events`
+          topic exchange. Preferred for in-cluster consumers.
+        - **Webhook URL** (`callback.kind = "webhook"`): an HTTP POST to
+          `url` is made with the completed `Job` body. Webhook payloads
+          are signed with HMAC-SHA256 (header `X-LLM-Signature`).
+
+        The caller may also poll `GET /v1/llm/jobs/{id}` if no callback
+        is registered (callbacks are optional).
+      operationId: submitLlmJob
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitJobRequest'
+      responses:
+        '202':
+          description: Job accepted. Result available later via callback or polling.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitJobResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '402':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /internal/llm/jobs:
+    post:
+      tags: [jobs-internal]
+      summary: Service-to-service async LLM job submission
+      operationId: submitInternalLlmJob
+      security:
+        - internalServiceToken: []
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitJobRequest'
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitJobResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/llm/jobs/{job_id}:
+    get:
+      tags: [jobs]
+      summary: Get LLM job status / result
+      description: |
+        Returns the current state of a job. Until terminal, `result` and
+        `error` are null. Once terminal (status ∈ {completed, failed,
+        cancelled}), the appropriate field is populated.
+
+        Result payload retention defaults to 7 days post-completion;
+        polling after that returns 404.
+      operationId: getLlmJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Job state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+    delete:
+      tags: [jobs]
+      summary: Cancel an in-flight LLM job
+      description: |
+        Best-effort cancel. The gateway sends cancellation to the upstream
+        provider where supported. In-flight chunks may still complete and
+        be billed (provider-dependent). Returns 204 if the cancel was
+        accepted; the job's final status is reflected in subsequent GETs.
+      operationId: cancelLlmJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '204':
+          description: Cancel accepted
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Job already terminal (completed/failed/cancelled) — no-op
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /internal/llm/jobs/{job_id}:
+    get:
+      tags: [jobs-internal]
+      summary: Service-to-service job status fetch
+      operationId: getInternalLlmJob
+      security:
+        - internalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    internalServiceToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+
+  parameters:
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+
+  schemas:
+    # ── Common ────────────────────────────────────────────────────────
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: |
+            Stable error code. Common values:
+            `LLM_INVALID_REQUEST`, `LLM_AUTH_FAILED`, `LLM_QUOTA_EXCEEDED`,
+            `LLM_MODEL_NOT_FOUND`, `LLM_RATE_LIMITED`, `LLM_UPSTREAM_ERROR`,
+            `LLM_DECODE_ERROR`, `LLM_BODY_TOO_LARGE`, `LLM_JOB_NOT_FOUND`,
+            `LLM_JOB_TERMINAL`.
+        message:
+          type: string
+        retry_after_s:
+          type: number
+          description: Present on `LLM_RATE_LIMITED` (and `429` responses).
+          nullable: true
+
+    # NOTE: `ProviderKind` is defined in the model-registry contract
+    # and resolved server-side from `model_ref`. Callers of this gateway
+    # never specify it directly, so it's not a schema in this contract.
+
+    ModelSource:
+      type: string
+      enum: [user_model, platform_model]
+
+    # ── Streaming (P1) ────────────────────────────────────────────────
+    StreamFormat:
+      type: string
+      enum: [openai, anthropic, vercel-ai-ui-v1]
+      default: openai
+      description: |
+        SSE event envelope shape. The gateway translates provider-native
+        deltas into the requested format.
+
+        - `openai`: matches OpenAI's chat completions stream (`data: {...}`).
+        - `anthropic`: matches Anthropic's messages stream (`event: message_delta`, etc.).
+        - `vercel-ai-ui-v1`: Vercel AI SDK UI message stream envelope. Used
+          by the FE chat client today (see `chat-service` legacy path that
+          this contract replaces).
+
+    StreamRequest:
+      type: object
+      required: [model_source, model_ref, messages]
+      properties:
+        model_source:
+          $ref: '#/components/schemas/ModelSource'
+        model_ref:
+          type: string
+          format: uuid
+        messages:
+          type: array
+          description: OpenAI-shaped chat messages array.
+          items:
+            type: object
+            additionalProperties: true
+        tools:
+          type: array
+          description: Optional. OpenAI-shaped tool definitions.
+          items:
+            type: object
+            additionalProperties: true
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.0
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: |
+            Optional max output tokens. **Note for thinking models** (e.g.
+            qwen3.x): this caps `output + reasoning` combined; set high
+            (≥16k) when prompting a thinking model with substantial input.
+          nullable: true
+        stream_format:
+          $ref: '#/components/schemas/StreamFormat'
+        trace_id:
+          type: string
+          description: Optional caller-supplied trace identifier.
+          nullable: true
+
+    # Canonical SSE envelope (one schema covers all event types via discriminator)
+    StreamEventEnvelope:
+      oneOf:
+        - $ref: '#/components/schemas/TokenEvent'
+        - $ref: '#/components/schemas/ReasoningEvent'
+        - $ref: '#/components/schemas/UsageEvent'
+        - $ref: '#/components/schemas/DoneEvent'
+        - $ref: '#/components/schemas/StreamErrorEvent'
+      discriminator:
+        propertyName: event
+        mapping:
+          token: '#/components/schemas/TokenEvent'
+          reasoning: '#/components/schemas/ReasoningEvent'
+          usage: '#/components/schemas/UsageEvent'
+          done: '#/components/schemas/DoneEvent'
+          error: '#/components/schemas/StreamErrorEvent'
+      description: |
+        Discriminated union representing one SSE event. The actual wire
+        format is `event: <name>\ndata: <JSON>\n\n` per the SSE spec; this
+        schema describes the JSON payload after `data:`.
+
+    TokenEvent:
+      type: object
+      required: [event, delta]
+      properties:
+        event:
+          type: string
+          enum: [token]
+        delta:
+          type: string
+          description: Incremental text content from the model.
+        index:
+          type: integer
+          description: Optional zero-based event index for ordering verification.
+
+    ReasoningEvent:
+      type: object
+      required: [event, delta]
+      description: |
+        Thinking-model intermediate output (Qwen3.x, DeepSeek-R1, OpenAI
+        o-series, etc.). Populated when the upstream provider streams a
+        `delta.reasoning_content` field. Consumers typically display this
+        in a separate UI surface from token events. Indexes are independent
+        of TokenEvent indexes — chat-service uses both streams concurrently.
+      properties:
+        event:
+          type: string
+          enum: [reasoning]
+        delta:
+          type: string
+          description: Incremental reasoning content from the model.
+        index:
+          type: integer
+          description: Optional zero-based event index for ordering verification.
+
+    UsageEvent:
+      type: object
+      required: [event, input_tokens, output_tokens]
+      properties:
+        event:
+          type: string
+          enum: [usage]
+        input_tokens:
+          type: integer
+          minimum: 0
+        output_tokens:
+          type: integer
+          minimum: 0
+        reasoning_tokens:
+          type: integer
+          minimum: 0
+          description: Populated for thinking models (Qwen3.x, OpenAI o-series, etc.).
+          nullable: true
+
+    DoneEvent:
+      type: object
+      required: [event]
+      properties:
+        event:
+          type: string
+          enum: [done]
+        finish_reason:
+          type: string
+          enum: [stop, length, content_filter, tool_calls, error]
+          nullable: true
+
+    StreamErrorEvent:
+      type: object
+      required: [event, code, message]
+      properties:
+        event:
+          type: string
+          enum: [error]
+        code:
+          type: string
+        message:
+          type: string
+
+    # ── Async jobs (P2) ───────────────────────────────────────────────
+    JobOperation:
+      type: string
+      enum:
+        - chat
+        - completion
+        - embedding
+        - stt
+        - tts
+        - image_gen
+        - entity_extraction
+        - relation_extraction
+        - event_extraction
+        - fact_extraction
+        - translation
+      description: |
+        The semantic operation. The gateway uses this to:
+        1. Pick the right adapter method per provider
+        2. Pick the right per-operation chunker (e.g. `entity_extraction`
+           uses paragraph-based chunking; `translation` uses token-based
+           chunking with overlap)
+        3. Pick the right aggregator (entity dedup-by-canonical-id;
+           translation concat; chat concat; embedding stack)
+
+    ChunkingConfig:
+      type: object
+      required: [strategy]
+      properties:
+        strategy:
+          type: string
+          enum: [tokens, paragraphs, sentences, none]
+          default: none
+          description: |
+            - `tokens`: split by token count using `tiktoken cl100k_base`.
+            - `paragraphs`: split on blank-line boundaries.
+            - `sentences`: split with langdetect-driven sentence segmenter.
+            - `none`: pass the input as-is to a single LLM call.
+        size:
+          type: integer
+          minimum: 1
+          description: |
+            Target chunk size. Units depend on strategy:
+            - `tokens`: token count (default 2000)
+            - `paragraphs`: paragraph count (default 8)
+            - `sentences`: sentence count (default 30)
+        overlap:
+          type: integer
+          minimum: 0
+          description: |
+            Optional inter-chunk overlap, same units as `size`. Default 0
+            for paragraphs/sentences; default 200 tokens for tokens.
+
+    CallbackConfig:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [rabbitmq, webhook]
+        routing_key:
+          type: string
+          description: |
+            Required when `kind = rabbitmq`. Topic-exchange routing key
+            published on `loreweave.events`. Convention:
+            `user.<user_id>.llm.<operation>.<event>`
+            Example: `user.019d5e3c-...-1344e148bf7c.llm.entity_extraction.done`
+          nullable: true
+        url:
+          type: string
+          format: uri
+          description: |
+            Required when `kind = webhook`. Webhook payload is the
+            completed `Job` body; signed via `X-LLM-Signature: sha256=<hex>`
+            using a shared secret (registered out-of-band per caller).
+          nullable: true
+
+    SubmitJobRequest:
+      type: object
+      required: [operation, model_source, model_ref, input]
+      properties:
+        operation:
+          $ref: '#/components/schemas/JobOperation'
+        model_source:
+          $ref: '#/components/schemas/ModelSource'
+        model_ref:
+          type: string
+          format: uuid
+        input:
+          type: object
+          additionalProperties: true
+          description: |
+            Operation-specific payload.
+
+            **Streaming-backed ops** (`chat`, `completion`, `entity_extraction`,
+            `relation_extraction`, `event_extraction`, `fact_extraction`)
+            ALL share the OpenAI chat-completion wire shape:
+              `{ messages: [...], tools: [...], temperature, max_tokens, response_format }`
+            The operation enum picks the per-op aggregator (chat = concat,
+            entity_extraction = jsonListAggregator over `entities`, etc.) —
+            it does NOT change the input schema. Callers that want to send
+            extraction prompts route them via the `messages` field; the
+            extraction op's name only signals which aggregator to apply
+            to the streamed JSON output.
+
+            **Other ops** have op-specific input shapes:
+            - `embedding`: `{ texts: ["...", "..."] }`
+            - `translation`: `{ text: "...", source_lang: "en", target_lang: "vi", glossary: [...] }`
+            - `image_gen`: `{ prompt: "...", size: "1024x1024", n: 1 }`
+            - `stt`: `{ audio_url: "...", language: "auto" }`
+            - `tts`: `{ text: "...", voice: "alloy", speed: 1.0 }`
+        chunking:
+          oneOf:
+            - $ref: '#/components/schemas/ChunkingConfig'
+          nullable: true
+        callback:
+          oneOf:
+            - $ref: '#/components/schemas/CallbackConfig'
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        job_meta:
+          type: object
+          additionalProperties: true
+          description: |
+            Arbitrary caller metadata echoed back in `Job.job_meta`. Use
+            for business-job linkage (e.g. `{ extraction_job_id, chapter_id }`).
+          nullable: true
+
+    SubmitJobResponse:
+      type: object
+      required: [job_id, status, submitted_at]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        submitted_at:
+          type: string
+          format: date-time
+
+    JobStatus:
+      type: string
+      enum: [pending, running, completed, failed, cancelled]
+
+    JobProgress:
+      type: object
+      properties:
+        chunks_total:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Total chunks for the job. Null when chunking is `none`.
+        chunks_done:
+          type: integer
+          minimum: 0
+          nullable: true
+        tokens_used:
+          type: integer
+          minimum: 0
+          description: Cumulative tokens consumed across all chunks so far.
+        last_progress_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Job:
+      type: object
+      required: [job_id, operation, status, submitted_at]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        operation:
+          $ref: '#/components/schemas/JobOperation'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        progress:
+          oneOf:
+            - $ref: '#/components/schemas/JobProgress'
+          nullable: true
+        result:
+          type: object
+          additionalProperties: true
+          description: |
+            Operation-specific result payload, populated when
+            `status = completed`. Schemas (informal):
+            - `chat`: `{ messages: [{role,content}], usage: {...} }`
+            - `embedding`: `{ vectors: [[...], ...], model: "..." }`
+            - `entity_extraction`: `{ entities: [{name,kind,aliases,confidence}, ...] }`
+            - `relation_extraction`: `{ relations: [{subject,predicate,object,confidence}, ...] }`
+            - `event_extraction`: `{ events: [{summary,participants,event_date,...}, ...] }`
+            - `translation`: `{ translated_text: "...", source_lang, target_lang, usage }`
+            - `image_gen`: `{ images: [{url|b64,...}, ...] }`
+            - `stt`: `{ transcript: "...", duration_ms }`
+            - `tts`: `{ audio_url: "...", duration_ms }`
+          nullable: true
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ErrorBody'
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        job_meta:
+          type: object
+          additionalProperties: true
+          nullable: true

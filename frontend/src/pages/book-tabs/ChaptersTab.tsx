@@ -111,7 +111,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       key: 'title',
       header: 'Title',
       render: (ch) => (
-        <span className="font-medium">{ch.title || ch.original_filename}</span>
+        <span data-testid="chapter-title-cell" className="font-medium">{ch.title || ch.original_filename}</span>
       ),
     },
     {
@@ -190,6 +190,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
           </button>
           <button
             onClick={() => setCreateOpen(true)}
+            data-testid="chapter-add-button"
             className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -249,12 +250,13 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         description="Create a new chapter in the editor."
         footer={
           <>
-            <button onClick={() => setCreateOpen(false)} className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-secondary">
+            <button onClick={() => setCreateOpen(false)} data-testid="chapter-create-cancel" className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-secondary">
               {t('common.cancel')}
             </button>
             <button
               onClick={() => void handleCreate()}
               disabled={creating || !newLang}
+              data-testid="chapter-create-submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {t('common.create')}
@@ -269,6 +271,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="Chapter title (optional)"
+              data-testid="chapter-title-input"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
           </div>
@@ -278,6 +281,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
               value={newLang}
               onChange={(e) => setNewLang(e.target.value)}
               placeholder="ja, en, vi, zh-TW..."
+              data-testid="chapter-language-input"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
               required
             />
@@ -289,6 +293,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
               onChange={(e) => setNewBody(e.target.value)}
               placeholder="Start writing... (optional)"
               rows={4}
+              data-testid="chapter-body-input"
               className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
           </div>

@@ -1,21 +1,31 @@
 """HTTP clients for worker-ai.
 
-Two clients:
-  - KnowledgeClient: calls POST /internal/extraction/extract-item
+Three clients:
+  - KnowledgeClient: calls POST /internal/extraction/persist-pass2
+    (Phase 4b-γ — replaced /extract-item) and the glossary-sync
+    endpoint
   - BookClient: calls GET /internal/books/{book_id}/chapters and
     GET /internal/books/{book_id}/chapters/{chapter_id}
+  - GlossaryClient: paginated entity listing for scope='glossary_sync'
 
-Both use graceful degradation: return None on failure, let the caller
-decide whether to retry or fail the job.
+All use graceful degradation: return a result with `error` and
+`retryable` set on failure, let the caller decide whether to retry
+or fail the job.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 import httpx
+
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.extractors.event import LLMEventCandidate
+from loreweave_extraction.extractors.fact import LLMFactCandidate
+from loreweave_extraction.extractors.relation import LLMRelationCandidate
 
 __all__ = [
     "BookClient",
@@ -99,52 +109,58 @@ class KnowledgeClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def extract_item(
+    async def persist_pass2(
         self,
         *,
         user_id: UUID,
         project_id: UUID | None,
-        item_type: str,
         source_type: str,
         source_id: str,
         job_id: UUID,
-        model_source: str,
-        model_ref: str,
-        chapter_text: str | None = None,
-        user_message: str | None = None,
-        assistant_message: str | None = None,
-        known_entities: list[str] | None = None,
+        extraction_model: str,
+        entities: list[LLMEntityCandidate],
+        relations: list[LLMRelationCandidate],
+        events: list[LLMEventCandidate],
+        facts: list[LLMFactCandidate],
     ) -> ExtractionResult:
-        """Call POST /internal/extraction/extract-item.
+        """Phase 4b-γ — POST /internal/extraction/persist-pass2.
+
+        Replaces the legacy `extract_item` flow. Worker-ai now runs
+        the Pass 2 LLM stage itself via
+        ``loreweave_extraction.extract_pass2(llm_client, ...)`` and
+        sends the resulting candidate lists here for Neo4j persistence.
+        That eliminates the 120s `extract_item_timeout_s` HTTP block
+        — this endpoint is bounded by Neo4j write time (seconds).
 
         Returns an ExtractionResult. On HTTP error, returns a result
         with error set and retryable flag based on status code.
         """
-        url = f"{self._base_url}/internal/extraction/extract-item"
-        body: dict = {
+        url = f"{self._base_url}/internal/extraction/persist-pass2"
+        body: dict[str, Any] = {
             "user_id": str(user_id),
             "project_id": str(project_id) if project_id else None,
-            "item_type": item_type,
             "source_type": source_type,
             "source_id": source_id,
             "job_id": str(job_id),
-            "model_source": model_source,
-            "model_ref": model_ref,
-            "known_entities": known_entities or [],
+            "extraction_model": extraction_model,
+            # Pydantic models -> dicts for JSON serialization. The
+            # server-side schema imports the same library models so
+            # round-trip is field-for-field identical.
+            "entities": [c.model_dump(mode="json") for c in entities],
+            "relations": [c.model_dump(mode="json") for c in relations],
+            "events": [c.model_dump(mode="json") for c in events],
+            "facts": [c.model_dump(mode="json") for c in facts],
         }
-        if chapter_text is not None:
-            body["chapter_text"] = chapter_text
-        if user_message is not None:
-            body["user_message"] = user_message
-        if assistant_message is not None:
-            body["assistant_message"] = assistant_message
 
         try:
             resp = await self._http.post(url, json=body)
         except httpx.HTTPError as exc:
-            logger.warning("extract-item HTTP error: %s", exc)
+            logger.warning("persist-pass2 HTTP error: %s", exc)
             return ExtractionResult(
-                source_id=source_id, retryable=True,
+                source_id=source_id,
+                entities_merged=0, relations_created=0,
+                events_merged=0, facts_merged=0,
+                retryable=True,
                 error=f"HTTP error: {exc}",
             )
 
@@ -158,20 +174,10 @@ class KnowledgeClient:
                 facts_merged=data.get("facts_merged", 0),
             )
 
-        # Structured error from K16.6a
-        try:
-            detail = resp.json().get("detail", {})
-            if isinstance(detail, dict):
-                return ExtractionResult(
-                    source_id=source_id,
-                    retryable=detail.get("retryable", resp.status_code == 502),
-                    error=detail.get("error", f"HTTP {resp.status_code}"),
-                )
-        except Exception:
-            pass
-
         return ExtractionResult(
             source_id=source_id,
+            entities_merged=0, relations_created=0,
+            events_merged=0, facts_merged=0,
             retryable=resp.status_code in (502, 503, 429),
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )

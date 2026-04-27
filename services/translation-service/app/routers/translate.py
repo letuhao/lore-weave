@@ -2,20 +2,30 @@
 import logging
 from uuid import UUID
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 import asyncpg
 
+from loreweave_llm.errors import (
+    LLMAuthFailed,
+    LLMDecodeError,
+    LLMError,
+    LLMInvalidRequest,
+    LLMModelNotFound,
+    LLMQuotaExceeded,
+    LLMStreamNotSupported,
+    LLMTransientRetryNeededError,
+)
+
 logger = logging.getLogger(__name__)
 
-from ..auth import mint_user_jwt
 from ..config import (
-    settings as app_settings,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_USER_PROMPT_TPL,
 )
 from ..deps import get_current_user, get_db
+from ..llm_client import LLMClient, get_llm_client
 from ..models import TranslateTextRequest, TranslateTextResponse
+from ..workers.session_translator import _parse_sdk_response
 
 router = APIRouter(prefix="/v1/translation", tags=["translate"])
 
@@ -25,6 +35,7 @@ async def translate_text(
     body: TranslateTextRequest,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
+    llm_client: LLMClient = Depends(get_llm_client),
 ) -> TranslateTextResponse:
     # Load user preferences for model config
     prefs = await db.fetchrow(
@@ -70,9 +81,6 @@ async def translate_text(
                 target_language=target_language,
             )
 
-        token = mint_user_jwt(user_id, app_settings.jwt_secret, ttl_seconds=120)
-        invoke_timeout = prefs["invoke_timeout_secs"] if prefs else 120
-
         from ..workers.session_translator import _BLOCK_SYSTEM_PROMPT, _SafeFormatMap, _lang_name
         sys_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
             "source_lang": _lang_name(source_language),
@@ -85,36 +93,35 @@ async def translate_text(
         total_in = 0
         total_out = 0
 
-        async with httpx.AsyncClient(timeout=invoke_timeout) as client:
-            for batch in plan.batches:
-                combined = batch.combined_text()
-                try:
-                    r = await client.post(
-                        f"{app_settings.provider_registry_service_url}/v1/model-registry/invoke",
-                        json={
-                            "model_source": model_source,
-                            "model_ref": str(model_ref),
-                            "input": {"messages": [
-                                {"role": "system", "content": sys_content},
-                                {"role": "user", "content": f"Translate the following blocks from {_lang_name(source_language)} to {_lang_name(target_language)}:\n\n{combined}"},
-                            ]},
-                        },
-                        headers={"Authorization": f"Bearer {token}"},
-                    )
-                except httpx.TimeoutException:
-                    continue
-                except httpx.RequestError:
-                    continue
-                if not r.is_success:
-                    continue
-                resp = r.json()
-                from ..workers.content_extractor import extract_content
-                response_text = extract_content(resp.get("output") or {})
-                usage = resp.get("usage") or {}
-                total_in += int(usage.get("input_tokens") or 0)
-                total_out += int(usage.get("output_tokens") or 0)
-                parsed = parse_translated_blocks(response_text, batch.block_indices)
-                translated_texts.update(parsed)
+        # Phase 4c-γ: SDK call replaces /v1/model-registry/invoke.
+        # Best-effort per batch — any SDK error skips the batch (matches
+        # legacy `continue` on httpx.TimeoutException / RequestError);
+        # missing blocks fall back to original text in the result loop.
+        for batch in plan.batches:
+            combined = batch.combined_text()
+            try:
+                sdk_job = await llm_client.submit_and_wait(
+                    user_id=user_id,
+                    operation="translation",
+                    model_source=model_source,
+                    model_ref=str(model_ref),
+                    input={"messages": [
+                        {"role": "system", "content": sys_content},
+                        {"role": "user", "content": f"Translate the following blocks from {_lang_name(source_language)} to {_lang_name(target_language)}:\n\n{combined}"},
+                    ]},
+                    chunking=None,
+                    job_meta={"endpoint": "translate-text-blocks"},
+                    transient_retry_budget=1,
+                )
+            except (LLMTransientRetryNeededError, LLMError):
+                continue
+            if sdk_job.status != "completed":
+                continue
+            response_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
+            total_in += in_tok
+            total_out += out_tok
+            parsed = parse_translated_blocks(response_text, batch.block_indices)
+            translated_texts.update(parsed)
 
         result_blocks = []
         for entry in plan.all_entries:
@@ -154,46 +161,53 @@ async def translate_text(
     user_msg = user_prompt_tpl.format_map(fmt)
     system_msg = system_prompt.format_map(fmt)
 
-    token = mint_user_jwt(user_id, app_settings.jwt_secret, ttl_seconds=120)
-    invoke_timeout = prefs["invoke_timeout_secs"] if prefs else 120
-
-    async with httpx.AsyncClient(timeout=invoke_timeout) as client:
-        try:
-            r = await client.post(
-                f"{app_settings.provider_registry_service_url}/v1/model-registry/invoke",
-                json={
-                    "model_source": model_source,
-                    "model_ref": str(model_ref),
-                    "input": {
-                        "messages": [
-                            {"role": "system", "content": system_msg},
-                            {"role": "user", "content": user_msg},
-                        ]
-                    },
-                },
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="Translation provider timed out")
-        except httpx.RequestError as exc:
-            raise HTTPException(status_code=502, detail=f"Provider connection error: {exc}")
-
-    if r.status_code == 402:
+    # Phase 4c-γ: SDK call replaces /v1/model-registry/invoke. Map
+    # SDK exceptions to the same HTTP status codes the legacy path
+    # returned (504 timeout, 502 transport, 402 quota, 502 model not
+    # found). HIGH#1 from cycle 11 reinforced: catch permanent SDK
+    # subclasses BEFORE the generic LLMError so misconfigured BYOK
+    # surfaces correctly to the caller.
+    try:
+        sdk_job = await llm_client.submit_and_wait(
+            user_id=user_id,
+            operation="translation",
+            model_source=model_source,
+            model_ref=str(model_ref),
+            input={
+                "messages": [
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg},
+                ],
+            },
+            chunking=None,
+            job_meta={"endpoint": "translate-text"},
+            transient_retry_budget=1,
+        )
+    except LLMTransientRetryNeededError:
+        raise HTTPException(status_code=504, detail="Translation provider timed out")
+    except LLMQuotaExceeded:
         raise HTTPException(status_code=402, detail="Quota and credits exhausted")
-    if not r.is_success:
+    except LLMModelNotFound as exc:
+        raise HTTPException(status_code=502, detail=f"Model not found: {exc}")
+    except (LLMAuthFailed, LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
+        raise HTTPException(status_code=502, detail=f"Provider invoke failed: {exc}")
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=f"Provider connection error: {exc}")
+
+    if sdk_job.status != "completed":
+        err_code = sdk_job.error.code if sdk_job.error else "LLM_UNKNOWN_ERROR"
+        if err_code == "LLM_QUOTA_EXCEEDED":
+            raise HTTPException(status_code=402, detail="Quota and credits exhausted")
         raise HTTPException(
             status_code=502,
-            detail=f"Provider invoke failed ({r.status_code})",
+            detail=f"Provider invoke failed ({err_code})",
         )
 
-    try:
-        resp = r.json()
-        from ..workers.content_extractor import extract_content
-        translated_text = extract_content(resp["output"])
-    except (ValueError, KeyError, TypeError) as exc:
-        logger.error("Malformed provider response: %s", exc)
+    translated_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
+    if not translated_text:
+        logger.error("Empty content from translation provider")
         raise HTTPException(status_code=502, detail="Malformed response from translation provider")
-    usage = resp.get("usage") or {}
+    usage = {"input_tokens": in_tok, "output_tokens": out_tok}
 
     return TranslateTextResponse(
         translated_text=translated_text,

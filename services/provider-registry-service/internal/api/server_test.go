@@ -20,7 +20,7 @@ func testServer(secret string) *Server {
 	return NewServer(nil, &config.Config{
 		JWTSecret:              secret,
 		UsageBillingServiceURL: "http://localhost:8086",
-	})
+	}, nil)
 }
 
 func signedToken(t *testing.T, secret string, userID uuid.UUID, role string) string {
@@ -226,33 +226,3 @@ func TestPlatformModelAdminGuard(t *testing.T) {
 	}
 }
 
-func TestInvokeModelValidationAndUnauthorized(t *testing.T) {
-	t.Parallel()
-
-	secret := "12345678901234567890123456789012"
-	srv := testServer(secret)
-	userID := uuid.New()
-
-	unauthReq := httptest.NewRequest(http.MethodPost, "/v1/model-registry/invoke", bytes.NewBufferString(`{}`))
-	unauthRR := httptest.NewRecorder()
-	srv.invokeModel(unauthRR, unauthReq)
-	if unauthRR.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", unauthRR.Code)
-	}
-
-	invalidRefReq := httptest.NewRequest(http.MethodPost, "/v1/model-registry/invoke", bytes.NewBufferString(`{"model_source":"user_model","model_ref":"bad","input":{}}`))
-	invalidRefReq.Header.Set("Authorization", "Bearer "+signedToken(t, secret, userID, ""))
-	invalidRefRR := httptest.NewRecorder()
-	srv.invokeModel(invalidRefRR, invalidRefReq)
-	if invalidRefRR.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid model_ref, got %d", invalidRefRR.Code)
-	}
-
-	invalidSourceReq := httptest.NewRequest(http.MethodPost, "/v1/model-registry/invoke", bytes.NewBufferString(`{"model_source":"bad_source","model_ref":"`+uuid.NewString()+`","input":{}}`))
-	invalidSourceReq.Header.Set("Authorization", "Bearer "+signedToken(t, secret, userID, ""))
-	invalidSourceRR := httptest.NewRecorder()
-	srv.invokeModel(invalidSourceRR, invalidSourceReq)
-	if invalidSourceRR.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid model_source, got %d", invalidSourceRR.Code)
-	}
-}

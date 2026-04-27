@@ -110,7 +110,12 @@ export function configureGatewayApp(
   const notificationProxy = createProxyMiddleware({
     target: urls.notificationUrl,
     changeOrigin: true,
-    pathFilter: (pathname: string) => pathname.startsWith('/v1/notifications'),
+    // Phase 2e — `/v1/notifications/stream` is served LOCALLY by
+    // NotificationsController as an SSE bridge over RabbitMQ events;
+    // exclude it from the upstream proxy so the NestJS handler runs.
+    pathFilter: (pathname: string) =>
+      pathname.startsWith('/v1/notifications') &&
+      pathname !== '/v1/notifications/stream',
   });
   const knowledgeProxy = createProxyMiddleware({
     target: urls.knowledgeUrl,
@@ -275,7 +280,10 @@ export function configureGatewayApp(
     if (req.path.startsWith('/v1/leaderboard') || req.path.startsWith('/v1/stats')) {
       return statisticsProxyFn(req, res, next);
     }
-    if (req.path.startsWith('/v1/notifications')) {
+    if (
+      req.path.startsWith('/v1/notifications') &&
+      req.path !== '/v1/notifications/stream'
+    ) {
       return notificationProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/knowledge')) {

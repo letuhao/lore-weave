@@ -11,6 +11,11 @@ type Config struct {
 	JWTSecret              string
 	UsageBillingServiceURL string
 	InternalServiceToken   string
+
+	// Phase 2c — optional. Empty = NoopNotifier (terminal events not
+	// published anywhere; caller can still poll). Set in production
+	// docker-compose; tests + dev-without-RabbitMQ keep working.
+	RabbitMQURL string
 }
 
 func Load() (*Config, error) {
@@ -20,6 +25,7 @@ func Load() (*Config, error) {
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		UsageBillingServiceURL: os.Getenv("USAGE_BILLING_SERVICE_URL"),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		RabbitMQURL:            os.Getenv("RABBITMQ_URL"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

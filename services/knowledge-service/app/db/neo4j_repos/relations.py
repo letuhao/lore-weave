@@ -30,12 +30,15 @@ KSA L2 loader Cypher (lines 2123-2133).
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+# Phase 4b-α: relation_id moved to loreweave_extraction.canonical.
+# Re-exported below for back-compat with non-extraction call sites.
+from loreweave_extraction.canonical import relation_id
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 
@@ -58,40 +61,6 @@ __all__ = [
     "invalidate_relation",
     "get_relation",
 ]
-
-
-def relation_id(
-    user_id: str,
-    subject_id: str,
-    predicate: str,
-    object_id: str,
-) -> str:
-    """Deterministic id for a `(:Entity)-[:RELATES_TO]->(:Entity)` edge.
-
-    Same `(user_id, subject_id, predicate, object_id)` tuple
-    produces the same id, forever. The id is the structural key
-    for the MERGE in `create_relation`, which makes re-extracting
-    the same SVO from any source a no-op (the second create just
-    appends the new source_event_id to the existing edge).
-
-    The id encodes `user_id` so two users with the same SVO
-    pattern get distinct ids — defensive even though the matched
-    subject/object nodes are themselves user-scoped via the K11.5a
-    canonical_id.
-
-    Returns a 32-char hex (truncated SHA-256). Same shape as
-    `entity_canonical_id`, same collision properties.
-    """
-    if not user_id:
-        raise ValueError("user_id is required for relation_id")
-    if not subject_id:
-        raise ValueError("subject_id is required for relation_id")
-    if not predicate:
-        raise ValueError("predicate is required for relation_id")
-    if not object_id:
-        raise ValueError("object_id is required for relation_id")
-    key = f"v1:{user_id}:{subject_id}:{predicate}:{object_id}"
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
 
 class Relation(BaseModel):

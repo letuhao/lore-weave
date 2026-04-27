@@ -53,15 +53,9 @@ var ProxyRequestsTotal = prometheus.NewCounterVec(
 	[]string{"outcome"},
 )
 
-// InvokeRequestsTotal mirrors the structure for the /invoke endpoint
-// (public invocation) and /internal/invoke (service-to-service).
-var InvokeRequestsTotal = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Name: "provider_registry_invoke_requests_total",
-		Help: "Outcomes for invokeModel / internalInvokeModel requests.",
-	},
-	[]string{"outcome"},
-)
+// Phase 4d: InvokeRequestsTotal removed alongside the
+// invokeModel / internalInvokeModel handlers. The unified
+// /v1/llm/jobs gateway exposes its own per-operation metrics.
 
 // EmbedRequestsTotal for the /internal/embed endpoint.
 var EmbedRequestsTotal = prometheus.NewCounterVec(
@@ -83,7 +77,6 @@ var VerifyRequestsTotal = prometheus.NewCounterVec(
 
 func init() {
 	metricsRegistry.MustRegister(ProxyRequestsTotal)
-	metricsRegistry.MustRegister(InvokeRequestsTotal)
 	metricsRegistry.MustRegister(EmbedRequestsTotal)
 	metricsRegistry.MustRegister(VerifyRequestsTotal)
 
@@ -93,7 +86,7 @@ func init() {
 	// series. Pre-seeding on a handful of known outcomes is cheap
 	// and matches the knowledge-service pattern.
 	for _, cv := range []*prometheus.CounterVec{
-		ProxyRequestsTotal, InvokeRequestsTotal,
+		ProxyRequestsTotal,
 		EmbedRequestsTotal, VerifyRequestsTotal,
 	} {
 		for _, oc := range []string{

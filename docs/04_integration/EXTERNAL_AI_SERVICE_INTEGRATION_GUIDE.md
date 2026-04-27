@@ -62,13 +62,27 @@
 
 ### Invoke Flow (what happens when LoreWeave calls your service)
 
+> **Phase 4d update (2026-04):** the legacy buffered endpoints
+> `POST /v1/model-registry/invoke` + `POST /internal/invoke` were
+> retired. All LLM operations now go through the unified async-job
+> gateway at `POST /v1/llm/jobs` (or `POST /v1/llm/stream` for SSE)
+> via the `loreweave_llm` SDK. See
+> [`contracts/api/llm-gateway/README.md`](../../contracts/api/llm-gateway/README.md).
+> The flow below describes the *new* contract.
+
 ```
-1. Frontend calls:     POST /v1/model-registry/invoke
-                       { model_source: "user_model", model_ref: "<user_model_id>", input: {...} }
+1. Frontend calls:     POST /v1/llm/jobs
+                       { operation: "translation"|"chat"|"embedding"|...,
+                         model_source: "user_model",
+                         model_ref:    "<user_model_id>",
+                         input:        {...}
+                       }
+                       → 202 Accepted, { job_id: "..." }
 
 2. Provider-registry:  Resolves user_model → provider_credential
                        Decrypts API key from secret_ciphertext
                        Resolves adapter by provider_kind
+                       Enqueues the job + returns 202 immediately
 
 3. Adapter calls:      POST {your_endpoint_base_url}/{path}
                        Authorization: Bearer {decrypted_api_key}
@@ -76,18 +90,26 @@
 
 4. Your service:       Processes request, returns response
 
-5. Provider-registry:  Extracts usage (tokens), records billing, returns to frontend
+5. Provider-registry:  Extracts usage (tokens), records billing,
+                       persists job result, fans out via callback /
+                       SSE / poll
 ```
 
-### Internal Invoke (service-to-service)
+### Internal Async Jobs (service-to-service)
 
-For backend services (e.g., extraction worker, chapter translator), the flow uses:
+For backend services (e.g., extraction worker, chapter translator),
+the flow uses the same job pattern with the internal token:
+
 ```
-POST /internal/invoke?user_id={owner_user_id}
+POST /internal/llm/jobs
 X-Internal-Token: {service_token}
+{ user_id: "<owner_user_id>", operation: "translation", ... }
 ```
 
 This skips JWT auth and uses the internal service token instead.
+Services typically import `loreweave_llm` and call
+`Client.submit_and_wait(operation=...)` rather than constructing the
+HTTP request manually.
 
 ---
 
@@ -1028,17 +1050,20 @@ TOKEN=$(curl -s http://localhost:3123/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@test.com","password":"Test1234!"}' | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-# Invoke via provider-registry
-curl -X POST http://localhost:3123/v1/model-registry/invoke \
+# Phase 4d (2026-04): submit a job via the unified gateway.
+# Returns 202 + { job_id }. Poll /v1/llm/jobs/{job_id} for the
+# terminal result, or use the SDK's submit_and_wait helper.
+curl -X POST http://localhost:3123/v1/llm/jobs \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "operation":    "tts",
     "model_source": "user_model",
-    "model_ref": "<your_user_model_id>",
+    "model_ref":    "<your_user_model_id>",
     "input": {
-      "model": "my-tts-v1",
-      "voice": "alloy",
-      "input": "Hello from LoreWeave",
+      "model":           "my-tts-v1",
+      "voice":           "alloy",
+      "input":           "Hello from LoreWeave",
       "response_format": "mp3"
     }
   }'
@@ -1103,7 +1128,7 @@ type Adapter interface {
 - [ ] Deploy and make accessible from LoreWeave server
 - [ ] Register as a provider in LoreWeave Settings UI
 - [ ] Set correct capability flags on the model
-- [ ] Test end-to-end via `POST /v1/model-registry/invoke`
+- [ ] Test end-to-end via `POST /v1/llm/jobs` (Phase 4d unified gateway)
 
 ---
 

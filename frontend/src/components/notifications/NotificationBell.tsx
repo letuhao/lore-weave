@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bell, Check, CheckCheck, Trash2 } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -10,6 +10,7 @@ import {
   deleteNotification,
 } from '@/features/notifications/api';
 import type { Notification } from '@/features/notifications/api';
+import { useNotificationStream } from '@/features/notifications/hooks/useNotificationStream';
 
 const CATEGORIES = ['all', 'translation', 'social', 'wiki', 'system'] as const;
 type Category = (typeof CATEGORIES)[number];
@@ -21,8 +22,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   system: 'rgba(232,168,50,0.1)',
 };
 
-const POLL_INTERVAL = 30_000;
-
 export function NotificationBell() {
   const { t } = useTranslation('notifications');
   const { accessToken } = useAuth();
@@ -31,20 +30,33 @@ export function NotificationBell() {
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState<Category>('all');
-  const timerRef = useRef<ReturnType<typeof setInterval>>();
 
-  // Poll unread count
+  // Phase 2f — initial unread count fetch (SSE handles updates).
+  // We still need the one-shot to seed the badge before the first
+  // event arrives.
   useEffect(() => {
     if (!accessToken) return;
-    const poll = () => {
-      fetchUnreadCount(accessToken)
-        .then((r) => setUnread(r.count))
-        .catch(() => {});
-    };
-    poll();
-    timerRef.current = setInterval(poll, POLL_INTERVAL);
-    return () => clearInterval(timerRef.current);
+    fetchUnreadCount(accessToken)
+      .then((r) => setUnread(r.count))
+      .catch(() => {});
   }, [accessToken]);
+
+  // Phase 2f — live SSE subscription replaces the 30s poll. Each event
+  // bumps the unread badge; if the panel is open and the category is
+  // 'all' or matches the category we'd normally show, we also prepend
+  // a stub Notification row so the user sees it immediately. The
+  // canonical row lands in the DB via notification-service consumer
+  // (Phase 2d) and will be picked up on the next panel-open re-fetch.
+  useNotificationStream(
+    accessToken,
+    useCallback(
+      (event) => {
+        // Bell badge: every event is a new unread notification.
+        setUnread((c) => c + 1);
+      },
+      [],
+    ),
+  );
 
   // Load notifications when panel opens or category changes
   useEffect(() => {

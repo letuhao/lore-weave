@@ -9,7 +9,11 @@
     "test": "vitest run",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:headed": "playwright test --headed --slow-mo=300",
+    "e2e:report": "playwright show-report tests/e2e/playwright-report"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -62,6 +66,7 @@
     "@types/diff": "^7.0.2",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
+    "@playwright/test": "^1.49.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.27",
     "jsdom": "^29.0.1",

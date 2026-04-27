@@ -34,13 +34,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
-from app.clients.provider_client import ProviderClient
+from app.clients.llm_client import LLMClient
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
 from app.deps import (
-    get_provider_client,
+    get_llm_client,
     get_summaries_repo,
     get_summary_spending_repo,
 )
@@ -87,7 +87,7 @@ class SummarizeRequest(BaseModel):
 @router.post("/summarize", response_model=RegenerationResult)
 async def summarize(
     req: SummarizeRequest,
-    provider_client: ProviderClient = Depends(get_provider_client),
+    llm_client: LLMClient = Depends(get_llm_client),
     summaries_repo: SummariesRepo = Depends(get_summaries_repo),
     summary_spending_repo: SummarySpendingRepo = Depends(
         get_summary_spending_repo
@@ -98,8 +98,8 @@ async def summarize(
     Returns 200 in every non-error case; the ``status`` field carries
     the business outcome. The pool + Neo4j session factory come from
     module-level singletons and are not injected so the public-edge
-    handler can override ``provider_client`` / ``summaries_repo`` for
-    tests without rebuilding the full DI graph.
+    handler can override ``llm_client`` / ``summaries_repo`` for tests
+    without rebuilding the full DI graph.
     """
     try:
         pool = get_knowledge_pool()
@@ -117,7 +117,7 @@ async def summarize(
             model_ref=req.model_ref,
             pool=pool,
             session_factory=neo4j_session,
-            provider_client=provider_client,
+            llm_client=llm_client,
             summaries_repo=summaries_repo,
             summary_spending_repo=summary_spending_repo,
             trigger=req.trigger,
@@ -130,7 +130,7 @@ async def summarize(
         model_ref=req.model_ref,
         pool=pool,
         session_factory=neo4j_session,
-        provider_client=provider_client,
+        llm_client=llm_client,
         summaries_repo=summaries_repo,
         summary_spending_repo=summary_spending_repo,
         trigger=req.trigger,

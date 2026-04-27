@@ -36,7 +36,7 @@ from uuid import UUID
 
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
-from app.clients.provider_client import ProviderClient
+from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.context.formatters.dedup import (
     filter_entities_not_in_summary,
@@ -112,7 +112,7 @@ async def _safe_l3_passages(
     project: Project,
     message: str,
     intent: IntentResult,
-    provider_client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
     rerank_model: str | None = None,
 ) -> list[L3Passage]:
     """Run the L3 selector under a Neo4j session with a timeout.
@@ -155,7 +155,7 @@ async def _safe_l3_passages(
                     embedding_model=project.embedding_model,
                     embedding_dim=embedding_dim,
                     user_uuid=user_id,
-                    provider_client=provider_client,
+                    llm_client=llm_client,
                     rerank_model=rerank_model,
                 ),
                 timeout=settings.context_l3_timeout_s,
@@ -422,7 +422,7 @@ async def build_full_mode(
     project: Project,
     message: str,
     embedding_client: EmbeddingClient | None = None,
-    provider_client: ProviderClient | None = None,
+    llm_client: LLMClient | None = None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
@@ -490,7 +490,7 @@ async def build_full_mode(
             embedding_client,
             user_id=user_id, project=project,
             message=message, intent=intent_obj,
-            provider_client=provider_client,
+            llm_client=llm_client,
             rerank_model=rerank_model,
         ),
     )

@@ -30,7 +30,7 @@ func newRouterOnlyServer(t *testing.T) *Server {
 	return NewServer(nil, &config.Config{
 		JWTSecret:            "router-test-secret-32-characters-01",
 		InternalServiceToken: routerTestInternalToken,
-	})
+	}, nil)
 }
 
 func TestInternalProxyRequiresInternalToken(t *testing.T) {
@@ -102,9 +102,13 @@ func TestInternalProxyInvalidUserIDReturns400(t *testing.T) {
 
 func TestInternalProxyInvalidModelRefReturns400(t *testing.T) {
 	srv := newRouterOnlyServer(t)
+	// Phase 4d /review-impl LOW#6 follow-up: deprecation guard now fires
+	// before model_ref parse, so the path used here MUST NOT be a
+	// deprecated one or we'd get 410 instead of 400. Use the audio
+	// carve-out which is allowed to pass through.
 	req := httptest.NewRequest(
 		http.MethodPost,
-		"/internal/proxy/v1/chat/completions?user_id="+uuid.NewString()+
+		"/internal/proxy/v1/audio/speech?user_id="+uuid.NewString()+
 			"&model_source=user_model&model_ref=not-a-uuid-either",
 		strings.NewReader(`{"model":"x","messages":[]}`),
 	)

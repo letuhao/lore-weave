@@ -200,3 +200,50 @@ func TestNormalizeResponseFormat_LMStudioMalformedResponseFormatNoOp(t *testing.
 		t.Fatalf("malformed response_format must be left alone; got %v", parsed["response_format"])
 	}
 }
+
+// C-EVAL-QWEN36-35B — unit tests for buildProxyTargetURL, the helper that
+// joins endpoint_base_url with the per-request target path. The lm_studio
+// branch strips a trailing /v1 to prevent the /v1/v1/ duplication that the
+// LM-STUDIO-URL-FIX cycle missed for the transparent-proxy code path.
+
+func TestBuildProxyTargetURL_LMStudioStripsTrailingV1(t *testing.T) {
+	got := buildProxyTargetURL("lm_studio", "http://host.docker.internal:1234/v1", "v1/chat/completions")
+	want := "http://host.docker.internal:1234/v1/chat/completions"
+	if got != want {
+		t.Fatalf("got %q, want %q (must strip trailing /v1 to avoid /v1/v1/)", got, want)
+	}
+}
+
+func TestBuildProxyTargetURL_LMStudioBareHostUntouched(t *testing.T) {
+	got := buildProxyTargetURL("lm_studio", "http://host.docker.internal:1234", "v1/chat/completions")
+	want := "http://host.docker.internal:1234/v1/chat/completions"
+	if got != want {
+		t.Fatalf("got %q, want %q (bare host must work too)", got, want)
+	}
+}
+
+func TestBuildProxyTargetURL_LMStudioTrailingSlashStripped(t *testing.T) {
+	got := buildProxyTargetURL("lm_studio", "http://host.docker.internal:1234/", "v1/chat/completions")
+	want := "http://host.docker.internal:1234/v1/chat/completions"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestBuildProxyTargetURL_OpenAIPathUnaffected(t *testing.T) {
+	// Non-lm_studio kinds keep the original TrimRight-only behavior — no
+	// /v1 stripping (some providers genuinely need /v1 in the base URL).
+	got := buildProxyTargetURL("openai", "https://api.openai.com/v1", "embeddings")
+	want := "https://api.openai.com/v1/embeddings"
+	if got != want {
+		t.Fatalf("got %q, want %q (openai path must NOT strip /v1)", got, want)
+	}
+}
+
+func TestBuildProxyTargetURL_AnthropicPreservesBase(t *testing.T) {
+	got := buildProxyTargetURL("anthropic", "https://api.anthropic.com", "v1/messages")
+	want := "https://api.anthropic.com/v1/messages"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

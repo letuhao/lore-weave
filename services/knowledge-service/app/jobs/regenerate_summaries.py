@@ -44,7 +44,16 @@ from uuid import UUID
 import asyncpg
 from pydantic import BaseModel
 
-from app.clients.provider_client import ChatCompletionResponse, ProviderClient
+from app.clients.llm_client import (
+    ChatCompletionResponse,
+    ChatCompletionUsage,
+    LLMClient,
+    ProviderCancelled,
+    ProviderRateLimited,
+    ProviderUpstreamError,
+)
+from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
+from loreweave_llm.models import Job
 from app.context.formatters.token_counter import estimate_tokens
 from app.db.models import Summary
 from app.db.neo4j_helpers import CypherSession, run_read
@@ -334,9 +343,119 @@ class _RegenContext:
 
     pool: asyncpg.Pool
     session_factory: Any  # called as `session_factory()` → async CM
-    provider_client: ProviderClient
+    llm_client: LLMClient
     summaries_repo: SummariesRepo
     summary_spending_repo: "SummarySpendingRepo | None" = None
+
+
+# ── Central LLM-call helper (unified-gateway SDK path) ─────────────
+
+
+async def _invoke_llm_for_summary(
+    *,
+    ctx: "_RegenContext",
+    user_id: UUID,
+    model_source: str,
+    model_ref: str,
+    messages: list[dict[str, str]],
+    scope_type: str,
+    scope_id: UUID | str | None,
+) -> ChatCompletionResponse:
+    """Issue the summary-regen LLM call via the SDK (operation=chat,
+    chunking=None — summaries fit one call). Returns a synthetic
+    ChatCompletionResponse so downstream usage + cost recording stay
+    on a single code path.
+
+    On caller-side retry exhaustion: rate-limit → ProviderRateLimited
+    (preserves retry_after_s); other transient → ProviderUpstreamError.
+    Cancelled job → ProviderCancelled (router emits "cancelled" copy).
+    Non-completed terminal → ProviderUpstreamError.
+    """
+    try:
+        job: Job = await ctx.llm_client.submit_and_wait(
+            user_id=str(user_id),
+            operation="chat",
+            model_source=model_source,
+            model_ref=model_ref,
+            input={
+                "messages": messages,
+                "temperature": 0.0,
+                "max_tokens": _MAX_OUTPUT_TOKENS,
+            },
+            chunking=None,  # summaries fit single call
+            job_meta={
+                "extractor": "summary",
+                "scope_type": scope_type,
+                # str()-coerce so a UUID scope_id from _regenerate_core
+                # serializes as a stable string in gateway storage (vs
+                # leaking the Python UUID repr through pydantic).
+                "scope_id": str(scope_id) if scope_id is not None else "",
+            },
+            transient_retry_budget=1,
+        )
+    except LLMTransientRetryNeededError as exc:
+        if exc.underlying_code == "LLM_RATE_LIMITED":
+            raise ProviderRateLimited(
+                f"summary regen rate-limited (retry exhausted): {exc}",
+                retry_after_s=exc.retry_after_s,
+            ) from exc
+        raise ProviderUpstreamError(
+            f"summary regen transient retry exhausted: {exc.underlying_code}",
+        ) from exc
+    except LLMError as exc:
+        raise ProviderUpstreamError(
+            f"summary regen SDK error: {exc}",
+        ) from exc
+
+    if job.status == "cancelled":
+        raise ProviderCancelled(
+            f"summary regen job cancelled (job_id={job.job_id})",
+        )
+
+    if job.status != "completed":
+        err_code = job.error.code if job.error else "LLM_UNKNOWN_ERROR"
+        err_msg = job.error.message if job.error else ""
+        raise ProviderUpstreamError(
+            f"summary regen job ended status={job.status} code={err_code}: {err_msg}",
+        )
+
+    # Build a ChatCompletionResponse-shaped object from the Job result so
+    # downstream cost + usage code paths stay identical.
+    result = job.result or {}
+    messages_out = result.get("messages") or []
+    content = ""
+    if isinstance(messages_out, list) and messages_out:
+        first = messages_out[0]
+        if isinstance(first, dict):
+            content = first.get("content", "") or ""
+    usage_dict = result.get("usage") or {}
+    # /review-impl COSMETIC#6 — defensive int() coercion for malformed
+    # gateway responses (string/None/etc.) so a misformatted token field
+    # doesn't crash the request with ValueError.
+    input_tokens = _safe_int(usage_dict.get("input_tokens"))
+    output_tokens = _safe_int(usage_dict.get("output_tokens"))
+    return ChatCompletionResponse(
+        content=content,
+        model=model_ref,
+        usage=ChatCompletionUsage(
+            prompt_tokens=input_tokens,
+            completion_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+        ),
+        raw=result,
+    )
+
+
+def _safe_int(value: Any) -> int:
+    """Phase 4a-γ /review-impl COSMETIC#6 — coerce token-count value to
+    int with safe fallback. Gateway emits ints per chatAggregator spec
+    but defensive against future drift / wrong-shape gateway responses."""
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 async def _owns_project(pool: asyncpg.Pool, user_id: UUID, project_id: UUID) -> bool:
@@ -490,15 +609,19 @@ async def _regenerate_core_inner(
                 ),
             )
 
-    # 4. LLM call via BYOK proxy.
+    # 4. LLM call via the unified gateway (chat operation, no chunking
+    #    — summaries fit one call). Returns a ChatCompletionResponse-
+    #    shaped object so downstream usage + cost recording stay on a
+    #    single code path.
     messages = _build_messages(scope=scope_type, passages=passages)
-    response = await ctx.provider_client.chat_completion(
-        user_id=str(user_id),
+    response = await _invoke_llm_for_summary(
+        ctx=ctx,
+        user_id=user_id,
         model_source=model_source,
         model_ref=model_ref,
         messages=messages,
-        temperature=0.0,
-        max_tokens=_MAX_OUTPUT_TOKENS,
+        scope_type=scope_type,
+        scope_id=scope_id,
     )
     llm_output = response.content.strip()
 
@@ -650,17 +773,18 @@ async def regenerate_global_summary(
     model_ref: str,
     pool: asyncpg.Pool,
     session_factory: Any,
-    provider_client: ProviderClient,
+    llm_client: LLMClient,
     summaries_repo: SummariesRepo,
     summary_spending_repo: SummarySpendingRepo | None = None,
     trigger: RegenTrigger = "manual",
 ) -> RegenerationResult:
     """K20.2 — regenerate the user's L0 global bio.
 
-    Reads raw global-scope chat turns (`project_id IS NULL`), calls
-    the user's BYOK model with the L0 system prompt, runs drift +
-    quality guardrails, and writes the result as a new `global`-scope
-    summary version on success.
+    Reads raw global-scope chat turns (`project_id IS NULL`), calls the
+    user's BYOK model via the unified gateway (chat operation, no
+    chunking — summaries fit one call), runs drift + quality guardrails,
+    and writes the result as a new `global`-scope summary version on
+    success.
 
     C16-BUILD: ``summary_spending_repo`` enables D-K20α-01's budget
     pre-check + post-success spend recorder. ``None`` (back-compat
@@ -670,7 +794,7 @@ async def regenerate_global_summary(
     ctx = _RegenContext(
         pool=pool,
         session_factory=session_factory,
-        provider_client=provider_client,
+        llm_client=llm_client,
         summaries_repo=summaries_repo,
         summary_spending_repo=summary_spending_repo,
     )
@@ -694,7 +818,7 @@ async def regenerate_project_summary(
     model_ref: str,
     pool: asyncpg.Pool,
     session_factory: Any,
-    provider_client: ProviderClient,
+    llm_client: LLMClient,
     summaries_repo: SummariesRepo,
     summary_spending_repo: SummarySpendingRepo | None = None,
     trigger: RegenTrigger = "manual",
@@ -702,7 +826,7 @@ async def regenerate_project_summary(
     """K20.1 — regenerate a project's L1 summary.
 
     Reads raw project-scoped chat turns + chapter passages, calls the
-    user's BYOK model with the L1 system prompt, runs drift + quality
+    user's BYOK model via the unified gateway, runs drift + quality
     guardrails, and writes the result via `upsert_project_scoped`
     (which carries its own ownership check).
 
@@ -716,7 +840,7 @@ async def regenerate_project_summary(
     ctx = _RegenContext(
         pool=pool,
         session_factory=session_factory,
-        provider_client=provider_client,
+        llm_client=llm_client,
         summaries_repo=summaries_repo,
         summary_spending_repo=summary_spending_repo,
     )

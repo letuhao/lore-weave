@@ -4,5 +4,6 @@ import { EventsGateway } from './events.gateway';
 
 @Module({
   providers: [AmqpService, EventsGateway],
+  exports: [AmqpService],
 })
 export class WsModule {}

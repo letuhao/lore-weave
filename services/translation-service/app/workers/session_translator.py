@@ -14,20 +14,66 @@ Errors bubble up as _TransientError / _PermanentError (defined in chapter_worker
 """
 from __future__ import annotations
 
-import json
 import logging
+from typing import Any
 from uuid import UUID
 
-import httpx
+from loreweave_llm.errors import (
+    LLMAuthFailed,
+    LLMDecodeError,
+    LLMError,
+    LLMInvalidRequest,
+    LLMModelNotFound,
+    LLMQuotaExceeded,
+    LLMStreamNotSupported,
+    LLMTransientRetryNeededError,
+)
+from loreweave_llm.models import Job
 
-from ..auth import mint_user_jwt
 from ..config import settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
+from ..llm_client import LLMClient
 from .chunk_splitter import estimate_tokens, split_chapter
-from .content_extractor import extract_content
 
 log = logging.getLogger(__name__)
 
-_JWT_TTL = 4 * 3600  # 4 hours — covers very long chapter translation sessions
+
+def _parse_sdk_response(job: Job) -> tuple[str, int, int]:
+    """Phase 4c-β — extract (content, input_tokens, output_tokens) from
+    a Job returned by the SDK's submit_and_wait for operation='translation'.
+
+    The gateway routes 'translation' to chatAggregator (verified
+    aggregator.go:80), so result shape is:
+        {"messages": [{"role":"assistant","content":"..."}],
+         "usage": {"input_tokens": N, "output_tokens": M}}
+
+    Defensive: handles malformed result (missing keys, wrong types) by
+    returning ("", 0, 0). Caller checks job.status before parsing so a
+    completed-but-empty job here means the model produced no tokens —
+    surface as empty translation upstream.
+    """
+    result = job.result or {}
+    messages_out = result.get("messages") or []
+    content = ""
+    if isinstance(messages_out, list) and messages_out:
+        first = messages_out[0]
+        if isinstance(first, dict):
+            content = first.get("content", "") or ""
+    usage_dict = result.get("usage") or {}
+    in_tok = _safe_int(usage_dict.get("input_tokens"))
+    out_tok = _safe_int(usage_dict.get("output_tokens"))
+    return content, in_tok, out_tok
+
+
+def _safe_int(value: Any) -> int:
+    """Defensive int() coercion — gateway emits ints per chatAggregator
+    spec but a wrong-shape future drift would crash the request without
+    this. Mirrors knowledge-service's regen helper pattern."""
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 # BCP-47 code → human-readable language name (lowercase key lookup)
 # Generated from data/language_codes.txt — deduplicated, first occurrence wins.
@@ -249,10 +295,15 @@ async def translate_chapter(
     pool,
     chapter_translation_id: UUID,
     *,
+    llm_client: LLMClient,
     context_window: int = _FALLBACK_CONTEXT_WINDOW,
 ) -> tuple[str, int, int]:
     """
     Translate a full chapter using session-based chunking.
+
+    Phase 4c-β: replaces the legacy /v1/model-registry/invoke + JWT
+    auth path with the loreweave_llm SDK + internal-token auth.
+    Caller (chapter_worker) supplies the llm_client.
 
     Args:
         chapter_text:           Raw original text.
@@ -260,6 +311,7 @@ async def translate_chapter(
         msg:                    Full chapter job message (contains model config, prompts, etc.).
         pool:                   asyncpg pool for writing chunk rows.
         chapter_translation_id: UUID of the parent chapter_translations row.
+        llm_client:             loreweave_llm SDK wrapper (worker-level singleton).
         context_window:         Model context window in tokens (from provider-registry).
 
     Returns:
@@ -269,10 +321,6 @@ async def translate_chapter(
     # Never exceed 1/4 of the model's context window per chunk
     chunk_size = min(chunk_size, context_window // 4)
     chunk_size = max(chunk_size, 100)  # floor to avoid degenerate splits
-
-    timeout_secs = msg.get("invoke_timeout_secs") or 300
-    # 0 means unlimited — map to None for httpx
-    read_timeout = float(timeout_secs) if timeout_secs and timeout_secs > 0 else None
 
     chunks = split_chapter(chapter_text, chunk_size)
     log.info(
@@ -285,56 +333,52 @@ async def translate_chapter(
     translated_parts: list[str] = []
     total_input  = 0
     total_output = 0
+    user_id = msg["user_id"]
 
-    token = mint_user_jwt(msg["user_id"], settings.jwt_secret, ttl_seconds=_JWT_TTL)
+    for idx, chunk in enumerate(chunks):
+        translated, in_tok, out_tok = await _translate_chunk(
+            llm_client=llm_client,
+            chunk=chunk,
+            chunk_idx=idx,
+            total_chunks=len(chunks),
+            source_lang=source_lang,
+            msg=msg,
+            user_id=user_id,
+            session_history=session_history,
+            compact_memo=compact_memo,
+            pool=pool,
+            chapter_translation_id=chapter_translation_id,
+        )
+        log.info(
+            "session_translator: chunk %d/%d done — %d chars, in=%d out=%d (ct=%s)",
+            idx + 1, len(chunks), len(translated), in_tok, out_tok, chapter_translation_id,
+        )
+        translated_parts.append(translated)
+        total_input  += in_tok
+        total_output += out_tok
 
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10.0, write=60.0, read=read_timeout, pool=5.0)
-    ) as client:
-        for idx, chunk in enumerate(chunks):
-            translated, in_tok, out_tok = await _translate_chunk(
-                client=client,
-                chunk=chunk,
-                chunk_idx=idx,
-                total_chunks=len(chunks),
-                source_lang=source_lang,
-                msg=msg,
-                token=token,
-                session_history=session_history,
-                compact_memo=compact_memo,
-                pool=pool,
-                chapter_translation_id=chapter_translation_id,
-            )
+        # Extend session history with this exchange
+        session_history.append({
+            "role": "user",
+            "content": _build_user_content(chunk, source_lang, msg, idx, len(chunks)),
+        })
+        session_history.append({"role": "assistant", "content": translated})
+
+        # Compact when history consumes > 50 % of context window
+        history_tokens = sum(estimate_tokens(m["content"]) for m in session_history)
+        if history_tokens > context_window // 2:
             log.info(
-                "session_translator: chunk %d/%d done — %d chars, in=%d out=%d (ct=%s)",
-                idx + 1, len(chunks), len(translated), in_tok, out_tok, chapter_translation_id,
+                "session_translator: compacting history (%d tokens) for chapter_translation=%s",
+                history_tokens, chapter_translation_id,
             )
-            translated_parts.append(translated)
-            total_input  += in_tok
-            total_output += out_tok
-
-            # Extend session history with this exchange
-            session_history.append({
-                "role": "user",
-                "content": _build_user_content(chunk, source_lang, msg, idx, len(chunks)),
-            })
-            session_history.append({"role": "assistant", "content": translated})
-
-            # Compact when history consumes > 50 % of context window
-            history_tokens = sum(estimate_tokens(m["content"]) for m in session_history)
-            if history_tokens > context_window // 2:
-                log.info(
-                    "session_translator: compacting history (%d tokens) for chapter_translation=%s",
-                    history_tokens, chapter_translation_id,
-                )
-                compact_memo = await _compact_history(
-                    client=client,
-                    session_history=session_history,
-                    old_memo=compact_memo,
-                    msg=msg,
-                    token=token,
-                )
-                session_history = []
+            compact_memo = await _compact_history(
+                llm_client=llm_client,
+                session_history=session_history,
+                old_memo=compact_memo,
+                msg=msg,
+                user_id=user_id,
+            )
+            session_history = []
 
     return "\n\n".join(translated_parts), total_input, total_output
 
@@ -418,21 +462,28 @@ def _build_messages(
 
 async def _translate_chunk(
     *,
-    client: httpx.AsyncClient,
+    llm_client: LLMClient,
     chunk: str,
     chunk_idx: int,
     total_chunks: int,
     source_lang: str,
     msg: dict,
-    token: str,
+    user_id: str,
     session_history: list[dict],
     compact_memo: str,
     pool,
     chapter_translation_id: UUID,
 ) -> tuple[str, int, int]:
     """
-    Invoke the AI model for a single chunk, write the result to
-    chapter_translation_chunks, and return (translated_text, input_tokens, output_tokens).
+    Invoke the AI model for a single chunk via the loreweave_llm SDK
+    (operation='translation'), write the result to
+    chapter_translation_chunks, and return
+    (translated_text, input_tokens, output_tokens).
+
+    Phase 4c-β: replaces the legacy /v1/model-registry/invoke buffered
+    HTTP call. SDK handles transient retry inside submit_and_wait;
+    cancelled/failed jobs map to _PermanentError matching the legacy
+    billing_rejected / model_not_found / provider_error_* contract.
     """
     from .chapter_worker import _TransientError, _PermanentError  # local import avoids circular
 
@@ -445,49 +496,83 @@ async def _translate_chunk(
         chunk, source_lang, msg, chunk_idx, total_chunks,
         session_history, compact_memo,
     )
-    invoke_payload = {
-        "model_source": msg["model_source"],
-        "model_ref":    msg["model_ref"],
-        "input":        {"messages": messages},
-    }
 
     log.debug(
         "session_translator: invoking model %s/%s for chunk %d/%d (ct=%s)",
-        invoke_payload["model_source"], invoke_payload["model_ref"],
+        msg["model_source"], msg["model_ref"],
         chunk_idx + 1, total_chunks, chapter_translation_id,
     )
-    raw_chunks: list[bytes] = []
     try:
-        async with client.stream(
-            "POST",
-            f"{settings.provider_registry_service_url}/v1/model-registry/invoke",
-            json=invoke_payload,
-            headers={"Authorization": f"Bearer {token}"},
-        ) as resp:
-            log.debug(
-                "session_translator: invoke response status=%d for chunk %d (ct=%s)",
-                resp.status_code, chunk_idx + 1, chapter_translation_id,
-            )
-            if resp.status_code == 402:
-                log.error("session_translator: billing_rejected for chunk %d (ct=%s)", chunk_idx + 1, chapter_translation_id)
-                raise _PermanentError("billing_rejected")
-            if resp.status_code == 404:
-                log.error("session_translator: model_not_found for chunk %d (ct=%s)", chunk_idx + 1, chapter_translation_id)
-                raise _PermanentError("model_not_found")
-            if resp.status_code >= 500:
-                log.error("session_translator: provider_error_%d for chunk %d (ct=%s)", resp.status_code, chunk_idx + 1, chapter_translation_id)
-                raise _TransientError(f"provider_error_{resp.status_code}")
-            resp.raise_for_status()
-            async for raw in resp.aiter_bytes():
-                raw_chunks.append(raw)
-    except httpx.RequestError as exc:
-        log.error("session_translator: invoke unreachable for chunk %d: %s", chunk_idx + 1, exc)
+        sdk_job = await llm_client.submit_and_wait(
+            user_id=user_id,
+            operation="translation",
+            model_source=msg["model_source"],
+            model_ref=str(msg["model_ref"]),
+            input={"messages": messages},
+            chunking=None,  # caller already chunked via split_chapter
+            job_meta={
+                "chapter_translation_id": str(chapter_translation_id),
+                "chunk_idx": chunk_idx,
+            },
+            transient_retry_budget=1,
+        )
+    except LLMTransientRetryNeededError as exc:
+        log.error(
+            "session_translator: transient retry exhausted for chunk %d (ct=%s) code=%s",
+            chunk_idx + 1, chapter_translation_id, exc.underlying_code,
+        )
+        raise _TransientError(f"provider_error_{exc.underlying_code}") from exc
+    except LLMQuotaExceeded as exc:
+        # /review-impl HIGH#1 — 402 billing/quota: PERMANENT, no retry
+        log.error(
+            "session_translator: billing_rejected for chunk %d (ct=%s): %s",
+            chunk_idx + 1, chapter_translation_id, exc,
+        )
+        raise _PermanentError("billing_rejected") from exc
+    except LLMModelNotFound as exc:
+        # /review-impl HIGH#1 — 404 model not found: PERMANENT
+        log.error(
+            "session_translator: model_not_found for chunk %d (ct=%s): %s",
+            chunk_idx + 1, chapter_translation_id, exc,
+        )
+        raise _PermanentError("model_not_found") from exc
+    except (LLMAuthFailed, LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
+        # /review-impl HIGH#1 — auth/validation/decode failures are
+        # PERMANENT (config errors won't fix themselves on retry).
+        cls = exc.__class__.__name__
+        log.error(
+            "session_translator: %s for chunk %d (ct=%s): %s",
+            cls, chunk_idx + 1, chapter_translation_id, exc,
+        )
+        raise _PermanentError(f"provider_error_{cls}") from exc
+    except LLMError as exc:
+        log.error(
+            "session_translator: SDK error for chunk %d (ct=%s): %s",
+            chunk_idx + 1, chapter_translation_id, exc,
+        )
         raise _TransientError(f"invoke unreachable: {exc}") from exc
 
-    full_response   = json.loads(b"".join(raw_chunks))
-    translated_text = extract_content(full_response.get("output") or {})
-    # V2: multi-provider token extraction (handles OpenAI/Anthropic/Ollama/LM Studio)
-    in_tok, out_tok = extract_token_counts(full_response)
+    log.debug(
+        "session_translator: job ended status=%s for chunk %d (ct=%s)",
+        sdk_job.status, chunk_idx + 1, chapter_translation_id,
+    )
+
+    if sdk_job.status == "cancelled":
+        # Operator-initiated LLM-job cancel — surface as permanent so
+        # the chapter row stays failed (worker doesn't retry on cancel).
+        raise _PermanentError("cancelled")
+    if sdk_job.status != "completed":
+        # Map gateway error codes to the legacy permanent/transient
+        # contract the chapter_worker retry loop expects.
+        err_code = sdk_job.error.code if sdk_job.error else "LLM_UNKNOWN_ERROR"
+        if err_code in ("LLM_QUOTA_EXCEEDED", "LLM_BILLING_REJECTED"):
+            raise _PermanentError("billing_rejected")
+        if err_code == "LLM_MODEL_NOT_FOUND":
+            raise _PermanentError("model_not_found")
+        # 5xx-class upstream errors → transient (worker retries)
+        raise _TransientError(f"provider_error_{err_code}")
+
+    translated_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
 
     await _update_chunk_row(pool, chunk_row_id, translated_text, in_tok, out_tok)
     return translated_text, in_tok, out_tok
@@ -495,19 +580,22 @@ async def _translate_chunk(
 
 async def _compact_history(
     *,
-    client: httpx.AsyncClient,
+    llm_client: LLMClient,
     session_history: list[dict],
     old_memo: str,
     msg: dict,
-    token: str,
+    user_id: str,
 ) -> str:
     """
     Call the compact model to summarise session_history into a Translation Memo.
     Falls back to the translation model if no compact model is configured.
-    Returns the memo string (empty string on any error — translation continues).
-    """
-    from .chapter_worker import _TransientError, _PermanentError  # local import
+    Returns the memo string (old_memo on any error — translation continues).
 
+    Phase 4c-β: replaces the legacy /v1/model-registry/invoke buffered
+    HTTP call. Best-effort contract preserved — any SDK error returns
+    old_memo without raising, since compaction is a memory-management
+    optimization, not a correctness requirement.
+    """
     compact_source = msg.get("compact_model_source") or msg["model_source"]
     compact_ref    = msg.get("compact_model_ref")    or msg["model_ref"]
 
@@ -521,32 +609,29 @@ async def _compact_history(
     compact_user_tpl = msg.get("compact_user_prompt_tpl") or DEFAULT_COMPACT_USER_PROMPT_TPL
     compact_user_msg = compact_user_tpl.format_map(_SafeFormatMap({"history_text": history_text}))
 
-    compact_payload = {
-        "model_source": compact_source,
-        "model_ref":    compact_ref,
-        "input": {
-            "messages": [
-                {"role": "system", "content": compact_system},
-                {"role": "user",   "content": compact_user_msg},
-            ]
-        },
-    }
-
     try:
-        raw_chunks: list[bytes] = []
-        async with client.stream(
-            "POST",
-            f"{settings.provider_registry_service_url}/v1/model-registry/invoke",
-            json=compact_payload,
-            headers={"Authorization": f"Bearer {token}"},
-        ) as resp:
-            if resp.status_code >= 400:
-                log.warning("compact model returned %d — skipping compaction", resp.status_code)
-                return old_memo
-            async for raw in resp.aiter_bytes():
-                raw_chunks.append(raw)
-        full = json.loads(b"".join(raw_chunks))
-        memo = extract_content(full.get("output") or {})
+        sdk_job = await llm_client.submit_and_wait(
+            user_id=user_id,
+            operation="translation",
+            model_source=compact_source,
+            model_ref=str(compact_ref),
+            input={
+                "messages": [
+                    {"role": "system", "content": compact_system},
+                    {"role": "user",   "content": compact_user_msg},
+                ],
+            },
+            chunking=None,
+            job_meta={"extractor": "compact_memo"},
+            transient_retry_budget=1,
+        )
+        if sdk_job.status != "completed":
+            log.warning(
+                "compact model returned status=%s — skipping compaction",
+                sdk_job.status,
+            )
+            return old_memo
+        memo, _, _ = _parse_sdk_response(sdk_job)
         return memo or old_memo
     except Exception as exc:
         # Compaction is best-effort; a failure must not abort the translation
@@ -715,6 +800,7 @@ async def translate_chapter_blocks(
     pool,
     chapter_translation_id: UUID,
     *,
+    llm_client: LLMClient,
     context_window: int = _FALLBACK_CONTEXT_WINDOW,
 ) -> tuple[list[dict], int, int]:
     """
@@ -759,9 +845,7 @@ async def translate_chapter_blocks(
     if not plan.batches:
         return blocks, 0, 0
 
-    timeout_secs = msg.get("invoke_timeout_secs") or 300
-    read_timeout = float(timeout_secs) if timeout_secs and timeout_secs > 0 else None
-    token = mint_user_jwt(msg["user_id"], settings.jwt_secret, ttl_seconds=_JWT_TTL)
+    user_id = msg["user_id"]
 
     # V2 P4: Fetch glossary context (once per chapter, stable across all batches)
     from .glossary_client import (
@@ -799,161 +883,171 @@ async def translate_chapter_blocks(
     # Rolling summary for cross-batch context
     rolling_summary = ""
 
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10.0, write=60.0, read=read_timeout, pool=5.0)
-    ) as client:
-        for batch_idx, batch in enumerate(plan.batches):
-            combined = batch.combined_text()
-            # Build input_texts map for validation
-            input_texts = {e.index: e.text for e in batch.entries}
+    for batch_idx, batch in enumerate(plan.batches):
+        combined = batch.combined_text()
+        # Build input_texts map for validation
+        input_texts = {e.index: e.text for e in batch.entries}
 
-            log.info(
-                "block_translator_v2: batch %d/%d — %d blocks, ~%d tokens (ct=%s)",
-                batch_idx + 1, len(plan.batches), len(batch.entries),
-                batch.token_estimate, chapter_translation_id,
+        log.info(
+            "block_translator_v2: batch %d/%d — %d blocks, ~%d tokens (ct=%s)",
+            batch_idx + 1, len(plan.batches), len(batch.entries),
+            batch.token_estimate, chapter_translation_id,
+        )
+
+        # Build system prompt with block count + glossary
+        system_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
+            "source_lang": _lang_name(source_lang),
+            "source_code": source_lang,
+            "target_lang": _lang_name(target_code),
+            "target_code": target_code,
+            "block_count": str(len(batch.entries)),
+        }))
+        if glossary_ctx.prompt_block:
+            system_content += "\n\n" + glossary_ctx.prompt_block
+            system_content += (
+                "\n\nIMPORTANT: For names and terms listed in the GLOSSARY above, "
+                "you MUST use the EXACT translations provided. Do NOT invent your own."
             )
 
-            # Build system prompt with block count + glossary
-            system_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
-                "source_lang": _lang_name(source_lang),
-                "source_code": source_lang,
-                "target_lang": _lang_name(target_code),
-                "target_code": target_code,
-                "block_count": str(len(batch.entries)),
-            }))
-            if glossary_ctx.prompt_block:
-                system_content += "\n\n" + glossary_ctx.prompt_block
-                system_content += (
-                    "\n\nIMPORTANT: For names and terms listed in the GLOSSARY above, "
-                    "you MUST use the EXACT translations provided. Do NOT invent your own."
-                )
-
-            # Build user message with optional rolling summary
-            user_parts = []
-            if rolling_summary:
-                user_parts.append(
-                    f"[Summary of previously translated content]\n{rolling_summary}\n"
-                )
+        # Build user message with optional rolling summary
+        user_parts = []
+        if rolling_summary:
             user_parts.append(
-                f"Translate the following {len(batch.entries)} blocks "
-                f"from {_lang_name(source_lang)} to {_lang_name(target_code)}:\n\n{combined}"
+                f"[Summary of previously translated content]\n{rolling_summary}\n"
             )
-            user_content = "\n".join(user_parts)
+        user_parts.append(
+            f"Translate the following {len(batch.entries)} blocks "
+            f"from {_lang_name(source_lang)} to {_lang_name(target_code)}:\n\n{combined}"
+        )
+        user_content = "\n".join(user_parts)
 
-            # Retry loop with validation
-            parsed = None
-            correction_hint = ""
-            for attempt in range(_MAX_BATCH_RETRIES + 1):
-                messages = [
-                    {"role": "system", "content": system_content},
-                ]
-                if correction_hint:
-                    # Add correction as assistant acknowledgment + user re-request
-                    messages.append({"role": "assistant", "content": "I understand. Let me fix the output."})
-                    messages.append({"role": "user", "content": correction_hint})
-                else:
-                    messages.append({"role": "user", "content": user_content})
+        # Retry loop with validation
+        parsed = None
+        correction_hint = ""
+        for attempt in range(_MAX_BATCH_RETRIES + 1):
+            messages = [
+                {"role": "system", "content": system_content},
+            ]
+            if correction_hint:
+                # Add correction as assistant acknowledgment + user re-request
+                messages.append({"role": "assistant", "content": "I understand. Let me fix the output."})
+                messages.append({"role": "user", "content": correction_hint})
+            else:
+                messages.append({"role": "user", "content": user_content})
 
-                invoke_payload = {
-                    "model_source": msg["model_source"],
-                    "model_ref": msg["model_ref"],
-                    "input": {"messages": messages},
-                }
+            try:
+                # Phase 4c-β: SDK call replaces /v1/model-registry/invoke.
+                # `break` on non-completed status preserves the legacy
+                # "don't retry on HTTP errors" semantic — SDK handles
+                # transient retries internally; reaching here with
+                # non-completed means a permanent error.
+                sdk_job = await llm_client.submit_and_wait(
+                    user_id=user_id,
+                    operation="translation",
+                    model_source=msg["model_source"],
+                    model_ref=str(msg["model_ref"]),
+                    input={"messages": messages},
+                    chunking=None,
+                    job_meta={
+                        "chapter_translation_id": str(chapter_translation_id),
+                        "batch_idx": batch_idx,
+                        "attempt": attempt,
+                    },
+                    transient_retry_budget=1,
+                )
+                if sdk_job.status != "completed":
+                    err_code = sdk_job.error.code if sdk_job.error else "unknown"
+                    log.error(
+                        "block_translator_v2: batch %d attempt %d job ended status=%s code=%s",
+                        batch_idx + 1, attempt + 1, sdk_job.status, err_code,
+                    )
+                    break  # don't retry on permanent errors
 
-                try:
-                    raw_chunks: list[bytes] = []
-                    async with client.stream(
-                        "POST",
-                        f"{settings.provider_registry_service_url}/v1/model-registry/invoke",
-                        json=invoke_payload,
-                        headers={"Authorization": f"Bearer {token}"},
-                    ) as resp:
-                        if resp.status_code >= 400:
-                            log.error(
-                                "block_translator_v2: batch %d attempt %d invoke returned %d",
-                                batch_idx + 1, attempt + 1, resp.status_code,
-                            )
-                            break  # don't retry on HTTP errors
-                        async for raw in resp.aiter_bytes():
-                            raw_chunks.append(raw)
+                response_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
+                total_input += in_tok
+                total_output += out_tok
 
-                    full_response = json.loads(b"".join(raw_chunks))
-                    response_text = extract_content(full_response.get("output") or {})
+                # Parse [BLOCK N] markers
+                parsed = parse_translated_blocks(response_text, batch.block_indices)
 
-                    # V2: Multi-provider token extraction
-                    in_tok, out_tok = extract_token_counts(full_response)
-                    total_input += in_tok
-                    total_output += out_tok
+                # V2: Validate output
+                validation = validate_translation_output(
+                    parsed, batch.block_indices, input_texts,
+                )
 
-                    # Parse [BLOCK N] markers
-                    parsed = parse_translated_blocks(response_text, batch.block_indices)
-
-                    # V2: Validate output
-                    validation = validate_translation_output(
-                        parsed, batch.block_indices, input_texts,
+                if validation.warnings:
+                    log.warning(
+                        "block_translator_v2: batch %d warnings: %s",
+                        batch_idx + 1, validation.warnings,
                     )
 
-                    if validation.warnings:
-                        log.warning(
-                            "block_translator_v2: batch %d warnings: %s",
-                            batch_idx + 1, validation.warnings,
+                if validation.valid:
+                    log.info(
+                        "block_translator_v2: batch %d attempt %d — valid, %d/%d blocks",
+                        batch_idx + 1, attempt + 1, len(parsed), len(batch.entries),
+                    )
+                    break  # success
+                else:
+                    log.warning(
+                        "block_translator_v2: batch %d attempt %d — validation failed: %s",
+                        batch_idx + 1, attempt + 1, validation.errors,
+                    )
+                    if attempt < _MAX_BATCH_RETRIES:
+                        # Build correction prompt for retry
+                        correction_hint = (
+                            f"Your previous output had errors: {'; '.join(validation.errors)}. "
+                            f"Please translate exactly {len(batch.entries)} blocks "
+                            f"with indices {batch.block_indices}. "
+                            f"Output each block with its [BLOCK N] marker.\n\n{combined}"
                         )
-
-                    if validation.valid:
-                        log.info(
-                            "block_translator_v2: batch %d attempt %d — valid, %d/%d blocks",
-                            batch_idx + 1, attempt + 1, len(parsed), len(batch.entries),
-                        )
-                        break  # success
                     else:
-                        log.warning(
-                            "block_translator_v2: batch %d attempt %d — validation failed: %s",
-                            batch_idx + 1, attempt + 1, validation.errors,
+                        log.error(
+                            "block_translator_v2: batch %d failed after %d retries: %s",
+                            batch_idx + 1, _MAX_BATCH_RETRIES, validation.errors,
                         )
-                        if attempt < _MAX_BATCH_RETRIES:
-                            # Build correction prompt for retry
-                            correction_hint = (
-                                f"Your previous output had errors: {'; '.join(validation.errors)}. "
-                                f"Please translate exactly {len(batch.entries)} blocks "
-                                f"with indices {batch.block_indices}. "
-                                f"Output each block with its [BLOCK N] marker.\n\n{combined}"
-                            )
-                        else:
-                            log.error(
-                                "block_translator_v2: batch %d failed after %d retries: %s",
-                                batch_idx + 1, _MAX_BATCH_RETRIES, validation.errors,
-                            )
-                            # Mark missing blocks as failed
-                            missing = set(batch.block_indices) - set(parsed.keys())
-                            failed_blocks.update(missing)
+                        # Mark missing blocks as failed
+                        missing = set(batch.block_indices) - set(parsed.keys())
+                        failed_blocks.update(missing)
 
-                except Exception as exc:
-                    log.error("block_translator_v2: batch %d attempt %d failed: %s", batch_idx + 1, attempt + 1, exc)
-                    parsed = None
-                    if attempt == _MAX_BATCH_RETRIES:
-                        failed_blocks.update(batch.block_indices)
-                    continue
-
-            # Merge successfully parsed blocks + auto-correct glossary
-            if parsed:
-                # V2 P6: Auto-correct untranslated source terms
-                if glossary_ctx.correction_map:
-                    for idx in list(parsed.keys()):
-                        corrected, count = auto_correct_glossary(
-                            parsed[idx], glossary_ctx.correction_map,
-                        )
-                        if count > 0:
-                            parsed[idx] = corrected
-                            total_glossary_corrections += count
-
-                translated_texts.update(parsed)
-
-                # Update rolling summary (last ~3 sentences of translated text)
-                last_translated = " ".join(
-                    parsed[idx] for idx in sorted(parsed.keys())
+            except (LLMQuotaExceeded, LLMModelNotFound, LLMAuthFailed,
+                    LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
+                # /review-impl HIGH#1 — permanent SDK errors won't fix
+                # themselves on retry; mark all batch blocks failed
+                # immediately + break out of the validation retry loop.
+                log.error(
+                    "block_translator_v2: batch %d permanent SDK error %s — failing batch",
+                    batch_idx + 1, exc.__class__.__name__,
                 )
-                sentences = [s.strip() for s in last_translated.replace("\n", ". ").split(".") if s.strip()]
-                rolling_summary = ". ".join(sentences[-5:]) + "." if sentences else ""
+                parsed = None
+                failed_blocks.update(batch.block_indices)
+                break
+            except Exception as exc:
+                log.error("block_translator_v2: batch %d attempt %d failed: %s", batch_idx + 1, attempt + 1, exc)
+                parsed = None
+                if attempt == _MAX_BATCH_RETRIES:
+                    failed_blocks.update(batch.block_indices)
+                continue
+
+        # Merge successfully parsed blocks + auto-correct glossary
+        if parsed:
+            # V2 P6: Auto-correct untranslated source terms
+            if glossary_ctx.correction_map:
+                for idx in list(parsed.keys()):
+                    corrected, count = auto_correct_glossary(
+                        parsed[idx], glossary_ctx.correction_map,
+                    )
+                    if count > 0:
+                        parsed[idx] = corrected
+                        total_glossary_corrections += count
+
+            translated_texts.update(parsed)
+
+            # Update rolling summary (last ~3 sentences of translated text)
+            last_translated = " ".join(
+                parsed[idx] for idx in sorted(parsed.keys())
+            )
+            sentences = [s.strip() for s in last_translated.replace("\n", ". ").split(".") if s.strip()]
+            rolling_summary = ". ".join(sentences[-5:]) + "." if sentences else ""
 
     if total_glossary_corrections > 0:
         log.info(
