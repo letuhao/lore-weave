@@ -6,6 +6,37 @@
 
 ---
 
+## 2026-04-27 — DF05 Session/Group Chat DRAFT cycle commit 3/4 — Phase 3 cleanup
+
+- **Phase 3 cleanup applied** — self-review walkthrough surfaced 4 issues; all fixed
+- **Files modified within `_boundaries/`:**
+  - `02_extension_contracts.md`: §1.4 session.* row updated 13 V1 → 14 V1 (Phase 3 cleanup added participant_already_joined defensive write-time validator)
+  - `03_validator_pipeline_slots.md`: namespace matrix session.* updated 13 V1 → 14 V1; Total V1 reject rules updated ~153 → ~154
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/DF/DF05_session_group_chat/DF05_001_session_foundation.md`:
+    - §3.2 LeftReason enum: 6 variants → 7 (added DisconnectTimeout V1 distinct from Inactive V1+30d auto-detect)
+    - §2 Domain concepts table: LeftReason updated 6 V1 → 7 V1
+    - §13.2 grace_timeout_fired pseudocode: now uses LeftReason::DisconnectTimeout (V1 disconnect grace expired) NOT Inactive (V1+30d in-session activity auto-detect — different concept)
+    - §21.1 V1 reject rule_ids: 13 → 14 (added session.participant_already_joined for defensive write-time validation on session_participation Born composite key duplicate)
+
+### Phase 3 cleanup findings
+
+1. **LeftReason enum mismatch** — V1 disconnect grace timeout (Q10-D1 LOCKED) used `LeftReason::Inactive`, but Inactive comment said "V1+30d auto-detect" (DF5-D4 in-session activity stall). These are TWO distinct concepts conflating one variant. Fix: split into DisconnectTimeout (V1; wall-clock 30s grace expired) + Inactive (V1+30d; in-session activity auto-detect via DF5-D4).
+2. **participant_already_joined missing from V1 rule list** — §3.2 referenced `session.participant_already_joined` for composite key (session_id, actor_id) duplicate writes, but §21.1 listed only 13 V1 rules. Fix: added as 14th rule. Defensive write-time validator on session_participation Born — distinct from actor_busy_in_other_session (different session) AND closed_session_immutable (Closed session). Covers the rare case where same actor attempts to join SAME active session twice.
+3. **Boundary file consistency** — 02_extension_contracts.md §1.4 session.* row + 03_validator_pipeline_slots.md namespace matrix updated to reflect 14 V1.
+4. **AC-DF5-1..25 walkthrough verified** — all 25 acceptance scenarios reference concrete validators / events / rule_ids. No additional ACs needed for Phase 3 fixes (DisconnectTimeout reason captured in AC-DF5-15 LeftReason audit; participant_already_joined defensive — manual test path documented in §21.1).
+
+### Cycle plan continuation
+
+- ✅ Phase 0 (commit 0080b533): concept-notes Q-LOCKED + SDK LOCKED
+- ✅ Commit 1/4 (745e9f6e): `[boundaries-lock-claim]` lock + cycle plan
+- ✅ Commit 2/4 (5d5dddd3): DRAFT promotion + boundary register + catalog seed
+- ✅ Commit 3/4 (THIS): Phase 3 cleanup — 4 fixes
+- 🟡 Commit 4/4 (next): `[boundaries-lock-release]` CANDIDATE-LOCK closure
+
+---
+
 ## 2026-04-27 — DF05 Session/Group Chat DRAFT cycle commit 2/4 — DRAFT promotion + boundary register
 
 - **DRAFT promoted** — `DF05_001_session_foundation.md` ~1446 lines (25 sections incl. §16 SDK Architecture)

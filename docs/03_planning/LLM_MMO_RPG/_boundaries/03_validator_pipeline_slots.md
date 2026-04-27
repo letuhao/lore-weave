@@ -215,9 +215,9 @@ These namespaces validate at **Stage 0 schema** (canonical seed validation + For
 | `ai_tier.*` | AIT_001 AI Tier Foundation | 8 V1 | 4 V1+ | Stage 0 canonical seed + V1+ runtime tier transitions |
 | `time_dilation.*` | TDIL_001 Time Dilation Foundation | 4 V1 | 6 V1+30d | Stage 0 canonical seed + per-turn channel boundary checks |
 | `title.*` | TIT_001 Title Foundation | 9 V1 (Phase 3 cleanup added 2 binding-membership-required rules) | 5 V1+ | Stage 0 canonical seed + Forge admin + cross-aggregate cascade C18 (synchronous on WA_006 mortality EVT-T3) |
-| `session.*` | DF05_001 Session/Group Chat Foundation | 13 V1 | 5 V1+ | Stage 0 canonical seed (canonical_sessions OPTIONAL V1) + Stage 1 runtime (PC `/chat` create + actor join/leave) + Stage 7 Forge admin (9 sub-shapes) + Stage 8 close cascade (POV-distill + actor_session_memory writes) + cross-aggregate cascades C26-C29 (anchor_pc_kind + same_channel + cell_capacity + one_active_per_actor) |
+| `session.*` | DF05_001 Session/Group Chat Foundation | 14 V1 (Phase 3 cleanup added participant_already_joined defensive) | 5 V1+ | Stage 0 canonical seed (canonical_sessions OPTIONAL V1) + Stage 1 runtime (PC `/chat` create + actor join/leave) + Stage 7 Forge admin (9 sub-shapes) + Stage 8 close cascade (POV-distill + actor_session_memory writes) + cross-aggregate cascades C26-C29 (anchor_pc_kind + same_channel + cell_capacity + one_active_per_actor) |
 
-**Total V1 rule_ids across all namespaces:** ~44+ (entity/place/map/csc) + ~109+ (Tier 5 substrate; ~96 prior + 13 DF5) = ~153 V1 reject rules total across the engine. ~112+ are **Stage 0 schema validators** (canonical seed + Forge admin + cross-aggregate cascade); ~44+ are LLM-output pipeline validators (Stage 3.5+).
+**Total V1 rule_ids across all namespaces:** ~44+ (entity/place/map/csc) + ~110+ (Tier 5 substrate; ~96 prior + 14 DF5) = ~154 V1 reject rules total across the engine. ~113+ are **Stage 0 schema validators** (canonical seed + Forge admin + cross-aggregate cascade); ~44+ are LLM-output pipeline validators (Stage 3.5+).
 
 ---
 

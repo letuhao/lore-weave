@@ -70,7 +70,7 @@ DF5 owns the **multi-session-per-cell sparse architecture** that solves both con
 | **SessionParticipation** | Aggregate `session_participation` (T2/Reality, sparse per-(session, actor)) | Tracks who joined when + left when + role + presence. |
 | **ParticipantRole** | Closed enum 2 V1 — `Anchor \| Joined` | Anchor = PC who created session. Joined = NPC accepted invite OR V2 PC2 joins existing. |
 | **PresenceState** | Closed enum 3 V1 — `Connected \| Disconnected \| Left` | Disconnected = WebSocket lost but inside 30s grace; Left = formally departed. |
-| **LeftReason** | Closed enum 6 V1 — `Explicit \| MovedCell \| Inactive \| SessionClosed \| AnchorPcLeft \| Kicked` | Audit trail. Inactive V1+30d; Kicked V1 Forge. |
+| **LeftReason** | Closed enum 7 V1 — `Explicit \| MovedCell \| DisconnectTimeout \| Inactive \| SessionClosed \| AnchorPcLeft \| Kicked` | Audit trail. DisconnectTimeout V1 (30s wall-clock grace expired); Inactive V1+30d (in-session activity auto-detect); Kicked V1 Forge. |
 | **CloseReason** | Closed enum 5 V1 — `LastPcLeft \| AllParticipantsLeft \| ForgeClose \| RealityClosed \| SessionTimeoutWallClock` | Default V1: `LastPcLeft`. SessionTimeoutWallClock V1+30d. |
 | **MemoryFact** | Distilled subjective fact per actor POV | `{ kind, target?, verb: I18nBundle, object?: I18nBundle, salience: f32 }`; written to actor_session_memory on close. |
 | **MemoryFactKind** | Closed enum 5 V1 — `Social \| Promise \| Tone \| Threat \| Knowledge` | V2+ additive: Quest, Combat, Faction, Discovery |
@@ -191,7 +191,8 @@ pub enum PresenceState {
 pub enum LeftReason {
     Explicit,                                     // /leave or close-chat UI
     MovedCell,                                    // cascade from PL_001 §13 travel
-    Inactive,                                     // V1+30d auto-detect
+    DisconnectTimeout,                            // V1 — WebSocket disconnect 30s grace expired (Q10-D1)
+    Inactive,                                     // V1+30d auto-detect of in-session activity stall (DF5-D4)
     SessionClosed,                                // cascade
     AnchorPcLeft,                                 // forced exit when last PC leaves
     Kicked,                                       // V1 Forge OR V1+ DF4 rule
@@ -856,11 +857,11 @@ async fn grace_timeout_fired(session_id: SessionId, actor_id: ActorId) {
     if sp.presence != Disconnected {
         return;  // already reconnected or left
     }
-    // Timeout — formal leave
+    // Timeout — formal leave (Q10-D1 LOCKED)
     mark_session_participation(session_id, actor_id, |sp| {
         sp.presence = Left;
         sp.left_fiction_time = Some(current_fiction_time());
-        sp.left_reason = Some(LeftReason::Inactive);
+        sp.left_reason = Some(LeftReason::DisconnectTimeout);  // V1 distinct from Inactive (V1+30d auto-detect)
     }).await?;
     check_anchor_invariant_after_leave(session_id, actor_id).await;
 }
@@ -1311,7 +1312,7 @@ Subsequent: PC owner deleted account (GDPR right to erasure)
 
 ## §21 — RejectReason rule_id catalog (`session.*` namespace)
 
-### §21.1 V1 reject rule_ids (13 rules)
+### §21.1 V1 reject rule_ids (14 rules)
 
 Registered in `_boundaries/02_extension_contracts.md` §1.4.
 
@@ -1322,6 +1323,7 @@ Registered in `_boundaries/02_extension_contracts.md` §1.4.
 | `session.cell_session_overload` | 51st active session at cell (V1 cap=50) | "Khu vực này đã có quá nhiều phiên hội thoại đang diễn ra." | No (DF5-A8) |
 | `session.actor_not_eligible_untracked` | Untracked NPC in participant list | "Người này không thể tham gia hội thoại." | No (DF5-A6 + AIT-A8) |
 | `session.actor_busy_in_other_session` | actor already in another active session | "Họ đang nói chuyện với người khác." | No (DF5-A5) |
+| `session.participant_already_joined` | composite key (session_id, actor_id) duplicate write — actor attempts to join same session twice | "Bạn đã tham gia phiên hội thoại này rồi." | No (defensive write-time validator on session_participation Born) |
 | `session.npc_refused` | reputation Hated/Hostile (per Q4-D1) | LLM-generated persona-flavored refusal | No (Q4-D1) |
 | `session.invalid_state_transition` | Closed → Active OR Closed → Closed write attempt | "Phiên hội thoại đã đóng và không thể mở lại." | No (DF5-A7) |
 | `session.empty_participant_list_invalid` | session created with 0 participants AND 0 NPC count for non-monologue mode (impossible after Q2; defensive) | "Phiên hội thoại không thể trống." | No (defensive) |
