@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>06 AI Assistant — PO_001</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .chat-shell { display: grid; grid-template-columns: 1fr 360px; gap: 1.25rem; flex: 1; }
+  .chat-area { display: flex; flex-direction: column; gap: 1rem; }
+  .chat-msg { padding: 0.75rem 1rem; border-radius: 0.5rem; max-width: 80%; line-height: 1.6; }
+  .chat-msg.user { background: var(--paper-soft); align-self: flex-end; }
+  .chat-msg.ai { background: var(--accent-bg); align-self: flex-start; border-left: 3px solid var(--accent); }
+  .chat-msg.ai pre { background: rgba(0,0,0,0.05); padding: 0.5rem 0.75rem; border-radius: 0.25rem; font-size: 0.75rem; margin: 0.5rem 0 0 0; white-space: pre-wrap; }
+  .input-bar { display: flex; gap: 0.5rem; padding: 0.75rem; background: var(--paper-soft); border-radius: 0.5rem; border: 1px solid var(--ink-soft); }
+  .input-bar textarea { flex: 1; border: none; background: transparent; resize: none; font-family: inherit; font-size: 0.9375rem; outline: none; min-height: 60px; color: var(--ink); }
+  .preview-pane h4 { font-size: 0.8125rem; margin: 0 0 0.5rem 0; color: var(--accent); letter-spacing: 0.05em; text-transform: uppercase; }
+  .preview-pane .field-preview { padding: 0.5rem 0.625rem; background: var(--paper-soft); border-radius: 0.25rem; margin-bottom: 0.375rem; font-size: 0.8125rem; }
+  .preview-pane .field-preview strong { display: block; }
+  .preview-pane .field-preview .meta { font-family: monospace; font-size: 0.6875rem; color: var(--ink-muted); }
+  .badge-modified { background: var(--accent); color: var(--paper); padding: 0.0625rem 0.375rem; font-size: 0.6875rem; border-radius: 0.5rem; margin-left: 0.375rem; }
+</style>
+</head>
+<body data-reality="dongphong">
+<div class="app-shell" style="max-width: 1400px;">
+  <div class="nav-strip">
+    <a href="03b2_advanced.html" style="color: var(--ink-muted); text-decoration: none; font-size: 0.875rem;">← Quay về Advanced Mode</a>
+    <span class="subtle"><strong>✨ AI Character Assistant</strong> · Đông Phong Cõi · Reality-aware · Constraint-checked</span>
+    <div class="lang-switch">
+      <a href="#" class="active">VI</a><a href="#">EN</a><a href="#">ZH</a>
+    </div>
+  </div>
+
+  <div class="chat-shell">
+
+    <main class="chat-area">
+      <div class="chat-msg ai">
+        <strong>✨ AI Assistant:</strong>
+        <p style="margin: 0.5rem 0 0 0;">Chào bạn! Tôi là AI hỗ trợ tạo nhân vật. Mô tả nhân vật bạn muốn — chủng tộc, gốc gác, cá tính, gia đình, tổ chức, kỹ năng, bí mật — bằng tiếng Việt tự nhiên. Tôi sẽ đề xuất giá trị cho từng field của <code>actor</code> dựa trên RealityManifest của Đông Phong Cõi.</p>
+        <p class="subtle" style="margin: 0.5rem 0 0 0; font-size: 0.8125rem;">💡 Tôi biết constraint của reality: 12 races · 5 factions · 12 titles · 7-realm cultivation · 12 personality archetypes · 4 ideologies · 3 currencies. Tôi không suggest fields V1+ deferred (chỉ V1 active).</p>
+      </div>
+
+      <div class="chat-msg user">
+        <p style="margin: 0;">Tôi muốn tạo một thiếu nữ hồ ly tinh, là con gái bí mật của Hoàng đế. Cô ấy từng đọc nhiều tiểu thuyết tu tiên ở Trái Đất hiện đại và xuyên không vào đây — linh hồn nhập vào thân xác của một đệ tử vừa mất ở Đông Hải Đạo Cốc. Cá tính cunning, mưu mô. Tu vi Trúc Cơ. Biết kiếm pháp + bùa chú.<br>Bí mật là gián điệp của Ma Tông — vì Hoàng đế thực ra là người Ma Tông cài vào triều đình 30 năm trước. Cô ấy ghét cha mình nhưng phải đóng vai con gái yêu của Đại Trưởng Lão sư phụ Lý Lão Tổ.</p>
+      </div>
+
+      <div class="chat-msg ai">
+        <strong>✨ AI Assistant:</strong>
+        <p style="margin: 0.5rem 0 0 0;">Tuyệt vời! Đây là một backstory phức tạp — tôi rất thích sự đa lớp này (con gái bí mật + xuyên không + double agent). Để tôi map vào Đông Phong Cõi RealityManifest:</p>
+
+        <p style="margin: 0.75rem 0 0.5rem 0;"><strong>📋 Tôi sẽ điền 18 fields:</strong></p>
+
+        <details open>
+          <summary style="cursor: pointer; font-weight: 600;">A. Identity (5 fields)</summary>
+          <pre>name: "Lý Phụng Nhi" (李凤儿 — phượng hoàng nhỏ)
+role: "Đông Hải Đạo Cốc nội môn đệ tử kiêm nội ứng Ma Tông"
+voice_register: Novel3rdPerson
+physical: "Thiếu nữ 19 tuổi, dáng người mảnh mai. Mắt sắc nhưng dấu vẻ khôn ngoan. Tóc đen búi cao. Khuôn mặt trái xoan thanh tú với nét đẹp hơi hoang dại — nguồn gốc hồ ly tinh."
+gender_pronouns: cô/em (f)</pre>
+        </details>
+
+        <details>
+          <summary style="cursor: pointer; font-weight: 600;">B+E. Race & Origin (4 fields)</summary>
+          <pre>race_id: race.fox_spirit_lineage
+birthplace_channel: cell.imperial_capital_palace_secret_quarters
+lineage_id: lineage.li_imperial (secret bloodline)
+native_language: language.imperial_mandarin</pre>
+        </details>
+
+        <details>
+          <summary style="cursor: pointer; font-weight: 600;">D+F. Personality, Mood & Beliefs</summary>
+          <pre>personality_archetype_id: Cunning
+mood_init: { joy: 35, anger: 60, sadness: 70, fear: 45 }
+disposition: Suspicious
+secret_held: "True identity = Imperial Princess + Ma Tông double agent + Earth-soul transmigrator (3-layer secret)"
+ideology[0]: { ideology.dao_traditional, fervor: Light } (cover)
+ideology[1]: { ideology.dark_path, fervor: Devout } (true)</pre>
+        </details>
+
+        <details>
+          <summary style="cursor: pointer; font-weight: 600;">G. Family</summary>
+          <pre>father: actor.imperial_emperor_li_dai_hoang (secret biological)
+public father: actor.deceased_disciple_li_minh (host body's father)
+mother: actor.imperial_concubine_xuan (deceased)
+spouses: []
+children: []
+dynasty: dynasty.li_imperial (hidden membership)</pre>
+        </details>
+
+        <details>
+          <summary style="cursor: pointer; font-weight: 600;">H+I+J. Faction · Reputation · Titles</summary>
+          <pre>faction_id: faction.donghai_dao_coc (cover identity)
+role_id: inner_disciple (nội môn)
+master_actor_id: actor.ly_lao_to (sư phụ Đại Trưởng Lão)
+rank_within_role: 5
+rep[donghai_dao_coc]: +250 Friendly (cover) Đệ tử
+rep[ma_tong]: +800 Revered (secret) Đại Thánh nhân
+rep[imperial_court]: +400 Honored (secret bloodline) Trưởng lão
+title_holdings: [] (chưa có; V2+ TIT_001 grants when revealed)</pre>
+        </details>
+
+        <details>
+          <summary style="cursor: pointer; font-weight: 600;">K. Skills & Progression</summary>
+          <pre>qi_cultivation: tier 2 (Trúc Cơ) raw_value 350/1500
+sword_arts: 480/1000
+talisman_inscription: 320/1000 (V1+ if reality declares; otherwise add custom)
+intelligence: 28/100 (high — for cunning operations)</pre>
+        </details>
+
+        <details>
+          <summary style="cursor: pointer; font-weight: 600;">M. PC Body Memory (xuyên không)</summary>
+          <pre>soul.origin_world_ref: glossary.earth_modern_2026
+soul.knowledge_tags: [internet, wuxia_meta_knowledge, fox_folklore, espionage_basics]
+soul.native_language: language.vietnamese
+body.host_body_ref: glossary.deceased_ly_phung_nhi_npc
+body.knowledge_tags: [donghai_geography, sect_protocol, sword_pattern_basic]
+body.native_language: language.imperial_mandarin
+leakage_policy: Balanced (gradual integration; cô ấy "nhớ ra" mọi thứ từ từ)
+mortality_state: Alive</pre>
+        </details>
+
+        <p class="subtle" style="margin-top: 1rem; font-size: 0.8125rem;">⚠ <strong>Coherence checks (3):</strong></p>
+        <ul style="font-size: 0.8125rem; margin: 0.25rem 0 0 0; padding-left: 1.25rem; line-height: 1.6;">
+          <li>✅ <code>fox_spirit_lineage</code> tồn tại trong RealityManifest.races của Đông Phong Cõi</li>
+          <li>⚠ <code>imperial_emperor_li_dai_hoang</code> không phải PC khả dụng (đã được canonical_actor; cần coordinate với reality author để link "secret biological father")</li>
+          <li>⚠ <code>rep[imperial_court]</code> = +400 nhưng cô ấy chưa publicly affiliate với imperial_court — đây là rep "ghost" chỉ active khi identity revealed. Validator V1 vẫn allow (sparse storage)</li>
+        </ul>
+
+        <p style="margin: 1rem 0 0 0;"><strong>Bạn muốn:</strong></p>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+          <button class="btn-primary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem;">✓ Apply all 18 fields</button>
+          <button class="btn-secondary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem;">Review từng field một</button>
+          <button class="btn-secondary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem;">Tweak: làm bí ẩn hơn</button>
+          <button class="btn-secondary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem;">Tweak: thêm conflict</button>
+          <button class="btn-secondary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem;">Generate opening scene</button>
+        </div>
+      </div>
+
+      <div class="chat-msg user">
+        <p style="margin: 0;">Tweak — làm cho bí mật phức tạp hơn nữa: cô ấy KHÔNG biết mình là Imperial Princess (mẹ giấu). Cô chỉ biết mình là double agent Ma Tông. Phát hiện sự thật sẽ là plot reveal tầm chương 50.</p>
+      </div>
+
+      <div class="chat-msg ai">
+        <strong>✨ AI Assistant:</strong>
+        <p style="margin: 0.5rem 0 0 0;">Tuyệt — slow burn reveal. Tôi sẽ điều chỉnh:</p>
+        <pre>secret_held (cô ấy biết): "True identity = Ma Tông double agent + Earth-soul transmigrator"
+narrative_arc_hook (LLM canon-only; không lộ cho PC): "Imperial bloodline; mother concealed at birth; father (Emperor) is Ma Tông infiltrator"
+flexible_state.last_emotional_event: "Mother's last words on deathbed: 'Đừng bao giờ tin Hoàng cung'"
+knowledge_tags removed: imperial_bloodline_aware (was incorrectly added)
+knowledge_tags added: maternal_warning, fox_folklore_only</pre>
+        <p style="margin-top: 0.5rem; font-size: 0.8125rem;">Reveal trigger options for chương 50 (V1+ author Forge:UpdateSecret):</p>
+        <ul style="font-size: 0.8125rem; margin: 0.25rem 0 0 0; padding-left: 1.25rem; line-height: 1.6;">
+          <li>Find dying letter from mother</li>
+          <li>Imperial blood-test by enemy faction</li>
+          <li>Father (Emperor) confesses pre-death</li>
+          <li>Random meta-knowledge slip from soul-layer (Earth wuxia novels foreshadow)</li>
+        </ul>
+        <button class="btn-primary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem; margin-top: 0.75rem;">✓ Apply tweak</button>
+      </div>
+
+      <div class="input-bar">
+        <textarea placeholder="Nhập câu hỏi hoặc tweak request..."></textarea>
+        <button class="btn-primary" style="align-self: flex-end;">Gửi →</button>
+      </div>
+    </main>
+
+    <aside class="preview-pane">
+      <div class="card" style="position: sticky; top: 1rem;">
+        <h4>📋 Live preview <span class="badge-modified">18 modified</span></h4>
+        <p class="subtle" style="margin: 0 0 0.75rem 0; font-size: 0.75rem;">Apply để xác nhận — hoặc tiếp tục refine với AI.</p>
+
+        <div class="field-preview">
+          <strong>name <span class="badge-modified">NEW</span></strong>
+          <span class="meta">canonical_traits.name</span>
+          Lý Phụng Nhi (李凤儿)
+        </div>
+        <div class="field-preview">
+          <strong>race <span class="badge-modified">NEW</span></strong>
+          <span class="meta">race_assignment.race_id</span>
+          fox_spirit_lineage
+        </div>
+        <div class="field-preview">
+          <strong>personality <span class="badge-modified">NEW</span></strong>
+          <span class="meta">archetype_id</span>
+          Cunning 🦊
+        </div>
+        <div class="field-preview">
+          <strong>mood</strong>
+          <span class="meta">joy/anger/sadness/fear</span>
+          35 / 60 / 70 / 45 (high sadness + anger; tragic mode)
+        </div>
+        <div class="field-preview">
+          <strong>secret_held <span class="badge-modified">REFINED</span></strong>
+          <span class="meta">flexible_state.secret_held</span>
+          "Ma Tông double agent + Earth-soul transmigrator (TWO secrets only — không biết về Imperial bloodline)"
+        </div>
+        <div class="field-preview">
+          <strong>ideology[0]</strong>
+          <span class="meta">stance · fervor</span>
+          dao_traditional · Light (cover)
+        </div>
+        <div class="field-preview">
+          <strong>ideology[1]</strong>
+          <span class="meta">stance · fervor</span>
+          dark_path · Devout (true)
+        </div>
+        <div class="field-preview">
+          <strong>faction <span class="badge-modified">NEW</span></strong>
+          <span class="meta">actor_faction_membership</span>
+          donghai_dao_coc / inner_disciple (cover)<br>master: ly_lao_to
+        </div>
+        <div class="field-preview">
+          <strong>rep[donghai_dao_coc]</strong>
+          +250 Friendly · Đệ tử
+        </div>
+        <div class="field-preview">
+          <strong>rep[ma_tong]</strong>
+          +800 Revered · Đại Thánh nhân (secret)
+        </div>
+        <div class="field-preview">
+          <strong>qi_cultivation</strong>
+          <span class="meta">PROG_001 Stage</span>
+          Trúc Cơ tier 2 — 350/1500
+        </div>
+        <div class="field-preview">
+          <strong>soul.origin_world_ref</strong>
+          earth_modern_2026
+        </div>
+        <div class="field-preview">
+          <strong>body.host_body_ref</strong>
+          deceased_ly_phung_nhi_npc
+        </div>
+        <div class="field-preview">
+          <strong>leakage_policy</strong>
+          Balanced
+        </div>
+
+        <details style="margin-top: 0.5rem;">
+          <summary class="subtle" style="cursor: pointer; font-size: 0.8125rem;">+ 4 more (collapsed)</summary>
+          <div class="field-preview" style="margin-top: 0.375rem;"><strong>family.father</strong><br>actor.imperial_emperor (secret bio)</div>
+          <div class="field-preview"><strong>family.mother</strong><br>actor.imperial_concubine_xuan (deceased)</div>
+          <div class="field-preview"><strong>knowledge_tags</strong><br>maternal_warning, fox_folklore_only</div>
+          <div class="field-preview"><strong>narrative_arc_hook</strong><br>(LLM canon; not PC-visible)</div>
+        </details>
+
+        <div class="brush-divider"></div>
+
+        <button class="btn-primary" style="width: 100%; margin-bottom: 0.375rem;">✓ Apply all 18 fields → quay về Advanced</button>
+        <button class="btn-secondary" style="width: 100%; font-size: 0.8125rem; padding: 0.375rem;">📝 Edit field-by-field manually</button>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+</script>
+</body>
+</html>
