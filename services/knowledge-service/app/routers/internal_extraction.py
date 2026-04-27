@@ -29,10 +29,15 @@ from app.db.pool import get_knowledge_pool
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
 from loreweave_extraction.errors import ExtractionError
+from loreweave_extraction.extractors.entity import LLMEntityCandidate
+from loreweave_extraction.extractors.event import LLMEventCandidate
+from loreweave_extraction.extractors.fact import LLMFactCandidate
+from loreweave_extraction.extractors.relation import LLMRelationCandidate
 from app.extraction.pass2_orchestrator import (
     extract_pass2_chapter,
     extract_pass2_chat_turn,
 )
+from app.extraction.pass2_writer import write_pass2_extraction
 from app.middleware.internal_auth import require_internal_token
 
 # Phase 4a-δ — retryable map keyed on `ExtractionError.stage`. The
@@ -84,6 +89,33 @@ class ExtractItemResponse(BaseModel):
     facts_merged: int = 0
     evidence_edges: int = 0
     duration_seconds: float = 0.0
+
+
+class PersistPass2Request(BaseModel):
+    """Phase 4b-β — request body for the persist-pass2 endpoint.
+
+    Worker-ai (4b-γ) calls this AFTER running the Pass 2 LLM stage
+    itself via ``loreweave_extraction.extract_pass2(llm_client, ...)``.
+    The wire types match the library's candidate models exactly so
+    `.model_dump()` on the worker side round-trips through JSON without
+    field renames.
+
+    The 4 candidate lists are all optional — the writer persists
+    whatever's supplied. ``extraction_model`` tags evidence edges so
+    operators can later trace which LLM produced which Pass 2 row.
+    """
+
+    user_id: UUID
+    project_id: UUID | None = None
+    source_type: str = Field(min_length=1, max_length=100)
+    source_id: str = Field(min_length=1, max_length=200)
+    job_id: UUID
+    extraction_model: str = Field(default="llm-v1", max_length=200)
+
+    entities: list[LLMEntityCandidate] = Field(default_factory=list)
+    relations: list[LLMRelationCandidate] = Field(default_factory=list)
+    events: list[LLMEventCandidate] = Field(default_factory=list)
+    facts: list[LLMFactCandidate] = Field(default_factory=list)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -303,6 +335,120 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
         result.entities_merged, result.relations_created,
         result.events_merged, result.facts_merged, elapsed,
     )
+
+    return ExtractItemResponse(
+        source_id=result.source_id,
+        entities_merged=result.entities_merged,
+        relations_created=result.relations_created,
+        events_merged=result.events_merged,
+        facts_merged=result.facts_merged,
+        evidence_edges=result.evidence_edges,
+        duration_seconds=round(elapsed, 2),
+    )
+
+
+# ── Phase 4b-β: persist-pass2 endpoint ───────────────────────────────
+
+
+@router.post(
+    "/persist-pass2",
+    response_model=ExtractItemResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
+    """Persist pre-extracted Pass 2 candidates to Neo4j.
+
+    Phase 4b-β: this endpoint is the new persistence boundary that
+    worker-ai (4b-γ) will use after running the Pass 2 LLM stage
+    itself via ``loreweave_extraction.extract_pass2(llm_client, ...)``.
+    The legacy ``/extract-item`` endpoint stays for back-compat — it
+    still runs LLM + persist in one HTTP call.
+
+    Why this split:
+      - ``/extract-item`` blocks the worker for the full LLM wall-time
+        (capped at 120s today, often hit on chunked extraction).
+      - ``/persist-pass2`` is a pure Neo4j-write endpoint — fast and
+        bounded. The LLM wait moves to the worker process where it can
+        be parallelized across chapters or interleaved with other work.
+
+    Anchor pre-load reuses ``_load_anchors_for_extraction`` so Pass 1
+    glossary anchors continue to anchor candidates the same way they
+    did under ``/extract-item``.
+    """
+    if not settings.neo4j_uri:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Neo4j not configured — extraction requires NEO4J_URI",
+        )
+
+    started = time.perf_counter()
+
+    # K13.0 — same anchor pre-load as extract-item. Cached per
+    # (user_id, project_id) for 60s so a 100-chapter job doesn't
+    # re-fetch the glossary 100 times.
+    anchors = await _load_anchors_for_extraction(
+        user_id=body.user_id, project_id=body.project_id,
+    )
+
+    async with neo4j_session() as session:
+        result = await write_pass2_extraction(
+            session,
+            user_id=str(body.user_id),
+            project_id=str(body.project_id) if body.project_id else None,
+            source_type=body.source_type,
+            source_id=body.source_id,
+            job_id=str(body.job_id),
+            entities=body.entities,
+            relations=body.relations,
+            events=body.events,
+            facts=body.facts,
+            extraction_model=body.extraction_model,
+            anchors=anchors,
+        )
+
+    elapsed = time.perf_counter() - started
+    logger.info(
+        "Phase 4b-β: persist-pass2 done source_id=%s "
+        "entities=%d relations=%d events=%d facts=%d in %.1fs",
+        body.source_id,
+        result.entities_merged, result.relations_created,
+        result.events_merged, result.facts_merged, elapsed,
+    )
+
+    # /review-impl MED#1 — emit pass2_write job_logs event so the
+    # FE's JobLogsPanel keeps showing "extraction complete" entries
+    # after worker-ai (4b-γ) migrates from extract-item to persist-pass2.
+    # Best-effort: skip silently if the pool isn't initialised (unit
+    # tests that only mock the writer) or the append errors. Same
+    # pattern as pass2_orchestrator._emit_log.
+    try:
+        job_logs_repo = JobLogsRepo(get_knowledge_pool())
+        await job_logs_repo.append(
+            body.user_id, body.job_id, "info",
+            f"Pass 2 write complete: "
+            f"entities={result.entities_merged}, "
+            f"relations={result.relations_created}, "
+            f"events={result.events_merged}, "
+            f"facts={result.facts_merged} "
+            f"in {elapsed:.2f}s",
+            {
+                "event": "pass2_write",
+                "source_type": body.source_type,
+                "source_id": body.source_id,
+                "entities_merged": result.entities_merged,
+                "relations_created": result.relations_created,
+                "events_merged": result.events_merged,
+                "facts_merged": result.facts_merged,
+                "evidence_edges": result.evidence_edges,
+                "duration_ms": int(elapsed * 1000),
+            },
+        )
+    except Exception:
+        logger.warning(
+            "Phase 4b-β: persist-pass2 stage log emit failed "
+            "(non-fatal) source_id=%s",
+            body.source_id, exc_info=True,
+        )
 
     return ExtractItemResponse(
         source_id=result.source_id,
