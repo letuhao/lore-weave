@@ -6,6 +6,67 @@
 
 ---
 
+## 2026-04-27 — PROG_001 Progression Foundation CANDIDATE-LOCK closure pass
+
+- **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit. DRAFT 2026-04-26 → 5 NEW deferrals D33..D37 cross-cultivation extensibility audit `b20c4dcb` → CULT_001 V2+ entirely deferred `d57fb7fc` → TDIL closure-pass-extension Q3f day-boundary → turn-boundary semantic applied at TDIL DRAFT `bdc8d8e1` → CANDIDATE-LOCK closure pass (this commit).
+- **Phase 3 + AC walkthrough:** §16 AC-PROG-1..12 walked; all 12 V1-testable acceptance scenarios concrete + verifiable; no drift detected post-cross-cultivation extensibility audit.
+- **5 open questions RESOLVED at closure as deferrals to consumer feature closures:**
+  - **PROG-Q1** (initial schema authoring touchpoint — CanonicalActorDecl vs separate per-actor file?) → deferred to **PCS_001 + NPC_001 first-design-pass** (consumer features own seed-time authoring UX); PROG_001 V1 schema-stable for both patterns.
+  - **PROG-Q2** (eager Generator vs offline mode for inactive realm cultivation) → V1 default eager Generator per-turn (TDIL-A3); V1+30d offline mode `OfflineCultivationMode` enum on RealityManifest deferred (cap on accumulated turns + LLM summary on first observation).
+  - **PROG-Q3** (BodyOrSoul auto-derivation from kind name vs author-mapping) → V1 auto-derive (heuristic: kind name contains "soul/qi/spiritual/cultivation/dao" → Soul; otherwise Body); V1+30d `BodyOrSoulOverride` field on ProgressionKindDecl deferred for author explicit control.
+  - **PROG-Q4** (i18n bundle ownership — PROG_001 vs cross-cutting commit?) → deferred to **i18n cross-cutting feature closure** (engine-wide commit; PROG_001 V1 uses I18nBundle pattern locally per RES_001 precedent; future cross-cutting refactor schema-additive).
+  - **PROG-Q5** (Tier discriminator on actor_progression vs separate aggregate ownership) → deferred to **future AI Tier feature closure** (AIT_001 owns NpcTrackingTier ontology; PROG_001 §3.1 reserves `tracking_tier: Option<NpcTrackingTier>` field; AIT_001 CANDIDATE-LOCK 2026-04-27 `da4b0cf1` activates Major/Minor populated).
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner None; full closure summary in _Last released_ entry
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_progression/PROG_001_progression_foundation.md`: status header DRAFT 2026-04-26 → CANDIDATE-LOCK 2026-04-27 with closure pass rationale (PROG-Q1..Q5 deferred to consumer features; cross-cultivation extensibility audit findings preserved)
+  - `features/00_progression/_index.md`: Active PROG_001 DRAFT → empty (folder closure 2026-04-27); folder closure status Open → COMPLETE 2026-04-27 with foundation tier 6/6 confirmation
+
+### PROG_001 final summary
+
+- **Status:** CANDIDATE-LOCK 2026-04-27
+- **Foundation tier 6/6 COMPLETE** — PROG_001 was 6th and final V1 foundation feature; foundation tier closure: EF + PF + MAP + CSC + RES (closure pending next) + PROG all CANDIDATE-LOCK
+- **Substrate:** dynamic per-reality attribute + skill + stage/cultivation systems (modern social-life game / tu tiên cultivation / traditional RPG / sandbox-no-progression — all from same engine substrate)
+- **7 axioms:** PROG-A1..A7 (per-reality schema / no-level-no-chiến-lực / unified ProgressionKind ontology / quantum-observation NPC model / BodyOrSoul discriminator / hybrid combat damage V1 / English IDs + I18nBundle)
+- **Catalog entries:** 26 V1 (PROG-1..PROG-26) + 5 V1+30d (PROG-27..PROG-31) + 6 V2/V3+ (PROG-32..PROG-37) + 5 cross-cultivation extensibility V1+30d/V2 (PROG-38..PROG-42) = 42 total
+- **Reject rule_ids:** 7 V1 in `progression.*` namespace + 6 V1+ reservations
+- **RealityManifest extensions:** 4 OPTIONAL V1 (progression_kinds + class_defaults + actor_overrides + strike_formula); empty default = sandbox/freeplay valid
+- **Aggregate:** `actor_progression` (T2/Reality; owner=Actor V1; Item V1+30d reserved; tracking_tier reserved field activated by AIT_001)
+- **Acceptance criteria:** 12 V1-testable AC-PROG-1..12
+
+### Cross-feature closure-pass-extensions applied (history)
+
+| Source | Effect on PROG_001 | When |
+|---|---|---|
+| Cross-cultivation extensibility audit (`b20c4dcb`) | 5 NEW V1+30d/V2 deferrals D33..D37 (all schema-additive per I14): cross-actor TrainingSource + RawValueDecrement active + derives_from cross-feature source + BreakthroughCondition::KarmaThreshold + RebirthBonusDecl. Pre-emptive future-proofing for ANY per-reality cultivation system | 2026-04-27 (post-DRAFT) |
+| CULT_001 V2+ deferral (`d57fb7fc`) | PROG-A1 axiom preservation; CULT_001 reframed as template/convention library (non-engine; out-of-features/); PROG_001 V1 substrate already sufficient for 11-cultivation-system audit | 2026-04-27 (post-D33..D37) |
+| TDIL_001 DRAFT promotion (`bdc8d8e1`) | Q3f day-boundary → turn-boundary semantic per TDIL-A3 per-turn O(1) Generator; Scheduled:CultivationTick reads body_clock/soul_clock per BodyOrSoul | 2026-04-27 (DRAFT phase mechanical revision) |
+| AIT_001 CANDIDATE-LOCK (`da4b0cf1`) | tracking_tier field activated: Option<NpcTrackingTier> (None V1) → Major/Minor populated post-AIT activation; Schrödinger pattern (PROG-A4) preserved with PCs eager + Tracked NPCs lazy | 2026-04-27 (CANDIDATE-LOCK) |
+
+### Cross-cultivation extensibility audit verdict
+
+11-cultivation-system survey (Cầu Ma body refining / Tiên Nghịch realms / Mo Dao Zu Shi 魔修 / Lifespan-burning System / Mị ma song tu / đa phúc đa tử family / Rebirth of God Emperor / Heart demon 心魔 karma / Đấu Phá pet bond / 御剑 sword spirit / kiếm hiệp neigong-waigong) verified PROG_001 future-proof: **3 NATIVELY V1, 3 already-reserved (PROG-D2 + Q6b Item ActorRef + PROG-D10 ActorClassMatch), 5 require NEW deferrals D33..D37** — all schema-additive per I14 invariant; **zero PROG_001 redesign needed** for ANY per-reality cultivation system.
+
+### NEW priority candidates post PROG closure
+
+1. **RES_001 DRAFT closure pass** — last remaining foundation tier closure; consumed TDIL-A3 already at TDIL DRAFT bdc8d8e1; Q4 day-boundary → turn-boundary semantic preserved; awaiting Phase 3 + CANDIDATE-LOCK promotion
+2. **PO_001 Player Onboarding** — V1-blocking; Phase 0 wireframes committed `19855a5b` + `4c4fd6d7`; concept-notes + Q-deep-dive pending
+3. **DF5 implementation scaffold** — `contracts/api/session/v1/` (~600 LoC traits + DTOs + ContractTestSuite ~30 scenarios) + `services/session-service/src/adapters/lru_distill.rs` LruDistillProvider V1 backend
+4. **SPIKE_01 turn 5 integration test design** — DF5 + TDIL + AIT + PROG all CANDIDATE-LOCK now; can validate multi-channel + multi-session + tier-eligibility + cultivation-tick mechanics in concrete scenario
+5. **V1+30d milestone activations** — PROG-D1 (cultivation method declarations / sect-specific progression) + PROG-D2 (Item ActorRef as progression owner) + PROG-D3 (cross-reality stat translation rules) + PROG-D4 (atrophy lazy at materialization) + PROG-D5 (offline mode `OfflineCultivationMode`)
+
+### Foundation tier closure status
+
+- ✅ EF_001 Entity Foundation — CANDIDATE-LOCK
+- ✅ PF_001 Place Foundation — CANDIDATE-LOCK
+- ✅ MAP_001 Map Foundation — CANDIDATE-LOCK
+- ✅ CSC_001 Cell Scene Composition — CANDIDATE-LOCK
+- 🟡 RES_001 Resource Foundation — DRAFT (closure pending; **NEXT**)
+- ✅ PROG_001 Progression Foundation — **CANDIDATE-LOCK 2026-04-27 (THIS commit)**
+
+---
+
 ## 2026-04-27 — AIT_001 AI Tier CANDIDATE-LOCK closure pass
 
 - **Lock CLAIMED + RELEASED** — single combined `[boundaries-lock-claim+release]` commit. DRAFT 88404f08 → CANDIDATE-LOCK closure pass (TDIL closure-pass-extension §7.5 O(1) revision applied at TDIL DRAFT bdc8d8e1; DF5 closure-pass-extension annotation 5e9233d8 already applied).
