@@ -12,7 +12,7 @@ Both pillars share **one foundation: your knowledge graph, your glossary, your b
 
 Built for **anyone with a story to tell — or a world to step into.** BYOK (Bring Your Own Key) — works with OpenAI, Anthropic, LM Studio, Ollama, and any OpenAI-compatible provider. Self-hosted. Your keys, your data, your stories, your worlds.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Open Source](https://img.shields.io/badge/Open%20Source-Community-blue.svg)](https://github.com/)
 
 ---
@@ -419,7 +419,7 @@ LoreWeave is model-agnostic. Connect any provider:
 
 LoreWeave is for everyone. Developers, artists, translators, and authors welcome.
 
-- **License**: [MIT](LICENSE)
+- **License**: [AGPL-3.0-or-later](LICENSE)
 - **Architecture**: Contract-first microservices
 - **Docs**: See [docs/](docs/) folder
 

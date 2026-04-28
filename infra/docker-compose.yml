@@ -27,13 +27,13 @@ services:
       start_period: 10s
 
   redis:
-    image: redis:7-alpine
+    image: valkey/valkey:7.2-alpine
     ports:
       - "6399:6379"
     volumes:
       - loreweave_redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
