@@ -376,9 +376,29 @@ components:
           this contract replaces).
 
     StreamRequest:
+      oneOf:
+        - $ref: '#/components/schemas/ChatStreamRequest'
+        - $ref: '#/components/schemas/TtsStreamRequest'
+      description: |
+        Phase 5a: streaming-mode request shape depends on the `operation`
+        field (default `"chat"`). Existing chat callers MAY omit
+        `operation`; the gateway treats absent and `"chat"` identically
+        (regression-locked by `TestStreamHandler_OperationDefaultIsChat`).
+        Variants:
+          - `ChatStreamRequest` — `operation: chat`, requires `messages`.
+          - `TtsStreamRequest`  — `operation: tts`, requires `input`.
+
+    ChatStreamRequest:
       type: object
       required: [model_source, model_ref, messages]
       properties:
+        operation:
+          type: string
+          enum: [chat]
+          default: chat
+          description: |
+            Phase 5a addition. May be omitted by existing callers — gateway
+            defaults to `"chat"` when absent.
         model_source:
           $ref: '#/components/schemas/ModelSource'
         model_ref:
@@ -416,6 +436,62 @@ components:
           description: Optional caller-supplied trace identifier.
           nullable: true
 
+    TtsStreamRequest:
+      type: object
+      required: [operation, model_source, model_ref, input]
+      description: |
+        Phase 5a. Submit text to be synthesized into streamed audio
+        chunks. Response is the canonical SSE envelope, with each chunk
+        delivered as an `AudioChunkEvent` followed by a `DoneEvent`.
+        TTS is intentionally NOT supported via `/v1/llm/jobs` — submitting
+        `operation: tts` to that endpoint returns
+        `LLM_OPERATION_NOT_SUPPORTED_VIA_JOBS`.
+      properties:
+        operation:
+          type: string
+          enum: [tts]
+        model_source:
+          $ref: '#/components/schemas/ModelSource'
+        model_ref:
+          type: string
+          format: uuid
+        input:
+          $ref: '#/components/schemas/TtsInput'
+        trace_id:
+          type: string
+          nullable: true
+
+    TtsInput:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Text to synthesize. 4k cap matches OpenAI TTS limit.
+        voice:
+          type: string
+          default: alloy
+          description: |
+            Upstream voice name (e.g. `alloy`, `echo`, `fable`, `nova`,
+            `onyx`, `shimmer` for OpenAI). Pass-through to provider; the
+            gateway does NOT validate against an allowlist so new voices
+            ship via the provider without a gateway change.
+        speed:
+          type: number
+          minimum: 0.25
+          maximum: 4.0
+          default: 1.0
+        format:
+          type: string
+          enum: [mp3, wav, opus, pcm]
+          default: mp3
+          description: |
+            Audio container. Streamed as raw bytes inside `AudioChunkEvent.data`
+            (base64-encoded). Default `mp3` for compatibility with most
+            browsers.
+
     # Canonical SSE envelope (one schema covers all event types via discriminator)
     StreamEventEnvelope:
       oneOf:
@@ -424,6 +500,7 @@ components:
         - $ref: '#/components/schemas/UsageEvent'
         - $ref: '#/components/schemas/DoneEvent'
         - $ref: '#/components/schemas/StreamErrorEvent'
+        - $ref: '#/components/schemas/AudioChunkEvent'
       discriminator:
         propertyName: event
         mapping:
@@ -432,10 +509,17 @@ components:
           usage: '#/components/schemas/UsageEvent'
           done: '#/components/schemas/DoneEvent'
           error: '#/components/schemas/StreamErrorEvent'
+          audio-chunk: '#/components/schemas/AudioChunkEvent'
       description: |
         Discriminated union representing one SSE event. The actual wire
         format is `event: <name>\ndata: <JSON>\n\n` per the SSE spec; this
         schema describes the JSON payload after `data:`.
+
+        Phase 5a adds `AudioChunkEvent` for `operation: tts` streams.
+        Token/Reasoning/Usage/Done/Error events appear on chat streams;
+        AudioChunk + Done appear on TTS streams. Mixing event types
+        within a single stream is allowed but never observed today
+        (TTS doesn't emit token events; chat doesn't emit audio).
 
     TokenEvent:
       type: object
@@ -513,6 +597,37 @@ components:
           type: string
         message:
           type: string
+
+    AudioChunkEvent:
+      type: object
+      required: [event, sequence_id, data, final]
+      description: |
+        Phase 5a. One frame of streamed TTS audio. Caller concatenates
+        `data` (base64-decoded) chunks in `sequence_id` order to
+        reconstruct the audio container; `final=true` marks the closing
+        frame and is followed by a `DoneEvent`.
+
+        SSE wire format is text-only by spec, hence base64. The +33%
+        bandwidth cost is acceptable for TTS payloads (typically
+        ≤500KB/sentence).
+      properties:
+        event:
+          type: string
+          enum: [audio-chunk]
+        sequence_id:
+          type: integer
+          minimum: 0
+          description: Monotonic 0-indexed counter within a single SSE stream.
+        data:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded raw audio bytes in the format negotiated via
+            `TtsInput.format`. Empty string when `final=true`
+            (end-of-stream sentinel).
+        final:
+          type: boolean
+          description: True on the closing chunk; followed by a `done` event.
 
     # ── Async jobs (P2) ───────────────────────────────────────────────
     JobOperation:
@@ -622,8 +737,14 @@ components:
             - `embedding`: `{ texts: ["...", "..."] }`
             - `translation`: `{ text: "...", source_lang: "en", target_lang: "vi", glossary: [...] }`
             - `image_gen`: `{ prompt: "...", size: "1024x1024", n: 1 }`
-            - `stt`: `{ audio_url: "...", language: "auto" }`
-            - `tts`: `{ text: "...", voice: "alloy", speed: 1.0 }`
+            - `stt`: see `SttInput` (Phase 5a — `{ audio_url, language }`)
+            - `tts`: **NOT supported via jobs** — submit via `POST /v1/llm/stream`
+              with `operation: tts` instead. Submitting `tts` here returns
+              `LLM_OPERATION_NOT_SUPPORTED_VIA_JOBS` with a hint pointing
+              at the streaming endpoint. This is intentional: TTS is a
+              UX-critical low-latency case that the SSE path serves
+              naturally, and forcing it through buffered job-pattern would
+              add unwanted wait time before first audio.
         chunking:
           oneOf:
             - $ref: '#/components/schemas/ChunkingConfig'
@@ -709,8 +830,9 @@ components:
             - `event_extraction`: `{ events: [{summary,participants,event_date,...}, ...] }`
             - `translation`: `{ translated_text: "...", source_lang, target_lang, usage }`
             - `image_gen`: `{ images: [{url|b64,...}, ...] }`
-            - `stt`: `{ transcript: "...", duration_ms }`
-            - `tts`: `{ audio_url: "...", duration_ms }`
+            - `stt`: see `SttResult` (Phase 5a — `{ text, language, duration_ms }`)
+            - `tts`: never populated here — TTS only streams via
+              `/v1/llm/stream` and returns no Job.result.
           nullable: true
         error:
           oneOf:
@@ -734,3 +856,52 @@ components:
           type: object
           additionalProperties: true
           nullable: true
+
+    # ── Audio operation schemas (Phase 5a) ─────────────────────────────
+    SttInput:
+      type: object
+      required: [audio_url]
+      description: |
+        Phase 5a. Input payload for `SubmitJobRequest` with
+        `operation: stt`. The gateway fetches the audio at `audio_url`
+        (HTTPS GET, 30s timeout, 25MB cap) and submits to the upstream
+        STT provider.
+      properties:
+        audio_url:
+          type: string
+          format: uri
+          description: |
+            HTTPS URL the gateway can GET to fetch the audio. Caller is
+            responsible for upload + URL signing. For chat-service voice
+            flow (Phase 5b), this is a pre-signed MinIO URL with ≤60s TTL.
+            Only `http://` and `https://` schemes are accepted; `file://`
+            and `s3://` are rejected (basic SSRF guard).
+        language:
+          type: string
+          default: auto
+          description: |
+            ISO 639-1 code or `auto` for upstream auto-detection.
+            OpenAI Whisper accepts both; `auto` is converted to "omit
+            param" at the provider HTTP layer.
+
+    SttResult:
+      type: object
+      required: [text]
+      description: |
+        Phase 5a. Result payload populated in `Job.result` when
+        `operation: stt` and `status: completed`.
+      properties:
+        text:
+          type: string
+          description: Transcribed text.
+        language:
+          type: string
+          nullable: true
+          description: Detected language. Empty/null if upstream didn't return.
+        duration_ms:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: |
+            Audio duration as reported by upstream (e.g. OpenAI
+            `verbose_json` `duration` field). 0/null if absent.

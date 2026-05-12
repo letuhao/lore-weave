@@ -34,15 +34,21 @@ from loreweave_llm.errors import (
     from_code,
 )
 from loreweave_llm.models import (
+    AudioChunkEvent,
+    AudioFormat,
     DoneEvent,
     ErrorEvent,
     Job,
+    ModelSource,
     ReasoningEvent,
     StreamEvent,
     StreamRequest,
+    SttResult,
     SubmitJobRequest,
     SubmitJobResponse,
     TokenEvent,
+    TtsInput,
+    TtsStreamRequest,
     UsageEvent,
 )
 
@@ -140,6 +146,26 @@ class Client:
                 elif isinstance(ev, DoneEvent):
                     break
         """
+        body = request.to_request_body()
+        async for ev in self._stream_inner(body, user_id=user_id):
+            yield ev
+
+    async def _stream_inner(
+        self,
+        body: dict,
+        *,
+        user_id: str | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Phase 5a — shared SSE iteration machinery used by both
+        `stream()` (chat) and `stream_tts()` (audio). Caller builds the
+        wire body via {ChatStreamRequest, TtsStreamRequest}.to_request_body().
+
+        Resolves auth + URL identically; the gateway routes on the
+        body's `operation` field. Yields canonical StreamEvent (any of
+        TokenEvent / ReasoningEvent / UsageEvent / DoneEvent / ErrorEvent /
+        AudioChunkEvent — the union widened in Phase 5a). Returns when
+        DoneEvent is yielded; raises LLMError on ErrorEvent.
+        """
         if self._auth_mode == "jwt":
             url = f"{self._base_url}/v1/llm/stream"
             headers = {"Authorization": f"Bearer {self._bearer_token}"}
@@ -153,8 +179,6 @@ class Client:
             url = f"{self._base_url}/internal/llm/stream"
             headers = {"X-Internal-Token": self._internal_token or ""}
             params = {"user_id": effective_user_id}
-
-        body = request.to_request_body()
 
         async with self._http.stream(
             "POST",
@@ -174,6 +198,61 @@ class Client:
                 yield ev
                 if isinstance(ev, DoneEvent):
                     return
+
+    # ── Audio (Phase 5a) ──────────────────────────────────────────────
+
+    async def stream_tts(
+        self,
+        text: str,
+        *,
+        model_source: ModelSource,
+        model_ref: str,
+        voice: str = "alloy",
+        speed: float = 1.0,
+        format: AudioFormat = "mp3",
+        user_id: str | None = None,
+    ) -> AsyncIterator[AudioChunkEvent | DoneEvent]:
+        """Stream TTS audio chunks via POST /v1/llm/stream (operation=tts).
+
+        Yields AudioChunkEvent until `final=True`, then a DoneEvent and
+        returns. ErrorEvent → raised as LLMError subclass keyed by code.
+
+        Caller decodes each AudioChunkEvent.data from base64 and
+        concatenates in `sequence_id` order to reconstruct the full
+        audio container (mp3/wav/opus/pcm per `format`).
+
+        Usage:
+            async for ev in client.stream_tts(text="hi", model_source=..., model_ref=...):
+                if isinstance(ev, AudioChunkEvent):
+                    raw = base64.b64decode(ev.data)
+                    audio_player.feed(raw)
+                    if ev.final:
+                        audio_player.flush()
+                # DoneEvent ends iteration
+
+        `user_id` per-call override (mirrors `stream()`); required when
+        auth_mode='internal' AND constructor user_id was None.
+        """
+        try:
+            model_ref_uuid = UUID(model_ref)
+        except (TypeError, ValueError) as exc:
+            raise LLMInvalidRequest(
+                f"model_ref must be UUID-shaped, got {model_ref!r}",
+            ) from exc
+
+        request = TtsStreamRequest(
+            model_source=model_source,
+            model_ref=model_ref_uuid,
+            input=TtsInput(text=text, voice=voice, speed=speed, format=format),
+        )
+        body = request.to_request_body()
+        async for ev in self._stream_inner(body, user_id=user_id):
+            if isinstance(ev, (AudioChunkEvent, DoneEvent)):
+                yield ev
+            # TokenEvent / ReasoningEvent / UsageEvent shouldn't appear on
+            # tts streams; if they do, ignore them silently rather than
+            # confuse the caller's iterator. Future audio adapters may
+            # emit usage events — extend this filter then.
 
     # ── Async jobs (P2) — Phase 4a-α Step 1 ───────────────────────────
 
@@ -308,6 +387,73 @@ class Client:
             await asyncio.sleep(interval)
             interval = min(interval * poll_backoff, max_poll_interval_s)
 
+    async def transcribe(
+        self,
+        audio_url: str,
+        *,
+        model_source: ModelSource,
+        model_ref: str,
+        language: str = "auto",
+        user_id: str | None = None,
+        poll_interval_s: float = 0.25,
+        max_poll_interval_s: float = 5.0,
+    ) -> SttResult:
+        """Phase 5a — submit STT job, wait for terminal, return decoded result.
+
+        Reuses submit_job + wait_terminal — same backoff, same cancellation,
+        same transient-retry semantics. transient_retry_budget is fixed
+        at 0 here because the gateway-side audio fetch + Whisper upstream
+        are both deterministic; if the first attempt fails we surface the
+        error rather than silently re-running an STT job (a re-run could
+        double-charge BYOK).
+
+        Raises:
+          - LLMInvalidRequest on malformed model_ref
+          - LLMError subclass keyed by job.error.code on status=failed
+          - LLMJobTerminal on status=cancelled
+
+        `user_id` per-call override (mirrors submit_job).
+        """
+        try:
+            UUID(model_ref)
+        except (TypeError, ValueError) as exc:
+            raise LLMInvalidRequest(
+                f"model_ref must be UUID-shaped, got {model_ref!r}",
+            ) from exc
+
+        request = SubmitJobRequest(
+            operation="stt",
+            model_source=model_source,
+            model_ref=model_ref,
+            input={"audio_url": audio_url, "language": language},
+        )
+        submitted = await self.submit_job(request, user_id=user_id)
+        job = await self.wait_terminal(
+            submitted.job_id,
+            user_id=user_id,
+            poll_interval_s=poll_interval_s,
+            max_poll_interval_s=max_poll_interval_s,
+            transient_retry_budget=0,
+        )
+        if job.status == "completed":
+            if job.result is None:
+                raise LLMUpstreamError(
+                    "stt job completed but result is empty",
+                    status_code=None,
+                    body="",
+                )
+            return SttResult.model_validate(job.result)
+        if job.status == "cancelled":
+            raise LLMJobTerminal(f"stt job {submitted.job_id} cancelled")
+        # status == "failed"
+        if job.error is None:
+            raise LLMUpstreamError(
+                f"stt job {submitted.job_id} failed without error body",
+                status_code=None,
+                body="",
+            )
+        raise from_code(job.error.code, job.error.message)
+
     async def cancel_job(self, job_id: str | UUID, *, user_id: str | None = None) -> None:
         """Cancel an in-flight job. Idempotent: 204 (cancel accepted) and
         409 (already terminal) both return None — caller's desired state
@@ -411,6 +557,9 @@ class Client:
             return DoneEvent.model_validate(parsed)
         if kind == "error":
             return ErrorEvent.model_validate(parsed)
+        if kind == "audio-chunk":
+            # Phase 5a — TTS streamed audio frame.
+            return AudioChunkEvent.model_validate(parsed)
         raise LLMDecodeError(f"unknown SSE event kind: {kind!r}")
 
     async def _raise_http_error(self, resp: httpx.Response) -> None:

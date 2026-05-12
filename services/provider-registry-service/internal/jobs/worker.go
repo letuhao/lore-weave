@@ -137,12 +137,30 @@ func (w *Worker) Process(
 		return
 	}
 
+	// Phase 5a — audio job dispatch (stt). Routes BEFORE the chat-streaming
+	// whitelist because audio ops use adapter.Transcribe (not Stream),
+	// have no chunker, and no aggregator. tts is intentionally NOT in
+	// audioJobOperations: it streams via /v1/llm/stream only; if it
+	// somehow reaches here (jobs_handler should have rejected it at
+	// submit), defensive-fail with NOT_SUPPORTED_VIA_JOBS.
+	if operation == "tts" {
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
+			"LLM_OPERATION_NOT_SUPPORTED_VIA_JOBS",
+			"tts is supported only via /v1/llm/stream",
+			"")
+		return
+	}
+	if isAudioJobOperation(operation) {
+		w.processAudioJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
+		return
+	}
+
 	// Phase 4a-α Step 0 — op-whitelist. The chat-streaming machinery +
 	// per-op aggregator (cycle 20 jsonListAggregator) is the same wire
 	// shape for chat/completion AND for the *_extraction operations:
 	// adapter.Stream emits StreamChunks; aggregator routes them to the
 	// right result map. The only difference is the aggregator factory
-	// (see NewAggregator below). Embedding/translation/stt/tts/image_gen
+	// (see NewAggregator below). Embedding/translation/image_gen
 	// use different upstream HTTP shapes — those stay gated until their
 	// dedicated cycles wire adapters.
 	if !isStreamableOperation(operation) {
@@ -364,7 +382,10 @@ type EmitFn = func(provider.StreamChunk) error
 // messages → SSE token deltas) but get different per-op aggregators via
 // NewAggregator(operation). Operations not in this set fail fast with
 // LLM_OPERATION_NOT_SUPPORTED — kept that way until their dedicated
-// adapters land (embedding/translation/stt/tts/image_gen).
+// adapters land (embedding/translation/image_gen).
+//
+// stt is NOT here — it routes through audioJobOperations + adapter.Transcribe.
+// tts is NOT here — it streams only via /v1/llm/stream.
 var streamableOperations = map[string]struct{}{
 	"chat":                {},
 	"completion":          {},
@@ -374,10 +395,29 @@ var streamableOperations = map[string]struct{}{
 	"fact_extraction":     {}, // Phase 4a-β
 }
 
+// audioJobOperations — Phase 5a. Job operations dispatched through
+// adapter.Transcribe (not adapter.Stream). Audio jobs run as a single
+// upstream call → single result; no chunker, no aggregator.
+//
+// Invariant (regression-locked by TestStreamableAudio_Disjoint):
+// streamableOperations ∩ audioJobOperations = ∅. Routing in Process()
+// checks audio first, then streamable, ensuring no operation is in both
+// dispatch paths.
+var audioJobOperations = map[string]struct{}{
+	"stt": {},
+}
+
 // isStreamableOperation reports whether the worker can dispatch the given
 // operation through the chat-streaming machinery + per-op aggregator.
 func isStreamableOperation(op string) bool {
 	_, ok := streamableOperations[op]
+	return ok
+}
+
+// isAudioJobOperation reports whether the worker dispatches the operation
+// through the audio-job path (adapter.Transcribe → SttResult). Phase 5a.
+func isAudioJobOperation(op string) bool {
+	_, ok := audioJobOperations[op]
 	return ok
 }
 
