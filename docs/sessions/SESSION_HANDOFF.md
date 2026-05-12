@@ -1,71 +1,108 @@
-# Session Handoff — Session 53 (5 cycles shipped · Phase 4a-α/β/γ COMPLETE — all extractor + summary regen call sites migrated · 4a-δ next)
+# Session Handoff — Session 54 (cycle 1 shipped · Phase 5a audio adapter COMPLETE · 5b chat-service voice migration next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-27 (session 53, cycles 1-5 shipped)
-> **HEAD:** `<pending>` (Phase 4a-γ; Phase 4a-β @ `44715550`; 4a-α-followup @ `309913bb`; 4a-α BUILD @ `6697d8d6`; ADR @ `b2f577e`; Session 52 closed at `c0420d2`)
-> **Branch:** `main` (ahead of origin — user pushes manually)
+> **Date:** 2026-04-28 (session 54, cycle 1 shipped)
+> **HEAD:** `0d228a10` (SESSION_PATCH backfill) — Phase 5a feat commit @ `2317bcb0`; Phase 4d closed at `3890d8a9` (session 53 cycle 13)
+> **Branch:** `mmo-rpg/design-resume` (user pushes manually)
 
-## Session 53 cycle 5 — Phase 4a-γ · summary regen migrated · /review-impl caught 6 issues + bonus type-drift bug (all fixed inline)
+## Session 54 cycle 1 — Phase 5a · audio adapter (STT + TTS) · /review-impl caught 1 HIGH + 2 MED + 4 LOW (all HIGH/MED + 1 LOW fixed inline)
 
-**What shipped:** Summary regen path (regenerate_summaries.py + 2 routers + scheduler) now routes through unified gateway via SDK chat operation. Q7 resolved: P2 jobs (cost+cooldown need terminal). All Pass 2 extractor + summary regen call sites in knowledge-service now uniformly route through the gateway when llm_client is supplied.
+**What shipped:** Gateway gains first-class audio operations on the unified contract:
+- **STT** via `POST /v1/llm/jobs` (`operation=stt` → `adapter.Transcribe` → `SttResult{text, language, duration_ms}`)
+- **TTS** via `POST /v1/llm/stream` (`operation=tts` → `adapter.Speak` → SSE `audio-chunk` frames)
+- OpenAI-only adapter — Anthropic/Ollama/LM Studio return `ErrOperationNotSupported`
+- SDK gains `Client.transcribe()` + `Client.stream_tts()`
+- `image_gen` DEFERRED to 5c (no caller); 410-Gone audio carve-out for `/internal/proxy/v1/audio/*` PRESERVED for 5b
+- Backward-compat: omitted `operation` on `/v1/llm/stream` defaults to `"chat"` (regression-locked)
 
-**Files (8)**:
-- MOD `app/jobs/regenerate_summaries.py` — NEW `_invoke_llm_for_summary` helper branches on `ctx.llm_client`; SDK path uses operation=chat + chunking=None + transient_retry_budget=1; cancelled→ProviderCancelled; rate-limit-exhaustion→ProviderRateLimited preserves retry_after_s; defensive `_safe_int` helper; `_RegenContext.llm_client` field
-- MOD `app/clients/provider_client.py` — NEW `ProviderCancelled` exception subclass
-- MOD `app/jobs/summary_regen_scheduler.py` — 4 functions thread `llm_client` through
-- MOD `app/main.py` — lifespan passes `get_llm_client()` to scheduler
-- MOD `app/routers/public/summaries.py` + `app/routers/internal_summarize.py` — DI + thread-through
-- MOD `tests/unit/test_regenerate_summaries.py` — +7 SDK-path tests
+**Files (19 in feat commit + 1 in HEAD backfill commit)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5A_DESIGN.md` (DESIGN + PLAN doc)
+- MOD `contracts/api/llm-gateway/v1/openapi.yaml` — StreamRequest `oneOf` [ChatStreamRequest, TtsStreamRequest] + AudioChunkEvent + Tts/Stt schemas
+- MOD `internal/provider/adapters.go` — Adapter interface +Transcribe/Speak + types + sentinels (ErrOperationNotSupported, ErrAudioFetchFailed, ErrAudioTooLarge, ErrAudioURLDisallowed)
+- NEW `internal/provider/openai_audio.go` — OpenAI Transcribe (multipart `verbose_json`) + Speak (4KB-streamed `/v1/audio/speech`); fetchAudioURL with 30s inner timeout + SSRF guard via injectable `audioURLResolver`
+- NEW `internal/provider/adapters_audio.go` — Anthropic/Ollama/LM Studio stubs
+- NEW `internal/provider/adapters_audio_test.go` — 17 tests (4 stub locks + 9 Transcribe + 4 Speak)
+- MOD `internal/jobs/worker.go` — `audioJobOperations` map + tts defensive-reject + processAudioJob route
+- NEW `internal/jobs/worker_audio.go` — processAudioJob + runSttJob with `SttJobTimeout=5min` + classifyAudioError with full typed-error matrix
+- NEW `internal/jobs/worker_audio_test.go` — 17 tests (3 whitelist + 1 disjoint + 1 source-grep + 12 classify cases)
+- MOD `internal/api/jobs_handler.go` — tts → 400 `LLM_OPERATION_NOT_SUPPORTED_VIA_JOBS`; validation reordered before subsystem-503
+- MOD `internal/api/jobs_router_test.go` — +2 tests (tts rejected + stt accepted)
+- MOD `internal/api/stream_handler.go` — streamRequest.Operation + Input fields; doLlmStream branches on operation; streamTts + classifySpeakErrorCode helpers + ctx-canceled skip
+- NEW `internal/api/stream_handler_test.go` — 10 tests (5 validation + 5 classifySpeakErrorCode)
+- MOD `sdks/python/loreweave_llm/models.py` — AudioChunkEvent + Tts/Stt models + StreamEvent union widening
+- MOD `sdks/python/loreweave_llm/client.py` — `_stream_inner` factor + `stream_tts` + `transcribe` + `_dispatch_event` audio-chunk wiring
+- MOD `sdks/python/loreweave_llm/__init__.py` — exports
+- NEW `sdks/python/tests/test_audio.py` — 7 tests
+- MOD `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — 5a row ✅ shipped + 5c image_gen deferred
+- MOD `docs/sessions/SESSION_PATCH.md` — cycle entry
 
-### `/review-impl` round 5 — caught 4 LOW + 2 COSMETIC + 1 bonus MED, all 7 fixed inline
+### `/review-impl` round (Phase 5a) — caught 1 HIGH + 2 MED + 4 LOW; HIGH + 2 MED + 1 LOW fixed inline
 
 | # | Sev | Fix |
 |---|-----|-----|
-| 1 | 🟢 LOW | Cancelled job → NEW ProviderCancelled subclass (not generic ProviderUpstreamError) |
-| 2 | 🟢 LOW | Token-counter metric Prometheus before/after delta assertion |
-| 3 | 🟢 LOW + bonus 🟡 MED | NEW project regen SDK-path parity test — **also surfaced** UUID-in-job_meta type drift; fixed via `str()` coercion + signature widening |
-| 4 | 🟢 LOW | Retry-exhaust split: LLM_RATE_LIMITED → ProviderRateLimited(retry_after_s=...) preserved; other → ProviderUpstreamError |
-| 5 | 🔵 COSMETIC | Module-top imports |
-| 6 | 🔵 COSMETIC | NEW `_safe_int` helper defends against malformed gateway token shape |
+| 1 | 🔴 HIGH | runSttJob had NO timeout (worker spawned with `bgCtx := context.Background()`; `invokeClient` has no http.Timeout) — slow audio_url server could pin a goroutine indefinitely. Fixed via `SttJobTimeout = 5*time.Minute` + 30s inner `audioFetchTimeout` on DNS+fetch; `LLM_TIMEOUT` distinct from `LLM_CANCELLED` in classifyAudioError. |
+| 2 | 🟡 MED | SSRF — only http/https scheme was guarded; `http://localhost:8080/admin` and `http://169.254.169.254/iam/...` were reachable. Fixed via `isDisallowedIP` (loopback + private + link-local + unspecified + multicast) + DNS pre-resolve via testable `audioIPLookuper` interface + `ErrAudioURLDisallowed` sentinel + LLM_AUDIO_URL_DISALLOWED code + 4 regression-lock tests. |
+| 3 | 🟡 MED | Upstream non-2xx wrapped as opaque `fmt.Errorf("upstream status %d: %s")` losing retry-eligibility info. Fixed by routing both Transcribe and Speak through existing `ClassifyUpstreamHTTP` + `parseRetryAfter` (returns typed `*ErrUpstreamRateLimited`/`*ErrUpstreamPermanent`/`*ErrUpstreamTransient`); classifyAudioError + new classifySpeakErrorCode map typed errors → LLM_RATE_LIMITED / LLM_AUTH_FAILED (401/403) / LLM_UPSTREAM_ERROR. |
+| 4 | 🟢 LOW | SDK stream_tts silently swallows unexpected events on tts stream. **Accepted + documented** as D-PHASE5A-SDK-TTS-EVENT-FILTER. |
+| 5 | 🟢 LOW | streamTts wrote misleading SSE error frame on caller-disconnect (ctx canceled). Fixed: skip when `errors.Is(err, context.Canceled/DeadlineExceeded)`. |
+| 6 | 🟢 LOW | openapi `AudioChunkEvent.required: [event,...]` but wire JSON omits `event` field. Pre-existing pattern (TokenEvent/UsageEvent same shape). **Accepted + documented** as D-PHASE5A-OPENAPI-EVENT-FIELD. |
+| 7 | 🟢 LOW | SDK transcribe transient_retry_budget=0 hardcoded — caller can't override. Doc'd in docstring as "avoid double-charge BYOK". **Accepted + documented** as D-PHASE5A-SDK-TRANSCRIBE-RETRY-BUDGET. |
 
 ### Verify evidence
 ```
-ks-svc unit tests: 1640/1640 PASS in 10.61s (was 1636 cycle-4; +4 net new)
-gateway:           ALL GREEN
-sdk:               37/37 PASS (no SDK changes this cycle)
-back-compat:       100 existing summary tests still pass
+go build ./...:                       clean
+go vet ./...:                         clean
+go test -count=1 ./...:               ALL GREEN
+  internal/api:                       2.6s pass
+  internal/chunker:                   7.4s pass
+  internal/jobs:                      4.5s pass (17 audio tests new)
+  internal/provider:                  1.4s pass (17 audio tests new)
+SDK pytest sdks/python/tests/:        167 passed (was 160; +7 new)
+chat-service pytest:                  177 passed, 0 failed (regression baseline)
+410-Gone audio carve-out regression:  TestDoProxyAudioPathsNotDeprecated still passes
 ```
 
 ### What's NEXT for the next agent
 
-**4a-δ (M)** — final cleanup cycle. Per ADR §5.4:
-- Delete `services/knowledge-service/app/clients/provider_client.py`
-- Delete `services/knowledge-service/app/extraction/llm_json_parser.py`
-- Delete `tests/unit/test_provider_client.py` + `test_llm_json_parser.py`
-- Remove `client: ProviderClient | None = None` param from 4 extractor signatures + pass2_orchestrator + regenerate_summaries + summary routers
-- Sunset `provider_chat_completion_total` / `_duration_seconds` Prometheus counters → keep with caller-side `knowledge_llm_job_total` replacement
-- Update `KNOWLEDGE_SERVICE_ARCHITECTURE.md` §LLM-pipeline reference
-- **Pre-delete grep** (per ADR §6 Q8): `git grep -rn "ProviderError\|Provider*Error" outside services/knowledge-service/` MUST return zero before deletion
+**Phase 5b (M)** — chat-service voice migration off `/internal/proxy/v1/audio/*` onto the new contract. Per [LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md §5](../03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md):
 
-**Reference impl**: this cycle's _RegenContext.llm_client default-None pattern survives until 4a-δ; that cycle removes the legacy path entirely.
+1. `services/chat-service/app/services/voice_stream_service.py`:
+   - `_transcribe_audio`: upload audio bytes to MinIO + generate pre-signed URL (60s TTL) + call `Client.transcribe(audio_url, model_source, model_ref, language)` instead of httpx → `/internal/proxy/v1/audio/transcriptions`
+   - `_generate_tts_chunks`: replace with `async for ev in Client.stream_tts(text, voice, ...)` → re-emit each AudioChunkEvent as the Vercel AI SDK envelope frame the FE consumes
+2. Drop `httpx` import from voice path; tests mock SDK with `httpx.MockTransport`
+3. After grep zero callers of `/internal/proxy/v1/audio/*`:
+   - Remove audio carve-out from `isDeprecatedProxyPath`'s allowlist in `services/provider-registry-service/internal/api/server.go`
+   - Drop the audio paths from `doProxy` whitelist
+   - Drop `TestDoProxyAudioPathsNotDeprecated` (no longer guarding anything)
+   - Replace with regression-lock asserting audio paths NOW return 410-Gone like the other deprecated paths
 
-**Plan progress**: 4a-α / 4a-α-followup / 4a-β / 4a-γ all ✅. Only 4a-δ left to close Phase 4a fully.
+**Reference impl**: this cycle's `stream_tts` SDK pattern matches the existing `stream` chat pattern — Phase 5b is a 1:1 callsite swap with the FE wire-envelope re-emission as the only nuance.
 
-**Deferred items**:
-- D-PHASE6-FACT-POLARITY-IN-KEY (cycle 4)
-- D-PHASE6-AGGREGATOR-NULL-MERGE (mostly mitigated cycle 4 MED#2; residual for parallel-chunk)
-- D-PHASE6-XCHUNK-PRIMING (cycle 3)
-- D-PHASE6-RETRY-AFTER-PRESERVATION (mostly mitigated cycle 5 LOW#4; residual for parallel-chunk Retry-After conflicts)
+**Pre-flight checks for 5b**:
+- `grep -rn "/internal/proxy/v1/audio" services/` should show only chat-service + provider-registry-service (the migration target + the gateway-side handler)
+- `python -m pytest services/chat-service/tests/ -q` baseline 177/177 must hold before any change
+
+**Phase 5b est size**: M (files ≈5: voice_stream_service + tests + server.go + isDeprecatedProxyPath + audio fixture cleanup)
+
+**Deferred items added this cycle**:
+- D-PHASE5A-STREAM-INTEGRATION-TESTS — deeper /v1/llm/stream tests (auth+creds+adapter+SSE wire) need DB pool; defer to Phase 6 or whenever live smoke uncovers a gap
+- D-PHASE5A-LIVE-SMOKE — manual post-merge: register OpenAI BYOK whisper-1 + tts-1 → curl stt + tts via `/internal/llm/*` → confirm `text` non-empty + audio bytes playable
+- D-PHASE5A-LMSTUDIO-WHISPER — LM Studio whisper.cpp adapter optional follow-up if user requests
+- D-PHASE5A-SDK-TTS-EVENT-FILTER — SDK stream_tts silently swallows unexpected events (accept+document)
+- D-PHASE5A-SDK-TRANSCRIBE-RETRY-BUDGET — caller can't override hardcoded budget=0 (accept+document)
+- D-PHASE5A-OPENAPI-EVENT-FIELD — wire omits `event` field that schema declares required (pre-existing pattern, accept)
+- **5c image_gen adapter** — when first caller appears in monorepo
 
 **Read in this order:**
-1. `docs/sessions/SESSION_PATCH.md` — full state
-2. `docs/03_planning/KNOWLEDGE_SERVICE_LLM_MIGRATION_ADR.md` §5.4 (4a-δ closing-checklist)
-3. This handoff file
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5A_DESIGN.md` — Phase 5a design + plan + §8 preview of 5b
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5 row + 5c deferral context
+4. This handoff file
 
 **Starting-cycle boilerplate:**
 1. `python scripts/workflow-gate.py status` confirm closed
-2. For 4a-δ: `python scripts/workflow-gate.py size M 5 3 0` then `phase clarify`
-3. Pre-flight `git grep -rn "ProviderError" services/ contracts/ sdks/ | grep -v knowledge-service` to confirm safe deletion
+2. For 5b: `python scripts/workflow-gate.py size M 5 3 1` then `phase clarify`
+3. Pre-flight: `grep -rn "/internal/proxy/v1/audio" services/` to baseline caller set
 
 ---
 
