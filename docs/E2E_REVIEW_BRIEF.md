@@ -60,7 +60,7 @@ Postgres (per-service DBs) · Redis Streams · MinIO (objects) · RabbitMQ (jobs
 | translation-service | Python/FastAPI | loreweave_translation | 6 (preferences, settings, jobs, chapter_translations, chunks, active_versions) | 8087 |
 | glossary-service | Go/Chi | loreweave_glossary | 10 (kinds, attrs, entities, links, values, translations, evidences, evidence_trans, genre_groups, snapshots) | 8088 |
 | chat-service | Python/FastAPI | loreweave_chat | 3 (sessions, messages, outputs) | 8090 |
-| video-gen-service | Python/FastAPI | _(none — stub)_ | 0 | 8088 |
+| video-gen-service | Python/FastAPI | Monorepo BFF; ComfyUI + models in **local-image-generator-service** (SD 1.5 / SDXL / Illustrious / Flux / Qwen Image / Wan / LTX Video; game-asset & sheet pipelines) | see sibling repo | 8088 |
 
 **Total: 46 tables, 10 services, 8 databases.**
 
@@ -199,11 +199,11 @@ Postgres (per-service DBs) · Redis Streams · MinIO (objects) · RabbitMQ (jobs
 | GET | .../outputs | List outputs |
 | GET | .../export | Export session |
 
-### video-gen-service (2 endpoints — stub)
+### video-gen-service (gateway; engine in local-image-generator-service)
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | /v1/video-gen/generate | Submit request (not implemented) |
-| GET | /v1/video-gen/models | List models (empty) |
+| POST | /v1/video-gen/generate | Submit generation job (proxies / integrates with ComfyUI stack in sibling repo) |
+| GET | /v1/video-gen/models | List models / workflows exposed through the gateway |
 
 ---
 

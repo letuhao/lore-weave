@@ -19,7 +19,7 @@
 | `glossary-service` | Go / Chi | `glossary` DB (glossary, lore, wiki_articles, wiki_revisions, wiki_suggestions) | `glossary.*`, `wiki.*`, `canon.*` | `chunk.analyzed`, `canonization.proposed` (S13) | Glossary + wiki + **canon entries** (`canon_entries` + `canonization_audit` tables live here — S13-D4). Two-layer SSOT with knowledge-service (glossary = authored, knowledge = extracted). |
 | `chat-service` | Python / FastAPI | `chat` DB (conversation histories) | `chat.message.*` | `provider.config.changed` | Cursor-style AI chat (non-MMO). Uses LiteLLM via I2 gateway. |
 | `knowledge-service` | Python / FastAPI | `knowledge` DB (Postgres SSOT + Neo4j derived) | `knowledge.entity.*`, `knowledge.relation.*` | `chunk.analyzed`, `glossary.entity.*` | Knowledge graph + memory (planned). Fuzzy/semantic entity layer anchored to glossary via `glossary_entity_id` FK. |
-| `video-gen-service` | Python / FastAPI | `video_gen` DB | `video.*` | `book.published` (trigger) | Video generation (skeleton). |
+| `video-gen-service` | Python / FastAPI | `video_gen` DB | `video.*` | `book.published` (trigger) | Media generation BFF; ComfyUI engine in sibling **local-image-generator-service** (SD 1.5 / SDXL / Illustrious / Flux 1–2 / Qwen Image / Wan / LTX Video; custom workflows for game assets, object sheets, animation). |
 
 ---
 
