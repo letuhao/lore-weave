@@ -12,7 +12,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 import httpx
@@ -38,6 +38,7 @@ from loreweave_llm.models import (
     AudioFormat,
     DoneEvent,
     ErrorEvent,
+    ImageGenResult,
     Job,
     ModelSource,
     ReasoningEvent,
@@ -567,6 +568,138 @@ class Client:
             return SubmitJobResponse.model_validate(resp.json())
         except (ValueError, json.JSONDecodeError) as exc:
             raise LLMDecodeError(f"_submit_stt_bytes response decode failed: {exc}") from exc
+
+    # ── Image generation (Phase 5c-α) ────────────────────────────────
+
+    async def generate_image(
+        self,
+        prompt: str,
+        *,
+        model_source: ModelSource,
+        model_ref: str,
+        size: str | None = None,
+        n: int | None = None,
+        response_format: Literal["url", "b64_json"] = "url",
+        quality: str | None = None,
+        style: Literal["vivid", "natural"] | None = None,
+        background: Literal["auto", "transparent", "opaque"] | None = None,
+        user_id: str | None = None,
+        poll_interval_s: float = 0.5,
+        max_poll_interval_s: float = 10.0,
+    ) -> ImageGenResult:
+        """Phase 5c-α — submit image-gen job, wait for terminal, return
+        decoded result.
+
+        Reuses submit_job + wait_terminal (same backoff, same cancellation,
+        same transient-retry semantics as transcribe()).
+        transient_retry_budget is fixed at 0 — image generation is
+        expensive (real $ + GPU minutes); a silent re-run on transient
+        failure could double-charge BYOK.
+
+        Polling defaults are slower than transcribe (0.5s initial, 10s
+        max) because image generation runs longer (ComfyUI multi-step
+        workflows can take 60-120s; 4-image batches up to 5-8 min).
+
+        Args:
+            prompt: Text description of the desired image (1..32000 chars).
+            model_source: 'user_model' or 'platform_model'.
+            model_ref: UUID-shaped model reference.
+            size: Image dimensions, e.g. "1024x1024". `None` → upstream
+                default (typically "1024x1024" for DALL-E).
+            n: Number of images (1..4). `None` → upstream default (varies
+                by backend — DALL-E-3 defaults to 1, DALL-E-2 defaults
+                to 1 but accepts up to 10, local-image-generator-service
+                varies). Pass an explicit int to override; gateway caps
+                at 4.
+            response_format: "url" (default) or "b64_json". URL mode
+                returns short-lifetime URLs (caller must fetch
+                immediately); b64_json embeds bytes inline.
+            quality: "standard" | "hd" | "high" | "medium" | "low";
+                model-dependent. `None` → omit.
+            style: "vivid" | "natural" (DALL-E-3 only). `None` → omit.
+            background: "auto" | "transparent" | "opaque" (gpt-image-1
+                only). `None` → omit.
+            user_id: Per-call override (mirrors submit_job).
+            poll_interval_s: Initial polling delay.
+            max_poll_interval_s: Max polling delay after exponential
+                backoff.
+
+        Returns:
+            `ImageGenResult` with 1..n `data` entries.
+
+        Raises:
+            LLMInvalidRequest: malformed model_ref, empty prompt, or
+                handler-/adapter-side validation failure.
+            LLMImageContentPolicy: upstream rejected the prompt by
+                content-policy / safety rules. Caller's UX should
+                suggest rephrasing.
+            LLMImageGenerationFailed: upstream image generation failed
+                for a non-policy reason (model loading, ambiguous
+                backend error). Caller MAY retry once.
+            LLMError subclass keyed by job.error.code on other failures.
+            LLMJobTerminal: status=cancelled.
+        """
+        try:
+            UUID(model_ref)
+        except (TypeError, ValueError) as exc:
+            raise LLMInvalidRequest(
+                f"model_ref must be UUID-shaped, got {model_ref!r}",
+            ) from exc
+
+        if not prompt or not prompt.strip():
+            raise LLMInvalidRequest("prompt must be non-empty")
+
+        input_payload: dict[str, Any] = {"prompt": prompt}
+        if size is not None:
+            input_payload["size"] = size
+        # /review-impl(BUILD) MED#1 — `if n is not None`, NOT `if n != 1`.
+        # The prior `n != 1` check silently dropped explicit n=1 requests,
+        # falling through to upstream's default (which may be >1 for some
+        # backends), surprising callers asking for exactly one image.
+        # Explicit values pass through; omission means "use upstream default".
+        if n is not None:
+            input_payload["n"] = n
+        if response_format != "url":
+            input_payload["response_format"] = response_format
+        if quality is not None:
+            input_payload["quality"] = quality
+        if style is not None:
+            input_payload["style"] = style
+        if background is not None:
+            input_payload["background"] = background
+
+        request = SubmitJobRequest(
+            operation="image_gen",
+            model_source=model_source,
+            model_ref=model_ref,
+            input=input_payload,
+        )
+        submitted = await self.submit_job(request, user_id=user_id)
+        job = await self.wait_terminal(
+            submitted.job_id,
+            user_id=user_id,
+            poll_interval_s=poll_interval_s,
+            max_poll_interval_s=max_poll_interval_s,
+            transient_retry_budget=0,
+        )
+        if job.status == "completed":
+            if job.result is None:
+                raise LLMUpstreamError(
+                    "image_gen job completed but result is empty",
+                    status_code=None,
+                    body="",
+                )
+            return ImageGenResult.model_validate(job.result)
+        if job.status == "cancelled":
+            raise LLMJobTerminal(f"image_gen job {submitted.job_id} cancelled")
+        # status == "failed"
+        if job.error is None:
+            raise LLMUpstreamError(
+                f"image_gen job {submitted.job_id} failed without error body",
+                status_code=None,
+                body="",
+            )
+        raise from_code(job.error.code, job.error.message)
 
     async def cancel_job(self, job_id: str | UUID, *, user_id: str | None = None) -> None:
         """Cancel an in-flight job. Idempotent: 204 (cancel accepted) and

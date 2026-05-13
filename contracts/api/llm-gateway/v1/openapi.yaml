@@ -986,3 +986,120 @@ components:
           description: |
             Audio duration as reported by upstream (e.g. OpenAI
             `verbose_json` `duration` field). 0/null if absent.
+
+    # ── Image-gen operation schemas (Phase 5c-α) ──────────────────────
+    ImageGenInput:
+      type: object
+      required: [prompt]
+      description: |
+        Phase 5c-α. Input payload for `SubmitJobRequest` with
+        `operation: image_gen`. The gateway forwards to the upstream
+        provider's OpenAI-compatible `/v1/images/generations` endpoint.
+        Field names + semantics mirror the OpenAI Image API 1:1 so any
+        OpenAI-compatible backend (DALL-E, gpt-image-1, local ComfyUI
+        services like local-image-generator-service) works without
+        per-backend adapter code.
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 32000
+          description: |
+            Text description of the desired image. Hard cap 32K at the
+            gateway (DALL-E 3 accepts 4K; gpt-image-1 32K; local ComfyUI
+            models often cap at CLIP encoder limit ≈300–500 tokens —
+            upstream validates).
+        size:
+          type: string
+          default: "1024x1024"
+          description: |
+            Image dimensions. Common: "256x256", "512x512", "1024x1024",
+            "1792x1024", "1024x1792", "1536x1024", "1024x1536". Upstream
+            validates supported sizes per model.
+        n:
+          type: integer
+          minimum: 1
+          maximum: 4
+          default: 1
+          description: |
+            Number of images to generate (1..4). Gateway rejects n>4 at
+            handler boundary AND at adapter boundary (belt-and-suspenders).
+            DALL-E-3 + gpt-image-1 only accept n=1; DALL-E-2 + local
+            backends often accept n>1.
+        response_format:
+          type: string
+          enum: [url, b64_json]
+          default: url
+          description: |
+            How to return image bytes. `url` returns an upstream-hosted
+            URL the caller must fetch (typical: ~10 min lifetime).
+            `b64_json` returns the bytes inline (≈33% bandwidth bloat).
+            Upstream response body is capped at 8MB (`MaxImageResponseBytes`);
+            larger responses → LLM_UPSTREAM_ERROR. Use `url` for large
+            multi-image flows.
+        quality:
+          type: string
+          enum: [standard, hd, high, medium, low]
+          default: standard
+          description: |
+            Quality tier. Model-dependent: DALL-E-3 accepts standard/hd;
+            gpt-image-1 accepts high/medium/low. Upstream validates.
+        style:
+          type: string
+          enum: [vivid, natural]
+          nullable: true
+          description: DALL-E-3 only. `null` to omit.
+        background:
+          type: string
+          enum: [auto, transparent, opaque]
+          nullable: true
+          description: gpt-image-1 only. `null` to omit.
+
+    ImageGenResult:
+      type: object
+      required: [created, data]
+      description: |
+        Phase 5c-α. Result payload populated in `Job.result` when
+        `operation: image_gen` and `status: completed`.
+      properties:
+        created:
+          type: integer
+          description: Unix timestamp (seconds) when the generation finished.
+        data:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/ImageGenDataItem'
+
+    ImageGenDataItem:
+      type: object
+      description: |
+        Single generated image. Exactly one of `url` or `b64_json` is
+        populated based on the request's `response_format`.
+        `revised_prompt` is present if the upstream model rewrote the
+        prompt (DALL-E-3 + gpt-image-1 do this; local models typically
+        don't).
+      properties:
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Upstream-hosted image URL. Caller is responsible for fetching
+            and storing — gateway does NOT download. URL lifetime is
+            upstream-dependent (OpenAI: ~1 hour; local services:
+            caller-configured). Caller MUST download immediately after
+            polling completed; persistent storage of the upstream URL
+            is unsafe.
+        b64_json:
+          type: string
+          nullable: true
+          description: Base64-encoded raw image bytes.
+        revised_prompt:
+          type: string
+          nullable: true
+          description: |
+            If upstream rewrote the prompt (DALL-E-3 safety-rewrite +
+            gpt-image-1 caption-rewrite), the rewritten text. `null`
+            otherwise.

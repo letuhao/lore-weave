@@ -143,6 +143,34 @@ class LLMAudioURLDisallowed(LLMError):
     code = "LLM_AUDIO_URL_DISALLOWED"
 
 
+# ── Phase 5c-α — image-gen-specific exceptions ───────────────────────
+
+
+class LLMImageContentPolicy(LLMError):
+    """Upstream rejected the prompt by content-policy / safety rules
+    (DALL-E "your_request_was_rejected", gpt-image-1 safety system,
+    local backends with policy filters).
+
+    Distinct from generic LLMUpstreamError so caller's UX can surface
+    a "rephrase your prompt" hint rather than a "try again" retry.
+    Maps from gateway code: LLM_IMAGE_CONTENT_POLICY_VIOLATION.
+    """
+
+    code = "LLM_IMAGE_CONTENT_POLICY_VIOLATION"
+
+
+class LLMImageGenerationFailed(LLMError):
+    """Upstream image generation failed for a non-content-policy reason
+    (model loading, backend timeout, ambiguous failure, oversized
+    response body). Caller MAY retry once; persistent failures suggest
+    a backend issue rather than a caller-side problem.
+
+    Maps from gateway code: LLM_IMAGE_GENERATION_FAILED.
+    """
+
+    code = "LLM_IMAGE_GENERATION_FAILED"
+
+
 class LLMTransientRetryNeededError(LLMError):
     """Job terminated with status=failed AND error.code is in the
     transient-retry whitelist (LLM_RATE_LIMITED, LLM_UPSTREAM_ERROR).
@@ -201,6 +229,9 @@ _CODE_TO_EXC: dict[str, type[LLMError]] = {
     "LLM_AUDIO_TOO_LARGE": LLMAudioTooLarge,
     "LLM_AUDIO_FETCH_FAILED": LLMAudioFetchFailed,
     "LLM_AUDIO_URL_DISALLOWED": LLMAudioURLDisallowed,
+    # Phase 5c-α — image-gen-specific exceptions.
+    "LLM_IMAGE_CONTENT_POLICY_VIOLATION": LLMImageContentPolicy,
+    "LLM_IMAGE_GENERATION_FAILED": LLMImageGenerationFailed,
 }
 
 

@@ -34,6 +34,8 @@ from loreweave_llm.errors import (
     LLMAuthFailed,
     LLMDecodeError,
     LLMError,
+    LLMImageContentPolicy,
+    LLMImageGenerationFailed,
     LLMInvalidRequest,
     LLMModelNotFound,
     LLMQuotaExceeded,
@@ -46,6 +48,8 @@ from loreweave_llm.models import (
     AudioFormat,
     DoneEvent,
     ErrorEvent,
+    ImageGenDataItem,
+    ImageGenResult,
     ReasoningEvent,
     SttInput,
     SttResult,
@@ -74,6 +78,9 @@ __all__ = [
     "TtsStreamRequest",
     "SttInput",
     "SttResult",
+    # Phase 5c-α image-gen models
+    "ImageGenDataItem",
+    "ImageGenResult",
     # Errors
     "LLMError",
     "LLMAuthFailed",
@@ -88,6 +95,9 @@ __all__ = [
     "LLMAudioTooLarge",
     "LLMAudioFetchFailed",
     "LLMAudioURLDisallowed",
+    # Phase 5c-α image-gen-specific errors
+    "LLMImageContentPolicy",
+    "LLMImageGenerationFailed",
 ]
 
 __version__ = "0.1.0"

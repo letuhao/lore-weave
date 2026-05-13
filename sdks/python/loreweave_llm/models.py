@@ -315,3 +315,41 @@ class SttResult(BaseModel):
     text: str
     language: str | None = None
     duration_ms: int | None = None
+
+
+# ── Phase 5c-α — image-gen models ─────────────────────────────────────
+
+
+class ImageGenDataItem(BaseModel):
+    """Mirrors openapi `ImageGenDataItem`. Single generated image in the
+    response array.
+
+    Exactly one of `url` or `b64_json` is populated based on the
+    request's `response_format`. `revised_prompt` is upstream-populated
+    when the model rewrote the prompt (DALL-E-3 + gpt-image-1 do this;
+    local models typically don't).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str | None = None
+    b64_json: str | None = None
+    revised_prompt: str | None = None
+
+
+class ImageGenResult(BaseModel):
+    """Mirrors openapi `ImageGenResult`. Decoded from Job.result when
+    `operation=image_gen` and `status=completed`.
+
+    `data` contains 1..4 entries (gateway caps via MaxImagesPerJob).
+    Caller is responsible for downloading the URL (if `url` mode) and
+    storing in its own MinIO bucket — gateway does NOT download. URL
+    lifetime is upstream-dependent (OpenAI: ~1 hour; local services:
+    caller-configured). Caller MUST fetch immediately after polling
+    completed; persistent storage of the upstream URL is unsafe.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    created: int
+    data: list[ImageGenDataItem] = Field(min_length=1, max_length=4)

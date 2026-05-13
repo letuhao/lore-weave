@@ -143,6 +143,16 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		return
 	}
 
+	// Phase 5c-α — operation-specific input validation. Currently only
+	// image_gen has handler-level field validation; other ops rely on
+	// adapter-side or upstream validation.
+	if in.Operation == "image_gen" {
+		if err := validateImageGenInput(in.Input, in.Chunking); err != nil {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
+			return
+		}
+	}
+
 	if s.jobsRepo == nil || s.jobsWorker == nil {
 		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "jobs subsystem not initialized")
 		return
@@ -389,6 +399,44 @@ func (s *Server) doSubmitSttMultipart(w http.ResponseWriter, r *http.Request, us
 		"status":       "pending",
 		"submitted_at": nowRFC3339Nano(),
 	})
+}
+
+// validateImageGenInput — Phase 5c-α handler-level validation for
+// operation=image_gen. Rejects malformed prompt, out-of-range n, bad
+// response_format, and chunking-config (not supported for image gen).
+//
+// Belt-and-suspenders with adapter-level invariant pre-checks: handler
+// returns LLM_INVALID_REQUEST fast (no DB insert, no goroutine spawn);
+// adapter catches the same conditions for non-handler callers.
+func validateImageGenInput(raw json.RawMessage, chunking json.RawMessage) error {
+	// Phase 5c-α — chunking not supported for image_gen (single
+	// upstream call, no logical chunking). Reject if non-empty / non-null.
+	if len(chunking) > 0 && string(chunking) != "null" {
+		return fmt.Errorf("chunking not supported for image_gen")
+	}
+
+	var v struct {
+		Prompt         string `json:"prompt"`
+		N              int    `json:"n"`
+		ResponseFormat string `json:"response_format"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return fmt.Errorf("image_gen input parse: %w", err)
+	}
+	if strings.TrimSpace(v.Prompt) == "" {
+		return fmt.Errorf("image_gen requires non-empty prompt")
+	}
+	if len(v.Prompt) > 32000 {
+		return fmt.Errorf("image_gen prompt exceeds 32000-char cap (got %d)", len(v.Prompt))
+	}
+	// n=0 means "use upstream default"; explicit values must be 1..4.
+	if v.N != 0 && (v.N < 1 || v.N > 4) {
+		return fmt.Errorf("image_gen n must be 1..4 (got %d)", v.N)
+	}
+	if v.ResponseFormat != "" && v.ResponseFormat != "url" && v.ResponseFormat != "b64_json" {
+		return fmt.Errorf("image_gen response_format must be url or b64_json (got %q)", v.ResponseFormat)
+	}
+	return nil
 }
 
 // formatFieldList renders a slice of field names for the field-name

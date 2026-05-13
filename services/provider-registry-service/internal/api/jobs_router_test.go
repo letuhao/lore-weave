@@ -8,6 +8,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -477,5 +478,153 @@ func TestInternalSubmitLlmJob_MultipartWrongFileFieldName(t *testing.T) {
 	}
 	if !strings.Contains(body, "file") {
 		t.Errorf("expected received-field-list ('file') in body, got %s", body)
+	}
+}
+
+// ── Phase 5c-α — image_gen handler-level validation tests ─────────────
+
+// buildImageGenJSONRequest constructs a JSON POST request for
+// /internal/llm/jobs with operation=image_gen. Caller controls the
+// input + chunking fields to exercise each validation path.
+func buildImageGenJSONRequest(t *testing.T, userID string, input map[string]any, chunking string) *http.Request {
+	t.Helper()
+	body := map[string]any{
+		"operation":    "image_gen",
+		"model_source": "user_model",
+		"model_ref":    uuid.NewString(),
+		"input":        input,
+	}
+	if chunking != "" {
+		body["chunking"] = json.RawMessage(chunking)
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/llm/jobs?user_id="+userID,
+		bytes.NewReader(bodyBytes),
+	)
+	req.Header.Set("X-Internal-Token", routerTestInternalToken)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+// TestInternalSubmitLlmJob_ImageGen_ValidationPasses confirms a
+// well-formed image_gen submission progresses past handler validation
+// to the 503 service-unavailable check (router-only server has no
+// jobsRepo). If this fails with 400 LLM_INVALID_REQUEST, the
+// validator has a false-positive.
+func TestInternalSubmitLlmJob_ImageGen_ValidationPasses(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildImageGenJSONRequest(t, uuid.NewString(),
+		map[string]any{
+			"prompt": "a serene mountain lake at dawn",
+			"size":   "1024x1024",
+			"n":      1,
+		},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (validation-passed, no subsystem), got %d body=%s",
+			w.Code, w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_ImageGen_RejectsEmptyPrompt(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildImageGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": ""},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "non-empty prompt") {
+		t.Errorf("expected 'non-empty prompt' hint, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_ImageGen_RejectsWhitespaceOnlyPrompt(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildImageGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "   \t\n  "},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for whitespace-only prompt, got %d", w.Code)
+	}
+}
+
+func TestInternalSubmitLlmJob_ImageGen_RejectsOversizePrompt(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	huge := strings.Repeat("a", 32001)
+	req := buildImageGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": huge},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "exceeds 32000-char cap") {
+		t.Errorf("expected cap message, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_ImageGen_RejectsNOutOfRange(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildImageGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "a cat", "n": 5},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for n=5, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "n must be 1..4") {
+		t.Errorf("expected n-range message, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_ImageGen_RejectsBadResponseFormat(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildImageGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "a cat", "response_format": "jpeg"},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for response_format=jpeg, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "url or b64_json") {
+		t.Errorf("expected allowed-values hint, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_ImageGen_RejectsChunkingConfig(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildImageGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "a cat"},
+		`{"strategy":"paragraphs","size":15}`,
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for chunking on image_gen, got %d body=%s",
+			w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "chunking not supported for image_gen") {
+		t.Errorf("expected chunking-not-supported hint, got %s", w.Body.String())
 	}
 }

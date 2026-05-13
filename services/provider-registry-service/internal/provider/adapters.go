@@ -77,6 +77,13 @@ type Adapter interface {
 	// adapter MUST stop streaming and return that error. Adapters that
 	// don't support TTS return ErrOperationNotSupported.
 	Speak(ctx context.Context, endpointBaseURL, secret, modelName string, input SpeakInput, emit AudioEmitFn) error
+
+	// GenerateImage — Phase 5c-α. Text-to-image generation via the
+	// OpenAI-compatible /v1/images/generations endpoint. Adapter posts
+	// the request and parses the response into GenerateImageOutput.
+	// Adapters that don't support image generation return
+	// ErrOperationNotSupported.
+	GenerateImage(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateImageInput) (GenerateImageOutput, Usage, error)
 }
 
 // ErrStreamNotSupported — returned by adapters that don't yet implement
@@ -118,6 +125,56 @@ var ErrAudioURLDisallowed = fmt.Errorf("audio_url disallowed")
 // means "no adapter implements this op"). This sentinel is specifically
 // for the input-shape invariant.
 var ErrTranscribeInputInvalid = fmt.Errorf("transcribe input invalid")
+
+// ErrImageGenerationFailed — Phase 5c-α. Returned when upstream rejects
+// the prompt or fails in a way the typed upstream classifier doesn't
+// bucket as rate-limit/permanent/transient (model loading, unspecified
+// backend error, response body exceeds MaxImageResponseBytes). Caller
+// maps to LLM_IMAGE_GENERATION_FAILED.
+var ErrImageGenerationFailed = fmt.Errorf("image generation failed")
+
+// ErrImageContentPolicy — Phase 5c-α. Returned specifically when
+// upstream signals a content-policy rejection (DALL-E
+// "your_request_was_rejected" + safety system block; OpenAI 400 with
+// `error.code: "content_policy_violation"`). Distinct so callers can
+// surface the right UX hint ("rephrase your prompt") vs the generic
+// "generation failed" (might be retryable). Caller maps to
+// LLM_IMAGE_CONTENT_POLICY_VIOLATION.
+var ErrImageContentPolicy = fmt.Errorf("image generation rejected by content policy")
+
+// ErrImageInvalidParams — Phase 5c-α /review-impl(DESIGN) MED#5.
+// Returned when adapter-level invariant check rejects a caller-provided
+// field (n > MaxImagesPerJob, prompt empty, bad response_format).
+// Distinct from the typed upstream errors because the upstream was
+// never called. Caller maps to LLM_INVALID_REQUEST.
+//
+// Belt-and-suspenders with handler-level validation: handler caps via
+// validateImageGenInput, adapter caps here so a non-handler caller
+// (cron, future RabbitMQ submit, background re-run) can't bypass.
+var ErrImageInvalidParams = fmt.Errorf("image generation params invalid")
+
+// MaxImagesPerJob — Phase 5c-α /review-impl(DESIGN) MED#5. Adapter-level
+// upper bound on n (images per job). LoreWeave imposes 4 as a deliberate
+// spend cap (cheapest BYOK image-gen still costs ≈$0.02/image; 4×
+// keeps a single-job-gone-wrong at the cost-of-coffee level).
+const MaxImagesPerJob = 4
+
+// MaxImageResponseBytes — Phase 5c-α /review-impl(DESIGN) LOW#6.
+// Adapter-level cap on the upstream image response body. 8MB covers
+// 4 × ~1024×1024 PNG b64 (~670KB each) with comfortable margin for
+// JSON envelope + revised_prompt fields. Larger responses → LLM_UPSTREAM_ERROR
+// with "exceeds N bytes" message. Documented in openapi.yaml
+// ImageGenInput.response_format description so callers know the limit.
+//
+// /review-impl(BUILD) LOW#2 — this cap is on the DECOMPRESSED body
+// size. Go's net/http transparently decompresses gzip when the request
+// didn't explicitly set Accept-Encoding (the default), so a small
+// wire payload could expand past 8MB once decompressed. For image gen
+// this rarely matters (PNG/JPG already-compressed → 1:1 ratio); for
+// b64_json strings (highly compressible — ~3:1 ratio for base64) it
+// could surprise. If a real gzip-friendly upstream surfaces, document
+// or raise the cap then.
+const MaxImageResponseBytes = 8 * 1024 * 1024
 
 // ── Audio types (Phase 5a + 5b) ────────────────────────────────────────
 
@@ -176,6 +233,61 @@ type AudioChunk struct {
 // emit returning an error means the downstream caller is gone; Speak MUST
 // stop streaming and return that error.
 type AudioEmitFn = func(AudioChunk) error
+
+// ── Image-gen types (Phase 5c-α) ──────────────────────────────────────
+
+// GenerateImageInput mirrors the OpenAI Image API request shape 1:1 so
+// any OpenAI-compatible backend works without per-backend adapter code.
+// "" / 0 values omit the field at the upstream call so we don't override
+// upstream defaults — except where the field carries an invariant
+// (Prompt MUST be non-empty; N MUST be ≤ MaxImagesPerJob).
+type GenerateImageInput struct {
+	// Prompt — required, max 32K (validated at handler before reaching
+	// adapter). Adapter pre-checks empty as a defense for non-handler callers.
+	Prompt string
+
+	// Size — e.g. "1024x1024"; "" → upstream default.
+	Size string
+
+	// N — number of images (1..MaxImagesPerJob). 0 → upstream default
+	// (treated as 1 by most backends). Adapter rejects N > MaxImagesPerJob.
+	N int
+
+	// ResponseFormat — "url" | "b64_json"; "" → omit (upstream chooses).
+	// Adapter validates the enum so a non-handler caller can't slip in
+	// "jpeg" or similar.
+	ResponseFormat string
+
+	// Quality — "standard" | "hd" | "high" | "medium" | "low"; "" → omit.
+	Quality string
+
+	// Style — "vivid" | "natural" (DALL-E-3 only); "" → omit.
+	Style string
+
+	// Background — "auto" | "transparent" | "opaque" (gpt-image-1 only); "" → omit.
+	Background string
+}
+
+// GenerateImageOutput holds the parsed response from
+// /v1/images/generations.
+type GenerateImageOutput struct {
+	// Created — unix timestamp (seconds) when the generation finished.
+	Created int64
+
+	// Data — 1..MaxImagesPerJob entries (handler caps; adapter respects
+	// upstream's response). Each entry has exactly one of URL or B64JSON
+	// populated based on the request's ResponseFormat.
+	Data []GeneratedImage
+}
+
+// GeneratedImage is a single image in the response. RevisedPrompt is
+// upstream-populated when the model rewrote the prompt (DALL-E-3 +
+// gpt-image-1 do this; local models typically don't).
+type GeneratedImage struct {
+	URL           string
+	B64JSON       string
+	RevisedPrompt string
+}
 
 type ModelInventory struct {
 	ProviderModelName string         `json:"provider_model_name"`

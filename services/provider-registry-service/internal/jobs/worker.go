@@ -155,14 +155,22 @@ func (w *Worker) Process(
 		return
 	}
 
+	// Phase 5c-α — image-gen dispatch. Routes BEFORE chat-streaming
+	// whitelist because image_gen uses adapter.GenerateImage (not Stream),
+	// has no chunker, and no aggregator. Mirrors audio dispatch above.
+	if isImageJobOperation(operation) {
+		w.processImageGenJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
+		return
+	}
+
 	// Phase 4a-α Step 0 — op-whitelist. The chat-streaming machinery +
 	// per-op aggregator (cycle 20 jsonListAggregator) is the same wire
 	// shape for chat/completion AND for the *_extraction operations:
 	// adapter.Stream emits StreamChunks; aggregator routes them to the
 	// right result map. The only difference is the aggregator factory
-	// (see NewAggregator below). Embedding/translation/image_gen
-	// use different upstream HTTP shapes — those stay gated until their
-	// dedicated cycles wire adapters.
+	// (see NewAggregator below). Embedding/translation use different
+	// upstream HTTP shapes — those stay gated until their dedicated
+	// cycles wire adapters. (image_gen now has dispatch above.)
 	if !isStreamableOperation(operation) {
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
 			"LLM_OPERATION_NOT_SUPPORTED",

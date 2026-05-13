@@ -1,9 +1,108 @@
-# Session Handoff — Session 55 (cycle 1 shipped · Phase 5b chat-service voice migration COMPLETE · Phase 5c image_gen deferred)
+# Session Handoff — Session 55 (cycle 2 shipped · Phase 5c-α image_gen adapter COMPLETE · Phase 5d video_gen next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-13 (session 55, cycle 1 shipped)
-> **HEAD:** `f04763dd` (SESSION_PATCH backfill) — Phase 5b feat commit @ `58fd1acd`; Phase 5a closed at `2317bcb0` (session 54 cycle 1); Phase 4d closed at `3890d8a9` (session 53 cycle 13)
+> **Date:** 2026-05-14 (session 55, cycle 2 shipped)
+> **HEAD:** `<pending>` (Phase 5c-α feat commit — backfill follows); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1); Phase 4d closed at `3890d8a9` (session 53 cycle 13)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 55 cycle 2 — Phase 5c-α · image_gen adapter + SDK + openapi · /review-impl rounds (DESIGN: 0 HIGH + 5 MED + 6 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 4 LOW + 1 COSMETIC, MED + 2 LOWs fixed inline)
+
+**What shipped:** Gateway gains first-class `image_gen` operation on the unified contract via `POST /v1/llm/jobs operation=image_gen` → `adapter.GenerateImage` → `ImageGenResult` (1..4 data entries). OpenAI adapter only (Anthropic/Ollama/LM Studio return `ErrOperationNotSupported`). Works against OpenAI proper + sibling `local-image-generator-service` (ComfyUI at :8700; SD/SDXL/Illustrious/Flux/Wan/LTX Video) + any OpenAI-compat backend. Caller-side URL→MinIO download. Multi-image n=1..4. Both `response_format=url` AND `b64_json`.
+
+**Strategic context (Path B):** first step of multi-cycle program to retire `services/video-gen-service/` BFF wrapper. After 5d (video_gen) + 5e (book-service + video-gen-service caller migration) + 5f (BFF deletion), every external generation flows through `POST /v1/llm/jobs` — unified gateway invariant fully realized.
+
+**Files (18 — 11 MOD + 7 NEW)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5C_DESIGN.md` (design + plan + 12 /review-impl fixes inline; status SHIPPED)
+- MOD `contracts/api/llm-gateway/v1/openapi.yaml` — `ImageGenInput` + `ImageGenResult` + `ImageGenDataItem` schemas (JobOperation enum already had `image_gen` from Phase 2b reservation)
+- MOD `internal/provider/adapters.go` — Adapter interface +GenerateImage; +GenerateImageInput/Output/GeneratedImage types; +3 sentinels (`ErrImageGenerationFailed`, `ErrImageContentPolicy`, `ErrImageInvalidParams`); +2 consts (`MaxImagesPerJob=4`, `MaxImageResponseBytes=8MB`)
+- NEW `internal/provider/openai_image.go` — full OpenAI implementation; **adapter-level invariant pre-checks** (Prompt empty + N>cap + N<0 + bad response_format → ErrImageInvalidParams per Fix #5); **JSON-first `isContentPolicyRejection`** per Fix #3 — avoids prompt-echo false-positive (substring fallback only when JSON parse fails)
+- NEW `internal/provider/adapters_image.go` — Anthropic/Ollama/LM Studio stubs
+- NEW `internal/provider/adapters_image_test.go` — 14 tests (happy URL/b64/multi-n/revised_prompt + 3 content-policy variants incl. prompt-echo-not-misclassified + 4 invariants + oversize-response + 2 typed-upstream + empty-data + 3 stub-locks)
+- NEW `internal/jobs/worker_image.go` — `processImageGenJob` + `runImageGenJob` + `classifyImageError` (incl. ErrImageInvalidParams → LLM_INVALID_REQUEST per Fix #5) + `imageJobOperations` whitelist + `ImageGenJobTimeout=10min` (ComfyUI batch headroom)
+- NEW `internal/jobs/worker_image_test.go` — 14 tests (2 whitelist + 1 disjoint per Fix #2 + 1 5-place-sync + 10 classify matrix)
+- MOD `internal/jobs/worker.go` — image dispatch hook routes BEFORE chat-streaming whitelist, parallel to audio
+- MOD `internal/jobs/worker_test.go` — `TestIsStreamableOperation_RejectsNonStreamable` comment updated per Fix #7
+- MOD `internal/api/jobs_handler.go` — `validateImageGenInput` (handler-level chunking rejection + prompt 1..32K + n 1..4 + response_format url|b64_json)
+- MOD `internal/api/jobs_router_test.go` — +7 image_gen handler tests
+- MOD `sdks/python/loreweave_llm/client.py` — `Client.generate_image()` polymorphic over response_format; **/review-impl(BUILD) MED#1 fix**: `n: int | None = None` + `if n is not None` (was `int = 1` + `if n != 1`; prior code silently dropped explicit `n=1`)
+- MOD `sdks/python/loreweave_llm/errors.py` — `LLMImageContentPolicy` + `LLMImageGenerationFailed` classes + `_CODE_TO_EXC` entries
+- MOD `sdks/python/loreweave_llm/models.py` — `ImageGenDataItem` + `ImageGenResult` pydantic models
+- MOD `sdks/python/loreweave_llm/__init__.py` — exports
+- NEW `sdks/python/tests/test_image_gen.py` — 11 tests (3 happy/edge + **explicit-n=1 regression-lock** + 2 validation + 2 error-class mapping + 1 from_code regression-lock + 2 pydantic round-trip)
+- MOD `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5c-α row ✅ shipped + Phase 5c-β image_edit/variation deferred
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN (BEFORE BUILD).** Caught **0 HIGH + 5 MED + 6 LOW + 1 COSMETIC**. All 12 folded inline before any code was written.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | Design implied schema/migration/SDK Literal additions; in reality `image_gen` already in 4/5 sync slots from Phase 2b reservation — only schemas new. Design §2.1 table now lists explicit state. |
+| 2 | 🟡 MED | Disjoint test missing for image vs streamable + image vs audio. Added `TestImageJobOperations_Disjoint`. |
+| 3 | 🟡 MED | Content-policy substring heuristic false-positive vector (prompt echo in error body). Switched to JSON-first `error.code` check; substring fallback only when JSON parse fails. +regression test for the prompt-echo case. |
+| 4 | 🟡 MED | Canonical integration guide in sibling repo says "LoreWeave downloads"; we contradict. Accept-and-document as `D-PHASE5C-INTEGRATION-GUIDE-SYNC`. |
+| 5 | 🟡 MED | Adapter-level n-cap missing (handler-only). Added `MaxImagesPerJob=4` + `ErrImageInvalidParams` sentinel + adapter pre-check + classifyImageError mapping + 3 invariant tests. |
+| 6-11 | 🟢 LOW | Named 8MB cap const; stale test comment touchup; nullable-pointer concern accepted; sync-mode reservation deferred; concrete live-smoke curl block; SDK NEW-model clarity. |
+| 12 | 🔵 COSMETIC | Sentinel naming inconsistency (inherited from 5a). Accepted. |
+
+**Round 2 — BUILD output.** Caught **0 HIGH + 1 MED + 4 LOW + 1 COSMETIC**. MED + 2 LOWs fixed inline; 2 LOWs deferred.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | SDK `if n != 1` silently dropped explicit `n=1` → caller asking for 1 image might get upstream-default-count (>1). Fixed: signature `n: int = 1` → `n: int | None = None`; wire-inclusion `if n is not None`. +regression-lock `test_generate_image_explicit_n_one_sends_on_wire`. |
+| 2 | 🟢 LOW | `MaxImageResponseBytes` cap is on decompressed body size (Go auto-decompresses gzip); docstring didn't clarify. Updated comment. |
+| 3 | 🟢 LOW | Adapter pre-check ordering collapses multi-error reports to first-fail. Accept-and-document as `D-PHASE5C-MULTI-ERROR-COLLECT`. |
+| 4 | 🟢 LOW | Live-smoke `host.docker.internal` doesn't resolve on native Linux Docker. Added `extra_hosts` workaround note in design §7. |
+| 5 | 🟢 LOW | 5-place sync test greps source files, not live DB constraint state. Same limitation as Phase 5a/4a-β siblings. Accept-and-document as `D-PHASE5C-LIVE-DB-CONSTRAINT-CHECK`. |
+| 6 | 🔵 COSMETIC | Happy-path test asserted "n not in body" for n=1 default — pinned the MED#1 bug. Fixed alongside MED#1. |
+
+### Verify evidence
+```
+provider-registry-service: go build/vet/test ./...   ALL GREEN
+  internal/api:                                       +7 image_gen handler tests
+  internal/jobs:                                      +14 image_gen worker tests
+  internal/provider:                                  +14 image_gen adapter tests
+SDK pytest sdks/python/tests/:                       185 passed (was 174; +11 new)
+chat-service pytest:                                 180 passed unchanged (no regression)
+grep -rn "operation.*image_gen" services/            wired through 4 callers + worker dispatch
+NO DB MIGRATION NEEDED                               image_gen already in CHECK + enum + Literal
+                                                     from Phase 2b reservation
+```
+
+### What's NEXT for the next agent
+
+**Phase 5d (L)** — `video_gen` adapter + SDK + openapi. Same shape as 5c-α; POSTs to `/v1/video/generations` (singular video per existing video-gen-service contract). No multi-image; no b64_json (videos are too large). New `ImageGenJobTimeout`-equivalent for video (likely 20-30 min for Wan/LTX Video on local backend). Content-policy detection reusable. Reference impl: 5c-α `openai_image.go` + `worker_image.go` + `Client.generate_image` × 1:1 substitution.
+
+**Phase 5e (XL)** — caller migration. Two callers:
+- [book-service/internal/api/media.go:449](services/book-service/internal/api/media.go#L449) — Go; calls `/v1/images/generations` directly via http.Client. Needs Go SDK OR thin Go HTTP shim.
+- [video-gen-service/app/routers/generate.py:158](services/video-gen-service/app/routers/generate.py) — Python; uses Python SDK (existing).
+
+Phase 5e requires the Go SDK question to be settled (build full SDK vs. inline shim). Big decision.
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion. Remove BFF + compose entry + api-gateway-bff `/v1/video-gen/*` routes. FE switches to calling unified gateway via SDK or BFF facade. After this: unified-gateway invariant fully realized for chat + extraction + translation + audio + image + video.
+
+**Open deferred items (5c-α):**
+- `D-PHASE5C-INTEGRATION-GUIDE-SYNC` — cross-repo PR to update sibling guide
+- `D-PHASE5C-NULLABLE-IMAGE-FIELDS` — Quality/Style/Background empty-string-omit semantics
+- `D-PHASE5C-SYNC-IMAGE-GEN` — no `POST /v1/llm/jobs/sync` facade
+- `D-PHASE5C-LIVE-SMOKE` — manual post-merge against local-image-generator-service:8700
+- `D-PHASE5C-RESULT-SIZE-METRIC` — DB growth from b64_json results
+- `D-PHASE5C-MULTI-ERROR-COLLECT` — adapter pre-checks fail-first (vs. collect-and-return)
+- `D-PHASE5C-LIVE-DB-CONSTRAINT-CHECK` — source-grep doesn't verify live DB constraint
+- `D-PHASE5C-DECOMPRESSED-CAP-DOCSTRING` — clarified inline; track if gzip-friendly upstream surfaces
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5C_DESIGN.md` — design + 12 /review-impl fixes
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5c-α row + 5d/5e/5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5d: `python scripts/workflow-gate.py size L 12 7 1` then `phase clarify`
+3. Reference impl: 5c-α at HEAD `<pending>` — duplicate the pattern with `video_gen` operation
+
+---
 
 ## Session 55 cycle 1 — Phase 5b · chat-service voice migration + audio proxy retirement + bytes-mode STT · /review-impl rounds (DESIGN: 3 HIGH + 7 MED + 5 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 2 MED + 4 LOW + 1 COSMETIC, 2 MED fixed inline)
 

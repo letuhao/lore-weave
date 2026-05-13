@@ -39,8 +39,15 @@ func TestIsStreamableOperation_WhitelistedOps(t *testing.T) {
 }
 
 func TestIsStreamableOperation_RejectsNonStreamable(t *testing.T) {
-	// These ops exist in openapi.JobOperation but don't go through the
-	// chat-streaming machinery — they need their own adapters.
+	// These ops exist in openapi.JobOperation but route OUTSIDE the
+	// chat-streaming machinery. After Phase 5a + 5c-α, the dedicated
+	// dispatch maps are:
+	//   - stt, tts → audioJobOperations (adapter.Transcribe/Speak)
+	//   - image_gen → imageJobOperations (adapter.GenerateImage)
+	//   - embedding, translation → not yet wired (LLM_OPERATION_NOT_SUPPORTED
+	//     at the worker until their dedicated adapters land)
+	// Either way, isStreamableOperation MUST return false for all of these
+	// so they don't accidentally route through the chat aggregator.
 	cases := []string{
 		"embedding",
 		"translation",
