@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-05-14 (session 55, cycle 3 shipped)
-> **HEAD:** `<pending>` (Phase 5d feat commit — backfill follows); Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
+> **HEAD:** `<pending-backfill>` (this commit) — Phase 5d feat commit @ `b3f046ab`; Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
 
 ## Session 55 cycle 3 — Phase 5d · video_gen adapter + SDK + openapi + 5-slot registration · /review-impl rounds (DESIGN: 1 HIGH + 2 MED + 4 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 1 COSMETIC, MED + 3 LOWs fixed inline)
@@ -101,7 +101,7 @@ Phase 5e suggested order: video-gen-service first (smaller migration, exercises 
 **Starting-cycle boilerplate:**
 1. `python scripts/workflow-gate.py status` confirm closed
 2. For Phase 5e: probably L for video-gen-service migration alone, XL if also book-service (depends on Go SDK decision)
-3. Reference impl: 5d at HEAD `<pending>` + Phase 5b chat-service voice migration for caller-side pattern
+3. Reference impl: 5d at HEAD `b3f046ab` + Phase 5b chat-service voice migration for caller-side pattern
 
 ---
 
