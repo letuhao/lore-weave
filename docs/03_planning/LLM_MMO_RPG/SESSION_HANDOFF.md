@@ -81,6 +81,86 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-13 — TMP_001..TMP_008 Tilemap Foundation DRAFT seed + license-hygiene revision pass (SPIKE_03 graduation)
+
+### Session arc
+
+User initiated zone-map-generation discussion in continuation of SPIKE_03 (DRAFT 2026-04-27 — Tilemap World View concept validated). Three-phase session:
+
+1. **Deep prior-art analysis** of VCMI (open-source HoMM3 engine reimplementation, GPL v2+) — `lib/rmg/` + `lib/rmg/modificators/` algorithm pipeline + data model. Key patterns surveyed: zone-graph paradigm, force-directed placement, Penrose tiling for irregular zone shapes, modificator-with-dependency-graph pipeline, tiered treasure values, biome obstacle-set composition, "never seal a gap" connectivity invariant, 5-variant connection types, template inheritance pattern.
+
+2. **SPIKE_03 graduation → `features/00_tilemap/`** — 8 DRAFT feature docs authored (~3,800 lines initial seed) + new `TMP-*` catalog namespace claim (44 entries) + 2 new aggregates owned (`tilemap_view` T2/Channel non-cell-only + `tilemap_template` T2/Reality) + RealityManifest extension + 16 V1+30d reject rule_ids in `tilemap.*` namespace + 4 EVT-T row groups (T4/T3/T8/T5+T6) + 10 axioms (TMP-A1..A10) + 4 cross-aggregate consistency rules (TMP-C1..C4) + 12 deferrals (TMP-D1..D12).
+
+3. **License-hygiene revision pass** (same day, in response to user concern about copyleft licensing — VCMI is GPL v2+, LoreWeave is AGPL v3; technically compatible but cleaner stance is to treat VCMI as one of several surveyed prior-art implementations rather than a derivation source). User picked **"Heavy: clean-room rewrite"** + **"Bibliography + inline 'see also' attribution"** scope. Restructured all 8 docs as multi-game prior-art survey (HoMM3, Wesnoth, Civ V/VI, Dwarf Fortress, Caves of Qud, VCMI as one open-source reference, roguelike literature, EU4/CK3); renamed 5 verbatim-matching shapes to LoreWeave-distinct naming; algorithm citations switched to academic primary sources (Fruchterman & Reingold 1991, Penrose 1974, Kahn 1962, Tarjan 1976, Dijkstra 1965, Hart et al. 1968, Gamma et al. 1994, Kirkpatrick et al. 1983, Žára 2014, Yannakakis & Togelius 2018, Sudhakaran et al. 2023); added per-doc Prior Art bibliography sections to all 8 docs.
+
+4. **`/review-impl` adversarial pass** — found 4 HIGH + 2 MED issues (missed-target language in entry-point summaries: folder _index table, _LOCK.md release entry, ownership-matrix stable-ID prefix row, spikes _index graduation row + residual `setOccupied`/`d_neighbour_zones`/`d_completed`/etc. vcmi-shape identifiers in TMP_005 + TMP_007). All findings landed and re-verified clean via `grep` sweep.
+
+### Renamed shapes (LoreWeave-distinct naming)
+
+| Pre-revision (vcmi-verbatim) | Revised (LoreWeave-distinct) |
+|---|---|
+| `ConnectionKind { Guarded, Wide, Fictive, Repulsive, ForcePortal }` | `PassageKind { Threshold, Open, Hint, Adversarial, Portal }` |
+| `ZoneType` (6 variants) | `ZoneRole` (4 V1+30d: Wilderness/Hub/Forbidden/Sea; V2+ adds AllyHome/RivalHome) |
+| `*LikeZone` inheritance fields (5 camelCase) | `inherit_*_from` (5 snake_case verb-phrase) |
+| `ETileType` (Free/Possible/Blocked/Used) | `TileState` (Walkable/Open/Obstacle/Occupied) |
+| Hardcoded biome composition rule | `BiomeSelectionRules` author-tunable on TilemapTemplate (engine defaults) |
+
+Pseudocode identifiers also renamed: `setOccupied` → `tile_state.set(tile, TileState::X)`; `d_neighbour_zones` → `neighbour_border_map`; `d_completed` → `completed_passages`; `connect_path` → `attach_walkable_path`; `other_side_connection` → `mark_passage_completed_from_neighbour`.
+
+### Feature design surface
+
+| ID | Name | Status | Lines |
+|---|---|---|---:|
+| TMP_001 | Tilemap Foundation (TMP) — core aggregate + 4-layer composition + tile state machine + MAP_001/CSC_001 integration + RealityManifest extension + `tilemap.*` RejectReason namespace | DRAFT 2026-05-13 | ~670 |
+| TMP_002 | Zone Placement Algorithm (TMP-PLACE) — Fruchterman-Reingold + simulated annealing + initial grid seed + Penrose tiling + fractalize | DRAFT 2026-05-13 | ~395 |
+| TMP_003 | Pipeline Modificators (TMP-PIPE) — modificator pattern + dependency graph + 7 V1+30d modificators + parallel/single-thread execution | DRAFT 2026-05-13 | ~455 |
+| TMP_004 | Template Authoring (TMP-TPL) — full schema + `inherit_*_from` inheritance + ZoneRole enum + finalization discipline + example wuxia template | DRAFT 2026-05-13 | ~530 |
+| TMP_005 | Biome & Obstacles (TMP-BIOME) — BiomeSelectionRules author-tunable + TerrainPainter + ObstaclePlacer detail | DRAFT 2026-05-13 | ~425 |
+| TMP_006 | Treasure & Objects (TMP-TR) — tiered TreasureTierSpec + ObjectManager service + "never seal a gap" connectivity invariant | DRAFT 2026-05-13 | ~360 |
+| TMP_007 | Connections & Guards (TMP-CONN) — PassageKind enum + 3-pass placement + dining-philosopher cross-zone locking + water route + monolith fallback | DRAFT 2026-05-13 | ~400 |
+| TMP_008 | LLM Integration L3+L4 (TMP-LLM) — V2 LLM zone classifier + V2 regional narration + cost model (~4-5K tokens/tilemap) + 05_llm_safety integration | DRAFT 2026-05-13 | ~410 |
+
+### Files landed
+
+- 9 new files in `features/00_tilemap/` (8 feature docs + `_index.md`)
+- 1 new catalog row `catalog/cat_00_TMP_tilemap_foundation.md` (44 entries TMP-1..TMP-44)
+- 4 boundary file updates (`_LOCK.md`, `01_feature_ownership_matrix.md`, `02_extension_contracts.md`, `99_changelog.md`)
+- 2 cross-ref updates (`features/_spikes/SPIKE_03_tilemap_world_view.md` graduation header; `features/_spikes/_index.md` row)
+
+Total: **~3,800 lines of design** across the new TMP folder + supporting updates.
+
+### Handoff notes for next session
+
+**Active:** none. License-hygiene revision pass complete; all HIGH/MED `/review-impl` findings landed and verified clean.
+
+**Next-step recommendations (priority order):**
+
+1. **TMP_001 closure pass** — Phase 3 review + §15 acceptance criteria walk (AC-TMP-1..10) + ~40 open questions resolution batch across TMP_001..TMP_008 → CANDIDATE-LOCK promotion. Mirror the WA/NPC/PLT closure-pass discipline from 2026-04-25/26 sessions.
+2. **Cross-feature integration annotation** — TMP_001 §14 lists 13 cross-feature integration points (MAP_001, CSC_001, PF_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model). Annotate consumer features at their next closure pass (DRAFT or CANDIDATE-LOCK).
+3. **V2 LLM layer PoC** — implement L3 zone classifier + L4 regional narration; cost validation; integrate with 05_llm_safety guardrails. Should be a separate spike or feature follow-up.
+4. **V3 RMG wizard scoping** — TMP-D1; player-facing parameter capture UX.
+5. **TMP_009 V2 sprite atlas** (mirror MAP_002 V1+ pattern) when art-asset pipeline lights up.
+
+**Implementation phase reminder (recorded in revision changelog entry):** when code is eventually written, MUST be clean-room. Engineers read algorithm descriptions in our design docs (academic primary sources cited); they do NOT transcribe vcmi C++ to Rust. Consulting vcmi for "is this approach reasonable" sanity check is fine; deriving code structure from vcmi source is not.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- 800-line hard cap forces split. All 8 TMP docs are well under cap (max TMP_001 ~670 lines).
+- Closure pass adds §15 acceptance walk (~10 scenarios) BEFORE CANDIDATE-LOCK promotion.
+- Cross-cutting / boundary-spanning features → spawn parallel agent via brief in `<folder>/00_AGENT_BRIEF.md`.
+- Event-model uses mechanism-level Option C taxonomy (T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative).
+
+### Raw count
+
+- **Commits:** 0 yet (working tree pending user authorization)
+- **Features designed:** 8 TMP docs all DRAFT (TMP_001..TMP_008)
+- **Boundary lock cycles:** 2 (DRAFT seed + license-hygiene revision; both single-commit combined `[claim+release]`)
+- **Cross-feature deferrals RESOLVED:** 0 (TMP-D1..D12 all new deferrals)
+- **`/review-impl` findings:** 4 HIGH + 2 MED + bonus → all landed; verified clean
+
+---
+
 ## Session 2026-04-25 → 2026-04-26 — Feature design wave + boundary discipline + event-model Option C + parallel-agent pattern
 
 ### Session arc

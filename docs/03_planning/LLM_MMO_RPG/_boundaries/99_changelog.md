@@ -6,6 +6,129 @@
 
 ---
 
+## 2026-05-13 (later same day) — TMP_001..TMP_008 license-hygiene revision pass — restructure as multi-game prior-art survey + rename verbatim-matching shapes + per-doc Prior Art bibliography sections
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; revision pass on existing TMP_001..TMP_008 DRAFT docs in response to user concern about copyleft licensing (VCMI is GPL v2+; LoreWeave is AGPL v3 — technically compatible but cleaner stance is to treat VCMI as one of several surveyed prior-art implementations rather than a derivation source)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in same commit (revision pass; same-day re-claim)
+  - `01_feature_ownership_matrix.md`: 2 ownership rows for `tilemap_view` + `tilemap_template` rewritten — removed "vcmi-derived" / "direct adopt from vcmi" language; renamed `ConnectionKind` (5 variants Guarded/Wide/Fictive/Repulsive/ForcePortal) → `PassageKind` (5 variants Threshold/Open/Hint/Adversarial/Portal); renamed `ZoneType` (6 variants PlayerStart/CpuStart/Treasure/Junction/Sealed/Water) → `ZoneRole` (4 variants V1+30d Wilderness/Hub/Forbidden/Sea + V2+ AllyHome/RivalHome); renamed `*LikeZone` inheritance fields → `inherit_*_from` (5 fields: inherit_treasure_from / inherit_terrain_from / inherit_mines_from / inherit_towns_from / inherit_custom_objects_from); renamed `ETileType` (Free/Possible/Blocked/Used) → `TileState` (Walkable/Open/Obstacle/Occupied); algorithm citations switched to academic literature primary
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** all 8 feature docs rewritten per revision:
+  - `features/00_tilemap/TMP_001_tilemap_foundation.md` (610 → ~700 lines; §1 expanded to multi-game prior-art survey; §1.2 LoreWeave-specific design choices clarified; renamed shapes throughout; §17 Prior Art bibliography appended with academic + genre + LoreWeave-internal cross-refs)
+  - `features/00_tilemap/TMP_002_zone_placement.md` (369 → ~620 lines; algorithm framing restructured from "adapted from vcmi" → academic-primary citations Fruchterman & Reingold 1991, Penrose 1974, Kirkpatrick et al. 1983, Glover 1990, Tarjan 1976, Dijkstra 1959; §10 Prior Art bibliography appended)
+  - `features/00_tilemap/TMP_003_pipeline_modificators.md` (457 → ~580 lines; restructured pipeline pattern as Strategy + Visitor (Gamma et al. 1994) + topological sort (Kahn 1962) + dining-philosophers (Dijkstra 1965); §7 Prior Art bibliography appended)
+  - `features/00_tilemap/TMP_004_template_authoring.md` (501 → ~620 lines; ZoneType → ZoneRole rename throughout; `*LikeZone` → `inherit_*_from` rename; example template updated; BiomeSelectionRules added as author-tunable field on TilemapTemplate; §11 Prior Art bibliography)
+  - `features/00_tilemap/TMP_005_biome_and_obstacles.md` (354 → ~480 lines; biome selection rule restructured from engine-baked "vcmi pattern" → author-tunable `BiomeSelectionRules` with sensible engine defaults; §10 Prior Art bibliography)
+  - `features/00_tilemap/TMP_006_treasure_and_objects.md` (355 → ~440 lines; tiered-loot pattern framed as genre-standard with Diablo + roguelike references; "never seal a gap" anchored to Tarjan 1976 connected-components; §9 Prior Art bibliography)
+  - `features/00_tilemap/TMP_007_connections_and_guards.md` (385 → ~470 lines; ConnectionKind → PassageKind rename; algorithm citations primary-academic; §14 Prior Art bibliography)
+  - `features/00_tilemap/TMP_008_llm_integration.md` (376 → ~420 lines; framing emphasizes LLM-PCG is novel territory with academic refs Sudhakaran et al. 2023, Todd et al. 2023, Charity et al. 2020, Smith et al. 2011; §12 Prior Art bibliography)
+  - `features/00_tilemap/_index.md`: framing changed from "vcmi-RMG inspiration mining" to "multi-game prior art surveyed"
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: catalog entries rewritten — removed all "vcmi-derived" / "direct adopt from vcmi" / "vcmi-aligned" language from entries TMP-1..TMP-43; new entry TMP-44 (V2+ multiplayer ZoneRole variants); algorithm foundations cited per academic refs in catalog preamble; total entries now 44 (was 43; +1 TMP-44)
+  - `features/_spikes/SPIKE_03_tilemap_world_view.md`: graduation status updated to reflect multi-game prior-art framing
+
+### Rename mapping (LoreWeave-distinct naming for verbatim-matching shapes)
+
+| Original (pre-revision; vcmi-verbatim) | Revised (LoreWeave-distinct) | Why renamed |
+|---|---|---|
+| `ConnectionKind { Guarded, Wide, Fictive, Repulsive, ForcePortal }` | `PassageKind { Threshold, Open, Hint, Adversarial, Portal }` | 5-variant partition was functionally identical to vcmi's `EConnectionType`; renamed to LoreWeave-distinct verbs (Threshold = gate; Hint = narrative-only) |
+| `ZoneType { PlayerStart, CpuStart, Treasure, Junction, Sealed, Water }` (6 variants) | `ZoneRole { Wilderness, Hub, Forbidden, Sea }` (4 variants V1+30d; V2+ adds AllyHome/RivalHome) | Matched vcmi `ETemplateZoneType` verbatim; renamed + V1+30d defers multiplayer variants (cleaner V-tier scope) |
+| `*LikeZone` inheritance fields (5 fields with vcmi-camelCase) | `inherit_*_from` (5 fields snake_case + verb-phrase form) | Snake_case + verb-phrase form is Rust-idiomatic; semantically equivalent; not vcmi-verbatim |
+| `ETileType { Free, Possible, Blocked, Used }` | `TileState { Walkable, Open, Obstacle, Occupied }` | Renamed to descriptive game-state terms; standard procedural-level-gen state machine (not vcmi-original) |
+| Hardcoded biome rule "1 mountain + 1-2 trees + lake xor crater + ..." | `BiomeSelectionRules` author-tunable field on TilemapTemplate (engine ships sensible defaults) | Shifts ownership from "vcmi's specific algorithm" to "engine config + author override" |
+
+### Genre prior art survey (TMP_001 §1.1)
+
+Multi-game survey added to TMP_001 §1.1 establishing convergent patterns across the genre:
+- Heroes of Might and Magic III (1999, NWC) — pioneered the zone-graph RMG paradigm
+- Battle for Wesnoth (2003+, GPL v2+) — open-source tile-based TBS
+- Civilization V / VI (Firaxis) — climate-band procedural maps
+- Dwarf Fortress (2002+, Bay 12) — multi-pass deterministic-seed world generation
+- Caves of Qud (2015+, Freehold) — biome composition + set-piece interleaving
+- VCMI (2007+, GPL v2+, open-source HoMM3 reimpl) — cited as one well-documented open-source reference; surveyed alongside the others; not framed as derivation source
+- Roguelike literature (Brogue, DCSS, NetHack) — tile state machines + connectivity invariants
+- EU4/CK3 (Paradox) — large-scale region graphs
+
+LoreWeave-specific design choices (TMP_001 §1.2) explicitly distinguished from genre-convergent patterns: 4-layer LLM augmentation (CSC_001 v3→v4-derived; novel), MAP_001-canonical-derived split, cell-tier-has-no-tilemap-view, schema-additive evolution V-tier ramp, Blake3-deterministic seeding, PassageKind partition, ZoneRole V-tier scope.
+
+### Per-doc Prior Art bibliography sections
+
+Each TMP_001..TMP_008 doc now ends with a Prior Art bibliography:
+- **Academic foundations** — algorithm sources from refereed literature
+- **Genre prior art** — comparable implementations in similar games (HoMM3 + VCMI + Wesnoth + Dwarf Fortress + Caves of Qud + Civ + others as relevant per topic)
+- **LoreWeave internal references** — cross-refs to dependent + related TMP docs and MAP_001/CSC_001/AIT_001/TDIL_001
+
+VCMI is cited consistently as "one well-documented open-source reference implementation" — visible at design-rationale points but never framed as derivation source.
+
+### Cumulative state post-revision
+
+- 8 feature docs ~4,300 lines total (slightly larger than initial seed due to bibliography sections + multi-game prior-art framing; no doc exceeds 800-line cap)
+- 1 catalog row (44 entries TMP-1..TMP-44)
+- 2 boundary file updates (ownership matrix entries rewritten; this changelog entry)
+- 1 SPIKE_03 cross-ref update
+- License-hygiene posture: cleaner separation between LoreWeave design + vcmi as one of multiple surveyed prior-art implementations
+- Implementation phase note: when code is written, MUST be clean-room. Read the algorithm descriptions in the design docs (which cite academic primary sources); do NOT transcribe vcmi C++ to Rust. Engineers may consult vcmi for "is this approach reasonable" sanity checks but must not derive code structure from vcmi source.
+
+---
+
+## 2026-05-13 — TMP_001 Tilemap Foundation DRAFT seed — namespace claim + RealityManifest extension + 4 new EVT-T row groups (SPIKE_03 graduation)
+
+> **⚠ SUPERSEDED 2026-05-13 (same day):** This entry describes the initial DRAFT seed commit. The shape names (`ConnectionKind`/`ZoneType`/`*LikeZone`/`ETileType`) + derivation framing ("direct adopt from vcmi", "adapted from vcmi", "vcmi RMG-inspired") below were superseded by the **license-hygiene revision pass** documented in the entry above (changelog top). Current authoritative names: `PassageKind`/`ZoneRole`/`inherit_*_from`/`TileState` with values Walkable/Open/Obstacle/Occupied. Current framing: multi-game prior-art survey with vcmi as one cited open-source reference, not derivation source. This entry preserved as historical record of the original seed commit.
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; single-commit cycle (DRAFT seed; no Phase 3 review yet — closure pass pending)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in same commit (DRAFT seed only); _Last released_ entry below
+  - `01_feature_ownership_matrix.md`: 2 new aggregate rows (`tilemap_view` T2/Channel non-cell-only + `tilemap_template` T2/Reality) + `tilemap.*` namespace prefix appended to row 125 + `TMP-*` stable-ID prefix row appended after MAP-* + 4 new EVT-T row groups (EVT-T4 sub-types `TilemapBorn`+`ZonesPlaced` + EVT-T3 `aggregate_type=tilemap_view`/`tilemap_template` + EVT-T8 sub-shapes `Forge:RegenTilemap`+`Forge:EditTemplate`+`Forge:OverridePlacement` + EVT-T5/T6 V2 LLM layer reservations)
+  - `02_extension_contracts.md`: §2.X new subsection — RealityManifest extension fields `tilemap_templates: Option<HashMap<ChannelTier, TilemapTemplateRef>>` + `tilemap_defaults: Option<TilemapDefaults>` (BOTH OPTIONAL V1+30d, engine-defaulted) with TilemapDefaults schema sketch
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_tilemap/_index.md`: NEW folder + index (TMP_001..TMP_008 list)
+  - `features/00_tilemap/TMP_001_tilemap_foundation.md`: NEW (core doc; ~700 lines; aggregate `tilemap_view` + `tilemap_template` + 4-layer composition + tile state machine + MAP_001 integration + RealityManifest ext + `tilemap.*` namespace 16+6 rule_ids + axioms TMP-A1..A10 + cross-aggregate consistency TMP-C1..C4 + deferrals TMP-D1..D11)
+  - `features/00_tilemap/TMP_002_zone_placement.md`: NEW (~600 lines; force-directed Fruchterman-Reingold + Penrose tiling + fractalize — adapted from vcmi `CZonePlacer` + `PenroseTiling` + `Zone::fractalize`)
+  - `features/00_tilemap/TMP_003_pipeline_modificators.md`: NEW (~600 lines; modificator pattern + dependency graph + parallel execution + 7 V1+30d modificators catalog — adapted from vcmi `Modificator` base + `RmgMap::addModificators`)
+  - `features/00_tilemap/TMP_004_template_authoring.md`: NEW (~500 lines; full schema + `*LikeZone` inheritance + ZoneType/ConnectionKind enums + example template + schema-additive evolution discipline)
+  - `features/00_tilemap/TMP_005_biome_and_obstacles.md`: NEW (~500 lines; biome obstacle-set architecture + TerrainPainter + ObstaclePlacer detail — direct adopt from vcmi Biome_Format.md)
+  - `features/00_tilemap/TMP_006_treasure_and_objects.md`: NEW (~550 lines; tiered TreasureTierSpec + TreasurePlacer + ObjectManager + "never seal a gap" connectivity invariant — direct adopt from vcmi)
+  - `features/00_tilemap/TMP_007_connections_and_guards.md`: NEW (~500 lines; 5-variant ConnectionKind + 3-pass placement algorithm + dining-philosopher cross-zone locking + water route + monolith fallback — direct adopt from vcmi `ConnectionsPlacer`)
+  - `features/00_tilemap/TMP_008_llm_integration.md`: NEW (~500 lines; L3 LLM zone classifier + L4 regional narration + cost model + 05_llm_safety integration + AIT-A4 hybrid 2-stage reuse; V1+30d schema-reserved, V2 active)
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: NEW namespace claim (43 catalog entries TMP-1..TMP-43; V1+30d active L1+L2 + V2 LLM + V3 RMG wizard reservations; cross-refs to all TMP_001..TMP_008 docs + vcmi source files)
+  - `features/_spikes/SPIKE_03_tilemap_world_view.md`: graduation status added (SPIKE_03 marked "graduated 2026-05-13 → TMP_001"; cross-ref to new TMP folder)
+  - `features/_spikes/_index.md`: SPIKE_03 status updated to "GRADUATED"
+- **Graduated from:** [`features/_spikes/SPIKE_03_tilemap_world_view.md`](../features/_spikes/SPIKE_03_tilemap_world_view.md) DRAFT 2026-04-27
+- **Inspiration:** VCMI Random Map Generator — `lib/rmg/` + `lib/rmg/modificators/` — adapted as foundation tier. Concrete VCMI file refs catalogued in TMP_001 §1.2 adaptation table.
+
+### Architectural decisions captured in this seed
+
+| Decision | Where |
+|---|---|
+| Cell tier has NO `tilemap_view`; CSC_001 16×16 interior authoritative for cells | TMP-A1 |
+| 4-layer composition mirrors CSC_001 v3→v4 (L1 hand-authored + L2 procedural + L3 LLM classifier V2 + L4 LLM narration V2) | TMP-A2 |
+| 5-variant ConnectionKind direct adopt from vcmi (Guarded/Wide/Fictive/Repulsive/ForcePortal) | TMP-A3 |
+| Deterministic seed = blake3(reality_id || channel_id || template_id || seed_offset); replay-deterministic per TDIL-A9 | TMP-A4 |
+| 4-state TileState (Free/Possible/Blocked/Used) direct adopt from vcmi ETileType | TMP-A5 |
+| MAP_001 author-positioned (x, y) is canonical source of truth; TMP_001 derives tile_coord via linear scale + subscribe pattern | TMP-A6 |
+| "Never seal a gap" connectivity invariant — every placement preserves zone path-connectivity | TMP-A7 |
+| Schema-additive evolution V1+30d → V2 → V3 (additive only; no field removal; no field type change; mirror of vcmi additive template format) | TMP-A8 |
+| LLM operates on zone summaries only; never sees raw tiles; cost independent of grid size | TMP-A9 |
+| Modificator pipeline with explicit dependency graph + parallel execution + single-thread debug mode | TMP-A10 |
+| V-tier target: V1+30d L1+L2 procedural pipeline / V2 L3+L4 LLM layers / V3 RMG wizard + paint UX | TMP-1..TMP-43 catalog tier columns |
+
+### V-tier slice scope
+
+| Tier | What ships |
+|---|---|
+| **V1+30d** | Engine-only generation (deterministic). All foundation aggregates + 7 modificators + 6 vcmi-derived zone-placement algorithms + biome obstacle-set + tiered treasure + "never seal gap" invariant. `llm_enabled: false` default. |
+| **V2** | LLM augmentation lights up: L3 zone classifier + L4 regional narration (cached). Cost ~10-15K tokens per tilemap initial; ~$1 per reality one-time. Travel encounters + terrain movement modifiers + sprite atlas pipeline. |
+| **V3** | RMG wizard (author params → seed → full reality bootstrap) + paint UX + multi-level verticality + cross-tier portals. Player-facing reality customization. |
+
+### Notes for next session
+
+- §15 acceptance criteria walk pending (AC-TMP-1..10 placeholder filled but not walked). Closure pass (Phase 3 review + criteria walk) required for CANDIDATE-LOCK.
+- TMP-Q1..Q8 in TMP_001 §12 + TMP-PLACE-Q1..Q3 + TMP-PIPE-Q1..Q4 + TMP-TPL-Q1..Q5 + TMP-BIOME-Q1..Q4 + TMP-TR-Q1..Q6 + TMP-CONN-Q1..Q5 + TMP-LLM-Q1..Q7 open questions across the 8 docs (~40 total) — deep-dive batch resolution at closure pass.
+- Cross-aggregate consistency rules TMP-C1..TMP-C4 need slot allocation in `03_validator_pipeline_slots.md` (deferred; reserved schema only at this seed).
+- Cross-feature integration NOT yet annotated: MAP_001 §7 subscribe-pattern; CSC_001 §11 cell-as-object on tilemap; AIT_001 AIT-A4 reuse; TDIL_001 TDIL-A9 satisfaction; PL_001 §13 travel cost. Annotate at closure pass.
+
+---
+
 ## 2026-04-27 — PO_001 Player Onboarding CANDIDATE-LOCK closure commit 4/4 — final lock release + cross-feature deferral RESOLVED annotations
 
 - **Lock RELEASED** — 4-commit cycle complete (wireframes Phase 0 19855a5b + 4c4fd6d7 + Phase 0 backend kickoff 9245666c + DRAFT 2/4 4106410c + Phase 3 cleanup 3/4 f41077f4 + closure 4/4 this commit); single combined `[boundaries-lock-release]` commit

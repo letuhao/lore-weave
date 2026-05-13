@@ -691,6 +691,43 @@ pub struct RealityManifest {
 4. **Per-reality opt-in.** A reality MAY omit feature-specific fields; the feature defaults apply (e.g., no `lex_config` → Lex Permissive default; no `mortality_config` → Permadeath default).
 5. **Composability.** RealityManifest is composed at book-ingestion time; multiple ingestion-pipeline contributors may add their parts.
 
+### §2.X TMP_001 RealityManifest extensions (DRAFT 2026-05-13)
+
+Two new fields, both OPTIONAL V1+30d (engine-defaulted):
+
+```rust
+pub struct RealityManifest {
+    // ... existing fields ...
+
+    /// V1+30d: None → engine uses `tilemap_defaults.default_template_per_tier` lookup.
+    /// Some(map) → per-tier template selection; tiers not in map fall back to defaults.
+    pub tilemap_templates: Option<HashMap<ChannelTier, TilemapTemplateRef>>,
+
+    /// V1+30d: None → engine uses hardcoded sensible defaults (256/192/128/64 grid, parallel mode, LLM off).
+    /// Some(defaults) → author overrides grid sizes, LLM enablement, single-thread mode, skip-tier list, etc.
+    pub tilemap_defaults: Option<TilemapDefaults>,
+}
+
+pub struct TilemapDefaults {
+    pub grid_size_per_tier: HashMap<ChannelTier, GridSize>,         // default: 256×256 / 192×192 / 128×128 / 64×64
+    pub default_template_per_tier: HashMap<ChannelTier, TilemapTemplateRef>,
+    pub default_water_content: WaterContent,                        // default: None
+    pub default_monster_strength: MonsterStrength,                  // default: Normal
+    pub llm_enabled: bool,                                          // V1+30d default false; V2 default true
+    pub single_thread: bool,                                        // default false (parallel)
+    pub skip_tier: BTreeSet<ChannelTier>,                          // tiers to NOT generate tilemaps for; UI falls back to MAP_001 graph view
+    pub generation_timeout_seconds: u32,                            // default 30
+    pub force_directed_max_iterations: u32,                         // default 1000
+    pub force_directed_max_wall_clock_seconds: u32,                 // default 5
+}
+```
+
+**Owner:** TMP_001 Tilemap Foundation (DRAFT 2026-05-13). Schema-additive per TMP-A8 (V1+30d → V2 → V3 only adds fields/variants; never removes/changes).
+
+**Engine defaults when both fields are None:** every non-cell channel gets a `tilemap_view` at RealityManifest bootstrap via canonical default template per tier. Cell channels skipped (CSC_001 authoritative).
+
+**Cross-feature dependencies:** TMP_001 derives child-cell anchor positions from MAP_001 `map_layout` author-positioned (x, y). MAP_001 is canonical source of truth; TMP_001 is derived render layer (TMP-A6).
+
 ### Pending action
 
 Creating `features/01_infrastructure/IF_001_reality_manifest.md` to formally own the envelope is a deferred action. Until that feature ships, this contract IS the truth — features cite "per `_boundaries/02_extension_contracts.md` §2".
