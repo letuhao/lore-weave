@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-05-13 (session 55, cycle 1 shipped)
-> **HEAD:** `<pending>` (Phase 5b feat commit — backfill commit follows); Phase 5a closed at `2317bcb0` (session 54 cycle 1); Phase 4d closed at `3890d8a9` (session 53 cycle 13)
+> **HEAD:** `<pending-backfill>` (this commit) — Phase 5b feat commit @ `58fd1acd`; Phase 5a closed at `2317bcb0` (session 54 cycle 1); Phase 4d closed at `3890d8a9` (session 53 cycle 13)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
 
 ## Session 55 cycle 1 — Phase 5b · chat-service voice migration + audio proxy retirement + bytes-mode STT · /review-impl rounds (DESIGN: 3 HIGH + 7 MED + 5 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 2 MED + 4 LOW + 1 COSMETIC, 2 MED fixed inline)
