@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-05-14 (session 55, cycle 2 shipped)
-> **HEAD:** `<pending>` (Phase 5c-α feat commit — backfill follows); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1); Phase 4d closed at `3890d8a9` (session 53 cycle 13)
+> **HEAD:** `<pending-backfill>` (this commit) — Phase 5c-α feat commit @ `12fe6273`; Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1); Phase 4d closed at `3890d8a9` (session 53 cycle 13)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
 
 ## Session 55 cycle 2 — Phase 5c-α · image_gen adapter + SDK + openapi · /review-impl rounds (DESIGN: 0 HIGH + 5 MED + 6 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 4 LOW + 1 COSMETIC, MED + 2 LOWs fixed inline)
@@ -100,7 +100,7 @@ Phase 5e requires the Go SDK question to be settled (build full SDK vs. inline s
 **Starting-cycle boilerplate:**
 1. `python scripts/workflow-gate.py status` confirm closed
 2. For Phase 5d: `python scripts/workflow-gate.py size L 12 7 1` then `phase clarify`
-3. Reference impl: 5c-α at HEAD `<pending>` — duplicate the pattern with `video_gen` operation
+3. Reference impl: 5c-α at HEAD `12fe6273` — duplicate the pattern with `video_gen` operation
 
 ---
 
