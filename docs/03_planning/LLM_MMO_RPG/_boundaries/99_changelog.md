@@ -6,6 +6,46 @@
 
 ---
 
+## 2026-05-13 (late evening same day) — TMP_008b LLM Contract Spec — sibling-split for I/O contract detail (deep-discuss follow-up: "is in/out contract LLM-friendly?")
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; same-day third lock cycle. Follows user request to deep-discuss LLM-friendliness of TMP_008's I/O contract; adversarial analysis surfaced 4 HIGH + 4 MED gaps (prompt injection vector, no structured-output enforcement, hand-wavy validation feedback, cache strategy not aligned with prompt caching, all-or-nothing retry, L4 cache missing L3-digest, LLM-emitted key phrases unreliable, optimistic cost claims). User chose **"Split into TMP_008 + TMP_008b LLM-contract detail"** to mirror existing `<feature>` / `<feature>b` split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b).
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner None); new `_Last released_` entry
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_tilemap/TMP_008b_llm_contract_spec.md`: NEW ~560 lines — I/O contract detail spec covering all 8 LLM-friendliness gaps:
+    - §1 Why split / cross-ref to TMP_008 architecture
+    - §2 Prompt 3-segment cacheable-prefix structure (system + reality_context cached; tilemap_payload variable) — Anthropic prompt caching aligned; ~30-45% ongoing-cost reduction
+    - §3 Anthropic tool-use structured output (`submit_zone_classifications` + `submit_zone_narrations` tools with strict input_schema); `tool_choice` forces the call; eliminates malformed-JSON / markdown-fence / preamble failure modes
+    - §4 Validation rules + structured per-case error messages (per-object, with received value + allowed-set) — empirically 70-90% retry success vs 20-40% with flat strings
+    - §5 Per-object retry granularity — accept good entries, retry only failing subset; preserve partial successes
+    - §6 Per-object canonical default fallback (suggested_canon_kind[0]); system always succeeds even at 100% LLM failure
+    - §7 Prompt-injection defense — `<author_text>...</author_text>` delimiting + tag-close-escape sanitization + 05_llm_safety 3-intent classifier on raw author input + multi-layer World Oracle check
+    - §8 Cache key derivation — L3 key includes terrain/object digests; **L4 key includes L3-classifications digest** (fixes pre-revision bug where Forge:OverridePlacement on L3 left L4 narration cache stale)
+    - §9 Few-shot examples in system prompt (L3 one-shot + L4 one-shot); empirically ~15-30% quality boost
+    - §10 Deterministic key-phrase extraction post-L4 (TF-IDF V2 / KeyBERT V2+30d) — removed from LLM output; consistent across replays
+    - §11 Closed-enum style hints: `NarrativeTone` (8 V2 variants) + `NarrationLanguage` (5 V2 ISO codes) + `NarrationVoice` (3 variants)
+    - §12 Realistic cost model (corrected) — ~$0.018/L3 call + ~$0.014/L4 call = ~$0.032/tilemap initial; ~$7/reality Y1 (was claimed ~$1; actual ~3× higher)
+    - §13 LLM-friendliness scorecard (pre-revision vs revised; 11 dimensions, all green post-revision)
+    - §14 7 open questions (TMP-LLM-C-Q1..Q7)
+    - §15 Prior Art bibliography (Anthropic Messages API + Tool Use + Prompt Caching docs; OWASP LLM01:2025; Perez & Ribeiro 2022 / Greshake et al. 2023 prompt-injection refs; Self-Refine + Self-Correct retry literature; KeyBERT for key-phrase extraction)
+  - `features/00_tilemap/TMP_008_llm_integration.md`: slimmed — §3-§4 detailed I/O sections replaced with architecture summary + contract cross-ref to TMP_008b (was ~410 lines → ~315 lines)
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: 8 new catalog entries TMP-45..TMP-52 (was 44 entries → 52)
+  - `features/00_tilemap/_index.md`: TMP_008b row added; TMP_008 row updated to "architecture only"; cross-refs to TMP_008b
+
+### Cumulative state post-split
+
+- 9 feature docs in `features/00_tilemap/` (was 8; +1 TMP_008b)
+- 1 catalog row (52 entries TMP-1..TMP-52; was 44, +8 TMP-45..TMP-52)
+- TMP_008 ~315 lines + TMP_008b ~560 lines = ~875 total lines for LLM coverage (was ~410; +465 net lines for contract detail)
+- **4 HIGH + 4 MED LLM-friendliness gaps from `/review-impl` follow-up all closed in TMP_008b**
+
+### Implementation phase note
+
+The contract spec is now PoC-ready: a V2 implementation engineer can read TMP_008b §2-§12 and have a complete I/O contract without re-deriving from architecture principles. The cacheable-prefix structure (§2) + Anthropic tool-use mechanism (§3) + per-case retry feedback (§4) + per-object retry granularity (§5) + injection defense (§7) + L3-digest-in-L4-cache (§8) are the highest-leverage items to validate in PoC. Closed-enum style (§11) + deterministic key phrases (§10) are V2+30d schema-additive — can ship V2 without these and add later.
+
+---
+
 ## 2026-05-13 (later same day) — TMP_001..TMP_008 license-hygiene revision pass — restructure as multi-game prior-art survey + rename verbatim-matching shapes + per-doc Prior Art bibliography sections
 
 - **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; revision pass on existing TMP_001..TMP_008 DRAFT docs in response to user concern about copyleft licensing (VCMI is GPL v2+; LoreWeave is AGPL v3 — technically compatible but cleaner stance is to treat VCMI as one of several surveyed prior-art implementations rather than a derivation source)

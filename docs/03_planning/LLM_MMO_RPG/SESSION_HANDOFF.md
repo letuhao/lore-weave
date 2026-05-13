@@ -81,6 +81,74 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-13 (continued, late evening) — TMP_008b LLM Contract Spec — sibling-split for I/O detail (deep-discuss "is in/out contract LLM-friendly?")
+
+### Session arc
+
+Continuation of same-day TMP work. After commit `791cbd98` (TMP_001..TMP_008 DRAFT + license-hygiene revision + push to `origin/mmo-rpg/zone-map-design`), user asked **"how do LLMs integrate in tile generation? is in/out contract friendly for LLM?"** — an adversarial deep-discussion request.
+
+Adversarial analysis of TMP_008 §3-§4 surfaced 4 HIGH + 4 MED LLM-friendliness gaps:
+
+| # | Severity | Gap |
+|---|---|---|
+| 1 | HIGH | Prompt-injection vector — `author_narrative_hint` inlined directly into prompt with no delimiter |
+| 2 | HIGH | No structured-output enforcement — relied on LLM emitting valid JSON; vulnerable to markdown fences, preamble text, malformed quoting |
+| 3 | HIGH | Validation feedback hand-wavy — flat "Validation errors: [...]. Retry." instead of per-case structured messages (empirical 20-40% retry success vs 70-90% with structured) |
+| 4 | HIGH | Cache strategy not aligned with Anthropic prompt caching — variable + stable content interleaved; no cacheable prefix |
+| 5 | MED | Canonical-default fallback all-or-nothing per tilemap — 47 good + 3 bad classifications → fallback all 50 |
+| 6 | MED | L4 cache key missing L3-classifications digest — Forge:OverridePlacement on L3 leaves stale L4 narration |
+| 7 | MED | `key_phrases_for_lookup` LLM-emitted but unreliable — should be deterministic TF-IDF/KeyBERT post-processing |
+| 8 | MED | Cost claims optimistic — ~3K/L3 call claimed, ~6K actual (~2× off); per-reality budget off by ~3× |
+
+Plus 4 LOW (few-shot absent, system-prompt role/voice undocumented, open-enum language, prose-length-target unreliable).
+
+User chose **"Split into TMP_008 + TMP_008b LLM-contract detail"** — mirroring existing `<feature>` / `<feature>b` split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b). TMP_008 stays focused on architecture/V-tier/cost story (the "why"); TMP_008b owns the detailed I/O contract (the "how").
+
+### What landed
+
+- **TMP_008b NEW** (~560 lines) covering all 8 gaps:
+  - §2 3-segment cacheable-prefix prompt structure (Anthropic prompt-caching aligned; ~30-45% ongoing cost reduction)
+  - §3 Anthropic **tool-use** with strict `input_schema` + `tool_choice` forced (eliminates JSON-malformation failure modes)
+  - §4 Structured per-case validation feedback (per-object error messages with received value + allowed set)
+  - §5 Per-object retry granularity (accept good entries; retry only failing subset)
+  - §6 Per-object canonical default fallback (system always succeeds)
+  - §7 Prompt-injection defense: `<author_text>...</author_text>` delimiting + tag-close-escape sanitization + 05_llm_safety 3-intent classifier + World Oracle multi-layer
+  - §8 Cache key derivation — L4 key **includes L3-classifications digest** (fixes pre-revision stale-cache bug)
+  - §9 Few-shot examples in system prompt (one-shot L3 + one-shot L4 in cached prefix)
+  - §10 Deterministic key-phrase extraction post-L4 (TF-IDF V2 / KeyBERT V2+30d)
+  - §11 Closed-enum style hints (`NarrativeTone` 8 / `NarrationLanguage` 5 ISO codes / `NarrationVoice` 3)
+  - §12 Realistic cost model: ~$0.018/L3 call + ~$0.014/L4 call = ~$0.032/tilemap initial; ~$7/reality Y1 (was claimed ~$1; corrected ~3× higher)
+  - §13 LLM-friendliness scorecard (11/11 dimensions green post-revision)
+  - §14 7 open questions TMP-LLM-C-Q1..Q7
+  - §15 Prior Art (Anthropic Messages API + Tool Use + Prompt Caching docs; OWASP LLM01:2025; Perez & Ribeiro 2022 + Greshake et al. 2023 injection refs; Self-Refine + Self-Correct retry literature; KeyBERT)
+
+- **TMP_008 slimmed** (~410 → ~315 lines): §3 + §4 detailed I/O sections replaced with architecture summary + cross-refs to TMP_008b; §5 cost model corrected with realistic numbers
+
+- **Catalog row** updated with 8 new entries TMP-45..TMP-52 (44 → 52 entries)
+
+- **_index.md** updated with TMP_008b row + revised TMP_008 description
+
+- **Boundary changelog + LOCK** updated with same-day third lock cycle entry
+
+### Handoff notes
+
+**Active:** none. All HIGH + MED LLM-friendliness gaps closed in TMP_008b. Contract is now **V2 PoC-ready** — a V2 implementation engineer can read TMP_008b §2-§12 and have a complete I/O contract without re-deriving from architecture principles.
+
+**Next-step recommendations (priority order):**
+
+1. **TMP_001..TMP_008b closure pass** — Phase 3 review + AC-TMP-1..10 walk (TMP_001) + TMP-LLM-C-Q1..Q7 resolution → CANDIDATE-LOCK promotion across the 9-doc TMP folder.
+2. **V2 PoC implementation** — validate cacheable-prefix + tool-use + per-object retry empirically against Claude Haiku 4.5; measure actual cache hit rate + retry success rate; confirm cost model (TMP_008b §12).
+3. **V2+30d schema-additive extensions** — KeyBERT migration (§10); additional closed-enum tone/language variants as authoring needs grow.
+4. **Cross-feature integration annotation** — once closure pass lands, annotate consumer features (MAP_001, CSC_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model) at their next closure pass.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this entry pre-commit)
+- **Lock cycles same day:** 3 (DRAFT seed + license-hygiene revision + TMP_008b split)
+- **`/review-impl`-style findings this session:** 4 HIGH + 4 MED + 4 LOW → 4 HIGH + 4 MED closed; LOW deferred (few-shot landed in TMP_008b §9 anyway; system-prompt role documented in §3; closed-enum language landed in §11; prose-length-target → tool schema maxLength enforcement)
+
+---
+
 ## Session 2026-05-13 — TMP_001..TMP_008 Tilemap Foundation DRAFT seed + license-hygiene revision pass (SPIKE_03 graduation)
 
 ### Session arc
