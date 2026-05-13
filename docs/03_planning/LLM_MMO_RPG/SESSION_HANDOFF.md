@@ -144,6 +144,8 @@ Continuation of same-day TMP work. After commit `a103cf45` (TMP_008b LLM Contrac
 
 **Active:** none. TMP folder CLOSED for V1+30d design.
 
+**User signal at session close 2026-05-13:** _"next time we will continue discuss tile map generation or maybe do real implement as new service or module"_ — next session may stay in design mode (continue tilemap discussion; e.g., V3 RMG wizard scoping, additional V2+ deferrals, or cross-feature annotation passes) OR pivot to **implementation mode** (start the V2 PoC as a real tilemap-service module). Implementation-mode pickup: TMP_008b §2-§12 is the V2 PoC contract spec; engineer reads it + writes clean-room Rust (academic primary sources cited; do NOT transcribe vcmi C++; consult vcmi only for "is this approach reasonable" sanity check per closure-pass changelog). Likely impl-mode steps: scaffold `services/tilemap-service/` with DP-K1..K12 access + Anthropic Messages API client + zone-placer (Fruchterman-Reingold) + Penrose tiling + fractalize + modificator pipeline scaffold. Foundation tier prerequisites (DP, EF_001, PF_001, MAP_001, CSC_001, AIT_001, TDIL_001, PL_001) are all CANDIDATE-LOCK; TMP can build directly.
+
 **Next-step recommendations (priority order):**
 
 1. **V2 PoC implementation** — Validate TMP_008b contract empirically: cacheable-prefix structure (measure actual cache hit rate); Anthropic tool-use reliability (track tool_choice forced-call failure rate); per-object retry granularity (measure retry success rate vs flat-error retry); cost model accuracy (compare measured per-call cost to TMP_008b §12 estimates). Run on Claude Haiku 4.5 with a small reality sample. A/B test cache-key strategies (TMP-LLM-C-Q2). Surface gaps for V2 launch readiness.
