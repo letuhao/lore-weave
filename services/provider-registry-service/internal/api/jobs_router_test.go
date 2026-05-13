@@ -17,6 +17,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/loreweave/provider-registry-service/internal/provider"
 )
 
 func TestSubmitLlmJob_RequiresJWT(t *testing.T) {
@@ -625,6 +627,196 @@ func TestInternalSubmitLlmJob_ImageGen_RejectsChunkingConfig(t *testing.T) {
 			w.Code, w.Body.String())
 	}
 	if !strings.Contains(w.Body.String(), "chunking not supported for image_gen") {
+		t.Errorf("expected chunking-not-supported hint, got %s", w.Body.String())
+	}
+}
+
+// ── Phase 5d — video_gen handler-level validation tests ──────────────
+
+func buildVideoGenJSONRequest(t *testing.T, userID string, input map[string]any, chunking string) *http.Request {
+	t.Helper()
+	body := map[string]any{
+		"operation":    "video_gen",
+		"model_source": "user_model",
+		"model_ref":    uuid.NewString(),
+		"input":        input,
+	}
+	if chunking != "" {
+		body["chunking"] = json.RawMessage(chunking)
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/llm/jobs?user_id="+userID,
+		bytes.NewReader(bodyBytes),
+	)
+	req.Header.Set("X-Internal-Token", routerTestInternalToken)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func TestInternalSubmitLlmJob_VideoGen_ValidationPasses(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{
+			"prompt":   "a cinematic landscape pan at dawn",
+			"size":     "1920x1080",
+			"duration": 5,
+			"n":        1,
+		},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (validation-passed, no subsystem), got %d body=%s",
+			w.Code, w.Body.String())
+	}
+}
+
+// TestInternalSubmitLlmJob_VideoGen_ValidationPasses_WithInitImage — Phase 5d
+// img2vid path: caller supplies `init_image` field (NOT `image` per
+// /review-impl(DESIGN) HIGH#1). Should validate successfully and reach
+// 503 service-unavailable.
+func TestInternalSubmitLlmJob_VideoGen_ValidationPasses_WithInitImage(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{
+			"prompt":     "animate this scene",
+			"init_image": "iVBORw0KGgo...",
+		},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 with init_image, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_VideoGen_RejectsEmptyPrompt(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": ""},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "non-empty prompt") {
+		t.Errorf("expected 'non-empty prompt' hint, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_VideoGen_RejectsOversizePrompt(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	huge := strings.Repeat("a", 32001)
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": huge},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "exceeds 32000-char cap") {
+		t.Errorf("expected cap message, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_VideoGen_RejectsDurationOutOfRange(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	// 61s exceeds the 60s cap
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "a cat", "duration": 61},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for duration=61, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "duration must be 1..60") {
+		t.Errorf("expected duration-range message, got %s", w.Body.String())
+	}
+}
+
+// TestInternalSubmitLlmJob_VideoGen_RejectsNNot1 — Phase 5d locks n=1.
+func TestInternalSubmitLlmJob_VideoGen_RejectsNNot1(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "a cat", "n": 2},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for n=2, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "n must be 1") {
+		t.Errorf("expected n-must-be-1 hint, got %s", w.Body.String())
+	}
+}
+
+// TestInternalSubmitLlmJob_VideoGen_RejectsB64JsonFormat — Phase 5d /review-impl
+// MED#3: response_format=b64_json rejected at handler with use-url hint.
+func TestInternalSubmitLlmJob_VideoGen_RejectsB64JsonFormat(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "a cat", "response_format": "b64_json"},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for response_format=b64_json, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "url") {
+		t.Errorf("expected 'url' hint, got %s", body)
+	}
+	if !strings.Contains(body, "impractical for video") {
+		t.Errorf("expected 'impractical for video' hint, got %s", body)
+	}
+}
+
+// TestInternalSubmitLlmJob_VideoGen_RejectsOversizeInitImage — Phase 5d
+// /review-impl MED#2: init_image > MaxImg2VidInputBytes rejected.
+func TestInternalSubmitLlmJob_VideoGen_RejectsOversizeInitImage(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	oversize := strings.Repeat("A", provider.MaxImg2VidInputBytes+1)
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "animate", "init_image": oversize},
+		"",
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for oversize init_image, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "init_image exceeds") {
+		t.Errorf("expected 'init_image exceeds' hint, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_VideoGen_RejectsChunkingConfig(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildVideoGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"prompt": "a cat"},
+		`{"strategy":"paragraphs","size":15}`,
+	)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for chunking on video_gen, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "chunking not supported for video_gen") {
 		t.Errorf("expected chunking-not-supported hint, got %s", w.Body.String())
 	}
 }

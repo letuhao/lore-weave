@@ -163,6 +163,15 @@ func (w *Worker) Process(
 		return
 	}
 
+	// Phase 5d — video-gen dispatch. Routes BEFORE chat-streaming
+	// whitelist because video_gen uses adapter.GenerateVideo (not Stream),
+	// has no chunker, and no aggregator. Mirrors image dispatch above
+	// with VideoGenJobTimeout=30min ctx (3× longer than image).
+	if isVideoJobOperation(operation) {
+		w.processVideoGenJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
+		return
+	}
+
 	// Phase 4a-α Step 0 — op-whitelist. The chat-streaming machinery +
 	// per-op aggregator (cycle 20 jsonListAggregator) is the same wire
 	// shape for chat/completion AND for the *_extraction operations:

@@ -662,6 +662,7 @@ components:
         - stt
         - tts
         - image_gen
+        - video_gen
         - entity_extraction
         - relation_extraction
         - event_extraction
@@ -1103,3 +1104,125 @@ components:
             If upstream rewrote the prompt (DALL-E-3 safety-rewrite +
             gpt-image-1 caption-rewrite), the rewritten text. `null`
             otherwise.
+
+    # ── Video-gen operation schemas (Phase 5d) ────────────────────────
+    VideoGenInput:
+      type: object
+      required: [prompt]
+      description: |
+        Phase 5d. Input payload for `SubmitJobRequest` with
+        `operation: video_gen`. The gateway forwards to the upstream
+        provider's OpenAI-compatible video generation endpoint.
+
+        **Upstream path dispatch (/review-impl(DESIGN) HIGH#1)**:
+        when `init_image` is set, adapter POSTs to
+        `/v1/videos/generations/image-to-video`; otherwise to
+        `/v1/videos/generations/text-to-video`. Matches the actual
+        local-image-generator-service routes
+        ([G:/Works/local-image-generator-service/app/api/videos.py:168,220]).
+        The integration guide's singular `/v1/video/generations` is
+        aspirational and unimplemented.
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 32000
+          description: |
+            Text description of the desired video. Same cap as
+            ImageGenInput. Upstream models cap shorter (CLIP encoder
+            limits typical at 300-500 tokens for local backends).
+        size:
+          type: string
+          default: "1920x1080"
+          description: |
+            Video dimensions. Common: "1920x1080", "1080x1920",
+            "1080x1080", "1440x1080". Upstream validates supported
+            sizes per model.
+        duration:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 5
+          description: |
+            Video duration in seconds. Gateway caps at 1..60;
+            upstream-specific shorter caps surface as LLM_UPSTREAM_ERROR.
+        n:
+          type: integer
+          enum: [1]
+          default: 1
+          description: |
+            Number of videos. **n=1 only** in Phase 5d. Gateway rejects
+            n != 1 at handler + adapter. Multi-video deferred to a
+            follow-up if a real caller surfaces.
+        response_format:
+          type: string
+          enum: [url]
+          default: url
+          description: |
+            How to return video bytes. **url-only** per
+            /review-impl(DESIGN) MED#3 — b64_json is impractical for
+            video (realistic clips exceed 8MB MaxImageResponseBytes
+            cap). Handler rejects `b64_json` for video_gen with clear
+            "use url mode" hint. Asymmetric with image_gen (which
+            accepts both) — intentional.
+        style:
+          type: string
+          nullable: true
+          description: |
+            Optional style hint (model-dependent — Wan/LTX Video have
+            their own style vocabularies). `null` to omit.
+        init_image:
+          type: string
+          nullable: true
+          description: |
+            Optional base64-encoded image for image-to-video models
+            (Wan, LTX Video on local-image-generator-service). When
+            set, adapter dispatches to image-to-video upstream path.
+            Format: raw base64 of PNG/JPG bytes (no data URI prefix).
+            Field name `init_image` matches local-image-generator-service's
+            VideoGenerateRequest.init_image (NOT `image` per the stale
+            integration guide — /review-impl(DESIGN) HIGH#1).
+
+            **Size cap** (/review-impl(DESIGN) MED#2): caller-side
+            base64 string capped at 10MB (`MaxImg2VidInputBytes`).
+            Handler rejects oversize with
+            `LLM_INVALID_REQUEST: "init_image exceeds 10485760-byte cap"`.
+            Adapter belt-and-suspenders rejects with `ErrVideoInvalidParams`.
+
+    VideoGenResult:
+      type: object
+      required: [created, data]
+      description: |
+        Phase 5d. Result payload populated in `Job.result` when
+        `operation: video_gen` and `status: completed`.
+      properties:
+        created:
+          type: integer
+          description: Unix timestamp (seconds) when generation finished.
+        data:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            $ref: '#/components/schemas/VideoGenDataItem'
+
+    VideoGenDataItem:
+      type: object
+      description: |
+        Single generated video. `url` is populated (Phase 5d is
+        url-only per MED#3). `revised_prompt` is present if upstream
+        rewrote the prompt (rare for video — most local backends don't
+        have safety-system prompt rewriting).
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            Upstream-hosted video URL. Caller is responsible for
+            fetching and storing — gateway does NOT download. URL
+            lifetime is upstream-dependent. Caller MUST fetch
+            immediately after polling completed.
+        revised_prompt:
+          type: string
+          nullable: true
+          description: Upstream-rewritten prompt, if any. Null otherwise.

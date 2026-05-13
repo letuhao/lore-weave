@@ -51,6 +51,7 @@ from loreweave_llm.models import (
     TtsInput,
     TtsStreamRequest,
     UsageEvent,
+    VideoGenResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -696,6 +697,136 @@ class Client:
         if job.error is None:
             raise LLMUpstreamError(
                 f"image_gen job {submitted.job_id} failed without error body",
+                status_code=None,
+                body="",
+            )
+        raise from_code(job.error.code, job.error.message)
+
+    # ── Video generation (Phase 5d) ──────────────────────────────────
+
+    async def generate_video(
+        self,
+        prompt: str,
+        *,
+        model_source: ModelSource,
+        model_ref: str,
+        size: str | None = None,
+        duration: int | None = None,
+        response_format: Literal["url"] = "url",
+        style: str | None = None,
+        init_image: str | None = None,
+        user_id: str | None = None,
+        poll_interval_s: float = 1.0,
+        max_poll_interval_s: float = 30.0,
+    ) -> VideoGenResult:
+        """Phase 5d — submit video-gen job, wait for terminal, return
+        decoded result.
+
+        Polling defaults slower than image (1s initial, 30s max) because
+        video gen runs longer (ComfyUI Wan/LTX Video typically 5-15 min;
+        longer durations push 20+ min).
+
+        Note: `n` is intentionally NOT a parameter — Phase 5d locks to
+        n=1. Multi-video support deferred to a follow-up if a caller
+        surfaces a real need.
+
+        Note: `response_format` is `Literal["url"]` only — Phase 5d
+        rejects b64_json at handler with clear "impractical for video"
+        hint (/review-impl(DESIGN) MED#3). b64-encoded video exceeds
+        the 8MB MaxImageResponseBytes cap in practice.
+
+        Path dispatch: when `init_image` is provided, gateway routes to
+        the upstream image-to-video endpoint; otherwise text-to-video.
+        Field name `init_image` (not `image`) matches local-image-generator-
+        service's API per /review-impl(DESIGN) HIGH#1.
+
+        SDK signature follows Phase 5c-α /review-impl(BUILD) MED#1
+        learning — all optional fields use `None` sentinel with
+        `is not None` wire-inclusion checks, so explicit caller values
+        are never silently dropped.
+
+        Args:
+            prompt: Text description of the desired video (1..32000 chars).
+            model_source: 'user_model' or 'platform_model'.
+            model_ref: UUID-shaped model reference.
+            size: Video dimensions, e.g. "1920x1080". `None` → upstream
+                default.
+            duration: Video duration in seconds (1..60). `None` → upstream
+                default (≈5s typical).
+            response_format: Always "url" for video (b64_json rejected).
+            style: Optional style hint; `None` → omit.
+            init_image: Base64-encoded image for image-to-video mode;
+                `None` → text-to-video. Capped at 10MB on the wire.
+            user_id: Per-call override (mirrors submit_job).
+            poll_interval_s: Initial polling delay.
+            max_poll_interval_s: Max polling delay after backoff.
+
+        Returns:
+            `VideoGenResult` with exactly 1 `data` entry containing the
+            generated video URL.
+
+        Raises:
+            LLMInvalidRequest: malformed model_ref, empty prompt, or
+                handler-/adapter-side validation failure.
+            LLMVideoContentPolicy: upstream rejected the prompt by
+                content-policy / safety rules.
+            LLMVideoGenerationFailed: upstream video generation failed
+                for a non-policy reason.
+            LLMError subclass keyed by job.error.code on other failures.
+            LLMJobTerminal: status=cancelled.
+        """
+        try:
+            UUID(model_ref)
+        except (TypeError, ValueError) as exc:
+            raise LLMInvalidRequest(
+                f"model_ref must be UUID-shaped, got {model_ref!r}",
+            ) from exc
+
+        if not prompt or not prompt.strip():
+            raise LLMInvalidRequest("prompt must be non-empty")
+
+        input_payload: dict[str, Any] = {"prompt": prompt}
+        if size is not None:
+            input_payload["size"] = size
+        if duration is not None:
+            input_payload["duration"] = duration
+        # response_format Literal narrows to "url"; only send when
+        # explicitly set (omitting lets upstream pick its default).
+        if response_format != "url":
+            input_payload["response_format"] = response_format
+        if style is not None:
+            input_payload["style"] = style
+        if init_image is not None:
+            input_payload["init_image"] = init_image
+
+        request = SubmitJobRequest(
+            operation="video_gen",
+            model_source=model_source,
+            model_ref=model_ref,
+            input=input_payload,
+        )
+        submitted = await self.submit_job(request, user_id=user_id)
+        job = await self.wait_terminal(
+            submitted.job_id,
+            user_id=user_id,
+            poll_interval_s=poll_interval_s,
+            max_poll_interval_s=max_poll_interval_s,
+            transient_retry_budget=0,
+        )
+        if job.status == "completed":
+            if job.result is None:
+                raise LLMUpstreamError(
+                    "video_gen job completed but result is empty",
+                    status_code=None,
+                    body="",
+                )
+            return VideoGenResult.model_validate(job.result)
+        if job.status == "cancelled":
+            raise LLMJobTerminal(f"video_gen job {submitted.job_id} cancelled")
+        # status == "failed"
+        if job.error is None:
+            raise LLMUpstreamError(
+                f"video_gen job {submitted.job_id} failed without error body",
                 status_code=None,
                 body="",
             )

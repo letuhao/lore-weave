@@ -84,6 +84,17 @@ type Adapter interface {
 	// Adapters that don't support image generation return
 	// ErrOperationNotSupported.
 	GenerateImage(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateImageInput) (GenerateImageOutput, Usage, error)
+
+	// GenerateVideo — Phase 5d. Text-to-video (and optionally image-
+	// to-video) generation. Adapter dispatches to
+	// /v1/videos/generations/text-to-video or
+	// /v1/videos/generations/image-to-video based on InitImage presence
+	// (path matches local-image-generator-service per
+	// /review-impl(DESIGN) HIGH#1; NOT the singular /v1/video/generations
+	// from the stale integration guide). Returns single-data-item
+	// result. Adapters that don't support video gen return
+	// ErrOperationNotSupported.
+	GenerateVideo(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateVideoInput) (GenerateVideoOutput, Usage, error)
 }
 
 // ErrStreamNotSupported — returned by adapters that don't yet implement
@@ -158,6 +169,35 @@ var ErrImageInvalidParams = fmt.Errorf("image generation params invalid")
 // spend cap (cheapest BYOK image-gen still costs ≈$0.02/image; 4×
 // keeps a single-job-gone-wrong at the cost-of-coffee level).
 const MaxImagesPerJob = 4
+
+// ErrVideoGenerationFailed — Phase 5d. Generic upstream-failed sentinel
+// (not content-policy, not rate-limited; e.g., model loading, ambiguous
+// backend error, response body cap exceeded). Caller maps to
+// LLM_VIDEO_GENERATION_FAILED.
+var ErrVideoGenerationFailed = fmt.Errorf("video generation failed")
+
+// ErrVideoContentPolicy — Phase 5d. Content-policy rejection (rare for
+// most local video backends; reserved for OpenAI/managed services with
+// safety filters). Caller maps to LLM_VIDEO_CONTENT_POLICY_VIOLATION.
+var ErrVideoContentPolicy = fmt.Errorf("video generation rejected by content policy")
+
+// ErrVideoInvalidParams — Phase 5d /review-impl(DESIGN) MED-anticipated.
+// Adapter-level invariant rejection (Prompt empty, N out of range,
+// bad ResponseFormat, init_image oversize). Caller maps to
+// LLM_INVALID_REQUEST.
+//
+// Belt-and-suspenders with handler-level validation: handler caps via
+// validateVideoGenInput, adapter caps here so non-handler callers
+// can't bypass.
+var ErrVideoInvalidParams = fmt.Errorf("video generation params invalid")
+
+// MaxImg2VidInputBytes — Phase 5d /review-impl(DESIGN) MED#2.
+// Adapter-level cap on the base64-encoded init_image input field.
+// 10MB covers 4K PNGs (~10-15MB raw → 13-20MB b64) for typical cases
+// while bounding worst-case DB row size + worker goroutine memory.
+// Larger init frames typically don't help video gen quality (the
+// model resizes anyway).
+const MaxImg2VidInputBytes = 10 * 1024 * 1024
 
 // MaxImageResponseBytes — Phase 5c-α /review-impl(DESIGN) LOW#6.
 // Adapter-level cap on the upstream image response body. 8MB covers
@@ -286,6 +326,71 @@ type GenerateImageOutput struct {
 type GeneratedImage struct {
 	URL           string
 	B64JSON       string
+	RevisedPrompt string
+}
+
+// ── Video-gen types (Phase 5d) ────────────────────────────────────────
+
+// GenerateVideoInput mirrors the OpenAI-compatible video generation
+// request shape but with field names matching the actual
+// local-image-generator-service backend (NOT the stale integration
+// guide). Specifically, the img2vid conditioning field is named
+// `init_image` (per local-image-generator-service's VideoGenerateRequest),
+// NOT `image` per the guide.
+//
+// Path dispatch is handled by the adapter based on InitImage presence:
+//   - InitImage == ""  → POST /v1/videos/generations/text-to-video
+//   - InitImage != ""  → POST /v1/videos/generations/image-to-video
+//
+// /review-impl(DESIGN) HIGH#1 — the integration guide's singular
+// /v1/video/generations is aspirational; the real backend uses plural
+// + text-to-video/image-to-video sub-segments.
+type GenerateVideoInput struct {
+	// Prompt — required, max 32K (validated at handler). Adapter
+	// pre-checks empty.
+	Prompt string
+
+	// Size — e.g. "1920x1080"; "" → upstream default.
+	Size string
+
+	// Duration — seconds (1..60); 0 → omit (upstream default ≈5s).
+	Duration int
+
+	// N — Phase 5d locks to n=1. Adapter rejects N>1 or N<0 with
+	// ErrVideoInvalidParams.
+	N int
+
+	// ResponseFormat — Phase 5d accepts "url" only per
+	// /review-impl(DESIGN) MED#3 (b64_json impractical for video — even
+	// short clips exceed MaxImageResponseBytes). "" → omit (upstream
+	// defaults to url-like behavior).
+	ResponseFormat string
+
+	// Style — optional style hint; "" → omit.
+	Style string
+
+	// InitImage — Phase 5d. Optional base64-encoded image for
+	// image-to-video models (Wan, LTX Video). When non-empty, adapter
+	// dispatches to /v1/videos/generations/image-to-video. Capped at
+	// MaxImg2VidInputBytes (10MB).
+	InitImage string
+}
+
+// GenerateVideoOutput holds the parsed response from
+// /v1/videos/generations/{text,image}-to-video (sync mode).
+type GenerateVideoOutput struct {
+	// Created — unix timestamp when generation finished.
+	Created int64
+
+	// Data — Phase 5d locks to len(1). Single generated video.
+	Data []GeneratedVideo
+}
+
+// GeneratedVideo is a single video in the response. RevisedPrompt is
+// upstream-populated when the model rewrote the prompt (rare for video
+// — most local backends don't do safety-system rewriting).
+type GeneratedVideo struct {
+	URL           string
 	RevisedPrompt string
 }
 

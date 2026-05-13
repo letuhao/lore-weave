@@ -171,44 +171,6 @@ func (a *openaiAdapter) GenerateImage(
 	return out, Usage{}, nil
 }
 
-// isContentPolicyRejection detects DALL-E / gpt-image-1 / safety-system
-// content-policy errors. OpenAI returns:
-//   `{"error": {"code": "content_policy_violation", "type": "image_generation_user_error", ...}}`
-// for safety blocks. Status is typically 400 but sometimes 403 or
-// even 200-with-error-field.
-//
-// /review-impl(DESIGN) MED#3 — JSON-FIRST. The prior substring-only
-// heuristic would false-positive when upstream echoes the user's prompt
-// back in the error body (e.g., "your prompt 'X content_policy_violation Y'
-// rejected for…"). Structural JSON check on error.code is authoritative
-// when the body parses as JSON; substring fallback only fires for
-// non-JSON bodies (HTML error pages from misconfigured upstreams).
-func isContentPolicyRejection(status int, body []byte) bool {
-	var parsed struct {
-		Error struct {
-			Code string `json:"code"`
-			Type string `json:"type"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(body, &parsed); err == nil {
-		// JSON parsed successfully — error.code is authoritative.
-		switch parsed.Error.Code {
-		case "content_policy_violation", "moderation_blocked":
-			return true
-		}
-		if parsed.Error.Type == "image_generation_user_error" {
-			return true
-		}
-		// JSON parsed but no policy marker — definitively NOT a policy
-		// rejection; do NOT fall through to substring (avoids the
-		// prompt-echo false-positive).
-		return false
-	}
-	// JSON parse failed → non-JSON body. Substring fallback gated by
-	// high-signal status codes only.
-	if status != 400 && status != 403 {
-		return false
-	}
-	return bytes.Contains(body, []byte("content_policy_violation")) ||
-		bytes.Contains(body, []byte("safety_system"))
-}
+// isContentPolicyRejection is shared between openai_image.go and
+// openai_video.go — defined in openai_content_policy.go (Phase 5d
+// refactor per /review-impl(DESIGN) Fix #4).

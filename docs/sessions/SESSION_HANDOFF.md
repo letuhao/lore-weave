@@ -1,9 +1,109 @@
-# Session Handoff — Session 55 (cycle 2 shipped · Phase 5c-α image_gen adapter COMPLETE · Phase 5d video_gen next)
+# Session Handoff — Session 55 (cycle 3 shipped · Phase 5d video_gen adapter COMPLETE · Phase 5e caller migration next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-14 (session 55, cycle 2 shipped)
-> **HEAD:** `7675299f` (SESSION_PATCH backfill) — Phase 5c-α feat commit @ `12fe6273`; Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1); Phase 4d closed at `3890d8a9` (session 53 cycle 13)
+> **Date:** 2026-05-14 (session 55, cycle 3 shipped)
+> **HEAD:** `<pending>` (Phase 5d feat commit — backfill follows); Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 55 cycle 3 — Phase 5d · video_gen adapter + SDK + openapi + 5-slot registration · /review-impl rounds (DESIGN: 1 HIGH + 2 MED + 4 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 1 COSMETIC, MED + 3 LOWs fixed inline)
+
+**What shipped:** Gateway gains first-class `video_gen` operation on the unified contract via `POST /v1/llm/jobs operation=video_gen` → `adapter.GenerateVideo` → `VideoGenResult` (1 data entry; n=1 locked). Path dispatch `/v1/videos/generations/text-to-video` vs `/v1/videos/generations/image-to-video` based on init_image presence — matches actual local-image-generator-service routes (NOT singular `/v1/video/generations` per stale integration guide, per /review-impl(DESIGN) HIGH#1). Works against Wan, LTX Video, SDXL-derived video models. Caller-side URL→MinIO download. url-only response_format (b64 rejected per MED#3 — exceeds 8MB cap in practice). Image-to-video via `init_image` base64 field (NOT `image` per HIGH#1). `VideoGenJobTimeout=30min` (3× longer than image; ComfyUI multi-step workflows). Shared `isContentPolicyRejection` helper refactored from openai_image.go to NEW openai_content_policy.go.
+
+**Strategic context (Path B step 2):** 5c-α activated image_gen; this cycle ships video_gen; 5e migrates callers (book-service Go + video-gen-service Python); 5f deletes video-gen-service BFF. After 5f: unified gateway invariant fully realized for chat + extraction + translation + audio + image + video.
+
+**Files (23 — 15 MOD + 8 NEW)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5D_DESIGN.md` (status SHIPPED)
+- MOD `contracts/api/llm-gateway/v1/openapi.yaml` — `video_gen` JobOperation enum + `VideoGenInput` + `VideoGenResult` + `VideoGenDataItem` schemas
+- MOD `internal/migrate/migrate.go` — `video_gen` in CREATE TABLE inline + new ALTER block (Phase 4a-β idempotent pattern)
+- MOD `internal/provider/adapters.go` — Adapter +GenerateVideo + 3 types + 3 sentinels (`ErrVideoGenerationFailed`/`ErrVideoContentPolicy`/`ErrVideoInvalidParams`) + `MaxImg2VidInputBytes=10MB`
+- NEW `internal/provider/openai_content_policy.go` — refactored shared helper (was in openai_image.go); both image + video reference
+- MOD `internal/provider/openai_image.go` — removed isContentPolicyRejection (now in shared file); bytes/json imports still legitimate
+- NEW `internal/provider/openai_video.go` — full impl; path dispatch with **whitespace-trim before dispatch** (Fix LOW#2); adapter pre-checks; sync upstream mode; cross-ref comments
+- NEW `internal/provider/adapters_video.go` — Anthropic/Ollama/LM Studio stubs
+- NEW `internal/provider/adapters_video_test.go` — 13 tests (txt2vid + img2vid path dispatch + whitespace-init_image regression-lock + invariants + content-policy + oversize + typed upstream + stub-trio)
+- NEW `internal/jobs/worker_video.go` — `processVideoGenJob` + `runVideoGenJob` + `classifyVideoError` + `videoJobOperations` + `VideoGenJobTimeout=30min`
+- NEW `internal/jobs/worker_video_test.go` — 14 tests (2 whitelist + 1 3-way pairwise disjoint per Fix#2 + 1 5-place sync + 10 classify matrix)
+- MOD `internal/jobs/worker.go` — image+video dispatch hook before chat-streaming
+- MOD `internal/jobs/worker_test.go` — `TestIsStreamableOperation_RejectsNonStreamable` +video_gen + comment refresh
+- MOD `internal/api/jobs_handler.go` — `validateVideoGenInput` + `validJobOperations` +video_gen + provider import + cross-ref comment (Fix LOW#6)
+- MOD `internal/api/jobs_router_test.go` — +8 video_gen handler tests
+- MOD `services/notification-service/internal/consumer/consumer.go` — opLabel docstring updated
+- MOD `services/notification-service/internal/consumer/consumer_test.go` — +video_gen→"Video gen" fixture
+- MOD `sdks/python/loreweave_llm/errors.py` — `LLMVideoContentPolicy` + `LLMVideoGenerationFailed` + `_CODE_TO_EXC` entries
+- MOD `sdks/python/loreweave_llm/models.py` — `VideoGenDataItem` + `VideoGenResult` + JobOperation Literal +video_gen + max_length=1 inline comment (Fix LOW#4)
+- MOD `sdks/python/loreweave_llm/client.py` — `Client.generate_video()` with `init_image` (NOT `image` per HIGH#1) + `Literal["url"]` only per MED#3
+- MOD `sdks/python/loreweave_llm/__init__.py` — exports
+- NEW `sdks/python/tests/test_video_gen.py` — 11 tests incl. /review-impl(BUILD) MED#1 regression-lock `test_generate_video_rejects_b64_format_server_side` + HIGH#1 regression-lock `test_generate_video_img2vid_includes_init_image_field`
+- MOD `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5d row ✅ shipped + 5e/5f preview
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN (BEFORE BUILD).** 1 HIGH + 2 MED + 4 LOW + 1 COSMETIC. All 8 folded inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🔴 HIGH | Design's `/v1/video/generations` (singular) doesn't exist in actual local-image-generator-service (has `/v1/videos/generations/text-to-video` and `/image-to-video`). Field name was `image` per stale guide; backend uses `init_image`. Fixed by matching actual backend routes via path dispatch + renaming field to `init_image`. video-gen-service legacy path remains broken until 5e migrates it. |
+| 2 | 🟡 MED | `init_image` input no size cap → DB bloat risk from 50MB base64 strings. Added `MaxImg2VidInputBytes=10MB` const + handler + adapter checks. |
+| 3 | 🟡 MED | b64_json mode contract-symmetric with image_gen but realistic videos exceed 8MB cap. Handler rejects `b64_json` for video_gen with clear "use url mode" hint. Asymmetric with image_gen (intentional, documented). |
+| 4 | 🟢 LOW | Contract asymmetry note (b64 image-only). Documented. |
+| 5 | 🟢 LOW | Negative-N error message phrasing. Improved to "n must be >= 0". |
+| 6 | 🟢 LOW | Dual-maintenance risk for video-gen-service legacy. Flagged in §9. |
+| 7 | 🟢 LOW | 5-place sync test source-grep limitation. Accept (matches sibling tests). |
+| 8 | 🔵 COSMETIC | Polling defaults. Accept. |
+
+**Round 2 — BUILD output.** 0 HIGH + 1 MED + 5 LOW + 1 COSMETIC. MED + 3 LOWs fixed inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | Design listed but missing: SDK test for b64_json rejection. Added `test_generate_video_rejects_b64_format_server_side` (verifies SDK sends caller's bypassed type-hint value on wire, gateway rejects, SDK propagates as LLMInvalidRequest). |
+| 2 | 🟢 LOW | Whitespace-only init_image (`" "` or `"\n"`) routed to image-to-video → upstream parse error. Fixed: `strings.TrimSpace` before dispatch + adapter test `TestOpenAIAdapter_GenerateVideo_WhitespaceInitImage_RoutesAsTxt2Vid` (4 whitespace variants). |
+| 3 | 🟢 LOW | SDK doesn't validate init_image is real base64. Accept-and-document as `D-PHASE5D-SDK-INITIMAGE-VALIDATION`. |
+| 4 | 🟢 LOW | VideoGenResult max_length=1 not flagged for future relaxation. Added inline comment. |
+| 5 | 🟢 LOW | Multi-error-collect (adapter first-fail). Carry-over to existing `D-PHASE5C-MULTI-ERROR-COLLECT`. |
+| 6 | 🟢 LOW | No cross-reference comment between handler + adapter validation layers. Added mirror comments in both. |
+| 7 | 🔵 COSMETIC | Test naming asymmetry. Accept. |
+
+### Verify evidence
+```
+provider-registry-service: go build/vet/test ./...   ALL GREEN
+  internal/api:                                       +8 video_gen handler tests
+  internal/jobs:                                      +14 video_gen worker tests
+  internal/provider:                                  +13 video_gen adapter tests
+  internal/migrate:                                   no tests (compile-only) — DB CHECK additive ALTER
+notification-service consumer:                        +video_gen op-label fixture, pass
+SDK pytest sdks/python/tests/:                       196 passed (was 185; +11 new)
+chat-service pytest:                                 180 passed unchanged
+```
+
+### What's NEXT for the next agent
+
+**Phase 5e (XL)** — caller migration. **Two callers**, each needs a design decision:
+
+1. **book-service** at [internal/api/media.go:449](services/book-service/internal/api/media.go#L449) — Go service. Currently calls `/v1/images/generations` directly via http.Client. Needs Go SDK OR thin Go HTTP shim to use `image_gen` via the unified gateway. **Decision needed**: build a full Go SDK (parallel to Python SDK; would also benefit future Go services like auth/sharing/glossary) vs. inline shim (60-100 LOC; throwaway for 5e only).
+
+2. **video-gen-service** at [app/routers/generate.py:158](services/video-gen-service/app/routers/generate.py#L158) — Python service. Already uses httpx; migrating to `Client.generate_video()` is straightforward. Reference impl: Phase 5b's chat-service voice migration (same shape: drop httpx + use SDK + per-call Client instantiation pattern).
+
+Phase 5e suggested order: video-gen-service first (smaller migration, exercises the new SDK), then book-service (larger Go decision).
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion + api-gateway-bff `/v1/video-gen/*` retirement. After this: unified gateway invariant fully realized for all external generation.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5D-INTEGRATION-GUIDE-VIDEO-PATH` — cross-repo PR to update `G:\Works\local-image-generator-service\docs\EXTERNAL_AI_SERVICE_INTEGRATION_GUIDE.md` (stale singular path)
+- `D-PHASE5D-LIVE-SMOKE` — manual post-merge: register local-image-generator-service:8700 + submit video_gen via curl + verify text-to-video and image-to-video dispatch
+- `D-PHASE5D-SDK-INITIMAGE-VALIDATION` — client-side base64 format regex check
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5D_DESIGN.md` — design + 8 /review-impl fixes
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — 5d row ✅ + 5e/5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5e: probably L for video-gen-service migration alone, XL if also book-service (depends on Go SDK decision)
+3. Reference impl: 5d at HEAD `<pending>` + Phase 5b chat-service voice migration for caller-side pattern
+
+---
 
 ## Session 55 cycle 2 — Phase 5c-α · image_gen adapter + SDK + openapi · /review-impl rounds (DESIGN: 0 HIGH + 5 MED + 6 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 4 LOW + 1 COSMETIC, MED + 2 LOWs fixed inline)
 

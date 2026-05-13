@@ -28,6 +28,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/loreweave/provider-registry-service/internal/jobs"
+	"github.com/loreweave/provider-registry-service/internal/provider"
 )
 
 // Phase 5b — bytes-mode STT submit constants. SttMaxAudioBytes mirrors
@@ -46,6 +47,7 @@ func nowRFC3339Nano() string { return time.Now().UTC().Format(time.RFC3339Nano) 
 var validJobOperations = map[string]struct{}{
 	"chat": {}, "completion": {}, "embedding": {},
 	"stt": {}, "tts": {}, "image_gen": {},
+	"video_gen":         {}, // Phase 5d
 	"entity_extraction": {}, "relation_extraction": {},
 	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
 	"translation": {},
@@ -143,11 +145,15 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		return
 	}
 
-	// Phase 5c-α — operation-specific input validation. Currently only
-	// image_gen has handler-level field validation; other ops rely on
-	// adapter-side or upstream validation.
+	// Phase 5c-α + 5d — operation-specific input validation for media ops.
 	if in.Operation == "image_gen" {
 		if err := validateImageGenInput(in.Input, in.Chunking); err != nil {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
+			return
+		}
+	}
+	if in.Operation == "video_gen" {
+		if err := validateVideoGenInput(in.Input, in.Chunking); err != nil {
 			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
 			return
 		}
@@ -435,6 +441,68 @@ func validateImageGenInput(raw json.RawMessage, chunking json.RawMessage) error 
 	}
 	if v.ResponseFormat != "" && v.ResponseFormat != "url" && v.ResponseFormat != "b64_json" {
 		return fmt.Errorf("image_gen response_format must be url or b64_json (got %q)", v.ResponseFormat)
+	}
+	return nil
+}
+
+// validateVideoGenInput — Phase 5d handler-level validation for
+// operation=video_gen. Rejects malformed prompt, out-of-range duration,
+// n != 1, b64_json response_format (impractical for video per
+// /review-impl(DESIGN) MED#3), oversize init_image (/review-impl
+// MED#2), and chunking config (not supported for video gen).
+//
+// /review-impl(BUILD) LOW#6 cross-reference: adapter-side validation
+// in provider/openai_video.go::GenerateVideo mirrors these checks.
+// Belt-and-suspenders: handler catches caller-side validation early
+// (no DB insert, no goroutine spawn); adapter catches non-handler
+// callers (cron, future RabbitMQ submit path, background re-runs).
+// If the two layers ever drift, the test pyramid catches it
+// (jobs_router_test.go covers this function; adapters_video_test.go
+// covers the adapter's GenerateVideo).
+func validateVideoGenInput(raw json.RawMessage, chunking json.RawMessage) error {
+	// chunking not supported for video_gen (single upstream call).
+	if len(chunking) > 0 && string(chunking) != "null" {
+		return fmt.Errorf("chunking not supported for video_gen")
+	}
+
+	var v struct {
+		Prompt         string `json:"prompt"`
+		Duration       int    `json:"duration"`
+		N              int    `json:"n"`
+		ResponseFormat string `json:"response_format"`
+		InitImage      string `json:"init_image"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return fmt.Errorf("video_gen input parse: %w", err)
+	}
+	if strings.TrimSpace(v.Prompt) == "" {
+		return fmt.Errorf("video_gen requires non-empty prompt")
+	}
+	if len(v.Prompt) > 32000 {
+		return fmt.Errorf("video_gen prompt exceeds 32000-char cap (got %d)", len(v.Prompt))
+	}
+	if v.Duration != 0 && (v.Duration < 1 || v.Duration > 60) {
+		return fmt.Errorf("video_gen duration must be 1..60s (got %d)", v.Duration)
+	}
+	// Phase 5d locks to n=1. 0 (omit) treated as 1.
+	if v.N != 0 && v.N != 1 {
+		return fmt.Errorf("video_gen n must be 1 (got %d)", v.N)
+	}
+	// /review-impl(DESIGN) MED#3 — reject b64_json at handler with clear
+	// hint. Asymmetric with image_gen (which accepts both); video b64
+	// exceeds the 8MB MaxImageResponseBytes cap in practice.
+	if v.ResponseFormat != "" && v.ResponseFormat != "url" {
+		return fmt.Errorf("video_gen response_format must be \"url\" (b64_json impractical for video; got %q)", v.ResponseFormat)
+	}
+	// /review-impl(DESIGN) MED#2 — init_image size cap (measured as
+	// received — the bytes that will hit the llm_jobs.input JSONB row).
+	// Note: belt-and-suspenders with adapter-side check (openai_video.go);
+	// either layer firing early gives the caller a clear 400. If the
+	// validation layers diverge in a future refactor, the integration
+	// test pyramid should catch it (handler tests + adapter tests both
+	// cover this case independently).
+	if len(v.InitImage) > provider.MaxImg2VidInputBytes {
+		return fmt.Errorf("video_gen init_image exceeds %d-byte cap (got %d)", provider.MaxImg2VidInputBytes, len(v.InitImage))
 	}
 	return nil
 }

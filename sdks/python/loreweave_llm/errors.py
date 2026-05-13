@@ -171,6 +171,32 @@ class LLMImageGenerationFailed(LLMError):
     code = "LLM_IMAGE_GENERATION_FAILED"
 
 
+# ── Phase 5d — video-gen-specific exceptions ────────────────────────
+
+
+class LLMVideoContentPolicy(LLMError):
+    """Upstream rejected the prompt by content-policy / safety rules
+    for video generation (rare for local backends; reserved for
+    OpenAI/managed services with safety filters).
+
+    Maps from gateway code: LLM_VIDEO_CONTENT_POLICY_VIOLATION.
+    """
+
+    code = "LLM_VIDEO_CONTENT_POLICY_VIOLATION"
+
+
+class LLMVideoGenerationFailed(LLMError):
+    """Upstream video generation failed for a non-content-policy reason
+    (model loading, backend timeout, ambiguous failure, oversized
+    response body). Caller MAY retry once; persistent failures suggest
+    a backend issue.
+
+    Maps from gateway code: LLM_VIDEO_GENERATION_FAILED.
+    """
+
+    code = "LLM_VIDEO_GENERATION_FAILED"
+
+
 class LLMTransientRetryNeededError(LLMError):
     """Job terminated with status=failed AND error.code is in the
     transient-retry whitelist (LLM_RATE_LIMITED, LLM_UPSTREAM_ERROR).
@@ -232,6 +258,9 @@ _CODE_TO_EXC: dict[str, type[LLMError]] = {
     # Phase 5c-α — image-gen-specific exceptions.
     "LLM_IMAGE_CONTENT_POLICY_VIOLATION": LLMImageContentPolicy,
     "LLM_IMAGE_GENERATION_FAILED": LLMImageGenerationFailed,
+    # Phase 5d — video-gen-specific exceptions.
+    "LLM_VIDEO_CONTENT_POLICY_VIOLATION": LLMVideoContentPolicy,
+    "LLM_VIDEO_GENERATION_FAILED": LLMVideoGenerationFailed,
 }
 
 

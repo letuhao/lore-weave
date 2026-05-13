@@ -42,6 +42,8 @@ from loreweave_llm.errors import (
     LLMRateLimited,
     LLMStreamNotSupported,
     LLMUpstreamError,
+    LLMVideoContentPolicy,
+    LLMVideoGenerationFailed,
 )
 from loreweave_llm.models import (
     AudioChunkEvent,
@@ -59,6 +61,8 @@ from loreweave_llm.models import (
     TtsInput,
     TtsStreamRequest,
     UsageEvent,
+    VideoGenDataItem,
+    VideoGenResult,
 )
 
 __all__ = [
@@ -81,6 +85,9 @@ __all__ = [
     # Phase 5c-α image-gen models
     "ImageGenDataItem",
     "ImageGenResult",
+    # Phase 5d video-gen models
+    "VideoGenDataItem",
+    "VideoGenResult",
     # Errors
     "LLMError",
     "LLMAuthFailed",
@@ -98,6 +105,9 @@ __all__ = [
     # Phase 5c-α image-gen-specific errors
     "LLMImageContentPolicy",
     "LLMImageGenerationFailed",
+    # Phase 5d video-gen-specific errors
+    "LLMVideoContentPolicy",
+    "LLMVideoGenerationFailed",
 ]
 
 __version__ = "0.1.0"
