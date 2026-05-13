@@ -6,6 +6,97 @@
 
 ---
 
+## 2026-05-13 — GEO_001 fix cycle (post-/review-impl adversarial pass; 11 issues resolved)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit; mirrors prior DRAFT-cycle pattern). 2-hour TTL.
+- **Trigger:** user invoked `/review-impl` after GEO_001 DRAFT POST-REVIEW signaled completion. Adversarial pass found 11 real issues that the POST-REVIEW had rubber-stamped: 3 HIGH (schema-correctness / validator-implementability / fork-correctness) + 5 MED (event taxonomy / boundary registration / algorithm gap / version contract / aggregate convention / closed-enum drift) + 3 LOW (invariant placement / field redundancy / struct-shape opacity). User picked Option A: fix all 11 now.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: `world_geometry` row Tier×Scope updated to "T2/Channel (continent per MAP-2 ChannelTier per HIGH-2 fix)"; full 11-fix list appended to owner annotation; rule_id count updated 10→13 V1 + 4→3 V1+ reservations
+  - `02_extension_contracts.md`: §1.4 `geography.*` row rewritten with 13 V1 rule_ids + fix-cycle change manifest; §4 EVT-T8 sub-shapes table gains `Forge:EditGeographyDelta { continent_channel_id, delta_kind, delta_payload, prev_delta_id }` row (MED-1 fix — the boundary registration gap /review-impl caught)
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_001_world_geometry.md`: 11 fixes applied + 3 sequence sections compressed (lines 799 → 738; net -61 lines despite +26 lines of fix content because §14 sequence rewriting saved 63 lines)
+
+### 11 fixes applied via /review-impl
+
+| # | Severity | Concern | Fix landed |
+|---|---|---|---|
+| 1 | HIGH-1 | Post-`SetBiomeOverride` schema incoherence (biomes/river_flux/is_coast desync) | V1 admits **only land-↔-land transitions**; water↔land rejects new rule_id `geography.biome_override_water_transition_v1` (V1+ when full biome+water-network re-derivation lands per new GEO-D13). Land-↔-land deltas recompute `is_coast` + `river_flux` for affected neighborhood (≤12 cells; scope-bounded) — coherence guaranteed for post-delta `(biomes, river_flux, is_coast)` triple. |
+| 2 | HIGH-2 | `channel.level_name == "continent"` validator unimplementable (free-form DP-Ch1 string) | §3 rule rewritten: `channel MUST satisfy MAP-2 ChannelTier::Continent (mapped from DP-Ch1 level_name per MAP_001 §3 enum)`. Explicit dependency on locked MAP-2 closed-enum prevents validator ambiguity across `level_name` string conventions. |
+| 3 | HIGH-3 | `GeographyDelta.id` namespace ambiguity (breaks fork correctness if misread) | §3 rule added: `delta_id is monotonic PER world_geometry aggregate row` (per `(reality_id, continent_channel_id)`). Forks start fresh sequences from post-`GeographyForkInherited` `last_delta_event_id`; sibling realities' delta_id values may collide across rows without interaction. |
+| 4 | MED-1 | `Forge:EditGeographyDelta` not registered in `_boundaries/02_extension_contracts.md` §4 EVT-T8 sub-shapes table | Row added to §4 table; the missing registration is now closed (this was the actual boundary-discipline gap that /review-impl caught). |
+| 5 | MED-2 | `ForkGeographyInherit` wrong event category (claimed EVT-T8 Administrative with `Forge:` prefix but producer is DP-Internal SnapshotForker = system actor) | Reclassified EVT-T8 Administrative → EVT-T4 System; renamed `Forge:ForkGeographyInherit` → `GeographyForkInherited` (no `Forge:` prefix; lives in EVT-T4 sub-types registry alongside GeographyBorn, NOT §4). |
+| 6 | MED-3 | Lake-vs-Ocean discrimination requires global topology (described local-only function in §5 stage 4) | Stage 4 split into 3 sub-stages 4a/4b/4c. **4a:** hydraulic erosion → river_flux. **4b:** water-network connected-components flood-fill from border water cells → `is_in_ocean_component` tag (Ocean) vs isolated water (Lake). **4c:** BiomeKind via `(climate, heightmap, river_flux, is_in_ocean_component, is_coast)` mapping function with explicit Ocean vs Lake discrimination. |
+| 7 | MED-4 | `generator_pipeline_version` upcaster contract underspecified (silent migration risk) | §3 rule added: world_geometry row pinned to its `pipeline_version` at GeographyBorn for lifetime; mid-life upgrades **FORBIDDEN**; new realities adopt latest. R3 upcasters apply ONLY to additive `schema_version` field-shape evolution, never to algorithm versions. Upgrade attempts reject `geography.pipeline_version_mismatch` (promoted V1+ reservation → V1 active). |
+| 8 | MED-5 | Aggregate-level `schema_version` field missing per I14 convention | Added `pub schema_version: u32` to WorldGeometry struct (V1 = 1). Distinct from `generator_pipeline_version` per fix #7. |
+| 9 | MED-6 | `SetResourceOverride` in V1 enum but V2+ semantics (closed-enum discipline drift) | Dropped from V1 GeographyDeltaKind enum (6 V1 → 5 V1); moved to V1+ reservation alongside MergeProvinces/SplitProvince/etc. V1 Forge UI no longer surfaces SetResourceOverride as a choice. |
+| 10 | LOW-1 | `GeoCellId == array-index` invariant documented in comment but not in §3 validator rules | §3 rule added: for all `i in 0..cells.len()`, `cells[i].id == GeoCellId(i as u32)`; out-of-order or sparse vectors reject new rule_id `geography.cell_id_index_violation`. Enforced at GeographyBorn + every delta apply touching cells. |
+| 11 | LOW-2 | `applied_at_fiction_time` clock source ambiguous (TDIL composition) | Field DROPPED from GeographyDelta struct. Replay determinism doesn't need it — triggering EVT-T8 event already carries wall-time via S4 MetaWrite audit + continent fiction_clock at event_id. Comment in struct documents the drop. |
+| 12 | LOW-3 | `RegionalLoreHook` / `NamingStyleDecl` / `CanonicalSettlementDecl` shapes opaque | All 3 structs declared in §6 (post-CultureHint block). `Settlement` struct gains `canon_ref: Option<BookCanonRef>` field — was being dropped on materialization from `CanonicalSettlementDecl.canon_ref`. |
+
+### Cumulative outcome
+
+- **Schema lock now genuinely lockable.** 3 HIGH issues that would have surfaced as V1 implementation bugs caught at design time.
+- **Foundation tier boundary discipline restored.** MED-1 closed; §4 EVT-T8 sub-shapes registry is now the SSOT GEO_001 cites and writes to.
+- **Strategy substrate readiness preserved.** V1+ POL_001 / SET_001 / ROUTE_001 / V2+ STRAT_001 still consume locked layers as read-only inputs — no migration regression introduced by fix cycle.
+- **GEO_001 main doc** at 738 lines (was 799 pre-fix DRAFT); §14 sequence compression bought enough budget for 11 fixes + 3 new V1 rule_ids + 3 new struct declarations.
+- **Process lesson reinforced (CLAUDE.md Phase 9 note):** POST-REVIEW signaled completion despite real architectural gaps; `/review-impl` did the work POST-REVIEW couldn't — author blindness persisted even with the "re-read from disk" ritual. POST-REVIEW + /review-impl are NOT redundant; they are distinct mental modes per the foundation discipline.
+
+---
+
+## 2026-05-13 — GEO_001 World Geometry Foundation DRAFT — new 7th foundation feature single-cycle claim+release
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern; mirrors RES_001 + PROG_001 single-cycle closure precedent)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session 4-hour TTL → reverted to None at end of cycle; _Last released_ entry with GEO_001 single-cycle summary
+  - `01_feature_ownership_matrix.md`: new `world_geometry` aggregate row added under aggregate ownership section (line ~69 — appended at end before `---` Schema/envelope ownership separator); T2/Channel-continent scope; owner GEO_001
+  - `02_extension_contracts.md`: §1.4 RejectReason namespace adds `geography.*` row (10 V1 rule_ids + 4 V1+ reservations); §2 RealityManifestSchema=1 extended with `continent_geometries: Vec<ContinentGeometryDecl>` OPTIONAL field + ContinentGeometryDecl + CreativeSeed + GeographyDelta comment block + downstream composition annotations
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_001_world_geometry.md`: **NEW** 799-line DRAFT design doc (under 800-line soft cap; foundation-tier precedent comparable to MAP_001=714 lines)
+  - `features/00_geography/_index.md`: **NEW** folder index documenting GEO_001 + future GEO_002..GEO_007 (POL_001 / SET_001 / ROUTE_001 / V2+ resource generator / multi-continent / author-supplied geometry mode) + 6-foundation-feature composition discipline
+  - `catalog/cat_00_GEO_geography_foundation.md`: **NEW** catalog entry owning `GEO-*` namespace (`GEO-A*` axioms · `GEO-D*` deferrals · `GEO-Q*` open questions); 28 catalog entries (GEO-1..GEO-28) spanning V1 schema + V1 populated layers + V1+ generator activation + V2+ strategy substrate
+
+### Phase 0 corrections applied during this cycle
+
+Two findings during Phase 0 read-prep changed the planned placement:
+
+1. **WA folder CLOSED for V1 design** (2026-04-25 closure pass). `features/02_world_authoring/_index.md` post-closure rules explicitly exclude multi-aggregate features and "designing the runtime mechanics here." Initial proposed placement `WA_007_world_map.md` retracted; WA is for thin per-reality config overrides (pvp_consent / voice_mode_lock / session_caps / etc.) — single aggregate, ~150-400 lines, mechanics elsewhere. Not the shape of a geometric substrate with internal layered structure.
+
+2. **MAP_001 already exists** (CANDIDATE-LOCK 2026-04-26) in `features/00_map/`. Owns `map_layout` aggregate for visual UI graph layer (per-channel positions + image asset slots + navigable edges for node-link drill-down rendering, Tiên Nghịch / EVE Online / Stellaris pattern). MAP_001 is NOT the procedural geographic substrate — it's the visual rendering layer. The two compose without overlap: MAP_001 visual SSOT + GEO_001 geometric SSOT + PF_001 cell-semantic SSOT.
+
+3. **Foundation tier (`00_*` folders) exists** post-SESSION_HANDOFF cutoff. 12 foundation feature folders (00_actor / 00_cell_scene / 00_entity / 00_faction / 00_family / 00_identity / 00_map / 00_place / 00_progression / 00_reputation / 00_resource / 00_titles) — GEO_001 joins this tier as the 7th foundation feature (after EF + PF + MAP + CSC + RES + PROG closed 2026-04-27).
+
+User picked Option A from Phase 0 correction: new `00_geography/` foundation folder with `GEO-*` namespace.
+
+### 7 sub-decisions LOCKED via single Phase 0 deep-dive
+
+| ID | Decision | Rationale |
+|---|---|---|
+| **D1** | ChannelScoped at continent channel (NOT RealityScoped) | Matches DP-Ch1 channel hierarchy; multi-continent realities have multiple maps; archipelago + mainland + sky-island patterns need multiple meshes anyway |
+| **D2** | Single `world_geometry` aggregate per continent with internal layered structure | One aggregate (geometry / climate / biome V1 populated + political / settlement / route / culture / resource V1 schema-reserved). Atomic regen of base; layer-level versioning via delta-overlay. Alternative (split into 3-4 aggregates) creates more boundary complexity + more joins for strategy queries |
+| **D3** | Deterministic-base + delta-overlay editability (open question #2 from survey) | Base regenerates from `(seed, creative_seed, pipeline_version)` reproducibly; admin Forge canonization appends ordered `GeographyDelta`; replay = base + deltas. Genuinely novel work — no Azgaar-style tool does this V1. Alternative (destructive regenerate per Azgaar default) jitters every position on edit, breaks save state, loses canon edits |
+| **D4** | Single Voronoi mesh with water-cell tags (open question #1 from survey) | Water cells flagged via heightmap < threshold OR biome ∈ {Ocean, Lake, River}; sea zones derived by clustering connected water cells; naval adjacency derived. Matches Azgaar. V2+ Paradox-style separate land/sea graphs with explicit straits tracked GEO-D6 if strategy gameplay needs explicit naval chokepoints |
+| **D5** | Cells AND provinces (two-tier granularity) | ~10k Voronoi cells as raw geometry (terrain queries, scene placement, fine pathing); provinces are named cell-clusters with strategic role. Strategy queries on provinces; exploration / scene queries on cells. Both surfaces preserved |
+| **D6** | Explicit FK from channel to map element | continent_channel.metadata.world_map_id; country_channel.metadata.state_id; district_channel.metadata.province_id; town_channel.metadata.burg_id. Map data references channel IDs back where bidirectional. Strategy queries `state.armies` join through this. Alternative (implicit name/position lookup) brittle under rename |
+| **D7** | Inherit by reference, deltas don't cascade | Snapshot fork (MV6) copies `(seed, creative_seed, deltas_at_fork_point)`. New deltas in child reality stay local. Parent → child propagation only for L1/L2 canon updates (matches §M4 propagation pattern); same delta-overlay machinery as D3 handles this. Alternative (deep-copy on fork) doubles storage per fork |
+
+### Strategy substrate readiness for future STRAT_001 V2+
+
+V1 schema reserves ALL layers strategy needs (provinces / states / settlements / routes / culture / resources). V1+ POL_001 / SET_001 / ROUTE_001 generators activate fields via additive schema-stable / activation-deferred discipline (mirrors PO-A8 + PROG-A schema patterns). V2+ STRAT_001 consumes locked layers as read-only inputs — schema-frozen by V1 lock; no migration when strategy phase opens. **Pre-investment in strategy substrate without pre-implementation: pays compound interest at strategy phase entry.**
+
+### Algorithmic baseline (world-map landscape survey 2026-05-13)
+
+- **Patel dual-mesh** (Apache 2.0; `redblobgames.com/x/2312-dual-mesh/`) — Voronoi cell graph substrate; canonical reference; clean Rust port path
+- **O'Leary "Generating fantasy maps"** (MIT; `mewo2.com/notes/terrain/`) — erosion + flux + river tracing + city scoring single-page algorithm
+- **Azgaar Fantasy Map Generator algorithm blog** (MIT; `azgaar.wordpress.com/`) — Voronoi/heightmap/biomes/burgs/states/routes pipeline-by-pipeline write-up
+- LLM-image-to-map approaches (arXiv 2407.09013 + 2410.15644 + AriGraph IJCAI 2025) REJECTED for strategy gameplay use — produce images not structured graphs; cannot back adjacency-correctness or regeneration-stability requirements
+
+Survey confirmed: **nothing strictly better appeared 2024-2025**. The Patel/O'Leary/Azgaar 2010-2018 algorithm stack remains state-of-the-art for *structured* fantasy world geometry. GEO_001 §5 8-stage pipeline implements this baseline with V1 stages 1-4 substantive + V1+ stages 5-8 activation slots.
+
+---
+
 ## 2026-04-27 — PO_001 Player Onboarding CANDIDATE-LOCK closure commit 4/4 — final lock release + cross-feature deferral RESOLVED annotations
 
 - **Lock RELEASED** — 4-commit cycle complete (wireframes Phase 0 19855a5b + 4c4fd6d7 + Phase 0 backend kickoff 9245666c + DRAFT 2/4 4106410c + Phase 3 cleanup 3/4 f41077f4 + closure 4/4 this commit); single combined `[boundaries-lock-release]` commit
