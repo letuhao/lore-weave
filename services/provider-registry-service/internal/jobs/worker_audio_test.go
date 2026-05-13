@@ -207,6 +207,30 @@ func TestClassifyAudioError_AudioURLDisallowed(t *testing.T) {
 	}
 }
 
+// /review-impl HIGH#2 — Phase 5b: ErrTranscribeInputInvalid (both URL+Bytes
+// set OR both empty) is a caller-side invariant violation; classifier
+// MUST surface as LLM_INVALID_REQUEST/failed (NOT LLM_UPSTREAM_ERROR
+// which would invite retry, NOT LLM_AUDIO_FETCH_FAILED which would
+// mislead caller about the cause).
+func TestClassifyAudioError_TranscribeInputInvalid(t *testing.T) {
+	code, status := classifyAudioError(context.Background(), provider.ErrTranscribeInputInvalid)
+	if code != "LLM_INVALID_REQUEST" || status != "failed" {
+		t.Errorf("got (%s,%s), want (LLM_INVALID_REQUEST, failed)", code, status)
+	}
+}
+
+// TestClassifyAudioError_TranscribeInputInvalid_Wrapped pins errors.Is
+// chain traversal — openai_audio.go wraps the sentinel via `fmt.Errorf("%w: ...")`
+// so the classifier MUST unwrap to detect it. Mirrors the pre-existing
+// FetchFailed_Wrapped test for consistency.
+func TestClassifyAudioError_TranscribeInputInvalid_Wrapped(t *testing.T) {
+	wrapped := wrapErr(provider.ErrTranscribeInputInvalid)
+	code, _ := classifyAudioError(context.Background(), wrapped)
+	if code != "LLM_INVALID_REQUEST" {
+		t.Errorf("wrapped ErrTranscribeInputInvalid: got %s, want LLM_INVALID_REQUEST", code)
+	}
+}
+
 // timeInPast returns a deadline already past so context.WithDeadline
 // immediately marks the ctx as DeadlineExceeded — used to exercise
 // the classify deadline branch without a real wait.

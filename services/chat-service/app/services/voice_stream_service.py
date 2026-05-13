@@ -4,7 +4,12 @@ Extends the existing stream_response() pattern with audio input/output.
 ~70% shared logic with stream_service.py (LLM streaming, message history,
 provider resolution, DB persistence).
 
-Design ref: VOICE_PIPELINE_V2.md §4.2
+Phase 5b — STT + TTS routed through the unified LLM gateway via the
+loreweave_llm SDK. No more direct `/internal/proxy/v1/audio/*` calls;
+no more chat-service-side model-name resolution for stt/tts (the gateway
+resolves via `model_ref` → user_model row).
+
+Design refs: VOICE_PIPELINE_V2.md §4.2, LLM_PIPELINE_PHASE5B_DESIGN.md §2.6
 """
 from __future__ import annotations
 
@@ -18,7 +23,8 @@ from typing import AsyncGenerator
 from uuid import uuid4
 
 import asyncpg
-import httpx
+
+from loreweave_llm import AudioChunkEvent, Client, DoneEvent, SttResult
 
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
@@ -56,38 +62,46 @@ def _sse(event_type: str, data: dict) -> str:
     return f'data: {json.dumps({"type": event_type, **data})}\n\n'
 
 
+def _new_llm_client(user_id: str) -> Client:
+    """Per-call SDK client (mirrors stream_service.py pattern). httpx pool
+    init cost is the trade-off; consistency with sibling-service pattern
+    matters more for reviewability. If profiling ever shows the pool init
+    as hot, lift to a singleton with rationale.
+    """
+    return Client(
+        base_url=settings.provider_registry_internal_url,
+        auth_mode="internal",
+        internal_token=settings.internal_service_token,
+        user_id=user_id,
+    )
+
+
 async def _transcribe_audio(
     audio_bytes: bytes,
     content_type: str,
     user_id: str,
     stt_model_source: str,
     stt_model_ref: str,
-    stt_model_name: str = "whisper-1",
 ) -> tuple[str, int]:
-    """Call STT via provider-registry internal proxy. Returns (transcript, duration_ms)."""
-    ext = 'webm' if 'webm' in content_type else 'wav' if 'wav' in content_type else 'ogg'
+    """Phase 5b — call STT via unified LLM gateway (bytes mode). Returns
+    (transcript, duration_ms). Gateway resolves the upstream model name
+    via `stt_model_ref` → user_model row, so the caller doesn't need
+    `stt_model_name` anymore.
+    """
     start = time.monotonic()
-
-    params = {
-        "user_id": user_id,
-        "model_source": stt_model_source,
-        "model_ref": stt_model_ref,
-    }
-    proxy_url = f"{settings.provider_registry_internal_url}/internal/proxy/v1/audio/transcriptions"
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            proxy_url,
-            params=params,
-            files={"file": (f"audio.{ext}", audio_bytes, content_type)},
-            data={"model": stt_model_name},
-            headers={"X-Internal-Token": settings.internal_service_token},
+    client = _new_llm_client(user_id)
+    try:
+        result: SttResult = await client.transcribe(
+            audio_bytes,
+            model_source=stt_model_source,
+            model_ref=stt_model_ref,
+            content_type=content_type,
+            language="auto",
         )
-        resp.raise_for_status()
-
+    finally:
+        await client.aclose()
     duration_ms = round((time.monotonic() - start) * 1000)
-    result = resp.json()
-    return result.get("text", ""), duration_ms
+    return result.text, duration_ms
 
 
 async def _generate_tts_chunks(
@@ -96,47 +110,45 @@ async def _generate_tts_chunks(
     tts_model_source: str,
     tts_model_ref: str,
     tts_voice: str,
-    tts_model_name: str,
     sentence_index: int,
 ) -> AsyncGenerator[tuple[dict, bytes], None]:
-    """Call TTS via provider-registry internal proxy, yield (sse_event, raw_bytes) per chunk."""
-    params = {
-        "user_id": user_id,
-        "model_source": tts_model_source,
-        "model_ref": tts_model_ref,
-    }
-    proxy_url = f"{settings.provider_registry_internal_url}/internal/proxy/v1/audio/speech"
-
+    """Phase 5b — call TTS via unified LLM gateway (SSE stream). Yields
+    (sse_event, raw_bytes) per audio chunk, preserving the existing FE
+    envelope shape (sentenceIndex/chunkIndex/data/final) by wrapping
+    each gateway AudioChunkEvent. The gateway resolves the upstream model
+    name via `tts_model_ref` — caller doesn't supply `tts_model_name`.
+    """
     chunk_index = 0
-    async with httpx.AsyncClient(timeout=30) as client:
-        async with client.stream(
-            "POST",
-            proxy_url,
-            params=params,
-            json={"model": tts_model_name, "input": text, "voice": tts_voice, "response_format": "mp3"},
-            headers={
-                "X-Internal-Token": settings.internal_service_token,
-                "Content-Type": "application/json",
-            },
-        ) as resp:
-            resp.raise_for_status()
-            async for chunk in resp.aiter_bytes(chunk_size=4096):
+    client = _new_llm_client(user_id)
+    try:
+        async for ev in client.stream_tts(
+            text=text,
+            model_source=tts_model_source,
+            model_ref=tts_model_ref,
+            voice=tts_voice,
+            format="mp3",
+        ):
+            if isinstance(ev, AudioChunkEvent):
+                raw = base64.b64decode(ev.data) if ev.data else b""
+                # Preserve existing FE envelope (sentenceIndex/chunkIndex/
+                # data/final). Gateway is sentence-agnostic; chat-service
+                # owns sentence semantics above this layer.
                 event = {
                     "sentenceIndex": sentence_index,
                     "chunkIndex": chunk_index,
-                    "data": base64.b64encode(chunk).decode(),
-                    "final": False,
+                    "data": ev.data,  # already base64
+                    "final": ev.final,
                 }
-                yield event, chunk
+                yield event, raw
                 chunk_index += 1
-
-    # Signal sentence complete
-    yield {
-        "sentenceIndex": sentence_index,
-        "chunkIndex": chunk_index,
-        "data": "",
-        "final": True,
-    }, b""
+            elif isinstance(ev, DoneEvent):
+                # Gateway signaled end-of-stream. Loop terminates; the
+                # final emit with final=True has already been yielded
+                # above (from the AudioChunkEvent with final=True per
+                # the openai adapter's closing emit).
+                break
+    finally:
+        await client.aclose()
 
 
 async def _upload_audio_segment(
@@ -202,25 +214,15 @@ async def voice_stream_response(
     tts_model_ref = voice_config.get("tts_model_ref", "")
     tts_voice = voice_config.get("tts_voice", "af_heart")
 
-    # Resolve STT/TTS provider credentials to get actual model names
-    # These come from the user's registered models — no hardcoded fallbacks
-    provider = get_provider_client()
-    try:
-        stt_creds = await provider.resolve(stt_model_source, stt_model_ref, user_id)
-    except Exception:
-        logger.exception("STT model resolution failed for %s", stt_model_ref)
-        yield _sse("error", {"errorText": "STT model not found. Check Voice Settings."})
+    # Phase 5b — STT/TTS upstream model-name resolution moved to the
+    # gateway. We just validate the caller-supplied stt_model_ref is
+    # non-empty here; deeper validation (does the model exist?) happens
+    # gateway-side and surfaces via the SDK as LLMModelNotFound (mapped
+    # to the FE-friendly "STT model not found" error).
+    if not stt_model_ref:
+        yield _sse("error", {"errorText": "STT model not configured. Check Voice Settings."})
         yield "data: [DONE]\n\n"
         return
-    stt_model_name = stt_creds.provider_model_name
-
-    tts_model_name = ""
-    if tts_model_ref:
-        try:
-            tts_creds = await provider.resolve(tts_model_source, tts_model_ref, user_id)
-            tts_model_name = tts_creds.provider_model_name
-        except Exception:
-            logger.warning("TTS model resolution failed for %s — audio will be skipped", tts_model_ref)
 
     # Track voice config for analytics
     vad_silence_frames = voice_config.get("vad_silence_frames", 8)
@@ -232,7 +234,7 @@ async def voice_stream_response(
     try:
         transcript, stt_ms = await _transcribe_audio(
             audio_bytes, audio_content_type, user_id,
-            stt_model_source, stt_model_ref, stt_model_name,
+            stt_model_source, stt_model_ref,
         )
     except Exception:
         logger.exception("STT failed for session %s", session_id)
@@ -399,7 +401,7 @@ async def voice_stream_response(
                     audio_chunks: list[bytes] = []
                     try:
                         async for event, raw in _generate_tts_chunks(
-                            speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
+                            speakable, user_id, tts_model_source, tts_model_ref, tts_voice, sentence_index,
                         ):
                             yield _sse("audio-chunk", event)
                             if raw:
@@ -421,7 +423,7 @@ async def voice_stream_response(
                 audio_chunks = []
                 try:
                     async for event, raw in _generate_tts_chunks(
-                        speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
+                        speakable, user_id, tts_model_source, tts_model_ref, tts_voice, sentence_index,
                     ):
                         yield _sse("audio-chunk", event)
                         if raw:
@@ -565,14 +567,13 @@ async def generate_tts_for_message(
         yield "data: [DONE]\n\n"
         return
 
-    # Resolve TTS model
-    provider = get_provider_client()
-    try:
-        tts_creds = await provider.resolve(tts_model_source, tts_model_ref, user_id)
-        tts_model_name = tts_creds.provider_model_name
-    except Exception:
-        logger.exception("TTS model resolution failed for %s", tts_model_ref)
-        yield _sse("error", {"errorText": "TTS model not found. Check Voice Settings."})
+    # Phase 5b — TTS model resolution moved to the gateway. We just
+    # require the caller-supplied tts_model_ref is non-empty; "does the
+    # model exist?" is decided by the gateway and surfaces via the SDK
+    # as LLMModelNotFound (caught in the try-block below for each TTS
+    # call).
+    if not tts_model_ref:
+        yield _sse("error", {"errorText": "TTS model not configured. Check Voice Settings."})
         yield "data: [DONE]\n\n"
         return
 
@@ -618,7 +619,7 @@ async def generate_tts_for_message(
                 audio_chunks = []
                 try:
                     async for event, raw in _generate_tts_chunks(
-                        speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
+                        speakable, user_id, tts_model_source, tts_model_ref, tts_voice, sentence_index,
                     ):
                         yield _sse("audio-chunk", event)
                         if raw:

@@ -16,7 +16,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,6 +28,16 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/loreweave/provider-registry-service/internal/jobs"
+)
+
+// Phase 5b — bytes-mode STT submit constants. SttMaxAudioBytes mirrors
+// provider.MaxAudioBytes (25MB OpenAI Whisper cap); sttMultipartOverhead
+// is a small allowance for multipart envelope (boundary, headers, form
+// fields) so the cap doesn't fire on a 25MB audio surrounded by ~1KB of
+// metadata. Total request body cap = SttMaxAudioBytes + overhead.
+const (
+	SttMaxAudioBytes     = 25 * 1024 * 1024
+	sttMultipartOverhead = 64 * 1024
 )
 
 func nowRFC3339Nano() string { return time.Now().UTC().Format(time.RFC3339Nano) }
@@ -69,6 +83,28 @@ func (s *Server) internalSubmitLlmJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	// Phase 5b /review-impl MED#4 — Content-Type dispatch via mime.ParseMediaType
+	// (RFC-conformant; handles MULTIPART/FORM-DATA case-insensitivity + param
+	// ordering variation that naive strings.HasPrefix would miss).
+	mediaType, _, mtErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if mtErr != nil {
+		// Empty / malformed Content-Type — default to JSON to preserve
+		// the Phase 5a behavior where clients omitting Content-Type
+		// (or sending a garbage value) still got their JSON parsed.
+		mediaType = "application/json"
+	}
+	switch mediaType {
+	case "multipart/form-data":
+		s.doSubmitSttMultipart(w, r, userID)
+		return
+	case "application/json", "":
+		// Falls through to legacy JSON path below.
+	default:
+		writeError(w, http.StatusUnsupportedMediaType, "LLM_INVALID_REQUEST",
+			"unsupported Content-Type: "+mediaType)
+		return
+	}
+
 	// Caller-input validation first — these rejections are independent of
 	// service health, so a malformed request returns 400 even when
 	// jobsRepo is nil. The 503 check below catches the case where the
@@ -164,6 +200,204 @@ func rawOrNil(raw json.RawMessage) any {
 		return nil
 	}
 	return json.RawMessage(raw)
+}
+
+// doSubmitSttMultipart handles Phase 5b bytes-mode STT submission.
+//
+// Wire: multipart/form-data with metadata fields (operation, model_source,
+// model_ref, language, trace_id) + a "audio" file part holding the raw
+// audio bytes. ONLY operation=stt is accepted via multipart; other
+// operations return 400.
+//
+// Audio bytes flow:
+//  1. http.MaxBytesReader caps the request body at SttMaxAudioBytes
+//     plus a small multipart envelope overhead (Fix #1).
+//  2. ParseMultipartForm extracts metadata + the file part. maxMemory
+//     is set to SttMaxAudioBytes so the entire 25MB stays in RAM
+//     rather than spilling to TempDir (we want bytes in goroutine
+//     closure for ProcessAudioInline).
+//  3. Read the file into memory ONCE via the FileHeader.Open() handle
+//     (also capped at SttMaxAudioBytes).
+//  4. Insert llm_jobs row with synthetic JSON input (NO bytes in DB).
+//  5. Spawn goroutine → worker.ProcessAudioInline(... audioBytes ...).
+//
+// http.MaxBytesError → 413 LLM_AUDIO_TOO_LARGE; other parse errors → 400.
+func (s *Server) doSubmitSttMultipart(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	// Phase 5b /review-impl HIGH#1 — explicit cap mechanism. Wrap the
+	// body BEFORE ParseMultipartForm so a 50MB POST gets rejected at
+	// the network read step (not after multipart parsing allocates).
+	r.Body = http.MaxBytesReader(w, r.Body, SttMaxAudioBytes+sttMultipartOverhead)
+
+	if err := r.ParseMultipartForm(SttMaxAudioBytes); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "LLM_AUDIO_TOO_LARGE",
+				fmt.Sprintf("audio exceeds %d-byte cap", SttMaxAudioBytes))
+			return
+		}
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"multipart parse failed: "+err.Error())
+		return
+	}
+
+	// Metadata field extraction (mirrors the JSON jobSubmitRequest fields).
+	operation := r.FormValue("operation")
+	if operation == "" {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "operation field required")
+		return
+	}
+	if operation != "stt" {
+		// Phase 5b /review-impl design §2.1 — only stt is supported on
+		// multipart. tts is /v1/llm/stream; image_gen has no caller.
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"operation "+operation+" not supported via multipart; use application/json")
+		return
+	}
+
+	modelSource := r.FormValue("model_source")
+	if modelSource != "user_model" && modelSource != "platform_model" {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid model_source")
+		return
+	}
+	modelRefStr := r.FormValue("model_ref")
+	modelRef, err := uuid.Parse(modelRefStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid model_ref")
+		return
+	}
+	language := r.FormValue("language")
+	if language == "" {
+		language = "auto"
+	}
+	traceID := r.FormValue("trace_id")
+
+	// Phase 5b /review-impl LOW#12 — chunking not accepted on multipart.
+	if r.FormValue("chunking") != "" {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"chunking not accepted on stt multipart submits")
+		return
+	}
+
+	// Phase 5b /review-impl LOW#13 — explicit field-name diagnostic.
+	if r.MultipartForm == nil || r.MultipartForm.File == nil {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"no file fields in multipart request; expected 'audio'")
+		return
+	}
+	audioHeaders, ok := r.MultipartForm.File["audio"]
+	if !ok || len(audioHeaders) == 0 {
+		// Build hint listing whichever file fields were present.
+		var got []string
+		for name := range r.MultipartForm.File {
+			got = append(got, name)
+		}
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			fmt.Sprintf("expected file field 'audio'; got %s", formatFieldList(got)))
+		return
+	}
+
+	// Single audio file — read into memory.
+	audioFile, err := audioHeaders[0].Open()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"open audio file: "+err.Error())
+		return
+	}
+	defer audioFile.Close()
+	// LimitReader belt-and-suspenders — the MaxBytesReader above already
+	// caps total body size, but this guards against a degenerate
+	// multipart form with one huge field that the form parser somehow
+	// undercounted.
+	audioBytes, err := io.ReadAll(io.LimitReader(audioFile, SttMaxAudioBytes+1))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"read audio bytes: "+err.Error())
+		return
+	}
+	if len(audioBytes) > SttMaxAudioBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, "LLM_AUDIO_TOO_LARGE",
+			fmt.Sprintf("audio exceeds %d-byte cap", SttMaxAudioBytes))
+		return
+	}
+	// Phase 5b /review-impl(QC) MED#1 — 0-byte audio. Without this
+	// check, a non-nil empty slice would slip past the adapter's
+	// `hasBytes := input.AudioBytes != nil` (nil-vs-empty is a Go
+	// trap), reach OpenAI Whisper as a 0-byte multipart file, and
+	// surface as a confusing LLM_UPSTREAM_ERROR rather than a clear
+	// "you sent no audio" message.
+	if len(audioBytes) == 0 {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"audio field is empty (0 bytes)")
+		return
+	}
+	contentType := audioHeaders[0].Header.Get("Content-Type")
+	// Phase 5b /review-impl(QC) MED#2 — empty per-part Content-Type
+	// would cascade through audioFilenameFromContentType → "audio.wav"
+	// default, misleading OpenAI Whisper if the actual bytes aren't
+	// WAV. Reject explicitly so caller surfaces the bug at submit time.
+	if contentType == "" {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"audio file part missing Content-Type header (e.g. \"audio/webm\")")
+		return
+	}
+
+	// Subsystem availability — after validation so the response code
+	// distinguishes "you sent bad data" (400/413) from "server isn't ready"
+	// (503).
+	if s.jobsRepo == nil || s.jobsWorker == nil {
+		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "jobs subsystem not initialized")
+		return
+	}
+
+	// Synthetic input: metadata only. NO audio bytes in DB — they live
+	// in this handler's stack memory and get captured into the worker
+	// goroutine's closure below (design §3.2).
+	synthInput, _ := json.Marshal(map[string]any{
+		"audio_inline": true,
+		"content_type": contentType,
+		"language":     language,
+	})
+	jobID, ierr := s.jobsRepo.Insert(r.Context(), jobs.InsertParams{
+		OwnerUserID: userID,
+		Operation:   "stt",
+		ModelSource: modelSource,
+		ModelRef:    modelRef,
+		Input:       synthInput,
+		Chunking:    nil,
+		Callback:    nil,
+		JobMeta:     nil,
+		TraceID:     traceID,
+	})
+	if ierr != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to create job")
+		return
+	}
+
+	// Spawn the worker goroutine. audioBytes is captured by closure;
+	// bgCtx detaches from the HTTP request so the goroutine survives
+	// the 202 response.
+	go func() {
+		bgCtx := context.Background()
+		s.jobsWorker.ProcessAudioInline(
+			bgCtx, jobID, userID, modelSource, modelRef,
+			language, audioBytes, contentType,
+		)
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"job_id":       jobID.String(),
+		"status":       "pending",
+		"submitted_at": nowRFC3339Nano(),
+	})
+}
+
+// formatFieldList renders a slice of field names for the field-name
+// diagnostic in 'expected file field "audio"; got [...]' errors.
+func formatFieldList(names []string) string {
+	if len(names) == 0 {
+		return "[]"
+	}
+	return "[" + strings.Join(names, ", ") + "]"
 }
 
 // getLlmJob — GET /v1/llm/jobs/{job_id} (JWT auth).

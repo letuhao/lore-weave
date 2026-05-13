@@ -389,30 +389,44 @@ class Client:
 
     async def transcribe(
         self,
-        audio_url: str,
+        audio: str | bytes | bytearray | memoryview,
         *,
         model_source: ModelSource,
         model_ref: str,
         language: str = "auto",
+        content_type: str | None = None,
         user_id: str | None = None,
         poll_interval_s: float = 0.25,
         max_poll_interval_s: float = 5.0,
     ) -> SttResult:
-        """Phase 5a — submit STT job, wait for terminal, return decoded result.
+        """Submit STT job, wait for terminal, return decoded result.
 
-        Reuses submit_job + wait_terminal — same backoff, same cancellation,
-        same transient-retry semantics. transient_retry_budget is fixed
-        at 0 here because the gateway-side audio fetch + Whisper upstream
-        are both deterministic; if the first attempt fails we surface the
-        error rather than silently re-running an STT job (a re-run could
-        double-charge BYOK).
+        Polymorphic in `audio`:
+          - `str` → URL mode (Phase 5a). The gateway fetches `audio_url`
+            via HTTPS GET (SSRF-guarded, 30s timeout, 25MB cap).
+          - `bytes | bytearray | memoryview` → bytes mode (Phase 5b).
+            Multipart POST to /v1/llm/jobs carrying the audio inline.
+            `content_type` is REQUIRED (e.g. "audio/webm"); raises
+            LLMInvalidRequest if missing.
+
+        Reuses submit_job + wait_terminal in URL mode. Bytes mode uses
+        a dedicated multipart submit (no SubmitJobRequest pydantic
+        validation — wire is form-data, not JSON) then routes through
+        wait_terminal. Same backoff, same cancellation, same transient-
+        retry semantics. `transient_retry_budget=0` because gateway-side
+        audio fetch + Whisper upstream are deterministic; auto-rerunning
+        would double-charge BYOK.
 
         Raises:
-          - LLMInvalidRequest on malformed model_ref
+          - LLMInvalidRequest on malformed model_ref, bytes-without-content-type,
+            or unsupported `audio` type
+          - LLMAudioTooLarge on >25MB audio (handler-side or adapter-side)
+          - LLMAudioFetchFailed / LLMAudioURLDisallowed on URL-mode fetch issues
           - LLMError subclass keyed by job.error.code on status=failed
           - LLMJobTerminal on status=cancelled
 
-        `user_id` per-call override (mirrors submit_job).
+        `user_id` per-call override (mirrors submit_job). Required when
+        auth_mode='internal' AND constructor user_id was None.
         """
         try:
             UUID(model_ref)
@@ -421,13 +435,38 @@ class Client:
                 f"model_ref must be UUID-shaped, got {model_ref!r}",
             ) from exc
 
-        request = SubmitJobRequest(
-            operation="stt",
-            model_source=model_source,
-            model_ref=model_ref,
-            input={"audio_url": audio_url, "language": language},
-        )
-        submitted = await self.submit_job(request, user_id=user_id)
+        # Phase 5b — dispatch on audio's runtime type. Accepts the four
+        # standard Python buffer-protocol types so callers using
+        # numpy/sounddevice/pyaudio's memoryview output don't have to
+        # copy bytes manually.
+        if isinstance(audio, str):
+            submitted = await self._submit_stt_url(
+                audio_url=audio,
+                model_source=model_source,
+                model_ref=model_ref,
+                language=language,
+                user_id=user_id,
+            )
+        elif isinstance(audio, (bytes, bytearray, memoryview)):
+            if not content_type:
+                raise LLMInvalidRequest(
+                    "content_type required when audio is bytes-like; "
+                    "pass content_type=\"audio/webm\" (or similar)",
+                )
+            submitted = await self._submit_stt_bytes(
+                audio=audio,
+                content_type=content_type,
+                model_source=model_source,
+                model_ref=model_ref,
+                language=language,
+                user_id=user_id,
+            )
+        else:
+            raise LLMInvalidRequest(
+                "audio must be str (URL) or bytes-like (bytes/bytearray/memoryview); "
+                f"got {type(audio).__name__}",
+            )
+
         job = await self.wait_terminal(
             submitted.job_id,
             user_id=user_id,
@@ -453,6 +492,81 @@ class Client:
                 body="",
             )
         raise from_code(job.error.code, job.error.message)
+
+    async def _submit_stt_url(
+        self,
+        *,
+        audio_url: str,
+        model_source: ModelSource,
+        model_ref: str,
+        language: str,
+        user_id: str | None,
+    ) -> SubmitJobResponse:
+        """Phase 5a — JSON-mode STT submit. Wraps submit_job with the
+        legacy `{audio_url, language}` input shape.
+        """
+        request = SubmitJobRequest(
+            operation="stt",
+            model_source=model_source,
+            model_ref=model_ref,
+            input={"audio_url": audio_url, "language": language},
+        )
+        return await self.submit_job(request, user_id=user_id)
+
+    async def _submit_stt_bytes(
+        self,
+        *,
+        audio: bytes | bytearray | memoryview,
+        content_type: str,
+        model_source: ModelSource,
+        model_ref: str,
+        language: str,
+        user_id: str | None,
+    ) -> SubmitJobResponse:
+        """Phase 5b — multipart-mode STT submit. Wire shape: multipart/form-data
+        with metadata fields + an `audio` file part. Returns 202 envelope
+        matching submit_job's response.
+
+        Validates model_ref UUID shape before hitting the wire (per
+        ADR §5.1 MED#5 — SDK is the boundary). Maps HTTP errors via
+        _raise_http_error so audio-specific codes (LLM_AUDIO_TOO_LARGE,
+        LLM_AUDIO_FETCH_FAILED, LLM_AUDIO_URL_DISALLOWED) surface as
+        their proper exception classes.
+        """
+        try:
+            UUID(model_ref)
+        except (TypeError, ValueError) as exc:
+            raise LLMInvalidRequest(
+                f"model_ref must be a UUID-shaped string, got {model_ref!r}",
+            ) from exc
+
+        url, params, headers = self._jobs_endpoint("submit", user_id=user_id)
+        data = {
+            "operation": "stt",
+            "model_source": model_source,
+            "model_ref": model_ref,
+            "language": language,
+        }
+        # httpx's multipart writer (_multipart.py:render_data) only
+        # handles str/bytes natively; bytearray/memoryview fall through
+        # to its `.read()` branch and AttributeError. Coerce to bytes
+        # here so all three input types work — loses zero-copy for
+        # memoryview but the alternative is no support at all.
+        if isinstance(audio, (bytearray, memoryview)):
+            audio = bytes(audio)
+        files = {"audio": ("audio.bin", audio, content_type)}
+        try:
+            resp = await self._http.post(
+                url, params=params, headers=headers, data=data, files=files,
+            )
+        except httpx.RequestError as exc:
+            raise LLMHttpError(f"_submit_stt_bytes transport failure: {exc}") from exc
+        if resp.status_code >= 400:
+            await self._raise_http_error(resp)
+        try:
+            return SubmitJobResponse.model_validate(resp.json())
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise LLMDecodeError(f"_submit_stt_bytes response decode failed: {exc}") from exc
 
     async def cancel_job(self, job_id: str | UUID, *, user_id: str | None = None) -> None:
         """Cancel an in-flight job. Idempotent: 204 (cancel accepted) and
@@ -577,6 +691,12 @@ class Client:
             message = body_bytes.decode("utf-8", errors="replace")[:500]
             retry_after_s = None
 
+        # Phase 5b /review-impl HIGH#3 — consult from_code() for codes
+        # outside the status-code → exception map. Audio-specific codes
+        # (LLM_AUDIO_TOO_LARGE on 413, LLM_AUDIO_FETCH_FAILED, etc.) need
+        # their dedicated exception classes, not a generic LLMInvalidRequest
+        # fall-through. from_code is the single source of truth for
+        # code→class mapping shared with stream-time errors.
         if resp.status_code == 401:
             raise LLMAuthFailed(message, code=code, status_code=resp.status_code)
         if resp.status_code == 402:
@@ -590,5 +710,14 @@ class Client:
         if resp.status_code in (502, 503, 504):
             raise LLMUpstreamError(message, code=code, status_code=resp.status_code)
         if 400 <= resp.status_code < 500:
-            raise LLMInvalidRequest(message, code=code, status_code=resp.status_code)
+            # Prefer the body's code over the status-bucket fallback so
+            # LLM_AUDIO_TOO_LARGE (413) and similar surface as their
+            # dedicated classes.
+            mapped = from_code(code, message, status_code=resp.status_code)
+            # Defensive: if from_code returned the generic base, fall
+            # back to LLMInvalidRequest so 4xx still carries the right
+            # "this is a caller problem" semantic for the type system.
+            if type(mapped) is LLMError:
+                raise LLMInvalidRequest(message, code=code, status_code=resp.status_code)
+            raise mapped
         raise LLMError(message, code=code, status_code=resp.status_code)

@@ -96,6 +96,53 @@ class LLMHttpError(LLMError):
     code = "LLM_HTTP_ERROR"
 
 
+# ── Phase 5b — audio-specific exceptions ─────────────────────────────
+
+
+class LLMAudioTooLarge(LLMError):
+    """Caller-side audio exceeds the gateway's 25MB cap.
+
+    Fires from TWO places in the gateway:
+    - Multipart submit handler — request body exceeds the
+      http.MaxBytesReader cap; rejected with HTTP 413 BEFORE the row
+      is inserted.
+    - Adapter belt-and-suspenders — AudioBytes slice exceeds
+      provider.MaxAudioBytes; finalizes the job as failed.
+
+    Either way the caller's audio is bad; not retryable.
+    """
+
+    code = "LLM_AUDIO_TOO_LARGE"
+
+
+class LLMAudioFetchFailed(LLMError):
+    """URL-mode STT: gateway couldn't GET the audio_url.
+
+    Covers 4xx/5xx responses from the URL, DNS lookup failures,
+    transport timeouts, and parse errors on the URL string itself.
+    Distinguishes "we couldn't reach your audio host" from "Whisper
+    upstream rejected the audio" (LLMUpstreamError).
+
+    Phase 5a only — bytes-mode (Phase 5b) skips the fetch step entirely.
+    """
+
+    code = "LLM_AUDIO_FETCH_FAILED"
+
+
+class LLMAudioURLDisallowed(LLMError):
+    """URL-mode STT: audio_url host resolves to a disallowed IP range.
+
+    SSRF guard rejects loopback (127.0.0.0/8, ::1), private (RFC1918 +
+    ULA), link-local (169.254.0.0/16 — AWS IMDS endpoint), unspecified
+    (0.0.0.0), and multicast addresses. The audio_url scheme must also
+    be http:// or https://.
+
+    Phase 5a only.
+    """
+
+    code = "LLM_AUDIO_URL_DISALLOWED"
+
+
 class LLMTransientRetryNeededError(LLMError):
     """Job terminated with status=failed AND error.code is in the
     transient-retry whitelist (LLM_RATE_LIMITED, LLM_UPSTREAM_ERROR).
@@ -150,6 +197,10 @@ _CODE_TO_EXC: dict[str, type[LLMError]] = {
     "LLM_DECODE_ERROR": LLMDecodeError,
     "LLM_JOB_NOT_FOUND": LLMJobNotFound,
     "LLM_JOB_TERMINAL": LLMJobTerminal,
+    # Phase 5b — audio-specific exceptions (previously fell through to LLMError).
+    "LLM_AUDIO_TOO_LARGE": LLMAudioTooLarge,
+    "LLM_AUDIO_FETCH_FAILED": LLMAudioFetchFailed,
+    "LLM_AUDIO_URL_DISALLOWED": LLMAudioURLDisallowed,
 }
 
 

@@ -108,14 +108,41 @@ var ErrAudioTooLarge = fmt.Errorf("audio too large")
 // LLM_AUDIO_URL_DISALLOWED.
 var ErrAudioURLDisallowed = fmt.Errorf("audio_url disallowed")
 
-// ── Audio types (Phase 5a) ────────────────────────────────────────────
+// ErrTranscribeInputInvalid — Phase 5b /review-impl HIGH#2. Returned by
+// Transcribe when the (AudioURL, AudioBytes) pair violates the exactly-
+// one-set invariant: BOTH set (caller ambiguity) OR NEITHER set (caller
+// forgot to supply audio). Caller (worker.runSttJob) maps to LLM_INVALID_REQUEST.
+//
+// Distinct from ErrAudioFetchFailed (which means "we had a source, but
+// fetching/reading it failed") and from ErrOperationNotSupported (which
+// means "no adapter implements this op"). This sentinel is specifically
+// for the input-shape invariant.
+var ErrTranscribeInputInvalid = fmt.Errorf("transcribe input invalid")
 
-// TranscribeInput holds STT request parameters.
+// ── Audio types (Phase 5a + 5b) ────────────────────────────────────────
+
+// TranscribeInput holds STT request parameters. EXACTLY ONE of AudioURL
+// or AudioBytes must be set per call — the adapter pre-checks this and
+// returns ErrTranscribeInputInvalid if violated. Both set OR neither set
+// is an invariant violation, not a "pick one" preference.
 type TranscribeInput struct {
-	// AudioURL — gateway-fetchable HTTPS URL pointing to the audio bytes.
-	// Caller (e.g. chat-service voice flow) is responsible for upload +
-	// URL signing. Only http:// and https:// schemes are accepted.
+	// AudioURL — Phase 5a. Gateway-fetchable HTTPS URL pointing to the
+	// audio bytes. Caller is responsible for upload + URL signing.
+	// Only http:// and https:// schemes are accepted. Set this OR
+	// AudioBytes, never both.
 	AudioURL string
+
+	// AudioBytes — Phase 5b. Raw audio bytes already in the adapter's
+	// address space. Used by the multipart-POST entrypoint to /v1/llm/jobs
+	// so callers don't need to stage audio in a presigned URL. Set this
+	// OR AudioURL, never both.
+	AudioBytes []byte
+
+	// ContentType — Phase 5b. MIME type of AudioBytes (e.g. "audio/webm",
+	// "audio/wav"). Informs the adapter's filename-extension pick when
+	// posting to the upstream multipart endpoint. Ignored in URL mode
+	// (fetchAudioURL returns the upstream's Content-Type header instead).
+	ContentType string
 
 	// Language — ISO 639-1 code or "auto" for upstream auto-detection.
 	// "auto" is converted to "omit param" at the provider HTTP layer

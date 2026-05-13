@@ -28,6 +28,9 @@ Streaming usage:
 
 from loreweave_llm.client import Client
 from loreweave_llm.errors import (
+    LLMAudioFetchFailed,
+    LLMAudioTooLarge,
+    LLMAudioURLDisallowed,
     LLMAuthFailed,
     LLMDecodeError,
     LLMError,
@@ -81,6 +84,10 @@ __all__ = [
     "LLMUpstreamError",
     "LLMStreamNotSupported",
     "LLMDecodeError",
+    # Phase 5b audio-specific errors
+    "LLMAudioTooLarge",
+    "LLMAudioFetchFailed",
+    "LLMAudioURLDisallowed",
 ]
 
 __version__ = "0.1.0"

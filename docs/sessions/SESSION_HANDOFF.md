@@ -1,9 +1,111 @@
-# Session Handoff — Session 54 (cycle 1 shipped · Phase 5a audio adapter COMPLETE · 5b chat-service voice migration next)
+# Session Handoff — Session 55 (cycle 1 shipped · Phase 5b chat-service voice migration COMPLETE · Phase 5c image_gen deferred)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-28 (session 54, cycle 1 shipped)
-> **HEAD:** `0d228a10` (SESSION_PATCH backfill) — Phase 5a feat commit @ `2317bcb0`; Phase 4d closed at `3890d8a9` (session 53 cycle 13)
+> **Date:** 2026-05-13 (session 55, cycle 1 shipped)
+> **HEAD:** `<pending>` (Phase 5b feat commit — backfill commit follows); Phase 5a closed at `2317bcb0` (session 54 cycle 1); Phase 4d closed at `3890d8a9` (session 53 cycle 13)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 55 cycle 1 — Phase 5b · chat-service voice migration + audio proxy retirement + bytes-mode STT · /review-impl rounds (DESIGN: 3 HIGH + 7 MED + 5 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 2 MED + 4 LOW + 1 COSMETIC, 2 MED fixed inline)
+
+**What shipped:** chat-service voice path migrated off `/internal/proxy/v1/audio/*` onto the unified LLM gateway via `loreweave_llm` SDK. Scope expanded during CLARIFY (M → XL) to add a bytes-mode multipart STT submit on `/v1/llm/jobs` so chat-service skips the MinIO+presigned-URL roundtrip; SDK `transcribe()` made polymorphic over `str|bytes|bytearray|memoryview`; 3 new SDK audio exception classes for the 3 audio gateway codes; audio paths now 410-Gone via `isDeprecatedProxyPath` deny-list; 3 proxy_integration_test.go placeholder-using tests rewritten to synthetic `v1/responses` path (preserves K17.2a + 4MiB cap + auth-header forward regression-locks).
+
+**Files (20 — 18 MOD + 2 NEW)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5B_DESIGN.md` (DESIGN + PLAN doc, status SHIPPED after BUILD)
+- MOD `contracts/api/llm-gateway/v1/openapi.yaml` — `SubmitSttBytesRequest` schema + `multipart/form-data` request body variant on both `/v1/llm/jobs` and `/internal/llm/jobs`; SttInput JSON-mode description cross-refs bytes mode; 413 + 415 responses added
+- MOD `internal/provider/adapters.go` — `TranscribeInput +AudioBytes/+ContentType`; `ErrTranscribeInputInvalid` sentinel
+- MOD `internal/provider/openai_audio.go` — exactly-one pre-check using `hasURL == hasBytes` with `hasBytes := len(input.AudioBytes) > 0` (treats zero-length non-nil slice as "not set"); bytes branch skips `fetchAudioURL`
+- MOD `internal/provider/adapters_audio_test.go` — +6 tests (bytes happy + adapter-level oversize + ExactlyOne_BothSet + ExactlyOne_BothEmpty + ZeroByteSliceTreatedAsNotSet + ogg-content-type-ext)
+- MOD `internal/jobs/worker_audio.go` — `Worker.ProcessAudioInline` bytes-mode entrypoint (goroutine-closure handoff; no DB persistence of bytes); `classifyAudioError` extended with `ErrTranscribeInputInvalid → LLM_INVALID_REQUEST`
+- MOD `internal/jobs/worker_audio_test.go` — +2 tests (ErrTranscribeInputInvalid direct + wrapped)
+- MOD `internal/api/jobs_handler.go` — `SttMaxAudioBytes`/`sttMultipartOverhead` consts; `mime.ParseMediaType` dispatch in `doSubmitJob`; new `doSubmitSttMultipart` handler with `http.MaxBytesReader` cap + `ParseMultipartForm` + chunking-field rejection + 0-byte audio reject + empty-Content-Type reject + explicit field-name diagnostic + goroutine spawn calling `ProcessAudioInline`
+- MOD `internal/api/jobs_router_test.go` — +8 multipart tests (ValidationPasses + CaseInsensitiveContentType + Oversize → 413 + WrongOperation → 400 + ChunkingFieldRejected → 400 + WrongFileFieldName → 400 + ZeroByteAudio → 400 + EmptyContentType → 400); `buildSttMultipartRequest` helper
+- MOD `internal/api/server.go` — `isDeprecatedProxyPath` deny-list extended with `v1/audio/transcriptions` + `v1/audio/speech`; docstrings updated
+- MOD `internal/api/proxy_deprecation_test.go` — 3 audio cases flipped `false → true` + audio-dotdot-bypass + audio-suffix-not-prefix cases
+- MOD `internal/api/proxy_integration_test.go` — 8 placeholder-using tests swapped to synthetic `v1/responses`; `TestDoProxyNonJSONPassthrough` DELETED; `TestDoProxyAudioPathsNotDeprecated` REMOVED (flipped audio rows added to `TestDoProxyDeprecatedPathsReturn410`)
+- MOD `internal/api/proxy_router_test.go` — line 111 audio→responses path swap (disambiguated as route-mechanic test per Fix #10)
+- MOD `sdks/python/loreweave_llm/client.py` — polymorphic `transcribe(audio: str|bytes|bytearray|memoryview, content_type=None)`; new `_submit_stt_url` + `_submit_stt_bytes` private helpers; `_submit_stt_bytes` coerces bytearray/memoryview → bytes (httpx multipart only accepts str/bytes); `_raise_http_error` consults `from_code` on 4xx so audio codes surface as their dedicated classes
+- MOD `sdks/python/loreweave_llm/errors.py` — `LLMAudioTooLarge` + `LLMAudioFetchFailed` + `LLMAudioURLDisallowed` classes + 3 entries in `_CODE_TO_EXC`
+- MOD `sdks/python/loreweave_llm/__init__.py` — exports
+- MOD `sdks/python/tests/test_audio.py` — +7 tests (bytes_happy + bytearray + memoryview + bytes_without_content_type → LLMInvalidRequest + oversize → LLMAudioTooLarge + rejects_unsupported_type + regression-lock asserting audio codes have specific classes via `from_code`)
+- MOD `services/chat-service/app/services/voice_stream_service.py` — drop `httpx` from voice path; `_new_llm_client(user_id)` per-call factory; `_transcribe_audio` uses SDK bytes mode; `_generate_tts_chunks` uses SDK `stream_tts` + re-emits `AudioChunkEvent` as existing FE envelope (sentenceIndex/chunkIndex/data/final); DELETE dead `provider.resolve()` calls in both `voice_stream_response` AND `generate_tts_for_message`
+- NEW `services/chat-service/tests/test_voice_no_dead_resolution.py` — 3 grep-lock tests (provider.resolve banned + httpx import banned in voice path + SDK Client imported)
+- MOD `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5b row marked ✅ shipped with full final-shape description
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN doc (BEFORE BUILD).** Caught **3 HIGH + 7 MED + 5 LOW + 1 COSMETIC**. All 16 folded inline into design before any code was written.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🔴 HIGH | 25MB cap mechanism unspecified — would produce 400 not 413. Spec'd `http.MaxBytesReader(w, r.Body, cap+overhead)` BEFORE `ParseMultipartForm` + catch `*http.MaxBytesError` → 413. |
+| 2 | 🔴 HIGH | Adapter pseudocode contradicted "exactly one" rule — `switch case AudioBytes != nil` silently preferred bytes when both set. Added `hasURL == hasBytes` pre-check with new `ErrTranscribeInputInvalid` sentinel BEFORE the bytes-vs-URL branch. |
+| 3 | 🔴 HIGH | SDK had no `LLMAudioTooLarge`/etc. classes — `from_code` was falling through to generic `LLMError` for the 3 audio codes. Added 3 classes + registered in `_CODE_TO_EXC`. |
+| 4 | 🟡 MED | Content-Type dispatch needed `mime.ParseMediaType` (RFC-conformant) instead of naive `strings.HasPrefix`. |
+| 5 | 🟡 MED | SDK isinstance must include `memoryview` for numpy/sounddevice idioms. |
+| 6 | 🟡 MED | DELETE /v1/llm/jobs/{id} can't reach the worker goroutine; 25MB RAM pinned for up to SttJobTimeout=5min per cancelled job. **Accept-and-document** as `D-PHASE5B-CANCEL-NO-OP-AUDIO-RAM`. |
+| 7 | 🟡 MED | Deleting `TestDoProxyRewritesJSONModelField` would silently retire K17.2a model-name-rewrite coverage. Rewrote to use synthetic `v1/responses` instead of delete. |
+| 8 | 🟡 MED | Same for `TestDoProxyBodyTooLargeRejected` (4MiB body cap). Rewrote. |
+| 9 | 🟡 MED | Per-call SDK Client instantiation pattern (matches sibling `stream_service.py:68`) not honored in design. Aligned. |
+| 10 | 🟡 MED | proxy_router_test.go:111 disambiguation needed (route-mechanic vs audio-specific). Classified as route-mechanic → rewrote to synthetic path. |
+| 11-15 | 🟢 LOW | Dead `tts_model_name` resolution; chunking-field rejection; field-name diagnostic; Q5 conditional phrasing; T18 SESSION_PATCH same-commit rule. All folded into design + build plan. |
+| 16 | 🔵 COSMETIC | Sequence diagram path note (`/internal/llm/jobs` vs `/v1/llm/jobs`). Clarified. |
+
+**Round 2 — BUILD output (post-coding).** Caught **0 HIGH + 2 MED + 4 LOW + 1 COSMETIC**. Both MEDs fixed inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | 0-byte audio (non-nil empty `[]byte{}` from `io.ReadAll` on empty multipart part) silently passed through to OpenAI as 0-byte file → confusing LLM_UPSTREAM_ERROR. Added `if len(audioBytes) == 0 → 400` at handler; adapter `hasBytes` switched from `!= nil` to `len(...) > 0`. +1 handler test + 1 adapter test. |
+| 2 | 🟡 MED | Empty per-part Content-Type silently defaulted to `audio.wav` filename → OpenAI Whisper misdecode. Added `if contentType == "" → 400` at handler. +1 handler test. |
+| 3-6 | 🟢 LOW | Base64-string heuristic + cross-coded HTTP routing + panic-recovery + E2E closure test. All **accept-and-document** as `D-PHASE5B-*` deferred items. |
+| 7 | 🔵 COSMETIC | JSON-mode vs multipart-mode chunking-decode ordering style divergence. Accept. |
+
+### BUILD-time surprises (2 caught & fixed during BUILD)
+
+- httpx's multipart writer (`_multipart.py::FileField.render_data`) only handles `str`/`bytes` natively — `bytearray`/`memoryview` fall through to its `.read()` branch and `AttributeError`. Coerce to bytes in `_submit_stt_bytes` (loses zero-copy for memoryview but the alternative is no support).
+- SDK's `_raise_http_error` was raising generic `LLMInvalidRequest` for 4xx with audio codes (not using `from_code`). Routed via `from_code` on 4xx with defensive fallback when `from_code` returns base `LLMError`.
+
+### Verify evidence
+```
+provider-registry-service: go build/vet/test ./...   ALL GREEN
+  internal/api:                                       0.806s pass
+  internal/chunker:                                   0.286s pass
+  internal/jobs:                                      3.202s pass (+2 audio tests)
+  internal/provider:                                  0.281s pass (+6 audio tests)
+SDK pytest sdks/python/tests/:                       174 passed (was 167; +7 new)
+chat-service pytest services/chat-service/tests/:    180 passed (was 177; +3 lock tests)
+voice_stream_service.py httpx imports:               0 (was 1)
+grep -rn "/internal/proxy/v1/audio" services/        only 2 docstring/comment refs
+                                                     (no production code paths)
+```
+
+### What's NEXT for the next agent
+
+**Phase 5c (deferred · sized TBD)** — `image_gen` adapter when the first caller arrives in monorepo. Likely candidates: video-gen-service or knowledge-service's wiki-illustration pipeline (per `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md`).
+
+**Phase 6a/b/c** — gateway rate-limit + quota enforcement (per refactor plan §6). Phase 6 worker-context hardening would close `D-PHASE5B-CANCEL-NO-OP-AUDIO-RAM`.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5B-CANCEL-NO-OP-AUDIO-RAM` — DELETE /v1/llm/jobs/{id} doesn't cancel worker goroutine (25MB × 5min RAM)
+- `D-PHASE2C-AUDIO-STAGING` — goroutine-closure breaks under RabbitMQ migration; need MinIO staging
+- `D-PHASE5B-SSRF-GUARD-DEAD-CODE` — URL-mode STT has zero production callers; consider removing
+- `D-PHASE5B-BASE64-STRING-HEURISTIC` — SDK could detect base64-encoded strings passed as `audio=` to improve error
+- `D-PHASE5B-CROSSCODED-HTTP-ROUTING` — defensive cross-check from_code class vs HTTP status bucket
+- `D-PHASE5B-E2E-CLOSURE-TEST` — wired-up integration test for handler→worker→adapter argument-passing
+- `D-PHASE5B-EMPTY-CONTENT-TYPE-ACCEPTANCE` — consider auto-detect from magic bytes if caller demand surfaces
+- `D-PHASE5A-LIVE-SMOKE` still open — pending manual post-merge live test with OpenAI BYOK whisper-1 + tts-1 against chat-service voice in browser
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5B_DESIGN.md` — design + plan + 7 final-shape sections
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5b row marked shipped + Phase 5c/6 preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5c (when caller appears): `python scripts/workflow-gate.py size L 8 5 1` then `phase clarify`
+3. Pre-flight: identify the new image_gen caller before writing the design
+
+---
 
 ## Session 54 cycle 1 — Phase 5a · audio adapter (STT + TTS) · /review-impl caught 1 HIGH + 2 MED + 4 LOW (all HIGH/MED + 1 LOW fixed inline)
 

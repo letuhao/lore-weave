@@ -27,6 +27,86 @@ import (
 // by design — chat streaming needs unbounded — so per-op caps live here).
 const SttJobTimeout = 5 * time.Minute
 
+// ProcessAudioInline — Phase 5b. Bytes-mode entrypoint that mirrors
+// Process() but takes audio bytes via goroutine closure instead of
+// reading them from the DB-persisted input JSON. Called from the
+// multipart submit handler (jobs_handler.go) AFTER ParseMultipartForm
+// has extracted the file + metadata fields; the handler holds the
+// bytes in stack memory + spawns this goroutine with the bytes captured
+// in its closure.
+//
+// /review-impl design §3.2: this binds bytes-mode STT to the in-process
+// goroutine pattern. Phase 2c (RabbitMQ worker migration) will need
+// MinIO staging — D-PHASE2C-AUDIO-STAGING deferred item.
+//
+// The synthesized inputMap mirrors what runSttJob expects but the
+// audio source is signaled by a non-nil AudioBytes on TranscribeInput
+// rather than an "audio_url" field — the adapter's exactly-one check
+// ensures no ambiguity.
+func (w *Worker) ProcessAudioInline(
+	ctx context.Context,
+	jobID, ownerUserID uuid.UUID,
+	modelSource string,
+	modelRef uuid.UUID,
+	language string,
+	audioBytes []byte,
+	contentType string,
+) {
+	logger := w.logger.With("job_id", jobID.String(), "operation", "stt", "mode", "inline")
+
+	rowsRunning, err := w.repo.MarkRunning(ctx, jobID)
+	if err != nil {
+		logger.Error("mark running failed", "err", err)
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, "stt", "failed", nil, "LLM_INTERNAL_ERROR", err.Error(), "")
+		return
+	}
+	if rowsRunning == 0 {
+		logger.Info("job not pending; skipping process")
+		return
+	}
+
+	providerKind, providerModelName, endpointBaseURL, secret, err := w.resolve(ctx, ownerUserID, modelRef, modelSource)
+	if err != nil {
+		logger.Error("resolve creds failed (audio-inline)", "err", err)
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, "stt", "failed", nil, "LLM_MODEL_NOT_FOUND", err.Error(), "")
+		return
+	}
+
+	adapter, err := w.adapter(providerKind)
+	if err != nil {
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, "stt", "failed", nil, "LLM_PROVIDER_ROUTE_VIOLATION", err.Error(), "")
+		return
+	}
+
+	// /review-impl HIGH#1 (5a) — bound wall-clock; bytes mode reuses
+	// the same SttJobTimeout cap so a slow upstream Whisper can't pin
+	// the goroutine indefinitely (the 25MB byte slice is captured in
+	// closure for the duration; cap protects RAM).
+	sttCtx, cancel := context.WithTimeout(ctx, SttJobTimeout)
+	defer cancel()
+
+	in := provider.TranscribeInput{
+		AudioBytes:  audioBytes,
+		ContentType: contentType,
+		Language:    language,
+	}
+	out, _, terr := adapter.Transcribe(sttCtx, endpointBaseURL, secret, providerModelName, in)
+	if terr != nil {
+		errCode, status := classifyAudioError(sttCtx, terr)
+		logger.Info("stt-inline failed", "code", errCode, "status", status, "err", terr)
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, "stt", status, nil, errCode, terr.Error(), "")
+		return
+	}
+
+	result := map[string]any{
+		"text":        out.Text,
+		"language":    out.Language,
+		"duration_ms": out.DurationMs,
+	}
+	_ = w.repo.UpdateProgress(ctx, jobID, intPtr(1), 1, 0)
+	w.finalizeAndNotify(ctx, jobID, ownerUserID, "stt", "completed", result, "", "", "")
+}
+
 // processAudioJob dispatches an audio-shaped job (currently only stt).
 // Mirrors the layout of Process()'s creds-resolve + adapter-pick + decode
 // pattern but feeds adapter.Transcribe instead of adapter.Stream.
@@ -135,6 +215,7 @@ func (w *Worker) runSttJob(
 //   - ErrAudioURLDisallowed (SSRF guard) → failed/LLM_AUDIO_URL_DISALLOWED
 //   - ErrAudioFetchFailed → failed/LLM_AUDIO_FETCH_FAILED
 //   - ErrAudioTooLarge → failed/LLM_AUDIO_TOO_LARGE
+//   - ErrTranscribeInputInvalid (Phase 5b) → failed/LLM_INVALID_REQUEST
 //   - ErrOperationNotSupported → failed/LLM_OPERATION_NOT_SUPPORTED
 //   - other → failed/LLM_UPSTREAM_ERROR
 func classifyAudioError(ctx context.Context, err error) (code, status string) {
@@ -170,6 +251,11 @@ func classifyAudioError(ctx context.Context, err error) (code, status string) {
 		return "LLM_AUDIO_FETCH_FAILED", "failed"
 	case errors.Is(err, provider.ErrAudioTooLarge):
 		return "LLM_AUDIO_TOO_LARGE", "failed"
+	case errors.Is(err, provider.ErrTranscribeInputInvalid):
+		// Phase 5b — adapter pre-check caught a caller-side invariant
+		// violation (both URL+Bytes set, or neither). Surface as
+		// LLM_INVALID_REQUEST so callers don't retry as a transient.
+		return "LLM_INVALID_REQUEST", "failed"
 	case errors.Is(err, provider.ErrOperationNotSupported):
 		return "LLM_OPERATION_NOT_SUPPORTED", "failed"
 	default:

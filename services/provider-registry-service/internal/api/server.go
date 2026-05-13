@@ -330,11 +330,12 @@ WHERE platform_model_id=$1 AND status='active'
 	writeJSON(w, http.StatusOK, out)
 }
 
-// isDeprecatedProxyPath returns true for any path that the Phase 4d
-// retirement closed. Currently catches chat-completion + embeddings
-// (all callers migrated to /v1/llm/jobs). Audio paths
-// (transcriptions, speech) and any other future-allowed path return
-// false and pass through to the upstream provider unchanged.
+// isDeprecatedProxyPath returns true for any path retired by the
+// Phase 4d (chat-completion / embeddings) and Phase 5b (audio
+// transcriptions / speech) retirements. All callers have been
+// migrated to /v1/llm/jobs or /v1/llm/stream via the loreweave_llm
+// SDK; the transparent proxy is effectively decommissioned for
+// known LLM/audio paths after Phase 5b.
 //
 // Defense-in-depth normalization (caught by /review-impl on the
 // initial Phase 4d implementation):
@@ -358,9 +359,14 @@ func isDeprecatedProxyPath(targetPath string) bool {
 		cleaned = cleaned[1:]
 	}
 	deprecated := []string{
+		// Phase 4d retirements:
 		"v1/chat/completions",
 		"v1/completions",
 		"v1/embeddings",
+		// Phase 5b retirements — audio paths migrated to /v1/llm/jobs
+		// (stt via multipart bytes-mode) and /v1/llm/stream (tts).
+		"v1/audio/transcriptions",
+		"v1/audio/speech",
 	}
 	for _, p := range deprecated {
 		if cleaned == p {
@@ -371,9 +377,12 @@ func isDeprecatedProxyPath(targetPath string) bool {
 }
 
 // publicProxy is the JWT-authenticated version of the transparent proxy.
-// Used by the frontend via gateway: POST /v1/model-registry/proxy/v1/audio/transcriptions?model_source=user_model&model_ref=...
-// Phase 4d: chat-completion paths via this proxy are blocked at request
-// time by isDeprecatedProxyPath in doProxy.
+// Phase 4d retired chat-completion / completions / embeddings; Phase 5b
+// retired audio/transcriptions and audio/speech. After Phase 5b the
+// transparent proxy has no known supported public paths — all callers
+// route through /v1/llm/* via the loreweave_llm SDK. The code remains
+// alive (model-name rewrite + 4MiB cap + auth-header forwarding) as
+// defense-in-depth and to enforce 410 on the retired paths.
 func (s *Server) publicProxy(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
@@ -424,12 +433,12 @@ func (s *Server) internalProxy(w http.ResponseWriter, r *http.Request) {
 // unchanged, injects the decrypted provider API key as Authorization, and streams the
 // upstream response back.
 func (s *Server) doProxy(w http.ResponseWriter, r *http.Request, userID uuid.UUID, modelSource string, modelRefStr string) {
-	// Phase 4d defense-in-depth: deprecated LLM paths (chat-completions,
-	// completions, embeddings) are blocked here BEFORE any DB work so
-	// developers mid-migration get a 410 with a clear "use /v1/llm/jobs"
+	// Phase 4d + 5b defense-in-depth: deprecated LLM/audio paths
+	// (chat-completions, completions, embeddings, audio/transcriptions,
+	// audio/speech) are blocked here BEFORE any DB work so developers
+	// mid-migration get a 410 with a clear "use /v1/llm/* via the SDK"
 	// hint, rather than a misleading 404 from credential resolution if
-	// their stale request happens to carry stale creds. Audio paths
-	// pass through because the audio adapter hasn't shipped yet.
+	// their stale request happens to carry stale creds.
 	// /review-impl LOW#6 follow-up.
 	targetPath := chi.URLParam(r, "*")
 	if targetPath == "" {
@@ -440,7 +449,7 @@ func (s *Server) doProxy(w http.ResponseWriter, r *http.Request, userID uuid.UUI
 	if isDeprecatedProxyPath(targetPath) {
 		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusGone, "PROXY_PATH_DEPRECATED",
-			"this proxy path was retired in Phase 4d — use /v1/llm/jobs (or /v1/llm/stream for SSE) via the loreweave_llm SDK instead")
+			"this proxy path was retired in Phase 4d/5b — use /v1/llm/jobs (or /v1/llm/stream for SSE) via the loreweave_llm SDK instead")
 		return
 	}
 

@@ -171,6 +171,14 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SubmitJobRequest'
+          multipart/form-data:
+            # Phase 5b — bytes-mode STT submission. Audio carried inline
+            # via multipart file part; metadata in form fields. Only
+            # operation=stt is accepted via multipart. The handler
+            # uses mime.ParseMediaType to dispatch (case-insensitive
+            # per RFC 2045).
+            schema:
+              $ref: '#/components/schemas/SubmitSttBytesRequest'
       responses:
         '202':
           description: Job accepted. Result available later via callback or polling.
@@ -185,6 +193,12 @@ paths:
         '402':
           $ref: '#/components/responses/ErrorResponse'
         '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          # Phase 5b — multipart audio exceeds 25MB cap.
+          $ref: '#/components/responses/ErrorResponse'
+        '415':
+          # Phase 5b — Content-Type neither application/json nor multipart/form-data.
           $ref: '#/components/responses/ErrorResponse'
         '429':
           $ref: '#/components/responses/ErrorResponse'
@@ -209,6 +223,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SubmitJobRequest'
+          multipart/form-data:
+            # Phase 5b — bytes-mode STT. Same shape as /v1/llm/jobs;
+            # both share doSubmitJob handler.
+            schema:
+              $ref: '#/components/schemas/SubmitSttBytesRequest'
       responses:
         '202':
           description: Job accepted
@@ -219,6 +238,10 @@ paths:
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/ErrorResponse'
+        '415':
           $ref: '#/components/responses/ErrorResponse'
 
   /v1/llm/jobs/{job_id}:
@@ -863,17 +886,24 @@ components:
       required: [audio_url]
       description: |
         Phase 5a. Input payload for `SubmitJobRequest` with
-        `operation: stt`. The gateway fetches the audio at `audio_url`
-        (HTTPS GET, 30s timeout, 25MB cap) and submits to the upstream
-        STT provider.
+        `operation: stt` on the JSON request body. The gateway fetches
+        the audio at `audio_url` (HTTPS GET, 30s timeout, 25MB cap) and
+        submits to the upstream STT provider.
+
+        Phase 5b adds an ALTERNATIVE multipart bytes-mode entrypoint —
+        see `SubmitSttBytesRequest`. Pick exactly one. The adapter
+        enforces exactly-one-set as an invariant; sending both via the
+        same submission is not possible because Content-Type dispatches
+        to one schema or the other.
       properties:
         audio_url:
           type: string
           format: uri
           description: |
             HTTPS URL the gateway can GET to fetch the audio. Caller is
-            responsible for upload + URL signing. For chat-service voice
-            flow (Phase 5b), this is a pre-signed MinIO URL with ≤60s TTL.
+            responsible for upload + URL signing. JSON-mode callers
+            without their own staging should consider `SubmitSttBytesRequest`
+            (multipart) instead, which avoids the upload+presign step.
             Only `http://` and `https://` schemes are accepted; `file://`
             and `s3://` are rejected (basic SSRF guard).
         language:
@@ -883,6 +913,57 @@ components:
             ISO 639-1 code or `auto` for upstream auto-detection.
             OpenAI Whisper accepts both; `auto` is converted to "omit
             param" at the provider HTTP layer.
+
+    SubmitSttBytesRequest:
+      type: object
+      required: [operation, model_source, model_ref, audio]
+      description: |
+        Phase 5b. Multipart variant for STT submission with the audio
+        bytes carried inline. The gateway streams the file into a
+        per-process buffer (no DB persistence), dispatches the worker,
+        and replies 202 with the same `SubmitJobResponse` envelope as
+        the JSON variant.
+
+        Only `operation=stt` is accepted on `multipart/form-data`. Other
+        operations on multipart return 400 `LLM_INVALID_REQUEST`.
+
+        `chunking` config is NOT accepted on multipart submits — STT
+        runs as a single upstream call regardless of audio length. If a
+        `chunking` form field is present, the handler returns 400
+        `LLM_INVALID_REQUEST: "chunking not accepted on stt multipart submits"`.
+
+        File field name MUST be exactly `audio`. Anything else returns
+        400 `LLM_INVALID_REQUEST: "expected file field 'audio'; got [<list>]"`.
+      properties:
+        operation:
+          type: string
+          enum: [stt]
+          description: Must be `stt`.
+        model_source:
+          $ref: '#/components/schemas/ModelSource'
+        model_ref:
+          type: string
+          format: uuid
+          description: Caller's model UUID (resolved via provider-registry).
+        language:
+          type: string
+          default: auto
+          description: |
+            ISO 639-1 code or `auto` for upstream auto-detection.
+            Mirrors `SttInput.language`.
+        trace_id:
+          type: string
+          nullable: true
+          description: Optional correlation ID, mirrors `SubmitJobRequest.trace_id`.
+        audio:
+          type: string
+          format: binary
+          description: |
+            Audio bytes (any format Whisper accepts: webm, mp3, wav,
+            ogg, m4a, flac). 25MB hard cap matches OpenAI Whisper
+            upload limit. Bytes > 25MB rejected with 413
+            `LLM_AUDIO_TOO_LARGE`. Filename is informational — adapter
+            picks the upstream extension via Content-Type.
 
     SttResult:
       type: object
