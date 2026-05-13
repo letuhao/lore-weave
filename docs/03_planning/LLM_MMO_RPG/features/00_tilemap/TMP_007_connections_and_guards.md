@@ -3,7 +3,7 @@
 > **Conversational name:** "Connections" (TMP-CONN). The zone-graph edge realization layer. Takes abstract zone-graph edges and renders them as actual tile-level passages: guarded corridors, free borders, water routes, or teleport portals.
 >
 > **Category:** TMP — Tilemap Foundation
-> **Status:** **DRAFT 2026-05-13** (revised 2026-05-13 for license-hygiene framing)
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → revised 2026-05-13 for license-hygiene framing → CANDIDATE-LOCK closure pass: TMP-CONN-Q1..Q5 RESOLVED at §13)
 > **Owns:** TMP-4 + TMP-14 catalog entries + ConnectionsPlacer modificator detail
 
 ---
@@ -362,15 +362,15 @@ Click-interactions:
 
 ---
 
-## §13 Open questions
+## §13 Resolved questions (closure pass 2026-05-13)
 
-| ID | Question | Default proposal |
-|---|---|---|
-| TMP-CONN-Q1 | Should connections support per-PC permission gates (e.g., faction-only)? | V2+ via `gate_kind: Option<GateKind>` on ZoneEdgeSpec (consume PF_001 PlaceConnection gating pattern); V1+30d ungated |
-| TMP-CONN-Q2 | How to handle multi-PC parties traveling together via connection? | Same as PL_001 §13 — all party PCs move together as one travel action; no per-PC fork |
-| TMP-CONN-Q3 | Should guards re-spawn after combat (V2)? | V2 author config per ZoneEdgeSpec: `respawn: NeverIRL | WeeklyFictional | ConditionalNarrative`; V1+30d no combat so moot |
-| TMP-CONN-Q4 | Can a single zone-pair have multiple connections (e.g., 2 different passages)? | NO V1+30d (one edge per pair); V2+ multi-edge if author needs |
-| TMP-CONN-Q5 | Should `Hint` connections be visible in author Forge UI (preview)? | YES — dashed line in editor; non-render in player UI |
+| ID | Question | Locked decision | How resolved |
+|---|---|---|---|
+| TMP-CONN-Q1 | Connections support per-PC permission gates (faction-only)? | **V2+ via `gate_kind: Option<GateKind>` on ZoneEdgeSpec** (consumes PF_001 PlaceConnection gating pattern; TMP-D20 reservation); V1+30d all connections ungated (any actor can traverse if PassageKind allows) | ✅ ACCEPT (defer V2+ TMP-D20) |
+| TMP-CONN-Q2 | Multi-PC parties traveling together via connection | **Defer to PL_001 §13** — all party PCs move together as one travel action; no per-PC fork. PL_001 owns the travel-resolution contract; TMP_007 just provides the physical passage geometry | ✅ ACCEPT (defer-to-PL_001) |
+| TMP-CONN-Q3 | Guards re-spawn after combat | **V2 author config per ZoneEdgeSpec**: `respawn: NeverIRL \| WeeklyFictional \| ConditionalNarrative` (schema-reserved V1+30d via TMP-D21); V1+30d no combat so moot (TMP_006 §6 V2 grail-equivalent narrative anchors V2+) | ✅ ACCEPT (defer V2 TMP-D21) |
+| TMP-CONN-Q4 | Multi-connection same zone-pair (2 different passages) | **NO V1+30d** — one edge per pair (matches genre prior art simplicity); V2+ optional via `multi_edge_id: Option<u32>` on ZoneEdgeSpec if author demand emerges (TMP-D22 reservation) | ✅ ACCEPT (defer V2+ TMP-D22) |
+| TMP-CONN-Q5 | `Hint` connections visible in author Forge UI preview | **YES — dashed line in Forge editor**; non-render in player UI (Hint is author-intent-only per §2.1; Adversarial also rendered as dashed-red line in Forge editor for symmetry) | ✅ ACCEPT default |
 
 ---
 

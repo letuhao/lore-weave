@@ -3,7 +3,7 @@
 > **Conversational name:** "Treasure" (TMP-TR). The tiered value-density-based treasure-pile generator and the connectivity-preserving object placer.
 >
 > **Category:** TMP — Tilemap Foundation
-> **Status:** **DRAFT 2026-05-13** (revised 2026-05-13 for license-hygiene framing)
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → revised 2026-05-13 for license-hygiene framing → CANDIDATE-LOCK closure pass: TMP-TR-Q1..Q6 RESTORED (Phase 3 finding — lost in revision pass) + RESOLVED at §8.5; existing §9 Prior Art unchanged)
 > **Owns:** TMP-11 + TMP-12 catalog entries + TreasurePlacer + ObjectManager modificator detail
 
 ---
@@ -327,6 +327,21 @@ LoreWeave V1+30d simplifies to 7 `TilemapObjectKind` variants:
 | `Decoration` | Visual only | Author-uploadable decorations V3 |
 
 This taxonomy is intentionally minimal V1+30d — extensible via TMP-A8 schema-additive.
+
+---
+
+## §8.5 Resolved questions (closure pass 2026-05-13)
+
+**Phase 3 review finding:** The §9 Open questions section was lost during the 2026-05-13 license-hygiene revision pass (every other TMP doc retained its questions; TMP_006's were dropped). Restored at closure pass + RESOLVED simultaneously.
+
+| ID | Question | Locked decision | How resolved |
+|---|---|---|---|
+| TMP-TR-Q1 | Should treasure piles compose multiple objects or always 1 object per pile? | **Composite V1+30d** — pile = `Vec<ObjectInfo>` author-defined composition; engine picks individual objects within tier value range. Pile-value = sum of constituent object values. Gold coins + artifact chest + spell scroll combinations enable narrative variety | ✅ ACCEPT default |
+| TMP-TR-Q2 | When guards killed (V2 combat), do their tiles transition USED → Walkable? | **YES V2** — EVT-T3 ObjectRemoved emitted on guard kill; tilemap-service updates `object_placements`; tiles transition Occupied → Walkable (via §5.1 nearest-object-distance grid update); clients re-render; path becomes walkable. Audit-grade event | ✅ ACCEPT default |
+| TMP-TR-Q3 | Should `inherit_treasure_from` also copy banned/required objects? | **YES** — full object pool copy (treasure tiers + banned + required + custom_objects all inherited); author overrides specific entries via zone-level `banned_objects` / `required_objects` (more-specific zone-level wins per TMP-TPL-Q4 UNION semantic) | ✅ ACCEPT default |
+| TMP-TR-Q4 | If placement fails repeatedly (50+ attempts), reduce density or emit error? | **Reduce density by 50% + log INFO event** V1+30d — emit `tilemap.density_reduced` info-level rule_id (not error); tilemap remains valid + playable; author dashboard surfaces ops trend (high density-reduction rate → author should reduce template density) | ✅ ACCEPT default |
+| TMP-TR-Q5 | Determinism: same seed → same treasure-pile placements? | **YES per TMP-A4** — TreasurePlacer uses sub-seed `blake3(global_seed || zone_id || "treasure_placer")` so per-zone parallel placement preserves determinism; tested via replay-determinism harness per TDIL-A9 | ✅ ACCEPT default |
+| TMP-TR-Q6 | V2 combat outcomes modifying tilemap_view | **EVT-T3 ObjectRemoved cascade** — combat-service emits, tilemap-service consumes, updates `object_placements`, emits its own EVT-T3 Derived on `tilemap_view`; clients re-render; pile becomes accessible. Audit-grade chain | ✅ ACCEPT default |
 
 ---
 

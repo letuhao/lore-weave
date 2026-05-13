@@ -3,7 +3,7 @@
 > **Conversational name:** "Biome & Obstacles" (TMP-BIOME). The visual-consistency layer. Each zone selects a coherent set of obstacle objects (mountains, trees, lakes, plants, rocks) that look like they belong together.
 >
 > **Category:** TMP — Tilemap Foundation
-> **Status:** **DRAFT 2026-05-13** (revised 2026-05-13 for license-hygiene framing)
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → revised 2026-05-13 for license-hygiene framing → CANDIDATE-LOCK closure pass: TMP-BIOME-Q1..Q4 RESOLVED at §9)
 > **Owns:** TMP-13 catalog entry + TerrainPainter + ObstaclePlacer modificator detail
 
 ---
@@ -391,14 +391,14 @@ Higher decoration % → busier-looking zone, more visual clutter, harder to read
 
 ---
 
-## §9 Open questions
+## §9 Resolved questions (closure pass 2026-05-13)
 
-| ID | Question | Default proposal |
-|---|---|---|
-| TMP-BIOME-Q1 | Should biomes support seasonal variants (winter pine vs summer pine)? | V2+ via TDIL-A2 season clock + biome `seasonal_variants: HashMap<Season, Vec<ObjectTemplate>>` |
-| TMP-BIOME-Q2 | LLM-generated biome templates (author asks "create a desert-with-cyberpunk-ruins biome")? | V3 — opt-in via Forge:GenerateBiome AdminAction; LLM emits Vec<ObjectTemplate>; reviewed by author |
-| TMP-BIOME-Q3 | What if a zone has terrain not covered by any biome (e.g., a custom Subterranean variant)? | Fall back to engine all-templates-of-this-type; log warning |
-| TMP-BIOME-Q4 | Should biomes have a per-region rarity ("alpine_peak appears mostly in mountain zones; rarely in grass zones for variety")? | V2+ rarity tag per (biome, terrain) cell; V1+30d uniform |
+| ID | Question | Locked decision | How resolved |
+|---|---|---|---|
+| TMP-BIOME-Q1 | Seasonal biome variants (winter pine vs summer pine) | **V2+ via TDIL-A2 season clock** — biome gains `seasonal_variants: HashMap<Season, Vec<ObjectTemplate>>` (schema-reserved V1+30d); engine swaps templates at season boundary; L4 narration cache invalidates on season change (per TMP_008b §8.2 cache key includes `season`) | ✅ ACCEPT (defer V2+ TMP-D17) |
+| TMP-BIOME-Q2 | LLM-generated biome templates | **V3 opt-in** via `Forge:GenerateBiome` AdminAction — LLM emits `Vec<ObjectTemplate>` with footprint + visual hints; reviewed by author Forge approval queue (mirrors L3 canon_kind approval flow per TMP-LLM-Q2); rejected by default; author can promote to engine biome library | ✅ ACCEPT (defer V3 TMP-D18) |
+| TMP-BIOME-Q3 | Zone terrain not covered by any biome | **Fall back to all-templates-of-this-type** — engine uses any object_template matching zone.terrain regardless of biome grouping; log `tilemap.biome_fallback_used` INFO event with terrain_kind + zone_id; visual coherence reduced but zone remains generated; author sees ops dashboard alert + can author new biome | ✅ ACCEPT default |
+| TMP-BIOME-Q4 | Per-region biome rarity | **V2+ rarity tag** per `(biome_id, terrain_kind)` cell on biome registry — V1+30d uniform (all biomes equally likely if filter matches); V2+ `biome.rarity_per_terrain: HashMap<TerrainKind, BiomeRarity>` (Common/Uncommon/Rare/Legendary) for variety control | ✅ ACCEPT (defer V2+ TMP-D19) |
 
 ---
 

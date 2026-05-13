@@ -3,7 +3,7 @@
 > **Conversational name:** "LLM Contract" (TMP-LLM-C). Detailed I/O contract for the L3 zone classifier + L4 regional narration layers introduced at TMP_008. Owns prompt template structure, structured-output schema, validation rules, retry+fallback algorithm, prompt-injection defense, cacheable-prefix discipline, and cache key derivation. **Sibling-split** from TMP_008 (architecture+cost stays at TMP_008; I/O detail lives here). Follows project's existing split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b).
 >
 > **Category:** TMP — Tilemap Foundation
-> **Status:** **DRAFT 2026-05-13**
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → CANDIDATE-LOCK closure pass: TMP-LLM-C-Q1..Q7 RESOLVED at §14; §12 cost model bumped for TMP-LLM-Q4 cross-zone context lock; §4.3 R6 cross-zone-context validator slot added)
 > **Owns:** TMP-45..TMP-52 catalog entries (added at this split — see catalog row for full list)
 > **Builds on:** [TMP_008](TMP_008_llm_integration.md) architecture/V-tier/cost story, [05_llm_safety](../../05_llm_safety/) 3-intent classifier + injection defense + World Oracle, [AIT_001](../16_ai_tier/AIT_001_ai_tier_foundation.md) AIT-A4 hybrid 2-stage, [CSC_001 §6.4](../00_cell_scene/CSC_001_cell_scene_composition.md) LoreWeave-internal retry+fallback pattern.
 
@@ -659,14 +659,15 @@ Pre-revision §5 claimed ~3K tokens per L3 call. Actual breakdown for a typical 
 
 Claude Haiku 4.5 V2 pricing (hypothetical 2026): ~$1/1M input + ~$5/1M output = **~$0.018 per L3 call**.
 
-### 12.4 L4 input tokens (per zone, batched)
+### 12.4 L4 input tokens (per zone, batched; includes cross-zone context per TMP-LLM-Q4 closure-lock)
 
 | Component | Tokens | Cached? |
 |---|---|---|
 | System prompt | ~600 | ✅ |
 | Reality context (tone + language + book_canon excerpts ~300 tokens) | ~600 | ✅ |
 | 10 zones × (terrain + season + l3_objects + narrative_hint ~150 tokens) | ~1500 | ❌ |
-| **Total input** | **~2700** | **~1200 cached** |
+| **Cross-zone neighbor context** (10 zones × ~500 tokens per zone: neighboring zones' prior narrations + relative position hints) — TMP-LLM-Q4 closure-locked 2026-05-13 | ~5000 | ❌ |
+| **Total input** | **~7700** | **~1200 cached** |
 
 ### 12.5 L4 output tokens
 
@@ -678,20 +679,20 @@ Claude Haiku 4.5 V2 pricing (hypothetical 2026): ~$1/1M input + ~$5/1M output = 
 
 ### 12.6 L4 cost per call
 
-- Input: 2700 tokens (1200 cached; 1500 at full) = effective 1620 billed
+- Input: 7700 tokens (1200 cached at 10% rate; 6500 at full rate) = effective 6620 billed
 - Output: 2550 tokens
-- **Effective per-call: ~4170 tokens** (~$0.014 per call at Haiku 4.5 rates)
+- **Effective per-call: ~9170 tokens** (~$0.020 per call at Haiku 4.5 rates; bumped from ~$0.014 pre-Q4-lock for cross-zone geographic-coherence value)
 
 ### 12.7 Per-tilemap initial cost (L3 + L4)
 
 - L3: $0.018
-- L4: $0.014
-- **Per tilemap initial: ~$0.032** (was claimed ~$0.01)
+- L4: $0.020 (with cross-zone context per TMP-LLM-Q4)
+- **Per tilemap initial: ~$0.038** (bumped from ~$0.032 at TMP-LLM-Q4 closure-lock)
 
 Per typical reality (85 tilemaps):
-- **Initial: ~$2.72** (was claimed ~$1)
-- **Per season refresh** (4×/year): ~$1 each = ~$4/year
-- **Total Y1 (initial + 4 seasons): ~$7 per reality**
+- **Initial: ~$3.23** (bumped from ~$2.72)
+- **Per season refresh** (4×/year): ~$1.30 each = ~$5.20/year
+- **Total Y1 (initial + 4 seasons): ~$8.50 per reality** (bumped from ~$7; +21% for cross-zone narrative continuity)
 
 Still bounded + acceptable; the original claim was a factor of ~2.7× off but doesn't change the V2 economics fundamentally. Author + player can opt-in.
 
@@ -716,17 +717,17 @@ Still bounded + acceptable; the original claim was a factor of ~2.7× off but do
 
 ---
 
-## §14 Open questions
+## §14 Resolved questions (closure pass 2026-05-13)
 
-| ID | Question | Default proposal |
-|---|---|---|
-| TMP-LLM-C-Q1 | Anthropic tool-use vs XML-tagged output: which is more reliable in V2? | Tool-use V2 default; XML fallback if tool-use API has incidents |
-| TMP-LLM-C-Q2 | Should we A/B test cache-key strategies (per-tilemap vs per-zone)? | YES at V2 PoC; A/B on small reality sample |
-| TMP-LLM-C-Q3 | Per-object retry: how many max attempts per object (vs per batch)? | 3 attempts per batch is OK; per-object retry naturally narrows after first batch attempt. No per-object attempt counter V2; revisit if cost shows it needed |
-| TMP-LLM-C-Q4 | TF-IDF corpus for key-phrase extraction: per-reality or global? | Per-reality V2 (better recall for canon-specific terms); global V2+30d if cross-reality search becomes a feature |
-| TMP-LLM-C-Q5 | When closed-enum style is extended (new tone variant), how to invalidate L4 cache? | Add `style_hints_version` to L4 cache key (already in §8.2); incrementing version invalidates all cached narrations |
-| TMP-LLM-C-Q6 | Multilingual L4 — what if author requests Vietnamese but `narrative_hint` is in English (or vice versa)? | Honor `language` token; LLM ignores hint language. Document in system prompt. |
-| TMP-LLM-C-Q7 | Stream L4 narrations or batch? | Batch V2 (simpler; aligns with cost model). Stream V2+30d for FE incremental render. |
+| ID | Question | Locked decision | How resolved |
+|---|---|---|---|
+| TMP-LLM-C-Q1 | Anthropic tool-use vs XML-tagged output reliability | **Tool-use V2 default** with `tool_choice: {type: tool, name: ...}` forcing the call; XML-tagged fallback engineered in V2 PoC if tool-use API has incidents (graceful degradation per §3.2 implementation note) | ✅ ACCEPT default |
+| TMP-LLM-C-Q2 | A/B test cache-key strategies (per-tilemap vs per-zone) | **YES at V2 PoC** — A/B on small reality sample; measure cache hit rate + per-call cost; lock winner at V2 launch. Default V2 PoC: per-tilemap (matches §8 contract) | ✅ ACCEPT (defer to V2 PoC) |
+| TMP-LLM-C-Q3 | Per-object retry max attempts (vs per batch) | **3 attempts per batch is OK** V2 — per-object retry naturally narrows the failing subset after first batch attempt (§5). No per-object attempt counter V2; revisit if cost telemetry shows per-object retries dominating. Cap at 3 attempts total per batch | ✅ ACCEPT default |
+| TMP-LLM-C-Q4 | TF-IDF corpus scope: per-reality or global | **Per-reality V2** (TF-IDF corpus = all L4 narrations within this reality) — better recall for canon-specific terms ("Lotus Sect", "Hangzhou", etc.); cross-reality global corpus V2+30d if cross-reality search emerges as a feature | ✅ ACCEPT default |
+| TMP-LLM-C-Q5 | Closed-enum style extension cache invalidation | **`style_hints_version` field on `tilemap_defaults`** — already in §8.2 cache key composition; incrementing version invalidates all L4 cached narrations in the reality at next access (lazy invalidation; not eager regeneration) | ✅ ACCEPT default |
+| TMP-LLM-C-Q6 | Multilingual mismatch (Vietnamese language token + English narrative_hint) | **Honor `language` token; LLM ignores hint language** — system prompt explicitly: "Author hint may appear in a different language than the requested output language; render the narration in the requested `language`; the hint's language is metadata only" (per §11) | ✅ ACCEPT default |
+| TMP-LLM-C-Q7 | Stream L4 narrations or batch? | **Batch V2** — simpler; aligns with per-call cost model; tool-use semantics return all narrations atomically. **Stream V2+30d** for FE incremental render (TMP-D25 reservation; player sees zones narrate one-by-one as they load; better UX for slow Haiku response) | ✅ ACCEPT (defer V2+30d TMP-D25) |
 
 ---
 

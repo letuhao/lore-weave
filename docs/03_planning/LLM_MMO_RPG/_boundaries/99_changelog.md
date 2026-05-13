@@ -6,6 +6,65 @@
 
 ---
 
+## 2026-05-13 (late evening same day) — TMP folder closure pass — all 9 docs DRAFT → CANDIDATE-LOCK (§15 AC walked + all 43 open questions RESOLVED + Phase 3 review findings applied)
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; same-day fourth lock cycle. Follows user direction to "closure pass for TMP". Closes the TMP folder for V1+30d design per the WA/NPC/PLT/PO closure-pass pattern.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner None); new `_Last released_` entry with closure pass summary
+  - `01_feature_ownership_matrix.md`: TMP_001 + TMP_008b status promotions DRAFT → CANDIDATE-LOCK; rule_id count corrected 16 → 17 V1+30d (added `tilemap.density_reduced` info-level at Phase 3 review)
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** all 9 TMP feature docs promoted DRAFT → CANDIDATE-LOCK with resolutions table replacing open-questions sections:
+  - `TMP_001 §12`: 8 questions RESOLVED (TMP-Q1..Q8); 3 USER-LOCKED (TMP-Q3 V2 default LLM-on / TMP-Q4 Phaser 3 / TMP-LLM-Q4 cross-zone L4 context YES); 5 ACCEPT-default
+  - `TMP_001 §15`: AC-TMP-1..10 walked + expanded from 1-line sketches to full setup/action/expected-outcome triples with concrete rule_ids + event types; each scenario independently testable via integration test
+  - `TMP_001 §9.2`: `tilemap.density_reduced` info-level rule_id added (Phase 3 review finding; was referenced in AC-TMP-9 but missing from inventory); 17 V1+30d rule_ids total (was 16)
+  - `TMP_002 §9`: TMP-Q5 (cross-ref TMP_001) + TMP-PLACE-Q1..Q3 RESOLVED (4 ACCEPT-default)
+  - `TMP_003 §6`: TMP-PIPE-Q1..Q4 RESOLVED (4 ACCEPT-default; PIPE-Q1 budget config locked to V1+30d hardcoded 10s + V2 author-configurable; PIPE-Q3 dry-run mode deferred V2+ as TMP-D15)
+  - `TMP_004 §10`: TMP-TPL-Q1..Q5 RESOLVED (5 ACCEPT-default; TPL-Q3 template inheritance deferred V2+ as TMP-D16; TPL-Q4 banned_terrain_kinds UNION semantic; TPL-Q5 author seed_offset enabled)
+  - `TMP_005 §9`: TMP-BIOME-Q1..Q4 RESOLVED (4 ACCEPT-default; BIOME-Q1 seasonal V2+ TMP-D17; BIOME-Q2 LLM-gen biome V3 TMP-D18; BIOME-Q3 fallback + `tilemap.biome_fallback_used` INFO event; BIOME-Q4 rarity tag V2+ TMP-D19)
+  - `TMP_006 §8.5`: **Phase 3 finding — RESTORED §9 questions lost in license-hygiene revision pass.** TMP-TR-Q1..Q6 RESOLVED at restoration + closure (6 ACCEPT-default; TR-Q1 composite piles; TR-Q4 density reduce + `tilemap.density_reduced` info; TR-Q5 deterministic per TMP-A4)
+  - `TMP_007 §13`: TMP-CONN-Q1..Q5 RESOLVED (5 ACCEPT-default; CONN-Q1 per-PC gates V2+ TMP-D20; CONN-Q3 guard respawn V2 TMP-D21; CONN-Q4 multi-edge V2+ TMP-D22; CONN-Q5 Hint+Adversarial dashed-line render in Forge editor)
+  - `TMP_008 §9`: TMP-LLM-Q1..Q7 RESOLVED; **TMP-LLM-Q4 USER-LOCKED YES V2 cross-zone L4 context** → §5 cost model bumped (~$0.014 → ~$0.020/L4 call; per-tilemap ~$0.032 → ~$0.038; per-reality Y1 ~$7 → ~$8.50; +21% for cross-zone narrative continuity); LLM-Q2 canon_kind approval flow V2; LLM-Q6 Zone Lore UI tab V2+ TMP-D24
+  - `TMP_008b §14`: TMP-LLM-C-Q1..Q7 RESOLVED (7 ACCEPT-default; LLM-C-Q2 A/B cache strategies deferred to V2 PoC; LLM-C-Q7 streaming V2+30d TMP-D25); §12.4-§12.7 cost model bumped per TMP-LLM-Q4 lock (cross-zone neighbor context +5000 tokens/call; effective L4 ~9170 tokens; ~$0.020/call)
+  - `_index.md`: all 9 row statuses DRAFT → CANDIDATE-LOCK 2026-05-13; folder closure status promoted to CLOSED for V1+30d design with closure-pass deliverables summary
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: all 29 V1+30d entries (TMP-1..TMP-22 + TMP-24..TMP-30 + TMP-45..TMP-52) promoted from 📋 → ✅; rule_id count updated 16 → 17; V2/V2+/V3 entries stay 📋
+
+### Question resolution summary
+
+| Resolution bucket | Count | IDs |
+|---|---:|---|
+| USER-LOCKED at closure pass | 3 | TMP-Q3, TMP-Q4, TMP-LLM-Q4 |
+| ACCEPT default | 34 | TMP-Q1, TMP-Q2, TMP-Q5..Q8 + TMP-PLACE-Q1..Q3 + TMP-PIPE-Q1..Q4 + TMP-TPL-Q1, Q4, Q5 + TMP-BIOME-Q3 + TMP-TR-Q1..Q6 + TMP-CONN-Q2, Q5 + TMP-LLM-Q1, Q3, Q5, Q7 + TMP-LLM-C-Q1, Q3, Q4, Q5, Q6 |
+| DEFER V2+ | 6 | TMP-TPL-Q3 (TMP-D16), TMP-BIOME-Q1 (TMP-D17), TMP-BIOME-Q4 (TMP-D19), TMP-CONN-Q1 (TMP-D20), TMP-CONN-Q4 (TMP-D22), TMP-LLM-Q6 (TMP-D24) |
+| DEFER V2 with reservation | 4 | TMP-PIPE-Q3 (TMP-D15), TMP-CONN-Q3 (TMP-D21), TMP-LLM-Q2 (V2 approval flow), TMP-LLM-C-Q2 (V2 PoC A/B test) |
+| DEFER V2+30d | 2 | TMP-BIOME-Q2 V3 (TMP-D18), TMP-LLM-C-Q7 (TMP-D25 streaming) |
+| **Total** | **49** | (43 questions + 6 new deferrals registered via closure-pass reservations) |
+
+Total deferral count: TMP-D1..D12 (pre-closure) + new TMP-D15..D22, D24..D25 (closure-registered; D13/D14/D23 skipped to leave gap for V2 PoC discoveries) → ~21 active deferrals.
+
+### Phase 3 review findings applied
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | TMP_006 §9 Open questions section lost in 2026-05-13 license-hygiene revision pass (every other TMP doc retained; TMP_006 dropped) | Restored as §8.5 + RESOLVED at closure pass with 6 questions TR-Q1..Q6 |
+| 2 | `tilemap.density_reduced` info-level rule_id referenced in AC-TMP-9 + TMP-TR-Q4 but missing from §9.2 namespace inventory | Added to §9.2; rule_id count corrected 16 → 17 V1+30d |
+| 3 | `tilemap.biome_fallback_used` INFO event introduced at TMP-BIOME-Q3 resolution; consistent with `tilemap.density_reduced` info-level pattern | Both info-events distinct from error rule_ids; documented in respective question resolution rationale |
+
+### V2-blocking + V3-blocking work registered
+
+- **V2 launch blockers** (must be addressed before V2 enable): PoC validate cacheable-prefix + tool-use + per-object retry empirically (TMP_008b validation); A/B cache strategies (TMP-LLM-C-Q2); confirm cost model (TMP_008b §12 corrected to ~$8.50/reality Y1 post cross-zone context); World Oracle V2 validation pass (TMP-LLM-Q7); approval flow EVT-T8 Forge:ApproveCanonKind (TMP-LLM-Q2)
+- **V2+30d additive**: streaming L4 narrations (TMP-D25); per-template language extensions; KeyBERT migration from TF-IDF (TMP_008b §10)
+- **V3 RMG wizard** scoping (TMP-D1); manual paint UX (TMP-D2); multi-level verticality (TMP-D9)
+
+### Cumulative state post-closure
+
+- 9 feature docs all CANDIDATE-LOCK 2026-05-13 (was 8 DRAFT + 1 DRAFT-split-out)
+- 1 catalog row (52 entries; 29 V1+30d entries ✅ marked; 23 V2/V2+/V3 entries 📋)
+- 4 boundary file updates (ownership-matrix status + namespace count + this changelog + LOCK)
+- Folder closure status: **CLOSED for V1+30d design 2026-05-13**
+- LOCK promotion gated on integration tests + V2 PoC validation
+
+---
+
 ## 2026-05-13 (late evening same day) — TMP_008b LLM Contract Spec — sibling-split for I/O contract detail (deep-discuss follow-up: "is in/out contract LLM-friendly?")
 
 - **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; same-day third lock cycle. Follows user request to deep-discuss LLM-friendliness of TMP_008's I/O contract; adversarial analysis surfaced 4 HIGH + 4 MED gaps (prompt injection vector, no structured-output enforcement, hand-wavy validation feedback, cache strategy not aligned with prompt caching, all-or-nothing retry, L4 cache missing L3-digest, LLM-emitted key phrases unreliable, optimistic cost claims). User chose **"Split into TMP_008 + TMP_008b LLM-contract detail"** to mirror existing `<feature>` / `<feature>b` split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b).

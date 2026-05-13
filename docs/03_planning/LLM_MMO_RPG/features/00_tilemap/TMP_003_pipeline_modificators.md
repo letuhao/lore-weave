@@ -3,7 +3,7 @@
 > **Conversational name:** "Pipeline" (TMP-PIPE). The modificator pattern + dependency graph + execution engine. Each generation step (terrain paint, treasure place, obstacle fill, etc.) is a Modificator with declared dependencies; the engine sorts them topologically and runs them in parallel where dependencies allow.
 >
 > **Category:** TMP — Tilemap Foundation
-> **Status:** **DRAFT 2026-05-13** (revised 2026-05-13 for license-hygiene framing)
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → revised 2026-05-13 for license-hygiene framing → CANDIDATE-LOCK closure pass: TMP-PIPE-Q1..Q4 RESOLVED at §6)
 > **Owns:** TMP-9 + TMP-10 + TMP-29 catalog entries
 > **Architectural foundations:** Strategy + Visitor patterns (Gamma et al. 1994); topological sort (Kahn 1962); dependency-graph scheduling. Full citations in §7 Prior Art.
 > **Cross-refs:** Mirrors [EVT-G1..G6 + Coordinator](../../07_event_model/12_generation_framework.md) Generator framework architecture — same topology-graph + dependency pattern.
@@ -419,14 +419,14 @@ Common failures:
 
 ---
 
-## §6 Open questions
+## §6 Resolved questions (closure pass 2026-05-13)
 
-| ID | Question | Default proposal |
-|---|---|---|
-| TMP-PIPE-Q1 | Should we add a "modificator budget" config (max wall-clock per modificator)? | YES V2; V1+30d: hardcoded 10s per modificator |
-| TMP-PIPE-Q2 | How do we handle a modificator that's slow on some templates but fast on others? | Per-modificator timing in `GenerationMetadata`; ops dashboard flags outliers |
-| TMP-PIPE-Q3 | Should we expose a "dry-run mode" that runs deps + skips actual writes (for template debugging)? | V2+ Forge "validate template" feature; V1+30d: just run + observe |
-| TMP-PIPE-Q4 | Single-thread mode: per-reality flag, or process-wide env var? | Per-reality V1+30d (`tilemap_defaults.single_thread`); process-wide for CI |
+| ID | Question | Locked decision | How resolved |
+|---|---|---|---|
+| TMP-PIPE-Q1 | Modificator budget config | **V1+30d hardcoded 10s per modificator** (emit `tilemap.generation_timeout` if exceeded); **V2 author-configurable** via `tilemap_defaults.modificator_budgets: HashMap<ModificatorName, Duration>` schema-additive | ✅ ACCEPT default |
+| TMP-PIPE-Q2 | Slow-modificator-on-some-templates handling | **Per-modificator timing logged** to `GenerationMetadata.modificator_durations`; ops dashboard flags outliers (>2σ from rolling p95); author Forge can re-roll affected template | ✅ ACCEPT default |
+| TMP-PIPE-Q3 | Dry-run mode for template debugging | **V2+ Forge:ValidateTemplate** action runs deps + reports rule_id violations without writes (schema-reserved V1+30d via TMP-D15); V1+30d: author iterates by Forge:RegenTilemap CosmeticOnly | ✅ ACCEPT (defer V2+) |
+| TMP-PIPE-Q4 | Single-thread mode scope | **Per-reality V1+30d** via `tilemap_defaults.single_thread: bool`; **process-wide for CI** via `TILEMAP_SINGLE_THREAD=1` env var (CI engineers can force determinism without touching reality config) | ✅ ACCEPT default |
 
 ---
 

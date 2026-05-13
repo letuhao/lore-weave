@@ -5,7 +5,7 @@
 > **This doc covers the architecture / V-tier / cost story.** The detailed I/O contract (prompt template, structured-output schema, validation rules, retry+fallback algorithm, prompt-injection defense, cacheable-prefix discipline, cache key derivation) lives in the sibling [TMP_008b LLM Contract Spec](TMP_008b_llm_contract_spec.md). Follows project's existing split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b).
 >
 > **Category:** TMP — Tilemap Foundation
-> **Status:** **DRAFT 2026-05-13** (revised 2026-05-13 for license-hygiene framing + split with TMP_008b for I/O contract detail; V2 feature; V1+30d ships with these layers disabled)
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → revised 2026-05-13 for license-hygiene framing → split with TMP_008b 2026-05-13 → CANDIDATE-LOCK closure pass: TMP-LLM-Q1..Q7 RESOLVED at §9; TMP-LLM-Q4 cross-zone context locked YES V2 → cost model bumped at §5 per cost reconcile; V2 feature; V1+30d ships with these layers disabled)
 > **Owns:** TMP-23 + TMP-31 + TMP-32 + TMP-33 catalog entries
 > **Builds on:** [CSC_001](../00_cell_scene/CSC_001_cell_scene_composition.md) v3→v4 architectural pattern, [AIT_001](../16_ai_tier/AIT_001_ai_tier_foundation.md) AIT-A4 hybrid 2-stage, [05_llm_safety/](../../05_llm_safety/) intent classifier + injection defense + World Oracle
 > **Detailed contract:** [TMP_008b](TMP_008b_llm_contract_spec.md) §1-§14 covers prompt template + structured output schema + validation + retry + injection defense + caching + cost model.
@@ -133,16 +133,16 @@ Detailed token-by-token breakdown lives in [TMP_008b §12](TMP_008b_llm_contract
 | Phase | Effective tokens per call (after prompt caching) | $ per call (Haiku 4.5) | Frequency |
 |---|---|---|---|
 | L3 zone classification | ~6280 tokens (input ~5050 with ~1800 cached at 10% rate; output ~2850) | ~$0.018 | Once at tilemap bootstrap; once per Forge:RegenTilemap FullRebootstrap |
-| L4 regional narration (per tilemap, 10 zones batched) | ~4170 tokens (input ~2700 with ~1200 cached; output ~2550) | ~$0.014 | Once at bootstrap |
-| L4 narration partial cache miss (per season change; affected zones only) | ~1500-2500 tokens | ~$0.005 | ~4× per fictional year |
-| L4 cache miss on Forge:OverridePlacement (L3 changed) | ~500-1500 tokens (affected zones) | ~$0.002 | Rare (author edit) |
+| L4 regional narration (per tilemap, 10 zones batched, includes cross-zone context per TMP-LLM-Q4) | ~6170 tokens (input ~2700 with ~1200 cached + ~5000 cross-zone neighbor context across 10 zones; output ~2550) — effective billed ~3620 input + ~2550 output | ~$0.020 | Once at bootstrap |
+| L4 narration partial cache miss (per season change; affected zones only) | ~2000-3500 tokens | ~$0.007 | ~4× per fictional year |
+| L4 cache miss on Forge:OverridePlacement (L3 changed) | ~700-2000 tokens (affected zones) | ~$0.003 | Rare (author edit) |
 
-**Per tilemap initial cost: ~$0.032** (L3 + L4 combined; was claimed ~$0.01 — actual ~3× higher but still bounded).
+**Per tilemap initial cost: ~$0.038** (L3 + L4 combined; bumped from ~$0.032 at TMP-LLM-Q4 closure-lock for cross-zone narrative continuity).
 
 **Per typical reality** (1 continent + 4 country + 16 district + 64 town = 85 tilemaps):
-- **Initial: ~$2.72** (one-time)
-- **Per season refresh** (4×/year): ~$1/refresh × 4 = ~$4/year
-- **Total Y1 (initial + 4 seasons): ~$7 per reality**
+- **Initial: ~$3.23** (one-time)
+- **Per season refresh** (4×/year): ~$1.30/refresh × 4 = ~$5.20/year
+- **Total Y1 (initial + 4 seasons): ~$8.50 per reality** (+21% vs pre-cross-zone baseline of $7; locked at closure for geographic-coherence value)
 
 **Bounded.** Per TMP-A9, LLM cost is independent of grid size — 256×256 vs 64×64 same token count per zone. Anthropic prompt caching saves ~30-45% on the ongoing path (TMP_008b §2). Author + player opt-in via `tilemap_defaults.llm_enabled`.
 
@@ -206,17 +206,17 @@ V3 author can:
 
 ---
 
-## §9 Open questions
+## §9 Resolved questions (closure pass 2026-05-13)
 
-| ID | Question | Default proposal |
-|---|---|---|
-| TMP-LLM-Q1 | Should L3 + L4 share a single LLM call or separate calls? | Separate (different prompt templates, validation rules; separate retry budgets; V2+ might co-optimize but not V1+30d) |
-| TMP-LLM-Q2 | When L3 proposes a new `canon_kind` not in author list, auto-add or require approval? | Require approval V2 (EVT-T8 Forge:ApproveCanonKind); V3 might auto-add if "minor" tag |
-| TMP-LLM-Q3 | How to handle multilingual narration (author wants Vietnamese for zones in wuxia continent + English for sci-fi sector in same reality)? | Per-template `language` setting; default reality language fallback; V2+ feature |
-| TMP-LLM-Q4 | Should LLM see surrounding-tilemap context (neighboring zones' narrations)? | YES V2 — provides cross-zone narrative continuity ("the forest narration mentions the mountain pass to the east"); cost: ~+500 tokens per zone |
-| TMP-LLM-Q5 | What model to use V2? Haiku for cost, Sonnet for quality, or per-template choice? | Author-configurable via `tilemap_defaults.llm_model`; default Haiku 4.5 V2 (good enough; cheap); Sonnet upgrade in V2+30d |
-| TMP-LLM-Q6 | Should we expose L3 / L4 outputs to player UI as "Zone Lore" tabs? | YES V2+ — sidebar showing per-zone narration on map hover/click; great for ambient world-building |
-| TMP-LLM-Q7 | How to detect L4 narration that contradicts book canon? | World Oracle validation pass (§6); compare L4 output to canon excerpts via semantic similarity (knowledge-service); flag conflicts for author |
+| ID | Question | Locked decision | How resolved |
+|---|---|---|---|
+| TMP-LLM-Q1 | L3 + L4 single call or separate calls? | **Separate V2** — different prompt templates, validation rules, retry budgets, cache keys. V2+ co-optimize only if cost telemetry shows benefit (currently the cacheable-prefix discipline per TMP_008b §2 already provides most of the win) | ✅ ACCEPT default |
+| TMP-LLM-Q2 | LLM proposes new `canon_kind` not in author list — auto-add or require approval? | **Require approval V2** — emit `EVT-T8 Administrative Forge:ApproveCanonKind` to author Forge approval queue (mirrors EVT-T6 Proposal pattern); V3 may auto-add for "minor" tag classifications (TMP-D23 reservation) | ✅ ACCEPT default |
+| TMP-LLM-Q3 | Multilingual narration (different languages per channel in same reality) | **Per-template `language` setting** (closed enum `NarrationLanguage` per TMP_008b §11); default reality language fallback when template doesn't specify; per-channel override via template selection | ✅ ACCEPT default |
+| TMP-LLM-Q4 | LLM sees neighboring zones' narrations (cross-zone continuity)? | **YES V2 + accept ~+500 tokens/zone cost** — locked by user at closure pass 2026-05-13. L4 prompt per zone now receives `neighboring_zones: Vec<{zone_id, position, prior_narration}>` for the same call's previously-narrated zones (batched serial within tool call). Cost impact: TMP_008b §12 bumped from ~$0.014/L4 call → ~$0.020/L4 call; per-reality Y1 from ~$7 → ~$8.50. Quality gain: cross-zone narrative geographic coherence ("Phía bắc hùng vĩ dãy núi Bạch Tuyết cách đây không xa..." actually matches what's north). | ✅ USER LOCK 2026-05-13 |
+| TMP-LLM-Q5 | V2 model choice — Haiku/Sonnet/per-template? | **Author-configurable** via `tilemap_defaults.llm_model: ModelRef`; default Haiku 4.5 V2 (good enough quality at low cost; ~$1/1M input + $5/1M output); Sonnet upgrade option V2+30d for high-fidelity prose realities | ✅ ACCEPT default |
+| TMP-LLM-Q6 | Expose L3 / L4 outputs to player UI as "Zone Lore" tabs? | **YES V2+** — sidebar showing per-zone narration on map hover/click; great for ambient world-building; consumes `regional_narration` field directly; no new aggregate needed (TMP-D24 V2+ FE feature) | ✅ ACCEPT (defer V2+ TMP-D24) |
+| TMP-LLM-Q7 | Detect L4 narration contradicting book canon | **World Oracle V2 validation pass** (§6) — compare L4 output to canon excerpts via semantic similarity (knowledge-service embedding-based search); flag conflicts to author Forge approval queue (NOT auto-reject; LLM may have valid alternative interpretation worth author review). V2+ threshold tuning per reality | ✅ ACCEPT default |
 
 ---
 

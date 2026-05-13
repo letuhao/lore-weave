@@ -3,7 +3,7 @@
 > **Conversational name:** "Tilemap Foundation" (TMP). The procedural-generation visual layer for the world map. **MAP_001** owns the author-positioned logical graph; **TMP_001** owns the procedurally-generated tilemap rendered on top. Both ship; both are canonical at their layer; TMP_001 derives positions from MAP_001 (subscribe pattern).
 >
 > **Category:** TMP — Tilemap Foundation (foundation tier; sibling of MAP_001 + CSC_001 + EF_001 + PF_001)
-> **Status:** **DRAFT 2026-05-13** (initial authoring; graduated from SPIKE_03; revised 2026-05-13 for license-hygiene framing); Phase 3 review + §15 acceptance walk pending
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → revised 2026-05-13 for license-hygiene framing → split with TMP_008b for LLM-contract detail → CANDIDATE-LOCK closure pass: §15 AC-TMP-1..10 walked + expanded; all 8 TMP-Q1..Q8 RESOLVED at §12; Phase 3 review applied)
 > **Catalog refs:** [`cat_00_TMP_tilemap_foundation.md`](../../catalog/cat_00_TMP_tilemap_foundation.md) — owns `TMP-*` namespace (`TMP-A*` axioms · `TMP-D*` deferrals · `TMP-Q*` open questions)
 > **Builds on:** [MAP_001 Map Foundation](../00_map/MAP_001_map_foundation.md) §5 author-positioned (x, y) source-of-truth (extends with derived tile_coord), [CSC_001 Cell Scene Composition](../00_cell_scene/CSC_001_cell_scene_composition.md) v3→v4 4-layer architecture pattern (mirrored here), [PF_001 Place Foundation](../00_place/PF_001_place_foundation.md) cell-tier integration (cells appear as objects on parent-tier tilemap), [AIT_001 AI Tier](../16_ai_tier/AIT_001_ai_tier_foundation.md) AIT-A4 hybrid 2-stage pattern (cheap + lazy-LLM; reused at TMP_008), [TDIL_001 Time Dilation](../17_time_dilation/TDIL_001_time_dilation_foundation.md) TDIL-A9 replay-determinism (TMP-A4 seeded generation), [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §16 RealityManifest extension (`tilemap_templates` + `tilemap_defaults`), [DP-Ch1..Ch53](../../06_data_plane/) channel hierarchy (every non-cell channel may have a `tilemap_view`), [07_event_model](../../07_event_model/) Option C taxonomy (T4 System TilemapBorn/ZonesPlaced; T3 Derived for state deltas; T8 Administrative for Forge edits; T5/T6 V2 for LLM layers)
 > **Genre prior art:** see §1.1 below; multi-game survey of zone-based procedural-map techniques (HoMM3, Wesnoth, Civilization, Dwarf Fortress, Caves of Qud, Paradox titles). Specific implementations referenced in §17 Prior Art bibliography.
@@ -453,7 +453,7 @@ pub struct TilemapDefaults {
 }
 ```
 
-### 9.2 `tilemap.*` RejectReason namespace (16 V1+30d + 6 V1+)
+### 9.2 `tilemap.*` RejectReason namespace (17 V1+30d + 6 V1+)
 
 V1+30d active rule_ids:
 
@@ -475,6 +475,7 @@ V1+30d active rule_ids:
 | `tilemap.object_off_grid` | TilemapObjectPlacement.position outside grid bounds (TMP-C4 violation) |
 | `tilemap.regen_mode_incompatible` | Forge:RegenTilemap CosmeticOnly attempted on a tilemap whose template changed since last generation (must use FullRebootstrap) |
 | `tilemap.llm_layer_disabled` | V2 LLM augmentation requested but `tilemap_defaults.llm_enabled == false` |
+| `tilemap.density_reduced` | INFO-level (not error) — TreasurePlacer reduced target tier density by 50% after repeated placement failures (TMP-TR-Q4 lock; AC-TMP-9). Logged for ops + author awareness; tilemap remains valid. |
 
 V1+ reservations:
 | rule_id | When activates |
@@ -544,18 +545,20 @@ Typical bootstrap budget for full reality (1 continent + 4 country + 16 district
 
 ---
 
-## §12 Open questions
+## §12 Resolved questions (closure pass 2026-05-13)
 
-| ID | Question | Default proposal | Need user decision? |
+All 8 TMP-Q1..Q8 RESOLVED at closure pass. 3 of 8 (TMP-Q3 / TMP-Q4 / TMP-LLM-Q4 cross-ref) received explicit user lock; 5 batch-accepted defaults. See [`_boundaries/99_changelog.md`](../../_boundaries/99_changelog.md) closure-pass entry for full deliberation record.
+
+| ID | Question | Locked decision (2026-05-13) | How resolved |
 |---|---|---|---|
-| **TMP-Q1** | Storage strategy: persist `terrain_layer` or regenerate from seed? | Persist V1+30d (~1.3MB per reality is cheap; enables V3 paint UX schema-prepared) | OK as default |
-| **TMP-Q2** | Should `tilemap_view` exist for District + Town tiers, or only Continent + Country? | All 4 non-cell tiers V1+30d (with skip_tier engine config for opt-out) | OK as default |
-| **TMP-Q3** | LLM enablement default V2 | V2 default ON; V1+30d ships with LLM off (cost validation) | YES at V2 launch |
-| **TMP-Q4** | FE rendering engine — Phaser vs Pixi vs custom canvas? | Phaser (community + React wrapper; SPIKE_03 recommendation) | YES at impl |
-| **TMP-Q5** | Force-directed convergence: needs a wall-clock budget (vs annealing-until-stable). | Cap at 1000 iterations OR 5 seconds; whichever first. Emit `tilemap.generation_timeout` if cap hit. | OK as default |
-| **TMP-Q6** | Should LLM L3 zone classifier accept author-narrative-hints from tilemap_template, or use only zone summaries? | Both: accept optional `narrative_hint: Option<String>` per zone; merge with engine-computed terrain summary in prompt | OK as default |
-| **TMP-Q7** | V2+: Should cells (cell tier) appear on parent tilemap as 1×1 marker or as multi-tile region matching CSC_001 16×16 footprint? | 1×1 marker V1+30d (simpler, no scale conflict); V2+ multi-tile when zooming (TMP-D11 reserve) | OK as default |
-| **TMP-Q8** | Multi-PC parallel generation: if 2 players create realities concurrently, does the engine process them serially or parallel? | Parallel (tilemap-service is stateless; uses per-(reality, channel) lock) | OK as default |
+| **TMP-Q1** | Storage strategy: persist `terrain_layer` or regenerate from seed? | **Persist V1+30d** — `terrain_layer: Vec<u8>` bytea in Postgres (~1.3MB per reality is cheap; enables V3 paint UX schema-prepared per TMP-D2). | ✅ ACCEPT default |
+| **TMP-Q2** | Should `tilemap_view` exist for District + Town tiers, or only Continent + Country? | **All 4 non-cell tiers V1+30d** — Continent / Country / District / Town all get `tilemap_view`; engine config `tilemap_defaults.skip_tier: BTreeSet<ChannelTier>` allows author opt-out for performance-sensitive realities (UI falls back to MAP_001 graph view for skipped tiers). | ✅ ACCEPT default |
+| **TMP-Q3** | LLM enablement default V2 | **V2 default ON** — `tilemap_defaults.llm_enabled: true` ships as default at V2 launch; V1+30d ships with `llm_enabled: false` (cost validation period). Author can opt out per-reality. Aligned with TMP_008b §12 cost model (~$7/reality Y1 with cross-zone context per TMP-LLM-Q4). | ✅ USER LOCK 2026-05-13 |
+| **TMP-Q4** | FE rendering engine — Phaser vs Pixi vs custom canvas? | **Phaser 3** — V1+30d FE renders via Phaser 3 (mature WebGL-accelerated 2D game framework; React-wrapper integration; ~120KB gzipped). Author-configurable swap to Pixi or custom in V2+ if needed. | ✅ USER LOCK 2026-05-13 |
+| **TMP-Q5** | Force-directed convergence: needs a wall-clock budget. | **1000 iterations OR 5 seconds wall-clock, whichever first** — emit `tilemap.generation_timeout` rule_id on cap hit; UI falls back to MAP_001 graph view for that channel. Cross-ref TMP-PLACE-Q2 (failure fallback). | ✅ ACCEPT default |
+| **TMP-Q6** | Should LLM L3 zone classifier accept author-narrative-hints from tilemap_template, or use only zone summaries? | **Both** — engine-computed zone summary (terrain + monster_strength + object_count) is mandatory; optional `narrative_hint: Option<String>` per zone is merged with engine summary in prompt. Hint is delimited via `<author_text>` tags per TMP_008b §7 (injection defense). | ✅ ACCEPT default |
+| **TMP-Q7** | Cells on parent tilemap = 1×1 marker or multi-tile region matching CSC_001? | **1×1 marker V1+30d** — cells render as 1×1 `TilemapObjectKind::Town` or `Landmark` markers on parent tilemap; click → drill into CSC_001 16×16 interior. V2+ multi-tile rendering reserved as TMP-D11. | ✅ ACCEPT default |
+| **TMP-Q8** | Multi-PC parallel generation: serial or parallel? | **Parallel** — tilemap-service is stateless; uses per-(reality_id, channel_id) lock for concurrent generation. Two players creating realities concurrently → both generated in parallel. | ✅ ACCEPT default |
 
 ---
 
@@ -596,24 +599,101 @@ Typical bootstrap budget for full reality (1 continent + 4 country + 16 district
 
 ---
 
-## §15 Acceptance criteria (placeholder — closure-pass walk pending)
+## §15 Acceptance criteria (walked at closure pass 2026-05-13)
 
-10 V1+30d-testable scenarios `AC-TMP-1..10` to be walked at CANDIDATE-LOCK promotion. Sketches:
+10 V1+30d-testable scenarios `AC-TMP-1..10`. Each specifies Setup → Action → Expected outcome with concrete rule_ids + event types. Each scenario is independently testable via integration test against a tilemap-service instance.
 
-| ID | Scenario |
+### AC-TMP-1 — Reality bootstrap; non-cell channels get tilemap_view; cells skipped
+
+| Step | Detail |
 |---|---|
-| AC-TMP-1 | Reality bootstrap with default templates: every non-cell channel gets a `tilemap_view`; cells skipped. Verify `TilemapBorn` events emitted for all non-cell channels. |
-| AC-TMP-2 | Re-bootstrap with same seed: produces identical `tilemap_view` state (TMP-A4 replay determinism). |
-| AC-TMP-3 | Author edits MAP_001 position via Forge:EditMapLayout → TMP_001 subscribes → `child_cell_anchors` updates without full regen (TMP-A6 derived). |
-| AC-TMP-4 | Forge:RegenTilemap CosmeticOnly: same zones + same connections + new biome obstacle-set; objects + roads preserved. |
-| AC-TMP-5 | Forge:RegenTilemap FullRebootstrap with new seed_offset: completely new geometry; emits new `TilemapBorn` + `ZonesPlaced`. |
-| AC-TMP-6 | Template with `inherit_treasure_from` / `inherit_terrain_from` / etc. cycle: rejected with `tilemap.inherit_cycle` at template save. |
-| AC-TMP-7 | Template applied to wrong tier: rejected with `tilemap.template_tier_mismatch`. |
-| AC-TMP-8 | Generation timeout (force-directed cannot converge in 5s): emit `tilemap.generation_timeout`; UI falls back to MAP_001 graph view for this channel. |
-| AC-TMP-9 | "Never seal a gap" test: place obstacle that would disconnect Walkable zone → modificator rejects placement; tries another spot. |
-| AC-TMP-10 | V2 LLM augmentation off (tilemap_defaults.llm_enabled = false): L3+L4 layers skipped; `generation_source: EngineGenerated`; `regional_narration: None`. |
+| **Setup** | Reality created with `RealityManifest { root_channel_tree: [continent → 4 country → 16 district → 64 town → 256 cell] }`, `tilemap_templates: None` (engine defaults), `tilemap_defaults: None`. |
+| **Action** | Trigger RealityManifest bootstrap (engine-internal cascade). |
+| **Expected** | Engine emits 85 × `EVT-T4 TilemapBorn { channel_id, tier, grid_size, template_id, seed }` events — one per non-cell channel (1 continent + 4 country + 16 district + 64 town). Zero TilemapBorn for the 256 cell channels (CSC_001 handles cells per TMP-A1). Each `tilemap_view` row has `generation_source: EngineGenerated`, `regional_narration: None`, valid `terrain_layer` bytea of correct length (e.g. 256×256 = 65536 bytes for continent). |
+| **Validates** | TMP-A1 (cell-tier exclusion), TMP-A6 child-anchor derivation, EVT-T4 sub-type registration |
 
-Full criteria walk + Phase 3 review pending.
+### AC-TMP-2 — Replay-determinism: same seed → identical tilemap_view
+
+| Step | Detail |
+|---|---|
+| **Setup** | Reality A and Reality B share the same template_id + same `seed_offset = 0` + same Blake3 inputs. Both at fresh-bootstrap state. |
+| **Action** | Bootstrap A. Capture full `tilemap_view` state for one channel. Bootstrap B against same inputs. Capture matching `tilemap_view`. |
+| **Expected** | Byte-equal `terrain_layer`; identical `zones[].assigned_tiles` bitmasks; identical `object_placements` (same positions, same kinds, same guard_positions); identical `road_segments` waypoint lists; identical `river_segments`. **Hash equality** of all serializable fields. |
+| **Validates** | TMP-A4 (deterministic Blake3 seed); TDIL-A9 (replay-determinism free V1) |
+
+### AC-TMP-3 — MAP_001 position edit propagates to TMP child_cell_anchors without full regen
+
+| Step | Detail |
+|---|---|
+| **Setup** | Reality bootstrapped; one continent `tilemap_view` exists with 4 country anchors derived from MAP_001 positions. Capture `generation_metadata.iteration_count`. |
+| **Action** | Forge edits MAP_001: `Forge:EditMapLayout { channel_id: country_2, edit_kind: UpdatePosition, before: (300, 400), after: (650, 200) }`. |
+| **Expected** | EVT-T3 Derived emitted on `map_layout` (MAP_001-owned); TMP_001 subscribe handler triggered; `tilemap_view.child_cell_anchors[country_2]` recomputed to `(166, 51)` for 256-grid (= 650 × 256 / 1000 = 166; 200 × 256 / 1000 = 51). NO new `TilemapBorn` event, NO new `ZonesPlaced` event, NO change to `terrain_layer` bytes, NO change to `object_placements`. `generation_metadata.iteration_count` unchanged. EVT-T3 Derived emitted on `tilemap_view` with `kind: ChildCellAnchorUpdated`. |
+| **Validates** | TMP-A6 (MAP_001 canonical, TMP derived via subscribe); §7 partial-update contract |
+
+### AC-TMP-4 — Forge:RegenTilemap CosmeticOnly preserves geometry; re-rolls biome
+
+| Step | Detail |
+|---|---|
+| **Setup** | `tilemap_view` exists with selected biome set. Capture full state including `object_placements` (e.g. 47 objects) and `road_segments`. |
+| **Action** | `Forge:RegenTilemap { channel_id, mode: CosmeticOnly, new_seed: 0x1234 }`. |
+| **Expected** | `tilemap_view.zones[]` unchanged (same `center_position`, same `assigned_tiles`, same `free_paths`). `tilemap_view.object_placements` unchanged (47 objects preserved, same positions, same kinds, same guard_positions). `tilemap_view.road_segments` + `river_segments` unchanged. `tilemap_view.zones[].biome_selection` REPLACED with new selection (different `BiomeId` references; verify ≥1 changed). `tilemap_view.terrain_layer` may have decoration-variant tile changes (15% decoration percentage re-rolled) but `terrain_kind` per zone unchanged. EVT-T3 Derived emitted with `kind: BiomeRerolled`. NO new TilemapBorn / ZonesPlaced. |
+| **Validates** | TMP_005 §5.1 CosmeticOnly contract; biome re-roll preserves objects + paths |
+
+### AC-TMP-5 — Forge:RegenTilemap FullRebootstrap with new seed → entirely new geometry
+
+| Step | Detail |
+|---|---|
+| **Setup** | `tilemap_view` exists at `seed = 0xAAAA`, captured state. |
+| **Action** | `Forge:RegenTilemap { channel_id, mode: FullRebootstrap, new_seed: 0xBBBB }`. |
+| **Expected** | Pipeline re-runs from §11 step 5. `tilemap_view` REPLACED: new `zones[]` (different `center_position`, different `assigned_tiles`), new `terrain_layer`, new `object_placements`, new `road_segments`, new `river_segments`, new `seed = 0xBBBB`. **Same** `child_cell_anchors` (MAP_001 unchanged → derived positions same per TMP-A6). EVT-T4 `TilemapBorn { ..., seed: 0xBBBB }` emitted; EVT-T4 `ZonesPlaced { zone_count, total_iterations }` emitted. EVT-T3 Derived on `tilemap_view` (`kind: FullRebootstrap`). |
+| **Validates** | §11 bootstrap sequence; FullRebootstrap mode contract |
+
+### AC-TMP-6 — Template with inheritance cycle rejected with structured rule_id
+
+| Step | Detail |
+|---|---|
+| **Setup** | Author attempts to save tilemap_template with: `zones[zone_1].inherit_treasure_from: zone_2`, `zones[zone_2].inherit_treasure_from: zone_3`, `zones[zone_3].inherit_treasure_from: zone_1`. |
+| **Action** | `Forge:EditTemplate { template_id, edit_kind: EditZoneSpec, ... }`. |
+| **Expected** | Reject envelope returned with `rule_id: tilemap.inherit_cycle`, `user_message: I18nBundle { vi: "Vòng lặp kế thừa zone phát hiện: zone_1 → zone_2 → zone_3 → zone_1", en: "Inheritance cycle detected: zone_1 → zone_2 → zone_3 → zone_1" }`. NO write to `tilemap_template` aggregate. NO EVT-T3 Derived emitted. NO cascade to `tilemap_view` regeneration. |
+| **Validates** | TMP_004 §3.1 cycle detection (Tarjan 1972 SCC); `tilemap.inherit_cycle` rule_id |
+
+### AC-TMP-7 — Template applied to wrong tier rejected
+
+| Step | Detail |
+|---|---|
+| **Setup** | Existing template `wuxia_continent_v1` has `applicable_tiers: BTreeSet::from([ChannelTier::Continent])`. RealityManifest specifies `tilemap_templates: Some({ChannelTier::Town: TilemapTemplateRef(wuxia_continent_v1)})`. |
+| **Action** | Trigger RealityManifest bootstrap (or `Forge:UpdateRealityManifest`). |
+| **Expected** | Reject with `rule_id: tilemap.template_tier_mismatch`, `user_message` containing template_id + offending tier. NO `tilemap_view` created for any Town channel using this template. Bootstrap proceeds for Continent (correct tier). Author Forge sees rejection with corrective guidance. |
+| **Validates** | TMP_004 §2 `applicable_tiers` constraint; `tilemap.template_tier_mismatch` rule_id |
+
+### AC-TMP-8 — Generation timeout fallback to MAP_001 graph view
+
+| Step | Detail |
+|---|---|
+| **Setup** | Pathological template with 30 zones + dense Adversarial connections forcing force-directed convergence to fail. `tilemap_defaults.force_directed_max_iterations: 1000`, `max_wall_clock_seconds: 5`. |
+| **Action** | Trigger bootstrap for this channel. |
+| **Expected** | After 1000 iterations or 5s wall-clock (whichever first), engine emits `rule_id: tilemap.generation_timeout` with `user_message` noting iteration cap. `tilemap_view` is NOT created for this channel. EVT-T4 `TilemapBorn` is NOT emitted. Channel's UI client falls back to MAP_001 graph view (no tilemap render). `generation_metadata.iteration_count: 1000` logged to ops dashboard. |
+| **Validates** | TMP-Q5 lock (1000 iters OR 5s); TMP-PLACE-Q2 fallback discipline; `tilemap.generation_timeout` rule_id |
+
+### AC-TMP-9 — "Never seal a gap" connectivity invariant
+
+| Step | Detail |
+|---|---|
+| **Setup** | Zone with `free_paths` consisting of two `Walkable` regions currently connected by a narrow corridor. Pending 2×2 obstacle placement candidate at (46-47, 33-34) would block the corridor. |
+| **Action** | TreasurePlacer (or ObstaclePlacer) attempts to place a 2×2 object at candidate position (46, 33). |
+| **Expected** | `ObjectManager.would_seal_a_gap(footprint, free_paths)` returns `true` (post-placement connected-components count would increase from 1 to 2). Placement REJECTED for that candidate. Next-best candidate tried. If all candidates fail → density reduced by 50% per TMP-TR-Q4 and retry. After 50 total attempts → `rule_id: tilemap.density_reduced` info event (not error). Final state: all `Walkable` tiles remain in one connected component (Tarjan 1976 connected-components check). |
+| **Validates** | TMP-A7 (never seal a gap invariant); TMP_006 §4 connectivity check; Tarjan 1976 algorithm |
+
+### AC-TMP-10 — V1+30d default: LLM disabled; engine-only generation
+
+| Step | Detail |
+|---|---|
+| **Setup** | Reality bootstrapped at V1+30d (V2 not yet launched OR `tilemap_defaults.llm_enabled: false` explicitly set). |
+| **Action** | Trigger RealityManifest bootstrap. |
+| **Expected** | For every `tilemap_view` created: `generation_source: EngineGenerated`, `regional_narration: None` (Option::None, not empty string), `object_placements[].canon_kind = suggested_canon_kind[0]` (engine canonical default per TMP_008b §6). NO EVT-T6 Proposal emitted, NO EVT-T5 Generated emitted for any tilemap_view. tilemap-service does NOT call any LLM API. `generation_metadata` shows zero LLM-call duration. Total per-tilemap generation cost ≈ 0 (deterministic engine compute only). |
+| **Validates** | TMP-Q3 lock (V1+30d default OFF; V2 default ON); §3.4 V1+30d → V2 activation contract; EVT-T5/T6 V1+30d schema-reserved (no runtime emit) |
+
+**Phase 3 review pass applied at closure**: `tilemap.density_reduced` (info-level rule_id, AC-TMP-9 referenced) was missing from §9 namespace inventory — added below.
 
 ---
 

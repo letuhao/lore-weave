@@ -3,7 +3,7 @@
 > **Conversational name:** "Zone Placement" (TMP-PLACE). The geometric algorithm that takes a zone-graph template and produces zone centers + zone-tile-assignments on the tilemap grid.
 >
 > **Category:** TMP — Tilemap Foundation
-> **Status:** **DRAFT 2026-05-13** (revised 2026-05-13 for license-hygiene framing)
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → revised 2026-05-13 for license-hygiene framing → CANDIDATE-LOCK closure pass: TMP-PLACE-Q1..Q3 RESOLVED at §9)
 > **Owns:** zone-placement algorithm (TMP-5 + TMP-6 + TMP-8 catalog entries)
 > **Algorithm foundations:** Fruchterman & Reingold (1991) force-directed placement; Penrose (1974) aperiodic tiling; standard pathfinding + procedural-level-generation literature. Full citations in §10 Prior Art.
 
@@ -357,14 +357,14 @@ Per TMP-A4 + TMP-A10:
 
 ---
 
-## §9 Open questions
+## §9 Resolved questions (closure pass 2026-05-13)
 
-| ID | Question | Default proposal |
-|---|---|---|
-| TMP-Q5 (cross-ref TMP_001) | Force-directed convergence cap: 1000 iters OR 5s wall-clock | OK as default |
-| TMP-PLACE-Q1 | Should we use Penrose tiling or a hex-grid alternative for "cleaner" zones? | Penrose V1+30d (organic feel matches author intent); hex alternative V2+ if author requests |
-| TMP-PLACE-Q2 | When force-directed fails to converge, fall back to grid-only placement or fail loudly? | Fall back to grid-only + log warning (V1+30d); always log to ops dashboard |
-| TMP-PLACE-Q3 | Should we expose iteration progress to UI (progress bar during long generation)? | YES — stream `GenerationMetadata.iteration_count` via DP-Ch6 subscribe to UI |
+| ID | Question | Locked decision | How resolved |
+|---|---|---|---|
+| TMP-Q5 (cross-ref TMP_001) | Force-directed convergence cap | **1000 iters OR 5s wall-clock**, whichever first; emit `tilemap.generation_timeout` on cap hit | ✅ ACCEPT (resolved at TMP_001 §12) |
+| TMP-PLACE-Q1 | Penrose tiling vs hex-grid alternative | **Penrose V1+30d** — organic feel matches author intent; hex-grid alternative reserved as V2+ TMP-D14 if author demand emerges | ✅ ACCEPT default |
+| TMP-PLACE-Q2 | Convergence-failure fallback | **Fall back to grid-only placement + log warning** V1+30d; always log `tilemap.generation_failed` info-event to ops dashboard with iteration_count + reason | ✅ ACCEPT default |
+| TMP-PLACE-Q3 | Expose iteration progress to UI | **YES** — stream `GenerationMetadata.iteration_count` + per-modificator timing via DP-Ch24 subscribe to UI; FE renders progress bar during continent-tier bootstrap (~5s typical) | ✅ ACCEPT default |
 
 ---
 

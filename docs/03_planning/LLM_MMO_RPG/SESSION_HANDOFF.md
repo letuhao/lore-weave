@@ -81,6 +81,101 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-13 (continued, late evening) — TMP folder closure pass — all 9 docs DRAFT → CANDIDATE-LOCK; folder CLOSED for V1+30d design
+
+### Session arc
+
+Continuation of same-day TMP work. After commit `a103cf45` (TMP_008b LLM Contract Spec split + push), user asked **"so what's next"**; response presented 3 natural options; user chose **"closure pass for TMP"** — formalize the 9-doc set into CANDIDATE-LOCK via the project's WA/NPC/PLT/PO closure-pass discipline.
+
+### Closure pass deliverables
+
+1. **Question triage** — All 43 open questions across 9 docs triaged into 4 buckets: 40 batch-accept-default + 3 worth-user-attention. User attention requested via AskUserQuestion; all 3 locked to recommended defaults (TMP-Q3 V2 default LLM-on / TMP-Q4 Phaser 3 FE engine / TMP-LLM-Q4 cross-zone L4 context YES).
+
+2. **AC-TMP-1..10 walked + expanded** — Each of 10 acceptance criteria expanded from 1-line sketch to full **Setup → Action → Expected outcome** triple with concrete rule_ids, event types, and validation references. Each scenario now independently testable via integration test against a tilemap-service instance:
+   - AC-TMP-1: reality bootstrap; 85 TilemapBorn events emitted (1 continent + 4 country + 16 district + 64 town); 0 for the 256 cells
+   - AC-TMP-2: replay-determinism byte-equality across 2 bootstraps with same seed
+   - AC-TMP-3: MAP_001 position edit → derived `child_cell_anchors` update without full regen
+   - AC-TMP-4: Forge:RegenTilemap CosmeticOnly preserves zones+objects+roads; re-rolls biome
+   - AC-TMP-5: Forge:RegenTilemap FullRebootstrap with new seed → new geometry; emits new TilemapBorn + ZonesPlaced
+   - AC-TMP-6: inheritance cycle rejected with `tilemap.inherit_cycle` + structured I18nBundle user_message
+   - AC-TMP-7: template applied to wrong tier → `tilemap.template_tier_mismatch`
+   - AC-TMP-8: convergence timeout → `tilemap.generation_timeout`; UI falls back to MAP_001 graph view
+   - AC-TMP-9: "never seal a gap" connectivity invariant; density-reduction fallback after 50 attempts; `tilemap.density_reduced` info event
+   - AC-TMP-10: V1+30d default LLM-disabled; engine-only generation; no LLM API call; `generation_source: EngineGenerated`; `regional_narration: None`
+
+3. **All 43 questions RESOLVED** — replaced "Open questions" sections with "Resolved questions (closure pass 2026-05-13)" tables in all 9 docs. Each row has Locked decision + How resolved column. 3 USER-LOCKED + 40 batch-resolved (34 ACCEPT-default + 6 DEFER-V2+ + 4 DEFER-V2 reservation + 2 DEFER-V2+30d).
+
+4. **Phase 3 review findings applied:**
+   - **Finding 1**: TMP_006 §9 Open questions section was lost in the 2026-05-13 license-hygiene revision pass. Every other TMP doc retained its questions; TMP_006's were dropped. Restored as §8.5 + RESOLVED at closure with 6 questions (TR-Q1..Q6).
+   - **Finding 2**: `tilemap.density_reduced` info-level rule_id was referenced in AC-TMP-9 + TMP-TR-Q4 but missing from §9.2 namespace inventory. Added; rule_id count corrected 16 → 17 V1+30d.
+   - **Finding 3**: `tilemap.biome_fallback_used` INFO event from TMP-BIOME-Q3 resolution documented as consistent info-event pattern alongside `tilemap.density_reduced`.
+
+5. **Cost model bump per TMP-LLM-Q4 closure-lock** — User locked YES for cross-zone L4 context (geographic narrative coherence). Triggered cost reconcile across TMP_008 §5 + TMP_008b §12.4-§12.7:
+   - L4 input tokens: +5000 cross-zone neighbor context (10 zones × ~500 tokens each)
+   - L4 effective per-call: ~$0.014 → ~$0.020 (effective ~9170 tokens including cached prefix)
+   - Per-tilemap initial: ~$0.032 → ~$0.038
+   - Per-reality Y1 (initial + 4 seasons): ~$7 → ~$8.50 (+21% for cross-zone narrative continuity)
+
+6. **Catalog status promotion** — 29 V1+30d catalog entries (TMP-1..TMP-22 + TMP-24..TMP-30 + TMP-45..TMP-52) promoted 📋 → ✅; rule_id count updated 16 → 17; V2/V2+/V3 entries (TMP-23, TMP-33..TMP-44; ~23 entries) stay 📋 — implementation-pending markers.
+
+7. **All 9 doc statuses promoted** — DRAFT → CANDIDATE-LOCK with closure-pass rationale in each doc header:
+   - TMP_001 closure pass: §15 AC walked + §12 questions RESOLVED + §9.2 17 rule_ids
+   - TMP_002 closure pass: TMP-PLACE-Q1..Q3 RESOLVED at §9
+   - TMP_003 closure pass: TMP-PIPE-Q1..Q4 RESOLVED at §6
+   - TMP_004 closure pass: TMP-TPL-Q1..Q5 RESOLVED at §10
+   - TMP_005 closure pass: TMP-BIOME-Q1..Q4 RESOLVED at §9
+   - TMP_006 closure pass: §8.5 restored (Phase 3 finding); TMP-TR-Q1..Q6 RESOLVED
+   - TMP_007 closure pass: TMP-CONN-Q1..Q5 RESOLVED at §13
+   - TMP_008 closure pass: TMP-LLM-Q1..Q7 RESOLVED; §5 cost bumped per Q4 lock
+   - TMP_008b closure pass: TMP-LLM-C-Q1..Q7 RESOLVED; §12 cost bumped
+
+### Question resolution buckets
+
+| Bucket | Count | Examples |
+|---|---:|---|
+| USER-LOCKED at closure | 3 | TMP-Q3 V2 default LLM-on, TMP-Q4 Phaser 3, TMP-LLM-Q4 cross-zone L4 |
+| ACCEPT default | 34 | majority — all batch-resolved with no contention |
+| DEFER V2+ (new deferrals registered) | 6 | TMP-D16 template inheritance, TMP-D17 seasonal biomes, TMP-D19 biome rarity, TMP-D20 per-PC permission gates, TMP-D22 multi-edge zones, TMP-D24 Zone Lore UI tab |
+| DEFER V2 with reservation | 4 | TMP-D15 dry-run mode, TMP-D21 guard respawn, TMP-LLM-Q2 approval flow, TMP-LLM-C-Q2 PoC A/B |
+| DEFER V2+30d | 2 | TMP-D18 LLM-gen biome V3, TMP-D25 streaming L4 |
+| **Total resolved** | **43 + 6 new deferrals** | (49 closure-pass actions) |
+
+### Handoff notes for next session
+
+**Active:** none. TMP folder CLOSED for V1+30d design.
+
+**Next-step recommendations (priority order):**
+
+1. **V2 PoC implementation** — Validate TMP_008b contract empirically: cacheable-prefix structure (measure actual cache hit rate); Anthropic tool-use reliability (track tool_choice forced-call failure rate); per-object retry granularity (measure retry success rate vs flat-error retry); cost model accuracy (compare measured per-call cost to TMP_008b §12 estimates). Run on Claude Haiku 4.5 with a small reality sample. A/B test cache-key strategies (TMP-LLM-C-Q2). Surface gaps for V2 launch readiness.
+
+2. **Cross-feature integration annotation pass** — TMP_001 §14 lists 13 consumer features (MAP_001, CSC_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model). At each consumer feature's next closure pass, annotate the TMP integration point (subscribe pattern, channel digest invalidation, EVT-T row consumption, etc.). Spreads the work across natural closure-pass cycles.
+
+3. **05_llm_safety folder design** — Still pending from 2026-04-26 next-step recommendations. A1..A6 axioms exist but no feature folder yet. TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements to flesh out. ~5-7 features at ~600 lines each.
+
+4. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror of MAP_002 pattern when art-asset pipeline lights up).
+
+5. **V3 RMG wizard** scoping (TMP-D1, TMP-D2) — player-facing parameter capture UX.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- TMP folder CLOSED — no further V1+30d design work in `features/00_tilemap/` until V2 PoC discoveries or new V2+ extensions.
+- Closure pass adds RESOLVED tables (replace open-questions sections) + AC walk expansion (setup/action/expected-outcome triples) + Phase 3 review.
+- Cross-feature integration annotation at consumer features' next closure passes, not at TMP folder.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this closure-pass commit)
+- **Lock cycles same day:** 4 (DRAFT seed → license-hygiene revision → TMP_008b split → closure pass)
+- **Questions RESOLVED:** 43 (3 USER-LOCKED + 40 batch-resolved)
+- **New deferrals registered:** 6 (TMP-D16..D22, D24..D25 with gaps for V2 PoC)
+- **Phase 3 review findings:** 3 (TMP_006 §9 restoration; `tilemap.density_reduced` inventory miss; `tilemap.biome_fallback_used` documented)
+- **AC scenarios walked:** 10 (each expanded ~10× from 1-line sketch to full triple)
+- **Cost model bumps:** per-reality Y1 ~$7 → ~$8.50 (+21%) per TMP-LLM-Q4 cross-zone lock
+- **Catalog entries promoted ✅:** 29 V1+30d entries
+
+---
+
 ## Session 2026-05-13 (continued, late evening) — TMP_008b LLM Contract Spec — sibling-split for I/O detail (deep-discuss "is in/out contract LLM-friendly?")
 
 ### Session arc

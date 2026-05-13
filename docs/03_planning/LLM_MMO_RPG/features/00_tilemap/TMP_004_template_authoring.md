@@ -3,7 +3,7 @@
 > **Conversational name:** "Templates" (TMP-TPL). The schema authors use to describe what kind of tilemap they want generated.
 >
 > **Category:** TMP — Tilemap Foundation
-> **Status:** **DRAFT 2026-05-13** (revised 2026-05-13 for license-hygiene framing)
+> **Status:** **CANDIDATE-LOCK 2026-05-13** (DRAFT 2026-05-13 → revised 2026-05-13 for license-hygiene framing → CANDIDATE-LOCK closure pass: TMP-TPL-Q1..Q5 RESOLVED at §10)
 > **Owns:** TMP-2 + TMP-15 + TMP-16 + TMP-17 + TMP-30 catalog entries
 
 ---
@@ -492,15 +492,15 @@ Validations run at `Forge:EditTemplate` commit time AND at template finalization
 
 ---
 
-## §10 Open questions
+## §10 Resolved questions (closure pass 2026-05-13)
 
-| ID | Question | Default proposal |
-|---|---|---|
-| TMP-TPL-Q1 | Should ZoneSpec.size be relative-weight (engine scales to grid) or absolute-tiles (author sets exact size)? | Relative-weight V1+30d (engine auto-scales to fill grid); V2+ author can override with `absolute_tile_count: Some(u32)` |
-| TMP-TPL-Q2 | Should connections support `min_guard_strength` + `max_guard_strength` range, or just single value? | Single value V1+30d; V2+ range for variability |
-| TMP-TPL-Q3 | Should we support template inheritance (template A `extends` template B)? | NO V1+30d (adds complexity); V2+ if author demand |
-| TMP-TPL-Q4 | How to handle conflicting `bannedTerrains` between template-level and zone-level? | Zone-level overrides (more specific); merge: template-level UNION zone-level for ban (more restrictive of two) |
-| TMP-TPL-Q5 | Should we allow per-template `seed_offset` override (so 2 realities can have same template + same offset = same map)? | Engine derives seed from (reality_id, channel_id, template_id, seed_offset); author can set offset for "I want same map as another reality" workflow |
+| ID | Question | Locked decision | How resolved |
+|---|---|---|---|
+| TMP-TPL-Q1 | ZoneSpec.size: relative-weight or absolute-tiles? | **Relative-weight V1+30d** — engine auto-scales to fill grid; V2+ author can override with optional `absolute_tile_count: Some(u32)` field on ZoneSpec (schema-additive per TMP-A8) | ✅ ACCEPT default |
+| TMP-TPL-Q2 | Connection guard-strength: range or single value? | **Single value V1+30d** — `guard_strength: u32` (deterministic); V2+ optional `guard_strength_range: Option<(u32, u32)>` for variability with per-seed sampling | ✅ ACCEPT default |
+| TMP-TPL-Q3 | Template inheritance (template A extends template B)? | **NO V1+30d** — adds complexity without clear V1+30d use case; author can clone+modify in Forge UI. V2+ if author demand emerges (TMP-D16 reservation) | ✅ ACCEPT (defer V2+) |
+| TMP-TPL-Q4 | Conflicting `banned_terrain_kinds` between template-level + zone-level | **UNION** — template-level UNION zone-level for ban (more restrictive of two wins); both bans apply additively. Implements "defense in depth" — author can broadly ban at template, narrowly add zone-level bans without losing global protection | ✅ ACCEPT default |
+| TMP-TPL-Q5 | Per-template `seed_offset` override | **Author can set `seed_offset: u32`** — engine derives seed from `blake3(reality_id || channel_id || template_id || seed_offset)`; same offset across realities → same procedural map. Useful for "I want exact same continent as Reality X" workflow + cross-reality comparison testing | ✅ ACCEPT default |
 
 ---
 
