@@ -69,10 +69,10 @@ func (s *Server) internalSubmitLlmJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
-	if s.jobsRepo == nil || s.jobsWorker == nil {
-		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "jobs subsystem not initialized")
-		return
-	}
+	// Caller-input validation first — these rejections are independent of
+	// service health, so a malformed request returns 400 even when
+	// jobsRepo is nil. The 503 check below catches the case where the
+	// request is well-formed but the subsystem is down.
 	var in jobSubmitRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid JSON body")
@@ -80,6 +80,17 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 	}
 	if _, ok := validJobOperations[in.Operation]; !ok {
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid or missing operation")
+		return
+	}
+	// Phase 5a: tts is supported only via /v1/llm/stream. Submitting tts
+	// here returns 400 with a hint pointing at the streaming endpoint.
+	// This rejection lives at the handler boundary (not the worker) so
+	// callers learn their mistake immediately, before a job row is
+	// inserted. The worker has a defensive fallback (worker.go) for the
+	// theoretical case where this gate is bypassed.
+	if in.Operation == "tts" {
+		writeError(w, http.StatusBadRequest, "LLM_OPERATION_NOT_SUPPORTED_VIA_JOBS",
+			"tts is supported only via POST /v1/llm/stream — submit there with operation=tts")
 		return
 	}
 	if in.ModelSource != "user_model" && in.ModelSource != "platform_model" {
@@ -93,6 +104,11 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 	}
 	if len(in.Input) == 0 {
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "input required")
+		return
+	}
+
+	if s.jobsRepo == nil || s.jobsWorker == nil {
+		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "jobs subsystem not initialized")
 		return
 	}
 

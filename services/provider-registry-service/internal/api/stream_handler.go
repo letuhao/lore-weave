@@ -17,6 +17,8 @@ package api
 //     adapter.Stream() which aborts the upstream HTTP call.
 
 import (
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,15 +30,28 @@ import (
 	"github.com/loreweave/provider-registry-service/internal/provider"
 )
 
+// base64StdEncode is a thin alias around base64.StdEncoding.EncodeToString,
+// kept as a function so the call sites read clearly at the SSE-emit boundary.
+func base64StdEncode(p []byte) string {
+	return base64.StdEncoding.EncodeToString(p)
+}
+
 // streamRequest mirrors the StreamRequest schema in the OpenAPI contract.
+//
+// Phase 5a: `operation` discriminates between chat (default, omitted ⇒
+// "chat" for backward-compat) and tts. Chat path uses Messages; tts path
+// uses Input. Existing callers don't include `operation` — gateway
+// treats absent and "chat" identically.
 type streamRequest struct {
+	Operation    string         `json:"operation,omitempty"` // Phase 5a; defaults to "chat" when empty
 	ModelSource  string         `json:"model_source"`
 	ModelRef     string         `json:"model_ref"`
-	Messages     any            `json:"messages"`
+	Messages     any            `json:"messages,omitempty"` // chat only
 	Tools        any            `json:"tools,omitempty"`
 	Temperature  *float64       `json:"temperature,omitempty"`
 	MaxTokens    *int           `json:"max_tokens,omitempty"`
 	StreamFormat string         `json:"stream_format,omitempty"`
+	Input        map[string]any `json:"input,omitempty"` // Phase 5a; tts only
 	TraceID      string         `json:"trace_id,omitempty"`
 	// Generic extras passed to adapter (forward-compat for tools, response_format).
 	Extra map[string]any `json:"-"`
@@ -74,6 +89,12 @@ func (s *Server) internalLlmStream(w http.ResponseWriter, r *http.Request) {
 // streamRequest, resolve the provider credentials from the DB, set SSE
 // response headers, then call adapter.Stream() with an emit closure that
 // serializes each canonical StreamChunk to the wire and flushes.
+//
+// Phase 5a: branches on Operation. Default path (Operation == "" or
+// "chat") preserves the existing chat-streaming behavior verbatim. New
+// path Operation == "tts" routes through adapter.Speak emitting
+// audio-chunk SSE frames. Other operations return 400 LLM_INVALID_REQUEST
+// before any HTTP commit, so callers learn early.
 func (s *Server) doLlmStream(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	var in streamRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -84,10 +105,37 @@ func (s *Server) doLlmStream(w http.ResponseWriter, r *http.Request, userID uuid
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "model_source and model_ref required")
 		return
 	}
-	if in.Messages == nil {
-		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "messages required")
+
+	// Phase 5a — operation defaults to "chat" when absent (preserves all
+	// existing callers; regression-locked by
+	// TestDoLlmStream_OperationDefaultIsChat). Validate operation here
+	// so unknown ops fail at 400 before any DB or upstream call.
+	op := in.Operation
+	if op == "" {
+		op = "chat"
+	}
+	switch op {
+	case "chat":
+		if in.Messages == nil {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "messages required")
+			return
+		}
+	case "tts":
+		if in.Input == nil {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "input required for tts")
+			return
+		}
+		text, _ := in.Input["text"].(string)
+		if text == "" {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "input.text required for tts")
+			return
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
+			"unsupported stream operation: "+op+" (allowed: chat, tts)")
 		return
 	}
+
 	modelRef, err := uuid.Parse(in.ModelRef)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid model_ref")
@@ -148,27 +196,10 @@ WHERE platform_model_id=$1 AND status='active'
 		return
 	}
 
-	// Build adapter input map. The adapter's Stream() reads messages,
-	// temperature, max_tokens, tools — same shape as Invoke() input.
-	input := map[string]any{
-		"messages": in.Messages,
-	}
-	if in.Temperature != nil {
-		input["temperature"] = *in.Temperature
-	}
-	// Policy: max_tokens=0 means "let the model decide" — same as
-	// omitting. Prevents the footgun of sending `max_tokens: 0` to
-	// upstream providers that interpret it as "cap output at 0".
-	if in.MaxTokens != nil && *in.MaxTokens > 0 {
-		input["max_tokens"] = *in.MaxTokens
-	}
-	if in.Tools != nil {
-		input["tools"] = in.Tools
-	}
-
-	// SSE prelude. We commit to a 200 here because we have no way to
-	// signal HTTP-level errors after the first byte ships; streaming
-	// errors are emitted as `event: error` SSE frames instead.
+	// SSE prelude (shared chat + tts). We commit to a 200 here because
+	// we have no way to signal HTTP-level errors after the first byte
+	// ships; streaming errors are emitted as `event: error` SSE frames
+	// instead.
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		// In production this can't happen (chi + net/http always supply
@@ -187,9 +218,44 @@ WHERE platform_model_id=$1 AND status='active'
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
+	// Branch on operation — chat uses adapter.Stream, tts uses adapter.Speak.
+	switch op {
+	case "tts":
+		s.streamTts(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in.Input)
+	default: // "chat"
+		s.streamChat(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in)
+	}
+}
+
+// streamChat — Phase 1a chat streaming, factored out so doLlmStream can
+// branch on operation. Identical to the pre-Phase-5a inline body.
+func (s *Server) streamChat(
+	r *http.Request,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	adapter provider.Adapter,
+	endpointBaseURL, secret, providerModelName string,
+	in streamRequest,
+) {
+	// Build adapter input map. The adapter's Stream() reads messages,
+	// temperature, max_tokens, tools — same shape as Invoke() input.
+	input := map[string]any{
+		"messages": in.Messages,
+	}
+	if in.Temperature != nil {
+		input["temperature"] = *in.Temperature
+	}
+	// Policy: max_tokens=0 means "let the model decide" — same as
+	// omitting. Prevents the footgun of sending `max_tokens: 0` to
+	// upstream providers that interpret it as "cap output at 0".
+	if in.MaxTokens != nil && *in.MaxTokens > 0 {
+		input["max_tokens"] = *in.MaxTokens
+	}
+	if in.Tools != nil {
+		input["tools"] = in.Tools
+	}
+
 	emit := func(chunk provider.StreamChunk) error {
-		// Detect client disconnect early — writing on a dead connection
-		// returns an error but we want adapter.Stream() to short-circuit.
 		select {
 		case <-r.Context().Done():
 			return r.Context().Err()
@@ -199,7 +265,6 @@ WHERE platform_model_id=$1 AND status='active'
 		if err != nil {
 			return err
 		}
-		// SSE wire format: `event: <name>\ndata: <JSON>\n\n`
 		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", chunk.Kind, raw); err != nil {
 			return err
 		}
@@ -207,11 +272,8 @@ WHERE platform_model_id=$1 AND status='active'
 		return nil
 	}
 
-	err = adapter.Stream(r.Context(), endpointBaseURL, secret, providerModelName, input, emit)
+	err := adapter.Stream(r.Context(), endpointBaseURL, secret, providerModelName, input, emit)
 	if err != nil {
-		// If we get here AFTER the headers have been written, we cannot
-		// change the status code. Best we can do is push an `error` SSE
-		// frame so the client can surface a useful message.
 		code := "LLM_UPSTREAM_ERROR"
 		message := err.Error()
 		if errors.Is(err, provider.ErrStreamNotSupported) {
@@ -223,4 +285,116 @@ WHERE platform_model_id=$1 AND status='active'
 			Message: message,
 		})
 	}
+}
+
+// streamTts — Phase 5a TTS streaming. Calls adapter.Speak emitting one
+// SSE `audio-chunk` frame per AudioChunk + a final `done` frame.
+//
+// Disconnect handling: the emit closure checks r.Context() before each
+// write; client disconnect propagates back through Speak, which closes
+// the upstream connection.
+//
+// Adapter errors after SSE prelude are emitted as `event: error` frames
+// (we can't change HTTP status post-prelude). Pre-prelude validation
+// already happened in doLlmStream; this path assumes a valid request.
+func (s *Server) streamTts(
+	r *http.Request,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	adapter provider.Adapter,
+	endpointBaseURL, secret, providerModelName string,
+	input map[string]any,
+) {
+	// Decode input. text is required (already validated by doLlmStream);
+	// voice/speed/format have adapter-side defaults but we surface them
+	// so the wire payload is reproducible.
+	text, _ := input["text"].(string)
+	voice, _ := input["voice"].(string)
+	format, _ := input["format"].(string)
+	speed := 1.0
+	if v, ok := input["speed"].(float64); ok && v > 0 {
+		speed = v
+	}
+
+	speakInput := provider.SpeakInput{
+		Text:   text,
+		Voice:  voice,
+		Speed:  speed,
+		Format: format,
+	}
+
+	emit := func(c provider.AudioChunk) error {
+		select {
+		case <-r.Context().Done():
+			return r.Context().Err()
+		default:
+		}
+		// AudioChunkEvent payload mirrors the openapi schema.
+		// `data` is base64-encoded since SSE is text-only by spec.
+		payload := map[string]any{
+			"sequence_id": c.SequenceID,
+			"data":        base64StdEncode(c.Data),
+			"final":       c.Final,
+		}
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "event: audio-chunk\ndata: %s\n\n", raw); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	err := adapter.Speak(r.Context(), endpointBaseURL, secret, providerModelName, speakInput, emit)
+	if err != nil {
+		// /review-impl LOW#5 — when the error is caller-disconnect
+		// (ctx cancelled/deadline), don't emit a misleading SSE error
+		// frame. The client is gone; the write would fail silently and
+		// log noise would mask the real cause in triage.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		// /review-impl MED#3 — map typed upstream errors to canonical
+		// SSE codes so FE/SDK consumers can branch on code, not
+		// error.Error() text.
+		code := classifySpeakErrorCode(err)
+		errPayload := map[string]any{
+			"event":   "error",
+			"code":    code,
+			"message": err.Error(),
+		}
+		raw, _ := json.Marshal(errPayload)
+		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", raw)
+		flusher.Flush()
+		return
+	}
+
+	// Closing `done` frame so the consumer iterator terminates cleanly.
+	donePayload := map[string]any{"event": "done"}
+	doneRaw, _ := json.Marshal(donePayload)
+	_, _ = fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneRaw)
+	flusher.Flush()
+}
+
+// classifySpeakErrorCode — Phase 5a /review-impl MED#3. Maps adapter.Speak
+// errors to canonical LLM_* codes for the SSE error frame. Mirrors
+// classifyAudioError in worker_audio.go (jobs pkg) — kept here as a
+// separate function to avoid an api → jobs import cycle.
+func classifySpeakErrorCode(err error) string {
+	if errors.Is(err, provider.ErrOperationNotSupported) {
+		return "LLM_OPERATION_NOT_SUPPORTED"
+	}
+	var rl *provider.ErrUpstreamRateLimited
+	if errors.As(err, &rl) {
+		return "LLM_RATE_LIMITED"
+	}
+	var perm *provider.ErrUpstreamPermanent
+	if errors.As(err, &perm) {
+		if perm.StatusCode == 401 || perm.StatusCode == 403 {
+			return "LLM_AUTH_FAILED"
+		}
+	}
+	return "LLM_UPSTREAM_ERROR"
 }

@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoreWeave — Technical architecture &amp; pipelines (Phase 1–5 vs Phase 6+)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f4f8fb;
+      --bg-card: #ffffff;
+      --text: #1a2332;
+      --text-muted: #5c6b7f;
+      --border: #d8e4ec;
+      --accent-sky: #0ea5e9;
+      --accent-teal: #14b8a6;
+      --accent-coral: #fb7185;
+      --accent-violet: #8b5cf6;
+      --accent-soft: #e0f2fe;
+      --accent-teal-soft: #ccfbf1;
+      --accent-coral-soft: #ffe4e8;
+      --accent-violet-soft: #ede9fe;
+      --shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+      --radius: 12px;
+      --mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: linear-gradient(165deg, var(--bg) 0%, #eef6ff 48%, #f8fafc 100%);
+      color: var(--text);
+      line-height: 1.55;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 36px 22px 72px;
+    }
+
+    .top-nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      font-size: 13px;
+    }
+
+    .top-nav a {
+      color: var(--accent-sky);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .top-nav a:hover {
+      text-decoration: underline;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent-violet);
+      background: var(--accent-violet-soft);
+      padding: 6px 14px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: clamp(1.65rem, 3.5vw, 2.15rem);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .hero-lead {
+      color: var(--text-muted);
+      max-width: 820px;
+      margin-bottom: 22px;
+    }
+
+    .reader-cta {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #0f172a;
+      background: #e2e8f0;
+      border: 1px solid #cbd5e1;
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+
+    /* Phase legend table */
+    .phase-table-wrap {
+      overflow-x: auto;
+      margin-bottom: 36px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      background: var(--bg-card);
+    }
+
+    table.phase-legend {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    table.phase-legend th,
+    table.phase-legend td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    table.phase-legend th {
+      background: #f1f6fb;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    table.phase-legend tr:last-child td {
+      border-bottom: none;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 6px;
+      margin-right: 6px;
+      white-space: nowrap;
+    }
+
+    .tag.ship {
+      background: rgba(20, 184, 166, 0.18);
+      color: #0d9488;
+    }
+
+    .tag.design {
+      background: rgba(251, 113, 133, 0.2);
+      color: #be123c;
+    }
+
+    .section {
+      margin-bottom: 44px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .section-num {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: var(--accent-sky);
+    }
+
+    .section-title {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 18px;
+      max-width: 900px;
+    }
+
+    /* Swimlanes */
+    .swim-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .swim-lane {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .swim-label {
+      flex: 0 0 120px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding-top: 4px;
+    }
+
+    @media (max-width: 640px) {
+      .swim-label { flex: 1 1 100%; }
+    }
+
+    .swim-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .swim-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .svc-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    code.svc {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: #0f172a;
+    }
+
+    .foot-note {
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 12px 14px;
+      background: rgba(14, 165, 233, 0.07);
+      border-radius: var(--radius);
+      border-left: 4px solid var(--accent-sky);
+    }
+
+    .foot-note strong {
+      color: var(--text);
+    }
+
+    /* Pipeline strips */
+    .pipe-strip {
+      margin-bottom: 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .pipe-strip-head {
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: linear-gradient(90deg, var(--accent-soft) 0%, #fff 100%);
+      border-bottom: 1px solid var(--border);
+      color: #0369a1;
+    }
+
+    .pipe-strip-body {
+      padding: 14px 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .pipe-strip-body strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .pipe-flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #334155;
+    }
+
+    .pipe-flow span.arr {
+      color: var(--accent-sky);
+      font-weight: 600;
+    }
+
+    /* TBD callout */
+    .callout-tbd {
+      border: 2px dashed rgba(139, 92, 246, 0.45);
+      background: linear-gradient(180deg, #fff 0%, var(--accent-violet-soft) 100%);
+      border-radius: var(--radius);
+      padding: 20px 20px 18px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .callout-tbd h3 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+
+    .callout-tbd .tbd-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6d28d9;
+      background: #ede9fe;
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    .callout-tbd ul {
+      margin-left: 1.1em;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .callout-tbd li {
+      margin-bottom: 8px;
+    }
+
+    .callout-tbd a {
+      color: var(--accent-sky);
+      font-weight: 500;
+    }
+
+    /* Phase 6 grid */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    @media (max-width: 800px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .card-design {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-card);
+      padding: 16px 16px 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .card-design .card-tag {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #be123c;
+      margin-bottom: 8px;
+    }
+
+    .card-design h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .card-design p,
+    .card-design ul {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .card-design ul {
+      margin-left: 1.1em;
+      margin-top: 6px;
+    }
+
+    .card-design li {
+      margin-bottom: 4px;
+    }
+
+    footer {
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    footer a {
+      color: var(--accent-sky);
+      font-weight: 500;
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    footer .links {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="top-nav" aria-label="Related pages">
+      <span style="color: var(--text-muted);">LoreWeave design drafts</span>
+      <a href="agentic-ai-book-to-world-overview.html">Simplified overview (non-specialist)</a>
+    </nav>
+
+    <header>
+      <p class="hero-badge">Technical overview · LoreWeave platform</p>
+      <h1>Architecture &amp; pipelines — Phase 1–5 delivery vs Phase 6+ design</h1>
+      <p class="hero-lead">
+        This page is for engineers: service grouping, data-plane dependencies, and the operational pipelines that exist in the monorepo today. Phase 6+ (Living Worlds / game-oriented extensions) remains a <strong>design track</strong>—gated on novel-platform maturity and prototype metrics—not an implemented product surface.
+      </p>
+      <p class="reader-cta">For technical readers only</p>
+    </header>
+
+    <div class="phase-table-wrap">
+      <table class="phase-legend">
+        <thead>
+          <tr>
+            <th scope="col">Scope</th>
+            <th scope="col">What it means here</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag ship">Phase 1–5</span></td>
+            <td>
+              <strong>Shipped or in active development</strong> on the root roadmap: auth, books, sharing, catalog, providers, translation, glossary, chat, usage, statistics, notifications, knowledge extraction plumbing, workers, gateway BFF, frontend. Ongoing hardening and Phase 2–5 knowledge/RAG work continue in parallel with feature delivery.
+            </td>
+          </tr>
+          <tr>
+            <td><span class="tag design">Phase 6+</span></td>
+            <td>
+              <strong>Extension design track</strong> (Living Worlds): multiverse storage, role-play loop, LLM safety layers, and a large feature catalog under <code style="font-family: var(--mono); font-size: 12px;">docs/03_planning/LLM_MMO_RPG/</code>. Implementation is explicitly <strong>not</strong> scheduled until open problems (retrieval quality, cost per user-hour, IP ownership) and V1 novel maturity are addressed.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <section class="section" aria-labelledby="sec-arch">
+      <div class="section-head">
+        <span class="section-num">A</span>
+        <h2 id="sec-arch" class="section-title">System architecture (engineering view)</h2>
+      </div>
+      <p class="section-desc">
+        From browsers and other external clients, traffic enters through the NestJS gateway. Domain logic is split across Go microservices; AI-facing workloads use Python services and background workers. Each service owns its Postgres schema; Redis, RabbitMQ, and MinIO provide streams, queues, and object storage; Neo4j is optional for graph projections when Track-2 features are enabled.
+      </p>
+
+      <div class="swim-wrap">
+        <div class="swim-lane">
+          <div class="swim-label">Edge</div>
+          <div class="swim-body">
+            <div class="swim-title">Browser clients</div>
+            <div class="svc-list">
+              <code class="svc">frontend</code>
+              <span style="color: var(--text-muted); font-size: 13px;">→</span>
+              <code class="svc">api-gateway-bff</code>
+              <span style="color: var(--text-muted); font-size: 12px;">(NestJS · single external entry)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="swim-lane">
+          <div class="swim-label">Go domain</div>
+          <div class="swim-body">
+            <div class="swim-title">Core services (Chi / Go)</div>
+            <div class="svc-list">
+              <code class="svc">auth-service</code>
+              <code class="svc">book-service</code>
+              <code class="svc">sharing-service</code>
+              <code class="svc">catalog-service</code>
+              <code class="svc">provider-registry-service</code>
+              <code class="svc">usage-billing-service</code>
+              <code class="svc">glossary-service</code>
+              <code class="svc">statistics-service</code>
+              <code class="svc">notification-service</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="swim-lane">
+          <div class="swim-label">Python AI</div>
+          <div class="swim-body">
+            <div class="swim-title">LLM, knowledge &amp; media APIs (FastAPI)</div>
+            <div class="svc-list">
+              <code class="svc">chat-service</code>
+              <code class="svc">translation-service</code>
+              <code class="svc">translation-worker</code>
+              <code class="svc">knowledge-service</code>
+              <code class="svc">video-gen-service</code>
+              <span style="color: var(--text-muted); font-size: 12px;">(BFF to ComfyUI stack — see note)</span>
+            </div>
+            <p style="margin-top: 10px; font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+              The primary target for heavy image/video generation is the sibling repository <strong>local-image-generator-service</strong> (ComfyUI). Supported model families include SD&nbsp;1.5, SDXL, Illustrious, Flux&nbsp;1 / Flux&nbsp;2, Qwen&nbsp;Image, Wan, LTX&nbsp;Video, plus custom workflows for game assets, sprite/object sheets, and animation outputs. This monorepo’s <code class="svc" style="font-size: 10px;">video-gen-service</code> is the gateway-facing API surface (via <code class="svc" style="font-size: 10px;">api-gateway-bff</code> <code class="svc" style="font-size: 10px;">/v1/video-gen</code>), with provider-side integration evolving over time.
+            </p>
+            <p style="margin-top: 6px; font-size: 11px; color: var(--text-muted);">
+              Note: <strong>local-image-generator-service</strong> is a sibling repository and is not part of the default container set in this monorepo's <code class="svc" style="font-size: 10px;">infra/docker-compose.yml</code>.
+            </p>
+          </div>
+        </div>
+
+        <div class="swim-lane">
+          <div class="swim-label">Workers</div>
+          <div class="swim-body">
+            <div class="swim-title">Async processing</div>
+            <div class="svc-list">
+              <code class="svc">worker-infra</code>
+              <span style="font-size: 12px; color: var(--text-muted);">outbox relay, import, pandoc-adjacent tasks</span>
+              <code class="svc">worker-ai</code>
+              <span style="font-size: 12px; color: var(--text-muted);">extraction jobs via provider-registry internal LLM gateway</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="swim-lane">
+          <div class="swim-label">Data plane</div>
+          <div class="swim-body">
+            <div class="swim-title">Infrastructure (Docker Compose baseline)</div>
+            <div class="svc-list">
+              <code class="svc">postgres</code>
+              <code class="svc">redis</code>
+              <code class="svc">rabbitmq</code>
+              <code class="svc">minio</code>
+              <code class="svc">neo4j</code>
+              <span style="font-size: 12px; color: var(--text-muted);">optional profile</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="foot-note">
+        <strong>BYOK &amp; adapters.</strong> AI calls are routed through <code class="svc" style="font-size: 11px;">provider-registry-service</code> so credentials and model lists stay user-scoped; product code avoids direct vendor SDKs at the domain boundary (adapter layer). Usage metering ties to <code class="svc" style="font-size: 11px;">usage-billing-service</code>.
+      </p>
+    </section>
+
+    <section class="section" aria-labelledby="sec-pipe">
+      <div class="section-head">
+        <span class="section-num">B</span>
+        <h2 id="sec-pipe" class="section-title">Operational pipelines (Phase 1–5)</h2>
+      </div>
+      <p class="section-desc">
+        High-level flows that exist in the codebase today. Names reflect containers/services in <code class="svc" style="font-size: 11px;">infra/docker-compose.yml</code>; internal events and job APIs evolve—treat this as orientation, not a frozen sequence diagram. Some strips below are fully operational, while others are partial or planned integrations.
+      </p>
+
+      <div class="pipe-strip">
+        <div class="pipe-strip-head">Authoring → persistence</div>
+        <div class="pipe-strip-body">
+          <strong>Operational — manuscript SSOT.</strong> Chapters and chunks persist through <code class="svc" style="font-size: 11px;">book-service</code>; structured lore and wiki artifacts live in <code class="svc" style="font-size: 11px;">glossary-service</code>. Binary assets route to object storage where applicable (<code class="svc" style="font-size: 11px;">minio</code> in dev).
+          <div class="pipe-flow">
+            <code class="svc">frontend</code> <span class="arr">→</span> <code class="svc">api-gateway-bff</code> <span class="arr">→</span> <code class="svc">book-service</code> <span class="arr">→</span> <code class="svc">postgres</code> <span class="arr">|</span> <code class="svc">minio</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipe-strip">
+        <div class="pipe-strip-head">Translation</div>
+        <div class="pipe-strip-body">
+          <strong>Operational (quality depth in progress) — async batch translation.</strong> <code class="svc" style="font-size: 11px;">translation-service</code> orchestrates jobs; <code class="svc" style="font-size: 11px;">translation-worker</code> consumes <code class="svc" style="font-size: 11px;">rabbitmq</code> work; models and keys resolve via <code class="svc" style="font-size: 11px;">provider-registry-service</code>.
+          <div class="pipe-flow">
+            <code class="svc">translation-service</code> <span class="arr">→</span> <code class="svc">rabbitmq</code> <span class="arr">→</span> <code class="svc">translation-worker</code> <span class="arr">→</span> <code class="svc">provider-registry-service</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipe-strip">
+        <div class="pipe-strip-head">Async LLM jobs &amp; notifications</div>
+        <div class="pipe-strip-body">
+          <strong>Operational — provider jobs &amp; terminal events.</strong> Long-running LLM work is brokered through <code class="svc" style="font-size: 11px;">provider-registry-service</code> with billing hooks; async completion can surface as notifications via <code class="svc" style="font-size: 11px;">notification-service</code> when messaging is configured (e.g. RabbitMQ).
+          <div class="pipe-flow">
+            <code class="svc">provider-registry-service</code> <span class="arr">→</span> <code class="svc">usage-billing-service</code> <span class="arr">→</span> <code class="svc">notification-service</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipe-strip">
+        <div class="pipe-strip-head">Retrieval serving pipeline (knowledge → app workflows)</div>
+        <div class="pipe-strip-body">
+          <strong>Partial — app-facing retrieval context.</strong> In addition to extraction/storage, <code class="svc" style="font-size: 11px;">knowledge-service</code> serves context back to applications (for example chat memory/context assembly). Current chat integration uses context-build calls with degraded fallback behavior when the service is unavailable; broader book-service retrieval integration remains planned.
+          <div class="pipe-flow">
+            <code class="svc">chat-service</code> <span class="arr">→</span> <code class="svc">knowledge-service</code> <span class="arr">(/internal/context/build)</span> <span class="arr">→</span> <code class="svc">postgres</code> <span class="arr">/</span> <code class="svc">neo4j</code> <span class="arr">→</span> retrieval response
+          </div>
+        </div>
+      </div>
+
+      <div class="pipe-strip">
+        <div class="pipe-strip-head">Knowledge &amp; extraction (Track 1–2)</div>
+        <div class="pipe-strip-body">
+          <strong>Operational core + partial consumers.</strong> Event-driven extraction enriches and stores knowledge data; retrieval serving is a separate path (see strip above). Book/chat-related changes propagate via outbox patterns and relays (<code class="svc" style="font-size: 11px;">worker-infra</code>) into streams consumers read. <code class="svc" style="font-size: 11px;">knowledge-service</code> owns Postgres SSOT for knowledge rows; <code class="svc" style="font-size: 11px;">worker-ai</code> drives Pass-2-style LLM extraction through the internal gateway; optional <code class="svc" style="font-size: 11px;">neo4j</code> holds derived graph projections when enabled. Extraction is <strong>opt-in per project</strong> and cost-gated in planning docs—background jobs, not interactive latency.
+          <div class="pipe-flow">
+            <code class="svc">book-service</code> <span class="arr">→</span> outbox <span class="arr">→</span> <code class="svc">worker-infra</code> <span class="arr">→</span> <code class="svc">knowledge-service</code> <span class="arr">+</span> <code class="svc">worker-ai</code> <span class="arr">→</span> <code class="svc">postgres</code> <span class="arr">/</span> <code class="svc">neo4j</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipe-strip">
+        <div class="pipe-strip-head">Chat voice + knowledge collection pipeline</div>
+        <div class="pipe-strip-body">
+          <strong>Partial — integrated in parts, depth evolving.</strong> Chat voice flows include STT/TTS paths and context assembly, while chat session completion feeds event-driven knowledge collection/storage. The core plumbing exists (voice routes/events, audio adapters/workers, outbox events), but quality and coverage are still being expanded.
+          <div class="pipe-flow">
+            voice input <span class="arr">→</span> <code class="svc">chat-service</code> <span class="arr">→</span> provider audio path <span class="arr">(STT/TTS)</span> <span class="arr">→</span> chat turn complete <span class="arr">→</span> outbox <span class="arr">→</span> <code class="svc">worker-infra</code> <span class="arr">→</span> <code class="svc">knowledge-service</code> <span class="arr">+</span> <code class="svc">worker-ai</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipe-strip">
+        <div class="pipe-strip-head">Image / video generation (ComfyUI)</div>
+        <div class="pipe-strip-body">
+          <strong>Partial — ComfyUI-backed media stack (separate repo, integration in progress).</strong> Generation workloads are intended to run in <strong>local-image-generator-service</strong> (ComfyUI): SD&nbsp;1.5, SDXL, Illustrious, Flux&nbsp;1/2, Qwen&nbsp;Image, Wan, LTX&nbsp;Video, and custom graphs for <strong>game assets</strong>, <strong>object / sprite sheets</strong>, and <strong>animation</strong> outputs. LoreWeave’s <code class="svc" style="font-size: 11px;">video-gen-service</code> exposes gateway-facing routes and storage/billing hooks while this topology is finalized.
+          <div class="pipe-flow">
+            <code class="svc">frontend</code> <span class="arr">→</span> <code class="svc">api-gateway-bff</code> <span class="arr">→</span> <code class="svc">video-gen-service</code> <span class="arr">→</span> <code class="svc">local-image-generator-service</code> <span class="arr">(ComfyUI)</span> <span class="arr">→</span> <code class="svc">minio</code>
+          </div>
+          <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+            Current monorepo code paths may still call provider APIs directly for some requests during transition.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="sec-bridge">
+      <div class="section-head">
+        <span class="section-num">C</span>
+        <h2 id="sec-bridge" class="section-title">Planned bridge — book / glossary → game “reality” data</h2>
+      </div>
+      <p class="section-desc">
+        A dedicated production pipeline from authored prose to game-ready datasets is <strong>not fully specified</strong>. The intent is to extend glossary- and extraction-derived artifacts toward runtime-friendly bundles while keeping canon review in the loop.
+      </p>
+
+      <div class="callout-tbd">
+        <div class="tbd-badge">Design in progress · wire format not locked</div>
+        <h3>Provisional pipeline sketch</h3>
+        <ul>
+          <li><strong>AI collection from book text</strong> — leverage extraction and summarization paths (existing knowledge/glossary direction) to propose structured candidates: places, factions, timelines, rule-like facts.</li>
+          <li><strong>MCP as an integration surface</strong> — connect editors/agents and internal tools via MCP-shaped endpoints so enrichment jobs can be invoked consistently; treat this as a <em>contract boundary</em>, not a single frozen schema.</li>
+          <li><strong>Human-in-the-loop enrichment</strong> — curators approve, merge, or reject automated proposals before they become authoritative game inputs (parallel to glossary/wiki curation today).</li>
+        </ul>
+        <p style="margin-top: 12px; font-size: 13px; color: var(--text-muted);">
+          Job boundaries, storage targets, and migration from Phase 1–5 tables to any future game-specific databases are <strong>open engineering work</strong>. Authoritative narrative for the extension lives under
+          <a href="../docs/03_planning/LLM_MMO_RPG/README.md">docs/03_planning/LLM_MMO_RPG/README.md</a>.
+        </p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="sec-p6">
+      <div class="section-head">
+        <span class="section-num">D</span>
+        <h2 id="sec-p6" class="section-title">Phase 6+ game platform areas (design breadth)</h2>
+      </div>
+      <p class="section-desc">
+        The following areas describe <strong>planned layering and systems</strong> for a text-first, lore-grounded game experience. They are <strong>not</strong> claimed as implemented stacks in the current monorepo; they organize expected problem domains for future specs.
+      </p>
+
+      <div class="grid-2">
+        <div class="card-design">
+          <div class="card-tag">Design track · Phase 6+</div>
+          <h4>Spatial &amp; world representation</h4>
+          <ul>
+            <li>Four-layer map model (macro → tactical granularity).</li>
+            <li>World graph nodes linking locations, routes, and topology.</li>
+            <li>World-map “papers” (authored or generated cartographic artifacts).</li>
+            <li>Zone-level 2.5D presentation for exploration contexts.</li>
+            <li>Cell / domain / battlefield framing for combat or set-piece scenes.</li>
+          </ul>
+        </div>
+        <div class="card-design">
+          <div class="card-tag">Design track · Phase 6+</div>
+          <h4>Characters</h4>
+          <ul>
+            <li>Background bundles (history, goals, constraints).</li>
+            <li>Personality axes / voice priors for dialogue and narration.</li>
+            <li>Appearance descriptors aligned with continuity checks.</li>
+          </ul>
+        </div>
+        <div class="card-design">
+          <div class="card-tag">Design track · Phase 6+</div>
+          <h4>Memory systems</h4>
+          <p>Per-character and per-relationship memory aggregates to bound retrieval cost while preserving scene coherence—see open problems around NPC memory at scale in the extension catalog.</p>
+        </div>
+        <div class="card-design">
+          <div class="card-tag">Design track · Phase 6+</div>
+          <h4>Event sourcing &amp; chronicle</h4>
+          <p>Append-only event chains for significant world actions; projections for current state; aligns with the extension’s storage engineering direction (event log, reality-scoped databases)—no shipped game event store exists yet.</p>
+        </div>
+        <div class="card-design" style="grid-column: 1 / -1;">
+          <div class="card-tag">Design track · Phase 6+</div>
+          <h4>Other systems</h4>
+          <p>
+            Narration safety layers, turn arbitration, multiverse fork semantics, realtime presence, billing tiers, and operational SLOs are catalogued across hundreds of features. Start from
+            <a href="../docs/03_planning/LLM_MMO_RPG/catalog/_index.md">docs/03_planning/LLM_MMO_RPG/catalog/_index.md</a>
+            and scope summaries in <code class="svc" style="font-size: 11px;">catalog/99_scope_and_refs.md</code> rather than duplicating the registry here.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Coverage Scope (for review alignment)</h2>
+      <ul class="list">
+        <li><strong>Included:</strong> architecture layers, operational pipelines, and maturity labels (operational / partial / planned).</li>
+        <li><strong>Included:</strong> separation of retrieval-serving paths vs extraction/store paths.</li>
+        <li><strong>Included:</strong> chat integration paths (knowledge context build, voice STT/TTS, session completion -> collection/store pipeline).</li>
+        <li><strong>Included:</strong> roadmap boundary (Phase 1–5 delivery scope vs Phase 6+ design track).</li>
+        <li><strong>Intentionally omitted:</strong> low-level schemas, exact queue/topic names, retry/backoff internals, and full endpoint catalogs.</li>
+        <li><strong>For those details:</strong> use service docs and planning files linked in the footer.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>Technical overview — not an implementation specification.</p>
+      <div class="links">
+        <a href="../docs/03_planning/LLM_MMO_RPG/README.md">LLM_MMO_RPG README</a>
+        <a href="../docs/03_planning/LLM_MMO_RPG/catalog/_index.md">Feature catalog index</a>
+        <a href="agentic-ai-book-to-world-overview.html">Non-specialist overview</a>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

@@ -1578,7 +1578,7 @@ P3-17a (wiki backend) blocks all wiki features
 - **Audio/TTS remains Phase 4.5**: the mixed-media draft designs audio slots on text blocks, but audio is a separate concern from visual media. Build visual media first.
 - **Version data model**: versions stored as `media_versions` array in block JSON (lightweight metadata) + actual media files in MinIO with versioned paths. Old prompts are always kept (cheap text). Media files subject to retention policy.
 - **Classic mode guards**: Tiptap `NodeView` with `editable: false` + `handleKeyDown` at media boundaries. No data deleted on mode switch — media blocks collapse to compact locked placeholders.
-- **Video generation service**: `video-gen-service` (Python/FastAPI) created as skeleton. Returns `status: "not_implemented"` until a real provider is connected. FE Generate button wired and ready.
+- **Video generation service**: `video-gen-service` (Python/FastAPI) is the **gateway** in this monorepo; the ComfyUI-backed engine (SD 1.5 / SDXL / Illustrious / Flux / Qwen Image / Wan / LTX Video + game-asset pipelines) is implemented in sibling repo **local-image-generator-service**. Finish gateway↔engine wiring and retire `not_implemented` responses as integration completes. FE Generate button wired and ready.
 
 ### Media Version Retention (future enhancement)
 

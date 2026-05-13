@@ -1,0 +1,218 @@
+/* PO_001 Wireframes — Shared Wuxia Ink-Wash + Reality-Themed Accent Style
+ * Phase 0 HTML mockup; demonstrates UX before backend feature spec.
+ * Uses Tailwind via CDN per frontend convention (Vite + React + Tailwind + shadcn/ui).
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  /* Wuxia ink-wash base palette */
+  --paper: #f5f0e6;
+  --paper-soft: #ebe4d4;
+  --ink: #1a1815;
+  --ink-soft: #3d3a32;
+  --ink-muted: #6b6557;
+
+  /* Per-reality accent (default = Đông Phong jade/cream) */
+  --accent: #2d6a5f;
+  --accent-soft: #4a8b7e;
+  --accent-bg: #d8e4dd;
+
+  /* Status colors */
+  --success: #4d7c0f;
+  --warning: #b45309;
+  --danger: #991b1b;
+  --info: #0e7490;
+}
+
+[data-reality="dongphong"] {
+  --accent: #2d6a5f;       /* jade (wuxia primary) */
+  --accent-soft: #4a8b7e;
+  --accent-bg: #d8e4dd;
+}
+
+[data-reality="saigon"] {
+  --accent: #c026d3;       /* neon pink (cyberpunk-modern) */
+  --accent-soft: #e879f9;
+  --accent-bg: #2a1a30;
+  /* Modern Saigon = dark theme override */
+  --paper: #0d0d10;
+  --paper-soft: #1a1a20;
+  --ink: #e0e0e8;
+  --ink-soft: #b0b0bc;
+  --ink-muted: #707080;
+}
+
+[data-reality="faerun"] {
+  --accent: #92400e;       /* burgundy/parchment (D&D fantasy) */
+  --accent-soft: #b45309;
+  --accent-bg: #f4e8d4;
+  --paper: #f9f3e3;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse at 30% 20%, rgba(45, 106, 95, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 80%, rgba(26, 24, 21, 0.03) 0%, transparent 60%);
+}
+
+[data-reality="saigon"] body {
+  background-image:
+    radial-gradient(ellipse at 20% 30%, rgba(192, 38, 211, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, rgba(14, 116, 144, 0.08) 0%, transparent 50%);
+}
+
+h1, h2, h3, .heading {
+  font-family: 'Source Serif Pro', 'Times New Roman', serif;
+  letter-spacing: -0.01em;
+}
+
+.ink-wash-border {
+  position: relative;
+  border: 1px solid var(--ink-soft);
+  background: var(--paper);
+}
+
+.ink-wash-border::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(135deg, transparent 70%, var(--accent-soft) 100%);
+  z-index: -1;
+  opacity: 0.15;
+  border-radius: inherit;
+}
+
+.brush-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ink-soft), transparent);
+  margin: 1rem 0;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--paper);
+  padding: 0.625rem 1.5rem;
+  border: none;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: 'Source Serif Pro', serif;
+}
+.btn-primary:hover { background: var(--accent-soft); transform: translateY(-1px); }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink-soft);
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-secondary:hover { background: var(--paper-soft); }
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--ink-soft);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  transition: all 0.2s;
+}
+.card-hoverable:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(45, 106, 95, 0.08);
+  transform: translateY(-2px);
+}
+.card-selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--ink-soft);
+  border-radius: 0.375rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Inter', sans-serif;
+}
+.input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+
+.progress-bar {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+.progress-step {
+  flex: 1;
+  height: 4px;
+  background: var(--paper-soft);
+  border-radius: 2px;
+}
+.progress-step.active { background: var(--accent); }
+.progress-step.completed { background: var(--accent-soft); }
+
+.app-shell {
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--paper-soft);
+  border-bottom: 1px solid var(--ink-soft);
+  margin-bottom: 2rem;
+  font-size: 0.875rem;
+}
+
+.lang-switch a {
+  color: var(--ink-muted);
+  text-decoration: none;
+  margin-left: 0.75rem;
+}
+.lang-switch a.active { color: var(--accent); font-weight: 600; }
+
+.tooltip {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  border: 1px solid var(--ink-soft);
+  border-radius: 50%;
+  width: 1rem;
+  height: 1rem;
+  text-align: center;
+  line-height: 0.875rem;
+  cursor: help;
+  margin-left: 0.25rem;
+}
+
+.subtle { color: var(--ink-muted); font-size: 0.875rem; }
+.label { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.375rem; display: block; }
+
+.scene-narration {
+  font-family: 'Source Serif Pro', serif;
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  padding: 1rem 1.5rem;
+  background: var(--paper-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 0.375rem 0.375rem 0;
+  font-style: italic;
+}

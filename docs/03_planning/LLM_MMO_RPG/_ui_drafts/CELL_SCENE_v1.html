@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>LoreWeave LLM MMO RPG — Cell Scene Draft v1 (Yên Vũ Lâu, top-down grid + LLM-positioned)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: #0d1117; color: #e6edf3; display: flex; flex-direction: column; }
+
+  /* ─── Top bar ─── */
+  header.topbar {
+    padding: 10px 20px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  header.topbar .back {
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #58a6ff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+  }
+  header.topbar .back:hover { background: #30363d; }
+  header.topbar h1 { font-size: 18px; font-weight: 500; }
+  header.topbar .place-meta {
+    color: #7d8590;
+    font-size: 12px;
+    display: flex;
+    gap: 12px;
+  }
+  header.topbar .place-meta .badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: #1f6feb33;
+    color: #58a6ff;
+    font-size: 11px;
+  }
+  header.topbar .place-meta .badge.canon { background: #d2992233; color: #d29922; }
+
+  /* ─── Main layout ─── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    overflow: hidden;
+  }
+
+  /* ─── Grid viewport ─── */
+  section.grid-viewport {
+    position: relative;
+    background: radial-gradient(ellipse at center, #1a1a1f 0%, #0d1117 80%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  section.grid-viewport svg.cell-grid {
+    max-width: 100%;
+    max-height: 100%;
+    background: #161b22;
+    border: 2px solid #30363d;
+    border-radius: 8px;
+    box-shadow: 0 0 60px #58a6ff11;
+  }
+
+  /* Tile colors */
+  .tile-floor { fill: #3d2c1a; }              /* warm brown floor */
+  .tile-floor-carpet { fill: #4d2818; }       /* darker carpet */
+  .tile-wall { fill: #1a1a1f; stroke: #30363d; stroke-width: 0.5; }
+  .tile-counter { fill: #6b4226; stroke: #8b5a36; stroke-width: 1; }
+  .tile-table { fill: #5a3a1f; stroke: #7a4f2c; stroke-width: 1; }
+  .tile-chair { fill: #3d2c1a; stroke: #5a3a1f; stroke-width: 0.5; }
+  .tile-fireplace { fill: #4a1010; stroke: #722; stroke-width: 1; }
+  .tile-window { fill: #2a4a6a; stroke: #4a6a8a; stroke-width: 1; }
+  .tile-door { fill: #6b4226; stroke: #d29922; stroke-width: 2; }
+  .tile-threshold { fill: #4d3320; stroke: #d29922; stroke-width: 0.5; stroke-dasharray: 2,1; }
+
+  .tile {
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .tile:hover { filter: brightness(1.4); }
+
+  /* Entity styles */
+  .entity {
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .entity:hover { transform: scale(1.15); transform-origin: center; transform-box: fill-box; }
+  .entity text.emoji {
+    font-size: 22px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    user-select: none;
+    pointer-events: none;
+  }
+  .entity .selection-ring {
+    fill: none;
+    stroke: #58a6ff;
+    stroke-width: 2;
+    stroke-dasharray: 3,2;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .entity.selected .selection-ring { opacity: 1; }
+  .entity.is-pc circle {
+    fill: #1f6feb44;
+    stroke: #58a6ff;
+    stroke-width: 1.5;
+  }
+  .entity.is-npc circle {
+    fill: #2a1f3a;
+    stroke: #b481d4;
+    stroke-width: 1.5;
+  }
+  .entity.is-item circle {
+    fill: #2a2410;
+    stroke: #d29922;
+    stroke-width: 1;
+    stroke-dasharray: 2,1;
+  }
+
+  /* Entity label below */
+  .entity text.label {
+    font-size: 9px;
+    fill: #b8b8b8;
+    text-anchor: middle;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  /* Tooltip */
+  .tooltip {
+    position: absolute;
+    background: rgba(13, 17, 23, 0.95);
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #b8b8b8;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    z-index: 100;
+    white-space: nowrap;
+  }
+  .tooltip.show { opacity: 1; }
+
+  /* ─── Sidebar ─── */
+  aside.sidebar {
+    background: #161b22;
+    border-left: 1px solid #30363d;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+  }
+  aside.sidebar h2 {
+    font-size: 11px;
+    color: #7d8590;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+
+  .panel {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 12px;
+  }
+  .panel h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: #e6edf3;
+  }
+  .panel .meta-row {
+    font-size: 12px;
+    color: #b8b8b8;
+    line-height: 1.5;
+    margin: 3px 0;
+  }
+  .panel .meta-row strong { color: #e6edf3; }
+  .panel .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #1f6feb33;
+    color: #58a6ff;
+    font-size: 10px;
+    margin-right: 4px;
+    margin-bottom: 3px;
+  }
+  .panel .badge.npc { background: #6e3a8a33; color: #b481d4; }
+  .panel .badge.item { background: #d2992233; color: #d29922; }
+  .panel .badge.envobject { background: #2ea04333; color: #3fb950; }
+  .panel .badge.affordance { background: #21262d; color: #b8b8b8; border: 1px solid #30363d; }
+  .panel .badge.status-effect { background: #f8514933; color: #f85149; }
+
+  .empty-pane {
+    color: #7d8590;
+    font-size: 12px;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+    border: 1px dashed #30363d;
+    border-radius: 6px;
+  }
+
+  /* Action menu */
+  .action-menu {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .action-btn {
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #e6edf3;
+    padding: 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+  }
+  .action-btn:hover {
+    background: #30363d;
+    border-color: #58a6ff;
+  }
+  .action-btn.primary {
+    grid-column: span 2;
+    background: #1f6feb;
+    border-color: #58a6ff;
+    justify-content: center;
+  }
+  .action-btn.primary:hover { background: #388bfd; }
+  .action-btn .emoji { font-size: 14px; }
+
+  /* PC status panel */
+  .pc-status .stat-bar {
+    height: 8px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+    margin-top: 4px;
+  }
+  .pc-status .stat-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2ea043 0%, #3fb950 100%);
+    width: 100%;
+  }
+  .pc-status .stat-bar-fill.mana {
+    background: linear-gradient(90deg, #1f6feb 0%, #58a6ff 100%);
+  }
+  .pc-status .stat-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #b8b8b8;
+    margin-top: 6px;
+  }
+  .pc-status .inventory {
+    margin-top: 8px;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .pc-status .inv-item {
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 11px;
+    color: #b8b8b8;
+    cursor: pointer;
+  }
+  .pc-status .inv-item:hover { border-color: #d29922; color: #d29922; }
+
+  /* Event log */
+  .event-log {
+    flex: 1;
+    min-height: 100px;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+    color: #b8b8b8;
+    line-height: 1.5;
+    font-family: 'Courier New', monospace;
+  }
+  .event-log .ev { margin: 4px 0; padding: 2px 0; border-bottom: 1px dashed #21262d; }
+  .event-log .ev:last-child { border-bottom: none; }
+  .event-log .ev .ts { color: #7d8590; font-size: 9px; }
+  .event-log .ev.system { color: #58a6ff; }
+  .event-log .ev.narrator { color: #e6edf3; font-family: 'Segoe UI', sans-serif; font-style: italic; }
+  .event-log .ev.action { color: #d29922; }
+
+  /* Command bar */
+  footer.command-bar {
+    padding: 12px 20px;
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  footer.command-bar .prefix-hint {
+    color: #58a6ff;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    align-self: center;
+    flex-shrink: 0;
+  }
+  footer.command-bar input {
+    flex: 1;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #e6edf3;
+    font: inherit;
+    font-size: 13px;
+  }
+  footer.command-bar input:focus {
+    outline: none;
+    border-color: #58a6ff;
+  }
+  footer.command-bar button {
+    background: #2ea043;
+    border: none;
+    color: white;
+    padding: 8px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 500;
+  }
+  footer.command-bar button:hover { background: #3fb950; }
+
+  /* LLM-gen indicator */
+  .llm-gen-badge {
+    position: absolute;
+    top: 28px;
+    right: 28px;
+    background: rgba(13, 17, 23, 0.85);
+    border: 1px solid #6e3a8a;
+    color: #b481d4;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <button class="back" onclick="alert('Back to MAP_001 view (would call MAP-Q3 ExamineTarget::Place if PL_005 closure-pass extends ExamineTarget)')">← Map</button>
+    <h1>Yên Vũ Lâu</h1>
+    <div class="place-meta">
+      <span class="badge">Tavern</span>
+      <span class="badge canon">Pristine · book-canon Q3 C12</span>
+      <span>ambient: dusk · light rain · 4 patrons</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="grid-viewport" id="grid-viewport">
+      <div class="llm-gen-badge" title="Layout source per future CSC_001 spec">
+        ⚙ LlmGenerated · cached · seed 0xa1b2c3
+      </div>
+      <svg class="cell-grid" id="cell-grid" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet">
+        <g id="tiles-layer"></g>
+        <g id="entities-layer"></g>
+      </svg>
+    </section>
+
+    <aside class="sidebar">
+      <div>
+        <h2>Selected Entity</h2>
+        <div id="info-pane">
+          <div class="empty-pane">Click an entity (PC / NPC / Item / fixture) to inspect</div>
+        </div>
+      </div>
+
+      <div>
+        <h2>PC Status — Lý Minh</h2>
+        <div class="panel pc-status">
+          <h3>🧑 Lý Minh</h3>
+          <div class="meta-row">PC · Body: peasant 1256 Hàng Châu · Soul: 2026 Saigon student (xuyên không)</div>
+          <div class="stat-bar"><div class="stat-bar-fill" style="width: 92%"></div></div>
+          <div class="stat-bar-label"><span>HP</span><span>92 / 100</span></div>
+          <div class="stat-bar"><div class="stat-bar-fill mana" style="width: 60%"></div></div>
+          <div class="stat-bar-label"><span>Tinh thần</span><span>60 / 100</span></div>
+          <div style="margin-top: 8px;">
+            <span class="badge status-effect">⚠ Drunk (3h remaining)</span>
+            <span class="badge status-effect">⚠ Frightened (intent classifier)</span>
+          </div>
+          <div class="meta-row" style="margin-top: 8px;"><strong>Inventory:</strong></div>
+          <div class="inventory">
+            <span class="inv-item">⚔️ Jian (Use)</span>
+            <span class="inv-item">📜 Scroll (Examine)</span>
+            <span class="inv-item">🪙 5 silver coins</span>
+            <span class="inv-item">🧧 Letter (Give)</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+        <h2>Recent Events</h2>
+        <div class="event-log" id="event-log">
+          <div class="ev system"><span class="ts">[fiction-time 1256-Thu-d3-T_Thân_Sơ]</span> session bound to cell:yen_vu_lau</div>
+          <div class="ev system"><span class="ts">[t+0]</span> EVT-T4 EntityBorn: PC(ly_minh) → InCell(cell:yen_vu_lau)</div>
+          <div class="ev narrator">Sương khói buổi tối phủ kín Yên Vũ Lâu. Ngươi vừa bước qua ngưỡng cửa, người vẫn còn ướt vì cơn mưa nhỏ vừa tạnh.</div>
+          <div class="ev system"><span class="ts">[t+0]</span> NPC roster: Lão Ngũ (counter), Tiểu Thúy (table 2), Du sĩ (table 4)</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="command-bar">
+    <span class="prefix-hint">/verbatim</span>
+    <input type="text" id="cmd-input" placeholder='Type a command (PL_002 grammar) or click an entity above...' />
+    <button onclick="onCommandSubmit()">SUBMIT</button>
+  </footer>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    // ─── Cell scene constants ───
+    const GRID_SIZE = 16;
+    const TILE_PX = 32;
+    const VIEWBOX = GRID_SIZE * TILE_PX;  // 512
+
+    // ─── Demo cell layout: Yên Vũ Lâu (Tavern) ───
+    // Future CSC_001 generates this from (PlaceType=Tavern, fixture_seed, occupant list, ambient) → JSON
+    // For demo: hand-crafted per Phase 0 design discussion
+    const TILE_TYPES = {
+      W:    { kind: 'wall',       walkable: false, label: 'Wall' },
+      F:    { kind: 'floor',      walkable: true,  label: 'Floor' },
+      C:    { kind: 'carpet',     walkable: true,  label: 'Carpet (warm flooring)' },
+      Co:   { kind: 'counter',    walkable: false, label: 'Counter' },
+      T:    { kind: 'table',      walkable: false, label: 'Table' },
+      Ch:   { kind: 'chair',      walkable: true,  label: 'Chair' },
+      Fp:   { kind: 'fireplace',  walkable: false, label: 'Fireplace' },
+      Wn:   { kind: 'window',     walkable: false, label: 'Window' },
+      D:    { kind: 'door',       walkable: true,  label: 'Door (south entry)' },
+      Th:   { kind: 'threshold',  walkable: true,  label: 'Threshold' },
+    };
+
+    // 16x16 grid: each row is a string of tile-keys
+    // Reading: row 0 = north (top); row 15 = south (bottom)
+    const LAYOUT = [
+      'WWWWWWWWWWWWWWWW',   // row 0  — north wall
+      'WCoCoCoCoFFFWnWnFFW', // row 1  — counter (4 tiles) + window
+      'WFFFFFFFFFFFFFFW',   // row 2
+      'WFFFFFFFFFFFFFFW',   // row 3
+      'WFChTTChFChTTChFFW', // row 4  — 2 tables with chairs
+      'WFFTTFFFFTTFFFFFW',  // row 5
+      'WFChChFFFChChFFpFpW',// row 6  — chairs + fireplace east
+      'WFFFFFFFFFFFFFpFpW', // row 7  — fireplace continues
+      'WCFFFFFFFFFFFFCFW',  // row 8
+      'WCFFFFFFFFFFFFCFW',  // row 9
+      'WCFFFFFFFFFFFFCFW',  // row 10
+      'WFFFFFFFFFFFFFFW',   // row 11
+      'WFFFFFFFFFFFFFFW',   // row 12
+      'WFFFFFFFFFFFFFFW',   // row 13
+      'WWWWWWDDWWWWWWWW',   // row 14 — door at center south
+      'WWWWWWThThWWWWWWW',  // row 15 — threshold
+    ];
+
+    // Parse the layout (handle multi-char tile keys)
+    function parseLayout(rows) {
+      const grid = [];
+      const tokenRegex = /Co|Wn|Fp|Th|Ch|[WFCTD]/g;
+      for (const row of rows) {
+        const tiles = [];
+        let m;
+        const tokens = [];
+        while ((m = tokenRegex.exec(row)) !== null) tokens.push(m[0]);
+        // Pad to GRID_SIZE
+        while (tokens.length < GRID_SIZE) tokens.push('F');
+        grid.push(tokens.slice(0, GRID_SIZE));
+      }
+      return grid;
+    }
+    const grid = parseLayout(LAYOUT);
+
+    // ─── Entity positions (would come from EF_001 entity_binding + CSC_001 cell_occupant_positions) ───
+    const ENTITIES = [
+      // PC
+      {
+        id: 'pc:ly_minh',
+        kind: 'pc',
+        emoji: '🧑',
+        display_name: 'Lý Minh',
+        x: 6, y: 14,  // at door, just inside
+        affordances: ['BeSpokenTo', 'BeStruck', 'BeExamined', 'BeGiven', 'BeReceived', 'BeUsed'],
+        description: 'PC · soul = 2026 Saigon student, body = 1256 Hàng Châu peasant (xuyên không observed). Just arrived; soaked from light rain. Carries a hidden literacy that contradicts body.',
+        canon_source: 'pc',
+      },
+
+      // NPCs
+      {
+        id: 'npc:lao_ngu',
+        kind: 'npc',
+        emoji: '👴',
+        display_name: 'Lão Ngũ',
+        x: 2, y: 2,  // behind counter
+        affordances: ['BeSpokenTo', 'BeStruck', 'BeExamined', 'BeGiven', 'BeReceived'],
+        description: '65, ex-jianghu, owner-keeper of Yên Vũ Lâu. core_beliefs: distrustful of strangers, loyal to old codes. flexible_state: today his joints ache (rainy season). Knowledge: wuxia_lore + merchant_gossip + river_routes. greeting_obligation: false.',
+        canon_source: 'canon',
+        mood: 'distant',
+        opinion_to_pc: -10,
+      },
+      {
+        id: 'npc:tieu_thuy',
+        kind: 'npc',
+        emoji: '👧',
+        display_name: 'Tiểu Thúy',
+        x: 4, y: 5,  // at table 1
+        affordances: ['BeSpokenTo', 'BeStruck', 'BeExamined', 'BeGiven', 'BeReceived'],
+        description: '16, illiterate orphan waitress. core_beliefs: kind, observant, indebted to Lão Ngũ. flexible_state: nervous around armed strangers. Knowledge: servant_gossip + yen_vu_lau_layout. greeting_obligation: true.',
+        canon_source: 'canon',
+        mood: 'nervous',
+        opinion_to_pc: 0,
+      },
+      {
+        id: 'npc:du_si',
+        kind: 'npc',
+        emoji: '🧙',
+        display_name: 'Du sĩ',
+        x: 11, y: 5,  // at table 4
+        affordances: ['BeSpokenTo', 'BeStruck', 'BeExamined', 'BeGiven', 'BeReceived'],
+        description: '40s, traveling scholar. core_beliefs: classical scholar, judges by literacy. flexible_state: mid-journey, reading 《Đạo Đức Kinh chú》. Knowledge: daoist_text + wuxia_lore + scholar_canon. greeting_obligation: false.',
+        canon_source: 'canon',
+        mood: 'absorbed',
+        opinion_to_pc: 0,
+      },
+
+      // Items (visible on tiles)
+      {
+        id: 'item:tea_pot',
+        kind: 'item',
+        emoji: '🫖',
+        display_name: 'Bộ ấm trà',
+        x: 4, y: 2,  // on counter
+        affordances: ['BeExamined', 'BeUsed', 'BeGiven', 'BeReceived'],
+        description: 'Bộ ấm trà gốm sứ cổ. Khi nóng thì nước có hương sen.',
+        canon_source: 'author',
+      },
+      {
+        id: 'item:scroll',
+        kind: 'item',
+        emoji: '📜',
+        display_name: 'Đạo Đức Kinh chú',
+        x: 11, y: 4,  // on Du sĩ's table
+        affordances: ['BeExamined', 'BeUsed', 'BeGiven', 'BeReceived'],
+        description: 'Cuộn chú giải Đạo Đức Kinh. Du sĩ đang đọc. Nội dung canonical Q5.',
+        canon_source: 'canon',
+      },
+
+      // EnvObjects (fixtures — clickable for Examine)
+      {
+        id: 'env:fireplace',
+        kind: 'envobject',
+        emoji: '🔥',
+        display_name: 'Lò sưởi',
+        x: 13, y: 6,
+        affordances: ['BeExamined', 'BeUsed'],
+        description: 'Lò sưởi đá, đang cháy nhẹ. Hơi ấm tỏa ra phía bắc tửu lâu.',
+        canon_source: 'canon',
+      },
+      {
+        id: 'env:counter',
+        kind: 'envobject',
+        emoji: '▣',
+        display_name: 'Quầy rượu',
+        x: 1, y: 1,
+        affordances: ['BeExamined', 'BeUsed'],
+        description: 'Quầy gỗ dài; phía sau là Lão Ngũ. Có vài chai rượu + bộ ấm trà.',
+        canon_source: 'canon',
+      },
+      {
+        id: 'env:door',
+        kind: 'envobject',
+        emoji: '🚪',
+        display_name: 'Cửa chính',
+        x: 7, y: 14,
+        affordances: ['BeExamined', 'BeUsed'],
+        description: 'Cửa gỗ ván dày, mở ra phố Lâm An. Đêm muộn thường đóng (Lão Ngũ).',
+        canon_source: 'canon',
+      },
+    ];
+
+    let selectedEntityId = null;
+
+    // ─── Render tiles ───
+    function renderTiles() {
+      const layer = document.getElementById('tiles-layer');
+      layer.innerHTML = '';
+
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const key = grid[y][x];
+          const tile = TILE_TYPES[key] || TILE_TYPES.F;
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('class', `tile tile-${tile.kind}`);
+          rect.setAttribute('x', x * TILE_PX);
+          rect.setAttribute('y', y * TILE_PX);
+          rect.setAttribute('width', TILE_PX);
+          rect.setAttribute('height', TILE_PX);
+          rect.dataset.x = x;
+          rect.dataset.y = y;
+          rect.addEventListener('click', () => onTileClick(x, y, tile));
+          rect.addEventListener('mouseenter', (ev) => showTooltip(ev, `(${x},${y}) ${tile.label}`));
+          rect.addEventListener('mouseleave', hideTooltip);
+          layer.appendChild(rect);
+        }
+      }
+    }
+
+    // ─── Render entities ───
+    function renderEntities() {
+      const layer = document.getElementById('entities-layer');
+      layer.innerHTML = '';
+
+      for (const ent of ENTITIES) {
+        const cx = ent.x * TILE_PX + TILE_PX / 2;
+        const cy = ent.y * TILE_PX + TILE_PX / 2;
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', `entity is-${ent.kind} ${selectedEntityId === ent.id ? 'selected' : ''}`);
+        g.setAttribute('transform', `translate(${cx}, ${cy})`);
+        g.dataset.id = ent.id;
+
+        // Selection ring
+        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('class', 'selection-ring');
+        ring.setAttribute('r', 16);
+        g.appendChild(ring);
+
+        // Background circle for PC/NPC/Item (EnvObjects use raw emoji on tile)
+        if (ent.kind !== 'envobject') {
+          const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          bg.setAttribute('r', 13);
+          g.appendChild(bg);
+        }
+
+        // Emoji
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('class', 'emoji');
+        text.setAttribute('y', 1);
+        text.textContent = ent.emoji;
+        g.appendChild(text);
+
+        // Display name label below
+        if (ent.kind === 'pc' || ent.kind === 'npc') {
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('class', 'label');
+          label.setAttribute('y', 24);
+          label.textContent = ent.display_name;
+          g.appendChild(label);
+        }
+
+        g.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          onEntityClick(ent);
+        });
+        g.addEventListener('mouseenter', (ev) => showTooltip(ev, `${ent.emoji} ${ent.display_name} (${ent.kind})`));
+        g.addEventListener('mouseleave', hideTooltip);
+
+        layer.appendChild(g);
+      }
+    }
+
+    // ─── Interaction handlers ───
+    function onTileClick(x, y, tile) {
+      // Tile click: deselect entity, show tile info
+      selectedEntityId = null;
+      renderEntities();
+      const pane = document.getElementById('info-pane');
+      pane.innerHTML = `
+        <div class="panel">
+          <h3>Tile (${x}, ${y})</h3>
+          <div class="meta-row"><strong>${tile.label}</strong></div>
+          <div class="meta-row">Walkable: ${tile.walkable ? '✓ yes' : '✗ no'}</div>
+          <div class="meta-row" style="margin-top: 6px; color: #7d8590; font-size: 11px;">
+            (V1: tiles are passive. V1+ tile-level interaction = future feature.)
+          </div>
+        </div>
+      `;
+    }
+
+    function onEntityClick(ent) {
+      selectedEntityId = ent.id;
+      renderEntities();
+
+      const pane = document.getElementById('info-pane');
+      const isPc = ent.kind === 'pc';
+
+      // Affordance → action button mapping (per EF_001 §7 + PL_005 V1 InteractionKinds)
+      const actions = [];
+      if (ent.affordances.includes('BeSpokenTo') && !isPc) actions.push({ icon: '💬', label: 'Speak', kind: 'Speak' });
+      if (ent.affordances.includes('BeStruck') && !isPc) actions.push({ icon: '⚔️', label: 'Strike', kind: 'Strike' });
+      if (ent.affordances.includes('BeExamined')) actions.push({ icon: '🔍', label: 'Examine', kind: 'Examine' });
+      if (ent.affordances.includes('BeGiven') && !isPc) actions.push({ icon: '🎁', label: 'Give item', kind: 'Give' });
+      if (ent.affordances.includes('BeUsed') && ent.kind !== 'pc' && ent.kind !== 'npc') actions.push({ icon: '🛠', label: 'Use', kind: 'Use' });
+
+      const kindBadge = ent.kind === 'npc' ? 'npc' : (ent.kind === 'item' ? 'item' : (ent.kind === 'envobject' ? 'envobject' : ''));
+
+      let canonBadge = '';
+      if (ent.canon_source === 'canon') canonBadge = '<span class="badge canon">📖 book canon</span>';
+      else if (ent.canon_source === 'author') canonBadge = '<span class="badge" style="background: #6e3a8a33; color: #b481d4;">✏ author</span>';
+      else if (ent.canon_source === 'pc') canonBadge = '<span class="badge">🧑 PC (you)</span>';
+
+      const moodBadge = ent.mood ? `<span class="badge" style="background: #21262d; color: #b8b8b8;">mood: ${ent.mood}</span>` : '';
+
+      pane.innerHTML = `
+        <div class="panel">
+          <h3>${ent.emoji} ${ent.display_name}</h3>
+          <div>
+            <span class="badge ${kindBadge}">${ent.kind}</span>
+            ${canonBadge}
+            ${moodBadge}
+          </div>
+          <div class="meta-row" style="margin-top: 8px;">${ent.description}</div>
+          <div class="meta-row" style="margin-top: 6px; color: #7d8590; font-size: 11px;">
+            <strong>Affordances:</strong> ${ent.affordances.map(a => `<span class="badge affordance">${a}</span>`).join('')}
+          </div>
+          ${actions.length > 0 ? `
+            <div class="action-menu">
+              ${actions.map((a, i) => `
+                <button class="action-btn ${i === 0 ? 'primary' : ''}" onclick="onAction('${ent.id}', '${a.kind}')">
+                  <span class="emoji">${a.icon}</span> ${a.label}
+                </button>
+              `).join('')}
+            </div>
+          ` : ''}
+          ${isPc ? '<div class="meta-row" style="margin-top: 8px; color: #58a6ff; font-size: 11px;">↑ This is YOU. Use the command bar to act in the world.</div>' : ''}
+        </div>
+      `;
+    }
+
+    // ─── Action handler ───
+    function onAction(entId, kind) {
+      const ent = ENTITIES.find(e => e.id === entId);
+      const log = document.getElementById('event-log');
+
+      // Mock action — would emit EVT-T1 Submitted Interaction:<kind> per PL_005 §V1-kinds
+      const actionVi = {
+        Speak: 'nói chuyện với',
+        Strike: 'tấn công',
+        Examine: 'quan sát',
+        Give: 'trao đồ cho',
+        Use: 'sử dụng',
+      }[kind] || kind;
+
+      let narratorText = '';
+      switch (kind) {
+        case 'Speak':
+          if (ent.id === 'npc:lao_ngu') narratorText = 'Lão Ngũ ngẩng đầu, đôi mắt sắc lạnh ngắm ngươi từ chân tới đầu rồi gật khẽ — không đáp một lời.';
+          else if (ent.id === 'npc:tieu_thuy') narratorText = 'Tiểu Thúy cúi đầu lễ phép: "Khách quan dùng gì? Có rượu Đông Phương Nương Nương vừa mới nấu."';
+          else if (ent.id === 'npc:du_si') narratorText = 'Du sĩ ngẩng đầu khỏi cuộn sách, ánh mắt soi xét — như nhận ra điều gì đó về ngươi.';
+          break;
+        case 'Examine':
+          narratorText = ent.description;
+          break;
+        case 'Strike':
+          narratorText = `[ENTRY] EVT-T1 Submitted Interaction:Strike { agent: pc:ly_minh, target: ${ent.id} } — would propagate via PL_005c §V1-scope. V1 cell scene demo: action mocked.`;
+          break;
+        case 'Give':
+          narratorText = `[ENTRY] EVT-T1 Submitted Interaction:Give { agent: pc:ly_minh, recipient: ${ent.id}, tool: <pick-from-inventory> } — would prompt inventory selection.`;
+          break;
+        case 'Use':
+          narratorText = `[ENTRY] EVT-T1 Submitted Interaction:Use { agent: pc:ly_minh, tool: ${ent.id} } — V1+ EnvObject body resolves use-effect.`;
+          break;
+      }
+
+      const ts = new Date().toLocaleTimeString().slice(0, 5);
+      log.innerHTML = `
+        <div class="ev action"><span class="ts">[t+now]</span> Lý Minh ${actionVi} ${ent.display_name}</div>
+        <div class="ev narrator">${narratorText}</div>
+      ` + log.innerHTML;
+      log.scrollTop = 0;
+    }
+
+    function onCommandSubmit() {
+      const input = document.getElementById('cmd-input');
+      const cmd = input.value.trim();
+      if (!cmd) return;
+
+      const log = document.getElementById('event-log');
+      log.innerHTML = `
+        <div class="ev system"><span class="ts">[t+now]</span> /verbatim "${cmd}"</div>
+        <div class="ev system">→ PL_002 Grammar dispatch · LLM intent classifier · validate against PF_001/EF_001/WA_001</div>
+        <div class="ev narrator">[V1: command would route through PL_002 → LLM AssemblePrompt → world-service validate → narrator response. Demo: mocked.]</div>
+      ` + log.innerHTML;
+      log.scrollTop = 0;
+      input.value = '';
+    }
+
+    // ─── Tooltip ───
+    const tooltip = document.getElementById('tooltip');
+    function showTooltip(ev, text) {
+      tooltip.textContent = text;
+      tooltip.classList.add('show');
+      tooltip.style.left = (ev.clientX + 12) + 'px';
+      tooltip.style.top = (ev.clientY + 12) + 'px';
+    }
+    function hideTooltip() {
+      tooltip.classList.remove('show');
+    }
+
+    // ─── Init ───
+    renderTiles();
+    renderEntities();
+  </script>
+</body>
+</html>

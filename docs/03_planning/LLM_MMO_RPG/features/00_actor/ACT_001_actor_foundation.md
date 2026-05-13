@@ -1,0 +1,1088 @@
+# ACT_001 — Actor Foundation
+
+> **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
+>
+> §3.4 actor_session_memory R8 bounded LRU is the **PRIMARY post-close memory store** for DF05_001 sessions. Post-close write path verified: on Closed transition, DF05_001 LLM POV-distill cascade writes 3-5 facts per actor per Q5 LOCKED (cached in EVT-T3 Derived payload `update_kind=SessionPovDistill` with `{ actor_id, session_id, facts: Vec<MemoryFact>, llm_model_id, prompt_template_version, provider_id, attempt_count, ... }` per Q12-D1 LOCKED full JSON V1 for replay-determinism per Q12-D3). Cross-session memory bleed YES per Q7 — actor's persona prompt assembly reads top-K=10-20 facts by salience across all past sessions for that actor. NO cross-reality bleed per Q7-D1 (DP T2 Reality scope enforced naturally). R8 cold-decay 30/90/365 fiction-day cadence already locked; aligns with DF05_001 retention policy Q6. SDK backend implementation: `services/session-service/src/adapters/lru_distill.rs` LruDistillProvider V1 consumes ACT_001 R8 LRU pattern. NO change to ACT_001 aggregate schema or invariants; CANDIDATE-LOCK status PRESERVED. MEDIUM magnitude — primary consumer of post-close write path; SDK trait import. Reference: [DF05_001 §6 POV memory distill](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#6--per-actor-pov-memory-distill-on-close-critical-mechanism) + [DF05_001 §11 Replay-determinism cache](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#11--replay-determinism-via-pov-distill-cache-q12-locked).
+
+> **Conversational name:** "Actor" (ACT). Tier 5 Actor Substrate Foundation feature owning per-actor unified `actor_core` (always present; identity layer L1) + sparse `actor_chorus_metadata` (AI-drive metadata; L3 control state) + bilateral `actor_actor_opinion` (per-(observer, target); L3 relationship) + `actor_session_memory` (per-(actor, session); L3 LLM context). Replaces the `npc` aggregate anomaly (only Tier 5 substrate feature NOT per-actor unified pre-ACT_001). Resolves 3 unification opportunities at behavior layer simultaneously.
+>
+> **Boundary discipline (3-layer architectural model):**
+>
+> - **L1 Identity** — `actor_core` (always present post-creation; canonical_traits + flexible_state + knowledge_tags + voice_register + core_beliefs_ref)
+> - **L2 Capability/Kind** — encoded in ActorId variant (PC / NPC / Synthetic); stable post-creation
+> - **L3 Control source** — DYNAMIC (User / AI / Engine); determines population of sparse extensions
+>   - Control = User → PC online → no `actor_chorus_metadata` row
+>   - Control = AI → NPC always (V1) OR PC offline V1+ → `actor_chorus_metadata` row populated
+>   - Control = Engine → Synthetic → no narrative substrate V1
+>
+> **Category:** ACT — Actor Foundation (Tier 5 Actor Substrate; unification refactor 2026-04-27)
+> **Status:** CANDIDATE-LOCK 2026-04-27 (5-commit cycle complete: Phase 0 1c0d2d7 → DRAFT 2/5 74b2854 → closure-pass-extensions 3/5 d12a86f → Phase 3 cleanup 4/5 d5ad7af → closure + lock release 5/5 this commit; Q1-Q6 LOCKED via main session deep-dive 2 REVISIONS — Q3 REVISION on AI-controls-PC-offline insight + Q6 user-revised to full unify all 3 opportunities)
+> **Stable IDs in this file:** `ACT-A*` axioms · `ACT-D*` deferrals · `ACT-Q*` decisions
+> **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types) (sibling pattern; ActorKind discrimination); [02_storage R08](../../02_storage/R08_npc_memory_split.md) (schema split UPDATED in commit 3/5); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md) (display strings); [07_event_model EVT-A10](../../07_event_model/02_invariants.md) (event log = universal SSOT); [WA_003 Forge](../02_world_authoring/WA_003_forge.md) (forge_audit_log).
+> **Defers to:** future PCS_001 (PC Substrate; owns pc_user_binding + pc_mortality_state + pc_stats_v1_stub on ACT_001 stable base); V1+ AI-controls-PC-offline activation feature (populates `actor_chorus_metadata` for offline PCs); V1+ multi-PC realities (bilateral PC↔PC opinion); V1+ NPC↔NPC drama (sect rivalry opinion); V2+ WA_002 Heresy (cross-reality migration).
+> **Event-model alignment:** Actor events = EVT-T4 System sub-types `ActorBorn` (canonical seed; replaces NPC_001 R8 implicit) + `ActorChorusMetadataBorn` (sparse; NPCs only V1) + EVT-T8 Administrative `Forge:EditActorCore` + `Forge:EditChorusMetadata` + `Forge:EditActorOpinion` + `Forge:EditActorSessionMemory` V1 active + EVT-T3 Derived (`aggregate_type=actor_actor_opinion` Update + `aggregate_type=actor_session_memory` Update — preserved from NPC_001 §13 session-end derivation). No new EVT-T* category.
+
+---
+
+## §1 User story (NPC_001 unification + future-proofing AI-controls-PC-offline V1+)
+
+### V1 SPIKE_01 Wuxia preset (post-unify; behavior identical to current NPC_001)
+
+| Actor | Kind | actor_core row | actor_chorus_metadata row | actor_session_memory rows | actor_actor_opinion rows |
+|---|---|---|---|---|---|
+| Lý Minh (PC) | PC | ✓ (canonical_traits + flexible_state + knowledge_tags + voice_register + core_beliefs_ref) | ✗ (PC always user-driven V1; no row) | (chat-service stores PC chat history; world-service no row V1) | ✓ V1+ PC view of NPCs (deferred ACT-D2) |
+| Du sĩ (NPC) | NPC | ✓ | ✓ (greeting_obligation + priority_tier_hint + desires) | ✓ per-(du_si, session_id) | ✓ Du sĩ → Lý Minh (V1 active) |
+| Tiểu Thúy (NPC) | NPC | ✓ | ✓ | ✓ | ✓ |
+| Lão Ngũ (NPC) | NPC | ✓ | ✓ | ✓ | ✓ |
+| ChorusOrchestrator | Synthetic | ✗ (V1 forbidden) | ✗ | ✗ | ✗ |
+
+### V1+ runtime examples (preserved from NPC_001; renamed actor_*)
+
+- **Du sĩ session-end opinion derivation** → V1 active: `actor_actor_opinion` row updated for (observer=du_si, target=ly_minh) — same logic as NPC_001 §13 (per-session derivation; trust + familiarity + stance_tags); preserves V1 functionality.
+- **Du sĩ session_memory rolling summary** → V1 active: `actor_session_memory` row updated per-(du_si, session_id); same R8-L2 limits (≤100 facts; ≤2000 char summary).
+- **Lý Minh quotes meta-knowledge in turn 5** (SPIKE_01 obs#5) → triggers npc reactions; opinion drift derived at session-end; preserves canonical reproducibility.
+
+### V1+ AI-controls-PC-offline activation example (deferred ACT-D1)
+
+- PC Lý Minh logs out → control source transitions User → AI
+  - V1+ feature emits `ActorControlSourceChange { actor_id: ly_minh, before: User, after: AI }`
+  - `actor_chorus_metadata` row CREATED for ly_minh (greeting_obligation + priority_tier_hint + desires populated by author/AI)
+  - Chorus orchestrator (NPC_002) treats Lý Minh as AI-driven actor; same priority resolution logic as NPCs
+- PC Lý Minh logs back in → control source transitions AI → User
+  - V1+ feature emits `ActorControlSourceChange { actor_id: ly_minh, before: AI, after: User }`
+  - `actor_chorus_metadata` row REMOVED for ly_minh (or marked inactive; defer detail to V1+ activation)
+
+### V1+ NPC↔NPC drama example (deferred ACT-D3)
+
+- Du sĩ and Lão Ngũ are both members of Đông Hải Đạo Cốc; rival sect Ma Tông NPCs spawn nearby
+- Sect rivalry triggers V1+ opinion modifiers on `actor_actor_opinion` (observer=du_si, target=ma_tong_member) → trust=-50; stance_tags=["wary"]
+- NPC_002 Chorus Tier 4 priority modifier reads REP_001 + actor_actor_opinion for cross-NPC dynamics
+
+**This feature design specifies:** 4 unified per-actor aggregates replacing R8-locked `npc` + `npc_session_memory` + `npc_pc_relationship_projection`; 6 V1 reject rule_ids in `actor.*` namespace; 3-layer architectural model preserving compile-time PC vs NPC discrimination via ActorId variants while unifying storage; canonical seed flow for NPCs (always populated chorus_metadata) + PC default sparse (no chorus_metadata V1); future-proofing AI-controls-PC-offline V1+ + multi-PC realities V1+ + NPC↔NPC drama V1+ all simultaneously.
+
+After this lock: NPC_001 closure-pass-extension transfers 3 aggregates to ACT_001; NPC_002 Chorus reads via actor_* aggregates; NPC_003 desires field on actor_chorus_metadata; PCS_001 unblocked to build on stable ACT_001 base.
+
+---
+
+## §2 Domain concepts
+
+| Concept | Maps to | Notes |
+|---|---|---|
+| **Actor** | unified PC + NPC + Synthetic | EF_001 ActorId variant; ACT_001 owns per-actor substrate |
+| **Actor identity** | `actor_core` aggregate | L1 Identity layer; always present post-creation |
+| **AI-drive metadata** | `actor_chorus_metadata` aggregate | L3 Control state layer; sparse — populated when control source = AI |
+| **Bilateral opinion** | `actor_actor_opinion` aggregate | L3 Relationship layer; per-(observer_actor, target_actor); symmetric pair generation |
+| **Session memory** | `actor_session_memory` aggregate | L3 LLM context layer; per-(actor, session); supports AI-driven actor LLM continuity |
+| **Control source** | DYNAMIC field (V1 implied by ActorKind; V1+ explicit) | User (PC online) / AI (NPC always; PC offline V1+) / Engine (Synthetic) |
+| **Persona assembly** | 4-input combiner read pattern | Reads actor_core + actor_chorus_metadata (if AI-driven) + actor_session_memory + actor_actor_opinion |
+| **Sparse storage discipline** | Missing row = "not applicable" semantics | actor_chorus_metadata: missing = not AI-driven; actor_session_memory: missing = no session yet |
+
+### ACT_001 axioms
+
+- **ACT-A1** (Per-actor unified pattern) — All ACT_001 aggregates keyed by ActorId (or composite (ActorId, _) for relationship/session). NO per-NPC-only or per-PC-only ACT_001 aggregates V1. Pattern matches all Tier 5 substrate features (IDF + FF + FAC + REP + PROG + RES + PL_006).
+- **ACT-A2** (3-layer architectural model) — L1 Identity (always present), L2 Capability/Kind (stable; encoded in ActorId), L3 Control source (dynamic; sparse aggregate population). Layer assignment determines storage density.
+- **ACT-A3** (`actor_core` always present post-creation) — Every non-Synthetic actor has `actor_core` row from creation event onward. Read fallback: missing row = creation event not yet processed (transient; not "default"). Synthetic actors have NO `actor_core` row V1.
+- **ACT-A4** (`actor_chorus_metadata` sparse — control-source-driven population) — Row populated ONLY when actor's current control source = AI (NOT just because actor is NPC kind). V1: NPCs always have row (control source = AI always V1); PCs never have row (control source = User always V1). V1+ AI-controls-PC-offline (ACT-D1): PCs populate row when control source transitions User → AI (offline); row removed/inactive when control source transitions AI → User (re-online). Layer assignment is L3 (control state), NOT L2 (kind).
+- **ACT-A5** (`actor_actor_opinion` bilateral) — Per-(observer_actor, target_actor) opinion stored. Observer ≠ target enforced (Stage 0 schema reject `actor.opinion_self_target_forbidden`). V1 active patterns: NPC→PC (preserved from npc_pc_relationship_projection); V1+ patterns: PC→NPC + NPC→NPC + PC→PC.
+- **ACT-A6** (`actor_session_memory` per-(actor, session)) — Memory facts scoped to specific session; supports LLM context continuity. V1: NPCs populated; V1+ AI-controls-PC-offline: PCs populated when offline (chat-service handoff to world-service via V1+ unification design).
+- **ACT-A7** (Synthetic actor forbidden V1) — Universal substrate discipline (matches IDF + FF + FAC + REP + PROG + RES + PL_006). V1+ may relax IF admin-faction synthetic narrative identity needed.
+- **ACT-A8** (Cross-reality strict V1) — Reality boundaries enforced V1; V2+ Heresy migration via WA_002 (universal V2+ deferral pattern).
+
+---
+
+## §2.5 Event-model mapping (per [`07_event_model`](../../07_event_model/) EVT-T1..T11)
+
+| Event | EVT-T* | Sub-type / delta_kind | Producer role | V1 active? |
+|---|---|---|---|---|
+| Actor declared at canonical seed | **EVT-T4 System** | `ActorBorn { actor_id, kind: ActorKind, traits_summary }` | Bootstrap (RealityBootstrapper) | ✓ V1 |
+| Chorus metadata declared at canonical seed (NPCs only V1) | **EVT-T4 System** | `ActorChorusMetadataBorn { actor_id }` | Bootstrap | ✓ V1 |
+| Actor opinion update (session-end derivation) | **EVT-T3 Derived** | `aggregate_type=actor_actor_opinion`, `delta_kind=Update { observer, target, before, after }` | Aggregate-Owner (world-service; preserved from NPC_001 §13) | ✓ V1 (NPC→PC pattern) |
+| Actor session memory update | **EVT-T3 Derived** | `aggregate_type=actor_session_memory`, `delta_kind=Update { actor_id, session_id, fact_added | summary_rewritten }` | Aggregate-Owner (world-service) | ✓ V1 |
+| Forge admin edit actor core | **EVT-T8 Administrative** | `Forge:EditActorCore { actor_id, edit_kind, before, after, reason }` | Forge (WA_003) | ✓ V1 |
+| Forge admin edit chorus metadata | **EVT-T8 Administrative** | `Forge:EditChorusMetadata { actor_id, edit_kind, before, after, reason }` | Forge | ✓ V1 |
+| Forge admin edit opinion | **EVT-T8 Administrative** | `Forge:EditActorOpinion { observer, target, edit_kind, before, after, reason }` | Forge | ✓ V1 |
+| Forge admin edit session memory | **EVT-T8 Administrative** | `Forge:EditActorSessionMemory { actor_id, session_id, edit_kind, before, after, reason }` | Forge | ✓ V1 |
+| Actor control source change (V1+ AI-controls-PC-offline) | **EVT-T3 Derived** | `delta_kind=ActorControlSourceChange { actor_id, before, after }` | (V1+ feature) | ✗ V1+ (ACT-D1) |
+| Bilateral PC→NPC opinion (V1+) | **EVT-T3 Derived** | `aggregate_type=actor_actor_opinion`, observer=PC, target=NPC | (V1+ runtime population) | ✗ V1+ (ACT-D2) |
+| NPC→NPC opinion (V1+ drama) | **EVT-T3 Derived** | `aggregate_type=actor_actor_opinion`, observer=NPC, target=NPC | (V1+ sect rivalry) | ✗ V1+ (ACT-D3) |
+
+**Event ordering at canonical seed (per PL_001 §16.2):** EntityBorn → PlaceBorn → MapLayoutBorn → SceneLayoutBorn → **ActorBorn** → **ActorChorusMetadataBorn** (NPCs only) → RaceBorn → FamilyBorn → FactionBorn → FactionMembershipBorn → ReputationBorn → (other Tier 5 substrate events). ACT_001 events emit AFTER EF_001/PF_001/MAP/CSC and BEFORE other Tier 5 (since ACT_001 actor_core is the identity foundation other Tier 5 features reference via ActorId).
+
+---
+
+## §3 Aggregate inventory
+
+ACT_001 ships **4 aggregates** V1 (replaces 3 from NPC_001 R8 imports + adds 1 new sparse extension).
+
+### §3.1 `actor_core` (T2 / Reality scope — primary; ALWAYS PRESENT)
+
+```rust
+#[derive(Aggregate)]
+#[dp(type_name = "actor_core", tier = "T2", scope = "reality")]
+pub struct ActorCore {
+    pub actor_id: ActorId,                      // EF_001 §5.1 sibling pattern
+    pub glossary_entity_id: GlossaryEntityId,   // canon ref; populated from CanonicalActorDecl.glossary_entity_id (P2 LOCKED 2026-04-27)
+    pub current_region_id: ChannelId,           // cell-tier channel; populated from CanonicalActorDecl.spawn_cell at canonical seed (P2 LOCKED 2026-04-27); runtime updates via cell migration events
+    pub current_session_id: Option<SessionId>,  // NPC: ≤1 session at a time per R8-L1; PC: present when online; Synthetic: None
+    pub mood: ActorMood,                        // multi-axis emotional state (B1 LOCKED 2026-04-27 type lockdown; was NpcMood single-axis)
+    pub core_beliefs: CanonRef,                 // L1 canon reference (book-derived, immutable per realities)
+    pub flexible_state: FlexibleState,          // L3 reality-local drift (B2 LOCKED 2026-04-27 — typed standard fields + extension HashMap)
+    // V1+ extensions (additive per I14)
+    // pub canon_drift_flags: Vec<CanonDriftFlag>,  // V1+ A6 detector integration (ACT-D7)
+}
+```
+
+**Key:** `(reality_id, actor_id)`. Unique constraint enforced.
+
+**Storage discipline:**
+- T2 + RealityScoped: ~10-20 KB per row, stable (matches R8-L1 NPC sizing)
+- One row per `(reality_id, actor_id)` — V1 includes PCs + NPCs; Synthetic excluded
+- ALWAYS PRESENT post-creation (ACT-A3); sparse storage discipline does NOT apply (every actor has core row)
+
+**Mutability:**
+- V1: Mutable via canonical seed (ActorBorn) + Forge admin (Forge:EditActorCore) + runtime mood/flexible_state drift (preserved from NPC_001 §13 session-end derivation pattern)
+
+**Renamed from NPC_001 §3.1 `npc`:**
+- Field `npc_id: NpcId` → `actor_id: ActorId` (sibling pattern allows ActorKind discrimination)
+- Field `mood: NpcMood` → `mood: ActorMood` (type REVISED to multi-axis V1 per B1 LOCKED 2026-04-27 type lockdown; was single-axis i16 [-100, +100]; now 4-axis u8 [0, 100] supporting mixed feelings)
+- Field `current_session_id: Option<SessionId>` SEMANTICS preserved: None = actor not in session (NPC idle/ambient; PC offline)
+- All other fields preserved; semantics preserved (current_region_id + glossary_entity_id + core_beliefs + flexible_state)
+
+**Synthetic actors forbidden V1 (ACT-A7):**
+- Reject `actor.synthetic_actor_forbidden` Stage 0 schema for actor.kind == ActorKind::Synthetic.
+
+**Cross-reality strict V1 (ACT-A8):**
+- Reject `actor.cross_reality_mismatch` Stage 0 schema for cross-reality reads.
+
+### §3.1.1 `ActorMood` type (V1 LOCKED 2026-04-27 — type lockdown; B1 multi-axis REVISED)
+
+```rust
+/// Per-actor multi-axis emotional state. 4 independent intensity axes (Wuxia 喜怒哀乐 + 惧 fear).
+/// Each axis represents PRESENCE/INTENSITY (0 = absent; 100 = peak).
+/// Independent axes allow mixed feelings (e.g., joy=70 + anger=80 = "furious laughter at betrayed victory").
+pub struct ActorMood {
+    pub joy: u8,          // 0..=100 (absent ↔ peak euphoria) — Wuxia 喜
+    pub anger: u8,        // 0..=100 (calm ↔ peak fury) — Wuxia 怒
+    pub sadness: u8,      // 0..=100 (unbothered ↔ peak grief) — Wuxia 哀
+    pub fear: u8,         // 0..=100 (brave ↔ peak terror) — Wuxia 惧 (extended from 喜怒哀乐 4-emotion)
+}
+
+impl ActorMood {
+    pub const NEUTRAL: ActorMood = ActorMood { joy: 0, anger: 0, sadness: 0, fear: 0 };
+    pub const MAX_INTENSITY: u8 = 100;
+
+    /// Engine clamps at write boundary (saturating arithmetic on delta).
+    pub fn from_clamped(joy: i32, anger: i32, sadness: i32, fear: i32) -> Self {
+        Self {
+            joy: joy.clamp(0, 100) as u8,
+            anger: anger.clamp(0, 100) as u8,
+            sadness: sadness.clamp(0, 100) as u8,
+            fear: fear.clamp(0, 100) as u8,
+        }
+    }
+
+    /// Returns the dominant axis (highest intensity); None if all axes 0.
+    pub fn dominant_axis(&self) -> Option<MoodAxis> {
+        let max = [
+            (MoodAxis::Joy, self.joy),
+            (MoodAxis::Anger, self.anger),
+            (MoodAxis::Sadness, self.sadness),
+            (MoodAxis::Fear, self.fear),
+        ].into_iter().max_by_key(|&(_, v)| v);
+        match max {
+            Some((_, 0)) => None,        // all axes 0 = neutral
+            Some((axis, _)) => Some(axis),
+            None => None,
+        }
+    }
+
+    /// Composite intensity (sum across axes; 0..=400).
+    pub fn total_intensity(&self) -> u16 {
+        self.joy as u16 + self.anger as u16 + self.sadness as u16 + self.fear as u16
+    }
+
+    /// Display tier per axis (read-side; not stored).
+    pub fn tier(&self, axis: MoodAxis) -> MoodIntensityTier {
+        let value = match axis {
+            MoodAxis::Joy => self.joy,
+            MoodAxis::Anger => self.anger,
+            MoodAxis::Sadness => self.sadness,
+            MoodAxis::Fear => self.fear,
+        };
+        match value {
+            0..=10 => MoodIntensityTier::Absent,
+            11..=33 => MoodIntensityTier::Mild,
+            34..=66 => MoodIntensityTier::Moderate,
+            67..=89 => MoodIntensityTier::Strong,
+            90..=100 => MoodIntensityTier::Peak,
+            _ => unreachable!("clamped to [0, 100] at write"),
+        }
+    }
+}
+
+pub enum MoodAxis {
+    Joy,        // Wuxia 喜
+    Anger,      // Wuxia 怒
+    Sadness,    // Wuxia 哀
+    Fear,       // Wuxia 惧 (extended)
+}
+
+pub enum MoodIntensityTier {
+    Absent,     // 0..=10
+    Mild,       // 11..=33
+    Moderate,   // 34..=66
+    Strong,     // 67..=89
+    Peak,       // 90..=100
+}
+```
+
+**Why multi-axis (vs single i16) per B1 LOCKED REVISION:**
+- Mixed feelings supported (joy=70 + anger=80 = "furious laughter")
+- Wuxia 喜怒哀乐 classic 4-emotion + 惧 fear = 5 traditional Buddhist emotions; canonical wuxia narrative basis
+- LLM authoring clean — each axis = intensity of that emotion; no negative-direction confusion
+- Storage: 4 × u8 = 4 bytes per actor (within R8-L1 budget)
+
+V1+ enrichment: Plutchik's 8-emotion wheel (add surprise/anticipation/trust/disgust); mood decay per fiction-time (ACT-D-N); mood contagion (NPC mood affects nearby NPCs).
+
+### §3.1.2 `FlexibleState` type (V1 LOCKED 2026-04-27 — type lockdown; B2 typed standard fields + extension)
+
+```rust
+/// Per-actor reality-local mutable state. Typed standard fields V1 + extension HashMap escape hatch.
+/// V1 standard fields cover ~80% LLM persona context; extensions cover author-emergent narrative state.
+pub struct FlexibleState {
+    /// Current disposition toward narrative-relevant subjects (default Neutral).
+    pub current_disposition: Disposition,
+
+    /// Most recent actor-of-interaction (last meaningful interaction; LLM context anchor).
+    pub last_interacted_with: Option<ActorId>,
+
+    /// Text description of last narrative-significant event affecting this actor (I18nBundle per RES_001 §2).
+    pub last_emotional_event: Option<I18nBundle>,
+
+    /// Last N narrative events as causal anchors for LLM context window (V1 cap: ≤5; LRU).
+    pub recent_event_refs: Vec<EventId>,
+
+    /// Hidden knowledge for narrative reveal (I18nBundle; e.g., "Du sĩ knows Lý Minh xuyên không").
+    pub secret_held: Option<I18nBundle>,
+
+    /// Author-emergent extension fields (kvs; engine doesn't validate keys).
+    /// V1 soft cap: ≤2 KB serialized; documented not engine-enforced.
+    pub extensions: HashMap<String, FlexibleValue>,
+}
+
+impl FlexibleState {
+    pub const RECENT_EVENT_REFS_CAP: usize = 5;
+    pub const EXTENSIONS_SOFT_CAP_BYTES: usize = 2 * 1024;
+
+    pub fn empty() -> Self {
+        Self {
+            current_disposition: Disposition::Neutral,
+            last_interacted_with: None,
+            last_emotional_event: None,
+            recent_event_refs: Vec::new(),
+            secret_held: None,
+            extensions: HashMap::new(),
+        }
+    }
+
+    /// LRU push to recent_event_refs (drops oldest when cap exceeded).
+    pub fn push_recent_event(&mut self, event_id: EventId) {
+        self.recent_event_refs.push(event_id);
+        if self.recent_event_refs.len() > Self::RECENT_EVENT_REFS_CAP {
+            self.recent_event_refs.remove(0);
+        }
+    }
+}
+
+/// Closed-set disposition enum V1; covers 7 V1 narrative dispositions.
+pub enum Disposition {
+    Hostile,        // Active hostility (will attack/oppose)
+    Wary,           // Suspicious; expects bad faith; defensive posture
+    Anxious,        // Nervous; uncertain; may flee
+    Neutral,        // Default; no leaning
+    Curious,        // Interest-driven; wants to learn/observe
+    Friendly,       // Positive default; collaborative
+    Respectful,     // Acknowledges authority/status; deferential
+}
+
+/// Author-extensible value variants for FlexibleState.extensions HashMap.
+pub enum FlexibleValue {
+    Text(I18nBundle),                // User-facing text per RES_001 §2 i18n contract
+    Number(f64),                     // Numeric (intensity / temperature / count)
+    Bool(bool),                      // Flag
+    ActorRef(ActorId),               // Reference to another actor
+    PlaceRef(ChannelId),             // Reference to place (cell-tier channel)
+    EventRef(EventId),               // Causal anchor to past event
+    List(Vec<FlexibleValue>),        // Ordered list (composition)
+}
+```
+
+### V1 standard fields rationale
+
+| Field | Purpose | LLM context use |
+|---|---|---|
+| `current_disposition` | Quick narrative shorthand for actor stance | "Du sĩ is currently [Wary] toward strangers" |
+| `last_interacted_with` | Most recent interaction anchor | "Du sĩ last spoke with Lý Minh" |
+| `last_emotional_event` | Narrative-significant recent moment | "Du sĩ remembers when Lý Minh quoted forbidden text" |
+| `recent_event_refs` | Causal anchors for context window (LRU ≤5) | "Recent events: [event_id_1, ...]" — LLM references past |
+| `secret_held` | Hidden narrative reveal trigger | "Du sĩ knows but won't say: Lý Minh's master is Mr. Trần Phong" |
+| `extensions` | Author-emergent narrative state (≤2 KB soft cap) | Whatever specific keys reality needs |
+
+### V1 documented extension keys (NOT engine-validated; author guidance)
+
+- `relationship_drift_with_<actor_id>` → Number (intensity)
+- `oath_taken_to_<actor_id>` → Text (oath text)
+- `region_familiarity_<channel_id>` → Number (0..1.0)
+- `ritual_state_<ritual_id>` → Text (ritual progress text)
+
+V1+ enrichment: Lift commonly-used extension patterns to typed fields when 50%+ realities adopt the same key.
+
+### Storage cost
+- Typed fields: ~200-500 bytes per row
+- extensions HashMap: variable; soft cap ≤2 KB
+- Total: ~2-3 KB per actor → well within R8-L1 ~10-20 KB budget
+
+### §3.2 `actor_chorus_metadata` (T2 / Reality scope — sparse; AI-drive metadata)
+
+```rust
+#[derive(Aggregate)]
+#[dp(type_name = "actor_chorus_metadata", tier = "T2", scope = "reality")]
+pub struct ActorChorusMetadata {
+    pub actor_id: ActorId,                      // FK to actor_core
+    pub greeting_obligation: GreetingObligation,
+    pub priority_tier_hint: PriorityTierHint,
+    pub desires: Vec<DesireDecl>,               // renamed from NpcDesireDecl (kind-agnostic; NPC_003 ownership transfers)
+    // V1+ extensions (additive per I14)
+    // pub control_source: ControlSource,       // V1+ explicit (ACT-D1; V1 implied by ActorKind = NPC)
+    // pub last_ai_drive_at_turn: Option<u64>,  // V1+ AI-controls-PC-offline tracking (ACT-D1)
+}
+```
+
+**Key:** `(reality_id, actor_id)`. Sparse storage (Q3 LOCKED).
+
+**Storage discipline:**
+- Sparse: V1 NPCs always have row; PCs NEVER have row; Synthetic NEVER have row
+- Missing row = "not AI-driven" (V1 implied by ActorKind = PC OR Synthetic)
+- V1+ AI-controls-PC-offline activation: PC online → no row; PC offline → row created; PC re-online → row removed/inactive (defer activation detail to V1+ feature)
+
+**Mutability:**
+- V1: Mutable via canonical seed (ActorChorusMetadataBorn for NPCs) + Forge admin (Forge:EditChorusMetadata)
+- V1+: NPC_002 Chorus may emit runtime updates (priority_tier_hint adjustments; desires drift); deferred to V1+ when concrete use case ships
+
+**NPC_003 Desires field transfer:**
+- Was `npc.desires: Vec<NpcDesireDecl>` (npc aggregate field added 2026-04-26)
+- Now `actor_chorus_metadata.desires: Vec<DesireDecl>` (renamed type; transferred field)
+- NPC_003 closure-pass-extension transfers ownership in commit 3/5
+
+### §3.2.1 `GreetingObligation` enum (V1 LOCKED 2026-04-27 — type lockdown)
+
+```rust
+/// AI-driven actor's greeting obligation when PC enters scene.
+/// Read by NPC_002 Chorus Tier 1 priority filter.
+/// V1: NPCs declare in canonical seed; PCs N/A V1 (sparse storage); V1+ AI-controls-PC-offline PC may declare.
+pub enum GreetingObligation {
+    /// Must greet on arrival (innkeeper / shopkeeper / quest-giver / authority figure).
+    /// Forces NPC into Tier 1 priority queue on PC arrival.
+    Required,
+
+    /// May greet on arrival (commoner / acquaintance / passive role).
+    /// NPC_002 Tier 2-3 priority based on knowledge_tags + opinion + mood.
+    Optional,
+
+    /// Will NOT greet (hostile / suspicious / disengaged / busy).
+    /// NPC_002 will skip unless explicitly addressed by PC (Tier 5+ fallback).
+    None,
+}
+```
+
+V1+ enrichment: `ConditionalOnPriority` variant if Tier 1 priority can override based on context (defer when needed).
+
+### §3.2.2 `PriorityTierHint` enum (V1 LOCKED 2026-04-27 — type lockdown)
+
+```rust
+/// AI-driven actor's chorus priority tier hint.
+/// Read by NPC_002 Chorus Tier 2-3 priority resolver.
+/// V1: NPCs declare in canonical seed; PCs N/A V1; V1+ AI-controls-PC-offline PC may declare.
+pub enum PriorityTierHint {
+    /// Tier 2 priority candidate — relevance-driven (knowledge_tags match + opinion + mood positive).
+    /// Du sĩ scholar when PC quotes scripture (knowledge_tag="daoist_scripture" matches PC behavior).
+    High,
+
+    /// Tier 3 priority candidate — ambient role (ambient NPC; non-specialist).
+    /// Lão Ngũ innkeeper general presence.
+    Medium,
+
+    /// Tier 4 priority candidate — background (low-engagement; commoner).
+    /// Random market commoner.
+    Low,
+
+    /// Tier 5 fallback — will NOT be selected unless no other candidates.
+    /// NPCs explicitly declared minimal-engagement.
+    None,
+}
+```
+
+V1+ enrichment: `priority_score: Option<u8>` numeric override field if narrative needs sub-tier ordering within a tier.
+
+### §3.3 `actor_actor_opinion` (T2 / Reality scope — sparse bilateral)
+
+```rust
+#[derive(Aggregate)]
+#[dp(type_name = "actor_actor_opinion", tier = "T2", scope = "reality")]
+pub struct ActorActorOpinion {
+    pub id: ActorActorOpinionId,                // = uuidv5(observer_actor_id, target_actor_id)
+    #[dp(indexed)] pub observer_actor_id: ActorId,
+    #[dp(indexed)] pub target_actor_id: ActorId,
+    pub trust: i16,                             // -100..+100 (preserved from npc_pc_relationship_projection)
+    pub familiarity: u16,                       // 0..u16::MAX (interaction count, capped)
+    pub stance_tags: Vec<StanceTag>,            // preserved closed set
+    pub last_updated_turn: u64,                 // for staleness telemetry
+    // V1+ extensions (additive per I14)
+    // pub opinion_drift_curve: Option<OpinionDriftCurve>, // V1+ sect rivalry decay (ACT-D3)
+}
+```
+
+**Key:** `(reality_id, observer_actor_id, target_actor_id)`. Sparse storage.
+
+**Bilateral semantics (ACT-A5):**
+- Per-(observer, target) — symmetric pair NOT enforced (du_si→ly_minh and ly_minh→du_si stored as 2 SEPARATE rows; values may differ)
+- V1 active patterns:
+  - **NPC→PC** (preserved from npc_pc_relationship_projection; session-end derivation via NPC_001 §13)
+- V1+ patterns:
+  - **PC→NPC** (V1+ runtime population per ACT-D2)
+  - **NPC→NPC** (V1+ sect rivalry drama per ACT-D3)
+  - **PC→PC** (V1+ multi-PC realities per ACT-D4)
+
+**Constraints:**
+- Observer ≠ target enforced; reject `actor.opinion_self_target_forbidden` Stage 0 schema
+- Synthetic actors as observer or target rejected (`actor.synthetic_actor_forbidden`)
+
+**Mutability:**
+- V1: Session-end derivation (preserved from NPC_001 §13 pattern; world-service writes per-pair) + Forge admin (Forge:EditActorOpinion)
+- V1+: Runtime events for V1+ patterns (PC→NPC, NPC→NPC, PC→PC)
+
+**Renamed from NPC_001 §3.3 `npc_pc_relationship_projection`:**
+- Field `npc_id: NpcId` → `observer_actor_id: ActorId`
+- Field `pc_id: PcId` → `target_actor_id: ActorId`
+- Bilateral key composite enables symmetric pair patterns
+- Other fields preserved (trust + familiarity + stance_tags + last_updated_turn)
+
+### §3.4 `actor_session_memory` (T2 / Reality scope — per-session)
+
+```rust
+#[derive(Aggregate)]
+#[dp(type_name = "actor_session_memory", tier = "T2", scope = "reality")]
+pub struct ActorSessionMemory {
+    pub id: ActorSessionMemoryId,               // = uuidv5(actor_id, session_id) per R8-L2
+    #[dp(indexed)] pub actor_id: ActorId,
+    pub session_id: SessionId,                  // session this memory belongs to
+    pub summary: String,                        // ≤2000 chars per R8-L2 (preserved)
+    pub facts: Vec<MemoryFact>,                 // ≤100 LRU per R8-L2 (preserved)
+    pub embeddings_ref: Option<EmbeddingRef>,   // separated to pgvector dedicated table per R8-L6 (preserved)
+}
+```
+
+**Key:** `(reality_id, actor_id, session_id)`. Unique constraint enforced.
+
+**Storage discipline:**
+- T2 + RealityScoped (NOT channel-scoped: memory follows the actor, not the cell)
+- Per R8-L2: bounded to 100 facts + 2000-char summary; LRU eviction; rolling LLM summary rewrite every 50 events
+- V1: NPCs populated (preserved from NPC_001); PCs no row V1 (chat-service stores PC chat history)
+- V1+ AI-controls-PC-offline: PCs populated when AI-driven offline (ACT-D1); world-service handles offline PC LLM context via this aggregate
+
+**Mutability:**
+- V1: Session-end derivation (preserved from NPC_001) + Forge admin (Forge:EditActorSessionMemory)
+- V1+: PC offline AI-driven session memory population (ACT-D1)
+
+**Renamed from NPC_001 §3.2 `npc_session_memory`:**
+- Field `npc_id: NpcId` → `actor_id: ActorId`
+- Other fields preserved (summary + facts + embeddings_ref)
+
+### §3.5 NPC_001-kept aggregate (NOT ACT_001-owned)
+
+- **`npc_node_binding`** (NPC_001 §3.4) — NPC writer-node owner mapping with epoch fence; NPC-specific (PC uses entity_binding from PL_001/EF_001; different mechanism). UNCHANGED V1; KEPT under NPC_001 ownership.
+
+### §3.6 V1+ ACT_001 enrichment aggregates (deferred)
+
+- **`actor_canon_drift_log`** (V1+ ACT-D7) — A6 canon-drift detector integration; per-actor drift history.
+
+### §3.7 Future PCS_001-owned aggregates (separate cycle Q2 LOCKED)
+
+- **`pc_user_binding`** (PCS_001) — user_id + current_session + body_memory (xuyên không SoulLayer + BodyLayer)
+- **`pc_mortality_state`** (PCS_001) — handoff from WA_006 (Alive/Dying/Dead/Ghost)
+- **`pc_stats_v1_stub`** (PCS_001) — V1 minimal stats; V2+ DF7 replaces
+
+---
+
+## §4 Tier+scope (DP-R2)
+
+| Aggregate | Tier | Scope | Read frequency | Write frequency | Storage notes |
+|---|---|---|---|---|---|
+| `actor_core` | T2 | Reality | ~5-10 per turn (NPC_002 Tier 2-3 priority + persona assembly + V1+ many features read identity) | ~0.01 V1 (canonical seed only); V1+ runtime mood/flexible_state drift via session-end derivation | ALWAYS PRESENT post-creation; ~10-20 KB per row |
+| `actor_chorus_metadata` | T2 | Reality | ~2-5 per turn (NPC_002 Chorus priority + persona assembly; only when AI-driven actor in scene; PC scenes V1 don't read this aggregate) | ~0.001 V1 (canonical seed only); V1+ runtime drift via Forge / orchestrator | Sparse: NPCs only V1; PCs V1+ when AI-driven offline (ACT-D1) |
+| `actor_actor_opinion` | T2 | Reality | ~1-3 per turn per active scene (NpcOpinion::for_target reads; NPC_002 Tier 2 priority) | ~1 per session-end per (observer, target) interacted | Sparse: per-(observer, target) when interactions create opinion |
+| `actor_session_memory` | T2 | Reality | ~5-10 per session (LLM context assembly per turn for AI-driven actor) | ~1 per turn (rolling fact append; rolling summary every 50 events per R8-L2) | Per-(actor, session); bounded R8-L2 (≤100 facts; ≤2000 char summary) |
+
+---
+
+## §5 DP primitives
+
+ACT_001 reuses standard 06_data_plane primitives:
+
+```rust
+// V1 reads — actor_core (always present post-creation)
+let core = dp::read_aggregate_reality::<ActorCore>(ctx, reality_id, key=actor_id)
+    .await?
+    .ok_or(ActorError::ActorNotFound)?;  // missing = creation event not yet processed (transient)
+
+// V1 reads — actor_chorus_metadata (sparse; NPCs only V1)
+let chorus_md = dp::read_aggregate_reality::<ActorChorusMetadata>(ctx, reality_id, key=actor_id).await?;
+let is_ai_driven = chorus_md.is_some();  // V1: NPCs always Some; PCs always None
+
+// V1 reads — actor_actor_opinion (sparse bilateral)
+let opinion = dp::read_aggregate_reality::<ActorActorOpinion>(ctx, reality_id,
+                  key=(observer_actor_id, target_actor_id))
+    .await?;
+let trust = opinion.map(|o| o.trust).unwrap_or(0);  // missing = neutral (no interaction yet)
+
+// V1 reads — actor_session_memory (per-session)
+let memory = dp::read_aggregate_reality::<ActorSessionMemory>(ctx, reality_id,
+                  key=(actor_id, session_id))
+    .await?;
+
+// V1 writes — canonical seed (ActorBorn for all actors except Synthetic)
+dp::t2_write(ctx, "ActorBorn",
+    aggregate=actor_core,
+    payload=ActorCore { ... },
+    causal_ref=bootstrap_event)
+.await?;
+
+// V1 writes — canonical seed (ActorChorusMetadataBorn for NPCs only V1)
+dp::t2_write(ctx, "ActorChorusMetadataBorn",
+    aggregate=actor_chorus_metadata,
+    payload=ActorChorusMetadata { ... },
+    causal_ref=bootstrap_event)
+.await?;
+
+// V1 writes — Forge admin
+dp::t2_write(ctx, "Forge:EditActorCore",
+    aggregate=actor_core,
+    payload=updated_row,
+    causal_ref=forge_admin_event)
+.await?;
+
+// V1 writes — session-end opinion derivation (preserved from NPC_001 §13)
+dp::t2_write(ctx, "OpinionUpdate",
+    aggregate=actor_actor_opinion,
+    payload=updated_opinion,
+    causal_ref=session_end_event)
+.await?;
+```
+
+---
+
+## §6 Persona assembly contract (preserved from NPC_001 §6; renamed actor_*)
+
+The actor's "persona" for an LLM prompt is assembled per-call from 4 reads + a deterministic combiner. NOT stored as a flat aggregate.
+
+```rust
+pub struct AssembledPersona {
+    pub identity: ActorCore,
+    pub ai_drive: Option<ActorChorusMetadata>,    // Some when AI-driven
+    pub session_memory: Option<ActorSessionMemory>, // Some when actor has session memory
+    pub opinion_with_target: Option<ActorActorOpinion>, // Some when actor has opinion of target
+}
+
+pub fn assemble_persona(
+    ctx: &Ctx,
+    actor_id: ActorId,
+    session_id: Option<SessionId>,
+    target_id: Option<ActorId>,
+) -> Result<AssembledPersona, ActorError> {
+    let identity = read_actor_core(ctx, actor_id)?;
+    let ai_drive = read_actor_chorus_metadata(ctx, actor_id)?;  // None for PCs V1
+    let session_memory = match session_id {
+        Some(sid) => read_actor_session_memory(ctx, actor_id, sid)?,
+        None => None,
+    };
+    let opinion_with_target = match target_id {
+        Some(tid) => read_actor_actor_opinion(ctx, actor_id, tid)?,
+        None => None,
+    };
+    Ok(AssembledPersona { identity, ai_drive, session_memory, opinion_with_target })
+}
+```
+
+**Key changes from NPC_001 §6:**
+- `assemble_persona(npc_id)` → `assemble_persona(actor_id)` (kind-agnostic; PC + NPC both)
+- 4 input reads: actor_core (was npc) + actor_chorus_metadata (NEW; sparse) + actor_session_memory (was npc_session_memory) + actor_actor_opinion (was npc_pc_relationship_projection; bilateral)
+- Combiner logic preserved; LLM prompt assembly behavior identical V1
+
+---
+
+## §7 Capability requirements (JWT claims)
+
+| Operation | JWT claim required | Notes |
+|---|---|---|
+| Read `actor_core` | `reality.read` | Standard reality-scope read |
+| Read `actor_chorus_metadata` | `reality.read` | Standard reality-scope read; sparse |
+| Read `actor_actor_opinion` | `reality.read` | Standard reality-scope read; bilateral |
+| Read `actor_session_memory` | `reality.read` | Standard reality-scope read; per-session |
+| Write canonical seed (ActorBorn / ActorChorusMetadataBorn) | `bootstrap.canonical_seed` | RealityBootstrapper role only |
+| Write Forge admin (Forge:EditActorCore / Forge:EditChorusMetadata / Forge:EditActorOpinion / Forge:EditActorSessionMemory) | `forge.admin` (WA_003 contract) | Reuses WA_003 Forge JWT contract; no new claim |
+| Write session-end opinion derivation | (orchestrator JWT; world-service internal) | Aggregate-Owner role; preserved from NPC_001 §13 |
+| Write V1+ runtime opinion events (PC→NPC + NPC→NPC + PC→PC) | (V1+ — TBD when V1+ ships) | Aggregate-Owner role |
+| Write V1+ AI-controls-PC-offline transitions | (V1+ feature JWT) | (V1+ ACT-D1) |
+
+---
+
+## §8 Pattern choices
+
+### §8.1 Per-actor unified pattern (Q1 LOCKED)
+
+ACT_001 V1 uses unified per-actor aggregate pattern matching all Tier 5 substrate features. Rejects per-NPC-only or per-PC-only aggregates V1.
+
+**Reasoning:**
+- Pattern consistency across Tier 5 substrate (8+ features); NPC_001 was anomaly to fix
+- Future-proofs PC + NPC + Synthetic uniformly
+- Code path simplification: one read pattern for any actor kind
+- Substrate-level reuse: PCS_001 + NPC_001 build on top; no per-kind reimplementation
+
+### §8.2 3-layer architectural model (ACT-A2)
+
+L1 Identity (always) + L2 Capability/Kind (stable) + L3 Control source (dynamic).
+
+**Reasoning:**
+- Layer assignment determines storage density (L1 always; L3 sparse)
+- Future-proofs AI-controls-PC-offline V1+ (L3 dynamic transition)
+- Compile-time kind discrimination preserved (L2 encoded in ActorId variant)
+- Composition over sum-type: each layer = separate aggregate; sparse storage at L3 prevents bloat
+
+### §8.3 Sparse `actor_chorus_metadata` per Q3 LOCKED REVISION
+
+Sparse storage: NPCs always populated; PCs never populated V1; PCs V1+ populated when AI-driven offline.
+
+**Reasoning (Q3 REVISION):**
+- desires + greeting_obligation + priority_tier_hint are L3 AI-drive metadata, NOT L2 NPC-specific
+- Future-proofs AI-controls-PC-offline V1+ feature without aggregate refactor (additive activation)
+- Naming: `actor_chorus_metadata` (kind-agnostic; references chorus pattern but doesn't lock to NPC)
+- Owner: ACT_001 (substrate level — applies to any AI-driven actor)
+- NPC_002 Chorus reads from this aggregate; chorus orchestration extends to AI-driven PCs V1+ via same path
+
+### §8.4 Bilateral `actor_actor_opinion` per Q6 LOCKED REVISION
+
+Bilateral key composite (observer_actor_id, target_actor_id) supporting symmetric pair patterns.
+
+**Reasoning (Q6 user-revised to full unify):**
+- V1 NPC→PC pattern preserved (npc_pc_relationship_projection migration)
+- V1+ PC→NPC + NPC→NPC + PC→PC patterns enabled by bilateral key
+- Once AI-controls-PC-offline V1+ ships: PC AI-driven needs to query "PC's opinion of NPC X" — bilateral supports
+- Sect rivalry NPC↔NPC drama V1+ enabled
+- Multi-PC realities PC↔PC dynamics enabled
+- Symmetry NOT enforced — du_si→ly_minh and ly_minh→du_si stored separately; values may differ (asymmetric opinion is realistic)
+
+### §8.5 V1 functionality identical to NPC_001 (preservation)
+
+V1 behavior IDENTICAL to current NPC_001 + NPC_002 + NPC_003 — unification is structural for future-proofing, NOT functional change.
+
+**Reasoning:**
+- Migration safety: existing tests + integration scenarios (SPIKE_01 turn 5) reproduce post-unify
+- Cross-feature integration preserved (NPC_002 Chorus priority Tier 2-3 reads; persona assembly 4-input contract)
+- Renaming + key changes are mechanical; semantics unchanged
+- V1+ enrichment (PC bilateral; AI-controls-PC-offline; session memory PC pathway) ADD on top of V1 base
+
+### §8.6 V1 universal substrate discipline (synthetic excluded; cross-reality strict)
+
+ACT-A7 Synthetic forbidden V1 + ACT-A8 Cross-reality strict V1.
+
+**Reasoning:**
+- Universal substrate discipline matches all Tier 5 features (IDF + FF + FAC + REP + RES + PROG + PL_006)
+- Synthetic actors don't have narrative properties V1 (no desires + no opinion + no session memory)
+- V1+ relax IF concrete use case emerges (admin-faction synthetic narrative identity)
+- Cross-reality V2+ Heresy via WA_002 (universal V2+ deferral)
+
+---
+
+## §9 Failure-mode UX
+
+| Reject rule | Stage | User-facing message | When fired |
+|---|---|---|---|
+| `actor.unknown_actor_id` | 0 schema | "Actor không tồn tại trong hiện thực này" (Actor doesn't exist) | Read/write attempt with unknown actor_id |
+| `actor.synthetic_actor_forbidden` | 0 schema | (Schema-level; not user-facing) | Synthetic actor cannot have ACT_001 aggregate row |
+| `actor.cross_reality_mismatch` | 0 schema | (Schema-level; not user-facing) | actor.reality_id ≠ aggregate.reality_id |
+| `actor.kind_specific_field_mismatch` | 0 schema | (Schema-level; not user-facing) | chorus_metadata for non-AI-driven actor V1 (e.g., PC online attempting populate) |
+| `actor.opinion_self_target_forbidden` | 0 schema | "Actor không thể có opinion về chính mình" (Actor can't opine self) | observer == target in actor_actor_opinion |
+| `actor.duplicate_session_memory` | 0 schema | (Schema-level; not user-facing) | Multi-row per (actor, session) pair |
+| `actor.spawn_cell_unknown` | 0 schema | (Schema-level; canonical seed) | CanonicalActorDecl.spawn_cell ∉ RealityManifest.places (P2 LOCKED 2026-04-27) |
+| `actor.glossary_entity_unknown` | 0 schema | (Schema-level; canonical seed) | CanonicalActorDecl.glossary_entity_id ∉ knowledge-service canon (P2 LOCKED 2026-04-27) |
+
+V1+ reservation rules:
+- `actor.bilateral_opinion_unsupported_v1` — V1+ when NPC→NPC + PC→PC events ship (currently V1 NPC→PC only)
+- `actor.ai_control_pc_offline_unsupported_v1` — V1+ AI-controls-PC-offline activation
+- `actor.canon_drift_detected` — V1+ A6 detector cross-feature integration (ACT-D7)
+
+**Per RES_001 §2 i18n contract:** All `actor.*` rejects use `RejectReason.user_message: I18nBundle` with English `default` field + Vietnamese translation V1 from day 1.
+
+---
+
+## §10 Cross-service handoff (canonical seed flow)
+
+ACT_001 canonical seed flows through standard RealityBootstrapper pipeline:
+
+1. **knowledge-service** ingests book canon → emits `RealityManifest` with `canonical_actors: Vec<CanonicalActorDecl>` (extends with ACT_001 fields)
+2. **world-service RealityBootstrapper** validates manifest:
+   - Stage 0 schema validation per actor:
+     - `actor_id` valid + `kind` in {Pc, Npc} (Synthetic excluded V1 per ACT-A7)
+     - **`spawn_cell` ∈ RealityManifest.places** (must reference declared cell-tier channel; reject `actor.spawn_cell_unknown` if missing)
+     - **`glossary_entity_id` ∈ knowledge-service canon** (must reference valid glossary entry; reject `actor.glossary_entity_unknown` if missing)
+     - cross-reality consistency
+     - `chorus_metadata` Some for NPCs / None for PCs (V1 control source discipline)
+   - Stage 1: emit EF_001 `EntityBorn { entity_id: actor_id, entity_type: Actor(kind), cell_id: spawn_cell }` (cell membership populated from spawn_cell)
+   - Stage 2: emit ACT_001 `ActorBorn { actor_id, kind, traits_summary }` per actor (PC + NPC; NOT Synthetic)
+   - Stage 3: emit ACT_001 `ActorChorusMetadataBorn` per NPC (chorus_metadata fields populated)
+3. **ACT_001 owner-service** (world-service module) writes:
+   - `actor_core` row per actor — `current_region_id ← spawn_cell` + `glossary_entity_id ← decl.glossary_entity_id` + `mood ← mood_init` + `flexible_state ← flexible_state_init` + `core_beliefs ← core_beliefs_ref.unwrap_or(default)`
+   - `actor_chorus_metadata` row per NPC (sparse; NPCs only V1)
+4. Downstream features V1+ consume actor substrate:
+   - NPC_002 Chorus Tier 2-3 priority reads `actor_core` + `actor_chorus_metadata`
+   - V1+ NPC↔NPC drama reads `actor_actor_opinion` for sect rivalry
+   - V1+ AI-controls-PC-offline activates `actor_chorus_metadata` PC population
+   - PCS_001 future builds on top of ACT_001 stable base
+
+### Field-mapping table: CanonicalActorDecl → ActorCore
+
+| ActorCore field | CanonicalActorDecl source field | Notes |
+|---|---|---|
+| `actor_id` | `actor_id` | Direct copy |
+| `glossary_entity_id` | `glossary_entity_id` | Direct copy; REQUIRED V1 (P2 LOCKED 2026-04-27) |
+| `current_region_id` | `spawn_cell` | Initial cell location; REQUIRED V1 (P2 LOCKED 2026-04-27) |
+| `current_session_id` | (none) | None at bootstrap; runtime populates per session lifecycle |
+| `mood` | `mood_init` | Initial mood (multi-axis ActorMood B1 LOCKED) |
+| `core_beliefs` | `core_beliefs_ref.unwrap_or(default)` | Optional in decl; unwraps to default canon if None |
+| `flexible_state` | `flexible_state_init` | Initial mutable state (typed standard fields B2 LOCKED) |
+
+---
+
+## §11 Sequence: Canonical seed (Wuxia 4 NPCs + 1 PC)
+
+```
+RealityManifest {
+    canonical_actors: vec![
+        // PC Lý Minh — actor_core only V1; no chorus_metadata
+        CanonicalActorDecl {
+            actor_id: ActorId::Pc(PcId(uuid_lm)),
+            kind: ActorKind::Pc,
+            glossary_entity_id: glossary_entity_id("ly_minh_actor_canon"),  // P2 LOCKED 2026-04-27
+            spawn_cell: channel_id("hangzhou_tieu_diem_inn_cell"),          // P2 LOCKED 2026-04-27
+            canonical_traits: CanonicalTraits { name: "Lý Minh", role: "PC", ... },
+            flexible_state_init: FlexibleState::empty(),
+            knowledge_tags: vec![knowledge_tag("modern_tech"), knowledge_tag("wuxia_lore")],
+            voice_register: VoiceRegister::TerseFirstPerson,
+            core_beliefs_ref: Some(glossary_entity_id("ly_minh_belief_set")),
+            mood_init: ActorMood::NEUTRAL,                                  // multi-axis B1 LOCKED
+            chorus_metadata: None,                                          // PC always user-driven V1
+        },
+
+        // NPC Du sĩ — actor_core + chorus_metadata
+        CanonicalActorDecl {
+            actor_id: ActorId::Npc(NpcId(uuid_dusi)),
+            kind: ActorKind::Npc,
+            glossary_entity_id: glossary_entity_id("du_si_actor_canon"),    // P2 LOCKED 2026-04-27
+            spawn_cell: channel_id("hangzhou_tieu_diem_inn_cell"),          // P2 LOCKED 2026-04-27 (same cell as Lý Minh)
+            canonical_traits: CanonicalTraits { name: "Du sĩ", role: "scholar", ... },
+            flexible_state_init: FlexibleState {
+                current_disposition: Disposition::Neutral,                  // typed standard field B2 LOCKED
+                last_interacted_with: None,
+                last_emotional_event: None,
+                recent_event_refs: vec![],
+                secret_held: None,
+                extensions: HashMap::new(),
+            },
+            knowledge_tags: vec![knowledge_tag("daoist_scripture"), knowledge_tag("wuxia_lore")],
+            voice_register: VoiceRegister::Novel3rdPerson,
+            core_beliefs_ref: Some(glossary_entity_id("du_si_belief_set")),
+            mood_init: ActorMood {                                          // multi-axis B1 LOCKED
+                joy: 30, anger: 0, sadness: 10, fear: 0,                    // moderate cheerful baseline
+            },
+            chorus_metadata: Some(ChorusMetadataDecl {
+                greeting_obligation: GreetingObligation::Required,
+                priority_tier_hint: PriorityTierHint::High,
+                desires: vec![desire("preserve_sect_canon"), desire("teach_disciples")],
+            }),
+        },
+
+        // Tiểu Thúy + Lão Ngũ NPCs — similar shape with spawn_cell + glossary_entity_id
+        // ...
+    ],
+}
+```
+
+**Validation flow:**
+1. Stage 0 schema validation per actor:
+   - actor_id valid → ✓
+   - kind ∈ {Pc, Npc} (Synthetic rejected per Q4 LOCKED `actor.synthetic_actor_forbidden`) → ✓
+   - **`spawn_cell` ∈ RealityManifest.places** (cell-tier channel must be declared per PF_001) → ✓ (reject `actor.spawn_cell_unknown` if missing; P2 LOCKED 2026-04-27)
+   - **`glossary_entity_id` ∈ knowledge-service canon** (must reference valid glossary entry) → ✓ (reject `actor.glossary_entity_unknown` if missing; P2 LOCKED 2026-04-27)
+   - chorus_metadata Some for NPCs / None for PCs (V1 control source discipline; V1+ AI-controls-PC-offline relaxes for offline PCs) → ✓
+2. RealityBootstrapper emits per actor:
+   - 1 EVT-T4 EF_001 EntityBorn `{ entity_id: actor_id, entity_type: Actor(kind), cell_id: spawn_cell }` (cell membership)
+   - 1 EVT-T4 ACT_001 ActorBorn (all 5 actors: 1 PC + 4 NPCs)
+   - 4 EVT-T4 ACT_001 ActorChorusMetadataBorn (NPCs only V1)
+3. ACT_001 owner-service writes:
+   - 5 rows in actor_core (PC + 4 NPCs); each row populates from CanonicalActorDecl: `glossary_entity_id ← decl.glossary_entity_id`, `current_region_id ← decl.spawn_cell`, `flexible_state ← decl.flexible_state_init`, `mood ← decl.mood_init`, `core_beliefs ← decl.core_beliefs_ref.unwrap_or(default)`, etc.
+   - 4 rows in actor_chorus_metadata (NPCs only); each row populates from CanonicalActorDecl.chorus_metadata.{greeting_obligation, priority_tier_hint, desires}
+4. Causal-ref chain: bootstrap_event → EntityBorn → entity_binding row_insert → ActorBorn → actor_core row_insert → ActorChorusMetadataBorn (NPC only) → actor_chorus_metadata row_insert
+
+**Read examples post-bootstrap:**
+- `read_actor_core(ly_minh)` → PC core (canonical_traits + knowledge_tags + voice_register + ...)
+- `read_actor_chorus_metadata(ly_minh)` → None (PC; not AI-driven V1)
+- `read_actor_core(du_si)` → NPC core
+- `read_actor_chorus_metadata(du_si)` → Some(chorus_metadata) with desires + greeting_obligation + priority_tier_hint
+- `read_actor_actor_opinion(du_si, ly_minh)` → None (no interaction yet; lazy-create at first session-end derivation)
+- `read_actor_session_memory(du_si, session_1)` → None (no session yet)
+
+---
+
+## §12 Sequence: Session-end opinion derivation (preserved from NPC_001 §13)
+
+```
+Session ends (PC /signoff or 30-min idle timeout)
+  → world-service iterates each (NPC, PC) pair the session interacted with
+  → For each pair: compute trust_delta = sum(fact.importance × valence_sign) over session_facts
+  → Merge with existing actor_actor_opinion row
+    → If row exists: update trust + familiarity + stance_tags + last_updated_turn
+    → If row doesn't exist: lazy-create with computed values
+  → Commit via t2_write per NPC_001 §13 sequence
+  → Causal_ref to session-end SystemEvent
+  → AC-ACT-V1+1 covers V1 NPC→PC pattern (preserved); V1+ patterns deferred (ACT-D2..D4)
+```
+
+V1: NPC→PC pattern ONLY (preserved from npc_pc_relationship_projection); V1+ enables PC→NPC + NPC→NPC + PC→PC.
+
+---
+
+## §13 Sequence: Forge admin EditActorCore (V1 active)
+
+```
+Author types in Forge UI: "Edit Du sĩ mood to be more cautious; flexible_state.disposition = 'wary'"
+  → Forge frontend emits POST /v1/forge/actor/core/edit
+       { actor_id: "du_si", edit_kind: "UpdateFlexibleState",
+         field_path: "disposition", before: "neutral", after: "wary",
+         reason: "post-meta-knowledge moment in turn 5" }
+  → world-service Forge handler validates:
+     - JWT has forge.admin claim
+     - actor_id valid
+     - actor not synthetic
+  → 3-write atomic transaction:
+     1. Read existing actor_core row → before snapshot
+     2. Write actor_core row { flexible_state.disposition: "wary", ... }
+     3. Emit EVT-T8 Forge:EditActorCore { actor_id, edit_kind, before, after, reason }
+     4. Write forge_audit_log entry referencing EVT-T8 event_id
+  → AC-ACT-7 covers atomicity (3-write transaction)
+```
+
+---
+
+## §14 Sequence: V1+ AI-controls-PC-offline transition (deferred ACT-D1)
+
+```
+// V1+ EXAMPLE (NOT V1 — deferred)
+PC Lý Minh logs out (session ends; control source transitions User → AI)
+  → V1+ feature emits ActorControlSourceChange { actor_id: ly_minh, before: User, after: AI }
+  → ACT_001 owner-service receives event
+  → Lazy-create actor_chorus_metadata row for ly_minh:
+     { greeting_obligation: GreetingObligation::Optional,
+       priority_tier_hint: PriorityTierHint::Medium,
+       desires: vec![desire("continue_main_quest"), desire("avoid_sect_rivals")] }
+  → Chorus orchestrator (NPC_002) treats Lý Minh as AI-driven actor (same priority resolution path)
+  → V1+ AI-controls-PC-offline scheduler may activate PC offline scene generation
+PC Lý Minh logs back in (control source transitions AI → User)
+  → V1+ feature emits ActorControlSourceChange { actor_id: ly_minh, before: AI, after: User }
+  → ACT_001 owner-service deletes actor_chorus_metadata row (or marks inactive; defer to V1+ design)
+  → Chorus orchestrator removes Lý Minh from AI-driven priority pool
+```
+
+V1+ enrichment requires V1+ AI-controls-PC-offline feature design.
+
+---
+
+## §15 Acceptance criteria (LOCK gate)
+
+V1 (10 testable scenarios):
+
+| AC | Scenario | Expected outcome |
+|---|---|---|
+| **AC-ACT-1** | Wuxia canonical bootstrap declares 5 actors (1 PC + 4 NPCs; NO Synthetic per Q4 LOCKED) | RealityBootstrapper emits 5 EVT-T4 ActorBorn events + 4 EVT-T4 ActorChorusMetadataBorn events (NPCs only); 5 actor_core rows + 4 actor_chorus_metadata rows written; PC Lý Minh has actor_core but NO actor_chorus_metadata row V1 (control source = User; sparse storage discipline) |
+| **AC-ACT-2** | actor_core read returns identity for any kind (PC + NPC) | Read path uniform; PC + NPC return same shape (canonical_traits + flexible_state + knowledge_tags + voice_register + core_beliefs_ref + mood) |
+| **AC-ACT-3** | actor_chorus_metadata sparse storage validated | PC has NO row V1; NPC has row; missing row read returns None (not "not AI-driven" by hard code; semantics) |
+| **AC-ACT-4** | actor_actor_opinion bilateral keys validated | observer ≠ target enforced (`actor.opinion_self_target_forbidden`); bilateral pair (du_si, ly_minh) and (ly_minh, du_si) stored separately |
+| **AC-ACT-5** | actor_session_memory per-(actor, session) keying | du_si has 2 session memories (session_1 + session_2) as separate rows; uuidv5 keying matches R8-L2 spec |
+| **AC-ACT-6** | NPC_001 closure-pass-extension verified | NPC_001 §3 references actor_core (not npc) + actor_session_memory (not npc_session_memory) + actor_actor_opinion (not npc_pc_relationship_projection); npc_node_binding KEPT |
+| **AC-ACT-7** | NPC_002 closure-pass-extension verified | Chorus priority Tier 2-3 reads actor_core (not npc); NpcOpinion::for_pc renamed ActorOpinion::for_target reads actor_actor_opinion |
+| **AC-ACT-8** | NPC_003 closure-pass-extension verified | desires field reads from actor_chorus_metadata.desires (not npc.desires); type renamed DesireDecl |
+| **AC-ACT-9** | Synthetic actor rejected V1 | Stage 0 schema reject `actor.synthetic_actor_forbidden` for ChorusOrchestrator/BubbleUpAggregator/etc. |
+| **AC-ACT-10** | 02_storage R08 update verified | Schema split applied; backward-incompatible documented; ACT_001 ownership note added; main session attribution |
+
+V1+ deferred (4 scenarios):
+
+| AC | Scenario | V1+ enrichment |
+|---|---|---|
+| **AC-ACT-V1+1** | V1+ AI-controls-PC-offline activates actor_chorus_metadata for PC | ACT-D1 |
+| **AC-ACT-V1+2** | V1+ PC↔NPC bilateral opinion (PC view of NPC populated) | ACT-D2 |
+| **AC-ACT-V1+3** | V1+ NPC↔NPC opinion (sect rivalry drama) | ACT-D3 |
+| **AC-ACT-V1+4** | V1+ PC↔PC opinion (multi-PC realities) | ACT-D4 |
+
+---
+
+## §16 Boundary registrations (in same commit chain)
+
+This DRAFT cycle (commits 2-3/5) adds the following boundary entries:
+
+### `_boundaries/01_feature_ownership_matrix.md` (commit 2/5 + 3/5)
+
+- 4 NEW aggregates owned by ACT_001: actor_core + actor_chorus_metadata + actor_actor_opinion + actor_session_memory
+- 3 transferred from NPC_001 R8 imports (REMOVE old npc + npc_session_memory + npc_pc_relationship_projection rows; replace with ACT_001-owned)
+- 2 NEW EVT-T4 sub-types: ActorBorn + ActorChorusMetadataBorn
+- 4 NEW EVT-T8 sub-shapes: Forge:EditActorCore + Forge:EditChorusMetadata + Forge:EditActorOpinion + Forge:EditActorSessionMemory
+- 2 NEW EVT-T3 entries: actor_actor_opinion + actor_session_memory (replaces NPC_001-owned npc_pc_relationship_projection + npc_session_memory entries)
+- 1 NEW namespace: `actor.*` (6 V1 + 3 V1+ reservations)
+- RealityManifest envelope: canonical_actors ownership transfer (PL_001 + NPC_001 → ACT_001 unified) + chorus_metadata fields additive
+- 1 NEW stable-ID prefix: `ACT-*`
+
+### `_boundaries/02_extension_contracts.md` (commit 2/5)
+
+- §1.4 namespace registration: `actor.*` (6 V1 rules + 3 V1+ reservations; +2 added 2026-04-27 P2 LOCKDOWN: spawn_cell_unknown + glossary_entity_unknown)
+- §2 RealityManifest CanonicalActorDecl extension: chorus_metadata fields (Optional; populated for NPCs)
+
+### Phase 2 P2 follow-up — APPLIED 2026-04-27 (single `[boundaries-lock-claim+release]` commit)
+
+Applied immediately after Phase 1 P2 (079976c) — TDIL_001 released lock just prior, so Phase 2 went in same session:
+
+- `_boundaries/02_extension_contracts.md` §2 CanonicalActorDecl shape: ADDED 2 fields ✅
+  * `pub spawn_cell: ChannelId` — REQUIRED V1; references RealityManifest.places cell-tier channel; cross-validated at canonical seed
+  * `pub glossary_entity_id: GlossaryEntityId` — REQUIRED V1; references knowledge-service canon entry
+- `_boundaries/02_extension_contracts.md` §1.4 `actor.*` namespace: ADDED 2 V1 reject rules ✅
+  * `actor.spawn_cell_unknown` — Stage 0 schema (canonical seed validation)
+  * `actor.glossary_entity_unknown` — Stage 0 schema (canonical seed validation)
+- `_boundaries/99_changelog.md`: P2 closure-pass-extension entry appended ✅
+
+P2 audit gap CLOSED COMPLETELY (Phase 1 + Phase 2 = full P2 resolution).
+
+### `_boundaries/99_changelog.md` (commits 2/5 + 5/5)
+
+- Commit 2/5 entry: ACT_001 DRAFT promotion + boundary register
+- Commit 5/5 entry: ACT_001 closure pass + lock release
+
+### `02_storage/R08_npc_memory_split.md` (commit 3/5)
+
+- Schema split: npc → actor_core + actor_chorus_metadata
+- Rename: npc_session_memory → actor_session_memory; npc_pc_relationship_projection → actor_actor_opinion (bilateral key)
+- Ownership note: ACT_001 owns 3 split aggregates (formerly R8-NPC_001-imported); NPC_001 keeps `npc_node_binding`
+- R8 changelog appended
+
+### `catalog/cat_00_ACT_actor_foundation.md` (commit 2/5; created)
+
+- New catalog file with ACT-A1..A8 axioms + ACT-D1..D10 deferrals + 14+ catalog entries
+
+### `features/00_actor/_index.md` (commit 2/5)
+
+- ACT_001 row updated to DRAFT 2026-04-27
+
+### `features/05_npc_systems/NPC_001_cast.md` (commit 3/5; closure-pass-extension)
+
+- §3 aggregate ownership transfers (3 aggregates moved to ACT_001)
+- §6 persona assembly updated (4 inputs renamed actor_*)
+- §14 acceptance scenarios names updated
+
+### `features/05_npc_systems/NPC_002_chorus.md` (commit 3/5; closure-pass-extension)
+
+- Read paths updated (NpcOpinion::for_pc → ActorOpinion::for_target)
+- Tier 2-3 priority reads actor_core
+- Chorus orchestration extends to AI-driven PCs V1+ via same path
+
+### `features/05_npc_systems/NPC_003_desires.md` (commit 3/5; closure-pass-extension)
+
+- desires field ownership transfer (npc.desires → actor_chorus_metadata.desires)
+- Type rename NpcDesireDecl → DesireDecl
+
+---
+
+## §17 Open questions deferred + landing point
+
+### V1+ deferrals (ACT-D1..ACT-D10)
+
+| ID | Item | Landing point |
+|---|---|---|
+| **ACT-D1** | V1+ AI-controls-PC-offline feature activation | Activates actor_chorus_metadata for offline PCs; new feature design when concrete |
+| **ACT-D2** | V1+ PC↔NPC bilateral opinion runtime population | Activates with AI-controls-PC-offline; PC AI-driven needs query "PC's opinion of NPC" |
+| **ACT-D3** | V1+ NPC↔NPC opinion (sect rivalry drama) | Sect drama feature consumes actor_actor_opinion bilateral pattern |
+| **ACT-D4** | V1+ PC↔PC opinion (multi-PC realities) | Multiplayer feature activation |
+| **ACT-D5** | V1+ NPC xuyên không (currently PC-only V1 via PCS_001 body_memory) | NPC body-substitution feature when concrete |
+| **ACT-D6** | V2+ cross-reality migration | Universal V2+ Heresy via WA_002 |
+| **ACT-D7** | V1+ canon-drift detector integration | A6 detector + actor_core knowledge_tags + actor_session_memory |
+| **ACT-D8** | V1+ NPC_003 desires lifecycle events | Currently author-only via Forge V1; runtime events V1+ |
+| **ACT-D9** | V1+ actor_chorus_metadata schema enrichment | Additional AI-drive metadata as V1+ features ship |
+| **ACT-D10** | V1+ unified node_binding | Currently NPC-only npc_node_binding; PC offline V1+ may need consolidation |
+
+### Open questions (NONE V1)
+
+All Q1-Q6 LOCKED via main session deep-dive 2026-04-27 (Q3 REVISION + Q6 user-revised to full unify). No outstanding V1 design questions.
+
+---
+
+## §18 Cross-references
+
+### Resolved deferrals from upstream features
+
+- **NPC_001 R8 import anomaly** — `npc` aggregate (per-NPC) was only Tier 5 substrate not unified per-actor → ✅ RESOLVED via actor_core + actor_chorus_metadata split
+- **NPC_001 §3.3 npc_pc_relationship_projection one-directional** — only NPC→PC opinion → ✅ RESOLVED via actor_actor_opinion bilateral
+- **NPC_001 §3.2 npc_session_memory NPC-scoped** — PC session memory fragmented in chat-service → ✅ RESOLVED via actor_session_memory unified
+
+### Consumes from locked features
+
+- **EF_001 §5.1** ActorId source-of-truth — sibling pattern; ActorKind discrimination
+- **02_storage R08** schema spec (UPDATED in commit 3/5)
+- **RES_001 §2.3** I18nBundle pattern — display strings; reject user_message
+- **WA_003** Forge audit log — EVT-T8 sub-shapes use forge_audit_log pattern (3-write atomic)
+- **07_event_model EVT-A10** event log = universal SSOT — ACT_001 events flow in channel stream
+
+### Consumed by future features (V1+)
+
+- **NPC_001 Cast V1** — closure-pass-extension reads actor_core + actor_chorus_metadata + actor_actor_opinion + actor_session_memory; persona assembly §6
+- **NPC_002 Chorus V1** — closure-pass-extension; Tier 2-3 priority reads actor_core; ActorOpinion::for_target reads actor_actor_opinion
+- **NPC_003 NPC Desires V1** — closure-pass-extension; desires field reads actor_chorus_metadata.desires
+- **PCS_001 V1+** — builds on ACT_001 stable base; owns pc_user_binding + pc_mortality_state + pc_stats_v1_stub
+- **AI-controls-PC-offline V1+ (ACT-D1)** — activates actor_chorus_metadata PC population
+- **Multi-PC realities V1+ (ACT-D4)** — bilateral PC↔PC opinion via actor_actor_opinion
+- **Sect rivalry NPC↔NPC drama V1+ (ACT-D3)** — bilateral NPC↔NPC opinion
+- **A6 canon-drift detector V1+ (ACT-D7)** — reads actor_core knowledge_tags + actor_session_memory facts
+- **REP_001 V1+** — already locked CANDIDATE-LOCK; reads actor_core for actor identity
+
+---
+
+## §19 Implementation readiness checklist
+
+- [ ] **§1** User story locked (Wuxia 5 actors + V1+ runtime examples)
+- [ ] **§2** Domain concepts + ACT-A1..A8 axioms locked
+- [ ] **§2.5** Event-model mapping locked (2 EVT-T4 + 4 EVT-T8 + 2 EVT-T3 V1; V1+ reserved)
+- [ ] **§3** Aggregate inventory: 4 ACT_001 aggregates + 1 NPC_001-kept + 3 PCS_001-future
+- [ ] **§4** Tier+scope DP-R2 annotations
+- [ ] **§5** DP primitives reuse standard
+- [ ] **§6** Persona assembly contract preserved (4-input combiner)
+- [ ] **§7** Capability requirements: reuses WA_003 forge.admin JWT
+- [ ] **§8** Pattern choices: 6 sub-sections covering Q1-Q6 LOCKED decisions
+- [ ] **§9** Failure-mode UX: 6 V1 reject rules + 3 V1+ reservations + Vietnamese I18n
+- [ ] **§10** Cross-service handoff via standard RealityBootstrapper pipeline
+- [ ] **§11** Sequence: Canonical seed (Wuxia 5 actors)
+- [ ] **§12** Sequence: Session-end opinion derivation (preserved from NPC_001 §13)
+- [ ] **§13** Sequence: Forge admin EditActorCore (V1 active)
+- [ ] **§14** Sequence: V1+ AI-controls-PC-offline (deferred ACT-D1)
+- [ ] **§15** Acceptance criteria: 10 V1-testable AC-ACT-1..10 + 4 V1+ deferred
+- [ ] **§16** Boundary registrations (in same commit chain — commits 2-5/5)
+- [ ] **§17** Open questions deferred: 10 deferrals (ACT-D1..ACT-D10); 0 V1 open Q
+- [ ] **§18** Cross-references: 3 RESOLVED upstream (NPC_001 anomalies) + 5 consumed-from + 9 consumed-by-future
+- [ ] **§19** This checklist (filling at Phase 3 cleanup commit 4/5)
+
+**Status transition:** DRAFT 2026-04-27 (commit 2/5 74b2854) → cascading closure-pass-extensions applied (commit 3/5 d12a86f) → Phase 3 cleanup applied (commit 4/5 d5ad7af) → **CANDIDATE-LOCK 2026-04-27** (commit 5/5 this commit) → **LOCK** when AC-ACT-1..10 pass integration tests + V1+ scenarios after V1+ enrichment ships.
+
+**Next** (when CANDIDATE-LOCK granted): world-service can scaffold 4 ACT_001 aggregates + Forge admin handlers; NPC_001 + NPC_002 + NPC_003 closure-pass-extensions applied in commit 3/5; PCS_001 unblocked to build on stable ACT_001 base (separate cycle Q2 LOCKED).

@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03B2 Advanced Settings — PO_001</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .adv-shell { display: grid; grid-template-columns: 220px 1fr 320px; gap: 1.25rem; flex: 1; }
+  .nav-side a { display: block; padding: 0.5rem 0.75rem; font-size: 0.875rem; color: var(--ink-soft); text-decoration: none; border-radius: 0.25rem; margin-bottom: 0.125rem; }
+  .nav-side a.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  .nav-side a:hover { background: var(--paper-soft); }
+  .section { margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--paper-soft); }
+  .section h3 { font-size: 1.125rem; margin: 0 0 0.25rem 0; }
+  .section .feature-ref { font-size: 0.75rem; color: var(--ink-muted); margin-bottom: 1rem; }
+  .field-row { display: grid; grid-template-columns: 200px 1fr 80px; gap: 0.875rem; padding: 0.75rem 0; border-bottom: 1px dashed var(--paper-soft); align-items: center; }
+  .field-row:last-child { border-bottom: none; }
+  .field-label { font-size: 0.875rem; }
+  .field-label .field-key { font-family: monospace; font-size: 0.75rem; color: var(--ink-muted); }
+  .field-value { font-size: 0.875rem; }
+  .field-value input, .field-value select, .field-value textarea { width: 100%; padding: 0.375rem 0.5rem; font-size: 0.8125rem; border: 1px solid var(--ink-soft); border-radius: 0.25rem; background: var(--paper); color: var(--ink); }
+  .badge { display: inline-block; padding: 0.125rem 0.5rem; font-size: 0.6875rem; border-radius: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .badge-v1 { background: #d1fae5; color: #065f46; }
+  .badge-v1plus { background: #fef3c7; color: #92400e; }
+  .badge-v2 { background: #e0e7ff; color: #3730a3; }
+  .badge-locked { background: #fee2e2; color: #991b1b; }
+  .badge-system { background: #e0f2fe; color: #075985; }
+  .badge-immutable { background: #f3e8ff; color: #6b21a8; }
+  .ai-panel { position: sticky; top: 1rem; align-self: flex-start; }
+  .ai-panel .card { padding: 1rem; }
+  .ai-input { width: 100%; min-height: 100px; padding: 0.625rem; font-size: 0.875rem; border: 1px solid var(--accent-soft); border-radius: 0.375rem; background: var(--paper); resize: vertical; font-family: inherit; }
+  .ai-suggestion { background: var(--accent-bg); padding: 0.625rem 0.75rem; border-radius: 0.375rem; margin-top: 0.5rem; font-size: 0.8125rem; border-left: 3px solid var(--accent); }
+  .disabled-field { opacity: 0.45; pointer-events: none; }
+  .stat-bar { display: flex; gap: 0.25rem; align-items: center; }
+  .stat-bar input[type="range"] { flex: 1; }
+  .stat-bar .stat-val { font-family: monospace; font-size: 0.8125rem; min-width: 32px; text-align: right; }
+</style>
+</head>
+<body data-reality="dongphong">
+<div class="app-shell" style="max-width: 1400px;">
+  <div class="nav-strip">
+    <a href="03b_custom_pc.html" style="color: var(--ink-muted); text-decoration: none; font-size: 0.875rem;">← Quay về Wizard cơ bản</a>
+    <span class="subtle"><strong>Chế độ nâng cao</strong> · Mode B Custom PC · Đông Phong Cõi · ~46 settings V1</span>
+    <div class="lang-switch">
+      <a href="#" class="active">VI</a><a href="#">EN</a><a href="#">ZH</a>
+    </div>
+  </div>
+
+  <div class="adv-shell">
+
+    <aside class="nav-side">
+      <h4 style="font-size: 0.875rem; margin: 0 0 0.5rem 0; color: var(--ink-muted); letter-spacing: 0.05em; text-transform: uppercase;">Categories</h4>
+      <a href="#identity" class="active">A. Identity</a>
+      <a href="#race-origin">B+E. Race & Origin</a>
+      <a href="#personality">D+F. Personality, Mood & Beliefs</a>
+      <a href="#knowledge">C. Knowledge & Languages</a>
+      <a href="#family">G. Family & Lineage</a>
+      <a href="#faction">H+I+J. Faction / Rep / Title</a>
+      <a href="#progression">K. Skills & Progression</a>
+      <a href="#resources">L. Resources & Inventory</a>
+      <a href="#xuyen-khong">M. PC Body Memory <span style="font-size: 0.625rem; color: var(--accent);">(xuyên không)</span></a>
+      <a href="#system">N+O+P. System (read-only)</a>
+
+      <div class="brush-divider"></div>
+
+      <p class="subtle" style="font-size: 0.75rem; line-height: 1.5;">
+        Chế độ nâng cao cho phép edit toàn bộ <strong>46 settings V1</strong> của actor. V1+ deferred fields hiển thị nhưng disabled.<br><br>
+        Mới bắt đầu? Dùng <a href="03b_custom_pc.html" style="color: var(--accent);">8-step wizard cơ bản</a> với defaults.
+      </p>
+    </aside>
+
+    <main>
+      <header style="margin-bottom: 1.5rem;">
+        <h1 style="font-size: 1.875rem; margin: 0 0 0.25rem 0;">Tùy chỉnh nâng cao</h1>
+        <p class="subtle">Edit từng field một. Hover badge để xem feature owner.</p>
+      </header>
+
+      <!-- A. IDENTITY -->
+      <section class="section" id="identity">
+        <h3>A. Identity <span class="badge badge-immutable">9 fields · Immutable post-bootstrap</span></h3>
+        <p class="feature-ref">Owner: <code>ACT_001 actor_core.canonical_traits</code></p>
+
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Tên</strong>
+            <div class="field-key">canonical_traits.name</div>
+          </div>
+          <div class="field-value"><input type="text" value="Lý Minh"></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Tên gọi (LLM)</strong>
+            <div class="field-key">name.translations.vi</div>
+          </div>
+          <div class="field-value"><input type="text" value="Tiểu Minh"></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Vai trò</strong>
+            <div class="field-key">canonical_traits.role</div>
+          </div>
+          <div class="field-value"><input type="text" value="Đông Hải Đạo Cốc nội môn đệ tử"></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Voice register</strong>
+            <div class="field-key">canonical_traits.voice_register</div>
+          </div>
+          <div class="field-value">
+            <select>
+              <option>TerseFirstPerson</option>
+              <option selected>Novel3rdPerson</option>
+              <option>Mixed</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Mô tả thể hiện</strong>
+            <div class="field-key">canonical_traits.physical</div>
+          </div>
+          <div class="field-value"><textarea rows="2">Thanh niên 22 tuổi, dáng người gầy nhưng săn chắc do tu luyện. Mắt sáng, sắc sảo. Tóc đen búi cao theo kiểu Đạo gia. Sẹo mờ trên cằm trái.</textarea></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Đại từ / giới tính</strong>
+            <div class="field-key">flexible_state.extensions.gender_pronouns</div>
+          </div>
+          <div class="field-value">
+            <select>
+              <option selected>anh/em (m)</option>
+              <option>cô/em (f)</option>
+              <option>tự nhập (custom)</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Vị trí xuất hiện</strong>
+            <div class="field-key">canonical_traits.spawn_cell</div>
+          </div>
+          <div class="field-value">
+            <select>
+              <option selected>cell.donghai_dao_coc.tu_luyen_that</option>
+              <option>cell.donghai_dao_coc.front_courtyard</option>
+              <option>cell.donghai_coastal_village.tea_house</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Glossary entity ID</strong>
+            <div class="field-key">canonical_traits.glossary_entity_id</div>
+          </div>
+          <div class="field-value"><input type="text" value="auto-generated post-bootstrap" disabled></div>
+          <span class="badge badge-system">SYS</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Core beliefs ref</strong>
+            <div class="field-key">canonical_traits.core_beliefs_ref</div>
+          </div>
+          <div class="field-value">
+            <select>
+              <option selected>(none)</option>
+              <option>belief.dao_traditional</option>
+              <option>belief.confucian_filial</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+      </section>
+
+      <!-- B+E. RACE & ORIGIN -->
+      <section class="section" id="race-origin">
+        <h3>B + E. Race & Origin <span class="badge badge-immutable">5 fields · Immutable</span></h3>
+        <p class="feature-ref">Owner: <code>IDF_001 race_assignment + IDF_004 actor_origin</code></p>
+
+        <div class="field-row">
+          <div class="field-label"><strong>Race</strong><div class="field-key">race_assignment.race_id</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>race.han (Người Hán)</option>
+              <option>race.miao</option>
+              <option>race.dragon_descendant</option>
+              <option>race.fox_spirit_lineage</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Birthplace</strong><div class="field-key">actor_origin.birthplace_channel</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>cell.donghai_coastal_village</option>
+              <option>cell.imperial_capital</option>
+              <option>cell.northwest_frontier</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Lineage</strong><div class="field-key">actor_origin.lineage_id</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>(commoner — no dynasty)</option>
+              <option>lineage.li_dynasty (imperial)</option>
+              <option>lineage.zhao_clan (sect)</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Native language</strong><div class="field-key">actor_origin.native_language</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>language.donghai_van_ngon (Văn ngôn cổ ngữ)</option>
+              <option>language.imperial_mandarin</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row disabled-field">
+          <div class="field-label"><strong>Origin pack default titles</strong><div class="field-key">origin_pack.default_titles</div></div>
+          <div class="field-value"><input type="text" value="(deferred)" disabled></div>
+          <span class="badge badge-v1plus">TIT-D10</span>
+        </div>
+      </section>
+
+      <!-- D+F. PERSONALITY, MOOD & BELIEFS -->
+      <section class="section" id="personality">
+        <h3>D + F. Personality, Mood & Beliefs <span class="badge badge-v1">8 V1 + 7 V1+ deferred</span></h3>
+        <p class="feature-ref">Owner: <code>IDF_003 actor_personality + IDF_005 actor_ideology_stance + ACT_001 flexible_state_init</code></p>
+
+        <div class="field-row">
+          <div class="field-label"><strong>Personality archetype</strong><div class="field-key">actor_personality.archetype_id</div></div>
+          <div class="field-value">
+            <select>
+              <option>Stoic / Khắc kỷ</option>
+              <option>Hothead / Nóng vội</option>
+              <option selected>Cunning / Mưu mô</option>
+              <option>Innocent / Trong trắng</option>
+              <option>Pious / Mộ đạo</option>
+              <option>Cynic / Hoài nghi</option>
+              <option>Worldly / Đời thực</option>
+              <option>Idealist / Lý tưởng</option>
+              <option>Loyal / Trung thành</option>
+              <option>Aloof / Lạnh lùng</option>
+              <option>Ambitious / Tham vọng</option>
+              <option>Compassionate / Nhân hậu</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <div class="field-row">
+          <div class="field-label"><strong>Mood — Joy (喜)</strong><div class="field-key">mood_init.joy</div></div>
+          <div class="field-value">
+            <div class="stat-bar"><input type="range" min="0" max="100" value="55"><span class="stat-val">55</span></div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Mood — Anger (怒)</strong><div class="field-key">mood_init.anger</div></div>
+          <div class="field-value">
+            <div class="stat-bar"><input type="range" min="0" max="100" value="20"><span class="stat-val">20</span></div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Mood — Sadness (哀)</strong><div class="field-key">mood_init.sadness</div></div>
+          <div class="field-value">
+            <div class="stat-bar"><input type="range" min="0" max="100" value="30"><span class="stat-val">30</span></div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Mood — Fear (惧)</strong><div class="field-key">mood_init.fear</div></div>
+          <div class="field-value">
+            <div class="stat-bar"><input type="range" min="0" max="100" value="35"><span class="stat-val">35</span></div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Disposition</strong><div class="field-key">flexible_state.disposition</div></div>
+          <div class="field-value">
+            <select>
+              <option>Friendly</option>
+              <option selected>Neutral</option>
+              <option>Suspicious</option>
+              <option>Hostile</option>
+              <option>Curious</option>
+              <option>Indifferent</option>
+              <option>Romantic</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Secret held</strong><div class="field-key">flexible_state.secret_held</div></div>
+          <div class="field-value"><textarea rows="2" placeholder="(none)">Đã thấy sư tổ Lý Lão Tổ khóc một mình trên đỉnh Hàn Tuyết Phong tháng trước</textarea></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Last emotional event</strong><div class="field-key">flexible_state.last_emotional_event</div></div>
+          <div class="field-value"><textarea rows="2" placeholder="(LLM-managed)"></textarea></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <h4 style="margin-top: 1.5rem; font-size: 0.9375rem;">Ideology stances <small class="subtle">(multi-stance V1; Wuxia syncretism)</small></h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Stance 1</strong><div class="field-key">ideology[0]</div></div>
+          <div class="field-value" style="display: flex; gap: 0.5rem;">
+            <select style="flex: 2;">
+              <option selected>ideology.dao_traditional</option>
+              <option>ideology.buddhism</option>
+              <option>ideology.confucianism</option>
+              <option>ideology.dark_path</option>
+            </select>
+            <select style="flex: 1;">
+              <option>None</option>
+              <option selected>Light</option>
+              <option>Moderate</option>
+              <option>Devout</option>
+              <option>Zealous</option>
+            </select>
+            <button class="btn-secondary" style="padding: 0.25rem 0.625rem; font-size: 0.75rem;">×</button>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Stance 2</strong><div class="field-key">ideology[1]</div></div>
+          <div class="field-value" style="display: flex; gap: 0.5rem;">
+            <select style="flex: 2;">
+              <option>(none)</option>
+              <option>ideology.dao_traditional</option>
+              <option selected>ideology.confucianism</option>
+            </select>
+            <select style="flex: 1;">
+              <option>None</option>
+              <option selected>Light</option>
+              <option>Moderate</option>
+            </select>
+            <button class="btn-secondary" style="padding: 0.25rem 0.625rem; font-size: 0.75rem;">×</button>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <button class="btn-secondary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem; margin-top: 0.5rem;">+ Add stance</button>
+      </section>
+
+      <!-- C. KNOWLEDGE & LANGUAGES -->
+      <section class="section" id="knowledge">
+        <h3>C. Knowledge & Languages <span class="badge badge-v1">2 fields V1</span></h3>
+        <p class="feature-ref">Owner: <code>IDF_002 actor_language_proficiency + ACT_001 actor_core.knowledge_tags</code></p>
+
+        <div class="field-row">
+          <div class="field-label"><strong>Knowledge tags</strong><div class="field-key">actor_core.knowledge_tags</div></div>
+          <div class="field-value">
+            <div style="display: flex; flex-wrap: wrap; gap: 0.375rem;">
+              <span style="padding: 0.25rem 0.625rem; background: var(--accent-bg); border-radius: 1rem; font-size: 0.75rem;">cultivation_basics ×</span>
+              <span style="padding: 0.25rem 0.625rem; background: var(--accent-bg); border-radius: 1rem; font-size: 0.75rem;">sword_pattern_basic ×</span>
+              <span style="padding: 0.25rem 0.625rem; background: var(--accent-bg); border-radius: 1rem; font-size: 0.75rem;">donghai_geography ×</span>
+              <button class="btn-secondary" style="padding: 0.125rem 0.625rem; font-size: 0.75rem;">+ Add tag</button>
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <h4 style="margin-top: 1rem; font-size: 0.9375rem;">Language proficiency</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Donghai Văn ngôn</strong><div class="field-key">language.donghai_van_ngon</div></div>
+          <div class="field-value">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; font-size: 0.75rem;">
+              <label>Read <input type="number" min="0" max="100" value="100" style="width: 100%;"></label>
+              <label>Write <input type="number" min="0" max="100" value="80" style="width: 100%;"></label>
+              <label>Speak <input type="number" min="0" max="100" value="100" style="width: 100%;"></label>
+              <label>Listen <input type="number" min="0" max="100" value="100" style="width: 100%;"></label>
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Imperial Mandarin</strong><div class="field-key">language.imperial_mandarin</div></div>
+          <div class="field-value">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; font-size: 0.75rem;">
+              <label>Read <input type="number" min="0" max="100" value="40" style="width: 100%;"></label>
+              <label>Write <input type="number" min="0" max="100" value="20" style="width: 100%;"></label>
+              <label>Speak <input type="number" min="0" max="100" value="50" style="width: 100%;"></label>
+              <label>Listen <input type="number" min="0" max="100" value="60" style="width: 100%;"></label>
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <button class="btn-secondary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem; margin-top: 0.5rem;">+ Add language</button>
+      </section>
+
+      <!-- G. FAMILY & LINEAGE -->
+      <section class="section" id="family">
+        <h3>G. Family & Lineage <span class="badge badge-v1">5 V1 + 8 V1+ deferred</span></h3>
+        <p class="feature-ref">Owner: <code>FF_001 family_node + dynasty</code></p>
+
+        <div class="field-row">
+          <div class="field-label"><strong>Father</strong><div class="field-key">family_node.parents[0] (Biological)</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>actor.ly_phu (Lý Phụ — fisherman; deceased 5 years ago)</option>
+              <option>(none)</option>
+              <option>actor.ly_lao_to (Lý Lão Tổ — secret biological father)</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Mother</strong><div class="field-key">family_node.parents[1] (Biological)</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>actor.ly_mau (Lý Mẫu — village herbalist)</option>
+              <option>(none)</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Spouses</strong><div class="field-key">family_node.spouses</div></div>
+          <div class="field-value"><span class="subtle">— (none)</span></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Children</strong><div class="field-key">family_node.children</div></div>
+          <div class="field-value"><span class="subtle">— (none)</span></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Dynasty membership</strong><div class="field-key">dynasty.dynasty_id</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>(commoner — no dynasty)</option>
+              <option>dynasty.li_imperial</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row disabled-field">
+          <div class="field-label"><strong>Sworn brotherhood</strong><div class="field-key">FAC_001 sworn_bond_id</div></div>
+          <div class="field-value"><input disabled value="(deferred — V1+ FAC-D10)"></div>
+          <span class="badge badge-v1plus">FF-D6</span>
+        </div>
+      </section>
+
+      <!-- H+I+J. FACTION / REPUTATION / TITLES -->
+      <section class="section" id="faction">
+        <h3>H + I + J. Faction · Reputation · Titles <span class="badge badge-v1">8 V1 + 9 V1+ deferred</span></h3>
+        <p class="feature-ref">Owner: <code>FAC_001 actor_faction_membership + REP_001 actor_faction_reputation + TIT_001 actor_title_holdings</code></p>
+
+        <h4 style="font-size: 0.9375rem; margin: 0 0 0.5rem 0;">Faction membership <small class="subtle">(V1 cap=1 per Q2 REVISION; V1+ multi-faction)</small></h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Faction</strong><div class="field-key">actor_faction_membership.faction_id</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>faction.donghai_dao_coc (Đông Hải Đạo Cốc)</option>
+              <option>(unaffiliated)</option>
+              <option>faction.imperial_court</option>
+              <option>faction.ma_tong</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Role within faction</strong><div class="field-key">role_id</div></div>
+          <div class="field-value">
+            <select>
+              <option>outer_disciple</option>
+              <option selected>inner_disciple (nội môn)</option>
+              <option>elder</option>
+              <option>master</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Rank within role</strong><div class="field-key">rank_within_role</div></div>
+          <div class="field-value"><input type="number" min="0" max="65535" value="3"></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Master</strong><div class="field-key">master_actor_id</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>actor.ly_lao_to (Lý Lão Tổ — Đại Trưởng Lão)</option>
+              <option>(none)</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <h4 style="font-size: 0.9375rem; margin: 1rem 0 0.5rem 0;">Reputation rows <small class="subtle">(sparse per-faction; default Neutral if no row)</small></h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Đông Hải Đạo Cốc</strong><div class="field-key">rep[donghai_dao_coc]</div></div>
+          <div class="field-value">
+            <div class="stat-bar">
+              <input type="range" min="-1000" max="1000" value="250">
+              <span class="stat-val">+250</span>
+              <span style="font-size: 0.75rem; color: var(--accent); margin-left: 0.5rem;">Friendly · Đệ tử</span>
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Ma Tông</strong><div class="field-key">rep[ma_tong]</div></div>
+          <div class="field-value">
+            <div class="stat-bar">
+              <input type="range" min="-1000" max="1000" value="-300">
+              <span class="stat-val">-300</span>
+              <span style="font-size: 0.75rem; color: #991b1b; margin-left: 0.5rem;">Hostile · Nghịch tặc</span>
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <button class="btn-secondary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem;">+ Add faction reputation row</button>
+
+        <h4 style="font-size: 0.9375rem; margin: 1rem 0 0.5rem 0;">Title holdings <small class="subtle">(sparse; per-title MultiHoldPolicy enforced)</small></h4>
+        <div class="field-value subtle">— (chưa giữ tước hiệu nào — đệ tử nội môn chưa đủ rank cho Trưởng Lão title)</div>
+        <button class="btn-secondary" style="font-size: 0.8125rem; padding: 0.375rem 0.875rem; margin-top: 0.5rem;">+ Grant title</button>
+      </section>
+
+      <!-- K. SKILLS & PROGRESSION -->
+      <section class="section" id="progression">
+        <h3>K. Skills & Progression <span class="badge badge-v1">Per-reality kinds</span></h3>
+        <p class="feature-ref">Owner: <code>PROG_001 actor_progression</code> · Reality declares kinds — Đông Phong Cõi: 1 Stage (qi_cultivation 7-realm) + 1 Skill (sword_arts) + 1 Attribute (intelligence)</p>
+
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Qi Cultivation</strong>
+            <div class="field-key">qi_cultivation (Stage · Body) · 7 realms × 1 stage = 7 tiers</div>
+          </div>
+          <div class="field-value">
+            <select style="margin-bottom: 0.375rem;">
+              <option>Realm 1: Ngưng Khí</option>
+              <option selected>Realm 1.7: Ngưng Khí thất tầng</option>
+              <option>Realm 2: Trúc Cơ</option>
+              <option>Realm 3: Kết Đan</option>
+              <option>Realm 4: Nguyên Anh</option>
+              <option>Realm 5: Hóa Thần</option>
+              <option>Realm 6: Anh Biến</option>
+              <option>Realm 7: Vấn Đỉnh</option>
+            </select>
+            <div class="stat-bar"><input type="range" min="0" max="1000" value="720"><span class="stat-val">720/1000</span></div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Sword Arts</strong>
+            <div class="field-key">sword_arts (Skill · Body) · derives_from intelligence</div>
+          </div>
+          <div class="field-value">
+            <div class="stat-bar"><input type="range" min="0" max="1000" value="320"><span class="stat-val">320/1000</span></div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">
+            <strong>Intelligence</strong>
+            <div class="field-key">intelligence (Attribute · Soul)</div>
+          </div>
+          <div class="field-value">
+            <div class="stat-bar"><input type="range" min="0" max="100" value="22"><span class="stat-val">22</span></div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <p class="subtle" style="font-size: 0.8125rem; margin-top: 0.75rem;">Author of reality declared 3 progression kinds. Other kinds (alchemy / talisman / array) not declared — would appear here if added.</p>
+      </section>
+
+      <!-- L. RESOURCES & INVENTORY -->
+      <section class="section" id="resources">
+        <h3>L. Resources & Inventory <span class="badge badge-v1">8 fields V1</span></h3>
+        <p class="feature-ref">Owner: <code>RES_001 vital_pool + resource_inventory</code></p>
+
+        <h4 style="font-size: 0.9375rem; margin: 0 0 0.5rem 0;">Vital pools (body-bound; can't transfer)</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>HP</strong><div class="field-key">vital_pool.Hp</div></div>
+          <div class="field-value">
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="number" min="0" value="100" style="flex: 1;">
+              <span style="align-self: center;">/</span>
+              <input type="number" min="0" value="100" style="flex: 1;">
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Stamina</strong><div class="field-key">vital_pool.Stamina</div></div>
+          <div class="field-value">
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="number" min="0" value="80" style="flex: 1;">
+              <span style="align-self: center;">/</span>
+              <input type="number" min="0" value="100" style="flex: 1;">
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Mana / Qi</strong><div class="field-key">vital_pool.Mana</div></div>
+          <div class="field-value">
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="number" min="0" value="60" style="flex: 1;">
+              <span style="align-self: center;">/</span>
+              <input type="number" min="0" value="100" style="flex: 1;">
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <h4 style="font-size: 0.9375rem; margin: 1rem 0 0.5rem 0;">Currency (multi-tier xianxia)</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Đồng (copper)</strong><div class="field-key">currency.copper</div></div>
+          <div class="field-value"><input type="number" min="0" value="500"></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Bạc (silver)</strong><div class="field-key">currency.silver</div></div>
+          <div class="field-value"><input type="number" min="0" value="5"></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Vàng (gold)</strong><div class="field-key">currency.gold</div></div>
+          <div class="field-value"><input type="number" min="0" value="0"></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <h4 style="font-size: 0.9375rem; margin: 1rem 0 0.5rem 0;">Inventory</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Items</strong><div class="field-key">resource_inventory.items</div></div>
+          <div class="field-value">
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <div style="display: flex; gap: 0.5rem; font-size: 0.8125rem;"><span style="flex: 1;">Trúc kiếm (bamboo sword)</span><input type="number" value="1" style="width: 60px;"><button class="btn-secondary" style="padding: 0.125rem 0.5rem; font-size: 0.75rem;">×</button></div>
+              <div style="display: flex; gap: 0.5rem; font-size: 0.8125rem;"><span style="flex: 1;">Đan dược thấp (low-tier pill)</span><input type="number" value="3" style="width: 60px;"><button class="btn-secondary" style="padding: 0.125rem 0.5rem; font-size: 0.75rem;">×</button></div>
+            </div>
+            <button class="btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.625rem; margin-top: 0.375rem;">+ Add item</button>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <h4 style="font-size: 0.9375rem; margin: 1rem 0 0.5rem 0;">Global fame (DISTINCT from REP_001 per-faction)</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>SocialCurrency::Reputation</strong><div class="field-key">resource_inventory.social.reputation</div></div>
+          <div class="field-value"><input type="number" value="0"> <span class="subtle" style="font-size: 0.75rem;">(unbounded i64; "danh tiếng" wuxia world fame)</span></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+      </section>
+
+      <!-- M. PC BODY MEMORY (xuyen khong) -->
+      <section class="section" id="xuyen-khong">
+        <h3>M. PC Body Memory <span class="badge badge-v1">PC-specific · 13 fields V1</span></h3>
+        <p class="feature-ref">Owner: <code>PCS_001 pc_user_binding.body_memory</code> · Visible only when actor.kind == Pc</p>
+
+        <h4 style="font-size: 0.9375rem; margin: 0 0 0.5rem 0;">Soul Layer (linh hồn)</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Origin world ref</strong><div class="field-key">soul.origin_world_ref</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>(none — native PC)</option>
+              <option>glossary.earth_modern_2026 (xuyên không)</option>
+              <option>glossary.faerun (cross-reality V2+)</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Soul knowledge tags</strong><div class="field-key">soul.knowledge_tags</div></div>
+          <div class="field-value">
+            <div style="display: flex; flex-wrap: wrap; gap: 0.375rem;">
+              <span class="subtle" style="font-size: 0.8125rem;">— (none — native soul; for xuyên không enable: internet/AI/firearms/wuxia_meta_knowledge/etc.)</span>
+            </div>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Native skills (V1 empty Vec)</strong><div class="field-key">soul.native_skills</div></div>
+          <div class="field-value"><span class="subtle" style="font-size: 0.8125rem;">[] (V1 schema-reserved; runtime activation V1+)</span></div>
+          <span class="badge badge-v1">V1 schema</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Native language</strong><div class="field-key">soul.native_language</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>language.donghai_van_ngon</option>
+              <option>language.vietnamese (xuyên không)</option>
+              <option>language.english</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <h4 style="font-size: 0.9375rem; margin: 1rem 0 0.5rem 0;">Body Layer (thân xác)</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Host body ref</strong><div class="field-key">body.host_body_ref</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>(none — native body)</option>
+              <option>glossary.actor.deceased_ly_minh_npc (xuyên không host)</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Body knowledge tags</strong><div class="field-key">body.knowledge_tags</div></div>
+          <div class="field-value"><span class="subtle" style="font-size: 0.8125rem;">— (none for native PC; for xuyên không: muscle memory of host body's skills)</span></div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>Motor skills (V1 empty Vec)</strong><div class="field-key">body.motor_skills</div></div>
+          <div class="field-value"><span class="subtle" style="font-size: 0.8125rem;">[] (V1 schema-reserved; runtime activation V1+)</span></div>
+          <span class="badge badge-v1">V1 schema</span>
+        </div>
+
+        <h4 style="font-size: 0.9375rem; margin: 1rem 0 0.5rem 0;">Leakage policy</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>LeakagePolicy</strong><div class="field-key">body_memory.leakage_policy</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>NoLeakage</option>
+              <option>SoulPrimary { body_blurts_threshold: 0.3 }</option>
+              <option>BodyPrimary { soul_slips_threshold: 0.3 }</option>
+              <option>Balanced</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+
+        <h4 style="font-size: 0.9375rem; margin: 1rem 0 0.5rem 0;">Mortality</h4>
+        <div class="field-row">
+          <div class="field-label"><strong>Mortality state</strong><div class="field-key">pc_mortality_state.state</div></div>
+          <div class="field-value">
+            <select>
+              <option selected>Alive</option>
+              <option>Dying</option>
+              <option>Dead</option>
+              <option>Ghost</option>
+            </select>
+          </div>
+          <span class="badge badge-v1">V1</span>
+        </div>
+      </section>
+
+      <!-- N+O+P. SYSTEM (read-only) -->
+      <section class="section" id="system">
+        <h3>N + O + P. System (read-only) <span class="badge badge-system">5 fields system-managed</span></h3>
+        <p class="feature-ref">Owner: <code>TDIL_001 actor_clocks + EF_001 entity_binding + AIT_001 NpcTrackingTier</code></p>
+
+        <div class="field-row">
+          <div class="field-label"><strong>actor_clock</strong><div class="field-key">actor_clocks.actor_clock</div></div>
+          <div class="field-value"><input value="0 (initialized at canonical seed)" disabled></div>
+          <span class="badge badge-locked">SYS</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>soul_clock</strong><div class="field-key">actor_clocks.soul_clock</div></div>
+          <div class="field-value"><input value="0 (initialized; xuyên không: source_a.soul_clock)" disabled></div>
+          <span class="badge badge-locked">SYS</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>body_clock</strong><div class="field-key">actor_clocks.body_clock</div></div>
+          <div class="field-value"><input value="0 (initialized; xuyên không: source_b.body_clock)" disabled></div>
+          <span class="badge badge-locked">SYS</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>cell_id (current)</strong><div class="field-key">entity_binding.cell_id</div></div>
+          <div class="field-value"><input value="cell.donghai_dao_coc.tu_luyen_that (sourced from spawn_cell)" disabled></div>
+          <span class="badge badge-locked">SYS</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label"><strong>tier_hint</strong><div class="field-key">NpcTrackingTier</div></div>
+          <div class="field-value"><input value="(PC always None — AIT_001 NPCs only)" disabled></div>
+          <span class="badge badge-locked">PC=N/A</span>
+        </div>
+      </section>
+
+      <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+        <button class="btn-secondary" onclick="window.location.href='03b_custom_pc.html'">← Quay về Wizard cơ bản</button>
+        <button class="btn-secondary">💾 Lưu draft (V1+30d)</button>
+        <button class="btn-primary" onclick="window.location.href='04_confirm.html'">Tiếp tục → Xác nhận</button>
+      </div>
+    </main>
+
+    <!-- AI ASSISTANT PANEL -->
+    <aside class="ai-panel">
+      <div class="card" style="background: linear-gradient(135deg, var(--paper), var(--accent-bg));">
+        <h4 style="margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.25rem;">✨</span> AI Assistant
+        </h4>
+        <p class="subtle" style="margin: 0 0 0.75rem 0; font-size: 0.8125rem;">Mô tả nhân vật bằng tiếng Việt — AI sẽ điền các fields tương ứng.</p>
+
+        <textarea class="ai-input" placeholder="Ví dụ: 'Một thiếu nữ hồ ly tinh, là con gái bí mật của Hoàng đế, từng đọc nhiều tiểu thuyết tu tiên ở Trái Đất và xuyên không vào đây. Cá tính cunning, tu vi Trúc Cơ, biết kiếm pháp + bùa chú. Sống ở Đông Hải Đạo Cốc nhưng bí mật là gián điệp của Ma Tông...'">Một thiếu nữ hồ ly tinh, là con gái bí mật của Hoàng đế, từng đọc nhiều tiểu thuyết tu tiên ở Trái Đất và xuyên không vào đây.</textarea>
+
+        <button class="btn-primary" style="width: 100%; margin-top: 0.5rem;">✨ AI điền các fields</button>
+
+        <div class="brush-divider"></div>
+
+        <div class="ai-suggestion">
+          <strong>📋 AI suggestions (3 fields modified):</strong>
+          <ul style="margin: 0.5rem 0 0 0; padding-left: 1.25rem; line-height: 1.6;">
+            <li><code>race_id</code> → <strong>fox_spirit_lineage</strong></li>
+            <li><code>gender_pronouns</code> → <strong>cô/em (f)</strong></li>
+            <li><code>soul.origin_world_ref</code> → <strong>earth_modern_2026</strong></li>
+            <li><code>soul.knowledge_tags</code> → <strong>+wuxia_meta_knowledge, +internet</strong></li>
+            <li><code>family.father</code> → <strong>actor.imperial_emperor (secret)</strong></li>
+            <li><code>faction.faction_id</code> → <strong>donghai_dao_coc</strong> (cover)</li>
+            <li><code>faction.role_id</code> → <strong>inner_disciple</strong></li>
+            <li><code>rep[ma_tong]</code> → <strong>+800 Revered</strong> (secret spy ally)</li>
+            <li><code>rep[donghai_dao_coc]</code> → <strong>+200 Friendly</strong> (cover identity)</li>
+            <li><code>secret_held</code> → <strong>"True identity: Imperial princess + Ma Tông spy + Earth-soul transmigrator"</strong></li>
+            <li><code>personality.archetype_id</code> → <strong>Cunning</strong></li>
+            <li>... +5 more</li>
+          </ul>
+          <div style="display: flex; gap: 0.375rem; margin-top: 0.625rem;">
+            <button class="btn-primary" style="flex: 1; padding: 0.375rem 0.625rem; font-size: 0.75rem;">Apply all</button>
+            <button class="btn-secondary" style="flex: 1; padding: 0.375rem 0.625rem; font-size: 0.75rem;">Review one-by-one</button>
+            <button class="btn-secondary" style="padding: 0.375rem 0.625rem; font-size: 0.75rem;">×</button>
+          </div>
+        </div>
+
+        <div class="brush-divider"></div>
+
+        <h5 style="font-size: 0.8125rem; margin: 0 0 0.5rem 0;">Quick AI actions</h5>
+        <div style="display: flex; flex-direction: column; gap: 0.375rem;">
+          <button class="btn-secondary" style="font-size: 0.75rem; text-align: left; padding: 0.375rem 0.625rem;">🎲 Surprise me — random valid character</button>
+          <button class="btn-secondary" style="font-size: 0.75rem; text-align: left; padding: 0.375rem 0.625rem;">🌙 Make this character more <em>tragic</em></button>
+          <button class="btn-secondary" style="font-size: 0.75rem; text-align: left; padding: 0.375rem 0.625rem;">🦊 Make this character more <em>cunning</em></button>
+          <button class="btn-secondary" style="font-size: 0.75rem; text-align: left; padding: 0.375rem 0.625rem;">⚔ Generate backstory hook</button>
+          <button class="btn-secondary" style="font-size: 0.75rem; text-align: left; padding: 0.375rem 0.625rem;">🔍 Validate consistency</button>
+          <button class="btn-secondary" style="font-size: 0.75rem; text-align: left; padding: 0.375rem 0.625rem;">📚 Open AI Assistant full screen →</button>
+        </div>
+
+        <div style="margin-top: 1rem; padding: 0.5rem 0.75rem; background: var(--paper-soft); border-radius: 0.375rem; font-size: 0.75rem; color: var(--ink-muted); line-height: 1.5;">
+          <strong>💡 AI có constraint awareness:</strong>
+          <ul style="margin: 0.25rem 0 0 0; padding-left: 1rem;">
+            <li>Đọc <code>RealityManifest</code> — chỉ suggest valid races/factions/titles</li>
+            <li>Skip V1+ deferred fields (won't suggest things engine không support V1)</li>
+            <li>Cross-feature consistency check (sect membership ↔ ideology binding)</li>
+            <li>Reality-aware (Đông Phong Cõi ≠ Saigon ≠ Faerûn)</li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+
+  // Update slider value display
+  document.querySelectorAll('.stat-bar input[type="range"]').forEach(slider => {
+    const valSpan = slider.parentElement.querySelector('.stat-val');
+    if (valSpan) {
+      slider.addEventListener('input', () => {
+        const text = valSpan.textContent.split('/');
+        valSpan.textContent = text.length > 1 ? `${slider.value}/${text[1]}` : slider.value;
+      });
+    }
+  });
+</script>
+</body>
+</html>

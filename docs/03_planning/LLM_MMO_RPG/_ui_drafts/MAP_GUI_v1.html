@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>LoreWeave LLM MMO RPG — Map GUI Draft v1 (Chu Tước Tinh)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: #0d1117; color: #e6edf3; display: flex; flex-direction: column; }
+
+  header.topbar {
+    padding: 12px 20px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header.topbar h1 {
+    font-size: 14px;
+    font-weight: 500;
+    color: #7d8590;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  nav.breadcrumb { display: flex; gap: 6px; align-items: center; flex: 1; font-size: 14px; }
+  nav.breadcrumb button {
+    background: none;
+    border: none;
+    color: #58a6ff;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font: inherit;
+  }
+  nav.breadcrumb button:hover { background: #1f6feb22; }
+  nav.breadcrumb .sep { color: #484f58; }
+  nav.breadcrumb .current { color: #e6edf3; font-weight: 500; }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    overflow: hidden;
+  }
+
+  section.viewport {
+    position: relative;
+    background:
+      radial-gradient(ellipse at center, #161b22 0%, #0d1117 70%),
+      repeating-linear-gradient(0deg, #161b22 0 1px, transparent 1px 60px),
+      repeating-linear-gradient(90deg, #161b22 0 1px, transparent 1px 60px);
+    overflow: hidden;
+  }
+  section.viewport svg { width: 100%; height: 100%; cursor: grab; }
+  section.viewport svg:active { cursor: grabbing; }
+
+  /* Edge styles */
+  .edge { stroke: #30363d; stroke-width: 2; fill: none; transition: stroke 0.2s; }
+  .edge.public { stroke: #4d5762; stroke-dasharray: none; }
+  .edge.private { stroke: #6e3a8a; stroke-dasharray: 6,4; }
+  .edge.locked { stroke: #d29922; stroke-dasharray: 2,4; }
+  .edge.hidden { stroke: #484f58; stroke-dasharray: 1,3; opacity: 0.5; }
+  .edge.oneway { stroke: #f85149; }
+  .edge:hover { stroke: #58a6ff; stroke-width: 3; }
+
+  /* Node styles */
+  .node { cursor: pointer; transition: transform 0.15s; }
+  .node:hover { transform: scale(1.08); transform-origin: center; transform-box: fill-box; }
+  .node circle {
+    fill: #21262d;
+    stroke: #30363d;
+    stroke-width: 2;
+    transition: all 0.2s;
+  }
+  .node:hover circle { stroke: #58a6ff; fill: #1f6feb22; }
+  .node.selected circle { stroke: #58a6ff; stroke-width: 3; fill: #1f6feb44; }
+  .node.tier-country circle { r: 36; }
+  .node.tier-region circle { r: 28; }
+  .node.tier-cell circle { r: 22; fill: #2d2618; stroke: #d29922; }
+
+  .node text.label {
+    fill: #e6edf3;
+    font-size: 13px;
+    font-weight: 500;
+    text-anchor: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+  .node text.sublabel {
+    fill: #7d8590;
+    font-size: 11px;
+    text-anchor: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Node icons by PlaceType (cell-tier) */
+  .node text.icon {
+    font-size: 18px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Status overlays */
+  .node.damaged circle { stroke: #d29922; }
+  .node.destroyed circle { stroke: #f85149; stroke-dasharray: 4,3; opacity: 0.6; }
+
+  /* Sidebar */
+  aside.sidebar {
+    background: #161b22;
+    border-left: 1px solid #30363d;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  aside.sidebar h2 { font-size: 12px; color: #7d8590; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+  .info-card {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 14px;
+  }
+  .info-card h3 { font-size: 16px; margin-bottom: 8px; color: #e6edf3; }
+  .info-card .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    background: #1f6feb33;
+    color: #58a6ff;
+    margin-right: 6px;
+    margin-bottom: 4px;
+  }
+  .info-card .badge.canon { background: #d2992233; color: #d29922; }
+  .info-card .badge.author { background: #6e3a8a33; color: #b481d4; }
+  .info-card .badge.damaged { background: #d2992233; color: #d29922; }
+  .info-card .badge.destroyed { background: #f8514933; color: #f85149; }
+  .info-card p { color: #b8b8b8; font-size: 13px; line-height: 1.5; margin-top: 8px; }
+  .info-card .field {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 12px;
+    color: #7d8590;
+  }
+  .info-card .field strong { color: #e6edf3; font-weight: 500; }
+
+  .sidebar-empty {
+    color: #7d8590;
+    font-style: italic;
+    font-size: 13px;
+    text-align: center;
+    padding: 40px 20px;
+    border: 1px dashed #30363d;
+    border-radius: 6px;
+  }
+
+  button.enter-cell {
+    background: #2ea043;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    margin-top: 10px;
+    width: 100%;
+  }
+  button.enter-cell:hover { background: #3fb950; }
+
+  /* Legend */
+  .legend {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 12px;
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0;
+    color: #b8b8b8;
+  }
+  .legend-swatch {
+    width: 24px;
+    height: 2px;
+    background: #4d5762;
+    flex-shrink: 0;
+  }
+  .legend-swatch.private { background: #6e3a8a; height: 0; border-top: 2px dashed #6e3a8a; }
+  .legend-swatch.locked { background: #d29922; height: 0; border-top: 2px dashed #d29922; }
+  .legend-swatch.hidden { background: #484f58; opacity: 0.5; }
+  .legend-swatch.oneway { background: #f85149; }
+
+  /* Bottom bar */
+  footer.bottombar {
+    padding: 8px 20px;
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #7d8590;
+  }
+  footer.bottombar .meta { display: flex; gap: 16px; }
+  footer.bottombar code { background: #0d1117; padding: 2px 6px; border-radius: 3px; color: #b8b8b8; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>LoreWeave Map</h1>
+    <nav class="breadcrumb" id="breadcrumb">
+      <!-- populated by JS -->
+    </nav>
+    <div style="font-size: 12px; color: #7d8590;">
+      Reality: <code style="background: #0d1117; padding: 2px 6px; border-radius: 3px; color: #58a6ff;">r_tien_nghich_001</code>
+    </div>
+  </header>
+
+  <main>
+    <section class="viewport">
+      <svg id="map" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#f85149" />
+          </marker>
+        </defs>
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+      </svg>
+    </section>
+
+    <aside class="sidebar">
+      <div>
+        <h2>Selected Node</h2>
+        <div id="info-pane">
+          <div class="sidebar-empty">Click a node to inspect</div>
+        </div>
+      </div>
+
+      <div>
+        <h2>Legend</h2>
+        <div class="legend">
+          <div class="legend-row"><span class="legend-swatch"></span> Public</div>
+          <div class="legend-row"><span class="legend-swatch private"></span> Private (resident-gated)</div>
+          <div class="legend-row"><span class="legend-swatch locked"></span> Locked (gate fixture)</div>
+          <div class="legend-row"><span class="legend-swatch hidden"></span> Hidden (V1: visible-to-all)</div>
+          <div class="legend-row"><span class="legend-swatch oneway"></span> One-way</div>
+        </div>
+      </div>
+
+      <div>
+        <h2>Tier hint</h2>
+        <div style="font-size: 12px; color: #b8b8b8; line-height: 1.5;">
+          <div>● large = country</div>
+          <div>● medium = region/district</div>
+          <div style="color: #d29922;">● gold = cell (drill-leaf)</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="bottombar">
+    <div class="meta">
+      <span>Tier: <strong id="current-tier">—</strong></span>
+      <span>Nodes: <strong id="node-count">—</strong></span>
+      <span>Connections: <strong id="edge-count">—</strong></span>
+    </div>
+    <div>
+      Demo data — Chu Tước Tinh (Tiên Nghịch reference) — V1 draft 2026-04-26
+    </div>
+  </footer>
+
+  <script>
+    // ─── Demo data (would come from PF_001 + RealityManifest in real impl) ───
+    const REALITY = {
+      reality_id: "r_tien_nghich_001",
+      hierarchy: {
+        // Top-level: continent/star
+        id: "continent:chu_tuoc_tinh",
+        tier: "continent",
+        display_name: "Chu Tước Tinh",
+        canon_ref: { type: "BookCanon", chapter: "Quyển 1 — Hồng Hoang" },
+        description: "Một trong tứ thánh thiên tinh cầu của Đông Cực. Trú ngụ của các tu sĩ Nhân tộc.",
+        children: [
+          {
+            id: "country:dai_tong",
+            tier: "country",
+            display_name: "Đại Tống",
+            position: { x: 200, y: 180 },
+            canon_source: "canon",
+            description: "Trung tâm văn hóa, ngàn năm hưng thịnh. Nhiều tông môn lớn.",
+            children: [
+              { id: "region:lin_an_district", display_name: "Lâm An Phủ", tier: "region", position: { x: 150, y: 230 } },
+              { id: "region:hangzhou_district", display_name: "Hàng Châu Phủ", tier: "region", position: { x: 250, y: 130 } },
+            ],
+            connections: [
+              { to: "country:tay_van", kind: "public", canon_ref: "Quan đạo cổ" },
+              { to: "country:bac_chau", kind: "private", canon_ref: "Đường biên ải" },
+            ],
+          },
+          {
+            id: "country:tay_van",
+            tier: "country",
+            display_name: "Tây Vân Quốc",
+            position: { x: 450, y: 220 },
+            canon_source: "canon",
+            description: "Quốc gia phía tây, đa dạng kỳ trận.",
+            children: [
+              { id: "region:tay_van_capital", display_name: "Vân Hải Đô", tier: "region", position: { x: 450, y: 270 } },
+            ],
+            connections: [
+              { to: "country:nam_man", kind: "locked", canon_ref: "Đại sơn cổng môn" },
+            ],
+          },
+          {
+            id: "country:bac_chau",
+            tier: "country",
+            display_name: "Bắc Châu Hàn Quốc",
+            position: { x: 350, y: 90 },
+            canon_source: "canon",
+            description: "Lạnh giá quanh năm, cường tộc hùng mạnh.",
+            children: [],
+            connections: [
+              { to: "country:dai_tong", kind: "private" },
+            ],
+          },
+          {
+            id: "country:nam_man",
+            tier: "country",
+            display_name: "Nam Man",
+            position: { x: 600, y: 380 },
+            canon_source: "canon",
+            description: "Vùng hoang mạc phía nam, ma tu chi địa.",
+            children: [],
+            connections: [
+              { to: "country:tay_van", kind: "locked" },
+              { to: "country:dao_thien", kind: "oneway", canon_ref: "Cổng cấm địa" },
+            ],
+          },
+          {
+            id: "country:dao_thien",
+            tier: "country",
+            display_name: "Đảo Thiên Quốc",
+            position: { x: 680, y: 480 },
+            canon_source: "author",
+            description: "Quốc đảo, Co-Author thêm vào (drift).",
+            children: [],
+            connections: [],
+          },
+        ],
+      },
+    };
+
+    // Fake region drill-down: Lâm An Phủ inner cells
+    const REGION_DRILLDOWN = {
+      "region:lin_an_district": {
+        id: "region:lin_an_district",
+        tier: "region",
+        display_name: "Lâm An Phủ",
+        canon_ref: { type: "BookCanon", chapter: "Q3 C12" },
+        description: "Phủ lớn ven sông; nhiều tông môn nhỏ + thị trấn buôn bán sầm uất.",
+        children: [
+          { id: "cell:lin_an_market", display_name: "Lâm An Chợ", tier: "cell", place_type: "Marketplace", position: { x: 200, y: 200 }, structural_state: "Pristine", icon: "🏪" },
+          { id: "cell:yen_vu_lau", display_name: "Yên Vũ Lâu", tier: "cell", place_type: "Tavern", position: { x: 380, y: 280 }, structural_state: "Pristine", icon: "🍵" },
+          { id: "cell:white_cloud_temple", display_name: "Bạch Vân Tự", tier: "cell", place_type: "Temple", position: { x: 540, y: 180 }, structural_state: "Damaged", icon: "⛩️" },
+          { id: "cell:south_road", display_name: "Quan Đạo Nam", tier: "cell", place_type: "Road", position: { x: 200, y: 400 }, structural_state: "Pristine", icon: "🛤️" },
+          { id: "cell:abandoned_workshop", display_name: "Cũ Lò Rèn", tier: "cell", place_type: "Workshop", position: { x: 600, y: 400 }, structural_state: "Destroyed", icon: "🔥" },
+        ],
+        connections: [
+          { from: "cell:lin_an_market", to: "cell:yen_vu_lau", kind: "public" },
+          { from: "cell:lin_an_market", to: "cell:white_cloud_temple", kind: "public" },
+          { from: "cell:yen_vu_lau", to: "cell:south_road", kind: "public" },
+          { from: "cell:white_cloud_temple", to: "cell:abandoned_workshop", kind: "hidden" },
+          { from: "cell:south_road", to: "cell:abandoned_workshop", kind: "locked" },
+        ],
+      },
+      "region:hangzhou_district": {
+        id: "region:hangzhou_district",
+        tier: "region",
+        display_name: "Hàng Châu Phủ",
+        canon_ref: { type: "BookCanon", chapter: "Q4 C2" },
+        description: "Trung tâm thương mại, vô cùng phát triển. Nhiều cell ẩn.",
+        children: [
+          { id: "cell:hangzhou_west_lake", display_name: "Tây Hồ", tier: "cell", place_type: "Wilderness", position: { x: 250, y: 200 }, structural_state: "Pristine", icon: "🌊" },
+          { id: "cell:hangzhou_market", display_name: "Hàng Châu Đại Chợ", tier: "cell", place_type: "Marketplace", position: { x: 450, y: 250 }, structural_state: "Pristine", icon: "🏪" },
+        ],
+        connections: [
+          { from: "cell:hangzhou_west_lake", to: "cell:hangzhou_market", kind: "public" },
+        ],
+      },
+      "region:tay_van_capital": {
+        id: "region:tay_van_capital",
+        tier: "region",
+        display_name: "Vân Hải Đô",
+        canon_ref: { type: "BookCanon", chapter: "Q5 C1" },
+        description: "Thủ đô Tây Vân Quốc.",
+        children: [
+          { id: "cell:tay_van_throne", display_name: "Cung Điện", tier: "cell", place_type: "OfficialHall", position: { x: 400, y: 250 }, structural_state: "Pristine", icon: "👑" },
+        ],
+        connections: [],
+      },
+    };
+
+    // ─── State ───
+    let breadcrumb = [
+      { id: REALITY.hierarchy.id, name: REALITY.hierarchy.display_name, tier: "continent" },
+    ];
+    let currentNode = REALITY.hierarchy;  // start at continent showing countries
+    let selectedNodeId = null;
+
+    // ─── Render ───
+    function render() {
+      // Breadcrumb
+      const bc = document.getElementById("breadcrumb");
+      bc.innerHTML = "";
+      breadcrumb.forEach((entry, i) => {
+        if (i === breadcrumb.length - 1) {
+          const span = document.createElement("span");
+          span.className = "current";
+          span.textContent = entry.name;
+          bc.appendChild(span);
+        } else {
+          const btn = document.createElement("button");
+          btn.textContent = entry.name;
+          btn.onclick = () => navigateTo(i);
+          bc.appendChild(btn);
+          const sep = document.createElement("span");
+          sep.className = "sep";
+          sep.textContent = "▸";
+          bc.appendChild(sep);
+        }
+      });
+
+      // SVG nodes + edges
+      const edgesLayer = document.getElementById("edges-layer");
+      const nodesLayer = document.getElementById("nodes-layer");
+      edgesLayer.innerHTML = "";
+      nodesLayer.innerHTML = "";
+
+      const children = currentNode.children || [];
+
+      // Edges first (drawn behind nodes)
+      let edges = [];
+      if (currentNode.tier === "continent" || currentNode.tier === "country") {
+        // Use children's connections at this tier
+        children.forEach(child => {
+          (child.connections || []).forEach(conn => {
+            const target = children.find(c => c.id === conn.to);
+            if (target) {
+              edges.push({ from: child, to: target, kind: conn.kind, canon_ref: conn.canon_ref });
+            }
+          });
+        });
+      } else if (currentNode.connections) {
+        // Cell-level: use parent's connections array
+        currentNode.connections.forEach(conn => {
+          const fromNode = children.find(c => c.id === conn.from);
+          const toNode = children.find(c => c.id === conn.to);
+          if (fromNode && toNode) {
+            edges.push({ from: fromNode, to: toNode, kind: conn.kind, canon_ref: conn.canon_ref });
+          }
+        });
+      }
+
+      edges.forEach(e => {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        path.setAttribute("class", `edge ${e.kind}`);
+        path.setAttribute("x1", e.from.position.x);
+        path.setAttribute("y1", e.from.position.y);
+        path.setAttribute("x2", e.to.position.x);
+        path.setAttribute("y2", e.to.position.y);
+        if (e.kind === "oneway") path.setAttribute("marker-end", "url(#arrow)");
+        path.addEventListener("click", () => alert(`Connection: ${e.from.display_name} → ${e.to.display_name}\nKind: ${e.kind}\nCanon: ${e.canon_ref || "(author-added; no book grounding)"}`));
+        edgesLayer.appendChild(path);
+      });
+
+      // Nodes
+      children.forEach(child => {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.setAttribute("class", `node tier-${child.tier} ${child.structural_state ? child.structural_state.toLowerCase() : ""}`);
+        g.setAttribute("transform", `translate(${child.position.x}, ${child.position.y})`);
+        if (selectedNodeId === child.id) g.classList.add("selected");
+
+        const r = child.tier === "country" ? 36 : (child.tier === "region" ? 28 : 22);
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("r", r);
+        g.appendChild(circle);
+
+        // Cell-tier gets icon
+        if (child.tier === "cell" && child.icon) {
+          const icon = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          icon.setAttribute("class", "icon");
+          icon.setAttribute("y", 2);
+          icon.textContent = child.icon;
+          g.appendChild(icon);
+        }
+
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("class", "label");
+        label.setAttribute("y", r + 14);
+        label.textContent = child.display_name;
+        g.appendChild(label);
+
+        if (child.tier === "cell" && child.place_type) {
+          const sublabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          sublabel.setAttribute("class", "sublabel");
+          sublabel.setAttribute("y", r + 28);
+          sublabel.textContent = child.place_type;
+          g.appendChild(sublabel);
+        }
+
+        g.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          onNodeClick(child);
+        });
+
+        nodesLayer.appendChild(g);
+      });
+
+      // Footer counts
+      document.getElementById("current-tier").textContent = currentNode.tier || "—";
+      document.getElementById("node-count").textContent = children.length;
+      document.getElementById("edge-count").textContent = edges.length;
+    }
+
+    function onNodeClick(node) {
+      selectedNodeId = node.id;
+
+      // Render info pane
+      const pane = document.getElementById("info-pane");
+      const isCell = node.tier === "cell";
+      let badges = "";
+      if (node.canon_source === "canon") badges += '<span class="badge canon">📖 book canon</span>';
+      else if (node.canon_source === "author") badges += '<span class="badge author">✏ author</span>';
+      if (node.tier) badges += `<span class="badge">${node.tier}</span>`;
+      if (node.place_type) badges += `<span class="badge">${node.place_type}</span>`;
+      if (node.structural_state === "Damaged") badges += '<span class="badge damaged">⚠ Damaged</span>';
+      if (node.structural_state === "Destroyed") badges += '<span class="badge destroyed">✗ Destroyed</span>';
+
+      const description = node.description || `(no description; ${node.tier} node)`;
+
+      pane.innerHTML = `
+        <div class="info-card">
+          <h3>${node.display_name}</h3>
+          <div>${badges}</div>
+          <p>${description}</p>
+          <div class="field"><span>id</span><strong><code style="font-size:11px">${node.id}</code></strong></div>
+          ${node.canon_ref && node.canon_ref.chapter ? `<div class="field"><span>canon</span><strong>${node.canon_ref.chapter}</strong></div>` : ""}
+          ${isCell ? `
+            <button class="enter-cell" onclick="alert('Enter cell scene — UI for cell-level scene is OUT OF SCOPE for this map demo. PCS_001 / NPC_001 spawn happens here.')">▶ Enter scene</button>
+          ` : `
+            <button class="enter-cell" onclick="drillDown('${node.id}')" style="background: #1f6feb;">⇲ Drill into ${node.tier === "country" ? "regions" : "cells"}</button>
+          `}
+        </div>
+      `;
+
+      render();
+    }
+
+    function drillDown(nodeId) {
+      // Find the node in current children, descend into it
+      let next;
+      let nextChildren;
+
+      if (currentNode.children) {
+        const child = currentNode.children.find(c => c.id === nodeId);
+        if (child) {
+          if (child.tier === "country" && child.children && child.children.length > 0) {
+            // Descend into country's regions
+            next = {
+              id: child.id,
+              tier: "country",
+              display_name: child.display_name,
+              children: child.children.map(r => ({ ...r, canon_source: "canon" })),
+              connections: [],  // intra-country region connections (none in demo)
+            };
+            nextChildren = child.children;
+          } else if (child.tier === "region" && REGION_DRILLDOWN[child.id]) {
+            // Descend into region's cells
+            next = REGION_DRILLDOWN[child.id];
+            nextChildren = next.children;
+          }
+        }
+      }
+
+      if (!next) {
+        alert(`No drill-down data for ${nodeId} in this demo. (Real impl would query PF_001 + DP channel hierarchy.)`);
+        return;
+      }
+
+      breadcrumb.push({ id: next.id, name: next.display_name, tier: next.tier });
+      currentNode = next;
+      selectedNodeId = null;
+      document.getElementById("info-pane").innerHTML = '<div class="sidebar-empty">Click a node to inspect</div>';
+      render();
+    }
+
+    function navigateTo(crumbIndex) {
+      // Navigate back to a breadcrumb level
+      breadcrumb = breadcrumb.slice(0, crumbIndex + 1);
+      // Re-resolve currentNode by walking from root
+      const targetId = breadcrumb[breadcrumb.length - 1].id;
+      if (targetId === REALITY.hierarchy.id) {
+        currentNode = REALITY.hierarchy;
+      } else {
+        // Try country in continent
+        const country = REALITY.hierarchy.children.find(c => c.id === targetId);
+        if (country) {
+          currentNode = {
+            id: country.id,
+            tier: "country",
+            display_name: country.display_name,
+            children: country.children.map(r => ({ ...r, canon_source: "canon" })),
+            connections: [],
+          };
+        }
+      }
+      selectedNodeId = null;
+      document.getElementById("info-pane").innerHTML = '<div class="sidebar-empty">Click a node to inspect</div>';
+      render();
+    }
+
+    // Init
+    render();
+  </script>
+</body>
+</html>

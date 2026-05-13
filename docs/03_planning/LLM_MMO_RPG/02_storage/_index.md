@@ -46,8 +46,15 @@
 | 33 | [SR04_postmortem_process.md](SR04_postmortem_process.md) | §12AG | 339 | SR4-D1..D10 · root-cause 12-enum | LOCKED |
 | 34 | [SR05_deploy_safety.md](SR05_deploy_safety.md) | §12AH | 348 | SR5-D1..D10 · `deploy_audit` · `feature_flags` | LOCKED |
 | 35 | [99_known_risks_and_close.md](99_known_risks_and_close.md) | §13–§16 | 129 | Known risks · TBC decisions · references | LOCKED |
+| 36 | [SR06_dependency_failure.md](SR06_dependency_failure.md) | §12AI (new, direct-authored 2026-04-24) | 338 | SR6-D1..D10 · `dependency_events` · `contracts/resilience/` · `contracts/lifecycle/` · invariant I16 | LOCKED |
+| 37 | [SR07_chaos_drills.md](SR07_chaos_drills.md) | §12AJ (new, direct-authored 2026-04-24) | 323 | SR7-D1..D10 · `chaos_drills` · `contracts/chaos/experiments.yaml` · IF-40 · activates IF-39g | LOCKED |
+| 38 | [SR08_capacity_scaling.md](SR08_capacity_scaling.md) | §12AK (new, direct-authored 2026-04-24) | 383 | SR8-D1..D11 · `shard_utilization` · `scaling_events` · `contracts/capacity/` · IF-41 · **invariant I17** (capacity budget discipline, approved 2026-04-24) | LOCKED |
+| 39 | [SR09_alert_tuning.md](SR09_alert_tuning.md) | §12AL (new, direct-authored 2026-04-24) | 362 | SR9-D1..D10 · `alert_outcomes` · `alert_silences` · `contracts/alerts/rules.yaml` · IF-42 · 4-severity × 4-action-class taxonomy | LOCKED |
+| 40 | [SR10_supply_chain.md](SR10_supply_chain.md) | §12AM (new, direct-authored 2026-04-24) | 373 | SR10-D1..D11 · `supply_chain_events` · `contracts/supply_chain/` · IF-43 · **invariant I18** (dep pinning discipline, approved 2026-04-24) | LOCKED |
+| 41 | [SR11_turn_ux_reliability.md](SR11_turn_ux_reliability.md) | §12AN (new, direct-authored 2026-04-24) | 475 | SR11-D1..D10 · `turn_outcomes` · `contracts/turn/` · `contracts/errors/` · `contracts/lifecycle/presence.go` · IF-44 · **vocabulary additions `TurnState` (8) + `PresenceState` (6)** (architect-approved 2026-04-24; added to `05_vocabulary.md`) · no direct problem-status moves (corrected from initial draft) | LOCKED |
+| 42 | [SR12_observability_cost.md](SR12_observability_cost.md) | §12AO (new, direct-authored 2026-04-24) | 432 | SR12-D1..D11 · `observability_budget_breaches` · `contracts/observability/` · IF-45 · **invariant I19** (observability inventory discipline, approved 2026-04-24) · S8-D3 extended with Operational tier (1y) · **SRE Review COMPLETE 12/12** | LOCKED |
 
-**Totals:** 36 chunks · 476 561 bytes · 9 843 content lines (source had 10 010 inc. trailing blank lines absorbed in chunk seams).
+**Totals:** 43 chunks (36 split-origin + 7 direct-authored) · 12 455 content lines. SR06–SR12 are authored new content extending the SR series; they are not covered by `chunk_doc.py verify` against the archived monolith (the monolith predates them). **SRE Review complete 12/12** with SR12.
 
 ---
 
@@ -57,9 +64,9 @@
 - **SA+DE Critical:** C1..C5 (plus C1-OW-1..5 orphan-worlds extension)
 - **Adversarial follow-ups:** H1..H6, M-REV-1..6, P1..P4
 - **Security:** S1..S13 (pre-spec for DF3 lives in S13)
-- **SRE:** SR1..SR5 (SR6..SR12 not yet designed — will extend this subfolder)
+- **SRE:** SR1..SR12 (**complete 12/12**)
 - **Schema tables:** all tables defined in §12 sections — see individual files
-- **Go packages:** `contracts/meta/`, `contracts/prompt/`, `contracts/pii/`, `contracts/ws/`, `contracts/service_acl/`, `contracts/entity_status/`
+- **Go packages:** `contracts/meta/`, `contracts/prompt/`, `contracts/pii/`, `contracts/ws/`, `contracts/service_acl/`, `contracts/entity_status/`, `contracts/resilience/` (SR6), `contracts/lifecycle/` (SR6), `contracts/dependencies/` (SR6), `contracts/chaos/` (SR7), `contracts/capacity/` (SR8), `contracts/alerts/` (SR9), `contracts/supply_chain/` (SR10), `contracts/turn/` (SR11), `contracts/errors/` (SR11), `contracts/observability/` (SR12)
 
 External docs link to these IDs, not to specific file paths.
 

@@ -39,12 +39,18 @@ from loreweave_llm.errors import (
     LLMUpstreamError,
 )
 from loreweave_llm.models import (
+    AudioChunkEvent,
+    AudioFormat,
     DoneEvent,
     ErrorEvent,
     ReasoningEvent,
+    SttInput,
+    SttResult,
     StreamEvent,
     StreamRequest,
     TokenEvent,
+    TtsInput,
+    TtsStreamRequest,
     UsageEvent,
 )
 
@@ -58,6 +64,13 @@ __all__ = [
     "UsageEvent",
     "DoneEvent",
     "ErrorEvent",
+    # Phase 5a audio models
+    "AudioChunkEvent",
+    "AudioFormat",
+    "TtsInput",
+    "TtsStreamRequest",
+    "SttInput",
+    "SttResult",
     # Errors
     "LLMError",
     "LLMAuthFailed",

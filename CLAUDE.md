@@ -31,7 +31,7 @@ Monorepo layout:
 | `glossary-service` | Go / Chi | Glossary & lore management. **Also hosts the wiki feature** (`wiki_articles`, `wiki_revisions`, `wiki_suggestions`) — wiki is NOT a separate service. |
 | `chat-service` | Python / FastAPI | Chat with LLMs via LiteLLM |
 | `knowledge-service` | Python / FastAPI | Knowledge graph + memory (Postgres SSOT + Neo4j derived, via event pipeline) — planned, see `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` and `docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md`. **Two-layer pattern with glossary**: glossary-service remains authored SSOT; knowledge-service adds a fuzzy/semantic entity layer that anchors to glossary entries via `glossary_entity_id` FK. Extraction writes canonical entities through to glossary via its existing `/internal/books/{book_id}/extract-entities` bulk API, and wiki stubs via `/v1/glossary/books/{book_id}/wiki/generate`. Pattern validated by Microsoft GraphRAG seed-graph (arXiv:2404.16130) and HippoRAG (arXiv:2405.14831). |
-| `video-gen-service` | Python / FastAPI | Video generation (skeleton — provider TBD) |
+| `video-gen-service` | Python / FastAPI | Media generation gateway; ComfyUI implementation in sibling **local-image-generator-service** (SD 1.5, SDXL, Illustrious, Flux 1/2, Qwen Image, Wan, LTX Video; custom pipelines for game assets, object sheets, animation) |
 
 Data: Postgres (per-service DBs), Redis Streams (jobs), MinIO (objects).
 

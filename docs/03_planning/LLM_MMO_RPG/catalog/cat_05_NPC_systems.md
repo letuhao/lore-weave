@@ -29,4 +29,5 @@ generated_by: scripts/chunk_doc.py
 | NPC-9 | NPC memory decay / summarization (prevent unbounded growth) | 🟡 | V1 | NPC-3 | Part of A1 solution |
 | NPC-10 | NPC tool calling (trigger world-state change via LLM) | 🟡 | V1 | PL-6 | [01 A5](01_OPEN_PROBLEMS.md#a5-tool-use-reliability-for-world-actions--partial) |
 | NPC-11 | Classification (SillyTavern pattern — mood from last message) | 📦 | V3 | — | Feature comparison doc |
+| NPC-12 | NPC Desires LIGHT — author-declared narrative goal scaffolding (sandbox-mitigation Path A; NO state machine, NO tracking, NO rewards; LLM AssemblePrompt context integration only; Forge `ToggleNpcDesire` AdminAction for satisfied flag) | ✅ | V1 | NPC-1, NPC-2, RES-23 (i18n) | [`features/05_npc_systems/NPC_003_desires.md`](../features/05_npc_systems/NPC_003_desires.md) — DRAFT 2026-04-26; resolves [`13_quests/00_V2_RESERVATION.md`](../features/13_quests/00_V2_RESERVATION.md) §5 Path A |
 

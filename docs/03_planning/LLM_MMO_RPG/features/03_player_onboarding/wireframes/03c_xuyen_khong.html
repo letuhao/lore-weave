@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03C Xuyên Không — PO_001</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+  <div class="nav-strip">
+    <a href="02_path_choice.html" style="color: var(--ink-muted); text-decoration: none; font-size: 0.875rem;">← Quay lại</a>
+    <span class="subtle">Mode C · Xuyên Không Đến Đây · Đông Phong Cõi</span>
+    <div class="lang-switch">
+      <a href="#" class="active">VI</a><a href="#">EN</a><a href="#">ZH</a>
+    </div>
+  </div>
+
+  <main style="flex: 1;">
+    <div style="margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <h2 style="font-size: 1.125rem; margin: 0;"><span style="font-family: 'Source Serif Pro', serif; font-size: 1.5rem; color: var(--accent);">穿</span> Xuyên Không Đến Đây — Bước <span style="color: var(--accent);">1</span> / 5</h2>
+        <span class="subtle">Bước 1 · Linh hồn</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-step active"></div>
+        <div class="progress-step"></div>
+        <div class="progress-step"></div>
+        <div class="progress-step"></div>
+        <div class="progress-step"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.75rem; color: var(--ink-muted);">
+        <span style="color: var(--accent); font-weight: 600;">Linh hồn</span>
+        <span>Thân xác</span>
+        <span>Rò rỉ</span>
+        <span>Vị trí</span>
+        <span>Mở mắt</span>
+      </div>
+    </div>
+
+    <div class="scene-narration" style="margin-bottom: 2rem;">
+      "Linh hồn của bạn đã rời khỏi nơi cũ — và đang trôi qua những vực sâu giữa các thế giới. Bạn cảm thấy mình mỏng như sương. Trước khi nhập vào thân xác mới, hãy nhớ lại: bạn từ đâu đến?"
+    </div>
+
+    <article style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+
+      <section>
+        <h3 style="font-size: 1rem; margin: 0 0 1rem 0;">Bước 1: Linh Hồn (Soul Layer)</h3>
+
+        <div style="margin-bottom: 1.5rem;">
+          <label class="label">Bạn từ thế giới nào đến?</label>
+
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <label class="card card-selected" style="cursor: pointer; padding: 1rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+              <input type="radio" name="origin" checked style="margin-top: 0.25rem;">
+              <div>
+                <strong>Trái Đất hiện đại (2025-2026)</strong>
+                <p class="subtle" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">"Bạn nhớ smartphone, AI, internet, máy bay phản lực. Bạn đã đọc nhiều tiểu thuyết tu tiên — meta-knowledge có thể cứu bạn hoặc giết bạn."</p>
+              </div>
+            </label>
+
+            <label class="card" style="cursor: not-allowed; padding: 1rem; display: flex; align-items: flex-start; gap: 0.75rem; opacity: 0.5;">
+              <input type="radio" name="origin" disabled style="margin-top: 0.25rem;">
+              <div>
+                <strong>Thế giới khác trong Reality này <span class="subtle" style="font-size: 0.75rem;">(V2+ cross-reality Heresy)</span></strong>
+                <p class="subtle" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Linh hồn từ một reality khác (e.g., Faerûn) di cư qua. V2+ phụ thuộc WA_002 Heresy.</p>
+              </div>
+            </label>
+
+            <label class="card card-hoverable" style="cursor: pointer; padding: 1rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+              <input type="radio" name="origin" style="margin-top: 0.25rem;">
+              <div>
+                <strong>Tự nhập (Custom origin world)</strong>
+                <p class="subtle" style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">Mô tả thế giới bạn từ đó đến. LLM sẽ dùng làm canon cho story.</p>
+                <textarea class="input" placeholder="Ví dụ: 'Một thế giới Đạo gia cổ xưa. Tôi là đệ tử của Tử Hà sơn trang, đã chết khi luyện đan thất bại...'" rows="2" style="margin-top: 0.5rem;"></textarea>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <label class="label">Kiến thức linh hồn mang theo: <span class="tooltip" title="Knowledge tags ảnh hưởng LLM narration. Một số tag có thể giúp bạn (cứu mạng), một số có thể nguy hiểm (drift detection)">?</span></label>
+
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.875rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--paper-soft); border-radius: 0.375rem; cursor: pointer;">
+              <input type="checkbox" checked> Internet / mạng xã hội
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--paper-soft); border-radius: 0.375rem; cursor: pointer;">
+              <input type="checkbox" checked> Vũ khí hiện đại (súng, bom)
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--paper-soft); border-radius: 0.375rem; cursor: pointer;">
+              <input type="checkbox"> Hóa học cơ bản
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--paper-soft); border-radius: 0.375rem; cursor: pointer;">
+              <input type="checkbox"> Y khoa hiện đại
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--paper-soft); border-radius: 0.375rem; cursor: pointer;">
+              <input type="checkbox"> AI / lập trình
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--accent-bg); border-radius: 0.375rem; cursor: pointer; border: 1px solid var(--accent);">
+              <input type="checkbox" checked> <span><strong>📖 Tiểu thuyết tu tiên</strong> <span class="subtle" style="font-size: 0.75rem;">(meta-knowledge!)</span></span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--paper-soft); border-radius: 0.375rem; cursor: pointer;">
+              <input type="checkbox"> Triết học hiện đại
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--paper-soft); border-radius: 0.375rem; cursor: pointer;">
+              <input type="checkbox"> Lịch sử thế giới
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="label">Ngôn ngữ mẹ đẻ của linh hồn:</label>
+          <select class="input">
+            <option>Tiếng Việt</option>
+            <option>English</option>
+            <option>普通话 (Mandarin)</option>
+            <option>日本語 (Japanese)</option>
+          </select>
+          <p class="subtle" style="margin: 0.375rem 0 0 0; font-size: 0.8125rem;">Body Layer ngôn ngữ sẽ là cổ ngữ Đông Phong (Văn ngôn). Bạn sẽ phải học hoặc dựa vào body memory.</p>
+        </div>
+      </section>
+
+      <aside style="position: sticky; top: 1rem; align-self: flex-start;">
+        <div class="card" style="background: var(--paper-soft);">
+          <h4 style="margin: 0 0 0.75rem 0; font-size: 0.9375rem;">📋 Tổng quan 5 bước</h4>
+          <ol style="margin: 0; padding-left: 1.25rem; font-size: 0.8125rem; line-height: 1.8;">
+            <li><strong style="color: var(--accent);">Linh hồn</strong> — bạn từ đâu</li>
+            <li>Thân xác — nhập vào ai</li>
+            <li>Rò rỉ — soul ↔ body integration policy</li>
+            <li>Vị trí — thường thừa kế từ thân xác</li>
+            <li>Mở mắt — LLM narration intro</li>
+          </ol>
+          <div class="brush-divider"></div>
+          <p class="subtle" style="margin: 0; font-size: 0.75rem;">Lấy cảm hứng từ Disco Elysium amnesia + wuxia transmigration. Soul + Body separation cho phép player từ từ khám phá identity qua gameplay.</p>
+        </div>
+
+        <div style="margin-top: 1rem; padding: 1rem; background: var(--accent-bg); border-radius: 0.5rem; font-size: 0.8125rem; line-height: 1.6;">
+          <strong>💡 PCS_001 PcBodyMemory schema</strong>
+          <pre style="font-family: monospace; font-size: 0.75rem; margin: 0.5rem 0 0 0; white-space: pre-wrap;">SoulLayer {
+  origin_world_ref,
+  knowledge_tags: [...],
+  native_skills: [],
+  native_language
+}
+BodyLayer {
+  host_body_ref,
+  knowledge_tags,
+  motor_skills: [],
+  native_language
+}
+LeakagePolicy:
+  NoLeakage |
+  SoulPrimary { body_blurts } |
+  BodyPrimary { soul_slips } |
+  Balanced</pre>
+        </div>
+      </aside>
+
+    </article>
+
+    <div style="display: flex; justify-content: space-between; gap: 1rem; margin-top: 2rem;">
+      <button class="btn-secondary" onclick="window.location.href='02_path_choice.html?reality=' + document.body.dataset.reality">Đổi mode</button>
+      <button class="btn-primary" onclick="window.location.href='04_confirm.html?reality=' + document.body.dataset.reality + '&mode=xuyen_khong'">Bước 2: Thân Xác →</button>
+    </div>
+  </main>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+</script>
+</body>
+</html>

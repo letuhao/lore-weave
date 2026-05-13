@@ -1089,7 +1089,7 @@ curl -X POST http://localhost:3123/v1/llm/jobs \
 - Invoke endpoint: `services/provider-registry-service/internal/api/server.go`
 - TTS generation: `services/book-service/internal/api/audio.go`
 - Image generation: `services/book-service/internal/api/media.go`
-- Video generation: `services/video-gen-service/app/generate.py` (skeleton)
+- Video / image generation gateway: `services/video-gen-service/app/routers/generate.py` — ComfyUI workloads and model packs live in sibling repo **local-image-generator-service** (see that repository and `services/video-gen-service/README.md`).
 
 ### Key data structures
 

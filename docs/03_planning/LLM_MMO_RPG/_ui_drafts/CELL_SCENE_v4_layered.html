@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>LoreWeave Cell Scene v4 — Layered architecture (skeleton + procedural + LLM-zones + narration)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: #0d1117; color: #e6edf3; display: flex; flex-direction: column; }
+
+  header.topbar {
+    padding: 8px 18px; background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+  }
+  header.topbar h1 { font-size: 17px; font-weight: 500; }
+  header.topbar .place-meta { color: #7d8590; font-size: 12px; display: flex; gap: 10px; align-items: center; }
+  header.topbar .place-meta .badge {
+    padding: 2px 8px; border-radius: 12px; background: #1f6feb33; color: #58a6ff; font-size: 11px;
+  }
+  header.topbar .place-meta .badge.canon { background: #d2992233; color: #d29922; }
+  header.topbar .place-meta .v4-tag {
+    background: #2ea04333; color: #3fb950; padding: 2px 8px; border-radius: 12px; font-size: 11px;
+  }
+
+  /* Layer control bar */
+  .layers-bar {
+    background: #1a1a1f; border-bottom: 1px solid #30363d;
+    padding: 10px 18px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+    font-size: 12px;
+  }
+  .layers-bar .layer-group {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    background: #0d1117;
+  }
+  .layers-bar .layer-group.l1 { border-color: #4d5762; }
+  .layers-bar .layer-group.l2 { border-color: #1f6feb88; }
+  .layers-bar .layer-group.l3 { border-color: #6e3a8a88; }
+  .layers-bar .layer-group.l4 { border-color: #d2992288; }
+  .layers-bar .layer-group .num {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace; font-weight: bold; font-size: 10px;
+    flex-shrink: 0;
+  }
+  .layers-bar .layer-group.l1 .num { background: #30363d; color: #b8b8b8; }
+  .layers-bar .layer-group.l2 .num { background: #1f6feb; color: white; }
+  .layers-bar .layer-group.l3 .num { background: #6e3a8a; color: white; }
+  .layers-bar .layer-group.l4 .num { background: #d29922; color: black; }
+  .layers-bar label { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: 0.3px; }
+  .layers-bar select, .layers-bar input {
+    background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+    padding: 4px 8px; border-radius: 3px; font: inherit; font-size: 11px;
+  }
+  .layers-bar select { width: 140px; }
+  .layers-bar input.seed { width: 80px; }
+  .layers-bar input.density, .layers-bar input.tables { width: 50px; }
+  .layers-bar button {
+    background: #21262d; border: 1px solid #30363d; color: #b8b8b8;
+    padding: 5px 10px; border-radius: 4px; cursor: pointer; font: inherit; font-size: 11px;
+  }
+  .layers-bar button:hover { color: #e6edf3; border-color: #58a6ff; }
+  .layers-bar button.action {
+    background: linear-gradient(135deg, #6e3a8a 0%, #1f6feb 100%);
+    border: none; color: white; font-weight: 500;
+  }
+  .layers-bar button.action:disabled { opacity: 0.6; cursor: wait; }
+  .layers-bar button.warm {
+    background: linear-gradient(135deg, #d29922 0%, #b46b18 100%);
+    border: none; color: white; font-weight: 500;
+  }
+
+  /* LLM config bar (collapsible) */
+  .llm-bar {
+    background: #161b22; border-bottom: 1px solid #30363d;
+    padding: 8px 18px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+    font-size: 11px;
+  }
+  .llm-bar label { color: #7d8590; text-transform: uppercase; letter-spacing: 0.3px; font-size: 10px; }
+  .llm-bar input {
+    background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+    padding: 4px 8px; border-radius: 3px; font: inherit; font-size: 11px;
+  }
+  .llm-bar input.url { width: 230px; }
+  .llm-bar input.model { width: 170px; }
+  .llm-bar input.tokens, .llm-bar input.temp { width: 60px; }
+  .llm-bar .status {
+    font-size: 10px; font-family: 'Courier New', monospace; color: #7d8590; margin-left: auto;
+  }
+  .llm-bar .status.ok { color: #3fb950; }
+  .llm-bar .status.err { color: #f85149; }
+  .llm-bar .status.busy { color: #d29922; }
+
+  main { flex: 1; display: grid; grid-template-columns: 1fr 360px; overflow: hidden; min-height: 0; }
+
+  section.grid-viewport {
+    position: relative;
+    background: radial-gradient(ellipse at center, #1a1a1f 0%, #0d1117 80%);
+    display: flex; align-items: center; justify-content: center; padding: 14px; overflow: hidden;
+  }
+  section.grid-viewport svg.cell-grid {
+    max-width: 100%; max-height: 100%;
+    background: #161b22; border: 2px solid #30363d; border-radius: 8px;
+    box-shadow: 0 0 60px #58a6ff11;
+  }
+
+  .tile-floor { fill: #3d2c1a; }
+  .tile-floor-carpet { fill: #4d2818; }
+  .tile-wall { fill: #1a1a1f; stroke: #30363d; stroke-width: 0.5; }
+  .tile-counter { fill: #6b4226; stroke: #8b5a36; stroke-width: 1; }
+  .tile-table { fill: #5a3a1f; stroke: #7a4f2c; stroke-width: 1; }
+  .tile-chair { fill: #3d2c1a; stroke: #5a3a1f; stroke-width: 0.5; }
+  .tile-fireplace { fill: #4a1010; stroke: #722; stroke-width: 1; }
+  .tile-window { fill: #2a4a6a; stroke: #4a6a8a; stroke-width: 1; }
+  .tile-door { fill: #6b4226; stroke: #d29922; stroke-width: 2; }
+  .tile-threshold { fill: #4d3320; stroke: #d29922; stroke-width: 0.5; stroke-dasharray: 2,1; }
+
+  /* Layer-2 procedural-placed fixture highlight */
+  .tile.layer-2-procedural { stroke: #58a6ff; stroke-width: 1.5; stroke-opacity: 0.4; }
+
+  .entity { cursor: pointer; transition: transform 0.15s; }
+  .entity:hover { transform: scale(1.15); transform-origin: center; transform-box: fill-box; }
+  .entity text.emoji { font-size: 22px; text-anchor: middle; dominant-baseline: central; user-select: none; pointer-events: none; }
+  .entity.is-pc circle { fill: #1f6feb44; stroke: #58a6ff; stroke-width: 1.5; }
+  .entity.is-npc circle { fill: #2a1f3a; stroke: #b481d4; stroke-width: 1.5; }
+  .entity.is-item circle { fill: #2a2410; stroke: #d29922; stroke-width: 1; stroke-dasharray: 2,1; }
+  .entity text.label { font-size: 9px; fill: #b8b8b8; text-anchor: middle; user-select: none; pointer-events: none; }
+  .entity.layer-3-llm circle { stroke-width: 2.5; filter: drop-shadow(0 0 4px currentColor); }
+
+  /* Sidebar */
+  aside.sidebar {
+    background: #161b22; border-left: 1px solid #30363d;
+    overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  }
+  aside.sidebar h2 { font-size: 11px; color: #7d8590; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+  .panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px; }
+  .panel.l1 { border-color: #4d5762; }
+  .panel.l2 { border-color: #1f6feb88; }
+  .panel.l3 { border-color: #6e3a8a88; }
+  .panel.l4 { border-color: #d2992288; }
+  .panel h3 { font-size: 13px; margin-bottom: 6px; color: #e6edf3; display: flex; align-items: center; gap: 6px; }
+  .panel h3 .num {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 4px; font-family: 'Courier New', monospace; font-weight: bold; font-size: 10px;
+  }
+  .panel.l1 h3 .num { background: #30363d; color: #b8b8b8; }
+  .panel.l2 h3 .num { background: #1f6feb; color: white; }
+  .panel.l3 h3 .num { background: #6e3a8a; color: white; }
+  .panel.l4 h3 .num { background: #d29922; color: black; }
+  .panel .meta-row { font-size: 11px; color: #b8b8b8; line-height: 1.45; margin: 2px 0; }
+  .panel .meta-row code { background: #21262d; padding: 1px 4px; border-radius: 2px; font-size: 10px; color: #58a6ff; }
+
+  .layer-state {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 8px; background: #21262d; border-radius: 4px; font-size: 11px;
+    margin: 4px 0;
+  }
+  .layer-state .check { font-size: 14px; }
+  .layer-state.ok .check { color: #3fb950; }
+  .layer-state.pending .check { color: #d29922; }
+  .layer-state.err .check { color: #f85149; }
+
+  .narration {
+    background: #2a2410; border: 1px dashed #d29922; border-radius: 6px;
+    padding: 12px; font-size: 12px; line-height: 1.6;
+    color: #e6edf3; font-style: italic; min-height: 60px;
+  }
+  .narration.empty {
+    color: #7d8590; font-style: normal; text-align: center;
+  }
+
+  .gen-badge {
+    position: absolute; top: 24px; right: 24px;
+    background: rgba(13, 17, 23, 0.85);
+    padding: 4px 10px; border-radius: 12px;
+    font-size: 10px; font-family: 'Courier New', monospace; max-width: 70%;
+    text-align: right; line-height: 1.5;
+  }
+
+  .tooltip {
+    position: absolute; background: rgba(13, 17, 23, 0.95);
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 6px 10px; font-size: 11px; color: #b8b8b8;
+    pointer-events: none; opacity: 0;
+    z-index: 100; white-space: nowrap;
+  }
+  .tooltip.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Yên Vũ Lâu</h1>
+    <div class="place-meta">
+      <span class="badge">Tavern</span>
+      <span class="badge canon">Pristine · Q3 C12</span>
+      <span class="v4-tag">v4 · layered (skeleton + procedural + LLM-zones + narration)</span>
+    </div>
+  </header>
+
+  <!-- Layer 1+2 controls (deterministic; no LLM needed) -->
+  <div class="layers-bar">
+    <div class="layer-group l1">
+      <span class="num">1</span><label>Skeleton:</label>
+      <select id="skeleton-id" onchange="recomputeLayout()">
+        <option value="tavern_compact">tavern_compact (square)</option>
+        <option value="tavern_long_hall">tavern_long_hall (E-W)</option>
+        <option value="tavern_open_plan">tavern_open_plan (sparse)</option>
+      </select>
+    </div>
+    <div class="layer-group l2">
+      <span class="num">2</span><label>Seed:</label>
+      <input class="seed" type="number" id="seed" value="42" onchange="recomputeLayout()">
+      <button onclick="rerollSeed()" title="Random seed">🎲</button>
+      <label>Tables:</label>
+      <input class="tables" type="number" id="table-count" min="2" max="6" value="4" onchange="recomputeLayout()">
+      <label>Density:</label>
+      <input class="density" type="number" id="density" min="0.1" max="1" step="0.1" value="0.6" onchange="recomputeLayout()">
+      <label>Fireplace:</label>
+      <select id="fireplace-side" onchange="recomputeLayout()" style="width:80px">
+        <option value="east">east</option>
+        <option value="west">west</option>
+        <option value="north">north</option>
+      </select>
+    </div>
+    <div class="layer-group l3">
+      <span class="num">3</span>
+      <button class="action" id="llm-place-btn" onclick="llmPlaceEntities()">⚙ LLM Place Entities</button>
+      <button onclick="defaultPlaceEntities()" title="Use canonical zone defaults (no LLM)">↺ Defaults</button>
+    </div>
+    <div class="layer-group l4">
+      <span class="num">4</span>
+      <button class="warm" id="llm-narrate-btn" onclick="llmNarrate()">⚙ LLM Narrate</button>
+    </div>
+  </div>
+
+  <!-- LLM config (only used by Layer 3+4) -->
+  <div class="llm-bar">
+    <label>LM Studio:</label>
+    <input type="text" class="url" id="lm-url" value="http://localhost:5501/v1/chat/completions" placeholder="proxy or direct">
+    <label>Model:</label>
+    <input type="text" class="model" id="lm-model" placeholder="model id">
+    <label>Temp:</label>
+    <input type="number" class="temp" id="lm-temp" min="0" max="2" step="0.1" value="0.4">
+    <label>Max tokens:</label>
+    <input type="number" class="tokens" id="lm-tokens" min="200" max="32000" step="500" value="2000">
+    <span class="status" id="lm-status">Layer 1+2 work without LLM. Layer 3+4 are optional.</span>
+  </div>
+
+  <main>
+    <section class="grid-viewport">
+      <div class="gen-badge" id="gen-badge">⚙ skeleton + procedural · seed=42 · default entities</div>
+      <svg class="cell-grid" id="cell-grid" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet">
+        <g id="tiles-layer"></g>
+        <g id="entities-layer"></g>
+      </svg>
+    </section>
+
+    <aside class="sidebar">
+      <div class="panel l1">
+        <h3><span class="num">1</span> Skeleton</h3>
+        <div class="layer-state ok" id="layer-1-state">
+          <span class="check">✓</span><span id="layer-1-text">tavern_compact loaded</span>
+        </div>
+        <div class="meta-row" id="layer-1-meta">deterministic; hand-authored template</div>
+      </div>
+
+      <div class="panel l2">
+        <h3><span class="num">2</span> Procedural Fixtures</h3>
+        <div class="layer-state ok" id="layer-2-state">
+          <span class="check">✓</span><span id="layer-2-text">placed</span>
+        </div>
+        <div class="meta-row" id="layer-2-meta">tables, chairs, counter, fireplace, window</div>
+      </div>
+
+      <div class="panel l3">
+        <h3><span class="num">3</span> Entity Population</h3>
+        <div class="layer-state ok" id="layer-3-state">
+          <span class="check">✓</span><span id="layer-3-text">canonical defaults (no LLM)</span>
+        </div>
+        <div class="meta-row" id="layer-3-meta">click "LLM Place" to use Qwen for semantic placement</div>
+      </div>
+
+      <div class="panel l4">
+        <h3><span class="num">4</span> Narration</h3>
+        <div class="layer-state pending" id="layer-4-state">
+          <span class="check">○</span><span id="layer-4-text">not yet generated</span>
+        </div>
+        <div class="narration empty" id="narration-text">
+          Click "LLM Narrate" to generate scene description
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Selected Entity</h3>
+        <div id="info-pane">
+          <div class="meta-row" style="color: #7d8590; font-style: italic; text-align: center;">Click an entity</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const GRID_SIZE = 16;
+    const TILE_PX = 32;
+
+    // ─── Single-char alphabet ───
+    const TILE_TYPES = {
+      W: { kind: 'wall',        walkable: false, item_placeable: false, label: 'Wall' },
+      F: { kind: 'floor',       walkable: true,  item_placeable: true,  label: 'Floor' },
+      C: { kind: 'floor-carpet',walkable: true,  item_placeable: true,  label: 'Carpet' },
+      B: { kind: 'counter',     walkable: false, item_placeable: true,  label: 'Bar/Counter' },
+      T: { kind: 'table',       walkable: false, item_placeable: true,  label: 'Table' },
+      H: { kind: 'chair',       walkable: true,  item_placeable: true,  label: 'Chair' },
+      P: { kind: 'fireplace',   walkable: false, item_placeable: false, label: 'Fireplace' },
+      N: { kind: 'window',      walkable: false, item_placeable: false, label: 'Window' },
+      D: { kind: 'door',        walkable: true,  item_placeable: true,  label: 'Door' },
+      R: { kind: 'threshold',   walkable: true,  item_placeable: true,  label: 'Threshold' },
+    };
+
+    // ─── LAYER 1: Skeleton templates (hand-authored; deterministic) ───
+    // Each template has tiles + zones (named regions for layer 2 placement)
+    const SKELETONS = {
+      tavern_compact: {
+        id: 'tavern_compact',
+        name: 'Compact Square Tavern',
+        tiles: [
+          'WWWWWWWWWWWWWWWW',
+          'WFFFFFFFFFFFNFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WWWWWWDDWWWWWWWW',
+          'WWWWWWRRWWWWWWWW',
+        ],
+        zones: {
+          counter: { rows: [1, 2], cols: [1, 6] },          // north-west area for counter
+          center_floor: { rows: [4, 12], cols: [2, 13] },   // open area for tables
+          east_wall: { rows: [4, 9], cols: [13, 14] },       // east interior wall area
+          west_wall: { rows: [4, 9], cols: [1, 2] },
+          north_wall: { rows: [1, 1], cols: [1, 14] },
+          south_entry: { rows: [13, 13], cols: [5, 10] },    // floor just inside door
+          door: { rows: [14, 14], cols: [6, 7] },
+          threshold: { rows: [15, 15], cols: [6, 7] },
+        },
+      },
+      tavern_long_hall: {
+        id: 'tavern_long_hall',
+        name: 'Long Hall Tavern (E-W)',
+        tiles: [
+          'WWWWWWWWWWWWWWWW',
+          'WFFFFFFFFFFFFFNW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WWWWWWWWWWWWWWWW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WWWWWWWDDWWWWWWW',
+          'WWWWWWWRRWWWWWWW',
+        ],
+        zones: {
+          counter: { rows: [1, 3], cols: [1, 5] },
+          center_floor: { rows: [5, 13], cols: [2, 13] },
+          east_wall: { rows: [6, 11], cols: [13, 14] },
+          west_wall: { rows: [6, 11], cols: [1, 2] },
+          north_wall: { rows: [5, 5], cols: [1, 14] },
+          south_entry: { rows: [13, 13], cols: [6, 10] },
+          door: { rows: [14, 14], cols: [7, 8] },
+          threshold: { rows: [15, 15], cols: [7, 8] },
+        },
+      },
+      tavern_open_plan: {
+        id: 'tavern_open_plan',
+        name: 'Open Plan Tavern (sparse)',
+        tiles: [
+          'WWWWWWWWWWWWWWWW',
+          'WCFFFFNFFFFFNFCW',
+          'WCFFFFFFFFFFFFCW',
+          'WCFFFFFFFFFFFFCW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WFFFFFFFFFFFFFFW',
+          'WCFFFFFFFFFFFFCW',
+          'WCFFFFFFFFFFFFCW',
+          'WWWWWDDWWWDDWWWW',
+          'WWWWWRRWWWRRWWWW',
+        ],
+        zones: {
+          counter: { rows: [2, 3], cols: [1, 5] },
+          center_floor: { rows: [4, 11], cols: [2, 13] },
+          east_wall: { rows: [5, 10], cols: [13, 14] },
+          west_wall: { rows: [5, 10], cols: [1, 2] },
+          north_wall: { rows: [1, 1], cols: [1, 14] },
+          south_entry: { rows: [13, 13], cols: [4, 11] },
+          door: { rows: [14, 14], cols: [5, 11] },
+          threshold: { rows: [15, 15], cols: [5, 11] },
+        },
+      },
+    };
+
+    // Required entities (same as v3)
+    const REQUIRED_ENTITIES = [
+      { id: 'pc:ly_minh',   kind: 'pc',  emoji: '🧑', display_name: 'Lý Minh' },
+      { id: 'npc:lao_ngu',  kind: 'npc', emoji: '👴', display_name: 'Lão Ngũ' },
+      { id: 'npc:tieu_thuy',kind: 'npc', emoji: '👧', display_name: 'Tiểu Thúy' },
+      { id: 'npc:du_si',    kind: 'npc', emoji: '🧙', display_name: 'Du sĩ' },
+      { id: 'item:tea_pot', kind: 'item',emoji: '🫖', display_name: 'Bộ ấm trà' },
+      { id: 'item:scroll',  kind: 'item',emoji: '📜', display_name: 'Đạo Đức Kinh chú' },
+    ];
+
+    // ─── State ───
+    let currentSkeleton = SKELETONS.tavern_compact;
+    let currentSeed = 42;
+    let currentParams = { table_count: 4, density: 0.6, fireplace_side: 'east' };
+    let currentGrid = null;            // computed by Layer 1+2
+    let proceduralTilesAdded = [];     // for visual highlight
+    let zoneCatalog = {};              // computed zones with actual tile coords (Layer 2 output)
+    let currentEntities = [];          // computed by Layer 3 (default or LLM)
+    let layer3Source = 'default';      // 'default' | 'llm'
+
+    // ─── Seeded RNG (mulberry32) ───
+    function mulberry32(seed) {
+      return function() {
+        seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function parseSkeletonTiles(rows) {
+      return rows.map(r => r.split('').slice(0, GRID_SIZE));
+    }
+
+    // ─── LAYER 2: Procedural fixture placer (deterministic given seed) ───
+    function runLayer2(skeleton, params, seed) {
+      const grid = parseSkeletonTiles(skeleton.tiles).map(r => r.slice());
+      const rng = mulberry32(seed);
+      const added = [];
+      const zones = {};
+
+      // Zone resolution: enumerate tiles in each zone bounds
+      for (const [name, def] of Object.entries(skeleton.zones)) {
+        const tiles = [];
+        for (let y = def.rows[0]; y <= def.rows[1]; y++) {
+          for (let x = def.cols[0]; x <= def.cols[1]; x++) {
+            tiles.push([x, y]);
+          }
+        }
+        zones[name] = tiles;
+      }
+
+      // 2a. Place counter (B tiles in counter zone, 3-5 contiguous)
+      const counterSize = Math.max(3, Math.min(5, Math.floor(3 + params.density * 2)));
+      const counterRow = skeleton.zones.counter.rows[0]; // top row of counter zone
+      const counterStart = skeleton.zones.counter.cols[0] + Math.floor(rng() * 2);
+      const counterTiles = [];
+      for (let i = 0; i < counterSize && counterStart + i <= skeleton.zones.counter.cols[1]; i++) {
+        const x = counterStart + i;
+        if (grid[counterRow][x] === 'F') {
+          grid[counterRow][x] = 'B';
+          added.push([x, counterRow]);
+          counterTiles.push([x, counterRow]);
+        }
+      }
+      zones['counter:on'] = counterTiles;
+      // Counter:behind = floor tiles directly below counter
+      zones['counter:behind'] = counterTiles
+        .map(([x, y]) => [x, y + 1])
+        .filter(([x, y]) => y < GRID_SIZE && grid[y][x] === 'F');
+
+      // 2b. Place fireplace (1-2 P tiles based on fireplace_side)
+      let fpZone;
+      if (params.fireplace_side === 'east') fpZone = skeleton.zones.east_wall;
+      else if (params.fireplace_side === 'west') fpZone = skeleton.zones.west_wall;
+      else fpZone = skeleton.zones.north_wall;
+      const fpRow = Math.floor((fpZone.rows[0] + fpZone.rows[1]) / 2);
+      const fpCol = fpZone.cols[1]; // wall edge
+      if (grid[fpRow] && grid[fpRow][fpCol] === 'F') {
+        grid[fpRow][fpCol] = 'P';
+        added.push([fpCol, fpRow]);
+      }
+      if (grid[fpRow + 1] && grid[fpRow + 1][fpCol] === 'F') {
+        grid[fpRow + 1][fpCol] = 'P';
+        added.push([fpCol, fpRow + 1]);
+      }
+      zones['fireplace'] = added.filter(([x, y]) => grid[y][x] === 'P');
+
+      // 2c. Place tables + adjacent chairs (params.table_count)
+      const tablesPlaced = [];
+      const centerZone = skeleton.zones.center_floor;
+      const candidatePositions = [];
+      for (let y = centerZone.rows[0] + 1; y <= centerZone.rows[1] - 1; y++) {
+        for (let x = centerZone.cols[0] + 1; x <= centerZone.cols[1] - 1; x++) {
+          if (grid[y][x] === 'F') candidatePositions.push([x, y]);
+        }
+      }
+      // Shuffle deterministic
+      for (let i = candidatePositions.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [candidatePositions[i], candidatePositions[j]] = [candidatePositions[j], candidatePositions[i]];
+      }
+      let tablesRemaining = params.table_count;
+      for (const [x, y] of candidatePositions) {
+        if (tablesRemaining <= 0) break;
+        if (grid[y][x] !== 'F') continue;
+        // Spacing: skip if any adjacent tile is already T
+        let tooClose = false;
+        for (let dy = -2; dy <= 2 && !tooClose; dy++) {
+          for (let dx = -2; dx <= 2 && !tooClose; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (ny >= 0 && ny < GRID_SIZE && nx >= 0 && nx < GRID_SIZE) {
+              if (grid[ny][nx] === 'T') tooClose = true;
+            }
+          }
+        }
+        if (tooClose) continue;
+
+        grid[y][x] = 'T';
+        added.push([x, y]);
+        tablesPlaced.push({ id: `table_${tablesPlaced.length + 1}`, pos: [x, y], chairs: [] });
+        tablesRemaining--;
+
+        // Add 1-2 chairs adjacent to table
+        const chairCount = rng() > 0.5 ? 2 : 1;
+        const adjOffsets = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+        for (let i = adjOffsets.length - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          [adjOffsets[i], adjOffsets[j]] = [adjOffsets[j], adjOffsets[i]];
+        }
+        let placed = 0;
+        for (const [dx, dy] of adjOffsets) {
+          if (placed >= chairCount) break;
+          const cx = x + dx, cy = y + dy;
+          if (cy >= 0 && cy < GRID_SIZE && cx >= 0 && cx < GRID_SIZE && grid[cy][cx] === 'F') {
+            grid[cy][cx] = 'H';
+            added.push([cx, cy]);
+            tablesPlaced[tablesPlaced.length - 1].chairs.push([cx, cy]);
+            placed++;
+          }
+        }
+      }
+
+      // Zone catalog: per-table zones
+      tablesPlaced.forEach((t, idx) => {
+        zones[`table_${idx + 1}:on`] = [t.pos];
+        zones[`table_${idx + 1}:seated`] = t.chairs;
+        zones[`table_${idx + 1}:near`] = adjacentFloors(grid, t.pos);
+      });
+
+      // Open floor zone (any F tile in center)
+      zones['center_floor:open'] = [];
+      for (let y = centerZone.rows[0]; y <= centerZone.rows[1]; y++) {
+        for (let x = centerZone.cols[0]; x <= centerZone.cols[1]; x++) {
+          if (grid[y][x] === 'F') zones['center_floor:open'].push([x, y]);
+        }
+      }
+
+      // Door + threshold zones
+      zones['door'] = [];
+      for (let x = 0; x < GRID_SIZE; x++) {
+        if (grid[14][x] === 'D') zones['door'].push([x, 14]);
+        if (grid[15] && grid[15][x] === 'R') {
+          zones['threshold'] = zones['threshold'] || [];
+          zones['threshold'].push([x, 15]);
+        }
+      }
+      zones['south_entry:just_inside'] = zones['door'].map(([x, y]) => [x, y - 1]).filter(([x, y]) => grid[y][x] === 'F');
+
+      return { grid, added, zones, fixturesPlaced: { counter: counterTiles, tables: tablesPlaced } };
+    }
+
+    function adjacentFloors(grid, [x, y]) {
+      const out = [];
+      for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+        const nx = x + dx, ny = y + dy;
+        if (ny >= 0 && ny < GRID_SIZE && nx >= 0 && nx < GRID_SIZE && grid[ny][nx] === 'F') {
+          out.push([nx, ny]);
+        }
+      }
+      return out;
+    }
+
+    // ─── LAYER 3 default: canonical zones (no LLM) ───
+    function runLayer3Default(zones) {
+      const positions = {};
+      // pc near south_entry
+      const pcZone = zones['south_entry:just_inside'] || zones['threshold'] || zones['door'];
+      positions['pc:ly_minh'] = pcZone[0] || [6, 13];
+
+      // lao_ngu behind counter
+      const counterBehind = zones['counter:behind'] || [];
+      positions['npc:lao_ngu'] = counterBehind[1] || counterBehind[0] || zones['center_floor:open'][0];
+
+      // tieu_thuy near table 1
+      const t1near = zones['table_1:near'] || zones['center_floor:open'];
+      positions['npc:tieu_thuy'] = t1near[0] || zones['center_floor:open'][1];
+
+      // du_si seated at last table
+      const tableKeys = Object.keys(zones).filter(k => k.startsWith('table_') && k.endsWith(':seated'));
+      const lastTable = tableKeys[tableKeys.length - 1];
+      const dsSeats = zones[lastTable] || [];
+      positions['npc:du_si'] = dsSeats[0] || zones['center_floor:open'][2];
+
+      // tea_pot on counter
+      const counterOn = zones['counter:on'] || [];
+      positions['item:tea_pot'] = counterOn[Math.floor(counterOn.length / 2)] || counterOn[0];
+
+      // scroll on du_si's table
+      const dsTableNum = lastTable ? lastTable.split(':')[0] : 'table_1';
+      const dsTableOn = zones[`${dsTableNum}:on`] || zones['table_1:on'] || [];
+      positions['item:scroll'] = dsTableOn[0] || counterOn[0];
+
+      return positions;
+    }
+
+    // ─── LAYER 3 LLM: prompt asks for zone-name placement only ───
+    function buildLayer3Prompt(zones, fixturesPlaced) {
+      const tableInfo = fixturesPlaced.tables.map((t, i) => `- table_${i + 1} (with ${t.chairs.length} chairs)`).join('\n');
+      const availableZones = Object.keys(zones).filter(k => zones[k].length > 0).sort();
+
+      const system = 'You are a scene populator. You assign entities to semantic zones in a tavern scene. You output strict JSON only.';
+
+      const user = `TAVERN SCENE: Yên Vũ Lâu (Tien Nghich Q3 C12).
+Ambient: dusk, light rain.
+Fixtures placed by engine:
+- Counter (5 tiles)
+${tableInfo}
+- Fireplace, window already in place
+
+AVAILABLE ZONES (each is a list of (x,y) tiles maintained by engine):
+${availableZones.map(z => `- ${z}`).join('\n')}
+
+ASSIGN each entity to ONE zone name from the list above:
+- pc:ly_minh — PC just arrived at south entry
+- npc:lao_ngu — tavern keeper, behind counter
+- npc:tieu_thuy — waitress, near a table or open floor
+- npc:du_si — scholar, seated at table reading
+- item:tea_pot — on counter
+- item:scroll — on a table near du_si
+
+Output JSON ONLY (no markdown, no commentary):
+{"pc:ly_minh":"<zone>","npc:lao_ngu":"<zone>","npc:tieu_thuy":"<zone>","npc:du_si":"<zone>","item:tea_pot":"<zone>","item:scroll":"<zone>"}`;
+
+      return { system, user };
+    }
+
+    function resolveZoneAssignments(assignments, zones, rng) {
+      const positions = {};
+      const used = new Set();
+      for (const [entityId, zoneName] of Object.entries(assignments)) {
+        const tiles = zones[zoneName] || [];
+        // Pick first unused tile in zone
+        let chosen = null;
+        for (const t of tiles) {
+          const k = `${t[0]},${t[1]}`;
+          if (!used.has(k)) { chosen = t; used.add(k); break; }
+        }
+        if (!chosen && tiles.length > 0) chosen = tiles[0]; // fallback
+        if (chosen) positions[entityId] = chosen;
+      }
+      return positions;
+    }
+
+    // ─── Main recompute (Layers 1+2+3-default) ───
+    function recomputeLayout() {
+      const skelId = document.getElementById('skeleton-id').value;
+      currentSkeleton = SKELETONS[skelId];
+      currentSeed = parseInt(document.getElementById('seed').value, 10) || 42;
+      currentParams = {
+        table_count: parseInt(document.getElementById('table-count').value, 10) || 4,
+        density: parseFloat(document.getElementById('density').value) || 0.6,
+        fireplace_side: document.getElementById('fireplace-side').value,
+      };
+
+      const r2 = runLayer2(currentSkeleton, currentParams, currentSeed);
+      currentGrid = r2.grid;
+      proceduralTilesAdded = r2.added;
+      zoneCatalog = r2.zones;
+
+      // Layer 3 default placement
+      const positions = runLayer3Default(zoneCatalog);
+      currentEntities = REQUIRED_ENTITIES.map(e => {
+        const pos = positions[e.id] || [1, 1];
+        return { ...e, x: pos[0], y: pos[1] };
+      });
+      layer3Source = 'default';
+
+      updateLayerUI();
+      renderTiles();
+      renderEntities();
+      const badge = document.getElementById('gen-badge');
+      badge.textContent = `⚙ ${currentSkeleton.name} · seed=${currentSeed} · t=${currentParams.table_count} · default entities`;
+      badge.style.borderColor = '#30363d';
+    }
+
+    function updateLayerUI() {
+      document.getElementById('layer-1-text').textContent = `${currentSkeleton.id} loaded`;
+      document.getElementById('layer-1-meta').textContent = `${Object.keys(currentSkeleton.zones).length} zones declared (deterministic; hand-authored)`;
+
+      const tableCount = currentEntities ? Object.keys(zoneCatalog).filter(k => k.startsWith('table_') && k.endsWith(':on')).length : 0;
+      document.getElementById('layer-2-text').textContent = `placed (seed=${currentSeed})`;
+      document.getElementById('layer-2-meta').textContent = `${proceduralTilesAdded.length} tiles added · ${tableCount} tables · counter + fireplace`;
+
+      const layer3 = document.getElementById('layer-3-state');
+      if (layer3Source === 'llm') {
+        layer3.classList.remove('pending', 'err'); layer3.classList.add('ok');
+        document.getElementById('layer-3-text').textContent = 'LLM-placed (semantic zones)';
+      } else {
+        layer3.classList.remove('pending', 'err'); layer3.classList.add('ok');
+        document.getElementById('layer-3-text').textContent = 'canonical defaults (no LLM)';
+      }
+      document.getElementById('layer-3-meta').textContent = '6 entities placed at semantic zones; engine resolves to grid coords';
+    }
+
+    function rerollSeed() {
+      const newSeed = Math.floor(Math.random() * 1000000);
+      document.getElementById('seed').value = newSeed;
+      recomputeLayout();
+    }
+
+    function defaultPlaceEntities() {
+      const positions = runLayer3Default(zoneCatalog);
+      currentEntities = REQUIRED_ENTITIES.map(e => {
+        const pos = positions[e.id] || [1, 1];
+        return { ...e, x: pos[0], y: pos[1] };
+      });
+      layer3Source = 'default';
+      updateLayerUI();
+      renderEntities();
+      const badge = document.getElementById('gen-badge');
+      badge.textContent = `⚙ ${currentSkeleton.name} · seed=${currentSeed} · default entities`;
+      badge.style.borderColor = '#30363d';
+    }
+
+    // ─── LAYER 3 LLM call ───
+    async function llmPlaceEntities() {
+      const url = document.getElementById('lm-url').value.trim();
+      const model = document.getElementById('lm-model').value.trim();
+      const temp = parseFloat(document.getElementById('lm-temp').value) || 0.4;
+      const maxTokens = parseInt(document.getElementById('lm-tokens').value, 10) || 2000;
+
+      if (!model) { setStatus('error: model id required', 'err'); return; }
+      const btn = document.getElementById('llm-place-btn');
+      btn.disabled = true;
+      setStatus(`Layer 3 LLM POST...`, 'busy');
+
+      const fixturesPlaced = { tables: [] };
+      Object.keys(zoneCatalog).forEach(k => {
+        const m = k.match(/^table_(\d+):seated$/);
+        if (m) fixturesPlaced.tables.push({ id: `table_${m[1]}`, chairs: zoneCatalog[k] });
+      });
+
+      const { system, user } = buildLayer3Prompt(zoneCatalog, fixturesPlaced);
+      const t0 = performance.now();
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+            temperature: temp,
+            max_tokens: maxTokens,
+            stream: false,
+          }),
+        });
+        const elapsed = Math.round(performance.now() - t0);
+
+        if (!res.ok) {
+          const errTxt = await res.text();
+          setStatus(`HTTP ${res.status}`, 'err');
+          btn.disabled = false; return;
+        }
+        const data = await res.json();
+        const content = data?.choices?.[0]?.message?.content || '';
+        // Extract JSON
+        let s = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+        const firstBrace = s.indexOf('{');
+        const lastBrace = s.lastIndexOf('}');
+        if (firstBrace < 0 || lastBrace < 0) {
+          setStatus(`parse failed (${elapsed}ms)`, 'err');
+          btn.disabled = false; return;
+        }
+        const jsonStr = s.slice(firstBrace, lastBrace + 1);
+        let assignments;
+        try { assignments = JSON.parse(jsonStr); }
+        catch (e) {
+          setStatus(`JSON.parse: ${e.message}`, 'err');
+          btn.disabled = false; return;
+        }
+
+        // Validate assignments
+        const requiredIds = REQUIRED_ENTITIES.map(e => e.id);
+        const missing = requiredIds.filter(id => !assignments[id]);
+        const invalidZones = Object.entries(assignments).filter(([, z]) => !zoneCatalog[z]);
+        if (missing.length > 0) {
+          setStatus(`missing ids: ${missing.join(',')}`, 'err');
+          btn.disabled = false; return;
+        }
+        if (invalidZones.length > 0) {
+          setStatus(`invalid zones: ${invalidZones.map(([id, z]) => `${id}→${z}`).join(',')}`, 'err');
+          btn.disabled = false; return;
+        }
+
+        // Resolve zones to coords
+        const positions = resolveZoneAssignments(assignments, zoneCatalog);
+
+        // Validate placement (actor walkable / item placeable)
+        const isItem = (id) => id.startsWith('item:');
+        let placementErrors = [];
+        for (const [id, [x, y]] of Object.entries(positions)) {
+          const tile = currentGrid[y][x];
+          const tt = TILE_TYPES[tile];
+          if (!tt) { placementErrors.push(`${id}@${x},${y}=unknown`); continue; }
+          if (isItem(id) ? !tt.item_placeable : !tt.walkable) {
+            placementErrors.push(`${id}@(${x},${y})=${tile}(${tt.kind})not_${isItem(id) ? 'placeable' : 'walkable'}`);
+          }
+        }
+        if (placementErrors.length > 0) {
+          setStatus(`placement invalid: ${placementErrors[0]}`, 'err');
+          btn.disabled = false; return;
+        }
+
+        // Apply
+        currentEntities = REQUIRED_ENTITIES.map(e => ({ ...e, x: positions[e.id][0], y: positions[e.id][1] }));
+        layer3Source = 'llm';
+        updateLayerUI();
+        renderEntities();
+        const badge = document.getElementById('gen-badge');
+        badge.textContent = `⚙ ${currentSkeleton.name} · seed=${currentSeed} · LLM-placed (${elapsed}ms)`;
+        badge.style.borderColor = '#6e3a8a';
+        setStatus(`✓ Layer 3 done (${elapsed}ms)`, 'ok');
+      } catch (err) {
+        setStatus(`network: ${err.message}`, 'err');
+      }
+      btn.disabled = false;
+    }
+
+    // ─── LAYER 4 LLM narration ───
+    async function llmNarrate() {
+      const url = document.getElementById('lm-url').value.trim();
+      const model = document.getElementById('lm-model').value.trim();
+      const temp = parseFloat(document.getElementById('lm-temp').value) || 0.7;
+      const maxTokens = parseInt(document.getElementById('lm-tokens').value, 10) || 2000;
+
+      if (!model) { setStatus('error: model id required', 'err'); return; }
+      const btn = document.getElementById('llm-narrate-btn');
+      btn.disabled = true;
+      setStatus('Layer 4 LLM narrating...', 'busy');
+
+      const npcInfo = currentEntities.filter(e => e.kind === 'npc')
+        .map(e => `${e.display_name} ở (${e.x},${e.y})`).join(', ');
+      const itemInfo = currentEntities.filter(e => e.kind === 'item')
+        .map(e => e.display_name).join(', ');
+
+      const system = 'You are a scene narrator for an LLM-driven RPG. You write Vietnamese prose only.';
+      const user = `Scene: Yên Vũ Lâu (tửu lâu của Lão Ngũ ở Hàng Châu, Song 1256).
+Ambient: hoàng hôn, mưa nhẹ.
+Skeleton: ${currentSkeleton.name}.
+NPCs có mặt: ${npcInfo}.
+Items: ${itemInfo}.
+PC Lý Minh vừa bước vào qua cửa nam.
+
+Viết 2-3 câu mô tả khung cảnh bằng tiếng Việt, theo phong cách Tiên Nghịch / Nhĩ Căn (xianxia). Output prose only, không markdown:`;
+
+      const t0 = performance.now();
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+            temperature: temp,
+            max_tokens: maxTokens,
+            stream: false,
+          }),
+        });
+        const elapsed = Math.round(performance.now() - t0);
+        if (!res.ok) { setStatus(`HTTP ${res.status}`, 'err'); btn.disabled = false; return; }
+        const data = await res.json();
+        const content = data?.choices?.[0]?.message?.content || '';
+        const text = content.trim().replace(/^["'`]+|["'`]+$/g, '');
+
+        document.getElementById('narration-text').classList.remove('empty');
+        document.getElementById('narration-text').textContent = text;
+        document.getElementById('layer-4-state').classList.remove('pending', 'err');
+        document.getElementById('layer-4-state').classList.add('ok');
+        document.getElementById('layer-4-text').textContent = `narrated (${elapsed}ms)`;
+        setStatus(`✓ Layer 4 done (${elapsed}ms)`, 'ok');
+      } catch (err) {
+        setStatus(`network: ${err.message}`, 'err');
+      }
+      btn.disabled = false;
+    }
+
+    function setStatus(text, kind) {
+      const s = document.getElementById('lm-status');
+      s.textContent = text; s.className = `status ${kind || ''}`;
+    }
+
+    // ─── Render ───
+    function renderTiles() {
+      const layer = document.getElementById('tiles-layer');
+      layer.innerHTML = '';
+      const proceduralSet = new Set(proceduralTilesAdded.map(([x, y]) => `${x},${y}`));
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const key = currentGrid[y][x];
+          const tile = TILE_TYPES[key] || TILE_TYPES.F;
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          let cls = `tile tile-${tile.kind}`;
+          if (proceduralSet.has(`${x},${y}`)) cls += ' layer-2-procedural';
+          rect.setAttribute('class', cls);
+          rect.setAttribute('x', x * TILE_PX); rect.setAttribute('y', y * TILE_PX);
+          rect.setAttribute('width', TILE_PX); rect.setAttribute('height', TILE_PX);
+          rect.addEventListener('mouseenter', (ev) => showTooltip(ev, `(${x},${y}) '${key}' ${tile.label}${proceduralSet.has(`${x},${y}`) ? ' · L2-procedural' : ' · L1-skeleton'}`));
+          rect.addEventListener('mouseleave', hideTooltip);
+          layer.appendChild(rect);
+        }
+      }
+    }
+
+    function renderEntities() {
+      const layer = document.getElementById('entities-layer');
+      layer.innerHTML = '';
+      for (const ent of currentEntities) {
+        const cx = ent.x * TILE_PX + TILE_PX / 2;
+        const cy = ent.y * TILE_PX + TILE_PX / 2;
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', `entity is-${ent.kind} ${layer3Source === 'llm' ? 'layer-3-llm' : ''}`);
+        g.setAttribute('transform', `translate(${cx}, ${cy})`);
+        if (ent.kind !== 'envobject') {
+          const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          bg.setAttribute('r', 13); g.appendChild(bg);
+        }
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('class', 'emoji'); text.setAttribute('y', 1);
+        text.textContent = ent.emoji; g.appendChild(text);
+        if (ent.kind === 'pc' || ent.kind === 'npc') {
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('class', 'label'); label.setAttribute('y', 24);
+          label.textContent = ent.display_name; g.appendChild(label);
+        }
+        g.addEventListener('click', (ev) => { ev.stopPropagation(); onEntityClick(ent); });
+        g.addEventListener('mouseenter', (ev) => showTooltip(ev, `${ent.emoji} ${ent.display_name}`));
+        g.addEventListener('mouseleave', hideTooltip);
+        layer.appendChild(g);
+      }
+    }
+
+    function onEntityClick(ent) {
+      const pane = document.getElementById('info-pane');
+      const tile = currentGrid[ent.y][ent.x];
+      pane.innerHTML = `
+        <div class="meta-row"><strong>${ent.emoji} ${ent.display_name}</strong></div>
+        <div class="meta-row">kind: <code>${ent.kind}</code> · pos: <code>(${ent.x},${ent.y})</code> · tile: <code>${tile}</code></div>
+        <div class="meta-row" style="font-size:10px; color:#7d8590;">Source: ${layer3Source === 'llm' ? 'LLM (Layer 3)' : 'canonical default (Layer 3 fallback)'}</div>
+      `;
+    }
+
+    const tooltip = document.getElementById('tooltip');
+    function showTooltip(ev, text) {
+      tooltip.textContent = text; tooltip.classList.add('show');
+      tooltip.style.left = (ev.clientX + 12) + 'px';
+      tooltip.style.top  = (ev.clientY + 12) + 'px';
+    }
+    function hideTooltip() { tooltip.classList.remove('show'); }
+
+    // Init
+    recomputeLayout();
+  </script>
+</body>
+</html>

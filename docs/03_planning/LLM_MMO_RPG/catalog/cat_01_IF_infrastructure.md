@@ -283,4 +283,81 @@ generated_by: scripts/chunk_doc.py
 | IF-24 | Admin UI guardrails (no raw DROP/UPDATE buttons, no free-form SQL in prod) | ✅ | V1 | — | [02 §12L.5](02_STORAGE_ARCHITECTURE.md) (R13-L5) |
 | IF-27 | Admin rollback via compensating events | ✅ | V2 | IF-21 | [02 §12L.6](02_STORAGE_ARCHITECTURE.md) (R13-L6) |
 | IF-28 | Admin Action Policy governance doc | ✅ | INFRA | — | [docs/02_governance/ADMIN_ACTION_POLICY.md](../../02_governance/ADMIN_ACTION_POLICY.md) (R13-governance) |
+| IF-39 | Dependency registry (`contracts/dependencies/matrix.yaml`) | ✅ | V1 | — | [02_storage/SR06_dependency_failure.md §12AI.2](../02_storage/SR06_dependency_failure.md) (SR6-D1) |
+| IF-39a | Circuit breaker library (`contracts/resilience/`; 3-state) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.4](../02_storage/SR06_dependency_failure.md) (SR6-D3) |
+| IF-39b | Dependency health dashboard (DF11 panel) | ✅ | V1 | IF-39, IF-34 | [02_storage/SR06_dependency_failure.md §12AI.8](../02_storage/SR06_dependency_failure.md) (SR6-D7) |
+| IF-39c | Graceful shutdown / drain handler (`contracts/lifecycle/Drain`) | ✅ | V1 | — | [02_storage/SR06_dependency_failure.md §12AI.11](../02_storage/SR06_dependency_failure.md) (SR6-D10) |
+| IF-39d | Multi-provider LLM failover (extends `provider_registry`) | ✅ | V1 | IF-14, IF-15 | [02_storage/SR06_dependency_failure.md §12AI.7](../02_storage/SR06_dependency_failure.md) (SR6-D6) |
+| IF-39e | Degraded-mode framework (`contracts/lifecycle/modes.go`; 5-mode) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.6](../02_storage/SR06_dependency_failure.md) (SR6-D5) |
+| IF-39f | `dependency_events` audit table (1y retention) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.9](../02_storage/SR06_dependency_failure.md) (SR6-D8) |
+| IF-39g | Chaos drill hooks (**activated by SR7**) | ✅ | V1 | IF-39a, IF-39f, IF-40 | [02_storage/SR07_chaos_drills.md §12AJ.12](../02_storage/SR07_chaos_drills.md) (SR7-governance) — was V1+30d placeholder until SR7 resolution |
+| IF-39h | Dependency runbook template (SR3 integration) | ✅ | V1 | IF-36, IF-39 | [02_storage/SR06_dependency_failure.md §12AI.2](../02_storage/SR06_dependency_failure.md) (SR6-D1; matrix `runbook:` field) |
+| IF-39i | Bulkhead resource pool manager | ✅ | V1 | IF-39, IF-39a | [02_storage/SR06_dependency_failure.md §12AI.10](../02_storage/SR06_dependency_failure.md) (SR6-D9) |
+| IF-39j | Timeout discipline CI lint (`timeout-discipline-lint.sh`) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.3](../02_storage/SR06_dependency_failure.md) (SR6-D2; enforces invariant I16) |
+| IF-40 | Chaos experiment registry (`contracts/chaos/experiments.yaml`) | ✅ | V1 | — | [02_storage/SR07_chaos_drills.md §12AJ.2](../02_storage/SR07_chaos_drills.md) (SR7-D1) |
+| IF-40a | `chaos-cli` admin tool (list/describe/run/abort/kill-switch/status) | ✅ | V1 | IF-40, IF-20 | [02_storage/SR07_chaos_drills.md §12AJ.8](../02_storage/SR07_chaos_drills.md) (SR7-D7) |
+| IF-40b | `chaos_drills` audit table (3y retention) | ✅ | V1 | IF-40 | [02_storage/SR07_chaos_drills.md §12AJ.9](../02_storage/SR07_chaos_drills.md) (SR7-D8) |
+| IF-40c | Chaos harness framework (method adapters: http_blackhole / db_slow_query / pod_kill / network_latency / ...) | ✅ | V1 | IF-40, IF-39a | [02_storage/SR07_chaos_drills.md §12AJ.8](../02_storage/SR07_chaos_drills.md) (SR7-D7) |
+| IF-40d | Per-experiment abort-criteria checker (10s SLI polling; auto-abort) | ✅ | V1 | IF-40, IF-34 | [02_storage/SR07_chaos_drills.md §12AJ.7](../02_storage/SR07_chaos_drills.md) (SR7-D6) |
+| IF-40e | Global chaos kill-switch (S5 Tier 1) | ✅ | V1 | IF-40a | [02_storage/SR07_chaos_drills.md §12AJ.7](../02_storage/SR07_chaos_drills.md) (SR7-D6, SR7-D7) |
+| IF-40f | Dry-run mode for chaos experiments | ✅ | V1 | IF-40c | [02_storage/SR07_chaos_drills.md §12AJ.7](../02_storage/SR07_chaos_drills.md) (SR7-D6) |
+| IF-40g | Post-drill review template + automated metric snapshot | ✅ | V1 | IF-40b, IF-34 | [02_storage/SR07_chaos_drills.md §12AJ.10](../02_storage/SR07_chaos_drills.md) (SR7-D9) |
+| IF-40h | V1 launch gate CI check (`v1-launch-check.sh`) | ✅ | V1 | IF-40b | [02_storage/SR07_chaos_drills.md §12AJ.11](../02_storage/SR07_chaos_drills.md) (SR7-D10) |
+| IF-40i | SR3 runbook `last_verified` method = `chaos_drill` | ✅ | V1 | IF-36, IF-40b | [02_storage/SR07_chaos_drills.md §12AJ.10](../02_storage/SR07_chaos_drills.md) (SR7-D9, extends SR3-D4) |
+| IF-40j | Chaos-scheduler cron (V1 via admin-cli; dedicated service V2+) | ✅ | V1 | IF-40a | [02_storage/SR07_chaos_drills.md §12AJ.5](../02_storage/SR07_chaos_drills.md) (SR7-D4) |
+| IF-41 | Capacity budget registry (`contracts/capacity/budgets.yaml`) | ✅ | V1 | — | [02_storage/SR08_capacity_scaling.md §12AK.3](../02_storage/SR08_capacity_scaling.md) (SR8-D2) |
+| IF-41a | Service class taxonomy + bootstrap declaration | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.2](../02_storage/SR08_capacity_scaling.md) (SR8-D1) |
+| IF-41b | Scaling signal library (`contracts/capacity/signals.go`) | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.4](../02_storage/SR08_capacity_scaling.md) (SR8-D3) |
+| IF-41c | Per-reality capacity ceiling enforcer (in `world-service`) | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.5](../02_storage/SR08_capacity_scaling.md) (SR8-D4) |
+| IF-41d | `shard_utilization` tracking table + shard dashboard | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.6](../02_storage/SR08_capacity_scaling.md) (SR8-D5) |
+| IF-41e | Auto-scaling policy templates (HPA / KEDA / vertical) | ✅ | V1 | IF-41, IF-41b | [02_storage/SR08_capacity_scaling.md §12AK.7](../02_storage/SR08_capacity_scaling.md) (SR8-D6) |
+| IF-41f | `scaling_events` audit table (1y retention) | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.11](../02_storage/SR08_capacity_scaling.md) (SR8-D10) |
+| IF-41g | Capacity metrics + alerts + DF11 panel | ✅ | V1 | IF-41, IF-34 | [02_storage/SR08_capacity_scaling.md §12AK.8](../02_storage/SR08_capacity_scaling.md) (SR8-D7) |
+| IF-41h | Load-test capacity gate (`capacity-gate-check.sh`) | 📦 | V1+30d | IF-41, G2-D4 | [02_storage/SR08_capacity_scaling.md §12AK.9](../02_storage/SR08_capacity_scaling.md) (SR8-D8; V1+30d automation) |
+| IF-41i | Pre-warmed replica pool manager | 📦 | V1+30d | IF-41e | [02_storage/SR08_capacity_scaling.md §12AK.7](../02_storage/SR08_capacity_scaling.md) (SR8-D6; V1+30d) |
+| IF-41j | `admin/capacity-override` + `admin/scaling-policy-update` + `admin/drain-shard` | ✅ | V1 | IF-41, IF-20 | [02_storage/SR08_capacity_scaling.md §12AK.10, §12AK.6](../02_storage/SR08_capacity_scaling.md) (SR8-D9, SR8-D5) |
+| IF-42 | Alert rule registry (`contracts/alerts/rules.yaml`) | ✅ | V1 | — | [02_storage/SR09_alert_tuning.md §12AL.3](../02_storage/SR09_alert_tuning.md) (SR9-D2) |
+| IF-42a | `alert-rule-lint.sh` CI lint (fields / dead-ref / severity-match / replay-validation) | ✅ | V1 | IF-42 | [02_storage/SR09_alert_tuning.md §12AL.3](../02_storage/SR09_alert_tuning.md) (SR9-D2) |
+| IF-42b | `alert_outcomes` audit (90d hot + 2y cold aggregate) | ✅ | V1 | IF-42 | [02_storage/SR09_alert_tuning.md §12AL.5](../02_storage/SR09_alert_tuning.md) (SR9-D4) |
+| IF-42c | `alert_silences` table + `admin/alert-silence` CLI | ✅ | V1 | IF-42, IF-20 | [02_storage/SR09_alert_tuning.md §12AL.6](../02_storage/SR09_alert_tuning.md) (SR9-D5) |
+| IF-42d | Pager-load metrics + rotation-rebalance dashboard (DF11) | ✅ | V1 | IF-42b, IF-34 | [02_storage/SR09_alert_tuning.md §12AL.8](../02_storage/SR09_alert_tuning.md) (SR9-D7) |
+| IF-42e | Alert storm detection + batched digest delivery | ✅ | V1 | IF-42, IF-32 | [02_storage/SR09_alert_tuning.md §12AL.10](../02_storage/SR09_alert_tuning.md) (SR9-D9) |
+| IF-42f | Weekly alert-review template + generator script | ✅ | V1 | IF-42b | [02_storage/SR09_alert_tuning.md §12AL.9](../02_storage/SR09_alert_tuning.md) (SR9-D8) |
+| IF-42g | Threshold tuning workflow (4-stage promotion + auto-downgrade/escalate) | ✅ | V1 | IF-42b | [02_storage/SR09_alert_tuning.md §12AL.4](../02_storage/SR09_alert_tuning.md) (SR9-D3) |
+| IF-42h | Alert-to-runbook CI lint trio (sync / dead-ref / coverage-check) | ✅ | V1 | IF-42, IF-36 | [02_storage/SR09_alert_tuning.md §12AL.7](../02_storage/SR09_alert_tuning.md) (SR9-D6; extends SR3-D5) |
+| IF-42i | False-positive / false-negative classifier + auto-downgrade trigger | 📦 | V1+30d | IF-42b, IF-42g | [02_storage/SR09_alert_tuning.md §12AL.4](../02_storage/SR09_alert_tuning.md) (SR9-D3; needs 30 days of data) |
+| IF-42j | `admin/alert-threshold-update` + `admin/pager-rotation-swap` CLI | ✅ | V1 | IF-42, IF-20 | [02_storage/SR09_alert_tuning.md §12AL.12](../02_storage/SR09_alert_tuning.md) (SR9-governance) |
+| IF-43 | Supply chain registry (`contracts/supply_chain/`: dep_allowlist + secret-scan-baseline + cve-policy) | ✅ | V1 | — | [02_storage/SR10_supply_chain.md §12AM.6](../02_storage/SR10_supply_chain.md) (SR10-D5) |
+| IF-43a | SBOM generator (syft; CycloneDX 1.5) | ✅ | V1 | IF-43 | [02_storage/SR10_supply_chain.md §12AM.2](../02_storage/SR10_supply_chain.md) (SR10-D1) |
+| IF-43b | Dep pinning enforcer (`dep-pinning-lint.sh`) | ✅ | V1 | IF-43 | [02_storage/SR10_supply_chain.md §12AM.3](../02_storage/SR10_supply_chain.md) (SR10-D2; enforces I18 if approved) |
+| IF-43c | Container image signing + verification (cosign + K8s admission policy) | ✅ | V1 | IF-43, IF-31 | [02_storage/SR10_supply_chain.md §12AM.4](../02_storage/SR10_supply_chain.md) (SR10-D3) |
+| IF-43d | CVE scanner + severity gate (trivy; critical/high blocks) | ✅ | V1 | IF-43, IF-42 | [02_storage/SR10_supply_chain.md §12AM.5](../02_storage/SR10_supply_chain.md) (SR10-D4) |
+| IF-43e | 3rd-party vetting workflow (checklist + allowlist CI lint + `admin/dep-vet-approve`) | ✅ | V1 | IF-43 | [02_storage/SR10_supply_chain.md §12AM.6](../02_storage/SR10_supply_chain.md) (SR10-D5) |
+| IF-43f | SLSA Level 2 provenance (slsa-github-generator + cosign attest) | ✅ | V1 | IF-43c | [02_storage/SR10_supply_chain.md §12AM.7](../02_storage/SR10_supply_chain.md) (SR10-D6) |
+| IF-43g | 3-scan-point secret scanning (gitleaks pre-commit + CI + monthly history cron) | ✅ | V1 | IF-43 | [02_storage/SR10_supply_chain.md §12AM.8](../02_storage/SR10_supply_chain.md) (SR10-D7; extends I12) |
+| IF-43h | Supply chain runbook library — 6 runbooks | ✅ | V1 | IF-36, IF-43 | [02_storage/SR10_supply_chain.md §12AM.9](../02_storage/SR10_supply_chain.md) (SR10-D8; SR3 27-gate → 39) |
+| IF-43i | Build reproducibility check (V1+30d 10% sample; V2+ blocks merge) | 📦 | V1+30d | IF-43 | [02_storage/SR10_supply_chain.md §12AM.10](../02_storage/SR10_supply_chain.md) (SR10-D9) |
+| IF-43j | `supply_chain_events` audit + `admin/cve-override` + `admin/supply-chain-freeze` CLI | ✅ | V1 | IF-43, IF-20 | [02_storage/SR10_supply_chain.md §12AM.10, §12AM.12](../02_storage/SR10_supply_chain.md) (SR10-D9, SR10-governance) |
+| IF-44 | Turn state machine library (`contracts/turn/state_machine.go`) | ✅ | V1 | — | [02_storage/SR11_turn_ux_reliability.md §12AN.2](../02_storage/SR11_turn_ux_reliability.md) (SR11-D1) |
+| IF-44a | `turn.status.update` WS message + per-state indicator UX | ✅ | V1 | IF-44, IF-32 | [02_storage/SR11_turn_ux_reliability.md §12AN.3](../02_storage/SR11_turn_ux_reliability.md) (SR11-D2) |
+| IF-44b | `PresenceState` enum + `session_participants` schema extension + debounced WS propagation | ✅ | V1 | IF-44 | [02_storage/SR11_turn_ux_reliability.md §12AN.4](../02_storage/SR11_turn_ux_reliability.md) (SR11-D3) |
+| IF-44c | Disconnect-handling 3-policy matrix + per-session/reality config | ✅ | V1 | IF-44, IF-44b | [02_storage/SR11_turn_ux_reliability.md §12AN.5](../02_storage/SR11_turn_ux_reliability.md) (SR11-D4) |
+| IF-44d | Optimistic UX framework + divergence rollback + toast notification | ✅ | V1 | IF-44a | [02_storage/SR11_turn_ux_reliability.md §12AN.6](../02_storage/SR11_turn_ux_reliability.md) (SR11-D5) |
+| IF-44e | Degraded-mode UX banner system per SR6-D5 | ✅ | V1 | IF-44a, IF-39e | [02_storage/SR11_turn_ux_reliability.md §12AN.7](../02_storage/SR11_turn_ux_reliability.md) (SR11-D6) |
+| IF-44f | FIFO + tier-bump queue + 30%-cap fairness Gini metric | ✅ | V1 | IF-44, IF-34 | [02_storage/SR11_turn_ux_reliability.md §12AN.8](../02_storage/SR11_turn_ux_reliability.md) (SR11-D7) |
+| IF-44g | `turn_outcomes` audit table (1y retention; 4 indexes) | ✅ | V1 | IF-44 | [02_storage/SR11_turn_ux_reliability.md §12AN.9](../02_storage/SR11_turn_ux_reliability.md) (SR11-D8) |
+| IF-44h | Registered error code library (`contracts/errors/user_errors.yaml`) with i18n + CI lint | ✅ | V1 | IF-44, IF-16 | [02_storage/SR11_turn_ux_reliability.md §12AN.10](../02_storage/SR11_turn_ux_reliability.md) (SR11-D9) |
+| IF-44i | V1 12-scenario launch gate (`v1-turn-ux-check.sh`) | ✅ | V1 | IF-44, IF-40b | [02_storage/SR11_turn_ux_reliability.md §12AN.11](../02_storage/SR11_turn_ux_reliability.md) (SR11-D10) |
+| IF-44j | `admin/session-unfreeze` + `admin/turn-abandon` + `admin/presence-reset` CLI | ✅ | V1 | IF-44, IF-20 | [02_storage/SR11_turn_ux_reliability.md §12AN.12](../02_storage/SR11_turn_ux_reliability.md) (SR11-governance) |
+| IF-45 | Observability inventory registry (`contracts/observability/inventory.yaml`) | ✅ | V1 | — | [02_storage/SR12_observability_cost.md §12AO.2](../02_storage/SR12_observability_cost.md) (SR12-D1) |
+| IF-45a | `observability-inventory-lint.sh` CI lint (metric + audit-table declaration enforcement) | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.2](../02_storage/SR12_observability_cost.md) (SR12-D1; enforces I19 if approved) |
+| IF-45b | Per-service cardinality + log + audit budgets (`budgets.yaml`) | ✅ | V1 | IF-45, IF-41 | [02_storage/SR12_observability_cost.md §12AO.3](../02_storage/SR12_observability_cost.md) (SR12-D2) |
+| IF-45c | `observability_budget_breaches` audit table (1y retention) | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.3](../02_storage/SR12_observability_cost.md) (SR12-D2) |
+| IF-45d | Retention tier audit cron + `user_queue_metrics` 1y formalization | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.4](../02_storage/SR12_observability_cost.md) (SR12-D3; S8-D3 Operational tier extension) |
+| IF-45e | Log sampling configuration + per-service overrides + `admin/log-sampling-update` | ✅ | V1 | IF-45, IF-20 | [02_storage/SR12_observability_cost.md §12AO.5](../02_storage/SR12_observability_cost.md) (SR12-D4) |
+| IF-45f | Audit rollup crons (alert_outcomes weekly agg + prompt_audit cold archive; others V1+30d) | 🟡 | V1 + V1+30d | IF-45 | [02_storage/SR12_observability_cost.md §12AO.6](../02_storage/SR12_observability_cost.md) (SR12-D5) |
+| IF-45g | Meta-observability metrics + DF11 panel + 4 alerts | ✅ | V1 | IF-45, IF-34 | [02_storage/SR12_observability_cost.md §12AO.7](../02_storage/SR12_observability_cost.md) (SR12-D6) |
+| IF-45h | Cardinality admission control in `pkg/metrics/` (V1 warn-and-drop → V1+30d hard-reject → V2+ pre-commit) | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.8](../02_storage/SR12_observability_cost.md) (SR12-D7) |
+| IF-45i | Weekly rebaseline cadence template + V1 solo-dev pattern | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.10](../02_storage/SR12_observability_cost.md) (SR12-D9) |
+| IF-45j | `admin/metric-label-audit` + `admin/retention-override` CLI | ✅ | V1 | IF-45, IF-20 | [02_storage/SR12_observability_cost.md §12AO.12](../02_storage/SR12_observability_cost.md) (SR12-governance) |
 

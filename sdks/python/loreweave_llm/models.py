@@ -60,9 +60,24 @@ class ErrorEvent(_BaseEvent):
     message: str
 
 
+class AudioChunkEvent(_BaseEvent):
+    """Phase 5a TTS streaming event. Wire alias is `audio-chunk` (with
+    hyphen) per the openapi schema; the Python alias matches.
+
+    Caller decodes `data` from base64 to get raw audio bytes in the
+    format negotiated via TtsInput.format. `final=True` marks the
+    closing chunk and is followed by a `DoneEvent`.
+    """
+
+    event_type: Literal["audio-chunk"] = Field("audio-chunk", alias="event")
+    sequence_id: int
+    data: str  # base64 — caller decodes
+    final: bool
+
+
 # Discriminated union of all canonical events.
 StreamEvent = Annotated[
-    Union[TokenEvent, ReasoningEvent, UsageEvent, DoneEvent, ErrorEvent],
+    Union[TokenEvent, ReasoningEvent, UsageEvent, DoneEvent, ErrorEvent, AudioChunkEvent],
     Field(discriminator="event_type"),
 ]
 
@@ -226,3 +241,77 @@ class Job(BaseModel):
 
     def is_terminal(self) -> bool:
         return self.status in ("completed", "failed", "cancelled")
+
+
+# ── Audio operation models (Phase 5a) ─────────────────────────────────
+
+AudioFormat = Literal["mp3", "wav", "opus", "pcm"]
+
+
+class TtsInput(BaseModel):
+    """Mirrors openapi `TtsInput`. Used as `input` for `operation=tts`
+    on POST /v1/llm/stream (NOT POST /v1/llm/jobs — tts is streaming-only).
+
+    Phase 5a defaults match the openapi schema:
+    - voice: alloy
+    - speed: 1.0
+    - format: mp3
+    - text max length: 4000 chars (OpenAI TTS limit)
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    text: str = Field(..., min_length=1, max_length=4000)
+    voice: str = "alloy"
+    speed: float = Field(default=1.0, ge=0.25, le=4.0)
+    format: AudioFormat = "mp3"
+
+
+class TtsStreamRequest(BaseModel):
+    """Mirrors openapi `TtsStreamRequest`. Submitted to POST /v1/llm/stream
+    with `operation=tts`.
+
+    Reuses model_source / model_ref / trace_id from the chat StreamRequest
+    pattern; the only new top-level field is `input` (TtsInput shape).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    operation: Literal["tts"] = "tts"
+    model_source: ModelSource
+    model_ref: UUID
+    input: TtsInput
+    trace_id: str | None = None
+
+    def to_request_body(self) -> dict[str, Any]:
+        return self.model_dump(mode="json", exclude_none=True)
+
+
+class SttInput(BaseModel):
+    """Mirrors openapi `SttInput`. Used as `input` field in
+    SubmitJobRequest for `operation=stt`.
+
+    `audio_url` MUST be HTTPS reachable from the gateway VPC. For
+    chat-service voice flow (Phase 5b), this is a pre-signed MinIO URL
+    with ≤60s TTL.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    audio_url: str
+    language: str = "auto"
+
+
+class SttResult(BaseModel):
+    """Mirrors openapi `SttResult`. Decoded from Job.result when
+    `operation=stt` and `status=completed`.
+
+    `language` and `duration_ms` are populated when upstream returns
+    them (OpenAI Whisper `verbose_json` does); otherwise None.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    text: str
+    language: str | None = None
+    duration_ms: int | None = None

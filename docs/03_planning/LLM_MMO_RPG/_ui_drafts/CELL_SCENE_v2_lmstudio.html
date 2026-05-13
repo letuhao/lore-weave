@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>LoreWeave Cell Scene v2 — LM Studio LLM-gen experiment</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: #0d1117; color: #e6edf3; display: flex; flex-direction: column; }
+
+  header.topbar {
+    padding: 10px 20px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+  }
+  header.topbar .back {
+    background: #21262d; border: 1px solid #30363d; color: #58a6ff;
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px;
+  }
+  header.topbar .back:hover { background: #30363d; }
+  header.topbar h1 { font-size: 18px; font-weight: 500; }
+  header.topbar .place-meta { color: #7d8590; font-size: 12px; display: flex; gap: 12px; }
+  header.topbar .place-meta .badge {
+    padding: 2px 8px; border-radius: 12px; background: #1f6feb33; color: #58a6ff; font-size: 11px;
+  }
+  header.topbar .place-meta .badge.canon { background: #d2992233; color: #d29922; }
+
+  /* LM Studio config bar */
+  .llm-bar {
+    background: #1a1a1f;
+    border-bottom: 1px solid #30363d;
+    padding: 10px 20px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .llm-bar label {
+    font-size: 11px;
+    color: #7d8590;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .llm-bar input, .llm-bar select {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    color: #e6edf3;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 12px;
+  }
+  .llm-bar input:focus, .llm-bar select:focus { outline: none; border-color: #58a6ff; }
+  .llm-bar input.url { width: 280px; }
+  .llm-bar input.model { width: 220px; }
+  .llm-bar input.temp { width: 60px; }
+  .llm-bar button.gen {
+    background: linear-gradient(135deg, #6e3a8a 0%, #1f6feb 100%);
+    border: none; color: white;
+    padding: 8px 18px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-weight: 500; font-size: 13px;
+    transition: transform 0.1s;
+  }
+  .llm-bar button.gen:hover { transform: translateY(-1px); }
+  .llm-bar button.gen:disabled { opacity: 0.6; cursor: wait; }
+  .llm-bar button.reset {
+    background: #21262d; border: 1px solid #30363d; color: #b8b8b8;
+    padding: 8px 14px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-size: 12px;
+  }
+  .llm-bar button.reset:hover { color: #e6edf3; border-color: #58a6ff; }
+  .llm-bar .status {
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    color: #7d8590;
+    margin-left: auto;
+  }
+  .llm-bar .status.ok { color: #3fb950; }
+  .llm-bar .status.err { color: #f85149; }
+  .llm-bar .status.busy { color: #d29922; }
+
+  main {
+    flex: 1; display: grid; grid-template-columns: 1fr 380px; overflow: hidden; min-height: 0;
+  }
+
+  section.grid-viewport {
+    position: relative;
+    background: radial-gradient(ellipse at center, #1a1a1f 0%, #0d1117 80%);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+    overflow: hidden;
+  }
+  section.grid-viewport svg.cell-grid {
+    max-width: 100%; max-height: 100%;
+    background: #161b22; border: 2px solid #30363d; border-radius: 8px;
+    box-shadow: 0 0 60px #58a6ff11;
+  }
+
+  .tile-floor { fill: #3d2c1a; }
+  .tile-floor-carpet { fill: #4d2818; }
+  .tile-wall { fill: #1a1a1f; stroke: #30363d; stroke-width: 0.5; }
+  .tile-counter { fill: #6b4226; stroke: #8b5a36; stroke-width: 1; }
+  .tile-table { fill: #5a3a1f; stroke: #7a4f2c; stroke-width: 1; }
+  .tile-chair { fill: #3d2c1a; stroke: #5a3a1f; stroke-width: 0.5; }
+  .tile-fireplace { fill: #4a1010; stroke: #722; stroke-width: 1; }
+  .tile-window { fill: #2a4a6a; stroke: #4a6a8a; stroke-width: 1; }
+  .tile-door { fill: #6b4226; stroke: #d29922; stroke-width: 2; }
+  .tile-threshold { fill: #4d3320; stroke: #d29922; stroke-width: 0.5; stroke-dasharray: 2,1; }
+  .tile { cursor: pointer; transition: filter 0.15s; }
+  .tile:hover { filter: brightness(1.4); }
+
+  .entity { cursor: pointer; transition: transform 0.15s; }
+  .entity:hover { transform: scale(1.15); transform-origin: center; transform-box: fill-box; }
+  .entity text.emoji {
+    font-size: 22px; text-anchor: middle; dominant-baseline: central;
+    user-select: none; pointer-events: none;
+  }
+  .entity .selection-ring {
+    fill: none; stroke: #58a6ff; stroke-width: 2;
+    stroke-dasharray: 3,2; pointer-events: none; opacity: 0;
+  }
+  .entity.selected .selection-ring { opacity: 1; }
+  .entity.is-pc circle { fill: #1f6feb44; stroke: #58a6ff; stroke-width: 1.5; }
+  .entity.is-npc circle { fill: #2a1f3a; stroke: #b481d4; stroke-width: 1.5; }
+  .entity.is-item circle { fill: #2a2410; stroke: #d29922; stroke-width: 1; stroke-dasharray: 2,1; }
+  .entity text.label {
+    font-size: 9px; fill: #b8b8b8; text-anchor: middle;
+    user-select: none; pointer-events: none;
+  }
+
+  .llm-gen-badge {
+    position: absolute; top: 28px; right: 28px;
+    background: rgba(13, 17, 23, 0.85);
+    padding: 4px 10px; border-radius: 12px;
+    font-size: 10px; font-family: 'Courier New', monospace;
+  }
+  .llm-gen-badge.default { border: 1px solid #30363d; color: #7d8590; }
+  .llm-gen-badge.llm-gen { border: 1px solid #6e3a8a; color: #b481d4; }
+
+  /* Sidebar */
+  aside.sidebar {
+    background: #161b22; border-left: 1px solid #30363d;
+    overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px;
+  }
+  aside.sidebar h2 {
+    font-size: 11px; color: #7d8590; text-transform: uppercase;
+    letter-spacing: 0.5px; font-weight: 500;
+  }
+  .panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; }
+  .panel h3 { font-size: 14px; margin-bottom: 8px; color: #e6edf3; }
+  .panel .meta-row { font-size: 12px; color: #b8b8b8; line-height: 1.5; margin: 3px 0; }
+  .panel .meta-row strong { color: #e6edf3; }
+  .panel .badge {
+    display: inline-block; padding: 2px 7px; border-radius: 10px;
+    background: #1f6feb33; color: #58a6ff; font-size: 10px; margin: 0 4px 3px 0;
+  }
+  .panel .badge.canon { background: #d2992233; color: #d29922; }
+  .panel .badge.npc { background: #6e3a8a33; color: #b481d4; }
+  .panel .badge.item { background: #d2992233; color: #d29922; }
+  .panel .badge.envobject { background: #2ea04333; color: #3fb950; }
+  .panel .badge.affordance { background: #21262d; color: #b8b8b8; border: 1px solid #30363d; }
+  .empty-pane {
+    color: #7d8590; font-size: 12px; font-style: italic; text-align: center;
+    padding: 18px; border: 1px dashed #30363d; border-radius: 6px;
+  }
+
+  .action-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+  .action-btn {
+    background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+    padding: 8px; border-radius: 5px; cursor: pointer;
+    font: inherit; font-size: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .action-btn:hover { background: #30363d; border-color: #58a6ff; }
+  .action-btn.primary {
+    grid-column: span 2;
+    background: #1f6feb; border-color: #58a6ff; justify-content: center;
+  }
+  .action-btn.primary:hover { background: #388bfd; }
+
+  /* LLM debug drawer */
+  .debug-drawer {
+    background: #1a1a1f;
+    border-top: 1px solid #30363d;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s;
+    flex-shrink: 0;
+  }
+  .debug-drawer.expanded { max-height: 280px; }
+  .debug-drawer .debug-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr 280px;
+    gap: 12px;
+    padding: 12px;
+    height: 280px;
+    overflow: hidden;
+  }
+  .debug-drawer .debug-section {
+    display: flex; flex-direction: column;
+    background: #0d1117; border: 1px solid #30363d;
+    border-radius: 6px; padding: 10px;
+    overflow: hidden;
+  }
+  .debug-drawer .debug-section h4 {
+    font-size: 11px; color: #7d8590; text-transform: uppercase;
+    letter-spacing: 0.3px; margin-bottom: 6px;
+  }
+  .debug-drawer .debug-content pre {
+    flex: 1; overflow: auto;
+    background: transparent; color: #b8b8b8;
+    font-size: 10px; font-family: 'Courier New', monospace;
+    line-height: 1.4; white-space: pre-wrap; word-break: break-all;
+  }
+  .debug-drawer .validator-list { font-size: 11px; }
+  .validator-row {
+    display: flex; align-items: center; gap: 8px; padding: 3px 0;
+    border-bottom: 1px dashed #21262d;
+  }
+  .validator-row:last-child { border-bottom: none; }
+  .validator-row .check { font-size: 14px; flex-shrink: 0; }
+  .validator-row.pass .check { color: #3fb950; }
+  .validator-row.fail .check { color: #f85149; }
+  .validator-row .label { color: #b8b8b8; font-size: 11px; flex: 1; }
+  .validator-row .label small { color: #7d8590; display: block; }
+
+  .debug-toggle {
+    background: #161b22; padding: 4px 16px;
+    border-top: 1px solid #30363d;
+    cursor: pointer; font-size: 11px; color: #7d8590;
+    display: flex; justify-content: center; align-items: center; gap: 6px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+  }
+  .debug-toggle:hover { color: #58a6ff; }
+
+  /* Tooltip */
+  .tooltip {
+    position: absolute; background: rgba(13, 17, 23, 0.95);
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 6px 10px; font-size: 11px; color: #b8b8b8;
+    pointer-events: none; opacity: 0;
+    z-index: 100; white-space: nowrap;
+  }
+  .tooltip.show { opacity: 1; }
+
+  .event-log {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 8px; font-size: 11px; color: #b8b8b8;
+    line-height: 1.4; font-family: 'Courier New', monospace;
+    max-height: 100px; overflow-y: auto;
+  }
+  .event-log .ev { margin: 3px 0; padding: 1px 0; border-bottom: 1px dashed #21262d; }
+  .event-log .ev.system { color: #58a6ff; }
+  .event-log .ev.narrator { color: #e6edf3; font-family: 'Segoe UI', sans-serif; font-style: italic; }
+  .event-log .ev.action { color: #d29922; }
+  .event-log .ev .ts { color: #7d8590; font-size: 9px; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <button class="back" onclick="alert('Back to MAP_001 view (mocked)')">← Map</button>
+    <h1>Yên Vũ Lâu</h1>
+    <div class="place-meta">
+      <span class="badge">Tavern</span>
+      <span class="badge canon">Pristine · Q3 C12</span>
+      <span>ambient: dusk · light rain · 4 patrons</span>
+    </div>
+  </header>
+
+  <div class="llm-bar">
+    <label>URL:</label>
+    <input type="text" class="url" id="lm-url" value="http://localhost:1234/v1/chat/completions" placeholder="http://localhost:1234/v1/chat/completions">
+    <label>Format:</label>
+    <select id="lm-format" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px 8px;border-radius:4px;font:inherit;font-size:12px;">
+      <option value="openai">OpenAI-compatible (messages array)</option>
+      <option value="lmstudio_rest">LM Studio REST (system_prompt + input)</option>
+    </select>
+    <label>Model:</label>
+    <input type="text" class="model" id="lm-model" placeholder="paste model id from LM Studio">
+    <label>Temp:</label>
+    <input type="number" class="temp" id="lm-temp" min="0" max="2" step="0.1" value="0.7">
+    <button class="gen" id="lm-gen-btn" onclick="generateLayout()">⚙ Generate</button>
+    <button class="reset" onclick="testConnection()" title="GET /v1/models to verify connectivity">🔌 Test</button>
+    <button class="reset" onclick="resetToDefault()">↺ Reset</button>
+    <span class="status" id="lm-status">idle</span>
+  </div>
+
+  <main>
+    <section class="grid-viewport" id="grid-viewport">
+      <div class="llm-gen-badge default" id="gen-badge">⚙ DefaultTemplate · hand-crafted</div>
+      <svg class="cell-grid" id="cell-grid" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet">
+        <g id="tiles-layer"></g>
+        <g id="entities-layer"></g>
+      </svg>
+    </section>
+
+    <aside class="sidebar">
+      <div>
+        <h2>Selected Entity</h2>
+        <div id="info-pane">
+          <div class="empty-pane">Click an entity to inspect</div>
+        </div>
+      </div>
+      <div>
+        <h2>PC: Lý Minh</h2>
+        <div class="panel">
+          <h3>🧑 Lý Minh</h3>
+          <div class="meta-row">PC · xuyên không (soul=2026, body=1256)</div>
+          <div class="meta-row">HP 92/100 · Tinh thần 60/100</div>
+          <div class="meta-row">⚠ Drunk · ⚠ Frightened</div>
+          <div class="meta-row" style="margin-top: 6px;"><strong>Inventory:</strong> ⚔️ jian · 📜 scroll · 🪙 5s</div>
+        </div>
+      </div>
+      <div>
+        <h2>Recent Events</h2>
+        <div class="event-log" id="event-log">
+          <div class="ev system">[init] cell:yen_vu_lau bound</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="debug-toggle" onclick="toggleDebug()" id="debug-toggle">▼ LLM Debug Panel (raw response · parsed JSON · validator results)</div>
+  <div class="debug-drawer" id="debug-drawer">
+    <div class="debug-content">
+      <div class="debug-section">
+        <h4>📝 Prompt sent</h4>
+        <pre id="dbg-prompt">(will fill on Generate)</pre>
+      </div>
+      <div class="debug-section">
+        <h4>🤖 Raw LLM response</h4>
+        <pre id="dbg-raw">(will fill on Generate)</pre>
+      </div>
+      <div class="debug-section">
+        <h4>✓ Validators</h4>
+        <div class="validator-list" id="dbg-validators">
+          <div style="color: #7d8590; font-size: 11px; font-style: italic;">Run a generation to see validator results.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const GRID_SIZE = 16;
+    const TILE_PX = 32;
+
+    const TILE_TYPES = {
+      W:  { kind: 'wall',       walkable: false, label: 'Wall' },
+      F:  { kind: 'floor',      walkable: true,  label: 'Floor' },
+      C:  { kind: 'floor-carpet',walkable: true, label: 'Carpet' },
+      Co: { kind: 'counter',    walkable: false, label: 'Counter' },
+      T:  { kind: 'table',      walkable: false, label: 'Table' },
+      Ch: { kind: 'chair',      walkable: true,  label: 'Chair' },
+      Fp: { kind: 'fireplace',  walkable: false, label: 'Fireplace' },
+      Wn: { kind: 'window',     walkable: false, label: 'Window' },
+      D:  { kind: 'door',       walkable: true,  label: 'Door' },
+      Th: { kind: 'threshold',  walkable: true,  label: 'Threshold' },
+    };
+
+    // ─── Default hand-crafted layout (V1 fallback when LLM-gen fails or before first run) ───
+    const DEFAULT_LAYOUT_TILES = [
+      'WWWWWWWWWWWWWWWW',
+      'WCoCoCoCoFFFFWnFW',
+      'WFFFFFFFFFFFFFFW',
+      'WFFFFFFFFFFFFFFW',
+      'WFChTTChFChTTChFFW',
+      'WFFTTFFFFTTFFFFFW',
+      'WFChChFFFChChFFpFpW',
+      'WFFFFFFFFFFFFFpFpW',
+      'WCFFFFFFFFFFFFCFW',
+      'WCFFFFFFFFFFFFCFW',
+      'WCFFFFFFFFFFFFCFW',
+      'WFFFFFFFFFFFFFFW',
+      'WFFFFFFFFFFFFFFW',
+      'WFFFFFFFFFFFFFFW',
+      'WWWWWWDDWWWWWWWW',
+      'WWWWWWThThWWWWWWW',
+    ];
+
+    const REQUIRED_ENTITIES = [
+      { id: 'pc:ly_minh',   kind: 'pc',  emoji: '🧑', display_name: 'Lý Minh',   affordances: ['BeSpokenTo','BeStruck','BeExamined','BeGiven','BeReceived','BeUsed'], description: 'PC · xuyên không' },
+      { id: 'npc:lao_ngu',  kind: 'npc', emoji: '👴', display_name: 'Lão Ngũ',   affordances: ['BeSpokenTo','BeStruck','BeExamined','BeGiven','BeReceived'], description: 'Tavern keeper, ex-jianghu' },
+      { id: 'npc:tieu_thuy',kind: 'npc', emoji: '👧', display_name: 'Tiểu Thúy', affordances: ['BeSpokenTo','BeStruck','BeExamined','BeGiven','BeReceived'], description: 'Waitress, illiterate' },
+      { id: 'npc:du_si',    kind: 'npc', emoji: '🧙', display_name: 'Du sĩ',     affordances: ['BeSpokenTo','BeStruck','BeExamined','BeGiven','BeReceived'], description: 'Scholar, reading Đạo Đức Kinh' },
+      { id: 'item:tea_pot', kind: 'item',emoji: '🫖', display_name: 'Bộ ấm trà', affordances: ['BeExamined','BeUsed','BeGiven','BeReceived'], description: 'Bộ ấm trà gốm sứ cổ' },
+      { id: 'item:scroll',  kind: 'item',emoji: '📜', display_name: 'Đạo Đức Kinh chú', affordances: ['BeExamined','BeUsed','BeGiven','BeReceived'], description: 'Cuộn chú giải Đạo Đức Kinh' },
+    ];
+
+    const DEFAULT_ENTITY_POSITIONS = {
+      'pc:ly_minh':    { x: 6, y: 14 },
+      'npc:lao_ngu':   { x: 2, y: 2 },
+      'npc:tieu_thuy': { x: 4, y: 5 },
+      'npc:du_si':     { x: 11, y: 5 },
+      'item:tea_pot':  { x: 4, y: 2 },
+      'item:scroll':   { x: 11, y: 4 },
+    };
+
+    // ─── State ───
+    let currentTiles = parseLayoutRows(DEFAULT_LAYOUT_TILES);
+    let currentEntities = REQUIRED_ENTITIES.map(e => ({ ...e, ...DEFAULT_ENTITY_POSITIONS[e.id] }));
+    let selectedEntityId = null;
+    let lastGenSource = 'DefaultTemplate · hand-crafted';
+
+    function parseLayoutRows(rows) {
+      const tokenRegex = /Co|Wn|Fp|Th|Ch|[WFCTD]/g;
+      const grid = [];
+      for (const row of rows) {
+        const tokens = [];
+        let m;
+        while ((m = tokenRegex.exec(row)) !== null) tokens.push(m[0]);
+        while (tokens.length < GRID_SIZE) tokens.push('F');
+        grid.push(tokens.slice(0, GRID_SIZE));
+      }
+      while (grid.length < GRID_SIZE) {
+        grid.push(new Array(GRID_SIZE).fill('F'));
+      }
+      return grid.slice(0, GRID_SIZE);
+    }
+
+    // ─── LLM prompt builder ───
+    function buildPrompt() {
+      const system = `You are a procedural game layout designer. You generate strict JSON describing top-down 16x16 grid layouts for cells in an LLM-driven RPG. You output ONLY valid JSON. No prose, no markdown fences, no commentary.`;
+
+      const user = `Generate a layout for this cell:
+
+PLACE METADATA:
+- place_id: cell:yen_vu_lau
+- place_type: Tavern
+- canon_ref: Tien Nghich Q3 C12 (Lam An tavern)
+- structural_state: Pristine
+- ambient: dusk, light rain, 4 patrons
+- description: Tea-and-rice tavern in Hangzhou region, Song Dynasty 1256. Owner Lao Ngu (ex-jianghu).
+
+GRID:
+- Exactly 16 rows x 16 columns
+- Row 0 = north (top); row 15 = south (bottom)
+- Border walls (W) on all 4 sides
+- 1-2 door tiles (D) at south wall (row 14)
+- Use ONLY these tile tokens: W (wall), F (floor), C (carpet), Co (counter), T (table), Ch (chair), Fp (fireplace), Wn (window), D (door), Th (threshold)
+
+FIXTURES TO INCLUDE:
+- 1 main entry door at south wall (row 14)
+- 1 counter section (3-5 Co tiles wide; behind the bar, near north)
+- 3-5 tables (T tiles) with chairs (Ch) adjacent
+- 1 fireplace (1-2 Fp tiles, against an interior or outer wall)
+- 1-2 windows (Wn) on outer walls
+- Optional carpet (C) for atmosphere
+
+ENTITIES TO PLACE (use these EXACT ids):
+- pc:ly_minh (PC; place near south entry/threshold)
+- npc:lao_ngu (NPC tavern keeper; place at or behind the counter)
+- npc:tieu_thuy (NPC waitress; place near a table or moving)
+- npc:du_si (NPC scholar; place seated at a table away from counter)
+- item:tea_pot (on counter)
+- item:scroll (on du_si's table)
+
+CONSTRAINTS (validator will reject):
+1. tiles: array of exactly 16 strings; each string = exactly 16 tile tokens concatenated (using token alphabet)
+2. entities: 6 entries; ids must match the 6 above; x and y in 0..15
+3. All entities must be at WALKABLE tiles (NOT W, Co, T, Fp, Wn). Walkable = F, C, Ch, D, Th
+4. No two entities at same (x,y)
+5. At least 1 D tile in row 14
+
+OUTPUT (return EXACTLY this JSON):
+{
+  "tiles": ["WWWW...16chars", "...", ... 16 strings],
+  "entities": [
+    {"id":"pc:ly_minh","x":<int>,"y":<int>},
+    {"id":"npc:lao_ngu","x":<int>,"y":<int>},
+    {"id":"npc:tieu_thuy","x":<int>,"y":<int>},
+    {"id":"npc:du_si","x":<int>,"y":<int>},
+    {"id":"item:tea_pot","x":<int>,"y":<int>},
+    {"id":"item:scroll","x":<int>,"y":<int>}
+  ],
+  "rationale": "one sentence explaining your layout"
+}
+
+Output the JSON now (no markdown fences, no prose):`;
+
+      return { system, user };
+    }
+
+    // Strip markdown fences and extract first JSON object from text
+    function extractJson(text) {
+      // Remove markdown code fences
+      let s = text.trim();
+      s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+      // Find first { ... balanced }
+      const firstBrace = s.indexOf('{');
+      if (firstBrace < 0) return null;
+      let depth = 0, end = -1;
+      for (let i = firstBrace; i < s.length; i++) {
+        if (s[i] === '{') depth++;
+        else if (s[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end < 0) return null;
+      const jsonStr = s.slice(firstBrace, end + 1);
+      try { return { ok: true, value: JSON.parse(jsonStr), raw: jsonStr }; }
+      catch (e) { return { ok: false, error: e.message, raw: jsonStr }; }
+    }
+
+    // ─── Validators (per Phase 0 §6 basic physics + schema constraints) ───
+    function runValidators(parsed) {
+      const results = [];
+      const tilesOk = Array.isArray(parsed.tiles) && parsed.tiles.length === 16;
+      results.push({
+        pass: tilesOk,
+        label: '16-row tiles array',
+        detail: tilesOk ? 'OK' : `Got ${parsed.tiles?.length ?? 'undefined'} rows`,
+      });
+
+      if (!tilesOk) return { ok: false, results, parsed };
+
+      // Parse all rows
+      const grid = parseLayoutRows(parsed.tiles);
+      const allTokensValid = grid.every(row => row.every(t => TILE_TYPES[t]));
+      results.push({
+        pass: allTokensValid,
+        label: 'All tokens valid',
+        detail: allTokensValid ? 'OK' : 'Found unknown tile tokens',
+      });
+
+      // Each row exactly 16 tokens
+      const rowLengthOk = grid.every(row => row.length === 16);
+      results.push({
+        pass: rowLengthOk,
+        label: 'Each row = 16 tokens',
+        detail: rowLengthOk ? 'OK' : 'Row length mismatch',
+      });
+
+      // Border walls
+      const top = grid[0].every(t => t === 'W');
+      const bottom = grid[15].every(t => t === 'W' || t === 'D' || t === 'Th');
+      const left = grid.every(row => ['W','D','Th'].includes(row[0]));
+      const right = grid.every(row => ['W','D','Th','Wn'].includes(row[15]));
+      const borderOk = top && bottom && left && right;
+      results.push({
+        pass: borderOk,
+        label: 'Border walls intact',
+        detail: borderOk ? 'OK' : `top:${top} bottom:${bottom} left:${left} right:${right}`,
+      });
+
+      // South door
+      const southDoorOk = grid[14].some(t => t === 'D');
+      results.push({
+        pass: southDoorOk,
+        label: 'Door (D) on row 14',
+        detail: southDoorOk ? 'OK' : 'No D tile found in south wall',
+      });
+
+      // Entities
+      const entitiesOk = Array.isArray(parsed.entities) && parsed.entities.length === 6;
+      results.push({
+        pass: entitiesOk,
+        label: '6 entities present',
+        detail: entitiesOk ? 'OK' : `Got ${parsed.entities?.length ?? 'undefined'}`,
+      });
+
+      if (!entitiesOk) return { ok: false, results, parsed, grid };
+
+      // Required ids
+      const requiredIds = REQUIRED_ENTITIES.map(e => e.id).sort();
+      const gotIds = parsed.entities.map(e => e.id).sort();
+      const idsMatch = JSON.stringify(requiredIds) === JSON.stringify(gotIds);
+      results.push({
+        pass: idsMatch,
+        label: 'All required entity ids',
+        detail: idsMatch ? 'OK' : `Missing: ${requiredIds.filter(i => !gotIds.includes(i)).join(',')}`,
+      });
+
+      // Coords in range
+      const coordsOk = parsed.entities.every(e =>
+        Number.isInteger(e.x) && Number.isInteger(e.y) &&
+        e.x >= 0 && e.x < 16 && e.y >= 0 && e.y < 16
+      );
+      results.push({
+        pass: coordsOk,
+        label: 'Coords in 0..15',
+        detail: coordsOk ? 'OK' : 'Some coords out of range',
+      });
+
+      // Walkable tiles
+      const walkable = ['F','C','Ch','D','Th'];
+      const walkableEntities = parsed.entities.every(e => {
+        if (!coordsOk) return false;
+        const t = grid[e.y][e.x];
+        return walkable.includes(t);
+      });
+      results.push({
+        pass: walkableEntities,
+        label: 'Entities on walkable tiles',
+        detail: walkableEntities ? 'OK' : parsed.entities.filter(e => coordsOk && !walkable.includes(grid[e.y][e.x])).map(e => `${e.id}@(${e.x},${e.y})=${grid[e.y][e.x]}`).join('; '),
+      });
+
+      // No overlap
+      const seen = new Set();
+      let overlap = false;
+      for (const e of parsed.entities) {
+        const k = `${e.x},${e.y}`;
+        if (seen.has(k)) { overlap = true; break; }
+        seen.add(k);
+      }
+      results.push({
+        pass: !overlap,
+        label: 'No two entities at same tile',
+        detail: !overlap ? 'OK' : 'Overlap detected',
+      });
+
+      const allPass = results.every(r => r.pass);
+      return { ok: allPass, results, parsed, grid };
+    }
+
+    // ─── Build request body per API format ───
+    function buildRequestBody(format, model, system, user, temp) {
+      if (format === 'lmstudio_rest') {
+        // LM Studio REST simplified API: /api/v1/chat with system_prompt + input
+        return {
+          model,
+          system_prompt: system,
+          input: user,
+          temperature: temp,
+        };
+      }
+      // Default: OpenAI-compatible /v1/chat/completions with messages array
+      return {
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user',   content: user },
+        ],
+        temperature: temp,
+        max_tokens: 4000,
+        stream: false,
+      };
+    }
+
+    // Extract assistant text content from response across multiple known shapes
+    function extractContent(data, format) {
+      // Try OpenAI shape first (most common)
+      if (data?.choices?.[0]?.message?.content) return data.choices[0].message.content;
+      // Try OpenAI completion shape
+      if (data?.choices?.[0]?.text) return data.choices[0].text;
+      // Try LM Studio REST simplified shapes (best guess; user-pasted curl didn't show response)
+      if (typeof data?.output === 'string') return data.output;
+      if (typeof data?.response === 'string') return data.response;
+      if (typeof data?.text === 'string') return data.text;
+      if (typeof data?.content === 'string') return data.content;
+      if (data?.message?.content) return data.message.content;
+      // Fallback: stringify whole response
+      return JSON.stringify(data, null, 2);
+    }
+
+    async function testConnection() {
+      const url = document.getElementById('lm-url').value.trim();
+      const log = document.getElementById('event-log');
+      // Derive base URL by stripping the path
+      let modelsUrl;
+      try {
+        const u = new URL(url);
+        modelsUrl = `${u.protocol}//${u.host}/v1/models`;
+      } catch (e) {
+        setStatus('invalid URL', 'err');
+        return;
+      }
+
+      setStatus(`testing GET ${modelsUrl}...`, 'busy');
+      log.innerHTML = `<div class="ev system">[test] GET ${modelsUrl}</div>` + log.innerHTML;
+      try {
+        const res = await fetch(modelsUrl, { method: 'GET' });
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status} on /v1/models`, 'err');
+          log.innerHTML = `<div class="ev" style="color:#f85149;">[test] HTTP ${res.status} — server reachable but endpoint may not be /v1/models. Try LM Studio REST format.</div>` + log.innerHTML;
+          return;
+        }
+        const data = await res.json();
+        const ids = data?.data?.map(m => m.id) || [];
+        setStatus(`✓ ${ids.length} model(s) loaded`, 'ok');
+        log.innerHTML = `<div class="ev" style="color:#3fb950;">[test] ✓ connected. Models loaded: ${ids.join(', ') || '(none — load a model in LM Studio)'}</div>` + log.innerHTML;
+      } catch (err) {
+        setStatus('CORS or network error', 'err');
+        log.innerHTML = `<div class="ev" style="color:#f85149;">[test] ${err.message}<br>Most likely: CORS not enabled. In LM Studio: Settings (gear) → Developer → "Enable CORS" toggle ON. Restart server. Then retry.</div>` + log.innerHTML;
+      }
+    }
+
+    // ─── LM Studio API call ───
+    async function generateLayout() {
+      const url = document.getElementById('lm-url').value.trim();
+      const format = document.getElementById('lm-format').value;
+      const model = document.getElementById('lm-model').value.trim();
+      const temp = parseFloat(document.getElementById('lm-temp').value) || 0.7;
+      const status = document.getElementById('lm-status');
+      const btn = document.getElementById('lm-gen-btn');
+      const log = document.getElementById('event-log');
+
+      if (!url) { setStatus('error: URL required', 'err'); return; }
+      if (!model) { setStatus('error: model id required', 'err'); return; }
+
+      // Build prompt
+      const { system, user } = buildPrompt();
+      const body = buildRequestBody(format, model, system, user, temp);
+
+      // Show actual request that will be sent
+      document.getElementById('dbg-prompt').textContent = `POST ${url}\n\nFORMAT: ${format}\nMODEL: ${model}\nTEMP: ${temp}\n\n--- Request body ---\n${JSON.stringify(body, null, 2).slice(0, 3000)}\n\n--- System prompt ---\n${system}\n\n--- User message ---\n${user}`;
+
+      // Reset debug
+      document.getElementById('dbg-raw').textContent = '(awaiting response...)';
+      document.getElementById('dbg-validators').innerHTML = '<div style="color:#d29922; font-size:11px;">⏳ generating...</div>';
+
+      // Show debug drawer
+      document.getElementById('debug-drawer').classList.add('expanded');
+      document.getElementById('debug-toggle').textContent = '▲ LLM Debug Panel (click to collapse)';
+
+      btn.disabled = true;
+      setStatus(`POST → ${url} (${format})`, 'busy');
+      log.innerHTML = `<div class="ev system">[gen] POST → ${url} · format=${format} · model=${model} · temp=${temp}</div>` + log.innerHTML;
+
+      const t0 = performance.now();
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const errTxt = await res.text();
+          setStatus(`HTTP ${res.status}`, 'err');
+          document.getElementById('dbg-raw').textContent = `HTTP ${res.status} on ${url}\nFormat: ${format}\n\nResponse body:\n${errTxt.slice(0, 2000)}\n\nIf 404: try the OTHER format dropdown option, or check LM Studio's actual endpoint at /v1/models.`;
+          log.innerHTML = `<div class="ev" style="color:#f85149;">[gen] HTTP ${res.status}: ${errTxt.slice(0, 200)}</div>` + log.innerHTML;
+          btn.disabled = false;
+          return;
+        }
+
+        const data = await res.json();
+        const content = extractContent(data, format);
+        const elapsed = Math.round(performance.now() - t0);
+
+        document.getElementById('dbg-raw').textContent = `--- elapsed: ${elapsed}ms ---\n--- assistant content (extracted) ---\n${content}\n\n--- full response object (first 2KB) ---\n${JSON.stringify(data, null, 2).slice(0, 2000)}`;
+
+        // Parse JSON
+        const extracted = extractJson(content);
+        if (!extracted || !extracted.ok) {
+          setStatus(`parse failed (${elapsed}ms)`, 'err');
+          document.getElementById('dbg-validators').innerHTML = `
+            <div class="validator-row fail">
+              <span class="check">✗</span>
+              <div class="label">JSON parse<small>${extracted?.error || 'no JSON object found in response'}</small></div>
+            </div>`;
+          log.innerHTML = `<div class="ev" style="color:#f85149;">[gen] parse failed: ${extracted?.error || 'no JSON'}</div>` + log.innerHTML;
+          btn.disabled = false;
+          return;
+        }
+
+        // Run validators
+        const v = runValidators(extracted.value);
+        renderValidatorList(v.results);
+
+        if (!v.ok) {
+          const failed = v.results.filter(r => !r.pass).map(r => r.label).join(', ');
+          setStatus(`validators failed (${elapsed}ms)`, 'err');
+          log.innerHTML = `<div class="ev" style="color:#f85149;">[gen] ${elapsed}ms · validators failed: ${failed}</div>` + log.innerHTML;
+          btn.disabled = false;
+          return;
+        }
+
+        // Apply!
+        currentTiles = v.grid;
+        currentEntities = REQUIRED_ENTITIES.map(req => {
+          const placed = extracted.value.entities.find(e => e.id === req.id);
+          return { ...req, x: placed.x, y: placed.y };
+        });
+        lastGenSource = `LlmGenerated · ${model} · t=${temp} · ${elapsed}ms`;
+        document.getElementById('gen-badge').className = 'llm-gen-badge llm-gen';
+        document.getElementById('gen-badge').textContent = `⚙ ${lastGenSource}`;
+
+        renderTiles();
+        renderEntities();
+        setStatus(`✓ generated (${elapsed}ms)`, 'ok');
+        log.innerHTML = `<div class="ev" style="color:#3fb950;">[gen] ${elapsed}ms · ✓ all validators pass</div>` + log.innerHTML;
+
+        const rationale = extracted.value.rationale;
+        if (rationale) {
+          log.innerHTML = `<div class="ev narrator">${rationale}</div>` + log.innerHTML;
+        }
+      } catch (err) {
+        setStatus(`network error: ${err.message}`, 'err');
+        document.getElementById('dbg-raw').textContent = `NetworkError: ${err.message}
+
+Common causes:
+
+1. CORS not enabled (most likely if LM Studio is running)
+   → LM Studio: Settings (gear icon) → Developer → "Enable CORS" toggle ON
+   → Restart the server after toggling
+   → Retry "🔌 Test" button to verify
+
+2. LM Studio not running OR wrong port
+   → Default: http://localhost:1234
+   → Check the LM Studio "Local Server" tab — is the green "Start Server" button clicked?
+   → Try the curl below from your terminal to verify:
+
+   curl http://localhost:1234/v1/models
+
+   If that returns JSON with model list → server is up; issue is CORS.
+   If that fails too → server is down or wrong port.
+
+3. Wrong endpoint format
+   → If your LM Studio uses /api/v1/chat (not /v1/chat/completions), switch the
+     "Format" dropdown to "LM Studio REST".
+
+4. Model not loaded
+   → LM Studio "Local Server" tab → load a model first
+
+5. Browser blocking localhost (rare; some browsers with strict policies)
+   → Try in Chrome / Firefox; avoid file:// → if running from file:// some
+     browsers extra-restrict; serving via "python -m http.server" can help.`;
+        log.innerHTML = `<div class="ev" style="color:#f85149;">[gen] ${err.message} — see debug panel for troubleshooting steps</div>` + log.innerHTML;
+      }
+      btn.disabled = false;
+    }
+
+    function renderValidatorList(results) {
+      const c = document.getElementById('dbg-validators');
+      c.innerHTML = results.map(r => `
+        <div class="validator-row ${r.pass ? 'pass' : 'fail'}">
+          <span class="check">${r.pass ? '✓' : '✗'}</span>
+          <div class="label">${r.label}<small>${r.detail}</small></div>
+        </div>
+      `).join('');
+    }
+
+    function setStatus(text, kind) {
+      const s = document.getElementById('lm-status');
+      s.textContent = text;
+      s.className = `status ${kind || ''}`;
+    }
+
+    function resetToDefault() {
+      currentTiles = parseLayoutRows(DEFAULT_LAYOUT_TILES);
+      currentEntities = REQUIRED_ENTITIES.map(e => ({ ...e, ...DEFAULT_ENTITY_POSITIONS[e.id] }));
+      lastGenSource = 'DefaultTemplate · hand-crafted';
+      document.getElementById('gen-badge').className = 'llm-gen-badge default';
+      document.getElementById('gen-badge').textContent = '⚙ DefaultTemplate · hand-crafted';
+      renderTiles(); renderEntities();
+      setStatus('reset to default', '');
+      document.getElementById('event-log').innerHTML = '<div class="ev system">[init] reset to default layout</div>' + document.getElementById('event-log').innerHTML;
+    }
+
+    function toggleDebug() {
+      const d = document.getElementById('debug-drawer');
+      const t = document.getElementById('debug-toggle');
+      const expanded = d.classList.toggle('expanded');
+      t.textContent = expanded
+        ? '▲ LLM Debug Panel (click to collapse)'
+        : '▼ LLM Debug Panel (raw response · parsed JSON · validator results)';
+    }
+
+    // ─── Render ───
+    function renderTiles() {
+      const layer = document.getElementById('tiles-layer');
+      layer.innerHTML = '';
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const key = currentTiles[y][x];
+          const tile = TILE_TYPES[key] || TILE_TYPES.F;
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('class', `tile tile-${tile.kind}`);
+          rect.setAttribute('x', x * TILE_PX);
+          rect.setAttribute('y', y * TILE_PX);
+          rect.setAttribute('width', TILE_PX);
+          rect.setAttribute('height', TILE_PX);
+          rect.addEventListener('mouseenter', (ev) => showTooltip(ev, `(${x},${y}) ${tile.label}`));
+          rect.addEventListener('mouseleave', hideTooltip);
+          layer.appendChild(rect);
+        }
+      }
+    }
+
+    function renderEntities() {
+      const layer = document.getElementById('entities-layer');
+      layer.innerHTML = '';
+      for (const ent of currentEntities) {
+        const cx = ent.x * TILE_PX + TILE_PX / 2;
+        const cy = ent.y * TILE_PX + TILE_PX / 2;
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', `entity is-${ent.kind} ${selectedEntityId === ent.id ? 'selected' : ''}`);
+        g.setAttribute('transform', `translate(${cx}, ${cy})`);
+
+        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('class', 'selection-ring'); ring.setAttribute('r', 16);
+        g.appendChild(ring);
+
+        if (ent.kind !== 'envobject') {
+          const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          bg.setAttribute('r', 13); g.appendChild(bg);
+        }
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('class', 'emoji'); text.setAttribute('y', 1); text.textContent = ent.emoji;
+        g.appendChild(text);
+
+        if (ent.kind === 'pc' || ent.kind === 'npc') {
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('class', 'label'); label.setAttribute('y', 24);
+          label.textContent = ent.display_name;
+          g.appendChild(label);
+        }
+
+        g.addEventListener('click', (ev) => { ev.stopPropagation(); onEntityClick(ent); });
+        g.addEventListener('mouseenter', (ev) => showTooltip(ev, `${ent.emoji} ${ent.display_name}`));
+        g.addEventListener('mouseleave', hideTooltip);
+        layer.appendChild(g);
+      }
+    }
+
+    function onEntityClick(ent) {
+      selectedEntityId = ent.id;
+      renderEntities();
+      const pane = document.getElementById('info-pane');
+      pane.innerHTML = `
+        <div class="panel">
+          <h3>${ent.emoji} ${ent.display_name}</h3>
+          <div><span class="badge ${ent.kind}">${ent.kind}</span></div>
+          <div class="meta-row" style="margin-top: 6px;">${ent.description}</div>
+          <div class="meta-row" style="margin-top: 4px;"><strong>Position:</strong> (${ent.x}, ${ent.y})</div>
+          <div class="meta-row" style="font-size: 10px;">${ent.affordances.map(a => `<span class="badge affordance">${a}</span>`).join('')}</div>
+        </div>
+      `;
+    }
+
+    const tooltip = document.getElementById('tooltip');
+    function showTooltip(ev, text) {
+      tooltip.textContent = text; tooltip.classList.add('show');
+      tooltip.style.left = (ev.clientX + 12) + 'px';
+      tooltip.style.top  = (ev.clientY + 12) + 'px';
+    }
+    function hideTooltip() { tooltip.classList.remove('show'); }
+
+    renderTiles(); renderEntities();
+  </script>
+</body>
+</html>

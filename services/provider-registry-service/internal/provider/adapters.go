@@ -61,11 +61,94 @@ type Adapter interface {
 	// emit returning an error means the downstream caller is gone; the
 	// adapter MUST stop streaming and return that error.
 	Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error
+
+	// Transcribe — Phase 5a. Speech-to-text. Adapter fetches the audio
+	// at input.AudioURL (gateway-side HTTP GET, 30s timeout, 25MB cap),
+	// posts to the provider's STT endpoint, and returns the transcript.
+	// Adapters that don't support STT return ErrOperationNotSupported;
+	// caller maps that to HTTP 501 (or sets job status=failed with code
+	// LLM_OPERATION_NOT_SUPPORTED).
+	Transcribe(ctx context.Context, endpointBaseURL, secret, modelName string, input TranscribeInput) (TranscribeOutput, Usage, error)
+
+	// Speak — Phase 5a. Text-to-speech with streaming output. Adapter
+	// posts to the provider's TTS endpoint and emits raw audio bytes in
+	// chunks via emit. Final chunk has Final=true with empty Data. emit
+	// returning an error means the downstream caller is gone; the
+	// adapter MUST stop streaming and return that error. Adapters that
+	// don't support TTS return ErrOperationNotSupported.
+	Speak(ctx context.Context, endpointBaseURL, secret, modelName string, input SpeakInput, emit AudioEmitFn) error
 }
 
 // ErrStreamNotSupported — returned by adapters that don't yet implement
 // Stream(). Route handler maps this to HTTP 501 Not Implemented.
 var ErrStreamNotSupported = fmt.Errorf("streaming not supported by this provider adapter")
+
+// ErrOperationNotSupported — Phase 5a. Returned by Transcribe/Speak (and
+// future audio/image adapter methods) on providers that don't expose
+// that capability. Caller (worker.runSttJob or stream-handler.streamTts)
+// maps this to LLM_OPERATION_NOT_SUPPORTED. Distinct from
+// ErrStreamNotSupported so the chat-streaming path can preserve its
+// existing 501-mapping without leaking audio semantics.
+var ErrOperationNotSupported = fmt.Errorf("operation not supported by this provider adapter")
+
+// ErrAudioFetchFailed — Phase 5a. Returned by Transcribe when the
+// gateway can't GET the input AudioURL (4xx/5xx, transport error,
+// non-HTTPS scheme). Caller maps to LLM_AUDIO_FETCH_FAILED.
+var ErrAudioFetchFailed = fmt.Errorf("audio fetch failed")
+
+// ErrAudioTooLarge — Phase 5a. Returned by Transcribe when the audio
+// fetched from AudioURL exceeds the 25MB cap (matches OpenAI Whisper
+// upload limit). Caller maps to LLM_AUDIO_TOO_LARGE.
+var ErrAudioTooLarge = fmt.Errorf("audio too large")
+
+// ErrAudioURLDisallowed — Phase 5a /review-impl MED#2. Returned by
+// Transcribe when AudioURL's hostname resolves to a private / loopback /
+// link-local IP range. Defends against SSRF probing of internal services
+// (AWS IMDS 169.254.169.254, localhost, RFC1918 ranges). Caller maps to
+// LLM_AUDIO_URL_DISALLOWED.
+var ErrAudioURLDisallowed = fmt.Errorf("audio_url disallowed")
+
+// ── Audio types (Phase 5a) ────────────────────────────────────────────
+
+// TranscribeInput holds STT request parameters.
+type TranscribeInput struct {
+	// AudioURL — gateway-fetchable HTTPS URL pointing to the audio bytes.
+	// Caller (e.g. chat-service voice flow) is responsible for upload +
+	// URL signing. Only http:// and https:// schemes are accepted.
+	AudioURL string
+
+	// Language — ISO 639-1 code or "auto" for upstream auto-detection.
+	// "auto" is converted to "omit param" at the provider HTTP layer
+	// (OpenAI Whisper auto-detects when language is absent).
+	Language string
+}
+
+// TranscribeOutput holds STT response data after parsing.
+type TranscribeOutput struct {
+	Text       string // transcribed text
+	Language   string // detected language (empty if upstream didn't return)
+	DurationMs int    // audio duration as reported by upstream (0 if absent)
+}
+
+// SpeakInput holds TTS request parameters.
+type SpeakInput struct {
+	Text   string  // input text to synthesize (max 4000 chars per OpenAI)
+	Voice  string  // upstream voice name (e.g. "alloy", "echo")
+	Speed  float64 // 0.25 .. 4.0; 1.0 default
+	Format string  // "mp3" | "wav" | "opus" | "pcm"
+}
+
+// AudioChunk is a single emit payload from Speak.
+type AudioChunk struct {
+	SequenceID int    // monotonic 0-indexed counter within a single Speak call
+	Data       []byte // raw audio bytes; nil/empty when Final=true
+	Final      bool   // true on the closing emit; followed by handler's `done` event
+}
+
+// AudioEmitFn is the per-chunk callback Speak uses to push streamed audio.
+// emit returning an error means the downstream caller is gone; Speak MUST
+// stop streaming and return that error.
+type AudioEmitFn = func(AudioChunk) error
 
 type ModelInventory struct {
 	ProviderModelName string         `json:"provider_model_name"`

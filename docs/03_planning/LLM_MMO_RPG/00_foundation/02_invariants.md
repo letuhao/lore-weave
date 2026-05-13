@@ -108,6 +108,34 @@ New fields are nullable and additive. Breaking changes require a new `event_type
 
 ---
 
+## Resilience invariants (SR6)
+
+### I16. Every outbound call declares a timeout
+No `context.Background()` for network calls. Sum of timeouts along a call chain must fit the user-visible SLO. Timeouts declared per dependency class in `contracts/dependencies/matrix.yaml`; canonical wrapper `contracts/resilience/WithTimeout(ctx, dep, fn)` reads the default.
+- **Why:** unbounded calls cascade into pool exhaustion → cascading failure. Without a call-chain budget, SLO targets (SR1) are unverifiable.
+- **Enforced by:** CI lint `scripts/timeout-discipline-lint.sh` (flags `http.NewRequest` / `sql.Query` / `redis.Cmd` / `context.Background()` in call paths to registered deps) + dependency-registry-lint blocking new clients outside matrix.
+- **Source:** [02_storage/SR06_dependency_failure.md](../02_storage/SR06_dependency_failure.md) §12AI.3 — decision SR6-D2.
+
+### I17. Every service declares a capacity budget
+Every service declares its capacity budget in `contracts/capacity/budgets.yaml` — class (web / worker / data-plane / llm-gateway) + per-tier (V1/V2/V3) × 5 dimensions (`replicas_min`/`max` · `cpu_per_replica` · `memory_per_replica` · `db_pool_size` · `concurrent_llm_calls_per_replica` · `network_egress_mbps`). Deployment blocked for services absent from the registry. Scaling beyond `replicas_max` requires `admin/capacity-override` (S5 Tier 2; 24h-bounded).
+- **Why:** undeclared service = unlimited resource consumption = cascading exhaustion = SR1 SLO breach. Capacity must be a commitment backed by the load-test gate (SR8-D8), not a runtime suggestion.
+- **Enforced by:** CI lint `scripts/capacity-budget-lint.sh` blocks services missing from `budgets.yaml`; class declaration ↔ deployment kind validated (HPA for web/llm-gateway, KEDA for worker, vertical-only for data-plane); `admin/capacity-override` is the only bypass and is S5-audited with 24h auto-expire.
+- **Source:** [02_storage/SR08_capacity_scaling.md](../02_storage/SR08_capacity_scaling.md) §12AK.3 — decision SR8-D2 + SR8-D11 (architect-approved 2026-04-24 via POST-REVIEW per `00_foundation/02_invariants.md` "How invariants get added" process).
+
+### I18. Every dependency declaration includes a cryptographic hash
+Every dependency declaration committed to the repo includes a cryptographic hash. No floating versions. No SemVer ranges without hash pin. All Docker base images referenced by digest (`FROM image@sha256:...`) not tag. Per-language enforcement: Go (`go.sum` SHA-256 native) · Python (`--require-hashes` mode; `uv.lock` / `poetry.lock` / `requirements.txt` with per-dep hashes) · TypeScript (`package-lock.json integrity` field SHA-512; `npm ci` strict lockfile) · Dockerfiles (digest pinning).
+- **Why:** floating versions + mutable tags = silent supply chain attack vector. An upstream maintainer account takeover publishes a compromised version under the same SemVer range; services pulling the range silently ingest it. Hash pinning eliminates this by anchoring to cryptographic content identity.
+- **Enforced by:** CI lint `scripts/dep-pinning-lint.sh` blocks PRs with unhashed declarations + `go mod verify` + `pip install --require-hashes` + `npm ci` + `dockerfile-digest-lint.sh`. Dependabot / Renovate automated PRs must regenerate lockfile + SBOM in same PR per SR10-D2.
+- **Source:** [02_storage/SR10_supply_chain.md](../02_storage/SR10_supply_chain.md) §12AM.3 — decision SR10-D2 + SR10-D11 (architect-approved 2026-04-24 via POST-REVIEW per `00_foundation/02_invariants.md` "How invariants get added" process).
+
+### I19. Every metric + audit table declared in observability inventory
+Every `lw_*` metric emitted from code and every audit table (`*_audit`, `*_events`, and similar high-volume or long-retention tables in the meta DB) is declared in `contracts/observability/inventory.yaml` with owner_service + labels (with max_cardinality per label) + cardinality_estimate + retention tier + source SR. Missing declarations block PR merge.
+- **Why:** without an inventory, label-explosion bugs and audit-growth drift leak into production and compound. Cardinality admission control (SR12-D7) needs this registry as its source-of-truth — without it, the admission library has nothing to validate against. Retention tier reconciliation (S8-D3) needs this registry to audit against — without it, retention drift is undetectable.
+- **Enforced by:** CI lint `scripts/observability-inventory-lint.sh` scans every `lw_*` metric declaration in Go/TS/Python source + every `CREATE TABLE` migration with `audit`/`events` suffix; missing inventory entry = lint fail. Label mismatches between declaration + code = lint fail. Runtime: metric library (`pkg/metrics/`) looks up declarations at emission time and rejects unauthorized labels (V1 warn-and-drop; V1+30d hard-reject).
+- **Source:** [02_storage/SR12_observability_cost.md](../02_storage/SR12_observability_cost.md) §12AO.2 — decision SR12-D1 + SR12-D11 (architect-approved 2026-04-24 via POST-REVIEW per `00_foundation/02_invariants.md` "How invariants get added" process).
+
+---
+
 ## How invariants get added
 
 New invariants require:

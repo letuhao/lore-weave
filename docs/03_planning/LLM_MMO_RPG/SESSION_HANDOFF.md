@@ -81,6 +81,1134 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 → 2026-04-26 — Feature design wave + boundary discipline + event-model Option C + parallel-agent pattern
+
+### Session arc
+
+After 06_data_plane Phase 4 closure (DP contract LOCKED), the design track shifted from kernel work to feature work. ~38 commits over ~36 hours produced the V1 feature surface across 4 folders, with three coordinated agents working in parallel on overlapping concerns. Three discipline mechanisms emerged from the work:
+
+1. **Boundary folder + single-writer mutex** (after WA_006 over-extension review caught 5 sections belonging to PCS / 05_llm_safety / PL): `_boundaries/_LOCK.md` 4-hour-TTL claim with `[boundaries-lock-claim]` / `[boundaries-lock-release]` commit prefixes. Ownership matrix + extension contracts + validator slot table + append-only changelog.
+2. **800-line hard cap forcing split pattern** (PL_001 → PL_001b / WA_002 → WA_002b / PLT_002 → PLT_002b): when a feature design grows past 800 lines, lifecycle/sequence content splits to a `<FEATURE>b_<feature>_lifecycle.md` sibling. Stable IDs preserved across split.
+3. **Sequential closure pass cycles** (Q1 → Q2 → ... → "approve" at each turn): every folder went through a structured "any open boundary issue?" review with §13/§14 acceptance criteria added BEFORE CANDIDATE-LOCK promotion. ~10 scenarios per feature spanning happy-path / failure-path / boundary.
+
+A fourth pattern emerged late: **parallel agent commission via brief**. PCS_001 PC substrate was about to be inline-designed in main session when user caught the boundary violation ("vi phạm boundary, nó nên có session riêng?"). Resolution: brief seeded at `features/06_pc_systems/00_AGENT_BRIEF.md` for parallel agent — same pattern that event-model agent (Option C redesign) and PL_005 Interaction agent already followed.
+
+### Multi-agent coordination
+
+Three agents worked the design surface concurrently. Lock arbitration via `_boundaries/_LOCK.md`:
+
+| Agent | Scope | Status | Key output |
+|---|---|---|---|
+| **Main session** (this conversation) | PL_001/001b/002, WA_001..006, NPC_001/002, PLT_001/002/002b, boundary folder, closure passes | active across whole window | 13 features at CANDIDATE-LOCK + boundary discipline framework |
+| **07_event_model agent** (parallel) | EVT-A1..A12 axioms + EVT-T*/P*/V*/L*/S*/G* taxonomy + Option C mechanism-level reframe + Generator framework | LOCKED Phase 1-6 + Option C complete (commits 66ce219 → cdaf5c3) | 11 numbered files in `07_event_model/`, 12_generation_framework.md added Phase 6 |
+| **PL_005 Interaction agent** (parallel) | Core gameplay primitive — 4-role pattern + 5 V1 InteractionKinds (Speak/Strike/Give/Examine/Use) + ProposedOutputs/ActualOutputs split | DRAFT (commits 990eea3 → 61d911c) | PL_005 + PL_005b + PL_005c (3 files, full design surface) |
+| **PCS_001 PC substrate agent** (commissioned, not yet started) | PC substrate: PcId variant, persona, body-memory xuyên không, mortality state, stats stub, social map | brief seeded `features/06_pc_systems/00_AGENT_BRIEF.md` (commit 6ff13b3) | — |
+
+Lock contention happened twice: (a) main session blocked while event-model agent held lock for Option C reattribution of PL_002/NPC_001/NPC_002 EVT-T2 references; (b) PL_005 agent claimed lock to register `interaction.*` rule_id namespace + EVT-T1 sub-types. Both released cleanly within TTL.
+
+### Feature design surface (13 at CANDIDATE-LOCK + 3 DRAFT)
+
+**04_play_loop/** (folder open)
+| ID | Name | Status | Lines | Acceptance |
+|---|---|---|---:|---|
+| PL_001 | Continuum (CON) | CANDIDATE-LOCK 2026-04-25 (boundary-tightened) | ~700 | Path A tightening: TurnEvent envelope ownership + thin RejectReason + actor-removal hook |
+| PL_001b | Continuum lifecycle (CON-L) | CANDIDATE-LOCK 2026-04-25 (boundary-tightened) | ~500 | 5 sequences + bootstrap + 16 acceptance criteria |
+| PL_002 | Grammar (GR) | CANDIDATE-LOCK 2026-04-25 | 639 | §13: 10 scenarios AC-GR-1..10 |
+| PL_005 | Interaction (INT) | DRAFT 2026-04-26 | 491 | 6 acceptance scenarios + 9 deferrals (parallel agent) |
+| PL_005b | Interaction contracts (INT-C) | DRAFT 2026-04-26 | ~600 | 16 expanded scenarios + 8 Phase 2 deferrals |
+| PL_005c | Interaction integration (INT-I) | DRAFT 2026-04-26 | ~700 | V1 vertical slice: 13 of 22 scenarios + 8 Phase 3 deferrals |
+
+**02_world_authoring/** (folder CLOSED 2026-04-25)
+| ID | Name | Status | Lines | Acceptance |
+|---|---|---|---:|---|
+| WA_001 | Lex (LX) | CANDIDATE-LOCK 2026-04-25 | 656 | §14: 10 scenarios |
+| WA_002 | Heresy (HER) | CANDIDATE-LOCK 2026-04-25 | 597 | (root) |
+| WA_002b | Heresy lifecycle (HER-L) | CANDIDATE-LOCK 2026-04-25 | 277 | §14: 10 scenarios |
+| WA_003 | Forge (FRG) | CANDIDATE-LOCK 2026-04-25 (PATTERNS-FOR-FUTURE-EXTRACTION reframed) | 798 | §14: 10 scenarios |
+| WA_006 | Mortality (MOR) | CANDIDATE-LOCK 2026-04-25 (thin-rewrite 730 → 403 lines) | 403 | §12: 6 scenarios |
+
+**05_npc_systems/** (folder CLOSED 2026-04-26)
+| ID | Name | Status | Lines | Acceptance |
+|---|---|---|---:|---|
+| NPC_001 | Cast (CST) | CANDIDATE-LOCK 2026-04-26 | 636 | §14: 10 scenarios AC-CST-1..10 |
+| NPC_002 | Chorus (CHO) | CANDIDATE-LOCK 2026-04-26 | 620 | §14: 10 scenarios AC-CHO-1..10 (incl. SPIKE_01 turn 5 reproducibility) |
+
+**10_platform_business/** (folder CLOSED 2026-04-25)
+| ID | Name | Status | Lines | Acceptance |
+|---|---|---|---:|---|
+| PLT_001 | Charter (CHR) | CANDIDATE-LOCK 2026-04-25 | 731 | §14: 10 scenarios AC-CHR-1..10 |
+| PLT_002 | Succession (SUC) | CANDIDATE-LOCK 2026-04-25 | 647 | (root) |
+| PLT_002b | Succession lifecycle (SUC-L) | CANDIDATE-LOCK 2026-04-25 | 212 | §14: 10 scenarios AC-SUC-1..10 |
+
+**06_pc_systems/** (folder seeded — awaits parallel agent)
+| Status | Detail |
+|---|---|
+| Brief seeded 2026-04-25 | `features/06_pc_systems/00_AGENT_BRIEF.md` (547 lines) — §0 Identity + §1 Why + §2 IN scope (S1-S7) + §3 OUT of scope + §4 Required reading (9 docs) + §5 Phase plan + §6 Stable IDs (PCS-D*) + §7 Process discipline + §8 Coordination + §9 Success criteria + §10 First-session deliverable + Appendix A SPIKE_01 obs#5 grounding + Appendix B file template |
+| Aggregates pre-allocated | `pc_mortality_state` (formerly WA_006 over-extended; cleanly handed off in WA closure pass) |
+
+### Event-model Option C redesign (parallel agent landed)
+
+Reframed taxonomy from feature-specific (T1 PlayerTurn / T2 NPCTurn / T7 Calibration / T9 QuestBeat / T10 NPCRoutine / T11 WorldTick) to **mechanism-level** (T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative). EVT-T2/T7/T9/T10/T11 marked `_withdrawn` per foundation I15. New axioms: A9 probabilistic generation determinism · A10 event as universal source of truth · A11 sub-type ownership discipline · A12 extensibility framework. Phase 6 added Generator Framework (EVT-G1..G6 + Coordinator service spec).
+
+Impact on closure-pass folders: PL_002 / NPC_001 / NPC_002 design docs §2.5 EVT-T2 references redirected to EVT-T1 sub-type=NPCTurn (as part of agent's commit, not closure pass). EVT-T8 AdminAction renamed → EVT-T8 Administrative; PL_005 Interaction added 5 V1 sub-types under EVT-T1 Submitted.
+
+### Boundary folder state (after closure-pass status promotions)
+
+| File | Status |
+|---|---|
+| `_LOCK.md` | Released (no current owner) |
+| `00_README.md` | seed 2026-04-25 (unchanged) |
+| `01_feature_ownership_matrix.md` | 13 aggregates + 9 schema rows + 16 stable-ID prefix rows + 8 drift watchpoints + closure-pass date stamps |
+| `02_extension_contracts.md` | §1 TurnEvent · §2 RealityManifest (unowned ⚠ → IF_001 deferred) · §3 capability JWT · §4 EVT-T8 Administrative · `interaction.*` namespace added 2026-04-26 |
+| `03_validator_pipeline_slots.md` | proposed EVT-V* ordering (pending event-model Phase 3 lock — now landed; alignment check deferred) |
+| `99_changelog.md` | 7 entries: seeded 2026-04-25 · WA shrink 2026-04-25 (afternoon) · WA closure 2026-04-25 (evening) · Option C 2026-04-25 (late evening) · EVT Phase 6 Generator framework 2026-04-25 (late evening) · PL_005 Interaction 2026-04-26 · closure-pass status promotions 2026-04-26 (this commit) |
+
+### Drift watchpoints (8 active)
+
+| ID | Owner-flagger | Drift |
+|---|---|---|
+| GR-D8 | PL_002 | Rejected-turn commit primitive (`t2_write` per PL_001 §15 vs `advance_turn` per EVT-T1 spec) — event-model Phase 2 to absorb per-outcome sub-spec |
+| CST-D1 | NPC_001 | `npc.current_session_id` semantic (R8 wording vs OOS-1 in DP) — reconcile with 02_storage agent |
+| LX-D5 | WA_001 | Lex slot ordering in EVT-V* — event-model Phase 3 alignment check |
+| HER-D8 | WA_002 | EVT-T11 WorldTick V1+30d activation (now T5 Scheduled:WorldTick under Option C) |
+| HER-D9 | WA_002 | LexSchema v1→v2 migration sequencing — implementation-phase ops |
+| CHR-D9 | PLT_001 | Cross-reality `meta_user_pending_invitations` table — auth-service alignment pending |
+| WA_006 over-extension | boundary review | RESOLVED by thin-rewrite (730 → 403 lines closure pass) |
+| B2 RealityManifest envelope | boundary review 2026-04-25 | No single owner — propose `IF_001_reality_manifest.md` (deferred) |
+
+### Decisions locked across the wave
+
+- **Continuum naming** (English primary per project convention): "Continuum" for PL_001 (place+time+reality scaffold).
+- **WA scope boundary** (post-shrink): WA validates rules of reality + detects paradox + allows controlled bypass. Identity/account concerns → PLT folder. Mechanics → PCS / NPC / 05_llm_safety. Cross-cutting patterns → future CC_NNN extraction (V2+, not V1 boundary fix).
+- **PL_003 → NPC_002 relocation** (catalog NPC-7 is the correct domain for multi-NPC turn arbitration).
+- **PCS over WA for character storage** — user explicitly: "tôi không muốn lưu trong WA, lại bị vi phạm boundary".
+- **800-line cap forcing split pattern** vs. inline-everything — PL_001b / WA_002b / PLT_002b precedent.
+- **Sequential closure pass with user "approve" gate** (Q1 → Q2 → ... per folder) vs. one-shot — user direction "hãy làm tuần tự".
+- **Parallel agent commission via brief** for cross-cutting features (event-model + PL_005 Interaction + PCS_001 commissioned this way).
+- **Approach C closure deliverable** approved for WA: `02_world_authoring/_extension_pattern_guide.md` (extracted patterns documented in-folder; future CC extraction non-blocking).
+- **Option C event-model terminology** (mechanism-level) approved by user; landed in commits 66ce219 → cdaf5c3 by parallel agent.
+
+### Files landed (new in this wave)
+
+- 16 feature docs across 4 folders (`02_world_authoring/` + `04_play_loop/` + `05_npc_systems/` + `10_platform_business/`)
+- 1 PCS brief at `features/06_pc_systems/00_AGENT_BRIEF.md`
+- 6 boundary-folder files (`_boundaries/_LOCK.md` + `00_README.md` + `01_feature_ownership_matrix.md` + `02_extension_contracts.md` + `03_validator_pipeline_slots.md` + `99_changelog.md`)
+- 1 WA extension pattern guide (`_extension_pattern_guide.md`)
+- 11 event-model files (parallel agent — Phases 1-6 LOCKED + Option C)
+- 0 storage / data-plane changes (kernel stayed LOCKED throughout)
+
+### Handoff notes for next agent / next session
+
+**Active:** none in main session. Three parallel agents idle (event-model agent CLOSED post-Phase 6; PL_005 agent finished DRAFT phase; PCS_001 agent has not been spawned).
+
+**Next-step recommendations** (priority order):
+
+1. **Spawn PCS_001 parallel agent** using the seeded brief at `features/06_pc_systems/00_AGENT_BRIEF.md`. PCS_001 unblocks PL_005c integration scenarios that reference `pc_mortality_state` and is the last V1-critical feature without a design.
+2. **Close PL folder** once PL_005/005b/005c reach CANDIDATE-LOCK (sequential closure pass mirroring WA/NPC/PLT pattern; should add §14 acceptance criteria expanding the 22-total scenario count to per-doc 10 scenarios).
+3. **05_llm_safety folder** — A1..A6 axioms touched by many features (oracle, intent classifier, injection defense, canon drift) but no feature folder yet. Likely ~5-7 features at ~600 lines each.
+4. **EVT-V* ordering alignment check** — `_boundaries/03_validator_pipeline_slots.md` proposed slots vs. event-model agent's Phase 3 actual slot lock. Should be a quick reconcile-or-edit pass.
+5. **IF_001 RealityManifest envelope feature** — drift watchpoint B2; multiple features extend the manifest with no single owner. Low urgency (additive contracts work for now) but blocks `features/01_infrastructure/` folder creation.
+6. **Option C terminology audit** — main-session-authored feature docs cite EVT-T2 NPCTurn in places. Event-model agent updated 3 files (PL_002 / NPC_001 / NPC_002 §2.5). Spot-check whether PL_001 / WA / PLT files still reference old IDs and need refresh.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder is lock-gated. Read `_LOCK.md` first; check TTL; commit `[boundaries-lock-claim]` then `[boundaries-lock-release]` (or combined `[boundaries-lock-claim+release]` for short edits).
+- 800-line hard cap forces split. Stable IDs preserved across split.
+- Closure pass adds §14 acceptance (~10 scenarios) BEFORE CANDIDATE-LOCK promotion.
+- Cross-cutting / boundary-spanning features → spawn parallel agent via brief in `<folder>/00_AGENT_BRIEF.md` rather than inline-design.
+- Event-model uses mechanism-level taxonomy (T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative). T2/T7/T9/T10/T11 are `_withdrawn` per I15.
+
+### Raw count
+
+- **Commits:** ~38 across the wave (f89aa48 through e2065fd; ~36-hour window)
+- **Features designed:** 16 (13 at CANDIDATE-LOCK + 3 DRAFT)
+- **Features commissioned for parallel agent:** 1 (PCS_001 brief)
+- **Boundary lock claims:** 7 (4 main session + 2 event-model agent + 1 PL_005 agent)
+- **Folders closed for V1:** 3 (WA + NPC + PLT) — full V1 design surface in those domains
+- **Drift watchpoints:** 8 active, 1 resolved (WA_006 over-extension)
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane file 04 split into 04a/b/c/d (cleanup task)
+
+### Session arc
+
+Twelfth and final mini-session of 2026-04-25. After Phase 4 Q20 Phần B closed the last actionable design item, file 04_kernel_api_contract.md had grown to 891 lines through Phase 4 expansion — well past the 500 soft cap and approaching 900. Per earlier handoff notes, split into 4 files for maintainability.
+
+Split scheme: 4 files instead of 5, balanced ~150-350 lines each, by topic affinity:
+- **04a_core_types_and_session.md** (DP-K1, K2, K3) — types, SessionContext, DpError
+- **04b_read_write.md** (DP-K4, K5) — read + write primitives
+- **04c_subscribe_and_macros.md** (DP-K6, K7, K8) — subscribe + cache_key! + instrumented!
+- **04d_capability_and_lifecycle.md** (DP-K9, K10, K11, K12) — capability + DpClient + lints + summary
+
+Stable IDs (DP-K1..K12) preserved unchanged. Each split file has its own header + reading note + cross-refs section linking to the other three.
+
+### Files landed
+
+| File | Lines | Owned IDs |
+|---|---:|---|
+| **NEW** [`04a_core_types_and_session.md`](06_data_plane/04a_core_types_and_session.md) | 254 | DP-K1, K2, K3 |
+| **NEW** [`04b_read_write.md`](06_data_plane/04b_read_write.md) | 193 | DP-K4, K5 |
+| **NEW** [`04c_subscribe_and_macros.md`](06_data_plane/04c_subscribe_and_macros.md) | 170 | DP-K6, K7, K8 |
+| **NEW** [`04d_capability_and_lifecycle.md`](06_data_plane/04d_capability_and_lifecycle.md) | 351 | DP-K9, K10, K11, K12 |
+| **DELETED** `04_kernel_api_contract.md` | (was 891) | (replaced by 04a..04d) |
+
+All split files under 500-line soft cap. Total content 968 lines (slightly more than original 891 because of per-file headers + reading notes + cross-refs sections).
+
+### Cross-ref updates
+
+17 other files in 06_data_plane referenced the old 04_kernel_api_contract.md. Each cross-ref updated to point at the right split file based on which DP-K* anchor was referenced:
+- DP-K1 / K2 / K3 anchors → 04a
+- DP-K4 / K5 anchors → 04b
+- DP-K6 / K7 / K8 anchors → 04c
+- DP-K9 / K10 / K11 / K12 anchors → 04d
+- Generic file-level refs → 04a (entry point) or contextually-appropriate split file
+
+Updated files: 01_scope_and_boundary, 02_invariants, 03_tier_taxonomy, 05_control_plane_spec, 06_cache_coherency, 07_failure_and_recovery, 11_access_pattern_rules, 12_channel_primitives, 13_channel_ordering_and_writer, 14_durable_subscribe, 15_turn_boundary, 16_bubble_up_aggregator, 18_causality_and_routing, 19_privacy_redaction_policies, 20_operational_residuals, 21_llm_turn_slot, 99_open_questions, _index.
+
+Some historical references to "originally one file 04_kernel_api_contract.md" preserved in split-file headers + 03_tier_taxonomy + 11_access_pattern_rules for context.
+
+### _index.md updates
+
+- Reading order renumbered (8-11 are now 04a/b/c/d, then 12-13 for 05/06, 14 for 07; 15-24 for Phase 4 files 12-21).
+- Status table: row 04 replaced with 4 rows for 04a/b/c/d.
+- Exported IDs table: DP-K* row updated to point at all 4 split files with sub-range mapping.
+
+### Folder state after split
+
+- **24 files** (was 22; +4 split, -1 deleted, net +3) — wait: actually +4 split, -1 deleted = net +3 vs prior, so 22 + 3 = 25. Let me recount in commit.
+- Stable IDs unchanged at 132 (DP-K1..K12 preserved exactly).
+
+### Handoff notes for next agent
+
+- `Active:` header cleared.
+- All split files under 500-line soft cap; comfortable headroom.
+- Stable IDs DP-K1..K12 preserved — never renumber per AGENT_GUIDE. References from outside 06_data_plane (governance, sessions logs, etc.) that name `04_kernel_api_contract.md` will need updating if/when discovered. Run the search: `grep -r "04_kernel_api_contract" docs/`.
+- Phase 4 design phase remains COMPLETE; this was pure cleanup. Q20 Phần A still V1-data-deferred.
+- **Feature design (DF4 / DF5 / DF7) and SDK implementation (Phase 2b)** are next phases.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q20 Phần B RESOLVED (LLM turn slot primitive + patterns)
+
+### Session arc
+
+Eleventh and final Phase 4 mini-session of 2026-04-25. After "design + ops-residual complete" milestone last session, user asked to revisit Q20. Q20 splits into 2 parts: Phần A (quantitative DP-S\* rescale, V1-data-deferred) and Phần B (LLM turn slot primitive + pattern doc, design-actionable now).
+
+CLARIFY phase: 4 options presented (A/B/C/D). User picked **A — tackle Phần B with small DP primitives + pattern doc**. Phần A stays deferred until V1 measurement.
+
+BUILD phase: 1 new file (21_llm_turn_slot.md, 351 lines, DP-Ch51..Ch53) + targeted updates to 5 existing files. No new axiom (slot is hint advisory, not invariant — composes with existing pause/advance_turn primitives).
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`21_llm_turn_slot.md`](06_data_plane/21_llm_turn_slot.md) | LOCKED, DP-Ch51..Ch53 | 351 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`claim_turn_slot`/`release_turn_slot`/`get_turn_slot` primitives + `TurnSlotAck`/`TurnSlot` types + 2 new DpError (`TurnSlotHeldBy`, `ExpectedDurationTooLong`); surface 39 → 42; channel API 8 → 11; error variants 19 → 21 | 842 → 891 (still over 800 threshold; split task more urgent now — approaches 900) |
+| [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | Lifecycle scheduler responsibility extended with 30-s turn-slot auto-timeout cadence + emits TurnSlotTimedOut events | 343 → 343 (single line edit) |
+| [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | `channel_writer_state` table extension note for Phase 4 columns (last_turn_number from DP-Ch22 + turn-slot fields from DP-Ch51) | 382 → 387 |
+| [`17_channel_lifecycle.md`](06_data_plane/17_channel_lifecycle.md) | DP-Ch36 composition note for pause + LLM turn slot orthogonality | 496 → 504 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q20 marked PARTIAL with explicit Phần A / Phần B breakdown; Phase 4 severity summary updated to reflect 19 resolved + 1 partial (Phần B done, Phần A deferred) | 487 → 493 |
+| [`_index.md`](06_data_plane/_index.md) | File 21 row + DP-Ch tenth range; Phase 4 final state announcement updated; status row reflects "Phase 4 design COMPLETE" with only measurement-deferred residual | 131 → 134 |
+
+**Folder total after this Q:** ~7700 lines across 22 files. **132 stable IDs** (no new axiom; +3 channel primitives Ch51..Ch53).
+
+### Q20 Phần B decisions locked
+
+| Decision | Rationale |
+|---|---|
+| Slot is advisory hint, not enforcement | Pause owns blocking; slot owns "whose turn" UI/scheduler hint |
+| Per-channel slot uniqueness (not per-actor) | Avoids ambiguity about "whose turn is it really"; force-release + re-claim pattern for pre-emption |
+| Capability gate = `can_advance_turn` (no new claim) | Slot management is a turn-advance concern; existing claim sufficient |
+| Auto-timeout 30-s scheduler cadence | Matches reasonable LLM call durations (typical 1-30s); 5-min hard ceiling on `expected_duration` prevents runaway |
+| Canonical TurnSlotClaimed/Released/TimedOut reserved events | Audit trail + bubble-up consumption; features cannot forge |
+| Three patterns documented (Strict / Concurrent / Cancellable) | Different game-design tradeoffs covered; cross-channel composition allowed |
+
+### Q20 Phần A — explicit deferral note
+
+Quantitative DP-S\* rescale stays deferred:
+- Numbers (500 CCU, 50ms T3 ack, 10k events/s) anchor on MMO scale
+- Turn-based + channel model may be over-specced
+- **No design action available** without V1 prototype measurement
+- DP-S\* targets remain the SLO contract for V1/V2; V1 data decides V2/V3 recalibration
+
+### Phase 4 — final state after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **19** | Q15-Q19, Q21-Q34 (all except Q20) |
+| 🟡 Partial | **1** | Q20 — Phần B ✅ resolved here, Phần A V1-data-deferred |
+| 🔴 No-action available | 1 | Q20 Phần A (waiting on V1 measurement) |
+
+**Every actionable Phase 4 design question is resolved.** Only Q20 Phần A remains and requires V1 prototype data — no further design work available until measurement informs DP-S\* recalibration.
+
+### Handoff notes for next agent / next session
+
+- `Active:` header cleared.
+- **04_kernel_api_contract.md is at 891 lines** — split task is now urgent (was 838 last session, growing toward 1500 hard cap as Phase 5 / SDK implementation lands). Tentative split: 04a core types (RealityId/ChannelId/SessionId/Tier/scope traits/CausalityToken) + 04b read/write primitives + 04c subscribe APIs + 04d channel + lifecycle + slot primitives + 04e macros + client + lint skeletons. Plan: 5 files ~150-200 each.
+- **Q20 Phần A** stays deferred indefinitely until V1 prototype measurement.
+- **Feature design unblocked.** DF4 / DF5 / DF7 can begin consuming the locked DP contract.
+- **Phase 2b SDK implementation** is the natural next phase of work.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 🟢 NITS BATCH RESOLVED (Q23+Q24+Q25+Q29+Q33) — design + ops-residual COMPLETE
+
+### Session arc
+
+Tenth and final Phase 4 mini-session. Batched all 4 🟢 nits + Q29 (ops-tinted gap) into one consolidated ops-handoff file. With this batch landed, **Phase 4 design + ops-residual cleanup is functionally complete** — only Q20 (LLM latency, V1-data-deferred) remains and has no design action available now.
+
+CLARIFY phase: user approved 3 design decisions (M1a single consolidated file · M2c recommended defaults locked + configurable overrides · M3c phased key rotation V1/V2 quarterly → V3 monthly + revocation broadcast).
+
+BUILD phase: 1 new file (20_operational_residuals.md, 313 lines, DP-Ch46..Ch50). No new axiom (operational defaults, not invariants). No updates to other files needed beyond 99 + _index.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`20_operational_residuals.md`](06_data_plane/20_operational_residuals.md) | LOCKED, DP-Ch46..Ch50 | 313 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q23/Q24/Q25/Q29/Q33 ✅ resolved with cross-refs; Phase 4 severity summary marked FINAL (19 of 20 resolved; only Q20 deferred) | 482 → 487 |
+| [`_index.md`](06_data_plane/_index.md) | File 20 row + DP-Ch ninth range; Phase 4 final state announcement; status row reflects 19 Qs resolved | 128 → 131 |
+
+**Folder total after Phase 4 closure:** ~7350 lines across 21 files. **129 stable IDs** (no new axiom; +5 channel primitives Ch46..Ch50). 
+
+### Cluster decisions locked
+
+| Decision | Rationale |
+|---|---|
+| Single file consolidating 5 ops items | Coherent ops-handoff doc; design-residual-style content not worth fragmenting |
+| Exponential histogram buckets per metric (Q23) | Default Prometheus linear buckets useless at sub-100ms p99; specific layouts per metric type sized for SLO targets |
+| Low-cardinality default Prometheus labels (Q24) | High-cardinality (reality_id, channel_id, aggregate_type) → logs + 1%-sampled traces; SDK-side aggregation; debug-trace flag for incident response |
+| V1/V2 quarterly rotation; V3 monthly + revocation broadcast (Q25) | Phased per platform-mode launch — V1/V2 hobby-scale acceptable; V3 multi-tenant tightens; KMS-backed at V3 |
+| Subscription batching: one Redis subscriber per (node, channel) (Q29) | O(nodes × channels) instead of O(players × levels); ~12× reduction in global Redis subscriber count |
+| Per-channel-level retention default + per-channel override (Q33) | Cell 30d, tavern+ 1y; metadata.retention_days override; cleanup batch extended to honor channel-level retention |
+
+### Phase 4 — final state
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **19** | Q15, Q16, Q17, Q18, Q19, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34 |
+| 🟡 Deferred (V1 data) | 1 | Q20 LLM latency |
+| **Total** | **20** | All Phase 4 questions accounted for |
+
+**🎉🎉 Phase 4 design + ops-residual cleanup is functionally complete.** Only Q20 remains, deferred until V1 prototype data exists. 06_data_plane is locked baseline for feature design and SDK implementation.
+
+### Session 2026-04-25 — overall summary
+
+10 mini-sessions in one calendar day. Started morning with Phase 1 foundation; ended evening with Phase 4 closure.
+
+| Session | Q resolved | Files |
+|---|---|---|
+| Phase 1 foundation | (axioms/tiers/SLO/rulebook) | 7 files |
+| Phase 2 contracts | (SDK/CP/coherency) | +3 files |
+| Phase 3 failure/recovery | (DP-F1..F10) | +1 file |
+| Phase 4 backlog recorded | (Q15..Q34 catalogued) | (no new files) |
+| Phase 4 Q26 | channel first-class | +1 file |
+| Phase 4 Q17+Q30+Q34 | ordering + writer | +1 file |
+| Phase 4 Q16 | durable subscribe | +1 file |
+| Phase 4 Q15 | turn boundary | +1 file |
+| Phase 4 Q27 | bubble-up — DESIGN PHASE COMPLETE | +1 file |
+| Phase 4 Q19+Q28+Q31 | lifecycle/membership/pause | +1 file |
+| Phase 4 Q18 | T1 reframe | (no new file) |
+| Phase 4 Q21+Q22 | causality + routing | +1 file |
+| Phase 4 Q32 | privacy redaction | +1 file |
+| Phase 4 🟢 batch (Q23+Q24+Q25+Q29+Q33) | ops residuals | +1 file |
+
+**Total Phase 4 contribution:** 9 new files, 7 new axioms (DP-A13..A19), 50 channel primitives (DP-Ch1..Ch50). Phase 1-3 baseline (Q1..Q14 era) untouched throughout.
+
+### Handoff notes for next agent / next session
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- All Phase 1-4 work is LOCKED baseline. Changes via supersession in [../decisions/](decisions/).
+- **04_kernel_api_contract.md is at 842 lines** — over 800 split threshold. Tentative split scheme per earlier handoffs: `04a_core_types_and_session.md` + `04b_read_write.md` + `04c_subscribe.md` + `04d_channel_primitives.md` + `04e_macros_and_client.md` (5 files, ~150-180 each). **Cleanup task** — pick up next session to keep file size manageable.
+- **Q20 LLM latency** stays deferred indefinitely until V1 prototype data exists.
+- **Feature design unblocked.** DF4 World Rules / DF5 Session+Group Chat / DF7 PC Stats can begin consuming the locked DP contract.
+- **SDK implementation (Phase 2b)** is the next phase of work for the data plane: `dp` crate (primitives), `dp-derive` proc-macros for `#[derive(Aggregate)]`, `dp-clippy` custom lints for R-3/R-4/R-6/R-8. Pursue when V1 game services begin coding.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q32 RESOLVED (privacy redaction policy templates)
+
+### Session arc
+
+Ninth Phase 4 mini-session. Q32 (privacy bubble-up) — small extension to DP-Ch30 with policy template library. Most aggregators don't need to write redaction logic in `on_event`; SDK applies declared policy in runtime loop.
+
+CLARIFY phase: user approved 5 design decisions (L1a per-aggregator policy at registration · L2 all 4 templates Transparent/SkipPrivate/AnonymizeRefs/Custom · L3c hybrid pre/post application · L4b counter for built-ins + selective audit for Custom · L5a per-channel visibility no inheritance) + skip new axiom (policy library, not invariant).
+
+BUILD phase: 1 new file (19_privacy_redaction_policies.md, 275 lines, DP-Ch43..Ch45) + minor updates to 4 existing files. No new axiom; default policy `Transparent` preserves backward compat.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`19_privacy_redaction_policies.md`](06_data_plane/19_privacy_redaction_policies.md) | LOCKED, DP-Ch43..Ch45 | 275 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | `register_bubble_up_aggregator` extended with `redaction_policy: RedactionPolicy` parameter | 838 → 842 |
+| [`16_bubble_up_aggregator.md`](06_data_plane/16_bubble_up_aggregator.md) | DP-Ch30 cross-ref to file 19; "leaves to other items" table updated to mark Q32 resolved | 561 → 568 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q32 ✅ resolved with cross-refs; Phase 4 severity summary updated (14 of 20 resolved) | 475 → 482 |
+| [`_index.md`](06_data_plane/_index.md) | File 19 row + DP-Ch eighth range; Phase 4 progress entry; status row reflects 14 Qs resolved | 125 → 128 |
+
+**Folder total after this Q:** 7026 lines across 20 files. **124 stable IDs** (no new axiom; +3 channel primitives Ch43..Ch45).
+
+### Q32 decisions locked
+
+| Decision | Rationale |
+|---|---|
+| Per-aggregator RedactionPolicy at registration time | Most aggregators have one consistent policy; SDK applies in runtime loop |
+| 4 built-in templates (Transparent / SkipPrivate / AnonymizeRefs / Custom) | Covers common cases; Custom is escape hatch |
+| Hybrid pre/post application (SkipPrivate pre-, AnonymizeRefs post-) | Aligned with intent — Skip = "ignore", Anonymize = "process but redact emit" |
+| Counter for built-ins + selective audit for Custom | Counters cheap for ops dashboards; full audit only for risky Custom filters |
+| Per-channel visibility, no inheritance | Explicit > implicit; no surprises when parent flips visibility |
+| Visibility immutable post-creation | Avoids "what happens to in-flight aggregator state on flip" complexity |
+| No new axiom | Policy library implementing existing DP-Ch30 + DP-A18, not an invariant |
+
+### Phase 4 progress after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **14** | Q15-Q19, Q21, Q22, Q26-Q28, Q30-Q32, Q34 |
+| 🟡 Significant gaps remaining | **2** | Q20 (LLM latency, V1-data-deferred), Q29 (fan-out tuning, ops-tinted) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q33 |
+
+14 / 20 Phase 4 Qs resolved. Only 2 🟡 remain — both essentially deferred (Q20 V1 data, Q29 ops doc). 🟢 nits batch is the natural next step.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared.
+- File 04 at 842 lines, still over 800 threshold; split queued for after 🟢 nits batch.
+- Q20 stays deferred until V1 data; Q29 is ops-doc territory (could be combined into 🟢 batch).
+- **🟢 nits batch (Q23/Q24/Q25/Q33)** likely next — operator concerns combined into one mini-session: histogram bucket granularity (Q23), telemetry cardinality (Q24), capability signing key rotation window (Q25), retention per channel level (Q33).
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q21+Q22 RESOLVED (causality token + session-writer routing UX)
+
+### Session arc
+
+Eighth Phase 4 mini-session. Cluster Q21 (intra-session RYW cross-service) + Q22 (session-writer routing UX) — both feature-ergonomics gaps. User accepted file 04 growing past 800-line threshold (now 838) with split queued for after Q32 + nits cleanup.
+
+CLARIFY phase: user approved 7 design decisions (K1b dedicated `CausalityToken` newtype · K2a poll-with-checkpoint impl · K3a optional `wait_for` parameter on read primitives · K4c default 5s + caller override · K5b SDK transparent session-writer routing extending DP-Ch14 pattern · K6a 1 retry max → CircuitOpen · K7c gateway contract = best-effort hint, out of DP scope) + add DP-A19 axiom + accept file 04 → 838 with split queued.
+
+BUILD phase: 1 new axiom (DP-A19) + 1 new file (18_causality_and_routing.md, 434 lines, DP-Ch38..Ch42) + targeted updates to 4 existing files. CausalityToken type added to file 04 core types; ack types extended to carry token; read primitives gained `wait_for` + `causality_timeout` params; 2 new DpError variants.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`18_causality_and_routing.md`](06_data_plane/18_causality_and_routing.md) | LOCKED, DP-Ch38..Ch42 | 434 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A19 causality preservation; summary table | 361 → 388 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`CausalityToken` core type; T2/T3/MultiAck extended with `causality_token` field; read primitives extended with `wait_for: Option<&CausalityToken>` + `causality_timeout: Option<Duration>` params; +2 DpError variants (`CausalityWaitTimeout`, `SessionNotFound`); surface count 39 → 39 (read primitives kept at 4, added params, not new methods); error variants 17 → 19 | 791 → **838** (over 800 threshold — split queued for after Q32 + nits cleanup per user approval) |
+| [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | +session→node binding lookup responsibility note (existing GetSessionNode RPC now consumed by routing path) | 342 → 343 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q21/Q22 ✅ resolved with cross-refs; Phase 4 severity summary updated (13 of 20 resolved; 3 🟡 + 4 🟢 remain) | 463 → 475 |
+| [`_index.md`](06_data_plane/_index.md) | File 18 row + DP-Ch seventh range; DP-A range → A19; Phase 4 progress entry; status row reflects 13 Qs resolved | 122 → 125 |
+
+**Folder total after this cluster:** 6696 lines across 19 files. **121 stable IDs** total: 19 axioms · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API · 10 CP · 10 coherency · 10 failure · **42 channel** (Ch1..Ch42).
+
+### Cluster decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| `CausalityToken` opaque newtype | DP-Ch38 | Module-private constructor prevents forgery; serializable for cross-service handoff via gRPC + bus |
+| Token attached to all durable acks (T2/T3/Multi/Pause/Turn) | DP-Ch38 | Uniform handoff pattern; T0/T1 excluded (nothing to wait for / different broadcast path) |
+| Cross-scope handoff allowed (Channel token waits Reality reads in same reality) | DP-Ch38 | Token bounds projection's overall progress; reality match is the only invariant |
+| Poll with fast checkpoint (`projection_apply_state` table) | DP-Ch39 | Simpler than subscribe-based; fits turn-based 1-10 events/s scale; subscribe optimization deferred |
+| 5s default timeout, caller can override | DP-Ch39 | Suitable for typical ≤1s projection lag with safety margin; CausalityWaitTimeout on exceed |
+| Optional `wait_for` parameter, default None | DP-Ch40 | Backward compat; only opt-in callers pay projection-wait cost |
+| Session-writer transparent routing (mirror DP-Ch14) | DP-Ch41 | Extends channel-writer pattern to session-writer (DP-A11); SDK absorbs gateway-routing staleness |
+| 1 SDK auto-retry → CircuitOpen | DP-Ch41 / Ch42 | Matches DP-Ch14 budget; caller-level retry independent |
+| 300s session-route cache TTL | DP-Ch41 | Sessions migrate less frequently than channel writers; longer cache safe |
+| Gateway contract = best-effort hint via `X-Dp-Session-Route-Hint` response header | DP-Ch42 | DP doesn't control gateway internals; gateway optionally consumes hint to refresh routing |
+| New DpError: `CausalityWaitTimeout`, `SessionNotFound` | DP-K3 | Diagnostic specificity for caller decision-making |
+
+### Phase 4 progress after this cluster
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **13** | Q15, Q16, Q17, Q18, Q19, **Q21**, **Q22**, Q26, Q27, Q28, Q30, Q31, Q34 |
+| 🟡 Significant gaps remaining | **3** | Q20 (LLM latency, V1-data-deferred), Q29 (fan-out tuning), Q32 (privacy formalization) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q33 |
+
+13 / 20 Phase 4 Qs resolved. Quick recovery from "🟡 backlog" to majority-cleared. Remaining are independent and small.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared.
+- File 04 at **838 lines, over 800 threshold**. Split should land after Q32 + nits. Tentative split scheme per earlier handoffs: `04a_core_types_and_session.md` + `04b_read_write.md` + `04c_subscribe.md` + `04d_channel_primitives.md` + `04e_macros_and_client.md` (5 files, ~150-180 each).
+- Q20 stays deferred until V1 data; Q29 + Q32 can be picked off independently.
+- 🟢 nits (Q23/Q24/Q25/Q33) likely batchable into one mini-session (operator concerns: histogram buckets, telemetry cardinality, key rotation, retention).
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q18 RESOLVED (T1 reframe for channel presence)
+
+### Session arc
+
+Seventh Phase 4 mini-session. Smallest 🟡 gap — T1 tier taxonomy was written with MMO-realtime assumptions baked in (30Hz position, "≥1/s sustained" rate threshold). Turn-based + channel model has different T1 use cases (channel presence, typing indicator, hover, emote). Quick reframe of DP-T1 section in [03_tier_taxonomy.md](06_data_plane/03_tier_taxonomy.md); no new files, no new axioms.
+
+CLARIFY phase: user approved 4 design decisions (J1a replace MMO examples with turn-based · J2b drop "≥1/s" hard rate threshold, replace with "high-churn or transient" criterion · J3a explicit note on T1 / DP-Ch34 complementarity · J4a explicit note on T1 + ChannelScoped composition validity).
+
+BUILD phase: targeted edit to DP-T1 section only. Eligibility rule revised; examples replaced; 2 explanatory notes added. No supersession of axioms.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| [`03_tier_taxonomy.md`](06_data_plane/03_tier_taxonomy.md) | DP-T1 eligibility rule revised (dropped "≥1/s" hard rule); examples replaced (channel presence, typing, hover, emote, idle-since); notes added on DP-Ch34 complementarity + ChannelScoped composition | 251 → 256 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q18 ✅ resolved with cross-refs; Phase 4 severity summary updated (11 resolved) | 459 → 463 |
+| [`_index.md`](06_data_plane/_index.md) | File 03 last-touched updated with reframe note | 122 |
+
+**Folder total after this Q:** 6168 lines across 18 files. Stable IDs unchanged at 116 (no new IDs).
+
+### Q18 decisions locked
+
+| Decision | Rationale |
+|---|---|
+| Replace MMO examples (J1a) | Game is turn-based + channel-based; keeping MMO examples confuses readers |
+| Drop hard rate threshold (J2b) | "≥1/s sustained" was MMO assumption; channel presence at lower rates is still appropriate T1 if data is transient |
+| Note DP-Ch34 complementarity (J3a) | T1 = "currently in" snapshot; T2 canonical join/leave history; both serve different consumers |
+| Note ChannelScoped composition (J4a) | T1 + ChannelScoped is valid via DP-A14; most Phase 4 T1 use cases are channel-scoped |
+
+### Phase 4 progress after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **11** | Q15, Q16, Q17, **Q18**, Q19, Q26, Q27, Q28, Q30, Q31, Q34 |
+| 🟡 Significant gaps remaining | **5** | Q20 (LLM latency, V1-data-deferred), Q21 (RYW cross-service), Q22 (routing UX), Q29 (fan-out tuning), Q32 (privacy formalization) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q33 |
+
+11 / 20 Phase 4 Qs resolved. Quick win — small reframe, no new file, no new axioms, ~60 lines diff total.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared.
+- File 04 still at 791 lines, unchanged this session — split decision still pending after next 🟡 cluster (likely Q21 + Q22).
+- Q20 stays deferred until V1 prototype data; pickable independently are Q21, Q22, Q29, Q32 + 4 nits.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q19+Q28+Q31 RESOLVED (lifecycle + membership + pause)
+
+### Session arc
+
+Sixth Phase 4 mini-session. After Phase 4 design phase officially completed with Q27, user opted to continue resolving 🟡 gaps. Picked the Q19+Q28+Q31 cluster — three tightly-coupled questions sharing one state machine (channel lifecycle states, membership transitions that drive parts of it, orthogonal pause flag). Splitting them across files would have fragmented the state machine; clustering keeps it coherent.
+
+CLARIFY phase: user approved 6 design decisions (I1a 3 lifecycle states + paused_until orthogonal flag · I2c auto-dormant for cells + admin-only for non-cells · I3a dissolution terminal · I4a DP emits canonical MemberJoined/MemberLeft · I5b pause halts game writes, allows admin/lifecycle ops · I6a open-ended pause `reason: String` + `paused_until: Option<Timestamp>`).
+
+BUILD phase: 1 new axiom (DP-A18) + 1 new file (17_channel_lifecycle.md, DP-Ch31..Ch37) + targeted updates to 5 existing files. No re-design of Phase 1-3 or earlier Phase 4 work.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`17_channel_lifecycle.md`](06_data_plane/17_channel_lifecycle.md) | LOCKED, DP-Ch31..Ch37 | 496 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A18 lifecycle + canonical events; summary table row; stable-IDs header → A18 | 338 → 361 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`channel_pause`/`channel_resume` + `PauseAck` + 4 new `DpError` variants (`ChannelPaused`, `ChannelDissolved`, `ChannelHasDescendants`, `ChannelAlreadyInState`); surface count 37 → 39; error-variants 13 → 17 | 748 → 791 (close to 800-line monolith threshold flagged earlier; split candidate after next 🟡 cluster) |
+| [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | +lifecycle scheduler responsibility (auto-dormant 5-min cadence + auto-resume 60-s cadence); 3 new gRPC methods (TransitionChannelLifecycle, PauseChannel, ResumeChannel); count 22 → 25 | 336 → 342 |
+| [`12_channel_primitives.md`](06_data_plane/12_channel_primitives.md) | DP-Ch1 lifecycle field comment cross-refs file 17; "leaves to other items" table updated to mark Q31 resolved | 447 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q19/Q28/Q31 ✅ resolved with cross-refs; Phase 4 severity summary updated (10 resolved) | 444 → 459 |
+| [`_index.md`](06_data_plane/_index.md) | File 17 row + DP-Ch sixth range; DP-A range → A18; Phase 4 progress entry | 119 → 122 |
+
+**Folder total after this cluster:** 6163 lines across 18 files. **116 stable IDs** total: 18 axioms · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API · 10 CP · 10 coherency · 10 failure · **37 channel** (Ch1..Ch37).
+
+### Cluster decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| 3 lifecycle states + orthogonal `paused_until` flag | DP-Ch31 | Pause is transient, lifecycle is durable trajectory; conflating creates confusing state explosion |
+| Dissolved is terminal; resurrect = new ChannelId | DP-Ch31 / Ch33 | Removes "is this channel really dead?" ambiguity; new identity for new purpose |
+| Auto-dormant for cells (30 min default), admin-only for non-cell | DP-Ch32 | Cells churn fast (per session leave); tavern+ are persistent locations admin-managed |
+| DP emits canonical MemberJoined/MemberLeft (reserved types) | DP-Ch34 | Audit-grade invariant; features cannot forge; consistent across feature design |
+| Pause halts game writes, allows lifecycle/admin ops | DP-Ch35 | Practical — player must be able to leave a paused channel |
+| Pause reason is open-ended string | DP-Ch35 | DP-agnostic; feature populates ("npc_reasoning", "admin_freeze", "drain_pending") |
+| Auto-resume on `paused_until` expiry via CP scheduler | DP-Ch35 | Indefinite pause possible (None) but explicit resume required; bounded pauses self-clean |
+| Pause persists across writer failover via DB state | DP-Ch36 | New writer reads pause from DB on takeover; in-flight writes between failover and recovery don't slip past |
+| Idempotent lifecycle ops; explicit edge-case taxonomy | DP-Ch37 | Bind-to-dormant wakes up; bind-to-dissolved hard-errors; recreate != resurrect |
+
+### Phase 4 progress after this cluster
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **10** | Q15 · Q16 · Q17 · **Q19** · Q26 · Q27 · **Q28** · Q30 · **Q31** · Q34 |
+| 🟡 Significant gaps remaining | **6** | Q18 (T1 reframe), Q20 (LLM latency, deferred V1 data), Q21 (RYW cross-service), Q22 (routing UX), Q29 (fan-out tuning), Q32 (privacy formalization) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q33 |
+
+**10 of 20 Phase 4 Qs resolved.** All blockers + 3 of original 12 gaps closed. Remaining 6 🟡 gaps are independent and smaller — can be picked off individually. Q20 stays deferred until V1 prototype data exists.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 + all Phase 4 work to date (Q26, Q17/Q30/Q34, Q16, Q15, Q27, Q19/Q28/Q31) is LOCKED. Changes via supersession.
+- **04_kernel_api_contract.md is now 791 lines** — approaching the 800-line split threshold flagged in Q15 handoff. Recommended split if next 🟡 cluster (likely Q21 + Q22) breaches 800: `04a_core_types_and_session.md` + `04b_read_write_subscribe.md` + `04c_channel_primitives.md` + `04d_macros_and_client.md`. Split decision belongs to user.
+- File 17 includes cross-refs to channel-tree-update stream extension — when implementation begins, ensure delta stream entries cover lifecycle transitions (DP-Ch1 metadata covered the basics; DP-Ch31..37 specifies the additional event categories).
+- Remaining 🟡 gaps are independent. Pick any order — Q18 (T1 reframe) is the smallest and a good warm-up; Q21 + Q22 cluster naturally; Q32 builds on DP-Ch30.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q27 RESOLVED — 🎉 design phase complete
+
+### Session arc
+
+Fifth and final Phase 4 mini-session. Picked Q27 (event bubble-up primitive) — the last and most complex design blocker. With Q27 resolved, **all design blockers for the channel-model extension are cleared** and feature design (DF4 / DF5 / DF7) can begin consuming the locked DP contract.
+
+CLARIFY phase: user approved 6 design decisions (H1a in-process trait running on parent's writer node · H2c event-sourced state with periodic snapshots · H3a deterministic RNG seeded by `channel_event_id` of triggering event · H4c multiple aggregators per parent with declared source-filter · H5a CP-managed durable registry with restart restoration · H6b feature decides redaction policy on private-source events; DP exposes visibility flag).
+
+BUILD phase: 1 new file (16_bubble_up_aggregator.md, DP-Ch25..Ch30) — the largest single design file at 561 lines, intentionally cohesive. Updates to 4 existing files (4 new SDK primitives in 04, aggregator-registry RPC in 05, cross-ref in 13, Q27 marked + Phase 4 done in 99).
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`16_bubble_up_aggregator.md`](06_data_plane/16_bubble_up_aggregator.md) | LOCKED, DP-Ch25..Ch30 | 561 (over soft cap; intentional — cohesive aggregator design) |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`register_bubble_up_aggregator` + `unregister` + `deterministic_rng`; surface count 34 → 37 | 723 → 748 |
+| [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | +aggregator registry responsibility in DP-C1; +3 RPC methods (Register / Unregister / List); count 19 → 22 | 330 → 336 |
+| [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | DP-Ch15 cross-ref to file 16 (preview → full) | 382 → 382 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q27 ✅ resolved; **Phase 4 design phase complete** announcement; severity summary updated (7 resolved, 0 blockers remaining) | 434 → 444 |
+| [`_index.md`](06_data_plane/_index.md) | File 16 row + DP-Ch fifth range; **Phase 4 design phase complete** announcement; status row reflects all design blockers resolved | 116 → 119 |
+
+**Folder total after Phase 4:** 5577 lines across 17 files. **109 stable IDs** (17 axioms · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API · 10 CP · 10 coherency · 10 failure · **30 channel** Ch1..Ch30).
+
+### Q27 decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| `BubbleUpAggregator` trait + in-process runtime on parent's writer | DP-Ch25 / Ch26 | Cleanest V1; aggregator load is low (turn-based, low ops/s); local emit avoids extra hops |
+| Event-sourced state + periodic snapshots | DP-Ch26 | Replay-correctness from event log + fast restart from snapshot; 1 MB state cap; 1/s snapshot rate-limit |
+| Deterministic RNG via blake3 seeded by (channel_id, channel_event_id) | DP-Ch27 | Replay-safe; same inputs → same RNG output; aggregators MUST NOT use wall-clock time |
+| Multiple aggregators per parent + source filter (LevelName / Specific / DirectChildren / AllDescendants / Any) | DP-Ch25 | Most flexible; tavern can have multiple independent aggregators with different source sets |
+| CP durable registry + writer-node restart restoration | DP-Ch28 | Aggregators survive restarts; 30-day GC of unregistered |
+| Cascading is natural (no special mode); loop prevention via tree-shape + filter validation | DP-Ch29 | Bottom-up only; max cascade depth 16 (channel tree depth); deterministic through cascade levels |
+| Privacy = feature-decides-redact (DP capability-gates subscription, doesn't auto-redact emits) | DP-Ch30 | Q32 will formalize policy templates; DP-Ch30 establishes data shape (visibility flag exposed via SourceEvent) |
+
+### Phase 4 design phase summary (all 5 mini-sessions, 1 day)
+
+| # | Mini-session | Q resolved | Files added |
+|---:|---|---|---|
+| 1 | Channel first-class | Q26 | 12_channel_primitives.md (DP-A13/A14, DP-Ch1..Ch10) |
+| 2 | Per-channel ordering + writer | Q17, Q30, Q34 | 13_channel_ordering_and_writer.md (DP-A15/A16, DP-Ch11..Ch15) |
+| 3 | Durable subscribe | Q16 | 14_durable_subscribe.md (DP-Ch16..Ch20) |
+| 4 | Turn boundary | Q15 | 15_turn_boundary.md (DP-A17, DP-Ch21..Ch24) |
+| 5 | Bubble-up aggregator | Q27 | 16_bubble_up_aggregator.md (DP-Ch25..Ch30) |
+
+**Total Phase 4 contribution:** 5 new files, 5 new axioms (DP-A13..A17), 30 new channel primitives (DP-Ch1..Ch30). Phase 1-3 baseline (Q1..Q14 era) untouched.
+
+### Phase 4 progress after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved (design blockers + foundation) | 7 | Q15 · Q16 · Q17 · Q26 · Q27 · Q30 · Q34 |
+| 🔴 Blockers remaining | **0** | — all cleared |
+| 🟡 Significant gaps | 9 | Q18, Q19, Q20, Q21, Q22, Q28, Q29, Q31, Q32 |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q33 |
+
+**Feature design unblocked.** DF4 World Rules / DF5 Session+Group Chat / DF7 PC Stats can now begin consuming the locked DP contract (DP-A1..A17 axioms, DP-T0..T3 tiers, DP-R1..R8 rulebook, DP-K1..K12 kernel API, DP-C1..C10 control plane, DP-X1..X10 coherency, DP-F1..F10 failure/recovery, DP-Ch1..Ch30 channel primitives).
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- **All Phase 1-4 design content is LOCKED baseline.** Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md is now 748 lines, still under 1500 hard cap. Next-session should consider splitting if it grows further (tentative split per the Q15 handoff: `04a_core_types_and_session.md` + `04b_read_write_subscribe.md` + `04c_channel_primitives_macros.md`).
+- File 16 is 561 lines, similarly over soft cap, kept monolithic for cohesion. Splitting would fragment the BubbleUpAggregator trait + runtime + RNG + registry + privacy story.
+- Remaining Phase 4 🟡 + 🟢 work is **non-blocking** for feature design — they can proceed in parallel once feature designs start.
+
+### Track options for next session
+
+1. **Begin feature design** (DF4 / DF5 / DF7) consuming the now-locked DP contract.
+2. **Continue Phase 4 cleanup** — pick a 🟡 gap (Q19 channel pause, Q28 membership ops, Q31 lifecycle, Q32 privacy policy) and resolve.
+3. **Switch tracks** — return to main SRE track (SR6-SR12 from earlier 2026-04-24 session).
+4. **SDK implementation** — Phase 2b proc-macro crate + clippy lints + `dp` crate scaffolding.
+
+User decides at next session start. Today's session has been highly productive — closed Phase 4 design phase in 5 mini-sessions including the original setup.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q15 RESOLVED (turn boundary primitive)
+
+### Session arc
+
+Fourth Phase 4 mini-session. Picked Q15 (turn boundary primitive) — the simpler of the two remaining blockers, used as a warm-up before tackling the more complex Q27 bubble-up. Both consume Q16's durable subscribe foundation; Q15 first lets Q27 reuse the established pattern.
+
+CLARIFY phase: user approved 6 design decisions (G1a TurnBoundary as `ChannelEvent` impl with discriminator · G2a feature explicitly calls `advance_turn`, capability-gated · G3a minimal metadata = turn_number + opaque turn_data · G4a no subscribe-completion enforcement · G5a writer auto-allocates monotonic gapless · G6a every channel event tagged with current turn_number).
+
+BUILD phase: 1 new axiom (DP-A17) + 1 new file (15_turn_boundary.md, DP-Ch21..Ch24) + targeted updates to 4 existing files. No re-design of any prior locked content.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`15_turn_boundary.md`](06_data_plane/15_turn_boundary.md) | LOCKED, DP-Ch21..Ch24 | 347 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A17 per-channel turn numbering invariant; summary table row | 312 → 338 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | +`advance_turn` primitive on `DpClient` + `TurnAck`; surface count 33 → 34 | 706 → 723 |
+| [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | DP-Ch11 schema extension cite `turn_number BIGINT` column added in DP-Ch22 | 381 → 382 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q15 ✅ resolved with cross-refs; severity summary updated (6 resolved) | 428 → 434 |
+| [`_index.md`](06_data_plane/_index.md) | File 15 row + DP-Ch fourth range; DP-A range → A17; Phase 4 progress entry; status row reflects Q15/Q16/Q17/Q26/Q30/Q34 resolved | 113 → 116 |
+
+**Folder total after this Q:** 4972 lines across 16 files. **103 stable IDs** total: 17 axioms · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API · 10 CP · 10 coherency · 10 failure · **24 channel** (Ch1..Ch24).
+
+### Q15 decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| TurnBoundary as ChannelEvent impl | DP-Ch21 | Reuses Q16 stream + Q17 ordering uniformly; no separate event log path |
+| Feature explicit `advance_turn` + capability-gated | DP-Ch21 / DP-Ch23 | DP agnostic to "when to advance" rules; capability check via JWT `can_advance_turn` claim |
+| Minimal metadata: turn_number + opaque turn_data | DP-Ch21 | Feature populates turn_data with whatever it needs (D&D round, scene title, "player A's turn"); DP doesn't interpret |
+| No subscribe-completion gate on writes | DP-Ch24 | Slow consumers fall behind in stream; feature/UX decides "wait for all players" — DP doesn't gate on potentially disconnected clients |
+| Writer auto-allocates monotonic gapless | DP-Ch22 | Per-channel `last_turn_number` in `channel_writer_state`; recovery via `MAX(turn_number)` reseed; in-tx with TurnBoundary insert |
+| Every channel event tagged with current turn_number | DP-Ch22 | "Events in turn N" becomes a queryable concept via single index; channels not using turn semantics stay at 0 |
+| DP-A17 axiom level invariant | DP-A17 | Future features can rely on "turn boundaries exist + per-channel monotonic" without re-deriving from primitives |
+
+### Phase 4 progress after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **6** | Q15 · Q16 · Q17 · Q26 · Q30 · Q34 |
+| 🔴 Blockers remaining | **1** | **Q27 bubble-up primitive (last design blocker)** |
+| 🟡 Significant gaps | 9 | Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 (Q20 deferred V1 data) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q29, Q33 |
+
+**All foundations now in place for Q27:**
+- Q16 durable subscribe → aggregator can subscribe to descendant channels
+- Q34 writer binding → aggregator runs on parent channel's writer node
+- DP-Ch15 causal_refs → bubble-up events can cite source events
+- DP-A17 turn boundary → natural aggregation window between turn advances
+- DP-Ch11 channel_event_id → deterministic RNG seed source for replay-safe random thresholds
+
+Q27 is the **last design blocker**. After it lands, Phase 4 design phase is complete (residual 🟡 gaps and 🟢 nits are smaller items that don't block feature design from starting).
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 + all Phase 4 work to date (Q26 / Q17/Q30/Q34 / Q16 / Q15) is LOCKED. Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md is now 723 lines, still under 1500 hard cap. Q27 will likely add 1-2 more primitives. **Plan a split after Q27** if file approaches 800; tentative split: `04a_core_types_and_session.md` + `04b_read_write_subscribe.md` + `04c_channel_primitives_macros.md`. Don't split speculatively before Q27.
+- DP-A17 turn invariant means every channel-event row in `event_log` must carry `turn_number`. Phase 2b SDK implementation must enforce this; missing turn_number on a write is a bug.
+- File 15's `TurnBoundary` event shape uses serde_json::Value for opaque turn_data — implementation will need a typed-decoder helper for features that want to deserialize their turn_data into a known struct.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q16 RESOLVED (durable per-channel subscribe)
+
+### Session arc
+
+Third Phase 4 mini-session. Picked Q16 (durable per-channel subscribe with resume token) standalone — it is the foundation that the remaining two Phase 4 blockers (Q15 turn boundary, Q27 bubble-up) both consume, so resolving it first unblocks both follow-ups.
+
+CLARIFY phase: user approved 6 design decisions (F1c hybrid Redis Streams + Postgres catchup · F2a client-side cursor with SDK stateless w.r.t. subscriptions · F3 catchup→live transition via parallel DB-page + stream merge with event_id dedup · F4a only ChannelScoped events streamed durably · F5b per-channel API + ancestor-chain multiplex convenience · F6b TCP-level backpressure with 60 s stall threshold).
+
+BUILD phase: 1 new file (14_durable_subscribe.md, 5 mechanism specs DP-Ch16..Ch20) + extension of DP-A4 axiom (Redis serves three roles: cache + pub/sub + Streams) + targeted updates to 3 existing files (subscribe primitives in 04, keyspace clarification in 06, axiom row in 02).
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`14_durable_subscribe.md`](06_data_plane/14_durable_subscribe.md) | LOCKED, DP-Ch16..Ch20 | 381 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | DP-A4 extended (Redis cache + pub/sub + **Streams**); summary table row updated | 306 → 312 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | DP-K6 + `subscribe_channel_events_durable<S>` + `subscribe_session_channels<S>`; surface count 31 → 33 | 685 → 706 (still over soft cap; user-approved API-reference exception) |
+| [`06_cache_coherency.md`](06_data_plane/06_cache_coherency.md) | DP-X2 explicit 5-keyspace table separating cache invalidation pub/sub from durable Streams from audit streams (Phase 4 clarification) | 271 → 285 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q16 ✅ resolved with full cross-refs; Phase 4 severity summary updated (5 resolved) | 423 → 428 |
+| [`_index.md`](06_data_plane/_index.md) | File 14 row + DP-Ch third range; Phase 4 progress entry | 110 → 113 |
+
+**Folder total after this Q:** 4572 lines across 15 files. **98 stable IDs** total: 16 axioms · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API · 10 CP · 10 coherency · 10 failure · **20 channel** (Ch1..Ch20).
+
+### Q16 decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| Hybrid backing: Redis Streams + Postgres catchup | DP-Ch17 | 7-day Redis retention covers 99 % of resume cases; Postgres event_log for older catchup; one canonical source (DB) + one fast tail (Streams) |
+| Client-side cursor, SDK stateless | DP-Ch18 | Scales without CP-side state; client tracks last-seen `channel_event_id`; explicit reconnect protocol |
+| Catchup → live merge with event_id dedup | DP-Ch18 | Buffer Stream events during DB query, deliver DB events first, drain buffer with dedup by `channel_event_id`, then live-tail |
+| Only ChannelScoped events streamed | DP-Ch16 | RealityScoped events use existing `read_projection` path; durable subscribe is the channel-timeline primitive |
+| Per-channel API + multiplex convenience | DP-Ch19 | `subscribe_channel_events_durable` per-channel + `subscribe_session_channels` auto-multiplex over ancestor chain; per-channel ordering preserved, cross-channel arbitrary |
+| TCP backpressure + 60 s stall threshold | DP-Ch20 | Turn-based 1-10 events/s rate makes slow consumer rare; 60 s buffer + disconnect; reconnect with last token = no loss |
+| Idle heartbeat every 30 s | DP-Ch20 | Lets clients distinguish "channel quiet" from "connection broken"; 90 s without event/heartbeat = client treats stream as dead |
+| Explicit `ResumeTokenExpired` error rather than silent gap | DP-Ch18 | Client decides skip-ahead vs abort; never silent data loss |
+
+### Phase 4 progress after this Q
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | 5 | Q16 · Q17 · Q26 · Q30 · Q34 |
+| 🔴 Blockers remaining | 2 | Q15 turn boundary · Q27 bubble-up primitive |
+| 🟡 Significant gaps | 9 | Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 (Q20 deferred V1 data) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q29, Q33 |
+
+**Both remaining blockers depend on Q16's foundation:**
+- Q15 turn boundary = a `ChannelEvent` impl with discriminator `"turn_boundary"`, occupying a specific `channel_event_id`; subscribers see it via `subscribe_channel_events_durable`.
+- Q27 bubble-up = aggregator at parent channel uses `subscribe_channel_events_durable` over each descendant cell, consumes events, emits parent events via writer.
+
+User flagged that Q27 is more complex (aggregator state + RNG seed + threshold + privacy) than Q15 (special event type). Tackling order is open — Q27 first lets Q15 reuse the same protocol scaffolding; Q15 first is simpler and could be a warm-up.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 + Q26 + Q17/Q30/Q34 + Q16 work is LOCKED. Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md is now 706 lines, still under 1500 hard cap. If Q15+Q27 cluster pushes it past 800, plan a split.
+- DP-A4 now mentions three Redis roles — make sure any Phase 4+ work that touches Redis cites the right keyspace family (cache invalidation pub/sub vs durable Streams vs audit Streams).
+- File 14's `ChannelEvent` trait is intentionally generic; concrete event-type taxonomy + tagged-enum decoder land in Phase 2b proc-macro work, not in design phase.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q17+Q30+Q34 RESOLVED (per-channel ordering + writer binding)
+
+### Session arc
+
+Second Phase 4 mini-session. Picked the next foundation cluster (Q17 per-channel total event ordering · Q30 ordering mechanism · Q34 channel writer-node binding) — these three are conceptually one unit since ordering needs a mechanism and a mechanism needs a single writer.
+
+CLARIFY phase: user approved 5 design decisions (E1a per-channel total order applies only to ChannelScoped events · E2b single writer maintains in-memory counter with DB UNIQUE constraint as gaplessness backstop · E3b cell writer = creator's session node with handoff, non-cell writer = CP-assigned and persistent · E4b SDK transparently routes cross-node writes via gRPC · E5a CP detects writer death and pushes reassignment via existing channel-tree-update stream).
+
+BUILD phase: 2 new axioms (DP-A15 ordering invariant + DP-A16 writer binding) + 1 new file (13_channel_ordering_and_writer.md, 5 mechanism specs DP-Ch11..Ch15) + targeted updates to 4 existing files. No re-design of Phase 1-3 or Q26 work.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`13_channel_ordering_and_writer.md`](06_data_plane/13_channel_ordering_and_writer.md) | LOCKED, DP-Ch11..Ch15 | 381 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A15 + DP-A16, summary table rows | 252 → 306 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | `WrongChannelWriter` `DpError` variant + transparent-routing note in DP-K5 + surface count update | 677 → 685 (still over soft cap; user-approved API-reference exception) |
+| [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | Writer-binding responsibility added to DP-C1; 3 new gRPC methods (`GetChannelWriter`, `RequestWriterHandoff`, `HeartbeatWriterLease`) in DP-C3; count 16 → 19 | 324 → 330 |
+| [`12_channel_primitives.md`](06_data_plane/12_channel_primitives.md) | Cross-refs in "leaves to other items" table marking Q17/Q30/Q34 resolved with pointers to file 13 | 447 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q17/Q30/Q34 ✅ resolved with full cross-refs; Phase 4 severity summary updated | 420 → 423 |
+| [`_index.md`](06_data_plane/_index.md) | File 13 row + DP-Ch second range, DP-A range → A16, Phase 4 progress entry | 107 → 110 |
+
+**Folder total after this cluster:** 4142 lines across 14 files. **93 stable IDs** total: 16 axioms (+2) · 4 tiers · 8 rulebook · 8 SLO · 12 kernel API (with WrongChannelWriter variant) · 10 CP (3 new RPC) · 10 coherency · 10 failure · 15 channel (Ch1..Ch15).
+
+### Cluster decisions locked
+
+| Decision | ID | Rationale |
+|---|---|---|
+| Per-channel total event ordering as axiom | DP-A15 | Encodes "everyone in channel sees same story in same order"; reality-scoped events keep R7 ordering, no global cross-channel order |
+| Single writer per active channel | DP-A16 | Gapless monotonic `channel_event_id` allocation; natural home for turn-boundary discipline (Q15) and bubble-up aggregator (Q27) |
+| Writer = creator's session node for cells | DP-Ch12 | Leverages session stickiness DP-A11; writes local in common case; handoff on creator-leave |
+| Writer = CP-assigned for non-cell channels | DP-Ch12 | Non-cell channels not tied to specific user session; persistent writer simplifies reasoning |
+| Cross-node writes transparent via gRPC | DP-Ch14 | Feature signature unchanged; ~5 ms LAN hop acceptable for turn-based |
+| Epoch fence via `channel_writer_state` table | DP-Ch13 | App-level check (Postgres trigger upgrade is future hardening) prevents split-brain double-write |
+| `MAX(channel_event_id)` re-seed on writer takeover | DP-Ch11 | Recovery without dedicated coordination; UNIQUE constraint as backstop |
+| Causal-ref schema for bubble-up | DP-Ch15 | Foundation for Q27; descendant-only refs prevent circular causality; replay-deterministic |
+
+### Phase 4 progress after this cluster
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | 4 | Q17 · Q26 · Q30 · Q34 |
+| 🔴 Blockers remaining | 3 | Q15 turn boundary · Q16 durable subscribe · Q27 bubble-up primitive |
+| 🟡 Significant gaps | 9 | Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 (Q20 deferred V1 data) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q29, Q33 |
+
+**Next cluster:** Q15 + Q16 + Q27 (the remaining Phase 4 blockers). All three depend on the channel + ordering + writer foundation just landed:
+- Q15 turn boundary = special channel event at well-defined `channel_event_id` positions
+- Q16 durable subscribe = consumer cursor over per-channel ordered stream, resume token = `channel_event_id`
+- Q27 bubble-up primitive = aggregator running on parent channel's writer, consumes descendant events via durable subscribe (Q16), emits with causal_refs (Ch15)
+
+These are tightly coupled but can be tackled either as one cluster or sequentially Q16 → Q15 → Q27. Q16 first is probably cleanest since both Q15 and Q27 consume the durable subscribe.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 + Q26 + Q17/Q30/Q34 work is LOCKED. Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md is now 685 lines, still under 1500 hard cap. If Q15+Q16+Q27 cluster pushes it past 800, plan a split (likely separate `04b_subscribe_apis.md` or similar).
+- Postgres trigger upgrade for epoch-fence (DP-Ch13) is a future hardening item, not blocker.
+- Writer audit stream `dp:writer_audit:{reality_id}` schema in DP-Ch13 is a new ops concern — observability dashboard can be added when SDK implementation begins.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q26 RESOLVED (channel first-class)
+
+### Session arc
+
+First Phase 4 mini-session. Picked Q26 (channel hierarchy as first-class DP concept) as the foundation blocker — resolving it unblocks Q17, Q30, Q34, and most remaining Q items because channels define the scope every other follow-up operates within.
+
+CLARIFY phase: user approved 6 design decisions (D1c tree structure with free-form level_name · D2a UUID identity with cached ancestor chain · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix in cache keys · D5 SessionContext extension with current + ancestors · D6b per-reality-DB registry ownership, CP caches tree only).
+
+BUILD phase: 2 new axioms + 1 new file + updates to 4 existing files. No re-design of Phase 1-3; all channel support is additive.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`12_channel_primitives.md`](06_data_plane/12_channel_primitives.md) | LOCKED, DP-Ch1..Ch10 | 447 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A13 + DP-A14, summary table rows, header stable-IDs range | 209 → 252 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | `ChannelId` type, scope marker traits, SessionContext extension, scope-typed read primitives, scope-dispatched `cache_key!` macro, channel CRUD primitives, updated surface summary | 570 → **677** (over soft cap; API-reference monolith intentional) |
+| [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | CP channel-tree cache responsibility + 3 new gRPC methods (`GetChannelTree`, `StreamChannelTreeUpdates`, `ResolveAncestorChain`) | 318 → 324 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q26 ✅ marked resolved with full cross-ref; Phase 4 severity summary updated (3/4 blockers remaining) | 417 → 420 |
+| [`_index.md`](06_data_plane/_index.md) | File 12 row + DP-Ch registry, DP-A range → A14, Phase 4 section updated with "in progress" + file 12 | 101 → 107 |
+
+**Folder total after Q26:** 3687 lines across 13 files. **88 stable IDs** (+2 axioms, +10 channel primitives, +3 CP methods in existing DP-C3 slot; DP-K surface count grew from ~24 to ~31 primitives).
+
+### Q26 decisions locked
+
+| Axiom / Primitive | What it locks |
+|---|---|
+| **DP-A13** | Channel tree per reality; free-form `level_name` tag (DP agnostic); per-reality DB registry, CP cache only; root is derived `ChannelId::reality_root(reality_id)`; max depth ≤16 |
+| **DP-A14** | Marker traits `RealityScoped` vs `ChannelScoped` are exclusive (derive-macro enforced); orthogonal to tier markers; scope determines cache-key shape + API signature |
+| **DP-Ch1** | `ChannelId` newtype, module-private constructor |
+| **DP-Ch2** | `channels` table in per-reality Postgres DB; SDK only writer; structural invariants (no cycles, depth cap, dissolved-terminal) enforced by DB constraints |
+| **DP-Ch3** | CP caches per-reality channel tree; Redis Stream `dp:channel_changes:{reality_id}` delta sync; SDK `StreamChannelTreeUpdates` subscription; degraded-mode: existing SessionContexts remain valid, new binds to unseen channels rejected |
+| **DP-Ch4** | Scope marker traits + `#[derive(Aggregate)]` macro with `#[dp(scope = "reality" | "channel", ...)]` attribute |
+| **DP-Ch5** | Cache key format: `dp:{reality}:r:{tier}:{type}:{id}` (RealityScoped) vs `dp:{reality}:c:{channel}:{tier}:{type}:{id}` (ChannelScoped) |
+| **DP-Ch6** | `SessionContext` adds `current_channel_id` + `ancestor_channels: Vec<ChannelId>` (≤16 entries); immutable, swapped on `move_session_to_channel` |
+| **DP-Ch7** | Ancestor walk helpers: `find_ancestor`, `ancestor_at_depth`; complex queries go through Channel aggregate read |
+| **DP-Ch8** | Channel CRUD primitives: `create_channel`, `update_channel_metadata`, `dissolve_channel`; DP enforces structural invariants, feature enforces business rules; re-parenting forbidden |
+| **DP-Ch9** | `move_session_to_channel` returns new SessionContext; caller swaps in; feature-level leave/enter events emitted separately |
+| **DP-Ch10** | Tree-change invalidation via Redis Stream; SessionContext ancestor chain is snapshot (valid for lifetime); dissolution during active session returns `DpError::ChannelDissolved` on next op |
+
+### Phase 4 progress after Q26
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | 1 | Q26 (2026-04-25) |
+| 🔴 Blockers remaining | 3 | Q15 turn boundary · Q16 durable subscribe · Q27 bubble-up primitive |
+| 🟡 Significant gaps | 12 | Q17, Q18, Q19, Q20, Q21, Q22, Q28, Q30, Q31, Q32, Q34 (Q20 deferred V1 data) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q29, Q33 |
+
+Next cluster (per resolution plan): **Q17 + Q30 + Q34** (per-channel total event ordering + ordering mechanism + channel writer-node binding). These three form a tight conceptual cluster — Q30 is the concrete mechanism for Q17's invariant, Q34 determines who executes it.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 files + new file 12 are LOCKED baseline. Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md at 677 lines is over soft cap (user-approved as API-reference exception for now). Monitor — if Phase 4 continues adding primitives and it approaches 1500 hard cap, plan a split (likely into `04a_core_types.md` + `04b_read_write.md` + `04c_macros_client.md`).
+- Next mini-session (Q17+Q30+Q34) likely extends 02_invariants with **DP-A15** (per-channel total ordering) and creates/extends a file for event-log schema + writer binding. Writer binding may require extending [DP-A11](06_data_plane/02_invariants.md) semantics — check for supersession before adding new axiom.
+- Don't rewrite 04/05; extend via new files or small targeted edits.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 backlog recorded (not resolved)
+
+### Session arc
+
+After Phase 3 locked with "design phase functionally complete", a hot-path adversarial review was requested. The first review pass applied MMO-realtime semantics and flagged 20+ issues. User pushed back — the actual game model is **turn-based event-linear time**, not realtime; DP ought to be much more like a pub/sub + durable event log than an MMO.
+
+The review was rebased to turn-based model. Then user clarified the full channel-hierarchy semantics: reality → continent → country → district → town → tavern → cell session, with probabilistic event bubble-up (~10× event rate reduction per level up).
+
+Under this corrected model: **7/7 of the prior REAL-* issues still stand** (6 reframed to per-channel scope), and **9 NEW-* issues** surfaced from the channel hierarchy itself. Phase 1-3 contracts remain valid as a baseline but require extension — **design phase is NOT functionally complete** in the original sense.
+
+This session **records the backlog only**, does not resolve it. Phase 1-3 files (00–11, 99 pre-Phase-4) are unchanged. Each Phase 4 item will be discussed and resolved one at a time in subsequent mini-sessions.
+
+### Files changed
+
+| File | Change | Lines |
+|---|---|---:|
+| [`06_data_plane/99_open_questions.md`](06_data_plane/99_open_questions.md) | Added **Phase 4 — Channel-model follow-ups** section with **Q15..Q34** (20 new backlog items) | 197 → ~440 |
+| [`06_data_plane/_index.md`](06_data_plane/_index.md) | Status row updated to flag Phase 4 backlog; reading order updated with Phase 4 note pointing to `12_channel_primitives.md` (planned) | 97 → 100 |
+
+### Phase 4 backlog summary (Q15..Q34)
+
+**🔴 Blockers (4):** Q15 per-channel page/turn primitive · Q16 durable per-channel subscribe with resume · Q26 channel hierarchy as first-class DP concept · Q27 event bubble-up primitive
+
+**🟡 Significant gaps (12):** Q17 per-channel total order · Q18 T1 tier reframe · Q19 channel pause · Q20 LLM turn latency dominates · Q21 T2 RYW cross-service · Q22 WrongWriterNode UX · Q28 channel membership ops · Q30 per-channel ordering mechanism · Q31 channel lifecycle · Q32 privacy bubble-up · Q33 retention per channel · Q34 channel writer-node binding
+
+**🟢 Nits + operational (4):** Q23 histogram buckets · Q24 telemetry cardinality · Q25 signing-key rotation window · Q29 fan-out at high channels
+
+Origin: 7 items are REAL-* from the prior review (reframed to channels where applicable); 9 are NEW from the channel model itself; 4 carry forward as ops/security follow-ups.
+
+### Phase 4 resolution order (from 99_open_questions.md)
+
+1. **First (foundation):** Q26 channel first-class + Q17/Q30 per-channel ordering + Q34 writer binding
+2. **Then (blockers):** Q16 durable subscribe · Q15 turn boundary · Q27 bubble-up
+3. **Then (semantics):** Q19 pause · Q28 membership · Q31 lifecycle · Q18 T1 reframe
+4. **Then (gaps):** Q21 T2 RYW · Q22 routing · Q29 fan-out · Q32 privacy
+5. **Ops doc:** Q23 · Q24 · Q25 · Q33
+6. **Defer (V1 data):** Q20
+
+### Handoff notes for next agent / session
+
+- Phase 1-3 files (00–08, 11) are **LOCKED baseline** — do not modify for Phase 4 work without superseding-decision ceremony in [../decisions/](decisions/).
+- Phase 4 new axioms (DP-A13, DP-A14 expected) will be additive — they extend DP-A1..A12, not replace.
+- Planned new file: `12_channel_primitives.md` (DP-Ch1..Chn + DP-K13..K17 likely). Build when Q26 is resolved.
+- Active header cleared; folder free for next agent.
+- The instinct after resolving Q26/Q17/Q30/Q34 will be to immediately rebuild 04/05/06 to include channel_id everywhere — **resist**. Write extensions/addendum files rather than rewriting; keep Phase 1-3 as committed baseline for future reference.
+
+---
+
+## Session 2026-04-25 (continued) — 06_data_plane Phase 3 (failure + recovery)
+
+### Session arc
+
+Phase 3 BUILD for [06_data_plane/](06_data_plane/) — single file `07_failure_and_recovery.md` closing Q6 residual (cold-start fallback when CP is down), Q12 (backpressure), and Q5 residual (schema migration rollback). With Phase 3 landed, **design phase for 06_data_plane is functionally complete**: all 14 open questions are either resolved (7), have operational-doc residuals (4), are out of scope (2), or future implementation task (1).
+
+### File landed
+
+| # | File | Status | Owned IDs | Lines |
+|---:|---|---|---|---:|
+| 07 | [`07_failure_and_recovery.md`](06_data_plane/07_failure_and_recovery.md) | LOCKED | DP-F1..F10 | 385 |
+| _index.md | updated | — | — | 97 |
+| 99_open_questions.md | updated | — | Q-matrix final | 197 |
+
+**Total folder after Phase 3:** 2851 lines across 12 files. **74 stable IDs** total (12 axioms + 4 tiers + 8 rulebook + 8 SLO + 12 kernel API + 10 CP + 10 coherency + 10 failure).
+
+### Phase 3 key decisions
+
+| Decision | ID | Rationale |
+|---|---|---|
+| Consistency preferred over availability on split-brain | DP-F5 | Partitioned SDKs reject T3 writes rather than accept-and-reconcile. Canon/currency conflict resolution is too painful. |
+| Backpressure = 3 independent token buckets | DP-F7 | Per-reality-per-tier + per-service fairness + per-session abuse prevention. Enforces [DP-S5](06_data_plane/08_scale_and_slos.md) ceilings with layered protection. |
+| Schema rollback ≤5min with dual-read pause + quarantine | DP-F8 | No user-visible data loss — quarantined new-schema data preserved for forensic recovery. |
+| CP-down cold-start fallback = 503 Retry-After | DP-F8 | Rather than risk double-wake violating single-writer (DP-A11). Reality stays frozen until CP recovers. |
+| Chaos drill cadence | DP-F10 | Weekly CP + node; bi-weekly Redis + inval drop; monthly freeze + partition + backpressure; quarterly migration rollback. Gates production release on last-30-day drill success. |
+| Node death handoff p99 ≤5s | DP-F2 | 30s CP detection + re-pin + T1 snapshot reload. Excludes reality cold-start if also needed. |
+| CP degraded mode ceiling ≤15 min (V1/V2) | DP-F3 | Existing ops continue; new session binds rejected; cross-aggregate T3 writes paused. |
+
+### Q-items final state
+
+**Design-phase resolved (7):** Q1 SDK API · Q4 invalidation storm · Q5 schema migration (full protocol + rollback) · Q6 cold start (full protocol + fallback) · Q9 SDK authZ · Q12 backpressure · Q14 Rust types + macros
+
+**Design-phase partial (2):** Q8 SDK telemetry (macro + metrics locked; dashboards belong in ops doc) · Q10 in-proc cache (policy locked; per-aggregate enable list is ops + V2 data)
+
+**Operational doc residuals:** Q3 Redis topology · Q7 Redis ops cost · Q8 dashboards · Q10 per-aggregate enable list
+
+**Out of scope for this folder (2):** Q2 Python bus · Q11 cross-reality txn
+
+**Future implementation task (1):** Q13 test strategy — becomes relevant once SDK implementation starts
+
+### Next-session entry points
+
+**06_data_plane design track is complete.** No further design files planned unless a feature surfaces a gap.
+
+**Parallel tracks now unblocked:**
+
+1. **Feature design using DP contract** — DF4 World Rules, DF5 Session/Group Chat, DF7 PC Stats. Each feature declares tier table per [DP-R2](06_data_plane/11_access_pattern_rules.md#dp-r2--tier-declaration-per-aggregate), uses DP-K* primitives, follows DP-R1..R8 Rulebook.
+2. **Main track continuation** — SR6–SR12 from the 2026-04-24 Security + SRE review.
+3. **SDK implementation** — Phase 2b work: `dp`, `dp-derive` (proc-macro for `#[derive(Aggregate)]`), `dp-clippy` (custom lints for R-3/R-4/R-6/R-8) crates. Not a design-phase concern; execution when V1 game work begins.
+4. **Operational doc** — dashboards, alerting thresholds, Redis topology decision, per-aggregate tuning. Belongs in an ops folder alongside existing `docs/sre/` work.
+
+### Handoff notes for next agent on this subfolder
+
+- `Active:` header in [`06_data_plane/_index.md`](06_data_plane/_index.md) cleared at session end.
+- All design files (00–11, 99) are LOCKED. Changes require superseding decision entry in [../decisions/](decisions/) + `_withdrawn` suffix on the superseded ID.
+- 04_kernel_api_contract.md is 570 lines, over soft cap — user-approved as API-reference exception; do not split unless a legitimate edit pushes it toward the 1500 hard cap.
+- Future features should NOT edit this folder. They consume it.
+- If a feature encounters a gap that requires a new DP item (axiom, tier change, new rulebook rule, new failure mode), escalate — do not inline-patch.
+
+---
+
+## Session 2026-04-25 — 06_data_plane Phase 2 (SDK API + CP + coherency)
+
+### Session arc
+
+Phase 2 BUILD for [06_data_plane/](06_data_plane/) — 3 concrete contract files deriving from Phase 1 foundation. No re-design; Phase 1 invariants (DP-A1..A12) and tier taxonomy (DP-T0..T3) fed directly into the concrete surfaces. Defaults decided at CLARIFY: gRPC for CP transport (Rust/Tonic), JWT 5-min short-expiry capability tokens, singleflight + stale-while-revalidate + jittered repopulation for invalidation storm, 2-node active-passive CP HA via etcd leader election with ≤60s failover, degraded-mode ceiling ≤15 min (V1/V2).
+
+Phase 2 resolves 4 open questions fully (Q1, Q4, Q9, Q14) and 4 partially (Q5, Q6, Q8, Q10). Phase 3 remaining scope narrowed to failure/recovery (Q12 backpressure, Q5/Q6 residuals).
+
+### Files landed (`06_data_plane/`)
+
+| # | File | Status | Owned IDs | Lines |
+|---:|---|---|---|---:|
+| 04 | [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 570 (over soft cap; API reference intentionally kept whole) |
+| 05 | [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 318 |
+| 06 | [`06_cache_coherency.md`](06_data_plane/06_cache_coherency.md) | LOCKED | DP-X1..X10 | 271 |
+| _index.md | updated | — | — | 97 (status table + ID registry) |
+| 99_open_questions.md | updated | — | Q-marks 2026-04-25 | 188 |
+
+**Total folder after Phase 2:** 2457 lines across 11 files. Stable IDs: 64 (12 axioms + 4 tiers + 8 rules + 8 SLO + 12 kernel API + 10 CP + 10 coherency).
+
+### Phase 2 key decisions (locked, not re-designed)
+
+| Decision | ID | Rationale |
+|---|---|---|
+| Rust SDK primitive surface ≈ 24 methods | DP-K12 | Federated feature repos (DP-A10) keep DP small |
+| Capability token = JWT 5-min expiry + quarterly signing rotation | DP-K9 / DP-C8 | Short expiry bounds blast radius; no revocation list needed |
+| Tier-typed write APIs (`t0_write` / `t1_write` / `t2_write` / `t3_write`) | DP-K5 | DP-R5 "no cross-tier mixing" becomes compile-enforced via trait bound |
+| Closed-set `Predicate` query builder (no raw SQL) | DP-K4 | DP-R3 forbids raw DB clients; builder gives typed flexibility |
+| CP transport = gRPC over mTLS (Tonic) | DP-C3 | Low-QPS, Rust-native, mTLS aligns with existing S11 service auth |
+| CP HA = 2-node active-passive via etcd + ≤60s failover | DP-C2 / DP-C10 | V1/V2 target; V3 promotes to 3-node quorum |
+| Schema migration = Expand / Migrate / Contract | DP-C5 | Standard pattern; catastrophic case requires reality-freeze via R9 |
+| Invalidation via Redis pub/sub per-reality channel | DP-X2 | CP off hot path; self-filter by `writer_node`; MessagePack payload |
+| Storm mitigation = singleflight + SWR 20s + jittered repopulation | DP-X4 | N-node thundering herd bounded to N reads per key per 20s window |
+| In-process 2nd cache = off by default, opt-in per aggregate, 1s TTL cap | DP-X6 | Correctness-neutral optimization; enable per V2 data |
+| Degraded mode = continue existing ops; reject new binds; ceiling ≤15 min | DP-C9 | Service fate-shared with Redis + Postgres, not with CP |
+
+### Q-items progression
+
+**Resolved (4):** Q1 SDK API shape · Q4 invalidation storm · Q9 SDK authZ · Q14 Rust types + macros
+
+**Partial (Phase 3 residuals, 4):** Q5 schema migration (CP protocol locked; observability/rollback later) · Q6 cold start (protocol locked; fallback + V2 telemetry later) · Q8 telemetry (macro + metrics locked; dashboards = ops doc) · Q10 in-proc cache (policy locked; per-aggregate enable = V2 data)
+
+**Still open (6):** Q2 Python bus (out of scope) · Q3 Redis topology (V2 data) · Q7 Redis ops cost (ops doc) · Q11 cross-reality txn (out of SDK) · Q12 backpressure (Phase 3) · Q13 test strategy (Phase 3)
+
+### Next-session entry points
+
+**Phase 3 for 06_data_plane** (smaller scope after Phase 2 resolutions):
+
+1. **`07_failure_and_recovery.md`** (DP-F*) — cold-start fallback when CP is unavailable (closes Q6), CP outage recovery + reconciliation (closes Q5 residual), exact token-bucket backpressure params (closes Q12), degraded-mode metrics + alerts, split-brain handling, invalidation audit reconciliation.
+
+**Alternative tracks** (feature design can start in parallel):
+
+- DF4 / DF5 / DF7 V1-blocking feature designs — can use the locked Phase 2 contract (DP-K* APIs, DP-R1..R8 Rulebook, DP-T0..T3 tier choices) as input.
+- Main track continuation (SR6–SR12 from 2026-04-24 session).
+
+### Handoff notes for next agent on this subfolder
+
+- `Active:` header in [`06_data_plane/_index.md`](06_data_plane/_index.md) cleared at session end.
+- All Phase 2 files are LOCKED. Changes require a superseding decision entry in [../decisions/](decisions/) + `_withdrawn` suffix on the superseded ID.
+- **04_kernel_api_contract.md is 570 lines** — intentionally over the 500 soft cap because it is a single API reference document; splitting would fragment navigation. Do not split speculatively; if someone must edit and cross the 1500 hard cap later, split on the next `##` heading boundary per AGENT_GUIDE.
+- The `#[derive(Aggregate)]` proc-macro (Phase 2b) is a separate implementation task for the `dp-derive` crate, not a design doc in this folder.
+- Phase 3 is pure failure/recovery scope; do not revisit Phase 1 axioms or Phase 2 contracts from that phase.
+
+---
+
+## Session 2026-04-24 (continued) — 06_data_plane kernel contract layer
+
+### Session arc
+
+Design session for a new kernel contract layer sitting above existing `02_storage/` event-sourcing. User raised two gameplay data problems: (1) event-sourcing reads are expensive; (2) gameplay interactions have extreme read/write frequency that cannot round-trip through event log every tick. Gap analysis via Explore agent confirmed:
+
+- Read-path snapshot/projection layer is **fully designed** (00_overview, R02, R07, S09)
+- Session-state memory is **partially designed** (S01_03) — covers NPC relationships, not transient gameplay state
+- **Genuinely missing:** in-memory cache for hot gameplay state, cache invalidation policy, cold-start mitigation, event-ack SLO pattern, tier classification framework
+
+Decision chain user locked through CLARIFY phase:
+
+1. **Option C scope** — new subfolder owns the kernel access contract; `02_storage/` becomes implementation detail beneath it
+2. **Model B architecture** — Control Plane / Data Plane split (rejected single-gateway model on hot-path latency grounds)
+3. **Rust for game layer** — initial Go recommendation revised after user clarified AI (not human) is the coder, which invalidates human-learning-curve arguments and makes compile-time enforcement high-value
+4. **Redis for cache** — already in LoreWeave stack, adequate pub/sub for invalidation
+5. **V3 scale anchor** — 200–500 CCU per reality, 10k total; 50 ms p99 own-client ack, 200 ms broadcast
+6. **Four tiers** (T0 ephemeral / T1 volatile / T2 durable-async / T3 durable-sync), closed set
+
+Phase 1 foundation built (7 files), multi-perspective adversarial review identified 4 blockers + 9 gaps. Blockers resolved in-session by adding 3 new axioms (DP-A10/A11/A12) + a new file `11_access_pattern_rules.md` (DP-R1..R8). DP-A1 rewritten with honest threat model.
+
+### Files landed (`06_data_plane/`)
+
+| File | Status | Owned IDs | Lines |
+|---|---|---|---:|
+| [`_index.md`](06_data_plane/_index.md) | LOCKED | — | 94 |
+| [`00_preamble.md`](06_data_plane/00_preamble.md) | LOCKED | — | 71 |
+| [`01_scope_and_boundary.md`](06_data_plane/01_scope_and_boundary.md) | LOCKED | — | 143 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | LOCKED | DP-A1..A12 | 209 |
+| [`03_tier_taxonomy.md`](06_data_plane/03_tier_taxonomy.md) | LOCKED | DP-T0..T3 | 251 |
+| [`08_scale_and_slos.md`](06_data_plane/08_scale_and_slos.md) | LOCKED | DP-S1..S8 | 147 |
+| [`11_access_pattern_rules.md`](06_data_plane/11_access_pattern_rules.md) | LOCKED | DP-R1..R8 | 192 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | OPEN | Q1..Q14 | 186 |
+
+**Total:** 1293 lines across 8 files, all under the 500-line soft cap.
+
+**Stable IDs landed:** 32 total — 12 axioms (DP-A1..A12), 4 tiers (DP-T0..T3), 8 SLO items (DP-S1..S8), 8 rulebook rules (DP-R1..R8) + 14 open questions (Q1..Q14).
+
+### Blocker resolution (from multi-perspective review)
+
+| Blocker | Perspective | Resolution |
+|---|---|---|
+| **A1** SDK god-interface risk | Architect | DP-A10: Federated feature repos. DP owns primitives + Rulebook; feature query logic lives in feature-owned repo modules. |
+| **B1** T1 single-writer undefined cross-node | Lead / Tech | DP-A11: Session node = single writer; sticky routing required; NPC binding in control plane. |
+| **C1** Reality-ID enforcement missing | QA | DP-A12: `RealityId` newtype with module-private constructor + `SessionContext`-gated access. Implements DP-R1. |
+| **F1** "No bypass" overclaim | Security | DP-A1 rewritten with honest threat model: IN scope (accidental bypass — compile/lint/review), OUT of scope (RCE — infra + security defense-in-depth), Future (sidecar proxy, roadmap). |
+
+### Gaps flagged (review-surfaced, deferred to Q-items or Phase 2/3)
+
+B2 (T3 ack realism at V3 burst), B3 (event bus / event log naming collision), C2 (T1/T2 hybrid — combat state tier), C3 (LLM-output validation framework), D1 (T1 Redis snapshot torn-write), D2 (embedding storage tier), E1 (SDK version skew), F2 (T1 broadcast visibility filter), G1 (worked feature example missing). These do not block Phase 2; flagged in `99_open_questions.md` / future Phase 2-3 design docs.
+
+### Next-session entry points (Phase 2 for 06_data_plane)
+
+1. **`04_kernel_api_contract.md`** — concrete Rust SDK primitive API (DP-K*): `RealityId` newtype, `SessionContext`, `dp::cache_key!` macro, `DpError` enum, per-tier write/read methods. Resolves Q1 + Q14.
+2. **`05_control_plane_spec.md`** — service responsibilities (DP-C*): tier registry, schema coordination, invalidation broadcast protocol, cold-start handshake.
+3. **`06_cache_coherency.md`** — invalidation pattern (DP-X*): per-tier coherency model, invalidation storm mitigation (Q4), cross-node propagation.
+4. **Phase 3** — `07_failure_and_recovery.md` (DP-F*): cold start (Q6), node failure, split-brain, backpressure semantics (Q12).
+
+### Handoff notes for next agent on this subfolder
+
+- `Active:` header in [`06_data_plane/_index.md`](06_data_plane/_index.md) cleared at session end. Next agent free to claim.
+- Do NOT renumber DP-A1..A12, DP-T0..T3, DP-R1..R8, DP-S1..S8. Retired IDs use `_withdrawn` suffix.
+- Phase 2 work is greenfield in this subfolder. Should not touch `02_storage/` unless a gap is found; gaps become new R* items there.
+- Respect [AGENT_GUIDE.md](AGENT_GUIDE.md) rules: one agent per subfolder, announce in SESSION_HANDOFF before editing, 500-line soft cap.
+
+---
+
 ## Session 2026-04-24 — progress summary
 
 ### Session arc (Security + SRE reviews)
@@ -293,6 +1421,22 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-24 | C2 DB subtree split runbook locked — concrete 15-step playbook for V1/V2 freeze-copy-cutover + V3+ logical replication. 5 decisions (C2-D1..D5) + new `migrating` lifecycle state + `reality_migration_audit` table. §12N added. DF11 scope expands to "Fleet + Lifecycle + Migration Management". |
 | 2026-04-24 | C3 Meta registry HA locked — 7-layer strategy (Patroni streaming replication + 1 sync + 1 async replica + Redis cache + degraded mode + PITR). 6 decisions (C3-D1..D6). V1/V2: single-region HA only; V3+ adds cross-region DR, 2nd sync replica, per-shard HA for reality DBs, and audit DB evaluation. §12O added. Meta access is shared Go library (`contracts/meta/`), not standalone service. |
 | 2026-04-24 | **C4 + C5 locked in batch — all 5 SA+DE Critical concerns resolved.** C4: L3 override reverse index in meta (§12P, 4 decisions) makes §9.8.1 preview + §9.8.3 force-propagate queries O(1) at V3 scale. C5: lifecycle transition CAS discipline (§12Q, 6 decisions) — mandatory `AttemptStateTransition()` helper in `contracts/meta/`, `lifecycle_transition_audit` table, lint rule enforcement, governance policy addendum. Storage + multiverse design survives full SA+DE adversarial review. |
+| 2026-04-24 | **06_data_plane Phase 1 foundation locked — new kernel contract layer above 02_storage.** Option C scope: DP owns kernel access contract; 02_storage becomes implementation detail. 12 axioms (DP-A1..A12), 4-tier taxonomy (DP-T0..T3), 8-rule Rulebook (DP-R1..R8), 8 SLO anchors (DP-S1..S8), 14 open questions. 4 blockers resolved in-session: DP-A10 federated feature repos + DP-A11 session-node T1 writer + DP-A12 `RealityId` newtype + DP-A1 honest threat model. Rust for game layer locked. Phase 2 entry points: `04_kernel_api_contract`, `05_control_plane_spec`, `06_cache_coherency`. Rationale captured in [06_data_plane/](06_data_plane/). |
+| 2026-04-25 | **06_data_plane Phase 2 locked — concrete SDK + CP + cache coherency contracts.** 3 new files (2457 total lines in folder): `04_kernel_api_contract.md` (DP-K1..K12, Rust SDK ~24 primitives, `RealityId` newtype, `SessionContext`, `DpError` 12 variants, `dp::cache_key!` + `dp::instrumented!` macros, JWT capability tokens, clippy lint skeletons); `05_control_plane_spec.md` (DP-C1..C10, gRPC over mTLS via Tonic, 2-node active-passive HA via etcd, Expand/Migrate/Contract schema migration, quarterly signing key rotation, ≤15 min degraded-mode ceiling); `06_cache_coherency.md` (DP-X1..X10, per-tier coherency matrix, Redis pub/sub invalidation per-reality channel with MessagePack payload, singleflight + stale-while-revalidate 20s + jittered repopulation storm mitigation, optional opt-in in-proc 2nd layer with 1s TTL). Resolves Q1/Q4/Q9/Q14 fully; Q5/Q6/Q8/Q10 partial. Phase 3 scope narrowed to `07_failure_and_recovery.md`. |
+| 2026-04-25 | **06_data_plane Phase 3 locked — design track COMPLETE.** `07_failure_and_recovery.md` (DP-F1..F10, 385 lines) closes Q6/Q12 and Q5 residual. Key locks: **consistency over availability** on split-brain (DP-F5, reject T3 writes rather than reconcile); **3 token-bucket backpressure** (per-reality-per-tier + per-service + per-session, DP-F7); schema migration rollback ≤5 min with dual-read pause + new-schema quarantine (DP-F8); CP-down cold-start fallback = 503 Retry-After rather than risk double-wake (DP-F8); chaos cadence weekly CP + node / bi-weekly Redis + inval drop / monthly freeze + partition + backpressure / quarterly migration rollback (DP-F10). Folder total: 2851 lines across 12 files, **74 stable IDs**. 7 Q-items fully resolved, 2 partial (ops residuals), 2 out of scope, 1 future implementation. Parallel tracks now unblocked: feature design (DF4/DF5/DF7) consuming DP contract, main SRE track continuation (SR6-SR12), SDK implementation, ops doc. |
+| 2026-04-25 | **06_data_plane Phase 4 backlog recorded (NOT resolved).** User clarified actual game model is turn-based event-linear with **hierarchical channels** (cell → tavern → town → district → country → continent) + probabilistic event bubble-up. Adversarial review identified **Phase 1-3 contracts remain valid baseline but need extension**. 20 open questions (Q15..Q34) appended to `99_open_questions.md`: **4 blockers** (Q15 per-channel turn primitive, Q16 durable subscribe with resume, Q26 channel as first-class concept, Q27 bubble-up primitive), **12 significant gaps**, **4 nits/ops**. 7 items are REAL-* issues from hot-path review reframed to channel scope; 9 are NEW issues surfaced by channel model; 4 carry forward as ops/security follow-ups. Resolution plan: foundation (Q26/Q17/Q30/Q34) → blockers → semantics → gaps → ops. One mini-session per Q cluster. Phase 1-3 files remain LOCKED as baseline; new file `12_channel_primitives.md` planned once foundation resolved. |
+| 2026-04-25 | **06_data_plane Phase 4 Q26 ✅ RESOLVED — channel hierarchy now first-class DP concept.** First Phase 4 mini-session. 6 design decisions approved (D1c tree + free-form level_name · D2a UUID + cached ancestor · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix · D5 SessionContext extension · D6b per-reality-DB registry + CP cache). 2 new axioms **DP-A13** (channel tree first-class) + **DP-A14** (aggregate scope design-time marker). New file **12_channel_primitives.md** (447 lines, DP-Ch1..Ch10). Updates to 04 (`ChannelId`, scope traits, extended SessionContext, scope-typed reads, scope-dispatched `cache_key!`, channel CRUD primitives; file now 677 lines — over soft cap, user-approved as API-reference exception), 05 (CP channel tree cache + 3 new gRPC methods), 99 (Q26 marked resolved + severity updated). Folder: 3687 lines across 13 files, ~88 stable IDs. Phase 4 progress: 1/4 blockers resolved; Q17 + Q30 + Q34 next cluster (per-channel ordering + writer binding). |
+| 2026-04-25 | **06_data_plane file 04 split into 04a/b/c/d (cleanup task).** Twelfth and final mini-session of 2026-04-25. After Phase 4 expansion grew `04_kernel_api_contract.md` to 891 lines (over 500 soft cap, approaching 900), split per earlier handoff notes. 4 new files: **04a_core_types_and_session.md** (254 lines, DP-K1/K2/K3) · **04b_read_write.md** (193 lines, DP-K4/K5) · **04c_subscribe_and_macros.md** (170 lines, DP-K6/K7/K8) · **04d_capability_and_lifecycle.md** (351 lines, DP-K9/K10/K11/K12). Old `04_kernel_api_contract.md` deleted. Stable IDs DP-K1..K12 preserved unchanged (no renumbering per AGENT_GUIDE). Cross-refs in 17 other files updated to point at the right split file based on referenced DP-K* anchor. _index.md reading order renumbered (8-11 = 04a/b/c/d, 12-13 = 05/06, 14 = 07, 15-24 = Phase 4 files 12-21). Status table 04 row replaced with 4 rows. Exported IDs DP-K* row maps to sub-ranges. All split files under 500-line soft cap with comfortable headroom. Folder: 25 files, ~7800 lines, **132 stable IDs unchanged**. Phase 4 design remains COMPLETE; this was pure cleanup. |
+| 2026-04-25 | **06_data_plane Phase 4 Q20 Phần B ✅ RESOLVED — LLM turn slot primitive + patterns; Phần A still V1-data-deferred.** Eleventh and final Phase 4 mini-session of 2026-04-25. User picked Option A (tackle Phần B with small DP primitives + pattern doc). New file **21_llm_turn_slot.md** (351 lines, DP-Ch51..Ch53: claim_turn_slot/release_turn_slot/get_turn_slot SDK primitives extending channel_writer_state with current_turn_actor + turn_expected_until + reason; CP scheduler 30-s cadence auto-timeout with canonical TurnSlotTimedOut event; 3 feature-level patterns documented — Strict/Concurrent/Cancellable for LLM turn coordination). No new axiom (slot is advisory hint, composes with existing pause+advance_turn). Updates: 04 (+3 primitives + TurnSlotAck/TurnSlot types + 2 errors, surface 39→42, channel API 8→11, errors 19→21, 842→891 lines), 05 (lifecycle scheduler extended), 13 (channel_writer_state schema extension note), 17 (composition note for pause+slot), 99 (Q20 PARTIAL: Phần B done, Phần A deferred), _index. Folder: ~7700 lines across 22 files, **132 stable IDs**. Phase 4: every actionable design Q resolved; Q20 Phần A purely measurement-deferred. **04_kernel_api_contract.md at 891 lines — split task urgent next session.** |
+| 2026-04-25 | **🎉 06_data_plane Phase 4 🟢 nits batch ✅ RESOLVED (Q23+Q24+Q25+Q29+Q33) — DESIGN + OPS-RESIDUAL CLEANUP COMPLETE.** Tenth and final Phase 4 mini-session. 3 design decisions approved (M1a single consolidated file · M2c recommended defaults locked + configurable overrides · M3c phased key rotation). New file **20_operational_residuals.md** (313 lines, DP-Ch46..Ch50: histogram bucket layouts per metric · telemetry cardinality control with low-cardinality default labels + SDK-side aggregation + 1%-sampled traces · capability key rotation V1/V2 quarterly + V3 monthly with revocation broadcast + KMS-backed · subscription fan-out batching one-per-(node,channel) reducing 60k→5k subscribers · per-channel-level retention with metadata override). No new axiom (operational defaults, not invariants). Folder: ~7350 lines across 21 files, **129 stable IDs** (+5 channel primitives Ch46..Ch50). **Phase 4 final state: 19 of 20 Qs resolved (Q15-Q19, Q21-Q34 except Q20). Only Q20 LLM latency remains, V1-data-deferred.** 06_data_plane is locked baseline for feature design + SDK implementation. |
+| 2026-04-25 | **06_data_plane Phase 4 Q32 ✅ RESOLVED — privacy redaction policy templates.** Ninth Phase 4 mini-session. 5 design decisions approved (L1a per-aggregator policy at registration · L2 all 4 templates Transparent/SkipPrivate/AnonymizeRefs/Custom · L3c hybrid pre/post application · L4b counter for built-ins + selective audit for Custom · L5a per-channel visibility no inheritance) + skip new axiom (policy library implements existing DP-Ch30 + DP-A18). New file **19_privacy_redaction_policies.md** (275 lines, DP-Ch43..Ch45: RedactionPolicy enum + RedactionFilter trait with safe defaults · application semantics in runtime loop with hybrid pre-dispatch + post-decision filtering · cascade-redaction emergent property · telemetry counters + audit-stream entries reserved for Custom · per-channel visibility no inheritance + immutable post-creation). Updates: 04 (+redaction_policy: RedactionPolicy parameter on register_bubble_up_aggregator, 838→842), 16 (DP-Ch30 cross-ref + Q32 resolved row, 561→568), 99 (Q32 ✅), _index. Folder: 7026 lines across 20 files, **124 stable IDs** (no new axiom; +3 channel primitives Ch43..Ch45). Phase 4 progress: **14 of 20 Qs resolved**; 2 🟡 (Q20 V1-deferred / Q29 ops-tinted) + 4 🟢 nits remain. |
+| 2026-04-25 | **06_data_plane Phase 4 Q21+Q22 ✅ RESOLVED — causality token + session-writer routing UX.** Eighth Phase 4 mini-session. 7 design decisions approved (K1b dedicated CausalityToken newtype · K2a poll-with-checkpoint · K3a optional wait_for param · K4c default 5s + override · K5b SDK transparent session-writer routing extending DP-Ch14 · K6a 1 retry max · K7c gateway contract = best-effort hints, out of DP scope) + add DP-A19 axiom + accept file 04 → 838 lines (over 800 threshold, split queued post-Q32+nits). New axiom **DP-A19** (intra-session causality preservation via opaque token). New file **18_causality_and_routing.md** (434 lines, DP-Ch38..Ch42: CausalityToken opaque newtype with module-private constructor · attached to T2/T3/Multi/Pause/Turn acks · poll-with-fast-checkpoint algorithm via new projection_apply_state table · read primitives extended with wait_for + causality_timeout params · session-writer transparent routing extending DP-Ch14 with RouteSessionWrite gRPC + 300s session-route cache · error taxonomy + gateway contract via X-Dp-Session-Route-Hint header). Updates: 04 (+CausalityToken core type, +ack token field, +read params, +2 errors CausalityWaitTimeout/SessionNotFound, error variants 17→19, 791→838 lines), 05 (+session→node binding lookup responsibility note), 99 (Q21/Q22 ✅), _index. Folder: 6696 lines across 19 files, **121 stable IDs**. Phase 4 progress: **13 of 20 Qs resolved**; 3 🟡 (Q20 V1-deferred / Q29 ops-tinted / Q32 privacy formalization) + 4 🟢 nits remain. |
+| 2026-04-25 | **06_data_plane Phase 4 Q18 ✅ RESOLVED — T1 tier reframed for channel presence.** Seventh Phase 4 mini-session, smallest 🟡 gap. 4 design decisions approved (J1a replace MMO examples · J2b drop "≥1/s" rate threshold + use "high-churn or transient" criterion · J3a explicit DP-Ch34 complementarity note · J4a explicit ChannelScoped composition note). DP-T1 section in 03_tier_taxonomy revised — out went MMO-realtime examples (30Hz position, combat ticks); in came turn-based + channel-model examples (channel presence, typing indicator, hover/cursor, emote/animation, idle-since). Eligibility rule simplified. No new file, no new axioms (DP-T0..T3 enum stable per DP-A5). Folder: 6168 lines across 18 files, 116 stable IDs unchanged. Phase 4 progress: 11 of 20 Qs resolved (Q15/Q16/Q17/Q18/Q19/Q26/Q27/Q28/Q30/Q31/Q34); 5 🟡 + 4 🟢 remain. |
+| 2026-04-25 | **06_data_plane Phase 4 Q19+Q28+Q31 ✅ RESOLVED — channel lifecycle + membership + pause.** Sixth Phase 4 mini-session, post-design-phase-completion cleanup of 🟡 gaps. 6 design decisions approved (I1a 3 lifecycle states + orthogonal paused_until · I2c auto-dormant cells + admin non-cell · I3a dissolution terminal · I4a DP emits canonical MemberJoined/MemberLeft · I5b pause halts game writes, allows admin/lifecycle · I6a open-ended pause reason). New axiom **DP-A18** (channel lifecycle state machine + canonical membership events). New file **17_channel_lifecycle.md** (496 lines, DP-Ch31..Ch37: 3-state machine with terminal Dissolved · auto-dormant 5-min CP scan over cells idle ≥30min · dissolution requires all-descendants-dissolved · canonical MemberJoined/MemberLeft reserved event types with typed reasons (Voluntary/Disconnected/Migrated/ChannelDissolved/TimedOut) · channel_pause/resume SDK + capability JWT can_pause_channel + auto-resume on expiry · pause survives writer failover via DB state · idempotent ops + edge-case taxonomy + canonical audit trail). Updates: 04 (+channel_pause/resume + 4 new DpError variants + PauseAck, surface 37→39, 748→791 lines — close to 800 split threshold), 05 (+lifecycle scheduler responsibility + 3 RPC methods, count 22→25, 336→342), 12 (cross-ref to file 17), 99 (Q19/Q28/Q31 ✅), _index. Folder: 6163 lines across 18 files, **116 stable IDs**. Phase 4 progress: **10 of 20 Qs resolved** (all blockers + 3 of original 12 🟡 gaps); 6 🟡 + 4 🟢 remain, all independent and non-blocking. |
+| 2026-04-25 | **🎉 06_data_plane Phase 4 Q27 ✅ RESOLVED — bubble-up aggregator. PHASE 4 DESIGN PHASE COMPLETE.** Fifth and final Phase 4 mini-session. Q27 was the last + most complex design blocker. 6 design decisions approved (H1a in-process trait on parent's writer · H2c event-sourced state with snapshots · H3a deterministic RNG seeded by channel_event_id · H4c multiple aggregators per parent with source filter · H5a CP durable registry · H6b feature-decides-redact for private sources). New file **16_bubble_up_aggregator.md** (561 lines, DP-Ch25..Ch30: BubbleUpAggregator trait + register/unregister + SourceFilter shapes + SourceEvent + EmitDecision · event-sourced state + periodic snapshots + 1MB cap + 1/s rate-limit + failure handling · deterministic_rng via blake3-seeded StdRng · CP bubble_up_aggregator registry + 3 RPC methods + 30-day GC · cascading natural with loop prevention via tree-shape + 16-level cap · channel visibility exposed via SourceEvent.source_visibility, redaction = feature decision). Updates: 04 (+3 new SDK primitives, surface 34→37, 723→748), 05 (+aggregator-registry RPC, count 19→22, 330→336), 13 (DP-Ch15 cross-ref to file 16), 99 (Q27 ✅ + Phase 4 design complete announcement), _index. Folder: 5577 lines across 17 files, **109 stable IDs** (17 axioms + 4 tiers + 8 rulebook + 8 SLO + 12 kernel API + 10 CP + 10 coherency + 10 failure + 30 channel Ch1..Ch30). Phase 4 design phase: **0 blockers remaining** (Q15/Q16/Q17/Q26/Q27/Q30/Q34 all ✅). Feature design unblocked. Remaining Phase 4 work = 9 🟡 gaps + 4 🟢 nits, none blocking gameplay design. |
+| 2026-04-25 | **06_data_plane Phase 4 Q15 ✅ RESOLVED — turn boundary primitive.** Fourth Phase 4 mini-session. 6 design decisions approved (G1a TurnBoundary as ChannelEvent impl · G2a feature explicit advance_turn + capability-gated · G3a minimal metadata turn_number + opaque turn_data · G4a no subscribe-completion gate · G5a writer auto-allocates monotonic gapless · G6a every channel event tagged with current turn_number). New axiom **DP-A17** (per-channel turn numbering invariant — monotonic gapless, writer-allocated only via advance_turn, every event tagged). New file **15_turn_boundary.md** (347 lines, DP-Ch21..Ch24: TurnBoundary event = ChannelEvent impl with `"turn_boundary"` discriminator + advance_turn(ctx, channel, turn_data, causal_refs) primitive · event_log.turn_number column + channel_writer_state.last_turn_number + writer allocation via MAX-reseed + optional UNIQUE index for failover-race · JWT can_advance_turn: Vec<level_name> capability claim · composition with pause/bubble-up/move-session). Updates: 04 (+advance_turn primitive on DpClient + TurnAck, surface 33→34, 706→723 lines), 13 (DP-Ch11 schema +turn_number column note), 99 (Q15 ✅), _index. Folder: 4972 lines across 16 files, **103 stable IDs**. Phase 4 progress: 6 resolved (Q15/Q16/Q17/Q26/Q30/Q34); **Q27 bubble-up = last design blocker** with all foundations now in place. |
+| 2026-04-25 | **06_data_plane Phase 4 Q16 ✅ RESOLVED — durable per-channel subscribe with resume token.** Third Phase 4 mini-session. 6 design decisions approved (F1c hybrid Redis Streams + Postgres catchup · F2a client-side cursor SDK stateless · F3 catchup→live merge with event_id dedup · F4a only ChannelScoped events · F5b per-channel API + multiplex convenience · F6b TCP backpressure + 60s stall). DP-A4 axiom extended (Redis = cache + pub/sub + Streams). New file **14_durable_subscribe.md** (381 lines, DP-Ch16..Ch20: subscribe primitive + DurableStreamItem enum · hybrid backing Redis Streams 7-day + Postgres event_log historical catchup · client-side resume token with monotonic gap-free delivery · catchup→live merge algorithm · multiplex convenience auto-subscribing ancestor chain · TCP backpressure + heartbeats + StreamEndReason taxonomy). Updates: 04 (DP-K6 + 2 new subscribe primitives, surface 31→33, 685→706 lines), 06 (DP-X2 explicit 5-keyspace table separating pub/sub vs Streams), 99 (Q16 ✅), _index. Folder: 4572 lines across 15 files, **98 stable IDs**. Phase 4 progress: 5 resolved (Q16/Q17/Q26/Q30/Q34); 2 blockers remain (Q15 turn boundary, Q27 bubble-up) — both consume Q16's durable subscribe foundation. |
+| 2026-04-25 | **06_data_plane Phase 4 Q17 + Q30 + Q34 ✅ RESOLVED — per-channel total ordering + writer-node binding.** Second Phase 4 mini-session. 5 design decisions approved (E1a per-channel total order applies only to ChannelScoped · E2b single-writer in-memory counter + DB UNIQUE backstop · E3b cell writer = creator's node + handoff, non-cell writer = CP-assigned + persistent · E4b SDK transparent cross-node routing via gRPC · E5a CP detects writer death and pushes via channel-tree-update stream). 2 new axioms **DP-A15** (per-channel total event ordering) + **DP-A16** (channel writer-node binding). New file **13_channel_ordering_and_writer.md** (381 lines, DP-Ch11..Ch15: `channel_event_id` allocation with MAX-reseed recovery + DB UNIQUE gaplessness · cell vs non-cell writer assignment + handoff p99 ≤200ms · epoch fence via `channel_writer_state` table + `dp:writer_audit:{reality_id}` stream · transparent gRPC routing with ~5ms LAN hop · `causal_refs: Vec<EventRef>` schema for Q27 bubble-up). Updates: 04 (+`WrongChannelWriter` `DpError` + DP-K5 routing note; 685 lines), 05 (+writer-binding responsibility + 3 RPC methods, surface 16→19), 12 (cross-refs to file 13), 99 (Q17/Q30/Q34 ✅), _index. Folder: 4142 lines across 14 files, **93 stable IDs**. Phase 4 progress: 4 resolved (Q17/Q26/Q30/Q34); 3 blockers remain (Q15 turn boundary, Q16 durable subscribe, Q27 bubble-up primitive) — likely tackled as Q16-first cluster since Q15 and Q27 both consume the durable subscribe. |
 | 2026-04-24 | **H/M/P tier concerns batch-locked — all 21 SA+DE adversarial concerns resolved.** §12R added as consolidated follow-up. **H3 reversed from original batch** per user directive: doppelganger pattern REJECTED, NPC single-session becomes PERMANENT (not V2+ deferred), session caps + queue UX first-class (§12R.1). H5 adds new `seeding` lifecycle state + bootstrap worker + locale translation (§12R.2). H4 adds upcaster requirement for deprecated event types (§12C.5 amended). Plus observability metrics for H1/H2/H6/M-REV-6, HNSW pre-warm on thaw (§12R.5), projection rebuild determinism rule (§12R.7), admin command discoverability (§12R.9), and various polish. 25 decisions locked (H1-H6-D1/H3-NEW-D1..D6, M-REV-1..6-D1, P1-P4-D1). Storage + multiverse design **fully locked** pending V1 prototype data. |
 | 2026-04-24 | **Security Review S1+S2+S3 locked — §12H per-pair memory model SUPERSEDED by session-scoped capability-based design.** §12S added (7 subsections). S1: reality creation rate limit (5/hour + 50 active per user). **S2 architectural shift**: events carry session_id + visibility (5 values) + whisper_target; session_participants capability table; NPC memory split into `npc_session_memory` (knowledge, per-session, replaces per-pair) + `npc_pc_relationship` (derived stance, per-pair). Cross-PC leak becomes **structurally impossible** via capability-based prompt assembly contract. **S3 full tier privacy** (Option A): cascade_policy + privacy_level (normal/sensitive/confidential) with per-tier retention (30d/7d), force-propagate block, cascade auto-constrain, tiered whisper UX + fork inheritance warning. 14 decisions locked (S1-D1, S2-NEW-D1..D5, S3-NEW-D1..D8). §4.2 events schema + §5.2 projections + §12H.2 updated accordingly. Per-event encryption + admin-tier gating deferred V2+. Remaining Security (S4-S13) + SRE review queued. |
 | 2026-04-24 | **Security Review S4 locked — Meta Integrity & Access Control (§12T, 12 subsections).** Closes meta-write audit gap left by C5 (which covered only lifecycle status transitions). **Canonical `MetaWrite()` helper** in `contracts/meta/` generalizes §12Q — ALL meta-table writes go through it. §12Q `AttemptStateTransition()` refactored as specialization (adds transition-graph + mutual-exclusion on top). Append-only audit via Postgres REVOKE UPDATE/DELETE on audit tables + dedicated `audit_retention_role`. Schema CHECK constraints encode business invariants (db_host pattern, status enum, locale, session caps). Per-service Postgres roles (8 roles: world-service, roleplay-service, publisher, meta-worker, event-handler, migration-orchestrator, admin-cli, audit_retention_cron) — credential blast radius bounded. `meta_write_audit` table (retention 5y) + `meta_read_audit` for enumerated sensitive paths (retention 2y). Anomaly monitoring: routing-change PAGE alerts, audit-divergence, bulk-read spikes, out-of-scope writes. 10 decisions locked (S4-D1..D8 + C5→S4 + S4-governance). V2+: WORM cold archive + hash-chain tamper detection + ML anomaly. ADMIN_ACTION_POLICY amendment for MetaWrite governance. Remaining Security (S5-S13) + SRE review queued. |
@@ -320,6 +1464,35 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-24 | **Folder reorganization — Phase 7 (final batch: `04_PLAYER_CHARACTER_DESIGN.md` → `04_player_character/` + `05_LLM_SAFETY_LAYER.md` → `05_llm_safety/`).** Two small files handled together. **04:** 18 KB / 369 lines, 11 L2 sections → 11 chunks (00_preamble + 10 topic files covering identity/pc_vs_npc/creation/lifecycle/agency/social/canon/data_model/DF_forward/decisions_refs). VERIFY OK, sha256 `d6a842683a75…3d1f`. **05:** 15 KB / 347 lines, 9 L2 sections merged into 6 chunks (00_principle + intent_classifier + command_dispatch + world_oracle + injection_defense + combined integration_and_refs). VERIFY OK, sha256 `a0e022afde81…2864`. Both sources renamed to `.ARCHIVED.md`. Both `_index.md` created with owned stable IDs (PC-A1..E3 + PCS-* for 04; A3/A5-D1/A5/A6 for 05) + cross-refs to enforcement layers in `02_storage/` (S09 prompt assembly, S12 WebSocket, S13 canonization). **External refs fixed:** `docs/05_qa/LLM_MMO_TESTING_STRATEGY.md` (1 ref for 05 → `05_llm_safety/` index) + `docs/02_governance/A11Y_POLICY.md` (1 ref for 05, expanded to link both `04_injection_defense.md` + `01_intent_classifier.md` since the row cites both A6-D4 and A5-D1). Updated README.md folder-contents table + reading-order entries §8/§9. **FOLDER REORGANIZATION COMPLETE.** Remaining monolith is only `00_VISION.md` (8 KB / 117 lines) — under soft cap, stays at root per ORGANIZATION.md. All 7 large files split across 7 commits; 82 chunks total; zero data loss (byte-identical reconstruction proven by chunk_doc verify on every migration); all 24 external consumer refs updated; `SESSION_HANDOFF.md` kept at root as append-only coordination file. |
 | 2026-04-24 | **Folder reorganization — Phase 8 (archive cleanup).** Deleted all 7 `*.ARCHIVED.md` files from the working tree after confirming byte-identical chunks via `chunk_doc.py verify` on every subfolder (all 7 green simultaneously, archived sha256s match). Freed ~866 KB from the working tree. Archives preserved in git history at commits `3ec1cfb` (02_STORAGE) · `83c2018` (OPEN_DECISIONS) · `7efbd80` (FEATURE_CATALOG) · `c1b4bdf` (03_MULTIVERSE_MODEL) · `cf50351` (01_OPEN_PROBLEMS) · `c315fd1` (04_PLAYER_CHARACTER + 05_LLM_SAFETY). Recover via `git log --follow -- <path>` + `git show <commit>:<path>`. Updated [`ORGANIZATION.md`](ORGANIZATION.md) §7 with "Archive retention" section explaining git recovery path and noting per-chunk CHUNK-META sha256 preserves tamper-evidence independently of the archive. **Note:** `chunk_doc.py verify` will now fail against deleted sources with exit 1 ("source not found") — that is expected; re-verification requires recovering the archive from git first. A future chunk_doc enhancement could add a `reconstruct` subcommand that rebuilds the archive from chunks alone (each chunk's sha256 is in its CHUNK-META header, so this is achievable without the git step). Folder reorganization work officially closed. |
 | 2026-04-24 | **00_foundation/ created — compressed kernel contract layer for parallel feature-design agents.** Reorganization (Phases 1-8) made kernel files small enough to read individually, but loading all of `02_storage/` (36 chunks) + `03_multiverse/` (10 chunks) into every feature-design session is still impossible and wasteful. Foundation distills everything downstream features MUST respect into **7 short files, ~30 KB total**, cache-friendly for one agent session: [`01_READ_THIS_FIRST.md`](00_foundation/01_READ_THIS_FIRST.md) (orientation, kernel-vs-features split, escalation path when invariant seems wrong) · [`02_invariants.md`](00_foundation/02_invariants.md) (15 non-negotiable rules I1..I15 with concrete enforcement point + source chunk for each — gateway, provider-gateway, language rule, DB-per-service, DB-per-reality, session=concurrency, no-cross-reality-queries, MetaWrite, AttemptStateTransition, AssemblePrompt, SVID auth, no-hardcoded-secrets, outbox, additive-first-schema, stable-IDs-never-renumber) · [`03_service_map.md`](00_foundation/03_service_map.md) (19 services — 12 existing + 7 V1-new — with owns/emits/consumes/responsibility; shared `loreweave_meta` DB table list) · [`04_kernel_api.md`](00_foundation/04_kernel_api.md) (canonical functions: MetaWrite / AttemptStateTransition / AssemblePrompt + ResolveContext / GetEntityStatus / outbox.Write / WS ticket handshake / break-glass — each with signature, "when to call", and source chunk) · [`05_vocabulary.md`](00_foundation/05_vocabulary.md) (all shared enums — canon layers L1-L4 + [SEVERED], 9 reality lifecycle states, 5 GoneStates, 8 problem statuses, 3 decision statuses, 3 impact classes, 3 privacy levels, 4 severities, 3 intent classes, 8 prompt sections, retention tiers, metric-label conventions) · [`06_id_catalog.md`](00_foundation/06_id_catalog.md) (stable-ID namespace directory with owner subfolder; collision warnings e.g. problem-C vs SA+DE-C; retired-IDs-never-reuse list) · [`07_feature_workflow.md`](00_foundation/07_feature_workflow.md) (10-step agent workflow from session-start through commit; "load ONLY specific chunks" guidance with concrete feature → chunks-to-load examples; new-service checklist; anti-pattern list). [`_index.md`](00_foundation/_index.md) has the reading order + pseudo-lock. Design principle locked: **foundation is a reference to the kernel, never a duplicate** — if a kernel contract changes, its chunk file is the source of truth and foundation is updated in the same commit. Added storage+multiverse = "kernel" framing: CLAUDE.md +track-specific contracts hierarchy is now explicit. README.md updated with `00_foundation/` entry pointing to this folder as the first-read for feature-design, and reading-order §3 inserts foundation before 00_VISION. |
+| 2026-04-24 | **SRE Review SR6 locked — Dependency Failure Handling (§12AI, 12 subsections)** [branch `mmo-rpg/design-resume`]. Sixth SRE concern; SR1-SR5 covered targets / incidents / runbooks / postmortems / deploy but "a dependency just failed, what happens?" was undesigned. Platform has ~15 external deps (LLM providers, meta DB, per-reality DBs, Redis, MinIO, Vault, auth IdP, monitoring); without discipline any one outage cascades. **10-layer strategy**: (L1) `contracts/dependencies/matrix.yaml` with 3-tier criticality P0/P1/P2 + CI-lint preventing new clients outside matrix; (L2) timeout discipline elevated to **new invariant I16** — every outbound call declares a timeout; tiered defaults (LLM-paid 60s · LLM-premium 120s · short 15s · Postgres-read 5s · meta 3s · Redis 500ms · etc.); `contracts/resilience/WithTimeout` canonical wrapper; `timeout-discipline-lint.sh` enforces; (L3) 3-state circuit breaker library at `contracts/resilience/` — one breaker per `(caller_service, dep)` fault domain; transitions audited + outbox-emitted; required for P0/P1; (L4) retry policy differentiates idempotent (3× exp+jitter, 10s budget) vs compensating-keyed (same) vs non-idempotent (0 retries) vs critical-write (2×, 15s cap); respects `Retry-After`; half-open probe rate-limited (thundering-herd prevention); (L5) 5-mode degraded taxonomy `full/limited/essentials/read_only/offline` in `contracts/lifecycle/modes.go`; per-dep mapping in matrix; auto-activate on circuit-open; auto-clear ≥2min anti-flap; manual via `admin/degraded-mode-force` S5 Tier 1; propagation via signed `lw:dependency:control` Redis channel + `X-LW-Mode` header + WS control; (L6) multi-provider LLM failover extending `provider_registry` with `failover_priority`+`failover_scope`+`is_platform_paid`; per-user chain; each try owns its timeout; S6 cost budget enforced; fallback breadcrumb in `[SESSION_STATE]` section only (never prompt body per S9); (L7) 6 metrics + 6 alerts + DF11 dashboard panel; SEV per tier (P0 >1min = SEV0 · P1 >5min = SEV1 · P2 >30min = SEV2); (L8) `dependency_events` audit table — 1y retention, PII=none, MetaWrite append-only, 9-enum event_type, metrics_snapshot jsonb, `related_incident_id` for SR4 postmortem; (L9) bulkhead isolation per `(service, dep)` — tiered defaults (P0: 50/20/100ms · P1: 30/15/200ms · P2: 10/5/500ms); separate pgx pools + HTTP clients + errgroup bounds + Redis pools; `bulkhead-lint.sh` flags violations; (L10) `contracts/lifecycle/Drain` 5-step SIGTERM flow (StopAccepting → WaitInFlight → FlushOutbox → CloseBreakers → CloseResources); 30s default / 120s long-runners / 10s stateless; **new WS close codes 4011 "draining" + 4012 "dependency_degraded"**; SR5 canary respects drain. **12 decisions locked** (SR6-D1..D10 + SR6-schema + SR6-governance). **11 features added** (IF-39 + IF-39a..IF-39j). **New invariant I16** in `00_foundation/02_invariants.md`. **Schema changes**: new `dependency_events` table (meta DB, 1y retention) + ALTER `provider_registry` (failover_priority/scope/is_platform_paid) + new `contracts/` packages (`resilience/`, `lifecycle/`, `dependencies/`). **ADMIN_ACTION_POLICY §R4** extended: `admin/degraded-mode-force` Tier 1 · `admin/circuit-breaker-reset` Tier 2 · `admin/failover-budget-override` Tier 2. **Foundation cascaded**: invariants (I16), kernel_api (resilience + lifecycle sections + summary row), id_catalog (SR1..SR6 + IF-39). Feature catalog: 397 → **408 features** (Designed 291 → 301 · Deferred 63 → 64). SR06 is direct-authored (not split from archived monolith); `chunk_doc.py verify` against the archive predates it; the 2_storage `_index.md` totals updated to 37 chunks (36 split-origin + 1 direct-authored) with a note on the verify scope. **Remaining SRE**: SR7 (chaos cadence) · SR8 (capacity / auto-scaling) · SR9 (alert tuning) · SR10 (supply chain) · SR11 (turn-based UX reliability) · SR12 (observability cost). |
+| 2026-04-24 | **SRE Review SR7 locked — Chaos Drill Cadence (§12AJ, 12 subsections)** [branch `mmo-rpg/design-resume`]. Seventh SRE concern; SR1-SR6 defined **what** reliable operation looks like but not **proof the mechanisms actually work** — circuit breakers never opened, runbooks never executed, degraded modes never activated under load are all theoretical. SR7 makes reliability mechanisms **falsifiable** through hypothesis-driven experiments on cadence, with a V1 minimal bar gating launch. **10-layer strategy**: (L1) `contracts/chaos/experiments.yaml` registry with required fields (id/category/hypothesis/target/method/duration/blast_radius/abort_criteria/runbook/cadence/environments); `chaos-registry-lint.sh` enforces; new-experiment governance requires architect sign-off + runbook + SLI impact estimate + rollback verification; (L2) Given/When/Then hypothesis format — pass/fail is data not blame; (L3) 7 categories (dep_failure / network / state_corruption / load / security / deploy / recovery) with primary-lens not exclusive classification; (L4) 5 cadence tiers (always-on / weekly / monthly / quarterly game-day / yearly); V1 solo-dev = weekly staging + monthly prod cohort + quarterly self-tabletop; always-on deferred V1+30d; (L5) environment scoping dev/staging/prod with new-experiment-gate (2 staging cycles before first prod); approval matrix (cohort=2 engineers, full-fleet=tech-lead+SRE on-call+founder-FYI); blast-radius scopes pod/session/reality/cohort/global; (L6) 7 safety mechanisms (per-exp abort criteria 10s polling · max-blast-radius harness enforcement · no-chaos-during-incident · no-chaos-during-deploy · global kill-switch · dry-run-first · maintenance-mode coupling); (L7) `chaos-cli` at `services/admin-cli/commands/chaos/` with 8 subcommands; 3 admin commands — `chaos/start` Tier 2 · `chaos/abort` Tier 3 · `chaos/kill-switch` Tier 1; stateless harness + per-method adapters; SR6 integration — drills route through `contracts/resilience/` like any call; (L8) `chaos_drills` audit table — 3y retention (between dep_events 1y and audit 5y); PII=low; MetaWrite-enforced append-only with narrow-column update allowlist for completion; 6-enum outcome + metrics snapshots + recovery_time_ms + related_incident/postmortem/runbook refs + scrubbed notes; (L9) 48h post-drill review; deterministic mapping of outcomes → SR3 runbook updates / SR4 postmortems / SR6 matrix updates; V1+30d automated "failed drill → runbook PR"; (L10) **5-drill V1 launch gate** (chaos-llm-primary-blackhole · chaos-redis-down · chaos-reality-db-outage · chaos-deploy-rollback-mid-canary · chaos-graceful-drain-timeout); CI gate `v1-launch-check.sh` blocks launch if any missing; SR3 27-runbook V1 gate **extended to 32**. **12 decisions locked** (SR7-D1..D10 + SR7-schema + SR7-governance). **11 features added** (IF-40 + IF-40a..IF-40j). **IF-39g activated + upgraded V1+30d→V1** via SR7 resolution. **Schema changes**: new `chaos_drills` table (meta DB, 3y retention) + new `contracts/chaos/experiments.yaml` registry. **ADMIN_ACTION_POLICY §R4** extended: `chaos/start` Tier 2 · `chaos/abort` Tier 3 · `chaos/kill-switch` Tier 1. **Foundation cascaded**: id_catalog (SR1..SR7 + IF-40). Feature catalog: 408 → **419** features (Designed 301 → 312). No new invariants (chaos is process discipline, not architectural). **Process correction applied**: POST-REVIEW summary presented to user before commit (corrective action after SR6 skipped this step; human veto/approval is the Phase 9 forcing function). **Remaining SRE**: SR8 (capacity / auto-scaling) · SR9 (alert tuning + pager) · SR10 (supply chain) · SR11 (turn-based UX reliability) · SR12 (observability cost + cardinality). |
+| 2026-04-24 | **SRE Review SR8 locked (11 decisions + 1 pending architect approval) — Capacity Planning + Auto-Scaling (§12AK, 12 subsections)** [branch `mmo-rpg/design-resume`]. Eighth SRE concern; SR1 set SLO targets, SR6 bounded dep blast radius, SR7 made mechanisms falsifiable — but "how much of what, when to add more?" was undesigned. Without a declared capacity model, SR1 SLO targets are aspirations not commitments. DB-per-reality fleet (R4-L6) adds unique dimension: thousands of small DBs on shared shards. **10-layer strategy**: (L1) 4-class service taxonomy (web / worker / data-plane / llm-gateway + composite pattern e.g. world-service); (L2) capacity budget matrix at `contracts/capacity/budgets.yaml` per service × V1/V2/V3 tier × 5 dimensions (CPU / memory / DB-pool / concurrent-LLM / network); CI lint blocks undeclared services; (L3) per-class scaling signals + hysteresis + cool-down (web CPU 70%/30% 3min/10min · worker queue-depth 200/50 · data-plane memory+pool+p99 · llm-gateway concurrent-calls+turn-p95); signal library at `contracts/capacity/signals.go`; (L4) 5 per-reality ceilings enforced by world-service (players V1=100 per MV6 · WS 150 · event-rate 1000/min · session-processor 20 · NPC-in-scene 50); platform ceiling ≥ MV6 always; (L5) new `shard_utilization` tracking table + 3-state lifecycle (healthy <70%/<60%/<70%cpu/mem · approaching_cap · drain_required); placement at lowest-util healthy shard capped 85%; `admin/drain-shard` S5 Tier 1 reusing C2 migration protocol; (L6) auto-scaling mechanism per class (web=HPA · worker=KEDA · data-plane=vertical-only-V1 · llm-gateway=HPA custom-metric); policy templates at `contracts/capacity/policies/`; pre-warm V1+30d; (L7) 7 metrics + 7 alerts + DF11 capacity panel; (L8) load-test gate at 4 points (Baseline/Target/Breakpoint/Degradation) via G2-D4 loadtest-service with script mix; new-service gate requires Baseline+Target pass; V1+30d CI hook `capacity-gate-check.sh`; (L9) budget governance — minor-deploy class for up-scale + quarterly review + cost attribution via S6-D6 `user_cost_ledger`; emergency override `admin/capacity-override` S5 Tier 2 bounded 24h; (L10) scale-down hygiene coupled to SR6-D10 Drain + `scaling_events` audit (1y retention); thundering-herd prevention on scale-up (jittered boot + claim-lock backoff + no-bulk-LLM-at-boot). **12 decisions locked** (SR8-D1..D11 + SR8-schema + SR8-governance). **SR8-D11 = I17 APPROVED** via POST-REVIEW 2026-04-24 — "every service declares a capacity budget in budgets.yaml and scales within it" is now I17 in `00_foundation/02_invariants.md` (same shape as I16; explicit architect sign-off obtained per SR6 process lesson). **11 features added** (IF-41 + IF-41a..IF-41j); IF-41h + IF-41i are V1+30d. **Schema changes**: new `shard_utilization` + `scaling_events` tables (meta DB) · new `contracts/capacity/` package (budgets.yaml · signals.go · policies/*.yaml) · `reality_registry.capacity_overrides` jsonb column. **ADMIN_ACTION_POLICY §R4** extended: `admin/capacity-override` Tier 2 · `admin/scaling-policy-update` Tier 2 · `admin/drain-shard` Tier 1. **Foundation cascaded**: `02_invariants.md` extended with I17 (post-approval); `06_id_catalog.md` updated (SR1..SR8 + IF-41); `04_kernel_api.md` unchanged — capacity is declarative (YAML) not runtime-library-call, no canonical-function signature needed. **SR3-D3 27-runbook V1 gate** candidate extension to 33 (`admin/drain-shard.md`) — to confirm. Feature catalog: 419 → **430 features** (Designed 312 → 321 · Deferred 64 → 66). SR08 is direct-authored (not split from archived monolith); 02_storage `_index.md` totals updated to 39 chunks (36 split + 3 direct). **Process**: POST-REVIEW summary presented to user; I17 surfaced for explicit approval; architect approved I17 in POST-REVIEW → foundation cascaded + commit landed same turn. **Remaining SRE**: SR9 (alert tuning + pager) · SR10 (supply chain) · SR11 (turn-based UX reliability) · SR12 (observability cost + cardinality). |
+| 2026-04-24 | **SRE Review SR9 locked — Alert Tuning + Pager Discipline (§12AL, 12 subsections)** [branch `mmo-rpg/design-resume`]. Ninth SRE concern; SR1 through SR8 accumulated ~35 declared alerts across SLO burns + dep failures + chaos-drill aborts + capacity thresholds. SR1-D6 required alerts to derive from SLO but didn't address which alerts page humans, how noisy is too noisy, how to tune thresholds without regression, or who audits pager load. **10-layer strategy**: (L1) 4-severity × 4-action-class taxonomy (SEV0/1/2/WARN × page-now/page-batched/ticket-only/log-only) with default severity↔action-class matrix + override_justification escape hatch; SEV0 never has quiet-hours; (L2) schema-as-code at `contracts/alerts/rules.yaml` with required fields (alert_id/sli_ref/derivation_rule/threshold/duration/severity/action_class/runbook/owner_service/tier_scope/baselined_since); `alert-rule-lint.sh` CI enforces + replay-validates derivation_rule against last 7d metrics; (L3) 4-stage promotion process (design log-only → baseline 14d ticket-only → staged 14d page-batched → promoted per severity default); noisy-alert auto-downgrade at 40% FP/30d with tech-lead re-promotion gate; missed-alert escalation from incidents-without-fire; (L4) `alert_outcomes` audit table (90d hot + 2y cold weekly-aggregate per SR1-D8) with 8-enum event_type (fired/acknowledged/dismissed_false_positive/auto_downgraded/auto_escalated/missed/silenced_by_admin/correlated_incident); (L5) `alert_silences` table + `admin/alert-silence` S5 Tier 2 with mandatory 50+ char reason + max 30-day auto-expire + incident/maintenance scope bypass; anti-pattern blocks (`*` pattern Tier 1 equivalent · reason-less lint-reject · silence-within-5-min-of-fire flagged); (L6) alert-to-runbook CI lint trio extending SR3-D5 (alert-runbook-sync + dead-ref + coverage-check); WARN PLACEHOLDER allowed 60 days; derivation-rule↔runbook bidirectional enforcement; (L7) pager rotation load discipline extending SR2-D2 with 4 rebalance triggers (pages>10/week · median-ack>2× TTA · FP>30% · handoff<3 over 2 weeks); V1 solo-dev baseline for team-growth; fallback-chain load audit from SR2-D3; (L8) weekly alert review artifact at `docs/sre/alert-reviews/YYYY-WW.md` operationalizing SR2-D8 with template (top-10 volume/top-3 FP/silenced/recently-added/missed/rotation-metrics/action-items per SR4-D5 schema); feeds SR1 SLO realism + SR3 runbook updates + SR6 matrix updates; (L9) alert storm protection — `lw_alert_storm_active=1` when page-now rate >10/5min triggers batched WS digest every 2 min (pager already fired, signal preserved without flood); storm-mode exceptions (new alert / different service / SEV0 always pages); post-storm summary to incident channel; (L10) V1 minimal bar — all 19 SR1/SR6/SR7/SR8 SEV0/SEV1 alerts migrated to rules.yaml + Stage-3 promoted + 2-weeks baseline + `v1-alerts-rebaselined` CI gate (tech-lead applies rebaseline report); SR3 V1 runbook total reconciled to **33**. **12 decisions locked** (SR9-D1..D10 + SR9-schema + SR9-governance). **11 features added** (IF-42 + IF-42a..IF-42j); IF-42i (FP/FN classifier) V1+30d. **No new invariant** — alert discipline is process, not architectural; I17 (SR8) remains most recent. **Schema changes**: new `alert_outcomes` (meta DB, 90d hot + 2y cold aggregate) + `alert_silences` tables + new `contracts/alerts/` package (rules.yaml + rules.schema.json). **ADMIN_ACTION_POLICY §R4** extended: `admin/alert-silence` Tier 2 · `admin/alert-threshold-update` Tier 2 · `admin/pager-rotation-swap` Tier 3. **Foundation cascaded**: `06_id_catalog.md` (SR1..SR9 + IF-42). SR3-D5 extended with 3 alert-runbook CI lints. SR3-D3 V1 runbook total reconciled to **33** (27 base + 5 chaos + 1 drain-shard). SR1-D6 extended with replay-validation. SR6-D7 + SR8-D7 alerts migrated into `rules.yaml`. Feature catalog: 430 → **441** features (Designed 321 → 331 · Deferred 66 → 67). SR09 is direct-authored (not split from archived monolith); 02_storage `_index.md` totals updated to 40 chunks (36 split + 4 direct). **Process**: POST-REVIEW summary presented to user before commit (corrective pattern established after SR6 skip). **Remaining SRE**: SR10 (supply chain) · SR11 (turn-based UX reliability) · SR12 (observability cost + cardinality). |
+| 2026-04-24 | **SRE Review SR10 locked (10 decisions + 1 pending architect approval) — Supply Chain Security (§12AM, 12 subsections)** [branch `mmo-rpg/design-resume`]. Tenth SRE concern; SR1-SR9 secured **runtime** (S9 prompt · S11 auth · S12 WS · SR6 dep-failure) but left the **build path** untouched. A compromised upstream lib or unsigned image is equally dangerous. SR10 extends I12 (no hardcoded secrets) into build-time supply chain. **10-layer strategy**: (L1) CycloneDX 1.5 SBOM per service per build via syft; stored artifact-registry + `supply_chain_events` index + 5y cold MinIO `lw-sbom-archive` per S8-D3; queryable via admin-cli; (L2) per-language dep pinning with hash — Go `go.sum` SHA-256 · Python `--require-hashes` · TS `package-lock.json integrity` SHA-512 · Docker `FROM image@sha256:...`; `dep-pinning-lint.sh` CI enforcement; **proposed invariant I18** pending architect approval; (L3) cosign + sigstore image signing; Kubernetes admission policy rejects unsigned; signing key in Vault per S11-D6 with quarterly rotation; (L4) trivy CVE scanner on every build + nightly in-prod scan; severity gating — critical blocks merge+deploy · high blocks merge w/o tracking ticket+30d fix · medium tickets · low logs; newly-disclosed critical in-prod = SEV1 auto-declared per SR2-D9; `admin/cve-override` S5 Tier 2 72h-bounded; (L5) 3rd-party library vetting checklist (license / maintenance / CVE record / dep depth / scope / alternatives / upgrade path) + `contracts/supply_chain/dep_allowlist.yaml` registry with annual review; `admin/dep-vet-approve` S5 Tier 2 with reviewer + architect co-sign; license tiers (MIT/BSD/Apache default-approved · LGPL/MPL review · GPL/AGPL legal+architect); (L6) SLSA Level 2 V1 target via slsa-github-generator; provenance attached via cosign attest; Level 3 V2+ with hermetic isolated builders; (L7) 3-scan-point secret scanning extending I12 — pre-commit gitleaks + CI scan + monthly history cron; critical detection = SEV1 auto-declared; `admin/supply-chain-freeze` auto-considered on multi-commit leak; (L8) 6 supply-chain incident runbooks in new `docs/sre/runbooks/supply-chain/` subfolder (cve-in-prod / vendor-compromise / signing-key-compromise / build-system-compromise / secret-leak-history / transitive-cve); SR3 V1 gate **27 → 39 runbooks**; `admin/supply-chain-freeze` S5 Tier 1 as fifth SR5-D2 freeze mechanism; (L9) build reproducibility V1 target (deterministic artifacts modulo timestamps) + `supply_chain_events` audit table 3y retention with 11-enum event_type; V1+30d 10% CI re-run sample; V2+ blocks merge on mismatch; (L10) 10-item V1 launch gate (SBOM / pinning / signing / CVE gating / allowlist / SLSA L2 / secret scanning / 6 runbooks / `supply_chain_events` / admin commands). **12 decisions locked** (SR10-D1..D11 + SR10-schema + SR10-governance). **SR10-D11 = I18 APPROVED** via POST-REVIEW 2026-04-24 — "every dep declaration includes cryptographic hash; floating versions forbidden; Docker base images digest-pinned" is now I18 in `00_foundation/02_invariants.md` (same shape as I16/I17; explicit architect sign-off obtained per SR6/SR8 process lesson). **11 features added** (IF-43 + IF-43a..IF-43j); IF-43i (reproducibility CI check) V1+30d. **Schema changes**: new `supply_chain_events` table (meta DB; 3y retention; 4 indexes; PII=none) · new `contracts/supply_chain/` package (dep_allowlist + secret-scan-baseline + cve-policy) · new MinIO `lw-sbom-archive` bucket (5y per S8-D3) · new Kubernetes `cosign-admission-policy.yaml`. **ADMIN_ACTION_POLICY §R4** extended: `admin/cve-override` Tier 2 · `admin/dep-vet-approve` Tier 2 · `admin/supply-chain-freeze` Tier 1. **Extensions**: SR3-D3 V1 runbook total **reconciled to 39** (27 base + 5 chaos + 1 drain-shard + 6 supply-chain). SR5-D2 extended with `admin/supply-chain-freeze` as fifth freeze mechanism. I12 operationalized via L7 3-scan-point discipline. **Foundation cascaded**: `02_invariants.md` extended with I18 (post-approval); `06_id_catalog.md` updated (SR1..SR10 + IF-43); `04_kernel_api.md` unchanged — dep pinning is build-time declarative (manifest files) not runtime-library-call, no canonical-function signature needed. Feature catalog: 441 → **452 features** (Designed 331 → 341 · Deferred 67 → 68). SR10 is direct-authored (not split from archived monolith); 02_storage `_index.md` totals updated to 41 chunks (36 split + 5 direct). **Process**: POST-REVIEW summary presented; I18 surfaced for explicit approval (architect-sign-off per `02_invariants.md` "How invariants get added"); architect approved I18 in POST-REVIEW → foundation cascaded + commit landed same turn. **Remaining SRE**: SR11 (turn-based UX reliability) · SR12 (observability cost + cardinality). |
+| 2026-04-24 | **SRE Review SR11 locked — Turn-Based Game Reliability UX (§12AN, 12 subsections)** [branch `mmo-rpg/design-resume`]. First SR concern at the product+infra boundary. SR1-SR10 made platform reliable; SR11 makes failures **coherent to user**. Turn takes 60-120s (SR1-D2 LLM SLO); during that window, LLMs time out, WS drops, pods scale down (SR6-D10), chaos drills fire (SR7), degraded modes activate (SR6-D5). Without disciplined UX: spinners-forever, duplicate messages, user-retries-double-charge-S6, ghost participants. **10-layer strategy**: (L1) 8-state turn machine at `contracts/turn/state_machine.go` (drafting / submitted / queued / llm_processing / streaming / complete / failed_retryable / failed_terminal) with idempotency-keyed submission preventing S6 double-charge; per-state retry-safety; (L2) `turn.status.update` WS messages per §12AB.L7 with tier-matched latency phrasing + bucketed elapsed counter + cancel-vs-abort verb discipline; (L3) 6-value `PresenceState` enum at `contracts/lifecycle/presence.go` (active / idle / typing / waiting_ai / disconnected_brief / disconnected_ghost) — **distinct from GoneState** (entity existence) vs PresenceState (session liveness); `session_participants` ALTER + debounced 2s WS propagation; auto-transitions on S12 close codes; (L4) 3-policy disconnect matrix (suspend-all / proceed-if-turn-complete default / replace-with-npc) + 8-row × 3-col per-turn-state × policy matrix; per-session override; DF4 extension point; (L5) optimistic UX per-action rules with conservative rollback + non-modal toast + SR9-monitored divergence rate; principle "server is always source of truth; never optimistic for decisions affecting OTHER users"; (L6) degraded-mode UX per SR6-D5 mode (full / limited-yellow-banner / essentials-orange / read_only-red-reality-scoped / offline-fullscreen-modal) with allowed-actions matrix + tone discipline; client subscribes `X-LW-Mode` + WS `lw:dependency:control`; (L7) turn fairness FIFO + tier-bump (60s cooldown + S6 budget cost) + 30% hard cap per 10-min rolling window + Gini metric alert at >0.6; (L8) 30-min absolute abandoned-turn timeout → `failed_terminal` + compensating event; **`turn_outcomes` audit table** (1y retention; 4 indexes; 4 derived SLIs); (L9) registered error code library at `contracts/errors/user_errors.yaml` with per-locale templates + CI lint + 7 initial codes (TURN_SUBMISSION_TIMEOUT / LLM_BUDGET_EXHAUSTED / REALITY_READ_ONLY / TURN_ABANDONED / LLM_PROVIDER_UNAVAILABLE / CANON_INJECTION_DETECTED / SESSION_CAPACITY_FULL); technical context NEVER user-visible; (L10) **12-scenario V1 launch gate** matrix (turn-state × service-mode × connection-state); each scenario has E2E test + SR7 chaos drill; CI gate `v1-turn-ux-check.sh` blocks launch if any not passing. **12 decisions locked** (SR11-D1..D10 + SR11-schema + SR11-governance). **11 features added** (IF-44 + IF-44a..IF-44j). **No new invariant** — UX is product discipline. **Foundation vocabulary additions APPROVED** via POST-REVIEW 2026-04-24: `TurnState` 8-value + `PresenceState` 6-value enums added to `00_foundation/05_vocabulary.md`; same discipline pattern as SR8-D11 (I17) / SR10-D11 (I18). **Schema changes**: new `turn_outcomes` table (meta DB; 1y retention) + `session_participants` ALTER (presence_state/changed_at/ws_connection_id/last_activity_at) + `session_metadata.disconnect_policy` column + new `contracts/turn/` + `contracts/errors/` + `contracts/lifecycle/presence.go`. **ADMIN_ACTION_POLICY §R4** extended: `admin/session-unfreeze` Tier 2 · `admin/turn-abandon` Tier 3 · `admin/presence-reset` Tier 3. **Foundation cascaded**: `06_id_catalog.md` updated (SR1..SR11 + IF-44); `05_vocabulary.md` extended with TurnState (8) + PresenceState (6) sections (post-approval); `02_invariants.md` unchanged (no new invariant); `04_kernel_api.md` unchanged (SR11 APIs are event/message shapes + admin CLI, not canonical library calls). **Accuracy correction during write**: initially claimed C1/C4/C6 + B4 moved to MITIGATED; on verification against actual problem catalog, C1 = player-vs-narrator voice · C4 = author canon vs emergent · C6 = doesn't exist · B4 = NPC-responds-to-whom (not turn queue). SR11 does NOT resolve these. Corrected in chunk + decisions + scope_and_refs before POST-REVIEW. Lesson: verify problem catalog before claiming resolutions. Feature catalog: 452 → **463 features** (Designed 341 → 352). SR11 is direct-authored (not split from archived monolith); 02_storage `_index.md` totals updated to 42 chunks (36 split + 6 direct). **Process**: POST-REVIEW summary presented before commit; `TurnState`+`PresenceState` vocabulary additions surfaced for explicit approval; architect approved in POST-REVIEW → foundation cascaded + commit landed same turn. Also surfaced during POST-REVIEW: **accuracy correction** on initially-fabricated problem-status moves (initial draft claimed C1/C4/C6/B4 moved to MITIGATED; verification against actual problem catalog showed C1 = player-vs-narrator voice · C4 = author canon vs emergent · C6 = doesn't exist · B4 = NPC-responds-to-whom; none are resolved by SR11). Corrected in-chunk + decisions + catalog before commit. **Remaining SRE**: SR12 (observability cost + cardinality) — final SR concern. |
+| 2026-04-24 | **SRE Review SR12 locked (10 decisions + 1 pending architect approval) — Observability Cost + Cardinality (§12AO, 12 subsections) — FINAL SR** [branch `mmo-rpg/design-resume`]. Retroactive audit + ongoing discipline across ~45 alerts + 22 audit tables + dozens of metrics + structured logs accumulated SR1-SR11. **10-layer strategy**: (L1) `contracts/observability/inventory.yaml` registry with required fields per type (metric: labels+max_cardinality+type+cardinality_estimate · audit_table: retention+pii+growth_rate) + CI enforcement; (L2) per-service cardinality + log + audit budgets at `budgets.yaml` with PR-time + runtime enforcement + `observability_budget_breaches` table (1y retention); (L3) retention tier audit cross-referencing 22 tables against S8-D3 matrix — 1 finding (`user_queue_metrics` formalized at 1y) + **S8-D3 retention tier matrix extended with Operational tier (1y)** covering dependency_events/scaling_events/turn_outcomes/user_queue_metrics/observability_budget_breaches; (L4) log sampling strategy (error 100%/warn 50%/info 10%/debug 1% default) with per-service overrides + OpenTelemetry trace-preservation + non-negotiable PII scrubbing per §12X.L7; (L5) audit rollup cadences per-table protocol with V1 minimum (alert_outcomes weekly agg + prompt_audit cold archive per S9-D9); turn_outcomes/dependency_events/scaling_events rollup V1+30d; (L6) meta-observability — 6 `lw_observability_*` meta-metrics (series_count / log_bytes_total / log_events_total / audit_writes_total / cardinality_violations_total / retention_overrides_active) + DF11 panel + 4 alerts via SR9-D2; (L7) cardinality admission control in `pkg/metrics/` library — V1 warn-and-drop → V1+30d hard-reject → V2+ pre-commit admission; (L8) per-tenant cost attribution deferred V2+ (extends S6-D6 user_cost_ledger pattern post-monetization); V1 gross per-service only; (L9) V1 rebaseline cadence — weekly first 4 weeks → monthly → quarterly per SR2-D8; artifact at `docs/sre/observability-reviews/<yyyy>-W<N>.md`; (L10) 12-item V1 launch gate. **12 decisions locked** (SR12-D1..D11 + SR12-schema + SR12-governance). **SR12-D11 = I19 APPROVED** via POST-REVIEW 2026-04-24 — "every metric + audit table declared in `contracts/observability/inventory.yaml` with owner + cardinality estimate + retention + source SR" is now I19 in `00_foundation/02_invariants.md` (same shape as I16/I17/I18; explicit architect sign-off obtained per SR6/SR8/SR10 process lesson). **11 features added** (IF-45 + IF-45a..IF-45j); IF-45f split V1 + V1+30d (alert_outcomes + prompt_audit rollup V1, others V1+30d). **Schema changes**: new `observability_budget_breaches` table (meta DB; 1y retention; 2 indexes; PII=none) · new `contracts/observability/` package (inventory.yaml + budgets.yaml + sampling.yaml + meta.yaml) · **S8-D3 retention tier matrix extended** with Operational tier (1y). **ADMIN_ACTION_POLICY §R4** extended: `admin/metric-label-audit` Tier 3 · `admin/retention-override` Tier 2 · `admin/log-sampling-update` Tier 2. **Foundation cascaded**: `02_invariants.md` extended with I19 (post-approval); `06_id_catalog.md` updated (SR1..SR12 + IF-45; **SRE COMPLETE 12/12**); `04_kernel_api.md` unchanged — inventory is declarative (YAML) not runtime-library-call. Feature catalog: 463 → **474 features** (Designed 352 → 362 · Partial 38 → 39). SR12 is direct-authored (not split from archived monolith); 02_storage `_index.md` totals updated to 43 chunks (36 split + 7 direct). **Process**: POST-REVIEW summary presented; I19 surfaced for explicit approval; architect approved I19 in POST-REVIEW → foundation cascaded + commit landed same turn. **SRE REVIEW COMPLETE** — all 12 SRE concerns (SR1..SR12) resolved. Remaining V1 design work: DF4/DF5/DF7 V1-blocking implementation designs per original SESSION_HANDOFF agenda. Remaining external-dependency OPENs: A4 (retrieval benchmark) · D1 (LLM cost measurement) · E3 (IP ownership legal). |
+| 2026-04-24 | **Phase boundary — Kernel-design phase CLOSED** [branch `mmo-rpg/design-resume`, commit `6fe6663`]. Explicit stop after user observation that kernel work was over-engineered relative to feature pressure: storage + multiverse are infrastructure (no UI) and have been designed extensively (19 invariants · 15 `contracts/` packages · 42 `§12` sections · 474 cataloged features) while V1-blocking features (DF4 World Rules / DF5 Session-Group-Chat / DF7 PC Stats) remain untouched. **No more SR concerns.** **No more anticipatory invariants or contracts packages.** Kernel is now stable baseline; future kernel changes happen on-demand only, triggered by concrete feature need during feature-design work. **What stays in force**: (1) all 19 invariants (I1..I19) remain enforced by CI lints · (2) all 15 `contracts/` packages remain the canonical integration points per foundation `04_kernel_api.md` · (3) `00_foundation/` remains the 5-minute cheat sheet for future feature-design agents · (4) SR1..SR12 chunks in `02_storage/` remain reference material loaded only when a feature directly touches that area · (5) V1 minimal bars from each SR (33 runbooks, 5 chaos drills, 12 turn-UX scenarios, etc.) apply when V1 implementation begins. **What changes for next phase** (feature-design): (a) feature doc shape ≠ SR chunk shape — target ~150-250 lines per feature with user story + UI sketch + interaction flow + data model + kernel APIs used (by reference, not redesign) + V1 scope cut + test plan, not 10-layer strategy · (b) kernel extension **on-demand only** — if a feature surfaces a real kernel gap, minimal extension in existing `§12*` chunk + foundation cascade, NOT a new SR13 · (c) architect-sign-off gate flips: no more invariants from the "nice-to-have" bucket; new invariants require demonstrated feature-driven necessity · (d) DF5 / DF4 / DF7 per ORGANIZATION.md `10X_*.md` pattern. **Next session entry points**: pick one of DF5 (biggest V1-blocking, session/group-chat mechanics) · DF4 (per-reality world-rules engine) · DF7 (PC stats schema) · V1 MVP scope synthesis doc · merge `mmo-rpg/design-resume` → `main` first. Branch `mmo-rpg/design-resume` preserved as the kernel-design phase reference. |
+| 2026-04-25 | **Feature-design phase started + MV12 Reality Time Model locked** [branch `mmo-rpg/design-resume` continuing per user direction "không cần merge vào main"]. Context: a separate AI agent is designing the hot-path (high-input game data processing layer + SDK for gameplay services to reach kernel). All gameplay/game-logic services must go through the SDK; no direct kernel calls. SDK shape is unknown during this parallel work — so feature design articulates needs as capabilities + data shapes rather than specific SDK calls. **User reflection**: kernel-design was over-engineered relative to feature pressure; starting with foundational game-design question = fiction-time (not wall-clock), because book-grounded LLM RPG meaningless without proper time model. **MV12 Reality Time Model — 7 locked decisions** (MV12-D1..D7): fiction-time is **page-turn time** (derived from cumulative event fiction_durations, NOT wall-clock ratio) · 1 reality = 1 linear timeline shared across all players · advances only when events happen ("turn the page") · V1 pauses when 0 players (consistent with R9 frozen semantics) · fiction_duration HYBRID assignment (system defaults per action category + player declaration `/wait 3 days` + LLM fill) · calibration events (day/month/year pass) HYBRID cumulative + LLM-jump · V1/V1+30d/V2+ split on autonomous ticking (V1=paused-when-solo; V1+30d=scheduled canon events only; V2+=per-tier periodic) · event schema additive per R3 (new fields `fiction_ts_start` + `fiction_duration` on every event; `reality_registry` adds `book_anchor_fiction_ts` + `current_fiction_ts`). **Foundation cascaded**: `06_id_catalog.md` MV range MV1..MV11 → MV1..MV12; `05_vocabulary.md` new "Fiction-time model (MV12)" section alongside TurnState/PresenceState pattern; `03_multiverse/_index.md` exported-IDs list extended. **Created `features/` subfolder structure** per user direction ("tạo subfolder trong features vì có nhiều feature lắm" / want explicit naming "tường minh hơn"): 17 scaffolding files — root `features/_index.md` + `_spikes/_index.md` + `DF/_index.md` with DF04/DF05/DF07 placeholder sub-subfolders (V1-blocking) + 11 category folders `02_world_authoring/` through `12_daily_life/` using catalog-matching number prefixes (01=IF=kernel-only so skipped here); each category `_index.md` documents catalog ID namespace + kernel touchpoints + naming convention. Folder naming: `<NN>_<descriptive_name>/` explicit form (user chose Option B — number + name; `DF/` without number since it matches DF1..DF15 stable-ID namespace; `_spikes/` underscore-prefix for cross-category). Feature file pattern: `<letter-ID>_<NNN>_<name>.md` (e.g., `PO_001_onboarding_flow.md`). README.md updated with `features/` entry. **Commit 1 of 2 landed this turn**: scaffolding + MV12 locked. **Commit 2 pending**: `features/_spikes/SPIKE_01_two_sessions_reality_time.md` with scene spec (Yên Vũ Lâu 1256 / Thần Điêu Đại Hiệp), PC Lý Minh (xuyên không 20t), 3 NPCs (Lão Ngũ + Tiểu Thúy + du sĩ), Session 1 draft (10 turns with design annotations) + 8 observations surfaced. Session 2 drafted after Session 1 review. **Kernel extension rule applied**: MV12 is kernel-level but driven by concrete feature design (not anticipatory) — satisfies phase-boundary rule. |
+| 2026-04-25 | **Commit 2 — SPIKE_01 Session 1 drafted** [branch `mmo-rpg/design-resume`]. `features/_spikes/SPIKE_01_two_sessions_reality_time.md` created (~560 lines) with: §1 scene spec (Yên Vũ Lâu ground floor + fiction-time anchor 1256/09/15 giờ Thân sơ + L1/L2/L3/L4 canon layer decisions for this scene); §2 three NPC sheets (Lão Ngũ teahouse owner · Tiểu Thúy 16yo waitress · unnamed du sĩ scholar — each with age/role/personality/speech_pattern/background/secrets/position/current_action/pc_relationship_default); §3 PC Lý Minh xuyên-không sheet with soul/body memory split; §4 Session 1 draft 10 turns each with player input + LLM response + annotations (fiction_ts + fiction_duration + canon-layer touched + SDK need + data-model gap); §5 accumulated session state (NPC opinions updated, PC money 50→15 đồng, plot hooks seeded with Dương Quá Tương Dương reference as L2 canon); §6 **12 design observations** surfaced (expanded from 8 preliminary during conversation): NPC per-PC-relationship needs session-scoped memory · PC sheet needs body_memory gaps + soul_state fields · fiction_duration 3s-3min ranges validated hybrid correct · scene.ambient_events[] jsonb needed · L1 axiom injection needed in prompts · multi-NPC broadcast reaction single-LLM-call needed · safe_pause boundary detection needed · scene transitions need first-class scene_id · L2 canon seeding mid-conversation tested · body-memory gaps surface LLM honesty handling · NPC-PC relationship evolves per-turn · trust state changes; §7 Session 2 plan (test MV12-D4 V1-pause + player-declared `/sleep 8h` time advancement + NPC state persistence + plot-hook continuity); §8 graduation path mapping observations → future feature files (`NPC_001_npc_state_model.md`, `PCS_001_persona_and_body_memory.md`, `PL_001_turn_duration_defaults.md`, `PL_002_scene_model.md`, `PL_003_multi_npc_turn.md`, `PL_004_session_boundary.md`) + potential kernel extension on-demand (S9 L1-axiom-injection rule). **Next**: Session 2 after user review of Session 1. |
+| 2026-04-25 | **SPIKE_01 Session 2 drafted + MV12 fully validated** [branch `mmo-rpg/design-resume`]. `features/_spikes/SPIKE_01_two_sessions_reality_time.md` extended to **636 lines** (from 560). Session 2 = 7 turns (T11-T17) + Session-2 accumulated state + 10 new observations + MV12 Validation Summary + refined Graduation Path. **Session 2 tested**: (a) MV12-D4 V1-pause semantics — Session 2 resumed at exact Session 1 end fiction_ts (0 advance during offline); (b) player-declared time advancement via `/sleep until dawn` (LLM resolved to ~14h) + `/travel to Tương Dương` (LLM resolved to ~23 days); (c) calibration events fired on date-boundary crossings (refined MV12-D5 understanding) — 24× `day_passes` + 1× `month_passes` during Session 2 travel; (d) NPC opinion persistence (Lão Ngũ's Session-1 `cautious_accepting` state carried into Session 2 Turn 14 response); (e) plot-hook continuity (Lão Ngũ remembered his own Session-1 Dương Quá rumor without PC re-cite); (f) long-duration narration as **flavor + structural split** — LLM narrated 23-day travel as flavor text, only PC state deltas (money 15→4, location Gia Hưng→Tương Dương) emitted as canonical events. **MV12 validation table** in spike §10 confirms D1/D2/D3/D4/D6/D7 validated as-is; **D5 refined** (fire on date-boundary, not cumulative hours) — no re-open, just clarification note to add at next cascade. **4 candidate follow-up decisions surfaced** (not locked, deferred to consuming feature designs): **MV12-D8** time-skip narration taxonomy (flavor vs structural) — natural home `PL_001_turn_duration_defaults.md`; **MV12-D9** scene-scope vs reality-scope fiction_ts — natural home `PL_002_scene_model.md` (V2 coop concern); **MV12-D10** paused-mode narrative fill — natural home `DL_001_npc_routine_foundations.md` (V1+30d); **MV12-D11** book-anchor drift policy — deferred (V2+; no test surfaced urgency at 24 fiction-days). **Total observations**: 22 (12 Session 1 + 10 Session 2). Graduation path updated with 8 target feature files spanning `NPC/`, `PCS/`, `PL/`, `DL/`, `DF/DF05/` + one S9 kernel extension on-demand. **Spike complete**. Next steps post-spike: (1) user review of Session 2 · (2) either graduate observations into first concrete feature file (likely `PL_001_turn_duration_defaults.md` or `NPC_001_npc_state_model.md`) · (3) or switch to a different category entry point · (4) or pause feature-design for other work. **Branch state**: 10 commits total on `mmo-rpg/design-resume` (kernel-design phase 8 + feature-design phase 2 my commits + 2 parallel hot-path commits). |
+| 2026-04-25 | **07_event_model Phase 1 LOCKED — EVT-A1..A8 axioms + EVT-T1..T11 taxonomy (BLOCKING for feature authors lifted)** [branch `mmo-rpg/design-resume`]. New folder `07_event_model/` previously seeded with `00_AGENT_BRIEF.md` + `_index.md`; main session took on the Event Model agent role per user direction (option A — full Phase 1-5 design before resuming feature work). **Read 12 inputs** (PL_001 + SPIKE_01 + foundation invariants/vocabulary/id_catalog + decisions MV12-D1..D7 + multiverse 4-layer canon + 05_llm_safety A3/A5/A6 chunks); produced Phase 0 deliverable POST-REVIEW with 6 boundary questions B1-B6 (user approved all recommendations: split PlayerTurn/NPCTurn · keep AggregateMutation own category · world-service derives CalibrationEvent · include LLMProposal as taxonomy row · TurnBoundary = wire format of PlayerTurn/NPCTurn · CanonPromotion EXCLUDED — multiverse-scoped). **Phase 1 deliverables (5 new + 1 modified, 1124 total lines, all under 500-line soft cap)**: 00_preamble + 01_scope_and_boundary + 02_invariants (247 lines, EVT-A1..A8) + 03_event_taxonomy (386 lines, EVT-T1..T11) + 99_open_questions (EVT-Q1..Q10) + _index. **Phase 1 lock criterion satisfied**: closed-set proven; feature authors MAY cite EVT-A* / EVT-T* IDs starting now. **Note**: this commit (`ce6ea97`) was later SUPERSEDED by Option C redesign (see following row). |
+| 2026-04-25 | **07_event_model OPTION C REDESIGN + ALL 5 PHASES LOCKED — folder closed for design** [branch `mmo-rpg/design-resume`, 5 commits: `66a3898` (Phase 1 redesign) + `c87620a` (Phase 2 thin) + `9813edb` (Phase 3) + `b061836` (Phase 4a) + `6bc3c95` (Phase 4b) + `<this commit>` (Phase 5 quickstart)]. **Why redesign**: user flagged that initial Phase 1+2 (taxonomy with feature-specific names like PlayerTurn/NPCTurn/CalibrationEvent/QuestBeat/NPCRoutine/WorldTick + Phase 2 enumerating specific 5 V1 commands and aggregate types) had crept into feature-level prescription, embedded assumptions about features not yet designed, and contained factually-wrong content (5 V1 commands listed Whisper/Look that didn't exist in PL_002, missed Prose/Help that did exist; AdminAction listed 4 sub-shapes vs 16 already locked in `_boundaries/02_extension_contracts.md` §4). **Read additional inputs**: PL_001b lifecycle + PL_002 Command Grammar + NPC_001 Cast + NPC_002 Chorus + ALL `_boundaries/` files (00 README + LOCK + 01 ownership matrix + 02 extension contracts + 03 validator slots + 99 changelog). Realized `_boundaries/` already existed as SSOT for sub-type ownership. **Option C deliverables across 5 phases (commits above)**: |
+| | **Phase 1 redesign** (`66a3898`, 10 files, 438+/416- net): rewrite `02_invariants.md` (311 lines, **12 axioms** EVT-A1..A12 — A4/A7/A8 reframed mechanism-level, A9..A12 NEW: A9 probabilistic generation determinism, A10 event as universal SSOT, A11 sub-type ownership discipline, A12 extensibility framework with 6 well-defined extension points); rewrite `03_event_taxonomy.md` (318 lines, **6 active mechanism categories** EVT-T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative + **5 retired** T2/T7/T9/T10/T11 `_withdrawn` per I15 — T2 NPCTurn merged into T1 Submitted as sub-type, T7 CalibrationEvent merged into T3 Derived, T9 QuestBeat split across T1+T3+T5, T10 NPCRoutine + T11 WorldTick merged into T5 Generated); update `_boundaries/01_feature_ownership_matrix.md` (3 new sub-type ownership rows for T1/T3/T5 + retired notation); update `_boundaries/99_changelog.md`; update `_boundaries/_LOCK.md` (claim then release); update PL_002 §2.5 + NPC_001 §2.5 + NPC_002 §2.5 citation rows (EVT-T2 → EVT-T1 sub-type=NPCTurn migration). |
+| | **Phase 2 thin-rewrite** (`c87620a`, 3 files, 237+/621-): rewrite `04_producer_rules.md` (216 lines, 360→216 = 40% reduction; 6 producer ROLE classes per EVT-A4 — Player-Actor/Orchestrator/Aggregate-Owner/Generator/LLM-Originator/Administrative/DP-Internal; service-binding cite to `_boundaries/`); rewrite `06_per_category_contracts.md` (237 lines, 477→237 = 50% reduction; envelope mechanism + extensibility framework only; sub-shape SSOT in `_boundaries/02_extension_contracts.md` §1 (TurnEvent envelope) + §4 (Administrative sub-shapes)). Phase 2 total: 837→453 = 46% reduction (mirrors WA_006 thin-rewrite ratio 730→280 = 62%). |
+| | **Phase 3** (`9813edb`, 4 files, 423+/3-): NEW `05_validator_pipeline.md` (203 lines, EVT-V1..V7 — pipeline framework, fail-mode taxonomy, retry policy, EVT-V4 RESOLVES MV12-D11 (rejected events commit via t2_write with outcome=Rejected; turn_number + fiction_clock UNCHANGED; concrete sequence in PL_001b §15), hot-path PRE-pipeline gates, post-commit side-effects, dead-letter framework); NEW `07_llm_proposal_bus.md` (217 lines, EVT-L1..L6 — Redis Streams transport via I13 outbox, lifecycle state machine Proposal→Validated/Rejected/Expired, idempotency-based dedup, per-stream FIFO ordering, fail-fast backpressure, dead-letter integration; RESOLVES DP-A6 framework). |
+| | **Phase 4a** (`b061836`, 4 files, 333+/3-): NEW `08_scheduled_events.md` (154 lines, EVT-L7..L11 — trigger sources CalibrationEvent + FictionClockAdvance ONLY (no wall-clock), beat declaration registry per-reality T2 with additive mutation, big-jump idempotency RESOLVES EVT-Q8, recovery on restart fires missed beats fiction-chronologically, V1/V1+30d/V2+ phasing RESOLVES MV12-D10); NEW `09_causal_references.md` (176 lines, EVT-L12..L15 — typed CausalRef shape, single-reality + integrity validation, multi-parent inclusive AND with soft cap 16/hard cap 64 RESOLVES EVT-Q5, bounded-depth backward graph-walk patterns). |
+| | **Phase 4b** (`6bc3c95`, 3 files, 352+/2-): NEW `10_replay_semantics.md` (156 lines, EVT-L16..L19 — session catch-up replay with category visibility filter, canon-promotion replay V2+ placeholder, time-travel debug replay 2 modes RESOLVES EVT-Q10, flavor handling V1 audit-log replay default RESOLVES EVT-Q6); NEW `11_schema_versioning.md` (194 lines, EVT-S1..S6 — envelope-level event_schema_version u32 + sub-shape implicit RESOLVES EVT-Q7, forward-compat two-phase rollout, append-only upcaster chain, migration triggers, replay-correctness CI gate, DP Q5 boundary RESOLVES EVT-Q9 + DP Q5 at per-event-type layer; DP-C5 owns multi-instance choreography). |
+| | **Phase 5** (`<this commit>`): NEW `22_event_design_quickstart.md` (267 lines, bridging doc per brief §S10) — 5-min mental model + worked example re-mapping PL_001 turn flow under Option C taxonomy + decision flowchart (category/sub-type/role/causal-ref/validator subset/schema versioning) + anti-pattern catalog (13 don't/do rows) + pattern selection cheatsheets (validator fail mode / causal-ref cardinality / V1 vs V1+30d phasing) + feature design checklist (10 mandatory items) + cross-reference table to all locked spec files. **Final state**: 12 active files in `07_event_model/` totaling ~2,300 lines (down from initial Phase 1+2 trajectory of ~3,400+ lines that would have been feature-leaky). All files under 500-line soft cap. **All Phase deferrals RESOLVED**: MV12-D8/D9/D10/D11 + EVT-Q4/Q5/Q6/Q7/Q8/Q9/Q10 + DP-A6 framework + DP Q5 (per-event-type layer). **Foundation SSOT properties locked at axiom level**: EVT-A10 event as universal source of truth ("mọi tương tác qua event"); EVT-A11 sub-type ownership discipline (boundary matrix is SSOT); EVT-A12 extensibility framework (6 well-defined extension points; extensions outside forbidden); EVT-A9 probabilistic generation determinism (for ALL Generated emitters not just bubble-up). **Boundary integration**: all sub-shape SSOTs live in `_boundaries/01_feature_ownership_matrix.md` (per-feature ownership) + `_boundaries/02_extension_contracts.md` (TurnEvent envelope §1 + Administrative §4) + `_boundaries/03_validator_pipeline_slots.md` (current validator stage ordering — lock-coordinated). **Folder closed for design** post-Phase 5; future modifications via standard supersedence (locked decisions log + `_withdrawn` suffix). **Branch state**: 23 commits ahead of origin including parallel-session work (PCS_001 brief seed + WA folder closure + extension pattern). **Process lessons learned**: (1) read parallel-session feature docs BEFORE writing foundation that prescribes sub-shapes — avoids factual errors and scope creep; (2) consult `_boundaries/` SSOT first when foundation-folder editing — prevents duplicate authoring; (3) thin-rewrite pattern (50% reduction) following WA_006 model is the recommended response to discovered scope creep, not full revert. |
+
+| 2026-04-25 | **07_event_model Phase 6 LOCKED — Generator Framework + Coordinator service spec (post-closure fail-fast pass)** [branch `mmo-rpg/design-resume`, commits `03560eb` lock-claim + `<this commit>` Phase 6 + lock-release]. **Why post-closure**: after Phase 5 closure user surfaced a systematic-management gap for event generation. Original Phase 1-5 had axiom-level coverage (EVT-A9 RNG determinism + EVT-A12 (f) extensibility) but lacked operational framework — would have fragmented into per-feature generators with 6 known failure modes (race conditions / cycle bombs / replay corruption / cost runaway / discovery hell / capacity governance gap). User picked Option C ("đi sâu vào thiết kế cái này để nếu có sai thì chưa cháy kịp thời ngay từ bây giờ") — full framework + Coordinator service design at design phase. **5 sub-decisions D6.1-D6.5 approved**: (D6.1) in-process per channel-writer deployment (matches DP-Ch26 aggregator pattern; zero new service binary V1) · (D6.2) composite logical_id + blake3-derived UUID for IDs · (D6.3) both static (registration topo-sort) + runtime (depth-counter cap 16) cycle detection · (D6.4) tiered capacity governance (warn 50% / page 90% / reject 100%) · (D6.5) new EVT-G* prefix reserved. **Phase 6 deliverable**: new `07_event_model/12_generation_framework.md` (343 lines, EVT-G1..G6 — Generator Registry + 5-source typed Trigger Taxonomy (CommittedEventOf / StateThresholdOn / FictionTimeMarker / OtherGeneratorOutput / LifecycleMarker) + Cycle Detection (static + runtime) + Capacity Governance (tiered) + Coordinator Service Spec (7 responsibilities + in-process deployment + failure modes + DP boundary) + 6-step Extension Procedure). **Boundary updates**: `_boundaries/01_feature_ownership_matrix.md` extended — stable-ID prefix table EVT-* row now enumerates active vs `_withdrawn` for P*/T*/V*/L*/S* + adds new `EVT-G*` namespace; new "Generator Registry" row in schema/envelope ownership table declaring ownership pattern (07_event_model owns framework; per-feature owns specific generators with composite logical_id). `_boundaries/99_changelog.md` Phase 6 entry. `07_event_model/_index.md` + `99_open_questions.md` reflect Phase 6 lock. **Closes original-goal #4** ("generate event theo điều kiện + xác suất") at systematic level. EVT-A12 extension point (f) "new generation rule" operationalized with 6-step procedure (declare in feature doc → register in `_boundaries/` → implement → boundary review → CI gate → activate). **Failure modes addressed at design time**: (1) race conditions via Coordinator dispatch sequencing; (2) cycle bombs via static topo-sort + runtime depth cap (matches DP-Ch29); (3) replay corruption via mandatory `rng_seed_strategy` declaration + CI lint enforcing `dp::deterministic_rng`; (4) cost runaway via tiered capacity governance with `EventModelError::GeneratorRateLimited` propagated per DP-R6; (5) discovery hell via unified Generator Registry as SSOT; (6) capacity governance gap via per-generator emit-rate ceilings declared at registration. **Deployment**: Coordinator is logical role within channel-writer process (in-process; matches DP-Ch26 + DP-A16 binding); zero new service binary in V1; V2+ may extract to dedicated service if measured load demands. **Folder re-closed for design** post-Phase-6. Future modifications via standard supersedence (locked decisions log + `_withdrawn` suffix). **Branch state**: 25 commits ahead of origin including parallel-session work. **Process lessons reinforced**: design phase is cheap (markdown only); fail-fast at design time prevents implementation refactor cost; foundation work pays compound interest as features extend it. |
+
+| 2026-04-26 | **PL_005 Interaction DRAFT — core gameplay primitive (foundation stack now feature-design-ready)** [branch `mmo-rpg/design-resume`, commits `990eea3` lock-claim + `<this commit>` PL_005 + lock-release]. **Why now**: user direction "interaction là core của gameplay"; foundation stack 06_data_plane + 07_event_model (Phases 1-6 LOCKED) provides everything needed to design the core action layer. **User briefed scenario**: Lý Minh drunk-drives → hits Dược Phi → DP dies + car dented (illustrative; V1 setting Thần Điêu wuxia doesn't have cars but pattern applies). User proposed 4-role + outputs + triggers framework. **Phase 0 deliverable approved** with 6 sub-decisions (B1 NPC mortality deferred to NPC_003 future + V1 placeholder · B2 Item aggregate deferred V1 (refs only) · B3 self-output simple · B4 atomic outputs at validator · B5 catalog placement = `PL_005_interaction.md` · B6 phase plan accepted). **Q5 V1 InteractionKind closed set locked**: Speak / Strike / Give / Examine / Use (5 V1 kinds; V1+ Collide/Shoot/Cast/Embrace/Threaten reserved). **PL_005 deliverable**: new `features/04_play_loop/PL_005_interaction.md` (491 lines under 500-line cap), 19 sections covering Domain concepts (4-role + InstrumentRef + TargetRef + OutputDecl typed enums) + Event-model mapping (closed-set proof: 5 kinds map to EVT-T1 Submitted; no new EVT-T*) + Aggregate inventory (**zero new aggregates V1** — deliberate scope discipline; references existing from PL_001/NPC_001/PCS_001/WA_001/WA_006/PL_002) + DP primitives + Capability (no new claims) + Subscribe pattern (UI + NPC_002 Chorus consumption + V1+ Generators) + Pattern choices (Strict turn-slot inherited; Transparent redaction V1; **atomic outputs derivation** by world-rule WA_001 Lex at validator stage; self-output simple; causality timeout 15s for cascades) + Failure UX (Vietnamese reject copy in `interaction.*` namespace) + Cross-service handoff with CausalityToken chain (Strike example with multi-output T1→T2→T3) + 5 sequences (Speak SPIKE_01 turn 5 / Strike combat illustrative / Give SPIKE_01 turn 8 / Examine du_si_book / Use key on lock) + 6 acceptance criteria (AC-INT-1..6 happy + failure paths) + 9 deferrals (INT-D1..D9 covering Item aggregate / NPC mortality / multi-target / indirect_targets bystanders / Ability Lex axioms / knowledge accrual / V1+ kinds / cross-cell / self-Speak). **Boundary registration in same commit**: `_boundaries/01_feature_ownership_matrix.md` EVT-T1 Submitted sub-types row updated with PL_005 Interaction owns 5 V1 kinds; `_boundaries/02_extension_contracts.md` §1.4 RejectReason namespace prefix added `interaction.*` owned by PL_005; `_boundaries/99_changelog.md` entry; `_boundaries/_LOCK.md` released. `features/04_play_loop/_index.md` updated with PL_005 row. **Foundation stack proven**: PL_005 reuses EVT-T1 Submitted + EVT-V4 rejection-path + EVT-A11 sub-type ownership + EVT-G Generator framework + DP-Ch* + WA_001 Lex validator + NPC_002 Chorus consumption + PCS_001 mortality outputs — no new foundation needed; everything composes from existing locked layers. This validates Option C redesign discipline + Phase 6 Generator Framework work — feature design no longer needs to invent foundation primitives. **Branch state**: 27 commits ahead of origin including parallel sessions. **Next**: PL_005 acceptance scenarios (AC-INT-1..6) need integration tests for LOCK status; OR continue feature design (DF5 / DF7 / additional PL/NPC/SOC features); OR pause for review. |
+
+| 2026-04-26 | **PL_005 Phase 2 — Interaction contracts** [branch `mmo-rpg/design-resume`, commit `<this commit>`]. PL_005 Phase 2 deliverable: per-sub-type payload contracts for all 5 V1 InteractionKinds (Speak / Strike / Give / Examine / Use). **Two-file structure decision** (per PL_001 + PL_001b precedent + WA_002 + WA_002b): root PL_005 stays at 491 lines (conceptual layer); new `PL_005b_interaction_contracts.md` (670 lines, over 500-line soft cap but under 800-line hard cap — acceptable for contract-heavy file with 5 detailed kind sections + tables) holds the **contract layer**. **PL_005b §1-§12**: §1 common payload base (`InteractionPayloadBase` struct extending all 5 kinds; `OutputDecl` shape with `SeverityLevel` enum) · §2-§6 per-kind contracts (Speak with VerbalKind+VolumeKind+Utterance / Strike with StrikeKind+StrikeIntent+ForceLevel / Give with GiveIntent+TransactionPurpose / Examine with ExamineDepth+ExamineFocus / Use with UseIntent+effect_magnitude — each kind specifies allowed InstrumentRef variants + allowed TargetRef variants + allowed agent kinds + ProposedOutputs allowed aggregate_types + ActualOutputs validator-derived outcomes + 5-7 validation rules + 5-7 reject rule_ids with Vietnamese copy) · §7 OutputDecl taxonomy table (cross-kind summary of allowed `aggregate_type` ↔ owner ↔ delta_kinds; references npc_pc_relationship_projection / pc_stats_v1_stub / pc_mortality_state / oracle_audit_log / V1+ pc_inventory + item_state + scene_state.lighting; "aggregate_type not in this table = forbidden" rule) · §8 per-kind validator subset (each kind's specific behavior at world-rule stage; **Lex CRITICAL for Use kind** per WA_001 axioms × item compatibility) · §9 expanded acceptance criteria (16 kind-specific scenarios — combined PL_005 §16 + PL_005b §9 = 22 total: 4 Speak / 3 Strike V1+ / 3 Give / 2 Examine / 4 Use; ~14 V1-testable; remainder when consumer features ship) · §10 Phase 2 deferrals INT-CON-D1..D8 (multi-target Strike / split-stack Give / bystander Examine / Use:Combine / Strike outcome variation per mortality_config / Speak Shout / V1+ items full effect catalog / NPC Strike outcome). **No boundary lock claim needed** (sub-type ownership already registered in Phase 1; no new aggregates introduced). **Lock criterion**: ≥14 V1-testable scenarios pass integration tests → PL_005+PL_005b CANDIDATE-LOCK; full LOCK when consumer features (Item aggregate + NPC_003 mortality + full combat) ship and remaining V1+ scenarios pass. **Branch state**: 28 commits ahead of origin. **Foundation stack proven again**: PL_005b contracts compose entirely from existing locked layers (DP / Event Model / WA / NPC / PCS aggregates as references); zero foundation primitives invented. Next options: (a) PL_005 Phase 3 cross-feature integration spec · (b) other V1 features (DF5 / DF7 / additional PL/NPC) · (c) pause for review. |
+
+| 2026-04-26 | **PL_005 Phase 3 — Interaction cross-feature integration** [branch `mmo-rpg/design-resume`, commit `<this commit>`]. PL_005 Phase 3 deliverable: cross-feature integration spec covering how Interaction events compose with consumer features. **Three-file structure** (per WA_002+WA_002b precedent extended): root PL_005 (491 lines, conceptual layer) + PL_005b (670 lines, contract layer) + PL_005c (460 lines, integration layer) = 1,621 total lines across 3 files; all under 800-line hard cap; PL_005 + PL_005c under 500-line soft cap; PL_005b acceptable for contract-heavy. **PL_005c §1-§11**: §1 validator pipeline integration per-kind chain detail (10-stage chain with Speak/Strike/Give/Examine/Use specifics; Lex CRITICAL for Use; A6 canon-drift CRITICAL for Speak) · §2 NPC_002 Chorus consumption flow (sequence with priority algorithm Tier 1-4 + V1 cascade cap=1 + rejected-Interaction filter) · §3 PCS_001 mortality side-effect flow (Strike Lethal → world-rule derives MortalityTransition per mortality_config + Permadeath/RespawnAtLocation/Ghost variants + V1 NPC placeholder via npc.flexible_state.liveness_flag per B1 + V1+30d Respawn flow deferred) · §4 NPC_001 opinion drift flow (per-kind opinion delta calibration table: Speak/Give-Gift+2/Give-Bribe+1/Give-Tribute+3/Strike-Lethal-50/Strike-Stun-10/Examine-intrusive-2/Use-per-item) · §5 V1+ Generator triggers architecture sketch (4 example Generators with logical_id + trigger filter + probability + output: investigation:PoliceCallout 0.95 / relationship:GriefDrift 0.4-0.8 / gossip:RumorSeed 0.5 / interaction:WitnessReport 0.7) · §6 failure compensation (5 scenarios + operator reconcile via V1+ admin-cli + idempotency boundary at uniform key shape) · §7 replay determinism (5-layer scope table: validator outcome bit-deterministic / ActualOutputs bit-deterministic / Chorus selection bit-deterministic / LLM content NOT bit-deterministic-regenerated-from-audit / V1+ Generator probability bit-deterministic per EVT-A9) · §8 V1 minimum implementation scope (vertical-slice = 13 V1-testable scenarios from 22 total; 9 V1+ defer to consumer features Item-substrate + NPC_003 + full-combat) · §9 Phase 3 deferrals INT-INT-D1..D8 (operator reconcile shape / mortality_config_version forensic / V1+ Respawn flow / Generator graph audit / per-NPC personality modifiers / LLM sentiment classifier / cross-cell V2+ / Aggregate-Owner idempotency composite). **No boundary lock claim needed** (no new aggregates / sub-types / prefixes introduced; spec composes existing). **Lock criterion across PL_005/b/c**: 13 V1-testable acceptance scenarios pass integration tests against SPIKE_01 fixtures → CANDIDATE-LOCK; full LOCK when V1+ scenarios pass after consumer features ship. **Total deferrals across 3 files**: 25 (9 INT-D + 8 INT-CON-D + 8 INT-INT-D). **Foundation stack proven third time**: PL_005c integration layer composes ENTIRELY from existing locked layers (DP-K* / EVT-A1..A12 / EVT-V* / EVT-G* / WA_001 Lex / NPC_001+002 / PCS_001 brief aggregates as references); zero foundation primitives invented. **Branch state**: 29 commits ahead of origin. **PL_005 design complete for V1 scope.** Next options: (a) other V1 features (DF5 Session/Group Chat / DF7 PC Stats / additional PL/NPC) · (b) PCS_001 design (main session takes on per parallel-session brief; unblocks mortality outputs full) · (c) integration test harness spec for V1 vertical-slice · (d) pause for review. |
+
+| 2026-04-26 | **PL_006 Status Effects DRAFT — status foundation (V1 vertical-slice gap closed)** [branch `mmo-rpg/design-resume`, commits `a39d880` lock-claim + `<this commit>` PL_006 + lock-release]. **Why now**: V1 gap audit identified status foundation as Option A priority (vs Option B PO_001 PC creation + Option C knowledge accrual); user picked A ("làm A"). Foundation discipline rationale: PCS_001 brief §S5 has `pc_stats_v1_stub.status_flags: Vec<StatusFlag>` but never defines enum; without PL_006, PCS_001 + future NPC_003 would each invent ad-hoc enums (drift trap WA_006 originally hit before thin-rewrite). PL_006 owns enum + lifecycle ONCE; consumers reference. **6 sub-decisions D1-D6 defaults approved**: D1 catalog placement = PL category (gameplay primitive like Interaction) · D2 PL_006 owns StatusFlag enum (PCS_001 + NPC_003 reference) · D3 V1 minimum closed-set = Drunk/Exhausted/Wounded/Frightened (4 kinds; V1+ Stunned/Bleeding/Poisoned/Charmed/Encumbered/Buffed/Tired/Hungry/Restrained reserved) · D4 Status applies via PL_005 Interaction OutputDecl (`aggregate_type=actor_status`; no new path) · D5 V1 simplification — Apply + Dispel manual only; auto-expire V1+30d via Scheduled:StatusExpire Generator · D6 generic `actor_status` aggregate covers PC + NPC uniformly (cross-actor uniformity). **PL_006 deliverable**: new `features/04_play_loop/PL_006_status_effects.md` (462 lines under 500-line soft cap), 18 sections — domain concepts (StatusFlag/StatusInstance/StatusSource/StackPolicy) + event-model mapping (no new EVT-T*; T3 apply/dispel + T5 V1+30d auto-expire via EVT-G2 trigger source kind c FictionTimeMarker) + 1 new aggregate `actor_status` (T2/Reality, cross-actor) + tier+scope + DP primitives + capability + subscribe pattern (UI invalidation + Chorus SceneRoster context) + pattern choices (closed-set/cross-actor uniformity/stack policies/magnitude 1..=10/V1 lifecycle simplification/source tracking via StatusSource enum/V1+ Lex axiom integration deferred) + Vietnamese reject copy in `status.*` namespace + cross-service handoff (inherits PL_005 §10 pattern) + 4 sequences (Apply Drunk via Use:wine / Apply Exhausted via sleep-skipped detection / Dispel via /sleep / V1+30d auto-expire deferred) + 7 V1-testable acceptance scenarios (AC-STA-1..7: Apply Drunk + Stack Sum + Stack Replace + Dispel via /sleep + cross-actor uniformity + target_dead reject + invalid magnitude reject) + 8 deferrals (STA-D1..D8: V1+ kinds enumeration / per-status effect formalization / Lex axiom integration / V1+30d scheduler integration / selective dispel / status × NPC opinion modifier / sleep-skipped detection mechanism / status × admin override). **Boundary registration in same commit**: `_boundaries/01_feature_ownership_matrix.md` adds `actor_status` aggregate row owned by PL_006; `_boundaries/02_extension_contracts.md` §1.4 RejectReason namespace adds `status.*` owned by PL_006; `_boundaries/99_changelog.md` PL_006 entry; `_boundaries/_LOCK.md` released. `features/04_play_loop/_index.md` updated with PL_006 row + Active marker. **Closes V1 vertical-slice gap**: Use:wine outcome locked (AC-STA-1 reproducible); Strike intents Stun/Restrain unblocked V1+; PCS_001 + NPC_003 reference shared enum without drift. **Foundation stack proven 4th time**: PL_006 composes ENTIRELY from existing locked layers (DP-K* + EVT-T3 Derived + EVT-T5 Generated for V1+30d + EVT-G framework + WA_001 Lex hook V1+ + NPC_001 ActorId enum + PL_005 OutputDecl mechanism); zero foundation primitives invented. Mirrors NPC_001's "own ActorId enum once, consumed many" pattern. **Status transition**: DRAFT 2026-04-26 → CANDIDATE-LOCK after 7 V1 acceptance scenarios pass integration tests. **Branch state**: 31 commits ahead of origin. **Next options**: (a) PCS_001 design (parallel agent already commissioned per brief; may overlap with this session if main session takes on) · (b) PO_001 PC Creation flow (Option B from V1 gap audit; needs PCS_001 to land first for ActorId::Pc) · (c) Knowledge accrual (Option C; smaller scope) · (d) other V1 features (DF5/DF7) · (e) pause for review. |
 
 ## 4. How to resume (for next session)
 

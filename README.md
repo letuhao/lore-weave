@@ -189,7 +189,7 @@ Self-hosted Docker Compose monorepo. **17 application services + 7 infra contain
 | **translation-worker** | Python | Async RabbitMQ batch translation worker |
 | **chat-service** | Python / FastAPI | Streaming AI chat, thinking mode, multi-provider SSE |
 | **knowledge-service** | Python / FastAPI | Knowledge graph (Postgres SSOT + Neo4j derived), entity extraction, summaries |
-| **video-gen-service** | Python / FastAPI | Text-to-video generation (skeleton) |
+| **video-gen-service** | Python / FastAPI | Media generation BFF; ComfyUI workloads live in sibling repo **local-image-generator-service** (SD 1.5 / SDXL / Illustrious / Flux 1–2 / Qwen Image / Wan / LTX Video + custom game-asset, object-sheet, and animation pipelines) |
 | **worker-infra** | Go | Outbox relay, cleanup, import processing, Pandoc conversion |
 | **worker-ai** | Python | AI-driven async tasks (entity extraction, summary regen, embedding jobs) |
 

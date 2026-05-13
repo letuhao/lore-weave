@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Tilemap World View PoC v1</title>
+  <link rel="stylesheet" href="/src/ui/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>Tilemap World View — SPIKE_03 PoC v1</h1>
+      <nav class="breadcrumb">
+        <span class="current">continent:nam_thien</span>
+      </nav>
+      <div class="toolbar">
+        <label>seed
+          <input id="seedInput" type="number" value="42" min="0" max="999999" />
+        </label>
+        <button id="regenBtn" title="Regenerate with current seed">Regen</button>
+        <button id="randomBtn" title="Pick random seed">Random</button>
+        <button id="zoomOutBtn" title="Zoom out">−</button>
+        <button id="zoomInBtn" title="Zoom in">+</button>
+        <button id="exportBtn" title="Download tilemap_view.json">Export JSON</button>
+        <button id="llmBtn" title="Generate skeleton from natural-language prompt via local LLM">⚡ LLM</button>
+      </div>
+    </header>
+    <main>
+      <section id="game-container"></section>
+      <aside id="sidebar">
+        <h2>Selected</h2>
+        <div id="info">
+          <em>Click cell hoặc landmark để xem chi tiết...</em>
+        </div>
+        <h2>Tilemap stats</h2>
+        <div id="stats">—</div>
+        <h2>Terrain distribution</h2>
+        <div id="terrain-dist">—</div>
+        <h2>Architecture</h2>
+        <div class="arch-note">
+          <div><strong>L1</strong> Hand-authored skeleton</div>
+          <div><code>data/skeleton.ts</code></div>
+          <div><strong>L2</strong> Procedural terrain + roads</div>
+          <div><code>generators/terrain.ts + roads.ts</code></div>
+          <div><strong>L3</strong> LLM zone classifier</div>
+          <div class="muted">deferred V2</div>
+          <div><strong>L4</strong> LLM regional narration</div>
+          <div class="muted">deferred V2</div>
+        </div>
+      </aside>
+    </main>
+    <footer id="status">Ready.</footer>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

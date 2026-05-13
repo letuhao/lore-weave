@@ -189,6 +189,85 @@ Forced disconnect via Redis stream `lw:ws:control` with enumerated close codes (
 
 ---
 
+## `contracts/resilience/` — circuit breaker + retry + timeout + bulkhead
+
+**When:** any outbound call to an external or cross-service dependency. Required for P0/P1 deps (see `contracts/dependencies/matrix.yaml`); optional for P2.
+
+```go
+// Timeout wrapper — I16 (invariant): every outbound call declares one
+func WithTimeout(ctx context.Context, depName string, fn func(context.Context) error) error
+
+// Circuit breaker — SR6-D3
+type CircuitBreaker interface {
+    Call(ctx context.Context, fn func(context.Context) error) error
+    State() BreakerState  // closed | half_open | open
+}
+func NewBreaker(depName string, cfg BreakerConfig) CircuitBreaker
+
+// Retry — SR6-D4; only for idempotent OR compensating-event-keyed calls
+func Retry(ctx context.Context, policy RetryPolicy, fn func(context.Context) error) error
+
+// Bulkhead — SR6-D9; resource isolation per (service, dep)
+type Bulkhead struct {
+    DepName       string
+    MaxConcurrent int
+    QueueDepth    int
+    QueueTimeout  time.Duration
+}
+```
+
+**Enforcement:** CI lints block raw `http.Client.Do` / `sql.Query` / `redis.Cmd` calls against P0/P1 deps that don't route through these wrappers.
+
+**What you get:**
+- Timeouts and deadlines read from `matrix.yaml` defaults (can override for specific calls).
+- 3-state circuit breaker with `dependency_events` audit (I8) + outbox-emitted transition events.
+- Retry policy with exponential backoff + 25% jitter; respects HTTP `Retry-After`.
+- Bulkhead queue with fast-fail on `ErrBulkheadFull`.
+
+**Source:** [02_storage/SR06_dependency_failure.md](../02_storage/SR06_dependency_failure.md) §12AI.3 / §12AI.4 / §12AI.5 / §12AI.10 — decisions SR6-D2/D3/D4/D9.
+
+---
+
+## `contracts/lifecycle/Drain` + degraded-mode
+
+**When:** service startup (register mode handler) + shutdown (SIGTERM handler).
+
+```go
+// Graceful shutdown — SR6-D10
+func Drain(ctx context.Context, timeout time.Duration, hooks DrainHooks) error
+
+type DrainHooks struct {
+    StopAccepting  func()               // /health/ready → 503
+    WaitInFlight   func(ctx) error      // wait handlers up to timeout
+    FlushOutbox    func(ctx) error      // final publisher drain
+    CloseBreakers  func() error         // open all for fail-fast
+    CloseResources func() error         // DB / Redis / HTTP pools
+}
+
+// Degraded-mode enum — SR6-D5
+type ServiceMode string
+const (
+    ModeFull       ServiceMode = "full"
+    ModeLimited    ServiceMode = "limited"
+    ModeEssentials ServiceMode = "essentials"
+    ModeReadOnly   ServiceMode = "read_only"
+    ModeOffline    ServiceMode = "offline"
+)
+```
+
+**Flow on SIGTERM:**
+1. `StopAccepting` → LB stops routing; WS new rejects with close code 4011 "draining".
+2. `WaitInFlight` up to `timeout` (default 30s; long-runners 120s; stateless 10s).
+3. `FlushOutbox` — publisher final drain; remaining rows persist for next replica via claim-lock.
+4. `CloseBreakers` — outbound fast-fails.
+5. `CloseResources` — orderly close.
+
+**Mode propagation:** via Redis control channel `lw:dependency:control` (SVID-signed per S11.L7). `api-gateway-bff` surfaces current mode in `X-LW-Mode` response header + WS control messages.
+
+**Source:** [02_storage/SR06_dependency_failure.md](../02_storage/SR06_dependency_failure.md) §12AI.6 / §12AI.11 — decisions SR6-D5 / SR6-D10.
+
+---
+
 ## Break-glass admin access
 
 **When:** incident response requires bypassing normal ACLs (credential leak, security event, irrecoverable state).
@@ -216,5 +295,7 @@ Cannot be called by any service. Only humans, only via `admin-cli`.
 | `outbox.Write()` | R06 §12F | Emitting cross-service events |
 | WS ticket handshake | S12 §12AB | Client WS connect |
 | Break-glass | S11 §12AA.10 | Incident-scoped admin bypass |
+| `WithTimeout` / `NewBreaker` / `Retry` / `Bulkhead` | SR06 §12AI.3–.5, .10 | Any outbound call to P0/P1 dependency |
+| `Drain()` / degraded-mode enum | SR06 §12AI.6, .11 | Service startup + SIGTERM handler |
 
 If you find yourself doing any of these actions WITHOUT the listed API, stop — you're about to violate an invariant.

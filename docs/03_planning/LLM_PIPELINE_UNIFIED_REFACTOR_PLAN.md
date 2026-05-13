@@ -341,8 +341,9 @@ provider-registry → RabbitMQ topic "user.{user_id}.llm.{op}.{event}"
 
 | Cycle | Deliverable | Effort |
 |-------|-------------|--------|
-| **5a** | Gateway adapters: `stt`, `tts`, `image_gen` operations on `/v1/llm/jobs` (or `/v1/llm/stream` for live STT) | L |
-| **5b** | Migrate chat-service voice STT/TTS off `/internal/proxy/v1/audio/*` onto the new contract | M |
+| **5a** | Gateway adapters: `stt` + `tts` operations. STT routes through `POST /v1/llm/jobs` (`operation=stt` → `adapter.Transcribe` → `SttResult`); TTS routes through `POST /v1/llm/stream` (`operation=tts` → `adapter.Speak` → SSE `audio-chunk` events). OpenAI adapter only — Anthropic/Ollama/LM Studio return `ErrOperationNotSupported`. SDK gains `Client.transcribe()` + `Client.stream_tts()`. **`image_gen` deferred** (no caller yet). Backward-compat: omitted `operation` on `/v1/llm/stream` defaults to `"chat"`. **✅ shipped — provider-registry: adapter interface +Transcribe+Speak +`audioJobOperations`/`runSttJob` worker dispatch +stream_handler operation branch +tts-rejected-at-jobs guard; SDK: AudioChunkEvent + Tts/Stt models + `_stream_inner` factor + `transcribe`+`stream_tts` methods. Files: 2 NEW Go (openai_audio.go + adapters_audio.go + worker_audio.go) + 4 NEW tests (adapters_audio_test.go + worker_audio_test.go + stream_handler_test.go + jobs_router_test.go additions + sdk test_audio.py); MOD interface/openapi/jobs_handler/stream_handler/SDK models+client. Verify: provider-registry-svc go vet + test ALL GREEN; SDK pytest 167 pass (was 160; +7 new). 410-Gone audio carve-out preserved for 5b.** | L |
+| **5b** | Migrate chat-service voice STT/TTS off `/internal/proxy/v1/audio/*` onto the new contract (chat-service uploads audio to MinIO + presigned URL → `Client.transcribe(audio_url)`; replace `_generate_tts_chunks` with `Client.stream_tts()`); after grep zero callers, retire the `/internal/proxy/v1/audio/*` carve-out + audio paths from `isDeprecatedProxyPath`'s allowlist. | M |
+| **5c** (deferred) | `image_gen` adapter when first caller arrives. | TBD |
 
 ### Phase 6 — Hardening
 

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03A Canonical PC — PO_001</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+  <div class="nav-strip">
+    <a href="02_path_choice.html" style="color: var(--ink-muted); text-decoration: none; font-size: 0.875rem;">← Quay lại</a>
+    <span class="subtle">Mode A · Đóng vai nhân vật có sẵn · Đông Phong Cõi</span>
+    <div class="lang-switch">
+      <a href="#" class="active">VI</a><a href="#">EN</a><a href="#">ZH</a>
+    </div>
+  </div>
+
+  <main style="flex: 1; display: grid; grid-template-columns: 280px 1fr; gap: 2rem;">
+
+    <aside style="display: flex; flex-direction: column; gap: 0.75rem;">
+      <h3 style="font-size: 1rem; margin: 0 0 0.5rem 0;">Nhân vật có sẵn</h3>
+
+      <div class="card card-selected" onclick="selectPC('ly_lao_to', this)" style="padding: 0.875rem; cursor: pointer;">
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #4a8b7e, #1a1815); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--paper); font-family: 'Source Serif Pro', serif; font-size: 1.25rem; flex-shrink: 0;">李</div>
+          <div>
+            <strong style="display: block; font-size: 0.9375rem;">Lý Lão Tổ</strong>
+            <span class="subtle" style="font-size: 0.75rem;">Đại Trưởng Lão · 187t</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-hoverable" onclick="selectPC('ly_tu', this)" style="padding: 0.875rem; cursor: pointer;">
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #d8e4dd, #4a8b7e); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--paper); font-family: 'Source Serif Pro', serif; font-size: 1.25rem; flex-shrink: 0;">紫</div>
+          <div>
+            <strong style="display: block; font-size: 0.9375rem;">Lý Tử</strong>
+            <span class="subtle" style="font-size: 0.75rem;">Đệ tử nội môn · 22t</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-hoverable" onclick="selectPC('phung_nhi', this)" style="padding: 0.875rem; cursor: pointer;">
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #f4e8d4, #c026d3); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--paper); font-family: 'Source Serif Pro', serif; font-size: 1.25rem; flex-shrink: 0;">凤</div>
+          <div>
+            <strong style="display: block; font-size: 0.9375rem;">Phụng Nhi</strong>
+            <span class="subtle" style="font-size: 0.75rem;">Sư muội ngầm · 19t</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-hoverable" onclick="selectPC('hoang_de', this)" style="padding: 0.875rem; cursor: pointer;">
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #92400e, #f4e8d4); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--paper); font-family: 'Source Serif Pro', serif; font-size: 1.25rem; flex-shrink: 0;">皇</div>
+          <div>
+            <strong style="display: block; font-size: 0.9375rem;">Lý Đại Hoàng</strong>
+            <span class="subtle" style="font-size: 0.75rem;">Hoàng đế · 45t</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-hoverable" onclick="selectPC('mac_ta_phong', this)" style="padding: 0.875rem; cursor: pointer;">
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #1a1815, #6b6557); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--paper); font-family: 'Source Serif Pro', serif; font-size: 1.25rem; flex-shrink: 0;">魔</div>
+          <div>
+            <strong style="display: block; font-size: 0.9375rem;">Mạc Tà Phong</strong>
+            <span class="subtle" style="font-size: 0.75rem;">Sát thủ Hắc Phong · 31t</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section>
+      <article id="pc-detail">
+        <div style="display: flex; gap: 1.5rem; align-items: flex-start; margin-bottom: 1.5rem;">
+          <div style="width: 140px; height: 180px; background: linear-gradient(135deg, #4a8b7e, #1a1815); border-radius: 0.5rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: 'Source Serif Pro', serif; font-size: 4rem; color: var(--paper);">李</div>
+          <div style="flex: 1;">
+            <p class="subtle" style="margin: 0 0 0.25rem 0; font-size: 0.8125rem; letter-spacing: 0.1em; text-transform: uppercase;">Đông Hải Đạo Cốc Đại Trưởng Lão</p>
+            <h1 style="font-size: 2rem; margin: 0 0 0.75rem 0;">Lý Lão Tổ</h1>
+            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.875rem;">
+              <div><span class="subtle">Tuổi:</span> <strong>187</strong></div>
+              <div><span class="subtle">Cảnh giới:</span> <strong style="color: var(--accent);">Hóa Thần</strong></div>
+              <div><span class="subtle">Tổ chức:</span> <strong>Đông Hải Đạo Cốc</strong> (Trưởng lão)</div>
+              <div><span class="subtle">Tước hiệu:</span> <strong>Đại Trưởng Lão</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="scene-narration">
+          "Đại trưởng lão của Đông Hải Đạo Cốc, tu sĩ Hóa Thần đã 50 năm. Sống cô độc trên đỉnh Hàn Tuyết Phong, chỉ huy đệ tử nội môn. Có một thư từ chưa mở của sư đệ Mộ Dung đã mất 30 năm trước — nó nằm trong hộp gỗ tử đàn dưới gối. Mỗi đêm trăng tròn, ông lại nhìn nó nhưng không dám mở..."
+        </div>
+
+        <div style="margin-top: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+          <div>
+            <h3 style="font-size: 0.9375rem; margin: 0 0 0.75rem 0;">⚔ Đặc điểm chính</h3>
+            <ul style="font-size: 0.875rem; line-height: 1.7; padding-left: 1.25rem; margin: 0;">
+              <li>Cảnh giới <strong>Hóa Thần</strong> (mạnh trong sect)</li>
+              <li>Linh căn: <strong>Mộc</strong> (chuyên đan dược)</li>
+              <li>Tu vi đã ổn định 50 năm — chưa đột phá</li>
+              <li>Thiên phú thuần kim đan</li>
+            </ul>
+          </div>
+          <div>
+            <h3 style="font-size: 0.9375rem; margin: 0 0 0.75rem 0;">⚖ Mối quan hệ</h3>
+            <ul style="font-size: 0.875rem; line-height: 1.7; padding-left: 1.25rem; margin: 0;">
+              <li>12 đệ tử nội môn (Lý Tử ưa thích nhất)</li>
+              <li>3 sư đệ — 1 đã mất, 2 vẫn còn</li>
+              <li>1 con gái Phụng Nhi (xa cách 15 năm)</li>
+              <li>Mâu thuẫn với <strong>Vấn Đỉnh Tổ</strong> (Wulin Meng)</li>
+            </ul>
+          </div>
+          <div>
+            <h3 style="font-size: 0.9375rem; margin: 0 0 0.75rem 0;">🌫 Bí mật</h3>
+            <ul style="font-size: 0.875rem; line-height: 1.7; padding-left: 1.25rem; margin: 0;">
+              <li>Thư của sư đệ Mộ Dung chưa mở</li>
+              <li>Lý do thật cho cái chết của sư đệ</li>
+              <li>Phụng Nhi không biết Lý Lão Tổ là cha mình</li>
+            </ul>
+          </div>
+          <div>
+            <h3 style="font-size: 0.9375rem; margin: 0 0 0.75rem 0;">🎭 Cá tính</h3>
+            <ul style="font-size: 0.875rem; line-height: 1.7; padding-left: 1.25rem; margin: 0;">
+              <li>Khắc kỷ (Stoic) — Bình tĩnh trước bão giông</li>
+              <li>Niềm tin Đạo (Devout fervor)</li>
+              <li>Trầm lặng nhưng quan tâm thầm</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-top: 2rem; padding: 1rem 1.25rem; background: var(--accent-bg); border-radius: 0.5rem; border-left: 3px solid var(--accent);">
+          <p style="margin: 0; font-size: 0.875rem;"><strong>📜 Story hooks:</strong> Hôm nay là sinh nhật 50 năm của Lý Lão Tổ tại Đông Hải Đạo Cốc. Đệ tử Lý Tử vừa đột phá Luyện Khí thất tầng — sẽ đến tham vấn buổi chiều. Đêm nay là đêm trăng tròn... thư của Mộ Dung lại quay lại. Bạn sẽ làm gì?</p>
+        </div>
+
+      </article>
+
+      <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+        <button class="btn-secondary" onclick="window.location.href='02_path_choice.html?reality=' + document.body.dataset.reality">Đổi mode</button>
+        <button class="btn-primary" onclick="window.location.href='04_confirm.html?reality=' + document.body.dataset.reality + '&mode=canonical&pc=ly_lao_to'">Chọn Lý Lão Tổ →</button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+
+  function selectPC(pcKey, cardEl) {
+    document.querySelectorAll('aside .card-selected').forEach(c => { c.classList.remove('card-selected'); c.classList.add('card-hoverable'); });
+    cardEl.classList.add('card-selected');
+    cardEl.classList.remove('card-hoverable');
+    // V1+ would render different PC details. V1 mockup keeps Lý Lão Tổ as visible example.
+  }
+</script>
+</body>
+</html>

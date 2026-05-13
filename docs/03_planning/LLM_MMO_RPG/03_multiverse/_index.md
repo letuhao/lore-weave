@@ -40,6 +40,7 @@
 - M4-D1..D6 (canon update propagation, chunk 06)
 - C1-OW-1..5 (ancestry severance, chunk 06)
 - MV1..MV11 — primitives scattered across chunks 02/03/09
+- **MV12 Reality Time Model** (2026-04-25) — page-turn fiction-time, linear per-reality, paused-when-0-players V1; authoritative content in [`../decisions/locked_decisions.md`](../decisions/locked_decisions.md) MV12-D1..D7 + spike in [`../features/_spikes/SPIKE_01_two_sessions_reality_time.md`](../features/_spikes/SPIKE_01_two_sessions_reality_time.md). Event schema extensions (`fiction_ts_start`, `fiction_duration`) per MV12-D7 additive per R3; `reality_registry` gets `book_anchor_fiction_ts` + `current_fiction_ts` columns.
 
 **Not owned here (cross-references only):**
 - R9 closure protocol → `02_storage/R09_safe_reality_closure.md`

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>02 Path Choice — PO_001</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+  <div class="nav-strip">
+    <a href="01_reality_select.html" style="color: var(--ink-muted); text-decoration: none; font-size: 0.875rem;">← Quay lại</a>
+    <span class="subtle">Bước 2/3 · Chọn lối bắt đầu · Đông Phong Cõi</span>
+    <div class="lang-switch">
+      <a href="#" class="active">VI</a><a href="#">EN</a><a href="#">ZH</a>
+    </div>
+  </div>
+
+  <main style="flex: 1;">
+    <header style="text-align: center; margin-bottom: 2.5rem;">
+      <h1 style="font-size: 2rem; margin: 0 0 0.5rem 0;">Bạn Muốn Bắt Đầu Thế Nào?</h1>
+      <p class="subtle">Ba lối đi — chọn cách bạn bước vào câu chuyện.</p>
+    </header>
+
+    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+
+      <div class="card card-hoverable" onclick="window.location.href='03a_canonical_pc.html?reality=' + document.body.dataset.reality" style="cursor: pointer;">
+        <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
+          <div style="width: 72px; height: 72px; flex-shrink: 0; background: linear-gradient(135deg, var(--accent-bg), var(--accent-soft)); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center; font-family: 'Source Serif Pro', serif; font-size: 2rem; color: var(--accent);">A</div>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.25rem;">Đóng vai nhân vật có sẵn</h3>
+            <p style="margin: 0 0 0.75rem 0;">Bước vào câu chuyện đã được viết sẵn — bạn nhập vào đời của một <em>canonical character</em> với gốc gác, mâu thuẫn, và bí mật riêng.</p>
+            <p class="subtle" style="margin: 0;">5 nhân vật có sẵn: Lý Lão Tổ (Đại Trưởng Lão) · Lý Tử (đệ tử) · Phụng Nhi (con gái) · Lý Đại Hoàng (Hoàng đế) · Mạc Tà Phong (sát thủ)</p>
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">BG3 Origin pattern</span>
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">Pre-written narrative</span>
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">Người mới khuyên dùng</span>
+            </div>
+          </div>
+          <div style="font-size: 1.5rem; color: var(--accent); align-self: center;">→</div>
+        </div>
+      </div>
+
+      <div class="card card-hoverable" onclick="window.location.href='03b_custom_pc.html?reality=' + document.body.dataset.reality" style="cursor: pointer;">
+        <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
+          <div style="width: 72px; height: 72px; flex-shrink: 0; background: linear-gradient(135deg, #ebe4d4, #6b6557); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center; font-family: 'Source Serif Pro', serif; font-size: 2rem; color: var(--ink);">B</div>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.25rem;">Tạo nhân vật riêng</h3>
+            <p style="margin: 0 0 0.75rem 0;">Tự thiết kế từ đầu — chủng tộc, gốc gác, cá tính, niềm tin, vị trí xuất hiện. Tự do hoàn toàn theo M7 progressive disclosure (skip để dùng default).</p>
+            <p class="subtle" style="margin: 0;">8 bước: Tên · Chủng tộc · Origin Pack · Cá tính · Tổ chức (optional) · Diện mạo · Vị trí · Xác nhận</p>
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">BG3 Custom + Cyberpunk lifepath</span>
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">Multi-step wizard</span>
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">Default-skippable</span>
+            </div>
+          </div>
+          <div style="font-size: 1.5rem; color: var(--accent); align-self: center;">→</div>
+        </div>
+      </div>
+
+      <div class="card card-hoverable" onclick="window.location.href='03c_xuyen_khong.html?reality=' + document.body.dataset.reality" style="cursor: pointer;">
+        <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
+          <div style="width: 72px; height: 72px; flex-shrink: 0; background: linear-gradient(135deg, #2d6a5f, #1a1815); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center; font-family: 'Source Serif Pro', serif; font-size: 2.25rem; color: var(--paper);">穿</div>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.25rem;">Xuyên Không Đến Đây <span style="color: var(--accent); font-size: 0.875rem; font-weight: 500;">— LoreWeave-unique</span></h3>
+            <p style="margin: 0 0 0.75rem 0;">Linh hồn từ một thế giới khác (có thể là Trái Đất hiện đại) nhập vào thân xác có sẵn của reality này. Bạn dần khám phá ai mình từng là — qua cơ bắp còn nhớ, qua kí ức rò rỉ.</p>
+            <p class="subtle" style="margin: 0;">Soul Layer + Body Layer + LeakagePolicy 4-variant (NoLeakage / SoulPrimary / BodyPrimary / Balanced)</p>
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">Disco Elysium amnesia</span>
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">Wuxia transmigration trope</span>
+              <span style="font-size: 0.75rem; padding: 0.125rem 0.5rem; background: var(--paper-soft); border-radius: 1rem;">Dramatic onboarding</span>
+            </div>
+          </div>
+          <div style="font-size: 1.5rem; color: var(--accent); align-self: center;">→</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="margin-top: 2rem; padding: 1rem 1.25rem; background: var(--paper-soft); border-radius: 0.375rem; font-size: 0.8125rem; color: var(--ink-muted);">
+      <strong style="color: var(--ink);">💡 Mẹo:</strong> Bạn có thể đổi mode bất cứ lúc nào trong quá trình tạo nhân vật. Mode (A) phù hợp người mới muốn nhanh; (B) cho người thích control; (C) cho fan tu tiên muốn trải nghiệm độc đáo.
+    </div>
+  </main>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reality = params.get('reality');
+  if (reality) document.body.dataset.reality = reality;
+</script>
+</body>
+</html>

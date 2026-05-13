@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoreWeave — From Your Book to a Living World (Concept Overview)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f4f8fb;
+      --bg-card: #ffffff;
+      --text: #1a2332;
+      --text-muted: #5c6b7f;
+      --border: #d8e4ec;
+      --accent-sky: #0ea5e9;
+      --accent-teal: #14b8a6;
+      --accent-coral: #fb7185;
+      --accent-soft: #e0f2fe;
+      --accent-teal-soft: #ccfbf1;
+      --accent-coral-soft: #ffe4e8;
+      --shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: linear-gradient(165deg, var(--bg) 0%, #eef6ff 45%, #f8fafc 100%);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+    }
+
+    .hero {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-teal);
+      background: var(--accent-teal-soft);
+      padding: 6px 14px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: clamp(1.75rem, 4vw, 2.35rem);
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+      margin-bottom: 16px;
+    }
+
+    .hero-lead {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .section {
+      margin-bottom: 48px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .section-num {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--accent-sky);
+    }
+
+    .section-title {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.35rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .section-desc {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      max-width: 720px;
+    }
+
+    /* Architecture layers */
+    .arch-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .arch-row {
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .arch-card {
+      flex: 1;
+      min-width: 140px;
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+
+    .arch-card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .arch-card p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .arch-card.sky {
+      border-color: rgba(14, 165, 233, 0.45);
+      background: linear-gradient(180deg, #fff 0%, var(--accent-soft) 100%);
+    }
+
+    .arch-card.teal {
+      border-color: rgba(20, 184, 166, 0.45);
+      background: linear-gradient(180deg, #fff 0%, var(--accent-teal-soft) 100%);
+    }
+
+    .arch-card.coral {
+      border-color: rgba(251, 113, 133, 0.4);
+      background: linear-gradient(180deg, #fff 0%, var(--accent-coral-soft) 100%);
+    }
+
+    .arch-arrow {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 10px 0;
+      color: var(--accent-sky);
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .arch-row-wide {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .arch-card-wide {
+      flex: 1 1 100%;
+      background: var(--bg-card);
+      border: 2px dashed rgba(14, 165, 233, 0.35);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .arch-card-wide h3 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .arch-card-wide p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .byok-note {
+      margin-top: 16px;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      padding: 12px 16px;
+      background: rgba(14, 165, 233, 0.08);
+      border-radius: 10px;
+      border-left: 4px solid var(--accent-sky);
+    }
+
+    .byok-note strong {
+      color: var(--text);
+    }
+
+    /* Pipeline */
+    .pipeline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: stretch;
+      justify-content: center;
+    }
+
+    .pipe-stage {
+      flex: 1 1 140px;
+      max-width: 200px;
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 14px;
+      box-shadow: var(--shadow);
+      position: relative;
+    }
+
+    .pipe-stage h4 {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--accent-teal);
+      margin-bottom: 8px;
+    }
+
+    .pipe-stage p {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .pipe-stage.today {
+      border-color: rgba(20, 184, 166, 0.5);
+      background: linear-gradient(145deg, #fff 0%, var(--accent-teal-soft) 100%);
+    }
+
+    .pipe-stage.future {
+      border-style: dashed;
+      border-color: rgba(251, 113, 133, 0.65);
+      background: linear-gradient(145deg, #fff 0%, var(--accent-coral-soft) 100%);
+      opacity: 0.98;
+    }
+
+    .pipe-stage.future .future-tag {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #be123c;
+      background: #ffe4e8;
+      padding: 4px 8px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .pipe-connector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-sky);
+      font-size: 1.4rem;
+      font-weight: 300;
+      flex: 0 0 auto;
+      align-self: center;
+    }
+
+    @media (max-width: 720px) {
+      .pipe-connector {
+        transform: rotate(90deg);
+        padding: 4px 0;
+      }
+      .pipeline {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .pipe-stage {
+        max-width: none;
+      }
+    }
+
+    /* Agentic callout */
+    .callout {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      border: 2px solid rgba(14, 165, 233, 0.35);
+      box-shadow: var(--shadow);
+      padding: 24px 24px 22px;
+      margin-top: 8px;
+    }
+
+    .callout h3 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.15rem;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .callout ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .callout li {
+      position: relative;
+      padding-left: 22px;
+      margin-bottom: 10px;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+
+    .callout li:last-child {
+      margin-bottom: 0;
+    }
+
+    .callout li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0.55em;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-teal);
+    }
+
+    footer {
+      margin-top: 48px;
+      padding-top: 28px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    footer a {
+      color: var(--accent-sky);
+      font-weight: 500;
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p style="text-align: center; margin-bottom: 20px; font-size: 13px;">
+      <a href="loreweave-technical-architecture-and-pipelines.html" style="color: #0ea5e9; font-weight: 600; text-decoration: none;">Technical architecture &amp; pipelines (engineers) →</a>
+    </p>
+    <header class="hero">
+      <p class="hero-badge">Concept overview</p>
+      <h1>From your book to a living world</h1>
+      <p class="hero-lead">
+        LoreWeave helps authors write and refine novels with AI assistance. The same manuscript data powers translation, chat, and a structured lore library—and lays the groundwork for a long-term vision where readers can step inside the worlds you create.
+      </p>
+    </header>
+
+    <section class="section" aria-labelledby="arch-title">
+      <div class="section-head">
+        <span class="section-num">1</span>
+        <h2 id="arch-title" class="section-title">System architecture (high level)</h2>
+      </div>
+      <p class="section-desc">
+        Think of the platform as layers: you interact through the web app; one gateway coordinates requests; specialized services handle books, billing, AI routing, and knowledge; trusted storage keeps text, files, and—when enabled—a structured map of your story world.
+      </p>
+
+      <div class="arch-flow">
+        <div class="arch-row">
+          <div class="arch-card sky">
+            <h3>People</h3>
+            <p>Authors and readers use a browser or device.</p>
+          </div>
+          <div class="arch-card sky">
+            <h3>Web app</h3>
+            <p>Editor, catalog, chat, settings—one front door for the product.</p>
+          </div>
+        </div>
+        <div class="arch-arrow" aria-hidden="true">↓</div>
+        <div class="arch-row">
+          <div class="arch-card teal">
+            <h3>API gateway (BFF)</h3>
+            <p>A single entry point for outside traffic: routing, auth handoff, and service coordination.</p>
+          </div>
+        </div>
+        <div class="arch-arrow" aria-hidden="true">↓</div>
+        <div class="arch-row-wide">
+          <div class="arch-card-wide">
+            <h3>Product &amp; AI services</h3>
+            <p>
+              Behind the gateway, many small services work together: books and chapters, sharing and catalog, provider credentials and usage, translation and notifications, chat and knowledge extraction—without exposing that complexity in everyday use.
+            </p>
+          </div>
+        </div>
+        <div class="arch-arrow" aria-hidden="true">↓</div>
+        <div class="arch-row">
+          <div class="arch-card coral">
+            <h3>Storage</h3>
+            <p>Manuscripts and metadata in databases; media in object storage; an optional knowledge graph for entities and relationships when you enable deeper lore features.</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="byok-note">
+        <strong>Your keys, your models.</strong> AI calls use your own provider keys (BYOK) where configured—so costs and model choice stay under your control.
+      </p>
+    </section>
+
+    <section class="section" aria-labelledby="pipe-title">
+      <div class="section-head">
+        <span class="section-num">2</span>
+        <h2 id="pipe-title" class="section-title">Pipeline: book → lore → future play</h2>
+      </div>
+      <p class="section-desc">
+        Writing a chapter is only the start. In the background, the system can hand text to multi-step AI workflows that enrich a shared lore layer. Today that powers assistants and tools; a future design explores stepping into those worlds as structured play.
+      </p>
+
+      <div class="pipeline">
+        <div class="pipe-stage">
+          <h4>Write</h4>
+          <p>Authors draft and save chapters in the editor; content is stored safely as the source of truth.</p>
+        </div>
+        <span class="pipe-connector" aria-hidden="true">→</span>
+        <div class="pipe-stage">
+          <h4>Handoff</h4>
+          <p>Saves trigger reliable background processing so extraction and other jobs do not block typing.</p>
+        </div>
+        <span class="pipe-connector" aria-hidden="true">→</span>
+        <div class="pipe-stage">
+          <h4>Extract</h4>
+          <p>AI reads chapters in stages—finding entities, relationships, and facts that match your project settings.</p>
+        </div>
+        <span class="pipe-connector" aria-hidden="true">→</span>
+        <div class="pipe-stage">
+          <h4>Lore layer</h4>
+          <p>Glossary, wiki-style articles, and a knowledge graph connect story text to structured lore.</p>
+        </div>
+        <span class="pipe-connector" aria-hidden="true">→</span>
+        <div class="pipe-stage today">
+          <h4>Today</h4>
+          <p>Chat, translation, continuity-aware assistance—grounded in your canon when enabled.</p>
+        </div>
+        <span class="pipe-connector" aria-hidden="true">→</span>
+        <div class="pipe-stage future">
+          <span class="future-tag">Design track — Phase 6+</span>
+          <h4>Future</h4>
+          <p><strong>Living Worlds:</strong> text-first experiences where NPCs and narration draw from the same lore—explored in planning, not yet a shipped product surface.</p>
+        </div>
+      </div>
+
+      <div class="callout" aria-labelledby="agentic-title">
+        <h3 id="agentic-title">What “agentic AI” means here</h3>
+        <ul>
+          <li><strong>Multi-step background work</strong> — not just one reply: queued reading, model calls, and merging results into your lore store over time.</li>
+          <li><strong>Respects your rules</strong> — usage limits, project toggles, and provider choices shape what runs and when.</li>
+          <li><strong>Grounded in the manuscript</strong> — extractions aim to trace back to passages so “who said what” stays inspectable, not magical memory.</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer>
+      <p>Concept overview — not a technical specification.</p>
+      <p style="margin-top: 10px;">
+        For the extension design track (Living Worlds / Phase 6+), see
+        <a href="../docs/03_planning/LLM_MMO_RPG/README.md">docs/03_planning/LLM_MMO_RPG/README.md</a>
+        in the repository.
+      </p>
+    </footer>
+  </div>
+</body>
+</html>

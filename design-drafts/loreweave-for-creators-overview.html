@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoreWeave — For Creators (Practical Overview)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f4f8fb;
+      --bg-card: #ffffff;
+      --text: #1a2332;
+      --text-muted: #5c6b7f;
+      --border: #d8e4ec;
+      --accent-sky: #0ea5e9;
+      --accent-teal: #14b8a6;
+      --accent-coral: #fb7185;
+      --accent-violet: #8b5cf6;
+      --soft-sky: #e0f2fe;
+      --soft-teal: #ccfbf1;
+      --soft-coral: #ffe4e8;
+      --soft-violet: #ede9fe;
+      --shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Inter", system-ui, sans-serif;
+      background: linear-gradient(165deg, var(--bg) 0%, #eef6ff 45%, #f8fafc 100%);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 36px 22px 70px;
+    }
+
+    .top-nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 26px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .top-nav a {
+      color: var(--accent-sky);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .top-nav a:hover { text-decoration: underline; }
+
+    .hero {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 30px 24px;
+      margin-bottom: 30px;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #0f766e;
+      background: var(--soft-teal);
+      padding: 6px 12px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: clamp(1.7rem, 4vw, 2.3rem);
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      color: var(--text-muted);
+      max-width: 760px;
+    }
+
+    .section {
+      margin-bottom: 28px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px 20px;
+    }
+
+    .section h2 {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 1.35rem;
+      margin-bottom: 12px;
+    }
+
+    .section p { color: var(--text-muted); }
+
+    .list {
+      margin-top: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .list li {
+      list-style: none;
+      color: var(--text-muted);
+      padding-left: 18px;
+      position: relative;
+    }
+
+    .list li::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-teal);
+      position: absolute;
+      left: 0;
+      top: 0.58em;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .chip {
+      border: 1px solid var(--border);
+      background: #f8fbff;
+      color: #334155;
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 999px;
+    }
+
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .step {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .step .num {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--accent-sky);
+      margin-bottom: 6px;
+    }
+
+    .step h3 {
+      font-size: 0.98rem;
+      margin-bottom: 6px;
+    }
+
+    .step p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .status-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 12px;
+    }
+
+    .status-card.today { background: linear-gradient(180deg, #fff 0%, var(--soft-sky) 100%); }
+    .status-card.future { background: linear-gradient(180deg, #fff 0%, var(--soft-coral) 100%); border-style: dashed; }
+
+    .status-card h3 { margin-bottom: 6px; font-size: 1rem; }
+    .status-card p { font-size: 0.92rem; color: var(--text-muted); }
+
+    .advanced {
+      border: 2px dashed rgba(139, 92, 246, 0.5);
+      background: linear-gradient(180deg, #fff 0%, var(--soft-violet) 100%);
+    }
+
+    .advanced-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6d28d9;
+      margin-bottom: 10px;
+    }
+
+    .advanced-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .advanced-card {
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    .advanced-card h3 {
+      font-size: 1rem;
+      margin-bottom: 6px;
+    }
+
+    .advanced-card p {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    .cta {
+      border-left: 4px solid var(--accent-sky);
+      background: rgba(14, 165, 233, 0.08);
+    }
+
+    footer {
+      margin-top: 28px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    footer a {
+      color: var(--accent-sky);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 760px) {
+      .workflow,
+      .status-grid,
+      .advanced-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="top-nav" aria-label="Related pages">
+      <span>LoreWeave creator pages</span>
+      <span>
+        <a href="agentic-ai-book-to-world-overview.html">Concept</a>
+        ·
+        <a href="loreweave-technical-architecture-and-pipelines.html">Technical</a>
+      </span>
+    </nav>
+
+    <header class="hero">
+      <p class="hero-badge">For creators</p>
+      <h1>Turn story ideas into usable game building blocks</h1>
+      <p>
+        LoreWeave helps non-expert creators write, translate, and turn story/lore into practical game assets and world data. The goal is speed and usability for prototypes, game jams, and early indie projects—not studio-level perfection.
+      </p>
+    </header>
+
+    <section class="section">
+      <h2>Who this is for</h2>
+      <ul class="list">
+        <li>Solo developers building small games with limited time and budget.</li>
+        <li>Hobby creators and game-jam teams that need fast iteration.</li>
+        <li>Writers and worldbuilders who want to test their story as playable content.</li>
+      </ul>
+      <div class="chips" aria-label="Audience tags">
+        <span class="chip">Solo dev</span>
+        <span class="chip">Hobby creator</span>
+        <span class="chip">Game jam</span>
+        <span class="chip">Prototype-first</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>What you can do today</h2>
+      <ul class="list">
+        <li>Co-write faster with AI: brainstorm scenes, rewrite drafts, and keep continuity steadier.</li>
+        <li>Translate chapters and passages across languages for broader testing and sharing.</li>
+        <li>Convert story and lore into practical character/world references.</li>
+        <li>Generate medium-quality asset drafts faster than manual-only workflows.</li>
+        <li>Keep writing, lore notes, and generated outputs connected in one workflow.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>What to expect (quality bar)</h2>
+      <ul class="list">
+        <li>Outputs are designed to be <strong>usable</strong> for early development.</li>
+        <li>Quality is typically <strong>mid-tier</strong>, not studio-AAA.</li>
+        <li>Human review is still important: select, edit, and refine what works.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>Simple 3-step workflow</h2>
+      <div class="workflow">
+        <div class="step">
+          <span class="num">STEP 1</span>
+          <h3>Bring your story</h3>
+          <p>Start with your own book, script, notes, or lore docs.</p>
+        </div>
+        <div class="step">
+          <span class="num">STEP 2</span>
+          <h3>Generate drafts</h3>
+          <p>Use AI-assisted workflows to produce writing, translation, and asset first-pass drafts.</p>
+        </div>
+        <div class="step">
+          <span class="num">STEP 3</span>
+          <h3>Curate and refine</h3>
+          <p>Keep what is useful, iterate quickly, and improve quality over time.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Current status</h2>
+      <p>
+        Current focus is writing support foundations, glossary extraction, knowledge-service build-out, and practical translation/wiki workflows. Long-term gameplay remains a design track and is not fully shipped yet.
+      </p>
+      <div class="status-grid">
+        <div class="status-card today">
+          <h3>Value today</h3>
+          <p>
+            Practical support for writing, translation, lore organization, and asset drafting, with a focus on speed, iteration, and accessible tooling.
+          </p>
+        </div>
+        <div class="status-card future">
+          <h3>Design direction (future)</h3>
+          <p>
+            Living Worlds concepts are an ongoing design track. They are not presented as fully shipped gameplay features yet.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section advanced">
+      <span class="advanced-badge">Advanced concepts</span>
+      <h2>If you want to look ahead</h2>
+      <div class="advanced-grid">
+        <div class="advanced-card">
+          <h3>Multiverse model</h3>
+          <p>
+            One story can branch into multiple “what-if” versions, so creators can explore different outcomes without locking everything into one timeline.
+          </p>
+        </div>
+        <div class="advanced-card">
+          <h3>Consistent-memory role-play</h3>
+          <p>
+            Role-play interactions aim to remember important context from earlier scenes, so characters feel more consistent over time.
+          </p>
+        </div>
+        <div class="advanced-card" style="grid-column: 1 / -1;">
+          <h3>Game direction (design intention)</h3>
+          <p>
+            Long-term, we are exploring a 2.5D turn-based RPG with a large-world feel and deeper world-behavior systems (social, economic, and world-state dynamics). This direction is still being validated through design and prototypes.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section cta">
+      <h2>Start simple</h2>
+      <p>
+        If you can describe your world, you can start building. Use LoreWeave as a practical toolkit for early-stage game creation, then improve quality in iterations.
+      </p>
+      <p style="margin-top: 10px;">
+        Explore the project:
+        <a href="https://github.com/letuhao/lore-weave" target="_blank" rel="noopener noreferrer">github.com/letuhao/lore-weave</a>
+      </p>
+    </section>
+
+    <footer>
+      <p>This page is beginner-focused by design.</p>
+      <p style="margin-top: 8px;">
+        Need more detail?
+        <a href="agentic-ai-book-to-world-overview.html">Concept overview</a>
+        ·
+        <a href="loreweave-technical-architecture-and-pipelines.html">Technical architecture</a>
+      </p>
+    </footer>
+  </div>
+</body>
+</html>

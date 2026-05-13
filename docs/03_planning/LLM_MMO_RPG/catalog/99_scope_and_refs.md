@@ -10,7 +10,7 @@ generated_by: scripts/chunk_doc.py
 
 | Category | ✅ Designed | 🟡 Partial | 📦 Deferred | ❓ Open | 🚫 OOS | Total |
 |---|---|---|---|---|---|---|
-| IF | 248 | 4 | 21 | 0 | 0 | 273 |
+| IF | 319 | 5 | 26 | 0 | 0 | 350 |
 | WA | 2 | 2 | 3 | 0 | 0 | 7 |
 | PO | 6 | 2 | 1 | 0 | 0 | 9 |
 | PL | 4 | 7 | 3 | 0 | 0 | 14 |
@@ -22,13 +22,13 @@ generated_by: scripts/chunk_doc.py
 | PLT | 1 | 2 | 4 | 1 | 0 | 8 |
 | CC | 0 | 5 | 3 | 1 | 0 | 9 |
 | DL | 0 | 0 | 5 | 1 | 0 | 6 |
-| **Total** | **291** | **38** | **63** | **3** | **2** | **397** |
+| **Total** | **362** | **39** | **68** | **3** | **2** | **474** |
 
 ### Interpretation
 
 - **246 Designed** (green): concrete decisions in locked docs — storage, fork, canon model, PC mechanics, R1-R13, M1-M7, WA-4, C1-C5, H1-H6 + M-REV-1..6 + P1-P4, S1-S13, plus **SR1 SLOs + Error Budget Policy (2026-04-24) — 8 decisions, 7 user-journey SLIs (session-availability, turn-completion, event-delivery, realtime-freshness, auth-success, admin-action, cross-reality-propagation), tiered SLO targets (free/paid/premium), error budget policy with 4-tier burn-rate response including feature freeze at ≥90%, multi-tenant isolation SLO (noisy-neighbor + meta 99.99%), reliability review cadence (daily→annual), alert-to-SLO derivation with CI lint, public status page V2+, cardinality + retention cost controls**.
 
-**All 21 SA+DE adversarial + 13 Security (S1-S13) resolved.** Storage + multiverse design fully locked pending external-dependent V1 prototype data. **SRE / Incident Response review in progress (5/12 done)**: SR1 SLOs + SR2 Incident Classification + SR3 Runbook Library + SR4 Postmortem Process + **SR5 Deploy Safety + Rollback (2026-04-24) — 12 decisions, deploy class enum (patch/minor/major/emergency) with CI classification lint, 4 freeze mechanisms (SLO burn + scheduled + incident + security) with break-glass override, 5-stage canary rollout (internal → 1% → 10% → 50% → 100%) with auto-abort at 2× baseline burn, feature flags table with mandatory planned_removal_date + quarterly debt review, 6-phase schema migration protocol (pre-flight → additive → deploy code → backfill → cutover → remove) with migration-orchestrator + cohort rollout, config change PR requirements (diff + validation + dry-run + rollback), rollback decision framework per change type with rollback-first bias, `deploy_audit` table (5y) with alert/incident auto-correlation, async change advisory for major with V1 solo-dev pattern, deploy windows Mon-Thu 10-16 with CI enforcement; `reality_registry.deploy_cohort` + `feature_flags` + `deploy_audit` tables** — SR6-SR12 pending.
+**All 21 SA+DE adversarial + 13 Security (S1-S13) resolved.** Storage + multiverse design fully locked pending external-dependent V1 prototype data. **SRE / Incident Response review COMPLETE 12/12 (2026-04-24)**: SR1 SLOs + SR2 Incident Classification + SR3 Runbook Library + SR4 Postmortem Process + SR5 Deploy Safety + Rollback + SR6 Dependency Failure Handling + SR7 Chaos Drill Cadence + SR8 Capacity Planning + Auto-Scaling (invariant I17) + SR9 Alert Tuning + Pager Discipline + SR10 Supply Chain Security (invariant I18) + SR11 Turn-Based Game Reliability UX + **SR12 Observability Cost + Cardinality (2026-04-24) — 10 decisions + 1 pending (SR12-D11 = proposed invariant I19 awaiting architect approval in POST-REVIEW), observability inventory registry at `contracts/observability/inventory.yaml` with required fields per type (metric + audit_table) + CI enforcement, per-service cardinality + log + audit budgets + `observability_budget_breaches` table (1y retention), 22-table retention audit against S8-D3 matrix with 1 finding (`user_queue_metrics` formalized 1y) + **S8-D3 extended with Operational tier (1y)**, log sampling strategy (error 100%/warn 50%/info 10%/debug 1% with per-service overrides + trace-preservation + non-negotiable PII scrubbing), audit rollup cadences per-table protocol with V1 minimum (alert_outcomes + prompt_audit), meta-observability 6 metrics + DF11 panel + 4 alerts, cardinality admission control tiered (V1 warn-and-drop → V1+30d hard-reject → V2+ pre-commit), per-tenant cost attribution deferred V2+, V1 weekly rebaseline cadence first 4 weeks + monthly/quarterly thereafter per SR2-D8, **12-item V1 launch gate**; 3 new admin commands (`admin/metric-label-audit` Tier 3 + `admin/retention-override` Tier 2 + `admin/log-sampling-update` Tier 2)**. **SRE Review complete.**
 
 **All 13 storage risks (R1–R13) resolved + C1 from SA+DE adversarial review resolved via orphan-worlds reframe. Storage + multiverse design design-complete** (residual items external-data-dependent: A4 benchmark, D1 cost, E3 legal).
 - **38 Partial** (yellow): broad strokes designed, concrete detail pending (prompt assembly, retrieval quality, realtime).
