@@ -312,9 +312,11 @@ When `KnowledgeServiceExtracted` producer is selected (V1+):
 |---|---|---|
 | 1. JSON parse | serde_json parse of LLM output | Parse fail → `authoring.invalid_json` (retry with error context) |
 | 2. Schema validation | CreativeSeed serde + schemars-generated JSON Schema validation | Validation fail → `authoring.schema_violation { field, error }` (retry) |
-| 3. Cap validation | `culture_hints.len() ≤ 16` + `canonical_settlements.len() ≤ 50` + `position ∈ [0, 1]` for ExplicitPosition + others per GEO_001 §3 rules | Cap fail → `authoring.cap_violation { rule_id }` (retry) |
+| 3a. Cap validation | `culture_hints.len() ≤ 16` + `canonical_settlements.len() ≤ 50` + `position ∈ [0, 1]` for ExplicitPosition + others per GEO_001 §3 rules | Cap fail → `authoring.cap_violation { rule_id }` (retry) |
+| 3b. Uniqueness validation *(D-S04-1)* | `canonical_settlements[].name` unique across the array (case-sensitive LocalizedName.default field match) + `culture_hints[].naming_style_ref` unique across the array + `naming_styles` HashMap keys unique (enforced by Rust HashMap) | Duplicate → `authoring.duplicate_canonical_name { kind, name }` (retry; LLM re-prompted to remove duplicate) |
+| 3c. Spatial-preference cycle detection *(D-S04-2)* | Topological sort over `SpatialPreference::NearSettlement(name)` references in `canonical_settlements[].spatial_preference` — build DAG where edge from A → B iff A.spatial_preference = NearSettlement(B.name); detect cycles via DFS with white/gray/black coloring | Cycle → `authoring.spatial_preference_cycle { cycle_member_names }` (retry; LLM re-prompted to break cycle by anchoring one settlement to a non-NearSettlement preference) |
 | 4. Reference validation | knowledge-service canon_ref resolution (V1+) | Resolve fail → `authoring.canon_ref_unresolved` (retry V1+; defer V1) |
-| 5. Content safety | §12X.L7 PII scrubber + §12Y.L5 injection scanner on `lore_hooks_per_region.content` + `canonical_settlements.name` | Scrub fail → `authoring.content_safety_violation` (retry) |
+| 5. Content safety | §12X.L7 PII scrubber + §12Y.L5 injection scanner on `lore_hooks_per_region.content` + `canonical_settlements.name` + `culture_hints.value_tags` + `naming_styles` corpus refs | Scrub fail → `authoring.content_safety_violation` (retry) |
 
 Retry strategy: bounded N=3 per iteration. On exhaustion, surface to author with `authoring.retry_cap_exceeded` and offer `EditManually` fallback. Author edits move state to `Hybrid { primary: LlmGenerated{..}, author_edits_applied: N }`.
 
@@ -370,13 +372,15 @@ Validator rule extension on CultureHint + CanonicalSettlementDecl: `hearth_posit
 
 ## §12 Failure UX — `authoring.*` RejectReason namespace
 
-Owned by GEO_001b. Registered in `_boundaries/02_extension_contracts.md` §1.4. V1 rule_ids (8) + V1+ reservations (4).
+Owned by GEO_001b. Registered in `_boundaries/02_extension_contracts.md` §1.4. **V1 rule_ids: 10** (D-S04-1 + D-S04-2 added 2026-05-14 in approval cycle) + V1+ reservations: 4.
 
 | Rule ID | Severity | Where raised | Vietnamese user copy (V1) | English fallback |
 |---|---|---|---|---|
 | `authoring.invalid_json` | user (LLM only) | Step 1 JSON parser | "LLM tạo dữ liệu không hợp lệ. Đang thử lại..." | "LLM produced invalid JSON. Retrying..." |
 | `authoring.schema_violation` | user (LLM only) | Step 2 schema validator | "Dữ liệu LLM không khớp cấu trúc. Đang thử lại..." | "LLM output schema mismatch. Retrying..." |
-| `authoring.cap_violation` | user | Step 3 cap validator | "Vượt quá giới hạn (ví dụ ≤16 văn hóa hoặc ≤50 thị trấn)." | "Cap exceeded (e.g., ≤16 cultures or ≤50 settlements)." |
+| `authoring.cap_violation` | user | Step 3a cap validator | "Vượt quá giới hạn (ví dụ ≤16 văn hóa hoặc ≤50 thị trấn)." | "Cap exceeded (e.g., ≤16 cultures or ≤50 settlements)." |
+| **`authoring.duplicate_canonical_name`** *(D-S04-1)* | user | Step 3b uniqueness validator | "Hai thị trấn hoặc văn hóa có cùng tên. LLM sẽ thử lại với tên khác biệt." | "Two canonical settlements or cultures share a name. LLM will retry with distinct names." |
+| **`authoring.spatial_preference_cycle`** *(D-S04-2)* | user | Step 3c cycle detector | "Các thị trấn tham chiếu lẫn nhau theo vòng tròn (A gần B, B gần A). Cần ít nhất một thị trấn neo vào tham chiếu không-thị-trấn." | "Settlements reference each other in a cycle (A near B, B near A). At least one must anchor to a non-settlement preference." |
 | `authoring.content_safety_violation` | user (LLM only) | Step 5 PII + injection scan | "Nội dung bị chặn vì lý do an toàn." | "Content blocked for safety reasons." |
 | `authoring.iteration_cap_exceeded` | user | Iteration loop | "Đã đạt giới hạn 10 lần lặp. Hãy chấp nhận bản thảo hiện tại hoặc bắt đầu lại." | "10-iteration cap reached. Accept current draft or restart." |
 | `authoring.retry_cap_exceeded` | user (LLM only) | Retry loop | "LLM thử 3 lần không thành công. Hãy chỉnh sửa thủ công." | "LLM retry cap reached. Please edit manually." |
@@ -465,7 +469,7 @@ Author selects AuthoringProducer::KnowledgeServiceExtracted{book_id: "than_dieu_
 
 ## §15 Acceptance criteria
 
-10 V1-testable acceptance scenarios.
+**12 V1-testable acceptance scenarios** (AC-AUTHOR-11 + AC-AUTHOR-12 added 2026-05-14 in D-S04-1..5 approval cycle covering uniqueness + cycle detection rejects).
 
 | ID | Scenario | Reject rule_id |
 |---|---|---|
@@ -479,6 +483,8 @@ Author selects AuthoringProducer::KnowledgeServiceExtracted{book_id: "than_dieu_
 | **AC-AUTHOR-8** | CreativeSeed schema_version=2 with culture_hint having NEITHER `hearth_position_normalized` NOR `hearth_preference` Some → reject `authoring.spatial_intent_required` at schema validation step 3. | `authoring.spatial_intent_required` |
 | **AC-AUTHOR-9** | RealityManifest omits `authoring_metadata` (legacy reality bootstrapped before GEO_001b ships) → bootstrap proceeds normally; GeographyBorn payload carries `authoring_metadata: None`; no validator complaint (additive field per I14). | — |
 | **AC-AUTHOR-10** | LLM authoring with `KnowledgeServiceExtracted` producer V1 → knowledge-service unavailable → reject `authoring.knowledge_service_unavailable` (V1+ active when knowledge-service ships); V1 falls back to `LlmGenerated{grounding: None}` automatically and emits warning to author. | (V1+) `authoring.knowledge_service_unavailable` |
+| **AC-AUTHOR-11** *(D-S04-1 coverage)* | LLM produces CreativeSeed with TWO canonical_settlements both named "Tương Dương" (e.g., one at NearBiome(Plain), another at NearBiome(Forest)) → step 3b uniqueness validator rejects → retry with error context "remove duplicate name" → LLM v2 produces distinct names ("Tương Dương" + "Tương Bắc") → validator passes → bootstrap. Verifies duplicate detection on both canonical_settlements.name AND culture_hints.naming_style_ref (parallel rule). | `authoring.duplicate_canonical_name` |
+| **AC-AUTHOR-12** *(D-S04-2 coverage)* | LLM produces CreativeSeed with cycle: settlement A.spatial_preference = NearSettlement("B"); settlement B.spatial_preference = NearSettlement("A") → step 3c cycle detector (DFS with white/gray/black coloring) rejects → retry with error context "break cycle by anchoring one settlement to a non-NearSettlement preference (e.g., NearBiome)" → LLM v2 produces A=NearBiome(Plain), B=NearSettlement("A") (acyclic DAG) → validator passes → procgen placement happens in topological order. Verifies cycle detection across both direct (A↔B) and indirect (A→B→C→A) cycles. | `authoring.spatial_preference_cycle` |
 
 ---
 
@@ -496,6 +502,7 @@ Author selects AuthoringProducer::KnowledgeServiceExtracted{book_id: "than_dieu_
 | **GEO-AUTHOR-D8** | T6 LLM CreativeSeed extension proposal post-bootstrap (per GEO_001 GEO-D12) | V1+ |
 | **GEO-AUTHOR-D9** | Hybrid producer counter-display in admin Forge ("this world was 70% LLM + 30% author edits") | V1+30d |
 | **GEO-AUTHOR-D10** | Schema-version-2 deprecation of `position_normalized` (V2+ if all V1+ authoring uses SpatialPreference) | V2+ |
+| **GEO-AUTHOR-D11** *(D-S04-5)* | `intended_producer: Option<AuthoringProducer>` audit field on AuthoringMetadata — records original producer when fallback fires (e.g., KnowledgeServiceExtracted V1 → LlmGenerated{grounding: None} on knowledge-service unavailable per AC-AUTHOR-10). V1 records final producer only; intended-producer audit fidelity adds in V1+30d. SPIKE_04 GAP-S6.U surfaced this. | V1+30d |
 
 ---
 

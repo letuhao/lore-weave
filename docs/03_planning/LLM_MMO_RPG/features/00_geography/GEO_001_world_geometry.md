@@ -301,8 +301,9 @@ Procedural generation pipeline implemented in `world-service`'s `geography-gener
 
 **Pipeline determinism (EVT-A9 compliance):**
 
-- Same `(master_seed, creative_seed, generator_pipeline_version)` → bitwise-identical `world_geometry` aggregate (modulo HashMap iteration order, which the generator MUST normalize via deterministic sort).
+- Same `(master_seed, creative_seed, generator_pipeline_version)` → bitwise-identical `world_geometry` aggregate (modulo HashMap iteration order, which the generator MUST normalize via deterministic sort — V1 implementation discipline: sort HashMap keys to BTreeMap at serialize time; SPIKE_04 GAP-S2.A CI snapshot test enforces).
 - `dp::deterministic_rng` per `_boundaries/02_extension_contracts.md` §1 used for ALL non-deterministic choices within the pipeline.
+- **(D-S04-3)** Floating-point operations (`river_flux: f32` accumulation in stage 4a + Voronoi cell area in stage 1) compiled with **strict-IEEE mode** (`-ffp-contract=off` for C/C++ deps; Rust's default IEEE-754 + explicit `#[deny(clippy::float_arithmetic)]` outside the generator module). NO `f64` truncation paths; NO SIMD-vectorized reductions (which reassociate operands non-deterministically). Fixed-point representation deferred V1+ if drift surfaces in CI snapshot tests (SPIKE_04 GAP-S2.B).
 - Replay CI gate verifies: same seed → same aggregate bytes after stages 1-4. V1+ activation of stages 5-8 extends the CI gate.
 - Pipeline version bumps require an upcaster path per R3 (V2+ if mapping function changes).
 
@@ -419,7 +420,7 @@ Forge actor (per WA_003 RBAC + S5 Tier 2 ImpactClass=Griefing for additive; Tier
     2. SchemaGate (DeltaKind variant valid; payload typecheck)
     3. ReferentialIntegrityGate (cell_id ∈ cells; route_id ∈ routes if RemoveRoute; etc.)
     4. OrderingGate (prev_delta_id == world_geometry.last_delta_event_id)
-    5. ContentSafetyGate (LocalizedName + reason scrubbed via §12X.L7)
+    5. ContentSafetyGate (LocalizedName + reason scrubbed via §12X.L7 — D-S04-4: scrub regardless of in-fiction context, matching existing §12X.L7 admin discipline; named in-fiction characters like "Tiểu Long Nữ" go through the same regex scrubber as personal data — defense in depth)
     ↓ if all pass:
 EVT-T3 Derived `aggregate_type=world_geometry` field delta:
     geography_deltas.push(GeographyDelta { id, kind, fiction_time, author, reason })

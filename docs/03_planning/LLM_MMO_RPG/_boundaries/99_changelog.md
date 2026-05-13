@@ -6,6 +6,30 @@
 
 ---
 
+## 2026-05-14 — SPIKE_04 D-S04-1..5 approval batch (5 sub-decisions applied)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` pattern).
+- **Trigger:** SPIKE_04 GEO procgen + authoring validation (2026-05-13 commit `b25cfb92`) surfaced 5 sub-decisions D-S04-1..5 for user approval before V1 implementation phase. User picked option 1 = approve all 5 with recommended defaults. Apply now; commit.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `02_extension_contracts.md` §1.4: `authoring.*` row updated — 8 V1 rule_ids → **10 V1 rule_ids** (D-S04-1 + D-S04-2 added; V1+ reservation count unchanged at 4)
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_001b_authoring_flow.md`: §8 validation pipeline step 3 split into 3a/3b/3c (cap / uniqueness / cycle detection); §12 namespace count 8 V1 → 10 V1; §15 acceptance count 10 → 12 (AC-AUTHOR-11 + AC-AUTHOR-12 added); §16 deferrals adds GEO-AUTHOR-D11
+  - `features/00_geography/GEO_001_world_geometry.md`: §5 pipeline determinism note extends D-S04-3 strict-IEEE compile flag discipline; §7 ContentSafetyGate annotation extends D-S04-4 scrub-regardless policy
+- **Decisions applied:**
+  1. **D-S04-1** (canonical_settlements + culture_hints name uniqueness) → reject duplicates via NEW `authoring.duplicate_canonical_name`. Validator step 3b runs case-sensitive LocalizedName.default-field match across canonical_settlements[].name + naming_style_ref uniqueness across culture_hints[]. LLM re-prompted with error context "remove duplicate" on retry.
+  2. **D-S04-2** (SpatialPreference::NearSettlement cycle detection) → reject cycles via NEW `authoring.spatial_preference_cycle`. Validator step 3c builds DAG from NearSettlement references; DFS with white/gray/black coloring detects cycles (direct A↔B + indirect A→B→C→A). LLM re-prompted with error context "break cycle by anchoring one settlement to a non-NearSettlement preference".
+  3. **D-S04-3** (floating-point determinism) → strict-IEEE mode V1 (`-ffp-contract=off` for C/C++ deps; Rust default IEEE-754 + `#[deny(clippy::float_arithmetic)]` outside generator module; NO SIMD-vectorized reductions). Fixed-point V1+ if drift surfaces in CI snapshot tests per SPIKE_04 GAP-S2.B. GEO_001 §5 pipeline determinism note extended.
+  4. **D-S04-4** (admin Forge reason PII scrubbing) → scrub regardless of in-fiction context per existing §12X.L7 admin discipline. Named characters like "Tiểu Long Nữ" go through the same regex scrubber as personal data. Defense in depth. GEO_001 §7 ContentSafetyGate annotation extended.
+  5. **D-S04-5** (`intended_producer` audit field on fallback) → V1+30d as new GEO-AUTHOR-D11 deferral. V1 records final producer only; V1+30d adds Option<AuthoringProducer> intended_producer field on AuthoringMetadata for audit fidelity when fallback fires (e.g., KnowledgeServiceExtracted V1 → LlmGenerated{grounding: None} on knowledge-service unavailable per AC-AUTHOR-10).
+- **Cumulative outcome:**
+  - 5 sub-decisions locked; 2 new V1 reject rule_ids (`authoring.duplicate_canonical_name` + `authoring.spatial_preference_cycle`); 1 new V1+30d deferral (GEO-AUTHOR-D11); 2 new acceptance scenarios (AC-AUTHOR-11 + AC-AUTHOR-12); 2 schema policy clarifications (strict-IEEE float + scrub-regardless PII)
+  - **GEO_001 + GEO_001b schema is now ready for V1 implementation phase commitment.** The remaining MED-severity GAPs (S1.A schemars build pipeline + S2.A HashMap normalize + S2.B float determinism + S2.C canonical JSON + S2.D cross-platform + S3.E SettlementId blake3-derive + S4.K multi-continent fork orchestration) are all implementation-phase CI gates or build pipeline tasks — they don't require user-approval rounds but DO need to land in V1 impl phase as CI gates before any production reality bootstraps.
+  - **Process lesson reinforced:** SPIKE_04 is the first design-track artifact that triggered a successful sub-decision approval round. Walk-through-validation → surface ambiguity → user-approval batch → apply → done. This is the maturity model for design-track decision-locking moving forward.
+
+---
+
 ## 2026-05-13 — GEO_001b CreativeSeed Authoring Flow DRAFT + GEO_001 HookScope Option C bug fix (write-side cycle)
 
 - **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern).
