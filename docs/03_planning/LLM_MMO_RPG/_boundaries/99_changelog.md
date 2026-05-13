@@ -6,6 +6,44 @@
 
 ---
 
+## 2026-05-13 — GEO_001b CreativeSeed Authoring Flow DRAFT + GEO_001 HookScope Option C bug fix (write-side cycle)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern).
+- **Trigger:** user deep-discussion question "how do LLMs work in this geography generation? are we already define an in/out contract that LLM friendly?". Honest answer surfaced: GEO_001 defined post-pipeline READ contract (prompt-assembly grounding §6) well, but pre-pipeline WRITE contract (LLM produces CreativeSeed) was hand-waved with 7 gaps. User picked composite answer: **fix C** (HookScope bug fix in GEO_001 inline) + **do B** (new sibling GEO_001b for full LLM authoring contract). Best-of-both: immediate schema bug fixed + comprehensive write-side design as separate sibling per two-file split precedent (PL_001+001b / WA_002+002b).
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: `world_geometry` owner annotation extended with write-side cycle history (Option C HookScope bug fix + Option B GEO_001b sibling reference); cross-link to write-side contract
+  - `02_extension_contracts.md`: §1.4 NEW `authoring.*` row (GEO_001b owner; 8 V1 rule_ids + 4 V1+ reservations); §2 RealityManifestGeographyExtension block extended with `authoring_metadata: Option<AuthoringMetadata>` + AuthoringProducer 5-variant comment + AuthoringMetadata struct shape + SpatialPreference 14-variant enum reservation + schema_version 1→2 migration plan
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_001_world_geometry.md`: Option C HookScope bug fix — RegionalLoreHook.scope now uses PRE-materialization HookScope enum (SettlementByName/PositionRegion/Archetype + V1+ KnowledgeEntityRef reservation) instead of post-materialization GeoCellId/SettlementId/ProvinceId; AC-GEO-11 added verifying scope resolution; §15 acceptance count 10→11; forward reference to GEO_001b §6.5 + SpatialPreference V1+ migration note added (lines 738 → 748)
+  - **NEW** `features/00_geography/GEO_001b_authoring_flow.md` (537 lines): write-side authoring contract; 19 sections; declares AuthoringProducer + SpatialPreference + AuthoringMetadata + AuthoringSession (BFF-held) + S9-registered LlmAuthoringTemplate + multi-turn iteration loop + validation pipeline + producer abstraction + RealityManifest extension + CreativeSeed schema_version 1→2 plan + `authoring.*` reject namespace + 10 V1-testable AC-AUTHOR-1..10
+  - `features/00_geography/_index.md`: GEO_001b row added; folder now has 2 features (GEO_001 + GEO_001b)
+  - `catalog/cat_00_GEO_geography_foundation.md`: 16 NEW catalog entries GEO-AUTHOR-1..GEO-AUTHOR-16 (AuthoringProducer / SpatialPreference / schema migration / S9 template / AuthoringMetadata / BFF session state / iteration loop / validation / namespace / RealityManifest extension / knowledge-service grounding V1+ / producer abstraction / AzgaarFmgJson V1+ / V1+30d enhancements / V2+ collaboration / V2+ position deprecation)
+
+### 7 write-side gaps surfaced and resolved
+
+| # | Gap | Resolution |
+|---|---|---|
+| 1 | **HookScope bug** (CHICKEN-AND-EGG) — RegionalLoreHook.scope used GeoCellId/SettlementId/ProvinceId, but those IDs don't exist at CreativeSeed-creation time (they materialize FROM CreativeSeed) | Option C fix inline in GEO_001 §6: new HookScope enum with SettlementByName(LocalizedName) + PositionRegion{center, radius} + Archetype variants; resolution happens post-stage-6 (settlements) and post-stage-1 (positions) |
+| 2 | **LLM prompt template implicit** — S9 mandates every LLM call goes through a registered template; world authoring is an LLM intent we hadn't registered | GEO_001b §5: S9 template at `contracts/prompt/templates/world_authoring/v1.tmpl` with 8-section structure per §12Y.L3; CI fixtures per §12Y.L9 |
+| 3 | **Schema-constrained generation not mandated** — without OpenAI structured outputs / vLLM grammar mode, LLM produces JSON that fails validators | GEO_001b §5.3: schema-constrained generation REQUIRED per V1 contract; creative_seed.v2.schema.json generated from Rust struct via schemars at build time |
+| 4 | **Position fields ask LLM to do geometry (its weakness)** — `(f32, f32)` coords cluster, axis-align, fail | GEO_001b §4.2: SpatialPreference 14-variant closed enum (Northern/Coastal/Highland/NearBiome/NearCulture/NearSettlement/ExplicitPosition/Any); CreativeSeed.schema_version 1→2 additive migration; V1+ LLM-authored worlds use SpatialPreference, V1 Manual/Imported can use ExplicitPosition |
+| 5 | **Multi-turn iteration loop undocumented** — author intent → LLM proposes → author edits → LLM regenerates → author approves had no contract | GEO_001b §7: BFF-held AuthoringSession with bounded N=10 iterations + N=3 retry per iteration + S6 cost cap inherited from S6-D2 + 24h session TTL; AuthorAction 4-variant (Accept/RejectAndRetry/EditManually/Cancel) |
+| 6 | **knowledge-service grounding missing** — book canon should ground LLM output, not LLM hallucination | GEO_001b §6: KnowledgeGrounding struct + KnowledgeServiceExtracted producer V1 schema-reserved; V1+ activation when knowledge-service ships per CLAUDE.md `101_DATA_RE_ENGINEERING_PLAN.md`; [WORLD_CANON] section hydrated with ≤200 entities × ~30 tokens |
+| 7 | **Non-LLM authoring not first-class** — manual form / import / knowledge-extracted treated as afterthoughts | GEO_001b §4.1 + §9: AuthoringProducer 5-variant (LlmGenerated V1 + AuthorManual V1 + Imported V1+ + KnowledgeServiceExtracted V1+ + Hybrid V1); producer abstraction means procgen pipeline doesn't care which producer made the CreativeSeed |
+
+### Cumulative outcome
+
+- **HookScope bug** (Option C) fixed inline; AC-GEO-11 added (now 11 acceptance scenarios in GEO_001).
+- **GEO_001b sibling** (Option B) covers full LLM authoring contract — 537 lines; under 800 hard cap; comparable to MAP_001=714 / WA_003=798 sibling pattern.
+- **CreativeSeed schema_version 1 → 2 additive migration** plan locked; V1 implementations stay valid; V1+ LLM-authored worlds use SpatialPreference; V2+ may deprecate position_normalized if uptake is universal.
+- **No new aggregate introduced** — BFF-held UX state; per-iteration LLM cost in S6 user_cost_ledger; final accepted CreativeSeed durable record via existing GeographyBorn payload (additive `authoring_metadata` field per I14).
+- **Producer abstraction** preserves V1 single-cell SPIKE_01 (uses AuthorManual; no LLM dependency) AND supports canon-faithful Tang/Song dynasty authoring (ExplicitPosition escape hatch) AND enables V1+ knowledge-service grounding without re-design.
+- **Process lesson reinforced**: even after /review-impl fix cycle, deep-discussion surfaced a 7-gap write-side hole that the post-pipeline READ contract had masked. Read-contract correctness ≠ write-contract correctness. Both sides need independent governance discipline.
+
+---
+
 ## 2026-05-13 — GEO_001 fix cycle (post-/review-impl adversarial pass; 11 issues resolved)
 
 - **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit; mirrors prior DRAFT-cycle pattern). 2-hour TTL.

@@ -371,8 +371,15 @@ pub struct CanonicalSettlementDecl {                        // consumed by §11 
 }
 
 pub struct RegionalLoreHook {                               // freeform; consumed by LLM prompt-assembly at §6 grounding contract, NOT by generator
-    pub scope: HookScope,                                   // Cell(GeoCellId) | Region(Vec<GeoCellId>) | Settlement(SettlementId) | Province(ProvinceId)
+    pub scope: HookScope,                                   // PRE-materialization identifiers only — see HookScope below
     pub content: I18nBundle,
+}
+
+pub enum HookScope {                                        // (Option C bug fix 2026-05-13) — uses identifiers that exist at CreativeSeed-creation time
+    SettlementByName(LocalizedName),                        // resolves post-stage-6 to SettlementId by name match against canonical_settlements
+    PositionRegion { center: (f32, f32), radius_normalized: f32 }, // resolves post-stage-1 to Vec<GeoCellId> covering the disc
+    Archetype,                                              // applies globally to this archetype's world; no resolution needed
+    // V1+ extension when knowledge-service ships: KnowledgeEntityRef(EntityRef) to bind hooks to canonical book entities
 }
 
 pub struct NamingStyleDecl {                                // V1: Markov-chain corpus ref OR LLM-prompt template; at least one Some required
@@ -386,6 +393,8 @@ pub struct NamingStyleDecl {                                // V1: Markov-chain 
 The LLM produces the `CreativeSeed` value at world-creation time as **structured creative direction** (archetype + scale + culture hints + canonical settlements + naming styles). The procgen pipeline consumes this as **constraints**, then runs deterministically. The LLM does NOT run the pipeline; it does NOT produce the Voronoi cells or the heightmap; it does NOT post-decorate the output. It pre-directs the procgen with the same kind of input a human world-author would write.
 
 This factors LLM strength (creative narrative direction, cultural nuance, name generation) from LLM weakness (geometric reasoning, spatial consistency, deterministic replay). Per the 2024-2025 survey, this hybrid is the only approach that satisfies both creative richness AND strategy gameplay's regeneration-stability.
+
+**Write-side authoring contract → see [GEO_001b](GEO_001b_authoring_flow.md).** The schema HERE is the *materialized data shape*. The flow that PRODUCES this schema (LLM authoring template per S9, schema-constrained generation, multi-turn iteration, validation+retry, cost cap per S6, knowledge-service grounding, producer abstraction LLM/Manual/Imported/KnowledgeExtracted) lives in the sibling doc. GEO_001b also introduces `SpatialPreference` (closed enum of named spatial intents like Northern/Coastal/Highland/NearBiome/etc.) as the V1+ LLM-friendlier alternative to `(f32, f32)` position fields — additive per I14 (CreativeSeed.schema_version 1 → 2 when GEO_001b lands at LOCK; V1=1 keeps required `position_normalized`, V1+=2 adds optional `spatial_preference` with validator "at least one Some").
 
 **LLM-context grounding contract (consumed by S9 prompt assembly):**
 
@@ -659,7 +668,7 @@ Player creates fork at event_id 5000 → child R_beta.
 
 ## §15 Acceptance criteria
 
-10 V1-testable acceptance scenarios for GEO_001 schema + V1-stages-1-4 pipeline. Acceptance scoped to V1 layers (geometry / climate / biome); V1+ political/settlement/route/culture/resource layer acceptance lands with those generators.
+11 V1-testable acceptance scenarios for GEO_001 schema + V1-stages-1-4 pipeline (AC-GEO-11 added 2026-05-13 in write-side cycle to verify HookScope post-materialization resolution per Option C bug-fix). Acceptance scoped to V1 layers (geometry / climate / biome); V1+ political/settlement/route/culture/resource layer acceptance lands with those generators.
 
 | ID | Scenario | Reject rule_id (if applicable) |
 |---|---|---|
@@ -673,6 +682,7 @@ Player creates fork at event_id 5000 → child R_beta.
 | **AC-GEO-8** | Snapshot fork at event_id E where parent has 3 deltas all with event_id < E → child world_geometry has identical seed + creative_seed + all 3 deltas; child appends d4; parent appends d4_alpha; readback shows both diverge correctly with no cross-pollination. | — |
 | **AC-GEO-9** | RealityManifest declares `geography_seed` but omits `creative_seed` → rejected at bootstrap with `geography.creative_seed_required_when_seeded`. | `geography.creative_seed_required_when_seeded` |
 | **AC-GEO-10** | RealityManifest omits `continent_geometries` entirely (single-cell SPIKE_01-style reality) → bootstrap succeeds with no GEO rows; existing PF_001 + MAP_001 + EF_001 + RES_001 bootstrap unchanged; LLM prompt-assembly falls back to creative-archetype text-only hints. | — |
+| **AC-GEO-11** | *(Option C bug-fix coverage)* CreativeSeed contains `lore_hooks_per_region: [{scope: SettlementByName("Yên Vũ Lâu"), content: ...}, {scope: PositionRegion{center: (0.45, 0.55), radius: 0.05}, content: ...}, {scope: Archetype, content: ...}]` → post-stage-6 resolution: SettlementByName binds to materialized SettlementId for "Yên Vũ Lâu"; PositionRegion binds to Vec<GeoCellId> covering the 0.05-radius disc around (0.45, 0.55); Archetype scope applies globally. LLM prompt-assembly correctly fetches all 3 hook types for cells in their resolved scopes. (Verifies pre-materialization HookScope contract is synthesizable end-to-end.) | — |
 
 LOCK granted when 10 scenarios pass integration tests against a `geography-generator` reference implementation in `world-service`. CANDIDATE-LOCK on commit landing all schema + acceptance scenarios documented (this commit).
 
