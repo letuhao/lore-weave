@@ -81,6 +81,125 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-14 → 2026-05-15 — V1+30d geography activation triangle + first consumer feature arc (4 commits; POL + SET + ROUTE activate GEO_001 schema-reserved layers; TVL_001 demonstrates consumer-feature pattern; /review-impl maturity discipline across all 4 features)
+
+### Session arc
+
+User opened with `read session and handoff` — orienting via the prior 2026-05-13/14 GEO_001 foundation arc. Then `3` from next-step recommendations: **GEO_002 POL_001 Political Layer Generator** (V1+30d, activates GEO_001 schema-reserved political/state/culture fields). Phase 0 7-decision deep-dive → user `1` approve all → DRAFT → user invoked `/review-impl` twice (2-pass) → 4 HIGH + 12 MED + 3 LOW resolved inline → commit. Then `2` GEO_003 SET_001 → same Phase 0 + DRAFT + 1-pass /review-impl (4 HIGH + 4 MED + 1 LOW) → commit. Then `1` GEO_004 ROUTE_001 → completes V1+30d activation triangle → Phase 0 + DRAFT + 1-pass /review-impl (3 HIGH + 2 MED + 1 LOW + 1 retro-HIGH from linter parallel review) → commit. Then `TVL_001 V1+ Travel Mechanics design` → first consumer feature → Phase 0 + DRAFT + 1-pass /review-impl (4 HIGH + 2 MED) → commit.
+
+Pattern locked across all 4 features: walk-through Phase 0 sub-decisions with recommended defaults → user terse approve (`1` / `approve all` / `continue` / `tiếp tục đi` — all interpreted as approve) → DRAFT lands in single combined `[boundaries-lock-claim+release]` commit → user invokes `/review-impl` → adversarial review surfaces HIGH/MED/LOW → fix HIGH inline + escalate/defer MED + default-defer LOW + cosmetic → single combined commit with DRAFT + fix cycle folded. POL_001 needed 2 passes (2nd pass caught HIGH-4 fix-introduced regression from HIGH-3); SET/ROUTE/TVL each cleared in 1 pass.
+
+### Foundation activation triangle complete (was 7/7 foundation tier; +4 V1+30d activation features + 1 V1+ consumer feature)
+
+V1+30d activation triangle: ✅ political (POL stage 5+8) + ✅ settlement (SET stage 6) + ✅ route (ROUTE stage 7) + ✅ culture (POL stage 8 — runs after ROUTE for hospitality-narration integration). Only V2+ resource layer (GEO-D10) remains deferred. Strategy substrate readiness COMPLETE at design layer — every layer STRAT_001 V2+ will consume has its schema locked + activation generator designed. Consumer feature pattern DEMONSTRATED (TVL_001 reads locked substrate → produces per-actor runtime state → S9 LLM-context grounding).
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_geography/GEO_002_political_layer.md` | DRAFT + /review-impl 2-pass (4 HIGH + 12 MED + 3 LOW resolved) | 745 |
+| **NEW** `features/00_geography/GEO_003_settlement_generator.md` | DRAFT + /review-impl 1-pass (4 HIGH + 4 MED + LOW-3 resolved) | 745 |
+| **NEW** `features/00_geography/GEO_004_route_network_generator.md` | DRAFT + /review-impl 1-pass (3 HIGH + 2 MED + 1 LOW + 1 retro-HIGH resolved) | 652 |
+| **NEW** `features/00_travel/TVL_001_travel.md` | DRAFT + /review-impl 1-pass (4 HIGH + 2 MED resolved) | 529 |
+| **NEW** `features/00_travel/_index.md` | folder index | 60 |
+| **NEW** `catalog/cat_00_TVL_travel_foundation.md` | TVL-* namespace catalog (28 entries) | 52 |
+| `features/00_geography/_index.md` | extended with GEO_002 + GEO_003 + GEO_004 rows | + |
+| `catalog/cat_00_GEO_geography_foundation.md` | extended with POL_001 (24) + SET_001 (26) + ROUTE_001 (25) sub-sections | + |
+| `_boundaries/01_feature_ownership_matrix.md` | `world_geometry` row owner annotation extended 4× (POL + SET + ROUTE activations) + NEW `actor_travel_state` aggregate row | + |
+| `_boundaries/02_extension_contracts.md` | §1.4 `geography.*` 13 V1 → 58 V1+30d (POL +20 / SET +15 / ROUTE +10); §1 GeographyDeltaKind 5 V1 → 13 V1+30d active (4 POL + 3 SET + 1 ROUTE); NEW §1.4 `travel.*` namespace (15 V1+30d); §1 EVT-T1 Travel:Initiate + EVT-T5 Scheduled:TravelTick + EVT-T6 Travel:JourneyNarration sub-types; §3 capability JWT 3 new claims (can_edit_political/settlement/route_geography) | + |
+| `_boundaries/99_changelog.md` | 4 entries top-anchored (POL + SET + ROUTE + TVL each with DRAFT + /review-impl combined cycle) | + |
+| `_boundaries/_LOCK.md` | 4 claim+release cycles | + |
+
+### 4-commit arc
+
+| # | Commit | What | /review-impl |
+|---|---|---|---|
+| 1 | `3688e57c` | GEO_002 POL_001 DRAFT + /review-impl 2-pass | 1st pass: HIGH-1 schema_version 2→3 bump + HIGH-2 PoliticalSeedMode::Canonical semantic + HIGH-3 procedural clustering pin. 2nd pass: HIGH-4 stage-5/stage-8 cycle (fix-introduced regression from HIGH-3 fix) + 12 MED + 3 LOW |
+| 2 | `8f35ae05` | GEO_003 SET_001 DRAFT + /review-impl 1-pass | HIGH-1 settlement-naming cycle / HIGH-2 STEP D precedence / HIGH-3 schema_version 1→2 bump / HIGH-4 mountain-pass heuristic inverted; 4 MED inline |
+| 3 | `ef41ebf9` | GEO_004 ROUTE_001 DRAFT + /review-impl 1-pass | HIGH-1 Route.seed_source field declaration / HIGH-2 cell-pair invariant / HIGH-3 MountainPass settlement-pair-betweenness; 2 MED inline; 1 retro-HIGH linter ROUTE-V8 canonical-order pair normalization |
+| 4 | `457be1bb` | TVL_001 V1+ DRAFT + /review-impl 1-pass | HIGH-1 Fortress hospitality contradiction / HIGH-2 PL_006 magnitude semantic (was fictional "Tier 0/1") / HIGH-3 realm_clock TVL-vs-PL_001 ownership / HIGH-4 vital_pool vs resource_inventory two-counter conflation; 2 MED (1 inline, 1 deferred EF_001 closure pass) |
+
+### Schema highlights (final state across all 4 commits)
+
+- **`GeographyDeltaKind`** R3 additive closed-enum bumps: 5 V1 GEO_001 → 9 V1+30d (POL +4: Merge/Split/TransferProvinceToState/SetCultureRegion) → 12 V1+30d (SET +3: Relocate/Promote/RemoveSettlement) → 13 V1+30d (ROUTE +1: ReclassifyRoute) + 3 V2+ reservations (POL CreateState/DestroyState + GEO SetResourceOverride)
+- **`world_geometry.schema_version`** bumps: 1 V1 GEO_001 → 2 V1+30d SET_001 (Settlement.seed_source additive) → 3 V1+30d ROUTE_001 (Route.seed_source additive); stays at 3 post-TVL (TVL doesn't add world_geometry fields)
+- **`CreativeSeed.schema_version`** bumps: 1 V1 GEO_001 → 2 V1+30d GEO_001b (spatial_preference) → 3 V1+30d POL_001 (political_seed_mode + canonical_states + procedural_density) → 4 V1+30d SET_001 (settlement_seed_mode + settlement_density_hint) → 5 V1+30d ROUTE_001 (route_seed_mode + canonical_routes); CreativeSeed v5 → v6 documented for TVL_001 (travel_cost_per_league additive) but TVL is V1+ tier not V1+30d so this bump is V1+ ship-time
+- **LLM authoring template versions**: v1.tmpl GEO_001b → v2.tmpl POL_001 ship → v3.tmpl SET_001 ship → v4.tmpl ROUTE_001 ship
+- **Capability JWT additions**: `can_edit_political_geography` (POL) + `can_edit_settlement_geography` (SET) + `can_edit_route_geography` (ROUTE) — auth-service quad-pair bundle at role-grant time post-ROUTE-ship; TVL no new claim (standard PC/NPC action authorization)
+- **NEW `travel.*` namespace** (separate from `geography.*` per TVL-D7 own-folder discipline) — 15 V1+30d rule_ids; reflects domain boundary between geography substrate (Forge admin canonization) and travel mechanics (gameplay action)
+- **NEW aggregate** `actor_travel_state` (T2/Reality sparse per-(actor, journey)) — first cross-feature consumer aggregate reading GEO+POL+SET+ROUTE V1+30d substrate
+- **NEW EVT-T sub-types**: EVT-T1 `Travel:Initiate` + EVT-T5 `Scheduled:TravelTick` + EVT-T6 `Travel:JourneyNarration`
+- **NEW V1+30d service** `travel-service` (owns actor_travel_state; per-turn tick generator)
+- **EF_001 cross-feature schema dependency tracked**: `entity.travel_journey_id: Option<JourneyId>` additive field; EF_001 schema_version 1 → 2 V1+30d bump at TVL ship (MED-1 V1+30d implementation-phase coordination)
+- **ROUTE_001 RemoveRoute pipeline extended**: TVL-V14 `route_in_use_by_journey` cross-feature gate added at TVL ship
+
+### 45 gaps surfaced + resolved across the 4 /review-impl cycles
+
+| Feature | Cycle | HIGH | MED | LOW | Retro |
+|---|---|---:|---:|---:|---:|
+| POL_001 | 2-pass | 4 | 12 | 3 | — |
+| SET_001 | 1-pass | 4 | 4 | 1 | — |
+| ROUTE_001 | 1-pass | 3 | 2 | 1 | 1 |
+| **TVL_001** | 1-pass | 4 | 2 | — | — |
+| **Total** | **4 cycles** | **15** | **20** | **5** | **1** |
+
+**Process maturity arc** — HIGH count by feature within geography activation arc: 4 → 4 → 3 (decreasing as patterns internalize). HIGH count reset at TVL_001 (4 — new consumer-feature domain introduced new pattern categories: cross-feature schema dependency / vital_pool-vs-resource_inventory two-counter distinction / channel-vs-actor clock ownership / downstream-feature-terminology-precision). Pattern: HIGH count matures WITHIN a feature arc; resets when entering new domain.
+
+### Decisions locked across the arc
+
+- **V1+30d activation triangle complete**: POL + SET + ROUTE all V1+30d-implementation-ready; consumer-feature pattern demonstrated via TVL_001
+- **Pipeline stage ordering locked**: 1-4 GEO_001 → 5 POL → 6 SET → 7 ROUTE → 8 POL (culture spread runs AFTER routes for hospitality-narration integration)
+- **Schema_version discipline**: every additive struct field bumps aggregate schema_version per I14 + R3 default-tolerant readers + `generator_pipeline_version` pin governing cross-version data path (POL_001 MED-11 precision)
+- **Consumer-feature namespace discipline**: separate namespace per domain (e.g., `travel.*` separate from `geography.*`) when domain has distinct ImpactClass + capability discipline (TVL_001 is gameplay action, not admin Forge canonization)
+- **Cross-feature schema dependency pattern**: V1+ consumer features may require V1 foundation feature schema_version bumps for additive fields they need (TVL_001 → EF_001 1→2 for travel_journey_id; coordinate via foundation feature's closure pass at consumer-feature ship)
+- **PL_006 magnitude semantic**: PL_006 StatusFlag uses magnitude 1..=10; consumer features should use real PL_006 values, NOT invent sub-tier classifications
+- **realm_clock channel-ownership**: realm_clock is PL_001 turn-boundary-owned (channel-tier resource per TDIL-A1); per-actor features (TVL_001) advance only actor_clock + body_clock to avoid double-advancement
+- **vital_pool vs resource_inventory two-counter discipline**: RES_001 separates body-state Vital counters (Hunger/Thirst — HIGH=bad) from possession Consumable counters (Food/Water — HIGH=lots); consumer features deduct from Consumable inventory; Vital body-state advances independently via RES per-day-boundary
+
+### Handoff notes for next agent / next session
+
+**Active:** none in main session. Lock released. Tree clean (7 commits ahead of origin since session start).
+
+**Schema is V1+30d-implementation-ready for the entire activation triangle.** Remaining MED gaps (EF_001 closure pass for travel_journey_id additive field at TVL ship; ROUTE_001 V1+30d implementation phase combined with POL + SET; auth-service capability migration job 3-claim quad-pair bundle; chat-service S9 `[GEOGRAPHIC_CONTEXT]` + `[TRAVEL_CONTEXT]` extensions) are all CI gates / build pipeline tasks — no further user-approval rounds needed; need to land in V1+30d implementation phase.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` Rust module (POL + SET + ROUTE combined activation triangle reference impl) + NEW `services/travel-service` (TVL reference impl) + EF_001 closure pass for schema_version 1→2 bump (travel_journey_id additive field per TVL MED-1 coordination) + auth-service capability migration job (4-claim quad-pair bundle: can_edit_geography + can_edit_political/settlement/route_geography) + chat-service S9 `[GEOGRAPHIC_CONTEXT]` + `[TRAVEL_CONTEXT]` extensions (state_name + settlement_name + culture_tag + route_kind/origin/destination + travel-progress-narration fields) + CI gates (replay-determinism + apply_delta total-function + canonical-JSON normalization + pair-uniqueness invariants + HIGH-3 clustering V=500 stress test inherited from POL + ROUTE-V8 canonical-order pair normalization inherited from ROUTE)
+2. **TVL_002 V1+30d+ Composite Multi-Segment Travel** design — Dijkstra over Route graph + auto-traverse N segments; convenience command layered atop atomic single-segment V1+30d
+3. **TVL_004 V1+30d+ Travel Encounters** design — random events / weather / combat during journey; attaches mechanical encounter events to actor_travel_state via cross-feature integration with PL_005 Interaction substrate + LLM scene generation
+4. **EF_001 closure pass** standalone (just the schema_version 1→2 bump for travel_journey_id additive field; no other changes; could be batched with V1+30d implementation phase OR done separately)
+5. **SPIKE_05 V1+ knowledge-service activation walk-through** — deferred until knowledge-service ships per CLAUDE.md `101_DATA_RE_ENGINEERING_PLAN.md`; reopens AC-AUTHOR-10 + V1+ active grounding path
+6. **DIPL_001 V2+ Diplomacy Foundation** design — consumes State.culture_tag + State.ideology_ref + Settlement graph for diplomatic-axis modeling; requires POL_001 V1+30d + IDF_005 V2+ ideology
+
+**Process discipline for next agent:**
+
+- 4-feature arc completes the geography activation triangle (POL + SET + ROUTE) + first consumer feature (TVL); pattern locked for future activation arcs (resource layer V2+ would follow same pattern: Phase 0 → DRAFT → /review-impl → commit)
+- Phase 0 deep-dive (7 sub-decisions with recommended defaults) → user terse approve → apply pattern works across English (`1` / `approve all`) + Vietnamese (`tiếp tục đi` / `kêp going`) — all interpretable as approve given established Phase 0 deep-dive convention
+- /review-impl maturity matures WITHIN a feature arc but resets when entering new domain — expected behavior; each new pattern category needs its own adversarial-review maturity
+- 800-line soft cap maintained throughout (largest = POL_001/SET_001 745 lines; smallest = TVL_001 529 lines)
+- Cross-feature schema dependencies tracked explicitly in source feature's spec + escalated as MED to be coordinated at consumer feature ship time
+
+### Raw count
+
+- **Commits:** 4 (`3688e57c` → `8f35ae05` → `ef41ebf9` → `457be1bb`)
+- **Files landed:** 14 (6 new + 8 modified)
+- **Design-doc lines:** 745 POL_001 + 745 SET_001 + 652 ROUTE_001 + 529 TVL_001 + 60 TVL _index + 52 TVL catalog = **2783 lines** of new design surface
+- **Catalog entries added:** 99 (24 POL + 26 SET + 25 ROUTE + 24 TVL)
+- **V1+30d reject rule_ids:** 60 (20 POL + 15 SET + 10 ROUTE + 15 TVL)
+- **V2+ reservations:** 5 (POL CreateState/DestroyState + ROUTE 2 + TVL 2)
+- **Acceptance scenarios:** 66 V1+30d-testable (21 POL + 19 SET + 15 ROUTE + 15 TVL when including coverage updates)
+- **Deferrals:** 52 (14 POL + 13 SET + 13 ROUTE + 12 TVL)
+- **Open questions:** 22 (5 POL + 5 SET + 5 ROUTE + 7 TVL)
+- **Validators:** 65 sub-validators (20 POL-V + 16 SET-V + 14 ROUTE-V + 15 TVL-V)
+- **EVT-T sub-types added:** 3 (Travel:Initiate / Scheduled:TravelTick / Travel:JourneyNarration)
+- **NEW aggregate:** 1 (actor_travel_state)
+- **NEW service:** 1 (travel-service)
+- **Cross-feature schema dependencies:** 1 (EF_001 schema_version 1→2 for travel_journey_id)
+- **Foundation tier:** 7/7 unchanged from prior arc; V1+30d activation triangle 0/3 → 3/3; consumer feature 0 → 1
+- **/review-impl HIGH findings resolved:** 15 (4+4+3+4); MED 20 (12+4+2+2); LOW 5 (3+1+1+0); retro-HIGH 1 (ROUTE linter parallel review)
+
+---
+
 ## Session 2026-05-13 → 2026-05-14 — GEO World Geometry Foundation arc (4 commits; 7th foundation feature; walk-through-validation maturity pattern)
 
 ### Session arc
