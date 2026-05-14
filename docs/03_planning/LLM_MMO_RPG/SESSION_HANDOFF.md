@@ -81,6 +81,187 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-15 — "non-human-in-loop" scope = AMAW v3.0; agentic-workflow bundle deployed; ContextHub MCP fully wired
+
+### Session arc
+
+Three administrative-only sub-sessions, all on `mmo-rpg/zone-map-design-non-human-in-loop` branch:
+
+1. **ContextHub MCP smoke test** — verified MCP server reachable, project `mmo-rpg-zone-map-design-non-human-in-loop` exists with 0 lessons; embedding pipeline alive (hybrid sem+fts).
+2. **Multi-project workspace mount** — added `D:/Works:/workspaces` bind to free-context-hub `mcp` + `worker` services. ContextHub server can now ripgrep + index ANY repo under `D:/Works/source/<name>` by registering `root_path=/workspaces/source/<name>`. De-registered initial junk row (`/app/D:/Works/...`) via direct DB UPDATE.
+3. **Agentic-workflow bundle deployment** — user copied `agentic-workflow/` (free-context-hub-derived bundle v2.3 = WORKFLOW v2.2 default + AMAW v3.0 opt-in) into the repo. Customized 8 bundle files for repo-specific paths, ran installer, replaced project-root `CLAUDE.md` workflow block with v2.2/AMAW snippet.
+
+### Resolved: "non-human-in-loop" scope
+
+The OPEN scoping question from prior session entry is **answered**: the branch is the testbed for **AMAW v3.0 (Autonomous Multi-Agent Workflow)** — opt-in cold-start sub-agent reviews replace human checkpoints at REVIEW + POST-REVIEW for high-stakes tasks. AMAW spec lives in [`docs/amaw-workflow.md`](../../amaw-workflow.md) (canonical) and `agentic-workflow/AMAW.md` (bundle source).
+
+The 4 prior candidate interpretations (pure autonomy / sub-agent driven / loop research / tooling autonomy) collapse to: **AMAW = sub-agent driven + loop research + opt-in (not always-on)**. Pure autonomy was rejected because POST-REVIEW human stop has measurable value for everyday tasks; only L+ size critical paths warrant the ~$1-5/task token cost of cold-start adversaries.
+
+Phase 14 case study (free-context-hub model swap, 2026-05-15) is the first real AMAW production run that informed v3.0 calibration: 8 findings / 5 BLOCKs / ~420K tokens / 6 sub-agent calls. Calibration table lives in `AMAW.md` §"Calibration table".
+
+### What landed
+
+**Repo files (deployed via `bash agentic-workflow/install.sh .`):**
+
+| File | Action |
+|---|---|
+| `scripts/workflow-gate.sh` | Replaced (broken bash impl → thin wrapper around `.py`) |
+| `scripts/workflow-gate.py` | Overwritten (same content, install copies bundle's copy) |
+| `.claude/settings.json` | **NEW** — pre-commit hook blocking commits without VERIFY+POST-REVIEW+SESSION |
+| `.claude/commands/review-impl.md` | Replaced (KS-specific reference → generic bundle version) |
+| `.claude/commands/amaw.md` | **NEW** — `/amaw` slash command for opt-in AMAW activation |
+| `docs/specs/.gitkeep` | **NEW** dir for CLARIFY spec files |
+| `docs/plans/.gitkeep` | **NEW** dir for PLAN decomposition files |
+| `docs/audit/.gitkeep` | **NEW** dir for `AUDIT_LOG.jsonl` (created on first AMAW run) |
+| `docs/deferred/DEFERRED.md` | **NEW** stub |
+| `docs/amaw-workflow.md` | **NEW** — copy of `agentic-workflow/AMAW.md` for canonical AMAW spec |
+| `CLAUDE.md` | Workflow block (lines 160-321) replaced with v2.2/AMAW-aware snippet (~90 lines, references bundle docs) |
+
+**Bundle customization (`agentic-workflow/`, 8 files):**
+
+| File | Change |
+|---|---|
+| `scripts/workflow-gate.py` | NEW — copied from repo (canonical impl) |
+| `scripts/workflow-gate.sh` | Rewritten as bash wrapper exec-ing `.py` |
+| `install.sh` | Copies both .sh+.py; creates `docs/specs/` + `docs/plans/` |
+| `WORKFLOW.md` | Header + Phase 1+4+10 paths customized for this repo |
+| `CLAUDE.md.snippet` | Added "Repo-specific paths" block |
+| `AMAW.md` | RETRO row names project_id; new "Repo integration" section |
+| `.claude/commands/amaw.md` | RETRO step names ContextHub project_id |
+| `README.md` | Subtitle "fork"; new "Repo customizations applied" table |
+
+**Free-context-hub repo (separate repo):**
+- `docker-compose.yml` modified — added `D:/Works:/workspaces` bind to `mcp` + `worker` services
+- DB row updated — junk workspace_root for project deactivated; correct `/workspaces/source/lore-weave-zone-map-design` row active
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `bash scripts/workflow-gate.sh status` (clean state) | Prints empty 12-phase tracker, exit 0 |
+| `bash scripts/workflow-gate.sh size XS 1 1 0` | (not yet smoke-tested at deploy time — recommend next session run a full XS cycle as smoke) |
+| ContextHub MCP `list_workspace_roots(project_id=mmo-rpg-zone-map-design-non-human-in-loop)` | 1 active row at `/workspaces/source/lore-weave-zone-map-design` (junk row inactive) |
+| ContextHub MCP `scan_workspace` | 98KB git status JSON returned (filesystem walk + git access from container both OK) |
+| Slash commands `/amaw` + `/review-impl` registered with Claude Code | YES — appeared in available-skills system reminder after install |
+
+### Memory layer cleanup
+
+Stale memory deleted: `~/.claude/projects/d--Works-source-lore-weave-zone-map-design/memory/feedback_workflow_gate_broken.md` removed + index entry pruned from `MEMORY.md`. Reason: workflow-gate.sh now wraps .py which sidesteps the original Windows pyenv-win shim bug. If the bug returns under different toolchain, re-capture.
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**Verification (still 3 quick commands):**
+1. `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` → 8 containers Up
+2. `bash scripts/workflow-gate.sh status` → empty 12-phase tracker, exit 0
+3. `git branch --show-current` → `mmo-rpg/zone-map-design-non-human-in-loop`
+
+**Next session agenda:**
+
+1. **First real AMAW dogfood** — pick a small L-size task (not hand-waved XS), invoke `/amaw`, follow the full Adversary + Scope Guard loop. Measure: how many real findings, how much token cost, where the workflow felt natural vs forced. Record in `docs/audit/AUDIT_LOG.jsonl` (first entry there).
+2. **Resume Phase 0b — wire real lmstudio gateway call** in `loreweave_llm` SDK + 1 L3 prompt to lmstudio (per prior session's `7f31bd0e` SDK extraction). This is L-size — register lmstudio as `platform_model` in provider-registry-service, implement SSE parser, run integration test.
+3. **Decide branch merge cadence** — if AMAW dogfooding goes well, merge `mmo-rpg/zone-map-design-non-human-in-loop` workflow infra back to `mmo-rpg/zone-map-design` (and ultimately `main`) so all future work uses v2.2/AMAW. The infra is repo-wide and useful regardless of which design track.
+4. **Free-context-hub commit** — `D:/Works/source/free-context-hub/docker-compose.yml` has uncommitted bind-mount change. Decide: commit there (push if appropriate), or keep local-only.
+
+**Process discipline reminders:**
+
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B) routed through provider-registry-service. See `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root contains 2 members; new Rust crates → add to `[workspace] members`, use `dep.workspace = true`. See `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+- For ANY task M+ size: invoke `./scripts/workflow-gate.sh size M ...` BEFORE any work. The script now persists state correctly.
+- For data migrations / schema changes / security paths: type `/amaw` at task start. The token cost (~$1-5) only pays off at L+ scope.
+
+### Raw count
+
+- **Commits this entry:** 1+ pending (commit granularity TBD with user before push)
+- **Files created in repo:** 7 in `.claude/` + `docs/` (settings.json, amaw.md, 4 .gitkeep stubs, DEFERRED.md, amaw-workflow.md)
+- **Files modified in repo:** 4 (CLAUDE.md, scripts/workflow-gate.{sh,py}, .claude/commands/review-impl.md)
+- **Files customized in `agentic-workflow/` bundle:** 8
+- **External state changes:** ContextHub MCP project workspace_root active; free-context-hub compose modified (uncommitted)
+- **Tests:** smoke `workflow-gate.sh status` ran (exit 0); no production test runs
+
+---
+
+## Session 2026-05-14 (continued, night) — Branch fork + ContextHub project bootstrap for "non-human-in-loop" workflow track
+
+### Session arc
+
+Administrative-only session. After commit `7f31bd0e` (SDK extraction) landed on `mmo-rpg/zone-map-design`, user opened a new workflow direction by:
+1. Forking a sibling branch `mmo-rpg/zone-map-design-non-human-in-loop` off the current HEAD.
+2. Starting the free-context-hub stack (`D:\Works\source\free-context-hub`) under Docker Compose.
+3. Provisioning a ContextHub project named after the new branch to seed the upcoming workflow's persistent memory namespace.
+
+No code changes. No design changes. **No tests were run** (nothing to test). Purpose is to set the stage for the next implementation session.
+
+### What "non-human-in-loop" means — RESOLVED 2026-05-15 → AMAW v3.0
+
+> **Update 2026-05-15:** scope locked as **AMAW v3.0** (opt-in cold-start sub-agent reviews replace human checkpoints at REVIEW + POST-REVIEW for L+ critical paths). See the 2026-05-15 entry above for the full resolution. Original interpretations preserved below for context.
+
+The branch name signals a workflow shift but the scope is **not yet specified**. Best guess from context: removing the human checkpoint between phases for some category of work — probably the BUILD↔VERIFY↔REVIEW inner loop, NOT the CLARIFY/PLAN/POST-REVIEW outer loop. **The next session MUST do a CLARIFY phase to lock this scope before any further work** — see [Next session agenda](#next-session-agenda-non-human-in-loop) below.
+
+Candidate interpretations the next agent should ask about:
+- **Pure autonomy mode**: agent runs the full 12-phase cycle without stopping for human approval (would invert CLAUDE.md POST-REVIEW phase).
+- **Sub-agent driven**: dispatch implementation phases to background Task agents, human only sees aggregated results.
+- **Loop research**: experimental workflow track to MEASURE where human-in-loop adds vs subtracts value (parallel branch to compare).
+- **Tooling autonomy**: write & verify tilemap-service Phase 0b/1+ entirely via tool-driven cycles (cargo + lmstudio + ContextHub) with no human picks during a session.
+
+### What landed (infrastructure-only)
+
+**Git branch:**
+- `mmo-rpg/zone-map-design-non-human-in-loop` created from `mmo-rpg/zone-map-design @ 7f31bd0e` (clean tree, not pushed to origin yet).
+
+**Free-context-hub stack — 8 containers up (`docker compose up -d`):**
+
+| Service | Image | Local port(s) | Purpose |
+|---|---|---|---|
+| `db` | pgvector/pgvector:pg16 | 5432 | Postgres + pgvector (ContextHub SSOT) |
+| `neo4j` | neo4j:5.26 | 7474 (HTTP) / 7687 (Bolt) | Knowledge graph derived layer |
+| `rabbitmq` | rabbitmq:3.13-management | 5672 / 15672 | Job queue (QUEUE_ENABLED=true, QUEUE_BACKEND=rabbitmq) |
+| `redis` | redis:7-alpine | 6379 | Retrieval/rerank cache |
+| `minio` | minio/minio:latest | 9000 (S3) / 9001 (console) | S3-compat object store for artifacts (`contexthub-artifacts` bucket) |
+| `mcp` | free-context-hub-mcp | **3000 (`/mcp` — MCP HTTP)** + **3001 (`/api` — REST)** | ContextHub server. Workspace bind-mount at `/workspace`. Knowledge loop + builder memory both enabled. |
+| `worker` | free-context-hub-worker | (internal 3000-3001) | Knowledge-loop + builder-memory consumer |
+| `gui` | free-context-hub-gui | 3002 | Next.js admin UI |
+
+**ContextHub project:**
+- `project_id`: `mmo-rpg-zone-map-design-non-human-in-loop` (slash → dash; `/api/projects` regex `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` rejects `/`)
+- `name`: `mmo-rpg/zone-map-design-non-human-in-loop` (preserves the original branch name for humans)
+- `description`: anchors to base branch + HEAD commit `7f31bd0e` of `lore-weave-zone-map-design` repo
+- `lesson_count`: 0 (empty — every lesson the next workflow generates lands here)
+
+Created via direct REST `POST /api/projects` because the ContextHub MCP tools (`search_lessons`, `add_lesson`, `check_guardrails`, etc.) were **not loaded** into the Claude Code session — only the static deferred tools list was available. See action item below.
+
+### Handoff notes for next session
+
+**Active blocker:** none mechanically; one open scoping question (what "non-human-in-loop" means as workflow scope — block CLARIFY until answered).
+
+**Verification before doing any work:**
+1. Confirm free-context-hub still running: `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` — expect 8 containers `Up`.
+2. Confirm ContextHub project exists: `curl -s http://localhost:3001/api/projects` — expect entry with `project_id: mmo-rpg-zone-map-design-non-human-in-loop`.
+3. Confirm branch: `git branch --show-current` → expect `mmo-rpg/zone-map-design-non-human-in-loop`. HEAD should equal `7f31bd0e` (SDK extraction).
+
+**Next session agenda — non-human-in-loop** — *all 4 items resolved 2026-05-15; see the 2026-05-15 entry above for the new agenda. Items below preserved for history:*
+
+1. ~~**CLARIFY** what the workflow track actually is~~ — **RESOLVED**: AMAW v3.0 (see 2026-05-15 entry).
+2. ~~**MCP tool registration**~~ — **RESOLVED**: ContextHub MCP loaded via deferred-tool ToolSearch; workspace_root registered at `/workspaces/source/lore-weave-zone-map-design` (after adding `D:/Works:/workspaces` bind to mcp+worker compose services).
+3. ~~**Seed initial lessons**~~ — **DEFERRED to natural accumulation**: AMAW RETRO phase calls `add_lesson` per task; backfill of existing memory items (lmstudio prefs, Rust workspace pattern) only if explicitly needed. Workflow-gate-broken memory was deleted (script now fixed).
+4. **Decide branch fate** — *carried forward* into 2026-05-15 agenda item #3.
+
+**Process discipline reminders:**
+
+- ~~The workflow-gate script (`./scripts/workflow-gate.sh`) is still broken~~ — **RESOLVED 2026-05-15**: .sh now wraps `scripts/workflow-gate.py` (cross-platform impl); Windows pyenv-win shim bug sidestepped. Stale memory deleted.
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B) routed through provider-registry-service, NOT direct Anthropic API. See `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root now contains 2 members; new Rust crates → add to `[workspace] members` and use `dep.workspace = true`. See `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+
+### Raw count
+
+- **Commits this entry:** 0 (administrative only)
+- **Files created/modified/deleted in repo:** 0 production files (only this handoff entry)
+- **External state changes:** +1 git branch, +8 running containers, +1 ContextHub project
+- **Tests:** N/A
+
+---
+
 ## Session 2026-05-14 (continued, late evening) — SDK extraction: sdks/rust/loreweave_llm/ (first Rust SDK in monorepo) + Cargo workspace at repo root
 
 ### Session arc
