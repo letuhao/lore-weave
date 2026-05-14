@@ -1,10 +1,23 @@
-# Agent Workflow v2.2
+# Agent Workflow v2.2 (default) + AMAW v3.0 (opt-in)
 
 > A structured development workflow for AI coding agents. Combines the best of [Superpowers](https://github.com/obra/superpowers) (execution discipline, TDD, verification gates) with session persistence, role-based review, and enforcement mechanisms.
 >
-> **How to use:** Paste this into your `CLAUDE.md` or agent instructions. Customize paths marked with `[CUSTOMIZE]`.
+> **How to use:** Paste this into your `CLAUDE.md` or agent instructions. Paths below are tailored for the **lore-weave-zone-map-design** repo (session = `docs/sessions/SESSION_PATCH.md`, design-track session = `docs/03_planning/<TRACK>/SESSION_HANDOFF.md`, planning home = `docs/03_planning/`, AMAW audit = `docs/audit/AUDIT_LOG.jsonl`, deferred = `docs/deferred/DEFERRED.md`).
 >
 > **v2.2 — POST-REVIEW reshaped.** Self-adversarial re-read right after BUILD has a very low hit rate (agents pattern-match to their own reasoning and rubber-stamp "0 issues"). POST-REVIEW is now a **human checkpoint only**. Deep adversarial review is an on-demand command: `/review-impl` (see `.claude/commands/review-impl.md`).
+>
+> **AMAW v3.0 — opt-in extension.** For high-stakes tasks (data migrations, schema changes, security paths, multi-system contracts), user can invoke `/amaw` at start of task to enable cold-start sub-agent reviews at REVIEW + POST-REVIEW phases. AMAW catches issues human review misses but costs ~$1-5/task. Default (v2.2) is always-on; AMAW activates only when user explicitly triggers it. See `AMAW.md` for the full opt-in spec.
+
+---
+
+## Quick mode-selection guide
+
+| Task | Mode | Why |
+|---|---|---|
+| Bug fix, doc update, small refactor (XS/S) | Default v2.2 | Human review catches issues at lower cost |
+| Feature work (M) | Default v2.2 + `/review-impl` if safety-sensitive | Self-review + on-demand deep review covers most |
+| Data migration, schema change, security-critical (L+) | **`/amaw`** | Cold-start sub-agents catch coherence + edge cases |
+| Multi-system / cross-project contract | **`/amaw`** | Edge cases compound; worth the token cost |
 
 ---
 
@@ -15,21 +28,23 @@ Every task follows this workflow. The agent plays all roles sequentially.
 **ENFORCEMENT: This workflow uses a state machine (`.workflow-state.json`). You MUST call the phase transition protocol before moving between phases. Hooks will block commits if verification evidence is missing.**
 
 ```
-Phase          | Role              | What Happens
----------------|-------------------|----------------------------------------------
-1. CLARIFY     | Architect + PO    | Brainstorm, ask questions, define scope
-2. DESIGN      | Lead              | API contract / component API / data flow
-3. REVIEW      | PO + Lead         | Review design spec before coding
-4. PLAN        | Lead + Developer  | Decompose into bite-sized tasks (2-5 min)
-5. BUILD       | Developer         | Write code (TDD: red -> green -> refactor)
-6. VERIFY      | Developer         | Evidence-based verification gate
-7. REVIEW      | Lead              | Code review (spec compliance + quality)
-8. QC          | QA / PO           | Test against acceptance criteria
-9. POST-REVIEW | Human + Developer | Human-interactive CHECKPOINT (context reset, NOT deep review)
-10. SESSION    | Developer         | Update session notes + task status
-11. COMMIT     | Developer         | Git commit (+ push if approved)
-12. RETRO      | All               | Record decision/workaround if learned
+Phase          | Default v2.2 role    | AMAW v3.0 role        | What Happens
+---------------|----------------------|-----------------------|----------------------------------------
+1. CLARIFY     | Architect + PO       | Main + Scribe         | Brainstorm, ask questions, define scope
+2. DESIGN      | Lead                 | Main                  | API contract / component API / data flow
+3. REVIEW      | PO + Lead self       | Adversary cold-start  | Find spec gaps / contract holes
+4. PLAN        | Lead + Developer     | Main + Scribe         | Decompose into bite-sized tasks
+5. BUILD       | Developer            | Main                  | TDD: red -> green -> refactor
+6. VERIFY      | Developer            | Main                  | Evidence-based verification gate
+7. REVIEW      | Lead self            | Adversary cold-start  | Code vs spec — find divergences
+8. QC          | QA / PO              | Scope Guard           | Spec fingerprint vs implementation
+9. POST-REVIEW | Human checkpoint     | Scope Guard           | Final gate — NEVER skippable
+10. SESSION    | Developer            | Scribe                | Update session notes + deferred items
+11. COMMIT     | Developer            | Main                  | Git commit (+ push if approved)
+12. RETRO      | All                  | Audit Logger          | Record decision/workaround if learned
 ```
+
+**AMAW activation:** the second column applies ONLY when user invoked `/amaw` at start of task. Without that, default v2.2 (column 2) is used. See `AMAW.md` for prompt templates.
 
 **Status tracking:** `[ ]` not started · `[C]` clarify · `[D]` design · `[P]` plan · `[B]` build · `[V]` verify · `[R]` review · `[Q]` QC · `[PR]` post-review · `[S]` session · `[x]` done
 
@@ -133,7 +148,7 @@ Don't jump into code — clarify first.
 2. **Ask ONE question at a time** — multiple choice preferred, never overwhelm
 3. **Propose 2-3 approaches** with trade-offs after enough context
 4. **Present design in sections** — scale to complexity (few sentences to 300 words per section)
-5. **Write spec file** to `docs/specs/YYYY-MM-DD-<topic>.md` for non-trivial tasks
+5. **Write spec file** to `docs/specs/YYYY-MM-DD-<topic>.md` for non-trivial tasks (or `docs/03_planning/<TRACK>/` if extending an existing design track such as `LLM_MMO_RPG`)
 6. **Self-review spec** — check for placeholders, contradictions, ambiguity, scope creep
 7. **User approval gate** — do NOT proceed without user sign-off
 
@@ -158,7 +173,7 @@ Break work into executable chunks before coding.
 - Decompose into **bite-sized tasks (2-5 minutes each)**
 - Each task specifies: **exact file paths, code intent, verification command**
 - **No placeholders allowed** — no "TBD", "TODO", "add error handling here"
-- For large tasks (>5 files), write plan to `docs/plans/YYYY-MM-DD-<feature>.md`
+- For large tasks (>5 files), write plan to `docs/plans/YYYY-MM-DD-<feature>.md` (or `docs/03_planning/<TRACK>/` if extending an existing design track)
 - Self-review: spec coverage, placeholder scan, type/signature consistency
 
 **Execution mode** (for large plans):
@@ -259,9 +274,11 @@ If `/review-impl` ran during this phase, fold its findings into the evidence str
 
 ### Phase 10: SESSION
 
-<!-- [CUSTOMIZE] Change the path below to your project's session tracking file -->
-
 Update session notes after EVERY sprint completes. Don't batch.
+
+**Where to write:**
+- **Main project work** → `docs/sessions/SESSION_PATCH.md` (header metadata + Current Active Work entry + Deferred Items table)
+- **Design-track work** (e.g. `LLM_MMO_RPG`) → `docs/03_planning/<TRACK>/SESSION_HANDOFF.md` (track-scoped, does NOT conflict with SESSION_PATCH)
 
 What to include:
 - Sprint number and one-line outcome
@@ -269,6 +286,7 @@ What to include:
 - Review issues found and how fixed
 - Live test results (real stack, not mocked)
 - What's next
+- Any deferred items moved in or cleared (also update `docs/deferred/DEFERRED.md` if AMAW mode)
 
 ### Phase 11: COMMIT
 
