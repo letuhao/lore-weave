@@ -440,15 +440,15 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.UsageBillingServiceURL != "" && len(segments) > 0 {
 		modelRefUUID, _ := uuid.Parse(body.ModelRef)
 		usagePayload, _ := json.Marshal(map[string]any{
-			"request_id":    uuid.New(),
-			"owner_user_id": ownerID,
-			"provider_kind": creds.ProviderKind,
-			"model_source":  body.ModelSource,
-			"model_ref":     modelRefUUID,
-			"input_tokens":  totalChars, // TTS bills by characters, map to "tokens" field
-			"output_tokens": 0,
+			"request_id":     uuid.New(),
+			"owner_user_id":  ownerID,
+			"provider_kind":  creds.ProviderKind,
+			"model_source":   body.ModelSource,
+			"model_ref":      modelRefUUID,
+			"input_tokens":   totalChars, // TTS bills by characters, map to "tokens" field
+			"output_tokens":  0,
 			"request_status": "success",
-			"purpose":       "tts_generation",
+			"purpose":        "tts_generation",
 		})
 		billingURL := fmt.Sprintf("%s/internal/model-billing/record",
 			strings.TrimRight(s.cfg.UsageBillingServiceURL, "/"))

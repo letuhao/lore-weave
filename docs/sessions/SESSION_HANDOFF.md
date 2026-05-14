@@ -1,9 +1,136 @@
-# Session Handoff — Session 56 (cycle 1 shipped · Phase 5e-α video-gen-service migration COMPLETE · Phase 5e-β book-service migration next)
+# Session Handoff — Session 56 (cycle 2 shipped · Phase 5e-β.1 Go SDK + book-service media.go migration COMPLETE · Phase 5e-β.2 audio_gen adapter + audio.go migration next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-14 (session 56, cycle 1 shipped)
-> **HEAD:** `e3d704f7` (SESSION_PATCH backfill) — Phase 5e-α feat commit @ `d276d0a7`; Phase 5d closed at `b3f046ab` (session 55 cycle 3); Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
+> **Date:** 2026-05-14 (session 56, cycle 2 shipped)
+> **HEAD:** TBD (Phase 5e-β.1 feat commit) — prior: `9f985d41` (5e-α SESSION_HANDOFF final), Phase 5e-α feat commit @ `d276d0a7`; Phase 5d closed at `b3f046ab` (session 55 cycle 3); Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 56 cycle 2 — Phase 5e-β.1 · Go SDK + book-service media.go migration · /review-impl rounds (DESIGN: 6 HIGH + 5 MED + 6 LOW + 3 COSMETIC all actionable folded inline; BUILD: 3 HIGH + 6 MED + 7 LOW + 3 COSMETIC, 3 HIGH + 5 MED + 1 LOW fixed inline)
+
+**What shipped:** First Go SDK in the monorepo (`sdks/go/llmgw/` — module `github.com/loreweave/llmgw`, package `llmgw`) implementing the submit_job → poll → terminal-result flow modeled on Python SDK's `generate_image()`. book-service's `generateChapterMedia` migrated off direct `/internal/credentials/` + `/v1/images/generations` httpx path; uses `s.llmgw.GenerateImage()` with typed-error switch in extracted `writeImageGenError` helper. audio.go INTENTIONALLY unchanged (reserved for Phase 5e-β.2; needs audio_gen gateway adapter first).
+
+**Strategic context (Path B step 4):** 5c-α + 5d shipped image_gen + video_gen gateway adapters; 5e-α migrated video-gen-service (first Python caller); this cycle migrates book-service (first Go caller). After 5e-β.2 (audio_gen adapter + audio.go migration) + 5f (video-gen-service BFF deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration), unified gateway invariant fully realized.
+
+**Scope-split decision:** handoff scoped "book-service migration" as one cycle; CLARIFY found (a) two LLM call sites (media.go image_gen + audio.go TTS), (b) audio_gen adapter doesn't exist on gateway yet, (c) full scope = 40-45 files / XXL. User chose split into 5e-β.1 (Go SDK + media.go) → 5e-β.2 (audio_gen adapter + audio.go). Per memory `feedback_scope_audit_before_batching`.
+
+**First-ever Go SDK pattern decisions:**
+- Filesystem `sdks/go/llmgw/` + module `github.com/loreweave/llmgw` + package `llmgw` (no underscore — `staticcheck ST1003` clean; Go-idiomatic short name)
+- Sync API; context cancellation only (no `*http.Client.Timeout` traps for polling)
+- Sentinel-based `errors.Is`/`errors.As` matching via unexported `inner` field
+- Central `newErrorFromCode` constructor helper REQUIRED for all `*Error` construction — manual struct construction would silently break errors.Is
+- Caller-defined consumer interface (`type imageGenerator interface { GenerateImage(...) }`) in book-service for mocking
+- `replace ../../sdks/go/llmgw` in book-service go.mod; Dockerfile bumped to repo-root build context
+
+**First-ever handler test for media.go:** book-service had NO tests for `generateChapterMedia`. 13 new tests added covering typed-error routing via extracted `writeImageGenError` helper + 1 real-SDK end-to-end test through `httptest.NewServer` + 2 grep-locks + 1 anti-bait. Full DB+MinIO+JWT integration test harness DEFERRED to Track 2 (HIGH#4 in design /review-impl).
+
+**Files (22 — 11 NEW + 11 MOD):**
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5E_BETA1_DESIGN.md` (status SHIPPED; DESIGN+BUILD review fixes folded)
+- NEW `sdks/go/llmgw/{go.mod, doc.go, client.go, transport.go, models.go, errors.go, errors_test.go, transport_test.go, client_test.go}` (10 files)
+- NEW `services/book-service/internal/api/media_test.go` (13 tests + grep-locks + anti-bait)
+- MOD `services/book-service/internal/api/media.go` — drops ~110 LOC credential resolve + direct POST; uses SDK; extracted `writeImageGenError` helper
+- MOD `services/book-service/internal/api/server.go` — `s.llmgw` field + ctor with `slog.Error` on NewClient failure
+- MOD `services/book-service/internal/config/config.go` — +LLMGatewayInternalURL required env
+- MOD `services/book-service/internal/config/config_test.go` — pre-existing broken test fixed (was missing required envs)
+- MOD `services/book-service/go.mod` — replace directive for SDK
+- MOD `services/book-service/Dockerfile` — repo-root build context
+- MOD `infra/docker-compose.yml` — book-service build.context: .. + LLM_GATEWAY_INTERNAL_URL env
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN (BEFORE BUILD).** 6 HIGH + 5 MED + 6 LOW + 3 COSMETIC. All actionable folded inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🔴 HIGH | `errors.Is` via `inner` was specified only at one construction site; rest left to implementer. Central `newErrorFromCode(code, msg, status)` helper + regression-lock test enforcing every `codeSentinels` entry round-trips. |
+| 2 | 🔴 HIGH | Dockerfile + docker-compose build context bump missing from §4.1 scope. Promoted to in-scope; explicit Dockerfile diff. |
+| 3 | 🔴 HIGH | `NewServer` signature change unflagged. Kept current `NewServer(pool, cfg) *Server` signature; SDK construction inline with nil-on-misconfig matching `s.minio` precedent. |
+| 4 | 🔴 HIGH | §10.2 test plan claimed "SDK mock returns error EARLY" but ensureOwnerBook DB call comes BEFORE SDK call. Scope reduced to extracted-helper unit tests; full DB harness deferred. |
+| 5 | 🔴 HIGH | `*http.Client.Timeout` injection trap (would silently cap each poll). SDK accepts `http.RoundTripper` only; internal `*http.Client` has no Timeout. |
+| 6 | 🔴 HIGH | Test `TestGenerateImage_NonDefaultSize` would have been Phase 5e-α MED#1 trap recurring (gateway's "1024x1024" default = the asserted value). Use "1792x1024" + assert WIRE body not result. Add omitted-Size companion test. |
+| 7 | 🟡 MED | Wire-body construction must use explicit `map[string]any` pattern (not struct + omitempty). |
+| 8 | 🟡 MED | ErrImageGenerationFailed and ErrUpstream into SEPARATE switch cases. |
+| 9 | 🟡 MED | Caller uses `errors.As` not type-assert. |
+| 10 | 🟡 MED | Surface Retry-After header from `*Error.RetryAfterS`. |
+| 11 | 🟡 MED | Package naming closure: `llmgw` (resolves staticcheck warnings). |
+
+**Round 2 — BUILD output.** 3 HIGH + 6 MED + 7 LOW + 3 COSMETIC. 3 HIGH + 5 MED + 1 LOW fixed inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🔴 HIGH | doc.go example showed `UserID: ownerID,` (would not compile — UserID is string but ownerID is uuid.UUID). Fixed to `ownerID.String()`. |
+| 2 | 🔴 HIGH | FE `VersionTimeline.tsx:134-137` renders `ai_model` raw; design deferred this claiming FE resolves UUID → name but no such resolver exists. Real UX regression risk. Fix: store empty string in `ai_model` — FE conditional `{v.ai_model && ...}` naturally hides the line. New rows display without model line; legacy rows keep "dall-e-3". Graceful degradation. |
+| 3 | 🔴 HIGH | `NewClient` failure in NewServer was silently swallowed. Added `slog.Error(...)` so a 503-forever loop is debuggable. |
+| 4 | 🟡 MED | Test stub `wrappedSentinelError.Is()` bypasses the real Unwrap chain. Added `TestWriteImageGenError_RealSDKContentPolicy_RoutesTo400` that constructs a real `*llmgw.Error` through an httptest.NewServer-backed SDK call and routes it through `writeImageGenError`. |
+| 5 | 🟡 MED | `LLM_AUTH_FAILED` → 502 PROVIDER_ERROR was wrong for the dominant case (BYOK key revoked upstream). Now → 402 NO_PROVIDER (FE prompts "configure provider"). |
+| 6 | 🟡 MED | Dead `len(result.Data) == 0` check (SDK already guards). Removed; kept URL-mode `result.Data[0].URL == ""` check with future-b64-caller TODO comment. |
+| 7 | 🟡 MED | `TestGenerateImage_HappyPath` doesn't assert wire `operation: "image_gen"`. Added wire-body assertions. |
+| 8 | 🟡 MED | No regression-lock for zero-default poll interval. Added `TestWaitTerminal_ZeroIntervalDefaultsToHalfSecond`. |
+| 9 | 🟢 LOW | Audio anti-bait test could be stronger. Added `creds.ProviderModelName` + `creds.APIKey` required-substrings. |
+| - | 🔵 COSMETIC | gofmt across SDK + book-service touched files. |
+
+**BUILD-time surprise:** REVIEW-CODE Stage 2 caught my custom `errAs` helper as redundant — replaced with stdlib `errors.As` + `errors.Is` for cleaner Go idiom.
+
+### Verify evidence
+```
+sdks/go/llmgw pytest:                                  N/A (Go)
+sdks/go/llmgw go test ./...:                           44 PASS (was 43; +1 zero-default regression-lock)
+services/book-service go build ./...:                  CLEAN
+services/book-service go vet ./...:                    CLEAN
+services/book-service go test ./internal/api/:         19 PASS (12 writeImageGenError + 1 real-SDK E2E + 2 grep-locks + 4 existing)
+services/book-service go test ./internal/config/:      3 PASS (incl. pre-existing broken test fixed)
+grep -n "/internal/credentials/" media.go              no matches
+grep -n "/v1/images/generations" media.go              no matches
+grep -n "creds.ProviderKind" media.go                  no matches
+audio.go retains: /internal/credentials/, /v1/audio/speech, creds.ProviderModelName, creds.APIKey  (anti-bait green)
+```
+
+### What's NEXT for the next agent
+
+**Phase 5e-β.2 (XL)** — gateway `audio_gen` adapter + Python SDK + Go SDK extension + audio.go migration. Estimated ~25 files. Mirrors Phase 5c-α/5d patterns for gateway adapter work:
+
+1. Gateway side (provider-registry-service):
+   - openapi.yaml: +AudioGenInput + AudioGenResult + audio_gen JobOperation enum
+   - migrate.go: ALTER block adding audio_gen to CHECK constraint
+   - adapters.go: Adapter +GenerateAudio + types + sentinels
+   - openai_audio.go (NEW): /v1/audio/speech impl (binary mp3 not URL — different from image/video URL response pattern)
+   - adapters_audio.go (NEW): Anthropic/Ollama/LM Studio stubs (most lack TTS)
+   - jobs/worker_audio.go + tests
+   - api/jobs_handler.go validation + tests
+   - notification-service consumer op-label
+
+2. Python SDK: extend with `Client.generate_audio()` operation-based method (parallel to existing transparent-proxy TTS used by chat-service voice)
+
+3. Go SDK: extend `sdks/go/llmgw/` with `GenerateAudio` method + `AudioGenResult` model
+
+4. book-service `audio.go::generateAudio` migration: drop legacy credential resolve + use SDK; preserves per-block segment loop + MinIO upload + billing
+
+5. Drop `PROVIDER_REGISTRY_SERVICE_URL` from book-service config (no longer needed once audio.go migrates)
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration to call unified gateway directly.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5E-BETA1-IMAGE-PROVIDER-MODEL-NAME-IN-RESULT` — extend SDK ImageGenResult to expose `provider_model_name` so the FE doesn't lose the human name (current empty-string workaround is graceful but suboptimal)
+- `D-PHASE5E-BETA1-AI-MODEL-DB-MIGRATION` — backfill `block_media_versions.ai_model` if the empty-string-for-new-rows mixed-format becomes annoying (won't-fix unless FE complains)
+- `D-PHASE5E-BETA1-LIVE-SMOKE` — manual POST /media-generate against actual provider after merge
+- `D-PHASE5E-BETA1-INTEGRATION-TEST-HARNESS` — full DB+MinIO+JWT fixtures for handler integration tests (Track 2)
+- `D-PHASE5E-BETA1-GO-SDK-LOGGING` — slog injection on Options for diagnostic events
+- `D-PHASE5E-BETA1-GO-SDK-TRANSPORT-TUNING` — Transport.MaxIdleConnsPerHost for high-concurrency callers
+- carry-over `D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS`
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5E_BETA1_DESIGN.md` — design + 12 /review-impl fixes folded inline
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5e row update + 5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5e-β.2: size XL (~25 files). Mirror 5c-α/5d gateway adapter cycle structure.
+3. Reference impls: `sdks/go/llmgw/` for Go SDK pattern + Phase 5c-α/5d for gateway adapter + Phase 5e-α/5e-β.1 for caller migration shape
+
+---
+
+## Session 56 cycle 1 — Phase 5e-α · video-gen-service migration onto unified gateway · /review-impl rounds (DESIGN: 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 2 COSMETIC, MED + 3 LOWs fixed inline)
 
 ## Session 56 cycle 1 — Phase 5e-α · video-gen-service migration onto unified gateway · /review-impl rounds (DESIGN: 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 2 COSMETIC, MED + 3 LOWs fixed inline)
 

@@ -102,9 +102,11 @@ services:
       - "8204:8081"
 
   book-service:
+    # Phase 5e-β.1 — repo-root build context so the Go SDK at
+    # sdks/go/llmgw is reachable for the go.mod replace directive.
     build:
-      context: ../services/book-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/book-service/Dockerfile
     environment:
       HTTP_ADDR: ":8082"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book?sslmode=disable
@@ -117,6 +119,11 @@ services:
       MINIO_EXTERNAL_URL: http://localhost:9123
       SHARING_INTERNAL_URL: http://sharing-service:8083
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      # Phase 5e-β.1 — unified gateway URL for media.go image_gen migration.
+      # Same host as provider-registry-service since the gateway IS there;
+      # naming matches knowledge-service / worker-ai / translation-service.
+      # audio.go still uses PROVIDER_REGISTRY_SERVICE_URL until Phase 5e-β.2.
+      LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
