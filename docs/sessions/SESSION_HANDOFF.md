@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-05-14 (session 56, cycle 1 shipped)
-> **HEAD:** `<pending>` (Phase 5e-α feat commit — backfill follows); Phase 5d closed at `b3f046ab` (session 55 cycle 3); Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
+> **HEAD:** `<pending-backfill>` (this commit) — Phase 5e-α feat commit @ `d276d0a7`; Phase 5d closed at `b3f046ab` (session 55 cycle 3); Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
 
 ## Session 56 cycle 1 — Phase 5e-α · video-gen-service migration onto unified gateway · /review-impl rounds (DESIGN: 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 2 COSMETIC, MED + 3 LOWs fixed inline)
@@ -98,7 +98,7 @@ Recommend: revisit the decision AFTER 5e-α has run in production (live smoke co
 **Starting-cycle boilerplate:**
 1. `python scripts/workflow-gate.py status` confirm closed
 2. For Phase 5e-β: needs Go SDK decision FIRST; then size XL probably
-3. Reference impl: 5e-α at HEAD `<pending>` + Phase 5b chat-service voice (Python caller pattern); for Go shim approach, see book-service media.go current state
+3. Reference impl: 5e-α at HEAD `d276d0a7` + Phase 5b chat-service voice (Python caller pattern); for Go shim approach, see book-service media.go current state
 
 ---
 
