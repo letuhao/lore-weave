@@ -81,6 +81,135 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-15 (continued, late) — AMAW × ContextHub L3 deepening (XL task, default v2.2 mode)
+
+### Session arc
+
+After bundle v2.3 deployment landed (commits `9384eafd`..`23406566`), user's review of the new MCP integration found it shallow — only RETRO calls `add_lesson`; sub-agents are "files-as-truth" and ignore MCP entirely. With ContextHub MCP provisioned but barely used, user picked **L3 deepen** (deepest of 3 proposed levels) to evaluate effectiveness end-to-end.
+
+Workflow mode for THIS task: **default v2.2 + `/review-impl`** (meta-paradox: can't validate AMAW deep using AMAW shallow). First real `/amaw` run waits for next session's Phase 0b SSE parser, with deepened L3 wiring active.
+
+### CLARIFY decisions (4-question Q&A)
+
+| Decision | Choice |
+|---|---|
+| Workflow mode for THIS task | default v2.2 + `/review-impl` |
+| Scope of L3 changes | AMAW-mode only (gated on `amaw_enabled` state flag); default v2.2 untouched |
+| Bridge AUDIT_LOG → lessons granularity | Selective: `sprint_complete` + `pragmatic_stop` + REJECTED reviews only |
+| Sub-agent MCP access mechanism | Helper script wrapper `scripts/mcp-query.py` |
+| Edit safety | No freeze (default v2.2 = no sub-agents spawned) |
+
+### What landed (13 files)
+
+**NEW (4):**
+- `agentic-workflow/scripts/mcp-query.py` + `scripts/mcp-query.py` — 275-line stdlib REST CLI (verbs: ping, search_lessons, add_lesson, list_lessons, check_guardrails, search_code_tiered). Reflect dropped (no REST endpoint, MCP-only via chat model).
+- `docs/specs/2026-05-15-amaw-l3-deepen.md` — 240-line spec (4 components, 12 AC, risks, out-of-scope)
+- `docs/plans/2026-05-15-amaw-l3-deepen.md` — 156-line plan (42 bite-sized tasks, dependency graph)
+
+**MODIFIED (9):**
+- `agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — `INITIAL_STATE` adds `amaw_enabled` flag. New verbs `amaw-enable` / `amaw-pre-commit` / `pragmatic-stop`. `_log_audit` + `_bridge_to_contexthub` helpers. `cmd_complete` extended with selective bridge (retro→sprint_complete, REJECTED reviews→adversary-rejection). `cmd_status` shows AMAW state.
+- `agentic-workflow/AMAW.md` + `docs/amaw-workflow.md` — All 3 sub-agent templates (Adversary/Scope Guard/Scribe) gain Step 0 with `mcp-query.py search_lessons` / `check_guardrails` calls. New "L3 ContextHub integration" section.
+- `agentic-workflow/.claude/settings.json` + `.claude/settings.json` — PreToolUse hook chains `pre-commit && amaw-pre-commit`. Timeout 75s.
+- `agentic-workflow/.claude/commands/amaw.md` + `.claude/commands/amaw.md` — Step 2 invokes `bash scripts/workflow-gate.sh amaw-enable [task-slug]`. Step 3+5 reference Step-0 calls.
+- `agentic-workflow/install.sh` — copies `mcp-query.py` with chmod +x.
+- `agentic-workflow/README.md` — new "L3 deepen (2026-05-15)" row in customizations table.
+- `docs/deferred/DEFERRED.md` — 5 entries (IDs 001-005) for L4 hardening from /review-impl LOW findings.
+
+### Workflow trace (gate state)
+
+```
+clarify → design → review-design → plan → build → verify → review-code → qc → post-review (current) → session → commit → retro
+   [x]      [x]         [x]         [x]    [x]      [x]        [x]        [x]      [x]
+```
+
+XL classified (files=11, logic=6, side_effects=1). All 9 phases marked complete with evidence in `.workflow-state.json`.
+
+### Bugs found + fixed during cycle
+
+| # | Phase | Issue | Fix |
+|---|---|---|---|
+| 1 | BUILD | `_request` missed `http.client.RemoteDisconnected` — server-mid-request close crashed script | Added `(ConnectionError, RemoteDisconnected, HTTPException)` clause |
+| 2 | BUILD | 30s timeout too tight for cold add_lesson (measured 30.169s) | Bumped mcp-query.py timeout 30s → 60s |
+| 3 | BUILD | `amaw-pre-commit` silent on success (UX) | Added `OK: ... CLEAR (rules_checked: N)` print |
+| 4 | REVIEW | Bridge subprocess timeout 45s < mcp-query 60s — could kill in-flight add_lesson | Bumped subprocess timeout to 75s with note |
+| 5 | review-impl MED-1 | `amaw-pre-commit` BLOCKED detection scraped summary text — fragile if format drifts | Switch to `--format json` + JSON parsing of `pass`/`violated` fields |
+| 6 | review-impl MED-2 | 4xx response from check_guardrails fell through to "non-fatal warn" + commit proceeds (fail-open wrong direction) | 4xx now blocks commit (structural error → human investigates) |
+| 7 | review-impl MED-3 | `MCP_QUERY = Path("scripts/mcp-query.py")` cwd-relative — bridge silently no-op'd from non-repo cwd | `Path(__file__).parent / "mcp-query.py"` resolves from script location |
+| 8 | review-impl MED-4 | Sub-agent prompt placeholder `<task topic>` literal substitution risk | Templates now instruct "derive actual topic from spec H1, do NOT pass literal placeholder"; findings doc footer requires "Step 0 query strings used" |
+
+Bonus discovery during MED-1 fix: argparse `--format` position matters — top-level `--format json` is overridden by subparser default. Bridge subprocess.run command must pass `--format json` AFTER subcommand.
+
+### /review-impl pass
+
+After Phase 9 POST-REVIEW initial summary, user invoked `/review-impl` for adversarial review before commit. Findings:
+
+| Severity | Count | Examples |
+|---:|---:|---|
+| HIGH | 0 | (none — implementation passed all 12 AC) |
+| MED | 4 | amaw-pre-commit string scraping; 4xx fail-open; cwd-relative MCP_QUERY; sub-agent placeholder substitution |
+| LOW | 5 | task_slug not validated; "REJECTED" substring false positives; non-atomic save_state; pre-commit side-effect state file; sub-agent permission prompts |
+| COSMETIC | (skipped) | display nits, hardcoded date refs, install.sh chmod no-op, etc. |
+
+All 4 MED fixed in same cycle (re-VERIFY clean). All 5 LOW logged in `docs/deferred/DEFERRED.md` (IDs 001-005) for L4 hardening / first AMAW dogfood.
+
+### Verify evidence (re-VERIFY after MED fixes)
+
+| AC | Verify |
+|---|---|
+| AC-1 ping | `OK` |
+| AC-2 search_lessons | JSON output with matches[] structure |
+| AC-3 add_lesson | UUID returned (`ac9ab93c-...`); lesson visible via list_lessons |
+| AC-4 check_guardrails | `pass: True, rules_checked: 0` (CLEAR with empty rule layer) |
+| AC-5 server-down | Friendly stderr "ContextHub not reachable" + exit 2 (no stack trace) |
+| AC-6 amaw-enable | `state['amaw_enabled']` flips True; idempotent |
+| AC-7 bridge fires | `OK: bridged lesson 1dfdc3ec-...` (warm path, no timeout warning) |
+| AC-8 default mode silent | No bridge call when `amaw_enabled=false` |
+| AC-9 default pre-commit | `pre-commit` passes; `amaw-pre-commit` no-op exit 0 |
+| AC-10 AMAW pre-commit | `OK: amaw-pre-commit guardrails CLEAR (pass=True, rules_checked=0)` |
+| AC-11 sub-agent prompts | 10 `mcp-query.py` mentions in AMAW.md (≥4 expected) |
+| AC-12 mirror diffs | All 5 deployed files match bundle (no drift) |
+
+### Test lessons created (kept per user choice "useful evidence")
+
+In ContextHub `mmo-rpg-zone-map-design-non-human-in-loop` project:
+- `Sprint complete: smoke-AC7-l3deepen-test` — proof bridge works end-to-end
+- `Sprint complete: smoke-revfinal-l3` — re-verify after MED fixes
+- `AC-3 smoke test` ×2, `AC-VERIFY smoke` ×2, `Retry test`, `Timing test`, `Timeout 60s test`, `L3 review-impl re-verify` — Component 1 verb tests
+- ~9-10 throwaway lessons total. Skipped cleanup per user choice (search_lessons against actual task topics returns these as low-signal noise; tolerable).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**Verification before doing any work:**
+1. `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` → 8 containers Up
+2. `bash scripts/workflow-gate.sh status` → empty 12-phase tracker, AMAW disabled
+3. `python scripts/mcp-query.py ping` → `OK`
+4. `git branch --show-current` → `mmo-rpg/zone-map-design-non-human-in-loop`
+
+**Next session agenda:**
+
+1. **First real `/amaw` dogfood** — Phase 0b SSE parser in `loreweave_llm` SDK (per prior session's roadmap). Run `/amaw` at task start. Measure: how many real findings, token cost, where the deepened workflow felt natural vs forced. **First entry to `docs/audit/AUDIT_LOG.jsonl` from a non-smoke task.** Pre-flight: verify `python scripts/mcp-query.py *` is in `.claude/settings.json` allow-list (DEFERRED #005); if sub-agent permission prompts interrupt, allow once.
+2. **Resume Phase 0b** per the prior 2026-05-14 late-evening entry's Phase 0b plan (lmstudio register as `platform_model`, SSE parser in `loreweave_llm::GatewayClient::stream()`, hardcoded L3 prompt against 3-zone wuxia fixture).
+3. **Decide branch merge cadence** — if AMAW dogfood succeeds, merge `mmo-rpg/zone-map-design-non-human-in-loop` workflow infra back to `mmo-rpg/zone-map-design` so all future design tracks benefit. The infra is repo-wide regardless of which design track.
+
+**Process discipline reminders:**
+
+- `/amaw` for L+ tasks ONLY (data migrations, schema changes, security paths, multi-system contracts). Don't burn ~$1-5/task tokens on small fixes.
+- Sub-agent prompt templates require deriving ACTUAL topic from spec — do not pass literal `<task topic>` placeholder strings (review-impl MED-4 lesson).
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B). Memory: `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root contains 2 members. Memory: `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+
+### Raw count
+
+- **Commits this entry:** 1 pending (single mega-commit per user choice)
+- **Files created:** 4 (mcp-query.py + spec + plan + DEFERRED.md row population)
+- **Files modified:** 9
+- **External state changes:** ~10 test lessons in ContextHub (kept as evidence per user); workflow-state.json reflects 9/12 phases complete
+- **Tests:** AC-1..12 all green (full re-VERIFY pass after MED fixes); /review-impl 4 MED + 5 LOW; all MED fixed inline
+
+---
+
 ## Session 2026-05-15 — "non-human-in-loop" scope = AMAW v3.0; agentic-workflow bundle deployed; ContextHub MCP fully wired
 
 ### Session arc

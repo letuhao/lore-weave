@@ -103,6 +103,14 @@ Read ONLY:
 - docs/audit/AUDIT_LOG.jsonl (for prior context if review round > 1)
 - The relevant code files for code-review variants
 
+Step 0 — Load captured rules (MUST run BEFORE finding 3 problems):
+- **First, derive the actual <task topic> from the spec file's H1 title or task slug.** Do NOT pass the literal string `<task topic>` to the helper. If you can't find a topic, use the spec filename (without extension and date prefix).
+- Run: `python scripts/mcp-query.py search_lessons "<actual derived topic>" --type guardrail --limit 10 --format json`
+- Run: `python scripts/mcp-query.py search_lessons "<changed-file pattern>" --tags adversary-rejection --limit 5 --format json`
+- Parse the JSON output. Note any guardrails or prior REJECTED findings relevant to this review.
+- Your "3 problems" MUST be informed by these results. If a guardrail is being violated by the proposed change, that's a BLOCK finding. If a prior adversary REJECTED a similar pattern, frame your finding as "this regressed prior fix X" or "this resembles the pattern that produced REJECTED finding Y".
+- Informational lessons (general_note, decision, preference) are CONTEXT — do NOT auto-promote them to findings.
+
 Instructions:
 - Find EXACTLY 3 things that could go wrong. Use BLOCK or WARN severity.
 - Never say what is good. Never propose fixes unless they reveal a flaw.
@@ -115,7 +123,11 @@ Adversarial lens (vary by review type):
 Output: append ONE JSON line to docs/audit/AUDIT_LOG.jsonl:
 {"ts":"<iso>","task":"<slug>","phase":"review-design","agent":"adversary","action":"review","round":<N>,"status":"APPROVED|APPROVED_WITH_WARNINGS|REJECTED","findings_count":3,"block_count":<n>,"warn_count":<n>,"note":"<one-liner summarizing the 3 findings>"}
 
-Write a separate findings document to docs/audit/findings-<task>-r<N>.md with the detailed findings.
+Write a separate findings document to docs/audit/findings-<task>-r<N>.md with the detailed findings. Include footer:
+  Lessons consulted: <N> (from search_lessons calls in Step 0)
+  Step 0 query strings used: <verbatim text passed to search_lessons>  ← detect literal-placeholder failures
+  Guardrails relevant: <list of guardrail titles>, or "(none)" if Step 0 returned 0 guardrails
+  Prior REJECTED patterns: <list of titles>, or "(none)"
 
 Status rules:
 - APPROVED if all 3 are nitpick WARN
@@ -141,7 +153,13 @@ Read ONLY:
 - docs/audit/AUDIT_LOG.jsonl (all prior phase events)
 - Latest diff or relevant code files
 
-Your authority: conservative wins. If ANY prior agent finding is unresolved, OR any acceptance criterion uncovered, OR spec fingerprint shows unexplained drift → BLOCKED. Otherwise → CLEAR.
+Step 0 — Captured-rules check (MUST run BEFORE rendering verdict):
+- **Derive <task area> from the spec file's title or task slug — do NOT pass the literal string `<task area>`.**
+- Run: `python scripts/mcp-query.py check_guardrails "ready-to-commit" --format json` and respect its verdict. If guardrails return `pass:false` or non-empty `violated` → your verdict MUST be BLOCKED with that reason quoted verbatim.
+- Run: `python scripts/mcp-query.py search_lessons "<actual task area>" --type guardrail --limit 5 --format json` to verify no captured rule is being violated by the diff.
+- Run: `python scripts/mcp-query.py search_lessons "<actual task area>" --limit 3 --format json` to surface prior similar verdicts. Note them in your AUDIT_LOG event with verbatim query strings used.
+
+Your authority: conservative wins. If ANY prior agent finding is unresolved, OR any acceptance criterion uncovered, OR spec fingerprint shows unexplained drift, OR check_guardrails returned BLOCKED → BLOCKED. Otherwise → CLEAR.
 
 Checklist:
 1. Compute current spec_hash and compare to design event's spec_hash in AUDIT_LOG — unexplained drift = BLOCKED
@@ -174,6 +192,12 @@ Task type — depends on when you were spawned:
 (a) CLARIFY session-start scan: read DEFERRED.md, list any items whose trigger
     condition is now met. Report each as a candidate "should we handle this now?"
     line for the main session.
+    Also run (derive <task intent> + <task area> from the spec or current task slug
+    — do NOT pass literal placeholder strings):
+      python scripts/mcp-query.py search_lessons "<actual task intent>" --limit 8 --format json
+      python scripts/mcp-query.py search_lessons "<actual task area>" --tags deferred --limit 10 --format json
+    Print top 3 most-relevant lesson titles for the main session to consider.
+    For each lesson tagged "deferred" with no matching DEFERRED.md row → flag as orphan.
 
 (b) PLAN validation: read the plan file. Check for: placeholders ("TBD",
     "TODO", "add error handling here"), tasks without exact file paths,
@@ -253,6 +277,30 @@ ContextHub MCP is already provisioned for this repo:
 **RETRO phase action:** call `add_lesson` with `lesson_payload.project_id = "mmo-rpg-zone-map-design-non-human-in-loop"`. Lessons accumulate across AMAW runs as durable cross-session memory.
 
 **CLARIFY phase action:** call `search_lessons` with the same project_id at task start to load prior decisions/preferences before running the Scribe deferred-item scan.
+
+---
+
+## L3 ContextHub integration (deepened 2026-05-15)
+
+AMAW's MCP integration was deepened from shallow (~15-20%) to ~70-80% via 4 components:
+
+1. **`scripts/mcp-query.py`** — stdlib REST CLI wrapper for ContextHub. Sub-agents shell out to it via `python scripts/mcp-query.py <verb>` instead of relying on MCP-tool-inheritance.
+2. **AUDIT_LOG → ContextHub bridge** in `workflow-gate.py`: when `amaw_enabled=True`, `cmd_complete` writes events to `docs/audit/AUDIT_LOG.jsonl` AND selectively bridges high-signal events (sprint_complete, REJECTED reviews, pragmatic_stop) to `add_lesson`. Default v2.2 mode → silent.
+3. **Sub-agent prompts (Adversary / Scope Guard / Scribe)** include Step 0 calls to `mcp-query.py search_lessons` / `check_guardrails` for captured-rules awareness — see templates above.
+4. **Pre-commit hook chain** — `.claude/settings.json` runs `workflow-gate.sh pre-commit && workflow-gate.sh amaw-pre-commit`. Second gate is no-op for default v2.2; calls `check_guardrails` when AMAW mode active.
+
+**Activation:** `/amaw` slash command runs `bash scripts/workflow-gate.sh amaw-enable [task-slug]` which sets `state['amaw_enabled']=True`. All L3 behaviors gate on this flag.
+
+**Selective bridge triggers** (low-noise design: ~3-5 lessons per task):
+- `complete retro <evidence>` → bridge as `general_note` with title `Sprint complete: <task>`
+- `complete review-design` or `complete review-code` with "REJECTED" in evidence → bridge as `general_note` with title `Adversary REJECTED: <task> <phase>`
+- `pragmatic-stop <task> <reason>` → bridge as `workaround` with title `Pragmatic stop: <task>`
+
+**Failure modes (best-effort):**
+- ContextHub down → bridge prints warning to stderr, workflow continues. Phase still marks complete.
+- `add_lesson` slow (embedding generation 15-60s) → 60s timeout in mcp-query.py; if exceeded, bridge emits warning but server may still complete the insert async (verify with `list_lessons`).
+
+**See:** `docs/specs/2026-05-15-amaw-l3-deepen.md` (spec) and `docs/plans/2026-05-15-amaw-l3-deepen.md` (implementation plan).
 
 ---
 

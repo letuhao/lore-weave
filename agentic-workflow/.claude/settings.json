@@ -6,9 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE \"git commit\"; then bash ./scripts/workflow-gate.sh pre-commit; fi'",
-            "timeout": 10000,
-            "description": "Block git commit if VERIFY or SESSION phases not completed"
+            "command": "bash -c 'if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE \"git commit\"; then bash ./scripts/workflow-gate.sh pre-commit && bash ./scripts/workflow-gate.sh amaw-pre-commit; fi'",
+            "timeout": 75000,
+            "description": "Block git commit if VERIFY/POST-REVIEW/SESSION not done; also call check_guardrails when AMAW mode active (no-op default v2.2). Timeout 75s to accommodate cold-start ContextHub embedding ops."
           }
         ]
       }

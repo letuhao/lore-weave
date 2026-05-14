@@ -23,13 +23,15 @@ echo "Installing agentic-workflow bundle v2.3 into: $TARGET"
 echo "  AMAW opt-in extension: $([ $NO_AMAW -eq 1 ] && echo 'EXCLUDED' || echo 'INCLUDED')"
 echo ""
 
-# 1. Copy scripts (both .sh wrapper and .py implementation)
+# 1. Copy scripts (both .sh wrapper and .py implementation + ContextHub MCP REST helper)
 mkdir -p "$TARGET/scripts"
 cp "$SCRIPT_DIR/scripts/workflow-gate.sh" "$TARGET/scripts/workflow-gate.sh"
 cp "$SCRIPT_DIR/scripts/workflow-gate.py" "$TARGET/scripts/workflow-gate.py"
-chmod +x "$TARGET/scripts/workflow-gate.sh" "$TARGET/scripts/workflow-gate.py"
+cp "$SCRIPT_DIR/scripts/mcp-query.py" "$TARGET/scripts/mcp-query.py"
+chmod +x "$TARGET/scripts/workflow-gate.sh" "$TARGET/scripts/workflow-gate.py" "$TARGET/scripts/mcp-query.py"
 echo "[x] scripts/workflow-gate.sh (bash wrapper)"
 echo "[x] scripts/workflow-gate.py (cross-platform implementation)"
+echo "[x] scripts/mcp-query.py (ContextHub MCP REST helper for AMAW L3)"
 
 # 2. Copy hooks (don't overwrite)
 mkdir -p "$TARGET/.claude"

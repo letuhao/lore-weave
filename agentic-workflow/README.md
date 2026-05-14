@@ -46,6 +46,7 @@ This bundle has been customized for the **lore-weave-zone-map-design** repo. Dif
 | `CLAUDE.md.snippet` | Includes a "Repo-specific paths" block listing all canonical doc locations + ContextHub `project_id`. |
 | `AMAW.md` | New "Repo integration" section: ContextHub MCP server, project_id, workspace mount path, RETRO+CLARIFY MCP call instructions. |
 | `.claude/commands/amaw.md` | RETRO step explicitly names ContextHub `project_id = "mmo-rpg-zone-map-design-non-human-in-loop"`. |
+| **L3 deepen (2026-05-15)** | `scripts/mcp-query.py` — stdlib REST CLI wrapper for ContextHub. `workflow-gate.py` extended with `amaw-enable` / `amaw-pre-commit` / `pragmatic-stop` verbs + `_bridge_to_contexthub` helper that selectively bridges high-signal AMAW events (sprint_complete, REJECTED reviews, pragmatic_stop) to `add_lesson` for cross-session searchable memory. Sub-agent prompts (Adversary / Scope Guard / Scribe) gain Step 0 calls to `mcp-query.py search_lessons` / `check_guardrails`. Pre-commit hook chain runs `pre-commit && amaw-pre-commit`. All L3 behaviors gate on `state['amaw_enabled']` flag (set by `/amaw` slash command); default v2.2 mode → silent. See `docs/specs/2026-05-15-amaw-l3-deepen.md`. |
 
 ## Quick Start (3 steps)
 

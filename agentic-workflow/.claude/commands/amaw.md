@@ -31,14 +31,18 @@ See `docs/amaw-workflow.md` (installed from `AMAW.md`) for full prompt templates
 ## Process when /amaw is invoked
 
 1. **Acknowledge:** "AMAW mode enabled for this task. Default v2.2 workflow remains for future tasks."
-2. **Append `amaw_enabled` event to AUDIT_LOG.jsonl** with current task slug + timestamp.
-3. **At each REVIEW phase:** use the Adversary prompt template from `AMAW.md`. Spawn via Agent tool with `subagent_type: general-purpose` (or whichever the host supports). The sub-agent must:
+2. **Flip the state-machine flag (MANDATORY):** run `bash scripts/workflow-gate.sh amaw-enable [task-slug]`. This sets `state['amaw_enabled']=True` so:
+   - `cmd_complete` writes events to `docs/audit/AUDIT_LOG.jsonl` AND selectively bridges high-signal events (sprint_complete, REJECTED reviews, pragmatic_stop) to ContextHub `add_lesson` via `mcp-query.py`
+   - `amaw-pre-commit` (the second link in the pre-commit hook chain) calls `mcp-query.py check_guardrails "git commit"` instead of no-op
+   - Without this flip, all L3 deepen behaviors stay silent and AMAW operates exactly like default v2.2
+3. **At each REVIEW phase:** use the Adversary prompt template from `docs/amaw-workflow.md`. Spawn via Agent tool with `subagent_type: general-purpose` (or whichever the host supports). The sub-agent must:
    - Read ONLY the files listed in the prompt — never the chat history
+   - **Step 0:** call `python scripts/mcp-query.py search_lessons "<topic>" --type guardrail` and `--tags adversary-rejection` to load captured rules. Findings MUST be informed by these results.
    - Find EXACTLY 3 problems (BLOCK or WARN). Never say what is good.
-   - Append verdict event to AUDIT_LOG.jsonl + detailed findings to `docs/audit/findings-<task>-r<N>.md`
-4. **On REJECTED:** fix the findings, re-spawn the Adversary, increment round number. No self-authorized skips.
-5. **At POST-REVIEW:** spawn Scope Guard. CLEAR → proceed. BLOCKED → fix → re-run.
-6. **At SESSION:** ensure AUDIT_LOG has all phase events + the `sprint_complete` event at end.
+   - Append verdict event to AUDIT_LOG.jsonl + detailed findings to `docs/audit/findings-<task>-r<N>.md` with footer noting "Lessons consulted: <N>; Guardrails relevant: ..."
+4. **On REJECTED:** fix the findings, re-spawn the Adversary, increment round number. No self-authorized skips. (Bridge auto-fires to `add_lesson` on `complete review-design` / `complete review-code` if evidence contains "REJECTED".)
+5. **At POST-REVIEW:** spawn Scope Guard. **Step 0:** sub-agent must call `python scripts/mcp-query.py check_guardrails "ready-to-commit"` and respect verdict. CLEAR → proceed. BLOCKED → fix → re-run.
+6. **At SESSION:** ensure AUDIT_LOG has all phase events. The `sprint_complete` event + `add_lesson` bridge fire automatically when `complete retro <evidence>` is called.
 
 ## Calibration
 
@@ -60,10 +64,11 @@ APPROVED_WITH_WARNINGS after round 2 is acceptable. Document "pragmatic stop" + 
 ## What this command does NOT do
 
 - Does NOT change the default workflow for future tasks
-- Does NOT modify CLAUDE.md or settings.json
+- Does NOT modify CLAUDE.md
 - Does NOT skip any v2.2 phases (CLARIFY, PLAN, BUILD, VERIFY, SESSION, COMMIT, RETRO all still run)
-- Is per-task only — explicitly invoke `/amaw` again for the next task if needed
+- Does NOT bypass the pre-commit hook chain — both `pre-commit` (default v2.2 gate) AND `amaw-pre-commit` (check_guardrails when AMAW active) run
+- Is per-task only — explicitly invoke `/amaw` again for the next task if needed (workflow-state.json is per-clone, per-task)
 
 ## After completion
 
-When the task closes, just commit normally. The AUDIT_LOG.jsonl and DEFERRED.md updates carry forward as durable history. The next task starts in default v2.2 mode unless `/amaw` is invoked again.
+When the task closes, just commit normally. The AUDIT_LOG.jsonl and DEFERRED.md updates carry forward as durable history. ContextHub `lessons` table accumulates the bridged sprint_complete + REJECTED + pragmatic_stop entries — searchable cross-session via `mcp-query.py search_lessons`. The next task starts in default v2.2 mode unless `/amaw` is invoked again.

@@ -18,11 +18,18 @@ Usage:
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 STATE_FILE = Path(".workflow-state.json")
+AUDIT_LOG = Path("docs/audit/AUDIT_LOG.jsonl")
+# MCP_QUERY resolved relative to THIS script's location so the bridge works
+# regardless of cwd (commit hooks may invoke from worktrees, CI runners, etc.).
+# Phase 7 review-impl MED-3 fix: was Path("scripts/mcp-query.py") cwd-relative,
+# silently no-op'd when invoked outside repo root.
+MCP_QUERY = Path(__file__).parent / "mcp-query.py"
 
 PHASES = [
     "clarify", "design", "review-design", "plan", "build",
@@ -46,7 +53,57 @@ INITIAL_STATE = {
     "verify_evidence": None,
     "started_at": None,
     "last_transition": None,
+    # AMAW v3.0 L3 deepen — flag set by `amaw-enable` verb (called by /amaw slash cmd).
+    # When True, cmd_complete writes events to AUDIT_LOG.jsonl and selectively bridges
+    # high-signal events (sprint_complete, pragmatic_stop, REJECTED reviews) to
+    # ContextHub via mcp-query.py add_lesson. Default v2.2 mode → flag stays False,
+    # no MCP autocalls, no AUDIT_LOG entries.
+    "amaw_enabled": False,
+    "amaw_enabled_at": None,
 }
+
+
+# ── AMAW L3 helpers (no-op when amaw_enabled=False) ─────────────────
+
+
+def _log_audit(event: dict) -> None:
+    """Append event to AUDIT_LOG.jsonl. Caller MUST gate on amaw_enabled."""
+    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with AUDIT_LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
+def _bridge_to_contexthub(lesson_type: str, title: str, content: str, tags: list[str]) -> None:
+    """Best-effort: shell out to mcp-query.py add_lesson. Never raises.
+
+    Bridge failures are logged to stderr but do NOT block phase completion —
+    the workflow state machine must remain deterministic regardless of MCP
+    availability.
+    """
+    if not MCP_QUERY.exists():
+        print(f"WARN: bridge skipped — {MCP_QUERY} not found", file=sys.stderr)
+        return
+    try:
+        # Subprocess timeout MUST exceed mcp-query.py's internal HTTP timeout (60s)
+        # so we don't kill an in-flight add_lesson whose embedding is still generating.
+        # Phase 7 review fix: was 45s → 75s. 60s HTTP + 15s safety buffer.
+        result = subprocess.run(
+            [
+                sys.executable, str(MCP_QUERY), "add_lesson",
+                "--type", lesson_type,
+                "--title", title,
+                "--content", content,
+                "--tags", ",".join(tags),
+            ],
+            capture_output=True, text=True, timeout=75,
+        )
+        if result.returncode == 0:
+            print(f"OK: bridged lesson {result.stdout.strip()}", file=sys.stderr)
+        else:
+            stderr_tail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "(no stderr)"
+            print(f"WARN: bridge exit {result.returncode}: {stderr_tail}", file=sys.stderr)
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"WARN: bridge exception: {e}", file=sys.stderr)
 
 
 def load_state() -> dict:
@@ -172,9 +229,10 @@ def cmd_complete(args: list[str]) -> None:
 
     state = load_state()
     completed = [p for p in state.get("phases_completed", []) if p["phase"] != phase]
+    completed_at = datetime.now().isoformat()
     completed.append({
         "phase": phase,
-        "completed_at": datetime.now().isoformat(),
+        "completed_at": completed_at,
         "evidence": evidence,
     })
     state["phases_completed"] = completed
@@ -183,6 +241,152 @@ def cmd_complete(args: list[str]) -> None:
     save_state(state)
 
     print(f"OK: Phase '{phase}' marked complete")
+
+    # AMAW L3 — log to AUDIT_LOG and selectively bridge to ContextHub.
+    # No-op for default v2.2 (amaw_enabled=False).
+    if state.get("amaw_enabled"):
+        task_slug = state.get("task") or "(unnamed)"
+        _log_audit({
+            "ts": completed_at,
+            "task": task_slug,
+            "phase": phase,
+            "agent": "main",
+            "action": "phase_complete",
+            "evidence": evidence,
+        })
+        # Selective bridge — only high-signal events become lessons.
+        if phase == "retro":
+            _log_audit({
+                "ts": completed_at,
+                "task": task_slug,
+                "phase": phase,
+                "agent": "main",
+                "action": "sprint_complete",
+                "evidence": evidence,
+            })
+            _bridge_to_contexthub(
+                lesson_type="general_note",
+                title=f"Sprint complete: {task_slug}",
+                content=f"Phase: retro\nCompleted: {completed_at}\nEvidence: {evidence}",
+                tags=["amaw", "sprint", task_slug],
+            )
+        elif phase in ("review-design", "review-code") and "REJECTED" in evidence.upper():
+            _bridge_to_contexthub(
+                lesson_type="general_note",
+                title=f"Adversary REJECTED: {task_slug} {phase}",
+                content=f"Phase: {phase}\nCompleted: {completed_at}\nEvidence: {evidence}",
+                tags=["amaw", "adversary-rejection", task_slug],
+            )
+
+
+def cmd_amaw_enable(args: list[str]) -> None:
+    """Enable AMAW mode for the current task. Optionally accepts task slug."""
+    state = load_state()
+    if state.get("amaw_enabled"):
+        slug = state.get("task") or "(unnamed)"
+        print(f"OK: AMAW mode already enabled for task '{slug}' (no-op)")
+        return
+    state["amaw_enabled"] = True
+    state["amaw_enabled_at"] = datetime.now().isoformat()
+    if args:
+        state["task"] = args[0]
+    save_state(state)
+    slug = state.get("task") or "(unnamed)"
+    print(f"OK: AMAW mode enabled for task '{slug}'")
+    print(f"  AUDIT_LOG: {AUDIT_LOG}")
+    print(f"  Bridge target: ContextHub via {MCP_QUERY}")
+    print(f"  Triggers: retro→sprint_complete; REJECTED reviews; pragmatic-stop")
+
+
+def cmd_amaw_pre_commit(_args: list[str]) -> None:
+    """AMAW-mode addition to pre-commit hook. No-op for default v2.2.
+
+    Calls mcp-query.py check_guardrails when amaw_enabled. If guardrails
+    return BLOCKED → exit 1 (block commit). If MCP unreachable → warn + exit 0
+    (don't block commits on infra failures).
+    """
+    state = load_state()
+    if not state.get("amaw_enabled"):
+        # Default v2.2 mode — no-op
+        sys.exit(0)
+    if not MCP_QUERY.exists():
+        print(f"WARN: amaw-pre-commit skipped — {MCP_QUERY} not found", file=sys.stderr)
+        sys.exit(0)
+    # Phase 7 review-impl MED-1 fix: call helper with --format json so we parse
+    # structured response instead of scraping summary-mode strings (fragile).
+    # MED-2 fix: 4xx response → exit 1 (block commit) — wrong shape = something
+    # broken at rule layer, safer to block than fail-open.
+    try:
+        # Note: --format MUST follow the subcommand. argparse subparser default
+        # overrides top-level if --format is placed before the verb.
+        result = subprocess.run(
+            [sys.executable, str(MCP_QUERY), "check_guardrails", "git commit", "--format", "json"],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"WARN: amaw-pre-commit guardrail check skipped (exception: {e})", file=sys.stderr)
+        sys.exit(0)
+
+    if result.returncode == 2:
+        # Server down / 5xx — don't block commit on infrastructure failure
+        print(f"WARN: amaw-pre-commit guardrail check skipped — ContextHub unreachable (exit 2)", file=sys.stderr)
+        sys.exit(0)
+    if result.returncode == 1:
+        # 4xx / user-input error — BLOCK commit. Something structurally broken
+        # with the rule layer or the request; safer to block until investigated.
+        print(f"BLOCKED: amaw-pre-commit guardrail check returned 4xx (structural error — investigate before commit):", file=sys.stderr)
+        print(result.stdout, file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        sys.exit(1)
+
+    # returncode == 0 — parse JSON verdict
+    try:
+        verdict = json.loads(result.stdout) if result.stdout.strip() else {}
+    except json.JSONDecodeError:
+        print(f"WARN: amaw-pre-commit got non-JSON response from check_guardrails — passing through:\n{result.stdout}", file=sys.stderr)
+        sys.exit(0)
+
+    # Verdict source is `pass: bool`. Treat absence as CLEAR (no rule layer = no block).
+    # Also block if violated/rules array is non-empty (defense in depth: some impls
+    # return pass=true but list violations — surface them).
+    pass_field = verdict.get("pass")
+    violated = verdict.get("violated") or verdict.get("rules") or []
+    if pass_field is False or (isinstance(violated, list) and len(violated) > 0 and pass_field is not True):
+        print(f"BLOCKED by guardrails: pass={pass_field}, violated={violated}", file=sys.stderr)
+        sys.exit(1)
+
+    rules_checked = verdict.get("rules_checked", "unknown")
+    print(f"OK: amaw-pre-commit guardrails CLEAR (pass={pass_field}, rules_checked={rules_checked})")
+    sys.exit(0)
+
+
+def cmd_pragmatic_stop(args: list[str]) -> None:
+    """Record a pragmatic stop event with reason. Only meaningful in AMAW mode."""
+    if len(args) < 2:
+        fail("Usage: workflow-gate.py pragmatic-stop <task-slug> <reason>")
+    task_slug, reason = args[0], args[1]
+    state = load_state()
+    if not state.get("amaw_enabled"):
+        print("WARN: pragmatic-stop has no effect in default v2.2 mode (amaw_enabled=False).", file=sys.stderr)
+        print("      Run `workflow-gate.py amaw-enable` first to enable AMAW logging.", file=sys.stderr)
+        sys.exit(1)
+
+    ts = datetime.now().isoformat()
+    _log_audit({
+        "ts": ts,
+        "task": task_slug,
+        "phase": state.get("current_phase") or "unknown",
+        "agent": "main",
+        "action": "pragmatic_stop",
+        "reason": reason,
+    })
+    _bridge_to_contexthub(
+        lesson_type="workaround",
+        title=f"Pragmatic stop: {task_slug}",
+        content=f"Phase: {state.get('current_phase')}\nTimestamp: {ts}\nReason: {reason}",
+        tags=["amaw", "pragmatic-stop", task_slug],
+    )
+    print(f"OK: pragmatic stop recorded for task '{task_slug}'")
 
 
 def cmd_check(args: list[str]) -> None:
@@ -262,8 +466,14 @@ def cmd_status(_args: list[str]) -> None:
     size = state.get("size", "NOT SET")
     counts = state.get("size_counts", {})
 
+    amaw_enabled = state.get("amaw_enabled", False)
+    amaw_label = "ENABLED" if amaw_enabled else "disabled (default v2.2)"
+
     print(f"Task: {state.get('task') or '(unnamed)'}")
     print(f"Size: {size} (files={counts.get('files', 0)}, logic={counts.get('logic', 0)}, side_effects={counts.get('side_effects', 0)})")
+    print(f"AMAW: {amaw_label}")
+    if amaw_enabled and state.get("amaw_enabled_at"):
+        print(f"  enabled at: {state['amaw_enabled_at']}")
     print(f"Current phase: {current or 'none'}")
     print()
 
@@ -297,12 +507,16 @@ COMMANDS = {
     "pre-commit": cmd_pre_commit,
     "status": cmd_status,
     "reset": cmd_reset,
+    # AMAW v3.0 L3 deepen
+    "amaw-enable": cmd_amaw_enable,
+    "amaw-pre-commit": cmd_amaw_pre_commit,
+    "pragmatic-stop": cmd_pragmatic_stop,
 }
 
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
-        print("Usage: workflow-gate.py {size|phase|complete|check|skip|pre-commit|status|reset} [args]")
+        print("Usage: workflow-gate.py {size|phase|complete|check|skip|pre-commit|status|reset|amaw-enable|amaw-pre-commit|pragmatic-stop} [args]")
         print()
         print("Commands:")
         print("  size <XS|S|M|L|XL> <files> <logic> <effects>  Classify task size")
@@ -313,6 +527,11 @@ def main() -> None:
         print("  pre-commit                                     Gate check for commits")
         print("  status                                         Show current state")
         print("  reset                                          Reset for new task")
+        print()
+        print("AMAW v3.0 L3 (opt-in, fired by /amaw slash command):")
+        print("  amaw-enable [task-slug]                        Enable AMAW mode + AUDIT_LOG + bridge")
+        print("  amaw-pre-commit                                Hook: check_guardrails (no-op default v2.2)")
+        print("  pragmatic-stop <task-slug> <reason>            Record pragmatic stop + bridge to lesson")
         sys.exit(1)
 
     cmd = sys.argv[1]
