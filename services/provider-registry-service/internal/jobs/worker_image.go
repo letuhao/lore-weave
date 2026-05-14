@@ -205,6 +205,17 @@ func safeStr(m map[string]any, key string) string {
 	return ""
 }
 
+// safeFloatDefault returns inputMap[key] as float64, or def if missing/not numeric.
+// JSON decoder yields float64 for any numeric JSON value.
+//
+// Phase 5e-β.2 — used by runAudioGenJob for `speed` field.
+func safeFloatDefault(m map[string]any, key string, def float64) float64 {
+	if v, ok := m[key].(float64); ok {
+		return v
+	}
+	return def
+}
+
 // safeIntDefault returns inputMap[key] as an int (coercing from float64
 // for JSON-numbers), or `def` if missing/wrong type.
 func safeIntDefault(m map[string]any, key string, def int) int {

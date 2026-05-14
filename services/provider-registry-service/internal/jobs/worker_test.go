@@ -183,8 +183,8 @@ func TestClassifyStreamErrorCode_TransientFolds(t *testing.T) {
 // sequence of errors (then nil for success). Used to drive streamWithRetry
 // without a real upstream HTTP server.
 type fakeAdapter struct {
-	calls    int32
-	errSeq   []error // err[0] returned on first call, err[1] on retry, ...
+	calls  int32
+	errSeq []error // err[0] returned on first call, err[1] on retry, ...
 	provider.Adapter
 }
 

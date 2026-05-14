@@ -95,6 +95,14 @@ type Adapter interface {
 	// result. Adapters that don't support video gen return
 	// ErrOperationNotSupported.
 	GenerateVideo(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateVideoInput) (GenerateVideoOutput, Usage, error)
+
+	// GenerateAudio — Phase 5e-β.2. Batch TTS via /v1/audio/speech
+	// (distinct from Speak which streams). Submits N inputs sequentially
+	// upstream (v1; parallel via D-PHASE5E-BETA2-AUDIO-GEN-PARALLEL-ADAPTER).
+	// MUST preserve input order: output.Items[i] corresponds 1:1 to
+	// input.Texts[i] per /review-impl(DESIGN) MED#5. Adapters that don't
+	// support TTS return ErrOperationNotSupported.
+	GenerateAudio(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateAudioInput) (GenerateAudioOutput, Usage, error)
 }
 
 // ErrStreamNotSupported — returned by adapters that don't yet implement
@@ -198,6 +206,34 @@ var ErrVideoInvalidParams = fmt.Errorf("video generation params invalid")
 // Larger init frames typically don't help video gen quality (the
 // model resizes anyway).
 const MaxImg2VidInputBytes = 10 * 1024 * 1024
+
+// ── audio_gen sentinels (Phase 5e-β.2) ────────────────────────────────
+
+// ErrAudioGenerationFailed — Phase 5e-β.2. Generic upstream-failed
+// sentinel for batch TTS (not auth, not rate-limited, not invalid-params;
+// e.g., model loading, unspecified backend error, zero-byte response).
+// Caller maps to LLM_AUDIO_GENERATION_FAILED.
+var ErrAudioGenerationFailed = fmt.Errorf("audio generation failed")
+
+// ErrAudioGenInvalidParams — Phase 5e-β.2 /review-impl(DESIGN) MED#5.
+// Adapter-level invariant rejection (empty Texts, batch over cap, per-
+// text empty/oversize). Caller maps to LLM_INVALID_REQUEST.
+//
+// Belt-and-suspenders with handler-level validation: handler caps via
+// validateAudioGenInput, adapter caps here so non-handler callers
+// (cron, future RabbitMQ submit, background re-run) can't bypass.
+var ErrAudioGenInvalidParams = fmt.Errorf("audio_gen params invalid")
+
+// MaxAudioGenInputs — Phase 5e-β.2 /review-impl(DESIGN) MED#1. Adapter-
+// level upper bound on batch size. Capped at 10 (was 20 in initial
+// design) to bound double-bill exposure on mid-batch failure: TTS is
+// char-billed per upstream request; a batch failing on input 9 of 10
+// still charged 8 prior calls. Cap at 10× per retry.
+const MaxAudioGenInputs = 10
+
+// MaxAudioGenInputCharsLen — Phase 5e-β.2 /review-impl(DESIGN) LOW#8.
+// Per-input character cap (matches OpenAI TTS exactly).
+const MaxAudioGenInputCharsLen = 4096
 
 // MaxImageResponseBytes — Phase 5c-α /review-impl(DESIGN) LOW#6.
 // Adapter-level cap on the upstream image response body. 8MB covers
@@ -394,6 +430,46 @@ type GeneratedVideo struct {
 	RevisedPrompt string
 }
 
+// ── audio_gen types (Phase 5e-β.2) ────────────────────────────────────
+
+// GenerateAudioInput — batch TTS input. Texts MUST be ordered (output
+// preserves input position); per-text limits enforced at adapter +
+// handler.
+type GenerateAudioInput struct {
+	// Texts — 1..MaxAudioGenInputs strings, each 1..MaxAudioGenInputCharsLen chars.
+	Texts []string
+
+	// Voice — upstream voice name; "" → adapter default ("alloy" for OpenAI).
+	Voice string
+
+	// Speed — 0.25..4.0; 0 → adapter default (1.0).
+	Speed float64
+
+	// Format — "mp3" (default if empty) | "opus" | "aac" | "flac" | "wav" | "pcm".
+	Format string
+
+	// ResponseFormat — "b64_json" (default if empty) | "url".
+	// b64_json: bytes in result; url: gateway stages to MinIO + returns public URL.
+	ResponseFormat string
+}
+
+// GenerateAudioOutput — adapter returns raw bytes per input. Worker
+// converts to b64 or stages to MinIO based on input.ResponseFormat
+// AFTER the adapter call returns.
+type GenerateAudioOutput struct {
+	// Items[i] corresponds 1:1 to input.Texts[i] (order-preserving invariant
+	// per /review-impl(DESIGN) MED#5).
+	Items []GeneratedAudio
+}
+
+// GeneratedAudio is one audio file in the batch response.
+type GeneratedAudio struct {
+	Data        []byte // raw audio bytes; non-empty (adapter rejects 0-byte upstream)
+	Format      string // canonical format string ("mp3", "opus", etc.)
+	ContentType string // upstream MIME, e.g. "audio/mpeg"
+	DurationMs  int    // 0 if upstream didn't report
+}
+
 type ModelInventory struct {
 	ProviderModelName string         `json:"provider_model_name"`
 	ContextLength     *int           `json:"context_length,omitempty"`
@@ -500,7 +576,7 @@ func extractMessages(input map[string]any) []map[string]any {
 // ── OpenAI adapter ────────────────────────────────────────────────────────────
 
 type openaiAdapter struct {
-	client         *http.Client
+	client          *http.Client
 	staticInventory []ModelInventory
 }
 
@@ -653,7 +729,7 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 // ── Anthropic adapter ─────────────────────────────────────────────────────────
 
 type anthropicAdapter struct {
-	client         *http.Client
+	client          *http.Client
 	staticInventory []ModelInventory
 }
 

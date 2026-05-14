@@ -39,7 +39,7 @@ type TerminalEvent struct {
 	JobID        uuid.UUID       `json:"job_id"`
 	OwnerUserID  uuid.UUID       `json:"owner_user_id"`
 	Operation    string          `json:"operation"`
-	Status       string          `json:"status"`        // completed | failed | cancelled
+	Status       string          `json:"status"` // completed | failed | cancelled
 	TraceID      string          `json:"trace_id,omitempty"`
 	Result       json.RawMessage `json:"result,omitempty"`
 	ErrorCode    string          `json:"error_code,omitempty"`
@@ -66,7 +66,7 @@ type Notifier interface {
 type NoopNotifier struct{}
 
 func (NoopNotifier) PublishTerminal(_ context.Context, _ TerminalEvent) error { return nil }
-func (NoopNotifier) Close() error                                              { return nil }
+func (NoopNotifier) Close() error                                             { return nil }
 
 // rabbitMQNotifier holds a connection + channel. Both are reused across
 // PublishTerminal calls; we re-declare the topic exchange on construction

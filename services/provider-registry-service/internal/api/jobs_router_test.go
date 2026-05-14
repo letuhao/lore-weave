@@ -820,3 +820,152 @@ func TestInternalSubmitLlmJob_VideoGen_RejectsChunkingConfig(t *testing.T) {
 		t.Errorf("expected chunking-not-supported hint, got %s", w.Body.String())
 	}
 }
+
+// ── Phase 5e-β.2 — audio_gen handler-level validation tests ──────────
+
+func buildAudioGenJSONRequest(t *testing.T, userID string, input map[string]any, chunking string) *http.Request {
+	t.Helper()
+	body := map[string]any{
+		"operation":    "audio_gen",
+		"model_source": "user_model",
+		"model_ref":    uuid.NewString(),
+		"input":        input,
+	}
+	if chunking != "" {
+		body["chunking"] = json.RawMessage(chunking)
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/llm/jobs?user_id="+userID,
+		bytes.NewReader(bodyBytes),
+	)
+	req.Header.Set("X-Internal-Token", routerTestInternalToken)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func TestInternalSubmitLlmJob_AudioGen_ValidationPasses(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": []string{"hello world"}, "voice": "alloy", "format": "mp3"},
+		"")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (validation-passed), got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_AudioGen_RejectsEmptyTexts(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": []string{}},
+		"")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "non-empty texts array") {
+		t.Errorf("expected non-empty hint, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_AudioGen_RejectsWhitespaceOnlyText(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": []string{"   "}},
+		"")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestInternalSubmitLlmJob_AudioGen_RejectsBatchOverCap(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	texts := make([]string, 11) // cap is 10
+	for i := range texts {
+		texts[i] = "x"
+	}
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": texts},
+		"")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for batch over cap, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "exceeds 10") {
+		t.Errorf("expected batch-cap hint, got %s", w.Body.String())
+	}
+}
+
+func TestInternalSubmitLlmJob_AudioGen_RejectsOversizeText(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	huge := strings.Repeat("a", 4097)
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": []string{huge}},
+		"")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for oversize text, got %d", w.Code)
+	}
+}
+
+func TestInternalSubmitLlmJob_AudioGen_RejectsBadResponseFormat(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": []string{"hi"}, "response_format": "wav-base64"},
+		"")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for bad response_format, got %d", w.Code)
+	}
+}
+
+func TestInternalSubmitLlmJob_AudioGen_RejectsBadFormat(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": []string{"hi"}, "format": "rar"},
+		"")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for bad format, got %d", w.Code)
+	}
+}
+
+func TestInternalSubmitLlmJob_AudioGen_RejectsBadSpeed(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": []string{"hi"}, "speed": 5.0},
+		"")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for speed=5.0 (out of 0.25..4.0), got %d", w.Code)
+	}
+}
+
+func TestInternalSubmitLlmJob_AudioGen_RejectsChunkingConfig(t *testing.T) {
+	srv := newRouterOnlyServer(t)
+	req := buildAudioGenJSONRequest(t, uuid.NewString(),
+		map[string]any{"texts": []string{"hi"}},
+		`{"strategy":"tokens","size":100}`)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for chunking on audio_gen, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "chunking not supported for audio_gen") {
+		t.Errorf("expected chunking-not-supported hint, got %s", w.Body.String())
+	}
+}

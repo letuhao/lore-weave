@@ -49,9 +49,24 @@ class LLMUpstreamError(LLMError):
 
     Distinguished from `LLMRateLimited` etc. because these surface as
     `event: error` SSE frames, not as HTTP-level errors.
+
+    /review-impl(BUILD round 3) H#2 — accepts `body` kwarg for diagnostic
+    forwarding from streaming-error paths. 8 call sites across client.py
+    pass `body=""` when the upstream gave no error body; previously this
+    raised TypeError at runtime.
     """
 
     code = "LLM_UPSTREAM_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        body: str | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(message, **kwargs)
+        self.body = body
 
 
 class LLMStreamNotSupported(LLMError):
@@ -197,6 +212,34 @@ class LLMVideoGenerationFailed(LLMError):
     code = "LLM_VIDEO_GENERATION_FAILED"
 
 
+# ── Phase 5e-β.2 — audio_gen-specific exceptions ─────────────────────
+
+
+class LLMAudioGenerationFailed(LLMError):
+    """Upstream batch TTS generation failed for a non-content-policy
+    reason (model loading, ambiguous backend error, zero-byte response).
+    Caller MAY retry but should expect double-bill exposure (TTS is
+    char-billed per upstream request).
+
+    Maps from gateway code: LLM_AUDIO_GENERATION_FAILED.
+    """
+
+    code = "LLM_AUDIO_GENERATION_FAILED"
+
+
+class LLMGatewayStorageError(LLMError):
+    """Phase 5e-β.2 — gateway-side storage failure (upstream TTS
+    succeeded but MinIO staging failed). Distinct from upstream errors
+    so callers DON'T auto-retry — the upstream call burned BYOK char-
+    billing already; retrying would double-charge. Caller should
+    surface the failure to the user and let them decide.
+
+    Maps from gateway code: LLM_GATEWAY_STORAGE_ERROR.
+    """
+
+    code = "LLM_GATEWAY_STORAGE_ERROR"
+
+
 class LLMTransientRetryNeededError(LLMError):
     """Job terminated with status=failed AND error.code is in the
     transient-retry whitelist (LLM_RATE_LIMITED, LLM_UPSTREAM_ERROR).
@@ -261,6 +304,11 @@ _CODE_TO_EXC: dict[str, type[LLMError]] = {
     # Phase 5d — video-gen-specific exceptions.
     "LLM_VIDEO_CONTENT_POLICY_VIOLATION": LLMVideoContentPolicy,
     "LLM_VIDEO_GENERATION_FAILED": LLMVideoGenerationFailed,
+    # Phase 5e-β.2 — audio_gen-specific exception.
+    "LLM_AUDIO_GENERATION_FAILED": LLMAudioGenerationFailed,
+    # Phase 5e-β.2 — gateway-side storage failure (TTS succeeded but
+    # staging failed). Distinct so callers don't auto-retry double-bill.
+    "LLM_GATEWAY_STORAGE_ERROR": LLMGatewayStorageError,
 }
 
 

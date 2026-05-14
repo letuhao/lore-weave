@@ -1,9 +1,69 @@
-# Session Handoff — Session 56 (cycle 2 shipped · Phase 5e-β.1 Go SDK + book-service media.go migration COMPLETE · Phase 5e-β.2 audio_gen adapter + audio.go migration next)
+# Session Handoff — Session 56 (cycle 3 shipped · Phase 5e-β.2 audio_gen adapter + book-service audio.go migration COMPLETE · Phase 5f BFF deletion next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-14 (session 56, cycle 2 shipped)
-> **HEAD:** `565cea5c` (SESSION_PATCH backfill) — Phase 5e-β.1 feat commit @ `9c607146`; Phase 5e-α feat commit @ `d276d0a7` (closed at `9f985d41`); Phase 5d closed at `b3f046ab` (session 55 cycle 3); Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
+> **Date:** 2026-05-15 (session 56, cycle 3 shipped)
+> **HEAD:** TBD (Phase 5e-β.2 feat commit) — prior: `1430014d` (5e-β.1 SESSION_HANDOFF final), Phase 5e-β.1 feat commit @ `9c607146`; Phase 5e-α feat commit @ `d276d0a7`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 56 cycle 3 — Phase 5e-β.2 · gateway audio_gen adapter + MinIO staging + Python/Go SDK + book-service audio.go migration · /review-impl rounds (DESIGN: 4H+11M+13L+3C; BUILD: C#1+5H+10M+7L; FIX DELTA: 1CRIT+2H+3M+2L — ALL critical+HIGH fixed inline across all 3 rounds)
+
+**What shipped:** Gateway gains first-class `audio_gen` operation (batch TTS, 1..10 inputs, order-preserving). NEW `internal/storage/audio_cache.go` MinIO wrapper for URL-mode staging (public-read bucket + 1-day server-side lifecycle; mirrors book-service `loreweave-media` pattern). Both response modes: `b64_json` (default, inline) AND `url` (gateway-staged). book-service `audio.go` migrated off direct `/internal/credentials/` + `/v1/audio/speech` httpx path; uses batch SDK call → caller-side b64 decode → upload to its own MinIO. `PROVIDER_REGISTRY_SERVICE_URL` env DROPPED from book-service (audio.go was last consumer).
+
+**Strategic significance:** After this cycle, book-service has ZERO direct provider httpx calls. The unified LLM gateway invariant is realized for: chat, completion, embedding, stt, tts (stream), tts (batch via audio_gen), image_gen, video_gen, entity_extraction, relation_extraction, event_extraction, fact_extraction, translation. Only Phase 5f remains (video-gen-service deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration).
+
+**Three review rounds, all critical+HIGH fixed inline:**
+
+| Round | Findings | Resolution |
+|---|---|---|
+| DESIGN | 4H + 11M + 13L + 3C | URL mode redesigned (presigned-with-rewrite broke SigV4 → public-read static URLs); worker plumbing explicit; DB constraint name unversioned; dual-interface for book-service; SDK pointer pattern; MaxAudioGenInputs=10 (not 20) |
+| BUILD | C#1 + 5H + 10M + 7L | C#1 substantially closed (+52 tests across 5 files); H#1 non-string text rejection; H#2 delete-defer (partial); H#4 LLM_GATEWAY_STORAGE_ERROR; H#5 Content-Type whitelist; M#4 format whitelist |
+| FIX DELTA | 1CRIT + 2H + 3M + 2L | CRIT C#1 LLM_GATEWAY_STORAGE_ERROR was orphan code — registered in both SDKs + book-service writeAudioGenError; H#1 delete-defer race fully eliminated (DELETE only after all per-item ops succeed via `media_key != ALL($4::text[])`); H#2 LLMUpstreamError body kwarg added |
+
+**~52 new tests this cycle** across adapter (9) / worker (5+10 subtests) / handler (9) / Go SDK (8) / Python SDK (11) + book-service helper tests.
+
+**Files (~45 — 22 NEW + 23 MOD):**
+- NEW gateway storage pkg + design doc + Python SDK test file + book-service audio_test.go
+- MOD across gateway (adapter/worker/handler/server/main/config/migrate/go.mod) + Python SDK (errors/models/client/__init__/tests) + Go SDK (models/errors/client/tests) + book-service (audio/server/config/test) + docker-compose + openapi + notification
+
+### Verify evidence
+```
+provider-registry-service go test ./...   ALL GREEN
+  +9 audio_gen adapter tests (incl. order-preservation regression-lock)
+  +5 worker tests (+10 classifyAudioGenError Matrix subtests)
+  +9 jobs_router handler validation tests
+sdks/python pytest:                       207 passed (was 196; +11)
+sdks/go/llmgw go test:                    52 passed (was 44; +8)
+book-service go test:                     api 0.24s + config 0.18s GREEN
+grep audio.go:                            0 matches for /internal/credentials/, /v1/audio/speech, creds.*
+grep audio.go:                            has s.audioGenClient.GenerateAudio(, llmgw.ErrAudioGenerationFailed, writeAudioGenError(
+```
+
+### What's NEXT for the next agent
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration to call unified gateway directly. After 5f: unified gateway invariant FULLY realized for all platform LLM/audio/image/video. Estimated ~15 files.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5E-BETA2-STORAGE-UNIT-TESTS` — AudioCache.Stage whitelist/0-byte tests need MinIO test instance
+- `D-PHASE5E-BETA2-AUDIO-GEN-PARALLEL-ADAPTER` — sequential v1; future goroutine fan-out (order invariant locked by test)
+- `D-PHASE5E-BETA2-AUDIO-GEN-PARTIAL-SUCCESS` — currently all-or-nothing batch
+- `D-PHASE5E-BETA2-AUDIO-CACHE-FAST-TTL` — MinIO 1-day minimum vs ideal 1-hour
+- `D-PHASE5E-BETA2-LIVE-SMOKE` — manual against real OpenAI BYOK + book chapter
+- Plus ~12 lower-priority deferred items from review rounds 2 + 3
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5E_BETA2_DESIGN.md` — design + 4H+11M+13L review fixes folded
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5e-β.2 ✅ + 5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5f: size M-L (~15 files). Mostly DELETE + FE migration. No new backend logic.
+3. Reference impls: this cycle's audio_gen completes the gateway slot pattern (5b+5c-α+5d+5e-β.2); 5f is purely retirement.
+
+---
+
+## Session 56 cycle 2 — Phase 5e-β.1 · Go SDK + book-service media.go migration · /review-impl rounds (DESIGN: 6 HIGH + 5 MED + 6 LOW + 3 COSMETIC all actionable folded inline; BUILD: 3 HIGH + 6 MED + 7 LOW + 3 COSMETIC, 3 HIGH + 5 MED + 1 LOW fixed inline)
 
 ## Session 56 cycle 2 — Phase 5e-β.1 · Go SDK + book-service media.go migration · /review-impl rounds (DESIGN: 6 HIGH + 5 MED + 6 LOW + 3 COSMETIC all actionable folded inline; BUILD: 3 HIGH + 6 MED + 7 LOW + 3 COSMETIC, 3 HIGH + 5 MED + 1 LOW fixed inline)
 

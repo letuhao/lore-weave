@@ -103,6 +103,7 @@ func TestOpLabel_AllJobOperations(t *testing.T) {
 		"tts":                 "Tts",
 		"image_gen":           "Image gen",
 		"video_gen":           "Video gen", // Phase 5d
+		"audio_gen":           "Audio gen", // Phase 5e-β.2
 		"entity_extraction":   "Entity extraction",
 		"relation_extraction": "Relation extraction",
 		"event_extraction":    "Event extraction",

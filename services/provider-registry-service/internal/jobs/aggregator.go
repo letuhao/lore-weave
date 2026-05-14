@@ -307,7 +307,7 @@ type jsonListAggregator struct {
 	order           []string                  // preserve insertion order
 	chunkErrors     []string
 	inputTokens     int
-	outputTokens   int
+	outputTokens    int
 	reasoningTokens int
 	finishReason    string
 }
@@ -519,4 +519,3 @@ func (a *jsonListAggregator) Finalize() (map[string]any, int, int) {
 	}
 	return result, a.inputTokens, a.outputTokens
 }
-

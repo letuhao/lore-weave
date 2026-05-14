@@ -26,6 +26,7 @@ import (
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
 type Server struct {
@@ -42,12 +43,18 @@ type Server struct {
 	jobsRepo     *jobs.Repo
 	jobsWorker   *jobs.Worker
 	jobsNotifier jobs.Notifier
+
+	// Phase 5e-β.2 — audio_gen URL-mode staging. nil when MINIO_* config
+	// is missing; URL mode falls back to LLM_INVALID_REQUEST at the
+	// worker, b64_json mode still works.
+	audioCache *storage.AudioCache
 }
 
 // NewServer constructs the HTTP server. notifier may be nil (router-only
 // tests, dev runs without RabbitMQ); falls back to NoopNotifier so the
-// jobs subsystem stays functional without a broker.
-func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier) *Server {
+// jobs subsystem stays functional without a broker. audioCache may be
+// nil; URL-mode audio_gen jobs fail with a clear message in that case.
+func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, audioCache *storage.AudioCache) *Server {
 	key := []byte(cfg.JWTSecret)
 	if len(key) > 32 {
 		key = key[:32]
@@ -69,9 +76,10 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier) *
 		notifier = jobs.NoopNotifier{}
 	}
 	s.jobsNotifier = notifier
+	s.audioCache = audioCache
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
-		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil)
+		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache)
 	}
 	return s
 }
@@ -263,11 +271,11 @@ func (s *Server) getInternalCredentials(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type credResponse struct {
-		ProviderKind      string  `json:"provider_kind"`
-		ProviderModelName string  `json:"provider_model_name"`
-		BaseURL           string  `json:"base_url"`
-		APIKey            string  `json:"api_key"`
-		ContextLength     *int    `json:"context_length"`
+		ProviderKind      string `json:"provider_kind"`
+		ProviderModelName string `json:"provider_model_name"`
+		BaseURL           string `json:"base_url"`
+		APIKey            string `json:"api_key"`
+		ContextLength     *int   `json:"context_length"`
 	}
 
 	var out credResponse
@@ -1967,12 +1975,12 @@ func (s *Server) verifySTT(ctx context.Context, baseURL, secret, modelName strin
 	copy(header[8:12], "WAVE")
 	copy(header[12:16], "fmt ")
 	putLE32(header[16:], 16)
-	putLE16(header[20:], 1)     // PCM
-	putLE16(header[22:], 1)     // mono
+	putLE16(header[20:], 1) // PCM
+	putLE16(header[22:], 1) // mono
 	putLE32(header[24:], uint32(sampleRate))
 	putLE32(header[28:], uint32(sampleRate*2))
-	putLE16(header[32:], 2)     // block align
-	putLE16(header[34:], 16)    // bits per sample
+	putLE16(header[32:], 2)  // block align
+	putLE16(header[34:], 16) // bits per sample
 	copy(header[36:40], "data")
 	putLE32(header[40:], uint32(dataSize))
 
@@ -2127,7 +2135,12 @@ func (s *Server) verifyModelsEndpoint(ctx context.Context, baseURL, secret strin
 
 // WAV header helpers
 func putLE16(b []byte, v uint16) { b[0] = byte(v); b[1] = byte(v >> 8) }
-func putLE32(b []byte, v uint32) { b[0] = byte(v); b[1] = byte(v >> 8); b[2] = byte(v >> 16); b[3] = byte(v >> 24) }
+func putLE32(b []byte, v uint32) {
+	b[0] = byte(v)
+	b[1] = byte(v >> 8)
+	b[2] = byte(v >> 16)
+	b[3] = byte(v >> 24)
+}
 
 // getModelContextWindow returns the context window size (in tokens) for a given model.
 // Called internally by the translation-worker before chunking a chapter.

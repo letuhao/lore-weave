@@ -25,16 +25,16 @@ import (
 // GenerateImage — OpenAI image generation. Phase 5c-α implementation.
 //
 // Flow:
-//   1. Adapter-level invariant pre-checks (Prompt non-empty;
-//      N ≤ MaxImagesPerJob; ResponseFormat in {"", "url", "b64_json"}).
-//      Belt-and-suspenders matching Phase 5b's MaxAudioBytes pattern.
-//   2. Build JSON body, omitting unset fields so upstream defaults
-//      apply (DALL-E-3 ignores `n>1`, gpt-image-1 ignores `style`, etc.).
-//   3. POST to {base}/v1/images/generations with Bearer auth.
-//   4. On non-2xx: JSON-first content-policy detection (Fix #3) →
-//      ErrImageContentPolicy; otherwise ClassifyUpstreamHTTP → typed
-//      transient/permanent/rate-limited.
-//   5. On 2xx: parse {created, data[]} → GenerateImageOutput.
+//  1. Adapter-level invariant pre-checks (Prompt non-empty;
+//     N ≤ MaxImagesPerJob; ResponseFormat in {"", "url", "b64_json"}).
+//     Belt-and-suspenders matching Phase 5b's MaxAudioBytes pattern.
+//  2. Build JSON body, omitting unset fields so upstream defaults
+//     apply (DALL-E-3 ignores `n>1`, gpt-image-1 ignores `style`, etc.).
+//  3. POST to {base}/v1/images/generations with Bearer auth.
+//  4. On non-2xx: JSON-first content-policy detection (Fix #3) →
+//     ErrImageContentPolicy; otherwise ClassifyUpstreamHTTP → typed
+//     transient/permanent/rate-limited.
+//  5. On 2xx: parse {created, data[]} → GenerateImageOutput.
 //
 // Response body capped at MaxImageResponseBytes (Fix #6) — larger
 // upstream responses are rejected with ErrImageGenerationFailed before

@@ -663,6 +663,7 @@ components:
         - tts
         - image_gen
         - video_gen
+        - audio_gen
         - entity_extraction
         - relation_extraction
         - event_extraction
@@ -1226,3 +1227,100 @@ components:
           type: string
           nullable: true
           description: Upstream-rewritten prompt, if any. Null otherwise.
+
+    # ── audio_gen (Phase 5e-β.2 — batch TTS) ─────────────────────────
+    AudioGenInput:
+      type: object
+      required: [texts]
+      description: |
+        Phase 5e-β.2 batch text-to-speech input. Distinct from streaming
+        `tts` (which uses /v1/llm/stream for real-time playback);
+        audio_gen is job-mode for stored audio (book chapter narration).
+        All inputs share the same voice / speed / format / response_format.
+      properties:
+        texts:
+          type: array
+          minItems: 1
+          maxItems: 10
+          description: |
+            1..10 strings to synthesize. Cap of 10 (vs Phase 5d's n=1
+            and Phase 5c-α's n≤4) chosen to bound double-bill exposure
+            on mid-batch failure (TTS is char-billed per upstream
+            request). /review-impl(DESIGN) MED#1.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 4096
+            description: Per-input cap of 4096 chars (matches OpenAI TTS exactly).
+        voice:
+          type: string
+          default: alloy
+          description: |
+            Upstream voice name. OpenAI canonical: alloy, echo, fable,
+            onyx, nova, shimmer. Backend-specific; passed through.
+        speed:
+          type: number
+          minimum: 0.25
+          maximum: 4.0
+          default: 1.0
+        format:
+          type: string
+          enum: [mp3, opus, aac, flac, wav, pcm]
+          default: mp3
+        response_format:
+          type: string
+          enum: [b64_json, url]
+          default: b64_json
+          description: |
+            b64_json: bytes inline in result.data[i].b64_json (default).
+            url: gateway stages each audio file in its loreweave-audio-cache
+            MinIO bucket and returns a public URL (1-day server-side TTL).
+
+    AudioGenResult:
+      type: object
+      required: [created, data]
+      description: |
+        Phase 5e-β.2 batch TTS result. Order-preserving: data[i]
+        corresponds 1:1 to input.texts[i] (adapter MUST preserve
+        order — invariant for parallel-batch refactors).
+      properties:
+        created:
+          type: integer
+          description: Unix epoch (seconds) when generation finished.
+        data:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AudioGenDataItem'
+
+    AudioGenDataItem:
+      type: object
+      required: [content_type]
+      description: |
+        Single generated audio. Exactly one of `url` or `b64_json` is
+        populated based on input.response_format. `duration_ms` is
+        upstream-dependent (typically 0 for OpenAI TTS).
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            Public URL to the staged audio in loreweave-audio-cache.
+            Populated when response_format=url. Bucket policy is
+            public-read; key contains job_id UUID (unguessable). 1-day
+            server-side lifecycle TTL. Caller MUST fetch + store
+            permanently (gateway-side staging is throwaway).
+        b64_json:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded audio bytes. Populated when
+            response_format=b64_json (default). Caller decodes +
+            stores in its own bucket.
+        duration_ms:
+          type: integer
+          nullable: true
+        content_type:
+          type: string
+          description: MIME type, e.g. "audio/mpeg".

@@ -32,12 +32,22 @@ type imageGenerator interface {
 	GenerateImage(ctx context.Context, req llmgw.GenerateImageRequest) (*llmgw.ImageGenResult, error)
 }
 
+// audioGenerator — Phase 5e-β.2. Consumer-defined interface for batch
+// TTS through the unified gateway. Separate from imageGenerator so
+// audio.go's tests can mock without stubbing image_gen, and vice versa.
+// Production wires the SAME concrete *llmgw.Client to both fields
+// (Go's structural-typing satisfies both implicitly).
+type audioGenerator interface {
+	GenerateAudio(ctx context.Context, req llmgw.GenerateAudioRequest) (*llmgw.AudioGenResult, error)
+}
+
 type Server struct {
-	pool   *pgxpool.Pool
-	cfg    *config.Config
-	secret []byte
-	minio  *minio.Client
-	llmgw  imageGenerator // Phase 5e-β.1; nil if config missing — handler checks
+	pool           *pgxpool.Pool
+	cfg            *config.Config
+	secret         []byte
+	minio          *minio.Client
+	llmgw          imageGenerator // Phase 5e-β.1; nil if config missing — handler checks
+	audioGenClient audioGenerator // Phase 5e-β.2; satisfied by same *llmgw.Client
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -68,11 +78,13 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 			// handler) is the actual identity per request.
 		})
 		if err != nil {
-			slog.Error("book-service: llmgw.NewClient failed; /media-generate will return 503 until fixed",
+			slog.Error("book-service: llmgw.NewClient failed; /media-generate + /audio will return 503 until fixed",
 				"err", err,
 				"base_url", cfg.LLMGatewayInternalURL)
 		} else {
 			s.llmgw = lc
+			// Phase 5e-β.2 — same *llmgw.Client also satisfies audioGenerator.
+			s.audioGenClient = lc
 		}
 	}
 	return s
@@ -1897,13 +1909,13 @@ FROM chapter_blocks WHERE chapter_id=$1
 // service response instead of per-row.
 //
 // /review-impl M2 test gap: the Go tests for this handler (in
-// ``server_test.go``) exercise only the pre-DB paths (empty list /
-// oversized / invalid JSON) via ``s := &Server{}`` with a nil pool.
-// The happy-path SQL (column names, ``ANY($1::uuid[])`` array codec,
-// ``lifecycle_state='active'`` filter) follows the conventions from
-// ``getInternalBookChapters`` / ``getInternalBookChapter`` which ARE
+// “server_test.go“) exercise only the pre-DB paths (empty list /
+// oversized / invalid JSON) via “s := &Server{}“ with a nil pool.
+// The happy-path SQL (column names, “ANY($1::uuid[])“ array codec,
+// “lifecycle_state='active'“ filter) follows the conventions from
+// “getInternalBookChapters“ / “getInternalBookChapter“ which ARE
 // exercised by knowledge-service integration tests hitting
-// ``/internal/books/{book_id}/chapters`` live. A manual-curl smoke
+// “/internal/books/{book_id}/chapters“ live. A manual-curl smoke
 // in docker before prod promotion is the current safety net for this
 // specific handler — if the pattern proves fragile across cycles,
 // add a testcontainer-backed Go integration test.

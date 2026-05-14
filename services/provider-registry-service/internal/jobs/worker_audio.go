@@ -9,8 +9,10 @@ package jobs
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -140,6 +142,9 @@ func (w *Worker) processAudioJob(
 	switch operation {
 	case "stt":
 		w.runSttJob(ctx, jobID, ownerUserID, operation, providerModelName, endpointBaseURL, secret, adapter, inputMap, logger)
+	case "audio_gen":
+		// Phase 5e-β.2 — batch TTS dispatch.
+		w.runAudioGenJob(ctx, jobID, ownerUserID, operation, providerModelName, endpointBaseURL, secret, adapter, inputMap, logger)
 	default:
 		// Defensive — audioJobOperations is the gate; reaching here means
 		// a new entry was added without a runner. Fail loud so it gets
@@ -199,6 +204,161 @@ func (w *Worker) runSttJob(
 	}
 	_ = w.repo.UpdateProgress(ctx, jobID, intPtr(1), 1, 0)
 	w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "completed", result, "", "", "")
+}
+
+// AudioGenJobTimeout — Phase 5e-β.2. Wall-clock cap on a single audio_gen
+// (batch TTS) job. 10 inputs × ~15s upstream + slack = 5 min upper bound.
+const AudioGenJobTimeout = 5 * time.Minute
+
+// runAudioGenJob — Phase 5e-β.2. Executes a single GenerateAudio call,
+// converts batch result to b64_json or URL mode based on input.response_format,
+// and finalizes the job.
+//
+// Error mapping (via classifyAudioGenError):
+//   - context.Canceled → cancelled, LLM_CANCELLED
+//   - context.DeadlineExceeded → failed, LLM_TIMEOUT
+//   - ErrAudioGenInvalidParams → failed, LLM_INVALID_REQUEST
+//   - ErrAudioGenerationFailed → failed, LLM_AUDIO_GENERATION_FAILED
+//   - typed upstream errors → failed, LLM_RATE_LIMITED / LLM_AUTH_FAILED / LLM_UPSTREAM_ERROR
+//   - ErrOperationNotSupported → failed, LLM_OPERATION_NOT_SUPPORTED
+//   - other → failed, LLM_UPSTREAM_ERROR
+//
+// URL mode with nil w.audioCache → failed/LLM_INVALID_REQUEST.
+func (w *Worker) runAudioGenJob(
+	ctx context.Context,
+	jobID, ownerUserID uuid.UUID,
+	operation string,
+	providerModelName, endpointBaseURL, secret string,
+	adapter provider.Adapter,
+	inputMap map[string]any,
+	logger *slog.Logger,
+) {
+	agCtx, cancel := context.WithTimeout(ctx, AudioGenJobTimeout)
+	defer cancel()
+
+	// Extract texts array from input map (json.Unmarshal yielded []any of strings).
+	// /review-impl(BUILD) H#1 — if any non-string element appears, fail
+	// LLM_INVALID_REQUEST with clear diagnostics instead of silently
+	// stripping (which would corrupt the index mapping at the caller).
+	rawTexts, _ := inputMap["texts"].([]any)
+	texts := make([]string, 0, len(rawTexts))
+	for i, t := range rawTexts {
+		s, ok := t.(string)
+		if !ok {
+			w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
+				"LLM_INVALID_REQUEST",
+				fmt.Sprintf("audio_gen texts[%d] must be string (got %T)", i, t),
+				"")
+			return
+		}
+		texts = append(texts, s)
+	}
+	responseFormat := safeStr(inputMap, "response_format")
+	if responseFormat == "" {
+		responseFormat = "b64_json"
+	}
+
+	// URL mode requires w.audioCache wired.
+	if responseFormat == "url" && w.audioCache == nil {
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
+			"LLM_INVALID_REQUEST",
+			"audio_gen url mode requires gateway audio-cache configured (set MINIO_* envs)",
+			"")
+		return
+	}
+
+	in := provider.GenerateAudioInput{
+		Texts:          texts,
+		Voice:          safeStr(inputMap, "voice"),
+		Speed:          safeFloatDefault(inputMap, "speed", 0),
+		Format:         safeStr(inputMap, "format"),
+		ResponseFormat: responseFormat,
+	}
+
+	out, _, err := adapter.GenerateAudio(agCtx, endpointBaseURL, secret, providerModelName, in)
+	if err != nil {
+		errCode, status := classifyAudioGenError(agCtx, err)
+		logger.Info("audio_gen failed", "code", errCode, "status", status, "err", err)
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, status, nil, errCode, err.Error(), "")
+		return
+	}
+
+	// Build result.data based on response_format.
+	dataItems := make([]map[string]any, len(out.Items))
+	for i, item := range out.Items {
+		entry := map[string]any{
+			"content_type": item.ContentType,
+		}
+		if item.DurationMs > 0 {
+			entry["duration_ms"] = item.DurationMs
+		}
+		if responseFormat == "url" {
+			url, stageErr := w.audioCache.Stage(agCtx, jobID, i, item.Format, item.Data, item.ContentType)
+			if stageErr != nil {
+				// /review-impl(BUILD) H#4 — distinguish gateway-side
+				// storage failure from upstream AI failure. Upstream
+				// SUCCEEDED (we've burned BYOK char-billing); the issue
+				// is gateway storage. Use LLM_GATEWAY_STORAGE_ERROR so
+				// callers don't auto-retry (which would double-charge).
+				logger.Error("audio_gen stage failed (upstream succeeded; gateway storage error)", "idx", i, "err", stageErr)
+				w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
+					"LLM_GATEWAY_STORAGE_ERROR",
+					"upstream TTS succeeded but gateway storage failed: "+stageErr.Error(),
+					"")
+				return
+			}
+			entry["url"] = url
+		} else {
+			entry["b64_json"] = base64.StdEncoding.EncodeToString(item.Data)
+		}
+		dataItems[i] = entry
+	}
+	result := map[string]any{
+		"created": time.Now().Unix(),
+		"data":    dataItems,
+	}
+	_ = w.repo.UpdateProgress(ctx, jobID, intPtr(len(out.Items)), len(out.Items), 0)
+	w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "completed", result, "", "", "")
+}
+
+// classifyAudioGenError maps adapter-side errors to (code, status) pairs
+// for audio_gen. Mirrors classifyVideoError / classifyImageError structure.
+//
+// /review-impl(DESIGN) MED#4 — full typed-error matrix; no gaps.
+func classifyAudioGenError(ctx context.Context, err error) (code, status string) {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		if errors.Is(ctxErr, context.DeadlineExceeded) {
+			return "LLM_TIMEOUT", "failed"
+		}
+		if errors.Is(ctxErr, context.Canceled) {
+			return "LLM_CANCELLED", "cancelled"
+		}
+	}
+	var rl *provider.ErrUpstreamRateLimited
+	if errors.As(err, &rl) {
+		return "LLM_RATE_LIMITED", "failed"
+	}
+	var perm *provider.ErrUpstreamPermanent
+	if errors.As(err, &perm) {
+		if perm.StatusCode == 401 || perm.StatusCode == 403 {
+			return "LLM_AUTH_FAILED", "failed"
+		}
+		return "LLM_UPSTREAM_ERROR", "failed"
+	}
+	var trans *provider.ErrUpstreamTransient
+	if errors.As(err, &trans) {
+		return "LLM_UPSTREAM_ERROR", "failed"
+	}
+	switch {
+	case errors.Is(err, provider.ErrAudioGenInvalidParams):
+		return "LLM_INVALID_REQUEST", "failed"
+	case errors.Is(err, provider.ErrAudioGenerationFailed):
+		return "LLM_AUDIO_GENERATION_FAILED", "failed"
+	case errors.Is(err, provider.ErrOperationNotSupported):
+		return "LLM_OPERATION_NOT_SUPPORTED", "failed"
+	default:
+		return "LLM_UPSTREAM_ERROR", "failed"
+	}
 }
 
 // classifyAudioError maps adapter-side errors to (code, status) pairs for

@@ -77,6 +77,57 @@ type ImageGenResult struct {
 	Data    []ImageGenDataItem `json:"data"`
 }
 
+// ── Audio generation (Phase 5e-β.2) ──────────────────────────────────
+
+// GenerateAudioRequest is the input to Client.GenerateAudio.
+//
+// /review-impl(DESIGN) HIGH#5 — optional fields use pointer types so
+// callers can distinguish "explicit equal-to-default value" from
+// "omitted" — preserves caller intent across SDK→gateway→upstream.
+type GenerateAudioRequest struct {
+	// Required.
+	Texts       []string    // 1..MaxAudioGenInputs strings, each 1..4096 chars
+	ModelSource ModelSource // user_model | platform_model
+	ModelRef    string      // UUID-shaped string
+
+	// Optional — nil pointer ⇒ omit from wire payload.
+	Voice          *string  // nil ⇒ upstream default ("alloy" for OpenAI)
+	Speed          *float64 // nil ⇒ upstream default (1.0); range 0.25..4.0
+	Format         *string  // nil ⇒ upstream default ("mp3"); mp3/opus/aac/flac/wav/pcm
+	ResponseFormat *string  // nil ⇒ gateway default ("b64_json"); b64_json|url
+
+	// Per-call overrides.
+	UserID          string        // overrides Client.UserID; required when AuthInternal & ctor UserID is empty
+	PollInterval    time.Duration // initial poll delay; zero ⇒ 500ms
+	MaxPollInterval time.Duration // max poll delay; zero ⇒ 10s
+}
+
+// AudioGenDataItem is one entry in AudioGenResult.Data.
+//
+// Exactly one of URL or B64JSON is populated based on the request's
+// ResponseFormat. DurationMs is upstream-dependent (typically 0 for
+// OpenAI TTS). ContentType is always populated.
+type AudioGenDataItem struct {
+	URL         string `json:"url,omitempty"`
+	B64JSON     string `json:"b64_json,omitempty"`
+	DurationMs  int    `json:"duration_ms,omitempty"`
+	ContentType string `json:"content_type"`
+}
+
+// AudioGenResult mirrors openapi `AudioGenResult`. Order-preserving:
+// Data[i] corresponds to request.Texts[i] 1:1.
+type AudioGenResult struct {
+	Created int64              `json:"created"`
+	Data    []AudioGenDataItem `json:"data"`
+}
+
+// MaxAudioGenInputs — batch cap matching gateway's adapter-level limit.
+// /review-impl(DESIGN) MED#1 — capped at 10 to bound double-bill exposure.
+const MaxAudioGenInputs = 10
+
+// MaxAudioGenInputCharsLen — per-input cap matching OpenAI TTS exactly.
+const MaxAudioGenInputCharsLen = 4096
+
 // ── Internal wire models (private) ───────────────────────────────────
 
 // submitJobResponse decodes the 202 Accepted envelope from POST /v1/llm/jobs.

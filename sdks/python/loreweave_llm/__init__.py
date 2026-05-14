@@ -29,11 +29,13 @@ Streaming usage:
 from loreweave_llm.client import Client
 from loreweave_llm.errors import (
     LLMAudioFetchFailed,
+    LLMAudioGenerationFailed,
     LLMAudioTooLarge,
     LLMAudioURLDisallowed,
     LLMAuthFailed,
     LLMDecodeError,
     LLMError,
+    LLMGatewayStorageError,
     LLMHttpError,
     LLMImageContentPolicy,
     LLMImageGenerationFailed,
@@ -52,6 +54,8 @@ from loreweave_llm.errors import (
 from loreweave_llm.models import (
     AudioChunkEvent,
     AudioFormat,
+    AudioGenDataItem,
+    AudioGenResult,
     DoneEvent,
     ErrorEvent,
     ImageGenDataItem,
@@ -92,6 +96,9 @@ __all__ = [
     # Phase 5d video-gen models
     "VideoGenDataItem",
     "VideoGenResult",
+    # Phase 5e-β.2 audio_gen models
+    "AudioGenDataItem",
+    "AudioGenResult",
     # Errors
     "LLMError",
     "LLMAuthFailed",
@@ -112,6 +119,9 @@ __all__ = [
     # Phase 5d video-gen-specific errors
     "LLMVideoContentPolicy",
     "LLMVideoGenerationFailed",
+    # Phase 5e-β.2 audio_gen-specific errors
+    "LLMAudioGenerationFailed",
+    "LLMGatewayStorageError",
     # Phase 4a-α async-job exceptions + transport (Phase 5e-α surfaces these
     # at the top-level loreweave_llm namespace for caller-side error mapping
     # in services like video-gen-service that map SDK errors to HTTPExceptions)

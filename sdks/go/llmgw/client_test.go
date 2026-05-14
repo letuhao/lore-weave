@@ -438,3 +438,204 @@ func TestGenerateImage_EmptyResultData_Returns502(t *testing.T) {
 		t.Errorf("expected ErrUpstream (empty data), got %v", err)
 	}
 }
+
+// ── Phase 5e-β.2 — GenerateAudio tests ───────────────────────────────
+
+type audioGatewayMux struct {
+	mu             sync.Mutex
+	submitBody     map[string]any
+	terminalStatus JobStatus
+	terminalResult map[string]any
+	terminalError  *jobError
+}
+
+func newAudioGateway() *audioGatewayMux {
+	return &audioGatewayMux{
+		terminalStatus: JobCompleted,
+		terminalResult: map[string]any{
+			"created": 1.0,
+			"data": []map[string]any{
+				{"b64_json": "aGVsbG8=", "content_type": "audio/mpeg", "duration_ms": 1234.0},
+			},
+		},
+	}
+}
+
+func (g *audioGatewayMux) handler(t *testing.T) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/internal/llm/jobs", func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		g.mu.Lock()
+		g.submitBody = nil
+		_ = json.Unmarshal(raw, &g.submitBody)
+		g.mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(submitJobResponse{JobID: "job-aud", Status: "pending", SubmittedAt: "2026-05-15T00:00:00Z"})
+	})
+	mux.HandleFunc("/internal/llm/jobs/job-aud", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(job{
+			JobID:     "job-aud",
+			Operation: "audio_gen",
+			Status:    g.terminalStatus,
+			Result:    g.terminalResult,
+			Error:     g.terminalError,
+		})
+	})
+	return mux
+}
+
+func newAudioClientFor(t *testing.T, server *httptest.Server) *Client {
+	t.Helper()
+	c, err := NewClient(Options{
+		BaseURL: server.URL, AuthMode: AuthInternal,
+		InternalToken: "tok", UserID: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	return c
+}
+
+func TestGenerateAudio_HappyPath(t *testing.T) {
+	g := newAudioGateway()
+	server := httptest.NewServer(g.handler(t))
+	defer server.Close()
+	c := newAudioClientFor(t, server)
+
+	voice := "alloy"
+	format := "mp3"
+	result, err := c.GenerateAudio(context.Background(), GenerateAudioRequest{
+		Texts:           []string{"hello"},
+		ModelSource:     ModelSourceUser,
+		ModelRef:        testModelRef,
+		Voice:           &voice,
+		Format:          &format,
+		PollInterval:    1 * time.Millisecond,
+		MaxPollInterval: 10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("GenerateAudio: %v", err)
+	}
+	if len(result.Data) != 1 {
+		t.Fatalf("Data len = %d, want 1", len(result.Data))
+	}
+	if result.Data[0].B64JSON != "aGVsbG8=" {
+		t.Errorf("B64JSON = %q", result.Data[0].B64JSON)
+	}
+
+	// Wire-shape assertions (mirrors Phase 5e-β.1 MED#4 pattern).
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.submitBody["operation"] != "audio_gen" {
+		t.Errorf("operation = %v, want audio_gen", g.submitBody["operation"])
+	}
+	input := g.submitBody["input"].(map[string]any)
+	texts := input["texts"].([]any)
+	if len(texts) != 1 || texts[0] != "hello" {
+		t.Errorf("input.texts = %v", texts)
+	}
+	if input["voice"] != "alloy" {
+		t.Errorf("input.voice = %v, want alloy", input["voice"])
+	}
+	if input["format"] != "mp3" {
+		t.Errorf("input.format = %v, want mp3", input["format"])
+	}
+}
+
+func TestGenerateAudio_OmittedOptional_NotInWire(t *testing.T) {
+	g := newAudioGateway()
+	server := httptest.NewServer(g.handler(t))
+	defer server.Close()
+	c := newAudioClientFor(t, server)
+
+	_, err := c.GenerateAudio(context.Background(), GenerateAudioRequest{
+		Texts:           []string{"hi"},
+		ModelSource:     ModelSourceUser,
+		ModelRef:        testModelRef,
+		PollInterval:    1 * time.Millisecond,
+		MaxPollInterval: 10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("GenerateAudio: %v", err)
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	input := g.submitBody["input"].(map[string]any)
+	for _, k := range []string{"voice", "speed", "format", "response_format"} {
+		if _, present := input[k]; present {
+			t.Errorf("wire body contains %q when omitted from request", k)
+		}
+	}
+}
+
+func TestGenerateAudio_EmptyTexts_PreFlightFail(t *testing.T) {
+	c, _ := NewClient(Options{BaseURL: "http://x", AuthMode: AuthInternal, InternalToken: "t", UserID: "u"})
+	_, err := c.GenerateAudio(context.Background(), GenerateAudioRequest{
+		Texts: []string{}, ModelSource: ModelSourceUser, ModelRef: testModelRef,
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestGenerateAudio_NilTexts_PreFlightFail(t *testing.T) {
+	c, _ := NewClient(Options{BaseURL: "http://x", AuthMode: AuthInternal, InternalToken: "t", UserID: "u"})
+	_, err := c.GenerateAudio(context.Background(), GenerateAudioRequest{
+		Texts: nil, ModelSource: ModelSourceUser, ModelRef: testModelRef,
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("expected ErrInvalidRequest for nil texts, got %v", err)
+	}
+}
+
+func TestGenerateAudio_BatchOverCap_PreFlightFail(t *testing.T) {
+	c, _ := NewClient(Options{BaseURL: "http://x", AuthMode: AuthInternal, InternalToken: "t", UserID: "u"})
+	texts := make([]string, MaxAudioGenInputs+1)
+	for i := range texts {
+		texts[i] = "x"
+	}
+	_, err := c.GenerateAudio(context.Background(), GenerateAudioRequest{
+		Texts: texts, ModelSource: ModelSourceUser, ModelRef: testModelRef,
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestGenerateAudio_OversizeText_PreFlightFail(t *testing.T) {
+	c, _ := NewClient(Options{BaseURL: "http://x", AuthMode: AuthInternal, InternalToken: "t", UserID: "u"})
+	huge := strings.Repeat("a", MaxAudioGenInputCharsLen+1)
+	_, err := c.GenerateAudio(context.Background(), GenerateAudioRequest{
+		Texts: []string{huge}, ModelSource: ModelSourceUser, ModelRef: testModelRef,
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestGenerateAudio_NonUUIDModelRef_PreFlightFail(t *testing.T) {
+	c, _ := NewClient(Options{BaseURL: "http://x", AuthMode: AuthInternal, InternalToken: "t", UserID: "u"})
+	_, err := c.GenerateAudio(context.Background(), GenerateAudioRequest{
+		Texts: []string{"hi"}, ModelSource: ModelSourceUser, ModelRef: "bad-uuid",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestGenerateAudio_AudioGenerationFailed_ReturnsTyped(t *testing.T) {
+	g := newAudioGateway()
+	g.terminalStatus = JobFailed
+	g.terminalResult = nil
+	g.terminalError = &jobError{Code: "LLM_AUDIO_GENERATION_FAILED", Message: "tts failed"}
+	server := httptest.NewServer(g.handler(t))
+	defer server.Close()
+	c := newAudioClientFor(t, server)
+	_, err := c.GenerateAudio(context.Background(), GenerateAudioRequest{
+		Texts: []string{"hi"}, ModelSource: ModelSourceUser, ModelRef: testModelRef,
+		PollInterval: 1 * time.Millisecond, MaxPollInterval: 10 * time.Millisecond,
+	})
+	if !errors.Is(err, ErrAudioGenerationFailed) {
+		t.Errorf("expected ErrAudioGenerationFailed, got %v", err)
+	}
+}

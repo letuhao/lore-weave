@@ -12,8 +12,8 @@ func TestLoadValidation(t *testing.T) {
 	t.Setenv("MINIO_SECRET_KEY", "msk")
 	t.Setenv("MINIO_EXTERNAL_URL", "http://localhost:9123")
 	t.Setenv("SHARING_INTERNAL_URL", "http://sharing-service:8083")
-	t.Setenv("PROVIDER_REGISTRY_SERVICE_URL", "http://provider-registry-service:8085")
-	// Phase 5e-β.1 — new required env for media.go's unified gateway path.
+	// Phase 5e-β.1 — required env for media.go's unified gateway path.
+	// Phase 5e-β.2 — also covers audio.go (PROVIDER_REGISTRY_SERVICE_URL dropped).
 	t.Setenv("LLM_GATEWAY_INTERNAL_URL", "http://provider-registry-service:8085")
 
 	cfg, err := Load()

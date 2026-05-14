@@ -215,3 +215,135 @@ func decodeImageGenResult(result map[string]any) (*ImageGenResult, error) {
 	}
 	return &out, nil
 }
+
+// GenerateAudio — Phase 5e-β.2. Submit batch audio_gen job, poll until
+// terminal, return decoded AudioGenResult.
+//
+// Distinct from streaming TTS (Phase 5a — used by chat-service voice).
+// Batch/job-mode for stored audio (e.g. book chapter narration).
+//
+// All-or-nothing batch failure model (v1 — partial-success deferred
+// to D-PHASE5E-BETA2-AUDIO-GEN-PARTIAL-SUCCESS). TTS is char-billed;
+// transientRetryBudget fixed at 0 to bound double-bill exposure
+// amplified by batch size.
+//
+// /review-impl(DESIGN) HIGH#5 — optional fields use pointer types so
+// explicit-equal-to-default caller values reach the wire.
+//
+// Cancellation via ctx. The SDK's internal *http.Client has no Timeout.
+func (c *Client) GenerateAudio(ctx context.Context, req GenerateAudioRequest) (*AudioGenResult, error) {
+	// ── Pre-flight validation (SDK boundary) ──────────────────────────
+
+	if _, err := uuid.Parse(req.ModelRef); err != nil {
+		return nil, newErrorFromCode(
+			"LLM_INVALID_REQUEST",
+			fmt.Sprintf("model_ref must be UUID-shaped, got %q", req.ModelRef),
+			0,
+		)
+	}
+	if len(req.Texts) == 0 {
+		// Catches nil AND empty slice per /review-impl(DESIGN) LOW#4.
+		return nil, newErrorFromCode("LLM_INVALID_REQUEST", "texts must be non-empty", 0)
+	}
+	if len(req.Texts) > MaxAudioGenInputs {
+		return nil, newErrorFromCode("LLM_INVALID_REQUEST",
+			fmt.Sprintf("texts batch capped at %d (got %d)", MaxAudioGenInputs, len(req.Texts)), 0)
+	}
+	for i, t := range req.Texts {
+		if strings.TrimSpace(t) == "" {
+			return nil, newErrorFromCode("LLM_INVALID_REQUEST",
+				fmt.Sprintf("texts[%d] must not be empty/whitespace", i), 0)
+		}
+		if len(t) > MaxAudioGenInputCharsLen {
+			return nil, newErrorFromCode("LLM_INVALID_REQUEST",
+				fmt.Sprintf("texts[%d] exceeds %d-char limit (got %d)", i, MaxAudioGenInputCharsLen, len(t)), 0)
+		}
+	}
+	if req.ModelSource != ModelSourceUser && req.ModelSource != ModelSourcePlatform {
+		return nil, newErrorFromCode("LLM_INVALID_REQUEST",
+			fmt.Sprintf("model_source must be user_model or platform_model, got %q", req.ModelSource), 0)
+	}
+
+	// ── Build wire payload (preserve caller intent on optionals) ──────
+
+	input := map[string]any{"texts": req.Texts}
+	if req.Voice != nil {
+		input["voice"] = *req.Voice
+	}
+	if req.Speed != nil {
+		input["speed"] = *req.Speed
+	}
+	if req.Format != nil {
+		input["format"] = *req.Format
+	}
+	if req.ResponseFormat != nil {
+		input["response_format"] = *req.ResponseFormat
+	}
+
+	body := map[string]any{
+		"operation":    "audio_gen",
+		"model_source": string(req.ModelSource),
+		"model_ref":    req.ModelRef,
+		"input":        input,
+	}
+
+	// ── Submit + wait for terminal ────────────────────────────────────
+
+	submitted, err := c.submitJob(ctx, body, req.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	terminal, err := c.waitTerminal(ctx, submitted.JobID, req.UserID, pollOptions{
+		pollInterval:         req.PollInterval,
+		maxPollInterval:      req.MaxPollInterval,
+		transientRetryBudget: 0,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	switch terminal.Status {
+	case JobCompleted:
+		if terminal.Result == nil {
+			return nil, newErrorFromCode("LLM_UPSTREAM_ERROR",
+				fmt.Sprintf("audio_gen job %s completed but result is empty", submitted.JobID), 0)
+		}
+		return decodeAudioGenResult(terminal.Result)
+	case JobCancelled:
+		return nil, newErrorFromCode("LLM_JOB_TERMINAL",
+			fmt.Sprintf("audio_gen job %s cancelled", submitted.JobID), 0)
+	case JobFailed:
+		if terminal.Error == nil {
+			return nil, newErrorFromCode("LLM_UPSTREAM_ERROR",
+				fmt.Sprintf("audio_gen job %s failed without error body", submitted.JobID), 0)
+		}
+		return nil, newErrorFromCodeWithRetry(
+			terminal.Error.Code,
+			terminal.Error.Message,
+			0,
+			terminal.Error.RetryAfterS,
+		)
+	default:
+		return nil, newErrorFromCode("LLM_DECODE_ERROR",
+			fmt.Sprintf("unexpected terminal status %q", terminal.Status), 0)
+	}
+}
+
+func decodeAudioGenResult(result map[string]any) (*AudioGenResult, error) {
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return nil, newErrorFromCode("LLM_DECODE_ERROR",
+			"audio_gen result re-marshal failed: "+err.Error(), 0)
+	}
+	var out AudioGenResult
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, newErrorFromCode("LLM_DECODE_ERROR",
+			"audio_gen result decode failed: "+err.Error(), 0)
+	}
+	if len(out.Data) == 0 {
+		return nil, newErrorFromCode("LLM_UPSTREAM_ERROR",
+			"audio_gen result data array is empty", 0)
+	}
+	return &out, nil
+}

@@ -340,29 +340,6 @@ func TestNoLegacyLLMResolutionInMediaGo(t *testing.T) {
 	}
 }
 
-// Anti-bait: confirm 5e-β.1 did NOT accidentally migrate audio.go.
-// audio.go's migration is reserved for Phase 5e-β.2 (needs the gateway
-// audio_gen adapter first, which doesn't exist yet).
-func TestAudioGoStillUsesLegacyPath(t *testing.T) {
-	body, err := os.ReadFile("audio.go")
-	if err != nil {
-		t.Fatalf("read audio.go: %v", err)
-	}
-	src := string(body)
-	if !strings.Contains(src, "/internal/credentials/") {
-		t.Error("audio.go appears to have lost the legacy /internal/credentials/ path; that was reserved for 5e-β.2 — re-check whether audio_gen gateway adapter was actually shipped")
-	}
-	if !strings.Contains(src, "/v1/audio/speech") {
-		t.Error("audio.go appears to have lost direct /v1/audio/speech call; that migration was deferred to 5e-β.2")
-	}
-	// /review-impl(BUILD) LOW#7 — strengthen anti-bait: also require the
-	// credential-struct field accesses that should still be present in
-	// audio.go's pre-migration form. Catches partial-migration regressions
-	// (URL kept but field access dropped, or vice versa).
-	if !strings.Contains(src, "creds.ProviderModelName") {
-		t.Error("audio.go appears partially migrated (creds.ProviderModelName missing); 5e-β.2 should be a full migration cycle")
-	}
-	if !strings.Contains(src, "creds.APIKey") {
-		t.Error("audio.go appears partially migrated (creds.APIKey missing); 5e-β.2 should be a full migration cycle")
-	}
-}
+// Phase 5e-β.2 — audio.go is now migrated. The Phase 5e-β.1 anti-bait
+// (TestAudioGoStillUsesLegacyPath) is deleted; the positive lock lives
+// in audio_test.go::TestNoLegacyLLMResolutionInAudioGo.

@@ -124,6 +124,7 @@ JobOperation = Literal[
     "tts",
     "image_gen",
     "video_gen",  # Phase 5d
+    "audio_gen",  # Phase 5e-β.2
     "entity_extraction",
     "relation_extraction",
     "event_extraction",
@@ -397,3 +398,39 @@ class VideoGenResult(BaseModel):
     # the worker_video runVideoGenJob normalization. Otherwise the
     # pydantic deserialization rejects valid multi-video responses.
     data: list[VideoGenDataItem] = Field(min_length=1, max_length=1)
+
+
+# ── Phase 5e-β.2 — audio_gen models ──────────────────────────────────
+
+
+class AudioGenDataItem(BaseModel):
+    """Mirrors openapi `AudioGenDataItem`. Single generated audio in the
+    batch response.
+
+    Exactly one of `url` or `b64_json` is populated based on the request's
+    `response_format`. `duration_ms` is upstream-dependent (typically 0
+    for OpenAI TTS). `content_type` is always populated.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str | None = None
+    b64_json: str | None = None
+    duration_ms: int | None = None
+    content_type: str
+
+
+class AudioGenResult(BaseModel):
+    """Mirrors openapi `AudioGenResult`. Decoded from Job.result when
+    `operation=audio_gen` and `status=completed`.
+
+    `data` contains exactly len(texts) entries (gateway caps at
+    MaxAudioGenInputs=10). Order is preserved: data[i] corresponds to
+    input.texts[i] 1:1. Caller decodes b64_json bytes (default) OR
+    fetches the URL (gateway-staged in MinIO with 1d server-side TTL).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    created: int
+    data: list[AudioGenDataItem] = Field(min_length=1, max_length=10)

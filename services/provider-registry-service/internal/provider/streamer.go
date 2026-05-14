@@ -165,8 +165,8 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
 			Usage *struct {
-				PromptTokens             int  `json:"prompt_tokens"`
-				CompletionTokens         int  `json:"completion_tokens"`
+				PromptTokens            int `json:"prompt_tokens"`
+				CompletionTokens        int `json:"completion_tokens"`
 				CompletionTokensDetails *struct {
 					ReasoningTokens int `json:"reasoning_tokens"`
 				} `json:"completion_tokens_details"`

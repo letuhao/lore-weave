@@ -48,6 +48,7 @@ var validJobOperations = map[string]struct{}{
 	"chat": {}, "completion": {}, "embedding": {},
 	"stt": {}, "tts": {}, "image_gen": {},
 	"video_gen":         {}, // Phase 5d
+	"audio_gen":         {}, // Phase 5e-β.2 — batch TTS
 	"entity_extraction": {}, "relation_extraction": {},
 	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
 	"translation": {},
@@ -154,6 +155,12 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 	}
 	if in.Operation == "video_gen" {
 		if err := validateVideoGenInput(in.Input, in.Chunking); err != nil {
+			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
+			return
+		}
+	}
+	if in.Operation == "audio_gen" {
+		if err := validateAudioGenInput(in.Input, in.Chunking); err != nil {
 			writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", err.Error())
 			return
 		}
@@ -503,6 +510,56 @@ func validateVideoGenInput(raw json.RawMessage, chunking json.RawMessage) error 
 	// cover this case independently).
 	if len(v.InitImage) > provider.MaxImg2VidInputBytes {
 		return fmt.Errorf("video_gen init_image exceeds %d-byte cap (got %d)", provider.MaxImg2VidInputBytes, len(v.InitImage))
+	}
+	return nil
+}
+
+// validateAudioGenInput — Phase 5e-β.2 handler-level validation for
+// operation=audio_gen. Rejects empty texts, batch over MaxAudioGenInputs,
+// per-text empty/oversize, bad response_format/format, and chunking.
+//
+// /review-impl(DESIGN) COSMETIC#3 — chunking checked on top-level
+// SubmitJobRequest.Chunking param (json.RawMessage), NOT input["chunking"].
+// Mirrors validateImageGenInput / validateVideoGenInput pattern.
+func validateAudioGenInput(raw json.RawMessage, chunking json.RawMessage) error {
+	if len(chunking) > 0 && string(chunking) != "null" {
+		return fmt.Errorf("chunking not supported for audio_gen")
+	}
+	var v struct {
+		Texts          []string `json:"texts"`
+		Voice          string   `json:"voice"`
+		Speed          float64  `json:"speed"`
+		Format         string   `json:"format"`
+		ResponseFormat string   `json:"response_format"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return fmt.Errorf("audio_gen input parse: %w", err)
+	}
+	if len(v.Texts) == 0 {
+		return fmt.Errorf("audio_gen requires non-empty texts array")
+	}
+	if len(v.Texts) > provider.MaxAudioGenInputs {
+		return fmt.Errorf("audio_gen texts exceeds %d (got %d)", provider.MaxAudioGenInputs, len(v.Texts))
+	}
+	for i, t := range v.Texts {
+		if strings.TrimSpace(t) == "" {
+			return fmt.Errorf("audio_gen texts[%d] must not be empty/whitespace", i)
+		}
+		if len(t) > provider.MaxAudioGenInputCharsLen {
+			return fmt.Errorf("audio_gen texts[%d] exceeds %d-char cap (got %d)", i, provider.MaxAudioGenInputCharsLen, len(t))
+		}
+	}
+	if v.ResponseFormat != "" && v.ResponseFormat != "b64_json" && v.ResponseFormat != "url" {
+		return fmt.Errorf("audio_gen response_format must be \"b64_json\" or \"url\" (got %q)", v.ResponseFormat)
+	}
+	if v.Format != "" {
+		valid := map[string]bool{"mp3": true, "opus": true, "aac": true, "flac": true, "wav": true, "pcm": true}
+		if !valid[v.Format] {
+			return fmt.Errorf("audio_gen format must be one of mp3/opus/aac/flac/wav/pcm (got %q)", v.Format)
+		}
+	}
+	if v.Speed != 0 && (v.Speed < 0.25 || v.Speed > 4.0) {
+		return fmt.Errorf("audio_gen speed must be 0.25..4.0 (got %g)", v.Speed)
 	}
 	return nil
 }

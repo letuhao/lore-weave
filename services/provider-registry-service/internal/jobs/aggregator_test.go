@@ -547,7 +547,7 @@ func TestJSONListAggregator_UnchunkedSingleParseStillWorks(t *testing.T) {
 	// one implicit chunk and parse on Finalize.
 	a := NewAggregator("entity_extraction")
 	a.Accept(provider.StreamChunk{
-		Kind: provider.StreamChunkToken,
+		Kind:  provider.StreamChunkToken,
 		Delta: `{"entities":[{"name":"X","kind":"person","aliases":[],"confidence":0.5}]}`,
 	})
 	a.Accept(provider.StreamChunk{Kind: provider.StreamChunkDone, FinishReason: "stop"})

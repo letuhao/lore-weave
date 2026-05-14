@@ -118,11 +118,8 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       SHARING_INTERNAL_URL: http://sharing-service:8083
-      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
-      # Phase 5e-β.1 — unified gateway URL for media.go image_gen migration.
-      # Same host as provider-registry-service since the gateway IS there;
-      # naming matches knowledge-service / worker-ai / translation-service.
-      # audio.go still uses PROVIDER_REGISTRY_SERVICE_URL until Phase 5e-β.2.
+      # Phase 5e-β.2 — PROVIDER_REGISTRY_SERVICE_URL dropped (audio.go was
+      # its last consumer; now migrated to use llmgw SDK via LLM_GATEWAY_INTERNAL_URL).
       LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -203,6 +200,14 @@ services:
       # `loreweave.events` topic exchange. Empty/unset = NoopNotifier
       # (caller polls GET /v1/llm/jobs/{id}; no broker dependency).
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      # Phase 5e-β.2 — MinIO config for audio_gen URL-mode staging.
+      # When unset, audio_gen URL mode disables (b64_json still works).
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_USE_SSL: "false"
+      MINIO_EXTERNAL_URL: http://localhost:9123
+      AUDIO_CACHE_BUCKET: loreweave-audio-cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -210,6 +215,8 @@ services:
         condition: service_healthy
       usage-billing-service:
         condition: service_healthy
+      minio:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8085/health"]
       interval: 10s

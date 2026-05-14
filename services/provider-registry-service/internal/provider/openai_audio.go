@@ -413,3 +413,122 @@ func (a *openaiAdapter) Speak(
 	// Closing sentinel
 	return emit(AudioChunk{SequenceID: seq, Data: nil, Final: true})
 }
+
+// ── GenerateAudio — Phase 5e-β.2 batch TTS ──────────────────────────
+
+// GenerateAudio submits N inputs sequentially to /v1/audio/speech and
+// returns an order-preserving slice of GeneratedAudio.
+//
+// Order invariant (/review-impl(DESIGN) MED#5): output.Items[i]
+// corresponds 1:1 to input.Texts[i]. v1 sequential satisfies trivially;
+// future parallel impl MUST use indexed writes (items[i] = ...), not
+// append from goroutines.
+//
+// All-or-nothing: a mid-batch failure aborts. Per-input partial-success
+// is deferred to D-PHASE5E-BETA2-AUDIO-GEN-PARTIAL-SUCCESS.
+//
+// Defaults applied at adapter (/review-impl(DESIGN) LOW#1): Voice ""
+// → "alloy"; Speed 0 → 1.0; Format "" → "mp3".
+func (a *openaiAdapter) GenerateAudio(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateAudioInput) (GenerateAudioOutput, Usage, error) {
+	if len(input.Texts) == 0 {
+		return GenerateAudioOutput{}, Usage{}, ErrAudioGenInvalidParams
+	}
+	if len(input.Texts) > MaxAudioGenInputs {
+		return GenerateAudioOutput{}, Usage{}, ErrAudioGenInvalidParams
+	}
+	for _, t := range input.Texts {
+		if strings.TrimSpace(t) == "" {
+			return GenerateAudioOutput{}, Usage{}, ErrAudioGenInvalidParams
+		}
+		if len(t) > MaxAudioGenInputCharsLen {
+			return GenerateAudioOutput{}, Usage{}, ErrAudioGenInvalidParams
+		}
+	}
+
+	voice := input.Voice
+	if voice == "" {
+		voice = "alloy"
+	}
+	speed := input.Speed
+	if speed <= 0 {
+		speed = 1.0
+	}
+	format := input.Format
+	if format == "" {
+		format = "mp3"
+	}
+
+	// Pre-allocated, indexed writes — preserve order invariant under
+	// future parallel refactor.
+	items := make([]GeneratedAudio, len(input.Texts))
+	var totalInputChars int
+	for i, text := range input.Texts {
+		audio, err := a.speakOne(ctx, endpointBaseURL, secret, modelName, text, voice, speed, format)
+		if err != nil {
+			return GenerateAudioOutput{}, Usage{}, err
+		}
+		if len(audio.Data) == 0 {
+			// /review-impl(DESIGN) MED#11 — refuse 0-byte audio.
+			return GenerateAudioOutput{}, Usage{}, ErrAudioGenerationFailed
+		}
+		items[i] = audio
+		totalInputChars += len(text)
+	}
+
+	return GenerateAudioOutput{Items: items}, Usage{InputTokens: totalInputChars, OutputTokens: 0}, nil
+}
+
+// speakOne — single-text POST to /v1/audio/speech, returns whole body.
+// Distinct from Speak which streams in 4KB chunks for SSE delivery.
+func (a *openaiAdapter) speakOne(ctx context.Context, endpointBaseURL, secret, modelName, text, voice string, speed float64, format string) (GeneratedAudio, error) {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = openaiBaseURL
+	}
+	body := map[string]any{
+		"model":           modelName,
+		"input":           text,
+		"voice":           voice,
+		"speed":           speed,
+		"response_format": format,
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return GeneratedAudio{}, fmt.Errorf("marshal speakOne body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/audio/speech", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return GeneratedAudio{}, fmt.Errorf("new request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/octet-stream")
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return GeneratedAudio{}, fmt.Errorf("upstream transport: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+		return GeneratedAudio{}, ClassifyUpstreamHTTP(resp.StatusCode, string(respBytes), retryAfter)
+	}
+	// Read whole body (capped at MaxAudioBytes — same 25MB cap as
+	// streaming Speak; per-TTS-output expectation is <10MB for ~4000 chars).
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxAudioBytes))
+	if err != nil {
+		return GeneratedAudio{}, fmt.Errorf("read response body: %w", err)
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "audio/mpeg" // safe default for mp3 (OpenAI's default)
+	}
+	return GeneratedAudio{
+		Data:        data,
+		Format:      format,
+		ContentType: contentType,
+		DurationMs:  0, // OpenAI TTS doesn't return duration
+	}, nil
+}

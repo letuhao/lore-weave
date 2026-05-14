@@ -36,6 +36,7 @@ from loreweave_llm.errors import (
 from loreweave_llm.models import (
     AudioChunkEvent,
     AudioFormat,
+    AudioGenResult,
     DoneEvent,
     ErrorEvent,
     ImageGenResult,
@@ -827,6 +828,131 @@ class Client:
         if job.error is None:
             raise LLMUpstreamError(
                 f"video_gen job {submitted.job_id} failed without error body",
+                status_code=None,
+                body="",
+            )
+        raise from_code(job.error.code, job.error.message)
+
+    # ── Audio generation (Phase 5e-β.2) ──────────────────────────────
+
+    async def generate_audio(
+        self,
+        texts: list[str],
+        *,
+        model_source: ModelSource,
+        model_ref: str,
+        voice: str | None = None,
+        speed: float | None = None,
+        format: AudioFormat | None = None,
+        response_format: Literal["b64_json", "url"] | None = None,
+        user_id: str | None = None,
+        poll_interval_s: float = 0.5,
+        max_poll_interval_s: float = 10.0,
+    ) -> AudioGenResult:
+        """Phase 5e-β.2 — submit batch audio_gen job, wait for terminal,
+        return decoded result.
+
+        Distinct from `stream_tts()` (Phase 5a) which is streaming/realtime;
+        this is batch/job-mode for stored audio (e.g. book chapter
+        narration). Both use the same upstream (/v1/audio/speech) but
+        different gateway operations.
+
+        Polling defaults: 0.5s initial, 10s max, 1.5× backoff.
+        transient_retry_budget fixed at 0 — TTS is char-billed; mid-batch
+        retries could double-charge up to N × 4096 chars per call.
+        Amplified vs generate_image's single-input risk
+        (/review-impl(DESIGN) MED#10).
+
+        /review-impl(DESIGN) HIGH#5 — optional fields use `None` sentinel;
+        wire inclusion via `if X is not None` (NOT `if X != default`).
+        Per memory `feedback_sdk_default_arg_dropped_from_wire` — explicit-
+        equal-to-default values must reach the wire.
+
+        Args:
+            texts: 1..10 strings, each 1..4096 chars (OpenAI TTS limit;
+                batch cap of 10 per /review-impl(DESIGN) MED#1).
+            model_source: 'user_model' or 'platform_model'.
+            model_ref: UUID-shaped model reference.
+            voice: None ⇒ gateway/upstream default ('alloy' for OpenAI).
+                Backend-specific.
+            speed: None ⇒ default 1.0. Range 0.25..4.0.
+            format: None ⇒ default 'mp3'.
+            response_format: None ⇒ gateway default ('b64_json').
+                'b64_json' inline; 'url' returns public MinIO URL (1d TTL).
+            user_id: per-call override.
+            poll_interval_s: initial poll delay.
+            max_poll_interval_s: max poll delay after backoff.
+
+        Returns:
+            AudioGenResult with len(texts) data entries, order-preserving.
+
+        Raises:
+            LLMInvalidRequest: SDK pre-flight validation
+                (empty texts, batch >10, per-text empty/oversize, malformed
+                model_ref).
+            LLMAudioGenerationFailed: upstream batch TTS failed.
+            LLMError subclass keyed by job.error.code on other failures.
+            LLMJobTerminal: status=cancelled.
+        """
+        try:
+            UUID(model_ref)
+        except (TypeError, ValueError) as exc:
+            raise LLMInvalidRequest(
+                f"model_ref must be UUID-shaped, got {model_ref!r}",
+            ) from exc
+
+        if not texts:
+            raise LLMInvalidRequest("texts must be non-empty")
+        if len(texts) > 10:
+            raise LLMInvalidRequest(f"texts batch capped at 10 (got {len(texts)})")
+        for i, t in enumerate(texts):
+            if not isinstance(t, str):
+                raise LLMInvalidRequest(f"texts[{i}] must be str (got {type(t).__name__})")
+            if not t.strip():
+                raise LLMInvalidRequest(f"texts[{i}] must not be empty/whitespace")
+            if len(t) > 4096:
+                raise LLMInvalidRequest(f"texts[{i}] exceeds 4096-char OpenAI TTS limit (got {len(t)})")
+
+        input_payload: dict[str, Any] = {"texts": texts}
+        # /review-impl(DESIGN) HIGH#5 — `is not None` checks preserve
+        # explicit-equal-to-default caller intent.
+        if voice is not None:
+            input_payload["voice"] = voice
+        if speed is not None:
+            input_payload["speed"] = speed
+        if format is not None:
+            input_payload["format"] = format
+        if response_format is not None:
+            input_payload["response_format"] = response_format
+
+        request = SubmitJobRequest(
+            operation="audio_gen",
+            model_source=model_source,
+            model_ref=model_ref,
+            input=input_payload,
+        )
+        submitted = await self.submit_job(request, user_id=user_id)
+        job = await self.wait_terminal(
+            submitted.job_id,
+            user_id=user_id,
+            poll_interval_s=poll_interval_s,
+            max_poll_interval_s=max_poll_interval_s,
+            transient_retry_budget=0,
+        )
+        if job.status == "completed":
+            if job.result is None:
+                raise LLMUpstreamError(
+                    f"audio_gen job {submitted.job_id} completed but result is empty",
+                    status_code=None,
+                    body="",
+                )
+            return AudioGenResult.model_validate(job.result)
+        if job.status == "cancelled":
+            raise LLMJobTerminal(f"audio_gen job {submitted.job_id} cancelled")
+        # status == "failed"
+        if job.error is None:
+            raise LLMUpstreamError(
+                f"audio_gen job {submitted.job_id} failed without error body",
                 status_code=None,
                 body="",
             )

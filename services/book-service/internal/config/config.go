@@ -8,18 +8,19 @@ import (
 )
 
 type Config struct {
-	HTTPAddr               string
-	DatabaseURL            string
-	JWTSecret              string
-	BooksStorageBucket     string
-	QuotaBytesDefault      int64
-	SharingInternalURL     string
-	MinioEndpoint          string
-	MinioAccessKey         string
-	MinioSecretKey         string
-	MinioUseSSL            bool
-	MinioExternalURL       string // URL prefix for browser-accessible media (e.g. http://localhost:9123)
-	ProviderRegistryURL    string
+	HTTPAddr           string
+	DatabaseURL        string
+	JWTSecret          string
+	BooksStorageBucket string
+	QuotaBytesDefault  int64
+	SharingInternalURL string
+	MinioEndpoint      string
+	MinioAccessKey     string
+	MinioSecretKey     string
+	MinioUseSSL        bool
+	MinioExternalURL   string // URL prefix for browser-accessible media (e.g. http://localhost:9123)
+	// Phase 5e-β.2 — `ProviderRegistryURL` field dropped; audio.go was
+	// its last consumer (now migrated to use llmgw SDK via LLMGatewayInternalURL).
 	LLMGatewayInternalURL  string
 	UsageBillingServiceURL string
 	InternalServiceToken   string
@@ -38,7 +39,6 @@ func Load() (*Config, error) {
 		MinioSecretKey:         os.Getenv("MINIO_SECRET_KEY"),
 		MinioUseSSL:            getEnv("MINIO_USE_SSL", "false") == "true",
 		MinioExternalURL:       strings.TrimRight(os.Getenv("MINIO_EXTERNAL_URL"), "/"),
-		ProviderRegistryURL:    os.Getenv("PROVIDER_REGISTRY_SERVICE_URL"),
 		LLMGatewayInternalURL:  os.Getenv("LLM_GATEWAY_INTERNAL_URL"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
@@ -60,9 +60,6 @@ func Load() (*Config, error) {
 	}
 	if c.SharingInternalURL == "" {
 		return nil, fmt.Errorf("SHARING_INTERNAL_URL is required")
-	}
-	if c.ProviderRegistryURL == "" {
-		return nil, fmt.Errorf("PROVIDER_REGISTRY_SERVICE_URL is required")
 	}
 	if c.LLMGatewayInternalURL == "" {
 		return nil, fmt.Errorf("LLM_GATEWAY_INTERNAL_URL is required")

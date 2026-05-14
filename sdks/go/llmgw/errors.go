@@ -48,7 +48,13 @@ var (
 	ErrUpstream              = errors.New("LLM_UPSTREAM_ERROR")
 	ErrImageContentPolicy    = errors.New("LLM_IMAGE_CONTENT_POLICY_VIOLATION")
 	ErrImageGenerationFailed = errors.New("LLM_IMAGE_GENERATION_FAILED")
-	ErrJobNotFound           = errors.New("LLM_JOB_NOT_FOUND")
+	// Phase 5e-β.2 — audio_gen-specific sentinel.
+	ErrAudioGenerationFailed = errors.New("LLM_AUDIO_GENERATION_FAILED")
+	// Phase 5e-β.2 — gateway-side storage failure (upstream TTS succeeded
+	// but MinIO staging failed). Distinct so callers don't auto-retry
+	// (which would double-charge BYOK).
+	ErrGatewayStorage = errors.New("LLM_GATEWAY_STORAGE_ERROR")
+	ErrJobNotFound    = errors.New("LLM_JOB_NOT_FOUND")
 	ErrJobTerminal           = errors.New("LLM_JOB_TERMINAL")
 	ErrHTTPTransport         = errors.New("LLM_HTTP_ERROR")
 	ErrDecode                = errors.New("LLM_DECODE_ERROR")
@@ -66,6 +72,8 @@ var codeSentinels = map[string]error{
 	"LLM_UPSTREAM_ERROR":                 ErrUpstream,
 	"LLM_IMAGE_CONTENT_POLICY_VIOLATION": ErrImageContentPolicy,
 	"LLM_IMAGE_GENERATION_FAILED":        ErrImageGenerationFailed,
+	"LLM_AUDIO_GENERATION_FAILED":        ErrAudioGenerationFailed,
+	"LLM_GATEWAY_STORAGE_ERROR":          ErrGatewayStorage,
 	"LLM_JOB_NOT_FOUND":                  ErrJobNotFound,
 	"LLM_JOB_TERMINAL":                   ErrJobTerminal,
 	"LLM_HTTP_ERROR":                     ErrHTTPTransport,

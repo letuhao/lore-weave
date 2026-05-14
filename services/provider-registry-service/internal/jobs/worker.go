@@ -17,6 +17,7 @@ import (
 
 	"github.com/loreweave/provider-registry-service/internal/chunker"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
 // CredResolver looks up the provider details a job needs before
@@ -48,16 +49,20 @@ type Worker struct {
 	adapter  AdapterFactory
 	notifier Notifier
 	logger   *slog.Logger
+	// Phase 5e-β.2 — gateway-side audio staging for audio_gen URL mode.
+	// May be nil; URL-mode audio_gen jobs return LLM_INVALID_REQUEST in
+	// that case. b64_json mode works without an audioCache.
+	audioCache *storage.AudioCache
 }
 
-func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger) *Worker {
+func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if notifier == nil {
 		notifier = NoopNotifier{}
 	}
-	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger}
+	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache}
 }
 
 // finalizeAndNotify is the only path through which the worker ends a
@@ -421,7 +426,8 @@ var streamableOperations = map[string]struct{}{
 // checks audio first, then streamable, ensuring no operation is in both
 // dispatch paths.
 var audioJobOperations = map[string]struct{}{
-	"stt": {},
+	"stt":       {},
+	"audio_gen": {}, // Phase 5e-β.2 — batch TTS via /v1/llm/jobs
 }
 
 // isStreamableOperation reports whether the worker can dispatch the given

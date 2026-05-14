@@ -39,10 +39,10 @@ type Request struct {
 
 // Default values per openapi schema description.
 const (
-	DefaultTokensSize       = 2000
-	DefaultParagraphsSize   = 8
-	DefaultSentencesSize    = 30
-	DefaultTokensOverlap    = 200
+	DefaultTokensSize     = 2000
+	DefaultParagraphsSize = 8
+	DefaultSentencesSize  = 30
+	DefaultTokensOverlap  = 200
 )
 
 // applyDefaults fills in missing fields per the openapi description.

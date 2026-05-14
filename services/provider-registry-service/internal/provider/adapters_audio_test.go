@@ -979,3 +979,170 @@ func TestOpenAIAdapter_Transcribe_BytesMode_ContentTypeOggExtension(t *testing.T
 	}
 }
 
+// ── Phase 5e-β.2 — audio_gen adapter tests ───────────────────────────
+
+func newOpenAIAdapterForAudioGenTest(t *testing.T) *openaiAdapter {
+	t.Helper()
+	return &openaiAdapter{client: &http.Client{}}
+}
+
+func TestOpenAIAdapter_GenerateAudio_HappyPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/audio/speech" {
+			t.Errorf("path = %s, want /v1/audio/speech", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write([]byte{0x49, 0x44, 0x33, 0x04}) // ID3v2 header bytes
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	out, _, err := a.GenerateAudio(context.Background(), server.URL, "secret", "tts-1",
+		GenerateAudioInput{Texts: []string{"hello world"}, Voice: "alloy", Format: "mp3"})
+	if err != nil {
+		t.Fatalf("GenerateAudio: %v", err)
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("Items = %d, want 1", len(out.Items))
+	}
+	if len(out.Items[0].Data) == 0 {
+		t.Error("Item.Data is empty")
+	}
+	if out.Items[0].Format != "mp3" {
+		t.Errorf("Format = %q, want mp3", out.Items[0].Format)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_EmptyTexts_Rejected(t *testing.T) {
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), "http://nowhere", "s", "m",
+		GenerateAudioInput{Texts: []string{}})
+	if !errors.Is(err, ErrAudioGenInvalidParams) {
+		t.Errorf("err = %v, want ErrAudioGenInvalidParams", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_BatchOverCap_Rejected(t *testing.T) {
+	a := newOpenAIAdapterForAudioGenTest(t)
+	texts := make([]string, MaxAudioGenInputs+1)
+	for i := range texts {
+		texts[i] = "x"
+	}
+	_, _, err := a.GenerateAudio(context.Background(), "http://nowhere", "s", "m",
+		GenerateAudioInput{Texts: texts})
+	if !errors.Is(err, ErrAudioGenInvalidParams) {
+		t.Errorf("err = %v, want ErrAudioGenInvalidParams", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_WhitespaceText_Rejected(t *testing.T) {
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), "http://nowhere", "s", "m",
+		GenerateAudioInput{Texts: []string{"valid", "   "}})
+	if !errors.Is(err, ErrAudioGenInvalidParams) {
+		t.Errorf("err = %v, want ErrAudioGenInvalidParams", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_OversizeText_Rejected(t *testing.T) {
+	a := newOpenAIAdapterForAudioGenTest(t)
+	huge := strings.Repeat("a", MaxAudioGenInputCharsLen+1)
+	_, _, err := a.GenerateAudio(context.Background(), "http://nowhere", "s", "m",
+		GenerateAudioInput{Texts: []string{huge}})
+	if !errors.Is(err, ErrAudioGenInvalidParams) {
+		t.Errorf("err = %v, want ErrAudioGenInvalidParams", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_ZeroByteResponse_Rejected(t *testing.T) {
+	// /review-impl(DESIGN) MED#11 — defensive 0-byte check.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		// Write 0 bytes.
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), server.URL, "s", "m",
+		GenerateAudioInput{Texts: []string{"hi"}})
+	if !errors.Is(err, ErrAudioGenerationFailed) {
+		t.Errorf("err = %v, want ErrAudioGenerationFailed", err)
+	}
+}
+
+// /review-impl(BUILD) H#3 — order-preservation regression-lock.
+// Content-tags each upstream response by request body so a future
+// parallel refactor that scrambles order is caught immediately.
+func TestOpenAIAdapter_GenerateAudio_OrderPreserved(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		// Extract the "input" field from the request JSON.
+		var req struct {
+			Input string `json:"input"`
+		}
+		_ = json.Unmarshal(body, &req)
+		w.Header().Set("Content-Type", "audio/mpeg")
+		// Tag the response with the input text so we can verify the
+		// adapter mapped it back to the correct index.
+		_, _ = w.Write([]byte("audio:" + req.Input))
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	inputs := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
+	out, _, err := a.GenerateAudio(context.Background(), server.URL, "s", "m",
+		GenerateAudioInput{Texts: inputs, Format: "mp3"})
+	if err != nil {
+		t.Fatalf("GenerateAudio: %v", err)
+	}
+	for i, item := range out.Items {
+		got := string(item.Data)
+		want := "audio:" + inputs[i]
+		if got != want {
+			t.Errorf("Items[%d].Data = %q, want %q (order invariant broken)", i, got, want)
+		}
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_UpstreamRateLimit_Classified(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"message":"rate-limited"}}`))
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), server.URL, "s", "m",
+		GenerateAudioInput{Texts: []string{"hi"}})
+	var rl *ErrUpstreamRateLimited
+	if !errors.As(err, &rl) {
+		t.Errorf("err = %v, want ErrUpstreamRateLimited via errors.As", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_UpstreamAuthFailed_Classified(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"bad key"}}`))
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), server.URL, "s", "m",
+		GenerateAudioInput{Texts: []string{"hi"}})
+	var perm *ErrUpstreamPermanent
+	if !errors.As(err, &perm) {
+		t.Errorf("err = %v, want ErrUpstreamPermanent", err)
+	}
+}
+
+func TestStubAdapters_GenerateAudio_ReturnOperationNotSupported(t *testing.T) {
+	ctx := context.Background()
+	in := GenerateAudioInput{Texts: []string{"hi"}}
+	for _, a := range []Adapter{&anthropicAdapter{}, &ollamaAdapter{}, &lmStudioAdapter{}} {
+		_, _, err := a.GenerateAudio(ctx, "http://x", "s", "m", in)
+		if !errors.Is(err, ErrOperationNotSupported) {
+			t.Errorf("adapter %T: err = %v, want ErrOperationNotSupported", a, err)
+		}
+	}
+	// Use atomic to avoid unused-import false-positive after gofmt.
+	_ = atomic.Int32{}
+	_ = bytes.NewReader
+	_ = multipart.NewWriter
+}
