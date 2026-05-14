@@ -138,6 +138,7 @@ This folder reads from and constrains:
 | [03_multiverse/](../03_multiverse/) | Canon layering (L1–L4) is orthogonal to tier taxonomy; DP respects reality boundaries in cache keying. |
 | [04_player_character/](../04_player_character/) | PC aggregates live in DP-T2/T3; PC DF items register through DP contract when implemented. |
 | [05_llm_safety/](../05_llm_safety/) | World Oracle / command dispatch produces events that flow through DP write path. |
+| [features/00_tilemap/](../features/00_tilemap/) | **V1+30d consumer (annotation added 2026-05-14 closure-pass-extension).** TMP_001..TMP_008b registers 2 new T2 aggregates: `tilemap_view` (T2/Channel scope; non-cell channels only — TMP-A1) + `tilemap_template` (T2/Reality scope). Standard DP-K1..K12 access surface only — **no new DP-K\* primitives, no new DP-Ch\* primitives, no new DP axioms.** Consumes DP-Ch24 turn-boundary subscribe to track `map_layout` deltas (TMP_001 §7 MAP_001 position reconciliation). Consumes DP-Ch16..Ch20 durable subscribe for cross-zone L4 narration cache invalidation (TMP_008b §8 cache key derivation). T2 cache footprint per Ch is bounded by zone count × tile count; refer to TMP_001 §10 for sizing model. |
 | [catalog/](../catalog/) | Every feature in the catalog picks one tier (DP-T0..T3) when it graduates to detailed design. |
 
 ---

@@ -81,6 +81,73 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-14 — TMP cross-feature integration annotation pass — 13 consumer features annotated per TMP_001 §14
+
+### Session arc
+
+Continuation of TMP design track. User picked **"continue TMP discussion"** from the two next-session direction options (continue design vs pivot to V2 PoC implementation), then picked **"Cross-feature integration annotation"** from four design-mode sub-directions (vs TMP_009 V2 sprite atlas / V3 RMG wizard / individual V2+ deferral scoping). Scope confirmed as **Full A+B+C** (~13 files) — aggressive single-session pass across all consumer feature folders + kernel folders.
+
+Work pattern: read each consumer's structure (existing closure-pass-extension banners, cross-references section locations, status), write a uniform `⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706` banner at top-of-doc + appended cross-references row in each. Banner content tailored per-consumer to reflect the SPECIFIC integration TMP_001 §14 catalogues for that consumer (subscribe pattern for MAP_001; tier delineation for CSC_001; co-existence for PF_001; RealityManifest extension for PL_001/PL_001b; AdminAction sub-shapes for WA_003; new T2 aggregates for 06_data_plane; sub-type registrations for 07_event_model; pattern reuse for AIT_001; replay-determinism for TDIL_001; V2+ reservations for PCS_001 / RES_001 / NPC_001).
+
+### Annotation surface (13 consumers from TMP_001 §14)
+
+| Tier | Consumers | Touch |
+|---|---|---|
+| **A — V1+30d active integration** (6 files) | MAP_001, CSC_001, PF_001, PL_001 + PL_001b (split), WA_003 | Banner + cross-ref row + (PL_001b only) `RealityManifest` snippet extended with `tilemap_templates: Vec<TilemapTemplateDecl>` + `tilemap_defaults: Option<TilemapDefaults>` optional fields. WA_003 banner registers 3 AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` V1+30d active; `Forge:OverridePlacement` V3 active / V1+30d schema-reserved). |
+| **B — Kernel folders** (2 files) | 06_data_plane/_index.md, 07_event_model/_index.md | Cross-folder-references-table row (banner pattern not applicable to kernel index files). 06_data_plane: 2 new T2 aggregates without new DP-K\* or DP-Ch\*. 07_event_model: sub-types under existing EVT-T3/T4/T8 + V2 reservations under EVT-T5/T6 (no new EVT-T\* or EVT-A\*). |
+| **C — V2+ reservation notes** (5 files) | AIT_001, TDIL_001, PCS_001, RES_001, NPC_001 | Banner + cross-ref row. AIT §14.19 documents TMP as Q4-LOCKED hybrid 2-stage pattern reuser. TDIL §17.10 documents TMP-A4 satisfying TDIL-A9 replay-determinism (orthogonal layer; tilemap is purely spatial). PCS reserves V2+ fog-of-war (TMP-D3). RES §12.9 reserves V2 mines (TMP-D10) with clean producer/inventory boundary. NPC reserves V2+ routing on `tilemap_view.road_segments`. |
+| **(skipped)** | 05_llm_safety | Folder doesn't exist yet — separate seed work pending per 2026-04-26 next-step recommendations. |
+
+### Drift caught + filed (1)
+
+- **WA_003 §7 preamble "12 V1 EditActions"** is stale post-annotation; effective V1+30d count is 15 (12 WA + 3 TMP). Flagged in WA_003 closure-pass-extension banner for next WA_003 closure pass to reconcile.
+
+### Verified-not-drift (1)
+
+- **TDIL-A9 axiom** was initially mis-flagged as missing from TDIL_001 — discovered mid-pass that the axiom IS defined in `catalog/cat_17_TDIL_time_dilation.md` line 36 (catalog file is authoritative for stable-ID axiom inventories per the TDIL pattern). Annotation reconciled before commit — TMP_001 §14's "TDIL-A9 replay-free V1" citation is correct.
+
+### Files touched
+
+- **Inside `_boundaries/`**: `_LOCK.md` (new `_Last released_` entry; Owner stays None) + `99_changelog.md` (top-anchored entry).
+- **Outside `_boundaries/`**: 13 consumer features (6 Tier A + 2 Tier B + 5 Tier C).
+- **Total**: 15 files.
+- **CANDIDATE-LOCK statuses preserved** on every consumer — banner pattern is additive-only, no scope creep into existing sections.
+
+### Handoff notes for next session
+
+**Active:** none. Annotation pass complete; only 05_llm_safety remains unannotated (because its folder doesn't exist yet).
+
+**Next-step recommendations (priority order):**
+
+1. **05_llm_safety folder seed** — now the sole remaining unannotated TMP consumer. Per 2026-04-26 next-step recommendations: ~5-7 features at ~600 lines each. A1..A6 axioms exist; TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements to flesh out. After folder seeds, this annotation pass can be closed by adding a 14th banner.
+2. **V2 PoC implementation** of tilemap-service — validate TMP_008b §2-§12 contract empirically: cacheable-prefix prompt cache hit rate (target ~30-45% per TMP_008b §2), tool-use forced-call reliability, per-object retry granularity (measure retry success rate vs flat-error retry — expect 70-90% vs 20-40%), cost-model accuracy (compare measured per-call cost to TMP_008b §12 estimates ~$0.018/L3 + ~$0.014/L4). Clean-room Rust against Claude Haiku 4.5.
+3. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror MAP_002 V1+ pattern when art-asset pipeline lights up).
+4. **V3 RMG wizard** scoping (TMP-D1, TMP-D2 — player-facing parameter capture UX).
+5. **WA_003 closure-pass reconciliation** of the "12 V1 EditActions" → 15 V1+30d count + decide whether the 3 TMP-owned AdminActions need stub §7.7-§7.9 sub-sections in WA_003 itself or stay pointed-to in TMP_001 §16 / TMP_004.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- Closure-pass-extension banner pattern (top-of-doc `⚠ CLOSURE-PASS-EXTENSION YYYY-MM-DD — <source feature> <COMMIT>` block) is the agreed-on mechanism for annotating downstream features without reopening their CANDIDATE-LOCK status. Pattern set by WA_003 / PCS_001 / NPC_001 / AIT_001 banners; this pass continues that pattern for 11 consumer features.
+- Kernel folders (06_data_plane / 07_event_model) use `Cross-folder references` table rows instead of top-of-doc banners — match existing per-folder convention.
+- When citing a stable-ID axiom (TDIL-A9-style) that doesn't show up in a feature file body, check the catalog file (`catalog/cat_NN_*.md`) before flagging drift — the catalog is authoritative for axiom inventories per existing convention.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this entry pre-commit)
+- **Files touched:** 15 (13 consumer features + `_LOCK.md` + `99_changelog.md`)
+- **Lock cycles:** 1 (single combined `[boundaries-lock-claim+release]`)
+- **Banner blocks added:** 11 (Tier A 6 + Tier C 5; kernel folders use cross-folder-table row pattern)
+- **Cross-references rows added:** 13 (one per consumer)
+- **New sub-sections added inside consumer features:** 3 (AIT §14.19 · TDIL §17.10 · RES §12.9)
+- **RealityManifest snippet edits:** 1 (PL_001b §16.1 — 2 optional fields)
+- **AdminAction sub-shapes registered (annotation only):** 3 (WA_003 banner; detailed flows owned by TMP_001 + TMP_004)
+- **EVT-T sub-types referenced (annotation only):** 7 (`TilemapBorn` + `ZonesPlaced` + 2 T3 aggregate_types + 3 T8 Forge:* sub-shapes + 2 V2 reservations)
+- **Drift caught + filed:** 1 (WA_003 EditAction count)
+- **Verified-not-drift:** 1 (TDIL-A9 confirmed in cat_17)
+
+---
+
 ## Session 2026-05-13 (continued, late evening) — TMP folder closure pass — all 9 docs DRAFT → CANDIDATE-LOCK; folder CLOSED for V1+30d design
 
 ### Session arc

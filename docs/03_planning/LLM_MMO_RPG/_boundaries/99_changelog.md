@@ -6,6 +6,45 @@
 
 ---
 
+## 2026-05-14 — TMP cross-feature integration annotation pass (13 consumer features annotated per TMP_001 §14)
+
+- **Lock CLAIM + RELEASE** — single combined `[boundaries-lock-claim+release]` commit. Follows TMP folder closure pass `cdc2f706` (2026-05-13) and the user-chosen next-step "stay in design mode → cross-feature integration annotation" picked from the four post-TMP-closure direction options.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner remains None); new `_Last released_` entry at top of the stack capturing scope summary, files touched, drift caught, and post-pass priority candidates
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** 13 consumer-feature documents — pattern is uniform: top-of-doc `⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 …` banner mirroring the precedent set by WA_003 / PCS_001 / NPC_001 / AIT_001 closure-pass-extension blocks, plus an appended row in each doc's Cross-references / Cascade / Cross-folder section. No edits to existing sections that would constitute scope creep; all consumer CANDIDATE-LOCK statuses preserved.
+- **Tier breakdown:**
+
+| Tier | Consumer files | Integration depth |
+|---|---|---|
+| A — V1+30d active integration | `features/00_map/MAP_001_map_foundation.md` · `features/00_cell_scene/CSC_001_cell_scene_composition.md` · `features/00_place/PF_001_place_foundation.md` · `features/04_play_loop/PL_001_continuum.md` · `features/04_play_loop/PL_001b_continuum_lifecycle.md` · `features/02_world_authoring/WA_003_forge.md` | Banner + cross-ref row + (PL_001b only) RealityManifest snippet `tilemap_templates: Vec<TilemapTemplateDecl>` + `tilemap_defaults: Option<TilemapDefaults>` optional-field extension. WA_003 adds 3 AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` V1+30d active; `Forge:OverridePlacement` V3 active / V1+30d schema-reserved) via additive FRG-S\* pattern. |
+| B — Kernel folders | `06_data_plane/_index.md` · `07_event_model/_index.md` | Banner pattern not applied (kernel folders use `Cross-folder references` table); row appended to that table per folder. 2 new T2 aggregates registered with standard DP-K1..K12 surface (no new DP-K\* / DP-Ch\* primitives, no new axiom). Sub-types registered under existing EVT-T3/T4/T8 + V2 reservations under EVT-T5/T6 (no new EVT-T\* / EVT-A\* axiom). |
+| C — V2+ reservation notes | `features/16_ai_tier/AIT_001_ai_tier_foundation.md` (§14.19) · `features/17_time_dilation/TDIL_001_time_dilation_foundation.md` (§17.10) · `features/06_pc_systems/PCS_001_pc_substrate.md` · `features/00_resource/RES_001_resource_foundation.md` (§12.9) · `features/05_npc_systems/NPC_001_cast.md` | Banner + cross-ref row. AIT documents TMP as a pattern reuser of Q4-LOCKED hybrid 2-stage. TDIL documents TMP-A4 satisfying TDIL-A9 (orthogonal layer; tilemap is purely spatial). PCS reserves V2+ fog-of-war (TMP-D3). RES reserves V2 mines (TMP-D10) with clean producer/inventory boundary. NPC reserves V2+ routing on `tilemap_view.road_segments`. |
+| (skipped) | `05_llm_safety/` | Folder does not exist yet — pending separate seed work per 2026-04-26 next-step recommendations. |
+
+- **No matrix changes:** TMP ownership was already registered at 2026-05-13 closure pass; this annotation pass touches the CONSUMER side only. `01_feature_ownership_matrix.md` left untouched.
+- **Drift caught + filed (1):** WA_003 §7 preamble line "12 V1 EditActions" is stale post-annotation — effective V1+30d count is 15 (12 WA + 3 TMP). Flagged in WA_003 closure-pass-extension banner; next WA_003 closure pass should reconcile inline count + decide whether the 3 TMP-owned EditActions need stub §7.7-§7.9 sub-sections in WA_003 itself or stay pointed-to in TMP_001 §16 deferrals.
+- **Verified-not-drift (1):** TDIL-A9 axiom was initially mis-flagged as missing from TDIL_001 — discovered mid-pass that the axiom IS defined in `catalog/cat_17_TDIL_time_dilation.md` line 36 (catalog file is authoritative for stable-ID inventories per the TDIL pattern). Annotation reconciled before commit — the "TDIL-A9 replay-free V1" citation in TMP_001 §14 is correct.
+
+### Post-pass priority candidates
+
+1. **05_llm_safety folder seed** — now the sole remaining unannotated TMP consumer. Per 2026-04-26 next-step recommendations: ~5-7 features at ~600 lines each (A1..A6 axioms exist; TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements).
+2. **V2 PoC implementation** of tilemap-service — validate TMP_008b §2-§12 contract empirically: cacheable-prefix prompt cache hit rate, tool-use forced-call reliability, per-object retry granularity vs flat-error retry, cost-model accuracy. Clean-room Rust on Claude Haiku 4.5.
+3. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror MAP_002 V1+ pattern when art-asset pipeline lights up).
+4. **V3 RMG wizard** scoping (TMP-D1, TMP-D2 — player-facing parameter capture UX).
+
+### Raw count
+
+- **Files touched in this pass:** 15 (13 consumer features + `_LOCK.md` + `99_changelog.md`)
+- **Banner blocks added:** 11 (Tier A 6 + Tier C 5; Tier B kernel folders use cross-folder-references row pattern instead)
+- **Cross-references rows / table rows added:** 13 (one per consumer)
+- **New sections added inside consumer features:** 3 (AIT §14.19 · TDIL §17.10 · RES §12.9)
+- **RealityManifest snippet edits:** 1 (PL_001b §16.1 — 2 optional fields appended)
+- **AdminAction sub-shapes registered (annotation only):** 3 (WA_003 banner; detailed flows owned by TMP_001 + TMP_004)
+- **EVT-T sub-types referenced (annotation only):** 7 (TilemapBorn + ZonesPlaced + 2 T3 aggregate_types + 3 T8 Forge:* sub-shapes + 2 V2 reservations under T5/T6)
+
+---
+
 ## 2026-05-13 (late evening same day) — TMP folder closure pass — all 9 docs DRAFT → CANDIDATE-LOCK (§15 AC walked + all 43 open questions RESOLVED + Phase 3 review findings applied)
 
 - **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; same-day fourth lock cycle. Follows user direction to "closure pass for TMP". Closes the TMP folder for V1+30d design per the WA/NPC/PLT/PO closure-pass pattern.
