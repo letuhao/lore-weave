@@ -81,6 +81,113 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-14 (continued, evening) — V2 PoC pivot: services/tilemap-service/ Phase 0a scaffold (first Rust microservice in monorepo)
+
+### Session arc
+
+User signal: design mode → implementation pivot. After the cross-feature integration annotation pass landed earlier in the day (commit `9f4ef3b2`), user asked "what's next" → I presented 4 directions (V2 PoC implementation / 05_llm_safety folder seed / WA_003 reconciliation+TMP_009 / V3 RMG wizard) → user picked **V2 PoC implementation**. Subsequent CLARIFY rounds:
+
+1. **Path choice (3 forks)**: Rust + gateway HTTP client at `services/tilemap-service/` (architectural correctness) vs Rust + direct lmstudio call at `poc/` (PoC-only) vs Python + existing SDK. User picked **Path A — Rust + gateway HTTP client at services/tilemap-service/** for production scaffold tone.
+2. **LLM provider**: user picked **lmstudio (local, free)** registered as `platform_model` in provider-registry-service. Anthropic prompt-caching specifics (TMP_008b §2) NOT validatable through this stack; deferred as architectural finding.
+3. **Phase 0a vs Phase 0b**: scope reset honestly — full "scaffold + types + 1 end-to-end lmstudio L3 call" with Path A is ~6-8 hrs; honest Phase 0a = scaffold-only this session (~3 hrs), Phase 0b next session wires real network call.
+
+### Key discoveries during CLARIFY
+
+- ✅ **Python SDK already exists** at `sdks/python/loreweave_llm` — proven across translation/extraction/chat/knowledge services. Provided independent reference implementation for cross-checking Rust mirror.
+- ✅ **Unified LLM gateway** with stable OpenAPI contract at `contracts/api/llm-gateway/v1/openapi.yaml` (907 lines; 6 endpoints, 6 stream event types, full discriminator schema).
+- ✅ **Rust toolchain available locally** (1.89 stable).
+- ⚠ **No existing Rust services in monorepo** (Go + Python + TS before) — tilemap-service is the first; standalone Cargo package for now, promote to workspace when 2nd Rust service lands.
+- ⚠ **Workflow-gate script bug** — `./scripts/workflow-gate.sh` has Python IndentationError on each call; state file resets between invocations. Followed CLAUDE.md workflow discipline manually via TodoWrite. Worth filing separately as a tooling fix.
+- ⚠ **Existing SPIKE_03 frontend PoC at `poc/tilemap_world_view/`** (TypeScript + Phaser 3 + Vite) — validates FE rendering. CONFIRMED non-overlap with V2 PoC: SPIKE_03 PoC uses local Qwen via lmstudio for L1 skeleton only (response_format:json_object + 3-retry full-response loop); V2 PoC targets L3+L4 with TMP_008b §2-§12 mechanics (cacheable-prefix prompt, tool-use forced, per-object retry, canonical-default fallback).
+
+### Phase 0a deliverables landed
+
+Following CLAUDE.md 12-phase workflow (CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → POST-REVIEW → /review-impl → fixes → re-VERIFY → re-POST-REVIEW → SESSION → COMMIT):
+
+**16 new files under `services/tilemap-service/`:**
+
+| File | Purpose |
+|---|---|
+| `Cargo.toml` | 9 deps (tokio, reqwest+rustls, serde, blake3, thiserror+anyhow, uuid, tracing); edition 2024; release profile lto+strip |
+| `Dockerfile` | Multi-stage Rust 1.89 → distroless nonroot |
+| `DESIGN.md` | 12-section design doc; module decomposition, deps choice, openapi→Rust mapping, error strategy, provider abstraction, determinism story, **2 architectural findings to feed back to TMP_008b**, phase roadmap, test layout, CLAUDE.md compliance check |
+| `README.md` | PoC scope, env vars, build/test commands, "what this service does NOT do yet" table, phase roadmap |
+| `src/main.rs` | Binary entry — tracing init + scope banner print |
+| `src/lib.rs` | Library entry — 4 pub modules, re-exports |
+| `src/error.rs` | Top-level `Error` enum via thiserror, forwards module-local errors |
+| `src/seed.rs` | TMP-A4 blake3 seed helper + `TilemapSeed` newtype + hex Display + 6 inline determinism tests |
+| `src/types/{mod,channel,zone,tile,object,template,tilemap}.rs` | TMP_001 §2 core types in Rust — `ChannelTier` (5 with `generates_tilemap()` excluding Cell per TMP-A1), `ZoneRole` (4 V1+30d), `PassageKind` (5), `TileState` (4), `TerrainKind` (10 with u8 discriminants), `TilemapObjectKind` (7), `GenerationSource` (EngineGenerated default V1+30d per AC-TMP-10), `TilemapView` aggregate stub |
+| `src/llm/{mod,errors,models,client}.rs` | Gateway HTTP client — `ChatStreamRequest` + `StreamEvent` tagged enum + `GatewayClient` with `from_env()` failing fast on missing `LOREWEAVE_INTERNAL_TOKEN` |
+| `tests/smoke.rs` | 22 integration tests — TilemapView JSON roundtrip + seed determinism + 16 wire-format conformance tests against canonical openapi JSON shapes |
+
+### /review-impl adversarial pass findings (15 total)
+
+After initial Phase 0a passed POST-REVIEW round 1, user invoked `/review-impl` for deeper adversarial review. The pass cross-referenced Rust mirrors against `contracts/api/llm-gateway/v1/openapi.yaml` directly + `sdks/python/loreweave_llm/models.py` as independent reference. **All 6 HIGH defects would have broken first Phase 0b gateway call.**
+
+| Severity | Count | Highlights |
+|---:|---:|---|
+| HIGH | 6 | Wrong SSE discriminator field name `event_type` → `event` (Pythonic SDK field name leaked into Rust mirror; gateway would have rejected every event) · `UsageEvent.cached_tokens` → `reasoning_tokens` (invented field; silently dropped real reasoning_tokens payload) · `DoneEvent.finish_reason` required+non-null in Rust but optional+nullable per openapi · Auth header `Authorization: Bearer` → `X-Internal-Token` apiKey · Missing required `user_id` query parameter on `/internal/llm/stream` · Test coverage gap (no wire-format roundtrip tests) |
+| MED | 7 | Constructor name `new_anthropic_tool_use` misleading — gateway tools field is OpenAI-shaped per contract (**new architectural finding for TMP_008b §3**) · `StreamRequest` → `ChatStreamRequest` per openapi naming · Missing `operation: "chat"` field · TokenEvent/ReasoningEvent `index` silently dropped · `finish_reason` should be closed enum · AudioChunkEvent variant missing (hyphenated discriminator value) · `LlmError::InvalidUrl` repurposed for token errors |
+| LOW | 2 | `temperature` no range validation · `max_tokens = 0` should normalise to None per gateway SDK convention |
+
+**All 15 findings fixed in same Phase 0a commit cycle** (per CLAUDE.md "HIGH → fix now"). +20 new wire-format tests added; defensive `stream_event_rejects_event_type_field_name` test guards against regression. Plus 3 clippy nits caught during re-VERIFY (manual Default impls → `#[derive(Default)]`, manual clamp → `.clamp()` with NaN guard).
+
+### Verify evidence (fresh runs at commit time)
+
+| Command | Result |
+|---|---|
+| `cargo build` | Finished `dev` profile in 1.14s, exit 0, **0 warnings** |
+| `cargo build --release` | Finished `release` profile in 15.50s, exit 0, **0 warnings** |
+| `cargo test` | **34 tests pass** (12 unit + 22 integration + 0 doc), 0 failed, exit 0 |
+| `cargo clippy --all-targets` | Exit 0, **0 warnings** (after Default-derive + clamp fixes) |
+
+Test trajectory across cycle: initial Phase 0a 14 tests → /review-impl found 6 HIGH bugs → fixes added 20 wire-format tests → final 34 tests.
+
+### 2 architectural findings to feed back to TMP_008b at its next revision
+
+1. **`cache_control` not exposed by gateway** (already in DESIGN.md §8 from earlier) — Anthropic prompt-caching is gateway-managed (opaque to caller). TMP_008b §2 cacheable-prefix mechanic cannot be empirically validated via this stack.
+2. **`tools` field is OpenAI-shaped per gateway contract** (NEW from /review-impl, now in DESIGN.md §8 item 7) — TMP_008b §3 Anthropic-shaped tool-use spec (`input_schema` + `tool_choice` forced) is not directly transmittable through the gateway. Best resolution path: TMP_008b §3 stays the logical contract; tilemap-service owns OpenAI-shape translation as part of its gateway client. Surface during TMP folder's next closure pass (currently CLOSED for V1+30d but may reopen at V2 PoC validation completion).
+
+### Handoff notes for next session
+
+**Active:** none. Phase 0a complete and committed.
+
+**Next-step recommendations (priority order):**
+
+1. **Phase 0b — wire real gateway call + 1 L3 prompt to lmstudio** (~3-4 hrs):
+   - Provider-registry-service setup: register lmstudio as `platform_model` (Qwen 3 14B/32B per existing SPIKE_03 PoC convention; document the registration step in README)
+   - Implement SSE parser in `GatewayClient::stream()` using reqwest `stream` feature
+   - Construct a hardcoded L3 zone-classifier prompt against a tiny fixture (3-zone wuxia template) using OpenAI-shaped tools
+   - Per-object retry skeleton (just the loop; full retry-logic granularity is Phase 2)
+   - Measure: first-call latency, prompt token cost, tool-use forced-call reliability with Qwen (NOT Claude — different model class than TMP_008b §3 assumes)
+   - First measurements doc back into TMP_008b §12 cost-model estimates
+2. **Phase 1 — engine Stage 1** (1-2 sessions): Fruchterman-Reingold zone placer (TMP_002) + 2 modificators (TMP_003: TerrainPainter + RoadBuilder). Determinism integration test: same seed → byte-identical zones (validates TMP-A4 end-to-end through engine pipeline).
+3. **Phase 2 — full L3 retry loop** (1-2 sessions): per-object retry (TMP_008b §5) + structured per-case validation feedback (§4) + canonical-default fallback (§6). End-to-end small reality bootstrap.
+4. **Phase 3 — L4 narration + measurement findings back to TMP_008b** (1 session): cache-key derivation per §8 (with the architectural caveat that gateway-managed Anthropic cache can't be observed).
+5. **TMP_008b next revision** (independent of tilemap-service phases): incorporate the 2 architectural findings; revise §3 to clarify whether the spec describes logical contract or wire-format contract.
+6. **05_llm_safety folder seed** (still pending from earlier in the day's recommendation list): unblocked by TMP_008b §7 prompt-injection defense + World Oracle hooks; ~5-7 features at ~600 lines each.
+
+**Process discipline reminders for next agent:**
+
+- This is the **first Rust service in the monorepo** (Go + Python + TS before). Standalone Cargo package; promote to workspace when 2nd Rust service lands.
+- **Workflow-gate script is broken** (Python IndentationError; state resets between invocations). Follow CLAUDE.md 12-phase discipline manually via TodoWrite until the script is fixed.
+- **Provider gateway invariant** — never call lmstudio HTTP directly even in PoC scaffolds inside `services/`. Register lmstudio as `platform_model` in provider-registry; tilemap-service speaks only to the gateway via `/internal/llm/stream`.
+- **Wire-format conformance tests** — every gateway-facing type MUST have a roundtrip test against canonical openapi JSON shapes. Catching `event_type` vs `event` only happens with such a test; trust nothing else, especially not Python SDK field names which use aliases.
+- **`/review-impl` is genuinely valuable** — initial Phase 0a passed my own POST-REVIEW review (Stage 1 spec compliance + Stage 2 code quality) cleanly, but had 6 HIGH defects. Author blindness is real; adversarial re-read against the source of truth (openapi YAML, not the Python SDK README) was the only way to surface them.
+
+### Raw count
+
+- **Commits this session:** 1 pending (Phase 0a)
+- **Files created:** 16 (Cargo.toml + Dockerfile + DESIGN.md + README.md + 6 src/ + 7 src/types/ + 4 src/llm/ + tests/smoke.rs)
+- **Lines added:** ~1200 (Rust + docs)
+- **Tests:** 34 (12 unit + 22 integration; was 14 initial → 34 post-review-impl, +20 wire-format tests)
+- **`/review-impl` findings closed:** 15 (6 HIGH + 7 MED + 2 LOW), all in same commit
+- **Architectural findings registered for TMP_008b:** 2 (cache_control + tools-shape)
+- **Workflow phases honoured:** CLARIFY ✓ DESIGN ✓ REVIEW ✓ PLAN ✓ BUILD ✓ VERIFY ✓ REVIEW ✓ POST-REVIEW ✓ /review-impl ✓ re-fixes ✓ re-VERIFY ✓ re-POST-REVIEW ✓ SESSION ✓ COMMIT (next)
+- **Process bugs found:** 1 (workflow-gate.sh script — Python IndentationError; state non-persistent)
+
+---
+
 ## Session 2026-05-14 — TMP cross-feature integration annotation pass — 13 consumer features annotated per TMP_001 §14
 
 ### Session arc

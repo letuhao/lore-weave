@@ -1,0 +1,50 @@
+[package]
+name = "tilemap-service"
+version = "0.1.0-phase0a"
+edition = "2024"
+rust-version = "1.85"
+authors = ["LoreWeave"]
+description = "Procedural tilemap generation service for LoreWeave non-cell channels (continent / country / district / town tiers). PoC Phase 0a — scaffold + types + LLM gateway client skeleton; no network call yet."
+publish = false
+
+[[bin]]
+name = "tilemap-service"
+path = "src/main.rs"
+
+[lib]
+name = "tilemap_service"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "signal"] }
+
+# HTTP client (gateway calls; rustls avoids OpenSSL build pain on Windows)
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# TMP-A4 deterministic seed (blake3 hash of reality_id + channel_id + template_id)
+blake3 = "1.5"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Gateway StreamRequest.model_ref: UUID
+uuid = { version = "1.10", features = ["serde", "v4"] }
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# Phase 0b will add mockito or wiremock for gateway response mocking.
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
