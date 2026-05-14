@@ -6,6 +6,74 @@
 
 ---
 
+## 2026-05-15 — TVL_001 V1+ Travel Mechanics DRAFT + /review-impl 1-pass fix cycle (first feature consuming V1+30d activation triangle POL + SET + ROUTE; 4 HIGH inline-fixed)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT + /review-impl 1st pass all in this commit, mirroring POL_001 + SET_001 + ROUTE_001 fix-cycle precedent).
+- **/review-impl 4 HIGH findings + fixes (applied inline this commit):**
+  1. **HIGH-1** — Fortress hospitality contradiction in §5.3: listed in BOTH inn-available set AND no-inn set. Fixed by REMOVING Fortress from inn-available set; Fortress = military barracks per ROUTE_001 §2 SettlementRole semantic (no public inn for civilian travelers). Settlement.role ∈ {Village, Town, City, Capital} → inn; Settlement.role ∈ {Hamlet, Fortress} OR no-settlement → outdoor-camp + Exhausted-risk.
+  2. **HIGH-2** — PL_006 "Tier 0 / Tier 1" terminology fictional (doesn't exist in PL_006 schema; PL_006 uses magnitude 1..=10). Fixed by replacing with PL_006 actual semantic: magnitude=3 if wakeful > 16h ≤ 24h; magnitude=5 if wakeful > 24h. Both within PL_006's 1..=10 range; StackPolicy::Replace for Exhausted.
+  3. **HIGH-3** — realm_clock TVL-ownership contradiction between §2 (TVL advances realm_clock) and §5.2 (PL_001 advances realm_clock independently). Risk: double-advancement if implementer reads §2 literally. Fixed by clarifying TVL advances ONLY actor_clock + body_clock; realm_clock is PL_001 turn-boundary-owned (channel-tier resource per TDIL-A1; advances regardless of travel state to maintain channel-time consistency for ALL actors in channel). Updated §2 + §5.2 + §10 consistently.
+  4. **HIGH-4** — Provisions semantic conflated vital_pool (body-state counter; HIGH=hungry, LOW=well-fed) with resource_inventory (possession counter; HIGH=lots, LOW=depleted). §5.1 sequence `lý_minh.vital_pool.hunger -= 24` would make actor LESS hungry (backwards from "travel burns food reserves" intent). Fixed by clarifying TVL deducts from `actor.resource_inventory.food / .water` (Consumable possession counters); vital_pool.hunger / thirst advance via standard RES_001 per-day-boundary semantics INDEPENDENTLY of travel; TVL does NOT touch vital_pool. TVL-V8 sufficient-provisions check is against resource_inventory possession balance.
+- **/review-impl MED findings (escalated to user — deferred per default policy):**
+  - **MED-1** — EF_001 cross-feature schema dependency tracked in TVL-Q1 but EF_001 spec not actually updated with the `entity.travel_journey_id` additive field. Needs explicit EF_001 closure pass at TVL ship to coordinate the 1 → 2 schema_version bump. DEFERRED — V1+30d implementation-phase coordination concern.
+  - **MED-2** — §5.2 tick advancement description conflates per-turn-tick (TVL-owned for progress_fraction) with standard TDIL clock advancement (which happens at turn-boundary regardless of travel state). HIGH-3 fix partially addresses; MED-2 fully fixed inline via §5.2 NOTE clarifying realm_clock is PL_001-owned not TVL-owned. Acknowledged as fixed inline alongside HIGH-3.
+- **Cumulative outcome (post 1-pass /review-impl):**
+  - TVL_001 design surface declared at 529 lines (+3 from /review-impl fixes); well under 800 hard cap. Status DRAFT-WITH-FIX-CYCLE awaiting acceptance test integration.
+  - **15 V1+30d rule_ids** under NEW `travel.*` namespace — UNCHANGED from DRAFT (HIGH fixes were structural/wording precision, not rule_id-adding).
+  - **15 TVL-V* validators** — UNCHANGED (HIGH-4 updated TVL-V8 description to clarify resource_inventory check, not vital_pool).
+  - **Fortress role hospitality semantic LOCKED**: no public inn (Fortress = military barracks; civilian travelers get outdoor-camp + Exhausted-risk treatment). Consistent with ROUTE_001 §2 + SET_001 §3 SettlementRole semantic.
+  - **PL_006 magnitude 3/5 thresholds LOCKED**: wakeful > 16h ≤ 24h → magnitude=3; wakeful > 24h → magnitude=5. Within PL_006's 1..=10 range; StackPolicy::Replace per PL_006 default for Exhausted.
+  - **realm_clock TVL-ownership clarified**: PL_001 turn-boundary-owned, NOT TVL-owned. Avoids double-advancement risk. Channel-tier resource per TDIL-A1 + PL_001 channel-time discipline.
+  - **vital_pool vs resource_inventory semantic clarified**: TVL deducts from resource_inventory.food / .water (Consumable possessions); vital_pool.hunger / thirst advance INDEPENDENTLY via RES_001 standard per-day-boundary; TVL does not touch vital_pool. Two-step semantic — travel burns through food reserves (Consumable inventory); body gets hungry over fiction-time (Vital body-state) regardless of travel.
+- **Process maturity milestone**: 1-pass /review-impl caught 4 HIGH + 2 MED (1 fixed inline alongside HIGH-3, 1 deferred). HIGH count back at POL_001 level (4 HIGH) — suggests TVL_001 introduced new patterns (cross-feature schema dependency / consumer-feature pattern / multi-aggregate semantic conflation) that didn't carry over from geography activation arc. **HIGH count trend across all features:**
+  - GEO_001 V1 (11 issues 1-pass)
+  - POL_001 V1+30d (4 HIGH + 12 MED + 3 LOW 2-pass)
+  - SET_001 V1+30d (4 HIGH + 4 MED + 1 LOW 1-pass)
+  - ROUTE_001 V1+30d (3 HIGH + 2 MED + 1 LOW + 1 retro 1-pass)
+  - **TVL_001 V1+30d (4 HIGH + 2 MED 1-pass — this commit)**
+  Pattern recognition matures within a feature arc (geography activation: 4 → 4 → 3); resets when entering new domain (TVL = consumer-feature pattern). Expected behavior — each new pattern needs its own /review-impl maturity.
+- **TVL_001 DRAFT is V1+30d-implementation-ready** awaiting EF_001 closure pass coordination (MED-1) + acceptance test integration. **First feature consuming V1+30d activation triangle**. Remaining V1+30d work: NEW `services/travel-service` reference impl + EF_001 cross-feature schema_version 1 → 2 bump at TVL ship + ROUTE_001 RemoveRoute validator pipeline extension with TVL-V14 cross-feature gate + chat-service S9 `[TRAVEL_CONTEXT]` extension + CI gates inherited.
+
+---
+
+## 2026-05-14 — TVL_001 V1+ Travel Mechanics DRAFT (first feature consuming V1+30d activation triangle POL + SET + ROUTE) [SUPERSEDED — folded into combined DRAFT + /review-impl entry above]
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT-only this commit; /review-impl pass deferred to user invocation, mirroring POL_001 + SET_001 + ROUTE_001 flow).
+- **Trigger:** user picked TVL_001 from ROUTE_001 commit's next-step recommendations ("V1+ Travel Mechanics design"). Phase 0 sub-decisions TVL-D1..D7 proposed with recommended defaults; user replied `continue` = approve all 7 with defaults (interpreted as `approve all` per established session pattern). Apply now; commit; ready for /review-impl adversarial pass.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: NEW `actor_travel_state` aggregate row added (T2/Reality sparse per-(actor, journey); first cross-feature consumer aggregate consuming GEO+POL+SET+ROUTE V1+30d substrate)
+  - `02_extension_contracts.md`: NEW §1.4 `travel.*` namespace (15 V1+30d rule_ids + 2 V2+ reservations + cross-feature gate `route.remove_blocked_by_active_journey` added to ROUTE_001 RemoveRoute pipeline); §1 TurnEvent EVT-T1 sub-types row gains `Travel:Initiate`; EVT-T5 sub-types row gains `Scheduled:TravelTick`; EVT-T6 sub-types row gains `Travel:JourneyNarration`
+  - `99_changelog.md`: this entry top-anchored above ROUTE_001 DRAFT entry
+- **Files modified outside `_boundaries/`:**
+  - **NEW** `features/00_travel/_index.md` (folder index for first feature in NEW `00_travel/` folder)
+  - **NEW** `features/00_travel/TVL_001_travel.md` (DRAFT, 526 lines — well under 800 hard cap): sections §1 Why + §2 Domain concepts (Journey + JourneyId blake3-derive + TravelMode + TravelInitiator + ProgressFraction + TravelCost + HospitalityAvailability + TDIL clock advancement + One-journey-per-actor invariant + Multi-segment atomic V1+30d) + §2.5 Event-model mapping (NEW EVT-T1/T5/T6 sub-types; no new EVT-T*) + §3 NEW aggregate `actor_travel_state` (T2/Reality sparse; ProvisionsConsumed + TravelDirection + TravelStatus structs/enums) + §4 Closed enums (TravelMode 2-variant + TravelInitiator 2-variant + TravelDirection 2-variant + TravelStatus 3-variant) + §5 Per-turn progress tick mechanism (Travel:Initiate flow + Scheduled:TravelTick advancement + Travel:Arrive cascade) + §6 Multiverse inheritance (standard contract; cross-feature TVL-V14 ROUTE_001 RemoveRoute gate) + §7 15 validator slots TVL-V1..TVL-V15 + §8 Failure UX 15 V1+30d rule_ids + §9 Cross-service handoff (NEW travel-service) + §10 Composition with siblings (critical TDIL + RES + SET + EF + ROUTE coordination) + §11 RealityManifest extension (no new field) + §12 5 sequences (PC travel hybrid bootstrap demonstrating full activation triangle / insufficient-provisions reject / actor-already-traveling reject / ROUTE_001 RemoveRoute blocked by active journey / forced outdoor camp at Hamlet arrival with Exhausted status) + §13 15 V1+30d-testable acceptance scenarios AC-TVL-1..15 + §14 12 deferrals TVL-D1..D12 + §15 7 open questions TVL-Q1..Q7 + §16 cross-refs + §17 implementation readiness
+  - **NEW** `catalog/cat_00_TVL_travel_foundation.md` (NEW catalog file owning TVL-* namespace; 27 catalog entries TVL-1..TVL-27)
+- **Decisions applied (Phase 0 TVL-D1..D7; user `continue` directive interpreted as approve all 7 defaults):**
+  1. **TVL-D1** folder placement — own `00_travel/` folder (mirrors GEO/MAP/PF/CSC/RES/PROG pattern; travel is foundation-adjacent consumer feature consumed by multiple play loops)
+  2. **TVL-D2** scope — pure travel-mechanics V1+30d; encounter generation V1+30d+ (avoid scope creep)
+  3. **TVL-D3** pathfinder algorithm — on-demand Dijkstra at request time (Route graph small per continent ~40 routes V1+30d; precompute overkill V1+30d)
+  4. **TVL-D4** TDIL clock advancement — selective (actor_clock + body_clock + realm_clock advance; soul_clock preserved unless BodyOrSoul::Soul form rejected at Travel:Initiate per TVL-V7)
+  5. **TVL-D5** travel events — narrative-only V1+30d (LLM journey description via S9 prompt-assembly with [TRAVEL_CONTEXT] sub-section); mechanical encounters V1+30d+
+  6. **TVL-D6** multi-segment journeys — atomic single-segment V1+30d (one Route at a time); composite V1+30d+
+  7. **TVL-D7** PC vs NPC parity — same mechanics V1+30d for PCs + Tracked NPCs; Untracked NPCs excluded per AIT-A8 quantum-observation discipline
+- **Cumulative outcome:**
+  - TVL_001 catalog established (27 entries TVL-1..TVL-27); design surface declared end-to-end at 526 lines (well under 800 hard cap); status DRAFT awaiting /review-impl adversarial pass + acceptance test integration.
+  - **NEW aggregate `actor_travel_state`** — T2/Reality sparse per-(actor, journey); first cross-feature consumer aggregate consuming GEO+POL+SET+ROUTE V1+30d substrate.
+  - **NEW `travel.*` namespace** with 15 V1+30d rule_ids + 2 V2+ reservations; separate from `geography.*` per TVL-D7 (travel is consumer feature, distinct ImpactClass + capability discipline).
+  - **NEW EVT-T sub-types**: EVT-T1 `Travel:Initiate` + EVT-T5 `Scheduled:TravelTick` + EVT-T6 `Travel:JourneyNarration`.
+  - **NEW V1+30d service**: `travel-service` (owns actor_travel_state aggregate + apply_delta + per-turn tick generator).
+  - **Cross-feature schema dependency**: EF_001 entity_binding additive field `travel_journey_id: Option<JourneyId>` — EF_001 schema_version 1 → 2 V1+30d bump per I14 + GEO precedent; coordinated via EF_001 closure pass at TVL ship.
+  - **Cross-feature cross-aggregate validator**: TVL-V14 `route_in_use_by_journey` added to ROUTE_001 RemoveRoute pipeline; new rule_id `route.remove_blocked_by_active_journey`.
+  - **No new capability claim** — travel is regular gameplay action via standard PC/NPC action authorization. Departure from POL/SET/ROUTE precedent (which added admin capability claims) — travel is a regular player-issued action, not Forge admin canonization.
+  - **TDIL_001 critical coordination locked**: selective clock advancement per TDIL-A2 BodyOrSoul distinction (actor+body+realm advance; soul preserved); Soul-form Travel:Initiate rejected per TVL-V7.
+  - **RES_001 critical coordination**: provisions cost deducted at Travel:Initiate via vital_pool Hunger + Thirst advancement; defaults food=1.0/league + water=2.0/league OnFoot V1+30d.
+  - **SET_001 hospitality at arrival**: Settlement.role determines inn-available vs outdoor-camp narration; if outdoor-camp AND wakeful_duration > 16h → PL_006 StatusFlag::Exhausted applied via OutputDecl cascade.
+  - **15 V1+30d-testable acceptance scenarios** AC-TVL-1..15; 12 deferrals TVL-D1..D12 + 7 open questions TVL-Q1..Q7; 15 TVL-V* validators.
+- **Process maturity milestone**: TVL_001 is the FIRST feature consuming V1+30d activation triangle (POL + SET + ROUTE). Pattern locked: geographic-substrate features (GEO_001..GEO_004) populate world_geometry layers; consumer features like TVL_001 read locked substrate + produce per-actor or per-faction runtime state + surface via S9 LLM-context grounding (here via `[TRAVEL_CONTEXT]` sub-section). Future consumer features (encounter generators V1+30d+, strategy gameplay V2+ STRAT_001, faction politics V2+ DIPL_001) layer atop the activation triangle following the same pattern. Phase 0 deep-dive (7 sub-decisions with recommended defaults) → user `continue`/`approve all`/`1` → apply pattern locked across GEO_001 + POL_001 + SET_001 + ROUTE_001 + **TVL_001** (5 features). DRAFT lands in single commit; /review-impl is the natural next step per fix-cycle precedents.
+
+---
+
 ## 2026-05-14 — GEO_004 ROUTE_001 Route Network Generator DRAFT + /review-impl 1-pass fix cycle (V1+30d final sibling completing activation triangle POL + SET + ROUTE; Phase 0 ROUTE-D1..D7 LOCKED; 3 HIGH inline-fixed)
 
 - **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT + /review-impl 1st pass all in this commit, mirroring POL_001 + SET_001 fix-cycle precedent).
