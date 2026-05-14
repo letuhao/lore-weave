@@ -1,14 +1,15 @@
 //! Rust mirrors of the [LLM gateway OpenAPI types]
 //! ([`contracts/api/llm-gateway/v1/openapi.yaml`]). Hand-rolled (not generated)
-//! because the surface tilemap-service consumes is small.
+//! because the surface this SDK consumes is small.
 //!
 //! **The openapi YAML is the source of truth — if these types drift, the
-//! gateway will reject requests or fail to deserialize responses.** Wire-format
-//! tests in `tests/smoke.rs` lock the field names / discriminator values.
+//! gateway will reject requests or fail to deserialize responses.**
+//! Wire-format tests in `tests/wire_format.rs` lock the field names +
+//! discriminator values.
 //!
 //! Naming follows the openapi:
 //! - [`ChatStreamRequest`] mirrors `ChatStreamRequest` (one variant of the
-//!   `StreamRequest` `oneOf`; the other is TTS, not used by tilemap-service).
+//!   `StreamRequest` `oneOf`; the other is TTS, not used by this SDK).
 //! - [`StreamEvent`] mirrors the canonical `StreamEventEnvelope` discriminated
 //!   union (`propertyName: event`).
 //!
@@ -21,10 +22,11 @@ use uuid::Uuid;
 /// in-cluster name). Override via the `LOREWEAVE_GATEWAY_URL` env var.
 pub const GATEWAY_BASE_URL_DEFAULT: &str = "http://provider-registry-service:8085";
 
-/// Public, user-auth endpoint. Not used by tilemap-service; documented for completeness.
+/// Public, user-auth endpoint. Not used by this SDK's service-to-service mode;
+/// documented for completeness.
 pub const PUBLIC_STREAM_PATH: &str = "/v1/llm/stream";
 
-/// Service-to-service streaming endpoint. tilemap-service uses this with the
+/// Service-to-service streaming endpoint. SDK callers use this with the
 /// `X-Internal-Token` apiKey header + a `user_id` query parameter (billing).
 pub const INTERNAL_STREAM_PATH: &str = "/internal/llm/stream";
 
@@ -45,8 +47,7 @@ pub enum Operation {
 pub enum ModelSource {
     /// User-registered model in provider-registry (per-user BYOK).
     UserModel,
-    /// Platform-registered model (shared across tenants). lmstudio for the
-    /// V2 PoC should be registered here.
+    /// Platform-registered model (shared across tenants).
     PlatformModel,
 }
 
@@ -71,8 +72,7 @@ pub enum StreamFormat {
 /// "Optional. OpenAI-shaped tool definitions"). The gateway translates to the
 /// underlying provider's native tool format before dispatching the call —
 /// callers do not pass Anthropic-shaped `input_schema` / `tool_choice`
-/// directly. This is an **architectural divergence from TMP_008b §3** which
-/// specifies Anthropic-shaped tools; see DESIGN.md §8 for the finding.
+/// directly even when `stream_format` is `Anthropic`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatStreamRequest {
     /// Explicit `operation: "chat"`. Optional in openapi (gateway defaults to
@@ -88,12 +88,12 @@ pub struct ChatStreamRequest {
     pub tools: Option<Vec<serde_json::Value>>,
 
     /// 0.0..=2.0 per openapi `temperature` schema (minimum: 0, maximum: 2).
-    /// TMP_008b prefers temperature=0 for reproducibility of cache-hit measurements.
+    /// Use [`ChatStreamRequest::normalize`] to clamp out-of-range values.
     #[serde(default)]
     pub temperature: f32,
 
     /// `Some(0)` is treated as omit by the gateway SDK convention (Python SDK
-    /// strips it pre-send); we normalise to `None` here to send the same shape.
+    /// strips it pre-send); [`ChatStreamRequest::normalize`] coerces it to None.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
 
@@ -114,11 +114,6 @@ impl ChatStreamRequest {
     /// is OpenAI-shaped per the gateway contract (each item is an
     /// `{"type":"function","function":{...}}` object); the gateway translates
     /// internally for non-OpenAI providers.
-    ///
-    /// `temperature` is clamped to the openapi range `[0.0, 2.0]` rather than
-    /// rejected — defensive on the caller side avoids surfacing 400s for
-    /// off-by-floating-point inputs. `max_tokens = Some(0)` is normalised to
-    /// `None` per gateway SDK convention.
     pub fn new_chat_with_tools(
         model_source: ModelSource,
         model_ref: Uuid,
@@ -172,8 +167,8 @@ pub enum FinishReason {
 ///
 /// Mirrors openapi `StreamEventEnvelope.discriminator { propertyName: event }`.
 /// **The wire discriminator field is `event`, NOT `event_type`** — earlier
-/// drafts mirrored the Python SDK Pythonic field name and broke; the openapi
-/// is the contract. See wire-format tests in `tests/smoke.rs`.
+/// SDK drafts mirrored the Python SDK Pythonic field name and broke; the
+/// openapi is the contract. See wire-format tests in `tests/wire_format.rs`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum StreamEvent {
@@ -206,8 +201,8 @@ pub enum StreamEvent {
         message: String,
     },
     /// Phase 5a TTS event — included so the discriminator union covers every
-    /// variant the gateway might emit; tilemap-service does not request TTS,
-    /// so seeing one indicates an upstream misroute.
+    /// variant the gateway might emit; chat-only consumers will treat its
+    /// arrival as an upstream misroute.
     #[serde(rename = "audio-chunk")]
     AudioChunk {
         sequence_id: u32,

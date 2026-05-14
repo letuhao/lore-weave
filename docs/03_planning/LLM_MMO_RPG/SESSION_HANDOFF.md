@@ -81,6 +81,91 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-14 (continued, late evening) — SDK extraction: sdks/rust/loreweave_llm/ (first Rust SDK in monorepo) + Cargo workspace at repo root
+
+### Session arc
+
+Post-Phase-0a commit `53f81fc7`, user asked "chúng ta đã có LLM call trong phần implement này chưa? và có SDK cho rust chưa?" — direct factual questions about state. Honest answers:
+1. **No LLM call yet** — `GatewayClient::stream()` returns `LlmError::NotImplementedPhase0a`; the signature + headers + URL + types are correct, but no `.send().await`.
+2. **No Rust SDK** — gateway client lived **inside** `services/tilemap-service/src/llm/`. Python SDK `sdks/python/loreweave_llm` exists; Rust equivalent did not.
+
+User picked: **promote to `sdks/rust/loreweave_llm/` NOW before Phase 0b**. I proposed (a) Cargo workspace at repo root vs path-dep-only and (b) crate name `loreweave_llm` (mirror Python) vs `loreweave-llm` (hyphen). User signal `keep going` → committed to recommended defaults: **workspace + `loreweave_llm`** (underscore, matches Python sibling).
+
+### What landed
+
+**`Cargo.toml` at repo root (NEW — first Rust workspace in monorepo):**
+- `[workspace]` resolver `2` with members `sdks/rust/loreweave_llm` + `services/tilemap-service`
+- `[workspace.package]` — edition 2024, rust-version 1.85, AGPL-3.0-only
+- `[workspace.dependencies]` — 10 shared deps pinned (tokio, reqwest+rustls, serde+json, blake3, thiserror+anyhow, uuid, tracing+subscriber)
+- `[profile.release]` — lto thin + codegen-units 1 + panic abort + strip symbols (moved from per-service config)
+
+**`sdks/rust/loreweave_llm/` (NEW first Rust SDK; mirror of `sdks/python/loreweave_llm` Phase 1b parity):**
+- `Cargo.toml` — inherits workspace fields; deps via `workspace = true`
+- `README.md` — usage example, Phase 0a status, known limitations (cache_control + OpenAI-shaped-tools gaps), test instructions
+- `src/lib.rs` — Phase 0a status block, pub re-exports of GatewayClient + LlmError + 10 model types
+- `src/{client,errors,models}.rs` — moved verbatim from `services/tilemap-service/src/llm/` with cross-ref paths updated
+- `tests/wire_format.rs` — 17 wire-format conformance tests moved from `tilemap-service/tests/smoke.rs`
+
+**`services/tilemap-service/` (consumer):**
+- `Cargo.toml` — `loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }` + workspace inheritance for everything else
+- `src/llm/` directory + 4 files **DELETED** (client.rs, errors.rs, models.rs, mod.rs)
+- `Cargo.lock` **DELETED** — workspace owns single root-level lockfile
+- `src/lib.rs` — drops `pub mod llm`; adds `pub use loreweave_llm as llm` for downstream re-export ergonomics
+- `src/error.rs` — uses `loreweave_llm::LlmError` instead of `crate::llm::errors::LlmError`
+- `tests/smoke.rs` — slimmed from 22 → 5 TMP-specific tests; the 17 wire-format tests moved to SDK
+
+**`docs/03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md`** — this entry.
+
+### Verify evidence (fresh runs at workspace root)
+
+| Command | Result |
+|---|---|
+| `cargo build` | Finished `dev` in 12.63s, exit 0, **0 warnings** (both crates) |
+| `cargo test` | **34 tests pass** distributed across workspace: 6 unit + 17 integration in `loreweave_llm`; 6 unit + 5 integration in `tilemap-service`. Same total as before extraction (intentional — no test deleted, only redistributed). |
+| `cargo clippy --all-targets --workspace` | Exit 0, **0 warnings** (after fixing one doc-list-indent nit in lib.rs) |
+
+Single shared `target/` directory at workspace root (was 2 separate target dirs before extraction). Single `Cargo.lock` at workspace root.
+
+### Why this extraction was done NOW vs deferred
+
+The user-stated rationale was: when Phase 0b wires the real network call, the bugs/fixes should land inside the SDK (reusable by any future Rust service) rather than inside tilemap-service (single consumer). The /review-impl pass earlier today already proved the gateway client surface area had non-trivial contract complexity (15 findings); centralising that complexity behind an SDK boundary makes future Rust services cheap.
+
+Counter-argument considered: "premature abstraction with only 1 consumer." Rejected because (a) the SDK is structurally identical to the Python sibling already in production; (b) the workspace promotion is a one-time mechanical cost, not an ongoing tax; (c) Phase 0b SSE parser implementation is meaningfully harder to refactor across an extraction boundary than across a single crate.
+
+### Handoff notes for next session
+
+**Active:** none. Workspace builds clean; SDK extraction complete.
+
+**Next-step recommendations** (unchanged from prior session entry except for SDK location updates):
+
+1. **Phase 0b — wire real gateway call + 1 L3 prompt to lmstudio** (~3-4 hrs).
+   - Provider-registry-service setup: register lmstudio as `platform_model` (Qwen 3 14B/32B); document registration step in `sdks/rust/loreweave_llm/README.md` AND `services/tilemap-service/README.md`.
+   - **Implement SSE parser in `loreweave_llm::GatewayClient::stream()`** (the SDK, not the service).
+   - **In tilemap-service**, construct hardcoded L3 zone-classifier prompt against tiny fixture (3-zone wuxia template) using OpenAI-shaped tools (per the architectural finding from `/review-impl`).
+   - Add `mockito` or `wiremock` to `loreweave_llm/dev-dependencies` for offline integration testing of the SSE parser.
+   - Add `#[ignore]`-by-default `tests/integration_lmstudio.rs` that runs against a live provider-registry + lmstudio when `cargo test -- --ignored` is invoked manually.
+2. **Phase 1 — engine Stage 1** (Fruchterman-Reingold + 2 modificators + determinism integration test).
+3. **Phase 2 — full L3 retry loop** (per-object retry + structured validation + canonical fallback) — implementation could live either in the SDK (if generic enough) or in tilemap-service (if TMP-specific). Phase 2 design call.
+4. **Phase 3 — L4 narration + measurement findings back to TMP_008b.**
+5. **TMP_008b next revision** — feed back BOTH architectural findings (cache_control + OpenAI-shaped tools).
+
+**Process discipline reminders for next agent:**
+
+- Run cargo commands from **workspace root** (`d:\Works\source\lore-weave-zone-map-design\`), not from inside `services/tilemap-service/`. `cargo build -p tilemap-service` for service-only build; `cargo test -p loreweave_llm` for SDK-only tests.
+- The SDK is the **canonical home for gateway concerns** — never re-introduce gateway-client code inside `services/tilemap-service/src/`. If a TMP-specific LLM concern emerges (prompt assembly, retry logic per TMP_008b §5/§6), evaluate whether it belongs in the SDK (provider-agnostic) or in the service (TMP-specific) before placing.
+- Pattern for future Rust services: `Cargo.toml` adds to `[workspace] members` array + member crate uses `loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }`.
+
+### Raw count
+
+- **Commits this entry:** 1 pending (SDK extraction)
+- **Files created:** 7 (`Cargo.toml` workspace root + `sdks/rust/loreweave_llm/`: Cargo.toml + README.md + lib.rs + errors.rs + models.rs + client.rs + tests/wire_format.rs)
+- **Files deleted:** 5 (`services/tilemap-service/Cargo.lock` + `src/llm/{client,errors,models,mod}.rs`)
+- **Files modified:** 5 (`services/tilemap-service/`: Cargo.toml + DESIGN.md + README.md + src/lib.rs + src/error.rs + tests/smoke.rs) — wait, that's 6
+- **Net file delta:** +7 created, -5 deleted, +6 modified
+- **Tests:** 34 total (unchanged count; redistributed: SDK owns 23, service owns 11)
+
+---
+
 ## Session 2026-05-14 (continued, evening) — V2 PoC pivot: services/tilemap-service/ Phase 0a scaffold (first Rust microservice in monorepo)
 
 ### Session arc

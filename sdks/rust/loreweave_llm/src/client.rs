@@ -1,20 +1,21 @@
 //! Reqwest-based gateway HTTP client. Phase 0a defines the shape; Phase 0b
-//! implements the SSE parsing loop + per-object retry + canonical-default fallback.
+//! implements the SSE parsing loop.
 
 use std::time::Duration;
 
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 use uuid::Uuid;
 
-use crate::llm::errors::LlmError;
-use crate::llm::models::{ChatStreamRequest, GATEWAY_BASE_URL_DEFAULT, INTERNAL_STREAM_PATH};
+use crate::errors::LlmError;
+use crate::models::{ChatStreamRequest, GATEWAY_BASE_URL_DEFAULT, INTERNAL_STREAM_PATH};
 
 /// Header name for the service-to-service token. Per
 /// `contracts/api/llm-gateway/v1/openapi.yaml` security scheme
 /// `internalServiceToken` (`type: apiKey`, `in: header`, `name: X-Internal-Token`).
-const INTERNAL_TOKEN_HEADER: &str = "x-internal-token"; // HTTP header names are case-insensitive; lowercase per reqwest convention.
+/// HTTP header names are case-insensitive; lowercase form per reqwest convention.
+const INTERNAL_TOKEN_HEADER: &str = "x-internal-token";
 
-/// Service-to-service gateway client. One instance per tilemap-service process;
+/// Service-to-service gateway client. One instance per service process;
 /// `reqwest::Client` is internally Arc-wrapped so cloning the `GatewayClient` is
 /// cheap and the underlying connection pool is shared.
 #[derive(Debug, Clone)]
@@ -61,8 +62,7 @@ impl GatewayClient {
 
     /// Phase 0a: signature only — returns
     /// [`LlmError::NotImplementedPhase0a`]. Phase 0b will implement the SSE
-    /// parsing loop, per-object retry per TMP_008b §5, and canonical-default
-    /// fallback per TMP_008b §6.
+    /// parsing loop.
     ///
     /// `user_id` is the user the call is on behalf of (for billing) and is
     /// required by the `/internal/llm/stream` endpoint per openapi.
@@ -73,7 +73,7 @@ impl GatewayClient {
         _user_id: Uuid,
     ) -> Result<StreamHandle, LlmError> {
         Err(LlmError::NotImplementedPhase0a(
-            "SSE parser + per-object retry + canonical-default fallback land in Phase 0b",
+            "SSE parser lands in Phase 0b",
         ))
     }
 
@@ -115,16 +115,16 @@ pub struct StreamHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::models::{ModelSource, StreamFormat};
+    use crate::models::{ModelSource, StreamFormat};
 
     #[test]
     fn from_env_fails_without_token() {
         // SAFETY: `std::env::remove_var` is `unsafe` in Rust 2024 because env
         // mutation is racy w.r.t. other threads. This is safe here because no
         // other test in this crate reads or writes `LOREWEAVE_INTERNAL_TOKEN`
-        // (verified by a project-wide grep at Phase 0a write time). If a future
-        // test sets that env var, this assertion may flake under cargo test's
-        // default multi-thread runner — adopt the `serial_test` crate then.
+        // (verified by a project-wide grep). If a future test sets that env
+        // var, this assertion may flake under cargo test's default multi-thread
+        // runner — adopt the `serial_test` crate then.
         unsafe {
             std::env::remove_var("LOREWEAVE_INTERNAL_TOKEN");
         }

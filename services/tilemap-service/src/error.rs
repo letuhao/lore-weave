@@ -3,9 +3,8 @@
 //! Binary entry (`main.rs`) uses [`anyhow::Result`] for prototyping convenience;
 //! library callers use this typed [`Error`] enum directly.
 
+use loreweave_llm::LlmError;
 use thiserror::Error;
-
-use crate::llm::LlmError;
 
 #[derive(Debug, Error)]
 pub enum Error {

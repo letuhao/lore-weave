@@ -1,8 +1,9 @@
 # tilemap-service — DESIGN.md (Phase 0a)
 
-> **Status:** DRAFT 2026-05-14 (Phase 0a scaffold).
+> **Status:** DRAFT 2026-05-14 (Phase 0a scaffold + SDK extraction post-`/review-impl`).
 > **Source spec:** [`docs/03_planning/LLM_MMO_RPG/features/00_tilemap/`](../../docs/03_planning/LLM_MMO_RPG/features/00_tilemap/) (TMP_001..TMP_008b CANDIDATE-LOCK 2026-05-13).
 > **Goal:** PoC validation of the TMP_008/TMP_008b LLM contract empirically. First Rust microservice in the LoreWeave monorepo.
+> **Update 2026-05-14 (post-`/review-impl`):** LLM gateway client has been **extracted** to [`sdks/rust/loreweave_llm`](../../sdks/rust/loreweave_llm) as the first Rust SDK in the monorepo. tilemap-service depends on the SDK as a workspace path member. Module layout in §2 below reflects post-extraction state.
 
 ---
 
@@ -36,37 +37,44 @@ These are explicitly deferred — Phase 0b or later:
 
 ## 2. Module decomposition
 
+Workspace layout (single Cargo workspace at repo root; first Rust workspace in the monorepo):
+
 ```
-services/tilemap-service/
-├── Cargo.toml
-├── Dockerfile
-├── README.md
-├── DESIGN.md                 (this file)
-├── src/
-│   ├── main.rs               (binary entry — CLI invocation)
-│   ├── lib.rs                (library entry — public API surface)
-│   ├── types/
-│   │   ├── mod.rs
-│   │   ├── channel.rs        (ChannelTier enum + ChannelId newtype stub)
-│   │   ├── tilemap.rs        (TilemapView struct stub, ZoneRuntime, TileCoord, GridSize)
-│   │   ├── template.rs       (TilemapTemplate struct stub, ZoneSpec stub, TilemapTemplateId)
-│   │   ├── zone.rs           (ZoneRole enum, ZoneEdge, PassageKind enum)
-│   │   ├── tile.rs           (TerrainKind enum, TileState enum)
-│   │   └── object.rs         (TilemapObjectKind enum, TilemapObjectPlacement)
-│   ├── seed.rs               (TMP-A4 blake3 seed helper)
-│   ├── llm/
-│   │   ├── mod.rs
-│   │   ├── client.rs         (reqwest-based gateway HTTP client; signature only, no network this session)
-│   │   ├── models.rs         (Rust mirrors of contracts/api/llm-gateway/v1/openapi.yaml StreamRequest + event types)
-│   │   └── errors.rs         (LlmError thiserror enum)
-│   └── error.rs              (top-level Error enum via anyhow + thiserror)
-└── tests/
-    └── smoke.rs              (compiles + roundtrips a TilemapView JSON)
+<repo-root>/
+├── Cargo.toml                          (NEW: [workspace] + shared [workspace.dependencies])
+├── sdks/rust/loreweave_llm/            (NEW: first Rust SDK; mirror of sdks/python/loreweave_llm)
+│   ├── Cargo.toml
+│   ├── README.md
+│   ├── src/{lib,client,errors,models}.rs
+│   └── tests/wire_format.rs            (17 wire-format conformance tests)
+└── services/tilemap-service/           (this service)
+    ├── Cargo.toml                      (depends on loreweave_llm path member)
+    ├── Dockerfile
+    ├── README.md
+    ├── DESIGN.md                       (this file)
+    ├── src/
+    │   ├── main.rs                     (binary entry — CLI invocation)
+    │   ├── lib.rs                      (library entry; re-exports loreweave_llm as `llm`)
+    │   ├── error.rs                    (top-level Error enum forwarding LlmError via thiserror)
+    │   ├── seed.rs                     (TMP-A4 blake3 seed helper)
+    │   └── types/
+    │       ├── mod.rs
+    │       ├── channel.rs              (ChannelTier enum + ChannelId newtype stub)
+    │       ├── tilemap.rs              (TilemapView struct stub, ZoneRuntime, TileCoord, GridSize)
+    │       ├── template.rs             (TilemapTemplate struct stub, ZoneSpec stub, TilemapTemplateId)
+    │       ├── zone.rs                 (ZoneRole enum, ZoneEdge, PassageKind enum)
+    │       ├── tile.rs                 (TerrainKind enum, TileState enum)
+    │       └── object.rs               (TilemapObjectKind enum, TilemapObjectPlacement)
+    └── tests/
+        └── smoke.rs                    (5 TMP-specific tests: TilemapView roundtrip, seed determinism, TMP-A1 cell exclusion, hex Display)
 ```
+
+The original `services/tilemap-service/src/llm/` module from the initial Phase 0a draft was **promoted out** to `sdks/rust/loreweave_llm/` so any future Rust service can depend on the same gateway client. tilemap-service consumes the SDK via a workspace path dependency and re-exports it at the lib boundary (`pub use loreweave_llm as llm`).
 
 **Rationale:**
 - `types/` split per-concern (channel/tilemap/template/zone/tile/object) instead of one mega-module → keeps files <200 lines; matches TMP_001 §2's natural decomposition.
-- `llm/` isolated as a sibling — keeps LLM provider concerns out of core domain types. Easy to swap implementations later.
+- **SDK extraction (`sdks/rust/loreweave_llm/`)** — the LLM gateway client is reusable across any future Rust service; keeping it in-service would force the next Rust service to reimplement. Promoted at the `/review-impl` cycle once the contract was validated against the openapi.
+- **Cargo workspace at repo root** — shared `target/` (one cache, not N), single `Cargo.lock` (deps consistent across crates), `cargo build/test/clippy --workspace` semantics. Standard Rust monorepo pattern.
 - `seed.rs` standalone — TMP-A4 is foundational invariant; deserves its own home.
 - `main.rs` vs `lib.rs` split — standard Rust pattern; lets us write integration tests against the library API.
 
@@ -74,17 +82,30 @@ services/tilemap-service/
 
 ## 3. Dependency choices
 
+**Versions are pinned once in the workspace root `Cargo.toml` `[workspace.dependencies]`; member crates inherit via `dep.workspace = true`.**
+
+### tilemap-service direct dependencies
+
 | Crate | Version | Reason |
 |---|---|---|
-| `tokio` | `^1.40` (rt-multi-thread + macros) | Standard async runtime; reqwest needs it; future HTTP server will too. |
-| `reqwest` | `^0.12` (json + rustls-tls + stream) | HTTP client; mature; rustls avoids OpenSSL build pain on Windows. `stream` feature for SSE later. |
-| `serde` + `serde_json` | `^1.0` + `^1.0` (derive) | JSON ser/de for openapi types + TilemapView snapshot/roundtrip. |
-| `blake3` | `^1.5` | TMP-A4 deterministic seed (blake3 hash of reality_id + channel_id + template_id). Per design doc: blake3 chosen over sha256 (faster + cryptographic + 256-bit output). |
-| `thiserror` | `^1.0` | Library error enums with structured variants. Pairs with `anyhow` at binary boundary. |
-| `anyhow` | `^1.0` | Top-level error glue in `main.rs`; convenient `?` for prototyping. |
-| `uuid` | `^1.10` (serde + v4) | `model_ref: UUID` field in gateway StreamRequest. |
-| `tracing` | `^0.1` | Structured logging; matches Go services' zap-style. |
-| `tracing-subscriber` | `^0.3` (env-filter) | Subscriber for `main.rs`. |
+| `loreweave_llm` | path = `../../sdks/rust/loreweave_llm` | LLM gateway client + wire-format mirrors. Service does NOT take a direct `reqwest` dep; HTTP lives in the SDK. |
+| `tokio` | workspace (`^1.40` rt-multi-thread + macros + signal) | Async runtime; future HTTP server will need it. |
+| `serde` + `serde_json` | workspace (`^1.0`) | JSON ser/de for TilemapView snapshot/roundtrip + smoke tests. |
+| `blake3` | workspace (`^1.5`) | TMP-A4 deterministic seed (faster + cryptographic + 256-bit output vs sha256). |
+| `thiserror` | workspace (`^1.0`) | Library error enums; pairs with `anyhow` at the binary boundary. |
+| `anyhow` | workspace (`^1.0`) | Top-level error glue in `main.rs`. |
+| `uuid` | workspace (`^1.10` serde + v4) | ChannelId composition + future PC/NPC id types. |
+| `tracing` + `tracing-subscriber` | workspace (`^0.1` + `^0.3` env-filter) | Structured logging; matches Go services' zap-style. |
+
+### loreweave_llm SDK direct dependencies (for reference; see [sdks/rust/loreweave_llm/Cargo.toml](../../sdks/rust/loreweave_llm/Cargo.toml))
+
+| Crate | Reason |
+|---|---|
+| `reqwest` (rustls-tls + json + stream) | gateway HTTP. Workspace dep. |
+| `serde` / `serde_json` | wire-format types. |
+| `thiserror` | LlmError. |
+| `uuid` | StreamRequest.model_ref + user_id query param. |
+| `tokio` + `tracing` | async runtime + structured logging. |
 
 **Dev dependencies:**
 
@@ -334,5 +355,6 @@ None blocking. Decisions taken with reasonable defaults:
 | Tokio runtime flavor (`current_thread` vs `multi_thread`) | `multi_thread` | If memory profile shows overhead unwanted. |
 | Reqwest TLS backend (`rustls` vs `native-tls`) | `rustls` | If compatibility issue with internal infra. |
 | `anyhow` at binary boundary vs `thiserror` end-to-end | hybrid | If we ever expose a public library API beyond the binary. |
-| Cargo workspace vs standalone package | **Standalone** for now (first Rust service) | When we add 2nd Rust service, promote to workspace. |
+| Cargo workspace vs standalone package | ~~**Standalone** for now (first Rust service)~~ → **Workspace at repo root** (post-`/review-impl` SDK extraction 2026-05-14). Members: `sdks/rust/loreweave_llm` + `services/tilemap-service`. Shared deps pinned in `[workspace.dependencies]`. | When 3rd Rust crate lands, decide whether to add a `[workspace.metadata]` description. |
+| LLM gateway client location | ~~`services/tilemap-service/src/llm/`~~ → **`sdks/rust/loreweave_llm` workspace member** (post-`/review-impl` SDK extraction 2026-05-14). | — |
 | Edition | `2024` (stable on rustc 1.85+; we have 1.89) | — |

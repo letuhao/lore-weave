@@ -13,8 +13,9 @@ pub enum LlmError {
     #[error("stream parsing failed: {0}")]
     StreamParse(String),
 
-    /// TMP_008b §5 — every per-object retry path exhausted; the caller must
-    /// fall back to TMP_008b §6 canonical-default for the remaining objects.
+    /// Per-call validation exhausted retries. Callers using TMP_008b §5
+    /// per-object retry should fall back to TMP_008b §6 canonical-default
+    /// for the remaining failing objects.
     #[error("validation rejected response after {attempts} attempt(s)")]
     ValidationExhausted { attempts: u32 },
 

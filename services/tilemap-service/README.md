@@ -2,7 +2,7 @@
 
 Procedural tilemap generation for LoreWeave non-cell channels (continent / country / district / town). First Rust microservice in the monorepo.
 
-> **Status: Phase 0a scaffold (2026-05-14).** Compiling skeleton + types + LLM gateway client signatures only. **No actual network calls yet.** Phase 0b wires the real call. See [`DESIGN.md`](DESIGN.md) for the full roadmap.
+> **Status: Phase 0a scaffold + SDK extraction (2026-05-14).** Compiling skeleton + types. LLM gateway access provided by the [`loreweave_llm`](../../sdks/rust/loreweave_llm) sibling crate (extracted out of this service during the `/review-impl` cycle). **No actual network calls yet.** Phase 0b wires the real call. See [`DESIGN.md`](DESIGN.md) for the full roadmap.
 
 ---
 
