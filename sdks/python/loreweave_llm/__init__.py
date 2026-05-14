@@ -34,13 +34,17 @@ from loreweave_llm.errors import (
     LLMAuthFailed,
     LLMDecodeError,
     LLMError,
+    LLMHttpError,
     LLMImageContentPolicy,
     LLMImageGenerationFailed,
     LLMInvalidRequest,
+    LLMJobNotFound,
+    LLMJobTerminal,
     LLMModelNotFound,
     LLMQuotaExceeded,
     LLMRateLimited,
     LLMStreamNotSupported,
+    LLMTransientRetryNeededError,
     LLMUpstreamError,
     LLMVideoContentPolicy,
     LLMVideoGenerationFailed,
@@ -108,6 +112,13 @@ __all__ = [
     # Phase 5d video-gen-specific errors
     "LLMVideoContentPolicy",
     "LLMVideoGenerationFailed",
+    # Phase 4a-α async-job exceptions + transport (Phase 5e-α surfaces these
+    # at the top-level loreweave_llm namespace for caller-side error mapping
+    # in services like video-gen-service that map SDK errors to HTTPExceptions)
+    "LLMJobNotFound",
+    "LLMJobTerminal",
+    "LLMHttpError",
+    "LLMTransientRetryNeededError",
 ]
 
 __version__ = "0.1.0"

@@ -1,8 +1,108 @@
-# Session Handoff — Session 55 (cycle 3 shipped · Phase 5d video_gen adapter COMPLETE · Phase 5e caller migration next)
+# Session Handoff — Session 56 (cycle 1 shipped · Phase 5e-α video-gen-service migration COMPLETE · Phase 5e-β book-service migration next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-14 (session 55, cycle 3 shipped)
-> **HEAD:** `09ce2e76` (SESSION_PATCH backfill) — Phase 5d feat commit @ `b3f046ab`; Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
+> **Date:** 2026-05-14 (session 56, cycle 1 shipped)
+> **HEAD:** `<pending>` (Phase 5e-α feat commit — backfill follows); Phase 5d closed at `b3f046ab` (session 55 cycle 3); Phase 5c-α closed at `12fe6273` (session 55 cycle 2); Phase 5b closed at `58fd1acd` (session 55 cycle 1); Phase 5a closed at `2317bcb0` (session 54 cycle 1)
+> **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 56 cycle 1 — Phase 5e-α · video-gen-service migration onto unified gateway · /review-impl rounds (DESIGN: 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 2 COSMETIC, MED + 3 LOWs fixed inline)
+
+**What shipped:** First caller migration of Path B. video-gen-service `/v1/video-gen/generate` route now uses `loreweave_llm.Client.generate_video()` (shipped in Phase 5d) instead of direct httpx POST + manual credential resolution. SDK handles credential resolve + upstream POST + sync result decode internally. Per-call Client (matches chat-service voice precedent + sibling stream_service.py). Caller-side download + MinIO storage + billing PRESERVED (matches chat-service voice).
+
+**Strategic context (Path B step 3):** 5c-α + 5d shipped the gateway adapters; this cycle migrates the FIRST production caller. After 5e-β (book-service Go migration) + 5f (video-gen-service BFF deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration), the unified gateway invariant is fully realized for all external LLM/audio/image/video.
+
+**First test suite for video-gen-service.** Service had NO `tests/` directory before this cycle. 13 tests added:
+- 1 happy-path with SDK-wire-shape verification (kwargs captured + asserted)
+- 5 error-class → HTTP status mappings (Quota→402, ContentPolicy→400, ModelNotFound→404, GenerationFailed→502, RateLimited→429)
+- 1 non-default aspect_ratio regression-lock (QC MED#1: `aspect_ratio="9:16"` → asserts SDK kwargs `size=="1080x1920"`; catches hardcoded-default-bypass)
+- 1 non-dict JWT payload returns 401 (QC LOW#4 edge case)
+- 1 `_aspect_to_size` pure-function unit (LOW#3 from design)
+- 4 grep-locks: negative (`/internal/credentials` absent + quoted `"PROVIDER_REGISTRY_URL"` absent strengthened per QC LOW#3 + `settings.provider_registry_url` absent) + positive (`loreweave_llm` import present + `Client(` construction present)
+
+**Files (13 — 6 MOD + 7 NEW)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5E_ALPHA_DESIGN.md` (status SHIPPED; 5 DESIGN + 4 BUILD review fixes folded inline)
+- NEW `services/video-gen-service/app/config.py` (pydantic-settings; legacy `PROVIDER_REGISTRY_URL` config dropped per /review-impl(DESIGN) MED#2)
+- NEW `services/video-gen-service/app/llm_errors.py` (`map_llm_error_to_http_exception` helper with specific-before-generic ordering per memory `feedback_specific_sdk_exception_catches_before_generic`)
+- MOD `services/video-gen-service/app/routers/generate.py` — drops `resolve_credentials` + direct httpx POST; uses `Client.generate_video()` per-call (try/except/finally ensures aclose() in all paths); `record_usage` signature widened to `provider_kind: str | None = None` per MED#1; download → MinIO → billing flow preserved
+- MOD `services/video-gen-service/app/main.py` — settings import for fail-fast startup; dropped misleading `provider_configured` from `/health` per QC LOW#5
+- MOD `services/video-gen-service/Dockerfile` — build context bumped to repo root; SDK install via `COPY sdks/python /sdk && pip install /sdk`
+- MOD `services/video-gen-service/requirements.txt` — +pydantic-settings
+- MOD `infra/docker-compose.yml` — video-gen-service `build.context: ..` + `dockerfile: services/video-gen-service/Dockerfile`; `PROVIDER_REGISTRY_URL` env REMOVED + `PROVIDER_REGISTRY_INTERNAL_URL` ADDED per MED#2
+- NEW `services/video-gen-service/tests/__init__.py`
+- NEW `services/video-gen-service/tests/conftest.py` (TestClient + JWT helper; env vars set BEFORE app import)
+- NEW `services/video-gen-service/tests/test_generate.py` — 9 tests
+- NEW `services/video-gen-service/tests/test_no_dead_resolution.py` — 4 grep-locks
+- MOD `sdks/python/loreweave_llm/__init__.py` — extended exports (`LLMJobTerminal`, `LLMJobNotFound`, `LLMHttpError`, `LLMTransientRetryNeededError`) needed by the new `llm_errors.py` helper
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN (BEFORE BUILD).** 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC. All 5 actionable folded inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | `record_usage(provider_kind: str)` signature would break with None pass-through. Widened to `provider_kind: str | None = None` with rationale comment about JSON-null → Go-empty-string at usage-billing. |
+| 2 | 🟡 MED | Legacy `provider_registry_url` config field would be dead after migration. Removed from config.py + compose. Mirrors Phase 5b chat-service precedent. |
+| 3 | 🟢 LOW | `_aspect_to_size` helper had no unit test. Added `test_aspect_to_size_mapping`. |
+| 4 | 🟢 LOW | "presumably broken against backend" → "untestable today" wording. |
+| 5 | 🟢 LOW | JWT no-signature-verification: deferred `D-PHASE5E-JWT-VERIFY-DEFENSE-IN-DEPTH`. |
+| 6 | 🔵 COSMETIC | proxy-routing.spec.ts mock — irrelevant to 5e-α. Skip. |
+
+**Round 2 — BUILD output.** 0 HIGH + 1 MED + 5 LOW + 2 COSMETIC. MED + 3 LOWs fixed inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | Happy-path used `aspect_ratio="16:9"` → `"1920x1080"` which is ALSO the fallback for unknown ratios; hardcoded-bypass regression wouldn't be caught. Added `test_generate_non_default_aspect_ratio_reaches_sdk` (uses `"9:16"` → asserts `"1080x1920"`). |
+| 2 | 🟢 LOW | img2vid not exposed via GenerateRequest — accepted as `D-PHASE5E-IMG2VID-FE-INTEGRATION`. |
+| 3 | 🟢 LOW | Grep-lock for `PROVIDER_REGISTRY_URL` was too specific (only `os.getenv` + `os.environ[]` forms). Strengthened to assert `'"PROVIDER_REGISTRY_URL"'` (quoted form) absent — catches all access idioms. |
+| 4 | 🟢 LOW | Non-dict JWT payload (JSON array) → AttributeError on `.get()` → 401 untested. Added `test_extract_user_id_non_dict_payload_returns_401`. |
+| 5 | 🟢 LOW | `/health` reported `provider_configured` based on a defaulted Settings field (always True). Dropped the misleading field. |
+| 6 | 🟢 LOW | provider_kind=None analytics drift in billing — deferred `D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS`. |
+| 7 | 🔵 COSMETIC | get_minio() sync bucket check inside async route — deferred `D-PHASE5E-MINIO-ASYNC-OFFLOAD`. |
+| 8 | 🔵 COSMETIC | record_usage logger pattern — standard best-effort; no action. |
+
+**BUILD-time surprise (1):** SDK `__init__.py` was missing `LLMJobTerminal`/`LLMHttpError`/`LLMJobNotFound`/`LLMTransientRetryNeededError` exports needed by the new `llm_errors.py` helper. Extended exports.
+
+### Verify evidence
+```
+video-gen-service pytest tests/:                     13 passed (first-ever test suite for this service)
+SDK pytest sdks/python/tests/:                       196 passed unchanged
+chat-service pytest:                                 180 passed unchanged
+grep -rn "/internal/credentials" services/video-gen-service/app/routers/   no matches
+grep -rn "PROVIDER_REGISTRY_URL" services/video-gen-service/app/           no matches (only PROVIDER_REGISTRY_INTERNAL_URL)
+```
+
+### What's NEXT for the next agent
+
+**Phase 5e-β (L–XL)** — book-service (Go) migration. Currently calls `/v1/images/generations` directly from [internal/api/media.go:449](services/book-service/internal/api/media.go#L449). Needs a design decision BEFORE starting:
+
+- **Option A: Build a Go SDK** (`sdks/go/loreweave_llm` parallel to Python). L-XL. Investment that pays off for future Go-service migrations (auth-service, sharing-service, glossary-service, catalog-service).
+- **Option B: Inline Go HTTP shim** in book-service. M-L. 60-100 LOC throwaway specific to 5e-β. Faster but doesn't compound.
+
+Recommend: revisit the decision AFTER 5e-α has run in production (live smoke confirmed). Phase 5b's voice path is a useful template even though it's Python.
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion + api-gateway-bff `/v1/video-gen/*` route retirement + FE migration to call unified gateway directly. After 5f: unified gateway invariant fully realized for chat + extraction + translation + audio + image + video.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5E-JWT-VERIFY-DEFENSE-IN-DEPTH` — local JWT signature verification (defense-in-depth vs gateway-bff trust)
+- `D-PHASE5E-IMG2VID-FE-INTEGRATION` — FE + GenerateRequest extension for image-to-video
+- `D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS` — backfill provider_kind at billing time if dashboards break on empty-string category
+- `D-PHASE5E-MINIO-ASYNC-OFFLOAD` — move bucket bootstrap to lifespan startup (cosmetic; first-request-only)
+- `D-PHASE5E-LIVE-SMOKE` — manual against local-image-generator-service:8700 (cross-validates 5d path dispatch)
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5E_ALPHA_DESIGN.md` — design + 8 /review-impl fixes
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — 5e-α row + 5e-β/5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5e-β: needs Go SDK decision FIRST; then size XL probably
+3. Reference impl: 5e-α at HEAD `<pending>` + Phase 5b chat-service voice (Python caller pattern); for Go shim approach, see book-service media.go current state
+
+---
+
+## Session 55 cycle 3 — Phase 5d · video_gen adapter + SDK + openapi + 5-slot registration · /review-impl rounds (DESIGN: 1 HIGH + 2 MED + 4 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 1 COSMETIC, MED + 3 LOWs fixed inline)
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
 
 ## Session 55 cycle 3 — Phase 5d · video_gen adapter + SDK + openapi + 5-slot registration · /review-impl rounds (DESIGN: 1 HIGH + 2 MED + 4 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 1 COSMETIC, MED + 3 LOWs fixed inline)

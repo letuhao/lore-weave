@@ -1,11 +1,19 @@
+# Phase 5e-α: build context bumped to repo root so we can COPY the
+# Python SDK alongside service code. Mirrors chat-service + translation-
+# service patterns. docker-compose.yml passes `context: ..` +
+# `dockerfile: services/video-gen-service/Dockerfile`.
 FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# SDK install — Phase 5e-α (matches translation-service Phase 4c-α + chat-service pattern).
+COPY sdks/python /sdk
+RUN pip install --no-cache-dir /sdk
+
+COPY services/video-gen-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app/ app/
+COPY services/video-gen-service/app/ app/
 
 ENV HTTP_PORT=8088
 EXPOSE 8088

@@ -342,12 +342,18 @@ services:
 
   video-gen-service:
     build:
-      context: ../services/video-gen-service
-      dockerfile: Dockerfile
+      # Phase 5e-α: context bumped to repo root so Dockerfile can COPY
+      # sdks/python alongside the service code. Mirrors chat-service +
+      # translation-service patterns.
+      context: ..
+      dockerfile: services/video-gen-service/Dockerfile
     environment:
       HTTP_PORT: "8088"
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
-      PROVIDER_REGISTRY_URL: http://provider-registry-service:8085
+      # Phase 5e-α: SDK reads PROVIDER_REGISTRY_INTERNAL_URL (Settings
+      # field). Legacy PROVIDER_REGISTRY_URL removed per /review-impl(DESIGN)
+      # MED#2 — was only used by the deleted resolve_credentials() flow.
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       MINIO_ENDPOINT: minio:9000
