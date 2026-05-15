@@ -134,6 +134,50 @@ root; ContextHub up for `/amaw`. The infra `infra` compose stack and the gitigno
 
 ---
 
+## Session 2026-05-16 — Human-in-loop QA review of the AMAW Phase 0b batch (M task)
+
+### Session arc
+
+After Phase 0b landed (commit `0e2732ac`, XL `/amaw`), ran a **default v2.2
+human-in-loop review** (NOT `/amaw`) to independently QA the AMAW output — the
+mandatory independent pass the AMAW-trust verdict requires for correctness-critical
+code. Scope: all 43 files of the Phase 0b commit. Two layers: (A) code correctness +
+full live re-verify, (B) AMAW process audit. Deliverable: a tracked bug list — **no
+code fixes** (fixes are a separate follow-up task).
+
+### Verdict — AMAW Phase 0b output is sound
+
+Independent review found **0 HIGH, 0 MED** — only 2 LOW + 1 COSMETIC (Layer A). The
+AMAW review chain (4 design Adversary rounds + 1 code Adversary + Scope Guard +
+human-invoked `/review-impl`) caught every real correctness bug before commit.
+
+- **Live re-verify (4 checks):** harness re-run ✅; raw `tool_call` SSE frames ✅
+  (wire format exact); **D8 reject confirmed LIVE** — `tools` → Anthropic model →
+  `HTTP 400 LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER` ✅; Anthropic `tool_use` parse
+  fixture-covered (not live-testable by design).
+- **Layer A findings:** LOW-A1 (openapi `tool_choice` `nullable`+`oneOf` unidiomatic),
+  LOW-A2 (no Go multi-tool-call streamer test), COSMETIC-A3 (anthropic
+  `input_json_delta` no empty-skip). → DEFERRED #011, #012 (COSMETIC accepted).
+- **Layer B (process audit):** B-1 — AMAW's Adversary+Scope-Guard did NOT surface the
+  post-error SSE leak; only `/review-impl` did. The "exactly 3 findings/round" +
+  "stop at APPROVED_WITH_WARNINGS" rule structurally caps a code-review round at 3
+  issues → for correctness-critical code an independent pass after AMAW is
+  load-bearing. B-2 — the 4-round design loop converged but rounds 2-3 each caught
+  the *prior round's incomplete fix*. B-3 — ~0 false positives in 15 AMAW findings
+  (precision high; the loop earned its ~650 K-token cost).
+
+Full report: [`docs/audit/phase-0b-human-review-findings.md`](../../audit/phase-0b-human-review-findings.md).
+
+### Handoff notes
+
+**Active blocker:** none. **New DEFERRED:** #011 (openapi hygiene, LOW), #012 (Go
+multi-call streamer test, LOW) — both for a tilemap fix follow-up task.
+
+**Next:** either (a) the small fix task clearing #011 + #012, or (b) Phase 1 —
+Fruchterman-Reingold zone placer (independent of 0b).
+
+---
+
 ## Session 2026-05-15 (continued) — Phase 0b: gateway tool-use contract + SSE parser + L3 harness (XL `/amaw`)
 
 ### Session arc
