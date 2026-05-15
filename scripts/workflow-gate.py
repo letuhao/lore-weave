@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -272,7 +273,12 @@ def cmd_complete(args: list[str]) -> None:
     # AMAW L3 — log to AUDIT_LOG and selectively bridge to ContextHub.
     # No-op for default v2.2 (amaw_enabled=False).
     if state.get("amaw_enabled"):
-        task_slug = state.get("task") or "(unnamed)"
+        # Defensive re-normalize (DEFERRED #001, Adversary r1 WARN-2): state["task"]
+        # may have been set before _normalize_slug existed, or via a path that
+        # bypassed cmd_amaw_enable. _normalize_slug is idempotent so this is free
+        # insurance — the slug becomes a tag below and MUST be comma-free.
+        raw_task = state.get("task")
+        task_slug = _normalize_slug(raw_task) if raw_task else "unnamed-task"
         _log_audit({
             "ts": completed_at,
             "task": task_slug,
@@ -306,6 +312,33 @@ def cmd_complete(args: list[str]) -> None:
             )
 
 
+def _normalize_slug(raw: str) -> str:
+    """Slugify a task slug (DEFERRED #001): lowercase, collapse any run of
+    non-[a-z0-9] characters to a single dash, strip leading/trailing dashes.
+    Idempotent — normalizing an already-normalized slug is a no-op.
+
+    The slug flows into the downstream tag list as `["amaw", "sprint", slug]`,
+    which `_bridge_to_contexthub` comma-joins and `mcp-query.py` comma-splits
+    back — so an un-normalized slug containing a comma (or space, slash, etc.)
+    would silently fragment into extra tags. EVERY entry point that lets a
+    user supply a slug must call this: `cmd_amaw_enable` (write side) and
+    `cmd_pragmatic_stop` (independent arg), plus `cmd_complete` re-normalizes
+    defensively on the read side (Adversary r1 BLOCK + WARN-2).
+
+    Empty/all-punctuation input falls back to the tag-safe string
+    'unnamed-task'. NOTE: this is distinct from the '(unnamed)' DISPLAY
+    sentinel used in print messages (cmd_amaw_enable / cmd_pragmatic_stop) —
+    the parens make '(unnamed)' deliberately NOT a valid slug, so it can never
+    be mistaken for or collide with a real normalized slug. 'unnamed-task' is
+    the value layer (a usable tag); '(unnamed)' is the display layer.
+    """
+    # str() guard (Adversary r2 WARN-2): a hand-edited state file could carry a
+    # non-string `task` (int, null); str() keeps this total instead of raising
+    # AttributeError deep in the bridge path.
+    slug = re.sub(r"[^a-z0-9]+", "-", str(raw).lower()).strip("-")
+    return slug or "unnamed-task"
+
+
 def cmd_amaw_enable(args: list[str]) -> None:
     """Enable AMAW mode for the current task. Optionally accepts task slug."""
     state = load_state()
@@ -316,7 +349,10 @@ def cmd_amaw_enable(args: list[str]) -> None:
     state["amaw_enabled"] = True
     state["amaw_enabled_at"] = datetime.now().isoformat()
     if args:
-        state["task"] = args[0]
+        normalized = _normalize_slug(args[0])
+        if normalized != args[0]:
+            print(f"  NOTE: task slug normalized '{args[0]}' -> '{normalized}'")
+        state["task"] = normalized
     save_state(state)
     slug = state.get("task") or "(unnamed)"
     print(f"OK: AMAW mode enabled for task '{slug}'")
@@ -397,7 +433,11 @@ def cmd_pragmatic_stop(args: list[str]) -> None:
     """Record a pragmatic stop event with reason. Only meaningful in AMAW mode."""
     if len(args) < 2:
         fail("Usage: workflow-gate.py pragmatic-stop <task-slug> <reason>")
-    task_slug, reason = args[0], args[1]
+    # Normalize the slug (DEFERRED #001, Adversary r1 BLOCK): this is a SECOND
+    # entry point — independent of cmd_amaw_enable — that feeds task_slug into a
+    # comma-joined tag list below. An un-normalized slug here re-introduces the
+    # exact comma-fragmentation defect #001 set out to close.
+    task_slug, reason = _normalize_slug(args[0]), args[1]
     state = load_state()
     if not state.get("amaw_enabled"):
         print("WARN: pragmatic-stop has no effect in default v2.2 mode (amaw_enabled=False).", file=sys.stderr)
