@@ -409,6 +409,22 @@ def cmd_amaw_pre_commit(_args: list[str]) -> None:
     return BLOCKED → exit 1 (block commit). If MCP unreachable → warn + exit 0
     (don't block commits on infra failures).
     """
+    # No state file = no task in flight = nothing to gate (DEFERRED #004).
+    # MUST check before load_state(), which auto-creates .workflow-state.json
+    # from INITIAL_STATE — an agent committing outside any tracked task would
+    # otherwise leave a stale state file behind (confusing [ ] markers on the
+    # next `status`).
+    #
+    # Exit SILENTLY here — unlike cmd_pre_commit, which prints a visible
+    # "No workflow state found" warning (Adversary r1 WARN-2). In the hook
+    # chain `pre-commit && amaw-pre-commit`, cmd_pre_commit runs first and
+    # already surfaces that warning; a second one here would just be noise.
+    #
+    # Single-threaded assumption (Adversary r1 WARN-3): a concurrent `reset`
+    # racing between this exists() check and load_state() is out of scope for
+    # a local single-user dev tool.
+    if not STATE_FILE.exists():
+        sys.exit(0)
     state = load_state()
     if not state.get("amaw_enabled"):
         # Default v2.2 mode — no-op

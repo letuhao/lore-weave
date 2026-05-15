@@ -1,10 +1,11 @@
 # Deferred Items
 
 <!-- Managed by Scribe (AMAW) or main session (default mode). Do not edit manually unless cleaning up. -->
-<!-- Next ID: 008 -->
+<!-- Next ID: 009 -->
 
 | ID | Origin | Description | Target | Severity |
 |---|---|---|---|---|
+| 008 | 2026-05-15 amaw-precommit-no-side-effect Adversary r1 WARN-1 | `load_state()` calls `json.loads()` with no try/except — a corrupt or empty `.workflow-state.json` (manual edit, disk corruption) makes every gate command, incl. `cmd_amaw_pre_commit`, die with a traceback that blocks the commit. (Risk much reduced by DEFERRED #003's atomic save_state — crashes can no longer half-write the file — but manual-edit / disk-corruption paths remain.) Fix: wrap `load_state`'s parse in try/except; on corruption, print a clear error and either reset or refuse cleanly. Affects all `load_state` callers, so it is its own task — not in #004's scope. | L4 hardening | LOW |
 | 007 | 2026-05-15 amaw-task-slug-validation Adversary r2 WARN-1 | `cmd_amaw_enable` normalizes the slug only on the `if args:` write path; a no-arg or already-enabled invocation can leave a raw `state["task"]` persisted in the state file. Mitigated: `cmd_complete` defensively re-normalizes so the OUTPUT tag list is always comma-safe — only the state-file display value can be stale. Fix: normalize unconditionally at the top of `cmd_amaw_enable`, or normalize on every state read. | L4 hardening | LOW |
 | 001 | 2026-05-15 amaw-l3-deepen /review-impl #5 | `task_slug` not validated — comma in slug splits into multiple tags downstream (`",".join(tags)` then mcp-query.py splits back on comma). No injection risk (subprocess list form). Fix: normalize comma → dash in `cmd_amaw_enable`, or argparse-validate slug pattern `^[a-z0-9][a-z0-9-]*[a-z0-9]$`. | L4 hardening | LOW |
 | 002 | 2026-05-15 amaw-l3-deepen /review-impl #6 | `"REJECTED" in evidence.upper()` substring match in `cmd_complete` bridge logic — false positives on "NOT REJECTED" or "rejected the rejected pattern". Fix: word-boundary regex `\bREJECTED\b` or check evidence prefix `"REJECTED:"` / `"status: REJECTED"`. | L4 hardening | LOW |
