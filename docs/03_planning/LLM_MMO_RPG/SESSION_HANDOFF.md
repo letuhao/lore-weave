@@ -81,6 +81,74 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-15 (continued, autonomous batch) — AMAW batch run: 4 DEFERRED items unattended
+
+### Session arc
+
+User asked whether an **autonomous AMAW batch** (many cycles run unattended for hours while the user sleeps, human review afterward) is timeline-effective. Decided to run a **measured experiment**: a small batch of independent DEFERRED-backlog items, with hard circuit breakers, fully autonomous (user explicitly would not answer questions until done).
+
+### Circuit breakers adopted (all 10 held)
+
+Scope lock · per-cycle commit · Adversary cap 2 rounds · failure hard-stop (3 fix-fails / 2 cycle-fails) · VERIFY-with-teeth · file allowlist · no destructive ops · ~3h effort ceiling · no-guess (pragmatic-stop on ambiguity) · honest reclassify. None tripped a hard stop; per-cycle commit + scope lock both exercised.
+
+### Batch composition
+
+`#005` was already resolved (G4 allow-list, dogfood-verified) → dropped. `#006` fixed as **pre-flight** (default mode — editing the sub-agent prompt templates themselves; running AMAW to review a change to AMAW's own prompts is circular). Then **3 AMAW cycles**: #001, #002, #004 — all independent (different functions, no shared design), so a bad cycle could not poison later ones.
+
+### Results — per cycle
+
+| Item | Commit | Adversary | Scope Guard | Outcome |
+|---|---|---|---|---|
+| #006 pre-flight — heredoc fallback in sub-agent prompts | `de0a2f46` | (default mode, no sub-agents) | — | Clean |
+| #001 — task slug normalization | `f108ad39` | r1 **REJECTED** (1 BLOCK + 2 WARN) → fixes → r2 APPROVED_WITH_WARNINGS (3 WARN) | CLEAR | 6 findings; BLOCK was a real 2nd-entry-point miss |
+| #002 — structured rejection detection (not substring) | `15956206` | r1 APPROVED_WITH_WARNINGS (0 BLOCK, 3 WARN) | CLEAR | 3 findings, 2 fixed 1 documented |
+| #004 — pre-commit no stale state file | `89fb68d9` | r1 APPROVED_WITH_WARNINGS (0 BLOCK, 3 WARN) | CLEAR | 3 findings, 1 fixed 1 deferred 1 documented |
+
+7 sub-agent spawns (4 Adversary + 3 Scope Guard), ~390K sub-agent tokens. 2 new deferrals filed (#007, #008); #001/#002/#004/#006 cleared.
+
+### Findings tally — 12 across 3 cycles
+
+- **11 real, 1 false.** The false one: cycle-1 Adversary r2 WARN-3 (claimed `amaw-enable ""` and `pragmatic-stop ""` diverge — it conflated `bool([""])` truthy-list with `bool("")` falsy-str). Caught + overturned by the **Scope Guard's independent check** — the 2-agent cross-check earned its keep.
+- **1 BLOCK** — cycle 1: `cmd_pragmatic_stop` was a second slug entry point with the identical comma-fragmentation defect, missed by the main-session BUILD whose own docstring falsely claimed "single chokepoint". A genuine bug the Adversary caught before commit.
+
+### Answering the user's question — is the autonomous-batch pattern timeline-effective?
+
+**Key reframe discovered by running it:** the user's model was "AMAW runs batch → human reviews+fixes afterward". But AMAW's Adversary + Scope Guard **do the review+fix INSIDE the autonomous loop**. The human wakes to 3 cycles already reviewed, fixed, and gated to Scope Guard CLEAR — not raw output.
+
+- **Yield:** 0 of 3 cycles passed first-pass review clean (every BUILD had ≥3 findings; one had a BLOCK). Autonomous first-pass output is NOT done. **But** the in-loop Adversary→fix→Scope-Guard cycle resolved everything without human intervention.
+- **Error compounding avoided** — because the 3 tasks were independent (the recommended batch shape). Cycle 1's BLOCK did not touch cycle 2/3.
+- **Per-cycle commits** — each item is its own revertable commit; a bad cycle would not have forced unwinding the batch.
+- **Cost** — ~390K sub-agent tokens + orchestration for 3 S-tasks. Real but bounded; the user pre-accepted it.
+
+**Verdict:** the pattern IS timeline-effective **for a batch of independent, well-specified grind tasks** — exactly the DEFERRED-backlog shape. The autonomous loop genuinely converts unattended hours into reviewed-and-gated work. It would NOT be safe for a sequential feature build (error compounding). The human review afterward is a light second pass over AUDIT_LOG + findings docs, not a from-scratch review.
+
+### AMAW infrastructure observations
+
+- Sub-agent spawning + `mcp-query.py` calls: 7/7 spawns clean, all Step-0 MCP calls succeeded, G4 allow-list held (no permission prompts).
+- #006 pre-flight fix worked — every sub-agent used the heredoc fallback for its report file without rediscovering the Write-tool block.
+- The Adversary produced 1 false finding in 12 — ~92% precision. The Scope Guard's independent re-check caught it. Two-agent design validated.
+
+### Handoff notes for next session
+
+**Active blocker:** none. Branch HEAD after push = cycle-3 commit.
+
+**Open DEFERRED after batch:** #007 (slug normalize only on write path — LOW, mitigated), #008 (load_state no try/except on corrupt file — LOW, risk reduced by #003). Both L4 hardening.
+
+**Next session agenda:**
+1. The autonomous-batch pattern is proven for independent grind batches — candidate next batch: a larger DEFERRED/hardening set, or test-writing across modules.
+2. Phase 0b SSE parser remains the open real L-size feature task — a different (sequential) shape; do NOT batch it autonomously, run it human-in-loop or single `/amaw`.
+3. Branch merge cadence decision still open.
+
+### Raw count
+
+- **Commits this entry:** 4 (de0a2f46, f108ad39, 15956206, 89fb68d9)
+- **DEFERRED cleared:** #001, #002, #004, #006 · **filed:** #007, #008
+- **Sub-agents:** 7 (4 Adversary, 3 Scope Guard) · ~390K sub-agent tokens
+- **Findings:** 12 (11 real, 1 false; 1 BLOCK) · all resolved or consciously deferred
+- **Circuit breakers:** 10 adopted, 0 hard-stops triggered
+
+---
+
 ## Session 2026-05-15 (continued, dogfood) — FIRST real /amaw run: DEFERRED #003 atomic save_state (M task)
 
 ### Session arc
