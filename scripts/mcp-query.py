@@ -158,6 +158,24 @@ def cmd_add_lesson(args: argparse.Namespace) -> None:
     if args.source_refs:
         body["source_refs"] = [s.strip() for s in args.source_refs.split(",") if s.strip()]
 
+    # Guardrail sub-object — required (all 3 fields) when lesson_type=guardrail.
+    gr_fields = (args.guardrail_trigger, args.guardrail_requirement, args.guardrail_verification)
+    gr_set = [f for f in gr_fields if f]
+    if args.type == "guardrail" and len(gr_set) < 3:
+        print("ERROR: lesson_type=guardrail requires --guardrail-trigger, "
+              "--guardrail-requirement, and --guardrail-verification (all 3).", file=sys.stderr)
+        sys.exit(1)
+    if gr_set and len(gr_set) < 3:
+        print("ERROR: partial guardrail flags — provide all 3 of --guardrail-trigger, "
+              "--guardrail-requirement, --guardrail-verification, or none.", file=sys.stderr)
+        sys.exit(1)
+    if len(gr_set) == 3:
+        body["guardrail"] = {
+            "trigger": args.guardrail_trigger,
+            "requirement": args.guardrail_requirement,
+            "verification_method": args.guardrail_verification,
+        }
+
     status, payload = _request("POST", "/api/lessons", body=body)
     if status >= 400:
         print(f"add_lesson failed (HTTP {status}): {payload}", file=sys.stderr)
@@ -245,6 +263,10 @@ def main() -> None:
     al.add_argument("--content", required=True)
     al.add_argument("--tags", help="Comma-separated tags")
     al.add_argument("--source-refs", help="Comma-separated source references")
+    # Guardrail sub-object — all 3 required together when --type guardrail.
+    al.add_argument("--guardrail-trigger", help="Guardrail: action string or /regex/ matched against action_context.action")
+    al.add_argument("--guardrail-requirement", help="Guardrail: human-readable requirement to enforce")
+    al.add_argument("--guardrail-verification", help="Guardrail: verification method (e.g. user_confirmation)")
     _add_format(al)
     al.set_defaults(func=cmd_add_lesson)
 

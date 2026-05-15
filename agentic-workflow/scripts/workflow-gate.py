@@ -347,12 +347,18 @@ def cmd_amaw_pre_commit(_args: list[str]) -> None:
         sys.exit(0)
 
     # Verdict source is `pass: bool`. Treat absence as CLEAR (no rule layer = no block).
-    # Also block if violated/rules array is non-empty (defense in depth: some impls
-    # return pass=true but list violations — surface them).
+    # Matched rules live in `matched_rules` (verified against live ContextHub response
+    # 2026-05-15); `violated`/`rules` kept as fallback for other server versions.
     pass_field = verdict.get("pass")
-    violated = verdict.get("violated") or verdict.get("rules") or []
-    if pass_field is False or (isinstance(violated, list) and len(violated) > 0 and pass_field is not True):
-        print(f"BLOCKED by guardrails: pass={pass_field}, violated={violated}", file=sys.stderr)
+    matched = verdict.get("matched_rules") or verdict.get("violated") or verdict.get("rules") or []
+    if pass_field is False or (isinstance(matched, list) and len(matched) > 0 and pass_field is not True):
+        prompt = verdict.get("prompt", "")
+        print(f"BLOCKED by guardrails: pass={pass_field}, matched_rules={len(matched) if isinstance(matched, list) else matched}", file=sys.stderr)
+        if prompt:
+            print(f"  {prompt}", file=sys.stderr)
+        for rule in (matched if isinstance(matched, list) else []):
+            req = rule.get("requirement") if isinstance(rule, dict) else rule
+            print(f"  - {req}", file=sys.stderr)
         sys.exit(1)
 
     rules_checked = verdict.get("rules_checked", "unknown")

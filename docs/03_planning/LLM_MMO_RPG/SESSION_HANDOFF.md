@@ -81,6 +81,76 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-15 (continued, latest) — AMAW readiness assessment + G1/G2/G4 fixes + guardrail seed (L task)
+
+### Session arc
+
+After L3 deepen landed (commit `30cec90d`), user asked for a readiness assessment of AMAW before putting it into use. Assessment verdict: **plumbing ~90% ready, multi-agent brain 0% verified** — AMAW had never executed end-to-end; first `/amaw` run IS the integration test. Assessment surfaced 5 gaps (G1-G5). User chose to fix G1+G2+G4 + seed real guardrails before first dogfood.
+
+### Readiness assessment findings
+
+| Gap | Severity | Resolution this task |
+|---|---|---|
+| G1 — mcp-query.py can't create guardrails (no `--guardrail` flag) | HIGH for value-prop | FIXED — 3 flags added |
+| G2 — amaw-pre-commit verdict scraped summary text; field name was `violated`/`rules` not `matched_rules` | LOW | FIXED — `matched_rules` primary + fallback |
+| G3 — `user_confirmation` guardrail → hard block in hook context | LOW-MED | NOT fixed (intentional — hook can't do interactive prompts; hard-block is fail-safe) |
+| G4 — `python scripts/mcp-query.py` not in allow-list → sub-agent prompts mid-cold-start | MED | FIXED — `permissions.allow` block added |
+| G5 — 0 guardrails exist → check_guardrails layer inert | by design | RESOLVED — 3 guardrails seeded |
+
+Verified-working at assessment time: state machine, mcp-query.py 6 verbs, bridge (retro + REJECTED paths both tested live), check_guardrails BLOCKED path (tested with temporary probe guardrail), hook chain, default-v2.2 isolation. Unverified (still): sub-agent spawning, `/amaw` slash flow, cold-start Adversary/Scope Guard/Scribe loop, AUDIT_LOG.jsonl as real multi-event timeline.
+
+### What landed (6 files)
+
+- `agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — **G2**: `cmd_amaw_pre_commit` verdict parse now reads `matched_rules` (primary, verified vs live ContextHub response) with `violated`/`rules` fallback; BLOCK output surfaces `prompt` + per-rule `requirement` lines.
+- `agentic-workflow/scripts/mcp-query.py` + `scripts/mcp-query.py` — **G1**: `add_lesson` gains `--guardrail-trigger` / `--guardrail-requirement` / `--guardrail-verification`. Validation: all-3-or-none; `type=guardrail` requires all 3.
+- `agentic-workflow/.claude/settings.json` + `.claude/settings.json` — **G4**: new `permissions.allow` block, 5 rules pre-approving `mcp-query.py` + `workflow-gate.{sh,py}` invocations so sub-agents don't hit permission prompts mid-cold-start.
+
+### Guardrails seeded (ContextHub, 3 rules)
+
+| Trigger (regex) | Requirement | verification_method |
+|---|---|---|
+| `/git\s+push/` | Push only with explicit user approval — CLAUDE.md Phase 11 | user_confirmation |
+| `/force.*push\|push.*force\|push\s+-f/` | Force-push is destructive — never without explicit per-branch authorization | user_confirmation |
+| `/migrat/` | DB migration is L+ work — run /amaw + confirm rollback plan | user_confirmation |
+
+Behavior matrix verified (8 actions): `git commit` → CLEAR (**critical** — AMAW commit phase not blocked); `git push` / `git push -f` / `--force-with-lease` / `force-push` / `migration` / `migrate` → BLOCK; `ready-to-commit` → CLEAR.
+
+### Bugs found + fixed during BUILD
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | ContextHub guardrail plain-string triggers are **exact-match**, not substring (`git push -f origin` didn't match plain `git push`). Source: `services/guardrails.js matchTrigger` — `/regex/` form OR `trimmed === action`. | Re-seeded all 3 with `/regex/` triggers |
+| 2 | **MSYS path-conversion** mangled leading-`/` regex triggers — `/git\s+push/` stored as `C:/Program Files/Git/git/s+push/`. Git Bash artifact, NOT a code defect. | Re-seed with `MSYS_NO_PATHCONV=1` prefix |
+
+### Workflow gate trace
+
+L classified (files=6, logic=4, side_effects=1). clarify→design→review-design→plan fast-tracked (readiness assessment served as CLARIFY+DESIGN); build→verify→review-code→qc→post-review completed with evidence. Default v2.2 mode (no `/amaw` — consistent with L3 task's meta-paradox reasoning).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**AMAW readiness now:** guardrail enforcement layer is **live** (capability + 3 rules + permission friction removed + robust verdict parsing). Still unverified: the multi-agent orchestration half. First `/amaw` run remains the integration test.
+
+**Next session agenda (unchanged + refined):**
+1. **First `/amaw` dogfood** — assessment recommends a **small S/low-M task first** (not the L-size Phase 0b SSE parser) to shake out sub-agent spawn mechanics with minimal blast radius. Graduate to Phase 0b L-task after cold-start loop proves it works.
+2. Phase 0b SSE parser in `loreweave_llm` (the original roadmap item).
+3. Branch merge cadence decision.
+
+**Process discipline reminders:**
+- Seeding regex guardrails / passing `/regex/` args from Git Bash on Windows → prefix `MSYS_NO_PATHCONV=1` or the leading `/` gets path-converted.
+- ContextHub guardrail triggers: plain string = exact match; `/.../` = regex. Always use regex form for anything but an exact action string.
+- `/amaw` for L+ only; lmstudio provider preference; Rust workspace pattern — see memory files.
+
+### Raw count
+
+- **Commits this entry:** 1 pending
+- **Files modified:** 6 (3 bundle + 3 deployed mirror)
+- **External state:** +3 guardrails in ContextHub (net; ~8 created-and-deleted during trigger-syntax debugging)
+- **Tests:** G1/G2/G4 verified; 8-action guardrail behavior matrix all correct; mirror diffs clean
+
+---
+
 ## Session 2026-05-15 (continued, late) — AMAW × ContextHub L3 deepening (XL task, default v2.2 mode)
 
 ### Session arc
