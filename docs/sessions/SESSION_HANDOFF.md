@@ -1,9 +1,32 @@
-# Session Handoff — Session 57 (cycle 1 shipped · Phase 5f video-gen-service hardening COMPLETE · unified-gateway program effectively done)
+# Session Handoff — Session 57 (cycle 2 shipped · billing-model redesign ADR approved · Phase 6a implementation next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-15 (session 57, cycle 1 shipped)
-> **HEAD:** `12a3930f` (Phase 5f feat commit) — Phase 5e-β.2 closed at `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
+> **Date:** 2026-05-16 (session 57, cycle 2 shipped)
+> **HEAD:** `pending` (billing ADR commit) — Phase 5f closed at `12a3930f`; Phase 5e-β.2 closed at `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 57 cycle 2 — billing-model redesign ADR · /review-impl round 1 (3H+6M+3L all folded)
+
+**Why this cycle exists:** the session set out to do Phase 6a ("quota enforcement at job submission"). Scoping it surfaced that the **billing model itself is broken**, so the 6a code cycle was abandoned mid-DESIGN and replaced with this ADR.
+
+**The discovery chain:** (1) the gateway's `recordInvocation` is **unwired** — the gateway doesn't bill jobs; book/video/chat-service each call `/internal/model-billing/record` post-hoc. (2) `account_balances` meters a **token count** — wrong unit (models cost 10–30× different per token; the flat `0.000002`/token cost is fiction). (3) LoreWeave is **BYOK** — for `user_model` jobs the user pays their own provider, so a runaway loop drains the *user's* account; a platform-vs-BYOK quota gate does **not** protect them. Web research (LiteLLM/Bifrost/OpenRouter/Cloudflare AI Gateway) confirmed the norm: **USD per-user budgets, pre-flight worst-case estimate, `max_tokens` capped to remaining budget**.
+
+**Deliverable:** [`docs/03_planning/BILLING_MODEL_REDESIGN_ADR.md`](../03_planning/BILLING_MODEL_REDESIGN_ADR.md) — billing split into **two subsystems**:
+- **A — Spend Guardrail**: per-user **USD** budget (daily+monthly windows), applies to **every** job (BYOK + platform); pre-flight estimate → **402** before the provider call + `max_tokens` cap + estimate-based reservation. Protects the *user's* wallet.
+- **B — Platform Resale Ledger**: `platform_model` only; config-driven free-tier USD + prepaid credits. Protects *LoreWeave's* wallet.
+- Schema: `account_balances` → `spend_guardrails` + `token_reservations` + `platform_balances` (`NUMERIC(16,8)`).
+
+**`/review-impl` round 1:** 3 HIGH + 6 MED + 3 LOW, all folded — fail-CLOSED on unpriced models, `NUMERIC(16,8)` (not 12,4 which rounds per-call cost to $0), per-operation pricing dimensions, `available = limit − spent − reserved` invariant, `FOR UPDATE`, `/record` `request_id` idempotency, streaming approach, leaked-reservation sweeper.
+
+### What's NEXT for the next agent
+
+**Phase 6a — Subsystem A (USD spend guardrail)** — a fresh **XL** cycle. Per ADR §4: `spend_guardrails` + `token_reservations` tables + migration; per-model USD pricing fields on `user_models` + platform-model config; gateway USD estimator; pre-flight 402 + `max_tokens` cap in `doSubmitJob`; terminal reconciliation in `worker.go finalizeAndNotify`; wire the gateway as job biller (`/record` idempotent by `request_id`). Then **6a-β** (Subsystem B, L) and **6a-γ** (FE guardrail config, M). 6b (retry — `worker.go:348` already marks it) and 6c (tracing — **greenfield OTel, L–XL not M**) follow.
+
+ADR §6 open questions to settle at 6a CLARIFY: BYOK pricing-entry UX, per-unit estimate magnitudes (image/video/audio), window-reset policy, streaming tally cadence.
+
+**Read in this order:** 1. `SESSION_PATCH.md` (top entry). 2. `BILLING_MODEL_REDESIGN_ADR.md`. 3. `LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` §6 (rows updated). 4. This handoff.
+
+---
 
 ## Session 57 cycle 1 — Phase 5f · video-gen-service hardening · /review-impl rounds (DESIGN: 1H+3M+3L+1C; BUILD: 0H+1M+4L+2C — all fixed inline)
 
