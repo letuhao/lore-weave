@@ -81,6 +81,53 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## ⏭️ NEXT SESSION SETUP — Map-generation implementation via AMAW (tilemap-service Phase 0b → 3)
+
+> **This is the staged setup the user asked for at 2026-05-15 session end:** prepare to implement the half-finished map-generation work using AMAW. Read this section first next session.
+
+### What "map generating" is
+
+`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a is DONE** (scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`). Phases **0b → 1 → 2 → 3 are the unfinished implementation** — this is the large body of work to run.
+
+### Phase breakdown (source: `services/tilemap-service/DESIGN.md` §9)
+
+| Phase | Scope | Size | Depends on |
+|---|---|---|---|
+| **0b** | SSE parser in `loreweave_llm` + 1 hardcoded L3 zone-classifier prompt → lmstudio; measure tool-use forced-call success + token cost vs TMP_008b §12 | L | provider-registry running + lmstudio registered |
+| **1** | Engine Stage 1: Fruchterman-Reingold zone placer (TMP_002) + 1-2 modificators (TMP_003) + determinism integration test (same seed → byte-identical zones) | L (1-2 sessions) | — (algorithmic; independent of 0b) |
+| **2** | L3 zone classifier full retry loop (TMP_008b §4 structured validation + §5 per-object retry + §6 canonical-default fallback) + end-to-end small reality bootstrap | L-XL | 0b (gateway) + 1 (engine output) |
+| **3** | L4 regional narration + measurement findings doc back into TMP_008b | L | 2 |
+
+Reference docs: `TMP_001`..`TMP_008b` in `docs/03_planning/LLM_MMO_RPG/features/00_tilemap/`. The 2 architectural findings from the Phase-0a `/review-impl` (Anthropic `cache_control` gap + OpenAI-shaped `tools`) feed into Phase 0b.
+
+### ⚠️ CRITICAL — execution shape (read before scoping the batch)
+
+The user framed this as "one very large AMAW batch." **It must NOT be run as a single unattended autonomous batch.** Hard evidence from THIS session (commit `070e7f3d`, findings B1 + HIGH-1):
+- the AMAW autonomous loop **can confidently mis-clear a real correctness bug** (the #002 Adversary examined the buggy code path and wrote "Not a correctness bug");
+- error compounding makes unattended **sequential** batches unsafe — and 0b→1→2→3 IS sequential (2 depends on 0b+1; 3 on 2);
+- map-gen is **correctness-critical** (a real generation engine, determinism guarantees, LLM-contract conformance) — not low-stakes grind, the only shape proven safe for unattended batches.
+
+**Correct execution shape — AMAW per-phase, human-gated:**
+- Each phase = ONE `/amaw` task (L-size — AMAW IS the right workflow for L+ feature work; the calibration table covers L/XL).
+- **Human checkpoint between phases** — review phase N's output before phase N+1 builds on it.
+- **`/review-impl` after each phase's POST-REVIEW** for the correctness-critical parts (engine determinism in Phase 1, LLM-contract conformance in 0b/2).
+- Phase 1 (engine) is the one phase independent of 0b — it may run in either order / parallel.
+
+This honors "use AMAW for the map-gen implementation" while respecting what this session's review chain proved. If the next session's operator wants pure-autonomous anyway, that is their override to make — but the default setup is phased + gated.
+
+### Prerequisites before Phase 0b
+
+1. **provider-registry-service running** locally + **lmstudio registered** as `platform_model` (Qwen 3 14B/32B per the lmstudio provider preference). Document the registration step in `loreweave_llm/README.md` + `tilemap-service/README.md`.
+2. **free-context-hub stack up** (ContextHub MCP) — needed for the per-phase `/amaw` runs (Adversary/Scope-Guard Step-0 calls + bridge).
+3. `cargo build` clean at workspace root (`d:\Works\source\lore-weave-zone-map-design\`).
+4. `python scripts/mcp-query.py ping` → `OK`.
+
+### Recommended first action next session
+
+Start **Phase 0b** as a single `/amaw` task. It is L-size (SSE parser + prompt assembly + integration test). Pre-flight the prerequisites above. The seeded ContextHub guardrails (`git push`, force-push, migration) and the AMAW L3 wiring (bridge, AUDIT_LOG, mcp-query.py, hook chain) are all live and verified — the workflow infrastructure is ready; only the map-gen feature code is unwritten.
+
+---
+
 ## Session 2026-05-15 (continued, human review) — Human-in-loop review of the AMAW batch (M task)
 
 ### Session arc
