@@ -37,6 +37,11 @@ const (
 	StreamChunkUsage     StreamChunkKind = "usage"
 	StreamChunkDone      StreamChunkKind = "done"
 	StreamChunkError     StreamChunkKind = "error"
+	// StreamChunkToolCall — one incremental fragment of a tool call the
+	// model is emitting. Re-framed from OpenAI `delta.tool_calls[]` /
+	// Anthropic `input_json_delta` without buffering; consumers reassemble
+	// by Index. See contracts/api/llm-gateway/v1/openapi.yaml ToolCallEvent.
+	StreamChunkToolCall StreamChunkKind = "tool_call"
 )
 
 // StreamChunk is one canonical event emitted by an adapter's Stream() impl.
@@ -49,6 +54,11 @@ type StreamChunk struct {
 	// Reasoning carries thinking-model intermediate output (separate from
 	// the user-visible answer); chat consumers typically display this in a
 	// distinct UI surface.
+	//
+	// Index is ALSO reused by Kind == StreamChunkToolCall — but with
+	// different semantics: for token/reasoning it is a monotonic event
+	// counter; for tool_call it is the provider's own tool-call index (a
+	// semantic call identifier, set verbatim, never incremented here).
 	Delta string `json:"delta,omitempty"`
 	Index int    `json:"index,omitempty"`
 
@@ -63,6 +73,19 @@ type StreamChunk struct {
 	// Error fields (Kind == StreamChunkError)
 	Code    string `json:"code,omitempty"`
 	Message string `json:"message,omitempty"`
+
+	// Tool-call fields (Kind == StreamChunkToolCall). Index above carries
+	// the tool-call index. ID + ToolName appear on the FIRST fragment for
+	// an index; that first fragment may carry an empty ArgumentsDelta.
+	// All three are `omitempty` — this is the SHARED StreamChunk struct, so
+	// a non-omitempty tag would emit `arguments_delta:""` on every token /
+	// usage / done event too. omitempty does NOT lose the tool-call event:
+	// the `event:tool_call` SSE frame + ID + ToolName still serialize; only
+	// an information-free empty string is dropped. Consumers default an
+	// absent `arguments_delta` to "" — see openapi ToolCallEvent (optional).
+	ToolCallID     string `json:"id,omitempty"`
+	ToolName       string `json:"name,omitempty"`
+	ArgumentsDelta string `json:"arguments_delta,omitempty"`
 }
 
 // EmitFn is invoked by adapter Stream() implementations once per canonical
@@ -161,6 +184,18 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 				Delta struct {
 					Content          string `json:"content"`
 					ReasoningContent string `json:"reasoning_content"`
+					// OpenAI streams tool calls as incremental fragments: the
+					// first fragment for an index carries id + function.name
+					// (arguments usually ""), later fragments carry only
+					// function.arguments fragments.
+					ToolCalls []struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id"`
+						Function struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					} `json:"tool_calls"`
 				} `json:"delta"`
 				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
@@ -205,6 +240,25 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 					return err
 				}
 				tokenIdx++
+			}
+			// Tool-call fragments. Index comes verbatim from the provider
+			// (a semantic call identifier — NOT a local counter). Emit when
+			// the fragment carries id, name, OR non-empty arguments; skip a
+			// fully-empty fragment. The first fragment for an index carries
+			// id+name with empty arguments — it MUST still be emitted.
+			for _, tc := range choice.Delta.ToolCalls {
+				if tc.ID == "" && tc.Function.Name == "" && tc.Function.Arguments == "" {
+					continue
+				}
+				if err := emit(StreamChunk{
+					Kind:           StreamChunkToolCall,
+					Index:          tc.Index,
+					ToolCallID:     tc.ID,
+					ToolName:       tc.Function.Name,
+					ArgumentsDelta: tc.Function.Arguments,
+				}); err != nil {
+					return err
+				}
 			}
 			if choice.FinishReason != "" {
 				finishReason = choice.FinishReason
@@ -255,6 +309,13 @@ func openCompletionStream(
 	// Force stream:true (the entire point of this function). This OVERWRITES
 	// any caller value — we do NOT honor stream:false here.
 	body["stream"] = true
+
+	// Request a trailing usage chunk. OpenAI-compatible servers (incl. LM
+	// Studio) omit token usage from streaming responses UNLESS this is set —
+	// without it the canonical `usage` SSE event never fires for streamed
+	// chat. The streamer already handles the usage-only final chunk (empty
+	// `choices` + `usage`). OVERWRITES any caller value.
+	body["stream_options"] = map[string]any{"include_usage": true}
 
 	raw, err := json.Marshal(body)
 	if err != nil {

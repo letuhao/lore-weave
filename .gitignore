@@ -220,6 +220,10 @@ services/auth-service/tmp/
 
 .claude/settings.local.json
 
+# Local-only operator state (creds, env for the Phase 0b harness, etc.).
+# Never committed — see docs/specs/2026-05-15-tilemap-phase-0b-gateway-tooluse.md D7.
+.local/
+
 .claude/worktrees/romantic-franklin
 
 .claude/worktrees/cranky-margulis

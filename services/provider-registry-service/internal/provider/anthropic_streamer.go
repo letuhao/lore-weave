@@ -69,11 +69,17 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 				Text       string `json:"text"`
 				Thinking   string `json:"thinking"`
 				StopReason string `json:"stop_reason"`
+				// input_json_delta carries incremental tool-call argument JSON.
+				PartialJSON string `json:"partial_json"`
 			} `json:"delta"`
 			ContentBlock struct {
 				Type     string `json:"type"`
 				Text     string `json:"text"`
 				Thinking string `json:"thinking"`
+				// tool_use blocks carry the call id + tool name on the
+				// content_block_start event.
+				ID   string `json:"id"`
+				Name string `json:"name"`
 			} `json:"content_block"`
 			Message struct {
 				Usage struct {
@@ -120,9 +126,20 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			// Anthropic includes input_tokens in message_start.usage.
 			inputTokens = parsed.Message.Usage.InputTokens
 		case "content_block_start":
-			// No-op — the first delta within the block does the work.
-			// (Could capture block.type to validate text vs thinking,
-			// but the delta carries that info too.)
+			// text/thinking blocks: no-op — the first delta does the work.
+			// tool_use blocks: the start event is the ONLY carrier of the
+			// call id + tool name, so emit the first tool_call fragment here
+			// (empty arguments — input_json_delta fragments follow).
+			if parsed.ContentBlock.Type == "tool_use" {
+				if err := emit(StreamChunk{
+					Kind:       StreamChunkToolCall,
+					Index:      parsed.Index,
+					ToolCallID: parsed.ContentBlock.ID,
+					ToolName:   parsed.ContentBlock.Name,
+				}); err != nil {
+					return err
+				}
+			}
 		case "content_block_delta":
 			switch parsed.Delta.Type {
 			case "text_delta":
@@ -149,10 +166,19 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 					return err
 				}
 				reasoningIdx++
+			case "input_json_delta":
+				// Incremental tool-call argument JSON. Index is the
+				// content-block index from content_block_start (verbatim,
+				// never a local counter).
+				if err := emit(StreamChunk{
+					Kind:           StreamChunkToolCall,
+					Index:          parsed.Index,
+					ArgumentsDelta: parsed.Delta.PartialJSON,
+				}); err != nil {
+					return err
+				}
 			default:
-				// Unknown delta type — ignore. Anthropic adds new types
-				// (input_json_delta for tool use, etc.) which a future
-				// follow-up cycle can map.
+				// Unknown delta type — ignore (forward-compat).
 			}
 		case "content_block_stop":
 			// No-op. Inner blocks just close.

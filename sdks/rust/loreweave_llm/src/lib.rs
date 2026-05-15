@@ -17,14 +17,15 @@
 //! selects a model registered in provider-registry-service, and the gateway
 //! routes to the underlying provider.
 //!
-//! # Phase 0a status (this version)
+//! # Phase 0b status (this version)
 //!
-//! - ✅ Wire-type mirrors of `ChatStreamRequest` + `StreamEvent` envelope
+//! - ✅ Wire-type mirrors of `ChatStreamRequest` (incl. `tool_choice`) +
+//!   `StreamEvent` envelope (incl. the `tool_call` event)
 //! - ✅ [`GatewayClient`] with `from_env()` (fails fast on missing token)
 //! - ✅ Correct `X-Internal-Token` header + required `user_id` query param
-//! - ✅ 17 wire-format conformance tests against canonical openapi shapes
-//! - ⏸ [`GatewayClient::stream`] returns [`LlmError::NotImplementedPhase0a`] —
-//!   SSE parsing loop lands at Phase 0b
+//! - ✅ [`GatewayClient::stream`] — real SSE parsing loop
+//! - ✅ [`ToolCallAccumulator`] — reassembles streamed `tool_call` fragments
+//! - ✅ wire-format + mock-gateway conformance tests
 //!
 //! [`contracts/api/llm-gateway/v1/openapi.yaml`]: ../../../../contracts/api/llm-gateway/v1/openapi.yaml
 
@@ -34,6 +35,8 @@
 pub mod client;
 pub mod errors;
 pub mod models;
+mod sse;
+pub mod tool;
 
 pub use client::{GatewayClient, StreamHandle};
 pub use errors::LlmError;
@@ -41,3 +44,4 @@ pub use models::{
     ChatStreamRequest, FinishReason, GATEWAY_BASE_URL_DEFAULT, INTERNAL_STREAM_PATH, ModelSource,
     Operation, PUBLIC_STREAM_PATH, StreamEvent, StreamFormat, TEMPERATURE_MAX, TEMPERATURE_MIN,
 };
+pub use tool::{CompletedToolCall, ToolCallAccumulator};

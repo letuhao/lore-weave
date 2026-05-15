@@ -696,6 +696,37 @@ Per typical reality (85 tilemaps):
 
 Still bounded + acceptable; the original claim was a factor of ~2.7× off but doesn't change the V2 economics fundamentally. Author + player can opt-in.
 
+### §12.8 Phase 0b empirical findings (2026-05-15, tilemap-service PoC)
+
+The `tilemap-service classify` measurement harness ran the L3 contract against
+**live lmstudio (qwen/qwen3-14b)** through the LoreWeave LLM gateway. Findings:
+
+1. **Tool-use through the gateway works end-to-end** — but required a gateway
+   contract extension first: `tool_choice` was not a `ChatStreamRequest` field
+   and the canonical SSE envelope had no tool-call event, so forced tool-use
+   was untransmittable. Phase 0b added `tool_choice` + a streaming `tool_call`
+   event (re-framed from OpenAI `delta.tool_calls[]` / Anthropic
+   `input_json_delta`). See `docs/specs/2026-05-15-tilemap-phase-0b-gateway-tooluse.md`.
+2. **§3.2's object-form `tool_choice` is NOT portable to LM Studio.** LM Studio's
+   OpenAI-compatible API rejects `{"type":"function","function":{"name":...}}`
+   with `400 Invalid tool_choice type: 'object'` — it supports only the strings
+   `none` / `auto` / `required`. **Contract correction:** for the LM Studio path
+   §3.2's "force a specific tool" must degrade to `tool_choice:"required"` with
+   a **single-tool `tools` array** (one tool ⇒ `required` forces it). The
+   object form is OpenAI/Anthropic-only. The harness uses `"required"`.
+3. **Streaming token usage needs `stream_options.include_usage`.** OpenAI-compat
+   servers (incl. LM Studio) omit token counts from streamed responses unless
+   this is set — the gateway now sets it so the `usage` SSE event fires.
+4. **Measured cost** — 3-object single-zone fixture, qwen3-14b: **input ≈ 890,
+   output ≈ 215 tokens, ~64 s wall**. Not directly comparable to §12.3's
+   35-object continent estimate (different scale, no reality-context block in
+   the PoC), but the measurement path is proven; a full-scale measurement on a
+   real continent fixture is the next data point.
+5. **Validation clean on first attempt** — qwen3-14b produced a fully §4.1
+   R1-R5-valid classification (every object classified, `canon_kind` in the
+   suggested set, snake_case tags, valid `canon_ref`) with **no retry needed**.
+   Encouraging for the §5 retry budget, though n=1.
+
 ---
 
 ## §13 LLM-friendliness summary scorecard

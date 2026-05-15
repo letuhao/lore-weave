@@ -32,6 +32,9 @@ pub enum LlmError {
     #[error("invalid gateway URL: {0}")]
     InvalidUrl(String),
 
-    #[error("not implemented yet — Phase 0b: {0}")]
-    NotImplementedPhase0a(&'static str),
+    /// The gateway returned a non-2xx HTTP status before the SSE stream
+    /// opened (e.g. `400 LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER`, `404`,
+    /// `401`). `body` is the raw error-envelope JSON for diagnosis.
+    #[error("gateway returned HTTP {status}: {body}")]
+    GatewayHttpStatus { status: u16, body: String },
 }

@@ -49,6 +49,7 @@ from loreweave_llm.models import (
     StreamEvent,
     StreamRequest,
     TokenEvent,
+    ToolCallEvent,
     TtsInput,
     TtsStreamRequest,
     UsageEvent,
@@ -64,6 +65,8 @@ __all__ = [
     "UsageEvent",
     "DoneEvent",
     "ErrorEvent",
+    # Phase 0b tool-use model
+    "ToolCallEvent",
     # Phase 5a audio models
     "AudioChunkEvent",
     "AudioFormat",

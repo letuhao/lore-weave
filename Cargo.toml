@@ -49,6 +49,9 @@ uuid = { version = "1.10", features = ["serde", "v4"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# HTTP mock server for offline SSE-parser / gateway integration tests (dev-only)
+wiremock = "0.6"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

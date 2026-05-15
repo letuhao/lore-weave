@@ -30,3 +30,8 @@ anyhow = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+# Offline mock gateway for the L3 harness measurement test.
+wiremock = { workspace = true }
+tokio = { workspace = true }

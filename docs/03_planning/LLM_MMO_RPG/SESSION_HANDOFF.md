@@ -87,13 +87,13 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ### What "map generating" is
 
-`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a is DONE** (scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`). Phases **0b → 1 → 2 → 3 are the unfinished implementation** — this is the large body of work to run.
+`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a + 0b are DONE** (0a: scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`; 0b: gateway tool-use contract + SSE parser + L3 harness — 2026-05-15, branch `mmo-rpg/zone-map-amaw`). Phases **1 → 2 → 3 remain**.
 
 ### Phase breakdown (source: `services/tilemap-service/DESIGN.md` §9)
 
 | Phase | Scope | Size | Depends on |
 |---|---|---|---|
-| **0b** | SSE parser in `loreweave_llm` + 1 hardcoded L3 zone-classifier prompt → lmstudio; measure tool-use forced-call success + token cost vs TMP_008b §12 | L | provider-registry running + lmstudio registered |
+| ~~**0b**~~ ✅ DONE | SSE parser in `loreweave_llm` + L3 zone-classifier harness → lmstudio. **Reclassified L→XL**: required extending the gateway contract (`tool_choice` + `tool_call` SSE event) across openapi + Go gateway + both SDKs. Live run: tool-use YES, 3/3 classified, R1-R5 clean. | XL (done) | — |
 | **1** | Engine Stage 1: Fruchterman-Reingold zone placer (TMP_002) + 1-2 modificators (TMP_003) + determinism integration test (same seed → byte-identical zones) | L (1-2 sessions) | — (algorithmic; independent of 0b) |
 | **2** | L3 zone classifier full retry loop (TMP_008b §4 structured validation + §5 per-object retry + §6 canonical-default fallback) + end-to-end small reality bootstrap | L-XL | 0b (gateway) + 1 (engine output) |
 | **3** | L4 regional narration + measurement findings doc back into TMP_008b | L | 2 |
@@ -124,7 +124,74 @@ This honors "use AMAW for the map-gen implementation" while respecting what this
 
 ### Recommended first action next session
 
-Start **Phase 0b** as a single `/amaw` task. It is L-size (SSE parser + prompt assembly + integration test). Pre-flight the prerequisites above. The seeded ContextHub guardrails (`git push`, force-push, migration) and the AMAW L3 wiring (bridge, AUDIT_LOG, mcp-query.py, hook chain) are all live and verified — the workflow infrastructure is ready; only the map-gen feature code is unwritten.
+Phase 0b is DONE (see the 2026-05-15 Phase 0b session entry below). **Next: Phase 1** —
+the Fruchterman-Reingold zone placer + modificators + determinism integration test.
+Phase 1 is purely algorithmic and **independent of 0b** (no gateway/LLM dependency) —
+a clean L-size `/amaw` task. Phase 2 (full L3 retry loop) depends on both 0b (done)
+and 1, so Phase 1 unblocks the rest. Pre-flight: `cargo build` clean at workspace
+root; ContextHub up for `/amaw`. The infra `infra` compose stack and the gitignored
+`.local/phase0b.env` creds are already set up if a live re-run is needed.
+
+---
+
+## Session 2026-05-15 (continued) — Phase 0b: gateway tool-use contract + SSE parser + L3 harness (XL `/amaw`)
+
+### Session arc
+
+Ran tilemap-service **Phase 0b** as a single `/amaw` task (the map-gen implementation
+the handoff staged). Branch `mmo-rpg/zone-map-amaw` (cut from `mmo-rpg/zone-map-design-non-human-in-loop`).
+
+CLARIFY found Phase 0b was **larger than the handoff's L estimate**: the LLM gateway
+could not transmit tool-use at all — `ChatStreamRequest` had no `tool_choice` field and
+the canonical SSE envelope had no tool-call event, and both Go streamers dropped
+provider tool-call deltas on the floor. The user chose to **extend the gateway contract
+first** and run it as **one XL `/amaw` batch**. Reclassified XS→XL; spec + plan written.
+
+### What shipped (37 files: 25 modified + 12 new)
+
+| Layer | Change |
+|---|---|
+| **openapi** | `tool_choice` on `ChatStreamRequest`; new streaming `ToolCallEvent` (schema + oneOf + discriminator.mapping) |
+| **Go gateway** (`provider-registry-service`) | `streamOpenAICompat` + `streamAnthropicSSE` re-frame tool-call deltas → `tool_call` events; `Adapter.SupportsTools()`; `tools`/`tool_choice` pass-through added to lmStudio/ollama `Stream` (only openai had it); D8 guard `400 LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER`; `stream_options.include_usage` |
+| **Rust SDK** (`loreweave_llm`) | new `sse.rs` `SseDecoder` (pure, unit-tested); real `GatewayClient::stream()`; new `tool.rs` `ToolCallAccumulator`; `tool_choice`; `StreamEvent::ToolCall`; **bug fix** — streaming client must not set a total request `.timeout()` (aborts long thinking-model streams) → `.read_timeout` |
+| **Python SDK** (`loreweave_llm`) | `ToolCallEvent` + `tool_choice` mirror |
+| **tilemap-service** | `harness/` module — L3 zone-classifier prompt (TMP_008b §3 tool, §9 few-shot) + R1-R5 validators + measurement report; `classify` CLI subcommand |
+
+### Live measurement (the Phase 0b deliverable)
+
+`tilemap-service classify` ran against **live lmstudio (qwen/qwen3-14b)** through the
+gateway: **tool-use forced-call SUCCESS** — 3/3 fixture objects classified, TMP_008b
+§4.1 R1-R5 validation clean on first attempt, ~890 input / ~210 output tokens, ~64 s.
+Findings written into **TMP_008b §12.8** + **tilemap-service/DESIGN.md §8.1**:
+1. LM Studio rejects object-form `tool_choice` — only `none`/`auto`/`required`;
+   force-specific-tool degrades to `"required"` + single-tool array.
+2. Streaming token usage needs `stream_options.include_usage` (now set by the gateway).
+3. SDK total-`.timeout()` bug on streaming — fixed.
+
+### Workflow — AMAW XL, 12 phases
+
+Design REVIEW: Adversary **4 rounds** — r1-r3 each REJECTED with real BLOCKs (empty-args
+first-fragment, `tool_choice` silent-drop hole, a factual error about adapter
+uniformity), r4 APPROVED_WITH_WARNINGS. Code REVIEW: Adversary 1 round
+APPROVED_WITH_WARNINGS (3 WARN — SSE buffer cap, D8 empty-array guard, harness
+multi-call caveat — all fixed). Scope Guard POST-REVIEW: **CLEAR** (6 AC covered, AC-7
+PARTIAL spec-sanctioned, 15/15 findings resolved). `/review-impl`: 1 MED (SSE
+post-error event leak) + 1 LOW + 1 COSMETIC — all fixed. Tests: loreweave_llm 47,
+tilemap-service 17, Go all packages, Python 20 — green; clippy clean.
+
+### Handoff notes for next session
+
+**Active blocker:** none. **Phase 0b complete.**
+
+**New DEFERRED:** #009 (D8 handler-level reject test → integration suite, LOW),
+#010 (Anthropic request-side tool support → when needed, MED). Cleared: #005 (the
+`/amaw` sub-agent `mcp-query.py` permission path — 6 spawns clean this run).
+
+**Next:** Phase 1 — Fruchterman-Reingold zone placer (algorithmic, independent of 0b).
+
+**Infra left running:** `infra` compose (postgres + provider-registry + usage-billing
++ rabbitmq); gitignored `.local/phase0b.env` holds the harness creds (qwen3-14b
+`model_ref`, internal token, gateway URL) for any live re-run.
 
 ---
 

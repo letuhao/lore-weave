@@ -274,3 +274,106 @@ fn stream_format_default_is_openai() {
     let fmt: StreamFormat = Default::default();
     assert!(matches!(fmt, StreamFormat::Openai));
 }
+
+// ─── ToolCallEvent (Phase 0b) ─────────────────────────────────────────
+
+#[test]
+fn stream_event_deserialises_tool_call_first_fragment() {
+    // First fragment for an index: carries id + name, empty arguments.
+    let wire = json!({
+        "event": "tool_call",
+        "index": 0,
+        "id": "call_abc",
+        "name": "submit_zone_classifications",
+        "arguments_delta": ""
+    });
+    let parsed: StreamEvent = serde_json::from_value(wire).expect("tool_call deserialises");
+    match parsed {
+        StreamEvent::ToolCall {
+            index,
+            id,
+            name,
+            arguments_delta,
+        } => {
+            assert_eq!(index, 0);
+            assert_eq!(id.as_deref(), Some("call_abc"));
+            assert_eq!(name.as_deref(), Some("submit_zone_classifications"));
+            assert_eq!(arguments_delta, "");
+        }
+        other => panic!("expected ToolCall, got {other:?}"),
+    }
+}
+
+#[test]
+fn stream_event_deserialises_tool_call_absent_index_and_args_default() {
+    // Gateway omits `index` when 0 and `arguments_delta` when empty
+    // (shared-struct omitempty) — consumers must default both.
+    let wire = json!({"event": "tool_call", "id": "call_x", "name": "t"});
+    let parsed: StreamEvent = serde_json::from_value(wire).expect("sparse tool_call deserialises");
+    match parsed {
+        StreamEvent::ToolCall {
+            index,
+            arguments_delta,
+            ..
+        } => {
+            assert_eq!(index, 0, "absent index defaults to 0");
+            assert_eq!(arguments_delta, "", "absent arguments_delta defaults to \"\"");
+        }
+        other => panic!("expected ToolCall, got {other:?}"),
+    }
+}
+
+#[test]
+fn stream_event_deserialises_tool_call_arguments_fragment() {
+    // A later fragment carries only an arguments_delta slice and the index.
+    let wire = json!({"event": "tool_call", "index": 1, "arguments_delta": "{\"a\":1}"});
+    let parsed: StreamEvent = serde_json::from_value(wire).expect("arg fragment deserialises");
+    match parsed {
+        StreamEvent::ToolCall {
+            index,
+            id,
+            name,
+            arguments_delta,
+        } => {
+            assert_eq!(index, 1);
+            assert_eq!(id, None);
+            assert_eq!(name, None);
+            assert_eq!(arguments_delta, r#"{"a":1}"#);
+        }
+        other => panic!("expected ToolCall, got {other:?}"),
+    }
+}
+
+#[test]
+fn chat_stream_request_serialises_tool_choice() {
+    let req = ChatStreamRequest::new_chat_with_tools(
+        ModelSource::PlatformModel,
+        Uuid::nil(),
+        vec![],
+        vec![json!({"type": "function", "function": {"name": "submit_zone_classifications"}})],
+        StreamFormat::Openai,
+    )
+    .with_tool_choice(json!({"type": "function", "function": {"name": "submit_zone_classifications"}}));
+    let v: serde_json::Value = serde_json::to_value(&req).expect("serialises");
+    assert_eq!(v["tool_choice"]["type"], "function");
+    assert_eq!(
+        v["tool_choice"]["function"]["name"],
+        "submit_zone_classifications"
+    );
+}
+
+#[test]
+fn chat_stream_request_omits_tool_choice_when_unset() {
+    let req = ChatStreamRequest::new_chat_with_tools(
+        ModelSource::PlatformModel,
+        Uuid::nil(),
+        vec![],
+        vec![],
+        StreamFormat::Openai,
+    );
+    let v: serde_json::Value = serde_json::to_value(&req).expect("serialises");
+    assert!(
+        v.get("tool_choice").is_none(),
+        "tool_choice skip-when-none — must NOT appear"
+    );
+}

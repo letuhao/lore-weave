@@ -47,6 +47,7 @@ from loreweave_llm.models import (
     SubmitJobRequest,
     SubmitJobResponse,
     TokenEvent,
+    ToolCallEvent,
     TtsInput,
     TtsStreamRequest,
     UsageEvent,
@@ -560,6 +561,9 @@ class Client:
         if kind == "audio-chunk":
             # Phase 5a — TTS streamed audio frame.
             return AudioChunkEvent.model_validate(parsed)
+        if kind == "tool_call":
+            # Phase 0b — tool-call argument fragment.
+            return ToolCallEvent.model_validate(parsed)
         raise LLMDecodeError(f"unknown SSE event kind: {kind!r}")
 
     async def _raise_http_error(self, resp: httpx.Response) -> None:

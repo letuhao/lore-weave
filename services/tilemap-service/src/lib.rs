@@ -19,6 +19,7 @@
 #![warn(rust_2018_idioms)]
 
 pub mod error;
+pub mod harness;
 pub mod seed;
 pub mod types;
 

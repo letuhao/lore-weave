@@ -297,6 +297,28 @@ Acknowledged upfront — documented in `README.md` user-facing:
 
 ---
 
+### 8.1 Phase 0b resolution (2026-05-15)
+
+The two `/review-impl` architectural findings above are now addressed:
+
+- **Item 7 (OpenAI-shaped tools / `tool_choice` not transmittable) — RESOLVED.**
+  Phase 0b extended the gateway contract: `tool_choice` is now a
+  `ChatStreamRequest` field and the canonical SSE envelope gained a streaming
+  `tool_call` event (the gateway re-frames OpenAI `delta.tool_calls[]` /
+  Anthropic `input_json_delta`). `tilemap-service classify` proved the path
+  end-to-end against live lmstudio. Spec: `docs/specs/2026-05-15-tilemap-phase-0b-gateway-tooluse.md`.
+- **New finding — LM Studio `tool_choice` is string-only.** LM Studio rejects
+  the OpenAI object form `{"type":"function",...}`; only `none`/`auto`/`required`.
+  TMP_008b §3.2's "force a specific tool" degrades to `"required"` + a
+  single-tool array for the lmstudio path. Recorded in TMP_008b §12.8.
+- **New finding — streaming usage needs `stream_options.include_usage`** (now
+  set by the gateway) — without it OpenAI-compat providers omit token counts.
+- **SDK fix — `loreweave_llm` streaming client must NOT set a total request
+  `.timeout()`** (it aborts a healthy long stream); it uses `.read_timeout`
+  (per-read idle) instead.
+- **Item 6 (Anthropic `cache_control`) — still open**: the gateway exposes no
+  provider-specific cache knob; unchanged by Phase 0b.
+
 ## 9. Phase 0a → 0b roadmap
 
 | Phase | Scope | Estimated session count |

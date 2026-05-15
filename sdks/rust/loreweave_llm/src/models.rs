@@ -87,6 +87,14 @@ pub struct ChatStreamRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<serde_json::Value>>,
 
+    /// OpenAI-shaped tool-choice control — the string `"auto"` / `"none"` /
+    /// `"required"`, or an object `{"type":"function","function":{"name":...}}`
+    /// to force a specific tool. Honored only by providers that support tools
+    /// (the gateway rejects a request setting this for a non-supporting
+    /// provider with `400 LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<serde_json::Value>,
+
     /// 0.0..=2.0 per openapi `temperature` schema (minimum: 0, maximum: 2).
     /// Use [`ChatStreamRequest::normalize`] to clamp out-of-range values.
     #[serde(default)]
@@ -102,6 +110,13 @@ pub struct ChatStreamRequest {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_id: Option<String>,
+}
+
+/// serde `skip_serializing_if` predicate — omit a `u32` field when it is 0,
+/// mirroring the Go gateway's `omitempty` so the tool-call `index` round-trips
+/// symmetrically across the Go / Rust / Python SDKs.
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// Lowest valid `temperature` per openapi schema.
@@ -127,11 +142,20 @@ impl ChatStreamRequest {
             model_ref,
             messages,
             tools: Some(tools),
+            tool_choice: None,
             temperature: 0.0,
             max_tokens: None,
             stream_format,
             trace_id: None,
         }
+    }
+
+    /// Set the OpenAI-shaped `tool_choice` (builder style). Pass e.g.
+    /// `serde_json::json!({"type":"function","function":{"name":"..."}})`
+    /// to force a specific tool call.
+    pub fn with_tool_choice(mut self, tool_choice: serde_json::Value) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
     }
 
     /// Apply gateway-SDK conventions before sending: clamp temperature into
@@ -199,6 +223,28 @@ pub enum StreamEvent {
     Error {
         code: String,
         message: String,
+    },
+    /// One incremental fragment of a tool call the model is emitting,
+    /// re-framed from OpenAI `delta.tool_calls[]` / Anthropic
+    /// `input_json_delta`. Reassemble by `index` — see
+    /// [`crate::tool::ToolCallAccumulator`]. The first fragment for an index
+    /// carries `id` + `name`; later fragments carry only `arguments_delta`.
+    /// There is no per-index terminal marker — completion is the `Done` event.
+    ToolCall {
+        /// Which tool call within the turn (0-based) — a semantic call
+        /// identifier, NOT a monotonic counter. Absent on the wire ⇒ `0`.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        index: u32,
+        /// Provider tool-call id — present on the first fragment for this index.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        /// Tool/function name — present on the first fragment for this index.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        /// Incremental tool-call arguments JSON fragment. Absent on the wire
+        /// ⇒ `""` — the gateway omits an empty value (shared-struct `omitempty`).
+        #[serde(default)]
+        arguments_delta: String,
     },
     /// Phase 5a TTS event — included so the discriminator union covers every
     /// variant the gateway might emit; chat-only consumers will treat its
