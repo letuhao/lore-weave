@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -113,7 +114,33 @@ def load_state() -> dict:
 
 
 def save_state(state: dict) -> None:
-    STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    # Atomic write (DEFERRED #003): serialize to a temp file, then
+    # Path.replace() for an atomic rename. Protects against PROCESS-crash
+    # (Ctrl+C, exception, kill): STATE_FILE always holds either the complete
+    # old state or the complete new state — a half-written file can only ever
+    # be the .tmp, never STATE_FILE itself.
+    #
+    # The tmp is derived from STATE_FILE via with_name(), so the two always
+    # share a parent directory — hence the same filesystem, the precondition
+    # os.replace needs (cross-device rename raises EXDEV).
+    #
+    # The .{pid}. infix makes the tmp unique per process: two concurrent
+    # workflow-gate.py invocations get distinct tmp files and cannot interleave
+    # each other's bytes (Adversary r1 finding 1).
+    #
+    # NOT covered: power-loss durability — write_text does not fsync, so an
+    # OS-buffered tmp whose rename is durable but contents are not could
+    # survive a power cut as a partial STATE_FILE. Out of scope for a local
+    # dev-tool state file; process-crash safety is the design target.
+    tmp = STATE_FILE.with_name(f"{STATE_FILE.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        tmp.replace(STATE_FILE)
+    finally:
+        # Clean our own tmp if replace() never ran (e.g. write failed, or
+        # replace raised PermissionError on a Windows-locked dest).
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
 
 
 def phase_index(name: str) -> int:
@@ -498,7 +525,17 @@ def cmd_status(_args: list[str]) -> None:
 def cmd_reset(_args: list[str]) -> None:
     if STATE_FILE.exists():
         STATE_FILE.unlink()
-    print("OK: Workflow state reset. Ready for new task.")
+    # Sweep stale save_state tmp files (e.g. `.workflow-state.json.1234.tmp`)
+    # left by a process killed between write and replace (Adversary r1 finding 3).
+    swept = 0
+    parent = STATE_FILE.parent if str(STATE_FILE.parent) else Path(".")
+    for stale in parent.glob(f"{STATE_FILE.name}.*.tmp"):
+        stale.unlink(missing_ok=True)
+        swept += 1
+    msg = "OK: Workflow state reset. Ready for new task."
+    if swept:
+        msg += f" (swept {swept} stale tmp file{'s' if swept != 1 else ''})"
+    print(msg)
 
 
 # ── Main ─────────────────────────────────────────────────────────────

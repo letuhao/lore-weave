@@ -234,6 +234,7 @@ frontend/nul
 
 infra/test-data/
 .workflow-state.json
+.workflow-state.json.*.tmp
 
 tests/test_data/
 

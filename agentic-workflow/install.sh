@@ -108,15 +108,17 @@ if [[ -f "$TARGET/.gitignore" ]]; then
     echo "" >> "$TARGET/.gitignore"
     echo "# Workflow state (per-session, not committed)" >> "$TARGET/.gitignore"
     echo ".workflow-state.json" >> "$TARGET/.gitignore"
+    echo ".workflow-state.json.*.tmp" >> "$TARGET/.gitignore"
     echo "" >> "$TARGET/.gitignore"
     echo "# Deprecated per-phase gate files (AMAW v1.0 → v1.1 uses AUDIT_LOG.jsonl instead)" >> "$TARGET/.gitignore"
     echo ".phase-gates/" >> "$TARGET/.gitignore"
-    echo "[x] Added .workflow-state.json + .phase-gates/ to .gitignore"
+    echo "[x] Added .workflow-state.json (+ .tmp) + .phase-gates/ to .gitignore"
   fi
 else
   cat > "$TARGET/.gitignore" <<'EOF'
 # Workflow state (per-session, not committed)
 .workflow-state.json
+.workflow-state.json.*.tmp
 
 # Deprecated per-phase gate files (AMAW v1.0 → v1.1 uses AUDIT_LOG.jsonl instead)
 .phase-gates/
