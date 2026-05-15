@@ -22,7 +22,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 STATE_FILE = Path(".workflow-state.json")
@@ -75,7 +75,35 @@ def _log_audit(event: dict) -> None:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 
-def _had_rejected_review(task_slug: str, phase: str) -> bool:
+def _parse_ts(raw) -> datetime | None:
+    """Parse an ISO-8601 timestamp to a timezone-AWARE UTC datetime.
+
+    /review-impl HIGH-1: AUDIT_LOG timestamps are heterogeneous — the main
+    agent writes naive local time (`datetime.now().isoformat()`), while the
+    Adversary/Scope-Guard sub-agents (separate LLM agents) emit a mix of naive,
+    `+offset`, and `Z` forms. Lexical string comparison of those is wrong: a
+    UTC `Z` timestamp on a UTC+7 machine sorts BEFORE the naive local string
+    of the same instant. Compare parsed datetimes, never raw strings.
+
+    Naive input is assumed local (correct for `amaw_enabled_at` and for naive
+    sub-agent timestamps written against the same wall clock). Unparseable
+    input returns None — the caller decides how to treat it.
+    """
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.astimezone()  # naive → assume local tz
+    return dt.astimezone(timezone.utc)
+
+
+def _had_rejected_review(task_slug: str, phase: str, since: str | None = None) -> bool:
     """True if an adversary review event for this task AND this phase logged
     status REJECTED (DEFERRED #002).
 
@@ -91,6 +119,19 @@ def _had_rejected_review(task_slug: str, phase: str) -> bool:
     must NOT cause `complete review-code` to file a lesson mislabeled
     "...review-code". Each review phase reports its own rejections.
 
+    `since` scopes the scan to the CURRENT run (human-review finding A1):
+    AUDIT_LOG.jsonl is ONE append-only file shared by every task ever run.
+    Matching on task slug alone means a slug REUSED in a later sprint would
+    inherit an earlier sprint's REJECTED verdict and mis-fire an
+    adversary-rejection lesson. Passing the run's `amaw_enabled_at` as `since`
+    excludes events from prior runs. Timestamps are compared as PARSED
+    datetimes via `_parse_ts`, never as raw strings — /review-impl HIGH-1
+    found that lexical compare of mixed naive/`Z`/`+offset` forms silently
+    excludes genuine in-run events on non-UTC machines. An event whose `ts`
+    is missing or unparseable is excluded (consistent with A1's conservative
+    anti-false-positive intent). If `since` is None the scan is unscoped
+    (legacy behaviour).
+
     Note (Adversary r1 WARN-3): this re-parses the whole append-only
     AUDIT_LOG.jsonl per bridge call. Accepted — bridge calls happen only on
     review-phase completion (rare), and the log is per-repo small. Correctness
@@ -100,6 +141,7 @@ def _had_rejected_review(task_slug: str, phase: str) -> bool:
     """
     if not AUDIT_LOG.exists():
         return False
+    since_dt = _parse_ts(since) if since else None
     for line in AUDIT_LOG.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
@@ -108,6 +150,10 @@ def _had_rejected_review(task_slug: str, phase: str) -> bool:
             ev = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if since_dt is not None:
+            ev_dt = _parse_ts(ev.get("ts"))
+            if ev_dt is None or ev_dt < since_dt:
+                continue  # event predates this run (or unparseable) — A1 cross-run guard
         if (ev.get("task") == task_slug
                 and ev.get("action") == "review"
                 and ev.get("phase") == phase
@@ -344,7 +390,7 @@ def cmd_complete(args: list[str]) -> None:
                 content=f"Phase: retro\nCompleted: {completed_at}\nEvidence: {evidence}",
                 tags=["amaw", "sprint", task_slug],
             )
-        elif phase in ("review-design", "review-code") and _had_rejected_review(task_slug, phase):
+        elif phase in ("review-design", "review-code") and _had_rejected_review(task_slug, phase, state.get("amaw_enabled_at")):
             _bridge_to_contexthub(
                 lesson_type="general_note",
                 title=f"Adversary REJECTED: {task_slug} {phase}",
@@ -377,6 +423,10 @@ def _normalize_slug(raw: str) -> str:
     # non-string `task` (int, null); str() keeps this total instead of raising
     # AttributeError deep in the bridge path.
     slug = re.sub(r"[^a-z0-9]+", "-", str(raw).lower()).strip("-")
+    # 64-char cap (human-review finding A2): the slug becomes a ContextHub tag
+    # and a lesson title; a pathologically long task name should not produce an
+    # unbounded tag. Re-strip in case the cut landed mid-dash.
+    slug = slug[:64].strip("-")
     return slug or "unnamed-task"
 
 

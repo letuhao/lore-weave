@@ -81,6 +81,66 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-15 (continued, human review) — Human-in-loop review of the AMAW batch (M task)
+
+### Session arc
+
+After the autonomous AMAW batch landed (5 commits, HEAD `7db6e259`), user asked for a **human-in-loop review** (default v2.2 12-phase, no `/amaw`) of the batch — the "human review afterward" the autonomous-batch pattern was premised on. Scope: 3 code commits #001/#002/#004. Depth: 2-layer — (A) code correctness, (B) AMAW process audit. Findings: fix all.
+
+### Findings — 5 across 3 review layers
+
+| ID | Layer | Sev | Finding | Disposition |
+|---|---|---|---|---|
+| A1 | code (#002) | MED | `_had_rejected_review` matched task slug across the *whole* append-only AUDIT_LOG → a slug reused in a later sprint inherits the earlier sprint's REJECTED → mis-fired adversary-rejection lesson | Fixed — `since`-scoping to the run |
+| A2 | code (#001) | LOW | `_normalize_slug` had no length cap | Fixed — 64-char cap |
+| B1 | AMAW process | — | The #002 Adversary's WARN-3 examined `_had_rejected_review`'s whole-log scan, noted it "grows across every AMAW task forever", then concluded **"Not a correctness bug"** — a confident false-negative. The #002 Scope Guard's logic-trace also passed over it. Both AMAW agents had bug A1 in view and cleared it. | Recorded (lesson) |
+| HIGH-1 | **own A1 fix** | HIGH | `/review-impl` found the A1 fix's `since` filter did **lexical string compare** of heterogeneous timestamps. Live AUDIT_LOG has 5 ts formats (naive / `Z` / `+07:00` / `+00:00`); machine is UTC+7, `amaw_enabled_at` is naive-local → an Adversary event written in UTC-`Z` sorts lexically *before* the naive-local `since` → genuine in-run REJECTED silently excluded → rejection lesson lost. The POST-REVIEW self-review had said "since-filter safe" — author-blindness. | Fixed — `_parse_ts` → compare aware-UTC datetimes |
+| MED-2 | test | MED | The A1 VERIFY used uniform naive timestamps (happy path) — could not have caught HIGH-1 | Closed — VERIFY now mixed-format (Z/+offset/naive) |
+| LOW-3 | code | LOW | `amaw_enabled_at` None → `since=None` → silent fallback to pre-A1 unscoped behaviour | Accepted + documented in docstring |
+| LOW-4 | code (#002) | LOW | `_had_rejected_review` depends on the Adversary writing `action/phase/status` exactly — unvalidated. Adjacent, pre-existing #002 surface, not introduced by A1/A2 | Deferred |
+
+### The headline result — multi-layer review chain
+
+Each review layer caught the previous layer's miss:
+1. **AMAW Adversary** (autonomous) caught a real BLOCK in the batch — but **confidently mis-cleared A1**.
+2. **Human review** caught A1 — but the human's *fix for A1* itself had HIGH-1, and the human's POST-REVIEW self-review confidently called it "safe".
+3. **`/review-impl`** caught HIGH-1, confirmed it with evidence from the live AUDIT_LOG (5 timestamp formats observed).
+
+**No single review layer was sufficient.** Hard data for the strategic question: an autonomous AMAW batch needs at least one independent review layer behind it for correctness-critical code — and even human review needs `/review-impl` as a separate mental mode, because author-blindness is real (it bit this very session).
+
+### Files changed (2)
+
+`agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — A1 `since`-scoping, `_parse_ts` helper (HIGH-1), A2 64-char cap.
+
+### Verify evidence
+
+5-case mixed-format test on the UTC+7 machine: UTC-`Z` / `+07:00` / naive in-run rejections → detected; prior-run UTC + unparseable → excluded. A1 cross-run guard holds; HIGH-1 timezone false-negative closed. Mirror byte-identical, syntax OK.
+
+### Workflow
+
+M, default v2.2 (human-in-loop). 12 phases; `/review-impl` invoked at POST-REVIEW, found HIGH-1, looped back through VERIFY→REVIEW→QC. AMAW NOT used (user explicitly wanted human participation).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**AMAW trust verdict (updated by this review):** the autonomous loop is usable for low-stakes independent grind batches, but it **can confidently clear a real correctness bug** (B1). For correctness-critical code, an independent review layer afterward is mandatory — and `/review-impl` should be run even after human review.
+
+**Open DEFERRED:** #007 (slug normalize write-path), #008 (load_state no try/except), LOW-4 (Adversary event contract unvalidated — not yet filed; file if it recurs).
+
+**Next session agenda:**
+1. Phase 0b SSE parser — real L-size feature, sequential shape → human-in-loop or single `/amaw`, NOT autonomous batch.
+2. Branch merge cadence decision still open.
+
+### Raw count
+
+- **Commits this entry:** 1 pending
+- **Files modified:** 2 (workflow-gate.py ×2 mirror)
+- **Findings:** 5 (1 HIGH, 2 MED, 2 LOW + 1 process) — all fixed, accepted, or deferred
+- **Tests:** 5-case mixed-format VERIFY pass
+
+---
+
 ## Session 2026-05-15 (continued, autonomous batch) — AMAW batch run: 4 DEFERRED items unattended
 
 ### Session arc
