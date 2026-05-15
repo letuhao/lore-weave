@@ -1,9 +1,50 @@
-# Session Handoff — Session 56 (cycle 3 shipped · Phase 5e-β.2 audio_gen adapter + book-service audio.go migration COMPLETE · Phase 5f BFF deletion next)
+# Session Handoff — Session 57 (cycle 1 shipped · Phase 5f video-gen-service hardening COMPLETE · unified-gateway program effectively done)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-15 (session 56, cycle 3 shipped)
-> **HEAD:** `9c47eb6c` (SESSION_PATCH backfill) — Phase 5e-β.2 feat commit @ `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
+> **Date:** 2026-05-15 (session 57, cycle 1 shipped)
+> **HEAD:** `pending` (Phase 5f feat commit) — Phase 5e-β.2 closed at `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 57 cycle 1 — Phase 5f · video-gen-service hardening · /review-impl rounds (DESIGN: 1H+3M+3L+1C; BUILD: 0H+1M+4L+2C — all fixed inline)
+
+**Phase 5f was redefined.** The refactor plan listed 5f as "video-gen-service deletion + FE migration to call the gateway directly." CLARIFY killed that: video-gen-service is **not a pure proxy** — its `/generate` route downloads the gateway's result to MinIO + records billing, and the gateway's `video_gen` result is the raw upstream provider URL (Phase 5d, url-only), which a browser cannot fetch for a local ComfyUI backend. Deleting it would lose persistence + billing and break local video. **User decided (3 CLARIFY questions): keep video-gen-service as a permanent thin domain BFF** — the role book-service plays for chapter media — and harden it instead.
+
+**What shipped — 3 audit gaps closed:**
+- **G1** — removed the dead `/models` endpoint (zero FE callers; always-empty; had a `ModelsResponse(models=[])` wrong-kwarg bug) + `ModelInfo`/`ModelsResponse` schemas + FE `videoGenApi.listModels` + `VideoModel`.
+- **G2+G4** — MinIO bucket bootstrap moved off the request hot path into a FastAPI `lifespan` handler, **and** video-gen-service now sets a public-read policy on `loreweave-media`. G4 was a real browser-breaking bug: it `make_bucket`'d with no policy, so winning the create-race vs book-service left the bucket private → generated video URLs 403'd. Added `_bucket_ready` flag + `ensure_bucket_ready()` per-request self-heal so a startup MinIO blip can't permanently break video serving.
+- **G3** — incoming user JWTs are now HS256 signature-verified (`algorithms=["HS256"]` allow-list blocks `alg:none`); was an unverified base64 decode. Mirrors chat-service `auth.py`; `JWT_SECRET` was already wired in docker-compose.
+
+**Files (13 — 2 NEW + 11 MOD):** NEW design doc + `tests/test_bucket_bootstrap.py`; MOD config/main/models/routers.generate/requirements + 3 test files + FE `video-gen/api.ts` + README + `infra/test-video-gen.sh`.
+
+**Two `/review-impl` rounds, all findings fixed inline:**
+
+| Round | Findings | Key fix |
+|---|---|---|
+| DESIGN | 1H + 3M + 3L + 1C | HIGH#1 — a one-shot best-effort bootstrap with no retry would itself reproduce G4 if MinIO is down at boot → adopted book-service `_bucket_ready`-flag + per-request self-heal |
+| BUILD | 0H + 1M + 4L + 2C | MED#1 — `ensure_bucket_ready` (the HIGH#1 fix's own function) was untested → +2 tests; LOW PyJWT pinned, grep-lock hardened, conftest fixture promoted |
+
+### Verify evidence
+```
+video-gen-service pytest:   25 passed (was 13; +12)
+frontend tsc --noEmit:      exit 0
+grep app/ list_models|ModelsResponse|ModelInfo:   0
+grep generate.py urlsafe_b64decode:               0
+bash -n infra/test-video-gen.sh:                  OK
+```
+
+### What's NEXT for the next agent
+
+The **unified-gateway program is effectively complete** — every service's LLM/audio/image/video calls flow through `provider-registry`; video-gen-service is a permanent domain BFF, not a violation. Remaining planned work in [LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md](../03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md) is **Phase 6 — Hardening**: 6a rate-limit/quota enforcement at job submission, 6b job-level retry policy, 6c OpenTelemetry trace_id end-to-end. None are started. No open blockers from this cycle.
+
+**Deferrals cleared this cycle:** `D-PHASE5E-MINIO-ASYNC-OFFLOAD` (G2), `D-PHASE5E-JWT-VERIFY-DEFENSE-IN-DEPTH` (G3). **Opened:** none.
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5F_DESIGN.md` — design + both /review-impl rounds folded
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — §5f updated + Phase 6 preview
+4. This handoff file
+
+---
 
 ## Session 56 cycle 3 — Phase 5e-β.2 · gateway audio_gen adapter + MinIO staging + Python/Go SDK + book-service audio.go migration · /review-impl rounds (DESIGN: 4H+11M+13L+3C; BUILD: C#1+5H+10M+7L; FIX DELTA: 1CRIT+2H+3M+2L — ALL critical+HIGH fixed inline across all 3 rounds)
 

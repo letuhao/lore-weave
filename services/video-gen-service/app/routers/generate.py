@@ -2,14 +2,14 @@
 LLM gateway via the loreweave_llm SDK.
 
 Flow:
-1. Extract user_id from JWT (header forwarded by api-gateway-bff)
+1. Verify the user JWT (HS256) → user_id (Phase 5f G3)
 2. Call Client.generate_video() — SDK handles credential resolve +
    upstream POST + polling internally (Phase 5d gateway path
    /v1/videos/generations/{text-to-video,image-to-video}).
 3. Download result video URL → store in MinIO (caller-side, per
    chat-service voice precedent)
 4. Best-effort usage billing
-5. Return GenerateResponse with MinIO-presigned URL
+5. Return GenerateResponse with the public MinIO URL
 
 Migration notes (/review-impl(DESIGN) fixes folded inline):
 - HIGH#1 (Phase 5d): SDK routes via plural `/v1/videos/generations/...`
@@ -22,6 +22,13 @@ Migration notes (/review-impl(DESIGN) fixes folded inline):
 - The download step (Step 3) still uses httpx — that's intentional
   and orthogonal to the SDK migration; banning httpx from this file
   is not the goal.
+
+Phase 5f hardening:
+- G2+G4: bucket bootstrap (existence + public-read policy) moved off the
+  request hot path into `bootstrap_minio` (lifespan startup) with a
+  per-request `ensure_bucket_ready` self-heal.
+- G3: incoming JWTs are now signature-verified (HS256), not blind-decoded.
+- G1: the dead `/models` endpoint was removed.
 """
 
 from __future__ import annotations
@@ -32,12 +39,14 @@ import uuid
 from typing import Optional
 
 import httpx
+import jwt
 from fastapi import APIRouter, Header, HTTPException
 from minio import Minio
+from minio.error import S3Error
 
 from ..config import settings
 from ..llm_errors import map_llm_error_to_http_exception
-from ..models import GenerateRequest, GenerateResponse, ModelsResponse
+from ..models import GenerateRequest, GenerateResponse
 
 from loreweave_llm import Client, LLMError, VideoGenResult
 
@@ -46,9 +55,29 @@ logger = logging.getLogger("video-gen")
 
 MINIO_BUCKET = "loreweave-media"
 _minio: Optional[Minio] = None
+_bucket_ready = False
+
+# Anonymous GET (public-read) policy for the media bucket. Generated
+# video URLs are plain static `{minio_external_url}/{bucket}/{key}` links
+# rendered in a browser <video> tag, so the bucket MUST allow anonymous
+# reads. Mirrors book-service `setBucketPublicRead` (media.go) and
+# provider-registry `audio_cache.go`. The bucket name is interpolated
+# from MINIO_BUCKET so a rename can't drift the ARN (/review-impl LOW#5).
+_PUBLIC_READ_POLICY = (
+    '{"Version":"2012-10-17","Statement":[{'
+    '"Effect":"Allow","Principal":{"AWS":["*"]},'
+    '"Action":["s3:GetObject"],'
+    '"Resource":["arn:aws:s3:::' + MINIO_BUCKET + '/*"]}]}'
+)
 
 
 def get_minio() -> Minio:
+    """Return the cached MinIO client, creating it on first call.
+
+    Phase 5f G2: bucket existence + policy are NOT handled here — that
+    moved off the request hot path into `bootstrap_minio` (lifespan
+    startup) + `ensure_bucket_ready` (per-request self-heal).
+    """
     global _minio
     if _minio is None:
         _minio = Minio(
@@ -57,9 +86,59 @@ def get_minio() -> Minio:
             secret_key=settings.minio_secret_key,
             secure=False,
         )
-        if not _minio.bucket_exists(MINIO_BUCKET):
-            _minio.make_bucket(MINIO_BUCKET)
     return _minio
+
+
+def _ensure_bucket() -> None:
+    """Ensure the media bucket exists with a public-read policy.
+
+    Idempotent. Sets the module `_bucket_ready` flag on full success so
+    callers can cheaply short-circuit. A lost create-race against
+    book-service is NOT a failure; a genuine make_bucket failure IS, and
+    propagates to the caller.
+    """
+    global _bucket_ready
+    mc = get_minio()
+    if not mc.bucket_exists(MINIO_BUCKET):
+        try:
+            mc.make_bucket(MINIO_BUCKET)
+        except S3Error:
+            # A concurrent creator (book-service) may have won the race.
+            # Re-check: if the bucket now exists, treat as success;
+            # otherwise the error was genuine — re-raise it.
+            if not mc.bucket_exists(MINIO_BUCKET):
+                raise
+    # Always (re)assert the public-read policy — whoever created the
+    # bucket, the policy ends up public. Idempotent; book-service sets
+    # the identical policy. This closes the G4 race (private bucket).
+    mc.set_bucket_policy(MINIO_BUCKET, _PUBLIC_READ_POLICY)
+    _bucket_ready = True
+
+
+def bootstrap_minio() -> None:
+    """App-startup bucket bootstrap (called from the FastAPI lifespan).
+
+    Best-effort: a MinIO outage at startup is logged, not fatal, so the
+    service still starts and `ensure_bucket_ready` self-heals on the
+    first request once MinIO is reachable.
+    """
+    try:
+        _ensure_bucket()
+    except Exception as e:  # noqa: BLE001 — best-effort startup
+        logger.error(
+            "MinIO bucket bootstrap failed (will retry on first request): %s", e
+        )
+
+
+def ensure_bucket_ready() -> None:
+    """Per-request guard — a cheap no-op after the first success.
+
+    Self-heals if `bootstrap_minio` failed at startup (e.g. MinIO was not
+    yet up). Errors propagate to the request error handler.
+    """
+    if _bucket_ready:
+        return
+    _ensure_bucket()
 
 
 def media_url(object_key: str) -> str:
@@ -109,28 +188,29 @@ async def record_usage(
 
 
 def extract_user_id(authorization: str) -> str:
-    """Extract user_id from JWT (minimal decode — just payload.sub).
+    """Verify the incoming user JWT (HS256) and return its `sub` claim.
 
-    No signature verification — api-gateway-bff validates upstream
-    before forwarding. See `D-PHASE5E-JWT-VERIFY-DEFENSE-IN-DEPTH`
-    deferred item for future defense-in-depth (verify locally with
-    auth-service public key).
+    Phase 5f G3 — replaces the prior unverified base64 decode. The token
+    is signed by auth-service with the shared `JWT_SECRET` (HS256);
+    `algorithms=["HS256"]` is an allow-list that also blocks the
+    `alg:none` downgrade attack. `/v1/video-gen/generate` is reached only
+    via api-gateway-bff forwarding the end user's Bearer token — there is
+    no svc-to-svc caller (see LLM_PIPELINE_PHASE5F_DESIGN.md §3.3).
     """
-    import base64
-    import json as json_mod
-
     token = authorization.removeprefix("Bearer ").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Authorization required")
-    parts = token.split(".")
-    if len(parts) != 3:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    padded = parts[1] + "=" * (-len(parts[1]) % 4)
     try:
-        payload = json_mod.loads(base64.urlsafe_b64decode(padded))
-        return payload.get("sub", "")
-    except Exception:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        # Bad signature, malformed, unexpected/`none` alg, non-object payload.
         raise HTTPException(status_code=401, detail="Invalid token")
+    sub = payload.get("sub", "")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return sub
 
 
 def _aspect_to_size(aspect: str) -> str:
@@ -151,9 +231,8 @@ async def generate_video(
     authorization: str = Header(default=""),
 ):
     """Generate a video from a text prompt via the unified LLM gateway."""
+    # extract_user_id raises 401 on a missing/invalid token or empty sub.
     user_id = extract_user_id(authorization)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authorization required")
 
     if not body.model_ref:
         raise HTTPException(status_code=400, detail="model_ref is required")
@@ -184,6 +263,15 @@ async def generate_video(
     if not result.data or not result.data[0].url:
         raise HTTPException(status_code=502, detail="Gateway returned no video URL")
     video_url_remote = result.data[0].url
+
+    # Ensure the media bucket is ready (self-heals if the startup
+    # bootstrap failed). Done before the download so we fail fast, and
+    # kept out of the download/store try-block so its error message is
+    # accurate (/review-impl(BUILD) COSMETIC#7).
+    try:
+        ensure_bucket_ready()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Media storage unavailable: {e}")
 
     # 3. Download and store in MinIO (stream to avoid buffering large files).
     try:
@@ -227,14 +315,3 @@ async def generate_video(
         size_bytes=video_size,
         content_type=content_type,
     )
-
-
-@router.get("/models", response_model=ModelsResponse)
-async def list_models():
-    """List available video generation models.
-
-    Returns empty list — models come from provider-registry user_models
-    with capability_flags.video_gen = true. Frontend queries
-    /v1/model-registry/user-models?capability=video_gen directly.
-    """
-    return ModelsResponse(models=[])

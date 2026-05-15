@@ -72,9 +72,9 @@ assert_status "T00a gateway health" "200" "$GW_STATUS"
 # Check video-gen-service directly and via gateway
 VG_DIRECT=$(curl -s "http://localhost:8213/health")
 VG_STATUS=$(echo "$VG_DIRECT" | jget .status)
-VG_PROVIDER=$(echo "$VG_DIRECT" | jget .provider_connected)
 assert_eq "T00b video-gen health ok" "ok" "$VG_STATUS"
-assert_eq "T00c video-gen provider_connected" "true" "$VG_PROVIDER"
+# T00c (provider_connected) removed — /health intentionally does not
+# expose provider connectivity (Phase 5e-α /review-impl(QC) LOW#5).
 
 VG_GW_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$GATEWAY/v1/video-gen/health" 2>/dev/null || echo "000")
 # Gateway may not proxy /health — just check direct works
@@ -160,20 +160,9 @@ T07_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
   -d '{"prompt":"test","model_ref":"00000000-0000-0000-0000-000000000000","aspect_ratio":"wide"}')
 assert_status "T07 invalid aspect_ratio → 422" "422" "$T07_STATUS"
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# T08-T09: Models endpoint
-# ═══════════════════════════════════════════════════════════════════════════════
-header "T08-T09: Models endpoint"
-
-# T08: GET /models → 200
-T08_RESP=$(curl -s -w "\n%{http_code}" "$BASE/models")
-T08_STATUS=$(echo "$T08_RESP" | tail -1)
-assert_status "T08 GET /models → 200" "200" "$T08_STATUS"
-
-# T09: Models list is empty array
-T08_BODY=$(echo "$T08_RESP" | head -1)
-T09_ITEMS=$(echo "$T08_BODY" | jget .items)
-assert_eq "T09 models list empty" "[]" "$T09_ITEMS"
+# T08-T09 (GET /models) removed in Phase 5f G1 — the endpoint was dead
+# code (zero callers; the FE uses /v1/model-registry/user-models). See
+# docs/03_planning/LLM_PIPELINE_PHASE5F_DESIGN.md §3.2.
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Summary

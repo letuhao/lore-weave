@@ -1,4 +1,4 @@
-"""Phase 5e-α tests for the video-gen-service /generate route.
+"""Phase 5e-α + 5f tests for the video-gen-service /generate route.
 
 Pattern: mock the loreweave_llm Client.generate_video method directly
 on the app.routers.generate.Client attribute. The migrated route
@@ -8,10 +8,12 @@ error class) to drive each test case.
 
 Coverage scope:
   - Happy path: SDK called with expected args, MinIO upload mocked,
-    response shape correct (T9 case 1)
-  - 5 error class → HTTP status mappings (cases 2-6)
-  - _aspect_to_size pure-function regression-lock (case 7,
-    /review-impl(DESIGN) LOW#3)
+    response shape correct
+  - 5 error class → HTTP status mappings
+  - _aspect_to_size pure-function regression-lock (/review-impl(DESIGN) LOW#3)
+  - non-default aspect ratio reaches the SDK (/review-impl(BUILD) MED#1)
+  - Phase 5f G3: JWT verification — bad signature, expired, missing
+    header, alg:none downgrade all return 401
 """
 
 from __future__ import annotations
@@ -257,39 +259,81 @@ def test_generate_non_default_aspect_ratio_reaches_sdk(client, jwt_for_user):
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Case 9 — non-dict JWT payload returns 401 (not 500)
-# /review-impl(BUILD) LOW#4 — payload like a JSON array or string would
-# trigger AttributeError on payload.get; the bare except catches it.
-# Pin the behavior so a future refactor can't accidentally elevate the
-# error to 500.
+# Phase 5f G3 — JWT signature verification (HS256)
+# extract_user_id now VERIFIES the token. These cases reach extract_user_id
+# only — they raise 401 before the route touches the SDK, so no Client
+# mock is needed.
 # ──────────────────────────────────────────────────────────────────────
 
+_GEN_BODY = {
+    "prompt": "anything",
+    "model_source": "user_model",
+    "model_ref": "019d5e3c-1234-7890-abcd-1344e148bf7c",
+    "duration_seconds": 5,
+    "aspect_ratio": "16:9",
+}
 
-def test_extract_user_id_non_dict_payload_returns_401(client):
-    """A JWT whose payload decodes to a JSON array (not object) MUST
-    return 401, NOT 500. Bare-except in extract_user_id catches the
-    AttributeError on .get().
+
+def test_bad_signature_returns_401(client, jwt_for_user):
+    """A token signed with the WRONG secret MUST be rejected with 401.
+
+    Phase 5f G3 — the old code base64-decoded the payload without
+    verifying the signature, so a forged token sailed through. This
+    repurposes the former non-dict-payload test (PyJWT's encode can't
+    even produce a non-dict payload, so that edge collapses into
+    InvalidTokenError).
+    """
+    forged = jwt_for_user("test-user", secret="a_totally_different_secret_value_32chr")
+    resp = client.post(
+        "/v1/video-gen/generate",
+        json=_GEN_BODY,
+        headers={"Authorization": f"Bearer {forged}"},
+    )
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "Invalid token"
+
+
+def test_expired_token_returns_401(client, jwt_for_user):
+    """A correctly-signed but EXPIRED token MUST return 401 'Token expired'."""
+    import time
+
+    expired = jwt_for_user("test-user", exp=int(time.time()) - 3600)
+    resp = client.post(
+        "/v1/video-gen/generate",
+        json=_GEN_BODY,
+        headers={"Authorization": f"Bearer {expired}"},
+    )
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "Token expired"
+
+
+def test_missing_authorization_returns_401(client):
+    """No Authorization header at all → 401 'Authorization required'."""
+    resp = client.post("/v1/video-gen/generate", json=_GEN_BODY)
+    assert resp.status_code == 401, resp.text
+    assert resp.json()["detail"] == "Authorization required"
+
+
+def test_alg_none_token_rejected(client):
+    """A hand-crafted `alg:none` token MUST be rejected — regression-lock
+    on the `algorithms=["HS256"]` allow-list. This is the exact downgrade
+    attack the pre-5f unverified base64 decode accepted.
     """
     import base64
     import json
 
-    # Craft a JWT with payload = JSON array (NOT a dict).
-    header = base64.urlsafe_b64encode(b'{"alg":"none"}').rstrip(b"=").decode()
-    payload_arr = base64.urlsafe_b64encode(
-        json.dumps(["not", "a", "dict"]).encode()
+    header = base64.urlsafe_b64encode(
+        b'{"alg":"none","typ":"JWT"}'
     ).rstrip(b"=").decode()
-    bad_token = f"{header}.{payload_arr}.sig"
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"sub": "attacker"}).encode()
+    ).rstrip(b"=").decode()
+    alg_none_token = f"{header}.{payload}."  # empty signature
 
     resp = client.post(
         "/v1/video-gen/generate",
-        json={
-            "prompt": "anything",
-            "model_source": "user_model",
-            "model_ref": "019d5e3c-1234-7890-abcd-1344e148bf7c",
-            "duration_seconds": 5,
-            "aspect_ratio": "16:9",
-        },
-        headers={"Authorization": f"Bearer {bad_token}"},
+        json=_GEN_BODY,
+        headers={"Authorization": f"Bearer {alg_none_token}"},
     )
     assert resp.status_code == 401, resp.text
     assert resp.json()["detail"] == "Invalid token"
