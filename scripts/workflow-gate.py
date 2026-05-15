@@ -75,6 +75,47 @@ def _log_audit(event: dict) -> None:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 
+def _had_rejected_review(task_slug: str, phase: str) -> bool:
+    """True if an adversary review event for this task AND this phase logged
+    status REJECTED (DEFERRED #002).
+
+    The bridge previously inferred rejection from a substring match on the
+    main agent's free-text evidence (`"REJECTED" in evidence.upper()`) — which
+    false-positives on "NOT REJECTED", "non-rejected", etc. This reads the
+    structured `status` field that the Adversary sub-agent writes to
+    AUDIT_LOG.jsonl, the authoritative signal. A rejected round is worth a
+    cross-session lesson even if a later round APPROVED — the rejection
+    captured a real defect pattern future Adversaries should be able to find.
+
+    `phase` is matched (Adversary r1 WARN-1): a REJECTED in `review-design`
+    must NOT cause `complete review-code` to file a lesson mislabeled
+    "...review-code". Each review phase reports its own rejections.
+
+    Note (Adversary r1 WARN-3): this re-parses the whole append-only
+    AUDIT_LOG.jsonl per bridge call. Accepted — bridge calls happen only on
+    review-phase completion (rare), and the log is per-repo small. Correctness
+    relies on the Adversary's review event being flushed before cmd_complete
+    runs, which the AMAW orchestration guarantees (sub-agent completes, then
+    main calls `complete`).
+    """
+    if not AUDIT_LOG.exists():
+        return False
+    for line in AUDIT_LOG.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (ev.get("task") == task_slug
+                and ev.get("action") == "review"
+                and ev.get("phase") == phase
+                and str(ev.get("status", "")).strip().upper() == "REJECTED"):
+            return True
+    return False
+
+
 def _bridge_to_contexthub(lesson_type: str, title: str, content: str, tags: list[str]) -> None:
     """Best-effort: shell out to mcp-query.py add_lesson. Never raises.
 
@@ -303,7 +344,7 @@ def cmd_complete(args: list[str]) -> None:
                 content=f"Phase: retro\nCompleted: {completed_at}\nEvidence: {evidence}",
                 tags=["amaw", "sprint", task_slug],
             )
-        elif phase in ("review-design", "review-code") and "REJECTED" in evidence.upper():
+        elif phase in ("review-design", "review-code") and _had_rejected_review(task_slug, phase):
             _bridge_to_contexthub(
                 lesson_type="general_note",
                 title=f"Adversary REJECTED: {task_slug} {phase}",
