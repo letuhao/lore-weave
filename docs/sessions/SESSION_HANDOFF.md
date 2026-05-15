@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-05-16 (session 57, cycle 2 shipped)
-> **HEAD:** `pending` (billing ADR commit) — Phase 5f closed at `12a3930f`; Phase 5e-β.2 closed at `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
+> **HEAD:** `0db70b53` (billing ADR commit) — Phase 5f closed at `12a3930f`; Phase 5e-β.2 closed at `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
 
 ## Session 57 cycle 2 — billing-model redesign ADR · /review-impl round 1 (3H+6M+3L all folded)
