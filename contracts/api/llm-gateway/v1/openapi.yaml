@@ -426,8 +426,8 @@ components:
             sets `tools` or `tool_choice` for a provider without tool
             support is rejected with HTTP 400
             `LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER` before the SSE stream
-            opens.
-          nullable: true
+            opens. Optional — omit the field to leave tool selection to
+            the model; callers do not send an explicit `null`.
           oneOf:
             - type: string
             - type: object

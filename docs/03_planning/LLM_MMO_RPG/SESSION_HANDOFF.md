@@ -170,11 +170,12 @@ Full report: [`docs/audit/phase-0b-human-review-findings.md`](../../audit/phase-
 
 ### Handoff notes
 
-**Active blocker:** none. **New DEFERRED:** #011 (openapi hygiene, LOW), #012 (Go
-multi-call streamer test, LOW) — both for a tilemap fix follow-up task.
+**Active blocker:** none. **DEFERRED #011 + #012** (openapi `tool_choice` hygiene +
+Go multi-tool-call streamer test) — **cleared 2026-05-16** by a small follow-up fix
+task (S, default v2.2; openapi + one Go test, no behavior change).
 
-**Next:** either (a) the small fix task clearing #011 + #012, or (b) Phase 1 —
-Fruchterman-Reingold zone placer (independent of 0b).
+**Next:** Phase 1 — Fruchterman-Reingold zone placer (TMP_002, algorithmic,
+independent of 0b).
 
 ---
 

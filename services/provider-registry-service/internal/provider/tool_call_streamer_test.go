@@ -175,3 +175,47 @@ func TestAdapterSupportsTools(t *testing.T) {
 		}
 	}
 }
+
+// TestStreamOpenAICompat_MultipleToolCalls — DEFERRED #012. A turn with TWO
+// tool calls streamed with interleaved / non-monotonic tool_calls[].index.
+// The streamer must emit each fragment with Index taken verbatim from the
+// provider (no local counter), so a downstream accumulator can separate them.
+func TestStreamOpenAICompat_MultipleToolCalls(t *testing.T) {
+	body := `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"alpha","arguments":""}}]}}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_b","function":{"name":"beta","arguments":""}}]}}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"b\":2}"}}]}}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"a\":1}"}}]}}]}
+
+data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+
+`
+	chunks := collectChunks(t, body)
+	// 4 tool_call fragments + done.
+	if len(chunks) != 5 {
+		t.Fatalf("expected 5 chunks, got %d: %#v", len(chunks), chunks)
+	}
+	// Index is verbatim from the provider, in wire order (0, 1, 1, 0) — NOT
+	// a monotonic counter.
+	wantIndex := []int{0, 1, 1, 0}
+	for i, want := range wantIndex {
+		if chunks[i].Kind != StreamChunkToolCall || chunks[i].Index != want {
+			t.Errorf("chunk[%d] = %+v, want tool_call Index=%d", i, chunks[i], want)
+		}
+	}
+	// Reassemble per index — call 0 and call 1 stay separate.
+	args := map[int]string{}
+	for _, c := range chunks[:4] {
+		args[c.Index] += c.ArgumentsDelta
+	}
+	if args[0] != `{"a":1}` || args[1] != `{"b":2}` {
+		t.Errorf("reassembled per-index args = %#v", args)
+	}
+	if chunks[4].Kind != StreamChunkDone || chunks[4].FinishReason != "tool_calls" {
+		t.Errorf("chunk[4] = %+v", chunks[4])
+	}
+}
