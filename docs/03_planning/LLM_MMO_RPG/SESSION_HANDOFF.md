@@ -81,6 +81,81 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-16 (cont. 3) — TVL_005 Group/Party Travel (1 commit; the travel arc is COMPLETE at the design layer — 5 features)
+
+### Session arc
+
+Continued straight from the TVL_003 commit. User picked **TVL_005 Group/Party Travel** — the group layer TVL_001 TVL-D5 deferred and that TVL_002 CTV-D8 / TVL_003 TVM-D3 / TVL_004 CTE-D7 each declared a literal "Requires TVL_005" dependency on. Phase 0 TVP-D1..D7 deep-dive → user `approve all` → DRAFT → user invoked `/review-impl` → 2 HIGH + 1 MED + 3 LOW surfaced → user directed "fix all" → all 6 resolved inline → single combined `[boundaries-lock-claim+release]` commit `5ac81495`.
+
+### What TVL_005 specifies
+
+V1+30d+ feature letting several actors travel a journey together as one unit — a PC + Tracked-NPC companions crossing the realm as a party. NEW `travel_party` aggregate (member set, leader, lifecycle). A party travels on the **leader's** TVL_001 `actor_travel_state` journey: `Party:Travel` creates the leader's journey + binds every member; per-tick progress + `Travel:Arrive` cascade every member's `entity.current_cell_id` (lockstep arrival — one journey, no per-member drift). Members get no individual journey rows. OnFoot-only V1+30d+; ≤6 members; each member pays their own provisions. A TVL_004 encounter on the bound journey pauses the whole party; the leader resolves it. Leadership transfers if the leader leaves a Forming party. Composite party travel (TVL_002 CTV-D8) + mounted party travel (TVL_003 TVM-D3) + party-wide encounter outcomes (TVL_004 CTE-D7) stay deferred — TVL_005 ships the `travel_party` aggregate those three were written against.
+
+### `/review-impl` 1-pass — 2 HIGH + 1 MED + 3 LOW, all resolved inline
+
+- **HIGH-1** — a traveling non-leader member had no in-transit marking (`entity.travel_journey_id` stayed None, `current_cell_id` stuck at the origin) → the rest of the system saw the member as stationary-and-available. Fixed — the `Party:Travel` cascade marks every member in-transit by writing the *existing* `entity.travel_journey_id` field (no new field); Arrive/Cancel/Disband clear it.
+- **HIGH-2** — the leader was double-charged provisions (TVL_001 §5.1 journey-creation deducts + the per-member cascade deducts the leader again). Fixed — journey-creation skips the built-in deduction; the per-member cascade is the single deduction.
+- **MED-1** — the Forming-party↔solo-journey boundary was under-guarded; fixed (TVP-V10 added to `Party:Form`; TVP-V11 broadened to any non-Disbanded party; rule_id `actor_in_traveling_party` → `actor_in_party`). **LOW-1..3** — rule_id count (12 new/13 total), TVP-V12 reframed defensive, per-member cell-update cascade routing made explicit.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_travel/TVL_005_group_party_travel.md` | DRAFT + /review-impl 1-pass (2 HIGH + 1 MED + 3 LOW resolved) | 412 |
+| `features/00_travel/_index.md` | TVL_005 row + Active line; TVL_004 commit hash backfilled | + |
+| `catalog/cat_00_TVL_travel_foundation.md` | NEW TVL_005 sub-section, entries TVL-76..TVL-90 (15 entries) | + |
+| `_boundaries/01_feature_ownership_matrix.md` | NEW `travel_party` aggregate row | + |
+| `_boundaries/02_extension_contracts.md` | §4 EVT-T8 `Forge:DisbandParty`; §1.4 `travel.*` +12 rule_ids + EVT-T1 `Party:*` sub-types | + |
+| `_boundaries/99_changelog.md` | combined DRAFT + /review-impl entry top-anchored | + |
+| `_boundaries/_LOCK.md` | 1 claim+release cycle | + |
+
+### The travel arc is COMPLETE at the design layer
+
+Five features designed: **TVL_001** atomic single-segment (pre-existing) + **TVL_002** composite multi-segment + **TVL_003** mount/vehicle + **TVL_004** encounters + **TVL_005** group/party. The arc's deferral graph is self-consistent — TVL_005 (the last) *closed* three sibling blockers (CTV-D8 / TVM-D3 / CTE-D7's "Requires TVL_005") rather than opening new ones.
+
+### Handoff notes for next agent / next session
+
+**Active:** none. Lock released. Tree clean. Branch `mmo-rpg/design-resume` ahead of `origin` — **nothing pushed, no PR** per the standing user constraint.
+
+**The TVL_001 closure pass now serves FOUR consumer features** — to land together as one batched task at `travel-service` implementation:
+- **TVL_002** — `actor_travel_state.composite_journey_id` additive field + schema_version bump; `Travel:Arrive` defers composite-segment hospitality; TVL-Q3 vital_pool→resource_inventory erratum; `Canceled` end-position ratification (CTV-Q1, 4 items).
+- **TVL_003** — `actor_travel_state.mount_id` additive field + `TravelMode` enum 2→5 bump + `Travel:Initiate` payload `mount_id`; behavioral: TVL-V5/TVL-V9 logic + the speed-modifier formula factor.
+- **TVL_004** — `actor_travel_state.encounter_schedule` additive field + schema bump; behavioral: the `Scheduled:TravelTick` generator gains encounter detection + clamp-to-point + a pause that skips progress AND clock advancement.
+- **TVL_005** — behavioral-only (no new field): the TVP-V11 cross-feature validator on `Travel:Initiate` + the `Travel:Arrive` member cascade + the `Party:Travel` member in-transit marking.
+Sequence the three `actor_travel_state` `schema_version` bumps (TVL_002 → TVL_003 → TVL_004).
+
+**Two follow-on closure passes also queued** (not V1+30d+; future features): a **TVL_002 closure pass** for composite-with-mount (TVM-D5) + composite party travel (CTV-D8) — relax CTV-V9, add a `mount_id` + party binding to `CompositeTravel:Initiate`/`composite_journey`.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` (POL + SET + ROUTE) + `services/travel-service` (the 5 TVL aggregates: `actor_travel_state` + `composite_journey` + `mount` + `travel_encounter` + `travel_party`; Dijkstra; Poisson encounter pre-roll) + EF_001 + the 4-feature TVL_001 closure pass + auth-service capability migration + chat-service S9 context extensions + CI gates. This is the single largest queued task.
+2. **A combat feature** design — replaces the TVL_004 §5.4 combat abstraction (CTE-D1); also unblocks PROG_001 DF7-equivalent damage-law work.
+3. **DIPL_001 V2+ Diplomacy Foundation** design — consumes POL_001 State.culture_tag + Settlement graph; requires IDF_005 V2+ ideology.
+4. **TVL_002 closure pass** — composite-with-mount (TVM-D5) + composite party travel (CTV-D8).
+5. **EF_001 + TVL_001 closure passes** standalone — or batched with the V1+30d implementation phase.
+6. **SPIKE_05 V1+ knowledge-service activation walk-through** — deferred until knowledge-service ships.
+
+**Process discipline for next agent:**
+
+- The travel arc is the design-track's most complete sub-system — 5 interlocking features sharing one `actor_travel_state` substrate + one `travel-service`. The cross-feature pattern is settled: a consumer feature reads the parent aggregate, adds a feature-owned aggregate, coordinates schema additions via the parent's closure pass.
+- `/review-impl` resolved MED + LOW inline (not just HIGH) on every TVL feature this session per explicit user "fix all" directives.
+- HIGH-count arc trend: POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3 → TVL_003 1 → TVL_005 2.
+
+### Raw count
+
+- **Commits:** 1 (`5ac81495`).
+- **Files landed:** 7 (1 new + 6 modified); 580 insertions.
+- **Design-doc lines:** 412 TVL_005.
+- **Catalog entries added:** 15 (TVL-76..TVL-90).
+- **NEW aggregate:** 1 (`travel_party`); **NEW EVT-T sub-types:** 5 (EVT-T1 `Party:Form`/`Join`/`Leave`/`Travel` + EVT-T8 `Forge:DisbandParty`).
+- **`travel.*` rule_ids added:** 13 (12 new + 1 reused); **validators:** 13 (TVP-V1..V13).
+- **Acceptance scenarios:** 15 (AC-TVL-61..75); **deferrals:** 9 (TVP-D1..D9); **open questions:** 7 (TVP-Q1..Q7).
+- **Cross-feature footprint:** behavioral-only TVL_001 closure pass (3 items, NO new schema field).
+- **/review-impl findings resolved:** 2 HIGH + 1 MED + 3 LOW (all inline, 1-pass).
+- **NEW RealityManifest field:** 1 (`canonical_parties`).
+
+---
+
 ## Session 2026-05-16 (cont. 2) — TVL_003 Mount/Vehicle Travel (1 commit; the conveyance layer; activates the ByBoat mode TVL_001 schema-reserved)
 
 ### Session arc
