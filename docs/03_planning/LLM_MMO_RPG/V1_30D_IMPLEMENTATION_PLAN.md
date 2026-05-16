@@ -1,5 +1,7 @@
 # V1+30d Implementation Plan — Geography + Travel
 
+> ⚠️ **SUPERSEDED for the current goal (2026-05-17).** The near-term goal is a *standalone world-map generator*, not the event-sourced MMO. See **[`GEO_GENERATOR_PLAN.md`](GEO_GENERATOR_PLAN.md)** — a focused 4-phase plan with no DP-kernel / foundation dependency. This document is retained only as a record; it is relevant only if the full event-sourced MMO engine is ever built.
+
 > **Purpose:** turn the DRAFT geography + travel design docs (GEO_001 / GEO_001b / POL_001 / SET_001 / ROUTE_001 / TVL_001..TVL_005) into running code, split into **8 dependency-ordered cycles, each executed as one `/amaw` workflow**.
 >
 > **Status:** NOT STARTED — this is a forward plan.
