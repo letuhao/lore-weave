@@ -134,6 +134,84 @@ root; ContextHub up for `/amaw`. The infra `infra` compose stack and the gitigno
 
 ---
 
+## Session 2026-05-16 (continued) — Phase 1 placement engine — ⏳ IN PROGRESS (CLARIFY/DESIGN/PLAN done, BUILD pending)
+
+### State
+
+Phase 1 (tilemap-service zone-placement engine) started as a **default v2.2 XL task**
+(user declined `/amaw`). **CLARIFY + DESIGN + REVIEW + PLAN complete; BUILD not started.**
+The workflow-gate `.workflow-state.json` is parked at the `build` phase.
+
+- **Scope (PO decision):** full TMP_002 placement — §3 Fruchterman-Reingold + §4
+  Penrose tiling + §5 fractalize — + the TMP_003 modificator framework + **1
+  modificator (TerrainPainter)** + a determinism integration test.
+- **Spec:** [`docs/specs/2026-05-16-tilemap-phase-1-placement-engine.md`](../../specs/2026-05-16-tilemap-phase-1-placement-engine.md)
+  — D1-D8, AC-1..AC-7. **Plan:** [`docs/plans/2026-05-16-tilemap-phase-1-placement-engine.md`](../../plans/2026-05-16-tilemap-phase-1-placement-engine.md)
+  — 7 build chunks. (Both on disk, uncommitted — they land in Phase 1's eventual COMMIT.)
+
+### How to resume
+
+**Chunk 0 (foundations) — ✅ DONE** (this session): `rand`/`rand_chacha` workspace
+deps; `seed::sub_seed(seed, label)` blake3 sub-stream helper; new
+`types/tile_mask.rs` `TileMask` bitset (flat-index-ordered `iter_set` — the
+determinism-safe iteration); `ZoneRuntime.assigned_tiles` swapped to `TileMask` +
+new `free_paths: TileMask`; `error.rs` gained `Placement` / `EmptyZone` /
+`DependencyCycle` / `Modificator` variants. `cargo test -p tilemap-service` green
+(21 lib + 3 + 5), clippy clean. Code on disk, **uncommitted** (lands in Phase 1's COMMIT).
+
+> **⚠ workflow-gate note:** the `.workflow-state.json` gate was **reset** after
+> chunk 0 to start a separate "improve AMAW ContextHub integration" task. The gate
+> no longer remembers Phase 1's `build` phase. On Phase 1 resume: re-run
+> `workflow-gate.sh size XL 14 12 3`, then re-`complete` clarify/design/review-design/
+> plan with evidence pointing at the existing on-disk spec + plan artifacts (they are
+> done — this is just re-syncing the tracker), then continue at BUILD chunk 1.
+
+**Resume at BUILD chunk 1.** Remaining order: 1 grid-seed (BFS distance + initial
+grid — TMP_002 §3.1) → 2 Fruchterman-Reingold (§3.2-§3.3) → 3 Penrose (§4) →
+4 fractalize (§5) → 5 modificator pipeline (TMP_003 §2+§4.1) → 6 TerrainPainter +
+`place_tilemap` entry + determinism test. Each chunk compiles + tests green before
+the next. **BUILD-discovered note for chunk 1:** `ZoneSpec` (template.rs) has no
+`size: u32` field that TMP_002 §2.1 expects — chunk 1 must add it (small schema
+addition, `#[serde(default)]`); FR (chunk 2) uses it for soft-sphere radius.
+
+**Key design notes for the BUILD:** single-threaded pipeline (determinism first —
+D6); ChaCha8 RNG sub-seeded via `blake3(seed || label)` (D1); `TileMask` iterates in
+flat-index order, never a `HashSet` (D2); determinism test (AC-4) is NOT `#[ignore]`d.
+
+---
+
+## Session 2026-05-16 (continued) — Improve AMAW ContextHub integration — ✅ DONE
+
+Default v2.2, L task. Closed the AMAW ContextHub read/enforce loop (the human review
+found it write-only / read-inert). All 4 design decisions built + 8/8 AC verified;
+committed.
+
+- **D4** — `scripts/seed-amaw-guardrails.py` (idempotent) seeded 3 new guardrails
+  (`rm -r`, `git reset --hard`, `docker compose down -v`) → 6 total, all fire via
+  `check_guardrails`.
+- **D1** — `scripts/amaw-guardrail-gate.py` `PreToolUse` Bash hook: cheap local
+  pre-check → `check_guardrails` for risky actions → permission `ask`; fail-open.
+  Wired into `.claude/settings.json` (alongside the existing commit gate).
+- **D2** — `scripts/amaw-context-inject.py` `SessionStart` hook: injects the active
+  guardrail set + recent lessons into context each session; fail-open. Wired.
+- **D3** — prompt templates (`docs/amaw-workflow.md` + both `amaw.md` copies):
+  the orchestrator now pre-loads captured rules into a `## Captured rules` block;
+  the sub-agent no longer runs `search_lessons` itself (determinism over discretion).
+
+**BUILD-discovered:** the spec's "trigger mismatch" premise was partly off —
+`check_guardrails` matches push/migration guardrails fine; the real gaps were corpus
+coverage (fixed) + `search_lessons --type guardrail` being the wrong API to surface
+guardrails (`check_guardrails` is the right one — docs corrected).
+
+**New DEFERRED:** #013 (`agentic-workflow/AMAW.md` bundle-source sync — already
+diverged), #014 (`amaw-guardrail-gate` pre-check false-positives on a risky pattern
+inside a heredoc / commit message — `ask` not block, so non-fatal).
+
+**The hooks are LIVE** in `.claude/settings.json` for every session in this clone.
+
+---
+
+
 ## Session 2026-05-16 — Human-in-loop QA review of the AMAW Phase 0b batch (M task)
 
 ### Session arc
