@@ -6,6 +6,33 @@
 
 ---
 
+## 2026-05-16 — TVL_003 V1+30d+ Mount/Vehicle Travel DRAFT + /review-impl 1-pass fix cycle (the conveyance layer; activates the ByBoat mode TVL_001 schema-reserved; 1 HIGH + 1 MED + 4 LOW all resolved)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit — Phase 0 TVM-D1..D7 + DRAFT + /review-impl 1st pass all in this commit, per the POL/SET/ROUTE/TVL_001/TVL_002/TVL_004 precedent).
+- **Phase 0 TVM-D1..D7 LOCKED** via single deep-dive 2026-05-16 with user `approve all` directive: D1 NEW `mount` aggregate (vs RES_001 resource / EF_001 entity) / D2 TVL_001 `TravelMode` closed-enum additive bump 2 → 5 — activate the schema-reserved `ByBoat` + add `OnHorseback`/`ByShip`/`ByCarriage` / D3 acquisition via canonical declaration + Forge grant (market purchase deferred) / D4 hardcoded mode↔route compatibility matrix / D5 per-mode speed modifier on `route.default_fiction_duration` / D6 minimal mount state — location only, no stamina/condition/feed / D7 ≤1 mount per journey + PC/Tracked NPC parity.
+- **Files landed:**
+  - **NEW** `features/00_travel/TVL_003_mount_vehicle_travel.md` (391 lines — well under the 800 hard cap).
+  - `features/00_travel/_index.md` — TVL_003 row added (between TVL_002 and TVL_004 by number); Active line updated.
+  - `catalog/cat_00_TVL_travel_foundation.md` — NEW TVL_003 sub-section, catalog entries TVL-61..TVL-75 (15 entries).
+  - `_boundaries/01_feature_ownership_matrix.md` — NEW `mount` aggregate row.
+  - `_boundaries/02_extension_contracts.md` — §4 EVT-T8 sub-shape `Forge:GrantMount`; §1.4 `travel.*` namespace extended with 8 NEW mount rule_ids + the `actor_travel_state.mount_id` / `TravelMode` enum bump / `Travel:Initiate` payload cross-feature dependency.
+  - `_boundaries/_LOCK.md` + `_boundaries/99_changelog.md` (this entry).
+- **Design surface declared:** NEW `mount` aggregate (T2/Reality, sparse per-mount) + 3 V1+30d+ closed enums (`MountKind` / `MountLocation` / `MountAcquisition`) + the TVL_001 `TravelMode` 2 → 5 enum bump + 1 cross-feature additive field on `actor_travel_state` (`mount_id`) + the `Travel:Initiate` payload `mount_id` field + the MountKind→TravelMode mapping + the per-mode speed-modifier table + the mode↔route compatibility matrix + 10 TVM-V* validators + 10 `travel.*` rule_ids (8 new + 2 reused — supersedes TVL_001's `travel.mount_unavailable` V2+ reservation) + RealityManifest `canonical_mounts` extension + 15 V1+30d+-testable acceptance scenarios AC-TVL-46..60 + 9 deferrals TVM-D1..D9 + 7 open questions TVM-Q1..Q7.
+- **No new service** — `mount` owned by the existing `travel-service`. **No new capability claim**.
+- **TVL_001 closure pass now serves THREE consumer features** — TVL_002 (`composite_journey_id`), TVL_004 (`encounter_schedule`), TVL_003 (`mount_id` + `TravelMode` enum bump + `Travel:Initiate` payload field) — three sequential `actor_travel_state` schema_version bumps, to land together in one closure-pass commit at `travel-service` implementation.
+- **/review-impl 1 HIGH finding + fix (applied inline this commit):**
+  - **HIGH-1** — §5.5 claimed a uniform-mode composite journey (e.g. all-Road `OnHorseback`) "works" and carries one mount — but TVL_002 *as shipped* rejects every non-OnFoot composite (CTV-V9 `composite_mode_unavailable_v1plus30d`), and there is no `mount_id` on `CompositeTravel:Initiate`/`composite_journey` to carry the selection. TVL_003 described a behavior another shipped feature actively prevents, with no coordination. Fixed: composite-with-mount is **deferred V1+30d+** — §5.5 rewritten as a deferral note naming exactly what a future TVL_002 closure pass needs (relax CTV-V9 + add `mount_id`); `TVM-D5` reworked to cover uniform-mode + mixed-mode; the cross-feature gate TVM-V11 dropped (validator count 11 → 10); AC-TVL-59 rewritten to assert the deferral holds; §12.4 sequence rewritten. V1+30d+ TVL_003 ships mounts for atomic TVL_001 journeys only.
+- **/review-impl 1 MED + 4 LOW — all fixed inline (user directed "fix all"):**
+  - **MED-1** — the TVL_001 closure pass was mislabeled "schema-only"; it is schema + **three behavioral changes** (TVL-V5 lifts the `mode_unavailable` reject for the activated modes; TVL-V9 becomes the expanded §5.1 matrix; the `speed_modifier(mode)` factor enters the `Scheduled:TravelTick` + `expected_arrival_fiction_time` formulas). Relabelled "schema + behavioral" + enumerated, in §10/§17 + the boundary row + this changelog.
+  - **LOW-1** — `travel.mount_owner_untracked` (TVM-V9) was a real rule_id missing from the §8 table; reconciled to **8 new / 10 total** across §8 + §17 + catalog TVL-73 + the boundary row + `02_extension_contracts.md`.
+  - **LOW-2** — owner-death handling (orphaned mount; mid-journey owner death is a pre-existing TVL_001 gap) folded into `TVM-D7`'s scope.
+  - **LOW-3** — a `Ship`/`Horse` declarable at a route-incompatible cell (valid but unusable) — accepted + documented in §11 as author/admin responsibility.
+  - **LOW-4** — `travel.mode_requires_mount`'s copy ("requires a mount") was wrong for the OnFoot-with-a-`mount_id` case; reworded neutrally to cover both directions.
+- **Key design properties:** the conveyance is a NEW lightweight `mount` aggregate — not an EF_001 entity (per-stable horse instancing would explode entity count against AIT_001's discipline), not a fungible RES_001 resource (a mount has location + identity); a per-mode speed modifier makes a trip faster (not shorter — provisions cost stays distance-based, unchanged); ROUTE_001's `SeaLane` + `RiverNavigation` routes finally get vessels (`ByShip` / `ByBoat`); composite-journey-with-mount is deferred V1+30d+ (TVM-D5 — needs a TVL_002 closure pass).
+- **Status:** DRAFT-WITH-FIX-CYCLE awaiting acceptance-test integration. **Third TVL feature by number** (designed after TVL_004) — TVL_001 built `TravelMode` 2-variant with `ByBoat` schema-reserved precisely for this; TVL_003 activates it, the water routes gain consumers, and travel speed becomes a real choice. **/review-impl HIGH count 1** — arc trend POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3 → TVL_003 1; the lightest yet — TVL_003 is small + heavily derivative (it mostly activates a TVL_001-reserved enum).
+
+---
+
 ## 2026-05-16 — TVL_004 V1+30d+ Travel Encounters DRAFT + /review-impl 1-pass fix cycle (fourth TVL feature; the encounter layer TVL_001 §1 Gap 3 was built toward; 3 HIGH + 5 MED + 5 LOW all resolved)
 
 - **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit — Phase 0 CTE-D1..D7 + DRAFT + /review-impl 1st pass all in this commit, per the POL/SET/ROUTE/TVL_001/TVL_002 precedent).
