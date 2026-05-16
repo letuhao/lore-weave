@@ -214,6 +214,9 @@ services:
       MAX_OUTPUT_TOKENS_DEFAULT: ${MAX_OUTPUT_TOKENS_DEFAULT:-4096}
       EXTRACTION_OUTPUT_CEILING: ${EXTRACTION_OUTPUT_CEILING:-8192}
       SYSTEM_PROMPT_TOKEN_ESTIMATE: ${SYSTEM_PROMPT_TOKEN_ESTIMATE:-1024}
+      # Phase 6b — transient-retry budget for a worker job. Optional; the
+      # code default (3) applies when unset.
+      JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
     depends_on:
       postgres:
         condition: service_healthy

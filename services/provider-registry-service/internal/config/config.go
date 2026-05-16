@@ -42,6 +42,11 @@ type Config struct {
 	MaxOutputTokensDefault    int
 	ExtractionOutputCeiling   int
 	SystemPromptTokenEstimate int
+
+	// Phase 6b — job-level transient-retry budget: the number of retries a
+	// worker attempts on a transient upstream error before failing the job.
+	// Config-driven (env JOB_MAX_RETRIES), code default 3.
+	JobMaxRetries int
 }
 
 func Load() (*Config, error) {
@@ -81,6 +86,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.SystemPromptTokenEstimate, err = getEnvInt("SYSTEM_PROMPT_TOKEN_ESTIMATE", 1024); err != nil {
+		return nil, err
+	}
+	if c.JobMaxRetries, err = getEnvInt("JOB_MAX_RETRIES", 3); err != nil {
 		return nil, err
 	}
 	return c, nil

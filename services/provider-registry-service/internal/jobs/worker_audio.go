@@ -92,7 +92,13 @@ func (w *Worker) ProcessAudioInline(
 		ContentType: contentType,
 		Language:    language,
 	}
-	out, _, terr := adapter.Transcribe(sttCtx, endpointBaseURL, secret, providerModelName, in)
+	// Phase 6b — retry the transcription on a transient upstream error.
+	var out provider.TranscribeOutput
+	terr := retryTransient(sttCtx, w.maxRetries, logger, func() error {
+		o, _, e := adapter.Transcribe(sttCtx, endpointBaseURL, secret, providerModelName, in)
+		out = o
+		return e
+	})
 	if terr != nil {
 		errCode, status := classifyAudioError(sttCtx, terr)
 		logger.Info("stt-inline failed", "code", errCode, "status", status, "err", terr)
@@ -189,7 +195,13 @@ func (w *Worker) runSttJob(
 	language, _ := inputMap["language"].(string)
 
 	in := provider.TranscribeInput{AudioURL: audioURL, Language: language}
-	out, _, err := adapter.Transcribe(sttCtx, endpointBaseURL, secret, providerModelName, in)
+	// Phase 6b — retry the transcription on a transient upstream error.
+	var out provider.TranscribeOutput
+	err := retryTransient(sttCtx, w.maxRetries, logger, func() error {
+		o, _, e := adapter.Transcribe(sttCtx, endpointBaseURL, secret, providerModelName, in)
+		out = o
+		return e
+	})
 	if err != nil {
 		errCode, status := classifyAudioError(sttCtx, err)
 		logger.Info("stt failed", "code", errCode, "status", status, "err", err)
@@ -275,7 +287,13 @@ func (w *Worker) runAudioGenJob(
 		ResponseFormat: responseFormat,
 	}
 
-	out, _, err := adapter.GenerateAudio(agCtx, endpointBaseURL, secret, providerModelName, in)
+	// Phase 6b — retry the generation on a transient upstream error.
+	var out provider.GenerateAudioOutput
+	err := retryTransient(agCtx, w.maxRetries, logger, func() error {
+		o, _, e := adapter.GenerateAudio(agCtx, endpointBaseURL, secret, providerModelName, in)
+		out = o
+		return e
+	})
 	if err != nil {
 		errCode, status := classifyAudioGenError(agCtx, err)
 		logger.Info("audio_gen failed", "code", errCode, "status", status, "err", err)

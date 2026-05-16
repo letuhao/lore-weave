@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -58,16 +57,19 @@ type Worker struct {
 	// (router-only tests, dev without usage-billing); settleBilling then
 	// no-ops and the usage-billing sweeper releases any leaked hold.
 	guardrail *billing.GuardrailClient
+	// Phase 6b — transient-retry budget (config JOB_MAX_RETRIES). 0 → a
+	// failed upstream call is not retried.
+	maxRetries int
 }
 
-func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache, guardrail *billing.GuardrailClient) *Worker {
+func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache, guardrail *billing.GuardrailClient, maxRetries int) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if notifier == nil {
 		notifier = NoopNotifier{}
 	}
-	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache, guardrail: guardrail}
+	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache, guardrail: guardrail, maxRetries: maxRetries}
 }
 
 // finalizeAndNotify is the only path through which the worker ends a
@@ -361,7 +363,7 @@ func (w *Worker) Process(
 		}
 	} else {
 		// Single-call Phase 2b path with Phase 4a-α Step 0b transient retry.
-		streamErr := w.streamWithRetry(ctx, adapter, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
+		streamErr := w.streamWithRetry(ctx, agg, adapter, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
 		if streamErr != nil {
 			logger.Error("stream failed", "err", streamErr)
 			errCode := classifyStreamErrorCode(streamErr)
@@ -404,11 +406,11 @@ func (w *Worker) maybeChunk(inputMap map[string]any, cfg *ChunkConfig, logger *s
 // by agg.StartChunk/EndChunk so the aggregator builds a multi-chunk
 // result. Sequential for now; goroutine-safe parallel is a follow-up.
 //
-// Phase 4a-α Step 0b + /review-impl MED#5 — transient retry budget is
-// JOB-LEVEL (shared across all chunks), NOT per-chunk. A 9-chunk job
-// gets ONE retry total, not 9. This bounds upstream-call amplification
-// under sustained transient errors and matches the SDK's caller-side
-// budget=1 contract.
+// Phase 6b — each chunk retries on its OWN budget (Worker.maxRetries), no
+// longer a single budget shared across all chunks. One chunk's transient
+// failure no longer starves the rest. A pathological N-chunk job is still
+// bounded (N·maxRetries worst case, capped backoff; if every chunk fails the
+// upstream is down and the job fails anyway).
 func (w *Worker) processChunks(
 	ctx context.Context,
 	jobID uuid.UUID,
@@ -422,91 +424,66 @@ func (w *Worker) processChunks(
 ) error {
 	total := len(chunks)
 	totalPtr := &total
-	budget := 1 // shared across all chunks
 	for i, piece := range chunks {
 		perChunkInput, err := SubstituteLastUserMessage(inputMap, piece)
 		if err != nil {
 			return fmt.Errorf("substitute chunk %d: %w", i, err)
 		}
-		agg.StartChunk(i)
-		streamErr := w.streamWithBudget(ctx, adapter, endpointBaseURL, secret, providerModelName, perChunkInput, emit, &budget, logger)
-		agg.EndChunk(i)
+		streamErr := retryTransient(ctx, w.maxRetries, logger, func() error {
+			// StartChunk resets the per-chunk buffer — so a retry after a
+			// partial stream discards that attempt's partial (Phase 6b).
+			agg.StartChunk(i)
+			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+		})
 		if streamErr != nil {
+			// EndChunk is NOT called on failure: the job fails and the
+			// aggregator result is discarded, so committing this chunk's
+			// partial buffer would only be a latent trap if processChunks
+			// ever returned a partial result (/review-impl Phase 6b #4).
 			logger.Error("chunk stream failed", "chunk", i, "err", streamErr)
 			return streamErr
 		}
-		// Progress update so polling shows N/total.
-		_ = w.repo.UpdateProgress(ctx, jobID, totalPtr, i+1, 0)
+		agg.EndChunk(i)
+		// Progress update so polling shows N/total. Best-effort; the
+		// nil-repo guard keeps processChunks unit-testable without a DB.
+		if w.repo != nil {
+			_ = w.repo.UpdateProgress(ctx, jobID, totalPtr, i+1, 0)
+		}
 	}
 	return nil
 }
 
-// streamWithRetry — single-call (unchunked) path. Owns its own budget=1
-// because there are no other chunks to share with. Wraps streamWithBudget.
+// streamWithRetry runs the single-call (unchunked) stream with transient
+// retry — Phase 6b. Exponential backoff via retryTransient; the budget is
+// Worker.maxRetries. Non-transient errors propagate immediately.
+//
+// agg.StartChunk(0) is called inside the retry op so a retry after a
+// partial stream discards that attempt's accumulated tokens — the same
+// reset discipline as processChunks. Without it, a transient failure
+// mid-stream followed by a successful retry would double-accumulate the
+// re-emitted deltas into the aggregator (/review-impl Phase 6b #2).
+// StartChunk(0)/EndChunk(0) on a single chunk is behaviour-equivalent to
+// the unframed Phase 2b path for both aggregator types.
 func (w *Worker) streamWithRetry(
 	ctx context.Context,
+	agg Aggregator,
 	adapter provider.Adapter,
 	endpointBaseURL, secret, providerModelName string,
 	input map[string]any,
 	emit EmitFn,
 	logger *slog.Logger,
 ) error {
-	budget := 1
-	return w.streamWithBudget(ctx, adapter, endpointBaseURL, secret, providerModelName, input, emit, &budget, logger)
-}
-
-// streamWithBudget calls adapter.Stream with retry on transient upstream
-// errors (rate-limit / 5xx / network timeout) consuming from a SHARED
-// budget pointer. The pointer enables job-level (cross-chunk) budget per
-// /review-impl MED#5: a 9-chunk job gets ONE retry total, not 9.
-//
-// Honors `Retry-After` from rate-limit responses; falls back to a fixed
-// 1s backoff otherwise. Non-transient errors (4xx other than 429,
-// ErrStreamNotSupported, etc.) propagate immediately without retry.
-//
-// When *budget reaches 0 a transient error propagates as failure — caller
-// (worker.processChunks or worker.Process single-call path) finalizes
-// the job with the appropriate error code. Budget is NOT replenished
-// across chunks so a slow drain still terminates.
-//
-// Replaces knowledge-service's K17.3 caller-side retry loop — Phase 4a
-// migration drops K17.3 so this gateway-side retry MUST cover the same
-// quality contract. Phase 6b will replace with exponential backoff +
-// per-user budget.
-func (w *Worker) streamWithBudget(
-	ctx context.Context,
-	adapter provider.Adapter,
-	endpointBaseURL, secret, providerModelName string,
-	input map[string]any,
-	emit EmitFn,
-	budget *int,
-	logger *slog.Logger,
-) error {
-	const fixedBackoffS = 1.0
-	for {
-		err := adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
-		if err == nil {
-			return nil
-		}
-		if !provider.IsTransientUpstreamError(err) {
-			return err
-		}
-		if *budget <= 0 {
-			logger.Warn("transient retry budget exhausted (job-level)", "err", err)
-			return err
-		}
-		*budget--
-		wait := provider.RetryAfter(err)
-		if wait <= 0 {
-			wait = fixedBackoffS
-		}
-		logger.Info("transient upstream error — retrying", "err", err, "wait_s", wait, "remaining_budget", *budget)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Duration(wait * float64(time.Second))):
-		}
+	err := retryTransient(ctx, w.maxRetries, logger, func() error {
+		agg.StartChunk(0)
+		return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+	})
+	if err != nil {
+		// EndChunk skipped on failure — the failed job's result is
+		// discarded (consistent with processChunks, /review-impl 6b #4).
+		return err
 	}
+	agg.EndChunk(0)
+	return nil
 }
 
 // classifyStreamErrorCode picks the canonical LLM_* error code for a
