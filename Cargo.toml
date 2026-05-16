@@ -6,6 +6,10 @@
 #                                  (mirror of sdks/python/loreweave_llm).
 #   - services/tilemap-service  — first Rust microservice; procedural tilemap
 #                                  generation for non-cell LoreWeave channels.
+#   - services/world-service    — LLM MMO RPG geography substrate (GEO_001 +
+#                                  POL/SET/ROUTE). Cycle 0 scaffold.
+#   - services/travel-service   — LLM MMO RPG travel mechanics (TVL_001..005).
+#                                  Cycle 0 scaffold.
 #
 # Shared dependencies are pinned in [workspace.dependencies]; member crates
 # inherit via `dep.workspace = true`.
@@ -15,6 +19,8 @@ resolver = "2"
 members = [
     "sdks/rust/loreweave_llm",
     "services/tilemap-service",
+    "services/world-service",
+    "services/travel-service",
 ]
 
 [workspace.package]

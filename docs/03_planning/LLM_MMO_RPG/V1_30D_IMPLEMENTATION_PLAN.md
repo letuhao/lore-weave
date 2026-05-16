@@ -16,14 +16,16 @@
 
 | Cycle | Title | Status | Depends on |
 |---|---|---|---|
-| 0 | Readiness gate + contract freeze | NOT STARTED | — |
-| 1 | GEO_001 world geometry foundation | NOT STARTED | 0 |
-| 2 | Activation triangle: POL_001 + SET_001 | NOT STARTED | 1 |
-| 3 | Activation triangle: ROUTE_001 + POL culture | NOT STARTED | 2 |
-| 4 | `travel-service` scaffold + TVL_001 atomic travel | NOT STARTED | 3 (+ foundation substrate) |
-| 5 | TVL_002 composite + TVL_003 mount | NOT STARTED | 4 |
-| 6 | TVL_004 encounters + TVL_005 parties | NOT STARTED | 5 |
-| 7 | Cross-service integration + S9 context + CI hardening | NOT STARTED | 6 |
+| 0 | Readiness gate + contract freeze | **DONE** (scoped — 2026-05-17; scaffolds + contract homes; see [V1_30D_CYCLE_LOG.md](V1_30D_CYCLE_LOG.md)) | — |
+| 1 | GEO_001 world geometry foundation | **BLOCKED** — needs the DP-kernel (unbuilt) | 0 |
+| 2 | Activation triangle: POL_001 + SET_001 | NOT STARTED (blocked via 1) | 1 |
+| 3 | Activation triangle: ROUTE_001 + POL culture | NOT STARTED (blocked via 1) | 2 |
+| 4 | `travel-service` scaffold + TVL_001 atomic travel | NOT STARTED (blocked via 1; + foundation substrate) | 3 (+ foundation substrate) |
+| 5 | TVL_002 composite + TVL_003 mount | NOT STARTED (blocked via 1) | 4 |
+| 6 | TVL_004 encounters + TVL_005 parties | NOT STARTED (blocked via 1) | 5 |
+| 7 | Cross-service integration + S9 context + CI hardening | NOT STARTED (blocked via 1) | 6 |
+
+> **Batch loop halted after Cycle 0.** Cycle 1 is BLOCKED on the unbuilt DP-kernel + foundation tier (a repo audit confirmed the MMO RPG engine is 100% design docs, 0% code — see [V1_30D_CYCLE_LOG.md](V1_30D_CYCLE_LOG.md)). Cycles 2–7 depend transitively on Cycle 1, so no cycle is runnable; the §2 batch-driver terminal rule ends the loop. **Real next step:** a separate FOUNDATION program (DP-kernel → foundation tier) — see the cycle log.
 
 **Status values:** `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `DONE`.
 
