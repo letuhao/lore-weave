@@ -81,6 +81,75 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-16 — TVL_002 Composite Multi-Segment Travel (1 commit; first convenience layer — a feature consuming a feature; 2 branch merges reconciled at session start)
+
+### Session arc
+
+Resumed after a break. Two housekeeping merges first (per user direction "merge, no pull request, local only"): `origin/main` (Phase 5b–5f implementation, 292-commit catch-up) merged into `mmo-rpg/design-resume` clean (`560550c4`); then `origin/mmo-rpg/zone-map-amaw` (TMP tilemap foundation + `tilemap-service` + AMAW workflow, 25 commits / 119 files) merged in with 4 conflicts — all append-only design-track coordination files (`_LOCK.md`, `99_changelog.md`, `SESSION_HANDOFF.md` via union; `_spikes/_index.md` via judgment call) — resolved (`4bc4cbcb`). Nothing pushed.
+
+Then the user picked **TVL_002 Composite Multi-Segment Travel** from the next-step list — the first *convenience layer* in the design track (a feature consuming a feature, TVL_001, rather than a foundation substrate). Phase 0 CTV-D1..D7 deep-dive → user `approve all` → DRAFT → user invoked `/review-impl` → 3 HIGH + 3 MED + 4 LOW surfaced → user directed "fix all" → all 10 resolved inline → single combined `[boundaries-lock-claim+release]` commit.
+
+Pattern held: walk-through Phase 0 sub-decisions with recommended defaults → user terse approve → DRAFT lands → `/review-impl` adversarial pass → fix HIGH inline + (this session) fix MED + LOW inline per explicit user "fix all" directive → single combined commit with DRAFT + fix cycle folded.
+
+### What TVL_002 specifies
+
+V1+30d+ convenience layer over TVL_001 atomic travel. Player declares a destination cell; system runs Dijkstra over the GEO_004 ROUTE_001 Route graph, freezes the ordered segment list, and auto-traverses N segments — each segment a plain TVL_001 atomic journey. NEW `composite_journey` aggregate (T2/Reality, sparse per-(actor, composite_journey)). Plan freeze at initiate (replay-deterministic) + re-plan fallback (admin `RemoveRoute` on a future planned segment → one Dijkstra re-plan; failure/cap/under-provisioning → `Stranded`). Smart overnight stops (auto-rest at inn-bearing intermediate settlements). Whole-journey provisions pre-pay. Read-only `composite_travel_plan` preview query. Self-cancel at next segment boundary + admin `Forge:CancelCompositeJourney`. No new service (lives in `travel-service`); no new capability claim.
+
+### `/review-impl` 1-pass — 3 HIGH + 3 MED + 4 LOW, all resolved inline
+
+- **HIGH-1** §5.4 re-plan provisions check ignored on-hand `resource_inventory` (would wrongly `Stranded` a well-provisioned actor); fixed — re-check counts remaining-pre-pay + inventory, deducts shortfall, strands only if still short.
+- **HIGH-2** §5.6 refund formula ratioed a pre-re-plan total against a post-re-plan `total_distance_units` (over-refund / economy exploit); fixed — refund = `total_provisions_consumed − Σ(traversed-segment consumption)`.
+- **HIGH-3** §2.5 ("composite adds no tick mechanism") contradicted §5.3 ("initiate next segment at the NEXT turn-boundary"); fixed — segments chain **in-cascade** at handoff, no inter-segment turn gap. Dissolves MED-2 structurally.
+- **MED-1** `current_segment_index` invariant corrected. **MED-3** TVL_001 `Travel:Arrive` defers all composite-segment hospitality to the composite handler.
+- **LOW-1..4** §-citation + §8 count corrections; TVL-Q3 vital_pool erratum + atomic-journey `Canceled` end-position ratification folded into the CTV-Q1 closure-pass scope (now 4 coordinated items). Bonus: phantom rule_id `composite_replan_failed` removed.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_travel/TVL_002_composite_travel.md` | DRAFT + /review-impl 1-pass (3 HIGH + 3 MED + 4 LOW resolved) | 468 |
+| `features/00_travel/_index.md` | extended with TVL_002 row + Active line | + |
+| `catalog/cat_00_TVL_travel_foundation.md` | NEW TVL_002 sub-section, entries TVL-28..TVL-44 (17 entries) | + |
+| `_boundaries/01_feature_ownership_matrix.md` | NEW `composite_journey` aggregate row + `actor_travel_state` cross-feature annotation | + |
+| `_boundaries/02_extension_contracts.md` | §4 EVT-T8 `Forge:CancelCompositeJourney`; §1.4 `travel.*` +12 composite rule_ids + EVT-T1 sub-types | + |
+| `_boundaries/99_changelog.md` | combined DRAFT + /review-impl entry top-anchored | + |
+| `_boundaries/_LOCK.md` | 1 claim+release cycle | + |
+
+### Handoff notes for next agent / next session
+
+**Active:** none. Lock released. Tree clean. Branch `mmo-rpg/design-resume` ahead of `origin` (design-track commits + the 2 reconciliation merges) — **nothing pushed, no PR** per the standing user constraint; lifting that is a future explicit decision.
+
+**TVL_001 closure pass now carries 4 coordinated items** (CTV-Q1, to land at TVL_002 implementation): (1) `actor_travel_state.composite_journey_id: Option<CompositeJourneyId>` additive field + schema_version bump per I14; (2) `Travel:Arrive` defers all hospitality for composite segments to the composite handler; (3) TVL-Q3 erratum (vital_pool → resource_inventory, stale since TVL_001 HIGH-4); (4) atomic-journey `Canceled` end-position ratified to snap-to-`from_cell`.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` (POL + SET + ROUTE) + `services/travel-service` (TVL_001 `actor_travel_state` + TVL_002 `composite_journey` + Dijkstra path solver with the CTV-Q2 lexicographic tie-break) + EF_001 + TVL_001 closure passes + auth-service capability migration + chat-service S9 `[GEOGRAPHIC_CONTEXT]`/`[TRAVEL_CONTEXT]` extensions + CI gates.
+2. **TVL_004 V1+30d+ Travel Encounters** design — random events / weather / combat during a journey; attaches encounter events to per-segment `actor_travel_state` (composite-agnostic by design per CTV-D1).
+3. **TVL_003 V1+30d+ Mount/Vehicle Travel** design — OnHorseback / ByBoat / ByShip / ByCarriage; activates ByBoat mode + unblocks multi-modal composite paths (CTV-D5).
+4. **DIPL_001 V2+ Diplomacy Foundation** design — consumes State.culture_tag + State.ideology_ref + Settlement graph; requires POL_001 (done) + IDF_005 V2+ ideology.
+5. **EF_001 + TVL_001 closure passes** standalone — could batch with the V1+30d implementation phase or run separately.
+6. **SPIKE_05 V1+ knowledge-service activation walk-through** — deferred until knowledge-service ships.
+
+**Process discipline for next agent:**
+
+- TVL_002 is the first *convenience layer* — a feature consuming a feature (TVL_001). Pattern: read a locked sibling feature's aggregate → add an orchestration aggregate → coordinate cross-feature schema additions via the consumed feature's closure pass. Re-usable for future convenience layers (TVL_002 itself, group/party travel, etc.).
+- This session resolved MED + LOW inline (not just HIGH) per explicit user "fix all" directive — a stricter variant of the default policy (HIGH inline / MED user-decides / LOW defer). When the user says "fix all", apply everything inline in the same commit.
+- HIGH-count arc trend: POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3. Convenience layers reuse enough parent machinery that adversarial review finds fewer novel HIGH surfaces.
+
+### Raw count
+
+- **Commits:** 1 (`0bcc7d7a`) — plus 2 reconciliation merges (`560550c4` origin/main, `4bc4cbcb` zone-map-amaw).
+- **Files landed:** 7 (1 new + 6 modified); 641 insertions.
+- **Design-doc lines:** 468 TVL_002.
+- **Catalog entries added:** 17 (TVL-28..TVL-44).
+- **NEW aggregate:** 1 (`composite_journey`); **NEW EVT-T sub-types:** 3 (EVT-T1 `CompositeTravel:Initiate`/`Cancel` + EVT-T8 `Forge:CancelCompositeJourney`).
+- **`travel.*` rule_ids added:** 12 (10 player-meaningful + 2 defensive); **validators:** 17 (CTV-V1..V17).
+- **Acceptance scenarios:** 15 (AC-TVL-16..30); **deferrals:** 9 (CTV-D1..D9); **open questions:** 7 (CTV-Q1..Q7).
+- **Cross-feature schema dependency:** 1 (`actor_travel_state.composite_journey_id`, via TVL_001 closure pass).
+- **/review-impl findings resolved:** 3 HIGH + 3 MED + 4 LOW (all inline, 1-pass).
+
+---
+
 ## Session 2026-05-14 → 2026-05-15 — V1+30d geography activation triangle + first consumer feature arc (4 commits; POL + SET + ROUTE activate GEO_001 schema-reserved layers; TVL_001 demonstrates consumer-feature pattern; /review-impl maturity discipline across all 4 features)
 
 ### Session arc
