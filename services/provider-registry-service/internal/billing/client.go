@@ -63,7 +63,9 @@ func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.U
 	switch status {
 	case http.StatusOK:
 		var out struct {
-			ReservationID uuid.UUID `json:"reservation_id"`
+			ReservationID    uuid.UUID `json:"reservation_id"`
+			DailyAvailable   float64   `json:"daily_available"`
+			MonthlyAvailable float64   `json:"monthly_available"`
 		}
 		if err := json.Unmarshal(raw, &out); err != nil {
 			return ReserveResult{}, fmt.Errorf("reserve: decode 200 body: %w", err)
@@ -71,7 +73,14 @@ func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.U
 		if out.ReservationID == uuid.Nil {
 			return ReserveResult{}, fmt.Errorf("reserve: 200 with nil reservation_id")
 		}
-		return ReserveResult{ReservationID: out.ReservationID}, nil
+		// DailyAvailable/MonthlyAvailable carry the caller's remaining
+		// budget — the streaming guardrail's mid-stream abort threshold
+		// (Phase 6a-δ). The job path ignores them.
+		return ReserveResult{
+			ReservationID:    out.ReservationID,
+			DailyAvailable:   out.DailyAvailable,
+			MonthlyAvailable: out.MonthlyAvailable,
+		}, nil
 	case http.StatusPaymentRequired:
 		var out struct {
 			DailyAvailable   float64 `json:"daily_available"`

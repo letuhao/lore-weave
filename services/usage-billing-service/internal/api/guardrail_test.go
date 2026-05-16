@@ -167,6 +167,19 @@ func TestGuardrailReserve_HappyPath_SeedsRowAndHolds(t *testing.T) {
 	if reservationIDFrom(t, rr) == uuid.Nil {
 		t.Fatal("expected a non-nil reservation_id")
 	}
+	// The 200 body must carry the step-5 availability figures (Phase 6a-δ
+	// streaming abort threshold). Row just seeded → spent 0, reserved 0.
+	var avail struct {
+		DailyAvailable   float64 `json:"daily_available"`
+		MonthlyAvailable float64 `json:"monthly_available"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &avail); err != nil {
+		t.Fatalf("decode reserve 200 body: %v", err)
+	}
+	if avail.DailyAvailable != guardrailTestDaily || avail.MonthlyAvailable != guardrailTestMonthly {
+		t.Fatalf("reserve 200 availability: got daily=%v monthly=%v want %v/%v",
+			avail.DailyAvailable, avail.MonthlyAvailable, guardrailTestDaily, guardrailTestMonthly)
+	}
 	g := readGuardrail(t, pool, owner)
 	if g.dailyLimit != guardrailTestDaily || g.monthlyLimit != guardrailTestMonthly {
 		t.Fatalf("guardrail not seeded from config: %+v", g)

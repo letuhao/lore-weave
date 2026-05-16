@@ -170,7 +170,16 @@ WHERE owner_user_id = $1`, in.OwnerUserID, in.EstimatedUSD); err != nil {
 		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to commit")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"reservation_id": resID})
+	// daily_available / monthly_available are the step-5 figures (limit −
+	// spent − reserved, BEFORE this reservation's bump) — how much this
+	// caller may still spend in total. The streaming guardrail (Phase 6a-δ)
+	// uses them as the mid-stream hard-abort threshold; the job path ignores
+	// them.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"reservation_id":    resID,
+		"daily_available":   dailyAvail,
+		"monthly_available": monthlyAvail,
+	})
 }
 
 // guardrailReconcile — POST /internal/billing/guardrail/reconcile.

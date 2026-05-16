@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/provider"
 )
 
@@ -147,15 +148,16 @@ func (s *Server) doLlmStream(w http.ResponseWriter, r *http.Request, userID uuid
 	// later cleanup cycle if it bothers us. (Originally referenced
 	// invokeModel, retired in Phase 4d.)
 	var providerKind, providerModelName, endpointBaseURL, secret string
+	var pricingRaw []byte // Phase 6a-δ — per-model pricing JSONB for the guardrail
 	if in.ModelSource == "user_model" {
 		var secretCipher string
 		err = s.pool.QueryRow(r.Context(), `
 SELECT um.provider_kind, um.provider_model_name,
-       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), um.pricing
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+`, modelRef, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &pricingRaw)
 		if err == pgx.ErrNoRows {
 			writeError(w, http.StatusNotFound, "LLM_MODEL_NOT_FOUND", "user model not found or inactive")
 			return
@@ -173,10 +175,10 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		}
 	} else if in.ModelSource == "platform_model" {
 		err = s.pool.QueryRow(r.Context(), `
-SELECT provider_kind, provider_model_name
+SELECT provider_kind, provider_model_name, pricing
 FROM platform_models
 WHERE platform_model_id=$1 AND status='active'
-`, modelRef).Scan(&providerKind, &providerModelName)
+`, modelRef).Scan(&providerKind, &providerModelName, &pricingRaw)
 		if err == pgx.ErrNoRows {
 			writeError(w, http.StatusNotFound, "LLM_MODEL_NOT_FOUND", "platform model not found or inactive")
 			return
@@ -208,6 +210,40 @@ WHERE platform_model_id=$1 AND status='active'
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "response writer does not support flushing")
 		return
 	}
+
+	// Phase 6a-δ — spend-guardrail pre-flight. MUST run before the SSE
+	// prelude below: once WriteHeader(200) ships, a 402/404 is impossible.
+	// It is also the LAST thing that can fail before streaming, so a
+	// successful reserve is always followed by stream + settle.
+	estimateInput := in.Input // tts — the input map directly
+	if op == "chat" {
+		// Mirror exactly what streamChat sends upstream: messages AND tools
+		// both consume input tokens. Omitting tools would under-size the
+		// reservation and the running tally (/review-impl 6a-δ MED#1).
+		estimateInput = map[string]any{"messages": in.Messages}
+		if in.Tools != nil {
+			estimateInput["tools"] = in.Tools
+		}
+		if in.MaxTokens != nil && *in.MaxTokens > 0 {
+			estimateInput["max_tokens"] = float64(*in.MaxTokens)
+		}
+	}
+	var pricing billing.Pricing
+	if len(pricingRaw) > 0 {
+		if uErr := json.Unmarshal(pricingRaw, &pricing); uErr != nil {
+			writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "invalid model pricing")
+			return
+		}
+	}
+	guard, ok := s.preflightStream(w, r, userID, op, pricing, estimateInput)
+	if !ok {
+		return // preflightStream wrote the rejection
+	}
+	// settle runs on every exit — completion, abort, upstream error, or
+	// client disconnect. Background ctx so a disconnect cannot cancel the
+	// reconcile HTTP call.
+	defer guard.settle(context.Background())
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -223,7 +259,7 @@ WHERE platform_model_id=$1 AND status='active'
 	case "tts":
 		s.streamTts(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in.Input)
 	default: // "chat"
-		s.streamChat(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in)
+		s.streamChat(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in, guard)
 	}
 }
 
@@ -236,6 +272,7 @@ func (s *Server) streamChat(
 	adapter provider.Adapter,
 	endpointBaseURL, secret, providerModelName string,
 	in streamRequest,
+	guard *streamGuard,
 ) {
 	// Build adapter input map. The adapter's Stream() reads messages,
 	// temperature, max_tokens, tools — same shape as Invoke() input.
@@ -261,6 +298,21 @@ func (s *Server) streamChat(
 			return r.Context().Err()
 		default:
 		}
+		// Phase 6a-δ — account the chunk against the spend tally; a budget
+		// runaway hard-aborts. The aborting chunk's content is dropped (we
+		// emit the error frame instead) — an acceptable trim of the last
+		// delta.
+		if guard.observe(chunk) {
+			abortFrame := provider.StreamChunk{
+				Kind:    provider.StreamChunkError,
+				Code:    "LLM_QUOTA_EXCEEDED",
+				Message: "stream aborted — budget exceeded",
+			}
+			raw, _ := json.Marshal(abortFrame)
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", abortFrame.Kind, raw)
+			flusher.Flush()
+			return errStreamBudgetExceeded
+		}
 		raw, err := json.Marshal(chunk)
 		if err != nil {
 			return err
@@ -274,6 +326,12 @@ func (s *Server) streamChat(
 
 	err := adapter.Stream(r.Context(), endpointBaseURL, secret, providerModelName, input, emit)
 	if err != nil {
+		// A budget abort already emitted its own error frame; a client
+		// disconnect means nobody is listening. In both cases, do not
+		// emit a second (misleading) error frame.
+		if guard.didAbort() || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
 		code := "LLM_UPSTREAM_ERROR"
 		message := err.Error()
 		if errors.Is(err, provider.ErrStreamNotSupported) {

@@ -42,7 +42,9 @@ func TestGuardrailClient_Reserve_OK(t *testing.T) {
 	stub := newGuardrailStub(t)
 	resID := uuid.New()
 	stub.replyStatus = http.StatusOK
-	stub.replyBody = map[string]any{"reservation_id": resID}
+	stub.replyBody = map[string]any{
+		"reservation_id": resID, "daily_available": 7.5, "monthly_available": 42.0,
+	}
 
 	c := NewGuardrailClient(stub.server.URL, "secret-token", nil)
 	owner, job := uuid.New(), uuid.New()
@@ -55,6 +57,12 @@ func TestGuardrailClient_Reserve_OK(t *testing.T) {
 	}
 	if res.ReservationID != resID {
 		t.Fatalf("reservation_id: got %v want %v", res.ReservationID, resID)
+	}
+	// A 200 must also surface the availability figures (the streaming
+	// guardrail's abort threshold).
+	if res.DailyAvailable != 7.5 || res.MonthlyAvailable != 42.0 {
+		t.Fatalf("200 availability: got daily=%v monthly=%v want 7.5/42.0",
+			res.DailyAvailable, res.MonthlyAvailable)
 	}
 	if stub.lastPath != "/internal/billing/guardrail/reserve" {
 		t.Fatalf("unexpected path %q", stub.lastPath)

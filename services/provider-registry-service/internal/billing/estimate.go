@@ -235,6 +235,25 @@ func perUnitCost(units float64, rate *float64) (float64, error) {
 	return roundUpUSD(units * (*rate)), nil
 }
 
+// EstimateTokens is the exported, script-aware char→token estimate. Used by
+// the input estimator (below) and by the streaming guardrail's running
+// output tally (Phase 6a-δ) so streamed CJK output is not under-counted.
+func EstimateTokens(chars, nonASCII int) int {
+	return estimateInputTokens(chars, nonASCII)
+}
+
+// CountScriptChars returns the rune count and the non-ASCII rune count of s —
+// the two inputs EstimateTokens needs. Exported for the streaming tally.
+func CountScriptChars(s string) (chars, nonASCII int) {
+	for _, r := range s {
+		chars++
+		if r > 127 {
+			nonASCII++
+		}
+	}
+	return chars, nonASCII
+}
+
 // estimateInputTokens converts a char count to a worst-case token count using
 // the script-aware divisor (design §3.3).
 func estimateInputTokens(chars, nonASCII int) int {
@@ -256,12 +275,7 @@ func estimateInputTokens(chars, nonASCII int) int {
 func walkText(v any) (chars, nonASCII int) {
 	switch t := v.(type) {
 	case string:
-		for _, r := range t {
-			chars++
-			if r > 127 {
-				nonASCII++
-			}
-		}
+		return CountScriptChars(t)
 	case []any:
 		for _, e := range t {
 			c, n := walkText(e)

@@ -60,6 +60,14 @@ paths:
         - The gateway re-frames provider-specific delta formats (OpenAI
           `delta.content`, Anthropic `content_block_delta`, etc.) into
           one canonical SSE envelope (see `StreamFormat`).
+
+        **Spend guardrail (Phase 6a-δ).** Before the SSE stream opens the
+        gateway reserves the worst-case USD cost against the caller's
+        budget — `404 LLM_MODEL_NOT_FOUND` (no such model), `402
+        LLM_QUOTA_EXCEEDED` (unpriced model, or over budget). While
+        streaming, a running cost tally hard-aborts a runaway: the SSE
+        body then ends with an `event: error` frame carrying
+        `LLM_QUOTA_EXCEEDED` ("stream aborted — budget exceeded").
       operationId: openLlmStream
       security:
         - bearerAuth: []
@@ -139,6 +147,12 @@ paths:
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '402':
+          # Phase 6a-δ — spend guardrail: unpriced model or over budget.
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          # Phase 6a-δ — model_ref resolves to no model.
           $ref: '#/components/responses/ErrorResponse'
 
   # ──────────────────────────────────────────────────────────────────────

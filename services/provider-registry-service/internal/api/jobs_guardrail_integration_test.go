@@ -28,9 +28,11 @@ type reserveReply struct {
 // billingStub is a fake usage-billing. reserve responses are consumed in
 // order (the last repeats); reconcile/release always 200.
 type billingStub struct {
-	server       *httptest.Server
-	reserve      []reserveReply
-	reserveCalls int
+	server         *httptest.Server
+	reserve        []reserveReply
+	reserveCalls   int
+	reconcileCalls int
+	releaseCalls   int
 }
 
 func newBillingStub(t *testing.T, reserve ...reserveReply) *billingStub {
@@ -50,6 +52,12 @@ func newBillingStub(t *testing.T, reserve ...reserveReply) *billingStub {
 			return
 		}
 		// reconcile / release
+		switch r.URL.Path {
+		case "/internal/billing/guardrail/reconcile":
+			s.reconcileCalls++
+		case "/internal/billing/guardrail/release":
+			s.releaseCalls++
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
