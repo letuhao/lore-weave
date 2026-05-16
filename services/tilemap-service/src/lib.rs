@@ -18,6 +18,7 @@
 #![warn(missing_debug_implementations)]
 #![warn(rust_2018_idioms)]
 
+pub mod engine;
 pub mod error;
 pub mod harness;
 pub mod seed;

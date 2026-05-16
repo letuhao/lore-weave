@@ -57,6 +57,30 @@ pub fn derive_seed(
     TilemapSeed(u64::from_le_bytes(bytes))
 }
 
+/// Derive a labelled sub-seed from a [`TilemapSeed`].
+///
+/// The placement engine + each modificator need their own deterministic RNG
+/// stream; deriving every stream from one labelled `blake3(seed || label)`
+/// keeps replays byte-identical even once per-zone work is parallelised
+/// (TMP_002 §8 / TMP-A4). Labels are caller-chosen and stable, e.g.
+/// `"force_directed"`, `"penrose"`, `"fractalize:sea_north"`,
+/// `"mod:terrain_painter:jianghu_capital"`.
+///
+/// The `||` separator byte mirrors [`derive_seed`] — it stops
+/// `sub_seed(s, "ab") == sub_seed(s, "a" ++ "b"-from-elsewhere)` boundary
+/// collisions.
+pub fn sub_seed(seed: TilemapSeed, label: &str) -> u64 {
+    let mut hasher = Hasher::new();
+    hasher.update(&seed.0.to_le_bytes());
+    hasher.update(b"|");
+    hasher.update(label.as_bytes());
+    let digest = hasher.finalize();
+    let bytes: [u8; 8] = digest.as_bytes()[..8]
+        .try_into()
+        .expect("blake3 digest has at least 32 bytes — slice of 8 cannot fail");
+    u64::from_le_bytes(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +125,33 @@ mod tests {
         let a = derive_seed("ab", "cd", "ef", 0);
         let b = derive_seed("a", "bcd", "ef", 0);
         assert_ne!(a, b, "separator byte must distinguish concatenations");
+    }
+
+    #[test]
+    fn sub_seed_is_deterministic() {
+        let s = TilemapSeed(0x1234_5678_9abc_def0);
+        assert_eq!(sub_seed(s, "force_directed"), sub_seed(s, "force_directed"));
+    }
+
+    #[test]
+    fn sub_seed_differs_by_label() {
+        let s = TilemapSeed(42);
+        assert_ne!(sub_seed(s, "penrose"), sub_seed(s, "fractalize"));
+    }
+
+    #[test]
+    fn sub_seed_differs_by_seed() {
+        assert_ne!(
+            sub_seed(TilemapSeed(1), "penrose"),
+            sub_seed(TilemapSeed(2), "penrose"),
+        );
+    }
+
+    #[test]
+    fn sub_seed_separator_prevents_label_boundary_collision() {
+        // Without the separator, a seed whose le-bytes end in 'a' could collide
+        // a label starting one char earlier. The `|` byte rules it out.
+        let s = TilemapSeed(42);
+        assert_ne!(sub_seed(s, "fractalize:sea"), sub_seed(s, "fractalize:se"));
     }
 }

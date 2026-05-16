@@ -20,6 +20,12 @@ pub struct TilemapTemplateId(pub String);
 pub struct ZoneSpec {
     pub zone_id: ZoneId,
     pub zone_role: ZoneRole,
+    /// Relative size weight (TMP_002 §2.1). The zone placer scales a zone's
+    /// force-directed soft-sphere radius by `sqrt(size)`. Author-tunable;
+    /// defaults to a neutral mid weight so a template that omits it still
+    /// places sanely (all zones equal-size).
+    #[serde(default = "default_zone_size")]
+    pub size: u32,
     /// Allowed terrain types in this zone (post-TerrainPainter).
     #[serde(default)]
     pub terrain_types: Vec<TerrainKind>,
@@ -30,6 +36,12 @@ pub struct ZoneSpec {
     /// converts to `ZoneEdge` records on `tilemap_view`).
     #[serde(default)]
     pub connections: Vec<TemplateConnection>,
+}
+
+/// Default `ZoneSpec.size` — a neutral mid weight (all zones equal when the
+/// author does not differentiate).
+fn default_zone_size() -> u32 {
+    100
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

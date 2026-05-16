@@ -94,7 +94,7 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 | Phase | Scope | Size | Depends on |
 |---|---|---|---|
 | ~~**0b**~~ ✅ DONE | SSE parser in `loreweave_llm` + L3 zone-classifier harness → lmstudio. **Reclassified L→XL**: required extending the gateway contract (`tool_choice` + `tool_call` SSE event) across openapi + Go gateway + both SDKs. Live run: tool-use YES, 3/3 classified, R1-R5 clean. | XL (done) | — |
-| **1** | Engine Stage 1: Fruchterman-Reingold zone placer (TMP_002) + 1-2 modificators (TMP_003) + determinism integration test (same seed → byte-identical zones) | L (1-2 sessions) | — (algorithmic; independent of 0b) |
+| ~~**1**~~ ✅ DONE | Engine: §3 FR placer + §4 Penrose + §5 fractalize + TMP_003 modificator framework + TerrainPainter + AC-4 determinism test. **Reclassified L→XL.** Done 2026-05-16, XL `/amaw` (chunks 3-6 fully-autonomous batch). | XL (done) | — |
 | **2** | L3 zone classifier full retry loop (TMP_008b §4 structured validation + §5 per-object retry + §6 canonical-default fallback) + end-to-end small reality bootstrap | L-XL | 0b (gateway) + 1 (engine output) |
 | **3** | L4 regional narration + measurement findings doc back into TMP_008b | L | 2 |
 
@@ -124,59 +124,70 @@ This honors "use AMAW for the map-gen implementation" while respecting what this
 
 ### Recommended first action next session
 
-Phase 0b is DONE (see the 2026-05-15 Phase 0b session entry below). **Next: Phase 1** —
-the Fruchterman-Reingold zone placer + modificators + determinism integration test.
-Phase 1 is purely algorithmic and **independent of 0b** (no gateway/LLM dependency) —
-a clean L-size `/amaw` task. Phase 2 (full L3 retry loop) depends on both 0b (done)
-and 1, so Phase 1 unblocks the rest. Pre-flight: `cargo build` clean at workspace
-root; ContextHub up for `/amaw`. The infra `infra` compose stack and the gitignored
-`.local/phase0b.env` creds are already set up if a live re-run is needed.
+Phases 0b + 1 are DONE (see their session entries below). **Next: Phase 2** —
+the L3 zone-classifier full retry loop (TMP_008b §4 structured validation + §5
+per-object retry + §6 canonical-default fallback) + an end-to-end small-reality
+bootstrap. Phase 2 depends on **both** 0b (gateway tool-use — done) and 1 (engine
+output — done), so it is now unblocked. Pre-flight: `cargo build` clean at
+workspace root; ContextHub up for `/amaw`; the `infra` compose stack + gitignored
+`.local/phase0b.env` creds are set up if a live re-run is needed.
 
 ---
 
-## Session 2026-05-16 (continued) — Phase 1 placement engine — ⏳ IN PROGRESS (CLARIFY/DESIGN/PLAN done, BUILD pending)
+## Session 2026-05-16 (continued) — Phase 1 placement engine — ✅ DONE (XL `/amaw`)
 
-### State
+### Outcome
 
-Phase 1 (tilemap-service zone-placement engine) started as a **default v2.2 XL task**
-(user declined `/amaw`). **CLARIFY + DESIGN + REVIEW + PLAN complete; BUILD not started.**
-The workflow-gate `.workflow-state.json` is parked at the `build` phase.
+Phase 1 (tilemap-service zone-placement engine), XL, run under **`/amaw`** —
+chunks 0-2 human-gated across earlier sessions, **chunks 3-6 + close-out as a
+single fully-autonomous AMAW batch** (operator override of the handoff's
+human-gated recommendation; recorded in the plan's "Batch execution" section).
+All 12 phases complete; the determinism axiom (TMP-A4) holds.
 
-- **Scope (PO decision):** full TMP_002 placement — §3 Fruchterman-Reingold + §4
-  Penrose tiling + §5 fractalize — + the TMP_003 modificator framework + **1
-  modificator (TerrainPainter)** + a determinism integration test.
+- **Scope:** full TMP_002 placement (§3 FR + §4 Penrose + §5 fractalize) +
+  TMP_003 modificator framework + 1 modificator (TerrainPainter) + the AC-4
+  determinism integration test.
 - **Spec:** [`docs/specs/2026-05-16-tilemap-phase-1-placement-engine.md`](../../specs/2026-05-16-tilemap-phase-1-placement-engine.md)
-  — D1-D8, AC-1..AC-7. **Plan:** [`docs/plans/2026-05-16-tilemap-phase-1-placement-engine.md`](../../plans/2026-05-16-tilemap-phase-1-placement-engine.md)
-  — 7 build chunks. (Both on disk, uncommitted — they land in Phase 1's eventual COMMIT.)
+  (D1-D8, AC-1..AC-7). **Plan:** [`docs/plans/2026-05-16-tilemap-phase-1-placement-engine.md`](../../plans/2026-05-16-tilemap-phase-1-placement-engine.md)
+  (7 build chunks + batch-execution shape).
 
-### How to resume
+### What shipped (`services/tilemap-service/src/engine/`)
 
-**Chunk 0 (foundations) — ✅ DONE** (this session): `rand`/`rand_chacha` workspace
-deps; `seed::sub_seed(seed, label)` blake3 sub-stream helper; new
-`types/tile_mask.rs` `TileMask` bitset (flat-index-ordered `iter_set` — the
-determinism-safe iteration); `ZoneRuntime.assigned_tiles` swapped to `TileMask` +
-new `free_paths: TileMask`; `error.rs` gained `Placement` / `EmptyZone` /
-`DependencyCycle` / `Modificator` variants. `cargo test -p tilemap-service` green
-(21 lib + 3 + 5), clippy clean. Code on disk, **uncommitted** (lands in Phase 1's COMMIT).
+| Chunk | Module | Content |
+|---|---|---|
+| 0 | `seed.rs` · `types/tile_mask.rs` | `sub_seed` blake3 sub-stream; `TileMask` bitset (flat-index `iter_set`); `error.rs` placement variants; `rand`/`rand_chacha` deps |
+| 1 | `placement/grid_seed.rs` | §3.1 `initial_grid_layout` — deterministic N×N grid seed, no RNG |
+| 2 | `placement/force_directed.rs` | §3.2-§3.3 Fruchterman-Reingold — FR forces + annealing + tabu swap; **D5 cap split** (iteration-cap → FR best, wall-clock-cap → grid seed); ChaCha8 jitter |
+| 3 | `placement/penrose.rs` | §4 Penrose P3 — Robinson-triangle subdivision (canonical 10-triangle wheel; corrects §4.2's loose "5"), vertex→zone, tile→vertex, §4.4 centroid |
+| 4 | `placement/fractalize.rs` · `placement/mod.rs` | §5 fractalize — waypoint scatter + BFS connected-components fixup; Hub/Forbidden/Sea cuts (D8); `place_zones()` §6 orchestrator |
+| 5 | `pipeline/{modificator,registry}.rs` | TMP_003 §2 `Modificator` trait + `ModificatorContext`; §4.1 `ModificatorRegistry` — Kahn topo-sort, cycle reject, unregistered-dep tolerated (D7) |
+| 6 | `modificators/terrain_painter.rs` · `engine/mod.rs` | TMP_003 §3.1 TerrainPainter (D7 cut); `place_tilemap()` entry; `tests/determinism.rs` (AC-4, not `#[ignore]`d) |
 
-> **⚠ workflow-gate note:** the `.workflow-state.json` gate was **reset** after
-> chunk 0 to start a separate "improve AMAW ContextHub integration" task. The gate
-> no longer remembers Phase 1's `build` phase. On Phase 1 resume: re-run
-> `workflow-gate.sh size XL 14 12 3`, then re-`complete` clarify/design/review-design/
-> plan with evidence pointing at the existing on-disk spec + plan artifacts (they are
-> done — this is just re-syncing the tracker), then continue at BUILD chunk 1.
+### Workflow — AMAW XL, 12 phases
 
-**Resume at BUILD chunk 1.** Remaining order: 1 grid-seed (BFS distance + initial
-grid — TMP_002 §3.1) → 2 Fruchterman-Reingold (§3.2-§3.3) → 3 Penrose (§4) →
-4 fractalize (§5) → 5 modificator pipeline (TMP_003 §2+§4.1) → 6 TerrainPainter +
-`place_tilemap` entry + determinism test. Each chunk compiles + tests green before
-the next. **BUILD-discovered note for chunk 1:** `ZoneSpec` (template.rs) has no
-`size: u32` field that TMP_002 §2.1 expects — chunk 1 must add it (small schema
-addition, `#[serde(default)]`); FR (chunk 2) uses it for soft-sphere radius.
+VERIFY: `cargo test --workspace` green (**128 tests** incl. 5 determinism +
+68 tilemap lib), `clippy --workspace` clean. REVIEW(code): Adversary cold-start
+r1 → **APPROVED_WITH_WARNINGS** (0 BLOCK, 3 WARN — determinism/partition/
+topo-sort/panic all clean). QC + POST-REVIEW: Scope Guard → **CLEAR** (AC-1..AC-7
+all covered, no §2 scope crossing). 3 WARN → DEFERRED #015-#017 (2× Phase-2
+progress-streaming, 1× perf). Findings: [`docs/audit/findings-phase-1-placement-engine-r1.md`](../../audit/findings-phase-1-placement-engine-r1.md).
 
-**Key design notes for the BUILD:** single-threaded pipeline (determinism first —
-D6); ChaCha8 RNG sub-seeded via `blake3(seed || label)` (D1); `TileMask` iterates in
-flat-index order, never a `HashSet` (D2); determinism test (AC-4) is NOT `#[ignore]`d.
+### Two spec-deviation decisions (documented in-code + in the spec)
+
+1. **D5 cap-fallback** — spec D5 was ambiguous; resolved to a split (iteration
+   cap keeps FR best, wall-clock cap → grid seed). Spec D5 updated.
+2. **Penrose seed** — spec §4.2's "5 isoceles triangles" undercounts; the
+   canonical P3 construction needs a 10-triangle Robinson-triangle decagon
+   wheel. `penrose.rs` uses the canonical 10; documented in the module header.
+
+### Handoff notes
+
+**Active blocker:** none. **Phase 1 complete + committed.** **Next: Phase 2** —
+L3 zone-classifier full retry loop (TMP_008b §4-§6) + end-to-end small-reality
+bootstrap; depends on Phase 0b (done) + Phase 1 engine output (done).
+
+**ContextHub MCP was down** this session — Adversary/Scope-Guard `## Captured
+rules` pre-loaded empty; RETRO `add_lesson` could not persist (noted below).
 
 ---
 
