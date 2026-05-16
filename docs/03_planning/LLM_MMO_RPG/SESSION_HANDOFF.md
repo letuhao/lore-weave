@@ -81,6 +81,74 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-16 (cont.) — TVL_004 Travel Encounters (1 commit; the encounter layer the whole travel arc was built toward)
+
+### Session arc
+
+Continued straight from the TVL_002 commit. User picked **TVL_004 Travel Encounters** from the next-step list — the feature TVL_001 §1 Gap 3 explicitly named ("V1+30d+ encounter generators need a travel-in-progress state to attach to") and TVL_002 CTV-D1 kept composite-agnostic for. Phase 0 CTE-D1..D7 deep-dive → user `approve all` → DRAFT → user invoked `/review-impl` → 3 HIGH + 5 MED + 5 LOW surfaced → user directed "fix all" → all 13 resolved inline → single combined `[boundaries-lock-claim+release]` commit `dda45ef8`.
+
+### What TVL_004 specifies
+
+V1+30d+ feature generating encounters *during* a journey — bandit ambush on a remote Trail, merchant caravan on a Road, storm on a MountainPass, herb cache by a River. Reads the GEO/POL/SET/ROUTE V1+30d substrate (biome, route.kind, province danger) and attaches mechanical encounter events to TVL_001's `actor_travel_state`. NEW `travel_encounter` aggregate (T2/Reality, sparse per-(journey, encounter)). Encounter schedule pre-rolled (Poisson) at `Travel:Initiate` and **pinned** onto a NEW additive `actor_travel_state.encounter_schedule` field. An unresolved encounter pauses the journey (no `TravelStatus` change); the actor picks a per-kind approach; chat-service LLM narrates the scene + proposes an outcome; the engine clamps to author-declared `OutcomeBounds`; the journey resumes. `Combat` encounters resolve via a one-step abstraction (no turn-by-turn loop — deferred to a future combat feature). Encounter participants are abstract + ephemeral (no persistent EF_001/AIT entities). `EncounterKind` 4-variant; author-declared `encounter_tables` RealityManifest extension. TVL_002 composites are encounter-agnostic for pause, composite-aware for reroute-cancel.
+
+### `/review-impl` 1-pass — 3 HIGH + 5 MED + 5 LOW, all resolved inline
+
+- **HIGH-1** — the tick crossed-point logic overshot the encounter point + silently lost a 2nd point crossed in the same tick (Poisson has no min spacing); fixed — a tick clamps to exactly the crossed point.
+- **HIGH-2** — the schedule was claimed a "pure re-derivable function, no stored field", but depends on `world_geometry` biome + `route.kind`, both mutable via `GeographyDelta` — a determinism break. Fixed — the schedule is **pinned** onto a NEW additive `actor_travel_state.encounter_schedule` field (schema_version bump per I14); TVL_004 thus gains a cross-feature schema dependency like TVL_002's `composite_journey_id`.
+- **HIGH-3** — a `Hazard` `DivertToCell` reroute cancels the segment's `actor_travel_state`; if the segment belonged to a composite, no TVL_002 path handled it (orphaned composite). Fixed — the reroute also transitions the `composite_journey` to `Stranded`.
+- **MED-1..5** — paused-tick clock double-count · missing `combat_threat` table field · reroute teleport (CTE-V11 proximity) · biome-lookup dependency on ROUTE_001's cell sequence · the logically-impossible "single LLM call" (CTE-Q6). **LOW-1..5** — rule_id count reconciliation · magnitude clamp to PL_006 `1..=10` · §6 determinism wording · `Forge:ResolveEncounter` Skip-only · outcome-proposal replay caching.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_travel/TVL_004_travel_encounters.md` | DRAFT + /review-impl 1-pass (3 HIGH + 5 MED + 5 LOW resolved) | 473 |
+| `features/00_travel/_index.md` | TVL_004 row + Active line | + |
+| `catalog/cat_00_TVL_travel_foundation.md` | NEW TVL_004 sub-section, entries TVL-45..TVL-60 (16 entries) | + |
+| `_boundaries/01_feature_ownership_matrix.md` | NEW `travel_encounter` aggregate row | + |
+| `_boundaries/02_extension_contracts.md` | §4 EVT-T8 `Forge:ResolveEncounter`; §1.4 `travel.*` +10 rule_ids + EVT-T1/T6 sub-types + `encounter_schedule` cross-feature dependency | + |
+| `_boundaries/99_changelog.md` | combined DRAFT + /review-impl entry top-anchored | + |
+| `_boundaries/_LOCK.md` | 1 claim+release cycle | + |
+
+### Handoff notes for next agent / next session
+
+**Active:** none. Lock released. Tree clean. Branch `mmo-rpg/design-resume` ahead of `origin` — **nothing pushed, no PR** per the standing user constraint.
+
+**TVL_001 closure pass now spans TWO consumer features:**
+- For **TVL_002** (CTV-Q1, 4 items): `composite_journey_id` additive field + schema bump · `Travel:Arrive` defers composite-segment hospitality to the composite handler · TVL-Q3 vital_pool→resource_inventory erratum · `Canceled` end-position ratified to snap-to-`from_cell`.
+- For **TVL_004** (CTE-Q1): `encounter_schedule: Vec<EncounterPoint>` additive field + schema bump · the `Scheduled:TravelTick` generator gains clamp-to-crossed-point encounter detection + a pause that skips both progress and clock advancement.
+- Both should land together when `travel-service` is implemented — two sequential `actor_travel_state` schema_version bumps.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` (POL + SET + ROUTE) + `services/travel-service` (TVL_001 `actor_travel_state` + TVL_002 `composite_journey` + TVL_004 `travel_encounter` + Dijkstra solver + Poisson encounter pre-roll) + EF_001 + TVL_001 closure passes + auth-service capability migration + chat-service S9 `[GEOGRAPHIC_CONTEXT]`/`[TRAVEL_CONTEXT]` extensions + CI gates.
+2. **TVL_003 V1+30d+ Mount/Vehicle Travel** design — OnHorseback / ByBoat / ByShip / ByCarriage; activates the schema-reserved ByBoat mode + unblocks multi-modal composite paths (TVL_002 CTV-D5).
+3. **TVL_005 V1+30d+ Group/Party Travel** design — a party traversing a journey together; unblocks party encounters (TVL_004 CTE-D7).
+4. **A combat feature** design — would replace the TVL_004 §5.4 combat abstraction (CTE-D1); also unblocks PROG_001 DF7-equivalent damage-law work.
+5. **EF_001 + TVL_001 closure passes** standalone — or batched with the V1+30d implementation phase.
+6. **DIPL_001 V2+ Diplomacy Foundation** design — consumes POL_001 State.culture_tag + Settlement graph; requires IDF_005 V2+ ideology.
+
+**Process discipline for next agent:**
+
+- The TVL travel arc now has 4 features: TVL_001 (atomic) + TVL_002 (composite convenience) + TVL_004 (encounters). The pattern for a feature consuming a sibling feature: read the consumed aggregate, add an orchestration/attachment aggregate, coordinate cross-feature schema additions via the consumed feature's closure pass.
+- This session resolved MED + LOW inline (not just HIGH) per explicit user "fix all" directive on both TVL_002 and TVL_004 — when the user says "fix all", apply everything inline in the same commit.
+- HIGH-count arc trend: POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3.
+
+### Raw count
+
+- **Commits:** 1 (`dda45ef8`).
+- **Files landed:** 7 (1 new + 6 modified); 647 insertions.
+- **Design-doc lines:** 473 TVL_004.
+- **Catalog entries added:** 16 (TVL-45..TVL-60).
+- **NEW aggregate:** 1 (`travel_encounter`); **NEW EVT-T sub-types:** 3 (EVT-T1 `Encounter:Resolve` + EVT-T6 `Encounter:SceneNarration` + EVT-T8 `Forge:ResolveEncounter`).
+- **`travel.*` rule_ids added:** 11 (10 new + 1 reused); **validators:** 12 (CTE-V1..V12).
+- **Acceptance scenarios:** 15 (AC-TVL-31..45); **deferrals:** 9 (CTE-D1..D9); **open questions:** 7 (CTE-Q1..Q7).
+- **Cross-feature schema dependency:** 1 (`actor_travel_state.encounter_schedule`, via TVL_001 closure pass).
+- **/review-impl findings resolved:** 3 HIGH + 5 MED + 5 LOW (all inline, 1-pass).
+- **NEW RealityManifest field:** 1 (`encounter_tables`).
+
+---
+
 ## Session 2026-05-16 — TVL_002 Composite Multi-Segment Travel (1 commit; first convenience layer — a feature consuming a feature; 2 branch merges reconciled at session start)
 
 ### Session arc
