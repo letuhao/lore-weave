@@ -180,11 +180,27 @@ progress-streaming, 1× perf). Findings: [`docs/audit/findings-phase-1-placement
    canonical P3 construction needs a 10-triangle Robinson-triangle decagon
    wheel. `penrose.rs` uses the canonical 10; documented in the module header.
 
+### Post-commit human-in-loop review (2026-05-16)
+
+After the autonomous batch landed (`7628d655`), an operator-requested
+**human-in-loop review** ran an independent cold-start reviewer (uncapped —
+unlike the AMAW Adversary's structural 3-finding limit) over the Phase 1
+commit. Verdict: **sound, 0 BLOCK**; live re-verify green. It caught two
+items the capped Adversary missed/under-rated → fixed in follow-up commit:
+- **MED-2** — `force_directed` wall-clock-cap fallback fired silently → added
+  a `tracing::warn!` in the `WallClockCap` arm (cross-machine divergence now
+  observable). DEFERRED #015 raised LOW→MED.
+- **LOW-4** — `TileMask::iter_set` could surface phantom out-of-grid coords
+  from dirty trailing bits of a deserialized mask → added a `flat < tile_count`
+  guard + regression test.
+- **HIGH-1** — `penrose::nearest_vertex` O(tiles×vertices) perf cliff (the
+  larger sibling of #016) → tracked as DEFERRED #018.
+
 ### Handoff notes
 
-**Active blocker:** none. **Phase 1 complete + committed.** **Next: Phase 2** —
-L3 zone-classifier full retry loop (TMP_008b §4-§6) + end-to-end small-reality
-bootstrap; depends on Phase 0b (done) + Phase 1 engine output (done).
+**Active blocker:** none. **Phase 1 complete + reviewed + committed.** **Next:
+Phase 2** — L3 zone-classifier full retry loop (TMP_008b §4-§6) + end-to-end
+small-reality bootstrap; depends on Phase 0b (done) + Phase 1 engine output (done).
 
 **ContextHub MCP was down** this session — Adversary/Scope-Guard `## Captured
 rules` pre-loaded empty; RETRO `add_lesson` could not persist (noted below).

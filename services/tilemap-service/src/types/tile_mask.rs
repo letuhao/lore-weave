@@ -94,10 +94,16 @@ impl TileMask {
     /// deterministic iteration the TMP-A4 axiom depends on.
     pub fn iter_set(&self) -> impl Iterator<Item = TileCoord> + '_ {
         let width = self.width;
+        let tile_count = self.tile_count();
         self.bits.iter().enumerate().flat_map(move |(wi, &word)| {
             (0..BITS_PER_WORD).filter_map(move |bi| {
-                if (word >> bi) & 1 == 1 {
-                    let flat = (wi * BITS_PER_WORD + bi) as u32;
+                let flat = wi * BITS_PER_WORD + bi;
+                // Guard the unaddressable trailing bits of the last word: a
+                // dirty bit there (only reachable via a hand-crafted or
+                // deserialized mask) would otherwise surface as a phantom
+                // out-of-grid coordinate and corrupt the partition.
+                if flat < tile_count && (word >> bi) & 1 == 1 {
+                    let flat = flat as u32;
                     Some(TileCoord::new(flat % width, flat / width))
                 } else {
                     None
@@ -185,6 +191,18 @@ mod tests {
         let got: Vec<_> = m.iter_set().collect();
         // expected sorted by y*5+x: (0,0)=0, (1,0)=1, (2,3)=17, (4,4)=24
         assert_eq!(got, vec![c(0, 0), c(1, 0), c(2, 3), c(4, 4)]);
+    }
+
+    #[test]
+    fn iter_set_filters_dirty_trailing_bits() {
+        // 10×10 = 100 tiles packed into 2 u64 words (128 bits) — 28
+        // unaddressable trailing bits. A dirty bit there (only reachable via a
+        // hand-crafted / deserialized mask) must not surface as a phantom coord.
+        let mut m = TileMask::new(10, 10);
+        m.set(c(9, 9)); // flat 99 — the last valid tile
+        m.bits[1] |= 1 << 63; // flat 127 — a dirty trailing bit
+        assert_eq!(m.iter_set().collect::<Vec<_>>(), vec![c(9, 9)]);
+        assert_eq!(m.count_ones(), 2, "count_ones still sees the raw bit");
     }
 
     #[test]

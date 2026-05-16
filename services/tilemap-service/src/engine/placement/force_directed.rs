@@ -175,7 +175,21 @@ pub fn force_directed_converge(
     let (zones, converged) = match outcome {
         Outcome::Converged => (apply_positions(seed_layout, &best), true),
         Outcome::IterationCap => (apply_positions(seed_layout, &best), false),
-        Outcome::WallClockCap => (seed_layout, false),
+        Outcome::WallClockCap => {
+            // The wall-clock cap is machine-dependent — a slow machine can
+            // trip it where a fast one would converge, so the grid-seed
+            // fallback can differ across machines for the same seed. The
+            // fallback itself is silent in the output; surface it in logs so
+            // a production divergence is observable (spec D5 residual caveat
+            // / DEFERRED #015). The ops-dashboard event is deferred to Phase 2.
+            tracing::warn!(
+                iteration_count,
+                "force-directed convergence hit the wall-clock cap — falling \
+                 back to the grid-seed layout; this layout is NOT guaranteed \
+                 identical across machines for the same seed (DEFERRED #015)"
+            );
+            (seed_layout, false)
+        }
     };
     ConvergenceResult {
         zones,
