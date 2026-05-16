@@ -95,7 +95,7 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 |---|---|---|---|
 | ~~**0b**~~ ✅ DONE | SSE parser in `loreweave_llm` + L3 zone-classifier harness → lmstudio. **Reclassified L→XL**: required extending the gateway contract (`tool_choice` + `tool_call` SSE event) across openapi + Go gateway + both SDKs. Live run: tool-use YES, 3/3 classified, R1-R5 clean. | XL (done) | — |
 | ~~**1**~~ ✅ DONE | Engine: §3 FR placer + §4 Penrose + §5 fractalize + TMP_003 modificator framework + TerrainPainter + AC-4 determinism test. **Reclassified L→XL.** Done 2026-05-16, XL `/amaw` (chunks 3-6 fully-autonomous batch). | XL (done) | — |
-| **2** | L3 zone classifier full retry loop (TMP_008b §4 structured validation + §5 per-object retry + §6 canonical-default fallback) + end-to-end small reality bootstrap | L-XL | 0b (gateway) + 1 (engine output) |
+| ~~**2**~~ ✅ DONE | L3 zone-classifier retry loop (TMP_008b §4.2 retry messages + §5 per-object retry + §6 canonical-default fallback) + fixture-object bootstrap. Done 2026-05-17, L `/amaw`. | L (done) | — |
 | **3** | L4 regional narration + measurement findings doc back into TMP_008b | L | 2 |
 
 Reference docs: `TMP_001`..`TMP_008b` in `docs/03_planning/LLM_MMO_RPG/features/00_tilemap/`. The 2 architectural findings from the Phase-0a `/review-impl` (Anthropic `cache_control` gap + OpenAI-shaped `tools`) feed into Phase 0b.
@@ -124,13 +124,64 @@ This honors "use AMAW for the map-gen implementation" while respecting what this
 
 ### Recommended first action next session
 
-Phases 0b + 1 are DONE (see their session entries below). **Next: Phase 2** —
-the L3 zone-classifier full retry loop (TMP_008b §4 structured validation + §5
-per-object retry + §6 canonical-default fallback) + an end-to-end small-reality
-bootstrap. Phase 2 depends on **both** 0b (gateway tool-use — done) and 1 (engine
-output — done), so it is now unblocked. Pre-flight: `cargo build` clean at
-workspace root; ContextHub up for `/amaw`; the `infra` compose stack + gitignored
-`.local/phase0b.env` creds are set up if a live re-run is needed.
+Phases 0b + 1 + 2 are DONE (see their session entries below). **Next: Phase 3** —
+L4 regional narration (TMP_008b §3.3 `submit_zone_narrations` tool + §4.3
+validation + §10 deterministic key-phrase extraction) + folding the measurement
+findings back into TMP_008b. Phase 3 depends on Phase 2 (done). Pre-flight:
+`cargo build` clean at workspace root; ContextHub up for `/amaw`; the `infra`
+compose stack + gitignored `.local/phase0b.env` creds for any live re-run.
+
+**Note on the bootstrap (Phase 2, fixture-object scope):** Phase 2's
+`bootstrap` classifies a *fixture* object set — the placement engine still
+emits no objects (object placement is TMP_006, unbuilt). A genuine engine→L3
+object flow is unblocked only once TMP_006 (TreasurePlacer / ObjectManager)
+lands.
+
+---
+
+## Session 2026-05-17 — Phase 2 L3 zone-classifier retry loop — ✅ DONE (L `/amaw`)
+
+### Outcome
+
+Phase 2 (tilemap-service L3 retry loop), L, under **`/amaw`** — 12 phases complete.
+CLARIFY scoped it (PO decision: retry loop + **fixture-object** bootstrap — the
+placement engine emits no objects yet, object placement is TMP_006/unbuilt).
+BUILD ran chunk-gated then, on operator instruction, autonomous from chunk 3.
+
+- **Spec:** [`docs/specs/2026-05-16-tilemap-phase-2-l3-retry-loop.md`](../../specs/2026-05-16-tilemap-phase-2-l3-retry-loop.md)
+  (D1-D8, AC-1..AC-12). **Plan:** [`docs/plans/2026-05-16-tilemap-phase-2-l3-retry-loop.md`](../../plans/2026-05-16-tilemap-phase-2-l3-retry-loop.md)
+  (6 build chunks).
+
+### What shipped (`services/tilemap-service/src/harness/`)
+
+| Chunk | Module | Content |
+|---|---|---|
+| 1 | `validate.rs` | `L3ValidationError::obj_id()` (exhaustive match), `retry_line()`, `format_errors_for_retry` (§4.2 reframed subset-retry preamble), `partition_response` (pure accept/narrow core) |
+| 2 | `prompt.rs` · `validate.rs` | `L3Placeholder.zone_id`; §6 `canonical_default_classification` + `generate_default_tag` (deterministic, always R5-valid) |
+| 3 | `mod.rs` | `call_l3_attempt` (one gateway call, all failures → `L3Attempt.failure`) extracted; `run_l3_measurement` refactored onto it |
+| 4 | `retry.rs` (new) | `run_l3_with_retries` + `L3Result` — §5 per-object partial-success loop, D1 precondition (empty/duplicate id → `Err`), §6 fallback |
+| 5 | `bootstrap.rs` (new) · `main.rs` | `bootstrap_small_reality` (place_tilemap → fixture objects → L3 loop); `bootstrap` CLI subcommand |
+| 6 | `tests/retry_mock.rs` (new) | 8 wiremock integration tests — clean / partial-retry / fallback / max-attempts-0 / transport-error / partial-final / bootstrap end-to-end |
+
+### Workflow — AMAW L, 12 phases
+
+Design REVIEW: Adversary **r1 REJECTED** (2 BLOCK — empty-`suggested_canon_kind`
+panic, subset-retry vs §4.2 "keep all entries" contradiction), **r2
+APPROVED_WITH_WARNINGS** (3 WARN, all folded into spec D1/D3/D4/D6 + AC-8..12).
+Code REVIEW: Adversary **r1 REJECTED** (1 BLOCK — parsed-empty response
+mis-discriminated as a transport failure), **r2 APPROVED_WITH_WARNINGS** (3 WARN
+— out-of-subset error leak, `zone_id` absent from the LLM payload,
+scripted-responder underflow — all fixed). Scope Guard POST-REVIEW: **CLEAR**
+(AC-1..AC-12 covered, no §2 scope crossing, all 9 findings fixed in code, none
+deferred). `cargo test --workspace` green; clippy clean. Findings:
+`docs/audit/findings-phase-2-l3-retry-loop-r1..r4.md`.
+
+### Handoff notes
+
+**Active blocker:** none. **Phase 2 complete + committed.** **Next: Phase 3** —
+L4 regional narration + measurement findings back into TMP_008b. No new
+DEFERRED items. The bootstrap is fixture-object only (engine→L3 object flow
+needs TMP_006).
 
 ---
 
