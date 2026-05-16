@@ -729,3 +729,420 @@ func jsonUnmarshal(b []byte, v any) error {
 	dec.UseNumber()
 	return dec.Decode(v)
 }
+
+// ── Phase 5b — bytes-mode Transcribe + exactly-one invariant ──────────
+
+// TestOpenAIAdapter_Transcribe_BytesMode_HappyPath pins the new bytes
+// branch: when AudioBytes is set (and AudioURL is empty), the adapter
+// skips fetchAudioURL entirely and posts the in-memory bytes directly
+// to the upstream multipart endpoint. Filename extension is derived
+// from ContentType via audioFilenameFromContentType (existing 5a helper).
+func TestOpenAIAdapter_Transcribe_BytesMode_HappyPath(t *testing.T) {
+	// No resolver stub needed — bytes mode skips DNS entirely. If this
+	// test fails with an SSRF complaint, the adapter is still calling
+	// fetchAudioURL when it shouldn't.
+
+	var (
+		gotFileBytes []byte
+		gotFileName  string
+	)
+	openaiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mr, err := r.MultipartReader()
+		if err != nil {
+			t.Errorf("MultipartReader: %v", err)
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		for {
+			part, perr := mr.NextPart()
+			if perr == io.EOF {
+				break
+			}
+			if perr != nil {
+				t.Errorf("NextPart: %v", perr)
+				return
+			}
+			if part.FormName() == "file" {
+				gotFileBytes, _ = io.ReadAll(part)
+				gotFileName = part.FileName()
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"text":"bytes-mode result","language":"english","duration":1.0}`))
+	}))
+	defer openaiSrv.Close()
+
+	audioPayload := []byte("WEBMaudio-bytes-here")
+
+	a := &openaiAdapter{client: openaiSrv.Client()}
+	out, _, err := a.Transcribe(
+		context.Background(),
+		openaiSrv.URL,
+		"sk-test-key",
+		"whisper-1",
+		TranscribeInput{
+			AudioBytes:  audioPayload,
+			ContentType: "audio/webm",
+			Language:    "auto",
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Text != "bytes-mode result" {
+		t.Errorf("Text=%q, want bytes-mode result", out.Text)
+	}
+	if string(gotFileBytes) != string(audioPayload) {
+		t.Errorf("file bytes = %q, want %q", gotFileBytes, audioPayload)
+	}
+	// audioFilenameFromContentType returns "audio.webm" for "audio/webm"
+	if gotFileName != "audio.webm" {
+		t.Errorf("filename = %q, want audio.webm (content-type derived)", gotFileName)
+	}
+}
+
+// TestOpenAIAdapter_Transcribe_BytesMode_OversizeRejectedAtAdapter pins
+// the adapter-level belt-and-suspenders cap (the handler also enforces
+// via http.MaxBytesReader, but the adapter is the last line of defense
+// for non-handler callers).
+func TestOpenAIAdapter_Transcribe_BytesMode_OversizeRejectedAtAdapter(t *testing.T) {
+	upstreamCalled := false
+	openaiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(200)
+	}))
+	defer openaiSrv.Close()
+
+	oversize := make([]byte, MaxAudioBytes+1)
+	a := &openaiAdapter{client: openaiSrv.Client()}
+	_, _, err := a.Transcribe(
+		context.Background(),
+		openaiSrv.URL,
+		"sk-test-key",
+		"whisper-1",
+		TranscribeInput{
+			AudioBytes:  oversize,
+			ContentType: "audio/wav",
+		},
+	)
+	if !errors.Is(err, ErrAudioTooLarge) {
+		t.Fatalf("expected ErrAudioTooLarge, got %v", err)
+	}
+	if upstreamCalled {
+		t.Error("upstream MUST NOT be called when adapter-level cap fires")
+	}
+}
+
+// TestOpenAIAdapter_Transcribe_ExactlyOne_BothSet pins /review-impl HIGH#2:
+// when BOTH AudioURL and AudioBytes are populated, the adapter rejects
+// with ErrTranscribeInputInvalid BEFORE the switch can silently prefer
+// one over the other. This was the original /review-impl finding —
+// `switch case input.AudioBytes != nil` silently won over a non-empty URL.
+func TestOpenAIAdapter_Transcribe_ExactlyOne_BothSet(t *testing.T) {
+	upstreamCalled := false
+	openaiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(200)
+	}))
+	defer openaiSrv.Close()
+
+	a := &openaiAdapter{client: openaiSrv.Client()}
+	_, _, err := a.Transcribe(
+		context.Background(),
+		openaiSrv.URL,
+		"sk-test",
+		"whisper-1",
+		TranscribeInput{
+			AudioURL:    "https://example.com/audio.wav",
+			AudioBytes:  []byte("bytes-too"),
+			ContentType: "audio/wav",
+		},
+	)
+	if !errors.Is(err, ErrTranscribeInputInvalid) {
+		t.Fatalf("expected ErrTranscribeInputInvalid, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "both") {
+		t.Errorf("error message should mention 'both': %v", err)
+	}
+	if upstreamCalled {
+		t.Error("upstream MUST NOT be called when invariant fires")
+	}
+}
+
+// TestOpenAIAdapter_Transcribe_ZeroByteSliceTreatedAsNotSet pins
+// /review-impl(QC) MED#1 — a non-nil empty `[]byte{}` MUST count as
+// "no bytes set" so the exactly-one invariant fires (rather than
+// silently passing 0-byte multipart to OpenAI).
+func TestOpenAIAdapter_Transcribe_ZeroByteSliceTreatedAsNotSet(t *testing.T) {
+	upstreamCalled := false
+	openaiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(200)
+	}))
+	defer openaiSrv.Close()
+
+	a := &openaiAdapter{client: openaiSrv.Client()}
+	// AudioBytes=[]byte{} + AudioURL="" → both effectively unset →
+	// ErrTranscribeInputInvalid with "no audio source" message.
+	_, _, err := a.Transcribe(
+		context.Background(),
+		openaiSrv.URL,
+		"sk-test",
+		"whisper-1",
+		TranscribeInput{
+			AudioBytes:  []byte{},
+			ContentType: "audio/webm",
+		},
+	)
+	if !errors.Is(err, ErrTranscribeInputInvalid) {
+		t.Fatalf("expected ErrTranscribeInputInvalid for 0-byte slice, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "no audio source") {
+		t.Errorf("error message should mention 'no audio source': %v", err)
+	}
+	if upstreamCalled {
+		t.Error("upstream MUST NOT be called when invariant fires")
+	}
+}
+
+// TestOpenAIAdapter_Transcribe_ExactlyOne_BothEmpty — second half of the
+// exactly-one invariant: neither URL nor Bytes set should also fail
+// fast with ErrTranscribeInputInvalid (not ErrAudioFetchFailed, which
+// was the prior behavior under "default" case).
+func TestOpenAIAdapter_Transcribe_ExactlyOne_BothEmpty(t *testing.T) {
+	upstreamCalled := false
+	openaiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(200)
+	}))
+	defer openaiSrv.Close()
+
+	a := &openaiAdapter{client: openaiSrv.Client()}
+	_, _, err := a.Transcribe(
+		context.Background(),
+		openaiSrv.URL,
+		"sk-test",
+		"whisper-1",
+		TranscribeInput{}, // both AudioURL and AudioBytes empty
+	)
+	if !errors.Is(err, ErrTranscribeInputInvalid) {
+		t.Fatalf("expected ErrTranscribeInputInvalid, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "no audio source") {
+		t.Errorf("error message should mention 'no audio source': %v", err)
+	}
+	if upstreamCalled {
+		t.Error("upstream MUST NOT be called when invariant fires")
+	}
+}
+
+// TestOpenAIAdapter_Transcribe_BytesMode_ContentTypeOggExtension pins
+// the content-type→filename extension derivation for an alternate
+// container (ogg/opus, common from browser MediaRecorder). Locks the
+// audioFilenameFromContentType helper's webm/ogg/m4a branches against
+// regression.
+func TestOpenAIAdapter_Transcribe_BytesMode_ContentTypeOggExtension(t *testing.T) {
+	var gotFileName string
+	openaiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mr, _ := r.MultipartReader()
+		for {
+			part, perr := mr.NextPart()
+			if perr == io.EOF {
+				break
+			}
+			if part.FormName() == "file" {
+				gotFileName = part.FileName()
+				_, _ = io.Copy(io.Discard, part)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"text":"ok","language":"en","duration":0.5}`))
+	}))
+	defer openaiSrv.Close()
+
+	a := &openaiAdapter{client: openaiSrv.Client()}
+	_, _, err := a.Transcribe(
+		context.Background(),
+		openaiSrv.URL,
+		"sk-test",
+		"whisper-1",
+		TranscribeInput{
+			AudioBytes:  []byte("OggS"),
+			ContentType: "audio/ogg; codecs=opus",
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotFileName != "audio.ogg" {
+		t.Errorf("filename = %q, want audio.ogg (ogg/opus mapping)", gotFileName)
+	}
+}
+
+// ── Phase 5e-β.2 — audio_gen adapter tests ───────────────────────────
+
+func newOpenAIAdapterForAudioGenTest(t *testing.T) *openaiAdapter {
+	t.Helper()
+	return &openaiAdapter{client: &http.Client{}}
+}
+
+func TestOpenAIAdapter_GenerateAudio_HappyPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/audio/speech" {
+			t.Errorf("path = %s, want /v1/audio/speech", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write([]byte{0x49, 0x44, 0x33, 0x04}) // ID3v2 header bytes
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	out, _, err := a.GenerateAudio(context.Background(), server.URL, "secret", "tts-1",
+		GenerateAudioInput{Texts: []string{"hello world"}, Voice: "alloy", Format: "mp3"})
+	if err != nil {
+		t.Fatalf("GenerateAudio: %v", err)
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("Items = %d, want 1", len(out.Items))
+	}
+	if len(out.Items[0].Data) == 0 {
+		t.Error("Item.Data is empty")
+	}
+	if out.Items[0].Format != "mp3" {
+		t.Errorf("Format = %q, want mp3", out.Items[0].Format)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_EmptyTexts_Rejected(t *testing.T) {
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), "http://nowhere", "s", "m",
+		GenerateAudioInput{Texts: []string{}})
+	if !errors.Is(err, ErrAudioGenInvalidParams) {
+		t.Errorf("err = %v, want ErrAudioGenInvalidParams", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_BatchOverCap_Rejected(t *testing.T) {
+	a := newOpenAIAdapterForAudioGenTest(t)
+	texts := make([]string, MaxAudioGenInputs+1)
+	for i := range texts {
+		texts[i] = "x"
+	}
+	_, _, err := a.GenerateAudio(context.Background(), "http://nowhere", "s", "m",
+		GenerateAudioInput{Texts: texts})
+	if !errors.Is(err, ErrAudioGenInvalidParams) {
+		t.Errorf("err = %v, want ErrAudioGenInvalidParams", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_WhitespaceText_Rejected(t *testing.T) {
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), "http://nowhere", "s", "m",
+		GenerateAudioInput{Texts: []string{"valid", "   "}})
+	if !errors.Is(err, ErrAudioGenInvalidParams) {
+		t.Errorf("err = %v, want ErrAudioGenInvalidParams", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_OversizeText_Rejected(t *testing.T) {
+	a := newOpenAIAdapterForAudioGenTest(t)
+	huge := strings.Repeat("a", MaxAudioGenInputCharsLen+1)
+	_, _, err := a.GenerateAudio(context.Background(), "http://nowhere", "s", "m",
+		GenerateAudioInput{Texts: []string{huge}})
+	if !errors.Is(err, ErrAudioGenInvalidParams) {
+		t.Errorf("err = %v, want ErrAudioGenInvalidParams", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_ZeroByteResponse_Rejected(t *testing.T) {
+	// /review-impl(DESIGN) MED#11 — defensive 0-byte check.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		// Write 0 bytes.
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), server.URL, "s", "m",
+		GenerateAudioInput{Texts: []string{"hi"}})
+	if !errors.Is(err, ErrAudioGenerationFailed) {
+		t.Errorf("err = %v, want ErrAudioGenerationFailed", err)
+	}
+}
+
+// /review-impl(BUILD) H#3 — order-preservation regression-lock.
+// Content-tags each upstream response by request body so a future
+// parallel refactor that scrambles order is caught immediately.
+func TestOpenAIAdapter_GenerateAudio_OrderPreserved(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		// Extract the "input" field from the request JSON.
+		var req struct {
+			Input string `json:"input"`
+		}
+		_ = json.Unmarshal(body, &req)
+		w.Header().Set("Content-Type", "audio/mpeg")
+		// Tag the response with the input text so we can verify the
+		// adapter mapped it back to the correct index.
+		_, _ = w.Write([]byte("audio:" + req.Input))
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	inputs := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
+	out, _, err := a.GenerateAudio(context.Background(), server.URL, "s", "m",
+		GenerateAudioInput{Texts: inputs, Format: "mp3"})
+	if err != nil {
+		t.Fatalf("GenerateAudio: %v", err)
+	}
+	for i, item := range out.Items {
+		got := string(item.Data)
+		want := "audio:" + inputs[i]
+		if got != want {
+			t.Errorf("Items[%d].Data = %q, want %q (order invariant broken)", i, got, want)
+		}
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_UpstreamRateLimit_Classified(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"message":"rate-limited"}}`))
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), server.URL, "s", "m",
+		GenerateAudioInput{Texts: []string{"hi"}})
+	var rl *ErrUpstreamRateLimited
+	if !errors.As(err, &rl) {
+		t.Errorf("err = %v, want ErrUpstreamRateLimited via errors.As", err)
+	}
+}
+
+func TestOpenAIAdapter_GenerateAudio_UpstreamAuthFailed_Classified(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"bad key"}}`))
+	}))
+	defer server.Close()
+	a := newOpenAIAdapterForAudioGenTest(t)
+	_, _, err := a.GenerateAudio(context.Background(), server.URL, "s", "m",
+		GenerateAudioInput{Texts: []string{"hi"}})
+	var perm *ErrUpstreamPermanent
+	if !errors.As(err, &perm) {
+		t.Errorf("err = %v, want ErrUpstreamPermanent", err)
+	}
+}
+
+func TestStubAdapters_GenerateAudio_ReturnOperationNotSupported(t *testing.T) {
+	ctx := context.Background()
+	in := GenerateAudioInput{Texts: []string{"hi"}}
+	for _, a := range []Adapter{&anthropicAdapter{}, &ollamaAdapter{}, &lmStudioAdapter{}} {
+		_, _, err := a.GenerateAudio(ctx, "http://x", "s", "m", in)
+		if !errors.Is(err, ErrOperationNotSupported) {
+			t.Errorf("adapter %T: err = %v, want ErrOperationNotSupported", a, err)
+		}
+	}
+	// Use atomic to avoid unused-import false-positive after gofmt.
+	_ = atomic.Int32{}
+	_ = bytes.NewReader
+	_ = multipart.NewWriter
+}

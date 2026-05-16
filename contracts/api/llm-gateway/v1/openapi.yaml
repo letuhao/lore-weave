@@ -171,6 +171,14 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SubmitJobRequest'
+          multipart/form-data:
+            # Phase 5b — bytes-mode STT submission. Audio carried inline
+            # via multipart file part; metadata in form fields. Only
+            # operation=stt is accepted via multipart. The handler
+            # uses mime.ParseMediaType to dispatch (case-insensitive
+            # per RFC 2045).
+            schema:
+              $ref: '#/components/schemas/SubmitSttBytesRequest'
       responses:
         '202':
           description: Job accepted. Result available later via callback or polling.
@@ -185,6 +193,12 @@ paths:
         '402':
           $ref: '#/components/responses/ErrorResponse'
         '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          # Phase 5b — multipart audio exceeds 25MB cap.
+          $ref: '#/components/responses/ErrorResponse'
+        '415':
+          # Phase 5b — Content-Type neither application/json nor multipart/form-data.
           $ref: '#/components/responses/ErrorResponse'
         '429':
           $ref: '#/components/responses/ErrorResponse'
@@ -209,6 +223,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SubmitJobRequest'
+          multipart/form-data:
+            # Phase 5b — bytes-mode STT. Same shape as /v1/llm/jobs;
+            # both share doSubmitJob handler.
+            schema:
+              $ref: '#/components/schemas/SubmitSttBytesRequest'
       responses:
         '202':
           description: Job accepted
@@ -219,6 +238,10 @@ paths:
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/ErrorResponse'
+        '415':
           $ref: '#/components/responses/ErrorResponse'
 
   /v1/llm/jobs/{job_id}:
@@ -639,6 +662,8 @@ components:
         - stt
         - tts
         - image_gen
+        - video_gen
+        - audio_gen
         - entity_extraction
         - relation_extraction
         - event_extraction
@@ -863,17 +888,24 @@ components:
       required: [audio_url]
       description: |
         Phase 5a. Input payload for `SubmitJobRequest` with
-        `operation: stt`. The gateway fetches the audio at `audio_url`
-        (HTTPS GET, 30s timeout, 25MB cap) and submits to the upstream
-        STT provider.
+        `operation: stt` on the JSON request body. The gateway fetches
+        the audio at `audio_url` (HTTPS GET, 30s timeout, 25MB cap) and
+        submits to the upstream STT provider.
+
+        Phase 5b adds an ALTERNATIVE multipart bytes-mode entrypoint —
+        see `SubmitSttBytesRequest`. Pick exactly one. The adapter
+        enforces exactly-one-set as an invariant; sending both via the
+        same submission is not possible because Content-Type dispatches
+        to one schema or the other.
       properties:
         audio_url:
           type: string
           format: uri
           description: |
             HTTPS URL the gateway can GET to fetch the audio. Caller is
-            responsible for upload + URL signing. For chat-service voice
-            flow (Phase 5b), this is a pre-signed MinIO URL with ≤60s TTL.
+            responsible for upload + URL signing. JSON-mode callers
+            without their own staging should consider `SubmitSttBytesRequest`
+            (multipart) instead, which avoids the upload+presign step.
             Only `http://` and `https://` schemes are accepted; `file://`
             and `s3://` are rejected (basic SSRF guard).
         language:
@@ -883,6 +915,57 @@ components:
             ISO 639-1 code or `auto` for upstream auto-detection.
             OpenAI Whisper accepts both; `auto` is converted to "omit
             param" at the provider HTTP layer.
+
+    SubmitSttBytesRequest:
+      type: object
+      required: [operation, model_source, model_ref, audio]
+      description: |
+        Phase 5b. Multipart variant for STT submission with the audio
+        bytes carried inline. The gateway streams the file into a
+        per-process buffer (no DB persistence), dispatches the worker,
+        and replies 202 with the same `SubmitJobResponse` envelope as
+        the JSON variant.
+
+        Only `operation=stt` is accepted on `multipart/form-data`. Other
+        operations on multipart return 400 `LLM_INVALID_REQUEST`.
+
+        `chunking` config is NOT accepted on multipart submits — STT
+        runs as a single upstream call regardless of audio length. If a
+        `chunking` form field is present, the handler returns 400
+        `LLM_INVALID_REQUEST: "chunking not accepted on stt multipart submits"`.
+
+        File field name MUST be exactly `audio`. Anything else returns
+        400 `LLM_INVALID_REQUEST: "expected file field 'audio'; got [<list>]"`.
+      properties:
+        operation:
+          type: string
+          enum: [stt]
+          description: Must be `stt`.
+        model_source:
+          $ref: '#/components/schemas/ModelSource'
+        model_ref:
+          type: string
+          format: uuid
+          description: Caller's model UUID (resolved via provider-registry).
+        language:
+          type: string
+          default: auto
+          description: |
+            ISO 639-1 code or `auto` for upstream auto-detection.
+            Mirrors `SttInput.language`.
+        trace_id:
+          type: string
+          nullable: true
+          description: Optional correlation ID, mirrors `SubmitJobRequest.trace_id`.
+        audio:
+          type: string
+          format: binary
+          description: |
+            Audio bytes (any format Whisper accepts: webm, mp3, wav,
+            ogg, m4a, flac). 25MB hard cap matches OpenAI Whisper
+            upload limit. Bytes > 25MB rejected with 413
+            `LLM_AUDIO_TOO_LARGE`. Filename is informational — adapter
+            picks the upstream extension via Content-Type.
 
     SttResult:
       type: object
@@ -905,3 +988,339 @@ components:
           description: |
             Audio duration as reported by upstream (e.g. OpenAI
             `verbose_json` `duration` field). 0/null if absent.
+
+    # ── Image-gen operation schemas (Phase 5c-α) ──────────────────────
+    ImageGenInput:
+      type: object
+      required: [prompt]
+      description: |
+        Phase 5c-α. Input payload for `SubmitJobRequest` with
+        `operation: image_gen`. The gateway forwards to the upstream
+        provider's OpenAI-compatible `/v1/images/generations` endpoint.
+        Field names + semantics mirror the OpenAI Image API 1:1 so any
+        OpenAI-compatible backend (DALL-E, gpt-image-1, local ComfyUI
+        services like local-image-generator-service) works without
+        per-backend adapter code.
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 32000
+          description: |
+            Text description of the desired image. Hard cap 32K at the
+            gateway (DALL-E 3 accepts 4K; gpt-image-1 32K; local ComfyUI
+            models often cap at CLIP encoder limit ≈300–500 tokens —
+            upstream validates).
+        size:
+          type: string
+          default: "1024x1024"
+          description: |
+            Image dimensions. Common: "256x256", "512x512", "1024x1024",
+            "1792x1024", "1024x1792", "1536x1024", "1024x1536". Upstream
+            validates supported sizes per model.
+        n:
+          type: integer
+          minimum: 1
+          maximum: 4
+          default: 1
+          description: |
+            Number of images to generate (1..4). Gateway rejects n>4 at
+            handler boundary AND at adapter boundary (belt-and-suspenders).
+            DALL-E-3 + gpt-image-1 only accept n=1; DALL-E-2 + local
+            backends often accept n>1.
+        response_format:
+          type: string
+          enum: [url, b64_json]
+          default: url
+          description: |
+            How to return image bytes. `url` returns an upstream-hosted
+            URL the caller must fetch (typical: ~10 min lifetime).
+            `b64_json` returns the bytes inline (≈33% bandwidth bloat).
+            Upstream response body is capped at 8MB (`MaxImageResponseBytes`);
+            larger responses → LLM_UPSTREAM_ERROR. Use `url` for large
+            multi-image flows.
+        quality:
+          type: string
+          enum: [standard, hd, high, medium, low]
+          default: standard
+          description: |
+            Quality tier. Model-dependent: DALL-E-3 accepts standard/hd;
+            gpt-image-1 accepts high/medium/low. Upstream validates.
+        style:
+          type: string
+          enum: [vivid, natural]
+          nullable: true
+          description: DALL-E-3 only. `null` to omit.
+        background:
+          type: string
+          enum: [auto, transparent, opaque]
+          nullable: true
+          description: gpt-image-1 only. `null` to omit.
+
+    ImageGenResult:
+      type: object
+      required: [created, data]
+      description: |
+        Phase 5c-α. Result payload populated in `Job.result` when
+        `operation: image_gen` and `status: completed`.
+      properties:
+        created:
+          type: integer
+          description: Unix timestamp (seconds) when the generation finished.
+        data:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/ImageGenDataItem'
+
+    ImageGenDataItem:
+      type: object
+      description: |
+        Single generated image. Exactly one of `url` or `b64_json` is
+        populated based on the request's `response_format`.
+        `revised_prompt` is present if the upstream model rewrote the
+        prompt (DALL-E-3 + gpt-image-1 do this; local models typically
+        don't).
+      properties:
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Upstream-hosted image URL. Caller is responsible for fetching
+            and storing — gateway does NOT download. URL lifetime is
+            upstream-dependent (OpenAI: ~1 hour; local services:
+            caller-configured). Caller MUST download immediately after
+            polling completed; persistent storage of the upstream URL
+            is unsafe.
+        b64_json:
+          type: string
+          nullable: true
+          description: Base64-encoded raw image bytes.
+        revised_prompt:
+          type: string
+          nullable: true
+          description: |
+            If upstream rewrote the prompt (DALL-E-3 safety-rewrite +
+            gpt-image-1 caption-rewrite), the rewritten text. `null`
+            otherwise.
+
+    # ── Video-gen operation schemas (Phase 5d) ────────────────────────
+    VideoGenInput:
+      type: object
+      required: [prompt]
+      description: |
+        Phase 5d. Input payload for `SubmitJobRequest` with
+        `operation: video_gen`. The gateway forwards to the upstream
+        provider's OpenAI-compatible video generation endpoint.
+
+        **Upstream path dispatch (/review-impl(DESIGN) HIGH#1)**:
+        when `init_image` is set, adapter POSTs to
+        `/v1/videos/generations/image-to-video`; otherwise to
+        `/v1/videos/generations/text-to-video`. Matches the actual
+        local-image-generator-service routes
+        ([G:/Works/local-image-generator-service/app/api/videos.py:168,220]).
+        The integration guide's singular `/v1/video/generations` is
+        aspirational and unimplemented.
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 32000
+          description: |
+            Text description of the desired video. Same cap as
+            ImageGenInput. Upstream models cap shorter (CLIP encoder
+            limits typical at 300-500 tokens for local backends).
+        size:
+          type: string
+          default: "1920x1080"
+          description: |
+            Video dimensions. Common: "1920x1080", "1080x1920",
+            "1080x1080", "1440x1080". Upstream validates supported
+            sizes per model.
+        duration:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 5
+          description: |
+            Video duration in seconds. Gateway caps at 1..60;
+            upstream-specific shorter caps surface as LLM_UPSTREAM_ERROR.
+        n:
+          type: integer
+          enum: [1]
+          default: 1
+          description: |
+            Number of videos. **n=1 only** in Phase 5d. Gateway rejects
+            n != 1 at handler + adapter. Multi-video deferred to a
+            follow-up if a real caller surfaces.
+        response_format:
+          type: string
+          enum: [url]
+          default: url
+          description: |
+            How to return video bytes. **url-only** per
+            /review-impl(DESIGN) MED#3 — b64_json is impractical for
+            video (realistic clips exceed 8MB MaxImageResponseBytes
+            cap). Handler rejects `b64_json` for video_gen with clear
+            "use url mode" hint. Asymmetric with image_gen (which
+            accepts both) — intentional.
+        style:
+          type: string
+          nullable: true
+          description: |
+            Optional style hint (model-dependent — Wan/LTX Video have
+            their own style vocabularies). `null` to omit.
+        init_image:
+          type: string
+          nullable: true
+          description: |
+            Optional base64-encoded image for image-to-video models
+            (Wan, LTX Video on local-image-generator-service). When
+            set, adapter dispatches to image-to-video upstream path.
+            Format: raw base64 of PNG/JPG bytes (no data URI prefix).
+            Field name `init_image` matches local-image-generator-service's
+            VideoGenerateRequest.init_image (NOT `image` per the stale
+            integration guide — /review-impl(DESIGN) HIGH#1).
+
+            **Size cap** (/review-impl(DESIGN) MED#2): caller-side
+            base64 string capped at 10MB (`MaxImg2VidInputBytes`).
+            Handler rejects oversize with
+            `LLM_INVALID_REQUEST: "init_image exceeds 10485760-byte cap"`.
+            Adapter belt-and-suspenders rejects with `ErrVideoInvalidParams`.
+
+    VideoGenResult:
+      type: object
+      required: [created, data]
+      description: |
+        Phase 5d. Result payload populated in `Job.result` when
+        `operation: video_gen` and `status: completed`.
+      properties:
+        created:
+          type: integer
+          description: Unix timestamp (seconds) when generation finished.
+        data:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            $ref: '#/components/schemas/VideoGenDataItem'
+
+    VideoGenDataItem:
+      type: object
+      description: |
+        Single generated video. `url` is populated (Phase 5d is
+        url-only per MED#3). `revised_prompt` is present if upstream
+        rewrote the prompt (rare for video — most local backends don't
+        have safety-system prompt rewriting).
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            Upstream-hosted video URL. Caller is responsible for
+            fetching and storing — gateway does NOT download. URL
+            lifetime is upstream-dependent. Caller MUST fetch
+            immediately after polling completed.
+        revised_prompt:
+          type: string
+          nullable: true
+          description: Upstream-rewritten prompt, if any. Null otherwise.
+
+    # ── audio_gen (Phase 5e-β.2 — batch TTS) ─────────────────────────
+    AudioGenInput:
+      type: object
+      required: [texts]
+      description: |
+        Phase 5e-β.2 batch text-to-speech input. Distinct from streaming
+        `tts` (which uses /v1/llm/stream for real-time playback);
+        audio_gen is job-mode for stored audio (book chapter narration).
+        All inputs share the same voice / speed / format / response_format.
+      properties:
+        texts:
+          type: array
+          minItems: 1
+          maxItems: 10
+          description: |
+            1..10 strings to synthesize. Cap of 10 (vs Phase 5d's n=1
+            and Phase 5c-α's n≤4) chosen to bound double-bill exposure
+            on mid-batch failure (TTS is char-billed per upstream
+            request). /review-impl(DESIGN) MED#1.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 4096
+            description: Per-input cap of 4096 chars (matches OpenAI TTS exactly).
+        voice:
+          type: string
+          default: alloy
+          description: |
+            Upstream voice name. OpenAI canonical: alloy, echo, fable,
+            onyx, nova, shimmer. Backend-specific; passed through.
+        speed:
+          type: number
+          minimum: 0.25
+          maximum: 4.0
+          default: 1.0
+        format:
+          type: string
+          enum: [mp3, opus, aac, flac, wav, pcm]
+          default: mp3
+        response_format:
+          type: string
+          enum: [b64_json, url]
+          default: b64_json
+          description: |
+            b64_json: bytes inline in result.data[i].b64_json (default).
+            url: gateway stages each audio file in its loreweave-audio-cache
+            MinIO bucket and returns a public URL (1-day server-side TTL).
+
+    AudioGenResult:
+      type: object
+      required: [created, data]
+      description: |
+        Phase 5e-β.2 batch TTS result. Order-preserving: data[i]
+        corresponds 1:1 to input.texts[i] (adapter MUST preserve
+        order — invariant for parallel-batch refactors).
+      properties:
+        created:
+          type: integer
+          description: Unix epoch (seconds) when generation finished.
+        data:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AudioGenDataItem'
+
+    AudioGenDataItem:
+      type: object
+      required: [content_type]
+      description: |
+        Single generated audio. Exactly one of `url` or `b64_json` is
+        populated based on input.response_format. `duration_ms` is
+        upstream-dependent (typically 0 for OpenAI TTS).
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            Public URL to the staged audio in loreweave-audio-cache.
+            Populated when response_format=url. Bucket policy is
+            public-read; key contains job_id UUID (unguessable). 1-day
+            server-side lifecycle TTL. Caller MUST fetch + store
+            permanently (gateway-side staging is throwaway).
+        b64_json:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded audio bytes. Populated when
+            response_format=b64_json (default). Caller decodes +
+            stores in its own bucket.
+        duration_ms:
+          type: integer
+          nullable: true
+        content_type:
+          type: string
+          description: MIME type, e.g. "audio/mpeg".

@@ -19,25 +19,27 @@ type Config struct {
 	MinioSecretKey     string
 	MinioUseSSL        bool
 	MinioExternalURL   string // URL prefix for browser-accessible media (e.g. http://localhost:9123)
-	ProviderRegistryURL      string
-	UsageBillingServiceURL   string
-	InternalServiceToken     string
+	// Phase 5e-β.2 — `ProviderRegistryURL` field dropped; audio.go was
+	// its last consumer (now migrated to use llmgw SDK via LLMGatewayInternalURL).
+	LLMGatewayInternalURL  string
+	UsageBillingServiceURL string
+	InternalServiceToken   string
 }
 
 func Load() (*Config, error) {
 	c := &Config{
-		HTTPAddr:           getEnv("HTTP_ADDR", ":8082"),
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		JWTSecret:          os.Getenv("JWT_SECRET"),
-		BooksStorageBucket: getEnv("BOOKS_STORAGE_BUCKET", "loreweave-dev-books"),
-		QuotaBytesDefault:  getInt64("QUOTA_BYTES_DEFAULT", 100*1024*1024),
-		SharingInternalURL: os.Getenv("SHARING_INTERNAL_URL"),
-		MinioEndpoint:      getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinioAccessKey:     getEnv("MINIO_ACCESS_KEY", "loreweave"),
-		MinioSecretKey:     os.Getenv("MINIO_SECRET_KEY"),
-		MinioUseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
-		MinioExternalURL:     strings.TrimRight(os.Getenv("MINIO_EXTERNAL_URL"), "/"),
-		ProviderRegistryURL:    os.Getenv("PROVIDER_REGISTRY_SERVICE_URL"),
+		HTTPAddr:               getEnv("HTTP_ADDR", ":8082"),
+		DatabaseURL:            os.Getenv("DATABASE_URL"),
+		JWTSecret:              os.Getenv("JWT_SECRET"),
+		BooksStorageBucket:     getEnv("BOOKS_STORAGE_BUCKET", "loreweave-dev-books"),
+		QuotaBytesDefault:      getInt64("QUOTA_BYTES_DEFAULT", 100*1024*1024),
+		SharingInternalURL:     os.Getenv("SHARING_INTERNAL_URL"),
+		MinioEndpoint:          getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinioAccessKey:         getEnv("MINIO_ACCESS_KEY", "loreweave"),
+		MinioSecretKey:         os.Getenv("MINIO_SECRET_KEY"),
+		MinioUseSSL:            getEnv("MINIO_USE_SSL", "false") == "true",
+		MinioExternalURL:       strings.TrimRight(os.Getenv("MINIO_EXTERNAL_URL"), "/"),
+		LLMGatewayInternalURL:  os.Getenv("LLM_GATEWAY_INTERNAL_URL"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
@@ -59,8 +61,8 @@ func Load() (*Config, error) {
 	if c.SharingInternalURL == "" {
 		return nil, fmt.Errorf("SHARING_INTERNAL_URL is required")
 	}
-	if c.ProviderRegistryURL == "" {
-		return nil, fmt.Errorf("PROVIDER_REGISTRY_SERVICE_URL is required")
+	if c.LLMGatewayInternalURL == "" {
+		return nil, fmt.Errorf("LLM_GATEWAY_INTERNAL_URL is required")
 	}
 	return c, nil
 }

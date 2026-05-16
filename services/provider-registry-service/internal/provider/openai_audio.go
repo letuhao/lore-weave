@@ -180,11 +180,19 @@ func audioFilenameFromContentType(ct string) string {
 	}
 }
 
-// Transcribe — OpenAI Whisper. Phase 5a implementation.
+// Transcribe — OpenAI Whisper. Phase 5a + Phase 5b implementation.
 //
-// Flow: GET audio_url → multipart POST /v1/audio/transcriptions with
-// `file` + `model` + `response_format=verbose_json` + (optional)
-// `language` → parse JSON `{text, language, duration}`.
+// Two input modes (exactly one of AudioURL / AudioBytes must be set):
+//   - URL mode (5a): GET audio_url → multipart POST /v1/audio/transcriptions
+//   - Bytes mode (5b): skip fetch; use AudioBytes directly → same multipart POST
+//
+// Flow after audio acquisition is identical: multipart POST with `file`
+// + `model` + `response_format=verbose_json` + (optional) `language`
+// → parse JSON `{text, language, duration}`.
+//
+// /review-impl HIGH#2 (Phase 5b): the exactly-one check fires BEFORE
+// the bytes-vs-URL switch so neither branch silently wins when both
+// fields are set; the prior "switch on hasBytes" had a hidden preference.
 func (a *openaiAdapter) Transcribe(
 	ctx context.Context,
 	endpointBaseURL, secret, modelName string,
@@ -195,10 +203,46 @@ func (a *openaiAdapter) Transcribe(
 		base = openaiBaseURL
 	}
 
-	// Step 1: fetch audio bytes (gateway-side; SSRF-guarded by scheme check)
-	audioBytes, contentType, err := fetchAudioURL(ctx, a.client, input.AudioURL)
-	if err != nil {
-		return TranscribeOutput{}, Usage{}, err
+	// Phase 5b — exactly-one invariant. Both-set is caller ambiguity
+	// (e.g. a stale field surviving from a previous request); both-empty
+	// is a missed required-field check upstream. Either way it's a
+	// caller-side bug, not a transport / fetch failure.
+	//
+	// /review-impl(QC) MED#1 — treat zero-length slice as "not set" so a
+	// non-nil empty `[]byte{}` from io.ReadAll on an empty multipart
+	// part doesn't silently pass through to OpenAI as a 0-byte file.
+	hasURL := input.AudioURL != ""
+	hasBytes := len(input.AudioBytes) > 0
+	if hasURL == hasBytes {
+		if hasURL {
+			return TranscribeOutput{}, Usage{}, fmt.Errorf(
+				"%w: both AudioURL and AudioBytes set; pick one", ErrTranscribeInputInvalid)
+		}
+		return TranscribeOutput{}, Usage{}, fmt.Errorf(
+			"%w: no audio source (set AudioURL or AudioBytes)", ErrTranscribeInputInvalid)
+	}
+
+	// Step 1: acquire audio bytes from whichever source is set.
+	var audioBytes []byte
+	var contentType string
+	if hasBytes {
+		// Phase 5b — bytes mode. Belt-and-suspenders cap; the handler
+		// also enforces via http.MaxBytesReader, but the adapter is the
+		// last line of defense for non-handler callers (e.g. internal
+		// background re-runs that bypass the HTTP boundary).
+		if len(input.AudioBytes) > MaxAudioBytes {
+			return TranscribeOutput{}, Usage{}, fmt.Errorf(
+				"%w: %d bytes exceeds %d cap", ErrAudioTooLarge, len(input.AudioBytes), MaxAudioBytes)
+		}
+		audioBytes = input.AudioBytes
+		contentType = input.ContentType
+	} else {
+		// Phase 5a — URL mode (SSRF-guarded scheme + DNS check).
+		var err error
+		audioBytes, contentType, err = fetchAudioURL(ctx, a.client, input.AudioURL)
+		if err != nil {
+			return TranscribeOutput{}, Usage{}, err
+		}
 	}
 
 	// Step 2: build multipart body
@@ -368,4 +412,123 @@ func (a *openaiAdapter) Speak(
 
 	// Closing sentinel
 	return emit(AudioChunk{SequenceID: seq, Data: nil, Final: true})
+}
+
+// ── GenerateAudio — Phase 5e-β.2 batch TTS ──────────────────────────
+
+// GenerateAudio submits N inputs sequentially to /v1/audio/speech and
+// returns an order-preserving slice of GeneratedAudio.
+//
+// Order invariant (/review-impl(DESIGN) MED#5): output.Items[i]
+// corresponds 1:1 to input.Texts[i]. v1 sequential satisfies trivially;
+// future parallel impl MUST use indexed writes (items[i] = ...), not
+// append from goroutines.
+//
+// All-or-nothing: a mid-batch failure aborts. Per-input partial-success
+// is deferred to D-PHASE5E-BETA2-AUDIO-GEN-PARTIAL-SUCCESS.
+//
+// Defaults applied at adapter (/review-impl(DESIGN) LOW#1): Voice ""
+// → "alloy"; Speed 0 → 1.0; Format "" → "mp3".
+func (a *openaiAdapter) GenerateAudio(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateAudioInput) (GenerateAudioOutput, Usage, error) {
+	if len(input.Texts) == 0 {
+		return GenerateAudioOutput{}, Usage{}, ErrAudioGenInvalidParams
+	}
+	if len(input.Texts) > MaxAudioGenInputs {
+		return GenerateAudioOutput{}, Usage{}, ErrAudioGenInvalidParams
+	}
+	for _, t := range input.Texts {
+		if strings.TrimSpace(t) == "" {
+			return GenerateAudioOutput{}, Usage{}, ErrAudioGenInvalidParams
+		}
+		if len(t) > MaxAudioGenInputCharsLen {
+			return GenerateAudioOutput{}, Usage{}, ErrAudioGenInvalidParams
+		}
+	}
+
+	voice := input.Voice
+	if voice == "" {
+		voice = "alloy"
+	}
+	speed := input.Speed
+	if speed <= 0 {
+		speed = 1.0
+	}
+	format := input.Format
+	if format == "" {
+		format = "mp3"
+	}
+
+	// Pre-allocated, indexed writes — preserve order invariant under
+	// future parallel refactor.
+	items := make([]GeneratedAudio, len(input.Texts))
+	var totalInputChars int
+	for i, text := range input.Texts {
+		audio, err := a.speakOne(ctx, endpointBaseURL, secret, modelName, text, voice, speed, format)
+		if err != nil {
+			return GenerateAudioOutput{}, Usage{}, err
+		}
+		if len(audio.Data) == 0 {
+			// /review-impl(DESIGN) MED#11 — refuse 0-byte audio.
+			return GenerateAudioOutput{}, Usage{}, ErrAudioGenerationFailed
+		}
+		items[i] = audio
+		totalInputChars += len(text)
+	}
+
+	return GenerateAudioOutput{Items: items}, Usage{InputTokens: totalInputChars, OutputTokens: 0}, nil
+}
+
+// speakOne — single-text POST to /v1/audio/speech, returns whole body.
+// Distinct from Speak which streams in 4KB chunks for SSE delivery.
+func (a *openaiAdapter) speakOne(ctx context.Context, endpointBaseURL, secret, modelName, text, voice string, speed float64, format string) (GeneratedAudio, error) {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = openaiBaseURL
+	}
+	body := map[string]any{
+		"model":           modelName,
+		"input":           text,
+		"voice":           voice,
+		"speed":           speed,
+		"response_format": format,
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return GeneratedAudio{}, fmt.Errorf("marshal speakOne body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/audio/speech", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return GeneratedAudio{}, fmt.Errorf("new request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/octet-stream")
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return GeneratedAudio{}, fmt.Errorf("upstream transport: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+		return GeneratedAudio{}, ClassifyUpstreamHTTP(resp.StatusCode, string(respBytes), retryAfter)
+	}
+	// Read whole body (capped at MaxAudioBytes — same 25MB cap as
+	// streaming Speak; per-TTS-output expectation is <10MB for ~4000 chars).
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxAudioBytes))
+	if err != nil {
+		return GeneratedAudio{}, fmt.Errorf("read response body: %w", err)
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "audio/mpeg" // safe default for mp3 (OpenAI's default)
+	}
+	return GeneratedAudio{
+		Data:        data,
+		Format:      format,
+		ContentType: contentType,
+		DurationMs:  0, // OpenAI TTS doesn't return duration
+	}, nil
 }

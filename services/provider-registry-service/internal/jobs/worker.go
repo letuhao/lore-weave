@@ -17,6 +17,7 @@ import (
 
 	"github.com/loreweave/provider-registry-service/internal/chunker"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
 // CredResolver looks up the provider details a job needs before
@@ -48,16 +49,20 @@ type Worker struct {
 	adapter  AdapterFactory
 	notifier Notifier
 	logger   *slog.Logger
+	// Phase 5e-β.2 — gateway-side audio staging for audio_gen URL mode.
+	// May be nil; URL-mode audio_gen jobs return LLM_INVALID_REQUEST in
+	// that case. b64_json mode works without an audioCache.
+	audioCache *storage.AudioCache
 }
 
-func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger) *Worker {
+func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if notifier == nil {
 		notifier = NoopNotifier{}
 	}
-	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger}
+	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache}
 }
 
 // finalizeAndNotify is the only path through which the worker ends a
@@ -155,14 +160,31 @@ func (w *Worker) Process(
 		return
 	}
 
+	// Phase 5c-α — image-gen dispatch. Routes BEFORE chat-streaming
+	// whitelist because image_gen uses adapter.GenerateImage (not Stream),
+	// has no chunker, and no aggregator. Mirrors audio dispatch above.
+	if isImageJobOperation(operation) {
+		w.processImageGenJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
+		return
+	}
+
+	// Phase 5d — video-gen dispatch. Routes BEFORE chat-streaming
+	// whitelist because video_gen uses adapter.GenerateVideo (not Stream),
+	// has no chunker, and no aggregator. Mirrors image dispatch above
+	// with VideoGenJobTimeout=30min ctx (3× longer than image).
+	if isVideoJobOperation(operation) {
+		w.processVideoGenJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
+		return
+	}
+
 	// Phase 4a-α Step 0 — op-whitelist. The chat-streaming machinery +
 	// per-op aggregator (cycle 20 jsonListAggregator) is the same wire
 	// shape for chat/completion AND for the *_extraction operations:
 	// adapter.Stream emits StreamChunks; aggregator routes them to the
 	// right result map. The only difference is the aggregator factory
-	// (see NewAggregator below). Embedding/translation/image_gen
-	// use different upstream HTTP shapes — those stay gated until their
-	// dedicated cycles wire adapters.
+	// (see NewAggregator below). Embedding/translation use different
+	// upstream HTTP shapes — those stay gated until their dedicated
+	// cycles wire adapters. (image_gen now has dispatch above.)
 	if !isStreamableOperation(operation) {
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
 			"LLM_OPERATION_NOT_SUPPORTED",
@@ -404,7 +426,8 @@ var streamableOperations = map[string]struct{}{
 // checks audio first, then streamable, ensuring no operation is in both
 // dispatch paths.
 var audioJobOperations = map[string]struct{}{
-	"stt": {},
+	"stt":       {},
+	"audio_gen": {}, // Phase 5e-β.2 — batch TTS via /v1/llm/jobs
 }
 
 // isStreamableOperation reports whether the worker can dispatch the given

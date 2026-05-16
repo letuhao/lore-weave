@@ -93,8 +93,9 @@ func titleFor(operation, status string) string {
 }
 
 // opLabel turns the JobOperation enum (`entity_extraction`, `image_gen`,
-// etc.) into a human-readable label. Underscores become spaces; first
-// letter capitalised.
+// `video_gen`, etc.) into a human-readable label. Underscores become
+// spaces; first letter capitalised. Generic — new operation names just
+// need the consumer_test.go fixture to add an explicit assertion.
 func opLabel(operation string) string {
 	if operation == "" {
 		return "Job"

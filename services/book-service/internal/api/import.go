@@ -133,11 +133,11 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 
 	// Outbox event for worker-infra to pick up
 	if err := insertOutboxEvent(r.Context(), tx, "import.requested", jobID, map[string]any{
-		"job_id":           jobID,
-		"book_id":          bookID,
-		"user_id":          ownerID,
-		"file_format":      fileFormat,
-		"file_storage_key": storageKey,
+		"job_id":            jobID,
+		"book_id":           bookID,
+		"user_id":           ownerID,
+		"file_format":       fileFormat,
+		"file_storage_key":  storageKey,
 		"original_language": r.FormValue("original_language"),
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to queue import")
@@ -150,11 +150,11 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"id":        jobID,
-		"book_id":   bookID,
-		"status":    "pending",
-		"filename":  fh.Filename,
-		"file_size": int64(len(data)),
+		"id":         jobID,
+		"book_id":    bookID,
+		"status":     "pending",
+		"filename":   fh.Filename,
+		"file_size":  int64(len(data)),
 		"created_at": "now",
 	})
 }
@@ -177,17 +177,17 @@ func (s *Server) getImportJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var job struct {
-		ID              uuid.UUID  `json:"id"`
-		BookID          uuid.UUID  `json:"book_id"`
-		Status          string     `json:"status"`
-		Filename        string     `json:"filename"`
-		FileFormat      string     `json:"file_format"`
-		FileSize        int64      `json:"file_size"`
-		ChaptersCreated int        `json:"chapters_created"`
-		Error           *string    `json:"error"`
-		CreatedAt       string     `json:"created_at"`
-		UpdatedAt       string     `json:"updated_at"`
-		CompletedAt     *string    `json:"completed_at"`
+		ID              uuid.UUID `json:"id"`
+		BookID          uuid.UUID `json:"book_id"`
+		Status          string    `json:"status"`
+		Filename        string    `json:"filename"`
+		FileFormat      string    `json:"file_format"`
+		FileSize        int64     `json:"file_size"`
+		ChaptersCreated int       `json:"chapters_created"`
+		Error           *string   `json:"error"`
+		CreatedAt       string    `json:"created_at"`
+		UpdatedAt       string    `json:"updated_at"`
+		CompletedAt     *string   `json:"completed_at"`
 	}
 	err = s.pool.QueryRow(r.Context(), `
 SELECT id, book_id, status, filename, file_format, file_size, chapters_created, error,
@@ -297,4 +297,3 @@ UPDATE import_jobs SET status=$1, chapters_created=$2, error=$3, updated_at=now(
 
 	w.WriteHeader(http.StatusNoContent)
 }
-

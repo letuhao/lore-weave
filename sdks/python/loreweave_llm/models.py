@@ -123,6 +123,8 @@ JobOperation = Literal[
     "stt",
     "tts",
     "image_gen",
+    "video_gen",  # Phase 5d
+    "audio_gen",  # Phase 5e-β.2
     "entity_extraction",
     "relation_extraction",
     "event_extraction",
@@ -315,3 +317,120 @@ class SttResult(BaseModel):
     text: str
     language: str | None = None
     duration_ms: int | None = None
+
+
+# ── Phase 5c-α — image-gen models ─────────────────────────────────────
+
+
+class ImageGenDataItem(BaseModel):
+    """Mirrors openapi `ImageGenDataItem`. Single generated image in the
+    response array.
+
+    Exactly one of `url` or `b64_json` is populated based on the
+    request's `response_format`. `revised_prompt` is upstream-populated
+    when the model rewrote the prompt (DALL-E-3 + gpt-image-1 do this;
+    local models typically don't).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str | None = None
+    b64_json: str | None = None
+    revised_prompt: str | None = None
+
+
+class ImageGenResult(BaseModel):
+    """Mirrors openapi `ImageGenResult`. Decoded from Job.result when
+    `operation=image_gen` and `status=completed`.
+
+    `data` contains 1..4 entries (gateway caps via MaxImagesPerJob).
+    Caller is responsible for downloading the URL (if `url` mode) and
+    storing in its own MinIO bucket — gateway does NOT download. URL
+    lifetime is upstream-dependent (OpenAI: ~1 hour; local services:
+    caller-configured). Caller MUST fetch immediately after polling
+    completed; persistent storage of the upstream URL is unsafe.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    created: int
+    data: list[ImageGenDataItem] = Field(min_length=1, max_length=4)
+
+
+# ── Phase 5d — video-gen models ─────────────────────────────────────
+
+
+class VideoGenDataItem(BaseModel):
+    """Mirrors openapi `VideoGenDataItem`. Single generated video.
+
+    Phase 5d is url-only (b64_json rejected at handler per /review-impl
+    MED#3 — realistic videos exceed the 8MB response cap). Field shape
+    matches local-image-generator-service's response.
+
+    `revised_prompt` is upstream-populated when the model rewrote the
+    prompt (rare for video — most local backends don't have safety-system
+    rewriting).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str | None = None
+    revised_prompt: str | None = None
+
+
+class VideoGenResult(BaseModel):
+    """Mirrors openapi `VideoGenResult`. Decoded from Job.result when
+    `operation=video_gen` and `status=completed`.
+
+    `data` contains exactly 1 entry (gateway locks n=1 for Phase 5d).
+    Caller is responsible for downloading the URL and storing in its
+    own MinIO bucket — gateway does NOT download. URL lifetime is
+    upstream-dependent. Caller MUST fetch immediately after polling
+    completed.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    created: int
+    # max_length=1 mirrors Phase 5d n=1 lock. If Phase 5d-β (or later)
+    # supports n>1, raise this in lockstep with: gateway handler
+    # validateVideoGenInput, adapter pre-check in openai_video.go, and
+    # the worker_video runVideoGenJob normalization. Otherwise the
+    # pydantic deserialization rejects valid multi-video responses.
+    data: list[VideoGenDataItem] = Field(min_length=1, max_length=1)
+
+
+# ── Phase 5e-β.2 — audio_gen models ──────────────────────────────────
+
+
+class AudioGenDataItem(BaseModel):
+    """Mirrors openapi `AudioGenDataItem`. Single generated audio in the
+    batch response.
+
+    Exactly one of `url` or `b64_json` is populated based on the request's
+    `response_format`. `duration_ms` is upstream-dependent (typically 0
+    for OpenAI TTS). `content_type` is always populated.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str | None = None
+    b64_json: str | None = None
+    duration_ms: int | None = None
+    content_type: str
+
+
+class AudioGenResult(BaseModel):
+    """Mirrors openapi `AudioGenResult`. Decoded from Job.result when
+    `operation=audio_gen` and `status=completed`.
+
+    `data` contains exactly len(texts) entries (gateway caps at
+    MaxAudioGenInputs=10). Order is preserved: data[i] corresponds to
+    input.texts[i] 1:1. Caller decodes b64_json bytes (default) OR
+    fetches the URL (gateway-staged in MinIO with 1d server-side TTL).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    created: int
+    data: list[AudioGenDataItem] = Field(min_length=1, max_length=10)

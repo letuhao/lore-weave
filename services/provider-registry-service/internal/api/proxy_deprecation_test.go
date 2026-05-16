@@ -45,15 +45,17 @@ func TestIsDeprecatedProxyPath(t *testing.T) {
 		// ── double slashes inside path ───────────────────────────────
 		{"double slash inside", "v1//chat/completions", true},
 
-		// ── audio carve-out: MUST pass through ───────────────────────
-		{"audio transcriptions", "v1/audio/transcriptions", false},
-		{"audio speech", "v1/audio/speech", false},
-		{"audio leading slash", "/v1/audio/speech", false},
-		{"audio uppercase", "V1/AUDIO/SPEECH", false},
+		// ── Phase 5b — audio paths now deprecated ───────────────────
+		{"audio transcriptions", "v1/audio/transcriptions", true},
+		{"audio speech", "v1/audio/speech", true},
+		{"audio leading slash", "/v1/audio/speech", true},
+		{"audio uppercase", "V1/AUDIO/SPEECH", true},
+		{"audio dotdot bypass", "v1/audio/../audio/speech", true},
 
 		// ── adjacent / suffix paths MUST NOT be denied ───────────────
 		{"chat completions versioned", "v1/chat/completions/v2", false},
 		{"chat completions extra suffix", "v1/chat/completionsextra", false},
+		{"audio transcriptions suffix", "v1/audio/transcriptionsextra", false},
 		{"embeddings under audio", "v1/audio/embeddings", false},
 		{"unrelated path", "v1/models", false},
 		{"root", "v1", false},

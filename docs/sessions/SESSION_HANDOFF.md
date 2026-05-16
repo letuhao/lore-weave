@@ -1,9 +1,638 @@
-# Session Handoff — Session 54 (cycle 1 shipped · Phase 5a audio adapter COMPLETE · 5b chat-service voice migration next)
+# Session Handoff — Session 57 (cycle 1 shipped · Phase 5f video-gen-service hardening COMPLETE · unified-gateway program effectively done)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-28 (session 54, cycle 1 shipped)
-> **HEAD:** `0d228a10` (SESSION_PATCH backfill) — Phase 5a feat commit @ `2317bcb0`; Phase 4d closed at `3890d8a9` (session 53 cycle 13)
+> **Date:** 2026-05-15 (session 57, cycle 1 shipped)
+> **HEAD:** `12a3930f` (Phase 5f feat commit) — Phase 5e-β.2 closed at `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
 > **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 57 cycle 1 — Phase 5f · video-gen-service hardening · /review-impl rounds (DESIGN: 1H+3M+3L+1C; BUILD: 0H+1M+4L+2C — all fixed inline)
+
+**Phase 5f was redefined.** The refactor plan listed 5f as "video-gen-service deletion + FE migration to call the gateway directly." CLARIFY killed that: video-gen-service is **not a pure proxy** — its `/generate` route downloads the gateway's result to MinIO + records billing, and the gateway's `video_gen` result is the raw upstream provider URL (Phase 5d, url-only), which a browser cannot fetch for a local ComfyUI backend. Deleting it would lose persistence + billing and break local video. **User decided (3 CLARIFY questions): keep video-gen-service as a permanent thin domain BFF** — the role book-service plays for chapter media — and harden it instead.
+
+**What shipped — 3 audit gaps closed:**
+- **G1** — removed the dead `/models` endpoint (zero FE callers; always-empty; had a `ModelsResponse(models=[])` wrong-kwarg bug) + `ModelInfo`/`ModelsResponse` schemas + FE `videoGenApi.listModels` + `VideoModel`.
+- **G2+G4** — MinIO bucket bootstrap moved off the request hot path into a FastAPI `lifespan` handler, **and** video-gen-service now sets a public-read policy on `loreweave-media`. G4 was a real browser-breaking bug: it `make_bucket`'d with no policy, so winning the create-race vs book-service left the bucket private → generated video URLs 403'd. Added `_bucket_ready` flag + `ensure_bucket_ready()` per-request self-heal so a startup MinIO blip can't permanently break video serving.
+- **G3** — incoming user JWTs are now HS256 signature-verified (`algorithms=["HS256"]` allow-list blocks `alg:none`); was an unverified base64 decode. Mirrors chat-service `auth.py`; `JWT_SECRET` was already wired in docker-compose.
+
+**Files (13 — 2 NEW + 11 MOD):** NEW design doc + `tests/test_bucket_bootstrap.py`; MOD config/main/models/routers.generate/requirements + 3 test files + FE `video-gen/api.ts` + README + `infra/test-video-gen.sh`.
+
+**Two `/review-impl` rounds, all findings fixed inline:**
+
+| Round | Findings | Key fix |
+|---|---|---|
+| DESIGN | 1H + 3M + 3L + 1C | HIGH#1 — a one-shot best-effort bootstrap with no retry would itself reproduce G4 if MinIO is down at boot → adopted book-service `_bucket_ready`-flag + per-request self-heal |
+| BUILD | 0H + 1M + 4L + 2C | MED#1 — `ensure_bucket_ready` (the HIGH#1 fix's own function) was untested → +2 tests; LOW PyJWT pinned, grep-lock hardened, conftest fixture promoted |
+
+### Verify evidence
+```
+video-gen-service pytest:   25 passed (was 13; +12)
+frontend tsc --noEmit:      exit 0
+grep app/ list_models|ModelsResponse|ModelInfo:   0
+grep generate.py urlsafe_b64decode:               0
+bash -n infra/test-video-gen.sh:                  OK
+```
+
+### What's NEXT for the next agent
+
+The **unified-gateway program is effectively complete** — every service's LLM/audio/image/video calls flow through `provider-registry`; video-gen-service is a permanent domain BFF, not a violation. Remaining planned work in [LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md](../03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md) is **Phase 6 — Hardening**: 6a rate-limit/quota enforcement at job submission, 6b job-level retry policy, 6c OpenTelemetry trace_id end-to-end. None are started. No open blockers from this cycle.
+
+**Deferrals cleared this cycle:** `D-PHASE5E-MINIO-ASYNC-OFFLOAD` (G2), `D-PHASE5E-JWT-VERIFY-DEFENSE-IN-DEPTH` (G3). **Opened:** none.
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5F_DESIGN.md` — design + both /review-impl rounds folded
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — §5f updated + Phase 6 preview
+4. This handoff file
+
+---
+
+## Session 56 cycle 3 — Phase 5e-β.2 · gateway audio_gen adapter + MinIO staging + Python/Go SDK + book-service audio.go migration · /review-impl rounds (DESIGN: 4H+11M+13L+3C; BUILD: C#1+5H+10M+7L; FIX DELTA: 1CRIT+2H+3M+2L — ALL critical+HIGH fixed inline across all 3 rounds)
+
+**What shipped:** Gateway gains first-class `audio_gen` operation (batch TTS, 1..10 inputs, order-preserving). NEW `internal/storage/audio_cache.go` MinIO wrapper for URL-mode staging (public-read bucket + 1-day server-side lifecycle; mirrors book-service `loreweave-media` pattern). Both response modes: `b64_json` (default, inline) AND `url` (gateway-staged). book-service `audio.go` migrated off direct `/internal/credentials/` + `/v1/audio/speech` httpx path; uses batch SDK call → caller-side b64 decode → upload to its own MinIO. `PROVIDER_REGISTRY_SERVICE_URL` env DROPPED from book-service (audio.go was last consumer).
+
+**Strategic significance:** After this cycle, book-service has ZERO direct provider httpx calls. The unified LLM gateway invariant is realized for: chat, completion, embedding, stt, tts (stream), tts (batch via audio_gen), image_gen, video_gen, entity_extraction, relation_extraction, event_extraction, fact_extraction, translation. Only Phase 5f remains (video-gen-service deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration).
+
+**Three review rounds, all critical+HIGH fixed inline:**
+
+| Round | Findings | Resolution |
+|---|---|---|
+| DESIGN | 4H + 11M + 13L + 3C | URL mode redesigned (presigned-with-rewrite broke SigV4 → public-read static URLs); worker plumbing explicit; DB constraint name unversioned; dual-interface for book-service; SDK pointer pattern; MaxAudioGenInputs=10 (not 20) |
+| BUILD | C#1 + 5H + 10M + 7L | C#1 substantially closed (+52 tests across 5 files); H#1 non-string text rejection; H#2 delete-defer (partial); H#4 LLM_GATEWAY_STORAGE_ERROR; H#5 Content-Type whitelist; M#4 format whitelist |
+| FIX DELTA | 1CRIT + 2H + 3M + 2L | CRIT C#1 LLM_GATEWAY_STORAGE_ERROR was orphan code — registered in both SDKs + book-service writeAudioGenError; H#1 delete-defer race fully eliminated (DELETE only after all per-item ops succeed via `media_key != ALL($4::text[])`); H#2 LLMUpstreamError body kwarg added |
+
+**~52 new tests this cycle** across adapter (9) / worker (5+10 subtests) / handler (9) / Go SDK (8) / Python SDK (11) + book-service helper tests.
+
+**Files (~45 — 22 NEW + 23 MOD):**
+- NEW gateway storage pkg + design doc + Python SDK test file + book-service audio_test.go
+- MOD across gateway (adapter/worker/handler/server/main/config/migrate/go.mod) + Python SDK (errors/models/client/__init__/tests) + Go SDK (models/errors/client/tests) + book-service (audio/server/config/test) + docker-compose + openapi + notification
+
+### Verify evidence
+```
+provider-registry-service go test ./...   ALL GREEN
+  +9 audio_gen adapter tests (incl. order-preservation regression-lock)
+  +5 worker tests (+10 classifyAudioGenError Matrix subtests)
+  +9 jobs_router handler validation tests
+sdks/python pytest:                       207 passed (was 196; +11)
+sdks/go/llmgw go test:                    52 passed (was 44; +8)
+book-service go test:                     api 0.24s + config 0.18s GREEN
+grep audio.go:                            0 matches for /internal/credentials/, /v1/audio/speech, creds.*
+grep audio.go:                            has s.audioGenClient.GenerateAudio(, llmgw.ErrAudioGenerationFailed, writeAudioGenError(
+```
+
+### What's NEXT for the next agent
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration to call unified gateway directly. After 5f: unified gateway invariant FULLY realized for all platform LLM/audio/image/video. Estimated ~15 files.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5E-BETA2-STORAGE-UNIT-TESTS` — AudioCache.Stage whitelist/0-byte tests need MinIO test instance
+- `D-PHASE5E-BETA2-AUDIO-GEN-PARALLEL-ADAPTER` — sequential v1; future goroutine fan-out (order invariant locked by test)
+- `D-PHASE5E-BETA2-AUDIO-GEN-PARTIAL-SUCCESS` — currently all-or-nothing batch
+- `D-PHASE5E-BETA2-AUDIO-CACHE-FAST-TTL` — MinIO 1-day minimum vs ideal 1-hour
+- `D-PHASE5E-BETA2-LIVE-SMOKE` — manual against real OpenAI BYOK + book chapter
+- Plus ~12 lower-priority deferred items from review rounds 2 + 3
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5E_BETA2_DESIGN.md` — design + 4H+11M+13L review fixes folded
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5e-β.2 ✅ + 5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5f: size M-L (~15 files). Mostly DELETE + FE migration. No new backend logic.
+3. Reference impls: this cycle's audio_gen completes the gateway slot pattern (5b+5c-α+5d+5e-β.2); 5f is purely retirement.
+
+---
+
+## Session 56 cycle 2 — Phase 5e-β.1 · Go SDK + book-service media.go migration · /review-impl rounds (DESIGN: 6 HIGH + 5 MED + 6 LOW + 3 COSMETIC all actionable folded inline; BUILD: 3 HIGH + 6 MED + 7 LOW + 3 COSMETIC, 3 HIGH + 5 MED + 1 LOW fixed inline)
+
+## Session 56 cycle 2 — Phase 5e-β.1 · Go SDK + book-service media.go migration · /review-impl rounds (DESIGN: 6 HIGH + 5 MED + 6 LOW + 3 COSMETIC all actionable folded inline; BUILD: 3 HIGH + 6 MED + 7 LOW + 3 COSMETIC, 3 HIGH + 5 MED + 1 LOW fixed inline)
+
+**What shipped:** First Go SDK in the monorepo (`sdks/go/llmgw/` — module `github.com/loreweave/llmgw`, package `llmgw`) implementing the submit_job → poll → terminal-result flow modeled on Python SDK's `generate_image()`. book-service's `generateChapterMedia` migrated off direct `/internal/credentials/` + `/v1/images/generations` httpx path; uses `s.llmgw.GenerateImage()` with typed-error switch in extracted `writeImageGenError` helper. audio.go INTENTIONALLY unchanged (reserved for Phase 5e-β.2; needs audio_gen gateway adapter first).
+
+**Strategic context (Path B step 4):** 5c-α + 5d shipped image_gen + video_gen gateway adapters; 5e-α migrated video-gen-service (first Python caller); this cycle migrates book-service (first Go caller). After 5e-β.2 (audio_gen adapter + audio.go migration) + 5f (video-gen-service BFF deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration), unified gateway invariant fully realized.
+
+**Scope-split decision:** handoff scoped "book-service migration" as one cycle; CLARIFY found (a) two LLM call sites (media.go image_gen + audio.go TTS), (b) audio_gen adapter doesn't exist on gateway yet, (c) full scope = 40-45 files / XXL. User chose split into 5e-β.1 (Go SDK + media.go) → 5e-β.2 (audio_gen adapter + audio.go). Per memory `feedback_scope_audit_before_batching`.
+
+**First-ever Go SDK pattern decisions:**
+- Filesystem `sdks/go/llmgw/` + module `github.com/loreweave/llmgw` + package `llmgw` (no underscore — `staticcheck ST1003` clean; Go-idiomatic short name)
+- Sync API; context cancellation only (no `*http.Client.Timeout` traps for polling)
+- Sentinel-based `errors.Is`/`errors.As` matching via unexported `inner` field
+- Central `newErrorFromCode` constructor helper REQUIRED for all `*Error` construction — manual struct construction would silently break errors.Is
+- Caller-defined consumer interface (`type imageGenerator interface { GenerateImage(...) }`) in book-service for mocking
+- `replace ../../sdks/go/llmgw` in book-service go.mod; Dockerfile bumped to repo-root build context
+
+**First-ever handler test for media.go:** book-service had NO tests for `generateChapterMedia`. 13 new tests added covering typed-error routing via extracted `writeImageGenError` helper + 1 real-SDK end-to-end test through `httptest.NewServer` + 2 grep-locks + 1 anti-bait. Full DB+MinIO+JWT integration test harness DEFERRED to Track 2 (HIGH#4 in design /review-impl).
+
+**Files (22 — 11 NEW + 11 MOD):**
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5E_BETA1_DESIGN.md` (status SHIPPED; DESIGN+BUILD review fixes folded)
+- NEW `sdks/go/llmgw/{go.mod, doc.go, client.go, transport.go, models.go, errors.go, errors_test.go, transport_test.go, client_test.go}` (10 files)
+- NEW `services/book-service/internal/api/media_test.go` (13 tests + grep-locks + anti-bait)
+- MOD `services/book-service/internal/api/media.go` — drops ~110 LOC credential resolve + direct POST; uses SDK; extracted `writeImageGenError` helper
+- MOD `services/book-service/internal/api/server.go` — `s.llmgw` field + ctor with `slog.Error` on NewClient failure
+- MOD `services/book-service/internal/config/config.go` — +LLMGatewayInternalURL required env
+- MOD `services/book-service/internal/config/config_test.go` — pre-existing broken test fixed (was missing required envs)
+- MOD `services/book-service/go.mod` — replace directive for SDK
+- MOD `services/book-service/Dockerfile` — repo-root build context
+- MOD `infra/docker-compose.yml` — book-service build.context: .. + LLM_GATEWAY_INTERNAL_URL env
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN (BEFORE BUILD).** 6 HIGH + 5 MED + 6 LOW + 3 COSMETIC. All actionable folded inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🔴 HIGH | `errors.Is` via `inner` was specified only at one construction site; rest left to implementer. Central `newErrorFromCode(code, msg, status)` helper + regression-lock test enforcing every `codeSentinels` entry round-trips. |
+| 2 | 🔴 HIGH | Dockerfile + docker-compose build context bump missing from §4.1 scope. Promoted to in-scope; explicit Dockerfile diff. |
+| 3 | 🔴 HIGH | `NewServer` signature change unflagged. Kept current `NewServer(pool, cfg) *Server` signature; SDK construction inline with nil-on-misconfig matching `s.minio` precedent. |
+| 4 | 🔴 HIGH | §10.2 test plan claimed "SDK mock returns error EARLY" but ensureOwnerBook DB call comes BEFORE SDK call. Scope reduced to extracted-helper unit tests; full DB harness deferred. |
+| 5 | 🔴 HIGH | `*http.Client.Timeout` injection trap (would silently cap each poll). SDK accepts `http.RoundTripper` only; internal `*http.Client` has no Timeout. |
+| 6 | 🔴 HIGH | Test `TestGenerateImage_NonDefaultSize` would have been Phase 5e-α MED#1 trap recurring (gateway's "1024x1024" default = the asserted value). Use "1792x1024" + assert WIRE body not result. Add omitted-Size companion test. |
+| 7 | 🟡 MED | Wire-body construction must use explicit `map[string]any` pattern (not struct + omitempty). |
+| 8 | 🟡 MED | ErrImageGenerationFailed and ErrUpstream into SEPARATE switch cases. |
+| 9 | 🟡 MED | Caller uses `errors.As` not type-assert. |
+| 10 | 🟡 MED | Surface Retry-After header from `*Error.RetryAfterS`. |
+| 11 | 🟡 MED | Package naming closure: `llmgw` (resolves staticcheck warnings). |
+
+**Round 2 — BUILD output.** 3 HIGH + 6 MED + 7 LOW + 3 COSMETIC. 3 HIGH + 5 MED + 1 LOW fixed inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🔴 HIGH | doc.go example showed `UserID: ownerID,` (would not compile — UserID is string but ownerID is uuid.UUID). Fixed to `ownerID.String()`. |
+| 2 | 🔴 HIGH | FE `VersionTimeline.tsx:134-137` renders `ai_model` raw; design deferred this claiming FE resolves UUID → name but no such resolver exists. Real UX regression risk. Fix: store empty string in `ai_model` — FE conditional `{v.ai_model && ...}` naturally hides the line. New rows display without model line; legacy rows keep "dall-e-3". Graceful degradation. |
+| 3 | 🔴 HIGH | `NewClient` failure in NewServer was silently swallowed. Added `slog.Error(...)` so a 503-forever loop is debuggable. |
+| 4 | 🟡 MED | Test stub `wrappedSentinelError.Is()` bypasses the real Unwrap chain. Added `TestWriteImageGenError_RealSDKContentPolicy_RoutesTo400` that constructs a real `*llmgw.Error` through an httptest.NewServer-backed SDK call and routes it through `writeImageGenError`. |
+| 5 | 🟡 MED | `LLM_AUTH_FAILED` → 502 PROVIDER_ERROR was wrong for the dominant case (BYOK key revoked upstream). Now → 402 NO_PROVIDER (FE prompts "configure provider"). |
+| 6 | 🟡 MED | Dead `len(result.Data) == 0` check (SDK already guards). Removed; kept URL-mode `result.Data[0].URL == ""` check with future-b64-caller TODO comment. |
+| 7 | 🟡 MED | `TestGenerateImage_HappyPath` doesn't assert wire `operation: "image_gen"`. Added wire-body assertions. |
+| 8 | 🟡 MED | No regression-lock for zero-default poll interval. Added `TestWaitTerminal_ZeroIntervalDefaultsToHalfSecond`. |
+| 9 | 🟢 LOW | Audio anti-bait test could be stronger. Added `creds.ProviderModelName` + `creds.APIKey` required-substrings. |
+| - | 🔵 COSMETIC | gofmt across SDK + book-service touched files. |
+
+**BUILD-time surprise:** REVIEW-CODE Stage 2 caught my custom `errAs` helper as redundant — replaced with stdlib `errors.As` + `errors.Is` for cleaner Go idiom.
+
+### Verify evidence
+```
+sdks/go/llmgw pytest:                                  N/A (Go)
+sdks/go/llmgw go test ./...:                           44 PASS (was 43; +1 zero-default regression-lock)
+services/book-service go build ./...:                  CLEAN
+services/book-service go vet ./...:                    CLEAN
+services/book-service go test ./internal/api/:         19 PASS (12 writeImageGenError + 1 real-SDK E2E + 2 grep-locks + 4 existing)
+services/book-service go test ./internal/config/:      3 PASS (incl. pre-existing broken test fixed)
+grep -n "/internal/credentials/" media.go              no matches
+grep -n "/v1/images/generations" media.go              no matches
+grep -n "creds.ProviderKind" media.go                  no matches
+audio.go retains: /internal/credentials/, /v1/audio/speech, creds.ProviderModelName, creds.APIKey  (anti-bait green)
+```
+
+### What's NEXT for the next agent
+
+**Phase 5e-β.2 (XL)** — gateway `audio_gen` adapter + Python SDK + Go SDK extension + audio.go migration. Estimated ~25 files. Mirrors Phase 5c-α/5d patterns for gateway adapter work:
+
+1. Gateway side (provider-registry-service):
+   - openapi.yaml: +AudioGenInput + AudioGenResult + audio_gen JobOperation enum
+   - migrate.go: ALTER block adding audio_gen to CHECK constraint
+   - adapters.go: Adapter +GenerateAudio + types + sentinels
+   - openai_audio.go (NEW): /v1/audio/speech impl (binary mp3 not URL — different from image/video URL response pattern)
+   - adapters_audio.go (NEW): Anthropic/Ollama/LM Studio stubs (most lack TTS)
+   - jobs/worker_audio.go + tests
+   - api/jobs_handler.go validation + tests
+   - notification-service consumer op-label
+
+2. Python SDK: extend with `Client.generate_audio()` operation-based method (parallel to existing transparent-proxy TTS used by chat-service voice)
+
+3. Go SDK: extend `sdks/go/llmgw/` with `GenerateAudio` method + `AudioGenResult` model
+
+4. book-service `audio.go::generateAudio` migration: drop legacy credential resolve + use SDK; preserves per-block segment loop + MinIO upload + billing
+
+5. Drop `PROVIDER_REGISTRY_SERVICE_URL` from book-service config (no longer needed once audio.go migrates)
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration to call unified gateway directly.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5E-BETA1-IMAGE-PROVIDER-MODEL-NAME-IN-RESULT` — extend SDK ImageGenResult to expose `provider_model_name` so the FE doesn't lose the human name (current empty-string workaround is graceful but suboptimal)
+- `D-PHASE5E-BETA1-AI-MODEL-DB-MIGRATION` — backfill `block_media_versions.ai_model` if the empty-string-for-new-rows mixed-format becomes annoying (won't-fix unless FE complains)
+- `D-PHASE5E-BETA1-LIVE-SMOKE` — manual POST /media-generate against actual provider after merge
+- `D-PHASE5E-BETA1-INTEGRATION-TEST-HARNESS` — full DB+MinIO+JWT fixtures for handler integration tests (Track 2)
+- `D-PHASE5E-BETA1-GO-SDK-LOGGING` — slog injection on Options for diagnostic events
+- `D-PHASE5E-BETA1-GO-SDK-TRANSPORT-TUNING` — Transport.MaxIdleConnsPerHost for high-concurrency callers
+- carry-over `D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS`
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5E_BETA1_DESIGN.md` — design + 12 /review-impl fixes folded inline
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5e row update + 5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5e-β.2: size XL (~25 files). Mirror 5c-α/5d gateway adapter cycle structure.
+3. Reference impls: `sdks/go/llmgw/` for Go SDK pattern + Phase 5c-α/5d for gateway adapter + Phase 5e-α/5e-β.1 for caller migration shape
+
+---
+
+## Session 56 cycle 1 — Phase 5e-α · video-gen-service migration onto unified gateway · /review-impl rounds (DESIGN: 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 2 COSMETIC, MED + 3 LOWs fixed inline)
+
+## Session 56 cycle 1 — Phase 5e-α · video-gen-service migration onto unified gateway · /review-impl rounds (DESIGN: 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 2 COSMETIC, MED + 3 LOWs fixed inline)
+
+**What shipped:** First caller migration of Path B. video-gen-service `/v1/video-gen/generate` route now uses `loreweave_llm.Client.generate_video()` (shipped in Phase 5d) instead of direct httpx POST + manual credential resolution. SDK handles credential resolve + upstream POST + sync result decode internally. Per-call Client (matches chat-service voice precedent + sibling stream_service.py). Caller-side download + MinIO storage + billing PRESERVED (matches chat-service voice).
+
+**Strategic context (Path B step 3):** 5c-α + 5d shipped the gateway adapters; this cycle migrates the FIRST production caller. After 5e-β (book-service Go migration) + 5f (video-gen-service BFF deletion + api-gateway-bff `/v1/video-gen/*` retirement + FE migration), the unified gateway invariant is fully realized for all external LLM/audio/image/video.
+
+**First test suite for video-gen-service.** Service had NO `tests/` directory before this cycle. 13 tests added:
+- 1 happy-path with SDK-wire-shape verification (kwargs captured + asserted)
+- 5 error-class → HTTP status mappings (Quota→402, ContentPolicy→400, ModelNotFound→404, GenerationFailed→502, RateLimited→429)
+- 1 non-default aspect_ratio regression-lock (QC MED#1: `aspect_ratio="9:16"` → asserts SDK kwargs `size=="1080x1920"`; catches hardcoded-default-bypass)
+- 1 non-dict JWT payload returns 401 (QC LOW#4 edge case)
+- 1 `_aspect_to_size` pure-function unit (LOW#3 from design)
+- 4 grep-locks: negative (`/internal/credentials` absent + quoted `"PROVIDER_REGISTRY_URL"` absent strengthened per QC LOW#3 + `settings.provider_registry_url` absent) + positive (`loreweave_llm` import present + `Client(` construction present)
+
+**Files (13 — 6 MOD + 7 NEW)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5E_ALPHA_DESIGN.md` (status SHIPPED; 5 DESIGN + 4 BUILD review fixes folded inline)
+- NEW `services/video-gen-service/app/config.py` (pydantic-settings; legacy `PROVIDER_REGISTRY_URL` config dropped per /review-impl(DESIGN) MED#2)
+- NEW `services/video-gen-service/app/llm_errors.py` (`map_llm_error_to_http_exception` helper with specific-before-generic ordering per memory `feedback_specific_sdk_exception_catches_before_generic`)
+- MOD `services/video-gen-service/app/routers/generate.py` — drops `resolve_credentials` + direct httpx POST; uses `Client.generate_video()` per-call (try/except/finally ensures aclose() in all paths); `record_usage` signature widened to `provider_kind: str | None = None` per MED#1; download → MinIO → billing flow preserved
+- MOD `services/video-gen-service/app/main.py` — settings import for fail-fast startup; dropped misleading `provider_configured` from `/health` per QC LOW#5
+- MOD `services/video-gen-service/Dockerfile` — build context bumped to repo root; SDK install via `COPY sdks/python /sdk && pip install /sdk`
+- MOD `services/video-gen-service/requirements.txt` — +pydantic-settings
+- MOD `infra/docker-compose.yml` — video-gen-service `build.context: ..` + `dockerfile: services/video-gen-service/Dockerfile`; `PROVIDER_REGISTRY_URL` env REMOVED + `PROVIDER_REGISTRY_INTERNAL_URL` ADDED per MED#2
+- NEW `services/video-gen-service/tests/__init__.py`
+- NEW `services/video-gen-service/tests/conftest.py` (TestClient + JWT helper; env vars set BEFORE app import)
+- NEW `services/video-gen-service/tests/test_generate.py` — 9 tests
+- NEW `services/video-gen-service/tests/test_no_dead_resolution.py` — 4 grep-locks
+- MOD `sdks/python/loreweave_llm/__init__.py` — extended exports (`LLMJobTerminal`, `LLMJobNotFound`, `LLMHttpError`, `LLMTransientRetryNeededError`) needed by the new `llm_errors.py` helper
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN (BEFORE BUILD).** 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC. All 5 actionable folded inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | `record_usage(provider_kind: str)` signature would break with None pass-through. Widened to `provider_kind: str | None = None` with rationale comment about JSON-null → Go-empty-string at usage-billing. |
+| 2 | 🟡 MED | Legacy `provider_registry_url` config field would be dead after migration. Removed from config.py + compose. Mirrors Phase 5b chat-service precedent. |
+| 3 | 🟢 LOW | `_aspect_to_size` helper had no unit test. Added `test_aspect_to_size_mapping`. |
+| 4 | 🟢 LOW | "presumably broken against backend" → "untestable today" wording. |
+| 5 | 🟢 LOW | JWT no-signature-verification: deferred `D-PHASE5E-JWT-VERIFY-DEFENSE-IN-DEPTH`. |
+| 6 | 🔵 COSMETIC | proxy-routing.spec.ts mock — irrelevant to 5e-α. Skip. |
+
+**Round 2 — BUILD output.** 0 HIGH + 1 MED + 5 LOW + 2 COSMETIC. MED + 3 LOWs fixed inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | Happy-path used `aspect_ratio="16:9"` → `"1920x1080"` which is ALSO the fallback for unknown ratios; hardcoded-bypass regression wouldn't be caught. Added `test_generate_non_default_aspect_ratio_reaches_sdk` (uses `"9:16"` → asserts `"1080x1920"`). |
+| 2 | 🟢 LOW | img2vid not exposed via GenerateRequest — accepted as `D-PHASE5E-IMG2VID-FE-INTEGRATION`. |
+| 3 | 🟢 LOW | Grep-lock for `PROVIDER_REGISTRY_URL` was too specific (only `os.getenv` + `os.environ[]` forms). Strengthened to assert `'"PROVIDER_REGISTRY_URL"'` (quoted form) absent — catches all access idioms. |
+| 4 | 🟢 LOW | Non-dict JWT payload (JSON array) → AttributeError on `.get()` → 401 untested. Added `test_extract_user_id_non_dict_payload_returns_401`. |
+| 5 | 🟢 LOW | `/health` reported `provider_configured` based on a defaulted Settings field (always True). Dropped the misleading field. |
+| 6 | 🟢 LOW | provider_kind=None analytics drift in billing — deferred `D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS`. |
+| 7 | 🔵 COSMETIC | get_minio() sync bucket check inside async route — deferred `D-PHASE5E-MINIO-ASYNC-OFFLOAD`. |
+| 8 | 🔵 COSMETIC | record_usage logger pattern — standard best-effort; no action. |
+
+**BUILD-time surprise (1):** SDK `__init__.py` was missing `LLMJobTerminal`/`LLMHttpError`/`LLMJobNotFound`/`LLMTransientRetryNeededError` exports needed by the new `llm_errors.py` helper. Extended exports.
+
+### Verify evidence
+```
+video-gen-service pytest tests/:                     13 passed (first-ever test suite for this service)
+SDK pytest sdks/python/tests/:                       196 passed unchanged
+chat-service pytest:                                 180 passed unchanged
+grep -rn "/internal/credentials" services/video-gen-service/app/routers/   no matches
+grep -rn "PROVIDER_REGISTRY_URL" services/video-gen-service/app/           no matches (only PROVIDER_REGISTRY_INTERNAL_URL)
+```
+
+### What's NEXT for the next agent
+
+**Phase 5e-β (L–XL)** — book-service (Go) migration. Currently calls `/v1/images/generations` directly from [internal/api/media.go:449](services/book-service/internal/api/media.go#L449). Needs a design decision BEFORE starting:
+
+- **Option A: Build a Go SDK** (`sdks/go/loreweave_llm` parallel to Python). L-XL. Investment that pays off for future Go-service migrations (auth-service, sharing-service, glossary-service, catalog-service).
+- **Option B: Inline Go HTTP shim** in book-service. M-L. 60-100 LOC throwaway specific to 5e-β. Faster but doesn't compound.
+
+Recommend: revisit the decision AFTER 5e-α has run in production (live smoke confirmed). Phase 5b's voice path is a useful template even though it's Python.
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion + api-gateway-bff `/v1/video-gen/*` route retirement + FE migration to call unified gateway directly. After 5f: unified gateway invariant fully realized for chat + extraction + translation + audio + image + video.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5E-JWT-VERIFY-DEFENSE-IN-DEPTH` — local JWT signature verification (defense-in-depth vs gateway-bff trust)
+- `D-PHASE5E-IMG2VID-FE-INTEGRATION` — FE + GenerateRequest extension for image-to-video
+- `D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS` — backfill provider_kind at billing time if dashboards break on empty-string category
+- `D-PHASE5E-MINIO-ASYNC-OFFLOAD` — move bucket bootstrap to lifespan startup (cosmetic; first-request-only)
+- `D-PHASE5E-LIVE-SMOKE` — manual against local-image-generator-service:8700 (cross-validates 5d path dispatch)
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5E_ALPHA_DESIGN.md` — design + 8 /review-impl fixes
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — 5e-α row + 5e-β/5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5e-β: needs Go SDK decision FIRST; then size XL probably
+3. Reference impl: 5e-α at HEAD `d276d0a7` + Phase 5b chat-service voice (Python caller pattern); for Go shim approach, see book-service media.go current state
+
+---
+
+## Session 55 cycle 3 — Phase 5d · video_gen adapter + SDK + openapi + 5-slot registration · /review-impl rounds (DESIGN: 1 HIGH + 2 MED + 4 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 1 COSMETIC, MED + 3 LOWs fixed inline)
+> **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+
+## Session 55 cycle 3 — Phase 5d · video_gen adapter + SDK + openapi + 5-slot registration · /review-impl rounds (DESIGN: 1 HIGH + 2 MED + 4 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 5 LOW + 1 COSMETIC, MED + 3 LOWs fixed inline)
+
+**What shipped:** Gateway gains first-class `video_gen` operation on the unified contract via `POST /v1/llm/jobs operation=video_gen` → `adapter.GenerateVideo` → `VideoGenResult` (1 data entry; n=1 locked). Path dispatch `/v1/videos/generations/text-to-video` vs `/v1/videos/generations/image-to-video` based on init_image presence — matches actual local-image-generator-service routes (NOT singular `/v1/video/generations` per stale integration guide, per /review-impl(DESIGN) HIGH#1). Works against Wan, LTX Video, SDXL-derived video models. Caller-side URL→MinIO download. url-only response_format (b64 rejected per MED#3 — exceeds 8MB cap in practice). Image-to-video via `init_image` base64 field (NOT `image` per HIGH#1). `VideoGenJobTimeout=30min` (3× longer than image; ComfyUI multi-step workflows). Shared `isContentPolicyRejection` helper refactored from openai_image.go to NEW openai_content_policy.go.
+
+**Strategic context (Path B step 2):** 5c-α activated image_gen; this cycle ships video_gen; 5e migrates callers (book-service Go + video-gen-service Python); 5f deletes video-gen-service BFF. After 5f: unified gateway invariant fully realized for chat + extraction + translation + audio + image + video.
+
+**Files (23 — 15 MOD + 8 NEW)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5D_DESIGN.md` (status SHIPPED)
+- MOD `contracts/api/llm-gateway/v1/openapi.yaml` — `video_gen` JobOperation enum + `VideoGenInput` + `VideoGenResult` + `VideoGenDataItem` schemas
+- MOD `internal/migrate/migrate.go` — `video_gen` in CREATE TABLE inline + new ALTER block (Phase 4a-β idempotent pattern)
+- MOD `internal/provider/adapters.go` — Adapter +GenerateVideo + 3 types + 3 sentinels (`ErrVideoGenerationFailed`/`ErrVideoContentPolicy`/`ErrVideoInvalidParams`) + `MaxImg2VidInputBytes=10MB`
+- NEW `internal/provider/openai_content_policy.go` — refactored shared helper (was in openai_image.go); both image + video reference
+- MOD `internal/provider/openai_image.go` — removed isContentPolicyRejection (now in shared file); bytes/json imports still legitimate
+- NEW `internal/provider/openai_video.go` — full impl; path dispatch with **whitespace-trim before dispatch** (Fix LOW#2); adapter pre-checks; sync upstream mode; cross-ref comments
+- NEW `internal/provider/adapters_video.go` — Anthropic/Ollama/LM Studio stubs
+- NEW `internal/provider/adapters_video_test.go` — 13 tests (txt2vid + img2vid path dispatch + whitespace-init_image regression-lock + invariants + content-policy + oversize + typed upstream + stub-trio)
+- NEW `internal/jobs/worker_video.go` — `processVideoGenJob` + `runVideoGenJob` + `classifyVideoError` + `videoJobOperations` + `VideoGenJobTimeout=30min`
+- NEW `internal/jobs/worker_video_test.go` — 14 tests (2 whitelist + 1 3-way pairwise disjoint per Fix#2 + 1 5-place sync + 10 classify matrix)
+- MOD `internal/jobs/worker.go` — image+video dispatch hook before chat-streaming
+- MOD `internal/jobs/worker_test.go` — `TestIsStreamableOperation_RejectsNonStreamable` +video_gen + comment refresh
+- MOD `internal/api/jobs_handler.go` — `validateVideoGenInput` + `validJobOperations` +video_gen + provider import + cross-ref comment (Fix LOW#6)
+- MOD `internal/api/jobs_router_test.go` — +8 video_gen handler tests
+- MOD `services/notification-service/internal/consumer/consumer.go` — opLabel docstring updated
+- MOD `services/notification-service/internal/consumer/consumer_test.go` — +video_gen→"Video gen" fixture
+- MOD `sdks/python/loreweave_llm/errors.py` — `LLMVideoContentPolicy` + `LLMVideoGenerationFailed` + `_CODE_TO_EXC` entries
+- MOD `sdks/python/loreweave_llm/models.py` — `VideoGenDataItem` + `VideoGenResult` + JobOperation Literal +video_gen + max_length=1 inline comment (Fix LOW#4)
+- MOD `sdks/python/loreweave_llm/client.py` — `Client.generate_video()` with `init_image` (NOT `image` per HIGH#1) + `Literal["url"]` only per MED#3
+- MOD `sdks/python/loreweave_llm/__init__.py` — exports
+- NEW `sdks/python/tests/test_video_gen.py` — 11 tests incl. /review-impl(BUILD) MED#1 regression-lock `test_generate_video_rejects_b64_format_server_side` + HIGH#1 regression-lock `test_generate_video_img2vid_includes_init_image_field`
+- MOD `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5d row ✅ shipped + 5e/5f preview
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN (BEFORE BUILD).** 1 HIGH + 2 MED + 4 LOW + 1 COSMETIC. All 8 folded inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🔴 HIGH | Design's `/v1/video/generations` (singular) doesn't exist in actual local-image-generator-service (has `/v1/videos/generations/text-to-video` and `/image-to-video`). Field name was `image` per stale guide; backend uses `init_image`. Fixed by matching actual backend routes via path dispatch + renaming field to `init_image`. video-gen-service legacy path remains broken until 5e migrates it. |
+| 2 | 🟡 MED | `init_image` input no size cap → DB bloat risk from 50MB base64 strings. Added `MaxImg2VidInputBytes=10MB` const + handler + adapter checks. |
+| 3 | 🟡 MED | b64_json mode contract-symmetric with image_gen but realistic videos exceed 8MB cap. Handler rejects `b64_json` for video_gen with clear "use url mode" hint. Asymmetric with image_gen (intentional, documented). |
+| 4 | 🟢 LOW | Contract asymmetry note (b64 image-only). Documented. |
+| 5 | 🟢 LOW | Negative-N error message phrasing. Improved to "n must be >= 0". |
+| 6 | 🟢 LOW | Dual-maintenance risk for video-gen-service legacy. Flagged in §9. |
+| 7 | 🟢 LOW | 5-place sync test source-grep limitation. Accept (matches sibling tests). |
+| 8 | 🔵 COSMETIC | Polling defaults. Accept. |
+
+**Round 2 — BUILD output.** 0 HIGH + 1 MED + 5 LOW + 1 COSMETIC. MED + 3 LOWs fixed inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | Design listed but missing: SDK test for b64_json rejection. Added `test_generate_video_rejects_b64_format_server_side` (verifies SDK sends caller's bypassed type-hint value on wire, gateway rejects, SDK propagates as LLMInvalidRequest). |
+| 2 | 🟢 LOW | Whitespace-only init_image (`" "` or `"\n"`) routed to image-to-video → upstream parse error. Fixed: `strings.TrimSpace` before dispatch + adapter test `TestOpenAIAdapter_GenerateVideo_WhitespaceInitImage_RoutesAsTxt2Vid` (4 whitespace variants). |
+| 3 | 🟢 LOW | SDK doesn't validate init_image is real base64. Accept-and-document as `D-PHASE5D-SDK-INITIMAGE-VALIDATION`. |
+| 4 | 🟢 LOW | VideoGenResult max_length=1 not flagged for future relaxation. Added inline comment. |
+| 5 | 🟢 LOW | Multi-error-collect (adapter first-fail). Carry-over to existing `D-PHASE5C-MULTI-ERROR-COLLECT`. |
+| 6 | 🟢 LOW | No cross-reference comment between handler + adapter validation layers. Added mirror comments in both. |
+| 7 | 🔵 COSMETIC | Test naming asymmetry. Accept. |
+
+### Verify evidence
+```
+provider-registry-service: go build/vet/test ./...   ALL GREEN
+  internal/api:                                       +8 video_gen handler tests
+  internal/jobs:                                      +14 video_gen worker tests
+  internal/provider:                                  +13 video_gen adapter tests
+  internal/migrate:                                   no tests (compile-only) — DB CHECK additive ALTER
+notification-service consumer:                        +video_gen op-label fixture, pass
+SDK pytest sdks/python/tests/:                       196 passed (was 185; +11 new)
+chat-service pytest:                                 180 passed unchanged
+```
+
+### What's NEXT for the next agent
+
+**Phase 5e (XL)** — caller migration. **Two callers**, each needs a design decision:
+
+1. **book-service** at [internal/api/media.go:449](services/book-service/internal/api/media.go#L449) — Go service. Currently calls `/v1/images/generations` directly via http.Client. Needs Go SDK OR thin Go HTTP shim to use `image_gen` via the unified gateway. **Decision needed**: build a full Go SDK (parallel to Python SDK; would also benefit future Go services like auth/sharing/glossary) vs. inline shim (60-100 LOC; throwaway for 5e only).
+
+2. **video-gen-service** at [app/routers/generate.py:158](services/video-gen-service/app/routers/generate.py#L158) — Python service. Already uses httpx; migrating to `Client.generate_video()` is straightforward. Reference impl: Phase 5b's chat-service voice migration (same shape: drop httpx + use SDK + per-call Client instantiation pattern).
+
+Phase 5e suggested order: video-gen-service first (smaller migration, exercises the new SDK), then book-service (larger Go decision).
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion + api-gateway-bff `/v1/video-gen/*` retirement. After this: unified gateway invariant fully realized for all external generation.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5D-INTEGRATION-GUIDE-VIDEO-PATH` — cross-repo PR to update `G:\Works\local-image-generator-service\docs\EXTERNAL_AI_SERVICE_INTEGRATION_GUIDE.md` (stale singular path)
+- `D-PHASE5D-LIVE-SMOKE` — manual post-merge: register local-image-generator-service:8700 + submit video_gen via curl + verify text-to-video and image-to-video dispatch
+- `D-PHASE5D-SDK-INITIMAGE-VALIDATION` — client-side base64 format regex check
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5D_DESIGN.md` — design + 8 /review-impl fixes
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — 5d row ✅ + 5e/5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5e: probably L for video-gen-service migration alone, XL if also book-service (depends on Go SDK decision)
+3. Reference impl: 5d at HEAD `b3f046ab` + Phase 5b chat-service voice migration for caller-side pattern
+
+---
+
+## Session 55 cycle 2 — Phase 5c-α · image_gen adapter + SDK + openapi · /review-impl rounds (DESIGN: 0 HIGH + 5 MED + 6 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 1 MED + 4 LOW + 1 COSMETIC, MED + 2 LOWs fixed inline)
+
+**What shipped:** Gateway gains first-class `image_gen` operation on the unified contract via `POST /v1/llm/jobs operation=image_gen` → `adapter.GenerateImage` → `ImageGenResult` (1..4 data entries). OpenAI adapter only (Anthropic/Ollama/LM Studio return `ErrOperationNotSupported`). Works against OpenAI proper + sibling `local-image-generator-service` (ComfyUI at :8700; SD/SDXL/Illustrious/Flux/Wan/LTX Video) + any OpenAI-compat backend. Caller-side URL→MinIO download. Multi-image n=1..4. Both `response_format=url` AND `b64_json`.
+
+**Strategic context (Path B):** first step of multi-cycle program to retire `services/video-gen-service/` BFF wrapper. After 5d (video_gen) + 5e (book-service + video-gen-service caller migration) + 5f (BFF deletion), every external generation flows through `POST /v1/llm/jobs` — unified gateway invariant fully realized.
+
+**Files (18 — 11 MOD + 7 NEW)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5C_DESIGN.md` (design + plan + 12 /review-impl fixes inline; status SHIPPED)
+- MOD `contracts/api/llm-gateway/v1/openapi.yaml` — `ImageGenInput` + `ImageGenResult` + `ImageGenDataItem` schemas (JobOperation enum already had `image_gen` from Phase 2b reservation)
+- MOD `internal/provider/adapters.go` — Adapter interface +GenerateImage; +GenerateImageInput/Output/GeneratedImage types; +3 sentinels (`ErrImageGenerationFailed`, `ErrImageContentPolicy`, `ErrImageInvalidParams`); +2 consts (`MaxImagesPerJob=4`, `MaxImageResponseBytes=8MB`)
+- NEW `internal/provider/openai_image.go` — full OpenAI implementation; **adapter-level invariant pre-checks** (Prompt empty + N>cap + N<0 + bad response_format → ErrImageInvalidParams per Fix #5); **JSON-first `isContentPolicyRejection`** per Fix #3 — avoids prompt-echo false-positive (substring fallback only when JSON parse fails)
+- NEW `internal/provider/adapters_image.go` — Anthropic/Ollama/LM Studio stubs
+- NEW `internal/provider/adapters_image_test.go` — 14 tests (happy URL/b64/multi-n/revised_prompt + 3 content-policy variants incl. prompt-echo-not-misclassified + 4 invariants + oversize-response + 2 typed-upstream + empty-data + 3 stub-locks)
+- NEW `internal/jobs/worker_image.go` — `processImageGenJob` + `runImageGenJob` + `classifyImageError` (incl. ErrImageInvalidParams → LLM_INVALID_REQUEST per Fix #5) + `imageJobOperations` whitelist + `ImageGenJobTimeout=10min` (ComfyUI batch headroom)
+- NEW `internal/jobs/worker_image_test.go` — 14 tests (2 whitelist + 1 disjoint per Fix #2 + 1 5-place-sync + 10 classify matrix)
+- MOD `internal/jobs/worker.go` — image dispatch hook routes BEFORE chat-streaming whitelist, parallel to audio
+- MOD `internal/jobs/worker_test.go` — `TestIsStreamableOperation_RejectsNonStreamable` comment updated per Fix #7
+- MOD `internal/api/jobs_handler.go` — `validateImageGenInput` (handler-level chunking rejection + prompt 1..32K + n 1..4 + response_format url|b64_json)
+- MOD `internal/api/jobs_router_test.go` — +7 image_gen handler tests
+- MOD `sdks/python/loreweave_llm/client.py` — `Client.generate_image()` polymorphic over response_format; **/review-impl(BUILD) MED#1 fix**: `n: int | None = None` + `if n is not None` (was `int = 1` + `if n != 1`; prior code silently dropped explicit `n=1`)
+- MOD `sdks/python/loreweave_llm/errors.py` — `LLMImageContentPolicy` + `LLMImageGenerationFailed` classes + `_CODE_TO_EXC` entries
+- MOD `sdks/python/loreweave_llm/models.py` — `ImageGenDataItem` + `ImageGenResult` pydantic models
+- MOD `sdks/python/loreweave_llm/__init__.py` — exports
+- NEW `sdks/python/tests/test_image_gen.py` — 11 tests (3 happy/edge + **explicit-n=1 regression-lock** + 2 validation + 2 error-class mapping + 1 from_code regression-lock + 2 pydantic round-trip)
+- MOD `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5c-α row ✅ shipped + Phase 5c-β image_edit/variation deferred
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN (BEFORE BUILD).** Caught **0 HIGH + 5 MED + 6 LOW + 1 COSMETIC**. All 12 folded inline before any code was written.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | Design implied schema/migration/SDK Literal additions; in reality `image_gen` already in 4/5 sync slots from Phase 2b reservation — only schemas new. Design §2.1 table now lists explicit state. |
+| 2 | 🟡 MED | Disjoint test missing for image vs streamable + image vs audio. Added `TestImageJobOperations_Disjoint`. |
+| 3 | 🟡 MED | Content-policy substring heuristic false-positive vector (prompt echo in error body). Switched to JSON-first `error.code` check; substring fallback only when JSON parse fails. +regression test for the prompt-echo case. |
+| 4 | 🟡 MED | Canonical integration guide in sibling repo says "LoreWeave downloads"; we contradict. Accept-and-document as `D-PHASE5C-INTEGRATION-GUIDE-SYNC`. |
+| 5 | 🟡 MED | Adapter-level n-cap missing (handler-only). Added `MaxImagesPerJob=4` + `ErrImageInvalidParams` sentinel + adapter pre-check + classifyImageError mapping + 3 invariant tests. |
+| 6-11 | 🟢 LOW | Named 8MB cap const; stale test comment touchup; nullable-pointer concern accepted; sync-mode reservation deferred; concrete live-smoke curl block; SDK NEW-model clarity. |
+| 12 | 🔵 COSMETIC | Sentinel naming inconsistency (inherited from 5a). Accepted. |
+
+**Round 2 — BUILD output.** Caught **0 HIGH + 1 MED + 4 LOW + 1 COSMETIC**. MED + 2 LOWs fixed inline; 2 LOWs deferred.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | SDK `if n != 1` silently dropped explicit `n=1` → caller asking for 1 image might get upstream-default-count (>1). Fixed: signature `n: int = 1` → `n: int | None = None`; wire-inclusion `if n is not None`. +regression-lock `test_generate_image_explicit_n_one_sends_on_wire`. |
+| 2 | 🟢 LOW | `MaxImageResponseBytes` cap is on decompressed body size (Go auto-decompresses gzip); docstring didn't clarify. Updated comment. |
+| 3 | 🟢 LOW | Adapter pre-check ordering collapses multi-error reports to first-fail. Accept-and-document as `D-PHASE5C-MULTI-ERROR-COLLECT`. |
+| 4 | 🟢 LOW | Live-smoke `host.docker.internal` doesn't resolve on native Linux Docker. Added `extra_hosts` workaround note in design §7. |
+| 5 | 🟢 LOW | 5-place sync test greps source files, not live DB constraint state. Same limitation as Phase 5a/4a-β siblings. Accept-and-document as `D-PHASE5C-LIVE-DB-CONSTRAINT-CHECK`. |
+| 6 | 🔵 COSMETIC | Happy-path test asserted "n not in body" for n=1 default — pinned the MED#1 bug. Fixed alongside MED#1. |
+
+### Verify evidence
+```
+provider-registry-service: go build/vet/test ./...   ALL GREEN
+  internal/api:                                       +7 image_gen handler tests
+  internal/jobs:                                      +14 image_gen worker tests
+  internal/provider:                                  +14 image_gen adapter tests
+SDK pytest sdks/python/tests/:                       185 passed (was 174; +11 new)
+chat-service pytest:                                 180 passed unchanged (no regression)
+grep -rn "operation.*image_gen" services/            wired through 4 callers + worker dispatch
+NO DB MIGRATION NEEDED                               image_gen already in CHECK + enum + Literal
+                                                     from Phase 2b reservation
+```
+
+### What's NEXT for the next agent
+
+**Phase 5d (L)** — `video_gen` adapter + SDK + openapi. Same shape as 5c-α; POSTs to `/v1/video/generations` (singular video per existing video-gen-service contract). No multi-image; no b64_json (videos are too large). New `ImageGenJobTimeout`-equivalent for video (likely 20-30 min for Wan/LTX Video on local backend). Content-policy detection reusable. Reference impl: 5c-α `openai_image.go` + `worker_image.go` + `Client.generate_image` × 1:1 substitution.
+
+**Phase 5e (XL)** — caller migration. Two callers:
+- [book-service/internal/api/media.go:449](services/book-service/internal/api/media.go#L449) — Go; calls `/v1/images/generations` directly via http.Client. Needs Go SDK OR thin Go HTTP shim.
+- [video-gen-service/app/routers/generate.py:158](services/video-gen-service/app/routers/generate.py) — Python; uses Python SDK (existing).
+
+Phase 5e requires the Go SDK question to be settled (build full SDK vs. inline shim). Big decision.
+
+**Phase 5f (M)** — `services/video-gen-service/` deletion. Remove BFF + compose entry + api-gateway-bff `/v1/video-gen/*` routes. FE switches to calling unified gateway via SDK or BFF facade. After this: unified-gateway invariant fully realized for chat + extraction + translation + audio + image + video.
+
+**Open deferred items (5c-α):**
+- `D-PHASE5C-INTEGRATION-GUIDE-SYNC` — cross-repo PR to update sibling guide
+- `D-PHASE5C-NULLABLE-IMAGE-FIELDS` — Quality/Style/Background empty-string-omit semantics
+- `D-PHASE5C-SYNC-IMAGE-GEN` — no `POST /v1/llm/jobs/sync` facade
+- `D-PHASE5C-LIVE-SMOKE` — manual post-merge against local-image-generator-service:8700
+- `D-PHASE5C-RESULT-SIZE-METRIC` — DB growth from b64_json results
+- `D-PHASE5C-MULTI-ERROR-COLLECT` — adapter pre-checks fail-first (vs. collect-and-return)
+- `D-PHASE5C-LIVE-DB-CONSTRAINT-CHECK` — source-grep doesn't verify live DB constraint
+- `D-PHASE5C-DECOMPRESSED-CAP-DOCSTRING` — clarified inline; track if gzip-friendly upstream surfaces
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5C_DESIGN.md` — design + 12 /review-impl fixes
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5c-α row + 5d/5e/5f preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5d: `python scripts/workflow-gate.py size L 12 7 1` then `phase clarify`
+3. Reference impl: 5c-α at HEAD `12fe6273` — duplicate the pattern with `video_gen` operation
+
+---
+
+## Session 55 cycle 1 — Phase 5b · chat-service voice migration + audio proxy retirement + bytes-mode STT · /review-impl rounds (DESIGN: 3 HIGH + 7 MED + 5 LOW + 1 COSMETIC all fixed inline; BUILD: 0 HIGH + 2 MED + 4 LOW + 1 COSMETIC, 2 MED fixed inline)
+
+**What shipped:** chat-service voice path migrated off `/internal/proxy/v1/audio/*` onto the unified LLM gateway via `loreweave_llm` SDK. Scope expanded during CLARIFY (M → XL) to add a bytes-mode multipart STT submit on `/v1/llm/jobs` so chat-service skips the MinIO+presigned-URL roundtrip; SDK `transcribe()` made polymorphic over `str|bytes|bytearray|memoryview`; 3 new SDK audio exception classes for the 3 audio gateway codes; audio paths now 410-Gone via `isDeprecatedProxyPath` deny-list; 3 proxy_integration_test.go placeholder-using tests rewritten to synthetic `v1/responses` path (preserves K17.2a + 4MiB cap + auth-header forward regression-locks).
+
+**Files (20 — 18 MOD + 2 NEW)**:
+- NEW `docs/03_planning/LLM_PIPELINE_PHASE5B_DESIGN.md` (DESIGN + PLAN doc, status SHIPPED after BUILD)
+- MOD `contracts/api/llm-gateway/v1/openapi.yaml` — `SubmitSttBytesRequest` schema + `multipart/form-data` request body variant on both `/v1/llm/jobs` and `/internal/llm/jobs`; SttInput JSON-mode description cross-refs bytes mode; 413 + 415 responses added
+- MOD `internal/provider/adapters.go` — `TranscribeInput +AudioBytes/+ContentType`; `ErrTranscribeInputInvalid` sentinel
+- MOD `internal/provider/openai_audio.go` — exactly-one pre-check using `hasURL == hasBytes` with `hasBytes := len(input.AudioBytes) > 0` (treats zero-length non-nil slice as "not set"); bytes branch skips `fetchAudioURL`
+- MOD `internal/provider/adapters_audio_test.go` — +6 tests (bytes happy + adapter-level oversize + ExactlyOne_BothSet + ExactlyOne_BothEmpty + ZeroByteSliceTreatedAsNotSet + ogg-content-type-ext)
+- MOD `internal/jobs/worker_audio.go` — `Worker.ProcessAudioInline` bytes-mode entrypoint (goroutine-closure handoff; no DB persistence of bytes); `classifyAudioError` extended with `ErrTranscribeInputInvalid → LLM_INVALID_REQUEST`
+- MOD `internal/jobs/worker_audio_test.go` — +2 tests (ErrTranscribeInputInvalid direct + wrapped)
+- MOD `internal/api/jobs_handler.go` — `SttMaxAudioBytes`/`sttMultipartOverhead` consts; `mime.ParseMediaType` dispatch in `doSubmitJob`; new `doSubmitSttMultipart` handler with `http.MaxBytesReader` cap + `ParseMultipartForm` + chunking-field rejection + 0-byte audio reject + empty-Content-Type reject + explicit field-name diagnostic + goroutine spawn calling `ProcessAudioInline`
+- MOD `internal/api/jobs_router_test.go` — +8 multipart tests (ValidationPasses + CaseInsensitiveContentType + Oversize → 413 + WrongOperation → 400 + ChunkingFieldRejected → 400 + WrongFileFieldName → 400 + ZeroByteAudio → 400 + EmptyContentType → 400); `buildSttMultipartRequest` helper
+- MOD `internal/api/server.go` — `isDeprecatedProxyPath` deny-list extended with `v1/audio/transcriptions` + `v1/audio/speech`; docstrings updated
+- MOD `internal/api/proxy_deprecation_test.go` — 3 audio cases flipped `false → true` + audio-dotdot-bypass + audio-suffix-not-prefix cases
+- MOD `internal/api/proxy_integration_test.go` — 8 placeholder-using tests swapped to synthetic `v1/responses`; `TestDoProxyNonJSONPassthrough` DELETED; `TestDoProxyAudioPathsNotDeprecated` REMOVED (flipped audio rows added to `TestDoProxyDeprecatedPathsReturn410`)
+- MOD `internal/api/proxy_router_test.go` — line 111 audio→responses path swap (disambiguated as route-mechanic test per Fix #10)
+- MOD `sdks/python/loreweave_llm/client.py` — polymorphic `transcribe(audio: str|bytes|bytearray|memoryview, content_type=None)`; new `_submit_stt_url` + `_submit_stt_bytes` private helpers; `_submit_stt_bytes` coerces bytearray/memoryview → bytes (httpx multipart only accepts str/bytes); `_raise_http_error` consults `from_code` on 4xx so audio codes surface as their dedicated classes
+- MOD `sdks/python/loreweave_llm/errors.py` — `LLMAudioTooLarge` + `LLMAudioFetchFailed` + `LLMAudioURLDisallowed` classes + 3 entries in `_CODE_TO_EXC`
+- MOD `sdks/python/loreweave_llm/__init__.py` — exports
+- MOD `sdks/python/tests/test_audio.py` — +7 tests (bytes_happy + bytearray + memoryview + bytes_without_content_type → LLMInvalidRequest + oversize → LLMAudioTooLarge + rejects_unsupported_type + regression-lock asserting audio codes have specific classes via `from_code`)
+- MOD `services/chat-service/app/services/voice_stream_service.py` — drop `httpx` from voice path; `_new_llm_client(user_id)` per-call factory; `_transcribe_audio` uses SDK bytes mode; `_generate_tts_chunks` uses SDK `stream_tts` + re-emits `AudioChunkEvent` as existing FE envelope (sentenceIndex/chunkIndex/data/final); DELETE dead `provider.resolve()` calls in both `voice_stream_response` AND `generate_tts_for_message`
+- NEW `services/chat-service/tests/test_voice_no_dead_resolution.py` — 3 grep-lock tests (provider.resolve banned + httpx import banned in voice path + SDK Client imported)
+- MOD `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5b row marked ✅ shipped with full final-shape description
+
+### `/review-impl` rounds
+
+**Round 1 — DESIGN doc (BEFORE BUILD).** Caught **3 HIGH + 7 MED + 5 LOW + 1 COSMETIC**. All 16 folded inline into design before any code was written.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🔴 HIGH | 25MB cap mechanism unspecified — would produce 400 not 413. Spec'd `http.MaxBytesReader(w, r.Body, cap+overhead)` BEFORE `ParseMultipartForm` + catch `*http.MaxBytesError` → 413. |
+| 2 | 🔴 HIGH | Adapter pseudocode contradicted "exactly one" rule — `switch case AudioBytes != nil` silently preferred bytes when both set. Added `hasURL == hasBytes` pre-check with new `ErrTranscribeInputInvalid` sentinel BEFORE the bytes-vs-URL branch. |
+| 3 | 🔴 HIGH | SDK had no `LLMAudioTooLarge`/etc. classes — `from_code` was falling through to generic `LLMError` for the 3 audio codes. Added 3 classes + registered in `_CODE_TO_EXC`. |
+| 4 | 🟡 MED | Content-Type dispatch needed `mime.ParseMediaType` (RFC-conformant) instead of naive `strings.HasPrefix`. |
+| 5 | 🟡 MED | SDK isinstance must include `memoryview` for numpy/sounddevice idioms. |
+| 6 | 🟡 MED | DELETE /v1/llm/jobs/{id} can't reach the worker goroutine; 25MB RAM pinned for up to SttJobTimeout=5min per cancelled job. **Accept-and-document** as `D-PHASE5B-CANCEL-NO-OP-AUDIO-RAM`. |
+| 7 | 🟡 MED | Deleting `TestDoProxyRewritesJSONModelField` would silently retire K17.2a model-name-rewrite coverage. Rewrote to use synthetic `v1/responses` instead of delete. |
+| 8 | 🟡 MED | Same for `TestDoProxyBodyTooLargeRejected` (4MiB body cap). Rewrote. |
+| 9 | 🟡 MED | Per-call SDK Client instantiation pattern (matches sibling `stream_service.py:68`) not honored in design. Aligned. |
+| 10 | 🟡 MED | proxy_router_test.go:111 disambiguation needed (route-mechanic vs audio-specific). Classified as route-mechanic → rewrote to synthetic path. |
+| 11-15 | 🟢 LOW | Dead `tts_model_name` resolution; chunking-field rejection; field-name diagnostic; Q5 conditional phrasing; T18 SESSION_PATCH same-commit rule. All folded into design + build plan. |
+| 16 | 🔵 COSMETIC | Sequence diagram path note (`/internal/llm/jobs` vs `/v1/llm/jobs`). Clarified. |
+
+**Round 2 — BUILD output (post-coding).** Caught **0 HIGH + 2 MED + 4 LOW + 1 COSMETIC**. Both MEDs fixed inline.
+
+| # | Sev | Fix |
+|---|-----|-----|
+| 1 | 🟡 MED | 0-byte audio (non-nil empty `[]byte{}` from `io.ReadAll` on empty multipart part) silently passed through to OpenAI as 0-byte file → confusing LLM_UPSTREAM_ERROR. Added `if len(audioBytes) == 0 → 400` at handler; adapter `hasBytes` switched from `!= nil` to `len(...) > 0`. +1 handler test + 1 adapter test. |
+| 2 | 🟡 MED | Empty per-part Content-Type silently defaulted to `audio.wav` filename → OpenAI Whisper misdecode. Added `if contentType == "" → 400` at handler. +1 handler test. |
+| 3-6 | 🟢 LOW | Base64-string heuristic + cross-coded HTTP routing + panic-recovery + E2E closure test. All **accept-and-document** as `D-PHASE5B-*` deferred items. |
+| 7 | 🔵 COSMETIC | JSON-mode vs multipart-mode chunking-decode ordering style divergence. Accept. |
+
+### BUILD-time surprises (2 caught & fixed during BUILD)
+
+- httpx's multipart writer (`_multipart.py::FileField.render_data`) only handles `str`/`bytes` natively — `bytearray`/`memoryview` fall through to its `.read()` branch and `AttributeError`. Coerce to bytes in `_submit_stt_bytes` (loses zero-copy for memoryview but the alternative is no support).
+- SDK's `_raise_http_error` was raising generic `LLMInvalidRequest` for 4xx with audio codes (not using `from_code`). Routed via `from_code` on 4xx with defensive fallback when `from_code` returns base `LLMError`.
+
+### Verify evidence
+```
+provider-registry-service: go build/vet/test ./...   ALL GREEN
+  internal/api:                                       0.806s pass
+  internal/chunker:                                   0.286s pass
+  internal/jobs:                                      3.202s pass (+2 audio tests)
+  internal/provider:                                  0.281s pass (+6 audio tests)
+SDK pytest sdks/python/tests/:                       174 passed (was 167; +7 new)
+chat-service pytest services/chat-service/tests/:    180 passed (was 177; +3 lock tests)
+voice_stream_service.py httpx imports:               0 (was 1)
+grep -rn "/internal/proxy/v1/audio" services/        only 2 docstring/comment refs
+                                                     (no production code paths)
+```
+
+### What's NEXT for the next agent
+
+**Phase 5c (deferred · sized TBD)** — `image_gen` adapter when the first caller arrives in monorepo. Likely candidates: video-gen-service or knowledge-service's wiki-illustration pipeline (per `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md`).
+
+**Phase 6a/b/c** — gateway rate-limit + quota enforcement (per refactor plan §6). Phase 6 worker-context hardening would close `D-PHASE5B-CANCEL-NO-OP-AUDIO-RAM`.
+
+**Open deferred items added this cycle:**
+- `D-PHASE5B-CANCEL-NO-OP-AUDIO-RAM` — DELETE /v1/llm/jobs/{id} doesn't cancel worker goroutine (25MB × 5min RAM)
+- `D-PHASE2C-AUDIO-STAGING` — goroutine-closure breaks under RabbitMQ migration; need MinIO staging
+- `D-PHASE5B-SSRF-GUARD-DEAD-CODE` — URL-mode STT has zero production callers; consider removing
+- `D-PHASE5B-BASE64-STRING-HEURISTIC` — SDK could detect base64-encoded strings passed as `audio=` to improve error
+- `D-PHASE5B-CROSSCODED-HTTP-ROUTING` — defensive cross-check from_code class vs HTTP status bucket
+- `D-PHASE5B-E2E-CLOSURE-TEST` — wired-up integration test for handler→worker→adapter argument-passing
+- `D-PHASE5B-EMPTY-CONTENT-TYPE-ACCEPTANCE` — consider auto-detect from magic bytes if caller demand surfaces
+- `D-PHASE5A-LIVE-SMOKE` still open — pending manual post-merge live test with OpenAI BYOK whisper-1 + tts-1 against chat-service voice in browser
+
+**Read in this order:**
+1. `docs/sessions/SESSION_PATCH.md` — full state (top entry = this cycle)
+2. `docs/03_planning/LLM_PIPELINE_PHASE5B_DESIGN.md` — design + plan + 7 final-shape sections
+3. `docs/03_planning/LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` — Phase 5b row marked shipped + Phase 5c/6 preview
+4. This handoff file
+
+**Starting-cycle boilerplate:**
+1. `python scripts/workflow-gate.py status` confirm closed
+2. For Phase 5c (when caller appears): `python scripts/workflow-gate.py size L 8 5 1` then `phase clarify`
+3. Pre-flight: identify the new image_gen caller before writing the design
+
+---
 
 ## Session 54 cycle 1 — Phase 5a · audio adapter (STT + TTS) · /review-impl caught 1 HIGH + 2 MED + 4 LOW (all HIGH/MED + 1 LOW fixed inline)
 

@@ -1,5 +1,9 @@
 fastapi==0.115.12
 uvicorn[standard]==0.34.3
 pydantic==2.11.7
+pydantic-settings==2.6.1
 httpx==0.28.1
 minio==7.2.15
+PyJWT==2.10.1
+# loreweave_llm SDK installed via `pip install /sdk` from repo root
+# (see Dockerfile — Phase 5e-α). Pinned to the version in sdks/python.

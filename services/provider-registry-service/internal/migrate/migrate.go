@@ -96,6 +96,8 @@ CREATE TABLE IF NOT EXISTS llm_jobs (
   owner_user_id UUID NOT NULL,
   operation TEXT NOT NULL CHECK (operation IN (
     'chat','completion','embedding','stt','tts','image_gen',
+    'video_gen', -- Phase 5d
+    'audio_gen', -- Phase 5e-β.2
     'entity_extraction','relation_extraction','event_extraction',
     'fact_extraction', -- Phase 4a-β
     'translation'
@@ -153,6 +155,30 @@ CREATE INDEX IF NOT EXISTS idx_llm_jobs_expires_at ON llm_jobs(expires_at)
 ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
 ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
   'chat','completion','embedding','stt','tts','image_gen',
+  'entity_extraction','relation_extraction','event_extraction',
+  'fact_extraction','translation'
+));
+
+-- Phase 5d: drop + recreate operation CHECK to add video_gen.
+-- Same idempotent pattern as Phase 4a-β. For fresh DBs the CREATE
+-- TABLE block above already includes video_gen; the prior Phase 4a-β
+-- ALTER strips it; this ALTER re-adds. Wasteful but correct.
+ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
+ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
+  'chat','completion','embedding','stt','tts','image_gen','video_gen',
+  'entity_extraction','relation_extraction','event_extraction',
+  'fact_extraction','translation'
+));
+
+-- Phase 5e-β.2: drop + recreate operation CHECK to add audio_gen.
+-- Same idempotent pattern. Per /review-impl(DESIGN) HIGH#3 — constraint
+-- name is unversioned (matches Phase 4a-β + Phase 5d pattern). Per
+-- MED#9, CREATE TABLE inline above also lists audio_gen for cold-start
+-- DBs (without this, fresh DBs would reject audio_gen rows until this
+-- ALTER block ran on a subsequent boot).
+ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
+ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
+  'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
   'fact_extraction','translation'
 ));

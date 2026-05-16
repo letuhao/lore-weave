@@ -28,21 +28,38 @@ Streaming usage:
 
 from loreweave_llm.client import Client
 from loreweave_llm.errors import (
+    LLMAudioFetchFailed,
+    LLMAudioGenerationFailed,
+    LLMAudioTooLarge,
+    LLMAudioURLDisallowed,
     LLMAuthFailed,
     LLMDecodeError,
     LLMError,
+    LLMGatewayStorageError,
+    LLMHttpError,
+    LLMImageContentPolicy,
+    LLMImageGenerationFailed,
     LLMInvalidRequest,
+    LLMJobNotFound,
+    LLMJobTerminal,
     LLMModelNotFound,
     LLMQuotaExceeded,
     LLMRateLimited,
     LLMStreamNotSupported,
+    LLMTransientRetryNeededError,
     LLMUpstreamError,
+    LLMVideoContentPolicy,
+    LLMVideoGenerationFailed,
 )
 from loreweave_llm.models import (
     AudioChunkEvent,
     AudioFormat,
+    AudioGenDataItem,
+    AudioGenResult,
     DoneEvent,
     ErrorEvent,
+    ImageGenDataItem,
+    ImageGenResult,
     ReasoningEvent,
     SttInput,
     SttResult,
@@ -52,6 +69,8 @@ from loreweave_llm.models import (
     TtsInput,
     TtsStreamRequest,
     UsageEvent,
+    VideoGenDataItem,
+    VideoGenResult,
 )
 
 __all__ = [
@@ -71,6 +90,15 @@ __all__ = [
     "TtsStreamRequest",
     "SttInput",
     "SttResult",
+    # Phase 5c-α image-gen models
+    "ImageGenDataItem",
+    "ImageGenResult",
+    # Phase 5d video-gen models
+    "VideoGenDataItem",
+    "VideoGenResult",
+    # Phase 5e-β.2 audio_gen models
+    "AudioGenDataItem",
+    "AudioGenResult",
     # Errors
     "LLMError",
     "LLMAuthFailed",
@@ -81,6 +109,26 @@ __all__ = [
     "LLMUpstreamError",
     "LLMStreamNotSupported",
     "LLMDecodeError",
+    # Phase 5b audio-specific errors
+    "LLMAudioTooLarge",
+    "LLMAudioFetchFailed",
+    "LLMAudioURLDisallowed",
+    # Phase 5c-α image-gen-specific errors
+    "LLMImageContentPolicy",
+    "LLMImageGenerationFailed",
+    # Phase 5d video-gen-specific errors
+    "LLMVideoContentPolicy",
+    "LLMVideoGenerationFailed",
+    # Phase 5e-β.2 audio_gen-specific errors
+    "LLMAudioGenerationFailed",
+    "LLMGatewayStorageError",
+    # Phase 4a-α async-job exceptions + transport (Phase 5e-α surfaces these
+    # at the top-level loreweave_llm namespace for caller-side error mapping
+    # in services like video-gen-service that map SDK errors to HTTPExceptions)
+    "LLMJobNotFound",
+    "LLMJobTerminal",
+    "LLMHttpError",
+    "LLMTransientRetryNeededError",
 ]
 
 __version__ = "0.1.0"

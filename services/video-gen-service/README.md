@@ -1,6 +1,6 @@
 # video-gen-service
 
-FastAPI service in the LoreWeave monorepo that exposes **gateway-facing** routes for image/video generation (see `api-gateway-bff` → `/v1/video-gen/*`).
+FastAPI service in the LoreWeave monorepo that exposes a **gateway-facing** route for video generation (see `api-gateway-bff` → `/v1/video-gen/*`). It is a permanent thin domain BFF — it verifies the user JWT, calls the unified LLM gateway via the `loreweave_llm` SDK, persists the result to MinIO, and records usage billing.
 
 ## ComfyUI implementation (sibling repository)
 
@@ -16,7 +16,7 @@ Keep deployment and environment variables aligned between this service and `loca
 ## This repo
 
 - `app/main.py` — FastAPI app  
-- `app/routers/generate.py` — generation / health / models routes  
+- `app/routers/generate.py` — `/v1/video-gen/generate` route + `/health`  
 - `Dockerfile` — container build for compose  
 
 For architecture context, see [design-drafts/loreweave-technical-architecture-and-pipelines.html](../../design-drafts/loreweave-technical-architecture-and-pipelines.html) and the root [README.md](../../README.md).

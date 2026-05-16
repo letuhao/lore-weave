@@ -19,27 +19,27 @@ import (
 // + JSON tags mirror the openapi Job schema so the handler can serialize
 // directly.
 type Job struct {
-	JobID        uuid.UUID       `json:"job_id"`
-	OwnerUserID  uuid.UUID       `json:"-"`
-	Operation    string          `json:"operation"`
-	Status       string          `json:"status"`
-	ModelSource  string          `json:"-"`
-	ModelRef     uuid.UUID       `json:"-"`
-	Input        json.RawMessage `json:"-"`
-	Chunking     json.RawMessage `json:"-"`
-	Callback     json.RawMessage `json:"-"`
-	JobMeta      json.RawMessage `json:"job_meta,omitempty"`
-	TraceID      *string         `json:"trace_id,omitempty"`
+	JobID       uuid.UUID       `json:"job_id"`
+	OwnerUserID uuid.UUID       `json:"-"`
+	Operation   string          `json:"operation"`
+	Status      string          `json:"status"`
+	ModelSource string          `json:"-"`
+	ModelRef    uuid.UUID       `json:"-"`
+	Input       json.RawMessage `json:"-"`
+	Chunking    json.RawMessage `json:"-"`
+	Callback    json.RawMessage `json:"-"`
+	JobMeta     json.RawMessage `json:"job_meta,omitempty"`
+	TraceID     *string         `json:"trace_id,omitempty"`
 
 	ChunksTotal    *int       `json:"-"`
 	ChunksDone     int        `json:"-"`
 	TokensUsed     int        `json:"-"`
 	LastProgressAt *time.Time `json:"-"`
 
-	Result        json.RawMessage `json:"result,omitempty"`
-	ErrorCode     *string         `json:"-"`
-	ErrorMessage  *string         `json:"-"`
-	FinishReason  *string         `json:"-"`
+	Result       json.RawMessage `json:"result,omitempty"`
+	ErrorCode    *string         `json:"-"`
+	ErrorMessage *string         `json:"-"`
+	FinishReason *string         `json:"-"`
 
 	SubmittedAt time.Time  `json:"submitted_at"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
@@ -283,8 +283,8 @@ func MarshalJob(job *Job) map[string]any {
 		}
 	}
 	progress := map[string]any{
-		"chunks_done":  job.ChunksDone,
-		"tokens_used":  job.TokensUsed,
+		"chunks_done": job.ChunksDone,
+		"tokens_used": job.TokensUsed,
 	}
 	if job.ChunksTotal != nil {
 		progress["chunks_total"] = *job.ChunksTotal

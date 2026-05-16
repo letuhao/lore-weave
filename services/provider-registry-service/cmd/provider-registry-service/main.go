@@ -15,6 +15,7 @@ import (
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/migrate"
+	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
 func main() {
@@ -68,7 +69,28 @@ func main() {
 		defer func() { _ = notifier.Close() }()
 	}
 
-	srv := api.NewServer(pool, cfg, notifier)
+	// Phase 5e-β.2 — bootstrap audio cache for audio_gen URL mode.
+	// Optional: empty MINIO_ENDPOINT or MINIO_EXTERNAL_URL leaves audioCache
+	// nil; gateway boots without URL-mode support but b64_json mode works.
+	var audioCache *storage.AudioCache
+	if cfg.MinioEndpoint != "" && cfg.MinioExternalURL != "" {
+		ac, err := storage.NewAudioCache(context.Background(), storage.Config{
+			Endpoint:    cfg.MinioEndpoint,
+			AccessKey:   cfg.MinioAccessKey,
+			SecretKey:   cfg.MinioSecretKey,
+			UseSSL:      cfg.MinioUseSSL,
+			Bucket:      cfg.AudioCacheBucket,
+			ExternalURL: cfg.MinioExternalURL,
+		}, slog.Default())
+		if err != nil {
+			slog.Error("audio_cache bootstrap failed; audio_gen url-mode disabled", "error", err)
+		} else {
+			audioCache = ac
+			slog.Info("audio_cache ready", "bucket", ac.Bucket(), "external_url", cfg.MinioExternalURL)
+		}
+	}
+
+	srv := api.NewServer(pool, cfg, notifier, audioCache)
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

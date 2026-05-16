@@ -27,7 +27,7 @@ services:
       start_period: 10s
 
   redis:
-    image: valkey/valkey:7.2-alpine
+    image: valkey/valkey:8-alpine
     ports:
       - "6399:6379"
     volumes:
@@ -102,9 +102,11 @@ services:
       - "8204:8081"
 
   book-service:
+    # Phase 5e-β.1 — repo-root build context so the Go SDK at
+    # sdks/go/llmgw is reachable for the go.mod replace directive.
     build:
-      context: ../services/book-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/book-service/Dockerfile
     environment:
       HTTP_ADDR: ":8082"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book?sslmode=disable
@@ -116,7 +118,9 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       SHARING_INTERNAL_URL: http://sharing-service:8083
-      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      # Phase 5e-β.2 — PROVIDER_REGISTRY_SERVICE_URL dropped (audio.go was
+      # its last consumer; now migrated to use llmgw SDK via LLM_GATEWAY_INTERNAL_URL).
+      LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
@@ -196,6 +200,14 @@ services:
       # `loreweave.events` topic exchange. Empty/unset = NoopNotifier
       # (caller polls GET /v1/llm/jobs/{id}; no broker dependency).
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      # Phase 5e-β.2 — MinIO config for audio_gen URL-mode staging.
+      # When unset, audio_gen URL mode disables (b64_json still works).
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_USE_SSL: "false"
+      MINIO_EXTERNAL_URL: http://localhost:9123
+      AUDIO_CACHE_BUCKET: loreweave-audio-cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -203,6 +215,8 @@ services:
         condition: service_healthy
       usage-billing-service:
         condition: service_healthy
+      minio:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8085/health"]
       interval: 10s
@@ -342,12 +356,18 @@ services:
 
   video-gen-service:
     build:
-      context: ../services/video-gen-service
-      dockerfile: Dockerfile
+      # Phase 5e-α: context bumped to repo root so Dockerfile can COPY
+      # sdks/python alongside the service code. Mirrors chat-service +
+      # translation-service patterns.
+      context: ..
+      dockerfile: services/video-gen-service/Dockerfile
     environment:
       HTTP_PORT: "8088"
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
-      PROVIDER_REGISTRY_URL: http://provider-registry-service:8085
+      # Phase 5e-α: SDK reads PROVIDER_REGISTRY_INTERNAL_URL (Settings
+      # field). Legacy PROVIDER_REGISTRY_URL removed per /review-impl(DESIGN)
+      # MED#2 — was only used by the deleted resolve_credentials() flow.
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       MINIO_ENDPOINT: minio:9000

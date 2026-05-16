@@ -21,17 +21,3 @@ class GenerateResponse(BaseModel):
     duration_seconds: int | None = None
     size_bytes: int | None = None
     content_type: str | None = None
-
-
-class ModelInfo(BaseModel):
-    """Available video generation model."""
-    id: str
-    name: str
-    provider: str
-    max_duration_seconds: int
-    supported_aspect_ratios: list[str]
-    supported_styles: list[str] = []
-
-
-class ModelsResponse(BaseModel):
-    items: list[ModelInfo] = []

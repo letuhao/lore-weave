@@ -4,17 +4,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
+
+	"github.com/loreweave/llmgw"
 )
 
 const (
@@ -228,10 +232,10 @@ func (s *Server) listMediaVersions(w http.ResponseWriter, r *http.Request) {
 			"media_ref":        mediaRef,
 			"prompt_snapshot":  promptSnap,
 			"caption_snapshot": captionSnap,
-			"ai_model":        aiModel,
-			"content_type":    ct,
-			"size_bytes":      sizeBytes,
-			"created_at":      createdAt,
+			"ai_model":         aiModel,
+			"content_type":     ct,
+			"size_bytes":       sizeBytes,
+			"created_at":       createdAt,
 		}
 		if mediaRef != nil && *mediaRef != "" {
 			item["media_url"] = s.mediaURL(*mediaRef)
@@ -298,10 +302,10 @@ func (s *Server) createMediaVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":      id,
-		"version": nextVersion,
-		"action":  body.Action,
-		"changes": body.Changes,
+		"id":         id,
+		"version":    nextVersion,
+		"action":     body.Action,
+		"changes":    body.Changes,
 		"created_at": createdAt,
 	})
 }
@@ -346,6 +350,55 @@ func (s *Server) deleteMediaVersion(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// writeImageGenError maps a typed *llmgw.Error (potentially wrapped) to
+// the HTTP response. Extracted from generateChapterMedia so it can be
+// unit-tested without the surrounding DB/MinIO/JWT fixtures.
+//
+// Per /review-impl(DESIGN) MED#2 — ErrImageGenerationFailed and
+// ErrUpstream are kept SEPARATE cases (same HTTP status today but may
+// diverge). Per MED#3 — uses errors.As so a future fmt.Errorf wrap
+// doesn't panic. Per MED#4 — surfaces Retry-After response header
+// when the gateway reported retry_after_s for rate-limit cases.
+func writeImageGenError(w http.ResponseWriter, err error) {
+	var llmErr *llmgw.Error
+	_ = errors.As(err, &llmErr)
+
+	switch {
+	case errors.Is(err, llmgw.ErrImageContentPolicy):
+		msg := "Content policy violation"
+		if llmErr != nil && llmErr.Message != "" {
+			msg = "Content policy: " + llmErr.Message
+		}
+		writeError(w, http.StatusBadRequest, "CONTENT_POLICY", msg)
+	case errors.Is(err, llmgw.ErrQuotaExceeded):
+		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "AI provider quota exceeded")
+	case errors.Is(err, llmgw.ErrModelNotFound):
+		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "no active AI provider configured")
+	case errors.Is(err, llmgw.ErrInvalidRequest):
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", err.Error())
+	case errors.Is(err, llmgw.ErrRateLimited):
+		if llmErr != nil && llmErr.RetryAfterS > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(llmErr.RetryAfterS)))
+		}
+		writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "AI provider rate-limit")
+	case errors.Is(err, llmgw.ErrImageGenerationFailed):
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI image generation failed (retryable)")
+	case errors.Is(err, llmgw.ErrUpstream):
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI provider upstream error")
+	case errors.Is(err, llmgw.ErrJobTerminal):
+		writeError(w, http.StatusGatewayTimeout, "GENERATION_CANCELLED", "AI generation cancelled")
+	case errors.Is(err, llmgw.ErrAuthFailed):
+		// Upstream BYOK key revoked / wrong API key surfaces as
+		// LLM_AUTH_FAILED from the gateway's worker (worker_image.go
+		// classifies 401/403 from OpenAI/upstream as terminal auth-failed).
+		// Treat as "user needs to configure a working provider" — same
+		// surface as ErrModelNotFound. (/review-impl(BUILD) MED#2.)
+		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "AI provider authentication failed (check API key)")
+	default:
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI image generation failed")
+	}
+}
+
 // ── AI Image Generation ─────────────────────────────────────────────────────
 
 func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
@@ -353,7 +406,11 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
 		return
 	}
-	if s.cfg.ProviderRegistryURL == "" || s.cfg.InternalServiceToken == "" {
+	// Phase 5e-β.1 — unified gateway SDK replaces direct provider-registry
+	// credential resolve + direct image-generation POST. s.llmgw is
+	// constructed in NewServer; nil only when LLM_GATEWAY_INTERNAL_URL or
+	// INTERNAL_SERVICE_TOKEN was missing at startup (config.Load enforces).
+	if s.llmgw == nil {
 		writeError(w, http.StatusServiceUnavailable, "GENERATION_UNAVAILABLE", "AI generation not configured")
 		return
 	}
@@ -380,11 +437,11 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		BlockID    string `json:"block_id"`
-		Prompt     string `json:"prompt"`
+		BlockID     string `json:"block_id"`
+		Prompt      string `json:"prompt"`
 		ModelSource string `json:"model_source"` // "user_model" or "platform_model"
-		ModelRef   string `json:"model_ref"`     // model UUID
-		Size       string `json:"size"`           // "1024x1024" default
+		ModelRef    string `json:"model_ref"`    // model UUID
+		Size        string `json:"size"`         // "1024x1024" default (caller-side)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid JSON")
@@ -403,81 +460,36 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// 1. Resolve provider credentials
-	credURL := fmt.Sprintf("%s/internal/credentials/%s/%s?user_id=%s",
-		s.cfg.ProviderRegistryURL, body.ModelSource, body.ModelRef, ownerID)
-	credReq, _ := http.NewRequestWithContext(ctx, "GET", credURL, nil)
-	credReq.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
-	credResp, err := internalClient.Do(credReq)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "failed to reach provider registry")
-		return
-	}
-	defer credResp.Body.Close()
-	if credResp.StatusCode == http.StatusNotFound {
-		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "no active AI provider configured")
-		return
-	}
-	if credResp.StatusCode != http.StatusOK {
-		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider registry error")
-		return
-	}
-
-	var creds struct {
-		ProviderKind      string `json:"provider_kind"`
-		ProviderModelName string `json:"provider_model_name"`
-		BaseURL           string `json:"base_url"`
-		APIKey            string `json:"api_key"`
-	}
-	if err := json.NewDecoder(credResp.Body).Decode(&creds); err != nil {
-		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "invalid provider response")
-		return
-	}
-
-	// 2. Call AI provider (OpenAI-compatible image generation)
-	baseURL := creds.BaseURL
-	if baseURL == "" {
-		baseURL = "https://api.openai.com"
-	}
-	genPayload, _ := json.Marshal(map[string]any{
-		"prompt":          body.Prompt,
-		"model":           creds.ProviderModelName,
-		"size":            body.Size,
-		"n":               1,
-		"response_format": "url",
+	// 1+2. SDK call — replaces credential resolve + direct POST.
+	size := body.Size
+	result, err := s.llmgw.GenerateImage(ctx, llmgw.GenerateImageRequest{
+		Prompt:      body.Prompt,
+		ModelSource: llmgw.ModelSource(body.ModelSource),
+		ModelRef:    body.ModelRef,
+		Size:        &size,
+		UserID:      ownerID.String(),
 	})
-	genReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/v1/images/generations",
-		bytes.NewReader(genPayload))
-	genReq.Header.Set("Authorization", "Bearer "+creds.APIKey)
-	genReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 120 * time.Second}
-	genResp, err := client.Do(genReq)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI provider request failed")
+		writeImageGenError(w, err)
 		return
 	}
-	defer genResp.Body.Close()
-	if genResp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(io.LimitReader(genResp.Body, 4096))
-		writeError(w, http.StatusBadGateway, "GENERATION_FAILED",
-			fmt.Sprintf("AI provider returned %d: %s", genResp.StatusCode, string(respBody)))
-		return
-	}
-
-	var genResult struct {
-		Data []struct {
-			URL string `json:"url"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(genResp.Body).Decode(&genResult); err != nil || len(genResult.Data) == 0 {
-		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "invalid AI provider response")
+	// SDK's decodeImageGenResult already rejects empty Data with
+	// ErrUpstream (caught by writeImageGenError above), so only the
+	// URL-mode-specific case is reachable here. This caller always
+	// uses URL mode (no ResponseFormat override); if a future caller
+	// switches to b64_json, this check needs the B64JSON path added.
+	// (/review-impl(BUILD) MED#3.)
+	if result.Data[0].URL == "" {
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI provider returned image without URL")
 		return
 	}
 
-	// 3. Download the generated image (reuse the timeout client)
-	dlReq, _ := http.NewRequestWithContext(ctx, "GET", genResult.Data[0].URL, nil)
-	imgResp, err := client.Do(dlReq)
+	// 3. Download the generated image. Use a dedicated http.Client with a
+	// 120s wall-clock cap for the download (unrelated to the SDK polling
+	// loop which has no Timeout).
+	dlReq, _ := http.NewRequestWithContext(ctx, "GET", result.Data[0].URL, nil)
+	dlClient := &http.Client{Timeout: 120 * time.Second}
+	imgResp, err := dlClient.Do(dlReq)
 	if err != nil || imgResp.StatusCode != http.StatusOK {
 		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "failed to download generated image")
 		return
@@ -509,25 +521,35 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Create version record
-	modelName := creds.ProviderModelName
+	// 5. Create version record. Phase 5e-β.1 — `ai_model` is now stored
+	// as the empty string for new rows because the SDK does not surface
+	// the human-readable upstream model name (it lives gateway-side).
+	// Legacy rows retain their human names (e.g. "dall-e-3").
+	// Frontend's `{v.ai_model && ...}` conditional render naturally
+	// hides the model-name line for empty values, so new rows display
+	// without the model annotation rather than showing a raw UUID.
+	// Tracked as deferred D-PHASE5E-BETA1-IMAGE-PROVIDER-MODEL-NAME-IN-RESULT
+	// for a future cycle that extends the SDK's ImageGenResult to expose
+	// provider_model_name from the gateway.
 	var versionID string
 	_ = s.pool.QueryRow(ctx, `
 		INSERT INTO block_media_versions(chapter_id, block_id, version, action, changes, media_ref, prompt_snapshot, ai_model, content_type, size_bytes)
 		VALUES($1, $2, $3, 'regenerate', ARRAY['prompt','media'], $4, $5, $6, $7, $8)
 		RETURNING id`,
-		chapterID, body.BlockID, nextVersion, objectKey, body.Prompt, modelName, contentType, uploadInfo.Size,
+		chapterID, body.BlockID, nextVersion, objectKey, body.Prompt, "", contentType, uploadInfo.Size,
 	).Scan(&versionID)
 
 	mediaURL := s.mediaURL(objectKey)
 
-	// 6. Best-effort usage billing
+	// 6. Best-effort usage billing. provider_kind is empty string —
+	// gateway records its own model-level usage; this call records
+	// APPLICATION-LEVEL purpose. Per Phase 5e-α QC MED#1 precedent.
 	if s.cfg.UsageBillingServiceURL != "" {
 		modelRefUUID, _ := uuid.Parse(body.ModelRef)
 		usagePayload, _ := json.Marshal(map[string]any{
 			"request_id":     uuid.New(),
 			"owner_user_id":  ownerID,
-			"provider_kind":  creds.ProviderKind,
+			"provider_kind":  "", // tracked as D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS
 			"model_source":   body.ModelSource,
 			"model_ref":      modelRefUUID,
 			"input_tokens":   len(body.Prompt),
@@ -552,7 +574,7 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		"object_key":   objectKey,
 		"version":      nextVersion,
 		"version_id":   versionID,
-		"ai_model":     modelName,
+		"ai_model":     "", // Phase 5e-β.1 — empty until SDK exposes provider_model_name; FE hides line on falsy
 		"size":         uploadInfo.Size,
 		"content_type": contentType,
 	})
@@ -611,4 +633,3 @@ func nilIfEmpty(s string) *string {
 	}
 	return &s
 }
-

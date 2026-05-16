@@ -16,6 +16,16 @@ type Config struct {
 	// published anywhere; caller can still poll). Set in production
 	// docker-compose; tests + dev-without-RabbitMQ keep working.
 	RabbitMQURL string
+
+	// Phase 5e-β.2 — MinIO config for audio_gen URL-mode staging.
+	// All five fields optional; if MinioEndpoint is empty, audio_gen
+	// URL-mode is disabled (b64_json mode still works without MinIO).
+	MinioEndpoint    string
+	MinioAccessKey   string
+	MinioSecretKey   string
+	MinioUseSSL      bool
+	MinioExternalURL string // public URL prefix (e.g. http://localhost:9123)
+	AudioCacheBucket string // default "loreweave-audio-cache" when empty
 }
 
 func Load() (*Config, error) {
@@ -26,6 +36,13 @@ func Load() (*Config, error) {
 		UsageBillingServiceURL: os.Getenv("USAGE_BILLING_SERVICE_URL"),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		RabbitMQURL:            os.Getenv("RABBITMQ_URL"),
+		// Phase 5e-β.2 — audio_gen URL-mode staging.
+		MinioEndpoint:    os.Getenv("MINIO_ENDPOINT"),
+		MinioAccessKey:   os.Getenv("MINIO_ACCESS_KEY"),
+		MinioSecretKey:   os.Getenv("MINIO_SECRET_KEY"),
+		MinioUseSSL:      os.Getenv("MINIO_USE_SSL") == "true",
+		MinioExternalURL: os.Getenv("MINIO_EXTERNAL_URL"),
+		AudioCacheBucket: getEnv("AUDIO_CACHE_BUCKET", "loreweave-audio-cache"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -48,4 +65,3 @@ func getEnv(k, def string) string {
 	}
 	return def
 }
-

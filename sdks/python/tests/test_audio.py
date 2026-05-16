@@ -21,10 +21,14 @@ from loreweave_llm import (
     AudioChunkEvent,
     Client,
     DoneEvent,
+    LLMAudioFetchFailed,
+    LLMAudioTooLarge,
+    LLMAudioURLDisallowed,
     LLMInvalidRequest,
     LLMQuotaExceeded,
     SttResult,
 )
+from loreweave_llm.errors import _CODE_TO_EXC
 
 
 GATEWAY = "http://gateway.test"
@@ -281,3 +285,182 @@ def test_audio_chunk_event_base64_round_trip():
     assert ev.final is False
     decoded = base64.b64decode(ev.data)
     assert decoded == raw
+
+
+# ── Phase 5b — bytes-mode transcribe() ──────────────────────────────────
+
+
+def _bytes_mode_handler(captured: dict[str, Any], poll_count: dict[str, int]):
+    """Shared handler factory for bytes-mode happy-path tests."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "POST" and req.url.path == "/internal/llm/jobs":
+            captured["submit_content_type"] = req.headers.get("content-type", "")
+            captured["submit_body_bytes"] = req.content
+            return httpx.Response(
+                202,
+                json={
+                    "job_id": JOB_UUID,
+                    "status": "pending",
+                    "submitted_at": "2026-04-28T00:00:00.000000000Z",
+                },
+            )
+        if req.method == "GET" and req.url.path == f"/internal/llm/jobs/{JOB_UUID}":
+            poll_count["n"] += 1
+            return httpx.Response(
+                200,
+                json={
+                    "job_id": JOB_UUID,
+                    "operation": "stt",
+                    "status": "completed",
+                    "result": {
+                        "text": "bytes-mode transcript",
+                        "language": "english",
+                        "duration_ms": 800,
+                    },
+                    "submitted_at": "2026-04-28T00:00:00.000000000Z",
+                    "completed_at": "2026-04-28T00:00:01.000000000Z",
+                },
+            )
+        return httpx.Response(404)
+
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_transcribe_bytes_happy_path():
+    """bytes payload + content_type → multipart POST → terminal completed."""
+    captured: dict[str, Any] = {}
+    client = _make_client(_bytes_mode_handler(captured, {"n": 0}))
+    result = await client.transcribe(
+        b"WEBMaudio-bytes-here",
+        model_source="user_model",
+        model_ref=MODEL_REF,
+        content_type="audio/webm",
+    )
+    assert isinstance(result, SttResult)
+    assert result.text == "bytes-mode transcript"
+    # Wire-shape — multipart Content-Type, body contains form parts.
+    assert captured["submit_content_type"].startswith("multipart/form-data"), \
+        f"expected multipart, got {captured['submit_content_type']!r}"
+    body = captured["submit_body_bytes"]
+    assert b'name="operation"\r\n\r\nstt' in body
+    assert b'name="model_source"\r\n\r\nuser_model' in body
+    assert b'name="audio"' in body
+    assert b"WEBMaudio-bytes-here" in body
+
+
+@pytest.mark.asyncio
+async def test_transcribe_bytearray_dispatches_to_bytes_mode():
+    """bytearray (mutable bytes) MUST also route through the multipart path."""
+    captured: dict[str, Any] = {}
+    client = _make_client(_bytes_mode_handler(captured, {"n": 0}))
+    payload = bytearray(b"bytearray payload here")
+    await client.transcribe(
+        payload,
+        model_source="user_model",
+        model_ref=MODEL_REF,
+        content_type="audio/wav",
+    )
+    assert captured["submit_content_type"].startswith("multipart/form-data")
+    assert b"bytearray payload here" in captured["submit_body_bytes"]
+
+
+@pytest.mark.asyncio
+async def test_transcribe_memoryview_dispatches_to_bytes_mode():
+    """memoryview (buffer protocol) — numpy / pyaudio idiom — also routes
+    through multipart. Pins Fix #5 (isinstance must catch memoryview)."""
+    captured: dict[str, Any] = {}
+    client = _make_client(_bytes_mode_handler(captured, {"n": 0}))
+    underlying = b"memoryview payload here"
+    mv = memoryview(underlying)
+    await client.transcribe(
+        mv,
+        model_source="user_model",
+        model_ref=MODEL_REF,
+        content_type="audio/ogg",
+    )
+    assert captured["submit_content_type"].startswith("multipart/form-data")
+    assert b"memoryview payload here" in captured["submit_body_bytes"]
+
+
+@pytest.mark.asyncio
+async def test_transcribe_bytes_without_content_type_raises():
+    """bytes payload but no content_type → LLMInvalidRequest BEFORE the wire."""
+    handler_called = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        handler_called["n"] += 1
+        return httpx.Response(202, json={})
+
+    client = _make_client(handler)
+    with pytest.raises(LLMInvalidRequest, match="content_type required"):
+        await client.transcribe(
+            b"some bytes",
+            model_source="user_model",
+            model_ref=MODEL_REF,
+        )
+    assert handler_called["n"] == 0, "validation must short-circuit before the wire"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_oversize_bytes_raises_llmaudiotoolarge():
+    """Gateway returns 413 LLM_AUDIO_TOO_LARGE → SDK raises LLMAudioTooLarge
+    (NOT generic LLMError). Pins Fix #3 — audio codes now have specific classes.
+    """
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "POST":
+            return httpx.Response(
+                413,
+                json={"code": "LLM_AUDIO_TOO_LARGE", "message": "audio exceeds 25MB cap"},
+            )
+        return httpx.Response(404)
+
+    client = _make_client(handler)
+    with pytest.raises(LLMAudioTooLarge, match="exceeds"):
+        await client.transcribe(
+            b"x" * 100,  # actual size irrelevant — handler always returns 413
+            model_source="user_model",
+            model_ref=MODEL_REF,
+            content_type="audio/webm",
+        )
+
+
+@pytest.mark.asyncio
+async def test_transcribe_rejects_unsupported_type():
+    """Caller passes an int (or anything not str/bytes-like) → LLMInvalidRequest
+    BEFORE the wire."""
+    handler_called = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        handler_called["n"] += 1
+        return httpx.Response(202, json={})
+
+    client = _make_client(handler)
+    with pytest.raises(LLMInvalidRequest, match="audio must be str"):
+        await client.transcribe(
+            12345,  # type: ignore[arg-type]
+            model_source="user_model",
+            model_ref=MODEL_REF,
+        )
+    assert handler_called["n"] == 0
+
+
+def test_audio_errors_have_specific_classes_regression_lock():
+    """Fix #3 regression-lock — every audio-specific gateway code MUST map
+    to its dedicated exception class via from_code, NOT fall through to
+    generic LLMError. If a future refactor drops one of these mappings,
+    this test fails fast.
+    """
+    assert _CODE_TO_EXC.get("LLM_AUDIO_TOO_LARGE") is LLMAudioTooLarge
+    assert _CODE_TO_EXC.get("LLM_AUDIO_FETCH_FAILED") is LLMAudioFetchFailed
+    assert _CODE_TO_EXC.get("LLM_AUDIO_URL_DISALLOWED") is LLMAudioURLDisallowed
+    # And from_code() actually returns the specific instances:
+    from loreweave_llm.errors import from_code, LLMError
+    e1 = from_code("LLM_AUDIO_TOO_LARGE", "msg")
+    e2 = from_code("LLM_AUDIO_FETCH_FAILED", "msg")
+    e3 = from_code("LLM_AUDIO_URL_DISALLOWED", "msg")
+    assert isinstance(e1, LLMAudioTooLarge) and not type(e1) is LLMError
+    assert isinstance(e2, LLMAudioFetchFailed) and not type(e2) is LLMError
+    assert isinstance(e3, LLMAudioURLDisallowed) and not type(e3) is LLMError

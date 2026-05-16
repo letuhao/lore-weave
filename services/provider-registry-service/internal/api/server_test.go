@@ -20,7 +20,7 @@ func testServer(secret string) *Server {
 	return NewServer(nil, &config.Config{
 		JWTSecret:              secret,
 		UsageBillingServiceURL: "http://localhost:8086",
-	}, nil)
+	}, nil, nil)
 }
 
 func signedToken(t *testing.T, secret string, userID uuid.UUID, role string) string {
@@ -225,4 +225,3 @@ func TestPlatformModelAdminGuard(t *testing.T) {
 		t.Fatalf("expected 403, got %d", rr.Code)
 	}
 }
-
