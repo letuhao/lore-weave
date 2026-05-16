@@ -39,6 +39,26 @@ pub enum TerrainKind {
     Subterranean = 10,
 }
 
+impl TerrainKind {
+    /// Stable lowercase tag — matches the `serde` `snake_case` wire name.
+    /// Use this instead of `format!("{:?}", _)` so a future multi-word variant
+    /// stays consistent with its serialized form.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::Grass => "grass",
+            Self::Forest => "forest",
+            Self::Mountain => "mountain",
+            Self::Water => "water",
+            Self::Sand => "sand",
+            Self::Snow => "snow",
+            Self::Swamp => "swamp",
+            Self::Road => "road",
+            Self::Rough => "rough",
+            Self::Subterranean => "subterranean",
+        }
+    }
+}
+
 /// V1+30d 4-variant tile state machine per TMP_001 §5 (standard procedural
 /// level-gen pattern). Internal pipeline state — not exposed to player UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

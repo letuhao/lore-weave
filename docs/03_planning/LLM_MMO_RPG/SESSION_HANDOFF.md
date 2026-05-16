@@ -87,7 +87,7 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ### What "map generating" is
 
-`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a + 0b are DONE** (0a: scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`; 0b: gateway tool-use contract + SSE parser + L3 harness — 2026-05-15, branch `mmo-rpg/zone-map-amaw`). Phases **1 → 2 → 3 remain**.
+`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a + 0b are DONE** (0a: scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`; 0b: gateway tool-use contract + SSE parser + L3 harness — 2026-05-15, branch `mmo-rpg/zone-map-amaw`). Phases **1 → 2 → 3 are now all DONE** (see the session entries below) — the staged map-gen plan is complete.
 
 ### Phase breakdown (source: `services/tilemap-service/DESIGN.md` §9)
 
@@ -96,7 +96,9 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 | ~~**0b**~~ ✅ DONE | SSE parser in `loreweave_llm` + L3 zone-classifier harness → lmstudio. **Reclassified L→XL**: required extending the gateway contract (`tool_choice` + `tool_call` SSE event) across openapi + Go gateway + both SDKs. Live run: tool-use YES, 3/3 classified, R1-R5 clean. | XL (done) | — |
 | ~~**1**~~ ✅ DONE | Engine: §3 FR placer + §4 Penrose + §5 fractalize + TMP_003 modificator framework + TerrainPainter + AC-4 determinism test. **Reclassified L→XL.** Done 2026-05-16, XL `/amaw` (chunks 3-6 fully-autonomous batch). | XL (done) | — |
 | ~~**2**~~ ✅ DONE | L3 zone-classifier retry loop (TMP_008b §4.2 retry messages + §5 per-object retry + §6 canonical-default fallback) + fixture-object bootstrap. Done 2026-05-17, L `/amaw`. | L (done) | — |
-| **3** | L4 regional narration + measurement findings doc back into TMP_008b | L | 2 |
+| ~~**3**~~ ✅ DONE | L4 regional narration (TMP_008b §3.3 tool + §4.3 R1-R4 validation + §6 fallback + §10 key-phrase extraction + §11 enums) + L3→L4 bootstrap + TMP_008b §12.9 findings. Done 2026-05-17, L `/amaw`. | L (done) | — |
+
+**The staged tilemap map-generation plan (0b → 1 → 2 → 3) is COMPLETE.**
 
 Reference docs: `TMP_001`..`TMP_008b` in `docs/03_planning/LLM_MMO_RPG/features/00_tilemap/`. The 2 architectural findings from the Phase-0a `/review-impl` (Anthropic `cache_control` gap + OpenAI-shaped `tools`) feed into Phase 0b.
 
@@ -124,18 +126,70 @@ This honors "use AMAW for the map-gen implementation" while respecting what this
 
 ### Recommended first action next session
 
-Phases 0b + 1 + 2 are DONE (see their session entries below). **Next: Phase 3** —
-L4 regional narration (TMP_008b §3.3 `submit_zone_narrations` tool + §4.3
-validation + §10 deterministic key-phrase extraction) + folding the measurement
-findings back into TMP_008b. Phase 3 depends on Phase 2 (done). Pre-flight:
-`cargo build` clean at workspace root; ContextHub up for `/amaw`; the `infra`
-compose stack + gitignored `.local/phase0b.env` creds for any live re-run.
+**The staged 0b → 3 map-gen plan is complete** (engine + L3 classifier + L4
+narration, all `/amaw`, all on `mmo-rpg/zone-map-amaw`). There is no numbered
+"Phase 4". The natural next work, none of it blocking:
 
-**Note on the bootstrap (Phase 2, fixture-object scope):** Phase 2's
-`bootstrap` classifies a *fixture* object set — the placement engine still
-emits no objects (object placement is TMP_006, unbuilt). A genuine engine→L3
-object flow is unblocked only once TMP_006 (TreasurePlacer / ObjectManager)
-lands.
+1. **TMP_005 / 006 / 007 modificators** — the engine ships only TerrainPainter;
+   the other six (TreasurePlacer / ObjectManager / ObstaclePlacer /
+   ConnectionsPlacer / RoadPlacer / RiverPlacer / TownPlacer) are unbuilt. Once
+   ObjectManager + TreasurePlacer land, the L3/L4 bootstrap can classify
+   **engine-placed** objects instead of the current fixture set — a genuine
+   engine→L3→L4 flow.
+2. **Live continent-scale measurement** — Phases 2-3 were mock-gateway verified;
+   the only live data point is the Phase-0b 3-object run (TMP_008b §12.8). A
+   full continent fixture against live lmstudio is the next measurement.
+3. **HTTP service surface** — `tilemap-service` is still a CLI/library; Phase 4+
+   of the broader plan adds the service-to-service API.
+
+Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
+up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-17 — Phase 3 L4 regional narration — ✅ DONE (L `/amaw`)
+
+### Outcome
+
+Phase 3 (tilemap-service L4 narration), L, under **`/amaw`** — 12 phases
+complete. **This is the final phase of the staged 0b → 3 map-gen plan; the plan
+is now complete.** Run autonomously end-to-end (operator instruction: "run all
+phases, no questions").
+
+- **Spec:** [`docs/specs/2026-05-17-tilemap-phase-3-l4-narration.md`](../../specs/2026-05-17-tilemap-phase-3-l4-narration.md)
+  (D1-D7, AC-1..AC-11). **Plan:** [`docs/plans/2026-05-17-tilemap-phase-3-l4-narration.md`](../../plans/2026-05-17-tilemap-phase-3-l4-narration.md)
+  (6 build chunks).
+
+### What shipped (`services/tilemap-service/src/harness/`)
+
+| Chunk | Module | Content |
+|---|---|---|
+| 1 | `style.rs` · `keyphrase.rs` | §11 closed enums (`NarrativeTone`/`NarrationLanguage`/`NarrationVoice`); §10 `extract_key_phrases` (deterministic frequency rank, Unicode-aware) |
+| 2 | `l4_prompt.rs` | `ZoneNarrationInput`; L4 system prompt + `submit_zone_narrations` tool (§3.3) + payload |
+| 3 | `l4_validate.rs` | `validate_l4` (§4.3 R1-R4 + `UnknownZoneId`), `format_l4_errors_for_retry`, `partition_l4_response`, `canonical_default_narration` (§6) |
+| 4 | `l4_retry.rs` | `call_l4_attempt` + `run_l4_with_retries` + `L4Result` — per-zone partial-success loop mirroring the Phase-2 L3 loop |
+| 5 | `bootstrap.rs` | extended L3 → L4: `ZoneNarrationInput`s from placed zones (terrain + `obj_id`→`zone_id` join), `BootstrapReport.l4` |
+| 6 | `tests/l4_mock.rs` · TMP_008b | 6 wiremock L4 tests; TMP_008b §12.9 Phase 2-3 contract findings |
+
+### Workflow — AMAW L, 12 phases
+
+Design REVIEW: Adversary **r1 REJECTED** (1 BLOCK — the retry-loop holes were
+named not pinned for L4 + 2 WARN), **r2 APPROVED_WITH_WARNINGS** (3 WARN, all
+folded into spec D1/D3/D6/D7 + AC-6/AC-11). Code REVIEW: Adversary **r1
+APPROVED_WITH_WARNINGS** (0 BLOCK; retry loop confirmed correct; 3 WARN —
+`terrain` via `{:?}` Debug not the serde tag, the accept-side out-of-subset
+guard untested, ASCII-only tokenization shredding Vietnamese — all fixed).
+Scope Guard POST-REVIEW: **CLEAR** (AC-1..AC-11 covered, no §2 scope crossing,
+all 9 findings fixed). `cargo test --workspace` green; clippy clean. Findings:
+`docs/audit/findings-phase-3-l4-narration-r1..r3.md`.
+
+### Handoff notes
+
+**Active blocker:** none. **Phase 3 complete + committed — the 0b→3 map-gen
+plan is done.** No new DEFERRED items. The L3/L4 bootstrap still uses a
+**fixture** object set (engine object placement = TMP_005/006/007, unbuilt).
+Next-work options are in "Recommended first action" above — none blocking.
+ContextHub was up: RETRO `add_lesson` persisted.
 
 ---
 

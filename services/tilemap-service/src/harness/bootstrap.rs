@@ -1,11 +1,13 @@
-//! Phase 2 fixture-object bootstrap — runs the Phase 1 placement engine on a
-//! small reality, then drives a **fixture** object set through the full L3
-//! retry loop (TMP_008b §5/§6).
+//! Fixture-object bootstrap — runs the Phase 1 placement engine on a small
+//! reality, drives a **fixture** object set through the L3 retry loop, then
+//! narrates the placed zones through the L4 retry loop (TMP_008b §5/§6).
 //!
 //! The objects are fixture, not engine-placed: engine object placement is
 //! TMP_006 (TreasurePlacer / ObjectManager), unbuilt. This demonstrates the
-//! end-to-end L3 contract — `place_tilemap` → L3 retry loop → classified
-//! result — not the engine→L3 object flow.
+//! end-to-end L3→L4 contract — `place_tilemap` → L3 loop → L4 loop — not the
+//! engine→L3 object flow.
+
+use std::collections::HashMap;
 
 use loreweave_llm::{GatewayClient, ModelSource};
 use uuid::Uuid;
@@ -17,15 +19,20 @@ use crate::types::template::{TemplateConnection, TilemapTemplate, TilemapTemplat
 use crate::types::tilemap::{GridSize, TilemapView};
 use crate::types::zone::{PassageKind, ZoneId, ZoneRole};
 
+use super::keyphrase::extract_key_phrases;
+use super::l4_prompt::ZoneNarrationInput;
+use super::l4_retry::{L4Result, run_l4_with_retries};
 use super::prompt::L3Placeholder;
 use super::retry::{L3Result, run_l3_with_retries};
+use super::style::{NarrationLanguage, NarrationVoice, NarrativeTone};
 
-/// Result of [`bootstrap_small_reality`] — the placed tilemap plus the L3
-/// classification of the fixture object set.
+/// Result of [`bootstrap_small_reality`] — the placed tilemap, the L3
+/// classification of the fixture objects, and the L4 zone narration.
 #[derive(Debug)]
 pub struct BootstrapReport {
     pub tilemap: TilemapView,
     pub l3: L3Result,
+    pub l4: L4Result,
 }
 
 /// Run the small-reality bootstrap: place a 3-zone wuxia template via the
@@ -69,7 +76,48 @@ pub async fn bootstrap_small_reality(
     )
     .await?;
 
-    Ok(BootstrapReport { tilemap, l3 })
+    // Build the L4 inputs from the placed zones (spec D7): `terrain` from each
+    // `ZoneRuntime` (always populated), `l3_objects` recovered by joining each
+    // `L3Classification.obj_id` back to its `L3Placeholder.zone_id`.
+    let obj_zone: HashMap<&str, &str> = placeholders
+        .iter()
+        .map(|p| (p.obj_id.as_str(), p.zone_id.as_str()))
+        .collect();
+    let mut objects_by_zone: HashMap<&str, Vec<String>> = HashMap::new();
+    for c in &l3.classifications {
+        if let Some(&zid) = obj_zone.get(c.obj_id.as_str()) {
+            objects_by_zone
+                .entry(zid)
+                .or_default()
+                .push(c.canon_kind.clone());
+        }
+    }
+    let l4_inputs: Vec<ZoneNarrationInput> = tilemap
+        .zones
+        .iter()
+        .map(|z| ZoneNarrationInput {
+            zone_id: z.zone_id.0.clone(),
+            terrain: z.terrain_type.tag().to_string(),
+            l3_objects: objects_by_zone
+                .get(z.zone_id.0.as_str())
+                .cloned()
+                .unwrap_or_default(),
+        })
+        .collect();
+    let l4 = run_l4_with_retries(
+        client,
+        model_source,
+        model_ref,
+        user_id,
+        &l4_inputs,
+        NarrationLanguage::En,
+        NarrativeTone::Wuxia,
+        NarrationVoice::SecondPerson,
+        max_attempts,
+    )
+    .await?;
+
+    Ok(BootstrapReport { tilemap, l3, l4 })
 }
 
 /// The hardcoded 3-zone wuxia reality the bootstrap places.
@@ -127,7 +175,7 @@ fn bootstrap_placeholders() -> Vec<L3Placeholder> {
 
 /// Render a [`BootstrapReport`] as a human-readable block for the CLI.
 pub fn render_bootstrap_report(r: &BootstrapReport) -> String {
-    let mut s = String::from("── Phase 2 small-reality bootstrap ──────────────────────\n");
+    let mut s = String::from("── small-reality bootstrap (L3 → L4) ────────────────────\n");
     s.push_str(&format!(
         "placement : {} zones, {}×{} grid\n",
         r.tilemap.zones.len(),
@@ -146,6 +194,24 @@ pub fn render_bootstrap_report(r: &BootstrapReport) -> String {
         s.push_str(&format!(
             "  {}: canon_kind={} tag={}\n",
             c.obj_id, c.canon_kind, c.narrative_tag,
+        ));
+    }
+    s.push_str(&format!(
+        "L4 loop   : {} narration(s), {} gateway attempt(s), {} canonical-default fallback(s)\n",
+        r.l4.narrations.len(),
+        r.l4.llm_attempts,
+        r.l4.fallback_count,
+    ));
+    let mut narrations = r.l4.narrations.clone();
+    narrations.sort_by(|a, b| a.zone_id.cmp(&b.zone_id));
+    for n in &narrations {
+        // §10 deterministic key-phrase extraction over each narration.
+        let phrases = extract_key_phrases(&n.narration, 5);
+        s.push_str(&format!(
+            "  {}: {} chars, key_phrases=[{}]\n",
+            n.zone_id,
+            n.narration.chars().count(),
+            phrases.join(", "),
         ));
     }
     s.push_str("─────────────────────────────────────────────────────────\n");

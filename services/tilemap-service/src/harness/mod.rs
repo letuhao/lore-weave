@@ -9,8 +9,13 @@
 //! per-object retry loop and §6 canonical-default fallback are Phase 2.
 
 pub mod bootstrap;
+pub mod keyphrase;
+pub mod l4_prompt;
+pub mod l4_retry;
+pub mod l4_validate;
 pub mod prompt;
 pub mod retry;
+pub mod style;
 pub mod validate;
 
 use loreweave_llm::{
