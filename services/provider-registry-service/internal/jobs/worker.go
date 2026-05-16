@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/chunker"
 	"github.com/loreweave/provider-registry-service/internal/provider"
 	"github.com/loreweave/provider-registry-service/internal/storage"
@@ -53,16 +54,20 @@ type Worker struct {
 	// May be nil; URL-mode audio_gen jobs return LLM_INVALID_REQUEST in
 	// that case. b64_json mode works without an audioCache.
 	audioCache *storage.AudioCache
+	// Phase 6a — usage-billing spend-guardrail client. May be nil
+	// (router-only tests, dev without usage-billing); settleBilling then
+	// no-ops and the usage-billing sweeper releases any leaked hold.
+	guardrail *billing.GuardrailClient
 }
 
-func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache) *Worker {
+func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache, guardrail *billing.GuardrailClient) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if notifier == nil {
 		notifier = NoopNotifier{}
 	}
-	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache}
+	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache, guardrail: guardrail}
 }
 
 // finalizeAndNotify is the only path through which the worker ends a
@@ -84,6 +89,7 @@ func (w *Worker) finalizeAndNotify(
 	}
 	if rows == 0 {
 		// Race lost — cancel won. Cancel handler already published.
+		// The cancel handler also releases the spend reservation.
 		return
 	}
 	var resultJSON json.RawMessage
@@ -104,6 +110,92 @@ func (w *Worker) finalizeAndNotify(
 		// still poll. Log + move on.
 		w.logger.Warn("notifier publish failed", "job_id", jobID.String(), "err", err)
 	}
+	// Phase 6a — settle the spend reservation (reconcile or release). Runs
+	// only on a real transition (rows > 0), so a job whose finalize lost to
+	// a cancel is settled by the cancel handler, not double-counted here.
+	// Ordered AFTER the notification (/review-impl LOW#7) so a slow/hung
+	// usage-billing call cannot delay the terminal event.
+	w.settleBilling(ctx, jobID, ownerUserID, status, result)
+}
+
+// settleBilling reconciles (completed) or releases (failed) the job's spend
+// reservation on a terminal transition — Phase 6a. Best-effort: a
+// usage-billing failure is logged, never propagated; the job row is already
+// terminal and the usage-billing sweeper releases any leaked hold.
+func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID, status string, result any) {
+	if w.guardrail == nil {
+		return // billing not wired
+	}
+	resID, modelSource, modelRef, found, err := w.repo.BillingInfo(ctx, jobID)
+	if err != nil {
+		w.logger.Warn("billing info lookup failed", "job_id", jobID.String(), "err", err)
+		return
+	}
+	if !found || resID == nil {
+		return // job carries no reservation — nothing to settle
+	}
+	if status != "completed" {
+		// failed — free the hold, record no spend. (Cancellation is settled
+		// by the cancel handler, not the worker.)
+		if relErr := w.guardrail.Release(ctx, *resID); relErr != nil {
+			w.logger.Warn("guardrail release failed", "job_id", jobID.String(), "err", relErr)
+		}
+		return
+	}
+	// completed — reconcile. A non-nil actual is the measured spend; nil
+	// tells usage-billing to charge the reservation's own estimate (media
+	// jobs, or a text job whose usage/pricing could not be resolved).
+	actual := w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
+	if recErr := w.guardrail.Reconcile(ctx, *resID, actual); recErr != nil {
+		w.logger.Warn("guardrail reconcile failed", "job_id", jobID.String(), "err", recErr)
+	}
+}
+
+// actualUSD computes the measured spend of a completed job from its result
+// `usage` block × the model's pricing. Returns nil — "fall back to the stored
+// estimate" — whenever the usage tokens or a required price dimension is
+// unavailable (notably every media operation, which carries no token usage).
+func (w *Worker) actualUSD(ctx context.Context, ownerUserID uuid.UUID, modelSource string, modelRef uuid.UUID, result any) *float64 {
+	rm, ok := result.(map[string]any)
+	if !ok {
+		return nil
+	}
+	usage, ok := rm["usage"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	tokIn, okIn := numField(usage, "input_tokens")
+	tokOut, okOut := numField(usage, "output_tokens")
+	if !okIn || !okOut {
+		return nil
+	}
+	pricing, found, err := w.repo.ModelPricing(ctx, modelSource, ownerUserID, modelRef)
+	if err != nil || !found || pricing.InputPerMTok == nil || pricing.OutputPerMTok == nil {
+		return nil
+	}
+	usd := float64(tokIn)/1e6*(*pricing.InputPerMTok) + float64(tokOut)/1e6*(*pricing.OutputPerMTok)
+	return &usd
+}
+
+// numField extracts a non-negative integer from a JSON-decoded usage map.
+// The aggregator stores Go ints; a value that round-tripped through JSON is
+// a float64 — both are accepted. ok=false for an absent/negative/other value.
+func numField(m map[string]any, key string) (int, bool) {
+	var n int
+	switch v := m[key].(type) {
+	case int:
+		n = v
+	case int64:
+		n = int(v)
+	case float64:
+		n = int(v)
+	default:
+		return 0, false
+	}
+	if n < 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // Process runs a single job to completion. Caller passes in the inserted

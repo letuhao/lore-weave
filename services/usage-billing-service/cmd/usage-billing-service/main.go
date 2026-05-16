@@ -52,6 +52,12 @@ func main() {
 		os.Exit(1)
 	}
 	srv := api.NewServer(pool, cfg)
+
+	// Phase 6a — leaked-reservation sweeper.
+	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	defer sweepCancel()
+	go srv.StartSweeper(sweepCtx, 5*time.Minute)
+
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

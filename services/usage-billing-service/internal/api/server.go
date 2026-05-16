@@ -91,6 +91,10 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Post("/model-billing/record", s.recordInvocation)
+		// Phase 6a — spend guardrail (Subsystem A).
+		r.Post("/billing/guardrail/reserve", s.guardrailReserve)
+		r.Post("/billing/guardrail/reconcile", s.guardrailReconcile)
+		r.Post("/billing/guardrail/release", s.guardrailRelease)
 	})
 
 	r.Route("/v1/model-billing", func(r chi.Router) {

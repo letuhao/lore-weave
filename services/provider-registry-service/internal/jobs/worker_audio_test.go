@@ -321,7 +321,7 @@ func TestClassifyAudioGenError_ContextCanceled(t *testing.T) {
 // the nil field — the actual rejection path is exercised end-to-end via
 // the gateway integration suite (D-PHASE5E-BETA2-STORAGE-UNIT-TESTS).
 func TestWorker_NilAudioCache_FieldIsNil(t *testing.T) {
-	w := NewWorker(nil, nil, nil, nil, nil, nil)
+	w := NewWorker(nil, nil, nil, nil, nil, nil, nil)
 	if w.audioCache != nil {
 		t.Errorf("NewWorker(audioCache=nil): w.audioCache = %v, want nil", w.audioCache)
 	}

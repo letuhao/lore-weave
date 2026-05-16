@@ -162,6 +162,18 @@ paths:
 
         The caller may also poll `GET /v1/llm/jobs/{id}` if no callback
         is registered (callbacks are optional).
+
+        **Spend guardrail (Phase 6a).** Before the job is accepted the
+        gateway places a USD reservation against the caller's budget:
+        - `404 LLM_MODEL_NOT_FOUND` — `model_ref` resolves to no model.
+        - `402 LLM_QUOTA_EXCEEDED` — the model exists but has no pricing
+          configured, or the worst-case cost estimate exceeds the
+          caller's remaining daily/monthly budget.
+        For a `chat`/`completion` job that would only marginally exceed
+        budget, the gateway instead caps `max_tokens` to what the budget
+        affords and records the cap under `job_meta.max_tokens_capped`
+        (`{requested, applied, reason}`) — the result is never silently
+        truncated.
       operationId: submitLlmJob
       security:
         - bearerAuth: []
@@ -238,6 +250,12 @@ paths:
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '402':
+          # Phase 6a — spend guardrail: unpriced model or over budget.
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          # Phase 6a — model_ref resolves to no model.
           $ref: '#/components/responses/ErrorResponse'
         '413':
           $ref: '#/components/responses/ErrorResponse'

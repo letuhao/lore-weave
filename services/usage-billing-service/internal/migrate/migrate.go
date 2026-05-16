@@ -69,6 +69,39 @@ CREATE TABLE IF NOT EXISTS reconciliation_reports (
   summary JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Phase 6a Subsystem A — USD spend guardrail. Protects the user's wallet via
+-- a per-user USD budget (daily + monthly calendar windows) enforced
+-- pre-flight on every LLM job. See LLM_PIPELINE_PHASE6A_DESIGN.md.
+CREATE TABLE IF NOT EXISTS spend_guardrails (
+  owner_user_id        UUID PRIMARY KEY,
+  daily_limit_usd      NUMERIC(16,8) NOT NULL,
+  monthly_limit_usd    NUMERIC(16,8) NOT NULL,
+  daily_spent_usd      NUMERIC(16,8) NOT NULL DEFAULT 0,
+  monthly_spent_usd    NUMERIC(16,8) NOT NULL DEFAULT 0,
+  reserved_usd         NUMERIC(16,8) NOT NULL DEFAULT 0,
+  daily_window_date    DATE NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::date,
+  monthly_window_month DATE NOT NULL DEFAULT date_trunc('month', now() AT TIME ZONE 'utc')::date,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS token_reservations (
+  reservation_id   UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id    UUID NOT NULL,
+  job_id           UUID,
+  estimated_usd    NUMERIC(16,8) NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'held'
+                     CHECK (status IN ('held','reconciled','released','swept')),
+  expires_at       TIMESTAMPTZ NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Sweeper scan: held reservations past expiry.
+CREATE INDEX IF NOT EXISTS idx_token_reservations_sweep
+  ON token_reservations(expires_at) WHERE status = 'held';
+-- Reserve idempotency: at most one held reservation per job.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_token_reservations_job
+  ON token_reservations(job_id) WHERE status = 'held' AND job_id IS NOT NULL;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

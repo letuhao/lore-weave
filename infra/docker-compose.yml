@@ -208,6 +208,12 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
+      # Phase 6a — spend-guardrail estimator tuning knobs. Optional;
+      # code defaults apply when unset (token-count estimation, not
+      # money limits). See LLM_PIPELINE_PHASE6A_DESIGN.md §3.6.
+      MAX_OUTPUT_TOKENS_DEFAULT: ${MAX_OUTPUT_TOKENS_DEFAULT:-4096}
+      EXTRACTION_OUTPUT_CEILING: ${EXTRACTION_OUTPUT_CEILING:-8192}
+      SYSTEM_PROMPT_TOKEN_ESTIMATE: ${SYSTEM_PROMPT_TOKEN_ESTIMATE:-1024}
     depends_on:
       postgres:
         condition: service_healthy
@@ -234,6 +240,14 @@ services:
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6a — spend-guardrail default budgets (USD). REQUIRED — the
+      # service fails to start if unset (no hardcoded literal, billing
+      # ADR P5). 100M for the test/UAT environment per the ADR's free
+      # tier. RESERVATION_TTL is the leaked-hold sweeper horizon; the
+      # code default (45m) exceeds the longest job timeout.
+      GUARDRAIL_DEFAULT_DAILY_USD: ${GUARDRAIL_DEFAULT_DAILY_USD:-100000000}
+      GUARDRAIL_DEFAULT_MONTHLY_USD: ${GUARDRAIL_DEFAULT_MONTHLY_USD:-100000000}
+      RESERVATION_TTL: ${RESERVATION_TTL:-45m}
     depends_on:
       postgres:
         condition: service_healthy

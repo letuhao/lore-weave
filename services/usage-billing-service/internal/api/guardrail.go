@@ -1,0 +1,320 @@
+package api
+
+// Phase 6a Subsystem A — USD spend guardrail handlers (reserve / reconcile /
+// release). Pre-flight estimate-based reservation that protects the user's
+// wallet. See docs/03_planning/LLM_PIPELINE_PHASE6A_DESIGN.md §3.4.
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+const pgUniqueViolation = "23505"
+
+// reserveLockSQL: FOR-UPDATE-locks the guardrail row, performs the lazy
+// calendar reset of both windows, and returns the current figures. All date
+// comparisons use the DB clock (now() AT TIME ZONE 'utc') — never an
+// app-supplied date (review-impl MED#8).
+const reserveLockSQL = `
+UPDATE spend_guardrails SET
+  daily_spent_usd      = CASE WHEN daily_window_date    < (now() AT TIME ZONE 'utc')::date
+                              THEN 0 ELSE daily_spent_usd END,
+  daily_window_date    = CASE WHEN daily_window_date    < (now() AT TIME ZONE 'utc')::date
+                              THEN (now() AT TIME ZONE 'utc')::date ELSE daily_window_date END,
+  monthly_spent_usd    = CASE WHEN monthly_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                              THEN 0 ELSE monthly_spent_usd END,
+  monthly_window_month = CASE WHEN monthly_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                              THEN date_trunc('month', now() AT TIME ZONE 'utc')::date ELSE monthly_window_month END,
+  updated_at = now()
+WHERE owner_user_id = $1
+RETURNING daily_limit_usd, monthly_limit_usd, daily_spent_usd, monthly_spent_usd, reserved_usd`
+
+// recordSpendSQL: lazy-resets the windows AND adds $2 (actual USD) to both
+// spent figures in one statement; $3 is the hold to drop (0 when the hold was
+// already dropped by the sweeper).
+const recordSpendSQL = `
+UPDATE spend_guardrails SET
+  daily_spent_usd      = (CASE WHEN daily_window_date    < (now() AT TIME ZONE 'utc')::date
+                               THEN 0 ELSE daily_spent_usd END) + $2,
+  daily_window_date    = CASE WHEN daily_window_date    < (now() AT TIME ZONE 'utc')::date
+                              THEN (now() AT TIME ZONE 'utc')::date ELSE daily_window_date END,
+  monthly_spent_usd    = (CASE WHEN monthly_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                               THEN 0 ELSE monthly_spent_usd END) + $2,
+  monthly_window_month = CASE WHEN monthly_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                              THEN date_trunc('month', now() AT TIME ZONE 'utc')::date ELSE monthly_window_month END,
+  reserved_usd         = reserved_usd - $3,
+  updated_at           = now()
+WHERE owner_user_id = $1`
+
+// guardrailReserve — POST /internal/billing/guardrail/reserve.
+func (s *Server) guardrailReserve(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		OwnerUserID  uuid.UUID `json:"owner_user_id"`
+		JobID        uuid.UUID `json:"job_id"`
+		EstimatedUSD float64   `json:"estimated_usd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "invalid payload")
+		return
+	}
+	if in.OwnerUserID == uuid.Nil || in.JobID == uuid.Nil {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "owner_user_id and job_id required")
+		return
+	}
+	if in.EstimatedUSD < 0 {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "estimated_usd must be >= 0")
+		return
+	}
+	ctx := r.Context()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to start tx")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Seed the guardrail row from config defaults on first contact.
+	if _, err := tx.Exec(ctx, `
+INSERT INTO spend_guardrails(owner_user_id, daily_limit_usd, monthly_limit_usd)
+VALUES ($1,$2,$3) ON CONFLICT (owner_user_id) DO NOTHING`,
+		in.OwnerUserID, s.cfg.GuardrailDefaultDailyUSD, s.cfg.GuardrailDefaultMonthlyUSD); err != nil {
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to seed guardrail")
+		return
+	}
+
+	// Idempotency FIRST: a held reservation for this job already exists →
+	// return it, do NOT insert and do NOT bump reserved_usd (review-impl HIGH#3).
+	var existing uuid.UUID
+	err = tx.QueryRow(ctx, `
+SELECT reservation_id FROM token_reservations WHERE job_id = $1 AND status = 'held'`,
+		in.JobID).Scan(&existing)
+	if err == nil {
+		if err := tx.Commit(ctx); err != nil {
+			writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to commit")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"reservation_id": existing})
+		return
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "idempotency check failed")
+		return
+	}
+
+	// FOR UPDATE lock + lazy calendar reset.
+	var dailyLimit, monthlyLimit, dailySpent, monthlySpent, reserved float64
+	if err := tx.QueryRow(ctx, reserveLockSQL, in.OwnerUserID).
+		Scan(&dailyLimit, &monthlyLimit, &dailySpent, &monthlySpent, &reserved); err != nil {
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to load guardrail")
+		return
+	}
+
+	dailyAvail := dailyLimit - dailySpent - reserved
+	monthlyAvail := monthlyLimit - monthlySpent - reserved
+	minAvail := dailyAvail
+	if monthlyAvail < minAvail {
+		minAvail = monthlyAvail
+	}
+	// A zero-cost job (explicitly-free model) is never gated.
+	if in.EstimatedUSD > 0 && in.EstimatedUSD > minAvail {
+		_ = tx.Rollback(ctx)
+		writeJSON(w, http.StatusPaymentRequired, map[string]any{
+			"code":              "INSUFFICIENT_BUDGET",
+			"daily_available":   dailyAvail,
+			"monthly_available": monthlyAvail,
+			"requested":         in.EstimatedUSD,
+		})
+		return
+	}
+
+	// Insert the hold + bump reserved_usd as one atomic unit.
+	var resID uuid.UUID
+	err = tx.QueryRow(ctx, `
+INSERT INTO token_reservations(owner_user_id, job_id, estimated_usd, status, expires_at)
+VALUES ($1,$2,$3,'held',$4) RETURNING reservation_id`,
+		in.OwnerUserID, in.JobID, in.EstimatedUSD, time.Now().Add(s.cfg.ReservationTTL)).Scan(&resID)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
+			// A concurrent reserve for the same job won the race. Roll back
+			// (the failed INSERT poisoned this tx) and return the winner.
+			_ = tx.Rollback(ctx)
+			var dup uuid.UUID
+			if qerr := s.pool.QueryRow(ctx, `
+SELECT reservation_id FROM token_reservations WHERE job_id=$1 AND status='held'`,
+				in.JobID).Scan(&dup); qerr != nil {
+				writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "race resolution failed")
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"reservation_id": dup})
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to insert reservation")
+		return
+	}
+	if _, err := tx.Exec(ctx, `
+UPDATE spend_guardrails SET reserved_usd = reserved_usd + $2, updated_at = now()
+WHERE owner_user_id = $1`, in.OwnerUserID, in.EstimatedUSD); err != nil {
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to update reserved")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to commit")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"reservation_id": resID})
+}
+
+// guardrailReconcile — POST /internal/billing/guardrail/reconcile.
+// Records actual spend; idempotent; records spend even for a swept reservation
+// (review-impl HIGH#2 — a swept-then-completed job still spent real money).
+//
+// actual_usd is OPTIONAL: when omitted (null), the spend recorded is the
+// reservation's own stored estimated_usd. The gateway worker sends a real
+// figure for text jobs whose token usage is known, and omits it for media /
+// usage-unknown jobs so the (exact, per-unit) estimate stands.
+func (s *Server) guardrailReconcile(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ReservationID uuid.UUID `json:"reservation_id"`
+		ActualUSD     *float64  `json:"actual_usd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "invalid payload")
+		return
+	}
+	if in.ReservationID == uuid.Nil {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "reservation_id required")
+		return
+	}
+	if in.ActualUSD != nil && *in.ActualUSD < 0 {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "actual_usd must be >= 0")
+		return
+	}
+	if err := s.settleReservation(r.Context(), in.ReservationID, true, in.ActualUSD); err != nil {
+		if errors.Is(err, errReservationNotFound) {
+			writeError(w, http.StatusNotFound, "GUARDRAIL_NOT_FOUND", err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// guardrailRelease — POST /internal/billing/guardrail/release.
+// Frees a held reservation with no spend (failed/cancelled job). Idempotent.
+func (s *Server) guardrailRelease(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ReservationID uuid.UUID `json:"reservation_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "invalid payload")
+		return
+	}
+	if in.ReservationID == uuid.Nil {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "reservation_id required")
+		return
+	}
+	if err := s.settleReservation(r.Context(), in.ReservationID, false, nil); err != nil {
+		if errors.Is(err, errReservationNotFound) {
+			writeError(w, http.StatusNotFound, "GUARDRAIL_NOT_FOUND", err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+var errReservationNotFound = errors.New("reservation not found")
+
+// settleReservation is the shared reconcile/release transaction.
+//
+//	reconcile=true  → record spend into both spent windows.
+//	reconcile=false → release, record no spend.
+//
+// actualUSD applies only when reconcile=true: a non-nil pointer is the real
+// spend; nil means "use the reservation's own estimated_usd" (the caller did
+// not measure actual cost — see guardrailReconcile).
+//
+// Branches on the reservation's stored status:
+//   - held       → settle: (reconcile) add spend + drop hold; (release) drop hold.
+//   - swept      → reconcile records spend WITHOUT touching reserved_usd (the
+//     sweeper already dropped the hold); release is a no-op.
+//   - reconciled → true no-op (idempotent).
+//   - released   → no-op.
+func (s *Server) settleReservation(ctx context.Context, resID uuid.UUID, reconcile bool, actualUSD *float64) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return errors.New("failed to start tx")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var ownerID uuid.UUID
+	var estimated float64
+	var status string
+	err = tx.QueryRow(ctx, `
+SELECT owner_user_id, estimated_usd, status FROM token_reservations
+WHERE reservation_id = $1 FOR UPDATE`, resID).Scan(&ownerID, &estimated, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errReservationNotFound
+	}
+	if err != nil {
+		return errors.New("failed to load reservation")
+	}
+
+	switch {
+	case status == "reconciled" || status == "released":
+		return tx.Commit(ctx) // idempotent no-op
+	case !reconcile && status == "swept":
+		return tx.Commit(ctx) // release on an already-swept hold: nothing to do
+	}
+
+	// Lock the guardrail row for the duration of the settlement.
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM spend_guardrails WHERE owner_user_id=$1 FOR UPDATE`, ownerID); err != nil {
+		return errors.New("failed to lock guardrail")
+	}
+
+	if reconcile {
+		// A nil actualUSD means the caller did not measure real cost — fall
+		// back to the reservation's own estimate as the spend.
+		spend := estimated
+		if actualUSD != nil {
+			spend = *actualUSD
+		}
+		// 'swept' already had its hold dropped by the sweeper → drop $0 more.
+		holdToDrop := estimated
+		if status == "swept" {
+			holdToDrop = 0
+		}
+		if _, err := tx.Exec(ctx, recordSpendSQL, ownerID, spend, holdToDrop); err != nil {
+			return errors.New("failed to record spend")
+		}
+		if _, err := tx.Exec(ctx, `
+UPDATE token_reservations SET status='reconciled', updated_at=now() WHERE reservation_id=$1`,
+			resID); err != nil {
+			return errors.New("failed to update reservation")
+		}
+	} else {
+		// Release a held hold: drop it, no spend.
+		if _, err := tx.Exec(ctx, `
+UPDATE spend_guardrails SET reserved_usd = reserved_usd - $2, updated_at = now()
+WHERE owner_user_id = $1`, ownerID, estimated); err != nil {
+			return errors.New("failed to release hold")
+		}
+		if _, err := tx.Exec(ctx, `
+UPDATE token_reservations SET status='released', updated_at=now() WHERE reservation_id=$1`,
+			resID); err != nil {
+			return errors.New("failed to update reservation")
+		}
+	}
+	return tx.Commit(ctx)
+}

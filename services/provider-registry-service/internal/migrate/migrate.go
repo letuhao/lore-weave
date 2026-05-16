@@ -182,6 +182,19 @@ ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN
   'entity_extraction','relation_extraction','event_extraction',
   'fact_extraction','translation'
 ));
+
+-- Phase 6a Subsystem A — USD spend guardrail. The estimator reads a per-model
+-- pricing JSONB (dimensions: input_per_mtok, output_per_mtok, per_image,
+-- per_second, per_kchar) to compute a worst-case cost upper bound pre-flight.
+-- An empty '{}' is the fail-closed default: a model with no pricing is
+-- unpriced and its jobs are rejected 402, never billed as free.
+-- See docs/03_planning/LLM_PIPELINE_PHASE6A_DESIGN.md §3.2.
+ALTER TABLE user_models     ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE platform_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
+-- The spend reservation held in usage-billing for this job's pre-flight
+-- estimate; the worker reconciles/releases it on terminal state. NULL for
+-- jobs created before this migration.
+ALTER TABLE llm_jobs ADD COLUMN IF NOT EXISTS reservation_id UUID;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

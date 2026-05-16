@@ -3,13 +3,26 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 )
 
 type Config struct {
-	HTTPAddr    string
-	DatabaseURL string
+	HTTPAddr             string
+	DatabaseURL          string
 	JWTSecret            string
 	InternalServiceToken string
+
+	// Phase 6a — spend-guardrail default limits (USD). Config-driven, no
+	// hardcoded literal (billing ADR P5). Seeded into a user's
+	// spend_guardrails row on first reserve.
+	GuardrailDefaultDailyUSD   float64
+	GuardrailDefaultMonthlyUSD float64
+
+	// Sweeper horizon for held reservations — MUST exceed the longest job
+	// timeout (provider-registry VideoGenJobTimeout = 30m) so a normal job
+	// is never swept mid-run. Code default 45m; override via RESERVATION_TTL.
+	ReservationTTL time.Duration
 }
 
 func Load() (*Config, error) {
@@ -28,7 +41,44 @@ func Load() (*Config, error) {
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
+
+	daily, err := requiredFloat("GUARDRAIL_DEFAULT_DAILY_USD")
+	if err != nil {
+		return nil, err
+	}
+	monthly, err := requiredFloat("GUARDRAIL_DEFAULT_MONTHLY_USD")
+	if err != nil {
+		return nil, err
+	}
+	c.GuardrailDefaultDailyUSD = daily
+	c.GuardrailDefaultMonthlyUSD = monthly
+
+	c.ReservationTTL = 45 * time.Minute
+	if v := os.Getenv("RESERVATION_TTL"); v != "" {
+		d, perr := time.ParseDuration(v)
+		if perr != nil {
+			return nil, fmt.Errorf("RESERVATION_TTL invalid: %w", perr)
+		}
+		c.ReservationTTL = d
+	}
+
 	return c, nil
+}
+
+// requiredFloat reads a required, strictly-positive float env var.
+func requiredFloat(key string) (float64, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return 0, fmt.Errorf("%s is required", key)
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a number: %w", key, err)
+	}
+	if f <= 0 {
+		return 0, fmt.Errorf("%s must be > 0", key)
+	}
+	return f, nil
 }
 
 func getEnv(k, def string) string {
