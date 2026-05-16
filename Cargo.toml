@@ -1,0 +1,59 @@
+# LoreWeave Rust workspace.
+#
+# This is the **first Rust workspace** in the monorepo (other services are Go /
+# Python / TypeScript). Members:
+#   - sdks/rust/loreweave_llm   — Rust SDK for the unified LLM gateway
+#                                  (mirror of sdks/python/loreweave_llm).
+#   - services/tilemap-service  — first Rust microservice; procedural tilemap
+#                                  generation for non-cell LoreWeave channels.
+#
+# Shared dependencies are pinned in [workspace.dependencies]; member crates
+# inherit via `dep.workspace = true`.
+
+[workspace]
+resolver = "2"
+members = [
+    "sdks/rust/loreweave_llm",
+    "services/tilemap-service",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+authors = ["LoreWeave"]
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "signal"] }
+
+# HTTP client (rustls-tls avoids OpenSSL build pain on Windows)
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# TMP-A4 deterministic seed
+blake3 = "1.5"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# UUIDs (gateway StreamRequest.model_ref + user_id query param)
+uuid = { version = "1.10", features = ["serde", "v4"] }
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# HTTP mock server for offline SSE-parser / gateway integration tests (dev-only)
+wiremock = "0.6"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

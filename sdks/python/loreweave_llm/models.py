@@ -75,9 +75,34 @@ class AudioChunkEvent(_BaseEvent):
     final: bool
 
 
+class ToolCallEvent(_BaseEvent):
+    """One incremental fragment of a tool call the model is emitting,
+    re-framed by the gateway from OpenAI `delta.tool_calls[]` / Anthropic
+    `input_json_delta`. Reassemble by `index` — the first fragment for an
+    index carries `id` + `name`; later fragments carry only
+    `arguments_delta`. There is no per-index terminal marker — completion
+    is the `DoneEvent`. The gateway omits `index` when 0 and
+    `arguments_delta` when empty (shared-struct omitempty); both default here.
+    """
+
+    event_type: Literal["tool_call"] = Field("tool_call", alias="event")
+    index: int = 0
+    id: str | None = None
+    name: str | None = None
+    arguments_delta: str = ""
+
+
 # Discriminated union of all canonical events.
 StreamEvent = Annotated[
-    Union[TokenEvent, ReasoningEvent, UsageEvent, DoneEvent, ErrorEvent, AudioChunkEvent],
+    Union[
+        TokenEvent,
+        ReasoningEvent,
+        UsageEvent,
+        DoneEvent,
+        ErrorEvent,
+        AudioChunkEvent,
+        ToolCallEvent,
+    ],
     Field(discriminator="event_type"),
 ]
 
@@ -97,6 +122,10 @@ class StreamRequest(BaseModel):
     model_ref: UUID
     messages: list[dict[str, Any]]
     tools: list[dict[str, Any]] | None = None
+    # OpenAI-shaped tool-choice control — "auto"/"none"/"required" or
+    # {"type":"function","function":{"name":...}}. The gateway rejects this
+    # for a provider without tool support (LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER).
+    tool_choice: dict[str, Any] | str | None = None
     temperature: float = 0.0
     max_tokens: int | None = None
     stream_format: StreamFormat = "openai"

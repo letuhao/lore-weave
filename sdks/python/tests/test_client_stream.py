@@ -28,6 +28,7 @@ from loreweave_llm import (
     ReasoningEvent,
     StreamRequest,
     TokenEvent,
+    ToolCallEvent,
     UsageEvent,
 )
 
@@ -97,6 +98,50 @@ async def test_stream_happy_path_tokens_usage_done():
     assert isinstance(events[1], TokenEvent) and events[1].delta == " world"
     assert isinstance(events[2], UsageEvent) and events[2].input_tokens == 10
     assert isinstance(events[3], DoneEvent) and events[3].finish_reason == "stop"
+
+
+@pytest.mark.asyncio
+async def test_stream_tool_call_fragments_dispatched():
+    # Phase 0b — the gateway re-frames tool-call deltas into `tool_call`
+    # events. First fragment carries id+name (omits arguments_delta when
+    # empty); a later fragment carries only arguments_delta (omits index 0).
+    body = sse_body(
+        ("tool_call", '{"event":"tool_call","index":0,"id":"call_1","name":"submit_zone_classifications"}'),
+        ("tool_call", '{"event":"tool_call","arguments_delta":"{\\"classifications\\":[]}"}'),
+        ("done", '{"event":"done","finish_reason":"tool_calls"}'),
+    )
+    with respx.mock(base_url=GATEWAY) as mock:
+        mock.post("/internal/llm/stream", params={"user_id": USER_ID}).respond(
+            status_code=200,
+            headers={"Content-Type": "text/event-stream"},
+            content=body,
+        )
+        client = make_internal_client()
+        events = []
+        async for ev in client.stream(make_request()):
+            events.append(ev)
+        await client.aclose()
+
+    assert len(events) == 3
+    assert isinstance(events[0], ToolCallEvent)
+    assert events[0].id == "call_1"
+    assert events[0].name == "submit_zone_classifications"
+    assert events[0].index == 0  # absent index defaults to 0
+    assert events[0].arguments_delta == ""  # absent arguments_delta defaults to ""
+    assert isinstance(events[1], ToolCallEvent)
+    assert events[1].arguments_delta == '{"classifications":[]}'
+    assert isinstance(events[2], DoneEvent) and events[2].finish_reason == "tool_calls"
+
+
+def test_request_body_includes_tool_choice_when_set():
+    # tool_choice round-trips into the wire body; omitted (None) drops out.
+    req = make_request(
+        tools=[{"type": "function", "function": {"name": "submit_zone_classifications"}}],
+        tool_choice={"type": "function", "function": {"name": "submit_zone_classifications"}},
+    )
+    body = req.to_request_body()
+    assert body["tool_choice"]["function"]["name"] == "submit_zone_classifications"
+    assert "tool_choice" not in make_request().to_request_body()
 
 
 @pytest.mark.asyncio

@@ -439,6 +439,22 @@ components:
           items:
             type: object
             additionalProperties: true
+        tool_choice:
+          description: |
+            Optional. OpenAI-shaped tool-choice control — the string
+            `"auto"` / `"none"` / `"required"`, or an object
+            `{"type":"function","function":{"name":"..."}}` to force a
+            specific tool. Honored only by providers that support tools
+            (currently the OpenAI-compatible adapters). A request that
+            sets `tools` or `tool_choice` for a provider without tool
+            support is rejected with HTTP 400
+            `LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER` before the SSE stream
+            opens. Optional — omit the field to leave tool selection to
+            the model; callers do not send an explicit `null`.
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
         temperature:
           type: number
           minimum: 0
@@ -524,6 +540,7 @@ components:
         - $ref: '#/components/schemas/DoneEvent'
         - $ref: '#/components/schemas/StreamErrorEvent'
         - $ref: '#/components/schemas/AudioChunkEvent'
+        - $ref: '#/components/schemas/ToolCallEvent'
       discriminator:
         propertyName: event
         mapping:
@@ -533,6 +550,7 @@ components:
           done: '#/components/schemas/DoneEvent'
           error: '#/components/schemas/StreamErrorEvent'
           audio-chunk: '#/components/schemas/AudioChunkEvent'
+          tool_call: '#/components/schemas/ToolCallEvent'
       description: |
         Discriminated union representing one SSE event. The actual wire
         format is `event: <name>\ndata: <JSON>\n\n` per the SSE spec; this
@@ -577,6 +595,47 @@ components:
         index:
           type: integer
           description: Optional zero-based event index for ordering verification.
+
+    ToolCallEvent:
+      type: object
+      required: [event]
+      description: |
+        One incremental fragment of a tool call the model is emitting.
+        The gateway re-frames provider tool-call deltas (OpenAI
+        `delta.tool_calls[]`, Anthropic `input_json_delta`) into this
+        canonical event WITHOUT buffering — consumers reassemble by
+        `index`. The provider sends `id` + `name` on the FIRST fragment
+        for an index (usually with `arguments_delta == ""`); subsequent
+        fragments carry only `arguments_delta`. There is no per-index
+        terminal marker — completion is known at the `DoneEvent`.
+        `arguments_delta` MAY be omitted on the wire when empty (the
+        gateway emits the shared chunk struct with `omitempty`);
+        consumers treat an absent `arguments_delta` as `""`.
+      properties:
+        event:
+          type: string
+          enum: [tool_call]
+        index:
+          type: integer
+          default: 0
+          description: |
+            Which tool call within the turn (0-based). A semantic call
+            identifier, NOT a monotonic event counter. May be omitted on
+            the wire when 0; consumers treat an absent `index` as 0.
+        id:
+          type: string
+          description: Provider tool-call id. Present on the first fragment for this index.
+        name:
+          type: string
+          description: Tool/function name. Present on the first fragment for this index.
+        arguments_delta:
+          type: string
+          default: ""
+          description: |
+            Incremental fragment of the tool-call arguments JSON. MAY be
+            omitted on the wire when empty — notably on the first
+            fragment, which carries `id`/`name`. Consumers treat an
+            absent value as `""`.
 
     UsageEvent:
       type: object

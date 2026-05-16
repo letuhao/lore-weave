@@ -1,5 +1,8 @@
 # TDIL_001 — Time Dilation Foundation
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
+> TMP_001's deterministic seed pipeline (TMP-A4 seed-determinism axiom) satisfies TDIL-A9 "Replay determinism FREE V1" (see [`catalog/cat_17_TDIL_time_dilation.md` line 36](../../catalog/cat_17_TDIL_time_dilation.md) for the axiom definition) for non-cell tile rendering: same seed + same template + same MAP_001 positions = byte-identical tilemap geometry across replays (AC-TMP-2 walked at TMP closure pass). Cross-realm time dilation (TDIL §3 `time_flow_rate` overrides) does NOT affect tilemap output — TMP is purely spatial, no clock dependency. NO TDIL_001 surface change — annotation only. See §17.10 row.
+
 > **Category:** TDIL — Time Dilation (architecture-scale; 4-clock relativity model for cross-realm time + cultivation pace + xuyên không clock-split)
 > **Catalog reference:** [`catalog/cat_17_TDIL_time_dilation.md`](../../catalog/cat_17_TDIL_time_dilation.md) (owns `TDIL-*` stable-ID namespace)
 > **Status:** **CANDIDATE-LOCK 2026-04-27** (DRAFT bdc8d8e1 → Phase 3 cleanup 2026-04-27 → CANDIDATE-LOCK 2026-04-27 closure pass: §13 AC-TDIL-1..10 walked; cross-feature closure-pass-extensions to PROG_001 / RES_001 / AIT_001 confirmed applied at DRAFT promotion via `bdc8d8e1` single combined commit — mechanical day-boundary → turn-boundary semantic per TDIL-A3; no Phase 3 drift detected). All 12 Qs LOCKED via 4-batch deep-dive 2026-04-27 (Q1+Q2+Q3 / Q4+Q5 / Q6+Q7+Q8 / Q9+Q10+Q11+Q12) zero revisions. Companion: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md).
@@ -710,6 +713,12 @@ V1 architecture does NOT enable (deferred):
 
 - Generator semantic revision (per-turn O(1)) — PROG/RES/AIT closure pass references
 - No new EVT-T sub-types from TDIL_001 V1 (all integration via existing PROG/RES/AIT events)
+
+### §17.10 [TMP_001 Tilemap Foundation](../00_tilemap/TMP_001_tilemap_foundation.md) — orthogonal layer (annotation added 2026-05-14 closure-pass-extension)
+
+TMP_001 is **purely spatial** — non-cell tile geometry is independent of clock state. Cross-realm `time_flow_rate` overrides (§3) do NOT trigger tilemap re-generation or invalidate `tilemap_view`. The two features are orthogonal in V1+30d.
+
+TMP_001's TMP-A4 seed-determinism axiom (same `(template_id, seed, MAP_001 positions)` → byte-identical tilemap) satisfies TDIL-A9 "Replay determinism FREE V1" (axiom defined in [`catalog/cat_17_TDIL_time_dilation.md` line 36](../../catalog/cat_17_TDIL_time_dilation.md); §10 Q10-LOCKED in this file states the underlying property). TMP_001 §14 cross-feature integration explicitly cites TDIL-A9 — the citation is correct; the axiom is owned by the TDIL catalog (cat_17) rather than inline in this feature doc, mirroring the pattern that axiom inventories live alongside their stable-ID catalog entries. No reconciliation needed.
 
 ---
 

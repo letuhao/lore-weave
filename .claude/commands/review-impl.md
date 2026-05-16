@@ -4,11 +4,11 @@ description: On-demand adversarial implementation review. Invoke when POST-REVIE
 
 # /review-impl — Adversarial implementation review
 
-Perform a deep adversarial review of the most recent implementation work. This is the **separate mental mode** that POST-REVIEW deliberately does NOT do (see `CLAUDE.md` Phase 9 note).
+Perform a deep adversarial review of the most recent implementation work. This is the **separate mental mode** that POST-REVIEW deliberately does NOT do (see Phase 9 note in `WORKFLOW.md`).
 
 ## Scope
 
-Review whatever the user is currently focused on. If `$ARGUMENTS` names a task (e.g. `K17.9`), scope to that task's files. Otherwise scope to the changes in the latest commit (`git show --stat HEAD`).
+Review whatever the user is currently focused on. If `$ARGUMENTS` names a task or ticket (e.g. `K17.9`, `PROJ-421`), scope to that task's files. Otherwise scope to the changes in the latest commit (`git show --stat HEAD`).
 
 ## How this differs from the REVIEW-CODE phase (Phase 7)
 
@@ -22,13 +22,13 @@ Review whatever the user is currently focused on. If `$ARGUMENTS` names a task (
 
 Before reading any file, list in your head:
 1. **Every field on every input model** — which ones does the implementation actually persist/act on, and which are silently dropped?
-2. **Every normalization step upstream** — does any of them make a downstream defense moot? (e.g., `_normalize_predicate` munching whitespace before a whitespace-sensitive sanitizer runs)
+2. **Every normalization step upstream** — does any of them make a downstream defense moot? (e.g., a whitespace-stripping normalizer that runs *before* a whitespace-sensitive sanitizer)
 3. **Every invariant the implementation claims** — idempotence, ordering, dedup keys — and whether a future change could break them without a test catching it
 4. **Every boundary between this code and its callers/callees** — what contract is assumed, and what happens if that contract drifts?
 
 ## Process
 
-1. **Read the task's plan row** (e.g. from `KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md`) to recover the acceptance criteria in their original form.
+1. **Read the task's plan row or ticket** to recover the acceptance criteria in their original form.
 2. **Re-read all changed files from disk** — `git show HEAD` for the latest commit, or files matching the task.
 3. **Read all callers and callees one hop out** — the implementation is at a boundary; the boundary partners can hide bugs.
 4. **For each input-model field:** is it persisted, transformed, or dropped? If dropped, is that intentional?
@@ -50,7 +50,7 @@ For each finding:
 ## When to suggest follow-up work vs. fix now
 
 - HIGH → fix now, loop back to VERIFY
-- MED → the user decides: fix-now or deferred item in SESSION_PATCH
+- MED → the user decides: fix-now or deferred item in session notes
 - LOW + COSMETIC → default to deferred item unless batching with HIGH/MED fixes
 
 Never silently accept a HIGH finding.

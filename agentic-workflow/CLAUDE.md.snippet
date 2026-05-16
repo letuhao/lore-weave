@@ -1,27 +1,39 @@
-# --- AGENTIC WORKFLOW v2.2 (paste into your CLAUDE.md) ---
+# --- AGENTIC WORKFLOW v2.2 + AMAW v3.0 opt-in (paste into your CLAUDE.md) ---
 # Remove this header line after pasting.
-# Full docs: see WORKFLOW.md in the agentic-workflow bundle.
-# v2.2: POST-REVIEW reshaped as human checkpoint; deep review moved to /review-impl.
+# Default = v2.2 human-in-loop. AMAW = opt-in via /amaw command.
+# Full docs: agentic-workflow/WORKFLOW.md (default) + docs/amaw-workflow.md (opt-in).
 
 ## Task Workflow (12 phases)
 
-**ENFORCEMENT: State machine (`.workflow-state.json`) + hooks block commits without verification.**
+**Default mode (v2.2):** human-in-loop with PO checkpoints at CLARIFY end + POST-REVIEW.
+**Opt-in (AMAW v3.0):** user types `/amaw` to enable cold-start sub-agent reviews for the current task. See `docs/amaw-workflow.md`.
+
+**Repo-specific paths:**
+- Session notes (main project): `docs/sessions/SESSION_PATCH.md`
+- Session notes (design tracks): `docs/03_planning/<TRACK>/SESSION_HANDOFF.md`
+- New specs: `docs/specs/YYYY-MM-DD-<topic>.md` (or `docs/03_planning/<TRACK>/` for legacy tracks)
+- New plans: `docs/plans/YYYY-MM-DD-<feature>.md` (or `docs/03_planning/<TRACK>/`)
+- AMAW audit log: `docs/audit/AUDIT_LOG.jsonl` (append-only, committed)
+- Deferred items: `docs/deferred/DEFERRED.md`
+- ContextHub project_id (for `add_lesson` in RETRO): `mmo-rpg-zone-map-design-non-human-in-loop`
+
+**ENFORCEMENT: state machine (`.workflow-state.json`) + hooks block commits without verification.**
 
 ```
-Phase          | Role              | What Happens
----------------|-------------------|----------------------------------------------
-1. CLARIFY     | Architect + PO    | Brainstorm, ask questions, define scope
-2. DESIGN      | Lead              | API contract / component API / data flow
-3. REVIEW      | PO + Lead         | Review design spec before coding
-4. PLAN        | Lead + Developer  | Decompose into bite-sized tasks (2-5 min)
-5. BUILD       | Developer         | Write code (TDD: red -> green -> refactor)
-6. VERIFY      | Developer         | Evidence-based verification gate
-7. REVIEW      | Lead              | Code review (spec compliance + quality)
-8. QC          | QA / PO           | Test against acceptance criteria
-9. POST-REVIEW | Human + Developer | Human CHECKPOINT (not deep review — see /review-impl)
-10. SESSION    | Developer         | Update session notes + task status
-11. COMMIT     | Developer         | Git commit (+ push if approved)
-12. RETRO      | All               | Record decision/workaround if learned
+Phase          | Default role         | AMAW role (opt-in)   | What Happens
+---------------|----------------------|----------------------|----------------------------------------
+1. CLARIFY     | Architect + PO       | Main + Scribe        | Brainstorm, ask questions, define scope
+2. DESIGN      | Lead                 | Main                 | API contract / component / data flow
+3. REVIEW      | PO + Lead self       | Adversary cold-start | Find spec gaps / contract holes
+4. PLAN        | Lead + Developer     | Main + Scribe        | Decompose into bite-sized tasks
+5. BUILD       | Developer            | Main                 | TDD: red -> green -> refactor
+6. VERIFY      | Developer            | Main                 | Evidence-based verification gate
+7. REVIEW      | Lead self            | Adversary cold-start | Code vs spec — find divergences
+8. QC          | QA / PO              | Scope Guard          | Spec fingerprint vs implementation
+9. POST-REVIEW | Human checkpoint     | Scope Guard          | Final gate — NEVER skippable
+10. SESSION    | Developer            | Scribe               | Update session notes + deferred items
+11. COMMIT     | Developer            | Main                 | Git commit (+ push if approved)
+12. RETRO      | All                  | Audit Logger         | Record decision/workaround if learned
 ```
 
 ### Task Size (MANDATORY — classify BEFORE work)
@@ -53,28 +65,32 @@ Script blocks: undersizing, phase jumps, commits without VERIFY+POST-REVIEW+SESS
 
 Run command -> Read output -> Confirm match -> THEN claim. No "should work."
 
-### POST-REVIEW (Phase 9) — NEVER skippable, but lightweight
+### POST-REVIEW (Phase 9) — NEVER skippable
 
-**Why:** Forcing-function human pause before SESSION/COMMIT burns the diff in. Lets the user veto, redirect, or request deeper review.
+**Default mode:** present concise summary to human, STOP and WAIT. Human approves or asks for `/review-impl`.
 
-**Why it is NOT a self-adversarial re-read:** That pattern rubber-stamps "0 issues" in practice — author blindness persists even with a "re-read from disk" ritual. Deep review is an explicit separate command.
+**AMAW mode (if `/amaw` was invoked):** spawn Scope Guard sub-agent. Conservative final gate — CLEAR or BLOCKED.
 
-1. **Present a concise summary** — files touched, key decisions, verify evidence. **STOP and WAIT.**
-2. **If the human asks for a deeper look — or the code is safety-sensitive** (auth, tenant isolation, destructive ops, injection defense, new integration boundary) — invoke `/review-impl`.
-3. **If the human approves — proceed to SESSION.**
+**Why not self-adversarial re-read in default mode:** that pattern rubber-stamps "0 issues" in practice. Deep review is `/review-impl` (default) or Adversary spawn (AMAW).
 
-**Do NOT output "Post-review: 0 issues found" as the default close-out.** That line is the tell that you're rubber-stamping. Complete with:
+**Do NOT output "Post-review: 0 issues found" as default close-out.** That's the tell of rubber-stamping. Complete with:
 ```
 ./scripts/workflow-gate.sh complete post-review "summary presented, human approved: <one-liner>"
 ```
 
-### /review-impl (on-demand adversarial review)
+### /review-impl (default-mode on-demand adversarial review)
 
-Separate from POST-REVIEW. Invoke when: human asks, safety-sensitive code, or something feels off. Scoped to ask *what the test coverage misses*, not *whether the tests as written pass*. See `.claude/commands/review-impl.md`.
+Invoke when: human asks, safety-sensitive code, or something feels off. See `.claude/commands/review-impl.md`.
+
+### /amaw (opt-in advanced workflow)
+
+Invoke at start of task for: data migrations, schema changes, security-critical paths, multi-system contracts. Cold-start sub-agents replace human review at REVIEW + POST-REVIEW. See `.claude/commands/amaw.md` + `docs/amaw-workflow.md` for full spec + calibration table.
+
+**Don't invoke /amaw for everyday work** — token cost (~$1-5/task) only pays off at L+ size.
 
 ### Debugging Protocol
 
 NO FIXES WITHOUT ROOT CAUSE. Trace -> Hypothesize -> Test one variable -> Fix.
 Hard stop after 3 failed attempts — question architecture.
 
-# --- END AGENTIC WORKFLOW v2.2 ---
+# --- END AGENTIC WORKFLOW v2.2 + AMAW v3.0 opt-in ---

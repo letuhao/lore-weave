@@ -1,5 +1,8 @@
 # PF_001 — Place Foundation
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
+> TMP_001 V1+30d **co-exists** with PF_001's V1 cell-only invariant (§5 strict 1:1). TMP renders non-cell tiers from `tilemap_template` + `map_layout` tier metadata — it does NOT require non-cell `place` rows to exist. If PF_001 V1+ reopens for non-cell place rows (PF-D4 multi-place-per-cell or a sibling deferral covering non-cell semantic identity), the two layers compose cleanly: PF supplies semantic identity at the non-cell tier; TMP supplies the procedural tile-render layer underneath. NO PF_001 V1 surface change — the §5 cell-only-V1 invariant remains. Annotation only. See §17 row for cross-reference.
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
 >
 > Cell-tier session capacity tracking — DF05_001 enforces ≤50 Active sessions per cell V1 per DF5-A8 (cross-validator C28 in `_boundaries/03_validator_pipeline_slots.md`). PF_001 cell display UI may surface "5 active conversations" indicator at cell-tier (V1+30d cosmetic UX; not blocking V1 ship). DF5-C2 cross-aggregate validator: session.channel_id MUST be cell-tier (non-cell channels rejected) — DF05_001 verifies via PF_001 §5 cell-only invariant. NO change to PF_001 aggregate or cell-tier 1:1 invariant; CANDIDATE-LOCK status PRESERVED. LOW magnitude — pure consumer of cell-tier semantics + display UX hook. Reference: [DF05_001 §3.1 session aggregate](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#31-session-t2--reality-sparse--active-hot-closed-archival--primary) + [DF05_001 §7 Multi-session-per-cell](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#7--multi-session-per-cell-architecture-the-big-shift).
@@ -692,6 +695,7 @@ LLM next-turn AssemblePrompt sees updated drift; players in cell observe changed
 - **07_event_model** — EVT-T4 System sub-type `PlaceBorn` + EVT-T3 Derived `aggregate_type=place` registered.
 - **06_data_plane** — `place` aggregate sits in T2/Channel-cell scope per existing DP contract. No new primitives.
 - **03_multiverse (MV12)** — fiction-time advancement triggers V1+ scheduled decay (PF-D3); current V1 time-lapse via author-edit + in-fiction event only.
+- **[TMP_001 Tilemap Foundation](../00_tilemap/TMP_001_tilemap_foundation.md)** — V1+30d co-existing layer (annotation added 2026-05-14 closure-pass-extension). PF_001 V1 strict cell-only invariant (§5) is preserved; TMP_001 reads non-cell tier/name from `tilemap_template` + `map_layout` directly and does NOT require non-cell `place` rows. Co-existence contract: at cell tier PF_001 remains canonical (semantic identity + connection graph + structural state); at non-cell tiers TMP_001 renders procedural tiles WITHOUT touching the `place` aggregate. If PF_001 V1+ reopens to support non-cell place rows (a hypothetical future PF-D-numbered deferral), TMP and PF compose cleanly — PF supplies semantic identity, TMP supplies tile geometry, no conflict. Direction: PF_001 ⊥ TMP_001 (orthogonal layers; no read or write between them at V1+30d).
 
 ---
 

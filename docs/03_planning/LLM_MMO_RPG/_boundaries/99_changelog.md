@@ -412,6 +412,264 @@ V1 schema reserves ALL layers strategy needs (provinces / states / settlements /
 - LLM-image-to-map approaches (arXiv 2407.09013 + 2410.15644 + AriGraph IJCAI 2025) REJECTED for strategy gameplay use — produce images not structured graphs; cannot back adjacency-correctness or regeneration-stability requirements
 
 Survey confirmed: **nothing strictly better appeared 2024-2025**. The Patel/O'Leary/Azgaar 2010-2018 algorithm stack remains state-of-the-art for *structured* fantasy world geometry. GEO_001 §5 8-stage pipeline implements this baseline with V1 stages 1-4 substantive + V1+ stages 5-8 activation slots.
+## 2026-05-14 — TMP cross-feature integration annotation pass (13 consumer features annotated per TMP_001 §14)
+
+- **Lock CLAIM + RELEASE** — single combined `[boundaries-lock-claim+release]` commit. Follows TMP folder closure pass `cdc2f706` (2026-05-13) and the user-chosen next-step "stay in design mode → cross-feature integration annotation" picked from the four post-TMP-closure direction options.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner remains None); new `_Last released_` entry at top of the stack capturing scope summary, files touched, drift caught, and post-pass priority candidates
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** 13 consumer-feature documents — pattern is uniform: top-of-doc `⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 …` banner mirroring the precedent set by WA_003 / PCS_001 / NPC_001 / AIT_001 closure-pass-extension blocks, plus an appended row in each doc's Cross-references / Cascade / Cross-folder section. No edits to existing sections that would constitute scope creep; all consumer CANDIDATE-LOCK statuses preserved.
+- **Tier breakdown:**
+
+| Tier | Consumer files | Integration depth |
+|---|---|---|
+| A — V1+30d active integration | `features/00_map/MAP_001_map_foundation.md` · `features/00_cell_scene/CSC_001_cell_scene_composition.md` · `features/00_place/PF_001_place_foundation.md` · `features/04_play_loop/PL_001_continuum.md` · `features/04_play_loop/PL_001b_continuum_lifecycle.md` · `features/02_world_authoring/WA_003_forge.md` | Banner + cross-ref row + (PL_001b only) RealityManifest snippet `tilemap_templates: Vec<TilemapTemplateDecl>` + `tilemap_defaults: Option<TilemapDefaults>` optional-field extension. WA_003 adds 3 AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` V1+30d active; `Forge:OverridePlacement` V3 active / V1+30d schema-reserved) via additive FRG-S\* pattern. |
+| B — Kernel folders | `06_data_plane/_index.md` · `07_event_model/_index.md` | Banner pattern not applied (kernel folders use `Cross-folder references` table); row appended to that table per folder. 2 new T2 aggregates registered with standard DP-K1..K12 surface (no new DP-K\* / DP-Ch\* primitives, no new axiom). Sub-types registered under existing EVT-T3/T4/T8 + V2 reservations under EVT-T5/T6 (no new EVT-T\* / EVT-A\* axiom). |
+| C — V2+ reservation notes | `features/16_ai_tier/AIT_001_ai_tier_foundation.md` (§14.19) · `features/17_time_dilation/TDIL_001_time_dilation_foundation.md` (§17.10) · `features/06_pc_systems/PCS_001_pc_substrate.md` · `features/00_resource/RES_001_resource_foundation.md` (§12.9) · `features/05_npc_systems/NPC_001_cast.md` | Banner + cross-ref row. AIT documents TMP as a pattern reuser of Q4-LOCKED hybrid 2-stage. TDIL documents TMP-A4 satisfying TDIL-A9 (orthogonal layer; tilemap is purely spatial). PCS reserves V2+ fog-of-war (TMP-D3). RES reserves V2 mines (TMP-D10) with clean producer/inventory boundary. NPC reserves V2+ routing on `tilemap_view.road_segments`. |
+| (skipped) | `05_llm_safety/` | Folder does not exist yet — pending separate seed work per 2026-04-26 next-step recommendations. |
+
+- **No matrix changes:** TMP ownership was already registered at 2026-05-13 closure pass; this annotation pass touches the CONSUMER side only. `01_feature_ownership_matrix.md` left untouched.
+- **Drift caught + filed (1):** WA_003 §7 preamble line "12 V1 EditActions" is stale post-annotation — effective V1+30d count is 15 (12 WA + 3 TMP). Flagged in WA_003 closure-pass-extension banner; next WA_003 closure pass should reconcile inline count + decide whether the 3 TMP-owned EditActions need stub §7.7-§7.9 sub-sections in WA_003 itself or stay pointed-to in TMP_001 §16 deferrals.
+- **Verified-not-drift (1):** TDIL-A9 axiom was initially mis-flagged as missing from TDIL_001 — discovered mid-pass that the axiom IS defined in `catalog/cat_17_TDIL_time_dilation.md` line 36 (catalog file is authoritative for stable-ID inventories per the TDIL pattern). Annotation reconciled before commit — the "TDIL-A9 replay-free V1" citation in TMP_001 §14 is correct.
+
+### Post-pass priority candidates
+
+1. **05_llm_safety folder seed** — now the sole remaining unannotated TMP consumer. Per 2026-04-26 next-step recommendations: ~5-7 features at ~600 lines each (A1..A6 axioms exist; TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements).
+2. **V2 PoC implementation** of tilemap-service — validate TMP_008b §2-§12 contract empirically: cacheable-prefix prompt cache hit rate, tool-use forced-call reliability, per-object retry granularity vs flat-error retry, cost-model accuracy. Clean-room Rust on Claude Haiku 4.5.
+3. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror MAP_002 V1+ pattern when art-asset pipeline lights up).
+4. **V3 RMG wizard** scoping (TMP-D1, TMP-D2 — player-facing parameter capture UX).
+
+### Raw count
+
+- **Files touched in this pass:** 15 (13 consumer features + `_LOCK.md` + `99_changelog.md`)
+- **Banner blocks added:** 11 (Tier A 6 + Tier C 5; Tier B kernel folders use cross-folder-references row pattern instead)
+- **Cross-references rows / table rows added:** 13 (one per consumer)
+- **New sections added inside consumer features:** 3 (AIT §14.19 · TDIL §17.10 · RES §12.9)
+- **RealityManifest snippet edits:** 1 (PL_001b §16.1 — 2 optional fields appended)
+- **AdminAction sub-shapes registered (annotation only):** 3 (WA_003 banner; detailed flows owned by TMP_001 + TMP_004)
+- **EVT-T sub-types referenced (annotation only):** 7 (TilemapBorn + ZonesPlaced + 2 T3 aggregate_types + 3 T8 Forge:* sub-shapes + 2 V2 reservations under T5/T6)
+
+---
+
+## 2026-05-13 (late evening same day) — TMP folder closure pass — all 9 docs DRAFT → CANDIDATE-LOCK (§15 AC walked + all 43 open questions RESOLVED + Phase 3 review findings applied)
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; same-day fourth lock cycle. Follows user direction to "closure pass for TMP". Closes the TMP folder for V1+30d design per the WA/NPC/PLT/PO closure-pass pattern.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner None); new `_Last released_` entry with closure pass summary
+  - `01_feature_ownership_matrix.md`: TMP_001 + TMP_008b status promotions DRAFT → CANDIDATE-LOCK; rule_id count corrected 16 → 17 V1+30d (added `tilemap.density_reduced` info-level at Phase 3 review)
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** all 9 TMP feature docs promoted DRAFT → CANDIDATE-LOCK with resolutions table replacing open-questions sections:
+  - `TMP_001 §12`: 8 questions RESOLVED (TMP-Q1..Q8); 3 USER-LOCKED (TMP-Q3 V2 default LLM-on / TMP-Q4 Phaser 3 / TMP-LLM-Q4 cross-zone L4 context YES); 5 ACCEPT-default
+  - `TMP_001 §15`: AC-TMP-1..10 walked + expanded from 1-line sketches to full setup/action/expected-outcome triples with concrete rule_ids + event types; each scenario independently testable via integration test
+  - `TMP_001 §9.2`: `tilemap.density_reduced` info-level rule_id added (Phase 3 review finding; was referenced in AC-TMP-9 but missing from inventory); 17 V1+30d rule_ids total (was 16)
+  - `TMP_002 §9`: TMP-Q5 (cross-ref TMP_001) + TMP-PLACE-Q1..Q3 RESOLVED (4 ACCEPT-default)
+  - `TMP_003 §6`: TMP-PIPE-Q1..Q4 RESOLVED (4 ACCEPT-default; PIPE-Q1 budget config locked to V1+30d hardcoded 10s + V2 author-configurable; PIPE-Q3 dry-run mode deferred V2+ as TMP-D15)
+  - `TMP_004 §10`: TMP-TPL-Q1..Q5 RESOLVED (5 ACCEPT-default; TPL-Q3 template inheritance deferred V2+ as TMP-D16; TPL-Q4 banned_terrain_kinds UNION semantic; TPL-Q5 author seed_offset enabled)
+  - `TMP_005 §9`: TMP-BIOME-Q1..Q4 RESOLVED (4 ACCEPT-default; BIOME-Q1 seasonal V2+ TMP-D17; BIOME-Q2 LLM-gen biome V3 TMP-D18; BIOME-Q3 fallback + `tilemap.biome_fallback_used` INFO event; BIOME-Q4 rarity tag V2+ TMP-D19)
+  - `TMP_006 §8.5`: **Phase 3 finding — RESTORED §9 questions lost in license-hygiene revision pass.** TMP-TR-Q1..Q6 RESOLVED at restoration + closure (6 ACCEPT-default; TR-Q1 composite piles; TR-Q4 density reduce + `tilemap.density_reduced` info; TR-Q5 deterministic per TMP-A4)
+  - `TMP_007 §13`: TMP-CONN-Q1..Q5 RESOLVED (5 ACCEPT-default; CONN-Q1 per-PC gates V2+ TMP-D20; CONN-Q3 guard respawn V2 TMP-D21; CONN-Q4 multi-edge V2+ TMP-D22; CONN-Q5 Hint+Adversarial dashed-line render in Forge editor)
+  - `TMP_008 §9`: TMP-LLM-Q1..Q7 RESOLVED; **TMP-LLM-Q4 USER-LOCKED YES V2 cross-zone L4 context** → §5 cost model bumped (~$0.014 → ~$0.020/L4 call; per-tilemap ~$0.032 → ~$0.038; per-reality Y1 ~$7 → ~$8.50; +21% for cross-zone narrative continuity); LLM-Q2 canon_kind approval flow V2; LLM-Q6 Zone Lore UI tab V2+ TMP-D24
+  - `TMP_008b §14`: TMP-LLM-C-Q1..Q7 RESOLVED (7 ACCEPT-default; LLM-C-Q2 A/B cache strategies deferred to V2 PoC; LLM-C-Q7 streaming V2+30d TMP-D25); §12.4-§12.7 cost model bumped per TMP-LLM-Q4 lock (cross-zone neighbor context +5000 tokens/call; effective L4 ~9170 tokens; ~$0.020/call)
+  - `_index.md`: all 9 row statuses DRAFT → CANDIDATE-LOCK 2026-05-13; folder closure status promoted to CLOSED for V1+30d design with closure-pass deliverables summary
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: all 29 V1+30d entries (TMP-1..TMP-22 + TMP-24..TMP-30 + TMP-45..TMP-52) promoted from 📋 → ✅; rule_id count updated 16 → 17; V2/V2+/V3 entries stay 📋
+
+### Question resolution summary
+
+| Resolution bucket | Count | IDs |
+|---|---:|---|
+| USER-LOCKED at closure pass | 3 | TMP-Q3, TMP-Q4, TMP-LLM-Q4 |
+| ACCEPT default | 34 | TMP-Q1, TMP-Q2, TMP-Q5..Q8 + TMP-PLACE-Q1..Q3 + TMP-PIPE-Q1..Q4 + TMP-TPL-Q1, Q4, Q5 + TMP-BIOME-Q3 + TMP-TR-Q1..Q6 + TMP-CONN-Q2, Q5 + TMP-LLM-Q1, Q3, Q5, Q7 + TMP-LLM-C-Q1, Q3, Q4, Q5, Q6 |
+| DEFER V2+ | 6 | TMP-TPL-Q3 (TMP-D16), TMP-BIOME-Q1 (TMP-D17), TMP-BIOME-Q4 (TMP-D19), TMP-CONN-Q1 (TMP-D20), TMP-CONN-Q4 (TMP-D22), TMP-LLM-Q6 (TMP-D24) |
+| DEFER V2 with reservation | 4 | TMP-PIPE-Q3 (TMP-D15), TMP-CONN-Q3 (TMP-D21), TMP-LLM-Q2 (V2 approval flow), TMP-LLM-C-Q2 (V2 PoC A/B test) |
+| DEFER V2+30d | 2 | TMP-BIOME-Q2 V3 (TMP-D18), TMP-LLM-C-Q7 (TMP-D25 streaming) |
+| **Total** | **49** | (43 questions + 6 new deferrals registered via closure-pass reservations) |
+
+Total deferral count: TMP-D1..D12 (pre-closure) + new TMP-D15..D22, D24..D25 (closure-registered; D13/D14/D23 skipped to leave gap for V2 PoC discoveries) → ~21 active deferrals.
+
+### Phase 3 review findings applied
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | TMP_006 §9 Open questions section lost in 2026-05-13 license-hygiene revision pass (every other TMP doc retained; TMP_006 dropped) | Restored as §8.5 + RESOLVED at closure pass with 6 questions TR-Q1..Q6 |
+| 2 | `tilemap.density_reduced` info-level rule_id referenced in AC-TMP-9 + TMP-TR-Q4 but missing from §9.2 namespace inventory | Added to §9.2; rule_id count corrected 16 → 17 V1+30d |
+| 3 | `tilemap.biome_fallback_used` INFO event introduced at TMP-BIOME-Q3 resolution; consistent with `tilemap.density_reduced` info-level pattern | Both info-events distinct from error rule_ids; documented in respective question resolution rationale |
+
+### V2-blocking + V3-blocking work registered
+
+- **V2 launch blockers** (must be addressed before V2 enable): PoC validate cacheable-prefix + tool-use + per-object retry empirically (TMP_008b validation); A/B cache strategies (TMP-LLM-C-Q2); confirm cost model (TMP_008b §12 corrected to ~$8.50/reality Y1 post cross-zone context); World Oracle V2 validation pass (TMP-LLM-Q7); approval flow EVT-T8 Forge:ApproveCanonKind (TMP-LLM-Q2)
+- **V2+30d additive**: streaming L4 narrations (TMP-D25); per-template language extensions; KeyBERT migration from TF-IDF (TMP_008b §10)
+- **V3 RMG wizard** scoping (TMP-D1); manual paint UX (TMP-D2); multi-level verticality (TMP-D9)
+
+### Cumulative state post-closure
+
+- 9 feature docs all CANDIDATE-LOCK 2026-05-13 (was 8 DRAFT + 1 DRAFT-split-out)
+- 1 catalog row (52 entries; 29 V1+30d entries ✅ marked; 23 V2/V2+/V3 entries 📋)
+- 4 boundary file updates (ownership-matrix status + namespace count + this changelog + LOCK)
+- Folder closure status: **CLOSED for V1+30d design 2026-05-13**
+- LOCK promotion gated on integration tests + V2 PoC validation
+
+---
+
+## 2026-05-13 (late evening same day) — TMP_008b LLM Contract Spec — sibling-split for I/O contract detail (deep-discuss follow-up: "is in/out contract LLM-friendly?")
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; same-day third lock cycle. Follows user request to deep-discuss LLM-friendliness of TMP_008's I/O contract; adversarial analysis surfaced 4 HIGH + 4 MED gaps (prompt injection vector, no structured-output enforcement, hand-wavy validation feedback, cache strategy not aligned with prompt caching, all-or-nothing retry, L4 cache missing L3-digest, LLM-emitted key phrases unreliable, optimistic cost claims). User chose **"Split into TMP_008 + TMP_008b LLM-contract detail"** to mirror existing `<feature>` / `<feature>b` split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b).
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner None); new `_Last released_` entry
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_tilemap/TMP_008b_llm_contract_spec.md`: NEW ~560 lines — I/O contract detail spec covering all 8 LLM-friendliness gaps:
+    - §1 Why split / cross-ref to TMP_008 architecture
+    - §2 Prompt 3-segment cacheable-prefix structure (system + reality_context cached; tilemap_payload variable) — Anthropic prompt caching aligned; ~30-45% ongoing-cost reduction
+    - §3 Anthropic tool-use structured output (`submit_zone_classifications` + `submit_zone_narrations` tools with strict input_schema); `tool_choice` forces the call; eliminates malformed-JSON / markdown-fence / preamble failure modes
+    - §4 Validation rules + structured per-case error messages (per-object, with received value + allowed-set) — empirically 70-90% retry success vs 20-40% with flat strings
+    - §5 Per-object retry granularity — accept good entries, retry only failing subset; preserve partial successes
+    - §6 Per-object canonical default fallback (suggested_canon_kind[0]); system always succeeds even at 100% LLM failure
+    - §7 Prompt-injection defense — `<author_text>...</author_text>` delimiting + tag-close-escape sanitization + 05_llm_safety 3-intent classifier on raw author input + multi-layer World Oracle check
+    - §8 Cache key derivation — L3 key includes terrain/object digests; **L4 key includes L3-classifications digest** (fixes pre-revision bug where Forge:OverridePlacement on L3 left L4 narration cache stale)
+    - §9 Few-shot examples in system prompt (L3 one-shot + L4 one-shot); empirically ~15-30% quality boost
+    - §10 Deterministic key-phrase extraction post-L4 (TF-IDF V2 / KeyBERT V2+30d) — removed from LLM output; consistent across replays
+    - §11 Closed-enum style hints: `NarrativeTone` (8 V2 variants) + `NarrationLanguage` (5 V2 ISO codes) + `NarrationVoice` (3 variants)
+    - §12 Realistic cost model (corrected) — ~$0.018/L3 call + ~$0.014/L4 call = ~$0.032/tilemap initial; ~$7/reality Y1 (was claimed ~$1; actual ~3× higher)
+    - §13 LLM-friendliness scorecard (pre-revision vs revised; 11 dimensions, all green post-revision)
+    - §14 7 open questions (TMP-LLM-C-Q1..Q7)
+    - §15 Prior Art bibliography (Anthropic Messages API + Tool Use + Prompt Caching docs; OWASP LLM01:2025; Perez & Ribeiro 2022 / Greshake et al. 2023 prompt-injection refs; Self-Refine + Self-Correct retry literature; KeyBERT for key-phrase extraction)
+  - `features/00_tilemap/TMP_008_llm_integration.md`: slimmed — §3-§4 detailed I/O sections replaced with architecture summary + contract cross-ref to TMP_008b (was ~410 lines → ~315 lines)
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: 8 new catalog entries TMP-45..TMP-52 (was 44 entries → 52)
+  - `features/00_tilemap/_index.md`: TMP_008b row added; TMP_008 row updated to "architecture only"; cross-refs to TMP_008b
+
+### Cumulative state post-split
+
+- 9 feature docs in `features/00_tilemap/` (was 8; +1 TMP_008b)
+- 1 catalog row (52 entries TMP-1..TMP-52; was 44, +8 TMP-45..TMP-52)
+- TMP_008 ~315 lines + TMP_008b ~560 lines = ~875 total lines for LLM coverage (was ~410; +465 net lines for contract detail)
+- **4 HIGH + 4 MED LLM-friendliness gaps from `/review-impl` follow-up all closed in TMP_008b**
+
+### Implementation phase note
+
+The contract spec is now PoC-ready: a V2 implementation engineer can read TMP_008b §2-§12 and have a complete I/O contract without re-deriving from architecture principles. The cacheable-prefix structure (§2) + Anthropic tool-use mechanism (§3) + per-case retry feedback (§4) + per-object retry granularity (§5) + injection defense (§7) + L3-digest-in-L4-cache (§8) are the highest-leverage items to validate in PoC. Closed-enum style (§11) + deterministic key phrases (§10) are V2+30d schema-additive — can ship V2 without these and add later.
+
+---
+
+## 2026-05-13 (later same day) — TMP_001..TMP_008 license-hygiene revision pass — restructure as multi-game prior-art survey + rename verbatim-matching shapes + per-doc Prior Art bibliography sections
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; revision pass on existing TMP_001..TMP_008 DRAFT docs in response to user concern about copyleft licensing (VCMI is GPL v2+; LoreWeave is AGPL v3 — technically compatible but cleaner stance is to treat VCMI as one of several surveyed prior-art implementations rather than a derivation source)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in same commit (revision pass; same-day re-claim)
+  - `01_feature_ownership_matrix.md`: 2 ownership rows for `tilemap_view` + `tilemap_template` rewritten — removed "vcmi-derived" / "direct adopt from vcmi" language; renamed `ConnectionKind` (5 variants Guarded/Wide/Fictive/Repulsive/ForcePortal) → `PassageKind` (5 variants Threshold/Open/Hint/Adversarial/Portal); renamed `ZoneType` (6 variants PlayerStart/CpuStart/Treasure/Junction/Sealed/Water) → `ZoneRole` (4 variants V1+30d Wilderness/Hub/Forbidden/Sea + V2+ AllyHome/RivalHome); renamed `*LikeZone` inheritance fields → `inherit_*_from` (5 fields: inherit_treasure_from / inherit_terrain_from / inherit_mines_from / inherit_towns_from / inherit_custom_objects_from); renamed `ETileType` (Free/Possible/Blocked/Used) → `TileState` (Walkable/Open/Obstacle/Occupied); algorithm citations switched to academic literature primary
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** all 8 feature docs rewritten per revision:
+  - `features/00_tilemap/TMP_001_tilemap_foundation.md` (610 → ~700 lines; §1 expanded to multi-game prior-art survey; §1.2 LoreWeave-specific design choices clarified; renamed shapes throughout; §17 Prior Art bibliography appended with academic + genre + LoreWeave-internal cross-refs)
+  - `features/00_tilemap/TMP_002_zone_placement.md` (369 → ~620 lines; algorithm framing restructured from "adapted from vcmi" → academic-primary citations Fruchterman & Reingold 1991, Penrose 1974, Kirkpatrick et al. 1983, Glover 1990, Tarjan 1976, Dijkstra 1959; §10 Prior Art bibliography appended)
+  - `features/00_tilemap/TMP_003_pipeline_modificators.md` (457 → ~580 lines; restructured pipeline pattern as Strategy + Visitor (Gamma et al. 1994) + topological sort (Kahn 1962) + dining-philosophers (Dijkstra 1965); §7 Prior Art bibliography appended)
+  - `features/00_tilemap/TMP_004_template_authoring.md` (501 → ~620 lines; ZoneType → ZoneRole rename throughout; `*LikeZone` → `inherit_*_from` rename; example template updated; BiomeSelectionRules added as author-tunable field on TilemapTemplate; §11 Prior Art bibliography)
+  - `features/00_tilemap/TMP_005_biome_and_obstacles.md` (354 → ~480 lines; biome selection rule restructured from engine-baked "vcmi pattern" → author-tunable `BiomeSelectionRules` with sensible engine defaults; §10 Prior Art bibliography)
+  - `features/00_tilemap/TMP_006_treasure_and_objects.md` (355 → ~440 lines; tiered-loot pattern framed as genre-standard with Diablo + roguelike references; "never seal a gap" anchored to Tarjan 1976 connected-components; §9 Prior Art bibliography)
+  - `features/00_tilemap/TMP_007_connections_and_guards.md` (385 → ~470 lines; ConnectionKind → PassageKind rename; algorithm citations primary-academic; §14 Prior Art bibliography)
+  - `features/00_tilemap/TMP_008_llm_integration.md` (376 → ~420 lines; framing emphasizes LLM-PCG is novel territory with academic refs Sudhakaran et al. 2023, Todd et al. 2023, Charity et al. 2020, Smith et al. 2011; §12 Prior Art bibliography)
+  - `features/00_tilemap/_index.md`: framing changed from "vcmi-RMG inspiration mining" to "multi-game prior art surveyed"
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: catalog entries rewritten — removed all "vcmi-derived" / "direct adopt from vcmi" / "vcmi-aligned" language from entries TMP-1..TMP-43; new entry TMP-44 (V2+ multiplayer ZoneRole variants); algorithm foundations cited per academic refs in catalog preamble; total entries now 44 (was 43; +1 TMP-44)
+  - `features/_spikes/SPIKE_03_tilemap_world_view.md`: graduation status updated to reflect multi-game prior-art framing
+
+### Rename mapping (LoreWeave-distinct naming for verbatim-matching shapes)
+
+| Original (pre-revision; vcmi-verbatim) | Revised (LoreWeave-distinct) | Why renamed |
+|---|---|---|
+| `ConnectionKind { Guarded, Wide, Fictive, Repulsive, ForcePortal }` | `PassageKind { Threshold, Open, Hint, Adversarial, Portal }` | 5-variant partition was functionally identical to vcmi's `EConnectionType`; renamed to LoreWeave-distinct verbs (Threshold = gate; Hint = narrative-only) |
+| `ZoneType { PlayerStart, CpuStart, Treasure, Junction, Sealed, Water }` (6 variants) | `ZoneRole { Wilderness, Hub, Forbidden, Sea }` (4 variants V1+30d; V2+ adds AllyHome/RivalHome) | Matched vcmi `ETemplateZoneType` verbatim; renamed + V1+30d defers multiplayer variants (cleaner V-tier scope) |
+| `*LikeZone` inheritance fields (5 fields with vcmi-camelCase) | `inherit_*_from` (5 fields snake_case + verb-phrase form) | Snake_case + verb-phrase form is Rust-idiomatic; semantically equivalent; not vcmi-verbatim |
+| `ETileType { Free, Possible, Blocked, Used }` | `TileState { Walkable, Open, Obstacle, Occupied }` | Renamed to descriptive game-state terms; standard procedural-level-gen state machine (not vcmi-original) |
+| Hardcoded biome rule "1 mountain + 1-2 trees + lake xor crater + ..." | `BiomeSelectionRules` author-tunable field on TilemapTemplate (engine ships sensible defaults) | Shifts ownership from "vcmi's specific algorithm" to "engine config + author override" |
+
+### Genre prior art survey (TMP_001 §1.1)
+
+Multi-game survey added to TMP_001 §1.1 establishing convergent patterns across the genre:
+- Heroes of Might and Magic III (1999, NWC) — pioneered the zone-graph RMG paradigm
+- Battle for Wesnoth (2003+, GPL v2+) — open-source tile-based TBS
+- Civilization V / VI (Firaxis) — climate-band procedural maps
+- Dwarf Fortress (2002+, Bay 12) — multi-pass deterministic-seed world generation
+- Caves of Qud (2015+, Freehold) — biome composition + set-piece interleaving
+- VCMI (2007+, GPL v2+, open-source HoMM3 reimpl) — cited as one well-documented open-source reference; surveyed alongside the others; not framed as derivation source
+- Roguelike literature (Brogue, DCSS, NetHack) — tile state machines + connectivity invariants
+- EU4/CK3 (Paradox) — large-scale region graphs
+
+LoreWeave-specific design choices (TMP_001 §1.2) explicitly distinguished from genre-convergent patterns: 4-layer LLM augmentation (CSC_001 v3→v4-derived; novel), MAP_001-canonical-derived split, cell-tier-has-no-tilemap-view, schema-additive evolution V-tier ramp, Blake3-deterministic seeding, PassageKind partition, ZoneRole V-tier scope.
+
+### Per-doc Prior Art bibliography sections
+
+Each TMP_001..TMP_008 doc now ends with a Prior Art bibliography:
+- **Academic foundations** — algorithm sources from refereed literature
+- **Genre prior art** — comparable implementations in similar games (HoMM3 + VCMI + Wesnoth + Dwarf Fortress + Caves of Qud + Civ + others as relevant per topic)
+- **LoreWeave internal references** — cross-refs to dependent + related TMP docs and MAP_001/CSC_001/AIT_001/TDIL_001
+
+VCMI is cited consistently as "one well-documented open-source reference implementation" — visible at design-rationale points but never framed as derivation source.
+
+### Cumulative state post-revision
+
+- 8 feature docs ~4,300 lines total (slightly larger than initial seed due to bibliography sections + multi-game prior-art framing; no doc exceeds 800-line cap)
+- 1 catalog row (44 entries TMP-1..TMP-44)
+- 2 boundary file updates (ownership matrix entries rewritten; this changelog entry)
+- 1 SPIKE_03 cross-ref update
+- License-hygiene posture: cleaner separation between LoreWeave design + vcmi as one of multiple surveyed prior-art implementations
+- Implementation phase note: when code is written, MUST be clean-room. Read the algorithm descriptions in the design docs (which cite academic primary sources); do NOT transcribe vcmi C++ to Rust. Engineers may consult vcmi for "is this approach reasonable" sanity checks but must not derive code structure from vcmi source.
+
+---
+
+## 2026-05-13 — TMP_001 Tilemap Foundation DRAFT seed — namespace claim + RealityManifest extension + 4 new EVT-T row groups (SPIKE_03 graduation)
+
+> **⚠ SUPERSEDED 2026-05-13 (same day):** This entry describes the initial DRAFT seed commit. The shape names (`ConnectionKind`/`ZoneType`/`*LikeZone`/`ETileType`) + derivation framing ("direct adopt from vcmi", "adapted from vcmi", "vcmi RMG-inspired") below were superseded by the **license-hygiene revision pass** documented in the entry above (changelog top). Current authoritative names: `PassageKind`/`ZoneRole`/`inherit_*_from`/`TileState` with values Walkable/Open/Obstacle/Occupied. Current framing: multi-game prior-art survey with vcmi as one cited open-source reference, not derivation source. This entry preserved as historical record of the original seed commit.
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; single-commit cycle (DRAFT seed; no Phase 3 review yet — closure pass pending)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in same commit (DRAFT seed only); _Last released_ entry below
+  - `01_feature_ownership_matrix.md`: 2 new aggregate rows (`tilemap_view` T2/Channel non-cell-only + `tilemap_template` T2/Reality) + `tilemap.*` namespace prefix appended to row 125 + `TMP-*` stable-ID prefix row appended after MAP-* + 4 new EVT-T row groups (EVT-T4 sub-types `TilemapBorn`+`ZonesPlaced` + EVT-T3 `aggregate_type=tilemap_view`/`tilemap_template` + EVT-T8 sub-shapes `Forge:RegenTilemap`+`Forge:EditTemplate`+`Forge:OverridePlacement` + EVT-T5/T6 V2 LLM layer reservations)
+  - `02_extension_contracts.md`: §2.X new subsection — RealityManifest extension fields `tilemap_templates: Option<HashMap<ChannelTier, TilemapTemplateRef>>` + `tilemap_defaults: Option<TilemapDefaults>` (BOTH OPTIONAL V1+30d, engine-defaulted) with TilemapDefaults schema sketch
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_tilemap/_index.md`: NEW folder + index (TMP_001..TMP_008 list)
+  - `features/00_tilemap/TMP_001_tilemap_foundation.md`: NEW (core doc; ~700 lines; aggregate `tilemap_view` + `tilemap_template` + 4-layer composition + tile state machine + MAP_001 integration + RealityManifest ext + `tilemap.*` namespace 16+6 rule_ids + axioms TMP-A1..A10 + cross-aggregate consistency TMP-C1..C4 + deferrals TMP-D1..D11)
+  - `features/00_tilemap/TMP_002_zone_placement.md`: NEW (~600 lines; force-directed Fruchterman-Reingold + Penrose tiling + fractalize — adapted from vcmi `CZonePlacer` + `PenroseTiling` + `Zone::fractalize`)
+  - `features/00_tilemap/TMP_003_pipeline_modificators.md`: NEW (~600 lines; modificator pattern + dependency graph + parallel execution + 7 V1+30d modificators catalog — adapted from vcmi `Modificator` base + `RmgMap::addModificators`)
+  - `features/00_tilemap/TMP_004_template_authoring.md`: NEW (~500 lines; full schema + `*LikeZone` inheritance + ZoneType/ConnectionKind enums + example template + schema-additive evolution discipline)
+  - `features/00_tilemap/TMP_005_biome_and_obstacles.md`: NEW (~500 lines; biome obstacle-set architecture + TerrainPainter + ObstaclePlacer detail — direct adopt from vcmi Biome_Format.md)
+  - `features/00_tilemap/TMP_006_treasure_and_objects.md`: NEW (~550 lines; tiered TreasureTierSpec + TreasurePlacer + ObjectManager + "never seal a gap" connectivity invariant — direct adopt from vcmi)
+  - `features/00_tilemap/TMP_007_connections_and_guards.md`: NEW (~500 lines; 5-variant ConnectionKind + 3-pass placement algorithm + dining-philosopher cross-zone locking + water route + monolith fallback — direct adopt from vcmi `ConnectionsPlacer`)
+  - `features/00_tilemap/TMP_008_llm_integration.md`: NEW (~500 lines; L3 LLM zone classifier + L4 regional narration + cost model + 05_llm_safety integration + AIT-A4 hybrid 2-stage reuse; V1+30d schema-reserved, V2 active)
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: NEW namespace claim (43 catalog entries TMP-1..TMP-43; V1+30d active L1+L2 + V2 LLM + V3 RMG wizard reservations; cross-refs to all TMP_001..TMP_008 docs + vcmi source files)
+  - `features/_spikes/SPIKE_03_tilemap_world_view.md`: graduation status added (SPIKE_03 marked "graduated 2026-05-13 → TMP_001"; cross-ref to new TMP folder)
+  - `features/_spikes/_index.md`: SPIKE_03 status updated to "GRADUATED"
+- **Graduated from:** [`features/_spikes/SPIKE_03_tilemap_world_view.md`](../features/_spikes/SPIKE_03_tilemap_world_view.md) DRAFT 2026-04-27
+- **Inspiration:** VCMI Random Map Generator — `lib/rmg/` + `lib/rmg/modificators/` — adapted as foundation tier. Concrete VCMI file refs catalogued in TMP_001 §1.2 adaptation table.
+
+### Architectural decisions captured in this seed
+
+| Decision | Where |
+|---|---|
+| Cell tier has NO `tilemap_view`; CSC_001 16×16 interior authoritative for cells | TMP-A1 |
+| 4-layer composition mirrors CSC_001 v3→v4 (L1 hand-authored + L2 procedural + L3 LLM classifier V2 + L4 LLM narration V2) | TMP-A2 |
+| 5-variant ConnectionKind direct adopt from vcmi (Guarded/Wide/Fictive/Repulsive/ForcePortal) | TMP-A3 |
+| Deterministic seed = blake3(reality_id || channel_id || template_id || seed_offset); replay-deterministic per TDIL-A9 | TMP-A4 |
+| 4-state TileState (Free/Possible/Blocked/Used) direct adopt from vcmi ETileType | TMP-A5 |
+| MAP_001 author-positioned (x, y) is canonical source of truth; TMP_001 derives tile_coord via linear scale + subscribe pattern | TMP-A6 |
+| "Never seal a gap" connectivity invariant — every placement preserves zone path-connectivity | TMP-A7 |
+| Schema-additive evolution V1+30d → V2 → V3 (additive only; no field removal; no field type change; mirror of vcmi additive template format) | TMP-A8 |
+| LLM operates on zone summaries only; never sees raw tiles; cost independent of grid size | TMP-A9 |
+| Modificator pipeline with explicit dependency graph + parallel execution + single-thread debug mode | TMP-A10 |
+| V-tier target: V1+30d L1+L2 procedural pipeline / V2 L3+L4 LLM layers / V3 RMG wizard + paint UX | TMP-1..TMP-43 catalog tier columns |
+
+### V-tier slice scope
+
+| Tier | What ships |
+|---|---|
+| **V1+30d** | Engine-only generation (deterministic). All foundation aggregates + 7 modificators + 6 vcmi-derived zone-placement algorithms + biome obstacle-set + tiered treasure + "never seal gap" invariant. `llm_enabled: false` default. |
+| **V2** | LLM augmentation lights up: L3 zone classifier + L4 regional narration (cached). Cost ~10-15K tokens per tilemap initial; ~$1 per reality one-time. Travel encounters + terrain movement modifiers + sprite atlas pipeline. |
+| **V3** | RMG wizard (author params → seed → full reality bootstrap) + paint UX + multi-level verticality + cross-tier portals. Player-facing reality customization. |
+
+### Notes for next session
+
+- §15 acceptance criteria walk pending (AC-TMP-1..10 placeholder filled but not walked). Closure pass (Phase 3 review + criteria walk) required for CANDIDATE-LOCK.
+- TMP-Q1..Q8 in TMP_001 §12 + TMP-PLACE-Q1..Q3 + TMP-PIPE-Q1..Q4 + TMP-TPL-Q1..Q5 + TMP-BIOME-Q1..Q4 + TMP-TR-Q1..Q6 + TMP-CONN-Q1..Q5 + TMP-LLM-Q1..Q7 open questions across the 8 docs (~40 total) — deep-dive batch resolution at closure pass.
+- Cross-aggregate consistency rules TMP-C1..TMP-C4 need slot allocation in `03_validator_pipeline_slots.md` (deferred; reserved schema only at this seed).
+- Cross-feature integration NOT yet annotated: MAP_001 §7 subscribe-pattern; CSC_001 §11 cell-as-object on tilemap; AIT_001 AIT-A4 reuse; TDIL_001 TDIL-A9 satisfaction; PL_001 §13 travel cost. Annotate at closure pass.
 
 ---
 

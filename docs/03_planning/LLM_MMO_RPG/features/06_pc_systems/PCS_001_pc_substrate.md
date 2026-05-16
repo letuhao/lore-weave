@@ -1,5 +1,8 @@
 # PCS_001 — PC Substrate
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
+> V2+ per-PC `discovered_tiles` fog-of-war reservation (TMP-D3 deferral; tracked per TMP_001 §16 deferrals). When fog-of-war activates V2+, the consumer side reads PCS_001 vision range (per V1+ PCS-D extension covering PC vision/perception attributes) + PC current cell position to compute the `discovered_tiles` set per `(reality_id, pc_id, channel_id)` triple. NO PCS_001 V1+30d surface change; reservation only. PCS_001 PC position lookup (already V1 active via PC's containing cell channel) is the consumer hook; the fog-of-war aggregate itself is TMP-owned. Annotation only. See §19 row in "Consumed by future features".
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
 >
 > `pc_user_binding.current_session: Option<SessionId>` field consumes DF05_001 SessionId — populated when PC is in Active session per DF5-A5 (one Active session per actor); cleared on session-leave or session-close cascade. PCS_001 PC body_memory (PCS-D7 reservation: SoulPrimary xuyên không scenario) feeds DF05_001 LLM persona prompt-assembly during session turns via MemoryProvider trait per §16 SDK contract — `body_memory.{soul,body}.knowledge_tags` informs which knowledge base PC accesses (SoulPrimary 2026 Saigon student vs body 1256 Hangzhou peasant per SPIKE_01 turn 5 literacy slip pattern). Per-PC active-session lookup pattern: `query_session_participation(actor_id=pc, presence ∈ {Connected, Disconnected}, left_fiction_time IS NULL)` — used at PC `/chat` invite to verify DF5-A5 invariant + at cell-leave cascade per PL_001 §13 closure-pass-extension. DF5-A4 PC anchor invariant requires `actor_core.kind == ActorKind::Pc` (DF5-C1 cross-aggregate validator — verifies via PCS_001 + ACT_001 join). NO change to PCS_001 aggregates; CANDIDATE-LOCK status PRESERVED. MEDIUM magnitude — consumer trait import + cross-aggregate validator coordination. Reference: [DF05_001 §3.2 session_participation](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#32-session_participation-t2--reality-sparse-per-session-actor--per-participant) + [DF05_001 §16 SDK Architecture](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#16--sdk-architecture-locked-2026-04-27).
@@ -925,6 +928,7 @@ All Q1-Q10 LOCKED via 6-batch deep-dive 2026-04-27 (1 REFINEMENT on Q5 + 1 RENAM
 - **AI-controls-PC-offline V1+** — activates actor_chorus_metadata for PCs when offline (cross-ref ACT-D1)
 - **A6 V1+** canon-drift detector — reads body_memory.{soul, body}.knowledge_tags (PCS-D7)
 - **PROG_001** combat damage formula — PC takes damage; HP=0 triggers PCS_001 mortality transition
+- **[TMP_001 Tilemap Foundation](../00_tilemap/TMP_001_tilemap_foundation.md) V2+** fog-of-war (TMP-D3 reservation; annotation added 2026-05-14 closure-pass-extension) — when fog-of-war activates V2+, TMP_001 owns the per-PC `discovered_tiles` aggregate per `(reality_id, pc_id, channel_id)` triple; consumer reads PC current cell channel (V1 active via existing PC position) + V1+ PC vision-range attribute (deferred PCS-D-N hook). PCS_001 is data source, not aggregate owner. V1+30d: no surface change.
 
 ---
 

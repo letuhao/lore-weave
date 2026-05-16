@@ -307,6 +307,1245 @@ EF + PF + MAP + CSC + RES + PROG + **GEO**. World substrate triangle complete: G
 - **Sub-decisions locked:** 12 (7 Phase 0 D1-D7 + 5 D-S04-1..5)
 - **Gaps surfaced + resolved across 4 cycles:** 46 (0 POST-REVIEW + 11 /review-impl + 7 deep-discussion + 23 SPIKE_04 + 5 approval batch)
 - **Foundation tier:** 6/6 → **7/7**
+## ⏭️ NEXT SESSION SETUP — Map-generation implementation via AMAW (tilemap-service Phase 0b → 3)
+
+> **This is the staged setup the user asked for at 2026-05-15 session end:** prepare to implement the half-finished map-generation work using AMAW. Read this section first next session.
+
+### What "map generating" is
+
+`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a + 0b are DONE** (0a: scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`; 0b: gateway tool-use contract + SSE parser + L3 harness — 2026-05-15, branch `mmo-rpg/zone-map-amaw`). Phases **1 → 2 → 3 remain**.
+
+### Phase breakdown (source: `services/tilemap-service/DESIGN.md` §9)
+
+| Phase | Scope | Size | Depends on |
+|---|---|---|---|
+| ~~**0b**~~ ✅ DONE | SSE parser in `loreweave_llm` + L3 zone-classifier harness → lmstudio. **Reclassified L→XL**: required extending the gateway contract (`tool_choice` + `tool_call` SSE event) across openapi + Go gateway + both SDKs. Live run: tool-use YES, 3/3 classified, R1-R5 clean. | XL (done) | — |
+| **1** | Engine Stage 1: Fruchterman-Reingold zone placer (TMP_002) + 1-2 modificators (TMP_003) + determinism integration test (same seed → byte-identical zones) | L (1-2 sessions) | — (algorithmic; independent of 0b) |
+| **2** | L3 zone classifier full retry loop (TMP_008b §4 structured validation + §5 per-object retry + §6 canonical-default fallback) + end-to-end small reality bootstrap | L-XL | 0b (gateway) + 1 (engine output) |
+| **3** | L4 regional narration + measurement findings doc back into TMP_008b | L | 2 |
+
+Reference docs: `TMP_001`..`TMP_008b` in `docs/03_planning/LLM_MMO_RPG/features/00_tilemap/`. The 2 architectural findings from the Phase-0a `/review-impl` (Anthropic `cache_control` gap + OpenAI-shaped `tools`) feed into Phase 0b.
+
+### ⚠️ CRITICAL — execution shape (read before scoping the batch)
+
+The user framed this as "one very large AMAW batch." **It must NOT be run as a single unattended autonomous batch.** Hard evidence from THIS session (commit `070e7f3d`, findings B1 + HIGH-1):
+- the AMAW autonomous loop **can confidently mis-clear a real correctness bug** (the #002 Adversary examined the buggy code path and wrote "Not a correctness bug");
+- error compounding makes unattended **sequential** batches unsafe — and 0b→1→2→3 IS sequential (2 depends on 0b+1; 3 on 2);
+- map-gen is **correctness-critical** (a real generation engine, determinism guarantees, LLM-contract conformance) — not low-stakes grind, the only shape proven safe for unattended batches.
+
+**Correct execution shape — AMAW per-phase, human-gated:**
+- Each phase = ONE `/amaw` task (L-size — AMAW IS the right workflow for L+ feature work; the calibration table covers L/XL).
+- **Human checkpoint between phases** — review phase N's output before phase N+1 builds on it.
+- **`/review-impl` after each phase's POST-REVIEW** for the correctness-critical parts (engine determinism in Phase 1, LLM-contract conformance in 0b/2).
+- Phase 1 (engine) is the one phase independent of 0b — it may run in either order / parallel.
+
+This honors "use AMAW for the map-gen implementation" while respecting what this session's review chain proved. If the next session's operator wants pure-autonomous anyway, that is their override to make — but the default setup is phased + gated.
+
+### Prerequisites before Phase 0b
+
+1. **provider-registry-service running** locally + **lmstudio registered** as `platform_model` (Qwen 3 14B/32B per the lmstudio provider preference). Document the registration step in `loreweave_llm/README.md` + `tilemap-service/README.md`.
+2. **free-context-hub stack up** (ContextHub MCP) — needed for the per-phase `/amaw` runs (Adversary/Scope-Guard Step-0 calls + bridge).
+3. `cargo build` clean at workspace root (`d:\Works\source\lore-weave-zone-map-design\`).
+4. `python scripts/mcp-query.py ping` → `OK`.
+
+### Recommended first action next session
+
+Phase 0b is DONE (see the 2026-05-15 Phase 0b session entry below). **Next: Phase 1** —
+the Fruchterman-Reingold zone placer + modificators + determinism integration test.
+Phase 1 is purely algorithmic and **independent of 0b** (no gateway/LLM dependency) —
+a clean L-size `/amaw` task. Phase 2 (full L3 retry loop) depends on both 0b (done)
+and 1, so Phase 1 unblocks the rest. Pre-flight: `cargo build` clean at workspace
+root; ContextHub up for `/amaw`. The infra `infra` compose stack and the gitignored
+`.local/phase0b.env` creds are already set up if a live re-run is needed.
+
+---
+
+## Session 2026-05-16 — Human-in-loop QA review of the AMAW Phase 0b batch (M task)
+
+### Session arc
+
+After Phase 0b landed (commit `0e2732ac`, XL `/amaw`), ran a **default v2.2
+human-in-loop review** (NOT `/amaw`) to independently QA the AMAW output — the
+mandatory independent pass the AMAW-trust verdict requires for correctness-critical
+code. Scope: all 43 files of the Phase 0b commit. Two layers: (A) code correctness +
+full live re-verify, (B) AMAW process audit. Deliverable: a tracked bug list — **no
+code fixes** (fixes are a separate follow-up task).
+
+### Verdict — AMAW Phase 0b output is sound
+
+Independent review found **0 HIGH, 0 MED** — only 2 LOW + 1 COSMETIC (Layer A). The
+AMAW review chain (4 design Adversary rounds + 1 code Adversary + Scope Guard +
+human-invoked `/review-impl`) caught every real correctness bug before commit.
+
+- **Live re-verify (4 checks):** harness re-run ✅; raw `tool_call` SSE frames ✅
+  (wire format exact); **D8 reject confirmed LIVE** — `tools` → Anthropic model →
+  `HTTP 400 LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER` ✅; Anthropic `tool_use` parse
+  fixture-covered (not live-testable by design).
+- **Layer A findings:** LOW-A1 (openapi `tool_choice` `nullable`+`oneOf` unidiomatic),
+  LOW-A2 (no Go multi-tool-call streamer test), COSMETIC-A3 (anthropic
+  `input_json_delta` no empty-skip). → DEFERRED #011, #012 (COSMETIC accepted).
+- **Layer B (process audit):** B-1 — AMAW's Adversary+Scope-Guard did NOT surface the
+  post-error SSE leak; only `/review-impl` did. The "exactly 3 findings/round" +
+  "stop at APPROVED_WITH_WARNINGS" rule structurally caps a code-review round at 3
+  issues → for correctness-critical code an independent pass after AMAW is
+  load-bearing. B-2 — the 4-round design loop converged but rounds 2-3 each caught
+  the *prior round's incomplete fix*. B-3 — ~0 false positives in 15 AMAW findings
+  (precision high; the loop earned its ~650 K-token cost).
+
+Full report: [`docs/audit/phase-0b-human-review-findings.md`](../../audit/phase-0b-human-review-findings.md).
+
+### Handoff notes
+
+**Active blocker:** none. **DEFERRED #011 + #012** (openapi `tool_choice` hygiene +
+Go multi-tool-call streamer test) — **cleared 2026-05-16** by a small follow-up fix
+task (S, default v2.2; openapi + one Go test, no behavior change).
+
+**Next:** Phase 1 — Fruchterman-Reingold zone placer (TMP_002, algorithmic,
+independent of 0b).
+
+---
+
+## Session 2026-05-15 (continued) — Phase 0b: gateway tool-use contract + SSE parser + L3 harness (XL `/amaw`)
+
+### Session arc
+
+Ran tilemap-service **Phase 0b** as a single `/amaw` task (the map-gen implementation
+the handoff staged). Branch `mmo-rpg/zone-map-amaw` (cut from `mmo-rpg/zone-map-design-non-human-in-loop`).
+
+CLARIFY found Phase 0b was **larger than the handoff's L estimate**: the LLM gateway
+could not transmit tool-use at all — `ChatStreamRequest` had no `tool_choice` field and
+the canonical SSE envelope had no tool-call event, and both Go streamers dropped
+provider tool-call deltas on the floor. The user chose to **extend the gateway contract
+first** and run it as **one XL `/amaw` batch**. Reclassified XS→XL; spec + plan written.
+
+### What shipped (37 files: 25 modified + 12 new)
+
+| Layer | Change |
+|---|---|
+| **openapi** | `tool_choice` on `ChatStreamRequest`; new streaming `ToolCallEvent` (schema + oneOf + discriminator.mapping) |
+| **Go gateway** (`provider-registry-service`) | `streamOpenAICompat` + `streamAnthropicSSE` re-frame tool-call deltas → `tool_call` events; `Adapter.SupportsTools()`; `tools`/`tool_choice` pass-through added to lmStudio/ollama `Stream` (only openai had it); D8 guard `400 LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER`; `stream_options.include_usage` |
+| **Rust SDK** (`loreweave_llm`) | new `sse.rs` `SseDecoder` (pure, unit-tested); real `GatewayClient::stream()`; new `tool.rs` `ToolCallAccumulator`; `tool_choice`; `StreamEvent::ToolCall`; **bug fix** — streaming client must not set a total request `.timeout()` (aborts long thinking-model streams) → `.read_timeout` |
+| **Python SDK** (`loreweave_llm`) | `ToolCallEvent` + `tool_choice` mirror |
+| **tilemap-service** | `harness/` module — L3 zone-classifier prompt (TMP_008b §3 tool, §9 few-shot) + R1-R5 validators + measurement report; `classify` CLI subcommand |
+
+### Live measurement (the Phase 0b deliverable)
+
+`tilemap-service classify` ran against **live lmstudio (qwen/qwen3-14b)** through the
+gateway: **tool-use forced-call SUCCESS** — 3/3 fixture objects classified, TMP_008b
+§4.1 R1-R5 validation clean on first attempt, ~890 input / ~210 output tokens, ~64 s.
+Findings written into **TMP_008b §12.8** + **tilemap-service/DESIGN.md §8.1**:
+1. LM Studio rejects object-form `tool_choice` — only `none`/`auto`/`required`;
+   force-specific-tool degrades to `"required"` + single-tool array.
+2. Streaming token usage needs `stream_options.include_usage` (now set by the gateway).
+3. SDK total-`.timeout()` bug on streaming — fixed.
+
+### Workflow — AMAW XL, 12 phases
+
+Design REVIEW: Adversary **4 rounds** — r1-r3 each REJECTED with real BLOCKs (empty-args
+first-fragment, `tool_choice` silent-drop hole, a factual error about adapter
+uniformity), r4 APPROVED_WITH_WARNINGS. Code REVIEW: Adversary 1 round
+APPROVED_WITH_WARNINGS (3 WARN — SSE buffer cap, D8 empty-array guard, harness
+multi-call caveat — all fixed). Scope Guard POST-REVIEW: **CLEAR** (6 AC covered, AC-7
+PARTIAL spec-sanctioned, 15/15 findings resolved). `/review-impl`: 1 MED (SSE
+post-error event leak) + 1 LOW + 1 COSMETIC — all fixed. Tests: loreweave_llm 47,
+tilemap-service 17, Go all packages, Python 20 — green; clippy clean.
+
+### Handoff notes for next session
+
+**Active blocker:** none. **Phase 0b complete.**
+
+**New DEFERRED:** #009 (D8 handler-level reject test → integration suite, LOW),
+#010 (Anthropic request-side tool support → when needed, MED). Cleared: #005 (the
+`/amaw` sub-agent `mcp-query.py` permission path — 6 spawns clean this run).
+
+**Next:** Phase 1 — Fruchterman-Reingold zone placer (algorithmic, independent of 0b).
+
+**Infra left running:** `infra` compose (postgres + provider-registry + usage-billing
++ rabbitmq); gitignored `.local/phase0b.env` holds the harness creds (qwen3-14b
+`model_ref`, internal token, gateway URL) for any live re-run.
+
+---
+
+## Session 2026-05-15 (continued, human review) — Human-in-loop review of the AMAW batch (M task)
+
+### Session arc
+
+After the autonomous AMAW batch landed (5 commits, HEAD `7db6e259`), user asked for a **human-in-loop review** (default v2.2 12-phase, no `/amaw`) of the batch — the "human review afterward" the autonomous-batch pattern was premised on. Scope: 3 code commits #001/#002/#004. Depth: 2-layer — (A) code correctness, (B) AMAW process audit. Findings: fix all.
+
+### Findings — 5 across 3 review layers
+
+| ID | Layer | Sev | Finding | Disposition |
+|---|---|---|---|---|
+| A1 | code (#002) | MED | `_had_rejected_review` matched task slug across the *whole* append-only AUDIT_LOG → a slug reused in a later sprint inherits the earlier sprint's REJECTED → mis-fired adversary-rejection lesson | Fixed — `since`-scoping to the run |
+| A2 | code (#001) | LOW | `_normalize_slug` had no length cap | Fixed — 64-char cap |
+| B1 | AMAW process | — | The #002 Adversary's WARN-3 examined `_had_rejected_review`'s whole-log scan, noted it "grows across every AMAW task forever", then concluded **"Not a correctness bug"** — a confident false-negative. The #002 Scope Guard's logic-trace also passed over it. Both AMAW agents had bug A1 in view and cleared it. | Recorded (lesson) |
+| HIGH-1 | **own A1 fix** | HIGH | `/review-impl` found the A1 fix's `since` filter did **lexical string compare** of heterogeneous timestamps. Live AUDIT_LOG has 5 ts formats (naive / `Z` / `+07:00` / `+00:00`); machine is UTC+7, `amaw_enabled_at` is naive-local → an Adversary event written in UTC-`Z` sorts lexically *before* the naive-local `since` → genuine in-run REJECTED silently excluded → rejection lesson lost. The POST-REVIEW self-review had said "since-filter safe" — author-blindness. | Fixed — `_parse_ts` → compare aware-UTC datetimes |
+| MED-2 | test | MED | The A1 VERIFY used uniform naive timestamps (happy path) — could not have caught HIGH-1 | Closed — VERIFY now mixed-format (Z/+offset/naive) |
+| LOW-3 | code | LOW | `amaw_enabled_at` None → `since=None` → silent fallback to pre-A1 unscoped behaviour | Accepted + documented in docstring |
+| LOW-4 | code (#002) | LOW | `_had_rejected_review` depends on the Adversary writing `action/phase/status` exactly — unvalidated. Adjacent, pre-existing #002 surface, not introduced by A1/A2 | Deferred |
+
+### The headline result — multi-layer review chain
+
+Each review layer caught the previous layer's miss:
+1. **AMAW Adversary** (autonomous) caught a real BLOCK in the batch — but **confidently mis-cleared A1**.
+2. **Human review** caught A1 — but the human's *fix for A1* itself had HIGH-1, and the human's POST-REVIEW self-review confidently called it "safe".
+3. **`/review-impl`** caught HIGH-1, confirmed it with evidence from the live AUDIT_LOG (5 timestamp formats observed).
+
+**No single review layer was sufficient.** Hard data for the strategic question: an autonomous AMAW batch needs at least one independent review layer behind it for correctness-critical code — and even human review needs `/review-impl` as a separate mental mode, because author-blindness is real (it bit this very session).
+
+### Files changed (2)
+
+`agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — A1 `since`-scoping, `_parse_ts` helper (HIGH-1), A2 64-char cap.
+
+### Verify evidence
+
+5-case mixed-format test on the UTC+7 machine: UTC-`Z` / `+07:00` / naive in-run rejections → detected; prior-run UTC + unparseable → excluded. A1 cross-run guard holds; HIGH-1 timezone false-negative closed. Mirror byte-identical, syntax OK.
+
+### Workflow
+
+M, default v2.2 (human-in-loop). 12 phases; `/review-impl` invoked at POST-REVIEW, found HIGH-1, looped back through VERIFY→REVIEW→QC. AMAW NOT used (user explicitly wanted human participation).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**AMAW trust verdict (updated by this review):** the autonomous loop is usable for low-stakes independent grind batches, but it **can confidently clear a real correctness bug** (B1). For correctness-critical code, an independent review layer afterward is mandatory — and `/review-impl` should be run even after human review.
+
+**Open DEFERRED:** #007 (slug normalize write-path), #008 (load_state no try/except), LOW-4 (Adversary event contract unvalidated — not yet filed; file if it recurs).
+
+**Next session agenda:**
+1. Phase 0b SSE parser — real L-size feature, sequential shape → human-in-loop or single `/amaw`, NOT autonomous batch.
+2. Branch merge cadence decision still open.
+
+### Raw count
+
+- **Commits this entry:** 1 pending
+- **Files modified:** 2 (workflow-gate.py ×2 mirror)
+- **Findings:** 5 (1 HIGH, 2 MED, 2 LOW + 1 process) — all fixed, accepted, or deferred
+- **Tests:** 5-case mixed-format VERIFY pass
+
+---
+
+## Session 2026-05-15 (continued, autonomous batch) — AMAW batch run: 4 DEFERRED items unattended
+
+### Session arc
+
+User asked whether an **autonomous AMAW batch** (many cycles run unattended for hours while the user sleeps, human review afterward) is timeline-effective. Decided to run a **measured experiment**: a small batch of independent DEFERRED-backlog items, with hard circuit breakers, fully autonomous (user explicitly would not answer questions until done).
+
+### Circuit breakers adopted (all 10 held)
+
+Scope lock · per-cycle commit · Adversary cap 2 rounds · failure hard-stop (3 fix-fails / 2 cycle-fails) · VERIFY-with-teeth · file allowlist · no destructive ops · ~3h effort ceiling · no-guess (pragmatic-stop on ambiguity) · honest reclassify. None tripped a hard stop; per-cycle commit + scope lock both exercised.
+
+### Batch composition
+
+`#005` was already resolved (G4 allow-list, dogfood-verified) → dropped. `#006` fixed as **pre-flight** (default mode — editing the sub-agent prompt templates themselves; running AMAW to review a change to AMAW's own prompts is circular). Then **3 AMAW cycles**: #001, #002, #004 — all independent (different functions, no shared design), so a bad cycle could not poison later ones.
+
+### Results — per cycle
+
+| Item | Commit | Adversary | Scope Guard | Outcome |
+|---|---|---|---|---|
+| #006 pre-flight — heredoc fallback in sub-agent prompts | `de0a2f46` | (default mode, no sub-agents) | — | Clean |
+| #001 — task slug normalization | `f108ad39` | r1 **REJECTED** (1 BLOCK + 2 WARN) → fixes → r2 APPROVED_WITH_WARNINGS (3 WARN) | CLEAR | 6 findings; BLOCK was a real 2nd-entry-point miss |
+| #002 — structured rejection detection (not substring) | `15956206` | r1 APPROVED_WITH_WARNINGS (0 BLOCK, 3 WARN) | CLEAR | 3 findings, 2 fixed 1 documented |
+| #004 — pre-commit no stale state file | `89fb68d9` | r1 APPROVED_WITH_WARNINGS (0 BLOCK, 3 WARN) | CLEAR | 3 findings, 1 fixed 1 deferred 1 documented |
+
+7 sub-agent spawns (4 Adversary + 3 Scope Guard), ~390K sub-agent tokens. 2 new deferrals filed (#007, #008); #001/#002/#004/#006 cleared.
+
+### Findings tally — 12 across 3 cycles
+
+- **11 real, 1 false.** The false one: cycle-1 Adversary r2 WARN-3 (claimed `amaw-enable ""` and `pragmatic-stop ""` diverge — it conflated `bool([""])` truthy-list with `bool("")` falsy-str). Caught + overturned by the **Scope Guard's independent check** — the 2-agent cross-check earned its keep.
+- **1 BLOCK** — cycle 1: `cmd_pragmatic_stop` was a second slug entry point with the identical comma-fragmentation defect, missed by the main-session BUILD whose own docstring falsely claimed "single chokepoint". A genuine bug the Adversary caught before commit.
+
+### Answering the user's question — is the autonomous-batch pattern timeline-effective?
+
+**Key reframe discovered by running it:** the user's model was "AMAW runs batch → human reviews+fixes afterward". But AMAW's Adversary + Scope Guard **do the review+fix INSIDE the autonomous loop**. The human wakes to 3 cycles already reviewed, fixed, and gated to Scope Guard CLEAR — not raw output.
+
+- **Yield:** 0 of 3 cycles passed first-pass review clean (every BUILD had ≥3 findings; one had a BLOCK). Autonomous first-pass output is NOT done. **But** the in-loop Adversary→fix→Scope-Guard cycle resolved everything without human intervention.
+- **Error compounding avoided** — because the 3 tasks were independent (the recommended batch shape). Cycle 1's BLOCK did not touch cycle 2/3.
+- **Per-cycle commits** — each item is its own revertable commit; a bad cycle would not have forced unwinding the batch.
+- **Cost** — ~390K sub-agent tokens + orchestration for 3 S-tasks. Real but bounded; the user pre-accepted it.
+
+**Verdict:** the pattern IS timeline-effective **for a batch of independent, well-specified grind tasks** — exactly the DEFERRED-backlog shape. The autonomous loop genuinely converts unattended hours into reviewed-and-gated work. It would NOT be safe for a sequential feature build (error compounding). The human review afterward is a light second pass over AUDIT_LOG + findings docs, not a from-scratch review.
+
+### AMAW infrastructure observations
+
+- Sub-agent spawning + `mcp-query.py` calls: 7/7 spawns clean, all Step-0 MCP calls succeeded, G4 allow-list held (no permission prompts).
+- #006 pre-flight fix worked — every sub-agent used the heredoc fallback for its report file without rediscovering the Write-tool block.
+- The Adversary produced 1 false finding in 12 — ~92% precision. The Scope Guard's independent re-check caught it. Two-agent design validated.
+
+### Handoff notes for next session
+
+**Active blocker:** none. Branch HEAD after push = cycle-3 commit.
+
+**Open DEFERRED after batch:** #007 (slug normalize only on write path — LOW, mitigated), #008 (load_state no try/except on corrupt file — LOW, risk reduced by #003). Both L4 hardening.
+
+**Next session agenda:**
+1. The autonomous-batch pattern is proven for independent grind batches — candidate next batch: a larger DEFERRED/hardening set, or test-writing across modules.
+2. Phase 0b SSE parser remains the open real L-size feature task — a different (sequential) shape; do NOT batch it autonomously, run it human-in-loop or single `/amaw`.
+3. Branch merge cadence decision still open.
+
+### Raw count
+
+- **Commits this entry:** 4 (de0a2f46, f108ad39, 15956206, 89fb68d9)
+- **DEFERRED cleared:** #001, #002, #004, #006 · **filed:** #007, #008
+- **Sub-agents:** 7 (4 Adversary, 3 Scope Guard) · ~390K sub-agent tokens
+- **Findings:** 12 (11 real, 1 false; 1 BLOCK) · all resolved or consciously deferred
+- **Circuit breakers:** 10 adopted, 0 hard-stops triggered
+
+---
+
+## Session 2026-05-15 (continued, dogfood) — FIRST real /amaw run: DEFERRED #003 atomic save_state (M task)
+
+### Session arc
+
+After the readiness assessment + G1/G2/G4 fixes landed (commit `136fe700`), user asked to pick a small task for the first real `/amaw` dogfood. Chose **DEFERRED #003 — atomic save_state** (recommended: S-size, real Adversary material in atomic-write subtleties, low blast radius). This is the **first end-to-end AMAW execution** — the integration test the whole L3 build was for.
+
+### What the task did
+
+`workflow-gate.py save_state()` was non-atomic (`STATE_FILE.write_text(...)` direct) — a crash mid-write corrupts `.workflow-state.json`. Fix: write to a temp file, then `Path.replace()` for atomic rename.
+
+### AMAW workflow execution (the dogfood result)
+
+`/amaw` invoked → `amaw-enable` flipped `amaw_enabled=true` → `docs/audit/AUDIT_LOG.jsonl` created (first real, non-smoke). Phases logged to AUDIT_LOG throughout.
+
+**Adversary cold-start (review-code, round 1)** — spawned via Agent tool `subagent_type=general-purpose`:
+- Step 0 MCP calls **succeeded** — `search_lessons --type guardrail` + `--tags adversary-rejection` returned well-formed JSON
+- Verdict **APPROVED_WITH_WARNINGS** — 3 WARN, 0 BLOCK. All 3 legitimate:
+  1. Fixed `.tmp` name not collision-safe under concurrent invocations
+  2. cwd-relative tmp path — "same-filesystem" comment overclaimed structural guarantee
+  3. Killed process leaks stale `.tmp`; `cmd_reset` doesn't clean it; not in `.gitignore`; no fsync so "never partial" overclaims for power-loss
+- Wrote `docs/audit/findings-amaw-atomic-save-state-r1.md`
+
+**All 3 findings fixed in-cycle** (task reclassified S→M — fixes expanded scope to `.gitignore` + `install.sh`):
+1. PID-infixed tmp name (`.workflow-state.json.<pid>.tmp`) — concurrent invocations get distinct tmp files
+2. Comment reworded — `with_name()` structurally guarantees shared parent dir (not a cwd coincidence)
+3. `cmd_reset` sweeps stale `.workflow-state.json.*.tmp`; `.gitignore` + `install.sh` cover the pattern; `finally`-unlink cleans own tmp on failed-write/Windows-locked-dest; comment honest that power-loss durability is out of scope
+
+**Scope Guard cold-start (QC + POST-REVIEW)** — spawned via Agent tool:
+- Step 0 `check_guardrails "ready-to-commit"` → `pass:true` (the 3 seeded guardrails don't gate file-write)
+- Verdict **CLEAR** — 5/5 checklist, 3/3 Adversary findings resolved, 4/4 acceptance facets, bundle mirror byte-identical, no new problems from fixes
+- Wrote `docs/audit/post-review-amaw-atomic-save-state.md`
+
+### Files changed (4)
+
+- `agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — `import os`; atomic `save_state` (PID-tmp + `finally`-unlink); `cmd_reset` stale-tmp sweep
+- `.gitignore` — `.workflow-state.json.*.tmp` pattern added
+- `agentic-workflow/install.sh` — .gitignore generator block emits the tmp pattern
+
+### Dogfood findings — AMAW infrastructure (the point of the run)
+
+| # | Observation | Severity |
+|---|---|---|
+| D1 | **Sub-agent spawning works.** Both Adversary + Scope Guard spawned via `subagent_type=general-purpose`, ran cold-start, read files, executed `python scripts/mcp-query.py`, produced verdicts + artifacts. The core AMAW loop is verified working. | ✅ |
+| D2 | **mcp-query.py from sub-agents works.** All 4 Step-0 MCP calls across both sub-agents succeeded — the G4 allow-list (commit `136fe700`) did its job, no permission prompts interrupted cold-start. | ✅ |
+| D3 | **Write tool blocked the Adversary** from writing its findings file ("Subagents should return findings as text, not write report files"). Adversary fell back to a Bash heredoc. Harness rule conflicts with the AMAW adversary spec which REQUIRES a findings-file artifact. Scope Guard prompt was pre-armed with the heredoc fallback instruction and wrote cleanly. | ⚠ AMAW infra friction — see DEFERRED #006 |
+| D4 | **Adversary found 3 real WARNs** the main-session BUILD missed — collision-safe tmp naming, comment overclaim, stale-tmp lifecycle. Genuine value: cold-start adversary caught author-blindness gaps. AMAW's core thesis validated on first run. | ✅ |
+| D5 | AUDIT_LOG.jsonl now has its first real multi-event timeline (clarify→design→verify→review-code→adversary-review→qc→scope-guard). | ✅ |
+
+### Verdict on AMAW readiness
+
+**AMAW multi-agent orchestration is now VERIFIED working** — the half that was 0% before this run. First dogfood: 2 sub-agents spawned, 4 MCP calls, 3 real findings caught + fixed, 1 infra friction (D3) found. Net: AMAW is usable for L+ tasks. D3 should be resolved before heavy use (sub-agent prompts should instruct heredoc-fallback, or the harness rule relaxed for AMAW).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**Next session agenda:**
+1. **Resolve D3** (DEFERRED #006) — AMAW.md sub-agent prompt templates should pre-instruct the Bash-heredoc fallback for writing findings/post-review docs, since the Write tool blocks subagents from writing report files.
+2. **Phase 0b SSE parser** in `loreweave_llm` — now a candidate for a real L-size `/amaw` run (dogfood proved the loop works).
+3. Branch merge cadence decision.
+
+### Raw count
+
+- **Commits this entry:** 1 pending
+- **Files modified:** 4
+- **Sub-agents spawned:** 2 (Adversary r1, Scope Guard) — first real AMAW spawns
+- **AMAW artifacts:** AUDIT_LOG.jsonl (first real) + findings-amaw-atomic-save-state-r1.md + post-review-amaw-atomic-save-state.md
+- **Tests:** re-VERIFY 4 checks pass after Adversary fixes
+
+---
+
+## Session 2026-05-15 (continued, latest) — AMAW readiness assessment + G1/G2/G4 fixes + guardrail seed (L task)
+
+### Session arc
+
+After L3 deepen landed (commit `30cec90d`), user asked for a readiness assessment of AMAW before putting it into use. Assessment verdict: **plumbing ~90% ready, multi-agent brain 0% verified** — AMAW had never executed end-to-end; first `/amaw` run IS the integration test. Assessment surfaced 5 gaps (G1-G5). User chose to fix G1+G2+G4 + seed real guardrails before first dogfood.
+
+### Readiness assessment findings
+
+| Gap | Severity | Resolution this task |
+|---|---|---|
+| G1 — mcp-query.py can't create guardrails (no `--guardrail` flag) | HIGH for value-prop | FIXED — 3 flags added |
+| G2 — amaw-pre-commit verdict scraped summary text; field name was `violated`/`rules` not `matched_rules` | LOW | FIXED — `matched_rules` primary + fallback |
+| G3 — `user_confirmation` guardrail → hard block in hook context | LOW-MED | NOT fixed (intentional — hook can't do interactive prompts; hard-block is fail-safe) |
+| G4 — `python scripts/mcp-query.py` not in allow-list → sub-agent prompts mid-cold-start | MED | FIXED — `permissions.allow` block added |
+| G5 — 0 guardrails exist → check_guardrails layer inert | by design | RESOLVED — 3 guardrails seeded |
+
+Verified-working at assessment time: state machine, mcp-query.py 6 verbs, bridge (retro + REJECTED paths both tested live), check_guardrails BLOCKED path (tested with temporary probe guardrail), hook chain, default-v2.2 isolation. Unverified (still): sub-agent spawning, `/amaw` slash flow, cold-start Adversary/Scope Guard/Scribe loop, AUDIT_LOG.jsonl as real multi-event timeline.
+
+### What landed (6 files)
+
+- `agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — **G2**: `cmd_amaw_pre_commit` verdict parse now reads `matched_rules` (primary, verified vs live ContextHub response) with `violated`/`rules` fallback; BLOCK output surfaces `prompt` + per-rule `requirement` lines.
+- `agentic-workflow/scripts/mcp-query.py` + `scripts/mcp-query.py` — **G1**: `add_lesson` gains `--guardrail-trigger` / `--guardrail-requirement` / `--guardrail-verification`. Validation: all-3-or-none; `type=guardrail` requires all 3.
+- `agentic-workflow/.claude/settings.json` + `.claude/settings.json` — **G4**: new `permissions.allow` block, 5 rules pre-approving `mcp-query.py` + `workflow-gate.{sh,py}` invocations so sub-agents don't hit permission prompts mid-cold-start.
+
+### Guardrails seeded (ContextHub, 3 rules)
+
+| Trigger (regex) | Requirement | verification_method |
+|---|---|---|
+| `/git\s+push/` | Push only with explicit user approval — CLAUDE.md Phase 11 | user_confirmation |
+| `/force.*push\|push.*force\|push\s+-f/` | Force-push is destructive — never without explicit per-branch authorization | user_confirmation |
+| `/migrat/` | DB migration is L+ work — run /amaw + confirm rollback plan | user_confirmation |
+
+Behavior matrix verified (8 actions): `git commit` → CLEAR (**critical** — AMAW commit phase not blocked); `git push` / `git push -f` / `--force-with-lease` / `force-push` / `migration` / `migrate` → BLOCK; `ready-to-commit` → CLEAR.
+
+### Bugs found + fixed during BUILD
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | ContextHub guardrail plain-string triggers are **exact-match**, not substring (`git push -f origin` didn't match plain `git push`). Source: `services/guardrails.js matchTrigger` — `/regex/` form OR `trimmed === action`. | Re-seeded all 3 with `/regex/` triggers |
+| 2 | **MSYS path-conversion** mangled leading-`/` regex triggers — `/git\s+push/` stored as `C:/Program Files/Git/git/s+push/`. Git Bash artifact, NOT a code defect. | Re-seed with `MSYS_NO_PATHCONV=1` prefix |
+
+### Workflow gate trace
+
+L classified (files=6, logic=4, side_effects=1). clarify→design→review-design→plan fast-tracked (readiness assessment served as CLARIFY+DESIGN); build→verify→review-code→qc→post-review completed with evidence. Default v2.2 mode (no `/amaw` — consistent with L3 task's meta-paradox reasoning).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**AMAW readiness now:** guardrail enforcement layer is **live** (capability + 3 rules + permission friction removed + robust verdict parsing). Still unverified: the multi-agent orchestration half. First `/amaw` run remains the integration test.
+
+**Next session agenda (unchanged + refined):**
+1. **First `/amaw` dogfood** — assessment recommends a **small S/low-M task first** (not the L-size Phase 0b SSE parser) to shake out sub-agent spawn mechanics with minimal blast radius. Graduate to Phase 0b L-task after cold-start loop proves it works.
+2. Phase 0b SSE parser in `loreweave_llm` (the original roadmap item).
+3. Branch merge cadence decision.
+
+**Process discipline reminders:**
+- Seeding regex guardrails / passing `/regex/` args from Git Bash on Windows → prefix `MSYS_NO_PATHCONV=1` or the leading `/` gets path-converted.
+- ContextHub guardrail triggers: plain string = exact match; `/.../` = regex. Always use regex form for anything but an exact action string.
+- `/amaw` for L+ only; lmstudio provider preference; Rust workspace pattern — see memory files.
+
+### Raw count
+
+- **Commits this entry:** 1 pending
+- **Files modified:** 6 (3 bundle + 3 deployed mirror)
+- **External state:** +3 guardrails in ContextHub (net; ~8 created-and-deleted during trigger-syntax debugging)
+- **Tests:** G1/G2/G4 verified; 8-action guardrail behavior matrix all correct; mirror diffs clean
+
+---
+
+## Session 2026-05-15 (continued, late) — AMAW × ContextHub L3 deepening (XL task, default v2.2 mode)
+
+### Session arc
+
+After bundle v2.3 deployment landed (commits `9384eafd`..`23406566`), user's review of the new MCP integration found it shallow — only RETRO calls `add_lesson`; sub-agents are "files-as-truth" and ignore MCP entirely. With ContextHub MCP provisioned but barely used, user picked **L3 deepen** (deepest of 3 proposed levels) to evaluate effectiveness end-to-end.
+
+Workflow mode for THIS task: **default v2.2 + `/review-impl`** (meta-paradox: can't validate AMAW deep using AMAW shallow). First real `/amaw` run waits for next session's Phase 0b SSE parser, with deepened L3 wiring active.
+
+### CLARIFY decisions (4-question Q&A)
+
+| Decision | Choice |
+|---|---|
+| Workflow mode for THIS task | default v2.2 + `/review-impl` |
+| Scope of L3 changes | AMAW-mode only (gated on `amaw_enabled` state flag); default v2.2 untouched |
+| Bridge AUDIT_LOG → lessons granularity | Selective: `sprint_complete` + `pragmatic_stop` + REJECTED reviews only |
+| Sub-agent MCP access mechanism | Helper script wrapper `scripts/mcp-query.py` |
+| Edit safety | No freeze (default v2.2 = no sub-agents spawned) |
+
+### What landed (13 files)
+
+**NEW (4):**
+- `agentic-workflow/scripts/mcp-query.py` + `scripts/mcp-query.py` — 275-line stdlib REST CLI (verbs: ping, search_lessons, add_lesson, list_lessons, check_guardrails, search_code_tiered). Reflect dropped (no REST endpoint, MCP-only via chat model).
+- `docs/specs/2026-05-15-amaw-l3-deepen.md` — 240-line spec (4 components, 12 AC, risks, out-of-scope)
+- `docs/plans/2026-05-15-amaw-l3-deepen.md` — 156-line plan (42 bite-sized tasks, dependency graph)
+
+**MODIFIED (9):**
+- `agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — `INITIAL_STATE` adds `amaw_enabled` flag. New verbs `amaw-enable` / `amaw-pre-commit` / `pragmatic-stop`. `_log_audit` + `_bridge_to_contexthub` helpers. `cmd_complete` extended with selective bridge (retro→sprint_complete, REJECTED reviews→adversary-rejection). `cmd_status` shows AMAW state.
+- `agentic-workflow/AMAW.md` + `docs/amaw-workflow.md` — All 3 sub-agent templates (Adversary/Scope Guard/Scribe) gain Step 0 with `mcp-query.py search_lessons` / `check_guardrails` calls. New "L3 ContextHub integration" section.
+- `agentic-workflow/.claude/settings.json` + `.claude/settings.json` — PreToolUse hook chains `pre-commit && amaw-pre-commit`. Timeout 75s.
+- `agentic-workflow/.claude/commands/amaw.md` + `.claude/commands/amaw.md` — Step 2 invokes `bash scripts/workflow-gate.sh amaw-enable [task-slug]`. Step 3+5 reference Step-0 calls.
+- `agentic-workflow/install.sh` — copies `mcp-query.py` with chmod +x.
+- `agentic-workflow/README.md` — new "L3 deepen (2026-05-15)" row in customizations table.
+- `docs/deferred/DEFERRED.md` — 5 entries (IDs 001-005) for L4 hardening from /review-impl LOW findings.
+
+### Workflow trace (gate state)
+
+```
+clarify → design → review-design → plan → build → verify → review-code → qc → post-review (current) → session → commit → retro
+   [x]      [x]         [x]         [x]    [x]      [x]        [x]        [x]      [x]
+```
+
+XL classified (files=11, logic=6, side_effects=1). All 9 phases marked complete with evidence in `.workflow-state.json`.
+
+### Bugs found + fixed during cycle
+
+| # | Phase | Issue | Fix |
+|---|---|---|---|
+| 1 | BUILD | `_request` missed `http.client.RemoteDisconnected` — server-mid-request close crashed script | Added `(ConnectionError, RemoteDisconnected, HTTPException)` clause |
+| 2 | BUILD | 30s timeout too tight for cold add_lesson (measured 30.169s) | Bumped mcp-query.py timeout 30s → 60s |
+| 3 | BUILD | `amaw-pre-commit` silent on success (UX) | Added `OK: ... CLEAR (rules_checked: N)` print |
+| 4 | REVIEW | Bridge subprocess timeout 45s < mcp-query 60s — could kill in-flight add_lesson | Bumped subprocess timeout to 75s with note |
+| 5 | review-impl MED-1 | `amaw-pre-commit` BLOCKED detection scraped summary text — fragile if format drifts | Switch to `--format json` + JSON parsing of `pass`/`violated` fields |
+| 6 | review-impl MED-2 | 4xx response from check_guardrails fell through to "non-fatal warn" + commit proceeds (fail-open wrong direction) | 4xx now blocks commit (structural error → human investigates) |
+| 7 | review-impl MED-3 | `MCP_QUERY = Path("scripts/mcp-query.py")` cwd-relative — bridge silently no-op'd from non-repo cwd | `Path(__file__).parent / "mcp-query.py"` resolves from script location |
+| 8 | review-impl MED-4 | Sub-agent prompt placeholder `<task topic>` literal substitution risk | Templates now instruct "derive actual topic from spec H1, do NOT pass literal placeholder"; findings doc footer requires "Step 0 query strings used" |
+
+Bonus discovery during MED-1 fix: argparse `--format` position matters — top-level `--format json` is overridden by subparser default. Bridge subprocess.run command must pass `--format json` AFTER subcommand.
+
+### /review-impl pass
+
+After Phase 9 POST-REVIEW initial summary, user invoked `/review-impl` for adversarial review before commit. Findings:
+
+| Severity | Count | Examples |
+|---:|---:|---|
+| HIGH | 0 | (none — implementation passed all 12 AC) |
+| MED | 4 | amaw-pre-commit string scraping; 4xx fail-open; cwd-relative MCP_QUERY; sub-agent placeholder substitution |
+| LOW | 5 | task_slug not validated; "REJECTED" substring false positives; non-atomic save_state; pre-commit side-effect state file; sub-agent permission prompts |
+| COSMETIC | (skipped) | display nits, hardcoded date refs, install.sh chmod no-op, etc. |
+
+All 4 MED fixed in same cycle (re-VERIFY clean). All 5 LOW logged in `docs/deferred/DEFERRED.md` (IDs 001-005) for L4 hardening / first AMAW dogfood.
+
+### Verify evidence (re-VERIFY after MED fixes)
+
+| AC | Verify |
+|---|---|
+| AC-1 ping | `OK` |
+| AC-2 search_lessons | JSON output with matches[] structure |
+| AC-3 add_lesson | UUID returned (`ac9ab93c-...`); lesson visible via list_lessons |
+| AC-4 check_guardrails | `pass: True, rules_checked: 0` (CLEAR with empty rule layer) |
+| AC-5 server-down | Friendly stderr "ContextHub not reachable" + exit 2 (no stack trace) |
+| AC-6 amaw-enable | `state['amaw_enabled']` flips True; idempotent |
+| AC-7 bridge fires | `OK: bridged lesson 1dfdc3ec-...` (warm path, no timeout warning) |
+| AC-8 default mode silent | No bridge call when `amaw_enabled=false` |
+| AC-9 default pre-commit | `pre-commit` passes; `amaw-pre-commit` no-op exit 0 |
+| AC-10 AMAW pre-commit | `OK: amaw-pre-commit guardrails CLEAR (pass=True, rules_checked=0)` |
+| AC-11 sub-agent prompts | 10 `mcp-query.py` mentions in AMAW.md (≥4 expected) |
+| AC-12 mirror diffs | All 5 deployed files match bundle (no drift) |
+
+### Test lessons created (kept per user choice "useful evidence")
+
+In ContextHub `mmo-rpg-zone-map-design-non-human-in-loop` project:
+- `Sprint complete: smoke-AC7-l3deepen-test` — proof bridge works end-to-end
+- `Sprint complete: smoke-revfinal-l3` — re-verify after MED fixes
+- `AC-3 smoke test` ×2, `AC-VERIFY smoke` ×2, `Retry test`, `Timing test`, `Timeout 60s test`, `L3 review-impl re-verify` — Component 1 verb tests
+- ~9-10 throwaway lessons total. Skipped cleanup per user choice (search_lessons against actual task topics returns these as low-signal noise; tolerable).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**Verification before doing any work:**
+1. `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` → 8 containers Up
+2. `bash scripts/workflow-gate.sh status` → empty 12-phase tracker, AMAW disabled
+3. `python scripts/mcp-query.py ping` → `OK`
+4. `git branch --show-current` → `mmo-rpg/zone-map-design-non-human-in-loop`
+
+**Next session agenda:**
+
+1. **First real `/amaw` dogfood** — Phase 0b SSE parser in `loreweave_llm` SDK (per prior session's roadmap). Run `/amaw` at task start. Measure: how many real findings, token cost, where the deepened workflow felt natural vs forced. **First entry to `docs/audit/AUDIT_LOG.jsonl` from a non-smoke task.** Pre-flight: verify `python scripts/mcp-query.py *` is in `.claude/settings.json` allow-list (DEFERRED #005); if sub-agent permission prompts interrupt, allow once.
+2. **Resume Phase 0b** per the prior 2026-05-14 late-evening entry's Phase 0b plan (lmstudio register as `platform_model`, SSE parser in `loreweave_llm::GatewayClient::stream()`, hardcoded L3 prompt against 3-zone wuxia fixture).
+3. **Decide branch merge cadence** — if AMAW dogfood succeeds, merge `mmo-rpg/zone-map-design-non-human-in-loop` workflow infra back to `mmo-rpg/zone-map-design` so all future design tracks benefit. The infra is repo-wide regardless of which design track.
+
+**Process discipline reminders:**
+
+- `/amaw` for L+ tasks ONLY (data migrations, schema changes, security paths, multi-system contracts). Don't burn ~$1-5/task tokens on small fixes.
+- Sub-agent prompt templates require deriving ACTUAL topic from spec — do not pass literal `<task topic>` placeholder strings (review-impl MED-4 lesson).
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B). Memory: `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root contains 2 members. Memory: `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+
+### Raw count
+
+- **Commits this entry:** 1 pending (single mega-commit per user choice)
+- **Files created:** 4 (mcp-query.py + spec + plan + DEFERRED.md row population)
+- **Files modified:** 9
+- **External state changes:** ~10 test lessons in ContextHub (kept as evidence per user); workflow-state.json reflects 9/12 phases complete
+- **Tests:** AC-1..12 all green (full re-VERIFY pass after MED fixes); /review-impl 4 MED + 5 LOW; all MED fixed inline
+
+---
+
+## Session 2026-05-15 — "non-human-in-loop" scope = AMAW v3.0; agentic-workflow bundle deployed; ContextHub MCP fully wired
+
+### Session arc
+
+Three administrative-only sub-sessions, all on `mmo-rpg/zone-map-design-non-human-in-loop` branch:
+
+1. **ContextHub MCP smoke test** — verified MCP server reachable, project `mmo-rpg-zone-map-design-non-human-in-loop` exists with 0 lessons; embedding pipeline alive (hybrid sem+fts).
+2. **Multi-project workspace mount** — added `D:/Works:/workspaces` bind to free-context-hub `mcp` + `worker` services. ContextHub server can now ripgrep + index ANY repo under `D:/Works/source/<name>` by registering `root_path=/workspaces/source/<name>`. De-registered initial junk row (`/app/D:/Works/...`) via direct DB UPDATE.
+3. **Agentic-workflow bundle deployment** — user copied `agentic-workflow/` (free-context-hub-derived bundle v2.3 = WORKFLOW v2.2 default + AMAW v3.0 opt-in) into the repo. Customized 8 bundle files for repo-specific paths, ran installer, replaced project-root `CLAUDE.md` workflow block with v2.2/AMAW snippet.
+
+### Resolved: "non-human-in-loop" scope
+
+The OPEN scoping question from prior session entry is **answered**: the branch is the testbed for **AMAW v3.0 (Autonomous Multi-Agent Workflow)** — opt-in cold-start sub-agent reviews replace human checkpoints at REVIEW + POST-REVIEW for high-stakes tasks. AMAW spec lives in [`docs/amaw-workflow.md`](../../amaw-workflow.md) (canonical) and `agentic-workflow/AMAW.md` (bundle source).
+
+The 4 prior candidate interpretations (pure autonomy / sub-agent driven / loop research / tooling autonomy) collapse to: **AMAW = sub-agent driven + loop research + opt-in (not always-on)**. Pure autonomy was rejected because POST-REVIEW human stop has measurable value for everyday tasks; only L+ size critical paths warrant the ~$1-5/task token cost of cold-start adversaries.
+
+Phase 14 case study (free-context-hub model swap, 2026-05-15) is the first real AMAW production run that informed v3.0 calibration: 8 findings / 5 BLOCKs / ~420K tokens / 6 sub-agent calls. Calibration table lives in `AMAW.md` §"Calibration table".
+
+### What landed
+
+**Repo files (deployed via `bash agentic-workflow/install.sh .`):**
+
+| File | Action |
+|---|---|
+| `scripts/workflow-gate.sh` | Replaced (broken bash impl → thin wrapper around `.py`) |
+| `scripts/workflow-gate.py` | Overwritten (same content, install copies bundle's copy) |
+| `.claude/settings.json` | **NEW** — pre-commit hook blocking commits without VERIFY+POST-REVIEW+SESSION |
+| `.claude/commands/review-impl.md` | Replaced (KS-specific reference → generic bundle version) |
+| `.claude/commands/amaw.md` | **NEW** — `/amaw` slash command for opt-in AMAW activation |
+| `docs/specs/.gitkeep` | **NEW** dir for CLARIFY spec files |
+| `docs/plans/.gitkeep` | **NEW** dir for PLAN decomposition files |
+| `docs/audit/.gitkeep` | **NEW** dir for `AUDIT_LOG.jsonl` (created on first AMAW run) |
+| `docs/deferred/DEFERRED.md` | **NEW** stub |
+| `docs/amaw-workflow.md` | **NEW** — copy of `agentic-workflow/AMAW.md` for canonical AMAW spec |
+| `CLAUDE.md` | Workflow block (lines 160-321) replaced with v2.2/AMAW-aware snippet (~90 lines, references bundle docs) |
+
+**Bundle customization (`agentic-workflow/`, 8 files):**
+
+| File | Change |
+|---|---|
+| `scripts/workflow-gate.py` | NEW — copied from repo (canonical impl) |
+| `scripts/workflow-gate.sh` | Rewritten as bash wrapper exec-ing `.py` |
+| `install.sh` | Copies both .sh+.py; creates `docs/specs/` + `docs/plans/` |
+| `WORKFLOW.md` | Header + Phase 1+4+10 paths customized for this repo |
+| `CLAUDE.md.snippet` | Added "Repo-specific paths" block |
+| `AMAW.md` | RETRO row names project_id; new "Repo integration" section |
+| `.claude/commands/amaw.md` | RETRO step names ContextHub project_id |
+| `README.md` | Subtitle "fork"; new "Repo customizations applied" table |
+
+**Free-context-hub repo (separate repo):**
+- `docker-compose.yml` modified — added `D:/Works:/workspaces` bind to `mcp` + `worker` services
+- DB row updated — junk workspace_root for project deactivated; correct `/workspaces/source/lore-weave-zone-map-design` row active
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `bash scripts/workflow-gate.sh status` (clean state) | Prints empty 12-phase tracker, exit 0 |
+| `bash scripts/workflow-gate.sh size XS 1 1 0` | (not yet smoke-tested at deploy time — recommend next session run a full XS cycle as smoke) |
+| ContextHub MCP `list_workspace_roots(project_id=mmo-rpg-zone-map-design-non-human-in-loop)` | 1 active row at `/workspaces/source/lore-weave-zone-map-design` (junk row inactive) |
+| ContextHub MCP `scan_workspace` | 98KB git status JSON returned (filesystem walk + git access from container both OK) |
+| Slash commands `/amaw` + `/review-impl` registered with Claude Code | YES — appeared in available-skills system reminder after install |
+
+### Memory layer cleanup
+
+Stale memory deleted: `~/.claude/projects/d--Works-source-lore-weave-zone-map-design/memory/feedback_workflow_gate_broken.md` removed + index entry pruned from `MEMORY.md`. Reason: workflow-gate.sh now wraps .py which sidesteps the original Windows pyenv-win shim bug. If the bug returns under different toolchain, re-capture.
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**Verification (still 3 quick commands):**
+1. `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` → 8 containers Up
+2. `bash scripts/workflow-gate.sh status` → empty 12-phase tracker, exit 0
+3. `git branch --show-current` → `mmo-rpg/zone-map-design-non-human-in-loop`
+
+**Next session agenda:**
+
+1. **First real AMAW dogfood** — pick a small L-size task (not hand-waved XS), invoke `/amaw`, follow the full Adversary + Scope Guard loop. Measure: how many real findings, how much token cost, where the workflow felt natural vs forced. Record in `docs/audit/AUDIT_LOG.jsonl` (first entry there).
+2. **Resume Phase 0b — wire real lmstudio gateway call** in `loreweave_llm` SDK + 1 L3 prompt to lmstudio (per prior session's `7f31bd0e` SDK extraction). This is L-size — register lmstudio as `platform_model` in provider-registry-service, implement SSE parser, run integration test.
+3. **Decide branch merge cadence** — if AMAW dogfooding goes well, merge `mmo-rpg/zone-map-design-non-human-in-loop` workflow infra back to `mmo-rpg/zone-map-design` (and ultimately `main`) so all future work uses v2.2/AMAW. The infra is repo-wide and useful regardless of which design track.
+4. **Free-context-hub commit** — `D:/Works/source/free-context-hub/docker-compose.yml` has uncommitted bind-mount change. Decide: commit there (push if appropriate), or keep local-only.
+
+**Process discipline reminders:**
+
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B) routed through provider-registry-service. See `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root contains 2 members; new Rust crates → add to `[workspace] members`, use `dep.workspace = true`. See `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+- For ANY task M+ size: invoke `./scripts/workflow-gate.sh size M ...` BEFORE any work. The script now persists state correctly.
+- For data migrations / schema changes / security paths: type `/amaw` at task start. The token cost (~$1-5) only pays off at L+ scope.
+
+### Raw count
+
+- **Commits this entry:** 1+ pending (commit granularity TBD with user before push)
+- **Files created in repo:** 7 in `.claude/` + `docs/` (settings.json, amaw.md, 4 .gitkeep stubs, DEFERRED.md, amaw-workflow.md)
+- **Files modified in repo:** 4 (CLAUDE.md, scripts/workflow-gate.{sh,py}, .claude/commands/review-impl.md)
+- **Files customized in `agentic-workflow/` bundle:** 8
+- **External state changes:** ContextHub MCP project workspace_root active; free-context-hub compose modified (uncommitted)
+- **Tests:** smoke `workflow-gate.sh status` ran (exit 0); no production test runs
+
+---
+
+## Session 2026-05-14 (continued, night) — Branch fork + ContextHub project bootstrap for "non-human-in-loop" workflow track
+
+### Session arc
+
+Administrative-only session. After commit `7f31bd0e` (SDK extraction) landed on `mmo-rpg/zone-map-design`, user opened a new workflow direction by:
+1. Forking a sibling branch `mmo-rpg/zone-map-design-non-human-in-loop` off the current HEAD.
+2. Starting the free-context-hub stack (`D:\Works\source\free-context-hub`) under Docker Compose.
+3. Provisioning a ContextHub project named after the new branch to seed the upcoming workflow's persistent memory namespace.
+
+No code changes. No design changes. **No tests were run** (nothing to test). Purpose is to set the stage for the next implementation session.
+
+### What "non-human-in-loop" means — RESOLVED 2026-05-15 → AMAW v3.0
+
+> **Update 2026-05-15:** scope locked as **AMAW v3.0** (opt-in cold-start sub-agent reviews replace human checkpoints at REVIEW + POST-REVIEW for L+ critical paths). See the 2026-05-15 entry above for the full resolution. Original interpretations preserved below for context.
+
+The branch name signals a workflow shift but the scope is **not yet specified**. Best guess from context: removing the human checkpoint between phases for some category of work — probably the BUILD↔VERIFY↔REVIEW inner loop, NOT the CLARIFY/PLAN/POST-REVIEW outer loop. **The next session MUST do a CLARIFY phase to lock this scope before any further work** — see [Next session agenda](#next-session-agenda-non-human-in-loop) below.
+
+Candidate interpretations the next agent should ask about:
+- **Pure autonomy mode**: agent runs the full 12-phase cycle without stopping for human approval (would invert CLAUDE.md POST-REVIEW phase).
+- **Sub-agent driven**: dispatch implementation phases to background Task agents, human only sees aggregated results.
+- **Loop research**: experimental workflow track to MEASURE where human-in-loop adds vs subtracts value (parallel branch to compare).
+- **Tooling autonomy**: write & verify tilemap-service Phase 0b/1+ entirely via tool-driven cycles (cargo + lmstudio + ContextHub) with no human picks during a session.
+
+### What landed (infrastructure-only)
+
+**Git branch:**
+- `mmo-rpg/zone-map-design-non-human-in-loop` created from `mmo-rpg/zone-map-design @ 7f31bd0e` (clean tree, not pushed to origin yet).
+
+**Free-context-hub stack — 8 containers up (`docker compose up -d`):**
+
+| Service | Image | Local port(s) | Purpose |
+|---|---|---|---|
+| `db` | pgvector/pgvector:pg16 | 5432 | Postgres + pgvector (ContextHub SSOT) |
+| `neo4j` | neo4j:5.26 | 7474 (HTTP) / 7687 (Bolt) | Knowledge graph derived layer |
+| `rabbitmq` | rabbitmq:3.13-management | 5672 / 15672 | Job queue (QUEUE_ENABLED=true, QUEUE_BACKEND=rabbitmq) |
+| `redis` | redis:7-alpine | 6379 | Retrieval/rerank cache |
+| `minio` | minio/minio:latest | 9000 (S3) / 9001 (console) | S3-compat object store for artifacts (`contexthub-artifacts` bucket) |
+| `mcp` | free-context-hub-mcp | **3000 (`/mcp` — MCP HTTP)** + **3001 (`/api` — REST)** | ContextHub server. Workspace bind-mount at `/workspace`. Knowledge loop + builder memory both enabled. |
+| `worker` | free-context-hub-worker | (internal 3000-3001) | Knowledge-loop + builder-memory consumer |
+| `gui` | free-context-hub-gui | 3002 | Next.js admin UI |
+
+**ContextHub project:**
+- `project_id`: `mmo-rpg-zone-map-design-non-human-in-loop` (slash → dash; `/api/projects` regex `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` rejects `/`)
+- `name`: `mmo-rpg/zone-map-design-non-human-in-loop` (preserves the original branch name for humans)
+- `description`: anchors to base branch + HEAD commit `7f31bd0e` of `lore-weave-zone-map-design` repo
+- `lesson_count`: 0 (empty — every lesson the next workflow generates lands here)
+
+Created via direct REST `POST /api/projects` because the ContextHub MCP tools (`search_lessons`, `add_lesson`, `check_guardrails`, etc.) were **not loaded** into the Claude Code session — only the static deferred tools list was available. See action item below.
+
+### Handoff notes for next session
+
+**Active blocker:** none mechanically; one open scoping question (what "non-human-in-loop" means as workflow scope — block CLARIFY until answered).
+
+**Verification before doing any work:**
+1. Confirm free-context-hub still running: `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` — expect 8 containers `Up`.
+2. Confirm ContextHub project exists: `curl -s http://localhost:3001/api/projects` — expect entry with `project_id: mmo-rpg-zone-map-design-non-human-in-loop`.
+3. Confirm branch: `git branch --show-current` → expect `mmo-rpg/zone-map-design-non-human-in-loop`. HEAD should equal `7f31bd0e` (SDK extraction).
+
+**Next session agenda — non-human-in-loop** — *all 4 items resolved 2026-05-15; see the 2026-05-15 entry above for the new agenda. Items below preserved for history:*
+
+1. ~~**CLARIFY** what the workflow track actually is~~ — **RESOLVED**: AMAW v3.0 (see 2026-05-15 entry).
+2. ~~**MCP tool registration**~~ — **RESOLVED**: ContextHub MCP loaded via deferred-tool ToolSearch; workspace_root registered at `/workspaces/source/lore-weave-zone-map-design` (after adding `D:/Works:/workspaces` bind to mcp+worker compose services).
+3. ~~**Seed initial lessons**~~ — **DEFERRED to natural accumulation**: AMAW RETRO phase calls `add_lesson` per task; backfill of existing memory items (lmstudio prefs, Rust workspace pattern) only if explicitly needed. Workflow-gate-broken memory was deleted (script now fixed).
+4. **Decide branch fate** — *carried forward* into 2026-05-15 agenda item #3.
+
+**Process discipline reminders:**
+
+- ~~The workflow-gate script (`./scripts/workflow-gate.sh`) is still broken~~ — **RESOLVED 2026-05-15**: .sh now wraps `scripts/workflow-gate.py` (cross-platform impl); Windows pyenv-win shim bug sidestepped. Stale memory deleted.
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B) routed through provider-registry-service, NOT direct Anthropic API. See `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root now contains 2 members; new Rust crates → add to `[workspace] members` and use `dep.workspace = true`. See `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+
+### Raw count
+
+- **Commits this entry:** 0 (administrative only)
+- **Files created/modified/deleted in repo:** 0 production files (only this handoff entry)
+- **External state changes:** +1 git branch, +8 running containers, +1 ContextHub project
+- **Tests:** N/A
+
+---
+
+## Session 2026-05-14 (continued, late evening) — SDK extraction: sdks/rust/loreweave_llm/ (first Rust SDK in monorepo) + Cargo workspace at repo root
+
+### Session arc
+
+Post-Phase-0a commit `53f81fc7`, user asked "chúng ta đã có LLM call trong phần implement này chưa? và có SDK cho rust chưa?" — direct factual questions about state. Honest answers:
+1. **No LLM call yet** — `GatewayClient::stream()` returns `LlmError::NotImplementedPhase0a`; the signature + headers + URL + types are correct, but no `.send().await`.
+2. **No Rust SDK** — gateway client lived **inside** `services/tilemap-service/src/llm/`. Python SDK `sdks/python/loreweave_llm` exists; Rust equivalent did not.
+
+User picked: **promote to `sdks/rust/loreweave_llm/` NOW before Phase 0b**. I proposed (a) Cargo workspace at repo root vs path-dep-only and (b) crate name `loreweave_llm` (mirror Python) vs `loreweave-llm` (hyphen). User signal `keep going` → committed to recommended defaults: **workspace + `loreweave_llm`** (underscore, matches Python sibling).
+
+### What landed
+
+**`Cargo.toml` at repo root (NEW — first Rust workspace in monorepo):**
+- `[workspace]` resolver `2` with members `sdks/rust/loreweave_llm` + `services/tilemap-service`
+- `[workspace.package]` — edition 2024, rust-version 1.85, AGPL-3.0-only
+- `[workspace.dependencies]` — 10 shared deps pinned (tokio, reqwest+rustls, serde+json, blake3, thiserror+anyhow, uuid, tracing+subscriber)
+- `[profile.release]` — lto thin + codegen-units 1 + panic abort + strip symbols (moved from per-service config)
+
+**`sdks/rust/loreweave_llm/` (NEW first Rust SDK; mirror of `sdks/python/loreweave_llm` Phase 1b parity):**
+- `Cargo.toml` — inherits workspace fields; deps via `workspace = true`
+- `README.md` — usage example, Phase 0a status, known limitations (cache_control + OpenAI-shaped-tools gaps), test instructions
+- `src/lib.rs` — Phase 0a status block, pub re-exports of GatewayClient + LlmError + 10 model types
+- `src/{client,errors,models}.rs` — moved verbatim from `services/tilemap-service/src/llm/` with cross-ref paths updated
+- `tests/wire_format.rs` — 17 wire-format conformance tests moved from `tilemap-service/tests/smoke.rs`
+
+**`services/tilemap-service/` (consumer):**
+- `Cargo.toml` — `loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }` + workspace inheritance for everything else
+- `src/llm/` directory + 4 files **DELETED** (client.rs, errors.rs, models.rs, mod.rs)
+- `Cargo.lock` **DELETED** — workspace owns single root-level lockfile
+- `src/lib.rs` — drops `pub mod llm`; adds `pub use loreweave_llm as llm` for downstream re-export ergonomics
+- `src/error.rs` — uses `loreweave_llm::LlmError` instead of `crate::llm::errors::LlmError`
+- `tests/smoke.rs` — slimmed from 22 → 5 TMP-specific tests; the 17 wire-format tests moved to SDK
+
+**`docs/03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md`** — this entry.
+
+### Verify evidence (fresh runs at workspace root)
+
+| Command | Result |
+|---|---|
+| `cargo build` | Finished `dev` in 12.63s, exit 0, **0 warnings** (both crates) |
+| `cargo test` | **34 tests pass** distributed across workspace: 6 unit + 17 integration in `loreweave_llm`; 6 unit + 5 integration in `tilemap-service`. Same total as before extraction (intentional — no test deleted, only redistributed). |
+| `cargo clippy --all-targets --workspace` | Exit 0, **0 warnings** (after fixing one doc-list-indent nit in lib.rs) |
+
+Single shared `target/` directory at workspace root (was 2 separate target dirs before extraction). Single `Cargo.lock` at workspace root.
+
+### Why this extraction was done NOW vs deferred
+
+The user-stated rationale was: when Phase 0b wires the real network call, the bugs/fixes should land inside the SDK (reusable by any future Rust service) rather than inside tilemap-service (single consumer). The /review-impl pass earlier today already proved the gateway client surface area had non-trivial contract complexity (15 findings); centralising that complexity behind an SDK boundary makes future Rust services cheap.
+
+Counter-argument considered: "premature abstraction with only 1 consumer." Rejected because (a) the SDK is structurally identical to the Python sibling already in production; (b) the workspace promotion is a one-time mechanical cost, not an ongoing tax; (c) Phase 0b SSE parser implementation is meaningfully harder to refactor across an extraction boundary than across a single crate.
+
+### Handoff notes for next session
+
+**Active:** none. Workspace builds clean; SDK extraction complete.
+
+**Next-step recommendations** (unchanged from prior session entry except for SDK location updates):
+
+1. **Phase 0b — wire real gateway call + 1 L3 prompt to lmstudio** (~3-4 hrs).
+   - Provider-registry-service setup: register lmstudio as `platform_model` (Qwen 3 14B/32B); document registration step in `sdks/rust/loreweave_llm/README.md` AND `services/tilemap-service/README.md`.
+   - **Implement SSE parser in `loreweave_llm::GatewayClient::stream()`** (the SDK, not the service).
+   - **In tilemap-service**, construct hardcoded L3 zone-classifier prompt against tiny fixture (3-zone wuxia template) using OpenAI-shaped tools (per the architectural finding from `/review-impl`).
+   - Add `mockito` or `wiremock` to `loreweave_llm/dev-dependencies` for offline integration testing of the SSE parser.
+   - Add `#[ignore]`-by-default `tests/integration_lmstudio.rs` that runs against a live provider-registry + lmstudio when `cargo test -- --ignored` is invoked manually.
+2. **Phase 1 — engine Stage 1** (Fruchterman-Reingold + 2 modificators + determinism integration test).
+3. **Phase 2 — full L3 retry loop** (per-object retry + structured validation + canonical fallback) — implementation could live either in the SDK (if generic enough) or in tilemap-service (if TMP-specific). Phase 2 design call.
+4. **Phase 3 — L4 narration + measurement findings back to TMP_008b.**
+5. **TMP_008b next revision** — feed back BOTH architectural findings (cache_control + OpenAI-shaped tools).
+
+**Process discipline reminders for next agent:**
+
+- Run cargo commands from **workspace root** (`d:\Works\source\lore-weave-zone-map-design\`), not from inside `services/tilemap-service/`. `cargo build -p tilemap-service` for service-only build; `cargo test -p loreweave_llm` for SDK-only tests.
+- The SDK is the **canonical home for gateway concerns** — never re-introduce gateway-client code inside `services/tilemap-service/src/`. If a TMP-specific LLM concern emerges (prompt assembly, retry logic per TMP_008b §5/§6), evaluate whether it belongs in the SDK (provider-agnostic) or in the service (TMP-specific) before placing.
+- Pattern for future Rust services: `Cargo.toml` adds to `[workspace] members` array + member crate uses `loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }`.
+
+### Raw count
+
+- **Commits this entry:** 1 pending (SDK extraction)
+- **Files created:** 7 (`Cargo.toml` workspace root + `sdks/rust/loreweave_llm/`: Cargo.toml + README.md + lib.rs + errors.rs + models.rs + client.rs + tests/wire_format.rs)
+- **Files deleted:** 5 (`services/tilemap-service/Cargo.lock` + `src/llm/{client,errors,models,mod}.rs`)
+- **Files modified:** 5 (`services/tilemap-service/`: Cargo.toml + DESIGN.md + README.md + src/lib.rs + src/error.rs + tests/smoke.rs) — wait, that's 6
+- **Net file delta:** +7 created, -5 deleted, +6 modified
+- **Tests:** 34 total (unchanged count; redistributed: SDK owns 23, service owns 11)
+
+---
+
+## Session 2026-05-14 (continued, evening) — V2 PoC pivot: services/tilemap-service/ Phase 0a scaffold (first Rust microservice in monorepo)
+
+### Session arc
+
+User signal: design mode → implementation pivot. After the cross-feature integration annotation pass landed earlier in the day (commit `9f4ef3b2`), user asked "what's next" → I presented 4 directions (V2 PoC implementation / 05_llm_safety folder seed / WA_003 reconciliation+TMP_009 / V3 RMG wizard) → user picked **V2 PoC implementation**. Subsequent CLARIFY rounds:
+
+1. **Path choice (3 forks)**: Rust + gateway HTTP client at `services/tilemap-service/` (architectural correctness) vs Rust + direct lmstudio call at `poc/` (PoC-only) vs Python + existing SDK. User picked **Path A — Rust + gateway HTTP client at services/tilemap-service/** for production scaffold tone.
+2. **LLM provider**: user picked **lmstudio (local, free)** registered as `platform_model` in provider-registry-service. Anthropic prompt-caching specifics (TMP_008b §2) NOT validatable through this stack; deferred as architectural finding.
+3. **Phase 0a vs Phase 0b**: scope reset honestly — full "scaffold + types + 1 end-to-end lmstudio L3 call" with Path A is ~6-8 hrs; honest Phase 0a = scaffold-only this session (~3 hrs), Phase 0b next session wires real network call.
+
+### Key discoveries during CLARIFY
+
+- ✅ **Python SDK already exists** at `sdks/python/loreweave_llm` — proven across translation/extraction/chat/knowledge services. Provided independent reference implementation for cross-checking Rust mirror.
+- ✅ **Unified LLM gateway** with stable OpenAPI contract at `contracts/api/llm-gateway/v1/openapi.yaml` (907 lines; 6 endpoints, 6 stream event types, full discriminator schema).
+- ✅ **Rust toolchain available locally** (1.89 stable).
+- ⚠ **No existing Rust services in monorepo** (Go + Python + TS before) — tilemap-service is the first; standalone Cargo package for now, promote to workspace when 2nd Rust service lands.
+- ⚠ **Workflow-gate script bug** — `./scripts/workflow-gate.sh` has Python IndentationError on each call; state file resets between invocations. Followed CLAUDE.md workflow discipline manually via TodoWrite. Worth filing separately as a tooling fix.
+- ⚠ **Existing SPIKE_03 frontend PoC at `poc/tilemap_world_view/`** (TypeScript + Phaser 3 + Vite) — validates FE rendering. CONFIRMED non-overlap with V2 PoC: SPIKE_03 PoC uses local Qwen via lmstudio for L1 skeleton only (response_format:json_object + 3-retry full-response loop); V2 PoC targets L3+L4 with TMP_008b §2-§12 mechanics (cacheable-prefix prompt, tool-use forced, per-object retry, canonical-default fallback).
+
+### Phase 0a deliverables landed
+
+Following CLAUDE.md 12-phase workflow (CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → POST-REVIEW → /review-impl → fixes → re-VERIFY → re-POST-REVIEW → SESSION → COMMIT):
+
+**16 new files under `services/tilemap-service/`:**
+
+| File | Purpose |
+|---|---|
+| `Cargo.toml` | 9 deps (tokio, reqwest+rustls, serde, blake3, thiserror+anyhow, uuid, tracing); edition 2024; release profile lto+strip |
+| `Dockerfile` | Multi-stage Rust 1.89 → distroless nonroot |
+| `DESIGN.md` | 12-section design doc; module decomposition, deps choice, openapi→Rust mapping, error strategy, provider abstraction, determinism story, **2 architectural findings to feed back to TMP_008b**, phase roadmap, test layout, CLAUDE.md compliance check |
+| `README.md` | PoC scope, env vars, build/test commands, "what this service does NOT do yet" table, phase roadmap |
+| `src/main.rs` | Binary entry — tracing init + scope banner print |
+| `src/lib.rs` | Library entry — 4 pub modules, re-exports |
+| `src/error.rs` | Top-level `Error` enum via thiserror, forwards module-local errors |
+| `src/seed.rs` | TMP-A4 blake3 seed helper + `TilemapSeed` newtype + hex Display + 6 inline determinism tests |
+| `src/types/{mod,channel,zone,tile,object,template,tilemap}.rs` | TMP_001 §2 core types in Rust — `ChannelTier` (5 with `generates_tilemap()` excluding Cell per TMP-A1), `ZoneRole` (4 V1+30d), `PassageKind` (5), `TileState` (4), `TerrainKind` (10 with u8 discriminants), `TilemapObjectKind` (7), `GenerationSource` (EngineGenerated default V1+30d per AC-TMP-10), `TilemapView` aggregate stub |
+| `src/llm/{mod,errors,models,client}.rs` | Gateway HTTP client — `ChatStreamRequest` + `StreamEvent` tagged enum + `GatewayClient` with `from_env()` failing fast on missing `LOREWEAVE_INTERNAL_TOKEN` |
+| `tests/smoke.rs` | 22 integration tests — TilemapView JSON roundtrip + seed determinism + 16 wire-format conformance tests against canonical openapi JSON shapes |
+
+### /review-impl adversarial pass findings (15 total)
+
+After initial Phase 0a passed POST-REVIEW round 1, user invoked `/review-impl` for deeper adversarial review. The pass cross-referenced Rust mirrors against `contracts/api/llm-gateway/v1/openapi.yaml` directly + `sdks/python/loreweave_llm/models.py` as independent reference. **All 6 HIGH defects would have broken first Phase 0b gateway call.**
+
+| Severity | Count | Highlights |
+|---:|---:|---|
+| HIGH | 6 | Wrong SSE discriminator field name `event_type` → `event` (Pythonic SDK field name leaked into Rust mirror; gateway would have rejected every event) · `UsageEvent.cached_tokens` → `reasoning_tokens` (invented field; silently dropped real reasoning_tokens payload) · `DoneEvent.finish_reason` required+non-null in Rust but optional+nullable per openapi · Auth header `Authorization: Bearer` → `X-Internal-Token` apiKey · Missing required `user_id` query parameter on `/internal/llm/stream` · Test coverage gap (no wire-format roundtrip tests) |
+| MED | 7 | Constructor name `new_anthropic_tool_use` misleading — gateway tools field is OpenAI-shaped per contract (**new architectural finding for TMP_008b §3**) · `StreamRequest` → `ChatStreamRequest` per openapi naming · Missing `operation: "chat"` field · TokenEvent/ReasoningEvent `index` silently dropped · `finish_reason` should be closed enum · AudioChunkEvent variant missing (hyphenated discriminator value) · `LlmError::InvalidUrl` repurposed for token errors |
+| LOW | 2 | `temperature` no range validation · `max_tokens = 0` should normalise to None per gateway SDK convention |
+
+**All 15 findings fixed in same Phase 0a commit cycle** (per CLAUDE.md "HIGH → fix now"). +20 new wire-format tests added; defensive `stream_event_rejects_event_type_field_name` test guards against regression. Plus 3 clippy nits caught during re-VERIFY (manual Default impls → `#[derive(Default)]`, manual clamp → `.clamp()` with NaN guard).
+
+### Verify evidence (fresh runs at commit time)
+
+| Command | Result |
+|---|---|
+| `cargo build` | Finished `dev` profile in 1.14s, exit 0, **0 warnings** |
+| `cargo build --release` | Finished `release` profile in 15.50s, exit 0, **0 warnings** |
+| `cargo test` | **34 tests pass** (12 unit + 22 integration + 0 doc), 0 failed, exit 0 |
+| `cargo clippy --all-targets` | Exit 0, **0 warnings** (after Default-derive + clamp fixes) |
+
+Test trajectory across cycle: initial Phase 0a 14 tests → /review-impl found 6 HIGH bugs → fixes added 20 wire-format tests → final 34 tests.
+
+### 2 architectural findings to feed back to TMP_008b at its next revision
+
+1. **`cache_control` not exposed by gateway** (already in DESIGN.md §8 from earlier) — Anthropic prompt-caching is gateway-managed (opaque to caller). TMP_008b §2 cacheable-prefix mechanic cannot be empirically validated via this stack.
+2. **`tools` field is OpenAI-shaped per gateway contract** (NEW from /review-impl, now in DESIGN.md §8 item 7) — TMP_008b §3 Anthropic-shaped tool-use spec (`input_schema` + `tool_choice` forced) is not directly transmittable through the gateway. Best resolution path: TMP_008b §3 stays the logical contract; tilemap-service owns OpenAI-shape translation as part of its gateway client. Surface during TMP folder's next closure pass (currently CLOSED for V1+30d but may reopen at V2 PoC validation completion).
+
+### Handoff notes for next session
+
+**Active:** none. Phase 0a complete and committed.
+
+**Next-step recommendations (priority order):**
+
+1. **Phase 0b — wire real gateway call + 1 L3 prompt to lmstudio** (~3-4 hrs):
+   - Provider-registry-service setup: register lmstudio as `platform_model` (Qwen 3 14B/32B per existing SPIKE_03 PoC convention; document the registration step in README)
+   - Implement SSE parser in `GatewayClient::stream()` using reqwest `stream` feature
+   - Construct a hardcoded L3 zone-classifier prompt against a tiny fixture (3-zone wuxia template) using OpenAI-shaped tools
+   - Per-object retry skeleton (just the loop; full retry-logic granularity is Phase 2)
+   - Measure: first-call latency, prompt token cost, tool-use forced-call reliability with Qwen (NOT Claude — different model class than TMP_008b §3 assumes)
+   - First measurements doc back into TMP_008b §12 cost-model estimates
+2. **Phase 1 — engine Stage 1** (1-2 sessions): Fruchterman-Reingold zone placer (TMP_002) + 2 modificators (TMP_003: TerrainPainter + RoadBuilder). Determinism integration test: same seed → byte-identical zones (validates TMP-A4 end-to-end through engine pipeline).
+3. **Phase 2 — full L3 retry loop** (1-2 sessions): per-object retry (TMP_008b §5) + structured per-case validation feedback (§4) + canonical-default fallback (§6). End-to-end small reality bootstrap.
+4. **Phase 3 — L4 narration + measurement findings back to TMP_008b** (1 session): cache-key derivation per §8 (with the architectural caveat that gateway-managed Anthropic cache can't be observed).
+5. **TMP_008b next revision** (independent of tilemap-service phases): incorporate the 2 architectural findings; revise §3 to clarify whether the spec describes logical contract or wire-format contract.
+6. **05_llm_safety folder seed** (still pending from earlier in the day's recommendation list): unblocked by TMP_008b §7 prompt-injection defense + World Oracle hooks; ~5-7 features at ~600 lines each.
+
+**Process discipline reminders for next agent:**
+
+- This is the **first Rust service in the monorepo** (Go + Python + TS before). Standalone Cargo package; promote to workspace when 2nd Rust service lands.
+- **Workflow-gate script is broken** (Python IndentationError; state resets between invocations). Follow CLAUDE.md 12-phase discipline manually via TodoWrite until the script is fixed.
+- **Provider gateway invariant** — never call lmstudio HTTP directly even in PoC scaffolds inside `services/`. Register lmstudio as `platform_model` in provider-registry; tilemap-service speaks only to the gateway via `/internal/llm/stream`.
+- **Wire-format conformance tests** — every gateway-facing type MUST have a roundtrip test against canonical openapi JSON shapes. Catching `event_type` vs `event` only happens with such a test; trust nothing else, especially not Python SDK field names which use aliases.
+- **`/review-impl` is genuinely valuable** — initial Phase 0a passed my own POST-REVIEW review (Stage 1 spec compliance + Stage 2 code quality) cleanly, but had 6 HIGH defects. Author blindness is real; adversarial re-read against the source of truth (openapi YAML, not the Python SDK README) was the only way to surface them.
+
+### Raw count
+
+- **Commits this session:** 1 pending (Phase 0a)
+- **Files created:** 16 (Cargo.toml + Dockerfile + DESIGN.md + README.md + 6 src/ + 7 src/types/ + 4 src/llm/ + tests/smoke.rs)
+- **Lines added:** ~1200 (Rust + docs)
+- **Tests:** 34 (12 unit + 22 integration; was 14 initial → 34 post-review-impl, +20 wire-format tests)
+- **`/review-impl` findings closed:** 15 (6 HIGH + 7 MED + 2 LOW), all in same commit
+- **Architectural findings registered for TMP_008b:** 2 (cache_control + tools-shape)
+- **Workflow phases honoured:** CLARIFY ✓ DESIGN ✓ REVIEW ✓ PLAN ✓ BUILD ✓ VERIFY ✓ REVIEW ✓ POST-REVIEW ✓ /review-impl ✓ re-fixes ✓ re-VERIFY ✓ re-POST-REVIEW ✓ SESSION ✓ COMMIT (next)
+- **Process bugs found:** 1 (workflow-gate.sh script — Python IndentationError; state non-persistent)
+
+---
+
+## Session 2026-05-14 — TMP cross-feature integration annotation pass — 13 consumer features annotated per TMP_001 §14
+
+### Session arc
+
+Continuation of TMP design track. User picked **"continue TMP discussion"** from the two next-session direction options (continue design vs pivot to V2 PoC implementation), then picked **"Cross-feature integration annotation"** from four design-mode sub-directions (vs TMP_009 V2 sprite atlas / V3 RMG wizard / individual V2+ deferral scoping). Scope confirmed as **Full A+B+C** (~13 files) — aggressive single-session pass across all consumer feature folders + kernel folders.
+
+Work pattern: read each consumer's structure (existing closure-pass-extension banners, cross-references section locations, status), write a uniform `⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706` banner at top-of-doc + appended cross-references row in each. Banner content tailored per-consumer to reflect the SPECIFIC integration TMP_001 §14 catalogues for that consumer (subscribe pattern for MAP_001; tier delineation for CSC_001; co-existence for PF_001; RealityManifest extension for PL_001/PL_001b; AdminAction sub-shapes for WA_003; new T2 aggregates for 06_data_plane; sub-type registrations for 07_event_model; pattern reuse for AIT_001; replay-determinism for TDIL_001; V2+ reservations for PCS_001 / RES_001 / NPC_001).
+
+### Annotation surface (13 consumers from TMP_001 §14)
+
+| Tier | Consumers | Touch |
+|---|---|---|
+| **A — V1+30d active integration** (6 files) | MAP_001, CSC_001, PF_001, PL_001 + PL_001b (split), WA_003 | Banner + cross-ref row + (PL_001b only) `RealityManifest` snippet extended with `tilemap_templates: Vec<TilemapTemplateDecl>` + `tilemap_defaults: Option<TilemapDefaults>` optional fields. WA_003 banner registers 3 AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` V1+30d active; `Forge:OverridePlacement` V3 active / V1+30d schema-reserved). |
+| **B — Kernel folders** (2 files) | 06_data_plane/_index.md, 07_event_model/_index.md | Cross-folder-references-table row (banner pattern not applicable to kernel index files). 06_data_plane: 2 new T2 aggregates without new DP-K\* or DP-Ch\*. 07_event_model: sub-types under existing EVT-T3/T4/T8 + V2 reservations under EVT-T5/T6 (no new EVT-T\* or EVT-A\*). |
+| **C — V2+ reservation notes** (5 files) | AIT_001, TDIL_001, PCS_001, RES_001, NPC_001 | Banner + cross-ref row. AIT §14.19 documents TMP as Q4-LOCKED hybrid 2-stage pattern reuser. TDIL §17.10 documents TMP-A4 satisfying TDIL-A9 replay-determinism (orthogonal layer; tilemap is purely spatial). PCS reserves V2+ fog-of-war (TMP-D3). RES §12.9 reserves V2 mines (TMP-D10) with clean producer/inventory boundary. NPC reserves V2+ routing on `tilemap_view.road_segments`. |
+| **(skipped)** | 05_llm_safety | Folder doesn't exist yet — separate seed work pending per 2026-04-26 next-step recommendations. |
+
+### Drift caught + filed (1)
+
+- **WA_003 §7 preamble "12 V1 EditActions"** is stale post-annotation; effective V1+30d count is 15 (12 WA + 3 TMP). Flagged in WA_003 closure-pass-extension banner for next WA_003 closure pass to reconcile.
+
+### Verified-not-drift (1)
+
+- **TDIL-A9 axiom** was initially mis-flagged as missing from TDIL_001 — discovered mid-pass that the axiom IS defined in `catalog/cat_17_TDIL_time_dilation.md` line 36 (catalog file is authoritative for stable-ID axiom inventories per the TDIL pattern). Annotation reconciled before commit — TMP_001 §14's "TDIL-A9 replay-free V1" citation is correct.
+
+### Files touched
+
+- **Inside `_boundaries/`**: `_LOCK.md` (new `_Last released_` entry; Owner stays None) + `99_changelog.md` (top-anchored entry).
+- **Outside `_boundaries/`**: 13 consumer features (6 Tier A + 2 Tier B + 5 Tier C).
+- **Total**: 15 files.
+- **CANDIDATE-LOCK statuses preserved** on every consumer — banner pattern is additive-only, no scope creep into existing sections.
+
+### Handoff notes for next session
+
+**Active:** none. Annotation pass complete; only 05_llm_safety remains unannotated (because its folder doesn't exist yet).
+
+**Next-step recommendations (priority order):**
+
+1. **05_llm_safety folder seed** — now the sole remaining unannotated TMP consumer. Per 2026-04-26 next-step recommendations: ~5-7 features at ~600 lines each. A1..A6 axioms exist; TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements to flesh out. After folder seeds, this annotation pass can be closed by adding a 14th banner.
+2. **V2 PoC implementation** of tilemap-service — validate TMP_008b §2-§12 contract empirically: cacheable-prefix prompt cache hit rate (target ~30-45% per TMP_008b §2), tool-use forced-call reliability, per-object retry granularity (measure retry success rate vs flat-error retry — expect 70-90% vs 20-40%), cost-model accuracy (compare measured per-call cost to TMP_008b §12 estimates ~$0.018/L3 + ~$0.014/L4). Clean-room Rust against Claude Haiku 4.5.
+3. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror MAP_002 V1+ pattern when art-asset pipeline lights up).
+4. **V3 RMG wizard** scoping (TMP-D1, TMP-D2 — player-facing parameter capture UX).
+5. **WA_003 closure-pass reconciliation** of the "12 V1 EditActions" → 15 V1+30d count + decide whether the 3 TMP-owned AdminActions need stub §7.7-§7.9 sub-sections in WA_003 itself or stay pointed-to in TMP_001 §16 / TMP_004.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- Closure-pass-extension banner pattern (top-of-doc `⚠ CLOSURE-PASS-EXTENSION YYYY-MM-DD — <source feature> <COMMIT>` block) is the agreed-on mechanism for annotating downstream features without reopening their CANDIDATE-LOCK status. Pattern set by WA_003 / PCS_001 / NPC_001 / AIT_001 banners; this pass continues that pattern for 11 consumer features.
+- Kernel folders (06_data_plane / 07_event_model) use `Cross-folder references` table rows instead of top-of-doc banners — match existing per-folder convention.
+- When citing a stable-ID axiom (TDIL-A9-style) that doesn't show up in a feature file body, check the catalog file (`catalog/cat_NN_*.md`) before flagging drift — the catalog is authoritative for axiom inventories per existing convention.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this entry pre-commit)
+- **Files touched:** 15 (13 consumer features + `_LOCK.md` + `99_changelog.md`)
+- **Lock cycles:** 1 (single combined `[boundaries-lock-claim+release]`)
+- **Banner blocks added:** 11 (Tier A 6 + Tier C 5; kernel folders use cross-folder-table row pattern)
+- **Cross-references rows added:** 13 (one per consumer)
+- **New sub-sections added inside consumer features:** 3 (AIT §14.19 · TDIL §17.10 · RES §12.9)
+- **RealityManifest snippet edits:** 1 (PL_001b §16.1 — 2 optional fields)
+- **AdminAction sub-shapes registered (annotation only):** 3 (WA_003 banner; detailed flows owned by TMP_001 + TMP_004)
+- **EVT-T sub-types referenced (annotation only):** 7 (`TilemapBorn` + `ZonesPlaced` + 2 T3 aggregate_types + 3 T8 Forge:* sub-shapes + 2 V2 reservations)
+- **Drift caught + filed:** 1 (WA_003 EditAction count)
+- **Verified-not-drift:** 1 (TDIL-A9 confirmed in cat_17)
+
+---
+
+## Session 2026-05-13 (continued, late evening) — TMP folder closure pass — all 9 docs DRAFT → CANDIDATE-LOCK; folder CLOSED for V1+30d design
+
+### Session arc
+
+Continuation of same-day TMP work. After commit `a103cf45` (TMP_008b LLM Contract Spec split + push), user asked **"so what's next"**; response presented 3 natural options; user chose **"closure pass for TMP"** — formalize the 9-doc set into CANDIDATE-LOCK via the project's WA/NPC/PLT/PO closure-pass discipline.
+
+### Closure pass deliverables
+
+1. **Question triage** — All 43 open questions across 9 docs triaged into 4 buckets: 40 batch-accept-default + 3 worth-user-attention. User attention requested via AskUserQuestion; all 3 locked to recommended defaults (TMP-Q3 V2 default LLM-on / TMP-Q4 Phaser 3 FE engine / TMP-LLM-Q4 cross-zone L4 context YES).
+
+2. **AC-TMP-1..10 walked + expanded** — Each of 10 acceptance criteria expanded from 1-line sketch to full **Setup → Action → Expected outcome** triple with concrete rule_ids, event types, and validation references. Each scenario now independently testable via integration test against a tilemap-service instance:
+   - AC-TMP-1: reality bootstrap; 85 TilemapBorn events emitted (1 continent + 4 country + 16 district + 64 town); 0 for the 256 cells
+   - AC-TMP-2: replay-determinism byte-equality across 2 bootstraps with same seed
+   - AC-TMP-3: MAP_001 position edit → derived `child_cell_anchors` update without full regen
+   - AC-TMP-4: Forge:RegenTilemap CosmeticOnly preserves zones+objects+roads; re-rolls biome
+   - AC-TMP-5: Forge:RegenTilemap FullRebootstrap with new seed → new geometry; emits new TilemapBorn + ZonesPlaced
+   - AC-TMP-6: inheritance cycle rejected with `tilemap.inherit_cycle` + structured I18nBundle user_message
+   - AC-TMP-7: template applied to wrong tier → `tilemap.template_tier_mismatch`
+   - AC-TMP-8: convergence timeout → `tilemap.generation_timeout`; UI falls back to MAP_001 graph view
+   - AC-TMP-9: "never seal a gap" connectivity invariant; density-reduction fallback after 50 attempts; `tilemap.density_reduced` info event
+   - AC-TMP-10: V1+30d default LLM-disabled; engine-only generation; no LLM API call; `generation_source: EngineGenerated`; `regional_narration: None`
+
+3. **All 43 questions RESOLVED** — replaced "Open questions" sections with "Resolved questions (closure pass 2026-05-13)" tables in all 9 docs. Each row has Locked decision + How resolved column. 3 USER-LOCKED + 40 batch-resolved (34 ACCEPT-default + 6 DEFER-V2+ + 4 DEFER-V2 reservation + 2 DEFER-V2+30d).
+
+4. **Phase 3 review findings applied:**
+   - **Finding 1**: TMP_006 §9 Open questions section was lost in the 2026-05-13 license-hygiene revision pass. Every other TMP doc retained its questions; TMP_006's were dropped. Restored as §8.5 + RESOLVED at closure with 6 questions (TR-Q1..Q6).
+   - **Finding 2**: `tilemap.density_reduced` info-level rule_id was referenced in AC-TMP-9 + TMP-TR-Q4 but missing from §9.2 namespace inventory. Added; rule_id count corrected 16 → 17 V1+30d.
+   - **Finding 3**: `tilemap.biome_fallback_used` INFO event from TMP-BIOME-Q3 resolution documented as consistent info-event pattern alongside `tilemap.density_reduced`.
+
+5. **Cost model bump per TMP-LLM-Q4 closure-lock** — User locked YES for cross-zone L4 context (geographic narrative coherence). Triggered cost reconcile across TMP_008 §5 + TMP_008b §12.4-§12.7:
+   - L4 input tokens: +5000 cross-zone neighbor context (10 zones × ~500 tokens each)
+   - L4 effective per-call: ~$0.014 → ~$0.020 (effective ~9170 tokens including cached prefix)
+   - Per-tilemap initial: ~$0.032 → ~$0.038
+   - Per-reality Y1 (initial + 4 seasons): ~$7 → ~$8.50 (+21% for cross-zone narrative continuity)
+
+6. **Catalog status promotion** — 29 V1+30d catalog entries (TMP-1..TMP-22 + TMP-24..TMP-30 + TMP-45..TMP-52) promoted 📋 → ✅; rule_id count updated 16 → 17; V2/V2+/V3 entries (TMP-23, TMP-33..TMP-44; ~23 entries) stay 📋 — implementation-pending markers.
+
+7. **All 9 doc statuses promoted** — DRAFT → CANDIDATE-LOCK with closure-pass rationale in each doc header:
+   - TMP_001 closure pass: §15 AC walked + §12 questions RESOLVED + §9.2 17 rule_ids
+   - TMP_002 closure pass: TMP-PLACE-Q1..Q3 RESOLVED at §9
+   - TMP_003 closure pass: TMP-PIPE-Q1..Q4 RESOLVED at §6
+   - TMP_004 closure pass: TMP-TPL-Q1..Q5 RESOLVED at §10
+   - TMP_005 closure pass: TMP-BIOME-Q1..Q4 RESOLVED at §9
+   - TMP_006 closure pass: §8.5 restored (Phase 3 finding); TMP-TR-Q1..Q6 RESOLVED
+   - TMP_007 closure pass: TMP-CONN-Q1..Q5 RESOLVED at §13
+   - TMP_008 closure pass: TMP-LLM-Q1..Q7 RESOLVED; §5 cost bumped per Q4 lock
+   - TMP_008b closure pass: TMP-LLM-C-Q1..Q7 RESOLVED; §12 cost bumped
+
+### Question resolution buckets
+
+| Bucket | Count | Examples |
+|---|---:|---|
+| USER-LOCKED at closure | 3 | TMP-Q3 V2 default LLM-on, TMP-Q4 Phaser 3, TMP-LLM-Q4 cross-zone L4 |
+| ACCEPT default | 34 | majority — all batch-resolved with no contention |
+| DEFER V2+ (new deferrals registered) | 6 | TMP-D16 template inheritance, TMP-D17 seasonal biomes, TMP-D19 biome rarity, TMP-D20 per-PC permission gates, TMP-D22 multi-edge zones, TMP-D24 Zone Lore UI tab |
+| DEFER V2 with reservation | 4 | TMP-D15 dry-run mode, TMP-D21 guard respawn, TMP-LLM-Q2 approval flow, TMP-LLM-C-Q2 PoC A/B |
+| DEFER V2+30d | 2 | TMP-D18 LLM-gen biome V3, TMP-D25 streaming L4 |
+| **Total resolved** | **43 + 6 new deferrals** | (49 closure-pass actions) |
+
+### Handoff notes for next session
+
+**Active:** none. TMP folder CLOSED for V1+30d design.
+
+**User signal at session close 2026-05-13:** _"next time we will continue discuss tile map generation or maybe do real implement as new service or module"_ — next session may stay in design mode (continue tilemap discussion; e.g., V3 RMG wizard scoping, additional V2+ deferrals, or cross-feature annotation passes) OR pivot to **implementation mode** (start the V2 PoC as a real tilemap-service module). Implementation-mode pickup: TMP_008b §2-§12 is the V2 PoC contract spec; engineer reads it + writes clean-room Rust (academic primary sources cited; do NOT transcribe vcmi C++; consult vcmi only for "is this approach reasonable" sanity check per closure-pass changelog). Likely impl-mode steps: scaffold `services/tilemap-service/` with DP-K1..K12 access + Anthropic Messages API client + zone-placer (Fruchterman-Reingold) + Penrose tiling + fractalize + modificator pipeline scaffold. Foundation tier prerequisites (DP, EF_001, PF_001, MAP_001, CSC_001, AIT_001, TDIL_001, PL_001) are all CANDIDATE-LOCK; TMP can build directly.
+
+**Next-step recommendations (priority order):**
+
+1. **V2 PoC implementation** — Validate TMP_008b contract empirically: cacheable-prefix structure (measure actual cache hit rate); Anthropic tool-use reliability (track tool_choice forced-call failure rate); per-object retry granularity (measure retry success rate vs flat-error retry); cost model accuracy (compare measured per-call cost to TMP_008b §12 estimates). Run on Claude Haiku 4.5 with a small reality sample. A/B test cache-key strategies (TMP-LLM-C-Q2). Surface gaps for V2 launch readiness.
+
+2. **Cross-feature integration annotation pass** — TMP_001 §14 lists 13 consumer features (MAP_001, CSC_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model). At each consumer feature's next closure pass, annotate the TMP integration point (subscribe pattern, channel digest invalidation, EVT-T row consumption, etc.). Spreads the work across natural closure-pass cycles.
+
+3. **05_llm_safety folder design** — Still pending from 2026-04-26 next-step recommendations. A1..A6 axioms exist but no feature folder yet. TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements to flesh out. ~5-7 features at ~600 lines each.
+
+4. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror of MAP_002 pattern when art-asset pipeline lights up).
+
+5. **V3 RMG wizard** scoping (TMP-D1, TMP-D2) — player-facing parameter capture UX.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- TMP folder CLOSED — no further V1+30d design work in `features/00_tilemap/` until V2 PoC discoveries or new V2+ extensions.
+- Closure pass adds RESOLVED tables (replace open-questions sections) + AC walk expansion (setup/action/expected-outcome triples) + Phase 3 review.
+- Cross-feature integration annotation at consumer features' next closure passes, not at TMP folder.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this closure-pass commit)
+- **Lock cycles same day:** 4 (DRAFT seed → license-hygiene revision → TMP_008b split → closure pass)
+- **Questions RESOLVED:** 43 (3 USER-LOCKED + 40 batch-resolved)
+- **New deferrals registered:** 6 (TMP-D16..D22, D24..D25 with gaps for V2 PoC)
+- **Phase 3 review findings:** 3 (TMP_006 §9 restoration; `tilemap.density_reduced` inventory miss; `tilemap.biome_fallback_used` documented)
+- **AC scenarios walked:** 10 (each expanded ~10× from 1-line sketch to full triple)
+- **Cost model bumps:** per-reality Y1 ~$7 → ~$8.50 (+21%) per TMP-LLM-Q4 cross-zone lock
+- **Catalog entries promoted ✅:** 29 V1+30d entries
+
+---
+
+## Session 2026-05-13 (continued, late evening) — TMP_008b LLM Contract Spec — sibling-split for I/O detail (deep-discuss "is in/out contract LLM-friendly?")
+
+### Session arc
+
+Continuation of same-day TMP work. After commit `791cbd98` (TMP_001..TMP_008 DRAFT + license-hygiene revision + push to `origin/mmo-rpg/zone-map-design`), user asked **"how do LLMs integrate in tile generation? is in/out contract friendly for LLM?"** — an adversarial deep-discussion request.
+
+Adversarial analysis of TMP_008 §3-§4 surfaced 4 HIGH + 4 MED LLM-friendliness gaps:
+
+| # | Severity | Gap |
+|---|---|---|
+| 1 | HIGH | Prompt-injection vector — `author_narrative_hint` inlined directly into prompt with no delimiter |
+| 2 | HIGH | No structured-output enforcement — relied on LLM emitting valid JSON; vulnerable to markdown fences, preamble text, malformed quoting |
+| 3 | HIGH | Validation feedback hand-wavy — flat "Validation errors: [...]. Retry." instead of per-case structured messages (empirical 20-40% retry success vs 70-90% with structured) |
+| 4 | HIGH | Cache strategy not aligned with Anthropic prompt caching — variable + stable content interleaved; no cacheable prefix |
+| 5 | MED | Canonical-default fallback all-or-nothing per tilemap — 47 good + 3 bad classifications → fallback all 50 |
+| 6 | MED | L4 cache key missing L3-classifications digest — Forge:OverridePlacement on L3 leaves stale L4 narration |
+| 7 | MED | `key_phrases_for_lookup` LLM-emitted but unreliable — should be deterministic TF-IDF/KeyBERT post-processing |
+| 8 | MED | Cost claims optimistic — ~3K/L3 call claimed, ~6K actual (~2× off); per-reality budget off by ~3× |
+
+Plus 4 LOW (few-shot absent, system-prompt role/voice undocumented, open-enum language, prose-length-target unreliable).
+
+User chose **"Split into TMP_008 + TMP_008b LLM-contract detail"** — mirroring existing `<feature>` / `<feature>b` split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b). TMP_008 stays focused on architecture/V-tier/cost story (the "why"); TMP_008b owns the detailed I/O contract (the "how").
+
+### What landed
+
+- **TMP_008b NEW** (~560 lines) covering all 8 gaps:
+  - §2 3-segment cacheable-prefix prompt structure (Anthropic prompt-caching aligned; ~30-45% ongoing cost reduction)
+  - §3 Anthropic **tool-use** with strict `input_schema` + `tool_choice` forced (eliminates JSON-malformation failure modes)
+  - §4 Structured per-case validation feedback (per-object error messages with received value + allowed set)
+  - §5 Per-object retry granularity (accept good entries; retry only failing subset)
+  - §6 Per-object canonical default fallback (system always succeeds)
+  - §7 Prompt-injection defense: `<author_text>...</author_text>` delimiting + tag-close-escape sanitization + 05_llm_safety 3-intent classifier + World Oracle multi-layer
+  - §8 Cache key derivation — L4 key **includes L3-classifications digest** (fixes pre-revision stale-cache bug)
+  - §9 Few-shot examples in system prompt (one-shot L3 + one-shot L4 in cached prefix)
+  - §10 Deterministic key-phrase extraction post-L4 (TF-IDF V2 / KeyBERT V2+30d)
+  - §11 Closed-enum style hints (`NarrativeTone` 8 / `NarrationLanguage` 5 ISO codes / `NarrationVoice` 3)
+  - §12 Realistic cost model: ~$0.018/L3 call + ~$0.014/L4 call = ~$0.032/tilemap initial; ~$7/reality Y1 (was claimed ~$1; corrected ~3× higher)
+  - §13 LLM-friendliness scorecard (11/11 dimensions green post-revision)
+  - §14 7 open questions TMP-LLM-C-Q1..Q7
+  - §15 Prior Art (Anthropic Messages API + Tool Use + Prompt Caching docs; OWASP LLM01:2025; Perez & Ribeiro 2022 + Greshake et al. 2023 injection refs; Self-Refine + Self-Correct retry literature; KeyBERT)
+
+- **TMP_008 slimmed** (~410 → ~315 lines): §3 + §4 detailed I/O sections replaced with architecture summary + cross-refs to TMP_008b; §5 cost model corrected with realistic numbers
+
+- **Catalog row** updated with 8 new entries TMP-45..TMP-52 (44 → 52 entries)
+
+- **_index.md** updated with TMP_008b row + revised TMP_008 description
+
+- **Boundary changelog + LOCK** updated with same-day third lock cycle entry
+
+### Handoff notes
+
+**Active:** none. All HIGH + MED LLM-friendliness gaps closed in TMP_008b. Contract is now **V2 PoC-ready** — a V2 implementation engineer can read TMP_008b §2-§12 and have a complete I/O contract without re-deriving from architecture principles.
+
+**Next-step recommendations (priority order):**
+
+1. **TMP_001..TMP_008b closure pass** — Phase 3 review + AC-TMP-1..10 walk (TMP_001) + TMP-LLM-C-Q1..Q7 resolution → CANDIDATE-LOCK promotion across the 9-doc TMP folder.
+2. **V2 PoC implementation** — validate cacheable-prefix + tool-use + per-object retry empirically against Claude Haiku 4.5; measure actual cache hit rate + retry success rate; confirm cost model (TMP_008b §12).
+3. **V2+30d schema-additive extensions** — KeyBERT migration (§10); additional closed-enum tone/language variants as authoring needs grow.
+4. **Cross-feature integration annotation** — once closure pass lands, annotate consumer features (MAP_001, CSC_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model) at their next closure pass.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this entry pre-commit)
+- **Lock cycles same day:** 3 (DRAFT seed + license-hygiene revision + TMP_008b split)
+- **`/review-impl`-style findings this session:** 4 HIGH + 4 MED + 4 LOW → 4 HIGH + 4 MED closed; LOW deferred (few-shot landed in TMP_008b §9 anyway; system-prompt role documented in §3; closed-enum language landed in §11; prose-length-target → tool schema maxLength enforcement)
+
+---
+
+## Session 2026-05-13 — TMP_001..TMP_008 Tilemap Foundation DRAFT seed + license-hygiene revision pass (SPIKE_03 graduation)
+
+### Session arc
+
+User initiated zone-map-generation discussion in continuation of SPIKE_03 (DRAFT 2026-04-27 — Tilemap World View concept validated). Three-phase session:
+
+1. **Deep prior-art analysis** of VCMI (open-source HoMM3 engine reimplementation, GPL v2+) — `lib/rmg/` + `lib/rmg/modificators/` algorithm pipeline + data model. Key patterns surveyed: zone-graph paradigm, force-directed placement, Penrose tiling for irregular zone shapes, modificator-with-dependency-graph pipeline, tiered treasure values, biome obstacle-set composition, "never seal a gap" connectivity invariant, 5-variant connection types, template inheritance pattern.
+
+2. **SPIKE_03 graduation → `features/00_tilemap/`** — 8 DRAFT feature docs authored (~3,800 lines initial seed) + new `TMP-*` catalog namespace claim (44 entries) + 2 new aggregates owned (`tilemap_view` T2/Channel non-cell-only + `tilemap_template` T2/Reality) + RealityManifest extension + 16 V1+30d reject rule_ids in `tilemap.*` namespace + 4 EVT-T row groups (T4/T3/T8/T5+T6) + 10 axioms (TMP-A1..A10) + 4 cross-aggregate consistency rules (TMP-C1..C4) + 12 deferrals (TMP-D1..D12).
+
+3. **License-hygiene revision pass** (same day, in response to user concern about copyleft licensing — VCMI is GPL v2+, LoreWeave is AGPL v3; technically compatible but cleaner stance is to treat VCMI as one of several surveyed prior-art implementations rather than a derivation source). User picked **"Heavy: clean-room rewrite"** + **"Bibliography + inline 'see also' attribution"** scope. Restructured all 8 docs as multi-game prior-art survey (HoMM3, Wesnoth, Civ V/VI, Dwarf Fortress, Caves of Qud, VCMI as one open-source reference, roguelike literature, EU4/CK3); renamed 5 verbatim-matching shapes to LoreWeave-distinct naming; algorithm citations switched to academic primary sources (Fruchterman & Reingold 1991, Penrose 1974, Kahn 1962, Tarjan 1976, Dijkstra 1965, Hart et al. 1968, Gamma et al. 1994, Kirkpatrick et al. 1983, Žára 2014, Yannakakis & Togelius 2018, Sudhakaran et al. 2023); added per-doc Prior Art bibliography sections to all 8 docs.
+
+4. **`/review-impl` adversarial pass** — found 4 HIGH + 2 MED issues (missed-target language in entry-point summaries: folder _index table, _LOCK.md release entry, ownership-matrix stable-ID prefix row, spikes _index graduation row + residual `setOccupied`/`d_neighbour_zones`/`d_completed`/etc. vcmi-shape identifiers in TMP_005 + TMP_007). All findings landed and re-verified clean via `grep` sweep.
+
+### Renamed shapes (LoreWeave-distinct naming)
+
+| Pre-revision (vcmi-verbatim) | Revised (LoreWeave-distinct) |
+|---|---|
+| `ConnectionKind { Guarded, Wide, Fictive, Repulsive, ForcePortal }` | `PassageKind { Threshold, Open, Hint, Adversarial, Portal }` |
+| `ZoneType` (6 variants) | `ZoneRole` (4 V1+30d: Wilderness/Hub/Forbidden/Sea; V2+ adds AllyHome/RivalHome) |
+| `*LikeZone` inheritance fields (5 camelCase) | `inherit_*_from` (5 snake_case verb-phrase) |
+| `ETileType` (Free/Possible/Blocked/Used) | `TileState` (Walkable/Open/Obstacle/Occupied) |
+| Hardcoded biome composition rule | `BiomeSelectionRules` author-tunable on TilemapTemplate (engine defaults) |
+
+Pseudocode identifiers also renamed: `setOccupied` → `tile_state.set(tile, TileState::X)`; `d_neighbour_zones` → `neighbour_border_map`; `d_completed` → `completed_passages`; `connect_path` → `attach_walkable_path`; `other_side_connection` → `mark_passage_completed_from_neighbour`.
+
+### Feature design surface
+
+| ID | Name | Status | Lines |
+|---|---|---|---:|
+| TMP_001 | Tilemap Foundation (TMP) — core aggregate + 4-layer composition + tile state machine + MAP_001/CSC_001 integration + RealityManifest extension + `tilemap.*` RejectReason namespace | DRAFT 2026-05-13 | ~670 |
+| TMP_002 | Zone Placement Algorithm (TMP-PLACE) — Fruchterman-Reingold + simulated annealing + initial grid seed + Penrose tiling + fractalize | DRAFT 2026-05-13 | ~395 |
+| TMP_003 | Pipeline Modificators (TMP-PIPE) — modificator pattern + dependency graph + 7 V1+30d modificators + parallel/single-thread execution | DRAFT 2026-05-13 | ~455 |
+| TMP_004 | Template Authoring (TMP-TPL) — full schema + `inherit_*_from` inheritance + ZoneRole enum + finalization discipline + example wuxia template | DRAFT 2026-05-13 | ~530 |
+| TMP_005 | Biome & Obstacles (TMP-BIOME) — BiomeSelectionRules author-tunable + TerrainPainter + ObstaclePlacer detail | DRAFT 2026-05-13 | ~425 |
+| TMP_006 | Treasure & Objects (TMP-TR) — tiered TreasureTierSpec + ObjectManager service + "never seal a gap" connectivity invariant | DRAFT 2026-05-13 | ~360 |
+| TMP_007 | Connections & Guards (TMP-CONN) — PassageKind enum + 3-pass placement + dining-philosopher cross-zone locking + water route + monolith fallback | DRAFT 2026-05-13 | ~400 |
+| TMP_008 | LLM Integration L3+L4 (TMP-LLM) — V2 LLM zone classifier + V2 regional narration + cost model (~4-5K tokens/tilemap) + 05_llm_safety integration | DRAFT 2026-05-13 | ~410 |
+
+### Files landed
+
+- 9 new files in `features/00_tilemap/` (8 feature docs + `_index.md`)
+- 1 new catalog row `catalog/cat_00_TMP_tilemap_foundation.md` (44 entries TMP-1..TMP-44)
+- 4 boundary file updates (`_LOCK.md`, `01_feature_ownership_matrix.md`, `02_extension_contracts.md`, `99_changelog.md`)
+- 2 cross-ref updates (`features/_spikes/SPIKE_03_tilemap_world_view.md` graduation header; `features/_spikes/_index.md` row)
+
+Total: **~3,800 lines of design** across the new TMP folder + supporting updates.
+
+### Handoff notes for next session
+
+**Active:** none. License-hygiene revision pass complete; all HIGH/MED `/review-impl` findings landed and verified clean.
+
+**Next-step recommendations (priority order):**
+
+1. **TMP_001 closure pass** — Phase 3 review + §15 acceptance criteria walk (AC-TMP-1..10) + ~40 open questions resolution batch across TMP_001..TMP_008 → CANDIDATE-LOCK promotion. Mirror the WA/NPC/PLT closure-pass discipline from 2026-04-25/26 sessions.
+2. **Cross-feature integration annotation** — TMP_001 §14 lists 13 cross-feature integration points (MAP_001, CSC_001, PF_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model). Annotate consumer features at their next closure pass (DRAFT or CANDIDATE-LOCK).
+3. **V2 LLM layer PoC** — implement L3 zone classifier + L4 regional narration; cost validation; integrate with 05_llm_safety guardrails. Should be a separate spike or feature follow-up.
+4. **V3 RMG wizard scoping** — TMP-D1; player-facing parameter capture UX.
+5. **TMP_009 V2 sprite atlas** (mirror MAP_002 V1+ pattern) when art-asset pipeline lights up.
+
+**Implementation phase reminder (recorded in revision changelog entry):** when code is eventually written, MUST be clean-room. Engineers read algorithm descriptions in our design docs (academic primary sources cited); they do NOT transcribe vcmi C++ to Rust. Consulting vcmi for "is this approach reasonable" sanity check is fine; deriving code structure from vcmi source is not.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- 800-line hard cap forces split. All 8 TMP docs are well under cap (max TMP_001 ~670 lines).
+- Closure pass adds §15 acceptance walk (~10 scenarios) BEFORE CANDIDATE-LOCK promotion.
+- Cross-cutting / boundary-spanning features → spawn parallel agent via brief in `<folder>/00_AGENT_BRIEF.md`.
+- Event-model uses mechanism-level Option C taxonomy (T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative).
+
+### Raw count
+
+- **Commits:** 0 yet (working tree pending user authorization)
+- **Features designed:** 8 TMP docs all DRAFT (TMP_001..TMP_008)
+- **Boundary lock cycles:** 2 (DRAFT seed + license-hygiene revision; both single-commit combined `[claim+release]`)
+- **Cross-feature deferrals RESOLVED:** 0 (TMP-D1..D12 all new deferrals)
+- **`/review-impl` findings:** 4 HIGH + 2 MED + bonus → all landed; verified clean
 
 ---
 

@@ -1,6 +1,10 @@
 # SPIKE_03 — Tilemap World View (HOMM3-style camera-rendered map)
 
-> **Status:** DRAFT 2026-04-27 — exploratory. Architectural concept captured; PoC scheduled as Session 2; no IDs claimed; no catalog rows added; no boundary touched.
+> **Status:** **GRADUATED 2026-05-13 → [TMP_001 Tilemap Foundation](../00_tilemap/TMP_001_tilemap_foundation.md)** (DRAFT 2026-05-13; revised 2026-05-13 for license-hygiene framing). Original SPIKE concept validated; full design surface authored in new `features/00_tilemap/` folder (8 docs TMP_001..TMP_008) + catalog row `cat_00_TMP_tilemap_foundation.md` (44 catalog entries TMP-1..TMP-44) + boundary lock claim with 2 new aggregates + RealityManifest extension. Multi-game genre prior art surveyed (HoMM3, Wesnoth, Civ V/VI, Dwarf Fortress, Caves of Qud, VCMI as one open-source reference); algorithm foundations cited per academic literature (Fruchterman & Reingold 1991, Penrose 1974, Kahn 1962, Tarjan 1976, Dijkstra 1965, Hart et al. 1968, Gamma et al. 1994). V-tier scope: V1+30d L1+L2 engine pipeline / V2 L3+L4 LLM layers / V3 RMG wizard.
+>
+> **This file preserved as historical reference** — SPIKE_03 concept notes + initial Q1-Q8 inform TMP_001 design decisions. New work goes in TMP_001..TMP_008.
+>
+> _Original status:_ DRAFT 2026-04-27 — exploratory. Architectural concept captured; PoC scheduled as Session 2; no IDs claimed; no catalog rows added; no boundary touched.
 >
 > **Scope:** Add a NEW visual layer alongside MAP_001 (logical graph) — a camera-scrollable tilemap rendered via Phaser-style FE engine, with terrain biomes + roads + objects + cells placed as positions on the tilemap. Same 4-layer LLM-architecture pattern as CSC_001 (validated by v3→v4 demo evidence; 12.7× cost reduction). Pattern target: HOMM3 / Bannerlord / Wesnoth overworld feel.
 >
