@@ -5,6 +5,8 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -162,5 +164,32 @@ func TestEveryJobOperationIsEstimable(t *testing.T) {
 		if err != nil && strings.Contains(err.Error(), "unknown operation") {
 			t.Fatalf("operation %q is accepted at submit but EstimateUSD does not handle it", op)
 		}
+	}
+}
+
+// TestWriteBudget402_DistinctMessages locks Phase 6a-γ — the 402 message
+// names which gate failed (Subsystem A daily/monthly vs Subsystem B platform).
+func TestWriteBudget402_DistinctMessages(t *testing.T) {
+	// Subsystem A — daily/monthly budget.
+	rrA := httptest.NewRecorder()
+	writeBudget402(rrA, billing.ReserveResult{
+		Insufficient: true, Code: "INSUFFICIENT_BUDGET",
+		DailyAvailable: 1.0, MonthlyAvailable: 2.0, Requested: 5.0,
+	})
+	if rrA.Code != http.StatusPaymentRequired {
+		t.Fatalf("A: expected 402, got %d", rrA.Code)
+	}
+	if bodyA := rrA.Body.String(); !strings.Contains(bodyA, "daily") || strings.Contains(bodyA, "platform free tier") {
+		t.Fatalf("Subsystem-A 402 should mention daily/monthly, not platform: %s", bodyA)
+	}
+
+	// Subsystem B — platform free tier + credits.
+	rrB := httptest.NewRecorder()
+	writeBudget402(rrB, billing.ReserveResult{
+		Insufficient: true, Code: "PLATFORM_BALANCE_EXHAUSTED",
+		PlatformAvailable: 0.5, Requested: 5.0,
+	})
+	if bodyB := rrB.Body.String(); !strings.Contains(bodyB, "platform free tier") {
+		t.Fatalf("Subsystem-B 402 should name the platform free tier: %s", bodyB)
 	}
 }

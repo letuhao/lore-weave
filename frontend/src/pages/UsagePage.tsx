@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { usageApi } from '@/features/usage/api';
 import { StatCards } from '@/features/usage/StatCards';
+import { BudgetPanel } from '@/features/usage/BudgetPanel';
 import { BreakdownPanels } from '@/features/usage/BreakdownPanels';
 import { DailyChart } from '@/features/usage/DailyChart';
 import { RequestLogTable } from '@/features/usage/RequestLogTable';
@@ -189,6 +190,9 @@ export function UsagePage() {
 
       {/* Stat cards */}
       <StatCards summary={summary} balance={balance} periodLabel={periodLabel} />
+
+      {/* Phase 6a-γ — spend guardrail + platform balance */}
+      <BudgetPanel />
 
       {/* Breakdown panels */}
       {summary && (

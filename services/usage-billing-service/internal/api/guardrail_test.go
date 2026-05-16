@@ -888,3 +888,143 @@ func TestRecordInvocation_Idempotent_NoDoubleDeduct(t *testing.T) {
 			afterFirst, afterRetry)
 	}
 }
+
+// ── Phase 6a-γ — user-facing guardrail GET/PATCH + platform-balance GET ─────
+
+func callGuardrailGet(t *testing.T, srv *Server, userID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/v1/model-billing/guardrail", nil)
+	req.Header.Set("Authorization", "Bearer "+signedToken(t, guardrailTestSecret, userID, "user"))
+	rr := httptest.NewRecorder()
+	srv.getGuardrail(rr, req)
+	return rr
+}
+
+func callGuardrailPatch(t *testing.T, srv *Server, userID uuid.UUID, body map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPatch, "/v1/model-billing/guardrail", bytes.NewReader(raw))
+	req.Header.Set("Authorization", "Bearer "+signedToken(t, guardrailTestSecret, userID, "user"))
+	rr := httptest.NewRecorder()
+	srv.patchGuardrail(rr, req)
+	return rr
+}
+
+func decodeGuardrail(t *testing.T, rr *httptest.ResponseRecorder) map[string]float64 {
+	t.Helper()
+	var m map[string]float64
+	if err := json.Unmarshal(rr.Body.Bytes(), &m); err != nil {
+		t.Fatalf("decode guardrail body %q: %v", rr.Body.String(), err)
+	}
+	return m
+}
+
+func TestGetGuardrail_NoRow_ReturnsConfigDefaults(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+
+	rr := callGuardrailGet(t, srv, uuid.New())
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	g := decodeGuardrail(t, rr)
+	if g["daily_limit_usd"] != guardrailTestDaily || g["monthly_limit_usd"] != guardrailTestMonthly {
+		t.Fatalf("no-row GET should return config defaults: %+v", g)
+	}
+	if g["daily_spent_usd"] != 0 || g["reserved_usd"] != 0 {
+		t.Fatalf("no-row GET should report zero spend/reserved: %+v", g)
+	}
+}
+
+func TestGetGuardrail_ReflectsAReservation(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	if rr := callReserve(t, srv, owner, uuid.New(), 3.0); rr.Code != http.StatusOK {
+		t.Fatalf("setup reserve: %d", rr.Code)
+	}
+	g := decodeGuardrail(t, callGuardrailGet(t, srv, owner))
+	if g["reserved_usd"] != 3.0 {
+		t.Fatalf("GET should reflect the held reservation: reserved=%v", g["reserved_usd"])
+	}
+	if g["daily_available_usd"] != guardrailTestDaily-3.0 {
+		t.Fatalf("daily_available should net out the hold: %v", g["daily_available_usd"])
+	}
+}
+
+func TestPatchGuardrail_SetsLimits(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	rr := callGuardrailPatch(t, srv, owner, map[string]any{"daily_limit_usd": 25.0})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	g := decodeGuardrail(t, rr)
+	if g["daily_limit_usd"] != 25.0 {
+		t.Fatalf("daily_limit not set: %v", g["daily_limit_usd"])
+	}
+	if g["monthly_limit_usd"] != guardrailTestMonthly {
+		t.Fatalf("monthly_limit should be untouched: %v", g["monthly_limit_usd"])
+	}
+	if g2 := decodeGuardrail(t, callGuardrailGet(t, srv, owner)); g2["daily_limit_usd"] != 25.0 {
+		t.Fatalf("PATCH did not persist: GET shows %v", g2["daily_limit_usd"])
+	}
+}
+
+func TestPatchGuardrail_Validation(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+
+	if rr := callGuardrailPatch(t, srv, uuid.New(), map[string]any{}); rr.Code != http.StatusBadRequest {
+		t.Fatalf("empty body should 400, got %d", rr.Code)
+	}
+	if rr := callGuardrailPatch(t, srv, uuid.New(), map[string]any{"daily_limit_usd": 0}); rr.Code != http.StatusBadRequest {
+		t.Fatalf("zero limit should 400, got %d", rr.Code)
+	}
+	if rr := callGuardrailPatch(t, srv, uuid.New(), map[string]any{"monthly_limit_usd": -5}); rr.Code != http.StatusBadRequest {
+		t.Fatalf("negative limit should 400, got %d", rr.Code)
+	}
+}
+
+func TestGetPlatformBalance_NoRow_ReturnsConfigFreeTier(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/model-billing/platform-balance", nil)
+	req.Header.Set("Authorization", "Bearer "+signedToken(t, guardrailTestSecret, uuid.New(), "user"))
+	rr := httptest.NewRecorder()
+	srv.getPlatformBalance(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	var m map[string]float64
+	_ = json.Unmarshal(rr.Body.Bytes(), &m)
+	if m["free_tier_allowance_usd"] != guardrailTestFreeTier {
+		t.Fatalf("no-row GET should return the config free tier: %+v", m)
+	}
+	if m["free_tier_remaining_usd"] != guardrailTestFreeTier {
+		t.Fatalf("free_tier_remaining should equal allowance when nothing used: %+v", m)
+	}
+}
+
+func TestGetPlatformBalance_ReflectsAReservation(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	if rr := callReservePlatform(t, srv, owner, uuid.New(), 4.0); rr.Code != http.StatusOK {
+		t.Fatalf("setup platform reserve: %d", rr.Code)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/model-billing/platform-balance", nil)
+	req.Header.Set("Authorization", "Bearer "+signedToken(t, guardrailTestSecret, owner, "user"))
+	rr := httptest.NewRecorder()
+	srv.getPlatformBalance(rr, req)
+	var m map[string]float64
+	_ = json.Unmarshal(rr.Body.Bytes(), &m)
+	if m["reserved_usd"] != 4.0 {
+		t.Fatalf("platform-balance GET should reflect the held reservation: %+v", m)
+	}
+}

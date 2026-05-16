@@ -94,11 +94,34 @@ func TestGuardrailClient_Reserve_402_Insufficient(t *testing.T) {
 	if !res.Insufficient {
 		t.Fatal("expected Insufficient=true on a 402")
 	}
+	if res.Code != "INSUFFICIENT_BUDGET" {
+		t.Fatalf("402 code not decoded: %q", res.Code)
+	}
 	if res.DailyAvailable != 1.25 || res.MonthlyAvailable != 9.0 || res.Requested != 5.0 {
 		t.Fatalf("402 figures not decoded: %+v", res)
 	}
 	if res.ReservationID != uuid.Nil {
 		t.Fatal("a 402 must not yield a reservation_id")
+	}
+}
+
+func TestGuardrailClient_Reserve_402_PlatformExhausted(t *testing.T) {
+	stub := newGuardrailStub(t)
+	stub.replyStatus = http.StatusPaymentRequired
+	stub.replyBody = map[string]any{
+		"code": "PLATFORM_BALANCE_EXHAUSTED", "platform_available": 2.5, "requested": 8.0,
+	}
+	c := NewGuardrailClient(stub.server.URL, "tok", nil)
+
+	res, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 8.0, "platform_model")
+	if err != nil {
+		t.Fatalf("Reserve should not error on a 402: %v", err)
+	}
+	if !res.Insufficient || res.Code != "PLATFORM_BALANCE_EXHAUSTED" {
+		t.Fatalf("Subsystem-B 402 not decoded: %+v", res)
+	}
+	if res.PlatformAvailable != 2.5 {
+		t.Fatalf("platform_available not decoded: got %v want 2.5", res.PlatformAvailable)
 	}
 }
 

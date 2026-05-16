@@ -102,6 +102,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/usage-logs/{usage_log_id}", s.getUsageLogDetail)
 		r.Get("/usage-summary", s.getUsageSummary)
 		r.Get("/account-balance", s.getAccountBalance)
+		// Phase 6a-γ — user-facing spend guardrail + platform balance.
+		r.Get("/guardrail", s.getGuardrail)
+		r.Patch("/guardrail", s.patchGuardrail)
+		r.Get("/platform-balance", s.getPlatformBalance)
 		r.Get("/admin/usage", s.adminListUsage)
 		r.Post("/admin/reconciliation", s.createReconciliation)
 	})

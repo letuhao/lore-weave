@@ -40,11 +40,13 @@ func NewGuardrailClient(baseURL, internalToken string, hc *http.Client) *Guardra
 // states is meaningful: a non-nil err, or (Insufficient ? a 402 budget
 // rejection : a granted ReservationID).
 type ReserveResult struct {
-	ReservationID    uuid.UUID
-	Insufficient     bool    // true → usage-billing returned 402
-	DailyAvailable   float64 // populated when Insufficient
-	MonthlyAvailable float64 // populated when Insufficient
-	Requested        float64 // populated when Insufficient
+	ReservationID     uuid.UUID
+	Insufficient      bool    // true → usage-billing returned 402
+	Code              string  // the 402 `code` — INSUFFICIENT_BUDGET | PLATFORM_BALANCE_EXHAUSTED
+	DailyAvailable    float64 // populated when Insufficient (Subsystem A)
+	MonthlyAvailable  float64 // populated when Insufficient (Subsystem A)
+	PlatformAvailable float64 // populated when Code == PLATFORM_BALANCE_EXHAUSTED (Subsystem B)
+	Requested         float64 // populated when Insufficient
 }
 
 // Reserve places a pre-flight hold for estimatedUSD against the owner's
@@ -87,17 +89,24 @@ func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.U
 			MonthlyAvailable: out.MonthlyAvailable,
 		}, nil
 	case http.StatusPaymentRequired:
+		// The 402 body differs by gate: Subsystem A (INSUFFICIENT_BUDGET)
+		// carries daily/monthly_available; Subsystem B
+		// (PLATFORM_BALANCE_EXHAUSTED) carries platform_available.
 		var out struct {
-			DailyAvailable   float64 `json:"daily_available"`
-			MonthlyAvailable float64 `json:"monthly_available"`
-			Requested        float64 `json:"requested"`
+			Code              string  `json:"code"`
+			DailyAvailable    float64 `json:"daily_available"`
+			MonthlyAvailable  float64 `json:"monthly_available"`
+			PlatformAvailable float64 `json:"platform_available"`
+			Requested         float64 `json:"requested"`
 		}
 		_ = json.Unmarshal(raw, &out)
 		return ReserveResult{
-			Insufficient:     true,
-			DailyAvailable:   out.DailyAvailable,
-			MonthlyAvailable: out.MonthlyAvailable,
-			Requested:        out.Requested,
+			Insufficient:      true,
+			Code:              out.Code,
+			DailyAvailable:    out.DailyAvailable,
+			MonthlyAvailable:  out.MonthlyAvailable,
+			PlatformAvailable: out.PlatformAvailable,
+			Requested:         out.Requested,
 		}, nil
 	default:
 		return ReserveResult{}, fmt.Errorf("reserve: unexpected status %d: %s", status, truncate(raw))

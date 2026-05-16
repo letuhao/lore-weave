@@ -312,6 +312,14 @@ func (s *Server) runGuardrailPreflight(
 		return preflightResult{reservationID: res.ReservationID, input: rawInput}, true
 	}
 
+	// A Subsystem-B rejection (platform free tier + credits) is not a
+	// max_tokens-cap situation — capping shrinks the estimate but the
+	// platform pool, not the user's daily/monthly budget, is the binding
+	// constraint. Propagate it directly (Phase 6a-γ).
+	if res.Code == "PLATFORM_BALANCE_EXHAUSTED" {
+		writeBudget402(w, res)
+		return preflightResult{}, false
+	}
 	// Over budget. Only chat/completion may be salvaged by capping
 	// max_tokens — truncating a translation/extraction/media artifact is
 	// corruption, not degradation, so those propagate the 402 (design §3.5).
@@ -383,11 +391,17 @@ func (s *Server) affordableMaxTokens(
 	return affordable, reqMax, true
 }
 
-// writeBudget402 emits the over-budget rejection with the availability figures.
+// writeBudget402 emits the over-budget rejection. The message distinguishes
+// the two gates: Subsystem A (the user's daily/monthly cap) vs Subsystem B
+// (the platform free tier + credits) — /review-impl D-PHASE6A-BETA-402-MESSAGE.
 func writeBudget402(w http.ResponseWriter, res billing.ReserveResult) {
-	writeError(w, http.StatusPaymentRequired, "LLM_QUOTA_EXCEEDED",
-		fmt.Sprintf("insufficient budget: estimated $%.8f, available daily $%.8f / monthly $%.8f",
-			res.Requested, res.DailyAvailable, res.MonthlyAvailable))
+	msg := fmt.Sprintf("insufficient budget: estimated $%.8f, available daily $%.8f / monthly $%.8f",
+		res.Requested, res.DailyAvailable, res.MonthlyAvailable)
+	if res.Code == "PLATFORM_BALANCE_EXHAUSTED" {
+		msg = fmt.Sprintf("platform free tier + credits exhausted: estimated $%.8f, available $%.8f",
+			res.Requested, res.PlatformAvailable)
+	}
+	writeError(w, http.StatusPaymentRequired, "LLM_QUOTA_EXCEEDED", msg)
 }
 
 // mergeJobMeta folds a max_tokens cap into the caller's job_meta. Returns a

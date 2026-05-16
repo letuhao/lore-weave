@@ -440,3 +440,153 @@ UPDATE token_reservations SET status='released', updated_at=now() WHERE reservat
 	}
 	return tx.Commit(ctx)
 }
+
+// ── Phase 6a-γ — user-facing guardrail read/config + platform balance ──────
+
+// guardrailReadSQL — window-aware read of a spend_guardrails row. A stale
+// window displays spent as 0 (a GET must not mutate; the next reserve resets
+// it for real).
+const guardrailReadSQL = `
+SELECT daily_limit_usd, monthly_limit_usd,
+  CASE WHEN daily_window_date    < (now() AT TIME ZONE 'utc')::date
+       THEN 0 ELSE daily_spent_usd END,
+  CASE WHEN monthly_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+       THEN 0 ELSE monthly_spent_usd END,
+  reserved_usd
+FROM spend_guardrails WHERE owner_user_id = $1`
+
+// platformReadSQL — window-aware read of a platform_balances row.
+const platformReadSQL = `
+SELECT free_tier_allowance_usd,
+  CASE WHEN free_tier_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+       THEN 0 ELSE free_tier_used_usd END,
+  credits_balance_usd, reserved_usd
+FROM platform_balances WHERE owner_user_id = $1`
+
+// writeGuardrailJSON emits the guardrail body (shared by GET + PATCH).
+func writeGuardrailJSON(w http.ResponseWriter, dLimit, mLimit, dSpent, mSpent, reserved float64) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"daily_limit_usd":       dLimit,
+		"monthly_limit_usd":     mLimit,
+		"daily_spent_usd":       dSpent,
+		"monthly_spent_usd":     mSpent,
+		"reserved_usd":          reserved,
+		"daily_available_usd":   dLimit - dSpent - reserved,
+		"monthly_available_usd": mLimit - mSpent - reserved,
+	})
+}
+
+// getGuardrail — GET /v1/model-billing/guardrail. The authed user's
+// Subsystem-A limits + (window-aware) spend. No row yet → config defaults.
+func (s *Server) getGuardrail(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	var dLimit, mLimit, dSpent, mSpent, reserved float64
+	err := s.pool.QueryRow(r.Context(), guardrailReadSQL, userID).
+		Scan(&dLimit, &mLimit, &dSpent, &mSpent, &reserved)
+	if errors.Is(err, pgx.ErrNoRows) {
+		dLimit, mLimit = s.cfg.GuardrailDefaultDailyUSD, s.cfg.GuardrailDefaultMonthlyUSD
+		dSpent, mSpent, reserved = 0, 0, 0
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_GUARDRAIL_FAILED", "failed to read guardrail")
+		return
+	}
+	writeGuardrailJSON(w, dLimit, mLimit, dSpent, mSpent, reserved)
+}
+
+// patchGuardrail — PATCH /v1/model-billing/guardrail. Sets the authed user's
+// daily and/or monthly USD limit. Either field may be omitted; a supplied
+// limit must be > 0. Lowering a limit below current spend is allowed — it
+// bounds NEW work, never aborts in-flight work (billing ADR).
+func (s *Server) patchGuardrail(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	var in struct {
+		DailyLimitUSD   *float64 `json:"daily_limit_usd"`
+		MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
+		return
+	}
+	if in.DailyLimitUSD == nil && in.MonthlyLimitUSD == nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR",
+			"at least one of daily_limit_usd / monthly_limit_usd is required")
+		return
+	}
+	if (in.DailyLimitUSD != nil && *in.DailyLimitUSD <= 0) ||
+		(in.MonthlyLimitUSD != nil && *in.MonthlyLimitUSD <= 0) {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "limits must be > 0")
+		return
+	}
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_GUARDRAIL_FAILED", "failed to start tx")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `
+INSERT INTO spend_guardrails(owner_user_id, daily_limit_usd, monthly_limit_usd)
+VALUES ($1,$2,$3) ON CONFLICT (owner_user_id) DO NOTHING`,
+		userID, s.cfg.GuardrailDefaultDailyUSD, s.cfg.GuardrailDefaultMonthlyUSD); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_GUARDRAIL_FAILED", "failed to seed guardrail")
+		return
+	}
+	// COALESCE: a nil pointer marshals to SQL NULL → the column keeps its
+	// value, so only the supplied limit(s) change.
+	if _, err := tx.Exec(ctx, `
+UPDATE spend_guardrails SET
+  daily_limit_usd   = COALESCE($2, daily_limit_usd),
+  monthly_limit_usd = COALESCE($3, monthly_limit_usd),
+  updated_at = now()
+WHERE owner_user_id = $1`, userID, in.DailyLimitUSD, in.MonthlyLimitUSD); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_GUARDRAIL_FAILED", "failed to update limits")
+		return
+	}
+	var dLimit, mLimit, dSpent, mSpent, reserved float64
+	if err := tx.QueryRow(ctx, guardrailReadSQL, userID).
+		Scan(&dLimit, &mLimit, &dSpent, &mSpent, &reserved); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_GUARDRAIL_FAILED", "failed to re-read guardrail")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_GUARDRAIL_FAILED", "failed to commit")
+		return
+	}
+	writeGuardrailJSON(w, dLimit, mLimit, dSpent, mSpent, reserved)
+}
+
+// getPlatformBalance — GET /v1/model-billing/platform-balance. The authed
+// user's Subsystem-B free tier + credits. No row yet → config free tier.
+func (s *Server) getPlatformBalance(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	var allowance, used, credits, reserved float64
+	err := s.pool.QueryRow(r.Context(), platformReadSQL, userID).
+		Scan(&allowance, &used, &credits, &reserved)
+	if errors.Is(err, pgx.ErrNoRows) {
+		allowance = s.cfg.PlatformFreeTierUSD
+		used, credits, reserved = 0, 0, 0
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_GUARDRAIL_FAILED", "failed to read platform balance")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"free_tier_allowance_usd": allowance,
+		"free_tier_used_usd":      used,
+		"free_tier_remaining_usd": allowance - used,
+		"credits_balance_usd":     credits,
+		"reserved_usd":            reserved,
+	})
+}
