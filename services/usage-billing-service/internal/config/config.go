@@ -19,6 +19,11 @@ type Config struct {
 	GuardrailDefaultDailyUSD   float64
 	GuardrailDefaultMonthlyUSD float64
 
+	// Phase 6a-β — Subsystem B platform free-tier allowance (USD). Required,
+	// config-driven (ADR P5 — never a DDL default). Seeded into a user's
+	// platform_balances row on first platform_model reserve.
+	PlatformFreeTierUSD float64
+
 	// Sweeper horizon for held reservations — MUST exceed the longest job
 	// timeout (provider-registry VideoGenJobTimeout = 30m) so a normal job
 	// is never swept mid-run. Code default 45m; override via RESERVATION_TTL.
@@ -52,6 +57,12 @@ func Load() (*Config, error) {
 	}
 	c.GuardrailDefaultDailyUSD = daily
 	c.GuardrailDefaultMonthlyUSD = monthly
+
+	freeTier, err := requiredFloat("PLATFORM_FREE_TIER_USD")
+	if err != nil {
+		return nil, err
+	}
+	c.PlatformFreeTierUSD = freeTier
 
 	c.ReservationTTL = 45 * time.Minute
 	if v := os.Getenv("RESERVATION_TTL"); v != "" {

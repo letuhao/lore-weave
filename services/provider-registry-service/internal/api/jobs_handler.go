@@ -298,7 +298,7 @@ func (s *Server) runGuardrailPreflight(
 	}
 
 	// 3 + 4. Reserve. A success carries the reservation onto the job row.
-	res, err := s.guardrail.Reserve(ctx, userID, jobID, estimate)
+	res, err := s.guardrail.Reserve(ctx, userID, jobID, estimate, modelSource)
 	if err != nil {
 		// Fail CLOSED — no job runs on an unconfirmed reservation. This is
 		// a deliberate availability coupling (/review-impl MED#4): while
@@ -335,7 +335,7 @@ func (s *Server) runGuardrailPreflight(
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "re-estimate failed")
 		return preflightResult{}, false
 	}
-	res2, err := s.guardrail.Reserve(ctx, userID, jobID, estimate2)
+	res2, err := s.guardrail.Reserve(ctx, userID, jobID, estimate2, modelSource)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "billing service unavailable")
 		return preflightResult{}, false

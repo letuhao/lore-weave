@@ -48,7 +48,7 @@ func TestGuardrailClient_Reserve_OK(t *testing.T) {
 
 	c := NewGuardrailClient(stub.server.URL, "secret-token", nil)
 	owner, job := uuid.New(), uuid.New()
-	res, err := c.Reserve(context.Background(), owner, job, 2.5)
+	res, err := c.Reserve(context.Background(), owner, job, 2.5, "platform_model")
 	if err != nil {
 		t.Fatalf("Reserve: %v", err)
 	}
@@ -70,6 +70,9 @@ func TestGuardrailClient_Reserve_OK(t *testing.T) {
 	if stub.lastToken != "secret-token" {
 		t.Fatalf("X-Internal-Token not forwarded: %q", stub.lastToken)
 	}
+	if stub.lastBody["model_source"] != "platform_model" {
+		t.Fatalf("model_source not forwarded: %v", stub.lastBody["model_source"])
+	}
 	if stub.lastBody["estimated_usd"] != 2.5 {
 		t.Fatalf("estimated_usd not sent: %v", stub.lastBody["estimated_usd"])
 	}
@@ -84,7 +87,7 @@ func TestGuardrailClient_Reserve_402_Insufficient(t *testing.T) {
 	}
 	c := NewGuardrailClient(stub.server.URL, "tok", nil)
 
-	res, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 5.0)
+	res, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 5.0, "user_model")
 	if err != nil {
 		t.Fatalf("Reserve should not error on a 402, got %v", err)
 	}
@@ -105,7 +108,7 @@ func TestGuardrailClient_Reserve_500_IsError(t *testing.T) {
 	stub.replyBody = map[string]any{"error": "boom"}
 	c := NewGuardrailClient(stub.server.URL, "tok", nil)
 
-	if _, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 1.0); err == nil {
+	if _, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 1.0, "user_model"); err == nil {
 		t.Fatal("expected an error on a 500 reserve")
 	}
 }
@@ -116,7 +119,7 @@ func TestGuardrailClient_Reserve_200_NilReservationID_IsError(t *testing.T) {
 	stub.replyBody = map[string]any{} // no reservation_id
 	c := NewGuardrailClient(stub.server.URL, "tok", nil)
 
-	if _, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 1.0); err == nil {
+	if _, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 1.0, "user_model"); err == nil {
 		t.Fatal("expected an error when a 200 carries no reservation_id")
 	}
 }
@@ -175,5 +178,42 @@ func TestGuardrailClient_Release(t *testing.T) {
 	stub.replyStatus = http.StatusBadGateway
 	if err := c.Release(context.Background(), resID); err == nil {
 		t.Fatal("expected an error when release returns non-200")
+	}
+}
+
+func TestGuardrailClient_RecordUsage(t *testing.T) {
+	stub := newGuardrailStub(t)
+	c := NewGuardrailClient(stub.server.URL, "tok", nil)
+	jobID, owner, modelRef := uuid.New(), uuid.New(), uuid.New()
+
+	err := c.RecordUsage(context.Background(), UsageRecord{
+		RequestID:    jobID,
+		OwnerUserID:  owner,
+		ModelSource:  "platform_model",
+		ModelRef:     modelRef,
+		Operation:    "chat",
+		InputTokens:  100,
+		OutputTokens: 50,
+	})
+	if err != nil {
+		t.Fatalf("RecordUsage: %v", err)
+	}
+	if stub.lastPath != "/internal/model-billing/record" {
+		t.Fatalf("unexpected path %q", stub.lastPath)
+	}
+	// request_id = the job_id (the /record idempotency key).
+	if stub.lastBody["request_id"] != jobID.String() {
+		t.Fatalf("request_id: got %v want %v", stub.lastBody["request_id"], jobID)
+	}
+	// Operation maps to /record's `purpose`.
+	if stub.lastBody["purpose"] != "chat" {
+		t.Fatalf("purpose: got %v want chat", stub.lastBody["purpose"])
+	}
+	if stub.lastBody["input_tokens"] != float64(100) || stub.lastBody["output_tokens"] != float64(50) {
+		t.Fatalf("token counts not forwarded: %v / %v",
+			stub.lastBody["input_tokens"], stub.lastBody["output_tokens"])
+	}
+	if stub.lastBody["model_source"] != "platform_model" {
+		t.Fatalf("model_source: got %v", stub.lastBody["model_source"])
 	}
 }

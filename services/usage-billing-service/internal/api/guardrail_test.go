@@ -26,9 +26,10 @@ import (
 )
 
 const (
-	guardrailTestSecret  = "test_jwt_secret_at_least_32_characters_long"
-	guardrailTestDaily   = 10.0
-	guardrailTestMonthly = 100.0
+	guardrailTestSecret   = "test_jwt_secret_at_least_32_characters_long"
+	guardrailTestDaily    = 10.0
+	guardrailTestMonthly  = 100.0
+	guardrailTestFreeTier = 50.0 // Phase 6a-β — Subsystem B free-tier allowance
 )
 
 // openGuardrailTestDB opens a pool for the guardrail integration tests; skips
@@ -49,7 +50,7 @@ func openGuardrailTestDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("migrate.Up: %v", err)
 	}
 	if _, err := pool.Exec(context.Background(),
-		`TRUNCATE spend_guardrails, token_reservations`); err != nil {
+		`TRUNCATE spend_guardrails, token_reservations, platform_balances`); err != nil {
 		pool.Close()
 		t.Fatalf("truncate: %v", err)
 	}
@@ -63,8 +64,51 @@ func newGuardrailServer(t *testing.T, pool *pgxpool.Pool) *Server {
 		JWTSecret:                  guardrailTestSecret,
 		GuardrailDefaultDailyUSD:   guardrailTestDaily,
 		GuardrailDefaultMonthlyUSD: guardrailTestMonthly,
+		PlatformFreeTierUSD:        guardrailTestFreeTier,
 		ReservationTTL:             45 * time.Minute,
 	})
+}
+
+// platformBalance is a snapshot of one platform_balances row.
+type platformBalance struct {
+	freeTierAllowance, freeTierUsed float64
+	creditsBalance, reserved        float64
+}
+
+func readPlatformBalance(t *testing.T, pool *pgxpool.Pool, owner uuid.UUID) platformBalance {
+	t.Helper()
+	var b platformBalance
+	err := pool.QueryRow(context.Background(), `
+SELECT free_tier_allowance_usd, free_tier_used_usd, credits_balance_usd, reserved_usd
+FROM platform_balances WHERE owner_user_id = $1`, owner).
+		Scan(&b.freeTierAllowance, &b.freeTierUsed, &b.creditsBalance, &b.reserved)
+	if err != nil {
+		t.Fatalf("readPlatformBalance: %v", err)
+	}
+	return b
+}
+
+func platformBalanceExists(t *testing.T, pool *pgxpool.Pool, owner uuid.UUID) bool {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM platform_balances WHERE owner_user_id = $1`, owner).Scan(&n); err != nil {
+		t.Fatalf("platformBalanceExists: %v", err)
+	}
+	return n > 0
+}
+
+// callReservePlatform posts a reserve with model_source=platform_model.
+func callReservePlatform(t *testing.T, srv *Server, owner, job uuid.UUID, est float64) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(map[string]any{
+		"owner_user_id": owner, "job_id": job, "estimated_usd": est,
+		"model_source": "platform_model",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/internal/billing/guardrail/reserve", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	srv.guardrailReserve(rr, req)
+	return rr
 }
 
 // guardrail is a snapshot of one spend_guardrails row.
@@ -541,5 +585,306 @@ func TestGuardrailReserve_Validation(t *testing.T) {
 	rr = callReserve(t, srv, uuid.New(), uuid.New(), -1.0)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for negative estimate, got %d", rr.Code)
+	}
+}
+
+// ── Phase 6a-β — Subsystem B (platform resale ledger) ──────────────────────
+
+func TestGuardrailReserve_Platform_HoldsBothLedgers(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	if rr := callReservePlatform(t, srv, owner, uuid.New(), 4.0); rr.Code != http.StatusOK {
+		t.Fatalf("platform reserve: expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	// A platform_model job holds in BOTH ledgers.
+	if g := readGuardrail(t, pool, owner); g.reserved != 4.0 {
+		t.Fatalf("spend_guardrails.reserved: got %v want 4.0", g.reserved)
+	}
+	b := readPlatformBalance(t, pool, owner)
+	if b.reserved != 4.0 {
+		t.Fatalf("platform_balances.reserved: got %v want 4.0", b.reserved)
+	}
+	if b.freeTierAllowance != guardrailTestFreeTier {
+		t.Fatalf("platform_balances seeded wrong: got allowance %v", b.freeTierAllowance)
+	}
+}
+
+func TestGuardrailReserve_UserModel_SkipsPlatformBalances(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	if rr := callReserve(t, srv, owner, uuid.New(), 3.0); rr.Code != http.StatusOK {
+		t.Fatalf("user_model reserve: expected 200, got %d", rr.Code)
+	}
+	if platformBalanceExists(t, pool, owner) {
+		t.Fatal("a user_model reserve must not create a platform_balances row")
+	}
+}
+
+func TestGuardrailReserve_Platform_OverFreeTier_402(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	// Seed both rows with a small hold, then shrink the free tier so that
+	// Subsystem B — not A — is the binding gate.
+	if rr := callReservePlatform(t, srv, owner, uuid.New(), 1.0); rr.Code != http.StatusOK {
+		t.Fatalf("setup reserve: %d", rr.Code)
+	}
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE platform_balances SET free_tier_allowance_usd = 5, credits_balance_usd = 0 WHERE owner_user_id=$1`,
+		owner); err != nil {
+		t.Fatalf("shrink free tier: %v", err)
+	}
+	// A-available ≈ 9 (daily 10 − reserved 1); B-available = 5 − 0 − 1 = 4.
+	rr := callReservePlatform(t, srv, owner, uuid.New(), 8.0)
+	if rr.Code != http.StatusPaymentRequired {
+		t.Fatalf("expected 402, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	var out struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &out)
+	if out.Code != "PLATFORM_BALANCE_EXHAUSTED" {
+		t.Fatalf("expected PLATFORM_BALANCE_EXHAUSTED, got %q", out.Code)
+	}
+}
+
+func TestGuardrailReserve_Platform_CreditsCoverBeyondFreeTier(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	if rr := callReservePlatform(t, srv, owner, uuid.New(), 1.0); rr.Code != http.StatusOK {
+		t.Fatalf("setup reserve: %d", rr.Code)
+	}
+	// Free tier fully used; credits cover the next job.
+	if _, err := pool.Exec(context.Background(), `
+UPDATE platform_balances SET free_tier_used_usd = free_tier_allowance_usd, credits_balance_usd = 20
+WHERE owner_user_id=$1`, owner); err != nil {
+		t.Fatalf("exhaust free tier: %v", err)
+	}
+	// B-available = 50 − 50 − 1 + 20 = 19 ≥ 8.
+	if rr := callReservePlatform(t, srv, owner, uuid.New(), 8.0); rr.Code != http.StatusOK {
+		t.Fatalf("credits should cover beyond the free tier: got %d (%s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestGuardrailReserve_Platform_SubsystemAStillEnforced_402(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	// Estimate 12 > the daily limit 10, but well within the $50 free tier.
+	// The Subsystem A gate must still 402 a platform_model job.
+	rr := callReservePlatform(t, srv, owner, uuid.New(), 12.0)
+	if rr.Code != http.StatusPaymentRequired {
+		t.Fatalf("expected 402, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	var out struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &out)
+	if out.Code != "INSUFFICIENT_BUDGET" {
+		t.Fatalf("expected INSUFFICIENT_BUDGET (Subsystem A), got %q", out.Code)
+	}
+}
+
+func TestGuardrailReconcile_Platform_WithinFreeTier(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	resID := reservationIDFrom(t, callReservePlatform(t, srv, owner, uuid.New(), 5.0))
+	if rr := callReconcile(t, srv, resID, 4.0); rr.Code != http.StatusOK {
+		t.Fatalf("reconcile: expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	b := readPlatformBalance(t, pool, owner)
+	if b.freeTierUsed != 4.0 {
+		t.Fatalf("free_tier_used: got %v want 4.0", b.freeTierUsed)
+	}
+	if b.creditsBalance != 0 {
+		t.Fatalf("credits should be untouched within the free tier, got %v", b.creditsBalance)
+	}
+	if b.reserved != 0 {
+		t.Fatalf("platform hold not dropped: reserved=%v", b.reserved)
+	}
+}
+
+func TestGuardrailReconcile_Platform_SpillsToCredits(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	resID := reservationIDFrom(t, callReservePlatform(t, srv, owner, uuid.New(), 5.0))
+	// Free tier all but $2 used; $10 of credits available.
+	if _, err := pool.Exec(context.Background(), `
+UPDATE platform_balances SET free_tier_used_usd = 48, credits_balance_usd = 10
+WHERE owner_user_id=$1`, owner); err != nil {
+		t.Fatalf("near-exhaust free tier: %v", err)
+	}
+	// Reconcile $5: $2 fills the free tier (→ 50), $3 spills to credits (→ 7).
+	if rr := callReconcile(t, srv, resID, 5.0); rr.Code != http.StatusOK {
+		t.Fatalf("reconcile: expected 200, got %d", rr.Code)
+	}
+	b := readPlatformBalance(t, pool, owner)
+	if b.freeTierUsed != b.freeTierAllowance {
+		t.Fatalf("free tier should be capped at allowance: used=%v allowance=%v", b.freeTierUsed, b.freeTierAllowance)
+	}
+	if b.creditsBalance != 7.0 {
+		t.Fatalf("credits: got %v want 7.0 (10 − 3 spill)", b.creditsBalance)
+	}
+}
+
+func TestGuardrailRelease_Platform_DropsHoldNoSpend(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	resID := reservationIDFrom(t, callReservePlatform(t, srv, owner, uuid.New(), 6.0))
+	if rr := callRelease(t, srv, resID); rr.Code != http.StatusOK {
+		t.Fatalf("release: expected 200, got %d", rr.Code)
+	}
+	b := readPlatformBalance(t, pool, owner)
+	if b.reserved != 0 {
+		t.Fatalf("platform hold not released: reserved=%v", b.reserved)
+	}
+	if b.freeTierUsed != 0 {
+		t.Fatalf("release must record no spend, free_tier_used=%v", b.freeTierUsed)
+	}
+}
+
+func TestSweeper_Platform_DropsHold_LateReconcileStillCharges(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+
+	resID := reservationIDFrom(t, callReservePlatform(t, srv, owner, uuid.New(), 6.0))
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE token_reservations SET expires_at = now() - interval '1 hour' WHERE reservation_id=$1`,
+		resID); err != nil {
+		t.Fatalf("expire hold: %v", err)
+	}
+	if _, err := srv.sweepExpiredReservations(context.Background()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if b := readPlatformBalance(t, pool, owner); b.reserved != 0 {
+		t.Fatalf("sweeper did not drop the platform hold: reserved=%v", b.reserved)
+	}
+	// A swept platform job that later completes still records its spend.
+	if rr := callReconcile(t, srv, resID, 3.5); rr.Code != http.StatusOK {
+		t.Fatalf("late reconcile: expected 200, got %d", rr.Code)
+	}
+	b := readPlatformBalance(t, pool, owner)
+	if b.freeTierUsed != 3.5 {
+		t.Fatalf("swept-then-reconcile lost platform spend: free_tier_used=%v", b.freeTierUsed)
+	}
+	if b.reserved != 0 {
+		t.Fatalf("swept-then-reconcile moved platform reserved off zero: %v", b.reserved)
+	}
+}
+
+// TestGuardrailPlatform_FreeTierLazyReset locks the Subsystem B free-tier
+// calendar-month reset on BOTH paths: platformRecordSQL (reconcile) and
+// platformLockSQL (reserve). A stale free_tier_window_month must zero
+// free_tier_used before the window is used (design §3.1 / §3.4).
+func TestGuardrailPlatform_FreeTierLazyReset(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+	ctx := context.Background()
+
+	windowMonth := func() string {
+		var d time.Time
+		if err := pool.QueryRow(ctx,
+			`SELECT free_tier_window_month FROM platform_balances WHERE owner_user_id=$1`, owner).
+			Scan(&d); err != nil {
+			t.Fatalf("read window: %v", err)
+		}
+		return d.Format("2006-01-02")
+	}
+
+	// ── platformRecordSQL reset (reconcile) ──
+	resID := reservationIDFrom(t, callReservePlatform(t, srv, owner, uuid.New(), 5.0))
+	if _, err := pool.Exec(ctx, `
+UPDATE platform_balances SET free_tier_used_usd = 48, free_tier_window_month = DATE '2000-01-01'
+WHERE owner_user_id=$1`, owner); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	if rr := callReconcile(t, srv, resID, 3.0); rr.Code != http.StatusOK {
+		t.Fatalf("reconcile: expected 200, got %d", rr.Code)
+	}
+	b := readPlatformBalance(t, pool, owner)
+	if b.freeTierUsed != 3.0 {
+		t.Fatalf("reconcile must reset the stale window to 0 before adding: free_tier_used=%v want 3.0", b.freeTierUsed)
+	}
+	if windowMonth() == "2000-01-01" {
+		t.Fatal("reconcile did not advance free_tier_window_month")
+	}
+
+	// ── platformLockSQL reset (reserve) ──
+	// Backdate again with the free tier near-exhausted: without the reset
+	// the next reserve would 402 (bAvail = 50 − 48 = 2 < 8); with it,
+	// free_tier_used zeroes and bAvail = 50 ≥ 8.
+	if _, err := pool.Exec(ctx, `
+UPDATE platform_balances SET free_tier_used_usd = 48, free_tier_window_month = DATE '2000-01-01'
+WHERE owner_user_id=$1`, owner); err != nil {
+		t.Fatalf("re-backdate: %v", err)
+	}
+	if rr := callReservePlatform(t, srv, owner, uuid.New(), 8.0); rr.Code != http.StatusOK {
+		t.Fatalf("reserve after a stale window must reset the free tier and admit the job: got %d (%s)",
+			rr.Code, rr.Body.String())
+	}
+	if b := readPlatformBalance(t, pool, owner); b.freeTierUsed != 0 {
+		t.Fatalf("reserve did not reset the stale free_tier_used: got %v", b.freeTierUsed)
+	}
+}
+
+// TestRecordInvocation_Idempotent_NoDoubleDeduct locks the Phase 6a-β
+// /record idempotency fix: a retry with the same request_id must not deduct
+// account_balances a second time.
+func TestRecordInvocation_Idempotent_NoDoubleDeduct(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+	reqID := uuid.New()
+	modelRef := uuid.New()
+
+	callRecord := func() *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]any{
+			"request_id": reqID, "owner_user_id": owner, "model_ref": modelRef,
+			"provider_kind": "openai", "model_source": "user_model",
+			"input_tokens": 100, "output_tokens": 50,
+		})
+		req := httptest.NewRequest(http.MethodPost, "/internal/model-billing/record", bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+		srv.recordInvocation(rr, req)
+		return rr
+	}
+	readQuota := func() int {
+		var q int
+		if err := pool.QueryRow(context.Background(),
+			`SELECT month_quota_remaining_tokens FROM account_balances WHERE owner_user_id=$1`, owner).
+			Scan(&q); err != nil {
+			t.Fatalf("read quota: %v", err)
+		}
+		return q
+	}
+
+	if rr := callRecord(); rr.Code != http.StatusCreated {
+		t.Fatalf("first record: expected 201, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	afterFirst := readQuota()
+
+	// Retry with the SAME request_id — must be idempotent.
+	if rr := callRecord(); rr.Code != http.StatusCreated {
+		t.Fatalf("retry record: expected 201, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	if afterRetry := readQuota(); afterRetry != afterFirst {
+		t.Fatalf("duplicate request_id double-deducted account_balances: quota %d → %d",
+			afterFirst, afterRetry)
 	}
 }

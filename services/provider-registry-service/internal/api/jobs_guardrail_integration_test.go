@@ -319,3 +319,49 @@ func TestDoSubmitJob_MaxTokensCap_RetriesAndSurfacesCap(t *testing.T) {
 		t.Fatalf("stored input max_tokens %d != capped %d", got, applied)
 	}
 }
+
+// seedPlatformModel inserts a priced platform_models row, returning its id.
+func seedPlatformModel(t *testing.T, pool *pgxpool.Pool, pricingJSON string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := pool.QueryRow(context.Background(), `
+INSERT INTO platform_models (provider_kind, provider_model_name, display_name, status, pricing)
+VALUES ('openai','gpt-platform-test','GPT Platform Test','active',$1)
+RETURNING platform_model_id`, pricingJSON).Scan(&id); err != nil {
+		t.Fatalf("seed platform_models: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM platform_models WHERE platform_model_id=$1`, id)
+	})
+	return id
+}
+
+// TestDoSubmitJob_PlatformModel_HappyPath exercises doSubmitJob's pre-flight
+// for a platform_model job — pricing resolved from platform_models, reserve
+// placed with model_source=platform_model (Subsystem B engaged in usage-billing).
+func TestDoSubmitJob_PlatformModel_HappyPath(t *testing.T) {
+	stub := newBillingStub(t, reserveReply{http.StatusOK, map[string]any{
+		"reservation_id": uuid.New(), "daily_available": 10.0, "monthly_available": 50.0,
+	}})
+	srv, pool := guardrailServer(t, stub)
+	modelID := seedPlatformModel(t, pool, pricedTextModel)
+	owner := uuid.New()
+
+	body, _ := json.Marshal(map[string]any{
+		"operation": "chat", "model_source": "platform_model",
+		"model_ref": modelID.String(),
+		"input":     map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hi"}}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/llm/jobs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.doSubmitJob(rr, req, owner)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	if stub.reserveCalls != 1 {
+		t.Fatalf("expected 1 reserve call, got %d", stub.reserveCalls)
+	}
+	_, _ = pool.Exec(context.Background(), `DELETE FROM llm_jobs WHERE owner_user_id=$1`, owner)
+}

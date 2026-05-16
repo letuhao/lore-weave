@@ -46,8 +46,8 @@ func TestSettleBilling_NilGuardrail_IsNoOp(t *testing.T) {
 	// without usage-billing) must settle nothing and never panic — even
 	// though repo is also nil here.
 	w := &Worker{}
-	w.settleBilling(context.Background(), uuid.New(), uuid.New(), "completed", nil)
-	w.settleBilling(context.Background(), uuid.New(), uuid.New(), "failed", nil)
+	w.settleBilling(context.Background(), uuid.New(), uuid.New(), "chat", "completed", nil)
+	w.settleBilling(context.Background(), uuid.New(), uuid.New(), "chat", "failed", nil)
 }
 
 func TestActualUSD_NoUsageBlock_ReturnsNil(t *testing.T) {
@@ -60,5 +60,20 @@ func TestActualUSD_NoUsageBlock_ReturnsNil(t *testing.T) {
 	noUsage := map[string]any{"messages": []any{}}
 	if got := w.actualUSD(context.Background(), uuid.New(), "user_model", uuid.New(), noUsage); got != nil {
 		t.Fatalf("result without usage: expected nil actual, got %v", *got)
+	}
+}
+
+func TestUsageTokens(t *testing.T) {
+	in, out, ok := usageTokens(map[string]any{
+		"usage": map[string]any{"input_tokens": 120, "output_tokens": 30},
+	})
+	if !ok || in != 120 || out != 30 {
+		t.Fatalf("usageTokens: got (%d,%d,%v) want (120,30,true)", in, out, ok)
+	}
+	if _, _, ok := usageTokens(nil); ok {
+		t.Fatal("nil result → ok must be false")
+	}
+	if _, _, ok := usageTokens(map[string]any{"messages": []any{}}); ok {
+		t.Fatal("result with no usage block → ok must be false")
 	}
 }

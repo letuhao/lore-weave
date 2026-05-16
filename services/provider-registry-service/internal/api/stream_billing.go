@@ -52,7 +52,7 @@ type streamGuard struct {
 // stream proceeds unguarded and the nil-safe observe/settle no-op.
 func (s *Server) preflightStream(
 	w http.ResponseWriter, r *http.Request,
-	userID uuid.UUID, op string, pricing billing.Pricing, inputMap map[string]any,
+	userID uuid.UUID, op, modelSource string, pricing billing.Pricing, inputMap map[string]any,
 ) (*streamGuard, bool) {
 	if s.guardrail == nil {
 		return nil, true
@@ -75,7 +75,7 @@ func (s *Server) preflightStream(
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to allocate stream id")
 		return nil, false
 	}
-	res, err := s.guardrail.Reserve(r.Context(), userID, jobID, estimate)
+	res, err := s.guardrail.Reserve(r.Context(), userID, jobID, estimate, modelSource)
 	if err != nil {
 		// Fail closed — no stream opens on an unconfirmed reservation.
 		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "billing service unavailable")

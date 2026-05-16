@@ -115,14 +115,15 @@ func (w *Worker) finalizeAndNotify(
 	// a cancel is settled by the cancel handler, not double-counted here.
 	// Ordered AFTER the notification (/review-impl LOW#7) so a slow/hung
 	// usage-billing call cannot delay the terminal event.
-	w.settleBilling(ctx, jobID, ownerUserID, status, result)
+	w.settleBilling(ctx, jobID, ownerUserID, operation, status, result)
 }
 
-// settleBilling reconciles (completed) or releases (failed) the job's spend
-// reservation on a terminal transition — Phase 6a. Best-effort: a
-// usage-billing failure is logged, never propagated; the job row is already
-// terminal and the usage-billing sweeper releases any leaked hold.
-func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID, status string, result any) {
+// settleBilling settles a terminal job's billing — Phase 6a + 6a-β. Two
+// independent best-effort steps: (1) reconcile/release the spend reservation
+// (Subsystem A + B); (2) on a completed job, record model-level usage to the
+// /record audit ledger (the gateway as biller). A usage-billing failure is
+// logged, never propagated.
+func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID, operation, status string, result any) {
 	if w.guardrail == nil {
 		return // billing not wired
 	}
@@ -131,24 +132,66 @@ func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID
 		w.logger.Warn("billing info lookup failed", "job_id", jobID.String(), "err", err)
 		return
 	}
-	if !found || resID == nil {
-		return // job carries no reservation — nothing to settle
+	if !found {
+		return // no job row — nothing to settle or record
 	}
-	if status != "completed" {
-		// failed — free the hold, record no spend. (Cancellation is settled
-		// by the cancel handler, not the worker.)
-		if relErr := w.guardrail.Release(ctx, *resID); relErr != nil {
-			w.logger.Warn("guardrail release failed", "job_id", jobID.String(), "err", relErr)
+
+	// (1) Spend reservation — only when the job carries one.
+	if resID != nil {
+		if status != "completed" {
+			// failed — free the hold, record no spend. (Cancellation is
+			// settled by the cancel handler, not the worker.)
+			if relErr := w.guardrail.Release(ctx, *resID); relErr != nil {
+				w.logger.Warn("guardrail release failed", "job_id", jobID.String(), "err", relErr)
+			}
+		} else {
+			// completed — reconcile. A non-nil actual is the measured
+			// spend; nil tells usage-billing to charge the reservation's
+			// own estimate (media jobs, or usage/pricing unresolved).
+			actual := w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
+			if recErr := w.guardrail.Reconcile(ctx, *resID, actual); recErr != nil {
+				w.logger.Warn("guardrail reconcile failed", "job_id", jobID.String(), "err", recErr)
+			}
 		}
-		return
 	}
-	// completed — reconcile. A non-nil actual is the measured spend; nil
-	// tells usage-billing to charge the reservation's own estimate (media
-	// jobs, or a text job whose usage/pricing could not be resolved).
-	actual := w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
-	if recErr := w.guardrail.Reconcile(ctx, *resID, actual); recErr != nil {
-		w.logger.Warn("guardrail reconcile failed", "job_id", jobID.String(), "err", recErr)
+
+	// (2) Phase 6a-β — model-level usage record (gateway as biller). Only on
+	// a completed job with resolvable token usage; request_id = job_id so a
+	// settle retry is idempotent on the usage-billing side.
+	if status == "completed" {
+		if tokIn, tokOut, ok := usageTokens(result); ok {
+			if recErr := w.guardrail.RecordUsage(ctx, billing.UsageRecord{
+				RequestID:    jobID,
+				OwnerUserID:  ownerUserID,
+				ModelSource:  modelSource,
+				ModelRef:     modelRef,
+				Operation:    operation,
+				InputTokens:  tokIn,
+				OutputTokens: tokOut,
+			}); recErr != nil {
+				w.logger.Warn("usage record failed", "job_id", jobID.String(), "err", recErr)
+			}
+		}
 	}
+}
+
+// usageTokens extracts the input/output token counts from a completed job's
+// result `usage` block. ok=false when absent (every media operation).
+func usageTokens(result any) (inTok, outTok int, ok bool) {
+	rm, isMap := result.(map[string]any)
+	if !isMap {
+		return 0, 0, false
+	}
+	usage, isMap := rm["usage"].(map[string]any)
+	if !isMap {
+		return 0, 0, false
+	}
+	i, iok := numField(usage, "input_tokens")
+	o, ook := numField(usage, "output_tokens")
+	if !iok || !ook {
+		return 0, 0, false
+	}
+	return i, o, true
 }
 
 // actualUSD computes the measured spend of a completed job from its result
@@ -156,17 +199,8 @@ func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID
 // estimate" — whenever the usage tokens or a required price dimension is
 // unavailable (notably every media operation, which carries no token usage).
 func (w *Worker) actualUSD(ctx context.Context, ownerUserID uuid.UUID, modelSource string, modelRef uuid.UUID, result any) *float64 {
-	rm, ok := result.(map[string]any)
+	tokIn, tokOut, ok := usageTokens(result)
 	if !ok {
-		return nil
-	}
-	usage, ok := rm["usage"].(map[string]any)
-	if !ok {
-		return nil
-	}
-	tokIn, okIn := numField(usage, "input_tokens")
-	tokOut, okOut := numField(usage, "output_tokens")
-	if !okIn || !okOut {
 		return nil
 	}
 	pricing, found, err := w.repo.ModelPricing(ctx, modelSource, ownerUserID, modelRef)

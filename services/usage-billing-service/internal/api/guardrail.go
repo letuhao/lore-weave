@@ -53,12 +53,49 @@ UPDATE spend_guardrails SET
   updated_at           = now()
 WHERE owner_user_id = $1`
 
+// platformLockSQL: FOR-UPDATE-locks the platform_balances row and lazily
+// resets the free-tier calendar-month window (mirrors reserveLockSQL). Used
+// only for a platform_model reservation — Subsystem B (Phase 6a-β).
+const platformLockSQL = `
+UPDATE platform_balances SET
+  free_tier_used_usd     = CASE WHEN free_tier_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                                THEN 0 ELSE free_tier_used_usd END,
+  free_tier_window_month = CASE WHEN free_tier_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                                THEN date_trunc('month', now() AT TIME ZONE 'utc')::date ELSE free_tier_window_month END,
+  updated_at = now()
+WHERE owner_user_id = $1
+RETURNING free_tier_allowance_usd, free_tier_used_usd, credits_balance_usd, reserved_usd`
+
+// platformRecordSQL: lazily resets the free-tier window, then deducts $2
+// (actual USD) — free tier first, the remainder from credits — and drops $3
+// (the hold; 0 when the sweeper already dropped it). Subsystem B reconcile.
+const platformRecordSQL = `
+UPDATE platform_balances SET
+  free_tier_used_usd  = LEAST(
+                          (CASE WHEN free_tier_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                                THEN 0 ELSE free_tier_used_usd END) + $2,
+                          free_tier_allowance_usd),
+  credits_balance_usd = credits_balance_usd - GREATEST(
+                          (CASE WHEN free_tier_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                                THEN 0 ELSE free_tier_used_usd END) + $2 - free_tier_allowance_usd,
+                          0),
+  free_tier_window_month = CASE WHEN free_tier_window_month < date_trunc('month', now() AT TIME ZONE 'utc')::date
+                                THEN date_trunc('month', now() AT TIME ZONE 'utc')::date ELSE free_tier_window_month END,
+  reserved_usd        = reserved_usd - $3,
+  updated_at          = now()
+WHERE owner_user_id = $1`
+
 // guardrailReserve — POST /internal/billing/guardrail/reserve.
+//
+// A platform_model job reserves against BOTH Subsystem A (spend_guardrails —
+// the user's cap) AND Subsystem B (platform_balances — LoreWeave's free tier
+// + credits). A user_model job reserves against Subsystem A only.
 func (s *Server) guardrailReserve(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		OwnerUserID  uuid.UUID `json:"owner_user_id"`
 		JobID        uuid.UUID `json:"job_id"`
 		EstimatedUSD float64   `json:"estimated_usd"`
+		ModelSource  string    `json:"model_source"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "invalid payload")
@@ -72,6 +109,16 @@ func (s *Server) guardrailReserve(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "estimated_usd must be >= 0")
 		return
 	}
+	// model_source defaults to user_model when absent (back-compat for any
+	// caller not yet sending it); only platform_model engages Subsystem B.
+	if in.ModelSource == "" {
+		in.ModelSource = "user_model"
+	}
+	if in.ModelSource != "user_model" && in.ModelSource != "platform_model" {
+		writeError(w, http.StatusBadRequest, "GUARDRAIL_INVALID", "invalid model_source")
+		return
+	}
+	isPlatform := in.ModelSource == "platform_model"
 	ctx := r.Context()
 
 	tx, err := s.pool.Begin(ctx)
@@ -88,6 +135,17 @@ VALUES ($1,$2,$3) ON CONFLICT (owner_user_id) DO NOTHING`,
 		in.OwnerUserID, s.cfg.GuardrailDefaultDailyUSD, s.cfg.GuardrailDefaultMonthlyUSD); err != nil {
 		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to seed guardrail")
 		return
+	}
+	// Phase 6a-β — seed the platform_balances row from the config free tier
+	// on first contact (platform_model jobs only).
+	if isPlatform {
+		if _, err := tx.Exec(ctx, `
+INSERT INTO platform_balances(owner_user_id, free_tier_allowance_usd)
+VALUES ($1,$2) ON CONFLICT (owner_user_id) DO NOTHING`,
+			in.OwnerUserID, s.cfg.PlatformFreeTierUSD); err != nil {
+			writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to seed platform balance")
+			return
+		}
 	}
 
 	// Idempotency FIRST: a held reservation for this job already exists →
@@ -135,12 +193,37 @@ SELECT reservation_id FROM token_reservations WHERE job_id = $1 AND status = 'he
 		return
 	}
 
+	// Phase 6a-β — Subsystem B gate (platform_model only). The
+	// platform_balances row is FOR-UPDATE-locked AFTER spend_guardrails;
+	// every path (reserve / reconcile / sweep) locks A then B in that order,
+	// so there is no deadlock.
+	if isPlatform {
+		var ftAllowance, ftUsed, credits, platReserved float64
+		if err := tx.QueryRow(ctx, platformLockSQL, in.OwnerUserID).
+			Scan(&ftAllowance, &ftUsed, &credits, &platReserved); err != nil {
+			writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to load platform balance")
+			return
+		}
+		// The pool the caller may still draw on: free tier left + credits,
+		// minus other held platform reservations.
+		bAvail := ftAllowance - ftUsed - platReserved + credits
+		if in.EstimatedUSD > 0 && in.EstimatedUSD > bAvail {
+			_ = tx.Rollback(ctx)
+			writeJSON(w, http.StatusPaymentRequired, map[string]any{
+				"code":               "PLATFORM_BALANCE_EXHAUSTED",
+				"platform_available": bAvail,
+				"requested":          in.EstimatedUSD,
+			})
+			return
+		}
+	}
+
 	// Insert the hold + bump reserved_usd as one atomic unit.
 	var resID uuid.UUID
 	err = tx.QueryRow(ctx, `
-INSERT INTO token_reservations(owner_user_id, job_id, estimated_usd, status, expires_at)
-VALUES ($1,$2,$3,'held',$4) RETURNING reservation_id`,
-		in.OwnerUserID, in.JobID, in.EstimatedUSD, time.Now().Add(s.cfg.ReservationTTL)).Scan(&resID)
+INSERT INTO token_reservations(owner_user_id, job_id, estimated_usd, status, expires_at, model_source)
+VALUES ($1,$2,$3,'held',$4,$5) RETURNING reservation_id`,
+		in.OwnerUserID, in.JobID, in.EstimatedUSD, time.Now().Add(s.cfg.ReservationTTL), in.ModelSource).Scan(&resID)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
@@ -165,6 +248,15 @@ UPDATE spend_guardrails SET reserved_usd = reserved_usd + $2, updated_at = now()
 WHERE owner_user_id = $1`, in.OwnerUserID, in.EstimatedUSD); err != nil {
 		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to update reserved")
 		return
+	}
+	// Phase 6a-β — bump the Subsystem B hold for a platform_model job.
+	if isPlatform {
+		if _, err := tx.Exec(ctx, `
+UPDATE platform_balances SET reserved_usd = reserved_usd + $2, updated_at = now()
+WHERE owner_user_id = $1`, in.OwnerUserID, in.EstimatedUSD); err != nil {
+			writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to update platform reserved")
+			return
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "GUARDRAIL_TX_FAILED", "failed to commit")
@@ -269,10 +361,10 @@ func (s *Server) settleReservation(ctx context.Context, resID uuid.UUID, reconci
 
 	var ownerID uuid.UUID
 	var estimated float64
-	var status string
+	var status, modelSource string
 	err = tx.QueryRow(ctx, `
-SELECT owner_user_id, estimated_usd, status FROM token_reservations
-WHERE reservation_id = $1 FOR UPDATE`, resID).Scan(&ownerID, &estimated, &status)
+SELECT owner_user_id, estimated_usd, status, model_source FROM token_reservations
+WHERE reservation_id = $1 FOR UPDATE`, resID).Scan(&ownerID, &estimated, &status, &modelSource)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return errReservationNotFound
 	}
@@ -307,6 +399,16 @@ WHERE reservation_id = $1 FOR UPDATE`, resID).Scan(&ownerID, &estimated, &status
 		if _, err := tx.Exec(ctx, recordSpendSQL, ownerID, spend, holdToDrop); err != nil {
 			return errors.New("failed to record spend")
 		}
+		// Phase 6a-β — Subsystem B reconcile: deduct the same spend from
+		// the free tier (then credits) and drop the B hold. Lock B after A.
+		if modelSource == "platform_model" {
+			if _, err := tx.Exec(ctx, `SELECT 1 FROM platform_balances WHERE owner_user_id=$1 FOR UPDATE`, ownerID); err != nil {
+				return errors.New("failed to lock platform balance")
+			}
+			if _, err := tx.Exec(ctx, platformRecordSQL, ownerID, spend, holdToDrop); err != nil {
+				return errors.New("failed to record platform spend")
+			}
+		}
 		if _, err := tx.Exec(ctx, `
 UPDATE token_reservations SET status='reconciled', updated_at=now() WHERE reservation_id=$1`,
 			resID); err != nil {
@@ -318,6 +420,17 @@ UPDATE token_reservations SET status='reconciled', updated_at=now() WHERE reserv
 UPDATE spend_guardrails SET reserved_usd = reserved_usd - $2, updated_at = now()
 WHERE owner_user_id = $1`, ownerID, estimated); err != nil {
 			return errors.New("failed to release hold")
+		}
+		// Phase 6a-β — Subsystem B release: drop the B hold, no spend.
+		if modelSource == "platform_model" {
+			if _, err := tx.Exec(ctx, `SELECT 1 FROM platform_balances WHERE owner_user_id=$1 FOR UPDATE`, ownerID); err != nil {
+				return errors.New("failed to lock platform balance")
+			}
+			if _, err := tx.Exec(ctx, `
+UPDATE platform_balances SET reserved_usd = reserved_usd - $2, updated_at = now()
+WHERE owner_user_id = $1`, ownerID, estimated); err != nil {
+				return errors.New("failed to release platform hold")
+			}
 		}
 		if _, err := tx.Exec(ctx, `
 UPDATE token_reservations SET status='released', updated_at=now() WHERE reservation_id=$1`,

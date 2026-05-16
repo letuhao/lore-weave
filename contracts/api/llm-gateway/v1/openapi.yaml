@@ -181,8 +181,10 @@ paths:
         gateway places a USD reservation against the caller's budget:
         - `404 LLM_MODEL_NOT_FOUND` — `model_ref` resolves to no model.
         - `402 LLM_QUOTA_EXCEEDED` — the model exists but has no pricing
-          configured, or the worst-case cost estimate exceeds the
-          caller's remaining daily/monthly budget.
+          configured; or the worst-case cost estimate exceeds the
+          caller's remaining daily/monthly budget; or, for a
+          `platform_model` job, it exceeds the caller's LoreWeave free
+          tier + prepaid credits (Phase 6a-β Subsystem B).
         For a `chat`/`completion` job that would only marginally exceed
         budget, the gateway instead caps `max_tokens` to what the budget
         affords and records the cap under `job_meta.max_tokens_capped`

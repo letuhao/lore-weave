@@ -248,6 +248,10 @@ services:
       GUARDRAIL_DEFAULT_DAILY_USD: ${GUARDRAIL_DEFAULT_DAILY_USD:-100000000}
       GUARDRAIL_DEFAULT_MONTHLY_USD: ${GUARDRAIL_DEFAULT_MONTHLY_USD:-100000000}
       RESERVATION_TTL: ${RESERVATION_TTL:-45m}
+      # Phase 6a-β — Subsystem B platform free-tier allowance (USD). REQUIRED
+      # — the service fails to start if unset (no DDL default, billing ADR
+      # P5). Generous for the test/UAT environment so it never gates.
+      PLATFORM_FREE_TIER_USD: ${PLATFORM_FREE_TIER_USD:-100000000}
     depends_on:
       postgres:
         condition: service_healthy

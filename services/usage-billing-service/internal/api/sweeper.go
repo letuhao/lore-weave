@@ -42,20 +42,21 @@ func (s *Server) sweepExpiredReservations(ctx context.Context) (int, error) {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	rows, err := tx.Query(ctx, `
-SELECT reservation_id, owner_user_id, estimated_usd FROM token_reservations
+SELECT reservation_id, owner_user_id, estimated_usd, model_source FROM token_reservations
 WHERE status = 'held' AND expires_at < now()
 FOR UPDATE SKIP LOCKED`)
 	if err != nil {
 		return 0, err
 	}
 	type expired struct {
-		id, owner uuid.UUID
-		est       float64
+		id, owner   uuid.UUID
+		est         float64
+		modelSource string
 	}
 	var list []expired
 	for rows.Next() {
 		var e expired
-		if err := rows.Scan(&e.id, &e.owner, &e.est); err != nil {
+		if err := rows.Scan(&e.id, &e.owner, &e.est, &e.modelSource); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -71,6 +72,16 @@ FOR UPDATE SKIP LOCKED`)
 UPDATE spend_guardrails SET reserved_usd = reserved_usd - $2, updated_at = now()
 WHERE owner_user_id = $1`, e.owner, e.est); err != nil {
 			return 0, err
+		}
+		// Phase 6a-β — a swept platform reservation also drops its
+		// Subsystem B hold (a later reconcile records the spend; see
+		// settleReservation's swept branch).
+		if e.modelSource == "platform_model" {
+			if _, err := tx.Exec(ctx, `
+UPDATE platform_balances SET reserved_usd = reserved_usd - $2, updated_at = now()
+WHERE owner_user_id = $1`, e.owner, e.est); err != nil {
+				return 0, err
+			}
 		}
 		if _, err := tx.Exec(ctx, `
 UPDATE token_reservations SET status = 'swept', updated_at = now()

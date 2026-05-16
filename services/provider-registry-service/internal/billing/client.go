@@ -51,11 +51,16 @@ type ReserveResult struct {
 // budget. A 200 yields ReservationID; a 402 yields Insufficient=true with the
 // availability figures; any other outcome is an error (the caller fails
 // closed — no job should run on an unconfirmed reservation).
-func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.UUID, estimatedUSD float64) (ReserveResult, error) {
+//
+// modelSource ("user_model" | "platform_model") selects the gates: a
+// platform_model reservation also checks + holds Subsystem B (the platform
+// resale ledger) in the same transaction (Phase 6a-β).
+func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.UUID, estimatedUSD float64, modelSource string) (ReserveResult, error) {
 	status, raw, err := c.post(ctx, "/internal/billing/guardrail/reserve", map[string]any{
 		"owner_user_id": ownerUserID,
 		"job_id":        jobID,
 		"estimated_usd": estimatedUSD,
+		"model_source":  modelSource,
 	})
 	if err != nil {
 		return ReserveResult{}, err
@@ -129,6 +134,47 @@ func (c *GuardrailClient) Release(ctx context.Context, reservationID uuid.UUID) 
 	}
 	if status != http.StatusOK {
 		return fmt.Errorf("release: unexpected status %d: %s", status, truncate(raw))
+	}
+	return nil
+}
+
+// UsageRecord is one model-level usage entry for the /record audit ledger.
+type UsageRecord struct {
+	RequestID    uuid.UUID
+	OwnerUserID  uuid.UUID
+	ModelSource  string
+	ModelRef     uuid.UUID
+	Operation    string // → /record `purpose`
+	InputTokens  int
+	OutputTokens int
+}
+
+// RecordUsage posts a model-level usage entry to usage-billing's
+// /internal/model-billing/record (Phase 6a-β — wires the gateway as the
+// model-level biller). request_id = the job_id, so a retry is idempotent on
+// the usage-billing side. Best-effort: the caller logs the error.
+//
+// provider_kind is left empty — the worker does not resolve it (the
+// D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS gap the callers also accept);
+// usage-billing's stale provider_kind CHECK is dropped in the 6a-β migration
+// so an empty value is now accepted.
+func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) error {
+	status, raw, err := c.post(ctx, "/internal/model-billing/record", map[string]any{
+		"request_id":     rec.RequestID,
+		"owner_user_id":  rec.OwnerUserID,
+		"provider_kind":  "",
+		"model_source":   rec.ModelSource,
+		"model_ref":      rec.ModelRef,
+		"input_tokens":   rec.InputTokens,
+		"output_tokens":  rec.OutputTokens,
+		"request_status": "success",
+		"purpose":        rec.Operation,
+	})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK && status != http.StatusCreated {
+		return fmt.Errorf("record usage: unexpected status %d: %s", status, truncate(raw))
 	}
 	return nil
 }

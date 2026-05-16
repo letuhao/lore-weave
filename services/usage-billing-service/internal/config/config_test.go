@@ -15,6 +15,7 @@ func setValidEnv(t *testing.T) {
 	t.Setenv("INTERNAL_SERVICE_TOKEN", "internal-token")
 	t.Setenv("GUARDRAIL_DEFAULT_DAILY_USD", "10")
 	t.Setenv("GUARDRAIL_DEFAULT_MONTHLY_USD", "100")
+	t.Setenv("PLATFORM_FREE_TIER_USD", "5000")
 	t.Setenv("RESERVATION_TTL", "")
 	t.Setenv("HTTP_ADDR", "")
 }
@@ -28,6 +29,9 @@ func TestLoad_Valid_Defaults(t *testing.T) {
 	if c.GuardrailDefaultDailyUSD != 10 || c.GuardrailDefaultMonthlyUSD != 100 {
 		t.Fatalf("guardrail defaults wrong: daily=%v monthly=%v",
 			c.GuardrailDefaultDailyUSD, c.GuardrailDefaultMonthlyUSD)
+	}
+	if c.PlatformFreeTierUSD != 5000 {
+		t.Fatalf("PlatformFreeTierUSD: got %v want 5000", c.PlatformFreeTierUSD)
 	}
 	if c.ReservationTTL != 45*time.Minute {
 		t.Fatalf("expected default ReservationTTL 45m, got %v", c.ReservationTTL)
@@ -45,6 +49,7 @@ func TestLoad_MissingRequired(t *testing.T) {
 		{"INTERNAL_SERVICE_TOKEN", "INTERNAL_SERVICE_TOKEN"},
 		{"GUARDRAIL_DEFAULT_DAILY_USD", "GUARDRAIL_DEFAULT_DAILY_USD"},
 		{"GUARDRAIL_DEFAULT_MONTHLY_USD", "GUARDRAIL_DEFAULT_MONTHLY_USD"},
+		{"PLATFORM_FREE_TIER_USD", "PLATFORM_FREE_TIER_USD"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
