@@ -81,6 +81,71 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-16 (cont. 2) — TVL_003 Mount/Vehicle Travel (1 commit; the conveyance layer; activates the ByBoat mode TVL_001 schema-reserved)
+
+### Session arc
+
+Continued straight from the TVL_004 commit. User picked **TVL_003 Mount/Vehicle Travel** from the next-step list — the feature TVL_001 built `TravelMode` 2-variant (with `ByBoat` schema-reserved) precisely for, and which TVL_002 CTV-D5 multi-modal composite is blocked on. Phase 0 TVM-D1..D7 deep-dive → user `approve all` → DRAFT → user invoked `/review-impl` → 1 HIGH + 1 MED + 4 LOW surfaced → user directed "fix all" → all 6 resolved inline → single combined `[boundaries-lock-claim+release]` commit `8cfda9a5`.
+
+### What TVL_003 specifies
+
+V1+30d+ feature letting a journey use a mount/vehicle instead of OnFoot — a horse on the Road, a river boat on a RiverNavigation route, a ship across a SeaLane, a carriage on a Road. Activates the schema-reserved `ByBoat` `TravelMode` + adds `OnHorseback`/`ByShip`/`ByCarriage` — a closed-enum additive bump (R3) of TVL_001's `TravelMode` 2 → 5. NEW lightweight `mount` aggregate (T2/Reality, sparse per-mount; instanced, owned, located, kinded — not an EF_001 entity, not a fungible RES_001 resource). Per-mode speed modifier on `route.default_fiction_duration` (OnFoot 1.0 → ByShip 0.3 — a mount is *faster*, not *shorter*; provisions cost stays distance-based). Hardcoded mode↔route compatibility matrix. Acquisition via canonical declaration + `Forge:GrantMount` (market purchase deferred). The mount must be at the actor's origin cell; it travels `InTransit` with the actor and is `AtCell(destination)` on arrival. ROUTE_001's `SeaLane`/`RiverNavigation` routes finally get vessels.
+
+### `/review-impl` 1-pass — 1 HIGH + 1 MED + 4 LOW, all resolved inline
+
+- **HIGH-1** — §5.5 claimed a uniform-mode composite journey (e.g. all-Road `OnHorseback`) "works" and carries one mount — but TVL_002 *as shipped* rejects every non-OnFoot composite (CTV-V9), and there is no `mount_id` on `CompositeTravel:Initiate`/`composite_journey`. Fixed: composite-with-mount **deferred V1+30d+** (TVM-D5 — names exactly what a future TVL_002 closure pass needs); TVM-V11 dropped (validators 11→10); AC-TVL-59 + §12.4 rewritten.
+- **MED-1** — the TVL_001 closure pass was mislabeled "schema-only"; relabelled "schema + behavioral" (TVL-V5 lifts the `mode_unavailable` reject; TVL-V9 becomes the expanded matrix; the `speed_modifier` factor enters the tick + arrival formulas). **LOW-1..4** — rule_id count reconciled (8 new/10 total); owner-death folded into TVM-D7; route-incompatible mount cell documented; `mode_requires_mount` copy reworded.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_travel/TVL_003_mount_vehicle_travel.md` | DRAFT + /review-impl 1-pass (1 HIGH + 1 MED + 4 LOW resolved) | 381 |
+| `features/00_travel/_index.md` | TVL_003 row (between TVL_002 + TVL_004 by number) + Active line | + |
+| `catalog/cat_00_TVL_travel_foundation.md` | NEW TVL_003 sub-section, entries TVL-61..TVL-75 (15 entries) | + |
+| `_boundaries/01_feature_ownership_matrix.md` | NEW `mount` aggregate row | + |
+| `_boundaries/02_extension_contracts.md` | §4 EVT-T8 `Forge:GrantMount`; §1.4 `travel.*` +8 rule_ids + `TravelMode` enum bump / `actor_travel_state.mount_id` cross-feature dependency | + |
+| `_boundaries/99_changelog.md` | combined DRAFT + /review-impl entry top-anchored | + |
+| `_boundaries/_LOCK.md` | 1 claim+release cycle | + |
+
+### Handoff notes for next agent / next session
+
+**Active:** none. Lock released. Tree clean. Branch `mmo-rpg/design-resume` ahead of `origin` — **nothing pushed, no PR** per the standing user constraint.
+
+**The travel arc is now 4 features** — TVL_001 (atomic) + TVL_002 (composite) + TVL_004 (encounters) + TVL_003 (mounts). **The TVL_001 closure pass now bundles three consumer features' coordination** — TVL_002 `composite_journey_id` (+ CTV-Q1's 4 items) · TVL_004 `encounter_schedule` field + `Scheduled:TravelTick` generator extension · TVL_003 `mount_id` + `TravelMode` 2→5 bump + `Travel:Initiate` payload field + the TVL-V5/TVL-V9/speed-modifier behavioral changes. All land together at `travel-service` implementation as one closure-pass commit (sequenced `actor_travel_state` schema_version bumps).
+
+**A second closure pass is now also queued** — a **TVL_002 closure pass** to enable composite-with-mount (TVM-D5): relax CTV-V9 to a uniform activated `TravelMode`, add `mount_id` to `CompositeTravel:Initiate` + `composite_journey`. Not V1+30d+; a future feature.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` (POL + SET + ROUTE) + `services/travel-service` (TVL_001 `actor_travel_state` + TVL_002 `composite_journey` + TVL_004 `travel_encounter` + TVL_003 `mount` + Dijkstra + Poisson encounter pre-roll) + EF_001 + TVL_001 closure passes + auth-service capability migration + chat-service S9 context extensions + CI gates.
+2. **TVL_005 V1+30d+ Group/Party Travel** design — multiple actors traversing a journey together; unblocks party encounters (TVL_004 CTE-D7) + multi-passenger vehicles (TVL_003 TVM-D3).
+3. **A combat feature** design — replaces the TVL_004 §5.4 combat abstraction (CTE-D1); also unblocks PROG_001 DF7-equivalent damage-law work.
+4. **TVL_002 closure pass** — enable composite-with-mount (TVM-D5).
+5. **EF_001 + TVL_001 closure passes** standalone — or batched with the V1+30d implementation phase.
+6. **DIPL_001 V2+ Diplomacy Foundation** design — consumes POL_001 State.culture_tag + Settlement graph; requires IDF_005 V2+ ideology.
+
+**Process discipline for next agent:**
+
+- The TVL arc has settled a pattern for a feature consuming a sibling feature: read the consumed aggregate, add a feature-owned aggregate, coordinate cross-feature schema additions via the consumed feature's closure pass. The TVL_001 closure pass is now a 3-feature coordination point — treat it as a single batched implementation task.
+- `/review-impl` resolved MED + LOW inline (not just HIGH) on TVL_002 / TVL_004 / TVL_003 per explicit user "fix all" directives — when the user says "fix all", apply everything inline in the same commit.
+- HIGH-count arc trend: POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3 → TVL_003 1 (derivative features review lighter).
+
+### Raw count
+
+- **Commits:** 1 (`8cfda9a5`).
+- **Files landed:** 7 (1 new + 6 modified); 555 insertions.
+- **Design-doc lines:** 381 TVL_003.
+- **Catalog entries added:** 15 (TVL-61..TVL-75).
+- **NEW aggregate:** 1 (`mount`); **NEW EVT-T sub-type:** 1 (EVT-T8 `Forge:GrantMount`); **TravelMode enum bump:** 2 → 5 (R3 additive).
+- **`travel.*` rule_ids added:** 10 (8 new + 2 reused); **validators:** 10 (TVM-V1..V10).
+- **Acceptance scenarios:** 15 (AC-TVL-46..60); **deferrals:** 9 (TVM-D1..D9); **open questions:** 7 (TVM-Q1..Q7).
+- **Cross-feature schema dependency:** 1 (`actor_travel_state.mount_id` + `TravelMode` bump + `Travel:Initiate` payload, via TVL_001 closure pass).
+- **/review-impl findings resolved:** 1 HIGH + 1 MED + 4 LOW (all inline, 1-pass).
+- **NEW RealityManifest field:** 1 (`canonical_mounts`).
+
+---
+
 ## Session 2026-05-16 (cont.) — TVL_004 Travel Encounters (1 commit; the encounter layer the whole travel arc was built toward)
 
 ### Session arc
