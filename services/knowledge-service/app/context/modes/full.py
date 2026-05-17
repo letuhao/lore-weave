@@ -532,4 +532,6 @@ async def build_full_mode(
         token_count=token_count,
         stable_context=stable_context,
         volatile_context=volatile_context,
+        # K21.12-BE (design D9): surface the project's tool-calling toggle.
+        tool_calling_enabled=project.tool_calling_enabled,
     )

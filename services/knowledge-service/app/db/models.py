@@ -43,6 +43,10 @@ class Project(BaseModel):
     estimated_cost_usd: Decimal
     actual_cost_usd: Decimal
     is_archived: bool
+    # K21.12-BE (design D9): per-project tool-calling toggle. Default
+    # True so a project row that predates the column reads back enabled
+    # (mirrors the DB `DEFAULT true`).
+    tool_calling_enabled: bool = True
     version: int  # D-K8-03: bumped on every non-empty PATCH.
     created_at: datetime
     updated_at: datetime
@@ -74,6 +78,13 @@ class ProjectUpdate(BaseModel):
       repo auto-derives `embedding_dimension` from the model name
       via the `EMBEDDING_MODEL_TO_DIM` map — callers never pass the
       dimension directly.
+    - `tool_calling_enabled` (K21.12-BE, design D9): omit to leave
+      unchanged. Set to `true`/`false` to toggle whether the
+      chat-service tool-calling loop offers memory tools for this
+      project. NOT NULL in the DB, so setting it explicitly to None
+      is treated as "skip" by the repo (same as name/description).
+      The settings toggle UI that drives this is Cycle C — accepting
+      the field now lets that be a FE-only change.
     """
 
     name: ProjectName | None = None
@@ -82,6 +93,7 @@ class ProjectUpdate(BaseModel):
     book_id: UUID | None = None
     is_archived: bool | None = None
     embedding_model: str | None = None
+    tool_calling_enabled: bool | None = None
 
 
 class Summary(BaseModel):

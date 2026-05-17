@@ -451,3 +451,383 @@ class TestTraceIdForwarding:
         assert len(captured) == 2
         assert all(r.headers.get("x-trace-id") == "retry-id" for r in captured)
         await client.aclose()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# K21-B — execute_tool (POST /internal/tools/execute)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# execute_tool returns the {success, result, error} envelope. On any
+# transport failure or non-200 it synthesises a success=False envelope so
+# the tool-calling loop can carry on — it must NEVER raise.
+
+
+class TestExecuteTool:
+    @pytest.mark.asyncio
+    async def test_success_envelope_passthrough(self):
+        """A 200 with a success envelope is returned verbatim."""
+        envelope = {
+            "success": True,
+            "result": {"entities": ["Kai", "Mira"]},
+            "error": None,
+        }
+        client = _make_client(_ok_response(envelope))
+        out = await client.execute_tool(
+            user_id="u",
+            session_id="sess-1",
+            tool_name="memory_search",
+            tool_args={"query": "Kai"},
+        )
+        assert out == envelope
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_tool_level_failure_envelope_passthrough(self):
+        """A 200 carrying success=False (the tool itself refused) is
+        passed through unchanged — knowledge-service always returns 200
+        for tool-level outcomes."""
+        envelope = {"success": False, "result": None, "error": "entity not found"}
+        client = _make_client(_ok_response(envelope))
+        out = await client.execute_tool(
+            user_id="u",
+            session_id="sess-1",
+            tool_name="memory_get_entity",
+            tool_args={"name": "Ghost"},
+        )
+        assert out == envelope
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_non_200_synthesises_failure_envelope(self):
+        """A non-200 (e.g. the 503 infra-failure path) → a synthetic
+        success=False envelope, never an exception."""
+        client = _make_client(_status_response(503, "tool backend unavailable"))
+        out = await client.execute_tool(
+            user_id="u",
+            session_id="sess-1",
+            tool_name="memory_search",
+            tool_args={},
+        )
+        assert out["success"] is False
+        assert out["result"] is None
+        assert "503" in out["error"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_transport_error_synthesises_failure_envelope(self):
+        """A transport error (knowledge-service unreachable) → a
+        synthetic success=False envelope, never raises."""
+        client = _make_client(_raise(httpx.ConnectError("refused")))
+        out = await client.execute_tool(
+            user_id="u",
+            session_id="sess-1",
+            tool_name="memory_search",
+            tool_args={},
+        )
+        assert out["success"] is False
+        assert out["result"] is None
+        assert "unavailable" in out["error"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_timeout_synthesises_failure_envelope(self):
+        """A timeout is an httpx.HTTPError subclass → degrades to a
+        success=False envelope."""
+        client = _make_client(_raise(httpx.TimeoutException("slow")))
+        out = await client.execute_tool(
+            user_id="u",
+            session_id="sess-1",
+            tool_name="memory_search",
+            tool_args={},
+        )
+        assert out["success"] is False
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_synthesises_failure_envelope(self):
+        """A 200 with a body that isn't JSON → a success=False envelope."""
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, content=b"not json", headers={"content-type": "application/json"}
+            )
+
+        client = _make_client(handler)
+        out = await client.execute_tool(
+            user_id="u",
+            session_id="sess-1",
+            tool_name="memory_search",
+            tool_args={},
+        )
+        assert out["success"] is False
+        assert "invalid response" in out["error"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_request_body_shape(self):
+        """The POST body carries user_id / session_id / tool_name /
+        tool_args; project_id is included when supplied."""
+        captured: list = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            return httpx.Response(200, json={"success": True, "result": {}, "error": None})
+
+        client = _make_client(handler)
+        await client.execute_tool(
+            user_id="user-9",
+            session_id="sess-9",
+            tool_name="memory_search",
+            tool_args={"query": "Kai"},
+            project_id="proj-9",
+        )
+        import json as _json
+
+        body = _json.loads(captured[0].content.decode())
+        assert body["user_id"] == "user-9"
+        assert body["session_id"] == "sess-9"
+        assert body["tool_name"] == "memory_search"
+        assert body["tool_args"] == {"query": "Kai"}
+        assert body["project_id"] == "proj-9"
+        # It hits the execute endpoint.
+        assert captured[0].url.path == "/internal/tools/execute"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_project_id_omitted_from_body(self):
+        """A no-project chat: project_id=None must be omitted, not sent
+        as a null/empty (the executor handles a null project)."""
+        captured: list = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            return httpx.Response(200, json={"success": True, "result": {}, "error": None})
+
+        client = _make_client(handler)
+        await client.execute_tool(
+            user_id="u",
+            session_id="s",
+            tool_name="memory_search",
+            tool_args={},
+            project_id=None,
+        )
+        import json as _json
+
+        body = _json.loads(captured[0].content.decode())
+        assert "project_id" not in body
+        await client.aclose()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# K21-B — get_tool_definitions (GET /internal/tools/definitions, D1)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Returns the OpenAI tool schemas, process-cached after the first
+# success. A failure returns [] and is NOT cached — a later turn retries.
+
+
+class TestGetToolDefinitions:
+    @pytest.mark.asyncio
+    async def test_success_returns_tools_list(self):
+        tools = [
+            {"type": "function", "function": {"name": "memory_search"}},
+            {"type": "function", "function": {"name": "memory_get_entity"}},
+        ]
+        client = _make_client(_ok_response({"tools": tools}))
+        out = await client.get_tool_definitions()
+        assert out == tools
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_success_caches_no_refetch_on_second_call(self):
+        """A second call returns the cached list without re-fetching."""
+        call_count = 0
+        tools = [{"type": "function", "function": {"name": "memory_search"}}]
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(200, json={"tools": tools})
+
+        client = _make_client(handler)
+        first = await client.get_tool_definitions()
+        second = await client.get_tool_definitions()
+        assert first == tools
+        assert second == tools
+        # Cached — the transport was hit exactly once.
+        assert call_count == 1
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_non_200_returns_empty_and_does_not_cache(self):
+        """A non-200 → []. The failure is NOT cached: a later call
+        retries the fetch (and can then succeed)."""
+        call_count = 0
+        tools = [{"type": "function", "function": {"name": "memory_search"}}]
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return httpx.Response(500, text="down")
+            return httpx.Response(200, json={"tools": tools})
+
+        client = _make_client(handler)
+        first = await client.get_tool_definitions()
+        assert first == []
+        # A later call retries — failure was not cached — and succeeds.
+        second = await client.get_tool_definitions()
+        assert second == tools
+        assert call_count == 2
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_transport_error_returns_empty_and_does_not_cache(self):
+        """A transport failure → []; not cached, so a later call
+        retries."""
+        call_count = 0
+        tools = [{"type": "function", "function": {"name": "memory_search"}}]
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise httpx.ConnectError("refused")
+            return httpx.Response(200, json={"tools": tools})
+
+        client = _make_client(handler)
+        first = await client.get_tool_definitions()
+        assert first == []
+        second = await client.get_tool_definitions()
+        assert second == tools
+        assert call_count == 2
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_returns_empty(self):
+        """A 200 with a non-JSON body → [] (not cached)."""
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, content=b"<<<", headers={"content-type": "application/json"}
+            )
+
+        client = _make_client(handler)
+        assert await client.get_tool_definitions() == []
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_unexpected_shape_returns_empty(self):
+        """A 200 whose `tools` is not a list → [] (defensive — the
+        loop would otherwise hand the gateway a non-array)."""
+        client = _make_client(_ok_response({"tools": {"not": "a list"}}))
+        assert await client.get_tool_definitions() == []
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_missing_tools_key_returns_empty_list(self):
+        """A 200 with no `tools` key → [] (`.get('tools', [])`)."""
+        client = _make_client(_ok_response({}))
+        assert await client.get_tool_definitions() == []
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_list_is_cached(self):
+        """A 200 returning an empty `tools` list IS a valid success and
+        gets cached — a process with no tools shouldn't re-fetch every
+        turn. (Distinct from a failure, which returns [] WITHOUT
+        caching.)"""
+        call_count = 0
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(200, json={"tools": []})
+
+        client = _make_client(handler)
+        assert await client.get_tool_definitions() == []
+        assert await client.get_tool_definitions() == []
+        # Empty list is a cached success — only one fetch.
+        assert call_count == 1
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_hits_definitions_endpoint(self):
+        """The GET targets /internal/tools/definitions."""
+        captured: list = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            return httpx.Response(200, json={"tools": []})
+
+        client = _make_client(handler)
+        await client.get_tool_definitions()
+        assert captured[0].url.path == "/internal/tools/definitions"
+        assert captured[0].method == "GET"
+        await client.aclose()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# K21-B — KnowledgeContext.tool_calling_enabled default (D9)
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestToolCallingEnabledField:
+    @pytest.mark.asyncio
+    async def test_defaults_true_when_field_absent(self):
+        """An older knowledge-service that omits tool_calling_enabled →
+        the field defaults True so tool-calling stays enabled (the
+        extra='ignore' + default-True design)."""
+        payload = {
+            "mode": "static",
+            "context": "<memory/>",
+            "recent_message_count": 50,
+            "token_count": 0,
+            # no tool_calling_enabled field
+        }
+        client = _make_client(_ok_response(payload))
+        result = await client.build_context(user_id="u")
+        assert result.tool_calling_enabled is True
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_false_when_project_opted_out(self):
+        """When knowledge-service reports the project opted out, the
+        field round-trips as False."""
+        payload = {
+            "mode": "static",
+            "context": "<memory/>",
+            "recent_message_count": 50,
+            "token_count": 0,
+            "tool_calling_enabled": False,
+        }
+        client = _make_client(_ok_response(payload))
+        result = await client.build_context(user_id="u")
+        assert result.tool_calling_enabled is False
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_true_round_trips_explicitly(self):
+        payload = {
+            "mode": "no_project",
+            "context": "",
+            "recent_message_count": 50,
+            "token_count": 0,
+            "tool_calling_enabled": True,
+        }
+        client = _make_client(_ok_response(payload))
+        result = await client.build_context(user_id="u")
+        assert result.tool_calling_enabled is True
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_degraded_context_leaves_tool_calling_enabled(self):
+        """The client-side degraded fallback must leave tool_calling
+        enabled (default True) — a knowledge-service outage shouldn't
+        silently disable tools; get_tool_definitions then degrades the
+        turn tool-free on its own if the schema fetch also fails."""
+        client = _make_client(_raise(httpx.TimeoutException("boom")))
+        result = await client.build_context(user_id="u")
+        assert result.mode == "degraded"
+        assert result.tool_calling_enabled is True
+        await client.aclose()

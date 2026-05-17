@@ -127,3 +127,40 @@ async def test_missing_project_raises_not_found(monkeypatch):
             project_id=uuid4(),
             message="hi",
         )
+
+
+# ── K21.12-BE (design D9): ContextBuildResponse carries the flag ────────────
+
+
+def test_context_build_response_carries_tool_calling_enabled():
+    """D9 — ContextBuildResponse is model_validate'd from BuiltContext
+    via from_attributes, so the new tool_calling_enabled field must
+    flow through to the HTTP response shape chat-service consumes.
+    Both states round-trip; an older BuiltContext lacking the attribute
+    falls back to the response default `True`."""
+    from app.context.modes.no_project import BuiltContext
+    from app.routers.context import ContextBuildResponse
+
+    built_off = BuiltContext(
+        mode="full", context="<memory/>", recent_message_count=20,
+        token_count=3, tool_calling_enabled=False,
+    )
+    resp_off = ContextBuildResponse.model_validate(built_off)
+    assert resp_off.tool_calling_enabled is False
+
+    built_on = BuiltContext(
+        mode="static", context="<memory/>", recent_message_count=50,
+        token_count=3, tool_calling_enabled=True,
+    )
+    resp_on = ContextBuildResponse.model_validate(built_on)
+    assert resp_on.tool_calling_enabled is True
+
+    # Defaulting half: a builder result that never set the field still
+    # validates, and the response defaults the flag to True.
+    built_default = BuiltContext(
+        mode="no_project", context="<memory/>", recent_message_count=50,
+        token_count=3,
+    )
+    assert ContextBuildResponse.model_validate(
+        built_default
+    ).tool_calling_enabled is True

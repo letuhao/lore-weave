@@ -84,6 +84,18 @@ def test_projects_alter_adds_budget_columns():
         assert f"ADD COLUMN IF NOT EXISTS {col}" in DDL, f"missing column: {col}"
 
 
+def test_projects_alter_adds_tool_calling_enabled():
+    """K21.12-BE (design D9) — the per-project tool-calling toggle.
+    NOT NULL DEFAULT true so a project row that predates the column
+    reads back enabled (the model default in models.py is the other
+    half of that contract). Idempotent ADD COLUMN IF NOT EXISTS so
+    run_migrations stays safe on every startup."""
+    assert (
+        "ADD COLUMN IF NOT EXISTS tool_calling_enabled BOOLEAN NOT NULL DEFAULT true"
+        in DDL
+    )
+
+
 def test_no_cross_db_fk_on_user_id():
     # The module header is explicit: user_id references a different DB,
     # so no FK. A regression that adds `REFERENCES users` would crash at

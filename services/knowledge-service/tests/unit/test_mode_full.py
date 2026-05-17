@@ -60,6 +60,7 @@ def _project(
     book_id: UUID | None = None,
     instructions: str = "",
     extraction_enabled: bool = True,
+    tool_calling_enabled: bool = True,
 ) -> Project:
     now = datetime.now(timezone.utc)
     return Project(
@@ -78,6 +79,7 @@ def _project(
         estimated_cost_usd=Decimal("0"),
         actual_cost_usd=Decimal("0"),
         is_archived=False,
+        tool_calling_enabled=tool_calling_enabled,
         version=1,
         created_at=now,
         updated_at=now,
@@ -173,6 +175,33 @@ async def test_empty_everything_still_emits_valid_block(monkeypatch):
     assert "<instructions>" in result.context
     assert "<facts>" not in result.context
     assert "<no_memory_for>" not in result.context
+
+
+@pytest.mark.asyncio
+async def test_built_context_surfaces_tool_calling_enabled(monkeypatch):
+    """K21.12-BE (design D9) — Mode 3 carries the project's
+    tool_calling_enabled onto BuiltContext so chat-service can gate its
+    tool-calling loop. Both flag states must round-trip from the
+    loaded project."""
+    _patch_mode3_pieces(monkeypatch)
+
+    enabled = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(tool_calling_enabled=True),
+        message="greetings",
+    )
+    assert enabled.tool_calling_enabled is True
+
+    disabled = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(tool_calling_enabled=False),
+        message="greetings",
+    )
+    assert disabled.tool_calling_enabled is False
 
 
 @pytest.mark.asyncio

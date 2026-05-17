@@ -121,8 +121,9 @@ class FakeProjectsRepo:
             return None
         raw = patch.model_dump(exclude_unset=True)
         # Strip None on NOT-NULL columns to mirror the real repo
-        # (book_id is the only nullable updatable column).
-        for f in ("name", "description", "instructions"):
+        # (book_id is the only nullable updatable column;
+        # tool_calling_enabled is NOT NULL — design D9).
+        for f in ("name", "description", "instructions", "tool_calling_enabled"):
             if raw.get(f) is None:
                 raw.pop(f, None)
         # K7b no-op contract: empty patch returns current row without
@@ -489,6 +490,108 @@ def test_patch_stale_if_match_returns_412_with_current_row(
     # Row must be unchanged in the repo.
     assert repo._rows[(auth_user_id, proj.project_id)].name == "a"
     assert repo._rows[(auth_user_id, proj.project_id)].version == 5
+
+
+# ── K21.12-BE (design D9): tool_calling_enabled ──────────────────────────
+
+
+def test_project_defaults_tool_calling_enabled_true():
+    """A Project built without tool_calling_enabled reads back true —
+    this is the model-default half of the 'a row that predates the
+    column reads back enabled' contract (the DB DEFAULT true is the
+    other half)."""
+    proj = _make_project(uuid4())
+    assert proj.tool_calling_enabled is True
+
+
+def test_get_project_surfaces_tool_calling_enabled(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """The field is on the Project response model, so GET carries it."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"tool_calling_enabled": False}
+    )
+    repo.seed(proj)
+    resp = client.get(f"/v1/knowledge/projects/{proj.project_id}")
+    assert resp.status_code == 200
+    assert resp.json()["tool_calling_enabled"] is False
+
+
+def test_patch_toggles_tool_calling_enabled(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """D9 — ProjectUpdate accepts the field and PATCH round-trips it
+    through the repo (the Cycle C settings UI drives this same path)."""
+    proj = _make_project(auth_user_id)  # defaults tool_calling_enabled=True
+    repo.seed(proj)
+
+    # Turn it off.
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"tool_calling_enabled": False},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tool_calling_enabled"] is False
+    assert repo._rows[(auth_user_id, proj.project_id)].tool_calling_enabled is False
+
+    # Turn it back on.
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"tool_calling_enabled": True},
+        headers=_im(proj.version + 1),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tool_calling_enabled"] is True
+
+
+def test_patch_omitting_tool_calling_enabled_leaves_it_unchanged(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """ProjectUpdate uses exclude_unset — a PATCH that doesn't mention
+    tool_calling_enabled must not reset it."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"tool_calling_enabled": False}
+    )
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"name": "renamed"},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tool_calling_enabled"] is False
+
+
+def test_project_update_model_accepts_tool_calling_enabled():
+    """D9 — the field is settable on ProjectUpdate, omittable (so an
+    untouched PATCH leaves it alone), and absent from a default
+    instance (exclude_unset must drop it)."""
+    assert ProjectUpdate(tool_calling_enabled=False).tool_calling_enabled is False
+    assert ProjectUpdate(tool_calling_enabled=True).tool_calling_enabled is True
+    # Omitted → not in the exclude_unset dump → repo treats as no-op.
+    assert "tool_calling_enabled" not in ProjectUpdate().model_dump(
+        exclude_unset=True
+    )
+    assert ProjectUpdate().tool_calling_enabled is None
+
+
+async def test_repo_update_skips_none_tool_calling_enabled(
+    repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """tool_calling_enabled is NOT NULL — explicitly passing None must
+    be skipped (treated as a no-op for that field), mirroring the real
+    repo's exclusion from _NULLABLE_UPDATE_COLUMNS. An explicit-None
+    patch must not flip the stored true to NULL."""
+    proj = _make_project(auth_user_id)  # tool_calling_enabled=True
+    repo.seed(proj)
+    result = await repo.update(
+        auth_user_id, proj.project_id,
+        ProjectUpdate(tool_calling_enabled=None),
+    )
+    assert result is not None
+    assert result.tool_calling_enabled is True
 
 
 def test_patch_valid_if_match_accepts_various_formats(

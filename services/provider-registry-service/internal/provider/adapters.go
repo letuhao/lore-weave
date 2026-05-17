@@ -846,12 +846,17 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	}
 	payload := map[string]any{
 		"model":      modelName,
-		"messages":   extractMessages(input),
+		"messages":   convertAnthropicMessages(input),
 		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
 		payload["temperature"] = v
 	}
+	// D12 — request-side tool support. Convert the OpenAI-shaped tools /
+	// tool_choice to Anthropic's shape. Omit both when tool_choice is
+	// "none" or no tools were supplied (zero behavior change for
+	// tool-free Anthropic requests).
+	applyAnthropicTools(payload, input)
 	out, err := postJSON(ctx, a.client, base+"/v1/messages",
 		map[string]string{
 			"x-api-key":         secret,
@@ -898,7 +903,7 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	}
 	body := map[string]any{
 		"model":      modelName,
-		"messages":   extractMessages(input),
+		"messages":   convertAnthropicMessages(input),
 		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
@@ -907,6 +912,11 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	if v, ok := input["system"]; ok {
 		body["system"] = v
 	}
+	// D12 — request-side tool support. Convert the OpenAI-shaped tools /
+	// tool_choice to Anthropic's shape. Omit both when tool_choice is
+	// "none" or no tools were supplied (zero behavior change for
+	// tool-free Anthropic requests).
+	applyAnthropicTools(body, input)
 	resp, err := openAnthropicStream(ctx, a.client, base, secret, body)
 	if err != nil {
 		return err
@@ -915,13 +925,13 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	return streamAnthropicSSE(ctx, resp.Body, emit)
 }
 
-// SupportsTools — false. anthropicAdapter.Stream does not forward `tools`
-// (Anthropic-shaped tools differ from the OpenAI-shaped contract `tools`
-// field); request-side Anthropic tool support is deferred. The streamer
-// parse-side DOES map tool_use blocks, but without a request-side tools
-// array the model never emits them — so the handler rejects tools/tool_choice
-// for this adapter rather than silently dropping them.
-func (a *anthropicAdapter) SupportsTools() bool { return false }
+// SupportsTools — true (Phase K21-B / D12). anthropicAdapter.Stream and
+// .Invoke convert the OpenAI-shaped `tools` / `tool_choice` / tool-result
+// `messages` into Anthropic's /v1/messages shape (see anthropic_tools.go),
+// and the streamer parse-side already maps tool_use blocks → ToolCallEvent.
+// With both sides wired, the handler may forward tools/tool_choice to this
+// adapter; no first-class provider rejects tools any more.
+func (a *anthropicAdapter) SupportsTools() bool { return true }
 
 // ── Ollama adapter ────────────────────────────────────────────────────────────
 

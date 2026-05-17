@@ -151,3 +151,56 @@ def test_null_project_id_accepted(client):
     assert resp.status_code == 200
     ctx, _, _ = mock.call_args.args
     assert ctx.project_id is None
+
+
+# ── GET /internal/tools/definitions (K21-B D1) ────────────────────────
+
+
+def test_definitions_requires_internal_token(client):
+    """The whole /internal/* surface is internal-token gated — the
+    definitions endpoint is no exception even though schemas aren't
+    secret."""
+    resp = client.get("/internal/tools/definitions")
+    assert resp.status_code == 401
+
+
+def test_definitions_bad_token_rejected(client):
+    resp = client.get("/internal/tools/definitions",
+                       headers={"X-Internal-Token": "wrong"})
+    assert resp.status_code == 401
+
+
+def test_definitions_returns_all_five_tool_schemas(client):
+    """D1 — the endpoint serves TOOL_DEFINITIONS verbatim so
+    chat-service can fetch the OpenAI tool schemas single-sourced."""
+    resp = client.get("/internal/tools/definitions", headers=_AUTH)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {"tools"}
+    tools = body["tools"]
+    assert len(tools) == 5
+    # The five Cycle A memory tools, in definition order.
+    names = [t["function"]["name"] for t in tools]
+    assert names == [
+        "memory_search",
+        "memory_recall_entity",
+        "memory_timeline",
+        "memory_remember",
+        "memory_forget",
+    ]
+    # Every entry is an OpenAI function-calling schema.
+    for t in tools:
+        assert t["type"] == "function"
+        fn = t["function"]
+        assert {"name", "description", "parameters"} <= set(fn)
+        assert fn["parameters"]["type"] == "object"
+
+
+def test_definitions_matches_source_list(client):
+    """Defends against the endpoint silently transforming or
+    re-shaping the schemas — it must return TOOL_DEFINITIONS exactly."""
+    from app.tools.definitions import TOOL_DEFINITIONS
+
+    resp = client.get("/internal/tools/definitions", headers=_AUTH)
+    assert resp.status_code == 200
+    assert resp.json()["tools"] == TOOL_DEFINITIONS

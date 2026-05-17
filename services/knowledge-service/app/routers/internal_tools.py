@@ -1,12 +1,19 @@
-"""K21.3 — internal memory-tool execution endpoint.
+"""K21.3 / K21-B D1 — internal memory-tool endpoints.
 
-POST /internal/tools/execute
+POST /internal/tools/execute    — execute one LLM memory tool call.
+GET  /internal/tools/definitions — serve the OpenAI tool schemas.
 
 Service-to-service surface the chat-service tool-calling loop (K21
 Cycle B) calls when the LLM emits a tool call. Authentication is
 `X-Internal-Token`; `user_id` is trusted from the body — there is no
 end-user JWT on an S2S endpoint, so chat-service passes the id it
 authenticated (same trust model as `internal_summarize.py`).
+
+The `GET /internal/tools/definitions` endpoint (design D1) lets
+chat-service fetch `TOOL_DEFINITIONS` — the OpenAI function-calling
+schemas live single-sourced in `app/tools/definitions.py`, and the
+two are separate Python services. chat-service fetches this once and
+process-caches it; a fetch failure degrades the turn to tool-free.
 
 **Module placement** follows the established `app/routers/internal_*.py`
 convention — the K21 plan named `app/api/internal/tools.py`, but every
@@ -32,6 +39,7 @@ from app.clients.embedding_client import EmbeddingClient
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_embedding_client, get_projects_repo
 from app.middleware.internal_auth import require_internal_token
+from app.tools.definitions import TOOL_DEFINITIONS
 from app.tools.executor import ToolContext, execute_tool, get_tools_redis
 
 logger = logging.getLogger(__name__)
@@ -59,6 +67,19 @@ class ToolExecuteResponse(BaseModel):
     success: bool
     result: dict[str, Any] | None = None
     error: str | None = None
+
+
+class ToolDefinitionsResponse(BaseModel):
+    """The OpenAI function-calling tool schemas (design D1).
+
+    `tools` is `TOOL_DEFINITIONS` verbatim — a list of
+    `{type:"function", function:{name, description, parameters}}`
+    entries. chat-service forwards these to the gateway as the
+    `tools` array. Typed as `list[dict]` so the single-sourced
+    schema shape in `definitions.py` is not duplicated here.
+    """
+
+    tools: list[dict[str, Any]]
 
 
 @router.post("/tools/execute", response_model=ToolExecuteResponse)
@@ -96,3 +117,18 @@ async def execute_tool_endpoint(
         result=result.result,
         error=result.error,
     )
+
+
+@router.get("/tools/definitions", response_model=ToolDefinitionsResponse)
+async def tool_definitions_endpoint() -> ToolDefinitionsResponse:
+    """K21-B D1 — serve the OpenAI tool schemas to chat-service.
+
+    `TOOL_DEFINITIONS` is single-sourced in `app/tools/definitions.py`;
+    this endpoint is the distribution point so chat-service (a separate
+    Python service) doesn't have to vendor a copy. Internal-token gated
+    via the router-level `require_internal_token` dependency — the
+    schemas are not secret, but the whole `/internal/*` surface is S2S.
+    The payload is static per process, so no DB or repo dependency is
+    needed.
+    """
+    return ToolDefinitionsResponse(tools=TOOL_DEFINITIONS)

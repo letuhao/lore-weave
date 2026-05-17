@@ -385,10 +385,17 @@ class TestStreamResponse:
 
 
 def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None = None,
-                       mode: str = "static"):
+                       mode: str = "static", tool_defs: list | None = None):
     """Return a MagicMock knowledge client that synthesises a
     KnowledgeContext with the given split. Caller uses this via
-    `patch("app.services.stream_service.get_knowledge_client", ...)`."""
+    `patch("app.services.stream_service.get_knowledge_client", ...)`.
+
+    K21-B: `stream_response` now `await`s `get_tool_definitions()`, so
+    the mocked client must expose it as an AsyncMock — a plain MagicMock
+    attribute raises "object MagicMock can't be used in 'await'
+    expression". Defaults to `[]` (no tool schemas) so these K18.9
+    cache_control tests still exercise the no-tools `_stream_via_gateway`
+    path they were written against."""
     from app.client.knowledge_client import KnowledgeContext
     if context is None:
         context = stable + volatile
@@ -399,6 +406,7 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     )
     client = MagicMock()
     client.build_context = AsyncMock(return_value=kctx)
+    client.get_tool_definitions = AsyncMock(return_value=tool_defs or [])
     return client
 
 
@@ -667,3 +675,284 @@ class TestK18_9PromptCaching:
         # Fell back to plain-string concat.
         assert isinstance(system_msg["content"], str)
         assert "legacy blob" in system_msg["content"]
+
+
+# ── K21-B: tool-calling integration at the stream_response level ───────────
+#
+# The tool-calling loop itself is exhaustively covered in
+# test_stream_tools.py. These tests cover the SEAM in stream_response:
+# the gate (tool_calling_enabled + non-empty tool_defs picks
+# _stream_with_tools vs _stream_via_gateway), the `tool_call` chunk →
+# `tool-call` SSE event handling, and persistence into the new
+# `chat_messages.tool_calls` JSONB column (design D6 / §5).
+
+
+class TestK21BToolCallingIntegration:
+    @pytest.mark.asyncio
+    async def test_tools_enabled_with_defs_uses_tool_loop(self):
+        """tool_calling_enabled=True + knowledge-service serves schemas
+        → stream_response routes through _stream_with_tools, not
+        _stream_via_gateway."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "tool-loop answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway") as gateway_mock:
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                events.append(e)
+
+        loop_mock.assert_called_once()
+        gateway_mock.assert_not_called()
+        # The tools array reached the loop.
+        assert loop_mock.call_args.kwargs["tools"] == [
+            {"type": "function", "function": {"name": "memory_search"}}
+        ]
+        text = [e for e in events if "text-delta" in e]
+        assert any("tool-loop answer" in e for e in text)
+
+    @pytest.mark.asyncio
+    async def test_tool_calling_disabled_skips_definitions_and_uses_gateway(self):
+        """tool_calling_enabled=False → stream_response neither fetches
+        tool definitions nor enters the loop; it uses the plain
+        _stream_via_gateway path (design D9 gate)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        from app.client.knowledge_client import KnowledgeContext
+        kctx = KnowledgeContext(
+            mode="static", context="", recent_message_count=50,
+            token_count=0, tool_calling_enabled=False,
+        )
+        kc = MagicMock()
+        kc.build_context = AsyncMock(return_value=kctx)
+        kc.get_tool_definitions = AsyncMock(return_value=[
+            {"type": "function", "function": {"name": "memory_search"}}
+        ])
+
+        async def fake_gateway(**kwargs):
+            yield {"content": "plain answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_via_gateway", side_effect=fake_gateway) as gateway_mock, \
+             patch("app.services.stream_service._stream_with_tools") as loop_mock:
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                pass
+
+        # Gate is off → definitions are never fetched, loop never entered.
+        kc.get_tool_definitions.assert_not_awaited()
+        loop_mock.assert_not_called()
+        gateway_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_tool_defs_falls_back_to_gateway(self):
+        """tool_calling_enabled=True but knowledge-service serves no
+        schemas (fetch failed → []) → the turn runs tool-free via
+        _stream_via_gateway (design D1 degrade)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        # tool_defs default is [] in the helper.
+        kc = _patched_knowledge(mode="static", tool_defs=[])
+
+        async def fake_gateway(**kwargs):
+            yield {"content": "answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_via_gateway", side_effect=fake_gateway) as gateway_mock, \
+             patch("app.services.stream_service._stream_with_tools") as loop_mock:
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                pass
+
+        # Definitions were fetched (gate on), but the empty result
+        # means use_tools is False → gateway path.
+        kc.get_tool_definitions.assert_awaited_once()
+        loop_mock.assert_not_called()
+        gateway_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_tool_call_chunk_emits_sse_event(self):
+        """A `tool_call` chunk from the loop → a `tool-call` SSE event
+        carrying tool name + ok status (design D3)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"tool_call": {"iteration": 0, "tool": "memory_search",
+                                 "args": {"query": "Kai"}, "ok": True,
+                                 "result": {"hit": 1}, "error": None}}
+            yield {"content": "Kai is a knight.", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(2, 3)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Who is Kai?",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                events.append(e)
+
+        tool_events = [e for e in events if '"tool-call"' in e]
+        assert len(tool_events) == 1
+        payload = json.loads(tool_events[0].removeprefix("data: ").strip())
+        assert payload["type"] == "tool-call"
+        assert payload["tool"] == "memory_search"
+        assert payload["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_tool_calls_persisted_to_column(self):
+        """K21.6 / D6: the per-turn tool-call history is persisted to
+        the new chat_messages.tool_calls JSONB column."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        tool_call = {"iteration": 0, "tool": "memory_search",
+                     "args": {"query": "Kai"}, "ok": True,
+                     "result": {"hit": 1}, "error": None}
+
+        async def fake_tool_loop(**kwargs):
+            yield {"tool_call": tool_call}
+            yield {"content": "answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Who is Kai?",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                pass
+
+        insert_calls = [
+            c for c in conn.execute.call_args_list
+            if "INSERT INTO chat_messages" in str(c)
+        ]
+        assert len(insert_calls) == 1
+        # The INSERT SQL writes the tool_calls column.
+        assert "tool_calls" in insert_calls[0].args[0]
+        # The last positional arg is the tool_calls JSON ($11).
+        tool_calls_json = insert_calls[0].args[-1]
+        assert tool_calls_json is not None
+        assert json.loads(tool_calls_json) == [tool_call]
+
+    @pytest.mark.asyncio
+    async def test_tool_calls_column_null_when_no_tool_calls(self):
+        """A tool-enabled turn where the model made NO tool calls →
+        tool_calls column is NULL (design D6)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            # No tool_call chunk — model answered directly.
+            yield {"content": "direct answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                pass
+
+        insert_calls = [
+            c for c in conn.execute.call_args_list
+            if "INSERT INTO chat_messages" in str(c)
+        ]
+        assert len(insert_calls) == 1
+        # tool_calls JSON ($11, last arg) is None when no calls were made.
+        assert insert_calls[0].args[-1] is None
+
+    @pytest.mark.asyncio
+    async def test_tool_call_chunk_excluded_from_assistant_content(self):
+        """A `tool_call` chunk carries no text — it must not leak into
+        the persisted assistant `content` (the loop's `continue`)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "Let me check. ", "reasoning_content": "",
+                   "finish_reason": None, "usage": None}
+            yield {"tool_call": {"iteration": 0, "tool": "memory_search",
+                                 "args": {}, "ok": True, "result": {}, "error": None}}
+            yield {"content": "Found it.", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                pass
+
+        insert_calls = [
+            c for c in conn.execute.call_args_list
+            if "INSERT INTO chat_messages" in str(c)
+        ]
+        # conn.execute args are (sql, $1..$11); content is $4 → args[4].
+        persisted_content = insert_calls[0].args[4]
+        assert persisted_content == "Let me check. Found it."

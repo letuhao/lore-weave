@@ -541,6 +541,23 @@ CREATE TABLE IF NOT EXISTS entity_alias_map (
 
 CREATE INDEX IF NOT EXISTS idx_entity_alias_map_target
   ON entity_alias_map(target_entity_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- K21.12-BE (design D9) — per-project tool-calling toggle.
+-- chat-service's tool-calling loop (K21 Cycle B) gates `_stream_with_tools`
+-- on this flag, surfaced through `build_context`. DEFAULT true so a
+-- project row that predates the column reads back enabled — combined
+-- with the Pydantic model default this means tool calling stays on for
+-- every existing project until the user explicitly turns it off (the
+-- toggle UI is Cycle C). ADD COLUMN IF NOT EXISTS keeps the DDL
+-- idempotent; wrapped in a DO block to match the house style for the
+-- post-K1 column adds above.
+-- ═══════════════════════════════════════════════════════════════
+DO $$
+BEGIN
+  ALTER TABLE knowledge_projects
+    ADD COLUMN IF NOT EXISTS tool_calling_enabled BOOLEAN NOT NULL DEFAULT true;
+END$$;
 """
 
 
