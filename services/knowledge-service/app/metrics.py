@@ -34,6 +34,10 @@ __all__ = [
     "summary_regen_tokens_total",
     "reconcile_sweep_total",
     "quarantine_sweep_total",
+    "tool_calls_total",
+    "tool_call_duration_seconds",
+    "tool_call_result_size_bytes",
+    "memory_remember_rate_limited_total",
 ]
 
 registry = CollectorRegistry()
@@ -413,3 +417,58 @@ quarantine_sweep_total = Counter(
 )
 for _outcome in ("completed", "lock_skipped", "errored"):
     quarantine_sweep_total.labels(outcome=_outcome)
+
+
+# ── K21 — LLM memory tool calls ──────────────────────────────────────
+# One counter per tool call, labelled by tool + outcome:
+#   ok          — handler returned a result
+#   tool_error  — bad args / business rejection (rate limit, no project
+#                 in scope); the endpoint still returns HTTP 200
+#   infra_error — Neo4j / Redis / unexpected failure → endpoint 503
+_TOOL_NAMES = (
+    "memory_search",
+    "memory_recall_entity",
+    "memory_timeline",
+    "memory_remember",
+    "memory_forget",
+)
+_TOOL_OUTCOMES = ("ok", "tool_error", "infra_error")
+
+tool_calls_total = Counter(
+    "knowledge_tool_calls_total",
+    "K21 LLM memory tool-call terminations by tool name + outcome",
+    ["tool_name", "outcome"],
+    registry=registry,
+)
+for _t in _TOOL_NAMES:
+    for _o in _TOOL_OUTCOMES:
+        tool_calls_total.labels(tool_name=_t, outcome=_o)
+
+tool_call_duration_seconds = Histogram(
+    "knowledge_tool_call_duration_seconds",
+    "K21 wall-time of a memory tool call",
+    ["tool_name"],
+    buckets=(0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+    registry=registry,
+)
+for _t in _TOOL_NAMES:
+    tool_call_duration_seconds.labels(tool_name=_t)
+
+tool_call_result_size_bytes = Histogram(
+    "knowledge_tool_call_result_size_bytes",
+    "K21 JSON-serialized byte size of a successful memory tool result",
+    ["tool_name"],
+    buckets=(64, 256, 1024, 4096, 16384, 65536),
+    registry=registry,
+)
+for _t in _TOOL_NAMES:
+    tool_call_result_size_bytes.labels(tool_name=_t)
+
+# K21.7 — incremented once per memory_remember call rejected by the
+# per-chat-session rate limit. Label-less: bounded cardinality.
+memory_remember_rate_limited_total = Counter(
+    "knowledge_memory_remember_rate_limited_total",
+    "K21.7 memory_remember calls rejected by the per-session rate limit",
+    registry=registry,
+)
+memory_remember_rate_limited_total.inc(0)

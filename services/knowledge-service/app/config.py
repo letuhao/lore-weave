@@ -86,5 +86,11 @@ class Settings(BaseSettings):
     # within ~5s rather than hanging the container.
     neo4j_connection_timeout_s: float = 5.0
 
+    # K21.7 — max `memory_remember` tool calls the LLM may make per
+    # chat session before the rate limiter rejects further writes. A
+    # memory-pollution guard, not a security boundary: the limiter
+    # fails open if Redis is unavailable.
+    tool_remember_limit_per_session: int = 10
+
 
 settings = Settings()
