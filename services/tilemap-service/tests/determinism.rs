@@ -28,6 +28,7 @@ fn zone(id: &str, role: ZoneRole, terrains: Vec<TerrainKind>, conns: &[(&str, Pa
             .map(|(to, kind)| TemplateConnection::new(ZoneId(to.to_string()), *kind))
             .collect(),
         treasure_tiers: vec![],
+        biome_selection_rules: None,
     }
 }
 
@@ -67,6 +68,9 @@ fn ac4_same_seed_yields_byte_identical_tilemap() {
     let ja = serde_json::to_string(&a).unwrap();
     let jb = serde_json::to_string(&b).unwrap();
     assert_eq!(ja, jb, "same seed must serialize byte-identically (TMP-A4)");
+    // Phase B — ObstaclePlacer fills obstacles, so a fixture with fillable zone
+    // area now yields a non-empty `object_placements` (AC-9).
+    assert!(!a.object_placements.is_empty(), "Phase B must place obstacle objects");
 }
 
 #[test]
@@ -145,26 +149,27 @@ fn ac6_sea_zone_is_painted_water() {
     }
 }
 
-/// Regenerate the Phase-A golden baseline (AC-9). `#[ignore]`d — run explicitly
-/// with `cargo test regenerate_golden_baseline -- --ignored`. In Phase A this
-/// captures the *pre-change* baseline; later phases re-run it after a deliberate
-/// output change. The committed `tests/golden/phase_a_baseline.json` is the
-/// before/after regression gate a same-seed `a == b` check cannot provide.
+/// Regenerate the committed golden baseline — the **deliberate rebaseline**
+/// tool. `#[ignore]`d; run with `cargo test regenerate_golden_baseline --
+/// --ignored` when a phase legitimately changes `place_tilemap` output (Phase B
+/// did — ObstaclePlacer). The committed `tests/golden/tilemap_baseline.json` is
+/// a frozen reference: it gates later phases against *unintended* output drift.
 #[test]
-#[ignore = "regenerator — run explicitly to refresh the golden snapshot"]
+#[ignore = "regenerator — run explicitly to rebaseline the golden snapshot"]
 fn regenerate_golden_baseline() {
     let json = serde_json::to_string_pretty(&run(&fixture(), GOLDEN_SEED)).unwrap();
     std::fs::create_dir_all("tests/golden").expect("create tests/golden");
-    std::fs::write("tests/golden/phase_a_baseline.json", json).expect("write golden");
+    std::fs::write("tests/golden/tilemap_baseline.json", json).expect("write golden");
 }
 
-/// AC-9 — Phase A changes no generation output. The committed golden snapshot
-/// (`tests/golden/phase_a_baseline.json`, captured from the pre-Phase-A engine)
-/// must still be reproduced byte-identically. A same-seed `a == b` check cannot
-/// observe the pre-change baseline; this gate can.
+/// AC-9 — `place_tilemap` reproduces the committed golden snapshot
+/// (`tests/golden/tilemap_baseline.json`, frozen at the reviewed Phase-B engine)
+/// byte-identically. Within the rebaselining phase this is trivially green; its
+/// value is cross-phase — a later phase that changes obstacle output without a
+/// deliberate `regenerate_golden_baseline` rebaseline trips this gate.
 #[test]
-fn ac9_golden_baseline_byte_identical() {
-    let golden = include_str!("golden/phase_a_baseline.json");
+fn golden_baseline_byte_identical() {
+    let golden = include_str!("golden/tilemap_baseline.json");
     let fresh = serde_json::to_string_pretty(&run(&fixture(), GOLDEN_SEED)).unwrap();
     assert_eq!(
         golden, fresh,

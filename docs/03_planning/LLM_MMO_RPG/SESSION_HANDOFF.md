@@ -149,6 +149,78 @@ up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run
 
 ---
 
+## Session 2026-05-17 — TMP_005/006/007 Phase B — ObstaclePlacer + Biomes — ✅ DONE (XL `/amaw`)
+
+### Outcome
+
+Phase B of the **TMP_005/006/007 modificator-pipeline build** (roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md))
+— the **first real placer**: `ObstaclePlacer` (TMP_005 §4) + the biome system it
+selects from. XL, under `/amaw`, 12 phases complete. Run autonomously (operator:
+straight-through, no inter-phase checkpoint). **This is the first phase that
+changes `place_tilemap` output** — `object_placements` is no longer empty, so the
+AC-9 golden was rebaselined to the Phase-B engine.
+
+- **Spec:** [`docs/specs/2026-05-17-tilemap-phase-b-obstacle-placer.md`](../../specs/2026-05-17-tilemap-phase-b-obstacle-placer.md)
+  (D1-D9, AC-1..AC-11). **Plan:** [`docs/plans/2026-05-17-tilemap-phase-b-obstacle-placer.md`](../../plans/2026-05-17-tilemap-phase-b-obstacle-placer.md)
+  (5 build chunks).
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `types/biome.rs` | NEW — the TMP_005 §2 biome family: `BiomeId`, `BiomeObjectType` (9-variant), `BiomeLevel`, `Alignment`, `BiomePriority`, `BiomeSet`, `BiomeSelectionRules`/`BiomeSelectionRule`, `BiomeSelection` |
+| `engine/biome_library.rs` | NEW — `engine_biome_library()` (every land terrain × Mountain/Tree/Rock/Plant/Lake/Crater; Water minus Tree+Crater) + `engine_default_biome_selection_rules()` (§2.3 nine rules) |
+| `engine/biome_select.rs` | NEW — `select_biomes` (§4.1 terrain/level filter → group → priority-ordered rules → xor two-coin decision → §9 Q3 all-templates-of-type fallback) |
+| `engine/modificators/obstacle_placer.rs` | NEW — `ObstaclePlacer`: §4.3 strip-loose-appendages erosion (sequential `would_seal_a_gap` gate) + §4.4 largest-first fill |
+| `types/object.rs` | MOD — `TilemapObjectKind::Obstacle`; `TilemapObjectPlacement.biome_object_type` (the Phase-E river-discovery tag) |
+| `types/template.rs` | MOD — `ZoneSpec.biome_selection_rules` (author override, additive) |
+| `types/tile.rs` · `engine/build_state.rs` · `engine/mod.rs` | MOD — `TerrainKind: Ord`; `TilemapBuildState::zone_obstacle`; `ObstaclePlacer` registered in `place_tilemap` + the AC-10 end-to-end connectivity test |
+
+A generated tilemap now fills each zone's blocked area with mountains / trees /
+rocks / etc., every placement honouring the "never seal a gap" invariant.
+
+### Review (AMAW, straight-through autonomous)
+
+- **Design review** — Adversary cold-start, **5 rounds**: r1-r4 REJECTED (D5
+  count-delta erosion oracle, golden-snapshot tautology, D6 dead `would_seal_a_gap`
+  + vacuous AC-6/AC-10, xor double-roll, D5 zone-boundary fade, river-discovery
+  overclaim); r5 APPROVED_WITH_WARNINGS (3 WARN folded in).
+- **Code review** — Adversary cold-start, **4 rounds**: r1-r3 REJECTED — r1 §9
+  Q3 fallback unimplemented (a Sea zone got 0 Tree biomes vs the mandatory
+  `count_min:1`); r2 `ac10` false-green (checked the inert `Walkable` skeleton
+  with the forbidden count oracle, not the `Walkable ∪ Open` passable region);
+  r3 `Crater` never stocked, so a "Crater" two-coin outcome was dead AND
+  suppressed `Lake`, halving D3's ≈50 % water-feature slot. r4
+  APPROVED_WITH_WARNINGS — 3 WARN all addressed (realized-rate xor test +
+  D3/AC-3 clarity; `BiomeSelectionRules` serde round-trip; multi-component
+  erosion test).
+- **Scope Guard (POST-REVIEW):** CLEAR.
+- Findings trail: `docs/audit/findings-phase-b-obstacle-placer-{r1..r5,code-r1..r4}.md`,
+  `post-review-phase-b-obstacle-placer.md`.
+
+### Verify
+
+`cargo test --workspace` green — 178 tilemap-service lib tests + 6 determinism
+(+1 ignored golden regenerator) + integration, 0 failed. `cargo clippy
+--workspace --all-targets` 0 warnings. Golden rebaselined →
+`tests/golden/tilemap_baseline.json` (phase-neutral name), `golden_baseline_byte_identical`
+reproduces it; `ac4_same_seed` confirms within-build determinism on the now-non-empty
+`object_placements`.
+
+### Deferred (DEFERRED.md #022)
+
+- **#022** — `TilemapObjectPlacement` stores the obstacle `anchor`, not its
+  footprint extent; TMP_005 §4.5 passes a placed object's *area* to RiverPlacer.
+  Whether Phase E needs the full footprint or the anchor suffices is a Phase-E
+  decision (additive schema change if needed).
+
+### Next
+
+Phase C — TreasurePlacer (TMP_006).
+
+---
+
 ## Session 2026-05-17 — TMP_005/006/007 Phase A — Pipeline Foundation — ✅ DONE (XL `/amaw`)
 
 ### Outcome

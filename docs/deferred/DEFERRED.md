@@ -1,10 +1,11 @@
 # Deferred Items
 
 <!-- Managed by Scribe (AMAW) or main session (default mode). Do not edit manually unless cleaning up. -->
-<!-- Next ID: 022 -->
+<!-- Next ID: 023 -->
 
 | ID | Origin | Description | Target | Severity |
 |---|---|---|---|---|
+| 022 | 2026-05-17 tilemap Phase B spec D7 | `TilemapObjectPlacement` stores only the obstacle's `anchor`, not its footprint extent. TMP_005 §4.5 passes a placed object's *area* to RiverPlacer for river source/sink siting; Phase B's discovery contract is only the `biome_object_type` tag (`Some(Mountain)` = river-source candidate, `Some(Lake)` = river-sink). Whether Phase E's V1+30d RiverPlacer needs the full footprint extent or the `anchor` representative point suffices is a Phase-E decision — if it needs the extent, add an additive footprint/template reference to `TilemapObjectPlacement` (TMP-A8). | Phase E (RiverPlacer) | LOW |
 | 021 | 2026-05-17 tilemap Phase A spec D12 / code-review r3 WARN-3 | `From<PlacementError> for crate::Error` bridge not built. Phase A's `place_and_connect_object` returns the module-local `PlacementError` enum (`NoSpace` / `NoSuchZone`); a placer in Phase C+ that `?`-propagates from `Modificator::process` (returns `crate::Result`) needs the conversion. Phase A has no such consumer, so the bridge is deferred to the first placer. Spec D12 records this. | Phase C (first placer) | LOW |
 | 020 | 2026-05-17 tilemap Phase A spec D5 | TMP_006 §4.3 connectivity pre-filter not built — `would_seal_a_gap` runs the naive double-flood-fill on every candidate placement. TMP_006 §4.2 blesses that as "cheap enough to run on every candidate"; the §4.3 pre-filter (skip candidates adjacent to ≤1 free region) is a continent-scale perf optimisation. Output stays byte-identical. | Perf — when continent-scale generation profiles slow | LOW |
 | 019 | 2026-05-17 tilemap Phase A spec D5 / code-review r5 WARN-3 | `would_seal_a_gap` is evaluated per-zone (`zone_passable`), not over the map-wide walkable graph. Argued unreachable in V1+30d: ConnectionsPlacer (Phase D, TMP_007 §3.1) lays a thin blocked border between zones before TreasurePlacer / ObstaclePlacer run, so an object footprint sits wholly inside one zone. Re-validate that the border-separation thickness actually guarantees it once ConnectionsPlacer lands. | Phase D (ConnectionsPlacer) | LOW |

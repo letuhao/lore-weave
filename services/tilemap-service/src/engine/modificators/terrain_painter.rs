@@ -133,6 +133,7 @@ mod tests {
             monster_strength: None,
             connections: vec![],
             treasure_tiers: vec![],
+            biome_selection_rules: None,
         }
     }
 

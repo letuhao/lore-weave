@@ -525,6 +525,7 @@ mod tests {
                 .map(|(to, kind)| TemplateConnection::new(ZoneId(to.to_string()), *kind))
                 .collect(),
             treasure_tiers: vec![],
+            biome_selection_rules: None,
         }
     }
 

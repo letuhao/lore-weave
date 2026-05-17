@@ -174,7 +174,12 @@ pub fn place_and_connect_object(
     for tile in blocking.iter_set() {
         state.set_tile_state(tile, TileState::Occupied);
     }
-    state.object_placements.push(TilemapObjectPlacement { kind, anchor, canon_ref: None });
+    state.object_placements.push(TilemapObjectPlacement {
+        kind,
+        anchor,
+        canon_ref: None,
+        biome_object_type: None,
+    });
     // D10 — refresh the whole map-wide nearest-object-distance oracle.
     for y in 0..grid.height {
         for x in 0..grid.width {

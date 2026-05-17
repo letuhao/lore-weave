@@ -137,6 +137,11 @@ impl TilemapBuildState {
         self.zone_filtered(zone_idx, TileState::is_passable)
     }
 
+    /// A zone's `Obstacle` tiles — the ObstaclePlacer fill region (TMP_005 §4.4).
+    pub fn zone_obstacle(&self, zone_idx: usize) -> TileMask {
+        self.zone_filtered(zone_idx, |s| s == TileState::Obstacle)
+    }
+
     /// A zone's `assigned_tiles` filtered to tiles whose state satisfies `pred`.
     fn zone_filtered(&self, zone_idx: usize, pred: impl Fn(TileState) -> bool) -> TileMask {
         let zone = &self.zones[zone_idx];

@@ -6,6 +6,7 @@
 //! Data types + the [`TileMask`] bitset. Behaviour (the zone placer +
 //! modificator pipeline) lives in the `engine` module (added Phase 1).
 
+pub mod biome;
 pub mod channel;
 pub mod object;
 pub mod object_template;
@@ -16,6 +17,10 @@ pub mod tilemap;
 pub mod treasure;
 pub mod zone;
 
+pub use biome::{
+    Alignment, BiomeId, BiomeLevel, BiomeObjectType, BiomePriority, BiomeSelection,
+    BiomeSelectionRule, BiomeSelectionRules, BiomeSet,
+};
 pub use channel::{ChannelId, ChannelTier};
 pub use object::{TilemapObjectKind, TilemapObjectPlacement};
 pub use object_template::{FootprintCell, TilemapObjectTemplate};

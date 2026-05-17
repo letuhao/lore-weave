@@ -23,7 +23,7 @@ impl TileCoord {
 
 /// V1+30d 10-variant closed enum per TMP_001 §2. Stored as `u8` index in the
 /// flat terrain layer; explicit discriminants pin the wire format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[repr(u8)]
 pub enum TerrainKind {

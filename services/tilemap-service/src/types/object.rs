@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::biome::BiomeObjectType;
 use crate::types::tile::TileCoord;
 
 /// V1+30d 7-variant closed enum. Some variants are schema-reserved at V1+30d
@@ -25,6 +26,8 @@ pub enum TilemapObjectKind {
     Monolith,
     /// V2+ cosmetic / decoration.
     Decoration,
+    /// Biome obstacle — mountain, tree, rock, lake, etc. (TMP_005 §4). Blocking.
+    Obstacle,
 }
 
 /// A placed object's full record on the tilemap. Inner detail (canonical refs,
@@ -37,4 +40,40 @@ pub struct TilemapObjectPlacement {
     /// Phase 0a: opaque string; Phase 2 will swap to typed `CanonicalRef`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub canon_ref: Option<String>,
+    /// For `kind == Obstacle` — which biome object type this is (TMP_005 §4.5
+    /// river source/sink discovery). `None` for non-obstacle placements.
+    /// Additive (TMP-A8).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub biome_object_type: Option<BiomeObjectType>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::tile::TileCoord;
+
+    #[test]
+    fn placement_deserializes_without_biome_object_type() {
+        // AC-8 — a pre-Phase-B placement JSON still loads; biome_object_type
+        // defaults to None.
+        let json = r#"{"kind":"treasure","anchor":{"x":3,"y":4}}"#;
+        let p: TilemapObjectPlacement = serde_json::from_str(json).unwrap();
+        assert!(p.biome_object_type.is_none());
+        assert_eq!(p.kind, TilemapObjectKind::Treasure);
+    }
+
+    #[test]
+    fn obstacle_placement_round_trips_with_biome_object_type() {
+        // AC-8 — an obstacle placement carries its BiomeObjectType.
+        let p = TilemapObjectPlacement {
+            kind: TilemapObjectKind::Obstacle,
+            anchor: TileCoord::new(7, 9),
+            canon_ref: None,
+            biome_object_type: Some(BiomeObjectType::Mountain),
+        };
+        let back: TilemapObjectPlacement =
+            serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(p, back);
+        assert_eq!(back.biome_object_type, Some(BiomeObjectType::Mountain));
+    }
 }

@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::biome::BiomeSelectionRules;
 use crate::types::tile::TerrainKind;
 use crate::types::treasure::TreasureTierSpec;
 use crate::types::zone::{PassageKind, RoadOption, ZoneId, ZoneRole};
@@ -41,6 +42,10 @@ pub struct ZoneSpec {
     /// (Phase C). Empty = no treasure declared for this zone. Additive (TMP-A8).
     #[serde(default)]
     pub treasure_tiers: Vec<TreasureTierSpec>,
+    /// Author biome-selection-rule override (TMP_005 §2.2) — consumed by
+    /// ObstaclePlacer (Phase B). `None` ⇒ engine defaults. Additive (TMP-A8).
+    #[serde(default)]
+    pub biome_selection_rules: Option<BiomeSelectionRules>,
 }
 
 /// Default `ZoneSpec.size` — a neutral mid weight (all zones equal when the
@@ -137,6 +142,54 @@ mod tests {
                 TreasureTierSpec { min: 100, max: 800, density: 4 },
                 TreasureTierSpec { min: 8000, max: 12000, density: 3 },
             ],
+            biome_selection_rules: None,
+        };
+        let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
+        assert_eq!(z, back);
+    }
+
+    #[test]
+    fn zone_spec_deserializes_without_biome_selection_rules() {
+        // AC-8 — a pre-Phase-B ZoneSpec JSON still loads; biome_selection_rules
+        // defaults to None.
+        let json = r#"{"zone_id":"capital","zone_role":"wilderness"}"#;
+        let z: ZoneSpec = serde_json::from_str(json).unwrap();
+        assert!(z.biome_selection_rules.is_none());
+    }
+
+    #[test]
+    fn zone_spec_round_trips_with_biome_selection_rules() {
+        // AC-8 — a ZoneSpec carrying an author biome-selection override (D8)
+        // survives a JSON round-trip, including one rule with `xor_with: Some`
+        // and one with `xor_with: None` (the field's skip_serializing_if).
+        use crate::types::biome::{BiomeObjectType, BiomePriority, BiomeSelectionRule};
+        let z = ZoneSpec {
+            zone_id: ZoneId("vault".to_string()),
+            zone_role: ZoneRole::Wilderness,
+            size: 120,
+            terrain_types: vec![TerrainKind::Grass],
+            monster_strength: None,
+            connections: vec![],
+            treasure_tiers: vec![],
+            biome_selection_rules: Some(BiomeSelectionRules {
+                use_engine_default: false,
+                rules: vec![
+                    BiomeSelectionRule {
+                        object_type: BiomeObjectType::Lake,
+                        count_min: 0,
+                        count_max: 1,
+                        xor_with: Some(BiomeObjectType::Crater),
+                        priority: BiomePriority::First,
+                    },
+                    BiomeSelectionRule {
+                        object_type: BiomeObjectType::Tree,
+                        count_min: 1,
+                        count_max: 2,
+                        xor_with: None,
+                        priority: BiomePriority::Normal,
+                    },
+                ],
+            }),
         };
         let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
         assert_eq!(z, back);
