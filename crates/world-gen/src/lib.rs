@@ -17,8 +17,10 @@ pub mod creative_seed;
 pub mod culture;
 pub mod hydrology;
 pub mod mesh;
+pub mod noise;
 pub mod pathfind;
 pub mod political;
+pub mod relief;
 pub mod render;
 pub mod rng;
 pub mod routes;
@@ -28,6 +30,7 @@ pub mod world_map;
 
 pub use biome::BiomeKind;
 pub use climate::ClimateZone;
+pub use relief::RenderStyle;
 pub use creative_seed::{
     CoastlineProfile, CreativeSeed, HemisphereOrientation, SettlementDensity, WorldArchetype,
     WorldScale,

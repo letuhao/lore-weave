@@ -1,13 +1,15 @@
-//! Land/sea raster export.
+//! Raster + SVG map export.
 //!
-//! Rasterizes a [`WorldMap`] by nearest-cell-centre lookup — which *is* the
-//! Voronoi diagram — so no cell polygon is needed. Rendering is a CLI side
-//! output: it is not part of the `WorldMap` value or its `content_hash`, so
-//! an approximate nearest-neighbour is fine here.
+//! Rendering is a CLI side output: it is *not* part of the `WorldMap` value or
+//! its `content_hash`. Categorical maps (biome / political / culture) place
+//! pixels by nearest-cell-centre lookup — which *is* the Voronoi diagram —
+//! then composite a hillshade from [`crate::relief`] over the flat fill. The
+//! hypsometric [`relief_image`] renders the relief field directly.
 
 use image::{Rgb, RgbImage};
 
 use crate::biome::BiomeKind;
+use crate::relief::{ReliefField, RenderStyle};
 use crate::world_map::{RouteKind, SettlementRole, WorldMap};
 
 /// Rasterize `map` to `width × height`: each pixel takes the colour of its
@@ -32,14 +34,35 @@ fn rasterize<F: Fn(usize) -> Rgb<u8>>(
     img
 }
 
-/// Render a land/sea (elevation-shaded) image of `map`.
-pub fn land_sea_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
-    rasterize(map, width, height, |cell| shade(map, cell))
+/// Render a hypsometric relief image — the showcase terrain render. Continuous
+/// barycentric-interpolated elevation, fBm detail, NW hillshade; palette and
+/// coastline treatment per `style`.
+pub fn relief_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style);
+    let mut img = RgbImage::new(width, height);
+    for py in 0..height {
+        for px in 0..width {
+            let i = (py * width + px) as usize;
+            let base = if relief.water[i] {
+                water_color(relief.elev[i], relief.sea, style)
+            } else {
+                land_color(relief.elev[i], relief.sea, style)
+            };
+            img.put_pixel(px, py, shade_rgb(base, relief.shade[i]));
+        }
+    }
+    if style == RenderStyle::Atlas {
+        draw_coast_outline(&mut img, &relief);
+    }
+    img
 }
 
-/// Render a biome-coloured image of `map` (Phase 2).
-pub fn biome_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
-    rasterize(map, width, height, |cell| biome_color(map.biome[cell]))
+/// Render a biome-coloured image of `map`, hillshaded by the relief field.
+pub fn biome_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style);
+    let mut img = rasterize(map, width, height, |cell| biome_color(map.biome[cell]));
+    apply_shade(&mut img, &relief);
+    img
 }
 
 /// Colour for each `BiomeKind`.
@@ -63,16 +86,19 @@ fn biome_color(b: BiomeKind) -> Rgb<u8> {
 }
 
 /// Render a culture-region image of `map` — each land cell tinted by its
-/// culture id; water cells are ocean-blue.
-pub fn culture_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
-    rasterize(map, width, height, |cell| {
+/// culture id, hillshaded by the relief field; water cells are ocean-blue.
+pub fn culture_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style);
+    let mut img = rasterize(map, width, height, |cell| {
         let cid = map.culture_of[cell];
         if cid == u32::MAX {
             Rgb([40, 70, 120]) // water
         } else {
             culture_color(cid)
         }
-    })
+    });
+    apply_shade(&mut img, &relief);
+    img
 }
 
 /// A distinct tint per culture id (`culture_count` is clamped to 1..=16).
@@ -161,44 +187,128 @@ fn bucket_of(x: f32, y: f32, side: usize) -> usize {
     cy * side + cx
 }
 
-/// Colour a cell: blue ramp for water (deeper = darker), green→brown→white
-/// ramp for land (higher = lighter).
-fn shade(map: &WorldMap, cell: usize) -> Rgb<u8> {
-    let e = map.cells[cell].elevation;
-    if e < map.sea_level {
-        let depth = f32::from(map.sea_level - e) / f32::from(map.sea_level.max(1));
-        let blue = (200.0 - 120.0 * depth).clamp(60.0, 200.0);
-        Rgb([20, 60, blue as u8])
-    } else {
-        let span = f32::from((65535 - map.sea_level).max(1));
-        let t = (f32::from(e - map.sea_level) / span).clamp(0.0, 1.0);
-        land_ramp(t)
+/// Multiply every pixel of `img` by the relief hillshade — turns a flat
+/// categorical map (biome / political / culture) into a relief-shaded one.
+/// `img` and `relief` must share dimensions.
+fn apply_shade(img: &mut RgbImage, relief: &ReliefField) {
+    debug_assert_eq!(
+        (img.width(), img.height()),
+        (relief.width, relief.height),
+        "apply_shade: image and relief field must share dimensions"
+    );
+    for py in 0..img.height() {
+        for px in 0..img.width() {
+            let s = relief.shade[(py * relief.width + px) as usize];
+            let p = img.get_pixel_mut(px, py);
+            *p = shade_rgb(*p, s);
+        }
     }
 }
 
-/// Land colour ramp: `t=0` coastal green, `t=0.5` brown, `t=1` snow white.
-fn land_ramp(t: f32) -> Rgb<u8> {
-    if t < 0.5 {
-        let k = t / 0.5;
-        Rgb([
-            (70.0 + 100.0 * k) as u8,
-            (130.0 - 20.0 * k) as u8,
-            (60.0 + 10.0 * k) as u8,
-        ])
-    } else {
-        let k = (t - 0.5) / 0.5;
-        Rgb([
-            (170.0 + 85.0 * k) as u8,
-            (110.0 + 145.0 * k) as u8,
-            (70.0 + 185.0 * k) as u8,
-        ])
+/// Scale an `Rgb` by a `[0,1]` shade factor.
+fn shade_rgb(c: Rgb<u8>, s: f32) -> Rgb<u8> {
+    let ch = |v: u8| (f32::from(v) * s).round().clamp(0.0, 255.0) as u8;
+    Rgb([ch(c.0[0]), ch(c.0[1]), ch(c.0[2])])
+}
+
+/// Linear-interpolate a colour through an ascending `(stop, rgb)` ramp.
+fn ramp(stops: &[(f32, [u8; 3])], t: f32) -> Rgb<u8> {
+    let t = t.clamp(stops[0].0, stops[stops.len() - 1].0);
+    for pair in stops.windows(2) {
+        let (t0, c0) = pair[0];
+        let (t1, c1) = pair[1];
+        if t <= t1 {
+            let k = if t1 > t0 { (t - t0) / (t1 - t0) } else { 0.0 };
+            return Rgb([
+                lerp_u8(c0[0], c1[0], k),
+                lerp_u8(c0[1], c1[1], k),
+                lerp_u8(c0[2], c1[2], k),
+            ]);
+        }
+    }
+    Rgb(stops[stops.len() - 1].1)
+}
+
+/// Linear interpolation between two `u8` channel values.
+fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {
+    (f32::from(a) + (f32::from(b) - f32::from(a)) * t.clamp(0.0, 1.0))
+        .round()
+        .clamp(0.0, 255.0) as u8
+}
+
+/// Hypsometric land colour by normalized height above sea level. Land stops
+/// keep blue off the dominant channel so a water test can be `b > r && b > g`.
+fn land_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
+    let t = ((elev - sea) / (1.0 - sea).max(1e-3)).clamp(0.0, 1.0);
+    match style {
+        RenderStyle::Realistic => ramp(
+            &[
+                (0.00, [86, 132, 74]),
+                (0.12, [104, 148, 80]),
+                (0.30, [150, 156, 96]),
+                (0.50, [156, 124, 86]),
+                (0.72, [128, 118, 112]),
+                (0.88, [170, 166, 160]),
+                (1.00, [252, 250, 248]),
+            ],
+            t,
+        ),
+        RenderStyle::Atlas => ramp(
+            &[
+                (0.00, [208, 202, 170]),
+                (0.30, [196, 184, 146]),
+                (0.60, [178, 160, 132]),
+                (0.85, [162, 152, 138]),
+                (1.00, [200, 199, 197]),
+            ],
+            t,
+        ),
     }
 }
 
-/// Render a political map (Phase 3): cells tinted by state, with routes drawn
-/// as lines and settlements as dots.
-pub fn political_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
+/// Water colour by normalized depth below sea level.
+fn water_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
+    let d = ((sea - elev) / sea.max(1e-3)).clamp(0.0, 1.0);
+    match style {
+        RenderStyle::Realistic => ramp(
+            &[
+                (0.00, [96, 150, 178]),
+                (0.35, [52, 104, 156]),
+                (1.00, [20, 44, 92]),
+            ],
+            d,
+        ),
+        RenderStyle::Atlas => ramp(&[(0.00, [182, 196, 202]), (1.00, [138, 160, 180])], d),
+    }
+}
+
+/// Atlas style: stroke a thin ink line wherever a land pixel touches water.
+fn draw_coast_outline(img: &mut RgbImage, relief: &ReliefField) {
+    const INK: Rgb<u8> = Rgb([66, 56, 48]);
+    let (w, h) = (relief.width, relief.height);
+    let is_water = |px: u32, py: u32| relief.water[(py * w + px) as usize];
+    for py in 0..h {
+        for px in 0..w {
+            if is_water(px, py) {
+                continue;
+            }
+            let coast = (px > 0 && is_water(px - 1, py))
+                || (px + 1 < w && is_water(px + 1, py))
+                || (py > 0 && is_water(px, py - 1))
+                || (py + 1 < h && is_water(px, py + 1));
+            if coast {
+                img.put_pixel(px, py, INK);
+            }
+        }
+    }
+}
+
+/// Render a political map (Phase 3): cells tinted by state and hillshaded,
+/// with routes drawn as lines and settlements as dots.
+pub fn political_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style);
     let mut img = rasterize(map, width, height, |cell| political_cell_color(map, cell));
+    apply_shade(&mut img, &relief);
     for r in &map.routes {
         // Trace the route's actual cell path, not a straight endpoint line.
         let color = route_color(r.kind);
@@ -318,8 +428,9 @@ fn draw_dot(img: &mut RgbImage, map: &WorldMap, cell: u32, radius: u32, color: R
 }
 
 /// Render the political map as an SVG string (Phase 4 vector export):
-/// land cells as state-tinted `<rect>`s, routes as `<line>`s, settlements as
-/// `<circle>`s. Water cells are omitted — the ocean background shows through.
+/// land cells as state-tinted `<polygon>`s, routes as `<polyline>`s,
+/// settlements as `<circle>`s. Water cells are omitted — the ocean background
+/// shows through.
 pub fn political_svg(map: &WorldMap, size: u32) -> String {
     let s = size as f32;
     let mut svg = String::with_capacity(map.cells.len() * 120);
@@ -402,45 +513,65 @@ mod tests {
         generate(2026, &cs)
     }
 
+    /// A pixel is "water" iff blue is its strictly dominant channel — true for
+    /// every water ramp colour and false for every land ramp colour, in both
+    /// styles, and stable under the uniform per-pixel hillshade scaling.
+    fn is_blue(p: &Rgb<u8>) -> bool {
+        p.0[2] > p.0[0] && p.0[2] > p.0[1]
+    }
+
     #[test]
-    fn image_has_requested_dimensions() {
-        let img = land_sea_image(&island_map(), 128, 96);
+    fn relief_image_has_requested_dimensions() {
+        let img = relief_image(&island_map(), 128, 96, RenderStyle::Realistic);
         assert_eq!(img.width(), 128);
         assert_eq!(img.height(), 96);
     }
 
     #[test]
-    fn island_render_shows_both_land_and_water() {
-        let img = land_sea_image(&island_map(), 160, 160);
-        let mut water = 0u32;
-        let mut land = 0u32;
-        for px in img.pixels() {
-            // Water shading keeps blue dominant over green; land never does.
-            if px.0[2] > px.0[1] {
-                water += 1;
-            } else {
-                land += 1;
-            }
-        }
-        assert!(water > 0, "island map rendered no water");
-        assert!(land > 0, "island map rendered no land");
+    fn relief_image_shows_land_and_water() {
+        let img = relief_image(&island_map(), 160, 160, RenderStyle::Realistic);
+        assert!(img.pixels().any(is_blue), "relief render shows no water");
+        assert!(img.pixels().any(|p| !is_blue(p)), "relief render shows no land");
     }
 
     #[test]
-    fn land_ramp_is_total_over_unit_range() {
-        // Exercises every `as u8` cast in the ramp; must not panic / wrap.
-        for i in 0..=1000 {
-            let _ = land_ramp(i as f32 / 1000.0);
+    fn relief_image_styles_differ() {
+        let map = generate(3, &CreativeSeed::default());
+        let r = relief_image(&map, 128, 128, RenderStyle::Realistic);
+        let a = relief_image(&map, 128, 128, RenderStyle::Atlas);
+        assert!(
+            r.pixels().zip(a.pixels()).any(|(x, y)| x != y),
+            "realistic and atlas relief renders are identical"
+        );
+    }
+
+    #[test]
+    fn relief_image_is_deterministic() {
+        let map = generate(5, &CreativeSeed::default());
+        let a = relief_image(&map, 100, 100, RenderStyle::Realistic);
+        let b = relief_image(&map, 100, 100, RenderStyle::Realistic);
+        assert_eq!(a.as_raw(), b.as_raw(), "relief render is not deterministic");
+    }
+
+    #[test]
+    fn land_and_water_colors_are_total() {
+        // exercises every `as u8` cast in the ramps for both styles.
+        for style in [RenderStyle::Realistic, RenderStyle::Atlas] {
+            for i in 0..=1000 {
+                let e = i as f32 / 1000.0;
+                let _ = land_color(e, 0.4, style);
+                let _ = water_color(e, 0.4, style);
+            }
+            // out-of-range inputs must clamp, not panic.
+            let _ = land_color(-0.5, 0.4, style);
+            let _ = land_color(1.9, 0.4, style);
+            let _ = water_color(-0.5, 0.4, style);
         }
-        // out-of-range inputs are clamped by `shade`, but the ramp itself
-        // must still be total.
-        let _ = land_ramp(-0.3);
-        let _ = land_ramp(1.7);
     }
 
     #[test]
     fn biome_image_has_requested_dimensions() {
-        let img = biome_image(&island_map(), 100, 80);
+        let img = biome_image(&island_map(), 100, 80, RenderStyle::Realistic);
         assert_eq!(img.width(), 100);
         assert_eq!(img.height(), 80);
     }
@@ -448,7 +579,7 @@ mod tests {
     #[test]
     fn biome_image_is_not_uniform() {
         // A real island map has ocean + several land biomes ⇒ >1 colour.
-        let img = biome_image(&island_map(), 128, 128);
+        let img = biome_image(&island_map(), 128, 128, RenderStyle::Realistic);
         let first = *img.get_pixel(0, 0);
         assert!(
             img.pixels().any(|p| *p != first),
@@ -459,7 +590,7 @@ mod tests {
     #[test]
     fn political_image_dimensions_and_not_uniform() {
         let map = generate(3, &CreativeSeed::default());
-        let img = political_image(&map, 200, 150);
+        let img = political_image(&map, 200, 150, RenderStyle::Realistic);
         assert_eq!(img.width(), 200);
         assert_eq!(img.height(), 150);
         // ocean + ≥1 state tint + route/settlement marks ⇒ >1 colour.
@@ -479,7 +610,7 @@ mod tests {
             svg.trim_end().ends_with("</svg>"),
             "SVG must end with </svg>"
         );
-        assert!(svg.contains("<rect"), "SVG must contain land-cell rects");
+        assert!(svg.contains("<rect"), "SVG must contain the background rect");
         assert!(svg.contains("<polyline"), "SVG must contain route polylines");
         assert!(svg.contains("<circle"), "SVG must contain settlement circles");
     }

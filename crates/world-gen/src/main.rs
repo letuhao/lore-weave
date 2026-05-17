@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! world-gen generate --seed 42 --scale continent --coastline island \
-//!           --out map.json --png biome.png --political-png pol.png --svg map.svg
+//!           --out map.json --relief-png relief.png --png biome.png --style atlas
 //! world-gen generate --seed 42 --config creative_seed.json --out map.json
 //! world-gen author --brief "a cold mountainous wuxia realm" --out creative_seed.json
 //! ```
@@ -12,8 +12,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use world_gen::{
-    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, SettlementDensity,
-    WorldArchetype, WorldScale, generate,
+    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, RenderStyle,
+    SettlementDensity, WorldArchetype, WorldScale, generate,
 };
 
 #[derive(Parser)]
@@ -64,6 +64,12 @@ struct GenerateArgs {
     /// Output JSON path.
     #[arg(long)]
     out: PathBuf,
+    /// Cartographic render style for all PNG outputs.
+    #[arg(long, value_enum, default_value_t = StyleArg::Realistic)]
+    style: StyleArg,
+    /// Optional hypsometric relief-map PNG path (the showcase terrain render).
+    #[arg(long)]
+    relief_png: Option<PathBuf>,
     /// Optional biome-coloured PNG path.
     #[arg(long)]
     png: Option<PathBuf>,
@@ -161,8 +167,17 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         map.routes.len(),
     );
 
+    if let Some(png) = &cli.relief_png {
+        let img =
+            world_gen::render::relief_image(&map, cli.png_size, cli.png_size, cli.style.into());
+        if let Err(e) = img.save(png) {
+            eprintln!("error: save relief png {}: {e}", png.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", png.display());
+    }
     if let Some(png) = &cli.png {
-        let img = world_gen::render::biome_image(&map, cli.png_size, cli.png_size);
+        let img = world_gen::render::biome_image(&map, cli.png_size, cli.png_size, cli.style.into());
         if let Err(e) = img.save(png) {
             eprintln!("error: save png {}: {e}", png.display());
             return ExitCode::FAILURE;
@@ -170,7 +185,8 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         println!("wrote {}", png.display());
     }
     if let Some(png) = &cli.political_png {
-        let img = world_gen::render::political_image(&map, cli.png_size, cli.png_size);
+        let img =
+            world_gen::render::political_image(&map, cli.png_size, cli.png_size, cli.style.into());
         if let Err(e) = img.save(png) {
             eprintln!("error: save political png {}: {e}", png.display());
             return ExitCode::FAILURE;
@@ -178,7 +194,8 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         println!("wrote {}", png.display());
     }
     if let Some(png) = &cli.culture_png {
-        let img = world_gen::render::culture_image(&map, cli.png_size, cli.png_size);
+        let img =
+            world_gen::render::culture_image(&map, cli.png_size, cli.png_size, cli.style.into());
         if let Err(e) = img.save(png) {
             eprintln!("error: save culture png {}: {e}", png.display());
             return ExitCode::FAILURE;
@@ -355,6 +372,21 @@ impl From<DensityArg> for SettlementDensity {
             DensityArg::Sparse => SettlementDensity::Sparse,
             DensityArg::Medium => SettlementDensity::Medium,
             DensityArg::Dense => SettlementDensity::Dense,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum StyleArg {
+    Realistic,
+    Atlas,
+}
+
+impl From<StyleArg> for RenderStyle {
+    fn from(s: StyleArg) -> Self {
+        match s {
+            StyleArg::Realistic => RenderStyle::Realistic,
+            StyleArg::Atlas => RenderStyle::Atlas,
         }
     }
 }
