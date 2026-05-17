@@ -129,35 +129,47 @@ pub fn reconstruct_path(dst: u32, prev: &[u32]) -> Vec<u32> {
     path
 }
 
-/// BFS over the cells for which `passable(cell)` holds; returns whether `dst`
-/// is reachable from `src`. Used for SeaLane water connectivity.
-pub fn bfs_reachable(
+/// BFS over the cells for which `passable(cell)` holds; returns the
+/// fewest-hop cell path from `src` to `dst` inclusive (`[src, …, dst]`), or
+/// `None` if `dst` is unreachable. `src` is the BFS root; `dst` must itself
+/// satisfy `passable` to be reached. Used for SeaLane water connectivity.
+pub fn bfs_path(
     src: u32,
     dst: u32,
     passable: impl Fn(usize) -> bool,
     neighbors: &[Vec<u32>],
-) -> bool {
+) -> Option<Vec<u32>> {
     if src == dst {
-        return true;
+        return Some(vec![src]);
     }
+    let mut prev = vec![NONE; neighbors.len()];
     let mut seen = vec![false; neighbors.len()];
     let mut queue = VecDeque::new();
     seen[src as usize] = true;
     queue.push_back(src as usize);
     while let Some(c) = queue.pop_front() {
         for &nb in &neighbors[c] {
-            let nb = nb as usize;
-            if seen[nb] || !passable(nb) {
+            let nbu = nb as usize;
+            if seen[nbu] || !passable(nbu) {
                 continue;
             }
-            if nb == dst as usize {
-                return true;
+            seen[nbu] = true;
+            prev[nbu] = c as u32;
+            if nbu == dst as usize {
+                // Reconstruct src → dst via the BFS predecessor chain.
+                let mut path = vec![dst];
+                let mut cur = dst;
+                while cur != src {
+                    cur = prev[cur as usize];
+                    path.push(cur);
+                }
+                path.reverse();
+                return Some(path);
             }
-            seen[nb] = true;
-            queue.push_back(nb);
+            queue.push_back(nbu);
         }
     }
-    false
+    None
 }
 
 /// Whether `cell`'s centre is ≥ `min_sep` (its *square* is given) from every

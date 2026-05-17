@@ -81,7 +81,8 @@ pub struct Province {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct State {
     pub id: u32,
-    /// The lowest-id province in the state — its capital.
+    /// The state-seed province (farthest-point sampled within the state's
+    /// land component) — its capital.
     pub capital_province: u32,
 }
 
@@ -95,14 +96,19 @@ pub struct Settlement {
     pub population_tier: u8,
 }
 
-/// A route edge between two cells.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// A route between two cells, including the cell path it traverses.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Route {
     pub kind: RouteKind,
     pub from_cell: u32,
     pub to_cell: u32,
     /// Path cost (terrain-cost units) or hop count.
     pub distance: u32,
+    /// The ordered cell path the route traverses, `from_cell … to_cell`
+    /// inclusive. Lets a renderer or downstream consumer follow the route
+    /// over real terrain instead of drawing a straight endpoint-to-endpoint
+    /// line. Always has length ≥ 2 (`from_cell` and `to_cell` differ).
+    pub path: Vec<u32>,
 }
 
 /// A culture region — a cell cluster grown from one cultural hearth.
@@ -176,8 +182,10 @@ impl WorldMap {
     /// NOTE: `verify_hash` proves only that the produce path (`generate`) and
     /// the verify path agree — NOT that this method covers every field. If a
     /// new field is added but `compute_hash` is not extended, `verify_hash`
-    /// still passes; field-list completeness is guaranteed only by
-    /// `determinism.rs`'s full-`PartialEq` assertion.
+    /// still passes. Field-list completeness is pinned by the
+    /// `compute_hash_covers_every_field` test in `tests/serde.rs`, which
+    /// tampers each `WorldMap` field of a generated map and asserts
+    /// `verify_hash` then returns `false`.
     pub fn compute_hash(&self) -> [u8; 32] {
         let mut h = blake3::Hasher::new();
         h.update(&self.seed.to_le_bytes());
@@ -227,6 +235,10 @@ impl WorldMap {
             h.update(&r.from_cell.to_le_bytes());
             h.update(&r.to_cell.to_le_bytes());
             h.update(&r.distance.to_le_bytes());
+            h.update(&(r.path.len() as u32).to_le_bytes());
+            for &c in &r.path {
+                h.update(&c.to_le_bytes());
+            }
         }
         for &c in &self.culture_of {
             h.update(&c.to_le_bytes());

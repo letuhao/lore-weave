@@ -1,18 +1,30 @@
 //! Stage 7 — route network.
 //!
-//! Five `RouteKind`s: Road (MST + nearest-neighbour augmentation over
-//! `tier ≥ 2` settlements), Trail (small settlement → nearest large), SeaLane
-//! (coastal-City water connectivity), MountainPass (mountain edges on Road
-//! paths), RiverNavigation (navigable-river runs on Road/Trail paths).
+//! Five `RouteKind`s:
+//! - **Road** — Kruskal MST + nearest-neighbour augmentation over `tier ≥ 2`
+//!   settlements (terrain-cost Dijkstra).
+//! - **Trail** — each `tier ≤ 1` settlement → its nearest road settlement.
+//! - **SeaLane** — coastal City/Capital pairs within range, connected over an
+//!   `{Ocean, Coast}` water corridor (GEO_004 §5.2 phase 4).
+//! - **MountainPass** — the top Mountain/Hill edges by settlement-pair
+//!   edge-betweenness (GEO_004 §5.2 phase 5, Brandes-style).
+//! - **RiverNavigation** — ≥3-cell navigable-river runs on Road/Trail paths.
+//!
+//! Every emitted `Route` carries the full cell `path` it traverses.
+
+use std::collections::BTreeMap;
 
 use crate::biome::BiomeKind;
 use crate::pathfind::{self, UnionFind};
-use crate::world_map::{Route, RouteKind, Settlement, SettlementRole};
+use crate::world_map::{Route, RouteKind, Settlement};
+
+/// Top-N Mountain/Hill chokepoint edges promoted to MountainPass routes
+/// (GEO_004 §5.2 step 15 — `mountain_pass_target`, default 5 per continent).
+const MOUNTAIN_PASS_TARGET: usize = 5;
 
 /// Build the route network.
-// Triangular pairwise iteration over settlement indices (`ia < ib`, plus an
-// `ib == ia` skip) — explicit index loops are clearer here than `enumerate`
-// gymnastics, and each index addresses several parallel arrays.
+// Triangular pairwise iteration over settlement indices, plus index loops that
+// each address several parallel arrays — clearer than `enumerate` gymnastics.
 #[allow(clippy::needless_range_loop)]
 pub fn build(
     centers: &[(f32, f32)],
@@ -25,6 +37,8 @@ pub fn build(
 ) -> Vec<Route> {
     let cost = |c: usize| biomes[c].terrain_cost();
     let mut sink = RouteSink::new();
+    // Road + Trail cell paths — scanned by RiverNavigation (7e).
+    let mut land_paths: Vec<Vec<u32>> = Vec::new();
 
     // Road-eligible settlements, sorted by cell id; Dijkstra from each.
     let mut road: Vec<&Settlement> = settlements
@@ -37,7 +51,6 @@ pub fn build(
         .map(|s| pathfind::single_source_dist(s.cell, cost, neighbors))
         .collect();
     let nr = road.len();
-    let mut road_paths: Vec<Vec<u32>> = Vec::new();
 
     // --- 7a Road: Kruskal MST (one per land component) + augmentation ---
     let mut edges: Vec<(u32, usize, usize)> = Vec::new();
@@ -63,7 +76,7 @@ pub fn build(
         }
     }
     for &(ia, ib) in &mst {
-        emit_road(ia, ib, &road, &dij, &mut sink, &mut road_paths);
+        emit_road(ia, ib, &road, &dij, &mut sink, &mut land_paths);
     }
     // augmentation: each settlement's nearest non-MST reachable neighbour.
     for ia in 0..nr {
@@ -88,12 +101,11 @@ pub fn build(
             }
         }
         if let Some(ib) = best {
-            emit_road(ia, ib, &road, &dij, &mut sink, &mut road_paths);
+            emit_road(ia, ib, &road, &dij, &mut sink, &mut land_paths);
         }
     }
 
     // --- 7b Trail: each tier 0-1 settlement → nearest road settlement ---
-    let mut trail_paths: Vec<Vec<u32>> = Vec::new();
     let mut trail: Vec<&Settlement> = settlements
         .iter()
         .filter(|s| s.population_tier <= 1)
@@ -114,72 +126,134 @@ pub fn build(
             }
         }
         if let Some(k) = best {
-            if sink.push(RouteKind::Trail, ts.cell, road[k].cell, best_key.0) {
-                trail_paths.push(pathfind::reconstruct_path(ts.cell, &dij[k].1));
+            // Path through the road settlement's Dijkstra tree, root → ts.cell.
+            let path = pathfind::reconstruct_path(ts.cell, &dij[k].1);
+            if sink.push(RouteKind::Trail, path.clone(), best_key.0) {
+                land_paths.push(path);
             }
         }
     }
 
-    // --- 7c SeaLane: coastal-City pairs connected over ocean water ---
-    let mut cities: Vec<&Settlement> = settlements
-        .iter()
-        .filter(|s| s.role == SettlementRole::City && is_coast[s.cell as usize])
-        .collect();
-    cities.sort_by_key(|s| s.cell);
-    for i in 0..cities.len() {
-        for j in (i + 1)..cities.len() {
-            let (cx, cy) = centers[cities[i].cell as usize];
-            let (dx, dy) = centers[cities[j].cell as usize];
-            let dist2 = (cx - dx) * (cx - dx) + (cy - dy) * (cy - dy);
-            if dist2 > 0.25 {
-                continue; // beyond 0.5 Euclidean range
+    // --- 7c SeaLane: bridge separate landmasses via per-component ports ---
+    // GEO_004's pairwise coastal-City SeaLane cannot connect an archipelago:
+    // most island settlements sit inland, coastal Cities are far too rare to
+    // pair, and the ROUTE-V12 range cap blocks the open-ocean hops islands
+    // need. Instead, give every inhabited land component one coastal *port*
+    // and build a minimum spanning tree of SeaLanes over the ports — every
+    // island becomes reachable with the fewest open-ocean crossings, and an
+    // MST never produces a pointless cross-map route, so no range cap is
+    // needed. The water corridor is BFS-passable over {Ocean, Coast} cells
+    // (GEO_004 §5.2 step 11a).
+    let is_land: Vec<bool> = biomes.iter().map(|b| !b.is_water()).collect();
+    let comps = pathfind::land_components(&is_land, neighbors);
+    let mut comp_of = vec![u32::MAX; centers.len()];
+    for (ci, comp) in comps.iter().enumerate() {
+        for &c in comp {
+            comp_of[c as usize] = ci as u32;
+        }
+    }
+    // One port per inhabited component: the coastal cell nearest the
+    // component's highest-tier settlement.
+    let mut ports: Vec<u32> = Vec::new();
+    for (ci, comp) in comps.iter().enumerate() {
+        let anchor = settlements
+            .iter()
+            .filter(|s| comp_of[s.cell as usize] == ci as u32)
+            .max_by(|a, b| {
+                a.population_tier
+                    .cmp(&b.population_tier)
+                    .then(b.cell.cmp(&a.cell)) // tie → lower cell id
+            });
+        let Some(anchor) = anchor else {
+            continue; // uninhabited landmass — nothing to connect
+        };
+        let (ax, ay) = centers[anchor.cell as usize];
+        let mut best_port: Option<u32> = None;
+        let mut best_d = f32::INFINITY;
+        for &c in comp {
+            if !is_coast[c as usize] {
+                continue;
             }
-            let (src, dst) = (cities[i].cell, cities[j].cell);
+            let (cx, cy) = centers[c as usize];
+            let d = (cx - ax) * (cx - ax) + (cy - ay) * (cy - ay);
+            if d < best_d {
+                best_d = d;
+                best_port = Some(c);
+            }
+        }
+        if let Some(p) = best_port {
+            ports.push(p);
+        }
+    }
+    ports.sort_unstable();
+    // Sea distance (BFS hop count over {Ocean, Coast}) between every port pair.
+    let mut sea_edges: Vec<(usize, usize, usize, Vec<u32>)> = Vec::new();
+    for i in 0..ports.len() {
+        for j in (i + 1)..ports.len() {
+            let (src, dst) = (ports[i], ports[j]);
             let passable = |c: usize| {
-                c == src as usize || c == dst as usize || biomes[c] == BiomeKind::Ocean
+                c == src as usize
+                    || c == dst as usize
+                    || matches!(biomes[c], BiomeKind::Ocean | BiomeKind::Coast)
             };
-            if pathfind::bfs_reachable(src, dst, passable, neighbors) {
-                let d = (dist2.sqrt() * 1000.0) as u32;
-                sink.push(RouteKind::SeaLane, src, dst, d);
+            if let Some(path) = pathfind::bfs_path(src, dst, passable, neighbors) {
+                sea_edges.push((path.len(), i, j, path));
             }
+        }
+    }
+    // Kruskal MST over the ports → the minimal SeaLane set linking every
+    // sea-reachable landmass.
+    sea_edges.sort_by(|x, y| {
+        x.0.cmp(&y.0)
+            .then(ports[x.1].cmp(&ports[y.1]))
+            .then(ports[x.2].cmp(&ports[y.2]))
+    });
+    let mut sea_uf = UnionFind::new(ports.len().max(1));
+    for (len, i, j, path) in sea_edges {
+        if sea_uf.find(i) != sea_uf.find(j) {
+            sea_uf.union(i, j);
+            sink.push(RouteKind::SeaLane, path, len as u32);
         }
     }
 
-    // --- 7d MountainPass: mountain-adjacent edges on Road paths, top 8 ---
-    let mut medges: Vec<(u32, u32)> = Vec::new();
-    for path in &road_paths {
-        for w in path.windows(2) {
-            let (a, b) = (w[0], w[1]);
-            if biomes[a as usize] == BiomeKind::Mountain
-                || biomes[b as usize] == BiomeKind::Mountain
-            {
-                medges.push(if a < b { (a, b) } else { (b, a) });
+    // --- 7d MountainPass: top Mountain/Hill edges by settlement-pair
+    //     edge-betweenness (GEO_004 §5.2 phase 5) ---
+    // Tally every cell-graph edge lying on a shortest path between a pair of
+    // road settlements; the highest-betweenness Mountain/Hill edges are the
+    // chokepoint passes. (A Road *itself* routes around cost-8 Mountains, so
+    // the earlier "scan Road paths for mountain cells" proxy almost never
+    // fired — betweenness over the cell graph finds the true chokepoints.)
+    // BTreeMap, not HashMap — deterministic key-order iteration.
+    let mut betweenness: BTreeMap<(u32, u32), u32> = BTreeMap::new();
+    for ia in 0..nr {
+        for ib in (ia + 1)..nr {
+            if dij[ia].0[road[ib].cell as usize] == u32::MAX {
+                continue;
+            }
+            let path = pathfind::reconstruct_path(road[ib].cell, &dij[ia].1);
+            for w in path.windows(2) {
+                let edge = if w[0] < w[1] { (w[0], w[1]) } else { (w[1], w[0]) };
+                *betweenness.entry(edge).or_insert(0) += 1;
             }
         }
     }
-    medges.sort_unstable();
-    let mut tally: Vec<((u32, u32), u32)> = Vec::new();
-    for e in medges {
-        match tally.last_mut() {
-            Some(last) if last.0 == e => last.1 += 1,
-            _ => tally.push((e, 1)),
-        }
-    }
-    // sort by (count desc, lo_cell, hi_cell)
-    tally.sort_by(|x, y| {
-        y.1.cmp(&x.1)
-            .then(x.0.0.cmp(&y.0.0))
-            .then(x.0.1.cmp(&y.0.1))
-    });
-    for &((lo, hi), _) in tally.iter().take(8) {
-        sink.push(RouteKind::MountainPass, lo, hi, 1);
+    let mut eligible: Vec<((u32, u32), u32)> = betweenness
+        .into_iter()
+        .filter(|&((a, b), _)| {
+            matches!(biomes[a as usize], BiomeKind::Mountain | BiomeKind::Hill)
+                || matches!(biomes[b as usize], BiomeKind::Mountain | BiomeKind::Hill)
+        })
+        .collect();
+    // Highest betweenness first; (lo, hi) cell tie-break → deterministic.
+    eligible.sort_by(|x, y| y.1.cmp(&x.1).then(x.0.cmp(&y.0)));
+    for &((a, b), _) in eligible.iter().take(MOUNTAIN_PASS_TARGET) {
+        sink.push(RouteKind::MountainPass, vec![a, b], 1);
     }
 
     // --- 7e RiverNavigation: ≥3-cell navigable-river runs on Road/Trail paths ---
-    // `river_flux > river_threshold` decides run boundaries (hence which
-    // routes are emitted); both are identically-recomputed finite f32 ⇒ this
-    // comparison is bit-stable across runs.
-    for path in road_paths.iter().chain(trail_paths.iter()) {
+    // `river_flux > river_threshold` decides run boundaries; both are
+    // identically-recomputed finite f32 ⇒ this comparison is bit-stable.
+    for path in &land_paths {
         let mut i = 0usize;
         while i < path.len() {
             if river_flux[path[i] as usize] > river_threshold {
@@ -188,12 +262,7 @@ pub fn build(
                     i += 1;
                 }
                 if i - s >= 3 {
-                    sink.push(
-                        RouteKind::RiverNavigation,
-                        path[s],
-                        path[i - 1],
-                        (i - s) as u32,
-                    );
+                    sink.push(RouteKind::RiverNavigation, path[s..i].to_vec(), (i - s) as u32);
                 }
             } else {
                 i += 1;
@@ -204,22 +273,23 @@ pub fn build(
     sink.routes
 }
 
-/// Emit a Road for road-settlement indices `ia,ib`; record its path (once) if
-/// the route was newly added.
+/// Emit a Road for road-settlement indices `ia,ib`; record its cell path
+/// (once) into `land_paths` if the route was newly added.
 fn emit_road(
     ia: usize,
     ib: usize,
     road: &[&Settlement],
     dij: &[(Vec<u32>, Vec<u32>)],
     sink: &mut RouteSink,
-    road_paths: &mut Vec<Vec<u32>>,
+    land_paths: &mut Vec<Vec<u32>>,
 ) {
     let d = dij[ia].0[road[ib].cell as usize];
     if d == u32::MAX {
         return;
     }
-    if sink.push(RouteKind::Road, road[ia].cell, road[ib].cell, d) {
-        road_paths.push(pathfind::reconstruct_path(road[ib].cell, &dij[ia].1));
+    let path = pathfind::reconstruct_path(road[ib].cell, &dij[ia].1);
+    if sink.push(RouteKind::Road, path.clone(), d) {
+        land_paths.push(path);
     }
 }
 
@@ -237,9 +307,15 @@ impl RouteSink {
         }
     }
 
-    /// Push a route; returns `true` if it was newly added (not a duplicate or
-    /// a degenerate self-loop).
-    fn push(&mut self, kind: RouteKind, a: u32, b: u32, distance: u32) -> bool {
+    /// Push a route from the cell `path` it traverses; returns `true` if it
+    /// was newly added (not a duplicate `(kind, pair)` or a degenerate
+    /// self-loop / single-cell path). The stored path is oriented
+    /// `from_cell (= lo) … to_cell (= hi)`.
+    fn push(&mut self, kind: RouteKind, mut path: Vec<u32>, distance: u32) -> bool {
+        if path.len() < 2 {
+            return false;
+        }
+        let (a, b) = (path[0], path[path.len() - 1]);
         if a == b {
             return false;
         }
@@ -249,11 +325,15 @@ impl RouteSink {
             return false;
         }
         self.seen.push(key);
+        if a != lo {
+            path.reverse(); // orient lo → hi so path[0] == from_cell
+        }
         self.routes.push(Route {
             kind,
             from_cell: lo,
             to_cell: hi,
             distance,
+            path,
         });
         true
     }

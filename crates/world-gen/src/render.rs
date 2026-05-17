@@ -164,7 +164,11 @@ fn land_ramp(t: f32) -> Rgb<u8> {
 pub fn political_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
     let mut img = rasterize(map, width, height, |cell| political_cell_color(map, cell));
     for r in &map.routes {
-        draw_line(&mut img, map, r.from_cell, r.to_cell, route_color(r.kind));
+        // Trace the route's actual cell path, not a straight endpoint line.
+        let color = route_color(r.kind);
+        for seg in r.path.windows(2) {
+            draw_line(&mut img, map, seg[0], seg[1], color);
+        }
     }
     for s in &map.settlements {
         draw_dot(
@@ -306,11 +310,18 @@ pub fn political_svg(map: &WorldMap, size: u32) -> String {
         ));
     }
     for r in &map.routes {
-        let (ax, ay) = svg_px(map.cells[r.from_cell as usize].center, s);
-        let (bx, by) = svg_px(map.cells[r.to_cell as usize].center, s);
+        // A polyline tracing the route's actual cell path over the terrain.
+        let pts: Vec<String> = r
+            .path
+            .iter()
+            .map(|&c| {
+                let (px, py) = svg_px(map.cells[c as usize].center, s);
+                format!("{px:.1},{py:.1}")
+            })
+            .collect();
         svg.push_str(&format!(
-            "<line x1=\"{ax:.1}\" y1=\"{ay:.1}\" x2=\"{bx:.1}\" y2=\"{by:.1}\" \
-             stroke=\"{}\" stroke-width=\"1.5\"/>\n",
+            "<polyline points=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>\n",
+            pts.join(" "),
             hex(route_color(r.kind)),
         ));
     }
@@ -428,7 +439,7 @@ mod tests {
             "SVG must end with </svg>"
         );
         assert!(svg.contains("<rect"), "SVG must contain land-cell rects");
-        assert!(svg.contains("<line"), "SVG must contain route lines");
+        assert!(svg.contains("<polyline"), "SVG must contain route polylines");
         assert!(svg.contains("<circle"), "SVG must contain settlement circles");
     }
 }
