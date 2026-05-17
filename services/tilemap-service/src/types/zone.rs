@@ -40,6 +40,20 @@ pub enum PassageKind {
     Portal,
 }
 
+/// TMP_007 §2.2 — whether a connection materializes a road. `Open` connections
+/// never get a road regardless of this value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoadOption {
+    /// Always build a road if the connection has a physical passage.
+    #[default]
+    True,
+    /// Never build a road.
+    False,
+    /// Pre-resolved at template finalization — a random subset becomes roaded.
+    Random,
+}
+
 /// Author-declared connection between two zones in a `TilemapTemplate`.
 /// Runtime shape lands at Phase 1 when modificators populate guard positions
 /// + road polylines into [`crate::types::ZoneRuntime`].

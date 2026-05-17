@@ -1,24 +1,29 @@
-//! Phase 0b L3 zone-classifier measurement harness.
+//! L3 zone-classifier harness — the single gateway call + the measurement
+//! report.
 //!
-//! Sends ONE hardcoded L3 zone-classification request (TMP_008b §3 tool +
-//! §9.1 few-shot prompt) through the LLM gateway with a forced `tool_choice`,
-//! reassembles the streamed `tool_call` fragments, parses + validates the
-//! result, and reports tool-use success + token cost vs TMP_008b §12.
-//!
-//! This is a MEASUREMENT tool, not the production pipeline: the TMP_008b §5
-//! per-object retry loop and §6 canonical-default fallback are Phase 2.
+//! [`call_l3_attempt`] sends one L3 zone-classification request (TMP_008b §3
+//! tool + §9.1 few-shot prompt) through the LLM gateway with a forced
+//! `tool_choice` and reassembles the streamed `tool_call` fragments.
+//! [`run_l3_measurement`] wraps it with the §12 token-cost report; the §5
+//! per-object retry loop (`retry.rs`) and §6 fallback build on the same call.
 
+pub mod bootstrap;
+pub mod keyphrase;
+pub mod l4_prompt;
+pub mod l4_retry;
+pub mod l4_validate;
 pub mod prompt;
+pub mod retry;
+pub mod style;
 pub mod validate;
 
-use anyhow::Context;
 use loreweave_llm::{
     ChatStreamRequest, GatewayClient, ModelSource, StreamEvent, StreamFormat, ToolCallAccumulator,
 };
 use serde_json::json;
 use uuid::Uuid;
 
-use validate::{L3ToolArguments, L3ValidationError, validate_l3};
+use validate::{L3Classification, L3ToolArguments, L3ValidationError, validate_l3};
 
 /// Anthropic Haiku 4.5 hypothetical rates (TMP_008b §12.3) — used only to
 /// express the lmstudio token counts as a "what this would cost on Haiku"
@@ -58,21 +63,44 @@ impl L3MeasurementReport {
     }
 }
 
-/// Run the L3 measurement: build the request, stream it through the gateway,
-/// reassemble the tool call, validate, and report. A stream-level error or an
-/// unparseable tool call is recorded in `failure` — not an `Err` — so the
-/// measurement is always produced.
-pub async fn run_l3_measurement(
+/// The outcome of a single L3 gateway call ([`call_l3_attempt`]).
+///
+/// Every failure mode — stream open error, mid-stream error, missing or
+/// unparseable tool call — is captured in `failure` with empty
+/// `classifications`; the call itself never returns `Err` (the §5 retry loop
+/// treats a failed attempt as "nothing classified" — spec D1/D2).
+#[derive(Debug, Default)]
+pub struct L3Attempt {
+    pub classifications: Vec<L3Classification>,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub reasoning_tokens: Option<u32>,
+    pub finish_reason: Option<String>,
+    pub tool_calls_seen: usize,
+    pub raw_arguments: String,
+    pub failure: Option<String>,
+}
+
+/// Run ONE L3 gateway call for `placeholders` (TMP_008b §3 tool + forced
+/// `tool_choice`). On a retry attempt, `retry_context` carries the §4.2
+/// structured error message — appended as an extra user turn so the model sees
+/// the exact failing cases. Reassembles the streamed tool call and parses the
+/// classifications; all failures land in [`L3Attempt::failure`] (never `Err`).
+pub async fn call_l3_attempt(
     client: &GatewayClient,
     model_source: ModelSource,
     model_ref: Uuid,
     user_id: Uuid,
-) -> anyhow::Result<L3MeasurementReport> {
-    let placeholders = prompt::fixture_placeholders();
-    let messages = vec![
+    placeholders: &[prompt::L3Placeholder],
+    retry_context: Option<&str>,
+) -> L3Attempt {
+    let mut messages = vec![
         json!({"role": "system", "content": prompt::SYSTEM_PROMPT}),
-        json!({"role": "user", "content": prompt::user_payload(&placeholders)}),
+        json!({"role": "user", "content": prompt::user_payload(placeholders)}),
     ];
+    if let Some(ctx) = retry_context {
+        messages.push(json!({"role": "user", "content": ctx}));
+    }
     let request = ChatStreamRequest::new_chat_with_tools(
         model_source,
         model_ref,
@@ -82,43 +110,42 @@ pub async fn run_l3_measurement(
     )
     .with_tool_choice(prompt::forced_tool_choice());
 
-    let mut handle = client
-        .stream(request, user_id)
-        .await
-        .context("opening the gateway stream")?;
+    let mut attempt = L3Attempt::default();
+
+    let mut handle = match client.stream(request, user_id).await {
+        Ok(h) => h,
+        Err(e) => {
+            attempt.failure = Some(format!("opening the gateway stream: {e}"));
+            return attempt;
+        }
+    };
 
     let mut acc = ToolCallAccumulator::new();
-    let mut input_tokens = 0u32;
-    let mut output_tokens = 0u32;
-    let mut reasoning_tokens = None;
-    let mut finish_reason = None;
-    let mut failure = None;
-
     while let Some(ev) = handle.next().await {
         match ev {
             Ok(event) => {
                 acc.push(&event);
                 match event {
                     StreamEvent::Usage {
-                        input_tokens: i,
-                        output_tokens: o,
-                        reasoning_tokens: r,
+                        input_tokens,
+                        output_tokens,
+                        reasoning_tokens,
                     } => {
-                        input_tokens = i;
-                        output_tokens = o;
-                        reasoning_tokens = r;
+                        attempt.input_tokens = input_tokens;
+                        attempt.output_tokens = output_tokens;
+                        attempt.reasoning_tokens = reasoning_tokens;
                     }
                     StreamEvent::Done {
                         finish_reason: fr, ..
                     } => {
-                        finish_reason = fr.map(|f| format!("{f:?}"));
+                        attempt.finish_reason = fr.map(|f| format!("{f:?}"));
                     }
                     _ => {}
                 }
             }
             Err(e) => {
                 // Record + stop — finish() below still salvages partial calls.
-                failure = Some(format!("stream error: {e}"));
+                attempt.failure = Some(format!("stream error: {e}"));
                 break;
             }
         }
@@ -126,49 +153,78 @@ pub async fn run_l3_measurement(
 
     // finish() works on an error-terminated stream too (no Done required).
     let calls = acc.finish();
-    let tool_calls_seen = calls.len();
+    attempt.tool_calls_seen = calls.len();
 
-    let raw_arguments = calls.first().map(|c| c.arguments.clone()).unwrap_or_default();
+    // Select the call by tool NAME — never blindly `.first()`. A provider may
+    // stream an extra/echo tool call at a lower index; picking it would
+    // silently fold a wrong-tool case into a "parse failure".
+    let target = calls
+        .iter()
+        .find(|c| c.name.as_deref() == Some("submit_zone_classifications"));
+    attempt.raw_arguments = target.map(|c| c.arguments.clone()).unwrap_or_default();
 
-    let mut tool_use_success = false;
-    let mut classifications_parsed = 0;
-    let mut validation_errors = Vec::new();
-
-    match calls.first() {
+    match target {
         None => {
-            if failure.is_none() {
-                failure = Some("no tool_call events were streamed".to_string());
+            if attempt.failure.is_none() {
+                attempt.failure = Some(if calls.is_empty() {
+                    "no tool_call events were streamed".to_string()
+                } else {
+                    format!(
+                        "{} tool call(s) streamed, none named submit_zone_classifications",
+                        calls.len()
+                    )
+                });
             }
         }
         Some(call) => match serde_json::from_str::<L3ToolArguments>(&call.arguments) {
-            Ok(args) => {
-                classifications_parsed = args.classifications.len();
-                validation_errors = validate_l3(
-                    &args.classifications,
-                    &placeholders,
-                    &prompt::book_canon_refs(),
-                );
-                tool_use_success = classifications_parsed > 0;
-            }
+            Ok(args) => attempt.classifications = args.classifications,
             Err(e) => {
-                failure = Some(format!(
+                attempt.failure = Some(format!(
                     "tool-call arguments did not parse as L3 output: {e}"
                 ));
             }
         },
     }
+    attempt
+}
+
+/// Run the L3 measurement: one [`call_l3_attempt`] against the fixture,
+/// validate, and report. A stream error or an unparseable tool call is
+/// recorded in `failure` — never an `Err` — so the measurement is always
+/// produced. (`anyhow::Result` is kept for caller-API stability; it is always
+/// `Ok` now.)
+pub async fn run_l3_measurement(
+    client: &GatewayClient,
+    model_source: ModelSource,
+    model_ref: Uuid,
+    user_id: Uuid,
+) -> anyhow::Result<L3MeasurementReport> {
+    let placeholders = prompt::fixture_placeholders();
+    let attempt =
+        call_l3_attempt(client, model_source, model_ref, user_id, &placeholders, None).await;
+
+    let classifications_parsed = attempt.classifications.len();
+    let validation_errors = if classifications_parsed > 0 {
+        validate_l3(
+            &attempt.classifications,
+            &placeholders,
+            &prompt::book_canon_refs(),
+        )
+    } else {
+        Vec::new()
+    };
 
     Ok(L3MeasurementReport {
-        tool_use_success,
-        finish_reason,
-        tool_calls_seen,
+        tool_use_success: classifications_parsed > 0,
+        finish_reason: attempt.finish_reason,
+        tool_calls_seen: attempt.tool_calls_seen,
         classifications_parsed,
         validation_errors,
-        input_tokens,
-        output_tokens,
-        reasoning_tokens,
-        raw_arguments,
-        failure,
+        input_tokens: attempt.input_tokens,
+        output_tokens: attempt.output_tokens,
+        reasoning_tokens: attempt.reasoning_tokens,
+        raw_arguments: attempt.raw_arguments,
+        failure: attempt.failure,
     })
 }
 

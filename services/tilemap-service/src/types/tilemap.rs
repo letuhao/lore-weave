@@ -1,9 +1,8 @@
 //! `TilemapView` aggregate (T2 / Channel scope) — primary tilemap-service output.
 //! Mirrors [TMP_001 §3.1](../../../../docs/03_planning/LLM_MMO_RPG/features/00_tilemap/TMP_001_tilemap_foundation.md).
 //!
-//! Phase 0a captures the **field surface** but leaves runtime detail (e.g. `assigned_tiles`
-//! bitmask shape, `free_paths` post-fractalize core skeleton) as `Vec<TileCoord>` placeholders.
-//! Phase 1 will refine these into proper `TileMask` types when the modificator pipeline lands.
+//! Phase 1 refines the per-zone runtime detail: `assigned_tiles` + `free_paths`
+//! are [`TileMask`] bitsets (the zone placer + fractalize fill them).
 
 use std::collections::HashMap;
 
@@ -13,6 +12,7 @@ use crate::types::channel::{ChannelId, ChannelTier};
 use crate::types::object::TilemapObjectPlacement;
 use crate::types::template::TilemapTemplateId;
 use crate::types::tile::{TerrainKind, TileCoord};
+use crate::types::tile_mask::TileMask;
 use crate::types::zone::{ZoneId, ZoneRole};
 
 /// Grid dimensions in tiles. TMP_001 §2 defaults: Continent 256² · Country 192² ·
@@ -54,16 +54,20 @@ pub enum GenerationSource {
 }
 
 /// Runtime per-zone state after zone placement + modificator pipeline.
-/// Phase 0a is structural placeholder; Phase 1 fills in TileMask + concrete fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZoneRuntime {
     pub zone_id: ZoneId,
     pub zone_role: ZoneRole,
-    /// Final centre after force-directed converge.
+    /// Final centre — force-directed converge then Penrose centroid recompute.
+    /// Always a tile inside `assigned_tiles`.
     pub center_position: TileCoord,
-    /// Phase 0a placeholder — Phase 1 swaps to a bitmask type.
-    #[serde(default)]
-    pub assigned_tiles: Vec<TileCoord>,
+    /// Tiles owned by this zone. Zones form a disjoint partition of the grid
+    /// (every tile belongs to exactly one zone) — TMP_002 §4.
+    pub assigned_tiles: TileMask,
+    /// Connected free-path skeleton carved within the zone — TMP_002 §5
+    /// fractalize. Empty for `Forbidden` zones (all tiles blocked) and `Hub`
+    /// zones use a single straight path.
+    pub free_paths: TileMask,
     /// Post-TerrainPainter primary terrain.
     pub terrain_type: TerrainKind,
 }

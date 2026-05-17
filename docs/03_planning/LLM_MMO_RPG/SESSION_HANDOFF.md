@@ -590,16 +590,18 @@ EF + PF + MAP + CSC + RES + PROG + **GEO**. World substrate triangle complete: G
 
 ### What "map generating" is
 
-`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a + 0b are DONE** (0a: scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`; 0b: gateway tool-use contract + SSE parser + L3 harness — 2026-05-15, branch `mmo-rpg/zone-map-amaw`). Phases **1 → 2 → 3 remain**.
+`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a + 0b are DONE** (0a: scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`; 0b: gateway tool-use contract + SSE parser + L3 harness — 2026-05-15, branch `mmo-rpg/zone-map-amaw`). Phases **1 → 2 → 3 are now all DONE** (see the session entries below) — the staged map-gen plan is complete.
 
 ### Phase breakdown (source: `services/tilemap-service/DESIGN.md` §9)
 
 | Phase | Scope | Size | Depends on |
 |---|---|---|---|
 | ~~**0b**~~ ✅ DONE | SSE parser in `loreweave_llm` + L3 zone-classifier harness → lmstudio. **Reclassified L→XL**: required extending the gateway contract (`tool_choice` + `tool_call` SSE event) across openapi + Go gateway + both SDKs. Live run: tool-use YES, 3/3 classified, R1-R5 clean. | XL (done) | — |
-| **1** | Engine Stage 1: Fruchterman-Reingold zone placer (TMP_002) + 1-2 modificators (TMP_003) + determinism integration test (same seed → byte-identical zones) | L (1-2 sessions) | — (algorithmic; independent of 0b) |
-| **2** | L3 zone classifier full retry loop (TMP_008b §4 structured validation + §5 per-object retry + §6 canonical-default fallback) + end-to-end small reality bootstrap | L-XL | 0b (gateway) + 1 (engine output) |
-| **3** | L4 regional narration + measurement findings doc back into TMP_008b | L | 2 |
+| ~~**1**~~ ✅ DONE | Engine: §3 FR placer + §4 Penrose + §5 fractalize + TMP_003 modificator framework + TerrainPainter + AC-4 determinism test. **Reclassified L→XL.** Done 2026-05-16, XL `/amaw` (chunks 3-6 fully-autonomous batch). | XL (done) | — |
+| ~~**2**~~ ✅ DONE | L3 zone-classifier retry loop (TMP_008b §4.2 retry messages + §5 per-object retry + §6 canonical-default fallback) + fixture-object bootstrap. Done 2026-05-17, L `/amaw`. | L (done) | — |
+| ~~**3**~~ ✅ DONE | L4 regional narration (TMP_008b §3.3 tool + §4.3 R1-R4 validation + §6 fallback + §10 key-phrase extraction + §11 enums) + L3→L4 bootstrap + TMP_008b §12.9 findings. Done 2026-05-17, L `/amaw`. | L (done) | — |
+
+**The staged tilemap map-generation plan (0b → 1 → 2 → 3) is COMPLETE.**
 
 Reference docs: `TMP_001`..`TMP_008b` in `docs/03_planning/LLM_MMO_RPG/features/00_tilemap/`. The 2 architectural findings from the Phase-0a `/review-impl` (Anthropic `cache_control` gap + OpenAI-shaped `tools`) feed into Phase 0b.
 
@@ -627,15 +629,380 @@ This honors "use AMAW for the map-gen implementation" while respecting what this
 
 ### Recommended first action next session
 
-Phase 0b is DONE (see the 2026-05-15 Phase 0b session entry below). **Next: Phase 1** —
-the Fruchterman-Reingold zone placer + modificators + determinism integration test.
-Phase 1 is purely algorithmic and **independent of 0b** (no gateway/LLM dependency) —
-a clean L-size `/amaw` task. Phase 2 (full L3 retry loop) depends on both 0b (done)
-and 1, so Phase 1 unblocks the rest. Pre-flight: `cargo build` clean at workspace
-root; ContextHub up for `/amaw`. The infra `infra` compose stack and the gitignored
-`.local/phase0b.env` creds are already set up if a live re-run is needed.
+**The staged 0b → 3 map-gen plan is complete.** The **TMP_005/006/007
+modificator-pipeline build** is now underway — roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md):
+5 phases A–E, foundation-first, straight-through autonomous `/amaw`.
+
+1. **TMP_005/006/007 modificator pipeline** — **Phase A (Pipeline Foundation)
+   DONE 2026-05-17** (XL `/amaw`; see the session entry below). Phases **B**
+   (ObstaclePlacer + biomes, TMP_005), **C** (TreasurePlacer, TMP_006), **D**
+   (ConnectionsPlacer, TMP_007), **E** (RoadPlacer + RiverPlacer, TMP_003 §3.5)
+   are next. Once the placers land, the L3/L4 bootstrap can classify
+   **engine-placed** objects instead of the current fixture set — a genuine
+   engine→L3→L4 flow.
+2. **Live continent-scale measurement** — Phases 2-3 were mock-gateway verified;
+   the only live data point is the Phase-0b 3-object run (TMP_008b §12.8). A
+   full continent fixture against live lmstudio is the next measurement.
+3. **HTTP service surface** — `tilemap-service` is still a CLI/library; Phase 4+
+   of the broader plan adds the service-to-service API.
+
+Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
+up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
 
 ---
+
+## Session 2026-05-17 — TMP_005/006/007 Phase B — ObstaclePlacer + Biomes — ✅ DONE (XL `/amaw`)
+
+### Outcome
+
+Phase B of the **TMP_005/006/007 modificator-pipeline build** (roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md))
+— the **first real placer**: `ObstaclePlacer` (TMP_005 §4) + the biome system it
+selects from. XL, under `/amaw`, 12 phases complete. Run autonomously (operator:
+straight-through, no inter-phase checkpoint). **This is the first phase that
+changes `place_tilemap` output** — `object_placements` is no longer empty, so the
+AC-9 golden was rebaselined to the Phase-B engine.
+
+- **Spec:** [`docs/specs/2026-05-17-tilemap-phase-b-obstacle-placer.md`](../../specs/2026-05-17-tilemap-phase-b-obstacle-placer.md)
+  (D1-D9, AC-1..AC-11). **Plan:** [`docs/plans/2026-05-17-tilemap-phase-b-obstacle-placer.md`](../../plans/2026-05-17-tilemap-phase-b-obstacle-placer.md)
+  (5 build chunks).
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `types/biome.rs` | NEW — the TMP_005 §2 biome family: `BiomeId`, `BiomeObjectType` (9-variant), `BiomeLevel`, `Alignment`, `BiomePriority`, `BiomeSet`, `BiomeSelectionRules`/`BiomeSelectionRule`, `BiomeSelection` |
+| `engine/biome_library.rs` | NEW — `engine_biome_library()` (every land terrain × Mountain/Tree/Rock/Plant/Lake/Crater; Water minus Tree+Crater) + `engine_default_biome_selection_rules()` (§2.3 nine rules) |
+| `engine/biome_select.rs` | NEW — `select_biomes` (§4.1 terrain/level filter → group → priority-ordered rules → xor two-coin decision → §9 Q3 all-templates-of-type fallback) |
+| `engine/modificators/obstacle_placer.rs` | NEW — `ObstaclePlacer`: §4.3 strip-loose-appendages erosion (sequential `would_seal_a_gap` gate) + §4.4 largest-first fill |
+| `types/object.rs` | MOD — `TilemapObjectKind::Obstacle`; `TilemapObjectPlacement.biome_object_type` (the Phase-E river-discovery tag) |
+| `types/template.rs` | MOD — `ZoneSpec.biome_selection_rules` (author override, additive) |
+| `types/tile.rs` · `engine/build_state.rs` · `engine/mod.rs` | MOD — `TerrainKind: Ord`; `TilemapBuildState::zone_obstacle`; `ObstaclePlacer` registered in `place_tilemap` + the AC-10 end-to-end connectivity test |
+
+A generated tilemap now fills each zone's blocked area with mountains / trees /
+rocks / etc., every placement honouring the "never seal a gap" invariant.
+
+### Review (AMAW, straight-through autonomous)
+
+- **Design review** — Adversary cold-start, **5 rounds**: r1-r4 REJECTED (D5
+  count-delta erosion oracle, golden-snapshot tautology, D6 dead `would_seal_a_gap`
+  + vacuous AC-6/AC-10, xor double-roll, D5 zone-boundary fade, river-discovery
+  overclaim); r5 APPROVED_WITH_WARNINGS (3 WARN folded in).
+- **Code review** — Adversary cold-start, **4 rounds**: r1-r3 REJECTED — r1 §9
+  Q3 fallback unimplemented (a Sea zone got 0 Tree biomes vs the mandatory
+  `count_min:1`); r2 `ac10` false-green (checked the inert `Walkable` skeleton
+  with the forbidden count oracle, not the `Walkable ∪ Open` passable region);
+  r3 `Crater` never stocked, so a "Crater" two-coin outcome was dead AND
+  suppressed `Lake`, halving D3's ≈50 % water-feature slot. r4
+  APPROVED_WITH_WARNINGS — 3 WARN all addressed (realized-rate xor test +
+  D3/AC-3 clarity; `BiomeSelectionRules` serde round-trip; multi-component
+  erosion test).
+- **Scope Guard (POST-REVIEW):** CLEAR.
+- Findings trail: `docs/audit/findings-phase-b-obstacle-placer-{r1..r5,code-r1..r4}.md`,
+  `post-review-phase-b-obstacle-placer.md`.
+
+### Verify
+
+`cargo test --workspace` green — 178 tilemap-service lib tests + 6 determinism
+(+1 ignored golden regenerator) + integration, 0 failed. `cargo clippy
+--workspace --all-targets` 0 warnings. Golden rebaselined →
+`tests/golden/tilemap_baseline.json` (phase-neutral name), `golden_baseline_byte_identical`
+reproduces it; `ac4_same_seed` confirms within-build determinism on the now-non-empty
+`object_placements`.
+
+### Deferred (DEFERRED.md #022)
+
+- **#022** — `TilemapObjectPlacement` stores the obstacle `anchor`, not its
+  footprint extent; TMP_005 §4.5 passes a placed object's *area* to RiverPlacer.
+  Whether Phase E needs the full footprint or the anchor suffices is a Phase-E
+  decision (additive schema change if needed).
+
+### Next
+
+Phase C — TreasurePlacer (TMP_006).
+
+---
+
+## Session 2026-05-17 — TMP_005/006/007 Phase A — Pipeline Foundation — ✅ DONE (XL `/amaw`)
+
+### Outcome
+
+Phase A of the **TMP_005/006/007 modificator-pipeline build** (roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md))
+— the shared foundation the five placers (Phases B–E) build on. XL, under
+`/amaw`, 12 phases complete. Run autonomously (operator: straight-through, no
+inter-phase checkpoint).
+
+- **Spec:** [`docs/specs/2026-05-17-tilemap-phase-a-pipeline-foundation.md`](../../specs/2026-05-17-tilemap-phase-a-pipeline-foundation.md)
+  (D1-D12, AC-1..AC-10). **Plan:** [`docs/plans/2026-05-17-tilemap-phase-a-pipeline-foundation.md`](../../plans/2026-05-17-tilemap-phase-a-pipeline-foundation.md)
+  (6 build chunks).
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `types/object_template.rs` | `TilemapObjectTemplate` + `FootprintCell`; `footprint_at` / `blocking_footprint_at` projections |
+| `types/treasure.rs` | `TreasureTierSpec` (TMP_006 §2) |
+| `types/{zone,template}.rs` | `RoadOption` enum; additive schema — `TemplateConnection.guard_strength`/`.road`, `ZoneSpec.treasure_tiers` |
+| `engine/geometry/connectivity.rs` | `connected_components` + `would_seal_a_gap` — label-mapping connectivity check (TMP_006 §4), correct for multi-component `passable` |
+| `engine/geometry/pathfind.rs` | `search_path` — Dijkstra, fully-pinned `(cost, flat)` tie-break (TMP_007 §5) |
+| `engine/build_state.rs` | `TilemapBuildState` / `ZoneBuildState` — the `TileState` build-grid + per-zone area model |
+| `engine/object_manager.rs` | `place_and_connect_object` + `choose_guard` — the placement service (TMP_006 §5) |
+| `engine/pipeline/modificator.rs` | `ModificatorContext` reshaped to `{ template, grid, seed, state }` |
+
+`place_tilemap` now threads `TilemapBuildState`; output **byte-identical** (AC-9
+golden, captured from the pre-Phase-A engine) — Phase A is a pure refactor plus
+dormant primitives, `object_placements` still empty until a placer registers in
+Phase B.
+
+### Review (AMAW, straight-through autonomous)
+
+- **Design review** — Adversary cold-start, **5 rounds**: r1-r4 REJECTED (12
+  BLOCK — connectivity tautology, A\* admissibility, blocking-cell contract hole,
+  total-elimination blindness, access_path overlap + unpinned, capped distance
+  grid, multi-component-oracle non-equivalence, …); r5 APPROVED_WITH_WARNINGS.
+- **Code review** — Adversary cold-start, **3 rounds**: r1-r2 REJECTED (AC-6(b)
+  untested; golden provenance) → 6 tests added, golden regenerated + confirmed
+  byte-identical via a `git worktree` at the pre-Phase-A commit, explicit
+  `(score, flat)` tie-break, `PlacementError::NoSuchZone`; r3
+  APPROVED_WITH_WARNINGS (3 WARN folded in).
+- **Scope Guard (POST-REVIEW):** CLEAR.
+- Findings trail: `docs/audit/findings-phase-a-pipeline-foundation-{r1..r5,code-r1..r3}.md`.
+
+### Verify
+
+`cargo test --workspace` green — 149 tilemap-service lib tests + integration, 0
+failed. `cargo clippy --workspace` 0 warnings. AC-9 golden byte-identical.
+
+### Deferred (DEFERRED.md #019-#021)
+
+- **#019** — `would_seal_a_gap` per-zone scope; re-validate the cross-zone-seal
+  argument once ConnectionsPlacer's blocked borders land (Phase D).
+- **#020** — TMP_006 §4.3 connectivity pre-filter (perf, continent-scale).
+- **#021** — `From<PlacementError> for crate::Error` bridge (Phase C, first placer).
+
+### Next
+
+Phase B — ObstaclePlacer + biomes (TMP_005).
+
+---
+
+## Session 2026-05-17 — Phase 3 L4 regional narration — ✅ DONE (L `/amaw`)
+
+### Outcome
+
+Phase 3 (tilemap-service L4 narration), L, under **`/amaw`** — 12 phases
+complete. **This is the final phase of the staged 0b → 3 map-gen plan; the plan
+is now complete.** Run autonomously end-to-end (operator instruction: "run all
+phases, no questions").
+
+- **Spec:** [`docs/specs/2026-05-17-tilemap-phase-3-l4-narration.md`](../../specs/2026-05-17-tilemap-phase-3-l4-narration.md)
+  (D1-D7, AC-1..AC-11). **Plan:** [`docs/plans/2026-05-17-tilemap-phase-3-l4-narration.md`](../../plans/2026-05-17-tilemap-phase-3-l4-narration.md)
+  (6 build chunks).
+
+### What shipped (`services/tilemap-service/src/harness/`)
+
+| Chunk | Module | Content |
+|---|---|---|
+| 1 | `style.rs` · `keyphrase.rs` | §11 closed enums (`NarrativeTone`/`NarrationLanguage`/`NarrationVoice`); §10 `extract_key_phrases` (deterministic frequency rank, Unicode-aware) |
+| 2 | `l4_prompt.rs` | `ZoneNarrationInput`; L4 system prompt + `submit_zone_narrations` tool (§3.3) + payload |
+| 3 | `l4_validate.rs` | `validate_l4` (§4.3 R1-R4 + `UnknownZoneId`), `format_l4_errors_for_retry`, `partition_l4_response`, `canonical_default_narration` (§6) |
+| 4 | `l4_retry.rs` | `call_l4_attempt` + `run_l4_with_retries` + `L4Result` — per-zone partial-success loop mirroring the Phase-2 L3 loop |
+| 5 | `bootstrap.rs` | extended L3 → L4: `ZoneNarrationInput`s from placed zones (terrain + `obj_id`→`zone_id` join), `BootstrapReport.l4` |
+| 6 | `tests/l4_mock.rs` · TMP_008b | 6 wiremock L4 tests; TMP_008b §12.9 Phase 2-3 contract findings |
+
+### Workflow — AMAW L, 12 phases
+
+Design REVIEW: Adversary **r1 REJECTED** (1 BLOCK — the retry-loop holes were
+named not pinned for L4 + 2 WARN), **r2 APPROVED_WITH_WARNINGS** (3 WARN, all
+folded into spec D1/D3/D6/D7 + AC-6/AC-11). Code REVIEW: Adversary **r1
+APPROVED_WITH_WARNINGS** (0 BLOCK; retry loop confirmed correct; 3 WARN —
+`terrain` via `{:?}` Debug not the serde tag, the accept-side out-of-subset
+guard untested, ASCII-only tokenization shredding Vietnamese — all fixed).
+Scope Guard POST-REVIEW: **CLEAR** (AC-1..AC-11 covered, no §2 scope crossing,
+all 9 findings fixed). `cargo test --workspace` green; clippy clean. Findings:
+`docs/audit/findings-phase-3-l4-narration-r1..r3.md`.
+
+### Post-commit human-in-loop review (Phase 2 + 3, 2026-05-17)
+
+After Phases 2 + 3 landed, an operator-requested **human-in-loop review** ran
+an independent cold-start reviewer (uncapped — unlike the AMAW Adversary's
+3-finding limit) over both commits. Verdict: **sound, 0 BLOCK**; live re-verify
+green. It found what the capped Adversary missed → all fixed in a follow-up
+(default v2.2):
+- **HIGH-1** — `call_l3_attempt`/`call_l4_attempt` selected the tool call by
+  `.first()` with no name check → now selected by tool **name**, wrong/absent
+  tool → explicit `failure`.
+- **HIGH-2** — `validate_l3`/`validate_l4` emitted doubled, self-contradictory
+  retry lines when a duplicate id co-occurred with a content-rule failure →
+  content rules now run once per id.
+- **MED-1/2/3** — key-phrase tie-break test pinned; R4 language heuristic given
+  a 0.15/0.85 dead-band; `is_cjk_char` += CJK Ext-A + Hangul Jamo.
+- **LOW-1/4/5 + COSMETIC-1** — `book_canon_refs` HashSet; L4 duplicate-`zone_id`
+  `Err` test; L3+L4 transport-clears-retry-context tests; stale `mod.rs` doc.
+- LOW-2/LOW-3 — reviewer-confirmed non-bugs, no change.
+
+### Handoff notes
+
+**Active blocker:** none. **Phase 3 complete + committed — the 0b→3 map-gen
+plan is done + human-in-loop reviewed.** No new DEFERRED items. The L3/L4
+bootstrap still uses a **fixture** object set (engine object placement =
+TMP_005/006/007, unbuilt). Next-work options are in "Recommended first action"
+above — none blocking. ContextHub was up: RETRO `add_lesson` persisted.
+
+---
+
+## Session 2026-05-17 — Phase 2 L3 zone-classifier retry loop — ✅ DONE (L `/amaw`)
+
+### Outcome
+
+Phase 2 (tilemap-service L3 retry loop), L, under **`/amaw`** — 12 phases complete.
+CLARIFY scoped it (PO decision: retry loop + **fixture-object** bootstrap — the
+placement engine emits no objects yet, object placement is TMP_006/unbuilt).
+BUILD ran chunk-gated then, on operator instruction, autonomous from chunk 3.
+
+- **Spec:** [`docs/specs/2026-05-16-tilemap-phase-2-l3-retry-loop.md`](../../specs/2026-05-16-tilemap-phase-2-l3-retry-loop.md)
+  (D1-D8, AC-1..AC-12). **Plan:** [`docs/plans/2026-05-16-tilemap-phase-2-l3-retry-loop.md`](../../plans/2026-05-16-tilemap-phase-2-l3-retry-loop.md)
+  (6 build chunks).
+
+### What shipped (`services/tilemap-service/src/harness/`)
+
+| Chunk | Module | Content |
+|---|---|---|
+| 1 | `validate.rs` | `L3ValidationError::obj_id()` (exhaustive match), `retry_line()`, `format_errors_for_retry` (§4.2 reframed subset-retry preamble), `partition_response` (pure accept/narrow core) |
+| 2 | `prompt.rs` · `validate.rs` | `L3Placeholder.zone_id`; §6 `canonical_default_classification` + `generate_default_tag` (deterministic, always R5-valid) |
+| 3 | `mod.rs` | `call_l3_attempt` (one gateway call, all failures → `L3Attempt.failure`) extracted; `run_l3_measurement` refactored onto it |
+| 4 | `retry.rs` (new) | `run_l3_with_retries` + `L3Result` — §5 per-object partial-success loop, D1 precondition (empty/duplicate id → `Err`), §6 fallback |
+| 5 | `bootstrap.rs` (new) · `main.rs` | `bootstrap_small_reality` (place_tilemap → fixture objects → L3 loop); `bootstrap` CLI subcommand |
+| 6 | `tests/retry_mock.rs` (new) | 8 wiremock integration tests — clean / partial-retry / fallback / max-attempts-0 / transport-error / partial-final / bootstrap end-to-end |
+
+### Workflow — AMAW L, 12 phases
+
+Design REVIEW: Adversary **r1 REJECTED** (2 BLOCK — empty-`suggested_canon_kind`
+panic, subset-retry vs §4.2 "keep all entries" contradiction), **r2
+APPROVED_WITH_WARNINGS** (3 WARN, all folded into spec D1/D3/D4/D6 + AC-8..12).
+Code REVIEW: Adversary **r1 REJECTED** (1 BLOCK — parsed-empty response
+mis-discriminated as a transport failure), **r2 APPROVED_WITH_WARNINGS** (3 WARN
+— out-of-subset error leak, `zone_id` absent from the LLM payload,
+scripted-responder underflow — all fixed). Scope Guard POST-REVIEW: **CLEAR**
+(AC-1..AC-12 covered, no §2 scope crossing, all 9 findings fixed in code, none
+deferred). `cargo test --workspace` green; clippy clean. Findings:
+`docs/audit/findings-phase-2-l3-retry-loop-r1..r4.md`.
+
+### Handoff notes
+
+**Active blocker:** none. **Phase 2 complete + committed.** **Next: Phase 3** —
+L4 regional narration + measurement findings back into TMP_008b. No new
+DEFERRED items. The bootstrap is fixture-object only (engine→L3 object flow
+needs TMP_006).
+
+---
+
+## Session 2026-05-16 (continued) — Phase 1 placement engine — ✅ DONE (XL `/amaw`)
+
+### Outcome
+
+Phase 1 (tilemap-service zone-placement engine), XL, run under **`/amaw`** —
+chunks 0-2 human-gated across earlier sessions, **chunks 3-6 + close-out as a
+single fully-autonomous AMAW batch** (operator override of the handoff's
+human-gated recommendation; recorded in the plan's "Batch execution" section).
+All 12 phases complete; the determinism axiom (TMP-A4) holds.
+
+- **Scope:** full TMP_002 placement (§3 FR + §4 Penrose + §5 fractalize) +
+  TMP_003 modificator framework + 1 modificator (TerrainPainter) + the AC-4
+  determinism integration test.
+- **Spec:** [`docs/specs/2026-05-16-tilemap-phase-1-placement-engine.md`](../../specs/2026-05-16-tilemap-phase-1-placement-engine.md)
+  (D1-D8, AC-1..AC-7). **Plan:** [`docs/plans/2026-05-16-tilemap-phase-1-placement-engine.md`](../../plans/2026-05-16-tilemap-phase-1-placement-engine.md)
+  (7 build chunks + batch-execution shape).
+
+### What shipped (`services/tilemap-service/src/engine/`)
+
+| Chunk | Module | Content |
+|---|---|---|
+| 0 | `seed.rs` · `types/tile_mask.rs` | `sub_seed` blake3 sub-stream; `TileMask` bitset (flat-index `iter_set`); `error.rs` placement variants; `rand`/`rand_chacha` deps |
+| 1 | `placement/grid_seed.rs` | §3.1 `initial_grid_layout` — deterministic N×N grid seed, no RNG |
+| 2 | `placement/force_directed.rs` | §3.2-§3.3 Fruchterman-Reingold — FR forces + annealing + tabu swap; **D5 cap split** (iteration-cap → FR best, wall-clock-cap → grid seed); ChaCha8 jitter |
+| 3 | `placement/penrose.rs` | §4 Penrose P3 — Robinson-triangle subdivision (canonical 10-triangle wheel; corrects §4.2's loose "5"), vertex→zone, tile→vertex, §4.4 centroid |
+| 4 | `placement/fractalize.rs` · `placement/mod.rs` | §5 fractalize — waypoint scatter + BFS connected-components fixup; Hub/Forbidden/Sea cuts (D8); `place_zones()` §6 orchestrator |
+| 5 | `pipeline/{modificator,registry}.rs` | TMP_003 §2 `Modificator` trait + `ModificatorContext`; §4.1 `ModificatorRegistry` — Kahn topo-sort, cycle reject, unregistered-dep tolerated (D7) |
+| 6 | `modificators/terrain_painter.rs` · `engine/mod.rs` | TMP_003 §3.1 TerrainPainter (D7 cut); `place_tilemap()` entry; `tests/determinism.rs` (AC-4, not `#[ignore]`d) |
+
+### Workflow — AMAW XL, 12 phases
+
+VERIFY: `cargo test --workspace` green (**128 tests** incl. 5 determinism +
+68 tilemap lib), `clippy --workspace` clean. REVIEW(code): Adversary cold-start
+r1 → **APPROVED_WITH_WARNINGS** (0 BLOCK, 3 WARN — determinism/partition/
+topo-sort/panic all clean). QC + POST-REVIEW: Scope Guard → **CLEAR** (AC-1..AC-7
+all covered, no §2 scope crossing). 3 WARN → DEFERRED #015-#017 (2× Phase-2
+progress-streaming, 1× perf). Findings: [`docs/audit/findings-phase-1-placement-engine-r1.md`](../../audit/findings-phase-1-placement-engine-r1.md).
+
+### Two spec-deviation decisions (documented in-code + in the spec)
+
+1. **D5 cap-fallback** — spec D5 was ambiguous; resolved to a split (iteration
+   cap keeps FR best, wall-clock cap → grid seed). Spec D5 updated.
+2. **Penrose seed** — spec §4.2's "5 isoceles triangles" undercounts; the
+   canonical P3 construction needs a 10-triangle Robinson-triangle decagon
+   wheel. `penrose.rs` uses the canonical 10; documented in the module header.
+
+### Post-commit human-in-loop review (2026-05-16)
+
+After the autonomous batch landed (`7628d655`), an operator-requested
+**human-in-loop review** ran an independent cold-start reviewer (uncapped —
+unlike the AMAW Adversary's structural 3-finding limit) over the Phase 1
+commit. Verdict: **sound, 0 BLOCK**; live re-verify green. It caught two
+items the capped Adversary missed/under-rated → fixed in follow-up commit:
+- **MED-2** — `force_directed` wall-clock-cap fallback fired silently → added
+  a `tracing::warn!` in the `WallClockCap` arm (cross-machine divergence now
+  observable). DEFERRED #015 raised LOW→MED.
+- **LOW-4** — `TileMask::iter_set` could surface phantom out-of-grid coords
+  from dirty trailing bits of a deserialized mask → added a `flat < tile_count`
+  guard + regression test.
+- **HIGH-1** — `penrose::nearest_vertex` O(tiles×vertices) perf cliff (the
+  larger sibling of #016) → tracked as DEFERRED #018.
+
+### Handoff notes
+
+**Active blocker:** none. **Phase 1 complete + reviewed + committed.** **Next:
+Phase 2** — L3 zone-classifier full retry loop (TMP_008b §4-§6) + end-to-end
+small-reality bootstrap; depends on Phase 0b (done) + Phase 1 engine output (done).
+
+**ContextHub MCP was down** this session — Adversary/Scope-Guard `## Captured
+rules` pre-loaded empty; RETRO `add_lesson` could not persist (noted below).
+
+---
+
+## Session 2026-05-16 (continued) — Improve AMAW ContextHub integration — ✅ DONE
+
+Default v2.2, L task. Closed the AMAW ContextHub read/enforce loop (the human review
+found it write-only / read-inert). All 4 design decisions built + 8/8 AC verified;
+committed.
+
+- **D4** — `scripts/seed-amaw-guardrails.py` (idempotent) seeded 3 new guardrails
+  (`rm -r`, `git reset --hard`, `docker compose down -v`) → 6 total, all fire via
+  `check_guardrails`.
+- **D1** — `scripts/amaw-guardrail-gate.py` `PreToolUse` Bash hook: cheap local
+  pre-check → `check_guardrails` for risky actions → permission `ask`; fail-open.
+  Wired into `.claude/settings.json` (alongside the existing commit gate).
+- **D2** — `scripts/amaw-context-inject.py` `SessionStart` hook: injects the active
+  guardrail set + recent lessons into context each session; fail-open. Wired.
+- **D3** — prompt templates (`docs/amaw-workflow.md` + both `amaw.md` copies):
+  the orchestrator now pre-loads captured rules into a `## Captured rules` block;
+  the sub-agent no longer runs `search_lessons` itself (determinism over discretion).
+
+**BUILD-discovered:** the spec's "trigger mismatch" premise was partly off —
+`check_guardrails` matches push/migration guardrails fine; the real gaps were corpus
+coverage (fixed) + `search_lessons --type guardrail` being the wrong API to surface
+guardrails (`check_guardrails` is the right one — docs corrected).
+
+**New DEFERRED:** #013 (`agentic-workflow/AMAW.md` bundle-source sync — already
+diverged), #014 (`amaw-guardrail-gate` pre-check false-positives on a risky pattern
+inside a heredoc / commit message — `ask` not block, so non-fatal).
+
+**The hooks are LIVE** in `.claude/settings.json` for every session in this clone.
+
+---
+
 
 ## Session 2026-05-16 — Human-in-loop QA review of the AMAW Phase 0b batch (M task)
 
