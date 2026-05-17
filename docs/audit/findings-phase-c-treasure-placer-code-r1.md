@@ -1,0 +1,29 @@
+# Adversary Code Review — tilemap-service Phase C: TreasurePlacer (round 1)
+
+**Verdict: APPROVED_WITH_WARNINGS** — 0 BLOCK + 3 WARN. (Sub-agent file-write policy-blocked; persisted by the orchestrator from the verbatim report.)
+
+The compose/place/guard logic, the D6 emergency bound, the D9 effective-tier resolution, and the connectivity gates are correctly implemented and the AC-5(e) failure-path replay is a genuine (non-vacuous) independence proof. The three defects below are real but bounded.
+
+## Finding 1 — WARN — `ac5b` high-`max`-first ordering is asserted on a single seed for a property that the spec scopes as universal
+
+- **Location:** `services/tilemap-service/src/engine/modificators/treasure_placer.rs` (`ac5b_higher_max_tier_is_consumed_first`).
+- **Problem:** AC-5(b) is a universal property ("a zone with two tiers ... is consumed high-`max`-first"). The test pins exactly one seed (`run_placer(&mut state, &tmpl, 4)`). The ordering assertion `last_high < first_low` *and* the count assertion `assert_eq!(ts.len(), 4, ...)` both depend on that seed's RNG: a seed on which the high-`max` tier hits even one `compose_pile → None` consumes an `emergency` slot, so `ts.len()` would be `< 4` and the test fails — but it fails on a *count* mismatch, masking whether the *ordering* property itself held. Compare AC-5(a), which the author correctly runs over `0..8` seeds. The ordering is in fact structural (the `tiers.sort_by` is seed-independent), so the property holds — but the test as written does not robustly demonstrate it; a future regression that breaks ordering only on some seeds would slip through, exactly the failure mode of lesson 1e524dee.
+- **Why it matters:** Bounded — the production sort *is* deterministic and high-`max`-first, so the property holds; this is a weak gate, not a shipped bug. But it is a falsely-narrow acceptance test for a universal AC.
+- **Suggested fix:** Run `ac5b` over a seed range (`for seed in 0..8u64`) as `ac5a` does, and on each seed assert the ordering over whatever piles were placed (`rposition(high) < position(low)` guarded by "≥1 of each placed"), decoupling the ordering check from an exact count of 4.
+
+## Finding 2 — WARN — golden-baseline test docstrings still describe a "Phase-B" baseline after the Phase-C rebaseline
+
+- **Location:** `services/tilemap-service/tests/determinism.rs` (`regenerate_golden_baseline` and `golden_baseline_byte_identical` doc comments).
+- **Problem:** Spec D7 / AC-9 require the golden to be rebaselined to the Phase-C engine, and the Phase-C `fixture()` now injects a `min ≥ 2000` treasure tier so the golden carries `Treasure` + `MonsterLair` records. But both doc comments were not updated: `regenerate_golden_baseline` says "*Phase B did — ObstaclePlacer*" and `golden_baseline_byte_identical` says the snapshot is "*frozen at the reviewed Phase-B engine*" and that the gate catches "*a later phase that changes obstacle output*". The committed `tests/golden/tilemap_baseline.json` is in fact the Phase-C snapshot; the gate now also protects treasure/guard output. The test *behaviour* (byte-compare against the committed file) is correct — only the documentation contradicts the code and the spec.
+- **Why it matters:** Bounded — no behavioural defect; the gate works. But the next phase's author reading these comments will believe the golden is Phase-B-frozen and may regenerate or reason about drift incorrectly. CLAUDE.md explicitly treats stale-doc drift as a real issue.
+- **Suggested fix:** Update both docstrings to "Phase C" — the snapshot is frozen at the reviewed Phase-C engine and the gate catches unintended drift in zone/terrain/obstacle/treasure/guard output.
+
+## Finding 3 — WARN — Phase-C schema round-trip tests are mislabelled "AC-8", obscuring which acceptance criterion they gate
+
+- **Location:** `services/tilemap-service/src/types/object.rs` and `services/tilemap-service/src/types/template.rs` (test comments reading "AC-8").
+- **Problem:** In the Phase-C spec, **AC-8** is "`place_tilemap` is deterministic" and **AC-11** is the additive-schema round-trip criterion. The schema round-trip tests for `TilemapObjectPlacement` and `ZoneSpec`/`TemplateConnection` are commented "AC-8" — a stale label carried from an earlier phase's spec. The genuinely new Phase-C tests right beside them are correctly labelled "AC-11". The AC-11 criterion is genuinely *covered* — so this is a labelling defect, not a coverage gap — but the inconsistent labels make the spec→test traceability that the AMAW review depends on unreliable.
+- **Why it matters:** Bounded — no missing coverage, no behavioural bug. But mixed "AC-8"/"AC-11" labels in the same module break the spec-compliance audit trail.
+- **Suggested fix:** Relabel the schema round-trip test comments from "AC-8" to the additive-schema criterion. (Orchestrator note: relabelled to the **phase-stable `TMP-A8` axiom** rather than `AC-11` — those pre-existing tests gate `biome_object_type` / `treasure_tiers` / connection fields, not Phase-C's `value` / `inherit_treasure_from`, so claiming them as `AC-11` coverage would be inaccurate; `TMP-A8` is the additive-schema axiom they actually exercise and never renumbers across phases.)
+
+---
+Captured rules: read pre-loaded. Lesson 1e524dee (single-seed test for a universal property) grounded Finding 1. Lessons 1e524dee / 9ba274f5 / 82a9e1a4 / d29dbaba were re-checked against the connectivity tests (`ac7`/`ac10` use `Walkable ∪ Open` + an independent flood-fill — correct region and algorithm), the AC-5(e) failure-path replay (production `engine_treasure_pool()` + the identical sub-seed — a valid, non-vacuous independence proof; no OR-escape), and the AC-10 inherit tests (production `resolve_effective_tiers` path) — no further finding. Findings 2 and 3 are spec-compliance documentation/traceability defects grounded in spec D7/AC-8/AC-9/AC-11. Guardrails relevant: no — `check_guardrails` returned `pass:true`.

@@ -204,6 +204,7 @@ fn fill_zone(
                 anchor,
                 canon_ref: None,
                 biome_object_type: Some(item.object_type),
+                value: None,
             });
             placed_areas.push(item.area);
         }

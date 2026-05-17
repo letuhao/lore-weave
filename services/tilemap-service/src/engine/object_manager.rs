@@ -90,16 +90,21 @@ struct Candidate {
 /// §4), if it sits closer than `min_distance` to an existing object, or if no
 /// footprint-adjacent tile can reach the zone's `free_paths`. Survivors are
 /// scored per `optimize`; the best (ties → lowest flat-index anchor) is placed —
-/// its blocking footprint → `Occupied`, a [`TilemapObjectPlacement`] appended,
-/// the distance oracle updated. Returns the placement, or [`PlacementError`].
+/// its blocking footprint → `Occupied`, a [`TilemapObjectPlacement`] appended
+/// (carrying `value` — the caller's kind-specific magnitude, spec D10), the
+/// distance oracle updated. Returns the placement, or [`PlacementError`].
 ///
 /// `search_area` must share the build-state grid's dimensions (debug-asserted);
 /// every in-tree caller builds it from `zone_area_open` / `zone_passable`.
+// 8 args — each is a distinct placement knob (spec D10 added `value`); bundling
+// them into a params struct would not aid clarity for a single-purpose engine fn.
+#[allow(clippy::too_many_arguments)]
 pub fn place_and_connect_object(
     state: &mut TilemapBuildState,
     zone_idx: usize,
     template: &TilemapObjectTemplate,
     kind: TilemapObjectKind,
+    value: Option<u32>,
     search_area: &TileMask,
     min_distance: f32,
     optimize: OptimizeType,
@@ -179,6 +184,7 @@ pub fn place_and_connect_object(
         anchor,
         canon_ref: None,
         biome_object_type: None,
+        value,
     });
     // D10 — refresh the whole map-wide nearest-object-distance oracle.
     for y in 0..grid.height {
@@ -338,6 +344,7 @@ mod tests {
             0,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -373,6 +380,7 @@ mod tests {
             0,
             &two_by_two,
             TilemapObjectKind::Landmark,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -397,6 +405,7 @@ mod tests {
             0,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -411,12 +420,12 @@ mod tests {
         let mut state = build_state(5, 5, &[(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)], (2, 2));
         let search = state.zone_area_open(0);
         place_and_connect_object(
-            &mut state, 0, &unit(), TilemapObjectKind::Treasure, &search, 0.0, OptimizeType::Center,
+            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, &search, 0.0, OptimizeType::Center,
         )
         .unwrap();
         let search = state.zone_area_open(0);
         let err = place_and_connect_object(
-            &mut state, 0, &unit(), TilemapObjectKind::Treasure, &search, 100.0, OptimizeType::Distance,
+            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, &search, 100.0, OptimizeType::Distance,
         )
         .unwrap_err();
         assert_eq!(err, PlacementError::NoSpace);
@@ -427,7 +436,7 @@ mod tests {
         let mut state = build_state(4, 4, &[(0, 0)], (0, 0));
         let empty = TileMask::new(4, 4);
         let err = place_and_connect_object(
-            &mut state, 0, &unit(), TilemapObjectKind::Treasure, &empty, 0.0, OptimizeType::Center,
+            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, &empty, 0.0, OptimizeType::Center,
         )
         .unwrap_err();
         assert_eq!(err, PlacementError::NoSpace);
@@ -445,6 +454,7 @@ mod tests {
             0,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             &search,
             0.0,
             OptimizeType::BothDistanceAndCenter,
@@ -546,6 +556,7 @@ mod tests {
             0,
             &mixed,
             TilemapObjectKind::Landmark,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -603,6 +614,7 @@ mod tests {
             0,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -630,6 +642,7 @@ mod tests {
             0,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -653,6 +666,7 @@ mod tests {
             99,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             &search,
             0.0,
             OptimizeType::Center,

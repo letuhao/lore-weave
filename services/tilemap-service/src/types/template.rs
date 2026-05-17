@@ -46,6 +46,15 @@ pub struct ZoneSpec {
     /// ObstaclePlacer (Phase B). `None` ⇒ engine defaults. Additive (TMP-A8).
     #[serde(default)]
     pub biome_selection_rules: Option<BiomeSelectionRules>,
+    /// Author treasure inheritance (TMP_006 §3.2 / TMP-TR-Q3 — Phase C D9).
+    /// When `Some(z)`, this zone's *effective* treasure tiers are zone `z`'s
+    /// literal `treasure_tiers` and its own `treasure_tiers` is ignored —
+    /// resolution is one level, non-transitive (so an inheritance cycle is
+    /// structurally impossible). A reference to a zone absent from the template
+    /// yields no treasure (a deterministic author error, never a panic). `None`
+    /// ⇒ this zone uses its own `treasure_tiers`. Additive (TMP-A8).
+    #[serde(default)]
+    pub inherit_treasure_from: Option<ZoneId>,
 }
 
 /// Default `ZoneSpec.size` — a neutral mid weight (all zones equal when the
@@ -94,7 +103,7 @@ mod tests {
 
     #[test]
     fn template_connection_deserializes_without_the_new_fields() {
-        // AC-8 — a pre-extension connection JSON (no guard_strength / road)
+        // TMP-A8 — a pre-extension connection JSON (no guard_strength / road)
         // still loads, with the additive defaults applied.
         let json = r#"{"to_zone":"sea_north","kind":"threshold"}"#;
         let c: TemplateConnection = serde_json::from_str(json).unwrap();
@@ -105,7 +114,7 @@ mod tests {
 
     #[test]
     fn template_connection_round_trips_with_the_new_fields() {
-        // AC-8 — explicit non-default values survive a JSON round-trip.
+        // TMP-A8 — explicit non-default values survive a JSON round-trip.
         let c = TemplateConnection {
             to_zone: ZoneId("z2".to_string()),
             kind: PassageKind::Portal,
@@ -119,7 +128,7 @@ mod tests {
 
     #[test]
     fn zone_spec_deserializes_without_treasure_tiers() {
-        // AC-8 — a pre-extension ZoneSpec JSON still loads; treasure_tiers
+        // TMP-A8 — a pre-extension ZoneSpec JSON still loads; treasure_tiers
         // defaults to empty and the older defaults still apply.
         let json = r#"{"zone_id":"capital","zone_role":"wilderness"}"#;
         let z: ZoneSpec = serde_json::from_str(json).unwrap();
@@ -130,7 +139,7 @@ mod tests {
 
     #[test]
     fn zone_spec_round_trips_with_treasure_tiers() {
-        // AC-8 — declared tiers survive a round-trip.
+        // TMP-A8 — declared tiers survive a round-trip.
         let z = ZoneSpec {
             zone_id: ZoneId("vault".to_string()),
             zone_role: ZoneRole::Wilderness,
@@ -143,6 +152,7 @@ mod tests {
                 TreasureTierSpec { min: 8000, max: 12000, density: 3 },
             ],
             biome_selection_rules: None,
+            inherit_treasure_from: None,
         };
         let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
         assert_eq!(z, back);
@@ -150,7 +160,7 @@ mod tests {
 
     #[test]
     fn zone_spec_deserializes_without_biome_selection_rules() {
-        // AC-8 — a pre-Phase-B ZoneSpec JSON still loads; biome_selection_rules
+        // TMP-A8 — a pre-Phase-B ZoneSpec JSON still loads; biome_selection_rules
         // defaults to None.
         let json = r#"{"zone_id":"capital","zone_role":"wilderness"}"#;
         let z: ZoneSpec = serde_json::from_str(json).unwrap();
@@ -159,7 +169,7 @@ mod tests {
 
     #[test]
     fn zone_spec_round_trips_with_biome_selection_rules() {
-        // AC-8 — a ZoneSpec carrying an author biome-selection override (D8)
+        // TMP-A8 — a ZoneSpec carrying an author biome-selection override (D8)
         // survives a JSON round-trip, including one rule with `xor_with: Some`
         // and one with `xor_with: None` (the field's skip_serializing_if).
         use crate::types::biome::{BiomeObjectType, BiomePriority, BiomeSelectionRule};
@@ -190,8 +200,38 @@ mod tests {
                     },
                 ],
             }),
+            inherit_treasure_from: None,
         };
         let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
         assert_eq!(z, back);
+    }
+
+    #[test]
+    fn zone_spec_deserializes_without_inherit_treasure_from() {
+        // AC-11 — a pre-Phase-C ZoneSpec JSON still loads; inherit_treasure_from
+        // defaults to None.
+        let json = r#"{"zone_id":"capital","zone_role":"wilderness"}"#;
+        let z: ZoneSpec = serde_json::from_str(json).unwrap();
+        assert!(z.inherit_treasure_from.is_none());
+    }
+
+    #[test]
+    fn zone_spec_round_trips_with_inherit_treasure_from() {
+        // AC-11 — a ZoneSpec that inherits another zone's treasure tiers (D9)
+        // survives a JSON round-trip.
+        let z = ZoneSpec {
+            zone_id: ZoneId("vault".to_string()),
+            zone_role: ZoneRole::Wilderness,
+            size: 100,
+            terrain_types: vec![],
+            monster_strength: None,
+            connections: vec![],
+            treasure_tiers: vec![],
+            biome_selection_rules: None,
+            inherit_treasure_from: Some(ZoneId("treasury".to_string())),
+        };
+        let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
+        assert_eq!(z, back);
+        assert_eq!(back.inherit_treasure_from, Some(ZoneId("treasury".to_string())));
     }
 }

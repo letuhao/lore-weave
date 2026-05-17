@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::engine::build_state::TilemapBuildState;
-use crate::engine::modificators::{ObstaclePlacer, TerrainPainter};
+use crate::engine::modificators::{ObstaclePlacer, TerrainPainter, TreasurePlacer};
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
 use crate::seed::TilemapSeed;
@@ -24,12 +24,14 @@ pub mod modificators;
 pub mod object_manager;
 pub mod pipeline;
 pub mod placement;
+pub mod treasure_pool;
+pub mod treasure_select;
 
 /// Generate a complete [`TilemapView`] from a template + seed.
 ///
 /// Runs the full engine: TMP_002 [`place_zones`] (grid seed → Fruchterman-
 /// Reingold → Penrose → fractalize) then the TMP_003 modificator pipeline
-/// (Phase 1: TerrainPainter only). Single-threaded — the determinism axiom
+/// (TerrainPainter → TreasurePlacer → ObstaclePlacer). Single-threaded — the determinism axiom
 /// (TMP-A4) holds: same `(template, channel_id, tier, grid, seed)` ⇒
 /// byte-identical output.
 ///
@@ -50,10 +52,14 @@ pub fn place_tilemap(
     let tiled = place_zones(template, grid, seed)?;
 
     // TMP_003 — build the mutable generation state and run the modificator
-    // pipeline (Phase 1: TerrainPainter only).
+    // pipeline (TerrainPainter → TreasurePlacer → ObstaclePlacer).
     let mut state = TilemapBuildState::from_zones(tiled, grid);
     let mut registry = ModificatorRegistry::new();
     registry.add(Box::new(TerrainPainter));
+    // D8 — TreasurePlacer before ObstaclePlacer (TMP_006 §7: treasures step 5,
+    // obstacles step 8); the Kahn topo-sort enforces the order via the
+    // dependency edges regardless of `add` order.
+    registry.add(Box::new(TreasurePlacer));
     registry.add(Box::new(ObstaclePlacer));
     {
         let mut ctx = ModificatorContext {
@@ -122,6 +128,7 @@ mod tests {
                 .collect(),
             treasure_tiers: vec![],
             biome_selection_rules: None,
+            inherit_treasure_from: None,
         }
     }
 
@@ -198,9 +205,12 @@ mod tests {
             let pre: Vec<TileMask> =
                 (0..state.zones.len()).map(|i| state.zone_passable(i)).collect();
 
-            // The exact modificator set `place_tilemap` registers, run the same way.
+            // The exact modificator set `place_tilemap` registers, run the same
+            // way. TreasurePlacer no-ops here — `fixture()` declares no
+            // `treasure_tiers` — so AC-7 is the treasure-connectivity gate.
             let mut registry = ModificatorRegistry::new();
             registry.add(Box::new(TerrainPainter));
+            registry.add(Box::new(TreasurePlacer));
             registry.add(Box::new(ObstaclePlacer));
             {
                 let mut ctx = ModificatorContext {
@@ -234,6 +244,145 @@ mod tests {
                             reached.get(s),
                             "seed {raw_seed:#x} zone {zone_id}: \
                              the pipeline split the zone's passable region",
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ac7_treasure_pipeline_never_splits_a_zone_passable_region() {
+        // AC-7 — connectivity end-to-end for the Phase-C pipeline. After
+        // TerrainPainter → TreasurePlacer → ObstaclePlacer, no non-Forbidden
+        // zone's passable region (`Walkable ∪ Open`) has been split.
+        //
+        // Unlike the Phase-B `ac10` test (`place_zones`' per-seed-varying
+        // geometry), this fixture is HAND-BUILT with pinned tile counts: a
+        // 60×20 grid as three 20×20 columns — two `Wilderness` zones, each
+        // carrying a `min ≥ 2000` treasure tier with a wide `[min, max]`
+        // (`max` ≫ the pool's total object value, so `compose_pile` succeeds
+        // for every seed), plus one `Forbidden` column. The geometry is
+        // guard-placeable (`free_paths` along the top edge, a wide `Open`
+        // interior), so the pipeline deterministically emits Treasure +
+        // MonsterLair records — the `≥ 1` assertions below are robust no-op
+        // detectors, not false-RED risks. Verified with the independent
+        // flood-fill oracle (`flood` / `components`), as for `ac10`.
+        use crate::engine::placement::ZoneTiles;
+        use crate::types::object::TilemapObjectKind;
+        use crate::types::treasure::TreasureTierSpec;
+
+        let grid = GridSize { width: 60, height: 20 };
+        // A hand-built 20-wide column at `x0`: `Wilderness` columns get a
+        // top-row `free_paths` skeleton (the rest `Open`); a `Forbidden` column
+        // gets none (`from_zones` makes it all-`Obstacle`).
+        let column = |id: &str, role: ZoneRole, x0: u32| -> ZoneTiles {
+            let mut assigned = TileMask::new(grid.width, grid.height);
+            let mut free = TileMask::new(grid.width, grid.height);
+            for y in 0..grid.height {
+                for x in x0..x0 + 20 {
+                    assigned.set(TileCoord::new(x, y));
+                }
+            }
+            if role != ZoneRole::Forbidden {
+                for x in x0..x0 + 20 {
+                    free.set(TileCoord::new(x, 0));
+                }
+            }
+            ZoneTiles {
+                id: ZoneId(id.to_string()),
+                role,
+                center: TileCoord::new(x0 + 10, 10),
+                assigned_tiles: assigned,
+                free_paths: free,
+            }
+        };
+        // The matching `ZoneSpec`: a `Wilderness` column carries the wide
+        // `min ≥ 2000` tier (density 6 ⇒ target_count 2 per 400-tile column —
+        // headroom so a stray placement NoSpace still leaves ≥ 1 guarded pile).
+        let spec = |id: &str, role: ZoneRole| -> ZoneSpec {
+            let treasure_tiers = if role == ZoneRole::Forbidden {
+                vec![]
+            } else {
+                vec![TreasureTierSpec { min: 2000, max: 30000, density: 6 }]
+            };
+            ZoneSpec {
+                zone_id: ZoneId(id.to_string()),
+                zone_role: role,
+                size: 100,
+                terrain_types: vec![],
+                monster_strength: None,
+                connections: vec![],
+                treasure_tiers,
+                biome_selection_rules: None,
+                inherit_treasure_from: None,
+            }
+        };
+        let template = TilemapTemplate {
+            template_id: TilemapTemplateId("ac7_treasure_connectivity".to_string()),
+            zones: vec![
+                spec("col_a", ZoneRole::Wilderness),
+                spec("col_b", ZoneRole::Wilderness),
+                spec("col_c", ZoneRole::Forbidden),
+            ],
+            seed_offset: 0,
+        };
+
+        for raw_seed in [0xA11CE_u64, 7, 99, 0xC0FFEE] {
+            let seed = TilemapSeed(raw_seed);
+            let zones = vec![
+                column("col_a", ZoneRole::Wilderness, 0),
+                column("col_b", ZoneRole::Wilderness, 20),
+                column("col_c", ZoneRole::Forbidden, 40),
+            ];
+            let mut state = TilemapBuildState::from_zones(zones, grid);
+            let pre: Vec<TileMask> =
+                (0..state.zones.len()).map(|i| state.zone_passable(i)).collect();
+
+            let mut registry = ModificatorRegistry::new();
+            registry.add(Box::new(TerrainPainter));
+            registry.add(Box::new(TreasurePlacer));
+            registry.add(Box::new(ObstaclePlacer));
+            {
+                let mut ctx =
+                    ModificatorContext { template: &template, grid, seed, state: &mut state };
+                registry.execute(&mut ctx).expect("modificator pipeline");
+            }
+
+            // No-op detector — the pipeline genuinely placed Phase-C objects,
+            // so the connectivity check below is not vacuously satisfied.
+            assert!(
+                state.object_placements.iter().any(|p| p.kind == TilemapObjectKind::Treasure),
+                "seed {raw_seed:#x}: AC-7 placed no Treasure — connectivity check vacuous",
+            );
+            assert!(
+                state.object_placements.iter().any(|p| p.kind == TilemapObjectKind::MonsterLair),
+                "seed {raw_seed:#x}: AC-7 placed no MonsterLair — the guard path went untested",
+            );
+
+            // Connectivity — no non-Forbidden zone's passable region was split.
+            for (i, pre_passable) in pre.iter().enumerate() {
+                if state.zones[i].role == ZoneRole::Forbidden {
+                    continue; // a Forbidden zone is all-Obstacle — no passable region
+                }
+                let zone_id = &state.zones[i].id.0;
+                let post = state.zone_passable(i);
+                assert!(
+                    !post.is_empty(),
+                    "seed {raw_seed:#x} zone {zone_id}: the pipeline sealed the entire zone",
+                );
+                for comp in components(pre_passable, grid) {
+                    let survivors: Vec<TileCoord> =
+                        comp.iter_set().filter(|&t| post.get(t)).collect();
+                    if survivors.is_empty() {
+                        continue; // an isolated pocket eroded away — not a split
+                    }
+                    let reached = flood(survivors[0], &post, grid);
+                    for &s in &survivors {
+                        assert!(
+                            reached.get(s),
+                            "seed {raw_seed:#x} zone {zone_id}: the Phase-C pipeline \
+                             split the zone's passable region",
                         );
                     }
                 }

@@ -7,8 +7,10 @@
 
 use tilemap_service::engine::place_tilemap;
 use tilemap_service::seed::TilemapSeed;
+use tilemap_service::types::object::TilemapObjectKind;
 use tilemap_service::types::template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
 use tilemap_service::types::tile_mask::TileMask;
+use tilemap_service::types::treasure::TreasureTierSpec;
 use tilemap_service::types::zone::{PassageKind, ZoneId, ZoneRole};
 use tilemap_service::types::{ChannelId, ChannelTier, GridSize, TerrainKind, TilemapView};
 
@@ -29,12 +31,13 @@ fn zone(id: &str, role: ZoneRole, terrains: Vec<TerrainKind>, conns: &[(&str, Pa
             .collect(),
         treasure_tiers: vec![],
         biome_selection_rules: None,
+        inherit_treasure_from: None,
     }
 }
 
 /// A 5-zone fixture covering every `ZoneRole`.
 fn fixture() -> TilemapTemplate {
-    TilemapTemplate {
+    let mut template = TilemapTemplate {
         template_id: TilemapTemplateId("phase1_determinism".to_string()),
         zones: vec![
             zone("capital", ZoneRole::Wilderness, vec![TerrainKind::Grass], &[("crossroad", PassageKind::Threshold)]),
@@ -44,7 +47,16 @@ fn fixture() -> TilemapTemplate {
             zone("rival", ZoneRole::Forbidden, vec![], &[]),
         ],
         seed_offset: 0,
+    };
+    // Phase C — give the Wilderness zones a treasure tier so the rebaselined
+    // golden exercises TreasurePlacer; `min ≥ 2000` ⇒ every pile is guarded, so
+    // the golden carries both Treasure and MonsterLair records (spec D7 / AC-9).
+    for z in &mut template.zones {
+        if z.zone_role == ZoneRole::Wilderness {
+            z.treasure_tiers = vec![TreasureTierSpec { min: 2000, max: 6000, density: 4 }];
+        }
     }
+    template
 }
 
 fn run(template: &TilemapTemplate, seed: u64) -> TilemapView {
@@ -68,9 +80,19 @@ fn ac4_same_seed_yields_byte_identical_tilemap() {
     let ja = serde_json::to_string(&a).unwrap();
     let jb = serde_json::to_string(&b).unwrap();
     assert_eq!(ja, jb, "same seed must serialize byte-identically (TMP-A4)");
-    // Phase B — ObstaclePlacer fills obstacles, so a fixture with fillable zone
-    // area now yields a non-empty `object_placements` (AC-9).
-    assert!(!a.object_placements.is_empty(), "Phase B must place obstacle objects");
+    // Phase C — the fixture's Wilderness zones carry a min≥2000 treasure tier,
+    // so the pipeline places Treasure piles + their MonsterLair guards on top
+    // of the Phase-B obstacle objects (AC-8: object_placements non-empty and
+    // carrying the new Phase-C record kinds).
+    assert!(!a.object_placements.is_empty(), "the pipeline must place objects");
+    assert!(
+        a.object_placements.iter().any(|p| p.kind == TilemapObjectKind::Treasure),
+        "Phase C must place Treasure piles",
+    );
+    assert!(
+        a.object_placements.iter().any(|p| p.kind == TilemapObjectKind::MonsterLair),
+        "a min≥2000 treasure tier must place MonsterLair guards",
+    );
 }
 
 #[test]
@@ -152,8 +174,9 @@ fn ac6_sea_zone_is_painted_water() {
 /// Regenerate the committed golden baseline — the **deliberate rebaseline**
 /// tool. `#[ignore]`d; run with `cargo test regenerate_golden_baseline --
 /// --ignored` when a phase legitimately changes `place_tilemap` output (Phase B
-/// did — ObstaclePlacer). The committed `tests/golden/tilemap_baseline.json` is
-/// a frozen reference: it gates later phases against *unintended* output drift.
+/// did — ObstaclePlacer; Phase C did — TreasurePlacer). The committed
+/// `tests/golden/tilemap_baseline.json` is a frozen reference: it gates later
+/// phases against *unintended* output drift.
 #[test]
 #[ignore = "regenerator — run explicitly to rebaseline the golden snapshot"]
 fn regenerate_golden_baseline() {
@@ -163,10 +186,11 @@ fn regenerate_golden_baseline() {
 }
 
 /// AC-9 — `place_tilemap` reproduces the committed golden snapshot
-/// (`tests/golden/tilemap_baseline.json`, frozen at the reviewed Phase-B engine)
+/// (`tests/golden/tilemap_baseline.json`, frozen at the reviewed Phase-C engine)
 /// byte-identically. Within the rebaselining phase this is trivially green; its
-/// value is cross-phase — a later phase that changes obstacle output without a
-/// deliberate `regenerate_golden_baseline` rebaseline trips this gate.
+/// value is cross-phase — a later phase that changes zone, terrain, obstacle,
+/// or treasure/guard output without a deliberate `regenerate_golden_baseline`
+/// rebaseline trips this gate.
 #[test]
 fn golden_baseline_byte_identical() {
     let golden = include_str!("golden/tilemap_baseline.json");

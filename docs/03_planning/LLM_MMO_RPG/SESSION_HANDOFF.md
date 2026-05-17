@@ -131,11 +131,11 @@ modificator-pipeline build** is now underway — roadmap
 [`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md):
 5 phases A–E, foundation-first, straight-through autonomous `/amaw`.
 
-1. **TMP_005/006/007 modificator pipeline** — **Phase A (Pipeline Foundation)
-   DONE 2026-05-17** (XL `/amaw`; see the session entry below). Phases **B**
-   (ObstaclePlacer + biomes, TMP_005), **C** (TreasurePlacer, TMP_006), **D**
-   (ConnectionsPlacer, TMP_007), **E** (RoadPlacer + RiverPlacer, TMP_003 §3.5)
-   are next. Once the placers land, the L3/L4 bootstrap can classify
+1. **TMP_005/006/007 modificator pipeline** — **Phases A (Pipeline
+   Foundation), B (ObstaclePlacer + biomes, TMP_005), C (TreasurePlacer,
+   TMP_006) all DONE 2026-05-17** (see the session entries below). Phases **D**
+   (ConnectionsPlacer, TMP_007) and **E** (RoadPlacer + RiverPlacer, TMP_003
+   §3.5) are next. Once the placers land, the L3/L4 bootstrap can classify
    **engine-placed** objects instead of the current fixture set — a genuine
    engine→L3→L4 flow.
 2. **Live continent-scale measurement** — Phases 2-3 were mock-gateway verified;
@@ -146,6 +146,87 @@ modificator-pipeline build** is now underway — roadmap
 
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-17 — TMP_005/006/007 Phase C — TreasurePlacer — ✅ DONE (XL `/amaw`)
+
+### Outcome
+
+Phase C of the **TMP_005/006/007 modificator-pipeline build** (roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md))
+— the **second placer**: `TreasurePlacer` (TMP_006 §3) — tiered value-density
+treasure-pile generation with monster-lair guards. XL, under `/amaw`, 12 phases
+complete. Run autonomously. **The second phase to change `place_tilemap`
+output** — `object_placements` now also carries `Treasure` + `MonsterLair`
+records, so the AC-9 golden was rebaselined to the Phase-C engine. A
+**human-in-loop review (2026-05-17)** pulled two design decisions into scope:
+`inherit_treasure_from` (D9 — a zone may inherit another zone's treasure tiers)
+and a persisted placement `value` (D10 — pile gold value / guard strength kept
+on the record, the `biome_object_type` precedent).
+
+- **Spec:** [`docs/specs/2026-05-17-tilemap-phase-c-treasure-placer.md`](../../specs/2026-05-17-tilemap-phase-c-treasure-placer.md)
+  (D1-D10, AC-1..AC-12). **Plan:** [`docs/plans/2026-05-17-tilemap-phase-c-treasure-placer.md`](../../plans/2026-05-17-tilemap-phase-c-treasure-placer.md)
+  (5 TDD build chunks).
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `engine/treasure_pool.rs` | NEW — `TreasureObject { id, value, rarity }` + `engine_treasure_pool()`: the fixed V1+30d value pool (scattered gold → great hoard, a wide value spread) |
+| `engine/treasure_select.rs` | NEW — `TreasurePile`, `sample_weighted_by_rarity` (rarity-weighted, value-capped), `compose_pile` (TMP_006 §3.3 inner loop — filler-tier `None`, emergency-bounded), `min_distance(value)` (D3 `√(value/100)+5`) |
+| `engine/modificators/treasure_placer.rs` | NEW — `TreasurePlacer`: D9 effective-tier resolution (`inherit_treasure_from`, one-level non-transitive, REPLACE), per-tier high-`max`-first compose/place loop with the D6 emergency bound, D5 guard placement (`MonsterLair` for piles ≥ 2000), `treasure_pile_template()` / `guard_template()` |
+| `types/object.rs` · `types/template.rs` | MOD — `TilemapObjectPlacement.value: Option<u32>` (D10) · `ZoneSpec.inherit_treasure_from: Option<ZoneId>` (D9) — both additive (TMP-A8) |
+| `engine/object_manager.rs` | MOD — `place_and_connect_object` gains a `value` parameter, threaded into the placement record (D10) |
+| `engine/mod.rs` · `engine/modificators/mod.rs` | MOD — `TreasurePlacer` registered before `ObstaclePlacer` (D8: TerrainPainter → TreasurePlacer → ObstaclePlacer) + the AC-7 hand-built treasure-connectivity test |
+| `engine/modificators/obstacle_placer.rs` + 5 test-helper files | MOD — mechanical `value: None` / `inherit_treasure_from: None` in `TilemapObjectPlacement` / `ZoneSpec` struct literals (the no-`Default` additive-field fallout) |
+
+A generated tilemap now scatters treasure piles scaled to each zone's author
+`treasure_tiers`, high-value piles guarded by a monster lair, every placement
+honouring the "never seal a gap" invariant via the Phase-A
+`place_and_connect_object`.
+
+### Review (AMAW, straight-through autonomous)
+
+- **Design review** — Adversary cold-start, **6 rounds**: r1-r5 REJECTED (18
+  findings — D6 emergency-bound vs §3.3, D2 filler-tier phantom, 5 vacuous ACs,
+  D9 inherit non-transitivity/REPLACE, D10 struct-literal census, D5
+  grid-dimensioned `guard_search_area`, D7 determinism rationale); r6
+  APPROVED_WITH_WARNINGS (3 WARN folded into D2/D6/AC-7).
+- **Code review** — Adversary cold-start, **1 round**: APPROVED_WITH_WARNINGS —
+  0 BLOCK, 3 WARN, all 3 fixed (`ac5b` ordering test → 8-seed loop decoupled
+  from pile count; golden docstrings → Phase C; pre-existing additive tests
+  relabelled `AC-8` → `TMP-A8`). Pragmatic stop at r1 (0 BLOCK, design
+  6-rounds-vetted).
+- **Scope Guard (POST-REVIEW):** CLEAR — change within §2 scope; the 5
+  off-census files are mechanical D9 fallout; out-of-scope object-filtering
+  held back as DEFERRED #023.
+- Findings trail: `docs/audit/findings-phase-c-treasure-placer-{r1..r6,code-r1}.md`,
+  `post-review-phase-c-treasure-placer.md`.
+
+### Verify
+
+`cargo test --workspace` green — 207 tilemap-service lib tests + 6 determinism
+(+1 ignored golden regenerator) + integration, 0 failed. `cargo clippy
+--workspace --all-targets` 0 warnings. Golden rebaselined to the Phase-C engine
+→ `tests/golden/tilemap_baseline.json` now carries `Treasure` + `MonsterLair`
+records; `golden_baseline_byte_identical` reproduces it; `ac4_same_seed`
+confirms within-build determinism incl. the new record kinds.
+
+### Deferred
+
+- **#023** — zone-config object **filtering** (`banned_objects`,
+  `required_objects`, `banned_object_categories`) — needs its own `ZoneSpec`
+  fields + a filter pass; target a TMP_004 authoring task (Track 2). Recorded
+  during the Phase-C human-in-loop review so the §3.2 filtering split is not
+  silent drift.
+
+### Next
+
+**Phase D — ConnectionsPlacer (TMP_007)**. Per the operator's revised process,
+the autonomous run pauses for a **human checkpoint after Phase C** (built,
+reviewed, committed) before Phase D builds on it; D + E then continue
+autonomous.
 
 ---
 

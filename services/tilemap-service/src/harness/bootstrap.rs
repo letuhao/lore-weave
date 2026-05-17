@@ -135,6 +135,7 @@ fn bootstrap_template() -> TilemapTemplate {
                 .collect(),
             treasure_tiers: vec![],
             biome_selection_rules: None,
+            inherit_treasure_from: None,
         }
     }
     TilemapTemplate {

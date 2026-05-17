@@ -4854,6 +4854,38 @@
   ],
   "object_placements": [
     {
+      "kind": "treasure",
+      "anchor": {
+        "x": 5,
+        "y": 16
+      },
+      "value": 2000
+    },
+    {
+      "kind": "monster_lair",
+      "anchor": {
+        "x": 5,
+        "y": 15
+      },
+      "value": 200
+    },
+    {
+      "kind": "treasure",
+      "anchor": {
+        "x": 63,
+        "y": 9
+      },
+      "value": 2750
+    },
+    {
+      "kind": "monster_lair",
+      "anchor": {
+        "x": 62,
+        "y": 9
+      },
+      "value": 275
+    },
+    {
       "kind": "obstacle",
       "anchor": {
         "x": 0,
