@@ -318,6 +318,8 @@ pub struct RealityManifest {
     pub root_channel_tree: RootChannelDecl,             // continent → country → district → town hierarchy
     pub canonical_actors: Vec<CanonicalActorDecl>,      // book-canon NPCs and their initial cells
     pub places: Vec<PlaceDecl>,                         // PF_001 extension (added 2026-04-26): REQUIRED V1 — every cell-tier channel from root_channel_tree MUST have a corresponding PlaceDecl. See PF_001 §9 + §3.1.
+    pub tilemap_templates: Vec<TilemapTemplateDecl>,    // TMP_001 extension (added 2026-05-14 closure-pass-extension): OPTIONAL V1+30d — at-least-one entry recommended for non-cell tiers if the reality opts into procedural tile rendering. Each entry owns one `tilemap_template` (T2/Reality scope). See TMP_001 §9.1 + §3.2 + TMP_004 template authoring.
+    pub tilemap_defaults: Option<TilemapDefaults>,      // TMP_001 extension (added 2026-05-14 closure-pass-extension): OPTIONAL V1+30d — default grid size, biome rules, LLM-disabled toggle (V1+30d default per AC-TMP-10). See TMP_001 §9.1.
     pub schema_version: u32,
 }
 
@@ -570,6 +572,7 @@ The design is implementation-ready when world-service + roleplay-service + gatew
 - [06_data_plane/21_llm_turn_slot.md](../../06_data_plane/21_llm_turn_slot.md) DP-Ch51..Ch53 turn-slot patterns
 - [06_data_plane/22_feature_design_quickstart.md](../../06_data_plane/22_feature_design_quickstart.md) — design template this doc follows
 - [features/_spikes/SPIKE_01_two_sessions_reality_time.md](../_spikes/SPIKE_01_two_sessions_reality_time.md) — narrative validation source
+- [features/00_tilemap/TMP_001_tilemap_foundation.md](../00_tilemap/TMP_001_tilemap_foundation.md) — V1+30d RealityManifest extension (annotation added 2026-05-14 closure-pass-extension): two new optional fields `tilemap_templates: Vec<TilemapTemplateDecl>` + `tilemap_defaults: Option<TilemapDefaults>` (§16.1 RealityManifest snippet). At reality activation (§16.2) the RealityBootstrapper invokes the TMP pipeline AFTER MAP_001 layout creation — so map positions exist when TMP derives child-cell anchors. Direction: PL_001 owns the RealityManifest contract; TMP_001 is one of several feature extenders (alongside PF_001 `places`, MAP_001 `map_layout`, WA `lex_*`, NPC `canonical_actors`). §13 Travel sequence at V2+ may consume TMP-D5 terrain speed modifier for non-cell-tier travel cost; V1+30d Travel cost stays on MAP_001 `default_fiction_duration` per current §13 step ④.
 
 ---
 

@@ -6,6 +6,787 @@
 
 ---
 
+## 2026-05-16 — TVL_005 V1+30d+ Group/Party Travel DRAFT + /review-impl 1-pass fix cycle (the group layer; three later TVL features each declared a dependency on it; 2 HIGH + 1 MED + 3 LOW all resolved)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit — Phase 0 TVP-D1..D7 + DRAFT + /review-impl 1st pass all in this commit, per the POL/SET/ROUTE/TVL_001/TVL_002/TVL_004/TVL_003 precedent).
+- **Phase 0 TVP-D1..D7 LOCKED** via single deep-dive 2026-05-16 with user `approve all` directive: D1 NEW `travel_party` aggregate / D2 the party travels on the *leader's* TVL_001 `actor_travel_state` journey, members bound (no per-member journey rows) / D3 formation via `Party:Form`/`Join`/`Leave` (co-located to join; mutable only while Forming) / D4 ≤6-member size cap / D5 OnFoot-only V1+30d+, per-member provisions / D6 a TVL_004 encounter pauses the whole party, the leader resolves, outcome to the leader only / D7 PC + Tracked NPC members, ≤1 party per actor, leader committed mid-journey.
+- **Files landed:**
+  - **NEW** `features/00_travel/TVL_005_group_party_travel.md` (395 lines — well under the 800 hard cap).
+  - `features/00_travel/_index.md` — TVL_005 row added; Active line updated; TVL_004 commit hash backfilled (`dda45ef8`).
+  - `catalog/cat_00_TVL_travel_foundation.md` — NEW TVL_005 sub-section, catalog entries TVL-76..TVL-90 (15 entries).
+  - `_boundaries/01_feature_ownership_matrix.md` — NEW `travel_party` aggregate row.
+  - `_boundaries/02_extension_contracts.md` — §4 EVT-T8 sub-shape `Forge:DisbandParty`; §1.4 `travel.*` namespace extended with 12 NEW party rule_ids + the EVT-T1 `Party:Form`/`Join`/`Leave`/`Travel` sub-types.
+  - `_boundaries/_LOCK.md` + `_boundaries/99_changelog.md` (this entry).
+- **Design surface declared:** NEW `travel_party` aggregate (T2/Reality, sparse per-party) + 2 V1+30d+ closed enums (`PartyRole` / `PartyStatus`) + the `PartyMember` struct + the formation lifecycle + the leader's-journey binding + the lockstep-arrival cascade + the §5.6 leadership-transfer/disband rules + 13 TVP-V* validators + 13 `travel.*` rule_ids (12 new + 1 reused) + RealityManifest `canonical_parties` extension + 15 V1+30d+-testable acceptance scenarios AC-TVL-61..75 + 9 deferrals TVP-D1..D9 + 7 open questions TVP-Q1..Q7.
+- **No new service** — `travel_party` owned by the existing `travel-service`. **No new capability claim**. **No new cross-feature schema field** — a member's party-bound state is derived by querying `travel_party`; the TVL_001 closure pass for TVL_005 is BEHAVIORAL ONLY (3 items — see the /review-impl HIGH-1 fix below) — unlike TVL_002/TVL_003/TVL_004 which each added an `actor_travel_state` field.
+- **/review-impl 2 HIGH findings + fixes (applied inline this commit):**
+  - **HIGH-1** — a traveling party *member* (non-leader) got no `actor_travel_state` row and no in-transit marking: `entity.travel_journey_id` stayed `None` and `current_cell_id` stayed at the origin, so the rest of the system (DF05 session join, PL_005 interaction, targeting) saw the member as stationary-and-available at the origin for the whole trip. Fixed — the `Party:Travel` cascade now marks every member in-transit (writes the *existing* `entity.travel_journey_id` field to the bound journey_id + latches `current_cell_id`, routed through the standard cell-change cascade); `Travel:Arrive`/Cancel/Disband clear it. Still no *new* field — TVL_005's TVL_001 closure pass is 3 behavioral items.
+  - **HIGH-2** — §5.3 created the leader's journey "via TVL_001 §5.1 machinery" (which bundles a provisions deduction) AND then ran a per-member deduction over all members including the leader → the leader was double-charged on every party departure. Fixed — the leader's journey-creation explicitly skips TVL_001's built-in provisions deduction; the per-member cascade is the single authoritative deduction (TVL_002 precedent).
+- **/review-impl 1 MED + 3 LOW — all fixed inline (user directed "fix all"):**
+  - **MED-1** — the Forming-party ↔ solo-journey boundary was under-guarded: `Party:Form` lacked the TVP-V10 no-active-solo-journey check, and TVP-V11 only blocked *Traveling*-party members from solo travel. Fixed — TVP-V10 added to `Party:Form`; TVP-V11 broadened to block solo `Travel:Initiate` for a member of ANY non-Disbanded party (rule_id renamed `actor_in_traveling_party` → `actor_in_party`).
+  - **LOW-1** — §8 rule_id count corrected (12 new / 13 total, was mislabelled "11 new / 12 total"). **LOW-2** — TVP-V12 reframed as a defensive/structural assertion (`Party:Travel` has no `mode` field, so it cannot fail at runtime V1+30d+). **LOW-3** — the per-member `current_cell_id`/in-transit updates explicitly routed through the standard cell-change cascade (DF05 `MovedCell` / PL_005 transitions).
+- **Key design properties:** a party travels on the *leader's* TVL_001 journey — `Party:Travel` creates the leader's `actor_travel_state` journey + binds every member; members get no individual journey rows, so lockstep arrival is structural (one journey, one `Travel:Arrive` cascading every member's `current_cell_id` + in-transit clear); OnFoot-only V1+30d+ with per-member provisions deducted exactly once; a TVL_004 encounter pauses the whole party (one bound journey); composite party travel (TVL_002 CTV-D8) + mounted/mixed-mode party travel (TVL_003 TVM-D3) + party-wide encounter-outcome distribution (TVL_004 CTE-D7) all stay deferred — TVL_005 ships the `travel_party` aggregate those three sibling deferrals were written against.
+- **/review-impl HIGH count 2** — arc trend POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3 → TVL_003 1 → TVL_005 2; both HIGHs were about what state a *member* (non-leader) holds during party travel — a genuinely new surface (a journey shared by actors who don't each own it).
+- **Status:** DRAFT-WITH-FIX-CYCLE awaiting acceptance-test integration. **Fifth TVL feature** — the group layer TVL_001 TVL-D5 deferred and TVL_002/TVL_003/TVL_004 each declared "Requires TVL_005"; travel stops being a strictly-solo mechanic.
+
+---
+
+## 2026-05-16 — TVL_003 V1+30d+ Mount/Vehicle Travel DRAFT + /review-impl 1-pass fix cycle (the conveyance layer; activates the ByBoat mode TVL_001 schema-reserved; 1 HIGH + 1 MED + 4 LOW all resolved)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit — Phase 0 TVM-D1..D7 + DRAFT + /review-impl 1st pass all in this commit, per the POL/SET/ROUTE/TVL_001/TVL_002/TVL_004 precedent).
+- **Phase 0 TVM-D1..D7 LOCKED** via single deep-dive 2026-05-16 with user `approve all` directive: D1 NEW `mount` aggregate (vs RES_001 resource / EF_001 entity) / D2 TVL_001 `TravelMode` closed-enum additive bump 2 → 5 — activate the schema-reserved `ByBoat` + add `OnHorseback`/`ByShip`/`ByCarriage` / D3 acquisition via canonical declaration + Forge grant (market purchase deferred) / D4 hardcoded mode↔route compatibility matrix / D5 per-mode speed modifier on `route.default_fiction_duration` / D6 minimal mount state — location only, no stamina/condition/feed / D7 ≤1 mount per journey + PC/Tracked NPC parity.
+- **Files landed:**
+  - **NEW** `features/00_travel/TVL_003_mount_vehicle_travel.md` (391 lines — well under the 800 hard cap).
+  - `features/00_travel/_index.md` — TVL_003 row added (between TVL_002 and TVL_004 by number); Active line updated.
+  - `catalog/cat_00_TVL_travel_foundation.md` — NEW TVL_003 sub-section, catalog entries TVL-61..TVL-75 (15 entries).
+  - `_boundaries/01_feature_ownership_matrix.md` — NEW `mount` aggregate row.
+  - `_boundaries/02_extension_contracts.md` — §4 EVT-T8 sub-shape `Forge:GrantMount`; §1.4 `travel.*` namespace extended with 8 NEW mount rule_ids + the `actor_travel_state.mount_id` / `TravelMode` enum bump / `Travel:Initiate` payload cross-feature dependency.
+  - `_boundaries/_LOCK.md` + `_boundaries/99_changelog.md` (this entry).
+- **Design surface declared:** NEW `mount` aggregate (T2/Reality, sparse per-mount) + 3 V1+30d+ closed enums (`MountKind` / `MountLocation` / `MountAcquisition`) + the TVL_001 `TravelMode` 2 → 5 enum bump + 1 cross-feature additive field on `actor_travel_state` (`mount_id`) + the `Travel:Initiate` payload `mount_id` field + the MountKind→TravelMode mapping + the per-mode speed-modifier table + the mode↔route compatibility matrix + 10 TVM-V* validators + 10 `travel.*` rule_ids (8 new + 2 reused — supersedes TVL_001's `travel.mount_unavailable` V2+ reservation) + RealityManifest `canonical_mounts` extension + 15 V1+30d+-testable acceptance scenarios AC-TVL-46..60 + 9 deferrals TVM-D1..D9 + 7 open questions TVM-Q1..Q7.
+- **No new service** — `mount` owned by the existing `travel-service`. **No new capability claim**.
+- **TVL_001 closure pass now serves THREE consumer features** — TVL_002 (`composite_journey_id`), TVL_004 (`encounter_schedule`), TVL_003 (`mount_id` + `TravelMode` enum bump + `Travel:Initiate` payload field) — three sequential `actor_travel_state` schema_version bumps, to land together in one closure-pass commit at `travel-service` implementation.
+- **/review-impl 1 HIGH finding + fix (applied inline this commit):**
+  - **HIGH-1** — §5.5 claimed a uniform-mode composite journey (e.g. all-Road `OnHorseback`) "works" and carries one mount — but TVL_002 *as shipped* rejects every non-OnFoot composite (CTV-V9 `composite_mode_unavailable_v1plus30d`), and there is no `mount_id` on `CompositeTravel:Initiate`/`composite_journey` to carry the selection. TVL_003 described a behavior another shipped feature actively prevents, with no coordination. Fixed: composite-with-mount is **deferred V1+30d+** — §5.5 rewritten as a deferral note naming exactly what a future TVL_002 closure pass needs (relax CTV-V9 + add `mount_id`); `TVM-D5` reworked to cover uniform-mode + mixed-mode; the cross-feature gate TVM-V11 dropped (validator count 11 → 10); AC-TVL-59 rewritten to assert the deferral holds; §12.4 sequence rewritten. V1+30d+ TVL_003 ships mounts for atomic TVL_001 journeys only.
+- **/review-impl 1 MED + 4 LOW — all fixed inline (user directed "fix all"):**
+  - **MED-1** — the TVL_001 closure pass was mislabeled "schema-only"; it is schema + **three behavioral changes** (TVL-V5 lifts the `mode_unavailable` reject for the activated modes; TVL-V9 becomes the expanded §5.1 matrix; the `speed_modifier(mode)` factor enters the `Scheduled:TravelTick` + `expected_arrival_fiction_time` formulas). Relabelled "schema + behavioral" + enumerated, in §10/§17 + the boundary row + this changelog.
+  - **LOW-1** — `travel.mount_owner_untracked` (TVM-V9) was a real rule_id missing from the §8 table; reconciled to **8 new / 10 total** across §8 + §17 + catalog TVL-73 + the boundary row + `02_extension_contracts.md`.
+  - **LOW-2** — owner-death handling (orphaned mount; mid-journey owner death is a pre-existing TVL_001 gap) folded into `TVM-D7`'s scope.
+  - **LOW-3** — a `Ship`/`Horse` declarable at a route-incompatible cell (valid but unusable) — accepted + documented in §11 as author/admin responsibility.
+  - **LOW-4** — `travel.mode_requires_mount`'s copy ("requires a mount") was wrong for the OnFoot-with-a-`mount_id` case; reworded neutrally to cover both directions.
+- **Key design properties:** the conveyance is a NEW lightweight `mount` aggregate — not an EF_001 entity (per-stable horse instancing would explode entity count against AIT_001's discipline), not a fungible RES_001 resource (a mount has location + identity); a per-mode speed modifier makes a trip faster (not shorter — provisions cost stays distance-based, unchanged); ROUTE_001's `SeaLane` + `RiverNavigation` routes finally get vessels (`ByShip` / `ByBoat`); composite-journey-with-mount is deferred V1+30d+ (TVM-D5 — needs a TVL_002 closure pass).
+- **Status:** DRAFT-WITH-FIX-CYCLE awaiting acceptance-test integration. **Third TVL feature by number** (designed after TVL_004) — TVL_001 built `TravelMode` 2-variant with `ByBoat` schema-reserved precisely for this; TVL_003 activates it, the water routes gain consumers, and travel speed becomes a real choice. **/review-impl HIGH count 1** — arc trend POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3 → TVL_003 1; the lightest yet — TVL_003 is small + heavily derivative (it mostly activates a TVL_001-reserved enum).
+
+---
+
+## 2026-05-16 — TVL_004 V1+30d+ Travel Encounters DRAFT + /review-impl 1-pass fix cycle (fourth TVL feature; the encounter layer TVL_001 §1 Gap 3 was built toward; 3 HIGH + 5 MED + 5 LOW all resolved)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit — Phase 0 CTE-D1..D7 + DRAFT + /review-impl 1st pass all in this commit, per the POL/SET/ROUTE/TVL_001/TVL_002 precedent).
+- **Phase 0 CTE-D1..D7 LOCKED** via single deep-dive 2026-05-16 with user `approve all` directive: D1 NEW `travel_encounter` aggregate + journey-pause via an unresolved row (vs extending `actor_travel_state`/`TravelStatus`) / D2 deterministic pre-rolled encounter schedule at `Travel:Initiate` (vs per-tick live rolls) / D3 `EncounterKind` 4-variant (Combat / Social / Hazard / Discovery) / D4 author-declared `encounter_tables` + engine default fallback / D5 pause + choice-based LLM-narrated + engine-clamped resolution; full turn-by-turn combat deferred (abstracted V1+30d+) / D6 abstract ephemeral encounter participants (not persistent EF_001/AIT entities) / D7 PC + Tracked NPC parity.
+- **Files landed:**
+  - **NEW** `features/00_travel/TVL_004_travel_encounters.md` (427 lines — well under the 800 hard cap).
+  - `features/00_travel/_index.md` — TVL_004 row added; Active line updated; TVL_002 commit hash backfilled (`0bcc7d7a`).
+  - `catalog/cat_00_TVL_travel_foundation.md` — NEW TVL_004 sub-section, catalog entries TVL-45..TVL-60 (16 entries).
+  - `_boundaries/01_feature_ownership_matrix.md` — NEW `travel_encounter` aggregate row.
+  - `_boundaries/02_extension_contracts.md` — §4 EVT-T8 sub-shape `Forge:ResolveEncounter`; §1.4 `travel.*` namespace extended with 10 NEW encounter rule_ids + NEW EVT-T1 `Encounter:Resolve` / EVT-T6 `Encounter:SceneNarration` sub-types + the `actor_travel_state.encounter_schedule` cross-feature schema dependency.
+  - `_boundaries/_LOCK.md` + `_boundaries/99_changelog.md` (this entry).
+- **Design surface declared:** NEW `travel_encounter` aggregate (T2/Reality, sparse per-(journey, encounter)) + 1 cross-feature additive field on TVL_001's `actor_travel_state` (`encounter_schedule` — HIGH-2 fix) + 3 V1+30d+ closed enums (`EncounterKind` / `EncounterStatus` / `EncounterApproach`) + `ProvinceDangerBand` 3-variant + 12 CTE-V* validators + 11 `travel.*` rule_ids (10 new + 1 reused) + deterministic Poisson pre-roll schedule pinned at initiate + tick-generator clamp-to-point encounter detection + journey pause/resume + choice-based LLM-narrated resolution + engine-clamped `EncounterOutcome` + combat abstraction + RealityManifest `encounter_tables` extension + 15 V1+30d+-testable acceptance scenarios AC-TVL-31..45 + 9 deferrals CTE-D1..D9 + 7 open questions CTE-Q1..Q7.
+- **No new service** — `travel_encounter` owned by the existing `travel-service`. **No new capability claim**.
+- **/review-impl 3 HIGH findings + fixes (applied inline this commit):**
+  1. **HIGH-1** — §5.2 advanced `progress_fraction` to `new_progress` then fired the crossed schedule point, so the actor ended up past the encounter AND a second point crossed in the same tick was silently lost (a Poisson process has no minimum spacing — §3.1's "never places two so close" claim was unjustified). Fixed: a tick CLAMPS its advancement to exactly the crossed point `p`, fires, pauses; the next unfired point always remains ahead of `last_progress`, so no point is overshot or skipped.
+  2. **HIGH-2** — the schedule was claimed a "pure re-derivable function, no stored field" (CTE-Q1/§5.1/§11), but it depends on `world_geometry` biome + `route.kind`, both mutable via `GeographyDelta` (`SetBiomeOverride`/`ReclassifyRoute`) — a mid-journey geography edit would break re-derivation determinism. Fixed: the schedule is pre-rolled once and **pinned** onto a NEW additive `actor_travel_state.encounter_schedule: Vec<EncounterPoint>` field (schema_version bump per I14). TVL_004 thus carries a cross-feature schema dependency like TVL_002's `composite_journey_id`; the TVL_001 closure pass becomes **schema + behavioral**.
+  3. **HIGH-3** — a `Hazard` encounter resolving with `RerouteDecl::DivertToCell` cancels the segment's `actor_travel_state`; if the segment belonged to a TVL_002 `composite_journey`, no TVL_002 path handled a segment Canceled by an encounter — the composite was orphaned. Fixed: §5.5 — a `DivertToCell` reroute on a composite segment also transitions the `composite_journey` to `Stranded` (status already exists in TVL_002 — no TVL_002 doc change). The §10/CTV-D1 "encounter-agnostic" claim qualified: agnostic for pause, composite-aware for reroute-cancel.
+- **/review-impl 5 MED findings — all fixed inline (user directed "fix all"):**
+  - **MED-1** — §5.2's paused tick skipped only `progress_fraction`, not clock advancement; combined with §5.3 adding `fiction_duration` to clocks, the encounter period could double-count. Fixed: the paused tick skips clock advancement too.
+  - **MED-2** — §5.4 referenced a non-existent "danger-band threat rating" table field. Fixed: added `combat_threat: u8` to `EncounterTableDecl`.
+  - **MED-3** — `RerouteDecl::DivertToCell` could teleport the actor to any cell (CTE-V11 only checked existence). Fixed: CTE-V11 now also requires the divert cell within 2 hops of the route's cell sequence.
+  - **MED-4** — the biome-at-progress lookup assumed a route cell path that ROUTE_001 may not expose. Fixed: §5.1 makes the dependency on ROUTE_001's traversed cell sequence explicit + defines a nearer-endpoint fallback.
+  - **MED-5** — CTE-Q6 claimed the situation scene + outcome could be a single LLM call — impossible, the outcome depends on the approach chosen between them. Fixed: CTE-Q6 rewritten — 2 inherently-sequential calls.
+- **/review-impl 5 LOW findings — all fixed inline:** §8 rule_id counts reconciled (10 new — `encounter_table_unresolved` was a 10th, previously uncounted — 6 user/admin-facing + 4 defensive); outcome status-effect magnitudes clamp to PL_006's `1..=10`; §6 determinism wording corrected (caching per CTE-Q3, not LLM-seeding); `Forge:ResolveEncounter` restricted to Skip-only V1+30d+; the LLM outcome-proposal caching for replay stated explicitly.
+- **Status:** DRAFT-WITH-FIX-CYCLE awaiting acceptance-test integration. **Fourth TVL feature** — the encounter layer TVL_001 §1 Gap 3 named, TVL_002 CTV-D1 kept composite-agnostic for, and TVL_004 lands; the GEO + POL + SET + ROUTE activation triangle finally becomes mechanically consequential, not just narration texture.
+
+---
+
+## 2026-05-16 — TVL_002 V1+30d+ Composite Multi-Segment Travel DRAFT + /review-impl 1-pass fix cycle (second TVL feature; first convenience layer — a feature consuming a feature; 3 HIGH + 3 MED + 4 LOW all resolved)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit — Phase 0 CTV-D1..D7 + DRAFT + /review-impl 1st pass all in this commit, mirroring the POL/SET/ROUTE/TVL_001 fix-cycle precedent).
+- **Phase 0 CTV-D1..D7 LOCKED** via single deep-dive 2026-05-16 with user `approve all` directive: D1 new `composite_journey` aggregate (vs orchestration-only / extend `actor_travel_state`) / D2 freeze-at-initiate Dijkstra + re-plan fallback (vs continuous re-plan) / D3 smart overnight stops (auto-rest at inn-bearing intermediate settlements) / D4 whole-journey provisions pre-pay at initiate (vs per-segment) / D5 destination = target `cell_id` + Dijkstra reachability check / D6 self-cancel at next segment boundary + admin immediate cancel / D7 read-only `composite_travel_plan` preview before commit.
+- **Files landed:**
+  - **NEW** `features/00_travel/TVL_002_composite_travel.md` (447 lines — well under the 800 hard cap).
+  - `features/00_travel/_index.md` — TVL_002 row added; Active line updated.
+  - `catalog/cat_00_TVL_travel_foundation.md` — NEW TVL_002 sub-section, catalog entries TVL-28..TVL-44 (17 entries).
+  - `_boundaries/01_feature_ownership_matrix.md` — NEW `composite_journey` aggregate row; `actor_travel_state` row annotated with the TVL_002 cross-feature additive field + CTV-V15 cross-feature gate.
+  - `_boundaries/02_extension_contracts.md` — §4 EVT-T8 sub-shape `Forge:CancelCompositeJourney`; §1.4 `travel.*` namespace extended with 12 V1+30d+ composite rule_ids + NEW EVT-T1 sub-types `CompositeTravel:Initiate`/`Cancel`.
+  - `_boundaries/_LOCK.md` + `_boundaries/99_changelog.md` (this entry).
+- **Design surface declared:** NEW `composite_journey` aggregate (T2/Reality, sparse per-(actor, composite_journey)) + 1 cross-feature additive field on `actor_travel_state` (`composite_journey_id: Option<CompositeJourneyId>`, schema_version bump per I14, TVL_001 closure pass) + CompositeJourneyStatus 4-variant closed enum + 17 CTV-V* validators + 12 `travel.*` rule_ids (10 player-meaningful + 2 defensive — extends the existing TVL_001-owned namespace, no new namespace) + 3 NEW EVT-T sub-types (EVT-T1 `CompositeTravel:Initiate`/`Cancel` + EVT-T8 `Forge:CancelCompositeJourney`) + 15 V1+30d+-testable acceptance scenarios AC-TVL-16..30 + 9 deferrals CTV-D1..D9 + 7 open questions CTV-Q1..Q7.
+- **No new service** — `composite_journey` owned by the existing `travel-service` (composite orchestration + atomic-segment ownership are the same bounded context). **No new capability claim** — `CompositeTravel:Initiate`/`Cancel` are regular gameplay actions; `Forge:CancelCompositeJourney` uses the existing Forge admin capability.
+- **Key design properties:** Dijkstra plan frozen at initiate (replay-deterministic, stable ETA; lexicographic-route_id tie-break per CTV-Q2); re-plan fallback on segment-route-invalidation (admin `RemoveRoute` on a future planned segment — TVL-V14 protects only the active segment's route) with `Stranded` terminal status on failure/cap/under-provisioning; smart overnight stops auto-rest at inn-bearing intermediate settlements so Exhausted does not pile across a multi-day journey; whole-journey provisions pre-paid (TVL_001 HIGH-4 `resource_inventory` Consumable semantic — `vital_pool` untouched); read-only `composite_travel_plan` preview query mutates nothing.
+- **/review-impl 3 HIGH findings + fixes (applied inline this commit):**
+  1. **HIGH-1** — §5.4 re-plan provisions check compared the new tail's cost only against *remaining pre-pay*, ignoring the actor's on-hand `resource_inventory`. A well-provisioned actor would be wrongly `Stranded` on any re-plan exceeding remaining pre-pay, contradicting D4's convenience intent. Fixed: §5.4 re-check is now `remaining-pre-pay + on-hand resource_inventory`; the shortfall is deducted from `resource_inventory` (growing `total_provisions_consumed`); `Stranded` only if even that is insufficient.
+  2. **HIGH-2** — §5.6 refund formula `total_provisions_consumed × (Σ un-traversed distance / total_distance_units)` mixed a pre-re-plan total with a post-re-plan `total_distance_units` (§5.4 recomputes the latter), over-refunding after a re-plan — a small economy exploit. Fixed: refund = `total_provisions_consumed − Σ(traversed-segment consumption)` — subtracts actual consumption, correct regardless of re-plan.
+  3. **HIGH-3** — §2.5 ("composite adds no tick mechanism") contradicted §5.3 ("initiate next segment at the NEXT turn-boundary"): the deferred initiation had nothing to fire it. Fixed: segment N+1 now initiates **in-cascade** at segment N's handoff (no inter-segment turn gap); §2.5 stays accurate; the rest beat is the `wakeful_duration` reset, per CTV-Q4. Dropped the `Σ intermediate rest durations` term from `expected_arrival_fiction_time`.
+- **/review-impl 3 MED findings — all fixed inline (user directed "fix all"):**
+  - **MED-1** — §3.1 invariant claimed `current_segment_index` equals `plan.len()` at `Arrived`; §5.3's `Arrived` branch never increments it. Fixed: invariant now states it stays `plan.len() - 1`.
+  - **MED-2** — a `CompositeTravel:Cancel` landing in the inter-segment window could let an unwanted extra leg initiate. **Resolved structurally by the HIGH-3 fix** — in-cascade initiation removes the window entirely; §5.3's existing cancel check is now sufficient. Documented in §5.6.
+  - **MED-3** — the TVL_001 `Travel:Arrive` cascade's "intermediate vs final cell" branching was under-specified. Fixed: TVL_001 defers ALL hospitality for any segment with `composite_journey_id = Some(..)` to the composite handler — no branching inside the TVL_001 cascade (folded into the CTV-Q1 closure-pass scope).
+- **/review-impl 4 LOW findings — all fixed inline:**
+  - **LOW-1** — §2.5/§16 cited a non-existent "§1 EVT-T1 sub-type registry"; corrected to §1.4 (`travel.*` namespace row) + §4 (EVT-T8 sub-shapes).
+  - **LOW-2** — §8 header undercounted ("10 NEW / 6 reused"); corrected to "12 NEW (10 player-meaningful + 2 defensive) / 5 reused".
+  - **LOW-3** — TVL_001 TVL-Q3 still reads "vital_pool" (stale pre-HIGH-4); added a TVL-Q3 erratum to the CTV-Q1 closure-pass scope.
+  - **LOW-4** — TVL_001 leaves an atomic journey's `Canceled` end-position unspecified; added a snap-to-`from_cell` ratification to the CTV-Q1 closure-pass scope.
+  - Also fixed during the §5.4 rewrite: a phantom rule_id `travel.composite_replan_failed` (never defined in §8) — §5.4 now reuses the §8-defined `composite_replan_cap_exceeded` / `no_route_to_destination` / `composite_insufficient_provisions` as informational Stranded reasons.
+- **Cumulative outcome (post 1-pass /review-impl):** TVL_002 design surface ~480 lines (was 447 DRAFT; +~33 from fixes), well under the 800 hard cap. **12 `travel.*` composite rule_ids** + **17 CTV-V* validators** + **15 acceptance scenarios AC-TVL-16..30** — all UNCHANGED in count (HIGH/MED fixes were behavioral/structural precision, not surface-adding). The TVL_001 closure pass now carries **4 coordinated items** (CTV-Q1): `composite_journey_id` additive field + schema_version bump · composite-segment hospitality deferral · TVL-Q3 erratum · `Canceled` end-position ratification.
+- **/review-impl HIGH count:** TVL_002 V1+30d+ (3 HIGH + 3 MED + 4 LOW, 1-pass) — in line with the arc trend (POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → **TVL_002 3**); the convenience-layer pattern reused enough TVL_001 machinery that adversarial review found fewer novel HIGH surfaces than a fresh substrate feature.
+- **Status:** DRAFT-WITH-FIX-CYCLE awaiting acceptance-test integration. **First convenience layer** in the design track — a feature (TVL_002) consuming a feature (TVL_001) rather than a foundation substrate.
+
+---
+
+## 2026-05-15 — TVL_001 V1+ Travel Mechanics DRAFT + /review-impl 1-pass fix cycle (first feature consuming V1+30d activation triangle POL + SET + ROUTE; 4 HIGH inline-fixed)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT + /review-impl 1st pass all in this commit, mirroring POL_001 + SET_001 + ROUTE_001 fix-cycle precedent).
+- **/review-impl 4 HIGH findings + fixes (applied inline this commit):**
+  1. **HIGH-1** — Fortress hospitality contradiction in §5.3: listed in BOTH inn-available set AND no-inn set. Fixed by REMOVING Fortress from inn-available set; Fortress = military barracks per ROUTE_001 §2 SettlementRole semantic (no public inn for civilian travelers). Settlement.role ∈ {Village, Town, City, Capital} → inn; Settlement.role ∈ {Hamlet, Fortress} OR no-settlement → outdoor-camp + Exhausted-risk.
+  2. **HIGH-2** — PL_006 "Tier 0 / Tier 1" terminology fictional (doesn't exist in PL_006 schema; PL_006 uses magnitude 1..=10). Fixed by replacing with PL_006 actual semantic: magnitude=3 if wakeful > 16h ≤ 24h; magnitude=5 if wakeful > 24h. Both within PL_006's 1..=10 range; StackPolicy::Replace for Exhausted.
+  3. **HIGH-3** — realm_clock TVL-ownership contradiction between §2 (TVL advances realm_clock) and §5.2 (PL_001 advances realm_clock independently). Risk: double-advancement if implementer reads §2 literally. Fixed by clarifying TVL advances ONLY actor_clock + body_clock; realm_clock is PL_001 turn-boundary-owned (channel-tier resource per TDIL-A1; advances regardless of travel state to maintain channel-time consistency for ALL actors in channel). Updated §2 + §5.2 + §10 consistently.
+  4. **HIGH-4** — Provisions semantic conflated vital_pool (body-state counter; HIGH=hungry, LOW=well-fed) with resource_inventory (possession counter; HIGH=lots, LOW=depleted). §5.1 sequence `lý_minh.vital_pool.hunger -= 24` would make actor LESS hungry (backwards from "travel burns food reserves" intent). Fixed by clarifying TVL deducts from `actor.resource_inventory.food / .water` (Consumable possession counters); vital_pool.hunger / thirst advance via standard RES_001 per-day-boundary semantics INDEPENDENTLY of travel; TVL does NOT touch vital_pool. TVL-V8 sufficient-provisions check is against resource_inventory possession balance.
+- **/review-impl MED findings (escalated to user — deferred per default policy):**
+  - **MED-1** — EF_001 cross-feature schema dependency tracked in TVL-Q1 but EF_001 spec not actually updated with the `entity.travel_journey_id` additive field. Needs explicit EF_001 closure pass at TVL ship to coordinate the 1 → 2 schema_version bump. DEFERRED — V1+30d implementation-phase coordination concern.
+  - **MED-2** — §5.2 tick advancement description conflates per-turn-tick (TVL-owned for progress_fraction) with standard TDIL clock advancement (which happens at turn-boundary regardless of travel state). HIGH-3 fix partially addresses; MED-2 fully fixed inline via §5.2 NOTE clarifying realm_clock is PL_001-owned not TVL-owned. Acknowledged as fixed inline alongside HIGH-3.
+- **Cumulative outcome (post 1-pass /review-impl):**
+  - TVL_001 design surface declared at 529 lines (+3 from /review-impl fixes); well under 800 hard cap. Status DRAFT-WITH-FIX-CYCLE awaiting acceptance test integration.
+  - **15 V1+30d rule_ids** under NEW `travel.*` namespace — UNCHANGED from DRAFT (HIGH fixes were structural/wording precision, not rule_id-adding).
+  - **15 TVL-V* validators** — UNCHANGED (HIGH-4 updated TVL-V8 description to clarify resource_inventory check, not vital_pool).
+  - **Fortress role hospitality semantic LOCKED**: no public inn (Fortress = military barracks; civilian travelers get outdoor-camp + Exhausted-risk treatment). Consistent with ROUTE_001 §2 + SET_001 §3 SettlementRole semantic.
+  - **PL_006 magnitude 3/5 thresholds LOCKED**: wakeful > 16h ≤ 24h → magnitude=3; wakeful > 24h → magnitude=5. Within PL_006's 1..=10 range; StackPolicy::Replace per PL_006 default for Exhausted.
+  - **realm_clock TVL-ownership clarified**: PL_001 turn-boundary-owned, NOT TVL-owned. Avoids double-advancement risk. Channel-tier resource per TDIL-A1 + PL_001 channel-time discipline.
+  - **vital_pool vs resource_inventory semantic clarified**: TVL deducts from resource_inventory.food / .water (Consumable possessions); vital_pool.hunger / thirst advance INDEPENDENTLY via RES_001 standard per-day-boundary; TVL does not touch vital_pool. Two-step semantic — travel burns through food reserves (Consumable inventory); body gets hungry over fiction-time (Vital body-state) regardless of travel.
+- **Process maturity milestone**: 1-pass /review-impl caught 4 HIGH + 2 MED (1 fixed inline alongside HIGH-3, 1 deferred). HIGH count back at POL_001 level (4 HIGH) — suggests TVL_001 introduced new patterns (cross-feature schema dependency / consumer-feature pattern / multi-aggregate semantic conflation) that didn't carry over from geography activation arc. **HIGH count trend across all features:**
+  - GEO_001 V1 (11 issues 1-pass)
+  - POL_001 V1+30d (4 HIGH + 12 MED + 3 LOW 2-pass)
+  - SET_001 V1+30d (4 HIGH + 4 MED + 1 LOW 1-pass)
+  - ROUTE_001 V1+30d (3 HIGH + 2 MED + 1 LOW + 1 retro 1-pass)
+  - **TVL_001 V1+30d (4 HIGH + 2 MED 1-pass — this commit)**
+  Pattern recognition matures within a feature arc (geography activation: 4 → 4 → 3); resets when entering new domain (TVL = consumer-feature pattern). Expected behavior — each new pattern needs its own /review-impl maturity.
+- **TVL_001 DRAFT is V1+30d-implementation-ready** awaiting EF_001 closure pass coordination (MED-1) + acceptance test integration. **First feature consuming V1+30d activation triangle**. Remaining V1+30d work: NEW `services/travel-service` reference impl + EF_001 cross-feature schema_version 1 → 2 bump at TVL ship + ROUTE_001 RemoveRoute validator pipeline extension with TVL-V14 cross-feature gate + chat-service S9 `[TRAVEL_CONTEXT]` extension + CI gates inherited.
+
+---
+
+## 2026-05-14 — TVL_001 V1+ Travel Mechanics DRAFT (first feature consuming V1+30d activation triangle POL + SET + ROUTE) [SUPERSEDED — folded into combined DRAFT + /review-impl entry above]
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT-only this commit; /review-impl pass deferred to user invocation, mirroring POL_001 + SET_001 + ROUTE_001 flow).
+- **Trigger:** user picked TVL_001 from ROUTE_001 commit's next-step recommendations ("V1+ Travel Mechanics design"). Phase 0 sub-decisions TVL-D1..D7 proposed with recommended defaults; user replied `continue` = approve all 7 with defaults (interpreted as `approve all` per established session pattern). Apply now; commit; ready for /review-impl adversarial pass.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: NEW `actor_travel_state` aggregate row added (T2/Reality sparse per-(actor, journey); first cross-feature consumer aggregate consuming GEO+POL+SET+ROUTE V1+30d substrate)
+  - `02_extension_contracts.md`: NEW §1.4 `travel.*` namespace (15 V1+30d rule_ids + 2 V2+ reservations + cross-feature gate `route.remove_blocked_by_active_journey` added to ROUTE_001 RemoveRoute pipeline); §1 TurnEvent EVT-T1 sub-types row gains `Travel:Initiate`; EVT-T5 sub-types row gains `Scheduled:TravelTick`; EVT-T6 sub-types row gains `Travel:JourneyNarration`
+  - `99_changelog.md`: this entry top-anchored above ROUTE_001 DRAFT entry
+- **Files modified outside `_boundaries/`:**
+  - **NEW** `features/00_travel/_index.md` (folder index for first feature in NEW `00_travel/` folder)
+  - **NEW** `features/00_travel/TVL_001_travel.md` (DRAFT, 526 lines — well under 800 hard cap): sections §1 Why + §2 Domain concepts (Journey + JourneyId blake3-derive + TravelMode + TravelInitiator + ProgressFraction + TravelCost + HospitalityAvailability + TDIL clock advancement + One-journey-per-actor invariant + Multi-segment atomic V1+30d) + §2.5 Event-model mapping (NEW EVT-T1/T5/T6 sub-types; no new EVT-T*) + §3 NEW aggregate `actor_travel_state` (T2/Reality sparse; ProvisionsConsumed + TravelDirection + TravelStatus structs/enums) + §4 Closed enums (TravelMode 2-variant + TravelInitiator 2-variant + TravelDirection 2-variant + TravelStatus 3-variant) + §5 Per-turn progress tick mechanism (Travel:Initiate flow + Scheduled:TravelTick advancement + Travel:Arrive cascade) + §6 Multiverse inheritance (standard contract; cross-feature TVL-V14 ROUTE_001 RemoveRoute gate) + §7 15 validator slots TVL-V1..TVL-V15 + §8 Failure UX 15 V1+30d rule_ids + §9 Cross-service handoff (NEW travel-service) + §10 Composition with siblings (critical TDIL + RES + SET + EF + ROUTE coordination) + §11 RealityManifest extension (no new field) + §12 5 sequences (PC travel hybrid bootstrap demonstrating full activation triangle / insufficient-provisions reject / actor-already-traveling reject / ROUTE_001 RemoveRoute blocked by active journey / forced outdoor camp at Hamlet arrival with Exhausted status) + §13 15 V1+30d-testable acceptance scenarios AC-TVL-1..15 + §14 12 deferrals TVL-D1..D12 + §15 7 open questions TVL-Q1..Q7 + §16 cross-refs + §17 implementation readiness
+  - **NEW** `catalog/cat_00_TVL_travel_foundation.md` (NEW catalog file owning TVL-* namespace; 27 catalog entries TVL-1..TVL-27)
+- **Decisions applied (Phase 0 TVL-D1..D7; user `continue` directive interpreted as approve all 7 defaults):**
+  1. **TVL-D1** folder placement — own `00_travel/` folder (mirrors GEO/MAP/PF/CSC/RES/PROG pattern; travel is foundation-adjacent consumer feature consumed by multiple play loops)
+  2. **TVL-D2** scope — pure travel-mechanics V1+30d; encounter generation V1+30d+ (avoid scope creep)
+  3. **TVL-D3** pathfinder algorithm — on-demand Dijkstra at request time (Route graph small per continent ~40 routes V1+30d; precompute overkill V1+30d)
+  4. **TVL-D4** TDIL clock advancement — selective (actor_clock + body_clock + realm_clock advance; soul_clock preserved unless BodyOrSoul::Soul form rejected at Travel:Initiate per TVL-V7)
+  5. **TVL-D5** travel events — narrative-only V1+30d (LLM journey description via S9 prompt-assembly with [TRAVEL_CONTEXT] sub-section); mechanical encounters V1+30d+
+  6. **TVL-D6** multi-segment journeys — atomic single-segment V1+30d (one Route at a time); composite V1+30d+
+  7. **TVL-D7** PC vs NPC parity — same mechanics V1+30d for PCs + Tracked NPCs; Untracked NPCs excluded per AIT-A8 quantum-observation discipline
+- **Cumulative outcome:**
+  - TVL_001 catalog established (27 entries TVL-1..TVL-27); design surface declared end-to-end at 526 lines (well under 800 hard cap); status DRAFT awaiting /review-impl adversarial pass + acceptance test integration.
+  - **NEW aggregate `actor_travel_state`** — T2/Reality sparse per-(actor, journey); first cross-feature consumer aggregate consuming GEO+POL+SET+ROUTE V1+30d substrate.
+  - **NEW `travel.*` namespace** with 15 V1+30d rule_ids + 2 V2+ reservations; separate from `geography.*` per TVL-D7 (travel is consumer feature, distinct ImpactClass + capability discipline).
+  - **NEW EVT-T sub-types**: EVT-T1 `Travel:Initiate` + EVT-T5 `Scheduled:TravelTick` + EVT-T6 `Travel:JourneyNarration`.
+  - **NEW V1+30d service**: `travel-service` (owns actor_travel_state aggregate + apply_delta + per-turn tick generator).
+  - **Cross-feature schema dependency**: EF_001 entity_binding additive field `travel_journey_id: Option<JourneyId>` — EF_001 schema_version 1 → 2 V1+30d bump per I14 + GEO precedent; coordinated via EF_001 closure pass at TVL ship.
+  - **Cross-feature cross-aggregate validator**: TVL-V14 `route_in_use_by_journey` added to ROUTE_001 RemoveRoute pipeline; new rule_id `route.remove_blocked_by_active_journey`.
+  - **No new capability claim** — travel is regular gameplay action via standard PC/NPC action authorization. Departure from POL/SET/ROUTE precedent (which added admin capability claims) — travel is a regular player-issued action, not Forge admin canonization.
+  - **TDIL_001 critical coordination locked**: selective clock advancement per TDIL-A2 BodyOrSoul distinction (actor+body+realm advance; soul preserved); Soul-form Travel:Initiate rejected per TVL-V7.
+  - **RES_001 critical coordination**: provisions cost deducted at Travel:Initiate via vital_pool Hunger + Thirst advancement; defaults food=1.0/league + water=2.0/league OnFoot V1+30d.
+  - **SET_001 hospitality at arrival**: Settlement.role determines inn-available vs outdoor-camp narration; if outdoor-camp AND wakeful_duration > 16h → PL_006 StatusFlag::Exhausted applied via OutputDecl cascade.
+  - **15 V1+30d-testable acceptance scenarios** AC-TVL-1..15; 12 deferrals TVL-D1..D12 + 7 open questions TVL-Q1..Q7; 15 TVL-V* validators.
+- **Process maturity milestone**: TVL_001 is the FIRST feature consuming V1+30d activation triangle (POL + SET + ROUTE). Pattern locked: geographic-substrate features (GEO_001..GEO_004) populate world_geometry layers; consumer features like TVL_001 read locked substrate + produce per-actor or per-faction runtime state + surface via S9 LLM-context grounding (here via `[TRAVEL_CONTEXT]` sub-section). Future consumer features (encounter generators V1+30d+, strategy gameplay V2+ STRAT_001, faction politics V2+ DIPL_001) layer atop the activation triangle following the same pattern. Phase 0 deep-dive (7 sub-decisions with recommended defaults) → user `continue`/`approve all`/`1` → apply pattern locked across GEO_001 + POL_001 + SET_001 + ROUTE_001 + **TVL_001** (5 features). DRAFT lands in single commit; /review-impl is the natural next step per fix-cycle precedents.
+
+---
+
+## 2026-05-14 — GEO_004 ROUTE_001 Route Network Generator DRAFT + /review-impl 1-pass fix cycle (V1+30d final sibling completing activation triangle POL + SET + ROUTE; Phase 0 ROUTE-D1..D7 LOCKED; 3 HIGH inline-fixed)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT + /review-impl 1st pass all in this commit, mirroring POL_001 + SET_001 fix-cycle precedent).
+- **/review-impl 3 HIGH findings + fixes (applied inline in this commit):**
+  1. **HIGH-1** — Route struct field `seed_source` referenced in §3 prose but never declared in code block. Fixed by adding explicit Route struct extension declaration in §3 with `pub seed_source: Option<RouteSeedSource>` additive field; cross-refs SET-001 HIGH-3 Settlement.seed_source precedent.
+  2. **HIGH-2** — Pair-uniqueness invariant ambiguity: §2 said "settlement-pair", §7+§8 ROUTE-V8 said "cell-pair". Fixed §2 to "cell-pair `(from_cell, to_cell)`" matching Route struct schema; clarified covers all 5 RouteKind variants uniformly (Road/Trail at settlement-cell endpoints + RiverNavigation at river-segment endpoints + SeaLane at coastal-cell endpoints + MountainPass at adjacent mountain-cell endpoints).
+  3. **HIGH-3** — Stage 7d MountainPass edge-betweenness algorithm wrong vertex set: "Mountain/Hill cells only" yields interior-mountain routes, NOT passes (which connect external regions through mountain corridors). Fixed by switching to settlement-pair-betweenness over full TerrainCost graph (vertex set = SETTLEMENTS from SET stage 6 output; edge set = all cell adjacencies weighted by TerrainCost; mountain/hill edges with highest settlement-pair-shortest-path betweenness = passes). Mirrors SET HIGH-4 mountain-pass-semantic-inversion fix pattern.
+- **/review-impl MED findings + fixes (applied inline this commit after user `keep going` directive):**
+  - **MED-1** — V1 AddRoute pre-ROUTE-ship migration policy for existing duplicate-pair routes: ROUTE-V8 retro-validation would fail validation on legacy duplicates. **FIXED INLINE** — added migration policy in §7.2: one-shot scan per reality at ROUTE ship; if duplicates found, keep newest + emit synthetic RemoveRoute deltas for older duplicates (audit-graded with explicit migration reason); idempotent + cohort rollout (staging 24h soak → production); realities with zero duplicates = migration no-op.
+  - **MED-2** — Phase 6 RiverNavigation auto-emit Route count not in §5.2 cost envelope (original ~15 routes/continent estimate). **FIXED INLINE** — cost envelope revised to ~80KB / ~40 procedural Routes per continent (15 Road/Trail + 5 MountainPass + 5 SeaLane + 15 RiverNavigation auto-emit); annotated archetype-sensitivity (Arid/Desert ~25 total; wuxia-archetype ~40); confirms route_density_cap (1000/continent V1+30d) NOT breached.
+  - **MED-3** — §3 schema_version 2→3 reasoning prose was internally self-contradictory ("stays at 2" then "Actually... bumps 2 → 3"). FIXED inline as part of HIGH-1 cleanup (prose rewritten to state decision cleanly).
+- **/review-impl LOW findings (deferred per default policy):**
+  - **LOW-1** — §9 capability migration in-flight admin session handling: cohort-style rollout language present but doesn't explicitly reference "staging → production 24h soak" pattern from POL/SET MED-6 precedent. DEFERRED — cosmetic prose; documentation enhancement candidate.
+- **Cumulative outcome (post 1-pass /review-impl):**
+  - GEO_004 ROUTE_001 design surface declared at 646 lines (+9 from /review-impl fixes); well under 800 hard cap. Status DRAFT-WITH-FIX-CYCLE awaiting acceptance test integration.
+  - **15 V1+30d rule_ids** + 2 V2+ reservations under shared `geography.*` namespace (unchanged from DRAFT — fixes were structural not rule-id-adding).
+  - **14 ROUTE-V* validators** (unchanged from DRAFT).
+  - **`world_geometry.schema_version` 2 → 3 bump** with EXPLICIT Route struct extension declaration (HIGH-1 fix made implicit declaration explicit).
+  - **Pair-uniqueness invariant** clarified as cell-pair, not settlement-pair (HIGH-2 fix).
+  - **MountainPass algorithm** semantically corrected to use settlement-pair-betweenness over full TerrainCost graph (HIGH-3 fix; mirrors SET HIGH-4 inversion-pattern recognition).
+  - 13 deferrals SET-D1..D13 — UNCHANGED (MED-1 + MED-2 noted for ROUTE-D14 + ROUTE-D15 V1+30d implementation-phase tracking but not added to spec V1+30d deferral list since they're implementation-phase ops concerns, not design deferrals).
+- **Process maturity milestone**: 1-pass /review-impl caught 3 HIGH + 3 MED + 1 LOW. POL_001 maturity (2-pass) + SET_001 maturity (1-pass) carries through — ROUTE_001 1-pass found patterns analogous to SET HIGH-3 (field-declaration-missing) and SET HIGH-4 (mountain-heuristic-semantic-inversion). User invoked `/review-impl` after DRAFT POST-REVIEW; same batch-apply pattern as POL/SET fix cycles.
+- **GEO_004 ROUTE_001 DRAFT is V1+30d-implementation-ready** awaiting acceptance test integration. **V1+30d activation triangle remains COMPLETE** (only V2+ resource layer GEO-D10 remains deferred). Remaining work for V1+30d implementation phase: stage 7 reference impl (extends POL+SET module) + auth-service `can_edit_route_geography` migration job (mirrors POL/SET MED-6) + chat-service S9 `[GEOGRAPHIC_CONTEXT]` extension (route_kind + route_origin/destination fields) + CI gates inherited.
+
+---
+
+## 2026-05-14 — GEO_004 ROUTE_001 Route Network Generator DRAFT (V1+30d activation feature; completes activation triangle; Phase 0 ROUTE-D1..D7 LOCKED) [SUPERSEDED — folded into combined DRAFT + /review-impl entry above]
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT-only this commit; /review-impl pass deferred to user invocation, mirroring POL_001 + SET_001 flow).
+- **Trigger:** user picked option 1 from SET_001 commit's next-step recommendations (`GEO_004 ROUTE_001 Route Network Generator design — V1+30d sibling per GEO-D4`). Phase 0 sub-decisions ROUTE-D1..D7 proposed with recommended defaults; user replied `approve all` = approve all 7 with defaults. Apply now; commit; ready for /review-impl adversarial pass.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: `world_geometry` row owner annotation extended with ROUTE_001 V1+30d activation context (pipeline stage 7 multi-pass 7a-7d activation, GeographyDeltaKind 12 → 13 V1+30d active, capability `can_edit_route_geography` migration mirroring POL_001 MED-6 + SET_001, CreativeSeed v4 → v5 schema bump, world_geometry v2 → v3 schema bump for additive Route.seed_source, POL + SET coordination locked stage 5 → 6 → 7 → 8 ordering, V1+30d activation triangle COMPLETE). No new aggregate.
+  - `02_extension_contracts.md`: §1.4 `geography.*` row extended with ROUTE_001 V1+30d 10 rule_ids + 2 V2+ reservations + capability addition note + GeographyDeltaKind closed-enum bump R3 additive (12 V1+30d → 13 V1+30d active) + CreativeSeed v4 → v5 additive fields + world_geometry v2 → v3 schema_version bump + POL + SET coordination notes; §2 RealityManifest GeographyDeltaKind comment block updated to reflect 13 V1+30d active
+  - `99_changelog.md`: this entry top-anchored above SET_001 DRAFT entry
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_004_route_network_generator.md` (NEW, 637 lines): single DRAFT cycle; sections §1 Why + §2 Domain concepts (Route + BurgScore reused from POL/SET / NavalCost NEW per-water-cell metric / SettlementPair threshold per ROUTE-D4 / RouteSubstage 4-variant audit / one-route-per-pair invariant V1+30d / bidirectional V1+30d) + §2.5 Event-model mapping (NO new EVT-T*; reuses GEO_001 + POL_001 + SET_001 EVT-T3/T8 registrations) + §3 Schema activation (no new aggregate; extends GeographyDeltaKind closed enum 12 V1+30d → 13 V1+30d active per R3 additive; world_geometry v2 → v3 bump for additive Route.seed_source field) + §4 Closed enums (RouteSeedMode 3-variant + RouteSeedSource 2-variant + RouteSubstage 4-variant audit-only + CanonicalRouteDecl additive on v5) + §5 Pipeline stage 7 multi-pass algorithm (5 phases: canonical + 7a Road Dijkstra + 7b Trail + 7c SeaLane BFS + 7d MountainPass Brandes' + RiverNavigation inline; per-stage RNG substream `settlement_seed_substream(b"stage7_route")` reserved for V1+30d+) + §6 CreativeSeed authoring additive fields within v4 → v5 (route_seed_mode + canonical_routes; LLM template bump v3.tmpl → v4.tmpl) + §7 apply_delta total-function for ReclassifyRoute V1+30d + V1 AddRoute/RemoveRoute capability migration with ROUTE-V8 pair-uniqueness retro-validation + §8 14 validator slots ROUTE-V1..ROUTE-V14 + §9 DP primitives + capability JWT addition + Tier discipline per S5 + auth-service migration plan + §10 Composition with siblings (POL soft coordination + **SET critical coordination** for Dijkstra endpoints + MAP visual overlay + TVL_001 V1+ primary consumer) + §11 RealityManifest extension (no new field; absorbs via creative_seed v5) + §12 Failure UX 10 V1+30d rule_ids + 2 V2+ reservations + §13 Cross-service handoff + §14 Multiverse inheritance (inherits GEO_001 + POL_001 + SET_001 unchanged) + §15 4 sequences (hybrid bootstrap demonstrating full pipeline 1-4 → 5 POL → 6 SET → 7 ROUTE → 8 POL / Forge ReclassifyRoute Trail→Road / Forge AddRoute capability-missing reject / snapshot fork inheritance) + §16 15 V1+30d-testable acceptance scenarios AC-ROUTE-1..15 + §17 13 deferrals ROUTE-D1..D13 + §18 5 open questions ROUTE-Q1..Q5 + §19 cross-refs + §20 implementation readiness
+  - `features/00_geography/_index.md`: GEO_004 row added at top; Active marker updated for ROUTE_001 V1+30d DRAFT
+  - `catalog/cat_00_GEO_geography_foundation.md`: NEW ROUTE_001 sub-section with 25 catalog entries (ROUTE-1..ROUTE-25) under the existing `GEO-*` namespace (ROUTE-* is sub-prefix mirroring POL-* + SET-*); GEO-23 catalog placeholder upgraded marker
+- **Decisions applied (Phase 0 ROUTE-D1..D7; user approved all 7 with defaults via `approve all`):**
+  1. **ROUTE-D1** scope — pure placement + 1 new V1+30d admin DeltaKind (ReclassifyRoute) only; attribute-tuning V2+. Mirrors SET-D1 scope discipline.
+  2. **ROUTE-D2** route seed source — Hybrid (canonical_routes V1+30d additive in CreativeSeed take priority + procedural Dijkstra fills remainder). Mirrors POL-D2 + SET-D2 hybrid pattern.
+  3. **ROUTE-D3** algorithm — Multi-pass per GEO_001 §5 stage 7 baseline; 4 sub-stages 7a-7d (Road Dijkstra / Trail nearest-connection / SeaLane water-cell BFS / MountainPass Brandes' edge-betweenness) + RiverNavigation inline auto-derive.
+  4. **ROUTE-D4** settlement-pair threshold — population_tier ≥ 2 for Road; population_tier ∈ [0, 1] for Trail. Avoids O(N²) Road explosion.
+  5. **ROUTE-D5** RouteKind activation — All 5 V1+30d active (Road + Trail + SeaLane + RiverNavigation + MountainPass). Complete closed-enum activation.
+  6. **ROUTE-D6** Forge admin DeltaKinds V1+30d — 1 new (ReclassifyRoute). AddRoute + RemoveRoute already V1 GEO_001. Total GeographyDeltaKind V1+30d active 12 → 13.
+  7. **ROUTE-D7** namespace — share `geography.*` (mirrors POL-D7 + SET-D7). ROUTE is intrinsic to geography substrate.
+- **Cumulative outcome:**
+  - GEO_004 ROUTE_001 catalog established (25 entries; ROUTE-1..ROUTE-25); design surface declared end-to-end at 637 lines (well under 800 hard cap); status DRAFT awaiting /review-impl adversarial pass + acceptance test integration (LOCK criterion: ≥10 of 15 AC-ROUTE-1..15 pass against world-service POL+SET+ROUTE reference impl).
+  - 10 V1+30d rule_ids + 2 V2+ reservations added under shared `geography.*` namespace; total namespace count 13 V1 GEO_001 + 20 V1+30d POL_001 + 15 V1+30d SET_001 + 10 V1+30d ROUTE_001 = **58 V1+30d** when ROUTE ships. `geography.layer_activation_deferred_v1` lifted for route layer specifically at ROUTE ship.
+  - `GeographyDeltaKind` closed-enum bump 12 V1+30d active → **13 V1+30d active** (ReclassifyRoute). Total V2+ reservations: 1 from GEO_001 (SetResourceOverride per GEO-D10) + 2 from POL_001 POL-D14 (CreateState + DestroyState).
+  - Capability addition: `can_edit_route_geography` JWT claim — Tier 2 ImpactClass=Griefing for ReclassifyRoute + AddRoute V1; Tier 1 ImpactClass=Destructive for RemoveRoute V1 (preserved per GEO_001 §7); additive to existing `can_edit_geography` + `can_edit_political_geography` + `can_edit_settlement_geography`; one-shot migration auto-grants to all current `can_edit_geography` holders at ROUTE ship; **4-claim quad-pair at role-grant time post-ROUTE-ship**.
+  - **CreativeSeed schema_version bumps 4 → 5** — ROUTE_001 adds 2 additive fields (route_seed_mode + canonical_routes); mirrors GEO_001b 1→2 + POL_001 2→3 + SET_001 3→4 precedent. LLM authoring template bumps v3.tmpl → v4.tmpl with CreativeSeed v5 schemars-generated JSON Schema.
+  - **world_geometry.schema_version bumps 2 → 3** — ROUTE_001 adds `Route.seed_source: Option<RouteSeedSource>` field (parallel to SET_001 HIGH-3 fix precedent for Settlement.seed_source). First non-fix-cycle schema bump triggered by feature-additive field; pattern established by SET_001 carries through.
+  - 14 ROUTE-V* validators (ROUTE-V1..ROUTE-V14) — stage 7 setup validators + 1 new V1+30d DeltaKind + V1 AddRoute/RemoveRoute capability gate retro-validation + RouteKind-specific terrain checks for SeaLane/RiverNavigation/MountainPass.
+  - 15 V1+30d-testable acceptance scenarios AC-ROUTE-1..15.
+  - 13 deferrals ROUTE-D1..D13 + 5 open questions ROUTE-Q1..Q5. Notable: ROUTE-Q1 settlement_seed substream vs dedicated route_seed — V1+30d shares settlement_seed via substream tag `b"stage7_route"` (deterministic algorithm V1+30d; substream reserved for V1+30d+ probabilistic extensions). ROUTE-D11 V2+ multi-continent inter-continent Road via SeaLane bridge.
+  - **V1+30d activation triangle COMPLETE**: political (POL stage 5+8) + settlement (SET stage 6) + route (ROUTE stage 7) layers all activated; only V2+ resource layer (GEO-D10) remains deferred. Strategy substrate readiness for future STRAT_001 V2+ now COMPLETE at design layer — every layer STRAT_001 will consume has its schema locked + activation generator designed.
+  - **TVL_001 V1+ dependency unblocked**: ROUTE_001 V1+30d ships the Route graph TVL_001 V1+ needs for inter-settlement travel-speed + cost modeling. TVL_001 V1+ design can now begin consuming the V1+30d-locked ROUTE schema.
+- **Process lesson:** Phase 0 deep-dive (7 sub-decisions with recommended defaults) → user `approve all` → apply pattern locked at GEO_001 (D1-D7) + GEO_002 POL_001 (D1-D7) + GEO_003 SET_001 (D1-D7) repeats cleanly for GEO_004 ROUTE_001 (D1-D7). DRAFT lands in single commit; /review-impl is the natural next step (per the GEO_001 + POL_001 + SET_001 fix-cycle precedents — POST-REVIEW alone rubber-stamps; /review-impl catches HIGH/MED architectural issues). User invoked POL_001's /review-impl 2 passes + SET_001's /review-impl 1 pass explicitly; same pattern likely for ROUTE_001.
+
+---
+
+## 2026-05-14 — GEO_003 SET_001 Settlement Generator DRAFT + /review-impl 1-pass fix cycle (V1+30d activation feature; sibling of POL_001; Phase 0 SET-D1..D7 LOCKED; 4 HIGH + 4 MED inline-fixed)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT + /review-impl 1st pass + MED batch all in this commit, mirroring POL_001 fix-cycle precedent).
+- **/review-impl 4 HIGH findings + fixes (applied inline in this commit):**
+  1. **HIGH-1** — §5.1 STEP C4 referenced undefined `default_naming_style`; stage-6/8 cycle for settlement naming unresolved. Fixed by pinning V1+30d procedural settlement naming to culture-agnostic deterministic synthesis `format!("{}_{:06x}", biomes[cell_id].as_str(), settlement_id_short_hex)`; culture-aware Markov-chain naming deferred V2+ as new SET-D13 (mirrors POL-D13 stage-cycle severance precedent).
+  2. **HIGH-2** — §5.1 STEP D1 vs STEP D3 contradiction (canonical Town vs lowest-GeoCellId Capital assignment). Fixed by reordering STEP D: D0 CANONICAL OVERRIDE processed FIRST; D1 POLITICAL FIRST operates only on settlements NOT canonically-pinned; D3 absorbed into D0 reframing.
+  3. **HIGH-3** — Settlement struct gains `seed_source: Option<SettlementSeedSource>` field but `world_geometry.schema_version` not bumped from 1. Fixed by bumping `world_geometry.schema_version` 1 → 2 per I14 + GEO_001 MED-5 precedent; reader semantics documented (v1 readers default-tolerant; v2 readers see seed_source natively; pre-SET cohort governed by `generator_pipeline_version` pin per POL MED-11).
+  4. **HIGH-4** — §5.1 STEP D2 mountain-pass detection heuristic semantically inverted ("high cell with low neighbor" = cliff/slope, NOT mountain pass). Fixed by inverting to `cell.heightmap < 30000 AND ≥2 neighbors have heightmap > 50000` (low corridor between high regions).
+- **/review-impl 4 MED findings + fixes (applied inline in this commit):**
+  - **MED-1** — Cell-uniqueness in STEP C3 implicit via Euclidean min-separation. Made explicit: STEP C3 check (b) min-distance to any already-placed Settlement ≥ PoissonDiskMinSeparation enforces cell-uniqueness by construction (distance=0 < any positive PoissonDiskMinSeparation rejects same-cell candidates); documentation clarification only.
+  - **MED-2** — Canonical multi-Capital-per-state at bootstrap not explicitly caught. Fixed by adding NEW SET-V16 multi-canonical-capital-collision validator + NEW `geography.canonical_capital_collision` rule_id (schema-level reject at RealityBootstrapper stage 6 step B2; defensive against author-corruption where ≥2 canonical_settlements declared with role=Capital in same state's capital_province cells).
+  - **MED-3** — §5.1 STEP D1 forced procedural placement should bypass burg_score threshold for harsh worlds (impassable terrain where all cells fail >0.05 threshold). Fixed by explicit "bypassing burg_score min-threshold" annotation in STEP D1; ensures Province.capital_settlement_id always populated for state-capital provinces.
+  - **MED-5** — Forced procedural placement at "capital_province centroid" could fall in water cell (concave provinces) OR already-occupied. Fixed by changing to "lowest-GeoCellId LAND cell in capital_province.member_cells" (deterministic + always valid land cell since POL stage 5 only assigns land cells to provinces via Ocean=∞ TerrainCost).
+- **/review-impl LOW findings**:
+  - **LOW-3** — Settlement.id generation clarified as blake3-derive per SPIKE_04 GAP-S3.E discipline (canonical inputs: `continent_channel_id || settlement_seed || "stage6_canonical|procedural" || index_be_bytes`); replaces fuzzy "deterministic_rng" wording.
+  - **MED-4 + LOW-1 + LOW-2 + LOW-4 + LOW-5** acknowledged but escalated to user decision (capital-swap V1+30d limitation already tracked via SET-D11; capability narrowing wording cosmetic; cost-envelope arithmetic; AC-SET-1 range loose) — DEFERRED per default policy (LOW + cosmetic don't batch with HIGH/MED).
+- **Cumulative outcome (post 1-pass /review-impl):**
+  - GEO_003 SET_001 design surface declared at ~737 lines (+1 from /review-impl fixes); under 800 hard cap. Status DRAFT-WITH-FIX-CYCLE awaiting acceptance test integration.
+  - **15 V1+30d rule_ids** added under shared `geography.*` namespace (14 from DRAFT + 1 from /review-impl MED-2 batch); total namespace count 13 V1 GEO_001 + 20 V1+30d POL_001 + 15 V1+30d SET_001 = **48 V1+30d** when SET ships.
+  - **16 SET-V* validators** (SET-V1..SET-V16) — 15 from DRAFT + 1 from /review-impl MED-2 batch (SET-V16 multi-canonical-capital-collision).
+  - **`world_geometry.schema_version` 1 → 2 bump** (HIGH-3 fix) — first aggregate-level schema bump since GEO_001 MED-5 introduced the field. Settlement struct now carries `seed_source: Option<SettlementSeedSource>`.
+  - **CreativeSeed schema_version 3 → 4 bump** unchanged from DRAFT (2 additive fields settlement_seed_mode + settlement_density_hint).
+  - **13 deferrals SET-D1..D13** (12 from DRAFT + 1 from /review-impl HIGH-1 batch — SET-D13 culture-aware procedural settlement naming V2+).
+  - **Pipeline stage ordering locked**: 1-4 GEO_001 → 5 POL_001 → 6 SET_001 → 7 ROUTE_001 V1+30d-future → 8 POL_001. Stage 6 STEP D0 CANONICAL OVERRIDE processed FIRST per HIGH-2 fix precedence.
+- **Process maturity milestone**: 1-pass /review-impl caught 4 HIGH + 4 MED + LOW findings — pattern locked across GEO_001 (11 issues 1-pass) / GEO_002 POL_001 (4 HIGH + 12 MED + 3 LOW 2-pass) / GEO_003 SET_001 (4 HIGH + 4 MED 1-pass). Common pattern: /review-impl catches HIGH issues POST-REVIEW alone rubber-stamps; iterating until 0 HIGH is the right loop. For SET_001 the 1-pass count is lower because POL_001's process maturity carried over (stage-cycle pattern recognized early; struct schema_version discipline applied automatically; hybrid mode semantic conflict avoided in initial DRAFT). User picked `keep going` for the fix application after I surfaced findings; same single-cycle batch-apply pattern as POL_001.
+- **GEO_003 SET_001 DRAFT is V1+30d-implementation-ready** awaiting acceptance test integration in `world-service` reference impl. Remaining work for V1+30d implementation phase: stage 6 reference impl (extends POL_001 module) + auth-service `can_edit_settlement_geography` migration job (mirrors POL_001 MED-6) + chat-service S9 `[GEOGRAPHIC_CONTEXT]` extension (closes the slot POL_001 V1+30d already documented but had no Settlement data to populate) + CI gates (replay-determinism + apply_delta total-function + canonical-JSON normalization + burg-score-determinism + Capital-role-assignment-tiebreaker deterministic + POL stage 5 → SET stage 6 → POL stage 8 stage-ordering enforcement).
+
+---
+
+## 2026-05-14 — GEO_003 SET_001 Settlement Generator DRAFT (V1+30d activation feature; sibling of POL_001; Phase 0 SET-D1..D7 LOCKED) [SUPERSEDED — folded into combined DRAFT + /review-impl entry above]
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern; DRAFT-only this commit — /review-impl pass deferred to user invocation, mirroring POL_001 flow).
+- **Trigger:** user picked option 2 from POL_001 commit's next-step recommendations (`GEO_003 SET_001 Settlement Generator design — V1+30d sibling of POL_001`). Phase 0 sub-decisions SET-D1..D7 proposed with recommended defaults; user replied `1` = approve all 7 with defaults. Apply now; commit; ready for /review-impl adversarial pass.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: `world_geometry` row owner annotation extended with SET_001 V1+30d activation context (pipeline stage 6 activation, GeographyDeltaKind 9 → 12 V1+30d active, mixed tier discipline RemoveSettlement Tier 1 + Relocate/Promote Tier 2, capability `can_edit_settlement_geography` migration mirroring POL_001 MED-6, CreativeSeed v3 → v4 schema bump, POL_001 Province.capital_settlement_id linkage activation closing POL V1+30d-standalone None field, POL stage 5 → SET stage 6 → POL stage 8 coordination order locked). No new aggregate (POL_001 + SET_001 V1+30d populate GEO_001's existing fields).
+  - `02_extension_contracts.md`: §1.4 `geography.*` row extended with SET_001 V1+30d 14 rule_ids (3 schema-level + 11 user-facing) + capability addition note + GeographyDeltaKind closed-enum bump R3 additive (9 V1+30d → 12 V1+30d active) + CreativeSeed v3 → v4 additive fields + 2 new V2+ reservations (settlement_narrative_proposal_pending + multi_settlement_per_cell_pending) + POL coordination note; §2 RealityManifest GeographyDeltaKind comment block updated to reflect 12 V1+30d active + V2+ reservations
+  - `99_changelog.md`: this entry top-anchored above POL_001 DRAFT entry
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_003_settlement_generator.md` (NEW, 726 lines): single DRAFT cycle; sections §1 Why + §2 Domain concepts (BurgScore + PoissonDiskMinSeparation + SettlementDensityHint + SettlementSeedSource + SettlementSeedMode + one-settlement-per-cell V1+30d invariant) + §2.5 Event-model mapping (NO new EVT-T*; reuses GEO_001 + POL_001 EVT-T3/T8 registrations) + §3 Schema activation (no new aggregate; extends GeographyDeltaKind closed enum 9 V1+30d → 12 V1+30d active per R3 additive; Option<SettlementRole> + Option<u8> on PromoteSettlement; CreativeSeed schema_version 3 → 4 bump) + §4 Closed enums (SettlementSeedMode 3-variant + SettlementDensityHint 3-variant + SettlementSeedSource 2-variant + BurgScoreComponent informational decomposition) + §5 Pipeline stage 6 algorithm detail (5-step: burg_score precomputation / canonical placement / procedural Poisson-disk weighted sample / political-first-then-terrain role assignment / hybrid population_tier derivation; per-stage RNG substream `settlement_seed_substream(tag)` discipline mirroring POL precedent) + §6 CreativeSeed authoring additive fields within v3 → v4 (settlement_seed_mode + settlement_density_hint; LLM template bump v2.tmpl → v3.tmpl) + §7 apply_delta total-function for 3 V1+30d DeltaKinds (Relocate / Promote with capital-context validation / Remove with capital-protection) + §8 15 validator slots (SET-V1..SET-V15) + §9 DP primitives + capability JWT addition + mixed tier discipline + auth-service migration plan + §10 Composition with siblings (POL coordination critical; MAP V1+ position derivation ACTIVATED at SET ship per GEO-D5; PF + CSC role-driven inputs) + §11 RealityManifest extension (no new field; absorbs via creative_seed v4) + §12 Failure UX 14 rule_ids + §13 Cross-service handoff + §14 Multiverse inheritance (inherits GEO_001 §9 + POL_001 §14 unchanged) + §15 4 sequences (hybrid bootstrap demonstrating POL stage 5 → SET stage 6 → POL stage 8 / Forge RelocateSettlement / Forge PromoteSettlement / Forge RemoveSettlement capital-protection reject + admin retry pattern + §15.4 demonstrates V1+30d admin asymmetry for "destroy state capital" tracked SET-D11 V2+) + §16 15 V1+30d-testable acceptance scenarios AC-SET-1..15 + §17 12 deferrals SET-D1..D12 + §18 5 open questions SET-Q1..Q5 + §19 cross-refs + §20 implementation readiness
+  - `features/00_geography/_index.md`: GEO_003 row added; coordination note updated for SET_001 V1+30d composition + POL stage 5 → SET stage 6 → POL stage 8 ordering
+  - `catalog/cat_00_GEO_geography_foundation.md`: NEW SET_001 sub-section with 26 catalog entries (SET-1..SET-26) under the existing `GEO-*` namespace (SET-* is sub-prefix mirroring POL-*); GEO-22 catalog placeholder upgraded marker added
+- **Decisions applied (Phase 0 SET-D1..D7; user approved all 7 with defaults via `1`):**
+  1. **SET-D1** scope — pure burg placement + role assignment V1+30d (sub-cell interior layout V2+ owned by CSC_001 V2+ extension). Avoids scope creep; settlement-graph schema scope is settlement-graph scope.
+  2. **SET-D2** capital seed source — Hybrid (canonical_settlements take priority + procedural Poisson-disk fills to target count). Mirrors POL-D2 hybrid pattern. SettlementSeedMode 3-variant enum (Canonical/Procedural/Hybrid default).
+  3. **SET-D3** population_tier derivation — Hybrid (canonical author-pinned; procedural derives from burg_score → tier mapping function: `clamp(floor(burg_score / max_burg_score × 6), 0, 6)`; mountain-pass Fortress +1 terrain bonus capped 6).
+  4. **SET-D4** role assignment — Hybrid political-first-then-terrain (step 1: state.capital_province cells → Capital; step 2: mountain-pass → Fortress, coast+high-flux → port City; step 3: population_tier mapping for remainder). Reads POL_001 stage 5 output → settlements assignment.
+  5. **SET-D5** SettlementDensityHint 3-variant enum (Sparse 800 cells/settlement / Medium 400 / Dense 200; default Medium). Mirrors POL_001's procedural_density precedent.
+  6. **SET-D6** Forge admin DeltaKinds V1+30d — 3 new (RelocateSettlement + PromoteSettlement + RemoveSettlement). AddNamedSettlement already V1 GEO_001. Symmetric set covers admin canonization needs; RemoveSettlement closes V1 gap (you can add but couldn't remove). Mixed tier discipline: Remove = Tier 1 ImpactClass=Destructive per S5 matching RemoveRoute V1 + 4 POL V1+30d; Relocate/Promote = Tier 2 ImpactClass=Griefing.
+  7. **SET-D7** namespace — share `geography.*` (mirrors POL-D7 — SET is intrinsic to geography substrate). Carving sub-namespaces only for genuinely separate concerns.
+- **Cumulative outcome:**
+  - GEO_003 SET_001 catalog established (26 entries; SET-1..SET-26); design surface declared end-to-end at 726 lines (under 800 hard cap); status DRAFT awaiting /review-impl adversarial pass + acceptance test integration (LOCK criterion: ≥10 of 15 AC-SET-1..15 pass against world-service SET reference impl).
+  - 14 V1+30d rule_ids added under shared `geography.*` namespace; total namespace count 13 V1 GEO_001 + 20 V1+30d POL_001 + 14 V1+30d SET_001 = **47 V1+30d** when SET ships. `geography.layer_activation_deferred_v1` lifted for settlement layer specifically at SET ship.
+  - `GeographyDeltaKind` closed-enum bump 9 V1+30d active → **12 V1+30d active** (RelocateSettlement + PromoteSettlement + RemoveSettlement). Total V2+ reservations: 1 from GEO_001 (SetResourceOverride per GEO-D10) + 2 from POL_001 POL-D14 (CreateState + DestroyState).
+  - Capability addition: `can_edit_settlement_geography` JWT claim — mixed tier discipline (RemoveSettlement Tier 1; Relocate/Promote Tier 2); additive to existing `can_edit_geography` + `can_edit_political_geography`; one-shot migration auto-grants to all current `can_edit_geography` holders at SET ship.
+  - **CreativeSeed schema_version bumps 3 → 4** — SET_001 adds 1 additive field-set (settlement_seed_mode + settlement_density_hint); mirrors GEO_001b 1→2 + POL_001 2→3 precedent. LLM authoring template bumps v2.tmpl → v3.tmpl with CreativeSeed v4 schemars-generated JSON Schema.
+  - 15 SET-V* validators (SET-V1..SET-V15) — stage 6 setup validators (canonical_settlement_unreachable_v1 + canonical_settlement_cell_collision + procedural-burg-score-min-threshold informational) + 3 V1+30d DeltaKinds validators (Relocate / Promote / Remove with role-context safety checks) + capability gate.
+  - 15 V1+30d-testable acceptance scenarios AC-SET-1..15 (bootstrap modes + canonical validation + 3 V1+30d DeltaKind happy + reject paths + capability check).
+  - 12 deferrals SET-D1..D12 + 5 open questions SET-Q1..Q5. Notable: SET-D10 Forge:BundleDeltas V2+ + SET-D11 Forge:SwapStateCapital V2+ both address V1+30d admin asymmetry for "destroy state capital" scenarios (§15.4 demonstrates the V1+30d limitation explicitly).
+  - **POL_001 Province.capital_settlement_id linkage activated**: closes POL_001 V1+30d-standalone None field. Stage 6 STEP D1 populates per state. Strategy-substrate Province+State+Settlement triangle now complete.
+  - **Pipeline stage ordering locked**: stages 1-4 (GEO_001) → stage 5 (POL_001 political growth) → stage 6 (SET_001 settlement placement) → stage 8 (POL_001 culture spread). Stage 7 (POL_001 ROUTE_001 V1+30d sibling — future GEO_004) sits between SET and culture-spread.
+  - **No new aggregate**; SET_001 populates GEO_001's existing `world_geometry.settlements` Vec + Province.capital_settlement_id linkage via pipeline stage 6 + 3 V1+30d DeltaKinds.
+- **Process lesson:** Phase 0 deep-dive (7 sub-decisions with recommended defaults) → user `1` → apply pattern locked at GEO_001 (D1-D7) + GEO_002 POL_001 (D1-D7) repeats cleanly for GEO_003 SET_001 (D1-D7). DRAFT lands in single commit; /review-impl is the natural next step (per the GEO_001 + POL_001 fix-cycle precedents — POST-REVIEW alone rubber-stamps; /review-impl catches HIGH/MED architectural issues). User invoked POL_001's /review-impl explicitly; same pattern likely for SET_001.
+
+---
+
+## 2026-05-14 — GEO_002 POL_001 Political Layer Generator DRAFT + /review-impl 2-pass fix cycle (V1+30d activation feature; Phase 0 D1-D7 LOCKED; HIGH-1..HIGH-4 + 12 MED + 3 LOW resolved)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern — DRAFT + /review-impl 1st pass + /review-impl 2nd pass + MED batch + LOW batch all in this commit, mirroring GEO_001 fix-cycle precedent).
+- **Trigger:** user picked option 3 from SESSION_HANDOFF next-step recommendations (`GEO_002 POL_001 Political Layer Generator design — V1+30d schedule; activates GEO_001 political layer fields`). Phase 0 sub-decisions D1-D7 proposed with recommended defaults; user replied `1` = approve all 7 with defaults. DRAFT landed; user invoked `/review-impl` → 3 HIGH issues caught + fixed inline → user invoked `/review-impl` 2nd pass → 1 HIGH (introduced by 1st-pass HIGH-3 fix) + 12 MED + 3 LOW caught → user replied `tiếp tục đi` (= "proceed / fix all") → all 16 findings batch-applied → ready for commit.
+- **/review-impl 4 HIGH findings + fixes (applied inline in this commit):**
+  1. **HIGH-1** — CreativeSeed.schema_version 2 → 3 bump (POL_001 adds 3 additive fields; per I14 + GEO_001b 1→2 precedent, additive field-sets bump version). Propagated to §3 doc + LLM-authoring template version bump v1.tmpl → v2.tmpl note.
+  2. **HIGH-2** — PoliticalSeedMode::Canonical semantic conflict across §4.1 / §5.1 / AC-POL-3. Aligned all 3 to: Canonical = NO procedural seeds; canonical-province flood-fill covers entire continent; canonical_state_decl_index assignments derive state membership directly (no algorithmic state flood-fill).
+  3. **HIGH-3** — Procedural state-formation "greedy clustering" was algorithmically ambiguous (EVT-A9 replay-determinism violation). Pinned to deterministic graph-connected-component clustering on orphan provinces via TerrainCost path ≤ max_state_radius + geometric-distance pre-filter (MED-10 cost-envelope optimization). Per-stage RNG sub-streaming added (MED-3 1st pass).
+  4. **HIGH-4** *(introduced by HIGH-3 fix)* — Stage 5 procedural state naming created circular dependency with stage 8 (state.name needs culture_tag, culture_tag needs state.member_provinces). Severed via culture-agnostic V1+30d naming `{centroid_province.name}_State_{6-hex-of-state-id}`; culture-aware Markov-chain naming deferred V2+ as new POL-D13.
+- **/review-impl 12 MED findings + fixes (applied inline in this commit):**
+  - **MED-1** — SetCultureRegion empty cell_ids → reject `geography.set_culture_region_empty` + POL-V16 validator + AC-POL-16
+  - **MED-2** — SetCultureRegion new-CultureRegion hearth_cell deterministic via `MIN(cell_ids by GeoCellId)` (replaces order-dependent "first cell")
+  - **MED-3** — SplitProvince partition_count<2 separated into dedicated reject `geography.split_partition_min_2` + POL-V17 validator + AC-POL-17 (distinct user-facing error from partition_cap_exceeded for >8)
+  - **MED-4** — TransferProvinceToState same-state → reject `geography.transfer_self_target` + POL-V18 validator + AC-POL-18
+  - **MED-5** — No CreateState / DestroyState V1+30d deferred to V2+ via new POL-D14 (paired with POL-D2 T6 NarrativePoliticalEdit Generator since LLM-proposed political evolution often co-occurs with state creation/extinction); V1+30d civil-war breakaway scenarios use `(SplitProvince → TransferProvinceToState)` chain referencing pre-canonical-declared States
+  - **MED-6** — Capability migration plan for POL ship: auth-service one-shot migration auto-grants `can_edit_political_geography` to all current `can_edit_geography` holders; PLT_001 `forge.roles_version` bump; cohort-style rollout (staging→production 24h soak)
+  - **MED-7** — CultureTag tiebreaker pinned to `as_canonical_str() -> &str` byte-wise lexicographic order (CultureTag opaque-V1 representation pinned via this method)
+  - **MED-8** — Canonical mode with 0 canonical_provinces → reject `geography.canonical_mode_no_seeds` (degenerate world) + POL-V19 validator + AC-POL-19
+  - **MED-9** — canonical_state.capital_province ↔ canonical_province.canonical_state cross-reference asymmetry → reject `geography.canonical_state_province_mismatch` + POL-V20 validator + AC-POL-20
+  - **MED-10** — HIGH-3 clustering O(V²) cost-envelope clarified + geometric-distance pre-filter optimization documented + CI gate (synthetic-orphan stress test with V=500 verifies <500ms wall-clock)
+  - **MED-11** — HIGH-1 wording precision: actual cross-version data path governed by `generator_pipeline_version` pin (GEO_001 §3 MED-4) — pre-POL realities never run stage 5/8 regardless of CreativeSeed version they hold. Schema_version compat matters only at fresh bootstrap.
+  - **MED-12** — Stage 8 `political_seed_substream(b"stage8_*")` clarified as RESERVED for V2+ extensions; stage 8 V1+30d has no RNG consumer (deterministic flood-fill + Vec-order tiebreaker + CultureTag.as_canonical_str tiebreaker)
+- **/review-impl 3 LOW findings + fixes (applied inline in this commit):**
+  - **LOW-1** — All 4 apply_delta function signatures changed from `Result<(), DeltaApplyError>` to `()` (consistency with GEO_001 §7; DeltaApplyError was referenced but never defined)
+  - **LOW-2** — AC-POL-21 added: island-state coverage (water-isolated land mass with capital; Ocean=∞ TerrainCost preserves island as separate state cluster)
+  - **LOW-3** — "Parallel Dijkstra" wording → "multi-source Dijkstra" (clarified single priority queue seeded with every ProvinceSeed at cost 0)
+- **Process lesson — 2-pass /review-impl maturity model:**
+  1st pass caught 3 HIGH issues; 2nd pass caught 1 NEW HIGH issue (introduced by 1st-pass HIGH-3 fix — fix-introduced regression) + 12 MED + 3 LOW that 1st pass had missed. Validates the CLAUDE.md Phase 9 + handoff discipline: POST-REVIEW alone rubber-stamps; /review-impl is a distinct mental mode; **iterating /review-impl until 0 HIGH findings is the right loop**. The 2nd pass caught HIGH-4 specifically because HIGH-3's fix referenced "stage 8 backreference" which is the kind of cross-stage circular dep that requires fresh adversarial reading post-fix. Pattern locked for future foundation-feature decision-locking.
+- **Status outcome:** GEO_002 DRAFT is V1+30d-implementation-ready with all surfaced issues addressed. Remaining work for V1+30d implementation phase: `world-service/geography-generator` political layer Rust module + auth-service capability migration job + chat-service S9 prompt-assembly `[GEOGRAPHIC_CONTEXT]` extension with state_name + culture_tag fields + CI gates (replay-determinism + apply_delta total-function + HIGH-3 clustering V=500 stress test + canonical-JSON normalization inherited).
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: `world_geometry` row owner annotation extended with POL_001 V1+30d activation context (pipeline stages 5+8 activation, GeographyDeltaKind 5 V1 → 9 with V1+30d active, capability `can_edit_political_geography`, namespace extension, Phase 0 D1-D7 LOCKED summary). No new aggregate (POL_001 V1+30d populates GEO_001's existing fields).
+  - `02_extension_contracts.md`: §1.4 `geography.*` row extended with POL_001 V1+30d 15 rule_ids (5 schema-level + 10 user-facing) + capability addition note + GeographyDeltaKind closed-enum bump R3 additive (5 V1 + 4 V1+30d active) + CreativeSeed v2 additive fields + lifted `geography.layer_activation_deferred_v1` for political layer specifically + 1 new V2+ reservation; §2 RealityManifest GeographyDeltaKind comment block updated to reflect 5 V1 + 4 V1+30d + 1 V2+ enum count
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_002_political_layer.md` (NEW, 695 lines): single DRAFT cycle; sections §1 Why + §2 Domain concepts + §2.5 Event-model mapping (NO new EVT-T*; reuses GEO_001 EVT-T3/T8 registrations) + §3 Schema activation (no new aggregate; extends GeographyDeltaKind closed enum 5 V1 → 5 V1 + 4 V1+30d active per R3 additive; Vec<ProvincePartition> payload for SplitProvince) + §4 Closed enums (PoliticalSeedMode 3-variant + SeedSource 2-variant + SeedScope 3-variant) + §5 Pipeline stages 5 + 8 algorithm detail (priority-queue flood-fill from canonical seeds + procedural fallback per POL-D2 hybrid; CultureBarrier ≠ TerrainCost rationale) + §6 CreativeSeed authoring additive fields within v2 (political_seed_mode + canonical_states + procedural_density) + §7 apply_delta total-function for 4 V1+30d DeltaKinds + §8 15 validator slots (POL-V1..POL-V15) + §9 DP primitives + capability JWT addition + §10 Composition with siblings + §11 RealityManifest extension (no new field; absorbs via creative_seed v2) + §12 Failure UX 15 rule_ids + §13 Cross-service handoff + §14 Multiverse inheritance (inherits GEO_001 §9 unchanged) + §15 5 sequences (hybrid bootstrap / Forge MergeProvinces / Forge SetCultureRegion / Forge SplitProvince / cycle reject) + §16 15 V1+30d-testable acceptance scenarios AC-POL-1..15 + §17 12 deferrals POL-D1..D12 + §18 5 open questions POL-Q1..Q5 + §19 cross-refs + §20 implementation readiness
+  - `features/00_geography/_index.md`: GEO_002 row added; coordination note updated for POL_001 V1+30d composition
+  - `catalog/cat_00_GEO_geography_foundation.md`: NEW POL_001 sub-section with 24 catalog entries (POL-1..POL-24) under the existing `GEO-*` namespace (POL-* is sub-prefix per consistent foundation pattern); GEO-21 catalog placeholder upgraded marker added (📦 → 📦 DRAFT)
+- **Decisions applied (Phase 0 D1-D7; user approved all 7 with defaults via `1`):**
+  1. **POL-D1** scope — politics + culture in one POL_001 (NOT split into POL_002 culture-only feature). Rationale: stage 5 + stage 8 share `political_seed` + share priority-queue flood-fill algorithm + share canonical-author declarations; splitting fragments the seed-share contract.
+  2. **POL-D2** capital seed source — Hybrid (canonical takes priority + procedural fills remainder). Wuxia worlds need exact canonical state placement; algorithmic worlds need automatic seeding. Mirrors GEO_001's deterministic-base + delta-overlay discipline.
+  3. **POL-D3** state formation — flood-fill from canonical_states capital seeds + procedural fallback for orphan provinces.
+  4. **POL-D4** province ↔ state cardinality — allow stateless provinces V1+30d via `Province.state_id: Option<StateId>`. Frontier / disputed / no-man's-land is a genuine wuxia/strategy pattern (giang hồ, jianghu).
+  5. **POL-D5** culture × political relationship — independent overlays with cross-reference. `province.culture_tag: Option<CultureTag>` dominant-culture summary; `culture_regions: Vec<CultureRegion>` full overlay.
+  6. **POL-D6** DeltaKind V1+ scope — all 4 V1+30d active (MergeProvinces + SplitProvince + TransferProvinceToState + SetCultureRegion). Symmetric set covers admin canonization needs.
+  7. **POL-D7** namespace — share `geography.*` (extend GEO_001's namespace; no separate `political.*` carved). POL is intrinsic to geography substrate; mirrors GEO_001b's `authoring.*` carve-only-when-genuinely-separate discipline.
+- **Cumulative outcome (post 2-pass /review-impl):**
+  - GEO_002 POL_001 catalog established (24 entries; POL-1..POL-24); design surface declared end-to-end at ~745 lines (under 800 hard cap; +50 from /review-impl fixes); status DRAFT-WITH-FIX-CYCLE awaiting acceptance test integration (LOCK criterion: ≥15 of 21 AC-POL-1..21 pass against world-service POL reference impl).
+  - **20 V1+30d rule_ids** added under shared `geography.*` namespace (15 from DRAFT + 5 from /review-impl 2nd-pass MED batch); total namespace count 13 V1 GEO_001 + 20 V1+30d POL_001 = 33 V1+30d when POL ships. `geography.layer_activation_deferred_v1` lifted for political layer specifically at POL ship.
+  - `GeographyDeltaKind` closed-enum bump 5 V1 → 5 V1 + 4 V1+30d active + 1 V2+ reservation + 2 V2+ reservations new (CreateState/DestroyState per POL-D14). Per R3 additive — V1 readers reject unknown V1+30d variants gracefully via existing `geography.delta_kind_v1plus_inactive` reject path; V1+30d code lifts the gate at POL ship.
+  - Capability addition: `can_edit_political_geography` JWT claim — Tier 1 ImpactClass=Destructive per S5; additive to existing `can_edit_geography`; one-shot migration auto-grants to all current `can_edit_geography` holders at POL ship (per MED-6 fix).
+  - **CreativeSeed schema_version bumps 2 → 3** (per HIGH-1 fix) — POL_001 adds 3 additive fields (political_seed_mode + canonical_states + procedural_density) mirroring GEO_001b's 1→2 precedent for additive evolution. LLM authoring template version bumps v1.tmpl → v2.tmpl with CreativeSeed v3 schemars-generated JSON Schema.
+  - 20 POL-V* validators (POL-V1..POL-V20) — 15 from DRAFT + 5 from /review-impl 2nd-pass MED batch (POL-V16..POL-V20 for set_culture_region_empty + split_partition_min_2 + transfer_self_target + canonical_mode_no_seeds + canonical_state_province_mismatch).
+  - 21 V1+30d-testable acceptance scenarios AC-POL-1..21 — 15 from DRAFT + 6 from /review-impl 2nd-pass coverage batch (AC-POL-16..21 covering MED-1/3/4/8/9 rejects + LOW-2 island state).
+  - 14 deferrals POL-D1..D14 — 12 from DRAFT + 2 from /review-impl batch (POL-D13 culture-aware procedural state naming per HIGH-4 + POL-D14 CreateState/DestroyState V2+ per MED-5).
+  - No new aggregate; POL_001 populates GEO_001's existing `world_geometry` fields via pipeline stage 5/8 activation + 4 V1+30d DeltaKinds.
+
+---
+
+## 2026-05-14 — SPIKE_04 D-S04-1..5 approval batch (5 sub-decisions applied)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` pattern).
+- **Trigger:** SPIKE_04 GEO procgen + authoring validation (2026-05-13 commit `b25cfb92`) surfaced 5 sub-decisions D-S04-1..5 for user approval before V1 implementation phase. User picked option 1 = approve all 5 with recommended defaults. Apply now; commit.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `02_extension_contracts.md` §1.4: `authoring.*` row updated — 8 V1 rule_ids → **10 V1 rule_ids** (D-S04-1 + D-S04-2 added; V1+ reservation count unchanged at 4)
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_001b_authoring_flow.md`: §8 validation pipeline step 3 split into 3a/3b/3c (cap / uniqueness / cycle detection); §12 namespace count 8 V1 → 10 V1; §15 acceptance count 10 → 12 (AC-AUTHOR-11 + AC-AUTHOR-12 added); §16 deferrals adds GEO-AUTHOR-D11
+  - `features/00_geography/GEO_001_world_geometry.md`: §5 pipeline determinism note extends D-S04-3 strict-IEEE compile flag discipline; §7 ContentSafetyGate annotation extends D-S04-4 scrub-regardless policy
+- **Decisions applied:**
+  1. **D-S04-1** (canonical_settlements + culture_hints name uniqueness) → reject duplicates via NEW `authoring.duplicate_canonical_name`. Validator step 3b runs case-sensitive LocalizedName.default-field match across canonical_settlements[].name + naming_style_ref uniqueness across culture_hints[]. LLM re-prompted with error context "remove duplicate" on retry.
+  2. **D-S04-2** (SpatialPreference::NearSettlement cycle detection) → reject cycles via NEW `authoring.spatial_preference_cycle`. Validator step 3c builds DAG from NearSettlement references; DFS with white/gray/black coloring detects cycles (direct A↔B + indirect A→B→C→A). LLM re-prompted with error context "break cycle by anchoring one settlement to a non-NearSettlement preference".
+  3. **D-S04-3** (floating-point determinism) → strict-IEEE mode V1 (`-ffp-contract=off` for C/C++ deps; Rust default IEEE-754 + `#[deny(clippy::float_arithmetic)]` outside generator module; NO SIMD-vectorized reductions). Fixed-point V1+ if drift surfaces in CI snapshot tests per SPIKE_04 GAP-S2.B. GEO_001 §5 pipeline determinism note extended.
+  4. **D-S04-4** (admin Forge reason PII scrubbing) → scrub regardless of in-fiction context per existing §12X.L7 admin discipline. Named characters like "Tiểu Long Nữ" go through the same regex scrubber as personal data. Defense in depth. GEO_001 §7 ContentSafetyGate annotation extended.
+  5. **D-S04-5** (`intended_producer` audit field on fallback) → V1+30d as new GEO-AUTHOR-D11 deferral. V1 records final producer only; V1+30d adds Option<AuthoringProducer> intended_producer field on AuthoringMetadata for audit fidelity when fallback fires (e.g., KnowledgeServiceExtracted V1 → LlmGenerated{grounding: None} on knowledge-service unavailable per AC-AUTHOR-10).
+- **Cumulative outcome:**
+  - 5 sub-decisions locked; 2 new V1 reject rule_ids (`authoring.duplicate_canonical_name` + `authoring.spatial_preference_cycle`); 1 new V1+30d deferral (GEO-AUTHOR-D11); 2 new acceptance scenarios (AC-AUTHOR-11 + AC-AUTHOR-12); 2 schema policy clarifications (strict-IEEE float + scrub-regardless PII)
+  - **GEO_001 + GEO_001b schema is now ready for V1 implementation phase commitment.** The remaining MED-severity GAPs (S1.A schemars build pipeline + S2.A HashMap normalize + S2.B float determinism + S2.C canonical JSON + S2.D cross-platform + S3.E SettlementId blake3-derive + S4.K multi-continent fork orchestration) are all implementation-phase CI gates or build pipeline tasks — they don't require user-approval rounds but DO need to land in V1 impl phase as CI gates before any production reality bootstraps.
+  - **Process lesson reinforced:** SPIKE_04 is the first design-track artifact that triggered a successful sub-decision approval round. Walk-through-validation → surface ambiguity → user-approval batch → apply → done. This is the maturity model for design-track decision-locking moving forward.
+
+---
+
+## 2026-05-13 — GEO_001b CreativeSeed Authoring Flow DRAFT + GEO_001 HookScope Option C bug fix (write-side cycle)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern).
+- **Trigger:** user deep-discussion question "how do LLMs work in this geography generation? are we already define an in/out contract that LLM friendly?". Honest answer surfaced: GEO_001 defined post-pipeline READ contract (prompt-assembly grounding §6) well, but pre-pipeline WRITE contract (LLM produces CreativeSeed) was hand-waved with 7 gaps. User picked composite answer: **fix C** (HookScope bug fix in GEO_001 inline) + **do B** (new sibling GEO_001b for full LLM authoring contract). Best-of-both: immediate schema bug fixed + comprehensive write-side design as separate sibling per two-file split precedent (PL_001+001b / WA_002+002b).
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: `world_geometry` owner annotation extended with write-side cycle history (Option C HookScope bug fix + Option B GEO_001b sibling reference); cross-link to write-side contract
+  - `02_extension_contracts.md`: §1.4 NEW `authoring.*` row (GEO_001b owner; 8 V1 rule_ids + 4 V1+ reservations); §2 RealityManifestGeographyExtension block extended with `authoring_metadata: Option<AuthoringMetadata>` + AuthoringProducer 5-variant comment + AuthoringMetadata struct shape + SpatialPreference 14-variant enum reservation + schema_version 1→2 migration plan
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_001_world_geometry.md`: Option C HookScope bug fix — RegionalLoreHook.scope now uses PRE-materialization HookScope enum (SettlementByName/PositionRegion/Archetype + V1+ KnowledgeEntityRef reservation) instead of post-materialization GeoCellId/SettlementId/ProvinceId; AC-GEO-11 added verifying scope resolution; §15 acceptance count 10→11; forward reference to GEO_001b §6.5 + SpatialPreference V1+ migration note added (lines 738 → 748)
+  - **NEW** `features/00_geography/GEO_001b_authoring_flow.md` (537 lines): write-side authoring contract; 19 sections; declares AuthoringProducer + SpatialPreference + AuthoringMetadata + AuthoringSession (BFF-held) + S9-registered LlmAuthoringTemplate + multi-turn iteration loop + validation pipeline + producer abstraction + RealityManifest extension + CreativeSeed schema_version 1→2 plan + `authoring.*` reject namespace + 10 V1-testable AC-AUTHOR-1..10
+  - `features/00_geography/_index.md`: GEO_001b row added; folder now has 2 features (GEO_001 + GEO_001b)
+  - `catalog/cat_00_GEO_geography_foundation.md`: 16 NEW catalog entries GEO-AUTHOR-1..GEO-AUTHOR-16 (AuthoringProducer / SpatialPreference / schema migration / S9 template / AuthoringMetadata / BFF session state / iteration loop / validation / namespace / RealityManifest extension / knowledge-service grounding V1+ / producer abstraction / AzgaarFmgJson V1+ / V1+30d enhancements / V2+ collaboration / V2+ position deprecation)
+
+### 7 write-side gaps surfaced and resolved
+
+| # | Gap | Resolution |
+|---|---|---|
+| 1 | **HookScope bug** (CHICKEN-AND-EGG) — RegionalLoreHook.scope used GeoCellId/SettlementId/ProvinceId, but those IDs don't exist at CreativeSeed-creation time (they materialize FROM CreativeSeed) | Option C fix inline in GEO_001 §6: new HookScope enum with SettlementByName(LocalizedName) + PositionRegion{center, radius} + Archetype variants; resolution happens post-stage-6 (settlements) and post-stage-1 (positions) |
+| 2 | **LLM prompt template implicit** — S9 mandates every LLM call goes through a registered template; world authoring is an LLM intent we hadn't registered | GEO_001b §5: S9 template at `contracts/prompt/templates/world_authoring/v1.tmpl` with 8-section structure per §12Y.L3; CI fixtures per §12Y.L9 |
+| 3 | **Schema-constrained generation not mandated** — without OpenAI structured outputs / vLLM grammar mode, LLM produces JSON that fails validators | GEO_001b §5.3: schema-constrained generation REQUIRED per V1 contract; creative_seed.v2.schema.json generated from Rust struct via schemars at build time |
+| 4 | **Position fields ask LLM to do geometry (its weakness)** — `(f32, f32)` coords cluster, axis-align, fail | GEO_001b §4.2: SpatialPreference 14-variant closed enum (Northern/Coastal/Highland/NearBiome/NearCulture/NearSettlement/ExplicitPosition/Any); CreativeSeed.schema_version 1→2 additive migration; V1+ LLM-authored worlds use SpatialPreference, V1 Manual/Imported can use ExplicitPosition |
+| 5 | **Multi-turn iteration loop undocumented** — author intent → LLM proposes → author edits → LLM regenerates → author approves had no contract | GEO_001b §7: BFF-held AuthoringSession with bounded N=10 iterations + N=3 retry per iteration + S6 cost cap inherited from S6-D2 + 24h session TTL; AuthorAction 4-variant (Accept/RejectAndRetry/EditManually/Cancel) |
+| 6 | **knowledge-service grounding missing** — book canon should ground LLM output, not LLM hallucination | GEO_001b §6: KnowledgeGrounding struct + KnowledgeServiceExtracted producer V1 schema-reserved; V1+ activation when knowledge-service ships per CLAUDE.md `101_DATA_RE_ENGINEERING_PLAN.md`; [WORLD_CANON] section hydrated with ≤200 entities × ~30 tokens |
+| 7 | **Non-LLM authoring not first-class** — manual form / import / knowledge-extracted treated as afterthoughts | GEO_001b §4.1 + §9: AuthoringProducer 5-variant (LlmGenerated V1 + AuthorManual V1 + Imported V1+ + KnowledgeServiceExtracted V1+ + Hybrid V1); producer abstraction means procgen pipeline doesn't care which producer made the CreativeSeed |
+
+### Cumulative outcome
+
+- **HookScope bug** (Option C) fixed inline; AC-GEO-11 added (now 11 acceptance scenarios in GEO_001).
+- **GEO_001b sibling** (Option B) covers full LLM authoring contract — 537 lines; under 800 hard cap; comparable to MAP_001=714 / WA_003=798 sibling pattern.
+- **CreativeSeed schema_version 1 → 2 additive migration** plan locked; V1 implementations stay valid; V1+ LLM-authored worlds use SpatialPreference; V2+ may deprecate position_normalized if uptake is universal.
+- **No new aggregate introduced** — BFF-held UX state; per-iteration LLM cost in S6 user_cost_ledger; final accepted CreativeSeed durable record via existing GeographyBorn payload (additive `authoring_metadata` field per I14).
+- **Producer abstraction** preserves V1 single-cell SPIKE_01 (uses AuthorManual; no LLM dependency) AND supports canon-faithful Tang/Song dynasty authoring (ExplicitPosition escape hatch) AND enables V1+ knowledge-service grounding without re-design.
+- **Process lesson reinforced**: even after /review-impl fix cycle, deep-discussion surfaced a 7-gap write-side hole that the post-pipeline READ contract had masked. Read-contract correctness ≠ write-contract correctness. Both sides need independent governance discipline.
+
+---
+
+## 2026-05-13 — GEO_001 fix cycle (post-/review-impl adversarial pass; 11 issues resolved)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit; mirrors prior DRAFT-cycle pattern). 2-hour TTL.
+- **Trigger:** user invoked `/review-impl` after GEO_001 DRAFT POST-REVIEW signaled completion. Adversarial pass found 11 real issues that the POST-REVIEW had rubber-stamped: 3 HIGH (schema-correctness / validator-implementability / fork-correctness) + 5 MED (event taxonomy / boundary registration / algorithm gap / version contract / aggregate convention / closed-enum drift) + 3 LOW (invariant placement / field redundancy / struct-shape opacity). User picked Option A: fix all 11 now.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim → release (Owner reverted to None)
+  - `01_feature_ownership_matrix.md`: `world_geometry` row Tier×Scope updated to "T2/Channel (continent per MAP-2 ChannelTier per HIGH-2 fix)"; full 11-fix list appended to owner annotation; rule_id count updated 10→13 V1 + 4→3 V1+ reservations
+  - `02_extension_contracts.md`: §1.4 `geography.*` row rewritten with 13 V1 rule_ids + fix-cycle change manifest; §4 EVT-T8 sub-shapes table gains `Forge:EditGeographyDelta { continent_channel_id, delta_kind, delta_payload, prev_delta_id }` row (MED-1 fix — the boundary registration gap /review-impl caught)
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_001_world_geometry.md`: 11 fixes applied + 3 sequence sections compressed (lines 799 → 738; net -61 lines despite +26 lines of fix content because §14 sequence rewriting saved 63 lines)
+
+### 11 fixes applied via /review-impl
+
+| # | Severity | Concern | Fix landed |
+|---|---|---|---|
+| 1 | HIGH-1 | Post-`SetBiomeOverride` schema incoherence (biomes/river_flux/is_coast desync) | V1 admits **only land-↔-land transitions**; water↔land rejects new rule_id `geography.biome_override_water_transition_v1` (V1+ when full biome+water-network re-derivation lands per new GEO-D13). Land-↔-land deltas recompute `is_coast` + `river_flux` for affected neighborhood (≤12 cells; scope-bounded) — coherence guaranteed for post-delta `(biomes, river_flux, is_coast)` triple. |
+| 2 | HIGH-2 | `channel.level_name == "continent"` validator unimplementable (free-form DP-Ch1 string) | §3 rule rewritten: `channel MUST satisfy MAP-2 ChannelTier::Continent (mapped from DP-Ch1 level_name per MAP_001 §3 enum)`. Explicit dependency on locked MAP-2 closed-enum prevents validator ambiguity across `level_name` string conventions. |
+| 3 | HIGH-3 | `GeographyDelta.id` namespace ambiguity (breaks fork correctness if misread) | §3 rule added: `delta_id is monotonic PER world_geometry aggregate row` (per `(reality_id, continent_channel_id)`). Forks start fresh sequences from post-`GeographyForkInherited` `last_delta_event_id`; sibling realities' delta_id values may collide across rows without interaction. |
+| 4 | MED-1 | `Forge:EditGeographyDelta` not registered in `_boundaries/02_extension_contracts.md` §4 EVT-T8 sub-shapes table | Row added to §4 table; the missing registration is now closed (this was the actual boundary-discipline gap that /review-impl caught). |
+| 5 | MED-2 | `ForkGeographyInherit` wrong event category (claimed EVT-T8 Administrative with `Forge:` prefix but producer is DP-Internal SnapshotForker = system actor) | Reclassified EVT-T8 Administrative → EVT-T4 System; renamed `Forge:ForkGeographyInherit` → `GeographyForkInherited` (no `Forge:` prefix; lives in EVT-T4 sub-types registry alongside GeographyBorn, NOT §4). |
+| 6 | MED-3 | Lake-vs-Ocean discrimination requires global topology (described local-only function in §5 stage 4) | Stage 4 split into 3 sub-stages 4a/4b/4c. **4a:** hydraulic erosion → river_flux. **4b:** water-network connected-components flood-fill from border water cells → `is_in_ocean_component` tag (Ocean) vs isolated water (Lake). **4c:** BiomeKind via `(climate, heightmap, river_flux, is_in_ocean_component, is_coast)` mapping function with explicit Ocean vs Lake discrimination. |
+| 7 | MED-4 | `generator_pipeline_version` upcaster contract underspecified (silent migration risk) | §3 rule added: world_geometry row pinned to its `pipeline_version` at GeographyBorn for lifetime; mid-life upgrades **FORBIDDEN**; new realities adopt latest. R3 upcasters apply ONLY to additive `schema_version` field-shape evolution, never to algorithm versions. Upgrade attempts reject `geography.pipeline_version_mismatch` (promoted V1+ reservation → V1 active). |
+| 8 | MED-5 | Aggregate-level `schema_version` field missing per I14 convention | Added `pub schema_version: u32` to WorldGeometry struct (V1 = 1). Distinct from `generator_pipeline_version` per fix #7. |
+| 9 | MED-6 | `SetResourceOverride` in V1 enum but V2+ semantics (closed-enum discipline drift) | Dropped from V1 GeographyDeltaKind enum (6 V1 → 5 V1); moved to V1+ reservation alongside MergeProvinces/SplitProvince/etc. V1 Forge UI no longer surfaces SetResourceOverride as a choice. |
+| 10 | LOW-1 | `GeoCellId == array-index` invariant documented in comment but not in §3 validator rules | §3 rule added: for all `i in 0..cells.len()`, `cells[i].id == GeoCellId(i as u32)`; out-of-order or sparse vectors reject new rule_id `geography.cell_id_index_violation`. Enforced at GeographyBorn + every delta apply touching cells. |
+| 11 | LOW-2 | `applied_at_fiction_time` clock source ambiguous (TDIL composition) | Field DROPPED from GeographyDelta struct. Replay determinism doesn't need it — triggering EVT-T8 event already carries wall-time via S4 MetaWrite audit + continent fiction_clock at event_id. Comment in struct documents the drop. |
+| 12 | LOW-3 | `RegionalLoreHook` / `NamingStyleDecl` / `CanonicalSettlementDecl` shapes opaque | All 3 structs declared in §6 (post-CultureHint block). `Settlement` struct gains `canon_ref: Option<BookCanonRef>` field — was being dropped on materialization from `CanonicalSettlementDecl.canon_ref`. |
+
+### Cumulative outcome
+
+- **Schema lock now genuinely lockable.** 3 HIGH issues that would have surfaced as V1 implementation bugs caught at design time.
+- **Foundation tier boundary discipline restored.** MED-1 closed; §4 EVT-T8 sub-shapes registry is now the SSOT GEO_001 cites and writes to.
+- **Strategy substrate readiness preserved.** V1+ POL_001 / SET_001 / ROUTE_001 / V2+ STRAT_001 still consume locked layers as read-only inputs — no migration regression introduced by fix cycle.
+- **GEO_001 main doc** at 738 lines (was 799 pre-fix DRAFT); §14 sequence compression bought enough budget for 11 fixes + 3 new V1 rule_ids + 3 new struct declarations.
+- **Process lesson reinforced (CLAUDE.md Phase 9 note):** POST-REVIEW signaled completion despite real architectural gaps; `/review-impl` did the work POST-REVIEW couldn't — author blindness persisted even with the "re-read from disk" ritual. POST-REVIEW + /review-impl are NOT redundant; they are distinct mental modes per the foundation discipline.
+
+---
+
+## 2026-05-13 — GEO_001 World Geometry Foundation DRAFT — new 7th foundation feature single-cycle claim+release
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit pattern; mirrors RES_001 + PROG_001 single-cycle closure precedent)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: Owner main session 4-hour TTL → reverted to None at end of cycle; _Last released_ entry with GEO_001 single-cycle summary
+  - `01_feature_ownership_matrix.md`: new `world_geometry` aggregate row added under aggregate ownership section (line ~69 — appended at end before `---` Schema/envelope ownership separator); T2/Channel-continent scope; owner GEO_001
+  - `02_extension_contracts.md`: §1.4 RejectReason namespace adds `geography.*` row (10 V1 rule_ids + 4 V1+ reservations); §2 RealityManifestSchema=1 extended with `continent_geometries: Vec<ContinentGeometryDecl>` OPTIONAL field + ContinentGeometryDecl + CreativeSeed + GeographyDelta comment block + downstream composition annotations
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_geography/GEO_001_world_geometry.md`: **NEW** 799-line DRAFT design doc (under 800-line soft cap; foundation-tier precedent comparable to MAP_001=714 lines)
+  - `features/00_geography/_index.md`: **NEW** folder index documenting GEO_001 + future GEO_002..GEO_007 (POL_001 / SET_001 / ROUTE_001 / V2+ resource generator / multi-continent / author-supplied geometry mode) + 6-foundation-feature composition discipline
+  - `catalog/cat_00_GEO_geography_foundation.md`: **NEW** catalog entry owning `GEO-*` namespace (`GEO-A*` axioms · `GEO-D*` deferrals · `GEO-Q*` open questions); 28 catalog entries (GEO-1..GEO-28) spanning V1 schema + V1 populated layers + V1+ generator activation + V2+ strategy substrate
+
+### Phase 0 corrections applied during this cycle
+
+Two findings during Phase 0 read-prep changed the planned placement:
+
+1. **WA folder CLOSED for V1 design** (2026-04-25 closure pass). `features/02_world_authoring/_index.md` post-closure rules explicitly exclude multi-aggregate features and "designing the runtime mechanics here." Initial proposed placement `WA_007_world_map.md` retracted; WA is for thin per-reality config overrides (pvp_consent / voice_mode_lock / session_caps / etc.) — single aggregate, ~150-400 lines, mechanics elsewhere. Not the shape of a geometric substrate with internal layered structure.
+
+2. **MAP_001 already exists** (CANDIDATE-LOCK 2026-04-26) in `features/00_map/`. Owns `map_layout` aggregate for visual UI graph layer (per-channel positions + image asset slots + navigable edges for node-link drill-down rendering, Tiên Nghịch / EVE Online / Stellaris pattern). MAP_001 is NOT the procedural geographic substrate — it's the visual rendering layer. The two compose without overlap: MAP_001 visual SSOT + GEO_001 geometric SSOT + PF_001 cell-semantic SSOT.
+
+3. **Foundation tier (`00_*` folders) exists** post-SESSION_HANDOFF cutoff. 12 foundation feature folders (00_actor / 00_cell_scene / 00_entity / 00_faction / 00_family / 00_identity / 00_map / 00_place / 00_progression / 00_reputation / 00_resource / 00_titles) — GEO_001 joins this tier as the 7th foundation feature (after EF + PF + MAP + CSC + RES + PROG closed 2026-04-27).
+
+User picked Option A from Phase 0 correction: new `00_geography/` foundation folder with `GEO-*` namespace.
+
+### 7 sub-decisions LOCKED via single Phase 0 deep-dive
+
+| ID | Decision | Rationale |
+|---|---|---|
+| **D1** | ChannelScoped at continent channel (NOT RealityScoped) | Matches DP-Ch1 channel hierarchy; multi-continent realities have multiple maps; archipelago + mainland + sky-island patterns need multiple meshes anyway |
+| **D2** | Single `world_geometry` aggregate per continent with internal layered structure | One aggregate (geometry / climate / biome V1 populated + political / settlement / route / culture / resource V1 schema-reserved). Atomic regen of base; layer-level versioning via delta-overlay. Alternative (split into 3-4 aggregates) creates more boundary complexity + more joins for strategy queries |
+| **D3** | Deterministic-base + delta-overlay editability (open question #2 from survey) | Base regenerates from `(seed, creative_seed, pipeline_version)` reproducibly; admin Forge canonization appends ordered `GeographyDelta`; replay = base + deltas. Genuinely novel work — no Azgaar-style tool does this V1. Alternative (destructive regenerate per Azgaar default) jitters every position on edit, breaks save state, loses canon edits |
+| **D4** | Single Voronoi mesh with water-cell tags (open question #1 from survey) | Water cells flagged via heightmap < threshold OR biome ∈ {Ocean, Lake, River}; sea zones derived by clustering connected water cells; naval adjacency derived. Matches Azgaar. V2+ Paradox-style separate land/sea graphs with explicit straits tracked GEO-D6 if strategy gameplay needs explicit naval chokepoints |
+| **D5** | Cells AND provinces (two-tier granularity) | ~10k Voronoi cells as raw geometry (terrain queries, scene placement, fine pathing); provinces are named cell-clusters with strategic role. Strategy queries on provinces; exploration / scene queries on cells. Both surfaces preserved |
+| **D6** | Explicit FK from channel to map element | continent_channel.metadata.world_map_id; country_channel.metadata.state_id; district_channel.metadata.province_id; town_channel.metadata.burg_id. Map data references channel IDs back where bidirectional. Strategy queries `state.armies` join through this. Alternative (implicit name/position lookup) brittle under rename |
+| **D7** | Inherit by reference, deltas don't cascade | Snapshot fork (MV6) copies `(seed, creative_seed, deltas_at_fork_point)`. New deltas in child reality stay local. Parent → child propagation only for L1/L2 canon updates (matches §M4 propagation pattern); same delta-overlay machinery as D3 handles this. Alternative (deep-copy on fork) doubles storage per fork |
+
+### Strategy substrate readiness for future STRAT_001 V2+
+
+V1 schema reserves ALL layers strategy needs (provinces / states / settlements / routes / culture / resources). V1+ POL_001 / SET_001 / ROUTE_001 generators activate fields via additive schema-stable / activation-deferred discipline (mirrors PO-A8 + PROG-A schema patterns). V2+ STRAT_001 consumes locked layers as read-only inputs — schema-frozen by V1 lock; no migration when strategy phase opens. **Pre-investment in strategy substrate without pre-implementation: pays compound interest at strategy phase entry.**
+
+### Algorithmic baseline (world-map landscape survey 2026-05-13)
+
+- **Patel dual-mesh** (Apache 2.0; `redblobgames.com/x/2312-dual-mesh/`) — Voronoi cell graph substrate; canonical reference; clean Rust port path
+- **O'Leary "Generating fantasy maps"** (MIT; `mewo2.com/notes/terrain/`) — erosion + flux + river tracing + city scoring single-page algorithm
+- **Azgaar Fantasy Map Generator algorithm blog** (MIT; `azgaar.wordpress.com/`) — Voronoi/heightmap/biomes/burgs/states/routes pipeline-by-pipeline write-up
+- LLM-image-to-map approaches (arXiv 2407.09013 + 2410.15644 + AriGraph IJCAI 2025) REJECTED for strategy gameplay use — produce images not structured graphs; cannot back adjacency-correctness or regeneration-stability requirements
+
+Survey confirmed: **nothing strictly better appeared 2024-2025**. The Patel/O'Leary/Azgaar 2010-2018 algorithm stack remains state-of-the-art for *structured* fantasy world geometry. GEO_001 §5 8-stage pipeline implements this baseline with V1 stages 1-4 substantive + V1+ stages 5-8 activation slots.
+## 2026-05-14 — TMP cross-feature integration annotation pass (13 consumer features annotated per TMP_001 §14)
+
+- **Lock CLAIM + RELEASE** — single combined `[boundaries-lock-claim+release]` commit. Follows TMP folder closure pass `cdc2f706` (2026-05-13) and the user-chosen next-step "stay in design mode → cross-feature integration annotation" picked from the four post-TMP-closure direction options.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner remains None); new `_Last released_` entry at top of the stack capturing scope summary, files touched, drift caught, and post-pass priority candidates
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** 13 consumer-feature documents — pattern is uniform: top-of-doc `⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 …` banner mirroring the precedent set by WA_003 / PCS_001 / NPC_001 / AIT_001 closure-pass-extension blocks, plus an appended row in each doc's Cross-references / Cascade / Cross-folder section. No edits to existing sections that would constitute scope creep; all consumer CANDIDATE-LOCK statuses preserved.
+- **Tier breakdown:**
+
+| Tier | Consumer files | Integration depth |
+|---|---|---|
+| A — V1+30d active integration | `features/00_map/MAP_001_map_foundation.md` · `features/00_cell_scene/CSC_001_cell_scene_composition.md` · `features/00_place/PF_001_place_foundation.md` · `features/04_play_loop/PL_001_continuum.md` · `features/04_play_loop/PL_001b_continuum_lifecycle.md` · `features/02_world_authoring/WA_003_forge.md` | Banner + cross-ref row + (PL_001b only) RealityManifest snippet `tilemap_templates: Vec<TilemapTemplateDecl>` + `tilemap_defaults: Option<TilemapDefaults>` optional-field extension. WA_003 adds 3 AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` V1+30d active; `Forge:OverridePlacement` V3 active / V1+30d schema-reserved) via additive FRG-S\* pattern. |
+| B — Kernel folders | `06_data_plane/_index.md` · `07_event_model/_index.md` | Banner pattern not applied (kernel folders use `Cross-folder references` table); row appended to that table per folder. 2 new T2 aggregates registered with standard DP-K1..K12 surface (no new DP-K\* / DP-Ch\* primitives, no new axiom). Sub-types registered under existing EVT-T3/T4/T8 + V2 reservations under EVT-T5/T6 (no new EVT-T\* / EVT-A\* axiom). |
+| C — V2+ reservation notes | `features/16_ai_tier/AIT_001_ai_tier_foundation.md` (§14.19) · `features/17_time_dilation/TDIL_001_time_dilation_foundation.md` (§17.10) · `features/06_pc_systems/PCS_001_pc_substrate.md` · `features/00_resource/RES_001_resource_foundation.md` (§12.9) · `features/05_npc_systems/NPC_001_cast.md` | Banner + cross-ref row. AIT documents TMP as a pattern reuser of Q4-LOCKED hybrid 2-stage. TDIL documents TMP-A4 satisfying TDIL-A9 (orthogonal layer; tilemap is purely spatial). PCS reserves V2+ fog-of-war (TMP-D3). RES reserves V2 mines (TMP-D10) with clean producer/inventory boundary. NPC reserves V2+ routing on `tilemap_view.road_segments`. |
+| (skipped) | `05_llm_safety/` | Folder does not exist yet — pending separate seed work per 2026-04-26 next-step recommendations. |
+
+- **No matrix changes:** TMP ownership was already registered at 2026-05-13 closure pass; this annotation pass touches the CONSUMER side only. `01_feature_ownership_matrix.md` left untouched.
+- **Drift caught + filed (1):** WA_003 §7 preamble line "12 V1 EditActions" is stale post-annotation — effective V1+30d count is 15 (12 WA + 3 TMP). Flagged in WA_003 closure-pass-extension banner; next WA_003 closure pass should reconcile inline count + decide whether the 3 TMP-owned EditActions need stub §7.7-§7.9 sub-sections in WA_003 itself or stay pointed-to in TMP_001 §16 deferrals.
+- **Verified-not-drift (1):** TDIL-A9 axiom was initially mis-flagged as missing from TDIL_001 — discovered mid-pass that the axiom IS defined in `catalog/cat_17_TDIL_time_dilation.md` line 36 (catalog file is authoritative for stable-ID inventories per the TDIL pattern). Annotation reconciled before commit — the "TDIL-A9 replay-free V1" citation in TMP_001 §14 is correct.
+
+### Post-pass priority candidates
+
+1. **05_llm_safety folder seed** — now the sole remaining unannotated TMP consumer. Per 2026-04-26 next-step recommendations: ~5-7 features at ~600 lines each (A1..A6 axioms exist; TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements).
+2. **V2 PoC implementation** of tilemap-service — validate TMP_008b §2-§12 contract empirically: cacheable-prefix prompt cache hit rate, tool-use forced-call reliability, per-object retry granularity vs flat-error retry, cost-model accuracy. Clean-room Rust on Claude Haiku 4.5.
+3. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror MAP_002 V1+ pattern when art-asset pipeline lights up).
+4. **V3 RMG wizard** scoping (TMP-D1, TMP-D2 — player-facing parameter capture UX).
+
+### Raw count
+
+- **Files touched in this pass:** 15 (13 consumer features + `_LOCK.md` + `99_changelog.md`)
+- **Banner blocks added:** 11 (Tier A 6 + Tier C 5; Tier B kernel folders use cross-folder-references row pattern instead)
+- **Cross-references rows / table rows added:** 13 (one per consumer)
+- **New sections added inside consumer features:** 3 (AIT §14.19 · TDIL §17.10 · RES §12.9)
+- **RealityManifest snippet edits:** 1 (PL_001b §16.1 — 2 optional fields appended)
+- **AdminAction sub-shapes registered (annotation only):** 3 (WA_003 banner; detailed flows owned by TMP_001 + TMP_004)
+- **EVT-T sub-types referenced (annotation only):** 7 (TilemapBorn + ZonesPlaced + 2 T3 aggregate_types + 3 T8 Forge:* sub-shapes + 2 V2 reservations under T5/T6)
+
+---
+
+## 2026-05-13 (late evening same day) — TMP folder closure pass — all 9 docs DRAFT → CANDIDATE-LOCK (§15 AC walked + all 43 open questions RESOLVED + Phase 3 review findings applied)
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; same-day fourth lock cycle. Follows user direction to "closure pass for TMP". Closes the TMP folder for V1+30d design per the WA/NPC/PLT/PO closure-pass pattern.
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner None); new `_Last released_` entry with closure pass summary
+  - `01_feature_ownership_matrix.md`: TMP_001 + TMP_008b status promotions DRAFT → CANDIDATE-LOCK; rule_id count corrected 16 → 17 V1+30d (added `tilemap.density_reduced` info-level at Phase 3 review)
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** all 9 TMP feature docs promoted DRAFT → CANDIDATE-LOCK with resolutions table replacing open-questions sections:
+  - `TMP_001 §12`: 8 questions RESOLVED (TMP-Q1..Q8); 3 USER-LOCKED (TMP-Q3 V2 default LLM-on / TMP-Q4 Phaser 3 / TMP-LLM-Q4 cross-zone L4 context YES); 5 ACCEPT-default
+  - `TMP_001 §15`: AC-TMP-1..10 walked + expanded from 1-line sketches to full setup/action/expected-outcome triples with concrete rule_ids + event types; each scenario independently testable via integration test
+  - `TMP_001 §9.2`: `tilemap.density_reduced` info-level rule_id added (Phase 3 review finding; was referenced in AC-TMP-9 but missing from inventory); 17 V1+30d rule_ids total (was 16)
+  - `TMP_002 §9`: TMP-Q5 (cross-ref TMP_001) + TMP-PLACE-Q1..Q3 RESOLVED (4 ACCEPT-default)
+  - `TMP_003 §6`: TMP-PIPE-Q1..Q4 RESOLVED (4 ACCEPT-default; PIPE-Q1 budget config locked to V1+30d hardcoded 10s + V2 author-configurable; PIPE-Q3 dry-run mode deferred V2+ as TMP-D15)
+  - `TMP_004 §10`: TMP-TPL-Q1..Q5 RESOLVED (5 ACCEPT-default; TPL-Q3 template inheritance deferred V2+ as TMP-D16; TPL-Q4 banned_terrain_kinds UNION semantic; TPL-Q5 author seed_offset enabled)
+  - `TMP_005 §9`: TMP-BIOME-Q1..Q4 RESOLVED (4 ACCEPT-default; BIOME-Q1 seasonal V2+ TMP-D17; BIOME-Q2 LLM-gen biome V3 TMP-D18; BIOME-Q3 fallback + `tilemap.biome_fallback_used` INFO event; BIOME-Q4 rarity tag V2+ TMP-D19)
+  - `TMP_006 §8.5`: **Phase 3 finding — RESTORED §9 questions lost in license-hygiene revision pass.** TMP-TR-Q1..Q6 RESOLVED at restoration + closure (6 ACCEPT-default; TR-Q1 composite piles; TR-Q4 density reduce + `tilemap.density_reduced` info; TR-Q5 deterministic per TMP-A4)
+  - `TMP_007 §13`: TMP-CONN-Q1..Q5 RESOLVED (5 ACCEPT-default; CONN-Q1 per-PC gates V2+ TMP-D20; CONN-Q3 guard respawn V2 TMP-D21; CONN-Q4 multi-edge V2+ TMP-D22; CONN-Q5 Hint+Adversarial dashed-line render in Forge editor)
+  - `TMP_008 §9`: TMP-LLM-Q1..Q7 RESOLVED; **TMP-LLM-Q4 USER-LOCKED YES V2 cross-zone L4 context** → §5 cost model bumped (~$0.014 → ~$0.020/L4 call; per-tilemap ~$0.032 → ~$0.038; per-reality Y1 ~$7 → ~$8.50; +21% for cross-zone narrative continuity); LLM-Q2 canon_kind approval flow V2; LLM-Q6 Zone Lore UI tab V2+ TMP-D24
+  - `TMP_008b §14`: TMP-LLM-C-Q1..Q7 RESOLVED (7 ACCEPT-default; LLM-C-Q2 A/B cache strategies deferred to V2 PoC; LLM-C-Q7 streaming V2+30d TMP-D25); §12.4-§12.7 cost model bumped per TMP-LLM-Q4 lock (cross-zone neighbor context +5000 tokens/call; effective L4 ~9170 tokens; ~$0.020/call)
+  - `_index.md`: all 9 row statuses DRAFT → CANDIDATE-LOCK 2026-05-13; folder closure status promoted to CLOSED for V1+30d design with closure-pass deliverables summary
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: all 29 V1+30d entries (TMP-1..TMP-22 + TMP-24..TMP-30 + TMP-45..TMP-52) promoted from 📋 → ✅; rule_id count updated 16 → 17; V2/V2+/V3 entries stay 📋
+
+### Question resolution summary
+
+| Resolution bucket | Count | IDs |
+|---|---:|---|
+| USER-LOCKED at closure pass | 3 | TMP-Q3, TMP-Q4, TMP-LLM-Q4 |
+| ACCEPT default | 34 | TMP-Q1, TMP-Q2, TMP-Q5..Q8 + TMP-PLACE-Q1..Q3 + TMP-PIPE-Q1..Q4 + TMP-TPL-Q1, Q4, Q5 + TMP-BIOME-Q3 + TMP-TR-Q1..Q6 + TMP-CONN-Q2, Q5 + TMP-LLM-Q1, Q3, Q5, Q7 + TMP-LLM-C-Q1, Q3, Q4, Q5, Q6 |
+| DEFER V2+ | 6 | TMP-TPL-Q3 (TMP-D16), TMP-BIOME-Q1 (TMP-D17), TMP-BIOME-Q4 (TMP-D19), TMP-CONN-Q1 (TMP-D20), TMP-CONN-Q4 (TMP-D22), TMP-LLM-Q6 (TMP-D24) |
+| DEFER V2 with reservation | 4 | TMP-PIPE-Q3 (TMP-D15), TMP-CONN-Q3 (TMP-D21), TMP-LLM-Q2 (V2 approval flow), TMP-LLM-C-Q2 (V2 PoC A/B test) |
+| DEFER V2+30d | 2 | TMP-BIOME-Q2 V3 (TMP-D18), TMP-LLM-C-Q7 (TMP-D25 streaming) |
+| **Total** | **49** | (43 questions + 6 new deferrals registered via closure-pass reservations) |
+
+Total deferral count: TMP-D1..D12 (pre-closure) + new TMP-D15..D22, D24..D25 (closure-registered; D13/D14/D23 skipped to leave gap for V2 PoC discoveries) → ~21 active deferrals.
+
+### Phase 3 review findings applied
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | TMP_006 §9 Open questions section lost in 2026-05-13 license-hygiene revision pass (every other TMP doc retained; TMP_006 dropped) | Restored as §8.5 + RESOLVED at closure pass with 6 questions TR-Q1..Q6 |
+| 2 | `tilemap.density_reduced` info-level rule_id referenced in AC-TMP-9 + TMP-TR-Q4 but missing from §9.2 namespace inventory | Added to §9.2; rule_id count corrected 16 → 17 V1+30d |
+| 3 | `tilemap.biome_fallback_used` INFO event introduced at TMP-BIOME-Q3 resolution; consistent with `tilemap.density_reduced` info-level pattern | Both info-events distinct from error rule_ids; documented in respective question resolution rationale |
+
+### V2-blocking + V3-blocking work registered
+
+- **V2 launch blockers** (must be addressed before V2 enable): PoC validate cacheable-prefix + tool-use + per-object retry empirically (TMP_008b validation); A/B cache strategies (TMP-LLM-C-Q2); confirm cost model (TMP_008b §12 corrected to ~$8.50/reality Y1 post cross-zone context); World Oracle V2 validation pass (TMP-LLM-Q7); approval flow EVT-T8 Forge:ApproveCanonKind (TMP-LLM-Q2)
+- **V2+30d additive**: streaming L4 narrations (TMP-D25); per-template language extensions; KeyBERT migration from TF-IDF (TMP_008b §10)
+- **V3 RMG wizard** scoping (TMP-D1); manual paint UX (TMP-D2); multi-level verticality (TMP-D9)
+
+### Cumulative state post-closure
+
+- 9 feature docs all CANDIDATE-LOCK 2026-05-13 (was 8 DRAFT + 1 DRAFT-split-out)
+- 1 catalog row (52 entries; 29 V1+30d entries ✅ marked; 23 V2/V2+/V3 entries 📋)
+- 4 boundary file updates (ownership-matrix status + namespace count + this changelog + LOCK)
+- Folder closure status: **CLOSED for V1+30d design 2026-05-13**
+- LOCK promotion gated on integration tests + V2 PoC validation
+
+---
+
+## 2026-05-13 (late evening same day) — TMP_008b LLM Contract Spec — sibling-split for I/O contract detail (deep-discuss follow-up: "is in/out contract LLM-friendly?")
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; same-day third lock cycle. Follows user request to deep-discuss LLM-friendliness of TMP_008's I/O contract; adversarial analysis surfaced 4 HIGH + 4 MED gaps (prompt injection vector, no structured-output enforcement, hand-wavy validation feedback, cache strategy not aligned with prompt caching, all-or-nothing retry, L4 cache missing L3-digest, LLM-emitted key phrases unreliable, optimistic cost claims). User chose **"Split into TMP_008 + TMP_008b LLM-contract detail"** to mirror existing `<feature>` / `<feature>b` split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b).
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release (Owner None); new `_Last released_` entry
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_tilemap/TMP_008b_llm_contract_spec.md`: NEW ~560 lines — I/O contract detail spec covering all 8 LLM-friendliness gaps:
+    - §1 Why split / cross-ref to TMP_008 architecture
+    - §2 Prompt 3-segment cacheable-prefix structure (system + reality_context cached; tilemap_payload variable) — Anthropic prompt caching aligned; ~30-45% ongoing-cost reduction
+    - §3 Anthropic tool-use structured output (`submit_zone_classifications` + `submit_zone_narrations` tools with strict input_schema); `tool_choice` forces the call; eliminates malformed-JSON / markdown-fence / preamble failure modes
+    - §4 Validation rules + structured per-case error messages (per-object, with received value + allowed-set) — empirically 70-90% retry success vs 20-40% with flat strings
+    - §5 Per-object retry granularity — accept good entries, retry only failing subset; preserve partial successes
+    - §6 Per-object canonical default fallback (suggested_canon_kind[0]); system always succeeds even at 100% LLM failure
+    - §7 Prompt-injection defense — `<author_text>...</author_text>` delimiting + tag-close-escape sanitization + 05_llm_safety 3-intent classifier on raw author input + multi-layer World Oracle check
+    - §8 Cache key derivation — L3 key includes terrain/object digests; **L4 key includes L3-classifications digest** (fixes pre-revision bug where Forge:OverridePlacement on L3 left L4 narration cache stale)
+    - §9 Few-shot examples in system prompt (L3 one-shot + L4 one-shot); empirically ~15-30% quality boost
+    - §10 Deterministic key-phrase extraction post-L4 (TF-IDF V2 / KeyBERT V2+30d) — removed from LLM output; consistent across replays
+    - §11 Closed-enum style hints: `NarrativeTone` (8 V2 variants) + `NarrationLanguage` (5 V2 ISO codes) + `NarrationVoice` (3 variants)
+    - §12 Realistic cost model (corrected) — ~$0.018/L3 call + ~$0.014/L4 call = ~$0.032/tilemap initial; ~$7/reality Y1 (was claimed ~$1; actual ~3× higher)
+    - §13 LLM-friendliness scorecard (pre-revision vs revised; 11 dimensions, all green post-revision)
+    - §14 7 open questions (TMP-LLM-C-Q1..Q7)
+    - §15 Prior Art bibliography (Anthropic Messages API + Tool Use + Prompt Caching docs; OWASP LLM01:2025; Perez & Ribeiro 2022 / Greshake et al. 2023 prompt-injection refs; Self-Refine + Self-Correct retry literature; KeyBERT for key-phrase extraction)
+  - `features/00_tilemap/TMP_008_llm_integration.md`: slimmed — §3-§4 detailed I/O sections replaced with architecture summary + contract cross-ref to TMP_008b (was ~410 lines → ~315 lines)
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: 8 new catalog entries TMP-45..TMP-52 (was 44 entries → 52)
+  - `features/00_tilemap/_index.md`: TMP_008b row added; TMP_008 row updated to "architecture only"; cross-refs to TMP_008b
+
+### Cumulative state post-split
+
+- 9 feature docs in `features/00_tilemap/` (was 8; +1 TMP_008b)
+- 1 catalog row (52 entries TMP-1..TMP-52; was 44, +8 TMP-45..TMP-52)
+- TMP_008 ~315 lines + TMP_008b ~560 lines = ~875 total lines for LLM coverage (was ~410; +465 net lines for contract detail)
+- **4 HIGH + 4 MED LLM-friendliness gaps from `/review-impl` follow-up all closed in TMP_008b**
+
+### Implementation phase note
+
+The contract spec is now PoC-ready: a V2 implementation engineer can read TMP_008b §2-§12 and have a complete I/O contract without re-deriving from architecture principles. The cacheable-prefix structure (§2) + Anthropic tool-use mechanism (§3) + per-case retry feedback (§4) + per-object retry granularity (§5) + injection defense (§7) + L3-digest-in-L4-cache (§8) are the highest-leverage items to validate in PoC. Closed-enum style (§11) + deterministic key phrases (§10) are V2+30d schema-additive — can ship V2 without these and add later.
+
+---
+
+## 2026-05-13 (later same day) — TMP_001..TMP_008 license-hygiene revision pass — restructure as multi-game prior-art survey + rename verbatim-matching shapes + per-doc Prior Art bibliography sections
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; revision pass on existing TMP_001..TMP_008 DRAFT docs in response to user concern about copyleft licensing (VCMI is GPL v2+; LoreWeave is AGPL v3 — technically compatible but cleaner stance is to treat VCMI as one of several surveyed prior-art implementations rather than a derivation source)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in same commit (revision pass; same-day re-claim)
+  - `01_feature_ownership_matrix.md`: 2 ownership rows for `tilemap_view` + `tilemap_template` rewritten — removed "vcmi-derived" / "direct adopt from vcmi" language; renamed `ConnectionKind` (5 variants Guarded/Wide/Fictive/Repulsive/ForcePortal) → `PassageKind` (5 variants Threshold/Open/Hint/Adversarial/Portal); renamed `ZoneType` (6 variants PlayerStart/CpuStart/Treasure/Junction/Sealed/Water) → `ZoneRole` (4 variants V1+30d Wilderness/Hub/Forbidden/Sea + V2+ AllyHome/RivalHome); renamed `*LikeZone` inheritance fields → `inherit_*_from` (5 fields: inherit_treasure_from / inherit_terrain_from / inherit_mines_from / inherit_towns_from / inherit_custom_objects_from); renamed `ETileType` (Free/Possible/Blocked/Used) → `TileState` (Walkable/Open/Obstacle/Occupied); algorithm citations switched to academic literature primary
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:** all 8 feature docs rewritten per revision:
+  - `features/00_tilemap/TMP_001_tilemap_foundation.md` (610 → ~700 lines; §1 expanded to multi-game prior-art survey; §1.2 LoreWeave-specific design choices clarified; renamed shapes throughout; §17 Prior Art bibliography appended with academic + genre + LoreWeave-internal cross-refs)
+  - `features/00_tilemap/TMP_002_zone_placement.md` (369 → ~620 lines; algorithm framing restructured from "adapted from vcmi" → academic-primary citations Fruchterman & Reingold 1991, Penrose 1974, Kirkpatrick et al. 1983, Glover 1990, Tarjan 1976, Dijkstra 1959; §10 Prior Art bibliography appended)
+  - `features/00_tilemap/TMP_003_pipeline_modificators.md` (457 → ~580 lines; restructured pipeline pattern as Strategy + Visitor (Gamma et al. 1994) + topological sort (Kahn 1962) + dining-philosophers (Dijkstra 1965); §7 Prior Art bibliography appended)
+  - `features/00_tilemap/TMP_004_template_authoring.md` (501 → ~620 lines; ZoneType → ZoneRole rename throughout; `*LikeZone` → `inherit_*_from` rename; example template updated; BiomeSelectionRules added as author-tunable field on TilemapTemplate; §11 Prior Art bibliography)
+  - `features/00_tilemap/TMP_005_biome_and_obstacles.md` (354 → ~480 lines; biome selection rule restructured from engine-baked "vcmi pattern" → author-tunable `BiomeSelectionRules` with sensible engine defaults; §10 Prior Art bibliography)
+  - `features/00_tilemap/TMP_006_treasure_and_objects.md` (355 → ~440 lines; tiered-loot pattern framed as genre-standard with Diablo + roguelike references; "never seal a gap" anchored to Tarjan 1976 connected-components; §9 Prior Art bibliography)
+  - `features/00_tilemap/TMP_007_connections_and_guards.md` (385 → ~470 lines; ConnectionKind → PassageKind rename; algorithm citations primary-academic; §14 Prior Art bibliography)
+  - `features/00_tilemap/TMP_008_llm_integration.md` (376 → ~420 lines; framing emphasizes LLM-PCG is novel territory with academic refs Sudhakaran et al. 2023, Todd et al. 2023, Charity et al. 2020, Smith et al. 2011; §12 Prior Art bibliography)
+  - `features/00_tilemap/_index.md`: framing changed from "vcmi-RMG inspiration mining" to "multi-game prior art surveyed"
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: catalog entries rewritten — removed all "vcmi-derived" / "direct adopt from vcmi" / "vcmi-aligned" language from entries TMP-1..TMP-43; new entry TMP-44 (V2+ multiplayer ZoneRole variants); algorithm foundations cited per academic refs in catalog preamble; total entries now 44 (was 43; +1 TMP-44)
+  - `features/_spikes/SPIKE_03_tilemap_world_view.md`: graduation status updated to reflect multi-game prior-art framing
+
+### Rename mapping (LoreWeave-distinct naming for verbatim-matching shapes)
+
+| Original (pre-revision; vcmi-verbatim) | Revised (LoreWeave-distinct) | Why renamed |
+|---|---|---|
+| `ConnectionKind { Guarded, Wide, Fictive, Repulsive, ForcePortal }` | `PassageKind { Threshold, Open, Hint, Adversarial, Portal }` | 5-variant partition was functionally identical to vcmi's `EConnectionType`; renamed to LoreWeave-distinct verbs (Threshold = gate; Hint = narrative-only) |
+| `ZoneType { PlayerStart, CpuStart, Treasure, Junction, Sealed, Water }` (6 variants) | `ZoneRole { Wilderness, Hub, Forbidden, Sea }` (4 variants V1+30d; V2+ adds AllyHome/RivalHome) | Matched vcmi `ETemplateZoneType` verbatim; renamed + V1+30d defers multiplayer variants (cleaner V-tier scope) |
+| `*LikeZone` inheritance fields (5 fields with vcmi-camelCase) | `inherit_*_from` (5 fields snake_case + verb-phrase form) | Snake_case + verb-phrase form is Rust-idiomatic; semantically equivalent; not vcmi-verbatim |
+| `ETileType { Free, Possible, Blocked, Used }` | `TileState { Walkable, Open, Obstacle, Occupied }` | Renamed to descriptive game-state terms; standard procedural-level-gen state machine (not vcmi-original) |
+| Hardcoded biome rule "1 mountain + 1-2 trees + lake xor crater + ..." | `BiomeSelectionRules` author-tunable field on TilemapTemplate (engine ships sensible defaults) | Shifts ownership from "vcmi's specific algorithm" to "engine config + author override" |
+
+### Genre prior art survey (TMP_001 §1.1)
+
+Multi-game survey added to TMP_001 §1.1 establishing convergent patterns across the genre:
+- Heroes of Might and Magic III (1999, NWC) — pioneered the zone-graph RMG paradigm
+- Battle for Wesnoth (2003+, GPL v2+) — open-source tile-based TBS
+- Civilization V / VI (Firaxis) — climate-band procedural maps
+- Dwarf Fortress (2002+, Bay 12) — multi-pass deterministic-seed world generation
+- Caves of Qud (2015+, Freehold) — biome composition + set-piece interleaving
+- VCMI (2007+, GPL v2+, open-source HoMM3 reimpl) — cited as one well-documented open-source reference; surveyed alongside the others; not framed as derivation source
+- Roguelike literature (Brogue, DCSS, NetHack) — tile state machines + connectivity invariants
+- EU4/CK3 (Paradox) — large-scale region graphs
+
+LoreWeave-specific design choices (TMP_001 §1.2) explicitly distinguished from genre-convergent patterns: 4-layer LLM augmentation (CSC_001 v3→v4-derived; novel), MAP_001-canonical-derived split, cell-tier-has-no-tilemap-view, schema-additive evolution V-tier ramp, Blake3-deterministic seeding, PassageKind partition, ZoneRole V-tier scope.
+
+### Per-doc Prior Art bibliography sections
+
+Each TMP_001..TMP_008 doc now ends with a Prior Art bibliography:
+- **Academic foundations** — algorithm sources from refereed literature
+- **Genre prior art** — comparable implementations in similar games (HoMM3 + VCMI + Wesnoth + Dwarf Fortress + Caves of Qud + Civ + others as relevant per topic)
+- **LoreWeave internal references** — cross-refs to dependent + related TMP docs and MAP_001/CSC_001/AIT_001/TDIL_001
+
+VCMI is cited consistently as "one well-documented open-source reference implementation" — visible at design-rationale points but never framed as derivation source.
+
+### Cumulative state post-revision
+
+- 8 feature docs ~4,300 lines total (slightly larger than initial seed due to bibliography sections + multi-game prior-art framing; no doc exceeds 800-line cap)
+- 1 catalog row (44 entries TMP-1..TMP-44)
+- 2 boundary file updates (ownership matrix entries rewritten; this changelog entry)
+- 1 SPIKE_03 cross-ref update
+- License-hygiene posture: cleaner separation between LoreWeave design + vcmi as one of multiple surveyed prior-art implementations
+- Implementation phase note: when code is written, MUST be clean-room. Read the algorithm descriptions in the design docs (which cite academic primary sources); do NOT transcribe vcmi C++ to Rust. Engineers may consult vcmi for "is this approach reasonable" sanity checks but must not derive code structure from vcmi source.
+
+---
+
+## 2026-05-13 — TMP_001 Tilemap Foundation DRAFT seed — namespace claim + RealityManifest extension + 4 new EVT-T row groups (SPIKE_03 graduation)
+
+> **⚠ SUPERSEDED 2026-05-13 (same day):** This entry describes the initial DRAFT seed commit. The shape names (`ConnectionKind`/`ZoneType`/`*LikeZone`/`ETileType`) + derivation framing ("direct adopt from vcmi", "adapted from vcmi", "vcmi RMG-inspired") below were superseded by the **license-hygiene revision pass** documented in the entry above (changelog top). Current authoritative names: `PassageKind`/`ZoneRole`/`inherit_*_from`/`TileState` with values Walkable/Open/Obstacle/Occupied. Current framing: multi-game prior-art survey with vcmi as one cited open-source reference, not derivation source. This entry preserved as historical record of the original seed commit.
+
+- **Lock CLAIM + RELEASE** — combined `[boundaries-lock-claim+release]` commit; single-commit cycle (DRAFT seed; no Phase 3 review yet — closure pass pending)
+- **Files modified within `_boundaries/`:**
+  - `_LOCK.md`: claim + release in same commit (DRAFT seed only); _Last released_ entry below
+  - `01_feature_ownership_matrix.md`: 2 new aggregate rows (`tilemap_view` T2/Channel non-cell-only + `tilemap_template` T2/Reality) + `tilemap.*` namespace prefix appended to row 125 + `TMP-*` stable-ID prefix row appended after MAP-* + 4 new EVT-T row groups (EVT-T4 sub-types `TilemapBorn`+`ZonesPlaced` + EVT-T3 `aggregate_type=tilemap_view`/`tilemap_template` + EVT-T8 sub-shapes `Forge:RegenTilemap`+`Forge:EditTemplate`+`Forge:OverridePlacement` + EVT-T5/T6 V2 LLM layer reservations)
+  - `02_extension_contracts.md`: §2.X new subsection — RealityManifest extension fields `tilemap_templates: Option<HashMap<ChannelTier, TilemapTemplateRef>>` + `tilemap_defaults: Option<TilemapDefaults>` (BOTH OPTIONAL V1+30d, engine-defaulted) with TilemapDefaults schema sketch
+  - `99_changelog.md`: this entry top-anchored
+- **Files modified outside `_boundaries/`:**
+  - `features/00_tilemap/_index.md`: NEW folder + index (TMP_001..TMP_008 list)
+  - `features/00_tilemap/TMP_001_tilemap_foundation.md`: NEW (core doc; ~700 lines; aggregate `tilemap_view` + `tilemap_template` + 4-layer composition + tile state machine + MAP_001 integration + RealityManifest ext + `tilemap.*` namespace 16+6 rule_ids + axioms TMP-A1..A10 + cross-aggregate consistency TMP-C1..C4 + deferrals TMP-D1..D11)
+  - `features/00_tilemap/TMP_002_zone_placement.md`: NEW (~600 lines; force-directed Fruchterman-Reingold + Penrose tiling + fractalize — adapted from vcmi `CZonePlacer` + `PenroseTiling` + `Zone::fractalize`)
+  - `features/00_tilemap/TMP_003_pipeline_modificators.md`: NEW (~600 lines; modificator pattern + dependency graph + parallel execution + 7 V1+30d modificators catalog — adapted from vcmi `Modificator` base + `RmgMap::addModificators`)
+  - `features/00_tilemap/TMP_004_template_authoring.md`: NEW (~500 lines; full schema + `*LikeZone` inheritance + ZoneType/ConnectionKind enums + example template + schema-additive evolution discipline)
+  - `features/00_tilemap/TMP_005_biome_and_obstacles.md`: NEW (~500 lines; biome obstacle-set architecture + TerrainPainter + ObstaclePlacer detail — direct adopt from vcmi Biome_Format.md)
+  - `features/00_tilemap/TMP_006_treasure_and_objects.md`: NEW (~550 lines; tiered TreasureTierSpec + TreasurePlacer + ObjectManager + "never seal a gap" connectivity invariant — direct adopt from vcmi)
+  - `features/00_tilemap/TMP_007_connections_and_guards.md`: NEW (~500 lines; 5-variant ConnectionKind + 3-pass placement algorithm + dining-philosopher cross-zone locking + water route + monolith fallback — direct adopt from vcmi `ConnectionsPlacer`)
+  - `features/00_tilemap/TMP_008_llm_integration.md`: NEW (~500 lines; L3 LLM zone classifier + L4 regional narration + cost model + 05_llm_safety integration + AIT-A4 hybrid 2-stage reuse; V1+30d schema-reserved, V2 active)
+  - `catalog/cat_00_TMP_tilemap_foundation.md`: NEW namespace claim (43 catalog entries TMP-1..TMP-43; V1+30d active L1+L2 + V2 LLM + V3 RMG wizard reservations; cross-refs to all TMP_001..TMP_008 docs + vcmi source files)
+  - `features/_spikes/SPIKE_03_tilemap_world_view.md`: graduation status added (SPIKE_03 marked "graduated 2026-05-13 → TMP_001"; cross-ref to new TMP folder)
+  - `features/_spikes/_index.md`: SPIKE_03 status updated to "GRADUATED"
+- **Graduated from:** [`features/_spikes/SPIKE_03_tilemap_world_view.md`](../features/_spikes/SPIKE_03_tilemap_world_view.md) DRAFT 2026-04-27
+- **Inspiration:** VCMI Random Map Generator — `lib/rmg/` + `lib/rmg/modificators/` — adapted as foundation tier. Concrete VCMI file refs catalogued in TMP_001 §1.2 adaptation table.
+
+### Architectural decisions captured in this seed
+
+| Decision | Where |
+|---|---|
+| Cell tier has NO `tilemap_view`; CSC_001 16×16 interior authoritative for cells | TMP-A1 |
+| 4-layer composition mirrors CSC_001 v3→v4 (L1 hand-authored + L2 procedural + L3 LLM classifier V2 + L4 LLM narration V2) | TMP-A2 |
+| 5-variant ConnectionKind direct adopt from vcmi (Guarded/Wide/Fictive/Repulsive/ForcePortal) | TMP-A3 |
+| Deterministic seed = blake3(reality_id || channel_id || template_id || seed_offset); replay-deterministic per TDIL-A9 | TMP-A4 |
+| 4-state TileState (Free/Possible/Blocked/Used) direct adopt from vcmi ETileType | TMP-A5 |
+| MAP_001 author-positioned (x, y) is canonical source of truth; TMP_001 derives tile_coord via linear scale + subscribe pattern | TMP-A6 |
+| "Never seal a gap" connectivity invariant — every placement preserves zone path-connectivity | TMP-A7 |
+| Schema-additive evolution V1+30d → V2 → V3 (additive only; no field removal; no field type change; mirror of vcmi additive template format) | TMP-A8 |
+| LLM operates on zone summaries only; never sees raw tiles; cost independent of grid size | TMP-A9 |
+| Modificator pipeline with explicit dependency graph + parallel execution + single-thread debug mode | TMP-A10 |
+| V-tier target: V1+30d L1+L2 procedural pipeline / V2 L3+L4 LLM layers / V3 RMG wizard + paint UX | TMP-1..TMP-43 catalog tier columns |
+
+### V-tier slice scope
+
+| Tier | What ships |
+|---|---|
+| **V1+30d** | Engine-only generation (deterministic). All foundation aggregates + 7 modificators + 6 vcmi-derived zone-placement algorithms + biome obstacle-set + tiered treasure + "never seal gap" invariant. `llm_enabled: false` default. |
+| **V2** | LLM augmentation lights up: L3 zone classifier + L4 regional narration (cached). Cost ~10-15K tokens per tilemap initial; ~$1 per reality one-time. Travel encounters + terrain movement modifiers + sprite atlas pipeline. |
+| **V3** | RMG wizard (author params → seed → full reality bootstrap) + paint UX + multi-level verticality + cross-tier portals. Player-facing reality customization. |
+
+### Notes for next session
+
+- §15 acceptance criteria walk pending (AC-TMP-1..10 placeholder filled but not walked). Closure pass (Phase 3 review + criteria walk) required for CANDIDATE-LOCK.
+- TMP-Q1..Q8 in TMP_001 §12 + TMP-PLACE-Q1..Q3 + TMP-PIPE-Q1..Q4 + TMP-TPL-Q1..Q5 + TMP-BIOME-Q1..Q4 + TMP-TR-Q1..Q6 + TMP-CONN-Q1..Q5 + TMP-LLM-Q1..Q7 open questions across the 8 docs (~40 total) — deep-dive batch resolution at closure pass.
+- Cross-aggregate consistency rules TMP-C1..TMP-C4 need slot allocation in `03_validator_pipeline_slots.md` (deferred; reserved schema only at this seed).
+- Cross-feature integration NOT yet annotated: MAP_001 §7 subscribe-pattern; CSC_001 §11 cell-as-object on tilemap; AIT_001 AIT-A4 reuse; TDIL_001 TDIL-A9 satisfaction; PL_001 §13 travel cost. Annotate at closure pass.
+
+---
+
 ## 2026-04-27 — PO_001 Player Onboarding CANDIDATE-LOCK closure commit 4/4 — final lock release + cross-feature deferral RESOLVED annotations
 
 - **Lock RELEASED** — 4-commit cycle complete (wireframes Phase 0 19855a5b + 4c4fd6d7 + Phase 0 backend kickoff 9245666c + DRAFT 2/4 4106410c + Phase 3 cleanup 3/4 f41077f4 + closure 4/4 this commit); single combined `[boundaries-lock-release]` commit

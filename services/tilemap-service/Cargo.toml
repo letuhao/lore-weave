@@ -1,0 +1,37 @@
+[package]
+name = "tilemap-service"
+version = "0.1.0-phase0a"
+description = "Procedural tilemap generation service for LoreWeave non-cell channels (continent / country / district / town tiers). PoC Phase 0a — scaffold + types + LLM SDK dep; no real LLM call yet."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tilemap-service"
+path = "src/main.rs"
+
+[lib]
+name = "tilemap_service"
+path = "src/lib.rs"
+
+[dependencies]
+# LoreWeave LLM gateway SDK (sibling workspace member).
+loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }
+
+# Shared workspace deps.
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+blake3 = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+# Offline mock gateway for the L3 harness measurement test.
+wiremock = { workspace = true }
+tokio = { workspace = true }

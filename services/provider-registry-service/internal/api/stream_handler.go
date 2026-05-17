@@ -37,6 +37,15 @@ func base64StdEncode(p []byte) string {
 	return base64.StdEncoding.EncodeToString(p)
 }
 
+// hasToolDefinitions reports whether the request carries at least one tool
+// definition. The JSON `tools` field decodes into `any`: an absent field is
+// nil, but `tools: []` decodes to a non-nil EMPTY `[]any` — which asks for
+// nothing and must NOT trip the D8 tools-unsupported guard.
+func hasToolDefinitions(tools any) bool {
+	s, ok := tools.([]any)
+	return ok && len(s) > 0
+}
+
 // streamRequest mirrors the StreamRequest schema in the OpenAPI contract.
 //
 // Phase 5a: `operation` discriminates between chat (default, omitted ⇒
@@ -49,6 +58,7 @@ type streamRequest struct {
 	ModelRef     string         `json:"model_ref"`
 	Messages     any            `json:"messages,omitempty"` // chat only
 	Tools        any            `json:"tools,omitempty"`
+	ToolChoice   any            `json:"tool_choice,omitempty"` // OpenAI-shaped; chat only
 	Temperature  *float64       `json:"temperature,omitempty"`
 	MaxTokens    *int           `json:"max_tokens,omitempty"`
 	StreamFormat string         `json:"stream_format,omitempty"`
@@ -198,6 +208,19 @@ WHERE platform_model_id=$1 AND status='active'
 		return
 	}
 
+	// Fail loud if the request carries tool DEFINITIONS but the resolved
+	// provider's adapter does not support them — a 400 BEFORE the SSE
+	// prelude, so the caller learns early instead of getting a 200 stream
+	// that silently dropped the tool definitions. The trigger is a
+	// non-empty `tools` array: `tools: []` asks for nothing (and decodes to
+	// a non-nil empty slice), and `tool_choice` without tools is inert — so
+	// neither trips the guard. (tts requests carry no tools either.)
+	if hasToolDefinitions(in.Tools) && !adapter.SupportsTools() {
+		writeError(w, http.StatusBadRequest, "LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER",
+			"provider '"+providerKind+"' does not support tools/tool_choice")
+		return
+	}
+
 	// SSE prelude (shared chat + tts). We commit to a 200 here because
 	// we have no way to signal HTTP-level errors after the first byte
 	// ships; streaming errors are emitted as `event: error` SSE frames
@@ -290,6 +313,9 @@ func (s *Server) streamChat(
 	}
 	if in.Tools != nil {
 		input["tools"] = in.Tools
+	}
+	if in.ToolChoice != nil {
+		input["tool_choice"] = in.ToolChoice
 	}
 
 	emit := func(chunk provider.StreamChunk) error {

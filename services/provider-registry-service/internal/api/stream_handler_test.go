@@ -203,3 +203,25 @@ func TestDoLlmStream_UnknownOperationRejected(t *testing.T) {
 		t.Errorf("expected hint listing 'chat, tts'; got %s", body)
 	}
 }
+
+// TestHasToolDefinitions — Phase 0b D8 guard helper. The JSON `tools` field
+// decodes to `any`: absent ⇒ nil, `[]` ⇒ non-nil empty slice (asks for
+// nothing — must NOT trip the guard), `[{...}]` ⇒ has tools.
+func TestHasToolDefinitions(t *testing.T) {
+	cases := []struct {
+		name  string
+		tools any
+		want  bool
+	}{
+		{"nil (field absent)", nil, false},
+		{"empty array", []any{}, false},
+		{"one tool", []any{map[string]any{"type": "function"}}, true},
+		{"two tools", []any{map[string]any{}, map[string]any{}}, true},
+		{"non-array junk", "auto", false},
+	}
+	for _, c := range cases {
+		if got := hasToolDefinitions(c.tools); got != c.want {
+			t.Errorf("%s: hasToolDefinitions(%#v) = %v, want %v", c.name, c.tools, got, c.want)
+		}
+	}
+}

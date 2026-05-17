@@ -81,6 +81,1751 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-05-16 (cont. 3) — TVL_005 Group/Party Travel (1 commit; the travel arc is COMPLETE at the design layer — 5 features)
+
+### Session arc
+
+Continued straight from the TVL_003 commit. User picked **TVL_005 Group/Party Travel** — the group layer TVL_001 TVL-D5 deferred and that TVL_002 CTV-D8 / TVL_003 TVM-D3 / TVL_004 CTE-D7 each declared a literal "Requires TVL_005" dependency on. Phase 0 TVP-D1..D7 deep-dive → user `approve all` → DRAFT → user invoked `/review-impl` → 2 HIGH + 1 MED + 3 LOW surfaced → user directed "fix all" → all 6 resolved inline → single combined `[boundaries-lock-claim+release]` commit `5ac81495`.
+
+### What TVL_005 specifies
+
+V1+30d+ feature letting several actors travel a journey together as one unit — a PC + Tracked-NPC companions crossing the realm as a party. NEW `travel_party` aggregate (member set, leader, lifecycle). A party travels on the **leader's** TVL_001 `actor_travel_state` journey: `Party:Travel` creates the leader's journey + binds every member; per-tick progress + `Travel:Arrive` cascade every member's `entity.current_cell_id` (lockstep arrival — one journey, no per-member drift). Members get no individual journey rows. OnFoot-only V1+30d+; ≤6 members; each member pays their own provisions. A TVL_004 encounter on the bound journey pauses the whole party; the leader resolves it. Leadership transfers if the leader leaves a Forming party. Composite party travel (TVL_002 CTV-D8) + mounted party travel (TVL_003 TVM-D3) + party-wide encounter outcomes (TVL_004 CTE-D7) stay deferred — TVL_005 ships the `travel_party` aggregate those three were written against.
+
+### `/review-impl` 1-pass — 2 HIGH + 1 MED + 3 LOW, all resolved inline
+
+- **HIGH-1** — a traveling non-leader member had no in-transit marking (`entity.travel_journey_id` stayed None, `current_cell_id` stuck at the origin) → the rest of the system saw the member as stationary-and-available. Fixed — the `Party:Travel` cascade marks every member in-transit by writing the *existing* `entity.travel_journey_id` field (no new field); Arrive/Cancel/Disband clear it.
+- **HIGH-2** — the leader was double-charged provisions (TVL_001 §5.1 journey-creation deducts + the per-member cascade deducts the leader again). Fixed — journey-creation skips the built-in deduction; the per-member cascade is the single deduction.
+- **MED-1** — the Forming-party↔solo-journey boundary was under-guarded; fixed (TVP-V10 added to `Party:Form`; TVP-V11 broadened to any non-Disbanded party; rule_id `actor_in_traveling_party` → `actor_in_party`). **LOW-1..3** — rule_id count (12 new/13 total), TVP-V12 reframed defensive, per-member cell-update cascade routing made explicit.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_travel/TVL_005_group_party_travel.md` | DRAFT + /review-impl 1-pass (2 HIGH + 1 MED + 3 LOW resolved) | 412 |
+| `features/00_travel/_index.md` | TVL_005 row + Active line; TVL_004 commit hash backfilled | + |
+| `catalog/cat_00_TVL_travel_foundation.md` | NEW TVL_005 sub-section, entries TVL-76..TVL-90 (15 entries) | + |
+| `_boundaries/01_feature_ownership_matrix.md` | NEW `travel_party` aggregate row | + |
+| `_boundaries/02_extension_contracts.md` | §4 EVT-T8 `Forge:DisbandParty`; §1.4 `travel.*` +12 rule_ids + EVT-T1 `Party:*` sub-types | + |
+| `_boundaries/99_changelog.md` | combined DRAFT + /review-impl entry top-anchored | + |
+| `_boundaries/_LOCK.md` | 1 claim+release cycle | + |
+
+### The travel arc is COMPLETE at the design layer
+
+Five features designed: **TVL_001** atomic single-segment (pre-existing) + **TVL_002** composite multi-segment + **TVL_003** mount/vehicle + **TVL_004** encounters + **TVL_005** group/party. The arc's deferral graph is self-consistent — TVL_005 (the last) *closed* three sibling blockers (CTV-D8 / TVM-D3 / CTE-D7's "Requires TVL_005") rather than opening new ones.
+
+### Handoff notes for next agent / next session
+
+**Active:** none. Lock released. Tree clean. Branch `mmo-rpg/design-resume` ahead of `origin` — **nothing pushed, no PR** per the standing user constraint.
+
+**The TVL_001 closure pass now serves FOUR consumer features** — to land together as one batched task at `travel-service` implementation:
+- **TVL_002** — `actor_travel_state.composite_journey_id` additive field + schema_version bump; `Travel:Arrive` defers composite-segment hospitality; TVL-Q3 vital_pool→resource_inventory erratum; `Canceled` end-position ratification (CTV-Q1, 4 items).
+- **TVL_003** — `actor_travel_state.mount_id` additive field + `TravelMode` enum 2→5 bump + `Travel:Initiate` payload `mount_id`; behavioral: TVL-V5/TVL-V9 logic + the speed-modifier formula factor.
+- **TVL_004** — `actor_travel_state.encounter_schedule` additive field + schema bump; behavioral: the `Scheduled:TravelTick` generator gains encounter detection + clamp-to-point + a pause that skips progress AND clock advancement.
+- **TVL_005** — behavioral-only (no new field): the TVP-V11 cross-feature validator on `Travel:Initiate` + the `Travel:Arrive` member cascade + the `Party:Travel` member in-transit marking.
+Sequence the three `actor_travel_state` `schema_version` bumps (TVL_002 → TVL_003 → TVL_004).
+
+**Two follow-on closure passes also queued** (not V1+30d+; future features): a **TVL_002 closure pass** for composite-with-mount (TVM-D5) + composite party travel (CTV-D8) — relax CTV-V9, add a `mount_id` + party binding to `CompositeTravel:Initiate`/`composite_journey`.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` (POL + SET + ROUTE) + `services/travel-service` (the 5 TVL aggregates: `actor_travel_state` + `composite_journey` + `mount` + `travel_encounter` + `travel_party`; Dijkstra; Poisson encounter pre-roll) + EF_001 + the 4-feature TVL_001 closure pass + auth-service capability migration + chat-service S9 context extensions + CI gates. This is the single largest queued task.
+2. **A combat feature** design — replaces the TVL_004 §5.4 combat abstraction (CTE-D1); also unblocks PROG_001 DF7-equivalent damage-law work.
+3. **DIPL_001 V2+ Diplomacy Foundation** design — consumes POL_001 State.culture_tag + Settlement graph; requires IDF_005 V2+ ideology.
+4. **TVL_002 closure pass** — composite-with-mount (TVM-D5) + composite party travel (CTV-D8).
+5. **EF_001 + TVL_001 closure passes** standalone — or batched with the V1+30d implementation phase.
+6. **SPIKE_05 V1+ knowledge-service activation walk-through** — deferred until knowledge-service ships.
+
+**Process discipline for next agent:**
+
+- The travel arc is the design-track's most complete sub-system — 5 interlocking features sharing one `actor_travel_state` substrate + one `travel-service`. The cross-feature pattern is settled: a consumer feature reads the parent aggregate, adds a feature-owned aggregate, coordinates schema additions via the parent's closure pass.
+- `/review-impl` resolved MED + LOW inline (not just HIGH) on every TVL feature this session per explicit user "fix all" directives.
+- HIGH-count arc trend: POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3 → TVL_003 1 → TVL_005 2.
+
+### Raw count
+
+- **Commits:** 1 (`5ac81495`).
+- **Files landed:** 7 (1 new + 6 modified); 580 insertions.
+- **Design-doc lines:** 412 TVL_005.
+- **Catalog entries added:** 15 (TVL-76..TVL-90).
+- **NEW aggregate:** 1 (`travel_party`); **NEW EVT-T sub-types:** 5 (EVT-T1 `Party:Form`/`Join`/`Leave`/`Travel` + EVT-T8 `Forge:DisbandParty`).
+- **`travel.*` rule_ids added:** 13 (12 new + 1 reused); **validators:** 13 (TVP-V1..V13).
+- **Acceptance scenarios:** 15 (AC-TVL-61..75); **deferrals:** 9 (TVP-D1..D9); **open questions:** 7 (TVP-Q1..Q7).
+- **Cross-feature footprint:** behavioral-only TVL_001 closure pass (3 items, NO new schema field).
+- **/review-impl findings resolved:** 2 HIGH + 1 MED + 3 LOW (all inline, 1-pass).
+- **NEW RealityManifest field:** 1 (`canonical_parties`).
+
+---
+
+## Session 2026-05-16 (cont. 2) — TVL_003 Mount/Vehicle Travel (1 commit; the conveyance layer; activates the ByBoat mode TVL_001 schema-reserved)
+
+### Session arc
+
+Continued straight from the TVL_004 commit. User picked **TVL_003 Mount/Vehicle Travel** from the next-step list — the feature TVL_001 built `TravelMode` 2-variant (with `ByBoat` schema-reserved) precisely for, and which TVL_002 CTV-D5 multi-modal composite is blocked on. Phase 0 TVM-D1..D7 deep-dive → user `approve all` → DRAFT → user invoked `/review-impl` → 1 HIGH + 1 MED + 4 LOW surfaced → user directed "fix all" → all 6 resolved inline → single combined `[boundaries-lock-claim+release]` commit `8cfda9a5`.
+
+### What TVL_003 specifies
+
+V1+30d+ feature letting a journey use a mount/vehicle instead of OnFoot — a horse on the Road, a river boat on a RiverNavigation route, a ship across a SeaLane, a carriage on a Road. Activates the schema-reserved `ByBoat` `TravelMode` + adds `OnHorseback`/`ByShip`/`ByCarriage` — a closed-enum additive bump (R3) of TVL_001's `TravelMode` 2 → 5. NEW lightweight `mount` aggregate (T2/Reality, sparse per-mount; instanced, owned, located, kinded — not an EF_001 entity, not a fungible RES_001 resource). Per-mode speed modifier on `route.default_fiction_duration` (OnFoot 1.0 → ByShip 0.3 — a mount is *faster*, not *shorter*; provisions cost stays distance-based). Hardcoded mode↔route compatibility matrix. Acquisition via canonical declaration + `Forge:GrantMount` (market purchase deferred). The mount must be at the actor's origin cell; it travels `InTransit` with the actor and is `AtCell(destination)` on arrival. ROUTE_001's `SeaLane`/`RiverNavigation` routes finally get vessels.
+
+### `/review-impl` 1-pass — 1 HIGH + 1 MED + 4 LOW, all resolved inline
+
+- **HIGH-1** — §5.5 claimed a uniform-mode composite journey (e.g. all-Road `OnHorseback`) "works" and carries one mount — but TVL_002 *as shipped* rejects every non-OnFoot composite (CTV-V9), and there is no `mount_id` on `CompositeTravel:Initiate`/`composite_journey`. Fixed: composite-with-mount **deferred V1+30d+** (TVM-D5 — names exactly what a future TVL_002 closure pass needs); TVM-V11 dropped (validators 11→10); AC-TVL-59 + §12.4 rewritten.
+- **MED-1** — the TVL_001 closure pass was mislabeled "schema-only"; relabelled "schema + behavioral" (TVL-V5 lifts the `mode_unavailable` reject; TVL-V9 becomes the expanded matrix; the `speed_modifier` factor enters the tick + arrival formulas). **LOW-1..4** — rule_id count reconciled (8 new/10 total); owner-death folded into TVM-D7; route-incompatible mount cell documented; `mode_requires_mount` copy reworded.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_travel/TVL_003_mount_vehicle_travel.md` | DRAFT + /review-impl 1-pass (1 HIGH + 1 MED + 4 LOW resolved) | 381 |
+| `features/00_travel/_index.md` | TVL_003 row (between TVL_002 + TVL_004 by number) + Active line | + |
+| `catalog/cat_00_TVL_travel_foundation.md` | NEW TVL_003 sub-section, entries TVL-61..TVL-75 (15 entries) | + |
+| `_boundaries/01_feature_ownership_matrix.md` | NEW `mount` aggregate row | + |
+| `_boundaries/02_extension_contracts.md` | §4 EVT-T8 `Forge:GrantMount`; §1.4 `travel.*` +8 rule_ids + `TravelMode` enum bump / `actor_travel_state.mount_id` cross-feature dependency | + |
+| `_boundaries/99_changelog.md` | combined DRAFT + /review-impl entry top-anchored | + |
+| `_boundaries/_LOCK.md` | 1 claim+release cycle | + |
+
+### Handoff notes for next agent / next session
+
+**Active:** none. Lock released. Tree clean. Branch `mmo-rpg/design-resume` ahead of `origin` — **nothing pushed, no PR** per the standing user constraint.
+
+**The travel arc is now 4 features** — TVL_001 (atomic) + TVL_002 (composite) + TVL_004 (encounters) + TVL_003 (mounts). **The TVL_001 closure pass now bundles three consumer features' coordination** — TVL_002 `composite_journey_id` (+ CTV-Q1's 4 items) · TVL_004 `encounter_schedule` field + `Scheduled:TravelTick` generator extension · TVL_003 `mount_id` + `TravelMode` 2→5 bump + `Travel:Initiate` payload field + the TVL-V5/TVL-V9/speed-modifier behavioral changes. All land together at `travel-service` implementation as one closure-pass commit (sequenced `actor_travel_state` schema_version bumps).
+
+**A second closure pass is now also queued** — a **TVL_002 closure pass** to enable composite-with-mount (TVM-D5): relax CTV-V9 to a uniform activated `TravelMode`, add `mount_id` to `CompositeTravel:Initiate` + `composite_journey`. Not V1+30d+; a future feature.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` (POL + SET + ROUTE) + `services/travel-service` (TVL_001 `actor_travel_state` + TVL_002 `composite_journey` + TVL_004 `travel_encounter` + TVL_003 `mount` + Dijkstra + Poisson encounter pre-roll) + EF_001 + TVL_001 closure passes + auth-service capability migration + chat-service S9 context extensions + CI gates.
+2. **TVL_005 V1+30d+ Group/Party Travel** design — multiple actors traversing a journey together; unblocks party encounters (TVL_004 CTE-D7) + multi-passenger vehicles (TVL_003 TVM-D3).
+3. **A combat feature** design — replaces the TVL_004 §5.4 combat abstraction (CTE-D1); also unblocks PROG_001 DF7-equivalent damage-law work.
+4. **TVL_002 closure pass** — enable composite-with-mount (TVM-D5).
+5. **EF_001 + TVL_001 closure passes** standalone — or batched with the V1+30d implementation phase.
+6. **DIPL_001 V2+ Diplomacy Foundation** design — consumes POL_001 State.culture_tag + Settlement graph; requires IDF_005 V2+ ideology.
+
+**Process discipline for next agent:**
+
+- The TVL arc has settled a pattern for a feature consuming a sibling feature: read the consumed aggregate, add a feature-owned aggregate, coordinate cross-feature schema additions via the consumed feature's closure pass. The TVL_001 closure pass is now a 3-feature coordination point — treat it as a single batched implementation task.
+- `/review-impl` resolved MED + LOW inline (not just HIGH) on TVL_002 / TVL_004 / TVL_003 per explicit user "fix all" directives — when the user says "fix all", apply everything inline in the same commit.
+- HIGH-count arc trend: POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3 → TVL_003 1 (derivative features review lighter).
+
+### Raw count
+
+- **Commits:** 1 (`8cfda9a5`).
+- **Files landed:** 7 (1 new + 6 modified); 555 insertions.
+- **Design-doc lines:** 381 TVL_003.
+- **Catalog entries added:** 15 (TVL-61..TVL-75).
+- **NEW aggregate:** 1 (`mount`); **NEW EVT-T sub-type:** 1 (EVT-T8 `Forge:GrantMount`); **TravelMode enum bump:** 2 → 5 (R3 additive).
+- **`travel.*` rule_ids added:** 10 (8 new + 2 reused); **validators:** 10 (TVM-V1..V10).
+- **Acceptance scenarios:** 15 (AC-TVL-46..60); **deferrals:** 9 (TVM-D1..D9); **open questions:** 7 (TVM-Q1..Q7).
+- **Cross-feature schema dependency:** 1 (`actor_travel_state.mount_id` + `TravelMode` bump + `Travel:Initiate` payload, via TVL_001 closure pass).
+- **/review-impl findings resolved:** 1 HIGH + 1 MED + 4 LOW (all inline, 1-pass).
+- **NEW RealityManifest field:** 1 (`canonical_mounts`).
+
+---
+
+## Session 2026-05-16 (cont.) — TVL_004 Travel Encounters (1 commit; the encounter layer the whole travel arc was built toward)
+
+### Session arc
+
+Continued straight from the TVL_002 commit. User picked **TVL_004 Travel Encounters** from the next-step list — the feature TVL_001 §1 Gap 3 explicitly named ("V1+30d+ encounter generators need a travel-in-progress state to attach to") and TVL_002 CTV-D1 kept composite-agnostic for. Phase 0 CTE-D1..D7 deep-dive → user `approve all` → DRAFT → user invoked `/review-impl` → 3 HIGH + 5 MED + 5 LOW surfaced → user directed "fix all" → all 13 resolved inline → single combined `[boundaries-lock-claim+release]` commit `dda45ef8`.
+
+### What TVL_004 specifies
+
+V1+30d+ feature generating encounters *during* a journey — bandit ambush on a remote Trail, merchant caravan on a Road, storm on a MountainPass, herb cache by a River. Reads the GEO/POL/SET/ROUTE V1+30d substrate (biome, route.kind, province danger) and attaches mechanical encounter events to TVL_001's `actor_travel_state`. NEW `travel_encounter` aggregate (T2/Reality, sparse per-(journey, encounter)). Encounter schedule pre-rolled (Poisson) at `Travel:Initiate` and **pinned** onto a NEW additive `actor_travel_state.encounter_schedule` field. An unresolved encounter pauses the journey (no `TravelStatus` change); the actor picks a per-kind approach; chat-service LLM narrates the scene + proposes an outcome; the engine clamps to author-declared `OutcomeBounds`; the journey resumes. `Combat` encounters resolve via a one-step abstraction (no turn-by-turn loop — deferred to a future combat feature). Encounter participants are abstract + ephemeral (no persistent EF_001/AIT entities). `EncounterKind` 4-variant; author-declared `encounter_tables` RealityManifest extension. TVL_002 composites are encounter-agnostic for pause, composite-aware for reroute-cancel.
+
+### `/review-impl` 1-pass — 3 HIGH + 5 MED + 5 LOW, all resolved inline
+
+- **HIGH-1** — the tick crossed-point logic overshot the encounter point + silently lost a 2nd point crossed in the same tick (Poisson has no min spacing); fixed — a tick clamps to exactly the crossed point.
+- **HIGH-2** — the schedule was claimed a "pure re-derivable function, no stored field", but depends on `world_geometry` biome + `route.kind`, both mutable via `GeographyDelta` — a determinism break. Fixed — the schedule is **pinned** onto a NEW additive `actor_travel_state.encounter_schedule` field (schema_version bump per I14); TVL_004 thus gains a cross-feature schema dependency like TVL_002's `composite_journey_id`.
+- **HIGH-3** — a `Hazard` `DivertToCell` reroute cancels the segment's `actor_travel_state`; if the segment belonged to a composite, no TVL_002 path handled it (orphaned composite). Fixed — the reroute also transitions the `composite_journey` to `Stranded`.
+- **MED-1..5** — paused-tick clock double-count · missing `combat_threat` table field · reroute teleport (CTE-V11 proximity) · biome-lookup dependency on ROUTE_001's cell sequence · the logically-impossible "single LLM call" (CTE-Q6). **LOW-1..5** — rule_id count reconciliation · magnitude clamp to PL_006 `1..=10` · §6 determinism wording · `Forge:ResolveEncounter` Skip-only · outcome-proposal replay caching.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_travel/TVL_004_travel_encounters.md` | DRAFT + /review-impl 1-pass (3 HIGH + 5 MED + 5 LOW resolved) | 473 |
+| `features/00_travel/_index.md` | TVL_004 row + Active line | + |
+| `catalog/cat_00_TVL_travel_foundation.md` | NEW TVL_004 sub-section, entries TVL-45..TVL-60 (16 entries) | + |
+| `_boundaries/01_feature_ownership_matrix.md` | NEW `travel_encounter` aggregate row | + |
+| `_boundaries/02_extension_contracts.md` | §4 EVT-T8 `Forge:ResolveEncounter`; §1.4 `travel.*` +10 rule_ids + EVT-T1/T6 sub-types + `encounter_schedule` cross-feature dependency | + |
+| `_boundaries/99_changelog.md` | combined DRAFT + /review-impl entry top-anchored | + |
+| `_boundaries/_LOCK.md` | 1 claim+release cycle | + |
+
+### Handoff notes for next agent / next session
+
+**Active:** none. Lock released. Tree clean. Branch `mmo-rpg/design-resume` ahead of `origin` — **nothing pushed, no PR** per the standing user constraint.
+
+**TVL_001 closure pass now spans TWO consumer features:**
+- For **TVL_002** (CTV-Q1, 4 items): `composite_journey_id` additive field + schema bump · `Travel:Arrive` defers composite-segment hospitality to the composite handler · TVL-Q3 vital_pool→resource_inventory erratum · `Canceled` end-position ratified to snap-to-`from_cell`.
+- For **TVL_004** (CTE-Q1): `encounter_schedule: Vec<EncounterPoint>` additive field + schema bump · the `Scheduled:TravelTick` generator gains clamp-to-crossed-point encounter detection + a pause that skips both progress and clock advancement.
+- Both should land together when `travel-service` is implemented — two sequential `actor_travel_state` schema_version bumps.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` (POL + SET + ROUTE) + `services/travel-service` (TVL_001 `actor_travel_state` + TVL_002 `composite_journey` + TVL_004 `travel_encounter` + Dijkstra solver + Poisson encounter pre-roll) + EF_001 + TVL_001 closure passes + auth-service capability migration + chat-service S9 `[GEOGRAPHIC_CONTEXT]`/`[TRAVEL_CONTEXT]` extensions + CI gates.
+2. **TVL_003 V1+30d+ Mount/Vehicle Travel** design — OnHorseback / ByBoat / ByShip / ByCarriage; activates the schema-reserved ByBoat mode + unblocks multi-modal composite paths (TVL_002 CTV-D5).
+3. **TVL_005 V1+30d+ Group/Party Travel** design — a party traversing a journey together; unblocks party encounters (TVL_004 CTE-D7).
+4. **A combat feature** design — would replace the TVL_004 §5.4 combat abstraction (CTE-D1); also unblocks PROG_001 DF7-equivalent damage-law work.
+5. **EF_001 + TVL_001 closure passes** standalone — or batched with the V1+30d implementation phase.
+6. **DIPL_001 V2+ Diplomacy Foundation** design — consumes POL_001 State.culture_tag + Settlement graph; requires IDF_005 V2+ ideology.
+
+**Process discipline for next agent:**
+
+- The TVL travel arc now has 4 features: TVL_001 (atomic) + TVL_002 (composite convenience) + TVL_004 (encounters). The pattern for a feature consuming a sibling feature: read the consumed aggregate, add an orchestration/attachment aggregate, coordinate cross-feature schema additions via the consumed feature's closure pass.
+- This session resolved MED + LOW inline (not just HIGH) per explicit user "fix all" directive on both TVL_002 and TVL_004 — when the user says "fix all", apply everything inline in the same commit.
+- HIGH-count arc trend: POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3 → TVL_004 3.
+
+### Raw count
+
+- **Commits:** 1 (`dda45ef8`).
+- **Files landed:** 7 (1 new + 6 modified); 647 insertions.
+- **Design-doc lines:** 473 TVL_004.
+- **Catalog entries added:** 16 (TVL-45..TVL-60).
+- **NEW aggregate:** 1 (`travel_encounter`); **NEW EVT-T sub-types:** 3 (EVT-T1 `Encounter:Resolve` + EVT-T6 `Encounter:SceneNarration` + EVT-T8 `Forge:ResolveEncounter`).
+- **`travel.*` rule_ids added:** 11 (10 new + 1 reused); **validators:** 12 (CTE-V1..V12).
+- **Acceptance scenarios:** 15 (AC-TVL-31..45); **deferrals:** 9 (CTE-D1..D9); **open questions:** 7 (CTE-Q1..Q7).
+- **Cross-feature schema dependency:** 1 (`actor_travel_state.encounter_schedule`, via TVL_001 closure pass).
+- **/review-impl findings resolved:** 3 HIGH + 5 MED + 5 LOW (all inline, 1-pass).
+- **NEW RealityManifest field:** 1 (`encounter_tables`).
+
+---
+
+## Session 2026-05-16 — TVL_002 Composite Multi-Segment Travel (1 commit; first convenience layer — a feature consuming a feature; 2 branch merges reconciled at session start)
+
+### Session arc
+
+Resumed after a break. Two housekeeping merges first (per user direction "merge, no pull request, local only"): `origin/main` (Phase 5b–5f implementation, 292-commit catch-up) merged into `mmo-rpg/design-resume` clean (`560550c4`); then `origin/mmo-rpg/zone-map-amaw` (TMP tilemap foundation + `tilemap-service` + AMAW workflow, 25 commits / 119 files) merged in with 4 conflicts — all append-only design-track coordination files (`_LOCK.md`, `99_changelog.md`, `SESSION_HANDOFF.md` via union; `_spikes/_index.md` via judgment call) — resolved (`4bc4cbcb`). Nothing pushed.
+
+Then the user picked **TVL_002 Composite Multi-Segment Travel** from the next-step list — the first *convenience layer* in the design track (a feature consuming a feature, TVL_001, rather than a foundation substrate). Phase 0 CTV-D1..D7 deep-dive → user `approve all` → DRAFT → user invoked `/review-impl` → 3 HIGH + 3 MED + 4 LOW surfaced → user directed "fix all" → all 10 resolved inline → single combined `[boundaries-lock-claim+release]` commit.
+
+Pattern held: walk-through Phase 0 sub-decisions with recommended defaults → user terse approve → DRAFT lands → `/review-impl` adversarial pass → fix HIGH inline + (this session) fix MED + LOW inline per explicit user "fix all" directive → single combined commit with DRAFT + fix cycle folded.
+
+### What TVL_002 specifies
+
+V1+30d+ convenience layer over TVL_001 atomic travel. Player declares a destination cell; system runs Dijkstra over the GEO_004 ROUTE_001 Route graph, freezes the ordered segment list, and auto-traverses N segments — each segment a plain TVL_001 atomic journey. NEW `composite_journey` aggregate (T2/Reality, sparse per-(actor, composite_journey)). Plan freeze at initiate (replay-deterministic) + re-plan fallback (admin `RemoveRoute` on a future planned segment → one Dijkstra re-plan; failure/cap/under-provisioning → `Stranded`). Smart overnight stops (auto-rest at inn-bearing intermediate settlements). Whole-journey provisions pre-pay. Read-only `composite_travel_plan` preview query. Self-cancel at next segment boundary + admin `Forge:CancelCompositeJourney`. No new service (lives in `travel-service`); no new capability claim.
+
+### `/review-impl` 1-pass — 3 HIGH + 3 MED + 4 LOW, all resolved inline
+
+- **HIGH-1** §5.4 re-plan provisions check ignored on-hand `resource_inventory` (would wrongly `Stranded` a well-provisioned actor); fixed — re-check counts remaining-pre-pay + inventory, deducts shortfall, strands only if still short.
+- **HIGH-2** §5.6 refund formula ratioed a pre-re-plan total against a post-re-plan `total_distance_units` (over-refund / economy exploit); fixed — refund = `total_provisions_consumed − Σ(traversed-segment consumption)`.
+- **HIGH-3** §2.5 ("composite adds no tick mechanism") contradicted §5.3 ("initiate next segment at the NEXT turn-boundary"); fixed — segments chain **in-cascade** at handoff, no inter-segment turn gap. Dissolves MED-2 structurally.
+- **MED-1** `current_segment_index` invariant corrected. **MED-3** TVL_001 `Travel:Arrive` defers all composite-segment hospitality to the composite handler.
+- **LOW-1..4** §-citation + §8 count corrections; TVL-Q3 vital_pool erratum + atomic-journey `Canceled` end-position ratification folded into the CTV-Q1 closure-pass scope (now 4 coordinated items). Bonus: phantom rule_id `composite_replan_failed` removed.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_travel/TVL_002_composite_travel.md` | DRAFT + /review-impl 1-pass (3 HIGH + 3 MED + 4 LOW resolved) | 468 |
+| `features/00_travel/_index.md` | extended with TVL_002 row + Active line | + |
+| `catalog/cat_00_TVL_travel_foundation.md` | NEW TVL_002 sub-section, entries TVL-28..TVL-44 (17 entries) | + |
+| `_boundaries/01_feature_ownership_matrix.md` | NEW `composite_journey` aggregate row + `actor_travel_state` cross-feature annotation | + |
+| `_boundaries/02_extension_contracts.md` | §4 EVT-T8 `Forge:CancelCompositeJourney`; §1.4 `travel.*` +12 composite rule_ids + EVT-T1 sub-types | + |
+| `_boundaries/99_changelog.md` | combined DRAFT + /review-impl entry top-anchored | + |
+| `_boundaries/_LOCK.md` | 1 claim+release cycle | + |
+
+### Handoff notes for next agent / next session
+
+**Active:** none. Lock released. Tree clean. Branch `mmo-rpg/design-resume` ahead of `origin` (design-track commits + the 2 reconciliation merges) — **nothing pushed, no PR** per the standing user constraint; lifting that is a future explicit decision.
+
+**TVL_001 closure pass now carries 4 coordinated items** (CTV-Q1, to land at TVL_002 implementation): (1) `actor_travel_state.composite_journey_id: Option<CompositeJourneyId>` additive field + schema_version bump per I14; (2) `Travel:Arrive` defers all hospitality for composite segments to the composite handler; (3) TVL-Q3 erratum (vital_pool → resource_inventory, stale since TVL_001 HIGH-4); (4) atomic-journey `Canceled` end-position ratified to snap-to-`from_cell`.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` (POL + SET + ROUTE) + `services/travel-service` (TVL_001 `actor_travel_state` + TVL_002 `composite_journey` + Dijkstra path solver with the CTV-Q2 lexicographic tie-break) + EF_001 + TVL_001 closure passes + auth-service capability migration + chat-service S9 `[GEOGRAPHIC_CONTEXT]`/`[TRAVEL_CONTEXT]` extensions + CI gates.
+2. **TVL_004 V1+30d+ Travel Encounters** design — random events / weather / combat during a journey; attaches encounter events to per-segment `actor_travel_state` (composite-agnostic by design per CTV-D1).
+3. **TVL_003 V1+30d+ Mount/Vehicle Travel** design — OnHorseback / ByBoat / ByShip / ByCarriage; activates ByBoat mode + unblocks multi-modal composite paths (CTV-D5).
+4. **DIPL_001 V2+ Diplomacy Foundation** design — consumes State.culture_tag + State.ideology_ref + Settlement graph; requires POL_001 (done) + IDF_005 V2+ ideology.
+5. **EF_001 + TVL_001 closure passes** standalone — could batch with the V1+30d implementation phase or run separately.
+6. **SPIKE_05 V1+ knowledge-service activation walk-through** — deferred until knowledge-service ships.
+
+**Process discipline for next agent:**
+
+- TVL_002 is the first *convenience layer* — a feature consuming a feature (TVL_001). Pattern: read a locked sibling feature's aggregate → add an orchestration aggregate → coordinate cross-feature schema additions via the consumed feature's closure pass. Re-usable for future convenience layers (TVL_002 itself, group/party travel, etc.).
+- This session resolved MED + LOW inline (not just HIGH) per explicit user "fix all" directive — a stricter variant of the default policy (HIGH inline / MED user-decides / LOW defer). When the user says "fix all", apply everything inline in the same commit.
+- HIGH-count arc trend: POL 4 → SET 4 → ROUTE 3 → TVL_001 4 → TVL_002 3. Convenience layers reuse enough parent machinery that adversarial review finds fewer novel HIGH surfaces.
+
+### Raw count
+
+- **Commits:** 1 (`0bcc7d7a`) — plus 2 reconciliation merges (`560550c4` origin/main, `4bc4cbcb` zone-map-amaw).
+- **Files landed:** 7 (1 new + 6 modified); 641 insertions.
+- **Design-doc lines:** 468 TVL_002.
+- **Catalog entries added:** 17 (TVL-28..TVL-44).
+- **NEW aggregate:** 1 (`composite_journey`); **NEW EVT-T sub-types:** 3 (EVT-T1 `CompositeTravel:Initiate`/`Cancel` + EVT-T8 `Forge:CancelCompositeJourney`).
+- **`travel.*` rule_ids added:** 12 (10 player-meaningful + 2 defensive); **validators:** 17 (CTV-V1..V17).
+- **Acceptance scenarios:** 15 (AC-TVL-16..30); **deferrals:** 9 (CTV-D1..D9); **open questions:** 7 (CTV-Q1..Q7).
+- **Cross-feature schema dependency:** 1 (`actor_travel_state.composite_journey_id`, via TVL_001 closure pass).
+- **/review-impl findings resolved:** 3 HIGH + 3 MED + 4 LOW (all inline, 1-pass).
+
+---
+
+## Session 2026-05-14 → 2026-05-15 — V1+30d geography activation triangle + first consumer feature arc (4 commits; POL + SET + ROUTE activate GEO_001 schema-reserved layers; TVL_001 demonstrates consumer-feature pattern; /review-impl maturity discipline across all 4 features)
+
+### Session arc
+
+User opened with `read session and handoff` — orienting via the prior 2026-05-13/14 GEO_001 foundation arc. Then `3` from next-step recommendations: **GEO_002 POL_001 Political Layer Generator** (V1+30d, activates GEO_001 schema-reserved political/state/culture fields). Phase 0 7-decision deep-dive → user `1` approve all → DRAFT → user invoked `/review-impl` twice (2-pass) → 4 HIGH + 12 MED + 3 LOW resolved inline → commit. Then `2` GEO_003 SET_001 → same Phase 0 + DRAFT + 1-pass /review-impl (4 HIGH + 4 MED + 1 LOW) → commit. Then `1` GEO_004 ROUTE_001 → completes V1+30d activation triangle → Phase 0 + DRAFT + 1-pass /review-impl (3 HIGH + 2 MED + 1 LOW + 1 retro-HIGH from linter parallel review) → commit. Then `TVL_001 V1+ Travel Mechanics design` → first consumer feature → Phase 0 + DRAFT + 1-pass /review-impl (4 HIGH + 2 MED) → commit.
+
+Pattern locked across all 4 features: walk-through Phase 0 sub-decisions with recommended defaults → user terse approve (`1` / `approve all` / `continue` / `tiếp tục đi` — all interpreted as approve) → DRAFT lands in single combined `[boundaries-lock-claim+release]` commit → user invokes `/review-impl` → adversarial review surfaces HIGH/MED/LOW → fix HIGH inline + escalate/defer MED + default-defer LOW + cosmetic → single combined commit with DRAFT + fix cycle folded. POL_001 needed 2 passes (2nd pass caught HIGH-4 fix-introduced regression from HIGH-3); SET/ROUTE/TVL each cleared in 1 pass.
+
+### Foundation activation triangle complete (was 7/7 foundation tier; +4 V1+30d activation features + 1 V1+ consumer feature)
+
+V1+30d activation triangle: ✅ political (POL stage 5+8) + ✅ settlement (SET stage 6) + ✅ route (ROUTE stage 7) + ✅ culture (POL stage 8 — runs after ROUTE for hospitality-narration integration). Only V2+ resource layer (GEO-D10) remains deferred. Strategy substrate readiness COMPLETE at design layer — every layer STRAT_001 V2+ will consume has its schema locked + activation generator designed. Consumer feature pattern DEMONSTRATED (TVL_001 reads locked substrate → produces per-actor runtime state → S9 LLM-context grounding).
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_geography/GEO_002_political_layer.md` | DRAFT + /review-impl 2-pass (4 HIGH + 12 MED + 3 LOW resolved) | 745 |
+| **NEW** `features/00_geography/GEO_003_settlement_generator.md` | DRAFT + /review-impl 1-pass (4 HIGH + 4 MED + LOW-3 resolved) | 745 |
+| **NEW** `features/00_geography/GEO_004_route_network_generator.md` | DRAFT + /review-impl 1-pass (3 HIGH + 2 MED + 1 LOW + 1 retro-HIGH resolved) | 652 |
+| **NEW** `features/00_travel/TVL_001_travel.md` | DRAFT + /review-impl 1-pass (4 HIGH + 2 MED resolved) | 529 |
+| **NEW** `features/00_travel/_index.md` | folder index | 60 |
+| **NEW** `catalog/cat_00_TVL_travel_foundation.md` | TVL-* namespace catalog (28 entries) | 52 |
+| `features/00_geography/_index.md` | extended with GEO_002 + GEO_003 + GEO_004 rows | + |
+| `catalog/cat_00_GEO_geography_foundation.md` | extended with POL_001 (24) + SET_001 (26) + ROUTE_001 (25) sub-sections | + |
+| `_boundaries/01_feature_ownership_matrix.md` | `world_geometry` row owner annotation extended 4× (POL + SET + ROUTE activations) + NEW `actor_travel_state` aggregate row | + |
+| `_boundaries/02_extension_contracts.md` | §1.4 `geography.*` 13 V1 → 58 V1+30d (POL +20 / SET +15 / ROUTE +10); §1 GeographyDeltaKind 5 V1 → 13 V1+30d active (4 POL + 3 SET + 1 ROUTE); NEW §1.4 `travel.*` namespace (15 V1+30d); §1 EVT-T1 Travel:Initiate + EVT-T5 Scheduled:TravelTick + EVT-T6 Travel:JourneyNarration sub-types; §3 capability JWT 3 new claims (can_edit_political/settlement/route_geography) | + |
+| `_boundaries/99_changelog.md` | 4 entries top-anchored (POL + SET + ROUTE + TVL each with DRAFT + /review-impl combined cycle) | + |
+| `_boundaries/_LOCK.md` | 4 claim+release cycles | + |
+
+### 4-commit arc
+
+| # | Commit | What | /review-impl |
+|---|---|---|---|
+| 1 | `3688e57c` | GEO_002 POL_001 DRAFT + /review-impl 2-pass | 1st pass: HIGH-1 schema_version 2→3 bump + HIGH-2 PoliticalSeedMode::Canonical semantic + HIGH-3 procedural clustering pin. 2nd pass: HIGH-4 stage-5/stage-8 cycle (fix-introduced regression from HIGH-3 fix) + 12 MED + 3 LOW |
+| 2 | `8f35ae05` | GEO_003 SET_001 DRAFT + /review-impl 1-pass | HIGH-1 settlement-naming cycle / HIGH-2 STEP D precedence / HIGH-3 schema_version 1→2 bump / HIGH-4 mountain-pass heuristic inverted; 4 MED inline |
+| 3 | `ef41ebf9` | GEO_004 ROUTE_001 DRAFT + /review-impl 1-pass | HIGH-1 Route.seed_source field declaration / HIGH-2 cell-pair invariant / HIGH-3 MountainPass settlement-pair-betweenness; 2 MED inline; 1 retro-HIGH linter ROUTE-V8 canonical-order pair normalization |
+| 4 | `457be1bb` | TVL_001 V1+ DRAFT + /review-impl 1-pass | HIGH-1 Fortress hospitality contradiction / HIGH-2 PL_006 magnitude semantic (was fictional "Tier 0/1") / HIGH-3 realm_clock TVL-vs-PL_001 ownership / HIGH-4 vital_pool vs resource_inventory two-counter conflation; 2 MED (1 inline, 1 deferred EF_001 closure pass) |
+
+### Schema highlights (final state across all 4 commits)
+
+- **`GeographyDeltaKind`** R3 additive closed-enum bumps: 5 V1 GEO_001 → 9 V1+30d (POL +4: Merge/Split/TransferProvinceToState/SetCultureRegion) → 12 V1+30d (SET +3: Relocate/Promote/RemoveSettlement) → 13 V1+30d (ROUTE +1: ReclassifyRoute) + 3 V2+ reservations (POL CreateState/DestroyState + GEO SetResourceOverride)
+- **`world_geometry.schema_version`** bumps: 1 V1 GEO_001 → 2 V1+30d SET_001 (Settlement.seed_source additive) → 3 V1+30d ROUTE_001 (Route.seed_source additive); stays at 3 post-TVL (TVL doesn't add world_geometry fields)
+- **`CreativeSeed.schema_version`** bumps: 1 V1 GEO_001 → 2 V1+30d GEO_001b (spatial_preference) → 3 V1+30d POL_001 (political_seed_mode + canonical_states + procedural_density) → 4 V1+30d SET_001 (settlement_seed_mode + settlement_density_hint) → 5 V1+30d ROUTE_001 (route_seed_mode + canonical_routes); CreativeSeed v5 → v6 documented for TVL_001 (travel_cost_per_league additive) but TVL is V1+ tier not V1+30d so this bump is V1+ ship-time
+- **LLM authoring template versions**: v1.tmpl GEO_001b → v2.tmpl POL_001 ship → v3.tmpl SET_001 ship → v4.tmpl ROUTE_001 ship
+- **Capability JWT additions**: `can_edit_political_geography` (POL) + `can_edit_settlement_geography` (SET) + `can_edit_route_geography` (ROUTE) — auth-service quad-pair bundle at role-grant time post-ROUTE-ship; TVL no new claim (standard PC/NPC action authorization)
+- **NEW `travel.*` namespace** (separate from `geography.*` per TVL-D7 own-folder discipline) — 15 V1+30d rule_ids; reflects domain boundary between geography substrate (Forge admin canonization) and travel mechanics (gameplay action)
+- **NEW aggregate** `actor_travel_state` (T2/Reality sparse per-(actor, journey)) — first cross-feature consumer aggregate reading GEO+POL+SET+ROUTE V1+30d substrate
+- **NEW EVT-T sub-types**: EVT-T1 `Travel:Initiate` + EVT-T5 `Scheduled:TravelTick` + EVT-T6 `Travel:JourneyNarration`
+- **NEW V1+30d service** `travel-service` (owns actor_travel_state; per-turn tick generator)
+- **EF_001 cross-feature schema dependency tracked**: `entity.travel_journey_id: Option<JourneyId>` additive field; EF_001 schema_version 1 → 2 V1+30d bump at TVL ship (MED-1 V1+30d implementation-phase coordination)
+- **ROUTE_001 RemoveRoute pipeline extended**: TVL-V14 `route_in_use_by_journey` cross-feature gate added at TVL ship
+
+### 45 gaps surfaced + resolved across the 4 /review-impl cycles
+
+| Feature | Cycle | HIGH | MED | LOW | Retro |
+|---|---|---:|---:|---:|---:|
+| POL_001 | 2-pass | 4 | 12 | 3 | — |
+| SET_001 | 1-pass | 4 | 4 | 1 | — |
+| ROUTE_001 | 1-pass | 3 | 2 | 1 | 1 |
+| **TVL_001** | 1-pass | 4 | 2 | — | — |
+| **Total** | **4 cycles** | **15** | **20** | **5** | **1** |
+
+**Process maturity arc** — HIGH count by feature within geography activation arc: 4 → 4 → 3 (decreasing as patterns internalize). HIGH count reset at TVL_001 (4 — new consumer-feature domain introduced new pattern categories: cross-feature schema dependency / vital_pool-vs-resource_inventory two-counter distinction / channel-vs-actor clock ownership / downstream-feature-terminology-precision). Pattern: HIGH count matures WITHIN a feature arc; resets when entering new domain.
+
+### Decisions locked across the arc
+
+- **V1+30d activation triangle complete**: POL + SET + ROUTE all V1+30d-implementation-ready; consumer-feature pattern demonstrated via TVL_001
+- **Pipeline stage ordering locked**: 1-4 GEO_001 → 5 POL → 6 SET → 7 ROUTE → 8 POL (culture spread runs AFTER routes for hospitality-narration integration)
+- **Schema_version discipline**: every additive struct field bumps aggregate schema_version per I14 + R3 default-tolerant readers + `generator_pipeline_version` pin governing cross-version data path (POL_001 MED-11 precision)
+- **Consumer-feature namespace discipline**: separate namespace per domain (e.g., `travel.*` separate from `geography.*`) when domain has distinct ImpactClass + capability discipline (TVL_001 is gameplay action, not admin Forge canonization)
+- **Cross-feature schema dependency pattern**: V1+ consumer features may require V1 foundation feature schema_version bumps for additive fields they need (TVL_001 → EF_001 1→2 for travel_journey_id; coordinate via foundation feature's closure pass at consumer-feature ship)
+- **PL_006 magnitude semantic**: PL_006 StatusFlag uses magnitude 1..=10; consumer features should use real PL_006 values, NOT invent sub-tier classifications
+- **realm_clock channel-ownership**: realm_clock is PL_001 turn-boundary-owned (channel-tier resource per TDIL-A1); per-actor features (TVL_001) advance only actor_clock + body_clock to avoid double-advancement
+- **vital_pool vs resource_inventory two-counter discipline**: RES_001 separates body-state Vital counters (Hunger/Thirst — HIGH=bad) from possession Consumable counters (Food/Water — HIGH=lots); consumer features deduct from Consumable inventory; Vital body-state advances independently via RES per-day-boundary
+
+### Handoff notes for next agent / next session
+
+**Active:** none in main session. Lock released. Tree clean (7 commits ahead of origin since session start).
+
+**Schema is V1+30d-implementation-ready for the entire activation triangle.** Remaining MED gaps (EF_001 closure pass for travel_journey_id additive field at TVL ship; ROUTE_001 V1+30d implementation phase combined with POL + SET; auth-service capability migration job 3-claim quad-pair bundle; chat-service S9 `[GEOGRAPHIC_CONTEXT]` + `[TRAVEL_CONTEXT]` extensions) are all CI gates / build pipeline tasks — no further user-approval rounds needed; need to land in V1+30d implementation phase.
+
+**Next-step recommendations** (priority order):
+
+1. **V1+30d implementation phase** — `world-service/geography-generator` Rust module (POL + SET + ROUTE combined activation triangle reference impl) + NEW `services/travel-service` (TVL reference impl) + EF_001 closure pass for schema_version 1→2 bump (travel_journey_id additive field per TVL MED-1 coordination) + auth-service capability migration job (4-claim quad-pair bundle: can_edit_geography + can_edit_political/settlement/route_geography) + chat-service S9 `[GEOGRAPHIC_CONTEXT]` + `[TRAVEL_CONTEXT]` extensions (state_name + settlement_name + culture_tag + route_kind/origin/destination + travel-progress-narration fields) + CI gates (replay-determinism + apply_delta total-function + canonical-JSON normalization + pair-uniqueness invariants + HIGH-3 clustering V=500 stress test inherited from POL + ROUTE-V8 canonical-order pair normalization inherited from ROUTE)
+2. **TVL_002 V1+30d+ Composite Multi-Segment Travel** design — Dijkstra over Route graph + auto-traverse N segments; convenience command layered atop atomic single-segment V1+30d
+3. **TVL_004 V1+30d+ Travel Encounters** design — random events / weather / combat during journey; attaches mechanical encounter events to actor_travel_state via cross-feature integration with PL_005 Interaction substrate + LLM scene generation
+4. **EF_001 closure pass** standalone (just the schema_version 1→2 bump for travel_journey_id additive field; no other changes; could be batched with V1+30d implementation phase OR done separately)
+5. **SPIKE_05 V1+ knowledge-service activation walk-through** — deferred until knowledge-service ships per CLAUDE.md `101_DATA_RE_ENGINEERING_PLAN.md`; reopens AC-AUTHOR-10 + V1+ active grounding path
+6. **DIPL_001 V2+ Diplomacy Foundation** design — consumes State.culture_tag + State.ideology_ref + Settlement graph for diplomatic-axis modeling; requires POL_001 V1+30d + IDF_005 V2+ ideology
+
+**Process discipline for next agent:**
+
+- 4-feature arc completes the geography activation triangle (POL + SET + ROUTE) + first consumer feature (TVL); pattern locked for future activation arcs (resource layer V2+ would follow same pattern: Phase 0 → DRAFT → /review-impl → commit)
+- Phase 0 deep-dive (7 sub-decisions with recommended defaults) → user terse approve → apply pattern works across English (`1` / `approve all`) + Vietnamese (`tiếp tục đi` / `kêp going`) — all interpretable as approve given established Phase 0 deep-dive convention
+- /review-impl maturity matures WITHIN a feature arc but resets when entering new domain — expected behavior; each new pattern category needs its own adversarial-review maturity
+- 800-line soft cap maintained throughout (largest = POL_001/SET_001 745 lines; smallest = TVL_001 529 lines)
+- Cross-feature schema dependencies tracked explicitly in source feature's spec + escalated as MED to be coordinated at consumer feature ship time
+
+### Raw count
+
+- **Commits:** 4 (`3688e57c` → `8f35ae05` → `ef41ebf9` → `457be1bb`)
+- **Files landed:** 14 (6 new + 8 modified)
+- **Design-doc lines:** 745 POL_001 + 745 SET_001 + 652 ROUTE_001 + 529 TVL_001 + 60 TVL _index + 52 TVL catalog = **2783 lines** of new design surface
+- **Catalog entries added:** 99 (24 POL + 26 SET + 25 ROUTE + 24 TVL)
+- **V1+30d reject rule_ids:** 60 (20 POL + 15 SET + 10 ROUTE + 15 TVL)
+- **V2+ reservations:** 5 (POL CreateState/DestroyState + ROUTE 2 + TVL 2)
+- **Acceptance scenarios:** 66 V1+30d-testable (21 POL + 19 SET + 15 ROUTE + 15 TVL when including coverage updates)
+- **Deferrals:** 52 (14 POL + 13 SET + 13 ROUTE + 12 TVL)
+- **Open questions:** 22 (5 POL + 5 SET + 5 ROUTE + 7 TVL)
+- **Validators:** 65 sub-validators (20 POL-V + 16 SET-V + 14 ROUTE-V + 15 TVL-V)
+- **EVT-T sub-types added:** 3 (Travel:Initiate / Scheduled:TravelTick / Travel:JourneyNarration)
+- **NEW aggregate:** 1 (actor_travel_state)
+- **NEW service:** 1 (travel-service)
+- **Cross-feature schema dependencies:** 1 (EF_001 schema_version 1→2 for travel_journey_id)
+- **Foundation tier:** 7/7 unchanged from prior arc; V1+30d activation triangle 0/3 → 3/3; consumer feature 0 → 1
+- **/review-impl HIGH findings resolved:** 15 (4+4+3+4); MED 20 (12+4+2+2); LOW 5 (3+1+1+0); retro-HIGH 1 (ROUTE linter parallel review)
+
+---
+
+## Session 2026-05-13 → 2026-05-14 — GEO World Geometry Foundation arc (4 commits; 7th foundation feature; walk-through-validation maturity pattern)
+
+### Session arc
+
+User opened with "let's deep design world map" specifically for **strategy gameplay** use in a later phase. Three-question setup spanning current games / LLM-image-to-map viability / Azgaar as algorithmic baseline. Research agent verified Azgaar Fantasy Map Generator is MIT (NOT GPL-3 as I incorrectly claimed earlier in conversation — corrected mid-thread) and confirmed Patel dual-mesh (Apache 2.0) + O'Leary erosion (MIT) + Azgaar pipeline (MIT) 2010-2018 stack remains state-of-the-art for *structured* fantasy world geometry. LLM-image-to-map approaches REJECTED (lack regeneration-stability + adjacency-correctness for strategy gameplay).
+
+Three new design-track artifacts landed in 4 commits over the arc:
+
+1. **`GEO_001 World Geometry`** (748 lines) — new 7th foundation feature; procedural geographic substrate beneath MAP_001 visual layer. `world_geometry` T2/Channel-continent aggregate with internal layered structure (geometry/climate/biome V1 populated + political/settlement/route/culture V1 schema-reserved + resource V2+). ~10k Voronoi cells per continent; ClimateZone 8-variant + BiomeKind 14-variant closed enums; 8-stage generation pipeline (V1 stages 1-4 substantive); deterministic-base + delta-overlay editability (genuinely novel — no Azgaar-style tool does this V1); single-mesh sea zones; multiverse snapshot fork inheritance.
+2. **`GEO_001b CreativeSeed Authoring Flow`** (544 lines) — write-side sibling; specifies HOW the CreativeSeed that GEO_001 consumes gets produced. AuthoringProducer 5-variant + SpatialPreference 14-variant (LLM-friendly alternative to raw coords) + S9-registered template `world_authoring/v1.tmpl` + schema-constrained generation REQUIRED + multi-turn iteration with V1 caps (N=10 iteration / N=3 retry / S6 cost cap) + producer abstraction (LLM/Manual/Imported/KnowledgeExtracted/Hybrid) + V1+ knowledge-service grounding schema-reserved + CreativeSeed.schema_version 1→2 additive migration plan.
+3. **`SPIKE_04 GEO Procgen + Authoring Validation`** (648 lines) — 6 scenarios × 21 ACs walked end-to-end against Thần Điêu Đại Hiệp Nam Tống fixture; 23 design gaps surfaced; 5 sub-decisions queued for user approval.
+
+### Foundation tier 7/7 (was 6/6 pre-arc per 2026-04-27 closure)
+
+EF + PF + MAP + CSC + RES + PROG + **GEO**. World substrate triangle complete: GEO (procedural-geometric SSOT) + MAP (visual UI SSOT) + PF (cell-semantic SSOT) compose without overlap. Composition contracts declared with all 6 prior foundation siblings + DP-Ch channel hierarchy + future TVL_001 V1+ / STRAT_001 V2+ / EXPL_001 V2+ consumers.
+
+### Files landed
+
+| File | Status | Lines |
+|---|---|---:|
+| **NEW** `features/00_geography/GEO_001_world_geometry.md` | DRAFT (3 cycles: DRAFT + fix + write-side + approval) | 749 |
+| **NEW** `features/00_geography/GEO_001b_authoring_flow.md` | DRAFT (write-side + approval cycles) | 544 |
+| **NEW** `features/00_geography/_index.md` | folder index with 2 features + coordination notes | — |
+| **NEW** `features/_spikes/SPIKE_04_geo_procgen_validation.md` | DRAFT walk-through | 648 |
+| **NEW** `catalog/cat_00_GEO_geography_foundation.md` | 44 catalog entries (GEO-1..28 + GEO-AUTHOR-1..16) | — |
+| `_boundaries/01_feature_ownership_matrix.md` | `world_geometry` row added; owner annotation extended 4×; rule_id counts updated | + |
+| `_boundaries/02_extension_contracts.md` | §1.4 `geography.*` (13 V1) + `authoring.*` (10 V1) namespaces; §2 RealityManifest `continent_geometries` + `authoring_metadata` extensions; §4 EVT-T8 `Forge:EditGeographyDelta` row | + |
+| `_boundaries/99_changelog.md` | 4 entries top-anchored (DRAFT/fix/write-side/approval cycles) | + |
+| `_boundaries/_LOCK.md` | 4 claim+release cycles; _Last released_ history preserves audit trail | + |
+| `features/_spikes/_index.md` | SPIKE_04 row added | + |
+
+### 4-commit arc
+
+| # | Commit | What | Trigger |
+|---|---|---|---|
+| 1 | `a7ee6f04` | GEO_001 DRAFT + first /review-impl fix cycle (11 issues resolved in same commit) | Schema-first directive after Phase 0 7-decision approval; HookScope/ChannelTier/delta-namespace/etc. 11 architectural gaps caught by adversarial pass |
+| 2 | `fa312613` | GEO_001 HookScope Option C bug fix + GEO_001b Authoring Flow Option B DRAFT (7 write-side gaps resolved) | User deep-discussion question about LLM I/O contract; surfaced that post-pipeline READ was well-defined but pre-pipeline WRITE was hand-waved |
+| 3 | `b25cfb92` | SPIKE_04 procgen + authoring validation (21 ACs walked; 23 gaps surfaced; 5 sub-decisions queued) | User picked spike-validation; walk-through methodology surfaced gaps not caught by POST-REVIEW or /review-impl |
+| 4 | `75878f18` | D-S04-1..5 approval batch (5 schema policy decisions applied) | User approved all 5 with recommended defaults; 2 new V1 reject rule_ids + 1 V1+30d deferral + 2 new AC scenarios + 2 policy clarifications |
+
+### Schema highlights (final state after all 4 cycles)
+
+- **`world_geometry`** T2/Channel-continent aggregate; channel validator references `MAP-2 ChannelTier::Continent` closed enum (eliminates DP-Ch1 free-form `level_name` ambiguity)
+- **8-stage generation pipeline** with stage 4 split 4a/4b/4c (hydraulic erosion → connected-components water network → biome mapping with explicit Lake-vs-Ocean topology)
+- **Deterministic-base + delta-overlay**: base regenerates from `(seed, creative_seed, pipeline_version)`; admin canonization appends ordered GeographyDelta entries (5 V1 DeltaKind variants); replay = base + deltas
+- **5 V1 DeltaKind**: AddNamedSettlement / RenameRegion / SetBiomeOverride (V1 land-↔-land only) / AddRoute / RemoveRoute. SetResourceOverride dropped V1→V1+ during fix cycle MED-6
+- **HookScope pre-materialization variants** (Option C bug fix): SettlementByName / PositionRegion / Archetype + V1+ KnowledgeEntityRef reservation. The original GeoCellId/SettlementId/ProvinceId variants were chicken-and-egg (referenced IDs that don't exist at CreativeSeed-creation time)
+- **AuthoringProducer 5-variant**: LlmGenerated V1 / AuthorManual V1 / Imported V1+ / KnowledgeServiceExtracted V1+ / Hybrid V1. Producer abstraction means procgen pipeline doesn't care which produced the CreativeSeed
+- **SpatialPreference 14-variant** (V1+ schema_version 2): Northern/Southern/Equatorial + Coastal/Inland/Insular + Highland/Lowland/RiverValley + NearBiome/NearClimate/NearCulture + NearSettlement/FarFromSettlement + ExplicitPosition + Any. LLM-friendly alternative to raw `(f32, f32)` coordinates per "LLM weakness = geometric reasoning" factoring
+- **AuthoringMetadata embedded in RealityManifest** as OPTIONAL field (additive per I14); carried into GeographyBorn payload; per-iteration LLM cost via existing S6 user_cost_ledger
+- **BFF-held AuthoringSession** (NOT an aggregate; not event-sourced — pre-bootstrap UX state; final accepted CreativeSeed durable record only via GeographyBorn)
+- **23 V1-testable acceptance scenarios** (AC-GEO-1..11 + AC-AUTHOR-1..12); all walked end-to-end in SPIKE_04
+- **23 V1 reject rule_ids**: 13 `geography.*` + 10 `authoring.*` + 7 V1+ reservations across both namespaces
+- **EVT-T4 GeographyBorn + GeographyForkInherited** (reclassified from initially-wrong EVT-T8 Admin during fix cycle MED-2) + **EVT-T8 Forge:EditGeographyDelta** (the §4 boundary registration gap MED-1 fix)
+
+### 46 gaps surfaced + resolved across 4 cycles
+
+| Cycle | Gaps | How surfaced |
+|---|---:|---|
+| POST-REVIEW (DRAFT) | 0 | Author-blind self-review; rubber-stamped (the canonical failure mode CLAUDE.md Phase 9 warns about) |
+| /review-impl (fix cycle 1) | 11 | Adversarial self-review against the doc — 3 HIGH (schema-correctness / validator-implementability / fork-correctness) + 5 MED (event taxonomy / boundary registration / algorithm gap / version contract / aggregate convention / closed-enum drift) + 3 LOW (invariant placement / field redundancy / struct-shape opacity) |
+| Deep-discussion (write-side cycle) | 7 | User question "how do LLMs work? is the I/O contract LLM-friendly?" — 1 schema bug (HookScope chicken-and-egg) + 6 contract gaps (template implicit / schema-constrained generation not mandated / position fields ask LLM to do geometry / iteration loop undocumented / knowledge-service grounding missing / non-LLM authoring not first-class) |
+| SPIKE_04 (walk-through) | 23 | Fixture-data walk through 21 ACs — 3 HIGH schema bugs (uniqueness + cycle detection + SettlementId strategy) + 5 MED implementation discipline (HashMap normalize / float determinism / canonical JSON / cross-platform / SettlementId blake3) + 7 MED underspecified semantics + 4 LOW UX + 4 LOW clarifications |
+| Approval batch (D-S04-1..5) | 5 sub-decisions resolved | User approval round — uniqueness reject + cycle reject + strict-IEEE float + scrub-regardless PII + intended_producer V1+30d |
+
+### Process maturity milestones
+
+- **POST-REVIEW alone caught 0 issues** (rubber-stamped). The author-blind self-review failure mode CLAUDE.md Phase 9 explicitly warns about.
+- **/review-impl as distinct mental mode** caught 11. POST-REVIEW + /review-impl are NOT redundant; they are distinct mental modes per foundation discipline.
+- **Deep-discussion surfaced 7 more** that /review-impl had ALSO missed. Read-contract correctness ≠ write-contract correctness; both sides need independent governance discipline.
+- **Walk-through SPIKE_04 surfaced 23 implementation-phase gaps**. Schema correctness ≠ operational sequence correctness. The gap between "spec says X" and "implementer can produce X" only closes via fixture-data walk-through.
+- **Approval batch resolved 5 user-facing decisions** in single cycle. User clear "1" = approve all 5 with recommendations.
+- **Pattern locked: walk-through-validation → surface ambiguity → batch-approve → apply.** First design-track instance of this pipeline; recommended for future feature decision-locking.
+
+### Handoff notes for next agent / next session
+
+**Active:** none in main session. Lock released; tree clean.
+
+**Schema is V1-implementation-ready.** Remaining MED gaps (schemars build pipeline + canonical JSON for `creative_seed_hash` + HashMap normalize CI gate + cross-platform reproducibility + SettlementId blake3-derive + multi-continent fork orchestration + float-drift snapshot test) are all CI gates / build pipeline tasks — no further user-approval rounds needed; just need to land in V1 implementation phase.
+
+**Next-step recommendations** (priority order):
+
+1. **V1 implementation phase** — `world-service/geography-generator` Rust module (Voronoi + heightmap + climate + biome + erosion + canonical-pinning) + `api-gateway-bff/authoring-session` state + form UI + `chat-service` `world_authoring/v1.tmpl` template registration with fixtures + `contracts/schemas/creative_seed.v2.schema.json` schemars build pipeline + CI snapshot test gates + S6 user_cost_ledger integration + Forge:EditGeographyDelta admin endpoint + SnapshotForker EVT-T4 emission per continent
+2. **SPIKE_05 V1+ knowledge-service activation walk-through** — defer until knowledge-service ships per CLAUDE.md `101_DATA_RE_ENGINEERING_PLAN.md`; reopens AC-AUTHOR-10 + the V1+ active grounding path
+3. **GEO_002 POL_001 Political Layer Generator design** — V1+30d schedule; activates GEO_001 political layer fields (provinces + states) for strategy phase entry
+4. **MAP_001 light reopen** at LOCK — V1+ position auto-derivation row tracking GEO-D5 (settlement centroids → map_layout.position)
+
+**Process discipline for next agent:**
+
+- 7th foundation feature complete; boundary discipline established for V1 (lock-claim-release-changelog cycle, single combined `[boundaries-lock-claim+release]` commits for non-contentious work, 4-hour TTL)
+- 800-line soft cap respected throughout (GEO_001 = 749 / GEO_001b = 544; sibling pattern PL_001+001b / WA_002+002b / GEO_001+001b)
+- `_LOCK.md` _Last released_ history preserves cycle audit trail
+- /review-impl is NOT optional for non-trivial schema design — POST-REVIEW alone rubber-stamps
+- Walk-through-validation (spike-style) is the recommended NEXT step after /review-impl for non-trivial feature locks before V1 implementation phase commits
+
+### Raw count
+
+- **Commits:** 4 (`a7ee6f04` → `fa312613` → `b25cfb92` → `75878f18`)
+- **Files landed:** 10 (5 new + 5 modified)
+- **Design-doc lines:** 749 GEO_001 + 544 GEO_001b + 648 SPIKE_04 = **1941 lines** of new design surface
+- **Catalog entries added:** 44 (`GEO-1..28` + `GEO-AUTHOR-1..16`)
+- **V1 reject rule_ids:** 23 (13 `geography.*` + 10 `authoring.*`)
+- **V1+ reservations:** 7 (3 `geography.*` + 4 `authoring.*`)
+- **V1-testable acceptance scenarios:** 23 (11 AC-GEO + 12 AC-AUTHOR)
+- **Sub-decisions locked:** 12 (7 Phase 0 D1-D7 + 5 D-S04-1..5)
+- **Gaps surfaced + resolved across 4 cycles:** 46 (0 POST-REVIEW + 11 /review-impl + 7 deep-discussion + 23 SPIKE_04 + 5 approval batch)
+- **Foundation tier:** 6/6 → **7/7**
+## ⏭️ NEXT SESSION SETUP — Map-generation implementation via AMAW (tilemap-service Phase 0b → 3)
+
+> **This is the staged setup the user asked for at 2026-05-15 session end:** prepare to implement the half-finished map-generation work using AMAW. Read this section first next session.
+
+### What "map generating" is
+
+`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a + 0b are DONE** (0a: scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`; 0b: gateway tool-use contract + SSE parser + L3 harness — 2026-05-15, branch `mmo-rpg/zone-map-amaw`). Phases **1 → 2 → 3 remain**.
+
+### Phase breakdown (source: `services/tilemap-service/DESIGN.md` §9)
+
+| Phase | Scope | Size | Depends on |
+|---|---|---|---|
+| ~~**0b**~~ ✅ DONE | SSE parser in `loreweave_llm` + L3 zone-classifier harness → lmstudio. **Reclassified L→XL**: required extending the gateway contract (`tool_choice` + `tool_call` SSE event) across openapi + Go gateway + both SDKs. Live run: tool-use YES, 3/3 classified, R1-R5 clean. | XL (done) | — |
+| **1** | Engine Stage 1: Fruchterman-Reingold zone placer (TMP_002) + 1-2 modificators (TMP_003) + determinism integration test (same seed → byte-identical zones) | L (1-2 sessions) | — (algorithmic; independent of 0b) |
+| **2** | L3 zone classifier full retry loop (TMP_008b §4 structured validation + §5 per-object retry + §6 canonical-default fallback) + end-to-end small reality bootstrap | L-XL | 0b (gateway) + 1 (engine output) |
+| **3** | L4 regional narration + measurement findings doc back into TMP_008b | L | 2 |
+
+Reference docs: `TMP_001`..`TMP_008b` in `docs/03_planning/LLM_MMO_RPG/features/00_tilemap/`. The 2 architectural findings from the Phase-0a `/review-impl` (Anthropic `cache_control` gap + OpenAI-shaped `tools`) feed into Phase 0b.
+
+### ⚠️ CRITICAL — execution shape (read before scoping the batch)
+
+The user framed this as "one very large AMAW batch." **It must NOT be run as a single unattended autonomous batch.** Hard evidence from THIS session (commit `070e7f3d`, findings B1 + HIGH-1):
+- the AMAW autonomous loop **can confidently mis-clear a real correctness bug** (the #002 Adversary examined the buggy code path and wrote "Not a correctness bug");
+- error compounding makes unattended **sequential** batches unsafe — and 0b→1→2→3 IS sequential (2 depends on 0b+1; 3 on 2);
+- map-gen is **correctness-critical** (a real generation engine, determinism guarantees, LLM-contract conformance) — not low-stakes grind, the only shape proven safe for unattended batches.
+
+**Correct execution shape — AMAW per-phase, human-gated:**
+- Each phase = ONE `/amaw` task (L-size — AMAW IS the right workflow for L+ feature work; the calibration table covers L/XL).
+- **Human checkpoint between phases** — review phase N's output before phase N+1 builds on it.
+- **`/review-impl` after each phase's POST-REVIEW** for the correctness-critical parts (engine determinism in Phase 1, LLM-contract conformance in 0b/2).
+- Phase 1 (engine) is the one phase independent of 0b — it may run in either order / parallel.
+
+This honors "use AMAW for the map-gen implementation" while respecting what this session's review chain proved. If the next session's operator wants pure-autonomous anyway, that is their override to make — but the default setup is phased + gated.
+
+### Prerequisites before Phase 0b
+
+1. **provider-registry-service running** locally + **lmstudio registered** as `platform_model` (Qwen 3 14B/32B per the lmstudio provider preference). Document the registration step in `loreweave_llm/README.md` + `tilemap-service/README.md`.
+2. **free-context-hub stack up** (ContextHub MCP) — needed for the per-phase `/amaw` runs (Adversary/Scope-Guard Step-0 calls + bridge).
+3. `cargo build` clean at workspace root (`d:\Works\source\lore-weave-zone-map-design\`).
+4. `python scripts/mcp-query.py ping` → `OK`.
+
+### Recommended first action next session
+
+Phase 0b is DONE (see the 2026-05-15 Phase 0b session entry below). **Next: Phase 1** —
+the Fruchterman-Reingold zone placer + modificators + determinism integration test.
+Phase 1 is purely algorithmic and **independent of 0b** (no gateway/LLM dependency) —
+a clean L-size `/amaw` task. Phase 2 (full L3 retry loop) depends on both 0b (done)
+and 1, so Phase 1 unblocks the rest. Pre-flight: `cargo build` clean at workspace
+root; ContextHub up for `/amaw`. The infra `infra` compose stack and the gitignored
+`.local/phase0b.env` creds are already set up if a live re-run is needed.
+
+---
+
+## Session 2026-05-16 — Human-in-loop QA review of the AMAW Phase 0b batch (M task)
+
+### Session arc
+
+After Phase 0b landed (commit `0e2732ac`, XL `/amaw`), ran a **default v2.2
+human-in-loop review** (NOT `/amaw`) to independently QA the AMAW output — the
+mandatory independent pass the AMAW-trust verdict requires for correctness-critical
+code. Scope: all 43 files of the Phase 0b commit. Two layers: (A) code correctness +
+full live re-verify, (B) AMAW process audit. Deliverable: a tracked bug list — **no
+code fixes** (fixes are a separate follow-up task).
+
+### Verdict — AMAW Phase 0b output is sound
+
+Independent review found **0 HIGH, 0 MED** — only 2 LOW + 1 COSMETIC (Layer A). The
+AMAW review chain (4 design Adversary rounds + 1 code Adversary + Scope Guard +
+human-invoked `/review-impl`) caught every real correctness bug before commit.
+
+- **Live re-verify (4 checks):** harness re-run ✅; raw `tool_call` SSE frames ✅
+  (wire format exact); **D8 reject confirmed LIVE** — `tools` → Anthropic model →
+  `HTTP 400 LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER` ✅; Anthropic `tool_use` parse
+  fixture-covered (not live-testable by design).
+- **Layer A findings:** LOW-A1 (openapi `tool_choice` `nullable`+`oneOf` unidiomatic),
+  LOW-A2 (no Go multi-tool-call streamer test), COSMETIC-A3 (anthropic
+  `input_json_delta` no empty-skip). → DEFERRED #011, #012 (COSMETIC accepted).
+- **Layer B (process audit):** B-1 — AMAW's Adversary+Scope-Guard did NOT surface the
+  post-error SSE leak; only `/review-impl` did. The "exactly 3 findings/round" +
+  "stop at APPROVED_WITH_WARNINGS" rule structurally caps a code-review round at 3
+  issues → for correctness-critical code an independent pass after AMAW is
+  load-bearing. B-2 — the 4-round design loop converged but rounds 2-3 each caught
+  the *prior round's incomplete fix*. B-3 — ~0 false positives in 15 AMAW findings
+  (precision high; the loop earned its ~650 K-token cost).
+
+Full report: [`docs/audit/phase-0b-human-review-findings.md`](../../audit/phase-0b-human-review-findings.md).
+
+### Handoff notes
+
+**Active blocker:** none. **DEFERRED #011 + #012** (openapi `tool_choice` hygiene +
+Go multi-tool-call streamer test) — **cleared 2026-05-16** by a small follow-up fix
+task (S, default v2.2; openapi + one Go test, no behavior change).
+
+**Next:** Phase 1 — Fruchterman-Reingold zone placer (TMP_002, algorithmic,
+independent of 0b).
+
+---
+
+## Session 2026-05-15 (continued) — Phase 0b: gateway tool-use contract + SSE parser + L3 harness (XL `/amaw`)
+
+### Session arc
+
+Ran tilemap-service **Phase 0b** as a single `/amaw` task (the map-gen implementation
+the handoff staged). Branch `mmo-rpg/zone-map-amaw` (cut from `mmo-rpg/zone-map-design-non-human-in-loop`).
+
+CLARIFY found Phase 0b was **larger than the handoff's L estimate**: the LLM gateway
+could not transmit tool-use at all — `ChatStreamRequest` had no `tool_choice` field and
+the canonical SSE envelope had no tool-call event, and both Go streamers dropped
+provider tool-call deltas on the floor. The user chose to **extend the gateway contract
+first** and run it as **one XL `/amaw` batch**. Reclassified XS→XL; spec + plan written.
+
+### What shipped (37 files: 25 modified + 12 new)
+
+| Layer | Change |
+|---|---|
+| **openapi** | `tool_choice` on `ChatStreamRequest`; new streaming `ToolCallEvent` (schema + oneOf + discriminator.mapping) |
+| **Go gateway** (`provider-registry-service`) | `streamOpenAICompat` + `streamAnthropicSSE` re-frame tool-call deltas → `tool_call` events; `Adapter.SupportsTools()`; `tools`/`tool_choice` pass-through added to lmStudio/ollama `Stream` (only openai had it); D8 guard `400 LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER`; `stream_options.include_usage` |
+| **Rust SDK** (`loreweave_llm`) | new `sse.rs` `SseDecoder` (pure, unit-tested); real `GatewayClient::stream()`; new `tool.rs` `ToolCallAccumulator`; `tool_choice`; `StreamEvent::ToolCall`; **bug fix** — streaming client must not set a total request `.timeout()` (aborts long thinking-model streams) → `.read_timeout` |
+| **Python SDK** (`loreweave_llm`) | `ToolCallEvent` + `tool_choice` mirror |
+| **tilemap-service** | `harness/` module — L3 zone-classifier prompt (TMP_008b §3 tool, §9 few-shot) + R1-R5 validators + measurement report; `classify` CLI subcommand |
+
+### Live measurement (the Phase 0b deliverable)
+
+`tilemap-service classify` ran against **live lmstudio (qwen/qwen3-14b)** through the
+gateway: **tool-use forced-call SUCCESS** — 3/3 fixture objects classified, TMP_008b
+§4.1 R1-R5 validation clean on first attempt, ~890 input / ~210 output tokens, ~64 s.
+Findings written into **TMP_008b §12.8** + **tilemap-service/DESIGN.md §8.1**:
+1. LM Studio rejects object-form `tool_choice` — only `none`/`auto`/`required`;
+   force-specific-tool degrades to `"required"` + single-tool array.
+2. Streaming token usage needs `stream_options.include_usage` (now set by the gateway).
+3. SDK total-`.timeout()` bug on streaming — fixed.
+
+### Workflow — AMAW XL, 12 phases
+
+Design REVIEW: Adversary **4 rounds** — r1-r3 each REJECTED with real BLOCKs (empty-args
+first-fragment, `tool_choice` silent-drop hole, a factual error about adapter
+uniformity), r4 APPROVED_WITH_WARNINGS. Code REVIEW: Adversary 1 round
+APPROVED_WITH_WARNINGS (3 WARN — SSE buffer cap, D8 empty-array guard, harness
+multi-call caveat — all fixed). Scope Guard POST-REVIEW: **CLEAR** (6 AC covered, AC-7
+PARTIAL spec-sanctioned, 15/15 findings resolved). `/review-impl`: 1 MED (SSE
+post-error event leak) + 1 LOW + 1 COSMETIC — all fixed. Tests: loreweave_llm 47,
+tilemap-service 17, Go all packages, Python 20 — green; clippy clean.
+
+### Handoff notes for next session
+
+**Active blocker:** none. **Phase 0b complete.**
+
+**New DEFERRED:** #009 (D8 handler-level reject test → integration suite, LOW),
+#010 (Anthropic request-side tool support → when needed, MED). Cleared: #005 (the
+`/amaw` sub-agent `mcp-query.py` permission path — 6 spawns clean this run).
+
+**Next:** Phase 1 — Fruchterman-Reingold zone placer (algorithmic, independent of 0b).
+
+**Infra left running:** `infra` compose (postgres + provider-registry + usage-billing
++ rabbitmq); gitignored `.local/phase0b.env` holds the harness creds (qwen3-14b
+`model_ref`, internal token, gateway URL) for any live re-run.
+
+---
+
+## Session 2026-05-15 (continued, human review) — Human-in-loop review of the AMAW batch (M task)
+
+### Session arc
+
+After the autonomous AMAW batch landed (5 commits, HEAD `7db6e259`), user asked for a **human-in-loop review** (default v2.2 12-phase, no `/amaw`) of the batch — the "human review afterward" the autonomous-batch pattern was premised on. Scope: 3 code commits #001/#002/#004. Depth: 2-layer — (A) code correctness, (B) AMAW process audit. Findings: fix all.
+
+### Findings — 5 across 3 review layers
+
+| ID | Layer | Sev | Finding | Disposition |
+|---|---|---|---|---|
+| A1 | code (#002) | MED | `_had_rejected_review` matched task slug across the *whole* append-only AUDIT_LOG → a slug reused in a later sprint inherits the earlier sprint's REJECTED → mis-fired adversary-rejection lesson | Fixed — `since`-scoping to the run |
+| A2 | code (#001) | LOW | `_normalize_slug` had no length cap | Fixed — 64-char cap |
+| B1 | AMAW process | — | The #002 Adversary's WARN-3 examined `_had_rejected_review`'s whole-log scan, noted it "grows across every AMAW task forever", then concluded **"Not a correctness bug"** — a confident false-negative. The #002 Scope Guard's logic-trace also passed over it. Both AMAW agents had bug A1 in view and cleared it. | Recorded (lesson) |
+| HIGH-1 | **own A1 fix** | HIGH | `/review-impl` found the A1 fix's `since` filter did **lexical string compare** of heterogeneous timestamps. Live AUDIT_LOG has 5 ts formats (naive / `Z` / `+07:00` / `+00:00`); machine is UTC+7, `amaw_enabled_at` is naive-local → an Adversary event written in UTC-`Z` sorts lexically *before* the naive-local `since` → genuine in-run REJECTED silently excluded → rejection lesson lost. The POST-REVIEW self-review had said "since-filter safe" — author-blindness. | Fixed — `_parse_ts` → compare aware-UTC datetimes |
+| MED-2 | test | MED | The A1 VERIFY used uniform naive timestamps (happy path) — could not have caught HIGH-1 | Closed — VERIFY now mixed-format (Z/+offset/naive) |
+| LOW-3 | code | LOW | `amaw_enabled_at` None → `since=None` → silent fallback to pre-A1 unscoped behaviour | Accepted + documented in docstring |
+| LOW-4 | code (#002) | LOW | `_had_rejected_review` depends on the Adversary writing `action/phase/status` exactly — unvalidated. Adjacent, pre-existing #002 surface, not introduced by A1/A2 | Deferred |
+
+### The headline result — multi-layer review chain
+
+Each review layer caught the previous layer's miss:
+1. **AMAW Adversary** (autonomous) caught a real BLOCK in the batch — but **confidently mis-cleared A1**.
+2. **Human review** caught A1 — but the human's *fix for A1* itself had HIGH-1, and the human's POST-REVIEW self-review confidently called it "safe".
+3. **`/review-impl`** caught HIGH-1, confirmed it with evidence from the live AUDIT_LOG (5 timestamp formats observed).
+
+**No single review layer was sufficient.** Hard data for the strategic question: an autonomous AMAW batch needs at least one independent review layer behind it for correctness-critical code — and even human review needs `/review-impl` as a separate mental mode, because author-blindness is real (it bit this very session).
+
+### Files changed (2)
+
+`agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — A1 `since`-scoping, `_parse_ts` helper (HIGH-1), A2 64-char cap.
+
+### Verify evidence
+
+5-case mixed-format test on the UTC+7 machine: UTC-`Z` / `+07:00` / naive in-run rejections → detected; prior-run UTC + unparseable → excluded. A1 cross-run guard holds; HIGH-1 timezone false-negative closed. Mirror byte-identical, syntax OK.
+
+### Workflow
+
+M, default v2.2 (human-in-loop). 12 phases; `/review-impl` invoked at POST-REVIEW, found HIGH-1, looped back through VERIFY→REVIEW→QC. AMAW NOT used (user explicitly wanted human participation).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**AMAW trust verdict (updated by this review):** the autonomous loop is usable for low-stakes independent grind batches, but it **can confidently clear a real correctness bug** (B1). For correctness-critical code, an independent review layer afterward is mandatory — and `/review-impl` should be run even after human review.
+
+**Open DEFERRED:** #007 (slug normalize write-path), #008 (load_state no try/except), LOW-4 (Adversary event contract unvalidated — not yet filed; file if it recurs).
+
+**Next session agenda:**
+1. Phase 0b SSE parser — real L-size feature, sequential shape → human-in-loop or single `/amaw`, NOT autonomous batch.
+2. Branch merge cadence decision still open.
+
+### Raw count
+
+- **Commits this entry:** 1 pending
+- **Files modified:** 2 (workflow-gate.py ×2 mirror)
+- **Findings:** 5 (1 HIGH, 2 MED, 2 LOW + 1 process) — all fixed, accepted, or deferred
+- **Tests:** 5-case mixed-format VERIFY pass
+
+---
+
+## Session 2026-05-15 (continued, autonomous batch) — AMAW batch run: 4 DEFERRED items unattended
+
+### Session arc
+
+User asked whether an **autonomous AMAW batch** (many cycles run unattended for hours while the user sleeps, human review afterward) is timeline-effective. Decided to run a **measured experiment**: a small batch of independent DEFERRED-backlog items, with hard circuit breakers, fully autonomous (user explicitly would not answer questions until done).
+
+### Circuit breakers adopted (all 10 held)
+
+Scope lock · per-cycle commit · Adversary cap 2 rounds · failure hard-stop (3 fix-fails / 2 cycle-fails) · VERIFY-with-teeth · file allowlist · no destructive ops · ~3h effort ceiling · no-guess (pragmatic-stop on ambiguity) · honest reclassify. None tripped a hard stop; per-cycle commit + scope lock both exercised.
+
+### Batch composition
+
+`#005` was already resolved (G4 allow-list, dogfood-verified) → dropped. `#006` fixed as **pre-flight** (default mode — editing the sub-agent prompt templates themselves; running AMAW to review a change to AMAW's own prompts is circular). Then **3 AMAW cycles**: #001, #002, #004 — all independent (different functions, no shared design), so a bad cycle could not poison later ones.
+
+### Results — per cycle
+
+| Item | Commit | Adversary | Scope Guard | Outcome |
+|---|---|---|---|---|
+| #006 pre-flight — heredoc fallback in sub-agent prompts | `de0a2f46` | (default mode, no sub-agents) | — | Clean |
+| #001 — task slug normalization | `f108ad39` | r1 **REJECTED** (1 BLOCK + 2 WARN) → fixes → r2 APPROVED_WITH_WARNINGS (3 WARN) | CLEAR | 6 findings; BLOCK was a real 2nd-entry-point miss |
+| #002 — structured rejection detection (not substring) | `15956206` | r1 APPROVED_WITH_WARNINGS (0 BLOCK, 3 WARN) | CLEAR | 3 findings, 2 fixed 1 documented |
+| #004 — pre-commit no stale state file | `89fb68d9` | r1 APPROVED_WITH_WARNINGS (0 BLOCK, 3 WARN) | CLEAR | 3 findings, 1 fixed 1 deferred 1 documented |
+
+7 sub-agent spawns (4 Adversary + 3 Scope Guard), ~390K sub-agent tokens. 2 new deferrals filed (#007, #008); #001/#002/#004/#006 cleared.
+
+### Findings tally — 12 across 3 cycles
+
+- **11 real, 1 false.** The false one: cycle-1 Adversary r2 WARN-3 (claimed `amaw-enable ""` and `pragmatic-stop ""` diverge — it conflated `bool([""])` truthy-list with `bool("")` falsy-str). Caught + overturned by the **Scope Guard's independent check** — the 2-agent cross-check earned its keep.
+- **1 BLOCK** — cycle 1: `cmd_pragmatic_stop` was a second slug entry point with the identical comma-fragmentation defect, missed by the main-session BUILD whose own docstring falsely claimed "single chokepoint". A genuine bug the Adversary caught before commit.
+
+### Answering the user's question — is the autonomous-batch pattern timeline-effective?
+
+**Key reframe discovered by running it:** the user's model was "AMAW runs batch → human reviews+fixes afterward". But AMAW's Adversary + Scope Guard **do the review+fix INSIDE the autonomous loop**. The human wakes to 3 cycles already reviewed, fixed, and gated to Scope Guard CLEAR — not raw output.
+
+- **Yield:** 0 of 3 cycles passed first-pass review clean (every BUILD had ≥3 findings; one had a BLOCK). Autonomous first-pass output is NOT done. **But** the in-loop Adversary→fix→Scope-Guard cycle resolved everything without human intervention.
+- **Error compounding avoided** — because the 3 tasks were independent (the recommended batch shape). Cycle 1's BLOCK did not touch cycle 2/3.
+- **Per-cycle commits** — each item is its own revertable commit; a bad cycle would not have forced unwinding the batch.
+- **Cost** — ~390K sub-agent tokens + orchestration for 3 S-tasks. Real but bounded; the user pre-accepted it.
+
+**Verdict:** the pattern IS timeline-effective **for a batch of independent, well-specified grind tasks** — exactly the DEFERRED-backlog shape. The autonomous loop genuinely converts unattended hours into reviewed-and-gated work. It would NOT be safe for a sequential feature build (error compounding). The human review afterward is a light second pass over AUDIT_LOG + findings docs, not a from-scratch review.
+
+### AMAW infrastructure observations
+
+- Sub-agent spawning + `mcp-query.py` calls: 7/7 spawns clean, all Step-0 MCP calls succeeded, G4 allow-list held (no permission prompts).
+- #006 pre-flight fix worked — every sub-agent used the heredoc fallback for its report file without rediscovering the Write-tool block.
+- The Adversary produced 1 false finding in 12 — ~92% precision. The Scope Guard's independent re-check caught it. Two-agent design validated.
+
+### Handoff notes for next session
+
+**Active blocker:** none. Branch HEAD after push = cycle-3 commit.
+
+**Open DEFERRED after batch:** #007 (slug normalize only on write path — LOW, mitigated), #008 (load_state no try/except on corrupt file — LOW, risk reduced by #003). Both L4 hardening.
+
+**Next session agenda:**
+1. The autonomous-batch pattern is proven for independent grind batches — candidate next batch: a larger DEFERRED/hardening set, or test-writing across modules.
+2. Phase 0b SSE parser remains the open real L-size feature task — a different (sequential) shape; do NOT batch it autonomously, run it human-in-loop or single `/amaw`.
+3. Branch merge cadence decision still open.
+
+### Raw count
+
+- **Commits this entry:** 4 (de0a2f46, f108ad39, 15956206, 89fb68d9)
+- **DEFERRED cleared:** #001, #002, #004, #006 · **filed:** #007, #008
+- **Sub-agents:** 7 (4 Adversary, 3 Scope Guard) · ~390K sub-agent tokens
+- **Findings:** 12 (11 real, 1 false; 1 BLOCK) · all resolved or consciously deferred
+- **Circuit breakers:** 10 adopted, 0 hard-stops triggered
+
+---
+
+## Session 2026-05-15 (continued, dogfood) — FIRST real /amaw run: DEFERRED #003 atomic save_state (M task)
+
+### Session arc
+
+After the readiness assessment + G1/G2/G4 fixes landed (commit `136fe700`), user asked to pick a small task for the first real `/amaw` dogfood. Chose **DEFERRED #003 — atomic save_state** (recommended: S-size, real Adversary material in atomic-write subtleties, low blast radius). This is the **first end-to-end AMAW execution** — the integration test the whole L3 build was for.
+
+### What the task did
+
+`workflow-gate.py save_state()` was non-atomic (`STATE_FILE.write_text(...)` direct) — a crash mid-write corrupts `.workflow-state.json`. Fix: write to a temp file, then `Path.replace()` for atomic rename.
+
+### AMAW workflow execution (the dogfood result)
+
+`/amaw` invoked → `amaw-enable` flipped `amaw_enabled=true` → `docs/audit/AUDIT_LOG.jsonl` created (first real, non-smoke). Phases logged to AUDIT_LOG throughout.
+
+**Adversary cold-start (review-code, round 1)** — spawned via Agent tool `subagent_type=general-purpose`:
+- Step 0 MCP calls **succeeded** — `search_lessons --type guardrail` + `--tags adversary-rejection` returned well-formed JSON
+- Verdict **APPROVED_WITH_WARNINGS** — 3 WARN, 0 BLOCK. All 3 legitimate:
+  1. Fixed `.tmp` name not collision-safe under concurrent invocations
+  2. cwd-relative tmp path — "same-filesystem" comment overclaimed structural guarantee
+  3. Killed process leaks stale `.tmp`; `cmd_reset` doesn't clean it; not in `.gitignore`; no fsync so "never partial" overclaims for power-loss
+- Wrote `docs/audit/findings-amaw-atomic-save-state-r1.md`
+
+**All 3 findings fixed in-cycle** (task reclassified S→M — fixes expanded scope to `.gitignore` + `install.sh`):
+1. PID-infixed tmp name (`.workflow-state.json.<pid>.tmp`) — concurrent invocations get distinct tmp files
+2. Comment reworded — `with_name()` structurally guarantees shared parent dir (not a cwd coincidence)
+3. `cmd_reset` sweeps stale `.workflow-state.json.*.tmp`; `.gitignore` + `install.sh` cover the pattern; `finally`-unlink cleans own tmp on failed-write/Windows-locked-dest; comment honest that power-loss durability is out of scope
+
+**Scope Guard cold-start (QC + POST-REVIEW)** — spawned via Agent tool:
+- Step 0 `check_guardrails "ready-to-commit"` → `pass:true` (the 3 seeded guardrails don't gate file-write)
+- Verdict **CLEAR** — 5/5 checklist, 3/3 Adversary findings resolved, 4/4 acceptance facets, bundle mirror byte-identical, no new problems from fixes
+- Wrote `docs/audit/post-review-amaw-atomic-save-state.md`
+
+### Files changed (4)
+
+- `agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — `import os`; atomic `save_state` (PID-tmp + `finally`-unlink); `cmd_reset` stale-tmp sweep
+- `.gitignore` — `.workflow-state.json.*.tmp` pattern added
+- `agentic-workflow/install.sh` — .gitignore generator block emits the tmp pattern
+
+### Dogfood findings — AMAW infrastructure (the point of the run)
+
+| # | Observation | Severity |
+|---|---|---|
+| D1 | **Sub-agent spawning works.** Both Adversary + Scope Guard spawned via `subagent_type=general-purpose`, ran cold-start, read files, executed `python scripts/mcp-query.py`, produced verdicts + artifacts. The core AMAW loop is verified working. | ✅ |
+| D2 | **mcp-query.py from sub-agents works.** All 4 Step-0 MCP calls across both sub-agents succeeded — the G4 allow-list (commit `136fe700`) did its job, no permission prompts interrupted cold-start. | ✅ |
+| D3 | **Write tool blocked the Adversary** from writing its findings file ("Subagents should return findings as text, not write report files"). Adversary fell back to a Bash heredoc. Harness rule conflicts with the AMAW adversary spec which REQUIRES a findings-file artifact. Scope Guard prompt was pre-armed with the heredoc fallback instruction and wrote cleanly. | ⚠ AMAW infra friction — see DEFERRED #006 |
+| D4 | **Adversary found 3 real WARNs** the main-session BUILD missed — collision-safe tmp naming, comment overclaim, stale-tmp lifecycle. Genuine value: cold-start adversary caught author-blindness gaps. AMAW's core thesis validated on first run. | ✅ |
+| D5 | AUDIT_LOG.jsonl now has its first real multi-event timeline (clarify→design→verify→review-code→adversary-review→qc→scope-guard). | ✅ |
+
+### Verdict on AMAW readiness
+
+**AMAW multi-agent orchestration is now VERIFIED working** — the half that was 0% before this run. First dogfood: 2 sub-agents spawned, 4 MCP calls, 3 real findings caught + fixed, 1 infra friction (D3) found. Net: AMAW is usable for L+ tasks. D3 should be resolved before heavy use (sub-agent prompts should instruct heredoc-fallback, or the harness rule relaxed for AMAW).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**Next session agenda:**
+1. **Resolve D3** (DEFERRED #006) — AMAW.md sub-agent prompt templates should pre-instruct the Bash-heredoc fallback for writing findings/post-review docs, since the Write tool blocks subagents from writing report files.
+2. **Phase 0b SSE parser** in `loreweave_llm` — now a candidate for a real L-size `/amaw` run (dogfood proved the loop works).
+3. Branch merge cadence decision.
+
+### Raw count
+
+- **Commits this entry:** 1 pending
+- **Files modified:** 4
+- **Sub-agents spawned:** 2 (Adversary r1, Scope Guard) — first real AMAW spawns
+- **AMAW artifacts:** AUDIT_LOG.jsonl (first real) + findings-amaw-atomic-save-state-r1.md + post-review-amaw-atomic-save-state.md
+- **Tests:** re-VERIFY 4 checks pass after Adversary fixes
+
+---
+
+## Session 2026-05-15 (continued, latest) — AMAW readiness assessment + G1/G2/G4 fixes + guardrail seed (L task)
+
+### Session arc
+
+After L3 deepen landed (commit `30cec90d`), user asked for a readiness assessment of AMAW before putting it into use. Assessment verdict: **plumbing ~90% ready, multi-agent brain 0% verified** — AMAW had never executed end-to-end; first `/amaw` run IS the integration test. Assessment surfaced 5 gaps (G1-G5). User chose to fix G1+G2+G4 + seed real guardrails before first dogfood.
+
+### Readiness assessment findings
+
+| Gap | Severity | Resolution this task |
+|---|---|---|
+| G1 — mcp-query.py can't create guardrails (no `--guardrail` flag) | HIGH for value-prop | FIXED — 3 flags added |
+| G2 — amaw-pre-commit verdict scraped summary text; field name was `violated`/`rules` not `matched_rules` | LOW | FIXED — `matched_rules` primary + fallback |
+| G3 — `user_confirmation` guardrail → hard block in hook context | LOW-MED | NOT fixed (intentional — hook can't do interactive prompts; hard-block is fail-safe) |
+| G4 — `python scripts/mcp-query.py` not in allow-list → sub-agent prompts mid-cold-start | MED | FIXED — `permissions.allow` block added |
+| G5 — 0 guardrails exist → check_guardrails layer inert | by design | RESOLVED — 3 guardrails seeded |
+
+Verified-working at assessment time: state machine, mcp-query.py 6 verbs, bridge (retro + REJECTED paths both tested live), check_guardrails BLOCKED path (tested with temporary probe guardrail), hook chain, default-v2.2 isolation. Unverified (still): sub-agent spawning, `/amaw` slash flow, cold-start Adversary/Scope Guard/Scribe loop, AUDIT_LOG.jsonl as real multi-event timeline.
+
+### What landed (6 files)
+
+- `agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — **G2**: `cmd_amaw_pre_commit` verdict parse now reads `matched_rules` (primary, verified vs live ContextHub response) with `violated`/`rules` fallback; BLOCK output surfaces `prompt` + per-rule `requirement` lines.
+- `agentic-workflow/scripts/mcp-query.py` + `scripts/mcp-query.py` — **G1**: `add_lesson` gains `--guardrail-trigger` / `--guardrail-requirement` / `--guardrail-verification`. Validation: all-3-or-none; `type=guardrail` requires all 3.
+- `agentic-workflow/.claude/settings.json` + `.claude/settings.json` — **G4**: new `permissions.allow` block, 5 rules pre-approving `mcp-query.py` + `workflow-gate.{sh,py}` invocations so sub-agents don't hit permission prompts mid-cold-start.
+
+### Guardrails seeded (ContextHub, 3 rules)
+
+| Trigger (regex) | Requirement | verification_method |
+|---|---|---|
+| `/git\s+push/` | Push only with explicit user approval — CLAUDE.md Phase 11 | user_confirmation |
+| `/force.*push\|push.*force\|push\s+-f/` | Force-push is destructive — never without explicit per-branch authorization | user_confirmation |
+| `/migrat/` | DB migration is L+ work — run /amaw + confirm rollback plan | user_confirmation |
+
+Behavior matrix verified (8 actions): `git commit` → CLEAR (**critical** — AMAW commit phase not blocked); `git push` / `git push -f` / `--force-with-lease` / `force-push` / `migration` / `migrate` → BLOCK; `ready-to-commit` → CLEAR.
+
+### Bugs found + fixed during BUILD
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | ContextHub guardrail plain-string triggers are **exact-match**, not substring (`git push -f origin` didn't match plain `git push`). Source: `services/guardrails.js matchTrigger` — `/regex/` form OR `trimmed === action`. | Re-seeded all 3 with `/regex/` triggers |
+| 2 | **MSYS path-conversion** mangled leading-`/` regex triggers — `/git\s+push/` stored as `C:/Program Files/Git/git/s+push/`. Git Bash artifact, NOT a code defect. | Re-seed with `MSYS_NO_PATHCONV=1` prefix |
+
+### Workflow gate trace
+
+L classified (files=6, logic=4, side_effects=1). clarify→design→review-design→plan fast-tracked (readiness assessment served as CLARIFY+DESIGN); build→verify→review-code→qc→post-review completed with evidence. Default v2.2 mode (no `/amaw` — consistent with L3 task's meta-paradox reasoning).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**AMAW readiness now:** guardrail enforcement layer is **live** (capability + 3 rules + permission friction removed + robust verdict parsing). Still unverified: the multi-agent orchestration half. First `/amaw` run remains the integration test.
+
+**Next session agenda (unchanged + refined):**
+1. **First `/amaw` dogfood** — assessment recommends a **small S/low-M task first** (not the L-size Phase 0b SSE parser) to shake out sub-agent spawn mechanics with minimal blast radius. Graduate to Phase 0b L-task after cold-start loop proves it works.
+2. Phase 0b SSE parser in `loreweave_llm` (the original roadmap item).
+3. Branch merge cadence decision.
+
+**Process discipline reminders:**
+- Seeding regex guardrails / passing `/regex/` args from Git Bash on Windows → prefix `MSYS_NO_PATHCONV=1` or the leading `/` gets path-converted.
+- ContextHub guardrail triggers: plain string = exact match; `/.../` = regex. Always use regex form for anything but an exact action string.
+- `/amaw` for L+ only; lmstudio provider preference; Rust workspace pattern — see memory files.
+
+### Raw count
+
+- **Commits this entry:** 1 pending
+- **Files modified:** 6 (3 bundle + 3 deployed mirror)
+- **External state:** +3 guardrails in ContextHub (net; ~8 created-and-deleted during trigger-syntax debugging)
+- **Tests:** G1/G2/G4 verified; 8-action guardrail behavior matrix all correct; mirror diffs clean
+
+---
+
+## Session 2026-05-15 (continued, late) — AMAW × ContextHub L3 deepening (XL task, default v2.2 mode)
+
+### Session arc
+
+After bundle v2.3 deployment landed (commits `9384eafd`..`23406566`), user's review of the new MCP integration found it shallow — only RETRO calls `add_lesson`; sub-agents are "files-as-truth" and ignore MCP entirely. With ContextHub MCP provisioned but barely used, user picked **L3 deepen** (deepest of 3 proposed levels) to evaluate effectiveness end-to-end.
+
+Workflow mode for THIS task: **default v2.2 + `/review-impl`** (meta-paradox: can't validate AMAW deep using AMAW shallow). First real `/amaw` run waits for next session's Phase 0b SSE parser, with deepened L3 wiring active.
+
+### CLARIFY decisions (4-question Q&A)
+
+| Decision | Choice |
+|---|---|
+| Workflow mode for THIS task | default v2.2 + `/review-impl` |
+| Scope of L3 changes | AMAW-mode only (gated on `amaw_enabled` state flag); default v2.2 untouched |
+| Bridge AUDIT_LOG → lessons granularity | Selective: `sprint_complete` + `pragmatic_stop` + REJECTED reviews only |
+| Sub-agent MCP access mechanism | Helper script wrapper `scripts/mcp-query.py` |
+| Edit safety | No freeze (default v2.2 = no sub-agents spawned) |
+
+### What landed (13 files)
+
+**NEW (4):**
+- `agentic-workflow/scripts/mcp-query.py` + `scripts/mcp-query.py` — 275-line stdlib REST CLI (verbs: ping, search_lessons, add_lesson, list_lessons, check_guardrails, search_code_tiered). Reflect dropped (no REST endpoint, MCP-only via chat model).
+- `docs/specs/2026-05-15-amaw-l3-deepen.md` — 240-line spec (4 components, 12 AC, risks, out-of-scope)
+- `docs/plans/2026-05-15-amaw-l3-deepen.md` — 156-line plan (42 bite-sized tasks, dependency graph)
+
+**MODIFIED (9):**
+- `agentic-workflow/scripts/workflow-gate.py` + `scripts/workflow-gate.py` — `INITIAL_STATE` adds `amaw_enabled` flag. New verbs `amaw-enable` / `amaw-pre-commit` / `pragmatic-stop`. `_log_audit` + `_bridge_to_contexthub` helpers. `cmd_complete` extended with selective bridge (retro→sprint_complete, REJECTED reviews→adversary-rejection). `cmd_status` shows AMAW state.
+- `agentic-workflow/AMAW.md` + `docs/amaw-workflow.md` — All 3 sub-agent templates (Adversary/Scope Guard/Scribe) gain Step 0 with `mcp-query.py search_lessons` / `check_guardrails` calls. New "L3 ContextHub integration" section.
+- `agentic-workflow/.claude/settings.json` + `.claude/settings.json` — PreToolUse hook chains `pre-commit && amaw-pre-commit`. Timeout 75s.
+- `agentic-workflow/.claude/commands/amaw.md` + `.claude/commands/amaw.md` — Step 2 invokes `bash scripts/workflow-gate.sh amaw-enable [task-slug]`. Step 3+5 reference Step-0 calls.
+- `agentic-workflow/install.sh` — copies `mcp-query.py` with chmod +x.
+- `agentic-workflow/README.md` — new "L3 deepen (2026-05-15)" row in customizations table.
+- `docs/deferred/DEFERRED.md` — 5 entries (IDs 001-005) for L4 hardening from /review-impl LOW findings.
+
+### Workflow trace (gate state)
+
+```
+clarify → design → review-design → plan → build → verify → review-code → qc → post-review (current) → session → commit → retro
+   [x]      [x]         [x]         [x]    [x]      [x]        [x]        [x]      [x]
+```
+
+XL classified (files=11, logic=6, side_effects=1). All 9 phases marked complete with evidence in `.workflow-state.json`.
+
+### Bugs found + fixed during cycle
+
+| # | Phase | Issue | Fix |
+|---|---|---|---|
+| 1 | BUILD | `_request` missed `http.client.RemoteDisconnected` — server-mid-request close crashed script | Added `(ConnectionError, RemoteDisconnected, HTTPException)` clause |
+| 2 | BUILD | 30s timeout too tight for cold add_lesson (measured 30.169s) | Bumped mcp-query.py timeout 30s → 60s |
+| 3 | BUILD | `amaw-pre-commit` silent on success (UX) | Added `OK: ... CLEAR (rules_checked: N)` print |
+| 4 | REVIEW | Bridge subprocess timeout 45s < mcp-query 60s — could kill in-flight add_lesson | Bumped subprocess timeout to 75s with note |
+| 5 | review-impl MED-1 | `amaw-pre-commit` BLOCKED detection scraped summary text — fragile if format drifts | Switch to `--format json` + JSON parsing of `pass`/`violated` fields |
+| 6 | review-impl MED-2 | 4xx response from check_guardrails fell through to "non-fatal warn" + commit proceeds (fail-open wrong direction) | 4xx now blocks commit (structural error → human investigates) |
+| 7 | review-impl MED-3 | `MCP_QUERY = Path("scripts/mcp-query.py")` cwd-relative — bridge silently no-op'd from non-repo cwd | `Path(__file__).parent / "mcp-query.py"` resolves from script location |
+| 8 | review-impl MED-4 | Sub-agent prompt placeholder `<task topic>` literal substitution risk | Templates now instruct "derive actual topic from spec H1, do NOT pass literal placeholder"; findings doc footer requires "Step 0 query strings used" |
+
+Bonus discovery during MED-1 fix: argparse `--format` position matters — top-level `--format json` is overridden by subparser default. Bridge subprocess.run command must pass `--format json` AFTER subcommand.
+
+### /review-impl pass
+
+After Phase 9 POST-REVIEW initial summary, user invoked `/review-impl` for adversarial review before commit. Findings:
+
+| Severity | Count | Examples |
+|---:|---:|---|
+| HIGH | 0 | (none — implementation passed all 12 AC) |
+| MED | 4 | amaw-pre-commit string scraping; 4xx fail-open; cwd-relative MCP_QUERY; sub-agent placeholder substitution |
+| LOW | 5 | task_slug not validated; "REJECTED" substring false positives; non-atomic save_state; pre-commit side-effect state file; sub-agent permission prompts |
+| COSMETIC | (skipped) | display nits, hardcoded date refs, install.sh chmod no-op, etc. |
+
+All 4 MED fixed in same cycle (re-VERIFY clean). All 5 LOW logged in `docs/deferred/DEFERRED.md` (IDs 001-005) for L4 hardening / first AMAW dogfood.
+
+### Verify evidence (re-VERIFY after MED fixes)
+
+| AC | Verify |
+|---|---|
+| AC-1 ping | `OK` |
+| AC-2 search_lessons | JSON output with matches[] structure |
+| AC-3 add_lesson | UUID returned (`ac9ab93c-...`); lesson visible via list_lessons |
+| AC-4 check_guardrails | `pass: True, rules_checked: 0` (CLEAR with empty rule layer) |
+| AC-5 server-down | Friendly stderr "ContextHub not reachable" + exit 2 (no stack trace) |
+| AC-6 amaw-enable | `state['amaw_enabled']` flips True; idempotent |
+| AC-7 bridge fires | `OK: bridged lesson 1dfdc3ec-...` (warm path, no timeout warning) |
+| AC-8 default mode silent | No bridge call when `amaw_enabled=false` |
+| AC-9 default pre-commit | `pre-commit` passes; `amaw-pre-commit` no-op exit 0 |
+| AC-10 AMAW pre-commit | `OK: amaw-pre-commit guardrails CLEAR (pass=True, rules_checked=0)` |
+| AC-11 sub-agent prompts | 10 `mcp-query.py` mentions in AMAW.md (≥4 expected) |
+| AC-12 mirror diffs | All 5 deployed files match bundle (no drift) |
+
+### Test lessons created (kept per user choice "useful evidence")
+
+In ContextHub `mmo-rpg-zone-map-design-non-human-in-loop` project:
+- `Sprint complete: smoke-AC7-l3deepen-test` — proof bridge works end-to-end
+- `Sprint complete: smoke-revfinal-l3` — re-verify after MED fixes
+- `AC-3 smoke test` ×2, `AC-VERIFY smoke` ×2, `Retry test`, `Timing test`, `Timeout 60s test`, `L3 review-impl re-verify` — Component 1 verb tests
+- ~9-10 throwaway lessons total. Skipped cleanup per user choice (search_lessons against actual task topics returns these as low-signal noise; tolerable).
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**Verification before doing any work:**
+1. `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` → 8 containers Up
+2. `bash scripts/workflow-gate.sh status` → empty 12-phase tracker, AMAW disabled
+3. `python scripts/mcp-query.py ping` → `OK`
+4. `git branch --show-current` → `mmo-rpg/zone-map-design-non-human-in-loop`
+
+**Next session agenda:**
+
+1. **First real `/amaw` dogfood** — Phase 0b SSE parser in `loreweave_llm` SDK (per prior session's roadmap). Run `/amaw` at task start. Measure: how many real findings, token cost, where the deepened workflow felt natural vs forced. **First entry to `docs/audit/AUDIT_LOG.jsonl` from a non-smoke task.** Pre-flight: verify `python scripts/mcp-query.py *` is in `.claude/settings.json` allow-list (DEFERRED #005); if sub-agent permission prompts interrupt, allow once.
+2. **Resume Phase 0b** per the prior 2026-05-14 late-evening entry's Phase 0b plan (lmstudio register as `platform_model`, SSE parser in `loreweave_llm::GatewayClient::stream()`, hardcoded L3 prompt against 3-zone wuxia fixture).
+3. **Decide branch merge cadence** — if AMAW dogfood succeeds, merge `mmo-rpg/zone-map-design-non-human-in-loop` workflow infra back to `mmo-rpg/zone-map-design` so all future design tracks benefit. The infra is repo-wide regardless of which design track.
+
+**Process discipline reminders:**
+
+- `/amaw` for L+ tasks ONLY (data migrations, schema changes, security paths, multi-system contracts). Don't burn ~$1-5/task tokens on small fixes.
+- Sub-agent prompt templates require deriving ACTUAL topic from spec — do not pass literal `<task topic>` placeholder strings (review-impl MED-4 lesson).
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B). Memory: `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root contains 2 members. Memory: `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+
+### Raw count
+
+- **Commits this entry:** 1 pending (single mega-commit per user choice)
+- **Files created:** 4 (mcp-query.py + spec + plan + DEFERRED.md row population)
+- **Files modified:** 9
+- **External state changes:** ~10 test lessons in ContextHub (kept as evidence per user); workflow-state.json reflects 9/12 phases complete
+- **Tests:** AC-1..12 all green (full re-VERIFY pass after MED fixes); /review-impl 4 MED + 5 LOW; all MED fixed inline
+
+---
+
+## Session 2026-05-15 — "non-human-in-loop" scope = AMAW v3.0; agentic-workflow bundle deployed; ContextHub MCP fully wired
+
+### Session arc
+
+Three administrative-only sub-sessions, all on `mmo-rpg/zone-map-design-non-human-in-loop` branch:
+
+1. **ContextHub MCP smoke test** — verified MCP server reachable, project `mmo-rpg-zone-map-design-non-human-in-loop` exists with 0 lessons; embedding pipeline alive (hybrid sem+fts).
+2. **Multi-project workspace mount** — added `D:/Works:/workspaces` bind to free-context-hub `mcp` + `worker` services. ContextHub server can now ripgrep + index ANY repo under `D:/Works/source/<name>` by registering `root_path=/workspaces/source/<name>`. De-registered initial junk row (`/app/D:/Works/...`) via direct DB UPDATE.
+3. **Agentic-workflow bundle deployment** — user copied `agentic-workflow/` (free-context-hub-derived bundle v2.3 = WORKFLOW v2.2 default + AMAW v3.0 opt-in) into the repo. Customized 8 bundle files for repo-specific paths, ran installer, replaced project-root `CLAUDE.md` workflow block with v2.2/AMAW snippet.
+
+### Resolved: "non-human-in-loop" scope
+
+The OPEN scoping question from prior session entry is **answered**: the branch is the testbed for **AMAW v3.0 (Autonomous Multi-Agent Workflow)** — opt-in cold-start sub-agent reviews replace human checkpoints at REVIEW + POST-REVIEW for high-stakes tasks. AMAW spec lives in [`docs/amaw-workflow.md`](../../amaw-workflow.md) (canonical) and `agentic-workflow/AMAW.md` (bundle source).
+
+The 4 prior candidate interpretations (pure autonomy / sub-agent driven / loop research / tooling autonomy) collapse to: **AMAW = sub-agent driven + loop research + opt-in (not always-on)**. Pure autonomy was rejected because POST-REVIEW human stop has measurable value for everyday tasks; only L+ size critical paths warrant the ~$1-5/task token cost of cold-start adversaries.
+
+Phase 14 case study (free-context-hub model swap, 2026-05-15) is the first real AMAW production run that informed v3.0 calibration: 8 findings / 5 BLOCKs / ~420K tokens / 6 sub-agent calls. Calibration table lives in `AMAW.md` §"Calibration table".
+
+### What landed
+
+**Repo files (deployed via `bash agentic-workflow/install.sh .`):**
+
+| File | Action |
+|---|---|
+| `scripts/workflow-gate.sh` | Replaced (broken bash impl → thin wrapper around `.py`) |
+| `scripts/workflow-gate.py` | Overwritten (same content, install copies bundle's copy) |
+| `.claude/settings.json` | **NEW** — pre-commit hook blocking commits without VERIFY+POST-REVIEW+SESSION |
+| `.claude/commands/review-impl.md` | Replaced (KS-specific reference → generic bundle version) |
+| `.claude/commands/amaw.md` | **NEW** — `/amaw` slash command for opt-in AMAW activation |
+| `docs/specs/.gitkeep` | **NEW** dir for CLARIFY spec files |
+| `docs/plans/.gitkeep` | **NEW** dir for PLAN decomposition files |
+| `docs/audit/.gitkeep` | **NEW** dir for `AUDIT_LOG.jsonl` (created on first AMAW run) |
+| `docs/deferred/DEFERRED.md` | **NEW** stub |
+| `docs/amaw-workflow.md` | **NEW** — copy of `agentic-workflow/AMAW.md` for canonical AMAW spec |
+| `CLAUDE.md` | Workflow block (lines 160-321) replaced with v2.2/AMAW-aware snippet (~90 lines, references bundle docs) |
+
+**Bundle customization (`agentic-workflow/`, 8 files):**
+
+| File | Change |
+|---|---|
+| `scripts/workflow-gate.py` | NEW — copied from repo (canonical impl) |
+| `scripts/workflow-gate.sh` | Rewritten as bash wrapper exec-ing `.py` |
+| `install.sh` | Copies both .sh+.py; creates `docs/specs/` + `docs/plans/` |
+| `WORKFLOW.md` | Header + Phase 1+4+10 paths customized for this repo |
+| `CLAUDE.md.snippet` | Added "Repo-specific paths" block |
+| `AMAW.md` | RETRO row names project_id; new "Repo integration" section |
+| `.claude/commands/amaw.md` | RETRO step names ContextHub project_id |
+| `README.md` | Subtitle "fork"; new "Repo customizations applied" table |
+
+**Free-context-hub repo (separate repo):**
+- `docker-compose.yml` modified — added `D:/Works:/workspaces` bind to `mcp` + `worker` services
+- DB row updated — junk workspace_root for project deactivated; correct `/workspaces/source/lore-weave-zone-map-design` row active
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `bash scripts/workflow-gate.sh status` (clean state) | Prints empty 12-phase tracker, exit 0 |
+| `bash scripts/workflow-gate.sh size XS 1 1 0` | (not yet smoke-tested at deploy time — recommend next session run a full XS cycle as smoke) |
+| ContextHub MCP `list_workspace_roots(project_id=mmo-rpg-zone-map-design-non-human-in-loop)` | 1 active row at `/workspaces/source/lore-weave-zone-map-design` (junk row inactive) |
+| ContextHub MCP `scan_workspace` | 98KB git status JSON returned (filesystem walk + git access from container both OK) |
+| Slash commands `/amaw` + `/review-impl` registered with Claude Code | YES — appeared in available-skills system reminder after install |
+
+### Memory layer cleanup
+
+Stale memory deleted: `~/.claude/projects/d--Works-source-lore-weave-zone-map-design/memory/feedback_workflow_gate_broken.md` removed + index entry pruned from `MEMORY.md`. Reason: workflow-gate.sh now wraps .py which sidesteps the original Windows pyenv-win shim bug. If the bug returns under different toolchain, re-capture.
+
+### Handoff notes for next session
+
+**Active blocker:** none.
+
+**Verification (still 3 quick commands):**
+1. `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` → 8 containers Up
+2. `bash scripts/workflow-gate.sh status` → empty 12-phase tracker, exit 0
+3. `git branch --show-current` → `mmo-rpg/zone-map-design-non-human-in-loop`
+
+**Next session agenda:**
+
+1. **First real AMAW dogfood** — pick a small L-size task (not hand-waved XS), invoke `/amaw`, follow the full Adversary + Scope Guard loop. Measure: how many real findings, how much token cost, where the workflow felt natural vs forced. Record in `docs/audit/AUDIT_LOG.jsonl` (first entry there).
+2. **Resume Phase 0b — wire real lmstudio gateway call** in `loreweave_llm` SDK + 1 L3 prompt to lmstudio (per prior session's `7f31bd0e` SDK extraction). This is L-size — register lmstudio as `platform_model` in provider-registry-service, implement SSE parser, run integration test.
+3. **Decide branch merge cadence** — if AMAW dogfooding goes well, merge `mmo-rpg/zone-map-design-non-human-in-loop` workflow infra back to `mmo-rpg/zone-map-design` (and ultimately `main`) so all future work uses v2.2/AMAW. The infra is repo-wide and useful regardless of which design track.
+4. **Free-context-hub commit** — `D:/Works/source/free-context-hub/docker-compose.yml` has uncommitted bind-mount change. Decide: commit there (push if appropriate), or keep local-only.
+
+**Process discipline reminders:**
+
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B) routed through provider-registry-service. See `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root contains 2 members; new Rust crates → add to `[workspace] members`, use `dep.workspace = true`. See `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+- For ANY task M+ size: invoke `./scripts/workflow-gate.sh size M ...` BEFORE any work. The script now persists state correctly.
+- For data migrations / schema changes / security paths: type `/amaw` at task start. The token cost (~$1-5) only pays off at L+ scope.
+
+### Raw count
+
+- **Commits this entry:** 1+ pending (commit granularity TBD with user before push)
+- **Files created in repo:** 7 in `.claude/` + `docs/` (settings.json, amaw.md, 4 .gitkeep stubs, DEFERRED.md, amaw-workflow.md)
+- **Files modified in repo:** 4 (CLAUDE.md, scripts/workflow-gate.{sh,py}, .claude/commands/review-impl.md)
+- **Files customized in `agentic-workflow/` bundle:** 8
+- **External state changes:** ContextHub MCP project workspace_root active; free-context-hub compose modified (uncommitted)
+- **Tests:** smoke `workflow-gate.sh status` ran (exit 0); no production test runs
+
+---
+
+## Session 2026-05-14 (continued, night) — Branch fork + ContextHub project bootstrap for "non-human-in-loop" workflow track
+
+### Session arc
+
+Administrative-only session. After commit `7f31bd0e` (SDK extraction) landed on `mmo-rpg/zone-map-design`, user opened a new workflow direction by:
+1. Forking a sibling branch `mmo-rpg/zone-map-design-non-human-in-loop` off the current HEAD.
+2. Starting the free-context-hub stack (`D:\Works\source\free-context-hub`) under Docker Compose.
+3. Provisioning a ContextHub project named after the new branch to seed the upcoming workflow's persistent memory namespace.
+
+No code changes. No design changes. **No tests were run** (nothing to test). Purpose is to set the stage for the next implementation session.
+
+### What "non-human-in-loop" means — RESOLVED 2026-05-15 → AMAW v3.0
+
+> **Update 2026-05-15:** scope locked as **AMAW v3.0** (opt-in cold-start sub-agent reviews replace human checkpoints at REVIEW + POST-REVIEW for L+ critical paths). See the 2026-05-15 entry above for the full resolution. Original interpretations preserved below for context.
+
+The branch name signals a workflow shift but the scope is **not yet specified**. Best guess from context: removing the human checkpoint between phases for some category of work — probably the BUILD↔VERIFY↔REVIEW inner loop, NOT the CLARIFY/PLAN/POST-REVIEW outer loop. **The next session MUST do a CLARIFY phase to lock this scope before any further work** — see [Next session agenda](#next-session-agenda-non-human-in-loop) below.
+
+Candidate interpretations the next agent should ask about:
+- **Pure autonomy mode**: agent runs the full 12-phase cycle without stopping for human approval (would invert CLAUDE.md POST-REVIEW phase).
+- **Sub-agent driven**: dispatch implementation phases to background Task agents, human only sees aggregated results.
+- **Loop research**: experimental workflow track to MEASURE where human-in-loop adds vs subtracts value (parallel branch to compare).
+- **Tooling autonomy**: write & verify tilemap-service Phase 0b/1+ entirely via tool-driven cycles (cargo + lmstudio + ContextHub) with no human picks during a session.
+
+### What landed (infrastructure-only)
+
+**Git branch:**
+- `mmo-rpg/zone-map-design-non-human-in-loop` created from `mmo-rpg/zone-map-design @ 7f31bd0e` (clean tree, not pushed to origin yet).
+
+**Free-context-hub stack — 8 containers up (`docker compose up -d`):**
+
+| Service | Image | Local port(s) | Purpose |
+|---|---|---|---|
+| `db` | pgvector/pgvector:pg16 | 5432 | Postgres + pgvector (ContextHub SSOT) |
+| `neo4j` | neo4j:5.26 | 7474 (HTTP) / 7687 (Bolt) | Knowledge graph derived layer |
+| `rabbitmq` | rabbitmq:3.13-management | 5672 / 15672 | Job queue (QUEUE_ENABLED=true, QUEUE_BACKEND=rabbitmq) |
+| `redis` | redis:7-alpine | 6379 | Retrieval/rerank cache |
+| `minio` | minio/minio:latest | 9000 (S3) / 9001 (console) | S3-compat object store for artifacts (`contexthub-artifacts` bucket) |
+| `mcp` | free-context-hub-mcp | **3000 (`/mcp` — MCP HTTP)** + **3001 (`/api` — REST)** | ContextHub server. Workspace bind-mount at `/workspace`. Knowledge loop + builder memory both enabled. |
+| `worker` | free-context-hub-worker | (internal 3000-3001) | Knowledge-loop + builder-memory consumer |
+| `gui` | free-context-hub-gui | 3002 | Next.js admin UI |
+
+**ContextHub project:**
+- `project_id`: `mmo-rpg-zone-map-design-non-human-in-loop` (slash → dash; `/api/projects` regex `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` rejects `/`)
+- `name`: `mmo-rpg/zone-map-design-non-human-in-loop` (preserves the original branch name for humans)
+- `description`: anchors to base branch + HEAD commit `7f31bd0e` of `lore-weave-zone-map-design` repo
+- `lesson_count`: 0 (empty — every lesson the next workflow generates lands here)
+
+Created via direct REST `POST /api/projects` because the ContextHub MCP tools (`search_lessons`, `add_lesson`, `check_guardrails`, etc.) were **not loaded** into the Claude Code session — only the static deferred tools list was available. See action item below.
+
+### Handoff notes for next session
+
+**Active blocker:** none mechanically; one open scoping question (what "non-human-in-loop" means as workflow scope — block CLARIFY until answered).
+
+**Verification before doing any work:**
+1. Confirm free-context-hub still running: `docker compose -f "D:/Works/source/free-context-hub/docker-compose.yml" ps` — expect 8 containers `Up`.
+2. Confirm ContextHub project exists: `curl -s http://localhost:3001/api/projects` — expect entry with `project_id: mmo-rpg-zone-map-design-non-human-in-loop`.
+3. Confirm branch: `git branch --show-current` → expect `mmo-rpg/zone-map-design-non-human-in-loop`. HEAD should equal `7f31bd0e` (SDK extraction).
+
+**Next session agenda — non-human-in-loop** — *all 4 items resolved 2026-05-15; see the 2026-05-15 entry above for the new agenda. Items below preserved for history:*
+
+1. ~~**CLARIFY** what the workflow track actually is~~ — **RESOLVED**: AMAW v3.0 (see 2026-05-15 entry).
+2. ~~**MCP tool registration**~~ — **RESOLVED**: ContextHub MCP loaded via deferred-tool ToolSearch; workspace_root registered at `/workspaces/source/lore-weave-zone-map-design` (after adding `D:/Works:/workspaces` bind to mcp+worker compose services).
+3. ~~**Seed initial lessons**~~ — **DEFERRED to natural accumulation**: AMAW RETRO phase calls `add_lesson` per task; backfill of existing memory items (lmstudio prefs, Rust workspace pattern) only if explicitly needed. Workflow-gate-broken memory was deleted (script now fixed).
+4. **Decide branch fate** — *carried forward* into 2026-05-15 agenda item #3.
+
+**Process discipline reminders:**
+
+- ~~The workflow-gate script (`./scripts/workflow-gate.sh`) is still broken~~ — **RESOLVED 2026-05-15**: .sh now wraps `scripts/workflow-gate.py` (cross-platform impl); Windows pyenv-win shim bug sidestepped. Stale memory deleted.
+- LLM provider preference is **lmstudio** (local Qwen 3 14B/32B) routed through provider-registry-service, NOT direct Anthropic API. See `~/.claude/projects/.../memory/user_llm_provider_preference.md`.
+- Rust workspace at repo root now contains 2 members; new Rust crates → add to `[workspace] members` and use `dep.workspace = true`. See `~/.claude/projects/.../memory/project_rust_workspace_pattern.md`.
+
+### Raw count
+
+- **Commits this entry:** 0 (administrative only)
+- **Files created/modified/deleted in repo:** 0 production files (only this handoff entry)
+- **External state changes:** +1 git branch, +8 running containers, +1 ContextHub project
+- **Tests:** N/A
+
+---
+
+## Session 2026-05-14 (continued, late evening) — SDK extraction: sdks/rust/loreweave_llm/ (first Rust SDK in monorepo) + Cargo workspace at repo root
+
+### Session arc
+
+Post-Phase-0a commit `53f81fc7`, user asked "chúng ta đã có LLM call trong phần implement này chưa? và có SDK cho rust chưa?" — direct factual questions about state. Honest answers:
+1. **No LLM call yet** — `GatewayClient::stream()` returns `LlmError::NotImplementedPhase0a`; the signature + headers + URL + types are correct, but no `.send().await`.
+2. **No Rust SDK** — gateway client lived **inside** `services/tilemap-service/src/llm/`. Python SDK `sdks/python/loreweave_llm` exists; Rust equivalent did not.
+
+User picked: **promote to `sdks/rust/loreweave_llm/` NOW before Phase 0b**. I proposed (a) Cargo workspace at repo root vs path-dep-only and (b) crate name `loreweave_llm` (mirror Python) vs `loreweave-llm` (hyphen). User signal `keep going` → committed to recommended defaults: **workspace + `loreweave_llm`** (underscore, matches Python sibling).
+
+### What landed
+
+**`Cargo.toml` at repo root (NEW — first Rust workspace in monorepo):**
+- `[workspace]` resolver `2` with members `sdks/rust/loreweave_llm` + `services/tilemap-service`
+- `[workspace.package]` — edition 2024, rust-version 1.85, AGPL-3.0-only
+- `[workspace.dependencies]` — 10 shared deps pinned (tokio, reqwest+rustls, serde+json, blake3, thiserror+anyhow, uuid, tracing+subscriber)
+- `[profile.release]` — lto thin + codegen-units 1 + panic abort + strip symbols (moved from per-service config)
+
+**`sdks/rust/loreweave_llm/` (NEW first Rust SDK; mirror of `sdks/python/loreweave_llm` Phase 1b parity):**
+- `Cargo.toml` — inherits workspace fields; deps via `workspace = true`
+- `README.md` — usage example, Phase 0a status, known limitations (cache_control + OpenAI-shaped-tools gaps), test instructions
+- `src/lib.rs` — Phase 0a status block, pub re-exports of GatewayClient + LlmError + 10 model types
+- `src/{client,errors,models}.rs` — moved verbatim from `services/tilemap-service/src/llm/` with cross-ref paths updated
+- `tests/wire_format.rs` — 17 wire-format conformance tests moved from `tilemap-service/tests/smoke.rs`
+
+**`services/tilemap-service/` (consumer):**
+- `Cargo.toml` — `loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }` + workspace inheritance for everything else
+- `src/llm/` directory + 4 files **DELETED** (client.rs, errors.rs, models.rs, mod.rs)
+- `Cargo.lock` **DELETED** — workspace owns single root-level lockfile
+- `src/lib.rs` — drops `pub mod llm`; adds `pub use loreweave_llm as llm` for downstream re-export ergonomics
+- `src/error.rs` — uses `loreweave_llm::LlmError` instead of `crate::llm::errors::LlmError`
+- `tests/smoke.rs` — slimmed from 22 → 5 TMP-specific tests; the 17 wire-format tests moved to SDK
+
+**`docs/03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md`** — this entry.
+
+### Verify evidence (fresh runs at workspace root)
+
+| Command | Result |
+|---|---|
+| `cargo build` | Finished `dev` in 12.63s, exit 0, **0 warnings** (both crates) |
+| `cargo test` | **34 tests pass** distributed across workspace: 6 unit + 17 integration in `loreweave_llm`; 6 unit + 5 integration in `tilemap-service`. Same total as before extraction (intentional — no test deleted, only redistributed). |
+| `cargo clippy --all-targets --workspace` | Exit 0, **0 warnings** (after fixing one doc-list-indent nit in lib.rs) |
+
+Single shared `target/` directory at workspace root (was 2 separate target dirs before extraction). Single `Cargo.lock` at workspace root.
+
+### Why this extraction was done NOW vs deferred
+
+The user-stated rationale was: when Phase 0b wires the real network call, the bugs/fixes should land inside the SDK (reusable by any future Rust service) rather than inside tilemap-service (single consumer). The /review-impl pass earlier today already proved the gateway client surface area had non-trivial contract complexity (15 findings); centralising that complexity behind an SDK boundary makes future Rust services cheap.
+
+Counter-argument considered: "premature abstraction with only 1 consumer." Rejected because (a) the SDK is structurally identical to the Python sibling already in production; (b) the workspace promotion is a one-time mechanical cost, not an ongoing tax; (c) Phase 0b SSE parser implementation is meaningfully harder to refactor across an extraction boundary than across a single crate.
+
+### Handoff notes for next session
+
+**Active:** none. Workspace builds clean; SDK extraction complete.
+
+**Next-step recommendations** (unchanged from prior session entry except for SDK location updates):
+
+1. **Phase 0b — wire real gateway call + 1 L3 prompt to lmstudio** (~3-4 hrs).
+   - Provider-registry-service setup: register lmstudio as `platform_model` (Qwen 3 14B/32B); document registration step in `sdks/rust/loreweave_llm/README.md` AND `services/tilemap-service/README.md`.
+   - **Implement SSE parser in `loreweave_llm::GatewayClient::stream()`** (the SDK, not the service).
+   - **In tilemap-service**, construct hardcoded L3 zone-classifier prompt against tiny fixture (3-zone wuxia template) using OpenAI-shaped tools (per the architectural finding from `/review-impl`).
+   - Add `mockito` or `wiremock` to `loreweave_llm/dev-dependencies` for offline integration testing of the SSE parser.
+   - Add `#[ignore]`-by-default `tests/integration_lmstudio.rs` that runs against a live provider-registry + lmstudio when `cargo test -- --ignored` is invoked manually.
+2. **Phase 1 — engine Stage 1** (Fruchterman-Reingold + 2 modificators + determinism integration test).
+3. **Phase 2 — full L3 retry loop** (per-object retry + structured validation + canonical fallback) — implementation could live either in the SDK (if generic enough) or in tilemap-service (if TMP-specific). Phase 2 design call.
+4. **Phase 3 — L4 narration + measurement findings back to TMP_008b.**
+5. **TMP_008b next revision** — feed back BOTH architectural findings (cache_control + OpenAI-shaped tools).
+
+**Process discipline reminders for next agent:**
+
+- Run cargo commands from **workspace root** (`d:\Works\source\lore-weave-zone-map-design\`), not from inside `services/tilemap-service/`. `cargo build -p tilemap-service` for service-only build; `cargo test -p loreweave_llm` for SDK-only tests.
+- The SDK is the **canonical home for gateway concerns** — never re-introduce gateway-client code inside `services/tilemap-service/src/`. If a TMP-specific LLM concern emerges (prompt assembly, retry logic per TMP_008b §5/§6), evaluate whether it belongs in the SDK (provider-agnostic) or in the service (TMP-specific) before placing.
+- Pattern for future Rust services: `Cargo.toml` adds to `[workspace] members` array + member crate uses `loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }`.
+
+### Raw count
+
+- **Commits this entry:** 1 pending (SDK extraction)
+- **Files created:** 7 (`Cargo.toml` workspace root + `sdks/rust/loreweave_llm/`: Cargo.toml + README.md + lib.rs + errors.rs + models.rs + client.rs + tests/wire_format.rs)
+- **Files deleted:** 5 (`services/tilemap-service/Cargo.lock` + `src/llm/{client,errors,models,mod}.rs`)
+- **Files modified:** 5 (`services/tilemap-service/`: Cargo.toml + DESIGN.md + README.md + src/lib.rs + src/error.rs + tests/smoke.rs) — wait, that's 6
+- **Net file delta:** +7 created, -5 deleted, +6 modified
+- **Tests:** 34 total (unchanged count; redistributed: SDK owns 23, service owns 11)
+
+---
+
+## Session 2026-05-14 (continued, evening) — V2 PoC pivot: services/tilemap-service/ Phase 0a scaffold (first Rust microservice in monorepo)
+
+### Session arc
+
+User signal: design mode → implementation pivot. After the cross-feature integration annotation pass landed earlier in the day (commit `9f4ef3b2`), user asked "what's next" → I presented 4 directions (V2 PoC implementation / 05_llm_safety folder seed / WA_003 reconciliation+TMP_009 / V3 RMG wizard) → user picked **V2 PoC implementation**. Subsequent CLARIFY rounds:
+
+1. **Path choice (3 forks)**: Rust + gateway HTTP client at `services/tilemap-service/` (architectural correctness) vs Rust + direct lmstudio call at `poc/` (PoC-only) vs Python + existing SDK. User picked **Path A — Rust + gateway HTTP client at services/tilemap-service/** for production scaffold tone.
+2. **LLM provider**: user picked **lmstudio (local, free)** registered as `platform_model` in provider-registry-service. Anthropic prompt-caching specifics (TMP_008b §2) NOT validatable through this stack; deferred as architectural finding.
+3. **Phase 0a vs Phase 0b**: scope reset honestly — full "scaffold + types + 1 end-to-end lmstudio L3 call" with Path A is ~6-8 hrs; honest Phase 0a = scaffold-only this session (~3 hrs), Phase 0b next session wires real network call.
+
+### Key discoveries during CLARIFY
+
+- ✅ **Python SDK already exists** at `sdks/python/loreweave_llm` — proven across translation/extraction/chat/knowledge services. Provided independent reference implementation for cross-checking Rust mirror.
+- ✅ **Unified LLM gateway** with stable OpenAPI contract at `contracts/api/llm-gateway/v1/openapi.yaml` (907 lines; 6 endpoints, 6 stream event types, full discriminator schema).
+- ✅ **Rust toolchain available locally** (1.89 stable).
+- ⚠ **No existing Rust services in monorepo** (Go + Python + TS before) — tilemap-service is the first; standalone Cargo package for now, promote to workspace when 2nd Rust service lands.
+- ⚠ **Workflow-gate script bug** — `./scripts/workflow-gate.sh` has Python IndentationError on each call; state file resets between invocations. Followed CLAUDE.md workflow discipline manually via TodoWrite. Worth filing separately as a tooling fix.
+- ⚠ **Existing SPIKE_03 frontend PoC at `poc/tilemap_world_view/`** (TypeScript + Phaser 3 + Vite) — validates FE rendering. CONFIRMED non-overlap with V2 PoC: SPIKE_03 PoC uses local Qwen via lmstudio for L1 skeleton only (response_format:json_object + 3-retry full-response loop); V2 PoC targets L3+L4 with TMP_008b §2-§12 mechanics (cacheable-prefix prompt, tool-use forced, per-object retry, canonical-default fallback).
+
+### Phase 0a deliverables landed
+
+Following CLAUDE.md 12-phase workflow (CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → POST-REVIEW → /review-impl → fixes → re-VERIFY → re-POST-REVIEW → SESSION → COMMIT):
+
+**16 new files under `services/tilemap-service/`:**
+
+| File | Purpose |
+|---|---|
+| `Cargo.toml` | 9 deps (tokio, reqwest+rustls, serde, blake3, thiserror+anyhow, uuid, tracing); edition 2024; release profile lto+strip |
+| `Dockerfile` | Multi-stage Rust 1.89 → distroless nonroot |
+| `DESIGN.md` | 12-section design doc; module decomposition, deps choice, openapi→Rust mapping, error strategy, provider abstraction, determinism story, **2 architectural findings to feed back to TMP_008b**, phase roadmap, test layout, CLAUDE.md compliance check |
+| `README.md` | PoC scope, env vars, build/test commands, "what this service does NOT do yet" table, phase roadmap |
+| `src/main.rs` | Binary entry — tracing init + scope banner print |
+| `src/lib.rs` | Library entry — 4 pub modules, re-exports |
+| `src/error.rs` | Top-level `Error` enum via thiserror, forwards module-local errors |
+| `src/seed.rs` | TMP-A4 blake3 seed helper + `TilemapSeed` newtype + hex Display + 6 inline determinism tests |
+| `src/types/{mod,channel,zone,tile,object,template,tilemap}.rs` | TMP_001 §2 core types in Rust — `ChannelTier` (5 with `generates_tilemap()` excluding Cell per TMP-A1), `ZoneRole` (4 V1+30d), `PassageKind` (5), `TileState` (4), `TerrainKind` (10 with u8 discriminants), `TilemapObjectKind` (7), `GenerationSource` (EngineGenerated default V1+30d per AC-TMP-10), `TilemapView` aggregate stub |
+| `src/llm/{mod,errors,models,client}.rs` | Gateway HTTP client — `ChatStreamRequest` + `StreamEvent` tagged enum + `GatewayClient` with `from_env()` failing fast on missing `LOREWEAVE_INTERNAL_TOKEN` |
+| `tests/smoke.rs` | 22 integration tests — TilemapView JSON roundtrip + seed determinism + 16 wire-format conformance tests against canonical openapi JSON shapes |
+
+### /review-impl adversarial pass findings (15 total)
+
+After initial Phase 0a passed POST-REVIEW round 1, user invoked `/review-impl` for deeper adversarial review. The pass cross-referenced Rust mirrors against `contracts/api/llm-gateway/v1/openapi.yaml` directly + `sdks/python/loreweave_llm/models.py` as independent reference. **All 6 HIGH defects would have broken first Phase 0b gateway call.**
+
+| Severity | Count | Highlights |
+|---:|---:|---|
+| HIGH | 6 | Wrong SSE discriminator field name `event_type` → `event` (Pythonic SDK field name leaked into Rust mirror; gateway would have rejected every event) · `UsageEvent.cached_tokens` → `reasoning_tokens` (invented field; silently dropped real reasoning_tokens payload) · `DoneEvent.finish_reason` required+non-null in Rust but optional+nullable per openapi · Auth header `Authorization: Bearer` → `X-Internal-Token` apiKey · Missing required `user_id` query parameter on `/internal/llm/stream` · Test coverage gap (no wire-format roundtrip tests) |
+| MED | 7 | Constructor name `new_anthropic_tool_use` misleading — gateway tools field is OpenAI-shaped per contract (**new architectural finding for TMP_008b §3**) · `StreamRequest` → `ChatStreamRequest` per openapi naming · Missing `operation: "chat"` field · TokenEvent/ReasoningEvent `index` silently dropped · `finish_reason` should be closed enum · AudioChunkEvent variant missing (hyphenated discriminator value) · `LlmError::InvalidUrl` repurposed for token errors |
+| LOW | 2 | `temperature` no range validation · `max_tokens = 0` should normalise to None per gateway SDK convention |
+
+**All 15 findings fixed in same Phase 0a commit cycle** (per CLAUDE.md "HIGH → fix now"). +20 new wire-format tests added; defensive `stream_event_rejects_event_type_field_name` test guards against regression. Plus 3 clippy nits caught during re-VERIFY (manual Default impls → `#[derive(Default)]`, manual clamp → `.clamp()` with NaN guard).
+
+### Verify evidence (fresh runs at commit time)
+
+| Command | Result |
+|---|---|
+| `cargo build` | Finished `dev` profile in 1.14s, exit 0, **0 warnings** |
+| `cargo build --release` | Finished `release` profile in 15.50s, exit 0, **0 warnings** |
+| `cargo test` | **34 tests pass** (12 unit + 22 integration + 0 doc), 0 failed, exit 0 |
+| `cargo clippy --all-targets` | Exit 0, **0 warnings** (after Default-derive + clamp fixes) |
+
+Test trajectory across cycle: initial Phase 0a 14 tests → /review-impl found 6 HIGH bugs → fixes added 20 wire-format tests → final 34 tests.
+
+### 2 architectural findings to feed back to TMP_008b at its next revision
+
+1. **`cache_control` not exposed by gateway** (already in DESIGN.md §8 from earlier) — Anthropic prompt-caching is gateway-managed (opaque to caller). TMP_008b §2 cacheable-prefix mechanic cannot be empirically validated via this stack.
+2. **`tools` field is OpenAI-shaped per gateway contract** (NEW from /review-impl, now in DESIGN.md §8 item 7) — TMP_008b §3 Anthropic-shaped tool-use spec (`input_schema` + `tool_choice` forced) is not directly transmittable through the gateway. Best resolution path: TMP_008b §3 stays the logical contract; tilemap-service owns OpenAI-shape translation as part of its gateway client. Surface during TMP folder's next closure pass (currently CLOSED for V1+30d but may reopen at V2 PoC validation completion).
+
+### Handoff notes for next session
+
+**Active:** none. Phase 0a complete and committed.
+
+**Next-step recommendations (priority order):**
+
+1. **Phase 0b — wire real gateway call + 1 L3 prompt to lmstudio** (~3-4 hrs):
+   - Provider-registry-service setup: register lmstudio as `platform_model` (Qwen 3 14B/32B per existing SPIKE_03 PoC convention; document the registration step in README)
+   - Implement SSE parser in `GatewayClient::stream()` using reqwest `stream` feature
+   - Construct a hardcoded L3 zone-classifier prompt against a tiny fixture (3-zone wuxia template) using OpenAI-shaped tools
+   - Per-object retry skeleton (just the loop; full retry-logic granularity is Phase 2)
+   - Measure: first-call latency, prompt token cost, tool-use forced-call reliability with Qwen (NOT Claude — different model class than TMP_008b §3 assumes)
+   - First measurements doc back into TMP_008b §12 cost-model estimates
+2. **Phase 1 — engine Stage 1** (1-2 sessions): Fruchterman-Reingold zone placer (TMP_002) + 2 modificators (TMP_003: TerrainPainter + RoadBuilder). Determinism integration test: same seed → byte-identical zones (validates TMP-A4 end-to-end through engine pipeline).
+3. **Phase 2 — full L3 retry loop** (1-2 sessions): per-object retry (TMP_008b §5) + structured per-case validation feedback (§4) + canonical-default fallback (§6). End-to-end small reality bootstrap.
+4. **Phase 3 — L4 narration + measurement findings back to TMP_008b** (1 session): cache-key derivation per §8 (with the architectural caveat that gateway-managed Anthropic cache can't be observed).
+5. **TMP_008b next revision** (independent of tilemap-service phases): incorporate the 2 architectural findings; revise §3 to clarify whether the spec describes logical contract or wire-format contract.
+6. **05_llm_safety folder seed** (still pending from earlier in the day's recommendation list): unblocked by TMP_008b §7 prompt-injection defense + World Oracle hooks; ~5-7 features at ~600 lines each.
+
+**Process discipline reminders for next agent:**
+
+- This is the **first Rust service in the monorepo** (Go + Python + TS before). Standalone Cargo package; promote to workspace when 2nd Rust service lands.
+- **Workflow-gate script is broken** (Python IndentationError; state resets between invocations). Follow CLAUDE.md 12-phase discipline manually via TodoWrite until the script is fixed.
+- **Provider gateway invariant** — never call lmstudio HTTP directly even in PoC scaffolds inside `services/`. Register lmstudio as `platform_model` in provider-registry; tilemap-service speaks only to the gateway via `/internal/llm/stream`.
+- **Wire-format conformance tests** — every gateway-facing type MUST have a roundtrip test against canonical openapi JSON shapes. Catching `event_type` vs `event` only happens with such a test; trust nothing else, especially not Python SDK field names which use aliases.
+- **`/review-impl` is genuinely valuable** — initial Phase 0a passed my own POST-REVIEW review (Stage 1 spec compliance + Stage 2 code quality) cleanly, but had 6 HIGH defects. Author blindness is real; adversarial re-read against the source of truth (openapi YAML, not the Python SDK README) was the only way to surface them.
+
+### Raw count
+
+- **Commits this session:** 1 pending (Phase 0a)
+- **Files created:** 16 (Cargo.toml + Dockerfile + DESIGN.md + README.md + 6 src/ + 7 src/types/ + 4 src/llm/ + tests/smoke.rs)
+- **Lines added:** ~1200 (Rust + docs)
+- **Tests:** 34 (12 unit + 22 integration; was 14 initial → 34 post-review-impl, +20 wire-format tests)
+- **`/review-impl` findings closed:** 15 (6 HIGH + 7 MED + 2 LOW), all in same commit
+- **Architectural findings registered for TMP_008b:** 2 (cache_control + tools-shape)
+- **Workflow phases honoured:** CLARIFY ✓ DESIGN ✓ REVIEW ✓ PLAN ✓ BUILD ✓ VERIFY ✓ REVIEW ✓ POST-REVIEW ✓ /review-impl ✓ re-fixes ✓ re-VERIFY ✓ re-POST-REVIEW ✓ SESSION ✓ COMMIT (next)
+- **Process bugs found:** 1 (workflow-gate.sh script — Python IndentationError; state non-persistent)
+
+---
+
+## Session 2026-05-14 — TMP cross-feature integration annotation pass — 13 consumer features annotated per TMP_001 §14
+
+### Session arc
+
+Continuation of TMP design track. User picked **"continue TMP discussion"** from the two next-session direction options (continue design vs pivot to V2 PoC implementation), then picked **"Cross-feature integration annotation"** from four design-mode sub-directions (vs TMP_009 V2 sprite atlas / V3 RMG wizard / individual V2+ deferral scoping). Scope confirmed as **Full A+B+C** (~13 files) — aggressive single-session pass across all consumer feature folders + kernel folders.
+
+Work pattern: read each consumer's structure (existing closure-pass-extension banners, cross-references section locations, status), write a uniform `⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706` banner at top-of-doc + appended cross-references row in each. Banner content tailored per-consumer to reflect the SPECIFIC integration TMP_001 §14 catalogues for that consumer (subscribe pattern for MAP_001; tier delineation for CSC_001; co-existence for PF_001; RealityManifest extension for PL_001/PL_001b; AdminAction sub-shapes for WA_003; new T2 aggregates for 06_data_plane; sub-type registrations for 07_event_model; pattern reuse for AIT_001; replay-determinism for TDIL_001; V2+ reservations for PCS_001 / RES_001 / NPC_001).
+
+### Annotation surface (13 consumers from TMP_001 §14)
+
+| Tier | Consumers | Touch |
+|---|---|---|
+| **A — V1+30d active integration** (6 files) | MAP_001, CSC_001, PF_001, PL_001 + PL_001b (split), WA_003 | Banner + cross-ref row + (PL_001b only) `RealityManifest` snippet extended with `tilemap_templates: Vec<TilemapTemplateDecl>` + `tilemap_defaults: Option<TilemapDefaults>` optional fields. WA_003 banner registers 3 AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` V1+30d active; `Forge:OverridePlacement` V3 active / V1+30d schema-reserved). |
+| **B — Kernel folders** (2 files) | 06_data_plane/_index.md, 07_event_model/_index.md | Cross-folder-references-table row (banner pattern not applicable to kernel index files). 06_data_plane: 2 new T2 aggregates without new DP-K\* or DP-Ch\*. 07_event_model: sub-types under existing EVT-T3/T4/T8 + V2 reservations under EVT-T5/T6 (no new EVT-T\* or EVT-A\*). |
+| **C — V2+ reservation notes** (5 files) | AIT_001, TDIL_001, PCS_001, RES_001, NPC_001 | Banner + cross-ref row. AIT §14.19 documents TMP as Q4-LOCKED hybrid 2-stage pattern reuser. TDIL §17.10 documents TMP-A4 satisfying TDIL-A9 replay-determinism (orthogonal layer; tilemap is purely spatial). PCS reserves V2+ fog-of-war (TMP-D3). RES §12.9 reserves V2 mines (TMP-D10) with clean producer/inventory boundary. NPC reserves V2+ routing on `tilemap_view.road_segments`. |
+| **(skipped)** | 05_llm_safety | Folder doesn't exist yet — separate seed work pending per 2026-04-26 next-step recommendations. |
+
+### Drift caught + filed (1)
+
+- **WA_003 §7 preamble "12 V1 EditActions"** is stale post-annotation; effective V1+30d count is 15 (12 WA + 3 TMP). Flagged in WA_003 closure-pass-extension banner for next WA_003 closure pass to reconcile.
+
+### Verified-not-drift (1)
+
+- **TDIL-A9 axiom** was initially mis-flagged as missing from TDIL_001 — discovered mid-pass that the axiom IS defined in `catalog/cat_17_TDIL_time_dilation.md` line 36 (catalog file is authoritative for stable-ID axiom inventories per the TDIL pattern). Annotation reconciled before commit — TMP_001 §14's "TDIL-A9 replay-free V1" citation is correct.
+
+### Files touched
+
+- **Inside `_boundaries/`**: `_LOCK.md` (new `_Last released_` entry; Owner stays None) + `99_changelog.md` (top-anchored entry).
+- **Outside `_boundaries/`**: 13 consumer features (6 Tier A + 2 Tier B + 5 Tier C).
+- **Total**: 15 files.
+- **CANDIDATE-LOCK statuses preserved** on every consumer — banner pattern is additive-only, no scope creep into existing sections.
+
+### Handoff notes for next session
+
+**Active:** none. Annotation pass complete; only 05_llm_safety remains unannotated (because its folder doesn't exist yet).
+
+**Next-step recommendations (priority order):**
+
+1. **05_llm_safety folder seed** — now the sole remaining unannotated TMP consumer. Per 2026-04-26 next-step recommendations: ~5-7 features at ~600 lines each. A1..A6 axioms exist; TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements to flesh out. After folder seeds, this annotation pass can be closed by adding a 14th banner.
+2. **V2 PoC implementation** of tilemap-service — validate TMP_008b §2-§12 contract empirically: cacheable-prefix prompt cache hit rate (target ~30-45% per TMP_008b §2), tool-use forced-call reliability, per-object retry granularity (measure retry success rate vs flat-error retry — expect 70-90% vs 20-40%), cost-model accuracy (compare measured per-call cost to TMP_008b §12 estimates ~$0.018/L3 + ~$0.014/L4). Clean-room Rust against Claude Haiku 4.5.
+3. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror MAP_002 V1+ pattern when art-asset pipeline lights up).
+4. **V3 RMG wizard** scoping (TMP-D1, TMP-D2 — player-facing parameter capture UX).
+5. **WA_003 closure-pass reconciliation** of the "12 V1 EditActions" → 15 V1+30d count + decide whether the 3 TMP-owned AdminActions need stub §7.7-§7.9 sub-sections in WA_003 itself or stay pointed-to in TMP_001 §16 / TMP_004.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- Closure-pass-extension banner pattern (top-of-doc `⚠ CLOSURE-PASS-EXTENSION YYYY-MM-DD — <source feature> <COMMIT>` block) is the agreed-on mechanism for annotating downstream features without reopening their CANDIDATE-LOCK status. Pattern set by WA_003 / PCS_001 / NPC_001 / AIT_001 banners; this pass continues that pattern for 11 consumer features.
+- Kernel folders (06_data_plane / 07_event_model) use `Cross-folder references` table rows instead of top-of-doc banners — match existing per-folder convention.
+- When citing a stable-ID axiom (TDIL-A9-style) that doesn't show up in a feature file body, check the catalog file (`catalog/cat_NN_*.md`) before flagging drift — the catalog is authoritative for axiom inventories per existing convention.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this entry pre-commit)
+- **Files touched:** 15 (13 consumer features + `_LOCK.md` + `99_changelog.md`)
+- **Lock cycles:** 1 (single combined `[boundaries-lock-claim+release]`)
+- **Banner blocks added:** 11 (Tier A 6 + Tier C 5; kernel folders use cross-folder-table row pattern)
+- **Cross-references rows added:** 13 (one per consumer)
+- **New sub-sections added inside consumer features:** 3 (AIT §14.19 · TDIL §17.10 · RES §12.9)
+- **RealityManifest snippet edits:** 1 (PL_001b §16.1 — 2 optional fields)
+- **AdminAction sub-shapes registered (annotation only):** 3 (WA_003 banner; detailed flows owned by TMP_001 + TMP_004)
+- **EVT-T sub-types referenced (annotation only):** 7 (`TilemapBorn` + `ZonesPlaced` + 2 T3 aggregate_types + 3 T8 Forge:* sub-shapes + 2 V2 reservations)
+- **Drift caught + filed:** 1 (WA_003 EditAction count)
+- **Verified-not-drift:** 1 (TDIL-A9 confirmed in cat_17)
+
+---
+
+## Session 2026-05-13 (continued, late evening) — TMP folder closure pass — all 9 docs DRAFT → CANDIDATE-LOCK; folder CLOSED for V1+30d design
+
+### Session arc
+
+Continuation of same-day TMP work. After commit `a103cf45` (TMP_008b LLM Contract Spec split + push), user asked **"so what's next"**; response presented 3 natural options; user chose **"closure pass for TMP"** — formalize the 9-doc set into CANDIDATE-LOCK via the project's WA/NPC/PLT/PO closure-pass discipline.
+
+### Closure pass deliverables
+
+1. **Question triage** — All 43 open questions across 9 docs triaged into 4 buckets: 40 batch-accept-default + 3 worth-user-attention. User attention requested via AskUserQuestion; all 3 locked to recommended defaults (TMP-Q3 V2 default LLM-on / TMP-Q4 Phaser 3 FE engine / TMP-LLM-Q4 cross-zone L4 context YES).
+
+2. **AC-TMP-1..10 walked + expanded** — Each of 10 acceptance criteria expanded from 1-line sketch to full **Setup → Action → Expected outcome** triple with concrete rule_ids, event types, and validation references. Each scenario now independently testable via integration test against a tilemap-service instance:
+   - AC-TMP-1: reality bootstrap; 85 TilemapBorn events emitted (1 continent + 4 country + 16 district + 64 town); 0 for the 256 cells
+   - AC-TMP-2: replay-determinism byte-equality across 2 bootstraps with same seed
+   - AC-TMP-3: MAP_001 position edit → derived `child_cell_anchors` update without full regen
+   - AC-TMP-4: Forge:RegenTilemap CosmeticOnly preserves zones+objects+roads; re-rolls biome
+   - AC-TMP-5: Forge:RegenTilemap FullRebootstrap with new seed → new geometry; emits new TilemapBorn + ZonesPlaced
+   - AC-TMP-6: inheritance cycle rejected with `tilemap.inherit_cycle` + structured I18nBundle user_message
+   - AC-TMP-7: template applied to wrong tier → `tilemap.template_tier_mismatch`
+   - AC-TMP-8: convergence timeout → `tilemap.generation_timeout`; UI falls back to MAP_001 graph view
+   - AC-TMP-9: "never seal a gap" connectivity invariant; density-reduction fallback after 50 attempts; `tilemap.density_reduced` info event
+   - AC-TMP-10: V1+30d default LLM-disabled; engine-only generation; no LLM API call; `generation_source: EngineGenerated`; `regional_narration: None`
+
+3. **All 43 questions RESOLVED** — replaced "Open questions" sections with "Resolved questions (closure pass 2026-05-13)" tables in all 9 docs. Each row has Locked decision + How resolved column. 3 USER-LOCKED + 40 batch-resolved (34 ACCEPT-default + 6 DEFER-V2+ + 4 DEFER-V2 reservation + 2 DEFER-V2+30d).
+
+4. **Phase 3 review findings applied:**
+   - **Finding 1**: TMP_006 §9 Open questions section was lost in the 2026-05-13 license-hygiene revision pass. Every other TMP doc retained its questions; TMP_006's were dropped. Restored as §8.5 + RESOLVED at closure with 6 questions (TR-Q1..Q6).
+   - **Finding 2**: `tilemap.density_reduced` info-level rule_id was referenced in AC-TMP-9 + TMP-TR-Q4 but missing from §9.2 namespace inventory. Added; rule_id count corrected 16 → 17 V1+30d.
+   - **Finding 3**: `tilemap.biome_fallback_used` INFO event from TMP-BIOME-Q3 resolution documented as consistent info-event pattern alongside `tilemap.density_reduced`.
+
+5. **Cost model bump per TMP-LLM-Q4 closure-lock** — User locked YES for cross-zone L4 context (geographic narrative coherence). Triggered cost reconcile across TMP_008 §5 + TMP_008b §12.4-§12.7:
+   - L4 input tokens: +5000 cross-zone neighbor context (10 zones × ~500 tokens each)
+   - L4 effective per-call: ~$0.014 → ~$0.020 (effective ~9170 tokens including cached prefix)
+   - Per-tilemap initial: ~$0.032 → ~$0.038
+   - Per-reality Y1 (initial + 4 seasons): ~$7 → ~$8.50 (+21% for cross-zone narrative continuity)
+
+6. **Catalog status promotion** — 29 V1+30d catalog entries (TMP-1..TMP-22 + TMP-24..TMP-30 + TMP-45..TMP-52) promoted 📋 → ✅; rule_id count updated 16 → 17; V2/V2+/V3 entries (TMP-23, TMP-33..TMP-44; ~23 entries) stay 📋 — implementation-pending markers.
+
+7. **All 9 doc statuses promoted** — DRAFT → CANDIDATE-LOCK with closure-pass rationale in each doc header:
+   - TMP_001 closure pass: §15 AC walked + §12 questions RESOLVED + §9.2 17 rule_ids
+   - TMP_002 closure pass: TMP-PLACE-Q1..Q3 RESOLVED at §9
+   - TMP_003 closure pass: TMP-PIPE-Q1..Q4 RESOLVED at §6
+   - TMP_004 closure pass: TMP-TPL-Q1..Q5 RESOLVED at §10
+   - TMP_005 closure pass: TMP-BIOME-Q1..Q4 RESOLVED at §9
+   - TMP_006 closure pass: §8.5 restored (Phase 3 finding); TMP-TR-Q1..Q6 RESOLVED
+   - TMP_007 closure pass: TMP-CONN-Q1..Q5 RESOLVED at §13
+   - TMP_008 closure pass: TMP-LLM-Q1..Q7 RESOLVED; §5 cost bumped per Q4 lock
+   - TMP_008b closure pass: TMP-LLM-C-Q1..Q7 RESOLVED; §12 cost bumped
+
+### Question resolution buckets
+
+| Bucket | Count | Examples |
+|---|---:|---|
+| USER-LOCKED at closure | 3 | TMP-Q3 V2 default LLM-on, TMP-Q4 Phaser 3, TMP-LLM-Q4 cross-zone L4 |
+| ACCEPT default | 34 | majority — all batch-resolved with no contention |
+| DEFER V2+ (new deferrals registered) | 6 | TMP-D16 template inheritance, TMP-D17 seasonal biomes, TMP-D19 biome rarity, TMP-D20 per-PC permission gates, TMP-D22 multi-edge zones, TMP-D24 Zone Lore UI tab |
+| DEFER V2 with reservation | 4 | TMP-D15 dry-run mode, TMP-D21 guard respawn, TMP-LLM-Q2 approval flow, TMP-LLM-C-Q2 PoC A/B |
+| DEFER V2+30d | 2 | TMP-D18 LLM-gen biome V3, TMP-D25 streaming L4 |
+| **Total resolved** | **43 + 6 new deferrals** | (49 closure-pass actions) |
+
+### Handoff notes for next session
+
+**Active:** none. TMP folder CLOSED for V1+30d design.
+
+**User signal at session close 2026-05-13:** _"next time we will continue discuss tile map generation or maybe do real implement as new service or module"_ — next session may stay in design mode (continue tilemap discussion; e.g., V3 RMG wizard scoping, additional V2+ deferrals, or cross-feature annotation passes) OR pivot to **implementation mode** (start the V2 PoC as a real tilemap-service module). Implementation-mode pickup: TMP_008b §2-§12 is the V2 PoC contract spec; engineer reads it + writes clean-room Rust (academic primary sources cited; do NOT transcribe vcmi C++; consult vcmi only for "is this approach reasonable" sanity check per closure-pass changelog). Likely impl-mode steps: scaffold `services/tilemap-service/` with DP-K1..K12 access + Anthropic Messages API client + zone-placer (Fruchterman-Reingold) + Penrose tiling + fractalize + modificator pipeline scaffold. Foundation tier prerequisites (DP, EF_001, PF_001, MAP_001, CSC_001, AIT_001, TDIL_001, PL_001) are all CANDIDATE-LOCK; TMP can build directly.
+
+**Next-step recommendations (priority order):**
+
+1. **V2 PoC implementation** — Validate TMP_008b contract empirically: cacheable-prefix structure (measure actual cache hit rate); Anthropic tool-use reliability (track tool_choice forced-call failure rate); per-object retry granularity (measure retry success rate vs flat-error retry); cost model accuracy (compare measured per-call cost to TMP_008b §12 estimates). Run on Claude Haiku 4.5 with a small reality sample. A/B test cache-key strategies (TMP-LLM-C-Q2). Surface gaps for V2 launch readiness.
+
+2. **Cross-feature integration annotation pass** — TMP_001 §14 lists 13 consumer features (MAP_001, CSC_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model). At each consumer feature's next closure pass, annotate the TMP integration point (subscribe pattern, channel digest invalidation, EVT-T row consumption, etc.). Spreads the work across natural closure-pass cycles.
+
+3. **05_llm_safety folder design** — Still pending from 2026-04-26 next-step recommendations. A1..A6 axioms exist but no feature folder yet. TMP_008b §7 prompt-injection defense + World Oracle hooks add new requirements to flesh out. ~5-7 features at ~600 lines each.
+
+4. **TMP_009 V2 sprite atlas pipeline** scoping (TMP-D6 reservation; mirror of MAP_002 pattern when art-asset pipeline lights up).
+
+5. **V3 RMG wizard** scoping (TMP-D1, TMP-D2) — player-facing parameter capture UX.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- TMP folder CLOSED — no further V1+30d design work in `features/00_tilemap/` until V2 PoC discoveries or new V2+ extensions.
+- Closure pass adds RESOLVED tables (replace open-questions sections) + AC walk expansion (setup/action/expected-outcome triples) + Phase 3 review.
+- Cross-feature integration annotation at consumer features' next closure passes, not at TMP folder.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this closure-pass commit)
+- **Lock cycles same day:** 4 (DRAFT seed → license-hygiene revision → TMP_008b split → closure pass)
+- **Questions RESOLVED:** 43 (3 USER-LOCKED + 40 batch-resolved)
+- **New deferrals registered:** 6 (TMP-D16..D22, D24..D25 with gaps for V2 PoC)
+- **Phase 3 review findings:** 3 (TMP_006 §9 restoration; `tilemap.density_reduced` inventory miss; `tilemap.biome_fallback_used` documented)
+- **AC scenarios walked:** 10 (each expanded ~10× from 1-line sketch to full triple)
+- **Cost model bumps:** per-reality Y1 ~$7 → ~$8.50 (+21%) per TMP-LLM-Q4 cross-zone lock
+- **Catalog entries promoted ✅:** 29 V1+30d entries
+
+---
+
+## Session 2026-05-13 (continued, late evening) — TMP_008b LLM Contract Spec — sibling-split for I/O detail (deep-discuss "is in/out contract LLM-friendly?")
+
+### Session arc
+
+Continuation of same-day TMP work. After commit `791cbd98` (TMP_001..TMP_008 DRAFT + license-hygiene revision + push to `origin/mmo-rpg/zone-map-design`), user asked **"how do LLMs integrate in tile generation? is in/out contract friendly for LLM?"** — an adversarial deep-discussion request.
+
+Adversarial analysis of TMP_008 §3-§4 surfaced 4 HIGH + 4 MED LLM-friendliness gaps:
+
+| # | Severity | Gap |
+|---|---|---|
+| 1 | HIGH | Prompt-injection vector — `author_narrative_hint` inlined directly into prompt with no delimiter |
+| 2 | HIGH | No structured-output enforcement — relied on LLM emitting valid JSON; vulnerable to markdown fences, preamble text, malformed quoting |
+| 3 | HIGH | Validation feedback hand-wavy — flat "Validation errors: [...]. Retry." instead of per-case structured messages (empirical 20-40% retry success vs 70-90% with structured) |
+| 4 | HIGH | Cache strategy not aligned with Anthropic prompt caching — variable + stable content interleaved; no cacheable prefix |
+| 5 | MED | Canonical-default fallback all-or-nothing per tilemap — 47 good + 3 bad classifications → fallback all 50 |
+| 6 | MED | L4 cache key missing L3-classifications digest — Forge:OverridePlacement on L3 leaves stale L4 narration |
+| 7 | MED | `key_phrases_for_lookup` LLM-emitted but unreliable — should be deterministic TF-IDF/KeyBERT post-processing |
+| 8 | MED | Cost claims optimistic — ~3K/L3 call claimed, ~6K actual (~2× off); per-reality budget off by ~3× |
+
+Plus 4 LOW (few-shot absent, system-prompt role/voice undocumented, open-enum language, prose-length-target unreliable).
+
+User chose **"Split into TMP_008 + TMP_008b LLM-contract detail"** — mirroring existing `<feature>` / `<feature>b` split pattern (PL_001/PL_001b, WA_002/WA_002b, PLT_002/PLT_002b). TMP_008 stays focused on architecture/V-tier/cost story (the "why"); TMP_008b owns the detailed I/O contract (the "how").
+
+### What landed
+
+- **TMP_008b NEW** (~560 lines) covering all 8 gaps:
+  - §2 3-segment cacheable-prefix prompt structure (Anthropic prompt-caching aligned; ~30-45% ongoing cost reduction)
+  - §3 Anthropic **tool-use** with strict `input_schema` + `tool_choice` forced (eliminates JSON-malformation failure modes)
+  - §4 Structured per-case validation feedback (per-object error messages with received value + allowed set)
+  - §5 Per-object retry granularity (accept good entries; retry only failing subset)
+  - §6 Per-object canonical default fallback (system always succeeds)
+  - §7 Prompt-injection defense: `<author_text>...</author_text>` delimiting + tag-close-escape sanitization + 05_llm_safety 3-intent classifier + World Oracle multi-layer
+  - §8 Cache key derivation — L4 key **includes L3-classifications digest** (fixes pre-revision stale-cache bug)
+  - §9 Few-shot examples in system prompt (one-shot L3 + one-shot L4 in cached prefix)
+  - §10 Deterministic key-phrase extraction post-L4 (TF-IDF V2 / KeyBERT V2+30d)
+  - §11 Closed-enum style hints (`NarrativeTone` 8 / `NarrationLanguage` 5 ISO codes / `NarrationVoice` 3)
+  - §12 Realistic cost model: ~$0.018/L3 call + ~$0.014/L4 call = ~$0.032/tilemap initial; ~$7/reality Y1 (was claimed ~$1; corrected ~3× higher)
+  - §13 LLM-friendliness scorecard (11/11 dimensions green post-revision)
+  - §14 7 open questions TMP-LLM-C-Q1..Q7
+  - §15 Prior Art (Anthropic Messages API + Tool Use + Prompt Caching docs; OWASP LLM01:2025; Perez & Ribeiro 2022 + Greshake et al. 2023 injection refs; Self-Refine + Self-Correct retry literature; KeyBERT)
+
+- **TMP_008 slimmed** (~410 → ~315 lines): §3 + §4 detailed I/O sections replaced with architecture summary + cross-refs to TMP_008b; §5 cost model corrected with realistic numbers
+
+- **Catalog row** updated with 8 new entries TMP-45..TMP-52 (44 → 52 entries)
+
+- **_index.md** updated with TMP_008b row + revised TMP_008 description
+
+- **Boundary changelog + LOCK** updated with same-day third lock cycle entry
+
+### Handoff notes
+
+**Active:** none. All HIGH + MED LLM-friendliness gaps closed in TMP_008b. Contract is now **V2 PoC-ready** — a V2 implementation engineer can read TMP_008b §2-§12 and have a complete I/O contract without re-deriving from architecture principles.
+
+**Next-step recommendations (priority order):**
+
+1. **TMP_001..TMP_008b closure pass** — Phase 3 review + AC-TMP-1..10 walk (TMP_001) + TMP-LLM-C-Q1..Q7 resolution → CANDIDATE-LOCK promotion across the 9-doc TMP folder.
+2. **V2 PoC implementation** — validate cacheable-prefix + tool-use + per-object retry empirically against Claude Haiku 4.5; measure actual cache hit rate + retry success rate; confirm cost model (TMP_008b §12).
+3. **V2+30d schema-additive extensions** — KeyBERT migration (§10); additional closed-enum tone/language variants as authoring needs grow.
+4. **Cross-feature integration annotation** — once closure pass lands, annotate consumer features (MAP_001, CSC_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model) at their next closure pass.
+
+### Raw count
+
+- **Commits this session:** 1 pending (this entry pre-commit)
+- **Lock cycles same day:** 3 (DRAFT seed + license-hygiene revision + TMP_008b split)
+- **`/review-impl`-style findings this session:** 4 HIGH + 4 MED + 4 LOW → 4 HIGH + 4 MED closed; LOW deferred (few-shot landed in TMP_008b §9 anyway; system-prompt role documented in §3; closed-enum language landed in §11; prose-length-target → tool schema maxLength enforcement)
+
+---
+
+## Session 2026-05-13 — TMP_001..TMP_008 Tilemap Foundation DRAFT seed + license-hygiene revision pass (SPIKE_03 graduation)
+
+### Session arc
+
+User initiated zone-map-generation discussion in continuation of SPIKE_03 (DRAFT 2026-04-27 — Tilemap World View concept validated). Three-phase session:
+
+1. **Deep prior-art analysis** of VCMI (open-source HoMM3 engine reimplementation, GPL v2+) — `lib/rmg/` + `lib/rmg/modificators/` algorithm pipeline + data model. Key patterns surveyed: zone-graph paradigm, force-directed placement, Penrose tiling for irregular zone shapes, modificator-with-dependency-graph pipeline, tiered treasure values, biome obstacle-set composition, "never seal a gap" connectivity invariant, 5-variant connection types, template inheritance pattern.
+
+2. **SPIKE_03 graduation → `features/00_tilemap/`** — 8 DRAFT feature docs authored (~3,800 lines initial seed) + new `TMP-*` catalog namespace claim (44 entries) + 2 new aggregates owned (`tilemap_view` T2/Channel non-cell-only + `tilemap_template` T2/Reality) + RealityManifest extension + 16 V1+30d reject rule_ids in `tilemap.*` namespace + 4 EVT-T row groups (T4/T3/T8/T5+T6) + 10 axioms (TMP-A1..A10) + 4 cross-aggregate consistency rules (TMP-C1..C4) + 12 deferrals (TMP-D1..D12).
+
+3. **License-hygiene revision pass** (same day, in response to user concern about copyleft licensing — VCMI is GPL v2+, LoreWeave is AGPL v3; technically compatible but cleaner stance is to treat VCMI as one of several surveyed prior-art implementations rather than a derivation source). User picked **"Heavy: clean-room rewrite"** + **"Bibliography + inline 'see also' attribution"** scope. Restructured all 8 docs as multi-game prior-art survey (HoMM3, Wesnoth, Civ V/VI, Dwarf Fortress, Caves of Qud, VCMI as one open-source reference, roguelike literature, EU4/CK3); renamed 5 verbatim-matching shapes to LoreWeave-distinct naming; algorithm citations switched to academic primary sources (Fruchterman & Reingold 1991, Penrose 1974, Kahn 1962, Tarjan 1976, Dijkstra 1965, Hart et al. 1968, Gamma et al. 1994, Kirkpatrick et al. 1983, Žára 2014, Yannakakis & Togelius 2018, Sudhakaran et al. 2023); added per-doc Prior Art bibliography sections to all 8 docs.
+
+4. **`/review-impl` adversarial pass** — found 4 HIGH + 2 MED issues (missed-target language in entry-point summaries: folder _index table, _LOCK.md release entry, ownership-matrix stable-ID prefix row, spikes _index graduation row + residual `setOccupied`/`d_neighbour_zones`/`d_completed`/etc. vcmi-shape identifiers in TMP_005 + TMP_007). All findings landed and re-verified clean via `grep` sweep.
+
+### Renamed shapes (LoreWeave-distinct naming)
+
+| Pre-revision (vcmi-verbatim) | Revised (LoreWeave-distinct) |
+|---|---|
+| `ConnectionKind { Guarded, Wide, Fictive, Repulsive, ForcePortal }` | `PassageKind { Threshold, Open, Hint, Adversarial, Portal }` |
+| `ZoneType` (6 variants) | `ZoneRole` (4 V1+30d: Wilderness/Hub/Forbidden/Sea; V2+ adds AllyHome/RivalHome) |
+| `*LikeZone` inheritance fields (5 camelCase) | `inherit_*_from` (5 snake_case verb-phrase) |
+| `ETileType` (Free/Possible/Blocked/Used) | `TileState` (Walkable/Open/Obstacle/Occupied) |
+| Hardcoded biome composition rule | `BiomeSelectionRules` author-tunable on TilemapTemplate (engine defaults) |
+
+Pseudocode identifiers also renamed: `setOccupied` → `tile_state.set(tile, TileState::X)`; `d_neighbour_zones` → `neighbour_border_map`; `d_completed` → `completed_passages`; `connect_path` → `attach_walkable_path`; `other_side_connection` → `mark_passage_completed_from_neighbour`.
+
+### Feature design surface
+
+| ID | Name | Status | Lines |
+|---|---|---|---:|
+| TMP_001 | Tilemap Foundation (TMP) — core aggregate + 4-layer composition + tile state machine + MAP_001/CSC_001 integration + RealityManifest extension + `tilemap.*` RejectReason namespace | DRAFT 2026-05-13 | ~670 |
+| TMP_002 | Zone Placement Algorithm (TMP-PLACE) — Fruchterman-Reingold + simulated annealing + initial grid seed + Penrose tiling + fractalize | DRAFT 2026-05-13 | ~395 |
+| TMP_003 | Pipeline Modificators (TMP-PIPE) — modificator pattern + dependency graph + 7 V1+30d modificators + parallel/single-thread execution | DRAFT 2026-05-13 | ~455 |
+| TMP_004 | Template Authoring (TMP-TPL) — full schema + `inherit_*_from` inheritance + ZoneRole enum + finalization discipline + example wuxia template | DRAFT 2026-05-13 | ~530 |
+| TMP_005 | Biome & Obstacles (TMP-BIOME) — BiomeSelectionRules author-tunable + TerrainPainter + ObstaclePlacer detail | DRAFT 2026-05-13 | ~425 |
+| TMP_006 | Treasure & Objects (TMP-TR) — tiered TreasureTierSpec + ObjectManager service + "never seal a gap" connectivity invariant | DRAFT 2026-05-13 | ~360 |
+| TMP_007 | Connections & Guards (TMP-CONN) — PassageKind enum + 3-pass placement + dining-philosopher cross-zone locking + water route + monolith fallback | DRAFT 2026-05-13 | ~400 |
+| TMP_008 | LLM Integration L3+L4 (TMP-LLM) — V2 LLM zone classifier + V2 regional narration + cost model (~4-5K tokens/tilemap) + 05_llm_safety integration | DRAFT 2026-05-13 | ~410 |
+
+### Files landed
+
+- 9 new files in `features/00_tilemap/` (8 feature docs + `_index.md`)
+- 1 new catalog row `catalog/cat_00_TMP_tilemap_foundation.md` (44 entries TMP-1..TMP-44)
+- 4 boundary file updates (`_LOCK.md`, `01_feature_ownership_matrix.md`, `02_extension_contracts.md`, `99_changelog.md`)
+- 2 cross-ref updates (`features/_spikes/SPIKE_03_tilemap_world_view.md` graduation header; `features/_spikes/_index.md` row)
+
+Total: **~3,800 lines of design** across the new TMP folder + supporting updates.
+
+### Handoff notes for next session
+
+**Active:** none. License-hygiene revision pass complete; all HIGH/MED `/review-impl` findings landed and verified clean.
+
+**Next-step recommendations (priority order):**
+
+1. **TMP_001 closure pass** — Phase 3 review + §15 acceptance criteria walk (AC-TMP-1..10) + ~40 open questions resolution batch across TMP_001..TMP_008 → CANDIDATE-LOCK promotion. Mirror the WA/NPC/PLT closure-pass discipline from 2026-04-25/26 sessions.
+2. **Cross-feature integration annotation** — TMP_001 §14 lists 13 cross-feature integration points (MAP_001, CSC_001, PF_001, AIT_001, TDIL_001, PL_001, PCS_001, RES_001, NPC_001, WA_003, 05_llm_safety, 06_data_plane, 07_event_model). Annotate consumer features at their next closure pass (DRAFT or CANDIDATE-LOCK).
+3. **V2 LLM layer PoC** — implement L3 zone classifier + L4 regional narration; cost validation; integrate with 05_llm_safety guardrails. Should be a separate spike or feature follow-up.
+4. **V3 RMG wizard scoping** — TMP-D1; player-facing parameter capture UX.
+5. **TMP_009 V2 sprite atlas** (mirror MAP_002 V1+ pattern) when art-asset pipeline lights up.
+
+**Implementation phase reminder (recorded in revision changelog entry):** when code is eventually written, MUST be clean-room. Engineers read algorithm descriptions in our design docs (academic primary sources cited); they do NOT transcribe vcmi C++ to Rust. Consulting vcmi for "is this approach reasonable" sanity check is fine; deriving code structure from vcmi source is not.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder lock-gated. Read `_LOCK.md` first; check TTL. Released at end of this session.
+- 800-line hard cap forces split. All 8 TMP docs are well under cap (max TMP_001 ~670 lines).
+- Closure pass adds §15 acceptance walk (~10 scenarios) BEFORE CANDIDATE-LOCK promotion.
+- Cross-cutting / boundary-spanning features → spawn parallel agent via brief in `<folder>/00_AGENT_BRIEF.md`.
+- Event-model uses mechanism-level Option C taxonomy (T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative).
+
+### Raw count
+
+- **Commits:** 0 yet (working tree pending user authorization)
+- **Features designed:** 8 TMP docs all DRAFT (TMP_001..TMP_008)
+- **Boundary lock cycles:** 2 (DRAFT seed + license-hygiene revision; both single-commit combined `[claim+release]`)
+- **Cross-feature deferrals RESOLVED:** 0 (TMP-D1..D12 all new deferrals)
+- **`/review-impl` findings:** 4 HIGH + 2 MED + bonus → all landed; verified clean
+
+---
+
 ## Session 2026-04-25 → 2026-04-26 — Feature design wave + boundary discipline + event-model Option C + parallel-agent pattern
 
 ### Session arc
@@ -1491,6 +3236,11 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-26 | **PL_005 Phase 2 — Interaction contracts** [branch `mmo-rpg/design-resume`, commit `<this commit>`]. PL_005 Phase 2 deliverable: per-sub-type payload contracts for all 5 V1 InteractionKinds (Speak / Strike / Give / Examine / Use). **Two-file structure decision** (per PL_001 + PL_001b precedent + WA_002 + WA_002b): root PL_005 stays at 491 lines (conceptual layer); new `PL_005b_interaction_contracts.md` (670 lines, over 500-line soft cap but under 800-line hard cap — acceptable for contract-heavy file with 5 detailed kind sections + tables) holds the **contract layer**. **PL_005b §1-§12**: §1 common payload base (`InteractionPayloadBase` struct extending all 5 kinds; `OutputDecl` shape with `SeverityLevel` enum) · §2-§6 per-kind contracts (Speak with VerbalKind+VolumeKind+Utterance / Strike with StrikeKind+StrikeIntent+ForceLevel / Give with GiveIntent+TransactionPurpose / Examine with ExamineDepth+ExamineFocus / Use with UseIntent+effect_magnitude — each kind specifies allowed InstrumentRef variants + allowed TargetRef variants + allowed agent kinds + ProposedOutputs allowed aggregate_types + ActualOutputs validator-derived outcomes + 5-7 validation rules + 5-7 reject rule_ids with Vietnamese copy) · §7 OutputDecl taxonomy table (cross-kind summary of allowed `aggregate_type` ↔ owner ↔ delta_kinds; references npc_pc_relationship_projection / pc_stats_v1_stub / pc_mortality_state / oracle_audit_log / V1+ pc_inventory + item_state + scene_state.lighting; "aggregate_type not in this table = forbidden" rule) · §8 per-kind validator subset (each kind's specific behavior at world-rule stage; **Lex CRITICAL for Use kind** per WA_001 axioms × item compatibility) · §9 expanded acceptance criteria (16 kind-specific scenarios — combined PL_005 §16 + PL_005b §9 = 22 total: 4 Speak / 3 Strike V1+ / 3 Give / 2 Examine / 4 Use; ~14 V1-testable; remainder when consumer features ship) · §10 Phase 2 deferrals INT-CON-D1..D8 (multi-target Strike / split-stack Give / bystander Examine / Use:Combine / Strike outcome variation per mortality_config / Speak Shout / V1+ items full effect catalog / NPC Strike outcome). **No boundary lock claim needed** (sub-type ownership already registered in Phase 1; no new aggregates introduced). **Lock criterion**: ≥14 V1-testable scenarios pass integration tests → PL_005+PL_005b CANDIDATE-LOCK; full LOCK when consumer features (Item aggregate + NPC_003 mortality + full combat) ship and remaining V1+ scenarios pass. **Branch state**: 28 commits ahead of origin. **Foundation stack proven again**: PL_005b contracts compose entirely from existing locked layers (DP / Event Model / WA / NPC / PCS aggregates as references); zero foundation primitives invented. Next options: (a) PL_005 Phase 3 cross-feature integration spec · (b) other V1 features (DF5 / DF7 / additional PL/NPC) · (c) pause for review. |
 
 | 2026-04-26 | **PL_005 Phase 3 — Interaction cross-feature integration** [branch `mmo-rpg/design-resume`, commit `<this commit>`]. PL_005 Phase 3 deliverable: cross-feature integration spec covering how Interaction events compose with consumer features. **Three-file structure** (per WA_002+WA_002b precedent extended): root PL_005 (491 lines, conceptual layer) + PL_005b (670 lines, contract layer) + PL_005c (460 lines, integration layer) = 1,621 total lines across 3 files; all under 800-line hard cap; PL_005 + PL_005c under 500-line soft cap; PL_005b acceptable for contract-heavy. **PL_005c §1-§11**: §1 validator pipeline integration per-kind chain detail (10-stage chain with Speak/Strike/Give/Examine/Use specifics; Lex CRITICAL for Use; A6 canon-drift CRITICAL for Speak) · §2 NPC_002 Chorus consumption flow (sequence with priority algorithm Tier 1-4 + V1 cascade cap=1 + rejected-Interaction filter) · §3 PCS_001 mortality side-effect flow (Strike Lethal → world-rule derives MortalityTransition per mortality_config + Permadeath/RespawnAtLocation/Ghost variants + V1 NPC placeholder via npc.flexible_state.liveness_flag per B1 + V1+30d Respawn flow deferred) · §4 NPC_001 opinion drift flow (per-kind opinion delta calibration table: Speak/Give-Gift+2/Give-Bribe+1/Give-Tribute+3/Strike-Lethal-50/Strike-Stun-10/Examine-intrusive-2/Use-per-item) · §5 V1+ Generator triggers architecture sketch (4 example Generators with logical_id + trigger filter + probability + output: investigation:PoliceCallout 0.95 / relationship:GriefDrift 0.4-0.8 / gossip:RumorSeed 0.5 / interaction:WitnessReport 0.7) · §6 failure compensation (5 scenarios + operator reconcile via V1+ admin-cli + idempotency boundary at uniform key shape) · §7 replay determinism (5-layer scope table: validator outcome bit-deterministic / ActualOutputs bit-deterministic / Chorus selection bit-deterministic / LLM content NOT bit-deterministic-regenerated-from-audit / V1+ Generator probability bit-deterministic per EVT-A9) · §8 V1 minimum implementation scope (vertical-slice = 13 V1-testable scenarios from 22 total; 9 V1+ defer to consumer features Item-substrate + NPC_003 + full-combat) · §9 Phase 3 deferrals INT-INT-D1..D8 (operator reconcile shape / mortality_config_version forensic / V1+ Respawn flow / Generator graph audit / per-NPC personality modifiers / LLM sentiment classifier / cross-cell V2+ / Aggregate-Owner idempotency composite). **No boundary lock claim needed** (no new aggregates / sub-types / prefixes introduced; spec composes existing). **Lock criterion across PL_005/b/c**: 13 V1-testable acceptance scenarios pass integration tests against SPIKE_01 fixtures → CANDIDATE-LOCK; full LOCK when V1+ scenarios pass after consumer features ship. **Total deferrals across 3 files**: 25 (9 INT-D + 8 INT-CON-D + 8 INT-INT-D). **Foundation stack proven third time**: PL_005c integration layer composes ENTIRELY from existing locked layers (DP-K* / EVT-A1..A12 / EVT-V* / EVT-G* / WA_001 Lex / NPC_001+002 / PCS_001 brief aggregates as references); zero foundation primitives invented. **Branch state**: 29 commits ahead of origin. **PL_005 design complete for V1 scope.** Next options: (a) other V1 features (DF5 Session/Group Chat / DF7 PC Stats / additional PL/NPC) · (b) PCS_001 design (main session takes on per parallel-session brief; unblocks mortality outputs full) · (c) integration test harness spec for V1 vertical-slice · (d) pause for review. |
+
+| 2026-05-13 | **GEO_001 World Geometry Foundation DRAFT + /review-impl fix cycle (11 issues)** [branch `mmo-rpg/design-resume`, commit `a7ee6f04`]. 7th foundation feature joining EF/PF/MAP/CSC/RES/PROG. Procedural geographic substrate beneath MAP_001 visual layer for strategy gameplay readiness. Phase 0 retracted initial `WA_007` placement (WA folder CLOSED for V1 design 2026-04-25; post-closure rules excluded multi-aggregate features) and `MAP_001` overlap (visual UI layer, not geometric SSOT); user picked Option A: new `00_geography/` foundation folder. 7 sub-decisions D1-D7 LOCKED via single Phase 0 deep-dive (ChannelScoped continent / single aggregate layered / deterministic-base + delta-overlay / single Voronoi mesh water-tags / cells AND provinces two-tier / explicit FK channel↔map / inherit by reference deltas don't cascade). DRAFT delivered: 1 new foundation feature folder + catalog entry `cat_00_GEO_geography_foundation.md` (28 entries) + `world_geometry` T2/Channel-continent aggregate with internal layered structure (geometry/climate/biome V1 populated + political/settlement/route/culture V1 schema-reserved + resource V2+) + ~10k Voronoi cells per continent + ClimateZone 8-variant + BiomeKind 14-variant closed enums + 8-stage generation pipeline + CreativeSeed LLM-supplied creative direction + deterministic-base + delta-overlay editability + single Voronoi mesh sea zone tagging + multiverse snapshot fork inheritance + RealityManifest `continent_geometries: Vec<ContinentGeometryDecl>` OPTIONAL extension + 10 V1 reject rule_ids in `geography.*` namespace + 4 V1+ reservations + 10 V1-testable acceptance scenarios AC-GEO-1..10 + 12 deferrals GEO-D1..D12 + 5 open questions GEO-Q1..Q5. **POST-REVIEW signaled completion despite real architectural gaps (rubber-stamped 0 issues — canonical CLAUDE.md Phase 9 failure mode)**; user invoked `/review-impl` adversarial pass which caught **11 architectural issues** all resolved in same commit: HIGH-1 SetBiomeOverride biome/river_flux/is_coast coherence (V1 land-↔-land only) + HIGH-2 channel.level_name validator via MAP-2 ChannelTier reference + HIGH-3 GeographyDelta.id per-aggregate namespace + MED-1 Forge:EditGeographyDelta registered in §4 EVT-T8 sub-shapes table + MED-2 GeographyForkInherited reclassified EVT-T8 Admin → EVT-T4 System (producer is DP-Internal not Forge) + MED-3 Stage 4 split 4a/4b/4c (Lake-vs-Ocean connected components flood-fill) + MED-4 pipeline_version pinned at GeographyBorn (mid-life upgrades FORBIDDEN) + MED-5 schema_version field added per I14 + MED-6 SetResourceOverride V1→V1+ (closed-enum discipline) + LOW-1 GeoCellId==index invariant in §3 rules + LOW-2 applied_at_fiction_time dropped (not needed for replay) + LOW-3 RegionalLoreHook/NamingStyleDecl/CanonicalSettlementDecl shapes declared + Settlement.canon_ref added. **Algorithmic baseline** per 2026-05-13 world-map landscape survey research agent: Patel dual-mesh (Apache 2.0) + O'Leary erosion (MIT) + Azgaar pipeline (MIT — NOT GPL-3 as I'd incorrectly claimed). Nothing strictly better appeared 2024-2025; 2010-2018 stack remains state-of-the-art for *structured* fantasy world geometry. LLM-image-to-map approaches REJECTED for strategy gameplay (lack regeneration-stability + adjacency-correctness). Files: 7 (5 new + 2 _boundaries). GEO_001 738 lines after fix cycle compression (originally 814, /review-impl + §13/§19 compression brought to under 800 soft cap). **Process lesson**: /review-impl is the distinct adversarial mental mode CLAUDE.md Phase 9 specifies; author blindness persists through POST-REVIEW self-rituals. |
+| 2026-05-13 | **GEO_001 HookScope Option C bug fix + GEO_001b CreativeSeed Authoring Flow Option B DRAFT (7 write-side gaps)** [branch `mmo-rpg/design-resume`, commit `fa312613`]. User deep-discussion question "how do LLMs work in this geography generation? are we already define an in/out contract that LLM friendly?" surfaced GEO_001 defined post-pipeline READ contract well (prompt-assembly grounding §6) but pre-pipeline WRITE contract (LLM produces CreativeSeed) was hand-waved with **7 real gaps** that POST-REVIEW + /review-impl had both missed. User picked composite: **Option C** (HookScope bug fix in GEO_001 inline) + **Option B** (new GEO_001b sibling for full LLM authoring contract per PL_001+001b precedent). **Option C HookScope chicken-and-egg bug**: `RegionalLoreHook.scope: HookScope` used `Cell(GeoCellId) | Region(Vec<GeoCellId>) | Settlement(SettlementId) | Province(ProvinceId)` — but those IDs don't exist at CreativeSeed-creation time (they materialize FROM CreativeSeed); fixed inline with PRE-materialization variants `SettlementByName(LocalizedName)` + `PositionRegion{center, radius_normalized}` + `Archetype` + V1+ `KnowledgeEntityRef` reservation; resolution happens post-stage-6 (settlements) + post-stage-1 (positions); AC-GEO-11 added verifying end-to-end scope resolution. **Option B GEO_001b** (537 lines new sibling): AuthoringProducer 5-variant (LlmGenerated V1 + AuthorManual V1 + Imported V1+ + KnowledgeServiceExtracted V1+ + Hybrid V1) + **SpatialPreference 14-variant** closed enum (Northern/Southern/Equatorial + Coastal/Inland/Insular + Highland/Lowland/RiverValley + NearBiome/NearClimate/NearCulture/NearSettlement/FarFromSettlement + ExplicitPosition + Any) as LLM-friendly alternative to raw `(f32, f32)` coordinates per "LLM weakness = geometric reasoning" factoring; **CreativeSeed.schema_version 1→2 additive migration** per I14 (`position_normalized` becomes Optional V1+; `spatial_preference` added Optional V1+; validator at-least-one-Some) + AuthoringMetadata struct embedded in RealityManifest as OPTIONAL field; carried into GeographyBorn payload + **BFF-held AuthoringSession** UX state (NOT an aggregate; not event-sourced — pre-bootstrap state) + per-iteration LLM cost via existing S6 user_cost_ledger + S9-registered template `world_authoring/v1.tmpl` 8-section structure per §12Y.L3 + **schema-constrained generation REQUIRED V1** (OpenAI structured outputs / vLLM grammar mode / equivalent against creative_seed.v2.schema.json) + multi-turn iteration loop V1 caps (iteration_count_max=10 / retry_per_iteration_max=3 / S6 cost cap inherited from S6-D2 / 24h session TTL) + validation pipeline 5 steps + 8 V1 reject rule_ids in `authoring.*` namespace + 4 V1+ reservations + 10 V1-testable acceptance scenarios AC-AUTHOR-1..10 + V1+ knowledge-service grounding contract V1 schema-reserved (activates V1+ when knowledge-service ships per CLAUDE.md `101_DATA_RE_ENGINEERING_PLAN.md`). **No new aggregate introduced** — AuthoringSession is BFF-held; final accepted CreativeSeed durable record only via existing GeographyBorn `authoring_metadata` field (additive per I14). Files: 8 (1 modified GEO_001 + 1 new GEO_001b + 4 _boundaries + 1 _index + 1 catalog). 7 gaps resolved: HookScope chicken-and-egg + LLM template implicit (S9 §12Y.L2 violated) + schema-constrained generation not mandated + position fields ask LLM for geometry + iteration loop undocumented + knowledge-service grounding missing + non-LLM authoring not first-class. **Process lesson**: even post-/review-impl, deep-discussion surfaced a 7-gap write-side hole. Read-contract correctness ≠ write-contract correctness. |
+| 2026-05-13 | **SPIKE_04 GEO procgen + authoring validation (21 ACs walked; 23 gaps surfaced)** [branch `mmo-rpg/design-resume`, commit `b25cfb92`]. User picked spike-validation as next move after GEO_001 + GEO_001b DRAFT. Single-session walk-through of **6 concrete test scenarios** against fixture data (Thần Điêu Đại Hiệp Nam Tống reality reused from SPIKE_01 + GEO §14.1) collectively exercising all **21 acceptance criteria** (11 AC-GEO + 10 AC-AUTHOR). Each scenario walked T0/T1/T2... operational sequence with concrete fixture data: events emitted by which producer, what validators see, what gets persisted where. ✅ 21/21 validated as REACHABLE; no blocking unsatisfiable scenarios. **Scenario 1 LLM-authored bootstrap** (AC-AUTHOR-1 + AC-GEO-1 + AC-AUTHOR-7) + **Scenario 2 replay determinism** (AC-GEO-2) + **Scenario 3 admin canonization workflow** (AC-GEO-4 + AC-GEO-5 + AC-GEO-11) + **Scenario 4 snapshot fork** (AC-GEO-8) + **Scenario 5 LLM authoring failure paths** (AC-AUTHOR-2 + 3 + 5 + 6) + **Scenario 6 producer alternatives** (AC-AUTHOR-4 + 9 + 10). **23 design gaps** surfaced + categorized: 3 schema bugs HIGH (name uniqueness + spatial_preference cycle detection + SettlementId generation strategy) + 5 implementation discipline MED (HashMap normalize + float determinism + canonical JSON + cross-platform replay + SettlementId blake3-derive) + 7 underspecified semantics MED (schemars build pipeline + PositionRegion radius units + multi-continent fork orchestration + replay-vs-copy semantics + retry section placement + cost cap pre/post-deduct + intended_producer audit) + 4 UX-layer LOW + 4 tension/clarification LOW. **5 sub-decisions** D-S04-1..5 queued for user approval batch + **4 critical pre-implementation tasks** identified (schemars build pipeline + canonical JSON serialization + SettlementId strategy + HashMap normalization CI gate) + **5 open questions** SPIKE-04-Q1..5 captured. **No new aggregate. No new namespace. No boundary lock claim needed** (spike reads from locked GEO_001 + GEO_001b; doesn't modify them). Files: 2 (NEW SPIKE_04 648 lines + MODIFIED _spikes/_index.md row). **Process maturity milestone**: SPIKE_04 is the first design-track artifact that triggered a successful walk-through-validation → surface ambiguity → batch-approve → apply pipeline. Read-contract correctness ≠ operational sequence correctness. The gap between "spec says X" and "implementer can produce X" only closes via fixture-data walk-through. |
+| 2026-05-14 | **SPIKE_04 D-S04-1..5 approval batch (5 sub-decisions applied; foundation tier 7/7 V1-implementation-ready)** [branch `mmo-rpg/design-resume`, commit `75878f18`]. User picked option 1 = approve all 5 with recommended defaults. 5 decisions locked: **D-S04-1** canonical_settlements + culture_hints name uniqueness reject via NEW `authoring.duplicate_canonical_name` (validator step 3b case-sensitive LocalizedName.default match + naming_style_ref uniqueness; LLM re-prompted on retry) + **D-S04-2** SpatialPreference::NearSettlement cycle detection via NEW `authoring.spatial_preference_cycle` (validator step 3c topological sort DAG with DFS white/gray/black coloring; catches direct A↔B + indirect A→B→C→A cycles; LLM re-prompted to break cycle by anchoring to non-NearSettlement preference) + **D-S04-3** strict-IEEE floating-point V1 (`-ffp-contract=off` for C/C++ deps; Rust `#[deny(clippy::float_arithmetic)]` outside generator module; NO SIMD reductions; fixed-point V1+ if CI snapshot drift surfaces) + **D-S04-4** admin Forge reason PII scrubbing scrub-regardless of in-fiction context per existing §12X.L7 admin discipline (named characters like "Tiểu Long Nữ" go through same regex scrubber; defense in depth) + **D-S04-5** `intended_producer: Option<AuthoringProducer>` audit field deferred V1+30d as NEW GEO-AUTHOR-D11 (records original producer when fallback fires per AC-AUTHOR-10 knowledge-service unavailable path). Outputs: 2 new V1 reject rule_ids + 1 V1+30d deferral + 2 new acceptance scenarios AC-AUTHOR-11 + AC-AUTHOR-12 (uniqueness reject + cycle reject end-to-end retry success) + §8 validation pipeline step 3 split into 3a/3b/3c + 2 schema policy clarifications. `authoring.*` namespace: 8 V1 → **10 V1** rule_ids. Total `geography.*` + `authoring.*` rejects: **23 V1 rule_ids** + 7 V1+ reservations. Total acceptance scenarios: 23 V1-testable (11 AC-GEO + 12 AC-AUTHOR). Files: 5 (2 GEO docs + 3 _boundaries). **GEO_001 + GEO_001b schema is now V1-implementation-ready.** Remaining MED gaps (schemars build pipeline + HashMap normalize + canonical JSON + cross-platform reproducibility + SettlementId blake3 + multi-continent fork orchestration + float-drift CI snapshot) are all CI gates / build pipeline tasks for V1 implementation phase; no further user-approval rounds needed. **Process maturity milestone**: first design-track instance of the **walk-through-validation → surface ambiguity → batch-approve → apply** pipeline working end-to-end. Pattern locked for future feature decision-locking. **Foundation tier 7/7**: EF + PF + MAP + CSC + RES + PROG + **GEO**. |
 
 | 2026-04-26 | **PL_006 Status Effects DRAFT — status foundation (V1 vertical-slice gap closed)** [branch `mmo-rpg/design-resume`, commits `a39d880` lock-claim + `<this commit>` PL_006 + lock-release]. **Why now**: V1 gap audit identified status foundation as Option A priority (vs Option B PO_001 PC creation + Option C knowledge accrual); user picked A ("làm A"). Foundation discipline rationale: PCS_001 brief §S5 has `pc_stats_v1_stub.status_flags: Vec<StatusFlag>` but never defines enum; without PL_006, PCS_001 + future NPC_003 would each invent ad-hoc enums (drift trap WA_006 originally hit before thin-rewrite). PL_006 owns enum + lifecycle ONCE; consumers reference. **6 sub-decisions D1-D6 defaults approved**: D1 catalog placement = PL category (gameplay primitive like Interaction) · D2 PL_006 owns StatusFlag enum (PCS_001 + NPC_003 reference) · D3 V1 minimum closed-set = Drunk/Exhausted/Wounded/Frightened (4 kinds; V1+ Stunned/Bleeding/Poisoned/Charmed/Encumbered/Buffed/Tired/Hungry/Restrained reserved) · D4 Status applies via PL_005 Interaction OutputDecl (`aggregate_type=actor_status`; no new path) · D5 V1 simplification — Apply + Dispel manual only; auto-expire V1+30d via Scheduled:StatusExpire Generator · D6 generic `actor_status` aggregate covers PC + NPC uniformly (cross-actor uniformity). **PL_006 deliverable**: new `features/04_play_loop/PL_006_status_effects.md` (462 lines under 500-line soft cap), 18 sections — domain concepts (StatusFlag/StatusInstance/StatusSource/StackPolicy) + event-model mapping (no new EVT-T*; T3 apply/dispel + T5 V1+30d auto-expire via EVT-G2 trigger source kind c FictionTimeMarker) + 1 new aggregate `actor_status` (T2/Reality, cross-actor) + tier+scope + DP primitives + capability + subscribe pattern (UI invalidation + Chorus SceneRoster context) + pattern choices (closed-set/cross-actor uniformity/stack policies/magnitude 1..=10/V1 lifecycle simplification/source tracking via StatusSource enum/V1+ Lex axiom integration deferred) + Vietnamese reject copy in `status.*` namespace + cross-service handoff (inherits PL_005 §10 pattern) + 4 sequences (Apply Drunk via Use:wine / Apply Exhausted via sleep-skipped detection / Dispel via /sleep / V1+30d auto-expire deferred) + 7 V1-testable acceptance scenarios (AC-STA-1..7: Apply Drunk + Stack Sum + Stack Replace + Dispel via /sleep + cross-actor uniformity + target_dead reject + invalid magnitude reject) + 8 deferrals (STA-D1..D8: V1+ kinds enumeration / per-status effect formalization / Lex axiom integration / V1+30d scheduler integration / selective dispel / status × NPC opinion modifier / sleep-skipped detection mechanism / status × admin override). **Boundary registration in same commit**: `_boundaries/01_feature_ownership_matrix.md` adds `actor_status` aggregate row owned by PL_006; `_boundaries/02_extension_contracts.md` §1.4 RejectReason namespace adds `status.*` owned by PL_006; `_boundaries/99_changelog.md` PL_006 entry; `_boundaries/_LOCK.md` released. `features/04_play_loop/_index.md` updated with PL_006 row + Active marker. **Closes V1 vertical-slice gap**: Use:wine outcome locked (AC-STA-1 reproducible); Strike intents Stun/Restrain unblocked V1+; PCS_001 + NPC_003 reference shared enum without drift. **Foundation stack proven 4th time**: PL_006 composes ENTIRELY from existing locked layers (DP-K* + EVT-T3 Derived + EVT-T5 Generated for V1+30d + EVT-G framework + WA_001 Lex hook V1+ + NPC_001 ActorId enum + PL_005 OutputDecl mechanism); zero foundation primitives invented. Mirrors NPC_001's "own ActorId enum once, consumed many" pattern. **Status transition**: DRAFT 2026-04-26 → CANDIDATE-LOCK after 7 V1 acceptance scenarios pass integration tests. **Branch state**: 31 commits ahead of origin. **Next options**: (a) PCS_001 design (parallel agent already commissioned per brief; may overlap with this session if main session takes on) · (b) PO_001 PC Creation flow (Option B from V1 gap audit; needs PCS_001 to land first for ActorId::Pc) · (c) Knowledge accrual (Option C; smaller scope) · (d) other V1 features (DF5/DF7) · (e) pause for review. |
 

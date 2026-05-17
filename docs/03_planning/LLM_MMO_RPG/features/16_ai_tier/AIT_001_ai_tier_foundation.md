@@ -1,5 +1,8 @@
 # AIT_001 — AI Tier Foundation
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
+> TMP_008 V2 L3 zone classifier + L4 regional narration reuse AIT's **hybrid 2-stage** generation pattern (Q4-LOCKED, §5 Untracked generation pipeline): Stage 1 deterministic engine (TMP_002 zone placement + TMP_003 modificator pipeline + TMP_005 BiomeSelectionRules canonical fallback) ALWAYS runs and produces a complete renderable tilemap; Stage 2 LLM-flavor (L3 zone classifier + L4 narration prose) is **opt-in** per reality (`tilemap_defaults.llm_enabled = false` is the V1+30d default per AC-TMP-10 — engine-only generation). The pattern is identical: cheap deterministic stage guarantees correctness; expensive LLM stage adds flavor lazily / on demand. CSC_001's 4-layer composition (CSC-A1 zone-classifier with canonical fallback) is the cell-tier sibling of this exact pattern. NO AIT_001 surface change — TMP is a downstream pattern-reuser, not an AIT consumer. Annotation only. See §14.19 row for cross-reference.
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
 >
 > AIT-A8 capability matrix is the ground-truth for DF05_001 §8.4 tier eligibility (DF5-A6) — PC + Major + Minor NPC participate; Untracked NPC REJECTED `session.actor_not_eligible_untracked`. AIT_001 motivated DF05_001 multi-session-per-cell sparse architecture per user direction billion-NPC scaling concern (initial single-session-per-cell rejected). DF5-A8 per-cell session capacity (≤50 V1) coordinates with AIT TierCapacityCaps (Major≤20 / Minor≤100 V1) — sessions are sparse explicit social acts; Major+Minor NPCs are bounded population per AIT density discipline; sessions never auto-coalesce all cell actors. MemoryProvider capability gate per AIT integration: tier-aware persona retrieval via `provider.capabilities().supports_tier_aware_query` flag (V2+ richer; V1 simple — Major full / Minor condensed / Untracked excluded). Untracked promotion path (AIT-D7 V1+30d LLM-propose-promotion) interacts with DF5: PC `/chat @untracked_villager` → reject + hint; if AIT-D7 active and engagement signal strong → propose promotion to Tracked Minor → then `/chat` retry succeeds. NO change to AIT_001 3-tier architecture or capability matrix; CANDIDATE-LOCK pending closure but DRAFT preserved. LOW-MEDIUM magnitude — capability gate consumer + sparse sessions architectural validation. Reference: [DF05_001 §8.4 Tier eligibility](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#84-tier-eligibility-df5-a6) + [DF05_001 §7 Multi-session-per-cell architecture](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#7--multi-session-per-cell-architecture-the-big-shift).
@@ -1051,6 +1054,14 @@ When PCS_001 lands DRAFT post-AIT_001:
 ### §14.18 Future CULT_001 / FAC_001 / REP_001
 
 V1+ priorities per IDF roadmap. AIT_001 ships orthogonal — these features layer on top (cultivation methods on Major NPCs / faction membership on Tracked / reputation per (actor, faction) on Tracked).
+
+### §14.19 [TMP_001 Tilemap Foundation](../00_tilemap/TMP_001_tilemap_foundation.md) — pattern reuser (annotation added 2026-05-14 closure-pass-extension)
+
+TMP_008 V2 L3 zone classifier + V2 L4 regional narration apply AIT's Q4-LOCKED hybrid 2-stage pattern to non-cell tile generation:
+- **Stage 1 (deterministic engine)** — TMP_002 zone placement (Fruchterman-Reingold force-directed) + TMP_003 modificator pipeline + TMP_005 BiomeSelectionRules canonical fallback. Always runs. Produces a complete renderable tilemap with engine-default biome classifications + no narration prose.
+- **Stage 2 (LLM flavor, opt-in)** — TMP_008/TMP_008b L3 zone classifier upgrades engine-default classifications via Claude tool-use call with per-object retry + canonical default fallback; L4 regional narration adds prose. Per-reality opt-in via `tilemap_defaults.llm_enabled` (V1+30d default `false` per AC-TMP-10 — engine-only). V1+30d ships engine-only; V2 turns LLM on per reality with cost story per TMP_008b §12.
+
+No new AIT axiom or capability claim — TMP is a downstream pattern-reuser, not an AIT consumer. The pattern parallel demonstrates that "hybrid 2-stage with cheap stage 1 + lazy stage 2" is a generalizable LoreWeave LLM-cost-control discipline (also seen in CSC_001 4-layer composition).
 
 ---
 

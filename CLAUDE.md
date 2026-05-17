@@ -157,166 +157,143 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
 
 ---
 
-## Task Workflow (12 phases)
+## Task Workflow
 
-**ENFORCEMENT: State machine (`.workflow-state.json`) + hooks block commits without verification.**
+**Bundle v2.3** — default v2.2 human-in-loop + opt-in AMAW v3.0. Full prose in [`agentic-workflow/WORKFLOW.md`](agentic-workflow/WORKFLOW.md) and [`docs/amaw-workflow.md`](docs/amaw-workflow.md). This section captures only what the agent must keep loaded at all times.
 
-Every task follows this workflow. The agent plays all roles sequentially.
+**Default mode (v2.2):** human-in-loop with PO checkpoints at CLARIFY end + POST-REVIEW.
+**Opt-in (AMAW v3.0):** type `/amaw` at task start to enable cold-start sub-agent reviews. Pays off for L+ tasks (data migrations, schema changes, security-critical paths). Don't invoke for everyday work — token cost ~$1-5/task.
+
+### 12 phases
 
 ```
-Phase          | Role              | What Happens
----------------|-------------------|----------------------------------------------
-1. CLARIFY     | Architect + PO    | Brainstorm, ask questions, define scope
-2. DESIGN      | Lead              | API contract / component API / data flow
-3. REVIEW      | PO + Lead         | Review design spec before coding
-4. PLAN        | Lead + Developer  | Decompose into bite-sized tasks (2-5 min)
-5. BUILD       | Developer         | Write code (TDD: red -> green -> refactor)
-6. VERIFY      | Developer         | Evidence-based verification gate
-7. REVIEW      | Lead              | Code review (spec compliance + quality)
-8. QC          | QA / PO           | Test against acceptance criteria
-9. POST-REVIEW | Human + Developer | Human-interactive CHECKPOINT (context reset, NOT deep review)
-10. SESSION    | Developer         | Update session notes + task status
-11. COMMIT     | Developer         | Git commit (+ push if approved)
-12. RETRO      | All               | Record decision/workaround if learned
+CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC → POST-REVIEW → SESSION → COMMIT → RETRO
 ```
 
-**Status tracking:** `[ ]` not started · `[C]` clarify · `[D]` design · `[P]` plan · `[B]` build · `[V]` verify · `[R]` review · `[Q]` QC · `[PR]` post-review · `[S]` session · `[x]` done
+| Phase | Default v2.2 role | AMAW role (opt-in) |
+|---|---|---|
+| 1. CLARIFY | Architect + PO | Main + Scribe |
+| 2. DESIGN | Lead | Main |
+| 3. REVIEW (design) | PO + Lead self-review | Adversary cold-start |
+| 4. PLAN | Lead + Developer | Main + Scribe |
+| 5. BUILD | Developer (TDD) | Main |
+| 6. VERIFY | Developer (evidence gate) | Main |
+| 7. REVIEW (code) | Lead self-review | Adversary cold-start |
+| 8. QC | QA / PO | Scope Guard |
+| 9. POST-REVIEW | Human checkpoint — present + WAIT | Scope Guard |
+| 10. SESSION | Developer | Scribe |
+| 11. COMMIT | Developer | Main |
+| 12. RETRO | All — `add_lesson` to ContextHub | Audit Logger |
 
-**Task types:** `[FE]` frontend · `[BE]` backend · `[FS]` full-stack
+**Status markers:** `[ ]` not started · `[C/D/P/B/V/R/Q/PR/S]` in phase · `[x]` done. **Task types:** `[FE]` frontend · `[BE]` backend · `[FS]` full-stack.
 
-### Task Size Classification (MANDATORY — do this BEFORE any work)
+### Repo-specific paths (workflow artifacts)
 
-Count 3 things before starting:
+| Artifact | Path |
+|---|---|
+| Main session notes | `docs/sessions/SESSION_PATCH.md` |
+| Design-track session notes | `docs/03_planning/<TRACK>/SESSION_HANDOFF.md` |
+| New specs (CLARIFY) | `docs/specs/YYYY-MM-DD-<topic>.md` (or `docs/03_planning/<TRACK>/` for legacy tracks) |
+| New plans (PLAN) | `docs/plans/YYYY-MM-DD-<feature>.md` (or `docs/03_planning/<TRACK>/`) |
+| AMAW audit log | `docs/audit/AUDIT_LOG.jsonl` (append-only, committed) |
+| Deferred items | `docs/deferred/DEFERRED.md` |
+| ContextHub project_id (RETRO `add_lesson`) | `mmo-rpg-zone-map-design-non-human-in-loop` |
 
-| Metric | How to count |
-|--------|-------------|
-| **Files touched** | How many files will be created or modified? |
-| **Logic changes** | How many functions/methods/handlers will change behavior? (not formatting) |
-| **Side effects** | Does it change: API contract, DB schema, config, external behavior, types used by other files? |
+### Task Size Classification (MANDATORY — before work begins)
+
+Count: **files touched · logic changes · side effects** (API/DB/config/types).
 
 | Size | Files | Logic | Side effects | Allowed skips |
 |------|-------|-------|--------------|---------------|
 | **XS** | 1 | 0-1 | None | CLARIFY + PLAN |
 | **S** | 1-2 | 2-3 | None | PLAN only |
 | **M** | 3-5 | 4+ | Maybe | None |
-| **L** | 6+ | Any | Yes | None. Write plan file. |
-| **XL** | 10+ | Any | Yes | None. Write spec + plan. Subagent recommended. |
+| **L** | 6+ | Any | Yes | None — write plan file |
+| **XL** | 10+ | Any | Yes | None — write spec + plan; subagent recommended |
+
+**ENFORCEMENT** — state machine (`.workflow-state.json`) + pre-commit hook block phase jumps and commits without VERIFY+POST-REVIEW+SESSION evidence:
 
 ```bash
-./scripts/workflow-gate.sh size XS 1 1 0     # Classify task
-./scripts/workflow-gate.sh phase build        # Enter phase
-./scripts/workflow-gate.sh complete build "tests pass" # Complete with evidence
-./scripts/workflow-gate.sh status             # Check progress
+./scripts/workflow-gate.sh size XS 1 1 0       # Classify
+./scripts/workflow-gate.sh phase build          # Enter phase
+./scripts/workflow-gate.sh complete build "tests pass"  # Mark done with evidence
+./scripts/workflow-gate.sh status               # Check progress
 ```
 
-Script blocks: undersizing, phase jumps, commits without VERIFY+POST-REVIEW+SESSION.
+The `.sh` is a thin wrapper around `scripts/workflow-gate.py` (cross-platform; sidesteps the Windows pyenv-win shim bug that broke the prior all-bash impl).
 
-### Anti-Skip Rules (MANDATORY)
+### Anti-Skip Rules
 
-- Agent must NEVER self-authorize skips — ask user
-- If you catch yourself about to skip — STOP, announce the skip attempt, ask the user
-- If during BUILD you discover the task is larger than classified — STOP, reclassify, announce to user
-- User can authorize skips explicitly — agent must never self-authorize
+- Agent **never** self-authorizes a skip — STOP, announce the skip attempt, ask user.
+- If during BUILD you discover the task is larger than classified — STOP, reclassify, announce.
+- Common skip patterns and why each is a violation: see [`agentic-workflow/WORKFLOW.md`](agentic-workflow/WORKFLOW.md) "Anti-Skip Rules" table.
 
-**Phase transition protocol:**
-1. State task size classification before starting (XS/S/M/L/XL with counts)
-2. Before starting any phase, run `./scripts/workflow-gate.sh phase <name>`
-3. Before leaving any phase, run `./scripts/workflow-gate.sh complete <name> "<evidence>"`
-4. If during work you discover the task is larger than classified — STOP, reclassify
+### Role Perspectives (default mode)
 
-### Role Perspectives
+When playing each role, shift perspective — don't just check boxes:
 
 | Role | Thinks about... |
 |------|-----------------|
-| **Architect** | System boundaries, dependencies, scoping, impact analysis |
-| **PO (Product Owner)** | User value, acceptance criteria, design sign-off, final QC |
+| **Architect** | System boundaries, dependencies, scoping, impact |
+| **PO** | User value, acceptance criteria, design sign-off, final QC |
 | **Lead** | Technical design, plan quality, code review (patterns, security, a11y) |
 | **Developer** | Correctness, TDD, efficiency, verification, session tracking |
 | **QA** | What can break — edge cases, regression, acceptance criteria |
 
-When playing each role, shift perspective accordingly. Don't just check boxes — think from that role's viewpoint.
+### Phase 6 VERIFY (Evidence Gate)
 
-### Phase 6: VERIFY (Evidence Gate)
+Run command → Read complete output → Confirm match → THEN claim. No "should work", no trusting prior runs. **Red flags:** "probably passes", "seems fine", about to commit without fresh test run, trusting cached output.
 
-5-step gate before ANY completion claim:
-
-| Step | Action |
-|------|--------|
-| 1. Identify | What command proves the claim? (test, build, lint, curl...) |
-| 2. Run | Execute it fresh — not from memory or cache |
-| 3. Read | Complete output including exit codes |
-| 4. Confirm | Does output actually match the claim? |
-| 5. Claim | Only now state the result, with evidence |
-
-**Red flags — stop immediately if you catch yourself:**
-- Using "should work", "probably passes", "seems fine"
-- About to commit/push without fresh test run
-- Trusting prior output without re-running
-
-### Phase 7: REVIEW (2-Stage Code Review)
+### Phase 7 REVIEW (2-Stage Code Review)
 
 | Stage | Focus |
 |-------|-------|
-| **1. Spec compliance** | Does code implement what was designed? Missing requirements? Scope creep? |
-| **2. Code quality** | Patterns, security, a11y, performance, maintainability |
+| 1. Spec compliance | Does code implement what was designed? Missing requirements? Scope creep? |
+| 2. Code quality | Patterns, security, a11y, performance, maintainability |
 
-Both stages must pass. If issues found: fix → re-verify (Phase 6) → re-review.
+Both stages must pass. Issues found → fix → re-VERIFY → re-review.
 
-### Phase 9: POST-REVIEW (Human-Interactive Checkpoint) — NEVER skippable
+### Phase 9 POST-REVIEW (Human-Interactive Checkpoint) — NEVER skippable
 
-**Why:** This phase is a **forcing-function checkpoint**, not a deep review. Its value is the human stop — giving the user a chance to veto, redirect, or request specifics before SESSION/COMMIT burns the diff in. Deep adversarial review is **NOT** done here because self-adversarial-review-right-after-writing-code does not work reliably (author blindness persists even with a "re-read from disk" ritual — the agent pattern-matches to its own reasoning and rubber-stamps). Deep review is an explicit separate act — see **`/review-impl`** below.
+**Why:** forcing-function pause so the human can veto / redirect / request specifics before SESSION+COMMIT burns the diff in. Deep self-review here doesn't work (author blindness → "0 issues found" rubber-stamp).
 
-**What this phase IS:**
-- Present a concise summary to the human (files touched, design decisions, verify evidence)
-- **STOP and WAIT for human response.** Do not proceed until human replies.
-- If the human asks for a deeper look, invoke `/review-impl` (or equivalent) — that's a *different* mental mode.
-- If the human approves, proceed to SESSION.
+**Default mode:** present concise summary (files touched, design decisions, verify evidence), **STOP and WAIT** for human reply. Don't pre-write "0 issues found" — that's the rubber-stamp tell. Human approves → SESSION. Human asks deeper → invoke `/review-impl` first.
 
-**What this phase is NOT:**
-- A ritual self-re-read that produces "0 issues found" every time. If you catch yourself about to output that line without a specific concern, you're rubber-stamping. Just present the summary and stop.
+**Proactively suggest `/review-impl` (without being asked) when:** auth/credential code, tenant isolation boundaries, destructive ops, injection defenses, new service boundaries, or anything user previously flagged as load-bearing.
 
-**When deep adversarial review is warranted:**
-- Safety-sensitive code (auth, injection defense, tenant isolation, destructive ops)
-- Non-trivial integration points
-- User explicitly asks for it
+**AMAW mode:** Scope Guard sub-agent runs the conservative final gate (CLEAR / BLOCKED). See `docs/amaw-workflow.md`.
 
-In those cases the user invokes `/review-impl` after POST-REVIEW. That command re-reads files from disk with an explicit adversarial prompt scoped to the *surface area the tests don't cover*, not the tests themselves.
+**Completion evidence:** `"summary presented, human approved: <one-liner>"`. If `/review-impl` ran, fold its findings into the evidence.
 
-**Completion evidence format:** `"summary presented, human approved: <one-liner of their response>"`. If the human asked for `/review-impl`, run it before completing POST-REVIEW and fold its findings into the evidence.
+### Phases 10 + 11 + 12 — mandatory, do not forget
 
-### Phases 10 + 11 are mandatory — do not skip
+After QC succeeds, **do not** declare task done. Three more phases:
 
-AI agents declare tasks "done" after QC and forget SESSION + COMMIT. **That is a bug, not a shortcut.** Work that isn't recorded in `docs/sessions/SESSION_PATCH.md` and committed to git does not exist for the next session.
+1. **SESSION (10)** — update `docs/sessions/SESSION_PATCH.md` (or `docs/03_planning/<TRACK>/SESSION_HANDOFF.md` for design tracks): header metadata (Last Updated, Updated By, HEAD) + Current Active Work entry (files touched, review issues, test delta) + move cleared deferrals to "Recently cleared". AMAW mode also updates `docs/deferred/DEFERRED.md`.
+2. **COMMIT (11)** — stage only changed files (no `git add -A`); commit message names phase + review fixes + test count; SESSION update lands in the same commit as the code.
+3. **RETRO (12)** — non-obvious decisions or workarounds → `add_lesson` to ContextHub MCP (`project_id = mmo-rpg-zone-map-design-non-human-in-loop`). Skip if nothing notable.
 
-Checklist at the end of **every** cycle:
-
-1. **Phase 10 — SESSION**:
-   - Update `docs/sessions/SESSION_PATCH.md` header metadata (Last Updated, Updated By, HEAD)
-   - Add a "Current Active Work" entry with files touched, review issues found/fixed, test count delta
-   - Move cleared deferrals to "Recently cleared", add new ones
-2. **Phase 11 — COMMIT**:
-   - Stage only the files you actually changed (no `git add -A`)
-   - Write a commit message that names the phase + review fixes + test count
-   - Include SESSION_PATCH update **in the same commit** as the code
-
-### Phase 12: RETRO
-
-- If a non-obvious decision was made → record it (decision log, ADR, lesson)
-- If a workaround was needed → record it with context
-- If nothing notable → skip this phase
+**Hard rule:** work not recorded in SESSION_PATCH/SESSION_HANDOFF and committed to git **does not exist** for the next session.
 
 ### Debugging Protocol
 
-Activated whenever a bug is encountered during any phase. **NO FIXES WITHOUT ROOT CAUSE.**
+NO FIXES WITHOUT ROOT CAUSE.
 
 ```
 1. INVEST  — Read errors fully, reproduce, trace data flow backward
 2. PATTERN — Find working examples, compare every difference
 3. HYPOTHE — State hypothesis, test one variable at a time
-4. FIX     — Write failing test -> implement single fix -> verify
+4. FIX     — Write failing test → implement single fix → verify
 ```
 
-**Hard stop:** If 3+ fix attempts fail → stop, question the architecture, discuss with user.
+**Hard stop:** 3+ fix attempts fail → stop, question architecture, discuss with user.
+
+### Slash commands
+
+| Command | When |
+|---|---|
+| `/review-impl [task-id]` | On-demand deep adversarial review. Invoke when POST-REVIEW needs deeper look, or after COMMIT when something feels off. Default mode. |
+| `/amaw` | Enable AMAW v3.0 for current task only. For data migrations, schema changes, security-critical paths, multi-system contracts. Don't invoke for everyday work. |
 
 ---
 

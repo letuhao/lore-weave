@@ -1,5 +1,8 @@
 # NPC_001 — Cast (NPC Foundation)
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
+> V2+ NPC routing on non-cell tilemap reservation (TMP_001 §14 cross-feature integration). NPC scripted-travel paths at non-cell tiers consume `tilemap_view.road_segments` + free-path connectivity (TMP-A8 "never seal a gap" connectivity invariant). NPC_001 owns the NPC routing intent + scheduler binding (V1+ DF1 daily life feature); TMP_001 owns the tile-level pathfinding surface (road segments + walkable tiles + obstacles). At cell tier, NPC paths stay on CSC_001 16×16 grid (V1 already). At non-cell tier V2+, NPC paths cross `tilemap_view.road_segments`. Direction: NPC_001 → TMP_001 (NPC reads tilemap, doesn't write). NO NPC_001 V1+30d surface change; reservation only. Annotation only. See §16 row.
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 (2nd) — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
 >
 > NPC eligibility check at `/chat` invite per Q4-D1 LOCKED reputation-gated consent (Hated/Hostile reject; Unfriendly accepts reluctantly with mood=Sour). DF5-V4 TierEligibilityValidator — Major + Minor NPC accept; Untracked rejected per AIT-A8 + DF5-A6. Personal opinion overrides faction reputation per Q4-D2 (gradient ±2 tiers shift). Persona prompt assembly switches consumer code from direct ACT_001 actor_session_memory reads → MemoryProvider trait import per DF05_001 §16 SDK contract (consumers depend on `contracts/api/session/v1/memory_provider.rs` only). Tier-aware persona via MemoryProvider capability gate per AIT integration. Refusal message Q4-D3: LLM-flavored persona refusal (~100 tokens) + engine template fallback when LLM budget exhausted. NO change to NPC_001 aggregates; CANDIDATE-LOCK status PRESERVED. MEDIUM magnitude — consumer trait import + session-aware eligibility check. Reference: [DF05_001 §8](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#8--npc-consent--reputation-gating-q4-locked).
@@ -635,6 +638,7 @@ The design is implementation-ready when world-service can pass these scenarios. 
 - [07_event_model/03_event_taxonomy.md](../../07_event_model/03_event_taxonomy.md) — EVT-T2 NPCTurn (this feature's primary emission category)
 - [decisions/locked_decisions.md](../../decisions/locked_decisions.md) — no MV12-D resolved here (this is foundation, not lifecycle)
 - [features/_spikes/SPIKE_01_two_sessions_reality_time.md](../_spikes/SPIKE_01_two_sessions_reality_time.md) — Lão Ngũ + Tiểu Thúy + Du sĩ used as concrete worked example
+- [features/00_tilemap/TMP_001_tilemap_foundation.md](../00_tilemap/TMP_001_tilemap_foundation.md) — V2+ non-cell-tier NPC routing (annotation added 2026-05-14 closure-pass-extension). At cell tier V1, NPC paths stay on CSC_001 16×16 grid (unchanged). At non-cell tiers V2+, NPC scripted-travel paths consume `tilemap_view.road_segments` + free-path connectivity per TMP-A8 "never seal a gap" invariant. NPC_001 owns NPC routing intent + scheduler binding (DF1 daily life consumer); TMP_001 owns tile-level pathfinding surface. Direction: NPC → TMP (read-only). NPC_001 V1+30d: no surface change.
 
 ---
 

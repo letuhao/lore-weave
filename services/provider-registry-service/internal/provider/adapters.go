@@ -62,6 +62,14 @@ type Adapter interface {
 	// adapter MUST stop streaming and return that error.
 	Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error
 
+	// SupportsTools reports whether this adapter forwards `tools` /
+	// `tool_choice` to the upstream provider. The capability lives on the
+	// adapter (not a hand-maintained allowlist) so it cannot drift from
+	// ResolveAdapter. The stream handler rejects a chat request carrying
+	// tools/tool_choice for an adapter that returns false with HTTP 400
+	// LLM_TOOLS_NOT_SUPPORTED_FOR_PROVIDER before opening the SSE stream.
+	SupportsTools() bool
+
 	// Transcribe — Phase 5a. Speech-to-text. Adapter fetches the audio
 	// at input.AudioURL (gateway-side HTTP GET, 30s timeout, 25MB cap),
 	// posts to the provider's STT endpoint, and returns the transcript.
@@ -718,6 +726,9 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	if v, ok := input["tools"]; ok {
 		body["tools"] = v
 	}
+	if v, ok := input["tool_choice"]; ok {
+		body["tool_choice"] = v
+	}
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err
@@ -725,6 +736,9 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	defer resp.Body.Close()
 	return streamOpenAICompat(ctx, resp.Body, emit)
 }
+
+// SupportsTools — the OpenAI chat-completions API supports tools + tool_choice.
+func (a *openaiAdapter) SupportsTools() bool { return true }
 
 // ── Anthropic adapter ─────────────────────────────────────────────────────────
 
@@ -901,6 +915,14 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	return streamAnthropicSSE(ctx, resp.Body, emit)
 }
 
+// SupportsTools — false. anthropicAdapter.Stream does not forward `tools`
+// (Anthropic-shaped tools differ from the OpenAI-shaped contract `tools`
+// field); request-side Anthropic tool support is deferred. The streamer
+// parse-side DOES map tool_use blocks, but without a request-side tools
+// array the model never emits them — so the handler rejects tools/tool_choice
+// for this adapter rather than silently dropping them.
+func (a *anthropicAdapter) SupportsTools() bool { return false }
+
 // ── Ollama adapter ────────────────────────────────────────────────────────────
 
 type ollamaAdapter struct {
@@ -1006,6 +1028,13 @@ func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, m
 	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		body["max_tokens"] = v
 	}
+	// Ollama's OpenAI-compat endpoint forwards tools / tool_choice.
+	if v, ok := input["tools"]; ok {
+		body["tools"] = v
+	}
+	if v, ok := input["tool_choice"]; ok {
+		body["tool_choice"] = v
+	}
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", nil, body)
 	if err != nil {
 		return err
@@ -1013,6 +1042,9 @@ func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, m
 	defer resp.Body.Close()
 	return streamOpenAICompat(ctx, resp.Body, emit)
 }
+
+// SupportsTools — Ollama's OpenAI-compat endpoint supports tools + tool_choice.
+func (a *ollamaAdapter) SupportsTools() bool { return true }
 
 // ── LM Studio adapter (OpenAI-compatible) ────────────────────────────────────
 
@@ -1194,6 +1226,14 @@ func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, m
 	if v, ok := input["max_tokens"]; ok && toFloat(v) > 0 {
 		body["max_tokens"] = v
 	}
+	// LM Studio's OpenAI-compat endpoint forwards tools / tool_choice —
+	// the Phase 0b PoC path for the L3 zone classifier.
+	if v, ok := input["tools"]; ok {
+		body["tools"] = v
+	}
+	if v, ok := input["tool_choice"]; ok {
+		body["tool_choice"] = v
+	}
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err
@@ -1201,6 +1241,9 @@ func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, m
 	defer resp.Body.Close()
 	return streamOpenAICompat(ctx, resp.Body, emit)
 }
+
+// SupportsTools — LM Studio's OpenAI-compat endpoint supports tools + tool_choice.
+func (a *lmStudioAdapter) SupportsTools() bool { return true }
 
 // ── factory ───────────────────────────────────────────────────────────────────
 
