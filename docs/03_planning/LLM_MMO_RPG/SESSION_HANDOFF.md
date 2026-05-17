@@ -127,9 +127,13 @@ This honors "use AMAW for the map-gen implementation" while respecting what this
 ### Recommended first action next session
 
 **The staged 0b → 3 map-gen plan is complete.** The **TMP_005/006/007
-modificator-pipeline build** is now underway — roadmap
-[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md):
-5 phases A–E, foundation-first, straight-through autonomous `/amaw`.
+modificator-pipeline build** (roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md))
+is **nearly complete — Phases A–D done; only Phase E remains**. Execution
+ran phased + human-gated, not straight-through autonomous: A/B/C under
+`/amaw`, D under default v2.2 human-in-loop (the operator's call). **The
+recommended next action is Phase E — RoadPlacer + RiverPlacer (TMP_003
+§3.5)**, the final placer phase.
 
 1. **TMP_005/006/007 modificator pipeline** — **Phases A (Pipeline
    Foundation), B (ObstaclePlacer + biomes, TMP_005), C (TreasurePlacer,
