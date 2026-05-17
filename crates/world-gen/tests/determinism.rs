@@ -129,3 +129,37 @@ fn phase3_inputs_are_deterministic_and_effective() {
         "settlement density did not change the map"
     );
 }
+
+/// review-impl C7 — cross-*process* determinism: the CLI binary, run as two
+/// separate OS processes, writes byte-identical map JSON. The other
+/// determinism tests only call `generate` twice within one process.
+#[test]
+fn cli_is_deterministic_across_processes() {
+    use std::process::Command;
+    let exe = env!("CARGO_BIN_EXE_world-gen");
+    let dir = std::env::temp_dir();
+    let run = |tag: &str| -> Vec<u8> {
+        let out = dir.join(format!("world-gen-xproc-{tag}.json"));
+        let status = Command::new(exe)
+            .args([
+                "generate",
+                "--seed",
+                "20260517",
+                "--scale",
+                "region",
+                "--coastline",
+                "peninsula",
+                "--out",
+            ])
+            .arg(&out)
+            .status()
+            .expect("failed to run the world-gen CLI");
+        assert!(status.success(), "CLI run {tag} exited non-zero");
+        std::fs::read(&out).expect("read CLI output JSON")
+    };
+    assert_eq!(
+        run("a"),
+        run("b"),
+        "the CLI produced different map JSON across two separate processes"
+    );
+}

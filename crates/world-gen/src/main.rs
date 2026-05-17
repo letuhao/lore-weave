@@ -42,7 +42,8 @@ struct GenerateArgs {
     /// World scale (sets the mesh size).
     #[arg(long, value_enum, default_value_t = ScaleArg::Continent)]
     scale: ScaleArg,
-    /// World archetype (genre).
+    /// World archetype (genre). Currently inert — no generation stage reads
+    /// it (archetype-driven terrain is deferred to V2).
     #[arg(long, value_enum, default_value_t = ArchetypeArg::HighFantasy)]
     archetype: ArchetypeArg,
     /// Coastline profile.

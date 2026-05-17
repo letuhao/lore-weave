@@ -18,6 +18,8 @@
 
 **All 4 phases complete — the GEO world-map generator is built.** Phases were executed under **AMAW** per the project owner's call — the full 12-phase workflow with cold-start sub-agent reviews + `/review-impl` on each phase.
 
+**Post-build review (2026-05-17):** a human-in-loop review — code + generated-map quality + design fidelity — followed. 20 findings (3 HIGH/MED route-network defects + coverage / fidelity / doc gaps), all fixed across 3 commits. See [`docs/audit/geo-review-2026-05-17.md`](../../audit/geo-review-2026-05-17.md).
+
 ### Phase 1 — build log (2026-05-17)
 
 `crates/world-gen/` — library `world_gen` + CLI bin `world-gen`. 9 source files + 2 integration tests, 19 tests green, `cargo clippy --all-targets` clean. Voronoi dual-mesh (perimeter ring + jittered interior → `delaunator` Delaunay → degree-repaired adjacency); Azgaar blob+radial-falloff heightmap; blake3+ChaCha8 determinism with a `content_hash` gate. AMAW: 3 design-review rounds (r1/r2 REJECTED → r3 APPROVED_WITH_WARNINGS), 2 code-review rounds (r1 REJECTED — land-coherence held on only some seeds → r2 APPROVED_WITH_WARNINGS), `/review-impl` (1 MED + 4 LOW), Scope Guard CLEAR. Phase 4 LLM authoring will use `ibm/granite-4-h-tiny` via LM Studio. One deferred item: `DEFERRED.md` #013 (land-fraction precision → Phase 2). Phase 4's optional LLM authoring is **in scope** for this run.

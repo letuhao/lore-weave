@@ -13,6 +13,7 @@ use crate::climate::ClimateZone;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreativeSeed {
     pub world_scale: WorldScale,
+    /// World genre. **Currently inert** — see [`WorldArchetype`].
     pub world_archetype: WorldArchetype,
     pub coastline_profile: CoastlineProfile,
     /// Which way the continent faces the poles — drives latitude → climate.
@@ -120,7 +121,10 @@ impl WorldScale {
     }
 }
 
-/// World genre — stored for later phases; Phase 1 does not branch on it.
+/// World genre. **Currently inert**: stored on `CreativeSeed` and serialized,
+/// but no generation stage reads it — archetype-conditioned terrain is the
+/// GEO_001 `GEO-D7` deferral (V2). The CLI `--archetype` flag and the LLM
+/// author still accept it for forward compatibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WorldArchetype {
     Wuxia,

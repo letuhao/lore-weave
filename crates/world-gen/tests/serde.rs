@@ -1,8 +1,8 @@
 //! Phase 4 — JSON round-trip stability + hash verification.
 
 use world_gen::{
-    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, SettlementDensity,
-    WorldArchetype, WorldMap, WorldScale, generate,
+    BiomeKind, ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation,
+    SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
 };
 
 /// `generate → to_string_pretty → from_str` is identity, and the loaded map
@@ -90,4 +90,68 @@ fn hand_edited_map_fails_hash_verification() {
         !tampered.verify_hash(),
         "a tampered map must fail verify_hash"
     );
+}
+
+/// review-impl C3 — every `WorldMap` field must feed `compute_hash`. Tamper
+/// each field of a generated map and assert `verify_hash` then fails; this
+/// pins field-list completeness, so a future field added without extending
+/// `compute_hash` (silently weakening the determinism digest) is caught.
+#[test]
+fn compute_hash_covers_every_field() {
+    let base = generate(31, &CreativeSeed::default());
+    assert!(base.verify_hash(), "fresh map must verify");
+    // the default Continent map populates every collection field.
+    assert!(!base.cells.is_empty() && !base.neighbors.is_empty());
+    assert!(!base.provinces.is_empty() && !base.states.is_empty());
+    assert!(!base.settlements.is_empty() && !base.routes.is_empty());
+    assert!(!base.culture_regions.is_empty());
+
+    let tamper = |label: &str, mutate: &dyn Fn(&mut WorldMap)| {
+        let mut m = base.clone();
+        mutate(&mut m);
+        assert!(
+            !m.verify_hash(),
+            "tampering `{label}` did not change content_hash — compute_hash omits it"
+        );
+    };
+
+    tamper("seed", &|m| m.seed ^= 1);
+    tamper("scale", &|m| {
+        m.scale = if m.scale == WorldScale::Continent {
+            WorldScale::Region
+        } else {
+            WorldScale::Continent
+        };
+    });
+    tamper("cells.center", &|m| m.cells[0].center.0 += 1.0);
+    tamper("cells.elevation", &|m| m.cells[0].elevation ^= 1);
+    tamper("cells.vertex_polygon", &|m| {
+        m.cells[0].vertex_polygon.push((0.5, 0.5));
+    });
+    tamper("neighbors", &|m| m.neighbors[0].push(0));
+    tamper("sea_level", &|m| m.sea_level ^= 1);
+    tamper("climate", &|m| {
+        m.climate[0] = if m.climate[0] == ClimateZone::Arid {
+            ClimateZone::Polar
+        } else {
+            ClimateZone::Arid
+        };
+    });
+    tamper("biome", &|m| {
+        m.biome[0] = if m.biome[0] == BiomeKind::Ocean {
+            BiomeKind::Plain
+        } else {
+            BiomeKind::Ocean
+        };
+    });
+    tamper("river_flux", &|m| m.river_flux[0] += 1.0);
+    tamper("is_coast", &|m| m.is_coast[0] = !m.is_coast[0]);
+    tamper("province_of", &|m| m.province_of[0] ^= 1);
+    tamper("provinces", &|m| m.provinces[0].id ^= 1);
+    tamper("states", &|m| m.states[0].id ^= 1);
+    tamper("settlements", &|m| m.settlements[0].cell ^= 1);
+    tamper("routes", &|m| m.routes[0].distance ^= 1);
+    tamper("routes.path", &|m| m.routes[0].path.push(0));
+    tamper("culture_of", &|m| m.culture_of[0] ^= 1);
+    tamper("culture_regions", &|m| m.culture_regions[0].id ^= 1);
 }

@@ -55,7 +55,10 @@ pub fn build(
 
     // --- weighted Poisson-disk placement ---
     let land_count = biomes.iter().filter(|b| !b.is_water()).count();
-    let target = land_count / density.cells_per_settlement();
+    // Floor the target so a small map (e.g. Pocket + Sparse, where the raw
+    // divisor yields 0) is never settlement-starved — it would otherwise
+    // carry only the force-placed Capitals.
+    let target = (land_count / density.cells_per_settlement()).max(3);
     let min_sep2 = {
         let s = density.min_separation();
         s * s
@@ -73,9 +76,10 @@ pub fn build(
         }
         let ci = c as usize;
         // Short-circuit `&&` in exactly this order: the RNG draw is last and
-        // is consumed only when (a)-(c) hold (byte-stability contract).
+        // is consumed only when the burg + spacing tests both pass
+        // (byte-stability contract). `order` holds each land cell exactly
+        // once, so a `!placed.contains(&c)` guard would be vacuous.
         if burg[ci] > 0.05
-            && !placed.contains(&c)
             && pathfind::spaced_ok(c, &placed, centers, min_sep2)
             && rng.next_f32() < burg[ci] / max_burg
         {

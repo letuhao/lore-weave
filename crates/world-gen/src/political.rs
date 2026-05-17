@@ -102,34 +102,25 @@ pub fn build(
     }
     seed_provs.sort_unstable(); // ascending province id → ascending state id
 
-    // assign each province to the nearest state-seed in its component.
+    // assign each province to the nearest state-seed by TerrainCost path
+    // (GEO_002 §5.1 step 7 — not raw Euclidean distance, so state borders
+    // follow the terrain). Water is impassable for `terrain_cost`, so the
+    // multi-source Dijkstra also keeps every province inside its own land
+    // component.
+    let state_seed_cells: Vec<u32> = seed_provs.iter().map(|&sp| seeds[sp]).collect();
+    let state_owner =
+        pathfind::multi_source_assign(&state_seed_cells, |c| biomes[c].terrain_cost(), neighbors);
     let mut state_of_prov = vec![0u32; np];
     for p in 0..np {
-        let pc = prov_comp(p);
-        let (px, py) = centers[seeds[p] as usize];
-        let mut best_d = f32::INFINITY;
-        let mut best_state = 0u32;
-        for (sid, &sp) in seed_provs.iter().enumerate() {
-            if prov_comp(sp) != pc {
-                continue;
-            }
-            let (sx, sy) = centers[seeds[sp] as usize];
-            let d2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
-            // `d2` is a finite, identically-recomputed sum of squares ⇒ this
-            // f32 `<` is bit-stable; `seed_provs` is ascending so the first
-            // (lowest-id) state wins a distance tie.
-            if d2 < best_d {
-                best_d = d2;
-                best_state = sid as u32;
-            }
-        }
-        // farthest_point places ≥1 state-seed per non-empty component, so a
-        // province's own component always has a seed — assert it loudly.
+        let owner = state_owner[seeds[p] as usize];
+        // farthest_point places ≥1 state-seed per non-empty component, and
+        // every land cell reaches every other in its component, so a
+        // province always has a reachable state-seed — assert it loudly.
         debug_assert!(
-            best_d.is_finite(),
-            "province {p} in component {pc} found no state-seed"
+            owner != NONE,
+            "province {p} cell unreachable from every state-seed"
         );
-        state_of_prov[p] = best_state;
+        state_of_prov[p] = if owner == NONE { 0 } else { owner };
     }
 
     let states: Vec<State> = seed_provs

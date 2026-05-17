@@ -488,54 +488,91 @@ fn provinces_partition_land() {
 }
 
 /// Criterion #4 — state↔province back-references are consistent; every state
-/// has exactly one Capital settlement.
+/// has exactly one Capital settlement. Swept across every coastline profile
+/// (Archipelago's multi-component case especially) — review-impl C8.
 #[test]
 fn states_have_exactly_one_capital() {
-    for seed in 0..8u64 {
-        let map = generate(seed, &CreativeSeed::default());
-        for st in &map.states {
-            assert!((st.capital_province as usize) < map.provinces.len());
-            assert_eq!(
-                map.provinces[st.capital_province as usize].state, st.id,
-                "seed {seed}: state {} capital province not in the state", st.id
-            );
-        }
-        for p in &map.provinces {
-            assert!((p.state as usize) < map.states.len(), "province {} bad state", p.id);
-        }
-        let mut caps = vec![0u32; map.states.len()];
-        for s in &map.settlements {
-            if s.role == SettlementRole::Capital {
-                let pid = map.province_of[s.cell as usize];
-                caps[map.provinces[pid as usize].state as usize] += 1;
+    for profile in PROFILES {
+        for seed in 0..5u64 {
+            let cs = CreativeSeed {
+                coastline_profile: profile,
+                ..CreativeSeed::default()
+            };
+            let map = generate(seed, &cs);
+            for st in &map.states {
+                assert!((st.capital_province as usize) < map.provinces.len());
+                assert_eq!(
+                    map.provinces[st.capital_province as usize].state,
+                    st.id,
+                    "{profile:?} seed {seed}: state {} capital province not in the state",
+                    st.id
+                );
             }
-        }
-        for (sid, &c) in caps.iter().enumerate() {
-            assert_eq!(c, 1, "seed {seed}: state {sid} has {c} capitals (want 1)");
+            for p in &map.provinces {
+                assert!(
+                    (p.state as usize) < map.states.len(),
+                    "{profile:?} province {} bad state",
+                    p.id
+                );
+            }
+            let mut caps = vec![0u32; map.states.len()];
+            for s in &map.settlements {
+                if s.role == SettlementRole::Capital {
+                    let pid = map.province_of[s.cell as usize];
+                    caps[map.provinces[pid as usize].state as usize] += 1;
+                }
+            }
+            for (sid, &c) in caps.iter().enumerate() {
+                assert_eq!(
+                    c, 1,
+                    "{profile:?} seed {seed}: state {sid} has {c} capitals (want 1)"
+                );
+            }
         }
     }
 }
 
 /// Criterion #5 — settlement cells are unique land cells; tier matches role.
+/// Swept across coastline profiles and both density extremes — review-impl C8.
 #[test]
 fn settlements_unique_land_cells() {
-    for seed in 0..8u64 {
-        let map = generate(seed, &CreativeSeed::default());
-        let mut cells: Vec<u32> = map.settlements.iter().map(|s| s.cell).collect();
-        let count = cells.len();
-        cells.sort_unstable();
-        cells.dedup();
-        assert_eq!(cells.len(), count, "seed {seed}: duplicate settlement cells");
-        for s in &map.settlements {
-            assert!(map.is_land(s.cell as usize), "seed {seed}: settlement on water");
-            let want = match s.role {
-                SettlementRole::Capital => 5,
-                SettlementRole::City => 4,
-                SettlementRole::Town => 3,
-                SettlementRole::Village | SettlementRole::Fortress => 2,
-                SettlementRole::Hamlet => 1,
-            };
-            assert_eq!(s.population_tier, want, "seed {seed}: tier/role mismatch");
+    use world_gen::SettlementDensity;
+    for profile in PROFILES {
+        for density in [SettlementDensity::Sparse, SettlementDensity::Dense] {
+            for seed in 0..3u64 {
+                let cs = CreativeSeed {
+                    coastline_profile: profile,
+                    settlement_density: density,
+                    ..CreativeSeed::default()
+                };
+                let map = generate(seed, &cs);
+                let mut cells: Vec<u32> = map.settlements.iter().map(|s| s.cell).collect();
+                let count = cells.len();
+                cells.sort_unstable();
+                cells.dedup();
+                assert_eq!(
+                    cells.len(),
+                    count,
+                    "{profile:?}/{density:?} seed {seed}: duplicate settlement cells"
+                );
+                for s in &map.settlements {
+                    assert!(
+                        map.is_land(s.cell as usize),
+                        "{profile:?}/{density:?} seed {seed}: settlement on water"
+                    );
+                    let want = match s.role {
+                        SettlementRole::Capital => 5,
+                        SettlementRole::City => 4,
+                        SettlementRole::Town => 3,
+                        SettlementRole::Village | SettlementRole::Fortress => 2,
+                        SettlementRole::Hamlet => 1,
+                    };
+                    assert_eq!(
+                        s.population_tier, want,
+                        "{profile:?}/{density:?} seed {seed}: tier/role mismatch"
+                    );
+                }
+            }
         }
     }
 }
@@ -668,6 +705,65 @@ fn culture_partitions_land() {
                     assert_eq!(c, u32::MAX, "{profile:?} seed {seed}: water cell {i} has culture");
                 }
             }
+        }
+    }
+}
+
+/// review-impl C4 — the multi-kind route system is live. The prior
+/// `routes_dedup_and_roads_connected` asserted only Road connectivity, so
+/// SeaLane / MountainPass could (and did) silently generate nothing. This
+/// pins that they actually fire, and that every route carries a real path.
+#[test]
+fn route_kinds_are_generated() {
+    use world_gen::RouteKind;
+
+    // Archipelago: 5 island land components → the SeaLane MST must bridge
+    // them; every inhabited, sea-reachable island joins the tree.
+    let arch = CreativeSeed {
+        coastline_profile: CoastlineProfile::Archipelago,
+        ..CreativeSeed::default()
+    };
+    for seed in 0..6u64 {
+        let map = generate(seed, &arch);
+        let sealanes = map
+            .routes
+            .iter()
+            .filter(|r| r.kind == RouteKind::SeaLane)
+            .count();
+        assert!(
+            sealanes >= 1,
+            "archipelago seed {seed}: no SeaLane — islands left unreachable"
+        );
+    }
+
+    // A continent's mountainous interior must yield MountainPass chokepoints.
+    let mut mountain_pass_seen = false;
+    for seed in 0..6u64 {
+        let map = generate(seed, &CreativeSeed::default());
+        if map.routes.iter().any(|r| r.kind == RouteKind::MountainPass) {
+            mountain_pass_seen = true;
+        }
+    }
+    assert!(
+        mountain_pass_seen,
+        "no MountainPass generated across six continent seeds"
+    );
+
+    // Every route carries a ≥2-cell path whose ends match from/to_cell.
+    for seed in 0..4u64 {
+        let map = generate(seed, &CreativeSeed::default());
+        for r in &map.routes {
+            assert!(
+                r.path.len() >= 2,
+                "seed {seed}: {:?} route has a degenerate path",
+                r.kind
+            );
+            assert_eq!(r.path[0], r.from_cell, "seed {seed}: path[0] != from_cell");
+            assert_eq!(
+                *r.path.last().unwrap(),
+                r.to_cell,
+                "seed {seed}: path end != to_cell"
+            );
         }
     }
 }
