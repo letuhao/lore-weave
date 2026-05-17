@@ -10,13 +10,17 @@
 
 | Phase | Title | Status |
 |---|---|---|
-| 0 | Scaffold (re-purpose the Cycle-0 `world-service` crate) | **DONE** (scaffold exists; restructure happens in Phase 1) |
-| 1 | Crate structure + core types + Voronoi mesh + heightmap | NOT STARTED |
+| 0 | Scaffold (re-purpose the Cycle-0 `world-service` crate) | **DONE** (superseded — Phase 1 created `crates/world-gen` fresh; `services/world-service` + `services/travel-service` left orphaned for human cleanup) |
+| 1 | Crate structure + core types + Voronoi mesh + heightmap | **DONE** (2026-05-17) |
 | 2 | Climate + biomes + rivers | NOT STARTED |
 | 3 | Political + settlement + route + culture | NOT STARTED |
 | 4 | Serialization + image export + CLI + (optional) LLM CreativeSeed authoring | NOT STARTED |
 
-Phases are strictly sequential. Each is an **L-size** task — run the default v2.2 workflow with the mandatory 2-pass code review + `/review-impl`. AMAW is **not** warranted (no migrations, no schema, no security-critical paths — `CLAUDE.md`: "Don't invoke for everyday work").
+Phases are strictly sequential. Each is an **L-size** task. (The overnight build run is executing these under **AMAW** per the project owner's call — the full 12-phase workflow with cold-start sub-agent reviews + `/review-impl`, a step up from this plan's original default-workflow recommendation.)
+
+### Phase 1 — build log (2026-05-17)
+
+`crates/world-gen/` — library `world_gen` + CLI bin `world-gen`. 9 source files + 2 integration tests, 19 tests green, `cargo clippy --all-targets` clean. Voronoi dual-mesh (perimeter ring + jittered interior → `delaunator` Delaunay → degree-repaired adjacency); Azgaar blob+radial-falloff heightmap; blake3+ChaCha8 determinism with a `content_hash` gate. AMAW: 3 design-review rounds (r1/r2 REJECTED → r3 APPROVED_WITH_WARNINGS), 2 code-review rounds (r1 REJECTED — land-coherence held on only some seeds → r2 APPROVED_WITH_WARNINGS), `/review-impl` (1 MED + 4 LOW), Scope Guard CLEAR. Phase 4 LLM authoring will use `ibm/granite-4-h-tiny` via LM Studio. One deferred item: `DEFERRED.md` #013 (land-fraction precision → Phase 2). Phase 4's optional LLM authoring is **in scope** for this run.
 
 ---
 

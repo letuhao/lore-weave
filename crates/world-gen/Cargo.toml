@@ -1,0 +1,30 @@
+# world-gen — standalone procedural world-map generator (GEO_GENERATOR_PLAN).
+# Library `world_gen` + thin CLI bin `world-gen`. No event-sourcing engine
+# coupling — a pure `generate(seed, &CreativeSeed) -> WorldMap` function.
+
+[package]
+name = "world-gen"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "world_gen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "world-gen"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+blake3 = { workspace = true }
+rand_core = "0.6"
+rand_chacha = "0.3"
+delaunator = "1.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
+clap = { version = "4", features = ["derive"] }
