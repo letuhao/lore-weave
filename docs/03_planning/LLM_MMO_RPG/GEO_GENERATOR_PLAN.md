@@ -6,6 +6,36 @@
 
 ---
 
+## Current status & next session (handoff)
+
+**As of 2026-05-17 — branch `geo-generator-amaw`, unpushed.** The 4-phase
+generator is built, the post-build human-in-loop review is done, and four
+enhancements have since shipped — each via the full default 12-phase v2.2
+workflow (`/review-impl` on the last two):
+
+| Work | Commit |
+|---|---|
+| Path A — relief render (hillshade · fBm detail · realistic/atlas styles) | `be6047fe` |
+| Path B — ridged-noise heightmap (killed the bullseye terrain) | `1bfa54e0` |
+| Orographic climate — wind-driven rain shadow (`--wind` knob) | `13ea0999` |
+| Feature naming — extraction + LLM `name` step + SVG labels | `d0e608e3` |
+
+**103 tests green + 2 ignored** (LLM integration), `cargo clippy` clean.
+
+**Next session — Hydraulic erosion (Path B v2), human-in-loop.** Simulate water
+erosion over the heightmap — carved valleys, dendritic drainage networks,
+sediment fans — the realism step left after Path B's ridged ranges. Run the
+default 12-phase v2.2 workflow with PO checkpoints at CLARIFY end + POST-REVIEW.
+It is a *model* change (touches `terrain.rs` and so `content_hash`) → an L
+task, write a plan file. The per-enhancement build-log notes below carry the
+detail.
+
+**Other open GEO enhancements** (surveyed, not chosen): render polish + 16-bit
+heightmap export; archetype-conditioned generation (`world_archetype` is still
+inert). The GEO → zone-tilemap handoff is the bridge to other world-map layers.
+
+---
+
 ## Phase status board
 
 | Phase | Title | Status |
