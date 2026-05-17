@@ -168,11 +168,10 @@ impl CoastlineProfile {
         matches!(self, CoastlineProfile::Archipelago)
     }
 
-    /// Amplitude of the continental base dome (terrain stage). A broad dome
-    /// gives a *connected* land backbone — needed for `Inland`, whose 0.70
-    /// land target a blob-only heightmap cannot form coherently. Other
-    /// profiles do not need it (their land target is reachable from blobs +
-    /// radial falloff alone) → 0.0, no terrain change.
+    /// Amplitude of the Inland continental dome (terrain stage). A broad radial
+    /// dome biases the high-land `Inland` profile (0.70 land target) toward one
+    /// coherent central landmass. Other profiles do not need it → 0.0, no
+    /// terrain change. See [`crate::terrain`].
     pub fn base_amplitude(self) -> f32 {
         match self {
             CoastlineProfile::Inland => 0.75,

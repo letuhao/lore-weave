@@ -80,6 +80,33 @@ pub fn fbm(x: f32, y: f32, seed: u32, octaves: u32) -> f32 {
     if norm > 0.0 { sum / norm } else { 0.0 }
 }
 
+/// Ridged-multifractal noise — `octaves` of [`gradient_noise`] folded with
+/// `offset − |n|` so crests track the noise's *zero crossings* (sharp ridge
+/// **lines**, not smooth bumps), squared to sharpen the crest, and
+/// multifractally weighted so finer detail concentrates on the ridges. Output
+/// is in roughly `[0, 1]`, high along ridgelines — the basis for mountain
+/// ranges rather than radial cones.
+pub fn ridged_fbm(x: f32, y: f32, seed: u32, octaves: u32) -> f32 {
+    const OFFSET: f32 = 1.0;
+    const GAIN: f32 = 2.0;
+    let mut sum = 0.0;
+    let mut norm = 0.0;
+    let mut freq = 1.0;
+    let mut weight = 1.0f32;
+    for o in 0..octaves {
+        let oseed = seed.wrapping_add(o.wrapping_mul(0x9E37_79B9));
+        let mut signal = OFFSET - gradient_noise(x * freq, y * freq, oseed).abs();
+        signal *= signal; // sharpen the ridge crest
+        signal *= weight; // multifractal — gate this octave by the previous
+        weight = (signal * GAIN).clamp(0.0, 1.0);
+        let spectral = 1.0 / freq; // h = 1 spectral weighting
+        sum += signal * spectral;
+        norm += spectral;
+        freq *= 2.0; // lacunarity 2
+    }
+    if norm > 0.0 { sum / norm } else { 0.0 }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,5 +176,28 @@ mod tests {
             })
             .count();
         assert!(same < 10, "seeds 1 and 2 produced near-identical fields");
+    }
+
+    #[test]
+    fn ridged_fbm_is_deterministic_and_bounded() {
+        for i in 0..2000 {
+            let (x, y) = (i as f32 * 0.013, i as f32 * 0.017);
+            let v = ridged_fbm(x, y, 11, 5);
+            assert_eq!(v.to_bits(), ridged_fbm(x, y, 11, 5).to_bits());
+            assert!(
+                (0.0..=1.0).contains(&v),
+                "ridged_fbm out of [0,1] at ({x},{y}): {v}"
+            );
+        }
+    }
+
+    #[test]
+    fn ridged_fbm_varies_across_space() {
+        let first = ridged_fbm(0.2, 0.6, 4, 5);
+        let differs = (1..300).any(|i| {
+            let p = i as f32 * 0.04;
+            (ridged_fbm(p, p * 0.7, 4, 5) - first).abs() > 1e-4
+        });
+        assert!(differs, "ridged_fbm produced a constant field");
     }
 }

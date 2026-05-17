@@ -1,18 +1,30 @@
 //! Stage 2 — heightmap.
 //!
-//! Azgaar-style blob seeds ("add hill/range") + a coastline-profile radial
-//! falloff, normalized to `u16`. Sea level is picked by target land fraction.
+//! A global continuous heightmap *function*, [`height_at`], sampled at each
+//! cell centre (Path B — replaced the Azgaar-style radial blob seeds, whose
+//! `amp·falloff^r` growth made every mountain a concentric "bullseye"):
+//! - a low-frequency fBm **continent base**;
+//! - **ridged-multifractal** mountain ranges — sharp linear ridgelines, not
+//!   radial cones — gated by a low-frequency **belt mask** (ranges cluster)
+//!   and a **landness gate** (ranges rise on continental crust);
+//! - mid-frequency fBm **hills**;
+//! - **domain warping** so nothing is grid-aligned;
+//! - the optional Inland continental **dome**.
 //!
-//! Land coherence (acceptance criterion #5) is then *enforced structurally*,
-//! not left to emerge:
+//! Then a coastline-profile radial falloff (`apply_falloff` — shapes *where*
+//! land is), normalize to `u16`, a connectivity-aware sea level, and
+//! structural land-coherence enforcement.
+//!
+//! Land coherence (acceptance criterion #5) is enforced structurally:
 //! - non-Archipelago — `enforce_coherence` submerges every land component
 //!   except the largest, so one dominant continent always remains;
-//! - Archipelago — blobs are confined to 5 fixed, well-separated island discs
-//!   (`ARCH_ISLANDS` / `ARCH_RADIUS`); the radial mask is exactly 0 between
-//!   discs, so the islands are always separate connected components.
+//! - Archipelago — the radial mask confines land to 5 fixed, well-separated
+//!   island discs (`ARCH_ISLANDS` / `ARCH_RADIUS`); the mask is exactly 0
+//!   between discs, so the islands are always separate connected components.
 
 use crate::creative_seed::CoastlineProfile;
-use crate::rng::Rng;
+use crate::noise::{fbm, ridged_fbm};
+use crate::rng::sub_seed;
 
 /// Archipelago island disc centres — pairwise separation ≥ 0.353, so with
 /// `ARCH_RADIUS = 0.15` (disc span 0.30) the discs never touch.
@@ -26,6 +38,39 @@ const ARCH_ISLANDS: [(f32, f32); 5] = [
 /// Archipelago island disc radius. `2 * ARCH_RADIUS < min island separation`,
 /// so the radial mask is exactly 0 in the sea bands between islands.
 const ARCH_RADIUS: f32 = 0.15;
+
+// --- heightmap tuning (Path B) ----------------------------------------------
+
+/// Domain-warp frequency / amplitude / octaves — bends ridges and coastlines
+/// off the noise lattice so nothing reads as grid-aligned.
+const WARP_FREQ: f32 = 2.2;
+const WARP_AMP: f32 = 0.09;
+const WARP_OCTAVES: u32 = 3;
+/// Continent base — low frequency: the broad landmass.
+const CONT_FREQ: f32 = 1.7;
+const CONT_OCTAVES: u32 = 4;
+/// Mountain ranges — ridged multifractal.
+const MTN_FREQ: f32 = 4.5;
+const MTN_OCTAVES: u32 = 5;
+/// Mountain-belt mask — low frequency: *where* ranges cluster.
+const BELT_FREQ: f32 = 1.9;
+const BELT_OCTAVES: u32 = 3;
+/// Hills — mid frequency: rolling terrain between ranges.
+const HILL_FREQ: f32 = 7.5;
+const HILL_OCTAVES: u32 = 4;
+
+/// Component weights in the height sum.
+const CONT_WEIGHT: f32 = 1.00;
+const MTN_WEIGHT: f32 = 1.35;
+const HILL_WEIGHT: f32 = 0.15;
+
+/// Distinct noise-field salts so the components are decorrelated.
+const SALT_WARP_X: u32 = 0x7A1C_9E11;
+const SALT_WARP_Y: u32 = 0x31B5_22F7;
+const SALT_CONT: u32 = 0x9D4E_0C53;
+const SALT_MTN: u32 = 0xC0FF_EE42;
+const SALT_BELT: u32 = 0x1357_9BDF;
+const SALT_HILL: u32 = 0x2468_ACE0;
 
 /// Per-cell elevations + the chosen sea level.
 pub struct Terrain {
@@ -43,55 +88,20 @@ pub fn build(
     neighbors: &[Vec<u32>],
 ) -> Terrain {
     let count = centers.len();
-    let mut rng = Rng::for_stage(seed, b"terrain");
-    let mut elev = vec![0.0f32; count];
+    // The heightmap is a pure function of position + a u32 noise seed — Path B
+    // dropped the blob RNG stream, so no `Rng` is threaded through this stage.
+    let s = sub_seed(seed, b"terrain-height");
+    let nseed = (s ^ (s >> 32)) as u32;
 
-    // --- Blob seeds (exact, fully-pinned algorithm) ---
-    let k = (count / 380).clamp(6, 40);
-    for b in 0..k {
-        let ux = rng.next_f32();
-        let uy = rng.next_f32();
-        let ua = rng.next_f32();
-        let uf = rng.next_f32();
-        let (bx, by) = if profile.is_archipelago() {
-            // Seed inside one island disc (round-robin over the 5 islands).
-            let island = ARCH_ISLANDS[b % ARCH_ISLANDS.len()];
-            let angle = ux * std::f32::consts::TAU;
-            let r = uy * ARCH_RADIUS * 0.6;
-            (island.0 + r * angle.cos(), island.1 + r * angle.sin())
-        } else {
-            // Center-biased ⇒ one coherent mass (SPREAD = 0.70).
-            (0.5 + (ux - 0.5) * 0.70, 0.5 + (uy - 0.5) * 0.70)
-        };
-        let seed_cell = nearest_cell(centers, bx, by);
-        let amp = 0.45 + ua * 0.55;
-        let falloff = 0.82 + uf * 0.08;
-        grow_blob(seed_cell, amp, falloff, neighbors, &mut elev);
-    }
+    let mut elev: Vec<f32> = centers
+        .iter()
+        .map(|&(x, y)| height_at(x, y, profile, nseed))
+        .collect();
 
-    // --- Continental base dome ---
-    // A broad radial dome (monotone in distance from centre) so high-land
-    // profiles form ONE connected landmass: every superlevel set of a
-    // monotone dome is a disc, so `enforce_coherence` keeps a coherent core
-    // instead of the largest scattered blob fragment. Profiles that do not
-    // need it have `base_amplitude() == 0.0` (no-op, terrain unchanged).
-    let base_amp = profile.base_amplitude();
-    if base_amp > 0.0 {
-        for (i, &(x, y)) in centers.iter().enumerate() {
-            let d = dist(x, y, 0.5, 0.5);
-            let ratio = d / 0.92;
-            let dome = (1.0 - ratio * ratio).max(0.0);
-            elev[i] += base_amp * dome;
-        }
-    }
-
-    // --- Radial falloff by coastline profile ---
+    // Coastline-profile radial falloff — shapes *where* land is.
     apply_falloff(profile, centers, &mut elev);
 
-    // --- Erosion: soften the hard concentric blob banding ---
-    erode(&mut elev, neighbors, &mut rng);
-
-    // --- Normalize to [0,1], then to u16 ---
+    // Normalize to [0,1], then to u16.
     let mut lo = f32::INFINITY;
     let mut hi = f32::NEG_INFINITY;
     for &e in &elev {
@@ -115,45 +125,56 @@ pub fn build(
     }
 }
 
-/// Index of the cell whose centre is nearest `(x,y)` (squared Euclidean;
-/// ties resolve to the lower index).
-fn nearest_cell(centers: &[(f32, f32)], x: f32, y: f32) -> usize {
-    debug_assert!(!centers.is_empty(), "mesh must be non-empty");
-    let mut best = 0usize;
-    let mut best_d = f32::INFINITY;
-    for (i, &(cx, cy)) in centers.iter().enumerate() {
-        let d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
-        if d < best_d {
-            best_d = d;
-            best = i;
-        }
-    }
-    best
+/// The Path B heightmap — a pure function of position. A low-frequency fBm
+/// continent, ridged-multifractal mountain ranges gated by a belt mask and a
+/// landness gate, mid-frequency hills, all domain-warped, plus the optional
+/// Inland continental dome. Always `≥ 0` (the normalize + `apply_falloff`
+/// multiply both assume a non-negative field).
+fn height_at(x: f32, y: f32, profile: CoastlineProfile, seed: u32) -> f32 {
+    // Domain warp — displace the sample point with low-frequency fBm.
+    let wx = x + WARP_AMP * fbm(x * WARP_FREQ, y * WARP_FREQ, seed ^ SALT_WARP_X, WARP_OCTAVES);
+    let wy = y + WARP_AMP * fbm(x * WARP_FREQ, y * WARP_FREQ, seed ^ SALT_WARP_Y, WARP_OCTAVES);
+
+    // Continent base — the broad landmass, fBm mapped to ~[0,1].
+    let continent =
+        0.5 + 0.5 * fbm(wx * CONT_FREQ, wy * CONT_FREQ, seed ^ SALT_CONT, CONT_OCTAVES);
+
+    // Hills — mid-frequency rolling terrain, signed (raises and lowers).
+    let hills = fbm(wx * HILL_FREQ, wy * HILL_FREQ, seed ^ SALT_HILL, HILL_OCTAVES);
+
+    // Mountain-belt mask — a soft low-frequency gate so ranges cluster into
+    // belts rather than blanketing the whole map.
+    let belt_raw = 0.5 + 0.5 * fbm(x * BELT_FREQ, y * BELT_FREQ, seed ^ SALT_BELT, BELT_OCTAVES);
+    let belt = smoothstep(0.46, 0.72, belt_raw);
+
+    // Ridged ranges — sharp linear ridgelines (the bullseye-killer).
+    let ridges = ridged_fbm(wx * MTN_FREQ, wy * MTN_FREQ, seed ^ SALT_MTN, MTN_OCTAVES);
+
+    // Landness gate — ranges rise on continental crust, fade over deep ocean.
+    let landness = smoothstep(0.32, 0.52, continent);
+
+    // Inland continental dome — a broad radial bias so the high-land Inland
+    // profile forms one coherent mass (`base_amplitude` is 0 for the rest).
+    let dome = profile.base_amplitude() * dome_bias(x, y);
+
+    let height = CONT_WEIGHT * continent
+        + HILL_WEIGHT * hills
+        + MTN_WEIGHT * belt * ridges * landness
+        + dome;
+    height.max(0.0)
 }
 
-/// BFS a blob outward from `seed_cell`: a cell first reached at ring `r`
-/// receives `amp * falloff^r` (via `max`); expansion stops below 0.02.
-fn grow_blob(seed_cell: usize, amp: f32, falloff: f32, neighbors: &[Vec<u32>], elev: &mut [f32]) {
-    let mut visited = vec![false; elev.len()];
-    let mut queue: std::collections::VecDeque<(usize, f32)> = std::collections::VecDeque::new();
-    visited[seed_cell] = true;
-    queue.push_back((seed_cell, amp));
-    while let Some((cell, contrib)) = queue.pop_front() {
-        if contrib < 0.02 {
-            continue;
-        }
-        if contrib > elev[cell] {
-            elev[cell] = contrib;
-        }
-        let next = contrib * falloff;
-        for &n in &neighbors[cell] {
-            let n = n as usize;
-            if !visited[n] {
-                visited[n] = true;
-                queue.push_back((n, next));
-            }
-        }
-    }
+/// Broad radial dome — 1 at the map centre, falling to 0 by the rim — the
+/// Inland profile's coherent-landmass bias.
+fn dome_bias(x: f32, y: f32) -> f32 {
+    let r = dist(x, y, 0.5, 0.5) / 0.92;
+    (1.0 - r * r).max(0.0)
+}
+
+/// Hermite smoothstep — 0 at/below `e0`, 1 at/above `e1`, smooth between.
+fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// Multiply each cell's elevation by a coastline-profile radial mask.
@@ -203,35 +224,10 @@ fn dist(x: f32, y: f32, cx: f32, cy: f32) -> f32 {
     ((x - cx) * (x - cx) + (y - cy) * (y - cy)).sqrt()
 }
 
-/// Erode the heightmap: a touch of per-cell value noise breaks the blob
-/// seeds' perfect radial symmetry, then a few neighbour-averaging passes
-/// wash out the hard concentric banding `grow_blob`'s ring falloff leaves.
-/// Deterministic — the noise draws in cell order, and each smoothing pass
-/// reads a frozen snapshot so it is independent of cell visit order.
-fn erode(elev: &mut [f32], neighbors: &[Vec<u32>], rng: &mut Rng) {
-    const NOISE: f32 = 0.05;
-    const PASSES: usize = 3;
-    const BLEND: f32 = 0.5;
-    for e in elev.iter_mut() {
-        *e += (rng.next_f32() - 0.5) * NOISE;
-    }
-    for _ in 0..PASSES {
-        let prev = elev.to_vec();
-        for (i, e) in elev.iter_mut().enumerate() {
-            let nb = &neighbors[i];
-            if nb.is_empty() {
-                continue;
-            }
-            let mean = nb.iter().map(|&n| prev[n as usize]).sum::<f32>() / nb.len() as f32;
-            *e = prev[i] * (1.0 - BLEND) + mean * BLEND;
-        }
-    }
-}
-
 /// Choose the sea level. Archipelago keeps the percentile pick (its 5-island
 /// structure already defines coherence); every other profile uses a
 /// connectivity-aware binary search so the largest land component lands near
-/// the target fraction — clears DEFERRED #013.
+/// the target fraction.
 fn choose_sea_level(profile: CoastlineProfile, elevation: &[u16], neighbors: &[Vec<u32>]) -> u16 {
     if profile.is_archipelago() {
         return pick_sea_level(elevation, profile.land_fraction());
@@ -366,4 +362,49 @@ fn land_components(elevation: &[u16], neighbors: &[Vec<u32>], sea_level: u16) ->
         comps.push(comp);
     }
     comps
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PROFILES: [CoastlineProfile; 5] = [
+        CoastlineProfile::Island,
+        CoastlineProfile::Peninsula,
+        CoastlineProfile::Coastal,
+        CoastlineProfile::Inland,
+        CoastlineProfile::Archipelago,
+    ];
+
+    #[test]
+    fn height_at_is_deterministic() {
+        for i in 0..500 {
+            let (x, y) = (i as f32 * 0.0017, 1.0 - i as f32 * 0.0019);
+            let a = height_at(x, y, CoastlineProfile::Coastal, 12345);
+            let b = height_at(x, y, CoastlineProfile::Coastal, 12345);
+            assert_eq!(a.to_bits(), b.to_bits(), "height_at not reproducible");
+        }
+    }
+
+    #[test]
+    fn height_at_is_non_negative_and_finite() {
+        for profile in PROFILES {
+            for i in 0..60 {
+                for j in 0..60 {
+                    let h = height_at(i as f32 / 60.0, j as f32 / 60.0, profile, 99);
+                    assert!(h.is_finite() && h >= 0.0, "height_at({profile:?}) = {h}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn height_at_varies_across_space() {
+        let first = height_at(0.2, 0.3, CoastlineProfile::Coastal, 7);
+        let differs = (1..400).any(|i| {
+            let p = i as f32 * 0.0025;
+            (height_at(p, 1.0 - p, CoastlineProfile::Coastal, 7) - first).abs() > 1e-3
+        });
+        assert!(differs, "height_at produced a constant field");
+    }
 }
