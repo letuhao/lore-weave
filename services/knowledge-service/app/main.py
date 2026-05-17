@@ -6,6 +6,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from loreweave_obs import setup_tracing
+
 from app.clients.book_client import close_book_client, get_book_client
 from app.clients.embedding_client import close_embedding_client, get_embedding_client
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
@@ -443,6 +445,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Phase 6c-γ — OpenTelemetry: instrument this app for SERVER spans + httpx
+# for outbound CLIENT spans. No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+# Called AFTER add_middleware so the OTel ASGI middleware lands OUTERMOST
+# (Starlette prepends middleware) — the SERVER span then covers the full
+# request, CORS + TraceId middleware included. /review-impl(6c-γ) LOW#4.
+setup_tracing("knowledge-service", app=app)
 
 @app.exception_handler(Exception)
 async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONResponse:

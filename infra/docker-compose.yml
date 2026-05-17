@@ -418,6 +418,8 @@ services:
       # MED#2 — was only used by the deleted resolve_credentials() flow.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -452,6 +454,8 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       KNOWLEDGE_CLIENT_TIMEOUT_S: "0.5"
@@ -488,6 +492,8 @@ services:
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
       # K11.1 — Neo4j connection (Track 2). Empty NEO4J_URI means
@@ -564,6 +570,8 @@ services:
     environment:
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       BOOK_SERVICE_URL: http://book-service:8082
       # Phase 4b-γ: SDK posts to provider-registry's internal LLM
@@ -668,6 +676,8 @@ services:
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       auth-service:
         condition: service_healthy

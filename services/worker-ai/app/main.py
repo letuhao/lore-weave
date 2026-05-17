@@ -12,6 +12,7 @@ import asyncio
 import logging
 
 import asyncpg
+from loreweave_obs import setup_tracing
 
 from app.clients import BookClient, GlossaryClient, KnowledgeClient
 from app.config import settings
@@ -26,6 +27,11 @@ async def main() -> None:
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+
+    # Phase 6c-γ — OpenTelemetry: instrument httpx so the loreweave_llm SDK
+    # calls emit CLIENT spans. No app — worker-ai has no HTTP server. No-op
+    # when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+    setup_tracing("worker-ai")
 
     logger.info("worker-ai starting (poll_interval=%.1fs)", settings.poll_interval_s)
 
