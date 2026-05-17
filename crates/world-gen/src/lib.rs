@@ -99,7 +99,12 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         .centers
         .iter()
         .zip(terrain.elevation.iter())
-        .map(|(&center, &elevation)| Cell { center, elevation })
+        .zip(mesh.polygons.iter())
+        .map(|((&center, &elevation), polygon)| Cell {
+            center,
+            elevation,
+            vertex_polygon: polygon.clone(),
+        })
         .collect();
 
     let mut map = WorldMap {
@@ -124,10 +129,13 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
     // All f32 fields must be finite — non-finite values serialize as JSON
     // `null` and break the round-trip identity guarantee (Phase 4 §2).
     debug_assert!(
-        map.cells
-            .iter()
-            .all(|c| c.center.0.is_finite() && c.center.1.is_finite())
-            && map.river_flux.iter().all(|f| f.is_finite()),
+        map.cells.iter().all(|c| {
+            c.center.0.is_finite()
+                && c.center.1.is_finite()
+                && c.vertex_polygon
+                    .iter()
+                    .all(|&(x, y)| x.is_finite() && y.is_finite())
+        }) && map.river_flux.iter().all(|f| f.is_finite()),
         "non-finite f32 in WorldMap"
     );
     map.content_hash = map.compute_hash();

@@ -69,6 +69,9 @@ struct GenerateArgs {
     /// Optional political-map PNG path.
     #[arg(long)]
     political_png: Option<PathBuf>,
+    /// Optional culture-region PNG path.
+    #[arg(long)]
+    culture_png: Option<PathBuf>,
     /// Optional political-map SVG path.
     #[arg(long)]
     svg: Option<PathBuf>,
@@ -169,6 +172,14 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         let img = world_gen::render::political_image(&map, cli.png_size, cli.png_size);
         if let Err(e) = img.save(png) {
             eprintln!("error: save political png {}: {e}", png.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", png.display());
+    }
+    if let Some(png) = &cli.culture_png {
+        let img = world_gen::render::culture_image(&map, cli.png_size, cli.png_size);
+        if let Err(e) = img.save(png) {
+            eprintln!("error: save culture png {}: {e}", png.display());
             return ExitCode::FAILURE;
         }
         println!("wrote {}", png.display());

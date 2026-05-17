@@ -62,6 +62,42 @@ fn biome_color(b: BiomeKind) -> Rgb<u8> {
     }
 }
 
+/// Render a culture-region image of `map` — each land cell tinted by its
+/// culture id; water cells are ocean-blue.
+pub fn culture_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
+    rasterize(map, width, height, |cell| {
+        let cid = map.culture_of[cell];
+        if cid == u32::MAX {
+            Rgb([40, 70, 120]) // water
+        } else {
+            culture_color(cid)
+        }
+    })
+}
+
+/// A distinct tint per culture id (`culture_count` is clamped to 1..=16).
+fn culture_color(id: u32) -> Rgb<u8> {
+    const PALETTE: [[u8; 3]; 16] = [
+        [210, 100, 100],
+        [100, 160, 210],
+        [160, 200, 100],
+        [210, 180, 90],
+        [150, 120, 200],
+        [100, 200, 170],
+        [220, 140, 170],
+        [140, 170, 110],
+        [190, 150, 210],
+        [120, 190, 130],
+        [210, 200, 120],
+        [170, 130, 120],
+        [120, 140, 200],
+        [200, 170, 140],
+        [150, 200, 200],
+        [180, 110, 150],
+    ];
+    Rgb(PALETTE[(id as usize) % PALETTE.len()])
+}
+
 /// A uniform bucket grid over cell centres for fast nearest-centre lookup.
 struct SpatialIndex {
     side: usize,
@@ -286,9 +322,7 @@ fn draw_dot(img: &mut RgbImage, map: &WorldMap, cell: u32, radius: u32, color: R
 /// `<circle>`s. Water cells are omitted — the ocean background shows through.
 pub fn political_svg(map: &WorldMap, size: u32) -> String {
     let s = size as f32;
-    let grid = (map.cells.len() as f32).sqrt().max(1.0);
-    let cell = (s / grid * 1.5).max(1.0); // slight overlap avoids seams
-    let mut svg = String::with_capacity(map.cells.len() * 80);
+    let mut svg = String::with_capacity(map.cells.len() * 120);
     svg.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{size}\" height=\"{size}\" \
          viewBox=\"0 0 {size} {size}\">\n"
@@ -301,11 +335,18 @@ pub fn political_svg(map: &WorldMap, size: u32) -> String {
         if pid == u32::MAX {
             continue; // water — ocean background shows through
         }
-        let (px, py) = svg_px(c.center, s);
+        // The cell's true Voronoi polygon, state-tinted.
+        let pts: Vec<String> = c
+            .vertex_polygon
+            .iter()
+            .map(|&v| {
+                let (px, py) = svg_px(v, s);
+                format!("{px:.1},{py:.1}")
+            })
+            .collect();
         svg.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{cell:.1}\" height=\"{cell:.1}\" fill=\"{}\"/>\n",
-            px - cell / 2.0,
-            py - cell / 2.0,
+            "<polygon points=\"{}\" fill=\"{}\"/>\n",
+            pts.join(" "),
             hex(state_color(map.provinces[pid as usize].state)),
         ));
     }

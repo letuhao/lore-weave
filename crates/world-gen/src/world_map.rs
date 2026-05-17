@@ -10,13 +10,16 @@ use crate::biome::BiomeKind;
 use crate::climate::ClimateZone;
 use crate::creative_seed::WorldScale;
 
-/// One Voronoi cell — a centre point and an elevation.
+/// One Voronoi cell — a centre, an elevation, and the cell's vertex polygon.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cell {
     /// Normalized centre in `[0,1]²`.
     pub center: (f32, f32),
     /// Elevation `0..=65535`; `< WorldMap.sea_level` ⇒ water.
     pub elevation: u16,
+    /// The cell's Voronoi polygon — an angle-ordered vertex ring in `[0,1]²`
+    /// (≥ 3 vertices). Geometry for rendering and downstream consumers.
+    pub vertex_polygon: Vec<(f32, f32)>,
 }
 
 /// Settlement role (GEO_001 §4.3).
@@ -195,6 +198,11 @@ impl WorldMap {
             h.update(&c.center.0.to_le_bytes());
             h.update(&c.center.1.to_le_bytes());
             h.update(&c.elevation.to_le_bytes());
+            h.update(&(c.vertex_polygon.len() as u32).to_le_bytes());
+            for &(vx, vy) in &c.vertex_polygon {
+                h.update(&vx.to_le_bytes());
+                h.update(&vy.to_le_bytes());
+            }
         }
         for list in &self.neighbors {
             h.update(&(list.len() as u32).to_le_bytes());

@@ -88,6 +88,9 @@ pub fn build(
     // --- Radial falloff by coastline profile ---
     apply_falloff(profile, centers, &mut elev);
 
+    // --- Erosion: soften the hard concentric blob banding ---
+    erode(&mut elev, neighbors, &mut rng);
+
     // --- Normalize to [0,1], then to u16 ---
     let mut lo = f32::INFINITY;
     let mut hi = f32::NEG_INFINITY;
@@ -198,6 +201,31 @@ fn edge_ramp(edge_dist: f32, width: f32) -> f32 {
 /// Euclidean distance between two points.
 fn dist(x: f32, y: f32, cx: f32, cy: f32) -> f32 {
     ((x - cx) * (x - cx) + (y - cy) * (y - cy)).sqrt()
+}
+
+/// Erode the heightmap: a touch of per-cell value noise breaks the blob
+/// seeds' perfect radial symmetry, then a few neighbour-averaging passes
+/// wash out the hard concentric banding `grow_blob`'s ring falloff leaves.
+/// Deterministic — the noise draws in cell order, and each smoothing pass
+/// reads a frozen snapshot so it is independent of cell visit order.
+fn erode(elev: &mut [f32], neighbors: &[Vec<u32>], rng: &mut Rng) {
+    const NOISE: f32 = 0.05;
+    const PASSES: usize = 3;
+    const BLEND: f32 = 0.5;
+    for e in elev.iter_mut() {
+        *e += (rng.next_f32() - 0.5) * NOISE;
+    }
+    for _ in 0..PASSES {
+        let prev = elev.to_vec();
+        for (i, e) in elev.iter_mut().enumerate() {
+            let nb = &neighbors[i];
+            if nb.is_empty() {
+                continue;
+            }
+            let mean = nb.iter().map(|&n| prev[n as usize]).sum::<f32>() / nb.len() as f32;
+            *e = prev[i] * (1.0 - BLEND) + mean * BLEND;
+        }
+    }
 }
 
 /// Choose the sea level. Archipelago keeps the percentile pick (its 5-island
