@@ -8,6 +8,11 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 ProjectType = Literal["book", "translation", "code", "general"]
 ExtractionStatus = Literal["disabled", "building", "paused", "ready", "failed"]
 ScopeType = Literal["global", "project", "session", "entity"]
+# K21-C (design D5): mirrors the Neo4j FactType closed enum in
+# app/db/neo4j_repos/facts.py. Kept as a local Literal (same pattern
+# as ProjectType / ScopeType) so app.db.models stays free of any
+# neo4j_repos import.
+FactType = Literal["decision", "preference", "milestone", "negation"]
 
 # Names are stripped of surrounding whitespace and must contain at least
 # one non-whitespace character. Max 200 chars, chat-service convention.
@@ -47,6 +52,11 @@ class Project(BaseModel):
     # True so a project row that predates the column reads back enabled
     # (mirrors the DB `DEFAULT true`).
     tool_calling_enabled: bool = True
+    # K21-C (design D4): per-project memory_remember confirmation gate.
+    # Default False — opt-in; a project row that predates the column
+    # reads back off (mirrors the DB `DEFAULT false`) so memory_remember
+    # keeps writing directly until the user turns confirmation on.
+    memory_remember_confirm: bool = False
     version: int  # D-K8-03: bumped on every non-empty PATCH.
     created_at: datetime
     updated_at: datetime
@@ -85,6 +95,12 @@ class ProjectUpdate(BaseModel):
       is treated as "skip" by the repo (same as name/description).
       The settings toggle UI that drives this is Cycle C — accepting
       the field now lets that be a FE-only change.
+    - `memory_remember_confirm` (K21-C, design D4): omit to leave
+      unchanged. Set to `true`/`false` to toggle whether the
+      executor queues `memory_remember` facts for user confirmation
+      instead of writing them directly. NOT NULL in the DB, so
+      setting it explicitly to None is treated as "skip" by the repo
+      (same as tool_calling_enabled).
     """
 
     name: ProjectName | None = None
@@ -94,6 +110,7 @@ class ProjectUpdate(BaseModel):
     is_archived: bool | None = None
     embedding_model: str | None = None
     tool_calling_enabled: bool | None = None
+    memory_remember_confirm: bool | None = None
 
 
 class Summary(BaseModel):
@@ -128,3 +145,21 @@ class SummaryVersion(BaseModel):
     token_count: int | None = None
     created_at: datetime
     edit_source: EditSource
+
+
+# K21-C (design D5): a transient queue row awaiting user confirmation
+# before a `memory_remember` fact lands in the graph. `fact_type`
+# mirrors the Neo4j FactType closed enum. `fact_text` is stored already
+# injection-neutralized (design D6) so the confirm endpoint writes it
+# through to merge_fact as-is. `project_id` is nullable — a no-project
+# chat can still queue a fact.
+class PendingFact(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pending_fact_id: UUID
+    user_id: UUID
+    project_id: UUID | None = None
+    session_id: str
+    fact_type: FactType
+    fact_text: str
+    created_at: datetime

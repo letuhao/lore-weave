@@ -36,8 +36,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.clients.embedding_client import EmbeddingClient
+from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
-from app.deps import get_embedding_client, get_projects_repo
+from app.deps import get_embedding_client, get_pending_facts_repo, get_projects_repo
 from app.middleware.internal_auth import require_internal_token
 from app.tools.definitions import TOOL_DEFINITIONS
 from app.tools.executor import ToolContext, execute_tool, get_tools_redis
@@ -86,6 +87,7 @@ class ToolDefinitionsResponse(BaseModel):
 async def execute_tool_endpoint(
     req: ToolExecuteRequest,
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    pending_facts_repo: PendingFactsRepo = Depends(get_pending_facts_repo),
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
 ) -> ToolExecuteResponse:
     """K21.3 — execute one LLM memory tool call."""
@@ -94,6 +96,7 @@ async def execute_tool_endpoint(
         project_id=req.project_id,
         session_id=req.session_id,
         projects_repo=projects_repo,
+        pending_facts_repo=pending_facts_repo,
         embedding_client=embedding_client,
         redis=get_tools_redis(),
     )

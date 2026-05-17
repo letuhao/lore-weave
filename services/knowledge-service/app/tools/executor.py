@@ -45,6 +45,7 @@ from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     find_passages_by_vector,
 )
+from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.extraction.injection_defense import neutralize_injection
 from app.metrics import (
@@ -106,6 +107,7 @@ class ToolContext:
     project_id: UUID | None
     session_id: str
     projects_repo: ProjectsRepo
+    pending_facts_repo: PendingFactsRepo
     embedding_client: EmbeddingClient
     redis: aioredis.Redis | None
 
@@ -326,8 +328,10 @@ async def _handle_memory_timeline(
 async def _handle_memory_remember(
     ctx: ToolContext, args: MemoryRememberArgs
 ) -> dict:
-    # K21.7 guardrail — rate limit BEFORE the write so a chatty LLM
-    # can't pollute memory beyond the per-session cap.
+    # K21.7 guardrail — rate limit BEFORE everything else so a chatty
+    # LLM can't pollute memory beyond the per-session cap. A *queued*
+    # fact still consumes a slot (K21-C design D6): the cap bounds how
+    # often the tool fires, not how often a write commits.
     if not await _check_remember_rate_limit(ctx.redis, ctx.session_id):
         memory_remember_rate_limited_total.inc()
         raise ToolExecutionError(
@@ -340,7 +344,37 @@ async def _handle_memory_remember(
     # LLM-supplied text, matching the extraction write path
     # (KSA §5.1.5). `neutralize_injection` is idempotent + safe on
     # any string; the hit count is for the shared metric only.
+    #
+    # K21-C design D6 / REVIEW-DESIGN R1: this runs BEFORE the
+    # queue-vs-write branch so BOTH paths inherit the defense — the
+    # confirm endpoint writes the queued text as-is, so it must be
+    # neutralized at queue time, not at write time.
     sanitized_text, _ = neutralize_injection(args.fact_text, project_id=project_id)
+
+    # K21-C design D4/D6 — queue-vs-write decision. A project with
+    # `memory_remember_confirm` on holds the fact in
+    # knowledge_pending_facts for explicit user confirmation instead
+    # of writing it straight to the graph. A no-project chat has no
+    # project setting to read, so it always writes directly.
+    if ctx.project_id is not None:
+        project = await ctx.projects_repo.get(ctx.user_id, ctx.project_id)
+        if project is not None and project.memory_remember_confirm:
+            pending = await ctx.pending_facts_repo.queue(
+                ctx.user_id,
+                project_id=ctx.project_id,
+                session_id=ctx.session_id,
+                fact_type=args.fact_type,
+                fact_text=sanitized_text,
+            )
+            # The LLM sees `queued` and tells the user the fact is
+            # awaiting their confirmation (design D6).
+            return {
+                "queued": True,
+                "pending_fact_id": str(pending.pending_fact_id),
+                "fact_text": pending.fact_text,
+                "fact_type": pending.fact_type,
+            }
+
     async with neo4j_session() as session:
         fact = await merge_fact(
             session,

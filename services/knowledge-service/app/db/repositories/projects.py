@@ -19,7 +19,8 @@ _SELECT_COLS = """
   project_id, user_id, name, description, project_type, book_id, instructions,
   extraction_enabled, extraction_status, embedding_model, embedding_dimension,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
-  is_archived, tool_calling_enabled, version, created_at, updated_at
+  is_archived, tool_calling_enabled, memory_remember_confirm,
+  version, created_at, updated_at
 """
 
 # Explicit allowlist for dynamic UPDATE SET. Pydantic's ProjectUpdate already
@@ -32,6 +33,10 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # so it is deliberately absent from _NULLABLE_UPDATE_COLUMNS — an
      # explicit None on this field is skipped like name/description.
      "tool_calling_enabled",
+     # K21-C (design D4): per-project memory_remember confirmation
+     # gate. NOT NULL, so — like tool_calling_enabled — deliberately
+     # absent from _NULLABLE_UPDATE_COLUMNS; explicit None is skipped.
+     "memory_remember_confirm",
      # K12.4: embedding_dimension is a DERIVED column — it's not
      # present on ProjectUpdate, Pydantic will reject it on direct
      # PATCH attempts. It's added to `updates` inside the auto-derive

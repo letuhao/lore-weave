@@ -40,6 +40,20 @@ export interface ChatSession {
   memory_mode?: 'no_project' | 'static' | 'degraded';
 }
 
+// K21-C (D1/D2): one tool invocation recorded during an assistant turn.
+// Surfaced both live (accumulated from the `tool-call` SSE event in
+// useChatMessages) and on replay (the `tool_calls` JSONB column the
+// chat-service read API now returns). `tool` + `ok` are always present;
+// the optional fields are populated when the executor includes them.
+export interface ToolCallRecord {
+  tool: string;
+  ok: boolean;
+  iteration?: number;
+  args?: unknown;
+  result?: unknown;
+  error?: string | null;
+}
+
 export interface ChatMessage {
   message_id: string;
   session_id: string;
@@ -56,12 +70,32 @@ export interface ChatMessage {
   error_detail: string | null;
   parent_message_id: string | null;
   created_at: string;
+  // K21-C (D1): tool calls the assistant made during this turn.
+  // null/absent for user messages and pre-K21 assistant messages.
+  tool_calls?: ToolCallRecord[] | null;
 }
 
 export interface BranchInfo {
   branch_id: number;
   message_count: number;
   created_at: string | null;
+}
+
+// K21-C (D5/D8): a fact the assistant's `memory_remember` tool queued
+// for the user to confirm/reject — only created when the project has
+// `memory_remember_confirm` on. Mirrors knowledge-service
+// app/db/models.py PendingFact. `fact_text` is already injection-
+// neutralized server-side (design D6).
+export type PendingFactType = 'decision' | 'preference' | 'milestone' | 'negation';
+
+export interface PendingFact {
+  pending_fact_id: string;
+  user_id: string;
+  project_id: string | null;
+  session_id: string;
+  fact_type: PendingFactType;
+  fact_text: string;
+  created_at: string;
 }
 
 export interface ChatOutput {

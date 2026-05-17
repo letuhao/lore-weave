@@ -34,6 +34,7 @@ from app.routers.public import drawers as public_drawers
 from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
+from app.routers.public import pending_facts as public_pending_facts
 from app.routers.public import projects as public_projects
 from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
@@ -490,6 +491,7 @@ app.include_router(public_entities.entities_router)
 app.include_router(public_extraction.router)
 app.include_router(public_extraction.jobs_router)
 app.include_router(public_logs.router)
+app.include_router(public_pending_facts.router)
 app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
 app.include_router(public_timeline.timeline_router)

@@ -33,6 +33,11 @@ def _row_to_message(r: asyncpg.Record) -> ChatMessage:
         role=r["role"],
         content=r["content"],
         content_parts=_parse_content_parts(r["content_parts"]),
+        # K21-C (D-K21B-05): surface the tool-call history. _parse_content_parts
+        # is a generic JSONB-string-or-passthrough parser despite the name.
+        # `.get()` so a row read before the column's migration ran (or a
+        # partial test record) degrades to None instead of a KeyError.
+        tool_calls=_parse_content_parts(r.get("tool_calls")),
         sequence_num=r["sequence_num"],
         input_tokens=r["input_tokens"],
         output_tokens=r["output_tokens"],

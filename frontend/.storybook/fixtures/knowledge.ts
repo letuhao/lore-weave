@@ -41,6 +41,10 @@ export function projectFixture(overrides: Partial<Project> = {}): Project {
     book_id: '00000000-0000-0000-0000-000000000b01',
     instructions: '',
     extraction_enabled: true,
+    // K21-C (D3/D4): memory-tool toggles. Defaults match the BE
+    // column defaults — tool calling on, confirm-before-save off.
+    tool_calling_enabled: true,
+    memory_remember_confirm: false,
     extraction_status: 'ready',
     embedding_model: 'bge-m3',
     embedding_dimension: 1024,

@@ -7,6 +7,7 @@ import { useChatStream } from '../providers';
 import { ChatHeader } from './ChatHeader';
 import { ChatInputBar } from './ChatInputBar';
 import { MessageList } from './MessageList';
+import { PendingFactsCard } from './PendingFactsCard';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
 import { VoiceChatOverlay } from './VoiceChatOverlay';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
@@ -147,6 +148,15 @@ export function ChatView({ className }: ChatViewProps) {
         onSwitchBranch={(branchId) => {
           chat.refreshBranch(branchId);
         }}
+      />
+
+      {/* K21-C (D8): facts the AI's memory_remember tool queued for
+          confirmation. Renders nothing when the queue is empty. The
+          hook (in ChatStreamContext) refetches on chat-stream end. */}
+      <PendingFactsCard
+        pendingFacts={chat.pendingFacts.pendingFacts}
+        onConfirm={chat.pendingFacts.confirm}
+        onReject={chat.pendingFacts.reject}
       />
 
       <ChatInputBar

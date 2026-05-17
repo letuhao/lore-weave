@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ToolCallRecord } from '../types';
 
 type StreamStatus = 'idle' | 'streaming' | 'error';
 type StreamPhase = 'idle' | 'thinking' | 'responding';
@@ -81,6 +81,11 @@ export function useChatMessages(sessionId: string | null) {
 
       let accumulatedContent = '';
       let accumulatedReasoning = '';
+      // K21-C (D2): per-turn tool-call list, accumulated from the
+      // `tool-call` SSE event the same way reasoning/timing is. Attached
+      // to the locally-appended assistantMessage so the indicator works
+      // from the live stream without a refetch.
+      const accumulatedToolCalls: ToolCallRecord[] = [];
       let streamMessageId: string | null = null;
       let streamUsage: { promptTokens?: number; completionTokens?: number } = {};
       let streamTiming: { responseTimeMs?: number; timeToFirstTokenMs?: number } = {};
@@ -169,6 +174,16 @@ export function useChatMessages(sessionId: string | null) {
                 // header indicator before any tokens render. Mode is
                 // one of 'no_project' | 'static' | 'degraded'.
                 onMemoryModeRef.current?.(event.mode);
+              } else if (event.type === 'tool-call' && event.tool) {
+                // K21-C (D2): chat-service emits a `tool-call` event
+                // per memory tool invocation in the turn's tool loop.
+                // Accumulate {tool, ok} for the indicator. `ok`
+                // defaults to false so a malformed event degrades to a
+                // failed-call chip rather than a misleading success.
+                accumulatedToolCalls.push({
+                  tool: String(event.tool),
+                  ok: event.ok === true,
+                });
               } else if (event.type === 'data' && event.data?.[0]) {
                 streamMessageId = event.data[0].message_id || null;
               } else if (event.type === 'finish-message') {
@@ -209,6 +224,10 @@ export function useChatMessages(sessionId: string | null) {
           error_detail: null,
           parent_message_id: null,
           created_at: new Date().toISOString(),
+          // K21-C (D2): attach the accumulated tool calls so the
+          // ToolCallIndicator renders from the live stream. null when
+          // the turn made no tool calls — keeps the indicator hidden.
+          tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : null,
         };
         setMessages((prev) => [...prev, assistantMessage]);
         onStreamEndRef.current?.();

@@ -29,12 +29,17 @@ _EXEC = "app.routers.internal_tools.execute_tool"
 
 @pytest.fixture
 def client():
-    from app.deps import get_embedding_client, get_projects_repo
+    from app.deps import (
+        get_embedding_client,
+        get_pending_facts_repo,
+        get_projects_repo,
+    )
     from app.main import app
 
     # The executor is mocked in every test, so these deps are never
     # exercised — stub them so DI doesn't reach for a real DB pool.
     app.dependency_overrides[get_projects_repo] = lambda: MagicMock()
+    app.dependency_overrides[get_pending_facts_repo] = lambda: MagicMock()
     app.dependency_overrides[get_embedding_client] = lambda: MagicMock()
     yield TestClient(app)
     app.dependency_overrides.clear()

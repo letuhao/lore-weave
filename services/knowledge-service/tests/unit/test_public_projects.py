@@ -122,8 +122,10 @@ class FakeProjectsRepo:
         raw = patch.model_dump(exclude_unset=True)
         # Strip None on NOT-NULL columns to mirror the real repo
         # (book_id is the only nullable updatable column;
-        # tool_calling_enabled is NOT NULL — design D9).
-        for f in ("name", "description", "instructions", "tool_calling_enabled"):
+        # tool_calling_enabled + memory_remember_confirm are NOT NULL —
+        # design D9 / K21-C D4).
+        for f in ("name", "description", "instructions",
+                  "tool_calling_enabled", "memory_remember_confirm"):
             if raw.get(f) is None:
                 raw.pop(f, None)
         # K7b no-op contract: empty patch returns current row without
@@ -592,6 +594,120 @@ async def test_repo_update_skips_none_tool_calling_enabled(
     )
     assert result is not None
     assert result.tool_calling_enabled is True
+
+
+# ── K21-C (design D4): memory_remember_confirm ───────────────────────────
+
+
+def test_project_defaults_memory_remember_confirm_false():
+    """A Project built without memory_remember_confirm reads back false
+    — the model-default half of the 'a row that predates the column
+    reads back OFF' contract (the DB DEFAULT false is the other half).
+    The setting is opt-in: default off preserves today's write-directly
+    behaviour."""
+    proj = _make_project(uuid4())
+    assert proj.memory_remember_confirm is False
+
+
+def test_get_project_surfaces_memory_remember_confirm(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """The field is on the Project response model, so GET carries it."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"memory_remember_confirm": True}
+    )
+    repo.seed(proj)
+    resp = client.get(f"/v1/knowledge/projects/{proj.project_id}")
+    assert resp.status_code == 200
+    assert resp.json()["memory_remember_confirm"] is True
+
+
+def test_patch_toggles_memory_remember_confirm(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """K21-C D4 — ProjectUpdate accepts the field and PATCH round-trips
+    it through the repo (the Cycle C settings UI drives this path)."""
+    proj = _make_project(auth_user_id)  # defaults memory_remember_confirm=False
+    repo.seed(proj)
+
+    # Turn it on.
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"memory_remember_confirm": True},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["memory_remember_confirm"] is True
+    assert (
+        repo._rows[(auth_user_id, proj.project_id)].memory_remember_confirm
+        is True
+    )
+
+    # Turn it back off.
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"memory_remember_confirm": False},
+        headers=_im(proj.version + 1),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["memory_remember_confirm"] is False
+
+
+def test_patch_omitting_memory_remember_confirm_leaves_it_unchanged(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """ProjectUpdate uses exclude_unset — a PATCH that doesn't mention
+    memory_remember_confirm must not reset it."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"memory_remember_confirm": True}
+    )
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"name": "renamed"},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["memory_remember_confirm"] is True
+
+
+def test_project_update_model_accepts_memory_remember_confirm():
+    """K21-C D4 — the field is settable on ProjectUpdate, omittable (so
+    an untouched PATCH leaves it alone), and absent from a default
+    instance (exclude_unset must drop it)."""
+    assert (
+        ProjectUpdate(memory_remember_confirm=True).memory_remember_confirm
+        is True
+    )
+    assert (
+        ProjectUpdate(memory_remember_confirm=False).memory_remember_confirm
+        is False
+    )
+    # Omitted → not in the exclude_unset dump → repo treats as no-op.
+    assert "memory_remember_confirm" not in ProjectUpdate().model_dump(
+        exclude_unset=True
+    )
+    assert ProjectUpdate().memory_remember_confirm is None
+
+
+async def test_repo_update_skips_none_memory_remember_confirm(
+    repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """memory_remember_confirm is NOT NULL — explicitly passing None
+    must be skipped, mirroring the real repo's exclusion from
+    _NULLABLE_UPDATE_COLUMNS. An explicit-None patch must not flip the
+    stored value to NULL."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"memory_remember_confirm": True}
+    )
+    repo.seed(proj)
+    result = await repo.update(
+        auth_user_id, proj.project_id,
+        ProjectUpdate(memory_remember_confirm=None),
+    )
+    assert result is not None
+    assert result.memory_remember_confirm is True
 
 
 def test_patch_valid_if_match_accepts_various_formats(

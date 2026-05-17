@@ -26,6 +26,7 @@ from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.db.repositories.extraction_jobs import ExtractionJobsRepo
 from app.db.repositories.extraction_pending import ExtractionPendingRepo
 from app.db.repositories.job_logs import JobLogsRepo
+from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
@@ -62,6 +63,15 @@ async def get_entity_alias_map_repo() -> EntityAliasMapRepo:
 
 async def get_projects_repo() -> ProjectsRepo:
     return ProjectsRepo(get_knowledge_pool())
+
+
+async def get_pending_facts_repo() -> PendingFactsRepo:
+    """K21-C (design D5/D7): wires the pending-facts queue into router
+    + executor DI. The internal tool-execute endpoint hands it to the
+    ToolContext so `memory_remember` can queue under a confirmation
+    gate; the public pending-facts router uses it for list / confirm /
+    reject."""
+    return PendingFactsRepo(get_knowledge_pool())
 
 
 async def get_user_data_repo() -> UserDataRepo:

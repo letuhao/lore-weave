@@ -558,6 +558,58 @@ BEGIN
   ALTER TABLE knowledge_projects
     ADD COLUMN IF NOT EXISTS tool_calling_enabled BOOLEAN NOT NULL DEFAULT true;
 END$$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- K21-C (design D4) — per-project memory_remember confirmation gate.
+-- When true, the chat-service tool-calling loop's `memory_remember`
+-- writes are queued into knowledge_pending_facts (below) for explicit
+-- user confirmation instead of landing directly in the graph.
+-- DEFAULT false — opt-in: today's behaviour (write directly) is the
+-- default so a project row that predates the column keeps writing
+-- straight through. The Pydantic model default in models.py is the
+-- other half of that contract. ADD COLUMN IF NOT EXISTS keeps the DDL
+-- idempotent; wrapped in a DO block to match the house style for the
+-- post-K1 column adds above.
+-- ═══════════════════════════════════════════════════════════════
+DO $$
+BEGIN
+  ALTER TABLE knowledge_projects
+    ADD COLUMN IF NOT EXISTS memory_remember_confirm BOOLEAN NOT NULL DEFAULT false;
+END$$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- K21-C (design D5) — knowledge_pending_facts.
+-- A pending fact is a transient queue item awaiting user confirmation,
+-- not a graph node, so it lives in Postgres not Neo4j. The executor
+-- INSERTs a row here (carrying the already-injection-neutralized
+-- fact_text — design D6) when a project has memory_remember_confirm
+-- on; the public confirm/reject endpoints (design D7) drain it.
+-- `fact_text` is already neutralized at queue time, so confirm writes
+-- it through to merge_fact as-is.
+--
+-- No FK on user_id (cross-DB convention). No FK on project_id either:
+-- project_id is nullable here (a no-project chat can still queue) and
+-- the executor only ever inserts a project_id it just loaded; the
+-- public endpoints filter on user_id for authority.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS knowledge_pending_facts (
+  pending_fact_id  UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id          UUID NOT NULL,                    -- no FK (cross-DB)
+  project_id       UUID,                             -- nullable: no-project chats
+  session_id       TEXT NOT NULL,
+  fact_type        TEXT NOT NULL
+    CHECK (fact_type IN ('decision','preference','milestone','negation')),
+  fact_text        TEXT NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- List path: WHERE user_id=$1 [AND session_id=$2] ORDER BY created_at.
+-- The optional session filter is a column equality, so a composite
+-- (user_id, created_at) index serves both the all-sessions list and
+-- the per-session variant (the planner filters session_id after the
+-- index scan — fine at any realistic per-user pending-fact volume).
+CREATE INDEX IF NOT EXISTS idx_knowledge_pending_facts_user
+  ON knowledge_pending_facts(user_id, created_at);
 """
 
 
