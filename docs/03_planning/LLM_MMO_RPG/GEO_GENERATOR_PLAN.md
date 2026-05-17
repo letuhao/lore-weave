@@ -14,9 +14,9 @@
 | 1 | Crate structure + core types + Voronoi mesh + heightmap | **DONE** (2026-05-17) |
 | 2 | Climate + biomes + rivers | **DONE** (2026-05-17) |
 | 3 | Political + settlement + route + culture | **DONE** (2026-05-17) |
-| 4 | Serialization + image export + CLI + (optional) LLM CreativeSeed authoring | NOT STARTED |
+| 4 | Serialization + image export + CLI + LLM CreativeSeed authoring | **DONE** (2026-05-17) |
 
-Phases are strictly sequential. Each is an **L-size** task. (The overnight build run is executing these under **AMAW** per the project owner's call — the full 12-phase workflow with cold-start sub-agent reviews + `/review-impl`, a step up from this plan's original default-workflow recommendation.)
+**All 4 phases complete — the GEO world-map generator is built.** Phases were executed under **AMAW** per the project owner's call — the full 12-phase workflow with cold-start sub-agent reviews + `/review-impl` on each phase.
 
 ### Phase 1 — build log (2026-05-17)
 
@@ -29,6 +29,10 @@ Stages 3–4: `climate.rs` (latitude×elevation×ocean-distance → 8 `ClimateZo
 ### Phase 3 — build log (2026-05-17)
 
 Stages 5–8 (task size **XL**), pure-procedural: `pathfind.rs` (deterministic integer-cost multi/single-source Dijkstra, BFS, largest-remainder apportionment, union-find), `political.rs` (province terrain-cost flood-fill + nearest-state-seed clustering), `settlement.rs` (burg-score Poisson-disk + role assignment), `routes.rs` (Road MST+augmentation, Trail, SeaLane, MountainPass, RiverNavigation), `culture.rs` (barrier flood-fill). `CreativeSeed` gained `settlement_density` + `culture_count`; `WorldMap` gained `province_of`/`provinces`/`states`/`settlements`/`routes`/`culture_of`/`culture_regions`; CLI gained `--political-png`. 50 tests green, clippy clean. AMAW: 3 design rounds (r1/r2 REJECTED — archipelago multi-component + quota apportionment → r3 APPROVED_WITH_WARNINGS), 2 code rounds (both APPROVED_WITH_WARNINGS), `/review-impl` (1 MED + 3 LOW). A union-find-on-distance state-clustering bug (degenerate to 1 state) was caught at VERIFY by the political-map render and fixed with nearest-state-seed assignment. Scope Guard CLEAR.
+
+### Phase 4 — build log (2026-05-17)
+
+`WorldMap` ⇄ JSON round-trip with `compute_hash`/`verify_hash` (a loaded map is verified, not trusted — a hand-edited JSON fails the check); `render::political_svg` vector export; CLI restructured into `generate` / `author` clap subcommands with `--config` (load a `CreativeSeed` JSON) + `--svg`; `author.rs` — LLM CreativeSeed authoring via a `reqwest::blocking` call to an OpenAI-compatible endpoint with a `json_schema` response constraint, default `ibm/granite-4-h-tiny` at LM Studio. 65 tests + 1 `#[ignore]` LLM integration test (passes against LM Studio), clippy clean. AMAW: 3 design rounds (r1/r2 REJECTED — hash not re-derived after load, hash-move under-specified → r3 APPROVED_WITH_WARNINGS), 2 code rounds (r1 REJECTED — missing acceptance-criteria tests → r2 APPROVED_WITH_WARNINGS), `/review-impl` (3 LOW), Scope Guard CLEAR. The `author`→`generate --config` chain was verified end-to-end: a prose brief produced a schema-valid `CreativeSeed` that generated a valid map.
 
 ---
 

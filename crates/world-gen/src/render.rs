@@ -277,6 +277,65 @@ fn draw_dot(img: &mut RgbImage, map: &WorldMap, cell: u32, radius: u32, color: R
     }
 }
 
+/// Render the political map as an SVG string (Phase 4 vector export):
+/// land cells as state-tinted `<rect>`s, routes as `<line>`s, settlements as
+/// `<circle>`s. Water cells are omitted — the ocean background shows through.
+pub fn political_svg(map: &WorldMap, size: u32) -> String {
+    let s = size as f32;
+    let grid = (map.cells.len() as f32).sqrt().max(1.0);
+    let cell = (s / grid * 1.5).max(1.0); // slight overlap avoids seams
+    let mut svg = String::with_capacity(map.cells.len() * 80);
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{size}\" height=\"{size}\" \
+         viewBox=\"0 0 {size} {size}\">\n"
+    ));
+    svg.push_str(&format!(
+        "<rect width=\"{size}\" height=\"{size}\" fill=\"#284878\"/>\n"
+    ));
+    for (i, c) in map.cells.iter().enumerate() {
+        let pid = map.province_of[i];
+        if pid == u32::MAX {
+            continue; // water — ocean background shows through
+        }
+        let (px, py) = svg_px(c.center, s);
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{cell:.1}\" height=\"{cell:.1}\" fill=\"{}\"/>\n",
+            px - cell / 2.0,
+            py - cell / 2.0,
+            hex(state_color(map.provinces[pid as usize].state)),
+        ));
+    }
+    for r in &map.routes {
+        let (ax, ay) = svg_px(map.cells[r.from_cell as usize].center, s);
+        let (bx, by) = svg_px(map.cells[r.to_cell as usize].center, s);
+        svg.push_str(&format!(
+            "<line x1=\"{ax:.1}\" y1=\"{ay:.1}\" x2=\"{bx:.1}\" y2=\"{by:.1}\" \
+             stroke=\"{}\" stroke-width=\"1.5\"/>\n",
+            hex(route_color(r.kind)),
+        ));
+    }
+    for st in &map.settlements {
+        let (px, py) = svg_px(map.cells[st.cell as usize].center, s);
+        svg.push_str(&format!(
+            "<circle cx=\"{px:.1}\" cy=\"{py:.1}\" r=\"{:.1}\" fill=\"{}\"/>\n",
+            2.0 + f32::from(st.population_tier),
+            hex(settlement_color(st.role)),
+        ));
+    }
+    svg.push_str("</svg>\n");
+    svg
+}
+
+/// Cell centre → SVG pixel (map y=0 is the bottom; SVG y grows downward).
+fn svg_px(center: (f32, f32), s: f32) -> (f32, f32) {
+    (center.0 * s, s - center.1 * s)
+}
+
+/// `Rgb` → `#rrggbb`.
+fn hex(c: Rgb<u8>) -> String {
+    format!("#{:02x}{:02x}{:02x}", c.0[0], c.0[1], c.0[2])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,5 +416,19 @@ mod tests {
             img.pixels().any(|p| *p != first),
             "political image rendered a single flat colour"
         );
+    }
+
+    #[test]
+    fn political_svg_is_well_formed() {
+        let map = generate(3, &CreativeSeed::default());
+        let svg = political_svg(&map, 256);
+        assert!(svg.starts_with("<svg"), "SVG must start with <svg");
+        assert!(
+            svg.trim_end().ends_with("</svg>"),
+            "SVG must end with </svg>"
+        );
+        assert!(svg.contains("<rect"), "SVG must contain land-cell rects");
+        assert!(svg.contains("<line"), "SVG must contain route lines");
+        assert!(svg.contains("<circle"), "SVG must contain settlement circles");
     }
 }

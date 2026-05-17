@@ -3,11 +3,14 @@
 //! [`generate`] is a **pure function**: the same `(seed, CreativeSeed)` always
 //! produces a byte-identical [`WorldMap`] (same binary, same platform). That
 //! regeneration-determinism is the load-bearing invariant — see
-//! [`WorldMap::content_hash`].
+//! [`WorldMap::compute_hash`].
 //!
 //! Pipeline: P1 — Voronoi dual-mesh + heightmap; P2 — climate, rivers, water
 //! network, biomes; P3 — provinces + states, settlements, routes, cultures.
+//! P4 adds JSON (de)serialization, SVG export, and optional LLM authoring
+//! ([`author`]).
 
+pub mod author;
 pub mod biome;
 pub mod climate;
 pub mod creative_seed;
@@ -118,75 +121,17 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         culture_regions: culture.culture_regions,
         content_hash: [0u8; 32],
     };
-    map.content_hash = content_hash(&map);
+    // All f32 fields must be finite — non-finite values serialize as JSON
+    // `null` and break the round-trip identity guarantee (Phase 4 §2).
+    debug_assert!(
+        map.cells
+            .iter()
+            .all(|c| c.center.0.is_finite() && c.center.1.is_finite())
+            && map.river_flux.iter().all(|f| f.is_finite()),
+        "non-finite f32 in WorldMap"
+    );
+    map.content_hash = map.compute_hash();
     map
-}
-
-/// blake3 over a canonical fixed-order byte view of the map. f32 fields are
-/// hashed by their IEEE-754 bit pattern (`to_le_bytes`).
-///
-/// MAINTENANCE: every `WorldMap` field must be fed in here. When `WorldMap`
-/// grows, extend this function — otherwise the hash silently goes stale.
-/// (`determinism.rs` also asserts full `PartialEq`, so determinism *detection*
-/// is safe regardless, but keep the hash honest.)
-fn content_hash(map: &WorldMap) -> [u8; 32] {
-    let mut h = blake3::Hasher::new();
-    h.update(&map.seed.to_le_bytes());
-    h.update(&[map.scale.tag()]);
-    h.update(&map.sea_level.to_le_bytes());
-    for c in &map.cells {
-        h.update(&c.center.0.to_le_bytes());
-        h.update(&c.center.1.to_le_bytes());
-        h.update(&c.elevation.to_le_bytes());
-    }
-    for list in &map.neighbors {
-        h.update(&(list.len() as u32).to_le_bytes());
-        for &n in list {
-            h.update(&n.to_le_bytes());
-        }
-    }
-    for &z in &map.climate {
-        h.update(&[z.tag()]);
-    }
-    for &b in &map.biome {
-        h.update(&[b.tag()]);
-    }
-    for &f in &map.river_flux {
-        h.update(&f.to_le_bytes());
-    }
-    for &coast in &map.is_coast {
-        h.update(&[u8::from(coast)]);
-    }
-    for &p in &map.province_of {
-        h.update(&p.to_le_bytes());
-    }
-    for p in &map.provinces {
-        h.update(&p.id.to_le_bytes());
-        h.update(&p.capital_cell.to_le_bytes());
-        h.update(&p.state.to_le_bytes());
-    }
-    for s in &map.states {
-        h.update(&s.id.to_le_bytes());
-        h.update(&s.capital_province.to_le_bytes());
-    }
-    for s in &map.settlements {
-        h.update(&s.cell.to_le_bytes());
-        h.update(&[s.role.tag(), s.population_tier]);
-    }
-    for r in &map.routes {
-        h.update(&[r.kind.tag()]);
-        h.update(&r.from_cell.to_le_bytes());
-        h.update(&r.to_cell.to_le_bytes());
-        h.update(&r.distance.to_le_bytes());
-    }
-    for &c in &map.culture_of {
-        h.update(&c.to_le_bytes());
-    }
-    for cr in &map.culture_regions {
-        h.update(&cr.id.to_le_bytes());
-        h.update(&cr.hearth_cell.to_le_bytes());
-    }
-    *h.finalize().as_bytes()
 }
 
 #[cfg(test)]
@@ -212,6 +157,12 @@ mod tests {
             let map = generate(1, &cs);
             assert_eq!(map.cell_count(), scale.cell_count());
         }
+    }
+
+    #[test]
+    fn generated_map_verifies_its_own_hash() {
+        let map = generate(7, &CreativeSeed::default());
+        assert!(map.verify_hash(), "freshly generated map fails verify_hash");
     }
 
     #[test]

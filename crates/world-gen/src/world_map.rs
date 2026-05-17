@@ -163,4 +163,85 @@ impl WorldMap {
     pub fn is_land(&self, cell: usize) -> bool {
         self.cells[cell].elevation >= self.sea_level
     }
+
+    /// blake3 over a canonical fixed-order byte view of the map — the
+    /// determinism digest. f32 fields are hashed by their IEEE-754 bit
+    /// pattern (`to_le_bytes`).
+    ///
+    /// MAINTENANCE: feed **every** `WorldMap` field here **except**
+    /// `content_hash` itself (folding the digest into its own input is
+    /// circular and would make `verify_hash` permanently false). When
+    /// `WorldMap` grows, extend this method.
+    ///
+    /// NOTE: `verify_hash` proves only that the produce path (`generate`) and
+    /// the verify path agree — NOT that this method covers every field. If a
+    /// new field is added but `compute_hash` is not extended, `verify_hash`
+    /// still passes; field-list completeness is guaranteed only by
+    /// `determinism.rs`'s full-`PartialEq` assertion.
+    pub fn compute_hash(&self) -> [u8; 32] {
+        let mut h = blake3::Hasher::new();
+        h.update(&self.seed.to_le_bytes());
+        h.update(&[self.scale.tag()]);
+        h.update(&self.sea_level.to_le_bytes());
+        for c in &self.cells {
+            h.update(&c.center.0.to_le_bytes());
+            h.update(&c.center.1.to_le_bytes());
+            h.update(&c.elevation.to_le_bytes());
+        }
+        for list in &self.neighbors {
+            h.update(&(list.len() as u32).to_le_bytes());
+            for &n in list {
+                h.update(&n.to_le_bytes());
+            }
+        }
+        for &z in &self.climate {
+            h.update(&[z.tag()]);
+        }
+        for &b in &self.biome {
+            h.update(&[b.tag()]);
+        }
+        for &f in &self.river_flux {
+            h.update(&f.to_le_bytes());
+        }
+        for &coast in &self.is_coast {
+            h.update(&[u8::from(coast)]);
+        }
+        for &p in &self.province_of {
+            h.update(&p.to_le_bytes());
+        }
+        for p in &self.provinces {
+            h.update(&p.id.to_le_bytes());
+            h.update(&p.capital_cell.to_le_bytes());
+            h.update(&p.state.to_le_bytes());
+        }
+        for s in &self.states {
+            h.update(&s.id.to_le_bytes());
+            h.update(&s.capital_province.to_le_bytes());
+        }
+        for s in &self.settlements {
+            h.update(&s.cell.to_le_bytes());
+            h.update(&[s.role.tag(), s.population_tier]);
+        }
+        for r in &self.routes {
+            h.update(&[r.kind.tag()]);
+            h.update(&r.from_cell.to_le_bytes());
+            h.update(&r.to_cell.to_le_bytes());
+            h.update(&r.distance.to_le_bytes());
+        }
+        for &c in &self.culture_of {
+            h.update(&c.to_le_bytes());
+        }
+        for cr in &self.culture_regions {
+            h.update(&cr.id.to_le_bytes());
+            h.update(&cr.hearth_cell.to_le_bytes());
+        }
+        *h.finalize().as_bytes()
+    }
+
+    /// Whether the stored `content_hash` matches a fresh recompute — detects a
+    /// hand-edited or corrupted JSON. (See `compute_hash` on what this does
+    /// and does not prove.)
+    pub fn verify_hash(&self) -> bool {
+        self.compute_hash() == self.content_hash
+    }
 }
