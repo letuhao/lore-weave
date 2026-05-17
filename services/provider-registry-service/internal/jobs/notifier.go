@@ -114,28 +114,6 @@ func NewRabbitMQNotifier(amqpURL string, logger *slog.Logger) (Notifier, error) 
 	return &rabbitMQNotifier{conn: conn, ch: ch, logger: logger}, nil
 }
 
-// amqpHeaderCarrier adapts an amqp.Table to propagation.TextMapCarrier so
-// observability.Inject/Extract can move a W3C traceparent through a message's
-// headers. Keeps the observability module amqp-free (design §3.2).
-type amqpHeaderCarrier rabbitmq.Table
-
-func (c amqpHeaderCarrier) Get(key string) string {
-	if v, ok := c[key].(string); ok {
-		return v
-	}
-	return ""
-}
-
-func (c amqpHeaderCarrier) Set(key, value string) { c[key] = value }
-
-func (c amqpHeaderCarrier) Keys() []string {
-	keys := make([]string, 0, len(c))
-	for k := range c {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
 func (n *rabbitMQNotifier) PublishTerminal(ctx context.Context, ev TerminalEvent) error {
 	body, err := json.Marshal(ev)
 	if err != nil {
@@ -155,7 +133,7 @@ func (n *rabbitMQNotifier) PublishTerminal(ctx context.Context, ev TerminalEvent
 		))
 	defer span.End()
 	headers := rabbitmq.Table{}
-	observability.Inject(ctx, amqpHeaderCarrier(headers))
+	observability.Inject(ctx, observability.AMQPCarrier(headers))
 
 	n.mu.Lock()
 	defer n.mu.Unlock()

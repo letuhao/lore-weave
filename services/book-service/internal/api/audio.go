@@ -20,6 +20,7 @@ import (
 	"github.com/minio/minio-go/v7"
 
 	"github.com/loreweave/llmgw"
+	"github.com/loreweave/observability"
 )
 
 const maxAudioSize = 20 << 20 // 20 MB
@@ -219,7 +220,9 @@ func (s *Server) deleteAudioSegments(w http.ResponseWriter, r *http.Request) {
 
 // ── Generate TTS audio ─────────────────────────────────────────────────────────
 
-var ttsClient = &http.Client{Timeout: 120 * time.Second}
+// Phase 6c — traced transport so the outbound TTS call carries a W3C
+// traceparent + emits a CLIENT span.
+var ttsClient = &http.Client{Timeout: 120 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 func textHash(s string) string {
 	h := sha256.Sum256([]byte(s))

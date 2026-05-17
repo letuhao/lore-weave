@@ -94,6 +94,46 @@ func TestInjectExtract_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestAMQPCarrier_RoundTrip — a traceparent written into a map[string]any by
+// Inject must Extract back to the same trace_id (the RabbitMQ broker hop).
+func TestAMQPCarrier_RoundTrip(t *testing.T) {
+	recordingProvider(t)
+	ctx, span := Tracer("test").Start(context.Background(), "producer")
+	defer span.End()
+
+	headers := map[string]any{}
+	Inject(ctx, AMQPCarrier(headers))
+	if _, ok := headers["traceparent"]; !ok {
+		t.Fatal("Inject did not write traceparent into the map")
+	}
+	got := trace.SpanContextFromContext(Extract(context.Background(), AMQPCarrier(headers)))
+	if !got.IsValid() {
+		t.Fatal("extracted span context is not valid")
+	}
+	if got.TraceID() != span.SpanContext().TraceID() {
+		t.Fatalf("trace_id lost through AMQPCarrier: got %s want %s",
+			got.TraceID(), span.SpanContext().TraceID())
+	}
+}
+
+// TestAMQPCarrier_GetKeys — Get is string-typed (an amqp.Table value is `any`);
+// Keys lists every header.
+func TestAMQPCarrier_GetKeys(t *testing.T) {
+	c := AMQPCarrier{"traceparent": "abc", "retry_count": 7}
+	if c.Get("traceparent") != "abc" {
+		t.Fatalf("Get(traceparent) = %q", c.Get("traceparent"))
+	}
+	if c.Get("retry_count") != "" {
+		t.Fatal("Get must return \"\" for a non-string header value")
+	}
+	if c.Get("missing") != "" {
+		t.Fatal("Get must return \"\" for an absent key")
+	}
+	if len(c.Keys()) != 2 {
+		t.Fatalf("Keys() = %v, want 2", c.Keys())
+	}
+}
+
 // §7 #5 — DetachedContext carries the trace but NOT the source's cancellation.
 func TestDetachedContext_CarriesTraceNotCancellation(t *testing.T) {
 	recordingProvider(t)
@@ -140,6 +180,36 @@ func TestChiMiddleware_ServerSpanNamedByRoutePattern(t *testing.T) {
 	}
 	if got := spans[0].Name(); got != "GET /v1/things/{id}" {
 		t.Fatalf("span name = %q, want the route pattern (not the raw path)", got)
+	}
+}
+
+// TestChiMiddleware_SubRouterRoutePattern locks span naming for a route
+// mounted under chi's r.Route(...) — the span name must be the FULL joined
+// pattern, not just the leaf, and not the raw path.
+func TestChiMiddleware_SubRouterRoutePattern(t *testing.T) {
+	sr := recordingProvider(t)
+	r := chi.NewRouter()
+	r.Use(ChiMiddleware())
+	r.Route("/internal", func(r chi.Router) {
+		r.Get("/imports/{id}", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+	})
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/internal/imports/abc")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	spans := sr.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("want 1 server span, got %d", len(spans))
+	}
+	if got := spans[0].Name(); got != "GET /internal/imports/{id}" {
+		t.Fatalf("sub-router span name = %q, want the full mounted route pattern", got)
 	}
 }
 

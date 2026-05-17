@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/statistics-service/internal/config"
 )
 
@@ -34,7 +36,8 @@ type Consumer struct {
 
 // Run starts the Redis Streams consumer and periodic refresh loops.
 func (c *Consumer) Run(ctx context.Context) {
-	c.client = &http.Client{Timeout: 10 * time.Second}
+	// Phase 6c — traced transport so outbound calls carry a W3C traceparent + emit a CLIENT span.
+	c.client = &http.Client{Timeout: 10 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 	// Create consumer groups (ignore error if already exists)
 	c.Redis.XGroupCreateMkStream(ctx, eventStream, consumerGroup, "0").Err()

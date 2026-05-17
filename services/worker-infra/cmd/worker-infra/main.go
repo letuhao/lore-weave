@@ -13,6 +13,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/worker-infra/internal/config"
 	"github.com/loreweave/worker-infra/internal/migrate"
 	"github.com/loreweave/worker-infra/internal/registry"
@@ -23,6 +24,19 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "worker-infra"))
 
 	cfg := config.Load()
+
+	// Phase 6c — OpenTelemetry tracing. No-op when OTEL_EXPORTER_OTLP_ENDPOINT
+	// is unset, so a dev run without the observability stack still boots.
+	shutdownTracer, err := observability.InitTracer(context.Background(), "worker-infra")
+	if err != nil {
+		slog.Error("tracer init", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracer(shutdownCtx)
+	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

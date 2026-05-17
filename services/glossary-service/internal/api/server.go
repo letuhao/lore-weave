@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/glossary-service/internal/config"
 )
 
@@ -30,6 +32,11 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before jsonRecovererMiddleware
+	// (the custom recoverer) so the span survives a handler panic. Sits
+	// alongside the pre-existing traceIDMiddleware, which is a separate
+	// header-level request-id mechanism (X-Trace-Id) — retained as-is.
+	r.Use(observability.ChiMiddleware())
 	// traceIDMiddleware before jsonRecovererMiddleware so a panicking
 	// handler's recovery response carries the incoming trace id. We
 	// swap chi's built-in Recoverer for our JSON version that embeds

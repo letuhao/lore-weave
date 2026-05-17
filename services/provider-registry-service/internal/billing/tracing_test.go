@@ -8,9 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/loreweave/observability/obstest"
 )
 
 // TestGuardrailClient_DefaultTransportInjectsTraceparent regression-locks
@@ -18,15 +17,7 @@ import (
 // every reserve/reconcile/release/record call must carry a W3C traceparent
 // so usage-billing's SERVER span joins the same trace.
 func TestGuardrailClient_DefaultTransportInjectsTraceparent(t *testing.T) {
-	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(tracetest.NewSpanRecorder()))
-	prevTP, prevProp := otel.GetTracerProvider(), otel.GetTextMapPropagator()
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.TraceContext{})
-	t.Cleanup(func() {
-		_ = tp.Shutdown(context.Background())
-		otel.SetTracerProvider(prevTP)
-		otel.SetTextMapPropagator(prevProp)
-	})
+	obstest.RecordingProvider(t)
 
 	var gotTraceparent string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

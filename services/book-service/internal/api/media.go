@@ -19,6 +19,7 @@ import (
 	"github.com/minio/minio-go/v7"
 
 	"github.com/loreweave/llmgw"
+	"github.com/loreweave/observability"
 )
 
 const (
@@ -488,7 +489,9 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 	// 120s wall-clock cap for the download (unrelated to the SDK polling
 	// loop which has no Timeout).
 	dlReq, _ := http.NewRequestWithContext(ctx, "GET", result.Data[0].URL, nil)
-	dlClient := &http.Client{Timeout: 120 * time.Second}
+	// Phase 6c — traced transport so the outbound download carries a W3C
+	// traceparent + emits a CLIENT span.
+	dlClient := &http.Client{Timeout: 120 * time.Second, Transport: observability.HTTPTransport(nil)}
 	imgResp, err := dlClient.Do(dlReq)
 	if err != nil || imgResp.StatusCode != http.StatusOK {
 		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "failed to download generated image")

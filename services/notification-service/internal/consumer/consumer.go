@@ -22,6 +22,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	rabbitmq "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/loreweave/observability"
 )
 
 const (
@@ -193,18 +198,37 @@ func (c *Consumer) run(ctx context.Context, deliveries <-chan rabbitmq.Delivery)
 }
 
 func (c *Consumer) handle(ctx context.Context, d rabbitmq.Delivery) {
+	// Phase 6c — continue the producer's trace across the RabbitMQ hop.
+	// Extract reads the traceparent provider-registry's notifier injected;
+	// a delivery with no headers just starts a fresh root (no failure).
+	ctx = observability.Extract(ctx, observability.AMQPCarrier(d.Headers))
+	ctx, span := observability.Tracer("consumer").Start(ctx, "llm-event.consume",
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.rabbitmq.routing_key", d.RoutingKey),
+		))
+	defer span.End()
+
 	var ev terminalEvent
 	if err := json.Unmarshal(d.Body, &ev); err != nil {
 		c.logger.Warn("malformed llm-job event — discarding", "err", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "malformed event body")
 		// Don't requeue malformed messages; would just loop forever.
 		_ = d.Nack(false, false)
 		return
 	}
 	if ev.OwnerUserID == uuid.Nil || ev.JobID == uuid.Nil {
 		c.logger.Warn("event missing owner or job_id — discarding", "routing_key", d.RoutingKey)
+		span.SetStatus(codes.Error, "event missing owner or job_id")
 		_ = d.Nack(false, false)
 		return
 	}
+	span.SetAttributes(
+		attribute.String("job.id", ev.JobID.String()),
+		attribute.String("llm.operation", ev.Operation),
+	)
 	args := transformTerminalEvent(ev)
 	_, err := c.pool.Exec(ctx, `
 INSERT INTO notifications (user_id, category, title, body, metadata)
@@ -213,6 +237,8 @@ VALUES ($1, $2, $3, $4, $5)
 	if err != nil {
 		c.logger.Error("notification insert failed — requeueing",
 			"err", err, "job_id", ev.JobID.String())
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "notification insert failed")
 		// Requeue so a transient DB hiccup doesn't lose the event.
 		_ = d.Nack(false, true)
 		return

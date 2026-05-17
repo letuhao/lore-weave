@@ -22,6 +22,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/auth-service/internal/authjwt"
 	"github.com/loreweave/auth-service/internal/authpwd"
 	"github.com/loreweave/auth-service/internal/mail"
@@ -1088,7 +1090,9 @@ func (s *Server) listFollowing(w http.ResponseWriter, r *http.Request) {
 
 // ── Notification Helper ───────────────────────────────────────────────────
 
-var notifClient = &http.Client{Timeout: 5 * time.Second}
+// Phase 6c — traced transport so the outbound notification call carries a
+// W3C traceparent + emits a CLIENT span.
+var notifClient = &http.Client{Timeout: 5 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 func (s *Server) sendNotification(userID, category, title, body string, metadata map[string]any) {
 	if s.cfg.NotificationServiceInternalURL == "" {

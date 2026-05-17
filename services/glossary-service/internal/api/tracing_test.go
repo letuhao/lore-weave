@@ -6,13 +6,15 @@ import (
 	"testing"
 
 	"github.com/loreweave/observability/obstest"
-	"github.com/loreweave/usage-billing-service/internal/config"
+
+	"github.com/loreweave/glossary-service/internal/config"
 )
 
 // TestRouter_EmitsServerSpan regression-locks observability.ChiMiddleware
 // being wired into Router(): if someone drops r.Use(ChiMiddleware()) this
 // fails. ChiMiddleware's own behaviour is unit-tested in the observability
-// module — this only proves usage-billing actually mounts it.
+// module — this only proves glossary-service actually mounts it (alongside
+// its pre-existing traceIDMiddleware, a separate header-level mechanism).
 func TestRouter_EmitsServerSpan(t *testing.T) {
 	sr := obstest.RecordingProvider(t)
 

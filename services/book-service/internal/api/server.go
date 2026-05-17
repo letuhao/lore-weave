@@ -21,6 +21,8 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/book-service/internal/config"
 	"github.com/loreweave/llmgw"
 )
@@ -90,7 +92,8 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return s
 }
 
-var internalClient = &http.Client{Timeout: 10 * time.Second}
+// Phase 6c — traced transport so outbound calls carry a W3C traceparent + emit a CLIENT span.
+var internalClient = &http.Client{Timeout: 10 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +109,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before Recoverer so the span
+	// survives (and is marked 500) when a handler panics.
+	r.Use(observability.ChiMiddleware())
 	r.Use(middleware.Recoverer)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {

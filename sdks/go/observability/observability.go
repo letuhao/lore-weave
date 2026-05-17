@@ -148,3 +148,34 @@ func Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 func Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	return otel.GetTextMapPropagator().Extract(ctx, carrier)
 }
+
+// AMQPCarrier adapts a map[string]any to a propagation.TextMapCarrier so
+// Inject/Extract can move a W3C traceparent through message headers. An
+// amqp091 amqp.Table IS a map[string]interface{}, so callers convert at the
+// call site: observability.AMQPCarrier(amqp.Table{...}). This keeps the
+// observability module free of an amqp091 dependency.
+//
+// Set writes into the map — the caller MUST pass a non-nil map (Inject on a
+// nil map panics). Get/Keys only read, so Extract from a nil-header delivery
+// is safe.
+type AMQPCarrier map[string]any
+
+// Get returns the string-typed header value, or "" (absent or non-string).
+func (c AMQPCarrier) Get(key string) string {
+	if v, ok := c[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// Set writes a header value.
+func (c AMQPCarrier) Set(key, value string) { c[key] = value }
+
+// Keys lists the header keys.
+func (c AMQPCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
+}

@@ -16,9 +16,19 @@ import (
 	"github.com/minio/minio-go/v7"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/worker-infra/internal/config"
 )
+
+// amqpPublisher is the subset of *amqp.Channel that publishWSEvent uses.
+// Narrowing the field to this interface lets a test inject a fake publisher
+// and assert the Phase 6c traceparent injection without a live broker.
+type amqpPublisher interface {
+	Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
+}
 
 type ImportProcessor struct {
 	Cfg     *config.Config
@@ -26,7 +36,7 @@ type ImportProcessor struct {
 	BookDB  *pgxpool.Pool
 	Minio   *minio.Client
 
-	amqpCh *amqp.Channel
+	amqpCh amqpPublisher
 }
 
 func (t *ImportProcessor) Name() string { return "import-processor" }
@@ -109,18 +119,18 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 
 				slog.Info("import-processor processing", "job_id", payload.JobID, "format", payload.FileFormat)
 				t.updateJobStatus(ctx, payload.JobID, "processing", 0, nil)
-				t.publishWSEvent(payload.UserID, payload.JobID, "processing", 0, nil)
+				t.publishWSEvent(ctx, payload.UserID, payload.JobID, "processing", 0, nil)
 
 				chaptersCreated, procErr := t.processImport(ctx, payload)
 				if procErr != nil {
 					slog.Error("import-processor failed", "job_id", payload.JobID, "error", procErr)
 					errMsg := procErr.Error()
 					t.updateJobStatus(ctx, payload.JobID, "failed", chaptersCreated, &errMsg)
-					t.publishWSEvent(payload.UserID, payload.JobID, "failed", chaptersCreated, &errMsg)
+					t.publishWSEvent(ctx, payload.UserID, payload.JobID, "failed", chaptersCreated, &errMsg)
 				} else {
 					slog.Info("import-processor completed", "job_id", payload.JobID, "chapters", chaptersCreated)
 					t.updateJobStatus(ctx, payload.JobID, "completed", chaptersCreated, nil)
-					t.publishWSEvent(payload.UserID, payload.JobID, "completed", chaptersCreated, nil)
+					t.publishWSEvent(ctx, payload.UserID, payload.JobID, "completed", chaptersCreated, nil)
 				}
 
 				t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
@@ -249,7 +259,7 @@ func (t *ImportProcessor) callPandoc(ctx context.Context, data []byte, format st
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := &http.Client{Timeout: 5 * time.Minute, Transport: observability.HTTPTransport(nil)}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("pandoc request: %w", err)
@@ -279,10 +289,24 @@ func (t *ImportProcessor) callPandoc(ctx context.Context, data []byte, format st
 }
 
 // publishWSEvent publishes an import status event to RabbitMQ for WebSocket push.
-func (t *ImportProcessor) publishWSEvent(userID, jobID, status string, chaptersCreated int, errMsg *string) {
+//
+// Phase 6c — wraps the publish in a PRODUCER span and injects a W3C
+// traceparent into the message headers so a downstream consumer can continue
+// the trace. ctx carries no span until D-PHASE6C-REDIS-STREAM instruments the
+// import-job consume, so today this span is a fresh root.
+func (t *ImportProcessor) publishWSEvent(ctx context.Context, userID, jobID, status string, chaptersCreated int, errMsg *string) {
 	if t.amqpCh == nil {
 		return
 	}
+	ctx, span := observability.Tracer("import-processor").Start(ctx, "import.ws-event",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", "loreweave.events"),
+			attribute.String("job.id", jobID),
+		))
+	defer span.End()
+
 	event := map[string]any{
 		"type":             "import.status",
 		"user_id":          userID,
@@ -295,11 +319,15 @@ func (t *ImportProcessor) publishWSEvent(userID, jobID, status string, chaptersC
 	}
 	body, _ := json.Marshal(event)
 	routingKey := "user." + userID
+	headers := amqp.Table{}
+	observability.Inject(ctx, observability.AMQPCarrier(headers))
 	err := t.amqpCh.Publish("loreweave.events", routingKey, false, false, amqp.Publishing{
 		ContentType: "application/json",
+		Headers:     headers,
 		Body:        body,
 	})
 	if err != nil {
+		span.RecordError(err)
 		slog.Warn("import-processor: AMQP publish failed", "error", err)
 	}
 }
@@ -321,7 +349,7 @@ func (t *ImportProcessor) updateJobStatus(ctx context.Context, jobID string, sta
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Internal-Token", t.Cfg.InternalToken)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second, Transport: observability.HTTPTransport(nil)}
 	resp, err := client.Do(req)
 	if err != nil {
 		slog.Error("import-processor update status", "error", err)

@@ -72,9 +72,11 @@ services:
       - "8148:8025"
 
   auth-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/auth-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/auth-service/Dockerfile
     environment:
       HTTP_ADDR: ":8081"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_auth?sslmode=disable
@@ -88,6 +90,8 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5296}
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,6 +127,8 @@ services:
       LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,15 +143,19 @@ services:
       - "8205:8082"
 
   sharing-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/sharing-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/sharing-service/Dockerfile
     environment:
       HTTP_ADDR: ":8083"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_sharing?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -161,9 +171,11 @@ services:
       - "8206:8083"
 
   catalog-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/catalog-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/catalog-service/Dockerfile
     environment:
       HTTP_ADDR: ":8084"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_catalog?sslmode=disable
@@ -171,6 +183,8 @@ services:
       SHARING_SERVICE_INTERNAL_URL: http://sharing-service:8083
       TRANSLATION_SERVICE_INTERNAL_URL: http://translation-service:8087
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -361,9 +375,11 @@ services:
         condition: service_healthy
 
   glossary-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/glossary-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/glossary-service/Dockerfile
     environment:
       HTTP_ADDR: ":8088"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary?sslmode=disable
@@ -371,6 +387,8 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8081
       BOOK_SERVICE_URL: http://book-service:8082
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -502,9 +520,11 @@ services:
         max-file: "5"
 
   worker-infra:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/worker-infra
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/worker-infra/Dockerfile
     environment:
       WORKER_TASKS: "outbox-relay,outbox-cleanup,import-processor"
       EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
@@ -520,6 +540,8 @@ services:
       BOOK_SERVICE_URL: http://book-service:8082
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -562,9 +584,11 @@ services:
         max-file: "5"
 
   statistics-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/statistics-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/statistics-service/Dockerfile
     environment:
       HTTP_ADDR: ":8089"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_statistics?sslmode=disable
@@ -573,6 +597,8 @@ services:
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
       REFRESH_INTERVAL: "600"
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -591,9 +617,11 @@ services:
       - "8214:8089"
 
   notification-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/notification-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
     environment:
       HTTP_ADDR: ":8091"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_notification?sslmode=disable
@@ -603,6 +631,8 @@ services:
       # `loreweave.events` topic and persist as notifications rows.
       # Empty/unset disables the consumer (REST API stays usable).
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
