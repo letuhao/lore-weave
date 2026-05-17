@@ -5,30 +5,60 @@
 //! regeneration-determinism is the load-bearing invariant — see
 //! [`WorldMap::content_hash`].
 //!
-//! Phase 1 implements stages 1–2 of the GEO pipeline: the Voronoi dual-mesh
-//! and the heightmap. Climate, biomes, rivers, political/settlement/route
-//! layers arrive in later phases.
+//! Pipeline: Phase 1 — Voronoi dual-mesh + heightmap; Phase 2 — climate,
+//! rivers (flow accumulation), the ocean/lake water network, and biomes.
 
+pub mod biome;
+pub mod climate;
 pub mod creative_seed;
+pub mod hydrology;
 pub mod mesh;
 pub mod render;
 pub mod rng;
 pub mod terrain;
 pub mod world_map;
 
-pub use creative_seed::{CoastlineProfile, CreativeSeed, WorldArchetype, WorldScale};
+pub use biome::BiomeKind;
+pub use climate::ClimateZone;
+pub use creative_seed::{
+    CoastlineProfile, CreativeSeed, HemisphereOrientation, WorldArchetype, WorldScale,
+};
 pub use world_map::{Cell, WorldMap};
 
 /// Generate a world map from a `u64` seed + creative direction.
 ///
 /// Pure and deterministic — identical inputs yield a byte-identical map.
 pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
+    // Stage 1–2 — mesh + heightmap (+ sea level).
     let mesh = mesh::build(seed, cs.world_scale);
-    let terrain = terrain::build(
-        seed,
-        cs.coastline_profile,
+    let terrain = terrain::build(seed, cs.coastline_profile, &mesh.centers, &mesh.neighbors);
+
+    // Stage 3 — climate.
+    let climate = climate::build(
         &mesh.centers,
+        &terrain.elevation,
+        terrain.sea_level,
         &mesh.neighbors,
+        cs.hemisphere_orientation,
+        cs.climate_bias,
+    );
+
+    // Stage 4 — hydrology (rivers + water network) then biomes.
+    let hydro = hydrology::build(
+        &mesh.centers,
+        &terrain.elevation,
+        terrain.sea_level,
+        &mesh.neighbors,
+        &climate,
+    );
+    let biome = biome::build(
+        &terrain.elevation,
+        terrain.sea_level,
+        &climate,
+        &hydro.river_flux,
+        hydro.river_threshold,
+        &hydro.is_in_ocean,
+        &hydro.is_coast,
     );
 
     let cells: Vec<Cell> = mesh
@@ -44,6 +74,10 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         cells,
         neighbors: mesh.neighbors,
         sea_level: terrain.sea_level,
+        climate,
+        biome,
+        river_flux: hydro.river_flux,
+        is_coast: hydro.is_coast,
         content_hash: [0u8; 32],
     };
     map.content_hash = content_hash(&map);
@@ -55,9 +89,10 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
 /// float-formatting ambiguity.
 ///
 /// MAINTENANCE: every `WorldMap` field must be fed in here. When `WorldMap`
-/// grows (Phase 2 climate/biome layers), extend this function — otherwise the
-/// hash silently goes stale. (`determinism.rs` also asserts full `PartialEq`,
-/// so determinism *detection* is safe regardless, but keep the hash honest.)
+/// grows (Phase 3 political/settlement layers), extend this function —
+/// otherwise the hash silently goes stale. (`determinism.rs` also asserts
+/// full `PartialEq`, so determinism *detection* is safe regardless, but keep
+/// the hash honest.)
 fn content_hash(map: &WorldMap) -> [u8; 32] {
     let mut h = blake3::Hasher::new();
     h.update(&map.seed.to_le_bytes());
@@ -74,6 +109,18 @@ fn content_hash(map: &WorldMap) -> [u8; 32] {
         for &n in list {
             h.update(&n.to_le_bytes());
         }
+    }
+    for &z in &map.climate {
+        h.update(&[z.tag()]);
+    }
+    for &b in &map.biome {
+        h.update(&[b.tag()]);
+    }
+    for &f in &map.river_flux {
+        h.update(&f.to_le_bytes());
+    }
+    for &coast in &map.is_coast {
+        h.update(&[u8::from(coast)]);
     }
     *h.finalize().as_bytes()
 }
@@ -101,5 +148,16 @@ mod tests {
             let map = generate(1, &cs);
             assert_eq!(map.cell_count(), scale.cell_count());
         }
+    }
+
+    #[test]
+    fn all_layers_are_populated_and_parallel() {
+        let map = generate(7, &CreativeSeed::default());
+        let n = map.cell_count();
+        assert_eq!(map.neighbors.len(), n);
+        assert_eq!(map.climate.len(), n);
+        assert_eq!(map.biome.len(), n);
+        assert_eq!(map.river_flux.len(), n);
+        assert_eq!(map.is_coast.len(), n);
     }
 }

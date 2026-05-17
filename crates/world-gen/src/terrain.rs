@@ -69,6 +69,22 @@ pub fn build(
         grow_blob(seed_cell, amp, falloff, neighbors, &mut elev);
     }
 
+    // --- Continental base dome ---
+    // A broad radial dome (monotone in distance from centre) so high-land
+    // profiles form ONE connected landmass: every superlevel set of a
+    // monotone dome is a disc, so `enforce_coherence` keeps a coherent core
+    // instead of the largest scattered blob fragment. Profiles that do not
+    // need it have `base_amplitude() == 0.0` (no-op, terrain unchanged).
+    let base_amp = profile.base_amplitude();
+    if base_amp > 0.0 {
+        for (i, &(x, y)) in centers.iter().enumerate() {
+            let d = dist(x, y, 0.5, 0.5);
+            let ratio = d / 0.92;
+            let dome = (1.0 - ratio * ratio).max(0.0);
+            elev[i] += base_amp * dome;
+        }
+    }
+
     // --- Radial falloff by coastline profile ---
     apply_falloff(profile, centers, &mut elev);
 
@@ -87,7 +103,7 @@ pub fn build(
         elevation[i] = (n * 65535.0).round() as u16;
     }
 
-    let sea_level = pick_sea_level(&elevation, profile.land_fraction());
+    let sea_level = choose_sea_level(profile, &elevation, neighbors);
     enforce_coherence(profile, &mut elevation, neighbors, sea_level);
 
     Terrain {
@@ -184,9 +200,64 @@ fn dist(x: f32, y: f32, cx: f32, cy: f32) -> f32 {
     ((x - cx) * (x - cx) + (y - cy) * (y - cy)).sqrt()
 }
 
+/// Choose the sea level. Archipelago keeps the percentile pick (its 5-island
+/// structure already defines coherence); every other profile uses a
+/// connectivity-aware binary search so the largest land component lands near
+/// the target fraction — clears DEFERRED #013.
+fn choose_sea_level(profile: CoastlineProfile, elevation: &[u16], neighbors: &[Vec<u32>]) -> u16 {
+    if profile.is_archipelago() {
+        return pick_sea_level(elevation, profile.land_fraction());
+    }
+    let target = (profile.land_fraction() * elevation.len() as f32) as usize;
+    // `largest_land_component` is monotone non-increasing in sea_level (any
+    // component of a smaller land set is connected in the larger set, so its
+    // size cannot exceed the larger set's max component). Binary-search the
+    // highest sea_level whose largest component still meets `target`.
+    let (mut lo, mut hi) = (8192u32, 57344u32);
+    while lo < hi {
+        let mid = lo + (hi - lo).div_ceil(2);
+        if largest_land_component(elevation, neighbors, mid as u16) >= target {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    // If even sea_level 8192 cannot form a component that large, the search
+    // floors at 8192 — the largest achievable continent (best-effort).
+    lo as u16
+}
+
+/// Size of the largest connected component of land cells at `sea_level`.
+fn largest_land_component(elevation: &[u16], neighbors: &[Vec<u32>], sea_level: u16) -> usize {
+    let n = elevation.len();
+    let mut seen = vec![false; n];
+    let mut largest = 0usize;
+    for start in 0..n {
+        if seen[start] || elevation[start] < sea_level {
+            continue;
+        }
+        let mut size = 0usize;
+        let mut stack = vec![start];
+        seen[start] = true;
+        while let Some(c) = stack.pop() {
+            size += 1;
+            for &nb in &neighbors[c] {
+                let nb = nb as usize;
+                if !seen[nb] && elevation[nb] >= sea_level {
+                    seen[nb] = true;
+                    stack.push(nb);
+                }
+            }
+        }
+        largest = largest.max(size);
+    }
+    largest
+}
+
 /// Pick the sea level so roughly `land_fraction` of cells are land — the
 /// `(1 - land_fraction)` percentile of the sorted elevation list. Clamped
-/// to GEO_001's sane `[8192, 57344]` band.
+/// to GEO_001's sane `[8192, 57344]` band. (Archipelago path of
+/// `choose_sea_level`.)
 fn pick_sea_level(elevation: &[u16], land_fraction: f32) -> u16 {
     let mut sorted: Vec<u16> = elevation.to_vec();
     sorted.sort_unstable();

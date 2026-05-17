@@ -12,7 +12,7 @@
 |---|---|---|
 | 0 | Scaffold (re-purpose the Cycle-0 `world-service` crate) | **DONE** (superseded — Phase 1 created `crates/world-gen` fresh; `services/world-service` + `services/travel-service` left orphaned for human cleanup) |
 | 1 | Crate structure + core types + Voronoi mesh + heightmap | **DONE** (2026-05-17) |
-| 2 | Climate + biomes + rivers | NOT STARTED |
+| 2 | Climate + biomes + rivers | **DONE** (2026-05-17) |
 | 3 | Political + settlement + route + culture | NOT STARTED |
 | 4 | Serialization + image export + CLI + (optional) LLM CreativeSeed authoring | NOT STARTED |
 
@@ -21,6 +21,10 @@ Phases are strictly sequential. Each is an **L-size** task. (The overnight build
 ### Phase 1 — build log (2026-05-17)
 
 `crates/world-gen/` — library `world_gen` + CLI bin `world-gen`. 9 source files + 2 integration tests, 19 tests green, `cargo clippy --all-targets` clean. Voronoi dual-mesh (perimeter ring + jittered interior → `delaunator` Delaunay → degree-repaired adjacency); Azgaar blob+radial-falloff heightmap; blake3+ChaCha8 determinism with a `content_hash` gate. AMAW: 3 design-review rounds (r1/r2 REJECTED → r3 APPROVED_WITH_WARNINGS), 2 code-review rounds (r1 REJECTED — land-coherence held on only some seeds → r2 APPROVED_WITH_WARNINGS), `/review-impl` (1 MED + 4 LOW), Scope Guard CLEAR. Phase 4 LLM authoring will use `ibm/granite-4-h-tiny` via LM Studio. One deferred item: `DEFERRED.md` #013 (land-fraction precision → Phase 2). Phase 4's optional LLM authoring is **in scope** for this run.
+
+### Phase 2 — build log (2026-05-17)
+
+Stages 3–4: `climate.rs` (latitude×elevation×ocean-distance → 8 `ClimateZone`), `hydrology.rs` (Barnes priority-flood depression fill → flow accumulation → `river_flux`; ocean/lake water network), `biome.rs` (14-`BiomeKind` matrix). `CreativeSeed` gained `hemisphere_orientation` + `climate_bias`; `WorldMap` gained `climate`/`biome`/`river_flux`/`is_coast`; CLI `--png` now renders biomes. 40 tests green, clippy clean. **DEFERRED #013 cleared** — connectivity-aware sea-level binary search + a continental base dome for the high-land `Inland` profile. AMAW: 2 design rounds (r1 REJECTED 2 BLOCK → r2 APPROVED_WITH_WARNINGS), 2 code rounds (r1/r2 APPROVED_WITH_WARNINGS — a code-review WARN fix surfaced + fixed a real `Inland` land-fragmentation BLOCK), `/review-impl` (1 MED + 3 LOW), Scope Guard CLEAR.
 
 ---
 

@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::biome::BiomeKind;
+use crate::climate::ClimateZone;
 use crate::creative_seed::WorldScale;
 
 /// One Voronoi cell — a centre point and an elevation.
@@ -31,6 +33,14 @@ pub struct WorldMap {
     pub neighbors: Vec<Vec<u32>>,
     /// Elevation threshold; `cell.elevation < sea_level` ⇒ water cell.
     pub sea_level: u16,
+    /// Per-cell climate zone (Phase 2). Parallel to `cells`.
+    pub climate: Vec<ClimateZone>,
+    /// Per-cell biome (Phase 2). Parallel to `cells`.
+    pub biome: Vec<BiomeKind>,
+    /// Per-cell accumulated downhill flow (Phase 2). Parallel to `cells`.
+    pub river_flux: Vec<f32>,
+    /// Per-cell flag: land cell adjacent to an ocean cell. Parallel to `cells`.
+    pub is_coast: Vec<bool>,
     /// blake3 hash over the canonical byte view — the determinism check.
     pub content_hash: [u8; 32],
 }

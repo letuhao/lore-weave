@@ -2,7 +2,9 @@
 //! a pure function: identical inputs ⇒ byte-identical `WorldMap`.
 //! (Phase 1 acceptance criterion #2.)
 
-use world_gen::{CoastlineProfile, CreativeSeed, WorldScale, generate};
+use world_gen::{
+    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, WorldScale, generate,
+};
 
 /// `generate` is byte-identical across two runs, for several fixture seeds
 /// crossing multiple scales and coastline profiles.
@@ -58,5 +60,43 @@ fn distinct_profiles_distinct_hashes() {
         generate(5, &island).content_hash,
         generate(5, &inland).content_hash,
         "distinct coastline profiles produced an identical content_hash"
+    );
+}
+
+/// The Phase 2 climate inputs (hemisphere, climate bias) are deterministic.
+#[test]
+fn hemisphere_and_climate_bias_are_deterministic() {
+    let cs = CreativeSeed {
+        hemisphere_orientation: HemisphereOrientation::Southern,
+        climate_bias: Some(ClimateZone::Arid),
+        ..CreativeSeed::default()
+    };
+    let a = generate(2026, &cs);
+    let b = generate(2026, &cs);
+    assert_eq!(a.content_hash, b.content_hash);
+    assert_eq!(a, b);
+}
+
+/// Climate inputs actually feed the output — changing them changes the hash.
+#[test]
+fn climate_inputs_change_the_hash() {
+    let base = CreativeSeed::default();
+    let southern = CreativeSeed {
+        hemisphere_orientation: HemisphereOrientation::Southern,
+        ..CreativeSeed::default()
+    };
+    let arid = CreativeSeed {
+        climate_bias: Some(ClimateZone::Arid),
+        ..CreativeSeed::default()
+    };
+    assert_ne!(
+        generate(9, &base).content_hash,
+        generate(9, &southern).content_hash,
+        "hemisphere flip did not change the map"
+    );
+    assert_ne!(
+        generate(9, &base).content_hash,
+        generate(9, &arid).content_hash,
+        "climate bias did not change the map"
     );
 }

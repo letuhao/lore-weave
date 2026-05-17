@@ -7,12 +7,18 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Creative direction for a generated world (Phase 1 fields).
+use crate::climate::ClimateZone;
+
+/// Creative direction for a generated world.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreativeSeed {
     pub world_scale: WorldScale,
     pub world_archetype: WorldArchetype,
     pub coastline_profile: CoastlineProfile,
+    /// Which way the continent faces the poles — drives latitude → climate.
+    pub hemisphere_orientation: HemisphereOrientation,
+    /// Optional nudge toward a climate zone (`None` = unbiased).
+    pub climate_bias: Option<ClimateZone>,
 }
 
 impl Default for CreativeSeed {
@@ -21,8 +27,21 @@ impl Default for CreativeSeed {
             world_scale: WorldScale::Continent,
             world_archetype: WorldArchetype::HighFantasy,
             coastline_profile: CoastlineProfile::Coastal,
+            hemisphere_orientation: HemisphereOrientation::Northern,
+            climate_bias: None,
         }
     }
+}
+
+/// Continent orientation relative to the poles (latitude convention).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HemisphereOrientation {
+    /// Map top (`y → 1`) is the pole.
+    Northern,
+    /// Map bottom (`y → 0`) is the pole.
+    Southern,
+    /// Equator across the middle (`y = 0.5`); both edges are polar.
+    Equatorial,
 }
 
 /// World size — sets the deterministic mesh dimensions (GEO_001 §6).
@@ -109,6 +128,18 @@ impl CoastlineProfile {
     /// Archipelago worlds are intentionally fragmented (scattered islands).
     pub fn is_archipelago(self) -> bool {
         matches!(self, CoastlineProfile::Archipelago)
+    }
+
+    /// Amplitude of the continental base dome (terrain stage). A broad dome
+    /// gives a *connected* land backbone — needed for `Inland`, whose 0.70
+    /// land target a blob-only heightmap cannot form coherently. Other
+    /// profiles do not need it (their land target is reachable from blobs +
+    /// radial falloff alone) → 0.0, no terrain change.
+    pub fn base_amplitude(self) -> f32 {
+        match self {
+            CoastlineProfile::Inland => 0.75,
+            _ => 0.0,
+        }
     }
 }
 

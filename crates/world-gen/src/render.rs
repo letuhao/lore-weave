@@ -7,10 +7,17 @@
 
 use image::{Rgb, RgbImage};
 
+use crate::biome::BiomeKind;
 use crate::world_map::WorldMap;
 
-/// Render a land/sea image of `map` at `width × height` pixels.
-pub fn land_sea_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
+/// Rasterize `map` to `width × height`: each pixel takes the colour of its
+/// nearest cell centre — which *is* the Voronoi diagram.
+fn rasterize<F: Fn(usize) -> Rgb<u8>>(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    color: F,
+) -> RgbImage {
     let index = SpatialIndex::build(map);
     let mut img = RgbImage::new(width, height);
     for py in 0..height {
@@ -19,10 +26,40 @@ pub fn land_sea_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
             let y = (py as f32 + 0.5) / height as f32;
             let cell = index.nearest(map, x, y);
             // Image y grows downward; flip so map y=0 is the image bottom.
-            img.put_pixel(px, height - 1 - py, shade(map, cell));
+            img.put_pixel(px, height - 1 - py, color(cell));
         }
     }
     img
+}
+
+/// Render a land/sea (elevation-shaded) image of `map`.
+pub fn land_sea_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
+    rasterize(map, width, height, |cell| shade(map, cell))
+}
+
+/// Render a biome-coloured image of `map` (Phase 2).
+pub fn biome_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
+    rasterize(map, width, height, |cell| biome_color(map.biome[cell]))
+}
+
+/// Colour for each `BiomeKind`.
+fn biome_color(b: BiomeKind) -> Rgb<u8> {
+    match b {
+        BiomeKind::Ocean => Rgb([30, 60, 130]),
+        BiomeKind::Lake => Rgb([60, 110, 190]),
+        BiomeKind::River => Rgb([90, 150, 210]),
+        BiomeKind::Coast => Rgb([200, 190, 130]),
+        BiomeKind::Beach => Rgb([235, 220, 160]),
+        BiomeKind::Plain => Rgb([130, 190, 90]),
+        BiomeKind::Forest => Rgb([50, 120, 55]),
+        BiomeKind::Jungle => Rgb([25, 95, 40]),
+        BiomeKind::Marsh => Rgb([95, 120, 70]),
+        BiomeKind::Mountain => Rgb([140, 135, 130]),
+        BiomeKind::Hill => Rgb([120, 140, 80]),
+        BiomeKind::Desert => Rgb([220, 200, 130]),
+        BiomeKind::Tundra => Rgb([170, 160, 150]),
+        BiomeKind::Glacier => Rgb([240, 245, 250]),
+    }
 }
 
 /// A uniform bucket grid over cell centres for fast nearest-centre lookup.
@@ -170,5 +207,23 @@ mod tests {
         // must still be total.
         let _ = land_ramp(-0.3);
         let _ = land_ramp(1.7);
+    }
+
+    #[test]
+    fn biome_image_has_requested_dimensions() {
+        let img = biome_image(&island_map(), 100, 80);
+        assert_eq!(img.width(), 100);
+        assert_eq!(img.height(), 80);
+    }
+
+    #[test]
+    fn biome_image_is_not_uniform() {
+        // A real island map has ocean + several land biomes ⇒ >1 colour.
+        let img = biome_image(&island_map(), 128, 128);
+        let first = *img.get_pixel(0, 0);
+        assert!(
+            img.pixels().any(|p| *p != first),
+            "biome image rendered a single flat colour"
+        );
     }
 }

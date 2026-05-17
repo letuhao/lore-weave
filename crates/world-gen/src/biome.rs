@@ -1,0 +1,263 @@
+//! Stage 4c — biome derivation.
+//!
+//! `derive_biome` is a **total** deterministic function of
+//! `(climate, elevation, river_flux, water flags)` — the GEO_001 §4.2 matrix.
+
+use serde::{Deserialize, Serialize};
+
+use crate::climate::ClimateZone;
+
+/// Closed biome enum (GEO_001 §4.2, 14 variants).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BiomeKind {
+    Ocean,
+    Lake,
+    River,
+    Coast,
+    Beach,
+    Plain,
+    Forest,
+    Jungle,
+    Marsh,
+    Mountain,
+    Hill,
+    Desert,
+    Tundra,
+    Glacier,
+}
+
+impl BiomeKind {
+    /// Stable discriminant byte for the content hash.
+    pub fn tag(self) -> u8 {
+        match self {
+            BiomeKind::Ocean => 0,
+            BiomeKind::Lake => 1,
+            BiomeKind::River => 2,
+            BiomeKind::Coast => 3,
+            BiomeKind::Beach => 4,
+            BiomeKind::Plain => 5,
+            BiomeKind::Forest => 6,
+            BiomeKind::Jungle => 7,
+            BiomeKind::Marsh => 8,
+            BiomeKind::Mountain => 9,
+            BiomeKind::Hill => 10,
+            BiomeKind::Desert => 11,
+            BiomeKind::Tundra => 12,
+            BiomeKind::Glacier => 13,
+        }
+    }
+
+    /// Whether this biome is a water cell.
+    pub fn is_water(self) -> bool {
+        matches!(self, BiomeKind::Ocean | BiomeKind::Lake)
+    }
+}
+
+/// Build the per-cell biome layer.
+pub fn build(
+    elevation: &[u16],
+    sea_level: u16,
+    climate: &[ClimateZone],
+    river_flux: &[f32],
+    river_threshold: f32,
+    is_in_ocean: &[bool],
+    is_coast: &[bool],
+) -> Vec<BiomeKind> {
+    (0..elevation.len())
+        .map(|i| {
+            derive_biome(
+                climate[i],
+                elevation[i],
+                sea_level,
+                river_flux[i],
+                river_threshold,
+                is_in_ocean[i],
+                is_coast[i],
+            )
+        })
+        .collect()
+}
+
+/// Derive one cell's biome — total deterministic function (GEO_001 §4.2).
+///
+/// Total by construction: "is this a water cell?" is computed here from
+/// `elevation < sea_level`, so the `elevation - sea_level` land-tier
+/// subtraction below is only ever reached when `elevation >= sea_level` —
+/// no caller can pass an inconsistent flag.
+pub fn derive_biome(
+    climate: ClimateZone,
+    elevation: u16,
+    sea_level: u16,
+    river_flux: f32,
+    river_threshold: f32,
+    is_in_ocean: bool,
+    is_coast: bool,
+) -> BiomeKind {
+    if elevation < sea_level {
+        return if is_in_ocean {
+            BiomeKind::Ocean
+        } else {
+            BiomeKind::Lake
+        };
+    }
+    if river_flux > river_threshold {
+        return BiomeKind::River;
+    }
+    // Elevation tier within the land range [sea_level, 65535].
+    let land_t = f32::from(elevation - sea_level) / f32::from((65535 - sea_level).max(1));
+    if is_coast {
+        return if land_t < 0.06 {
+            BiomeKind::Beach
+        } else {
+            BiomeKind::Coast
+        };
+    }
+    let high = land_t >= 0.55;
+    let mid = land_t >= 0.22;
+    // Wet but not a river — feeds Marsh in warm-humid lowlands.
+    let wet_low = land_t < 0.22 && river_flux > 0.5 * river_threshold;
+
+    match climate {
+        ClimateZone::Highland => hill_or_mountain(high),
+        ClimateZone::Polar => {
+            if high {
+                BiomeKind::Glacier
+            } else {
+                BiomeKind::Tundra
+            }
+        }
+        ClimateZone::Boreal => {
+            if high {
+                BiomeKind::Mountain
+            } else if mid {
+                BiomeKind::Hill
+            } else {
+                BiomeKind::Forest
+            }
+        }
+        ClimateZone::Temperate | ClimateZone::Mediterranean => {
+            if high {
+                BiomeKind::Mountain
+            } else if mid {
+                BiomeKind::Hill
+            } else {
+                BiomeKind::Plain
+            }
+        }
+        ClimateZone::Subtropical => {
+            if high {
+                BiomeKind::Mountain
+            } else if mid {
+                BiomeKind::Hill
+            } else if wet_low {
+                BiomeKind::Marsh
+            } else {
+                BiomeKind::Forest
+            }
+        }
+        ClimateZone::Tropical => {
+            if high {
+                BiomeKind::Mountain
+            } else if mid {
+                BiomeKind::Hill
+            } else if wet_low {
+                BiomeKind::Marsh
+            } else {
+                BiomeKind::Jungle
+            }
+        }
+        ClimateZone::Arid => {
+            if high {
+                BiomeKind::Mountain
+            } else if mid {
+                BiomeKind::Hill
+            } else {
+                BiomeKind::Desert
+            }
+        }
+    }
+}
+
+fn hill_or_mountain(high: bool) -> BiomeKind {
+    if high {
+        BiomeKind::Mountain
+    } else {
+        BiomeKind::Hill
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Inputs hand-picked to surface a given biome.
+    fn b(
+        climate: ClimateZone,
+        land_t: f32,
+        flux: f32,
+        threshold: f32,
+        is_water: bool,
+        ocean: bool,
+        coast: bool,
+    ) -> BiomeKind {
+        let sea = 20_000u16;
+        let elevation = if is_water {
+            sea - 1
+        } else {
+            sea + (land_t * f32::from(65535 - sea)) as u16
+        };
+        derive_biome(climate, elevation, sea, flux, threshold, ocean, coast)
+    }
+
+    #[test]
+    fn all_fourteen_biomes_are_reachable() {
+        use ClimateZone as C;
+        let cases = [
+            BiomeKind::Ocean,   // water + ocean
+            BiomeKind::Lake,    // water + !ocean
+            BiomeKind::River,   // flux > threshold
+            BiomeKind::Coast,   // coast, land_t >= 0.06
+            BiomeKind::Beach,   // coast, land_t < 0.06
+            BiomeKind::Plain,   // Temperate low
+            BiomeKind::Forest,  // Boreal low
+            BiomeKind::Jungle,  // Tropical low dry
+            BiomeKind::Marsh,   // Tropical low wet
+            BiomeKind::Mountain,// any high
+            BiomeKind::Hill,    // any mid
+            BiomeKind::Desert,  // Arid low
+            BiomeKind::Tundra,  // Polar low
+            BiomeKind::Glacier, // Polar high
+        ];
+        let got = [
+            b(C::Temperate, 0.0, 0.0, 100.0, true, true, false),
+            b(C::Temperate, 0.0, 0.0, 100.0, true, false, false),
+            b(C::Temperate, 0.3, 200.0, 100.0, false, false, false),
+            b(C::Temperate, 0.3, 0.0, 100.0, false, false, true),
+            b(C::Temperate, 0.0, 0.0, 100.0, false, false, true),
+            b(C::Temperate, 0.1, 0.0, 100.0, false, false, false),
+            b(C::Boreal, 0.1, 0.0, 100.0, false, false, false),
+            b(C::Tropical, 0.1, 0.0, 100.0, false, false, false),
+            b(C::Tropical, 0.1, 60.0, 100.0, false, false, false),
+            b(C::Temperate, 0.8, 0.0, 100.0, false, false, false),
+            b(C::Temperate, 0.4, 0.0, 100.0, false, false, false),
+            b(C::Arid, 0.1, 0.0, 100.0, false, false, false),
+            b(C::Polar, 0.1, 0.0, 100.0, false, false, false),
+            b(C::Polar, 0.8, 0.0, 100.0, false, false, false),
+        ];
+        assert_eq!(got, cases, "biome matrix does not surface all 14 variants");
+    }
+
+    #[test]
+    fn water_cells_never_get_a_land_biome() {
+        for ocean in [true, false] {
+            let biome = b(ClimateZone::Tropical, 0.0, 999.0, 1.0, true, ocean, false);
+            assert!(biome.is_water(), "water cell got land biome {biome:?}");
+        }
+    }
+
+    #[test]
+    fn land_cells_never_get_a_water_biome() {
+        let biome = b(ClimateZone::Tropical, 0.5, 0.0, 100.0, false, false, false);
+        assert!(!biome.is_water(), "land cell got water biome {biome:?}");
+    }
+}
