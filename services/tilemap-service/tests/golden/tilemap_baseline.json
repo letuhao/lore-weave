@@ -102,10 +102,10 @@
           4096,
           4096,
           4096,
-          8128,
-          576,
-          576,
-          576,
+          16320,
+          8768,
+          25152,
+          16960,
           512,
           512,
           512,
@@ -254,7 +254,7 @@
           0,
           0,
           35184372056064,
-          0,
+          32768,
           0,
           0,
           0,
@@ -4854,6 +4854,22 @@
   ],
   "object_placements": [
     {
+      "kind": "monolith",
+      "anchor": {
+        "x": 9,
+        "y": 1
+      },
+      "value": 0
+    },
+    {
+      "kind": "monolith",
+      "anchor": {
+        "x": 10,
+        "y": 31
+      },
+      "value": 0
+    },
+    {
       "kind": "treasure",
       "anchor": {
         "x": 5,
@@ -4872,16 +4888,16 @@
     {
       "kind": "treasure",
       "anchor": {
-        "x": 63,
-        "y": 9
+        "x": 58,
+        "y": 11
       },
       "value": 2750
     },
     {
       "kind": "monster_lair",
       "anchor": {
-        "x": 62,
-        "y": 9
+        "x": 57,
+        "y": 11
       },
       "value": 275
     },
@@ -5240,14 +5256,6 @@
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 9,
-        "y": 0
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
         "x": 32,
         "y": 0
       },
@@ -5264,7 +5272,7 @@
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 35,
+        "x": 34,
         "y": 0
       },
       "biome_object_type": "plant"
@@ -5272,10 +5280,10 @@
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 37,
+        "x": 36,
         "y": 0
       },
-      "biome_object_type": "rock"
+      "biome_object_type": "plant"
     },
     {
       "kind": "obstacle",
@@ -5296,7 +5304,7 @@
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 41,
+        "x": 40,
         "y": 0
       },
       "biome_object_type": "rock"
@@ -5304,26 +5312,10 @@
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 43,
+        "x": 42,
         "y": 0
       },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 33,
-        "y": 1
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 44,
-        "y": 0
-      },
-      "biome_object_type": "plant"
+      "biome_object_type": "rock"
     },
     {
       "kind": "obstacle",
@@ -5331,13 +5323,29 @@
         "x": 34,
         "y": 1
       },
-      "biome_object_type": "plant"
+      "biome_object_type": "tree"
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 35,
         "y": 1
+      },
+      "biome_object_type": "tree"
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 9,
+        "y": 0
+      },
+      "biome_object_type": "plant"
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 44,
+        "y": 0
       },
       "biome_object_type": "plant"
     },
@@ -5352,7 +5360,15 @@
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 39,
+        "x": 37,
+        "y": 1
+      },
+      "biome_object_type": "plant"
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 40,
         "y": 1
       },
       "biome_object_type": "rock"
@@ -5360,7 +5376,7 @@
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 40,
+        "x": 41,
         "y": 1
       },
       "biome_object_type": "rock"

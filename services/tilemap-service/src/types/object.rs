@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::types::biome::BiomeObjectType;
 use crate::types::tile::TileCoord;
 
-/// V1+30d 7-variant closed enum. Some variants are schema-reserved at V1+30d
+/// V1+30d 9-variant closed enum. Some variants are schema-reserved at V1+30d
 /// (V2+ activation tracked via TMP-D* deferrals in TMP_001 §16).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -28,6 +28,9 @@ pub enum TilemapObjectKind {
     Decoration,
     /// Biome obstacle — mountain, tree, rock, lake, etc. (TMP_005 §4). Blocking.
     Obstacle,
+    /// Ferry crossing — V1+30d simplified water route (TMP_007 §7): placed at a
+    /// shore tile, click → instant transit. The V2 ship system is TVL_001.
+    Ferry,
 }
 
 /// A placed object's full record on the tilemap. Inner detail (canonical refs,
@@ -45,9 +48,10 @@ pub struct TilemapObjectPlacement {
     /// Additive (TMP-A8).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub biome_object_type: Option<BiomeObjectType>,
-    /// Kind-specific magnitude carried from generation (TMP_006 — Phase C D10):
-    /// for `kind == Treasure` the composed pile's summed gold value, for
-    /// `kind == MonsterLair` the guard strength; `None` for every other kind.
+    /// Kind-specific magnitude carried from generation (TMP_006 — Phase C D10;
+    /// TMP_007 — Phase D D-Q1): for `kind == Treasure` the composed pile's
+    /// summed gold value, for `kind == MonsterLair` the guard strength, for
+    /// `kind == Monolith` the teleport-pair id; `None` for every other kind.
     /// Persisted so V2 loot / economy / combat can recover it without a full
     /// deterministic re-generation (the `biome_object_type` precedent).
     /// Additive (TMP-A8).
@@ -113,5 +117,23 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
         assert_eq!(p, back);
         assert_eq!(back.value, Some(4200));
+    }
+
+    #[test]
+    fn ferry_placement_round_trips() {
+        // AC-12 — a Ferry placement (TMP_007 §7 water route) serialises as the
+        // snake_case tag "ferry" and survives a JSON round-trip.
+        let p = TilemapObjectPlacement {
+            kind: TilemapObjectKind::Ferry,
+            anchor: TileCoord::new(4, 8),
+            canon_ref: None,
+            biome_object_type: None,
+            value: None,
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("\"ferry\""), "Ferry must serialise as \"ferry\": {json}");
+        let back: TilemapObjectPlacement = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, back);
+        assert_eq!(back.kind, TilemapObjectKind::Ferry);
     }
 }

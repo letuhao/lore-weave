@@ -36,12 +36,22 @@ fn zone(id: &str, role: ZoneRole, terrains: Vec<TerrainKind>, conns: &[(&str, Pa
 }
 
 /// A 5-zone fixture covering every `ZoneRole`.
+///
+/// `inland_sea` carries no connection, so the golden does not exercise a
+/// Pass-3 water route / `Ferry` — `place_zones`' seed-random geometry cannot
+/// guarantee two zones non-bordering with the Sea between them, so a golden
+/// ferry cannot be forced deterministically. Water routes are covered by the
+/// `connections_placer` unit test `ac7` instead.
 fn fixture() -> TilemapTemplate {
     let mut template = TilemapTemplate {
         template_id: TilemapTemplateId("phase1_determinism".to_string()),
         zones: vec![
             zone("capital", ZoneRole::Wilderness, vec![TerrainKind::Grass], &[("crossroad", PassageKind::Threshold)]),
-            zone("crossroad", ZoneRole::Hub, vec![], &[("frontier", PassageKind::Open)]),
+            // crossroad — the Hub — connects out to `frontier` (an Open
+            // passage) and into the Forbidden `rival` (a Portal: TMP_007 §2 — a
+            // Forbidden zone is Portal-only-enterable, so the Phase-D golden
+            // exercises the Pass-1 monolith pair + the Forbidden-zone fallback).
+            zone("crossroad", ZoneRole::Hub, vec![], &[("frontier", PassageKind::Open), ("rival", PassageKind::Portal)]),
             zone("frontier", ZoneRole::Wilderness, vec![], &[("rival", PassageKind::Adversarial)]),
             zone("inland_sea", ZoneRole::Sea, vec![], &[]),
             zone("rival", ZoneRole::Forbidden, vec![], &[]),
@@ -92,6 +102,14 @@ fn ac4_same_seed_yields_byte_identical_tilemap() {
     assert!(
         a.object_placements.iter().any(|p| p.kind == TilemapObjectKind::MonsterLair),
         "a min≥2000 treasure tier must place MonsterLair guards",
+    );
+    // Phase D — the crossroad→rival Portal places a Monolith pair (one per
+    // zone) carrying a shared pair_id (AC-1); a no-op detector for the
+    // rebaselined Phase-D golden.
+    assert_eq!(
+        a.object_placements.iter().filter(|p| p.kind == TilemapObjectKind::Monolith).count(),
+        2,
+        "the Portal connection must place a Monolith pair (Phase D)",
     );
 }
 

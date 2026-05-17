@@ -133,11 +133,11 @@ modificator-pipeline build** is now underway — roadmap
 
 1. **TMP_005/006/007 modificator pipeline** — **Phases A (Pipeline
    Foundation), B (ObstaclePlacer + biomes, TMP_005), C (TreasurePlacer,
-   TMP_006) all DONE 2026-05-17** (see the session entries below). Phases **D**
-   (ConnectionsPlacer, TMP_007) and **E** (RoadPlacer + RiverPlacer, TMP_003
-   §3.5) are next. Once the placers land, the L3/L4 bootstrap can classify
-   **engine-placed** objects instead of the current fixture set — a genuine
-   engine→L3→L4 flow.
+   TMP_006) DONE 2026-05-17; D (ConnectionsPlacer, TMP_007) DONE 2026-05-18**
+   (see the session entries below). Phase **E** (RoadPlacer + RiverPlacer,
+   TMP_003 §3.5) is the last placer phase. Once the placers land, the L3/L4
+   bootstrap can classify **engine-placed** objects instead of the current
+   fixture set — a genuine engine→L3→L4 flow.
 2. **Live continent-scale measurement** — Phases 2-3 were mock-gateway verified;
    the only live data point is the Phase-0b 3-object run (TMP_008b §12.8). A
    full continent fixture against live lmstudio is the next measurement.
@@ -146,6 +146,88 @@ modificator-pipeline build** is now underway — roadmap
 
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-18 — TMP_005/006/007 Phase D — ConnectionsPlacer — ✅ DONE (XL, default v2.2 human-in-loop)
+
+### Outcome
+
+Phase D of the **TMP_005/006/007 modificator-pipeline build** (roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md))
+— the **third placer**: `ConnectionsPlacer` (TMP_007) — the zone-graph
+*edge-realization* layer. XL, run under the **default v2.2 human-in-loop**
+workflow (the operator's call after the Phase-C checkpoint — not `/amaw`).
+**The third phase to change `place_tilemap` output** — `object_placements` now
+also carries `Monolith` / `Ferry` records (plus connection-guard `MonsterLair`s),
+so the AC-11 golden was rebaselined to the Phase-D engine. Water routes
+(TMP_007 §7) + coast sealing (§9) were pulled **into** Phase D scope at the
+CLARIFY checkpoint (PO decision).
+
+- **Spec:** [`docs/specs/2026-05-17-tilemap-phase-d-connections-placer.md`](../../specs/2026-05-17-tilemap-phase-d-connections-placer.md)
+  (D1-D12, D-Q1..D-Q6, AC-1..AC-13). **Plan:** [`docs/plans/2026-05-17-tilemap-phase-d-connections-placer.md`](../../plans/2026-05-17-tilemap-phase-d-connections-placer.md)
+  (6 TDD build chunks).
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `engine/modificators/connections_placer.rs` | NEW — `ConnectionsPlacer`: the TMP_007 §3 three-pass algorithm. Pass 1 `Portal` → `place_monolith_pair`; Pass 2 direct passages (neighbour-border map, the pinned D5 passage-point score, 3-way / crowding / safety rejection, corridor `search_path` + `attach_walkable_path`, connection guards); Pass 3 indirect (water-route ferries via `place_water_route`, else the monolith fallback); §3.1/§9 `seal_borders`. Pure helpers: `terrain_prohibits_transition` (D7), `neighbour_border_map`, `score_passage_point`, `monolith_tile`. RNG-free — determinism by construction (D11). |
+| `types/object.rs` | MOD — `TilemapObjectKind::Ferry` (9th variant; D-Q2) — additive (TMP-A8) |
+| `engine/build_state.rs` | MOD — `TilemapBuildState.road_nodes: Vec<TileCoord>` (D-Q4 — the Phase-E `RoadPlacer` handoff) |
+| `engine/mod.rs` · `engine/modificators/mod.rs` | MOD — `ConnectionsPlacer` registered first among the placers (TerrainPainter → ConnectionsPlacer → TreasurePlacer → ObstaclePlacer; the Kahn topo-sort orders it via Treasure/Obstacle's existing `connections_placer` dependency edges) |
+| `tests/determinism.rs` · `tests/golden/tilemap_baseline.json` | MOD — golden rebaselined (D11); the fixture's Forbidden `rival` zone gains its canonical `Portal` entrance so the golden exercises the Pass-1 monolith pair |
+
+A generated tilemap is now **fully connected** — every author connection is
+realized (a guarded corridor, a free border, a monolith teleport pair, or a
+ferry crossing), each zone's `free_paths` skeleton joined to its neighbours'.
+
+### Review (default v2.2 — Lead self-review + `/review-impl`)
+
+- **Design review** — PO + Lead self-review; the D-Q1..D-Q6 design questions
+  resolved (monolith `pair_id` reuses `value`; `Ferry` enum variant; no
+  `TilemapView` connection records; `road_nodes` on the build state; guard
+  4-adjacent to the passage; uniform `search_path` cost).
+- **Code review** — 2-stage Lead self-review (spec D1-D12 compliance + code
+  quality). 0 HIGH/MED.
+- **`/review-impl`** (deep adversarial coverage review at the POST-REVIEW human
+  checkpoint): **10 findings — 0 HIGH, 2 MED, 7 LOW, 1 COSMETIC — all fixed**.
+  *MED-1* AC-9 dedup tested only for `Portal` → new bidirectional-`Open` test
+  (`road_nodes.len() == 1` catches a doubled Pass-2 corridor). *MED-2* the
+  `would_seal_a_gap` gates ran only on split-proof geometry → new C-shaped-zone
+  border-cut-vertex test that fails if the `seal_borders` gap-check is removed.
+  7 LOW: stale `value` doc; untested `guard_strength`-drop on the Pass-3
+  fallback; the degenerate-seal AC-10 carve-out; the best-effort guard; AC-7
+  ferry-per-zone + §9 coast-open assertions; an explicit `best_passage_point`
+  passability guard; a §2/D11 spec contradiction. COSMETIC: the golden cannot
+  reliably exercise a ferry (documented).
+
+### Verify
+
+`cargo test --workspace` green — **227** tilemap-service lib tests + 6
+determinism (+1 ignored golden regenerator) + integration = **305 passed, 0
+failed**. `cargo clippy --workspace --all-targets` 0 warnings. Golden
+rebaselined to the Phase-D engine → `tests/golden/tilemap_baseline.json` now
+carries a `Monolith` pair (`value` = the shared `pair_id`);
+`golden_baseline_byte_identical` reproduces it; `ac4_same_seed` confirms
+within-build determinism incl. the new record kinds.
+
+### Deferred
+
+- **#024** (NEW) — TMP_007 §5 "curved" passage-path cost. Phase D drives
+  `search_path` with uniform `cost = 1.0`; the curved cost is pure visual
+  polish (Track 2).
+- **#019** (CLEARED) — the per-zone `would_seal_a_gap` re-validation #019
+  targeted at Phase D: sound regardless of border-seal completeness — every
+  tile is zone-exclusive and every passability-removing mutation targets a
+  zone-interior `Open` tile, so removing a zone-X tile can never split zone Y.
+
+### Next
+
+**Phase E — RoadPlacer + RiverPlacer (TMP_003 §3.5)** — the final placer phase.
+`RoadPlacer` consumes the `road_nodes` ConnectionsPlacer recorded; `RiverPlacer`
+uses the Phase-B `biome_object_type` river-source/sink tags (DEFERRED #022 — its
+footprint-extent need is a Phase-E decision).
 
 ---
 

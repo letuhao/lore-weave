@@ -7,7 +7,9 @@
 use std::collections::HashMap;
 
 use crate::engine::build_state::TilemapBuildState;
-use crate::engine::modificators::{ObstaclePlacer, TerrainPainter, TreasurePlacer};
+use crate::engine::modificators::{
+    ConnectionsPlacer, ObstaclePlacer, TerrainPainter, TreasurePlacer,
+};
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
 use crate::seed::TilemapSeed;
@@ -31,9 +33,9 @@ pub mod treasure_select;
 ///
 /// Runs the full engine: TMP_002 [`place_zones`] (grid seed → Fruchterman-
 /// Reingold → Penrose → fractalize) then the TMP_003 modificator pipeline
-/// (TerrainPainter → TreasurePlacer → ObstaclePlacer). Single-threaded — the determinism axiom
-/// (TMP-A4) holds: same `(template, channel_id, tier, grid, seed)` ⇒
-/// byte-identical output.
+/// (TerrainPainter → ConnectionsPlacer → TreasurePlacer → ObstaclePlacer).
+/// Single-threaded — the determinism axiom (TMP-A4) holds: same
+/// `(template, channel_id, tier, grid, seed)` ⇒ byte-identical output.
 ///
 /// `channel_id` + `tier` scope the resulting view (they are channel metadata
 /// the placement algorithm does not synthesize — spec AC-1's `(template, seed,
@@ -52,10 +54,16 @@ pub fn place_tilemap(
     let tiled = place_zones(template, grid, seed)?;
 
     // TMP_003 — build the mutable generation state and run the modificator
-    // pipeline (TerrainPainter → TreasurePlacer → ObstaclePlacer).
+    // pipeline (TerrainPainter → ConnectionsPlacer → TreasurePlacer →
+    // ObstaclePlacer).
     let mut state = TilemapBuildState::from_zones(tiled, grid);
     let mut registry = ModificatorRegistry::new();
     registry.add(Box::new(TerrainPainter));
+    // TMP_007 — ConnectionsPlacer runs the §7-step-4 connection guards before
+    // TreasurePlacer; both TreasurePlacer and ObstaclePlacer declare
+    // `connections_placer` in their dependencies, so the Kahn topo-sort orders
+    // it here regardless of `add` order.
+    registry.add(Box::new(ConnectionsPlacer));
     // D8 — TreasurePlacer before ObstaclePlacer (TMP_006 §7: treasures step 5,
     // obstacles step 8); the Kahn topo-sort enforces the order via the
     // dependency edges regardless of `add` order.
@@ -206,10 +214,13 @@ mod tests {
                 (0..state.zones.len()).map(|i| state.zone_passable(i)).collect();
 
             // The exact modificator set `place_tilemap` registers, run the same
-            // way. TreasurePlacer no-ops here — `fixture()` declares no
+            // way — incl. ConnectionsPlacer, whose corridors / monoliths /
+            // ferries / border seals are all `would_seal_a_gap`-gated.
+            // TreasurePlacer no-ops here — `fixture()` declares no
             // `treasure_tiers` — so AC-7 is the treasure-connectivity gate.
             let mut registry = ModificatorRegistry::new();
             registry.add(Box::new(TerrainPainter));
+            registry.add(Box::new(ConnectionsPlacer));
             registry.add(Box::new(TreasurePlacer));
             registry.add(Box::new(ObstaclePlacer));
             {
@@ -339,8 +350,12 @@ mod tests {
             let pre: Vec<TileMask> =
                 (0..state.zones.len()).map(|i| state.zone_passable(i)).collect();
 
+            // The same modificator set `place_tilemap` registers. `fixture()`
+            // declares no connections, so ConnectionsPlacer only runs §3.1/§9
+            // border sealing here — itself `would_seal_a_gap`-gated.
             let mut registry = ModificatorRegistry::new();
             registry.add(Box::new(TerrainPainter));
+            registry.add(Box::new(ConnectionsPlacer));
             registry.add(Box::new(TreasurePlacer));
             registry.add(Box::new(ObstaclePlacer));
             {
