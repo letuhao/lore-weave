@@ -2,8 +2,8 @@
 //! coherence, sea-level band. (Phase 1 acceptance criteria #3–#6.)
 
 use world_gen::{
-    BiomeKind, CoastlineProfile, CreativeSeed, RouteKind, SettlementRole, WorldMap, WorldScale,
-    generate,
+    BiomeKind, CoastlineProfile, CreativeSeed, PrevailingWind, RouteKind, SettlementRole, WorldMap,
+    WorldScale, generate,
 };
 
 /// Per-cell land-component id (`u32::MAX` for water). DFS over `neighbors`.
@@ -766,4 +766,30 @@ fn route_kinds_are_generated() {
             );
         }
     }
+}
+
+/// review-impl finding 1 — the orographic wind must thread through `generate`
+/// and actually reshape the world. Flipping the prevailing wind has to change
+/// the climate layer (and so the content hash); a refactor that dropped
+/// `cs.prevailing_wind` would otherwise leave every other test green.
+#[test]
+fn prevailing_wind_reshapes_the_climate() {
+    let west = CreativeSeed {
+        prevailing_wind: PrevailingWind::West,
+        ..CreativeSeed::default()
+    };
+    let east = CreativeSeed {
+        prevailing_wind: PrevailingWind::East,
+        ..CreativeSeed::default()
+    };
+    let a = generate(42, &west);
+    let b = generate(42, &east);
+    assert_ne!(
+        a.climate, b.climate,
+        "flipping the prevailing wind left the climate layer identical"
+    );
+    assert_ne!(
+        a.content_hash, b.content_hash,
+        "a wind-changed climate must change the content hash"
+    );
 }

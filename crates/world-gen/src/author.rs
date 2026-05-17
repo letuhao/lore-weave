@@ -17,24 +17,26 @@ meanings: world_scale = overall map size; world_archetype = genre; \
 coastline_profile = landmass shape (Island/Peninsula/Coastal/Inland/Archipelago); \
 hemisphere_orientation = which way the continent faces the poles; climate_bias = \
 a climate zone to skew toward, or null for none; settlement_density = how dense \
-settlements are; culture_count = number of distinct cultures (1-16). \
+settlements are; culture_count = number of distinct cultures (1-16); \
+prevailing_wind = the compass direction the wind blows from, driving rain-shadow \
+deserts on the lee side of mountains. \
 Choose values that fit the brief. Output only the JSON object.";
 
 /// The JSON Schema constraining the LLM output to the `CreativeSeed` shape.
 ///
 /// MAINTENANCE: the `enum` value lists below are hand-mirrored from the Rust
 /// enums — keep them in sync with `WorldScale`, `WorldArchetype` (minus
-/// `Custom`), `CoastlineProfile`, `HemisphereOrientation`, `SettlementDensity`,
-/// and `ClimateZone`. The `schema_enums_match_rust_enums` test catches a
-/// stale or bogus entry.
+/// `Custom`), `CoastlineProfile`, `HemisphereOrientation`, `PrevailingWind`,
+/// `SettlementDensity`, and `ClimateZone`. The `schema_enums_match_rust_enums`
+/// test catches a stale or bogus entry.
 pub fn creative_seed_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
         "required": [
             "world_scale", "world_archetype", "coastline_profile",
-            "hemisphere_orientation", "climate_bias", "settlement_density",
-            "culture_count"
+            "hemisphere_orientation", "prevailing_wind", "climate_bias",
+            "settlement_density", "culture_count"
         ],
         "properties": {
             "world_scale": { "enum": [
@@ -50,6 +52,10 @@ pub fn creative_seed_schema() -> Value {
             ] },
             "hemisphere_orientation": { "enum": [
                 "Northern", "Southern", "Equatorial"
+            ] },
+            "prevailing_wind": { "enum": [
+                "North", "NorthEast", "East", "SouthEast",
+                "South", "SouthWest", "West", "NorthWest"
             ] },
             "climate_bias": { "enum": [
                 "Polar", "Boreal", "Temperate", "Mediterranean", "Subtropical",
@@ -140,7 +146,8 @@ mod tests {
     use super::*;
     use crate::climate::ClimateZone;
     use crate::creative_seed::{
-        CoastlineProfile, HemisphereOrientation, SettlementDensity, WorldArchetype, WorldScale,
+        CoastlineProfile, HemisphereOrientation, PrevailingWind, SettlementDensity, WorldArchetype,
+        WorldScale,
     };
 
     const VALID: &str = r#"{
@@ -148,6 +155,7 @@ mod tests {
         "world_archetype": "Wuxia",
         "coastline_profile": "Coastal",
         "hemisphere_orientation": "Northern",
+        "prevailing_wind": "East",
         "climate_bias": "Arid",
         "settlement_density": "Medium",
         "culture_count": 6
@@ -160,6 +168,7 @@ mod tests {
         assert_eq!(cs.world_archetype, WorldArchetype::Wuxia);
         assert_eq!(cs.coastline_profile, CoastlineProfile::Coastal);
         assert_eq!(cs.hemisphere_orientation, HemisphereOrientation::Northern);
+        assert_eq!(cs.prevailing_wind, PrevailingWind::East);
         assert_eq!(cs.climate_bias, Some(ClimateZone::Arid));
         assert_eq!(cs.settlement_density, SettlementDensity::Medium);
         assert_eq!(cs.culture_count, 6);
@@ -252,6 +261,9 @@ mod tests {
         parses("hemisphere_orientation", &|s| {
             serde_json::from_value::<HemisphereOrientation>(json!(s)).is_ok()
         });
+        parses("prevailing_wind", &|s| {
+            serde_json::from_value::<PrevailingWind>(json!(s)).is_ok()
+        });
         parses("settlement_density", &|s| {
             serde_json::from_value::<SettlementDensity>(json!(s)).is_ok()
         });
@@ -274,7 +286,38 @@ mod tests {
         assert_eq!(count("world_archetype"), 11, "world_archetype enum count (12 - Custom)");
         assert_eq!(count("coastline_profile"), 5, "coastline_profile enum count");
         assert_eq!(count("hemisphere_orientation"), 3, "hemisphere enum count");
+        assert_eq!(count("prevailing_wind"), 8, "prevailing_wind enum count");
         assert_eq!(count("settlement_density"), 3, "settlement_density enum count");
         assert_eq!(count("climate_bias"), 9, "climate_bias enum count (8 zones + null)");
+
+        // No schema enum list may repeat a value — `parses` + `count` together
+        // would still pass a list that duplicated one variant and dropped
+        // another (review-impl finding 6).
+        let no_dups = |field: &str| {
+            let arr = schema
+                .get("properties")
+                .and_then(|p| p.get(field))
+                .and_then(|f| f.get("enum"))
+                .and_then(Value::as_array)
+                .unwrap_or_else(|| panic!("schema field {field} has no enum array"));
+            let mut seen = std::collections::HashSet::new();
+            for v in arr {
+                assert!(
+                    seen.insert(v.to_string()),
+                    "schema {field} enum repeats a value: {v}"
+                );
+            }
+        };
+        for field in [
+            "world_scale",
+            "world_archetype",
+            "coastline_profile",
+            "hemisphere_orientation",
+            "prevailing_wind",
+            "settlement_density",
+            "climate_bias",
+        ] {
+            no_dups(field);
+        }
     }
 }

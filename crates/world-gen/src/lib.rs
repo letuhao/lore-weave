@@ -32,8 +32,8 @@ pub use biome::BiomeKind;
 pub use climate::ClimateZone;
 pub use relief::RenderStyle;
 pub use creative_seed::{
-    CoastlineProfile, CreativeSeed, HemisphereOrientation, SettlementDensity, WorldArchetype,
-    WorldScale,
+    CoastlineProfile, CreativeSeed, HemisphereOrientation, PrevailingWind, SettlementDensity,
+    WorldArchetype, WorldScale,
 };
 pub use world_map::{
     Cell, CultureRegion, Province, Route, RouteKind, Settlement, SettlementRole, State, WorldMap,
@@ -54,6 +54,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         terrain.sea_level,
         &mesh.neighbors,
         cs.hemisphere_orientation,
+        cs.prevailing_wind,
         cs.climate_bias,
     );
 

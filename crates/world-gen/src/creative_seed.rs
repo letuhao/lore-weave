@@ -18,6 +18,10 @@ pub struct CreativeSeed {
     pub coastline_profile: CoastlineProfile,
     /// Which way the continent faces the poles — drives latitude → climate.
     pub hemisphere_orientation: HemisphereOrientation,
+    /// Direction the prevailing wind blows *from* — drives the orographic rain
+    /// shadow. `#[serde(default)]` (`West`) so a pre-wind config JSON loads.
+    #[serde(default)]
+    pub prevailing_wind: PrevailingWind,
     /// Optional nudge toward a climate zone (`None` = unbiased).
     pub climate_bias: Option<ClimateZone>,
     /// How densely settlements are placed (Phase 3).
@@ -33,6 +37,7 @@ impl Default for CreativeSeed {
             world_archetype: WorldArchetype::HighFantasy,
             coastline_profile: CoastlineProfile::Coastal,
             hemisphere_orientation: HemisphereOrientation::Northern,
+            prevailing_wind: PrevailingWind::West,
             climate_bias: None,
             settlement_density: SettlementDensity::Medium,
             culture_count: 5,
@@ -77,6 +82,42 @@ pub enum HemisphereOrientation {
     Southern,
     /// Equator across the middle (`y = 0.5`); both edges are polar.
     Equatorial,
+}
+
+/// Direction the prevailing wind blows *from* (meteorological convention — a
+/// "westerly" is a wind *from* the west). Drives the orographic moisture march
+/// in [`crate::climate`]. Map convention: `+x` is east, `+y` is north.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PrevailingWind {
+    North,
+    NorthEast,
+    East,
+    SouthEast,
+    South,
+    SouthWest,
+    /// Westerly — the default; the dominant mid-latitude wind on Earth.
+    #[default]
+    West,
+    NorthWest,
+}
+
+impl PrevailingWind {
+    /// Unit vector of the direction the air *moves* — away from the source, so
+    /// a `West` wind blows toward `+x` (east). Map space: `+x` east, `+y` north.
+    pub fn vector(self) -> (f32, f32) {
+        // 1/√2 for the diagonal components.
+        const D: f32 = 0.707_106_77;
+        match self {
+            PrevailingWind::North => (0.0, -1.0),
+            PrevailingWind::NorthEast => (-D, -D),
+            PrevailingWind::East => (-1.0, 0.0),
+            PrevailingWind::SouthEast => (-D, D),
+            PrevailingWind::South => (0.0, 1.0),
+            PrevailingWind::SouthWest => (D, D),
+            PrevailingWind::West => (1.0, 0.0),
+            PrevailingWind::NorthWest => (D, -D),
+        }
+    }
 }
 
 /// World size — sets the deterministic mesh dimensions (GEO_001 §6).
@@ -204,5 +245,53 @@ mod tests {
         ] {
             assert!((1024..=16384).contains(&s.cell_count()));
         }
+    }
+
+    #[test]
+    fn prevailing_wind_vectors_are_distinct_unit_vectors() {
+        let all = [
+            PrevailingWind::North,
+            PrevailingWind::NorthEast,
+            PrevailingWind::East,
+            PrevailingWind::SouthEast,
+            PrevailingWind::South,
+            PrevailingWind::SouthWest,
+            PrevailingWind::West,
+            PrevailingWind::NorthWest,
+        ];
+        for w in all {
+            let (x, y) = w.vector();
+            let len = (x * x + y * y).sqrt();
+            assert!((len - 1.0).abs() < 1e-4, "{w:?} vector is not unit length: {len}");
+        }
+        // a typo'd or copy-pasted direction would share a vector with another.
+        for i in 0..all.len() {
+            for j in (i + 1)..all.len() {
+                assert_ne!(
+                    all[i].vector(),
+                    all[j].vector(),
+                    "{:?} and {:?} share a wind vector",
+                    all[i],
+                    all[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn creative_seed_json_without_prevailing_wind_defaults_to_west() {
+        // `#[serde(default)]` lets a pre-wind config JSON still load.
+        let json = r#"{
+            "world_scale": "Continent",
+            "world_archetype": "HighFantasy",
+            "coastline_profile": "Coastal",
+            "hemisphere_orientation": "Northern",
+            "climate_bias": null,
+            "settlement_density": "Medium",
+            "culture_count": 5
+        }"#;
+        let cs: CreativeSeed =
+            serde_json::from_str(json).expect("a pre-wind config JSON must still load");
+        assert_eq!(cs.prevailing_wind, PrevailingWind::West);
     }
 }

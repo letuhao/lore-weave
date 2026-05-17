@@ -12,8 +12,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use world_gen::{
-    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, RenderStyle,
-    SettlementDensity, WorldArchetype, WorldScale, generate,
+    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, PrevailingWind,
+    RenderStyle, SettlementDensity, WorldArchetype, WorldScale, generate,
 };
 
 #[derive(Parser)]
@@ -52,6 +52,10 @@ struct GenerateArgs {
     /// Hemisphere orientation.
     #[arg(long, value_enum, default_value_t = HemisphereArg::Northern)]
     hemisphere: HemisphereArg,
+    /// Prevailing wind direction (the way it blows *from*) — drives the
+    /// orographic rain shadow.
+    #[arg(long, value_enum, default_value_t = WindArg::West)]
+    wind: WindArg,
     /// Optional climate-zone bias.
     #[arg(long, value_enum)]
     climate_bias: Option<ClimateBiasArg>,
@@ -132,6 +136,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             world_archetype: cli.archetype.into(),
             coastline_profile: cli.coastline.into(),
             hemisphere_orientation: cli.hemisphere.into(),
+            prevailing_wind: cli.wind.into(),
             climate_bias: cli.climate_bias.map(Into::into),
             settlement_density: cli.settlement_density.into(),
             culture_count: cli.culture_count,
@@ -328,6 +333,33 @@ impl From<HemisphereArg> for HemisphereOrientation {
             HemisphereArg::Northern => HemisphereOrientation::Northern,
             HemisphereArg::Southern => HemisphereOrientation::Southern,
             HemisphereArg::Equatorial => HemisphereOrientation::Equatorial,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum WindArg {
+    North,
+    NorthEast,
+    East,
+    SouthEast,
+    South,
+    SouthWest,
+    West,
+    NorthWest,
+}
+
+impl From<WindArg> for PrevailingWind {
+    fn from(w: WindArg) -> Self {
+        match w {
+            WindArg::North => PrevailingWind::North,
+            WindArg::NorthEast => PrevailingWind::NorthEast,
+            WindArg::East => PrevailingWind::East,
+            WindArg::SouthEast => PrevailingWind::SouthEast,
+            WindArg::South => PrevailingWind::South,
+            WindArg::SouthWest => PrevailingWind::SouthWest,
+            WindArg::West => PrevailingWind::West,
+            WindArg::NorthWest => PrevailingWind::NorthWest,
         }
     }
 }
