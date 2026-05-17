@@ -3,8 +3,8 @@
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
+use crate::engine::build_state::ZoneBuildState;
 use crate::engine::pipeline::{Modificator, ModificatorContext};
-use crate::engine::placement::ZoneTiles;
 use crate::seed::{TilemapSeed, sub_seed};
 use crate::types::template::TilemapTemplate;
 use crate::types::tile::TerrainKind;
@@ -49,12 +49,17 @@ impl Modificator for TerrainPainter {
 
     fn process(&self, ctx: &mut ModificatorContext<'_>) -> crate::Result<()> {
         let width = ctx.grid.width;
-        for (i, zone) in ctx.zones.iter().enumerate() {
-            let terrain = pick_terrain(zone, ctx.template, ctx.seed);
-            ctx.zone_terrain[i] = Some(terrain);
+        let template = ctx.template;
+        let seed = ctx.seed;
+        // Disjoint field borrows: `zones` (read) + `zone_terrain`/`terrain_layer`
+        // (write) are distinct fields, so the loop is borrow-check clean.
+        let state = &mut *ctx.state;
+        for (i, zone) in state.zones.iter().enumerate() {
+            let terrain = pick_terrain(zone, template, seed);
+            state.zone_terrain[i] = Some(terrain);
             let value = terrain as u8;
             for tile in zone.assigned_tiles.iter_set() {
-                ctx.terrain_layer[tile.flat_index(width)] = value;
+                state.terrain_layer[tile.flat_index(width)] = value;
             }
         }
         Ok(())
@@ -62,7 +67,7 @@ impl Modificator for TerrainPainter {
 }
 
 /// Choose a zone's primary terrain — TMP_003 §3.1 step 1, Phase-1 cut.
-fn pick_terrain(zone: &ZoneTiles, template: &TilemapTemplate, seed: TilemapSeed) -> TerrainKind {
+fn pick_terrain(zone: &ZoneBuildState, template: &TilemapTemplate, seed: TilemapSeed) -> TerrainKind {
     if zone.role == ZoneRole::Sea {
         return TerrainKind::Water;
     }
@@ -84,12 +89,17 @@ fn pick_terrain(zone: &ZoneTiles, template: &TilemapTemplate, seed: TilemapSeed)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::build_state::TilemapBuildState;
+    use crate::engine::placement::ZoneTiles;
     use crate::types::template::{TilemapTemplateId, ZoneSpec};
     use crate::types::tile::TileCoord;
     use crate::types::tile_mask::TileMask;
     use crate::types::tilemap::GridSize;
     use crate::types::zone::ZoneId;
 
+    /// A `ZoneTiles` whose `assigned_tiles` covers the whole `w × h` grid and
+    /// whose `free_paths` is empty — a single-zone fixture that satisfies the
+    /// `from_zones` full-grid coverage assert.
     fn zone_tiles(id: &str, role: ZoneRole, w: u32, h: u32) -> ZoneTiles {
         let mut assigned = TileMask::new(w, h);
         for y in 0..h {
@@ -122,55 +132,51 @@ mod tests {
             terrain_types: terrains,
             monster_strength: None,
             connections: vec![],
+            treasure_tiers: vec![],
         }
     }
 
-    fn run(zones: &[ZoneTiles], template: &TilemapTemplate, grid: GridSize) -> (Vec<u8>, Vec<Option<TerrainKind>>) {
-        let mut terrain_layer = vec![0u8; grid.tile_count()];
-        let mut zone_terrain = vec![None; zones.len()];
+    /// Build a `TilemapBuildState`, run TerrainPainter over it, return the state.
+    fn run(zones: Vec<ZoneTiles>, template: &TilemapTemplate, grid: GridSize) -> TilemapBuildState {
+        let mut state = TilemapBuildState::from_zones(zones, grid);
         let mut ctx = ModificatorContext {
-            zones,
             template,
             grid,
             seed: TilemapSeed(1),
-            terrain_layer: &mut terrain_layer,
-            zone_terrain: &mut zone_terrain,
+            state: &mut state,
         };
         TerrainPainter.process(&mut ctx).unwrap();
-        (terrain_layer, zone_terrain)
+        state
     }
 
     #[test]
     fn sea_zone_is_painted_water() {
         // AC-6 — Sea zones → Water.
         let grid = GridSize { width: 8, height: 8 };
-        let zones = [zone_tiles("sea", ZoneRole::Sea, 8, 8)];
         let template = template_with(vec![spec("sea", ZoneRole::Sea, vec![])]);
-        let (layer, zone_terrain) = run(&zones, &template, grid);
-        assert_eq!(zone_terrain[0], Some(TerrainKind::Water));
-        assert!(layer.iter().all(|&t| t == TerrainKind::Water as u8));
+        let state = run(vec![zone_tiles("sea", ZoneRole::Sea, 8, 8)], &template, grid);
+        assert_eq!(state.zone_terrain[0], Some(TerrainKind::Water));
+        assert!(state.terrain_layer.iter().all(|&t| t == TerrainKind::Water as u8));
     }
 
     #[test]
     fn declared_terrain_is_used() {
         let grid = GridSize { width: 8, height: 8 };
-        let zones = [zone_tiles("z", ZoneRole::Wilderness, 8, 8)];
         let template = template_with(vec![spec(
             "z",
             ZoneRole::Wilderness,
             vec![TerrainKind::Snow, TerrainKind::Forest],
         )]);
-        let (_, zone_terrain) = run(&zones, &template, grid);
-        assert_eq!(zone_terrain[0], Some(TerrainKind::Snow), "first declared wins");
+        let state = run(vec![zone_tiles("z", ZoneRole::Wilderness, 8, 8)], &template, grid);
+        assert_eq!(state.zone_terrain[0], Some(TerrainKind::Snow), "first declared wins");
     }
 
     #[test]
     fn undeclared_terrain_falls_back_to_a_surface_terrain() {
         let grid = GridSize { width: 8, height: 8 };
-        let zones = [zone_tiles("z", ZoneRole::Wilderness, 8, 8)];
         let template = template_with(vec![spec("z", ZoneRole::Wilderness, vec![])]);
-        let (_, zone_terrain) = run(&zones, &template, grid);
-        let picked = zone_terrain[0].unwrap();
+        let state = run(vec![zone_tiles("z", ZoneRole::Wilderness, 8, 8)], &template, grid);
+        let picked = state.zone_terrain[0].unwrap();
         assert!(SURFACE_TERRAINS.contains(&picked), "got {picked:?}");
     }
 
@@ -178,9 +184,11 @@ mod tests {
     fn every_assigned_tile_is_painted() {
         // AC-6 — TerrainPainter paints every assigned tile (no 0 left).
         let grid = GridSize { width: 8, height: 8 };
-        let zones = [zone_tiles("z", ZoneRole::Wilderness, 8, 8)];
         let template = template_with(vec![spec("z", ZoneRole::Wilderness, vec![TerrainKind::Grass])]);
-        let (layer, _) = run(&zones, &template, grid);
-        assert!(layer.iter().all(|&t| t != 0), "an assigned tile was left unpainted");
+        let state = run(vec![zone_tiles("z", ZoneRole::Wilderness, 8, 8)], &template, grid);
+        assert!(
+            state.terrain_layer.iter().all(|&t| t != 0),
+            "an assigned tile was left unpainted",
+        );
     }
 }

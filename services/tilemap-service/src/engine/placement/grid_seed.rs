@@ -154,11 +154,9 @@ mod tests {
             monster_strength: None,
             connections: conns
                 .iter()
-                .map(|(to, kind)| TemplateConnection {
-                    to_zone: ZoneId(to.to_string()),
-                    kind: *kind,
-                })
+                .map(|(to, kind)| TemplateConnection::new(ZoneId(to.to_string()), *kind))
                 .collect(),
+            treasure_tiers: vec![],
         }
     }
 

@@ -158,6 +158,7 @@ impl ModificatorRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::build_state::TilemapBuildState;
     use crate::seed::TilemapSeed;
     use crate::types::template::{TilemapTemplate, TilemapTemplateId};
     use crate::types::tilemap::GridSize;
@@ -312,15 +313,13 @@ mod tests {
             zones: vec![],
             seed_offset: 0,
         };
-        let mut terrain_layer = Vec::new();
-        let mut zone_terrain = Vec::new();
+        let grid = GridSize { width: 2, height: 2 };
+        let mut state = TilemapBuildState::from_zones(vec![], grid);
         let mut ctx = ModificatorContext {
-            zones: &[],
             template: &template,
-            grid: GridSize::TOWN_DEFAULT,
+            grid,
             seed: TilemapSeed(0),
-            terrain_layer: &mut terrain_layer,
-            zone_terrain: &mut zone_terrain,
+            state: &mut state,
         };
         reg.execute(&mut ctx).unwrap();
         assert_eq!(*log.borrow(), ["c", "a", "b"]);

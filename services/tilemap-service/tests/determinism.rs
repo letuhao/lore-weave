@@ -12,6 +12,10 @@ use tilemap_service::types::tile_mask::TileMask;
 use tilemap_service::types::zone::{PassageKind, ZoneId, ZoneRole};
 use tilemap_service::types::{ChannelId, ChannelTier, GridSize, TerrainKind, TilemapView};
 
+/// Seed for the committed Phase-A golden baseline (AC-9) — reused by both the
+/// regenerator and the byte-identity gate.
+const GOLDEN_SEED: u64 = 0xA11CE;
+
 fn zone(id: &str, role: ZoneRole, terrains: Vec<TerrainKind>, conns: &[(&str, PassageKind)]) -> ZoneSpec {
     ZoneSpec {
         zone_id: ZoneId(id.to_string()),
@@ -21,11 +25,9 @@ fn zone(id: &str, role: ZoneRole, terrains: Vec<TerrainKind>, conns: &[(&str, Pa
         monster_strength: None,
         connections: conns
             .iter()
-            .map(|(to, kind)| TemplateConnection {
-                to_zone: ZoneId(to.to_string()),
-                kind: *kind,
-            })
+            .map(|(to, kind)| TemplateConnection::new(ZoneId(to.to_string()), *kind))
             .collect(),
+        treasure_tiers: vec![],
     }
 }
 
@@ -141,4 +143,31 @@ fn ac6_sea_zone_is_painted_water() {
             "Sea tile {tile:?} not painted Water",
         );
     }
+}
+
+/// Regenerate the Phase-A golden baseline (AC-9). `#[ignore]`d — run explicitly
+/// with `cargo test regenerate_golden_baseline -- --ignored`. In Phase A this
+/// captures the *pre-change* baseline; later phases re-run it after a deliberate
+/// output change. The committed `tests/golden/phase_a_baseline.json` is the
+/// before/after regression gate a same-seed `a == b` check cannot provide.
+#[test]
+#[ignore = "regenerator — run explicitly to refresh the golden snapshot"]
+fn regenerate_golden_baseline() {
+    let json = serde_json::to_string_pretty(&run(&fixture(), GOLDEN_SEED)).unwrap();
+    std::fs::create_dir_all("tests/golden").expect("create tests/golden");
+    std::fs::write("tests/golden/phase_a_baseline.json", json).expect("write golden");
+}
+
+/// AC-9 — Phase A changes no generation output. The committed golden snapshot
+/// (`tests/golden/phase_a_baseline.json`, captured from the pre-Phase-A engine)
+/// must still be reproduced byte-identically. A same-seed `a == b` check cannot
+/// observe the pre-change baseline; this gate can.
+#[test]
+fn ac9_golden_baseline_byte_identical() {
+    let golden = include_str!("golden/phase_a_baseline.json");
+    let fresh = serde_json::to_string_pretty(&run(&fixture(), GOLDEN_SEED)).unwrap();
+    assert_eq!(
+        golden, fresh,
+        "place_tilemap output drifted from the committed golden baseline (AC-9)",
+    );
 }

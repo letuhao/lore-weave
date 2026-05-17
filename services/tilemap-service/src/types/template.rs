@@ -7,7 +7,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::types::tile::TerrainKind;
-use crate::types::zone::{PassageKind, ZoneId, ZoneRole};
+use crate::types::treasure::TreasureTierSpec;
+use crate::types::zone::{PassageKind, RoadOption, ZoneId, ZoneRole};
 
 /// Stable per-reality template identifier (e.g. `"wuxia_southern_song_v1"`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -36,6 +37,10 @@ pub struct ZoneSpec {
     /// converts to `ZoneEdge` records on `tilemap_view`).
     #[serde(default)]
     pub connections: Vec<TemplateConnection>,
+    /// Author treasure-tier spec (TMP_006 §2) — consumed by TreasurePlacer
+    /// (Phase C). Empty = no treasure declared for this zone. Additive (TMP-A8).
+    #[serde(default)]
+    pub treasure_tiers: Vec<TreasureTierSpec>,
 }
 
 /// Default `ZoneSpec.size` — a neutral mid weight (all zones equal when the
@@ -48,6 +53,22 @@ fn default_zone_size() -> u32 {
 pub struct TemplateConnection {
     pub to_zone: ZoneId,
     pub kind: PassageKind,
+    /// Monster-guard strength for this connection (TMP_007 §1). Default 0 — a
+    /// connection with 0 strength gets an unguarded passage. Additive (TMP-A8).
+    #[serde(default)]
+    pub guard_strength: u32,
+    /// Whether the connection materializes a road (TMP_007 §2.2). Default
+    /// `RoadOption::True`. Additive (TMP-A8).
+    #[serde(default)]
+    pub road: RoadOption,
+}
+
+impl TemplateConnection {
+    /// A connection with the default guard strength (0) and road option
+    /// (`True`) — the common author case before per-edge tuning.
+    pub fn new(to_zone: ZoneId, kind: PassageKind) -> Self {
+        Self { to_zone, kind, guard_strength: 0, road: RoadOption::default() }
+    }
 }
 
 /// V2/Reality aggregate. Phase 0a is structural minimum.
@@ -60,4 +81,64 @@ pub struct TilemapTemplate {
     /// for the same template applied to the same channel.
     #[serde(default)]
     pub seed_offset: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn template_connection_deserializes_without_the_new_fields() {
+        // AC-8 — a pre-extension connection JSON (no guard_strength / road)
+        // still loads, with the additive defaults applied.
+        let json = r#"{"to_zone":"sea_north","kind":"threshold"}"#;
+        let c: TemplateConnection = serde_json::from_str(json).unwrap();
+        assert_eq!(c.guard_strength, 0);
+        assert_eq!(c.road, RoadOption::True);
+        assert_eq!(c.to_zone, ZoneId("sea_north".to_string()));
+    }
+
+    #[test]
+    fn template_connection_round_trips_with_the_new_fields() {
+        // AC-8 — explicit non-default values survive a JSON round-trip.
+        let c = TemplateConnection {
+            to_zone: ZoneId("z2".to_string()),
+            kind: PassageKind::Portal,
+            guard_strength: 4200,
+            road: RoadOption::False,
+        };
+        let back: TemplateConnection =
+            serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(c, back);
+    }
+
+    #[test]
+    fn zone_spec_deserializes_without_treasure_tiers() {
+        // AC-8 — a pre-extension ZoneSpec JSON still loads; treasure_tiers
+        // defaults to empty and the older defaults still apply.
+        let json = r#"{"zone_id":"capital","zone_role":"wilderness"}"#;
+        let z: ZoneSpec = serde_json::from_str(json).unwrap();
+        assert!(z.treasure_tiers.is_empty());
+        assert_eq!(z.size, 100, "size still falls back to default_zone_size");
+        assert!(z.connections.is_empty());
+    }
+
+    #[test]
+    fn zone_spec_round_trips_with_treasure_tiers() {
+        // AC-8 — declared tiers survive a round-trip.
+        let z = ZoneSpec {
+            zone_id: ZoneId("vault".to_string()),
+            zone_role: ZoneRole::Wilderness,
+            size: 250,
+            terrain_types: vec![],
+            monster_strength: None,
+            connections: vec![TemplateConnection::new(ZoneId("a".to_string()), PassageKind::Open)],
+            treasure_tiers: vec![
+                TreasureTierSpec { min: 100, max: 800, density: 4 },
+                TreasureTierSpec { min: 8000, max: 12000, density: 3 },
+            ],
+        };
+        let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
+        assert_eq!(z, back);
+    }
 }

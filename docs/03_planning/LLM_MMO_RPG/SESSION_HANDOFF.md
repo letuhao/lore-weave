@@ -126,14 +126,16 @@ This honors "use AMAW for the map-gen implementation" while respecting what this
 
 ### Recommended first action next session
 
-**The staged 0b → 3 map-gen plan is complete** (engine + L3 classifier + L4
-narration, all `/amaw`, all on `mmo-rpg/zone-map-amaw`). There is no numbered
-"Phase 4". The natural next work, none of it blocking:
+**The staged 0b → 3 map-gen plan is complete.** The **TMP_005/006/007
+modificator-pipeline build** is now underway — roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md):
+5 phases A–E, foundation-first, straight-through autonomous `/amaw`.
 
-1. **TMP_005 / 006 / 007 modificators** — the engine ships only TerrainPainter;
-   the other six (TreasurePlacer / ObjectManager / ObstaclePlacer /
-   ConnectionsPlacer / RoadPlacer / RiverPlacer / TownPlacer) are unbuilt. Once
-   ObjectManager + TreasurePlacer land, the L3/L4 bootstrap can classify
+1. **TMP_005/006/007 modificator pipeline** — **Phase A (Pipeline Foundation)
+   DONE 2026-05-17** (XL `/amaw`; see the session entry below). Phases **B**
+   (ObstaclePlacer + biomes, TMP_005), **C** (TreasurePlacer, TMP_006), **D**
+   (ConnectionsPlacer, TMP_007), **E** (RoadPlacer + RiverPlacer, TMP_003 §3.5)
+   are next. Once the placers land, the L3/L4 bootstrap can classify
    **engine-placed** objects instead of the current fixture set — a genuine
    engine→L3→L4 flow.
 2. **Live continent-scale measurement** — Phases 2-3 were mock-gateway verified;
@@ -144,6 +146,70 @@ narration, all `/amaw`, all on `mmo-rpg/zone-map-amaw`). There is no numbered
 
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-17 — TMP_005/006/007 Phase A — Pipeline Foundation — ✅ DONE (XL `/amaw`)
+
+### Outcome
+
+Phase A of the **TMP_005/006/007 modificator-pipeline build** (roadmap
+[`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md))
+— the shared foundation the five placers (Phases B–E) build on. XL, under
+`/amaw`, 12 phases complete. Run autonomously (operator: straight-through, no
+inter-phase checkpoint).
+
+- **Spec:** [`docs/specs/2026-05-17-tilemap-phase-a-pipeline-foundation.md`](../../specs/2026-05-17-tilemap-phase-a-pipeline-foundation.md)
+  (D1-D12, AC-1..AC-10). **Plan:** [`docs/plans/2026-05-17-tilemap-phase-a-pipeline-foundation.md`](../../plans/2026-05-17-tilemap-phase-a-pipeline-foundation.md)
+  (6 build chunks).
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `types/object_template.rs` | `TilemapObjectTemplate` + `FootprintCell`; `footprint_at` / `blocking_footprint_at` projections |
+| `types/treasure.rs` | `TreasureTierSpec` (TMP_006 §2) |
+| `types/{zone,template}.rs` | `RoadOption` enum; additive schema — `TemplateConnection.guard_strength`/`.road`, `ZoneSpec.treasure_tiers` |
+| `engine/geometry/connectivity.rs` | `connected_components` + `would_seal_a_gap` — label-mapping connectivity check (TMP_006 §4), correct for multi-component `passable` |
+| `engine/geometry/pathfind.rs` | `search_path` — Dijkstra, fully-pinned `(cost, flat)` tie-break (TMP_007 §5) |
+| `engine/build_state.rs` | `TilemapBuildState` / `ZoneBuildState` — the `TileState` build-grid + per-zone area model |
+| `engine/object_manager.rs` | `place_and_connect_object` + `choose_guard` — the placement service (TMP_006 §5) |
+| `engine/pipeline/modificator.rs` | `ModificatorContext` reshaped to `{ template, grid, seed, state }` |
+
+`place_tilemap` now threads `TilemapBuildState`; output **byte-identical** (AC-9
+golden, captured from the pre-Phase-A engine) — Phase A is a pure refactor plus
+dormant primitives, `object_placements` still empty until a placer registers in
+Phase B.
+
+### Review (AMAW, straight-through autonomous)
+
+- **Design review** — Adversary cold-start, **5 rounds**: r1-r4 REJECTED (12
+  BLOCK — connectivity tautology, A\* admissibility, blocking-cell contract hole,
+  total-elimination blindness, access_path overlap + unpinned, capped distance
+  grid, multi-component-oracle non-equivalence, …); r5 APPROVED_WITH_WARNINGS.
+- **Code review** — Adversary cold-start, **3 rounds**: r1-r2 REJECTED (AC-6(b)
+  untested; golden provenance) → 6 tests added, golden regenerated + confirmed
+  byte-identical via a `git worktree` at the pre-Phase-A commit, explicit
+  `(score, flat)` tie-break, `PlacementError::NoSuchZone`; r3
+  APPROVED_WITH_WARNINGS (3 WARN folded in).
+- **Scope Guard (POST-REVIEW):** CLEAR.
+- Findings trail: `docs/audit/findings-phase-a-pipeline-foundation-{r1..r5,code-r1..r3}.md`.
+
+### Verify
+
+`cargo test --workspace` green — 149 tilemap-service lib tests + integration, 0
+failed. `cargo clippy --workspace` 0 warnings. AC-9 golden byte-identical.
+
+### Deferred (DEFERRED.md #019-#021)
+
+- **#019** — `would_seal_a_gap` per-zone scope; re-validate the cross-zone-seal
+  argument once ConnectionsPlacer's blocked borders land (Phase D).
+- **#020** — TMP_006 §4.3 connectivity pre-filter (perf, continent-scale).
+- **#021** — `From<PlacementError> for crate::Error` bridge (Phase C, first placer).
+
+### Next
+
+Phase B — ObstaclePlacer + biomes (TMP_005).
 
 ---
 

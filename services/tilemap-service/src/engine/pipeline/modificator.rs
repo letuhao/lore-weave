@@ -1,33 +1,30 @@
 //! TMP_003 §2 — the `Modificator` trait + its execution context.
 
-use crate::engine::placement::ZoneTiles;
+use crate::engine::build_state::TilemapBuildState;
 use crate::seed::TilemapSeed;
 use crate::types::template::TilemapTemplate;
-use crate::types::tile::TerrainKind;
 use crate::types::tilemap::GridSize;
 
-/// Mutable build state a [`Modificator`] pass operates on.
+/// The execution context a [`Modificator`] pass operates on (TMP_003 §2.2,
+/// spec D1).
 ///
-/// **Phase-1 shape:** zone *placement* is read-only input (the placement engine
-/// already produced `zones`); modificators write the tilemap-wide
-/// `terrain_layer` and the per-zone primary terrain. The TMP_003 §2.2
-/// per-(zone, modificator) instance model — with `init` and cross-zone
-/// `RwLock` state — is a Phase-2 refinement for the full 7-modificator set.
+/// Zone *placement* is read-only input (the placement engine already produced
+/// the zones); a modificator mutates the shared [`TilemapBuildState`] — the
+/// `TileState` grid, terrain layer, placed objects, distance oracle, and
+/// per-zone build records. The engine is single-threaded (spec D4), so the
+/// §2.2 per-(zone, modificator) instance model with `RwLock` state is not
+/// needed — one `process` call iterates every zone.
 #[derive(Debug)]
 pub struct ModificatorContext<'a> {
-    /// The placed zones — id, role, centre, `assigned_tiles`, `free_paths`.
-    pub zones: &'a [ZoneTiles],
     /// The authoring template — modificators read `ZoneSpec` detail (e.g.
-    /// `terrain_types`) by zone id.
+    /// `terrain_types`, `treasure_tiers`) by zone id.
     pub template: &'a TilemapTemplate,
     pub grid: GridSize,
     pub seed: TilemapSeed,
-    /// Flat terrain layer — index `y * width + x`, value `TerrainKind as u8`.
-    /// Length is `grid.tile_count()`.
-    pub terrain_layer: &'a mut Vec<u8>,
-    /// Per-zone primary terrain, index-aligned with `zones`; `None` until a
-    /// modificator paints it.
-    pub zone_terrain: &'a mut Vec<Option<TerrainKind>>,
+    /// The mutable generation state — the `TileState` grid, terrain layer,
+    /// `object_placements`, the nearest-object-distance oracle, and per-zone
+    /// build records.
+    pub state: &'a mut TilemapBuildState,
 }
 
 /// A single generation pass (TMP_003 §2 — the Strategy pattern, Gamma 1994).

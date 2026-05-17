@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use crate::engine::build_state::TilemapBuildState;
 use crate::engine::modificators::TerrainPainter;
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
@@ -15,7 +16,10 @@ use crate::types::template::TilemapTemplate;
 use crate::types::tile::TerrainKind;
 use crate::types::tilemap::{GenerationSource, GridSize, TilemapView, ZoneRuntime};
 
+pub mod build_state;
+pub mod geometry;
 pub mod modificators;
+pub mod object_manager;
 pub mod pipeline;
 pub mod placement;
 
@@ -43,27 +47,26 @@ pub fn place_tilemap(
     // TMP_002 §3-§5 — placed zones with assigned_tiles + free_paths.
     let tiled = place_zones(template, grid, seed)?;
 
-    // TMP_003 — run the modificator pipeline over a fresh terrain layer.
-    let mut terrain_layer = vec![0u8; grid.tile_count()];
-    let mut zone_terrain: Vec<Option<TerrainKind>> = vec![None; tiled.len()];
+    // TMP_003 — build the mutable generation state and run the modificator
+    // pipeline (Phase 1: TerrainPainter only).
+    let mut state = TilemapBuildState::from_zones(tiled, grid);
     let mut registry = ModificatorRegistry::new();
     registry.add(Box::new(TerrainPainter));
     {
         let mut ctx = ModificatorContext {
-            zones: &tiled,
             template,
             grid,
             seed,
-            terrain_layer: &mut terrain_layer,
-            zone_terrain: &mut zone_terrain,
+            state: &mut state,
         };
         registry.execute(&mut ctx)?;
     }
 
-    // Assemble the per-zone runtime records.
-    let zones: Vec<ZoneRuntime> = tiled
+    // Assemble the per-zone runtime records from the build state.
+    let zones: Vec<ZoneRuntime> = state
+        .zones
         .into_iter()
-        .zip(zone_terrain)
+        .zip(state.zone_terrain)
         .map(|(zone, terrain)| ZoneRuntime {
             zone_id: zone.id,
             zone_role: zone.role,
@@ -82,8 +85,8 @@ pub fn place_tilemap(
         template_id: template.template_id.clone(),
         seed: seed.raw(),
         zones,
-        terrain_layer,
-        object_placements: Vec::new(),
+        terrain_layer: state.terrain_layer,
+        object_placements: state.object_placements,
         child_cell_anchors: HashMap::new(),
         generation_source: GenerationSource::EngineGenerated,
         regional_narration: None,

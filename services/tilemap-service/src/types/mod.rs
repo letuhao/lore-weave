@@ -8,16 +8,20 @@
 
 pub mod channel;
 pub mod object;
+pub mod object_template;
 pub mod template;
 pub mod tile;
 pub mod tile_mask;
 pub mod tilemap;
+pub mod treasure;
 pub mod zone;
 
 pub use channel::{ChannelId, ChannelTier};
 pub use object::{TilemapObjectKind, TilemapObjectPlacement};
-pub use template::{TilemapTemplate, TilemapTemplateId, ZoneSpec};
+pub use object_template::{FootprintCell, TilemapObjectTemplate};
+pub use template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
 pub use tile::{TerrainKind, TileCoord, TileState};
 pub use tile_mask::TileMask;
 pub use tilemap::{GenerationSource, GridSize, TilemapView, ZoneRuntime};
-pub use zone::{PassageKind, ZoneEdge, ZoneId, ZoneRole};
+pub use treasure::TreasureTierSpec;
+pub use zone::{PassageKind, RoadOption, ZoneEdge, ZoneId, ZoneRole};
