@@ -93,6 +93,7 @@ pub fn build(
             cell: c,
             role: SettlementRole::Hamlet,
             population_tier: 1,
+            name: String::new(),
         })
         .collect();
 
@@ -128,6 +129,7 @@ pub fn build(
                     cell: cap_prov.capital_cell,
                     role: SettlementRole::Capital,
                     population_tier: 5,
+                    name: String::new(),
                 });
             }
         }

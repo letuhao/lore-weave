@@ -2,8 +2,8 @@
 //! coherence, sea-level band. (Phase 1 acceptance criteria #3–#6.)
 
 use world_gen::{
-    BiomeKind, CoastlineProfile, CreativeSeed, PrevailingWind, RouteKind, SettlementRole, WorldMap,
-    WorldScale, generate,
+    BiomeKind, CoastlineProfile, CreativeSeed, PrevailingWind, RouteKind, SettlementRole,
+    WaterBodyKind, WorldMap, WorldScale, generate,
 };
 
 /// Per-cell land-component id (`u32::MAX` for water). DFS over `neighbors`.
@@ -792,4 +792,67 @@ fn prevailing_wind_reshapes_the_climate() {
         a.content_hash, b.content_hash,
         "a wind-changed climate must change the content hash"
     );
+}
+
+/// Feature extraction partitions its biome: on a real generated map every cell
+/// of a given biome lands in exactly one extracted entity, and every entity
+/// cell really has that biome. Covers ranges, rivers, and water bodies.
+#[test]
+fn extracted_features_partition_their_biomes() {
+    for seed in 0..4u64 {
+        let map = generate(seed, &CreativeSeed::default());
+
+        let ranges: Vec<&[u32]> =
+            map.mountain_ranges.iter().map(|r| r.cells.as_slice()).collect();
+        check_partition(seed, "range", &ranges, &map.biome, BiomeKind::Mountain);
+
+        let rivers: Vec<&[u32]> = map.rivers.iter().map(|r| r.cells.as_slice()).collect();
+        check_partition(seed, "river", &rivers, &map.biome, BiomeKind::River);
+
+        // Each water body's cells match its kind; together they cover all water.
+        for wb in &map.water_bodies {
+            let want = match wb.kind {
+                WaterBodyKind::Sea => BiomeKind::Ocean,
+                WaterBodyKind::Lake => BiomeKind::Lake,
+            };
+            for &c in &wb.cells {
+                assert_eq!(
+                    map.biome[c as usize], want,
+                    "seed {seed}: water-body cell {c} has the wrong biome"
+                );
+            }
+        }
+        let body_cells: usize = map.water_bodies.iter().map(|w| w.cells.len()).sum();
+        let water_cells = map.biome.iter().filter(|b| b.is_water()).count();
+        assert_eq!(
+            body_cells, water_cells,
+            "seed {seed}: water bodies must cover exactly the Ocean+Lake cells"
+        );
+    }
+}
+
+/// Assert the `entities`' cell lists partition exactly the `kind`-biome cells.
+fn check_partition(
+    seed: u64,
+    label: &str,
+    entities: &[&[u32]],
+    biome: &[BiomeKind],
+    kind: BiomeKind,
+) {
+    let mut seen = vec![false; biome.len()];
+    for cells in entities {
+        for &c in *cells {
+            assert!(!seen[c as usize], "seed {seed}: cell {c} is in two {label}s");
+            seen[c as usize] = true;
+            assert_eq!(
+                biome[c as usize], kind,
+                "seed {seed}: {label} cell {c} has the wrong biome"
+            );
+        }
+    }
+    for (c, &b) in biome.iter().enumerate() {
+        if b == kind {
+            assert!(seen[c], "seed {seed}: a {kind:?} cell {c} is in no {label}");
+        }
+    }
 }

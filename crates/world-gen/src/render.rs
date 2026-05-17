@@ -485,8 +485,109 @@ pub fn political_svg(map: &WorldMap, size: u32) -> String {
             hex(settlement_color(st.role)),
         ));
     }
+    // Feature-name labels — only features the `naming` step has named emit a
+    // `<text>`; a freshly-generated (unnamed) map produces no labels.
+    for st in &map.settlements {
+        if st.name.is_empty() {
+            continue;
+        }
+        let (px, py) = svg_px(map.cells[st.cell as usize].center, s);
+        svg.push_str(&svg_text(&st.name, px, py - 4.0, 11.0, "#1a1a1a"));
+    }
+    for state in &map.states {
+        if state.name.is_empty() {
+            continue;
+        }
+        // The realm name sits at the state's centroid, not its capital — the
+        // capital cell already carries the capital settlement's own label.
+        let (px, py) = state_centroid_px(map, state.id, s);
+        svg.push_str(&svg_text(&state.name, px, py, 16.0, "#3a2a14"));
+    }
+    for mr in &map.mountain_ranges {
+        if mr.name.is_empty() {
+            continue;
+        }
+        let (px, py) = centroid_px(map, &mr.cells, s);
+        svg.push_str(&svg_text(&mr.name, px, py, 12.0, "#4a3a2a"));
+    }
+    for rv in &map.rivers {
+        if rv.name.is_empty() {
+            continue;
+        }
+        let (px, py) = centroid_px(map, &rv.cells, s);
+        svg.push_str(&svg_text(&rv.name, px, py, 11.0, "#1e4a6e"));
+    }
+    for wb in &map.water_bodies {
+        if wb.name.is_empty() {
+            continue;
+        }
+        let (px, py) = centroid_px(map, &wb.cells, s);
+        svg.push_str(&svg_text(&wb.name, px, py, 13.0, "#cfe2ee"));
+    }
     svg.push_str("</svg>\n");
     svg
+}
+
+/// SVG pixel coordinates for a feature's label — the cell-centroid, snapped to
+/// the member cell nearest it. Snapping keeps the label *on* the feature even
+/// when the raw centroid falls outside it (a sea rings the land, so its
+/// centroid lands on the continent).
+fn centroid_px(map: &WorldMap, cells: &[u32], s: f32) -> (f32, f32) {
+    if cells.is_empty() {
+        return (0.0, 0.0);
+    }
+    let (mut sx, mut sy) = (0.0f32, 0.0f32);
+    for &c in cells {
+        let (x, y) = map.cells[c as usize].center;
+        sx += x;
+        sy += y;
+    }
+    let n = cells.len() as f32;
+    let (cx, cy) = (sx / n, sy / n);
+    let mut best = cells[0];
+    let mut best_d = f32::INFINITY;
+    for &c in cells {
+        let (x, y) = map.cells[c as usize].center;
+        let d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        if d < best_d {
+            best_d = d;
+            best = c;
+        }
+    }
+    svg_px(map.cells[best as usize].center, s)
+}
+
+/// SVG pixel coordinates for a realm's label — the state's land cells, their
+/// centroid snapped to a member cell by [`centroid_px`].
+fn state_centroid_px(map: &WorldMap, state_id: u32, s: f32) -> (f32, f32) {
+    let cells: Vec<u32> = map
+        .province_of
+        .iter()
+        .enumerate()
+        .filter(|&(_, &pid)| pid != u32::MAX && map.provinces[pid as usize].state == state_id)
+        .map(|(c, _)| c as u32)
+        .collect();
+    centroid_px(map, &cells, s)
+}
+
+/// One SVG `<text>` label, centred at `(px, py)`.
+fn svg_text(label: &str, px: f32, py: f32, size: f32, fill: &str) -> String {
+    format!(
+        "<text x=\"{px:.1}\" y=\"{py:.1}\" font-size=\"{size:.0}\" fill=\"{fill}\" \
+         text-anchor=\"middle\" font-family=\"serif\">{}</text>\n",
+        xml_escape(label)
+    )
+}
+
+/// Escape the five XML metacharacters so an LLM-authored name is safe inside
+/// SVG text content. `&` is replaced first so the other escapes are not
+/// double-escaped.
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 /// Cell centre → SVG pixel (map y=0 is the bottom; SVG y grows downward).
@@ -613,5 +714,40 @@ mod tests {
         assert!(svg.contains("<rect"), "SVG must contain the background rect");
         assert!(svg.contains("<polyline"), "SVG must contain route polylines");
         assert!(svg.contains("<circle"), "SVG must contain settlement circles");
+    }
+
+    #[test]
+    fn named_map_svg_has_text_labels() {
+        let mut map = generate(3, &CreativeSeed::default());
+        // a freshly generated map is unnamed → no <text> labels.
+        assert!(
+            !political_svg(&map, 256).contains("<text"),
+            "an unnamed map must emit no labels"
+        );
+        // name a settlement, a state, and a mountain range — each distinct
+        // label code path must render.
+        map.settlements[0].name = "Testburg".to_string();
+        map.states[0].name = "Testrealm".to_string();
+        if let Some(mr) = map.mountain_ranges.first_mut() {
+            mr.name = "Testpeaks".to_string();
+        }
+        let svg = political_svg(&map, 256);
+        assert!(svg.contains("<text"), "a named map must emit <text> labels");
+        assert!(svg.contains("Testburg"), "the settlement label must be in the SVG");
+        assert!(svg.contains("Testrealm"), "the state label must be in the SVG");
+        if !map.mountain_ranges.is_empty() {
+            assert!(svg.contains("Testpeaks"), "the range label must be in the SVG");
+        }
+    }
+
+    #[test]
+    fn xml_escape_neutralizes_metacharacters() {
+        let escaped = xml_escape("A & B <tag> \"q\" it's");
+        assert!(!escaped.contains('<') && !escaped.contains('>'));
+        assert!(!escaped.contains('\''), "a raw apostrophe must be escaped");
+        assert!(escaped.contains("&amp;"));
+        assert!(escaped.contains("&lt;"));
+        assert!(escaped.contains("&quot;"));
+        assert!(escaped.contains("&apos;"));
     }
 }

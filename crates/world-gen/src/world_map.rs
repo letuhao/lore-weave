@@ -3,6 +3,10 @@
 //! Phase 1 populates the geometry layer (cells + adjacency + heightmap +
 //! sea level). A plain value — no event-sourcing aggregate, no deltas
 //! (dropped per GEO_GENERATOR_PLAN §1).
+//!
+//! The `name` fields on the feature structs are a separate, non-deterministic
+//! authoring layer (`crate::naming`) — `generate` leaves them empty and they
+//! are excluded from `content_hash`.
 
 use serde::{Deserialize, Serialize};
 
@@ -71,32 +75,41 @@ impl RouteKind {
 }
 
 /// A province — a cell cluster grown from one political seed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Province {
     pub id: u32,
     /// The province's seed/capital cell.
     pub capital_cell: u32,
     /// The state this province belongs to.
     pub state: u32,
+    /// Authored name; empty until named by `crate::naming`. Not hashed.
+    #[serde(default)]
+    pub name: String,
 }
 
 /// A state — a cluster of provinces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct State {
     pub id: u32,
     /// The state-seed province (farthest-point sampled within the state's
     /// land component) — its capital.
     pub capital_province: u32,
+    /// Authored name; empty until named by `crate::naming`. Not hashed.
+    #[serde(default)]
+    pub name: String,
 }
 
 /// A settlement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settlement {
     /// The cell this settlement occupies (unique per settlement).
     pub cell: u32,
     pub role: SettlementRole,
     /// Abstract population tier 0..=5.
     pub population_tier: u8,
+    /// Authored name; empty until named by `crate::naming`. Not hashed.
+    #[serde(default)]
+    pub name: String,
 }
 
 /// A route between two cells, including the cell path it traverses.
@@ -115,11 +128,67 @@ pub struct Route {
 }
 
 /// A culture region — a cell cluster grown from one cultural hearth.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CultureRegion {
     pub id: u32,
     /// The hearth cell this culture spread from.
     pub hearth_cell: u32,
+    /// Authored name; empty until named by `crate::naming`. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A mountain range — a connected cluster of `Mountain`-biome cells
+/// (`crate::feature`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MountainRange {
+    pub id: u32,
+    /// The cells forming this range.
+    pub cells: Vec<u32>,
+    /// Authored name; empty until named by `crate::naming`. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A river — a connected system of `River`-biome cells (`crate::feature`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct River {
+    pub id: u32,
+    /// The cells forming this river system.
+    pub cells: Vec<u32>,
+    /// Authored name; empty until named by `crate::naming`. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// Whether a `WaterBody` is open sea or an inland lake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WaterBodyKind {
+    Sea,
+    Lake,
+}
+
+impl WaterBodyKind {
+    /// Stable discriminant byte for the content hash.
+    pub fn tag(self) -> u8 {
+        match self {
+            WaterBodyKind::Sea => 0,
+            WaterBodyKind::Lake => 1,
+        }
+    }
+}
+
+/// A water body — a connected cluster of `Ocean` cells (a sea) or `Lake`
+/// cells (a lake) (`crate::feature`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WaterBody {
+    pub id: u32,
+    pub kind: WaterBodyKind,
+    /// The cells forming this water body.
+    pub cells: Vec<u32>,
+    /// Authored name; empty until named by `crate::naming`. Not hashed.
+    #[serde(default)]
+    pub name: String,
 }
 
 /// A fully generated world map.
@@ -158,6 +227,12 @@ pub struct WorldMap {
     pub culture_of: Vec<u32>,
     /// Culture regions (Phase 3).
     pub culture_regions: Vec<CultureRegion>,
+    /// Mountain ranges — connected `Mountain`-biome clusters (`crate::feature`).
+    pub mountain_ranges: Vec<MountainRange>,
+    /// Rivers — connected `River`-biome systems (`crate::feature`).
+    pub rivers: Vec<River>,
+    /// Water bodies — seas and lakes (`crate::feature`).
+    pub water_bodies: Vec<WaterBody>,
     /// blake3 hash over the canonical byte view — the determinism check.
     pub content_hash: [u8; 32],
 }
@@ -178,17 +253,19 @@ impl WorldMap {
     /// pattern (`to_le_bytes`).
     ///
     /// MAINTENANCE: feed **every** `WorldMap` field here **except**
-    /// `content_hash` itself (folding the digest into its own input is
-    /// circular and would make `verify_hash` permanently false). When
-    /// `WorldMap` grows, extend this method.
+    /// `content_hash` itself and the `name` fields. Names are a separate
+    /// non-deterministic LLM authoring layer (`crate::naming`); hashing them
+    /// would make a freshly-named map fail `verify_hash`. When `WorldMap`
+    /// grows a deterministic field, extend this method.
     ///
     /// NOTE: `verify_hash` proves only that the produce path (`generate`) and
     /// the verify path agree — NOT that this method covers every field. If a
     /// new field is added but `compute_hash` is not extended, `verify_hash`
-    /// still passes. Field-list completeness is pinned by the
-    /// `compute_hash_covers_every_field` test in `tests/serde.rs`, which
-    /// tampers each `WorldMap` field of a generated map and asserts
-    /// `verify_hash` then returns `false`.
+    /// still passes. Field-list completeness (and the deliberate `name`
+    /// carve-out) is pinned by the `compute_hash_covers_every_field` test in
+    /// `tests/serde.rs`, which tampers each `WorldMap` field of a generated
+    /// map and asserts `verify_hash` then returns `false` — except a `name`,
+    /// which must leave it `true`.
     pub fn compute_hash(&self) -> [u8; 32] {
         let mut h = blake3::Hasher::new();
         h.update(&self.seed.to_le_bytes());
@@ -254,6 +331,30 @@ impl WorldMap {
         for cr in &self.culture_regions {
             h.update(&cr.id.to_le_bytes());
             h.update(&cr.hearth_cell.to_le_bytes());
+        }
+        // Extracted geographic features — geometry is deterministic; the
+        // `name` fields are deliberately not hashed (see MAINTENANCE above).
+        for mr in &self.mountain_ranges {
+            h.update(&mr.id.to_le_bytes());
+            h.update(&(mr.cells.len() as u32).to_le_bytes());
+            for &c in &mr.cells {
+                h.update(&c.to_le_bytes());
+            }
+        }
+        for rv in &self.rivers {
+            h.update(&rv.id.to_le_bytes());
+            h.update(&(rv.cells.len() as u32).to_le_bytes());
+            for &c in &rv.cells {
+                h.update(&c.to_le_bytes());
+            }
+        }
+        for wb in &self.water_bodies {
+            h.update(&wb.id.to_le_bytes());
+            h.update(&[wb.kind.tag()]);
+            h.update(&(wb.cells.len() as u32).to_le_bytes());
+            for &c in &wb.cells {
+                h.update(&c.to_le_bytes());
+            }
         }
         *h.finalize().as_bytes()
     }

@@ -93,10 +93,12 @@ fn hand_edited_map_fails_hash_verification() {
     );
 }
 
-/// review-impl C3 — every `WorldMap` field must feed `compute_hash`. Tamper
-/// each field of a generated map and assert `verify_hash` then fails; this
-/// pins field-list completeness, so a future field added without extending
-/// `compute_hash` (silently weakening the determinism digest) is caught.
+/// review-impl C3 — every *deterministic* `WorldMap` field must feed
+/// `compute_hash`. Tamper each field of a generated map and assert
+/// `verify_hash` then fails; this pins field-list completeness. The `name`
+/// fields are the deliberate exception (a non-deterministic LLM authoring
+/// layer, `crate::naming`) — tampering a name must instead LEAVE `verify_hash`
+/// true.
 #[test]
 fn compute_hash_covers_every_field() {
     let base = generate(31, &CreativeSeed::default());
@@ -106,6 +108,11 @@ fn compute_hash_covers_every_field() {
     assert!(!base.provinces.is_empty() && !base.states.is_empty());
     assert!(!base.settlements.is_empty() && !base.routes.is_empty());
     assert!(!base.culture_regions.is_empty());
+    assert!(!base.water_bodies.is_empty(), "ocean ⇒ ≥1 water body");
+    assert!(
+        !base.mountain_ranges.is_empty() && !base.rivers.is_empty(),
+        "the default Continent has mountains and rivers"
+    );
 
     let tamper = |label: &str, mutate: &dyn Fn(&mut WorldMap)| {
         let mut m = base.clone();
@@ -155,4 +162,28 @@ fn compute_hash_covers_every_field() {
     tamper("routes.path", &|m| m.routes[0].path.push(0));
     tamper("culture_of", &|m| m.culture_of[0] ^= 1);
     tamper("culture_regions", &|m| m.culture_regions[0].id ^= 1);
+    // Tamper `cells` — the geometry-bearing field — not just `id`: a
+    // regression dropping `cells` from `compute_hash` must be caught.
+    tamper("mountain_ranges.cells", &|m| m.mountain_ranges[0].cells.push(0));
+    tamper("rivers.cells", &|m| m.rivers[0].cells.push(0));
+    tamper("water_bodies.cells", &|m| m.water_bodies[0].cells.push(0));
+
+    // Names are the deliberate carve-out: `compute_hash` excludes them, so a
+    // name tamper must LEAVE `verify_hash` true — proof that the naming step
+    // (`crate::naming`) can never break a map's determinism digest.
+    let name_tamper = |label: &str, mutate: &dyn Fn(&mut WorldMap)| {
+        let mut m = base.clone();
+        mutate(&mut m);
+        assert!(
+            m.verify_hash(),
+            "tampering `{label}` broke verify_hash — names must be excluded from compute_hash"
+        );
+    };
+    name_tamper("settlements.name", &|m| m.settlements[0].name.push('x'));
+    name_tamper("states.name", &|m| m.states[0].name.push('x'));
+    name_tamper("provinces.name", &|m| m.provinces[0].name.push('x'));
+    name_tamper("culture_regions.name", &|m| m.culture_regions[0].name.push('x'));
+    name_tamper("mountain_ranges.name", &|m| m.mountain_ranges[0].name.push('x'));
+    name_tamper("rivers.name", &|m| m.rivers[0].name.push('x'));
+    name_tamper("water_bodies.name", &|m| m.water_bodies[0].name.push('x'));
 }

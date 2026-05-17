@@ -15,8 +15,10 @@ pub mod biome;
 pub mod climate;
 pub mod creative_seed;
 pub mod culture;
+pub mod feature;
 pub mod hydrology;
 pub mod mesh;
+pub mod naming;
 pub mod noise;
 pub mod pathfind;
 pub mod political;
@@ -36,7 +38,8 @@ pub use creative_seed::{
     WorldArchetype, WorldScale,
 };
 pub use world_map::{
-    Cell, CultureRegion, Province, Route, RouteKind, Settlement, SettlementRole, State, WorldMap,
+    Cell, CultureRegion, MountainRange, Province, River, Route, RouteKind, Settlement,
+    SettlementRole, State, WaterBody, WaterBodyKind, WorldMap,
 };
 
 /// Generate a world map from a `u64` seed + creative direction.
@@ -99,6 +102,10 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
     );
     let culture = culture::build(seed, &mesh.centers, &mesh.neighbors, &biome, cs.culture_count);
 
+    // Stage 9 — geographic feature extraction (deterministic; names added
+    // later by the separate `naming` step).
+    let features = feature::extract(&biome, &mesh.neighbors);
+
     let cells: Vec<Cell> = mesh
         .centers
         .iter()
@@ -128,6 +135,9 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         routes,
         culture_of: culture.culture_of,
         culture_regions: culture.culture_regions,
+        mountain_ranges: features.mountain_ranges,
+        rivers: features.rivers,
+        water_bodies: features.water_bodies,
         content_hash: [0u8; 32],
     };
     // All f32 fields must be finite — non-finite values serialize as JSON
@@ -189,5 +199,6 @@ mod tests {
         assert!(!map.states.is_empty());
         assert!(!map.settlements.is_empty());
         assert!(!map.culture_regions.is_empty());
+        assert!(!map.water_bodies.is_empty(), "a map always has ocean");
     }
 }

@@ -102,24 +102,46 @@ pub fn request_creative_seed(
     llm_url: &str,
     model: &str,
 ) -> Result<CreativeSeed, String> {
+    let content = llm_json_request(
+        llm_url,
+        model,
+        SYSTEM_PROMPT,
+        brief,
+        creative_seed_schema(),
+        "creative_seed",
+    )?;
+    parse_creative_seed(&content)
+}
+
+/// Shared LLM call — POST a json-schema-constrained chat completion to an
+/// OpenAI-compatible endpoint and return the message `content` string. Used by
+/// [`request_creative_seed`] and `crate::naming`. Every failure path returns a
+/// descriptive `Err` — no panic; an explicit timeout stops a stalled endpoint
+/// from hanging the CLI forever.
+pub(crate) fn llm_json_request(
+    llm_url: &str,
+    model: &str,
+    system_prompt: &str,
+    user_prompt: &str,
+    schema: Value,
+    schema_name: &str,
+) -> Result<String, String> {
     let body = json!({
         "model": model,
         "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
-            { "role": "user", "content": brief }
+            { "role": "system", "content": system_prompt },
+            { "role": "user", "content": user_prompt }
         ],
         "response_format": {
             "type": "json_schema",
             "json_schema": {
-                "name": "creative_seed",
+                "name": schema_name,
                 "strict": true,
-                "schema": creative_seed_schema()
+                "schema": schema
             }
         }
     });
     let url = format!("{}/chat/completions", llm_url.trim_end_matches('/'));
-    // An explicit timeout — without one a stalled endpoint hangs the CLI
-    // forever; a timeout instead surfaces as a descriptive `send()` error.
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
@@ -137,8 +159,7 @@ pub fn request_creative_seed(
         let snippet: String = text.chars().take(200).collect();
         return Err(format!("LLM HTTP {status}: {snippet}"));
     }
-    let content = extract_message_content(&text)?;
-    parse_creative_seed(&content)
+    extract_message_content(&text)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@
 //!           --out map.json --relief-png relief.png --png biome.png --style atlas
 //! world-gen generate --seed 42 --config creative_seed.json --out map.json
 //! world-gen author --brief "a cold mountainous wuxia realm" --out creative_seed.json
+//! world-gen name --in map.json --out named.json --archetype wuxia --svg map.svg
 //! ```
 
 use std::path::PathBuf;
@@ -13,7 +14,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use world_gen::{
     ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, PrevailingWind,
-    RenderStyle, SettlementDensity, WorldArchetype, WorldScale, generate,
+    RenderStyle, SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
 };
 
 #[derive(Parser)]
@@ -29,6 +30,8 @@ enum Command {
     Generate(GenerateArgs),
     /// Author a CreativeSeed from a prose brief via an LLM.
     Author(AuthorArgs),
+    /// Name an existing world map's features via an LLM.
+    Name(NameArgs),
 }
 
 #[derive(Args)]
@@ -107,10 +110,36 @@ struct AuthorArgs {
     llm_model: String,
 }
 
+#[derive(Args)]
+struct NameArgs {
+    /// Input WorldMap JSON to name.
+    #[arg(long = "in")]
+    input: PathBuf,
+    /// Output named WorldMap JSON path.
+    #[arg(long)]
+    out: PathBuf,
+    /// World archetype (genre) — steers the naming style.
+    #[arg(long, value_enum, default_value_t = ArchetypeArg::HighFantasy)]
+    archetype: ArchetypeArg,
+    /// Optional labelled political-map SVG output.
+    #[arg(long)]
+    svg: Option<PathBuf>,
+    /// SVG width/height in pixels.
+    #[arg(long, default_value_t = 1024)]
+    svg_size: u32,
+    /// OpenAI-compatible LLM API base URL.
+    #[arg(long, default_value = "http://localhost:1234/v1")]
+    llm_url: String,
+    /// LLM model id.
+    #[arg(long, default_value = "ibm/granite-4-h-tiny")]
+    llm_model: String,
+}
+
 fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Generate(args) => run_generate(args),
         Command::Author(args) => run_author(args),
+        Command::Name(args) => run_name(args),
     }
 }
 
@@ -239,6 +268,70 @@ fn run_author(cli: AuthorArgs) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn run_name(cli: NameArgs) -> ExitCode {
+    let text = match std::fs::read_to_string(&cli.input) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("error: read {}: {e}", cli.input.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut map: WorldMap = match serde_json::from_str(&text) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: parse map {}: {e}", cli.input.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    // A loaded map is verified, not trusted (Phase 4 §2) — names are excluded
+    // from the hash, so a previously-named map still verifies here.
+    if !map.verify_hash() {
+        eprintln!(
+            "error: {} failed hash verification — corrupt or hand-edited",
+            cli.input.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    if let Err(e) =
+        world_gen::naming::name_world(&mut map, cli.archetype.into(), &cli.llm_url, &cli.llm_model)
+    {
+        eprintln!("error: name: {e}");
+        return ExitCode::FAILURE;
+    }
+    let json = match serde_json::to_string_pretty(&map) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("error: serialize map: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Err(e) = std::fs::write(&cli.out, json) {
+        eprintln!("error: write {}: {e}", cli.out.display());
+        return ExitCode::FAILURE;
+    }
+    println!(
+        "wrote {} — named {} settlements, {} states, {} provinces, {} cultures, \
+         {} ranges, {} rivers, {} water bodies",
+        cli.out.display(),
+        map.settlements.len(),
+        map.states.len(),
+        map.provinces.len(),
+        map.culture_regions.len(),
+        map.mountain_ranges.len(),
+        map.rivers.len(),
+        map.water_bodies.len(),
+    );
+    if let Some(svg) = &cli.svg {
+        let doc = world_gen::render::political_svg(&map, cli.svg_size);
+        if let Err(e) = std::fs::write(svg, doc) {
+            eprintln!("error: write svg {}: {e}", svg.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", svg.display());
+    }
+    ExitCode::SUCCESS
 }
 
 // --- CLI-local mirror enums (keep the library free of a clap dependency) ---

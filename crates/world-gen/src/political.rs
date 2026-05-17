@@ -129,6 +129,7 @@ pub fn build(
         .map(|(sid, &sp)| State {
             id: sid as u32,
             capital_province: sp as u32,
+            name: String::new(),
         })
         .collect();
     let provinces: Vec<Province> = (0..np)
@@ -136,6 +137,7 @@ pub fn build(
             id: p as u32,
             capital_cell: seeds[p],
             state: state_of_prov[p],
+            name: String::new(),
         })
         .collect();
 

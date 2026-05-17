@@ -97,6 +97,7 @@ pub fn build(
         .map(|(i, &cell)| CultureRegion {
             id: i as u32,
             hearth_cell: cell,
+            name: String::new(),
         })
         .collect();
 
