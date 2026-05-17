@@ -1,5 +1,8 @@
 # MAP_001 — Map Foundation
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
+> TMP_001 is a **derived consumer** of MAP_001. TMP_001 §7 subscribes to `map_layout` deltas via DP-Ch24; on each delta TMP_001 re-derives `child_cell_anchors` (partial update — not full regenerate). MAP_001 remains canonical; TMP_001's tile-coord derivation is `(map_pos × grid_size) / 1000`. No MAP_001 surface change — annotation only. See §17 row for cross-reference. WA_003 Forge gains 3 TMP-owned AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` + `Forge:OverridePlacement`) that are orthogonal to existing `Forge:EditMapLayout` — TMP regen does not modify `map_layout`.
+
 > **Conversational name:** "Map Foundation" (MAP). The visual graph layer that makes the world navigable as a node-link map (Tiên Nghịch / EVE Online / Stellaris pattern). Owns the `map_layout` aggregate per channel, position + tier metadata for non-cell tiers, image asset slots (V1 schema; V1+ pipeline), graph connections at non-cell tiers with distance + canonical Travel duration. Cell-tier connections stay with PF_001 (no reopen); MAP_001 supplies cell-tier visual layer (position + image slots only).
 >
 > **Category:** MAP — Map Foundation (foundation tier; sibling of EF_001 + PF_001)
@@ -673,6 +676,7 @@ V1: this flow doesn't exist; all asset slots are None.
 - **MV12 (multiverse)** — V1+ multiverse portals = MapConnectionDecl with V2+ MAP-D9 cross-reality kind.
 - **future TVL_001 Travel Mechanics** — consumes MAP_001 `distance_units` for method-speed-modified duration computation. MAP-D12 reservation.
 - **future MAP_002 Asset Pipeline** — populates ImageAssetRef field values (V1: all None). MAP-D3/D4/D5 phased rollout.
+- **[TMP_001 Tilemap Foundation](../00_tilemap/TMP_001_tilemap_foundation.md)** — V1+30d derived consumer (annotation added 2026-05-14 closure-pass-extension). TMP_001 is the procedural tile-render layer per non-cell channel; it subscribes to `map_layout` deltas via DP-Ch24 (per TMP_001 §7) and derives child-cell anchor tile-coords from MAP_001 author-positioned (x, y). Direction: MAP_001 → TMP_001 (canonical → derived; no reverse coupling). Position edits cascade as partial `child_cell_anchors` re-derive (terrain/objects/roads unchanged); full regenerate is opt-in via WA_003 `Forge:RegenTilemap` (CosmeticOnly re-rolls biome + roads while preserving zones+objects; FullRebootstrap reseeds the entire pipeline). Cell-tier MAP layouts are NOT consumed by TMP (cells have no `tilemap_view`; CSC_001 owns cell rendering — per TMP-A1).
 
 ---
 

@@ -1,5 +1,8 @@
 # RES_001 — Resource Foundation
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
+> V2 mines on tilemap reservation (TMP-D10 deferral; tracked per TMP_001 §16 deferrals). When V2 mines activate, the tile-level resource node (placed by TMP-PIPE TreasurePlacer / ObjectManager) becomes a producer that emits resource events into the parent cell's `resource_inventory` via existing RES_001 OutputDecl mechanism. The tile-mine producer profile is owned by TMP_001 (mine type, biome compatibility, depletion model); the inventory destination + production cadence is owned by RES_001 via the existing `Scheduled:CellProduction` generator. NO RES_001 V1+30d surface change; reservation only. Cell-tier (CSC_001) and tile-tier (TMP_001) mines compose cleanly — RES_001 doesn't care which feature placed the producer, only that OutputDecl carries `aggregate_type="resource_inventory"`. Annotation only. See §12.9 row.
+
 > **Category:** RES — Resource Foundation (foundation tier; sibling of EF_001 / PF_001 / MAP_001 / CSC_001; 5th and final V1 foundation feature)
 > **Catalog reference:** [`catalog/cat_00_RES_resource.md`](../../catalog/cat_00_RES_resource.md) (owns `RES-*` stable-ID namespace)
 > **Status:** **CANDIDATE-LOCK 2026-04-27** (DRAFT 2026-04-26 → TDIL closure-pass-extension Q4 day-boundary → turn-boundary applied at TDIL DRAFT bdc8d8e1 → CANDIDATE-LOCK 2026-04-27 closure pass: §14 AC-RES-1..10 walked; RES-Q1..Q6 noted as deferred to consumer feature closures — RES-Q1 to PCS_001 + NPC_001 first-design-pass / RES-Q2 user-facing message confirmed "kho đầy, sản xuất tạm dừng" / RES-Q3 to PL_005 closure pass / RES-Q4 V1 default `consumable_priority` author-declared + fallback declaration-order / RES-Q5 i18n cross-cutting commit / RES-Q6 V1 PC starting Reputation default = 0). Q1-Q12 LOCKED via `00_CONCEPT_NOTES.md` §10 + Q6-Q12 deep-dive. **Foundation tier 6/6 closure feature** — final V1 foundation feature CANDIDATE-LOCK promotion (PROG_001 6th foundation added 2026-04-26 superseded original "5th and final" framing; foundation tier closes EF + PF + MAP + CSC + RES + PROG all CANDIDATE-LOCK). Companion documents: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) (concept + gap analysis) + [`01_REFERENCE_GAMES_SURVEY.md`](01_REFERENCE_GAMES_SURVEY.md) (10-game survey + 12-pattern synthesis + V1/V1+30d/V2/V3 phase mapping).
@@ -891,6 +894,15 @@ EVT-T8 AdminAction sub-shape added (WA_003 Forge owns):
 - `Forge:GrantInitialResources`
 
 WA_003 Forge closure folds these in.
+
+### §12.9 [TMP_001 Tilemap Foundation](../00_tilemap/TMP_001_tilemap_foundation.md) V2 mines integration (annotation added 2026-05-14 closure-pass-extension)
+
+V2 mines on the non-cell tile layer (TMP-D10 reservation per TMP_001 §16 deferrals) — when activated, tile-level resource nodes placed by TMP-PIPE TreasurePlacer / ObjectManager become producers that emit OutputDecl events into the parent cell's `resource_inventory`. Boundary clean:
+
+- **TMP_001 owns**: tile-mine `TilemapObjectKind::Mine` placement, biome-compatibility rules (per TMP_005 BiomeSelectionRules), per-mine depletion model + producer profile shape.
+- **RES_001 owns**: the destination `resource_inventory` aggregate, the `Scheduled:CellProduction` generator cadence, the OutputDecl validation chain, and rule_ids (`resource.balance.*` namespace stays unchanged — no new rule_ids needed for V2 mines).
+
+Cell-tier (CSC_001) and tile-tier (TMP_001) mines compose orthogonally — RES_001 is agnostic to which feature placed the producer. V1+30d: no surface change; V2 reservation only.
 
 ---
 

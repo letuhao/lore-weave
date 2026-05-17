@@ -1,0 +1,28 @@
+[package]
+name = "loreweave_llm"
+version = "0.1.0"
+description = "LoreWeave LLM gateway Rust SDK. Mirror of sdks/python/loreweave_llm. Provides typed clients + wire-format mirrors of contracts/api/llm-gateway/v1/openapi.yaml."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "loreweave_llm"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+uuid = { workspace = true }
+wiremock = { workspace = true }
+tokio = { workspace = true }

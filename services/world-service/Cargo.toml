@@ -1,0 +1,17 @@
+[package]
+name = "world-service"
+version = "0.1.0-cycle0"
+description = "Geography substrate service for the LLM MMO RPG — hosts the world_geometry aggregate (GEO_001) + the POL/SET/ROUTE activation generators. Cycle 0 scaffold: no behavior; awaits the DP-kernel + Cycle 1."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "world-service"
+path = "src/main.rs"
+
+# Cycle 0 is an empty-compiling scaffold — no dependencies yet.
+# Cycle 1 (GEO_001) adds deps once the DP-kernel aggregate framework exists.
+[dependencies]
