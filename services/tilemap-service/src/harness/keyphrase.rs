@@ -69,6 +69,17 @@ mod tests {
     }
 
     #[test]
+    fn count_one_terms_keep_first_appearance_order() {
+        // MED-1 — the `(count desc, first-appearance asc)` tie-break: the
+        // count-1 tail must follow first-appearance order. A switch to an
+        // unstable sort would break this (and pass `is_deterministic`).
+        assert_eq!(
+            extract_key_phrases(SAMPLE, 8),
+            ["ancient", "forest", "grew", "dark", "whispered", "roots", "stone", "year"],
+        );
+    }
+
+    #[test]
     fn is_deterministic() {
         assert_eq!(
             extract_key_phrases(SAMPLE, 5),

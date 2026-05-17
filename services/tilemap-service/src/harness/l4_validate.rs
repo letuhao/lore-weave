@@ -81,9 +81,12 @@ const MAX_NARRATION_CHARS: usize = 2000;
 /// Whether `c` is a CJK-script character (the §4.3 R4 heuristic).
 fn is_cjk_char(c: char) -> bool {
     matches!(c as u32,
-        0x4E00..=0x9FFF   // CJK Unified Ideographs
+        0x3400..=0x4DBF   // CJK Unified Ideographs Extension A
+        | 0x4E00..=0x9FFF // CJK Unified Ideographs
         | 0x3040..=0x309F // Hiragana
         | 0x30A0..=0x30FF // Katakana
+        | 0x1100..=0x11FF // Hangul Jamo
+        | 0x3130..=0x318F // Hangul Compatibility Jamo
         | 0xAC00..=0xD7AF // Hangul Syllables
     )
 }
@@ -98,10 +101,13 @@ fn language_mismatch(narration: &str, language: NarrationLanguage) -> bool {
     }
     let cjk = narration.chars().filter(|&c| is_cjk_char(c)).count();
     let cjk_ratio = cjk as f64 / alpha as f64;
+    // A dead-band — flag only a *confident* script mismatch (spec R-B), so a
+    // Latin narration that legitimately quotes a minority CJK passage (or vice
+    // versa) is not false-flagged into an unnecessary retry / fallback.
     if language.is_cjk() {
-        cjk_ratio < 0.5 // a CJK language but the text is not mostly CJK
+        cjk_ratio < 0.15 // a CJK language but the text is barely CJK
     } else {
-        cjk_ratio > 0.5 // a Latin-script language but the text is mostly CJK
+        cjk_ratio > 0.85 // a Latin-script language but the text is mostly CJK
     }
 }
 
@@ -142,7 +148,14 @@ pub fn validate_l4(
         }
     }
 
+    let mut content_checked: HashSet<&str> = HashSet::new();
     for n in narrations {
+        // A duplicate zone_id is already flagged by R2; validate content
+        // (R3/R4) against the first occurrence only — a repeat would emit
+        // duplicate, self-contradictory retry lines.
+        if !content_checked.insert(n.zone_id.as_str()) {
+            continue;
+        }
         // R3 — length 50..=2000 chars.
         let chars = n.narration.chars().count();
         if !(MIN_NARRATION_CHARS..=MAX_NARRATION_CHARS).contains(&chars) {
@@ -254,19 +267,58 @@ mod tests {
 
     #[test]
     fn flags_missing_unknown_duplicate_badlength() {
-        let inputs = [zone("a"), zone("b")];
+        let inputs = [zone("a"), zone("b"), zone("c")];
         let response = [
             narr("a", &good_text()),
-            narr("a", &good_text()),  // duplicate
-            narr("z", &good_text()),  // unknown zone
-            narr("a", "too short"),   // (a again — also short, but dup/length)
+            narr("a", &good_text()), // duplicate of a
+            narr("z", &good_text()), // unknown zone z
+            narr("c", "too short"),  // c's only narration — R3 BadLength
             // b missing entirely
         ];
         let errors = validate_l4(&response, &inputs, NarrationLanguage::En);
         assert!(errors.contains(&L4ValidationError::MissingNarration { zone_id: "b".into() }));
         assert!(errors.contains(&L4ValidationError::UnknownZoneId { zone_id: "z".into() }));
         assert!(errors.contains(&L4ValidationError::DuplicateZoneId { zone_id: "a".into() }));
-        assert!(errors.iter().any(|e| matches!(e, L4ValidationError::BadLength { .. })));
+        assert!(
+            errors.iter().any(|e| matches!(
+                e, L4ValidationError::BadLength { zone_id, .. } if zone_id == "c"
+            )),
+            "c's short narration must flag BadLength",
+        );
+    }
+
+    #[test]
+    fn duplicate_zone_content_rules_are_not_double_flagged() {
+        // HIGH-2 — a zone repeated with a bad-length narration yields exactly
+        // ONE BadLength (first occurrence) + ONE DuplicateZoneId, never two
+        // BadLength lines (which would be self-contradictory retry context).
+        let inputs = [zone("a")];
+        let response = [narr("a", "short"), narr("a", "short")];
+        let errors = validate_l4(&response, &inputs, NarrationLanguage::En);
+        assert_eq!(
+            errors.iter().filter(|e| matches!(e, L4ValidationError::BadLength { .. })).count(),
+            1,
+            "content rules run once per zone, not per occurrence",
+        );
+        assert_eq!(
+            errors.iter().filter(|e| matches!(e, L4ValidationError::DuplicateZoneId { .. })).count(),
+            1,
+        );
+    }
+
+    #[test]
+    fn mixed_script_does_not_false_flag_r4() {
+        // MED-2 — a mostly-English narration quoting a short CJK passage is
+        // within the R4 dead-band, so it is NOT flagged for an `En` reality.
+        let inputs = [zone("a")];
+        let text = "You enter the old hall where a faded couplet hangs: 月明 — \
+                    and the lanterns sway over a long and quiet wooden floor.";
+        let response = [narr("a", text)];
+        let errors = validate_l4(&response, &inputs, NarrationLanguage::En);
+        assert!(
+            !errors.iter().any(|e| matches!(e, L4ValidationError::LanguageMismatch { .. })),
+            "a minority CJK quote must not false-flag an English narration",
+        );
     }
 
     #[test]

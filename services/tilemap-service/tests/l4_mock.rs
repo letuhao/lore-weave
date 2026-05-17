@@ -256,3 +256,53 @@ async fn ac11_all_l3_fallback_zone_is_still_narrated() {
         "lotus_grove was L4-narrated despite its zone's L3 objects all falling back",
     );
 }
+
+#[tokio::test]
+async fn duplicate_zone_id_errors_at_entry() {
+    // `run_l4_with_retries`'s sole `Err` path — caught before any gateway call.
+    let dup = vec![
+        ZoneNarrationInput {
+            zone_id: "dup".to_string(),
+            terrain: "forest".to_string(),
+            l3_objects: vec![],
+        },
+        ZoneNarrationInput {
+            zone_id: "dup".to_string(),
+            terrain: "grass".to_string(),
+            l3_objects: vec![],
+        },
+    ];
+    let client = GatewayClient::new("http://127.0.0.1:1".to_string(), "test-token");
+    let err = run_l4_with_retries(
+        &client,
+        ModelSource::PlatformModel,
+        Uuid::nil(),
+        Uuid::nil(),
+        &dup,
+        NarrationLanguage::En,
+        NarrativeTone::Wuxia,
+        NarrationVoice::SecondPerson,
+        3,
+    )
+    .await
+    .expect_err("a duplicate zone_id must error at entry");
+    assert!(err.to_string().contains("dup"), "error must name the duplicate zone: {err}");
+}
+
+#[tokio::test]
+async fn transport_failure_clears_the_retry_context() {
+    // Attempt 1 — HTTP 500 (transport failure). Attempt 2 must retry FRESH:
+    // no validation errors existed, so its request carries no retry preamble.
+    let ok = narrate_sse(&[("zone_a", &good()), ("zone_b", &good())]);
+    let server = scripted_server(vec![(500, String::new()), (200, ok)]).await;
+    let r = run(&server, &["zone_a", "zone_b"], 3).await;
+    assert_eq!(r.llm_attempts, 2);
+    assert_eq!(r.fallback_count, 0);
+
+    let reqs = server.received_requests().await.unwrap();
+    let body2 = String::from_utf8_lossy(&reqs[1].body);
+    assert!(
+        !body2.contains("re-narrate ONLY"),
+        "a transport failure must not carry a retry-context preamble into the next attempt",
+    );
+}

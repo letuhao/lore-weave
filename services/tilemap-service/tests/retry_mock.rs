@@ -356,3 +356,35 @@ async fn ac12_partial_final_attempt_no_double_count() {
         .unwrap();
     assert!(obj3.rationale.as_deref().unwrap_or("").contains("Canonical default"));
 }
+
+#[tokio::test]
+async fn transport_failure_clears_the_retry_context() {
+    // Attempt 1 — HTTP 500 (transport failure). Attempt 2 must retry FRESH:
+    // no validation errors existed, so its request carries no retry preamble.
+    let ok = classify_sse(&[
+        ("obj_1", "BanditCache", "ok_one"),
+        ("obj_2", "BanditCamp", "ok_two"),
+        ("obj_3", "AncientTree", "ok_three"),
+    ]);
+    let server = scripted_server(vec![(500, String::new()), (200, ok)]).await;
+    let client = GatewayClient::new(server.uri(), "test-token");
+    let result = run_l3_with_retries(
+        &client,
+        ModelSource::PlatformModel,
+        Uuid::nil(),
+        Uuid::nil(),
+        &fixture_placeholders(),
+        &[],
+        3,
+    )
+    .await
+    .expect("the loop completes despite the transport error");
+    assert_eq!(result.llm_attempts, 2);
+
+    let reqs = server.received_requests().await.unwrap();
+    let body2 = String::from_utf8_lossy(&reqs[1].body);
+    assert!(
+        !body2.contains("re-classify ONLY"),
+        "a transport failure must not carry a retry-context preamble into the next attempt",
+    );
+}

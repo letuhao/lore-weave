@@ -85,10 +85,23 @@ pub async fn call_l4_attempt(
     }
 
     let calls = acc.finish();
-    match calls.first() {
+    // Select the call by tool NAME — never blindly `.first()` (a provider may
+    // stream an extra/echo tool call; picking it would silently fold a
+    // wrong-tool case into a "parse failure").
+    match calls
+        .iter()
+        .find(|c| c.name.as_deref() == Some("submit_zone_narrations"))
+    {
         None => {
             if attempt.failure.is_none() {
-                attempt.failure = Some("no tool_call events were streamed".to_string());
+                attempt.failure = Some(if calls.is_empty() {
+                    "no tool_call events were streamed".to_string()
+                } else {
+                    format!(
+                        "{} tool call(s) streamed, none named submit_zone_narrations",
+                        calls.len()
+                    )
+                });
             }
         }
         Some(call) => match serde_json::from_str::<L4ToolArguments>(&call.arguments) {

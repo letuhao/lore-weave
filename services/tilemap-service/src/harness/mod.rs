@@ -1,12 +1,11 @@
-//! Phase 0b L3 zone-classifier measurement harness.
+//! L3 zone-classifier harness — the single gateway call + the measurement
+//! report.
 //!
-//! Sends ONE hardcoded L3 zone-classification request (TMP_008b §3 tool +
-//! §9.1 few-shot prompt) through the LLM gateway with a forced `tool_choice`,
-//! reassembles the streamed `tool_call` fragments, parses + validates the
-//! result, and reports tool-use success + token cost vs TMP_008b §12.
-//!
-//! This is a MEASUREMENT tool, not the production pipeline: the TMP_008b §5
-//! per-object retry loop and §6 canonical-default fallback are Phase 2.
+//! [`call_l3_attempt`] sends one L3 zone-classification request (TMP_008b §3
+//! tool + §9.1 few-shot prompt) through the LLM gateway with a forced
+//! `tool_choice` and reassembles the streamed `tool_call` fragments.
+//! [`run_l3_measurement`] wraps it with the §12 token-cost report; the §5
+//! per-object retry loop (`retry.rs`) and §6 fallback build on the same call.
 
 pub mod bootstrap;
 pub mod keyphrase;
@@ -155,12 +154,26 @@ pub async fn call_l3_attempt(
     // finish() works on an error-terminated stream too (no Done required).
     let calls = acc.finish();
     attempt.tool_calls_seen = calls.len();
-    attempt.raw_arguments = calls.first().map(|c| c.arguments.clone()).unwrap_or_default();
 
-    match calls.first() {
+    // Select the call by tool NAME — never blindly `.first()`. A provider may
+    // stream an extra/echo tool call at a lower index; picking it would
+    // silently fold a wrong-tool case into a "parse failure".
+    let target = calls
+        .iter()
+        .find(|c| c.name.as_deref() == Some("submit_zone_classifications"));
+    attempt.raw_arguments = target.map(|c| c.arguments.clone()).unwrap_or_default();
+
+    match target {
         None => {
             if attempt.failure.is_none() {
-                attempt.failure = Some("no tool_call events were streamed".to_string());
+                attempt.failure = Some(if calls.is_empty() {
+                    "no tool_call events were streamed".to_string()
+                } else {
+                    format!(
+                        "{} tool call(s) streamed, none named submit_zone_classifications",
+                        calls.len()
+                    )
+                });
             }
         }
         Some(call) => match serde_json::from_str::<L3ToolArguments>(&call.arguments) {

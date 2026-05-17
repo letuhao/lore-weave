@@ -172,7 +172,17 @@ pub fn validate_l3(
         }
     }
 
+    // Build the canon-ref lookup once (R4 is O(1) per classification, not O(n)).
+    let canon_ref_set: HashSet<&str> = book_canon_refs.iter().map(String::as_str).collect();
+
+    let mut content_checked: HashSet<&str> = HashSet::new();
     for c in classifications {
+        // A duplicate obj_id is already flagged by R2; running the content
+        // rules again on the repeat would emit duplicate, self-contradictory
+        // retry lines. Validate content (R3-R5) against the first occurrence only.
+        if !content_checked.insert(c.obj_id.as_str()) {
+            continue;
+        }
         let placeholder = placeholders.iter().find(|p| p.obj_id == c.obj_id);
 
         // R3 — canon_kind ∈ that object's suggested_canon_kind.
@@ -188,7 +198,7 @@ pub fn validate_l3(
 
         // R4 — canon_ref null OR a known book_canon_refs entry.
         if let Some(ref_id) = &c.canon_ref {
-            if !book_canon_refs.contains(ref_id) {
+            if !canon_ref_set.contains(ref_id.as_str()) {
                 errors.push(L3ValidationError::CanonRefNotFound {
                     obj_id: c.obj_id.clone(),
                     received: ref_id.clone(),
@@ -362,6 +372,26 @@ mod tests {
             errors
                 .iter()
                 .any(|e| matches!(e, L3ValidationError::InvalidNarrativeTag { obj_id, .. } if obj_id == "obj_99"))
+        );
+    }
+
+    #[test]
+    fn duplicate_obj_id_content_rules_are_not_double_flagged() {
+        // HIGH-2 — a duplicated obj with a bad tag yields exactly ONE
+        // InvalidNarrativeTag (first occurrence), not one per occurrence.
+        let p = fixture_placeholders();
+        let classifications = vec![
+            ok_classification("obj_1", "BanditCache", "Bad Tag!"),
+            ok_classification("obj_1", "BanditCache", "Bad Tag!"),
+        ];
+        let errors = validate_l3(&classifications, &p, &[]);
+        assert_eq!(
+            errors
+                .iter()
+                .filter(|e| matches!(e, L3ValidationError::InvalidNarrativeTag { .. }))
+                .count(),
+            1,
+            "content rules run once per obj_id, not per occurrence",
         );
     }
 

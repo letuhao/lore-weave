@@ -183,13 +183,32 @@ Scope Guard POST-REVIEW: **CLEAR** (AC-1..AC-11 covered, no §2 scope crossing,
 all 9 findings fixed). `cargo test --workspace` green; clippy clean. Findings:
 `docs/audit/findings-phase-3-l4-narration-r1..r3.md`.
 
+### Post-commit human-in-loop review (Phase 2 + 3, 2026-05-17)
+
+After Phases 2 + 3 landed, an operator-requested **human-in-loop review** ran
+an independent cold-start reviewer (uncapped — unlike the AMAW Adversary's
+3-finding limit) over both commits. Verdict: **sound, 0 BLOCK**; live re-verify
+green. It found what the capped Adversary missed → all fixed in a follow-up
+(default v2.2):
+- **HIGH-1** — `call_l3_attempt`/`call_l4_attempt` selected the tool call by
+  `.first()` with no name check → now selected by tool **name**, wrong/absent
+  tool → explicit `failure`.
+- **HIGH-2** — `validate_l3`/`validate_l4` emitted doubled, self-contradictory
+  retry lines when a duplicate id co-occurred with a content-rule failure →
+  content rules now run once per id.
+- **MED-1/2/3** — key-phrase tie-break test pinned; R4 language heuristic given
+  a 0.15/0.85 dead-band; `is_cjk_char` += CJK Ext-A + Hangul Jamo.
+- **LOW-1/4/5 + COSMETIC-1** — `book_canon_refs` HashSet; L4 duplicate-`zone_id`
+  `Err` test; L3+L4 transport-clears-retry-context tests; stale `mod.rs` doc.
+- LOW-2/LOW-3 — reviewer-confirmed non-bugs, no change.
+
 ### Handoff notes
 
 **Active blocker:** none. **Phase 3 complete + committed — the 0b→3 map-gen
-plan is done.** No new DEFERRED items. The L3/L4 bootstrap still uses a
-**fixture** object set (engine object placement = TMP_005/006/007, unbuilt).
-Next-work options are in "Recommended first action" above — none blocking.
-ContextHub was up: RETRO `add_lesson` persisted.
+plan is done + human-in-loop reviewed.** No new DEFERRED items. The L3/L4
+bootstrap still uses a **fixture** object set (engine object placement =
+TMP_005/006/007, unbuilt). Next-work options are in "Recommended first action"
+above — none blocking. ContextHub was up: RETRO `add_lesson` persisted.
 
 ---
 
