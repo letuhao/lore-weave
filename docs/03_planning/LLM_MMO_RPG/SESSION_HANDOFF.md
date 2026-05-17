@@ -201,8 +201,13 @@ honouring the "never seal a gap" invariant via the Phase-A
 - **Scope Guard (POST-REVIEW):** CLEAR — change within §2 scope; the 5
   off-census files are mechanical D9 fallout; out-of-scope object-filtering
   held back as DEFERRED #023.
+- **`/review-impl`** (post-commit deep coverage review at the human
+  checkpoint): 4 findings — 1 MED (the guard-skip `NoSpace` path had zero test
+  coverage), 3 LOW (`compose_pile` attempt-cap unverified, malformed `min>max`
+  tier untested, unbounded `target_count`) — **all fixed** in a follow-up
+  commit (+3 tests; `target_count` capped at the zone's `Open`-tile count).
 - Findings trail: `docs/audit/findings-phase-c-treasure-placer-{r1..r6,code-r1}.md`,
-  `post-review-phase-c-treasure-placer.md`.
+  `post-review-phase-c-treasure-placer.md`, `review-impl-phase-c-treasure-placer.md`.
 
 ### Verify
 

@@ -265,4 +265,37 @@ mod tests {
             prev = d;
         }
     }
+
+    #[test]
+    fn compose_pile_terminates_on_a_degenerate_zero_value_pool() {
+        // The production pool guarantees every object `value > 0` (AC-1), so
+        // the running sum strictly increases and the loop self-terminates well
+        // before MAX_COMPOSE_ATTEMPTS — the cap never fires in production. A
+        // hand-built pool with a sole 0-value object is the only way to drive
+        // the loop to the cap: the sum never advances, so the `attempts < 100`
+        // conjunct is what must stop the loop and yield `None` (no hang).
+        let degenerate = [TreasureObject { id: "void", value: 0, rarity: 1 }];
+        let tier = TreasureTierSpec { min: 100, max: 1000, density: 1 };
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        assert!(
+            compose_pile(&degenerate, tier, &mut rng).is_none(),
+            "a zero-value pool cannot reach a positive `min` — the attempt cap must yield None",
+        );
+    }
+
+    #[test]
+    fn compose_pile_returns_none_for_a_malformed_min_greater_than_max_tier() {
+        // A tier whose `min` exceeds its `max` is an author error. `compose_pile`
+        // must return `None` (the running sum can never satisfy the empty
+        // `[min, max]` window) without panicking or hanging.
+        let pool = engine_treasure_pool();
+        let malformed = TreasureTierSpec { min: 5000, max: 800, density: 1 };
+        for seed in 0..8u64 {
+            let mut rng = ChaCha8Rng::seed_from_u64(seed);
+            assert!(
+                compose_pile(&pool, malformed, &mut rng).is_none(),
+                "seed {seed}: a min>max tier must not compose",
+            );
+        }
+    }
 }

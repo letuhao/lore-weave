@@ -144,7 +144,13 @@ fn place_tier(
 ) {
     // D6 — piles per zone-tile-thousand; the `as u32` truncation means a zone
     // with `density × tiles < 1000` holds no piles of this tier (intended).
-    let target_count = (tier.density as f32 * assigned_count as f32 / 1000.0) as u32;
+    // Capped at the zone's current `Open`-tile count: a zone cannot hold more
+    // 1×1 piles than it has `Open` tiles, so this bounds the loop against a
+    // pathological author `density` (`u16`, up to 65535) without affecting any
+    // realistic target (`density_target` is far below `open_count` in practice).
+    let density_target = (tier.density as f32 * assigned_count as f32 / 1000.0) as u32;
+    let open_count = state.zone_area_open(zone_idx).count_ones() as u32;
+    let target_count = density_target.min(open_count);
     let mut placed: u32 = 0;
     let mut emergency: u32 = 0;
     // D6 — successes never touch `emergency`; only failures are capped, at
@@ -661,6 +667,56 @@ mod tests {
         assert!(
             state.object_placements.is_empty(),
             "a dangling inherit_treasure_from must yield zero treasure (not fall back to own)",
+        );
+    }
+
+    #[test]
+    fn guard_skipped_when_the_pile_has_no_open_neighbour() {
+        // D5 / review r6-finding-1 — when a guard's `place_and_connect_object`
+        // returns `NoSpace` (no `Open` tile 4-adjacent to the pile), the guard
+        // is skipped and the pile stands unguarded; the skip is benign, never
+        // an error, and never an emergency. This pins the `place_guard`
+        // `NoSpace` arm, which the guard-placeable-geometry tests (ac6a/ac7)
+        // never reach. Geometry: a 3×3 zone whose centre is the sole `Open`
+        // tile, ringed by `Walkable` `free_paths` — the pile is forced
+        // dead-centre and its four neighbours are all `Walkable`, so the guard
+        // search area is empty.
+        let grid = GridSize { width: 3, height: 3 };
+        let mut assigned = TileMask::new(3, 3);
+        let mut free = TileMask::new(3, 3);
+        for y in 0..3 {
+            for x in 0..3 {
+                assigned.set(TileCoord::new(x, y));
+                if (x, y) != (1, 1) {
+                    free.set(TileCoord::new(x, y)); // the ring is Walkable
+                }
+            }
+        }
+        let zone = ZoneTiles {
+            id: ZoneId("g".to_string()),
+            role: ZoneRole::Wilderness,
+            center: TileCoord::new(1, 1),
+            assigned_tiles: assigned,
+            free_paths: free,
+        };
+        let mut state = TilemapBuildState::from_zones(vec![zone], grid);
+        state.zone_terrain.fill(Some(TerrainKind::Grass));
+        // density 200 ⇒ target_count 1 on the 9-tile / 1-Open-tile zone; tier
+        // min ≥ 2000 so the single pile is guard-eligible.
+        let tmpl = template(vec![zone_spec("g", vec![tier(2000, 6000, 200)], None)]);
+        run_placer(&mut state, &tmpl, 1);
+
+        let ts = treasures(&state);
+        assert_eq!(ts.len(), 1, "the centre Open tile must take exactly one pile");
+        let v = ts[0].value.expect("a Treasure carries Some(value)");
+        assert!(
+            v >= MIN_GUARD_VALUE,
+            "the pile must be guard-eligible (value {v} >= {MIN_GUARD_VALUE}) — \
+             otherwise an empty lair set would not prove the guard was *skipped*",
+        );
+        assert!(
+            lairs(&state).is_empty(),
+            "the guard has no Open tile to occupy — it must be skipped, not placed",
         );
     }
 }
