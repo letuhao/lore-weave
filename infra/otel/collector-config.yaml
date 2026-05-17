@@ -1,0 +1,27 @@
+# OpenTelemetry Collector config — Phase 6c observability foundation.
+# Services send OTLP/HTTP here; the collector batches and forwards to Tempo.
+# Keeping the collector in front of Tempo means services stay backend-
+# agnostic (swap Tempo for another store without touching any service).
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]

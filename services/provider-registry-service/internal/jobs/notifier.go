@@ -22,8 +22,12 @@ import (
 	"sync"
 
 	rabbitmq "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/google/uuid"
+
+	"github.com/loreweave/observability"
 )
 
 const (
@@ -110,11 +114,49 @@ func NewRabbitMQNotifier(amqpURL string, logger *slog.Logger) (Notifier, error) 
 	return &rabbitMQNotifier{conn: conn, ch: ch, logger: logger}, nil
 }
 
+// amqpHeaderCarrier adapts an amqp.Table to propagation.TextMapCarrier so
+// observability.Inject/Extract can move a W3C traceparent through a message's
+// headers. Keeps the observability module amqp-free (design §3.2).
+type amqpHeaderCarrier rabbitmq.Table
+
+func (c amqpHeaderCarrier) Get(key string) string {
+	if v, ok := c[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func (c amqpHeaderCarrier) Set(key, value string) { c[key] = value }
+
+func (c amqpHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 func (n *rabbitMQNotifier) PublishTerminal(ctx context.Context, ev TerminalEvent) error {
 	body, err := json.Marshal(ev)
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
+
+	// Phase 6c — PRODUCER span + W3C traceparent in the message headers, so
+	// the notification-service consumer (6c-β) continues this trace instead
+	// of starting a disconnected one.
+	ctx, span := observability.Tracer("notifier").Start(ctx, "llm.job.terminal-event",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("job.id", ev.JobID.String()),
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", llmEventsExchange),
+			attribute.String("messaging.rabbitmq.routing_key", ev.RoutingKey()),
+		))
+	defer span.End()
+	headers := rabbitmq.Table{}
+	observability.Inject(ctx, amqpHeaderCarrier(headers))
+
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	err = n.ch.PublishWithContext(
@@ -126,10 +168,12 @@ func (n *rabbitMQNotifier) PublishTerminal(ctx context.Context, ev TerminalEvent
 		rabbitmq.Publishing{
 			ContentType:  "application/json",
 			DeliveryMode: rabbitmq.Persistent,
+			Headers:      headers,
 			Body:         body,
 		},
 	)
 	if err != nil {
+		span.RecordError(err)
 		n.logger.Warn("publish terminal event failed",
 			"job_id", ev.JobID.String(), "status", ev.Status, "err", err)
 		return fmt.Errorf("amqp publish: %w", err)

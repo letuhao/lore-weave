@@ -187,9 +187,11 @@ services:
       - "8207:8084"
 
   provider-registry-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/provider-registry-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/provider-registry-service/Dockerfile
     environment:
       HTTP_ADDR: ":8085"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
@@ -217,6 +219,10 @@ services:
       # Phase 6b — transient-retry budget for a worker job. Optional; the
       # code default (3) applies when unset.
       JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
+      # Phase 6c — OpenTelemetry trace export. Unset = no-op tracer (the
+      # service still boots). Set it + bring up the `observability` profile
+      # to wire tracing to the collector; see the otel-collector block.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -235,9 +241,11 @@ services:
       - "8208:8085"
 
   usage-billing-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/usage-billing-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/usage-billing-service/Dockerfile
     environment:
       HTTP_ADDR: ":8086"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
@@ -255,6 +263,8 @@ services:
       # — the service fails to start if unset (no DDL default, billing ADR
       # P5). Generous for the test/UAT environment so it never gates.
       PLATFORM_FREE_TIER_USD: ${PLATFORM_FREE_TIER_USD:-100000000}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -766,6 +776,58 @@ services:
       - extraction
       - full
 
+  # ── Phase 6c — OpenTelemetry tracing stack ────────────────────────────
+  # Distributed tracing for the LLM pipeline (6c-α); 6c-β/γ extend it to
+  # every service. Hidden behind the `observability` profile so a plain
+  # `docker compose up` doesn't pay for 3 extra containers. Enable with:
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+  #     docker compose --profile observability up
+  # Then open Grafana at http://localhost:3200 (Explore → Tempo). Host
+  # port 3200, not 3000 — 3000 is ContextHub MCP. Services keep a no-op
+  # tracer while OTEL_EXPORTER_OTLP_ENDPOINT is unset, so they boot fine
+  # with the profile off — no service depends_on the collector.
+  otel-collector:
+    # Pin a concrete release tag, never `latest`.
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    depends_on:
+      - tempo
+    profiles:
+      - observability
+      - full
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./otel/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - loreweave_tempo:/var/tempo
+    profiles:
+      - observability
+      - full
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      # Dev-only: anonymous admin, no login form. NOT for any shared env.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./otel/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/tempo.yaml:ro
+    ports:
+      - "3200:3000"
+    depends_on:
+      - tempo
+    profiles:
+      - observability
+      - full
+
 volumes:
   loreweave_pg:
   loreweave_redis:
@@ -774,3 +836,4 @@ volumes:
   loreweave_languagetool:
   loreweave_neo4j_data:
   loreweave_neo4j_logs:
+  loreweave_tempo:

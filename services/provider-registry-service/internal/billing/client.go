@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/loreweave/observability"
 )
 
 // GuardrailClient is the provider-registry → usage-billing HTTP client for the
@@ -24,10 +26,14 @@ type GuardrailClient struct {
 }
 
 // NewGuardrailClient builds a client against usage-billing's base URL. A nil
-// http.Client gets a default with a 5s timeout.
+// http.Client gets a default with a 5s timeout and a Phase 6c traced
+// transport (outbound calls carry a W3C traceparent + emit a CLIENT span).
 func NewGuardrailClient(baseURL, internalToken string, hc *http.Client) *GuardrailClient {
 	if hc == nil {
-		hc = &http.Client{Timeout: 5 * time.Second}
+		hc = &http.Client{
+			Timeout:   5 * time.Second,
+			Transport: observability.HTTPTransport(nil),
+		}
 	}
 	return &GuardrailClient{
 		baseURL:       strings.TrimRight(baseURL, "/"),

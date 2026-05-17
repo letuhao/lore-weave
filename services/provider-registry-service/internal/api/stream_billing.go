@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/provider"
 )
@@ -139,6 +140,12 @@ func (g *streamGuard) settle(ctx context.Context) {
 	if g == nil || g.guardrail == nil {
 		return
 	}
+	// Phase 6c — settle runs detached (ctx from observability.DetachedContext
+	// at the deferred call site); this span re-roots it under the stream's
+	// trace so the reconcile is not an orphan.
+	ctx, span := observability.Tracer("stream").Start(ctx, "llm.stream.settle")
+	defer span.End()
+
 	var actual *float64
 	switch {
 	case g.op == "tts":

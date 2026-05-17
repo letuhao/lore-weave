@@ -13,7 +13,10 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/chunker"
 	"github.com/loreweave/provider-registry-service/internal/provider"
@@ -256,6 +259,16 @@ func (w *Worker) Process(
 	input json.RawMessage,
 	chunking *ChunkConfig,
 ) {
+	// Phase 6c — the job span. ctx arrived via observability.DetachedContext
+	// (jobs_handler), carrying the submit request's trace_id but not its
+	// cancellation; this span re-roots the detached worker under that trace.
+	ctx, span := observability.Tracer("jobs").Start(ctx, "llm.job.process",
+		trace.WithAttributes(
+			attribute.String("llm.operation", operation),
+			attribute.String("job.id", jobID.String()),
+		))
+	defer span.End()
+
 	logger := w.logger.With("job_id", jobID.String(), "operation", operation)
 
 	rowsRunning, err := w.repo.MarkRunning(ctx, jobID)

@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/provider"
 )
@@ -240,9 +241,10 @@ WHERE platform_model_id=$1 AND status='active'
 		return // preflightStream wrote the rejection
 	}
 	// settle runs on every exit — completion, abort, upstream error, or
-	// client disconnect. Background ctx so a disconnect cannot cancel the
-	// reconcile HTTP call.
-	defer guard.settle(context.Background())
+	// client disconnect. observability.DetachedContext carries the stream's
+	// trace context but not r.Context()'s cancellation, so a disconnect
+	// cannot cancel the reconcile HTTP call (Phase 6c §5c streaming bridge).
+	defer guard.settle(observability.DetachedContext(r.Context()))
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")

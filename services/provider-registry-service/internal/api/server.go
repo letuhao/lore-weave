@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
@@ -169,6 +170,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before Recoverer so the span
+	// survives (and is marked 500) when a handler panics.
+	r.Use(observability.ChiMiddleware())
 	r.Use(middleware.Recoverer)
 
 	// D-K17.2a-01 — Prometheus metrics. Unauthed on purpose (same

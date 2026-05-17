@@ -13,7 +13,6 @@ package api
 // the result.
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
@@ -218,12 +218,13 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		return
 	}
 
-	// Spawn the worker goroutine. Use a fresh context detached from the
-	// inbound HTTP request so the goroutine survives the response. The
-	// worker gets pf.input — the possibly max_tokens-capped input.
+	// Spawn the worker goroutine. observability.DetachedContext carries the
+	// request's trace context (so the job span joins this trace) WITHOUT its
+	// cancellation — the goroutine must survive the 202 response. The worker
+	// gets pf.input — the possibly max_tokens-capped input.
+	workerCtx := observability.DetachedContext(r.Context())
 	go func() {
-		bgCtx := context.Background()
-		s.jobsWorker.Process(bgCtx, jobID, userID, in.Operation, in.ModelSource, modelRef, pf.input, chunkCfg)
+		s.jobsWorker.Process(workerCtx, jobID, userID, in.Operation, in.ModelSource, modelRef, pf.input, chunkCfg)
 	}()
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
@@ -613,12 +614,12 @@ func (s *Server) doSubmitSttMultipart(w http.ResponseWriter, r *http.Request, us
 	}
 
 	// Spawn the worker goroutine. audioBytes is captured by closure;
-	// bgCtx detaches from the HTTP request so the goroutine survives
-	// the 202 response.
+	// observability.DetachedContext carries the request trace context
+	// without its cancellation, so the goroutine survives the 202 response.
+	workerCtx := observability.DetachedContext(r.Context())
 	go func() {
-		bgCtx := context.Background()
 		s.jobsWorker.ProcessAudioInline(
-			bgCtx, jobID, userID, modelSource, modelRef,
+			workerCtx, jobID, userID, modelSource, modelRef,
 			language, audioBytes, contentType,
 		)
 	}()
