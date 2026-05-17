@@ -19,6 +19,10 @@ pub struct CreativeSeed {
     pub hemisphere_orientation: HemisphereOrientation,
     /// Optional nudge toward a climate zone (`None` = unbiased).
     pub climate_bias: Option<ClimateZone>,
+    /// How densely settlements are placed (Phase 3).
+    pub settlement_density: SettlementDensity,
+    /// Number of culture regions (Phase 3); clamped to `1..=16` at use.
+    pub culture_count: u8,
 }
 
 impl Default for CreativeSeed {
@@ -29,6 +33,36 @@ impl Default for CreativeSeed {
             coastline_profile: CoastlineProfile::Coastal,
             hemisphere_orientation: HemisphereOrientation::Northern,
             climate_bias: None,
+            settlement_density: SettlementDensity::Medium,
+            culture_count: 5,
+        }
+    }
+}
+
+/// Settlement placement density (Phase 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SettlementDensity {
+    Sparse,
+    Medium,
+    Dense,
+}
+
+impl SettlementDensity {
+    /// Land cells per settlement (target-count divisor).
+    pub fn cells_per_settlement(self) -> usize {
+        match self {
+            SettlementDensity::Sparse => 800,
+            SettlementDensity::Medium => 400,
+            SettlementDensity::Dense => 200,
+        }
+    }
+
+    /// Poisson-disk minimum separation (normalized distance).
+    pub fn min_separation(self) -> f32 {
+        match self {
+            SettlementDensity::Sparse => 0.08,
+            SettlementDensity::Medium => 0.05,
+            SettlementDensity::Dense => 0.03,
         }
     }
 }

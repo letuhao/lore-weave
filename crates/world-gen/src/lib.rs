@@ -5,31 +5,39 @@
 //! regeneration-determinism is the load-bearing invariant — see
 //! [`WorldMap::content_hash`].
 //!
-//! Pipeline: Phase 1 — Voronoi dual-mesh + heightmap; Phase 2 — climate,
-//! rivers (flow accumulation), the ocean/lake water network, and biomes.
+//! Pipeline: P1 — Voronoi dual-mesh + heightmap; P2 — climate, rivers, water
+//! network, biomes; P3 — provinces + states, settlements, routes, cultures.
 
 pub mod biome;
 pub mod climate;
 pub mod creative_seed;
+pub mod culture;
 pub mod hydrology;
 pub mod mesh;
+pub mod pathfind;
+pub mod political;
 pub mod render;
 pub mod rng;
+pub mod routes;
+pub mod settlement;
 pub mod terrain;
 pub mod world_map;
 
 pub use biome::BiomeKind;
 pub use climate::ClimateZone;
 pub use creative_seed::{
-    CoastlineProfile, CreativeSeed, HemisphereOrientation, WorldArchetype, WorldScale,
+    CoastlineProfile, CreativeSeed, HemisphereOrientation, SettlementDensity, WorldArchetype,
+    WorldScale,
 };
-pub use world_map::{Cell, WorldMap};
+pub use world_map::{
+    Cell, CultureRegion, Province, Route, RouteKind, Settlement, SettlementRole, State, WorldMap,
+};
 
 /// Generate a world map from a `u64` seed + creative direction.
 ///
 /// Pure and deterministic — identical inputs yield a byte-identical map.
 pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
-    // Stage 1–2 — mesh + heightmap (+ sea level).
+    // Stage 1–2 — mesh + heightmap.
     let mesh = mesh::build(seed, cs.world_scale);
     let terrain = terrain::build(seed, cs.coastline_profile, &mesh.centers, &mesh.neighbors);
 
@@ -43,7 +51,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         cs.climate_bias,
     );
 
-    // Stage 4 — hydrology (rivers + water network) then biomes.
+    // Stage 4 — hydrology + biomes.
     let hydro = hydrology::build(
         &mesh.centers,
         &terrain.elevation,
@@ -60,6 +68,29 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &hydro.is_in_ocean,
         &hydro.is_coast,
     );
+
+    // Stage 5–8 — political, settlement, route, culture.
+    let political = political::build(seed, &mesh.centers, &mesh.neighbors, &biome);
+    let settlements = settlement::build(
+        seed,
+        &mesh.centers,
+        &biome,
+        &climate,
+        &hydro.river_flux,
+        &hydro.is_coast,
+        cs.settlement_density,
+        &political,
+    );
+    let routes = routes::build(
+        &mesh.centers,
+        &mesh.neighbors,
+        &biome,
+        &hydro.river_flux,
+        hydro.river_threshold,
+        &hydro.is_coast,
+        &settlements,
+    );
+    let culture = culture::build(seed, &mesh.centers, &mesh.neighbors, &biome, cs.culture_count);
 
     let cells: Vec<Cell> = mesh
         .centers
@@ -78,6 +109,13 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         biome,
         river_flux: hydro.river_flux,
         is_coast: hydro.is_coast,
+        province_of: political.province_of,
+        provinces: political.provinces,
+        states: political.states,
+        settlements,
+        routes,
+        culture_of: culture.culture_of,
+        culture_regions: culture.culture_regions,
         content_hash: [0u8; 32],
     };
     map.content_hash = content_hash(&map);
@@ -85,14 +123,12 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
 }
 
 /// blake3 over a canonical fixed-order byte view of the map. f32 fields are
-/// hashed by their IEEE-754 bit pattern (`to_le_bytes`) to sidestep any
-/// float-formatting ambiguity.
+/// hashed by their IEEE-754 bit pattern (`to_le_bytes`).
 ///
 /// MAINTENANCE: every `WorldMap` field must be fed in here. When `WorldMap`
-/// grows (Phase 3 political/settlement layers), extend this function —
-/// otherwise the hash silently goes stale. (`determinism.rs` also asserts
-/// full `PartialEq`, so determinism *detection* is safe regardless, but keep
-/// the hash honest.)
+/// grows, extend this function — otherwise the hash silently goes stale.
+/// (`determinism.rs` also asserts full `PartialEq`, so determinism *detection*
+/// is safe regardless, but keep the hash honest.)
 fn content_hash(map: &WorldMap) -> [u8; 32] {
     let mut h = blake3::Hasher::new();
     h.update(&map.seed.to_le_bytes());
@@ -104,7 +140,6 @@ fn content_hash(map: &WorldMap) -> [u8; 32] {
         h.update(&c.elevation.to_le_bytes());
     }
     for list in &map.neighbors {
-        // list.len() is a small degree (<= ~12) ⇒ fits u32 trivially.
         h.update(&(list.len() as u32).to_le_bytes());
         for &n in list {
             h.update(&n.to_le_bytes());
@@ -121,6 +156,35 @@ fn content_hash(map: &WorldMap) -> [u8; 32] {
     }
     for &coast in &map.is_coast {
         h.update(&[u8::from(coast)]);
+    }
+    for &p in &map.province_of {
+        h.update(&p.to_le_bytes());
+    }
+    for p in &map.provinces {
+        h.update(&p.id.to_le_bytes());
+        h.update(&p.capital_cell.to_le_bytes());
+        h.update(&p.state.to_le_bytes());
+    }
+    for s in &map.states {
+        h.update(&s.id.to_le_bytes());
+        h.update(&s.capital_province.to_le_bytes());
+    }
+    for s in &map.settlements {
+        h.update(&s.cell.to_le_bytes());
+        h.update(&[s.role.tag(), s.population_tier]);
+    }
+    for r in &map.routes {
+        h.update(&[r.kind.tag()]);
+        h.update(&r.from_cell.to_le_bytes());
+        h.update(&r.to_cell.to_le_bytes());
+        h.update(&r.distance.to_le_bytes());
+    }
+    for &c in &map.culture_of {
+        h.update(&c.to_le_bytes());
+    }
+    for cr in &map.culture_regions {
+        h.update(&cr.id.to_le_bytes());
+        h.update(&cr.hearth_cell.to_le_bytes());
     }
     *h.finalize().as_bytes()
 }
@@ -151,13 +215,16 @@ mod tests {
     }
 
     #[test]
-    fn all_layers_are_populated_and_parallel() {
+    fn all_layers_are_populated() {
         let map = generate(7, &CreativeSeed::default());
         let n = map.cell_count();
-        assert_eq!(map.neighbors.len(), n);
         assert_eq!(map.climate.len(), n);
         assert_eq!(map.biome.len(), n);
-        assert_eq!(map.river_flux.len(), n);
-        assert_eq!(map.is_coast.len(), n);
+        assert_eq!(map.province_of.len(), n);
+        assert_eq!(map.culture_of.len(), n);
+        assert!(!map.provinces.is_empty());
+        assert!(!map.states.is_empty());
+        assert!(!map.settlements.is_empty());
+        assert!(!map.culture_regions.is_empty());
     }
 }

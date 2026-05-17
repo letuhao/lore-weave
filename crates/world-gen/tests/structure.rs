@@ -1,7 +1,36 @@
 //! Structural invariants — cell count, neighbour degree, symmetry, land
 //! coherence, sea-level band. (Phase 1 acceptance criteria #3–#6.)
 
-use world_gen::{BiomeKind, CoastlineProfile, CreativeSeed, WorldMap, WorldScale, generate};
+use world_gen::{
+    BiomeKind, CoastlineProfile, CreativeSeed, RouteKind, SettlementRole, WorldMap, WorldScale,
+    generate,
+};
+
+/// Per-cell land-component id (`u32::MAX` for water). DFS over `neighbors`.
+fn component_of(map: &WorldMap) -> Vec<u32> {
+    let n = map.cell_count();
+    let mut comp = vec![u32::MAX; n];
+    let mut next = 0u32;
+    for start in 0..n {
+        if comp[start] != u32::MAX || !map.is_land(start) {
+            continue;
+        }
+        let id = next;
+        next += 1;
+        let mut stack = vec![start];
+        comp[start] = id;
+        while let Some(c) = stack.pop() {
+            for &nb in &map.neighbors[c] {
+                let nb = nb as usize;
+                if comp[nb] == u32::MAX && map.is_land(nb) {
+                    comp[nb] = id;
+                    stack.push(nb);
+                }
+            }
+        }
+    }
+    comp
+}
 
 const SCALES: [WorldScale; 5] = [
     WorldScale::Pocket,
@@ -415,4 +444,230 @@ fn hemisphere_flip_orients_climate() {
         }
     }
     assert!(checked > 0, "hemisphere test was vacuous — no seed had both bands");
+}
+
+// ── Phase 3 — political / settlement / route / culture criteria ──────────
+
+/// Criterion #3 — provinces partition the land totally; water has none.
+#[test]
+fn provinces_partition_land() {
+    for profile in PROFILES {
+        for seed in 0..8u64 {
+            let cs = CreativeSeed {
+                coastline_profile: profile,
+                ..CreativeSeed::default()
+            };
+            let map = generate(seed, &cs);
+            assert_eq!(map.province_of.len(), map.cell_count());
+            for i in 0..map.cell_count() {
+                let p = map.province_of[i];
+                if map.is_land(i) {
+                    assert_ne!(p, u32::MAX, "{profile:?} seed {seed}: land cell {i} no province");
+                    assert!((p as usize) < map.provinces.len(), "province id {p} out of range");
+                } else {
+                    assert_eq!(p, u32::MAX, "{profile:?} seed {seed}: water cell {i} has province");
+                }
+            }
+            // criterion #3 — provinces.len() equals the apportioned n_prov.
+            let land = (0..map.cell_count()).filter(|&i| map.is_land(i)).count();
+            let comp = component_of(&map);
+            let n_components = comp
+                .iter()
+                .copied()
+                .filter(|&c| c != u32::MAX)
+                .max()
+                .map_or(0, |m| m as usize + 1);
+            let n_prov = (land / 200).clamp(4, 80).max(n_components);
+            assert_eq!(
+                map.provinces.len(),
+                n_prov,
+                "{profile:?} seed {seed}: province count != apportioned n_prov"
+            );
+        }
+    }
+}
+
+/// Criterion #4 — state↔province back-references are consistent; every state
+/// has exactly one Capital settlement.
+#[test]
+fn states_have_exactly_one_capital() {
+    for seed in 0..8u64 {
+        let map = generate(seed, &CreativeSeed::default());
+        for st in &map.states {
+            assert!((st.capital_province as usize) < map.provinces.len());
+            assert_eq!(
+                map.provinces[st.capital_province as usize].state, st.id,
+                "seed {seed}: state {} capital province not in the state", st.id
+            );
+        }
+        for p in &map.provinces {
+            assert!((p.state as usize) < map.states.len(), "province {} bad state", p.id);
+        }
+        let mut caps = vec![0u32; map.states.len()];
+        for s in &map.settlements {
+            if s.role == SettlementRole::Capital {
+                let pid = map.province_of[s.cell as usize];
+                caps[map.provinces[pid as usize].state as usize] += 1;
+            }
+        }
+        for (sid, &c) in caps.iter().enumerate() {
+            assert_eq!(c, 1, "seed {seed}: state {sid} has {c} capitals (want 1)");
+        }
+    }
+}
+
+/// Criterion #5 — settlement cells are unique land cells; tier matches role.
+#[test]
+fn settlements_unique_land_cells() {
+    for seed in 0..8u64 {
+        let map = generate(seed, &CreativeSeed::default());
+        let mut cells: Vec<u32> = map.settlements.iter().map(|s| s.cell).collect();
+        let count = cells.len();
+        cells.sort_unstable();
+        cells.dedup();
+        assert_eq!(cells.len(), count, "seed {seed}: duplicate settlement cells");
+        for s in &map.settlements {
+            assert!(map.is_land(s.cell as usize), "seed {seed}: settlement on water");
+            let want = match s.role {
+                SettlementRole::Capital => 5,
+                SettlementRole::City => 4,
+                SettlementRole::Town => 3,
+                SettlementRole::Village | SettlementRole::Fortress => 2,
+                SettlementRole::Hamlet => 1,
+            };
+            assert_eq!(s.population_tier, want, "seed {seed}: tier/role mismatch");
+        }
+    }
+}
+
+/// Criterion #6 — routes dedup per (kind,pair); the Road sub-graph is
+/// connected within every land component holding ≥2 road-eligible settlements.
+#[test]
+fn routes_dedup_and_roads_connected() {
+    for seed in 0..6u64 {
+        let map = generate(seed, &CreativeSeed::default());
+        let n = map.cell_count() as u32;
+        // valid cells + dedup per (kind tag, lo, hi)
+        let mut keys: Vec<(u8, u32, u32)> = Vec::new();
+        for r in &map.routes {
+            assert!(r.from_cell < n && r.to_cell < n, "seed {seed}: route cell out of range");
+            let lo = r.from_cell.min(r.to_cell);
+            let hi = r.from_cell.max(r.to_cell);
+            keys.push((r.kind as u8, lo, hi));
+        }
+        let count = keys.len();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), count, "seed {seed}: duplicate route");
+
+        // Road connectivity per land component.
+        let comp = component_of(&map);
+        // tier>=2 settlement cells, with a union-find index each
+        let road: Vec<u32> = map
+            .settlements
+            .iter()
+            .filter(|s| s.population_tier >= 2)
+            .map(|s| s.cell)
+            .collect();
+        let idx_of = |cell: u32| road.iter().position(|&c| c == cell);
+        let mut parent: Vec<usize> = (0..road.len()).collect();
+        fn find(p: &mut [usize], x: usize) -> usize {
+            let mut r = x;
+            while p[r] != r {
+                r = p[r];
+            }
+            r
+        }
+        for r in &map.routes {
+            if r.kind != RouteKind::Road {
+                continue;
+            }
+            if let (Some(a), Some(b)) = (idx_of(r.from_cell), idx_of(r.to_cell)) {
+                let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
+                if ra != rb {
+                    parent[ra.max(rb)] = ra.min(rb);
+                }
+            }
+        }
+        // for each land component, the road settlements in it must share one class
+        let mut comp_class: std::collections::BTreeMap<u32, Vec<usize>> = Default::default();
+        for (ri, &cell) in road.iter().enumerate() {
+            comp_class.entry(comp[cell as usize]).or_default().push(ri);
+        }
+        for (cid, members) in comp_class {
+            if members.len() < 2 {
+                continue; // trivially satisfied
+            }
+            let root0 = find(&mut parent, members[0]);
+            for &m in &members[1..] {
+                assert_eq!(
+                    find(&mut parent, m),
+                    root0,
+                    "seed {seed}: component {cid} road sub-graph not connected"
+                );
+            }
+        }
+    }
+}
+
+/// `k < n_components`: only `k` components get a hearth, the rest fall back
+/// to culture 0 — exercises the otherwise-uncovered branch (review-impl #1).
+#[test]
+fn culture_fewer_than_components_falls_back() {
+    let cs = CreativeSeed {
+        coastline_profile: CoastlineProfile::Archipelago, // 5 land components
+        culture_count: 2,
+        ..CreativeSeed::default()
+    };
+    for seed in 0..6u64 {
+        let map = generate(seed, &cs);
+        assert_eq!(
+            map.culture_regions.len(),
+            2,
+            "seed {seed}: culture_count 2 → 2 regions"
+        );
+        for i in 0..map.cell_count() {
+            if map.is_land(i) {
+                assert!(
+                    (map.culture_of[i] as usize) < 2,
+                    "seed {seed}: land cell {i} bad culture {}",
+                    map.culture_of[i]
+                );
+            } else {
+                assert_eq!(map.culture_of[i], u32::MAX, "seed {seed}: water has culture");
+            }
+        }
+    }
+}
+
+/// Criterion #7 — culture partitions the land; water has none.
+#[test]
+fn culture_partitions_land() {
+    for profile in PROFILES {
+        for seed in 0..6u64 {
+            let cs = CreativeSeed {
+                coastline_profile: profile,
+                ..CreativeSeed::default()
+            };
+            let map = generate(seed, &cs);
+            // criterion #7 — culture_regions.len() == culture_count.clamp(1,16).
+            assert_eq!(
+                map.culture_regions.len(),
+                5,
+                "{profile:?} seed {seed}: culture count (default 5)"
+            );
+            assert_eq!(map.culture_of.len(), map.cell_count());
+            for i in 0..map.cell_count() {
+                let c = map.culture_of[i];
+                if map.is_land(i) {
+                    assert!(
+                        (c as usize) < map.culture_regions.len(),
+                        "{profile:?} seed {seed}: land cell {i} bad culture {c}"
+                    );
+                } else {
+                    assert_eq!(c, u32::MAX, "{profile:?} seed {seed}: water cell {i} has culture");
+                }
+            }
+        }
+    }
 }

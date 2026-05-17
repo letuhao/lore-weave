@@ -8,7 +8,7 @@
 use image::{Rgb, RgbImage};
 
 use crate::biome::BiomeKind;
-use crate::world_map::WorldMap;
+use crate::world_map::{RouteKind, SettlementRole, WorldMap};
 
 /// Rasterize `map` to `width × height`: each pixel takes the colour of its
 /// nearest cell centre — which *is* the Voronoi diagram.
@@ -159,6 +159,124 @@ fn land_ramp(t: f32) -> Rgb<u8> {
     }
 }
 
+/// Render a political map (Phase 3): cells tinted by state, with routes drawn
+/// as lines and settlements as dots.
+pub fn political_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
+    let mut img = rasterize(map, width, height, |cell| political_cell_color(map, cell));
+    for r in &map.routes {
+        draw_line(&mut img, map, r.from_cell, r.to_cell, route_color(r.kind));
+    }
+    for s in &map.settlements {
+        draw_dot(
+            &mut img,
+            map,
+            s.cell,
+            1 + u32::from(s.population_tier),
+            settlement_color(s.role),
+        );
+    }
+    img
+}
+
+/// Base cell colour for the political map — water blue, else tinted by state.
+fn political_cell_color(map: &WorldMap, cell: usize) -> Rgb<u8> {
+    let pid = map.province_of[cell];
+    if pid == u32::MAX {
+        return Rgb([40, 70, 120]); // water
+    }
+    state_color(map.provinces[pid as usize].state)
+}
+
+/// A distinct tint per state id.
+fn state_color(id: u32) -> Rgb<u8> {
+    const PALETTE: [[u8; 3]; 12] = [
+        [200, 120, 120],
+        [120, 170, 200],
+        [170, 200, 120],
+        [200, 180, 110],
+        [160, 130, 190],
+        [120, 200, 170],
+        [210, 150, 170],
+        [150, 160, 120],
+        [190, 160, 200],
+        [130, 190, 140],
+        [200, 200, 140],
+        [170, 140, 130],
+    ];
+    Rgb(PALETTE[(id as usize) % PALETTE.len()])
+}
+
+fn route_color(k: RouteKind) -> Rgb<u8> {
+    match k {
+        RouteKind::Road => Rgb([40, 30, 20]),
+        RouteKind::Trail => Rgb([120, 90, 50]),
+        RouteKind::RiverNavigation => Rgb([90, 160, 220]),
+        RouteKind::SeaLane => Rgb([225, 225, 255]),
+        RouteKind::MountainPass => Rgb([220, 80, 60]),
+    }
+}
+
+fn settlement_color(r: SettlementRole) -> Rgb<u8> {
+    match r {
+        SettlementRole::Capital => Rgb([255, 40, 40]),
+        SettlementRole::City => Rgb([255, 205, 40]),
+        SettlementRole::Town => Rgb([255, 255, 255]),
+        SettlementRole::Village => Rgb([205, 205, 205]),
+        SettlementRole::Hamlet => Rgb([150, 150, 150]),
+        SettlementRole::Fortress => Rgb([130, 50, 130]),
+    }
+}
+
+/// Pixel coordinate of a cell centre (with the map-y → image-y flip).
+fn cell_px(map: &WorldMap, cell: u32, w: i32, h: i32) -> (i32, i32) {
+    let (x, y) = map.cells[cell as usize].center;
+    let px = ((x * w as f32) as i32).clamp(0, w - 1);
+    let py = ((h - 1) - (y * h as f32) as i32).clamp(0, h - 1);
+    (px, py)
+}
+
+/// Bresenham line between two cell centres.
+fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>) {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let (mut x0, mut y0) = cell_px(map, a, w, h);
+    let (x1, y1) = cell_px(map, b, w, h);
+    let dx = (x1 - x0).abs();
+    let dy = -(y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+    loop {
+        img.put_pixel(x0 as u32, y0 as u32, color);
+        if x0 == x1 && y0 == y1 {
+            break;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x0 += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+/// Filled square dot at a cell centre.
+fn draw_dot(img: &mut RgbImage, map: &WorldMap, cell: u32, radius: u32, color: Rgb<u8>) {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let (cx, cy) = cell_px(map, cell, w, h);
+    let r = radius as i32;
+    for dy in -r..=r {
+        for dx in -r..=r {
+            let (px, py) = (cx + dx, cy + dy);
+            if px >= 0 && py >= 0 && px < w && py < h {
+                img.put_pixel(px as u32, py as u32, color);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +342,20 @@ mod tests {
         assert!(
             img.pixels().any(|p| *p != first),
             "biome image rendered a single flat colour"
+        );
+    }
+
+    #[test]
+    fn political_image_dimensions_and_not_uniform() {
+        let map = generate(3, &CreativeSeed::default());
+        let img = political_image(&map, 200, 150);
+        assert_eq!(img.width(), 200);
+        assert_eq!(img.height(), 150);
+        // ocean + ≥1 state tint + route/settlement marks ⇒ >1 colour.
+        let first = *img.get_pixel(0, 0);
+        assert!(
+            img.pixels().any(|p| *p != first),
+            "political image rendered a single flat colour"
         );
     }
 }

@@ -35,6 +35,24 @@ impl Rng {
         // next_u32() >> 8 lands in [0, 2^24); divisor 2^24 is exact in f32.
         (self.0.next_u32() >> 8) as f32 / (1u32 << 24) as f32
     }
+
+    /// Raw next `u32` from the deterministic stream.
+    pub fn next_u32(&mut self) -> u32 {
+        self.0.next_u32()
+    }
+}
+
+/// Deterministic in-place Fisher-Yates shuffle.
+pub fn shuffle<T>(rng: &mut Rng, v: &mut [T]) {
+    let len = v.len();
+    if len < 2 {
+        return;
+    }
+    for i in (1..len).rev() {
+        // modulo bias is negligible and irrelevant to determinism.
+        let j = (rng.next_u32() as usize) % (i + 1);
+        v.swap(i, j);
+    }
 }
 
 #[cfg(test)]

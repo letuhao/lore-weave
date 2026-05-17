@@ -10,8 +10,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, ValueEnum};
 use world_gen::{
-    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, WorldArchetype, WorldScale,
-    generate,
+    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, SettlementDensity,
+    WorldArchetype, WorldScale, generate,
 };
 
 #[derive(Parser)]
@@ -35,12 +35,21 @@ struct Cli {
     /// Optional climate-zone bias.
     #[arg(long, value_enum)]
     climate_bias: Option<ClimateBiasArg>,
+    /// Settlement placement density.
+    #[arg(long, value_enum, default_value_t = DensityArg::Medium)]
+    settlement_density: DensityArg,
+    /// Number of culture regions (clamped 1..=16).
+    #[arg(long, default_value_t = 5)]
+    culture_count: u8,
     /// Output JSON path.
     #[arg(long)]
     out: PathBuf,
     /// Optional biome-coloured PNG path.
     #[arg(long)]
     png: Option<PathBuf>,
+    /// Optional political-map PNG path (states, routes, settlements).
+    #[arg(long)]
+    political_png: Option<PathBuf>,
     /// PNG width/height in pixels.
     #[arg(long, default_value_t = 1024)]
     png_size: u32,
@@ -54,6 +63,8 @@ fn main() -> ExitCode {
         coastline_profile: cli.coastline.into(),
         hemisphere_orientation: cli.hemisphere.into(),
         climate_bias: cli.climate_bias.map(Into::into),
+        settlement_density: cli.settlement_density.into(),
+        culture_count: cli.culture_count,
     };
     let map = generate(cli.seed, &cs);
 
@@ -85,6 +96,14 @@ fn main() -> ExitCode {
         let img = world_gen::render::biome_image(&map, cli.png_size, cli.png_size);
         if let Err(e) = img.save(png) {
             eprintln!("error: save png {}: {e}", png.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", png.display());
+    }
+    if let Some(png) = &cli.political_png {
+        let img = world_gen::render::political_image(&map, cli.png_size, cli.png_size);
+        if let Err(e) = img.save(png) {
+            eprintln!("error: save political png {}: {e}", png.display());
             return ExitCode::FAILURE;
         }
         println!("wrote {}", png.display());
@@ -211,6 +230,23 @@ impl From<ClimateBiasArg> for ClimateZone {
             ClimateBiasArg::Tropical => ClimateZone::Tropical,
             ClimateBiasArg::Arid => ClimateZone::Arid,
             ClimateBiasArg::Highland => ClimateZone::Highland,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum DensityArg {
+    Sparse,
+    Medium,
+    Dense,
+}
+
+impl From<DensityArg> for SettlementDensity {
+    fn from(d: DensityArg) -> Self {
+        match d {
+            DensityArg::Sparse => SettlementDensity::Sparse,
+            DensityArg::Medium => SettlementDensity::Medium,
+            DensityArg::Dense => SettlementDensity::Dense,
         }
     }
 }

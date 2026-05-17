@@ -100,3 +100,32 @@ fn climate_inputs_change_the_hash() {
         "climate bias did not change the map"
     );
 }
+
+/// The Phase 3 inputs (settlement density, culture count) are deterministic
+/// and actually feed the output.
+#[test]
+fn phase3_inputs_are_deterministic_and_effective() {
+    let cs = CreativeSeed {
+        settlement_density: world_gen::SettlementDensity::Dense,
+        culture_count: 9,
+        ..CreativeSeed::default()
+    };
+    let a = generate(2026, &cs);
+    let b = generate(2026, &cs);
+    assert_eq!(a.content_hash, b.content_hash);
+    assert_eq!(a, b);
+
+    let sparse = CreativeSeed {
+        settlement_density: world_gen::SettlementDensity::Sparse,
+        ..CreativeSeed::default()
+    };
+    let dense = CreativeSeed {
+        settlement_density: world_gen::SettlementDensity::Dense,
+        ..CreativeSeed::default()
+    };
+    assert_ne!(
+        generate(11, &sparse).content_hash,
+        generate(11, &dense).content_hash,
+        "settlement density did not change the map"
+    );
+}

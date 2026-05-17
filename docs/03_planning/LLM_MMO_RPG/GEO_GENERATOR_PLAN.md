@@ -13,7 +13,7 @@
 | 0 | Scaffold (re-purpose the Cycle-0 `world-service` crate) | **DONE** (superseded — Phase 1 created `crates/world-gen` fresh; `services/world-service` + `services/travel-service` left orphaned for human cleanup) |
 | 1 | Crate structure + core types + Voronoi mesh + heightmap | **DONE** (2026-05-17) |
 | 2 | Climate + biomes + rivers | **DONE** (2026-05-17) |
-| 3 | Political + settlement + route + culture | NOT STARTED |
+| 3 | Political + settlement + route + culture | **DONE** (2026-05-17) |
 | 4 | Serialization + image export + CLI + (optional) LLM CreativeSeed authoring | NOT STARTED |
 
 Phases are strictly sequential. Each is an **L-size** task. (The overnight build run is executing these under **AMAW** per the project owner's call — the full 12-phase workflow with cold-start sub-agent reviews + `/review-impl`, a step up from this plan's original default-workflow recommendation.)
@@ -25,6 +25,10 @@ Phases are strictly sequential. Each is an **L-size** task. (The overnight build
 ### Phase 2 — build log (2026-05-17)
 
 Stages 3–4: `climate.rs` (latitude×elevation×ocean-distance → 8 `ClimateZone`), `hydrology.rs` (Barnes priority-flood depression fill → flow accumulation → `river_flux`; ocean/lake water network), `biome.rs` (14-`BiomeKind` matrix). `CreativeSeed` gained `hemisphere_orientation` + `climate_bias`; `WorldMap` gained `climate`/`biome`/`river_flux`/`is_coast`; CLI `--png` now renders biomes. 40 tests green, clippy clean. **DEFERRED #013 cleared** — connectivity-aware sea-level binary search + a continental base dome for the high-land `Inland` profile. AMAW: 2 design rounds (r1 REJECTED 2 BLOCK → r2 APPROVED_WITH_WARNINGS), 2 code rounds (r1/r2 APPROVED_WITH_WARNINGS — a code-review WARN fix surfaced + fixed a real `Inland` land-fragmentation BLOCK), `/review-impl` (1 MED + 3 LOW), Scope Guard CLEAR.
+
+### Phase 3 — build log (2026-05-17)
+
+Stages 5–8 (task size **XL**), pure-procedural: `pathfind.rs` (deterministic integer-cost multi/single-source Dijkstra, BFS, largest-remainder apportionment, union-find), `political.rs` (province terrain-cost flood-fill + nearest-state-seed clustering), `settlement.rs` (burg-score Poisson-disk + role assignment), `routes.rs` (Road MST+augmentation, Trail, SeaLane, MountainPass, RiverNavigation), `culture.rs` (barrier flood-fill). `CreativeSeed` gained `settlement_density` + `culture_count`; `WorldMap` gained `province_of`/`provinces`/`states`/`settlements`/`routes`/`culture_of`/`culture_regions`; CLI gained `--political-png`. 50 tests green, clippy clean. AMAW: 3 design rounds (r1/r2 REJECTED — archipelago multi-component + quota apportionment → r3 APPROVED_WITH_WARNINGS), 2 code rounds (both APPROVED_WITH_WARNINGS), `/review-impl` (1 MED + 3 LOW). A union-find-on-distance state-clustering bug (degenerate to 1 state) was caught at VERIFY by the political-map render and fixed with nearest-state-seed assignment. Scope Guard CLEAR.
 
 ---
 

@@ -51,6 +51,56 @@ impl BiomeKind {
     pub fn is_water(self) -> bool {
         matches!(self, BiomeKind::Ocean | BiomeKind::Lake)
     }
+
+    /// Integer movement cost to enter a cell of this biome (stages 5, 7).
+    /// `None` = impassable (open water).
+    pub fn terrain_cost(self) -> Option<u32> {
+        match self {
+            BiomeKind::Ocean | BiomeKind::Lake => None,
+            BiomeKind::Plain | BiomeKind::Coast | BiomeKind::Beach => Some(1),
+            BiomeKind::Forest | BiomeKind::River => Some(2),
+            BiomeKind::Hill | BiomeKind::Desert | BiomeKind::Tundra => Some(3),
+            BiomeKind::Jungle | BiomeKind::Marsh => Some(4),
+            BiomeKind::Mountain => Some(8),
+            BiomeKind::Glacier => Some(20),
+        }
+    }
+
+    /// Integer culture-spread cost (stage 8). `None` = hard barrier.
+    ///
+    /// Glacier is a *land* biome here (`is_water() == false`), so culture must
+    /// be able to reach Glacier land cells — it is a high finite cost, not the
+    /// `None` hard barrier GEO_002 §5.2 used (where glacier was modelled as
+    /// water). Open water alone is the hard barrier.
+    pub fn culture_barrier(self) -> Option<u32> {
+        match self {
+            BiomeKind::Ocean | BiomeKind::Lake => None,
+            BiomeKind::Plain
+            | BiomeKind::Forest
+            | BiomeKind::Coast
+            | BiomeKind::Beach
+            | BiomeKind::River => Some(1),
+            BiomeKind::Hill | BiomeKind::Marsh | BiomeKind::Jungle | BiomeKind::Tundra => Some(2),
+            BiomeKind::Desert | BiomeKind::Mountain => Some(3),
+            BiomeKind::Glacier => Some(8),
+        }
+    }
+
+    /// Base habitability for the stage-6 burg score (`0.0` = uninhabitable).
+    pub fn population_potential(self) -> f32 {
+        match self {
+            BiomeKind::Plain => 1.0,
+            BiomeKind::Coast | BiomeKind::River => 0.9,
+            BiomeKind::Forest => 0.7,
+            BiomeKind::Hill => 0.6,
+            BiomeKind::Beach => 0.5,
+            BiomeKind::Jungle => 0.4,
+            BiomeKind::Marsh => 0.3,
+            BiomeKind::Tundra | BiomeKind::Desert => 0.2,
+            BiomeKind::Mountain => 0.15,
+            BiomeKind::Ocean | BiomeKind::Lake | BiomeKind::Glacier => 0.0,
+        }
+    }
 }
 
 /// Build the per-cell biome layer.
