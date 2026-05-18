@@ -8,7 +8,7 @@
 
 ## Current status & next session (handoff)
 
-**As of 2026-05-18 — branch `geo-generator-amaw`, unpushed.** The 4-phase
+**As of 2026-05-18 — branch `geo-generator-amaw`, pushed.** The 4-phase
 generator is built, the post-build human-in-loop review is done, and seven
 enhancements have since shipped — each via the full default 12-phase v2.2
 workflow (`/review-impl` on enhancements 3–6):
@@ -37,14 +37,25 @@ workflow (`/review-impl` on enhancements 3–6):
 > the **geo-type redesign** (Earth terrain + fantasy: great rift, lava world,
 > shattered world). This is the next major work.
 
-**Next session — world-tier / geo-type redesign.** The PO will describe the
-target world model; the agent drafts a design/plan doc from it. Benchmark
-timings (release): generate 6 ms → 91 ms for Pocket → Megaplanet, **8.5 s** at
-Gigaplanet (501k cells); relief render ~14 s. Super-linear but not O(n²).
+**Next session — deep-dive the world-tier redesign.** The PO described the
+world-model vision (2026-05-18) and the agent drafted the design spec:
+[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) — **DRAFT, awaiting
+PO review**. It defines: a wrapping-cylinder topology, a two-tier scale
+architecture (resident coarse global mesh + on-demand seamless per-area
+detail), a plate-tectonic multi-continent model, a Köppen-grounded global
+climate model, a 3-axis geo-type vocabulary (landform / biome / fantasy), and
+physiographic-region output (no political layer). Next session: walk the spec
+with the PO, resolve the **5 open questions in §9**, then begin **phase 1 —
+cylinder topology** (§8 phasing). Implementation is 6 phases, each a full
+12-phase workflow task.
+
+Benchmark baseline (release): generate 6 ms → 91 ms for Pocket → Megaplanet,
+**8.5 s** at Gigaplanet (501k cells); relief render ~14 s. Super-linear, not O(n²).
 
 **Other open GEO enhancements** (surveyed, lower priority than the redesign):
 16-bit heightmap export; deposition / sediment-fan refinement; archetype-
-conditioned generation (`world_archetype` still inert).
+conditioned generation (`world_archetype` still inert — the redesign §6c gives
+it meaning).
 
 ---
 
