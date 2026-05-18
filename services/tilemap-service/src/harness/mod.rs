@@ -8,6 +8,7 @@
 //! per-object retry loop (`retry.rs`) and §6 fallback build on the same call.
 
 pub mod bootstrap;
+pub mod continent;
 pub mod keyphrase;
 pub mod l4_prompt;
 pub mod l4_retry;

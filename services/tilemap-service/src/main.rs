@@ -20,12 +20,13 @@ async fn main() -> Result<()> {
     match args.get(1).map(String::as_str) {
         Some("classify") => run_classify().await,
         Some("bootstrap") => run_bootstrap().await,
+        Some("measure") => run_measure().await,
         Some(other) => {
-            anyhow::bail!("unknown subcommand '{other}' (known: classify, bootstrap)");
+            anyhow::bail!("unknown subcommand '{other}' (known: classify, bootstrap, measure)");
         }
         None => {
             tracing::info!(
-                "tilemap-service — `classify` (L3 measurement) | `bootstrap` (small-reality L3 retry-loop demo)"
+                "tilemap-service — `classify` (L3 measurement) | `bootstrap` (small-reality L3 retry-loop demo) | `measure` (continent-scale generation + live L3/L4)"
             );
             tracing::info!("see services/tilemap-service/DESIGN.md + README.md");
             Ok(())
@@ -84,6 +85,36 @@ async fn run_bootstrap() -> Result<()> {
             .await
             .context("running the small-reality bootstrap")?;
     println!("{}", harness::bootstrap::render_bootstrap_report(&report));
+    Ok(())
+}
+
+/// `tilemap-service measure` — time continent-scale (256²) generation, then,
+/// when the gateway env is present, run the live engine→L3-batched→L4 flow and
+/// report token cost + latency. The offline section prints before the (slow)
+/// live run starts.
+async fn run_measure() -> Result<()> {
+    tracing::info!("placing the continent (256²) — the offline generation measurement");
+    let (tilemap, offline) =
+        harness::continent::measure_offline().context("placing the continent")?;
+    println!("{}", harness::continent::render_offline(&offline));
+
+    match gateway_from_env() {
+        Ok((client, model_source, model_ref, user_id)) => {
+            tracing::info!(
+                ?model_source, %model_ref,
+                "running the live continent measurement (engine→L3-batched→L4)",
+            );
+            let live = harness::continent::measure_live(
+                &tilemap, &client, model_source, model_ref, user_id,
+            )
+            .await
+            .context("running the live continent measurement")?;
+            println!("{}", harness::continent::render_live(&live));
+        }
+        Err(e) => {
+            println!("live measurement skipped — gateway env not set ({e})");
+        }
+    }
     Ok(())
 }
 

@@ -11,7 +11,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
 use tilemap_service::harness::prompt::{L3Placeholder, fixture_placeholders};
-use tilemap_service::harness::retry::run_l3_with_retries;
+use tilemap_service::harness::retry::{run_l3_batched, run_l3_with_retries};
 use tilemap_service::llm::{GatewayClient, ModelSource};
 
 /// Wrap a tool-call argument JSON string as an SSE `tool_call` stream (the
@@ -362,4 +362,125 @@ async fn transport_failure_clears_the_retry_context() {
         !body2.contains("re-classify ONLY"),
         "a transport failure must not carry a retry-context preamble into the next attempt",
     );
+}
+
+// ── run_l3_batched (continent-scale per-zone batching) ────────────────────
+
+/// An L3 placeholder in `zone` with a non-empty suggested set.
+fn ph(obj_id: &str, zone: &str) -> L3Placeholder {
+    L3Placeholder::new(obj_id, "Treasure", zone, &["BanditCache", "AbandonedCellar", "OldShrine"])
+}
+
+#[tokio::test]
+async fn run_l3_batched_classifies_every_object_exactly_once() {
+    // AC-2 — batches are a disjoint partition; the aggregate covers every
+    // obj_id exactly once. max_attempts=0 ⇒ no gateway call, all §6 fallback —
+    // this exercises the grouping + chunking + aggregation, no server needed.
+    let phs: Vec<L3Placeholder> = vec![
+        ph("obj_1", "zone_a"), ph("obj_2", "zone_a"), ph("obj_3", "zone_a"),
+        ph("obj_4", "zone_b"), ph("obj_5", "zone_b"),
+        ph("obj_6", "zone_c"),
+    ];
+    let r = run_l3_batched(
+        &unused_client(), ModelSource::PlatformModel, Uuid::nil(), Uuid::nil(),
+        &phs, &[], 0, 2,
+    )
+    .await
+    .expect("valid input");
+
+    assert_eq!(r.llm_attempts, 0, "max_attempts=0 issues no gateway call");
+    assert_eq!(r.fallback_count, 6, "every object fell back");
+    assert_eq!(r.input_tokens, 0);
+    let mut ids: Vec<&str> = r.classifications.iter().map(|c| c.obj_id.as_str()).collect();
+    ids.sort_unstable();
+    assert_eq!(ids, ["obj_1", "obj_2", "obj_3", "obj_4", "obj_5", "obj_6"], "exactly-once union");
+}
+
+#[tokio::test]
+async fn run_l3_batched_issues_one_call_per_batch() {
+    // AC-1/AC-3 — zone_a (5 objects) chunks(2) → 3 batches, zone_b (3) → 2;
+    // 5 batches ⇒ 5 gateway calls, and llm_attempts sums to 5.
+    let phs: Vec<L3Placeholder> = (1..=5)
+        .map(|i| ph(&format!("obj_{i}"), "zone_a"))
+        .chain((6..=8).map(|i| ph(&format!("obj_{i}"), "zone_b")))
+        .collect();
+    // A dummy response (classifies an object not in any batch) ⇒ each batch
+    // falls back after its single attempt; we only count the requests.
+    let server = scripted_server(vec![(200, classify_sse(&[("obj_x", "BanditCache", "t")]))]).await;
+    let client = GatewayClient::new(server.uri(), "test-token");
+
+    let r = run_l3_batched(
+        &client, ModelSource::PlatformModel, Uuid::nil(), Uuid::nil(),
+        &phs, &[], 1, 2,
+    )
+    .await
+    .expect("valid input");
+
+    assert_eq!(server.received_requests().await.unwrap().len(), 5, "one call per batch");
+    assert_eq!(r.llm_attempts, 5, "llm_attempts sums across batches");
+    assert_eq!(r.classifications.len(), 8, "every object still classified");
+    assert_eq!(r.fallback_count, 8, "the dummy response classified nothing valid");
+}
+
+#[tokio::test]
+async fn run_l3_batched_aggregates_accepted_classifications_and_tokens() {
+    // The happy path — each per-zone batch's LLM-accepted classifications (not
+    // just §6 fallbacks) survive into the aggregate, and token counts sum.
+    // zone_a (obj_1, obj_2) + zone_b (obj_3) ⇒ 2 batches at batch_size=2; one
+    // scripted response per batch, classifying that batch's objects validly.
+    let phs = vec![ph("obj_1", "zone_a"), ph("obj_2", "zone_a"), ph("obj_3", "zone_b")];
+    let batch_a = classify_sse(&[
+        ("obj_1", "BanditCache", "t1"),
+        ("obj_2", "AbandonedCellar", "t2"),
+    ]);
+    let batch_b = classify_sse(&[("obj_3", "OldShrine", "t3")]);
+    let server = scripted_server(vec![(200, batch_a), (200, batch_b)]).await;
+    let client = GatewayClient::new(server.uri(), "test-token");
+
+    let r = run_l3_batched(
+        &client, ModelSource::PlatformModel, Uuid::nil(), Uuid::nil(),
+        &phs, &[], 3, 2,
+    )
+    .await
+    .expect("valid input");
+
+    assert_eq!(r.fallback_count, 0, "every object was LLM-classified, not a fallback");
+    assert_eq!(r.llm_attempts, 2, "one clean attempt per batch");
+    assert_eq!(r.classifications.len(), 3);
+    let kind = |id: &str| {
+        r.classifications.iter().find(|c| c.obj_id == id).unwrap().canon_kind.as_str()
+    };
+    assert_eq!(kind("obj_1"), "BanditCache", "batch-a accepted classification survived");
+    assert_eq!(kind("obj_3"), "OldShrine", "batch-b accepted classification survived");
+    // `tool_call_sse` scripts a usage event of 500 in / 200 out per call —
+    // 2 batches ⇒ the aggregate sums them (AC-3).
+    assert_eq!(r.input_tokens, 1000, "input tokens sum across batches");
+    assert_eq!(r.output_tokens, 400, "output tokens sum across batches");
+}
+
+#[tokio::test]
+async fn run_l3_batched_empty_input_is_an_empty_result() {
+    let r = run_l3_batched(
+        &unused_client(), ModelSource::PlatformModel, Uuid::nil(), Uuid::nil(),
+        &[], &[], 3, 2,
+    )
+    .await
+    .expect("empty input is valid");
+    assert!(r.classifications.is_empty());
+    assert_eq!(r.llm_attempts, 0);
+    assert_eq!(r.fallback_count, 0);
+}
+
+#[tokio::test]
+async fn run_l3_batched_rejects_a_cross_batch_duplicate_obj_id() {
+    // The global precondition catches a duplicate that per-batch checks (each
+    // batch internally unique) would miss.
+    let phs = vec![ph("obj_1", "zone_a"), ph("obj_1", "zone_b")];
+    let err = run_l3_batched(
+        &unused_client(), ModelSource::PlatformModel, Uuid::nil(), Uuid::nil(),
+        &phs, &[], 3, 2,
+    )
+    .await
+    .expect_err("a cross-batch duplicate obj_id must error at entry");
+    assert!(err.to_string().contains("obj_1"), "error names the duplicate: {err}");
 }

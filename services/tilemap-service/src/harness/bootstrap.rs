@@ -81,34 +81,7 @@ pub async fn bootstrap_small_reality(
     )
     .await?;
 
-    // Build the L4 inputs from the placed zones (spec D7): `terrain` from each
-    // `ZoneRuntime` (always populated), `l3_objects` recovered by joining each
-    // `L3Classification.obj_id` back to its `L3Placeholder.zone_id`.
-    let obj_zone: HashMap<&str, &str> = placeholders
-        .iter()
-        .map(|p| (p.obj_id.as_str(), p.zone_id.as_str()))
-        .collect();
-    let mut objects_by_zone: HashMap<&str, Vec<String>> = HashMap::new();
-    for c in &l3.classifications {
-        if let Some(&zid) = obj_zone.get(c.obj_id.as_str()) {
-            objects_by_zone
-                .entry(zid)
-                .or_default()
-                .push(c.canon_kind.clone());
-        }
-    }
-    let l4_inputs: Vec<ZoneNarrationInput> = tilemap
-        .zones
-        .iter()
-        .map(|z| ZoneNarrationInput {
-            zone_id: z.zone_id.0.clone(),
-            terrain: z.terrain_type.tag().to_string(),
-            l3_objects: objects_by_zone
-                .get(z.zone_id.0.as_str())
-                .cloned()
-                .unwrap_or_default(),
-        })
-        .collect();
+    let l4_inputs = build_l4_inputs(&tilemap, &placeholders, &l3);
     let l4 = run_l4_with_retries(
         client,
         model_source,
@@ -191,7 +164,9 @@ fn obstacle_suggestions(biome: Option<BiomeObjectType>) -> &'static [&'static st
 ///
 /// An object whose `anchor` lies in no zone (impossible — zones partition the
 /// grid) is skipped defensively rather than panicking.
-fn engine_placeholders(tilemap: &TilemapView) -> Vec<L3Placeholder> {
+///
+/// `pub(super)` — the continent measurement harness reuses it.
+pub(super) fn engine_placeholders(tilemap: &TilemapView) -> Vec<L3Placeholder> {
     tilemap
         .object_placements
         .iter()
@@ -207,6 +182,39 @@ fn engine_placeholders(tilemap: &TilemapView) -> Vec<L3Placeholder> {
                 other => suggested_canon_kind(other),
             };
             L3Placeholder::new(&obj_id, kind_label(p.kind), zone_id, suggested)
+        })
+        .collect()
+}
+
+/// Build the L4 zone-narration inputs from the placed zones + the L3 result
+/// (spec D7): `terrain` from each `ZoneRuntime` (always populated), `l3_objects`
+/// recovered by joining each `L3Classification.obj_id` back to its
+/// `L3Placeholder.zone_id`. `pub(super)` — reused by the continent harness.
+pub(super) fn build_l4_inputs(
+    tilemap: &TilemapView,
+    placeholders: &[L3Placeholder],
+    l3: &L3Result,
+) -> Vec<ZoneNarrationInput> {
+    let obj_zone: HashMap<&str, &str> = placeholders
+        .iter()
+        .map(|p| (p.obj_id.as_str(), p.zone_id.as_str()))
+        .collect();
+    let mut objects_by_zone: HashMap<&str, Vec<String>> = HashMap::new();
+    for c in &l3.classifications {
+        if let Some(&zid) = obj_zone.get(c.obj_id.as_str()) {
+            objects_by_zone.entry(zid).or_default().push(c.canon_kind.clone());
+        }
+    }
+    tilemap
+        .zones
+        .iter()
+        .map(|z| ZoneNarrationInput {
+            zone_id: z.zone_id.0.clone(),
+            terrain: z.terrain_type.tag().to_string(),
+            l3_objects: objects_by_zone
+                .get(z.zone_id.0.as_str())
+                .cloned()
+                .unwrap_or_default(),
         })
         .collect()
 }

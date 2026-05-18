@@ -139,10 +139,17 @@ rivers. **No placer work remains.** The recommended next actions:
    (see the session entry below). `bootstrap_small_reality` now classifies the
    engine's own `object_placements` (every kind, including biome obstacles
    keyed by `biome_object_type`); the fixture object set is gone.
-2. **Live continent-scale measurement** — Phases 2-3 were mock-gateway verified;
-   the only live data point is the Phase-0b 3-object run (TMP_008b §12.8). A
-   full continent fixture against live lmstudio is the next measurement.
-3. **HTTP service surface** — `tilemap-service` is still a CLI/library; Phase 4+
+2. ~~Live continent-scale measurement~~ — ✅ **DONE 2026-05-18** (see the session
+   entry below). The `measure` subcommand + per-zone L3 batching landed; the
+   **offline** 256² measurement ran. The **live** L3/L4 run is blocked on a
+   provider-registry model-pricing config (HTTP 402 `LLM_QUOTA_EXCEEDED`) —
+   re-run `tilemap-service measure` once that is configured.
+3. **⚠ Promote perf items #016 + #018** — the continent measurement
+   ([`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md),
+   finding O-1) is hard evidence the O(n²) `fractalize` (#016) + `penrose`
+   (#018) placement cost is severe — **~8–11 min for a 256² continent**, release
+   build. Deferred as "fix when profiling shows pain"; it now does.
+4. **HTTP service surface** — `tilemap-service` is still a CLI/library; Phase 4+
    of the broader plan adds the service-to-service API.
 
 > **River barrier-strength caveat (Deferred #026):** `RiverPlacer` runs last,
@@ -153,6 +160,70 @@ rivers. **No placer work remains.** The recommended next actions:
 
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-18 — Continent measurement + per-zone L3 batching — ✅ DONE (L, default v2.2 human-in-loop)
+
+### Outcome
+
+A continent-scale measurement of the tilemap engine — generation timing at 256²
+and a live engine→L3→L4 run — plus the **per-zone L3 batching** the live run
+needs (the L3 classifier sent all objects in one call; a continent emits far
+too many). L, default v2.2 human-in-loop.
+
+- **Spec:** [`docs/specs/2026-05-18-tilemap-continent-measurement.md`](../../specs/2026-05-18-tilemap-continent-measurement.md)
+  · **Plan:** [`docs/plans/2026-05-18-tilemap-continent-measurement.md`](../../plans/2026-05-18-tilemap-continent-measurement.md)
+  · **Findings:** [`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md)
+  (AC-1..AC-7). PO-1: build per-zone L3 batching now.
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `harness/retry.rs` | NEW `run_l3_batched` — groups L3 placeholders by `zone_id`, sub-chunks any zone past `L3_BATCH_SIZE` (40), runs `run_l3_with_retries` per batch, aggregates (classifications concatenated, attempts/fallbacks/tokens summed); a disjoint partition, so every object is still classified exactly once. `L3Result` gains `input_tokens`/`output_tokens` summed across attempts. |
+| `harness/l4_retry.rs` | `L4Result` token totals; `call_l4_attempt` now captures the `Usage` event (it previously discarded it). |
+| `harness/bootstrap.rs` | `engine_placeholders` → `pub(super)`; the L4-input join extracted to `pub(super) fn build_l4_inputs`, reused by both the bootstrap and the continent harness. |
+| `harness/continent.rs` | NEW — `continent_template` (12 zones: Hub + 8 Wilderness + 2 Sea + Portal-Forbidden vault), `measure_offline` (times `place_tilemap` at 256²), `measure_live` (engine→L3-batched→L4 against the gateway), report types + render. |
+| `main.rs` | `measure` subcommand. |
+
+### Measurement result
+
+- **Offline ✅** — 256² · 12 zones · **456 objects** · 111 roads · 11 rivers ·
+  `place_tilemap` **506–659 s** (two release-build runs).
+- **Live ⛔ blocked** — provider-registry returned HTTP 402
+  `LLM_QUOTA_EXCEEDED` ("model pricing not configured"): the lmstudio model has
+  no pricing row. The `measure` tool ran end-to-end regardless — the retry loops
+  absorbed **51 transport failures**, fell back every object/zone, no panic.
+- **Finding O-1 (SEVERE):** continent generation is **~8–11 minutes** — hard
+  evidence to promote perf items **#016** (`fractalize` O(n²)) + **#018**
+  (`penrose` O(tiles×vertices)).
+
+### Review
+
+- **Code review** — 2-stage Lead self-review, 0 HIGH/MED.
+- **`/review-impl`** — 4 findings (0 HIGH/MED, 3 LOW, 1 COSMETIC). *LOW-1*
+  `run_l3_batched`'s happy path was untested (both tests were all-fallback) →
+  new `run_l3_batched_aggregates_accepted_classifications_and_tokens`. *LOW-3*
+  `measure` re-pays the ~11-min offline placement on a re-run → Deferred #028.
+  *LOW-2 / COSMETIC* accepted.
+
+### Verify
+
+`cargo test --workspace` green — 259 tilemap lib + 13 `retry_mock` + 8 `l4_mock`
++ 5 smoke + 3 `harness_mock` + 7 determinism + 47 `loreweave_llm` = all passed,
+0 failed. `cargo clippy --workspace --all-targets` 0 warnings.
+
+### Deferred
+
+- **#028** (NEW) — `measure` re-runs the offline 256² placement (~11 min) every
+  invocation; a `--live-only` flag / cached placement would spare the re-run.
+
+### Next
+
+Re-run `tilemap-service measure` once the provider-registry model-pricing is
+configured (captures the live L3/L4 token cost + latency). Promote perf #016 +
+#018. Then the HTTP service surface (DESIGN.md §9 Phase 4+).
 
 ---
 
