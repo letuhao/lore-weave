@@ -12,6 +12,41 @@ use crate::biome::BiomeKind;
 use crate::relief::{ReliefField, RenderStyle};
 use crate::world_map::{RouteKind, SettlementRole, WorldMap};
 
+/// Internal supersampling factor. Every raster `*_image` renders at `SS×` the
+/// requested size, then box-downsamples — anti-aliasing coastlines, the
+/// hillshade and the Voronoi cell edges, and letting the fBm detail sample
+/// finer. Rendering is an offline one-shot, so the ~`SS²` cost is fine.
+const SS: u32 = 2;
+
+/// Render `inner` at `SS×` the requested size, then box-downsample back. The
+/// public render entry points are thin wrappers over this.
+fn supersampled(width: u32, height: u32, inner: impl Fn(u32, u32) -> RgbImage) -> RgbImage {
+    downsample(&inner(width * SS, height * SS), SS)
+}
+
+/// Box-downsample `src` by an integer `factor`: each output pixel is the mean
+/// of its `factor × factor` source block. Deterministic.
+fn downsample(src: &RgbImage, factor: u32) -> RgbImage {
+    let (dw, dh) = (src.width() / factor, src.height() / factor);
+    let area = factor * factor;
+    let mut out = RgbImage::new(dw, dh);
+    for dy in 0..dh {
+        for dx in 0..dw {
+            let (mut r, mut g, mut b) = (0u32, 0u32, 0u32);
+            for fy in 0..factor {
+                for fx in 0..factor {
+                    let p = src.get_pixel(dx * factor + fx, dy * factor + fy);
+                    r += u32::from(p[0]);
+                    g += u32::from(p[1]);
+                    b += u32::from(p[2]);
+                }
+            }
+            out.put_pixel(dx, dy, Rgb([(r / area) as u8, (g / area) as u8, (b / area) as u8]));
+        }
+    }
+    out
+}
+
 /// Rasterize `map` to `width × height`: each pixel takes the colour of its
 /// nearest cell centre — which *is* the Voronoi diagram.
 fn rasterize<F: Fn(usize) -> Rgb<u8>>(
@@ -36,8 +71,12 @@ fn rasterize<F: Fn(usize) -> Rgb<u8>>(
 
 /// Render a hypsometric relief image — the showcase terrain render. Continuous
 /// barycentric-interpolated elevation, fBm detail, NW hillshade; palette and
-/// coastline treatment per `style`.
+/// coastline treatment per `style`. Supersampled (see [`supersampled`]).
 pub fn relief_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
+    supersampled(width, height, |w, h| relief_image_inner(map, w, h, style))
+}
+
+fn relief_image_inner(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style);
     let mut img = RgbImage::new(width, height);
     for py in 0..height {
@@ -59,6 +98,10 @@ pub fn relief_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle)
 
 /// Render a biome-coloured image of `map`, hillshaded by the relief field.
 pub fn biome_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
+    supersampled(width, height, |w, h| biome_image_inner(map, w, h, style))
+}
+
+fn biome_image_inner(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style);
     let mut img = rasterize(map, width, height, |cell| biome_color(map.biome[cell]));
     apply_shade(&mut img, &relief);
@@ -88,6 +131,10 @@ fn biome_color(b: BiomeKind) -> Rgb<u8> {
 /// Render a culture-region image of `map` — each land cell tinted by its
 /// culture id, hillshaded by the relief field; water cells are ocean-blue.
 pub fn culture_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
+    supersampled(width, height, |w, h| culture_image_inner(map, w, h, style))
+}
+
+fn culture_image_inner(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style);
     let mut img = rasterize(map, width, height, |cell| {
         let cid = map.culture_of[cell];
@@ -243,13 +290,14 @@ fn land_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
     match style {
         RenderStyle::Realistic => ramp(
             &[
-                (0.00, [86, 132, 74]),
-                (0.12, [104, 148, 80]),
-                (0.30, [150, 156, 96]),
-                (0.50, [156, 124, 86]),
-                (0.72, [128, 118, 112]),
-                (0.88, [170, 166, 160]),
-                (1.00, [252, 250, 248]),
+                (0.00, [78, 126, 68]),   // coastal lowland green
+                (0.10, [100, 146, 78]),  // plains
+                (0.24, [132, 154, 90]),  // dry grassland
+                (0.42, [160, 150, 100]), // foothills / steppe
+                (0.60, [150, 120, 84]),  // upland tan
+                (0.76, [126, 112, 104]), // bare rock
+                (0.90, [172, 168, 162]), // high rock
+                (1.00, [255, 255, 255]), // snow cap
             ],
             t,
         ),
@@ -272,9 +320,10 @@ fn water_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
     match style {
         RenderStyle::Realistic => ramp(
             &[
-                (0.00, [96, 150, 178]),
-                (0.35, [52, 104, 156]),
-                (1.00, [20, 44, 92]),
+                (0.00, [128, 182, 200]), // bright coastal shallows
+                (0.12, [86, 144, 184]),  // shelf
+                (0.45, [44, 94, 148]),   // open water
+                (1.00, [16, 38, 84]),    // deep ocean
             ],
             d,
         ),
@@ -282,7 +331,9 @@ fn water_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
     }
 }
 
-/// Atlas style: stroke a thin ink line wherever a land pixel touches water.
+/// Atlas style: stroke an ink line wherever a land pixel touches water. The
+/// line is stamped `SS` pixels thick so it survives the supersample
+/// downsample as a crisp outline rather than a faint ~quarter-strength edge.
 fn draw_coast_outline(img: &mut RgbImage, relief: &ReliefField) {
     const INK: Rgb<u8> = Rgb([66, 56, 48]);
     let (w, h) = (relief.width, relief.height);
@@ -297,7 +348,14 @@ fn draw_coast_outline(img: &mut RgbImage, relief: &ReliefField) {
                 || (py > 0 && is_water(px, py - 1))
                 || (py + 1 < h && is_water(px, py + 1));
             if coast {
-                img.put_pixel(px, py, INK);
+                for oy in 0..SS {
+                    for ox in 0..SS {
+                        let (sx, sy) = (px + ox, py + oy);
+                        if sx < w && sy < h {
+                            img.put_pixel(sx, sy, INK);
+                        }
+                    }
+                }
             }
         }
     }
@@ -306,6 +364,10 @@ fn draw_coast_outline(img: &mut RgbImage, relief: &ReliefField) {
 /// Render a political map (Phase 3): cells tinted by state and hillshaded,
 /// with routes drawn as lines and settlements as dots.
 pub fn political_image(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
+    supersampled(width, height, |w, h| political_image_inner(map, w, h, style))
+}
+
+fn political_image_inner(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> RgbImage {
     let relief = ReliefField::build(map, width, height, style);
     let mut img = rasterize(map, width, height, |cell| political_cell_color(map, cell));
     apply_shade(&mut img, &relief);
@@ -317,11 +379,12 @@ pub fn political_image(map: &WorldMap, width: u32, height: u32, style: RenderSty
         }
     }
     for s in &map.settlements {
+        // Rendering at SS× — scale the dot radius so it survives downsampling.
         draw_dot(
             &mut img,
             map,
             s.cell,
-            1 + u32::from(s.population_tier),
+            SS * (1 + u32::from(s.population_tier)),
             settlement_color(s.role),
         );
     }
@@ -385,7 +448,8 @@ fn cell_px(map: &WorldMap, cell: u32, w: i32, h: i32) -> (i32, i32) {
     (px, py)
 }
 
-/// Bresenham line between two cell centres.
+/// Bresenham line between two cell centres, stamped `SS` pixels thick so it
+/// stays solid through the supersample downsample.
 fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>) {
     let (w, h) = (img.width() as i32, img.height() as i32);
     let (mut x0, mut y0) = cell_px(map, a, w, h);
@@ -395,8 +459,16 @@ fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>)
     let sx = if x0 < x1 { 1 } else { -1 };
     let sy = if y0 < y1 { 1 } else { -1 };
     let mut err = dx + dy;
+    let t = SS as i32;
     loop {
-        img.put_pixel(x0 as u32, y0 as u32, color);
+        for oy in 0..t {
+            for ox in 0..t {
+                let (px, py) = (x0 + ox, y0 + oy);
+                if px >= 0 && py >= 0 && px < w && py < h {
+                    img.put_pixel(px as u32, py as u32, color);
+                }
+            }
+        }
         if x0 == x1 && y0 == y1 {
             break;
         }
@@ -668,6 +740,19 @@ mod tests {
             let _ = land_color(1.9, 0.4, style);
             let _ = water_color(-0.5, 0.4, style);
         }
+    }
+
+    #[test]
+    fn downsample_averages_each_block() {
+        // a 4×4 source → 2×2; the top-left 2×2 block averages to 100.
+        let mut src = RgbImage::new(4, 4);
+        for (x, y, v) in [(0, 0, 0u8), (1, 0, 100), (0, 1, 200), (1, 1, 100)] {
+            src.put_pixel(x, y, Rgb([v, v, v]));
+        }
+        let out = downsample(&src, 2);
+        assert_eq!((out.width(), out.height()), (2, 2));
+        // (0 + 100 + 200 + 100) / 4 == 100
+        assert_eq!(out.get_pixel(0, 0), &Rgb([100, 100, 100]));
     }
 
     #[test]

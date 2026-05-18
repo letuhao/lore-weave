@@ -9,9 +9,9 @@
 ## Current status & next session (handoff)
 
 **As of 2026-05-18 — branch `geo-generator-amaw`, unpushed.** The 4-phase
-generator is built, the post-build human-in-loop review is done, and five
+generator is built, the post-build human-in-loop review is done, and six
 enhancements have since shipped — each via the full default 12-phase v2.2
-workflow (`/review-impl` on enhancements 3–4):
+workflow (`/review-impl` on enhancements 3–6):
 
 | Work | Commit |
 |---|---|
@@ -19,22 +19,21 @@ workflow (`/review-impl` on enhancements 3–4):
 | Path B — ridged-noise heightmap (killed the bullseye terrain) | `1bfa54e0` |
 | Orographic climate — wind-driven rain shadow (`--wind` knob) | `13ea0999` |
 | Feature naming — extraction + LLM `name` step + SVG labels | `d0e608e3` |
-| Hydraulic erosion (Path B v2) — two-phase stream-power carve/settle (`--erosion`) | HEAD of `geo-generator-amaw` |
+| Hydraulic erosion (Path B v2) — two-phase stream-power carve/settle (`--erosion`) | `addd9f16` |
+| Render polish — supersample 2× · complementary detail · concavity occlusion | HEAD of `geo-generator-amaw` |
 
-**112 tests green + 2 ignored** (LLM integration), `cargo clippy` clean.
+**114 tests green + 2 ignored** (LLM integration), `cargo clippy` clean.
 
-**Next session — open choice.** Hydraulic erosion is done; pick from the open
+**Next session — open choice.** Render polish is done; pick from the open
 enhancements below. Run the default 12-phase v2.2 workflow with PO checkpoints
 at CLARIFY end + POST-REVIEW.
 
-**Other open GEO enhancements** (surveyed, not chosen): render polish + 16-bit
-heightmap export — *the relief renderer's fBm overlay masks cell-scale model
-detail; this is now the limiting factor on how visible erosion / terrain
-features are*; deposition / sediment-fan refinement (the Path B v2 settle phase
-works but fans are subtle at the 8k-cell mesh — a finer mesh or multi-flow
-routing would sharpen them); archetype-conditioned generation (`world_archetype`
-is still inert). The GEO → zone-tilemap handoff is the bridge to other
-world-map layers.
+**Other open GEO enhancements** (surveyed, not chosen): 16-bit heightmap
+export; deposition / sediment-fan refinement (the Path B v2 settle phase works
+but fans are subtle at the 8k-cell mesh — a finer mesh or multi-flow routing
+would sharpen them); archetype-conditioned generation (`world_archetype` is
+still inert). The GEO → zone-tilemap handoff is the bridge to other world-map
+layers.
 
 ---
 
@@ -61,6 +60,8 @@ world-map layers.
 **Feature naming (2026-05-17):** the second GEO enhancement — turns the anonymous heightmap into a *named world*. Two stages: (1) deterministic **feature extraction** (`feature.rs`) — `generate` now flood-fills the biome field into discrete `MountainRange` / `River` / `WaterBody` entities (their geometry feeds `content_hash`); (2) a separate non-deterministic **LLM naming step** (`naming.rs`) — `name_world` makes one json-schema-constrained call and applies names by `zip`. `Settlement` / `Province` / `State` / `CultureRegion` + the 3 new types gained `name: String`; the `name` fields are **excluded from `content_hash`** (a documented carve-out, double-tested) so `generate` stays pure and a named map verifies the same hash as the unnamed one. New `name` CLI subcommand; `political_svg` gained XML-escaped `<text>` labels; `author.rs` factored a shared `llm_json_request`. 103 tests green, clippy clean; `/review-impl` raised 7 findings (no HIGH) — all fixed. Plan: [`docs/plans/2026-05-17-geo-feature-naming.md`](../../plans/2026-05-17-geo-feature-naming.md). PNG text labels (glyph rasterisation) deferred.
 
 **Hydraulic erosion — Path B v2 (2026-05-18):** the third GEO enhancement — carves the raw Path B heightmap. NEW `erosion.rs`: a two-phase stream-power landscape-evolution pass run inside `terrain::build` on the f32 elevation field (after `apply_falloff`, before u16-normalization — quantized steps would round to zero). Each iteration runs its own `f32` priority-flood (Barnes depression-fill, `total_cmp`-ordered heap), adopts the *filled* field (a raw heightmap is pit-riddled — incising it directly is a near no-op), accumulates uniform-rain drainage area, then incises `K·area^m·slope` (clamped to the receiver drop). The **carve phase** is pure incision (cuts dendritic valley networks); the **settle phase** then adds transport-capacity deposition — `settle_rate` of the load above `Kc·area^m·slope` is dropped (valley-floor fill / mountain-front fans). The two-phase split is load-bearing: deposition during the violent carve refills valleys faster than they cut. Hillslope diffusion rounds ridge crests. A NEW `ErosionStrength` knob (None/Light/Moderate/Heavy, default Moderate, `#[serde(default)]`) on `CreativeSeed` — `--erosion` CLI flag + LLM-author schema. Incision is clamped to never carve land below the provisional waterline (no sub-sea speckle); **Archipelago is skipped** (`terrain::build` gate — incision carving a strait would dissect its fixed 5-disc invariant, mirroring `enforce_coherence`/`choose_sea_level`). `content_hash` changes for the 4 non-Archipelago profiles (intentional). 112 tests green (+9), clippy clean. Default v2.2 workflow, human-in-loop; the deposition model was redesigned mid-VERIFY (Davy-Lague `G/area` → two-phase transport-capacity) on a PO call after the first model refilled valleys. Plan: [`docs/plans/2026-05-18-geo-hydraulic-erosion.md`](../../plans/2026-05-18-geo-hydraulic-erosion.md). Sharper sediment fans (finer mesh / multi-flow routing) and 16-bit heightmap export deferred.
+
+**Render polish (2026-05-18):** the fourth GEO enhancement — render-only, no `WorldMap`/`content_hash` change. The relief renderer was masking model-scale detail (erosion valleys, Path B ridges, orographic relief): it blurred the barycentric base by ~½ cell to de-facet it, then overlaid fBm detail of *larger* amplitude than the model signal, modulated *up* on highlands. Three fixes. (1) **Supersampling 2×** — every `*_image` renders at `SS×` then box-`downsample`s; anti-aliases coastlines, hillshade and Voronoi edges (route lines stamped `SS`-thick, dots `SS`-scaled, the Atlas ink coastline `SS`-thick — the last caught by `/review-impl`). (2) **Complementary detail** — `relief.rs build` is now two-pass: warp→`base`, then a `base − blur(base)` high-pass measures local model relief; detail fBm *fills* flat ground and *recedes* over carved structure (`detail_fill`), and `detail_amp` is lowered. (3) **Concavity occlusion** — valley floors (negative high-pass) are darkened, an ambient-occlusion proxy that makes carved drainage read. The de-facet blur was cut to ⅓ cell; the hypsometric palette + coastal shallows retuned. 114 tests green (+2), clippy clean; `/review-impl` raised 1 MED (Atlas coastline) + 5 LOW/COSMETIC — MED fixed, rest accepted. Plan: [`docs/plans/2026-05-18-geo-render-polish.md`](../../plans/2026-05-18-geo-render-polish.md). The "renderer masks model detail" limiting factor flagged after erosion is resolved.
 
 ### Phase 1 — build log (2026-05-17)
 

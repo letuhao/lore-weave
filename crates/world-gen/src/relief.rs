@@ -9,12 +9,13 @@
 //! Pipeline ([`ReliefField::build`]):
 //! 1. re-triangulate the cell centres (`delaunator`);
 //! 2. barycentric-rasterize cell elevations → a continuous base buffer;
-//! 3. domain-warp that buffer with low-frequency fBm — bends the heightmap's
-//!    concentric blob rings into irregular shapes;
-//! 4. add modulated fBm detail — the mid/high-frequency texture the coarse
-//!    mesh cannot hold;
-//! 5. hillshade the result — the gradient relighting that renders it as
-//!    rugged 3-D terrain.
+//! 3. domain-warp that buffer with low-frequency fBm — bends the heightmap
+//!    off the noise lattice into irregular shapes;
+//! 4. add **complementary** fBm detail — full on flat ground, suppressed over
+//!    carved valleys/ridges (a `base − blur(base)` high-pass), so the model's
+//!    own relief reads instead of being masked by louder noise;
+//! 5. hillshade the result, darkening concave-up valley floors (an
+//!    ambient-occlusion proxy) so carved drainage reads as rugged 3-D terrain.
 
 use delaunator::{Point, triangulate};
 
@@ -36,6 +37,15 @@ const SALT_WARP_X: u32 = 0x5F35_61A1;
 const SALT_WARP_Y: u32 = 0xBC27_90B2;
 const SALT_DETAIL: u32 = 0x1D83_C4C3;
 
+/// Complementary-detail thresholds (normalized elevation): below `RELIEF_LO`
+/// local model relief the ground reads as flat → full detail; above
+/// `RELIEF_HI` it reads as carved structure → no detail.
+const RELIEF_LO: f32 = 0.008;
+const RELIEF_HI: f32 = 0.045;
+/// Valley-floor depth (signed high-pass, normalized) at which the concavity
+/// occlusion reaches full strength.
+const OCC_RELIEF: f32 = 0.032;
+
 /// Cartographic style — switches palette, coastline treatment and hillshade
 /// contrast. The relief *engine* is identical for both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,7 +60,10 @@ pub enum RenderStyle {
 
 /// Per-style tuning. The engine reads these; *only* these differ by style.
 struct StyleParams {
-    /// Detail-noise amplitude, in normalized elevation units.
+    /// Detail-noise amplitude, in normalized elevation units. Kept modest —
+    /// detail is a supporting texture for flat ground, not the headline (the
+    /// model's own carved relief is). See the complementary modulation in
+    /// [`ReliefField::build`].
     detail_amp: f32,
     /// Domain-warp amplitude, in model `[0,1]` units.
     warp_amp: f32,
@@ -58,6 +71,9 @@ struct StyleParams {
     relief_strength: f32,
     /// Hillshade ambient floor — the darkest an unlit slope goes.
     ambient: f32,
+    /// Concavity-occlusion strength `k` — how much valley floors are darkened
+    /// (ambient-occlusion proxy that makes carved valleys read). `0..1`.
+    occlusion: f32,
     /// `true` → coastline follows base+detail (fractal); `false` → base only.
     fractal_coast: bool,
 }
@@ -66,17 +82,19 @@ impl RenderStyle {
     fn params(self) -> StyleParams {
         match self {
             RenderStyle::Realistic => StyleParams {
-                detail_amp: 0.055,
+                detail_amp: 0.034,
                 warp_amp: 0.058,
                 relief_strength: 0.30,
                 ambient: 0.42,
+                occlusion: 0.52,
                 fractal_coast: true,
             },
             RenderStyle::Atlas => StyleParams {
-                detail_amp: 0.030,
+                detail_amp: 0.020,
                 warp_amp: 0.046,
                 relief_strength: 0.16,
                 ambient: 0.66,
+                occlusion: 0.30,
                 fractal_coast: false,
             },
         }
@@ -113,45 +131,71 @@ impl ReliefField {
         // 1+2 — triangulate the cell centres, barycentric-rasterize elevation.
         let base_raw = rasterize_base(map, width, height);
 
-        // 3+4 — domain warp (resample base_raw) + modulated fBm detail.
-        let mut elev = vec![0.0f32; n];
-        let mut water = vec![false; n];
+        // 3 — domain-warp resample → the continuous base buffer. The warp is
+        // a model-space displacement applied in pixels (model +y is image −y,
+        // hence the sign on the y term).
+        let mut base = vec![0.0f32; n];
         for py in 0..h {
             for px in 0..w {
-                let i = py * w + px;
                 // model coords (y up) — noise sampled here is resolution-stable.
                 let mx = (px as f32 + 0.5) / width as f32;
                 let my = 1.0 - (py as f32 + 0.5) / height as f32;
-
-                // domain warp: a model-space displacement, applied in pixels
-                // (model +y is image −y, hence the sign on the y term).
                 let wx = p.warp_amp * fbm(mx * WARP_FREQ, my * WARP_FREQ, seed ^ SALT_WARP_X, WARP_OCTAVES);
                 let wy = p.warp_amp * fbm(mx * WARP_FREQ, my * WARP_FREQ, seed ^ SALT_WARP_Y, WARP_OCTAVES);
-                let base = sample_bilinear(
+                base[py * w + px] = sample_bilinear(
                     &base_raw,
                     w,
                     h,
                     px as f32 + 0.5 + wx * width as f32,
                     py as f32 + 0.5 - wy * height as f32,
                 );
-
-                // detail amplitude: ~0 in open ocean, gentle on plains, full
-                // on highlands — keeps the open sea smooth and mountains rugged.
-                let land_t = (base - sea) / (1.0 - sea).max(1e-3);
-                let m = smoothstep(-0.15, 0.02, land_t) * (0.30 + 0.70 * land_t.clamp(0.0, 1.0));
-                let detail = p.detail_amp
-                    * m
-                    * fbm(mx * DETAIL_FREQ, my * DETAIL_FREQ, seed ^ SALT_DETAIL, DETAIL_OCTAVES);
-
-                let combined = base + detail;
-                elev[i] = combined;
-                // fractal coast tests the detailed surface; smooth coast the base.
-                water[i] = if p.fractal_coast { combined < sea } else { base < sea };
             }
         }
 
-        // 5 — hillshade from the combined elevation.
-        let shade = hillshade(&elev, width, height, p.relief_strength, p.ambient);
+        // Local-mean reference (≈ 1 cell wide). `base − base_lo` is a
+        // high-pass: its magnitude flags where the model has relief (carved
+        // valleys, ridges), its sign flags concavity (negative = valley floor).
+        let facet = width as f32 / (map.cells.len() as f32).sqrt();
+        let mut base_lo = base.clone();
+        box_blur(&mut base_lo, w, h, facet.round().max(1.0) as usize, 2);
+
+        // 4 — complementary fBm detail + concavity occlusion. Detail FILLS
+        // genuinely flat ground and recedes over model structure, so the
+        // carved terrain reads instead of being drowned by noise; the valley
+        // floors are darkened (an ambient-occlusion proxy) so they read too.
+        let mut elev = vec![0.0f32; n];
+        let mut water = vec![false; n];
+        let mut occ = vec![1.0f32; n];
+        for py in 0..h {
+            for px in 0..w {
+                let i = py * w + px;
+                let mx = (px as f32 + 0.5) / width as f32;
+                let my = 1.0 - (py as f32 + 0.5) / height as f32;
+                let b = base[i];
+                let hp = b - base_lo[i]; // signed high-pass
+
+                // open ocean stays smooth; detail ramps up toward the coast.
+                let land_t = (b - sea) / (1.0 - sea).max(1e-3);
+                let ocean_gate = smoothstep(-0.15, 0.02, land_t);
+                let detail = p.detail_amp
+                    * ocean_gate
+                    * detail_fill(hp.abs())
+                    * fbm(mx * DETAIL_FREQ, my * DETAIL_FREQ, seed ^ SALT_DETAIL, DETAIL_OCTAVES);
+
+                let combined = b + detail;
+                elev[i] = combined;
+                // fractal coast tests the detailed surface; smooth coast the base.
+                water[i] = if p.fractal_coast { combined < sea } else { b < sea };
+                // darken concave-up valley floors (high-pass < 0).
+                occ[i] = 1.0 - p.occlusion * smoothstep(0.0, OCC_RELIEF, -hp);
+            }
+        }
+
+        // 5 — hillshade from the combined elevation, then valley occlusion.
+        let mut shade = hillshade(&elev, width, height, p.relief_strength, p.ambient);
+        for (s, &o) in shade.iter_mut().zip(&occ) {
+            *s *= o;
+        }
 
         ReliefField { width, height, elev, water, shade, sea }
     }
@@ -192,11 +236,12 @@ fn rasterize_base(map: &WorldMap, width: u32, height: u32) -> Vec<f32> {
 
     backfill(&mut buf, map, width, height);
     // Barycentric interpolation is piecewise-linear, so its gradient — and
-    // hence a raw hillshade — is faceted per triangle. Blur the base by ~one
-    // triangle edge (≈ width / √cells) to lift it to a smooth field; the fBm
-    // detail added later restores the fine texture the blur removes.
+    // hence a raw hillshade — is faceted per triangle. A light blur lifts it
+    // to a smooth field. Kept to ~⅓ cell (not ½) so cell-scale model relief —
+    // carved valleys, ridges — survives it; supersampling + the complementary
+    // detail in `build` carry the rest of the de-facet/texture work.
     let facet = width as f32 / (map.cells.len() as f32).sqrt();
-    let radius = (facet * 0.5).round().max(1.0) as usize;
+    let radius = (facet * 0.35).round().max(1.0) as usize;
     box_blur(&mut buf, w, h, radius, 2);
     buf
 }
@@ -357,6 +402,13 @@ fn normalize3(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
     }
 }
 
+/// Detail-noise weight from the local model relief (`|high-pass|`): full (`1`)
+/// on flat ground, fading to `0` over carved valleys and ridges — so the
+/// model's own structure reads instead of being masked by louder noise.
+fn detail_fill(local_relief: f32) -> f32 {
+    1.0 - smoothstep(RELIEF_LO, RELIEF_HI, local_relief)
+}
+
 /// Hermite smoothstep — `0` at/below `e0`, `1` at/above `e1`, smooth between.
 fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
@@ -408,6 +460,21 @@ mod tests {
         assert!(
             f.elev.iter().all(|&e| (-0.25..=1.25).contains(&e)),
             "relief elevation escaped a sane band"
+        );
+    }
+
+    #[test]
+    fn detail_fill_is_complementary() {
+        // full detail on flat ground, none over carved structure, monotone.
+        assert_eq!(detail_fill(0.0), 1.0, "flat ground must get full detail");
+        assert_eq!(
+            detail_fill(RELIEF_HI + 0.1),
+            0.0,
+            "carved structure must get no detail"
+        );
+        assert!(
+            detail_fill(0.0) > detail_fill(RELIEF_HI),
+            "detail must fall as local relief rises"
         );
     }
 
