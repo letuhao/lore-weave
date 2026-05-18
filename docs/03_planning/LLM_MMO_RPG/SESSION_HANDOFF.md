@@ -126,30 +126,112 @@ This honors "use AMAW for the map-gen implementation" while respecting what this
 
 ### Recommended first action next session
 
-**The staged 0b → 3 map-gen plan is complete.** The **TMP_005/006/007
-modificator-pipeline build** (roadmap
+**The TMP_005/006/007 modificator-pipeline build is COMPLETE.** All five
+placer phases (roadmap
 [`docs/plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md`](../../plans/2026-05-17-tmp-005-006-007-modificator-roadmap.md))
-is **nearly complete — Phases A–D done; only Phase E remains**. Execution
-ran phased + human-gated, not straight-through autonomous: A/B/C under
-`/amaw`, D under default v2.2 human-in-loop (the operator's call). **The
-recommended next action is Phase E — RoadPlacer + RiverPlacer (TMP_003
-§3.5)**, the final placer phase.
+landed — A/B/C under `/amaw`, D + E under default v2.2 human-in-loop. The
+engine pipeline is now `TerrainPainter → ConnectionsPlacer → TreasurePlacer
+→ RoadPlacer → ObstaclePlacer → RiverPlacer`; `place_tilemap` emits a
+**complete V1+30d map** — terrain, obstacles, treasure, connections, roads,
+rivers. **No placer work remains.** The recommended next actions:
 
-1. **TMP_005/006/007 modificator pipeline** — **Phases A (Pipeline
-   Foundation), B (ObstaclePlacer + biomes, TMP_005), C (TreasurePlacer,
-   TMP_006) DONE 2026-05-17; D (ConnectionsPlacer, TMP_007) DONE 2026-05-18**
-   (see the session entries below). Phase **E** (RoadPlacer + RiverPlacer,
-   TMP_003 §3.5) is the last placer phase. Once the placers land, the L3/L4
-   bootstrap can classify **engine-placed** objects instead of the current
-   fixture set — a genuine engine→L3→L4 flow.
+1. **Engine→L3→L4 bootstrap on engine-placed objects** — the L3/L4 LLM
+   bootstrap (Phases 2-3) still classifies the **fixture** object set. Now that
+   `place_tilemap` produces real `object_placements` (treasures, guards,
+   monoliths, ferries, obstacles) + roads + rivers, rewire the bootstrap to
+   feed engine output — the genuine engine→L3→L4 flow.
 2. **Live continent-scale measurement** — Phases 2-3 were mock-gateway verified;
    the only live data point is the Phase-0b 3-object run (TMP_008b §12.8). A
    full continent fixture against live lmstudio is the next measurement.
 3. **HTTP service surface** — `tilemap-service` is still a CLI/library; Phase 4+
    of the broader plan adds the service-to-service API.
 
+> **River barrier-strength caveat (Deferred #026):** `RiverPlacer` runs last,
+> into a map already cluttered by `ObstaclePlacer`, so the conservative dual
+> `would_seal_a_gap` gate fords most river tiles — rivers are correct
+> (connectivity never broken) but weak barriers. Revisit the barrier model
+> before any gameplay relies on rivers as obstacles.
+
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-18 — TMP_005/006/007 Phase E — RoadPlacer + RiverPlacer — ✅ DONE (XL, default v2.2 human-in-loop)
+
+### Outcome
+
+Phase E of the **TMP_005/006/007 modificator-pipeline build** — the **last two
+placers**: `RoadPlacer` (TMP_003 §3.4) + `RiverPlacer` (TMP_003 §3.5). **This
+completes the modificator pipeline** — `place_tilemap` now emits a full V1+30d
+map (terrain · obstacles · treasure · connections · roads · rivers). XL, default
+v2.2 human-in-loop. Two PO decisions at the CLARIFY checkpoint widened scope
+beyond the roadmap defaults: **PO-1** road anchors = all three sources (zone
+centres ∪ connection passages ∪ guard lairs); **PO-2** rivers are **functional
+barriers** (carved tiles impassable), not cosmetic.
+
+- **Spec:** [`docs/specs/2026-05-18-tilemap-phase-e-road-river-placer.md`](../../specs/2026-05-18-tilemap-phase-e-road-river-placer.md)
+  (§1-§5, F-1..F-3 doc-conflict findings, AC-1..AC-13). **Plan:**
+  [`docs/plans/2026-05-18-tilemap-phase-e-road-river-placer.md`](../../plans/2026-05-18-tilemap-phase-e-road-river-placer.md)
+  (6 TDD build chunks).
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `engine/geometry/mst.rs` | NEW — `minimum_spanning_tree`: Prim's MST over a `TileCoord` list, Manhattan-weighted, deterministic (flat-index tie-break). Property-tested. |
+| `engine/modificators/road_placer.rs` | NEW — `RoadPlacer`: collect all-three anchors → routing proxy (passable anchor, else passable 4-neighbour, else drop) → Prim MST → per-edge `search_path` over the passable-minus-Sea area (road-reuse cost) → `RoadSegment` painted `TerrainKind::Road`. Roads paint terrain only — `TileState` untouched (finding F-2). RNG-free. |
+| `engine/modificators/river_placer.rs` | NEW — `RiverPlacer`: one source per mountain-bearing zone → nearest `Lake`/`Sea` sink, elevation-cost `search_path` (finding F-3). The D-Q8 carve classifier: **Bridge** (road crossing), **Ford** (carving would split the owning zone's *or* the map-wide passable region — refinement R1 — or every 12th tile), else **carve** (`Obstacle` + `Water`). Dual `would_seal_a_gap` gate ⇒ a river never splits any zone nor the global map. RNG-free. |
+| `types/tilemap.rs` | MOD — `RoadSegment` · `RiverSegment` · `RiverCrossing` · `CrossingKind {Bridge,Ford}`; `TilemapView.road_segments` / `.river_segments` (`#[serde(default)]`, additive TMP-A8). |
+| `engine/build_state.rs` | MOD — `TilemapBuildState.road_segments` / `.river_segments`. |
+| `engine/mod.rs` · `engine/geometry/mod.rs` · `engine/modificators/mod.rs` | MOD — registered both placers; topo-sort yields `terrain → connections → treasure → road → obstacle → river` (River last — it consumes ObstaclePlacer's mountain/lake tags; resolves finding F-1). |
+| `tests/determinism.rs` · `tests/golden/tilemap_baseline.json` | MOD — `frontier` zone given `Mountain` terrain so the golden carries a river; golden rebaselined (6 road_segments + 2 river_segments). |
+
+### Review
+
+- **Design review** — Lead self-review of §5: refinement **R1** found + applied
+  — the river carve gap-check must gate against **both** the owning zone's
+  passable mask **and** the map-wide passable mask; a per-zone-only check misses
+  a river severing the single corridor linking two zones.
+- **Code review** — 2-stage Lead self-review (AC-1..AC-13 compliance + quality).
+  0 HIGH/MED.
+- **`/review-impl`** (deep adversarial coverage review at the POST-REVIEW human
+  checkpoint): **6 findings — 1 MED, 5 LOW**. *MED-1* AC-8's map-wide
+  connectivity was unit-tested only, not end-to-end → new
+  `ace8_river_carve_preserves_map_wide_connectivity_end_to_end` (full pipeline
+  minus RiverPlacer → snapshot → RiverPlacer → independent flood-fill, 5 seeds).
+  *LOW-2* `ac10` gained a river no-op detector. *LOW-3* new
+  `two_mountain_zones_place_two_deterministic_rivers`. *LOW-4* → Deferred #027.
+  *LOW-5* spec §5.4 annotated (Forbidden-zone carve branch unreachable). *LOW-6*
+  → Deferred #026. MED-1/LOW-2/LOW-3 fixed (test-only — golden unchanged).
+
+### Verify
+
+`cargo test --workspace` green — **250** tilemap-service lib tests + 7
+determinism (+1 ignored golden regenerator) + integration + 47 `loreweave_llm`
+= **329 passed, 0 failed**. `cargo clippy --workspace --all-targets` 0 warnings.
+Golden rebaselined to the Phase-E engine; `golden_baseline_byte_identical`
+reproduces it; `ac4` confirms byte-identical determinism incl. `road_segments`
++ `river_segments`.
+
+### Deferred
+
+- **#025** (NEW) — `RoadPlacer` ships raw Dijkstra paths: no §3.4 path
+  smoothing, single road kind (no `RoadKind`). Visual polish (Track 2).
+- **#026** (NEW) — golden river is ford-heavy (75 crossings / 98 tiles).
+  `RiverPlacer` runs last into post-`ObstaclePlacer` clutter, so the strict dual
+  gate fords nearly everywhere — correct but a weak barrier. Revisit the barrier
+  model (Track 2).
+- **#027** (NEW) — the every-Nth-ford × bridge counter-reset interleaving is
+  untested. Track 2.
+- **#022** (CLEARED) — the `anchor` representative point suffices for river
+  source/sink siting; no `TilemapObjectPlacement` footprint extent was needed.
+
+### Next
+
+**The placer pipeline is complete.** Next: rewire the L3/L4 bootstrap to
+classify engine-placed objects (not fixtures); live continent-scale
+measurement; the HTTP service surface (DESIGN.md §9 Phase 4+).
 
 ---
 

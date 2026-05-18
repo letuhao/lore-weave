@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::engine::build_state::TilemapBuildState;
 use crate::engine::modificators::{
-    ConnectionsPlacer, ObstaclePlacer, TerrainPainter, TreasurePlacer,
+    ConnectionsPlacer, ObstaclePlacer, RiverPlacer, RoadPlacer, TerrainPainter, TreasurePlacer,
 };
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
@@ -54,21 +54,20 @@ pub fn place_tilemap(
     let tiled = place_zones(template, grid, seed)?;
 
     // TMP_003 — build the mutable generation state and run the modificator
-    // pipeline (TerrainPainter → ConnectionsPlacer → TreasurePlacer →
-    // ObstaclePlacer).
+    // pipeline. The Kahn topo-sort orders it by the `dependencies()` edges
+    // regardless of `add` order: TerrainPainter → ConnectionsPlacer →
+    // TreasurePlacer → RoadPlacer → ObstaclePlacer → RiverPlacer (TMP_006 §7;
+    // RiverPlacer last — it consumes ObstaclePlacer's mountain/lake tags).
     let mut state = TilemapBuildState::from_zones(tiled, grid);
     let mut registry = ModificatorRegistry::new();
     registry.add(Box::new(TerrainPainter));
-    // TMP_007 — ConnectionsPlacer runs the §7-step-4 connection guards before
-    // TreasurePlacer; both TreasurePlacer and ObstaclePlacer declare
-    // `connections_placer` in their dependencies, so the Kahn topo-sort orders
-    // it here regardless of `add` order.
     registry.add(Box::new(ConnectionsPlacer));
-    // D8 — TreasurePlacer before ObstaclePlacer (TMP_006 §7: treasures step 5,
-    // obstacles step 8); the Kahn topo-sort enforces the order via the
-    // dependency edges regardless of `add` order.
     registry.add(Box::new(TreasurePlacer));
+    // Phase E — RoadPlacer (TMP_003 §3.4 step 6) before ObstaclePlacer;
+    // RiverPlacer (§3.5 step 7) after it.
+    registry.add(Box::new(RoadPlacer));
     registry.add(Box::new(ObstaclePlacer));
+    registry.add(Box::new(RiverPlacer));
     {
         let mut ctx = ModificatorContext {
             template,
@@ -104,6 +103,8 @@ pub fn place_tilemap(
         zones,
         terrain_layer: state.terrain_layer,
         object_placements: state.object_placements,
+        road_segments: state.road_segments,
+        river_segments: state.river_segments,
         child_cell_anchors: HashMap::new(),
         generation_source: GenerationSource::EngineGenerated,
         regional_narration: None,
@@ -206,6 +207,9 @@ mod tests {
         // property is falsely green).
         let template = fixture();
         let grid = GridSize { width: 64, height: 64 };
+        // No-op detector — RiverPlacer carves a real river on at least one
+        // seed, so the per-zone connectivity check is not vacuous w.r.t. it.
+        let mut any_river = false;
         for raw_seed in [0xA11CE_u64, 1, 2, 0xB0B, 0xC0FFEE] {
             let seed = TilemapSeed(raw_seed);
             let tiled = place_zones(&template, grid, seed).expect("place_zones on the fixture");
@@ -214,15 +218,17 @@ mod tests {
                 (0..state.zones.len()).map(|i| state.zone_passable(i)).collect();
 
             // The exact modificator set `place_tilemap` registers, run the same
-            // way — incl. ConnectionsPlacer, whose corridors / monoliths /
-            // ferries / border seals are all `would_seal_a_gap`-gated.
-            // TreasurePlacer no-ops here — `fixture()` declares no
-            // `treasure_tiers` — so AC-7 is the treasure-connectivity gate.
+            // way — all six, incl. the Phase-E RoadPlacer (roads only paint
+            // terrain — connectivity-neutral) and RiverPlacer, whose carve is
+            // `would_seal_a_gap`-gated per-zone (AC-8). TreasurePlacer no-ops
+            // here — `fixture()` declares no `treasure_tiers`.
             let mut registry = ModificatorRegistry::new();
             registry.add(Box::new(TerrainPainter));
             registry.add(Box::new(ConnectionsPlacer));
             registry.add(Box::new(TreasurePlacer));
+            registry.add(Box::new(RoadPlacer));
             registry.add(Box::new(ObstaclePlacer));
+            registry.add(Box::new(RiverPlacer));
             {
                 let mut ctx = ModificatorContext {
                     template: &template,
@@ -232,6 +238,7 @@ mod tests {
                 };
                 registry.execute(&mut ctx).expect("modificator pipeline");
             }
+            any_river |= !state.river_segments.is_empty();
 
             for (i, pre_passable) in pre.iter().enumerate() {
                 if state.zones[i].role == ZoneRole::Forbidden {
@@ -260,6 +267,85 @@ mod tests {
                 }
             }
         }
+        assert!(
+            any_river,
+            "no seed placed a river — RiverPlacer's end-to-end connectivity coverage is vacuous",
+        );
+    }
+
+    /// Map-wide passable region (`Walkable ∪ Open`) — the global-connectivity
+    /// reference for the AC-8 refinement-R1 end-to-end check.
+    fn map_passable(state: &TilemapBuildState, grid: GridSize) -> TileMask {
+        let mut m = TileMask::new(grid.width, grid.height);
+        for y in 0..grid.height {
+            for x in 0..grid.width {
+                let t = TileCoord::new(x, y);
+                if state.tile_state_at(t).is_passable() {
+                    m.set(t);
+                }
+            }
+        }
+        m
+    }
+
+    #[test]
+    fn ace8_river_carve_preserves_map_wide_connectivity_end_to_end() {
+        // AC-8 (end-to-end, map-wide) — refinement R1 through the real
+        // `place_tilemap` modificator stack. Run every placer up to
+        // ObstaclePlacer, snapshot the map-wide passable region, then run
+        // RiverPlacer alone and confirm — with an INDEPENDENT flood-fill — that
+        // no river carve split the global passable region. ObstaclePlacer's
+        // §2.3 Mountain rule places ≥1 mountain per non-Forbidden zone and the
+        // fixture's `inland_sea` is a sink, so a river reliably carves.
+        let template = fixture();
+        let grid = GridSize { width: 64, height: 64 };
+        let mut any_river = false;
+        for raw_seed in [0xA11CE_u64, 1, 2, 0xB0B, 0xC0FFEE] {
+            let seed = TilemapSeed(raw_seed);
+            let tiled = place_zones(&template, grid, seed).expect("place_zones on the fixture");
+            let mut state = TilemapBuildState::from_zones(tiled, grid);
+
+            // Half 1 — the whole pipeline except RiverPlacer.
+            let mut pre_river = ModificatorRegistry::new();
+            pre_river.add(Box::new(TerrainPainter));
+            pre_river.add(Box::new(ConnectionsPlacer));
+            pre_river.add(Box::new(TreasurePlacer));
+            pre_river.add(Box::new(RoadPlacer));
+            pre_river.add(Box::new(ObstaclePlacer));
+            {
+                let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state };
+                pre_river.execute(&mut ctx).expect("pre-river pipeline");
+            }
+            let map_pre = map_passable(&state, grid);
+
+            // Half 2 — RiverPlacer alone, on the same state.
+            let mut river = ModificatorRegistry::new();
+            river.add(Box::new(RiverPlacer));
+            {
+                let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state };
+                river.execute(&mut ctx).expect("river pipeline");
+            }
+            any_river |= !state.river_segments.is_empty();
+
+            // Every pre-river passable component that keeps a survivor keeps
+            // all its survivors mutually reachable — the river split nothing.
+            let map_post = map_passable(&state, grid);
+            for comp in components(&map_pre, grid) {
+                let survivors: Vec<TileCoord> =
+                    comp.iter_set().filter(|&t| map_post.get(t)).collect();
+                if survivors.is_empty() {
+                    continue;
+                }
+                let reached = flood(survivors[0], &map_post, grid);
+                for &s in &survivors {
+                    assert!(
+                        reached.get(s),
+                        "seed {raw_seed:#x}: a river carve split the map-wide passable region",
+                    );
+                }
+            }
+        }
+        assert!(any_river, "no seed placed a river — the AC-8 map-wide check is vacuous");
     }
 
     #[test]
@@ -357,7 +443,9 @@ mod tests {
             registry.add(Box::new(TerrainPainter));
             registry.add(Box::new(ConnectionsPlacer));
             registry.add(Box::new(TreasurePlacer));
+            registry.add(Box::new(RoadPlacer));
             registry.add(Box::new(ObstaclePlacer));
+            registry.add(Box::new(RiverPlacer));
             {
                 let mut ctx =
                     ModificatorContext { template: &template, grid, seed, state: &mut state };

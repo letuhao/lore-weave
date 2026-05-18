@@ -72,6 +72,44 @@ pub struct ZoneRuntime {
     pub terrain_type: TerrainKind,
 }
 
+/// A road polyline — the realised path of one MST edge (TMP_003 §3.4 / Phase E
+/// `RoadPlacer`). `waypoints` runs ordered from the edge's source anchor to its
+/// destination anchor; every waypoint tile is painted `TerrainKind::Road` and
+/// stays passable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoadSegment {
+    pub waypoints: Vec<TileCoord>,
+}
+
+/// How a river tile stays passable where it would otherwise block traversal
+/// (TMP_003 §3.5 / Phase E `RiverPlacer`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CrossingKind {
+    /// The river runs under an existing road — the road bridges it.
+    Bridge,
+    /// A shallow point kept passable (a connectivity-required crossing, or the
+    /// every-Nth guaranteed crossing on a long river).
+    Ford,
+}
+
+/// A passable point on a river (TMP_003 §3.5 step 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RiverCrossing {
+    pub at: TileCoord,
+    pub kind: CrossingKind,
+}
+
+/// A river polyline (TMP_003 §3.5 / Phase E `RiverPlacer`). `tiles` runs ordered
+/// from the mountain-source edge to the lake/sea sink — every river tile,
+/// including its bridge/ford crossings. `crossings` is the passable subset; a
+/// `tiles` entry not in `crossings` is a carved (impassable) river tile.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RiverSegment {
+    pub tiles: Vec<TileCoord>,
+    pub crossings: Vec<RiverCrossing>,
+}
+
 /// Primary tilemap-service aggregate per TMP_001 §3.1.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TilemapView {
@@ -93,6 +131,14 @@ pub struct TilemapView {
     /// All placed objects (treasures, towns, landmarks, mines, monoliths, decorations).
     #[serde(default)]
     pub object_placements: Vec<TilemapObjectPlacement>,
+    /// Road polylines — one per realised MST edge (Phase E `RoadPlacer`).
+    /// Additive (TMP-A8).
+    #[serde(default)]
+    pub road_segments: Vec<RoadSegment>,
+    /// River polylines — mountain-source → lake/sea-sink flow paths (Phase E
+    /// `RiverPlacer`). Additive (TMP-A8).
+    #[serde(default)]
+    pub river_segments: Vec<RiverSegment>,
     /// Derived from MAP_001 (x, y) per TMP-A6 via DP-Ch24 subscribe — updated on map_layout deltas.
     #[serde(default)]
     pub child_cell_anchors: HashMap<String, TileCoord>,
@@ -125,10 +171,79 @@ impl TilemapView {
             zones: Vec::new(),
             terrain_layer: Vec::new(),
             object_placements: Vec::new(),
+            road_segments: Vec::new(),
+            river_segments: Vec::new(),
             child_cell_anchors: HashMap::new(),
             generation_source: GenerationSource::EngineGenerated,
             regional_narration: None,
             prompt_template_version: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::channel::ChannelId;
+
+    #[test]
+    fn road_segment_round_trips() {
+        // Phase E — a RoadSegment survives a JSON round-trip.
+        let s = RoadSegment {
+            waypoints: vec![TileCoord::new(1, 2), TileCoord::new(1, 3), TileCoord::new(2, 3)],
+        };
+        let back: RoadSegment =
+            serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(s, back);
+    }
+
+    #[test]
+    fn river_segment_and_crossing_round_trip() {
+        // Phase E — a RiverSegment with both crossing kinds round-trips, and
+        // CrossingKind serialises as the snake_case tag.
+        let seg = RiverSegment {
+            tiles: vec![TileCoord::new(0, 0), TileCoord::new(0, 1), TileCoord::new(0, 2)],
+            crossings: vec![
+                RiverCrossing { at: TileCoord::new(0, 1), kind: CrossingKind::Bridge },
+                RiverCrossing { at: TileCoord::new(0, 2), kind: CrossingKind::Ford },
+            ],
+        };
+        let json = serde_json::to_string(&seg).unwrap();
+        assert!(json.contains("\"bridge\""), "Bridge must serialise snake_case: {json}");
+        assert!(json.contains("\"ford\""), "Ford must serialise snake_case: {json}");
+        let back: RiverSegment = serde_json::from_str(&json).unwrap();
+        assert_eq!(seg, back);
+    }
+
+    #[test]
+    fn pre_phase_e_view_json_deserializes_without_road_or_river_segments() {
+        // AC-12 — TMP-A8: a TilemapView JSON predating Phase E (no
+        // `road_segments` / `river_segments` keys) still loads; both default to
+        // an empty Vec.
+        let json = r#"{
+            "channel_id": "ch_legacy",
+            "tier": "country",
+            "grid_size": { "width": 8, "height": 8 },
+            "template_id": "legacy_tpl",
+            "seed": 42,
+            "generation_source": { "kind": "engine_generated" }
+        }"#;
+        let v: TilemapView = serde_json::from_str(json).unwrap();
+        assert!(v.road_segments.is_empty(), "road_segments must default empty");
+        assert!(v.river_segments.is_empty(), "river_segments must default empty");
+    }
+
+    #[test]
+    fn empty_view_has_no_road_or_river_segments() {
+        // AC-12 — an engine-empty view carries empty segment lists.
+        let v = TilemapView::empty(
+            ChannelId("ch".to_string()),
+            ChannelTier::Country,
+            GridSize { width: 4, height: 4 },
+            TilemapTemplateId("t".to_string()),
+            1,
+        );
+        assert!(v.road_segments.is_empty());
+        assert!(v.river_segments.is_empty());
     }
 }

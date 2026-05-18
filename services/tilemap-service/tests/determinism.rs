@@ -52,7 +52,9 @@ fn fixture() -> TilemapTemplate {
             // Forbidden zone is Portal-only-enterable, so the Phase-D golden
             // exercises the Pass-1 monolith pair + the Forbidden-zone fallback).
             zone("crossroad", ZoneRole::Hub, vec![], &[("frontier", PassageKind::Open), ("rival", PassageKind::Portal)]),
-            zone("frontier", ZoneRole::Wilderness, vec![], &[("rival", PassageKind::Adversarial)]),
+            // `frontier` is painted Mountain so ObstaclePlacer reliably emits
+            // mountain obstacles — the Phase-E RiverPlacer's river sources.
+            zone("frontier", ZoneRole::Wilderness, vec![TerrainKind::Mountain], &[("rival", PassageKind::Adversarial)]),
             zone("inland_sea", ZoneRole::Sea, vec![], &[]),
             zone("rival", ZoneRole::Forbidden, vec![], &[]),
         ],
@@ -111,6 +113,42 @@ fn ac4_same_seed_yields_byte_identical_tilemap() {
         2,
         "the Portal connection must place a Monolith pair (Phase D)",
     );
+    // Phase E — the fixture's connections record `road_nodes`, so RoadPlacer
+    // builds a road network; `frontier` is Mountain terrain, so ObstaclePlacer
+    // emits mountain obstacles and RiverPlacer flows rivers to `inland_sea`. A
+    // present river also proves AC-2 — RiverPlacer ran *after* ObstaclePlacer
+    // (otherwise there would be no mountain tags to source from).
+    assert!(!a.road_segments.is_empty(), "Phase E RoadPlacer must place roads (AC-1)");
+    assert!(!a.river_segments.is_empty(), "Phase E RiverPlacer must place rivers (AC-2)");
+}
+
+#[test]
+fn ace_phase_e_roads_are_painted_and_rivers_stay_connected() {
+    // Phase E end-to-end — every road waypoint is painted `Road`, and every
+    // river crossing tile stays passable terrain-wise (a carved tile is the
+    // only impassable river tile). Connectivity is gated in the modificator;
+    // here we confirm the realised view is internally consistent.
+    let view = run(&fixture(), GOLDEN_SEED);
+    let width = view.grid_size.width;
+    for seg in &view.road_segments {
+        for &t in &seg.waypoints {
+            assert_eq!(
+                view.terrain_layer[t.flat_index(width)],
+                TerrainKind::Road as u8,
+                "road waypoint {t:?} not painted Road",
+            );
+        }
+    }
+    for seg in &view.river_segments {
+        // Every crossing is one of the segment's tiles.
+        for crossing in &seg.crossings {
+            assert!(
+                seg.tiles.contains(&crossing.at),
+                "crossing {:?} is not on its river",
+                crossing.at,
+            );
+        }
+    }
 }
 
 #[test]

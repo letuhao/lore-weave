@@ -4,10 +4,14 @@
 
 pub mod connections_placer;
 pub mod obstacle_placer;
+pub mod river_placer;
+pub mod road_placer;
 pub mod terrain_painter;
 pub mod treasure_placer;
 
 pub use connections_placer::ConnectionsPlacer;
 pub use obstacle_placer::ObstaclePlacer;
+pub use river_placer::RiverPlacer;
+pub use road_placer::RoadPlacer;
 pub use terrain_painter::TerrainPainter;
 pub use treasure_placer::TreasurePlacer;
