@@ -506,11 +506,13 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
-      # K11.1 — Neo4j connection (Track 2). Empty NEO4J_URI means
-      # "skip Neo4j init at startup" — Track 1 dev keeps working.
-      # Set NEO4J_URI=bolt://neo4j:7687 (and bring up the neo4j
-      # service via `--profile neo4j`) to enable Track 2 features.
-      NEO4J_URI: ${NEO4J_URI:-}
+      # K11.1 — Neo4j connection (Track 2). Defaults to the in-compose
+      # neo4j service so the full Track 2/3 graph (entities, timeline,
+      # passage vector index, K21 memory tools) works out of the box.
+      # K11.2 driver init fail-fasts on an unreachable URI, hence the
+      # `depends_on: neo4j` below. Override NEO4J_URI= (empty) for a
+      # deliberate Track-1-only run without the neo4j container.
+      NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-loreweave_dev_neo4j}
     depends_on:
@@ -519,6 +521,8 @@ services:
       redis:
         condition: service_healthy
       glossary-service:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     ports:
       - "8216:8092"
@@ -775,19 +779,16 @@ services:
     # profiles:
     #   - v2
 
-  # ── K11.1 — Neo4j for Track 2 extraction graph ────────────────────────
-  # Hidden behind the `neo4j` profile so Track 1 dev doesn't pay the
-  # ~4GB / ~60s startup cost. Bring up explicitly via:
-  #   docker compose --profile neo4j up -d neo4j
-  # Or as part of the full Track 2 stack (once the profile chain is
-  # wired up):
-  #   docker compose --profile extraction up -d
-  #
-  # knowledge-service does NOT depends_on neo4j so a Track 1
-  # `docker compose up knowledge-service` continues to work without
-  # Neo4j running. K11.2 driver init is gated on NEO4J_URI being
-  # set in the env — unset = skip silently, set = fail-fast on
-  # unreachable.
+  # ── K11.1 — Neo4j for the Track 2/3 knowledge graph ───────────────────
+  # Default-on: Tracks 1-3 are feature-complete and the graph (entities,
+  # relations, events, timeline, passage vector index, K21 memory tools)
+  # is core product surface — a profile-gated default silently degraded
+  # all of it. knowledge-service `depends_on: neo4j` (condition healthy)
+  # so its K11.2 driver init — which fail-fasts on an unreachable URI —
+  # doesn't race startup. Costs ~4GB / ~60s. For a deliberate lightweight
+  # Track-1-only run, start with `NEO4J_URI= docker compose up -d`
+  # (empty URI skips the driver) and the neo4j container can be left
+  # stopped.
   neo4j:
     image: neo4j:2026.03-community
     environment:
@@ -821,10 +822,6 @@ services:
       resources:
         limits:
           memory: 4G
-    profiles:
-      - neo4j
-      - extraction
-      - full
 
   # ── Phase 6c — OpenTelemetry tracing stack ────────────────────────────
   # Distributed tracing for the LLM pipeline (6c-α); 6c-β/γ extend it to
