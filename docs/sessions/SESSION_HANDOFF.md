@@ -1,9 +1,43 @@
-# Session Handoff — Session 57 (cycle 2 shipped · billing-model redesign ADR approved · Phase 6a implementation next)
+# Session Handoff — Session 58 (live-smoke arc: K21 tool-calling + the embedding/extraction pipeline made actually-work)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-16 (session 57, cycle 2 shipped)
-> **HEAD:** `0db70b53` (billing ADR commit) — Phase 5f closed at `12a3930f`; Phase 5e-β.2 closed at `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
-> **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+> **Date:** 2026-05-18 (session 58 — 4 workflow cycles, 5 commits)
+> **HEAD:** `9e09a063` — branch `main`, **pushed**.
+> **Branch:** `main` (user pushes manually).
+
+## Session 58 — what happened
+
+Session 58 set out to run D-K21B-06 (a live end-to-end smoke of the K21 tool-calling loop). That smoke, and the Track 2/3 extraction smoke it led into, **converted a string of "complete in git but never run live" subsystems into ones that actually work** — and found a cascade of latent bugs along the way. Every one of these passed CI green for months because the tests mocked exactly the cross-service boundary that was wrong.
+
+**5 commits on `main`:**
+
+| Commit | Cycle | What |
+|---|---|---|
+| `a5357f03` | 1 | **D-K21B-06** — live tool-calling smoke. Fixed: `execute_tool` reused the 500ms `build_context` timeout (every write tool ReadTimeout'd) → dedicated `KNOWLEDGE_TOOL_TIMEOUT_S`; `docker-compose` guardrail budgets `100000000` overflowed `numeric(16,8)` → all reserve calls 500'd → `99000000`. |
+| `e21f6109` | 1 | **Neo4j default-on** — the `neo4j` container was `profiles`-gated + `NEO4J_URI` defaulted empty, so the whole Track 2/3 graph silently ran degraded. Now starts by default; knowledge-service `depends_on: neo4j`. |
+| `9eab22a2` | 2 | **Embedding model-ref ADR** — `KNOWLEDGE_SERVICE_EMBEDDING_MODEL_REF_ADR.md`. knowledge-service passed a logical name where provider-registry's `/internal/embed` needs a `user_model` UUID → all of Mode-3 retrieval + extraction was dead. DESIGN only. |
+| `835d8d47` | 3 | **Embedding model-ref fix** — `embedding_model` now carries the `user_model` UUID; `embedding_dimension` is its own column; `EMBEDDING_MODEL_TO_DIM` retired. Plus 3 more latent bugs the live smoke surfaced: `eval/` missing from the knowledge-service prod image, `loreweave_extraction` prompts not packaged, a `_GRAPH_STATS_CYPHER` syntax error. **Track 2/3 extraction verified live** — 9 `:Entity` + 10 `:Passage` nodes in Neo4j. |
+| `9e09a063` | 4 | **Embedding picker + dimension probe** — `EmbeddingModelPicker` emits the `user_model_id` UUID; a BE `probe_embedding_dimension` derives the dimension at config time; wired into `change_embedding_model` + project PATCH. Closes D-EMB-MODEL-REF-02 + -03. |
+
+**State now:** K21 tool-calling works live (OpenAI-compat path). The Track 2/3 knowledge-graph extraction pipeline works end-to-end (book → Pass-2 → entities/passages in Neo4j). The embedding/Mode-3 retrieval layer is fixed. Neo4j is default-on.
+
+## What's NEXT for the next agent
+
+No blockers. Remaining work is **polish + follow-ups**, all filed as `D-*` deferrals in `SESSION_PATCH.md` → "Deferred Items":
+
+- **`D-EMB-MODEL-REF-04`** — `ProjectFormModal` can change `embedding_model` via the *non-destructive* generic PATCH, bypassing `ChangeModelDialog`'s graph-delete. Route all embedding-model changes through `change_embedding_model`. (knowledge-service + FE, small.)
+- **`D-EMB-BENCHMARK-CAL-01`** — the K17.9 `negative_control_max_score` threshold (0.50) is too strict for bge-m3 (a clean run scored `recall@3=1.0` but `negative_control=0.664` → `passed=false`). Per-model calibration of `eval/golden_set.yaml`.
+- **`D-EMB-EVAL-PKG-01`** — move `eval/` benchmark modules (`fixture_loader` / `mode3_query_runner` / `persist`) into `app/benchmark/` so production doesn't ship the eval harness.
+- **`D-EMB-CLEANUP-01`** — drop the dead `knowledge_projects.embedding_provider_id` column.
+- **`D-CHAT-BILLING-01`** — chat-service usage `/record` 401 (wrong internal token; model-level usage not recorded).
+- **`D-K21B-07`** — live-verify the D12 Anthropic tool-calling path (needs an Anthropic BYOK key; the K21 smoke used OpenAI-compat).
+- **Extraction quality** — Pass-2 extracted entities but 0 facts/0 events from the smoke chapter. Pipeline mechanics are proven; *output quality* is the gemma-eval track.
+
+**Read in this order:** 1. `SESSION_PATCH.md` (top 4 bullets = session 58). 2. `docs/03_planning/KNOWLEDGE_SERVICE_EMBEDDING_MODEL_REF_ADR.md` (§12 = what was actually built). 3. This handoff.
+
+**Recurring lesson (recorded to agent memory):** several knowledge-service feature phases shipped "complete" on unit-mock-only coverage and were broken the first time they ran live. Treat any "complete + unit-green" feature whose path crosses a service / package / Docker boundary as **unverified** until live-smoked.
+
+---
 
 ## Session 57 cycle 2 — billing-model redesign ADR · /review-impl round 1 (3H+6M+3L all folded)
 
