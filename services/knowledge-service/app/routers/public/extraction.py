@@ -20,6 +20,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient
+from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
+from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
 from app.clients.chapter_title_enricher import (
     enrich_jobs_with_current_chapter_titles,
 )
@@ -1008,6 +1010,27 @@ async def change_embedding_model(
             detail="Neo4j not configured",
         )
 
+    # D-EMB-MODEL-REF-03 — probe the new model's vector dimension BEFORE
+    # the destructive graph delete. `new_model` is a provider-registry
+    # `user_model` UUID; the project stores `embedding_dimension`
+    # alongside it. A probe failure (provider unreachable, non-embedding
+    # model) aborts with 422 — the graph is left intact.
+    try:
+        new_dim = await probe_embedding_dimension(user_id, new_model)
+    except EmbeddingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"embedding model probe failed: {exc}",
+        )
+    if new_dim not in SUPPORTED_PASSAGE_DIMS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"embedding model has dimension {new_dim}, which has no "
+                f":Passage vector index (supported: {sorted(SUPPORTED_PASSAGE_DIMS)})"
+            ),
+        )
+
     deleted_total = await _delete_project_graph(user_id, project_id)
 
     await projects_repo.set_extraction_state(
@@ -1015,18 +1038,20 @@ async def change_embedding_model(
         extraction_enabled=False,
         extraction_status="disabled",
         embedding_model=new_model,
+        embedding_dimension=new_dim,
     )
 
     trace_id = trace_id_var.get()
     logger.info(
-        "K16.10: embedding model changed project_id=%s %s→%s nodes_deleted=%d trace_id=%s",
-        project_id, current_model, new_model, deleted_total, trace_id,
+        "K16.10: embedding model changed project_id=%s %s→%s dim=%d nodes_deleted=%d trace_id=%s",
+        project_id, current_model, new_model, new_dim, deleted_total, trace_id,
     )
 
     return {
         "project_id": str(project_id),
         "previous_model": current_model,
         "new_model": new_model,
+        "embedding_dimension": new_dim,
         "nodes_deleted": deleted_total,
         "extraction_status": "disabled",
     }

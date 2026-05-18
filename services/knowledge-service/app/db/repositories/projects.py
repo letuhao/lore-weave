@@ -286,6 +286,7 @@ class ProjectsRepo:
         extraction_enabled: bool,
         extraction_status: ExtractionStatus,
         embedding_model: str | None = None,
+        embedding_dimension: int | None = None,
         conn: "asyncpg.Connection | None" = None,
     ) -> Project | None:
         """K16.3: atomically update extraction-related fields on a project.
@@ -293,6 +294,11 @@ class ProjectsRepo:
         Accepts an optional `conn` so the caller can run this inside
         an existing transaction (e.g., the start-job endpoint creates
         the job row and updates the project in one transaction).
+
+        `embedding_model` / `embedding_dimension` are COALESCE-updated —
+        pass both together (D-EMB-MODEL-REF-03: the dimension is probed
+        by the caller and must stay paired with the model); pass neither
+        to leave them unchanged.
 
         Returns the updated project or None if the project doesn't
         exist / belongs to another user.
@@ -302,6 +308,7 @@ class ProjectsRepo:
         SET extraction_enabled = $3,
             extraction_status = $4,
             embedding_model = COALESCE($5, embedding_model),
+            embedding_dimension = COALESCE($6, embedding_dimension),
             updated_at = now()
         WHERE user_id = $1 AND project_id = $2
         RETURNING {_SELECT_COLS}
@@ -309,13 +316,15 @@ class ProjectsRepo:
         if conn is not None:
             row = await conn.fetchrow(
                 query, user_id, project_id,
-                extraction_enabled, extraction_status, embedding_model,
+                extraction_enabled, extraction_status,
+                embedding_model, embedding_dimension,
             )
         else:
             async with self._pool.acquire() as c:
                 row = await c.fetchrow(
                     query, user_id, project_id,
-                    extraction_enabled, extraction_status, embedding_model,
+                    extraction_enabled, extraction_status,
+                    embedding_model, embedding_dimension,
                 )
         return _row_to_project(row) if row else None
 

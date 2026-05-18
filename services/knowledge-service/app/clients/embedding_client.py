@@ -139,3 +139,25 @@ def get_embedding_client() -> EmbeddingClient:
     if _client is None:
         return init_embedding_client()
     return _client
+
+
+async def probe_embedding_dimension(user_id: UUID, model_ref: str) -> int:
+    """D-EMB-MODEL-REF-03 — determine an embedding model's vector
+    dimension by embedding a short probe string and measuring the
+    result.
+
+    `model_ref` is a provider-registry `user_model` UUID. Used by the
+    config flow (`change_embedding_model`, project PATCH) so the project
+    stores `embedding_dimension` alongside `embedding_model` without the
+    caller having to know the dimension. Raises `EmbeddingError` on any
+    provider failure (unreachable, bad/non-embedding model, etc.).
+    """
+    result = await get_embedding_client().embed(
+        user_id=user_id,
+        model_source="user_model",
+        model_ref=model_ref,
+        texts=["dimension probe"],
+    )
+    if not result.embeddings or not result.embeddings[0]:
+        raise EmbeddingError("embedding probe returned an empty vector")
+    return len(result.embeddings[0])
