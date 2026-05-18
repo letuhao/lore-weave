@@ -151,6 +151,10 @@ pub enum WorldScale {
     Continent,
     SuperContinent,
     Megaplanet,
+    /// A genuinely planet-sized map — a 708² grid ≈ 501k cells, ~30× the
+    /// `Megaplanet`. The smaller scales read as a zone or a region; this is
+    /// the true world-map scale.
+    Gigaplanet,
 }
 
 impl WorldScale {
@@ -163,11 +167,14 @@ impl WorldScale {
             WorldScale::Continent => 91,
             WorldScale::SuperContinent => 111,
             WorldScale::Megaplanet => 128,
+            WorldScale::Gigaplanet => 708,
         }
     }
 
     /// Exact, deterministic total cell count = `(g-2)² + 4·(g-1)`.
-    /// → 1024 / 2025 / 8281 / 12321 / 16384, all within `[1024, 16384]`.
+    /// → 1024 / 2025 / 8281 / 12321 / 16384 / 501264. The first five are the
+    /// GEO_001 `[1024, 16384]` band; `Gigaplanet` deliberately exceeds it —
+    /// the true planet scale (~30× `Megaplanet`).
     pub fn cell_count(self) -> usize {
         let g = self.grid_side();
         (g - 2) * (g - 2) + 4 * (g - 1)
@@ -181,6 +188,7 @@ impl WorldScale {
             WorldScale::Continent => 2,
             WorldScale::SuperContinent => 3,
             WorldScale::Megaplanet => 4,
+            WorldScale::Gigaplanet => 5,
         }
     }
 }
@@ -255,18 +263,22 @@ mod tests {
         assert_eq!(WorldScale::Continent.cell_count(), 8281);
         assert_eq!(WorldScale::SuperContinent.cell_count(), 12321);
         assert_eq!(WorldScale::Megaplanet.cell_count(), 16384);
+        assert_eq!(WorldScale::Gigaplanet.cell_count(), 501_264);
     }
 
     #[test]
     fn cell_counts_within_bounds() {
+        // the first five are the GEO_001 [1024, 16384] band; `Gigaplanet`
+        // is the deliberately-larger planet scale.
         for s in [
             WorldScale::Pocket,
             WorldScale::Region,
             WorldScale::Continent,
             WorldScale::SuperContinent,
             WorldScale::Megaplanet,
+            WorldScale::Gigaplanet,
         ] {
-            assert!((1024..=16384).contains(&s.cell_count()));
+            assert!((1024..=501_264).contains(&s.cell_count()));
         }
     }
 

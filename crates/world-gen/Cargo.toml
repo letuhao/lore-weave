@@ -30,3 +30,11 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 clap = { version = "4", features = ["derive"] }
 # blocking HTTP for the optional LLM CreativeSeed authoring (Phase 4).
 reqwest = { workspace = true, features = ["blocking"] }
+
+[dev-dependencies]
+# Statistical benchmark harness — `cargo bench` (see benches/generate.rs).
+criterion = "0.5"
+
+[[bench]]
+name = "generate"
+harness = false

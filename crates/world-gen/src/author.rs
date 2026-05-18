@@ -42,7 +42,8 @@ pub fn creative_seed_schema() -> Value {
         ],
         "properties": {
             "world_scale": { "enum": [
-                "Pocket", "Region", "Continent", "SuperContinent", "Megaplanet"
+                "Pocket", "Region", "Continent", "SuperContinent", "Megaplanet",
+                "Gigaplanet"
             ] },
             "world_archetype": { "enum": [
                 "Wuxia", "HighFantasy", "LowFantasy", "Cyberpunk", "SteamPunk",
@@ -309,7 +310,7 @@ mod tests {
                 .and_then(Value::as_array)
                 .map_or(0, Vec::len)
         };
-        assert_eq!(count("world_scale"), 5, "world_scale enum count");
+        assert_eq!(count("world_scale"), 6, "world_scale enum count");
         assert_eq!(count("world_archetype"), 11, "world_archetype enum count (12 - Custom)");
         assert_eq!(count("coastline_profile"), 5, "coastline_profile enum count");
         assert_eq!(count("hemisphere_orientation"), 3, "hemisphere enum count");

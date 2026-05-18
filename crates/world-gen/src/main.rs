@@ -347,6 +347,7 @@ enum ScaleArg {
     Continent,
     SuperContinent,
     Megaplanet,
+    Gigaplanet,
 }
 
 impl From<ScaleArg> for WorldScale {
@@ -357,6 +358,7 @@ impl From<ScaleArg> for WorldScale {
             ScaleArg::Continent => WorldScale::Continent,
             ScaleArg::SuperContinent => WorldScale::SuperContinent,
             ScaleArg::Megaplanet => WorldScale::Megaplanet,
+            ScaleArg::Gigaplanet => WorldScale::Gigaplanet,
         }
     }
 }

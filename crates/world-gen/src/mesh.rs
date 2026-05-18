@@ -101,8 +101,8 @@ fn place_points(g: usize, rng: &mut Rng) -> Vec<(f32, f32)> {
 fn adjacency(tri: &Triangulation, count: usize) -> Vec<Vec<u32>> {
     let mut neighbors: Vec<Vec<u32>> = vec![Vec::new(); count];
     for t in tri.triangles.chunks_exact(3) {
-        // usize -> u32: cell indices are provably <= 16384 << u32::MAX
-        // (WorldScale::cell_count table), so this narrowing cannot truncate.
+        // usize -> u32: the largest `WorldScale` (Gigaplanet) is ~501k cells,
+        // far below `u32::MAX` (~4.29e9), so this narrowing cannot truncate.
         let a = t[0] as u32;
         let b = t[1] as u32;
         let c = t[2] as u32;

@@ -9,7 +9,7 @@
 ## Current status & next session (handoff)
 
 **As of 2026-05-18 — branch `geo-generator-amaw`, unpushed.** The 4-phase
-generator is built, the post-build human-in-loop review is done, and six
+generator is built, the post-build human-in-loop review is done, and seven
 enhancements have since shipped — each via the full default 12-phase v2.2
 workflow (`/review-impl` on enhancements 3–6):
 
@@ -20,20 +20,31 @@ workflow (`/review-impl` on enhancements 3–6):
 | Orographic climate — wind-driven rain shadow (`--wind` knob) | `13ea0999` |
 | Feature naming — extraction + LLM `name` step + SVG labels | `d0e608e3` |
 | Hydraulic erosion (Path B v2) — two-phase stream-power carve/settle (`--erosion`) | `addd9f16` |
-| Render polish — supersample 2× · complementary detail · concavity occlusion | HEAD of `geo-generator-amaw` |
+| Render polish — supersample 2× · complementary detail · concavity occlusion | `46a32e1c` |
+| Huge-scale benchmark — `WorldScale::Gigaplanet` (~501k cells) + criterion bench | HEAD of `geo-generator-amaw` |
 
-**114 tests green + 2 ignored** (LLM integration), `cargo clippy` clean.
+**114 tests green + 3 ignored** (2 LLM integration, 1 `gigaplanet` 501k-cell), `cargo clippy` clean.
 
-**Next session — open choice.** Render polish is done; pick from the open
-enhancements below. Run the default 12-phase v2.2 workflow with PO checkpoints
-at CLARIFY end + POST-REVIEW.
+> **⚠ Architectural realisation (2026-05-18).** The Gigaplanet benchmark made
+> it clear: **cell count is resolution, not scope.** A 501k-cell map still
+> "feels like a province," because the generator is structurally a
+> *region* generator — one `CoastlineProfile` = one landmass, one hemisphere
+> climate slice, ~80 provinces / 12 states. `WorldScale` only ever changed how
+> finely that *one region* is subdivided. A real world needs a **tier above**:
+> a world frame with multiple continents + ocean basins, a global climate
+> model (full latitude banding, multiple wind cells), hierarchical political
+> (world → realms → nations → provinces), and a far wider terrain vocabulary —
+> the **geo-type redesign** (Earth terrain + fantasy: great rift, lava world,
+> shattered world). This is the next major work.
 
-**Other open GEO enhancements** (surveyed, not chosen): 16-bit heightmap
-export; deposition / sediment-fan refinement (the Path B v2 settle phase works
-but fans are subtle at the 8k-cell mesh — a finer mesh or multi-flow routing
-would sharpen them); archetype-conditioned generation (`world_archetype` is
-still inert). The GEO → zone-tilemap handoff is the bridge to other world-map
-layers.
+**Next session — world-tier / geo-type redesign.** The PO will describe the
+target world model; the agent drafts a design/plan doc from it. Benchmark
+timings (release): generate 6 ms → 91 ms for Pocket → Megaplanet, **8.5 s** at
+Gigaplanet (501k cells); relief render ~14 s. Super-linear but not O(n²).
+
+**Other open GEO enhancements** (surveyed, lower priority than the redesign):
+16-bit heightmap export; deposition / sediment-fan refinement; archetype-
+conditioned generation (`world_archetype` still inert).
 
 ---
 
@@ -62,6 +73,8 @@ layers.
 **Hydraulic erosion — Path B v2 (2026-05-18):** the third GEO enhancement — carves the raw Path B heightmap. NEW `erosion.rs`: a two-phase stream-power landscape-evolution pass run inside `terrain::build` on the f32 elevation field (after `apply_falloff`, before u16-normalization — quantized steps would round to zero). Each iteration runs its own `f32` priority-flood (Barnes depression-fill, `total_cmp`-ordered heap), adopts the *filled* field (a raw heightmap is pit-riddled — incising it directly is a near no-op), accumulates uniform-rain drainage area, then incises `K·area^m·slope` (clamped to the receiver drop). The **carve phase** is pure incision (cuts dendritic valley networks); the **settle phase** then adds transport-capacity deposition — `settle_rate` of the load above `Kc·area^m·slope` is dropped (valley-floor fill / mountain-front fans). The two-phase split is load-bearing: deposition during the violent carve refills valleys faster than they cut. Hillslope diffusion rounds ridge crests. A NEW `ErosionStrength` knob (None/Light/Moderate/Heavy, default Moderate, `#[serde(default)]`) on `CreativeSeed` — `--erosion` CLI flag + LLM-author schema. Incision is clamped to never carve land below the provisional waterline (no sub-sea speckle); **Archipelago is skipped** (`terrain::build` gate — incision carving a strait would dissect its fixed 5-disc invariant, mirroring `enforce_coherence`/`choose_sea_level`). `content_hash` changes for the 4 non-Archipelago profiles (intentional). 112 tests green (+9), clippy clean. Default v2.2 workflow, human-in-loop; the deposition model was redesigned mid-VERIFY (Davy-Lague `G/area` → two-phase transport-capacity) on a PO call after the first model refilled valleys. Plan: [`docs/plans/2026-05-18-geo-hydraulic-erosion.md`](../../plans/2026-05-18-geo-hydraulic-erosion.md). Sharper sediment fans (finer mesh / multi-flow routing) and 16-bit heightmap export deferred.
 
 **Render polish (2026-05-18):** the fourth GEO enhancement — render-only, no `WorldMap`/`content_hash` change. The relief renderer was masking model-scale detail (erosion valleys, Path B ridges, orographic relief): it blurred the barycentric base by ~½ cell to de-facet it, then overlaid fBm detail of *larger* amplitude than the model signal, modulated *up* on highlands. Three fixes. (1) **Supersampling 2×** — every `*_image` renders at `SS×` then box-`downsample`s; anti-aliases coastlines, hillshade and Voronoi edges (route lines stamped `SS`-thick, dots `SS`-scaled, the Atlas ink coastline `SS`-thick — the last caught by `/review-impl`). (2) **Complementary detail** — `relief.rs build` is now two-pass: warp→`base`, then a `base − blur(base)` high-pass measures local model relief; detail fBm *fills* flat ground and *recedes* over carved structure (`detail_fill`), and `detail_amp` is lowered. (3) **Concavity occlusion** — valley floors (negative high-pass) are darkened, an ambient-occlusion proxy that makes carved drainage read. The de-facet blur was cut to ⅓ cell; the hypsometric palette + coastal shallows retuned. 114 tests green (+2), clippy clean; `/review-impl` raised 1 MED (Atlas coastline) + 5 LOW/COSMETIC — MED fixed, rest accepted. Plan: [`docs/plans/2026-05-18-geo-render-polish.md`](../../plans/2026-05-18-geo-render-polish.md). The "renderer masks model detail" limiting factor flagged after erosion is resolved.
+
+**Huge-scale benchmark (2026-05-18):** the fifth GEO enhancement — a NEW `WorldScale::Gigaplanet` (708² grid = 501,264 cells, `tag` 5, ~30× `Megaplanet`) + a criterion benchmark (`benches/generate.rs`, `cargo bench`, `criterion` dev-dep) timing `generate` across all six scales + a `relief_image` render. CLI `--scale gigaplanet`, LLM-author schema synced. The five existing scales' `grid_side`/`tag` are untouched → no `content_hash` shift. `structure.rs` gained a dedicated `gigaplanet_generates_a_coherent_map` test (`#[ignore]` — two 501k-cell generates run minutes in a debug build; run with `--release -- --ignored`); the slow `SCALES` sweep stays at five scales. **Benchmark (release):** generate 6.2/12.6/45/56/91 ms for Pocket–Megaplanet, **8.5 s** at Gigaplanet; relief render ~14 s — super-linear (O(n log n) stages + erosion's iterative priority-flood) but not O(n²). 114 tests green (+0 run, +1 ignored), clippy clean. Plan: [`docs/plans/2026-05-18-geo-huge-scale-benchmark.md`](../../plans/2026-05-18-geo-huge-scale-benchmark.md). **The showcase render is what triggered the architectural realisation above** — a 501k-cell map still reads as one province, because the generator's scope is one region regardless of cell count.
 
 ### Phase 1 — build log (2026-05-17)
 

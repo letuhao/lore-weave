@@ -73,6 +73,41 @@ fn cell_count_exact_per_scale() {
     }
 }
 
+/// The `Gigaplanet` scale (~501k cells) generates a valid, coherent map and is
+/// deterministic. Kept out of the `SCALES` sweep on purpose — one generate at
+/// this scale is seconds of work; sweeping it across every profile/seed (as
+/// `land_coherence_per_profile` does) would run for many minutes.
+///
+/// `#[ignore]` — two 501k-cell generates run minutes in an unoptimized test
+/// build. Run on demand: `cargo test --release -- --ignored gigaplanet`. The
+/// criterion benchmark also exercises `generate` at this scale.
+#[test]
+#[ignore = "501k-cell scale — minutes in a debug build; run with --ignored"]
+fn gigaplanet_generates_a_coherent_map() {
+    let cs = CreativeSeed {
+        world_scale: WorldScale::Gigaplanet,
+        ..CreativeSeed::default()
+    };
+    let a = generate(20_260_518, &cs);
+
+    let n = a.cell_count();
+    assert_eq!(n, 501_264, "Gigaplanet cell count");
+    assert!(a.verify_hash(), "fresh Gigaplanet map fails verify_hash");
+    // every layer is fully populated at this scale.
+    assert_eq!(a.climate.len(), n);
+    assert_eq!(a.biome.len(), n);
+    assert_eq!(a.province_of.len(), n);
+    assert_eq!(a.culture_of.len(), n);
+    assert!(!a.provinces.is_empty() && !a.states.is_empty());
+    assert!(!a.settlements.is_empty() && !a.culture_regions.is_empty());
+    assert!(!a.water_bodies.is_empty(), "a world map always has ocean");
+
+    // deterministic — a second run is byte-identical.
+    let b = generate(20_260_518, &cs);
+    assert_eq!(a.content_hash, b.content_hash, "Gigaplanet not deterministic");
+    assert_eq!(a, b);
+}
+
 /// Criterion #4 — every cell has neighbour degree in `[3, 12]`.
 #[test]
 fn neighbor_degree_within_bounds() {
