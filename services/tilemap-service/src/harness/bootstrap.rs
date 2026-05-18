@@ -1,11 +1,11 @@
-//! Fixture-object bootstrap — runs the Phase 1 placement engine on a small
-//! reality, drives a **fixture** object set through the L3 retry loop, then
+//! Engine-object bootstrap — runs the placement engine on a small reality,
+//! drives the engine's **own placed objects** through the L3 retry loop, then
 //! narrates the placed zones through the L4 retry loop (TMP_008b §5/§6).
 //!
-//! The objects are fixture, not engine-placed: engine object placement is
-//! TMP_006 (TreasurePlacer / ObjectManager), unbuilt. This demonstrates the
-//! end-to-end L3→L4 contract — `place_tilemap` → L3 loop → L4 loop — not the
-//! engine→L3 object flow.
+//! The objects are `place_tilemap`'s `object_placements` — treasures, guards,
+//! monoliths, obstacles, ferries — the genuine engine→L3→L4 flow. Every placed
+//! object kind is classified (including biome `Obstacle`s); each maps to an L3
+//! `kind` label + a closed `suggested_canon_kind` set.
 
 use std::collections::HashMap;
 
@@ -14,9 +14,12 @@ use uuid::Uuid;
 
 use crate::engine::place_tilemap;
 use crate::seed::derive_seed;
+use crate::types::biome::BiomeObjectType;
 use crate::types::channel::{ChannelId, ChannelTier};
+use crate::types::object::TilemapObjectKind;
 use crate::types::template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
 use crate::types::tilemap::{GridSize, TilemapView};
+use crate::types::treasure::TreasureTierSpec;
 use crate::types::zone::{PassageKind, ZoneId, ZoneRole};
 
 use super::keyphrase::extract_key_phrases;
@@ -27,7 +30,7 @@ use super::retry::{L3Result, run_l3_with_retries};
 use super::style::{NarrationLanguage, NarrationVoice, NarrativeTone};
 
 /// Result of [`bootstrap_small_reality`] — the placed tilemap, the L3
-/// classification of the fixture objects, and the L4 zone narration.
+/// classification of the engine-placed objects, and the L4 zone narration.
 #[derive(Debug)]
 pub struct BootstrapReport {
     pub tilemap: TilemapView,
@@ -35,8 +38,8 @@ pub struct BootstrapReport {
     pub l4: L4Result,
 }
 
-/// Run the small-reality bootstrap: place a 3-zone wuxia template via the
-/// Phase 1 engine, then classify a fixture object set through the §5 retry
+/// Run the small-reality bootstrap: place a 4-zone wuxia template via the
+/// engine, then classify its **engine-placed** object set through the §5 retry
 /// loop. `max_attempts` is the §5 per-batch retry cap (TMP-LLM-C-Q3: 3).
 pub async fn bootstrap_small_reality(
     client: &GatewayClient,
@@ -60,7 +63,9 @@ pub async fn bootstrap_small_reality(
         seed,
     )?;
 
-    let placeholders = bootstrap_placeholders();
+    // The L3 input is the engine's own placed objects (TMP_006/007/Phase E
+    // output) — no fixture set.
+    let placeholders = engine_placeholders(&tilemap);
     let book_canon_refs = vec![
         "lotus_sect_homeland_v1".to_string(),
         "western_forest_lore_v1".to_string(),
@@ -120,7 +125,98 @@ pub async fn bootstrap_small_reality(
     Ok(BootstrapReport { tilemap, l3, l4 })
 }
 
-/// The hardcoded 3-zone wuxia reality the bootstrap places.
+/// The L3 `kind` label for a placed-object kind — the PascalCase variant name.
+/// Exhaustive `match` (no wildcard): a new `TilemapObjectKind` variant forces a
+/// compile error here.
+fn kind_label(kind: TilemapObjectKind) -> &'static str {
+    match kind {
+        TilemapObjectKind::Treasure => "Treasure",
+        TilemapObjectKind::MonsterLair => "MonsterLair",
+        TilemapObjectKind::Town => "Town",
+        TilemapObjectKind::Mine => "Mine",
+        TilemapObjectKind::Landmark => "Landmark",
+        TilemapObjectKind::Monolith => "Monolith",
+        TilemapObjectKind::Decoration => "Decoration",
+        TilemapObjectKind::Obstacle => "Obstacle",
+        TilemapObjectKind::Ferry => "Ferry",
+    }
+}
+
+/// The closed `suggested_canon_kind` set the L3 classifier must pick from for a
+/// given placed-object kind — **index 0 is the engine default** (the TMP_008b
+/// §6 canonical-default fallback). Wuxia-flavoured to match the bootstrap
+/// reality. For `Obstacle` this is the generic fallback list — a *tagged*
+/// obstacle is routed through [`obstacle_suggestions`] instead (see
+/// [`engine_placeholders`]).
+fn suggested_canon_kind(kind: TilemapObjectKind) -> &'static [&'static str] {
+    match kind {
+        TilemapObjectKind::Treasure => &["BanditCache", "AbandonedCellar", "OldShrine"],
+        TilemapObjectKind::MonsterLair => &["BanditCamp", "WolfDen", "ElvenWatcher"],
+        TilemapObjectKind::Monolith => &["AncientWaygate", "JadePortalStone", "SpiritGate"],
+        TilemapObjectKind::Obstacle => &["RockOutcrop", "TangledThicket", "FallenTimber"],
+        TilemapObjectKind::Ferry => &["RiverFerry", "RopeBridgeCrossing", "FerrymanDock"],
+        TilemapObjectKind::Landmark => &["AncientTree", "RuinedWell", "RobberShrine"],
+        TilemapObjectKind::Town => &["MarketTown", "WalledCity", "TradingPost"],
+        TilemapObjectKind::Mine => &["IronMine", "JadeQuarry", "SaltMine"],
+        TilemapObjectKind::Decoration => &["WildFlowers", "MossyStones", "Brambles"],
+    }
+}
+
+/// The closed `suggested_canon_kind` set for an `Obstacle`, keyed by its
+/// `biome_object_type` (TMP_005 §2.1) — a mountain, a lake, and a tree get
+/// distinct, biome-appropriate canonical kinds instead of one generic list, so
+/// an L3 classification (and the §6 default, index 0) is semantically honest.
+/// An untagged obstacle (`None` — engine obstacles are always tagged, so this
+/// is defensive) falls back to the generic `Obstacle` list.
+fn obstacle_suggestions(biome: Option<BiomeObjectType>) -> &'static [&'static str] {
+    match biome {
+        Some(BiomeObjectType::Mountain) => &["CraggyPeak", "JaggedRidge", "StoneSummit"],
+        Some(BiomeObjectType::Tree) => &["AncientGrove", "GnarledPine", "ShadedCopse"],
+        Some(BiomeObjectType::Lake) => &["StillTarn", "ReedyMere", "MistPool"],
+        Some(BiomeObjectType::Crater) => &["ScorchedHollow", "MeteorScar", "SunkenPit"],
+        Some(BiomeObjectType::Rock) => &["RockOutcrop", "BoulderField", "ShatteredScree"],
+        Some(BiomeObjectType::Plant) => &["TangledThicket", "BrambleSnarl", "ThornBrake"],
+        Some(BiomeObjectType::Structure) => &["RuinedWall", "TumbledShrine", "OldWatchpost"],
+        Some(BiomeObjectType::Animal) => &["BeastTrail", "GrazingHerd", "PredatorRange"],
+        Some(BiomeObjectType::Other) => &["StrangeFormation", "UnmarkedSite", "OddTerrain"],
+        None => suggested_canon_kind(TilemapObjectKind::Obstacle),
+    }
+}
+
+/// Derive the L3 placeholder set from the engine's own `object_placements` —
+/// the genuine engine→L3 object flow. `obj_id`s are `obj_{i}` (1-based,
+/// contiguous, matching the tool schema's `^obj_[0-9]+$`); `zone_id` is the
+/// zone owning the object's `anchor`; suggestions are the per-kind closed set —
+/// or, for an `Obstacle`, the per-`biome_object_type` set.
+///
+/// An object whose `anchor` lies in no zone (impossible — zones partition the
+/// grid) is skipped defensively rather than panicking.
+fn engine_placeholders(tilemap: &TilemapView) -> Vec<L3Placeholder> {
+    tilemap
+        .object_placements
+        .iter()
+        .filter_map(|p| {
+            let zone = tilemap.zones.iter().find(|z| z.assigned_tiles.get(p.anchor))?;
+            Some((p, zone.zone_id.0.as_str()))
+        })
+        .enumerate()
+        .map(|(i, (p, zone_id))| {
+            let obj_id = format!("obj_{}", i + 1);
+            let suggested = match p.kind {
+                TilemapObjectKind::Obstacle => obstacle_suggestions(p.biome_object_type),
+                other => suggested_canon_kind(other),
+            };
+            L3Placeholder::new(&obj_id, kind_label(p.kind), zone_id, suggested)
+        })
+        .collect()
+}
+
+/// The 4-zone wuxia reality the bootstrap places. The two `Wilderness` zones
+/// carry a `min ≥ 2000` treasure tier (so `TreasurePlacer` emits `Treasure`
+/// piles + their `MonsterLair` guards), and a `Portal` connection reaches a
+/// `Forbidden` vault (so `ConnectionsPlacer` places a `Monolith` pair) — the
+/// engine then also fills biome `Obstacle`s. The result is a varied,
+/// multi-kind object set for the L3 demo.
 fn bootstrap_template() -> TilemapTemplate {
     fn zone(id: &str, role: ZoneRole, conns: &[(&str, PassageKind)]) -> ZoneSpec {
         ZoneSpec {
@@ -138,13 +234,16 @@ fn bootstrap_template() -> TilemapTemplate {
             inherit_treasure_from: None,
         }
     }
-    TilemapTemplate {
+    let mut template = TilemapTemplate {
         template_id: TilemapTemplateId("bootstrap_wuxia_v1".to_string()),
         zones: vec![
             zone(
                 "jianghu_capital",
                 ZoneRole::Hub,
-                &[("western_wilds", PassageKind::Threshold)],
+                &[
+                    ("western_wilds", PassageKind::Threshold),
+                    ("forbidden_vault", PassageKind::Portal),
+                ],
             ),
             zone(
                 "western_wilds",
@@ -152,35 +251,30 @@ fn bootstrap_template() -> TilemapTemplate {
                 &[("lotus_grove", PassageKind::Open)],
             ),
             zone("lotus_grove", ZoneRole::Wilderness, &[]),
+            zone("forbidden_vault", ZoneRole::Forbidden, &[]),
         ],
         seed_offset: 0,
+    };
+    // TreasurePlacer only acts on zones with `treasure_tiers`; a `min ≥ 2000`
+    // tier guarantees each pile is guarded, so the demo classifies Treasure
+    // piles *and* MonsterLair guards.
+    for z in &mut template.zones {
+        if z.zone_role == ZoneRole::Wilderness {
+            z.treasure_tiers = vec![TreasureTierSpec { min: 2000, max: 6000, density: 4 }];
+        }
     }
-}
-
-/// Fixture objects to classify — two per zone; `zone_id`s match
-/// [`bootstrap_template`]'s zones.
-fn bootstrap_placeholders() -> Vec<L3Placeholder> {
-    let treasure = ["BanditCache", "AbandonedCellar", "OldShrine"];
-    let lair = ["BanditCamp", "WolfDen", "ElvenWatcher"];
-    let landmark = ["AncientTree", "RuinedWell", "RobberShrine"];
-    vec![
-        L3Placeholder::new("obj_1", "Treasure", "jianghu_capital", &treasure),
-        L3Placeholder::new("obj_2", "Landmark", "jianghu_capital", &landmark),
-        L3Placeholder::new("obj_3", "Treasure", "western_wilds", &treasure),
-        L3Placeholder::new("obj_4", "MonsterLair", "western_wilds", &lair),
-        L3Placeholder::new("obj_5", "MonsterLair", "lotus_grove", &lair),
-        L3Placeholder::new("obj_6", "Landmark", "lotus_grove", &landmark),
-    ]
+    template
 }
 
 /// Render a [`BootstrapReport`] as a human-readable block for the CLI.
 pub fn render_bootstrap_report(r: &BootstrapReport) -> String {
     let mut s = String::from("── small-reality bootstrap (L3 → L4) ────────────────────\n");
     s.push_str(&format!(
-        "placement : {} zones, {}×{} grid\n",
+        "placement : {} zones, {}×{} grid, {} object(s) placed\n",
         r.tilemap.zones.len(),
         r.tilemap.grid_size.width,
         r.tilemap.grid_size.height,
+        r.tilemap.object_placements.len(),
     ));
     s.push_str(&format!(
         "L3 loop   : {} object(s), {} gateway attempt(s), {} canonical-default fallback(s)\n",
@@ -221,42 +315,196 @@ pub fn render_bootstrap_report(r: &BootstrapReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::seed::TilemapSeed;
+
+    /// Place the bootstrap reality at a fixed seed.
+    fn placed() -> TilemapView {
+        place_tilemap(
+            &bootstrap_template(),
+            ChannelId("bootstrap_test".to_string()),
+            ChannelTier::Country,
+            GridSize { width: 48, height: 48 },
+            TilemapSeed(0xB00757),
+        )
+        .expect("the bootstrap template must place")
+    }
+
+    /// All nine `TilemapObjectKind` variants.
+    const ALL_KINDS: [TilemapObjectKind; 9] = [
+        TilemapObjectKind::Treasure,
+        TilemapObjectKind::MonsterLair,
+        TilemapObjectKind::Town,
+        TilemapObjectKind::Mine,
+        TilemapObjectKind::Landmark,
+        TilemapObjectKind::Monolith,
+        TilemapObjectKind::Decoration,
+        TilemapObjectKind::Obstacle,
+        TilemapObjectKind::Ferry,
+    ];
+
+    /// All nine `BiomeObjectType` variants.
+    const ALL_BIOME_TYPES: [BiomeObjectType; 9] = [
+        BiomeObjectType::Mountain,
+        BiomeObjectType::Tree,
+        BiomeObjectType::Lake,
+        BiomeObjectType::Crater,
+        BiomeObjectType::Rock,
+        BiomeObjectType::Plant,
+        BiomeObjectType::Structure,
+        BiomeObjectType::Animal,
+        BiomeObjectType::Other,
+    ];
 
     #[test]
-    fn bootstrap_placeholders_reference_template_zones() {
-        // Every fixture object's zone_id must be a real zone in the template
-        // (the bootstrap's only cross-component invariant testable offline).
-        let template = bootstrap_template();
-        let zone_ids: Vec<&str> = template
-            .zones
-            .iter()
-            .map(|z| z.zone_id.0.as_str())
-            .collect();
-        for p in bootstrap_placeholders() {
+    fn every_object_kind_maps_to_a_label_and_suggestions() {
+        // AC-2 — every kind (incl. Obstacle) has a label + non-empty closed set.
+        for kind in ALL_KINDS {
+            assert!(!kind_label(kind).is_empty(), "{kind:?} has no label");
             assert!(
-                zone_ids.contains(&p.zone_id.as_str()),
-                "fixture object {} references unknown zone {}",
-                p.obj_id,
-                p.zone_id,
+                !suggested_canon_kind(kind).is_empty(),
+                "{kind:?} has no suggested_canon_kind",
             );
-            assert!(!p.suggested_canon_kind.is_empty(), "{} has no suggested kinds", p.obj_id);
         }
     }
 
     #[test]
-    fn bootstrap_placeholder_obj_ids_are_unique_and_well_formed() {
-        let ps = bootstrap_placeholders();
-        let mut ids: Vec<&str> = ps.iter().map(|p| p.obj_id.as_str()).collect();
-        let count = ids.len();
-        ids.sort_unstable();
-        ids.dedup();
-        assert_eq!(ids.len(), count, "duplicate obj_id in bootstrap placeholders");
-        for p in &ps {
+    fn obstacle_suggestions_total_over_all_biome_types() {
+        // AC-8 — every BiomeObjectType (and the untagged None case) maps to a
+        // non-empty obstacle suggestion list.
+        assert!(!obstacle_suggestions(None).is_empty(), "untagged obstacle has no suggestions");
+        for biome in ALL_BIOME_TYPES {
             assert!(
-                p.obj_id.starts_with("obj_") && p.obj_id["obj_".len()..].chars().all(|c| c.is_ascii_digit()),
+                !obstacle_suggestions(Some(biome)).is_empty(),
+                "{biome:?} has no obstacle suggestions",
+            );
+        }
+    }
+
+    #[test]
+    fn obstacle_suggestions_are_distinct_per_biome_type() {
+        // AC-8 — a mountain, a lake, and a tree get *different* suggestion
+        // lists (the biome routing is real, not a single generic list).
+        let mountain = obstacle_suggestions(Some(BiomeObjectType::Mountain));
+        let lake = obstacle_suggestions(Some(BiomeObjectType::Lake));
+        let tree = obstacle_suggestions(Some(BiomeObjectType::Tree));
+        assert_ne!(mountain, lake, "mountain and lake share a suggestion list");
+        assert_ne!(mountain, tree, "mountain and tree share a suggestion list");
+        assert_ne!(lake, tree, "lake and tree share a suggestion list");
+    }
+
+    #[test]
+    fn engine_placeholders_are_well_formed_and_zone_resolved() {
+        // AC-1/AC-3/AC-4 — placeholders derive from object_placements; obj_ids
+        // contiguous 1-based and well-formed; zone_id is a real placed zone.
+        let tilemap = placed();
+        let phs = engine_placeholders(&tilemap);
+        assert!(!phs.is_empty(), "the enriched template must place objects");
+
+        let zone_ids: Vec<&str> = tilemap.zones.iter().map(|z| z.zone_id.0.as_str()).collect();
+        for (i, p) in phs.iter().enumerate() {
+            assert_eq!(p.obj_id, format!("obj_{}", i + 1), "obj_id must be contiguous 1-based");
+            assert!(
+                p.obj_id.starts_with("obj_")
+                    && p.obj_id["obj_".len()..].chars().all(|c| c.is_ascii_digit()),
                 "obj_id '{}' does not match ^obj_[0-9]+$",
                 p.obj_id,
             );
+            assert!(
+                zone_ids.contains(&p.zone_id.as_str()),
+                "placeholder {} references unknown zone {}",
+                p.obj_id,
+                p.zone_id,
+            );
+            assert!(!p.kind.is_empty(), "{} has an empty kind label", p.obj_id);
+            assert!(!p.suggested_canon_kind.is_empty(), "{} has no suggestions", p.obj_id);
         }
+    }
+
+    #[test]
+    fn engine_placeholder_zone_matches_the_objects_anchor_owner() {
+        // AC-3 — each placeholder's zone_id is the zone whose assigned_tiles
+        // contains the placed object's anchor, in object_placements order.
+        let tilemap = placed();
+        let phs = engine_placeholders(&tilemap);
+        // engine_placeholders skips no object here (every anchor is zoned), so
+        // the placeholder list is index-aligned with object_placements.
+        assert_eq!(phs.len(), tilemap.object_placements.len());
+        for (p, placement) in phs.iter().zip(&tilemap.object_placements) {
+            let owner = tilemap
+                .zones
+                .iter()
+                .find(|z| z.assigned_tiles.get(placement.anchor))
+                .expect("every placed object's anchor lies in a zone");
+            assert_eq!(p.zone_id, owner.zone_id.0, "{} zone mismatch", p.obj_id);
+            assert_eq!(p.kind, kind_label(placement.kind), "{} kind mismatch", p.obj_id);
+        }
+    }
+
+    #[test]
+    fn obstacle_placeholders_carry_biome_keyed_suggestions() {
+        // AC-8 — on real engine output, each Obstacle placeholder's suggestion
+        // list is keyed to that obstacle's biome_object_type, and ObstaclePlacer
+        // reliably emits a Mountain (its §2.3 count-1 rule) so the mountain list
+        // is genuinely exercised.
+        let tilemap = placed();
+        let phs = engine_placeholders(&tilemap);
+        // `Vec<String>` vs the `&[&str]` literal lists — compare as &str.
+        let same = |got: &[String], want: &[&str]| -> bool {
+            got.iter().map(String::as_str).eq(want.iter().copied())
+        };
+        // engine_placeholders skips nothing here, so it is index-aligned.
+        let obstacles: Vec<_> = phs
+            .iter()
+            .zip(&tilemap.object_placements)
+            .filter(|(_, placement)| placement.kind == TilemapObjectKind::Obstacle)
+            .collect();
+        assert!(!obstacles.is_empty(), "the bootstrap template places obstacles");
+        for (p, placement) in &obstacles {
+            assert!(
+                same(&p.suggested_canon_kind, obstacle_suggestions(placement.biome_object_type)),
+                "{} ({:?}) did not get its biome-keyed suggestions",
+                p.obj_id,
+                placement.biome_object_type,
+            );
+        }
+        assert!(
+            obstacles.iter().any(|(p, _)| same(
+                &p.suggested_canon_kind,
+                obstacle_suggestions(Some(BiomeObjectType::Mountain)),
+            )),
+            "no Mountain obstacle — the biome-keyed routing went untested on real output",
+        );
+    }
+
+    #[test]
+    fn bootstrap_template_places_treasure_lair_obstacle_and_monolith() {
+        // AC-5 — the enriched template yields a varied object set: treasure +
+        // guards (treasure_tiers), obstacles (ObstaclePlacer), and a Monolith
+        // pair (the jianghu_capital→forbidden_vault Portal connection).
+        let tilemap = placed();
+        for want in [
+            TilemapObjectKind::Treasure,
+            TilemapObjectKind::MonsterLair,
+            TilemapObjectKind::Obstacle,
+            TilemapObjectKind::Monolith,
+        ] {
+            assert!(
+                tilemap.object_placements.iter().any(|p| p.kind == want),
+                "the bootstrap template placed no {want:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn engine_placeholders_are_deterministic() {
+        // AC-7 — a fixed seed yields the same placeholder set. L3Placeholder
+        // has no PartialEq, so compare projected tuples (REVIEW-DESIGN R1).
+        let proj = |tilemap: &TilemapView| -> Vec<(String, String, String, Vec<String>)> {
+            engine_placeholders(tilemap)
+                .into_iter()
+                .map(|p| (p.obj_id, p.kind, p.zone_id, p.suggested_canon_kind))
+                .collect()
+        };
+        assert_eq!(proj(&placed()), proj(&placed()));
     }
 }

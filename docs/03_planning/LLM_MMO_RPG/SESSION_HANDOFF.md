@@ -135,11 +135,10 @@ engine pipeline is now `TerrainPainter → ConnectionsPlacer → TreasurePlacer
 **complete V1+30d map** — terrain, obstacles, treasure, connections, roads,
 rivers. **No placer work remains.** The recommended next actions:
 
-1. **Engine→L3→L4 bootstrap on engine-placed objects** — the L3/L4 LLM
-   bootstrap (Phases 2-3) still classifies the **fixture** object set. Now that
-   `place_tilemap` produces real `object_placements` (treasures, guards,
-   monoliths, ferries, obstacles) + roads + rivers, rewire the bootstrap to
-   feed engine output — the genuine engine→L3→L4 flow.
+1. ~~Engine→L3→L4 bootstrap on engine-placed objects~~ — ✅ **DONE 2026-05-18**
+   (see the session entry below). `bootstrap_small_reality` now classifies the
+   engine's own `object_placements` (every kind, including biome obstacles
+   keyed by `biome_object_type`); the fixture object set is gone.
 2. **Live continent-scale measurement** — Phases 2-3 were mock-gateway verified;
    the only live data point is the Phase-0b 3-object run (TMP_008b §12.8). A
    full continent fixture against live lmstudio is the next measurement.
@@ -154,6 +153,62 @@ rivers. **No placer work remains.** The recommended next actions:
 
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-18 — Engine→L3→L4 bootstrap rewire — ✅ DONE (M, default v2.2 human-in-loop)
+
+### Outcome
+
+The `tilemap-service bootstrap` CLI demo (`harness/bootstrap.rs`) classified a
+**hardcoded 6-object fixture set** through the L3→L4 retry loops. Now that the
+modificator pipeline (Phase E) produces a real `object_placements` Vec, this
+task **rewires the bootstrap to feed the engine's own placed objects** into L3
+— the genuine engine→L3→L4 flow. M, default v2.2 human-in-loop.
+
+- **Spec:** [`docs/specs/2026-05-18-tilemap-engine-l3-bootstrap-rewire.md`](../../specs/2026-05-18-tilemap-engine-l3-bootstrap-rewire.md)
+  (§1-§5, AC-1..AC-8). PO-1: classify **every** object kind, including biome
+  `Obstacle`s.
+
+### What shipped
+
+| File | Change |
+|---|---|
+| `src/harness/bootstrap.rs` | `engine_placeholders(&TilemapView)` replaces the deleted `bootstrap_placeholders()` — derives `L3Placeholder`s from `object_placements` (1-based contiguous `obj_id`, zone-from-anchor resolution, defensive anchorless skip). `kind_label` (exhaustive 9-variant `TilemapObjectKind` match) + `suggested_canon_kind` (per-kind closed set) + `obstacle_suggestions` (per-`BiomeObjectType` closed set — a mountain/lake/tree get distinct canonical kinds). `bootstrap_template` enriched: `treasure_tiers` on the Wilderness zones + a `Portal`-reached `Forbidden` vault ⇒ the demo now exercises Treasure + MonsterLair + Obstacle + Monolith. |
+| `tests/l4_mock.rs` | `ac7` / `ac11` rewired to a request-parsing mock (`BootstrapMock` — un-escapes the JSON payload, echoes one classification per engine object; `ac11` forces total L3 fallback). |
+| `tests/retry_mock.rs` | `ac6_bootstrap_small_reality_end_to_end` removed — it hardcoded the retired 6-object/3-zone fixture; superseded by `l4_mock::ac7`. |
+
+### Review
+
+- **Design review** — Lead self-review: refinement R1 (`L3Placeholder` has no
+  `PartialEq` ⇒ the determinism test compares projected tuples).
+- **Code review** — 2-stage Lead self-review, 0 HIGH/MED.
+- **`/review-impl`** (POST-REVIEW human checkpoint): **6 findings — 0 HIGH, 0
+  MED, 3 LOW, 2 COSMETIC**. *#1* `engine_placeholders` dropped
+  `biome_object_type` ⇒ all obstacles shared one generic suggestion list — at
+  the operator's request **folded into this task**: new `obstacle_suggestions`
+  keyed by `BiomeObjectType` (9 variants + `None` fallback), spec §5.3a + AC-8,
+  +3 tests. *#2* the §5.4 Monolith claim was untested → added to the AC-5 test.
+  *#3* `ac7` lost `ac6`'s `llm_attempts == 1` assertion → restored. *#4/#5*
+  COSMETIC test-infra (mock parse discriminator, hardcoded zone ids) — accepted
+  with documented mitigations.
+
+### Verify
+
+`cargo test --workspace` green — **256** tilemap-service lib tests + 8 l4_mock +
+8 retry_mock + 5 smoke + 3 harness_mock + 7 determinism (+1 ignored) + 47
+`loreweave_llm` = all passed, 0 failed. `cargo clippy --workspace --all-targets`
+0 warnings.
+
+### Deferred
+
+None — finding #1 (the only deferral candidate) was folded into the task.
+
+### Next
+
+The engine→L3→L4 flow is live on engine-placed objects. Next: a live
+continent-scale measurement against lmstudio; the HTTP service surface
+(DESIGN.md §9 Phase 4+).
 
 ---
 

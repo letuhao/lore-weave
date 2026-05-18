@@ -10,7 +10,6 @@ use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
-use tilemap_service::harness::bootstrap::bootstrap_small_reality;
 use tilemap_service::harness::prompt::{L3Placeholder, fixture_placeholders};
 use tilemap_service::harness::retry::run_l3_with_retries;
 use tilemap_service::llm::{GatewayClient, ModelSource};
@@ -164,36 +163,12 @@ async fn ac3_retry_re_sends_only_the_failing_subset() {
     );
 }
 
-#[tokio::test]
-async fn ac6_bootstrap_small_reality_end_to_end() {
-    // place_tilemap (offline Phase-1 engine) + the L3 retry loop over the six
-    // bootstrap fixture objects, classified clean in one mock response.
-    let body = classify_sse(&[
-        ("obj_1", "BanditCache", "cap_treasure"),
-        ("obj_2", "AncientTree", "cap_landmark"),
-        ("obj_3", "BanditCache", "wilds_treasure"),
-        ("obj_4", "BanditCamp", "wilds_lair"),
-        ("obj_5", "BanditCamp", "grove_lair"),
-        ("obj_6", "AncientTree", "grove_landmark"),
-    ]);
-    let server = scripted_server(vec![(200, body)]).await;
-    let client = GatewayClient::new(server.uri(), "test-token");
-
-    let report = bootstrap_small_reality(
-        &client,
-        ModelSource::PlatformModel,
-        Uuid::nil(),
-        Uuid::nil(),
-        3,
-    )
-    .await
-    .expect("bootstrap runs end-to-end");
-
-    assert_eq!(report.tilemap.zones.len(), 3, "the 3-zone template was placed");
-    assert_eq!(report.l3.classifications.len(), 6, "all 6 fixture objects classified");
-    assert_eq!(report.l3.fallback_count, 0);
-    assert_eq!(report.l3.llm_attempts, 1);
-}
+// NOTE: the former `ac6_bootstrap_small_reality_end_to_end` was removed in the
+// engine→L3 bootstrap rewire (2026-05-18). It hardcoded the retired 6-object
+// fixture set + 3-zone template; the bootstrap now classifies a variable
+// engine-placed object set. End-to-end `bootstrap_small_reality` coverage
+// moved to `l4_mock.rs::ac7_bootstrap_runs_l3_then_l4`, which uses a
+// request-parsing mock that adapts to the engine's actual object set.
 
 #[tokio::test]
 async fn ac4_persistent_failure_falls_back_after_max_attempts() {
