@@ -19,7 +19,9 @@ hemisphere_orientation = which way the continent faces the poles; climate_bias =
 a climate zone to skew toward, or null for none; settlement_density = how dense \
 settlements are; culture_count = number of distinct cultures (1-16); \
 prevailing_wind = the compass direction the wind blows from, driving rain-shadow \
-deserts on the lee side of mountains. \
+deserts on the lee side of mountains; \
+erosion = how hard water carves the terrain (None/Light/Moderate/Heavy) — \
+heavier erosion means deeper valleys, broader river networks, softer mountains. \
 Choose values that fit the brief. Output only the JSON object.";
 
 /// The JSON Schema constraining the LLM output to the `CreativeSeed` shape.
@@ -27,16 +29,16 @@ Choose values that fit the brief. Output only the JSON object.";
 /// MAINTENANCE: the `enum` value lists below are hand-mirrored from the Rust
 /// enums — keep them in sync with `WorldScale`, `WorldArchetype` (minus
 /// `Custom`), `CoastlineProfile`, `HemisphereOrientation`, `PrevailingWind`,
-/// `SettlementDensity`, and `ClimateZone`. The `schema_enums_match_rust_enums`
-/// test catches a stale or bogus entry.
+/// `ErosionStrength`, `SettlementDensity`, and `ClimateZone`. The
+/// `schema_enums_match_rust_enums` test catches a stale or bogus entry.
 pub fn creative_seed_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
         "required": [
             "world_scale", "world_archetype", "coastline_profile",
-            "hemisphere_orientation", "prevailing_wind", "climate_bias",
-            "settlement_density", "culture_count"
+            "hemisphere_orientation", "prevailing_wind", "erosion",
+            "climate_bias", "settlement_density", "culture_count"
         ],
         "properties": {
             "world_scale": { "enum": [
@@ -57,6 +59,7 @@ pub fn creative_seed_schema() -> Value {
                 "North", "NorthEast", "East", "SouthEast",
                 "South", "SouthWest", "West", "NorthWest"
             ] },
+            "erosion": { "enum": ["None", "Light", "Moderate", "Heavy"] },
             "climate_bias": { "enum": [
                 "Polar", "Boreal", "Temperate", "Mediterranean", "Subtropical",
                 "Tropical", "Arid", "Highland", null
@@ -167,8 +170,8 @@ mod tests {
     use super::*;
     use crate::climate::ClimateZone;
     use crate::creative_seed::{
-        CoastlineProfile, HemisphereOrientation, PrevailingWind, SettlementDensity, WorldArchetype,
-        WorldScale,
+        CoastlineProfile, ErosionStrength, HemisphereOrientation, PrevailingWind, SettlementDensity,
+        WorldArchetype, WorldScale,
     };
 
     const VALID: &str = r#"{
@@ -285,6 +288,9 @@ mod tests {
         parses("prevailing_wind", &|s| {
             serde_json::from_value::<PrevailingWind>(json!(s)).is_ok()
         });
+        parses("erosion", &|s| {
+            serde_json::from_value::<ErosionStrength>(json!(s)).is_ok()
+        });
         parses("settlement_density", &|s| {
             serde_json::from_value::<SettlementDensity>(json!(s)).is_ok()
         });
@@ -308,6 +314,7 @@ mod tests {
         assert_eq!(count("coastline_profile"), 5, "coastline_profile enum count");
         assert_eq!(count("hemisphere_orientation"), 3, "hemisphere enum count");
         assert_eq!(count("prevailing_wind"), 8, "prevailing_wind enum count");
+        assert_eq!(count("erosion"), 4, "erosion enum count");
         assert_eq!(count("settlement_density"), 3, "settlement_density enum count");
         assert_eq!(count("climate_bias"), 9, "climate_bias enum count (8 zones + null)");
 
@@ -335,6 +342,7 @@ mod tests {
             "coastline_profile",
             "hemisphere_orientation",
             "prevailing_wind",
+            "erosion",
             "settlement_density",
             "climate_bias",
         ] {

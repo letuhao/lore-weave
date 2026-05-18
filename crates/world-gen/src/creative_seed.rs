@@ -22,6 +22,11 @@ pub struct CreativeSeed {
     /// shadow. `#[serde(default)]` (`West`) so a pre-wind config JSON loads.
     #[serde(default)]
     pub prevailing_wind: PrevailingWind,
+    /// How hard hydraulic erosion carves the heightmap (valleys, drainage
+    /// networks, sediment fans). `#[serde(default)]` (`Moderate`) so a
+    /// pre-erosion config JSON loads.
+    #[serde(default)]
+    pub erosion: ErosionStrength,
     /// Optional nudge toward a climate zone (`None` = unbiased).
     pub climate_bias: Option<ClimateZone>,
     /// How densely settlements are placed (Phase 3).
@@ -38,6 +43,7 @@ impl Default for CreativeSeed {
             coastline_profile: CoastlineProfile::Coastal,
             hemisphere_orientation: HemisphereOrientation::Northern,
             prevailing_wind: PrevailingWind::West,
+            erosion: ErosionStrength::Moderate,
             climate_bias: None,
             settlement_density: SettlementDensity::Medium,
             culture_count: 5,
@@ -118,6 +124,23 @@ impl PrevailingWind {
             PrevailingWind::NorthWest => (D, -D),
         }
     }
+}
+
+/// How hard hydraulic erosion carves the heightmap — drives the iteration
+/// count + erodibility in [`crate::erosion`]. `None` is a true no-op (the
+/// heightmap is left exactly as Path B's `height_at` built it); `Moderate` is
+/// the default — a visible, natural amount of valley carving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ErosionStrength {
+    /// No erosion — the raw Path B heightmap.
+    None,
+    /// Light carving — gentle valleys, ridges stay crisp.
+    Light,
+    /// The default — clear dendritic valleys and rounded hillslopes.
+    #[default]
+    Moderate,
+    /// Heavy carving — deep valleys, broad sediment fans, soft ridges.
+    Heavy,
 }
 
 /// World size — sets the deterministic mesh dimensions (GEO_001 §6).
@@ -293,5 +316,22 @@ mod tests {
         let cs: CreativeSeed =
             serde_json::from_str(json).expect("a pre-wind config JSON must still load");
         assert_eq!(cs.prevailing_wind, PrevailingWind::West);
+        // the same JSON also predates `erosion` ⇒ #[serde(default)] → Moderate.
+        assert_eq!(cs.erosion, ErosionStrength::Moderate);
+    }
+
+    #[test]
+    fn erosion_strength_round_trips_through_json() {
+        for e in [
+            ErosionStrength::None,
+            ErosionStrength::Light,
+            ErosionStrength::Moderate,
+            ErosionStrength::Heavy,
+        ] {
+            let cs = CreativeSeed { erosion: e, ..CreativeSeed::default() };
+            let json = serde_json::to_string(&cs).expect("serialize");
+            let back: CreativeSeed = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(back.erosion, e);
+        }
     }
 }

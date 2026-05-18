@@ -15,6 +15,7 @@ pub mod biome;
 pub mod climate;
 pub mod creative_seed;
 pub mod culture;
+pub mod erosion;
 pub mod feature;
 pub mod hydrology;
 pub mod mesh;
@@ -34,8 +35,8 @@ pub use biome::BiomeKind;
 pub use climate::ClimateZone;
 pub use relief::RenderStyle;
 pub use creative_seed::{
-    CoastlineProfile, CreativeSeed, HemisphereOrientation, PrevailingWind, SettlementDensity,
-    WorldArchetype, WorldScale,
+    CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation, PrevailingWind,
+    SettlementDensity, WorldArchetype, WorldScale,
 };
 pub use world_map::{
     Cell, CultureRegion, MountainRange, Province, River, Route, RouteKind, Settlement,
@@ -48,7 +49,13 @@ pub use world_map::{
 pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
     // Stage 1–2 — mesh + heightmap.
     let mesh = mesh::build(seed, cs.world_scale);
-    let terrain = terrain::build(seed, cs.coastline_profile, &mesh.centers, &mesh.neighbors);
+    let terrain = terrain::build(
+        seed,
+        cs.coastline_profile,
+        cs.erosion,
+        &mesh.centers,
+        &mesh.neighbors,
+    );
 
     // Stage 3 — climate.
     let climate = climate::build(

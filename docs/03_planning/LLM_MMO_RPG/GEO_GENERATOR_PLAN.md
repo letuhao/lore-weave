@@ -8,10 +8,10 @@
 
 ## Current status & next session (handoff)
 
-**As of 2026-05-17 — branch `geo-generator-amaw`, unpushed.** The 4-phase
-generator is built, the post-build human-in-loop review is done, and four
+**As of 2026-05-18 — branch `geo-generator-amaw`, unpushed.** The 4-phase
+generator is built, the post-build human-in-loop review is done, and five
 enhancements have since shipped — each via the full default 12-phase v2.2
-workflow (`/review-impl` on the last two):
+workflow (`/review-impl` on enhancements 3–4):
 
 | Work | Commit |
 |---|---|
@@ -19,20 +19,22 @@ workflow (`/review-impl` on the last two):
 | Path B — ridged-noise heightmap (killed the bullseye terrain) | `1bfa54e0` |
 | Orographic climate — wind-driven rain shadow (`--wind` knob) | `13ea0999` |
 | Feature naming — extraction + LLM `name` step + SVG labels | `d0e608e3` |
+| Hydraulic erosion (Path B v2) — two-phase stream-power carve/settle (`--erosion`) | HEAD of `geo-generator-amaw` |
 
-**103 tests green + 2 ignored** (LLM integration), `cargo clippy` clean.
+**112 tests green + 2 ignored** (LLM integration), `cargo clippy` clean.
 
-**Next session — Hydraulic erosion (Path B v2), human-in-loop.** Simulate water
-erosion over the heightmap — carved valleys, dendritic drainage networks,
-sediment fans — the realism step left after Path B's ridged ranges. Run the
-default 12-phase v2.2 workflow with PO checkpoints at CLARIFY end + POST-REVIEW.
-It is a *model* change (touches `terrain.rs` and so `content_hash`) → an L
-task, write a plan file. The per-enhancement build-log notes below carry the
-detail.
+**Next session — open choice.** Hydraulic erosion is done; pick from the open
+enhancements below. Run the default 12-phase v2.2 workflow with PO checkpoints
+at CLARIFY end + POST-REVIEW.
 
 **Other open GEO enhancements** (surveyed, not chosen): render polish + 16-bit
-heightmap export; archetype-conditioned generation (`world_archetype` is still
-inert). The GEO → zone-tilemap handoff is the bridge to other world-map layers.
+heightmap export — *the relief renderer's fBm overlay masks cell-scale model
+detail; this is now the limiting factor on how visible erosion / terrain
+features are*; deposition / sediment-fan refinement (the Path B v2 settle phase
+works but fans are subtle at the 8k-cell mesh — a finer mesh or multi-flow
+routing would sharpen them); archetype-conditioned generation (`world_archetype`
+is still inert). The GEO → zone-tilemap handoff is the bridge to other
+world-map layers.
 
 ---
 
@@ -57,6 +59,8 @@ inert). The GEO → zone-tilemap handoff is the bridge to other world-map layers
 **Orographic climate (2026-05-17):** the first GEO enhancement after the Path A/B render + heightmap work. A new `PrevailingWind` knob on `CreativeSeed` (8 compass directions; CLI `--wind`, LLM-author-settable, `#[serde(default)] = West`). `climate.rs` replaced its pure ocean-distance `dry` input with a wind-driven moisture march (`moisture_field`): air enters moist from the windward sea, recharges over water, and bleeds away over land — a small overland leak (continentality) plus a strong orographic loss wherever terrain climbs — so the lee of a mountain range falls into a dry rain shadow. `dry = 1 − moisture` feeds the existing classifier; biomes and rivers improve downstream for free. `ocean_distance` removed. `content_hash` changes (intentional). 92 tests green, clippy clean; `/review-impl` raised 6 findings (no HIGH) — all fixed. Plan: [`docs/plans/2026-05-17-geo-orographic-climate.md`](../../plans/2026-05-17-geo-orographic-climate.md).
 
 **Feature naming (2026-05-17):** the second GEO enhancement — turns the anonymous heightmap into a *named world*. Two stages: (1) deterministic **feature extraction** (`feature.rs`) — `generate` now flood-fills the biome field into discrete `MountainRange` / `River` / `WaterBody` entities (their geometry feeds `content_hash`); (2) a separate non-deterministic **LLM naming step** (`naming.rs`) — `name_world` makes one json-schema-constrained call and applies names by `zip`. `Settlement` / `Province` / `State` / `CultureRegion` + the 3 new types gained `name: String`; the `name` fields are **excluded from `content_hash`** (a documented carve-out, double-tested) so `generate` stays pure and a named map verifies the same hash as the unnamed one. New `name` CLI subcommand; `political_svg` gained XML-escaped `<text>` labels; `author.rs` factored a shared `llm_json_request`. 103 tests green, clippy clean; `/review-impl` raised 7 findings (no HIGH) — all fixed. Plan: [`docs/plans/2026-05-17-geo-feature-naming.md`](../../plans/2026-05-17-geo-feature-naming.md). PNG text labels (glyph rasterisation) deferred.
+
+**Hydraulic erosion — Path B v2 (2026-05-18):** the third GEO enhancement — carves the raw Path B heightmap. NEW `erosion.rs`: a two-phase stream-power landscape-evolution pass run inside `terrain::build` on the f32 elevation field (after `apply_falloff`, before u16-normalization — quantized steps would round to zero). Each iteration runs its own `f32` priority-flood (Barnes depression-fill, `total_cmp`-ordered heap), adopts the *filled* field (a raw heightmap is pit-riddled — incising it directly is a near no-op), accumulates uniform-rain drainage area, then incises `K·area^m·slope` (clamped to the receiver drop). The **carve phase** is pure incision (cuts dendritic valley networks); the **settle phase** then adds transport-capacity deposition — `settle_rate` of the load above `Kc·area^m·slope` is dropped (valley-floor fill / mountain-front fans). The two-phase split is load-bearing: deposition during the violent carve refills valleys faster than they cut. Hillslope diffusion rounds ridge crests. A NEW `ErosionStrength` knob (None/Light/Moderate/Heavy, default Moderate, `#[serde(default)]`) on `CreativeSeed` — `--erosion` CLI flag + LLM-author schema. Incision is clamped to never carve land below the provisional waterline (no sub-sea speckle); **Archipelago is skipped** (`terrain::build` gate — incision carving a strait would dissect its fixed 5-disc invariant, mirroring `enforce_coherence`/`choose_sea_level`). `content_hash` changes for the 4 non-Archipelago profiles (intentional). 112 tests green (+9), clippy clean. Default v2.2 workflow, human-in-loop; the deposition model was redesigned mid-VERIFY (Davy-Lague `G/area` → two-phase transport-capacity) on a PO call after the first model refilled valleys. Plan: [`docs/plans/2026-05-18-geo-hydraulic-erosion.md`](../../plans/2026-05-18-geo-hydraulic-erosion.md). Sharper sediment fans (finer mesh / multi-flow routing) and 16-bit heightmap export deferred.
 
 ### Phase 1 — build log (2026-05-17)
 

@@ -12,8 +12,9 @@
 //! - the optional Inland continental **dome**.
 //!
 //! Then a coastline-profile radial falloff (`apply_falloff` — shapes *where*
-//! land is), normalize to `u16`, a connectivity-aware sea level, and
-//! structural land-coherence enforcement.
+//! land is), **hydraulic erosion** ([`crate::erosion`] — carves valleys and
+//! drainage networks into the raw heightmap, Path B v2), normalize to `u16`,
+//! a connectivity-aware sea level, and structural land-coherence enforcement.
 //!
 //! Land coherence (acceptance criterion #5) is enforced structurally:
 //! - non-Archipelago — `enforce_coherence` submerges every land component
@@ -22,7 +23,8 @@
 //!   island discs (`ARCH_ISLANDS` / `ARCH_RADIUS`); the mask is exactly 0
 //!   between discs, so the islands are always separate connected components.
 
-use crate::creative_seed::CoastlineProfile;
+use crate::creative_seed::{CoastlineProfile, ErosionStrength};
+use crate::erosion;
 use crate::noise::{fbm, ridged_fbm};
 use crate::rng::sub_seed;
 
@@ -84,6 +86,7 @@ pub struct Terrain {
 pub fn build(
     seed: u64,
     profile: CoastlineProfile,
+    erosion_strength: ErosionStrength,
     centers: &[(f32, f32)],
     neighbors: &[Vec<u32>],
 ) -> Terrain {
@@ -100,6 +103,15 @@ pub fn build(
 
     // Coastline-profile radial falloff — shapes *where* land is.
     apply_falloff(profile, centers, &mut elev);
+
+    // Hydraulic erosion (Path B v2) — carve valleys / drainage networks into
+    // the raw heightmap, on the f32 field before it is quantized to u16.
+    // Skipped for Archipelago: that profile's defining invariant is 5 fixed
+    // island discs (see `apply_falloff` / `enforce_coherence`), and incision
+    // carving a strait would dissect one. Erosion shapes coherent landmasses.
+    if !profile.is_archipelago() {
+        erosion::apply(&mut elev, neighbors, profile.land_fraction(), erosion_strength);
+    }
 
     // Normalize to [0,1], then to u16.
     let mut lo = f32::INFINITY;

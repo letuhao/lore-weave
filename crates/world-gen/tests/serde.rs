@@ -1,8 +1,8 @@
 //! Phase 4 — JSON round-trip stability + hash verification.
 
 use world_gen::{
-    BiomeKind, ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, PrevailingWind,
-    SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
+    BiomeKind, ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
+    PrevailingWind, SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
 };
 
 /// `generate → to_string_pretty → from_str` is identity, and the loaded map
@@ -58,6 +58,7 @@ fn config_loaded_creative_seed_matches_flag_built() {
         coastline_profile: CoastlineProfile::Island,
         hemisphere_orientation: HemisphereOrientation::Southern,
         prevailing_wind: PrevailingWind::SouthEast,
+        erosion: ErosionStrength::Heavy,
         climate_bias: Some(ClimateZone::Highland),
         settlement_density: SettlementDensity::Sparse,
         culture_count: 7,

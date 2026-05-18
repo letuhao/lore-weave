@@ -13,8 +13,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use world_gen::{
-    ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation, PrevailingWind,
-    RenderStyle, SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
+    ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
+    PrevailingWind, RenderStyle, SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
 };
 
 #[derive(Parser)]
@@ -59,6 +59,9 @@ struct GenerateArgs {
     /// orographic rain shadow.
     #[arg(long, value_enum, default_value_t = WindArg::West)]
     wind: WindArg,
+    /// Hydraulic-erosion strength — how hard water carves valleys.
+    #[arg(long, value_enum, default_value_t = ErosionArg::Moderate)]
+    erosion: ErosionArg,
     /// Optional climate-zone bias.
     #[arg(long, value_enum)]
     climate_bias: Option<ClimateBiasArg>,
@@ -166,6 +169,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             coastline_profile: cli.coastline.into(),
             hemisphere_orientation: cli.hemisphere.into(),
             prevailing_wind: cli.wind.into(),
+            erosion: cli.erosion.into(),
             climate_bias: cli.climate_bias.map(Into::into),
             settlement_density: cli.settlement_density.into(),
             culture_count: cli.culture_count,
@@ -453,6 +457,25 @@ impl From<WindArg> for PrevailingWind {
             WindArg::SouthWest => PrevailingWind::SouthWest,
             WindArg::West => PrevailingWind::West,
             WindArg::NorthWest => PrevailingWind::NorthWest,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ErosionArg {
+    None,
+    Light,
+    Moderate,
+    Heavy,
+}
+
+impl From<ErosionArg> for ErosionStrength {
+    fn from(e: ErosionArg) -> Self {
+        match e {
+            ErosionArg::None => ErosionStrength::None,
+            ErosionArg::Light => ErosionStrength::Light,
+            ErosionArg::Moderate => ErosionStrength::Moderate,
+            ErosionArg::Heavy => ErosionStrength::Heavy,
         }
     }
 }
