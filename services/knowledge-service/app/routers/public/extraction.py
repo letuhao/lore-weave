@@ -1416,13 +1416,16 @@ CALL {
          0 AS event_count, 0 AS passage_count
   UNION ALL
   MATCH (f:Fact {user_id: $user_id, project_id: $project_id})
-  RETURN 0, count(f), 0, 0
+  RETURN 0 AS entity_count, count(f) AS fact_count,
+         0 AS event_count, 0 AS passage_count
   UNION ALL
   MATCH (ev:Event {user_id: $user_id, project_id: $project_id})
-  RETURN 0, 0, count(ev), 0
+  RETURN 0 AS entity_count, 0 AS fact_count,
+         count(ev) AS event_count, 0 AS passage_count
   UNION ALL
   MATCH (p:Passage {user_id: $user_id, project_id: $project_id})
-  RETURN 0, 0, 0, count(p)
+  RETURN 0 AS entity_count, 0 AS fact_count,
+         0 AS event_count, count(p) AS passage_count
 }
 RETURN sum(entity_count) AS entity_count, sum(fact_count) AS fact_count,
        sum(event_count) AS event_count, sum(passage_count) AS passage_count

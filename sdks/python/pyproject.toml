@@ -35,6 +35,14 @@ test = [
 include = ["loreweave_llm*", "loreweave_extraction*", "loreweave_obs*"]
 exclude = ["tests*"]
 
+# D-EMB-MODEL-REF-01 — loreweave_extraction loads its Pass-2 prompts from
+# prompts/*.md at runtime (loreweave_extraction/prompts/__init__.py).
+# setuptools drops non-.py files by default, so without this the
+# installed package has no prompts and every extraction job fails with
+# FileNotFoundError. Ship the .md prompt templates as package data.
+[tool.setuptools.package-data]
+loreweave_extraction = ["prompts/*.md"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

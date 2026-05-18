@@ -36,7 +36,6 @@ from uuid import UUID
 import asyncpg
 
 from app.clients.embedding_client import EmbeddingClient
-from app.context.selectors.passages import EMBEDDING_MODEL_TO_DIM
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.projects import ProjectsRepo
@@ -74,8 +73,8 @@ class NoEmbeddingModelError(BenchmarkRunError):
 
 
 class UnknownEmbeddingModelError(BenchmarkRunError):
-    """Project's ``embedding_model`` is not in ``EMBEDDING_MODEL_TO_DIM`` —
-    the harness can't look up the right vector index dim."""
+    """Project's configured ``embedding_dimension`` has no matching
+    ``:Passage`` vector index, so the harness can't run."""
 
 
 class NotBenchmarkProjectError(BenchmarkRunError):
@@ -204,21 +203,20 @@ async def run_project_benchmark(
             "project has no embedding_model/embedding_dimension configured",
         )
 
-    embedding_dim = EMBEDDING_MODEL_TO_DIM.get(project.embedding_model)
-    if embedding_dim is None:
-        raise UnknownEmbeddingModelError(
-            f"embedding model {project.embedding_model!r} not in "
-            "EMBEDDING_MODEL_TO_DIM — extend the map before running",
-        )
-    # Guard: EMBEDDING_MODEL_TO_DIM carries some models (e.g. nomic-
-    # embed-text at dim 768) whose dim isn't in SUPPORTED_PASSAGE_DIMS.
-    # Those models skip the L3 selector silently in production; here
-    # we'd fail later inside upsert_passage with a ValueError — convert
-    # to a clean 409 instead.
+    # D-EMB-MODEL-REF-01 — the dimension is the caller-supplied
+    # `embedding_dimension` column; `project.embedding_model` now carries
+    # the provider-registry `user_model` UUID (the embed `model_ref`), not
+    # a logical name, so the old `EMBEDDING_MODEL_TO_DIM` name lookup is
+    # gone. The `not project.embedding_dimension` guard above already
+    # ensured it is a positive int.
+    embedding_dim = project.embedding_dimension
+    # Guard: the configured dimension must have a :Passage vector index —
+    # otherwise upsert_passage fails later with a ValueError; convert to a
+    # clean 409 here (review-impl M2).
     if embedding_dim not in SUPPORTED_PASSAGE_DIMS:
         raise UnknownEmbeddingModelError(
-            f"embedding model {project.embedding_model!r} uses dim "
-            f"{embedding_dim} which has no :Passage vector index",
+            f"project embedding dimension {embedding_dim} has no "
+            f":Passage vector index (supported: {sorted(SUPPORTED_PASSAGE_DIMS)})",
         )
 
     if await _has_real_passages(str(user_id), str(project_id)):

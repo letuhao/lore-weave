@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS knowledge_projects (
   extraction_enabled  BOOLEAN NOT NULL DEFAULT false,
   extraction_status   TEXT NOT NULL DEFAULT 'disabled'
     CHECK (extraction_status IN ('disabled','building','paused','ready','failed')),
+  -- D-EMB-MODEL-REF-01: holds the provider-registry user_model UUID of
+  -- the embedding model (the /internal/embed model_ref). TEXT-typed for
+  -- back-compat; the value is a UUID string. Pair with embedding_dimension.
   embedding_model     TEXT,
   extraction_config   JSONB NOT NULL DEFAULT '{}'::jsonb,
   last_extracted_at   TIMESTAMPTZ,

@@ -6,7 +6,9 @@ type: adr
 
 # ADR — Embedding model-ref contract: logical name vs. provider UUID
 
-> **Status:** PROPOSED (2026-05-18, session 58 cycle 2 — DESIGN only, no code)
+> **Status:** IMPLEMENTED — core (session 58 cycle 3), simplified variant.
+> Cycle 2 wrote this ADR (DESIGN only); cycle 3 implemented the fix and
+> verified the Track 2/3 extraction pipeline live. See §12.
 > **Discovered by:** the D-K21B-06 follow-on Track 2/3 extraction live-smoke
 > attempt (session 58). Setting up the smoke surfaced that the K17.9
 > embedding benchmark gate can never pass live.
@@ -389,3 +391,68 @@ Recommended slicing if it proves XL at CLARIFY:
 |---|---|
 | 2026-05-18 | Bug found during the D-K21B-06 Track 2/3 extraction smoke. ADR written. **Option A** (UUID `model_ref`) chosen over Option B (name resolution in provider-registry) — provider-registry must not carry knowledge-service's curated logical-name abstraction. Implementation deferred to a dedicated CLARIFY→DESIGN→BUILD cycle (D-EMB-MODEL-REF-01). |
 | 2026-05-18 | `/review-impl` on the ADR — 0 HIGH, 5 MED, 3 LOW. Folded: M1 → Option C (platform-hosted embeddings) added as a first-class CLARIFY decision (Q5); M2 → §7.3 step 4 (probed dimension must have a Neo4j vector index); M3 → §7.3b (re-key the K17.9 benchmark on the UUID); M4 → §7.3a (re-embed-on-change rule); M5 → §6 note (Option A chosen for *concern ownership*, not diff size). L1 → Q8 resolved by grep (knowledge-service is the only `/internal/embed` caller). L2/L3 folded into §7.3/§7.5. |
+| 2026-05-18 (cycle 3) | Implemented — **Option A, simplified to one column** (§12). The two-column design (§7.2: a new `embedding_user_model_id` UUID + the kept logical name) was found over-engineered during BUILD: the logical name is **vestigial**. A UUID tags `:Passage` nodes and discriminates vector spaces just as well, and the dimension already has its own column. So the existing `embedding_model TEXT` column simply now carries the `user_model` UUID; `embedding_dimension` is caller-supplied; `EMBEDDING_MODEL_TO_DIM` is retired from runtime. No new column, no 6-site re-threading (the sites already passed `embedding_model` as `model_ref` — it just holds the right value now). M3 (benchmark gate re-key) resolved for free — the gate keys on `embedding_model`, which is now the UUID. |
+
+---
+
+## 12. Implementation note (session 58 cycle 3)
+
+**Built — the simplified one-column variant.** `embedding_model TEXT` now
+holds the provider-registry `user_model` UUID (the `/internal/embed`
+`model_ref`); `embedding_dimension` is caller-supplied; the logical name
+and `EMBEDDING_MODEL_TO_DIM` are retired. 8 source files + 3 test files:
+
+- `db/models.py`, `db/repositories/projects.py` — `embedding_dimension`
+  is now a directly-settable `ProjectUpdate` field (was derived from the
+  name map); clearing `embedding_model` still clears the dimension.
+- `benchmark/runner.py`, `context/modes/full.py` — dimension sourced from
+  `project.embedding_dimension`, not `EMBEDDING_MODEL_TO_DIM`.
+- `eval/run_benchmark.py` — CLI takes `--embedding-dim` explicitly.
+- `context/selectors/passages.py` — `EMBEDDING_MODEL_TO_DIM` marked legacy.
+- `routers/public/extraction.py` — fixed the `_GRAPH_STATS_CYPHER`
+  duplicate-column syntax error (a separate latent bug — the graph-stats
+  endpoint 500'd on Neo4j 2026.03; bare `RETURN 0, 0, count(ev), 0`
+  branches now alias every column).
+
+**Two further latent bugs the live smoke surfaced + fixed in the same
+cycle** (all "wired but never run end-to-end"):
+
+- `services/knowledge-service/Dockerfile` — the **production** stage
+  copied only `app/`, but `app/benchmark/runner.py` imports `eval.*`.
+  The benchmark endpoint `ModuleNotFoundError`'d in every deployed image.
+  Production stage now copies `eval/` too. (Cleaner: move the three
+  benchmark-runtime modules under `app/benchmark/` — `D-EMB-EVAL-PKG-01`.)
+- `sdks/python/pyproject.toml` — `loreweave_extraction` shipped **without
+  its `prompts/*.md`** files (setuptools drops non-`.py` data by default,
+  no `package-data`). Every Pass-2 extraction `FileNotFoundError`'d on
+  the prompt template. Added `[tool.setuptools.package-data]`.
+
+**Verified live.** Full Track 2/3 extraction smoke: registered
+`text-embedding-bge-m3` (provider-registry) → embed works with the UUID
+(1024-dim) → K17.9 benchmark ran (`recall@3=1.0`, `mrr=1.0` — embeddings
+flow correctly) → extraction job `complete` (1 chapter) → **9 `:Entity`
+nodes + 10 `:Passage` nodes** in Neo4j → `graph-stats` returns
+`{entity_count: 9, passage_count: 10}`. knowledge-service unit suite
+1608/1608.
+
+**Still open (follow-ups, not blocking the pipeline):**
+
+- **`D-EMB-MODEL-REF-02`** — `change_embedding_model` (`extraction.py`,
+  via `set_extraction_state`) sets `embedding_model` but **not**
+  `embedding_dimension` → a model change through that endpoint leaves a
+  stale/None dimension. Needs the §7.3a re-embed design too. The project
+  PATCH path (used by the smoke) is correct; `change_embedding_model`
+  is the gap.
+- **`D-EMB-MODEL-REF-03`** — the FE embedding picker (K12.4) + the probe-
+  at-config-time validation (§7.3) are not built; config is API/DB-direct
+  for now. Q1 (capability discovery) + Q5 (platform-vs-BYOK) still open.
+- **`D-EMB-BENCHMARK-CAL-01`** — the K17.9 golden-set
+  `negative_control_max_score` ceiling (0.50) is too strict for bge-m3's
+  score distribution: a clean run scored `recall@3=1.0` but
+  `negative_control=0.664` → `passed=false`. The smoke flipped the row to
+  proceed. The threshold needs per-model calibration.
+- **`D-EMB-EVAL-PKG-01`** — move `fixture_loader` / `mode3_query_runner` /
+  `persist` from `eval/` into `app/benchmark/` so production doesn't ship
+  the eval harness.
+- The full ADR open questions Q1/Q2/Q5/Q7 remain for the
+  picker/platform/re-embed follow-up.

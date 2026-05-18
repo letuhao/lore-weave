@@ -37,12 +37,11 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # gate. NOT NULL, so — like tool_calling_enabled — deliberately
      # absent from _NULLABLE_UPDATE_COLUMNS; explicit None is skipped.
      "memory_remember_confirm",
-     # K12.4: embedding_dimension is a DERIVED column — it's not
-     # present on ProjectUpdate, Pydantic will reject it on direct
-     # PATCH attempts. It's added to `updates` inside the auto-derive
-     # block when embedding_model changes, and needs allowlist
-     # membership so the defense-in-depth check doesn't treat it
-     # as a code bug.
+     # D-EMB-MODEL-REF-01: embedding_dimension is now caller-supplied
+     # (it was a derived column under the old logical-name design).
+     # embedding_model carries the provider-registry user_model UUID,
+     # which is not derivable to a dimension — so the caller (FE picker /
+     # config flow) sends embedding_model + embedding_dimension together.
      "embedding_dimension"}
 )
 
@@ -50,11 +49,11 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
 # explicitly-set field is treated as "skip" (not "set to NULL") so we
 # don't violate NOT NULL constraints.
 # - `book_id`: None clears the book link.
-# - `embedding_model` (K12.4): None clears the model selection. When
-#   embedding_model is updated we also auto-update embedding_dimension
-#   via the EMBEDDING_MODEL_TO_DIM map in the update() method.
-# - `embedding_dimension` (K12.4 derived): nullable when model is
-#   cleared or unknown to the map.
+# - `embedding_model` (D-EMB-MODEL-REF-01): the provider-registry
+#   user_model UUID of the embedding model. None clears the selection;
+#   clearing it also clears embedding_dimension (see update()).
+# - `embedding_dimension` (D-EMB-MODEL-REF-01): caller-supplied; nullable
+#   so the model selection can be cleared.
 _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
     {"book_id", "embedding_model", "embedding_dimension"}
 )
@@ -225,20 +224,14 @@ class ProjectsRepo:
                 continue
             updates[field] = value
 
-        # K12.4: when embedding_model changes, auto-derive embedding_dimension
-        # from the single-source-of-truth map in the L3 selector. Unknown
-        # models get dimension=None and the downstream L3 / passage pipeline
-        # skips cleanly. Clearing the model (None) clears the dim too.
-        if "embedding_model" in updates:
-            # Local import sidesteps a circular with context.selectors at
-            # module load — projects.py is imported by deps.py which gets
-            # pulled into app startup well before context modules.
-            from app.context.selectors.passages import EMBEDDING_MODEL_TO_DIM
-            model = updates["embedding_model"]
-            if model is None:
-                updates["embedding_dimension"] = None
-            else:
-                updates["embedding_dimension"] = EMBEDDING_MODEL_TO_DIM.get(model)
+        # D-EMB-MODEL-REF-01: embedding_model now carries the provider-
+        # registry user_model UUID — a dimension is not derivable from it,
+        # so the caller supplies embedding_dimension explicitly. The only
+        # invariant kept here: clearing the model (None) clears the
+        # dimension too, so a project can't be left model-less but
+        # dimension-tagged.
+        if updates.get("embedding_model", "unset") is None:
+            updates["embedding_dimension"] = None
 
         if not updates:
             # No-op: K7b contract preserves updated_at AND version. Even

@@ -202,25 +202,14 @@ async def test_raises_no_embedding_model_when_dim_missing():
 
 
 @pytest.mark.asyncio
-async def test_raises_unknown_embedding_model_when_not_in_map():
-    repo = _fake_projects_repo(
-        _project(embedding_model="fantasy-model-v9", embedding_dimension=1024),
-    )
-    with pytest.raises(UnknownEmbeddingModelError):
-        await run_project_benchmark(
-            user_id=_USER, project_id=_PROJECT, runs=3,
-            pool=AsyncMock(), projects_repo=repo,
-            embedding_client=AsyncMock(),
-        )
-
-
-@pytest.mark.asyncio
 async def test_raises_unknown_embedding_model_when_dim_unsupported():
-    """nomic-embed-text is in the map at dim 768 but 768 isn't in
-    SUPPORTED_PASSAGE_DIMS — we should surface as 409 not a late
-    ValueError from upsert_passage."""
+    """D-EMB-MODEL-REF-01 — embedding_model is now an opaque provider
+    user_model UUID and is no longer name-validated; only the configured
+    embedding_dimension is checked. A dimension outside
+    SUPPORTED_PASSAGE_DIMS (no :Passage vector index) must surface as a
+    clean 409, not a late ValueError from upsert_passage."""
     repo = _fake_projects_repo(
-        _project(embedding_model="nomic-embed-text", embedding_dimension=768),
+        _project(embedding_model="some-user-model-uuid", embedding_dimension=768),
     )
     with pytest.raises(UnknownEmbeddingModelError):
         await run_project_benchmark(

@@ -126,19 +126,19 @@ async def _safe_l3_passages(
     # `app.context.selectors.passages.select_l3_passages` directly, and
     # a top-level import here would bind the original reference at
     # module load time, making the monkeypatch a no-op.
-    from app.context.selectors.passages import (
-        EMBEDDING_MODEL_TO_DIM,
-        select_l3_passages,
-    )
+    from app.context.selectors.passages import select_l3_passages
 
     if embedding_client is None or not project.embedding_model:
         return []
 
-    embedding_dim = EMBEDDING_MODEL_TO_DIM.get(project.embedding_model)
-    if embedding_dim is None:
+    # D-EMB-MODEL-REF-01 — the dimension is the caller-supplied
+    # `embedding_dimension` column; `project.embedding_model` now carries
+    # the provider-registry `user_model` UUID (the embed `model_ref`).
+    embedding_dim = project.embedding_dimension
+    if not embedding_dim:
         logger.debug(
-            "Mode 3 L3 skipped: unknown embedding_model=%s",
-            project.embedding_model,
+            "Mode 3 L3 skipped: project %s has no embedding_dimension",
+            project.project_id,
         )
         return []
 

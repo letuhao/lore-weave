@@ -39,9 +39,14 @@ class Project(BaseModel):
     instructions: str
     extraction_enabled: bool
     extraction_status: ExtractionStatus
+    # D-EMB-MODEL-REF-01: the provider-registry `user_model` UUID of the
+    # project's embedding model (the `model_ref` for `/internal/embed`).
+    # TEXT-typed for back-compat; holds a UUID string. NULL = not yet
+    # configured. (Pre-fix this held a logical name like "bge-m3", which
+    # provider-registry 400'd — see KNOWLEDGE_SERVICE_EMBEDDING_MODEL_REF_ADR.)
     embedding_model: str | None = None
-    # K12.3 column surfaced for K18.3 / D-K18.3-01 ingestion; the
-    # passage_ingester + L3 selector need the dim at call time.
+    # D-EMB-MODEL-REF-01: caller-supplied vector dimension; the
+    # passage_ingester + L3 selector + benchmark read it at call time.
     embedding_dimension: int | None = None
     extraction_config: dict
     last_extracted_at: datetime | None = None
@@ -82,12 +87,17 @@ class ProjectUpdate(BaseModel):
       to `true` is rejected at the router with 422 — archive uses the
       dedicated `POST /archive` endpoint which has the 404-oracle
       hardening (does not leak whether a project exists). K-CLEAN-3.
-    - `embedding_model` (K12.4): omit to leave unchanged. Set to a
-      known model name (e.g. "bge-m3", "text-embedding-3-small") to
-      switch the project's vector space. Set to None to clear. The
-      repo auto-derives `embedding_dimension` from the model name
-      via the `EMBEDDING_MODEL_TO_DIM` map — callers never pass the
-      dimension directly.
+    - `embedding_model` (D-EMB-MODEL-REF-01): omit to leave unchanged.
+      Set to a provider-registry `user_model` UUID (the embedding
+      model's `model_ref`) to switch the project's vector space; set to
+      None to clear. Send `embedding_dimension` alongside it — the two
+      define the vector space together and the dimension is no longer
+      derivable from the (now opaque UUID) model ref. Clearing the model
+      (None) clears the dimension.
+    - `embedding_dimension` (D-EMB-MODEL-REF-01): omit to leave
+      unchanged. The vector dimension of the chosen embedding model;
+      caller-supplied (the FE picker / config flow knows it, e.g. from a
+      probe call). Must pair with `embedding_model`.
     - `tool_calling_enabled` (K21.12-BE, design D9): omit to leave
       unchanged. Set to `true`/`false` to toggle whether the
       chat-service tool-calling loop offers memory tools for this
@@ -109,6 +119,7 @@ class ProjectUpdate(BaseModel):
     book_id: UUID | None = None
     is_archived: bool | None = None
     embedding_model: str | None = None
+    embedding_dimension: int | None = None
     tool_calling_enabled: bool | None = None
     memory_remember_confirm: bool | None = None
 

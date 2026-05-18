@@ -338,7 +338,6 @@ async def _run_cli(args: Any) -> int:
 
     from app.clients.embedding_client import init_embedding_client
     from app.config import settings
-    from app.context.selectors.passages import EMBEDDING_MODEL_TO_DIM
     from app.db.neo4j import init_neo4j_driver, neo4j_session
 
     from .fixture_loader import load_golden_set_as_passages
@@ -349,13 +348,10 @@ async def _run_cli(args: Any) -> int:
     logger = _logging.getLogger("K17.9.cli")
 
     golden = load_golden_set(args.golden or _default_golden_path())
-    embedding_dim = EMBEDDING_MODEL_TO_DIM.get(args.embedding_model)
-    if embedding_dim is None:
-        logger.error(
-            "unknown embedding model %s — add to EMBEDDING_MODEL_TO_DIM",
-            args.embedding_model,
-        )
-        return 2
+    # D-EMB-MODEL-REF-01 — --embedding-model is now a provider-registry
+    # user_model UUID, so the dimension can't be derived from it; the
+    # caller passes it explicitly via --embedding-dim.
+    embedding_dim = args.embedding_dim
 
     await init_neo4j_driver()
     embedding_client = init_embedding_client()
@@ -425,7 +421,14 @@ def _build_arg_parser() -> Any:
     p = argparse.ArgumentParser(prog="run_benchmark")
     p.add_argument("--user-id", required=True, help="UUID of the benchmark test user")
     p.add_argument("--project-id", required=True, help="UUID of the benchmark project")
-    p.add_argument("--embedding-model", required=True, help="e.g. bge-m3, text-embedding-3-small")
+    p.add_argument(
+        "--embedding-model", required=True,
+        help="provider-registry user_model UUID of the embedding model",
+    )
+    p.add_argument(
+        "--embedding-dim", required=True, type=int,
+        help="vector dimension of the embedding model (e.g. 1024 for bge-m3)",
+    )
     p.add_argument(
         "--model-source", default="user_model",
         choices=["user_model", "platform_model"],

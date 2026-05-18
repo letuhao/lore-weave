@@ -338,7 +338,7 @@ async def test_l3_passages_rendered_in_block(monkeypatch):
 
     # Project needs an embedding_model so the L3 path doesn't short-circuit.
     project = _project()
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
 
     result = await build_full_mode(
         summaries_repo=MagicMock(),
@@ -386,7 +386,7 @@ async def test_budget_drops_passages_first(monkeypatch):
     _patch_mode3_pieces(monkeypatch, l3_passages=passages)
 
     project = _project()
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
 
     # Tight budget forces the trim.
     monkeypatch.setattr(
@@ -424,7 +424,7 @@ async def test_budget_drops_lowest_score_passages_first(monkeypatch):
     _patch_mode3_pieces(monkeypatch, l3_passages=passages)
 
     project = _project()
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
     # Budget chosen so ~2 passages fit — forces the trimmer to drop
     # the lowest-score ones first.
     monkeypatch.setattr(
@@ -463,7 +463,7 @@ async def test_budget_token_count_respects_budget(monkeypatch):
     _patch_mode3_pieces(monkeypatch, l3_passages=passages)
 
     project = _project()
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
     budget = 250
     monkeypatch.setattr(
         "app.context.modes.full.settings.mode3_token_budget", budget,
@@ -503,7 +503,7 @@ async def test_budget_keeps_l0_l1_instructions_protected(monkeypatch):
     )
 
     project = _project(instructions="Always be formal.")
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
 
     # Unreasonably small budget — forces every drop path to run.
     monkeypatch.setattr(
@@ -546,7 +546,7 @@ async def test_l3_hits_count_as_absence_coverage(monkeypatch):
     _patch_mode3_pieces(monkeypatch, l3_passages=passages)
 
     project = _project()
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
 
     result = await build_full_mode(
         summaries_repo=MagicMock(),
@@ -648,7 +648,7 @@ async def test_rerank_model_from_extraction_config_triggers_rerank(monkeypatch):
     ))
 
     project = _project()
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
     project.extraction_config = {"rerank_model": "llama-3-rerank"}
 
     await build_full_mode(
@@ -682,7 +682,7 @@ async def test_rerank_skipped_when_extraction_config_has_no_rerank_model(
     ))
 
     project = _project()
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
     project.extraction_config = {}  # no rerank_model key
 
     await build_full_mode(
@@ -726,7 +726,7 @@ async def test_mode3_split_preserved_after_budget_trim(monkeypatch):
     )
 
     project = _project(instructions="Be terse.")
-    project.embedding_model = "bge-m3"
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024  # D-EMB-MODEL-REF-01
 
     result = await build_full_mode(
         summaries_repo=MagicMock(),

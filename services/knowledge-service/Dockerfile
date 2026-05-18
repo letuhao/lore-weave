@@ -42,6 +42,13 @@ RUN KNOWLEDGE_DB_URL=postgresql://u:p@localhost:5432/knowledge \
 FROM deps AS production
 
 COPY services/knowledge-service/app/ ./app/
+# D-EMB-MODEL-REF-01: the K17.9 benchmark endpoint is production-wired
+# (app/routers/public/extraction.py → app/benchmark/runner.py), and
+# runner.py imports eval.fixture_loader / eval.mode3_query_runner /
+# eval.persist + reads eval/golden_set.yaml. eval/ must therefore ship
+# in the production image. (Cleaner long-term: move those three modules
+# under app/benchmark/ — tracked as D-EMB-EVAL-PKG-01.)
+COPY services/knowledge-service/eval/ ./eval/
 
 RUN adduser --system --group --no-create-home app \
     && chown -R app:app /app
