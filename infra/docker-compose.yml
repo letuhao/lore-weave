@@ -267,16 +267,20 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # Phase 6a — spend-guardrail default budgets (USD). REQUIRED — the
       # service fails to start if unset (no hardcoded literal, billing
-      # ADR P5). 100M for the test/UAT environment per the ADR's free
-      # tier. RESERVATION_TTL is the leaked-hold sweeper horizon; the
-      # code default (45m) exceeds the longest job timeout.
-      GUARDRAIL_DEFAULT_DAILY_USD: ${GUARDRAIL_DEFAULT_DAILY_USD:-100000000}
-      GUARDRAIL_DEFAULT_MONTHLY_USD: ${GUARDRAIL_DEFAULT_MONTHLY_USD:-100000000}
+      # ADR P5). Effectively-unlimited for the test/UAT environment.
+      # CEILING: spend_guardrails/platform_balances columns are
+      # numeric(16,8) — absolute value must be < 10^8, so 99_000_000 is
+      # the largest round "unlimited" default that does not overflow the
+      # seed INSERT. RESERVATION_TTL is the leaked-hold sweeper horizon;
+      # the code default (45m) exceeds the longest job timeout.
+      GUARDRAIL_DEFAULT_DAILY_USD: ${GUARDRAIL_DEFAULT_DAILY_USD:-99000000}
+      GUARDRAIL_DEFAULT_MONTHLY_USD: ${GUARDRAIL_DEFAULT_MONTHLY_USD:-99000000}
       RESERVATION_TTL: ${RESERVATION_TTL:-45m}
       # Phase 6a-β — Subsystem B platform free-tier allowance (USD). REQUIRED
       # — the service fails to start if unset (no DDL default, billing ADR
       # P5). Generous for the test/UAT environment so it never gates.
-      PLATFORM_FREE_TIER_USD: ${PLATFORM_FREE_TIER_USD:-100000000}
+      # Same numeric(16,8) ceiling as the guardrail budgets above.
+      PLATFORM_FREE_TIER_USD: ${PLATFORM_FREE_TIER_USD:-99000000}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
@@ -458,8 +462,14 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # build_context is a fast read on the chat hot path — 500ms.
       KNOWLEDGE_CLIENT_TIMEOUT_S: "0.5"
       KNOWLEDGE_CLIENT_RETRIES: "1"
+      # K21-B tool execution (memory_remember etc.) does real work —
+      # injection-neutralisation + a Neo4j write — and routinely exceeds
+      # 500ms. execute_tool uses this longer per-call timeout instead of
+      # the build_context budget above (D-K21B-06 live-smoke finding).
+      KNOWLEDGE_TOOL_TIMEOUT_S: "30"
     depends_on:
       postgres:
         condition: service_healthy

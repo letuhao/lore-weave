@@ -108,9 +108,17 @@ class KnowledgeClient:
         timeout_s: float,
         retries: int,
         *,
+        tool_timeout_s: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """Construct the client.
+
+        `timeout_s` is the client-wide default — sized for `build_context`,
+        a fast read on the chat hot path. `tool_timeout_s` is the longer
+        per-call timeout `execute_tool` overrides with: a memory tool does
+        real work (`memory_remember` runs injection-neutralisation + a
+        Neo4j write) and routinely exceeds the build_context budget
+        (D-K21B-06 live-smoke finding).
 
         `transport` is an optional httpx transport to inject at test time
         (K5-I7 fix). Tests use `httpx.MockTransport(handler)` so they
@@ -121,6 +129,7 @@ class KnowledgeClient:
         """
         self._base_url = base_url.rstrip("/")
         self._retries = max(0, retries)
+        self._tool_timeout_s = tool_timeout_s
         client_kwargs: dict = {
             "timeout": httpx.Timeout(timeout_s),
             "headers": {"X-Internal-Token": internal_token},
@@ -306,7 +315,11 @@ class KnowledgeClient:
         tid = current_trace_id()
         call_headers = {"X-Trace-Id": tid} if tid else None
         try:
-            resp = await self._http.post(url, json=body, headers=call_headers)
+            # Override the client-wide build_context budget — a memory
+            # tool does real work and would ReadTimeout at 500ms (D-K21B-06).
+            resp = await self._http.post(
+                url, json=body, headers=call_headers, timeout=self._tool_timeout_s
+            )
         except httpx.HTTPError as exc:
             logger.warning("knowledge execute_tool transport error: %s", exc)
             return {
@@ -347,6 +360,7 @@ def init_knowledge_client() -> KnowledgeClient:
         internal_token=settings.internal_service_token,
         timeout_s=settings.knowledge_client_timeout_s,
         retries=settings.knowledge_client_retries,
+        tool_timeout_s=settings.knowledge_tool_timeout_s,
     )
     return _client
 

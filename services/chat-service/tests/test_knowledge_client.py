@@ -39,16 +39,21 @@ from app.client.knowledge_client import (  # noqa: E402
 
 def _make_client(
     handler: Callable[[httpx.Request], httpx.Response] | None = None,
+    tool_timeout_s: float = 30.0,
 ) -> KnowledgeClient:
     """Build a KnowledgeClient with a MockTransport so tests don't touch
     the network. Pass `handler=None` for the rare test that just wants
-    to inspect constructor kwargs without making a request."""
+    to inspect constructor kwargs without making a request.
+
+    `tool_timeout_s` is exposed so the D-K21B-06 timeout-split regression
+    tests can pass a non-default value and prove the override took."""
     transport = httpx.MockTransport(handler) if handler is not None else None
     return KnowledgeClient(
         base_url="http://knowledge-service:8092",
         internal_token="unit-test-token",
         timeout_s=0.5,
         retries=1,
+        tool_timeout_s=tool_timeout_s,
         transport=transport,
     )
 
@@ -615,6 +620,42 @@ class TestExecuteTool:
 
         body = _json.loads(captured[0].content.decode())
         assert "project_id" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_uses_the_longer_tool_timeout(self):
+        """D-K21B-06 — execute_tool must override the client-wide
+        build_context budget (0.5s) with the longer tool timeout. A
+        memory tool does real work (memory_remember = injection-
+        neutralisation + a Neo4j write) and ReadTimeouts at 500ms. The
+        17.0 here is deliberately non-default so a dropped override
+        would fall back to the 0.5s client budget and fail this test."""
+        captured: list = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            return httpx.Response(200, json={"success": True, "result": {}, "error": None})
+
+        client = _make_client(handler, tool_timeout_s=17.0)
+        await client.execute_tool(
+            user_id="u",
+            session_id="s",
+            tool_name="memory_remember",
+            tool_args={"fact_text": "x"},
+        )
+        # httpx records the resolved per-request timeout on the request.
+        assert captured[0].extensions["timeout"]["read"] == 17.0
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_build_context_keeps_the_short_timeout(self):
+        """D-K21B-06 companion — the longer tool timeout is scoped to
+        execute_tool ONLY. build_context stays on the 0.5s client
+        budget, so the chat hot path is not slowed by the tool fix."""
+        captured: list = []
+        client = _make_client(_capture(captured), tool_timeout_s=17.0)
+        await client.build_context(user_id="u", message="hi")
+        assert captured[0].extensions["timeout"]["read"] == 0.5
         await client.aclose()
 
 

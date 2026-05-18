@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     knowledge_service_url: str = "http://knowledge-service:8092"
     knowledge_client_timeout_s: float = 0.5      # 500ms total per Track1 doc
     knowledge_client_retries: int = 1            # one retry on 5xx/transport
+    # K21-B — execute_tool runs a real memory tool (memory_remember does
+    # injection-neutralisation + a Neo4j write) and routinely exceeds the
+    # build_context budget above. Tool execution gets its own, longer
+    # per-call timeout so a slow write doesn't ReadTimeout (D-K21B-06).
+    knowledge_tool_timeout_s: float = 30.0
 
     # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
     # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2
