@@ -8,11 +8,11 @@
 
 ## Current status & next session (handoff)
 
-**As of 2026-05-20 — branch `geo-generator-amaw`, pushed.** The 4-phase
+**As of 2026-05-21 — branch `geo-generator-amaw`, pushed.** The 4-phase
 generator is built, the post-build human-in-loop review is done, seven
-enhancements + the **world-tier sphere migration (Phase 1 stage A)** have
-shipped — each via the full default 12-phase v2.2 workflow (`/review-impl`
-on enhancements 3–6):
+enhancements + the **world-tier sphere migration (Phase 1 stages A + B-1)**
+have shipped — each via the full default 12-phase v2.2 workflow
+(`/review-impl` on enhancements 3–6):
 
 | Work | Commit |
 |---|---|
@@ -23,10 +23,13 @@ on enhancements 3–6):
 | Hydraulic erosion (Path B v2) — two-phase stream-power carve/settle (`--erosion`) | `addd9f16` |
 | Render polish — supersample 2× · complementary detail · concavity occlusion | `46a32e1c` |
 | Huge-scale benchmark — `WorldScale::Gigaplanet` (~501k cells) + criterion bench | `a156be69` |
-| **World-tier redesign Phase 1 stage A — sphere mesh + 3D Perlin terrain (kills the rectangle)** | HEAD of `geo-generator-amaw` |
+| World-tier redesign Phase 1 stage A — sphere mesh + 3D Perlin terrain (kills the rectangle) | `1433f045` |
+| **World-tier redesign Phase 1 stage B-1 — `Projection` enum (Equirectangular + Orthographic globe view) + native-3D consumer migration (climate / hydrology / political / settlement / routes / culture; great-circle distances; `(u,v)` adapter dropped)** | HEAD of `geo-generator-amaw` |
 
-**110+ tests green** post-sphere-migration (Stage A re-baselined `content_hash`
-for every fixture — intentional algorithm change per [`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §3).
+**117 tests green** post-Stage-B-1 (107 lib + 10 projection unit tests on top of
+the determinism + serde integration runs). Stage A and Stage B-1 each re-baselined
+`content_hash` for every fixture — both intentional algorithm changes per
+[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §3.
 
 > **⚠ Architectural realisation (2026-05-18).** The Gigaplanet benchmark made
 > it clear: **cell count is resolution, not scope.** A 501k-cell map still
@@ -68,13 +71,30 @@ the sphere foundation:
   `content_hash` re-baselined intentionally (sphere geometry ⇒ different
   bytes).
 
-**Next session — Phase 1 stage B + Phase 2 entry.** Stage B closes Phase 1:
-the `Projection` enum (Equirectangular + **Orthographic globe view**, per PO
-2026-05-20 §3), CLI `--projection` flag, and native-3D migration of the six
-remaining downstream stages (drop the (u, v) scaffold; great-circle distance
-for settlement Poisson-disk + route Dijkstra; sphere-aware orographic wind
-march). Then Phase 2 (plate-tectonic multi-continent) per [`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md)
-§5. Implementation plan: [`docs/plans/2026-05-20-geo-spherical-topology.md`](../../plans/2026-05-20-geo-spherical-topology.md).
+**Stage B-1 just landed (this commit).** The `Projection` enum is defined
+with full Equirectangular + Orthographic implementations (10 unit tests
+cover round-trip, visibility, pole camera, disc coverage); every downstream
+stage runs on the 3D mesh directly; settlement Poisson-disk + route
+port-anchor + culture / political hearth spacing now use great-circle
+distance on the sphere; the `(u, v)` adapter scaffold is gone from `lib.rs`.
+Plan file: [`docs/plans/2026-05-20-geo-sphere-stage-b.md`](../../plans/2026-05-20-geo-sphere-stage-b.md).
+**`render.rs` + `relief.rs` still hardcode Equirectangular via
+`projection::equirectangular()`** — the Orthographic globe-view *render
+output* and CLI flag come in stage B-2.
+
+**Next session — Phase 1 stage B-2 + Phase 2 entry.**
+
+1. **Stage B-2 (close Phase 1):** thread `Projection` through every public
+   `*_image` / `*_svg` entry point in `render.rs` + `relief.rs`; rewrite the
+   per-pixel sampler to back-project canvas pixel → 3D point → nearest cell
+   (the Orthographic path); CLI `--projection equirectangular|orthographic`
+   + optional `--camera x,y,z`; `creative_seed.rs` gains a `Projection`
+   field with `#[serde(default)]`; drop `delaunator` from `Cargo.toml` (the
+   relief renderer's only remaining 2D dep).
+2. **Phase 2** — plate-tectonic multi-continent per [`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md)
+   §5: seed N plates over the sphere, classify boundaries
+   (convergent/divergent/transform), grow continental crust → multi-
+   continent worlds with placed mountain belts / rifts / island arcs.
 
 Benchmark baseline (release): generate 6 ms → 91 ms for Pocket → Megaplanet,
 **8.5 s** at Gigaplanet (501k cells); relief render ~14 s. Super-linear, not O(n²).

@@ -184,7 +184,7 @@ impl SpatialIndex {
         for (i, c) in map.cells.iter().enumerate() {
             // B2 sphere migration: bucket by the (u, v) equirectangular
             // projection of the 3D centre.
-            let (cu, cv) = crate::project_uv(c.center);
+            let (cu, cv) = crate::projection::equirectangular(c.center);
             let b = bucket_of(cu, cv, side);
             buckets[b].push(i as u32);
         }
@@ -209,7 +209,7 @@ impl SpatialIndex {
                         // raster image uses the (u, v) equirectangular
                         // projection of the cell's 3D centre.
                         let c = &map.cells[ci as usize];
-                        let (cu, cv) = crate::project_uv(c.center);
+                        let (cu, cv) = crate::projection::equirectangular(c.center);
                         let d = (cu - x) * (cu - x) + (cv - y) * (cv - y);
                         if d < best_d {
                             best_d = d;
@@ -450,7 +450,7 @@ fn settlement_color(r: SettlementRole) -> Rgb<u8> {
 /// `(u, v)` from `project_uv` already has `v = 0` at the top (north pole) —
 /// matches raster row=0 at top, so no flip is needed.
 fn cell_px(map: &WorldMap, cell: u32, w: i32, h: i32) -> (i32, i32) {
-    let (u, v) = crate::project_uv(map.cells[cell as usize].center);
+    let (u, v) = crate::projection::equirectangular(map.cells[cell as usize].center);
     let px = ((u * w as f32) as i32).clamp(0, w - 1);
     let py = ((v * h as f32) as i32).clamp(0, h - 1);
     (px, py)
@@ -620,7 +620,7 @@ fn centroid_px(map: &WorldMap, cells: &[u32], s: f32) -> (f32, f32) {
     // SVG centroid pick. The (u, v) projection is equirectangular.
     let (mut sx, mut sy) = (0.0f32, 0.0f32);
     for &c in cells {
-        let (x, y) = crate::project_uv(map.cells[c as usize].center);
+        let (x, y) = crate::projection::equirectangular(map.cells[c as usize].center);
         sx += x;
         sy += y;
     }
@@ -629,7 +629,7 @@ fn centroid_px(map: &WorldMap, cells: &[u32], s: f32) -> (f32, f32) {
     let mut best = cells[0];
     let mut best_d = f32::INFINITY;
     for &c in cells {
-        let (x, y) = crate::project_uv(map.cells[c as usize].center);
+        let (x, y) = crate::projection::equirectangular(map.cells[c as usize].center);
         let d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
         if d < best_d {
             best_d = d;
@@ -676,7 +676,7 @@ fn xml_escape(s: &str) -> String {
 /// `(u, v)` from `project_uv` has `v = 0` at the north pole (top of canvas),
 /// matching SVG's y-down convention — **no flip needed**.
 fn svg_px(center: [f32; 3], s: f32) -> (f32, f32) {
-    let (u, v) = crate::project_uv(center);
+    let (u, v) = crate::projection::equirectangular(center);
     (u * s, v * s)
 }
 

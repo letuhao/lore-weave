@@ -23,6 +23,7 @@ pub mod naming;
 pub mod noise;
 pub mod pathfind;
 pub mod political;
+pub mod projection;
 pub mod relief;
 pub mod render;
 pub mod rng;
@@ -31,19 +32,9 @@ pub mod settlement;
 pub mod terrain;
 pub mod world_map;
 
-/// Equirectangular projection of a unit-sphere point to `(u, v) ∈ [0, 1]²` —
-/// `u = (lon + π) / 2π`, `v = (π/2 − lat) / π`. Used by the B2 sphere-
-/// migration scaffold ([`generate`]) and the equirectangular renderer.
-pub(crate) fn project_uv(p: [f32; 3]) -> (f32, f32) {
-    let lat = p[2].clamp(-1.0, 1.0).asin();
-    let lon = p[1].atan2(p[0]);
-    let u = (lon + std::f32::consts::PI) / std::f32::consts::TAU;
-    let v = (std::f32::consts::FRAC_PI_2 - lat) / std::f32::consts::PI;
-    (u, v)
-}
-
 pub use biome::BiomeKind;
 pub use climate::ClimateZone;
+pub use projection::Projection;
 pub use relief::RenderStyle;
 pub use creative_seed::{
     CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation, PrevailingWind,
@@ -62,18 +53,10 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
     // redesign, 2026-05-20).
     let mesh = mesh::build(seed, cs.world_scale);
 
-    // **Sphere migration scaffold (B2):** the per-cell (u, v) projection in
-    // `[0, 1]²` of each cell centre via equirectangular — `u = (lon + π) /
-    // 2π`, `v = (π/2 − lat) / π`. **`terrain` (B3) now uses native sphere
-    // coords;** the remaining 2D consumers (`climate`, `hydrology`,
-    // `political`, `settlement`, `routes`, `culture`) still take the legacy
-    // (u, v) tuples and are migrated to 3D in B4 onward
-    // (`docs/plans/2026-05-20-geo-spherical-topology.md`). The
-    // **Cell.center stored on `WorldMap`** is the 3D unit vector — only the
-    // *intermediate compute* still sees the 2D projection.
-    let centers_2d: Vec<(f32, f32)> = mesh.centers.iter().map(|&p| project_uv(p)).collect();
+    // **Phase 1 Stage B (2026-05-20):** the (u, v) adapter scaffold is gone;
+    // every consumer takes the 3D mesh centres directly.
 
-    // Stage 2 — heightmap. **Native sphere** (B3 — 3D Perlin, seamless).
+    // Stage 2 — heightmap (3D Perlin, antimeridian-seamless).
     let terrain = terrain::build(
         seed,
         cs.coastline_profile,
@@ -82,9 +65,9 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &mesh.neighbors,
     );
 
-    // Stage 3 — climate.
+    // Stage 3 — climate (latitude from 3D centre; tangent-projected wind).
     let climate = climate::build(
-        &centers_2d,
+        &mesh.centers,
         &terrain.elevation,
         terrain.sea_level,
         &mesh.neighbors,
@@ -95,7 +78,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
 
     // Stage 4 — hydrology + biomes.
     let hydro = hydrology::build(
-        &centers_2d,
+        &mesh.centers,
         &terrain.elevation,
         terrain.sea_level,
         &mesh.neighbors,
@@ -111,11 +94,12 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &hydro.is_coast,
     );
 
-    // Stage 5–8 — political, settlement, route, culture.
-    let political = political::build(seed, &centers_2d, &mesh.neighbors, &biome);
+    // Stage 5–8 — political, settlement, route, culture (great-circle
+    // distances on the sphere).
+    let political = political::build(seed, &mesh.centers, &mesh.neighbors, &biome);
     let settlements = settlement::build(
         seed,
-        &centers_2d,
+        &mesh.centers,
         &biome,
         &climate,
         &hydro.river_flux,
@@ -124,7 +108,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &political,
     );
     let routes = routes::build(
-        &centers_2d,
+        &mesh.centers,
         &mesh.neighbors,
         &biome,
         &hydro.river_flux,
@@ -132,7 +116,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &hydro.is_coast,
         &settlements,
     );
-    let culture = culture::build(seed, &centers_2d, &mesh.neighbors, &biome, cs.culture_count);
+    let culture = culture::build(seed, &mesh.centers, &mesh.neighbors, &biome, cs.culture_count);
 
     // Stage 9 — geographic feature extraction (deterministic; names added
     // later by the separate `naming` step).

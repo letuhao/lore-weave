@@ -345,16 +345,27 @@ authoring · feature extraction + LLM naming.
    sampling + spherical Voronoi (3D convex hull). Add `Projection` for 2D
    rendering (Equirectangular default). Keep one continent
    (`enforce_coherence` adapts to a spherical mesh) — multi-continent comes in
-   Phase 2. **STAGE A DONE (2026-05-20):** Fibonacci-sphere mesh + hand-rolled
-   3D Quickhull + spherical Voronoi polygons; `Cell.center` migrated to
-   `[f32;3]`; 3D Perlin noise + sphere-native `terrain::height_at` (seamless
-   across the antimeridian — proven by `height_at_is_continuous_across_the_antimeridian`);
-   `CoastlineProfile` heuristics reframed with great-circle distance;
-   `effective_latitude` swap to match (u,v) convention. **STAGE B (next):**
-   `Projection` enum (Equirectangular + Orthographic globe view) + CLI
-   `--projection` flag + native-3D migration of the remaining downstream
-   stages (climate/settlement/route/culture; currently still use the
-   equirectangular (u,v) scaffold from `lib::generate`).
+   Phase 2.
+   - **STAGE A DONE (2026-05-20, `1433f045`):** Fibonacci-sphere mesh +
+     hand-rolled 3D Quickhull + spherical Voronoi polygons; `Cell.center`
+     migrated to `[f32;3]`; 3D Perlin noise + sphere-native
+     `terrain::height_at` (seamless across the antimeridian — proven by
+     `height_at_is_continuous_across_the_antimeridian`); `CoastlineProfile`
+     heuristics reframed with great-circle distance; `effective_latitude`
+     swap to match (u,v) convention.
+   - **STAGE B-1 DONE (2026-05-21):** `Projection` enum defined
+     (Equirectangular + Orthographic — full implementation with 10 unit
+     tests covering round-trip, hemisphere visibility, pole-camera safety,
+     disc coverage); every downstream consumer migrated to native 3D
+     (climate / hydrology / political / settlement / routes / culture);
+     `(u, v)` adapter scaffold dropped from `lib::generate`; spherical
+     `pathfind::spaced_ok` (radians); orographic wind march on a tangent-
+     plane projection. `render.rs` + `relief.rs` still hardcode
+     equirectangular internally.
+   - **STAGE B-2 NEXT:** thread `Projection` through `render.rs` + `relief.rs`
+     entry points so Orthographic actually *renders a globe view*; CLI
+     `--projection equirectangular|orthographic` + optional `--camera`;
+     `CreativeSeed.projection` field; drop `delaunator` from `Cargo.toml`.
 2. **Plate-tectonic continents** — multi-continent + ocean basins + placed
    mountains/rifts/trenches. Retire `CoastlineProfile`/`enforce_coherence`.
 3. **Global Köppen climate** — the §5b model.

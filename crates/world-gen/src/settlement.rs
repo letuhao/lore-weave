@@ -11,10 +11,15 @@ use crate::world_map::{Settlement, SettlementRole};
 /// Build the settlement layer.
 // Eight pipeline inputs — each a distinct prior-stage array; bundling them
 // into a context struct would not reduce the real coupling.
+/// Build the settlement layer.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
+/// the Poisson-disk spacing test uses great-circle angle in radians and the
+/// nearest-capital tie-break uses spherical distance (`1 − dot` surrogate).
 #[allow(clippy::too_many_arguments)]
 pub fn build(
     seed: u64,
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
     biomes: &[BiomeKind],
     climate: &[ClimateZone],
     river_flux: &[f32],
@@ -59,10 +64,10 @@ pub fn build(
     // divisor yields 0) is never settlement-starved — it would otherwise
     // carry only the force-placed Capitals.
     let target = (land_count / density.cells_per_settlement()).max(3);
-    let min_sep2 = {
-        let s = density.min_separation();
-        s * s
-    };
+    // `density.min_separation()` is in `[0,1]²` units; scale to radians by
+    // multiplying by π (the sphere's great-circle radius scale), so the
+    // visual density resembles the prior look.
+    let min_sep = density.min_separation() * std::f32::consts::PI;
     let mut rng = Rng::for_stage(seed, b"settlement");
     let mut order: Vec<u32> = (0..n as u32)
         .filter(|&c| !biomes[c as usize].is_water())
@@ -80,7 +85,7 @@ pub fn build(
         // (byte-stability contract). `order` holds each land cell exactly
         // once, so a `!placed.contains(&c)` guard would be vacuous.
         if burg[ci] > 0.05
-            && pathfind::spaced_ok(c, &placed, centers, min_sep2)
+            && pathfind::spaced_ok(c, &placed, centers, min_sep)
             && rng.next_f32() < burg[ci] / max_burg
         {
             placed.push(c);
@@ -100,7 +105,7 @@ pub fn build(
     // --- Capital per state (political-first) ---
     for st in &political.states {
         let cap_prov = &political.provinces[st.capital_province as usize];
-        let (ccx, ccy) = centers[cap_prov.capital_cell as usize];
+        let cap = centers[cap_prov.capital_cell as usize];
         // settlement in this province nearest the province capital cell;
         // tie-break (distance, cell_id) lowest.
         let mut best: Option<usize> = None;
@@ -109,11 +114,12 @@ pub fn build(
             if political.province_of[s.cell as usize] != cap_prov.id {
                 continue;
             }
-            let (sx, sy) = centers[s.cell as usize];
-            let d2 = (sx - ccx) * (sx - ccx) + (sy - ccy) * (sy - ccy);
-            // `d2` is a finite sum of squares computed identically every run,
-            // so this `(f32, u32)` tuple comparison is bit-stable; the `cell`
-            // component is the integer tie-break.
+            let q = centers[s.cell as usize];
+            // Sphere `1 − dot` is monotone-equivalent to great-circle distance
+            // and stays in finite f32 (no acos), preserving the prior
+            // tie-break stability.
+            let dot = cap[0] * q[0] + cap[1] * q[1] + cap[2] * q[2];
+            let d2 = 1.0 - dot;
             let key = (d2, s.cell);
             if key < best_key {
                 best_key = key;

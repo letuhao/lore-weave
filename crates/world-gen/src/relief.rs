@@ -217,7 +217,7 @@ fn rasterize_base(map: &WorldMap, width: u32, height: u32) -> Vec<f32> {
         .cells
         .iter()
         .map(|c| {
-            let (u, v) = crate::project_uv(c.center);
+            let (u, v) = crate::projection::equirectangular(c.center);
             Point {
                 x: f64::from(u),
                 y: f64::from(v),
@@ -288,7 +288,7 @@ fn box_blur(buf: &mut [f32], w: usize, h: usize, r: usize, passes: u32) {
 /// at the north pole (top of image), matching raster row=0 at top — no flip
 /// needed.
 fn cell_px(map: &WorldMap, cell: usize, width: u32, height: u32) -> (f32, f32) {
-    let (u, v) = crate::project_uv(map.cells[cell].center);
+    let (u, v) = crate::projection::equirectangular(map.cells[cell].center);
     (u * width as f32, v * height as f32)
 }
 
@@ -347,7 +347,7 @@ fn backfill(buf: &mut [f32], map: &WorldMap, width: u32, height: u32) {
             let mut best = 0usize;
             let mut best_d = f32::INFINITY;
             for (ci, c) in map.cells.iter().enumerate() {
-                let (cu, cv) = crate::project_uv(c.center);
+                let (cu, cv) = crate::projection::equirectangular(c.center);
                 let d = (cu - mx).powi(2) + (cv - my).powi(2);
                 if d < best_d {
                     best_d = d;

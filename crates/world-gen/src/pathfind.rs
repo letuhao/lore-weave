@@ -172,17 +172,29 @@ pub fn bfs_path(
     None
 }
 
-/// Whether `cell`'s centre is ≥ `min_sep` (its *square* is given) from every
-/// already-placed cell — the Poisson-disk spacing test for seed/hearth
-/// placement (stages 5, 8).
-pub fn spaced_ok(cell: u32, placed: &[u32], centers: &[(f32, f32)], min_sep2: f32) -> bool {
-    let (cx, cy) = centers[cell as usize];
+/// Whether `cell`'s centre is **at least `min_sep` radians** of great-circle
+/// distance from every already-placed cell on the unit sphere — the
+/// Poisson-disk spacing test for seed/hearth placement (stages 5, 8).
+///
+/// **Stage B sphere migration:** `centers` are now 3D unit-sphere points;
+/// the threshold is a great-circle angle in radians. Earlier callers measure
+/// `min_sep` in `[0,1]²` units; with the sphere these become radians (e.g.
+/// `0.1` ≈ 5.7°).
+pub fn spaced_ok(cell: u32, placed: &[u32], centers: &[[f32; 3]], min_sep: f32) -> bool {
+    let cos_min = min_sep.cos();
+    let c = centers[cell as usize];
     placed.iter().all(|&p| {
-        let (px, py) = centers[p as usize];
-        let dx = cx - px;
-        let dy = cy - py;
-        dx * dx + dy * dy >= min_sep2
+        let q = centers[p as usize];
+        // For unit vectors, `cos(angle) = dot`. `angle >= min_sep ⇔ cos(angle) <= cos(min_sep)`.
+        let dot = c[0] * q[0] + c[1] * q[1] + c[2] * q[2];
+        dot <= cos_min
     })
+}
+
+/// Great-circle angle (radians) between two unit-sphere points.
+pub fn great_circle(a: [f32; 3], b: [f32; 3]) -> f32 {
+    let dot = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]).clamp(-1.0, 1.0);
+    dot.acos()
 }
 
 /// Largest-remainder apportionment of `total` units across buckets of the

@@ -57,8 +57,12 @@ impl ClimateZone {
 }
 
 /// Build the per-cell climate layer.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
+/// latitude derives directly from `asin(z)`. The Stage A `effective_latitude(v)`
+/// scaffold is replaced by a clean lat-based formula.
 pub fn build(
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
     elevation: &[u16],
     sea_level: u16,
     neighbors: &[Vec<u32>],
@@ -71,8 +75,9 @@ pub fn build(
     centers
         .iter()
         .enumerate()
-        .map(|(i, &(_, y))| {
-            let eff_lat = effective_latitude(y, hemisphere);
+        .map(|(i, &p)| {
+            let lat = p[2].clamp(-1.0, 1.0).asin();
+            let eff_lat = effective_latitude(lat, hemisphere);
             let elev_norm = f32::from(elevation[i]) / 65535.0;
             // Dryness is the complement of the wind-carried moisture.
             let dryness = (1.0 - moisture[i]).clamp(0.0, 1.0);
@@ -81,17 +86,18 @@ pub fn build(
         .collect()
 }
 
-/// Latitude in `[0,1]` — 0 = equator (hot), 1 = pole (cold).
+/// "Effective latitude" in `[0,1]` — 0 = equator-warm, 1 = pole-cold —
+/// derived from the cell's actual latitude (radians, `[-π/2, π/2]`).
 ///
-/// **Sphere-migration convention (B2 / 2026-05-20):** `y` is `v` from the
-/// equirectangular projection (`v = 0` at the `+z` north pole, `v = 1` at
-/// the `-z` south pole). So **Northern** orientation = `+z` pole is cold =
-/// `eff_lat = 1 − y`; **Southern** = `−z` pole is cold = `eff_lat = y`.
-fn effective_latitude(y: f32, hemi: HemisphereOrientation) -> f32 {
+/// - **Northern** orientation: the `+z` pole is cold; `lat = +π/2` → 1.
+/// - **Southern** orientation: the `−z` pole is cold; `lat = −π/2` → 1.
+/// - **Equatorial** orientation: both poles cold; `eff_lat = |lat|/(π/2)`.
+fn effective_latitude(lat: f32, hemi: HemisphereOrientation) -> f32 {
+    let norm = lat / std::f32::consts::FRAC_PI_2; // [-1, 1]
     match hemi {
-        HemisphereOrientation::Northern => 1.0 - y,
-        HemisphereOrientation::Southern => y,
-        HemisphereOrientation::Equatorial => 2.0 * (y - 0.5).abs(),
+        HemisphereOrientation::Northern => norm.clamp(-1.0, 1.0).max(0.0),
+        HemisphereOrientation::Southern => (-norm).clamp(-1.0, 1.0).max(0.0),
+        HemisphereOrientation::Equatorial => norm.abs(),
     }
 }
 
@@ -167,7 +173,7 @@ fn bias_delta(z: ClimateZone) -> (f32, f32) {
 /// little moisture: a dry rain shadow. Deterministic: a total-ordered downwind
 /// sweep (`f32::total_cmp` on the wind projection, ties broken by cell index).
 fn moisture_field(
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
     elevation: &[u16],
     sea_level: u16,
     neighbors: &[Vec<u32>],
@@ -180,8 +186,17 @@ fn moisture_field(
     const LAND_LEAK: f32 = 0.025;
 
     let n = centers.len();
+    // **Sphere wind march (Stage B):** the per-cell `(lon, −lat)` projection
+    // gives an `(u, v)`-shaped tuple suited to the existing 1-direction
+    // global wind sort. Antimeridian wrap is an accepted Phase-1 artefact
+    // (full Hadley/Ferrel cell modelling is Phase 3 Köppen).
     let (wx, wy) = wind.vector();
-    let proj = |i: usize| centers[i].0 * wx + centers[i].1 * wy;
+    let proj = |i: usize| {
+        let p = centers[i];
+        let lon = p[1].atan2(p[0]);
+        let lat = p[2].clamp(-1.0, 1.0).asin();
+        lon * wx + (-lat) * wy
+    };
 
     // Downwind processing order — every upwind cell is handled first.
     let mut order: Vec<usize> = (0..n).collect();
@@ -274,8 +289,14 @@ mod tests {
 
     #[test]
     fn rain_shadow_follows_the_wind() {
-        // Five cells in a row: [0] sea, [1]/[3]/[4] lowland, [2] a tall ridge.
-        let centers = vec![(0.1, 0.5), (0.3, 0.5), (0.5, 0.5), (0.7, 0.5), (0.9, 0.5)];
+        // Five cells along the equator, ascending longitude: [0] sea,
+        // [1]/[3]/[4] lowland, [2] a tall ridge. Cells are 3D unit-sphere
+        // points at lat=0; lon from −0.6 to +0.6 rad (Phase 1 Stage B —
+        // sphere-native).
+        let centers: Vec<[f32; 3]> = [-0.6_f32, -0.3, 0.0, 0.3, 0.6]
+            .iter()
+            .map(|&lon| [lon.cos(), lon.sin(), 0.0])
+            .collect();
         let sea = 10_000u16;
         let elevation = vec![5_000u16, 15_000, 60_000, 15_000, 15_000];
         let neighbors = vec![vec![1u32], vec![0, 2], vec![1, 3], vec![2, 4], vec![3]];

@@ -23,11 +23,14 @@ use crate::world_map::{Route, RouteKind, Settlement};
 const MOUNTAIN_PASS_TARGET: usize = 5;
 
 /// Build the route network.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
+/// the port-anchor distance step uses spherical distance.
 // Triangular pairwise iteration over settlement indices, plus index loops that
 // each address several parallel arrays — clearer than `enumerate` gymnastics.
 #[allow(clippy::needless_range_loop)]
 pub fn build(
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
     biomes: &[BiomeKind],
     river_flux: &[f32],
@@ -167,15 +170,18 @@ pub fn build(
         let Some(anchor) = anchor else {
             continue; // uninhabited landmass — nothing to connect
         };
-        let (ax, ay) = centers[anchor.cell as usize];
+        let a3 = centers[anchor.cell as usize];
         let mut best_port: Option<u32> = None;
         let mut best_d = f32::INFINITY;
         for &c in comp {
             if !is_coast[c as usize] {
                 continue;
             }
-            let (cx, cy) = centers[c as usize];
-            let d = (cx - ax) * (cx - ax) + (cy - ay) * (cy - ay);
+            let c3 = centers[c as usize];
+            // `1 − dot` is monotone-equivalent to great-circle distance on
+            // unit-sphere vectors and stays in f32 (no acos branch).
+            let dot = a3[0] * c3[0] + a3[1] * c3[1] + a3[2] * c3[2];
+            let d = 1.0 - dot;
             if d < best_d {
                 best_d = d;
                 best_port = Some(c);
