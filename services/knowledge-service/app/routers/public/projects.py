@@ -239,6 +239,31 @@ async def patch_project(
             detail="If-Match header required — GET the row first to obtain an ETag",
         )
 
+    # D-EMB-MODEL-REF-04 — changing embedding_model on a project that
+    # already has a graph would orphan the existing passages: they stay
+    # in Neo4j tagged with the old model UUID while Mode-3 retrieval
+    # queries the new model's vector space — silent zero-recall.
+    # Route those changes through PUT /embedding-model?confirm=true
+    # which deletes the stale graph first. First-time setup
+    # (extraction_status='disabled') is fine because there is nothing
+    # to orphan. Same-value sets are no-ops, also fine.
+    if "embedding_model" in body.model_fields_set:
+        current = await repo.get(user_id, project_id)
+        if current is None:
+            raise _not_found()
+        if (
+            body.embedding_model != current.embedding_model
+            and current.extraction_status != "disabled"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "embedding_model change on a project with a graph "
+                    "requires deleting the stale vectors first — use "
+                    "PUT /v1/knowledge/projects/{id}/embedding-model?confirm=true"
+                ),
+            )
+
     # D-EMB-MODEL-REF-03 — embedding_model is a provider-registry
     # user_model UUID. When it is being set to a value, probe the model
     # to derive its vector dimension and store the paired
