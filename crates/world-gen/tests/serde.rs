@@ -132,10 +132,10 @@ fn compute_hash_covers_every_field() {
             WorldScale::Continent
         };
     });
-    tamper("cells.center", &|m| m.cells[0].center.0 += 1.0);
+    tamper("cells.center", &|m| m.cells[0].center[0] += 1.0);
     tamper("cells.elevation", &|m| m.cells[0].elevation ^= 1);
     tamper("cells.vertex_polygon", &|m| {
-        m.cells[0].vertex_polygon.push((0.5, 0.5));
+        m.cells[0].vertex_polygon.push([0.5, 0.5, 0.5]);
     });
     tamper("neighbors", &|m| m.neighbors[0].push(0));
     tamper("sea_level", &|m| m.sea_level ^= 1);

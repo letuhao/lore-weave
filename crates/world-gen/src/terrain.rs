@@ -25,21 +25,25 @@
 
 use crate::creative_seed::{CoastlineProfile, ErosionStrength};
 use crate::erosion;
-use crate::noise::{fbm, ridged_fbm};
+use crate::noise::{fbm_3d, ridged_fbm_3d};
 use crate::rng::sub_seed;
 
-/// Archipelago island disc centres — pairwise separation ≥ 0.353, so with
-/// `ARCH_RADIUS = 0.15` (disc span 0.30) the discs never touch.
-const ARCH_ISLANDS: [(f32, f32); 5] = [
-    (0.25, 0.25),
-    (0.75, 0.25),
-    (0.25, 0.75),
-    (0.75, 0.75),
-    (0.50, 0.50),
+/// Archipelago island disc **centres on the unit sphere** — 5 mutually
+/// distant points: a top-pentagon on a 45°-latitude circle. Pairwise
+/// great-circle separation ≥ 1.26 rad (72° / nearest-neighbour); with
+/// `ARCH_RADIUS = 0.30` (∼17°) the discs never touch.
+const ARCH_ISLANDS: [[f32; 3]; 5] = [
+    // cos(72° k) · sin(45°), sin(72° k) · sin(45°), cos(45°) for k=0..4
+    [0.707_106_77, 0.0, 0.707_106_77],
+    [0.218_508, 0.672_498_5, 0.707_106_77],
+    [-0.572_061_4, 0.415_626_9, 0.707_106_77],
+    [-0.572_061_4, -0.415_626_9, 0.707_106_77],
+    [0.218_508, -0.672_498_5, 0.707_106_77],
 ];
-/// Archipelago island disc radius. `2 * ARCH_RADIUS < min island separation`,
-/// so the radial mask is exactly 0 in the sea bands between islands.
-const ARCH_RADIUS: f32 = 0.15;
+/// Archipelago island disc radius — great-circle angle in radians (~17°).
+/// `2 * ARCH_RADIUS < min island great-circle separation`, so the radial mask
+/// is exactly 0 in the sea bands between islands.
+const ARCH_RADIUS: f32 = 0.30;
 
 // --- heightmap tuning (Path B) ----------------------------------------------
 
@@ -69,6 +73,8 @@ const HILL_WEIGHT: f32 = 0.15;
 /// Distinct noise-field salts so the components are decorrelated.
 const SALT_WARP_X: u32 = 0x7A1C_9E11;
 const SALT_WARP_Y: u32 = 0x31B5_22F7;
+/// 3D domain warp needs a third salt for the z-component (sphere migration).
+const SALT_WARP_Z: u32 = 0x5C8B_3D04;
 const SALT_CONT: u32 = 0x9D4E_0C53;
 const SALT_MTN: u32 = 0xC0FF_EE42;
 const SALT_BELT: u32 = 0x1357_9BDF;
@@ -82,12 +88,17 @@ pub struct Terrain {
     pub sea_level: u16,
 }
 
-/// Build the heightmap for the given mesh.
+/// Build the heightmap for the given **spherical** mesh.
+///
+/// **Phase 1 world-tier redesign (2026-05-20, B3):** `centers` is now a
+/// slice of **3D unit-sphere** points; the heightmap is sampled at each
+/// 3D centre via [`height_at`] (3D Perlin noise — naturally seamless across
+/// the antimeridian, no edge artefacts).
 pub fn build(
     seed: u64,
     profile: CoastlineProfile,
     erosion_strength: ErosionStrength,
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
 ) -> Terrain {
     let count = centers.len();
@@ -98,7 +109,7 @@ pub fn build(
 
     let mut elev: Vec<f32> = centers
         .iter()
-        .map(|&(x, y)| height_at(x, y, profile, nseed))
+        .map(|&p| height_at(p, profile, nseed))
         .collect();
 
     // Coastline-profile radial falloff — shapes *where* land is.
@@ -137,37 +148,102 @@ pub fn build(
     }
 }
 
-/// The Path B heightmap — a pure function of position. A low-frequency fBm
-/// continent, ridged-multifractal mountain ranges gated by a belt mask and a
-/// landness gate, mid-frequency hills, all domain-warped, plus the optional
-/// Inland continental dome. Always `≥ 0` (the normalize + `apply_falloff`
-/// multiply both assume a non-negative field).
-fn height_at(x: f32, y: f32, profile: CoastlineProfile, seed: u32) -> f32 {
-    // Domain warp — displace the sample point with low-frequency fBm.
-    let wx = x + WARP_AMP * fbm(x * WARP_FREQ, y * WARP_FREQ, seed ^ SALT_WARP_X, WARP_OCTAVES);
-    let wy = y + WARP_AMP * fbm(x * WARP_FREQ, y * WARP_FREQ, seed ^ SALT_WARP_Y, WARP_OCTAVES);
+/// The Path B heightmap — a pure function of position on the **unit sphere**.
+/// A low-frequency 3D fBm continent, 3D ridged-multifractal mountain ranges
+/// gated by a belt mask and a landness gate, mid-frequency hills, all 3D
+/// domain-warped, plus the optional Inland continental dome (centred at the
+/// `+z` pole). 3D Perlin gives **antimeridian-seamless** terrain — no edge
+/// artefacts. Always `≥ 0` (the normalize + `apply_falloff` multiply both
+/// assume a non-negative field).
+fn height_at(p: [f32; 3], profile: CoastlineProfile, seed: u32) -> f32 {
+    // Domain warp — displace the sample point with low-frequency 3D fBm.
+    // The warp uses the *same* point as input for x/y/z components but
+    // different salts → three near-decorrelated displacement coords. After
+    // warping, the point is no longer exactly on the unit sphere; we re-
+    // normalize so downstream noise samples a coherent unit-sphere surface.
+    let warp_x = fbm_3d(
+        p[0] * WARP_FREQ,
+        p[1] * WARP_FREQ,
+        p[2] * WARP_FREQ,
+        seed ^ SALT_WARP_X,
+        WARP_OCTAVES,
+    );
+    let warp_y = fbm_3d(
+        p[0] * WARP_FREQ,
+        p[1] * WARP_FREQ,
+        p[2] * WARP_FREQ,
+        seed ^ SALT_WARP_Y,
+        WARP_OCTAVES,
+    );
+    let warp_z = fbm_3d(
+        p[0] * WARP_FREQ,
+        p[1] * WARP_FREQ,
+        p[2] * WARP_FREQ,
+        seed ^ SALT_WARP_Z,
+        WARP_OCTAVES,
+    );
+    let mut warped = [
+        p[0] + WARP_AMP * warp_x,
+        p[1] + WARP_AMP * warp_y,
+        p[2] + WARP_AMP * warp_z,
+    ];
+    let wn = (warped[0] * warped[0] + warped[1] * warped[1] + warped[2] * warped[2]).sqrt();
+    if wn > 1e-6 {
+        warped[0] /= wn;
+        warped[1] /= wn;
+        warped[2] /= wn;
+    }
 
-    // Continent base — the broad landmass, fBm mapped to ~[0,1].
-    let continent =
-        0.5 + 0.5 * fbm(wx * CONT_FREQ, wy * CONT_FREQ, seed ^ SALT_CONT, CONT_OCTAVES);
+    // Continent base — the broad landmass, 3D fBm mapped to ~[0,1].
+    let continent = 0.5
+        + 0.5
+            * fbm_3d(
+                warped[0] * CONT_FREQ,
+                warped[1] * CONT_FREQ,
+                warped[2] * CONT_FREQ,
+                seed ^ SALT_CONT,
+                CONT_OCTAVES,
+            );
 
     // Hills — mid-frequency rolling terrain, signed (raises and lowers).
-    let hills = fbm(wx * HILL_FREQ, wy * HILL_FREQ, seed ^ SALT_HILL, HILL_OCTAVES);
+    let hills = fbm_3d(
+        warped[0] * HILL_FREQ,
+        warped[1] * HILL_FREQ,
+        warped[2] * HILL_FREQ,
+        seed ^ SALT_HILL,
+        HILL_OCTAVES,
+    );
 
     // Mountain-belt mask — a soft low-frequency gate so ranges cluster into
-    // belts rather than blanketing the whole map.
-    let belt_raw = 0.5 + 0.5 * fbm(x * BELT_FREQ, y * BELT_FREQ, seed ^ SALT_BELT, BELT_OCTAVES);
+    // belts rather than blanketing the whole map. Sampled at the *unwarped*
+    // point so the belt structure is independent of the local domain warp.
+    let belt_raw = 0.5
+        + 0.5
+            * fbm_3d(
+                p[0] * BELT_FREQ,
+                p[1] * BELT_FREQ,
+                p[2] * BELT_FREQ,
+                seed ^ SALT_BELT,
+                BELT_OCTAVES,
+            );
     let belt = smoothstep(0.46, 0.72, belt_raw);
 
     // Ridged ranges — sharp linear ridgelines (the bullseye-killer).
-    let ridges = ridged_fbm(wx * MTN_FREQ, wy * MTN_FREQ, seed ^ SALT_MTN, MTN_OCTAVES);
+    let ridges = ridged_fbm_3d(
+        warped[0] * MTN_FREQ,
+        warped[1] * MTN_FREQ,
+        warped[2] * MTN_FREQ,
+        seed ^ SALT_MTN,
+        MTN_OCTAVES,
+    );
 
     // Landness gate — ranges rise on continental crust, fade over deep ocean.
     let landness = smoothstep(0.32, 0.52, continent);
 
-    // Inland continental dome — a broad radial bias so the high-land Inland
-    // profile forms one coherent mass (`base_amplitude` is 0 for the rest).
-    let dome = profile.base_amplitude() * dome_bias(x, y);
+    // Inland continental dome — a broad bias centred at the `+z` pole so the
+    // high-land Inland profile forms one coherent mass. `base_amplitude` is
+    // 0 for the rest.
+    let dome = profile.base_amplitude() * dome_bias(p);
 
     let height = CONT_WEIGHT * continent
         + HILL_WEIGHT * hills
@@ -176,10 +252,15 @@ fn height_at(x: f32, y: f32, profile: CoastlineProfile, seed: u32) -> f32 {
     height.max(0.0)
 }
 
-/// Broad radial dome — 1 at the map centre, falling to 0 by the rim — the
-/// Inland profile's coherent-landmass bias.
-fn dome_bias(x: f32, y: f32) -> f32 {
-    let r = dist(x, y, 0.5, 0.5) / 0.92;
+/// Broad dome — 1 at the `+z` pole, falling to 0 by ~π/2 (a hemisphere) —
+/// the Inland profile's coherent-landmass bias on the sphere. Falloff = the
+/// great-circle angle from `[0, 0, 1]`, normalized by π/2.
+fn dome_bias(p: [f32; 3]) -> f32 {
+    // `p[2]` is the dot product with `[0, 0, 1]` for unit-sphere `p`, so
+    // `acos(p[2])` is the great-circle angle to the +z pole.
+    let cos_d = p[2].clamp(-1.0, 1.0);
+    let angle = cos_d.acos();
+    let r = angle / std::f32::consts::FRAC_PI_2;
     (1.0 - r * r).max(0.0)
 }
 
@@ -189,34 +270,53 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Multiply each cell's elevation by a coastline-profile radial mask.
-fn apply_falloff(profile: CoastlineProfile, centers: &[(f32, f32)], elev: &mut [f32]) {
-    for (i, &(x, y)) in centers.iter().enumerate() {
+/// Multiply each cell's elevation by a coastline-profile mask, computed on
+/// the **unit sphere** via great-circle distances.
+///
+/// All masks are anchored at the `+z` pole — the canonical "centre" of the
+/// world. Future plate-tectonic Phase 2 will replace this single-anchor
+/// scheme with multiple continent seeds.
+fn apply_falloff(profile: CoastlineProfile, centers: &[[f32; 3]], elev: &mut [f32]) {
+    /// Canonical centre point for radial masks: the `+z` pole.
+    const POLE: [f32; 3] = [0.0, 0.0, 1.0];
+
+    for (i, &p) in centers.iter().enumerate() {
         let mask = match profile {
             CoastlineProfile::Island => {
-                let d = dist(x, y, 0.5, 0.5);
-                (1.0 - (d / 0.55) * (d / 0.55)).max(0.0)
+                // Single island disc centred at +z pole; radius ~63°.
+                let d = great_circle(p, POLE);
+                let r = d / 1.10;
+                (1.0 - r * r).max(0.0)
             }
             CoastlineProfile::Peninsula => {
-                // Open on the bottom edge; falloff on the other three.
-                let edge = x.min(1.0 - x).min(1.0 - y);
-                edge_ramp(edge, 0.30)
+                // Land extends from the +z hemisphere; falloff toward −z.
+                // `p[2]` is the projection onto the pole axis ∈ [-1, 1].
+                // Ramp from 0 below the equator down to 1 by mid-northern.
+                edge_ramp(p[2] + 0.30, 0.50)
             }
             CoastlineProfile::Coastal => {
-                // Falloff on the right edge only.
-                edge_ramp(1.0 - x, 0.22)
+                // Falloff toward one longitude band — pick lon = π as the
+                // "ocean side". Mask high near lon = 0, low near lon = ±π.
+                let lon = p[1].atan2(p[0]);
+                let coastal = 1.0 - (lon.abs() / std::f32::consts::PI);
+                edge_ramp(coastal, 0.40)
             }
             CoastlineProfile::Inland => {
-                // Mild uniform mask — little forced sea.
-                let edge = x.min(1.0 - x).min(y).min(1.0 - y);
-                0.85 + 0.15 * edge_ramp(edge, 0.12)
+                // Mild non-uniform mask centred at +z pole. The Inland dome
+                // already biases interior land via `dome_bias`; the mask is
+                // gentle (`0.85..=1.00`) so the broad geometry stays driven
+                // by the dome.
+                let d = great_circle(p, POLE);
+                0.85 + 0.15 * (1.0 - (d / std::f32::consts::PI).min(1.0))
             }
             CoastlineProfile::Archipelago => {
-                // max over island discs; exactly 0 in the sea bands between.
+                // Max over 5 sphere-distributed island discs; exactly 0 in
+                // the sea bands between (each disc radius ≪ pairwise sep).
                 let mut best = 0.0f32;
-                for &(cx, cy) in &ARCH_ISLANDS {
-                    let d = dist(x, y, cx, cy);
-                    let m = 1.0 - (d / ARCH_RADIUS) * (d / ARCH_RADIUS);
+                for centre in &ARCH_ISLANDS {
+                    let d = great_circle(p, *centre);
+                    let r = d / ARCH_RADIUS;
+                    let m = 1.0 - r * r;
                     best = best.max(m.max(0.0));
                 }
                 best
@@ -226,14 +326,15 @@ fn apply_falloff(profile: CoastlineProfile, centers: &[(f32, f32)], elev: &mut [
     }
 }
 
-/// 0 at the edge, ramping linearly to 1 by `width` inland.
+/// 0 at the edge, ramping linearly to 1 by `width`.
 fn edge_ramp(edge_dist: f32, width: f32) -> f32 {
     (edge_dist / width).clamp(0.0, 1.0)
 }
 
-/// Euclidean distance between two points.
-fn dist(x: f32, y: f32, cx: f32, cy: f32) -> f32 {
-    ((x - cx) * (x - cx) + (y - cy) * (y - cy)).sqrt()
+/// Great-circle angle between two **unit-sphere** points — in radians.
+fn great_circle(a: [f32; 3], b: [f32; 3]) -> f32 {
+    let cos_d = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]).clamp(-1.0, 1.0);
+    cos_d.acos()
 }
 
 /// Choose the sea level. Archipelago keeps the percentile pick (its 5-island
@@ -388,12 +489,17 @@ mod tests {
         CoastlineProfile::Archipelago,
     ];
 
+    fn unit(x: f32, y: f32, z: f32) -> [f32; 3] {
+        let n = (x * x + y * y + z * z).sqrt();
+        [x / n, y / n, z / n]
+    }
+
     #[test]
     fn height_at_is_deterministic() {
         for i in 0..500 {
-            let (x, y) = (i as f32 * 0.0017, 1.0 - i as f32 * 0.0019);
-            let a = height_at(x, y, CoastlineProfile::Coastal, 12345);
-            let b = height_at(x, y, CoastlineProfile::Coastal, 12345);
+            let p = unit(i as f32 * 0.0017 + 1.0, 1.0 - i as f32 * 0.0019, 0.3);
+            let a = height_at(p, CoastlineProfile::Coastal, 12345);
+            let b = height_at(p, CoastlineProfile::Coastal, 12345);
             assert_eq!(a.to_bits(), b.to_bits(), "height_at not reproducible");
         }
     }
@@ -401,9 +507,13 @@ mod tests {
     #[test]
     fn height_at_is_non_negative_and_finite() {
         for profile in PROFILES {
-            for i in 0..60 {
-                for j in 0..60 {
-                    let h = height_at(i as f32 / 60.0, j as f32 / 60.0, profile, 99);
+            // Sweep a `lat × lon` grid; resample on the sphere.
+            for i in 0..40 {
+                for j in 0..40 {
+                    let lat = -std::f32::consts::FRAC_PI_2 + i as f32 * (std::f32::consts::PI / 40.0);
+                    let lon = -std::f32::consts::PI + j as f32 * (std::f32::consts::TAU / 40.0);
+                    let p = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
+                    let h = height_at(p, profile, 99);
                     assert!(h.is_finite() && h >= 0.0, "height_at({profile:?}) = {h}");
                 }
             }
@@ -412,11 +522,39 @@ mod tests {
 
     #[test]
     fn height_at_varies_across_space() {
-        let first = height_at(0.2, 0.3, CoastlineProfile::Coastal, 7);
+        let first = height_at(unit(1.0, 0.0, 0.0), CoastlineProfile::Coastal, 7);
         let differs = (1..400).any(|i| {
-            let p = i as f32 * 0.0025;
-            (height_at(p, 1.0 - p, CoastlineProfile::Coastal, 7) - first).abs() > 1e-3
+            let theta = i as f32 * 0.0157;
+            let p = unit(theta.cos(), theta.sin(), 0.2);
+            (height_at(p, CoastlineProfile::Coastal, 7) - first).abs() > 1e-3
         });
         assert!(differs, "height_at produced a constant field");
+    }
+
+    #[test]
+    fn height_at_is_continuous_across_the_antimeridian() {
+        // 3D Perlin on the unit sphere is naturally seamless — two cells just
+        // either side of lon = π should produce nearly identical heights.
+        let eps = 1e-4;
+        for lat_step in -3..=3 {
+            let lat = lat_step as f32 * 0.3;
+            // lon ≈ +π - eps and lon ≈ -π + eps — same physical point.
+            let pa = unit(
+                lat.cos() * (std::f32::consts::PI - eps).cos(),
+                lat.cos() * (std::f32::consts::PI - eps).sin(),
+                lat.sin(),
+            );
+            let pb = unit(
+                lat.cos() * (-std::f32::consts::PI + eps).cos(),
+                lat.cos() * (-std::f32::consts::PI + eps).sin(),
+                lat.sin(),
+            );
+            let ha = height_at(pa, CoastlineProfile::Coastal, 7);
+            let hb = height_at(pb, CoastlineProfile::Coastal, 7);
+            assert!(
+                (ha - hb).abs() < 0.05,
+                "antimeridian discontinuity at lat={lat}: {ha} vs {hb}"
+            );
+        }
     }
 }

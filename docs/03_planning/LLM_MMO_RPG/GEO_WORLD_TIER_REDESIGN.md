@@ -1,13 +1,22 @@
-# GEO — World-Tier & Geo-Type Redesign (design spec, DRAFT)
+# GEO — World-Tier & Geo-Type Redesign (design spec, LOCKED 2026-05-20)
 
-> **Status:** DRAFT spec for PO review — no code yet. Supersedes nothing; it
-> sits *above* the current `crates/world-gen` generator, most of whose
-> per-cell machinery is reused (§7).
+> **Status:** PO-reviewed and **LOCKED 2026-05-20**. 4 of 5 open questions
+> resolved (§9); Q3 (tier-2 persistence) deferred to Phase 5. No code yet —
+> Phase 1 spherical topology is the next BUILD task. Supersedes nothing; sits
+> *above* the current `crates/world-gen` generator, most of whose per-cell
+> machinery is reused (§7).
 >
 > **Origin:** the `Gigaplanet` benchmark showed a 501k-cell map still reads as
 > *one province*. Cell count is **resolution**, not **scope**. The current
 > generator is structurally a *region* generator; this spec defines the *world*
-> tier above it. PO vision captured 2026-05-18.
+> tier above it. PO vision captured 2026-05-18; decisions locked 2026-05-20.
+>
+> **PO decisions (2026-05-20):**
+> - **Topology:** true sphere (icosphere / spherical Voronoi) — §3
+> - **Fantasy split:** two-level — world-archetype + anomaly-region — §6c
+> - **Phasing:** default §8 order (cylinder→tectonics→climate→vocab→scale→fantasy,
+>   with phase 1 retitled to *spherical* topology)
+> - **Scale:** spec defaults, LLM-tunable in bands — §4 / §9 Q5
 
 ---
 
@@ -78,28 +87,71 @@ tier derived on demand.
 
 ---
 
-## 3 — World topology — a wrapping cylinder
+## 3 — World topology — a true sphere
 
-**Recommendation: an equirectangular (plate-carrée) cylinder.** The world is a
-`lon × lat` rectangle where **longitude wraps** (column 0 and column `W` are the
-same meridian) and **latitude is bounded** by the two poles.
+**Decision (PO 2026-05-20): a true sphere.** Points are sampled directly on a
+unit sphere, with adjacency derived from the **spherical Voronoi diagram** (=
+the dual of a spherical Delaunay triangulation). No edges, no poles-as-edges,
+no wrap seam — the sphere has none of these by construction.
 
 | Option | Globe-like | Fits lon/lat | Render | Cost | Verdict |
 |---|---|---|---|---|---|
-| **Cylinder** (equirectangular) | wraps E–W ✓, poles are edges | native — it *is* a lon/lat grid | trivial (it is a flat world map) | low | **chosen** |
-| True sphere (geodesic / icosphere) | perfect | no clean lon/lat grid | needs map projection | high | alternative — note for "max realism" |
+| Cylinder (equirectangular) | wraps E–W ✓, poles are edges | native — it *is* a lon/lat grid | trivial (it is a flat world map) | low | alternative — note for "fast ship" |
+| **True sphere (spherical Voronoi)** | perfect | derived (lat=asin(z), lon=atan2(y,x)) | needs map projection | medium | **chosen** |
 
-A cylinder gives the PO's exact lon/lat framing, wraps east–west (the seam that
-matters for "a globe"), and renders directly as the flat world map a player
-expects. The only compromise is **pole distortion** — cells near a pole cover
-less real surface; handled by latitude-weighting area calculations and letting
-the poles be ice caps anyway. The mesh changes: the current 4-edge perimeter
-ring becomes **2 edges** (north pole, south pole); the east and west sides are
-**stitched** — cells at lon 0 are neighbours of cells at lon `W`.
+The PO picked sphere over cylinder for max realism — the lon/lat grid is then a
+*projection* of the sphere, not the sphere's native parametrization. Pole
+distortion vanishes (a Fibonacci-lattice sphere sampling is near-uniform in
+solid angle). The "area grid" in §4 becomes a projection-time slicing.
 
-→ **Mesh work:** `mesh.rs` gains longitude-wrapping adjacency; the Voronoi/
-Delaunay must wrap (duplicate a margin of cells across the seam before
-triangulating, then merge — a standard technique).
+### 3a — Mesh approach: Fibonacci sphere + spherical Voronoi via 3D convex hull
+
+The standard procedure (well-conditioned, deterministic, no special pole cases):
+
+1. **Fibonacci lattice on the unit sphere.** Place `N` points at angles
+   `(θ_i, φ_i)` where `φ_i = i · (π · (3 − √5))` (golden angle) and
+   `cos θ_i = 1 − (2 i + 1) / N` — near-uniform in solid angle, deterministic.
+   Apply seed-driven small jitter (rotation + ±ε perturbation) for the
+   "natural look" the current Voronoi mesh has.
+2. **3D convex hull of points on the unit sphere.** A 3D convex hull whose
+   vertices are all on a sphere has every face on the sphere — and each face is
+   a **Delaunay triangle on the sphere**. Implementations: `chull` crate, or
+   roll our own Quickhull (small N, easy).
+3. **Spherical Voronoi = dual.** Each Voronoi cell vertex is the circumcentre
+   on the sphere of one Delaunay triangle (normalized to unit length). The cell
+   for a sample point is the polygon of those circumcentres, in CCW order
+   around the point.
+4. **Adjacency from Delaunay edges.** Two cells are neighbours iff their sample
+   points share a Delaunay edge.
+5. **(lat, lon) per cell** = `(asin(z), atan2(y, x))` of the cell-centre point.
+
+This replaces today's "perimeter ring + jittered interior + `delaunator`" in
+`mesh.rs`. **`delaunator` is removed** (it's 2D-only); replaced by a 3D convex
+hull. The hash + ChaCha8 determinism discipline is preserved.
+
+→ **Wrap-around adjacency**: handled automatically — a point at lon ≈ 0 and a
+point at lon ≈ 2π are *3D-close* and become Delaunay neighbours. There is no
+seam to glue.
+
+→ **Pole handling**: handled automatically — Fibonacci lattice spreads points
+near poles correctly; spherical Voronoi has no "edge of the world."
+
+→ **Rendering**: a `Projection` enum (`Equirectangular` default;
+`Mollweide`/`Mercator`/`Orthographic` later) handles 3D-sphere → 2D-image. The
+relief renderer's per-pixel re-triangulation now does **spherical** barycentric
+sampling. The relief field's `noise` / `fBm` inputs switch from `(x, y)` to
+`(lat, lon)` (wrapping) or `(x, y, z)` (3D noise, naturally seamless on the
+sphere — recommended; no wrap glitches at the antimeridian).
+
+### 3b — Why not icosphere subdivision?
+
+A subdivided icosahedron (8× = ~5k faces, 9× = ~20k, 10× = ~80k, ...) gives
+*triangle* cells of near-equal area, but they are **regular hexagonal-ish**
+(every cell has exactly 5–6 neighbours) — the procedural-Voronoi "organic"
+look we keep is lost. Fibonacci sampling + spherical Voronoi keeps the
+familiar irregular-polygon cells, with the same per-cell degree distribution
+(3–10ish) we have today. Icosphere is a fallback if cell-area uniformity
+becomes critical.
 
 ---
 
@@ -271,9 +323,12 @@ blake3 + ChaCha8 determinism & `content_hash` discipline · LLM `CreativeSeed`
 authoring · feature extraction + LLM naming.
 
 **New / changed:**
-1. Mesh → wrapping cylinder (§3).
+1. Mesh → true sphere (Fibonacci sampling + spherical Voronoi via 3D convex
+   hull, §3 / §3a). `delaunator` (2D) replaced by `chull` (3D) or hand-rolled
+   Quickhull-on-sphere.
 2. NEW tier-1 / tier-2 split (§4); `WorldScale` → `(global_mesh, area_grid,
-   cells_per_area)`.
+   cells_per_area)`. The area grid is now a *projection-time slicing* of the
+   sphere by (lat, lon) bands, not a native parametrization.
 3. NEW plate-tectonic continent model (§5) — replaces `CoastlineProfile` +
    `enforce_coherence`.
 4. Climate → global Köppen model (§5b) — replaces the 8-zone gradient.
@@ -286,8 +341,20 @@ authoring · feature extraction + LLM naming.
 
 ## 8 — Suggested phasing (each phase = a normal 12-phase workflow task)
 
-1. **Cylinder topology** — wrap `mesh.rs` E–W, poles; reproject; keep one
-   continent for now. Smallest first step, de-risks the mesh change.
+1. **Spherical topology** — replace flat-square `mesh.rs` with Fibonacci-sphere
+   sampling + spherical Voronoi (3D convex hull). Add `Projection` for 2D
+   rendering (Equirectangular default). Keep one continent
+   (`enforce_coherence` adapts to a spherical mesh) — multi-continent comes in
+   Phase 2. **STAGE A DONE (2026-05-20):** Fibonacci-sphere mesh + hand-rolled
+   3D Quickhull + spherical Voronoi polygons; `Cell.center` migrated to
+   `[f32;3]`; 3D Perlin noise + sphere-native `terrain::height_at` (seamless
+   across the antimeridian — proven by `height_at_is_continuous_across_the_antimeridian`);
+   `CoastlineProfile` heuristics reframed with great-circle distance;
+   `effective_latitude` swap to match (u,v) convention. **STAGE B (next):**
+   `Projection` enum (Equirectangular + Orthographic globe view) + CLI
+   `--projection` flag + native-3D migration of the remaining downstream
+   stages (climate/settlement/route/culture; currently still use the
+   equirectangular (u,v) scaffold from `lib::generate`).
 2. **Plate-tectonic continents** — multi-continent + ocean basins + placed
    mountains/rifts/trenches. Retire `CoastlineProfile`/`enforce_coherence`.
 3. **Global Köppen climate** — the §5b model.
@@ -298,14 +365,12 @@ authoring · feature extraction + LLM naming.
 Phases 1–4 already make a *believable Earth-scale world*; 5 makes it *huge*;
 6 makes it *fantasy*. Each is independently shippable.
 
-## 9 — Open questions for the PO
+## 9 — Open questions (PO review log)
 
-1. **Topology** — cylinder (recommended, §3), or hold out for a true sphere?
-2. **Fantasy split** — agree with world-archetype (whole-planet) vs.
-   anomaly-region (local) as two separate mechanisms (§6c)?
-3. **Tier-2 persistence** — are detail areas generated-on-demand-and-cached, or
-   generated-once-and-stored? (Affects storage design, not this generator.)
-4. **Phasing** — is the §8 order right, or should "huge scale" (phase 5) come
-   earlier?
-5. **Scale targets** — confirm rough numbers: tier-1 ~100k–500k cells, area
-   grid ~100×100, cells/area ~1000 ⇒ ~10M effective. LLM-tunable within bands?
+| # | Question | Resolution |
+|---|---|---|
+| 1 | **Topology** — cylinder or true sphere? | **RESOLVED 2026-05-20** — true sphere (§3 / §3a). |
+| 2 | **Fantasy split** — world-archetype + anomaly-region two-level? | **RESOLVED 2026-05-20** — two-level per §6c. |
+| 3 | **Tier-2 persistence** — generated-on-demand-and-cached, or stored? | **DEFERRED to Phase 5** — affects storage design, not the generator core. Revisit when tier-2 implementation begins. |
+| 4 | **Phasing** — §8 order or move scale earlier? | **RESOLVED 2026-05-20** — default §8 order (with phase 1 retitled to *spherical topology*). |
+| 5 | **Scale targets** — tier-1 100k–500k / area 100×100 / cells/area 1000? | **RESOLVED 2026-05-20** — spec defaults, LLM-tunable within bands. |

@@ -210,12 +210,18 @@ fn rasterize_base(map: &WorldMap, width: u32, height: u32) -> Vec<f32> {
     let h = height as usize;
     let mut buf = vec![f32::NAN; w * h];
 
+    // B2 sphere migration: relief re-triangulation runs in the (u, v)
+    // equirectangular plane. TODO(B5): true spherical barycentric so anti-
+    // meridian-crossing triangles don't artefact.
     let pts: Vec<Point> = map
         .cells
         .iter()
-        .map(|c| Point {
-            x: f64::from(c.center.0),
-            y: f64::from(c.center.1),
+        .map(|c| {
+            let (u, v) = crate::project_uv(c.center);
+            Point {
+                x: f64::from(u),
+                y: f64::from(v),
+            }
         })
         .collect();
     let tri = triangulate(&pts);
@@ -278,10 +284,12 @@ fn box_blur(buf: &mut [f32], w: usize, h: usize, r: usize, passes: u32) {
     }
 }
 
-/// Cell centre → pixel coordinates, with the model-y → image-y flip.
+/// Cell centre → pixel coordinates. `(u, v)` from equirectangular has `v = 0`
+/// at the north pole (top of image), matching raster row=0 at top — no flip
+/// needed.
 fn cell_px(map: &WorldMap, cell: usize, width: u32, height: u32) -> (f32, f32) {
-    let (cx, cy) = map.cells[cell].center;
-    (cx * width as f32, (1.0 - cy) * height as f32)
+    let (u, v) = crate::project_uv(map.cells[cell].center);
+    (u * width as f32, v * height as f32)
 }
 
 /// Normalized elevation of a cell in `[0,1]`.
@@ -334,11 +342,13 @@ fn backfill(buf: &mut [f32], map: &WorldMap, width: u32, height: u32) {
                 continue;
             }
             let mx = (px as f32 + 0.5) / width as f32;
-            let my = 1.0 - (py as f32 + 0.5) / height as f32;
+            // (u, v) raster convention — no flip: row=0 (top) → v=0 (north).
+            let my = (py as f32 + 0.5) / height as f32;
             let mut best = 0usize;
             let mut best_d = f32::INFINITY;
             for (ci, c) in map.cells.iter().enumerate() {
-                let d = (c.center.0 - mx).powi(2) + (c.center.1 - my).powi(2);
+                let (cu, cv) = crate::project_uv(c.center);
+                let d = (cu - mx).powi(2) + (cv - my).powi(2);
                 if d < best_d {
                     best_d = d;
                     best = ci;

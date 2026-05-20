@@ -15,15 +15,33 @@ use crate::climate::ClimateZone;
 use crate::creative_seed::WorldScale;
 
 /// One Voronoi cell — a centre, an elevation, and the cell's vertex polygon.
+///
+/// **Phase 1 world-tier redesign (2026-05-20):** all geometry is **on the
+/// unit sphere** — `center` is a 3D unit vector, `vertex_polygon` is a ring
+/// of 3D unit vectors. Latitude and longitude are derived (see [`Cell::lat`] /
+/// [`Cell::lon`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cell {
-    /// Normalized centre in `[0,1]²`.
-    pub center: (f32, f32),
+    /// Cell centre on the unit sphere — 3D Cartesian unit vector.
+    pub center: [f32; 3],
     /// Elevation `0..=65535`; `< WorldMap.sea_level` ⇒ water.
     pub elevation: u16,
-    /// The cell's Voronoi polygon — an angle-ordered vertex ring in `[0,1]²`
-    /// (≥ 3 vertices). Geometry for rendering and downstream consumers.
-    pub vertex_polygon: Vec<(f32, f32)>,
+    /// The cell's spherical Voronoi polygon — an angle-ordered vertex ring of
+    /// 3D unit-sphere points (≥ 3 vertices). Geometry for rendering and
+    /// downstream consumers.
+    pub vertex_polygon: Vec<[f32; 3]>,
+}
+
+impl Cell {
+    /// Latitude in radians, `[-π/2, π/2]`. North pole = +π/2.
+    pub fn lat(&self) -> f32 {
+        self.center[2].clamp(-1.0, 1.0).asin()
+    }
+
+    /// Longitude in radians, `(-π, π]`. Equivalent to `atan2(y, x)`.
+    pub fn lon(&self) -> f32 {
+        self.center[1].atan2(self.center[0])
+    }
 }
 
 /// Settlement role (GEO_001 §4.3).
@@ -272,13 +290,16 @@ impl WorldMap {
         h.update(&[self.scale.tag()]);
         h.update(&self.sea_level.to_le_bytes());
         for c in &self.cells {
-            h.update(&c.center.0.to_le_bytes());
-            h.update(&c.center.1.to_le_bytes());
+            // 3D centre — Phase 1 world-tier redesign 2026-05-20.
+            h.update(&c.center[0].to_le_bytes());
+            h.update(&c.center[1].to_le_bytes());
+            h.update(&c.center[2].to_le_bytes());
             h.update(&c.elevation.to_le_bytes());
             h.update(&(c.vertex_polygon.len() as u32).to_le_bytes());
-            for &(vx, vy) in &c.vertex_polygon {
-                h.update(&vx.to_le_bytes());
-                h.update(&vy.to_le_bytes());
+            for v in &c.vertex_polygon {
+                h.update(&v[0].to_le_bytes());
+                h.update(&v[1].to_le_bytes());
+                h.update(&v[2].to_le_bytes());
             }
         }
         for list in &self.neighbors {

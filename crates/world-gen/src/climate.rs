@@ -82,10 +82,15 @@ pub fn build(
 }
 
 /// Latitude in `[0,1]` — 0 = equator (hot), 1 = pole (cold).
+///
+/// **Sphere-migration convention (B2 / 2026-05-20):** `y` is `v` from the
+/// equirectangular projection (`v = 0` at the `+z` north pole, `v = 1` at
+/// the `-z` south pole). So **Northern** orientation = `+z` pole is cold =
+/// `eff_lat = 1 − y`; **Southern** = `−z` pole is cold = `eff_lat = y`.
 fn effective_latitude(y: f32, hemi: HemisphereOrientation) -> f32 {
     match hemi {
-        HemisphereOrientation::Northern => y,
-        HemisphereOrientation::Southern => 1.0 - y,
+        HemisphereOrientation::Northern => 1.0 - y,
+        HemisphereOrientation::Southern => y,
         HemisphereOrientation::Equatorial => 2.0 * (y - 0.5).abs(),
     }
 }

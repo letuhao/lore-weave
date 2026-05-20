@@ -31,6 +31,17 @@ pub mod settlement;
 pub mod terrain;
 pub mod world_map;
 
+/// Equirectangular projection of a unit-sphere point to `(u, v) ∈ [0, 1]²` —
+/// `u = (lon + π) / 2π`, `v = (π/2 − lat) / π`. Used by the B2 sphere-
+/// migration scaffold ([`generate`]) and the equirectangular renderer.
+pub(crate) fn project_uv(p: [f32; 3]) -> (f32, f32) {
+    let lat = p[2].clamp(-1.0, 1.0).asin();
+    let lon = p[1].atan2(p[0]);
+    let u = (lon + std::f32::consts::PI) / std::f32::consts::TAU;
+    let v = (std::f32::consts::FRAC_PI_2 - lat) / std::f32::consts::PI;
+    (u, v)
+}
+
 pub use biome::BiomeKind;
 pub use climate::ClimateZone;
 pub use relief::RenderStyle;
@@ -47,8 +58,22 @@ pub use world_map::{
 ///
 /// Pure and deterministic — identical inputs yield a byte-identical map.
 pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
-    // Stage 1–2 — mesh + heightmap.
+    // Stage 1 — spherical Voronoi mesh on the unit sphere (Phase 1 world-tier
+    // redesign, 2026-05-20).
     let mesh = mesh::build(seed, cs.world_scale);
+
+    // **Sphere migration scaffold (B2):** the per-cell (u, v) projection in
+    // `[0, 1]²` of each cell centre via equirectangular — `u = (lon + π) /
+    // 2π`, `v = (π/2 − lat) / π`. **`terrain` (B3) now uses native sphere
+    // coords;** the remaining 2D consumers (`climate`, `hydrology`,
+    // `political`, `settlement`, `routes`, `culture`) still take the legacy
+    // (u, v) tuples and are migrated to 3D in B4 onward
+    // (`docs/plans/2026-05-20-geo-spherical-topology.md`). The
+    // **Cell.center stored on `WorldMap`** is the 3D unit vector — only the
+    // *intermediate compute* still sees the 2D projection.
+    let centers_2d: Vec<(f32, f32)> = mesh.centers.iter().map(|&p| project_uv(p)).collect();
+
+    // Stage 2 — heightmap. **Native sphere** (B3 — 3D Perlin, seamless).
     let terrain = terrain::build(
         seed,
         cs.coastline_profile,
@@ -59,7 +84,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
 
     // Stage 3 — climate.
     let climate = climate::build(
-        &mesh.centers,
+        &centers_2d,
         &terrain.elevation,
         terrain.sea_level,
         &mesh.neighbors,
@@ -70,7 +95,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
 
     // Stage 4 — hydrology + biomes.
     let hydro = hydrology::build(
-        &mesh.centers,
+        &centers_2d,
         &terrain.elevation,
         terrain.sea_level,
         &mesh.neighbors,
@@ -87,10 +112,10 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
     );
 
     // Stage 5–8 — political, settlement, route, culture.
-    let political = political::build(seed, &mesh.centers, &mesh.neighbors, &biome);
+    let political = political::build(seed, &centers_2d, &mesh.neighbors, &biome);
     let settlements = settlement::build(
         seed,
-        &mesh.centers,
+        &centers_2d,
         &biome,
         &climate,
         &hydro.river_flux,
@@ -99,7 +124,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &political,
     );
     let routes = routes::build(
-        &mesh.centers,
+        &centers_2d,
         &mesh.neighbors,
         &biome,
         &hydro.river_flux,
@@ -107,12 +132,13 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &hydro.is_coast,
         &settlements,
     );
-    let culture = culture::build(seed, &mesh.centers, &mesh.neighbors, &biome, cs.culture_count);
+    let culture = culture::build(seed, &centers_2d, &mesh.neighbors, &biome, cs.culture_count);
 
     // Stage 9 — geographic feature extraction (deterministic; names added
     // later by the separate `naming` step).
     let features = feature::extract(&biome, &mesh.neighbors);
 
+    // Build the `Cell` vector with the **3D** centres and polygons.
     let cells: Vec<Cell> = mesh
         .centers
         .iter()
@@ -151,11 +177,10 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
     // `null` and break the round-trip identity guarantee (Phase 4 §2).
     debug_assert!(
         map.cells.iter().all(|c| {
-            c.center.0.is_finite()
-                && c.center.1.is_finite()
+            c.center.iter().all(|x| x.is_finite())
                 && c.vertex_polygon
                     .iter()
-                    .all(|&(x, y)| x.is_finite() && y.is_finite())
+                    .all(|v| v.iter().all(|x| x.is_finite()))
         }) && map.river_flux.iter().all(|f| f.is_finite()),
         "non-finite f32 in WorldMap"
     );

@@ -439,9 +439,12 @@ fn hemisphere_flip_orients_climate() {
             };
             let map = generate(seed, &cs);
             match hemi {
-                // Northern/Southern: compare mean y of cold vs warm cells.
+                // Northern/Southern: compare mean **latitude** of cold vs warm
+                // cells. (B2 sphere migration: `cell.lat()` replaces the old
+                // `center.1` proxy — semantic is identical, more north = higher
+                // latitude in Northern, lower in Southern.)
                 HemisphereOrientation::Northern | HemisphereOrientation::Southern => {
-                    let y = |i: usize| map.cells[i].center.1;
+                    let y = |i: usize| map.cells[i].lat();
                     let (Some(cold_y), Some(warm_y)) =
                         (mean_climate(&map, cold, y), mean_climate(&map, warm, y))
                     else {
@@ -451,19 +454,19 @@ fn hemisphere_flip_orients_climate() {
                     if hemi == HemisphereOrientation::Northern {
                         assert!(
                             cold_y > warm_y,
-                            "Northern seed {seed}: cold mean-y {cold_y} not poleward of warm {warm_y}"
+                            "Northern seed {seed}: cold mean-lat {cold_y} not poleward of warm {warm_y}"
                         );
                     } else {
                         assert!(
                             cold_y < warm_y,
-                            "Southern seed {seed}: cold mean-y {cold_y} not poleward of warm {warm_y}"
+                            "Southern seed {seed}: cold mean-lat {cold_y} not poleward of warm {warm_y}"
                         );
                     }
                 }
-                // Equatorial: both edges are polar → cold sits farther from
-                // y=0.5 (compare mean |y-0.5|, not mean y, which would ~0.5).
+                // Equatorial: both poles are cold → cold sits farther from the
+                // equator (compare mean |lat|, where equator lat=0).
                 HemisphereOrientation::Equatorial => {
-                    let pd = |i: usize| (map.cells[i].center.1 - 0.5).abs();
+                    let pd = |i: usize| map.cells[i].lat().abs();
                     let (Some(cold_d), Some(warm_d)) =
                         (mean_climate(&map, cold, pd), mean_climate(&map, warm, pd))
                     else {

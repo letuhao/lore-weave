@@ -8,10 +8,11 @@
 
 ## Current status & next session (handoff)
 
-**As of 2026-05-18 — branch `geo-generator-amaw`, pushed.** The 4-phase
-generator is built, the post-build human-in-loop review is done, and seven
-enhancements have since shipped — each via the full default 12-phase v2.2
-workflow (`/review-impl` on enhancements 3–6):
+**As of 2026-05-20 — branch `geo-generator-amaw`, pushed.** The 4-phase
+generator is built, the post-build human-in-loop review is done, seven
+enhancements + the **world-tier sphere migration (Phase 1 stage A)** have
+shipped — each via the full default 12-phase v2.2 workflow (`/review-impl`
+on enhancements 3–6):
 
 | Work | Commit |
 |---|---|
@@ -21,9 +22,11 @@ workflow (`/review-impl` on enhancements 3–6):
 | Feature naming — extraction + LLM `name` step + SVG labels | `d0e608e3` |
 | Hydraulic erosion (Path B v2) — two-phase stream-power carve/settle (`--erosion`) | `addd9f16` |
 | Render polish — supersample 2× · complementary detail · concavity occlusion | `46a32e1c` |
-| Huge-scale benchmark — `WorldScale::Gigaplanet` (~501k cells) + criterion bench | HEAD of `geo-generator-amaw` |
+| Huge-scale benchmark — `WorldScale::Gigaplanet` (~501k cells) + criterion bench | `a156be69` |
+| **World-tier redesign Phase 1 stage A — sphere mesh + 3D Perlin terrain (kills the rectangle)** | HEAD of `geo-generator-amaw` |
 
-**114 tests green + 3 ignored** (2 LLM integration, 1 `gigaplanet` 501k-cell), `cargo clippy` clean.
+**110+ tests green** post-sphere-migration (Stage A re-baselined `content_hash`
+for every fixture — intentional algorithm change per [`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §3).
 
 > **⚠ Architectural realisation (2026-05-18).** The Gigaplanet benchmark made
 > it clear: **cell count is resolution, not scope.** A 501k-cell map still
@@ -37,17 +40,41 @@ workflow (`/review-impl` on enhancements 3–6):
 > the **geo-type redesign** (Earth terrain + fantasy: great rift, lava world,
 > shattered world). This is the next major work.
 
-**Next session — deep-dive the world-tier redesign.** The PO described the
-world-model vision (2026-05-18) and the agent drafted the design spec:
-[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) — **DRAFT, awaiting
-PO review**. It defines: a wrapping-cylinder topology, a two-tier scale
-architecture (resident coarse global mesh + on-demand seamless per-area
-detail), a plate-tectonic multi-continent model, a Köppen-grounded global
-climate model, a 3-axis geo-type vocabulary (landform / biome / fantasy), and
-physiographic-region output (no political layer). Next session: walk the spec
-with the PO, resolve the **5 open questions in §9**, then begin **phase 1 —
-cylinder topology** (§8 phasing). Implementation is 6 phases, each a full
-12-phase workflow task.
+**Spec locked + Phase 1 stage A done (2026-05-20).** PO reviewed
+[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) and chose **true
+sphere** over cylinder (§3), two-level fantasy split (§6c), default §8 phase
+order, and spec-default scale targets — 4 of 5 §9 open questions resolved;
+Q3 (tier-2 persistence) deferred to Phase 5. Phase 1 stage A then landed
+the sphere foundation:
+
+- `mesh.rs` rewritten: **Fibonacci-lattice sample + 3D Quickhull + spherical
+  Voronoi polygons**. No edges, no E-W seam, no pole degeneracy — wrap is
+  automatic.
+- `Cell.center` migrated from `(f32, f32)` 2D plane to `[f32; 3]` 3D unit
+  sphere; `Cell::lat()` / `Cell::lon()` derived; `compute_hash` reshaped.
+- `noise.rs` gained `gradient_noise_3d` + `fbm_3d` + `ridged_fbm_3d` (Marsaglia
+  uniform-on-sphere gradients; trilinear blend with smootherstep fade).
+- `terrain.rs` rewritten: **3D Perlin heightmap**, sampled at unit-sphere
+  points — naturally seamless across the antimeridian (proven by the new
+  `height_at_is_continuous_across_the_antimeridian` test). `CoastlineProfile`
+  heuristics reframed with great-circle distance + sphere-distributed
+  Archipelago discs.
+- `climate.rs` `effective_latitude` swap — Northern/Southern logic flipped to
+  match the new equirectangular (u, v) convention (v=0 at north pole).
+- `lib.rs` (u, v) adapter scaffold lets `climate` / `hydrology` / `political`
+  / `settlement` / `routes` / `culture` keep their legacy 2D signatures —
+  migrated to native 3D in stage B alongside the `Projection` enum work.
+- 98 lib unit tests pass; 7 determinism + 5 serde integration tests pass —
+  `content_hash` re-baselined intentionally (sphere geometry ⇒ different
+  bytes).
+
+**Next session — Phase 1 stage B + Phase 2 entry.** Stage B closes Phase 1:
+the `Projection` enum (Equirectangular + **Orthographic globe view**, per PO
+2026-05-20 §3), CLI `--projection` flag, and native-3D migration of the six
+remaining downstream stages (drop the (u, v) scaffold; great-circle distance
+for settlement Poisson-disk + route Dijkstra; sphere-aware orographic wind
+march). Then Phase 2 (plate-tectonic multi-continent) per [`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md)
+§5. Implementation plan: [`docs/plans/2026-05-20-geo-spherical-topology.md`](../../plans/2026-05-20-geo-spherical-topology.md).
 
 Benchmark baseline (release): generate 6 ms → 91 ms for Pocket → Megaplanet,
 **8.5 s** at Gigaplanet (501k cells); relief render ~14 s. Super-linear, not O(n²).
