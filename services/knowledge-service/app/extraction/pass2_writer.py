@@ -217,12 +217,15 @@ async def write_pass2_extraction(
         if not name_clean.strip():
             continue
 
-        # NOTE: ``evt.location`` and ``evt.time_cue`` are intentionally
-        # dropped here — K11.7 ``merge_event`` does not yet accept
-        # these parameters. Tracked for K18+. See K17.9 negative
-        # assertion test pinning this behavior.
-        # C18: ``evt.event_date`` IS threaded — it's the structured
-        # filter axis for the timeline endpoint's date-range Query.
+        # NOTE: ``evt.location`` is still intentionally dropped here —
+        # merge_event does not yet accept location (Location is likely
+        # to land as a :Place entity reference rather than a string,
+        # so its own design cycle is needed).
+        # C18: ``evt.event_date`` is the structured timeline-filter axis.
+        # C18-DEF-01: ``evt.time_cue`` is the free-text narrative hint
+        # ("the next morning", "in his youth", "summer 1880") — kept
+        # for FE display + parsed best-effort by the C18 backfill
+        # helper into event_date_iso when possible.
         event = await merge_event(
             session,
             user_id=user_id,
@@ -230,6 +233,7 @@ async def write_pass2_extraction(
             title=name_clean,
             summary=summary_clean or None,
             event_date_iso=evt.event_date,
+            time_cue=evt.time_cue,
             participants=[
                 _sanitize(p, project_id) for p in evt.participants
             ],

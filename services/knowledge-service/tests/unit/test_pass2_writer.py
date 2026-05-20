@@ -69,11 +69,12 @@ def _event(
     confidence: float = 0.9,
     summary: str = "Something happened.",
     event_date: str | None = None,
+    time_cue: str | None = None,
 ) -> LLMEventCandidate:
     return LLMEventCandidate(
         name=name, kind="action", participants=participants,
         participant_ids=participant_ids or [f"eid-{p.lower()}" for p in participants],
-        location=None, time_cue=None, event_date=event_date, summary=summary,
+        location=None, time_cue=time_cue, event_date=event_date, summary=summary,
         confidence=confidence, event_id=f"evid-{name.lower()}",
     )
 
@@ -291,13 +292,19 @@ async def test_events_merged_with_evidence(
 
     assert result.events_merged == 1
     assert result.evidence_edges == 1
-    # Intentional drop: ``location`` / ``time_cue`` are not forwarded to
-    # merge_event (K11.7 has no such params; tracked for K18+).
-    # C18: ``event_date`` IS forwarded — verify the kwarg threading
-    # below.
+    # ``location`` is still intentionally dropped (Location may land
+    # as a :Place entity reference rather than a string — its own
+    # design cycle). ``time_cue`` IS now forwarded as of C18-DEF-01:
+    # the C18 backfill helper relies on it being persisted to parse
+    # vague narrative hints into event_date_iso later.
     kwargs = mock_merge_event.call_args.kwargs
     assert "location" not in kwargs
-    assert "time_cue" not in kwargs
+    assert "time_cue" in kwargs
+    # default _event() fixture sets time_cue=None — None forwarded
+    # is fine (ON MATCH coalesce treats it as "no new value"; the
+    # value-forwarding regression-lock lives in the dedicated test
+    # below).
+    assert kwargs["time_cue"] is None
     # event_date defaulted to None in this fixture; the kwarg IS
     # passed to merge_event (None just means "no date for this event").
     assert "event_date_iso" in kwargs
@@ -327,6 +334,36 @@ async def test_event_date_threaded_to_merge_event(
     )
     kwargs = mock_merge_event.call_args.kwargs
     assert kwargs["event_date_iso"] == "1880-06"
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_time_cue_threaded_to_merge_event(
+    mock_upsert_source, mock_merge_event, mock_evidence,
+):
+    """C18-DEF-01 regression-lock: when LLMEventCandidate.time_cue is
+    non-null, the verbatim narrative hint is threaded to merge_event so
+    it lands on the :Event node. Without this wiring, vague hints like
+    ``"the next morning"`` or ``"in his youth"`` die at write time and
+    the C18 event_date_backfill helper has nothing to parse."""
+    mock_upsert_source.return_value = _make_source_result()
+    mock_merge_event.return_value = _make_event_result("evid-cued")
+    mock_evidence.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1",
+        job_id=JOB_ID,
+        events=[_event(
+            "Promise at the river", ["Kai"],
+            time_cue="the next morning",
+        )],
+    )
+    kwargs = mock_merge_event.call_args.kwargs
+    assert kwargs["time_cue"] == "the next morning"
 
 
 @pytest.mark.asyncio
