@@ -222,8 +222,17 @@ ALTER TABLE knowledge_projects
 -- (same pattern as budget columns), NOT through the Project Pydantic
 -- model or _SELECT_COLS — kept separate to avoid bloating generic reads.
 ALTER TABLE knowledge_projects
-  ADD COLUMN IF NOT EXISTS embedding_provider_id  UUID,
   ADD COLUMN IF NOT EXISTS embedding_dimension    INT;
+
+-- D-EMB-CLEANUP-01 (session 58 cycle 2 ADR §7.2): the K12.3
+-- embedding_provider_id column on knowledge_projects was created but
+-- never populated/read/plumbed (not in _SELECT_COLS, every writer
+-- passed None). The cycle-3 fix kept embedding_model + added a separate
+-- embedding_dimension column; provider_id was vestigial. Drop it.
+-- The same-named column on project_embedding_benchmark_runs is a
+-- DIFFERENT, ACTIVELY-USED column and is intentionally untouched.
+ALTER TABLE knowledge_projects
+  DROP COLUMN IF EXISTS embedding_provider_id;
 
 -- ═══════════════════════════════════════════════════════════════
 -- K10.1 — extraction_pending

@@ -160,6 +160,38 @@ def test_benchmark_runs_project_fk_cascades():
     ) >= 4
 
 
+def test_knowledge_projects_embedding_provider_id_dropped():
+    """D-EMB-CLEANUP-01: the K12.3 embedding_provider_id column on
+    knowledge_projects was never populated/read/plumbed (not in
+    _SELECT_COLS, every writer passed None). The cycle-3 fix retired
+    the logical-name concept and kept embedding_model + a separate
+    embedding_dimension column, so this column was vestigial.
+
+    Regression-lock: assert (a) the DROP COLUMN block is present in DDL
+    on knowledge_projects and (b) the SAME-NAMED column on
+    project_embedding_benchmark_runs (a different, actively-used table)
+    is NOT touched — defense against future cleanups that conflate the
+    two columns by name."""
+    # (a) drop block present on knowledge_projects.
+    assert (
+        "ALTER TABLE knowledge_projects" in DDL
+        and "DROP COLUMN IF EXISTS embedding_provider_id" in DDL
+    ), "knowledge_projects.embedding_provider_id DROP block missing"
+    # (b) The benchmark_runs column is still alive. Use the same regex
+    # scope as test_benchmark_runs_no_cross_db_fk_on_provider — find the
+    # CREATE TABLE body and assert the column is declared inside it.
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS project_embedding_benchmark_runs\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "benchmark_runs table missing — wrong cleanup target"
+    body = m.group(1)
+    assert any(
+        "embedding_provider_id" in line for line in body.splitlines()
+    ), "benchmark_runs.embedding_provider_id was wrongly dropped"
+
+
 def test_benchmark_runs_no_cross_db_fk_on_provider():
     """embedding_provider_id points to a row in provider-registry's
     own database — no cross-DB FK allowed (same rule as user_id /
