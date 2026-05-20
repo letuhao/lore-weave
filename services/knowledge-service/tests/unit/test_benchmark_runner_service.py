@@ -46,7 +46,7 @@ from app.benchmark.runner import (
 )
 from app.db.models import Project
 from app.db.neo4j_repos.passages import KNOWN_SOURCE_TYPES
-from eval.fixture_loader import BENCHMARK_SOURCE_TYPE
+from app.benchmark.fixture_loader import BENCHMARK_SOURCE_TYPE
 
 
 _USER = uuid4()

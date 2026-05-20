@@ -25,13 +25,13 @@ from app.db.neo4j_repos.passages import (
     find_passages_by_vector,
 )
 
-from .run_benchmark import ScoredResult
+from .core import ScoredResult
 
 __all__ = ["AsyncQueryRunner", "Mode3QueryRunner"]
 
 
 class AsyncQueryRunner(Protocol):
-    """Awaitable counterpart to `run_benchmark.QueryRunner`.
+    """Awaitable counterpart to `core.QueryRunner`.
 
     Real-world runners have to await embedding + Neo4j I/O, so the
     live benchmark adapter keeps the Protocol async. The sync

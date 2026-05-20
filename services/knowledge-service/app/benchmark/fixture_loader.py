@@ -40,7 +40,7 @@ from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.passages import upsert_passage
 
-from .run_benchmark import GoldenSet
+from .core import GoldenSet
 
 __all__ = ["BENCHMARK_SOURCE_TYPE", "load_golden_set_as_passages"]
 

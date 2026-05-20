@@ -39,16 +39,16 @@ from app.clients.embedding_client import EmbeddingClient
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.projects import ProjectsRepo
-from eval.fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
-from eval.mode3_query_runner import Mode3QueryRunner
-from eval.persist import persist_benchmark_report
-from eval.run_benchmark import (
+from .core import (
     AsyncBenchmarkRunner,
     BenchmarkReport,
     _default_golden_path,
     _default_run_id,
     load_golden_set,
 )
+from .fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
+from .mode3_query_runner import Mode3QueryRunner
+from .persist import persist_benchmark_report
 
 __all__ = [
     "BenchmarkRunError",
@@ -79,7 +79,8 @@ class UnknownEmbeddingModelError(BenchmarkRunError):
 
 class NotBenchmarkProjectError(BenchmarkRunError):
     """Project already contains real (chapter/chat/glossary) passages.
-    K17.9 assumes a dedicated benchmark project per ``eval/fixture_loader.py``.
+    K17.9 assumes a dedicated benchmark project per
+    ``app/benchmark/fixture_loader.py``.
     """
 
 

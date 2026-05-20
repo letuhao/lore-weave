@@ -27,7 +27,6 @@ COPY services/knowledge-service/requirements-test.txt .
 RUN pip install --no-cache-dir -r requirements-test.txt
 
 COPY services/knowledge-service/app/ ./app/
-COPY services/knowledge-service/eval/ ./eval/
 COPY services/knowledge-service/tests/ ./tests/
 COPY services/knowledge-service/pytest.ini .
 
@@ -42,13 +41,12 @@ RUN KNOWLEDGE_DB_URL=postgresql://u:p@localhost:5432/knowledge \
 FROM deps AS production
 
 COPY services/knowledge-service/app/ ./app/
-# D-EMB-MODEL-REF-01: the K17.9 benchmark endpoint is production-wired
-# (app/routers/public/extraction.py → app/benchmark/runner.py), and
-# runner.py imports eval.fixture_loader / eval.mode3_query_runner /
-# eval.persist + reads eval/golden_set.yaml. eval/ must therefore ship
-# in the production image. (Cleaner long-term: move those three modules
-# under app/benchmark/ — tracked as D-EMB-EVAL-PKG-01.)
-COPY services/knowledge-service/eval/ ./eval/
+# D-EMB-EVAL-PKG-01: the K17.9 benchmark runtime (core / fixture_loader
+# / mode3_query_runner / persist / metrics + golden_set.yaml) now lives
+# under app/benchmark/, so the production image does NOT need to ship
+# eval/. The eval/ directory only holds the standalone CLI shell
+# (eval/run_benchmark.py — imports from app.benchmark.*) + dev helpers
+# (register_lm_studio_models.sql, QUALITY_EVAL_BASELINES.md).
 
 RUN adduser --system --group --no-create-home app \
     && chown -R app:app /app

@@ -9,18 +9,17 @@ Acceptance (scaffold slice):
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from eval.metrics import mean, recall_at_k, reciprocal_rank, stddev
-from eval.run_benchmark import (
+from app.benchmark.core import (
     BenchmarkRunner,
     GoldenQuery,
     GoldenSet,
     ScoredResult,
+    _default_golden_path,
     load_golden_set,
 )
+from app.benchmark.metrics import mean, recall_at_k, reciprocal_rank, stddev
 
 
 # ── metrics ───────────────────────────────────────────────────────────
@@ -93,7 +92,7 @@ def test_stddev_known_value():
 # ── fixture load ──────────────────────────────────────────────────────
 
 
-FIXTURE_PATH = Path(__file__).parents[2] / "eval" / "golden_set.yaml"
+FIXTURE_PATH = _default_golden_path()
 
 
 def test_golden_set_loads():

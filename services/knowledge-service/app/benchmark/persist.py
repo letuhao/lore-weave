@@ -14,7 +14,7 @@ from uuid import UUID
 
 import asyncpg
 
-from .run_benchmark import BenchmarkReport
+from .core import BenchmarkReport
 
 __all__ = ["persist_benchmark_report"]
 
