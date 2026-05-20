@@ -86,6 +86,40 @@ class TestBillingClient:
 
     @pytest.mark.asyncio
     @patch("app.client.billing_client.httpx.AsyncClient")
+    async def test_log_usage_sends_internal_token_header(self, mock_client_cls):
+        """D-CHAT-BILLING-01 regression-lock: usage-billing's middleware
+        rejects calls without ``X-Internal-Token``. The original
+        ``test_log_usage_success`` only asserted ``post.assert_awaited_once``
+        and never inspected the headers kwarg — which is exactly how this
+        bug shipped broken at birth (session-58 cycle-1 live smoke
+        observation). A future refactor that drops the header must
+        fail this test."""
+        mock_http = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_http.post.return_value = mock_resp
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_http
+
+        client = BillingClient()
+        await client.log_usage(
+            user_id="user-1",
+            model_source="user_model",
+            model_ref="ref-123",
+            provider_kind="openai",
+            input_tokens=100,
+            output_tokens=50,
+            session_id="sess-1",
+            message_id="msg-1",
+        )
+        # Header inspection — the bug surface.
+        _args, kwargs = mock_http.post.call_args
+        headers = kwargs.get("headers") or {}
+        assert headers.get("X-Internal-Token") == "test-internal-token"
+
+    @pytest.mark.asyncio
+    @patch("app.client.billing_client.httpx.AsyncClient")
     async def test_log_usage_swallows_errors(self, mock_client_cls):
         mock_http = AsyncMock()
         mock_http.post.side_effect = Exception("network error")

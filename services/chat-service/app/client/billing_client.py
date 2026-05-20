@@ -11,6 +11,14 @@ logger = logging.getLogger(__name__)
 class BillingClient:
     def __init__(self) -> None:
         self._base = settings.usage_billing_service_url
+        # D-CHAT-BILLING-01: usage-billing's internal API enforces
+        # X-Internal-Token (services/usage-billing-service/internal/api/server.go).
+        # Mirrors the pattern in provider_client.py + knowledge_client.py.
+        # Without this every per-model usage record was rejected 401
+        # ("invalid internal token") — best-effort logging swallowed it,
+        # which is exactly why it shipped broken at birth and was only
+        # caught by the session-58 cycle-1 live smoke.
+        self._token = settings.internal_service_token
 
     async def log_usage(
         self,
@@ -40,7 +48,11 @@ class BillingClient:
         }
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(f"{self._base}/internal/model-billing/record", json=payload)
+                resp = await client.post(
+                    f"{self._base}/internal/model-billing/record",
+                    json=payload,
+                    headers={"X-Internal-Token": self._token},
+                )
                 if resp.status_code >= 400:
                     logger.warning("Billing record failed (%d): %s", resp.status_code, resp.text[:200])
         except Exception as exc:
