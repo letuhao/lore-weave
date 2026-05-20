@@ -11,6 +11,7 @@ pub mod force_directed;
 pub mod fractalize;
 pub mod grid_seed;
 pub mod penrose;
+pub(crate) mod spatial;
 
 pub use force_directed::{ConvergenceCaps, ConvergenceResult, force_directed_converge};
 pub use fractalize::fractalize_zone;

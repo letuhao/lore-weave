@@ -34,6 +34,7 @@ use crate::types::tile_mask::TileMask;
 use crate::types::zone::{ZoneId, ZoneRole};
 
 use super::ZoneTiles;
+use super::spatial::UniformBuckets;
 
 /// Base squared-distance constant (`9 × 9`) — TMP_002 §5.2.
 const MIN_DISTANCE: f64 = 81.0;
@@ -86,6 +87,15 @@ fn hub_path(assigned: &TileMask, center: TileCoord) -> TileMask {
 }
 
 /// §5.2 main loop — scatter waypoints, then link fragments into one skeleton.
+///
+/// Bucket-based "any within radius" rewrite of the original O(candidates²)
+/// linear-scan scatter (DEFERRED #016 — promoted by the 2026-05-18 continent
+/// measurement). A side `UniformBuckets<TileCoord>` mirrors `cleared`'s set
+/// bits; each candidate tests only the 3×3 bucket neighbourhood (proven
+/// sufficient in spec §9.2: `bucket_size = ceil(sqrt(coverage_sq))` ≤ 7, so
+/// any tile farther than the radius lies in a bucket ≥ 2 rings away).
+/// Output: bit-exact identical to the prior naive implementation
+/// (`scatter_and_connect_naive`, kept under `#[cfg(test)]` as the oracle).
 fn scatter_and_connect(
     assigned: &TileMask,
     center: TileCoord,
@@ -95,11 +105,17 @@ fn scatter_and_connect(
 ) -> TileMask {
     let w = assigned.width();
     let h = assigned.height();
-    // block_distance — the squared coverage radius (see module docs).
     let coverage_sq = (MIN_DISTANCE * span_factor) as i64;
 
     let mut cleared = TileMask::new(w, h);
     cleared.set(center);
+
+    let bucket_size = (coverage_sq as f64).sqrt().ceil().max(1.0) as i32;
+    let cols = (w as i32 + bucket_size - 1) / bucket_size;
+    let rows = (h as i32 + bucket_size - 1) / bucket_size;
+    let mut buckets: UniformBuckets<TileCoord> =
+        UniformBuckets::new((0.0, 0.0), bucket_size as f64, cols, rows);
+    buckets.insert(0, center);
 
     // Candidate waypoints — assigned tiles clear of the boundary margin.
     let mut candidates: Vec<TileCoord> = assigned
@@ -111,30 +127,33 @@ fn scatter_and_connect(
 
     // Greedy scatter — keep a tile only if it is farther than the coverage
     // radius from every waypoint placed so far (§5.2: a closer tile is already
-    // covered and gets ignored).
+    // covered and gets ignored). Equivalent boolean to the naive
+    // `nearest_cleared_dist_sq(t, &cleared) > coverage_sq` test.
     for t in candidates {
-        if nearest_cleared_dist_sq(t, &cleared) > coverage_sq {
+        let (bx, by) = buckets.bucket_xy(t);
+        let mut blocked = false;
+        for ring in 0..=1 {
+            buckets.for_each_in_ring(bx, by, ring, |_, c| {
+                if !blocked {
+                    let dx = t.x as i64 - c.x as i64;
+                    let dy = t.y as i64 - c.y as i64;
+                    if dx * dx + dy * dy <= coverage_sq {
+                        blocked = true;
+                    }
+                }
+            });
+            if blocked {
+                break;
+            }
+        }
+        if !blocked {
             cleared.set(t);
+            buckets.insert(0, t);
         }
     }
 
     connect_components(&mut cleared, assigned);
     cleared
-}
-
-/// Squared distance from `t` to the nearest set tile of `cleared` (which always
-/// holds at least the zone centre, so this never sees an empty mask).
-fn nearest_cleared_dist_sq(t: TileCoord, cleared: &TileMask) -> i64 {
-    let mut best = i64::MAX;
-    for c in cleared.iter_set() {
-        let dx = t.x as i64 - c.x as i64;
-        let dy = t.y as i64 - c.y as i64;
-        let d = dx * dx + dy * dy;
-        if d < best {
-            best = d;
-        }
-    }
-    best
 }
 
 /// §5.2 end — connected-components fixup. Links scattered waypoint fragments
@@ -257,6 +276,56 @@ fn neighbours(c: TileCoord, w: u32, h: u32) -> Vec<TileCoord> {
     n
 }
 
+/// The pre-perf naive implementation of `scatter_and_connect` — kept under
+/// `#[cfg(test)]` as the oracle that the bucketed rewrite must match
+/// bit-for-bit (AC-1).
+#[cfg(test)]
+fn scatter_and_connect_naive(
+    assigned: &TileMask,
+    center: TileCoord,
+    span_factor: f64,
+    seed: TilemapSeed,
+    zone_id: &ZoneId,
+) -> TileMask {
+    let w = assigned.width();
+    let h = assigned.height();
+    let coverage_sq = (MIN_DISTANCE * span_factor) as i64;
+
+    let mut cleared = TileMask::new(w, h);
+    cleared.set(center);
+
+    let mut candidates: Vec<TileCoord> = assigned
+        .iter_set()
+        .filter(|t| t.x >= MARGIN && t.y >= MARGIN && t.x + MARGIN < w && t.y + MARGIN < h)
+        .collect();
+    let mut rng = ChaCha8Rng::seed_from_u64(sub_seed(seed, &format!("fractalize:{}", zone_id.0)));
+    candidates.shuffle(&mut rng);
+
+    for t in candidates {
+        if nearest_cleared_dist_sq_naive(t, &cleared) > coverage_sq {
+            cleared.set(t);
+        }
+    }
+
+    connect_components(&mut cleared, assigned);
+    cleared
+}
+
+/// The pre-perf nearest-set-tile scan — O(|cleared|) per call.
+#[cfg(test)]
+fn nearest_cleared_dist_sq_naive(t: TileCoord, cleared: &TileMask) -> i64 {
+    let mut best = i64::MAX;
+    for c in cleared.iter_set() {
+        let dx = t.x as i64 - c.x as i64;
+        let dy = t.y as i64 - c.y as i64;
+        let d = dx * dx + dy * dy;
+        if d < best {
+            best = d;
+        }
+    }
+    best
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,6 +424,38 @@ mod tests {
         fractalize_zone(&mut a, TilemapSeed(0xF00D));
         fractalize_zone(&mut b, TilemapSeed(0xF00D));
         assert_eq!(a.free_paths, b.free_paths);
+    }
+
+    #[test]
+    fn ac1_scatter_and_connect_matches_naive_at_zone_scale() {
+        // AC-1 — DEFERRED #016 promote. The bucketed rewrite must produce a
+        // bit-exact identical `cleared` mask to the naive O(candidates²)
+        // implementation across multiple seeds + span factors. Tested at 96² —
+        // well past the existing 24²-32² fixtures (large enough to exercise
+        // the bucket grid: 96² = 9216 tiles ⇒ ~13×13 buckets at bucket_size=7)
+        // but small enough that the naive oracle finishes in debug mode (~1 s
+        // total). The continent-scale equivalence falls out from the algebra
+        // — the bucket query is bit-exact equivalent to the linear scan at
+        // every per-candidate test — and the offline `tilemap-service measure`
+        // run (AC-6) plus the golden test (AC-4) are the end-to-end gates.
+        let assigned = full_rect(96, 96);
+        let centre = TileCoord::new(48, 48);
+        let zone_id = ZoneId("ac1".to_string());
+        for &seed in &[0xA11CEu64, 1, 2, 0xF00D, 0xC0FFEE] {
+            for &span in &[SPAN_SURFACE, SPAN_SEA] {
+                let bucketed = scatter_and_connect(
+                    &assigned, centre, span, TilemapSeed(seed), &zone_id,
+                );
+                let naive = scatter_and_connect_naive(
+                    &assigned, centre, span, TilemapSeed(seed), &zone_id,
+                );
+                assert_eq!(
+                    bucketed, naive,
+                    "bucketed scatter diverged from naive at seed=0x{:X} span={}",
+                    seed, span,
+                );
+            }
+        }
     }
 
     #[test]

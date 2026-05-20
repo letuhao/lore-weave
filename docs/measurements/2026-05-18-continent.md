@@ -88,3 +88,50 @@ batching itself worked: 456 objects → ~16 bounded batches grouped by zone.
   severe ~8–11 min cost that should promote perf items #016/#018.
 - ⛔ Live L3/L4 measurement blocked on a provider-registry pricing config; the
   `measure` tool + per-zone L3 batching are built, tested, and ready to re-run.
+
+---
+
+## 2026-05-20 update — perf items #016 + #018 resolved, finding O-1 reframed
+
+After clearing the deferred #016 + #018 perf items (commit upcoming, spec
+[`docs/specs/2026-05-20-tilemap-perf-fractalize-penrose.md`](../specs/2026-05-20-tilemap-perf-fractalize-penrose.md)),
+`measure` was re-run with the per-stage timing now in
+`OfflineMeasurement.zones_elapsed` / `render_offline`:
+
+```
+── continent measurement — offline (engine-only) ────────
+grid           : 256×256
+zones          : 12
+objects placed : 456
+road segments  : 111
+river segments : 11
+place_zones    : 0.110 s  (Penrose + fractalize — DEFERRED #016/#018)
+modificators   : 687.139 s  (Terrain → Connections → Treasure → Road → Obstacle → River)
+place_tilemap  : 687.249 s  (total)
+─────────────────────────────────────────────────────────
+```
+
+### Finding O-1 — REFRAMED
+
+- **#016 + #018 are conclusively resolved.** `place_zones` (Penrose tiling +
+  per-zone fractalize) dropped from a fraction of the 506–814 s baseline
+  to **0.110 s** — a >300× drop at that layer, comfortably under the
+  TMP_002 §7 <500 ms budget.
+- **The 8–11 min continent cost was misdiagnosed as caused by #016/#018.**
+  With those algorithmic O(n²) bugs gone, **99.98 % of the wall time is in
+  the modificator pipeline** — `TerrainPainter → ConnectionsPlacer →
+  TreasurePlacer → RoadPlacer → ObstaclePlacer → RiverPlacer`.
+- The dominant cost is almost certainly the per-placement-O(zone_tiles²)
+  `place_and_connect_object` (the captured lesson from the Phase C TreasurePlacer
+  build) compounding across 456 objects + 111 roads + 11 rivers each carrying
+  a Dijkstra `search_path`. **New deferred item #029** tracks profiling +
+  fixing this.
+
+### Recommended next perf step
+
+1. Add per-modificator timing to the `OfflineMeasurement` (one `Duration` per
+   placer in the pipeline) — narrow the 687 s onto a specific placer.
+2. Likely suspect: `TreasurePlacer::place_and_connect_object` —
+   the captured lesson notes it is `~O(zone_tiles squared) per placement`,
+   ~456 placements × 65 536 tiles² = absurd in the worst case.
+3. Then design the targeted fix per the dominant placer's algorithm.

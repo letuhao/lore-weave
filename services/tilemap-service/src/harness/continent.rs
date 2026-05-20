@@ -23,6 +23,13 @@ use super::retry::{L3_BATCH_SIZE, run_l3_batched};
 use super::style::{NarrationLanguage, NarrationVoice, NarrativeTone};
 
 /// Offline (engine-only) continent-generation measurement.
+///
+/// `zones_elapsed` times `place_zones` alone (Penrose tiling + per-zone
+/// fractalize — the area DEFERRED #016/#018 optimised); `elapsed` is the full
+/// `place_tilemap` (place_zones + the modificator pipeline). The derived
+/// `modificators_elapsed` makes the modificator-vs-geometry cost split
+/// explicit — the 2026-05-18 continent measurement surfaced finding O-1 but
+/// did not break out which stage dominated.
 #[derive(Debug)]
 pub struct OfflineMeasurement {
     pub grid: GridSize,
@@ -30,6 +37,7 @@ pub struct OfflineMeasurement {
     pub object_count: usize,
     pub road_segments: usize,
     pub river_segments: usize,
+    pub zones_elapsed: Duration,
     pub elapsed: Duration,
 }
 
@@ -116,6 +124,16 @@ pub fn measure_offline() -> crate::Result<(TilemapView, OfflineMeasurement)> {
     let template = continent_template();
     let grid = GridSize::CONTINENT_DEFAULT;
     let seed = continent_seed(&template);
+
+    // Time `place_zones` alone (Penrose tiling + per-zone fractalize) — the
+    // area DEFERRED #016/#018 optimised. Done as a separate dry call so the
+    // production `place_tilemap` path stays unchanged; place_zones is
+    // deterministic and cheap (the optimisation point), so the extra pass is
+    // negligible vs the full pipeline.
+    let t_zones = Instant::now();
+    let _ = crate::engine::placement::place_zones(&template, grid, seed)?;
+    let zones_elapsed = t_zones.elapsed();
+
     let t0 = Instant::now();
     let tilemap = place_tilemap(
         &template,
@@ -131,6 +149,7 @@ pub fn measure_offline() -> crate::Result<(TilemapView, OfflineMeasurement)> {
         object_count: tilemap.object_placements.len(),
         road_segments: tilemap.road_segments.len(),
         river_segments: tilemap.river_segments.len(),
+        zones_elapsed,
         elapsed,
     };
     Ok((tilemap, offline))
@@ -191,6 +210,7 @@ pub async fn measure_live(
 
 /// Render the offline measurement as a human-readable block.
 pub fn render_offline(m: &OfflineMeasurement) -> String {
+    let modificators = m.elapsed.saturating_sub(m.zones_elapsed);
     format!(
         "── continent measurement — offline (engine-only) ────────\n\
          grid           : {}×{}\n\
@@ -198,10 +218,15 @@ pub fn render_offline(m: &OfflineMeasurement) -> String {
          objects placed : {}\n\
          road segments  : {}\n\
          river segments : {}\n\
-         place_tilemap  : {:.3} s\n\
+         place_zones    : {:.3} s  (Penrose + fractalize — DEFERRED #016/#018)\n\
+         modificators   : {:.3} s  (Terrain → Connections → Treasure → Road → Obstacle → River)\n\
+         place_tilemap  : {:.3} s  (total)\n\
          ─────────────────────────────────────────────────────────\n",
         m.grid.width, m.grid.height, m.zone_count, m.object_count,
-        m.road_segments, m.river_segments, m.elapsed.as_secs_f64(),
+        m.road_segments, m.river_segments,
+        m.zones_elapsed.as_secs_f64(),
+        modificators.as_secs_f64(),
+        m.elapsed.as_secs_f64(),
     )
 }
 

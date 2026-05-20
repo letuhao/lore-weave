@@ -135,21 +135,21 @@ engine pipeline is now `TerrainPainter → ConnectionsPlacer → TreasurePlacer
 **complete V1+30d map** — terrain, obstacles, treasure, connections, roads,
 rivers. **No placer work remains.** The recommended next actions:
 
-1. ~~Engine→L3→L4 bootstrap on engine-placed objects~~ — ✅ **DONE 2026-05-18**
-   (see the session entry below). `bootstrap_small_reality` now classifies the
-   engine's own `object_placements` (every kind, including biome obstacles
-   keyed by `biome_object_type`); the fixture object set is gone.
-2. ~~Live continent-scale measurement~~ — ✅ **DONE 2026-05-18** (see the session
-   entry below). The `measure` subcommand + per-zone L3 batching landed; the
-   **offline** 256² measurement ran. The **live** L3/L4 run is blocked on a
-   provider-registry model-pricing config (HTTP 402 `LLM_QUOTA_EXCEEDED`) —
-   re-run `tilemap-service measure` once that is configured.
-3. **⚠ Promote perf items #016 + #018** — the continent measurement
-   ([`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md),
-   finding O-1) is hard evidence the O(n²) `fractalize` (#016) + `penrose`
-   (#018) placement cost is severe — **~8–11 min for a 256² continent**, release
-   build. Deferred as "fix when profiling shows pain"; it now does.
-4. **HTTP service surface** — `tilemap-service` is still a CLI/library; Phase 4+
+1. ~~Engine→L3→L4 bootstrap on engine-placed objects~~ — ✅ **DONE 2026-05-18**.
+2. ~~Live continent-scale measurement~~ — ✅ **DONE 2026-05-18** (offline only;
+   live still blocked on provider-registry model-pricing HTTP 402).
+3. ~~Promote perf items #016 + #018~~ — ✅ **DONE 2026-05-20** (see the session
+   entry below). `place_zones` (Penrose + fractalize) dropped from a fraction
+   of the 506–814 s baseline to **0.110 s** at 256² — bit-exact preserved. But
+   the 2026-05-20 per-stage measurement also **reframed finding O-1**: the
+   modificator pipeline accounts for 99.98 % of the wall time
+   (687 s / 687 s total), so the continent total didn't drop visibly. **New
+   deferred #029** tracks profiling + fixing the dominant placer (likely
+   `TreasurePlacer::place_and_connect_object`).
+4. **⚠ Promote deferred #029** — the new dominant continent-scale bottleneck.
+   First step: add per-modificator timing to `OfflineMeasurement` to narrow
+   the 687 s onto a specific placer. Then design the targeted fix.
+5. **HTTP service surface** — `tilemap-service` is still a CLI/library; Phase 4+
    of the broader plan adds the service-to-service API.
 
 > **River barrier-strength caveat (Deferred #026):** `RiverPlacer` runs last,
@@ -160,6 +160,104 @@ rivers. **No placer work remains.** The recommended next actions:
 
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-20 — Tilemap perf: fractalize + penrose (DEFERRED #016 + #018) — ✅ DONE (L, default v2.2 human-in-loop)
+
+### Outcome
+
+The 2026-05-18 finding O-1 (~8–11 min for a 256² continent) was traced to the
+deferred algorithmic items #016 + #018 — both promoted to active work and
+fixed. **Per-stage measurement reframes finding O-1**: the bottleneck is
+**not** Penrose/fractalize (now 0.110 s) but the **modificator pipeline**
+(687 s — `TreasurePlacer / RoadPlacer / RiverPlacer` Dijkstra work). New
+deferred #029 picks that up next. L, default v2.2 human-in-loop;
+`/review-impl` clean (0 HIGH/MED, 2 LOW fixed inline).
+
+- **Spec:** [`docs/specs/2026-05-20-tilemap-perf-fractalize-penrose.md`](../../specs/2026-05-20-tilemap-perf-fractalize-penrose.md)
+  (§1-§9, AC-1..AC-8). **Plan:**
+  [`docs/plans/2026-05-20-tilemap-perf-fractalize-penrose.md`](../../plans/2026-05-20-tilemap-perf-fractalize-penrose.md)
+  (7-chunk TDD). **Findings:** updated
+  [`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md)
+  with the 2026-05-20 per-stage block.
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `engine/placement/spatial.rs` | **NEW** — `UniformBuckets<P: BucketPoint>`: 2D uniform bin grid over points. `BucketPoint` trait with `Vec2` + `TileCoord` impls; `insert(caller_index, point)` (boundary-clamped — defensive against `f64` rounding at the right/bottom edge), `for_each_in_bucket(bx, by, F)`, `for_each_in_ring(cx, cy, ring, F)` (Chebyshev shell, row-major + bin-insertion order — order-independence required of consumers, doc'd). 11 unit tests. |
+| `engine/placement/fractalize.rs` | `scatter_and_connect` rewritten as bucket-based "any within radius" using `UniformBuckets<TileCoord>` — 3×3 ring neighbourhood per candidate (sufficiency proven: `bucket_size = ceil(sqrt(coverage_sq))` ⇒ ring-2 min dist² ≥ 49 > 36 surface / 25 > 16 sea). Inline i64 distance test, bit-exact equivalent to the prior `dist² > coverage_sq` reject rule. **AC-1** oracle test (`scatter_and_connect_matches_naive_at_zone_scale`): 96² zone × 5 seeds × 2 spans, bit-exact vs the original `scatter_and_connect_naive` (kept under `#[cfg(test)]`). |
+| `engine/placement/penrose.rs` | `nearest_vertex` replaced by `nearest_vertex_bucketed` (spiral search + tie-break by index) + `build_vertex_buckets` (one-time bucket build, `bucket_dim = ceil(sqrt(N))` ⇒ ~1 vertex/bucket). Spiral terminates via `(ring*bs)² > best_d` strict — cross-bucket ties still scanned. **AC-2** oracle (`nearest_vertex_matches_naive_oracle`): 200 random queries × 4 vertex-field configs (targets 200/500/200/1500), 800 total. **AC-3** (`tie_break_prefers_lower_index`): hand-constructed cross-bucket equidistant pair → lowest-index wins, verified for both insertion orders. |
+| `engine/placement/mod.rs` | `pub(crate) mod spatial;` registers the helper. |
+| `harness/continent.rs` | `OfflineMeasurement.zones_elapsed` (NEW field) — `measure_offline` times `place_zones` separately from the full `place_tilemap`. `render_offline` shows the per-stage breakdown explicitly. |
+
+### Measurement result (AC-6)
+
+Re-ran `cargo run --release --package tilemap-service -- measure`:
+
+```
+grid           : 256×256
+zones          : 12
+objects placed : 456   road segments: 111   river segments: 11
+place_zones    : 0.110 s  (Penrose + fractalize — DEFERRED #016/#018)
+modificators   : 687.139 s  (Terrain → Connections → Treasure → Road → Obstacle → River)
+place_tilemap  : 687.249 s  (total)
+```
+
+The fix is conclusive at its layer: `place_zones` went from a fraction of the
+prior 506–814 s baseline to **0.110 s** — comfortably under the TMP_002 §7
+<500 ms budget. The continent total (687 s) is within the 2026-05-18 variance
+band; **99.98 % of the wall time is now in the modificator pipeline**,
+documented as the new finding O-1 reframing and tracked by **deferred #029**.
+
+### Review
+
+- **Design review** (Lead self-review of §9): 3 inline fixes — R1 added
+  `UniformBuckets::max_dim()`, R2 removed a dead `last_scanned_ring`, R3
+  pinned the per-pair test as i64 arithmetic (matches the original
+  `coverage_sq: i64` cast — no f64 conversion drift).
+- **Code review** (2-stage Lead self-review): 0 HIGH/MED. R1 documented
+  spec §9.2 had `bucket_size=7 surface` but actual is `6` (the `coverage_sq`
+  i64 truncation happens before the sqrt) — sufficiency proof re-verified.
+  R2 documented AC-1 scaled 256² → 96² for debug-mode test runtime; bit-exact
+  is per-pair-invariant, so the smaller fixture is faithful.
+- **`/review-impl`** (deep adversarial pass at POST-REVIEW): 0 HIGH, 0 MED,
+  2 LOW — both fixed inline. *LOW-1* AC-2 vertex-field targets didn't cover
+  the upper production range (~1200) → added (0.3, 1500, 4) case
+  (800 total queries). *LOW-2* `for_each_in_ring` cross-bucket iteration
+  order untested → added a note to the doc comment stating consumers must
+  be order-independent (both current consumers are: fractalize bool short-
+  circuit, penrose tie-break by index).
+
+### Verify
+
+`cargo test --workspace` green — **273** tilemap-service lib (+14 vs prior 259:
+11 `spatial::tests`, 1 AC-1, 2 AC-2/AC-3) + 7 determinism (+1 ignored
+regenerator) + 8 `harness_mock` + 13 `retry_mock` + 8 `l4_mock` + 5 smoke + 22
+`loreweave_llm` × 2 binaries + 3 unit = **all passed, 0 failed**.
+`cargo clippy --workspace --all-targets` 0 warnings (re-checked after the
+`harness/continent.rs` per-stage timing add). Golden test
+`golden_baseline_byte_identical` ✅ — **no rebaseline** (the determinism
+contract from §3 of the spec held bit-exact end-to-end).
+
+### Deferred
+
+- **#016 ✅ cleared** → moved to "Recently cleared" in
+  [`DEFERRED.md`](../../deferred/DEFERRED.md).
+- **#018 ✅ cleared** → moved to "Recently cleared".
+- **#029 NEW (HIGH)** — modificator pipeline = 99.98 % of continent wall time
+  (687 s of 687 s). Next perf step.
+
+### Next
+
+1. Re-run `tilemap-service measure` once provider-registry model-pricing is
+   configured (captures live L3/L4 token cost + latency).
+2. **Promote deferred #029** — narrow the 687 s onto a specific placer (add
+   per-modificator `Duration` to `OfflineMeasurement`); design the targeted
+   fix. Most likely culprit per the captured lesson:
+   `TreasurePlacer::place_and_connect_object` ~O(zone_tiles²) per placement.
+3. HTTP service surface (DESIGN.md §9 Phase 4+).
 
 ---
 
