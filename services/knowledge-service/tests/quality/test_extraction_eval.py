@@ -42,9 +42,11 @@ from typing import Literal, cast
 
 import pytest
 
+import asyncio
+
 from loreweave_extraction.extractors.entity import extract_entities
-from loreweave_extraction.extractors.event import extract_events
-from loreweave_extraction.extractors.relation import extract_relations
+from app.clients.llm_client import get_llm_client
+from app.extraction.pass2_orchestrator import gather_relations_events_facts
 from dataclasses import asdict
 from tests.quality.eval_harness import (
     ActualExtraction,
@@ -222,8 +224,14 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
 
     assert GOLDEN_ROOT.is_dir(), f"Missing golden fixtures: {GOLDEN_ROOT}"
 
-    scores: list[ChapterScore] = []
-    for fixture in iter_chapter_fixtures(GOLDEN_ROOT):
+    # C-PRED-ALIGN-DEF-01: parallelize chapters across the LM Studio
+    # Max-Concurrent-Predictions slots (default 4 in LM Studio 0.4.0+,
+    # with Unified KV Cache ON). RTX 4090 sat at ~20% util during the
+    # serial loop; bounded gather + continuous batching closes that gap.
+    chapter_concurrency = int(_env("KNOWLEDGE_EVAL_CHAPTER_CONCURRENCY", "4") or 4)
+    llm_client = get_llm_client()
+
+    async def _extract_one(fixture: ChapterFixture) -> ChapterScore:
         logger.info("Extracting chapter: %s", fixture.name)
 
         entities = await extract_entities(
@@ -233,31 +241,32 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
             project_id=project_id,
             model_source=model_source,
             model_ref=model_ref,
+            llm_client=llm_client,
         )
-        known_names = [e.name for e in entities]
 
         if entities:
-            relations = await extract_relations(
+            # C-PRED-ALIGN-DEF-01: shared helper with production
+            # _run_pipeline — locks the R+E+F parallelism shape so a
+            # future regression in the gather (extra extractor, switch
+            # to TaskGroup, etc.) breaks here in lockstep.
+            #
+            # Pre-fix drift: this test ran extract_relations then
+            # extract_events serially AND was missing extract_facts
+            # entirely. The helper restores the production shape;
+            # facts are discarded because ActualExtraction's scoring
+            # contract is entities + relations + events only.
+            relations, events, _facts = await gather_relations_events_facts(
                 text=fixture.text,
                 entities=entities,
-                known_entities=known_names,
+                known_entities=[],
                 user_id=user_id,
                 project_id=project_id,
                 model_source=model_source,
                 model_ref=model_ref,
-            )
-            events = await extract_events(
-                text=fixture.text,
-                entities=entities,
-                known_entities=known_names,
-                user_id=user_id,
-                project_id=project_id,
-                model_source=model_source,
-                model_ref=model_ref,
+                llm_client=llm_client,
             )
         else:
-            relations = []
-            events = []
+            relations, events = [], []
 
         actual = ActualExtraction(
             entities=[(e.name, e.kind) for e in entities],
@@ -269,8 +278,19 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
             _write_chapter_dump(dump_root, fixture, actual, attribution)
         else:
             score = score_chapter(fixture, actual)
-        scores.append(score)
         print(_format_score(score))  # visible with pytest -s
+        return score
+
+    sem = asyncio.Semaphore(chapter_concurrency)
+
+    async def _bounded(fixture: ChapterFixture) -> ChapterScore:
+        async with sem:
+            return await _extract_one(fixture)
+
+    fixtures = list(iter_chapter_fixtures(GOLDEN_ROOT))
+    scores: list[ChapterScore] = list(
+        await asyncio.gather(*[_bounded(f) for f in fixtures])
+    )
 
     agg = aggregate_scores(scores)
     _write_report(agg, tmp_path / "eval_report.json")

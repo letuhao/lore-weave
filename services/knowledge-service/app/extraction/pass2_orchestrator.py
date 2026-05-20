@@ -49,6 +49,7 @@ from app.metrics import knowledge_extraction_dropped_total
 __all__ = [
     "extract_pass2_chat_turn",
     "extract_pass2_chapter",
+    "gather_relations_events_facts",
 ]
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,57 @@ async def _emit_log(
             "C3: pass2 stage log emit failed (non-fatal) message=%r",
             message, exc_info=True,
         )
+
+
+async def gather_relations_events_facts(
+    *,
+    text: str,
+    entities: list[Any],
+    known_entities: list[str],
+    user_id: str,
+    project_id: str | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    llm_client: LLMClient,
+    on_dropped: Any = None,
+) -> tuple[list[Any], list[Any], list[Any]]:
+    """C-PRED-ALIGN-DEF-01 — single source of truth for Pass 2 R+E+F
+    parallelism. Returns ``(relations, events, facts)``.
+
+    Why this helper exists: production ``_run_pipeline`` and the
+    ``tests/quality/test_extraction_eval.py`` golden-set harness both
+    need the same concurrent fan-out across the relation/event/fact
+    extractors. Before this helper existed, the eval test ran them
+    serially (and was missing ``extract_facts`` entirely), so any
+    future change to the gather shape — say a 4th sibling extractor
+    or a switch to ``TaskGroup`` — would silently desync the test
+    from production. Both call sites now go through here.
+
+    Pure: no Neo4j, no telemetry, no logging. Merges
+    ``known_entities`` with the entity names just like production did
+    so callers don't have to. The ``on_dropped`` callback is forwarded
+    to each extractor for the Prometheus drop counter (eval can pass
+    ``None`` if it doesn't track drops).
+    """
+    entity_names = [e.name for e in entities]
+    all_known = list(set(known_entities + entity_names))
+    extractor_kwargs = dict(
+        text=text,
+        entities=entities,
+        known_entities=all_known,
+        user_id=user_id,
+        project_id=project_id,
+        model_source=model_source,
+        model_ref=model_ref,
+        llm_client=llm_client,
+        on_dropped=on_dropped,
+    )
+    relations, events, facts = await asyncio.gather(
+        extract_relations(**extractor_kwargs),
+        extract_events(**extractor_kwargs),
+        extract_facts(**extractor_kwargs),
+    )
+    return relations, events, facts
 
 
 async def _run_pipeline(
@@ -195,28 +247,22 @@ async def _run_pipeline(
             anchors=anchors,
         )
 
-    entity_names = [e.name for e in entities]
-    all_known = list(set(known_entities + entity_names))
-
     # Steps 2-4 — relation/event/fact run concurrently. All three
     # extractors route through SDK + chunking + jsonListAggregator.
-    extractor_kwargs = dict(
+    # C-PRED-ALIGN-DEF-01: the gather is encapsulated in
+    # ``gather_relations_events_facts`` so the eval harness mirrors
+    # this same parallelism shape — see helper docstring.
+    gather_started = time.perf_counter()
+    relation_cands, event_cands, fact_cands = await gather_relations_events_facts(
         text=text,
         entities=entities,
-        known_entities=all_known,
+        known_entities=known_entities,
         user_id=user_id,
         project_id=project_id,
         model_source=model_source,
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=_on_dropped,
-    )
-
-    gather_started = time.perf_counter()
-    relation_cands, event_cands, fact_cands = await asyncio.gather(
-        extract_relations(**extractor_kwargs),
-        extract_events(**extractor_kwargs),
-        extract_facts(**extractor_kwargs),
     )
     gather_elapsed = time.perf_counter() - gather_started
 
