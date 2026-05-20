@@ -122,3 +122,17 @@ thresholds:
   negative_control_max_score: 0.50
   max_stddev: 0.05
   min_runs: 3
+
+# D-EMB-BENCHMARK-CAL-01: per-vector-dimension threshold overrides.
+# Keyed by embedding dimension. Each entry is a PARTIAL override —
+# only the keys it lists replace the flat defaults above; the rest
+# inherit. Missing dimensions fall back to the flat defaults.
+thresholds_by_dimension:
+  # bge-m3 (BAAI/bge-m3): a clean live run scored
+  # recall@3=1.0 / mrr=1.0 but negative_control_max_score=0.664 — the
+  # flat 0.50 ceiling is calibrated for a different score distribution.
+  # 0.70 leaves headroom over the observed 0.664 while still catching
+  # a real regression where negatives leak into top-1.
+  # Observation: session 58 cycle 3 D-K21B-06 follow-on smoke.
+  1024:
+    negative_control_max_score: 0.70

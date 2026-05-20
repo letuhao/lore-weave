@@ -272,7 +272,12 @@ async def run_project_benchmark(
                 embedding_model=project.embedding_model,
                 embedding_dim=embedding_dim,
             )
-            report = await AsyncBenchmarkRunner(golden, runner).run(runs=runs)
+            # D-EMB-BENCHMARK-CAL-01: pass embedding_dim so per-dimension
+            # threshold overrides in the golden set get merged over the
+            # flat defaults; the persisted report records the actual gate.
+            report = await AsyncBenchmarkRunner(
+                golden, runner, dimension=embedding_dim,
+            ).run(runs=runs)
 
         run_id = _default_run_id()
         passed = report.passes_thresholds()

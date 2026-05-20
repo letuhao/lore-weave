@@ -84,7 +84,12 @@ async def _run_cli(args: Any) -> int:
                 embedding_model=args.embedding_model,
                 embedding_dim=embedding_dim,
             )
-            report = await AsyncBenchmarkRunner(golden, runner).run(runs=args.runs)
+            # D-EMB-BENCHMARK-CAL-01: pass embedding_dim so per-dimension
+            # threshold overrides in the golden set get merged over the
+            # flat defaults (parity with the in-process runner).
+            report = await AsyncBenchmarkRunner(
+                golden, runner, dimension=embedding_dim,
+            ).run(runs=args.runs)
 
         run_id = args.run_id or _default_run_id()
         provider_id = _UUID(args.embedding_provider_id) if args.embedding_provider_id else None

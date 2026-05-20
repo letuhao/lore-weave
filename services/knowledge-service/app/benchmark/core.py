@@ -44,7 +44,35 @@ class GoldenQuery:
 class GoldenSet:
     entities: tuple[dict[str, Any], ...]
     queries: tuple[GoldenQuery, ...]
+    # Flat default thresholds — these gate every run unless a per-dimension
+    # override below replaces a specific key.
     thresholds: dict[str, float]
+    # D-EMB-BENCHMARK-CAL-01: per-vector-dimension threshold overrides.
+    # Keyed by embedding dimension (e.g. 1024 for bge-m3, 1536 for
+    # text-embedding-3-small). Each value is a partial dict — only the
+    # keys it specifies override the flat defaults; the rest inherit.
+    # An empty / missing block means "no overrides, use flat thresholds".
+    thresholds_by_dimension: dict[int, dict[str, float]] = field(
+        default_factory=dict,
+    )
+
+
+def _merge_thresholds(
+    flat: dict[str, float], dimension: int | None,
+    by_dim: dict[int, dict[str, float]],
+) -> dict[str, float]:
+    """Merge per-dim override over flat defaults.
+
+    Returns the dict that should actually gate the run. Right-hand
+    (per-dim) keys win over left-hand (flat) keys. Partial overrides
+    are allowed — keys not in the override map inherit from flat.
+    When ``dimension`` is None or has no entry, returns a copy of flat
+    unchanged. Always returns a fresh dict so callers can mutate.
+    """
+    if dimension is None:
+        return dict(flat)
+    override = by_dim.get(dimension, {})
+    return {**flat, **override}
 
 
 def load_golden_set(path: str | Path) -> GoldenSet:
@@ -54,10 +82,24 @@ def load_golden_set(path: str | Path) -> GoldenSet:
         GoldenQuery(q=q["q"], expected=tuple(q["expected"]), band=q["band"])
         for q in raw["queries"]
     )
+    # D-EMB-BENCHMARK-CAL-01: YAML keys that look numeric are usually
+    # parsed as int by safe_load, but a quoted key like '1024' would
+    # come back as str. Coerce defensively so callers always look up
+    # by int (the embedding_dimension column is INT).
+    raw_by_dim = raw.get("thresholds_by_dimension") or {}
+    by_dim: dict[int, dict[str, float]] = {}
+    for k, v in raw_by_dim.items():
+        try:
+            by_dim[int(k)] = dict(v)
+        except (TypeError, ValueError):
+            # Skip malformed entries rather than crash the loader; the
+            # default fallback to flat thresholds remains correct.
+            continue
     return GoldenSet(
         entities=tuple(raw["entities"]),
         queries=queries,
         thresholds=dict(raw["thresholds"]),
+        thresholds_by_dimension=by_dim,
     )
 
 
@@ -104,6 +146,11 @@ class BenchmarkReport:
     stddev_recall: float
     stddev_mrr: float
     runs: int
+    # The thresholds that actually gated this run. When the runner was
+    # constructed with a ``dimension``, any per-dimension overrides from
+    # ``GoldenSet.thresholds_by_dimension`` have already been merged
+    # over the flat ``GoldenSet.thresholds`` (D-EMB-BENCHMARK-CAL-01),
+    # so the persisted report records the precise gate decision.
     thresholds: dict[str, float]
     per_query: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
@@ -135,11 +182,21 @@ class BenchmarkReport:
 
 class BenchmarkRunner:
     """Sync driver — takes a `QueryRunner` that returns results
-    synchronously (typically an in-memory mock)."""
+    synchronously (typically an in-memory mock).
 
-    def __init__(self, golden: GoldenSet, runner: QueryRunner) -> None:
+    ``dimension`` (optional): the vector dimension of the embedding
+    model being benchmarked. When set, ``golden.thresholds_by_dimension``
+    is consulted at report-construction time and any matching override
+    keys replace the flat defaults — see D-EMB-BENCHMARK-CAL-01.
+    """
+
+    def __init__(
+        self, golden: GoldenSet, runner: QueryRunner,
+        dimension: int | None = None,
+    ) -> None:
         self.golden = golden
         self.runner = runner
+        self.dimension = dimension
 
     def _single_pass(self) -> tuple[float, float, float, float, list[dict[str, Any]]]:
         recalls: list[float] = []
@@ -219,7 +276,11 @@ class BenchmarkRunner:
             stddev_recall=stddev(recall_samples),
             stddev_mrr=stddev(mrr_samples),
             runs=runs,
-            thresholds=dict(self.golden.thresholds),
+            thresholds=_merge_thresholds(
+                self.golden.thresholds,
+                self.dimension,
+                self.golden.thresholds_by_dimension,
+            ),
             per_query=tuple(last_per_query),
         )
 
@@ -236,11 +297,17 @@ class AsyncBenchmarkRunner:
     sync path has zero async overhead for the mock-runner unit tests.
     """
 
-    def __init__(self, golden: GoldenSet, runner: Any) -> None:
+    def __init__(
+        self, golden: GoldenSet, runner: Any,
+        dimension: int | None = None,
+    ) -> None:
         # `runner` is an `AsyncQueryRunner` — typed as `Any` here to
         # avoid a circular import from `mode3_query_runner`.
+        # ``dimension`` — see ``BenchmarkRunner`` docstring;
+        # D-EMB-BENCHMARK-CAL-01 per-dimension threshold override hook.
         self.golden = golden
         self.runner = runner
+        self.dimension = dimension
 
     async def _single_pass(
         self,
@@ -320,6 +387,10 @@ class AsyncBenchmarkRunner:
             stddev_recall=stddev(recall_samples),
             stddev_mrr=stddev(mrr_samples),
             runs=runs,
-            thresholds=dict(self.golden.thresholds),
+            thresholds=_merge_thresholds(
+                self.golden.thresholds,
+                self.dimension,
+                self.golden.thresholds_by_dimension,
+            ),
             per_query=tuple(last_per_query),
         )
