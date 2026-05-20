@@ -5,6 +5,7 @@
 //! fully-placed [`TilemapView`] out — deterministic per the TMP-A4 axiom.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use crate::engine::build_state::TilemapBuildState;
 use crate::engine::modificators::{
@@ -50,8 +51,53 @@ pub fn place_tilemap(
     grid: GridSize,
     seed: TilemapSeed,
 ) -> crate::Result<TilemapView> {
+    let (view, _) = place_tilemap_inner(template, channel_id, tier, grid, seed, false)?;
+    Ok(view)
+}
+
+/// Per-stage wall-time breakdown of a `place_tilemap` run — captured by
+/// [`place_tilemap_with_timings`] for the `tilemap-service measure` harness
+/// (DEFERRED #029). `place_zones` is TMP_002 (Penrose + fractalize);
+/// `modificators` is one `(name, Duration)` per modificator in execution
+/// order (TerrainPainter → ConnectionsPlacer → TreasurePlacer → RoadPlacer
+/// → ObstaclePlacer → RiverPlacer).
+#[derive(Debug, Clone)]
+pub struct PlacementStageTimings {
+    pub place_zones: Duration,
+    pub modificators: Vec<(String, Duration)>,
+}
+
+/// Same as [`place_tilemap`] but returns per-stage timings alongside the
+/// view (DEFERRED #029 — narrows the 687-s continent cost onto a specific
+/// placer). The view is bit-identical to what `place_tilemap` returns for
+/// the same inputs.
+pub fn place_tilemap_with_timings(
+    template: &TilemapTemplate,
+    channel_id: ChannelId,
+    tier: ChannelTier,
+    grid: GridSize,
+    seed: TilemapSeed,
+) -> crate::Result<(TilemapView, PlacementStageTimings)> {
+    let (view, timings) = place_tilemap_inner(template, channel_id, tier, grid, seed, true)?;
+    Ok((view, timings.expect("collect_timings=true must return Some")))
+}
+
+/// Shared body of [`place_tilemap`] + [`place_tilemap_with_timings`].
+/// `collect_timings = false` means production-path: zero `Instant` calls,
+/// zero `Vec` alloc for timings. `true` means measure-path: time
+/// `place_zones` + per-modificator via [`ModificatorRegistry::execute_with_timing`].
+fn place_tilemap_inner(
+    template: &TilemapTemplate,
+    channel_id: ChannelId,
+    tier: ChannelTier,
+    grid: GridSize,
+    seed: TilemapSeed,
+    collect_timings: bool,
+) -> crate::Result<(TilemapView, Option<PlacementStageTimings>)> {
     // TMP_002 §3-§5 — placed zones with assigned_tiles + free_paths.
+    let t_zones = collect_timings.then(Instant::now);
     let tiled = place_zones(template, grid, seed)?;
+    let zones_elapsed = t_zones.map(|t| t.elapsed());
 
     // TMP_003 — build the mutable generation state and run the modificator
     // pipeline. The Kahn topo-sort orders it by the `dependencies()` edges
@@ -68,15 +114,20 @@ pub fn place_tilemap(
     registry.add(Box::new(RoadPlacer));
     registry.add(Box::new(ObstaclePlacer));
     registry.add(Box::new(RiverPlacer));
-    {
+    let modificator_timings = {
         let mut ctx = ModificatorContext {
             template,
             grid,
             seed,
             state: &mut state,
         };
-        registry.execute(&mut ctx)?;
-    }
+        if collect_timings {
+            Some(registry.execute_with_timing(&mut ctx)?)
+        } else {
+            registry.execute(&mut ctx)?;
+            None
+        }
+    };
 
     // Assemble the per-zone runtime records from the build state.
     let zones: Vec<ZoneRuntime> = state
@@ -94,7 +145,7 @@ pub fn place_tilemap(
         })
         .collect();
 
-    Ok(TilemapView {
+    let view = TilemapView {
         channel_id,
         tier,
         grid_size: grid,
@@ -109,7 +160,16 @@ pub fn place_tilemap(
         generation_source: GenerationSource::EngineGenerated,
         regional_narration: None,
         prompt_template_version: 0,
-    })
+    };
+
+    let timings = match (zones_elapsed, modificator_timings) {
+        (Some(place_zones), Some(modificators)) => Some(PlacementStageTimings {
+            place_zones,
+            modificators,
+        }),
+        _ => None,
+    };
+    Ok((view, timings))
 }
 
 #[cfg(test)]
@@ -490,6 +550,54 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn ac2_place_tilemap_with_timings_returns_the_same_view_as_place_tilemap() {
+        // AC-2 — DEFERRED #029 instrumentation. The timed variant must produce
+        // a `TilemapView` byte-identical to the production `place_tilemap`,
+        // and the per-stage timings must cover all 6 modificators in the
+        // expected topological order.
+        let template = fixture();
+        let grid = GridSize { width: 48, height: 48 };
+        let plain = place_tilemap(
+            &template,
+            crate::types::channel::ChannelId("ch".to_string()),
+            crate::types::channel::ChannelTier::Country,
+            grid,
+            TilemapSeed(0xA17_EAD),
+        )
+        .unwrap();
+        let (timed_view, timings) = place_tilemap_with_timings(
+            &template,
+            crate::types::channel::ChannelId("ch".to_string()),
+            crate::types::channel::ChannelTier::Country,
+            grid,
+            TilemapSeed(0xA17_EAD),
+        )
+        .unwrap();
+        assert_eq!(plain, timed_view, "timing instrumentation must not change the view");
+        // 6 modificators in topological order — Phase-E final pipeline.
+        let names: Vec<&str> = timings.modificators.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "terrain_painter",
+                "connections_placer",
+                "treasure_placer",
+                "road_placer",
+                "obstacle_placer",
+                "river_placer",
+            ],
+            "per-modificator timing must list all six in topological order",
+        );
+        // Total of per-stage durations should be the bulk of wall time
+        // (impossible to assert an exact equality — Instant::now overhead /
+        // assemble-zones loop / serialisation aren't timed — but each entry
+        // should be a non-negative Duration).
+        for (name, d) in &timings.modificators {
+            assert!(d.as_nanos() > 0, "modificator {name} reported zero duration");
         }
     }
 }

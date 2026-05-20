@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use loreweave_llm::{GatewayClient, ModelSource};
 use uuid::Uuid;
 
-use crate::engine::place_tilemap;
+use crate::engine::{place_tilemap_with_timings, PlacementStageTimings};
 use crate::seed::derive_seed;
 use crate::types::channel::{ChannelId, ChannelTier};
 use crate::types::template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
@@ -25,11 +25,12 @@ use super::style::{NarrationLanguage, NarrationVoice, NarrativeTone};
 /// Offline (engine-only) continent-generation measurement.
 ///
 /// `zones_elapsed` times `place_zones` alone (Penrose tiling + per-zone
-/// fractalize — the area DEFERRED #016/#018 optimised); `elapsed` is the full
-/// `place_tilemap` (place_zones + the modificator pipeline). The derived
-/// `modificators_elapsed` makes the modificator-vs-geometry cost split
-/// explicit — the 2026-05-18 continent measurement surfaced finding O-1 but
-/// did not break out which stage dominated.
+/// fractalize — the area DEFERRED #016/#018 optimised); `modificator_timings`
+/// is the per-modificator breakdown from
+/// [`place_tilemap_with_timings`][crate::engine::place_tilemap_with_timings]
+/// (DEFERRED #029 — narrows the modificator pipeline onto a specific placer).
+/// `elapsed` is the full `place_tilemap` (place_zones + the modificator
+/// pipeline).
 #[derive(Debug)]
 pub struct OfflineMeasurement {
     pub grid: GridSize,
@@ -38,6 +39,7 @@ pub struct OfflineMeasurement {
     pub road_segments: usize,
     pub river_segments: usize,
     pub zones_elapsed: Duration,
+    pub modificator_timings: Vec<(String, Duration)>,
     pub elapsed: Duration,
 }
 
@@ -125,17 +127,14 @@ pub fn measure_offline() -> crate::Result<(TilemapView, OfflineMeasurement)> {
     let grid = GridSize::CONTINENT_DEFAULT;
     let seed = continent_seed(&template);
 
-    // Time `place_zones` alone (Penrose tiling + per-zone fractalize) — the
-    // area DEFERRED #016/#018 optimised. Done as a separate dry call so the
-    // production `place_tilemap` path stays unchanged; place_zones is
-    // deterministic and cheap (the optimisation point), so the extra pass is
-    // negligible vs the full pipeline.
-    let t_zones = Instant::now();
-    let _ = crate::engine::placement::place_zones(&template, grid, seed)?;
-    let zones_elapsed = t_zones.elapsed();
-
+    // Single-pass timed placement. `place_tilemap_with_timings` returns the
+    // same view as `place_tilemap` plus per-stage durations — DEFERRED #029
+    // makes the modificator-pipeline cost addressable by naming the dominant
+    // placer. The total wall time is captured separately because
+    // `PlacementStageTimings` only covers `place_zones` + per-modificator;
+    // view assembly + serialisation overheads are tiny but real.
     let t0 = Instant::now();
-    let tilemap = place_tilemap(
+    let (tilemap, stage) = place_tilemap_with_timings(
         &template,
         ChannelId("continent_channel".to_string()),
         ChannelTier::Country,
@@ -143,6 +142,10 @@ pub fn measure_offline() -> crate::Result<(TilemapView, OfflineMeasurement)> {
         seed,
     )?;
     let elapsed = t0.elapsed();
+    let PlacementStageTimings {
+        place_zones: zones_elapsed,
+        modificators: modificator_timings,
+    } = stage;
     let offline = OfflineMeasurement {
         grid,
         zone_count: tilemap.zones.len(),
@@ -150,6 +153,7 @@ pub fn measure_offline() -> crate::Result<(TilemapView, OfflineMeasurement)> {
         road_segments: tilemap.road_segments.len(),
         river_segments: tilemap.river_segments.len(),
         zones_elapsed,
+        modificator_timings,
         elapsed,
     };
     Ok((tilemap, offline))
@@ -210,7 +214,23 @@ pub async fn measure_live(
 
 /// Render the offline measurement as a human-readable block.
 pub fn render_offline(m: &OfflineMeasurement) -> String {
-    let modificators = m.elapsed.saturating_sub(m.zones_elapsed);
+    let modificators_total: Duration = m.modificator_timings.iter().map(|(_, d)| *d).sum();
+    let mut per_mod = String::new();
+    // Sort by descending wall time so the dominant placer is immediately
+    // obvious — the whole point of DEFERRED #029.
+    let mut sorted = m.modificator_timings.clone();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    for (name, d) in &sorted {
+        let pct = if modificators_total.as_nanos() > 0 {
+            d.as_secs_f64() / modificators_total.as_secs_f64() * 100.0
+        } else {
+            0.0
+        };
+        per_mod.push_str(&format!(
+            "   {name:<20} : {:>9.3} s  ({pct:>5.1} %)\n",
+            d.as_secs_f64(),
+        ));
+    }
     format!(
         "── continent measurement — offline (engine-only) ────────\n\
          grid           : {}×{}\n\
@@ -219,13 +239,14 @@ pub fn render_offline(m: &OfflineMeasurement) -> String {
          road segments  : {}\n\
          river segments : {}\n\
          place_zones    : {:.3} s  (Penrose + fractalize — DEFERRED #016/#018)\n\
-         modificators   : {:.3} s  (Terrain → Connections → Treasure → Road → Obstacle → River)\n\
+         modificators   : {:.3} s  (sum of per-stage below — DEFERRED #029)\n\
+{per_mod}\
          place_tilemap  : {:.3} s  (total)\n\
          ─────────────────────────────────────────────────────────\n",
         m.grid.width, m.grid.height, m.zone_count, m.object_count,
         m.road_segments, m.river_segments,
         m.zones_elapsed.as_secs_f64(),
-        modificators.as_secs_f64(),
+        modificators_total.as_secs_f64(),
         m.elapsed.as_secs_f64(),
     )
 }
@@ -255,6 +276,7 @@ pub fn render_live(m: &LiveMeasurement) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::place_tilemap;
 
     #[test]
     fn continent_template_has_the_expected_zone_mix() {

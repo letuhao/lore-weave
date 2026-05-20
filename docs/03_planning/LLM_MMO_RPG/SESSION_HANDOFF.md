@@ -163,6 +163,86 @@ up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run
 
 ---
 
+## Session 2026-05-20 (PM) — Per-modificator timing — DEFERRED #029 first step — ✅ DONE (M, default v2.2 human-in-loop)
+
+### Outcome
+
+Per-modificator wall-time instrumentation in `tilemap-service measure`.
+The 687-s "modificator pipeline" total from the morning's reframe is now
+broken out per placer — **`treasure_placer` is 98 % of the cost
+(973 s of 993 s)**. DEFERRED #029 narrows from "modificator pipeline
+somewhere" to the concrete `TreasurePlacer::place_and_connect_object`
+algorithm (captured lesson confirmed: `~O(zone_tiles²) per placement`,
+× 456 placements). M, default v2.2 human-in-loop.
+
+- **Spec:** [`docs/specs/2026-05-20-tilemap-per-modificator-timing.md`](../../specs/2026-05-20-tilemap-per-modificator-timing.md)
+  (AC-1..AC-4). **Findings:**
+  [`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md)
+  2026-05-20 PM section.
+
+### What shipped (`services/tilemap-service/src/`)
+
+| Module | Content |
+|---|---|
+| `engine/pipeline/registry.rs` | NEW `execute_with_timing(&self, ctx) -> Result<Vec<(String, Duration)>>` — sibling of `execute`, timestamps each `Modificator::process` call. Production `execute` untouched. **AC-1** unit test (`ac1_execute_with_timing_returns_per_modificator_durations_in_execution_order`) — confirms execution order + entry-per-modificator. |
+| `engine/mod.rs` | NEW `place_tilemap_with_timings(...) -> Result<(TilemapView, PlacementStageTimings)>` + `PlacementStageTimings { place_zones: Duration, modificators: Vec<(String, Duration)> }`. `place_tilemap` is now a thin wrapper around the new internal `place_tilemap_inner(..., collect_timings: bool)` — zero overhead when `collect_timings = false`. **AC-2** test (`ac2_place_tilemap_with_timings_returns_the_same_view_as_place_tilemap`): timed view ≡ untimed view; six modificators in topological order; non-zero per-stage duration. |
+| `harness/continent.rs` | `OfflineMeasurement.modificator_timings: Vec<(String, Duration)>` (NEW field); `measure_offline` rewritten as a single timed pass via `place_tilemap_with_timings` (no more double `place_zones` dry-run). `render_offline` now lists per-modificator wall-times **sorted descending** so the dominant placer is immediate. |
+
+### Measurement result (AC-4)
+
+```
+grid           : 256×256          objects placed : 456
+place_zones    : 0.107 s
+modificators   : 992.855 s
+   treasure_placer      : 973.376 s  ( 98.0 %)   ← target for next #029 fix
+   obstacle_placer      :  17.919 s  (  1.8 %)
+   connections_placer   :   0.932 s  (  0.1 %)
+   river_placer         :   0.607 s  (  0.1 %)
+   road_placer          :   0.022 s  (  0.0 %)
+   terrain_painter      :   0.000 s  (  0.0 %)
+place_tilemap  : 992.963 s  (total)
+```
+
+Total wall time (993 s) sits within the 506–814 s 2026-05-18 variance band
+(host scheduling — placement is deterministic in output, not wall time).
+
+### Review
+
+- **Code review** (2-stage Lead self-review): 0 HIGH/MED. Instrumentation is
+  pure-additive — production callers (`place_tilemap`) untouched; the new
+  helpers exist alongside as siblings; the `collect_timings` flag in
+  `place_tilemap_inner` makes the cost explicit (zero `Instant` + zero `Vec`
+  alloc when `false`).
+- **POST-REVIEW:** no `/review-impl` for this M-task — pure instrumentation,
+  no algorithmic surface area to attack. AC-2 already proves the byte-exact
+  view-equality contract end-to-end.
+
+### Verify
+
+`cargo test --workspace --lib` green — **275 lib tests** (+2 from prior: AC-1
++ AC-2). All existing tests unchanged. `cargo clippy --workspace --all-targets`
+0 warnings. Golden test `golden_baseline_byte_identical` unaffected
+(instrumentation does not touch `TilemapView` construction).
+
+### Deferred
+
+- **#029** refined — narrowed from "modificator pipeline somewhere" to
+  **`TreasurePlacer::place_and_connect_object` at 98 % of pipeline cost**.
+  Concrete target for the next perf task.
+
+### Next
+
+1. **Promote #029 (refined)** — design + implement a sub-quadratic
+   `TreasurePlacer::place_and_connect_object`. Likely scaffold: precomputed
+   per-zone passable-tile pool + an index over candidate sites + a
+   `would_seal_a_gap`-aware filter (see also DEFERRED #020 for the
+   connectivity pre-filter scaffold).
+2. Re-run `tilemap-service measure` to confirm the next continent-total drop.
+3. Live L3/L4 measurement (still blocked on provider-registry pricing).
+4. HTTP service surface (DESIGN.md §9 Phase 4+).
+
+---
+
 ## Session 2026-05-20 — Tilemap perf: fractalize + penrose (DEFERRED #016 + #018) — ✅ DONE (L, default v2.2 human-in-loop)
 
 ### Outcome

@@ -135,3 +135,48 @@ place_tilemap  : 687.249 s  (total)
    the captured lesson notes it is `~O(zone_tiles squared) per placement`,
    ~456 placements × 65 536 tiles² = absurd in the worst case.
 3. Then design the targeted fix per the dominant placer's algorithm.
+
+---
+
+## 2026-05-20 update (afternoon) — per-modificator breakdown
+
+Step 1 above (per-modificator timing) shipped — `ModificatorRegistry::execute_with_timing`
++ `place_tilemap_with_timings` + `OfflineMeasurement.modificator_timings` +
+sorted descending render. Spec:
+[`docs/specs/2026-05-20-tilemap-per-modificator-timing.md`](../specs/2026-05-20-tilemap-per-modificator-timing.md).
+
+```
+── continent measurement — offline (engine-only) ────────
+grid           : 256×256
+zones          : 12
+objects placed : 456
+road segments  : 111
+river segments : 11
+place_zones    : 0.107 s  (Penrose + fractalize — DEFERRED #016/#018)
+modificators   : 992.855 s  (sum of per-stage below — DEFERRED #029)
+   treasure_placer      :   973.376 s  ( 98.0 %)
+   obstacle_placer      :    17.919 s  (  1.8 %)
+   connections_placer   :     0.932 s  (  0.1 %)
+   river_placer         :     0.607 s  (  0.1 %)
+   road_placer          :     0.022 s  (  0.0 %)
+   terrain_painter      :     0.000 s  (  0.0 %)
+place_tilemap  : 992.963 s  (total)
+─────────────────────────────────────────────────────────
+```
+
+### Finding O-1 — narrowed to TreasurePlacer
+
+**`treasure_placer` is 98.0 % of the modificator pipeline cost** (973 s of
+the 993 s total). The captured lesson is hard-confirmed: `TreasurePlacer::
+place_and_connect_object` is `~O(zone_tiles²) per placement`, multiplied
+across **456 placements** on a 256² grid (zone tiles ~5 000–10 000 each)
+⇒ ~10¹⁰ ops single-threaded.
+
+DEFERRED #029 narrows from "modificator pipeline somewhere" to a concrete
+target: **TreasurePlacer's per-placement algorithm.** Subsequent placers
+(`obstacle_placer` 17.9 s, all others sub-second) account for ~2 % and
+can be deferred until TreasurePlacer is fixed.
+
+Total wall time (992 s) is within the 506–814 s run-to-run variance band of
+2026-05-18 (host scheduling — placement is deterministic in *output*, not in
+wall time).
