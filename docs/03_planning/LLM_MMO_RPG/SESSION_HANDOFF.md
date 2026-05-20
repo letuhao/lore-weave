@@ -138,19 +138,17 @@ rivers. **No placer work remains.** The recommended next actions:
 1. ~~Engine→L3→L4 bootstrap on engine-placed objects~~ — ✅ **DONE 2026-05-18**.
 2. ~~Live continent-scale measurement~~ — ✅ **DONE 2026-05-18** (offline only;
    live still blocked on provider-registry model-pricing HTTP 402).
-3. ~~Promote perf items #016 + #018~~ — ✅ **DONE 2026-05-20** (see the session
-   entry below). `place_zones` (Penrose + fractalize) dropped from a fraction
-   of the 506–814 s baseline to **0.110 s** at 256² — bit-exact preserved. But
-   the 2026-05-20 per-stage measurement also **reframed finding O-1**: the
-   modificator pipeline accounts for 99.98 % of the wall time
-   (687 s / 687 s total), so the continent total didn't drop visibly. **New
-   deferred #029** tracks profiling + fixing the dominant placer (likely
-   `TreasurePlacer::place_and_connect_object`).
-4. **⚠ Promote deferred #029** — the new dominant continent-scale bottleneck.
-   First step: add per-modificator timing to `OfflineMeasurement` to narrow
-   the 687 s onto a specific placer. Then design the targeted fix.
-5. **HTTP service surface** — `tilemap-service` is still a CLI/library; Phase 4+
-   of the broader plan adds the service-to-service API.
+3. ~~Promote perf items #016 + #018~~ — ✅ **DONE 2026-05-20** (`place_zones`
+   0.110 s).
+4. ~~Promote deferred #029 (TreasurePlacer)~~ — ✅ **DONE 2026-05-21** (see
+   the session entry below). **Continent 992.963 s → 21.541 s (46× speedup);
+   `treasure_placer` 973.376 s → 2.944 s (330×).** Score-first / validate-
+   on-demand refactor, bit-exact preserved.
+5. **HTTP service surface** — `tilemap-service` is still a CLI/library;
+   Phase 4+ of the broader plan adds the service-to-service API.
+6. (optional) — `obstacle_placer` at 17 s is now 79 % of the 21.5 s
+   continent. With iteration latency now manageable, no urgent need; open a
+   fresh deferred item if profiling shows pain again.
 
 > **River barrier-strength caveat (Deferred #026):** `RiverPlacer` runs last,
 > into a map already cluttered by `ObstaclePlacer`, so the conservative dual
@@ -160,6 +158,103 @@ rivers. **No placer work remains.** The recommended next actions:
 
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-21 — `place_and_connect_object` score-first refactor — DEFERRED #029 cleared — ✅ DONE (L, default v2.2 human-in-loop)
+
+### Outcome
+
+`TreasurePlacer::place_and_connect_object` rewritten from `filter (with two
+O(N) flood fills per candidate) then pick best` to **score-first,
+validate-on-demand** — score every candidate cheaply, sort by score, walk
+in best-first order and validate lazily, take the first that passes. The
+§4 determinism proof shows bit-exact equivalence (`first ∈ V` of sorted
+`S` == `argmax_{v ∈ V} (score, -flat)`); golden test passes byte-exact.
+**Measurement: `treasure_placer` 973.376 s → 2.944 s (330× speedup);
+continent total 992.963 s → 21.541 s (46×).** DEFERRED #029 cleared.
+L, default v2.2 human-in-loop; `/review-impl` clean (0 HIGH/MED, 1 LOW
+fixed inline, 1 LOW accepted).
+
+- **Spec:** [`docs/specs/2026-05-21-tilemap-place-and-connect-perf.md`](../../specs/2026-05-21-tilemap-place-and-connect-perf.md)
+  (§1-§8, AC-1..AC-7). **Plan:**
+  [`docs/plans/2026-05-21-tilemap-place-and-connect-perf.md`](../../plans/2026-05-21-tilemap-place-and-connect-perf.md)
+  (6-chunk TDD). **Findings:**
+  [`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md)
+  2026-05-21 section.
+
+### What shipped (`services/tilemap-service/src/engine/object_manager.rs`)
+
+| Element | Content |
+|---|---|
+| `place_and_connect_object` | Rewritten to score-first/validate-on-demand. Phase A: cheap filters (`fits` + `min_distance` reordered to before footprint compute) + score every survivor. Phase B: stable `sort_by((score desc, flat asc))`. Phase C: walk in best-first order; `would_seal_a_gap` + `find_access_path` lazy; first to pass commits + returns. Production callers untouched (signature identical). |
+| `PlacementCtx::prepare` | NEW — extracts loop-invariant inputs (`grid`, `zone_passable`, `free_paths`, `zone_center`, `first_placement`) captured once per placement. |
+| `ScoredCandidate` | NEW — replaces `Candidate` in the production path (no `access_path` field — that's computed lazily during validation). |
+| `commit_placement` | NEW — extracted shared helper for the post-winner side effects (`Occupied` paint + `object_placements` push + map-wide `nearest_object_distance` refresh). Used by both production + `_naive`. |
+| `place_and_connect_object_naive` (`#[cfg(test)]`) | Bit-exact pre-refactor implementation kept as the AC-1 oracle. Reuses `PlacementCtx` + `commit_placement` so the oracle differs from production ONLY in the algorithmic shape, not in setup/commit. |
+| AC-1/AC-2/AC-3 tests | NEW — 405 oracle agreements (3 fixtures × 3 templates × 3 optimisations × 3 min-distances × 5 sequential placements); worst-case `NoSpace` corridor; cross-iteration tie-break. |
+
+### Measurement result (AC-4)
+
+```
+                Before (2026-05-20 PM)   After (2026-05-21)   Speedup
+treasure_placer        973.376 s              2.944 s          330 ×
+obstacle_placer         17.919 s             16.961 s          ~1 ×  (new leader at 79 %)
+connections_placer       0.932 s              0.916 s
+river_placer             0.607 s              0.602 s
+road_placer              0.022 s              0.010 s
+terrain_painter          0.000 s              0.000 s
+─────────────────────────────────────────────────────────
+place_tilemap          992.963 s             21.541 s           46 ×
+```
+
+The continent now generates in **21.5 s** — comfortably inside the
+"feasible to iterate on" window. AC-4 target was `treasure_placer < 10 s`;
+delivered **2.944 s** (3.4× under target).
+
+### Review
+
+- **Design review** (Lead self-review of §4 proof): `score` is a pure
+  function of (anchor, snapshot state); inner loop is side-effect-free;
+  both algorithms compute `argmax over V` where `V` is the same set ⇒ same
+  winner.
+- **Code review** (2-stage Lead self-review): 0 HIGH/MED. Cheap-filter
+  reorder (move `min_distance` check before footprint compute) is a free
+  micro-win, set membership unchanged. `commit_placement` extracted
+  cleanly. `PlacementCtx` keeps the loop-invariant inputs honest.
+- **`/review-impl`** (POST-REVIEW adversarial pass): 0 HIGH, 0 MED, 2 LOW.
+  *LOW-1*: AC-1 only tested 1×1 footprint → broadened to also cover 2×2
+  (multi-cell blocking) + mixed-blocking 2×1 (D9 non-blocking cell) ⇒ 405
+  oracle agreements. *LOW-2*: multi-zone parity covered by the production-
+  path `nearest_object_distance_oracle_spans_zone_boundaries` test +
+  golden, accepted. §4 proof traced through 6 edge-case scenarios manually.
+
+### Verify
+
+`cargo test --workspace` green — **278** tilemap-service lib (+3 from prior
+275: AC-1 + AC-2 + AC-3) + 7 determinism (+1 ignored regenerator) + 8
+`l4_mock` + 13 `retry_mock` + 8 `harness_mock` + 5 smoke + 22 `loreweave_llm`
+× 2 binaries + 3 unit = **all passed, 0 failed**. `cargo clippy --workspace
+--all-targets` 0 warnings. Golden test `golden_baseline_byte_identical` ✅
+— **no rebaseline** (the §4 determinism proof held bit-exact end-to-end).
+
+### Deferred
+
+- **#029 ✅ cleared** → moved to "Recently cleared" in
+  [`DEFERRED.md`](../../deferred/DEFERRED.md).
+- Next likely candidate (no new deferred item — wait for the next
+  profiling-shows-pain trigger): `obstacle_placer` at 17 s. With the
+  continent at 21.5 s, it is "fine for now" — re-promote if iteration
+  cadence demands sub-5 s.
+
+### Next
+
+1. Live L3/L4 measurement (still blocked on provider-registry pricing —
+   re-run `tilemap-service measure` once configured).
+2. HTTP service surface (DESIGN.md §9 Phase 4+).
+3. If continent-iteration cadence demands sub-5 s, profile
+   `obstacle_placer` (~17 s = 79 % of the new total) and open a fresh
+   deferred item.
 
 ---
 

@@ -71,7 +71,10 @@ fn euclidean(a: TileCoord, b: TileCoord) -> f32 {
     (dx * dx + dy * dy).sqrt()
 }
 
-/// A surviving candidate carried from the scoring phase to the commit phase.
+/// A surviving candidate from the pre-DEFERRED-#029 `_naive` algorithm —
+/// score plus the pre-computed access path. The production hot path uses
+/// [`ScoredCandidate`] instead (access path lazy).
+#[cfg(test)]
 struct Candidate {
     anchor: TileCoord,
     /// `anchor.flat_index` — the explicit integer tie-break key (spec §6.3
@@ -96,6 +99,14 @@ struct Candidate {
 ///
 /// `search_area` must share the build-state grid's dimensions (debug-asserted);
 /// every in-tree caller builds it from `zone_area_open` / `zone_passable`.
+///
+/// **Performance:** the candidate loop is **score-first, validate-on-demand**
+/// (DEFERRED #029 fix). Cheap filters + scoring run for every candidate;
+/// candidates are sorted by `(score desc, flat asc)`; the expensive
+/// `would_seal_a_gap` + `find_access_path` checks run lazily, walking in
+/// best-first order, returning at the first valid candidate. This produces a
+/// bit-identical winner to the pre-fix linear scan (proof: spec §4) at
+/// O(N log N) expected cost instead of O(N²).
 // 8 args — each is a distinct placement knob (spec D10 added `value`); bundling
 // them into a params struct would not aid clarity for a single-purpose engine fn.
 #[allow(clippy::too_many_arguments)]
@@ -109,59 +120,192 @@ pub fn place_and_connect_object(
     min_distance: f32,
     optimize: OptimizeType,
 ) -> Result<PlacementResult, PlacementError> {
-    if zone_idx >= state.zones.len() {
-        return Err(PlacementError::NoSuchZone(zone_idx));
-    }
-    let grid = state.grid;
-    // `fits` bounds-checks footprint cells against `search_area`'s dimensions
-    // while `footprint_at` checks against `grid`; the `expect("fits ⇒
-    // in-bounds")` in the candidate loop is sound only when the two agree.
-    debug_assert_eq!(
-        (search_area.width(), search_area.height()),
-        (grid.width, grid.height),
-        "search_area dimensions must match the build-state grid",
-    );
+    let ctx = PlacementCtx::prepare(state, zone_idx, search_area)?;
+    let grid = ctx.grid;
     let width = grid.width;
-    let zone_passable = state.zone_passable(zone_idx);
-    let free_paths = state.zones[zone_idx].free_paths.clone();
-    let zone_center = state.zones[zone_idx].center;
-    // Spec §6.3 step 3 first-placement fallback — with no object on the map yet
-    // every `nearest_object_distance` is INFINITY, so the distance term is
-    // undefined; `Distance`/`BothDistanceAndCenter` fall back to the centre term.
-    let first_placement = state.object_placements.is_empty();
 
-    let mut best: Option<Candidate> = None;
+    // (A) collect — cheap filters + score. NO flood fills here.
+    let mut survivors: Vec<ScoredCandidate> = Vec::new();
     for anchor in search_area.iter_set() {
-        // (1) candidate — the full footprint fits inside `search_area`.
         if !template.fits(anchor, search_area) {
+            continue;
+        }
+        let flat = anchor.flat_index(width);
+        let dist = state.nearest_object_distance[flat];
+        // (2b) spacing — O(1) — moved up; the cheap reject.
+        if dist < min_distance {
             continue;
         }
         // `fits` implies in-bounds, so both projections are `Some`.
         let footprint = template.footprint_at(anchor, grid).expect("fits ⇒ in-bounds");
         let blocking = template.blocking_footprint_at(anchor, grid).expect("fits ⇒ in-bounds");
+        let score = score_anchor(optimize, ctx.first_placement, anchor, ctx.zone_center, dist);
+        survivors.push(ScoredCandidate { anchor, flat, footprint, blocking, score });
+    }
 
-        // (2a) connectivity — the blocking footprint must not seal a gap.
-        if would_seal_a_gap(&blocking, &zone_passable) {
+    // (B) sort — `(score desc, flat asc)`. `total_cmp` is a total order over
+    // `f32`, so the tie-break is on score equality (not approximate), and
+    // `flat asc` is the documented secondary key (spec §6.3 step 3, TMP-A4).
+    survivors.sort_by(|a, b| match b.score.total_cmp(&a.score) {
+        Ordering::Equal => a.flat.cmp(&b.flat),
+        other => other,
+    });
+
+    // (C) validate-on-demand — walk in best-first order; the first survivor
+    // that passes the expensive checks IS the winner (spec §4 proof:
+    // `first ∈ V` of (`S` sorted by (score desc, flat asc)) ==
+    // `argmax_{v ∈ V} (score(v), -flat(v))`).
+    for c in survivors {
+        // (2a) connectivity — flood fill.
+        if would_seal_a_gap(&c.blocking, &ctx.zone_passable) {
             continue;
         }
-        // (2b) spacing — far enough from every existing object (D10 oracle).
-        if state.nearest_object_distance[anchor.flat_index(width)] < min_distance {
-            continue;
-        }
-        // (2c) access — a footprint-adjacent tile must reach `free_paths`.
-        let access_path = match find_access_path(&zone_passable, &footprint, &free_paths, grid) {
+        // (2c) access — BFS.
+        let access_path = match find_access_path(&ctx.zone_passable, &c.footprint, &ctx.free_paths, grid) {
             Some(path) => path,
             None => continue,
         };
+        return Ok(commit_placement(state, c.anchor, c.footprint, c.blocking, access_path, kind, value, grid));
+    }
+    Err(PlacementError::NoSpace)
+}
 
-        // (3) score the survivor.
+/// Loop-invariant inputs to the candidate scan, captured once per placement.
+struct PlacementCtx {
+    grid: GridSize,
+    zone_passable: TileMask,
+    free_paths: TileMask,
+    zone_center: TileCoord,
+    /// Spec §6.3 step 3 first-placement fallback — with no object on the map
+    /// yet every `nearest_object_distance` is INFINITY, so the distance term
+    /// is undefined; `Distance` / `BothDistanceAndCenter` fall back to the
+    /// centre term.
+    first_placement: bool,
+}
+
+impl PlacementCtx {
+    fn prepare(
+        state: &TilemapBuildState,
+        zone_idx: usize,
+        search_area: &TileMask,
+    ) -> Result<Self, PlacementError> {
+        if zone_idx >= state.zones.len() {
+            return Err(PlacementError::NoSuchZone(zone_idx));
+        }
+        let grid = state.grid;
+        // `fits` bounds-checks footprint cells against `search_area`'s
+        // dimensions while `footprint_at` checks against `grid`; the
+        // `expect("fits ⇒ in-bounds")` in the candidate loop is sound only
+        // when the two agree.
+        debug_assert_eq!(
+            (search_area.width(), search_area.height()),
+            (grid.width, grid.height),
+            "search_area dimensions must match the build-state grid",
+        );
+        Ok(Self {
+            grid,
+            zone_passable: state.zone_passable(zone_idx),
+            free_paths: state.zones[zone_idx].free_paths.clone(),
+            zone_center: state.zones[zone_idx].center,
+            first_placement: state.object_placements.is_empty(),
+        })
+    }
+}
+
+/// A scored candidate carried from collection to validation+commit
+/// (DEFERRED #029 score-first restructure). No `access_path` field — the
+/// access path is computed lazily during validation, not pre-collected.
+struct ScoredCandidate {
+    anchor: TileCoord,
+    /// `anchor.flat_index` — the explicit integer tie-break key (spec §6.3
+    /// step 3, TMP-A4): an exact-equal score resolves to the lowest flat
+    /// index.
+    flat: usize,
+    footprint: TileMask,
+    blocking: TileMask,
+    score: f32,
+}
+
+/// Mutate `state` to commit a placement: paint the blocking footprint
+/// `Occupied`, push the [`TilemapObjectPlacement`], refresh the map-wide
+/// `nearest_object_distance` oracle (D10). Used by both the production
+/// `place_and_connect_object` and the `#[cfg(test)]` oracle
+/// `place_and_connect_object_naive` so the commit semantics stay in lockstep.
+#[allow(clippy::too_many_arguments)]
+fn commit_placement(
+    state: &mut TilemapBuildState,
+    anchor: TileCoord,
+    footprint: TileMask,
+    blocking: TileMask,
+    access_path: Path,
+    kind: TilemapObjectKind,
+    value: Option<u32>,
+    grid: GridSize,
+) -> PlacementResult {
+    for tile in blocking.iter_set() {
+        state.set_tile_state(tile, TileState::Occupied);
+    }
+    state.object_placements.push(TilemapObjectPlacement {
+        kind,
+        anchor,
+        canon_ref: None,
+        biome_object_type: None,
+        value,
+    });
+    let width = grid.width;
+    for y in 0..grid.height {
+        for x in 0..grid.width {
+            let tile = TileCoord::new(x, y);
+            let d = euclidean(tile, anchor);
+            let idx = tile.flat_index(width);
+            if d < state.nearest_object_distance[idx] {
+                state.nearest_object_distance[idx] = d;
+            }
+        }
+    }
+    PlacementResult { anchor, footprint, access_path }
+}
+
+/// The pre-DEFERRED-#029 implementation of [`place_and_connect_object`] —
+/// the linear `argmax over filtered survivors` algorithm. **Kept under
+/// `#[cfg(test)]` as the bit-exact oracle for AC-1 / AC-2 / AC-3** (spec §4
+/// proof). Do not call from production.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn place_and_connect_object_naive(
+    state: &mut TilemapBuildState,
+    zone_idx: usize,
+    template: &TilemapObjectTemplate,
+    kind: TilemapObjectKind,
+    value: Option<u32>,
+    search_area: &TileMask,
+    min_distance: f32,
+    optimize: OptimizeType,
+) -> Result<PlacementResult, PlacementError> {
+    let ctx = PlacementCtx::prepare(state, zone_idx, search_area)?;
+    let grid = ctx.grid;
+    let width = grid.width;
+
+    let mut best: Option<Candidate> = None;
+    for anchor in search_area.iter_set() {
+        if !template.fits(anchor, search_area) {
+            continue;
+        }
+        let footprint = template.footprint_at(anchor, grid).expect("fits ⇒ in-bounds");
+        let blocking = template.blocking_footprint_at(anchor, grid).expect("fits ⇒ in-bounds");
+        if would_seal_a_gap(&blocking, &ctx.zone_passable) {
+            continue;
+        }
+        if state.nearest_object_distance[anchor.flat_index(width)] < min_distance {
+            continue;
+        }
+        let access_path = match find_access_path(&ctx.zone_passable, &footprint, &ctx.free_paths, grid) {
+            Some(path) => path,
+            None => continue,
+        };
         let flat = anchor.flat_index(width);
         let dist = state.nearest_object_distance[flat];
-        let score = score_anchor(optimize, first_placement, anchor, zone_center, dist);
-        // Explicit `(score desc, flat asc)` tie-break (spec §6.3 step 3, TMP-A4):
-        // a higher score wins; an exact-equal score resolves to the lower flat
-        // index. `total_cmp` is a total order, so the choice never rests on
-        // `f32` `>`/`==` and the tie-break is pinned, not implied by iteration.
+        let score = score_anchor(optimize, ctx.first_placement, anchor, ctx.zone_center, dist);
         let better = best.as_ref().is_none_or(|b| match score.total_cmp(&b.score) {
             Ordering::Greater => true,
             Ordering::Less => false,
@@ -174,31 +318,7 @@ pub fn place_and_connect_object(
 
     let Candidate { anchor, footprint, blocking, access_path, .. } =
         best.ok_or(PlacementError::NoSpace)?;
-
-    // (4) commit — blocking cells → Occupied; record the placement.
-    for tile in blocking.iter_set() {
-        state.set_tile_state(tile, TileState::Occupied);
-    }
-    state.object_placements.push(TilemapObjectPlacement {
-        kind,
-        anchor,
-        canon_ref: None,
-        biome_object_type: None,
-        value,
-    });
-    // D10 — refresh the whole map-wide nearest-object-distance oracle.
-    for y in 0..grid.height {
-        for x in 0..grid.width {
-            let tile = TileCoord::new(x, y);
-            let d = euclidean(tile, anchor);
-            let idx = tile.flat_index(width);
-            if d < state.nearest_object_distance[idx] {
-                state.nearest_object_distance[idx] = d;
-            }
-        }
-    }
-
-    Ok(PlacementResult { anchor, footprint, access_path })
+    Ok(commit_placement(state, anchor, footprint, blocking, access_path, kind, value, grid))
 }
 
 /// Spec §6.3 step 2(c) — the access route. The search space is `zone_passable`
@@ -652,6 +772,160 @@ mod tests {
             result.anchor,
             TileCoord::new(1, 2),
             "an equal-score tie resolves to the lowest flat-index anchor",
+        );
+    }
+
+    /// Drive both `place_and_connect_object` (production) and
+    /// `place_and_connect_object_naive` (oracle) through the same call
+    /// sequence on **independent** state copies, asserting bit-exact state
+    /// equality after each placement (AC-1). The two states must agree on
+    /// every byte the placement mutates: `object_placements`,
+    /// `nearest_object_distance`, and the tile state of every blocking cell.
+    #[allow(clippy::too_many_arguments)]
+    fn assert_naive_oracle_agreement(
+        build: impl Fn() -> TilemapBuildState,
+        template: &TilemapObjectTemplate,
+        kind: TilemapObjectKind,
+        zone_idx: usize,
+        search: TileMask,
+        min_distance: f32,
+        optimize: OptimizeType,
+        placements: usize,
+    ) {
+        let mut prod_state = build();
+        let mut naive_state = build();
+        for i in 0..placements {
+            let prod = place_and_connect_object(
+                &mut prod_state, zone_idx, template, kind, None,
+                &search, min_distance, optimize,
+            );
+            let naive = place_and_connect_object_naive(
+                &mut naive_state, zone_idx, template, kind, None,
+                &search, min_distance, optimize,
+            );
+            assert_eq!(prod, naive, "placement #{i} result diverged: prod={prod:?} naive={naive:?}");
+            // If both returned `Err(NoSpace)`, subsequent iterations are no-ops; bail.
+            if prod.is_err() {
+                break;
+            }
+            assert_eq!(
+                prod_state.object_placements, naive_state.object_placements,
+                "placement #{i} state.object_placements diverged",
+            );
+            assert_eq!(
+                prod_state.nearest_object_distance, naive_state.nearest_object_distance,
+                "placement #{i} state.nearest_object_distance diverged",
+            );
+            // Tile state of every blocking cell ever placed.
+            for p in &prod_state.object_placements {
+                let fp = template.blocking_footprint_at(p.anchor, prod_state.grid).unwrap();
+                for tile in fp.iter_set() {
+                    assert_eq!(
+                        prod_state.tile_state_at(tile), naive_state.tile_state_at(tile),
+                        "placement #{i} tile_state at {tile:?} diverged",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ac1_place_and_connect_matches_naive_on_diverse_zones() {
+        // AC-1 — DEFERRED #029. The score-first/validate-on-demand refactor
+        // must produce a bit-exact identical state to the naive linear scan
+        // across a panel of fixtures × optimisations × placement counts.
+        struct Fixture {
+            w: u32,
+            h: u32,
+            free: &'static [(u32, u32)],
+            center: (u32, u32),
+        }
+        let fixtures = [
+            Fixture { w: 8, h: 8, free: &[(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0)], center: (4, 4) },
+            Fixture { w: 12, h: 8, free: &[(0, 4), (1, 4), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (8, 4), (9, 4), (10, 4), (11, 4)], center: (6, 4) },
+            Fixture { w: 10, h: 10, free: &[(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0), (9, 0)], center: (5, 5) },
+        ];
+        let optimisations = [OptimizeType::Center, OptimizeType::Distance, OptimizeType::BothDistanceAndCenter];
+        // Templates exercise different `fits` / `footprint_at` bounds paths
+        // (LOW-1 from /review-impl): 1×1 (the common case), 2×2 (multi-cell
+        // blocking — see access_path_never_overlaps_the_footprint), and a
+        // mixed-blocking 2×1 (D9 — the non-blocking cell stays Open).
+        let two_by_two = TilemapObjectTemplate {
+            name: "2x2".to_string(),
+            cells: vec![
+                crate::types::object_template::FootprintCell::blocking(0, 0),
+                crate::types::object_template::FootprintCell::blocking(1, 0),
+                crate::types::object_template::FootprintCell::blocking(0, 1),
+                crate::types::object_template::FootprintCell::blocking(1, 1),
+            ],
+        };
+        let mixed = TilemapObjectTemplate {
+            name: "mixed".to_string(),
+            cells: vec![
+                crate::types::object_template::FootprintCell::blocking(0, 0),
+                crate::types::object_template::FootprintCell { dx: 1, dy: 0, blocking: false },
+            ],
+        };
+        let templates = [unit(), two_by_two, mixed];
+        for fx in &fixtures {
+            for tpl in &templates {
+                for &opt in &optimisations {
+                    for &min_dist in &[0.0f32, 1.5, 3.0] {
+                        let build = || build_state(fx.w, fx.h, fx.free, fx.center);
+                        let search = build().zone_area_open(0);
+                        assert_naive_oracle_agreement(
+                            build, tpl, TilemapObjectKind::Treasure,
+                            0, search, min_dist, opt, 5,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ac2_worst_case_zone_with_no_valid_anchor_returns_no_space() {
+        // AC-2 — a 5×1 corridor with free_paths at BOTH ends; search_area is
+        // the interior {(1,0),(2,0),(3,0)}. Any 1×1 blocking placement on an
+        // interior tile would disconnect the corridor (the zone-passable
+        // region splits into two components). Both algorithms must return
+        // `NoSpace`.
+        let mut prod_state = build_state(5, 1, &[(0, 0), (4, 0)], (2, 0));
+        let mut naive_state = build_state(5, 1, &[(0, 0), (4, 0)], (2, 0));
+        let search = prod_state.zone_area_open(0); // {(1,0),(2,0),(3,0)}
+        assert_eq!(search.count_ones(), 3, "search_area should be the three interior tiles");
+        let prod = place_and_connect_object(
+            &mut prod_state, 0, &unit(), TilemapObjectKind::Treasure, None,
+            &search, 0.0, OptimizeType::Center,
+        );
+        let naive = place_and_connect_object_naive(
+            &mut naive_state, 0, &unit(), TilemapObjectKind::Treasure, None,
+            &search, 0.0, OptimizeType::Center,
+        );
+        assert_eq!(prod, Err(PlacementError::NoSpace));
+        assert_eq!(prod, naive);
+    }
+
+    #[test]
+    fn ac3_sort_tie_break_prefers_lower_flat_index_when_iteration_order_differs() {
+        // AC-3 — distinguishes the explicit `flat asc` tie-break from any
+        // iteration-order accident. (1,2) and (3,2) are equidistant from the
+        // zone centre (2,2), and we deliberately also put (3,2) "before"
+        // (1,2) in iteration order via a search_area mask that walks them
+        // in flat-index order — `iter_set` is flat-ascending, so (1,2) flat
+        // 11 IS visited before (3,2) flat 13. The tie-break rule must
+        // produce the lower-flat-index winner regardless of which order the
+        // sort step considers them.
+        let mut state = build_state(5, 5, &[(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)], (2, 2));
+        let search = mask(5, 5, &[(1, 2), (3, 2)]);
+        let result = place_and_connect_object(
+            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None,
+            &search, 0.0, OptimizeType::Center,
+        )
+        .unwrap();
+        assert_eq!(
+            result.anchor, TileCoord::new(1, 2),
+            "an exact-score tie must resolve to the lowest flat-index anchor",
         );
     }
 

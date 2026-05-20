@@ -180,3 +180,44 @@ can be deferred until TreasurePlacer is fixed.
 Total wall time (992 s) is within the 506–814 s run-to-run variance band of
 2026-05-18 (host scheduling — placement is deterministic in *output*, not in
 wall time).
+
+---
+
+## 2026-05-21 update — `place_and_connect_object` score-first fix shipped
+
+Spec:
+[`docs/specs/2026-05-21-tilemap-place-and-connect-perf.md`](../specs/2026-05-21-tilemap-place-and-connect-perf.md).
+The score-first / validate-on-demand refactor restructures the per-placement
+loop from "filter (with two O(N) flood fills per candidate) then pick best"
+to "score every candidate (O(1) per), sort by score, validate lazily, take
+first that passes". The §4 proof shows bit-exact equivalence: the first
+sorted survivor that passes the expensive checks is `argmax_{v ∈ V}
+(score(v), -flat(v))`.
+
+```
+── continent measurement — offline (engine-only) ────────
+grid           : 256×256          objects placed : 456
+place_zones    : 0.108 s
+modificators   : 21.433 s
+   obstacle_placer      :    16.961 s  ( 79.1 %)   ← new leader
+   treasure_placer      :     2.944 s  ( 13.7 %)   ← was 973.376 s (98.0 %)
+   connections_placer   :     0.916 s  (  4.3 %)
+   river_placer         :     0.602 s  (  2.8 %)
+   road_placer          :     0.010 s  (  0.0 %)
+   terrain_painter      :     0.000 s  (  0.0 %)
+place_tilemap  : 21.541 s  (total)
+─────────────────────────────────────────────────────────
+```
+
+### Speedup
+
+| Stage | Before (PM) | After | Speedup |
+|---|---|---|---|
+| `treasure_placer` | 973.376 s | **2.944 s** | **330 ×** |
+| `place_tilemap` (total) | 992.963 s | **21.541 s** | **46 ×** |
+
+The continent now generates in **21.5 s** — comfortably inside the
+"feasible-to-iterate-on" window. DEFERRED #029 is cleared; the next
+candidate bottleneck (if profiling shows pain again) is `obstacle_placer`
+at 17 s (~80 % of the new total). Golden test passes byte-exact — no
+output drift from the refactor.
