@@ -1,41 +1,102 @@
-# Session Handoff — Session 58 (live-smoke arc: K21 tool-calling + the embedding/extraction pipeline made actually-work)
+# Session Handoff — Session 60 (LLM-judge eval + catalogue-driven extraction ADR → next session is the REFACTOR)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-18 (session 58 — 4 workflow cycles, 5 commits)
-> **HEAD:** `9e09a063` — branch `main`, **pushed**.
-> **Branch:** `main` (user pushes manually).
+> **Date:** 2026-05-22 (session 60 — 3 commits)
+> **HEAD:** `5e1001a8` — branch `main`. Push status: user requested push at session 60 close (see below).
+> **Branch:** `main`.
 
-## Session 58 — what happened
+## Session 60 — what happened
 
-Session 58 set out to run D-K21B-06 (a live end-to-end smoke of the K21 tool-calling loop). That smoke, and the Track 2/3 extraction smoke it led into, **converted a string of "complete in git but never run live" subsystems into ones that actually work** — and found a cascade of latent bugs along the way. Every one of these passed CI green for months because the tests mocked exactly the cross-service boundary that was wrong.
+The session set out to start the R&D extraction-quality track (session 59's "final work") and instead **redirected it**, because two foundations were broken:
 
-**5 commits on `main`:**
+1. **The measuring instrument was wrong.** The rule-based golden-set scorer matches by exact string/token equality — invalid for an interpretive task. Built an **LLM-as-judge** eval (`tests/quality/llm_judge.py` + `test_judge_eval.py` + 25 unit tests; judge routes through the SDK→provider-registry gateway; judge model = gemma-4-26b, different family from the Qwen extractor → no self-bias; **discrimination-probe-validated**, codified as a `--run-quality` test). **Finding: extraction precision ≈ 1.0** (the rule-based 0.60 was an artifact); **recall is the real gap, events ≈ 0**.
+2. **Taxonomy rot.** Investigating events surfaced **three divergent kind vocabularies** — glossary `entity_kinds` catalogue (12 open, genre-aware) / extractor 6-enum / FE `KIND_OPTIONS` (7-set). None aligned. Extraction's closed enums drop data (event sub-type isn't even persisted) and can't represent genre kinds.
+
+**Decision:** wrote **`docs/03_planning/KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md`** (option A — glossary catalogue = taxonomy SSOT; keep `:Event` node + open subtype; entity-kind catalogue-driven; staged). `/review-impl` folded 3 MED + 4 LOW. **R&D + eval-dataset rebuild are DEFERRED behind the refactor.** Sequence: **(1) catalogue-driven extraction refactor → (2) eval dataset → (3) R&D.**
+
+**3 commits on `main`** (origin at `2d56eb16`): `68291181` (LLM-judge), `f7510c3e` (judge hardening + `/review-impl` fixes), `5e1001a8` (ADR + session notes).
+
+**Runtime gaps fixed in passing:** all LM Studio user_models lacked `pricing` → Phase 6a fail-closed ("model pricing not configured" 402); set `{"input_per_mtok":0,"output_per_mtok":0}` on qwen3.6 (`019e21cc-…`) + gemma-4-26b (`019dc3df-…`) in the provider-registry DB. `register_lm_studio_models.sql` still needs the same pricing patch.
+
+## What's NEXT — Stage-1 of the catalogue-driven extraction refactor
+
+**Read first:** `docs/03_planning/KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md` (the full design + the folded review findings + acceptance criteria).
+
+**Start at CLARIFY (the ADR says do this BEFORE any code):**
+1. **Reload `qwen/qwen3.6-35b-a3b` in LM Studio** (session 60 left gemma-4-26b loaded for the judge) and **capture raw `result.events`** for a failing chapter (e.g. alice_ch01) → confirm whether events are lost to (a) out-of-enum `kind`, (b) the no-participants `_postprocess` filter, or (c) the model emitting none. Do NOT assume; the ADR's event-recall fix is unverified (MED#3).
+2. **Resolve R4** — what writes `event_ref` / `preference` in the FE `KIND_OPTIONS`? They match neither catalogue nor extractor vocab; may be legitimate knowledge-only kinds that should NOT be forced into the glossary catalogue.
+
+**Then BUILD (Stage 1):** glossary `GET /internal/books/{book_id}/entity-kinds` endpoint + `GlossaryClient.list_kinds` + `app/extraction/kind_catalogue.py` (cache + degradation fallback); remove the entity/event kind `Literal`s (never drop); `normalize_kind_to_catalogue` before anchor lookup + persist; persist `:Event.kind`; delete `_EXTRACTOR_TO_GLOSSARY_KIND` (audit all callers); reconcile the FE `EntitiesTab` filter to fetch dynamically. Measure before/after with the LLM-judge harness (judge-coverage ~68% caveat noted).
+
+**Eval-dataset rebuild (after the refactor):** the conservative golden fixtures + exact-string scoring are being superseded by the LLM-judge; revisit the fixture philosophy (LLM-as-judge against source, not a hand-annotated subset) once extraction is catalogue-aligned.
+
+**How to run the judge** (judge model loaded in LM Studio; an extraction dump already produced under `.eval_dumps/` — gitignored):
+```
+KNOWLEDGE_EVAL_JUDGE_MODEL=<judge_user_model_uuid> KNOWLEDGE_EVAL_USER_ID=<uuid> \
+KNOWLEDGE_JUDGE_DUMP_PATH=.eval_dumps/<run> \
+  pytest services/knowledge-service/tests/quality/test_judge_eval.py --run-quality -s
+```
+Extraction dump first via `test_extraction_eval.py` with `KNOWLEDGE_EVAL_DUMP_PATH` set. Stack: `docker compose up -d provider-registry-service` (pulls postgres/rabbitmq/minio/usage-billing) is enough for extraction+judge — Neo4j NOT needed (judge scores in-memory). LM Studio must serve the requested model (it serves whatever is LOADED regardless of model_ref → load the right one; `Max Concurrent Predictions=1` gives each request the full context at 32K).
+
+---
+
+## Session 59 — what happened (previous session)
+
+Session 59 cleared the post-session-58 follow-up deferrals, then — on the user's call after a debt-vs-R&D discussion — added two **structural debt-prevention** fixes before the final R&D track, then cleared the three R&D-blocking prep items.
+
+**10 commits on `main`:**
 
 | Commit | Cycle | What |
 |---|---|---|
-| `a5357f03` | 1 | **D-K21B-06** — live tool-calling smoke. Fixed: `execute_tool` reused the 500ms `build_context` timeout (every write tool ReadTimeout'd) → dedicated `KNOWLEDGE_TOOL_TIMEOUT_S`; `docker-compose` guardrail budgets `100000000` overflowed `numeric(16,8)` → all reserve calls 500'd → `99000000`. |
-| `e21f6109` | 1 | **Neo4j default-on** — the `neo4j` container was `profiles`-gated + `NEO4J_URI` defaulted empty, so the whole Track 2/3 graph silently ran degraded. Now starts by default; knowledge-service `depends_on: neo4j`. |
-| `9eab22a2` | 2 | **Embedding model-ref ADR** — `KNOWLEDGE_SERVICE_EMBEDDING_MODEL_REF_ADR.md`. knowledge-service passed a logical name where provider-registry's `/internal/embed` needs a `user_model` UUID → all of Mode-3 retrieval + extraction was dead. DESIGN only. |
-| `835d8d47` | 3 | **Embedding model-ref fix** — `embedding_model` now carries the `user_model` UUID; `embedding_dimension` is its own column; `EMBEDDING_MODEL_TO_DIM` retired. Plus 3 more latent bugs the live smoke surfaced: `eval/` missing from the knowledge-service prod image, `loreweave_extraction` prompts not packaged, a `_GRAPH_STATS_CYPHER` syntax error. **Track 2/3 extraction verified live** — 9 `:Entity` + 10 `:Passage` nodes in Neo4j. |
-| `9e09a063` | 4 | **Embedding picker + dimension probe** — `EmbeddingModelPicker` emits the `user_model_id` UUID; a BE `probe_embedding_dimension` derives the dimension at config time; wired into `change_embedding_model` + project PATCH. Closes D-EMB-MODEL-REF-02 + -03. |
+| `3fd6e022` | 1 | **D-EMB-CLEANUP-01** — dropped dead `knowledge_projects.embedding_provider_id` column (the same-named col on `project_embedding_benchmark_runs` stays). |
+| `dc78d3a3` | 2 | **D-EMB-EVAL-PKG-01** — moved K17.9 benchmark runtime into `app/benchmark/core.py` (+ `fixture_loader`/`mode3_query_runner`/`persist`/`metrics`/`golden_set.yaml`); `eval/run_benchmark.py` is now a thin CLI shell; Dockerfile no longer ships `eval/`. |
+| `29955655` | 3 | **D-EMB-BENCHMARK-CAL-01** — per-dimension threshold overrides in `golden_set.yaml`; 1024 (bge-m3) `negative_control_max_score` 0.50→0.70. |
+| `03424d43` | 4 | **D-EMB-MODEL-REF-04** — `patch_project` rejects 422 when changing `embedding_model` on a project with a graph (`extraction_status != 'disabled'`) → forces the destructive `PUT /embedding-model?confirm=true`. |
+| `c2330176` | 5 | **D-CHAT-BILLING-01** — chat-service `BillingClient` now sends `X-Internal-Token` (was 401-rejected → per-model usage silently dropped since the service shipped). |
+| `d5c2acbc` | A | **SESSION_PATCH archive** — file was 6030 lines / 1.3 MB (exceeds Read tool limit). Archived sessions 46-57c8 → NEW `SESSION_ARCHIVE.md`; SESSION_PATCH now **689 lines**. |
+| `65b4b0e3` | B | **Live-smoke evidence soft-WARN** — `workflow-gate.py` warns at VERIFY when a cross-service change (≥2 `services/X/`) lacks a live-smoke acknowledgement token; CLAUDE.md Phase 6 documents it. Process guard against the recurring "mock-green but live-broken" pattern (4 hits sessions 58-59). |
+| `a95d53eb` | DEF-03 | **C-PRED-ALIGN-DEF-03** — user confirmed LM Studio `Max Concurrent Predictions ≥4` + `Unified KV Cache ON` (RTX 4090 was at 20% util → single-request mode). |
+| `39c3f261` | DEF-01 | **C-PRED-ALIGN-DEF-01** — extracted `gather_relations_events_facts` helper (single source of truth for Pass-2 R+E+F parallelism); eval test now mirrors production shape + adds the missing `extract_facts` + cross-chapter `asyncio.Semaphore(4)`. Also fixed a latent missing-`llm_client` `TypeError` in the eval test. |
+| `26fd589e` | C18-DEF-01 | **C18-DEF-01** — `time_cue` now persisted on `:Event` nodes (was dropped at write time); also activates the previously-dead C18 `event_date_backfill` helper. |
 
-**State now:** K21 tool-calling works live (OpenAI-compat path). The Track 2/3 knowledge-graph extraction pipeline works end-to-end (book → Pass-2 → entities/passages in Neo4j). The embedding/Mode-3 retrieval layer is fixed. Neo4j is default-on.
+**State now:** knowledge-service Tracks 1-3 + Track 2/3 Gap Closure (C1-C18) + K21 are all feature-complete. All post-session-58 follow-up deferrals cleared. SESSION_PATCH is navigable again. The eval harness is production-aligned + parallelized + LM Studio-tuned. knowledge-service unit suite **1620/1620**; chat-service **247/247**.
 
-## What's NEXT for the next agent
+## Session 59 — what was next (SUPERSEDED by session 60 — R&D deferred behind the catalogue-driven refactor; see top)
 
-No blockers. Remaining work is **polish + follow-ups**, all filed as `D-*` deferrals in `SESSION_PATCH.md` → "Deferred Items":
+**The only remaining knowledge-service work is the R&D extraction-quality track** (a.k.a. the gemma-eval track). Everything else is either done or a non-blocking polish/live-smoke deferral.
 
-- **`D-EMB-MODEL-REF-04`** — `ProjectFormModal` can change `embedding_model` via the *non-destructive* generic PATCH, bypassing `ChangeModelDialog`'s graph-delete. Route all embedding-model changes through `change_embedding_model`. (knowledge-service + FE, small.)
-- **`D-EMB-BENCHMARK-CAL-01`** — the K17.9 `negative_control_max_score` threshold (0.50) is too strict for bge-m3 (a clean run scored `recall@3=1.0` but `negative_control=0.664` → `passed=false`). Per-model calibration of `eval/golden_set.yaml`.
-- **`D-EMB-EVAL-PKG-01`** — move `eval/` benchmark modules (`fixture_loader` / `mode3_query_runner` / `persist`) into `app/benchmark/` so production doesn't ship the eval harness.
-- **`D-EMB-CLEANUP-01`** — drop the dead `knowledge_projects.embedding_provider_id` column.
-- **`D-CHAT-BILLING-01`** — chat-service usage `/record` 401 (wrong internal token; model-level usage not recorded).
-- **`D-K21B-07`** — live-verify the D12 Anthropic tool-calling path (needs an Anthropic BYOK key; the K21 smoke used OpenAI-compat).
-- **Extraction quality** — Pass-2 extracted entities but 0 facts/0 events from the smoke chapter. Pipeline mechanics are proven; *output quality* is the gemma-eval track.
+**Goal:** improve Pass-2 extraction quality (precision / recall / FP-trap-rate) on the **local** LM Studio target `google/gemma-4-26b-a4b` (per agent memory `feedback_local_llm_first_cloud_is_fallback` — cloud LLMs are calibration-only; token cost makes iterative cloud tuning prohibitive).
 
-**Read in this order:** 1. `SESSION_PATCH.md` (top 4 bullets = session 58). 2. `docs/03_planning/KNOWLEDGE_SERVICE_EMBEDDING_MODEL_REF_ADR.md` (§12 = what was actually built). 3. This handoff.
+**Prior baseline** (`services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md`): gemma-4-26b-a4b post-C-PRED-ALIGN scored **P 0.311 / R 0.429 / FP-trap 0.238** (pre-align was P 0.251 / R 0.356 / FP-trap 0.275). Gates (`P≥0.80 / R≥0.70 / FP-trap≤0.15`) are tuned for strict cloud LLMs + conservative fixtures; local-LLM runs fail them by design — the metric is *relative improvement per cycle*, not gate-pass.
 
-**Recurring lesson (recorded to agent memory):** several knowledge-service feature phases shipped "complete" on unit-mock-only coverage and were broken the first time they ran live. Treat any "complete + unit-green" feature whose path crosses a service / package / Docker boundary as **unverified** until live-smoked.
+**Readiness — all set up this session:**
+- Eval harness mirrors production R+E+F parallelism (DEF-01) + runs chapters with `asyncio.Semaphore(4)` (env-tunable `KNOWLEDGE_EVAL_CHAPTER_CONCURRENCY`).
+- LM Studio continuous batching confirmed ON (DEF-03) → expect 2-3× throughput vs the old serial runs.
+- `time_cue` now persists on `:Event` (C18-DEF-01) → event-extraction quality is measurable + the `event_date_iso` backfill is tunable.
+- 9 golden fixtures (5 English + 4 multilingual CJK/Vietnamese) in `tests/fixtures/golden_chapters/`.
+
+**How to run** (needs the full stack + a registered LM Studio model):
+```
+docker compose --profile extraction up        # stack incl. neo4j (default-on)
+KNOWLEDGE_EVAL_MODEL=<user_model_uuid> \
+KNOWLEDGE_EVAL_USER_ID=<uuid> \
+KNOWLEDGE_EVAL_PROJECT_ID=<uuid> \
+KNOWLEDGE_EVAL_DUMP_PATH=/tmp/eval_dump \      # per-chapter actual/expected/attribution JSON
+  pytest services/knowledge-service/tests/quality/test_extraction_eval.py --run-quality -s
+```
+The `--run-quality` flag + the `KNOWLEDGE_EVAL_MODEL` env are both required (the test skips otherwise). The dump path writes per-chapter diagnostics for semantic FP/FN analysis without re-running.
+
+**Suggested first move (user-decided at session start):** capture a fresh **baseline** on the production-aligned + parallelized harness (no tuning) so the R&D track has a clean reference, THEN iterate. Each cycle: tweak prompt vocab / extraction rules → re-run → compare P/R/FP-trap per chapter via the dump.
+
+**Non-blocking deferrals remaining** (none gate the R&D track — all explicitly targeted to their own phases in SESSION_PATCH "Deferred Items"):
+- `D-K21B-07` — live-verify D12 Anthropic tool-calling (needs an Anthropic BYOK key).
+- `C-PRED-ALIGN-DEF-02` — production events consumer in-process concurrency (Track 3 perf).
+- ~6 LIVE-SMOKE items (Phase 6a/6c guardrail + OTel) — orthogonal to R&D paths; need a full live stack.
+- ~20 polish-bucket items (K21 polish, 6a/6b/6c follow-ups, FE cosmetics) — see SESSION_PATCH. The strategic plan (user-agreed) is a periodic **"Gap Closure v2" debt-paydown arc** *after* the R&D track, not item-by-item now.
+
+**Read in this order:** 1. `SESSION_PATCH.md` (top 10 bullets = session 59). 2. `services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md` (prior P/R/FP-trap progression + per-chapter signal). 3. `docs/03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md` §6 (roll-up). 4. This handoff.
+
+**Recurring lesson (agent memory):** several knowledge-service phases shipped "complete" on unit-mock-only coverage and broke the first time they ran live (4 hits sessions 58-59). Cycle B's live-smoke WARN now flags this at VERIFY — but the judgment to actually live-smoke (or explicitly defer) is still the agent's. The R&D track runs the real LM Studio stack, so it IS the live smoke for the extraction pipeline.
 
 ---
 
