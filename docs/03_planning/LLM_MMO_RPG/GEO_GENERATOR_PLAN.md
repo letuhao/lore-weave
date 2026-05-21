@@ -26,15 +26,29 @@ have shipped — each via the full default 12-phase v2.2 workflow
 | World-tier redesign Phase 1 stage A — sphere mesh + 3D Perlin terrain (kills the rectangle) | `1433f045` |
 | World-tier redesign Phase 1 stage B-1 — `Projection` enum + native-3D consumer migration (climate / hydrology / political / settlement / routes / culture; great-circle distances; `(u,v)` adapter dropped) | `0a5387b1` |
 | World-tier redesign Phase 1 stage B-2 — `Projection` threaded through render+relief; Orthographic globe view actually renders; relief sampler rewritten (per-pixel back-project → nearest cell); 3D detail/warp fBm; `delaunator` dropped; CLI `--projection`/`--camera` | `4f10b557` |
-| **World-tier redesign Phase 2 — plate tectonics: NEW `plates.rs` (seed → spherical Voronoi → continental/oceanic kind → tangent motion → 6-way boundary classify → orogeny-uplift BFS); `TerrainMode` enum (Tectonic default / Profile legacy); `plate_count`+`continental_fraction` knobs; plate layer on `WorldMap` (`plate_of`+`plates`+`plate_boundaries`, hashed); `plate_image` render + `--plate-png`** | HEAD of `geo-generator-amaw` |
+| World-tier redesign Phase 2 — plate tectonics: NEW `plates.rs` (seed → spherical Voronoi → continental/oceanic kind → tangent motion → 6-way boundary classify → orogeny-uplift BFS); `TerrainMode` enum (Tectonic default / Profile legacy); `plate_count`+`continental_fraction` knobs; plate layer on `WorldMap`; `plate_image` render + `--plate-png` | `2bb5436f` |
+| **Phase 2 quality pass — fast hull (O(N²) Quickhull → O(N log N) stereographic+Delaunay, gigaplanet 620s→25s); auto-sized output (aspect-correct, cell-count-driven, `--detail`/`--height`); Earth-like signed hypsometry; plate-boundary warp (irregular continents); fixed-sea percentile-stretch quantization (distinct plains/uplands/peaks)** | HEAD of `geo-generator-amaw` |
 
-**Phase 1 COMPLETE; Phase 2 (plate tectonics) just landed.** Stage A / B-1
-each re-baselined `content_hash` (intentional algorithm changes per
-[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §3); Stage B-2 was
-render-only (no rebase); **Phase 2 re-baselines again** (new tectonic terrain
-algorithm + new hashed plate fields). The default world is now a
-multi-continent planet (a single Pangaea is a valid outcome for some seeds);
-the legacy single-continent path lives on as `TerrainMode::Profile`.
+**Phase 1 + 2 COMPLETE + a quality pass.** The quality pass was driven by PO
+visual review against a real Earth relief map. Key wins: the generator now
+affords gigaplanet (501k cells) in ~25s; output dimensions scale with cell
+count + projection aspect (no more fixed-square "compression"); and terrain
+has **Earth-like hypsometry** (sea pinned at 0.40 of the range, land
+percentile-stretched to fill 0.40→1.0 → green plains / brown uplands / white
+peaks / deep ocean, all *distinct*). The min-max normalize that squeezed all
+land into the top 20% of the range (the "flattened terrain" bug) is fixed.
+`content_hash` rebased again (mesh + terrain algorithm changes).
+
+> **⚠ KNOWN ISSUE for next session (PO, 2026-05-22).** Terrain still reads as
+> **too noisy/turbulent** — there are no genuinely *flat* plains; every cell's
+> height jitters (the high-frequency fBm runs everywhere at full amplitude),
+> and the ocean floor is lumpy too. Real terrain at macro scale has large
+> **flat** regions (plains, abyssal plains) with relief *concentrated* in
+> mountain belts. **Next session: research how games (e.g. ARK: Survival
+> Evolved) and DEM-based generators produce coherent flat plains + localized
+> relief**, then rework the noise spectrum: gate/attenuate high-frequency
+> detail by a "ruggedness" field (high near mountains/coasts, ~0 on plains and
+> abyssal floor) so plains are macro-flat. This is the top quality blocker.
 
 > **⚠ Architectural realisation (2026-05-18).** The Gigaplanet benchmark made
 > it clear: **cell count is resolution, not scope.** A 501k-cell map still
@@ -92,17 +106,33 @@ Try it: `world-gen generate --seed 7 --scale super-continent --out m.json
 --relief-png globe.png --plate-png plates.png --projection orthographic
 --camera 1,0.3,0.2`.
 
-**Next session — Phase 3: global Köppen climate** per
-[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §5b. The Phase-1
-8-zone latitude×elevation model is replaced by a Köppen-grounded global
-climate: latitude insolation bands + elevation lapse + continentality
-(distance-to-ocean) + the existing orographic rain shadow + prevailing-wind
-cells (Hadley/Ferrel/Polar) + ocean currents. Output a Köppen type per cell;
-biome derivation widens to the WWF/Whittaker scheme (§6b). The plate layer
-(continental interiors = cratons, margins = coasts) can inform continentality.
+**Next session — TOP PRIORITY: fix the "noisy terrain / no flat plains"
+quality blocker** (PO 2026-05-22). Before Phase 3, research + rework the noise
+spectrum so the terrain has genuinely **flat plains** with relief
+*concentrated* in mountain belts, instead of uniform per-cell jitter
+everywhere (ocean floor included).
 
-Benchmark baseline (release): generate 6 ms → 91 ms for Pocket → Megaplanet,
-**8.5 s** at Gigaplanet (501k cells); relief render ~14 s. Super-linear, not O(n²).
+- **Research first:** how do games / DEM generators produce coherent flat
+  plains + localized mountains? Reference points: ARK: Survival Evolved
+  (sculpted + heightmap), Azgaar/MFCG, World Machine / Gaea (erosion +
+  *ruggedness masks*), real DEM hypsometry. The common technique: a
+  **ruggedness / amplitude field** that gates high-frequency detail — high
+  near tectonic belts & coasts, ≈0 on cratonic plains & abyssal floor — so
+  flat regions stay flat.
+- **Likely rework:** in `terrain::tectonic_relief`, multiply the hills +
+  ridged-detail terms by a low-frequency *ruggedness* mask derived from the
+  plate-boundary distance (the `plates.uplift` BFS already has this) + a
+  large-scale fBm, so cratonic interiors and abyssal plains are macro-flat
+  while belts are rugged. Also damp the continental base variation on plains.
+- Then proceed to **Phase 3 — global Köppen climate**
+  ([`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §5b): insolation
+  bands + elevation lapse + continentality (distance-to-ocean, plate cratons)
+  + orographic shadow + wind cells + ocean currents → Köppen type per cell;
+  biome widens to WWF/Whittaker (§6b). This adds the desert/forest/tundra
+  *colour* diversity still missing vs a real Earth map.
+
+Benchmark (release, post fast-hull): gigaplanet (501k cells) generate +
+orthographic relief render ≈ **25 s** total (was 620 s+ with the O(N²) hull).
 
 **Other open GEO enhancements** (surveyed, lower priority than the redesign):
 16-bit heightmap export; deposition / sediment-fan refinement; archetype-

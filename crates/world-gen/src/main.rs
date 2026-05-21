@@ -122,9 +122,17 @@ struct GenerateArgs {
     /// Optional political-map SVG path.
     #[arg(long)]
     svg: Option<PathBuf>,
-    /// PNG/SVG width/height in pixels.
-    #[arg(long, default_value_t = 1024)]
-    png_size: u32,
+    /// Render detail — **pixels per cell** (linear). The PNG dimensions are
+    /// derived from this × the cell count × the projection aspect (2:1 for
+    /// equirectangular, 1:1 for orthographic), so a bigger world renders to a
+    /// bigger image instead of being squeezed into a fixed square. ~2.5 is a
+    /// good default; raise for sharper, lower for faster.
+    #[arg(long, default_value_t = 2.5)]
+    detail: f32,
+    /// Optional explicit render **height** in pixels (width follows the
+    /// projection aspect). Overrides `--detail` auto-sizing when set.
+    #[arg(long)]
+    height: Option<u32>,
 }
 
 #[derive(Args)]
@@ -226,6 +234,14 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         }
     };
 
+    // Render dimensions: explicit height override, else auto-sized from the
+    // cell count + projection aspect (so the world isn't crushed into a fixed
+    // square). Width follows the projection's aspect either way.
+    let (img_w, img_h) = match cli.height {
+        Some(h) => (((h as f32) * proj.aspect()).round() as u32, h),
+        None => proj.auto_dimensions(map.cell_count(), cli.detail.max(0.5)),
+    };
+
     let json = match serde_json::to_string_pretty(&map) {
         Ok(j) => j,
         Err(e) => {
@@ -256,8 +272,8 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
     if let Some(png) = &cli.relief_png {
         let img = world_gen::render::relief_image(
             &map,
-            cli.png_size,
-            cli.png_size,
+            img_w,
+            img_h,
             cli.style.into(),
             proj,
         );
@@ -270,8 +286,8 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
     if let Some(png) = &cli.png {
         let img = world_gen::render::biome_image(
             &map,
-            cli.png_size,
-            cli.png_size,
+            img_w,
+            img_h,
             cli.style.into(),
             proj,
         );
@@ -284,8 +300,8 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
     if let Some(png) = &cli.political_png {
         let img = world_gen::render::political_image(
             &map,
-            cli.png_size,
-            cli.png_size,
+            img_w,
+            img_h,
             cli.style.into(),
             proj,
         );
@@ -298,8 +314,8 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
     if let Some(png) = &cli.culture_png {
         let img = world_gen::render::culture_image(
             &map,
-            cli.png_size,
-            cli.png_size,
+            img_w,
+            img_h,
             cli.style.into(),
             proj,
         );
@@ -312,8 +328,8 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
     if let Some(png) = &cli.plate_png {
         let img = world_gen::render::plate_image(
             &map,
-            cli.png_size,
-            cli.png_size,
+            img_w,
+            img_h,
             cli.style.into(),
             proj,
         );
@@ -324,7 +340,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         println!("wrote {}", png.display());
     }
     if let Some(svg) = &cli.svg {
-        let doc = world_gen::render::political_svg(&map, cli.png_size);
+        let doc = world_gen::render::political_svg(&map, img_h);
         if let Err(e) = std::fs::write(svg, doc) {
             eprintln!("error: write svg {}: {e}", svg.display());
             return ExitCode::FAILURE;

@@ -115,6 +115,33 @@ impl Projection {
             Projection::Orthographic { .. } => 1.0,
         }
     }
+
+    /// Derive a render `(width, height)` from the world's `cell_count` so that
+    /// **each cell gets roughly `detail` pixels across** — a floor on per-cell
+    /// resolution. This is the cure for "the whole planet squeezed into a fixed
+    /// square": the image grows with the cell count and respects the
+    /// projection's aspect (2:1 for Equirectangular, 1:1 for Orthographic)
+    /// instead of being a fixed square. Like cells in a body — each cell has a
+    /// minimum size, so a bigger world produces a bigger image.
+    ///
+    /// `detail` is pixels-per-cell (linear); ~2.5 is a good default. Dimensions
+    /// are clamped to `[64, 16384]` so tiny worlds aren't degenerate and huge
+    /// ones stay within image limits.
+    pub fn auto_dimensions(&self, cell_count: usize, detail: f32) -> (u32, u32) {
+        let aspect = self.aspect();
+        // Cells visible in the render: Orthographic shows ~half the sphere.
+        let visible = match self {
+            Projection::Orthographic { .. } => cell_count as f32 * 0.5,
+            Projection::Equirectangular => cell_count as f32,
+        };
+        // Cells uniform in solid angle ⇒ to keep them ~square in pixels the
+        // image is `aspect:1`; cells along the height axis ≈ sqrt(visible /
+        // aspect). Height pixels = that × detail.
+        let height_cells = (visible / aspect).max(1.0).sqrt();
+        let height = (height_cells * detail).round().clamp(64.0, 16384.0);
+        let width = (height * aspect).round().clamp(64.0, 16384.0);
+        (width as u32, height as u32)
+    }
 }
 
 /// Shortcut for [`Projection::Equirectangular`] — `(u, v)` in `[0, 1]²` for

@@ -15,29 +15,50 @@
 //! Determinism: one seeded RNG stream (`b"plates"`); every tie broken by
 //! ascending id / `BoundaryKind` tag; BFS over the sorted neighbour lists.
 
-use crate::rng::Rng;
+use crate::noise::fbm_3d;
+use crate::rng::{Rng, sub_seed};
 use crate::world_map::{BoundaryKind, Plate, PlateBoundary, PlateKind};
 
 // --- tuning -----------------------------------------------------------------
 
-/// Plate-kind base elevation (pre-normalization, comparable to the dampened
-/// `height_at` texture range). Continental crust stands ~1 unit above oceanic.
-const CONT_BASE: f32 = 1.00;
-const OCEAN_BASE: f32 = 0.00;
+/// Plate-kind base elevation in a **signed space where sea level = 0** (the
+/// terrain stage quantizes with the sea level pinned at the 0-crossing). This
+/// mirrors Earth's hypsometry directly: continental crust is a broad platform
+/// sitting *just above* sea level (vast low green plains), oceanic crust is a
+/// deep floor well below. Mountains are the high minority, built by the
+/// orogeny uplift + ridged relief — not a raised plateau.
+const CONT_BASE: f32 = 0.10;
+const OCEAN_BASE: f32 = -0.55;
 
-/// Orogeny peak magnitudes (pre-normalization) at a boundary, decaying with
-/// hop distance via [`decay`].
-const FOLD_PEAK: f32 = 0.85;
-const ARC_PEAK: f32 = 0.60;
-const TRENCH_DEPTH: f32 = 0.45;
-const ISLAND_ARC_PEAK: f32 = 0.50;
-const RIDGE_PEAK: f32 = 0.15;
-const RIFT_DEPTH: f32 = 0.40;
+/// Orogeny peak magnitudes (signed deltas, sea level = 0), decaying with hop
+/// distance via [`decay`]. Continental collision (fold) belts are the big
+/// highs; subduction *coastal* arcs are modest (most of Earth's coasts are
+/// low passive margins, not the Andes); oceanic arcs/ridges mostly stay
+/// **subsea** (occasionally breaching as island chains — realistic); rifts
+/// dip a continental valley below sea (a Red-Sea-like trough).
+const FOLD_PEAK: f32 = 0.80;
+const ARC_PEAK: f32 = 0.45;
+const TRENCH_DEPTH: f32 = 0.30;
+const ISLAND_ARC_PEAK: f32 = 0.40;
+const RIDGE_PEAK: f32 = 0.20;
+const RIFT_DEPTH: f32 = 0.28;
 const FAULT_PEAK: f32 = 0.05;
 
 /// Orogeny decay length, in BFS hops — how far a belt reaches from its
 /// boundary. Scaled mildly so larger meshes get proportionally wider belts.
 const DECAY_HOPS: f32 = 4.0;
+
+/// Plate-boundary warp — a 3D fBm displacement applied to each cell before the
+/// nearest-seed (Voronoi) test, so plate boundaries are **fractal and
+/// irregular** rather than clean Voronoi arcs. This is what stops every
+/// continent from being a uniform round blob: warped boundaries give
+/// peninsulas, embayments, isthmuses and varied continent shapes.
+const PLATE_WARP_FREQ: f32 = 1.8;
+const PLATE_WARP_AMP: f32 = 0.32;
+const PLATE_WARP_OCTAVES: u32 = 4;
+const SALT_PWX: u32 = 0x4B1D_77A3;
+const SALT_PWY: u32 = 0x9E2C_51FF;
+const SALT_PWZ: u32 = 0x2D8A_C40B;
 
 /// The plate model output.
 pub struct Plates {
@@ -71,14 +92,18 @@ pub fn build(
     let seeds: Vec<[f32; 3]> = (0..n).map(|_| random_unit(&mut rng)).collect();
 
     // 1a — assign each cell to its nearest plate seed (max dot = spherical
-    // Voronoi). Ties → lower plate id (strict `>` keeps the first max).
+    // Voronoi), but **warp the cell position with a 3D fBm first** so the plate
+    // boundaries are fractal/irregular (varied, non-blobby continents). Ties →
+    // lower plate id (strict `>` keeps the first max).
+    let wseed = sub_seed(seed, b"plate-warp") as u32;
     let plate_of: Vec<u32> = centers
         .iter()
         .map(|c| {
+            let wc = warp_cell(*c, wseed);
             let mut best = 0usize;
-            let mut best_dot = dot(*c, seeds[0]);
+            let mut best_dot = dot(wc, seeds[0]);
             for (p, sp) in seeds.iter().enumerate().skip(1) {
-                let d = dot(*c, *sp);
+                let d = dot(wc, *sp);
                 if d > best_dot {
                     best_dot = d;
                     best = p;
@@ -348,6 +373,22 @@ fn decay(hops: u32) -> f32 {
 }
 
 // --- vector helpers ---------------------------------------------------------
+
+/// Displace a unit-sphere cell position by a 3D fBm field, re-normalized back
+/// onto the sphere — the plate-boundary warp (fractal, irregular continents).
+fn warp_cell(c: [f32; 3], seed: u32) -> [f32; 3] {
+    let f = PLATE_WARP_FREQ;
+    let wx = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWX, PLATE_WARP_OCTAVES);
+    let wy = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWY, PLATE_WARP_OCTAVES);
+    let wz = fbm_3d(c[0] * f, c[1] * f, c[2] * f, seed ^ SALT_PWZ, PLATE_WARP_OCTAVES);
+    let v = [
+        c[0] + PLATE_WARP_AMP * wx,
+        c[1] + PLATE_WARP_AMP * wy,
+        c[2] + PLATE_WARP_AMP * wz,
+    ];
+    let l = len(v).max(1e-6);
+    [v[0] / l, v[1] / l, v[2] / l]
+}
 
 /// A uniform random point on the unit sphere (Marsaglia z + azimuth).
 fn random_unit(rng: &mut Rng) -> [f32; 3] {

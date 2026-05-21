@@ -81,13 +81,17 @@ const SALT_MTN: u32 = 0xC0FF_EE42;
 const SALT_BELT: u32 = 0x1357_9BDF;
 const SALT_HILL: u32 = 0x2468_ACE0;
 
-// --- tectonic texture tuning (Phase 2) --------------------------------------
+// --- tectonic relief tuning (Phase 2) ---------------------------------------
 
-/// In `Tectonic` mode the plates own the macro structure (continents, ocean
-/// basins, boundary belts); `height_at`'s continent term is dropped and the
-/// fBm becomes **fine relief** at these reduced weights.
-const TEX_HILL_WEIGHT: f32 = 0.10;
-const TEX_MTN_WEIGHT: f32 = 0.32;
+/// `Tectonic`-mode relief weights, layered on the plate base (continental 1.0
+/// / oceanic 0.0) + orogeny uplift. Tuned for *lively, varied* continents
+/// (the plate model owns the macro; this is the life): a strong low-freq
+/// continental variation to fractal-ize coasts + roll interiors, real ranges
+/// across the interior, and only a faint abyssal ripple in the deep ocean.
+const TEC_CONT_WEIGHT: f32 = 0.12;
+const TEC_HILL_WEIGHT: f32 = 0.06;
+const TEC_MTN_WEIGHT: f32 = 0.95;
+const TEC_ABYSS_WEIGHT: f32 = 0.05;
 
 /// Per-cell elevations + the chosen sea level (+ the plate model in
 /// `Tectonic` mode).
@@ -127,26 +131,23 @@ pub fn build(
                 centers,
                 neighbors,
             );
-            // elev = plate base + orogeny uplift + fine fBm texture (gated to
-            // continental crust via the plate base → landness).
+            // elev = plate base + orogeny uplift + rich continental relief
+            // (varied base + hills + ranges on land; gentle abyssal texture in
+            // the oceans). The relief is what makes continents read as *alive*
+            // rather than flat slabs.
+            // Signed elevation, sea level = 0: continental platform just above,
+            // ocean floor well below; mountain belts the high minority.
             let mut elev: Vec<f32> = (0..count)
-                .map(|i| {
-                    let landness = smoothstep(0.4, 0.9, plates.base[i]);
-                    plates.base[i]
-                        + plates.uplift[i]
-                        + texture_at(centers[i], landness, nseed)
-                })
+                .map(|i| plates.base[i] + plates.uplift[i] + tectonic_relief(centers[i], plates.base[i], nseed))
                 .collect();
 
-            // Land fraction ≈ continental fraction; pass it to erosion's
-            // depression-fill heuristic.
             let land_fraction = cs.continental_fraction.clamp(0.1, 0.9);
             erosion::apply(&mut elev, neighbors, land_fraction, cs.erosion);
 
-            let elevation = normalize_to_u16(&elev, count);
-            // Percentile sea level (no largest-component constraint — many
-            // continents are expected). No `enforce_coherence`.
-            let sea_level = pick_sea_level(&elevation, land_fraction);
+            // Quantize with a fixed scale (sea level pinned at SEA_FRAC) so
+            // land keeps a generous, fixed share of the range — distinct
+            // plains/uplands/mountains, not a deep-ocean-squeezed flat slab.
+            let (elevation, sea_level) = quantize_fixed_scale(&elev, count);
 
             Terrain {
                 elevation,
@@ -181,6 +182,55 @@ pub fn build(
             }
         }
     }
+}
+
+/// Sea level as a fraction of the `u16` range under [`quantize_fixed_scale`].
+/// Oceans get the lower `SEA_FRAC`; land gets the upper `1 − SEA_FRAC`.
+const SEA_FRAC: f32 = 0.40;
+/// Percentile of land/ocean elevation that maps to the top/bottom of the
+/// range. The top `1 − this` of peaks (and deepest trenches) clamp to white /
+/// abyss — so a few dramatic extremes don't compress everything else.
+const SCALE_PCT: f32 = 0.99;
+
+/// Quantize a **signed** elevation field (sea level = 0) to `u16`. Sea level
+/// is pinned at `SEA_FRAC`; **land is stretched by its own `SCALE_PCT`
+/// percentile to fill the upper `1 − SEA_FRAC`**, and ocean likewise fills the
+/// lower `SEA_FRAC`. So land always uses its full share of the range — coastal
+/// plains → green, uplands → brown, the tallest peaks → white — *robustly
+/// across seeds*, regardless of the absolute relief amplitude.
+///
+/// This replaced a min-max normalize (which let deep ocean stretch the bottom
+/// and squeeze all land into the top ~20% — the "flattened terrain" bug) and a
+/// fixed-scale variant (which under-used the land range when the relief
+/// amplitude was modest, rendering mountains brown-not-white).
+fn quantize_fixed_scale(elev: &[f32], count: usize) -> (Vec<u16>, u16) {
+    let sea_u16 = (SEA_FRAC * 65535.0).round() as u16;
+
+    // Percentile scale for land (signed > 0) and ocean depth (|signed < 0|).
+    let mut land: Vec<f32> = elev.iter().copied().filter(|&e| e > 0.0).collect();
+    let mut ocean: Vec<f32> = elev.iter().copied().filter(|&e| e < 0.0).map(|e| -e).collect();
+    land.sort_by(f32::total_cmp);
+    ocean.sort_by(f32::total_cmp);
+    let pctl = |v: &[f32]| -> f32 {
+        if v.is_empty() {
+            1.0
+        } else {
+            v[((SCALE_PCT * v.len() as f32) as usize).min(v.len() - 1)].max(1e-4)
+        }
+    };
+    let land_scale = pctl(&land);
+    let ocean_scale = pctl(&ocean);
+
+    let mut elevation = vec![0u16; count];
+    for (i, &e) in elev.iter().enumerate() {
+        let u = if e >= 0.0 {
+            SEA_FRAC + (e / land_scale).min(1.0) * (1.0 - SEA_FRAC)
+        } else {
+            SEA_FRAC - ((-e) / ocean_scale).min(1.0) * SEA_FRAC
+        };
+        elevation[i] = (u.clamp(0.0, 1.0) * 65535.0).round() as u16;
+    }
+    (elevation, sea_u16)
 }
 
 /// Min-max normalize an f32 elevation field to the full `u16` range.
@@ -220,17 +270,42 @@ fn warp_point(p: [f32; 3], seed: u32) -> [f32; 3] {
     w
 }
 
-/// Fine fBm relief for `Tectonic` mode — hills everywhere + belt-masked ridged
-/// ranges gated by `landness` (so ranges rise on continental crust). No
-/// continent base, no dome: the plate model owns the macro structure.
-fn texture_at(p: [f32; 3], landness: f32, seed: u32) -> f32 {
+/// Rich relief for `Tectonic` mode, layered on top of the plate base + orogeny
+/// uplift. The plate model owns *where* land and big belts are; this gives the
+/// terrain its *life*:
+/// - **continental base variation** (low-freq fBm) so the land rolls and the
+///   coastline fractal-izes (bays, peninsulas, offshore islands) instead of
+///   tracing a smooth plate edge;
+/// - **hills** (mid-freq) for texture between ranges;
+/// - **ridged ranges** (belt-masked) so continental *interiors* carry mountain
+///   ranges, not just the plate boundaries;
+/// - **gentle abyssal texture** in the oceans (kept well below sea level) so
+///   the sea floor isn't a dead flat sheet.
+///
+/// `landness` (smoothstepped plate base) gates land vs ocean contributions.
+fn tectonic_relief(p: [f32; 3], base: f32, seed: u32) -> f32 {
+    // `base` is signed (sea level = 0): continental platform ≈ +0.10, ocean
+    // floor ≈ −0.55. Land where base ≥ 0.
+    let landness = smoothstep(-0.05, 0.08, base);
     let w = warp_point(p, seed);
+
+    // Gentle low-freq platform variation — keeps the vast plains *low* (some
+    // dips below sea → natural bays/coast) without lifting the whole continent.
+    let cont = fbm_3d(w[0] * CONT_FREQ, w[1] * CONT_FREQ, w[2] * CONT_FREQ, seed ^ SALT_CONT, CONT_OCTAVES);
+    // Mid-freq hills.
     let hills = fbm_3d(w[0] * HILL_FREQ, w[1] * HILL_FREQ, w[2] * HILL_FREQ, seed ^ SALT_HILL, HILL_OCTAVES);
+    // Belt-masked ridged ranges — a *minority* of the land (rarer belt mask →
+    // linear mountain chains, not a blanket of highland).
     let belt_raw = 0.5
         + 0.5 * fbm_3d(p[0] * BELT_FREQ, p[1] * BELT_FREQ, p[2] * BELT_FREQ, seed ^ SALT_BELT, BELT_OCTAVES);
-    let belt = smoothstep(0.46, 0.72, belt_raw);
+    let belt = smoothstep(0.52, 0.76, belt_raw);
     let ridges = ridged_fbm_3d(w[0] * MTN_FREQ, w[1] * MTN_FREQ, w[2] * MTN_FREQ, seed ^ SALT_MTN, MTN_OCTAVES);
-    TEX_HILL_WEIGHT * hills + TEX_MTN_WEIGHT * belt * ridges * landness
+
+    // On land: gentle plains + sparse ranges. In ocean: only a faint abyssal ripple.
+    let land_relief =
+        TEC_CONT_WEIGHT * cont + TEC_HILL_WEIGHT * hills + TEC_MTN_WEIGHT * belt * ridges;
+    let ocean_relief = TEC_ABYSS_WEIGHT * hills;
+    landness * land_relief + (1.0 - landness) * ocean_relief
 }
 
 /// The Path B heightmap — a pure function of position on the **unit sphere**.

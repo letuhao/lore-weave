@@ -4,11 +4,12 @@
 //! on the unit sphere using a **Fibonacci lattice** — quasi-uniform in solid
 //! angle, deterministic given `n`. A seed-driven 3D rotation reorients the
 //! whole lattice so different seeds produce different worlds. The adjacency is
-//! the **spherical Delaunay triangulation**, which we obtain as the **3D
-//! convex hull** of the sample points (every point of an N-point set on a
-//! sphere is on its own convex hull → every hull face is a Delaunay triangle).
-//! The **spherical Voronoi polygon** of each cell is the loop of
-//! sphere-projected circumcentres of its incident Delaunay triangles.
+//! the **spherical Delaunay triangulation**, obtained in **O(N log N)** via a
+//! **stereographic projection + 2D Delaunay** ([`delaunator`]) — see
+//! [`spherical_delaunay`] (Phase 2 quality pass; replaced an O(N²) hand-rolled
+//! 3D Quickhull so the generator can afford high cell counts). The
+//! **spherical Voronoi polygon** of each cell is the loop of sphere-projected
+//! circumcentres of its incident Delaunay triangles.
 //!
 //! There are no edges, no hull corners, no E–W seam, no pole degeneracy by
 //! construction — the sphere has none of these. `repair_degree` from the flat
@@ -17,19 +18,17 @@
 //! Determinism rules (load-bearing):
 //! - Fibonacci index `i ∈ 0..N` is the **cell id**. The seed-driven rotation
 //!   does not reorder indices.
-//! - 3D Quickhull picks the **farthest** point above each face; ties are
-//!   broken by **ascending point index**.
+//! - `delaunator` is deterministic; the triangle list is canonicalized
+//!   (smallest vertex first) + sorted, independent of emission order.
 //! - Spherical Voronoi vertices are ordered **CCW around the cell centre**
 //!   via tangent-plane angle (`atan2` of an orthonormal-basis projection).
 
 use std::f32::consts::TAU;
 
+use delaunator::{Point, triangulate};
+
 use crate::creative_seed::WorldScale;
 use crate::rng::Rng;
-
-/// Plane-side epsilon for the 3D Quickhull. Rust 2024 deprecates
-/// `std::f64::EPSILON` in favour of the associated-const form below.
-const F64_EPS: f64 = f64::EPSILON;
 
 /// The dual mesh — cell centres + symmetric adjacency + spherical Voronoi
 /// polygons. **All geometry is on the unit sphere.**
@@ -65,7 +64,7 @@ pub fn build(seed: u64, scale: WorldScale) -> Mesh {
     let centers = place_points_sphere(n, &mut rng);
     debug_assert_eq!(centers.len(), n);
 
-    let triangles = convex_hull_3d(&centers);
+    let triangles = spherical_delaunay(&centers);
     let neighbors = adjacency(&triangles, n);
     let polygons = voronoi_polygons_sphere(&centers, &triangles);
 
@@ -138,151 +137,106 @@ fn rotate_q(q: [f32; 4], v: [f32; 3]) -> [f32; 3] {
     ]
 }
 
-// --- 3D convex hull (hand-rolled Quickhull) --------------------------------
+// --- spherical Delaunay (stereographic projection + 2D Delaunay) -----------
 
-/// Compute the 3D convex hull of `points` (all assumed to be on the unit
-/// sphere). Returns a list of CCW-from-outside triangles `[v0, v1, v2]`.
+/// Build the spherical Delaunay triangulation of `points` (all on the unit
+/// sphere) — the dual of the spherical Voronoi diagram — in **O(N log N)** via
+/// a stereographic projection + 2D Delaunay ([`delaunator`]). This replaced an
+/// O(N²) hand-rolled 3D Quickhull (Phase 2 quality pass) so the generator can
+/// afford the high cell counts that give each continent natural detail.
 ///
-/// Determinism: ties broken by ascending vertex index everywhere.
-fn convex_hull_3d(points: &[[f32; 3]]) -> Vec<[u32; 3]> {
-    assert!(
-        points.len() >= 4,
-        "convex hull needs at least 4 non-coplanar points"
-    );
-    // f64 throughout the hull for numerical robustness.
-    let pts: Vec<[f64; 3]> = points
-        .iter()
-        .map(|p| [p[0] as f64, p[1] as f64, p[2] as f64])
-        .collect();
+/// Method (the d3-geo-voronoi closure): pick a projection centre `c` (cell 0),
+/// rotate it to the `+z` pole, stereographically project the *other* `N-1`
+/// points to the plane, triangulate them, then close the back cap by fanning
+/// the projection's 2D convex-hull edges to `c` (which is "at infinity" in the
+/// projection). Returns triangles `[v0, v1, v2]` in original cell indices.
+///
+/// The Delaunay triangulation is unique for points in general position, so the
+/// adjacency matches the former 3D-hull result; only near-co-circular quartets
+/// may resolve differently. Triangle winding is *not* guaranteed consistent —
+/// [`voronoi_polygons_sphere`] is robust to it.
+///
+/// Determinism: `delaunator` is deterministic; the triangle list is
+/// canonicalized (smallest vertex first) + sorted at the end.
+fn spherical_delaunay(points: &[[f32; 3]]) -> Vec<[u32; 3]> {
+    let n = points.len();
+    assert!(n >= 4, "spherical Delaunay needs at least 4 points");
 
-    // Step 1 — initial tetrahedron from 4 extreme indices.
-    let tet = initial_tetrahedron(&pts);
+    // Projection centre = cell 0; rotate it onto the +z pole.
+    let q = quat_from_to(points[0], [0.0, 0.0, 1.0]);
 
-    // Step 2 — seed the face list, outward-oriented relative to the initial
-    // tetrahedron centroid (a point known to be inside every hull face for
-    // the unit-sphere input). The centroid stays a stable interior reference
-    // as the hull grows because every new face has the entire convex hull
-    // — including the original tet — on its inside.
-    let centroid = [
-        (pts[tet[0]][0] + pts[tet[1]][0] + pts[tet[2]][0] + pts[tet[3]][0]) / 4.0,
-        (pts[tet[0]][1] + pts[tet[1]][1] + pts[tet[2]][1] + pts[tet[3]][1]) / 4.0,
-        (pts[tet[0]][2] + pts[tet[1]][2] + pts[tet[2]][2] + pts[tet[3]][2]) / 4.0,
-    ];
-    let mut faces: Vec<HullFace> = Vec::new();
-    let tetra_faces: [[usize; 3]; 4] = [
-        [tet[0], tet[1], tet[2]],
-        [tet[0], tet[2], tet[3]],
-        [tet[0], tet[3], tet[1]],
-        [tet[1], tet[3], tet[2]],
-    ];
-    for f in tetra_faces {
-        faces.push(make_outward_face(&pts, f, centroid));
+    // Stereographic-project the other N-1 points from the +z pole:
+    // (x, y, z) → (x/(1−z), y/(1−z)). The centre maps to infinity (excluded).
+    let mut proj: Vec<Point> = Vec::with_capacity(n - 1);
+    let mut orig: Vec<u32> = Vec::with_capacity(n - 1); // proj index → cell id
+    for (i, &p) in points.iter().enumerate().skip(1) {
+        let r = rotate_q(q, p);
+        let denom = (1.0 - r[2]).max(1e-9);
+        proj.push(Point {
+            x: (r[0] / denom) as f64,
+            y: (r[1] / denom) as f64,
+        });
+        orig.push(i as u32);
     }
 
-    // Step 3 — assign each non-tetrahedron point to the first face above it.
-    // (Tetrahedron vertices are already on the hull; skip them.)
-    for (i, p) in pts.iter().enumerate() {
-        if i == tet[0] || i == tet[1] || i == tet[2] || i == tet[3] {
-            continue;
-        }
-        for face in faces.iter_mut() {
-            if signed_distance(face, p) > F64_EPS {
-                face.above.push(i as u32);
-                break;
-            }
-        }
+    let tri = triangulate(&proj);
+
+    let mut triangles: Vec<[u32; 3]> =
+        Vec::with_capacity(tri.triangles.len() / 3 + tri.hull.len());
+
+    // Interior triangles — map projected indices back to cell ids.
+    for t in tri.triangles.chunks_exact(3) {
+        triangles.push([orig[t[0]], orig[t[1]], orig[t[2]]]);
     }
 
-    // Step 4 — iterate. A worklist of face indices with non-empty above-sets.
-    let mut work: Vec<usize> = faces
-        .iter()
-        .enumerate()
-        .filter_map(|(i, f)| if !f.above.is_empty() { Some(i) } else { None })
-        .collect();
-    work.sort_unstable();
-
-    // We expand the hull face by face. Faces are tombstoned (not compacted)
-    // for stable indices during the loop; compaction happens at the end.
-    let mut alive: Vec<bool> = vec![true; faces.len()];
-
-    while let Some(fi) = work.pop() {
-        if !alive[fi] || faces[fi].above.is_empty() {
-            continue;
-        }
-        // Pick the **farthest** above-point — ties resolved by ascending index.
-        let apex = farthest_above_index(&faces[fi], &pts);
-
-        // Find all visible faces from `apex` — start at `fi`, BFS outward by
-        // shared edges.
-        let visible = collect_visible(apex, &faces, &alive, fi, &pts);
-
-        // The horizon is the set of edges of `visible` faces that are shared
-        // with a **non-visible** face. CCW orientation of the new triangles
-        // follows the horizon edge orientation seen *from a visible face*.
-        let horizon = compute_horizon(&visible, &faces);
-
-        // Tombstone all visible faces; gather their orphaned above-points.
-        let mut orphans: Vec<u32> = Vec::new();
-        for &v in &visible {
-            alive[v] = false;
-            orphans.append(&mut faces[v].above);
-        }
-        // Apex is no longer orphan — it is now on the hull.
-        orphans.retain(|&i| i as usize != apex);
-        // Determinism — sort ascending so re-distribution order is stable.
-        orphans.sort_unstable();
-        orphans.dedup();
-
-        // Build new faces — one per horizon edge — and re-distribute orphans.
-        let mut new_face_ids: Vec<usize> = Vec::with_capacity(horizon.len());
-        for (a, b) in horizon {
-            // Horizon edge (a, b) was oriented CCW as seen from the visible
-            // face's interior; the new face is `[a, b, apex]` with the same
-            // CCW orientation as seen from outside (apex is on the outside
-            // side of the visible faces' plane).
-            let mut nf = make_outward_face(&pts, [a, b, apex], centroid);
-            // Distribute orphans to this new face if it's above.
-            for &p in &orphans {
-                if (p as usize) == apex {
-                    continue;
-                }
-                if signed_distance(&nf, &pts[p as usize]) > F64_EPS {
-                    nf.above.push(p);
-                }
-            }
-            faces.push(nf);
-            alive.push(true);
-            new_face_ids.push(faces.len() - 1);
-        }
-
-        // An orphan point may belong to multiple new faces above it; assign
-        // each orphan to the **first** new face above it (deterministic). The
-        // distribution loop above puts each orphan onto every new face it is
-        // above — so we now deduplicate so each orphan lives on exactly one
-        // face. This keeps the loop's `above.len()` sum bounded by N.
-        let mut seen: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
-        for &nid in &new_face_ids {
-            faces[nid].above.retain(|&p| seen.insert(p));
-        }
-
-        // Enqueue new faces that have above-points.
-        for nid in new_face_ids {
-            if !faces[nid].above.is_empty() {
-                work.push(nid);
-            }
-        }
-        work.sort_unstable();
+    // Back cap — fan the projection's convex hull to the centre (cell 0). Each
+    // consecutive hull edge closes through the centre, which lies on the
+    // far side of the sphere from the projection plane.
+    let h = &tri.hull;
+    let hl = h.len();
+    for k in 0..hl {
+        let a = orig[h[k]];
+        let b = orig[h[(k + 1) % hl]];
+        triangles.push([a, b, 0]);
     }
 
-    // Collect surviving faces; emit triangles in ascending face-creation order
-    // for stable output.
-    let mut tris: Vec<[u32; 3]> = faces
-        .iter()
-        .zip(alive.iter())
-        .filter_map(|(f, &al)| if al { Some(f.v) } else { None })
-        .collect();
-    // Canonicalize triangle vertex order: rotate so vertex 0 is the smallest,
-    // preserving CCW orientation. Stable hash-friendly.
+    canonicalize_triangles(&mut triangles);
+    triangles
+}
+
+/// Unit quaternion `(x, y, z, w)` rotating unit vector `from` onto unit `to`.
+fn quat_from_to(from: [f32; 3], to: [f32; 3]) -> [f32; 4] {
+    let d = (from[0] * to[0] + from[1] * to[1] + from[2] * to[2]).clamp(-1.0, 1.0);
+    if d > 0.999_999 {
+        return [0.0, 0.0, 0.0, 1.0]; // already aligned
+    }
+    if d < -0.999_999 {
+        // antipodal — a π rotation about any axis perpendicular to `from`.
+        let axis = perp(from);
+        return [axis[0], axis[1], axis[2], 0.0];
+    }
+    let c = cross(from, to);
+    let w = 1.0 + d;
+    let inv = 1.0 / (c[0] * c[0] + c[1] * c[1] + c[2] * c[2] + w * w).sqrt();
+    [c[0] * inv, c[1] * inv, c[2] * inv, w * inv]
+}
+
+/// Some unit vector perpendicular to `v` (via the least-aligned helper axis).
+fn perp(v: [f32; 3]) -> [f32; 3] {
+    let helper = if v[0].abs() <= v[1].abs() && v[0].abs() <= v[2].abs() {
+        [1.0, 0.0, 0.0]
+    } else if v[1].abs() <= v[2].abs() {
+        [0.0, 1.0, 0.0]
+    } else {
+        [0.0, 0.0, 1.0]
+    };
+    normalize(cross(v, helper))
+}
+
+/// Canonicalize each triangle (rotate so the smallest vertex is first) then
+/// sort + dedup the list — a stable, deterministic output independent of the
+/// triangulator's emission order.
+fn canonicalize_triangles(tris: &mut Vec<[u32; 3]>) {
     for t in tris.iter_mut() {
         let mut m = 0usize;
         if t[1] < t[m] {
@@ -293,228 +247,9 @@ fn convex_hull_3d(points: &[[f32; 3]]) -> Vec<[u32; 3]> {
         }
         t.rotate_left(m);
     }
-    // Sort triangle list itself by (v0, v1, v2) ascending — final determinism
-    // gate for the per-triangle output order.
     tris.sort_unstable();
-    tris
+    tris.dedup();
 }
-
-/// Result face for the hull algorithm — vertices in CCW-from-outside order,
-/// plus a precomputed plane (normal + d) and the set of points still
-/// "above" it.
-#[derive(Debug, Clone)]
-struct HullFace {
-    v: [u32; 3],
-    /// Plane normal (outward-facing, unit length).
-    n: [f64; 3],
-    /// `dot(n, v0)` — the plane offset.
-    d: f64,
-    /// Point indices currently strictly above this face.
-    above: Vec<u32>,
-}
-
-/// Build a `HullFace` from indices `[a, b, c]`, flipping if needed so the
-/// normal points **outward** (away from the reference `interior` point).
-fn make_outward_face(pts: &[[f64; 3]], vs: [usize; 3], interior: [f64; 3]) -> HullFace {
-    let p0 = pts[vs[0]];
-    let p1 = pts[vs[1]];
-    let p2 = pts[vs[2]];
-    let e1 = sub(p1, p0);
-    let e2 = sub(p2, p0);
-    let mut n = cross_d(e1, e2);
-    let nlen = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-    if nlen > 0.0 {
-        n[0] /= nlen;
-        n[1] /= nlen;
-        n[2] /= nlen;
-    }
-    let d = n[0] * p0[0] + n[1] * p0[1] + n[2] * p0[2];
-    // If the interior point is on the positive side of (n, d), flip so
-    // outward means *away from* interior.
-    let interior_signed = n[0] * interior[0] + n[1] * interior[1] + n[2] * interior[2] - d;
-    let (v_out, n_out, d_out) = if interior_signed > 0.0 {
-        // Swap vs[1] and vs[2] to flip CCW orientation.
-        (
-            [vs[0] as u32, vs[2] as u32, vs[1] as u32],
-            [-n[0], -n[1], -n[2]],
-            -d,
-        )
-    } else {
-        ([vs[0] as u32, vs[1] as u32, vs[2] as u32], n, d)
-    };
-    let _ = d_out; // silence unused-mut warning; we recompute below.
-    let d_final = n_out[0] * p0[0] + n_out[1] * p0[1] + n_out[2] * p0[2];
-    HullFace {
-        v: v_out,
-        n: n_out,
-        d: d_final,
-        above: Vec::new(),
-    }
-}
-
-/// Signed plane distance — positive = above (outward) the face.
-fn signed_distance(f: &HullFace, p: &[f64; 3]) -> f64 {
-    f.n[0] * p[0] + f.n[1] * p[1] + f.n[2] * p[2] - f.d
-}
-
-/// Pick the farthest above-point of `f`. Determinism: ties → ascending index.
-fn farthest_above_index(f: &HullFace, pts: &[[f64; 3]]) -> usize {
-    let mut best: usize = f.above[0] as usize;
-    let mut best_d = signed_distance(f, &pts[best]);
-    for &i in &f.above[1..] {
-        let d = signed_distance(f, &pts[i as usize]);
-        // strict `>` for the lower-index tie-break; on a true tie, the
-        // earlier-in-`above` (smaller index, since we sort) wins.
-        if d > best_d {
-            best_d = d;
-            best = i as usize;
-        }
-    }
-    best
-}
-
-/// BFS-collect every face that is visible from `apex` — i.e. signed
-/// distance > F64_EPS — starting from `seed` and crossing only shared edges
-/// into already-visible neighbours. Avoids re-collecting the same face twice.
-fn collect_visible(
-    apex: usize,
-    faces: &[HullFace],
-    alive: &[bool],
-    seed: usize,
-    pts: &[[f64; 3]],
-) -> Vec<usize> {
-    let mut visible: Vec<usize> = Vec::new();
-    let mut seen: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
-    let mut stack: Vec<usize> = vec![seed];
-    while let Some(fi) = stack.pop() {
-        if !seen.insert(fi) || !alive[fi] {
-            continue;
-        }
-        if signed_distance(&faces[fi], &pts[apex]) > F64_EPS {
-            visible.push(fi);
-            // Enqueue all faces sharing an edge with `fi`.
-            for (j, fj) in faces.iter().enumerate() {
-                if !alive[j] || j == fi || seen.contains(&j) {
-                    continue;
-                }
-                if shares_edge(&faces[fi].v, &fj.v) {
-                    stack.push(j);
-                }
-            }
-        }
-    }
-    visible.sort_unstable();
-    visible
-}
-
-/// True iff `a` and `b` share at least one edge — for triangle faces, "share
-/// an edge" means they share **two** vertices.
-fn shares_edge(a: &[u32; 3], b: &[u32; 3]) -> bool {
-    let mut shared = 0;
-    for &av in a {
-        for &bv in b {
-            if av == bv {
-                shared += 1;
-                break;
-            }
-        }
-    }
-    shared >= 2
-}
-
-/// Compute the horizon edges of the visible-face set: every edge of a visible
-/// face that is **not** shared with another visible face is on the horizon.
-/// Orientation is preserved CCW-as-seen-from-the-visible-face.
-fn compute_horizon(visible: &[usize], faces: &[HullFace]) -> Vec<(usize, usize)> {
-    use std::collections::BTreeMap;
-    // count each directed edge once.
-    let mut count: BTreeMap<(u32, u32), i32> = BTreeMap::new();
-    for &vi in visible {
-        let v = &faces[vi].v;
-        let edges = [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])];
-        for (a, b) in edges {
-            let canon = if a < b { (a, b) } else { (b, a) };
-            *count.entry(canon).or_insert(0) += 1;
-        }
-    }
-    // edges with count 1 are on the horizon (only one visible face uses them).
-    let mut horizon: Vec<(usize, usize)> = Vec::new();
-    for &vi in visible {
-        let v = &faces[vi].v;
-        let edges = [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])];
-        for (a, b) in edges {
-            let canon = if a < b { (a, b) } else { (b, a) };
-            if count[&canon] == 1 {
-                horizon.push((a as usize, b as usize));
-            }
-        }
-    }
-    // Determinism: ascending edge first vertex, then second.
-    horizon.sort_unstable();
-    horizon
-}
-
-/// Pick four indices (a, b, c, d) that span 3D — used to seed the hull.
-/// Determinism: min-x → max-x → farthest-from-line → farthest-from-plane,
-/// ties broken by ascending index.
-fn initial_tetrahedron(pts: &[[f64; 3]]) -> [usize; 4] {
-    let n = pts.len();
-    // 1. min-x (ties → lower index)
-    let a = (0..n)
-        .min_by(|&i, &j| {
-            pts[i][0]
-                .total_cmp(&pts[j][0])
-                .then(i.cmp(&j))
-        })
-        .unwrap();
-    // 2. max-x (ties → lower index) — distinct from a
-    let b = (0..n)
-        .filter(|&i| i != a)
-        .max_by(|&i, &j| pts[i][0].total_cmp(&pts[j][0]).then(j.cmp(&i)))
-        .unwrap();
-    // 3. farthest from the line a-b
-    let pa = pts[a];
-    let pb = pts[b];
-    let ab = sub(pb, pa);
-    let ab_n2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
-    let mut c = usize::MAX;
-    let mut c_d2 = -1.0_f64;
-    for (i, &pi) in pts.iter().enumerate() {
-        if i == a || i == b {
-            continue;
-        }
-        let api = sub(pi, pa);
-        // perpendicular distance² = |api|² − (api·ab)² / |ab|²
-        let d_par = (api[0] * ab[0] + api[1] * ab[1] + api[2] * ab[2]).powi(2) / ab_n2.max(F64_EPS);
-        let d2 = api[0] * api[0] + api[1] * api[1] + api[2] * api[2] - d_par;
-        if d2 > c_d2 {
-            c_d2 = d2;
-            c = i;
-        }
-    }
-    assert!(c != usize::MAX);
-    // 4. farthest from the plane (a, b, c)
-    let pc = pts[c];
-    let n_abc = cross_d(sub(pb, pa), sub(pc, pa));
-    let nlen = (n_abc[0].powi(2) + n_abc[1].powi(2) + n_abc[2].powi(2)).sqrt();
-    let n_abc_u = [n_abc[0] / nlen, n_abc[1] / nlen, n_abc[2] / nlen];
-    let plane_d = n_abc_u[0] * pa[0] + n_abc_u[1] * pa[1] + n_abc_u[2] * pa[2];
-    let mut d = usize::MAX;
-    let mut d_abs = -1.0_f64;
-    for (i, &pi) in pts.iter().enumerate() {
-        if i == a || i == b || i == c {
-            continue;
-        }
-        let s = (n_abc_u[0] * pi[0] + n_abc_u[1] * pi[1] + n_abc_u[2] * pi[2] - plane_d).abs();
-        if s > d_abs {
-            d_abs = s;
-            d = i;
-        }
-    }
-    assert!(d != usize::MAX);
-    [a, b, c, d]
-}
-
 // --- adjacency -------------------------------------------------------------
 
 /// Collect symmetric adjacency from the spherical Delaunay triangle list.
@@ -555,8 +290,17 @@ fn voronoi_polygons_sphere(centers: &[[f32; 3]], triangles: &[[u32; 3]]) -> Vec<
             let c = centers[t[2] as usize];
             let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
             let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let n = cross(ab, ac);
-            normalize(n)
+            let cc = normalize(cross(ab, ac));
+            // Two antipodal circumcentres exist; take the one on the same
+            // hemisphere as the triangle (its centroid). This makes the
+            // Voronoi vertex correct regardless of the triangle's winding —
+            // so the mesh builder needn't guarantee a consistent orientation.
+            let centroid = [a[0] + b[0] + c[0], a[1] + b[1] + c[1], a[2] + b[2] + c[2]];
+            if cc[0] * centroid[0] + cc[1] * centroid[1] + cc[2] * centroid[2] < 0.0 {
+                [-cc[0], -cc[1], -cc[2]]
+            } else {
+                cc
+            }
         })
         .collect();
 
@@ -654,18 +398,6 @@ fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     ]
-}
-
-fn cross_d(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
-}
-
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
 fn normalize(v: [f32; 3]) -> [f32; 3] {
