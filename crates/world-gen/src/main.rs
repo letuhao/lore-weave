@@ -4,6 +4,9 @@
 //! world-gen generate --seed 42 --scale continent --coastline island \
 //!           --out map.json --relief-png relief.png --png biome.png --style atlas
 //! world-gen generate --seed 42 --config creative_seed.json --out map.json
+//! # globe view (orthographic), camera looking at lat 0 / lon 90°E:
+//! world-gen generate --seed 42 --out map.json --relief-png globe.png \
+//!           --projection orthographic --camera 0,1,0
 //! world-gen author --brief "a cold mountainous wuxia realm" --out creative_seed.json
 //! world-gen name --in map.json --out named.json --archetype wuxia --svg map.svg
 //! ```
@@ -14,7 +17,8 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use world_gen::{
     ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
-    PrevailingWind, RenderStyle, SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
+    PrevailingWind, Projection, RenderStyle, SettlementDensity, WorldArchetype, WorldMap,
+    WorldScale, generate,
 };
 
 #[derive(Parser)]
@@ -77,6 +81,16 @@ struct GenerateArgs {
     /// Cartographic render style for all PNG outputs.
     #[arg(long, value_enum, default_value_t = StyleArg::Realistic)]
     style: StyleArg,
+    /// Map projection for all PNG outputs. `equirectangular` is the flat 2:1
+    /// world map; `orthographic` is a globe view (a disc; only the camera-
+    /// facing hemisphere is visible). SVG export is always equirectangular.
+    #[arg(long, value_enum, default_value_t = ProjectionArg::Equirectangular)]
+    projection: ProjectionArg,
+    /// Orthographic camera direction `x,y,z` (the point on the globe facing
+    /// the viewer). Ignored for equirectangular. Default `1,0,0` (lat 0,
+    /// lon 0). Need not be normalized.
+    #[arg(long)]
+    camera: Option<String>,
     /// Optional hypsometric relief-map PNG path (the showcase terrain render).
     #[arg(long)]
     relief_png: Option<PathBuf>,
@@ -178,6 +192,21 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
 
     let map = generate(cli.seed, &cs);
 
+    // Resolve the render projection from the flags.
+    let proj = match cli.projection {
+        ProjectionArg::Equirectangular => Projection::Equirectangular,
+        ProjectionArg::Orthographic => {
+            let camera = match parse_camera(cli.camera.as_deref()) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("error: --camera: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            Projection::Orthographic { camera }
+        }
+    };
+
     let json = match serde_json::to_string_pretty(&map) {
         Ok(j) => j,
         Err(e) => {
@@ -206,8 +235,13 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
     );
 
     if let Some(png) = &cli.relief_png {
-        let img =
-            world_gen::render::relief_image(&map, cli.png_size, cli.png_size, cli.style.into());
+        let img = world_gen::render::relief_image(
+            &map,
+            cli.png_size,
+            cli.png_size,
+            cli.style.into(),
+            proj,
+        );
         if let Err(e) = img.save(png) {
             eprintln!("error: save relief png {}: {e}", png.display());
             return ExitCode::FAILURE;
@@ -215,7 +249,13 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         println!("wrote {}", png.display());
     }
     if let Some(png) = &cli.png {
-        let img = world_gen::render::biome_image(&map, cli.png_size, cli.png_size, cli.style.into());
+        let img = world_gen::render::biome_image(
+            &map,
+            cli.png_size,
+            cli.png_size,
+            cli.style.into(),
+            proj,
+        );
         if let Err(e) = img.save(png) {
             eprintln!("error: save png {}: {e}", png.display());
             return ExitCode::FAILURE;
@@ -223,8 +263,13 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         println!("wrote {}", png.display());
     }
     if let Some(png) = &cli.political_png {
-        let img =
-            world_gen::render::political_image(&map, cli.png_size, cli.png_size, cli.style.into());
+        let img = world_gen::render::political_image(
+            &map,
+            cli.png_size,
+            cli.png_size,
+            cli.style.into(),
+            proj,
+        );
         if let Err(e) = img.save(png) {
             eprintln!("error: save political png {}: {e}", png.display());
             return ExitCode::FAILURE;
@@ -232,8 +277,13 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         println!("wrote {}", png.display());
     }
     if let Some(png) = &cli.culture_png {
-        let img =
-            world_gen::render::culture_image(&map, cli.png_size, cli.png_size, cli.style.into());
+        let img = world_gen::render::culture_image(
+            &map,
+            cli.png_size,
+            cli.png_size,
+            cli.style.into(),
+            proj,
+        );
         if let Err(e) = img.save(png) {
             eprintln!("error: save culture png {}: {e}", png.display());
             return ExitCode::FAILURE;
@@ -539,4 +589,33 @@ impl From<StyleArg> for RenderStyle {
             StyleArg::Atlas => RenderStyle::Atlas,
         }
     }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ProjectionArg {
+    Equirectangular,
+    Orthographic,
+}
+
+/// Parse an Orthographic `--camera x,y,z` triple. Defaults to `[1, 0, 0]`
+/// (lat 0, lon 0) when absent. The vector need not be normalized — the
+/// projection normalizes it.
+fn parse_camera(arg: Option<&str>) -> Result<[f32; 3], String> {
+    let Some(s) = arg else {
+        return Ok([1.0, 0.0, 0.0]);
+    };
+    let parts: Vec<&str> = s.split(',').map(str::trim).collect();
+    if parts.len() != 3 {
+        return Err(format!("expected `x,y,z`, got `{s}`"));
+    }
+    let mut out = [0.0f32; 3];
+    for (i, p) in parts.iter().enumerate() {
+        out[i] = p
+            .parse::<f32>()
+            .map_err(|_| format!("`{p}` is not a number"))?;
+    }
+    if out.iter().all(|c| *c == 0.0) {
+        return Err("camera direction must be non-zero".to_string());
+    }
+    Ok(out)
 }

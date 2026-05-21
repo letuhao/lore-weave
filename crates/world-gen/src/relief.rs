@@ -2,24 +2,27 @@
 //! hillshade, the basis for every PNG render mode.
 //!
 //! Not part of `WorldMap` / `content_hash` (see [`crate::render`]), so it
-//! freely re-triangulates the mesh and layers procedural detail on top. Still
+//! freely resamples the mesh and layers procedural detail on top. Still
 //! deterministic: the detail and domain-warp noise is seeded from
 //! `WorldMap.seed`, so a rendered PNG reproduces byte-for-byte.
 //!
 //! Pipeline ([`ReliefField::build`]):
-//! 1. re-triangulate the cell centres (`delaunator`);
-//! 2. barycentric-rasterize cell elevations → a continuous base buffer;
-//! 3. domain-warp that buffer with low-frequency fBm — bends the heightmap
-//!    off the noise lattice into irregular shapes;
-//! 4. add **complementary** fBm detail — full on flat ground, suppressed over
-//!    carved valleys/ridges (a `base − blur(base)` high-pass), so the model's
-//!    own relief reads instead of being masked by louder noise;
+//! 1. per-pixel **nearest-cell** elevation over the projected mesh (Stage B-2 —
+//!    replaced the `delaunator` triangulation + barycentric fill; works for
+//!    both [`Projection`]s, no antimeridian stretch-triangle artefact);
+//! 2. box-blur de-facet → a continuous base buffer;
+//! 3. domain-warp that buffer with **3D** fBm sampled at the back-projected
+//!    sphere point — bends the heightmap off the noise lattice, seamless
+//!    across the antimeridian;
+//! 4. add **complementary** 3D fBm detail — full on flat ground, suppressed
+//!    over carved valleys/ridges (a `base − blur(base)` high-pass), so the
+//!    model's own relief reads instead of being masked by louder noise;
 //! 5. hillshade the result, darkening concave-up valley floors (an
 //!    ambient-occlusion proxy) so carved drainage reads as rugged 3-D terrain.
 
-use delaunator::{Point, triangulate};
-
-use crate::noise::{fbm, lerp};
+use crate::noise::{fbm_3d, lerp};
+use crate::projection::Projection;
+use crate::render::SpatialIndex;
 use crate::world_map::WorldMap;
 
 /// Domain-warp frequency (cycles across the map) + octave count. Tuned to
@@ -113,13 +116,31 @@ pub struct ReliefField {
     pub water: Vec<bool>,
     /// Per-pixel hillshade multiplier in `[ambient, 1]`.
     pub shade: Vec<f32>,
+    /// Per-pixel "inside the projected world" flag — `false` for the
+    /// Orthographic disc exterior (Stage B-2). Always `true` under
+    /// Equirectangular.
+    pub visible: Vec<bool>,
     /// Sea level, in the same normalized space as `elev`.
     pub sea: f32,
 }
 
 impl ReliefField {
-    /// Build the relief field for `map` at `width × height` in the given style.
-    pub fn build(map: &WorldMap, width: u32, height: u32, style: RenderStyle) -> ReliefField {
+    /// Build the relief field for `map` at `width × height` in the given style
+    /// and projection.
+    ///
+    /// **Stage B-2 (2026-05-21):** the base elevation comes from a per-pixel
+    /// nearest-cell sample over the projected mesh (replaces the
+    /// `delaunator` triangulation + barycentric fill); the domain warp + detail
+    /// fBm sample **3D** noise at the pixel's back-projected sphere point so
+    /// they are seamless across the antimeridian. Pixels outside the projected
+    /// world (Orthographic disc exterior) are flagged `!visible`.
+    pub fn build(
+        map: &WorldMap,
+        width: u32,
+        height: u32,
+        style: RenderStyle,
+        proj: Projection,
+    ) -> ReliefField {
         let p = style.params();
         let w = width as usize;
         let h = height as usize;
@@ -128,21 +149,40 @@ impl ReliefField {
         // fold the u64 world seed into the u32 the noise hash takes.
         let seed = (map.seed ^ (map.seed >> 32)) as u32;
 
-        // 1+2 — triangulate the cell centres, barycentric-rasterize elevation.
-        let base_raw = rasterize_base(map, width, height);
+        // 1+2 — per-pixel nearest-cell elevation over the projected mesh, plus
+        // the visibility mask. Invisible pixels are filled with `sea` so the
+        // warp/bilinear resample never pulls a NaN.
+        let (base_raw, visible) = rasterize_base(map, width, height, proj, sea);
 
-        // 3 — domain-warp resample → the continuous base buffer. The warp is
-        // a model-space displacement applied in pixels (model +y is image −y,
-        // hence the sign on the y term).
+        // 3 — domain-warp resample → the continuous base buffer. The warp
+        // displacement is 3D noise sampled at the pixel's back-projected
+        // sphere point — seamless across the antimeridian.
         let mut base = vec![0.0f32; n];
         for py in 0..h {
             for px in 0..w {
-                // model coords (y up) — noise sampled here is resolution-stable.
-                let mx = (px as f32 + 0.5) / width as f32;
-                let my = 1.0 - (py as f32 + 0.5) / height as f32;
-                let wx = p.warp_amp * fbm(mx * WARP_FREQ, my * WARP_FREQ, seed ^ SALT_WARP_X, WARP_OCTAVES);
-                let wy = p.warp_amp * fbm(mx * WARP_FREQ, my * WARP_FREQ, seed ^ SALT_WARP_Y, WARP_OCTAVES);
-                base[py * w + px] = sample_bilinear(
+                let i = py * w + px;
+                let u = (px as f32 + 0.5) / width as f32;
+                let v = (py as f32 + 0.5) / height as f32;
+                let q = proj
+                    .back_project((u, v))
+                    .unwrap_or([0.0, 0.0, 1.0]);
+                let wx = p.warp_amp
+                    * fbm_3d(
+                        q[0] * WARP_FREQ,
+                        q[1] * WARP_FREQ,
+                        q[2] * WARP_FREQ,
+                        seed ^ SALT_WARP_X,
+                        WARP_OCTAVES,
+                    );
+                let wy = p.warp_amp
+                    * fbm_3d(
+                        q[0] * WARP_FREQ,
+                        q[1] * WARP_FREQ,
+                        q[2] * WARP_FREQ,
+                        seed ^ SALT_WARP_Y,
+                        WARP_OCTAVES,
+                    );
+                base[i] = sample_bilinear(
                     &base_raw,
                     w,
                     h,
@@ -169,18 +209,28 @@ impl ReliefField {
         for py in 0..h {
             for px in 0..w {
                 let i = py * w + px;
-                let mx = (px as f32 + 0.5) / width as f32;
-                let my = 1.0 - (py as f32 + 0.5) / height as f32;
+                let u = (px as f32 + 0.5) / width as f32;
+                let v = (py as f32 + 0.5) / height as f32;
+                let q = proj
+                    .back_project((u, v))
+                    .unwrap_or([0.0, 0.0, 1.0]);
                 let b = base[i];
                 let hp = b - base_lo[i]; // signed high-pass
 
                 // open ocean stays smooth; detail ramps up toward the coast.
                 let land_t = (b - sea) / (1.0 - sea).max(1e-3);
                 let ocean_gate = smoothstep(-0.15, 0.02, land_t);
+                // 3D detail fBm — seamless across the antimeridian.
                 let detail = p.detail_amp
                     * ocean_gate
                     * detail_fill(hp.abs())
-                    * fbm(mx * DETAIL_FREQ, my * DETAIL_FREQ, seed ^ SALT_DETAIL, DETAIL_OCTAVES);
+                    * fbm_3d(
+                        q[0] * DETAIL_FREQ,
+                        q[1] * DETAIL_FREQ,
+                        q[2] * DETAIL_FREQ,
+                        seed ^ SALT_DETAIL,
+                        DETAIL_OCTAVES,
+                    );
 
                 let combined = b + detail;
                 elev[i] = combined;
@@ -197,59 +247,65 @@ impl ReliefField {
             *s *= o;
         }
 
-        ReliefField { width, height, elev, water, shade, sea }
+        ReliefField {
+            width,
+            height,
+            elev,
+            water,
+            shade,
+            visible,
+            sea,
+        }
     }
 }
 
-/// Triangulate the cell centres and barycentric-rasterize their elevations
-/// into a `width × height` buffer (normalized, image order). The mesh's
-/// perimeter ring puts the convex hull on the unit square, so every pixel is
-/// covered; [`backfill`] is insurance against a degenerate sliver.
-fn rasterize_base(map: &WorldMap, width: u32, height: u32) -> Vec<f32> {
+/// Per-pixel nearest-cell elevation over the projected mesh, into a
+/// `width × height` buffer (normalized, image order). Returns `(base, visible)`
+/// where `base[i]` is `sea` for invisible pixels (Orthographic disc exterior)
+/// so the warp/bilinear resample in [`ReliefField::build`] never pulls a NaN.
+///
+/// **Stage B-2 (2026-05-21):** replaces the `delaunator` triangulation +
+/// barycentric fill. The smooth per-triangle blend is traded for per-Voronoi-
+/// cell shading + the existing box-blur de-facet; in return there is no
+/// `delaunator` dependency, no antimeridian stretch-triangle artefact, and
+/// both projections are handled by the same path.
+fn rasterize_base(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    proj: Projection,
+    sea: f32,
+) -> (Vec<f32>, Vec<bool>) {
     let w = width as usize;
     let h = height as usize;
-    let mut buf = vec![f32::NAN; w * h];
+    let mut buf = vec![sea; w * h];
+    let mut visible = vec![true; w * h];
+    let index = SpatialIndex::build(map, proj);
 
-    // B2 sphere migration: relief re-triangulation runs in the (u, v)
-    // equirectangular plane. TODO(B5): true spherical barycentric so anti-
-    // meridian-crossing triangles don't artefact.
-    let pts: Vec<Point> = map
-        .cells
-        .iter()
-        .map(|c| {
-            let (u, v) = crate::projection::equirectangular(c.center);
-            Point {
-                x: f64::from(u),
-                y: f64::from(v),
+    for py in 0..h {
+        for px in 0..w {
+            let i = py * w + px;
+            let u = (px as f32 + 0.5) / width as f32;
+            let v = (py as f32 + 0.5) / height as f32;
+            // Outside the projected world (Orthographic disc exterior).
+            if proj.back_project((u, v)).is_none() {
+                visible[i] = false;
+                continue;
             }
-        })
-        .collect();
-    let tri = triangulate(&pts);
-
-    for t in tri.triangles.chunks_exact(3) {
-        let pos = [
-            cell_px(map, t[0], width, height),
-            cell_px(map, t[1], width, height),
-            cell_px(map, t[2], width, height),
-        ];
-        let elev = [
-            norm_elev(map, t[0]),
-            norm_elev(map, t[1]),
-            norm_elev(map, t[2]),
-        ];
-        rasterize_triangle(&mut buf, w, h, pos, elev);
+            let cell = index.nearest(map, u, v);
+            buf[i] = norm_elev(map, cell);
+        }
     }
 
-    backfill(&mut buf, map, width, height);
-    // Barycentric interpolation is piecewise-linear, so its gradient — and
-    // hence a raw hillshade — is faceted per triangle. A light blur lifts it
-    // to a smooth field. Kept to ~⅓ cell (not ½) so cell-scale model relief —
-    // carved valleys, ridges — survives it; supersampling + the complementary
-    // detail in `build` carry the rest of the de-facet/texture work.
+    // The nearest-cell field is piecewise-constant (per Voronoi cell), so its
+    // gradient — and a raw hillshade — would be faceted at cell edges. A light
+    // blur lifts it to a smooth field. Kept to ~⅓ cell so cell-scale model
+    // relief (carved valleys, ridges) survives; supersampling + the
+    // complementary detail in `build` carry the rest of the de-facet work.
     let facet = width as f32 / (map.cells.len() as f32).sqrt();
     let radius = (facet * 0.35).round().max(1.0) as usize;
     box_blur(&mut buf, w, h, radius, 2);
-    buf
+    (buf, visible)
 }
 
 /// In-place separable box blur — `passes` repeats of a radius-`r` box, a cheap
@@ -284,79 +340,9 @@ fn box_blur(buf: &mut [f32], w: usize, h: usize, r: usize, passes: u32) {
     }
 }
 
-/// Cell centre → pixel coordinates. `(u, v)` from equirectangular has `v = 0`
-/// at the north pole (top of image), matching raster row=0 at top — no flip
-/// needed.
-fn cell_px(map: &WorldMap, cell: usize, width: u32, height: u32) -> (f32, f32) {
-    let (u, v) = crate::projection::equirectangular(map.cells[cell].center);
-    (u * width as f32, v * height as f32)
-}
-
 /// Normalized elevation of a cell in `[0,1]`.
 fn norm_elev(map: &WorldMap, cell: usize) -> f32 {
     f32::from(map.cells[cell].elevation) / 65535.0
-}
-
-/// Barycentric-fill one triangle's interpolated elevation into `buf`.
-fn rasterize_triangle(buf: &mut [f32], w: usize, h: usize, pos: [(f32, f32); 3], elev: [f32; 3]) {
-    let (ax, ay) = pos[0];
-    let (bx, by) = pos[1];
-    let (cx, cy) = pos[2];
-
-    // canonical barycentric denominator (== twice the signed triangle area).
-    let det = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-    if det.abs() < 1e-9 {
-        return; // degenerate sliver — `backfill` covers any pixel it owned.
-    }
-    let inv = 1.0 / det;
-
-    let min_x = ax.min(bx).min(cx).floor().max(0.0) as usize;
-    let max_x = (ax.max(bx).max(cx).ceil().max(0.0) as usize).min(w - 1);
-    let min_y = ay.min(by).min(cy).floor().max(0.0) as usize;
-    let max_y = (ay.max(by).max(cy).ceil().max(0.0) as usize).min(h - 1);
-
-    for py in min_y..=max_y {
-        for px in min_x..=max_x {
-            let sx = px as f32 + 0.5;
-            let sy = py as f32 + 0.5;
-            let wa = ((by - cy) * (sx - cx) + (cx - bx) * (sy - cy)) * inv;
-            let wb = ((cy - ay) * (sx - cx) + (ax - cx) * (sy - cy)) * inv;
-            let wc = 1.0 - wa - wb;
-            // a small tolerance so a pixel exactly on a shared edge is kept.
-            if wa >= -1e-4 && wb >= -1e-4 && wc >= -1e-4 {
-                buf[py * w + px] = wa * elev[0] + wb * elev[1] + wc * elev[2];
-            }
-        }
-    }
-}
-
-/// Replace any pixel left `NaN` (no triangle covered it — only possible at a
-/// degenerate sliver) with the nearest cell's elevation, so the buffer is
-/// total. In practice this touches nothing.
-fn backfill(buf: &mut [f32], map: &WorldMap, width: u32, height: u32) {
-    let w = width as usize;
-    for py in 0..height as usize {
-        for px in 0..w {
-            let i = py * w + px;
-            if !buf[i].is_nan() {
-                continue;
-            }
-            let mx = (px as f32 + 0.5) / width as f32;
-            // (u, v) raster convention — no flip: row=0 (top) → v=0 (north).
-            let my = (py as f32 + 0.5) / height as f32;
-            let mut best = 0usize;
-            let mut best_d = f32::INFINITY;
-            for (ci, c) in map.cells.iter().enumerate() {
-                let (cu, cv) = crate::projection::equirectangular(c.center);
-                let d = (cu - mx).powi(2) + (cv - my).powi(2);
-                if d < best_d {
-                    best_d = d;
-                    best = ci;
-                }
-            }
-            buf[i] = norm_elev(map, best);
-        }
-    }
 }
 
 /// Bilinearly sample `buf` at fractional pixel coords, clamped to the buffer.
@@ -437,7 +423,7 @@ mod tests {
 
     #[test]
     fn field_has_pixel_dimensions() {
-        let f = ReliefField::build(&sample_map(), 64, 48, RenderStyle::Realistic);
+        let f = ReliefField::build(&sample_map(), 64, 48, RenderStyle::Realistic, Projection::Equirectangular);
         assert_eq!(f.elev.len(), 64 * 48);
         assert_eq!(f.shade.len(), 64 * 48);
         assert_eq!(f.water.len(), 64 * 48);
@@ -446,7 +432,7 @@ mod tests {
     #[test]
     fn elev_is_all_finite() {
         // the `backfill` pass guarantees no NaN survives rasterization.
-        let f = ReliefField::build(&sample_map(), 80, 80, RenderStyle::Realistic);
+        let f = ReliefField::build(&sample_map(), 80, 80, RenderStyle::Realistic, Projection::Equirectangular);
         assert!(
             f.elev.iter().all(|e| e.is_finite()),
             "relief elevation has non-finite values"
@@ -455,7 +441,7 @@ mod tests {
 
     #[test]
     fn shade_is_in_unit_range() {
-        let f = ReliefField::build(&sample_map(), 80, 80, RenderStyle::Realistic);
+        let f = ReliefField::build(&sample_map(), 80, 80, RenderStyle::Realistic, Projection::Equirectangular);
         assert!(
             f.shade.iter().all(|&s| (0.0..=1.0).contains(&s)),
             "hillshade factor escaped [0,1]"
@@ -466,7 +452,7 @@ mod tests {
     fn interpolation_stays_in_a_sane_band() {
         // barycentric interpolation is bounded by the mesh elevation range
         // ([0,1]); detail is small ⇒ the field cannot wander far outside it.
-        let f = ReliefField::build(&sample_map(), 80, 80, RenderStyle::Realistic);
+        let f = ReliefField::build(&sample_map(), 80, 80, RenderStyle::Realistic, Projection::Equirectangular);
         assert!(
             f.elev.iter().all(|&e| (-0.25..=1.25).contains(&e)),
             "relief elevation escaped a sane band"
@@ -491,8 +477,8 @@ mod tests {
     #[test]
     fn build_is_deterministic() {
         let m = sample_map();
-        let a = ReliefField::build(&m, 96, 96, RenderStyle::Atlas);
-        let b = ReliefField::build(&m, 96, 96, RenderStyle::Atlas);
+        let a = ReliefField::build(&m, 96, 96, RenderStyle::Atlas, Projection::Equirectangular);
+        let b = ReliefField::build(&m, 96, 96, RenderStyle::Atlas, Projection::Equirectangular);
         assert!(
             a.elev.iter().zip(&b.elev).all(|(x, y)| x.to_bits() == y.to_bits()),
             "relief elevation is not reproducible"
@@ -507,8 +493,8 @@ mod tests {
     #[test]
     fn styles_produce_different_relief() {
         let m = sample_map();
-        let r = ReliefField::build(&m, 96, 96, RenderStyle::Realistic);
-        let a = ReliefField::build(&m, 96, 96, RenderStyle::Atlas);
+        let r = ReliefField::build(&m, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
+        let a = ReliefField::build(&m, 96, 96, RenderStyle::Atlas, Projection::Equirectangular);
         assert!(
             r.shade.iter().zip(&a.shade).any(|(x, y)| x.to_bits() != y.to_bits()),
             "realistic and atlas produced an identical hillshade"
@@ -517,7 +503,7 @@ mod tests {
 
     #[test]
     fn field_has_both_land_and_water() {
-        let f = ReliefField::build(&sample_map(), 128, 128, RenderStyle::Realistic);
+        let f = ReliefField::build(&sample_map(), 128, 128, RenderStyle::Realistic, Projection::Equirectangular);
         assert!(f.water.iter().any(|&w| w), "relief field has no water pixels");
         assert!(f.water.iter().any(|&w| !w), "relief field has no land pixels");
     }

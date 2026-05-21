@@ -10,7 +10,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use world_gen::render::relief_image;
-use world_gen::{CreativeSeed, RenderStyle, WorldScale, generate};
+use world_gen::{CreativeSeed, Projection, RenderStyle, WorldScale, generate};
 
 const SEED: u64 = 20_260_518;
 
@@ -48,7 +48,7 @@ fn bench_render(c: &mut Criterion) {
     let mut group = c.benchmark_group("render");
     group.sample_size(10);
     group.bench_function("relief_gigaplanet_2048", |b| {
-        b.iter(|| relief_image(black_box(&map), 2048, 2048, RenderStyle::Realistic));
+        b.iter(|| relief_image(black_box(&map), 2048, 2048, RenderStyle::Realistic, Projection::Equirectangular));
     });
     group.finish();
 }

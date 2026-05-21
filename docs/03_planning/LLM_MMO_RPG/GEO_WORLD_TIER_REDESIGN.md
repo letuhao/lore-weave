@@ -362,10 +362,19 @@ authoring · feature extraction + LLM naming.
      `pathfind::spaced_ok` (radians); orographic wind march on a tangent-
      plane projection. `render.rs` + `relief.rs` still hardcode
      equirectangular internally.
-   - **STAGE B-2 NEXT:** thread `Projection` through `render.rs` + `relief.rs`
-     entry points so Orthographic actually *renders a globe view*; CLI
-     `--projection equirectangular|orthographic` + optional `--camera`;
-     `CreativeSeed.projection` field; drop `delaunator` from `Cargo.toml`.
+   - **STAGE B-2 DONE (2026-05-21):** `Projection` threaded through every
+     `render.rs` + `relief.rs` entry point; the relief renderer's per-pixel
+     sampler rewritten to back-project canvas pixel → 3D point → nearest cell
+     (so **Orthographic renders a real globe view** — a disc with the far
+     hemisphere culled), the domain-warp + detail fBm switched to **3D** noise
+     (seamless across the antimeridian), and `delaunator` **dropped** from
+     `Cargo.toml`. The `SpatialIndex` is now projection-aware (visible-only
+     buckets + `u`-wrap). CLI `--projection equirectangular|orthographic` +
+     `--camera x,y,z`. SVG export stays equirectangular (a globe SVG is not
+     meaningful). `Projection` is a render flag (like `--style`), **not** on
+     `CreativeSeed` — rendering is not part of `WorldMap`/`content_hash`.
+   - **PHASE 1 COMPLETE.** Next major work is **Phase 2 — plate tectonics**
+     (§5): multi-continent worlds with placed mountain belts / rifts / arcs.
 2. **Plate-tectonic continents** — multi-continent + ocean basins + placed
    mountains/rifts/trenches. Retire `CoastlineProfile`/`enforce_coherence`.
 3. **Global Köppen climate** — the §5b model.

@@ -11,10 +11,16 @@
 > Covers plan §3 B1–B3 + parts of B6. The `render.rs` + `relief.rs` entry
 > points still hardcode equirectangular internally.
 >
-> **Stage B-2 (next commit):** thread `Projection` through `render.rs` +
-> `relief.rs`; rewrite the per-pixel sampler for the Orthographic path;
-> CLI `--projection` + `CreativeSeed.projection` field; drop `delaunator`
-> from `Cargo.toml`. Covers plan §3 B4–B5 + remaining B6 + B7.
+> **Stage B-2 (DONE 2026-05-21):** `Projection` threaded through `render.rs`
+> + `relief.rs`; the relief sampler rewritten to back-project canvas pixel →
+> 3D point → nearest cell (replaces delaunator barycentric); domain-warp +
+> detail fBm switched to 3D (antimeridian-seamless); `SpatialIndex` made
+> projection-aware (visible-only buckets + `u`-wrap); CLI `--projection` +
+> `--camera`; `delaunator` removed from `Cargo.toml`. Covers plan §3 B4–B5 +
+> remaining B6 + B7. **Decision change:** `Projection` is a CLI render flag
+> (like `--style`), **not** a `CreativeSeed` field — rendering isn't part of
+> `WorldMap`/`content_hash`, so it follows the `RenderStyle` precedent.
+> SVG export stays equirectangular-only (a globe SVG isn't meaningful).
 >
 > **Task size:** XL (13+ files, 18+ logic changes, content_hash rebases again
 > — settlement Poisson-disk + route Dijkstra switch from `(u, v)` Euclidean
