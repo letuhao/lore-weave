@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from app.clients.llm_client import LLMClient
+from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 
 logger = logging.getLogger(__name__)
 
@@ -362,25 +363,32 @@ async def _call_judge(
     n_items: int,
 ) -> str:
     """One judge chat call through the gateway. Returns the content
-    string. Raises on a non-completed job (caller decides fallback)."""
-    job = await client.submit_and_wait(
-        user_id=user_id,
-        operation="chat",
-        model_source=model_source,  # type: ignore[arg-type]
-        model_ref=judge_model,
-        input={
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.0,
-            "max_tokens": _output_tokens(n_items),
-        },
-        chunking=None,
-        job_meta={"extractor": "llm_judge"},
-        transient_retry_budget=1,
-    )
+    string. Raises ValueError on any non-usable outcome (non-completed
+    job OR a gateway/transient LLM error) so the per-batch caller's
+    `except ValueError` marks the batch unjudged instead of aborting the
+    whole run — a single LM Studio hiccup must not kill a multi-chapter
+    judge pass (MED#1, /review-impl)."""
+    try:
+        job = await client.submit_and_wait(
+            user_id=user_id,
+            operation="chat",
+            model_source=model_source,  # type: ignore[arg-type]
+            model_ref=judge_model,
+            input={
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0,
+                "max_tokens": _output_tokens(n_items),
+            },
+            chunking=None,
+            job_meta={"extractor": "llm_judge"},
+            transient_retry_budget=1,
+        )
+    except (LLMError, LLMTransientRetryNeededError) as exc:
+        raise ValueError(f"judge LLM call failed: {exc}") from exc
     if job.status != "completed":
         raise ValueError(f"judge job ended status={job.status}")
     result = job.result or {}

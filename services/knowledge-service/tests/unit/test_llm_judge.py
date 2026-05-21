@@ -10,6 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from loreweave_llm.errors import LLMError
+
 from tests.quality.llm_judge import (
     CategoryJudgement,
     GoldVerdict,
@@ -33,9 +35,13 @@ def _job(content: str, status: str = "completed") -> SimpleNamespace:
 
 
 class _FakeClient:
-    """Returns queued responses in submit order; records each call."""
+    """Returns queued responses in submit order; records each call.
 
-    def __init__(self, responses: list[SimpleNamespace]) -> None:
+    A queued entry that is an Exception instance is raised instead of
+    returned — lets a test simulate a gateway/LLM failure mid-run.
+    """
+
+    def __init__(self, responses: list) -> None:
         self._responses = list(responses)
         self.calls: list[dict] = []
 
@@ -43,7 +49,10 @@ class _FakeClient:
         self.calls.append(kwargs)
         if not self._responses:
             raise AssertionError("submit_and_wait called more often than queued")
-        return self._responses.pop(0)
+        nxt = self._responses.pop(0)
+        if isinstance(nxt, BaseException):
+            raise nxt
+        return nxt
 
 
 # ── format_items_for_judge ──────────────────────────────────────────
@@ -219,6 +228,41 @@ async def test_judge_precision_batches_and_maps_global_idx():
     assert [v.verdict for v in verdicts] == [
         "supported", "unsupported", "partial", "supported", "supported",
     ]
+
+
+@pytest.mark.asyncio
+async def test_judge_precision_llm_error_marks_batch_unjudged():
+    # MED#1: a gateway/LLM error must NOT abort the run — the batch is
+    # marked unjudged and excluded from the denominator.
+    client = _FakeClient([LLMError("gateway down")])
+    verdicts = await judge_precision(
+        client, judge_model="m", user_id="u", model_source="user_model",
+        source_text="...", category="entity",
+        extracted=[{"name": "A", "kind": "person"}, {"name": "B", "kind": "person"}],
+    )
+    assert [v.verdict for v in verdicts] == ["unjudged", "unjudged"]
+
+
+@pytest.mark.asyncio
+async def test_judge_recall_batches_and_maps_global_gold_idx():
+    # LOW#1: 5 gold, batch_size=2 → 3 calls; global gold_idx preserved,
+    # found flags mapped correctly across batches.
+    r1 = _job('{"verdicts": [{"gold_idx": 0, "found": true, "matched": 0, "reason": ""},'
+              '{"gold_idx": 1, "found": false, "matched": null, "reason": ""}]}')
+    r2 = _job('{"verdicts": [{"gold_idx": 0, "found": true, "matched": 1, "reason": ""},'
+              '{"gold_idx": 1, "found": false, "matched": null, "reason": ""}]}')
+    r3 = _job('{"verdicts": [{"gold_idx": 0, "found": true, "matched": 2, "reason": ""}]}')
+    client = _FakeClient([r1, r2, r3])
+    gold = [{"name": f"G{i}", "kind": "person"} for i in range(5)]
+    verdicts = await judge_recall(
+        client, judge_model="m", user_id="u", model_source="user_model",
+        source_text="...", category="entity", gold=gold,
+        extracted=[{"name": "X", "kind": "person"}], batch_size=2,
+    )
+    assert len(client.calls) == 3
+    assert [v.gold_idx for v in verdicts] == [0, 1, 2, 3, 4]
+    assert [v.found for v in verdicts] == [True, False, True, False, True]
+    assert all(v.judged for v in verdicts)
 
 
 @pytest.mark.asyncio

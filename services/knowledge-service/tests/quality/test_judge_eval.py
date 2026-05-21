@@ -46,7 +46,7 @@ from typing import cast
 import pytest
 
 from app.clients.llm_client import get_llm_client
-from tests.quality.llm_judge import ChapterJudgement, judge_chapter
+from tests.quality.llm_judge import ChapterJudgement, judge_chapter, judge_precision
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +109,48 @@ def _write_chapter_verdicts(chapter_dir: Path, j: ChapterJudgement) -> None:
     (chapter_dir / "judge_verdicts.json").write_text(
         json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+
+
+@pytest.mark.quality
+@pytest.mark.asyncio
+async def test_judge_discriminates_fabricated_items() -> None:
+    """MED#2 (/review-impl) — validity guard: the precision judge must
+    NOT rubber-stamp. Feed a tiny source with 1 real + 3 fabricated
+    entities; the real one must be `supported` and every fabricated one
+    must NOT be `supported`. Catches a prompt/model regression that
+    silently turns precision into an always-`supported` stamp (which
+    would make every precision number meaningless)."""
+    judge_model = _env("KNOWLEDGE_EVAL_JUDGE_MODEL")
+    if not judge_model:
+        pytest.skip("KNOWLEDGE_EVAL_JUDGE_MODEL required for judge validity check")
+    user_id = _env("KNOWLEDGE_EVAL_USER_ID")
+    if not user_id:
+        pytest.skip("KNOWLEDGE_EVAL_USER_ID required for judge validity check")
+    model_source = _env("KNOWLEDGE_EVAL_JUDGE_MODEL_SOURCE", "user_model")
+
+    source = (
+        "Mara walked into the lantern-lit hall of Greyholt Keep and set "
+        "the iron key upon the table. Outside, snow fell over the moor."
+    )
+    items = [
+        {"name": "Mara", "kind": "person"},          # real
+        {"name": "Genghis Khan", "kind": "person"},   # fabricated
+        {"name": "the International Space Station", "kind": "artifact"},  # fabricated
+        {"name": "Buenos Aires", "kind": "place"},     # fabricated
+    ]
+    verdicts = await judge_precision(
+        get_llm_client(), judge_model=judge_model, user_id=user_id,
+        model_source=cast(str, model_source), source_text=source,
+        category="entity", extracted=items,
+    )
+    by_idx = {v.idx: v.verdict for v in verdicts}
+    print("discrimination verdicts:", by_idx)
+    assert by_idx.get(0) == "supported", "real entity Mara should be supported"
+    for fake_idx in (1, 2, 3):
+        assert by_idx.get(fake_idx) != "supported", (
+            f"fabricated item {items[fake_idx]['name']} judged supported — "
+            "the judge is rubber-stamping (precision numbers are invalid)"
+        )
 
 
 @pytest.mark.quality
