@@ -247,3 +247,6 @@ chat-history/
 .claude/scheduled_tasks.lock
 
 chat.txt
+
+# Local extraction-quality eval run artifacts (dumps, judge verdicts, logs)
+.eval_dumps/

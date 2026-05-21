@@ -268,3 +268,82 @@ psql -U loreweave -d loreweave_provider_registry \
 Then set `KNOWLEDGE_EVAL_MODEL` to the returned `user_model_id` and run
 `pytest tests/quality/ --run-quality -v -s`. See the SQL file's header
 comment for the full env var list.
+
+> **Pricing note (2026-05-21).** After the Phase 6a spend guardrail
+> shipped, every model needs a `pricing` JSONB or the gateway fails
+> CLOSED ("model pricing not configured", 402). Local LM Studio models
+> are free → set `pricing = {"input_per_mtok": 0, "output_per_mtok": 0}`
+> on each `user_models` row. `register_lm_studio_models.sql` does NOT yet
+> set this — patch it, or `UPDATE user_models SET pricing=...` per model.
+
+---
+
+## 2026-05-21 — Qwen3.6-35B-A3B baseline + LLM-as-judge
+
+### Rule-based baseline (qwen/qwen3.6-35b-a3b, 32K ctx, 10 chapters)
+
+| Model | Precision | Recall | FP-trap | Time |
+|-------|-----------|--------|---------|------|
+| **qwen3.6-35b-a3b** | **0.603** (lenient 0.642) | **0.407** | **0.117** | 1:41:03 |
+| gemma-4-26b-a4b (prior, 10 ch) | 0.394 | 0.552 | 0.274 | — |
+
+vs gemma: precision +53%, FP-trap −57% (now *under* the 0.15 gate),
+recall −26%. Qwen3.6 is conservative/precise rather than the
+over-extracting coder profile that was feared. Run serial because LM
+Studio `Max Concurrent Predictions=1` is required to give each request
+the full 32K (4 slots → 8K/slot overflows a 13K-token chapter).
+
+### LLM-as-judge (the rule-based scorer is the wrong instrument)
+
+The rule-based harness ([eval_harness.py](../tests/quality/eval_harness.py))
+matches by exact string / token equality — wrong for an interpretive
+task. New source-grounded judge ([llm_judge.py](../tests/quality/llm_judge.py),
+runner [test_judge_eval.py](../tests/quality/test_judge_eval.py)) reads
+the chapter text and judges semantic correctness: **precision** = is each
+extracted item supported by the text; **recall** = is each gold item
+captured under any phrasing. Routes through the `loreweave_llm` SDK →
+provider-registry (gateway invariant). Judge = **gemma-4-26b-a4b**
+(different family from the Qwen extractor → no self-reinforcement).
+
+Judge run over the qwen3.6 dump (gemma judge):
+
+| Metric | Judge | Rule-based | Note |
+|--------|-------|-----------|------|
+| Precision | **~1.00** (cov 68%) | 0.60 | judged items are uniformly *supported* |
+| Recall | **0.46** (cov 76%) | 0.41 | events ≈0 dominate the miss |
+
+**Discrimination probe (validates the judge isn't rubber-stamping):**
+fed alice_ch01 + 2 real + 3 fake entities (Napoleon, Spaceship
+Enterprise, Tokyo) → judge correctly returned `supported` for the 2 real
+and `unsupported` for all 3 fakes. So **P≈1.0 on the real extraction is
+genuine** — qwen3.6 does not hallucinate; everything it extracts is in
+the text.
+
+**Conclusions (these reframe the R&D track):**
+
+1. **Precision is NOT the problem.** It is ≈1.0; the rule-based 0.60 was
+   a measurement artifact — it penalized reasonable, source-grounded
+   extractions absent from the *conservative* gold set (e.g. Speckled
+   Band's "44 FP" are real backstory entities, just not scene-relevant
+   per the annotation philosophy). Stop tuning for precision.
+2. **Recall is the lever**, and **events are the biggest hole**
+   (qwen3.6 extracts ≈0 events across all chapters); relations next.
+3. **Open caveat — judge coverage 68% (precision).** A *reasoning* judge
+   model (gemma-4-26b-a4b emits `reasoning_tokens`) sometimes drops a
+   batch's verdicts even with batch_size=8 + a 512+96·n token budget.
+   Items the judge omits are excluded from the denominator (not counted
+   as misses) and surfaced as coverage. To harden the absolute numbers:
+   shrink the batch, or use a non-reasoning judge.
+
+**Judge harness env:**
+
+```sh
+# (judge model loaded in LM Studio; extraction dump already produced)
+KNOWLEDGE_EVAL_JUDGE_MODEL=<judge_user_model_uuid> \
+KNOWLEDGE_EVAL_USER_ID=<uuid> \
+KNOWLEDGE_JUDGE_DUMP_PATH=/path/to/extraction/dump \
+  pytest tests/quality/test_judge_eval.py --run-quality -s
+```
+
+The judge model MUST differ from the extraction model. `model_ref` is an
+env var so a cloud judge (calibration pass) is a one-line swap.

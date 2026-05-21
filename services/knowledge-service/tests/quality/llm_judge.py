@@ -1,0 +1,600 @@
+"""LLM-as-judge eval for extraction quality (R&D track).
+
+**Why this exists.** The rule-based scorer in [eval_harness.py](./eval_harness.py)
+matches extractions to a hand-annotated gold set by *exact string / token
+equality* (entities), *exact triple + an 8-entry synonym map* (relations),
+and *bag-of-words token overlap* (events). Extraction is an interpretive
+task — many surface forms express the same content — so that scorer
+measures *agreement with one conservative annotation philosophy*, not
+extraction correctness. The `fp_annotation_gap` / `precision_lenient`
+patches already in the harness are an implicit admission of that bias.
+
+This judge instead reads the **source chapter text** and asks a strong
+LLM whether each extraction is *actually supported by the text* (precision)
+and whether each gold item is *captured under any phrasing* (recall). That
+escapes the conservative-gold bias for precision and the synonym/paraphrase
+bias for both.
+
+**Conventions (same as every other service surface).**
+- Every LLM call goes through the shared `LLMClient` →
+  `loreweave_llm` SDK → provider-registry gateway. NO direct provider
+  SDK calls (gateway invariant).
+- The judge model is configurable and **MUST differ from the extraction
+  model** — a model judging its own output self-reinforces. Pass a
+  gemma model_ref when extraction ran on Qwen, etc.
+
+**Decoupled from extraction.** This judges already-produced extraction
+output (the dump `actual.json`) against the fixture source — it does NOT
+re-run extraction. So the judge model can be loaded alone (24 GB VRAM
+can't hold the extraction model + judge model at once).
+
+**Honest limits.** LLM judges are weakest on relation extraction
+(literature reports judge accuracy often <50% there) and on the weak
+multilingual axis (a judge that is itself weak in Chinese can't catch a
+Chinese extraction error). Treat local-judge numbers as a *relative*
+signal across tuning cycles, and run a cloud-judge calibration pass on a
+sample before trusting absolute values.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+from app.clients.llm_client import LLMClient
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "ItemVerdict",
+    "GoldVerdict",
+    "CategoryJudgement",
+    "ChapterJudgement",
+    "judge_precision",
+    "judge_recall",
+    "judge_category",
+    "judge_chapter",
+    "format_items_for_judge",
+]
+
+
+Category = Literal["entity", "relation", "event"]
+
+# Per-item output token budget for the judge response. Each verdict is
+# {"idx":N,"verdict":"...","reason":"..."} — the reason is capped at ~15
+# words by the prompt, so ~60 tokens/item is generous. The floor covers
+# the JSON envelope for a zero-item category (shouldn't be called, but
+# safe).
+#
+# The budget is deliberately roomy because a *reasoning* judge model
+# (qwen-thinking, deepseek-r1, etc.) spends `reasoning_tokens` from the
+# same max_tokens pool BEFORE emitting any content — a tight budget
+# leaves zero room for the JSON and the response comes back empty. The
+# judge is meant to run on a NON-reasoning model (e.g. gemma); this
+# headroom is the safety net if a thinking model is loaded anyway.
+_BASE_OUTPUT_TOKENS = 512
+_PER_ITEM_OUTPUT_TOKENS = 96
+
+# Max items judged per LLM call. A judge asked to return 30+ verdicts in
+# one JSON object truncates or drops items (observed: speckled_band's 30
+# entities came back wholly unjudged). Small batches keep each response
+# short enough to enumerate reliably; the per-batch idx is mapped back to
+# the global item index by the caller. Trades call count for coverage.
+_JUDGE_BATCH_SIZE = 8
+
+
+# ── Verdict / result types ──────────────────────────────────────────
+
+
+@dataclass
+class ItemVerdict:
+    """One precision verdict — is extracted item `idx` supported by the text?"""
+
+    idx: int
+    verdict: Literal["supported", "partial", "unsupported", "unjudged"]
+    reason: str
+
+    @property
+    def credit(self) -> float:
+        """Precision credit: supported=1.0, partial=0.5, else 0.0."""
+        if self.verdict == "supported":
+            return 1.0
+        if self.verdict == "partial":
+            return 0.5
+        return 0.0
+
+
+@dataclass
+class GoldVerdict:
+    """One recall verdict — is gold item `gold_idx` captured by the extraction?
+
+    `judged=False` marks a gold item the judge omitted from its response
+    (not the same as "not found" — we simply have no verdict). Omitted
+    items are EXCLUDED from the recall denominator, not counted as misses,
+    so a flaky judge depresses *coverage* rather than faking a low recall.
+    """
+
+    gold_idx: int
+    found: bool
+    matched_actual_idx: int | None
+    reason: str
+    judged: bool = True
+
+
+@dataclass
+class CategoryJudgement:
+    """Judge result for one category (entity / relation / event) of one chapter."""
+
+    category: Category
+    n_extracted: int
+    n_gold: int
+    precision_verdicts: list[ItemVerdict] = field(default_factory=list)
+    recall_verdicts: list[GoldVerdict] = field(default_factory=list)
+
+    @property
+    def n_unjudged(self) -> int:
+        return sum(1 for v in self.precision_verdicts if v.verdict == "unjudged")
+
+    @property
+    def n_precision_judged(self) -> int:
+        return sum(1 for v in self.precision_verdicts if v.verdict != "unjudged")
+
+    @property
+    def n_recall_judged(self) -> int:
+        return sum(1 for v in self.recall_verdicts if v.judged)
+
+    @property
+    def precision_coverage(self) -> float:
+        """Fraction of extracted items the judge actually returned a
+        verdict for. Low coverage = distrust the precision number."""
+        if self.n_extracted == 0:
+            return 1.0
+        return self.n_precision_judged / self.n_extracted
+
+    @property
+    def recall_coverage(self) -> float:
+        if self.n_gold == 0:
+            return 1.0
+        return self.n_recall_judged / self.n_gold
+
+    @property
+    def precision(self) -> float | None:
+        """Credit over the items the judge ACTUALLY judged (unjudged items
+        excluded from the denominator — an omitted verdict is missing data,
+        not a false positive). 1.0 when nothing was extracted (vacuously
+        precise). None when items were extracted but none could be judged
+        (the number would be meaningless)."""
+        if self.n_extracted == 0:
+            return 1.0
+        if self.n_precision_judged == 0:
+            return None
+        return sum(v.credit for v in self.precision_verdicts) / self.n_precision_judged
+
+    @property
+    def recall(self) -> float | None:
+        """Found / judged-gold. 1.0 when there is no gold to find. None
+        when gold exists but none of it could be judged."""
+        if self.n_gold == 0:
+            return 1.0
+        if self.n_recall_judged == 0:
+            return None
+        return (
+            sum(1 for v in self.recall_verdicts if v.found and v.judged)
+            / self.n_recall_judged
+        )
+
+
+@dataclass
+class ChapterJudgement:
+    """Aggregate judge result across the three categories of one chapter."""
+
+    chapter: str
+    entity: CategoryJudgement
+    relation: CategoryJudgement
+    event: CategoryJudgement
+
+    @property
+    def categories(self) -> list[CategoryJudgement]:
+        return [self.entity, self.relation, self.event]
+
+    @property
+    def precision(self) -> float | None:
+        """Item-weighted precision across all categories, over JUDGED items
+        only (a chapter with many entities and few events weights entities
+        more — matches the rule-based harness's unified-item philosophy).
+        None when items were extracted but none could be judged."""
+        total_extracted = sum(c.n_extracted for c in self.categories)
+        if total_extracted == 0:
+            return 1.0
+        judged = sum(c.n_precision_judged for c in self.categories)
+        if judged == 0:
+            return None
+        credit = sum(
+            v.credit for c in self.categories for v in c.precision_verdicts
+        )
+        return credit / judged
+
+    @property
+    def recall(self) -> float | None:
+        total_gold = sum(c.n_gold for c in self.categories)
+        if total_gold == 0:
+            return 1.0
+        judged = sum(c.n_recall_judged for c in self.categories)
+        if judged == 0:
+            return None
+        found = sum(
+            1 for c in self.categories
+            for v in c.recall_verdicts if v.found and v.judged
+        )
+        return found / judged
+
+    @property
+    def precision_coverage(self) -> float:
+        total = sum(c.n_extracted for c in self.categories)
+        if total == 0:
+            return 1.0
+        return sum(c.n_precision_judged for c in self.categories) / total
+
+    @property
+    def recall_coverage(self) -> float:
+        total = sum(c.n_gold for c in self.categories)
+        if total == 0:
+            return 1.0
+        return sum(c.n_recall_judged for c in self.categories) / total
+
+
+# ── Prompt construction ─────────────────────────────────────────────
+
+
+_PRECISION_SYSTEM = (
+    "You are a meticulous literary-extraction auditor. You are given the "
+    "SOURCE TEXT of one chapter of a novel and a numbered list of items "
+    "that some system claims to have extracted from it. For EACH item, "
+    "decide whether the item is actually supported by the SOURCE TEXT.\n\n"
+    "Judge by MEANING, not by surface wording — a different phrasing of "
+    "the same fact is still supported. The text may be in English, "
+    "Chinese, or Vietnamese; judge it in its own language and script.\n\n"
+    "Verdict values:\n"
+    '  - "supported": the item is clearly stated or unambiguously implied '
+    "by the text.\n"
+    '  - "partial": partially correct — e.g. right entity but wrong kind, '
+    "right relation but wrong direction, or only weakly implied.\n"
+    '  - "unsupported": not present in the text, contradicted by it, or '
+    "hallucinated.\n\n"
+    "Reply with ONLY a JSON object, no prose or markdown fences:\n"
+    '{"verdicts":[{"idx":<int>,"verdict":"supported|partial|unsupported",'
+    '"reason":"<=15 words"}]}\n'
+    "Return exactly one verdict per input item, preserving idx."
+)
+
+_RECALL_SYSTEM = (
+    "You are a meticulous literary-extraction auditor. You are given the "
+    "SOURCE TEXT of one chapter, a REFERENCE list of items that should be "
+    "extractable from it, and the list of items a system ACTUALLY "
+    "extracted. For EACH reference item, decide whether the extraction "
+    "captured it under ANY phrasing or equivalent form.\n\n"
+    "Judge by MEANING, not surface wording. The text may be English, "
+    "Chinese, or Vietnamese; judge it in its own language and script.\n\n"
+    "Reply with ONLY a JSON object, no prose or markdown fences:\n"
+    '{"verdicts":[{"gold_idx":<int>,"found":<true|false>,'
+    '"matched":<int|null>,"reason":"<=15 words"}]}\n'
+    '"matched" is the idx of the actual item that captures the reference '
+    "item, or null when found is false. Return one verdict per reference "
+    "item, preserving gold_idx."
+)
+
+
+def format_items_for_judge(category: Category, items: list[Any]) -> list[str]:
+    """Render extraction items into one human-readable line each.
+
+    `items` shapes (matching the dump `actual.json` / `expected.json`):
+      - entity:   {"name","kind",...}
+      - relation: {"subject","predicate","object","polarity"?} or
+                  {"subject","predicate","object"}
+      - event:    {"summary","participants":[...]}
+    """
+    lines: list[str] = []
+    for it in items:
+        if category == "entity":
+            lines.append(f'{it.get("name", "")} (kind: {it.get("kind", "")})')
+        elif category == "relation":
+            pol = it.get("polarity", "affirm")
+            neg = " [NEGATED]" if pol == "negate" else ""
+            lines.append(
+                f'{it.get("subject", "")} --{it.get("predicate", "")}--> '
+                f'{it.get("object", "")}{neg}'
+            )
+        else:  # event
+            parts = ", ".join(it.get("participants", []) or [])
+            lines.append(f'{it.get("summary", "")} (participants: {parts})')
+    return lines
+
+
+def _numbered(lines: list[str]) -> str:
+    return "\n".join(f"[{i}] {line}" for i, line in enumerate(lines))
+
+
+def _output_tokens(n_items: int) -> int:
+    return _BASE_OUTPUT_TOKENS + _PER_ITEM_OUTPUT_TOKENS * max(1, n_items)
+
+
+# ── JSON extraction (tolerant) ──────────────────────────────────────
+
+
+def _extract_json_object(raw: str) -> dict[str, Any]:
+    """Parse the judge response into a dict, tolerating code fences and
+    leading/trailing prose. Raises ValueError on hard failure."""
+    if not raw or not raw.strip():
+        raise ValueError("empty judge response")
+    text = raw.strip()
+    # Strip ```json ... ``` or ``` ... ``` fences.
+    fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+    if fence:
+        text = fence.group(1).strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        # Fall back to the first balanced {...} span.
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError(f"no JSON object in judge response: {raw[:200]!r}")
+        parsed = json.loads(text[start : end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("judge response is not a JSON object")
+    return parsed
+
+
+# ── LLM call ────────────────────────────────────────────────────────
+
+
+async def _call_judge(
+    client: LLMClient,
+    *,
+    judge_model: str,
+    user_id: str,
+    model_source: str,
+    system: str,
+    user: str,
+    n_items: int,
+) -> str:
+    """One judge chat call through the gateway. Returns the content
+    string. Raises on a non-completed job (caller decides fallback)."""
+    job = await client.submit_and_wait(
+        user_id=user_id,
+        operation="chat",
+        model_source=model_source,  # type: ignore[arg-type]
+        model_ref=judge_model,
+        input={
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.0,
+            "max_tokens": _output_tokens(n_items),
+        },
+        chunking=None,
+        job_meta={"extractor": "llm_judge"},
+        transient_retry_budget=1,
+    )
+    if job.status != "completed":
+        raise ValueError(f"judge job ended status={job.status}")
+    result = job.result or {}
+    messages = result.get("messages") or []
+    if messages and isinstance(messages[0], dict):
+        return messages[0].get("content", "") or ""
+    return ""
+
+
+# ── Per-category judging ────────────────────────────────────────────
+
+
+async def judge_precision(
+    client: LLMClient,
+    *,
+    judge_model: str,
+    user_id: str,
+    model_source: str,
+    source_text: str,
+    category: Category,
+    extracted: list[Any],
+    batch_size: int = _JUDGE_BATCH_SIZE,
+) -> list[ItemVerdict]:
+    """Judge each extracted item against the source, in batches of
+    `batch_size` (a judge asked for too many verdicts at once drops them).
+    Items the judge omits are filled as `unjudged` — excluded from the
+    precision denominator, surfaced via `n_unjudged` / coverage."""
+    if not extracted:
+        return []
+    verdicts: list[ItemVerdict] = []
+    for start in range(0, len(extracted), batch_size):
+        batch = extracted[start : start + batch_size]
+        lines = format_items_for_judge(category, batch)
+        user = (
+            f"SOURCE TEXT:\n{source_text}\n\n"
+            f"EXTRACTED {category.upper()} ITEMS:\n{_numbered(lines)}\n\n"
+            f"Judge each item. Return one verdict per item "
+            f"(idx 0..{len(lines) - 1})."
+        )
+        try:
+            raw = await _call_judge(
+                client, judge_model=judge_model, user_id=user_id,
+                model_source=model_source, system=_PRECISION_SYSTEM, user=user,
+                n_items=len(batch),
+            )
+            parsed = _extract_json_object(raw)
+            by_idx = _index_verdicts(parsed.get("verdicts", []), key="idx")
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.warning(
+                "judge_precision parse/call failed category=%s batch@%d: %s "
+                "— batch unjudged", category, start, exc,
+            )
+            by_idx = {}
+
+        for local_i in range(len(batch)):
+            global_i = start + local_i
+            v = by_idx.get(local_i)
+            if v is None:
+                verdicts.append(
+                    ItemVerdict(global_i, "unjudged", "judge omitted this item")
+                )
+                continue
+            verdict = str(v.get("verdict", "")).lower().strip()
+            if verdict not in ("supported", "partial", "unsupported"):
+                verdict = "unjudged"
+            verdicts.append(
+                ItemVerdict(global_i, verdict, str(v.get("reason", ""))[:200])  # type: ignore[arg-type]
+            )
+    return verdicts
+
+
+async def judge_recall(
+    client: LLMClient,
+    *,
+    judge_model: str,
+    user_id: str,
+    model_source: str,
+    source_text: str,
+    category: Category,
+    gold: list[Any],
+    extracted: list[Any],
+    batch_size: int = _JUDGE_BATCH_SIZE,
+) -> list[GoldVerdict]:
+    """Judge whether each gold item is captured by the extraction, in
+    batches of `batch_size` gold items (the full extracted list is shown
+    as the match reference in every batch)."""
+    if not gold:
+        return []
+    # The full extracted list is the reference each batch matches against,
+    # numbered globally so a returned `matched` idx is meaningful.
+    actual_lines = format_items_for_judge(category, extracted)
+    actual_block = _numbered(actual_lines) if actual_lines else "(none extracted)"
+
+    verdicts: list[GoldVerdict] = []
+    for start in range(0, len(gold), batch_size):
+        gold_batch = gold[start : start + batch_size]
+        gold_lines = format_items_for_judge(category, gold_batch)
+        user = (
+            f"SOURCE TEXT:\n{source_text}\n\n"
+            f"REFERENCE {category.upper()} ITEMS (gold):\n{_numbered(gold_lines)}\n\n"
+            f"ACTUALLY EXTRACTED {category.upper()} ITEMS:\n{actual_block}\n\n"
+            f"For each reference item (gold_idx 0..{len(gold_lines) - 1}), is "
+            "it captured by the extraction under any phrasing?"
+        )
+        try:
+            raw = await _call_judge(
+                client, judge_model=judge_model, user_id=user_id,
+                model_source=model_source, system=_RECALL_SYSTEM, user=user,
+                n_items=len(gold_batch),
+            )
+            parsed = _extract_json_object(raw)
+            by_idx = _index_verdicts(parsed.get("verdicts", []), key="gold_idx")
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.warning(
+                "judge_recall parse/call failed category=%s batch@%d: %s "
+                "— batch unjudged", category, start, exc,
+            )
+            by_idx = {}
+
+        for local_i in range(len(gold_batch)):
+            global_i = start + local_i
+            v = by_idx.get(local_i)
+            if v is None:
+                verdicts.append(
+                    GoldVerdict(global_i, False, None, "judge omitted", judged=False)
+                )
+                continue
+            matched = v.get("matched")
+            matched_idx = matched if isinstance(matched, int) else None
+            verdicts.append(
+                GoldVerdict(
+                    global_i, bool(v.get("found", False)), matched_idx,
+                    str(v.get("reason", ""))[:200], judged=True,
+                )
+            )
+    return verdicts
+
+
+def _index_verdicts(verdicts: Any, *, key: str) -> dict[int, dict]:
+    """Map a list of verdict dicts by their integer `key` field. Skips
+    malformed entries (non-dict, missing/non-int key)."""
+    out: dict[int, dict] = {}
+    if not isinstance(verdicts, list):
+        return out
+    for v in verdicts:
+        if not isinstance(v, dict):
+            continue
+        idx = v.get(key)
+        if isinstance(idx, bool) or not isinstance(idx, int):
+            continue
+        out[idx] = v
+    return out
+
+
+async def judge_category(
+    client: LLMClient,
+    *,
+    judge_model: str,
+    user_id: str,
+    model_source: str,
+    source_text: str,
+    category: Category,
+    extracted: list[Any],
+    gold: list[Any],
+) -> CategoryJudgement:
+    """Run precision + recall judging for one category."""
+    precision_verdicts = await judge_precision(
+        client, judge_model=judge_model, user_id=user_id,
+        model_source=model_source, source_text=source_text,
+        category=category, extracted=extracted,
+    )
+    recall_verdicts = await judge_recall(
+        client, judge_model=judge_model, user_id=user_id,
+        model_source=model_source, source_text=source_text,
+        category=category, gold=gold, extracted=extracted,
+    )
+    return CategoryJudgement(
+        category=category,
+        n_extracted=len(extracted),
+        n_gold=len(gold),
+        precision_verdicts=precision_verdicts,
+        recall_verdicts=recall_verdicts,
+    )
+
+
+async def judge_chapter(
+    client: LLMClient,
+    *,
+    judge_model: str,
+    user_id: str,
+    model_source: str,
+    chapter: str,
+    source_text: str,
+    actual: dict[str, list],
+    expected: dict[str, list],
+) -> ChapterJudgement:
+    """Judge a whole chapter's extraction (entities + relations + events).
+
+    `actual` / `expected` are the dump shapes: each carries `entities`,
+    `relations`, `events` lists of dicts.
+    """
+    ent = await judge_category(
+        client, judge_model=judge_model, user_id=user_id,
+        model_source=model_source, source_text=source_text, category="entity",
+        extracted=actual.get("entities", []), gold=expected.get("entities", []),
+    )
+    rel = await judge_category(
+        client, judge_model=judge_model, user_id=user_id,
+        model_source=model_source, source_text=source_text, category="relation",
+        extracted=actual.get("relations", []), gold=expected.get("relations", []),
+    )
+    evt = await judge_category(
+        client, judge_model=judge_model, user_id=user_id,
+        model_source=model_source, source_text=source_text, category="event",
+        extracted=actual.get("events", []), gold=expected.get("events", []),
+    )
+    return ChapterJudgement(chapter=chapter, entity=ent, relation=rel, event=evt)
