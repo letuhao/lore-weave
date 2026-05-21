@@ -376,8 +376,18 @@ authoring · feature extraction + LLM naming.
    - **PHASE 1 COMPLETE.** Next major work is **Phase 2 — plate tectonics**
      (§5): multi-continent worlds with placed mountain belts / rifts / arcs.
 2. **Plate-tectonic continents** — multi-continent + ocean basins + placed
-   mountains/rifts/trenches. Retire `CoastlineProfile`/`enforce_coherence`.
-3. **Global Köppen climate** — the §5b model.
+   mountains/rifts/trenches. **DONE (2026-05-21):** NEW `plates.rs` (seed N
+   plates → spherical Voronoi → continental/oceanic kind → tangent motion →
+   6-way boundary classification → multi-source BFS orogeny uplift). NEW
+   `TerrainMode` enum on `CreativeSeed` — `Tectonic` (default, multi-continent)
+   vs `Profile` (legacy `CoastlineProfile` + `enforce_coherence`, retained not
+   retired). NEW `plate_count` (8) + `continental_fraction` (0.4) knobs. The
+   plate layer is exposed on `WorldMap` (`plate_of` + `plates` +
+   `plate_boundaries`, hashed) and rendered by a new `plate_image` mode +
+   `--plate-png`. A single supercontinent (Pangaea) is a valid outcome for
+   some seeds; most seeds yield several continents. content_hash rebased.
+   Plan: [`docs/plans/2026-05-21-geo-phase2-plate-tectonics.md`](../../plans/2026-05-21-geo-phase2-plate-tectonics.md).
+3. **Global Köppen climate** — the §5b model. **NEXT.**
 4. **Geo-type vocabulary** — landform + biome + region extraction (§6a/b/d).
 5. **Two-tier scale** — tier-1/tier-2 split, on-demand seamless areas (§4).
 6. **Fantasy geo-types** — world archetypes + anomaly regions (§6c).

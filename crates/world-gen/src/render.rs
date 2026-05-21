@@ -209,6 +209,107 @@ fn culture_image_inner(
     img
 }
 
+/// Render a tectonic-plate image (Phase 2): cells tinted by plate id —
+/// continental plates warm, oceanic plates cool — boundary cells overdrawn by
+/// their `BoundaryKind` colour, hillshaded by the relief field. In `Profile`
+/// `TerrainMode` (no plates) this falls back to the biome image.
+pub fn plate_image(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    if map.plates.is_empty() {
+        return biome_image(map, width, height, style, proj);
+    }
+    supersampled(width, height, |w, h| plate_image_inner(map, w, h, style, proj))
+}
+
+fn plate_image_inner(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style, proj);
+    // Per-cell boundary kind: the kind of the (cell plate, lowest differing
+    // neighbour plate) pair — mirrors `plates::boundary_field`'s seeding so
+    // the outline matches the orogeny.
+    let boundary_kind = cell_boundary_kinds(map);
+    let mut img = rasterize(map, width, height, proj, |cell| {
+        let pid = map.plate_of[cell];
+        if pid == u32::MAX {
+            return Rgb([40, 70, 120]);
+        }
+        match boundary_kind[cell] {
+            Some(bk) => boundary_color(bk),
+            None => plate_color(map.plates[pid as usize].kind, pid),
+        }
+    });
+    apply_shade(&mut img, &relief);
+    img
+}
+
+/// Per-cell `Some(BoundaryKind)` for boundary cells (a neighbour on a
+/// different plate), else `None`. The pair kind comes from `map.plate_boundaries`.
+fn cell_boundary_kinds(map: &WorldMap) -> Vec<Option<crate::world_map::BoundaryKind>> {
+    use std::collections::BTreeMap;
+    let mut pair_kind: BTreeMap<(u32, u32), crate::world_map::BoundaryKind> = BTreeMap::new();
+    for b in &map.plate_boundaries {
+        pair_kind.insert((b.plate_a, b.plate_b), b.kind);
+    }
+    (0..map.cells.len())
+        .map(|c| {
+            let pa = map.plate_of[c];
+            if pa == u32::MAX {
+                return None;
+            }
+            let mut other: Option<u32> = None;
+            for &nb in &map.neighbors[c] {
+                let pb = map.plate_of[nb as usize];
+                if pb != pa {
+                    other = Some(other.map_or(pb, |o| o.min(pb)));
+                }
+            }
+            other.map(|pb| {
+                let key = if pa < pb { (pa, pb) } else { (pb, pa) };
+                pair_kind
+                    .get(&key)
+                    .copied()
+                    .unwrap_or(crate::world_map::BoundaryKind::Interior)
+            })
+        })
+        .collect()
+}
+
+/// Warm tint for continental plates, cool for oceanic; varied per id.
+fn plate_color(kind: crate::world_map::PlateKind, id: u32) -> Rgb<u8> {
+    use crate::world_map::PlateKind;
+    // a small per-id jitter so adjacent same-kind plates still read apart.
+    let j = ((id.wrapping_mul(2654435761)) >> 24) as i32 % 40 - 20;
+    let clamp = |v: i32| v.clamp(0, 255) as u8;
+    match kind {
+        PlateKind::Continental => Rgb([clamp(150 + j), clamp(120 + j), clamp(70 + j / 2)]),
+        PlateKind::Oceanic => Rgb([clamp(40 + j / 2), clamp(70 + j), clamp(130 + j)]),
+    }
+}
+
+/// Outline colour per boundary kind.
+fn boundary_color(k: crate::world_map::BoundaryKind) -> Rgb<u8> {
+    use crate::world_map::BoundaryKind as B;
+    match k {
+        B::FoldMountain => Rgb([220, 60, 50]),   // red — collision belts
+        B::Subduction => Rgb([240, 140, 30]),    // orange — trench + arc
+        B::IslandArc => Rgb([240, 210, 60]),     // yellow — oceanic arc
+        B::Ridge => Rgb([90, 220, 200]),         // teal — spreading ridge
+        B::Rift => Rgb([200, 90, 220]),          // violet — continental rift
+        B::Fault => Rgb([180, 180, 180]),        // grey — transform
+        B::Interior => Rgb([0, 0, 0]),
+    }
+}
+
 /// A distinct tint per culture id (`culture_count` is clamped to 1..=16).
 fn culture_color(id: u32) -> Rgb<u8> {
     const PALETTE: [[u8; 3]; 16] = [
@@ -924,6 +1025,34 @@ mod tests {
         let img = biome_image(&island_map(), 100, 100, RenderStyle::Realistic, ortho());
         assert_eq!(img.get_pixel(0, 0), &BACKGROUND);
         assert_ne!(img.get_pixel(50, 50), &BACKGROUND);
+    }
+
+    #[test]
+    fn plate_image_renders_and_is_not_uniform() {
+        // Default (Tectonic) map → plate layer present → distinct plate tints.
+        let map = generate(7, &CreativeSeed::default());
+        assert!(!map.plates.is_empty(), "tectonic map must expose plates");
+        let img = plate_image(&map, 160, 160, RenderStyle::Realistic, Projection::Equirectangular);
+        assert_eq!((img.width(), img.height()), (160, 160));
+        let first = *img.get_pixel(0, 0);
+        assert!(
+            img.pixels().any(|p| *p != first),
+            "plate image rendered a single flat colour"
+        );
+    }
+
+    #[test]
+    fn plate_image_falls_back_to_biome_in_profile_mode() {
+        // Profile mode → no plates → plate_image == biome_image.
+        let cs = CreativeSeed {
+            terrain_mode: crate::TerrainMode::Profile,
+            ..CreativeSeed::default()
+        };
+        let map = generate(7, &cs);
+        assert!(map.plates.is_empty());
+        let plate = plate_image(&map, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
+        let biome = biome_image(&map, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
+        assert_eq!(plate.as_raw(), biome.as_raw(), "profile-mode plate_image must equal biome_image");
     }
 
     #[test]

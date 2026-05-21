@@ -21,7 +21,12 @@ settlements are; culture_count = number of distinct cultures (1-16); \
 prevailing_wind = the compass direction the wind blows from, driving rain-shadow \
 deserts on the lee side of mountains; \
 erosion = how hard water carves the terrain (None/Light/Moderate/Heavy) — \
-heavier erosion means deeper valleys, broader river networks, softer mountains. \
+heavier erosion means deeper valleys, broader river networks, softer mountains; \
+terrain_mode = Tectonic (a multi-continent plate-tectonic planet — the default \
+and best for a whole world) or Profile (a single landmass shaped by \
+coastline_profile — for a region/zone); plate_count = number of tectonic plates \
+when Tectonic (3-24, ~8 for an Earth-like world); continental_fraction = share \
+of plates that are land when Tectonic (0.1-0.9, ~0.4 for an ocean-rich world). \
 Choose values that fit the brief. Output only the JSON object.";
 
 /// The JSON Schema constraining the LLM output to the `CreativeSeed` shape.
@@ -66,7 +71,12 @@ pub fn creative_seed_schema() -> Value {
                 "Tropical", "Arid", "Highland", null
             ] },
             "settlement_density": { "enum": ["Sparse", "Medium", "Dense"] },
-            "culture_count": { "type": "integer", "minimum": 1, "maximum": 16 }
+            "culture_count": { "type": "integer", "minimum": 1, "maximum": 16 },
+            // Phase 2 — optional (serde defaults: Tectonic / 8 / 0.4), so a
+            // pre-Phase-2 brief still validates. Not in `required`.
+            "terrain_mode": { "enum": ["Tectonic", "Profile"] },
+            "plate_count": { "type": "integer", "minimum": 3, "maximum": 24 },
+            "continental_fraction": { "type": "number", "minimum": 0.1, "maximum": 0.9 }
         }
     })
 }
@@ -78,6 +88,10 @@ pub fn parse_creative_seed(content: &str) -> Result<CreativeSeed, String> {
     let mut cs: CreativeSeed = serde_json::from_str(content.trim())
         .map_err(|e| format!("CreativeSeed JSON parse failed: {e}"))?;
     cs.culture_count = cs.culture_count.clamp(1, 16);
+    // Phase 2 — clamp the tectonic knobs to their valid bands (the generator
+    // also clamps at use; this keeps the stored CreativeSeed sane).
+    cs.plate_count = cs.plate_count.clamp(3, 24);
+    cs.continental_fraction = cs.continental_fraction.clamp(0.1, 0.9);
     Ok(cs)
 }
 

@@ -62,6 +62,7 @@ fn config_loaded_creative_seed_matches_flag_built() {
         climate_bias: Some(ClimateZone::Highland),
         settlement_density: SettlementDensity::Sparse,
         culture_count: 7,
+        ..CreativeSeed::default()
     };
     // the `--config` load path: serialize to a JSON file's contents, reload.
     let json = serde_json::to_string_pretty(&flag_built).expect("serialize");
@@ -168,6 +169,17 @@ fn compute_hash_covers_every_field() {
     tamper("mountain_ranges.cells", &|m| m.mountain_ranges[0].cells.push(0));
     tamper("rivers.cells", &|m| m.rivers[0].cells.push(0));
     tamper("water_bodies.cells", &|m| m.water_bodies[0].cells.push(0));
+    // Phase 2 plate layer — the default (Tectonic) map populates all three.
+    assert!(
+        !base.plates.is_empty() && !base.plate_boundaries.is_empty(),
+        "the default Tectonic map has plates + boundaries"
+    );
+    tamper("plate_of", &|m| m.plate_of[0] ^= 1);
+    tamper("plates", &|m| m.plates[0].id ^= 1);
+    tamper("plates.motion", &|m| m.plates[0].motion[0] += 1.0);
+    tamper("plate_boundaries", &|m| {
+        m.plate_boundaries[0].plate_a ^= 1;
+    });
 
     // Names are the deliberate carve-out: `compute_hash` excludes them, so a
     // name tamper must LEAVE `verify_hash` true — proof that the naming step

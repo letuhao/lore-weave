@@ -209,6 +209,80 @@ pub struct WaterBody {
     pub name: String,
 }
 
+/// Whether a tectonic plate carries continental crust (high-standing, becomes
+/// land) or oceanic crust (low-standing, becomes ocean floor). Phase 2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlateKind {
+    Oceanic,
+    Continental,
+}
+
+impl PlateKind {
+    /// Stable discriminant byte for the content hash.
+    pub fn tag(self) -> u8 {
+        match self {
+            PlateKind::Oceanic => 0,
+            PlateKind::Continental => 1,
+        }
+    }
+}
+
+/// Classification of a plate boundary (or, for a cell, the nearest boundary).
+/// `Interior` means "not near any boundary." Phase 2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BoundaryKind {
+    /// Cell interior to a plate — no nearby boundary.
+    Interior,
+    /// Convergent continental–continental → a fold-mountain belt.
+    FoldMountain,
+    /// Convergent oceanic–continental → subduction (trench + volcanic arc).
+    Subduction,
+    /// Convergent oceanic–oceanic → a volcanic island arc.
+    IslandArc,
+    /// Divergent oceanic → a mid-ocean ridge.
+    Ridge,
+    /// Divergent continental → a continental rift valley.
+    Rift,
+    /// Transform (shear) boundary → a fault zone.
+    Fault,
+}
+
+impl BoundaryKind {
+    /// Stable discriminant byte for the content hash.
+    pub fn tag(self) -> u8 {
+        match self {
+            BoundaryKind::Interior => 0,
+            BoundaryKind::FoldMountain => 1,
+            BoundaryKind::Subduction => 2,
+            BoundaryKind::IslandArc => 3,
+            BoundaryKind::Ridge => 4,
+            BoundaryKind::Rift => 5,
+            BoundaryKind::Fault => 6,
+        }
+    }
+}
+
+/// A tectonic plate (Phase 2). `Tectonic` `TerrainMode` only; empty in
+/// `Profile` mode.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Plate {
+    pub id: u32,
+    pub kind: PlateKind,
+    /// Unit tangent motion vector at the plate's seed point.
+    pub motion: [f32; 3],
+    /// The cell nearest this plate's seed point.
+    pub seed_cell: u32,
+}
+
+/// A classified boundary between two adjacent plates (Phase 2). `plate_a <
+/// plate_b`. One record per adjacent unordered plate pair.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlateBoundary {
+    pub plate_a: u32,
+    pub plate_b: u32,
+    pub kind: BoundaryKind,
+}
+
 /// A fully generated world map.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldMap {
@@ -251,6 +325,16 @@ pub struct WorldMap {
     pub rivers: Vec<River>,
     /// Water bodies — seas and lakes (`crate::feature`).
     pub water_bodies: Vec<WaterBody>,
+    /// Per-cell tectonic plate id (Phase 2). `u32::MAX` for every cell in
+    /// `Profile` `TerrainMode` (no plates). Parallel to `cells`.
+    #[serde(default)]
+    pub plate_of: Vec<u32>,
+    /// Tectonic plates (Phase 2). Empty in `Profile` mode.
+    #[serde(default)]
+    pub plates: Vec<Plate>,
+    /// Classified plate boundaries (Phase 2). Empty in `Profile` mode.
+    #[serde(default)]
+    pub plate_boundaries: Vec<PlateBoundary>,
     /// blake3 hash over the canonical byte view — the determinism check.
     pub content_hash: [u8; 32],
 }
@@ -376,6 +460,23 @@ impl WorldMap {
             for &c in &wb.cells {
                 h.update(&c.to_le_bytes());
             }
+        }
+        // Tectonic plates (Phase 2).
+        for &p in &self.plate_of {
+            h.update(&p.to_le_bytes());
+        }
+        for p in &self.plates {
+            h.update(&p.id.to_le_bytes());
+            h.update(&[p.kind.tag()]);
+            h.update(&p.motion[0].to_le_bytes());
+            h.update(&p.motion[1].to_le_bytes());
+            h.update(&p.motion[2].to_le_bytes());
+            h.update(&p.seed_cell.to_le_bytes());
+        }
+        for b in &self.plate_boundaries {
+            h.update(&b.plate_a.to_le_bytes());
+            h.update(&b.plate_b.to_le_bytes());
+            h.update(&[b.kind.tag()]);
         }
         *h.finalize().as_bytes()
     }

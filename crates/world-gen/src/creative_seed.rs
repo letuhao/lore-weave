@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::climate::ClimateZone;
 
 /// Creative direction for a generated world.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// `Eq` dropped in Phase 2 — `continental_fraction: f32` is not `Eq`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CreativeSeed {
     pub world_scale: WorldScale,
     /// World genre. **Currently inert** — see [`WorldArchetype`].
@@ -33,6 +34,28 @@ pub struct CreativeSeed {
     pub settlement_density: SettlementDensity,
     /// Number of culture regions (Phase 3); clamped to `1..=16` at use.
     pub culture_count: u8,
+    /// How the macro landform is generated (Phase 2). `#[serde(default)]`
+    /// (`Tectonic`) so a pre-Phase-2 config JSON loads — and gets the new
+    /// world-tier default (a multi-continent planet) rather than the legacy
+    /// single-continent profile.
+    #[serde(default)]
+    pub terrain_mode: TerrainMode,
+    /// Number of tectonic plates (`Tectonic` mode). `#[serde(default)]` = 8;
+    /// clamped to `3..=24` at use.
+    #[serde(default = "default_plate_count")]
+    pub plate_count: u8,
+    /// Fraction of plates carrying continental crust (`Tectonic` mode).
+    /// `#[serde(default)]` = 0.4; clamped to `0.1..=0.9` at use.
+    #[serde(default = "default_continental_fraction")]
+    pub continental_fraction: f32,
+}
+
+fn default_plate_count() -> u8 {
+    8
+}
+
+fn default_continental_fraction() -> f32 {
+    0.4
 }
 
 impl Default for CreativeSeed {
@@ -47,8 +70,24 @@ impl Default for CreativeSeed {
             climate_bias: None,
             settlement_density: SettlementDensity::Medium,
             culture_count: 5,
+            terrain_mode: TerrainMode::Tectonic,
+            plate_count: default_plate_count(),
+            continental_fraction: default_continental_fraction(),
         }
     }
+}
+
+/// How the macro landform is generated (Phase 2 world-tier redesign).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TerrainMode {
+    /// Plate-tectonic multi-continent — the default. The number, placement and
+    /// ocean basins of continents come from [`crate::plates`]; the
+    /// `coastline_profile` field is ignored.
+    #[default]
+    Tectonic,
+    /// Legacy single-continent radial-mask profile (Phase 1). Uses
+    /// `coastline_profile` + `enforce_coherence`.
+    Profile,
 }
 
 /// Settlement placement density (Phase 3).

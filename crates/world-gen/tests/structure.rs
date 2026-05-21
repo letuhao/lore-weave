@@ -3,8 +3,20 @@
 
 use world_gen::{
     BiomeKind, CoastlineProfile, CreativeSeed, PrevailingWind, RouteKind, SettlementRole,
-    WaterBodyKind, WorldMap, WorldScale, generate,
+    TerrainMode, WaterBodyKind, WorldMap, WorldScale, generate,
 };
+
+/// Phase-1 acceptance tests run in **`Profile` `TerrainMode`** — they validate
+/// the single-continent radial-mask path (coherence, the 5-island Archipelago,
+/// per-profile land shapes). The Phase-2 `Tectonic` default (multi-continent)
+/// is validated separately in `lib.rs` tests. This helper is the Profile-mode
+/// `CreativeSeed::default()`.
+fn profile_default() -> CreativeSeed {
+    CreativeSeed {
+        terrain_mode: TerrainMode::Profile,
+        ..CreativeSeed::default()
+    }
+}
 
 /// Per-cell land-component id (`u32::MAX` for water). DFS over `neighbors`.
 fn component_of(map: &WorldMap) -> Vec<u32> {
@@ -62,7 +74,7 @@ fn cell_count_exact_per_scale() {
         assert_eq!(scale.cell_count(), want, "cell_count() for {scale:?}");
         let cs = CreativeSeed {
             world_scale: scale,
-            ..CreativeSeed::default()
+            ..profile_default()
         };
         let map = generate(0xABCD, &cs);
         assert_eq!(map.cell_count(), want, "generated count for {scale:?}");
@@ -86,7 +98,7 @@ fn cell_count_exact_per_scale() {
 fn gigaplanet_generates_a_coherent_map() {
     let cs = CreativeSeed {
         world_scale: WorldScale::Gigaplanet,
-        ..CreativeSeed::default()
+        ..profile_default()
     };
     let a = generate(20_260_518, &cs);
 
@@ -114,7 +126,7 @@ fn neighbor_degree_within_bounds() {
     for scale in SCALES {
         let cs = CreativeSeed {
             world_scale: scale,
-            ..CreativeSeed::default()
+            ..profile_default()
         };
         let map = generate(7, &cs);
         for (i, list) in map.neighbors.iter().enumerate() {
@@ -133,7 +145,7 @@ fn neighbors_sorted_deduped_and_symmetric() {
     for scale in SCALES {
         let cs = CreativeSeed {
             world_scale: scale,
-            ..CreativeSeed::default()
+            ..profile_default()
         };
         let map = generate(123, &cs);
         for (i, list) in map.neighbors.iter().enumerate() {
@@ -167,7 +179,7 @@ fn land_coherence_per_profile() {
                 let cs = CreativeSeed {
                     coastline_profile: profile,
                     world_scale: scale,
-                    ..CreativeSeed::default()
+                    ..profile_default()
                 };
                 let map = generate(seed, &cs);
                 let comps = land_components(&map);
@@ -210,7 +222,7 @@ fn sea_level_in_band() {
             let cs = CreativeSeed {
                 world_scale: scale,
                 coastline_profile: profile,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(55, &cs);
             assert!(
@@ -259,7 +271,7 @@ fn climate_highland_implies_high_elevation() {
         for seed in 0..12u64 {
             let cs = CreativeSeed {
                 coastline_profile: profile,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             for (i, &zone) in map.climate.iter().enumerate() {
@@ -283,7 +295,7 @@ fn biome_water_land_consistency() {
         for seed in 0..12u64 {
             let cs = CreativeSeed {
                 world_scale: scale,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             let n = map.cell_count();
@@ -312,7 +324,7 @@ fn rivers_descend_to_water() {
         for seed in 0..12u64 {
             let cs = CreativeSeed {
                 coastline_profile: profile,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             for i in 0..map.cell_count() {
@@ -341,7 +353,7 @@ fn biome_patch_coherence() {
         for seed in 0..12u64 {
             let cs = CreativeSeed {
                 coastline_profile: profile,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             let mut land = 0u32;
@@ -381,7 +393,7 @@ fn land_fraction_near_target() {
         for seed in 0..16u64 {
             let cs = CreativeSeed {
                 coastline_profile: profile,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             let land = (0..map.cell_count()).filter(|&i| map.is_land(i)).count();
@@ -435,7 +447,7 @@ fn hemisphere_flip_orients_climate() {
             let cs = CreativeSeed {
                 hemisphere_orientation: hemi,
                 world_scale: WorldScale::Continent,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             match hemi {
@@ -493,7 +505,7 @@ fn provinces_partition_land() {
         for seed in 0..8u64 {
             let cs = CreativeSeed {
                 coastline_profile: profile,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             assert_eq!(map.province_of.len(), map.cell_count());
@@ -534,7 +546,7 @@ fn states_have_exactly_one_capital() {
         for seed in 0..5u64 {
             let cs = CreativeSeed {
                 coastline_profile: profile,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             for st in &map.states {
@@ -581,7 +593,7 @@ fn settlements_unique_land_cells() {
                 let cs = CreativeSeed {
                     coastline_profile: profile,
                     settlement_density: density,
-                    ..CreativeSeed::default()
+                    ..profile_default()
                 };
                 let map = generate(seed, &cs);
                 let mut cells: Vec<u32> = map.settlements.iter().map(|s| s.cell).collect();
@@ -620,7 +632,7 @@ fn settlements_unique_land_cells() {
 #[test]
 fn routes_dedup_and_roads_connected() {
     for seed in 0..6u64 {
-        let map = generate(seed, &CreativeSeed::default());
+        let map = generate(seed, &profile_default());
         let n = map.cell_count() as u32;
         // valid cells + dedup per (kind tag, lo, hi)
         let mut keys: Vec<(u8, u32, u32)> = Vec::new();
@@ -692,7 +704,7 @@ fn culture_fewer_than_components_falls_back() {
     let cs = CreativeSeed {
         coastline_profile: CoastlineProfile::Archipelago, // 5 land components
         culture_count: 2,
-        ..CreativeSeed::default()
+        ..profile_default()
     };
     for seed in 0..6u64 {
         let map = generate(seed, &cs);
@@ -722,7 +734,7 @@ fn culture_partitions_land() {
         for seed in 0..6u64 {
             let cs = CreativeSeed {
                 coastline_profile: profile,
-                ..CreativeSeed::default()
+                ..profile_default()
             };
             let map = generate(seed, &cs);
             // criterion #7 — culture_regions.len() == culture_count.clamp(1,16).
@@ -759,7 +771,7 @@ fn route_kinds_are_generated() {
     // them; every inhabited, sea-reachable island joins the tree.
     let arch = CreativeSeed {
         coastline_profile: CoastlineProfile::Archipelago,
-        ..CreativeSeed::default()
+        ..profile_default()
     };
     for seed in 0..6u64 {
         let map = generate(seed, &arch);
@@ -777,7 +789,7 @@ fn route_kinds_are_generated() {
     // A continent's mountainous interior must yield MountainPass chokepoints.
     let mut mountain_pass_seen = false;
     for seed in 0..6u64 {
-        let map = generate(seed, &CreativeSeed::default());
+        let map = generate(seed, &profile_default());
         if map.routes.iter().any(|r| r.kind == RouteKind::MountainPass) {
             mountain_pass_seen = true;
         }
@@ -789,7 +801,7 @@ fn route_kinds_are_generated() {
 
     // Every route carries a ≥2-cell path whose ends match from/to_cell.
     for seed in 0..4u64 {
-        let map = generate(seed, &CreativeSeed::default());
+        let map = generate(seed, &profile_default());
         for r in &map.routes {
             assert!(
                 r.path.len() >= 2,
@@ -814,11 +826,11 @@ fn route_kinds_are_generated() {
 fn prevailing_wind_reshapes_the_climate() {
     let west = CreativeSeed {
         prevailing_wind: PrevailingWind::West,
-        ..CreativeSeed::default()
+        ..profile_default()
     };
     let east = CreativeSeed {
         prevailing_wind: PrevailingWind::East,
-        ..CreativeSeed::default()
+        ..profile_default()
     };
     let a = generate(42, &west);
     let b = generate(42, &east);
@@ -838,7 +850,7 @@ fn prevailing_wind_reshapes_the_climate() {
 #[test]
 fn extracted_features_partition_their_biomes() {
     for seed in 0..4u64 {
-        let map = generate(seed, &CreativeSeed::default());
+        let map = generate(seed, &profile_default());
 
         let ranges: Vec<&[u32]> =
             map.mountain_ranges.iter().map(|r| r.cells.as_slice()).collect();

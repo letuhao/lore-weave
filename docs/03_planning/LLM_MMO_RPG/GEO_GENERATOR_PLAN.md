@@ -25,14 +25,16 @@ have shipped — each via the full default 12-phase v2.2 workflow
 | Huge-scale benchmark — `WorldScale::Gigaplanet` (~501k cells) + criterion bench | `a156be69` |
 | World-tier redesign Phase 1 stage A — sphere mesh + 3D Perlin terrain (kills the rectangle) | `1433f045` |
 | World-tier redesign Phase 1 stage B-1 — `Projection` enum + native-3D consumer migration (climate / hydrology / political / settlement / routes / culture; great-circle distances; `(u,v)` adapter dropped) | `0a5387b1` |
-| **World-tier redesign Phase 1 stage B-2 — `Projection` threaded through render+relief; Orthographic globe view actually renders; relief sampler rewritten (per-pixel back-project → nearest cell); 3D detail/warp fBm; `delaunator` dropped; CLI `--projection`/`--camera`** | HEAD of `geo-generator-amaw` |
+| World-tier redesign Phase 1 stage B-2 — `Projection` threaded through render+relief; Orthographic globe view actually renders; relief sampler rewritten (per-pixel back-project → nearest cell); 3D detail/warp fBm; `delaunator` dropped; CLI `--projection`/`--camera` | `4f10b557` |
+| **World-tier redesign Phase 2 — plate tectonics: NEW `plates.rs` (seed → spherical Voronoi → continental/oceanic kind → tangent motion → 6-way boundary classify → orogeny-uplift BFS); `TerrainMode` enum (Tectonic default / Profile legacy); `plate_count`+`continental_fraction` knobs; plate layer on `WorldMap` (`plate_of`+`plates`+`plate_boundaries`, hashed); `plate_image` render + `--plate-png`** | HEAD of `geo-generator-amaw` |
 
-**Phase 1 COMPLETE.** **112 lib tests green** post-Stage-B-2 (107 prior + 5 new
-Orthographic render tests; the obsolete hydrology border test was removed in
-B-1; projection unit tests included). Each of Stage A / B-1 re-baselined `content_hash` for every
-fixture (intentional algorithm changes per
-[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §3); Stage B-2 is
-**render-only — `content_hash` is unchanged** from B-1.
+**Phase 1 COMPLETE; Phase 2 (plate tectonics) just landed.** Stage A / B-1
+each re-baselined `content_hash` (intentional algorithm changes per
+[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §3); Stage B-2 was
+render-only (no rebase); **Phase 2 re-baselines again** (new tectonic terrain
+algorithm + new hashed plate fields). The default world is now a
+multi-continent planet (a single Pangaea is a valid outcome for some seeds);
+the legacy single-continent path lives on as `TerrainMode::Profile`.
 
 > **⚠ Architectural realisation (2026-05-18).** The Gigaplanet benchmark made
 > it clear: **cell count is resolution, not scope.** A 501k-cell map still
@@ -74,29 +76,30 @@ the sphere foundation:
   `content_hash` re-baselined intentionally (sphere geometry ⇒ different
   bytes).
 
-**Phase 1 is COMPLETE (Stage B-2 just landed).** The generator is now a
-genuine sphere: Fibonacci-lattice mesh + 3D Quickhull adjacency, 3D-Perlin
-terrain, every consumer running on great-circle distance, and a `Projection`
-enum that renders both the flat Equirectangular world map **and** an
-Orthographic globe view. The relief renderer back-projects each canvas pixel
-to a 3D sphere point and samples the nearest cell (the Orthographic far side
-is culled to a background disc exterior); domain-warp + detail fBm are 3D so
-there is no antimeridian seam; `delaunator` is gone. CLI: `--projection
-equirectangular|orthographic` + `--camera x,y,z`. Plan file:
-[`docs/plans/2026-05-20-geo-sphere-stage-b.md`](../../plans/2026-05-20-geo-sphere-stage-b.md).
-Try it: `world-gen generate --seed 42 --out m.json --relief-png globe.png
---projection orthographic --camera 0,1,0`.
+**Phases 1 + 2 are COMPLETE.** The generator is a genuine sphere (Fibonacci
+mesh + 3D Quickhull + 3D-Perlin terrain + Equirectangular/Orthographic
+projections) **and** a plate-tectonic planet: NEW `plates.rs` seeds N plates,
+assigns cells by spherical Voronoi, marks each continental or oceanic, gives
+each a motion vector, classifies every adjacent-plate boundary (fold mountain /
+subduction / island arc / ridge / rift / fault), and builds a per-cell orogeny
+uplift field that raises belts + carves trenches/rifts. `terrain.rs` branches
+on `TerrainMode` (Tectonic default = plate base + uplift + dampened fBm
+texture, no radial mask, no `enforce_coherence`; Profile = the legacy
+single-continent path). The plate layer is exposed on `WorldMap` and rendered
+by `plate_image` (`--plate-png`). Knobs: `--terrain-mode`, `--plate-count`,
+`--continental-fraction`. Plan: [`docs/plans/2026-05-21-geo-phase2-plate-tectonics.md`](../../plans/2026-05-21-geo-phase2-plate-tectonics.md).
+Try it: `world-gen generate --seed 7 --scale super-continent --out m.json
+--relief-png globe.png --plate-png plates.png --projection orthographic
+--camera 1,0.3,0.2`.
 
-**Next session — Phase 2: plate-tectonic multi-continent** per
-[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §5. The single-
-continent `enforce_coherence` is replaced by a plate model: seed N plates over
-the sphere, give each a motion vector + oceanic/continental crust type,
-classify every boundary (convergent → fold mountains / subduction trench +
-arc; divergent → mid-ocean ridge / continental rift; transform → fault), then
-let the existing stream-power erosion carve the uplifted belts. Output: an
-LLM-chosen number of continents in real ocean basins, with mountains / rifts /
-island arcs *placed* by tectonics rather than by a radial mask. This is the
-feature that finally makes a generated map read as a *world*, not a region.
+**Next session — Phase 3: global Köppen climate** per
+[`GEO_WORLD_TIER_REDESIGN.md`](GEO_WORLD_TIER_REDESIGN.md) §5b. The Phase-1
+8-zone latitude×elevation model is replaced by a Köppen-grounded global
+climate: latitude insolation bands + elevation lapse + continentality
+(distance-to-ocean) + the existing orographic rain shadow + prevailing-wind
+cells (Hadley/Ferrel/Polar) + ocean currents. Output a Köppen type per cell;
+biome derivation widens to the WWF/Whittaker scheme (§6b). The plate layer
+(continental interiors = cratons, margins = coasts) can inform continentality.
 
 Benchmark baseline (release): generate 6 ms → 91 ms for Pocket → Megaplanet,
 **8.5 s** at Gigaplanet (501k cells); relief render ~14 s. Super-linear, not O(n²).

@@ -17,8 +17,8 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use world_gen::{
     ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
-    PrevailingWind, Projection, RenderStyle, SettlementDensity, WorldArchetype, WorldMap,
-    WorldScale, generate,
+    PrevailingWind, Projection, RenderStyle, SettlementDensity, TerrainMode, WorldArchetype,
+    WorldMap, WorldScale, generate,
 };
 
 #[derive(Parser)]
@@ -53,7 +53,19 @@ struct GenerateArgs {
     /// it (archetype-driven terrain is deferred to V2).
     #[arg(long, value_enum, default_value_t = ArchetypeArg::HighFantasy)]
     archetype: ArchetypeArg,
-    /// Coastline profile.
+    /// Macro-terrain mode. `tectonic` (default) builds a multi-continent
+    /// plate-tectonic world; `profile` uses the legacy single-continent
+    /// `--coastline` radial mask.
+    #[arg(long, value_enum, default_value_t = TerrainModeArg::Tectonic)]
+    terrain_mode: TerrainModeArg,
+    /// Number of tectonic plates (`tectonic` mode; clamped 3..=24).
+    #[arg(long, default_value_t = 8)]
+    plate_count: u8,
+    /// Fraction of plates carrying continental crust (`tectonic` mode;
+    /// clamped 0.1..=0.9). Higher = more land.
+    #[arg(long, default_value_t = 0.4)]
+    continental_fraction: f32,
+    /// Coastline profile (only used in `--terrain-mode profile`).
     #[arg(long, value_enum, default_value_t = CoastlineArg::Coastal)]
     coastline: CoastlineArg,
     /// Hemisphere orientation.
@@ -103,6 +115,10 @@ struct GenerateArgs {
     /// Optional culture-region PNG path.
     #[arg(long)]
     culture_png: Option<PathBuf>,
+    /// Optional tectonic-plate PNG path (continental/oceanic tint + boundary
+    /// outlines). Empty render in `--terrain-mode profile`.
+    #[arg(long)]
+    plate_png: Option<PathBuf>,
     /// Optional political-map SVG path.
     #[arg(long)]
     svg: Option<PathBuf>,
@@ -187,6 +203,9 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             climate_bias: cli.climate_bias.map(Into::into),
             settlement_density: cli.settlement_density.into(),
             culture_count: cli.culture_count,
+            terrain_mode: cli.terrain_mode.into(),
+            plate_count: cli.plate_count,
+            continental_fraction: cli.continental_fraction,
         }
     };
 
@@ -286,6 +305,20 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save culture png {}: {e}", png.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", png.display());
+    }
+    if let Some(png) = &cli.plate_png {
+        let img = world_gen::render::plate_image(
+            &map,
+            cli.png_size,
+            cli.png_size,
+            cli.style.into(),
+            proj,
+        );
+        if let Err(e) = img.save(png) {
+            eprintln!("error: save plate png {}: {e}", png.display());
             return ExitCode::FAILURE;
         }
         println!("wrote {}", png.display());
@@ -587,6 +620,21 @@ impl From<StyleArg> for RenderStyle {
         match s {
             StyleArg::Realistic => RenderStyle::Realistic,
             StyleArg::Atlas => RenderStyle::Atlas,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum TerrainModeArg {
+    Tectonic,
+    Profile,
+}
+
+impl From<TerrainModeArg> for TerrainMode {
+    fn from(m: TerrainModeArg) -> Self {
+        match m {
+            TerrainModeArg::Tectonic => TerrainMode::Tectonic,
+            TerrainModeArg::Profile => TerrainMode::Profile,
         }
     }
 }
