@@ -81,48 +81,60 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ NEXT SESSION SETUP — Map-generation implementation via AMAW (tilemap-service Phase 0b → 3)
+## ⏭️ CURRENT STATE (2026-05-22 — session ended) — read this first
 
-> **This is the staged setup the user asked for at 2026-05-15 session end:** prepare to implement the half-finished map-generation work using AMAW. Read this section first next session.
+`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator
+(V2 PoC), branch `mmo-rpg/zone-map-amaw`. **The engine is feature-complete and
+the perf + barrier-quality passes are done.** What exists, in order built:
 
-### What "map generating" is
+| Area | Status |
+|---|---|
+| Phases 0a–3 (scaffold, gateway tool-use, engine, L3 retry loop, L4 narration) | ✅ DONE (2026-05-15..17) |
+| TMP_005/006/007 modificator pipeline (all 5 placers A–E: Terrain, Connections, Treasure, Road, Obstacle, River) | ✅ DONE |
+| engine→L3→L4 bootstrap on engine-placed objects + per-zone L3 batching | ✅ DONE (2026-05-18) |
+| Perf #016/#018 (fractalize + penrose buckets) → #029 (TreasurePlacer score-first) → erode_zone simple-point | ✅ DONE — **continent 993 s → 6.46 s (154×)** |
+| River barrier reorder (#026 — split ObstaclePlacer; rivers carve a real barrier) | ✅ DONE (2026-05-22) — continent now 10.56 s (barrier tradeoff), river fords ~0.06 |
+| Test hardening (#027 river bridge counter-reset) | ✅ DONE (2026-05-22) |
 
-`services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator (the V2 PoC). **Phase 0a + 0b are DONE** (0a: scaffold + core types + Rust SDK extraction — commits `53f81fc7`, `7f31bd0e`; 0b: gateway tool-use contract + SSE parser + L3 harness — 2026-05-15, branch `mmo-rpg/zone-map-amaw`). Phases **1 → 2 → 3 are now all DONE** (see the session entries below) — the staged map-gen plan is complete.
+**Continent measurement command:** `cargo run --release --package tilemap-service -- measure`
+(offline section ~10 s; per-modificator timing in the output). Findings:
+[`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md).
 
-### Phase breakdown (source: `services/tilemap-service/DESIGN.md` §9)
+### What's left (no active work scheduled — pick one to resume)
 
-| Phase | Scope | Size | Depends on |
-|---|---|---|---|
-| ~~**0b**~~ ✅ DONE | SSE parser in `loreweave_llm` + L3 zone-classifier harness → lmstudio. **Reclassified L→XL**: required extending the gateway contract (`tool_choice` + `tool_call` SSE event) across openapi + Go gateway + both SDKs. Live run: tool-use YES, 3/3 classified, R1-R5 clean. | XL (done) | — |
-| ~~**1**~~ ✅ DONE | Engine: §3 FR placer + §4 Penrose + §5 fractalize + TMP_003 modificator framework + TerrainPainter + AC-4 determinism test. **Reclassified L→XL.** Done 2026-05-16, XL `/amaw` (chunks 3-6 fully-autonomous batch). | XL (done) | — |
-| ~~**2**~~ ✅ DONE | L3 zone-classifier retry loop (TMP_008b §4.2 retry messages + §5 per-object retry + §6 canonical-default fallback) + fixture-object bootstrap. Done 2026-05-17, L `/amaw`. | L (done) | — |
-| ~~**3**~~ ✅ DONE | L4 regional narration (TMP_008b §3.3 tool + §4.3 R1-R4 validation + §6 fallback + §10 key-phrase extraction + §11 enums) + L3→L4 bootstrap + TMP_008b §12.9 findings. Done 2026-05-17, L `/amaw`. | L (done) | — |
+1. **HTTP service surface** — DESIGN.md §9 Phase 4+ (HTTP server + DP
+   integration + Forge AdminAction handlers + Postgres). **XL, multi-session,
+   "out of PoC scope"** — start with a design spec, slice into phases, get
+   buy-in before production code. The only remaining "real progress" direction.
+2. **Live L3/L4 measurement** — ⛔ BLOCKED on provider-registry model pricing
+   (HTTP 402 `LLM_QUOTA_EXCEEDED`). Configure a price-0 row for the lmstudio
+   model, then re-run `tilemap-service measure` with `.local/phase0b.env` for
+   live token-cost + latency. Ops config, not a code task.
+3. **#023** object filtering (TMP_004 authoring — `banned_objects` /
+   `required_objects` `ZoneSpec` fields + filter pass) — a real M–L *feature*,
+   not a cleanup.
 
-**The staged tilemap map-generation plan (0b → 1 → 2 → 3) is COMPLETE.**
+**Track-2 cleanup queue is effectively drained:** #016/#018/#026/#027/#029
+cleared; #024/#025 (visual polish) need a renderer to judge; #028
+(`measure --live-only`) moot (offline ~10 s, live blocked); #020 superseded by
+the score-first `place_and_connect_object` rewrite.
 
-Reference docs: `TMP_001`..`TMP_008b` in `docs/03_planning/LLM_MMO_RPG/features/00_tilemap/`. The 2 architectural findings from the Phase-0a `/review-impl` (Anthropic `cache_control` gap + OpenAI-shaped `tools`) feed into Phase 0b.
+### Prerequisites for a live run / `/amaw` (when resuming)
 
-### ⚠️ CRITICAL — execution shape (read before scoping the batch)
+1. **provider-registry-service** running + **lmstudio registered** as
+   `platform_model` **with a pricing row** (the live blocker).
+2. ContextHub MCP up (for `/amaw` Adversary/Scope-Guard) — was **down** at the
+   2026-05-22 session end (no `add_lesson` that session).
+3. `cargo build` clean at workspace root; `cargo run --release -- measure` for
+   a perf sanity check.
 
-The user framed this as "one very large AMAW batch." **It must NOT be run as a single unattended autonomous batch.** Hard evidence from THIS session (commit `070e7f3d`, findings B1 + HIGH-1):
-- the AMAW autonomous loop **can confidently mis-clear a real correctness bug** (the #002 Adversary examined the buggy code path and wrote "Not a correctness bug");
-- error compounding makes unattended **sequential** batches unsafe — and 0b→1→2→3 IS sequential (2 depends on 0b+1; 3 on 2);
-- map-gen is **correctness-critical** (a real generation engine, determinism guarantees, LLM-contract conformance) — not low-stakes grind, the only shape proven safe for unattended batches.
-
-**Correct execution shape — AMAW per-phase, human-gated:**
-- Each phase = ONE `/amaw` task (L-size — AMAW IS the right workflow for L+ feature work; the calibration table covers L/XL).
-- **Human checkpoint between phases** — review phase N's output before phase N+1 builds on it.
-- **`/review-impl` after each phase's POST-REVIEW** for the correctness-critical parts (engine determinism in Phase 1, LLM-contract conformance in 0b/2).
-- Phase 1 (engine) is the one phase independent of 0b — it may run in either order / parallel.
-
-This honors "use AMAW for the map-gen implementation" while respecting what this session's review chain proved. If the next session's operator wants pure-autonomous anyway, that is their override to make — but the default setup is phased + gated.
-
-### Prerequisites before Phase 0b
-
-1. **provider-registry-service running** locally + **lmstudio registered** as `platform_model` (Qwen 3 14B/32B per the lmstudio provider preference). Document the registration step in `loreweave_llm/README.md` + `tilemap-service/README.md`.
-2. **free-context-hub stack up** (ContextHub MCP) — needed for the per-phase `/amaw` runs (Adversary/Scope-Guard Step-0 calls + bridge).
-3. `cargo build` clean at workspace root (`d:\Works\source\lore-weave-zone-map-design\`).
-4. `python scripts/mcp-query.py ping` → `OK`.
+> **Execution-shape note (still valid):** map-gen is correctness-critical
+> (determinism golden, connectivity invariant). Run feature work AMAW
+> per-phase + human-gated, `/review-impl` at POST-REVIEW — not as one
+> unattended autonomous batch (the autonomous loop has mis-cleared a real
+> correctness bug before; commit `070e7f3d`). The 2026-05-21/22 perf + barrier
+> work followed default v2.2 human-in-loop + `/review-impl`, which caught a
+> HIGH (the river-barrier source-placer map-wide gate).
 
 ### Recommended first action next session
 
