@@ -464,6 +464,56 @@ mod tests {
     }
 
     #[test]
+    fn a_bridge_mid_river_resets_the_periodic_ford_counter() {
+        // DEFERRED #027 — the every-`FORD_INTERVAL` guaranteed ford and the
+        // bridge / connectivity-ford share one `since_crossing` counter. A
+        // bridge must RESET it, so the next periodic ford lands FORD_INTERVAL
+        // carved tiles *after the bridge*, not after the river start. Fixture:
+        // a 30×3 zone (so a y=1 carve never seals — players route via y=0/y=2),
+        // a straight river (0,1)→(29,1), a road at (6,1).
+        //
+        // Counter walk (FORD_INTERVAL = 12): carves x=1..5 (sc 1..5), bridge at
+        // x=6 (sc→0), carves x=7..18 (sc 1..12) ⇒ the periodic ford lands at
+        // x=18 — NOT x=12 (which is where it would land if the bridge did not
+        // reset the counter).
+        let grid = GridSize { width: 30, height: 3 };
+        let mut state = TilemapBuildState::from_zones(
+            vec![zone("z", ZoneRole::Wilderness, grid, (15, 1), |_, _| true)],
+            grid,
+        );
+        state.set_tile_state(TileCoord::new(0, 1), TileState::Obstacle);
+        state.set_tile_state(TileCoord::new(29, 1), TileState::Obstacle);
+        state.object_placements.push(obstacle((0, 1), BiomeObjectType::Mountain));
+        state.object_placements.push(obstacle((29, 1), BiomeObjectType::Lake));
+        // A road straddling the straight y=1 river path.
+        state.terrain_layer[TileCoord::new(6, 1).flat_index(grid.width)] = TerrainKind::Road as u8;
+
+        place_rivers(&mut state, grid);
+
+        let seg = &state.river_segments[0];
+        // Exactly one bridge, at the road.
+        let bridges: Vec<TileCoord> = seg
+            .crossings
+            .iter()
+            .filter(|c| c.kind == CrossingKind::Bridge)
+            .map(|c| c.at)
+            .collect();
+        assert_eq!(bridges, vec![TileCoord::new(6, 1)], "one bridge, at the road tile");
+        // The periodic ford reset by the bridge: present at x=18, absent at x=12.
+        let fords: Vec<u32> = seg
+            .crossings
+            .iter()
+            .filter(|c| c.kind == CrossingKind::Ford)
+            .map(|c| c.at.x)
+            .collect();
+        assert!(fords.contains(&18), "the bridge-reset periodic ford lands at x=18: {fords:?}");
+        assert!(
+            !fords.contains(&12),
+            "a ford at x=12 means the bridge did NOT reset the counter: {fords:?}",
+        );
+    }
+
+    #[test]
     fn the_map_wide_gate_fords_the_sole_corridor_linking_two_zones() {
         // AC-8 / refinement R1 — a river crossing the single passable tile that
         // links zone A to zone B must FORD it. Carving (2,2) splits neither

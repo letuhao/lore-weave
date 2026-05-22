@@ -163,6 +163,21 @@ up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run
 
 ---
 
+## Session 2026-05-22 — Track-2 cleanup: river ford-counter interleaving test (DEFERRED #027) — ✅ DONE (XS)
+
+Added `a_bridge_mid_river_resets_the_periodic_ford_counter` to
+[`river_placer.rs`](../../../services/tilemap-service/src/engine/modificators/river_placer.rs):
+a 30×3 straight river with a road at x=6 confirms a bridge resets the shared
+`since_crossing` counter — the periodic ford lands at x=18 (12 carves after
+the bridge), not x=12. Closes the interleaving coverage gap between the
+pure-every-Nth and pure-bridge tests. Test-only, no output change; 9
+river_placer tests pass, clippy clean. DEFERRED #027 cleared. (Other Track-2
+items left deferred: #024/#025 visual-polish need a renderer to judge; #028
+`measure --live-only` is moot — offline is now ~10s and live is blocked on
+provider-registry pricing.)
+
+---
+
 ## Session 2026-05-22 — River barrier reorder: split ObstaclePlacer (DEFERRED #026) — ✅ DONE (XL, default v2.2 human-in-loop)
 
 ### Outcome
