@@ -58,6 +58,13 @@ land into the top 20% of the range (the "flattened terrain" bug) is fixed.
 > mid-band rolling-uplands is a one-knob tweak if wanted later. **Next: PO will
 > intervene directly in the algorithm; then Phase 3 Köppen climate** (the
 > remaining all-green colour monotony is climate, not relief).
+>
+> **AS-BUILT intervention map:**
+> [`GEO_TERRAIN_PIPELINE.md`](GEO_TERRAIN_PIPELINE.md) — the current Tectonic
+> pipeline stage-by-stage (Stage 1 plate macro → 2 ruggedness → 3 land relief
+> → 4 ocean depth → 5 erosion → 6 quantize), with source `file:line` anchors,
+> every knob + its current value, and per-stage intervention notes. Start here
+> to change one part at a time.
 
 > **⚠ Architectural realisation (2026-05-18).** The Gigaplanet benchmark made
 > it clear: **cell count is resolution, not scope.** A 501k-cell map still
