@@ -17,6 +17,7 @@ pub mod creative_seed;
 pub mod culture;
 pub mod erosion;
 pub mod feature;
+pub mod flatworld;
 pub mod hydrology;
 pub mod mesh;
 pub mod naming;

@@ -1,0 +1,101 @@
+//! Level-0 flat-world sketch: draw `n` random tectonic-plate polygons on a
+//! `width × height` rectangle (void = near-black between them). All flat — no
+//! elevation yet.
+//!
+//! Run:
+//!   cargo run --release -p world-gen --example flatworld
+//!   cargo run --release -p world-gen --example flatworld -- \
+//!       --width 1280 --height 720 --plates 7 --seed 3 --out flat.png
+//!
+//! Every knob in `FlatParams` is exposed as a flag; see `--help` is *not*
+//! wired (this is a thin sketch), so the flags below are the contract.
+
+use std::path::PathBuf;
+use world_gen::flatworld::{generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams};
+
+fn main() {
+    let mut p = FlatParams::default();
+    let mut out = PathBuf::from("flatworld.png");
+    // Optional second output: grayscale elevation (void dark → collisions white).
+    let mut height_out: Option<PathBuf> = None;
+    // Optional third output: interior-zone subdivision per plate.
+    let mut zones_out: Option<PathBuf> = None;
+
+    // Minimal hand-rolled arg parsing (`--flag value`), to keep the sketch
+    // dependency-free of the main CLI.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut i = 0;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let val = args.get(i + 1).cloned();
+        let need = || val.clone().unwrap_or_else(|| panic!("{flag} needs a value"));
+        match flag {
+            "--width" => p.width = need().parse().expect("width"),
+            "--height" => p.height = need().parse().expect("height"),
+            "--plates" => p.plate_count = need().parse().expect("plates"),
+            "--seed" => p.seed = need().parse().expect("seed"),
+            "--min-verts" => p.min_vertices = need().parse().expect("min-verts"),
+            "--max-verts" => p.max_vertices = need().parse().expect("max-verts"),
+            "--min-radius" => p.min_radius_frac = need().parse().expect("min-radius"),
+            "--max-radius" => p.max_radius_frac = need().parse().expect("max-radius"),
+            "--jitter" => p.edge_jitter = need().parse().expect("jitter"),
+            "--max-speed" => p.max_speed = need().parse().expect("max-speed"),
+            "--collision-gain" => p.collision_gain = need().parse().expect("collision-gain"),
+            "--separation" => p.separation = need().parse().expect("separation"),
+            "--min-zones" => p.min_zones = need().parse().expect("min-zones"),
+            "--max-zones" => p.max_zones = need().parse().expect("max-zones"),
+            "--out" => out = PathBuf::from(need()),
+            "--height-out" => height_out = Some(PathBuf::from(need())),
+            "--zones-out" => zones_out = Some(PathBuf::from(need())),
+            other => panic!("unknown flag: {other}"),
+        }
+        i += 2;
+    }
+
+    let world = generate(&p);
+    let rgb = render_rgb(&world);
+    image::save_buffer(
+        &out,
+        &rgb,
+        world.width,
+        world.height,
+        image::ExtendedColorType::Rgb8,
+    )
+    .expect("failed to write PNG");
+
+    println!(
+        "wrote {} — {}×{}, {} plates (seed {})",
+        out.display(),
+        world.width,
+        world.height,
+        world.plates.len(),
+        p.seed
+    );
+
+    if let Some(hpath) = height_out {
+        let (height_rgb, max_e) = render_height_rgb(&world);
+        image::save_buffer(
+            &hpath,
+            &height_rgb,
+            world.width,
+            world.height,
+            image::ExtendedColorType::Rgb8,
+        )
+        .expect("failed to write height PNG");
+        println!("wrote {} — elevation (max {max_e:.3})", hpath.display());
+    }
+
+    if let Some(zpath) = zones_out {
+        let zones_rgb = render_zones_rgb(&world);
+        image::save_buffer(
+            &zpath,
+            &zones_rgb,
+            world.width,
+            world.height,
+            image::ExtendedColorType::Rgb8,
+        )
+        .expect("failed to write zones PNG");
+        let total: usize = world.plates.iter().map(|p| p.zone_sites.len()).sum();
+        println!("wrote {} — {} zones across {} plates", zpath.display(), total, world.plates.len());
+    }
+}
