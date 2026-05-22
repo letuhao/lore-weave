@@ -1,0 +1,241 @@
+//! Per-zone **local** terrain generator — NEW code that inherits the proven
+//! primitive layer ([`crate::noise`]) but drops all world-framing. A zone is a
+//! local patch of one plate; it has **no sea level, no ocean, no coastline
+//! mask** of its own. Its macro context — is this mountain or plain? — comes
+//! from the anchor `base_elevation` (computed at the plate/zone level), not
+//! from the generator inventing its own sea.
+//!
+//! First cut (single zone): classify a zone, then synthesize relief on top of
+//! its anchor floor. Erosion + seam-stitching with neighbours come later
+//! (deferred, bottom-up — see the region-tree data-architecture doc).
+
+use crate::flatworld::{FlatWorld, BASE_LEVEL};
+use crate::noise::{fbm_3d, ridged_fbm_3d};
+use crate::rng::{sub_seed, Rng};
+
+/// Coarse terrain class for a zone. Decided by `classify`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerrainClass {
+    Plains,
+    Hills,
+    Plateau,
+    Mountains,
+}
+
+impl TerrainClass {
+    pub fn name(self) -> &'static str {
+        match self {
+            TerrainClass::Plains => "plains",
+            TerrainClass::Hills => "hills",
+            TerrainClass::Plateau => "plateau",
+            TerrainClass::Mountains => "mountains",
+        }
+    }
+}
+
+/// Relative likelihoods of the non-tectonic classes (mountains are forced by
+/// the tectonic floor, not rolled). Need not sum to 1.
+#[derive(Debug, Clone)]
+pub struct ClassRatios {
+    pub plains: f32,
+    pub hills: f32,
+    pub plateau: f32,
+}
+
+impl Default for ClassRatios {
+    fn default() -> Self {
+        Self {
+            plains: 0.55,
+            hills: 0.30,
+            plateau: 0.15,
+        }
+    }
+}
+
+/// `base_elevation` above which a zone is treated as tectonically uplifted →
+/// **Mountains** regardless of the random roll (the "combine" rule).
+const MOUNTAIN_FLOOR: f32 = BASE_LEVEL + 0.08;
+
+/// Combine rule: a clearly-uplifted zone (collision belt) is Mountains; an
+/// un-uplifted zone rolls a flat-ish class by `ratios`.
+pub fn classify(base_elev: f32, ratios: &ClassRatios, rng: &mut Rng) -> TerrainClass {
+    if base_elev >= MOUNTAIN_FLOOR {
+        return TerrainClass::Mountains;
+    }
+    let total = (ratios.plains + ratios.hills + ratios.plateau).max(1e-6);
+    let r = rng.next_f32() * total;
+    if r < ratios.plains {
+        TerrainClass::Plains
+    } else if r < ratios.plains + ratios.hills {
+        TerrainClass::Hills
+    } else {
+        TerrainClass::Plateau
+    }
+}
+
+/// Local relief at world point `(x, y)` for a zone of `class`, on top of its
+/// anchor `base_elev`. Pure noise primitives — no sea, no mask. `salt`
+/// decorrelates this zone's field from every other.
+pub fn zone_height(x: f32, y: f32, class: TerrainClass, base_elev: f32, salt: u32) -> f32 {
+    let fbm = |freq: f32, oct: u32, s: u32| fbm_3d(x * freq, y * freq, 0.0, salt ^ s, oct);
+    match class {
+        // Near-flat: a faint low-frequency whisper.
+        TerrainClass::Plains => base_elev + 0.020 * fbm(0.010, 2, 0x11),
+        // Rolling mid-frequency hills (kept positive so it reads as terrain).
+        TerrainClass::Hills => base_elev + 0.12 * (0.5 + 0.5 * fbm(0.020, 4, 0x22)),
+        // Raised, mostly-flat top with a little texture (a tableland).
+        TerrainClass::Plateau => base_elev + 0.16 + 0.035 * fbm(0.014, 2, 0x33),
+        // Sharp ridged ranges.
+        TerrainClass::Mountains => {
+            let r = ridged_fbm_3d(x * 0.028, y * 0.028, 0.0, salt ^ 0x44, 5);
+            base_elev + 0.50 * r
+        }
+    }
+}
+
+/// Deterministic per-zone noise salt from the master seed + the zone's
+/// file/folder path (`[plate_id, zone_id]`), matching the data architecture.
+pub fn zone_salt(master: u64, path: &[u32]) -> u32 {
+    let bytes: Vec<u8> = path.iter().flat_map(|p| p.to_le_bytes()).collect();
+    sub_seed(master, &bytes) as u32
+}
+
+/// Result of generating one zone: the class chosen and its anchor floor (for
+/// reporting), plus the rendered grayscale buffer.
+pub struct ZoneRender {
+    pub class: TerrainClass,
+    pub base_elevation: f32,
+    pub min_height: f32,
+    pub max_height: f32,
+    pub rgb: Vec<u8>,
+}
+
+/// Render a **single** zone's local terrain into a world-sized grayscale buffer
+/// (the zone painted in place, everything else near-black void). Auto-scales
+/// the zone's own height range to the grey ramp so the relief is legible.
+pub fn render_zone(
+    world: &FlatWorld,
+    plate_id: usize,
+    zone_id: usize,
+    master_seed: u64,
+    ratios: &ClassRatios,
+) -> ZoneRender {
+    const VOID: [u8; 3] = [10, 10, 14];
+    let plate = &world.plates[plate_id];
+    let (sx, sy) = plate.zone_sites[zone_id];
+    let base_elev = world.elevation_at(sx, sy);
+    let salt = zone_salt(master_seed, &[plate_id as u32, zone_id as u32]);
+
+    let mut crng = Rng::for_stage(master_seed, b"zone-class");
+    // Advance the class RNG deterministically per zone so different zones roll
+    // independently (cheap path-mixing).
+    for _ in 0..(plate_id * 97 + zone_id * 13) {
+        crng.next_u32();
+    }
+    let class = classify(base_elev, ratios, &mut crng);
+
+    let w = world.width as usize;
+    let h = world.height as usize;
+
+    // First pass: heights over the zone's pixels + range.
+    let mut heights = vec![f32::NAN; w * h];
+    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    for py in 0..h {
+        for px in 0..w {
+            let x = px as f32 + 0.5;
+            let y = py as f32 + 0.5;
+            if plate.contains(x, y) && plate.zone_at(x, y) == Some(zone_id) {
+                let e = zone_height(x, y, class, base_elev, salt);
+                heights[py * w + px] = e;
+                lo = lo.min(e);
+                hi = hi.max(e);
+            }
+        }
+    }
+    let span = (hi - lo).max(1e-6);
+
+    // Second pass: grayscale ramp inside the zone, void elsewhere.
+    let mut rgb = vec![0u8; w * h * 3];
+    for i in 0..w * h {
+        let c = if heights[i].is_nan() {
+            VOID
+        } else {
+            let g = (40.0 + 215.0 * ((heights[i] - lo) / span)).round() as u8;
+            [g, g, g]
+        };
+        rgb[i * 3] = c[0];
+        rgb[i * 3 + 1] = c[1];
+        rgb[i * 3 + 2] = c[2];
+    }
+
+    ZoneRender {
+        class,
+        base_elevation: base_elev,
+        min_height: if lo.is_finite() { lo } else { base_elev },
+        max_height: if hi.is_finite() { hi } else { base_elev },
+        rgb,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::flatworld::{generate, FlatParams};
+
+    #[test]
+    fn uplifted_zone_is_mountains() {
+        let mut rng = Rng::for_stage(1, b"t");
+        // Well above the mountain floor → forced Mountains regardless of roll.
+        assert_eq!(
+            classify(BASE_LEVEL + 0.4, &ClassRatios::default(), &mut rng),
+            TerrainClass::Mountains
+        );
+    }
+
+    #[test]
+    fn flat_zone_rolls_a_flat_class() {
+        let mut rng = Rng::for_stage(2, b"t");
+        for _ in 0..50 {
+            let c = classify(BASE_LEVEL, &ClassRatios::default(), &mut rng);
+            assert!(
+                matches!(
+                    c,
+                    TerrainClass::Plains | TerrainClass::Hills | TerrainClass::Plateau
+                ),
+                "flat zone must not be Mountains"
+            );
+        }
+    }
+
+    #[test]
+    fn mountains_have_more_relief_than_plains() {
+        let salt = 0xABCD;
+        let sample = |class| {
+            let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+            for k in 0..400 {
+                let x = (k % 20) as f32 * 8.0;
+                let y = (k / 20) as f32 * 8.0;
+                let e = zone_height(x, y, class, 0.35, salt);
+                lo = lo.min(e);
+                hi = hi.max(e);
+            }
+            hi - lo
+        };
+        assert!(sample(TerrainClass::Mountains) > sample(TerrainClass::Plains));
+    }
+
+    #[test]
+    fn render_is_world_sized_and_deterministic() {
+        let p = FlatParams {
+            width: 128,
+            height: 96,
+            seed: 13,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let a = render_zone(&world, 0, 0, p.seed, &ClassRatios::default());
+        let b = render_zone(&world, 0, 0, p.seed, &ClassRatios::default());
+        assert_eq!(a.rgb.len(), 128 * 96 * 3);
+        assert_eq!(a.rgb, b.rgb, "render must be deterministic");
+    }
+}

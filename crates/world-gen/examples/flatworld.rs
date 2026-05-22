@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use world_gen::flatworld::{
     export, generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams,
 };
+use world_gen::zonegen::{render_zone, ClassRatios};
 
 fn main() {
     let mut p = FlatParams::default();
@@ -24,6 +25,9 @@ fn main() {
     let mut zones_out: Option<PathBuf> = None;
     // Optional data export: the plate/zone anchor JSON for per-zone terrain gen.
     let mut data_out: Option<PathBuf> = None;
+    // Optional single-zone local terrain: "plate_id,zone_id" + output path.
+    let mut zone_sel: Option<(usize, usize)> = None;
+    let mut zone_terrain_out: Option<PathBuf> = None;
 
     // Minimal hand-rolled arg parsing (`--flag value`), to keep the sketch
     // dependency-free of the main CLI.
@@ -52,6 +56,12 @@ fn main() {
             "--height-out" => height_out = Some(PathBuf::from(need())),
             "--zones-out" => zones_out = Some(PathBuf::from(need())),
             "--data-out" => data_out = Some(PathBuf::from(need())),
+            "--zone" => {
+                let v = need();
+                let (a, b) = v.split_once(',').expect("--zone wants plate,zone");
+                zone_sel = Some((a.parse().expect("plate id"), b.parse().expect("zone id")));
+            }
+            "--zone-terrain-out" => zone_terrain_out = Some(PathBuf::from(need())),
             other => panic!("unknown flag: {other}"),
         }
         i += 2;
@@ -114,6 +124,26 @@ fn main() {
             dpath.display(),
             data.plates.len(),
             zones
+        );
+    }
+
+    if let (Some((pid, zid)), Some(zpath)) = (zone_sel, zone_terrain_out) {
+        let zr = render_zone(&world, pid, zid, p.seed, &ClassRatios::default());
+        image::save_buffer(
+            &zpath,
+            &zr.rgb,
+            world.width,
+            world.height,
+            image::ExtendedColorType::Rgb8,
+        )
+        .expect("failed to write zone-terrain PNG");
+        println!(
+            "wrote {} — zone [{pid},{zid}] class={} base={:.3} relief=[{:.3},{:.3}]",
+            zpath.display(),
+            zr.class.name(),
+            zr.base_elevation,
+            zr.min_height,
+            zr.max_height
         );
     }
 }

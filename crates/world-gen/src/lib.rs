@@ -33,6 +33,7 @@ pub mod routes;
 pub mod settlement;
 pub mod terrain;
 pub mod world_map;
+pub mod zonegen;
 
 pub use biome::BiomeKind;
 pub use climate::ClimateZone;
