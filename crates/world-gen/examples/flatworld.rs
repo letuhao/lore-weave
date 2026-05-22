@@ -11,7 +11,9 @@
 //! wired (this is a thin sketch), so the flags below are the contract.
 
 use std::path::PathBuf;
-use world_gen::flatworld::{generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams};
+use world_gen::flatworld::{
+    export, generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams,
+};
 
 fn main() {
     let mut p = FlatParams::default();
@@ -20,6 +22,8 @@ fn main() {
     let mut height_out: Option<PathBuf> = None;
     // Optional third output: interior-zone subdivision per plate.
     let mut zones_out: Option<PathBuf> = None;
+    // Optional data export: the plate/zone anchor JSON for per-zone terrain gen.
+    let mut data_out: Option<PathBuf> = None;
 
     // Minimal hand-rolled arg parsing (`--flag value`), to keep the sketch
     // dependency-free of the main CLI.
@@ -47,6 +51,7 @@ fn main() {
             "--out" => out = PathBuf::from(need()),
             "--height-out" => height_out = Some(PathBuf::from(need())),
             "--zones-out" => zones_out = Some(PathBuf::from(need())),
+            "--data-out" => data_out = Some(PathBuf::from(need())),
             other => panic!("unknown flag: {other}"),
         }
         i += 2;
@@ -97,5 +102,18 @@ fn main() {
         .expect("failed to write zones PNG");
         let total: usize = world.plates.iter().map(|p| p.zone_sites.len()).sum();
         println!("wrote {} — {} zones across {} plates", zpath.display(), total, world.plates.len());
+    }
+
+    if let Some(dpath) = data_out {
+        let data = export(&world, p.seed);
+        let json = serde_json::to_string_pretty(&data).expect("serialize world data");
+        std::fs::write(&dpath, json).expect("failed to write data JSON");
+        let zones: usize = data.plates.iter().map(|pl| pl.zones.len()).sum();
+        println!(
+            "wrote {} — {} plates / {} zones (anchor data)",
+            dpath.display(),
+            data.plates.len(),
+            zones
+        );
     }
 }

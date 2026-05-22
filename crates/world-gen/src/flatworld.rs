@@ -11,6 +11,7 @@
 //! layout can be steered or pinned.
 
 use crate::rng::Rng;
+use serde::Serialize;
 use std::f32::consts::TAU;
 
 /// Inputs for [`generate`]. All fields are intervenable; [`Default`] gives the
@@ -473,6 +474,88 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [u8; 3] {
     ]
 }
 
+// ── Data export — the "anchor" for per-zone terrain generation ─────────────
+//
+// Mirrors the LOCKED region-tree schema at the levels built so far (plate =
+// depth 0, zone = depth 1), with file/folder `path` ids. This is the data a
+// future per-zone geo generator reads: each zone carries its anchor floor
+// (`base_elevation`), and the partition is reproducible from the plate
+// boundary + zone `site`s (Voronoi by nearest site).
+
+/// Top-level export document.
+#[derive(Debug, Clone, Serialize)]
+pub struct WorldData {
+    pub width: u32,
+    pub height: u32,
+    pub seed: u64,
+    pub plate_count: usize,
+    pub base_level: f32,
+    pub void_level: f32,
+    pub collision_gain: f32,
+    pub plates: Vec<PlateData>,
+}
+
+/// A plate (region depth 0).
+#[derive(Debug, Clone, Serialize)]
+pub struct PlateData {
+    /// File/folder path: `[plate_id]`.
+    pub path: Vec<u32>,
+    pub center: [f32; 2],
+    /// Drift velocity — drives collision strength at boundaries.
+    pub velocity: [f32; 2],
+    /// Polygon outline (world pixels).
+    pub boundary: Vec<[f32; 2]>,
+    pub zones: Vec<ZoneData>,
+}
+
+/// A zone (region depth 1) — a Voronoi cell inside its plate.
+#[derive(Debug, Clone, Serialize)]
+pub struct ZoneData {
+    /// File/folder path: `[plate_id, zone_id]`.
+    pub path: Vec<u32>,
+    /// Voronoi site (also the partition key — the cell is the points nearest it).
+    pub site: [f32; 2],
+    /// Anchor floor sampled at the site: `BASE_LEVEL` + any collision uplift.
+    /// This is the elevation a per-zone generator builds its relief on top of.
+    pub base_elevation: f32,
+}
+
+/// Build the export document from a generated world. `seed` is recorded for
+/// reproducibility (the world doesn't carry it).
+pub fn export(world: &FlatWorld, seed: u64) -> WorldData {
+    let plates = world
+        .plates
+        .iter()
+        .map(|p| PlateData {
+            path: vec![p.id as u32],
+            center: [p.center.0, p.center.1],
+            velocity: [p.velocity.0, p.velocity.1],
+            boundary: p.vertices.iter().map(|&(x, y)| [x, y]).collect(),
+            zones: p
+                .zone_sites
+                .iter()
+                .enumerate()
+                .map(|(z, &(sx, sy))| ZoneData {
+                    path: vec![p.id as u32, z as u32],
+                    site: [sx, sy],
+                    base_elevation: world.elevation_at(sx, sy),
+                })
+                .collect(),
+        })
+        .collect();
+
+    WorldData {
+        width: world.width,
+        height: world.height,
+        seed,
+        plate_count: world.plates.len(),
+        base_level: BASE_LEVEL,
+        void_level: VOID_LEVEL,
+        collision_gain: world.collision_gain,
+        plates,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -665,6 +748,33 @@ mod tests {
             overlap(&spread),
             overlap(&stacked)
         );
+    }
+
+    #[test]
+    fn export_mirrors_the_tree_with_paths_and_anchors() {
+        let p = FlatParams {
+            plate_count: 5,
+            min_zones: 3,
+            max_zones: 3,
+            seed: 42,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let data = export(&world, p.seed);
+        assert_eq!(data.seed, 42);
+        assert_eq!(data.plates.len(), 5);
+        for (pi, plate) in data.plates.iter().enumerate() {
+            assert_eq!(plate.path, vec![pi as u32]);
+            assert_eq!(plate.zones.len(), 3);
+            for (zi, zone) in plate.zones.iter().enumerate() {
+                assert_eq!(zone.path, vec![pi as u32, zi as u32]);
+                // Anchor floor is at least the plate base (collisions only add).
+                assert!(zone.base_elevation >= BASE_LEVEL - 1e-6);
+            }
+        }
+        // Serializes cleanly.
+        let json = serde_json::to_string(&data).expect("serialize");
+        assert!(json.contains("\"base_elevation\""));
     }
 
     #[test]
