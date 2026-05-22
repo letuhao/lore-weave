@@ -137,25 +137,25 @@ pub fn zone_salt(master: u64, path: &[u32]) -> u32 {
     sub_seed(master, &bytes) as u32
 }
 
-/// Per-zone attributes used by both the single-zone and full-map renders:
-/// the chosen class, the anchor floor, and the noise salt — all derived
-/// deterministically from the world + master seed + the zone's path.
+/// L1-zone attributes (class + anchor floor) — set at the **zone** level and
+/// shared by its sub-zones (per the top-down inheritance in the data
+/// architecture). The per-sub-zone noise salt is derived separately at the
+/// pixel level so sub-zones vary in relief while inheriting class + base.
 fn zone_attrs(
     world: &FlatWorld,
     master_seed: u64,
     plate_id: usize,
     zone_id: usize,
     ratios: &ClassRatios,
-) -> (TerrainClass, f32, u32) {
+) -> (TerrainClass, f32) {
     let (sx, sy) = world.plates[plate_id].zone_sites[zone_id];
     let base = world.elevation_at(sx, sy);
-    let salt = zone_salt(master_seed, &[plate_id as u32, zone_id as u32]);
     let mut crng = Rng::for_stage(master_seed, b"zone-class");
     for _ in 0..(plate_id * 97 + zone_id * 13) {
         crng.next_u32();
     }
     let class = classify(base, ratios, &mut crng);
-    (class, base, salt)
+    (class, base)
 }
 
 /// Render **every** zone of the whole map into one image, on a single global
@@ -168,8 +168,8 @@ pub fn render_all_zones(world: &FlatWorld, master_seed: u64, ratios: &ClassRatio
     let w = world.width as usize;
     let h = world.height as usize;
 
-    // Precompute (class, base, salt) per zone once.
-    let attrs: Vec<Vec<(TerrainClass, f32, u32)>> = world
+    // Precompute (class, base) per L1 zone once (sub-zones inherit these).
+    let attrs: Vec<Vec<(TerrainClass, f32)>> = world
         .plates
         .iter()
         .enumerate()
@@ -180,21 +180,24 @@ pub fn render_all_zones(world: &FlatWorld, master_seed: u64, ratios: &ClassRatio
         })
         .collect();
 
-    // Pass 1: heights + per-pixel zone owner id (for boundary outlines) + range.
+    // Pass 1: heights + per-pixel sub-zone owner id (for boundary outlines) +
+    // range. Sub-zones inherit their L1 zone's class + base but get their own
+    // path-derived salt, so they vary in relief (the sub-seams B3 must stitch).
     let mut heights = vec![f32::NAN; w * h];
-    let mut owner = vec![-1i32; w * h]; // plate_id*1000 + zone_id; -1 = void
+    let mut owner = vec![-1i64; w * h]; // pid*1_000_000 + l1*1000 + l2; -1 = void
     let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
     for py in 0..h {
         for px in 0..w {
             let x = px as f32 + 0.5;
             let y = py as f32 + 0.5;
             if let Some(p) = world.plates.iter().find(|p| p.contains(x, y)) {
-                let zid = p.zone_at(x, y).unwrap_or(0);
-                let (class, base, salt) = attrs[p.id][zid];
+                let (l1, l2) = p.subzone_at(x, y).unwrap_or((0, 0));
+                let (class, base) = attrs[p.id][l1];
+                let salt = zone_salt(master_seed, &[p.id as u32, l1 as u32, l2 as u32]);
                 let e = zone_height(x, y, class, base, salt);
                 let i = py * w + px;
                 heights[i] = e;
-                owner[i] = (p.id as i32) * 1000 + zid as i32;
+                owner[i] = (p.id as i64) * 1_000_000 + (l1 as i64) * 1000 + l2 as i64;
                 lo = lo.min(e);
                 hi = hi.max(e);
             }
@@ -282,12 +285,13 @@ pub fn render_zone(
 ) -> ZoneRender {
     const VOID: [u8; 3] = [10, 10, 14];
     let plate = &world.plates[plate_id];
-    let (class, base_elev, salt) = zone_attrs(world, master_seed, plate_id, zone_id, ratios);
+    let (class, base_elev) = zone_attrs(world, master_seed, plate_id, zone_id, ratios);
 
     let w = world.width as usize;
     let h = world.height as usize;
 
-    // First pass: heights over the zone's pixels + range.
+    // First pass: heights over the zone's pixels + range. Each sub-zone gets
+    // its own path-derived salt (relief variation within the zone).
     let mut heights = vec![f32::NAN; w * h];
     let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
     for py in 0..h {
@@ -295,6 +299,8 @@ pub fn render_zone(
             let x = px as f32 + 0.5;
             let y = py as f32 + 0.5;
             if plate.contains(x, y) && plate.zone_at(x, y) == Some(zone_id) {
+                let l2 = plate.subzone_at(x, y).map(|(_, l2)| l2).unwrap_or(0);
+                let salt = zone_salt(master_seed, &[plate_id as u32, zone_id as u32, l2 as u32]);
                 let e = zone_height(x, y, class, base_elev, salt);
                 heights[py * w + px] = e;
                 lo = lo.min(e);

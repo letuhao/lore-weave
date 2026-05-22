@@ -52,6 +52,11 @@ pub struct FlatParams {
     /// count in `[min_zones, max_zones]` via an interior Voronoi partition.
     pub min_zones: usize,
     pub max_zones: usize,
+    /// Sub-zones per zone, inclusive range — each L1 zone is subdivided again
+    /// (nested Voronoi) into a random count in `[min_subzones, max_subzones]`.
+    /// This is the depth-2 level of the region tree.
+    pub min_subzones: usize,
+    pub max_subzones: usize,
 }
 
 impl Default for FlatParams {
@@ -75,6 +80,8 @@ impl Default for FlatParams {
             separation: 0.90,
             min_zones: 3,
             max_zones: 7,
+            min_subzones: 3,
+            max_subzones: 6,
         }
     }
 }
@@ -98,6 +105,9 @@ pub struct Plate {
     /// Voronoi sites for the plate's interior zones — [`Plate::zone_at`] assigns
     /// each interior point to its nearest site. `zone_sites.len()` = zone count.
     pub zone_sites: Vec<(f32, f32)>,
+    /// Nested (depth-2) sub-zone Voronoi sites, indexed by L1 zone id:
+    /// `subzone_sites[l1]` are the sub-sites belonging to zone `l1`.
+    pub subzone_sites: Vec<Vec<(f32, f32)>>,
 }
 
 impl Plate {
@@ -126,17 +136,35 @@ impl Plate {
     /// site. `None` if the plate has no zones. (Does not check `contains`; the
     /// caller passes interior points.)
     pub fn zone_at(&self, x: f32, y: f32) -> Option<usize> {
-        let mut best = None;
-        let mut best_d = f32::INFINITY;
-        for (i, &(sx, sy)) in self.zone_sites.iter().enumerate() {
-            let d = (x - sx) * (x - sx) + (y - sy) * (y - sy);
-            if d < best_d {
-                best_d = d;
-                best = Some(i);
-            }
-        }
-        best
+        nearest_site(&self.zone_sites, x, y)
     }
+
+    /// Nested (L1 zone, L2 sub-zone) indices containing `(x, y)`: the nearest
+    /// L1 zone site, then the nearest sub-site **of that zone**. `None` if the
+    /// plate has no zones.
+    pub fn subzone_at(&self, x: f32, y: f32) -> Option<(usize, usize)> {
+        let l1 = self.zone_at(x, y)?;
+        let l2 = self
+            .subzone_sites
+            .get(l1)
+            .and_then(|subs| nearest_site(subs, x, y))
+            .unwrap_or(0);
+        Some((l1, l2))
+    }
+}
+
+/// Index of the nearest site to `(x, y)` (`None` if empty).
+fn nearest_site(sites: &[(f32, f32)], x: f32, y: f32) -> Option<usize> {
+    let mut best = None;
+    let mut best_d = f32::INFINITY;
+    for (i, &(sx, sy)) in sites.iter().enumerate() {
+        let d = (x - sx) * (x - sx) + (y - sy) * (y - sy);
+        if d < best_d {
+            best_d = d;
+            best = Some(i);
+        }
+    }
+    best
 }
 
 /// A generated flat world: the rectangle + its plates. The void is implicit
@@ -255,10 +283,22 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
                 vertices,
                 velocity,
                 zone_sites: Vec::new(),
+                subzone_sites: Vec::new(),
             };
             let zone_count = params.min_zones
                 + (zrng.next_f32() * (max_zones - params.min_zones + 1) as f32) as usize;
             plate.zone_sites = sample_zone_sites(&plate, zone_count.max(1), &mut zrng);
+
+            // Depth-2: each L1 zone gets its own nested Voronoi sub-sites,
+            // sampled inside the plate and filtered to that zone's cell.
+            let max_sub = params.max_subzones.max(params.min_subzones).max(1);
+            plate.subzone_sites = (0..plate.zone_sites.len())
+                .map(|l1| {
+                    let k = params.min_subzones
+                        + (zrng.next_f32() * (max_sub - params.min_subzones + 1) as f32) as usize;
+                    sample_subzone_sites(&plate, l1, k.max(1), &mut zrng)
+                })
+                .collect();
             plate
         })
         .collect();
@@ -326,6 +366,35 @@ fn sample_zone_sites(plate: &Plate, count: usize, rng: &mut Rng) -> Vec<(f32, f3
     }
     if sites.is_empty() {
         sites.push(plate.center);
+    }
+    sites
+}
+
+/// Rejection-sample `count` nested sub-sites for L1 zone `l1`: points inside
+/// the plate **and** whose nearest L1 site is `l1` (i.e. inside that zone's
+/// Voronoi cell). Falls back to the L1 site if the cell is too thin to hit.
+fn sample_subzone_sites(plate: &Plate, l1: usize, count: usize, rng: &mut Rng) -> Vec<(f32, f32)> {
+    let (mut minx, mut miny) = (f32::INFINITY, f32::INFINITY);
+    let (mut maxx, mut maxy) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for &(x, y) in &plate.vertices {
+        minx = minx.min(x);
+        miny = miny.min(y);
+        maxx = maxx.max(x);
+        maxy = maxy.max(y);
+    }
+    let mut sites = Vec::with_capacity(count);
+    let cap = count * 120;
+    let mut tries = 0;
+    while sites.len() < count && tries < cap {
+        let x = lerp(minx, maxx, rng.next_f32());
+        let y = lerp(miny, maxy, rng.next_f32());
+        if plate.contains(x, y) && plate.zone_at(x, y) == Some(l1) {
+            sites.push((x, y));
+        }
+        tries += 1;
+    }
+    if sites.is_empty() {
+        sites.push(plate.zone_sites.get(l1).copied().unwrap_or(plate.center));
     }
     sites
 }
@@ -518,6 +587,16 @@ pub struct ZoneData {
     /// Anchor floor sampled at the site: `BASE_LEVEL` + any collision uplift.
     /// This is the elevation a per-zone generator builds its relief on top of.
     pub base_elevation: f32,
+    /// Nested depth-2 sub-zones.
+    pub subzones: Vec<SubZoneData>,
+}
+
+/// A sub-zone (region depth 2) — a nested Voronoi cell inside its L1 zone.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubZoneData {
+    /// File/folder path: `[plate_id, zone_id, subzone_id]`.
+    pub path: Vec<u32>,
+    pub site: [f32; 2],
 }
 
 /// Build the export document from a generated world. `seed` is recorded for
@@ -539,6 +618,19 @@ pub fn export(world: &FlatWorld, seed: u64) -> WorldData {
                     path: vec![p.id as u32, z as u32],
                     site: [sx, sy],
                     base_elevation: world.elevation_at(sx, sy),
+                    subzones: p
+                        .subzone_sites
+                        .get(z)
+                        .map(|subs| {
+                            subs.iter()
+                                .enumerate()
+                                .map(|(sz, &(bx, by))| SubZoneData {
+                                    path: vec![p.id as u32, z as u32, sz as u32],
+                                    site: [bx, by],
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                 })
                 .collect(),
         })
@@ -636,6 +728,7 @@ mod tests {
             ],
             velocity,
             zone_sites: vec![c],
+            subzone_sites: vec![vec![c]],
         }
     }
 
@@ -705,6 +798,30 @@ mod tests {
             collision_gain: 1.0,
         };
         assert_eq!(world.elevation_at(50.0, 50.0), BASE_LEVEL);
+    }
+
+    #[test]
+    fn each_zone_is_subdivided_into_subzones() {
+        let p = FlatParams {
+            min_zones: 3,
+            max_zones: 3,
+            min_subzones: 2,
+            max_subzones: 2,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        for plate in &world.plates {
+            assert_eq!(plate.subzone_sites.len(), plate.zone_sites.len());
+            for (l1, subs) in plate.subzone_sites.iter().enumerate() {
+                assert_eq!(subs.len(), 2, "plate {} zone {l1} subzone count", plate.id);
+                // Each sub-site lies in its own L1 zone cell.
+                for &(sx, sy) in subs {
+                    assert_eq!(plate.zone_at(sx, sy), Some(l1));
+                    let (a, _b) = plate.subzone_at(sx, sy).expect("subzone");
+                    assert_eq!(a, l1);
+                }
+            }
+        }
     }
 
     #[test]
