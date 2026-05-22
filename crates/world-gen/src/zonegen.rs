@@ -73,22 +73,59 @@ pub fn classify(base_elev: f32, ratios: &ClassRatios, rng: &mut Rng) -> TerrainC
     }
 }
 
+/// Frequency of the broad intra-zone "swell" (large-scale tilt). Low so it
+/// gives one gentle gradient across a ~150 px zone.
+const SWELL_FREQ: f32 = 0.006;
+/// Frequency of the domain-warp field.
+const WARP_FREQ: f32 = 0.012;
+
+/// Domain warp: offset the sample point by a low-frequency fBm vector, so
+/// downstream noise (ridges, hills) bends organically off the lattice. `amp`
+/// is the max offset in world pixels (0 ⇒ no warp). Ported from the sphere
+/// pipeline's `warp_point`, applied in the local 2D zone frame.
+fn warp(x: f32, y: f32, salt: u32, amp: f32) -> (f32, f32) {
+    let wx = fbm_3d(x * WARP_FREQ, y * WARP_FREQ, 0.0, salt ^ 0xA1, 3);
+    let wy = fbm_3d(x * WARP_FREQ, y * WARP_FREQ, 0.0, salt ^ 0xB2, 3);
+    (x + amp * wx, y + amp * wy)
+}
+
 /// Local relief at world point `(x, y)` for a zone of `class`, on top of its
 /// anchor `base_elev`. Pure noise primitives — no sea, no mask. `salt`
 /// decorrelates this zone's field from every other.
+///
+/// Each class is built from layered octaves on top of a **broad low-frequency
+/// swell** (the macro slope within the zone, so it reads directionally rather
+/// than as a flat sheet). Hills and mountains are **domain-warped** so ridges
+/// and valleys bend organically off the noise lattice (ported from the sphere
+/// pipeline's warp, applied locally). Plains stay near-flat; mountains carry
+/// warped ridged-multifractal ranges.
 pub fn zone_height(x: f32, y: f32, class: TerrainClass, base_elev: f32, salt: u32) -> f32 {
-    let fbm = |freq: f32, oct: u32, s: u32| fbm_3d(x * freq, y * freq, 0.0, salt ^ s, oct);
+    // fbm sampled at an (optionally warped) point + frequency; signed ≈[-1,1].
+    let fbm = |px: f32, py: f32, freq: f32, oct: u32, s: u32| {
+        fbm_3d(px * freq, py * freq, 0.0, salt ^ s, oct)
+    };
+    // Broad swell shared by the flatter classes — a gentle large-scale tilt.
+    let swell = |amp: f32, s: u32| amp * fbm(x, y, SWELL_FREQ, 2, s);
+
     match class {
-        // Near-flat: a faint low-frequency whisper.
-        TerrainClass::Plains => base_elev + 0.020 * fbm(0.010, 2, 0x11),
-        // Rolling mid-frequency hills (kept positive so it reads as terrain).
-        TerrainClass::Hills => base_elev + 0.12 * (0.5 + 0.5 * fbm(0.020, 4, 0x22)),
-        // Raised, mostly-flat top with a little texture (a tableland).
-        TerrainClass::Plateau => base_elev + 0.16 + 0.035 * fbm(0.014, 2, 0x33),
-        // Sharp ridged ranges.
+        // Near-flat lowland: a broad swell + a faint fine texture only.
+        TerrainClass::Plains => base_elev + swell(0.018, 0x11) + 0.008 * fbm(x, y, 0.024, 2, 0x12),
+        // Rolling hills: warped mid-frequency multi-octave fbm over a swell.
+        TerrainClass::Hills => {
+            let (wx, wy) = warp(x, y, salt, 14.0);
+            base_elev + swell(0.045, 0x21) + 0.13 * (0.5 + 0.5 * fbm(wx, wy, 0.020, 4, 0x22))
+        }
+        // Tableland: raised, mostly-flat top with a broad uneven dome + light
+        // surface texture (steep edges come later via seam handling).
+        TerrainClass::Plateau => {
+            base_elev + 0.17 + swell(0.05, 0x31) + 0.022 * fbm(x, y, 0.030, 3, 0x32)
+        }
+        // Mountains: a foothill underlay + warped ridged-multifractal ranges.
         TerrainClass::Mountains => {
-            let r = ridged_fbm_3d(x * 0.028, y * 0.028, 0.0, salt ^ 0x44, 5);
-            base_elev + 0.50 * r
+            let (wx, wy) = warp(x, y, salt, 20.0);
+            let foothills = 0.08 * (0.5 + 0.5 * fbm(x, y, 0.012, 3, 0x41));
+            let ranges = ridged_fbm_3d(wx * 0.028, wy * 0.028, 0.0, salt ^ 0x44, 5);
+            base_elev + foothills + 0.48 * ranges
         }
     }
 }
@@ -176,12 +213,16 @@ pub fn render_all_zones(world: &FlatWorld, master_seed: u64, ratios: &ClassRatio
             let c = if heights[i].is_nan() {
                 VOID
             } else {
-                let right = (px + 1 < w).then(|| owner[i + 1]).unwrap_or(owner[i]);
-                let down = (py + 1 < h).then(|| owner[i + w]).unwrap_or(owner[i]);
+                let right = if px + 1 < w { owner[i + 1] } else { owner[i] };
+                let down = if py + 1 < h { owner[i + w] } else { owner[i] };
                 if owner[i] != right || owner[i] != down {
                     OUTLINE
                 } else {
-                    hypso_color((heights[i] - lo) / span)
+                    // Gamma < 1 spreads the cramped low end (plains/hills/
+                    // plateau all sit far below the tall mountains) so the
+                    // flatter classes are visually distinguishable.
+                    let t = ((heights[i] - lo) / span).clamp(0.0, 1.0).powf(0.55);
+                    hypso_color(t)
                 }
             };
             rgb[i * 3] = c[0];

@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use world_gen::flatworld::{
     export, generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams,
 };
-use world_gen::zonegen::{render_all_zones, render_zone, ClassRatios};
+use world_gen::zonegen::{render_all_zones, render_zone, zone_height, ClassRatios, TerrainClass};
 
 fn main() {
     let mut p = FlatParams::default();
@@ -30,6 +30,8 @@ fn main() {
     let mut zone_terrain_out: Option<PathBuf> = None;
     // Optional full-map terrain: every zone rendered together (hypsometric).
     let mut all_zones_out: Option<PathBuf> = None;
+    // Optional class-comparison demo: the 4 classes side by side, same scale.
+    let mut class_demo_out: Option<PathBuf> = None;
 
     // Minimal hand-rolled arg parsing (`--flag value`), to keep the sketch
     // dependency-free of the main CLI.
@@ -65,6 +67,7 @@ fn main() {
             }
             "--zone-terrain-out" => zone_terrain_out = Some(PathBuf::from(need())),
             "--all-zones-out" => all_zones_out = Some(PathBuf::from(need())),
+            "--class-demo" => class_demo_out = Some(PathBuf::from(need())),
             other => panic!("unknown flag: {other}"),
         }
         i += 2;
@@ -127,6 +130,79 @@ fn main() {
             dpath.display(),
             data.plates.len(),
             zones
+        );
+    }
+
+    if let Some(cpath) = class_demo_out {
+        // Render the 4 classes as side-by-side panels over the SAME coordinate
+        // field, base, and seed, normalized on a SINGLE shared scale — so the
+        // per-class relief difference is unambiguous (flat / rolling / raised /
+        // jagged). A verification aid, not part of the world.
+        let classes = [
+            TerrainClass::Plains,
+            TerrainClass::Hills,
+            TerrainClass::Plateau,
+            TerrainClass::Mountains,
+        ];
+        let panel = 256usize;
+        let gap = 8usize;
+        let ph = 256usize;
+        let w = classes.len() * panel + (classes.len() - 1) * gap;
+        let base = 0.40f32;
+        let salt = 0x5EED_1234u32;
+
+        // Pass 1: heights + shared range.
+        let mut field = vec![f32::NAN; w * ph];
+        let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+        for (ci, &class) in classes.iter().enumerate() {
+            let x0 = ci * (panel + gap);
+            for yy in 0..ph {
+                for xx in 0..panel {
+                    let h = zone_height(xx as f32, yy as f32, class, base, salt);
+                    field[yy * w + (x0 + xx)] = h;
+                    lo = lo.min(h);
+                    hi = hi.max(h);
+                }
+            }
+            let (mut clo, mut chi) = (f32::INFINITY, f32::NEG_INFINITY);
+            for yy in 0..ph {
+                for xx in 0..panel {
+                    let h = field[yy * w + (x0 + xx)];
+                    clo = clo.min(h);
+                    chi = chi.max(h);
+                }
+            }
+            println!(
+                "  {:9} base={base:.2} relief=[{:.3},{:.3}] span={:.3}",
+                class.name(),
+                clo,
+                chi,
+                chi - clo
+            );
+        }
+        let span = (hi - lo).max(1e-6);
+        let mut rgb = vec![0u8; w * ph * 3];
+        for i in 0..w * ph {
+            let g = if field[i].is_nan() {
+                0u8 // gap = black
+            } else {
+                (((field[i] - lo) / span).clamp(0.0, 1.0) * 255.0).round() as u8
+            };
+            rgb[i * 3] = g;
+            rgb[i * 3 + 1] = g;
+            rgb[i * 3 + 2] = g;
+        }
+        image::save_buffer(
+            &cpath,
+            &rgb,
+            w as u32,
+            ph as u32,
+            image::ExtendedColorType::Rgb8,
+        )
+        .expect("failed to write class-demo PNG");
+        println!(
+            "wrote {} — class demo (Plains | Hills | Plateau | Mountains, shared scale)",
+            cpath.display()
         );
     }
 

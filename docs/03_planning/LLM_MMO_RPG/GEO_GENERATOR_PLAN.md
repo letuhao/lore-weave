@@ -8,6 +8,21 @@
 
 ## Current status & next session (handoff)
 
+> **🆕 Flatworld bottom-up track (2026-05-23).** A NEW, standalone experiment
+> separate from the sphere pipeline: a top-down → bottom-up region generator on
+> a flat rectangle. Modules [`flatworld.rs`](../../../crates/world-gen/src/flatworld.rs)
+> (plates → Voronoi zones → collision uplift → anchor JSON export) +
+> [`zonegen.rs`](../../../crates/world-gen/src/zonegen.rs) (per-zone LOCAL
+> terrain — no world-framing, no sea/ocean; reuses `noise`/`erosion`
+> primitives). Data architecture locked in
+> [`docs/plans/2026-05-23-flatworld-region-tree-data-architecture.md`](../../plans/2026-05-23-flatworld-region-tree-data-architecture.md).
+> Run via `--example flatworld` (knobs: plates, zones, separation, seed; outputs
+> plate/zone/height/all-zones PNGs + anchor JSON + `--class-demo`). Commits:
+> `0f4762d7` (levels 0–2 + design), `b15620d5` (anchor export), `681e01fa`
+> (zonegen), `0ef14763` (full-map render), + B1 (per-class relief + warp).
+> **Phase plan B1–B5:** B1 enrich per-zone relief ✅ → B2 local erosion → B3
+> seam stitching → B4 macro tuning → B5 hypsometric/biome colour. Next: B2 or B3.
+
 **As of 2026-05-21 — branch `geo-generator-amaw`, pushed.** The 4-phase
 generator is built, the post-build human-in-loop review is done, seven
 enhancements + the **world-tier sphere migration (Phase 1 stages A + B-1)**
