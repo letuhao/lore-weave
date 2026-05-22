@@ -137,6 +137,82 @@ pub fn zone_salt(master: u64, path: &[u32]) -> u32 {
     sub_seed(master, &bytes) as u32
 }
 
+/// Width (px) of the seam-blend band: within this much of equal distance to
+/// two sub-zone sites, their height fields crossfade. Wider ⇒ softer seams.
+const BLEND_WIDTH: f32 = 22.0;
+
+/// One sub-zone's terrain inputs, flattened for blending.
+#[derive(Clone, Copy)]
+struct SubAttr {
+    site: (f32, f32),
+    zone: usize,
+    class: TerrainClass,
+    base: f32,
+    salt: u32,
+}
+
+/// Flatten every sub-zone of a plate into a blend-ready attribute list. Class +
+/// base are inherited from the L1 zone; each sub-zone gets its own path salt.
+fn plate_subattrs(
+    world: &FlatWorld,
+    master_seed: u64,
+    ratios: &ClassRatios,
+    plate_id: usize,
+) -> Vec<SubAttr> {
+    let plate = &world.plates[plate_id];
+    let mut out = Vec::new();
+    for (zi, subs) in plate.subzone_sites.iter().enumerate() {
+        let (class, base) = zone_attrs(world, master_seed, plate_id, zi, ratios);
+        for (l2, &site) in subs.iter().enumerate() {
+            let salt = zone_salt(master_seed, &[plate_id as u32, zi as u32, l2 as u32]);
+            out.push(SubAttr { site, zone: zi, class, base, salt });
+        }
+    }
+    out
+}
+
+/// Seam-stitched terrain at `(x, y)` from a list of sub-zone attributes: a
+/// **smooth-Voronoi 2-nearest blend**. Deep inside a cell → that cell's field;
+/// near the boundary between the two nearest sites → a crossfade, so the height
+/// (and the class/base it carries) is continuous across the seam. `subs` should
+/// be the candidates to blend among (a whole plate, or one L1 zone).
+fn blended_height(subs: &[SubAttr], x: f32, y: f32) -> f32 {
+    let mut d1 = f32::INFINITY;
+    let mut d2 = f32::INFINITY;
+    let mut i1 = 0usize;
+    let mut i2 = 0usize;
+    for (i, s) in subs.iter().enumerate() {
+        let d = (x - s.site.0) * (x - s.site.0) + (y - s.site.1) * (y - s.site.1);
+        if d < d1 {
+            d2 = d1;
+            i2 = i1;
+            d1 = d;
+            i1 = i;
+        } else if d < d2 {
+            d2 = d;
+            i2 = i;
+        }
+    }
+    let a = subs[i1];
+    let h1 = zone_height(x, y, a.class, a.base, a.salt);
+    if !d2.is_finite() || subs.len() < 2 {
+        return h1;
+    }
+    let b = subs[i2];
+    let h2 = zone_height(x, y, b.class, b.base, b.salt);
+    // Blend by the gap between the two nearest *distances* (not squared), so the
+    // band has consistent pixel width regardless of cell size.
+    let gap = d2.sqrt() - d1.sqrt();
+    let t = (gap / BLEND_WIDTH).clamp(0.0, 1.0);
+    let w1 = 0.5 + 0.5 * smoothstep01(t); // 0.5 at the seam → 1.0 deep in cell 1
+    w1 * h1 + (1.0 - w1) * h2
+}
+
+/// `smoothstep` on a value already in `[0,1]`.
+fn smoothstep01(t: f32) -> f32 {
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// L1-zone attributes (class + anchor floor) — set at the **zone** level and
 /// shared by its sub-zones (per the top-down inheritance in the data
 /// architecture). The per-sub-zone noise salt is derived separately at the
@@ -163,26 +239,23 @@ fn zone_attrs(
 /// peaks white; void = deep slate). Overlapping plate footprints are owned by
 /// the lowest-id plate (stable; overlaps are thin). This is the review render
 /// for the full zone terrain.
-pub fn render_all_zones(world: &FlatWorld, master_seed: u64, ratios: &ClassRatios) -> Vec<u8> {
+pub fn render_all_zones(
+    world: &FlatWorld,
+    master_seed: u64,
+    ratios: &ClassRatios,
+    outline: bool,
+) -> Vec<u8> {
     const VOID: [u8; 3] = [12, 16, 28];
     let w = world.width as usize;
     let h = world.height as usize;
 
-    // Precompute (class, base) per L1 zone once (sub-zones inherit these).
-    let attrs: Vec<Vec<(TerrainClass, f32)>> = world
-        .plates
-        .iter()
-        .enumerate()
-        .map(|(pi, p)| {
-            (0..p.zone_sites.len())
-                .map(|zi| zone_attrs(world, master_seed, pi, zi, ratios))
-                .collect()
-        })
+    // Precompute the blend-ready sub-zone attributes per plate once.
+    let subattrs: Vec<Vec<SubAttr>> = (0..world.plates.len())
+        .map(|pi| plate_subattrs(world, master_seed, ratios, pi))
         .collect();
 
-    // Pass 1: heights + per-pixel sub-zone owner id (for boundary outlines) +
-    // range. Sub-zones inherit their L1 zone's class + base but get their own
-    // path-derived salt, so they vary in relief (the sub-seams B3 must stitch).
+    // Pass 1: seam-stitched heights (B3 blend) + per-pixel sub-zone owner id
+    // (only needed when drawing outlines) + range.
     let mut heights = vec![f32::NAN; w * h];
     let mut owner = vec![-1i64; w * h]; // pid*1_000_000 + l1*1000 + l2; -1 = void
     let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
@@ -191,13 +264,13 @@ pub fn render_all_zones(world: &FlatWorld, master_seed: u64, ratios: &ClassRatio
             let x = px as f32 + 0.5;
             let y = py as f32 + 0.5;
             if let Some(p) = world.plates.iter().find(|p| p.contains(x, y)) {
-                let (l1, l2) = p.subzone_at(x, y).unwrap_or((0, 0));
-                let (class, base) = attrs[p.id][l1];
-                let salt = zone_salt(master_seed, &[p.id as u32, l1 as u32, l2 as u32]);
-                let e = zone_height(x, y, class, base, salt);
+                let e = blended_height(&subattrs[p.id], x, y);
                 let i = py * w + px;
                 heights[i] = e;
-                owner[i] = (p.id as i64) * 1_000_000 + (l1 as i64) * 1000 + l2 as i64;
+                if outline {
+                    let (l1, l2) = p.subzone_at(x, y).unwrap_or((0, 0));
+                    owner[i] = (p.id as i64) * 1_000_000 + (l1 as i64) * 1000 + l2 as i64;
+                }
                 lo = lo.min(e);
                 hi = hi.max(e);
             }
@@ -205,9 +278,8 @@ pub fn render_all_zones(world: &FlatWorld, master_seed: u64, ratios: &ClassRatio
     }
     let span = (hi - lo).max(1e-6);
 
-    // Pass 2: hypsometric colour by normalized height, with a thin dark outline
-    // on every zone boundary (where the owner differs from the right/down
-    // neighbour) so the full Voronoi subdivision is visible.
+    // Pass 2: hypsometric colour by normalized height; optional thin dark
+    // outline on sub-zone boundaries (structure view).
     const OUTLINE: [u8; 3] = [22, 28, 38];
     let mut rgb = vec![0u8; w * h * 3];
     for py in 0..h {
@@ -216,9 +288,12 @@ pub fn render_all_zones(world: &FlatWorld, master_seed: u64, ratios: &ClassRatio
             let c = if heights[i].is_nan() {
                 VOID
             } else {
-                let right = if px + 1 < w { owner[i + 1] } else { owner[i] };
-                let down = if py + 1 < h { owner[i + w] } else { owner[i] };
-                if owner[i] != right || owner[i] != down {
+                let on_edge = outline && {
+                    let right = if px + 1 < w { owner[i + 1] } else { owner[i] };
+                    let down = if py + 1 < h { owner[i + w] } else { owner[i] };
+                    owner[i] != right || owner[i] != down
+                };
+                if on_edge {
                     OUTLINE
                 } else {
                     // Gamma < 1 spreads the cramped low end (plains/hills/
@@ -286,12 +361,17 @@ pub fn render_zone(
     const VOID: [u8; 3] = [10, 10, 14];
     let plate = &world.plates[plate_id];
     let (class, base_elev) = zone_attrs(world, master_seed, plate_id, zone_id, ratios);
+    // Blend among THIS zone's sub-zones only (single-zone view; the L1 edge is
+    // the zone's boundary → void, no neighbour to stitch to here).
+    let zone_subs: Vec<SubAttr> = plate_subattrs(world, master_seed, ratios, plate_id)
+        .into_iter()
+        .filter(|s| s.zone == zone_id)
+        .collect();
 
     let w = world.width as usize;
     let h = world.height as usize;
 
-    // First pass: heights over the zone's pixels + range. Each sub-zone gets
-    // its own path-derived salt (relief variation within the zone).
+    // First pass: seam-stitched heights over the zone's pixels + range.
     let mut heights = vec![f32::NAN; w * h];
     let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
     for py in 0..h {
@@ -299,9 +379,7 @@ pub fn render_zone(
             let x = px as f32 + 0.5;
             let y = py as f32 + 0.5;
             if plate.contains(x, y) && plate.zone_at(x, y) == Some(zone_id) {
-                let l2 = plate.subzone_at(x, y).map(|(_, l2)| l2).unwrap_or(0);
-                let salt = zone_salt(master_seed, &[plate_id as u32, zone_id as u32, l2 as u32]);
-                let e = zone_height(x, y, class, base_elev, salt);
+                let e = blended_height(&zone_subs, x, y);
                 heights[py * w + px] = e;
                 lo = lo.min(e);
                 hi = hi.max(e);
@@ -396,6 +474,29 @@ mod tests {
     }
 
     #[test]
+    fn blend_makes_a_seam_continuous() {
+        // Two adjacent sub-zones with very different bases (plains so relief ≈
+        // base). Without blending, crossing the boundary at x≈50 jumps ~0.55;
+        // with the blend the height changes gradually, no single big step.
+        let subs = [
+            SubAttr { site: (0.0, 0.0), zone: 0, class: TerrainClass::Plains, base: 0.35, salt: 1 },
+            SubAttr { site: (100.0, 0.0), zone: 1, class: TerrainClass::Plains, base: 0.90, salt: 2 },
+        ];
+        let mut prev = blended_height(&subs, 0.0, 0.0);
+        let mut max_step = 0.0f32;
+        for k in 1..=100 {
+            let x = k as f32;
+            let cur = blended_height(&subs, x, 0.0);
+            max_step = max_step.max((cur - prev).abs());
+            prev = cur;
+        }
+        assert!(
+            max_step < 0.05,
+            "seam not continuous: max per-pixel step {max_step} (expected < 0.05)"
+        );
+    }
+
+    #[test]
     fn full_map_render_is_world_sized_and_deterministic() {
         let p = FlatParams {
             width: 96,
@@ -404,8 +505,8 @@ mod tests {
             ..Default::default()
         };
         let world = generate(&p);
-        let a = render_all_zones(&world, p.seed, &ClassRatios::default());
-        let b = render_all_zones(&world, p.seed, &ClassRatios::default());
+        let a = render_all_zones(&world, p.seed, &ClassRatios::default(), false);
+        let b = render_all_zones(&world, p.seed, &ClassRatios::default(), false);
         assert_eq!(a.len(), 96 * 64 * 3);
         assert_eq!(a, b, "full-map render must be deterministic");
     }

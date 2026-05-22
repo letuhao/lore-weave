@@ -207,7 +207,12 @@ fn main() {
     }
 
     if let Some(apath) = all_zones_out {
-        let rgb = render_all_zones(&world, p.seed, &ClassRatios::default());
+        let outline = apath
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.ends_with("outlined"))
+            .unwrap_or(false);
+        let rgb = render_all_zones(&world, p.seed, &ClassRatios::default(), outline);
         image::save_buffer(
             &apath,
             &rgb,
@@ -216,7 +221,11 @@ fn main() {
             image::ExtendedColorType::Rgb8,
         )
         .expect("failed to write all-zones PNG");
-        println!("wrote {} — full-map zone terrain", apath.display());
+        println!(
+            "wrote {} — full-map zone terrain ({})",
+            apath.display(),
+            if outline { "outlined" } else { "smooth/seam-stitched" }
+        );
     }
 
     if let (Some((pid, zid)), Some(zpath)) = (zone_sel, zone_terrain_out) {
