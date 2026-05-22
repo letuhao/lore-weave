@@ -27,7 +27,8 @@ have shipped — each via the full default 12-phase v2.2 workflow
 | World-tier redesign Phase 1 stage B-1 — `Projection` enum + native-3D consumer migration (climate / hydrology / political / settlement / routes / culture; great-circle distances; `(u,v)` adapter dropped) | `0a5387b1` |
 | World-tier redesign Phase 1 stage B-2 — `Projection` threaded through render+relief; Orthographic globe view actually renders; relief sampler rewritten (per-pixel back-project → nearest cell); 3D detail/warp fBm; `delaunator` dropped; CLI `--projection`/`--camera` | `4f10b557` |
 | World-tier redesign Phase 2 — plate tectonics: NEW `plates.rs` (seed → spherical Voronoi → continental/oceanic kind → tangent motion → 6-way boundary classify → orogeny-uplift BFS); `TerrainMode` enum (Tectonic default / Profile legacy); `plate_count`+`continental_fraction` knobs; plate layer on `WorldMap`; `plate_image` render + `--plate-png` | `2bb5436f` |
-| **Phase 2 quality pass — fast hull (O(N²) Quickhull → O(N log N) stereographic+Delaunay, gigaplanet 620s→25s); auto-sized output (aspect-correct, cell-count-driven, `--detail`/`--height`); Earth-like signed hypsometry; plate-boundary warp (irregular continents); fixed-sea percentile-stretch quantization (distinct plains/uplands/peaks)** | HEAD of `geo-generator-amaw` |
+| Phase 2 quality pass — fast hull (O(N²) Quickhull → O(N log N) stereographic+Delaunay, gigaplanet 620s→25s); auto-sized output (aspect-correct, cell-count-driven, `--detail`/`--height`); Earth-like signed hypsometry; plate-boundary warp (irregular continents); fixed-sea percentile-stretch quantization (distinct plains/uplands/peaks) | `ce87bdcb` |
+| **Terrain-coherence pass — altitude-driven ruggedness field (Musgrave "statistics by altitude") gating relief detail + erosion incision (flat plains, jagged mountains); ocean depth-by-coast-distance curve (shelf→abyssal flat, replaces lumpy fBm); coast-distance arc gate (offshore island arcs, no continent-welding); fixed-scale quantize (flat worlds stay green). Removed boundary-proximity ruggedness — it ringed every coast with a thin high "pen-stroke" ridge.** | HEAD of `geo-generator-amaw` |
 
 **Phase 1 + 2 COMPLETE + a quality pass.** The quality pass was driven by PO
 visual review against a real Earth relief map. Key wins: the generator now
@@ -39,16 +40,24 @@ peaks / deep ocean, all *distinct*). The min-max normalize that squeezed all
 land into the top 20% of the range (the "flattened terrain" bug) is fixed.
 `content_hash` rebased again (mesh + terrain algorithm changes).
 
-> **⚠ KNOWN ISSUE for next session (PO, 2026-05-22).** Terrain still reads as
-> **too noisy/turbulent** — there are no genuinely *flat* plains; every cell's
-> height jitters (the high-frequency fBm runs everywhere at full amplitude),
-> and the ocean floor is lumpy too. Real terrain at macro scale has large
-> **flat** regions (plains, abyssal plains) with relief *concentrated* in
-> mountain belts. **Next session: research how games (e.g. ARK: Survival
-> Evolved) and DEM-based generators produce coherent flat plains + localized
-> relief**, then rework the noise spectrum: gate/attenuate high-frequency
-> detail by a "ruggedness" field (high near mountains/coasts, ~0 on plains and
-> abyssal floor) so plains are macro-flat. This is the top quality blocker.
+> **✅ RESOLVED (2026-05-22) — terrain-coherence pass.** The "noisy / no flat
+> plains" blocker is fixed. Implemented per
+> [`docs/plans/2026-05-22-geo-terrain-coherence-spec.md`](../../plans/2026-05-22-geo-terrain-coherence-spec.md):
+> an **altitude-driven ruggedness field** (Musgrave "statistics by altitude")
+> gates relief detail + erosion incision → macro-flat plains, jagged mountains;
+> ocean depth follows a **coast-distance curve** (shelf → abyssal flat) instead
+> of uniform fBm; a **coast-distance arc gate** keeps island arcs offshore so
+> shelf+uplift no longer welds continents. Verified at gigaplanet (501k cells):
+> plains local slope 71–73 vs mountains 5944–6735 (**84–92× contrast**), ocean
+> smooth, continents separated, seeds 7 & 555 distinct. 158 tests + clippy
+> clean. **Note:** ruggedness was *not* derived from plate-boundary proximity
+> (the spec's first idea) — that rings every continent/ocean coast with a thin
+> high "pen-stroke" ridge (a coast *is* a plate boundary); altitude-driven is
+> geologically correct. Tradeoff: hypsometry is now ~98% lowland (flatter than
+> Earth's 62/23/6) — deliberate, per PO's "everything too bumpy" steer; the
+> mid-band rolling-uplands is a one-knob tweak if wanted later. **Next: PO will
+> intervene directly in the algorithm; then Phase 3 Köppen climate** (the
+> remaining all-green colour monotony is climate, not relief).
 
 > **⚠ Architectural realisation (2026-05-18).** The Gigaplanet benchmark made
 > it clear: **cell count is resolution, not scope.** A 501k-cell map still

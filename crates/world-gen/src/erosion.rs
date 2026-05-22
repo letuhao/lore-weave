@@ -104,6 +104,7 @@ pub fn apply(
     neighbors: &[Vec<u32>],
     land_fraction: f32,
     strength: ErosionStrength,
+    erodibility: Option<&[f32]>,
 ) {
     let p = params(strength);
     if (p.carve_iters + p.settle_iters) == 0 || elev.len() < 2 {
@@ -125,7 +126,7 @@ pub fn apply(
         elev.copy_from_slice(&filled);
         let drainage = flow_accumulation(&order, &receiver, elev.len());
         let flow = Flow { receiver, order, drainage };
-        incise(elev, &flow, &sea, sea_floor, &p, settle_rate);
+        incise(elev, &flow, &sea, sea_floor, &p, settle_rate, erodibility);
         diffuse(elev, neighbors, &sea, p.diffusion);
     }
 }
@@ -252,6 +253,7 @@ fn incise(
     sea_floor: f32,
     p: &ErosionParams,
     settle_rate: f32,
+    erodibility: Option<&[f32]>,
 ) {
     let n = elev.len();
     let mut sediment_in = vec![0.0f32; n];
@@ -271,10 +273,16 @@ fn incise(
         // slope exponent n = 1 (⇒ the slope term is the receiver `drop`).
         let stream = area.sqrt() * drop;
 
+        // Per-cell erodibility (ruggedness-gated in Tectonic mode): mountains
+        // carve valleys, plains barely incise (so they stay flat) — but
+        // deposition stays ungated below, so sediment from the highlands still
+        // fills the lowlands (Musgrave's "silt smooths the lowlands").
+        let k = p.erodibility * erodibility.map_or(1.0, |e| e[c]);
+
         // Stream-power incision, clamped to `drop`: `elev[c]` never sinks
         // below its receiver, so the tree stays monotone and elevations stay
         // `≥ 0` (the chain bottoms at a sea cell).
-        let erosion = (p.erodibility * stream).min(drop);
+        let erosion = (k * stream).min(drop);
 
         // Transport-capacity deposition: the channel carries `Kc·stream` of
         // sediment; `settle_rate` of any load above that capacity is dropped
@@ -362,7 +370,7 @@ mod tests {
         let nb = grid(8);
         let before = tilted_field(8);
         let mut elev = before.clone();
-        apply(&mut elev, &nb, 0.6, ErosionStrength::None);
+        apply(&mut elev, &nb, 0.6, ErosionStrength::None, None);
         for (a, b) in elev.iter().zip(&before) {
             assert_eq!(a.to_bits(), b.to_bits(), "None must leave elev untouched");
         }
@@ -374,8 +382,8 @@ mod tests {
         let base = tilted_field(16);
         let mut a = base.clone();
         let mut b = base.clone();
-        apply(&mut a, &nb, 0.6, ErosionStrength::Moderate);
-        apply(&mut b, &nb, 0.6, ErosionStrength::Moderate);
+        apply(&mut a, &nb, 0.6, ErosionStrength::Moderate, None);
+        apply(&mut b, &nb, 0.6, ErosionStrength::Moderate, None);
         for (x, y) in a.iter().zip(&b) {
             assert_eq!(x.to_bits(), y.to_bits(), "erosion is not reproducible");
         }
@@ -390,7 +398,7 @@ mod tests {
             ErosionStrength::Heavy,
         ] {
             let mut elev = tilted_field(20);
-            apply(&mut elev, &nb, 0.55, strength);
+            apply(&mut elev, &nb, 0.55, strength, None);
             for (c, &e) in elev.iter().enumerate() {
                 assert!(e.is_finite() && e >= 0.0, "cell {c} = {e} ({strength:?})");
             }
@@ -403,7 +411,7 @@ mod tests {
         let nb = grid(24);
         let before = tilted_field(24);
         let mut after = before.clone();
-        apply(&mut after, &nb, 0.6, ErosionStrength::Moderate);
+        apply(&mut after, &nb, 0.6, ErosionStrength::Moderate, None);
         let incised: f32 = before
             .iter()
             .zip(&after)
@@ -419,7 +427,7 @@ mod tests {
         let before = tilted_field(24);
         let incised = |s| {
             let mut after = before.clone();
-            apply(&mut after, &nb, 0.6, s);
+            apply(&mut after, &nb, 0.6, s, None);
             before
                 .iter()
                 .zip(&after)
@@ -506,7 +514,7 @@ mod tests {
             e.copy_from_slice(&filled);
             let drainage = flow_accumulation(&order, &receiver, e.len());
             let flow = Flow { receiver, order, drainage };
-            incise(&mut e, &flow, &sea, floor, &p, settle_rate);
+            incise(&mut e, &flow, &sea, floor, &p, settle_rate, None);
             e
         };
         let carve_only = run(0.0);

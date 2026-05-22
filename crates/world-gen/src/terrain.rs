@@ -81,17 +81,40 @@ const SALT_MTN: u32 = 0xC0FF_EE42;
 const SALT_BELT: u32 = 0x1357_9BDF;
 const SALT_HILL: u32 = 0x2468_ACE0;
 
-// --- tectonic relief tuning (Phase 2) ---------------------------------------
+// --- tectonic relief tuning (Phase 2 + terrain-coherence pass) --------------
 
-/// `Tectonic`-mode relief weights, layered on the plate base (continental 1.0
-/// / oceanic 0.0) + orogeny uplift. Tuned for *lively, varied* continents
-/// (the plate model owns the macro; this is the life): a strong low-freq
-/// continental variation to fractal-ize coasts + roll interiors, real ranges
-/// across the interior, and only a faint abyssal ripple in the deep ocean.
-const TEC_CONT_WEIGHT: f32 = 0.12;
-const TEC_HILL_WEIGHT: f32 = 0.06;
-const TEC_MTN_WEIGHT: f32 = 0.95;
-const TEC_ABYSS_WEIGHT: f32 = 0.05;
+/// Land-relief weights, **gated by the ruggedness field** (Musgrave
+/// "statistics by altitude"): on plains (ruggedness ≈ 0) only the tiny
+/// `PLAIN` whisper survives → macro-flat; in mountains (ruggedness ≈ 1) the
+/// hills + ridged ranges come in full → jagged. This is the fix for
+/// "noisy-everywhere / no flat plains".
+const TEC_HILL_WEIGHT: f32 = 0.22;
+const TEC_MTN_WEIGHT: f32 = 0.72;
+/// Gentle low-frequency undulation that *is* allowed on plains, so they read
+/// as living lowland rather than a dead-flat sheet — kept very small.
+const TEC_PLAIN_WEIGHT: f32 = 0.022;
+const PLAIN_FREQ: f32 = 2.6;
+
+/// Ruggedness field — low-frequency organic variation so ruggedness isn't a
+/// pure function of altitude/belt-proximity (some plateaus away from belts,
+/// some plains beside mountains).
+const RUGGED_FREQ: f32 = 2.2;
+const SALT_RUGGED: u32 = 0x6F1E_2D77;
+const SALT_PLAIN: u32 = 0x3C4A_91E5;
+
+/// Ocean bathymetry: depth (signed, sea = 0) at the coast vs the abyssal
+/// plain, and how many BFS hops from the coast it takes to reach the abyss.
+/// A faint ripple keeps the abyss from being perfectly dead-flat.
+const OCEAN_SHELF: f32 = -0.04;
+const OCEAN_ABYSS: f32 = -0.58;
+const OCEAN_ABYSS_HOPS: f32 = 7.0;
+const OCEAN_RIPPLE_WEIGHT: f32 = 0.02;
+const OCEAN_RIPPLE_FREQ: f32 = 5.0;
+// Coast-distance gate for ocean-side uplift: suppress arc/ridge uplift on the
+// shallow shelf (≤NEAR hops from coast) and ramp it in offshore (≥FAR hops),
+// so island arcs form in deep water rather than welding continents together.
+const OCEAN_ARC_GATE_NEAR: f32 = 1.0;
+const OCEAN_ARC_GATE_FAR: f32 = 4.0;
 
 /// Per-cell elevations + the chosen sea level (+ the plate model in
 /// `Tectonic` mode).
@@ -135,14 +158,56 @@ pub fn build(
             // (varied base + hills + ranges on land; gentle abyssal texture in
             // the oceans). The relief is what makes continents read as *alive*
             // rather than flat slabs.
-            // Signed elevation, sea level = 0: continental platform just above,
-            // ocean floor well below; mountain belts the high minority.
+            // Macro elevation = plate base + orogeny uplift (the tectonic
+            // skeleton, no detail yet). Land/ocean split by its sign.
+            let macro_elev: Vec<f32> =
+                (0..count).map(|i| plates.base[i] + plates.uplift[i]).collect();
+            let is_land_macro: Vec<bool> = macro_elev.iter().map(|&e| e >= 0.0).collect();
+            // Distance (BFS hops) from the coast over ocean cells — drives the
+            // bathymetry depth curve (shelf → abyssal flat).
+            let coast_dist = coast_distance(&is_land_macro, neighbors);
+
+            // Per-cell ruggedness (0 on plains/ocean, 1 in mountains) — gates
+            // both the relief detail and the erosion incision.
+            let rugged: Vec<f32> = (0..count)
+                .map(|i| {
+                    if is_land_macro[i] {
+                        ruggedness(centers[i], macro_elev[i], nseed)
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
+
+            // Compose: land = macro + ruggedness-gated relief (flat plains,
+            // jagged mountains); ocean = depth-by-coast-distance + ridges.
             let mut elev: Vec<f32> = (0..count)
-                .map(|i| plates.base[i] + plates.uplift[i] + tectonic_relief(centers[i], plates.base[i], nseed))
+                .map(|i| {
+                    if is_land_macro[i] {
+                        macro_elev[i] + land_relief(centers[i], rugged[i], nseed)
+                    } else {
+                        // Mid-ocean ridges / island arcs (positive uplift) raise
+                        // the floor; trenches (already deep via the curve) keep
+                        // their notch via the negative uplift. Gate *positive*
+                        // uplift by coast distance: real arcs sit offshore in
+                        // deep water, so suppress uplift on the shallow shelf —
+                        // otherwise shelf+arc breaches sea level and welds
+                        // neighbouring continents into one landmass.
+                        let u = plates.uplift[i];
+                        let gated = if u > 0.0 {
+                            u * smoothstep(OCEAN_ARC_GATE_NEAR, OCEAN_ARC_GATE_FAR, coast_dist[i] as f32)
+                        } else {
+                            u
+                        };
+                        ocean_depth(coast_dist[i], centers[i], nseed) + gated
+                    }
+                })
                 .collect();
 
             let land_fraction = cs.continental_fraction.clamp(0.1, 0.9);
-            erosion::apply(&mut elev, neighbors, land_fraction, cs.erosion);
+            // Ruggedness-gated erosion: mountains carve dendritic valleys;
+            // plains barely incise (stay flat) but still receive sediment.
+            erosion::apply(&mut elev, neighbors, land_fraction, cs.erosion, Some(&rugged));
 
             // Quantize with a fixed scale (sea level pinned at SEA_FRAC) so
             // land keeps a generous, fixed share of the range — distinct
@@ -168,7 +233,8 @@ pub fn build(
             // Hydraulic erosion — skipped for Archipelago (incision carving a
             // strait would dissect its fixed 5-island invariant).
             if !profile.is_archipelago() {
-                erosion::apply(&mut elev, neighbors, profile.land_fraction(), cs.erosion);
+                // Profile mode: ungated erosion (no ruggedness field).
+                erosion::apply(&mut elev, neighbors, profile.land_fraction(), cs.erosion, None);
             }
 
             let mut elevation = normalize_to_u16(&elev, count);
@@ -187,46 +253,32 @@ pub fn build(
 /// Sea level as a fraction of the `u16` range under [`quantize_fixed_scale`].
 /// Oceans get the lower `SEA_FRAC`; land gets the upper `1 − SEA_FRAC`.
 const SEA_FRAC: f32 = 0.40;
-/// Percentile of land/ocean elevation that maps to the top/bottom of the
-/// range. The top `1 − this` of peaks (and deepest trenches) clamp to white /
-/// abyss — so a few dramatic extremes don't compress everything else.
-const SCALE_PCT: f32 = 0.99;
+/// Signed land elevation that maps to the **top** of the range (white peaks).
+/// A **fixed** scale: the coastal platform (~+0.10) always maps low (green),
+/// big orogenic peaks (~+0.8) map high (white) — and a *flat* world (little
+/// relief) stays all-green instead of being stretched into grey plateaus.
+const LAND_FULL: f32 = 0.78;
+/// `|signed|` ocean depth that maps to the **bottom** of the range (abyss).
+const OCEAN_FULL: f32 = 0.62;
 
-/// Quantize a **signed** elevation field (sea level = 0) to `u16`. Sea level
-/// is pinned at `SEA_FRAC`; **land is stretched by its own `SCALE_PCT`
-/// percentile to fill the upper `1 − SEA_FRAC`**, and ocean likewise fills the
-/// lower `SEA_FRAC`. So land always uses its full share of the range — coastal
-/// plains → green, uplands → brown, the tallest peaks → white — *robustly
-/// across seeds*, regardless of the absolute relief amplitude.
+/// Quantize a **signed** elevation field (sea level = 0) to `u16` with a
+/// **fixed scale**: sea level pinned at `SEA_FRAC`, land mapped linearly by
+/// `e / LAND_FULL` into the upper band, ocean by `|e| / OCEAN_FULL` into the
+/// lower band (both clamped). The platform → green, peaks → white, abyss →
+/// deep blue — *consistently*, and a flat world stays green (it has no peaks).
 ///
-/// This replaced a min-max normalize (which let deep ocean stretch the bottom
-/// and squeeze all land into the top ~20% — the "flattened terrain" bug) and a
-/// fixed-scale variant (which under-used the land range when the relief
-/// amplitude was modest, rendering mountains brown-not-white).
+/// (A min-max normalize let deep ocean squeeze land into the top 20% — the
+/// "flattened" bug; a percentile-stretch instead inflated *flat* worlds into
+/// grey plateaus by normalizing land by its own — small — 99th percentile.
+/// A fixed scale avoids both.)
 fn quantize_fixed_scale(elev: &[f32], count: usize) -> (Vec<u16>, u16) {
     let sea_u16 = (SEA_FRAC * 65535.0).round() as u16;
-
-    // Percentile scale for land (signed > 0) and ocean depth (|signed < 0|).
-    let mut land: Vec<f32> = elev.iter().copied().filter(|&e| e > 0.0).collect();
-    let mut ocean: Vec<f32> = elev.iter().copied().filter(|&e| e < 0.0).map(|e| -e).collect();
-    land.sort_by(f32::total_cmp);
-    ocean.sort_by(f32::total_cmp);
-    let pctl = |v: &[f32]| -> f32 {
-        if v.is_empty() {
-            1.0
-        } else {
-            v[((SCALE_PCT * v.len() as f32) as usize).min(v.len() - 1)].max(1e-4)
-        }
-    };
-    let land_scale = pctl(&land);
-    let ocean_scale = pctl(&ocean);
-
     let mut elevation = vec![0u16; count];
     for (i, &e) in elev.iter().enumerate() {
         let u = if e >= 0.0 {
-            SEA_FRAC + (e / land_scale).min(1.0) * (1.0 - SEA_FRAC)
+            SEA_FRAC + (e / LAND_FULL).min(1.0) * (1.0 - SEA_FRAC)
         } else {
-            SEA_FRAC - ((-e) / ocean_scale).min(1.0) * SEA_FRAC
+            SEA_FRAC - ((-e) / OCEAN_FULL).min(1.0) * SEA_FRAC
         };
         elevation[i] = (u.clamp(0.0, 1.0) * 65535.0).round() as u16;
     }
@@ -270,42 +322,105 @@ fn warp_point(p: [f32; 3], seed: u32) -> [f32; 3] {
     w
 }
 
-/// Rich relief for `Tectonic` mode, layered on top of the plate base + orogeny
-/// uplift. The plate model owns *where* land and big belts are; this gives the
-/// terrain its *life*:
-/// - **continental base variation** (low-freq fBm) so the land rolls and the
-///   coastline fractal-izes (bays, peninsulas, offshore islands) instead of
-///   tracing a smooth plate edge;
-/// - **hills** (mid-freq) for texture between ranges;
-/// - **ridged ranges** (belt-masked) so continental *interiors* carry mountain
-///   ranges, not just the plate boundaries;
-/// - **gentle abyssal texture** in the oceans (kept well below sea level) so
-///   the sea floor isn't a dead flat sheet.
+/// Per-cell **ruggedness** `∈ [0,1]` — Musgrave "statistics by altitude":
+/// driven by **altitude** (mountains *are* high, lifted by orogeny), **not**
+/// by mere proximity to a plate boundary. (Boundary-proximity rings every
+/// coast — a continent/ocean edge is a plate boundary — with a thin high
+/// ridge, which is geologically wrong: most coasts are low passive margins.)
+/// A low-frequency fBm adds organic interior ruggedness (rolling uplands /
+/// plateaus away from the big ranges) so interiors aren't dead-flat.
+fn ruggedness(p: [f32; 3], macro_elev: f32, seed: u32) -> f32 {
+    // Altitude factor: 0 on the coastal platform (~+0.10), 1 on high macro
+    // (orogenic belts). Coasts and plains → low; mountains → high.
+    let alt = smoothstep(0.22, 0.62, macro_elev);
+    let fbm_r = 0.5
+        + 0.5 * fbm_3d(p[0] * RUGGED_FREQ, p[1] * RUGGED_FREQ, p[2] * RUGGED_FREQ, seed ^ SALT_RUGGED, 3);
+    // Occasional organic interior ruggedness (uplands/plateaus) independent of
+    // the orogenic belts — but never at the low coastal platform.
+    let interior = 0.28 * smoothstep(0.64, 0.86, fbm_r) * smoothstep(0.16, 0.30, macro_elev);
+    (alt.max(interior) * (0.6 + 0.4 * fbm_r)).clamp(0.0, 1.0)
+}
+
+/// Land relief layered on the macro elevation, **gated by ruggedness** `r`:
+/// - `r ≈ 0` (plains) → only a tiny low-frequency whisper survives → flat;
+/// - `r ≈ 1` (mountains) → full mid-freq hills + ridged ranges → jagged.
 ///
-/// `landness` (smoothstepped plate base) gates land vs ocean contributions.
-fn tectonic_relief(p: [f32; 3], base: f32, seed: u32) -> f32 {
-    // `base` is signed (sea level = 0): continental platform ≈ +0.10, ocean
-    // floor ≈ −0.55. Land where base ≥ 0.
-    let landness = smoothstep(-0.05, 0.08, base);
-    let w = warp_point(p, seed);
-
-    // Gentle low-freq platform variation — keeps the vast plains *low* (some
-    // dips below sea → natural bays/coast) without lifting the whole continent.
-    let cont = fbm_3d(w[0] * CONT_FREQ, w[1] * CONT_FREQ, w[2] * CONT_FREQ, seed ^ SALT_CONT, CONT_OCTAVES);
-    // Mid-freq hills.
+/// The domain warp is also scaled by `r`, so plains stay coherent (un-warped)
+/// while mountains get turbulent, irregular ridgelines.
+fn land_relief(p: [f32; 3], r: f32, seed: u32) -> f32 {
+    // Plains whisper — gentle, always present, very small amplitude.
+    let whisper = TEC_PLAIN_WEIGHT
+        * fbm_3d(p[0] * PLAIN_FREQ, p[1] * PLAIN_FREQ, p[2] * PLAIN_FREQ, seed ^ SALT_PLAIN, 2);
+    if r < 1e-3 {
+        return whisper;
+    }
+    // Warp masked by ruggedness (strong in mountains, ~0 on plains).
+    let w = warp_scaled(p, seed, r);
     let hills = fbm_3d(w[0] * HILL_FREQ, w[1] * HILL_FREQ, w[2] * HILL_FREQ, seed ^ SALT_HILL, HILL_OCTAVES);
-    // Belt-masked ridged ranges — a *minority* of the land (rarer belt mask →
-    // linear mountain chains, not a blanket of highland).
-    let belt_raw = 0.5
-        + 0.5 * fbm_3d(p[0] * BELT_FREQ, p[1] * BELT_FREQ, p[2] * BELT_FREQ, seed ^ SALT_BELT, BELT_OCTAVES);
-    let belt = smoothstep(0.52, 0.76, belt_raw);
-    let ridges = ridged_fbm_3d(w[0] * MTN_FREQ, w[1] * MTN_FREQ, w[2] * MTN_FREQ, seed ^ SALT_MTN, MTN_OCTAVES);
+    let ridges =
+        ridged_fbm_3d(w[0] * MTN_FREQ, w[1] * MTN_FREQ, w[2] * MTN_FREQ, seed ^ SALT_MTN, MTN_OCTAVES);
+    let detail = TEC_HILL_WEIGHT * hills + TEC_MTN_WEIGHT * ridges;
+    r * detail + (1.0 - r) * whisper
+}
 
-    // On land: gentle plains + sparse ranges. In ocean: only a faint abyssal ripple.
-    let land_relief =
-        TEC_CONT_WEIGHT * cont + TEC_HILL_WEIGHT * hills + TEC_MTN_WEIGHT * belt * ridges;
-    let ocean_relief = TEC_ABYSS_WEIGHT * hills;
-    landness * land_relief + (1.0 - landness) * ocean_relief
+/// Ocean depth (signed, sea = 0) from distance-to-coast: a shallow shelf at
+/// the coast ramps down to a deep, near-flat abyssal plain. Replaces the old
+/// uniform abyssal fBm (which made the sea floor lumpy).
+fn ocean_depth(coast_dist: u32, p: [f32; 3], seed: u32) -> f32 {
+    let t = (coast_dist as f32 / OCEAN_ABYSS_HOPS).min(1.0);
+    let depth = OCEAN_SHELF + (OCEAN_ABYSS - OCEAN_SHELF) * smoothstep(0.0, 1.0, t);
+    // Faint abyssal ripple so the floor isn't perfectly dead-flat.
+    let ripple = OCEAN_RIPPLE_WEIGHT
+        * fbm_3d(p[0] * OCEAN_RIPPLE_FREQ, p[1] * OCEAN_RIPPLE_FREQ, p[2] * OCEAN_RIPPLE_FREQ, seed ^ SALT_HILL, 2);
+    depth + ripple
+}
+
+/// A 3D domain warp whose amplitude is scaled by `r` (ruggedness) — full in
+/// mountains, ≈0 on plains.
+fn warp_scaled(p: [f32; 3], seed: u32, r: f32) -> [f32; 3] {
+    let wx = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_X, WARP_OCTAVES);
+    let wy = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_Y, WARP_OCTAVES);
+    let wz = fbm_3d(p[0] * WARP_FREQ, p[1] * WARP_FREQ, p[2] * WARP_FREQ, seed ^ SALT_WARP_Z, WARP_OCTAVES);
+    let a = WARP_AMP * r;
+    let mut w = [p[0] + a * wx, p[1] + a * wy, p[2] + a * wz];
+    let l = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
+    if l > 1e-6 {
+        w[0] /= l;
+        w[1] /= l;
+        w[2] /= l;
+    }
+    w
+}
+
+/// Distance (BFS hops) from the coast over **ocean** cells: a coast cell
+/// (ocean adjacent to land) is 0, increasing into open ocean. Land cells stay
+/// `u32::MAX` (irrelevant — they don't use the bathymetry curve).
+fn coast_distance(is_land: &[bool], neighbors: &[Vec<u32>]) -> Vec<u32> {
+    let n = is_land.len();
+    let mut dist = vec![u32::MAX; n];
+    let mut frontier: Vec<u32> = Vec::new();
+    for c in 0..n {
+        if !is_land[c] && neighbors[c].iter().any(|&nb| is_land[nb as usize]) {
+            dist[c] = 0;
+            frontier.push(c as u32);
+        }
+    }
+    let mut d = 0u32;
+    while !frontier.is_empty() {
+        let mut next = Vec::new();
+        for &c in &frontier {
+            for &nb in &neighbors[c as usize] {
+                let nb = nb as usize;
+                if !is_land[nb] && dist[nb] == u32::MAX {
+                    dist[nb] = d + 1;
+                    next.push(nb as u32);
+                }
+            }
+        }
+        frontier = next;
+        d += 1;
+    }
+    dist
 }
 
 /// The Path B heightmap — a pure function of position on the **unit sphere**.

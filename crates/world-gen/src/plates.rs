@@ -36,10 +36,10 @@ const OCEAN_BASE: f32 = -0.55;
 /// low passive margins, not the Andes); oceanic arcs/ridges mostly stay
 /// **subsea** (occasionally breaching as island chains — realistic); rifts
 /// dip a continental valley below sea (a Red-Sea-like trough).
-const FOLD_PEAK: f32 = 0.80;
-const ARC_PEAK: f32 = 0.45;
+const FOLD_PEAK: f32 = 0.85;
+const ARC_PEAK: f32 = 0.55;
 const TRENCH_DEPTH: f32 = 0.30;
-const ISLAND_ARC_PEAK: f32 = 0.40;
+const ISLAND_ARC_PEAK: f32 = 0.45;
 const RIDGE_PEAK: f32 = 0.20;
 const RIFT_DEPTH: f32 = 0.28;
 const FAULT_PEAK: f32 = 0.05;
