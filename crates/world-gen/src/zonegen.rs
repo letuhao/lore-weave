@@ -200,12 +200,31 @@ fn blended_height(subs: &[SubAttr], x: f32, y: f32) -> f32 {
     }
     let b = subs[i2];
     let h2 = zone_height(x, y, b.class, b.base, b.salt);
+    // Typed seam: the blend width depends on the class pair (B3b). A narrow
+    // band → a sharp escarpment; a wide band → a graded foothill ramp.
+    let width = seam_width(a.class, b.class);
     // Blend by the gap between the two nearest *distances* (not squared), so the
     // band has consistent pixel width regardless of cell size.
     let gap = d2.sqrt() - d1.sqrt();
-    let t = (gap / BLEND_WIDTH).clamp(0.0, 1.0);
+    let t = (gap / width).clamp(0.0, 1.0);
     let w1 = 0.5 + 0.5 * smoothstep01(t); // 0.5 at the seam → 1.0 deep in cell 1
     w1 * h1 + (1.0 - w1) * h2
+}
+
+/// Blend-band width (px) for a seam between two classes — the "type" of the
+/// boundary. Symmetric in its arguments.
+/// - **Escarpment** (plateau ⨯ lowland) → narrow → a sharp inland cliff/step.
+/// - **Foothills / piedmont** (mountains ⨯ lowland) → wide → a graded ramp.
+/// - everything else (same class, or already-rugged pairs) → the default
+///   smooth width.
+fn seam_width(a: TerrainClass, b: TerrainClass) -> f32 {
+    use TerrainClass::{Hills, Mountains, Plains, Plateau};
+    let lowland = |c| matches!(c, Plains | Hills);
+    match (a, b) {
+        (Plateau, x) | (x, Plateau) if lowland(x) => 6.0,
+        (Mountains, x) | (x, Mountains) if lowland(x) => 46.0,
+        _ => BLEND_WIDTH,
+    }
 }
 
 /// `smoothstep` on a value already in `[0,1]`.
