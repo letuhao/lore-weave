@@ -144,11 +144,13 @@ rivers. **No placer work remains.** The recommended next actions:
    the session entry below). **Continent 992.963 s → 21.541 s (46× speedup);
    `treasure_placer` 973.376 s → 2.944 s (330×).** Score-first / validate-
    on-demand refactor, bit-exact preserved.
-5. **HTTP service surface** — `tilemap-service` is still a CLI/library;
-   Phase 4+ of the broader plan adds the service-to-service API.
-6. (optional) — `obstacle_placer` at 17 s is now 79 % of the 21.5 s
-   continent. With iteration latency now manageable, no urgent need; open a
-   fresh deferred item if profiling shows pain again.
+5. ~~obstacle_placer perf~~ — ✅ **DONE 2026-05-22** (16.961 s → 0.864 s,
+   19.6×; continent now **6.46 s**). Simple-point erosion pre-filter.
+6. **HTTP service surface** — `tilemap-service` is still a CLI/library;
+   Phase 4+ of the broader plan adds the service-to-service API. **The perf
+   thread is effectively done** (993 s → 6.46 s = 154× cumulative); no
+   placer is a dominant bottleneck. Further perf only if iteration cadence
+   demands sub-2 s (next target would be `treasure_placer` at 3.5 s).
 
 > **River barrier-strength caveat (Deferred #026):** `RiverPlacer` runs last,
 > into a map already cluttered by `ObstaclePlacer`, so the conservative dual
@@ -158,6 +160,86 @@ rivers. **No placer work remains.** The recommended next actions:
 
 Pre-flight for any of these: `cargo build` clean at workspace root; ContextHub
 up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run.
+
+---
+
+## Session 2026-05-22 — `erode_zone` simple-point pre-filter (obstacle_placer perf) — ✅ DONE (L, default v2.2 human-in-loop)
+
+### Outcome
+
+`erode_zone` ran an O(N) `would_seal_a_gap` flood fill per wall-adjacent
+Open tile. Since the blocking footprint is always a single tile, whether
+removing it seals a gap has a purely local characterisation — the
+*simple-point* test (union-find over the 4 cardinal neighbours linked via
+passable diagonals on the 8-ring). `groups ≥ 2` → fall through to the
+unchanged flood fill; `groups ≤ 1` → O(1). §4 proof shows bit-exact
+equivalence. **`obstacle_placer` 16.961 s → 0.864 s (19.6×); continent
+total 21.541 s → 6.463 s (3.3×).** L, default v2.2; `/review-impl` clean
+(0 HIGH/MED, 1 LOW accepted).
+
+- **Spec:** [`docs/specs/2026-05-21-tilemap-erosion-simple-point.md`](../../specs/2026-05-21-tilemap-erosion-simple-point.md)
+  (§1-§9, AC-1..AC-7). **Plan:**
+  [`docs/plans/2026-05-21-tilemap-erosion-simple-point.md`](../../plans/2026-05-21-tilemap-erosion-simple-point.md).
+  **Findings:** [`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md)
+  2026-05-22 section.
+
+### What shipped (`services/tilemap-service/src/engine/modificators/obstacle_placer.rs`)
+
+| Element | Content |
+|---|---|
+| `local_seal_verdict(tile, passable, passable_count, grid) -> Option<bool>` | NEW — the simple-point pre-filter. Reads the 8 neighbours (bounds-checked); counts passable cardinals; union-finds them via passable diagonals; `groups≥2`→`None` (flood-fill), `groups==0`→`Some(count==1)` (elimination), `groups==1`→`Some(false)` (leaf/simple, safe). |
+| `erode_zone` | Maintains a running `passable_count`; replaces the unconditional `would_seal_a_gap` with `match local_seal_verdict {...}`. Control flow otherwise unchanged ⇒ bit-exact eroded set. |
+| `erode_zone_naive` (`#[cfg(test)]`) | The pre-fix unconditional-flood-fill version, kept as the AC-2 oracle. |
+| AC-1/AC-2/AC-3 tests | AC-1: ~16 000 per-tile checks (400 random masks × every passable tile) — every `Some(v)` == `would_seal_a_gap`. AC-2: 200 random carved zones, `erode_zone` ↔ `erode_zone_naive` identical eroded mask + post-state. AC-3: each §4 branch (isolated/leaf/solid-interior/corridor/T-junction). |
+
+### Measurement result (AC-4)
+
+```
+                 Before        After      Speedup
+obstacle_placer  16.961 s      0.864 s    19.6 ×
+place_tilemap    21.541 s      6.463 s     3.3 ×
+```
+
+**Cumulative perf journey: 993 s → 6.46 s = 154×** across three tasks
+(#016/#018 fractalize+penrose → #029 TreasurePlacer → erode_zone). The
+continent now generates in **6.46 s**; remaining placers all sub-4 s with
+no single dominant bottleneck.
+
+### Review
+
+- **Design review** (Lead self-review of §4): conservative direction sound —
+  union-find never merges two cardinals without a real ring path ⇒ no false
+  "safe"; a false "2 groups" only costs an unnecessary flood fill.
+- **Code review** (2-stage): 0 HIGH/MED. Union-find over 4 cardinals is O(1);
+  `passable_count` tracked in lockstep with erosion; `erode_zone` control flow
+  otherwise unchanged.
+- **`/review-impl`** (POST-REVIEW adversarial): 0 HIGH, 0 MED, 1 LOW
+  (accepted). Verified the simple-point theorem soundness + union-find
+  completeness for 4-connectivity (the 8-neighbourhood foreground graph is
+  the ring `N-NE-E-SE-S-SW-W-NW`; the 4 union edges capture every cardinal
+  ring segment incl. the long way around). LOW: AC-1 asserts nothing for
+  `None` verdicts — accepted, since production runs `would_seal_a_gap` for
+  those (= oracle by construction); AC-3 covers the elimination branch.
+
+### Verify
+
+`cargo test --workspace` green — **281** tilemap-service lib (+3: AC-1/2/3) +
+7 determinism (+1 ignored regenerator) + all integration suites = **all
+passed, 0 failed**. `cargo clippy --workspace --all-targets` 0 warnings.
+Golden test `golden_baseline_byte_identical` + `erosion_never_seals_a_gap`
+byte-exact — **no rebaseline**.
+
+### Deferred
+
+- None. The obstacle bottleneck is cleared; no residual worth tracking. If
+  iteration cadence ever demands sub-2 s continent generation, the next
+  target is `treasure_placer` (3.5 s — residual `find_access_path` + oracle
+  refresh), but it is not warranted now.
+
+### Next
+
+1. Live L3/L4 measurement (still blocked on provider-registry pricing).
+2. HTTP service surface (DESIGN.md §9 Phase 4+).
 
 ---
 

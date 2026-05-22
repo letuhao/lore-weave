@@ -94,9 +94,117 @@ fn is_wall_adjacent(
     })
 }
 
+/// The local *simple-point* verdict for eroding a single `tile` from
+/// `passable` (perf pre-filter — obstacle_placer DEFERRED-#029-successor).
+///
+/// `would_seal_a_gap` in `erode_zone` is always called with a single-tile
+/// blocking footprint, so whether removing `tile` seals a gap has a purely
+/// local characterisation:
+/// - **`None`** — `tile`'s passable cardinal neighbours form ≥ 2 groups under
+///   "linked via a passable diagonal"; removal *might* split ⇒ the caller must
+///   run the global `would_seal_a_gap`.
+/// - **`Some(true)`** — `tile` is isolated (0 passable cardinal neighbours)
+///   AND it is the whole region (`passable_count == 1`) ⇒ removal eliminates.
+/// - **`Some(false)`** — a leaf (1 cardinal) or a simple point (≥ 2 cardinals
+///   in one local group) ⇒ removal provably cannot split, and the region
+///   survives.
+///
+/// Bit-exact equivalence to `would_seal_a_gap({tile}, passable)` is proven in
+/// spec [`docs/specs/2026-05-21-tilemap-erosion-simple-point.md`] §4.
+fn local_seal_verdict(
+    tile: TileCoord,
+    passable: &TileMask,
+    passable_count: usize,
+    grid: GridSize,
+) -> Option<bool> {
+    let x = tile.x as i64;
+    let y = tile.y as i64;
+    let get = |dx: i64, dy: i64| -> bool {
+        let nx = x + dx;
+        let ny = y + dy;
+        nx >= 0
+            && ny >= 0
+            && nx < grid.width as i64
+            && ny < grid.height as i64
+            && passable.get(TileCoord::new(nx as u32, ny as u32))
+    };
+    // Cardinal neighbours N, E, S, W and the diagonals that link adjacent
+    // cardinals on the 8-ring (N–E via NE, E–S via SE, S–W via SW, W–N via NW).
+    let (n, e, s, w) = (get(0, -1), get(1, 0), get(0, 1), get(-1, 0));
+    let cardinals = [n, e, s, w];
+    let card_count = cardinals.iter().filter(|&&b| b).count();
+    if card_count == 0 {
+        // Isolated tile — seals only by eliminating the whole region.
+        return Some(passable_count == 1);
+    }
+    if card_count == 1 {
+        // Leaf — removal never splits, region survives.
+        return Some(false);
+    }
+    // ≥ 2 cardinals: count their local groups via union-find over [N,E,S,W].
+    // Edges (cyclic): 0(N)-1(E) via NE, 1(E)-2(S) via SE, 2(S)-3(W) via SW,
+    // 3(W)-0(N) via NW. An edge exists iff both endpoints AND the diagonal
+    // are passable.
+    let (ne, se, sw, nw) = (get(1, -1), get(1, 1), get(-1, 1), get(-1, -1));
+    let mut parent = [0usize, 1, 2, 3];
+    fn find(parent: &mut [usize; 4], i: usize) -> usize {
+        let mut r = i;
+        while parent[r] != r {
+            r = parent[r];
+        }
+        // path-halving
+        let mut c = i;
+        while parent[c] != r {
+            let next = parent[c];
+            parent[c] = r;
+            c = next;
+        }
+        r
+    }
+    let union = |parent: &mut [usize; 4], a: usize, b: usize| {
+        let ra = find(parent, a);
+        let rb = find(parent, b);
+        if ra != rb {
+            parent[ra] = rb;
+        }
+    };
+    if n && e && ne {
+        union(&mut parent, 0, 1);
+    }
+    if e && s && se {
+        union(&mut parent, 1, 2);
+    }
+    if s && w && sw {
+        union(&mut parent, 2, 3);
+    }
+    if w && n && nw {
+        union(&mut parent, 3, 0);
+    }
+    // Count distinct roots among the *passable* cardinals only.
+    let mut roots = [false; 4];
+    for (i, &present) in cardinals.iter().enumerate() {
+        if present {
+            roots[find(&mut parent, i)] = true;
+        }
+    }
+    let groups = roots.iter().filter(|&&r| r).count();
+    if groups >= 2 {
+        None // might split — the caller must run would_seal_a_gap
+    } else {
+        Some(false) // one local group ⇒ a simple point, removal is safe
+    }
+}
+
 /// TMP_005 §4.3 / spec D5 — strip loose appendages: iterative passes that turn
 /// wall-adjacent `Open` tiles `Obstacle`, each gated by a sequential
-/// `would_seal_a_gap` check. Returns the set of tiles eroded.
+/// connectivity check. Returns the set of tiles eroded.
+///
+/// **Perf:** the per-tile seal check uses [`local_seal_verdict`] — the
+/// single-tile simple-point pre-filter — and only falls back to the O(N)
+/// `would_seal_a_gap` flood fill for tiles whose passable cardinal neighbours
+/// form ≥ 2 local groups (genuine pinch-point candidates). Bit-exact identical
+/// eroded set to the pre-fix unconditional flood fill (`erode_zone_naive`,
+/// kept under `#[cfg(test)]` as the AC-2 oracle).
 fn erode_zone(state: &mut TilemapBuildState, zone_idx: usize) -> TileMask {
     let grid = state.grid;
     let zone_assigned = state.zones[zone_idx].assigned_tiles.clone();
@@ -105,6 +213,7 @@ fn erode_zone(state: &mut TilemapBuildState, zone_idx: usize) -> TileMask {
     // candidate is checked against the post-this-pass-so-far state (sequential,
     // not batch — spec D5).
     let mut passable = state.zone_passable(zone_idx);
+    let mut passable_count = passable.count_ones();
     let mut blocking = TileMask::new(grid.width, grid.height);
 
     loop {
@@ -116,14 +225,21 @@ fn erode_zone(state: &mut TilemapBuildState, zone_idx: usize) -> TileMask {
             if !is_wall_adjacent(state, &zone_assigned, tile, grid) {
                 continue;
             }
-            blocking.set(tile);
-            let seals = would_seal_a_gap(&blocking, &passable);
-            blocking.clear(tile);
+            let seals = match local_seal_verdict(tile, &passable, passable_count, grid) {
+                Some(v) => v,
+                None => {
+                    blocking.set(tile);
+                    let s = would_seal_a_gap(&blocking, &passable);
+                    blocking.clear(tile);
+                    s
+                }
+            };
             if seals {
                 continue;
             }
             state.set_tile_state(tile, TileState::Obstacle);
             passable.clear(tile);
+            passable_count -= 1;
             eroded.set(tile);
             blocked_any = true;
         }
@@ -237,6 +353,43 @@ fn footprint_at(cells: &[(i32, i32)], anchor: TileCoord, grid: GridSize) -> Tile
         ));
     }
     mask
+}
+
+/// The pre-perf `erode_zone` — an unconditional `would_seal_a_gap` flood fill
+/// per candidate. Kept under `#[cfg(test)]` as the bit-exact oracle for AC-2.
+#[cfg(test)]
+fn erode_zone_naive(state: &mut TilemapBuildState, zone_idx: usize) -> TileMask {
+    let grid = state.grid;
+    let zone_assigned = state.zones[zone_idx].assigned_tiles.clone();
+    let mut eroded = TileMask::new(grid.width, grid.height);
+    let mut passable = state.zone_passable(zone_idx);
+    let mut blocking = TileMask::new(grid.width, grid.height);
+
+    loop {
+        let mut blocked_any = false;
+        for tile in zone_assigned.iter_set() {
+            if state.tile_state_at(tile) != TileState::Open {
+                continue;
+            }
+            if !is_wall_adjacent(state, &zone_assigned, tile, grid) {
+                continue;
+            }
+            blocking.set(tile);
+            let seals = would_seal_a_gap(&blocking, &passable);
+            blocking.clear(tile);
+            if seals {
+                continue;
+            }
+            state.set_tile_state(tile, TileState::Obstacle);
+            passable.clear(tile);
+            eroded.set(tile);
+            blocked_any = true;
+        }
+        if !blocked_any {
+            break;
+        }
+    }
+    eroded
 }
 
 #[cfg(test)]
@@ -356,6 +509,158 @@ mod tests {
                 "erosion split the passable region into ≥2 components",
             );
         }
+    }
+
+    /// A random passable mask on a `w × h` grid at `density` (AC-1/AC-2).
+    fn random_passable(rng: &mut ChaCha8Rng, w: u32, h: u32, density: f64) -> TileMask {
+        let mut m = TileMask::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                if rng.gen_bool(density) {
+                    m.set(TileCoord::new(x, y));
+                }
+            }
+        }
+        m
+    }
+
+    #[test]
+    fn ac1_local_seal_verdict_matches_would_seal_a_gap_oracle() {
+        // AC-1 — the per-tile bit-exact gate (spec §4). For every passable
+        // tile T of a random-mask corpus, the local simple-point verdict must
+        // agree with the global would_seal_a_gap({T}, passable). Where the
+        // verdict is `None` (groups ≥ 2), the caller would flood-fill anyway,
+        // so we only need to confirm: when `Some(v)`, `v == would_seal_a_gap`.
+        let grid = GridSize { width: 9, height: 9 };
+        let mut rng = ChaCha8Rng::seed_from_u64(0x513_42E0);
+        let mut some_true = 0usize;
+        let mut some_false = 0usize;
+        let mut none_count = 0usize;
+        for _ in 0..400 {
+            let density = *[0.3, 0.5, 0.7].get(rng.gen_range(0..3)).unwrap();
+            let passable = random_passable(&mut rng, 9, 9, density);
+            let count = passable.count_ones();
+            for tile in passable.iter_set() {
+                let mut blocking = TileMask::new(9, 9);
+                blocking.set(tile);
+                let oracle = would_seal_a_gap(&blocking, &passable);
+                match local_seal_verdict(tile, &passable, count, grid) {
+                    Some(v) => {
+                        assert_eq!(
+                            v, oracle,
+                            "local verdict {v} != oracle {oracle} for tile {tile:?}\npassable={passable:?}",
+                        );
+                        if v { some_true += 1; } else { some_false += 1; }
+                    }
+                    None => {
+                        // `None` means "flood-fill required" — legitimate only
+                        // when the tile has ≥2 cardinal groups. We don't assert
+                        // the oracle value here (either verdict is valid for a
+                        // genuine pinch candidate); the caller runs the oracle.
+                        none_count += 1;
+                    }
+                }
+            }
+        }
+        // Sanity — the corpus exercises all three resolutions in quantity.
+        assert!(some_false > 100, "too few Some(false): {some_false}");
+        assert!(none_count > 50, "too few None (flood-fill) cases: {none_count}");
+        let _ = some_true; // elimination is rare; presence not required
+    }
+
+    #[test]
+    fn ac2_erode_zone_matches_naive_on_random_zones() {
+        // AC-2 — the score-first/local-verdict erode_zone must produce a
+        // bit-identical eroded mask + post-state to the unconditional-flood-
+        // fill erode_zone_naive, across random carved zones.
+        let mut rng = ChaCha8Rng::seed_from_u64(0xE00_DE50);
+        for _ in 0..200 {
+            let mut free = Vec::new();
+            for y in 0..9 {
+                for x in 0..9 {
+                    if rng.gen_bool(0.3) {
+                        free.push((x, y));
+                    }
+                }
+            }
+            if free.is_empty() {
+                free.push((4, 4));
+            }
+            // Carve some random walls to create non-trivial topology.
+            let mut walls = Vec::new();
+            for y in 0..9 {
+                for x in 0..9 {
+                    if rng.gen_bool(0.15) {
+                        walls.push((x, y));
+                    }
+                }
+            }
+            let mut prod = state(9, 9, &free);
+            let mut naive = state(9, 9, &free);
+            for &(x, y) in &walls {
+                prod.set_tile_state(TileCoord::new(x, y), TileState::Obstacle);
+                naive.set_tile_state(TileCoord::new(x, y), TileState::Obstacle);
+            }
+            let prod_eroded = erode_zone(&mut prod, 0);
+            let naive_eroded = erode_zone_naive(&mut naive, 0);
+            assert_eq!(prod_eroded, naive_eroded, "eroded mask diverged");
+            assert_eq!(
+                prod.zone_passable(0), naive.zone_passable(0),
+                "post-erosion passable diverged",
+            );
+        }
+    }
+
+    #[test]
+    fn ac3_simple_point_unit_cases() {
+        // AC-3 — one assertion per §4 branch. Build a `passable` mask directly
+        // and probe `local_seal_verdict` + cross-check would_seal_a_gap.
+        let grid = GridSize { width: 5, height: 5 };
+        let probe = |tiles: &[(u32, u32)], t: (u32, u32)| {
+            let mut p = TileMask::new(5, 5);
+            for &(x, y) in tiles {
+                p.set(TileCoord::new(x, y));
+            }
+            let tile = TileCoord::new(t.0, t.1);
+            let count = p.count_ones();
+            let verdict = local_seal_verdict(tile, &p, count, grid);
+            let mut b = TileMask::new(5, 5);
+            b.set(tile);
+            let oracle = would_seal_a_gap(&b, &p);
+            (verdict, oracle)
+        };
+
+        // Isolated single tile — eliminates the whole region.
+        let (v, o) = probe(&[(2, 2)], (2, 2));
+        assert_eq!(v, Some(true));
+        assert!(o);
+
+        // Isolated tile among other isolated tiles — drops a singleton, safe.
+        let (v, o) = probe(&[(0, 0), (2, 2), (4, 4)], (2, 2));
+        assert_eq!(v, Some(false));
+        assert!(!o);
+
+        // Leaf stub — one cardinal neighbour, safe.
+        let (v, o) = probe(&[(2, 2), (2, 3)], (2, 2));
+        assert_eq!(v, Some(false));
+        assert!(!o);
+
+        // Solid 3×3 interior boundary tile (the centre's neighbours all link)
+        // — a simple point, groups==1, safe, NO flood fill.
+        let solid: Vec<(u32, u32)> = (1..=3).flat_map(|y| (1..=3).map(move |x| (x, y))).collect();
+        let (v, o) = probe(&solid, (2, 2));
+        assert_eq!(v, Some(false), "solid interior is a simple point");
+        assert!(!o);
+
+        // 1-wide horizontal corridor middle — 2 cardinals (E,W), no diagonal
+        // link ⇒ groups==2 ⇒ None ⇒ caller flood-fills ⇒ seals.
+        let (v, o) = probe(&[(1, 2), (2, 2), (3, 2)], (2, 2));
+        assert_eq!(v, None, "corridor middle needs the flood fill");
+        assert!(o);
+
+        // T-junction — 3 cardinals not all linked ⇒ groups≥2 ⇒ None.
+        let (v, _o) = probe(&[(2, 1), (1, 2), (2, 2), (3, 2)], (2, 2));
+        assert_eq!(v, None, "T-junction needs the flood fill");
     }
 
     #[test]

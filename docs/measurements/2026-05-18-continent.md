@@ -221,3 +221,52 @@ The continent now generates in **21.5 s** — comfortably inside the
 candidate bottleneck (if profiling shows pain again) is `obstacle_placer`
 at 17 s (~80 % of the new total). Golden test passes byte-exact — no
 output drift from the refactor.
+
+---
+
+## 2026-05-22 update — `erode_zone` simple-point pre-filter shipped
+
+Spec:
+[`docs/specs/2026-05-21-tilemap-erosion-simple-point.md`](../specs/2026-05-21-tilemap-erosion-simple-point.md).
+`erode_zone` called `would_seal_a_gap` (O(N) double flood fill) for every
+wall-adjacent Open tile. The single-tile blocking footprint means whether a
+tile seals a gap has a purely local characterisation — the *simple-point*
+test (union-find over the 4 cardinal neighbours linked via passable
+diagonals). `groups ≥ 2` falls through to the unchanged flood fill;
+`groups ≤ 1` is O(1). §4 proof: bit-exact equivalent.
+
+```
+── continent measurement — offline (engine-only) ────────
+grid           : 256×256          objects placed : 456
+place_zones    : 0.103 s
+modificators   : 6.359 s
+   treasure_placer      :     3.526 s  ( 55.4 %)   ← new leader
+   river_placer         :     1.054 s  ( 16.6 %)
+   connections_placer   :     0.898 s  ( 14.1 %)
+   obstacle_placer      :     0.864 s  ( 13.6 %)   ← was 16.961 s (79.1 %)
+   road_placer          :     0.017 s  (  0.3 %)
+   terrain_painter      :     0.000 s  (  0.0 %)
+place_tilemap  : 6.463 s  (total)
+─────────────────────────────────────────────────────────
+```
+
+### Speedup
+
+| Stage | Before | After | Speedup |
+|---|---|---|---|
+| `obstacle_placer` | 16.961 s | **0.864 s** | **19.6 ×** |
+| `place_tilemap` (total) | 21.541 s | **6.463 s** | **3.3 ×** |
+
+### Cumulative perf journey (993 s → 6.46 s = **154 ×**)
+
+| Date | Fix | Continent total |
+|---|---|---|
+| 2026-05-18 | (baseline) | 506–814 s |
+| 2026-05-20 | #016/#018 fractalize+penrose buckets | ~993 s (place_zones 0.11 s; pipeline dominated) |
+| 2026-05-21 | #029 TreasurePlacer score-first | 21.5 s |
+| 2026-05-22 | erode_zone simple-point | **6.46 s** |
+
+The continent now generates in **6.46 s**. Remaining placers are all
+sub-4 s; no single dominant bottleneck. Further perf work is not warranted
+unless iteration cadence demands sub-2 s — at which point `treasure_placer`
+(3.5 s) would be the next target. Golden test byte-exact — no drift.
