@@ -33,10 +33,11 @@ impl Modificator for RiverPlacer {
     }
 
     fn dependencies(&self) -> Vec<&str> {
-        // River runs last — it needs ObstaclePlacer's `Mountain`/`Lake`
-        // `biome_object_type` tags (sources + sinks) and the road tiles painted
-        // by RoadPlacer (bridge detection). Resolves spec finding F-1.
-        vec!["obstacle_placer", "road_placer"]
+        // River runs after ObstacleSourcePlacer (which places the `Mountain`/
+        // `Lake` source/sink tags pre-erosion, on the Open zone area — DEFERRED
+        // #026) and after RoadPlacer (bridge detection). ObstacleFillPlacer
+        // then runs *after* the river, filling the bulk obstacles around it.
+        vec!["obstacle_source_placer", "road_placer"]
     }
 
     fn process(&self, ctx: &mut ModificatorContext<'_>) -> crate::Result<()> {

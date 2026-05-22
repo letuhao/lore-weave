@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 
 use crate::engine::build_state::TilemapBuildState;
 use crate::engine::modificators::{
-    ConnectionsPlacer, ObstaclePlacer, RiverPlacer, RoadPlacer, TerrainPainter, TreasurePlacer,
+    ConnectionsPlacer, ObstacleFillPlacer, ObstacleSourcePlacer, RiverPlacer, RoadPlacer,
+    TerrainPainter, TreasurePlacer,
 };
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
@@ -102,18 +103,21 @@ fn place_tilemap_inner(
     // TMP_003 — build the mutable generation state and run the modificator
     // pipeline. The Kahn topo-sort orders it by the `dependencies()` edges
     // regardless of `add` order: TerrainPainter → ConnectionsPlacer →
-    // TreasurePlacer → RoadPlacer → ObstaclePlacer → RiverPlacer (TMP_006 §7;
-    // RiverPlacer last — it consumes ObstaclePlacer's mountain/lake tags).
+    // TreasurePlacer → RoadPlacer → ObstacleSourcePlacer → RiverPlacer →
+    // ObstacleFillPlacer (DEFERRED #026 — the obstacle pass is split so the
+    // river carves a wide-open zone *before* the bulk fill clutters it, making
+    // rivers real barriers; ObstacleSourcePlacer places only the Mountain/Lake
+    // river source/sink tags pre-erosion, ObstacleFillPlacer erodes + fills the
+    // rest post-river).
     let mut state = TilemapBuildState::from_zones(tiled, grid);
     let mut registry = ModificatorRegistry::new();
     registry.add(Box::new(TerrainPainter));
     registry.add(Box::new(ConnectionsPlacer));
     registry.add(Box::new(TreasurePlacer));
-    // Phase E — RoadPlacer (TMP_003 §3.4 step 6) before ObstaclePlacer;
-    // RiverPlacer (§3.5 step 7) after it.
     registry.add(Box::new(RoadPlacer));
-    registry.add(Box::new(ObstaclePlacer));
+    registry.add(Box::new(ObstacleSourcePlacer));
     registry.add(Box::new(RiverPlacer));
+    registry.add(Box::new(ObstacleFillPlacer));
     let modificator_timings = {
         let mut ctx = ModificatorContext {
             template,
@@ -287,8 +291,9 @@ mod tests {
             registry.add(Box::new(ConnectionsPlacer));
             registry.add(Box::new(TreasurePlacer));
             registry.add(Box::new(RoadPlacer));
-            registry.add(Box::new(ObstaclePlacer));
+            registry.add(Box::new(ObstacleSourcePlacer));
             registry.add(Box::new(RiverPlacer));
+            registry.add(Box::new(ObstacleFillPlacer));
             {
                 let mut ctx = ModificatorContext {
                     template: &template,
@@ -365,13 +370,14 @@ mod tests {
             let tiled = place_zones(&template, grid, seed).expect("place_zones on the fixture");
             let mut state = TilemapBuildState::from_zones(tiled, grid);
 
-            // Half 1 — the whole pipeline except RiverPlacer.
+            // Half 1 — the pipeline up to (and including) the river source
+            // placer, the river's Mountain/Lake tags now placed pre-erosion.
             let mut pre_river = ModificatorRegistry::new();
             pre_river.add(Box::new(TerrainPainter));
             pre_river.add(Box::new(ConnectionsPlacer));
             pre_river.add(Box::new(TreasurePlacer));
             pre_river.add(Box::new(RoadPlacer));
-            pre_river.add(Box::new(ObstaclePlacer));
+            pre_river.add(Box::new(ObstacleSourcePlacer));
             {
                 let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state };
                 pre_river.execute(&mut ctx).expect("pre-river pipeline");
@@ -504,8 +510,9 @@ mod tests {
             registry.add(Box::new(ConnectionsPlacer));
             registry.add(Box::new(TreasurePlacer));
             registry.add(Box::new(RoadPlacer));
-            registry.add(Box::new(ObstaclePlacer));
+            registry.add(Box::new(ObstacleSourcePlacer));
             registry.add(Box::new(RiverPlacer));
+            registry.add(Box::new(ObstacleFillPlacer));
             {
                 let mut ctx =
                     ModificatorContext { template: &template, grid, seed, state: &mut state };
@@ -578,7 +585,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plain, timed_view, "timing instrumentation must not change the view");
-        // 6 modificators in topological order — Phase-E final pipeline.
+        // 7 modificators in topological order — DEFERRED #026 split the
+        // obstacle pass into source (pre-river) + fill (post-river).
         let names: Vec<&str> = timings.modificators.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(
             names,
@@ -587,10 +595,11 @@ mod tests {
                 "connections_placer",
                 "treasure_placer",
                 "road_placer",
-                "obstacle_placer",
+                "obstacle_source_placer",
                 "river_placer",
+                "obstacle_fill_placer",
             ],
-            "per-modificator timing must list all six in topological order",
+            "per-modificator timing must list all seven in topological order",
         );
         // Total of per-stage durations should be the bulk of wall time
         // (impossible to assert an exact equality — Instant::now overhead /

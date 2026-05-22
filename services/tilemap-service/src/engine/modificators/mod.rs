@@ -10,7 +10,7 @@ pub mod terrain_painter;
 pub mod treasure_placer;
 
 pub use connections_placer::ConnectionsPlacer;
-pub use obstacle_placer::ObstaclePlacer;
+pub use obstacle_placer::{ObstacleFillPlacer, ObstacleSourcePlacer};
 pub use river_placer::RiverPlacer;
 pub use road_placer::RoadPlacer;
 pub use terrain_painter::TerrainPainter;

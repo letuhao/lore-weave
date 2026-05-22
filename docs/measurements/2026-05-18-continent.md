@@ -270,3 +270,56 @@ The continent now generates in **6.46 s**. Remaining placers are all
 sub-4 s; no single dominant bottleneck. Further perf work is not warranted
 unless iteration cadence demands sub-2 s — at which point `treasure_placer`
 (3.5 s) would be the next target. Golden test byte-exact — no drift.
+
+---
+
+## 2026-05-22 update — river barrier reorder (DEFERRED #026)
+
+Spec:
+[`docs/specs/2026-05-22-tilemap-river-barrier-reorder.md`](../specs/2026-05-22-tilemap-river-barrier-reorder.md).
+`ObstaclePlacer` split into `ObstacleSourcePlacer` (Mountain/Lake river
+markers on Open tiles, pre-erosion, **dual-gated** per-zone + map-wide) →
+`RiverPlacer` (carves a wide-open zone) → `ObstacleFillPlacer` (erode + fill
+the rest, post-river, skipping river Water). This is a **barrier-quality**
+fix, not a perf fix — the continent total rises as the river now *carves* a
+real barrier instead of cheaply fording.
+
+```
+── continent measurement — offline (engine-only) ────────
+grid           : 256×256          objects placed : 412
+place_zones    : 0.100 s
+modificators   : 10.454 s
+   obstacle_fill_placer :  3.968 s  ( 38.0 %)
+   treasure_placer      :  2.840 s  ( 27.2 %)
+   river_placer         :  2.503 s  ( 23.9 %)   ← was ~0.6 s (now carves)
+   connections_placer   :  0.934 s  (  8.9 %)
+   obstacle_source_placer: 0.199 s  (  1.9 %)
+   road_placer          :  0.010 s  (  0.1 %)
+place_tilemap  : 10.555 s  (total)
+─────────────────────────────────────────────────────────
+```
+
+### Barrier strength (the #026 metric)
+
+The golden fixture river — #026's reference ("75 crossings / 98 tiles,
+ford-dominated") — now fords **~6 %** of its tiles (AC-2 gates < 0.25):
+
+| River | tiles | fords | ford ratio |
+|---|---|---|---|
+| 1 | 89 | 4 | 0.045 |
+| 2 | 80 | 4 | 0.050 |
+| 3 | 40 | 5 | 0.125 |
+| aggregate | 210 | 13 | **0.062** |
+
+Connectivity-forced fords are now rare — the river carves a contiguous
+barrier with a handful of well-placed crossings, instead of fording nearly
+every tile. The strict dual `would_seal_a_gap` gate is unchanged; the river
+simply carves a *wider* region (markers placed pre-erosion).
+
+### Cost tradeoff (accepted)
+
+`place_tilemap`: 6.46 s → **10.56 s**. The river now carves (each carve runs
+the gated `would_seal_a_gap`) rather than cheaply fording, and the post-river
+fill works a fragmented region. Still well inside the iterate-able window;
+this is a deliberate barrier-quality-for-time trade. Object count 456 → 412
+(gated markers + fill skips river Water).

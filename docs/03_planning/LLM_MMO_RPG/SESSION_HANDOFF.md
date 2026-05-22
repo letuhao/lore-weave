@@ -163,6 +163,81 @@ up for `/amaw`; `infra` compose + gitignored `.local/phase0b.env` for a live run
 
 ---
 
+## Session 2026-05-22 — River barrier reorder: split ObstaclePlacer (DEFERRED #026) — ✅ DONE (XL, default v2.2 human-in-loop)
+
+### Outcome
+
+DEFERRED #026 (river ford-heavy / weak barrier) cleared. **Refined the root
+cause**: it is `erode_zone` (Open→Obstacle), not `fill_zone`, that fragments
+the passable region into narrow channels — and the river's Mountain/Lake
+sources/sinks required erosion first, so the river was stuck threading
+post-erosion channels and forded most tiles. **Fix:** split `ObstaclePlacer`
+into `ObstacleSourcePlacer` (Mountain/Lake markers on Open tiles, **pre-erosion**,
+dual-gated) → `RiverPlacer` (carves a wide-open zone) → `ObstacleFillPlacer`
+(erode + fill the rest, post-river). Golden fixture river fords dropped from
+ford-dominated to **~6 %** (AC-2 < 0.25). XL; `/review-impl` caught + fixed a
+HIGH.
+
+- **Spec:** [`docs/specs/2026-05-22-tilemap-river-barrier-reorder.md`](../../specs/2026-05-22-tilemap-river-barrier-reorder.md)
+  · **Plan:** [`docs/plans/2026-05-22-tilemap-river-barrier-reorder.md`](../../plans/2026-05-22-tilemap-river-barrier-reorder.md)
+  · **Findings:** [`docs/measurements/2026-05-18-continent.md`](../../measurements/2026-05-18-continent.md) 2026-05-22 section.
+
+### What shipped (`services/tilemap-service/src/engine/`)
+
+| Element | Content |
+|---|---|
+| `modificators/obstacle_placer.rs` | `ObstaclePlacer` → **`ObstacleSourcePlacer`** (`"obstacle_source_placer"`: places only `Mountain`/`Lake` markers on `zone_area_open`, pre-erosion) + **`ObstacleFillPlacer`** (`"obstacle_fill_placer"`: `erode_zone` then fill non-markers on `zone_obstacle`, post-river). `fill_zone` → generalised **`fill_region`** (target mask + `place_type` filter + `skip_water` + `gates: Vec<TileMask>`). `erode_zone` skips `Water`-terrain fords. NEW `is_river_marker`, `map_passable`, `footprint_clear_of_water`, `zone_selection` helpers. |
+| `modificators/river_placer.rs` | `dependencies()` retargeted `obstacle_placer`→`obstacle_source_placer`. Carve/ford logic **unchanged** — it now just runs against a wider passable region. |
+| `engine/mod.rs` | register `ObstacleSourcePlacer` + `ObstacleFillPlacer` (drop `ObstaclePlacer`); pipeline `…→ RoadPlacer → ObstacleSourcePlacer → RiverPlacer → ObstacleFillPlacer`. Updated 3 test registrations + the per-modificator-timing test (now 7 placers). |
+| `tests/golden/tilemap_baseline.json` | rebaselined (deliberate — mountains/lakes move interior, river becomes a real barrier). |
+| `tests/determinism.rs` | NEW **AC-2** `ac2_river_barrier_fords_far_less_after_the_reorder` (ford ratio < 0.25). |
+
+### `/review-impl` — HIGH caught + fixed
+
+**HIGH-1:** the source placer initially gated markers only against the
+**per-zone** passable region — a marker on the sole inter-zone corridor would
+sever the **map-wide** region (ship an unreachable zone) while leaving the
+zone internally connected, so `ac10` (per-zone) wouldn't catch it. **Fixed:**
+`fill_region` gate generalised to `Vec<TileMask>`; the source placer now passes
+**both** the zone passable AND the map-wide passable (mirrors `RiverPlacer`'s
+refinement-R1 dual gate). Regression test
+`source_placer_dual_gate_rejects_a_marker_on_the_sole_inter_zone_corridor`
+added. Looped back through VERIFY (golden unchanged, all green).
+
+### Measurement (AC-6)
+
+| | Before (#026 ref) | After |
+|---|---|---|
+| golden river ford ratio | ford-dominated (~0.77 crossings) | **0.062** |
+| `place_tilemap` (continent 256²) | 6.46 s | **10.56 s** |
+| objects placed | 456 | 412 |
+
+Cost tradeoff **accepted**: the river now carves a real barrier (each carve
+runs the gated `would_seal_a_gap`) instead of cheaply fording. Still inside
+the iterate-able window.
+
+### Verify
+
+`cargo test --workspace` green — **285** tilemap-service lib (+ AC-1 source,
+AC-3 fill-skip-water, AC-4 erosion-skip-ford, HIGH-1 regression) + 8
+determinism (+AC-2; golden rebaselined) + all suites. `cargo clippy
+--workspace --all-targets` 0 warnings. Connectivity invariant intact:
+`ac10`, `erosion_never_seals_a_gap`, `ace8`, AC-2 all green.
+
+### Deferred
+
+- **#026 ✅ cleared** → "Recently cleared" in [`DEFERRED.md`](../../deferred/DEFERRED.md).
+
+### Next
+
+1. Live L3/L4 measurement (still blocked on provider-registry pricing).
+2. HTTP service surface (DESIGN.md §9 Phase 4+).
+3. (optional) the continent is now 10.56 s — if iteration cadence demands
+   faster, `obstacle_fill_placer` (4 s) + `treasure_placer` (2.8 s) +
+   `river_placer` (2.5 s) are the even split; no single dominant target.
+
+---
+
 ## Session 2026-05-22 — `erode_zone` simple-point pre-filter (obstacle_placer perf) — ✅ DONE (L, default v2.2 human-in-loop)
 
 ### Outcome

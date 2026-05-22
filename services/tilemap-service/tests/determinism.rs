@@ -123,6 +123,32 @@ fn ac4_same_seed_yields_byte_identical_tilemap() {
 }
 
 #[test]
+fn ac2_river_barrier_fords_far_less_after_the_reorder() {
+    // DEFERRED #026 — before the ObstacleSourcePlacer→River→ObstacleFillPlacer
+    // reorder, the river ran into a post-erosion zone fragmented into narrow
+    // channels, so the conservative `would_seal_a_gap` gate forded *most*
+    // river tiles (the golden was ~76 % crossings, ford-dominated). Now the
+    // river carves a wide-open zone (markers placed pre-erosion), so
+    // connectivity-forced fords are rare. Gate: aggregate ford ratio < 0.25.
+    use tilemap_service::types::tilemap::CrossingKind;
+    let view = run(&fixture(), GOLDEN_SEED);
+    let total_tiles: usize = view.river_segments.iter().map(|s| s.tiles.len()).sum();
+    let total_fords: usize = view
+        .river_segments
+        .iter()
+        .flat_map(|s| &s.crossings)
+        .filter(|c| c.kind == CrossingKind::Ford)
+        .count();
+    assert!(total_tiles > 0, "the fixture must place a river to test barrier strength");
+    let ford_ratio = total_fords as f64 / total_tiles as f64;
+    assert!(
+        ford_ratio < 0.25,
+        "river ford ratio {ford_ratio:.3} ({total_fords} fords / {total_tiles} tiles) — \
+         the reorder should keep connectivity-forced fords rare",
+    );
+}
+
+#[test]
 fn ace_phase_e_roads_are_painted_and_rivers_stay_connected() {
     // Phase E end-to-end — every road waypoint is painted `Road`, and every
     // river crossing tile stays passable terrain-wise (a carved tile is the

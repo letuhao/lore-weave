@@ -13,58 +13,130 @@ use crate::engine::geometry::{neighbors4, would_seal_a_gap};
 use crate::engine::pipeline::{Modificator, ModificatorContext};
 use crate::types::biome::{BiomeObjectType, BiomeSelection, BiomeSelectionRule, BiomeSet};
 use crate::types::object::{TilemapObjectKind, TilemapObjectPlacement};
-use crate::types::tile::{TileCoord, TileState};
+use crate::types::tile::{TerrainKind, TileCoord, TileState};
 use crate::types::tile_mask::TileMask;
 use crate::types::tilemap::GridSize;
 use crate::types::zone::ZoneRole;
 
-/// TMP_005 §4 ObstaclePlacer — biome selection + erosion + largest-first fill.
-#[derive(Debug)]
-pub struct ObstaclePlacer;
+/// Whether `object_type` is a river source/sink marker (a `Mountain` source or
+/// a `Lake` sink) — the obstacles placed pre-erosion by [`ObstacleSourcePlacer`]
+/// so `RiverPlacer` has sources + sinks before the bulk fill (DEFERRED #026).
+fn is_river_marker(t: BiomeObjectType) -> bool {
+    matches!(t, BiomeObjectType::Mountain | BiomeObjectType::Lake)
+}
 
-impl Modificator for ObstaclePlacer {
+/// The map-wide passable mask (`Walkable ∪ Open` across every zone) — the
+/// global-connectivity reference for the source placer's dual gate (mirrors
+/// `RiverPlacer`'s refinement-R1 map-wide check).
+fn map_passable(state: &TilemapBuildState, grid: GridSize) -> TileMask {
+    let mut m = TileMask::new(grid.width, grid.height);
+    for y in 0..grid.height {
+        for x in 0..grid.width {
+            let t = TileCoord::new(x, y);
+            if state.tile_state_at(t).is_passable() {
+                m.set(t);
+            }
+        }
+    }
+    m
+}
+
+/// The deterministic biome selection for a non-`Forbidden` zone, or `None` for
+/// `Forbidden` (completely blocked — nothing to fill). `select_biomes` is a
+/// pure function of `(zone_id, terrain, rules, library, seed)`, so the two
+/// passes (`ObstacleSourcePlacer` + `ObstacleFillPlacer`) re-derive an
+/// identical selection.
+fn zone_selection(ctx: &ModificatorContext<'_>, zone_idx: usize, library: &[BiomeSet]) -> Option<BiomeSelection> {
+    if ctx.state.zones[zone_idx].role == ZoneRole::Forbidden {
+        return None;
+    }
+    let zone_id = ctx.state.zones[zone_idx].id.clone();
+    let terrain = ctx.state.zone_terrain[zone_idx]
+        .expect("TerrainPainter runs before the obstacle placers (dependency edge)");
+    let default_rules = engine_default_biome_selection_rules();
+    let rules: &[BiomeSelectionRule] = ctx
+        .template
+        .zones
+        .iter()
+        .find(|z| z.zone_id == zone_id)
+        .and_then(|z| z.biome_selection_rules.as_ref())
+        .filter(|r| !r.use_engine_default)
+        .map_or(default_rules.as_slice(), |r| r.rules.as_slice());
+    Some(select_biomes(&zone_id, terrain, rules, library, ctx.seed))
+}
+
+/// TMP_005 §4 / DEFERRED #026 — places the river source/sink obstacles
+/// (`Mountain` + `Lake`) on each zone's **`Open` area, pre-erosion**, so
+/// `RiverPlacer` carves a wide-open zone (a real barrier, few fords) before the
+/// bulk obstacle fill clutters it. No erosion here.
+#[derive(Debug)]
+pub struct ObstacleSourcePlacer;
+
+impl Modificator for ObstacleSourcePlacer {
     fn name(&self) -> &str {
-        "obstacle_placer"
+        "obstacle_source_placer"
     }
 
     fn dependencies(&self) -> Vec<&str> {
-        // TMP_006 §7 pipeline order: Obstacles run last. `treasure_placer` /
-        // `road_placer` / `connections_placer` are unregistered in Phase B —
-        // the registry treats an unregistered dependency as satisfied (D7), so
-        // ObstaclePlacer simply sorts after TerrainPainter for now and after
-        // the placers once they land. (TMP_003 §3.2's DEPENDENCY(ObjectManager)
-        // is structurally satisfied — ObjectManager is a service, not a pass.)
+        // After terrain (needs zone terrain for biome selection) + the passable
+        // placers. RiverPlacer depends on this pass for its Mountain/Lake tags.
         vec!["terrain_painter", "treasure_placer", "road_placer", "connections_placer"]
     }
 
     fn process(&self, ctx: &mut ModificatorContext<'_>) -> crate::Result<()> {
         let library = engine_biome_library();
-        let default_rules = engine_default_biome_selection_rules();
-        let seed = ctx.seed;
-
         for zone_idx in 0..ctx.state.zones.len() {
-            // `Forbidden` zones are completely blocked — nothing to fill.
-            if ctx.state.zones[zone_idx].role == ZoneRole::Forbidden {
+            let Some(selection) = zone_selection(ctx, zone_idx, &library) else {
                 continue;
-            }
-            let zone_id = ctx.state.zones[zone_idx].id.clone();
-            let terrain = ctx.state.zone_terrain[zone_idx]
-                .expect("TerrainPainter runs before ObstaclePlacer (dependency edge)");
+            };
+            // Place ONLY the river markers, on the still-Open zone area, gated
+            // against BOTH the zone's passable region AND the map-wide passable
+            // region — a Mountain/Lake sits on a *passable* tile, so (unlike the
+            // post-erosion fill) it can split the zone OR sever the sole
+            // inter-zone corridor; the dual gate mirrors RiverPlacer's
+            // refinement R1 (TMP_006 §4). `map_passable` is recomputed per zone
+            // from current state, so it reflects markers placed in earlier zones
+            // (now Occupied).
+            let target = ctx.state.zone_area_open(zone_idx);
+            let zone_pass = ctx.state.zone_passable(zone_idx);
+            let map_pass = map_passable(ctx.state, ctx.grid);
+            fill_region(
+                ctx.state, &selection, &library, &target, is_river_marker, false,
+                vec![zone_pass, map_pass],
+            );
+        }
+        Ok(())
+    }
+}
 
-            // Resolve the rule set — the zone's override, else the engine
-            // defaults (TMP_005 §2.2).
-            let rules: &[BiomeSelectionRule] = ctx
-                .template
-                .zones
-                .iter()
-                .find(|z| z.zone_id == zone_id)
-                .and_then(|z| z.biome_selection_rules.as_ref())
-                .filter(|r| !r.use_engine_default)
-                .map_or(default_rules.as_slice(), |r| r.rules.as_slice());
+/// TMP_005 §4 / DEFERRED #026 — erodes each zone then fills the **non-river**
+/// obstacles on the eroded `Obstacle` region, **after** `RiverPlacer`. Erosion
+/// skips river `Water` fords; fill skips river `Water` tiles.
+#[derive(Debug)]
+pub struct ObstacleFillPlacer;
 
-            let selection = select_biomes(&zone_id, terrain, rules, &library, seed);
+impl Modificator for ObstacleFillPlacer {
+    fn name(&self) -> &str {
+        "obstacle_fill_placer"
+    }
+
+    fn dependencies(&self) -> Vec<&str> {
+        // Runs after the river carves (so erosion + fill respect river tiles).
+        vec!["river_placer"]
+    }
+
+    fn process(&self, ctx: &mut ModificatorContext<'_>) -> crate::Result<()> {
+        let library = engine_biome_library();
+        for zone_idx in 0..ctx.state.zones.len() {
+            let Some(selection) = zone_selection(ctx, zone_idx, &library) else {
+                continue;
+            };
             erode_zone(ctx.state, zone_idx);
-            fill_zone(ctx.state, zone_idx, &selection, &library);
+            let target = ctx.state.zone_obstacle(zone_idx);
+            // No connectivity gate — the Obstacle region is already
+            // non-passable, so an obstacle footprint cannot split the passable
+            // region (spec D6).
+            fill_region(ctx.state, &selection, &library, &target, |t| !is_river_marker(t), true, Vec::new());
         }
         Ok(())
     }
@@ -222,6 +294,14 @@ fn erode_zone(state: &mut TilemapBuildState, zone_idx: usize) -> TileMask {
             if state.tile_state_at(tile) != TileState::Open {
                 continue;
             }
+            // A river ford is a passable tile painted `Water` — erosion must
+            // not eat it (it is the river's deliberate crossing). River carved
+            // tiles are `Obstacle`, already skipped by the `Open` guard above;
+            // this guard additionally protects forded (passable-Water) tiles
+            // when ObstacleFillPlacer's erosion runs after RiverPlacer.
+            if state.terrain_layer[tile.flat_index(grid.width)] == TerrainKind::Water as u8 {
+                continue;
+            }
             if !is_wall_adjacent(state, &zone_assigned, tile, grid) {
                 continue;
             }
@@ -259,26 +339,37 @@ struct FillItem {
     footprint_cells: Vec<(i32, i32)>,
 }
 
-/// TMP_005 §4.4 / spec D6 — fill the zone's `Obstacle` region largest-first with
-/// the selected biomes' templates. Each template places at most one instance;
-/// no `would_seal_a_gap` call (an all-`Obstacle` footprint cannot disconnect
-/// the passable region — spec D6).
+/// TMP_005 §4.4 / spec D6 — fill `target` largest-first with the selected
+/// biomes' templates whose `object_type` satisfies `place_type`. Each template
+/// places at most one instance; no `would_seal_a_gap` call (an all-blocking
+/// footprint on the obstacle region cannot disconnect the passable region —
+/// spec D6).
+///
+/// `target` is the candidate-anchor region (the `Obstacle` region for the
+/// post-river fill pass; the `Open` area for the pre-river source pass —
+/// DEFERRED #026 reorder). When `skip_water` is set, an anchor is rejected if
+/// any footprint cell sits on a `Water`-terrain tile (a river tile) — so the
+/// fill never drops an obstacle onto the river.
 ///
 /// Returns the footprint `area()` of each placed obstacle **in placement
-/// order** — a non-increasing sequence when the largest-first sort holds (the
-/// AC-6 ordering check consumes this; the placed grid alone cannot reveal it,
-/// since densely-packed obstacle footprints merge into one `Occupied` blob).
-fn fill_zone(
+/// order** — a non-increasing sequence when the largest-first sort holds.
+fn fill_region(
     state: &mut TilemapBuildState,
-    zone_idx: usize,
     selection: &BiomeSelection,
     library: &[BiomeSet],
+    target: &TileMask,
+    place_type: impl Fn(BiomeObjectType) -> bool,
+    skip_water: bool,
+    mut gates: Vec<TileMask>,
 ) -> Vec<usize> {
     let grid = state.grid;
 
-    // Gather every template of every selected biome.
+    // Gather every template of every selected biome whose type is in scope.
     let mut items: Vec<FillItem> = Vec::new();
     for (&object_type, biome_ids) in &selection.by_type {
+        if !place_type(object_type) {
+            continue;
+        }
         for biome_id in biome_ids {
             let Some(biome) = library.iter().find(|b| &b.biome_id == biome_id) else {
                 continue;
@@ -303,18 +394,44 @@ fn fill_zone(
     });
 
     let mut placed_areas = Vec::new();
-    let mut obstacle = state.zone_obstacle(zone_idx);
+    let mut region = target.clone();
+    // When gating (source pass — placing on *passable* Open tiles), each
+    // `gates` mask is a passable region the placement must not split (TMP_006
+    // §4). Mirroring `RiverPlacer`'s refinement-R1 **dual** gate, the source
+    // pass passes BOTH the zone's passable region AND the map-wide passable
+    // region — a per-zone-only gate would miss a marker that severs the sole
+    // inter-zone corridor (the zone stays internally connected while the map
+    // splits). The masks are kept live (each placed footprint subtracted) so
+    // checks see the post-this-pass-so-far state. Empty for the fill pass (its
+    // target is the already-non-passable Obstacle region — spec D6).
     for item in &items {
-        // First `Obstacle`-region anchor (flat-index order) the footprint fits.
-        let placed = obstacle
-            .iter_set()
-            .find(|&anchor| footprint_fits(&item.footprint_cells, anchor, &obstacle, grid));
+        // First region anchor (flat-index order) the footprint fits, clear of
+        // river Water (when `skip_water`), and — when gating — whose blocking
+        // footprint would not seal ANY gated passable region (TMP_006 §4).
+        let placed = region.iter_set().find(|&anchor| {
+            if !footprint_fits(&item.footprint_cells, anchor, &region, grid) {
+                return false;
+            }
+            if skip_water && !footprint_clear_of_water(&item.footprint_cells, anchor, state, grid) {
+                return false;
+            }
+            if !gates.is_empty() {
+                let footprint = footprint_at(&item.footprint_cells, anchor, grid);
+                if gates.iter().any(|g| would_seal_a_gap(&footprint, g)) {
+                    return false;
+                }
+            }
+            true
+        });
         if let Some(anchor) = placed {
             let footprint = footprint_at(&item.footprint_cells, anchor, grid);
             for tile in footprint.iter_set() {
                 state.set_tile_state(tile, TileState::Occupied);
             }
-            obstacle.subtract(&footprint);
+            region.subtract(&footprint);
+            for g in gates.iter_mut() {
+                g.subtract(&footprint); // the placed footprint is no longer passable
+            }
             state.object_placements.push(TilemapObjectPlacement {
                 kind: TilemapObjectKind::Obstacle,
                 anchor,
@@ -326,6 +443,26 @@ fn fill_zone(
         }
     }
     placed_areas
+}
+
+/// Whether every footprint cell at `anchor` is clear of `Water` terrain (a
+/// river tile). Callers pass `skip_water = true` for the post-river fill pass
+/// so an obstacle is never dropped onto the river (DEFERRED #026).
+fn footprint_clear_of_water(
+    cells: &[(i32, i32)],
+    anchor: TileCoord,
+    state: &TilemapBuildState,
+    grid: GridSize,
+) -> bool {
+    cells.iter().all(|&(dx, dy)| {
+        let x = anchor.x as i64 + dx as i64;
+        let y = anchor.y as i64 + dy as i64;
+        if x < 0 || y < 0 || x >= grid.width as i64 || y >= grid.height as i64 {
+            return true; // out-of-bounds cells are caught by footprint_fits
+        }
+        let t = TileCoord::new(x as u32, y as u32);
+        state.terrain_layer[t.flat_index(grid.width)] != TerrainKind::Water as u8
+    })
 }
 
 /// Whether every footprint cell at `anchor` lands inside `area` (in-bounds and
@@ -799,7 +936,8 @@ mod tests {
         let lib = engine_biome_library();
         let rules = engine_default_biome_selection_rules();
         let sel = select_biomes(&ZoneId("z".to_string()), TerrainKind::Grass, &rules, &lib, TilemapSeed(1));
-        fill_zone(&mut st, 0, &sel, &lib);
+        let target = st.zone_obstacle(0);
+        fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new());
         for p in &st.object_placements {
             assert_eq!(p.kind, TilemapObjectKind::Obstacle);
             assert!(p.biome_object_type.is_some(), "obstacle placement must be tagged");
@@ -848,7 +986,8 @@ mod tests {
             .max()
             .expect("the Grass selection has at least one template");
 
-        let areas = fill_zone(&mut st, 0, &sel, &lib);
+        let target = st.zone_obstacle(0);
+        let areas = fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new());
         assert_eq!(areas.len(), st.object_placements.len(), "one reported area per placement");
         assert!(areas.len() >= 2, "fixture must place ≥2 obstacles to test ordering: {areas:?}");
         assert_eq!(areas[0], max_area, "the first obstacle placed is not the largest template");
@@ -873,7 +1012,8 @@ mod tests {
         let _ = erode_zone(&mut st, 0);
         let rules = engine_default_biome_selection_rules();
         let sel = select_biomes(&ZoneId("z".to_string()), TerrainKind::Grass, &rules, &lib, TilemapSeed(9));
-        fill_zone(&mut st, 0, &sel, &lib);
+        let target = st.zone_obstacle(0);
+        fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new());
         let mountain_kinds: Vec<_> = st
             .object_placements
             .iter()
@@ -891,7 +1031,8 @@ mod tests {
         let _ = erode_zone(&mut lake_st, 0);
         let mut lake_sel = BiomeSelection::default();
         lake_sel.push(BiomeObjectType::Lake, BiomeId("grass_lake".to_string()));
-        fill_zone(&mut lake_st, 0, &lake_sel, &lib);
+        let lake_target = lake_st.zone_obstacle(0);
+        fill_region(&mut lake_st, &lake_sel, &lib, &lake_target, |_| true, false, Vec::new());
         assert!(!lake_st.object_placements.is_empty(), "the Lake biome placed no obstacle");
         assert!(
             lake_st
@@ -899,6 +1040,162 @@ mod tests {
                 .iter()
                 .all(|p| p.biome_object_type == Some(BiomeObjectType::Lake)),
             "a Lake-biome obstacle is not tagged Some(Lake)",
+        );
+    }
+
+    #[test]
+    fn ac1_source_placer_places_only_river_markers_on_open_area_gated() {
+        // AC-1 (DEFERRED #026) — the source pass places ONLY Mountain/Lake
+        // markers, on Open tiles, gated against the passable region. No
+        // erosion happened (the zone stays mostly Open), and no non-marker
+        // obstacle was placed.
+        let mut st = state(16, 16, &[(8, 8)]);
+        let lib = engine_biome_library();
+        let rules = engine_default_biome_selection_rules();
+        let sel = select_biomes(&ZoneId("z".to_string()), TerrainKind::Grass, &rules, &lib, TilemapSeed(1));
+        let open_before = st.zone_area_open(0);
+        let target = st.zone_area_open(0);
+        let passable = st.zone_passable(0);
+        fill_region(&mut st, &sel, &lib, &target, is_river_marker, false, vec![passable]);
+
+        assert!(!st.object_placements.is_empty(), "the source pass placed a marker");
+        for p in &st.object_placements {
+            // Only river markers (Mountain/Lake).
+            assert!(
+                p.biome_object_type.is_some_and(is_river_marker),
+                "the source pass placed a non-marker obstacle: {:?}",
+                p.biome_object_type,
+            );
+            // On a tile that was Open before the pass.
+            assert!(open_before.get(p.anchor), "marker placed off the Open area");
+        }
+        // Gate held — the surviving passable region is still one component.
+        let post = st.zone_passable(0);
+        let start = post.iter_set().next().unwrap();
+        assert_eq!(
+            reachable_from(start, &post, st.grid),
+            post,
+            "the gated source pass split the zone's passable region",
+        );
+    }
+
+    #[test]
+    fn source_placer_dual_gate_rejects_a_marker_on_the_sole_inter_zone_corridor() {
+        // /review-impl HIGH-1 — a Mountain marker on the single passable tile
+        // linking zone A to zone B must be rejected by the MAP-WIDE arm of the
+        // dual gate: carving it leaves zone A internally connected (so a
+        // per-zone-only gate would pass it) but severs A↔B. Fixture: 5×5, A =
+        // x<3, B = x>=3, the mutual border walled to Obstacle except the lone
+        // tile (2,2). A 1×1 Mountain marker must NOT land on (2,2).
+        let grid = GridSize { width: 5, height: 5 };
+        let mut a = TileMask::new(5, 5);
+        let mut b = TileMask::new(5, 5);
+        for y in 0..5 {
+            for x in 0..3 {
+                a.set(TileCoord::new(x, y));
+            }
+            for x in 3..5 {
+                b.set(TileCoord::new(x, y));
+            }
+        }
+        let zone_a = ZoneTiles {
+            id: ZoneId("a".to_string()),
+            role: ZoneRole::Wilderness,
+            center: TileCoord::new(1, 2),
+            assigned_tiles: a,
+            free_paths: TileMask::new(5, 5),
+        };
+        let zone_b = ZoneTiles {
+            id: ZoneId("b".to_string()),
+            role: ZoneRole::Wilderness,
+            center: TileCoord::new(4, 2),
+            assigned_tiles: b,
+            free_paths: TileMask::new(5, 5),
+        };
+        let mut st = TilemapBuildState::from_zones(vec![zone_a, zone_b], grid);
+        // Wall the A↔B border except the sole corridor (2,2).
+        for wall in [(2, 0), (2, 1), (2, 3), (2, 4)] {
+            st.set_tile_state(TileCoord::new(wall.0, wall.1), TileState::Obstacle);
+        }
+        // A hand-built selection with one Mountain biome.
+        let lib = engine_biome_library();
+        let mut sel = BiomeSelection::default();
+        // Find a real Mountain biome id from the library to drive a placement.
+        let mountain_biome = lib
+            .iter()
+            .find(|bset| !bset.templates.is_empty() && bset.biome_id.0.contains("mountain"))
+            .map(|bset| bset.biome_id.clone())
+            .expect("library stocks a mountain biome");
+        sel.push(BiomeObjectType::Mountain, mountain_biome);
+
+        // Drive the source-pass fill on zone A with the dual gate.
+        let target = st.zone_area_open(0);
+        let zone_pass = st.zone_passable(0);
+        let map_pass = map_passable(&st, grid);
+        fill_region(&mut st, &sel, &lib, &target, is_river_marker, false, vec![zone_pass, map_pass]);
+
+        // The corridor (2,2) must remain passable — the map-wide gate refused
+        // to place a marker there.
+        assert!(
+            st.tile_state_at(TileCoord::new(2, 2)).is_passable(),
+            "the dual gate let a marker sever the sole A↔B corridor (2,2)",
+        );
+        // Independent flood-fill from any surviving passable tile must cover
+        // the whole map-wide passable region — i.e. no severance. (Flooding
+        // from a fixed corner is wrong: the marker may have legitimately
+        // occupied it.)
+        let post = map_passable(&st, grid);
+        let start = post.iter_set().next().expect("a passable tile survives");
+        assert_eq!(
+            reachable_from(start, &post, grid),
+            post,
+            "the source pass split the map-wide passable region (A severed from B)",
+        );
+    }
+
+    #[test]
+    fn ac3_fill_skips_river_water_tiles() {
+        // AC-3 (DEFERRED #026) — with skip_water, the fill never drops an
+        // obstacle footprint onto a river Water tile.
+        let mut st = state(16, 16, &[(8, 8)]);
+        let _ = erode_zone(&mut st, 0);
+        // Paint a band of Water across the eroded obstacle region.
+        for x in 0..16 {
+            st.terrain_layer[TileCoord::new(x, 0).flat_index(16)] = TerrainKind::Water as u8;
+        }
+        let lib = engine_biome_library();
+        let rules = engine_default_biome_selection_rules();
+        let sel = select_biomes(&ZoneId("z".to_string()), TerrainKind::Grass, &rules, &lib, TilemapSeed(3));
+        let target = st.zone_obstacle(0);
+        fill_region(&mut st, &sel, &lib, &target, |_| true, true, Vec::new());
+        // No placed obstacle footprint may sit on a Water tile.
+        for p in &st.object_placements {
+            assert_ne!(
+                st.terrain_layer[p.anchor.flat_index(16)],
+                TerrainKind::Water as u8,
+                "fill dropped an obstacle on a river Water tile at {:?}",
+                p.anchor,
+            );
+        }
+    }
+
+    #[test]
+    fn ac4_erosion_does_not_eat_a_river_ford() {
+        // AC-4 (DEFERRED #026) — a forded river tile is passable + Water
+        // terrain; the post-river erosion pass must not erode it. A 5×1
+        // corridor with the centre forded: erosion would otherwise peel the
+        // wall-adjacent centre, but the Water guard protects it.
+        let mut st = state(5, 1, &[(0, 0), (4, 0)]);
+        // (2,0) is a ford — passable (Open) with Water terrain.
+        st.terrain_layer[TileCoord::new(2, 0).flat_index(5)] = TerrainKind::Water as u8;
+        let eroded = erode_zone(&mut st, 0);
+        assert!(
+            !eroded.get(TileCoord::new(2, 0)),
+            "erosion ate the river ford at (2,0)",
+        );
+        assert!(
+            st.tile_state_at(TileCoord::new(2, 0)).is_passable(),
+            "the forded tile must stay passable after erosion",
         );
     }
 
