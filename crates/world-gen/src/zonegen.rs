@@ -100,6 +100,125 @@ pub fn zone_salt(master: u64, path: &[u32]) -> u32 {
     sub_seed(master, &bytes) as u32
 }
 
+/// Per-zone attributes used by both the single-zone and full-map renders:
+/// the chosen class, the anchor floor, and the noise salt — all derived
+/// deterministically from the world + master seed + the zone's path.
+fn zone_attrs(
+    world: &FlatWorld,
+    master_seed: u64,
+    plate_id: usize,
+    zone_id: usize,
+    ratios: &ClassRatios,
+) -> (TerrainClass, f32, u32) {
+    let (sx, sy) = world.plates[plate_id].zone_sites[zone_id];
+    let base = world.elevation_at(sx, sy);
+    let salt = zone_salt(master_seed, &[plate_id as u32, zone_id as u32]);
+    let mut crng = Rng::for_stage(master_seed, b"zone-class");
+    for _ in 0..(plate_id * 97 + zone_id * 13) {
+        crng.next_u32();
+    }
+    let class = classify(base, ratios, &mut crng);
+    (class, base, salt)
+}
+
+/// Render **every** zone of the whole map into one image, on a single global
+/// height scale, with a hypsometric ramp (lowland green → upland tan/brown →
+/// peaks white; void = deep slate). Overlapping plate footprints are owned by
+/// the lowest-id plate (stable; overlaps are thin). This is the review render
+/// for the full zone terrain.
+pub fn render_all_zones(world: &FlatWorld, master_seed: u64, ratios: &ClassRatios) -> Vec<u8> {
+    const VOID: [u8; 3] = [12, 16, 28];
+    let w = world.width as usize;
+    let h = world.height as usize;
+
+    // Precompute (class, base, salt) per zone once.
+    let attrs: Vec<Vec<(TerrainClass, f32, u32)>> = world
+        .plates
+        .iter()
+        .enumerate()
+        .map(|(pi, p)| {
+            (0..p.zone_sites.len())
+                .map(|zi| zone_attrs(world, master_seed, pi, zi, ratios))
+                .collect()
+        })
+        .collect();
+
+    // Pass 1: heights + per-pixel zone owner id (for boundary outlines) + range.
+    let mut heights = vec![f32::NAN; w * h];
+    let mut owner = vec![-1i32; w * h]; // plate_id*1000 + zone_id; -1 = void
+    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    for py in 0..h {
+        for px in 0..w {
+            let x = px as f32 + 0.5;
+            let y = py as f32 + 0.5;
+            if let Some(p) = world.plates.iter().find(|p| p.contains(x, y)) {
+                let zid = p.zone_at(x, y).unwrap_or(0);
+                let (class, base, salt) = attrs[p.id][zid];
+                let e = zone_height(x, y, class, base, salt);
+                let i = py * w + px;
+                heights[i] = e;
+                owner[i] = (p.id as i32) * 1000 + zid as i32;
+                lo = lo.min(e);
+                hi = hi.max(e);
+            }
+        }
+    }
+    let span = (hi - lo).max(1e-6);
+
+    // Pass 2: hypsometric colour by normalized height, with a thin dark outline
+    // on every zone boundary (where the owner differs from the right/down
+    // neighbour) so the full Voronoi subdivision is visible.
+    const OUTLINE: [u8; 3] = [22, 28, 38];
+    let mut rgb = vec![0u8; w * h * 3];
+    for py in 0..h {
+        for px in 0..w {
+            let i = py * w + px;
+            let c = if heights[i].is_nan() {
+                VOID
+            } else {
+                let right = (px + 1 < w).then(|| owner[i + 1]).unwrap_or(owner[i]);
+                let down = (py + 1 < h).then(|| owner[i + w]).unwrap_or(owner[i]);
+                if owner[i] != right || owner[i] != down {
+                    OUTLINE
+                } else {
+                    hypso_color((heights[i] - lo) / span)
+                }
+            };
+            rgb[i * 3] = c[0];
+            rgb[i * 3 + 1] = c[1];
+            rgb[i * 3 + 2] = c[2];
+        }
+    }
+    rgb
+}
+
+/// Hypsometric ramp `t ∈ [0,1]`: lowland green → upland tan → brown → snow.
+fn hypso_color(t: f32) -> [u8; 3] {
+    const STOPS: [(f32, [f32; 3]); 5] = [
+        (0.00, [56.0, 110.0, 60.0]),   // lowland green
+        (0.35, [120.0, 150.0, 78.0]),  // dry green/tan
+        (0.60, [140.0, 120.0, 82.0]),  // tan
+        (0.82, [110.0, 86.0, 66.0]),   // brown
+        (1.00, [242.0, 242.0, 245.0]), // snow
+    ];
+    let t = t.clamp(0.0, 1.0);
+    let mut out = STOPS[STOPS.len() - 1].1;
+    for win in STOPS.windows(2) {
+        let (t0, c0) = win[0];
+        let (t1, c1) = win[1];
+        if t <= t1 {
+            let k = ((t - t0) / (t1 - t0)).clamp(0.0, 1.0);
+            out = [
+                c0[0] + (c1[0] - c0[0]) * k,
+                c0[1] + (c1[1] - c0[1]) * k,
+                c0[2] + (c1[2] - c0[2]) * k,
+            ];
+            break;
+        }
+    }
+    [out[0] as u8, out[1] as u8, out[2] as u8]
+}
+
 /// Result of generating one zone: the class chosen and its anchor floor (for
 /// reporting), plus the rendered grayscale buffer.
 pub struct ZoneRender {
@@ -122,17 +241,7 @@ pub fn render_zone(
 ) -> ZoneRender {
     const VOID: [u8; 3] = [10, 10, 14];
     let plate = &world.plates[plate_id];
-    let (sx, sy) = plate.zone_sites[zone_id];
-    let base_elev = world.elevation_at(sx, sy);
-    let salt = zone_salt(master_seed, &[plate_id as u32, zone_id as u32]);
-
-    let mut crng = Rng::for_stage(master_seed, b"zone-class");
-    // Advance the class RNG deterministically per zone so different zones roll
-    // independently (cheap path-mixing).
-    for _ in 0..(plate_id * 97 + zone_id * 13) {
-        crng.next_u32();
-    }
-    let class = classify(base_elev, ratios, &mut crng);
+    let (class, base_elev, salt) = zone_attrs(world, master_seed, plate_id, zone_id, ratios);
 
     let w = world.width as usize;
     let h = world.height as usize;
@@ -237,5 +346,20 @@ mod tests {
         let b = render_zone(&world, 0, 0, p.seed, &ClassRatios::default());
         assert_eq!(a.rgb.len(), 128 * 96 * 3);
         assert_eq!(a.rgb, b.rgb, "render must be deterministic");
+    }
+
+    #[test]
+    fn full_map_render_is_world_sized_and_deterministic() {
+        let p = FlatParams {
+            width: 96,
+            height: 64,
+            seed: 13,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let a = render_all_zones(&world, p.seed, &ClassRatios::default());
+        let b = render_all_zones(&world, p.seed, &ClassRatios::default());
+        assert_eq!(a.len(), 96 * 64 * 3);
+        assert_eq!(a, b, "full-map render must be deterministic");
     }
 }

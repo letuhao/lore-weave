@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use world_gen::flatworld::{
     export, generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams,
 };
-use world_gen::zonegen::{render_zone, ClassRatios};
+use world_gen::zonegen::{render_all_zones, render_zone, ClassRatios};
 
 fn main() {
     let mut p = FlatParams::default();
@@ -28,6 +28,8 @@ fn main() {
     // Optional single-zone local terrain: "plate_id,zone_id" + output path.
     let mut zone_sel: Option<(usize, usize)> = None;
     let mut zone_terrain_out: Option<PathBuf> = None;
+    // Optional full-map terrain: every zone rendered together (hypsometric).
+    let mut all_zones_out: Option<PathBuf> = None;
 
     // Minimal hand-rolled arg parsing (`--flag value`), to keep the sketch
     // dependency-free of the main CLI.
@@ -62,6 +64,7 @@ fn main() {
                 zone_sel = Some((a.parse().expect("plate id"), b.parse().expect("zone id")));
             }
             "--zone-terrain-out" => zone_terrain_out = Some(PathBuf::from(need())),
+            "--all-zones-out" => all_zones_out = Some(PathBuf::from(need())),
             other => panic!("unknown flag: {other}"),
         }
         i += 2;
@@ -125,6 +128,19 @@ fn main() {
             data.plates.len(),
             zones
         );
+    }
+
+    if let Some(apath) = all_zones_out {
+        let rgb = render_all_zones(&world, p.seed, &ClassRatios::default());
+        image::save_buffer(
+            &apath,
+            &rgb,
+            world.width,
+            world.height,
+            image::ExtendedColorType::Rgb8,
+        )
+        .expect("failed to write all-zones PNG");
+        println!("wrote {} — full-map zone terrain", apath.display());
     }
 
     if let (Some((pid, zid)), Some(zpath)) = (zone_sel, zone_terrain_out) {
