@@ -406,7 +406,12 @@ Run time: 19 min for 9 chapters (judge=gemma-4-26b-a4b).
 | Session 60 LLM-judge (broken pipeline — fence bug undetected) | 2026-05-22 | qwen3.6 | gemma-4-26b judge | ~1.00 | ~0.46 |
 | **Post-fence-fix LLM-judge** (session-61 baseline) | **2026-05-23** | **qwen3.6** | **gemma-4-26b judge** | **0.97** | **0.81** |
 | Post-P3 non-regression (judge-truncation-affected) | 2026-05-24 | qwen3-30b-a3b | gemma-4-26b judge | 0.91 (cov 49%) | 0.39 (cov 63%) |
-| **Post-P3 non-regression + judge fix** (session-67 cont.5) | **2026-05-24** | **qwen3-30b-a3b** ¹ | **gemma-4-26b judge** ³ | **0.93** | **0.57** ² |
+| Post-P3 non-regression + judge fix | 2026-05-24 | qwen3-30b-a3b | gemma-4-26b judge | 0.93 | 0.57 |
+| Post-arch fix on uncensored (rule-based pre-anti-think) | 2026-05-24 | huihui-qwen3.6-abliterated ⁴ | rule-based | 0.452 | 0.461 |
+| **Post-arch fix on uncensored (with anti-think)** | **2026-05-24** | **huihui-qwen3.6-abliterated** | **rule-based** | **0.411** | **0.548** ⁵ |
+
+⁴ Uncensored 32K variant; chosen for NSFW novel extraction. Has hidden thinking mode (reasoning_tokens dominate response).
+⁵ Anti-think prefix (commit 6a02750d) reduced reasoning_tokens from ~100% to 55-89% of output. Recall +19% vs pre-anti-think (more content tokens emitted). Precision slight dip — more extraction = more noise. Pre-rendered: pipeline now context-aware (no KV-cache OOM), but model inherently thinking-heavy. Gateway-side `chat_template_kwargs={thinking:false}` forwarding (D-EXTRACTION-CONTEXT-FIX-STAGE-4) would further help but deferred.
 
 ¹ Different from session-61 (qwen3.6-35b-a3b not loaded; qwen3-30b is 5B fewer params + older).
 ² R delta vs session-61 (0.57 vs 0.81) driven entirely by extractor model substitution — qwen3-30b under-extracts relations + Vietnamese fixtures vs qwen3.6-35b. P3 commits don't touch extraction prompts. Apples-to-apples re-check requires re-loading qwen3.6-35b-a3b in LM Studio + re-running.
