@@ -655,6 +655,54 @@ the structural mismatch.
 
 180 tests pass + clippy clean. Workflow: XL, full 12-phase v2.2.
 
+### Batch B5-v2.1g — ✅ SHIPPED (2026-05-24) — climate default tuning (G3 only)
+
+After v2.1f assessment via eval framework revealed 5 root-cause issues
+(TempGrassland unreachable, BorealForest narrow band, polar bias 50-80%,
+HotDesert under-firing, Mediterranean over-firing without seasonality
+differentiator), prototyped 4 fixes (G1 classifier rebalance, G2 BorealForest
+0..5→0..7, G3 precip_subtropic 300→180, G4 STRATA 4→6).
+
+Initial v2.1g (all 4 combined) flagged REGRESSION via eval (-2.47 mean
+composite). Cherry-pick experiment isolated each fix individually vs v2.1f
+baseline:
+
+| Fix | Mean Δ | Verdict |
+|---|---:|---|
+| G2 (BorealForest 0..7) | +0.04 | trivial — temp band 5..7°C rarely populated |
+| **G3 (precip_subtropic 180)** | **+0.51** | **WIN — no regression** |
+| G1 (classifier rebalance) | +0.04 | trivial — warm-mid-precip slot rarely populated |
+| G4 (STRATA 4→6) | -2.41 | REGRESSION — placement change broke seed luck |
+
+**Shipped: G3 only** — single root-cause fix: lowering `precip_subtropic`
+default 300→180 mm/yr makes subtropical zones land below the 250 HotDesert
+threshold by default. Real Earth subtropics get <100mm/yr; the prior 300
+left HotDesert barely firing.
+
+Per-render improvements:
+  - baseline_s23: 72.69 → 74.04 (+1.35)
+  - baseline_s42: 73.17 → 74.13 (+0.96)
+  - hemi_north: 80.43 → 81.22 (+0.79)
+  - scenario_hothouse: 57.76 → 60.81 (+3.05)
+  - 4 renders unchanged
+  - 2 small drops (-0.15 to -0.19)
+  - **No regression >5pt**
+
+Mean composite: 71.18 → 71.69 (+0.51 per metric, below 1.0 threshold so
+suite TOML reports "no significant change" but it's a clear positive
+direction). New baseline saved as `eval/baselines/v2.1g.json`.
+
+**Lessons captured**:
+- Most "obvious" fixes (G1, G2, G4) had near-zero or negative impact
+- The eval framework prevented shipping G4's regression
+- Single isolated fix beats multi-fix batch — cherry-pick is the right
+  methodology for incremental tuning
+
+**Architectural ceiling acknowledged**: the metric ceiling of ~72 won't
+move significantly via classifier/defaults tuning. Future genuine
+improvement requires v3+ OceanCurrent + finer biome subdivision (Köppen
+seasonality, etc.).
+
 ### Batches b / c / d — pending
 
 Per §5 roadmap, unchanged.

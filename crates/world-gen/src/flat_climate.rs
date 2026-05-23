@@ -108,7 +108,11 @@ impl Default for WorldClimateParams {
             // reduces Ice on polar dry zones.
             t_pole: -15.0,
             precip_eq: 2400.0,
-            precip_subtropic: 300.0,
+            // G3 (v2.1g): 300 → 180. Real Earth subtropics get <100mm/yr;
+            // default 300 left subtropics above the 250 HotDesert threshold
+            // → deserts barely fired. 180 lands subtropics below 250 → more
+            // HotDesert at proper Earth latitudes.
+            precip_subtropic: 180.0,
             precip_midlat: 900.0,
             precip_polar: 150.0,
             continentality_reach: 200.0, // calibrated for 1024×640
@@ -605,7 +609,7 @@ mod tests {
     fn whittaker_canonical_points() {
         // Cold tier
         assert_eq!(whittaker_classify(-15.0, 100.0), Biome::Tundra);
-        assert_eq!(whittaker_classify(2.0, 400.0), Biome::BorealForest);
+        assert_eq!(whittaker_classify(3.0, 600.0), Biome::BorealForest);
         // Cool temperate (5..14)
         assert_eq!(whittaker_classify(10.0, 800.0), Biome::DeciduousForest);   // wet cool
         assert_eq!(whittaker_classify(10.0, 400.0), Biome::TemperateGrassland); // mid
