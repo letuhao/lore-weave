@@ -214,6 +214,13 @@ services/api-gateway-bff/node_modules/
 frontend/package-lock.json
 frontend-v2/package-lock.json
 
+# pnpm workspace (game subtree) — root + packages + future frontend-game
+# Lockfile (pnpm-lock.yaml) IS committed; node_modules is not.
+node_modules/
+packages/*/node_modules/
+frontend-game/node_modules/
+.pnpm-store/
+
 # services/api-gateway-bff/package-lock.json  # needed for Docker build
 
 services/auth-service/tmp/

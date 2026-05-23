@@ -23,13 +23,13 @@ Eleven load-bearing choices locked through PO Q&A this session:
 | 2 | Game engine | **Phaser 4** (GA 2026-04-10, MIT license) — TilemapGPULayer + SpriteGPULayer are perfect for our iso tilemap render |
 | 3 | UI integration | **Hybrid: React UI overlay + Phaser canvas** (DOM-sibling, NOT Phaser DOMElement). Apply to HUD, sidebar, inventory, modal. DOMElement reserved for world-anchored UI (nameplates) only |
 | 4 | State management | **Zustand** for high-freq game state (synced from server, not owned) + **TanStack Query** for server state + **React Context** for stable session + **EventBus** for discrete events |
-| 5 | Workspace mode | **pnpm workspace minimal-disruption** — add `pnpm-workspace.yaml` at repo root listing `frontend/`, `frontend-game/`, `packages/*`. Do NOT rename `frontend/` → `apps/frontend/` (future refactor) |
+| 5 | Workspace mode | **pnpm workspace scoped to game subtree** (revised 2026-05-24 per PO pushback) — `pnpm-workspace.yaml` at repo root lists **only** `frontend-game/` + `packages/*`. `frontend/` is **NOT** in the workspace — keeps its existing npm tooling + lockfile + Dockerfile untouched. Zero risk to the live novel-workflow site. Rationale: Session A spec originally pulled `frontend/` in for shared `packages/i18n`, but inheriting cluster langs can be done via a one-time copy of language JSONs rather than a live extraction (see §12 revision). Workspace stays narrow until a real need to share runtime code appears. |
 | 6 | Game model | **Turn-based combat + idle-MMO events** (NOT action MMORPG). Implication: NO client prediction / reconciliation / interpolation / input-buffer needed. Lower-frequency event model |
 | 7 | Game server (V1+) | **Colyseus** locked (Node.js + TypeScript) despite being overkill for turn-based; convenience of built-in matchmaking + reconnection + room arch + Phaser SDK > minimalism |
 | 8 | Target device | **Desktop + mobile landscape from V0** (MED-4 from /review-impl: 128×64 HD tiles + 375px portrait = ~3×6 visible tiles, practically unplayable). Mobile **landscape-lock** for V0; portrait deferred V2+ with separate 64×32 asset set. Touch controls + virtual gamepad scaffolded from day 1 |
 | 9 | V0 placeholder assets | **Kenney.nl CC0 isometric pack** (10-20 sprites, MIT/CC0 license safe) |
 | 10 | Tile dimensions | **Iso 2:1 dimetric, 128×64 px HD.** Continent 256² grid = camera + viewport scrolling required |
-| 11 | Internationalization | **Inherit cluster langs (vi, en, ja, ko, zh, ...)** via `packages/i18n` extracted from `frontend/`. Phaser text uses React DOM overlay (NOT Phaser BitmapText — multi-language Unicode unfriendly) |
+| 11 | Internationalization | **Inherit cluster langs (vi, en, ja, ko, zh, ...)** by one-time copy of `frontend/src/i18n/` language JSONs into `packages/i18n/` (NOT live extraction — decision #5 keeps `frontend/` out of the workspace). `packages/i18n` is standalone; if novel-workflow translation keys diverge from game keys, that's fine — they evolve independently. Phaser text uses React DOM overlay (NOT Phaser BitmapText — multi-language Unicode unfriendly) |
 
 ---
 
@@ -58,9 +58,9 @@ Eleven load-bearing choices locked through PO Q&A this session:
 
 ```
 <repo-root>/
-├── pnpm-workspace.yaml             (NEW: lists frontend, frontend-game, packages/*)
-├── package.json                    (NEW: minimal — pnpm workspace root)
-├── frontend/                       (EXISTING — untouched in this spec scope)
+├── pnpm-workspace.yaml             (NEW: lists frontend-game, packages/* — NOT frontend)
+├── package.json                    (NEW: minimal — pnpm workspace root, scoped to game subtree)
+├── frontend/                       (EXISTING — fully untouched; keeps npm + own package-lock.json + own Dockerfile)
 ├── frontend-game/                  (NEW — this spec scaffolds it)
 │   ├── package.json
 │   ├── vite.config.ts
@@ -142,8 +142,8 @@ Eleven load-bearing choices locked through PO Q&A this session:
 │   ├── auth-client/                shared auth API + types (used by both frontends)
 │   ├── api-types/                  TS mirrors of Rust/Go service contracts
 │   ├── design-tokens/              Tailwind config + CSS vars + Phaser color palette
-│   ├── i18n/                       extracted from frontend/ (cluster langs)
-│   └── shared-ui/                  (FUTURE — extract when ≥3 components duplicate)
+│   ├── i18n/                       one-time copy of frontend/src/i18n/ language JSONs (cluster langs); evolves independently going forward
+│   └── shared-ui/                  (FUTURE — extract when ≥3 components duplicate AND frontend/ is also migrated into workspace)
 └── services/                       (existing)
 ```
 
@@ -475,10 +475,12 @@ upgrade specifically requires HTTP/1.1 `Upgrade: websocket` header
 forwarding (not all reverse proxies do this by default; nginx + axum +
 node http-proxy all support it with config).
 
-**Local dev complication**: existing `frontend/` runs `pnpm dev` on
-`localhost:5173`. `frontend-game` will run on `:5174`. api-gateway-bff
-dev mode at `:3001` proxies these. Devs use `http://localhost:3001` as
-the single entry point.
+**Local dev complication**: existing `frontend/` runs `npm run dev` (its
+own toolchain — NOT pnpm) on `localhost:5173`. `frontend-game` will run
+`pnpm --filter frontend-game dev` on `:5174`. api-gateway-bff dev mode
+at `:3001` proxies both. Devs use `http://localhost:3001` as the single
+entry point. The two frontends use different package managers; that's
+intentional per §1 decision #5.
 
 ---
 
@@ -639,8 +641,8 @@ change. Aligns with §9 pattern #6 (data-driven design).
 
 ## 12. i18n strategy
 
-- **Source:** `frontend/src/i18n/` (existing — cluster langs: vi, en, ja, ko, zh, …)
-- **Extraction:** `packages/i18n/` — shared between `frontend/` and `frontend-game/`
+- **Seed source:** `frontend/src/i18n/` (existing — cluster langs: vi, en, ja, ko, zh, …) — one-time copy of language JSON files into `packages/i18n/` during Session B
+- **Ownership going forward:** `packages/i18n/` is the SSOT for `frontend-game/` only; `frontend/` continues to own its own translations independently (revised per §1 decision #5 — workspace does NOT include `frontend/`)
 - **Phaser text:** **DOM overlay only** — never Phaser BitmapText (multi-language Unicode requires per-glyph bake which is impractical for CJK)
 - **Implementation:** any text players read (HUD labels, dialog, item names, NPC speech bubble) is rendered as React DOM over Phaser. NPC speech bubble = absolutely-positioned React component tracking the NPC's screen position via **direct `ref.current.style.transform = 'translate(x, y)'` mutation** in a per-frame callback registered with `Phaser.Scene.events.on('preupdate', ...)` (LOW-10 from /review-impl). **Do NOT use React `setState` for per-frame position updates** — 60fps `setState` × N visible bubbles causes reconciler thrash. CSS `will-change: transform` hints the compositor. The component renders ONCE (when bubble shows); only the `transform` mutates each frame.
 - **What CAN stay in Phaser:** untranslated numeric/symbolic content — damage numbers, coordinates debug overlays, particle text effects (use Phaser Text with system font + emoji)
@@ -766,7 +768,7 @@ handling. V1+ adds:
 | Session | Scope | Size | Output |
 |---|---|---|---|
 | **A** (this session) | This spec doc | M | `docs/specs/2026-05-24-frontend-game-architecture.md` |
-| **B** | pnpm workspace setup + `packages/{auth-client, api-types, design-tokens, i18n}` skeletons; no behavior change to `frontend/` | M | Session B-AC: (1) regenerate `frontend/` lockfile via pnpm; diff dependency tree vs original `package-lock.json` and audit version drift (any major-version shift requires explicit PO approval); (2) `pnpm --filter frontend dev` serves identically to pre-migration; (3) `pnpm --filter frontend test` all tests pass; (4) `pnpm --filter frontend lint` clean; (5) `pnpm --filter frontend build` produces bundle ≤ pre-migration bundle size + 5%; (6) `frontend/Dockerfile` rebuilt for workspace context; existing `docker compose up frontend` smoke passes |
+| **B** | pnpm workspace setup (game subtree only) + `packages/{auth-client, api-types, design-tokens, i18n}` skeletons; **`frontend/` not touched** (revised 2026-05-24 per PO) | M | Session B-AC (revised): (1) `pnpm-workspace.yaml` at repo root lists ONLY `frontend-game`, `packages/*` — explicitly NOT `frontend`; (2) root `package.json` is pnpm workspace root, scoped to game subtree; (3) `packages/{auth-client,api-types,design-tokens,i18n}/package.json` + minimal `src/index.ts` skeletons present, each with `"private": true`, MIT, version `0.0.0`; (4) `packages/i18n/` contains a one-time copy of `frontend/src/i18n/` language JSONs (snapshot via git, NOT a live symlink); (5) `pnpm install` from repo root resolves without errors (a no-op until `frontend-game/` exists in Session C; the skeleton packages have no runtime deps yet); (6) `frontend/` is bit-for-bit unchanged — `git diff frontend/` is empty; existing `npm` workflow + `docker compose up frontend` still works |
 | **C** | Scaffold `frontend-game/` full structure (folders, configs, Phaser+React bridge, scene state machine, EventBus, stores, net/ stubs, tests setup) | L | Scaffold compiles + 1 sanity test |
 | **D** | V0 demo: Phaser hello-world (1 iso tile from Kenney CC0) + React HUD mock + fetch `tilemap-service` `/livez` via TanStack Query | M | Visible browser demo |
 | **E** | WebSocket echo demo: minimal Rust/Node echo service + `frontend-game/net/` WS client demo (verify auth handshake + reconnect) | M | WS path validated end-to-end |
@@ -820,8 +822,8 @@ the entire net/ tree.
 
 | ID | Criterion |
 |---|---|
-| AC-FG-1 | `pnpm install` from repo root resolves both `frontend/` and `frontend-game/` workspaces |
-| AC-FG-2 | `pnpm --filter frontend dev` still serves existing frontend at `:5173` unchanged |
+| AC-FG-1 | `pnpm install` from repo root resolves `frontend-game/` + `packages/*` workspaces (revised — `frontend/` is NOT in the workspace per §1 decision #5) |
+| AC-FG-2 | Existing `frontend/` continues to serve at `:5173` via its own `npm run dev` — bit-for-bit unchanged from before Session B (revised) |
 | AC-FG-3 | `pnpm --filter frontend-game dev` serves new game site at `:5174` |
 | AC-FG-4 | `frontend-game` opens with login page → world-select → play route navigation works |
 | AC-FG-5 | `/play` renders Phaser canvas with 1 iso tile (Kenney CC0 placeholder) visible |

@@ -81,7 +81,66 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — frontend-game architecture SPEC ACCEPTED + /review-impl hardening) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — Session B: pnpm workspace + packages/ skeletons + /review-impl hardening) — read this first
+
+XL task per gate (11 files, but mostly skeletons). Session B per spec §16
+landed the monorepo plumbing for the upcoming `frontend-game/` client.
+PO pushback mid-session re-scoped the work: original spec pulled
+`frontend/` into the pnpm workspace (with 6 ACs to protect it); PO asked
+"liên quan gì tới frontend folder hiện tại?" → revised to workspace
+scoped to game subtree ONLY. `frontend/` is bit-for-bit unchanged.
+
+### Files landed (3 modified + 6 new artifacts)
+
+| File | Status | Note |
+|---|---|---|
+| `pnpm-workspace.yaml` | NEW | Lists `frontend-game`, `packages/*` — explicitly NOT `frontend` |
+| `package.json` (root) | NEW | `loreweave-monorepo-game`, private, `packageManager: pnpm@9.15.9` (per /review-impl MED #2), scripts forward to `pnpm --filter ...` |
+| `.npmrc` | NEW | Scope-pin ONLY (`@loreweave:registry=...`); previous version had pnpm-only keys that cascaded into frontend/ producing 3 npm warnings per install — caught + fixed by /review-impl HIGH #1 |
+| `pnpm-lock.yaml` | NEW | 5 importers (root + 4 packages) |
+| `packages/{auth-client,api-types,design-tokens,i18n}/{package.json,src/index.ts,README.md}` | NEW | All `@loreweave/*`, private, MIT, 0.0.0; READMEs document TS-source-as-`main` consumption requirement (LOW #4) |
+| `packages/i18n/locales/{en,ja,vi,zh-TW}/common.json` | NEW | Pruned to `common.*` namespace per /review-impl LOW #5 (originally a verbatim copy of frontend/ that included `nav.*`/`voice.*`/`placeholder.*` novel-workflow-only keys) |
+| `docs/plans/2026-05-24-frontend-game-session-b-pnpm-workspace.md` | NEW | Plan doc (XL gate requirement) |
+| `.gitattributes` | M | + `pnpm-lock.yaml`, `*.yaml`, `*.yml` → `eol=lf` (LOW #6 Windows line-ending churn) |
+| `.gitignore` | M | + `node_modules/`, `packages/*/node_modules/`, `frontend-game/node_modules/`, `.pnpm-store/` |
+| `docs/specs/2026-05-24-frontend-game-architecture.md` | M | 7 PO-scope edits (§1 #5, §1 #11, §3 dir tree, §8 dev complication, §12 i18n, §16 Session B AC, §18 AC-FG-1/2) |
+
+### `/review-impl` findings + fixes (9 items, all applied)
+
+| ID | Severity | Issue | Fix |
+|---|---|---|---|
+| HIGH-1 | HIGH | Root `.npmrc` cascaded pnpm-only keys → 3 `npm warn Unknown project config` per install in frontend/ + services; npm threatened to error out next major | Replaced with scope-pin-only `.npmrc`; pnpm 9 defaults match removed keys; verified `npm install --dry-run` is now silent |
+| MED-2 | MED | `packageManager: pnpm@9.0.0` mismatched installed 9.15.9 → corepack lockfile churn risk | Bumped to `pnpm@9.15.9` |
+| LOW-3 | LOW | `frontend-game` workspace member doesn't exist yet | Documented inline in `pnpm-workspace.yaml` (Session C populates) |
+| LOW-4 | LOW | TS source as `main` breaks non-Vite consumers | "Consumption requirement" section added to all 4 package READMEs |
+| LOW-5 | LOW | i18n seed included novel-workflow keys (`nav`, `voice`, `placeholder`) | Pruned all 4 locales to `common.*` only (16 keys per locale) |
+| LOW-6 | LOW | pnpm-lock.yaml line-ending churn on Windows (autocrlf) | `.gitattributes` pins LF for lockfile + all YAML |
+| LOW-7 | LOW | `packages/*` glob matches any directory | Documented inline; accept fail-fast behavior |
+| LOW-8 | LOW | No `@loreweave` registry scope pinning (typosquat defense) | Added to scope-only `.npmrc` |
+| COSMETIC-9 | COSMETIC | `export {};` lacks self-doc placeholder | Accepted — comment blocks above each export convey intent |
+
+### Verification evidence
+
+- `pnpm install` → "Already up to date, 5 workspace projects" ✓
+- `npm install --dry-run` from repo root → **zero** "Unknown project config" warnings (was 3 before HIGH-1 fix) ✓
+- `git diff frontend/` → 0 lines (bit-for-bit unchanged) ✓
+- `pnpm list -r` → root + 4 `@loreweave/*` packages, all PRIVATE ✓
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks Session C** (next session): scaffold `frontend-game/` full structure (Phaser 4 + React + Vite + Tailwind + EventBus + scenes + state machine + Phaser 4 validation gate per spec §11.1)
+- **Blocks**: nothing immediate
+
+### Lessons recorded
+
+- **PO scope pushback caught a non-obvious overreach.** Spec said "pnpm workspace minimal-disruption" which sounded safe but actually meant pulling `frontend/` into the workspace + regenerating lockfile + 6 protective ACs. PO's "what does this have to do with frontend?" cut through the framing and saved an entire round of risk
+- **`.npmrc` at repo root cascades into every subdirectory.** Settings that look "pnpm-specific" still produce npm warnings (and threatened errors next major version) when read by `npm install` in any other dir. Repo-root `.npmrc` must only contain keys that BOTH tools understand or warn-free ignore — pnpm-only knobs go in root `package.json` `"pnpm"` block or per-package `.npmrc` instead
+- **pnpm 9 defaults already match the "best practices" .npmrc would specify.** node-linker=isolated, auto-install-peers=true, strict-peer-deps=false are all v9 defaults. Pre-emptive .npmrc settings just create cross-tool noise
+- **Run `npm install --dry-run` from repo root after introducing pnpm workspace.** If npm warns about "Unknown project config", the .npmrc is too aggressive — the cascade affects other npm-using subdirs
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — frontend-game architecture SPEC ACCEPTED + /review-impl hardening)
 
 Multi-round PO Q&A landed 11 architecture decisions for the upcoming
 frontend-game/ MMORPG client. Spec doc written + PO requested

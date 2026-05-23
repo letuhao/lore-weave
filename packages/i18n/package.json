@@ -1,0 +1,18 @@
+{
+  "name": "@loreweave/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Cluster-language translations for frontend-game (seeded from frontend/ on 2026-05-24, evolves independently thereafter).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./locales/*": "./locales/*"
+  },
+  "files": [
+    "src",
+    "locales"
+  ]
+}

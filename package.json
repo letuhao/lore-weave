@@ -1,0 +1,14 @@
+{
+  "name": "loreweave-monorepo-game",
+  "version": "0.0.0",
+  "private": true,
+  "description": "pnpm workspace root for the LoreWeave MMORPG client (frontend-game + shared packages). The novel-workflow frontend/ is intentionally NOT part of this workspace — see spec §1 #5.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "game:dev": "pnpm --filter frontend-game dev",
+    "game:build": "pnpm --filter frontend-game build",
+    "game:test": "pnpm --filter frontend-game test",
+    "packages:build": "pnpm -r --filter \"./packages/*\" build"
+  }
+}
