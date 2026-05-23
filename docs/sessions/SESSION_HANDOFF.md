@@ -1,17 +1,55 @@
-# Session Handoff — Session 63 cont. (P2 Step D MVP shipped)
+# Session Handoff — Session 63 cont.2 (P3 design checkpoint)
 
-> **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-23 (sessions 62 + 63 + 63cont. — 1 P1 XL + 1 P2 XL partial-build + 1 P2 Step D MVP M, pending Step D commit)
-> **HEAD:** `982e407c` (session 63 P2 partial-build) → pending Step D commit. Push status: NOT pushed (origin at `2d56eb16`).
+> **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
+> **Date:** 2026-05-23 (sessions 62 + 63 + 63cont. + 63cont.2 — 1 P1 XL + 1 P2 XL + 1 P2 Step D MVP + 1 P3 design checkpoint, pending P3 design commit)
+> **HEAD:** `bca166ab` (P2 Step D MVP) → pending P3 design checkpoint commit. **Branch 9 commits ahead of origin.** NOT pushed.
 > **Branch:** `main`.
 
-## What's NEXT — push 8 commits, then P3 (hierarchical reduce)
+## What's NEXT — P3 BUILD across 3 sessions per design plan
 
-### Step 0: push the 8 local commits to origin
+### Pre-flight at session 64 start
 
-User pushes manually. Branch is 8 commits ahead of origin (P1 cycle + D-P1-LIVE-SMOKE clear + P2 CLARIFY + P2 partial-build + P2 Step D MVP). Memory `feedback_verify_deployed_image_matches_source` reminds: confirm image matches source after push (we already rebuilt locally + smoke-tested).
+- Push the 9 local commits to origin (user manual). Memory `feedback_verify_deployed_image_matches_source` reminds: confirm deployed image after push (we rebuilt + smoke-tested locally for P1+P2).
+- Confirm `pytest services/knowledge-service/tests/unit/test_pass2_orchestrator.py` is green at HEAD (P3 BUILD will modify it).
+- Confirm `loreweave_extraction.__extractor_version__` is `v1-6dce61b7` (current — to verify per-op extension doesn't break P2 cache baseline).
 
-### Step 1: P3 (hierarchical reduce + per-level summaries) — L-XL cycle
+### Session 64 Foundation (~5-6h)
+
+Read first: [`docs/specs/2026-05-23-p3-hierarchical-reduce.md`](../specs/2026-05-23-p3-hierarchical-reduce.md) D1+D2+D4+D7 + [`docs/plans/2026-05-23-p3-hierarchical-reduce.md`](../plans/2026-05-23-p3-hierarchical-reduce.md) §2 Session 64 block.
+
+Files (in dependency order):
+1. NEW `sdks/python/loreweave_extraction/prompts/summarize_level.md` (~30 lines per D7).
+2. NEW `sdks/python/loreweave_extraction/extractors/summarize.py` (~120 lines).
+3. EXTEND `sdks/python/loreweave_extraction/_version.py` with per-op `get_extractor_version(op=...)` per M3 (~30 lines added; keep legacy `__extractor_version__` for P2 back-compat).
+4. EXTEND `services/knowledge-service/app/db/migrate.py` with P3 schema block (3 summary tables + extraction_jobs status CHECK extension) per §4 of plan.
+5. NEW `services/knowledge-service/app/extraction/tree_merge.py` (~280 lines, chunked per-chapter merge per D1 H2 fix) + 10 unit tests in NEW `tests/unit/test_tree_merge.py`.
+6. NEW `services/knowledge-service/app/extraction/hierarchy_writer.py` (~180 lines per D2 + D2a Tx boundary) + 5 unit tests + `app/db/neo4j_helpers.py` extension for `summary_index_name()` + `ensure_summary_indexes()` per H1+M7 fix.
+
+End-of-session-64 commit: "P3 Foundation [XL session 1/3]".
+
+### Session 65 Integration (~5-6h)
+
+Files:
+1. MODIFY `pass2_writer.py` per M1 (hierarchy threading + `:MENTIONED_IN -> :Scene` edges in same Tx per D2a).
+2. MODIFY `pass2_orchestrator.py` per M2 (summary message enqueue + `is_last_chapter` flag plumbing per D9).
+3. EXTEND `SummaryRepo` with upsert methods + `UniqueViolationError` handling per M5.
+4. NEW `services/knowledge-service/app/jobs/summary_processor.py` + worker-ai task registration + 5 unit tests + extractor tests.
+
+End-of-session-65 commit: "P3 Integration [XL session 2/3]".
+
+### Session 66 Router + live smoke (~3-4h)
+
+Files:
+1. NEW `app/context/intent/classifier.py` OR EXTEND `app/context/modes/full.py` per D5.
+2. 5 router unit tests.
+3. Live smoke per spec §4.6: full extraction → hierarchy nodes → summary indexes → Mode-3 abstract query blend.
+4. SESSION_PATCH clears D-P3-LIVE-SMOKE + D-P3-LLM-JUDGE-BASELINE-CHECK + D-P3-SHERLOCK-BASELINE.
+
+End-of-session-66 commit: "P3 Router + live smoke [XL session 3/3]".
+
+### Step 2 (later): P4 + P5
+
+Per ADR §6 roadmap. P3 + P2 caching + P1 structural decomp = **50MB local capability complete** per acceptance. P4 (semantic chunking escape valve) and P5 (gated LLM coreference + multi-resolution retrieval refinement) are quality polish; non-critical-path.
 
 P1 (T1 structural decomposer) + P2 MVP (T3 cache + leaf core) are committed. **P3 is the critical-path next phase per ADR §6 roadmap.**
 
