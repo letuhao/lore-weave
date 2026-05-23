@@ -81,7 +81,80 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-23) — TMP_009 spike validated on n=1 — read this first
+## ⏭️ CURRENT STATE (2026-05-23 — SESSION CLOSE, asset spike paused, next session = tilemap backend + frontend prep) — read this first
+
+PO decided to **pause asset-generation work** after **16 spike iterations** in
+the sister image-gen repo. PO verbatim: *"đã đi rất xa nhưng không có gì để
+kiểm chứng cả"* (gone very far without anything to validate). Next session
+pivots back to tilemap-service backend + frontend planning; will use **free
+assets OR the existing `outputs/homm3-bundle/pass-full-001` (2445 PNGs already
+generated)** to build a first PLAYABLE map before further asset polish.
+
+### Where the asset spike landed (full record in image-gen repo)
+
+- **Working baseline = iter 15** (canny ControlNet + open-top arc hint, model
+  `realisticfantasy-controlnet-canny-arc`): **1 V=2 clean + 5 V=1 partial / 9**
+  on 1 entry × 3 biomes fixture. ~6 s/image. First ship-ready output in 15
+  iterations. Composite step (RMBG + canonical iso tile) catches partials.
+- Single-page dashboard: `experiments/tmp_009/BENCHMARK.md` in image-gen repo
+  (commit `1c76cf5` on `main`).
+- Full per-iteration sub-agent logs: `experiments/tmp_009/REVIEW.md`.
+- All 7 spike pack JSONs + 3 hint PNGs + 3 hint scripts + 3 workflow refs
+  committed to image-gen `experiments/tmp_009/`.
+
+### PO untested hypothesis (for if asset session reopens)
+
+PO observation: every iteration that produced usable outputs used SDXL bases
+(rFantasy / Illustrious / hezi / Pony / DreamShaper Lightning). All hit a
+~0/9/0 partial ceiling at language level or ~1/5/3 with ControlNet. Hypothesis
+that the SDXL family priors themselves are the bottleneck — full **Flux 1 dev
+(NOT Q8 distilled)** at normal CFG may produce cleaner isolated outputs at the
+cost of ~3-5 min/image gen. Untested.
+
+### Lessons confirmed in the asset spike (durable, even if asset work doesn't resume)
+
+1. Character-trained SDXL bases (Illustrious, hezi-JP-KR, Pony-V6-XL) collapse
+   to characters on non-character prompts. Locked × 3 confirms.
+2. Language-only intervention has a hard ceiling — every prompt move TRADES
+   one failure mode for another.
+3. Subject-level prompt prior > camera-angle prior. "isometric vs front-view"
+   doesn't unbind a botanical-illustration association on "alpine dwarf shrub".
+4. Negation paradox: strongly forbidden visual concepts get amplified, not
+   suppressed.
+5. Distilled / Lightning / Turbo SDXL variants amplify base composition priors
+   (low CFG weakens negative).
+6. Decouple-gen-projection pivot (front-view → NVS Stage 2) won't help — Stage
+   1 isn't cleaner than iter 6, so Stage 2 would inherit dirty input.
+7. Structural intervention (ControlNet) breaks the language ceiling — but hint
+   design matters: rounded shapes near canvas bottom trigger SDXL's strong
+   "vessel holds contents" prior, regardless of canny vs depth mode.
+
+---
+
+## ⏭️ NEXT SESSION agenda (pinned by PO 2026-05-23)
+
+**Pivot away from asset generation iteration. Build something users can SEE.**
+
+| # | Track | Description |
+|---|---|---|
+| 1 | **tilemap-service backend** | Continue DESIGN.md Phase 4+ — HTTP service surface + DP integration + Forge AdminAction handlers + Postgres. (Already noted in prior SESSION_HANDOFF as "remaining real progress direction".) |
+| 2 | **Frontend planning** | Phaser 3 client design — how to consume tilemap data + render iso tiles + place props from the asset library. Spec/plan, not full implementation. |
+| 3 | **First playable map** | Use free assets (Kenney.nl 2:1 iso CC0 or similar) OR the existing 2445-image homm3-bundle (curated through iter 15 composite pipeline) as a placeholder asset set. Render ONE map from a `tilemap_view` instance end-to-end. **Goal: validate the architecture, prove pipeline produces something playable.** |
+| 4 | (Conditional, defer) | If after track 3 the asset quality is the bottleneck for "playable" feel, reopen asset session with PO's Flux 1 dev hypothesis. |
+
+The existing 2445-image homm3-bundle at
+`G:\Works\local-image-generator-service\outputs\homm3-bundle\pass-full-001`
+is the asset stockpile to draw from. Organized by biome × lane × entry × seed
+— see image-gen `experiments/tmp_009/BENCHMARK.md` for what's known about
+their quality.
+
+Iter 15 spike pack remains available if the playable-map pass turns up
+specific assets that the bundle doesn't cover — but the priority is **build
+the consumer, validate the loop**, not generate more inventory.
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-23 morning) — TMP_009 spike validated on n=1 — older snapshot, kept for trail
 
 PO raised the asset-gap: engine emits a **complete map as data but no visual
 assets**, and the existing ComfyUI Flux batch is "lộn xộn" (inconsistent base /
