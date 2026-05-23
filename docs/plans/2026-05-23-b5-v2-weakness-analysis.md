@@ -703,6 +703,72 @@ move significantly via classifier/defaults tuning. Future genuine
 improvement requires v3+ OceanCurrent + finer biome subdivision (Köppen
 seasonality, etc.).
 
+### Batch v2.1h Lever A — ✅ SHIPPED (2026-05-24, commit a825156c)
+
+Per-profile lat-band tables. Scenarios (Hothouse/Snowball/Desert) get
+their own allowed/forbidden sets — Hothouse's warm-pole forests are no
+longer marked forbidden against the Earth table. Pure measurement-
+framework fix; no world-gen changes. **Mean composite 71.69 → 76.39
+(+4.70)**, FIRST batch to pass the 1.0-improvement threshold.
+
+### Batch v2.1i — cherry-pick exhausted (2026-05-24, NOT SHIPPED)
+
+After v2.1h, prototyped 4 more levers (C continentality tighter; D
+Mediterranean narrower; B lat-aware classifier; G mid-lat-biased
+placement). Cherry-pick experiment results:
+
+| Lever | Mean Δ | Verdict |
+|---|---:|---|
+| C (reach 0.4→0.3) | -0.46 | regression on hothouse |
+| D (Mediterranean 250-700 → 350-700) | +0.06 | negligible |
+| B (lat-aware Mediterranean bias) | +0.05 | negligible |
+| G (mid-lat-biased pass-2 fill) | -5.38 | REGRESSION on 5 renders |
+
+**v2.1 ceiling is firmly 76.39.** Every classifier/defaults lever
+tried produces negligible or negative impact. Confirms: architecture
+has saturated. Real lift requires v3+ (OceanCurrent / Köppen
+seasonality). Cherry-pick experiment NOT committed — kept v2.1h state.
+
+### Batch v3.0 OceanCurrent — ✅ SHIPPED (2026-05-24)
+
+First architectural layer addition — activates the Plate slot reserved
+in B5 v2 since 2026-05-23 (research doc §10). Models ocean gyre
+temperature deltas: NH east-coast warm (Gulf Stream), NH west-coast
+cool (Canary Current); reversed in SH. Magnitude ±5°C at mid-lat peak
+(matches Earth NYC vs Madrid delta), fades to 0 at equator + pole.
+
+Per-zone formula:
+  ew_position    = (zone.sx - plate.center.x) / plate_half_width
+  hemi_sign      = +1 NH (Equatorial sy<h/2) / -1 SH / per layout
+  lat_envelope   = sin(π × (lat_dist-0.2)/0.65) for lat_dist ∈ [0.2, 0.85]
+  current_delta  = ew × hemi × envelope × OCEAN_CURRENT_STRENGTH (5°C)
+  temp += current_delta  // after insolation, before classification
+
+**Eval result (vs v2.1h baseline)**:
+  baseline_s7    76.09 → 75.98 (-0.11)
+  baseline_s13   82.59 → 83.91 (+1.32) ✓
+  baseline_s23   74.04 → 74.53 (+0.49)
+  baseline_s42   74.13 → 74.97 (+0.84)
+  baseline_s99   74.91 → 72.14 (-2.77)
+  hemi_eq        76.09 → 75.98 (-0.11)
+  hemi_north     81.22 → 81.18 (-0.04)
+  hemi_south     73.35 → 76.91 (+3.56) ✓ ← biggest gain (SH gyre correct)
+  scenarios      mostly unchanged
+
+  Mean: 76.39 → 76.65 (+0.26)
+  2 renders >1pt up; 0 regressions >5pt.
+
+**Smaller than predicted** (+3-7 was my estimate). Why: ±5°C delta
+rarely crosses tier boundaries (5/14/22°C) — most zones get a
+temperature shift but stay in the same biome class. Bigger lift would
+need wider current OR more biome tiers (Köppen seasonality = v5+).
+
+**Architecturally correct** (Plate slot finally active) + small
+quantitative gain. The hemi_south +3.56 is meaningful: SH gyre now
+producing correct E-W asymmetry on its dominant render.
+
+New baseline: `eval/baselines/v3.0.json` (76.65).
+
 ### Batches b / c / d — pending
 
 Per §5 roadmap, unchanged.

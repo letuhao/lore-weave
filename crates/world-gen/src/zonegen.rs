@@ -1442,7 +1442,7 @@ mod tests {
         // added DeciduousForest + Mediterranean biomes → classifier output
         // shifts on temperate zones). Rebaseline only with intentional
         // biome algorithm / palette / pipeline changes.
-        let pinned = "8b4a94e6262424a43bacc1a311b37c080ff71819bcfa09efb9f1574b3a7e5358";
+        let pinned = "bb77f7e5eca54256cf22c4217d530a9895c0866582c65b86c0f35f1f62800dfd";
         assert_eq!(
             actual.as_str(),
             pinned,

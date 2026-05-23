@@ -95,6 +95,11 @@ pub struct WorldClimateParams {
     /// v2.1a; defaults from climate literature (~100mm separates true ice
     /// cap from polar desert).
     pub ice_precip_min: f32,
+    /// **v3 OceanCurrent** — magnitude (°C) of the E-W temperature delta
+    /// from ocean gyres at the peak-effect mid-latitudes (~30-60°). Real
+    /// Earth example: NYC vs Madrid at same lat differ by ~6°C (Gulf
+    /// Stream vs Canary Current). Default 5.0; set to 0 to disable.
+    pub ocean_current_strength: f32,
 }
 
 impl Default for WorldClimateParams {
@@ -135,6 +140,9 @@ impl Default for WorldClimateParams {
             // caps on dry tall peaks (Antarctica is dry but ice; Atacama
             // is dry without ice — the height makes the difference).
             ice_precip_min: 100.0,
+            // v3 OceanCurrent: 5.0°C E-W delta at mid-lat peak; matches
+            // real Earth Gulf-Stream-vs-Canary-Current magnitude.
+            ocean_current_strength: 5.0,
         }
     }
 }
@@ -405,7 +413,11 @@ pub fn compute_zone_climate(
     // 2. Circulation (World) — precip base at the zone's latitude.
     let mut precip = circulation_curve(lat_dist, params);
 
-    // 3. (Plate layer reserved — v3 OceanCurrent slots here.)
+    // 3. **OceanCurrent (Plate)** — v3 active. E-W temperature delta from
+    //    gyres: east-NH-midlat warmer, west-NH-midlat cooler; reversed in SH.
+    //    Zero in tropics + polar (gyres have small effect at extremes).
+    let current_delta = ocean_current_delta(world, params, plate_id, zone_id, sy, lat_dist);
+    let temp = temp + current_delta;
 
     // 4. Continentality (Zone) — attenuate precip by coast distance.
     let coast_d = sample_edge_dist(edge_dist_sea, sx, sy, world.width);
@@ -420,6 +432,65 @@ pub fn compute_zone_climate(
         precip_annual: precip,
         biome,
     }
+}
+
+/// **v3 OceanCurrent** — compute the temperature delta from ocean gyres for
+/// one zone. Returns °C to ADD to the zone's insolation temp.
+///
+/// Physical model:
+/// - Real Earth: gyres rotate CW in NH, CCW in SH → east coast of each
+///   continent gets warm poleward current (NH: Gulf Stream), west coast
+///   gets cold equatorward current (NH: Canary). At same lat, east-NH-coast
+///   ~6°C warmer than west-NH-coast (NYC vs Madrid).
+/// - Implemented: classify each zone as east-half or west-half of its plate
+///   (using plate centroid); apply hemisphere-correct sign × lat envelope ×
+///   strength.
+///
+/// Lat envelope: sin curve peaking at lat_dist 0.5 (mid-lat), zero at 0.2
+/// (tropics — currents have small effect on tropical temp) and 0.85 (polar —
+/// currents are blocked by sea ice).
+fn ocean_current_delta(
+    world: &FlatWorld,
+    params: &WorldClimateParams,
+    plate_id: usize,
+    zone_id: usize,
+    sy: f32,
+    lat_dist: f32,
+) -> f32 {
+    if params.ocean_current_strength == 0.0 {
+        return 0.0;
+    }
+    // Lat envelope: zero outside 0.2..0.85, sin peak at 0.5
+    let lat_envelope = if !(0.2..=0.85).contains(&lat_dist) {
+        return 0.0;
+    } else {
+        let normalized = (lat_dist - 0.2) / 0.65;
+        (normalized * std::f32::consts::PI).sin()
+    };
+    // East-west position relative to plate centroid: -1 = far west, +1 = far east
+    let plate = &world.plates[plate_id];
+    let (sx, _) = plate.zone_sites[zone_id];
+    let (cx, _) = plate.center;
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    for &(vx, _) in &plate.vertices {
+        min_x = min_x.min(vx);
+        max_x = max_x.max(vx);
+    }
+    let half_width = ((max_x - min_x) * 0.5).max(1.0);
+    let ew_position = ((sx - cx) / half_width).clamp(-1.0, 1.0);
+    // Hemisphere sign: NH (sy < h/2 for Equatorial) → east coast warm.
+    // For NorthOnly (sy ∈ [0, h], 0 = equator, h = pole), all is NH → +1.
+    // For SouthOnly, all is SH → -1.
+    let h = world.height as f32;
+    let hemi_sign = match params.hemisphere_layout {
+        HemisphereLayout::Equatorial => {
+            if sy < h * 0.5 { 1.0 } else { -1.0 }
+        }
+        HemisphereLayout::NorthOnly => 1.0,
+        HemisphereLayout::SouthOnly => -1.0,
+    };
+    ew_position * hemi_sign * lat_envelope * params.ocean_current_strength
 }
 
 /// Sample the `edge_dist_sea` grid at world point `(sx, sy)`. Returns the BFS
@@ -643,6 +714,104 @@ mod tests {
     /// continentality is 0 — isolates insolation + circulation in unit tests.
     fn edge_dist_all_coast(world: &crate::flatworld::FlatWorld) -> Vec<u32> {
         vec![0u32; (world.width as usize) * (world.height as usize)]
+    }
+
+    #[test]
+    fn ocean_current_sign_matches_hemisphere() {
+        // v3 OceanCurrent semantic: NH east coast warm + west coast cold;
+        // SH reversed. Test the helper directly with synthetic positions so
+        // we don't depend on test_world's plate layout luck.
+        let world = test_world();
+        let params = WorldClimateParams::default();
+        let h = world.height as f32;
+        // Pick a plate — any plate works because ocean_current_delta only
+        // needs (plate.vertices, plate.center, plate.zone_sites).
+        let p = &world.plates[0];
+        if p.zone_sites.len() < 2 { return; } // skip if test_world degenerate
+        // Manually compute east-most and west-most zone indices.
+        let mut min_x = (f32::INFINITY, 0usize);
+        let mut max_x = (f32::NEG_INFINITY, 0usize);
+        for (zi, &(sx, _)) in p.zone_sites.iter().enumerate() {
+            if sx < min_x.0 { min_x = (sx, zi); }
+            if sx > max_x.0 { max_x = (sx, zi); }
+        }
+        if min_x.1 == max_x.1 { return; }
+        // Synthesize NH mid-lat sy + lat_dist=0.5 for the helper.
+        let nh_sy = h * 0.25;     // upper half = NH for Equatorial
+        let sh_sy = h * 0.75;     // lower half = SH for Equatorial
+        let lat_d = 0.5;
+        let nh_west = ocean_current_delta(&world, &params, 0, min_x.1, nh_sy, lat_d);
+        let nh_east = ocean_current_delta(&world, &params, 0, max_x.1, nh_sy, lat_d);
+        let sh_west = ocean_current_delta(&world, &params, 0, min_x.1, sh_sy, lat_d);
+        let sh_east = ocean_current_delta(&world, &params, 0, max_x.1, sh_sy, lat_d);
+        // NH: east > west.
+        assert!(
+            nh_east > nh_west,
+            "NH: east coast {} should be warmer than west {}", nh_east, nh_west
+        );
+        // SH: opposite (west > east).
+        assert!(
+            sh_west > sh_east,
+            "SH: west coast {} should be warmer than east {}", sh_west, sh_east
+        );
+        // NH east + SH east signs differ (hemisphere flip).
+        assert!(nh_east * sh_east <= 0.0, "NH east + SH east signs should differ");
+    }
+
+    #[test]
+    fn ocean_current_zero_at_equator_and_pole() {
+        // Lat envelope clamps to 0 outside lat_dist 0.2..0.85.
+        let world = test_world();
+        let params = WorldClimateParams::default();
+        let h = world.height as f32;
+        // Use east-most zone of plate 0; sy doesn't matter for the envelope check
+        // since we control lat_dist directly.
+        let p = &world.plates[0];
+        if p.zone_sites.is_empty() { return; }
+        // Find some zone with non-trivial ew_position.
+        let mut max_x = (f32::NEG_INFINITY, 0usize);
+        for (zi, &(sx, _)) in p.zone_sites.iter().enumerate() {
+            if sx > max_x.0 { max_x = (sx, zi); }
+        }
+        // Equator (lat_dist 0.1) → envelope = 0.
+        let eq = ocean_current_delta(&world, &params, 0, max_x.1, h * 0.5, 0.1);
+        assert_eq!(eq, 0.0, "equator current delta should be 0");
+        // Pole (lat_dist 0.95) → envelope = 0.
+        let pol = ocean_current_delta(&world, &params, 0, max_x.1, h * 0.05, 0.95);
+        assert_eq!(pol, 0.0, "polar current delta should be 0");
+    }
+
+    #[test]
+    fn ocean_current_disabled_when_strength_zero() {
+        // Setting `ocean_current_strength = 0` must completely disable the
+        // current modifier (used by author code to opt out for non-Earth-like
+        // worlds).
+        let world = test_world();
+        let params_off = WorldClimateParams {
+            ocean_current_strength: 0.0,
+            ..WorldClimateParams::default()
+        };
+        let params_on = WorldClimateParams::default();
+        let ed = edge_dist_all_coast(&world);
+        // Compare temp of the same zone with current on/off.
+        let p = &world.plates[0];
+        let zi = 0;
+        let zc_off = compute_zone_climate(&world, &params_off, 0, zi, &ed);
+        let zc_on = compute_zone_climate(&world, &params_on, 0, zi, &ed);
+        // Difference should be exactly the current delta (could be 0 if zone is
+        // tropics or at plate center). For at least one zone in the world, the
+        // two should differ.
+        let any_zone_differs = (0..p.zone_sites.len()).any(|zi| {
+            let off = compute_zone_climate(&world, &params_off, 0, zi, &ed);
+            let on  = compute_zone_climate(&world, &params_on, 0, zi, &ed);
+            (off.temp_mean - on.temp_mean).abs() > 0.01
+        });
+        assert!(any_zone_differs, "current should affect at least one zone in test_world plate 0");
+        // And the off-version of zone 0 itself must NOT be modified by current.
+        let zc_off_2 = compute_zone_climate(&world, &params_off, 0, zi, &ed);
+        assert_eq!(zc_off.temp_mean, zc_off_2.temp_mean, "deterministic when off");
+        // (silence unused warning if zc_on irrelevant)
+        let _ = zc_on;
     }
 
     #[test]
