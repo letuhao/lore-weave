@@ -1,8 +1,8 @@
-# Session Handoff — Session 65 (P3 Integration shipped)
+# Session Handoff — Session 66 (P3 Router MVP shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-23 (sessions 62-65 — P1+P2+P3 design+P3 Foundation+P3 Integration, pending P3 Integration commit)
-> **HEAD:** `50ea6b46` (P3 Foundation) → pending P3 Integration commit. **Branch 1 commit ahead of origin** after Foundation push.
+> **Date:** 2026-05-23 (sessions 62-66 — P1+P2+P3 design+Foundation+Integration+Router MVP, pending P3 Router commit)
+> **HEAD:** `faeb9b07` (P3 Integration) → pending P3 Router commit. **Branch 1 commit ahead of origin** after Integration push.
 > **Branch:** `main`.
 
 ## What's NEXT — P3 BUILD across 3 sessions per design plan
@@ -17,20 +17,53 @@
 
 11 files; 30 new tests; SDK 16/16 + KS 1721/1721 green.
 
-### Session 65 Integration (DONE — pending commit)
+### Session 65 Integration (DONE — committed faeb9b07 + pushed)
 
-7 files (5 NEW + 2 MODIFY); 20 new tests; KS 1741/1741 green.
+7 files; 20 new tests; KS 1741/1741 green.
 
-NEW: `level_summaries.py` (M5 race-graceful repo) + `summary_enqueue.py` (D3 + M4 retry_at_epoch + SummaryEnqueueFn Protocol) + `summary_processor.py` (D9 defensive + D10 md5 cache + M4 re-enqueue + Neo4j summary write).
+### Session 66 Router MVP (DONE — pending commit)
 
-MODIFY: `pass2_writer.py` (hierarchy_paths kwarg + upsert_for_chapter call same Tx per D2a) + `pass2_orchestrator.py` (6 new P3 kwargs + _enqueue_chapter_and_maybe_book_summaries helper).
+4 files (2 NEW + 2 tests); 23 new tests; KS 1764/1764 green.
 
-**Locked interfaces for session 66 to consume**:
-- `summary_processor.process_summarize_message(msg, deps)` Protocol for worker-ai consumer loop
-- `SummarizeMessage.from_redis_fields()` / `to_redis_fields()` round-trip
-- `SUMMARY_STREAM_NAME = "extraction.summarize"` Redis Stream
-- `LevelSummariesRepo.find_cached` + `upsert_summary` for Mode-3 router blend
-- `ensure_summary_indexes` per-project per-level Neo4j vector index helpers (from Foundation)
+NEW: `abstract_query.py` (D5 heuristic: keyword + long-query+no-entity) + `summary_blend.py` (per-project per-level Neo4j vector index parallel query + score-weighted blend).
+
+**Locked primitives ready for wire-up**:
+- `is_abstract_query(message, glossary_entities) -> bool` — intent gate
+- `select_summary_blend(session, project_id, embedding_model_uuid, query_embedding) -> list[LevelSummaryHit]` — multi-index retrieval
+
+## What's NEXT — 2 wire-up tasks + live smoke to close P3
+
+### D-P3-MODE3-ROUTER-WIRE-UP (~20 LoC, session 67)
+
+In `app/context/modes/full.py`, add `_safe_summary_blend` parallel to `_safe_l3_passages`. Call it when `is_abstract_query(message, glossary_entities)` returns True. Merge results into the Mode-3 prompt builder (new `<summaries>` block similar to `<passages>`).
+
+Files: 1 MODIFY (full.py) + maybe NEW renderer block. ~2-3h.
+
+### D-P3-WORKER-AI-CONSUMER-WIRING (~3-4h, session 67-68)
+
+NEW worker-ai task module that:
+1. XREADs `extraction.summarize` Redis Stream with consumer group `worker-ai-summary`
+2. For each message: `SummarizeMessage.from_redis_fields()` + dispatch `process_summarize_message(msg, deps)`
+3. Wires `SummaryProcessorDeps`: knowledge_pool + neo4j_session + llm_client + embedding_client + summary_enqueue (for M4 re-enqueue)
+4. XACK on success; let pending claim on failure (idle worker re-fetches)
+
+Mirror existing `worker-ai/app/tasks/extraction_job_processor.py` pattern. Tests live in worker-ai.
+
+### D-P3-LIVE-SMOKE + LLM-JUDGE-BASELINE + SHERLOCK-BASELINE (after wire-ups)
+
+Cross-service smoke: full extraction → hierarchy nodes → per-chapter/part/book summaries → Mode-3 abstract query blend. Then LLM-judge baseline check + sherlock_speckled_band joining baseline.
+
+## Status of 5-phase hierarchical extraction
+
+| Phase | Status |
+|---|---|
+| P1 Structural Decomposer | ✅ shipped (sessions 62-63) |
+| P2 Cache + Leaf Core | ✅ MVP shipped (session 63) |
+| P3 Hierarchical Reduce + Summaries | ✅ primitives complete (sessions 64-66); 2 wire-ups pending |
+| P4 Semantic Chunking Escape Valve | not started |
+| P5 Gated LLM Coref + Multi-res Refinement | not started |
+
+**50MB local capability**: P1+P2+P3 primitives ready; full integration requires the 2 wire-ups.
 
 End-of-session-64 commit: "P3 Foundation [XL session 1/3]".
 
