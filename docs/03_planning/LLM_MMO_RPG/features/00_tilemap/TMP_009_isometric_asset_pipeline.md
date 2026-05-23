@@ -101,20 +101,35 @@ have no effect at CFG=1.0. Both halves are required.
 
 **Empirical results (1 entry × 3 biomes × 3 seeds = 9 outputs, 2026-05-23):**
 
-| Biome | Clean | Partial | Failed | Notes |
+| Tally | Clean | Partial | Failed | Source |
 |---|:-:|:-:|:-:|---|
-| `abyss_chaos_rift` (dark / violet palette) | 3 | 0 | 0 | s303 silhouette drift (pine vs bush) but base sạch |
-| `grassland_temperate` (light / temperate) | 1 | 1 | 1 | s202: iso grass platform with flowers baked in |
-| `snow_frost` (cold / pale) | 0 | 1 | 2 | s101: subject drift to snow-covered rock pile (no shrub); s202/s303: snow patch + grass baked in |
+| Self-review (main thread, relative-to-baseline reading) | 4 | 2 | 3 | initial in-context score |
+| **Cold-start sub-agent (§12 workflow, strict absolute criteria) ⭐ canonical** | **0** | **3** | **6** | `experiments/tmp_009/REVIEW.md` baseline entry |
 
-**Honest verdict:** NAG is **biome-dependent**, not a universal fix. The dark
-`chaos_rift` palette + `dark_fantasy_digital_v11` LoRA + NAG aligned cleanly
-(3/3 clean). On lighter biomes the model's training prior asserts itself — light
-biomes have a stronger "prop-on-ground" training signal that NAG with default
-`nag_scale=5.0` can dampen but not eliminate. `snow_frost` is the worst case:
-the biome positive hint ("frost rimmed dormant twig bundles") interacts with the
-no-ground negative such that the model sometimes abandons the shrub subject
-entirely (s101).
+Per-criterion under the cold-start review:
+- **C1 subject-present:** 8/9 (snow_frost s101 rendered a rock pile, no shrub)
+- **C2 type-right:** 4/9 (chaos s303 + grass s101 + snow s303 read more as conifer/tree than dwarf shrub)
+- **C3 no-ground:** **0/9** — every single output bakes in soil / grass tufts / pebbles / iso platform / snow disk to some degree
+- **C4 palette:** 8/9
+
+**Why the divergence matters (this is the §12 workflow's first real save):**
+
+The self-review was reading C3 *relatively* — chaos_rift outputs looked DRAMATICALLY better than the original `homm3-bundle` baseline, so the main thread called them "clean". The cold-start sub-agent applied C3 *absolutely* — and found tiny soil scuffs / faint ground bleed in every single output, which RMBG cannot subsequently distinguish from the shrub subject (RMBG sees any non-white pixel as foreground). For a pipeline whose post-process anchor depends on a clean cutout, the absolute standard is the correct one.
+
+**Honest verdict:** NAG dampens but does NOT eliminate baked-in ground on ANY
+of the 3 biomes tested. Cross-biome trend still holds (chaos < grass < snow
+in severity), but no biome reaches absolute pass-rate at default `nag_scale=5.0`.
+Subject-type drift (C2) and palette match (C4) are partial wins.
+
+**Implications for rollout:** raw NAG outputs are NOT production-ready. Per the
+new strict tally the post-process anchor (§3.2) carries even more weight — and
+RMBG-1.4 alone cannot rescue the C3 failures (see §3.2 honest note on
+prop-vs-platform semantic separation, deferred to SAM2 spike TMP-ASSET-Q11).
+
+Levers left to try if quality must improve at gen-time before rollout:
+- Higher `nag_scale` (e.g. 8.0) on resistant biomes — at the cost of style
+- Biome-specific hardened negatives (different terms per biome palette)
+- Two-pass retry on outputs that fail a "subject present + base absent" classifier
 
 **What NAG IS doing reliably across biomes:** preserving the LoRA painterly style
 + producing valid prop subjects most of the time + softening (but not killing)
@@ -301,9 +316,10 @@ back to a debug glyph (and SHOULD log) — never a hard crash.
 
 The full chain has been exercised on **1 entry × 3 biomes × 3 seeds = 9 outputs**:
 entry `alpine_dwarf_shrub_cluster`, lane `bush`, biomes `abyss_chaos_rift`,
-`grassland_temperate`, `snow_frost`, seeds 101/202/303. **Outcome is mixed** —
-see §3.1 results table + §11 AC-2 for the honest tally (4 clean, 2 partial, 3
-failed; biome-dependent).
+`grassland_temperate`, `snow_frost`, seeds 101/202/303. **Cold-start sub-agent
+review per §12 workflow (canonical): 0 clean / 3 partial / 6 failed.** Main-thread
+self-review had given a more lenient 4/2/3 — §3.1 explains the divergence (the
+sub-agent applied C3 absolutely, the main thread had drifted to relative-to-baseline).
 
 **Artifacts produced (image-gen repo, uncommitted):**
 - Workflow — `workflows/flux_gguf_nag.json`
@@ -424,9 +440,103 @@ packs. Actor path is a separate spike.
 Each AC is annotated with current status: ✅ met / ⚠ partially met / ☐ open.
 
 - **AC-1 (gen graph)** ✅ — The `flux_gguf_nag.json` workflow places `NAGuidance` between `UnetLoaderGGUF` and `KSampler`, and `inject_loras()` inserts the LoRA chain between `UnetLoaderGGUF` and `NAGuidance` via `_rewrite_inputs`. Verified by `/history` graph trace 2026-05-23: chain was `UnetLoaderGGUF[1] → LoraLoader[11]/dark_fantasy_digital_v11@0.8 → NAGuidance[10]/scale=5.0,α=0.5,τ=1.5 → KSampler[6]@CFG=1.0`.
-- **AC-2 (gen consistency)** ⚠ — Cross-biome validation (1 entry × 3 biomes × 3 seeds = 9 outputs, 2026-05-23): NAG is **biome-dependent**, not universal. Tally: 4/9 clean, 2/9 partial, 3/9 failed. Clean on `chaos_rift` (3/3); mixed on `grassland_temperate` (1 clean, 1 partial, 1 iso-platform baked); poor on `snow_frost` (0 clean, 1 subject drift to rock pile, 2 base baked). LoRA style preserved across all biomes; subject preserved except `snow_frost / s101`. **Not production-ready without either (a) a working RMBG post-process step to absorb residual bases (DEBT #8) or (b) per-biome NAG/negative tuning.**
+- **AC-2 (gen consistency)** ⚠ — Cross-biome validation (1 entry × 3 biomes × 3 seeds = 9 outputs, 2026-05-23). Cold-start sub-agent review per §12 workflow (canonical tally): **0/9 clean, 3/9 partial, 6/9 failed**. Per-criterion: C1 subject-present 8/9; C2 type-right 4/9; **C3 no-ground 0/9**; C4 palette 8/9. NAG dampens but does not eliminate baked-in ground at default `nag_scale=5.0` on any biome. **Self-review by the main thread had given 4/2/3 — see §3.1 for why the cold-start tally is canonical and the §12 workflow caught this bias.** Not production-ready: needs either (a) stronger gen-side enforcement (higher `nag_scale`, per-biome hardened negatives, two-pass retry) or (b) a semantic post-process step that can separate prop from depicted ground (TMP-ASSET-Q11 SAM2 spike).
 - **AC-3 (composite normalises)** ✅ — `experiments/tmp_009/poc_static_consistency.py` reproducibly places 3 raw seeds on a single canonical 2:1 dimetric tile at bottom-center, identical scale. Verified by `outputs/spike-static-consistency-nag/*_before_after_nag.png`. *But background strip is not currently load-bearing on light biomes — see §3.2 + DEBT #8.*
 - **AC-4 (engine additive)** ☐ — The `facing: Option<Facing>` field on `TilemapObjectPlacement` is specified (§4.5) but not yet implemented in `services/tilemap-service`. Implementation is gated until any consumer (actor or directional structure) needs it.
 - **AC-5 (atlas join)** ☐ — Manifest schema is specified (§6) but no atlas has been packed yet (stage 4 not implemented). The "missing key → debug glyph fallback" behaviour will be enforced in the renderer, also TBD.
 - **AC-6 (actor multi-facing)** ☐ — UNRESOLVED, see TMP-ASSET-Q10. NAG alone does not solve this; awaits a separate actor-path spike.
 - **AC-7 (performance)** ⚠ — Measured 2026-05-23 on RTX 4090: gen ~57 s/image (=~39 GPU-h for full 2445-image bundle), VRAM peak ~22 GB / 24 GB during NAG sampling. Tight on 24 GB; will OOM on ≤16 GB cards (Q8 GGUF chunk + Flux UNet + LoRA + NAG attention buffers). `config/models.yaml.vram_estimate_gb: 10` understates the actual peak by 2.2× — should be reconciled before any auto-scheduled multi-job rollout. Background strip step is now RMBG-1.4 ONNX on CPU (~1 s/image, ~7× faster than the prior pixel loop) — DEBT #8 closed, though RMBG does NOT solve the semantic prop-vs-baked-platform separation (see §3.2 honest note).
+
+---
+
+## §12 Iteration review workflow (workflow-discipline, no LLM-judge code)
+
+Cost reality: full mass eval (LLM-as-judge + 2445-image gen) is not on the
+budget. Pipeline iteration uses a **fixed small fixture + structured human/agent
+review** instead. The reviewer is Claude (this thread, or a cold-start
+sub-agent), not an automated judge LLM. Goal is "usable-enough" sprites, not
+production quality. Runtime log lives at
+`experiments/tmp_009/REVIEW.md` in the image-gen repo.
+
+### 12.1 When the workflow fires (any of)
+
+- NAG params change (`nag_scale` / `nag_alpha` / `nag_tau`)
+- Positive prompt template change (pack-level or biome-level hint)
+- Negative prompt change
+- Model swap (Flux quant, LoRA name/weight)
+- Post-process change (RMBG variant / `BASE_TRIM_FRAC` / canonical tile spec)
+- Fixture extension (new entry or biome added)
+
+### 12.2 Fixed fixture
+
+| Slot | Value |
+|---|---|
+| Entries | `alpine_dwarf_shrub_cluster` (V1; extend with care, see §12.6 soft cap) |
+| Biomes | `abyss_chaos_rift` (dark) · `grassland_temperate` (light) · `snow_frost` (cold) |
+| Seeds | 101, 202, 303 |
+| Total | 1 × 3 × 3 = **9 images per config**, ~9 min gen on RTX 4090 |
+
+Frozen for cross-iteration comparability. Biomes deliberately span dark / light
+/ cold because debt #4 found NAG is biome-dependent — covering only one palette
+hides the real failure mode.
+
+### 12.3 Review criteria — per image
+
+Four binary criteria + one ordinal verdict. Report each separately — never
+combine into a gestalt "looks good".
+
+| ID | Criterion | Pass means |
+|---|---|---|
+| **C1** | Subject present | Entry is actually rendered (snow s101 baseline-fail: model drew a rock pile instead of a shrub) |
+| **C2** | Subject type roughly right | Pine vs bush vs cactus distinguished; ignore color & fine details |
+| **C3** | No depicted ground | No iso platform / grass tuft / snow patch / rock mound baked into the prop image. Subtle drop shadow on the canonical tile is OK |
+| **C4** | Biome palette match | Colour & mood match the biome hint (chaos = violet, grassland = green, snow = pale blue) |
+| **V** | **Verdict** | `0` fail (drop or regen) · `1` partial (composite step might rescue) · `2` clean (ship as-is) |
+
+### 12.4 Reviewer roles
+
+| Role | When |
+|---|---|
+| **Main Claude thread** | Default. Fast, in-context, gives per-criterion scores against criteria above. |
+| **Cold-start sub-agent — MANDATORY** | First evaluation of a new fixture (new entry or biome added) · decisions impacting cost or production config (model swap, default switch, full rollout) · delta > 50% vs baseline in any criterion · main thread has iterated > 5 turns on the same change (judgment fatigue). Sub-agent receives ONLY criteria + image paths + prior baseline; no narrative from the iteration. |
+| **Human PO** | Sub-agent disagrees with main; criteria themselves need re-tuning; ambiguous edge cases. |
+
+Maps directly to the repo's AMAW REVIEW + POST-REVIEW pattern — sub-agent
+review is the same forcing-function as in code review, repurposed for asset
+iteration.
+
+### 12.5 Anti-rubber-stamp rules
+
+Encoded from this session's own failure (claimed "NAG breakthrough" on n=1, had
+to walk it back at n=9):
+
+1. **Never declare "works" on n<9.** Single-seed observations are debugging hints, not conclusions.
+2. **✅ requires passing the criterion ACROSS fixture**, not "this one looks fine".
+3. **Don't combine criteria.** Each criterion scored separately, even if one tanks the verdict.
+4. **Cite the image file path** for every score so it can be re-checked.
+5. **Pre-commit cold-start sub-agent review** for any change the main thread proposes to commit. Main thread cannot self-approve a "works" verdict — must pass through fresh eyes. (See §12.4 mandatory triggers.)
+6. **Use ⚠ partial liberally.** When in doubt between ✅ and ⚠, choose ⚠.
+
+### 12.6 Soft caps
+
+| Cap | Limit | Rationale |
+|---|---|---|
+| Fixture size | ≤ 30 images / iteration | beyond this gen time dominates; iteration loop slows |
+| Entry count | ≤ 3 entries in fixture | covers entry variance without exploding cost |
+| Iteration round budget | ≤ 5 main-thread rounds before mandatory sub-agent | judgment fatigue |
+| Pre-rollout n requirement | ≥ 3 entries × 5 biomes × 3 seeds = 45 imgs | broader-than-fixture validation before any production batch |
+
+### 12.7 Output format
+
+Append a section to `experiments/tmp_009/REVIEW.md` with the table + aggregate
++ delta + recommendation. See that file for the canonical template + the
+2026-05-23 baseline review.
+
+### 12.8 How this serves the four eval use cases
+
+| Use case | How the workflow covers it |
+|---|---|
+| **C — Biome-fail systematic** | The per-biome rollup in the aggregate section directly. Already useful at n=9. |
+| **D — A/B config compare** | Run the fixture once per config; stack the tables side-by-side; compare verdicts column-by-column. |
+| **B — Regression check** | The "Delta vs prior baseline" line. Worsening aggregate → regression flag. |
+| **A — Realtime filter in gen** | OUT OF SCOPE for this workflow. Would require an automated judge LLM in the runner — explicit non-goal (cost). |
