@@ -313,6 +313,41 @@ func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID
 	return p, true, nil
 }
 
+// ModelContextLength reads a model's registered context window (tokens).
+// Used by the D-EXTRACTION-CONTEXT-FIX-STAGE-4 preflight to reject 400
+// requests whose input + max_tokens would overflow the model's loaded
+// context. Returns (0, true, nil) when the model exists but
+// context_length is NULL — preflight then skips the fit check (legacy
+// rows, platform models, or providers without a known limit).
+// found=false → 404 at caller (mirrors ModelPricing's contract).
+//
+// platform_models do NOT have a context_length column (admin-curated
+// + presumed safe); this method returns (0, true, nil) for them so
+// preflight skips the fit check. The pricing lookup already verifies
+// the platform model exists.
+func (r *Repo) ModelContextLength(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (int, bool, error) {
+	if modelSource == "platform_model" {
+		return 0, true, nil
+	}
+	if modelSource != "user_model" {
+		return 0, false, fmt.Errorf("unknown model_source %q", modelSource)
+	}
+	var ctxLen *int
+	err := r.pool.QueryRow(ctx,
+		`SELECT context_length FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+		modelRef, ownerUserID).Scan(&ctxLen)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("model context_length lookup: %w", err)
+	}
+	if ctxLen == nil {
+		return 0, true, nil
+	}
+	return *ctxLen, true, nil
+}
+
 // BillingInfo returns the reservation + model identity a finalizing worker
 // needs to reconcile/release a job's spend hold. reservationID is nil when
 // the job carries no reservation (pre-guardrail rows, or the stt-multipart

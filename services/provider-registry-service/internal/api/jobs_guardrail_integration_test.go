@@ -320,6 +320,98 @@ func TestDoSubmitJob_MaxTokensCap_RetriesAndSurfacesCap(t *testing.T) {
 	}
 }
 
+// setUserModelContextLength backfills user_models.context_length for an
+// already-seeded row. Used by the STAGE-4 preflight overflow tests.
+func setUserModelContextLength(t *testing.T, pool *pgxpool.Pool, modelID uuid.UUID, ctxLen int) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE user_models SET context_length=$2 WHERE user_model_id=$1`,
+		modelID, ctxLen); err != nil {
+		t.Fatalf("set context_length: %v", err)
+	}
+}
+
+// ── D-EXTRACTION-CONTEXT-FIX-STAGE-4 context-fit preflight ─────────────────
+
+// TestDoSubmitJob_ContextOverflow_400 — the input + max_tokens + 15% safety
+// margin exceed the registered context_length → 400 LLM_CONTEXT_OVERFLOW
+// before any reservation is placed. Regression-lock for the KV-cache OOM seen
+// on huihui-qwen3.6-abliterated 32K (R+E+F gather → "failed to find a memory
+// slot for batch").
+func TestDoSubmitJob_ContextOverflow_400(t *testing.T) {
+	stub := newBillingStub(t, reserveReply{http.StatusOK, map[string]any{"reservation_id": uuid.New()}})
+	srv, pool := guardrailServer(t, stub)
+	owner, modelID := seedPricedModel(t, pool, pricedTextModel)
+	setUserModelContextLength(t, pool, modelID, 8192)
+
+	// max_tokens alone (10000) > context_length (8192) → overflow no matter
+	// how small the prompt is.
+	rr := submitJob(t, srv, owner, map[string]any{
+		"operation": "chat", "model_source": "user_model",
+		"model_ref": modelID.String(),
+		"input": map[string]any{
+			"messages":   []any{map[string]any{"role": "user", "content": "hi"}},
+			"max_tokens": float64(10000),
+		},
+	})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	if c := errorCode(t, rr); c != "LLM_CONTEXT_OVERFLOW" {
+		t.Fatalf("expected LLM_CONTEXT_OVERFLOW, got %q", c)
+	}
+	if stub.reserveCalls != 0 {
+		t.Fatal("reserve must not be called when context overflows")
+	}
+	if jobCount(t, pool, owner) != 0 {
+		t.Fatal("no job row should be created for an overflow")
+	}
+}
+
+// TestDoSubmitJob_ContextFits_Passes — input + max_tokens + safety < context
+// → preflight passes through to reservation + 202. Confirms the fit branch
+// doesn't false-positive on reasonable requests.
+func TestDoSubmitJob_ContextFits_Passes(t *testing.T) {
+	stub := newBillingStub(t, reserveReply{http.StatusOK, map[string]any{"reservation_id": uuid.New()}})
+	srv, pool := guardrailServer(t, stub)
+	owner, modelID := seedPricedModel(t, pool, pricedTextModel)
+	setUserModelContextLength(t, pool, modelID, 32768)
+
+	rr := submitJob(t, srv, owner, map[string]any{
+		"operation": "chat", "model_source": "user_model",
+		"model_ref": modelID.String(),
+		"input": map[string]any{
+			"messages":   []any{map[string]any{"role": "user", "content": "hello"}},
+			"max_tokens": float64(4096),
+		},
+	})
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d (%s)", rr.Code, rr.Body.String())
+	}
+}
+
+// TestDoSubmitJob_ContextLengthNull_SkipsCheck — NULL context_length (legacy
+// rows, providers without a known limit) MUST NOT block the request. The
+// preflight returns (0, true) and skips the fit comparison.
+func TestDoSubmitJob_ContextLengthNull_SkipsCheck(t *testing.T) {
+	stub := newBillingStub(t, reserveReply{http.StatusOK, map[string]any{"reservation_id": uuid.New()}})
+	srv, pool := guardrailServer(t, stub)
+	owner, modelID := seedPricedModel(t, pool, pricedTextModel)
+	// context_length defaults to NULL — no setUserModelContextLength call.
+
+	rr := submitJob(t, srv, owner, map[string]any{
+		"operation": "chat", "model_source": "user_model",
+		"model_ref": modelID.String(),
+		"input": map[string]any{
+			"messages":   []any{map[string]any{"role": "user", "content": "hi"}},
+			"max_tokens": float64(1000000), // would overflow ANY model — but NULL skips
+		},
+	})
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 (NULL ctxlen skips fit check), got %d (%s)", rr.Code, rr.Body.String())
+	}
+}
+
 // seedPlatformModel inserts a priced platform_models row, returning its id.
 func seedPlatformModel(t *testing.T, pool *pgxpool.Pool, pricingJSON string) uuid.UUID {
 	t.Helper()

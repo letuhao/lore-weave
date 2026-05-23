@@ -281,6 +281,55 @@ func (s *Server) runGuardrailPreflight(
 		return preflightResult{}, false
 	}
 
+	// 1b. D-EXTRACTION-CONTEXT-FIX-STAGE-4 — context-fit preflight.
+	//     When the model has a registered context_length, reject requests
+	//     whose input + max_tokens + safety margin would overflow. Without
+	//     this, llama.cpp/LM Studio silently truncates the prompt OR
+	//     reserves the full context per slot for parallel jobs → "failed
+	//     to find a memory slot for batch" / KV-cache OOM observed live
+	//     on huihui-qwen3.6-abliterated 32K with R+E+F gather.
+	//
+	//     Skipped when context_length is NULL (legacy rows, platform
+	//     models). Skipped when the request omits max_tokens (chat path
+	//     where the server decides; preflight has no upper bound).
+	ctxLen, ctxFound, ctxErr := s.jobsRepo.ModelContextLength(ctx, modelSource, userID, modelRef)
+	if ctxErr != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "context_length lookup failed")
+		return preflightResult{}, false
+	}
+	// ctxFound mirrors ModelPricing's found flag — both query the same row;
+	// a divergence (found=true here but false there) would mean the row was
+	// deleted mid-preflight (race). Treat as 404 like the pricing path.
+	if !ctxFound {
+		writeError(w, http.StatusNotFound, "LLM_MODEL_NOT_FOUND", "model not found")
+		return preflightResult{}, false
+	}
+	if ctxLen > 0 {
+		// safety margin mirrors the Python ContextBudget default (15%) so
+		// SDK + gateway agree on what "fits".
+		inTokens := s.estimator.InputTokens(inputMap, 1)
+		maxTok := 0
+		if v, ok := inputMap["max_tokens"]; ok {
+			switch x := v.(type) {
+			case float64:
+				maxTok = int(x)
+			case int:
+				maxTok = x
+			case int64:
+				maxTok = int(x)
+			}
+		}
+		safety := ctxLen * 15 / 100
+		needed := inTokens + maxTok + safety
+		if needed > ctxLen {
+			writeError(w, http.StatusBadRequest, "LLM_CONTEXT_OVERFLOW", fmt.Sprintf(
+				"request would overflow model context: input=%d + max_tokens=%d + safety=%d = %d > context_length=%d",
+				inTokens, maxTok, safety, needed, ctxLen,
+			))
+			return preflightResult{}, false
+		}
+	}
+
 	// 2. Estimate. nchunks is derived from the chunk config + the raw input
 	//    token count (no overhead) so the per-chunk overhead lands once.
 	strategy, size := "", 0
