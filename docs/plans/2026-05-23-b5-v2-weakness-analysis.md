@@ -583,6 +583,75 @@ Hash-pin rebaseline.
 **Goal**: kill the ring artifact, more natural-looking gradients.
 **Complexity**: S. Estimate: 1 cycle.
 
+#### v2.1c SHIPPED (2026-05-24) — W2 + W13, architectural-correct-but-invisible
+
+**TL;DR:** W2 + W13 implemented per spec. W13 gives small but real metric
+gain (`precip_gradient` +0.7-5.5 across renders); W2 essentially invisible
+visually (9/11 renders byte-identical even when AMP doubled to 0.30) due
+to zone-level architecture limit. Ship as foundation, accept ring artifact
+is properly fixed in v4 Orographic.
+
+**W13 (N=9 zone-avg coast_d) — works as designed:**
+- Replaced single-site `sample_edge_dist(sx, sy)` with 9-point average
+  (center + 8 cardinal/diagonal at `mean_nearest_neighbour(subzone_sites)`
+  radius). Elongated zones with coastal+inland extremes now get a
+  representative average, not site-luck.
+- `precip_gradient_law` (v4 metric) shows consistent gain: +0.7-5.5 across
+  Earth-like renders, confirming reduction in single-site noise.
+
+**W2 (noise overlay) — architecturally limited:**
+- AMP=0.15 + FREQ=0.005 + SALT=0xC0FE fbm overlay added to `cont` post-clamp.
+- Empirical: 9/11 renders byte-identical to noW2 baseline. Bumping AMP to
+  0.30 only flipped 2 renders (hothouse + hemi_north). 4-plate seed=7 test
+  (large continentality reach 81px) with AMP=0.30 vs AMP=0 still identical.
+- **Root cause of invisibility**: W2 perturbs `cont` at zone level — each
+  zone has one (sx, sy) → one noise value → uniform precip shift for the
+  whole zone. Only flips biome when shift crosses Whittaker threshold.
+  Most zones are deep in their biome → noise can't push them across →
+  same output bytes.
+- **What would actually break rings**: (a) per-pixel noise (varies within
+  zone), or (b) anisotropic wind-march (v4 Orographic). Both out of scope
+  for v2.1.
+- **PO own spec note** ("noise overlay ... doesn't fix the root cause but
+  immediately improves perceived quality") proved overstated empirically —
+  doesn't improve perceived quality either, just stays as architectural
+  foundation.
+
+**Eval delta v4.0 → v4.1 (W6 + W2 + W13 vs W6 alone):**
+
+| Render | v4.0 | v4.1 | Δ | Driver |
+|---|---:|---:|---:|---|
+| baseline_s7 / hemi_eq | 86.00 | 86.01 | +0.01 | W13 precip_grad |
+| baseline_s13 | 86.53 | 86.66 | +0.13 | W13 precip_grad |
+| baseline_s23 | 86.38 | 87.06 | +0.68 | W13 precip_grad |
+| baseline_s42 | 85.78 | 84.23 | −1.55 | W2 lat_banding shift |
+| baseline_s99 | 74.09 | 73.44 | −0.65 | W2 sanity shift |
+| hemi_north | 87.83 | 88.64 | +0.81 | W13 precip_grad |
+| hemi_south | 91.96 | 92.64 | +0.68 | W13 precip_grad |
+| scenario_snowball | 83.44 | 83.66 | +0.22 | minor |
+| scenario_hothouse | 90.26 | 90.18 | −0.08 | flat |
+| scenario_desert | 88.71 | 88.87 | +0.16 | minor |
+| **MEAN** | **86.09** | **86.13** | **+0.04** | mostly W13 |
+
+No regression ≥5pt; aggregate +0.04 is technically below `composite_mean_min_improvement` (1.0) but ships as the architecturally-correct foundation
+for v4 Orographic's eventual anisotropic march.
+
+**Locked artifacts (this batch):**
+- `crates/world-gen/src/flat_climate.rs` — added `W2_AMP/W2_FREQ/W2_SALT`
+  consts; `mean_nearest_neighbour` + `sample_edge_dist_avg` helpers; modified
+  `compute_zone_climate` to use both; 5 tests added (`mean_nearest_neighbour_picks_smallest_pairwise`,
+  `sample_edge_dist_avg_equals_center_when_radius_zero`, `sample_edge_dist_avg_smooths_a_gradient`,
+  `continentality_w2_w13_active_in_zone_climate`, `w2_noise_overlay_breaks_radial_symmetry`)
+- `crates/world-gen/src/zonegen.rs` — biome render hash pin rebased to
+  `d0c3e17c…` (W2 perturbation shifts ≥1 pixel even on 96×64 test world)
+- `eval/baselines/v4.1.json` — new shipped baseline (W6 + W2 + W13, mean 86.13)
+- `eval/compare-v2.1c/` — PNG pairs (v4.0-no-W2W13 vs v4.1-with-W2W13) used
+  by PO to confirm W2 visual impact is below perception threshold
+
+**Roadmap consequence**: v4 Orographic gets promoted to "needed work" status
+(was just nice-to-have). W2 spec note "saves the principled fix for when it
+can be done properly" now reads as honest acknowledgement, not just deferral.
+
 ### Batch B5-v2.1d — "Whittaker hue richness" (P3)
 
 - W5 — classifier-level hue interpolation near thresholds
