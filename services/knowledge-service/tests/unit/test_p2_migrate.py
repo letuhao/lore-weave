@@ -61,7 +61,10 @@ def test_p2_block_is_idempotent():
     """
     p2_idx = migrate.DDL.find("P2 (hierarchical extraction T3)")
     assert p2_idx != -1, "P2 section sentinel not found"
-    p2_block = migrate.DDL[p2_idx:]
+    # Stop at the next section sentinel (P3 etc.) so the test doesn't
+    # pick up later sections' DDL when checking P2's idempotency.
+    p3_idx = migrate.DDL.find("P3 (hierarchical extraction", p2_idx)
+    p2_block = migrate.DDL[p2_idx:p3_idx] if p3_idx != -1 else migrate.DDL[p2_idx:]
     # Split into statements at semicolons, then check each statement contains the guard.
     statements = [s.strip() for s in p2_block.split(";") if s.strip()]
     for stmt in statements:

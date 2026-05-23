@@ -668,6 +668,63 @@ CREATE TABLE IF NOT EXISTS extraction_leaves_raw (
 -- D6: opt-in raw retention; defaults OFF (D-P2-FE-SAVE-RAW for FE toggle).
 ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS save_raw_extraction BOOLEAN NOT NULL DEFAULT false;
+
+
+-- ═══════════════════════════════════════════════════════════════
+-- P3 (hierarchical extraction T4 + T7 stage 1) — 2026-05-23
+-- Spec: docs/specs/2026-05-23-p3-hierarchical-reduce.md §D4
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS summary_chapters (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id           UUID NOT NULL,
+  book_id              UUID NOT NULL,
+  summary_text         TEXT NOT NULL,
+  summary_input_md5    TEXT NOT NULL,
+  embedding_dimension  INT  NOT NULL,
+  embedding_model_uuid TEXT NOT NULL,
+  generated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (chapter_id, embedding_model_uuid)
+);
+CREATE INDEX IF NOT EXISTS idx_summary_chapters_book ON summary_chapters(book_id);
+
+CREATE TABLE IF NOT EXISTS summary_parts (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  part_id              UUID NOT NULL,
+  book_id              UUID NOT NULL,
+  summary_text         TEXT NOT NULL,
+  summary_input_md5    TEXT NOT NULL,
+  embedding_dimension  INT  NOT NULL,
+  embedding_model_uuid TEXT NOT NULL,
+  generated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (part_id, embedding_model_uuid)
+);
+CREATE INDEX IF NOT EXISTS idx_summary_parts_book ON summary_parts(book_id);
+
+CREATE TABLE IF NOT EXISTS summary_books (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id              UUID NOT NULL,
+  summary_text         TEXT NOT NULL,
+  summary_input_md5    TEXT NOT NULL,
+  embedding_dimension  INT  NOT NULL,
+  embedding_model_uuid TEXT NOT NULL,
+  generated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (book_id, embedding_model_uuid)
+);
+
+-- M1: extend extraction_jobs.status CHECK to include 'summarizing'.
+-- Idempotent via DROP IF EXISTS + re-add. Wrap in DO block so a missing
+-- constraint doesn't abort the migration.
+DO $$ BEGIN
+  ALTER TABLE extraction_jobs
+    DROP CONSTRAINT IF EXISTS extraction_jobs_status_check;
+  ALTER TABLE extraction_jobs ADD CONSTRAINT extraction_jobs_status_check
+    CHECK (status IN ('pending','running','summarizing','completed','failed'));
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 """
 
 

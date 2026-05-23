@@ -46,19 +46,65 @@ def _compute_extractor_version() -> str:
     return f"v1-{h.hexdigest()[:8]}"
 
 
-# Module-level constant — computed once at import.
+# Module-level constant — computed once at import. Hashes ALL prompt files.
+# Kept for P2 back-compat (existing task_id callers); new code should use
+# get_extractor_version(op=...) for per-op invalidation.
 __extractor_version__ = _compute_extractor_version()
 
 
-def get_extractor_version() -> str:
+# P3 M3 fix: per-op extractor versions. Each op's prompt-file set is hashed
+# independently so editing one op's prompt only invalidates that op's cache.
+_OP_PROMPTS: dict[str, list[str]] = {
+    "entity": ["entity_extraction.md", "entity_extraction_system.md"],
+    "relation": ["relation_extraction.md", "relation_extraction_system.md"],
+    "event": ["event_extraction.md", "event_extraction_system.md"],
+    "fact": ["fact_extraction.md", "fact_extraction_system.md"],
+    "summarize_level": ["summarize_level_extraction.md"],
+}
+
+
+def _compute_op_extractor_version(op: str) -> str:
+    """Hash only the prompt files relevant to a single op."""
+    if op not in _OP_PROMPTS:
+        raise ValueError(
+            f"unknown op {op!r}; allowed: {sorted(_OP_PROMPTS.keys())}"
+        )
+    files = sorted(_OP_PROMPTS[op])
+    h = hashlib.sha256()
+    for fname in files:
+        path = _PROMPTS_DIR / fname
+        h.update(fname.encode("utf-8"))
+        h.update(b"\x1f")
+        h.update(path.read_bytes() if path.exists() else b"")
+    return f"v1-{op}-{h.hexdigest()[:8]}"
+
+
+def get_extractor_version(op: str | None = None) -> str:
     """Return the extractor version.
+
+    op=None (legacy back-compat): hashes ALL prompts.
+    op=<op_name>: hashes ONLY that op's prompt files (P3 M3 fix).
 
     Honors LOREWEAVE_EXTRACTOR_VERSION_DEV_RECOMPUTE=1 for dev
     hot-reload (recomputes every call).
     """
-    if os.environ.get("LOREWEAVE_EXTRACTOR_VERSION_DEV_RECOMPUTE") == "1":
-        return _compute_extractor_version()
-    return __extractor_version__
+    dev_recompute = os.environ.get("LOREWEAVE_EXTRACTOR_VERSION_DEV_RECOMPUTE") == "1"
+    if op is None:
+        # P2 back-compat path; eventually deprecate after P2 migrates.
+        if dev_recompute:
+            return _compute_extractor_version()
+        return __extractor_version__
+    if dev_recompute:
+        # Op-specific recompute (still respects per-op partitioning).
+        return _compute_op_extractor_version(op)
+    # In production, cache per-op result. _lru_op_version is itself cached
+    # via the module-level dict — single-fetch per op per process.
+    if op not in _OP_VERSION_CACHE:
+        _OP_VERSION_CACHE[op] = _compute_op_extractor_version(op)
+    return _OP_VERSION_CACHE[op]
+
+
+_OP_VERSION_CACHE: dict[str, str] = {}
 
 
 __all__ = ["__extractor_version__", "get_extractor_version"]

@@ -49,6 +49,10 @@ from loreweave_extraction.extractors.relation import (
     RelationExtractionResponse,
     extract_relations,
 )
+from loreweave_extraction.extractors.summarize import (
+    LevelSummary,
+    summarize_level,
+)
 from loreweave_extraction.pass2 import Pass2Candidates, extract_pass2
 
 __all__ = [
@@ -60,6 +64,8 @@ __all__ = [
     "extract_relations",
     "extract_events",
     "extract_facts",
+    "summarize_level",
+    "LevelSummary",
     # Candidate models
     "LLMEntityCandidate",
     "LLMRelationCandidate",

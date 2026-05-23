@@ -137,3 +137,71 @@ async def run_write(
     """
     assert_user_id_param(cypher)
     return await session.run(cypher, user_id=user_id, **params)
+
+
+# ── P3 — per-project per-level summary vector index helpers (H1+M7+SR-2) ──
+
+import re
+from typing import Literal as _Literal
+
+_SUMMARY_LEVELS = ("chapter", "part", "book")
+# Cypher index names: ASCII letters, digits, underscores only.
+_SAFE_NAME_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+def summary_index_name(
+    project_id: str,
+    embedding_model_uuid: str,
+    level: _Literal["chapter", "part", "book"],
+) -> str:
+    """Build the Neo4j vector index name for a per-project per-level summary.
+
+    Spec D2 (H1+M7+SR-2 fixes): full dash-stripped UUIDs for zero collision;
+    namespaced by embedding_model_uuid so model change creates a NEW family.
+
+    Format: `<level>_summary_emb_p<32hex>_e<32hex>`
+    """
+    if level not in _SUMMARY_LEVELS:
+        raise ValueError(f"unknown level {level!r}; allowed: {_SUMMARY_LEVELS}")
+    proj_short = project_id.replace("-", "").lower()
+    emb_short = embedding_model_uuid.replace("-", "").lower()
+    name = f"{level}_summary_emb_p{proj_short}_e{emb_short}"
+    if not _SAFE_NAME_RE.match(name):
+        # Defense-in-depth — should never trigger given UUID inputs.
+        raise ValueError(f"unsafe index name: {name!r}")
+    return name
+
+
+async def ensure_summary_indexes(
+    session: CypherSession,
+    project_id: str,
+    embedding_model_uuid: str,
+    embedding_dimension: int,
+) -> dict[str, str]:
+    """Idempotent CREATE of the 3 per-project per-level summary vector indexes.
+
+    Returns dict mapping level -> index name (caller persists for Mode-3 query).
+
+    Spec D2 lifecycle: called lazily by extraction-job-processor BEFORE the
+    first summary write for a given (project, embedding_model) pair. Safe
+    to call every job start — `CREATE VECTOR INDEX IF NOT EXISTS` is no-op
+    on existing indexes.
+    """
+    if embedding_dimension <= 0:
+        raise ValueError(f"invalid embedding_dimension {embedding_dimension!r}")
+    names: dict[str, str] = {}
+    for level in _SUMMARY_LEVELS:
+        idx_name = summary_index_name(project_id, embedding_model_uuid, level)
+        node_label = level.capitalize()  # Chapter / Part / Book
+        # Index name MUST be safely templated — Cypher doesn't support $ for names.
+        # _SAFE_NAME_RE validation above guarantees safety.
+        cypher = (
+            f"CREATE VECTOR INDEX {idx_name} IF NOT EXISTS "
+            f"FOR (n:{node_label}) ON (n.summary_embedding) "
+            "OPTIONS {indexConfig: {"
+            "`vector.dimensions`: $dim, "
+            "`vector.similarity_function`: 'cosine'}}"
+        )
+        await session.run(cypher, dim=embedding_dimension)
+        names[level] = idx_name
+    return names

@@ -1,8 +1,8 @@
-# Session Handoff — Session 63 cont.2 (P3 design checkpoint)
+# Session Handoff — Session 64 (P3 Foundation shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-23 (sessions 62 + 63 + 63cont. + 63cont.2 — 1 P1 XL + 1 P2 XL + 1 P2 Step D MVP + 1 P3 design checkpoint, pending P3 design commit)
-> **HEAD:** `bca166ab` (P2 Step D MVP) → pending P3 design checkpoint commit. **Branch 9 commits ahead of origin.** NOT pushed.
+> **Date:** 2026-05-23 (sessions 62-64 — P1 XL + P2 XL + P2 Step D MVP + P3 design checkpoint + P3 Foundation, pending P3 Foundation commit)
+> **HEAD:** `7364ddf7` (P3 design) → pending P3 Foundation commit. **Branch 1 commit ahead of origin** after push.
 > **Branch:** `main`.
 
 ## What's NEXT — P3 BUILD across 3 sessions per design plan
@@ -13,17 +13,16 @@
 - Confirm `pytest services/knowledge-service/tests/unit/test_pass2_orchestrator.py` is green at HEAD (P3 BUILD will modify it).
 - Confirm `loreweave_extraction.__extractor_version__` is `v1-6dce61b7` (current — to verify per-op extension doesn't break P2 cache baseline).
 
-### Session 64 Foundation (~5-6h)
+### Session 64 Foundation (DONE — pending commit)
 
-Read first: [`docs/specs/2026-05-23-p3-hierarchical-reduce.md`](../specs/2026-05-23-p3-hierarchical-reduce.md) D1+D2+D4+D7 + [`docs/plans/2026-05-23-p3-hierarchical-reduce.md`](../plans/2026-05-23-p3-hierarchical-reduce.md) §2 Session 64 block.
+11 files shipped (8 NEW + 3 MODIFY); 30 new tests; SDK 16/16 + KS 1721/1721 green. Foundation is fully isolated (pure additions — no integration with existing extraction paths yet). Locked interfaces for session 65 to consume:
+- `tree_merge.ChapterKG` output shape (dataclass: entities/relations/events/facts/canonical_id_map)
+- `hierarchy_writer.HierarchyPaths` input shape (book/part/chapter + scenes list)
+- `summary_chapters` / `summary_parts` / `summary_books` Postgres tables with UNIQUE on (level_id, embedding_model_uuid)
+- `neo4j_helpers.summary_index_name()` + `ensure_summary_indexes()` per-project per-level naming
+- `loreweave_extraction.summarize_level()` extractor + per-op `get_extractor_version(op=...)`
 
-Files (in dependency order):
-1. NEW `sdks/python/loreweave_extraction/prompts/summarize_level.md` (~30 lines per D7).
-2. NEW `sdks/python/loreweave_extraction/extractors/summarize.py` (~120 lines).
-3. EXTEND `sdks/python/loreweave_extraction/_version.py` with per-op `get_extractor_version(op=...)` per M3 (~30 lines added; keep legacy `__extractor_version__` for P2 back-compat).
-4. EXTEND `services/knowledge-service/app/db/migrate.py` with P3 schema block (3 summary tables + extraction_jobs status CHECK extension) per §4 of plan.
-5. NEW `services/knowledge-service/app/extraction/tree_merge.py` (~280 lines, chunked per-chapter merge per D1 H2 fix) + 10 unit tests in NEW `tests/unit/test_tree_merge.py`.
-6. NEW `services/knowledge-service/app/extraction/hierarchy_writer.py` (~180 lines per D2 + D2a Tx boundary) + 5 unit tests + `app/db/neo4j_helpers.py` extension for `summary_index_name()` + `ensure_summary_indexes()` per H1+M7 fix.
+**P2 cache one-time thrash acknowledged**: global `__extractor_version__` went v1-6dce61b7 → v1-538cc568 (added summarize_level prompt). P2 callers using `get_extractor_version()` without op will re-extract once. Per D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION.
 
 End-of-session-64 commit: "P3 Foundation [XL session 1/3]".
 
