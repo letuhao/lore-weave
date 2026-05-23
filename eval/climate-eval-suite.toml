@@ -1,0 +1,174 @@
+# Climate eval suite — 11 fixed reference renders, scored against profile-
+# specific targets. See `docs/plans/2026-05-23-climate-eval-references.md`
+# for methodology + Earth references.
+
+# Scoring weights (composite = weighted sum of 5 sub-scores).
+[weights]
+distribution   = 0.25
+lat_banding    = 0.25
+continentality = 0.15
+diversity      = 0.15
+sanity         = 0.20
+
+# Regression thresholds (used by --baseline diff mode).
+[regression]
+composite_mean_min_improvement = 1.0  # batch claims improvement only if >= this
+composite_per_render_max_regression = 5.0
+subscore_mean_max_regression = 10.0
+
+# Target profiles. Distribution = expected fraction per biome (sums to 1.0).
+[profiles.earth]
+description = "Earth-like (Olson 2001 + Beck 2018)"
+[profiles.earth.distribution]
+Ice                = 0.100
+Tundra             = 0.070
+BorealForest       = 0.165
+TemperateForest    = 0.130
+TemperateGrassland = 0.090
+HotDesert          = 0.185
+Savanna            = 0.140
+TropicalRainforest = 0.120
+
+# Snowball: cold world, most land Ice or Tundra.
+[profiles.snowball]
+description = "Snowball: >=80% Ice+Tundra"
+[profiles.snowball.distribution]
+Ice                = 0.50
+Tundra             = 0.30
+BorealForest       = 0.10
+TemperateForest    = 0.05
+TemperateGrassland = 0.03
+HotDesert          = 0.005
+Savanna            = 0.005
+TropicalRainforest = 0.005
+
+# Hothouse: no ice, mostly forest.
+[profiles.hothouse]
+description = "Hothouse: no Ice, >=40% Forest"
+[profiles.hothouse.distribution]
+Ice                = 0.005
+Tundra             = 0.020
+BorealForest       = 0.10
+TemperateForest    = 0.25
+TemperateGrassland = 0.10
+HotDesert          = 0.075
+Savanna            = 0.15
+TropicalRainforest = 0.30
+
+# Desert: very dry, mostly HotDesert + Savanna.
+[profiles.desert]
+description = "Desert: >=50% HotDesert+Savanna"
+[profiles.desert.distribution]
+Ice                = 0.020
+Tundra             = 0.050
+BorealForest       = 0.080
+TemperateForest    = 0.030
+TemperateGrassland = 0.220
+HotDesert          = 0.350
+Savanna            = 0.200
+TropicalRainforest = 0.050
+
+# ── Eval renders. Each gets one entry. ──
+
+[[renders]]
+name = "baseline_s7"
+seed = 7
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "earth"
+
+[[renders]]
+name = "baseline_s13"
+seed = 13
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "earth"
+
+[[renders]]
+name = "baseline_s23"
+seed = 23
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "earth"
+
+[[renders]]
+name = "baseline_s42"
+seed = 42
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "earth"
+
+[[renders]]
+name = "baseline_s99"
+seed = 99
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "earth"
+
+[[renders]]
+name = "hemi_eq"
+seed = 7
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "earth"
+
+[[renders]]
+name = "hemi_north"
+seed = 7
+width = 1024
+height = 640
+hemisphere = "north"
+profile = "earth"
+
+[[renders]]
+name = "hemi_south"
+seed = 7
+width = 1024
+height = 640
+hemisphere = "south"
+profile = "earth"
+
+[[renders]]
+name = "scenario_snowball"
+seed = 7
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "snowball"
+[renders.cli_extra]
+"--t-eq" = "8"
+"--t-pole" = "-45"
+"--ice-temp" = "-15"
+
+[[renders]]
+name = "scenario_hothouse"
+seed = 7
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "hothouse"
+[renders.cli_extra]
+"--t-eq" = "40"
+"--t-pole" = "5"
+"--precip-eq" = "3500"
+"--precip-midlat" = "1500"
+"--precip-polar" = "400"
+
+[[renders]]
+name = "scenario_desert"
+seed = 7
+width = 1024
+height = 640
+hemisphere = "equatorial"
+profile = "desert"
+[renders.cli_extra]
+"--precip-eq" = "600"
+"--precip-subtropic" = "50"
+"--precip-midlat" = "200"
+"--precip-polar" = "30"
