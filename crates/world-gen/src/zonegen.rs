@@ -9,6 +9,8 @@
 //! its anchor floor. Erosion + seam-stitching with neighbours come later
 //! (deferred, bottom-up — see the region-tree data-architecture doc).
 
+use crate::creative_seed::ErosionStrength;
+use crate::erosion;
 use crate::flatworld::{FlatWorld, BASE_LEVEL};
 use crate::noise::{fbm_3d, ridged_fbm_3d};
 use crate::rng::{sub_seed, Rng};
@@ -330,6 +332,111 @@ pub fn render_all_zones(
     rgb
 }
 
+/// 4-connectivity neighbour lists for a `w × h` grid (the adjacency
+/// `erosion::apply` expects). Cell index = `y * w + x`.
+fn grid_neighbors_4(w: usize, h: usize) -> Vec<Vec<u32>> {
+    let mut nb = vec![Vec::with_capacity(4); w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            if x > 0 {
+                nb[i].push((i - 1) as u32);
+            }
+            if x + 1 < w {
+                nb[i].push((i + 1) as u32);
+            }
+            if y > 0 {
+                nb[i].push((i - w) as u32);
+            }
+            if y + 1 < h {
+                nb[i].push((i + w) as u32);
+            }
+        }
+    }
+    nb
+}
+
+/// Full-map zone terrain **with local hydraulic erosion** (B2): rasterize the
+/// seam-stitched terrain to a grid, treat the void between plates as the
+/// drainage outlet (set below all land), and run [`erosion::apply`] so sloped
+/// land (mountains, foothills) carves dendritic valleys while flat plains stay
+/// flat. Reuses the proven stream-power erosion — no world-framing (the void,
+/// not an invented sea level, is the outlet). Hypsometric colour, void slate.
+pub fn render_all_zones_eroded(
+    world: &FlatWorld,
+    master_seed: u64,
+    ratios: &ClassRatios,
+    strength: ErosionStrength,
+) -> Vec<u8> {
+    const VOID: [u8; 3] = [12, 16, 28];
+    let w = world.width as usize;
+    let h = world.height as usize;
+    let n = w * h;
+
+    let subattrs: Vec<Vec<SubAttr>> = (0..world.plates.len())
+        .map(|pi| plate_subattrs(world, master_seed, ratios, pi))
+        .collect();
+
+    // Rasterize blended terrain; track land mask + the lowest land value.
+    let mut elev = vec![0f32; n];
+    let mut is_land = vec![false; n];
+    let mut min_land = f32::INFINITY;
+    let mut land_count = 0usize;
+    for py in 0..h {
+        for px in 0..w {
+            let x = px as f32 + 0.5;
+            let y = py as f32 + 0.5;
+            if let Some(p) = world.plates.iter().find(|p| p.contains(x, y)) {
+                let e = blended_height(&subattrs[p.id], x, y);
+                let i = py * w + px;
+                elev[i] = e;
+                is_land[i] = true;
+                min_land = min_land.min(e);
+                land_count += 1;
+            }
+        }
+    }
+    if land_count == 0 {
+        return vec![VOID[0]; n * 3]; // degenerate: all void
+    }
+
+    // Void = the drainage outlet: set it strictly below all land so the
+    // `(1 - land_fraction)` percentile waterline lands exactly on the void.
+    let sentinel = min_land - 0.05;
+    for i in 0..n {
+        if !is_land[i] {
+            elev[i] = sentinel;
+        }
+    }
+    let land_fraction = land_count as f32 / n as f32;
+    let neighbors = grid_neighbors_4(w, h);
+    erosion::apply(&mut elev, &neighbors, land_fraction, strength, None);
+
+    // Re-range over land only (erosion may have lowered peaks/filled pits).
+    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    for i in 0..n {
+        if is_land[i] {
+            lo = lo.min(elev[i]);
+            hi = hi.max(elev[i]);
+        }
+    }
+    let span = (hi - lo).max(1e-6);
+
+    let mut rgb = vec![0u8; n * 3];
+    for i in 0..n {
+        let c = if is_land[i] {
+            let t = ((elev[i] - lo) / span).clamp(0.0, 1.0).powf(0.55);
+            hypso_color(t)
+        } else {
+            VOID
+        };
+        rgb[i * 3] = c[0];
+        rgb[i * 3 + 1] = c[1];
+        rgb[i * 3 + 2] = c[2];
+    }
+    rgb
+}
+
 /// Hypsometric ramp `t ∈ [0,1]`: lowland green → upland tan → brown → snow.
 fn hypso_color(t: f32) -> [u8; 3] {
     const STOPS: [(f32, [f32; 3]); 5] = [
@@ -513,6 +620,21 @@ mod tests {
             max_step < 0.05,
             "seam not continuous: max per-pixel step {max_step} (expected < 0.05)"
         );
+    }
+
+    #[test]
+    fn eroded_render_is_world_sized_and_deterministic() {
+        let p = FlatParams {
+            width: 96,
+            height: 64,
+            seed: 50,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let a = render_all_zones_eroded(&world, p.seed, &ClassRatios::default(), ErosionStrength::Moderate);
+        let b = render_all_zones_eroded(&world, p.seed, &ClassRatios::default(), ErosionStrength::Moderate);
+        assert_eq!(a.len(), 96 * 64 * 3);
+        assert_eq!(a, b, "eroded render must be deterministic");
     }
 
     #[test]

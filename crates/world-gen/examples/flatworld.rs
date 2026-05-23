@@ -14,7 +14,10 @@ use std::path::PathBuf;
 use world_gen::flatworld::{
     export, generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams,
 };
-use world_gen::zonegen::{render_all_zones, render_zone, zone_height, ClassRatios, TerrainClass};
+use world_gen::ErosionStrength;
+use world_gen::zonegen::{
+    render_all_zones, render_all_zones_eroded, render_zone, zone_height, ClassRatios, TerrainClass,
+};
 
 fn main() {
     let mut p = FlatParams::default();
@@ -32,6 +35,9 @@ fn main() {
     let mut all_zones_out: Option<PathBuf> = None;
     // Optional class-comparison demo: the 4 classes side by side, same scale.
     let mut class_demo_out: Option<PathBuf> = None;
+    // Optional eroded full-map terrain (B2) + erosion strength.
+    let mut eroded_out: Option<PathBuf> = None;
+    let mut erosion = ErosionStrength::Moderate;
 
     // Minimal hand-rolled arg parsing (`--flag value`), to keep the sketch
     // dependency-free of the main CLI.
@@ -68,6 +74,16 @@ fn main() {
             "--zone-terrain-out" => zone_terrain_out = Some(PathBuf::from(need())),
             "--all-zones-out" => all_zones_out = Some(PathBuf::from(need())),
             "--class-demo" => class_demo_out = Some(PathBuf::from(need())),
+            "--eroded-out" => eroded_out = Some(PathBuf::from(need())),
+            "--erosion" => {
+                erosion = match need().as_str() {
+                    "none" => ErosionStrength::None,
+                    "light" => ErosionStrength::Light,
+                    "moderate" => ErosionStrength::Moderate,
+                    "heavy" => ErosionStrength::Heavy,
+                    other => panic!("unknown erosion strength: {other}"),
+                }
+            }
             other => panic!("unknown flag: {other}"),
         }
         i += 2;
@@ -204,6 +220,19 @@ fn main() {
             "wrote {} — class demo (Plains | Hills | Plateau | Mountains, shared scale)",
             cpath.display()
         );
+    }
+
+    if let Some(epath) = eroded_out {
+        let rgb = render_all_zones_eroded(&world, p.seed, &ClassRatios::default(), erosion);
+        image::save_buffer(
+            &epath,
+            &rgb,
+            world.width,
+            world.height,
+            image::ExtendedColorType::Rgb8,
+        )
+        .expect("failed to write eroded PNG");
+        println!("wrote {} — eroded zone terrain ({erosion:?})", epath.display());
     }
 
     if let Some(apath) = all_zones_out {
