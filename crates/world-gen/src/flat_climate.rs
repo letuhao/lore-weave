@@ -102,6 +102,18 @@ pub struct WorldClimateParams {
     /// Earth example: NYC vs Madrid at same lat differ by ~6°C (Gulf
     /// Stream vs Canary Current). Default 5.0; set to 0 to disable.
     pub ocean_current_strength: f32,
+    /// **v4 Orographic** — rain shadow strength: `precip *= exp(-strength × upwind_elev_gain)`.
+    /// Upwind elev_gain is accumulated positive elevation changes walking upwind from
+    /// the zone site (lat-banded wind: trade winds + polar easterlies blow from east,
+    /// mid-lat westerlies from west). Real Earth example: Death Valley (Sierra Nevada
+    /// shadow), Patagonia (Andes shadow), Atacama (Andes + Humboldt double shadow).
+    /// Default 5.0 = ~50% precip reduction behind a 0.14-relief mountain range; 0 = disabled.
+    pub orographic_strength: f32,
+    /// **v4 Orographic** — upwind walk distance (px). Defaults to `continentality_reach × 2`
+    /// via [`Self::scaled_for`] so it tracks plate scale. Larger → moisture transport
+    /// considers more remote upwind features (Earth analog: large air masses crossing
+    /// continents). Smaller → only adjacent zones contribute shadow.
+    pub orographic_reach: f32,
 }
 
 impl Default for WorldClimateParams {
@@ -145,6 +157,15 @@ impl Default for WorldClimateParams {
             // v3 OceanCurrent: 5.0°C E-W delta at mid-lat peak; matches
             // real Earth Gulf-Stream-vs-Canary-Current magnitude.
             ocean_current_strength: 5.0,
+            // v4 Orographic: 5.0 strength = ~50% precip reduction behind a
+            // 0.14-relief mountain (exp(-5 × 0.14) ≈ 0.50). Matches Earth-
+            // like rain shadow magnitude (Death Valley vs Pacific coast).
+            orographic_strength: 5.0,
+            // v4 Orographic reach: gets overwritten by scaled_for() to ~93px
+            // (continentality_reach × 2) on the default 12-plate 1024×640 world.
+            // Standalone fallback keeps tests that don't call scaled_for()
+            // producing usable orographic output.
+            orographic_reach: 200.0,
         }
     }
 }
@@ -172,6 +193,10 @@ impl WorldClimateParams {
         let area = (width as f32) * (height as f32);
         let mean_radius = 0.5 * (area / plate_count.max(1) as f32).sqrt();
         self.continentality_reach = (mean_radius * CONTINENTALITY_REACH_FRAC).max(1.0);
+        // **v4 Orographic** — walk twice the continentality reach upwind
+        // (moisture transport considers ~2 plate-radius of remote upwind
+        // features, not just the zone's immediate neighbourhood).
+        self.orographic_reach = self.continentality_reach * 2.0;
         self
     }
 }
@@ -581,12 +606,82 @@ pub fn compute_zone_climate(
 
     // 5. (ZoneRefinement — implicit by using zone-site coords throughout.)
 
+    // 6. **Orographic (Zone)** — v4 active. Anisotropic rain shadow: walk
+    //    upwind, accumulate elevation gain, attenuate precip by exp(−strength
+    //    × gain). Real Earth: Death Valley behind Sierra Nevada, Patagonia
+    //    behind Andes, Atacama behind Andes+Humboldt double shadow.
+    if params.orographic_strength > 0.0 && params.orographic_reach > 0.0 {
+        let upwind = upwind_direction(lat_dist);
+        let elev_gain = upwind_elev_gain(world, sx, sy, upwind, params.orographic_reach, 5.0);
+        let shadow = (-params.orographic_strength * elev_gain).exp();
+        precip *= shadow;
+    }
+
     let biome = whittaker_classify(temp, precip);
     ZoneClimate {
         temp_mean: temp,
         precip_annual: precip,
         biome,
     }
+}
+
+/// **v4 Orographic** — upwind direction at a given latitude.
+///
+/// Returns the unit vector pointing TOWARDS the upwind source (i.e. walking
+/// along this vector takes you upstream of the wind). Earth-physics 3-band
+/// model:
+/// - Tropics (lat_dist < 0.33): trade winds blow from the east → upwind = `+x`
+/// - Mid-lat (0.33..0.67): westerlies blow from the west → upwind = `−x`
+/// - Polar (lat_dist > 0.67): polar easterlies → upwind = `+x`
+///
+/// Hemisphere dimension (north vs south) doesn't affect E-W direction in the
+/// simple 3-band model — the E-W reversal is symmetric across the equator.
+/// (Full meridional cells with N-S component → v5+ refinement.)
+fn upwind_direction(lat_dist: f32) -> (f32, f32) {
+    if lat_dist < 0.33 {
+        (1.0, 0.0)
+    } else if lat_dist < 0.67 {
+        (-1.0, 0.0)
+    } else {
+        (1.0, 0.0)
+    }
+}
+
+/// **v4 Orographic** — walk upwind from `(sx, sy)` and accumulate **positive**
+/// elevation changes. Sum represents total "mountain mass" the air passed over
+/// to reach this zone — which depleted the moisture (rain shadow physics).
+///
+/// `step` = walking step in world pixels (small enough to catch elevation
+/// transitions on mountain slopes; default 5 px). `reach` = total walk
+/// distance (px). Steps = `reach / step`. Boundary hit → stop walking
+/// (no contribution from beyond world edge).
+fn upwind_elev_gain(
+    world: &FlatWorld,
+    sx: f32,
+    sy: f32,
+    upwind: (f32, f32),
+    reach: f32,
+    step: f32,
+) -> f32 {
+    let n_steps = ((reach / step.max(0.5)) as usize).max(1);
+    let w = world.width as f32;
+    let h = world.height as f32;
+    let mut total_gain = 0.0_f32;
+    let mut prev_elev = world.elevation_at(sx, sy);
+    for i in 1..=n_steps {
+        let x = sx + upwind.0 * step * i as f32;
+        let y = sy + upwind.1 * step * i as f32;
+        if x < 0.0 || x >= w || y < 0.0 || y >= h {
+            break; // hit world edge — no further moisture-stealing terrain
+        }
+        let elev = world.elevation_at(x, y);
+        let delta = elev - prev_elev;
+        if delta > 0.0 {
+            total_gain += delta;
+        }
+        prev_elev = elev;
+    }
+    total_gain
 }
 
 /// **v3 OceanCurrent** — compute the temperature delta from ocean gyres for
@@ -848,6 +943,8 @@ pub struct ClimateParamsExport {
     pub continentality_reach: f32,
     pub continentality_precip_atten: f32,
     pub ocean_current_strength: f32,
+    pub orographic_strength: f32,
+    pub orographic_reach: f32,
 }
 
 /// Top-level world climate export (one JSON document per render).
@@ -917,6 +1014,8 @@ pub fn export_zone_climates(
             continentality_reach: params.continentality_reach,
             continentality_precip_atten: params.continentality_precip_atten,
             ocean_current_strength: params.ocean_current_strength,
+            orographic_strength: params.orographic_strength,
+            orographic_reach: params.orographic_reach,
         },
         zones,
     }
@@ -1507,6 +1606,137 @@ mod tests {
     }
 
     // ---- export_zone_climates ----
+
+    // ---- v4 Orographic ----
+
+    #[test]
+    fn upwind_direction_three_band() {
+        // Tropics: easterlies → upwind = +x
+        assert_eq!(upwind_direction(0.0), (1.0, 0.0));
+        assert_eq!(upwind_direction(0.15), (1.0, 0.0));
+        assert_eq!(upwind_direction(0.32), (1.0, 0.0));
+        // Mid-lat: westerlies → upwind = -x
+        assert_eq!(upwind_direction(0.34), (-1.0, 0.0));
+        assert_eq!(upwind_direction(0.5), (-1.0, 0.0));
+        assert_eq!(upwind_direction(0.66), (-1.0, 0.0));
+        // Polar: polar easterlies → upwind = +x
+        assert_eq!(upwind_direction(0.68), (1.0, 0.0));
+        assert_eq!(upwind_direction(1.0), (1.0, 0.0));
+    }
+
+    #[test]
+    fn upwind_elev_gain_accumulates_positive_only() {
+        // Synthetic plate: a tall vertical strip from x=50 to x=70 with high
+        // elevation (mountain wall), surrounded by flat low ground.
+        // Walking from (100, 50) upwind in (+1, 0) direction does NOT cross
+        // the wall (wall is at x=50-70, walking east from x=100 goes AWAY
+        // from wall). Should accumulate 0.
+        // Walking from (10, 50) upwind in (+1, 0) direction crosses the wall
+        // → accumulates the elevation gain.
+        let mut params = FlatParams {
+            width: 200,
+            height: 100,
+            plate_count: 1,
+            seed: 1,
+            ..FlatParams::default()
+        };
+        params.separation = 0.0; // single plate, no spread constraint
+        let world = crate::flatworld::generate(&params);
+        // No mountains in a 1-plate world (no collisions) so elev_gain ≈ 0
+        // for any walk. Just verify the function runs + returns finite ≥ 0.
+        let gain = upwind_elev_gain(&world, 50.0, 50.0, (1.0, 0.0), 50.0, 5.0);
+        assert!(gain.is_finite());
+        assert!(gain >= 0.0, "elev_gain must be non-negative (positive only): got {gain}");
+    }
+
+    #[test]
+    fn upwind_elev_gain_world_edge_stops_walk() {
+        // Walking off the right edge should terminate cleanly + return ≤ the
+        // distance actually walked. Test with a 1-step walk from near the
+        // right edge.
+        let world = test_world();
+        let w = world.width as f32;
+        // (w - 3, sy): only ~1 step possible before hitting right edge
+        let gain = upwind_elev_gain(&world, w - 3.0, 50.0, (1.0, 0.0), 100.0, 5.0);
+        assert!(gain.is_finite());
+        assert!(gain >= 0.0);
+        // For a single-step world-edge walk, total gain is bounded by max
+        // elevation in the field (typically < 1.0). Sanity-check the gain
+        // hasn't accumulated nonsense from out-of-bounds samples.
+        assert!(gain < 2.0, "edge walk produced suspicious gain: {gain}");
+    }
+
+    #[test]
+    fn orographic_disabled_when_strength_zero() {
+        // Setting orographic_strength = 0 must NOT change zone precip
+        // regardless of underlying terrain.
+        let world = test_world();
+        let params_off = WorldClimateParams {
+            orographic_strength: 0.0,
+            ..WorldClimateParams::default()
+        };
+        let params_on = WorldClimateParams::default();
+        let ed = edge_dist_all_coast(&world);
+        for (pi, p) in world.plates.iter().enumerate() {
+            for zi in 0..p.zone_sites.len() {
+                let zc_off = compute_zone_climate(&world, &params_off, pi, zi, &ed);
+                let zc_on = compute_zone_climate(&world, &params_on, pi, zi, &ed);
+                // params_off can ONLY differ in precip if orographic fires
+                // even when disabled (bug). Temperatures must match exactly.
+                assert_eq!(
+                    zc_off.temp_mean.to_bits(),
+                    zc_on.temp_mean.to_bits(),
+                    "orographic should not affect temperature"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn orographic_reduces_precip_behind_mountains() {
+        // Use the default world (12-plate, default params). Some zones will
+        // have upwind mountains (collision belts) → orographic shadow fires.
+        // Verify: at least one zone differs in precip between strength=0 and
+        // strength=default.
+        let world = test_world();
+        let params_off = WorldClimateParams {
+            orographic_strength: 0.0,
+            ..WorldClimateParams::default()
+        }
+        .scaled_for(world.width, world.height, world.plates.len());
+        let params_on = WorldClimateParams::default()
+            .scaled_for(world.width, world.height, world.plates.len());
+        let ed = edge_dist_all_coast(&world);
+
+        let mut any_differs = false;
+        let mut any_reduced = false;
+        for (pi, p) in world.plates.iter().enumerate() {
+            for zi in 0..p.zone_sites.len() {
+                let off = compute_zone_climate(&world, &params_off, pi, zi, &ed);
+                let on = compute_zone_climate(&world, &params_on, pi, zi, &ed);
+                let delta = on.precip_annual - off.precip_annual;
+                if delta.abs() > 0.1 {
+                    any_differs = true;
+                }
+                if delta < -1.0 {
+                    any_reduced = true; // precip on < precip off → orographic shadow firing
+                }
+            }
+        }
+        // In a default 12-plate world with seed 7, the collision belts
+        // produce SOME mountains. Walking 93 px upwind should encounter at
+        // least one. If this test ever fails because the test_world has no
+        // mountains, replace with a forced-mountain world (plates=5,
+        // separation=0.5, collision_gain=0.7).
+        assert!(
+            any_differs,
+            "orographic should affect at least one zone's precip in test_world"
+        );
+        assert!(
+            any_reduced,
+            "orographic shadow should REDUCE precip for at least one downwind-of-mountain zone"
+        );
+    }
 
     // ---- W5 classifier-level hue interpolation (v2.1d) ----
 

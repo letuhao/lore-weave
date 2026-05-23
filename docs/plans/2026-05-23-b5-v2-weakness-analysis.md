@@ -809,6 +809,78 @@ scoring + W5 visual blending compound positively.
 - v2.1 batch sequence COMPLETE — all 4 batches (a/b/c/d) shipped through
   /amaw + 12-phase workflow each. v5 Köppen seasonal still deferred.
 
+### Batch B5-v4 — "Orographic" (climate physics)
+
+Per [`docs/plans/2026-05-23-climate-simulation-research.md`](2026-05-23-climate-simulation-research.md)
+§4.3: anisotropic rain shadow from prevailing-wind upwind march. Distinct
+from W2/W13 isotropic continentality (which contributes uniform "interior
+is dry" effect) — orographic adds **directional** physics: mountains cast
+real rain shadows on their leeward side.
+
+#### v4 SHIPPED (2026-05-24) — orographic rain shadow with visible terrain physics
+
+**Algorithm:**
+1. Per zone, determine **upwind direction** from `lat_dist` (3-band Earth model:
+   tropics + polar easterlies blow from east → upwind = +x; mid-lat westerlies
+   from west → upwind = −x).
+2. Walk upwind from zone site, sampling `world.elevation_at(x, y)` every 5px,
+   for `orographic_reach` distance (default = continentality_reach × 2 ≈ 93px).
+3. Accumulate **positive** elevation deltas along the path (rising terrain
+   depletes moisture; descending doesn't matter).
+4. Apply shadow: `precip *= exp(-orographic_strength × elev_gain)`.
+   Default strength = 5.0 → exp(-5 × 0.14) ≈ 0.50 = 50% precip reduction
+   behind a 0.14-relief mountain range (Earth-like magnitude).
+5. World-edge boundary: walk terminates cleanly (no fake elevation from
+   off-map samples).
+
+**Empirical metric (v4.4 → v4.5)**:
+
+| Render | v4.4 | v4.5 | Δ | Notes |
+|---|---:|---:|---:|---|
+| baseline_s7 / hemi_eq | 89.30 | 88.06 | −1.24 | minor |
+| baseline_s13 | 90.80 | 90.53 | −0.27 | flat |
+| baseline_s23 | 86.92 | 86.41 | −0.51 | flat |
+| baseline_s42 | 89.37 | 88.06 | −1.31 | minor |
+| **baseline_s99** | **77.23** | **85.33** | **+8.10** | **biggest gain** — orographic added biome diversity in monotonous interior |
+| hemi_north | 84.66 | 86.06 | **+1.40** | helps worst-case render too |
+| hemi_south | 92.34 | 92.22 | −0.12 | flat |
+| scenario_snowball | 83.67 | 82.83 | −0.84 | minor |
+| scenario_hothouse | 95.88 | 92.34 | −3.54 | biggest loss (still under 5pt) |
+| scenario_desert | 87.92 | 87.28 | −0.64 | flat |
+| **MEAN** | **87.94** | **87.93** | **−0.01** | aggregate perfectly neutral |
+
+**Sub-score pattern:** `precip_gradient` drops across renders (anisotropic
+shadow can't be predicted by lat-only circulation curve). This is EXPECTED
+— real Earth precip distribution similarly cannot be predicted from lat alone
+(Atacama, Death Valley, Tarim Basin all exist as rain shadows). The eval's
+v4.3 ecotone-aware framework absorbs the metric impact well.
+
+**Visual review (Claude self-evaluated, 2026-05-24):**
+- baseline_s99: 2 new **orange HotDesert wedges** appear in continental
+  interiors (bottom-left plate + center plate) where v4.4 had monotonous
+  tan/beige — orographic created visible rain shadow desert pockets
+- hemi_north: top-left plate gained an orange HotDesert wedge on east side
+  (eastern-side rain shadow from mid-lat westerlies)
+- Effect ARCHITECTURALLY VISIBLE (unlike W9 which only showed on Ice
+  zones) — orographic produces real biome shifts, not just lightness mod
+
+**Implementation artifacts:**
+- `crates/world-gen/src/flat_climate.rs` —
+  - `upwind_direction(lat_dist) -> (f32, f32)` 3-band wind model
+  - `upwind_elev_gain(world, sx, sy, upwind, reach, step) -> f32` upwind walk
+  - `compute_zone_climate` integrates as layer 6 after continentality
+  - `WorldClimateParams` adds `orographic_strength` (default 5.0) +
+    `orographic_reach` (default = continentality_reach × 2 via `scaled_for`)
+  - `ClimateParamsExport` extended for sidecar consumers
+  - 5 new unit tests (`upwind_direction_three_band`, `upwind_elev_gain_*` ×2,
+    `orographic_disabled_when_strength_zero`, `orographic_reduces_precip_behind_mountains`)
+- Hash pin unchanged (96×64 test world has no collisions → no upwind mountains)
+- `eval/baselines/v4.5.json` (mean 87.93)
+- `eval/compare-v4-orographic/` visual evidence
+
+**Roadmap consequence**: v4 unblocks v5 Köppen seasonal (now realistic
+precip patterns exist for seasonality to refine into climate subtypes).
+
 ### Cross-batch invariants
 
 - Hypso hash-pin from `eroded_hypso_render_pins_a_content_hash` (commit
