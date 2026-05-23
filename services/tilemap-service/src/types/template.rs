@@ -10,6 +10,7 @@ use crate::types::biome::BiomeSelectionRules;
 use crate::types::tile::TerrainKind;
 use crate::types::treasure::TreasureTierSpec;
 use crate::types::zone::{PassageKind, RoadOption, ZoneId, ZoneRole};
+use crate::world_inherit::WorldZoneSnapshot;
 
 /// Stable per-reality template identifier (e.g. `"wuxia_southern_song_v1"`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -86,7 +87,13 @@ impl TemplateConnection {
 }
 
 /// V2/Reality aggregate. Phase 0a is structural minimum.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// **Note on `Eq`:** dropped from the derive when `world_zone` was added, because
+/// `WorldZoneSnapshot` embeds `f32` fields (temp/precip/elevation/site/boundary)
+/// which only impl `PartialEq`. No call site uses `TilemapTemplate` as a HashMap
+/// key or with an `Eq` bound — only `assert_eq!` (PartialEq is enough). If
+/// strict equality ever matters, hash the serialized form.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TilemapTemplate {
     pub template_id: TilemapTemplateId,
     pub zones: Vec<ZoneSpec>,
@@ -95,6 +102,13 @@ pub struct TilemapTemplate {
     /// for the same template applied to the same channel.
     #[serde(default)]
     pub seed_offset: u64,
+    /// Optional upstream world zone snapshot — present when this template opts
+    /// in to world-inheritance constraints (spec
+    /// `docs/specs/2026-05-24-tilemap-world-inheritance-contract.md`). `None`
+    /// preserves the pre-Chunk-3 standalone path (existing 332-test baseline).
+    /// Additive — fields default to None and skip-serializing when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world_zone: Option<WorldZoneSnapshot>,
 }
 
 #[cfg(test)]
@@ -213,6 +227,72 @@ mod tests {
         let json = r#"{"zone_id":"capital","zone_role":"wilderness"}"#;
         let z: ZoneSpec = serde_json::from_str(json).unwrap();
         assert!(z.inherit_treasure_from.is_none());
+    }
+
+    #[test]
+    fn ac_wi_5_template_without_world_zone_deserializes_and_field_is_none() {
+        // World-inheritance opt-in is additive: existing template JSON that
+        // predates `world_zone` still loads, and the field defaults to None.
+        let json = r#"{
+            "template_id": "phase1_determinism",
+            "zones": [
+                {"zone_id": "capital", "zone_role": "wilderness"}
+            ]
+        }"#;
+        let t: TilemapTemplate = serde_json::from_str(json).unwrap();
+        assert!(t.world_zone.is_none(), "pre-extension template must default to None");
+        assert_eq!(t.zones.len(), 1);
+    }
+
+    #[test]
+    fn ac_wi_5_template_with_world_zone_round_trips() {
+        // A template carrying a populated WorldZoneSnapshot survives a JSON
+        // round-trip including nested climate + boundary polygon.
+        use crate::world_inherit::{RegionPath, WorldBiome, WorldZoneSnapshot, ZoneClimate};
+        let t = TilemapTemplate {
+            template_id: TilemapTemplateId("inherit_demo".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: Some(WorldZoneSnapshot {
+                path: RegionPath::new(vec![3, 1]),
+                site: [735.0, 450.0],
+                base_elevation: 0.37,
+                boundary: vec![
+                    [510.0, 400.0],
+                    [960.0, 400.0],
+                    [960.0, 500.0],
+                    [510.0, 500.0],
+                ],
+                climate: ZoneClimate {
+                    temp_mean: 28.6,
+                    precip_annual: 75.0,
+                    biome_tag: 5,
+                    biome_name: WorldBiome::HotDesert,
+                },
+            }),
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        let back: TilemapTemplate = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.world_zone, t.world_zone);
+        // Belt-and-braces: the serialized form must include the field name.
+        assert!(s.contains("world_zone"), "world_zone must appear in JSON: {s}");
+        assert!(s.contains("hot_desert"), "snake_case biome name must serialize");
+    }
+
+    #[test]
+    fn template_with_world_zone_none_does_not_emit_null_field() {
+        // The skip_serializing_if = Option::is_none attribute keeps the
+        // additive field invisible when absent, so existing fixtures are
+        // byte-identical post-Chunk-3.
+        let t = TilemapTemplate {
+            template_id: TilemapTemplateId("p".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        assert!(!s.contains("world_zone"), "absent world_zone must not appear in JSON: {s}");
+        assert!(!s.contains("null"), "absent world_zone must not serialize as null: {s}");
     }
 
     #[test]

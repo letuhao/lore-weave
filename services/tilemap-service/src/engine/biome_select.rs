@@ -15,6 +15,55 @@ use crate::types::biome::{
 };
 use crate::types::tile::TerrainKind;
 use crate::types::zone::ZoneId;
+use crate::world_inherit::{BiomeBridge, WorldBiome};
+
+use crate::engine::biome_library::engine_biome_library;
+use crate::types::template::TilemapTemplate;
+
+/// Return the biome library a modificator should use for `template`. When
+/// the template opts in to world inheritance (`world_zone: Some(_)`), the
+/// shipped [`BiomeBridge`] filters the library by the upstream world biome
+/// — paradoxical picks (e.g. `hot_desert` in glacier) become structurally
+/// impossible. Without world inheritance the full
+/// [`engine_biome_library`] is returned unchanged (existing 332-test
+/// baseline preserved).
+pub fn library_for_template(template: &TilemapTemplate) -> Vec<BiomeSet> {
+    let full = engine_biome_library();
+    match template.world_zone.as_ref() {
+        Some(snap) => {
+            let bridge = BiomeBridge::default_static();
+            filter_library_by_bridge(&full, bridge, snap.climate.biome_name)
+        }
+        None => full,
+    }
+}
+
+/// Subset the engine biome library by a `BiomeBridge` allow-set keyed on a
+/// world biome. Returns only `BiomeSet`s whose `biome_id` appears in
+/// `bridge.allowed_for(world_biome)`. Allocates — caller owns the new vec.
+///
+/// Use this BEFORE [`select_biomes`] when the active template carries a
+/// `world_zone: Some(snapshot)` (spec
+/// `docs/specs/2026-05-24-tilemap-world-inheritance-contract.md` §5). When
+/// the template has no world inheritance, pass the unfiltered library
+/// directly — this function is a no-op in that case (callers branch).
+///
+/// An empty result is legitimate (the bridge legitimately allows nothing for
+/// a given world biome, or the table drifted from the library). Callers
+/// can detect this and surface a clearer error than the silent-empty
+/// downstream behavior — see Chunk 5 unit tests.
+pub fn filter_library_by_bridge(
+    library: &[BiomeSet],
+    bridge: &BiomeBridge,
+    world_biome: WorldBiome,
+) -> Vec<BiomeSet> {
+    let allowed = bridge.allowed_for(world_biome);
+    library
+        .iter()
+        .filter(|bs| allowed.contains(&bs.biome_id.0))
+        .cloned()
+        .collect()
+}
 
 /// TMP_005 §4.1 — select the biomes for one zone.
 ///
@@ -262,6 +311,118 @@ mod tests {
         // `water_tree` set, so no selected Tree is a Water biome.
         for tree in sel.of_type(BiomeObjectType::Tree) {
             assert!(!tree.0.starts_with("water_"), "no Water Tree biome exists: {tree:?}");
+        }
+    }
+
+    #[test]
+    fn filter_library_by_bridge_keeps_only_sand_and_rough_biomes_in_hot_desert() {
+        // Chunk 5 — defense-in-depth: with the shipped bridge a HotDesert
+        // world zone admits no forest_* / snow_* / swamp_* biomes. The
+        // result is non-empty (sand_* is well-represented in the library).
+        let lib = engine_biome_library();
+        let bridge = BiomeBridge::default_static();
+        let filtered = filter_library_by_bridge(&lib, bridge, WorldBiome::HotDesert);
+        assert!(!filtered.is_empty(), "HotDesert allow-set must yield a non-empty filtered library");
+        for bs in &filtered {
+            let id = &bs.biome_id.0;
+            assert!(
+                id.starts_with("sand_") || id.starts_with("rough_"),
+                "HotDesert filtered library contains {id} (expected sand_* or rough_* only)"
+            );
+        }
+    }
+
+    #[test]
+    fn filter_library_by_bridge_keeps_only_snow_and_rough_in_tundra() {
+        let lib = engine_biome_library();
+        let bridge = BiomeBridge::default_static();
+        let filtered = filter_library_by_bridge(&lib, bridge, WorldBiome::Tundra);
+        assert!(!filtered.is_empty());
+        for bs in &filtered {
+            let id = &bs.biome_id.0;
+            assert!(
+                id.starts_with("snow_") || id.starts_with("rough_"),
+                "Tundra filtered library contains {id} (expected snow_* or rough_* only)"
+            );
+        }
+    }
+
+    #[test]
+    fn library_for_template_returns_full_library_when_no_world_zone() {
+        use crate::types::template::{TilemapTemplate, TilemapTemplateId};
+        let template = TilemapTemplate {
+            template_id: TilemapTemplateId("no_inheritance".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+        };
+        let result = library_for_template(&template);
+        let full = engine_biome_library();
+        assert_eq!(
+            result.len(),
+            full.len(),
+            "no world_zone must yield the full library"
+        );
+    }
+
+    #[test]
+    fn library_for_template_filters_when_world_zone_present() {
+        use crate::types::template::{TilemapTemplate, TilemapTemplateId};
+        use crate::world_inherit::{RegionPath, WorldZoneSnapshot, ZoneClimate};
+        let template = TilemapTemplate {
+            template_id: TilemapTemplateId("hot_desert_inheritance".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: Some(WorldZoneSnapshot {
+                path: RegionPath::new(vec![3, 1]),
+                site: [735.0, 450.0],
+                base_elevation: 0.37,
+                boundary: vec![],
+                climate: ZoneClimate {
+                    temp_mean: 28.6,
+                    precip_annual: 75.0,
+                    biome_tag: 5,
+                    biome_name: WorldBiome::HotDesert,
+                },
+            }),
+        };
+        let result = library_for_template(&template);
+        let full = engine_biome_library();
+        assert!(
+            result.len() < full.len(),
+            "world_zone-aware library must be a strict subset (got {} of {})",
+            result.len(),
+            full.len()
+        );
+        for bs in &result {
+            assert!(
+                bs.biome_id.0.starts_with("sand_") || bs.biome_id.0.starts_with("rough_"),
+                "HotDesert template-aware library contains {} (expected sand_* / rough_* only)",
+                bs.biome_id.0
+            );
+        }
+    }
+
+    #[test]
+    fn select_biomes_against_filtered_library_picks_only_world_compatible_biomes() {
+        // End-to-end Chunk 5 check: the picker run against a HotDesert-
+        // filtered library + Sand-terrain zone yields a selection where
+        // every picked biome id is climate-compatible.
+        let lib = engine_biome_library();
+        let bridge = BiomeBridge::default_static();
+        let filtered = filter_library_by_bridge(&lib, bridge, WorldBiome::HotDesert);
+        let rules = engine_default_biome_selection_rules();
+        let sel = select_biomes(&zone("dunes"), TerrainKind::Sand, &rules, &filtered, TilemapSeed(13));
+        assert!(!sel.is_empty(), "Sand zone in HotDesert world must yield a non-empty selection");
+        for biome_id in sel.by_type.values().flatten() {
+            assert!(
+                biome_id.0.starts_with("sand_") || biome_id.0.starts_with("rough_"),
+                "selection contains {} — climate paradox", biome_id.0
+            );
+            // Defense-in-depth: validate against the bridge directly.
+            bridge
+                .validate_pick(WorldBiome::HotDesert, &biome_id.0)
+                .expect("picked biome must satisfy bridge");
         }
     }
 

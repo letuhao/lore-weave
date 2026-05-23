@@ -81,7 +81,71 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — tilemap data-architecture review LANDED, mock-first contract scaffolded) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — `world_inherit` module BUILD landed + /review-impl-driven hardening) — read this first
+
+PO greenlit the spec → BUILD opened with PLAN
+[`docs/plans/2026-05-24-tilemap-world-inherit-module.md`](../../plans/2026-05-24-tilemap-world-inherit-module.md)
+(L task, 6 chunks). All 6 chunks landed TDD, all green; PO requested
+`/review-impl` adversarial pass at POST-REVIEW; 2 MED + 4 LOW + 1 COSMETIC
+findings all fixed in the same session.
+
+### What shipped — module surface
+
+[`services/tilemap-service/src/world_inherit/`](../../../services/tilemap-service/src/world_inherit/)
+becomes the typed input layer for upstream world-gen facts. 6 new files
+(mod / types / wire / source / biome_bridge / error), one new config
+[`config/biome_bridge.toml`](../../../services/tilemap-service/config/biome_bridge.toml),
+one new integration test
+[`tests/world_inherit_integration.rs`](../../../services/tilemap-service/tests/world_inherit_integration.rs).
+
+| Concern | Surface |
+|---|---|
+| Typed projection of upstream JSON | `WorldZoneSnapshot { path, site, base_elevation, boundary, climate: { temp_mean, precip_annual, biome_tag, biome_name: WorldBiome } }` |
+| Loader (file today, HTTP after merge) | `WorldSource` trait + `MockFileWorldSource` (`OnceLock` cache, lazy load) |
+| World biome enum | `WorldBiome` (10 Whittaker variants, snake_case serde, `from_tag` / `tag()` cross-mapping) |
+| Bridge data | `BiomeBridge` with TOML loader; `default_static()` singleton; `from_map` returns Result and validates completeness |
+| Template field | `TilemapTemplate.world_zone: Option<WorldZoneSnapshot>` (additive, skip_serializing_if Option::is_none); `Eq` derive dropped (f32 fields) |
+| Engine wiring | `engine::biome_select::library_for_template(template)` — no-op when `world_zone: None`; filtered by bridge when `Some(_)`; `ObstacleSourcePlacer` + `ObstacleFillPlacer` now consume it |
+| Bridge config table | 10 Whittaker → game biome allow-sets using **real** `engine_biome_library` ids (sand_rock, snow_plant, forest_tree, ...); drift-detection test prevents library/bridge divergence |
+
+### `/review-impl` findings + fixes (all closed before COMMIT)
+
+| ID | Severity | Issue | Fix |
+|---|---|---|---|
+| MED-1 | MED | `schema_version.starts_with("biome-bridge.v1")` accepts `v10`/`v11`/... silently | tightened to exact-match constant; regression test `schema_version_check_is_exact_not_prefix` |
+| MED-2 | MED | No integration test proves `world_zone` actually changes pipeline output | added `world_zone_some_actually_changes_pipeline_output` — twin templates, same seed, asserts TilemapView differs |
+| LOW-3 | LOW | `UnknownBiomeTag` overloaded for tag/name mismatch — misleading error name | new `BiomeTagMismatch { tag, name }` variant in `WorldInheritError` |
+| LOW-4 | LOW | No test exercises the biome_tag/biome_name cross-check failure | `biome_tag_name_mismatch_surfaces_at_load_time` — synthesizes JSON with tag=5/name=tundra |
+| LOW-5 | LOW | `BiomeBridge::from_map` silently allowed incomplete maps; `allowed_for` panic message lied | `from_map` returns `Result`, validates completeness; panic message updated to name both constructors |
+| LOW-6 | LOW | No "orphan biome" diagnostic — library additions silently invisible to bridge | `orphan_biomes_in_engine_library_are_only_the_documented_set` computes orphans + sanity-asserts water_* family is orphaned (Q3 path) and forest_tree is reachable |
+| LOW-7 | LOW | Filtering subtly reshapes xor distribution when one side excluded — undocumented | comment block in `config/biome_bridge.toml` header explaining ~67 % → ~33 % halving |
+| COSMETIC-8 | COSMETIC | `WireZone.subzones` parsed but unused in v1 — `#[allow(dead_code)]` without rationale | doc comment explaining forward-compat with sub-zone-anchored templates (spec §6) |
+
+### Test count delta (workspace, post-fixes)
+
+| Suite | Before BUILD | After BUILD initial | After review-impl fixes |
+|---|--:|--:|--:|
+| Lib unit (tilemap-service) | 290 | 312 | **316** (+4 review-impl regression tests) |
+| Integration (world_inherit_integration.rs) | 0 | 4 | **5** (+1 MED-2 output-changes test) |
+| Other suites (determinism, harness_mock, l4_mock, retry_mock, smoke, loreweave_llm wire-format) | 332 | 332 | 332 (unchanged — additive field never modifies existing behavior) |
+
+`cargo clippy --workspace --all-targets -- -D warnings` clean both initial and post-fix.
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks:** real consumption of world-gen data once that service ships in docker-compose; HttpWorldSource implementation (same trait, ~30 LOC + 1 env var) when wire phase opens
+- **Unblocks:** L3 prompt augmentation with world biome context (spec §9 open Q6 — deferred until L3 retry-loop work resumes)
+- **Blocks:** nothing — pinned next-session agenda (Phase 4+ HTTP surface, frontend Phaser design, first playable map) can proceed as planned. Bridge will silently constrain biome picks for any template that opts in.
+
+### Lessons recorded
+
+- **Schema version checks should be exact, not prefix.** `starts_with("v1")` is a foot-gun when v10 lands. Either use literal equality, or add a dot separator (`starts_with("v1.")` + explicit `== "v1"`). The /review-impl flagged this before any production user saw a v-bump regression.
+- **Output-change tests are different from determinism tests.** Determinism proves `same input → same output`. Output-change proves `different input → different output`. The build had the first but not the second — covering only half the wiring contract.
+- **`#[allow(dead_code)]` without a why is technical debt.** Either remove the dead code or document the forward-compat reason. The /review-impl turned an inert annotation into a 4-line comment that future authors will read.
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — tilemap data-architecture review LANDED, mock-first contract scaffolded)
 
 PO opened the next session with a **data-architecture review** before resuming
 the pinned tilemap-backend agenda. Trigger: `lore-weave-game/world-gen`

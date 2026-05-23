@@ -112,6 +112,7 @@ fn continent_template() -> TilemapTemplate {
         template_id: TilemapTemplateId("continent_measure_v1".to_string()),
         zones,
         seed_offset: 0,
+        world_zone: None,
     }
 }
 

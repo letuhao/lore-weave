@@ -262,6 +262,7 @@ fn bootstrap_template() -> TilemapTemplate {
             zone("forbidden_vault", ZoneRole::Forbidden, &[]),
         ],
         seed_offset: 0,
+        world_zone: None,
     };
     // TreasurePlacer only acts on zones with `treasure_tiers`; a `min ≥ 2000`
     // tier guarantees each pile is guarded, so the demo classifies Treasure

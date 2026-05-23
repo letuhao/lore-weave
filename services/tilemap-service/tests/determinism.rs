@@ -59,6 +59,7 @@ fn fixture() -> TilemapTemplate {
             zone("rival", ZoneRole::Forbidden, vec![], &[]),
         ],
         seed_offset: 0,
+        world_zone: None,
     };
     // Phase C — give the Wilderness zones a treasure tier so the rebaselined
     // golden exercises TreasurePlacer; `min ≥ 2000` ⇒ every pile is guarded, so

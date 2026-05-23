@@ -660,6 +660,7 @@ mod tests {
                 spec(to, vec![]),
             ],
             seed_offset: 0,
+            world_zone: None,
         }
     }
 
@@ -995,6 +996,7 @@ mod tests {
                 spec("br", vec![]),
             ],
             seed_offset: 0,
+            world_zone: None,
         };
         run_connections(&mut state, &template);
 
@@ -1161,6 +1163,7 @@ mod tests {
                 spec("right", vec![]),
             ],
             seed_offset: 0,
+            world_zone: None,
         };
         let mut state = three_zones(24, 9, false);
         run_connections(&mut state, &template);
@@ -1209,6 +1212,7 @@ mod tests {
             template_id: TilemapTemplateId("ac9".to_string()),
             zones: vec![bidir("left", "right"), bidir("right", "left")],
             seed_offset: 0,
+            world_zone: None,
         };
         let mut state = two_column_state(8, 6);
         run_connections(&mut state, &template);
@@ -1254,6 +1258,7 @@ mod tests {
             template_id: TilemapTemplateId("ac9_open".to_string()),
             zones: vec![bidir("left", "right"), bidir("right", "left")],
             seed_offset: 0,
+            world_zone: None,
         };
         let mut state = bordering_zones(14, 9);
         run_connections(&mut state, &template);
@@ -1359,6 +1364,7 @@ mod tests {
             template_id: TilemapTemplateId("ac10_cut_vertex".to_string()),
             zones: vec![],
             seed_offset: 0,
+            world_zone: None,
         };
         run_connections(&mut state, &template);
 

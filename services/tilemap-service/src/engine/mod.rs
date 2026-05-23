@@ -217,6 +217,7 @@ mod tests {
                 zone("rival", ZoneRole::Forbidden, &[]),
             ],
             seed_offset: 0,
+            world_zone: None,
         }
     }
 
@@ -489,6 +490,7 @@ mod tests {
                 spec("col_c", ZoneRole::Forbidden),
             ],
             seed_offset: 0,
+            world_zone: None,
         };
 
         for raw_seed in [0xA11CE_u64, 7, 99, 0xC0FFEE] {

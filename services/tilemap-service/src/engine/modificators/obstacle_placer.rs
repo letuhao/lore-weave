@@ -6,7 +6,7 @@
 //! `ObjectManager::place_and_connect_object` (spec D6): an obstacle is a wall,
 //! it needs no access path and no distance scoring.
 
-use crate::engine::biome_library::{engine_biome_library, engine_default_biome_selection_rules};
+use crate::engine::biome_library::engine_default_biome_selection_rules;
 use crate::engine::biome_select::select_biomes;
 use crate::engine::build_state::TilemapBuildState;
 use crate::engine::geometry::{neighbors4, would_seal_a_gap};
@@ -84,7 +84,10 @@ impl Modificator for ObstacleSourcePlacer {
     }
 
     fn process(&self, ctx: &mut ModificatorContext<'_>) -> crate::Result<()> {
-        let library = engine_biome_library();
+        // World-inheritance: if the template carries a world_zone snapshot,
+        // the BiomeBridge filters the library before zone_selection picks
+        // from it — so a glacier zone can't get hot_desert obstacles.
+        let library = crate::engine::biome_select::library_for_template(ctx.template);
         for zone_idx in 0..ctx.state.zones.len() {
             let Some(selection) = zone_selection(ctx, zone_idx, &library) else {
                 continue;
@@ -126,7 +129,8 @@ impl Modificator for ObstacleFillPlacer {
     }
 
     fn process(&self, ctx: &mut ModificatorContext<'_>) -> crate::Result<()> {
-        let library = engine_biome_library();
+        // World-inheritance — same bridge filter as ObstacleSourcePlacer.
+        let library = crate::engine::biome_select::library_for_template(ctx.template);
         for zone_idx in 0..ctx.state.zones.len() {
             let Some(selection) = zone_selection(ctx, zone_idx, &library) else {
                 continue;
@@ -532,6 +536,7 @@ fn erode_zone_naive(state: &mut TilemapBuildState, zone_idx: usize) -> TileMask 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::biome_library::engine_biome_library;
     use crate::engine::placement::ZoneTiles;
     use crate::types::biome::BiomeId;
     use crate::seed::TilemapSeed;

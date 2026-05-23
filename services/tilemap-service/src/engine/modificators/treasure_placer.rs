@@ -349,6 +349,7 @@ mod tests {
             template_id: TilemapTemplateId("treasure_placer_test".to_string()),
             zones,
             seed_offset: 0,
+            world_zone: None,
         }
     }
 

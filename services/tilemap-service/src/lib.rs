@@ -23,6 +23,7 @@ pub mod error;
 pub mod harness;
 pub mod seed;
 pub mod types;
+pub mod world_inherit;
 
 pub use error::{Error, Result};
 pub use seed::{TilemapSeed, derive_seed};
