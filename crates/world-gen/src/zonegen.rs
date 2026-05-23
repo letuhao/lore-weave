@@ -1119,7 +1119,9 @@ fn apply_river_overlay_biome(
         let subs = &state.subattrs[plate_id];
         let l1 = subs[state.subattr_idx_at[i] as usize].zone;
         let zone_biome = zone_climates[plate_id][l1].biome;
-        let color = if matches!(zone_biome, Biome::Ice | Biome::Tundra) {
+        // **v5 Köppen**: frozen river on polar zones (Ef ice cap, Et tundra,
+        // Dfd severe subarctic). Was Ice|Tundra (10-Whittaker) → now Ef|Et|Dfd.
+        let color = if matches!(zone_biome, Biome::Ef | Biome::Et | Biome::Dfd) {
             FROZEN_RIVER
         } else {
             default_color
@@ -1532,16 +1534,13 @@ mod tests {
             &climate,
         );
         let actual = blake3::hash(&rgb).to_hex().to_string();
-        // Pinned 2026-05-23 (B5 v2.1a); rebaselined 2026-05-24 (B5 v2.1f
-        // added DeciduousForest + Mediterranean biomes → classifier output
-        // shifts on temperate zones); rebaselined 2026-05-24 (B5 v2.1c W6 +
-        // v4 eval framework + W6 ship); rebaselined 2026-05-24 (B5 v2.1c
-        // W2 noise overlay + W13 N=9 zone-avg coast_d → continentality
-        // attenuation perturbed); rebaselined 2026-05-24 (B5 v2.1d W5
-        // classifier hue interp at thresholds → blended RGB at threshold
-        // crossings instead of hard biome flip). Rebaseline only with
-        // intentional biome algorithm / palette / pipeline changes.
-        let pinned = "d26a9c67a17eed38410d76e94742a96506a18fa7c5173ac470ff12dd63e3223a";
+        // Pinned 2026-05-23 (B5 v2.1a); rebaselined for v2.1f / v2.1b / v2.1c
+        // / v2.1d / v2.1e / v4 Orographic (see git log). **v5 Köppen rebase
+        // 2026-05-24**: 10-Whittaker → 19-Köppen enum + RGB palette change
+        // + classifier algorithm. Biome render bytes shift substantially.
+        // Rebaseline only with intentional biome algorithm / palette /
+        // pipeline changes.
+        let pinned = "2b328de6599004273017f751baaf2b01aa8b82410d17878dff133bb492ce89f8";
         assert_eq!(
             actual.as_str(),
             pinned,
@@ -1666,15 +1665,19 @@ mod tests {
             ErosionStrength::Moderate,
             &climate,
         );
+        // **v5 Köppen palette**: sample representative biomes across groups
+        // (Ef, Et polar; Dfc, Dfb continental; Cfb temperate; Bwh, Bsh arid;
+        // Af, Aw tropical). At least 4 should appear on seed=7 256×192.
         let biome_colors: std::collections::HashSet<[u8; 3]> = [
-            Biome::Ice,
-            Biome::Tundra,
-            Biome::BorealForest,
-            Biome::TemperateForest,
-            Biome::TemperateGrassland,
-            Biome::HotDesert,
-            Biome::Savanna,
-            Biome::TropicalRainforest,
+            Biome::Ef,
+            Biome::Et,
+            Biome::Dfc,
+            Biome::Dfb,
+            Biome::Cfb,
+            Biome::Bwh,
+            Biome::Bsh,
+            Biome::Af,
+            Biome::Aw,
         ]
         .iter()
         .map(|b| b.color())
@@ -1687,11 +1690,11 @@ mod tests {
             found.len() >= 4,
             "biome render produced fewer than 4 biome colours: {found:?}"
         );
-        // AC-4 lock: Ice must appear (snow caps on tectonically-uplifted
-        // mountain zones). seed 7 has tectonic collisions producing mountain
-        // class zones; some are at high lat → guaranteed Ice on peaks.
+        // AC-4 lock: Ef (ice cap) must appear (snow caps on tectonically-
+        // uplifted mountain zones). seed 7 has tectonic collisions producing
+        // mountain class zones; some are at high lat → guaranteed Ef on peaks.
         assert!(
-            found.contains(&Biome::Ice.color()),
+            found.contains(&Biome::Ef.color()),
             "biome render missing Ice — peak-lapse override not firing"
         );
     }

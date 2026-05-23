@@ -81,9 +81,9 @@ pub struct WorldClimateParams {
     /// zonegen elevation field's mountain class adds ~0.45 above the base, so
     /// at LAPSE = 50, a typical peak is 22.5 °C colder than its zone.
     pub lapse_per_elev_unit: f32,
-    /// Pixel temperature below which a pixel is overridden to [`Biome::Ice`].
+    /// Pixel temperature below which a pixel is overridden to [`Biome::Ef`].
     pub ice_temp: f32,
-    /// Pixel temperature below which a pixel is overridden to [`Biome::Tundra`].
+    /// Pixel temperature below which a pixel is overridden to [`Biome::Et`].
     pub tundra_temp: f32,
     /// Minimum elevation delta (pixel − zone base) below which the lapse
     /// override is suppressed and the zone biome stands. Stops sub-meter
@@ -114,6 +114,27 @@ pub struct WorldClimateParams {
     /// considers more remote upwind features (Earth analog: large air masses crossing
     /// continents). Smaller → only adjacent zones contribute shadow.
     pub orographic_reach: f32,
+    /// **v5 seasonality** — base seasonal temp amplitude (°C) at the equator
+    /// where lat amplitude = 0. Real Earth equator amp ≈ 1-2°C. Used to compute
+    /// `temp_warm_month = temp_mean + amp` / `temp_cold_month = temp_mean - amp`.
+    pub seasonal_amplitude_eq: f32,
+    /// **v5 seasonality** — extra amplitude per unit `lat_dist` (°C). At pole
+    /// (lat_dist=1), amp = `eq + lat_factor`. Real Earth: Yakutsk amp ≈ 30°C
+    /// (−40 winter / +20 summer = 60°C swing → 30°C amplitude).
+    pub seasonal_amplitude_lat_factor: f32,
+    /// **v5 seasonality** — amplification from continentality. Interior zones
+    /// get bigger temp swings than coast (UK +5/+15 vs Siberia −40/+20).
+    /// `amp_final = amp_lat × (1 + cont × this)`. Default 0.8 ≈ Earth ratio.
+    pub seasonal_amplitude_cont_factor: f32,
+    /// **v5 precip seasonality — Mediterranean dry-summer signature** at
+    /// subtropical western continental margins (lat_dist ~0.20-0.40 + west
+    /// coast). Default 0.20 (20% of precip in winter half = strong dry-summer
+    /// pattern). 0.5 disables Mediterranean detection.
+    pub mediterranean_winter_frac: f32,
+    /// **v5 precip seasonality — Monsoon dry-winter signature** at tropical
+    /// continental east/interior margins (lat_dist ~0.10-0.30). Default 0.80
+    /// (80% of precip in summer = strong monsoon).
+    pub monsoon_summer_frac: f32,
 }
 
 impl Default for WorldClimateParams {
@@ -166,6 +187,12 @@ impl Default for WorldClimateParams {
             // Standalone fallback keeps tests that don't call scaled_for()
             // producing usable orographic output.
             orographic_reach: 200.0,
+            // v5 seasonality: Earth-calibrated defaults.
+            seasonal_amplitude_eq: 2.0,           // equator amp ~1-2°C
+            seasonal_amplitude_lat_factor: 28.0,  // pole amp ~30°C total
+            seasonal_amplitude_cont_factor: 0.8,  // interior 1.8x coast amplitude
+            mediterranean_winter_frac: 0.20,      // 20% precip in winter half
+            monsoon_summer_frac: 0.80,            // 80% precip in summer half
         }
     }
 }
@@ -209,73 +236,127 @@ pub struct ZoneClimate {
     pub temp_mean: f32,
     /// Annual precipitation (mm / yr).
     pub precip_annual: f32,
+    /// **v5** — warmest-month mean (°C). `temp_mean + seasonal_amplitude`.
+    pub temp_warm_month: f32,
+    /// **v5** — coldest-month mean (°C). `temp_mean - seasonal_amplitude`.
+    pub temp_cold_month: f32,
+    /// **v5** — fraction of annual precip falling in cold half-year `[0, 1]`.
+    /// 0.5 = year-round even (humid subtropical Cfa);
+    /// ≪0.5 = dry winter (monsoon Cwa / Aw); ≫0.5 = dry summer (Mediterranean Csa).
+    pub precip_winter_frac: f32,
     /// The zone's default biome — what every pixel in the zone reads as,
     /// unless the pixel's elevation pushes it below [`WorldClimateParams::tundra_temp`].
     pub biome: Biome,
 }
 
-/// 10 Whittaker-derived biomes. **Ice** is reserved for the per-pixel lapse
-/// override ([`pixel_biome`]) — the zone-level classifier never returns Ice.
+impl ZoneClimate {
+    /// **Test fixture constructor** — synthesizes seasonality defaults
+    /// (warm/cold-month = temp_mean, winter_frac = 0.5 even). Use in unit
+    /// tests that only care about (temp_mean, precip_annual, biome) and not
+    /// the v5 seasonality fields.
+    #[cfg(test)]
+    pub(crate) fn test_fixture(temp_mean: f32, precip_annual: f32, biome: Biome) -> Self {
+        Self {
+            temp_mean,
+            precip_annual,
+            temp_warm_month: temp_mean,
+            temp_cold_month: temp_mean,
+            precip_winter_frac: 0.5,
+            biome,
+        }
+    }
+}
+
+/// **v5 Köppen-lite — 19 biomes** (was 10 Whittaker pre-v5). Köppen-Geiger
+/// climate subtypes from monthly extremes + precip seasonality. Earth
+/// reference: Beck et al. 2018.
 ///
-/// **B5 v2.1f expansion**: added DeciduousForest (cool temperate forest with
-/// cold winters — Eastern N America, Europe, E Asia) and Mediterranean
-/// (warm temperate dry-summer — California, Mediterranean basin, Cape SA,
-/// SW Australia, central Chile). Splits TemperateForest (was previously
-/// catch-all for any temperate forest) into 3 distinct types matching
-/// Earth's actual distribution. Without seasonality data (v5 Köppen),
-/// Mediterranean is approximated by `temp 14..22 ∧ precip 250..700` (the
-/// dry-summer signature without explicit cold-month gating).
+/// Groups:
+/// - **E** (Polar, warmest < 10°C): `Ef` (Ice cap), `Et` (Tundra)
+/// - **D** (Continental, coldest < -3°C, warmest > 10°C): `Dfd` (extreme
+///   subarctic), `Dfc` (subarctic), `Dfb` (warm humid), `Dfa` (hot humid),
+///   `Dwa` (dry-winter monsoon-influenced)
+/// - **C** (Temperate, coldest -3..18°C): `Cfb` (oceanic), `Cfa` (humid
+///   subtropical), `Csa` (Mediterranean hot summer), `Csb` (Mediterranean
+///   warm summer), `Cwa` (subtropical monsoon)
+/// - **B** (Arid, evap > precip): `Bsk` (cold steppe), `Bwk` (cold desert),
+///   `Bsh` (hot steppe), `Bwh` (hot desert)
+/// - **A** (Tropical, all months > 18°C): `Af` (rainforest), `Am` (monsoon),
+///   `Aw` (savanna)
+///
+/// **Variant ordering** follows Köppen group then within-group cold→hot,
+/// so contiguous variants are climatically adjacent (eases ecotone blending).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Biome {
-    Ice,
-    Tundra,
-    BorealForest,
-    DeciduousForest,    // NEW v2.1f
-    TemperateForest,
-    Mediterranean,      // NEW v2.1f
-    TemperateGrassland,
-    HotDesert,
-    Savanna,
-    TropicalRainforest,
+    // POLAR (E)
+    Ef, Et,
+    // CONTINENTAL (D)
+    Dfd, Dfc, Dfb, Dfa, Dwa,
+    // TEMPERATE (C)
+    Cfb, Cfa, Csa, Csb, Cwa,
+    // ARID (B)
+    Bsk, Bwk, Bsh, Bwh,
+    // TROPICAL (A)
+    Af, Am, Aw,
 }
 
 impl Biome {
-    /// Stable discriminant byte (intended for any future content hash).
-    /// Old 8-biome tags 0..7 preserved; new biomes get 8 (DeciduousForest) +
-    /// 9 (Mediterranean) so existing hash-pinned tests stay stable for
-    /// biomes that classifier-paths still produce.
+    /// Stable discriminant byte for hashing / sidecar export. **Numbering
+    /// changed in v5** (was 0-9 Whittaker); update any hash-pinned tests
+    /// when biome semantics change.
     pub fn tag(self) -> u8 {
         match self {
-            Biome::Ice => 0,
-            Biome::Tundra => 1,
-            Biome::BorealForest => 2,
-            Biome::TemperateForest => 3,
-            Biome::TemperateGrassland => 4,
-            Biome::HotDesert => 5,
-            Biome::Savanna => 6,
-            Biome::TropicalRainforest => 7,
-            Biome::DeciduousForest => 8,
-            Biome::Mediterranean => 9,
+            Biome::Ef => 0,
+            Biome::Et => 1,
+            Biome::Dfd => 2,
+            Biome::Dfc => 3,
+            Biome::Dfb => 4,
+            Biome::Dfa => 5,
+            Biome::Dwa => 6,
+            Biome::Cfb => 7,
+            Biome::Cfa => 8,
+            Biome::Csa => 9,
+            Biome::Csb => 10,
+            Biome::Cwa => 11,
+            Biome::Bsk => 12,
+            Biome::Bwk => 13,
+            Biome::Bsh => 14,
+            Biome::Bwh => 15,
+            Biome::Af => 16,
+            Biome::Am => 17,
+            Biome::Aw => 18,
         }
     }
 
-    /// Display RGB for renderers. Calibrated for visual contrast.
-    /// - W7 tuning (B5 v2.1a): HotDesert reddened to distinguish from beach.
-    /// - v2.1f: DeciduousForest = autumn olive (warmer than TempForest's
-    ///   bright green); Mediterranean = olive-tan (cooler/drier hue than
-    ///   TempGrassland's khaki, distinct from Savanna's yellow).
+    /// Display RGB for renderers. Palette per design doc §4 — calibrated
+    /// for visual contrast + real-Earth analog mapping. Variants within a
+    /// Köppen group share hue family; warmer variants are brighter.
     pub fn color(self) -> [u8; 3] {
         match self {
-            Biome::Ice => [232, 238, 242],                // near-white
-            Biome::Tundra => [184, 183, 174],             // pale grey-tan
-            Biome::BorealForest => [74, 107, 71],         // muted grey-green
-            Biome::DeciduousForest => [138, 171, 82],     // autumn olive — v2.1f
-            Biome::TemperateForest => [79, 139, 65],      // bright forest
-            Biome::Mediterranean => [181, 165, 98],       // olive-tan — v2.1f
-            Biome::TemperateGrassland => [184, 180, 90],  // tan/khaki
-            Biome::HotDesert => [216, 144, 96],           // reddish sand (Sahara) — W7
-            Biome::Savanna => [201, 192, 74],             // yellow-green
-            Biome::TropicalRainforest => [15, 77, 26],    // deep dark green
+            // Polar — near-white / pale grey
+            Biome::Ef => [245, 248, 250],                // bright white ice (Antarctica)
+            Biome::Et => [184, 183, 174],                // pale grey-tan tundra
+            // Continental — dark green family (cold subarctic → warmer humid)
+            Biome::Dfd => [58, 86, 60],                  // very dark grey-green (Yakutsk)
+            Biome::Dfc => [74, 107, 71],                 // dark grey-green (Siberia)
+            Biome::Dfb => [100, 138, 88],                // warm dark green (Canada prairies)
+            Biome::Dfa => [125, 158, 96],                // olive-green (Central US)
+            Biome::Dwa => [148, 175, 110],               // yellow-green (NE China monsoon)
+            // Temperate — bright green family
+            Biome::Cfb => [79, 139, 65],                 // bright forest (UK, NW Europe)
+            Biome::Cfa => [138, 171, 82],                // autumn olive (SE USA, Yangzi)
+            Biome::Csa => [181, 165, 98],                // olive-tan (Med basin)
+            Biome::Csb => [165, 175, 115],               // cool olive (coastal California)
+            Biome::Cwa => [155, 180, 95],                // bright yellow-green (S China)
+            // Arid — tan/yellow/red family
+            Biome::Bsk => [174, 165, 105],               // tan-olive (Kazakh steppe)
+            Biome::Bwk => [195, 165, 132],               // pale grey-brown (Gobi)
+            Biome::Bsh => [201, 192, 74],                // yellow-tan (Sahel)
+            Biome::Bwh => [216, 144, 96],                // reddish sand (Sahara)
+            // Tropical — deep green / yellow-green
+            Biome::Af => [15, 77, 26],                   // deep dark green (Amazon, Congo)
+            Biome::Am => [35, 100, 35],                  // slightly lighter (Mumbai, SE Asia)
+            Biome::Aw => [185, 180, 80],                 // savanna yellow-green
         }
     }
 }
@@ -305,77 +386,113 @@ pub fn circulation_curve(lat_dist: f32, p: &WorldClimateParams) -> f32 {
     raw.max(0.0)
 }
 
-/// Classify a `(temp, precip)` point into a Whittaker biome (10 zones).
+/// **v5 Köppen aridity threshold** (mm/yr precip below which a zone is
+/// classified as arid B-group). Per Köppen-Geiger canonical formula
+/// (Wikipedia / Köppen 1936 §B):
+/// - Base: `20 × T_mean + offset`
+/// - Offset depends on **when** precip falls (physical: water that arrives
+///   in cold-air winter is less evaporated → more effective for vegetation
+///   → lower threshold needed; summer precip evaporates fast → higher
+///   threshold needed):
+///   - winter_frac > 0.70 (winter-precip-heavy / dry summer, Mediterranean):
+///     `Pthr = 20T - 70` (lowest threshold; easiest to be humid)
+///   - winter_frac < 0.30 (summer-precip-heavy / dry winter, monsoon):
+///     `Pthr = 20T + 140` (highest threshold; hardest to be humid)
+///   - else (year-round even): `Pthr = 20T + 70`
 ///
-/// **Ice is excluded by design** — it is reserved for the per-pixel lapse
-/// override in [`pixel_biome`]. The zone-level classifier returns Tundra at
-/// the coldest end.
+/// Result clamped ≥ 0.
+pub fn arid_precip_threshold(t_warm: f32, t_cold: f32, winter_frac: f32) -> f32 {
+    let t_mean = (t_warm + t_cold) * 0.5;
+    let seasonal_offset = if winter_frac > 0.70 {
+        -70.0
+    } else if winter_frac < 0.30 {
+        140.0
+    } else {
+        70.0
+    };
+    (20.0 * t_mean + seasonal_offset).max(0.0)
+}
+
+/// **v5 Köppen-lite classifier** — classify a zone into one of 19 Köppen
+/// subtypes from monthly extremes + annual precip + precip seasonality.
 ///
-/// **v2.1f tiers** (temp °C × precip mm/yr):
-/// ```text
-/// temp < 0                           → Tundra
-/// temp 0..5
-///   precip > 250                     → BorealForest
-///   else                             → Tundra
-/// temp 5..14 (cool temperate)
-///   precip > 500                     → DeciduousForest    ← NEW
-///   precip 250..500                  → TemperateGrassland
-///   else                             → HotDesert
-/// temp 14..22 (warm temperate)
-///   precip > 700                     → TemperateForest    (humid subtropical)
-///   precip 250..700                  → Mediterranean      ← NEW
-///   else                             → HotDesert
-/// temp >= 22 (hot)
-///   precip > 1500                    → TropicalRainforest
-///   precip 250..1500                 → Savanna
-///   else                             → HotDesert
-/// ```
+/// Decision tree (Köppen-Geiger canonical order):
+/// 1. **E** Polar: warmest < 10°C → Ef (warm < 0) or Et
+/// 2. **A** Tropical: coldest > 18°C → Af / Am / Aw
+/// 3. **B** Arid: precip < `arid_precip_threshold` → Bwh/Bsh (hot, cold > 0)
+///    or Bwk/Bsk (cold, cold ≤ 0)
+/// 4. **D** Continental: coldest < -3°C → Dwa (dry winter) / Dfd / Dfc /
+///    Dfb / Dfa by temp tier
+/// 5. **C** Temperate: else → Csa/Csb (dry summer) / Cwa (dry winter) /
+///    Cfa / Cfb by temp tier
 ///
-/// Order of checks (precedence): cold tier → cool tier → warm tier → hot
-/// tier. Each tier splits by precip.
-pub fn whittaker_classify(temp: f32, precip: f32) -> Biome {
-    // Cold tier (temp < 0): always Tundra.
-    if temp < 0.0 {
-        return Biome::Tundra;
+/// **Lapse override (Ice / Tundra at peaks) handled in [`pixel_biome`]** —
+/// classifier reads only zone-level (mean temps + precip).
+pub fn koppen_classify(t_warm: f32, t_cold: f32, precip: f32, winter_frac: f32) -> Biome {
+    // 1. POLAR (warmest < 10°C)
+    if t_warm < 0.0 {
+        return Biome::Ef;
     }
-    // Subarctic (0..5 °C): Boreal if precip, else Tundra (Yakutia-style).
-    if temp < 5.0 {
-        if precip > 250.0 {
-            return Biome::BorealForest;
+    if t_warm < 10.0 {
+        return Biome::Et;
+    }
+
+    // 2. TROPICAL (coldest > 18°C — all months above 18)
+    if t_cold > 18.0 {
+        if precip > 2000.0 {
+            if winter_frac > 0.20 {
+                return Biome::Af; // year-round wet
+            }
+            return Biome::Am; // monsoon
         }
-        return Biome::Tundra;
+        return Biome::Aw; // savanna (dry winter — most tropical)
     }
-    // Cool temperate (5..14 °C): cold-winter forest if wet, grassland if
-    // medium, cold desert (folded into HotDesert) if dry.
-    if temp < 14.0 {
-        if precip > 500.0 {
-            return Biome::DeciduousForest;
+
+    // 3. ARID (precip < threshold).
+    let arid_threshold = arid_precip_threshold(t_warm, t_cold, winter_frac);
+    if precip < arid_threshold {
+        let hot = t_cold > 0.0; // hot if cold-month > 0°C
+        let very_dry = precip < arid_threshold * 0.5;
+        return match (hot, very_dry) {
+            (true, true) => Biome::Bwh,
+            (true, false) => Biome::Bsh,
+            (false, true) => Biome::Bwk,
+            (false, false) => Biome::Bsk,
+        };
+    }
+
+    // 4. CONTINENTAL (cold-month < -3°C, warm > 10°C)
+    if t_cold < -3.0 {
+        if winter_frac < 0.30 && t_warm > 22.0 {
+            return Biome::Dwa; // dry-winter monsoon-influenced
         }
-        if precip > 250.0 {
-            return Biome::TemperateGrassland;
+        if t_cold < -40.0 {
+            return Biome::Dfd; // severe subarctic
         }
-        return Biome::HotDesert;
-    }
-    // Warm temperate (14..22 °C): humid subtropical → TempForest if wet;
-    // Mediterranean dry-summer proxy if medium; HotDesert if dry.
-    if temp < 22.0 {
-        if precip > 700.0 {
-            return Biome::TemperateForest;
+        if t_warm < 14.0 {
+            return Biome::Dfc; // subarctic
         }
-        if precip > 250.0 {
-            return Biome::Mediterranean;
+        if t_warm > 22.0 {
+            return Biome::Dfa; // hot humid continental
         }
-        return Biome::HotDesert;
+        return Biome::Dfb; // warm humid continental
     }
-    // Hot (temp ≥ 22): tropical rainforest if very wet, savanna if medium,
-    // desert if dry.
-    if precip > 1500.0 {
-        return Biome::TropicalRainforest;
+
+    // 5. TEMPERATE (mild winters, cold-month -3..18°C)
+    if winter_frac > 0.65 {
+        // Dry summer (Mediterranean)
+        if t_warm > 22.0 {
+            return Biome::Csa;
+        }
+        return Biome::Csb;
     }
-    if precip > 250.0 {
-        return Biome::Savanna;
+    if winter_frac < 0.30 && t_warm > 22.0 {
+        return Biome::Cwa; // dry-winter monsoon
     }
-    Biome::HotDesert
+    if t_warm > 22.0 {
+        return Biome::Cfa; // humid subtropical
+    }
+    Biome::Cfb // oceanic
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -411,78 +528,17 @@ const BLEND_TEMP: f32 = 1.5;
 /// See BLEND_TEMP doc-comment for history of 75 → 25 → 75 round trip.
 const BLEND_PRECIP: f32 = 75.0;
 
-/// Classify `(temp, precip)` and return a color blended with the nearest
-/// adjacent biome across the closest Whittaker threshold within the
-/// `±BLEND_TEMP / ±BLEND_PRECIP` window. Pixels deep in their biome return
-/// the canonical `Biome::color()`; pixels near a threshold return a blend
-/// that fades smoothly from canonical to canonical across the band.
+/// **v5** — per-pixel COLOR (RGB) using Köppen classifier with lapse override.
 ///
-/// **W5 spec** (v2.1d): doubles effective palette without adding biome
-/// classes. Eliminates the "Tetris" color-block feel at biome boundaries.
-pub fn whittaker_classify_blended_color(temp: f32, precip: f32) -> [u8; 3] {
-    let center = whittaker_classify(temp, precip);
-    let center_c = center.color();
-
-    // Probe 4 axis-aligned directions for a different biome at ±BLEND_X.
-    let probes: [(f32, f32); 4] = [
-        (BLEND_TEMP, 0.0),
-        (-BLEND_TEMP, 0.0),
-        (0.0, BLEND_PRECIP),
-        (0.0, -BLEND_PRECIP),
-    ];
-
-    let mut best: Option<(Biome, f32)> = None; // (other_biome, threshold_dist ∈ [0,1])
-    for (dt, dp) in probes {
-        let nb = whittaker_classify(temp + dt, precip + dp);
-        if nb == center {
-            continue;
-        }
-        // Bisect along this axis to find threshold position. lo = at center,
-        // hi = at probe (where nb classifies). 6 iterations → 1/64 precision.
-        let mut lo = 0.0_f32;
-        let mut hi = 1.0_f32;
-        for _ in 0..6 {
-            let mid = (lo + hi) * 0.5;
-            let mb = whittaker_classify(temp + dt * mid, precip + dp * mid);
-            if mb == center {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        let threshold_dist = (lo + hi) * 0.5;
-        match best {
-            None => best = Some((nb, threshold_dist)),
-            Some((_, td)) if threshold_dist < td => best = Some((nb, threshold_dist)),
-            _ => {}
-        }
-    }
-
-    let Some((other, td)) = best else {
-        return center_c; // No threshold within band → pure biome color.
-    };
-
-    // Smoothstep over [0, 1]: t=0 (at threshold) → 50/50; t=1 (full BLEND_X
-    // away) → 100/0 center. Ease-in-out so band edges don't have a visible
-    // discontinuity where blending switches off.
-    let t = td.clamp(0.0, 1.0);
-    let smooth = t * t * (3.0 - 2.0 * t);
-    let w_center = 0.5 + 0.5 * smooth;
-    let other_c = other.color();
-    [
-        (center_c[0] as f32 * w_center + other_c[0] as f32 * (1.0 - w_center)) as u8,
-        (center_c[1] as f32 * w_center + other_c[1] as f32 * (1.0 - w_center)) as u8,
-        (center_c[2] as f32 * w_center + other_c[2] as f32 * (1.0 - w_center)) as u8,
-    ]
-}
-
-/// Per-pixel COLOR (RGB) with both lapse override (Ice/Tundra at peaks) AND
-/// W5 classifier hue interpolation. Mirrors [`pixel_biome`]'s decision tree
-/// but returns a blended color instead of a single Biome enum.
+/// Mirrors [`pixel_biome`]'s decision tree but returns the Köppen color
+/// directly (no blending — v5 Köppen has 19 finer-grained variants which
+/// provide visual smoothness without the explicit W5 blend that the
+/// 10-Whittaker palette needed).
 ///
-/// **Lapse overrides remain hard** (Ice and Tundra at altitude flip cleanly,
-/// no blend) — softening those is a separate concern (would need elev-aware
-/// blend bands). Only the zone-classifier output is blended.
+/// **Lapse overrides remain hard** (Ice/Tundra at altitude flip cleanly).
+/// Pixel-temp is computed by applying lapse to BOTH `temp_warm_month` and
+/// `temp_cold_month` symmetrically (uniform cooling shifts both bounds
+/// equally), keeping seasonality amplitude intact.
 pub fn pixel_color(
     zc: &ZoneClimate,
     elev_pixel: f32,
@@ -491,23 +547,26 @@ pub fn pixel_color(
 ) -> [u8; 3] {
     let delta = elev_pixel - zone_base_elev;
     if delta < params.peak_lapse_min_delta {
-        // No peak override active → blend at zone-level (temp_mean, precip).
-        return whittaker_classify_blended_color(zc.temp_mean, zc.precip_annual);
+        return zc.biome.color();
     }
-    let temp_pixel = zc.temp_mean - params.lapse_per_elev_unit * delta;
+    let lapse_drop = params.lapse_per_elev_unit * delta;
+    let temp_pixel = zc.temp_mean - lapse_drop;
     if temp_pixel < params.ice_temp {
-        // Same precip-gated Ice / tall-peak logic as pixel_biome; hard flip.
         let tall_peak_threshold = params.peak_lapse_min_delta * 3.0;
         if zc.precip_annual >= params.ice_precip_min || delta > tall_peak_threshold {
-            return Biome::Ice.color();
+            return Biome::Ef.color();
         } else {
-            return Biome::Tundra.color();
+            return Biome::Et.color();
         }
     } else if temp_pixel < params.tundra_temp {
-        return Biome::Tundra.color();
+        return Biome::Et.color();
     }
-    // No override → blend at the lapse-cooled (temp_pixel, precip).
-    whittaker_classify_blended_color(temp_pixel, zc.precip_annual)
+    // No override → reclassify under Köppen at lapse-adjusted monthly temps
+    // (warm/cold-month cool uniformly with elev). This catches the case where
+    // a tall but warm-enough peak shifts from Cfa to Cfb etc.
+    let pixel_warm = zc.temp_warm_month - lapse_drop;
+    let pixel_cold = zc.temp_cold_month - lapse_drop;
+    koppen_classify(pixel_warm, pixel_cold, zc.precip_annual, zc.precip_winter_frac).color()
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -617,12 +676,94 @@ pub fn compute_zone_climate(
         precip *= shadow;
     }
 
-    let biome = whittaker_classify(temp, precip);
+    // **v5 seasonality** — compute warm/cold-month + winter_frac for Köppen
+    // classification. Continentality already computed above (cont in [0, 1]).
+    let amp = seasonal_amplitude(lat_dist, cont, params);
+    let temp_warm_month = temp + amp;
+    let temp_cold_month = temp - amp;
+    let ew_pos = zone_ew_position(world, plate_id, zone_id);
+    let precip_winter_frac = precip_winter_frac(lat_dist, ew_pos, params);
+
+    let biome = koppen_classify(temp_warm_month, temp_cold_month, precip, precip_winter_frac);
     ZoneClimate {
         temp_mean: temp,
         precip_annual: precip,
+        temp_warm_month,
+        temp_cold_month,
+        precip_winter_frac,
         biome,
     }
+}
+
+/// **v5 seasonality** — seasonal temperature amplitude (°C) at a given lat
+/// + continentality. Amplitude is half the difference between warmest-month
+/// and coldest-month temps: `temp_warm = mean + amp`, `temp_cold = mean - amp`.
+///
+/// Real Earth model (Köppen-compatible):
+/// - Equator: small amp ~1-2°C (year-round 26-28°C)
+/// - Pole: large amp ~28-32°C (Yakutsk -40 winter / +20 summer)
+/// - Interior amplification: continental zones swing wider than oceanic
+///   (UK Cfb amp ~5 vs Toronto Dfb amp ~15 at same lat)
+pub fn seasonal_amplitude(lat_dist: f32, continentality: f32, params: &WorldClimateParams) -> f32 {
+    let lat_amp = params.seasonal_amplitude_eq
+                + params.seasonal_amplitude_lat_factor * lat_dist.clamp(0.0, 1.0);
+    lat_amp * (1.0 + continentality.clamp(0.0, 1.0) * params.seasonal_amplitude_cont_factor)
+}
+
+/// **v5 seasonality** — fraction of annual precip falling in the cold half-year
+/// `[0, 1]`. Predicts Mediterranean dry-summer (frac > 0.65) and Monsoon
+/// dry-winter (frac < 0.30) patterns from zone geography.
+///
+/// Logic:
+/// - Subtropical western continental margin (lat 0.20-0.40, ew < -0.3) →
+///   Mediterranean dry-summer → returns `mediterranean_winter_frac` (default 0.20
+///   ⇒ 20% in winter, dry-summer pattern means MOST in winter so we INVERT
+///   the param semantic — see test `winter_frac_mediterranean_inverted`).
+/// - Tropical continental east margin (lat 0.10-0.30, ew > 0) → monsoon
+///   dry-winter → returns `1 - monsoon_summer_frac` (default 0.20).
+/// - Otherwise: 0.5 (year-round even).
+///
+/// `ew_position` is the zone's east-west position relative to plate centroid,
+/// normalized to `[-1, +1]` (matches v3 OceanCurrent helper).
+pub fn precip_winter_frac(
+    lat_dist: f32,
+    ew_position: f32,
+    params: &WorldClimateParams,
+) -> f32 {
+    // Mediterranean dry-summer pattern: subtropical west coast. The
+    // canonical Med basin (lat ~30-45°N) maps to lat_dist ~0.33-0.50;
+    // California, central Chile, SW Australia, Cape SA all in this band on
+    // western continental margins.
+    if (0.20..0.45).contains(&lat_dist) && ew_position < -0.3 {
+        // Dry-summer means MOST precip in winter → return the
+        // **complement** of mediterranean_winter_frac if param < 0.5;
+        // semantic: param 0.20 = "20% in winter pattern" = strong
+        // Mediterranean = wet winter, so winter_frac = 1 - 0.20 = 0.80.
+        return 1.0 - params.mediterranean_winter_frac;
+    }
+    // Monsoon dry-winter pattern: tropical east/interior margin (India,
+    // SE Asia, W Africa monsoon). Most precip in summer.
+    if (0.10..0.30).contains(&lat_dist) && ew_position > 0.0 {
+        return 1.0 - params.monsoon_summer_frac; // 0.20 = 20% winter
+    }
+    0.5 // year-round even (default)
+}
+
+/// **v5 seasonality** — east-west position helper. Returns `[-1, +1]` where
+/// −1 = far-west of plate centroid, +1 = far-east. Reused from v3 OceanCurrent
+/// logic. Returns 0 if plate degenerate (no horizontal extent).
+fn zone_ew_position(world: &FlatWorld, plate_id: usize, zone_id: usize) -> f32 {
+    let plate = &world.plates[plate_id];
+    let (sx, _) = plate.zone_sites[zone_id];
+    let (cx, _) = plate.center;
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    for &(vx, _) in &plate.vertices {
+        min_x = min_x.min(vx);
+        max_x = max_x.max(vx);
+    }
+    let half_width = ((max_x - min_x) * 0.5).max(1.0);
+    ((sx - cx) / half_width).clamp(-1.0, 1.0)
 }
 
 /// **v4 Orographic** — upwind direction at a given latitude.
@@ -892,12 +1033,12 @@ pub fn pixel_biome(
         // → Ice.
         let tall_peak_threshold = params.peak_lapse_min_delta * 3.0;
         if zc.precip_annual >= params.ice_precip_min || delta > tall_peak_threshold {
-            Biome::Ice
+            Biome::Ef
         } else {
-            Biome::Tundra
+            Biome::Et
         }
     } else if temp_pixel < params.tundra_temp {
-        Biome::Tundra
+        Biome::Et
     } else {
         zc.biome
     }
@@ -925,7 +1066,16 @@ pub struct ZoneClimateExport {
     pub lat_dist: f32,
     pub temp_mean: f32,
     pub precip_annual: f32,
+    /// **v5** — warmest-month mean (°C). `temp_mean + seasonal_amplitude`.
+    pub temp_warm_month: f32,
+    /// **v5** — coldest-month mean (°C). `temp_mean - seasonal_amplitude`.
+    pub temp_cold_month: f32,
+    /// **v5** — fraction of annual precip in cold half-year `[0, 1]`.
+    pub precip_winter_frac: f32,
     pub biome: &'static str,
+    /// **v5** — Köppen group letter: "A" (tropical), "B" (arid),
+    /// "C" (temperate), "D" (continental), "E" (polar).
+    pub koppen_group: &'static str,
     pub base_elevation: f32,
 }
 
@@ -945,6 +1095,11 @@ pub struct ClimateParamsExport {
     pub ocean_current_strength: f32,
     pub orographic_strength: f32,
     pub orographic_reach: f32,
+    pub seasonal_amplitude_eq: f32,
+    pub seasonal_amplitude_lat_factor: f32,
+    pub seasonal_amplitude_cont_factor: f32,
+    pub mediterranean_winter_frac: f32,
+    pub monsoon_summer_frac: f32,
 }
 
 /// Top-level world climate export (one JSON document per render).
@@ -994,7 +1149,11 @@ pub fn export_zone_climates(
                 lat_dist,
                 temp_mean: zc.temp_mean,
                 precip_annual: zc.precip_annual,
+                temp_warm_month: zc.temp_warm_month,
+                temp_cold_month: zc.temp_cold_month,
+                precip_winter_frac: zc.precip_winter_frac,
                 biome: biome_name(zc.biome),
+                koppen_group: koppen_group(zc.biome),
                 base_elevation: world.elevation_at(sx, sy),
             });
         }
@@ -1016,6 +1175,11 @@ pub fn export_zone_climates(
             ocean_current_strength: params.ocean_current_strength,
             orographic_strength: params.orographic_strength,
             orographic_reach: params.orographic_reach,
+            seasonal_amplitude_eq: params.seasonal_amplitude_eq,
+            seasonal_amplitude_lat_factor: params.seasonal_amplitude_lat_factor,
+            seasonal_amplitude_cont_factor: params.seasonal_amplitude_cont_factor,
+            mediterranean_winter_frac: params.mediterranean_winter_frac,
+            monsoon_summer_frac: params.monsoon_summer_frac,
         },
         zones,
     }
@@ -1023,16 +1187,36 @@ pub fn export_zone_climates(
 
 fn biome_name(b: Biome) -> &'static str {
     match b {
-        Biome::Ice => "Ice",
-        Biome::Tundra => "Tundra",
-        Biome::BorealForest => "BorealForest",
-        Biome::DeciduousForest => "DeciduousForest",
-        Biome::TemperateForest => "TemperateForest",
-        Biome::Mediterranean => "Mediterranean",
-        Biome::TemperateGrassland => "TemperateGrassland",
-        Biome::HotDesert => "HotDesert",
-        Biome::Savanna => "Savanna",
-        Biome::TropicalRainforest => "TropicalRainforest",
+        Biome::Ef => "Ef",
+        Biome::Et => "Et",
+        Biome::Dfd => "Dfd",
+        Biome::Dfc => "Dfc",
+        Biome::Dfb => "Dfb",
+        Biome::Dfa => "Dfa",
+        Biome::Dwa => "Dwa",
+        Biome::Cfb => "Cfb",
+        Biome::Cfa => "Cfa",
+        Biome::Csa => "Csa",
+        Biome::Csb => "Csb",
+        Biome::Cwa => "Cwa",
+        Biome::Bsk => "Bsk",
+        Biome::Bwk => "Bwk",
+        Biome::Bsh => "Bsh",
+        Biome::Bwh => "Bwh",
+        Biome::Af => "Af",
+        Biome::Am => "Am",
+        Biome::Aw => "Aw",
+    }
+}
+
+/// **v5** — Köppen-group letter for a biome.
+fn koppen_group(b: Biome) -> &'static str {
+    match b {
+        Biome::Ef | Biome::Et => "E",
+        Biome::Dfd | Biome::Dfc | Biome::Dfb | Biome::Dfa | Biome::Dwa => "D",
+        Biome::Cfb | Biome::Cfa | Biome::Csa | Biome::Csb | Biome::Cwa => "C",
+        Biome::Bsk | Biome::Bwk | Biome::Bsh | Biome::Bwh => "B",
+        Biome::Af | Biome::Am | Biome::Aw => "A",
     }
 }
 
@@ -1128,54 +1312,101 @@ mod tests {
         assert!(d < e && e < f, "monotone fail (subtropic→midlat): {d} {e} {f}");
     }
 
-    // ---- whittaker_classify ----
+    // ---- koppen_classify (v5) ----
 
     #[test]
-    fn whittaker_nine_biomes_reachable_ice_excluded() {
-        // v2.1f: 10-biome enum; classifier reaches 9 (Ice excluded — that's
-        // pixel-lapse-override only).
-        let mut seen = [false; 10];
-        for ti in 0..=30 {
-            for pi in 0..=30 {
-                let t = -20.0 + (ti as f32) * 2.0; // -20 .. 40 °C
-                let pr = (pi as f32) * 200.0; // 0 .. 6000 mm/yr
-                let b = whittaker_classify(t, pr);
-                seen[b.tag() as usize] = true;
+    fn koppen_all_19_biomes_reachable_in_param_sweep() {
+        // **v5 Köppen sweep**: 4-axis space (t_warm, t_cold, precip,
+        // winter_frac). Verify all 19 Köppen subtypes are reachable from
+        // sweep params reflect Köppen 4-axis space (t_warm, t_cold, precip,
+        // winter_frac). Verify diverse biomes appear across the parameter
+        // space.
+        // Independent 3-axis sweep (t_mean × amp × precip). Decoupling amp
+        // from t_mean is critical to reach extreme cases like Dfd (needs
+        // t_warm > 10 AND t_cold < -40 → mean ≈ -15 with amp ≥ 25).
+        let mut seen = [false; 19];
+        for ti in 0..=15 {
+            for ami in 0..=10 {
+                for pi in 0..=15 {
+                    let t_mean = -25.0 + (ti as f32) * 4.0; // -25..35
+                    let amp = 2.0 + (ami as f32) * 4.0;     // 2..42
+                    let t_warm = t_mean + amp;
+                    let t_cold = t_mean - amp;
+                    let pr = (pi as f32) * 250.0;            // 0..3750
+                    for wf in [0.20, 0.5, 0.80] {
+                        let b = koppen_classify(t_warm, t_cold, pr, wf);
+                        seen[b.tag() as usize] = true;
+                    }
+                }
             }
         }
-        assert!(!seen[Biome::Ice.tag() as usize], "Ice must NOT come from zone classifier");
-        for b in [
-            Biome::Tundra,
-            Biome::BorealForest,
-            Biome::DeciduousForest,    // NEW v2.1f
-            Biome::TemperateForest,
-            Biome::Mediterranean,       // NEW v2.1f
-            Biome::TemperateGrassland,
-            Biome::HotDesert,
-            Biome::Savanna,
-            Biome::TropicalRainforest,
-        ] {
-            assert!(seen[b.tag() as usize], "missing {b:?}");
+        // All 19 Köppen subtypes should be reachable from some param combo.
+        // If any becomes unreachable after future tuning, that's a bug
+        // (classifier has a dead branch).
+        let names = [
+            "Ef", "Et", "Dfd", "Dfc", "Dfb", "Dfa", "Dwa",
+            "Cfb", "Cfa", "Csa", "Csb", "Cwa",
+            "Bsk", "Bwk", "Bsh", "Bwh",
+            "Af", "Am", "Aw",
+        ];
+        for (i, &name) in names.iter().enumerate() {
+            assert!(seen[i], "Köppen {name} (tag {i}) unreachable in sweep");
         }
     }
 
     #[test]
-    fn whittaker_canonical_points() {
-        // Cold tier
-        assert_eq!(whittaker_classify(-15.0, 100.0), Biome::Tundra);
-        assert_eq!(whittaker_classify(3.0, 600.0), Biome::BorealForest);
-        // Cool temperate (5..14)
-        assert_eq!(whittaker_classify(10.0, 800.0), Biome::DeciduousForest);   // wet cool
-        assert_eq!(whittaker_classify(10.0, 400.0), Biome::TemperateGrassland); // mid
-        assert_eq!(whittaker_classify(10.0, 100.0), Biome::HotDesert);          // cold desert
-        // Warm temperate (14..22)
-        assert_eq!(whittaker_classify(17.0, 1000.0), Biome::TemperateForest);   // humid subtropical
-        assert_eq!(whittaker_classify(17.0, 500.0), Biome::Mediterranean);      // dry-summer
-        assert_eq!(whittaker_classify(17.0, 100.0), Biome::HotDesert);          // warm desert
-        // Hot
-        assert_eq!(whittaker_classify(25.0, 100.0), Biome::HotDesert);
-        assert_eq!(whittaker_classify(25.0, 800.0), Biome::Savanna);
-        assert_eq!(whittaker_classify(27.0, 2500.0), Biome::TropicalRainforest);
+    fn koppen_canonical_earth_cities() {
+        // Each row: (description, t_warm, t_cold, precip, winter_frac, expected)
+        let cases = [
+            // Polar
+            ("Antarctica Ef", -10.0, -50.0, 50.0, 0.5, Biome::Ef),
+            ("Arctic tundra Et", 8.0, -25.0, 200.0, 0.5, Biome::Et),
+            // Continental
+            ("Yakutsk Dfd (severe subarctic)", 18.0, -42.0, 200.0, 0.5, Biome::Dfd),
+            ("Siberia Dfc (subarctic)", 12.0, -25.0, 350.0, 0.5, Biome::Dfc),
+            ("Toronto Dfb (warm humid continental)", 22.0, -7.0, 800.0, 0.5, Biome::Dfb),
+            ("Chicago Dfa (hot humid continental)", 28.0, -7.0, 950.0, 0.5, Biome::Dfa),
+            // Temperate
+            ("UK Cfb (oceanic)", 16.0, 5.0, 700.0, 0.55, Biome::Cfb),
+            ("Atlanta Cfa (humid subtropical)", 27.0, 8.0, 1200.0, 0.5, Biome::Cfa),
+            ("LA Csa (Mediterranean hot summer)", 24.0, 12.0, 400.0, 0.80, Biome::Csa),
+            ("Coastal SF Csb (Med warm summer)", 18.0, 10.0, 500.0, 0.80, Biome::Csb),
+            // Arid
+            ("Sahara Bwh (hot desert)", 38.0, 12.0, 50.0, 0.5, Biome::Bwh),
+            ("Gobi Bwk (cold desert)", 25.0, -15.0, 80.0, 0.5, Biome::Bwk),
+            ("Sahel Bsh (hot steppe)", 35.0, 18.0, 300.0, 0.5, Biome::Bsh),
+            // Kazakh: real climate has somewhat dry winters (winter_frac~0.3-0.4)
+            // due to continental cold-winter pattern; this raises arid threshold
+            // enough to classify as Bsk.
+            ("Kazakh Bsk (cold steppe)", 25.0, -10.0, 200.0, 0.30, Biome::Bsk),
+            // Tropical
+            ("Amazon Af (rainforest)", 27.0, 22.0, 2500.0, 0.50, Biome::Af),
+            ("Mumbai Am (monsoon)", 30.0, 22.0, 2200.0, 0.10, Biome::Am),
+            ("Sahel-tropics Aw (savanna)", 30.0, 20.0, 800.0, 0.20, Biome::Aw),
+        ];
+        for (desc, tw, tc, pr, wf, expected) in cases {
+            let got = koppen_classify(tw, tc, pr, wf);
+            assert_eq!(
+                got, expected,
+                "{desc}: koppen_classify({tw}, {tc}, {pr}, {wf}) -> {got:?}, expected {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn arid_threshold_seasonal_offset() {
+        // Dry-summer (winter_frac 0.8, winter-precip-heavy) → offset −70.
+        // T_mean = (25+5)/2 = 15, threshold = 20*15 - 70 = 230.
+        let mediterranean = arid_precip_threshold(25.0, 5.0, 0.80);
+        assert!((mediterranean - 230.0).abs() < 0.1, "med threshold should be 230, got {mediterranean}");
+        // Dry-winter (winter_frac 0.2, summer-precip-heavy) → offset +140.
+        // T_mean = 25, threshold = 500 + 140 = 640.
+        let monsoon = arid_precip_threshold(30.0, 20.0, 0.20);
+        assert!((monsoon - 640.0).abs() < 0.1, "monsoon threshold should be 640, got {monsoon}");
+        // Year-round (winter_frac 0.5) → offset +70.
+        // T_mean = 15, threshold = 300 + 70 = 370.
+        let year_round = arid_precip_threshold(25.0, 5.0, 0.50);
+        assert!((year_round - 370.0).abs() < 0.1, "year-round threshold should be 370, got {year_round}");
     }
 
     // ---- compute_zone_climate ----
@@ -1388,27 +1619,19 @@ mod tests {
 
     #[test]
     fn pixel_biome_low_elev_keeps_zone_biome() {
-        let zc = ZoneClimate {
-            temp_mean: 26.0,
-            precip_annual: 2000.0,
-            biome: Biome::TropicalRainforest,
-        };
+        let zc = ZoneClimate::test_fixture(26.0, 2000.0, Biome::Af);
         let p = WorldClimateParams::default();
         // Pixel sitting at the zone base → no lapse → zone biome.
-        assert_eq!(pixel_biome(&zc, 0.35, 0.35, &p), Biome::TropicalRainforest);
+        assert_eq!(pixel_biome(&zc, 0.35, 0.35, &p), Biome::Af);
     }
 
     #[test]
     fn pixel_biome_tropical_peak_is_ice() {
-        let zc = ZoneClimate {
-            temp_mean: 26.0,
-            precip_annual: 2000.0,
-            biome: Biome::TropicalRainforest,
-        };
+        let zc = ZoneClimate::test_fixture(26.0, 2000.0, Biome::Af);
         let p = WorldClimateParams::default(); // ice_temp = -10, lapse = 50
         // Need temp_pixel < -10 → delta > (26 - -10) / 50 = 0.72.
         let elev = 0.35 + 0.80; // delta 0.80 → temp_pixel = 26 - 40 = -14 → Ice
-        assert_eq!(pixel_biome(&zc, elev, 0.35, &p), Biome::Ice);
+        assert_eq!(pixel_biome(&zc, elev, 0.35, &p), Biome::Ef);
     }
 
     #[test]
@@ -1419,43 +1642,31 @@ mod tests {
         // (a) precip < ice_precip_min AND (b) delta is not > 3 × peak gate.
         // This is the "polar dry desert" case (Atacama-like, Antarctica's
         // dry valleys) — Tundra, not Ice.
-        let zc = ZoneClimate {
-            temp_mean: -18.0,
-            precip_annual: 50.0, // dry — below ice_precip_min (100)
-            biome: Biome::Tundra,
-        };
+        let zc = ZoneClimate::test_fixture(-18.0, 50.0, Biome::Et); // dry — below ice_precip_min (100)
         let p = WorldClimateParams::default(); // gate=0.05, ice_temp=-10, lapse=50
         // Shallow peak: delta = 0.08 (just above gate, NOT > 3×gate=0.15).
         // temp_pixel = -18 - 50*0.08 = -22 < ice_temp → would be Ice in v2.
         // W3-C: Tundra (low precip + shallow delta).
-        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Et);
     }
 
     #[test]
     fn pixel_biome_precip_gated_ice_polar_wet_zone_becomes_ice() {
         // Same shallow peak but the zone has accumulation-grade precip
         // (≥ ice_precip_min) → Ice fires.
-        let zc = ZoneClimate {
-            temp_mean: -18.0,
-            precip_annual: 200.0, // wet — above ice_precip_min
-            biome: Biome::Tundra,
-        };
+        let zc = ZoneClimate::test_fixture(-18.0, 200.0, Biome::Et); // wet — above ice_precip_min
         let p = WorldClimateParams::default();
-        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Ice);
+        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Ef);
     }
 
     #[test]
     fn pixel_biome_precip_gated_ice_dry_tall_peak_still_ice() {
         // Antarctica-style: dry zone (no snowfall) BUT very tall peak — the
         // peak's altitude alone earns Ice (delta > 3 × peak_lapse_min_delta).
-        let zc = ZoneClimate {
-            temp_mean: -18.0,
-            precip_annual: 50.0, // dry
-            biome: Biome::Tundra,
-        };
+        let zc = ZoneClimate::test_fixture(-18.0, 50.0, Biome::Et); // dry
         let p = WorldClimateParams::default(); // 3×gate = 0.15
         // Tall peak: delta = 0.30 > 0.15 → Ice via tall-peak override.
-        assert_eq!(pixel_biome(&zc, 0.70, 0.40, &p), Biome::Ice);
+        assert_eq!(pixel_biome(&zc, 0.70, 0.40, &p), Biome::Ef);
     }
 
     #[test]
@@ -1466,17 +1677,13 @@ mod tests {
         // other zones. Confirm the logic is zone-biome-independent: a
         // BorealForest zone with very cold pixel + low precip → Tundra
         // (precip-gated NOT Ice), not BorealForest.
-        let zc = ZoneClimate {
-            temp_mean: -15.0,
-            precip_annual: 50.0, // dry — below ice_precip_min
-            biome: Biome::BorealForest, // NOT Tundra
-        };
+        let zc = ZoneClimate::test_fixture(-15.0, 50.0, Biome::Dfc); // dry — below ice_precip_min; biome NOT Tundra
         let p = WorldClimateParams::default();
         // Shallow peak: delta = 0.08 (NOT > 3 × peak_gate=0.15).
         // temp_pixel = -15 - 50*0.08 = -19 < ice_temp=-10 → would be Ice in v2.
         // W3-C: precip < ice_precip_min AND delta < tall_peak → fall through to
         // Tundra branch (temp_pixel < tundra_temp=0).
-        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Et);
     }
 
     #[test]
@@ -1486,22 +1693,18 @@ mod tests {
         // temp_mean < ice_temp. The `peak_lapse_min_delta` gate (default
         // 0.05) suppresses the override for sub-peak relief — only an actual
         // peak ≥ 0.05 above the zone base earns the override.
-        let zc = ZoneClimate {
-            temp_mean: -28.0,
-            precip_annual: 100.0,
-            biome: Biome::Tundra,
-        };
+        let zc = ZoneClimate::test_fixture(-28.0, 100.0, Biome::Et);
         let p = WorldClimateParams::default();
         // Pixel exactly at zone base → delta = 0 → zone biome (Tundra).
-        assert_eq!(pixel_biome(&zc, 0.40, 0.40, &p), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, 0.40, 0.40, &p), Biome::Et);
         // Pixel BELOW zone base (eroded valley) → delta < 0 → zone biome.
-        assert_eq!(pixel_biome(&zc, 0.39, 0.40, &p), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, 0.39, 0.40, &p), Biome::Et);
         // Plains noise: delta = +0.02 (typical) → still below 0.05 gate → zone biome.
-        assert_eq!(pixel_biome(&zc, 0.42, 0.40, &p), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, 0.42, 0.40, &p), Biome::Et);
         // Just under the gate: delta = +0.049 → still zone biome.
-        assert_eq!(pixel_biome(&zc, 0.449, 0.40, &p), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, 0.449, 0.40, &p), Biome::Et);
         // Real peak: delta = +0.20 (≥ 0.05) → temp_pixel = -28 - 10 = -38 → Ice.
-        assert_eq!(pixel_biome(&zc, 0.60, 0.40, &p), Biome::Ice);
+        assert_eq!(pixel_biome(&zc, 0.60, 0.40, &p), Biome::Ef);
     }
 
     #[test]
@@ -1511,11 +1714,7 @@ mod tests {
         // they would pass with default values in (~0.02, ~0.20). This test
         // pins the parameter's behavior by varying it and asserting the same
         // pixel flips from zone biome to Ice as the gate moves.
-        let zc = ZoneClimate {
-            temp_mean: -28.0,
-            precip_annual: 100.0,
-            biome: Biome::Tundra,
-        };
+        let zc = ZoneClimate::test_fixture(-28.0, 100.0, Biome::Et);
         let pixel_elev = 0.46; // delta = +0.06 above zone base 0.40
 
         // Loose gate (0.03 < 0.06) → override fires → Ice (very-cold polar).
@@ -1523,14 +1722,14 @@ mod tests {
             peak_lapse_min_delta: 0.03,
             ..WorldClimateParams::default()
         };
-        assert_eq!(pixel_biome(&zc, pixel_elev, 0.40, &p_loose), Biome::Ice);
+        assert_eq!(pixel_biome(&zc, pixel_elev, 0.40, &p_loose), Biome::Ef);
 
         // Tight gate (0.10 > 0.06) → override suppressed → zone biome (Tundra).
         let p_tight = WorldClimateParams {
             peak_lapse_min_delta: 0.10,
             ..WorldClimateParams::default()
         };
-        assert_eq!(pixel_biome(&zc, pixel_elev, 0.40, &p_tight), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, pixel_elev, 0.40, &p_tight), Biome::Et);
     }
 
     #[test]
@@ -1539,32 +1738,24 @@ mod tests {
         // `delta == peak_lapse_min_delta` should fire the override. Locks
         // the boundary inclusive/exclusive choice. Use `zone_base = 0.0` so
         // `delta == elev_pixel` exactly (no f32 subtraction loss).
-        let zc = ZoneClimate {
-            temp_mean: -28.0,
-            precip_annual: 100.0,
-            biome: Biome::Tundra,
-        };
+        let zc = ZoneClimate::test_fixture(-28.0, 100.0, Biome::Et);
         let p = WorldClimateParams::default(); // gate = 0.05
         // delta = exactly peak_lapse_min_delta → NOT strictly less → override fires.
         // temp_pixel = -28 - 50*0.05 = -30.5 < ice_temp (-10) → Ice.
-        assert_eq!(pixel_biome(&zc, p.peak_lapse_min_delta, 0.0, &p), Biome::Ice);
+        assert_eq!(pixel_biome(&zc, p.peak_lapse_min_delta, 0.0, &p), Biome::Ef);
         // delta = gate - epsilon → strictly less → suppressed → Tundra.
         let below = p.peak_lapse_min_delta - 1e-4;
-        assert_eq!(pixel_biome(&zc, below, 0.0, &p), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, below, 0.0, &p), Biome::Et);
     }
 
     #[test]
     fn pixel_biome_intermediate_elev_becomes_tundra() {
-        let zc = ZoneClimate {
-            temp_mean: 26.0,
-            precip_annual: 2000.0,
-            biome: Biome::TropicalRainforest,
-        };
+        let zc = ZoneClimate::test_fixture(26.0, 2000.0, Biome::Af);
         let p = WorldClimateParams::default(); // tundra_temp = 0, ice_temp = -10
         // Need 0 < temp_pixel - ice_temp threshold but temp_pixel < 0:
         // delta in (26/50, 36/50) = (0.52, 0.72).
         let elev = 0.35 + 0.60; // delta 0.60 → temp_pixel = 26 - 30 = -4 → Tundra
-        assert_eq!(pixel_biome(&zc, elev, 0.35, &p), Biome::Tundra);
+        assert_eq!(pixel_biome(&zc, elev, 0.35, &p), Biome::Et);
     }
 
     // ---- scaled_for ----
@@ -1606,6 +1797,74 @@ mod tests {
     }
 
     // ---- export_zone_climates ----
+
+    // ---- v5 seasonality ----
+
+    #[test]
+    fn seasonal_amplitude_grows_with_lat() {
+        let p = WorldClimateParams::default();
+        // Equator with no continentality: just the eq amp (2.0).
+        let eq = seasonal_amplitude(0.0, 0.0, &p);
+        assert!((eq - 2.0).abs() < 1e-5, "eq amp should be 2.0, got {eq}");
+        // Pole with no continentality: 2.0 + 28.0 = 30.0.
+        let pole = seasonal_amplitude(1.0, 0.0, &p);
+        assert!((pole - 30.0).abs() < 1e-5, "pole amp should be 30.0, got {pole}");
+        // Mid-lat: 2 + 28 * 0.5 = 16
+        let mid = seasonal_amplitude(0.5, 0.0, &p);
+        assert!((mid - 16.0).abs() < 1e-5, "mid-lat amp should be 16.0, got {mid}");
+    }
+
+    #[test]
+    fn seasonal_amplitude_continentality_amplifies() {
+        let p = WorldClimateParams::default();
+        // At mid-lat (amp_lat = 16), continentality=1 should give 16 * (1+0.8) = 28.8
+        let coast = seasonal_amplitude(0.5, 0.0, &p);
+        let interior = seasonal_amplitude(0.5, 1.0, &p);
+        assert!((coast - 16.0).abs() < 1e-5);
+        assert!((interior - 28.8).abs() < 1e-5, "interior amp should be 28.8, got {interior}");
+        assert!(interior > coast, "interior must have bigger amplitude than coast");
+    }
+
+    #[test]
+    fn precip_winter_frac_mediterranean_dry_summer() {
+        let p = WorldClimateParams::default();
+        // Subtropical west coast → Mediterranean → winter_frac = 1 - 0.20 = 0.80
+        let med = precip_winter_frac(0.30, -0.5, &p);
+        assert!((med - 0.80).abs() < 1e-5, "med winter_frac should be 0.80, got {med}");
+    }
+
+    #[test]
+    fn precip_winter_frac_monsoon_dry_winter() {
+        let p = WorldClimateParams::default();
+        // Tropical east coast → Monsoon → winter_frac = 1 - 0.80 = 0.20
+        let monsoon = precip_winter_frac(0.20, 0.5, &p);
+        assert!((monsoon - 0.20).abs() < 1e-5, "monsoon winter_frac should be 0.20, got {monsoon}");
+    }
+
+    #[test]
+    fn precip_winter_frac_default_is_even() {
+        let p = WorldClimateParams::default();
+        // Mid-lat with no special pattern → 0.5
+        let even = precip_winter_frac(0.50, 0.0, &p);
+        assert!((even - 0.5).abs() < 1e-5);
+        // Polar (out of Med/monsoon bands) → 0.5
+        let polar = precip_winter_frac(0.90, -0.8, &p);
+        assert!((polar - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn zone_climate_v5_fields_populated() {
+        let world = test_world();
+        let params = WorldClimateParams::default()
+            .scaled_for(world.width, world.height, world.plates.len());
+        let ed = edge_dist_all_coast(&world);
+        let zc = compute_zone_climate(&world, &params, 0, 0, &ed);
+        // Warm/cold-month should bracket temp_mean.
+        assert!(zc.temp_warm_month > zc.temp_mean);
+        assert!(zc.temp_cold_month < zc.temp_mean);
+        // Winter_frac in valid range.
+        assert!((0.0..=1.0).contains(&zc.precip_winter_frac));
+    }
 
     // ---- v4 Orographic ----
 
@@ -1738,69 +1997,28 @@ mod tests {
         );
     }
 
-    // ---- W5 classifier-level hue interpolation (v2.1d) ----
-
-    #[test]
-    fn whittaker_blended_color_returns_canonical_deep_in_biome() {
-        // Pixel at (27, 2500) = deep in TropicalRainforest territory.
-        // All 4 probes (±1.5°C, ±75mm) still classify as TropicalRainforest
-        // (nearest threshold is precip=1500 at distance 1000mm >> 75mm; temp
-        // is at 22 boundary at distance 5°C >> 1.5°C). Should return
-        // canonical color exactly.
-        let c = whittaker_classify_blended_color(27.0, 2500.0);
-        assert_eq!(c, Biome::TropicalRainforest.color());
-
-        // Pixel deep in Tundra (cold tier, far from precip thresholds).
-        let c2 = whittaker_classify_blended_color(-10.0, 50.0);
-        assert_eq!(c2, Biome::Tundra.color());
-    }
-
-    #[test]
-    fn whittaker_blended_color_blends_at_precip_threshold() {
-        // Pixel at (20, 700) — exactly on the warm-tier threshold between
-        // Mediterranean (precip 250..700) and TemperateForest (precip > 700).
-        // At exactly the threshold, bisect finds td → 0, smoothstep(0) = 0,
-        // w_center = 0.5 → 50/50 blend of Mediterranean + TemperateForest.
-        let blend = whittaker_classify_blended_color(20.0, 700.0);
-        let med = Biome::Mediterranean.color();
-        let tf = Biome::TemperateForest.color();
-        let expected = [
-            ((med[0] as u32 + tf[0] as u32) / 2) as u8,
-            ((med[1] as u32 + tf[1] as u32) / 2) as u8,
-            ((med[2] as u32 + tf[2] as u32) / 2) as u8,
-        ];
-        // Allow ±2 for f32 rounding in lerp.
-        for ch in 0..3 {
-            assert!(
-                (blend[ch] as i32 - expected[ch] as i32).abs() <= 2,
-                "channel {ch}: blend {blend:?} vs expected midpoint {expected:?}"
-            );
-        }
-        // Sanity: blend is NEITHER pure Mediterranean NOR pure TemperateForest.
-        assert_ne!(blend, med);
-        assert_ne!(blend, tf);
-    }
+    // ---- v5: pixel_color (Köppen via lapse-adjusted monthly temps) ----
+    //
+    // Note: v2.1d W5 hue blending (whittaker_classify_blended_color) removed
+    // in v5 — Köppen 19-variant palette provides finer hue gradations
+    // naturally, eliminating the "Tetris" feel without explicit blending.
 
     #[test]
     fn pixel_color_preserves_lapse_overrides_unblended() {
         // Lapse overrides (Ice / Tundra at peaks) intentionally stay hard —
         // softening those is a separate concern. Verify pixel_color returns
         // EXACT Ice.color() at a tall cold peak.
-        let zc = ZoneClimate {
-            temp_mean: 26.0,
-            precip_annual: 2000.0,
-            biome: Biome::TropicalRainforest,
-        };
+        let zc = ZoneClimate::test_fixture(26.0, 2000.0, Biome::Af);
         let p = WorldClimateParams::default();
         // Tall peak: delta = 0.80 → temp_pixel = 26 - 40 = -14 < ice_temp(-10);
         // precip 2000 ≥ ice_precip_min(100) → Ice override fires.
         let c = pixel_color(&zc, 0.35 + 0.80, 0.35, &p);
-        assert_eq!(c, Biome::Ice.color(), "lapse override should return pure Ice color, not a blend");
+        assert_eq!(c, Biome::Ef.color(), "lapse override should return pure Ice color, not a blend");
 
         // Pixel at zone base → no override → blends at zone-level (temp, precip).
         // (27, 2000) → deep TropicalRainforest → canonical color.
         let c2 = pixel_color(&zc, 0.35, 0.35, &p);
-        assert_eq!(c2, Biome::TropicalRainforest.color());
+        assert_eq!(c2, Biome::Af.color());
     }
 
     #[test]

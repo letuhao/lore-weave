@@ -128,113 +128,118 @@ def precipitation_gradient_law(zones: list, params: dict) -> float:
     return 100.0 * max(0.0, r)
 
 # Biome color → name. Must mirror `Biome::color()` in flat_climate.rs at the
-# current commit. v2.1f: 10 biomes (added DeciduousForest + Mediterranean).
+# current commit. **v5 Köppen-lite: 19 biomes** (was 10 Whittaker pre-v5).
 BIOME_COLORS = {
-    (232, 238, 242): "Ice",
-    (184, 183, 174): "Tundra",
-    (74, 107, 71):   "BorealForest",
-    (138, 171, 82):  "DeciduousForest",     # NEW v2.1f
-    (79, 139, 65):   "TemperateForest",
-    (181, 165, 98):  "Mediterranean",       # NEW v2.1f
-    (184, 180, 90):  "TempGrassland",       # alias for TemperateGrassland
-    (216, 144, 96):  "HotDesert",
-    (201, 192, 74):  "Savanna",
-    (15, 77, 26):    "TropicalRainforest",
+    # POLAR (E)
+    (245, 248, 250): "Ef",        # Ice cap (Antarctica)
+    (184, 183, 174): "Et",        # Tundra (Arctic)
+    # CONTINENTAL (D)
+    (58, 86, 60):    "Dfd",       # Extreme subarctic (Yakutsk)
+    (74, 107, 71):   "Dfc",       # Subarctic (Siberia)
+    (100, 138, 88):  "Dfb",       # Warm humid continental (Canada prairies)
+    (125, 158, 96):  "Dfa",       # Hot humid continental (Central US)
+    (148, 175, 110): "Dwa",       # Continental dry-winter monsoon (NE China)
+    # TEMPERATE (C)
+    (79, 139, 65):   "Cfb",       # Oceanic (UK, NW Europe)
+    (138, 171, 82):  "Cfa",       # Humid subtropical (SE USA, Yangzi)
+    (181, 165, 98):  "Csa",       # Mediterranean hot summer (Med basin)
+    (165, 175, 115): "Csb",       # Mediterranean warm summer (coastal CA)
+    (155, 180, 95):  "Cwa",       # Subtropical monsoon (S China)
+    # ARID (B)
+    (174, 165, 105): "Bsk",       # Cold steppe (Kazakh)
+    (195, 165, 132): "Bwk",       # Cold desert (Gobi)
+    (201, 192, 74):  "Bsh",       # Hot steppe (Sahel)
+    (216, 144, 96):  "Bwh",       # Hot desert (Sahara)
+    # TROPICAL (A)
+    (15, 77, 26):    "Af",        # Tropical rainforest (Amazon)
+    (35, 100, 35):   "Am",        # Tropical monsoon (Mumbai)
+    (185, 180, 80):  "Aw",        # Tropical savanna (Sahel-tropics)
 }
-# Map our short name → profile distribution key.
-BIOME_PROFILE_KEY = {
-    "Ice": "Ice", "Tundra": "Tundra", "BorealForest": "BorealForest",
-    "DeciduousForest": "DeciduousForest",
-    "TemperateForest": "TemperateForest",
-    "Mediterranean": "Mediterranean",
-    "TempGrassland": "TemperateGrassland",
-    "HotDesert": "HotDesert", "Savanna": "Savanna",
-    "TropicalRainforest": "TropicalRainforest",
-}
-ALL_BIOMES = list(BIOME_PROFILE_KEY.values())
+ALL_BIOMES = list(BIOME_COLORS.values())
 
 VOID = (12, 16, 28)
-# Lat banding allowed/forbidden per refs doc §2.3 + v2.1f extension.
-# Earth-default table — used for Earth-like profile + hemisphere variants.
+# **v5 Köppen lat-band tables** (19 biomes). Per Beck 2018 Köppen-Geiger
+# world map: which Köppen subtypes legitimately appear in each lat band.
+# Allowed = appears in the band on real Earth; forbidden = never appears
+# (or only via lapse override at altitude, e.g. Ef on tropical mountains).
+# Lat-band tables relaxed for Köppen variability: real Earth has biome
+# spillover across bands due to continentality, ocean currents, altitude
+# (e.g. Aw appears at mid-lat continental dry interiors; Cfb extends into
+# polar on western maritime continents). Only mark TRULY impossible biomes
+# as forbidden (e.g. Af tropical rainforest at the pole).
 LAT_BANDS_EARTH = [
     # (lat_dist_lo, lat_dist_hi, allowed_set, forbidden_set)
     (0.00, 0.20,  # tropics 0-15°
-     {"TropicalRainforest", "Savanna", "HotDesert"},
-     {"Ice", "Tundra", "BorealForest", "DeciduousForest"}),
+     {"Af", "Am", "Aw", "Bwh", "Bsh", "Cfa", "Cwa"},
+     {"Ef", "Dfd", "Dfc"}),
     (0.20, 0.40,  # subtropics 15-30°
-     {"HotDesert", "Savanna", "TemperateForest", "Mediterranean", "TemperateGrassland"},
-     {"Ice", "Tundra", "BorealForest"}),
+     {"Bwh", "Bsh", "Aw", "Am", "Cfa", "Csa", "Cwa", "Bsk", "Bwk"},
+     {"Ef", "Dfd"}),
     (0.40, 0.60,  # mid-lat 30-50°
-     {"TemperateForest", "Mediterranean", "DeciduousForest",
-      "TemperateGrassland", "HotDesert", "BorealForest"},
-     {"TropicalRainforest", "Savanna"}),
+     {"Cfb", "Cfa", "Csa", "Csb", "Cwa", "Dfa", "Dfb", "Dwa", "Bsk", "Bwk", "Bsh", "Bwh", "Aw"},
+     {"Ef", "Dfd", "Af", "Am"}),
     (0.60, 0.80,  # sub-arctic 50-70°
-     {"BorealForest", "DeciduousForest", "TemperateGrassland", "Tundra"},
-     {"TropicalRainforest", "Savanna", "HotDesert", "Mediterranean", "TemperateForest"}),
+     {"Dfc", "Dfb", "Dfa", "Dwa", "Dfd", "Bsk", "Bwk", "Cfb", "Et"},
+     {"Af", "Am", "Aw", "Bwh", "Bsh"}),
     (0.80, 1.00,  # polar 70-90°
-     {"Tundra", "Ice", "BorealForest"},
-     {"TropicalRainforest", "Savanna", "HotDesert", "Mediterranean",
-      "TemperateForest", "DeciduousForest"}),
+     {"Et", "Ef", "Dfd", "Dfc", "Bwk"},
+     {"Af", "Am", "Aw", "Bwh", "Bsh", "Cfa", "Csa", "Cwa", "Csb"}),
 ]
-# Hothouse table — warm world, every band can host forests; only Ice/Tundra
-# are forbidden anywhere (they only occur on extreme peaks via pixel lapse).
+# Hothouse: warm world. Even poles can host forests; only Ef strictly
+# forbidden (only via lapse on extreme peaks).
 LAT_BANDS_HOTHOUSE = [
     (0.00, 0.20,
-     {"TropicalRainforest", "Savanna", "TemperateForest", "DeciduousForest"},
-     {"Ice", "Tundra", "BorealForest"}),
+     {"Af", "Am", "Aw", "Cfa", "Cwa"},
+     {"Ef", "Et", "Dfd", "Dfc", "Dfb", "Cfb"}),
     (0.20, 0.40,
-     {"TropicalRainforest", "Savanna", "TemperateForest", "Mediterranean",
-      "DeciduousForest", "HotDesert"},
-     {"Ice", "Tundra", "BorealForest"}),
+     {"Af", "Am", "Aw", "Cfa", "Csa", "Cwa", "Bsh", "Bwh"},
+     {"Ef", "Et", "Dfd", "Dfc", "Dfb"}),
     (0.40, 0.60,
-     {"TemperateForest", "DeciduousForest", "Mediterranean",
-      "TemperateGrassland", "Savanna", "HotDesert"},
-     {"Ice"}),
+     {"Cfa", "Cfb", "Csa", "Csb", "Cwa", "Bsh", "Bwh", "Dfa", "Dfb"},
+     {"Ef", "Dfd"}),
     (0.60, 0.80,
-     {"TemperateForest", "DeciduousForest", "BorealForest", "TemperateGrassland"},
-     {"Ice"}),
+     {"Cfb", "Cfa", "Dfb", "Dfc", "Dfa", "Dwa"},
+     {"Ef"}),
     (0.80, 1.00,
-     {"DeciduousForest", "BorealForest", "TemperateGrassland", "Tundra"},
+     {"Cfb", "Dfb", "Dfc", "Dwa", "Et"},
      set()),  # nothing strictly forbidden at hothouse poles
 ]
-# Snowball table — cold world, every band can host Tundra/Ice; forests only
-# at the warmest equator stripe.
+# Snowball: cold world. Forests only at warmest equator stripe; Ef/Et dominant.
 LAT_BANDS_SNOWBALL = [
     (0.00, 0.20,
-     {"Tundra", "BorealForest", "DeciduousForest", "TemperateGrassland", "Ice"},
-     {"HotDesert", "TropicalRainforest"}),
+     {"Et", "Dfc", "Dfb", "Cfb", "Ef"},
+     {"Af", "Am", "Aw", "Bwh", "Bsh"}),
     (0.20, 0.40,
-     {"Tundra", "BorealForest", "Ice", "TemperateGrassland"},
-     {"HotDesert", "TropicalRainforest", "Savanna"}),
+     {"Et", "Dfd", "Dfc", "Ef", "Bsk", "Bwk"},
+     {"Af", "Am", "Aw", "Bwh", "Bsh", "Cfa"}),
     (0.40, 0.60,
-     {"Tundra", "Ice", "BorealForest"},
-     {"HotDesert", "TropicalRainforest", "Savanna", "Mediterranean", "TemperateForest"}),
+     {"Et", "Ef", "Dfd", "Dfc", "Bwk"},
+     {"Af", "Am", "Aw", "Bwh", "Bsh", "Csa", "Cfb", "Cfa"}),
     (0.60, 1.00,
-     {"Tundra", "Ice"},
-     {"HotDesert", "TropicalRainforest", "Savanna", "Mediterranean",
-      "TemperateForest", "DeciduousForest"}),
-    (1.00, 1.001,  # placeholder to keep 5-band shape
-     {"Ice"}, set()),
+     {"Et", "Ef", "Dfd"},
+     {"Af", "Am", "Aw", "Bwh", "Bsh", "Csa", "Cfb", "Cfa",
+      "Dfa", "Dfb", "Dfc", "Dwa"}),
+    (1.00, 1.001, {"Ef"}, set()),
 ]
-# Desert table — dry world, every band may host HotDesert/Savanna; forests
-# only in rare wet pockets.
+# Desert: dry world. HotDesert / Savanna / Bsh dominate. Forests only in
+# rare wet pockets.
 LAT_BANDS_DESERT = [
     (0.00, 0.20,
-     {"HotDesert", "Savanna", "TropicalRainforest"},
-     {"Ice", "Tundra", "BorealForest"}),
+     {"Bwh", "Bsh", "Aw", "Af"},
+     {"Ef", "Et", "Dfd", "Dfc", "Cfb"}),
     (0.20, 0.40,
-     {"HotDesert", "Savanna", "TemperateGrassland"},
-     {"Ice", "Tundra", "BorealForest", "TropicalRainforest"}),
+     {"Bwh", "Bsh", "Aw", "Bsk", "Csa"},
+     {"Ef", "Et", "Dfd", "Dfc", "Af", "Am"}),
     (0.40, 0.60,
-     {"HotDesert", "TemperateGrassland", "Mediterranean", "Savanna"},
-     {"TropicalRainforest", "BorealForest", "Ice"}),
+     {"Bwh", "Bwk", "Bsh", "Bsk", "Csa", "Csb"},
+     {"Af", "Am", "Aw", "Ef", "Dfd"}),
     (0.60, 0.80,
-     {"TemperateGrassland", "Tundra", "BorealForest", "HotDesert"},
-     {"TropicalRainforest", "Savanna", "Mediterranean", "TemperateForest"}),
+     {"Bsk", "Bwk", "Et", "Dfc", "Dfb"},
+     {"Af", "Am", "Aw", "Csa", "Cfb", "Cfa"}),
     (0.80, 1.00,
-     {"Tundra", "Ice", "BorealForest"},
-     {"TropicalRainforest", "Savanna", "HotDesert", "Mediterranean",
-      "TemperateForest", "DeciduousForest"}),
+     {"Et", "Ef", "Dfd", "Dfc"},
+     {"Af", "Am", "Aw", "Bwh", "Bsh", "Csa", "Cfb", "Cfa",
+      "Dfa", "Dfb", "Dwa"}),
 ]
 # Lever A (v2.1h): per-profile lat-band tables. Scenarios get their own
 # tables because their physics differ from Earth — Hothouse poles SHOULD

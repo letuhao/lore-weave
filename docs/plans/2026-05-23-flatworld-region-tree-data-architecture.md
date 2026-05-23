@@ -460,22 +460,34 @@ let pixel: Biome = pixel_biome(&zc, elev_pixel, zone_base_elev, &cp);
 
 **Biome enum** (stable tag bytes per `Biome::tag()`):
 
-| Tag | Variant | Color (RGB) | Real-world analog |
-|---:|---|---|---|
-| 0 | `Ice` | `[232, 238, 242]` | Greenland, Antarctica (pixel-lapse override only) |
-| 1 | `Tundra` | `[184, 183, 174]` | Siberian tundra |
-| 2 | `BorealForest` | `[74, 107, 71]` | Taiga |
-| 3 | `TemperateForest` | `[79, 139, 65]` | Humid subtropical / oceanic forest |
-| 4 | `TemperateGrassland` | `[184, 180, 90]` | Steppe, prairie |
-| 5 | `HotDesert` | `[216, 144, 96]` | Sahara, Arabian |
-| 6 | `Savanna` | `[201, 192, 74]` | Sub-Saharan, cerrado |
-| 7 | `TropicalRainforest` | `[15, 77, 26]` | Amazon, Congo |
-| 8 | `DeciduousForest` | `[138, 171, 82]` | E North America, Europe, E Asia (NEW v2.1f) |
-| 9 | `Mediterranean` | `[181, 165, 98]` | California, Med basin, SW Australia (NEW v2.1f) |
+**🆕 v5 Köppen 19-biome enum** (2026-05-24, replaces 10-Whittaker pre-v5):
 
-`Biome::color()` is the canonical lookup if a consumer parses the rendered PNG.
-Tags 0..7 are pinned (preserved across v2.1f expansion) — safe to use as a wire
-format byte.
+| Tag | Variant | Köppen group | Color (RGB) | Real-world analog |
+|---:|---|---|---|---|
+| 0 | `Ef` | E (Polar) | `[245, 248, 250]` | Ice cap (Antarctica) |
+| 1 | `Et` | E (Polar) | `[184, 183, 174]` | Tundra (Arctic) |
+| 2 | `Dfd` | D (Continental) | `[58, 86, 60]` | Extreme subarctic (Yakutsk) |
+| 3 | `Dfc` | D (Continental) | `[74, 107, 71]` | Subarctic (Siberia) |
+| 4 | `Dfb` | D (Continental) | `[100, 138, 88]` | Warm humid continental (Canada prairies) |
+| 5 | `Dfa` | D (Continental) | `[125, 158, 96]` | Hot humid continental (Central US) |
+| 6 | `Dwa` | D (Continental) | `[148, 175, 110]` | Continental dry-winter monsoon (NE China) |
+| 7 | `Cfb` | C (Temperate) | `[79, 139, 65]` | Oceanic (UK, NW Europe) |
+| 8 | `Cfa` | C (Temperate) | `[138, 171, 82]` | Humid subtropical (SE USA, Yangzi) |
+| 9 | `Csa` | C (Temperate) | `[181, 165, 98]` | Mediterranean hot summer (Med basin) |
+| 10 | `Csb` | C (Temperate) | `[165, 175, 115]` | Mediterranean warm summer (coastal CA) |
+| 11 | `Cwa` | C (Temperate) | `[155, 180, 95]` | Subtropical monsoon (S China) |
+| 12 | `Bsk` | B (Arid) | `[174, 165, 105]` | Cold steppe (Kazakh) |
+| 13 | `Bwk` | B (Arid) | `[195, 165, 132]` | Cold desert (Gobi) |
+| 14 | `Bsh` | B (Arid) | `[201, 192, 74]` | Hot steppe (Sahel) |
+| 15 | `Bwh` | B (Arid) | `[216, 144, 96]` | Hot desert (Sahara) |
+| 16 | `Af` | A (Tropical) | `[15, 77, 26]` | Tropical rainforest (Amazon) |
+| 17 | `Am` | A (Tropical) | `[35, 100, 35]` | Tropical monsoon (Mumbai) |
+| 18 | `Aw` | A (Tropical) | `[185, 180, 80]` | Tropical savanna (Sahel-tropics) |
+
+`Biome::color()` is the canonical lookup if a consumer parses the rendered
+PNG. **v5 tags are NOT compatible with pre-v5 (10-Whittaker) tags** — tag 0
+was `Ice` (pre-v5) vs `Ef` (v5); migration required for sidecar consumers
+that pinned the pre-v5 tag bytes.
 
 **Constants stable across the contract** (snapshot via `world_gen::flatworld::*`):
 
@@ -514,7 +526,7 @@ origin). Tilemap can index any of them by `(x, y)` directly.
 | `--eroded-out` | RGB8 (gray) | Same as all-zones with hydraulic erosion (`none` / `light` / `moderate` / `heavy`) |
 | **`--biome-out`** | **RGB8** | **B5 v2.1f 10-biome render** (the headline output for visual consumers) — uses `Biome::color()` palette + beach band + river tint + snow caps |
 | `--data-out` | JSON | The §11.2 `WorldData` document |
-| **`--climate-out`** | **JSON** | **🆕 v4 sidecar (2026-05-24)** — per-zone climate snapshot: `temp_mean / precip_annual / biome / lat_dist / site / base_elevation` for every zone + scenario `climate_params`. Pinned by `export_matches_in_memory_compute` test — same `compute_zone_climate` the renderer uses, so JSON matches painted pixels by construction. Lets consumers (eval, tilemap, knowledge service) read per-zone climate without re-implementing physics. |
+| **`--climate-out`** | **JSON** | **🆕 v4 sidecar (2026-05-24), extended v5** — per-zone climate snapshot: `temp_mean / precip_annual / temp_warm_month / temp_cold_month / precip_winter_frac / biome / koppen_group / lat_dist / site / base_elevation` for every zone + scenario `climate_params`. **v5 (2026-05-24)**: added 4 fields (seasonality + Köppen group letter); `biome` field changed from Whittaker names ("TropicalRainforest") to Köppen codes ("Af"). Pinned by `export_matches_in_memory_compute` test — same `compute_zone_climate` the renderer uses, so JSON matches painted pixels by construction. Lets consumers (eval, tilemap, knowledge service) read per-zone climate without re-implementing physics. |
 
 Recommended for tilemap inheritance: **`--biome-out`** for the visual reference
 + **`--data-out`** for the structural skeleton + **`--climate-out`** when the

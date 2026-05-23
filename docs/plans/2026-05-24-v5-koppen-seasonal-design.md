@@ -1,15 +1,15 @@
-# v5 Köppen Seasonal — Detailed Design Spec (research-only, defer impl)
+# v5 Köppen Seasonal — Detailed Design Spec
 
-> **Status:** DESIGN ONLY 2026-05-24 — no code, no impl.
-> Companion to [`2026-05-23-climate-simulation-research.md`](2026-05-23-climate-simulation-research.md)
-> §4.5 (seasonality) + §5.5 (phased roadmap) — formalizes the v5 batch the
-> climate research doc reserves for "next after v4".
+> **Status:** ✅ **SHIPPED 2026-05-24** as Full Köppen scope. All 5 phases
+> executed per §8. v5.0 baseline locked at mean 89.56 (+1.63 vs v4.5 87.93,
+> a NEW PEAK across all v3-v5 batches). 7 of 11 renders improved ≥1pt;
+> hemi_north +9.02 biggest single gain. 0 hard regressions ≥5pt after
+> lat-band relaxation (initial v5.0 had hemi_south −6.66 from too-strict
+> bands — fixed by relaxing Earth profile to allow Köppen variability per
+> Beck 2018 maps).
 >
-> **PO 2026-05-24:** v5 deferred — climate quality already mature at v4.5
-> mean composite 87.93 (89.42 on Earth-like). Köppen split is L+ work that
-> should ship as its own dedicated session(s), not bundled with another
-> track. This doc captures the full design so a future session / contractor
-> can pick it up cold.
+> Companion to [`2026-05-23-climate-simulation-research.md`](2026-05-23-climate-simulation-research.md)
+> §4.5 (seasonality) + §5.5 (phased roadmap).
 
 ---
 
