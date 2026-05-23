@@ -15,8 +15,10 @@ use world_gen::flatworld::{
     export, generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams,
 };
 use world_gen::ErosionStrength;
+use world_gen::flat_climate::{HemisphereLayout, WorldClimateParams};
 use world_gen::zonegen::{
-    render_all_zones, render_all_zones_eroded, render_zone, zone_height, ClassRatios, TerrainClass,
+    render_all_zones, render_all_zones_biome, render_all_zones_eroded, render_zone, zone_height,
+    ClassRatios, TerrainClass,
 };
 
 fn main() {
@@ -38,6 +40,11 @@ fn main() {
     // Optional eroded full-map terrain (B2) + erosion strength.
     let mut eroded_out: Option<PathBuf> = None;
     let mut erosion = ErosionStrength::Moderate;
+    // Optional B5 v2 biome-coloured terrain + climate knobs.
+    let mut biome_out: Option<PathBuf> = None;
+    let mut climate = WorldClimateParams::default();
+    // Whether the user overrode continentality_reach explicitly (skip auto-scale).
+    let mut reach_explicit = false;
 
     // Minimal hand-rolled arg parsing (`--flag value`), to keep the sketch
     // dependency-free of the main CLI.
@@ -84,6 +91,31 @@ fn main() {
                     other => panic!("unknown erosion strength: {other}"),
                 }
             }
+            "--biome-out" => biome_out = Some(PathBuf::from(need())),
+            "--hemisphere" => {
+                climate.hemisphere_layout = match need().as_str() {
+                    "equatorial" => HemisphereLayout::Equatorial,
+                    "north" => HemisphereLayout::NorthOnly,
+                    "south" => HemisphereLayout::SouthOnly,
+                    other => panic!("unknown hemisphere: {other} (expected equatorial|north|south)"),
+                }
+            }
+            "--t-eq" => climate.t_eq = need().parse().expect("t-eq"),
+            "--t-pole" => climate.t_pole = need().parse().expect("t-pole"),
+            "--precip-eq" => climate.precip_eq = need().parse().expect("precip-eq"),
+            "--precip-subtropic" => climate.precip_subtropic = need().parse().expect("precip-subtropic"),
+            "--precip-midlat" => climate.precip_midlat = need().parse().expect("precip-midlat"),
+            "--precip-polar" => climate.precip_polar = need().parse().expect("precip-polar"),
+            "--continentality-reach" => {
+                climate.continentality_reach = need().parse().expect("continentality-reach");
+                reach_explicit = true;
+            }
+            "--continentality-atten" => {
+                climate.continentality_precip_atten = need().parse().expect("continentality-atten");
+            }
+            "--lapse" => climate.lapse_per_elev_unit = need().parse().expect("lapse"),
+            "--ice-temp" => climate.ice_temp = need().parse().expect("ice-temp"),
+            "--tundra-temp" => climate.tundra_temp = need().parse().expect("tundra-temp"),
             other => panic!("unknown flag: {other}"),
         }
         i += 2;
@@ -233,6 +265,31 @@ fn main() {
         )
         .expect("failed to write eroded PNG");
         println!("wrote {} — eroded zone terrain ({erosion:?})", epath.display());
+    }
+
+    if let Some(bpath) = biome_out {
+        // Auto-scale continentality_reach to map size unless the user pinned it
+        // explicitly (mirrors the river-brush resolution scale).
+        let cm = if reach_explicit {
+            climate.clone()
+        } else {
+            climate.clone().scaled_for(world.width.min(world.height))
+        };
+        let rgb = render_all_zones_biome(&world, p.seed, &ClassRatios::default(), erosion, &cm);
+        image::save_buffer(
+            &bpath,
+            &rgb,
+            world.width,
+            world.height,
+            image::ExtendedColorType::Rgb8,
+        )
+        .expect("failed to write biome PNG");
+        println!(
+            "wrote {} — B5 v2 biome terrain ({:?}, {erosion:?}, reach={:.0}px)",
+            bpath.display(),
+            cm.hemisphere_layout,
+            cm.continentality_reach
+        );
     }
 
     if let Some(apath) = all_zones_out {

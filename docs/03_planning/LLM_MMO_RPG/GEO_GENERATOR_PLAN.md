@@ -24,24 +24,35 @@
 > (`4ea5d6cc`) → B3 seam stitching (`41f9c84b`) → B3b typed seams escarpment/
 > foothills (`d8399cf2`) → B2 local erosion (`c0989bf3`) → B3b-2 typed coast
 > (beach/cliff) (`90aae310`) → Hydrology MVP rivers (`af50af1a`) →
-> Resolution-aware (10× area maps) (`554a0d15`). Plus design/decision docs:
-> region-tree (`0f4762d7`), hierarchy depth + diversity (`0785007e`), seam
-> features roadmap (`41f9c84b`).
+> Resolution-aware (10× area maps) (`554a0d15`) → **B5 v2 climate/biome**
+> (this cycle). Plus design/decision docs: region-tree (`0f4762d7`),
+> hierarchy depth + diversity (`0785007e`), seam features roadmap
+> (`41f9c84b`), climate research + B5 v2 plan (`f5e3d5e5`).
 >
-> **⏸ Paused at B5 — Köppen climate/biome (2026-05-23):** v1 (per-pixel
-> formula) rejected as "too random"; the layered hierarchical model is
-> non-trivial. Climate research done + architecture spec written:
-> [`docs/plans/2026-05-23-climate-simulation-research.md`](../../plans/2026-05-23-climate-simulation-research.md).
-> **Next session: implement B5 v2** — decorator layer pipeline
-> (Insolation + Circulation + Continentality + ZoneRefinement + ElevLapse →
-> Whittaker classification), classification **at zone level**, only lapse-rate
-> at pixel level (snow caps). Defer ocean currents (v3), orographic (v4),
-> seasonal Köppen (v5). PO note: complex technique, many experiments needed —
-> dedicated session.
+> **✅ B5 v2 SHIPPED (2026-05-23):** hierarchical layered climate. NEW
+> [`crates/world-gen/src/flat_climate.rs`](../../../crates/world-gen/src/flat_climate.rs):
+> 5-layer pipeline (Insolation + Circulation + Continentality + ZoneRefinement
+> + ElevLapse) → Whittaker 8-biome classifier. Classification **at zone level**;
+> per-pixel lapse override fires only for genuine peaks (gated by
+> `peak_lapse_min_delta`). Zone-level lapse means high plateaus correctly
+> classify as Boreal/Tundra (Tibet-style). `HemisphereLayout`
+> `{ Equatorial | NorthOnly | SouthOnly }` configurable. Sibling render fn
+> `render_all_zones_biome` shares compute with `render_all_zones_eroded`
+> (hypso byte-identical preserved + blake3-hash pinned as regression lock).
+> CLI: `--biome-out` + `--hemisphere` + 9 climate knobs.
 >
-> **Pending after B5:** Hydrology extras (lakes/delta — need climate's
-> precipitation field), TerrainTile raster + LOD, cross-plate seams,
-> persistence.
+> Plan + research + as-built deltas:
+> [`docs/plans/2026-05-23-climate-simulation-research.md`](../../plans/2026-05-23-climate-simulation-research.md)
+> §10. Tests: 171 lib (was 149 → +22 across BUILD + /review-impl);
+> clippy clean. Full 12-phase workflow + /review-impl 1-pass fixing
+> 5 MED + 7 LOW + 2 COSMETIC inline.
+>
+> **Defer to v3+:** ocean currents (plate-level slot reserved), orographic
+> (wind routing), seasonal Köppen subtypes, per-zone-average continentality.
+>
+> **Pending after B5:** Hydrology extras (lakes/delta — climate now provides
+> the precipitation field they need), TerrainTile raster + LOD, cross-plate
+> seams, persistence.
 
 **As of 2026-05-21 — branch `geo-generator-amaw`, pushed.** The 4-phase
 generator is built, the post-build human-in-loop review is done, seven

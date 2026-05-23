@@ -484,16 +484,18 @@ the **top-down inheritance** the data architecture committed to.
 
 ---
 
-## 6 — Open design decisions (need PO confirmation)
+## 6 — Design decisions (LOCKED 2026-05-23 PO)
 
-| Question | Options | Default proposed |
+| Question | Decision | Note |
 |---|---|---|
-| Annual-mean only vs seasonal | (a) annual only → Whittaker; (b) seasonal → Köppen subtypes | **(a) v1, (b) v3+** |
-| Hemisphere layout | (a) equator at frame centre (symmetric); (b) at one edge (one hemisphere only) | **(a) centre** |
-| Wind direction model | (a) constant west→east; (b) latitude-banded; (c) full circulation cells | **(b) banded, v2** |
-| Ocean current model | (a) skip; (b) east/west bias on coastal plates; (c) full gyre routing | **(a) v1, (b) v3** |
-| Number of biomes v1 | 8 (Whittaker-lite) vs 12 (with subtypes) | **8 in v1, refine in v3+** |
-| Local noise on top | None vs small perlin variation | **None** — keep zones flat; if too uniform we add noise after |
+| Annual-mean only vs seasonal | **annual only → Whittaker** | seasonal/Köppen reserved for v5 |
+| Hemisphere layout | **configurable enum** `HemisphereLayout { Equatorial, NorthOnly, SouthOnly }` | author-set per seed; default `Equatorial` (y = h/2 is equator, both caps) |
+| Wind direction model | **latitude-banded** | applied implicitly by the circulation curve in v2; explicit wind field arrives with the orographic layer in v4 |
+| Ocean current model | **skip in v2** | plate-level slot reserved in the pipeline so v3 OceanCurrent is purely additive (no refactor) |
+| Number of biomes v1 | **8 Whittaker** | locked table in §10.4 |
+| Local noise on top | **none** | zones stay flat-coloured; pixel-level only diverges via lapse override |
+| Pipeline composition style | **function composition** | not trait-objects — research-doc "decorator" is conceptual, implementation uses plain function calls in `compute_zone_climate` |
+| Sea proxy for continentality | **`is_sea[i] = !is_land[i] OR elev[i] < sea_level`** | reuses `edge_dist_from_void` BFS over `is_sea`; in v2 identical to "void only" because the coast taper holds all land ≥ shore_level, but the API is v3-lake-ready |
 
 ---
 
@@ -551,19 +553,281 @@ the **top-down inheritance** the data architecture committed to.
 
 ## 9 — Action items (what becomes B5 v2)
 
-1. Define the layer trait + `ClimateField` struct (in a new `flat_climate`
-   module or a section of `zonegen`).
-2. Implement v1 layers: Insolation, Circulation, Continentality,
-   ZoneRefinement, ElevationLapse, Whittaker classification.
-3. Hook into `render_all_zones_eroded`: precompute `ZoneClimate` per zone via
-   the pipeline (replaces the current scattered per-pixel formula). Pixel
-   only modifies temp via lapse → flip biome if cold enough (snow caps).
-4. Verification: render seeds with deliberately mountainous + coastal +
-   inland zones, assert visible:
-   - Latitudinal bands (tropics/subtropics/mid-lat/polar).
-   - Coastal vs inland distinction within same lat.
-   - Snow caps on high mountains regardless of latitude.
-5. Defer v3+ (ocean currents, orographic, seasonal Köppen) to later phases.
+Superseded by the detailed plan in §10. The high-level summary is unchanged:
+v2 = 5 layers (Insolation + Circulation + Continentality + ZoneRefinement +
+ElevLapse) + Whittaker 8-biome classifier; classification at zone level, lapse
+override at pixel level.
 
 This unlocks `Hydrology extras` (lakes need water balance = precip −
 evaporation, which needs proper climate) and richer terrain colouring.
+
+---
+
+## 10 — B5 v2 implementation plan (LOCKED 2026-05-23)
+
+### 10.1 Module layout
+
+NEW file `crates/world-gen/src/flat_climate.rs`. Pure-procedural, no
+RNG (climate is deterministic in the world layout + climate params). Hooks
+into [`zonegen::render_all_zones_eroded`] only at the colour-pass step —
+terrain pipeline (rasterize → erode → coast taper → drainage) is untouched.
+
+### 10.2 Data types
+
+```rust
+// flat_climate.rs
+
+pub enum HemisphereLayout { Equatorial, NorthOnly, SouthOnly }
+
+impl HemisphereLayout {
+    /// Normalized "latitude distance from equator" ∈ [0, 1] for pixel y on a
+    /// map of height h. 0 = equator (warm), 1 = pole (cold).
+    pub fn lat_dist(self, y: f32, h: f32) -> f32 {
+        match self {
+            // y = h/2 is equator; either edge is a pole.
+            HemisphereLayout::Equatorial => ((y - h * 0.5).abs() / (h * 0.5)).clamp(0.0, 1.0),
+            // y = 0 is equator; y = h is the (north) pole.
+            HemisphereLayout::NorthOnly  => (y / h).clamp(0.0, 1.0),
+            // y = h is equator; y = 0 is the (south) pole.
+            HemisphereLayout::SouthOnly  => ((h - y) / h).clamp(0.0, 1.0),
+        }
+    }
+}
+
+pub struct WorldClimateParams {
+    pub hemisphere_layout: HemisphereLayout,
+    // Insolation
+    pub t_eq:        f32,   // °C at equator at sea level         (default 28.0)
+    pub t_pole:      f32,   // °C at pole at sea level            (default −25.0)
+    // Circulation — piecewise stops at lat_dist = [0, 0.33, 0.67, 1.0]
+    pub precip_eq:        f32,  // mm/yr ITCZ                     (default 2400)
+    pub precip_subtropic: f32,  // mm/yr 30° dry belt             (default 300)
+    pub precip_midlat:    f32,  // mm/yr 50° wet belt             (default 900)
+    pub precip_polar:     f32,  // mm/yr 90° dry pole             (default 150)
+    // Continentality
+    pub continentality_reach:        f32,  // px (default ~200, scales w/ map size in §10.7)
+    pub continentality_precip_atten: f32,  // 0..1 (default 0.55)
+    // ElevLapse (pixel)
+    pub sea_level:              f32,  // default = `flatworld::BASE_LEVEL + zonegen::SHORE_LEVEL_OFFSET`
+                                       // (compile-time link — no magic value)
+    pub lapse_per_elev_unit:    f32,  // °C / elev-unit (default 50.0 — at +0.45 mountain → −22°C)
+    pub ice_temp:               f32,  // pixel-temp < → Ice    (default −10.0)
+    pub tundra_temp:            f32,  // pixel-temp < → Tundra (default 0.0)
+    pub peak_lapse_min_delta:   f32,  // delta below which lapse override is suppressed
+                                       // (default 0.05 — above plains noise ±0.026, below
+                                       // hills +0.13 and mountain peaks +0.48). Stops sub-peak
+                                       // noise on polar plains from flipping to Ice.
+}
+
+pub struct ZoneClimate {              // computed per L1 zone, cached per render
+    pub temp_mean:     f32,
+    pub precip_annual: f32,
+    pub biome:         Biome,         // zone-default (pre-lapse)
+}
+
+pub enum Biome {                      // 8 Whittaker biomes
+    Ice, Tundra, BorealForest,
+    TemperateForest, TemperateGrassland,
+    HotDesert, Savanna, TropicalRainforest,
+}
+```
+
+### 10.3 Layer pipeline (function composition)
+
+```rust
+pub fn compute_zone_climate(
+    world: &FlatWorld,
+    params: &WorldClimateParams,
+    plate_id: usize,
+    zone_id: usize,
+    edge_dist_sea: &[u32],   // precomputed once over `is_sea` (§10.5)
+) -> ZoneClimate {
+    let (sx, sy) = world.plates[plate_id].zone_sites[zone_id];
+    let h = world.height as f32;
+
+    // 1. Insolation (World layer, sampled at zone lat — sea-level temp).
+    let lat_dist = params.hemisphere_layout.lat_dist(sy, h);
+    let temp_sea = lerp(params.t_eq, params.t_pole, lat_dist);
+
+    // 1b. Zone-level elevation lapse: a zone above `sea_level` cools by
+    //     `lapse_per_elev_unit * (zone_elev - sea_level)`. This makes
+    //     elevated plateaus (Tibet-style) classify colder at zone level —
+    //     so `pixel_biome` only needs to handle the *additional* drop from
+    //     the zone base up to a peak (true snow caps).
+    let zone_elev = world.elevation_at(sx, sy);
+    let zone_lapse = params.lapse_per_elev_unit * (zone_elev - params.sea_level).max(0.0);
+    let temp = temp_sea - zone_lapse;
+
+    // 2. Circulation (World layer, sampled at zone lat).
+    let mut precip = circulation_curve(lat_dist, params);
+
+    // 3. (Plate layer reserved — pass-through in v2; v3 OceanCurrent slots here.)
+
+    // 4. Continentality (Zone layer, from zone-site coast distance).
+    let coast_d = sample_edge_dist(edge_dist_sea, sx, sy, world.width);
+    let cont = (coast_d / params.continentality_reach).clamp(0.0, 1.0);
+    precip *= 1.0 - params.continentality_precip_atten * cont;
+
+    // 5. (ZoneRefinement — implicit by using zone-site coords throughout.)
+
+    let biome = whittaker(temp, precip);
+    ZoneClimate { temp_mean: temp, precip_annual: precip, biome }
+}
+
+// Piecewise-linear over [0, 0.33, 0.67, 1.0] → [eq, subtropic, midlat, polar].
+fn circulation_curve(lat_dist: f32, p: &WorldClimateParams) -> f32 { ... }
+
+// Pixel-level lapse override — only fires for genuine peaks (delta ≥ gate)
+// so sub-peak relief noise on a Tundra polar plain doesn't flicker to Ice.
+pub fn pixel_biome(zc: &ZoneClimate, elev_pixel: f32, zone_base_elev: f32,
+                   params: &WorldClimateParams) -> Biome {
+    let delta = elev_pixel - zone_base_elev;
+    if delta < params.peak_lapse_min_delta {
+        return zc.biome;  // not a peak — zone biome stands
+    }
+    let temp_pixel = zc.temp_mean - params.lapse_per_elev_unit * delta;
+    if temp_pixel < params.ice_temp     { Biome::Ice }
+    else if temp_pixel < params.tundra_temp { Biome::Tundra }
+    else                                { zc.biome }
+}
+```
+
+### 10.4 Whittaker classifier (8 biomes)
+
+| Biome | temp (°C) | precip (mm/yr) | Hex colour |
+|---|---|---|---|
+| **Ice**                | *(pixel-lapse only)* < ice_temp     | any        | `#E8EEF2` |
+| **Tundra**             | < tundra_temp (or pixel-lapse)      | any        | `#B8B7AE` |
+| **BorealForest**       | 0 .. 7                              | > 250      | `#3B5E3A` |
+| **TemperateForest**    | 7 .. 22                             | > 600      | `#4F8B41` |
+| **TemperateGrassland** | 7 .. 22                             | 250 .. 600 | `#B8B45A` |
+| **HotDesert**          | > 7                                 | < 250      | `#D8B070` |
+| **Savanna**            | > 22                                | 250 .. 1500| `#C9C04A` |
+| **TropicalRainforest** | > 22                                | > 1500     | `#1E5F2A` |
+
+Order of checks in `whittaker(t, p)`: cold tier (Tundra below 0; BorealForest
+0..7 with precip threshold) → dry (HotDesert / TemperateGrassland) → hot
+(TropicalRainforest > 1500, Savanna 250..1500) → default TemperateForest.
+
+### 10.5 Sea proxy + edge_dist reuse
+
+Replace the existing `edge_dist_from_void(&is_land, w, h)` call in
+[`zonegen::render_all_zones_eroded`] with a sea-aware variant:
+
+```rust
+let is_sea: Vec<bool> = (0..n).map(|i| !is_land[i] || elev[i] < shore_level).collect();
+let edge_dist = edge_dist_from_sea(&is_sea, w, h);   // same BFS, different start set
+```
+
+`shore_level` is already computed at zonegen.rs:647. The coast-taper pass at
+zonegen.rs:649 keeps every land pixel ≥ shore_level, so in v2 `is_sea ==
+!is_land` exactly. The API is the only thing changing — when hydrology v3 adds
+lakes, the lake cells naturally enter `is_sea` and continentality respects them
+without refactor.
+
+### 10.6 Render hook (replaces hypso colour pass)
+
+In [`zonegen::render_all_zones_eroded`] at line 716+ (colour pass), replace the
+`hypso_color(t)` branch with a biome-colour branch:
+
+```rust
+// after `subattrs` precompute (line 586) — compute zone climates once per render
+let zone_climates: Vec<Vec<ZoneClimate>> = world.plates.iter().map(|p| {
+    (0..p.zone_sites.len())
+        .map(|zi| compute_zone_climate(world, params, p.id, zi, &edge_dist))
+        .collect()
+}).collect();
+
+// (zone base_elev cache, parallel shape, for the lapse delta)
+let zone_base: Vec<Vec<f32>> = world.plates.iter().map(|p| {
+    p.zone_sites.iter().map(|&(sx, sy)| world.elevation_at(sx, sy)).collect()
+}).collect();
+
+// colour pass — replace line 727 (`hypso_color`) with:
+let (plate_id, l1) = nearest_l1_zone_at(world, x, y);
+let zc   = &zone_climates[plate_id][l1];
+let base = zone_base[plate_id][l1];
+let biome = pixel_biome(zc, elev[i], base, params);
+biome_color(biome)
+```
+
+The beach band (line 719) + river stamps (line 744) run *after* and override
+biome-coloured pixels — coast band stays sand, rivers stay blue.
+
+### 10.7 Resolution-aware tuning
+
+`continentality_reach` is in pixels. The current 1024×640 reference has plates
+~250 px across; reach = 200 gives "saturated continentality at the centre of a
+medium plate." For a 10× area map (3240×2024), plates are ~√10× wider
+(~790 px); reach should scale: `effective_reach = params.continentality_reach
+× (short_side / 640).max(1.0)` (mirrors the existing river-brush scale at
+zonegen.rs:765).
+
+### 10.8 Test plan
+
+Each layer is independently testable. Acceptance scenarios:
+
+1. **Insolation alone** (precip clamped to mid-band): equator zones return
+   Tropical-class temp (~28°C); pole zones return Arctic temp (~−25°C).
+2. **Circulation alone** (temp clamped to mid): lat_dist = 0 → max precip;
+   lat_dist = 0.33 → minimum subtropic precip; lat_dist = 0.67 → mid-lat
+   bump; lat_dist = 1.0 → min polar.
+3. **Continentality alone**: coast zone (coast_d = 0) → full precip; interior
+   zone (coast_d ≥ reach) → reduced precip by `(1 − atten)` factor.
+4. **Lapse override**: high-elev pixel in a TropicalRainforest zone → Ice
+   above ice_temp threshold regardless of zone biome (snow cap on Andes-type
+   peak in the tropics).
+5. **HemisphereLayout** flips: Equatorial gives two cold caps; NorthOnly gives
+   one cold cap at y=h; SouthOnly mirrors.
+6. **Determinism**: render the same world twice → byte-identical RGB.
+7. **Visual smoke** (manual): seed 7 + Gigaplanet-equivalent flatworld;
+   confirm latitudinal bands visible; coastal-vs-interior precip drop visible;
+   snow caps on mountain zones at low lat.
+
+### 10.9 Files to touch
+
+| File | Action | Why |
+|---|---|---|
+| `crates/world-gen/src/flat_climate.rs` | **NEW** | the module |
+| `crates/world-gen/src/lib.rs` | MOD | `pub mod flat_climate;` export |
+| `crates/world-gen/src/zonegen.rs` | MOD | render-hook in `render_all_zones_eroded`; new signature takes `&WorldClimateParams` |
+| `crates/world-gen/examples/flatworld.rs` | MOD | CLI flags for the climate params (`--hemisphere`, `--t-eq`, `--lapse`, …); output biome-coloured PNG |
+| `docs/plans/2026-05-23-climate-simulation-research.md` | DONE (this file) | locked plan |
+
+### 10.10b As-built deltas from spec (SHIPPED 2026-05-23)
+
+Two intentional deltas surfaced during visual smoke + /review-impl. Both are
+*tightenings* over the original spec; neither changes scope:
+
+- **D1 — `peak_lapse_min_delta` field added** (in `WorldClimateParams`, default
+  `0.05`). The original spec had `pixel_biome` use any positive elevation
+  delta to trigger the lapse override. Visual smoke showed this caused polar
+  plains (where zone temp is already below `ice_temp`) to flip to Ice on
+  every pixel with positive relief noise (±0.026 amplitude) — turning whole
+  polar plates uniformly white. The gate suppresses the override for sub-peak
+  relief so only true peaks (Hills, Mountains) earn the override.
+
+- **D2 — Zone-level lapse added** (in `compute_zone_climate`, step 1b).
+  Without it, the zone-level classifier received `temp_mean` derived purely
+  from latitude — a high-elevation plateau zone at low lat would classify as
+  Temperate when it should classify as Boreal/Tundra (Tibetan plateau is at
+  Italian latitude but is sub-arctic). The 1b lapse `temp_mean -=
+  lapse_per_elev_unit × max(0, zone_elev - sea_level)` corrects this. The
+  pixel-level lapse in [`pixel_biome`] then contributes only the
+  *additional* drop from zone base up to a peak (true snow caps on top of
+  an already-cool mountain zone).
+
+Both fixes were caught by `/review-impl` and folded inline before COMMIT.
+
+### 10.10 Scope guard — what v2 explicitly does NOT do
+
+- No ocean currents (v3).
+- No orographic / wind routing (v4).
+- No seasonality / Köppen subtypes (v5).
+- No per-pixel noise on top of zone biome (PO call — "keep zones flat").
+- No biome blending across zone seams (pixel takes the L1 zone's biome
+  directly; lapse is the only pixel-level effect).
+- No lake / inland-sea handling — `is_sea` is structurally ready but in v2
+  has no inland water to mark.
+- No CLI re-styling of `--class-demo`, `--eroded-out` — those still output the
+  pre-climate hypsometric. A NEW flag e.g. `--biome-out` is the biome render.

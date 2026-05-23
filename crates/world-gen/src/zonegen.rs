@@ -179,6 +179,15 @@ fn plate_subattrs(
 /// (and the class/base it carries) is continuous across the seam. `subs` should
 /// be the candidates to blend among (a whole plate, or one L1 zone).
 fn blended_height(subs: &[SubAttr], x: f32, y: f32) -> f32 {
+    blended_height_with_owner(subs, x, y).0
+}
+
+/// Same as [`blended_height`] but also returns the index of the **nearest**
+/// sub-attr (the i1 of the 2-nearest blend). The biome render pass needs this
+/// to look up the pixel's L1 zone via `subs[i1].zone`; the beach band uses it
+/// for class lookup. Caching `(height, idx)` in one pass avoids a redundant
+/// nearest-site search.
+fn blended_height_with_owner(subs: &[SubAttr], x: f32, y: f32) -> (f32, usize) {
     let mut d1 = f32::INFINITY;
     let mut d2 = f32::INFINITY;
     let mut i1 = 0usize;
@@ -198,7 +207,7 @@ fn blended_height(subs: &[SubAttr], x: f32, y: f32) -> f32 {
     let a = subs[i1];
     let h1 = zone_height(x, y, a.class, a.base, a.salt);
     if !d2.is_finite() || subs.len() < 2 {
-        return h1;
+        return (h1, i1);
     }
     let b = subs[i2];
     let h2 = zone_height(x, y, b.class, b.base, b.salt);
@@ -210,7 +219,7 @@ fn blended_height(subs: &[SubAttr], x: f32, y: f32) -> f32 {
     let gap = d2.sqrt() - d1.sqrt();
     let t = (gap / width).clamp(0.0, 1.0);
     let w1 = 0.5 + 0.5 * smoothstep01(t); // 0.5 at the seam → 1.0 deep in cell 1
-    w1 * h1 + (1.0 - w1) * h2
+    (w1 * h1 + (1.0 - w1) * h2, i1)
 }
 
 /// Blend-band width (px) for a seam between two classes — the "type" of the
@@ -493,18 +502,26 @@ fn build_river_network(
 /// this gives ≈ 22 px, matching the previous absolute constant).
 const BEACH_FRAC: f32 = 0.034;
 /// How far above `min_land` the shore lip sits (the bottom of the beach
-/// taper, just above the void outlet).
-const SHORE_LEVEL_OFFSET: f32 = 0.02;
+/// taper, just above the void outlet). `pub(crate)` so the climate module
+/// can derive its default `sea_level` from `flatworld::BASE_LEVEL +
+/// SHORE_LEVEL_OFFSET` — keeping climate's threshold in sync with zonegen's
+/// shoreline at compile time (MED-3 from /review-impl).
+pub(crate) const SHORE_LEVEL_OFFSET: f32 = 0.02;
 
 /// Multi-source BFS over a `w × h` 4-conn grid: starting from every cell with
-/// `is_land[i] == false`, returns the hop distance from each land cell to the
-/// nearest void cell. Void cells = 0; unreachable land = `u32::MAX`.
-fn edge_dist_from_void(is_land: &[bool], w: usize, h: usize) -> Vec<u32> {
+/// `is_sea[i] == true`, returns the hop distance from each non-sea cell to
+/// the nearest sea cell. Sea cells = 0; unreachable land = `u32::MAX`.
+///
+/// **B5 v2:** `is_sea` is the union of (void) + (any land cell whose post-
+/// erosion elevation is below `sea_level`). In v2 the coast taper guarantees
+/// land ≥ sea_level so this is identical to "void only"; the API is shaped
+/// for v3 inland-lake support.
+fn edge_dist_from_sea(is_sea: &[bool], w: usize, h: usize) -> Vec<u32> {
     let n = w * h;
     let mut dist = vec![u32::MAX; n];
     let mut frontier: Vec<u32> = Vec::new();
     for i in 0..n {
-        if !is_land[i] {
+        if is_sea[i] {
             dist[i] = 0;
             frontier.push(i as u32);
         }
@@ -516,7 +533,7 @@ fn edge_dist_from_void(is_land: &[bool], w: usize, h: usize) -> Vec<u32> {
             let i = c as usize;
             let (x, y) = (i % w, i / w);
             let mut try_neighbour = |j: usize| {
-                if is_land[j] && dist[j] == u32::MAX {
+                if !is_sea[j] && dist[j] == u32::MAX {
                     dist[j] = d + 1;
                     next.push(j as u32);
                 }
@@ -570,13 +587,56 @@ fn grid_neighbors_4(w: usize, h: usize) -> Vec<Vec<u32>> {
 /// land (mountains, foothills) carves dendritic valleys while flat plains stay
 /// flat. Reuses the proven stream-power erosion — no world-framing (the void,
 /// not an invented sea level, is the outlet). Hypsometric colour, void slate.
+///
+/// **Internally:** `compute_render_state` (terrain + erosion + coast +
+///   drainage + caches) → `colorize_hypso` (palette pass) →
+///   `apply_river_overlay` (river stamps). The B5 v2 biome render
+///   ([`render_all_zones_biome`]) shares the same `compute_render_state` and
+///   `apply_river_overlay`, only the colour pass differs.
 pub fn render_all_zones_eroded(
     world: &FlatWorld,
     master_seed: u64,
     ratios: &ClassRatios,
     strength: ErosionStrength,
 ) -> Vec<u8> {
-    const VOID: [u8; 3] = [12, 16, 28];
+    let state = compute_render_state(world, master_seed, ratios, strength);
+    let mut rgb = colorize_hypso(&state);
+    apply_river_overlay(&mut rgb, &state);
+    rgb
+}
+
+/// Full-map zone terrain rendered with **B5 v2 biome colours** instead of the
+/// raw hypsometric ramp. Climate is the layered pipeline in [`crate::flat_climate`]:
+///
+/// - **Per zone (precomputed once):** Insolation → Circulation → Continentality
+///   → Whittaker classification (8 biomes).
+/// - **Per pixel:** the zone's biome is the default; an elevation-lapse override
+///   flips tall pixels to Tundra / Ice (snow caps regardless of zone biome).
+///
+/// Reuses the same terrain + erosion + drainage + coast + river overlay as
+/// [`render_all_zones_eroded`]; only the colour pass is different.
+pub fn render_all_zones_biome(
+    world: &FlatWorld,
+    master_seed: u64,
+    ratios: &ClassRatios,
+    strength: ErosionStrength,
+    climate: &crate::flat_climate::WorldClimateParams,
+) -> Vec<u8> {
+    let state = compute_render_state(world, master_seed, ratios, strength);
+    let mut rgb = colorize_biome(&state, world, climate);
+    apply_river_overlay(&mut rgb, &state);
+    rgb
+}
+
+/// Shared precompute for both render fns. Pure-procedural; no RNG (terrain
+/// salts are derived in [`zone_salt`]). The returned [`RenderState`] carries
+/// everything the colour passes + river overlay need.
+fn compute_render_state(
+    world: &FlatWorld,
+    master_seed: u64,
+    ratios: &ClassRatios,
+    strength: ErosionStrength,
+) -> RenderState {
     let w = world.width as usize;
     let h = world.height as usize;
     let n = w * h;
@@ -585,9 +645,27 @@ pub fn render_all_zones_eroded(
         .map(|pi| plate_subattrs(world, master_seed, ratios, pi))
         .collect();
 
-    // Rasterize blended terrain; track land mask + the lowest land value.
+    // MED-1 fix from /review-impl: the `plate_at: Vec<i16>` and `subattr_idx_at:
+    // Vec<u16>` caches were chosen narrow to halve cache memory (2.5 MB vs 5 MB
+    // at 1024×640). Guard against silent wrap if a hostile world exceeds the
+    // type range. With default `FlatParams` we use 7 plates × ≤42 subzones —
+    // multiple orders of magnitude under the limit.
+    debug_assert!(
+        world.plates.len() <= i16::MAX as usize,
+        "plate count {} exceeds i16 cache range; widen plate_at or split rendering",
+        world.plates.len()
+    );
+    debug_assert!(
+        subattrs.iter().all(|s| s.len() <= u16::MAX as usize),
+        "a plate has > 65535 subzones; widen subattr_idx_at or reduce subdivision"
+    );
+
+    // Rasterize blended terrain; track land mask + the lowest land value +
+    // per-pixel (plate, nearest-subattr-idx) for downstream beach/biome use.
     let mut elev = vec![0f32; n];
     let mut is_land = vec![false; n];
+    let mut plate_at = vec![-1i16; n];
+    let mut subattr_idx_at = vec![0u16; n];
     let mut min_land = f32::INFINITY;
     let mut land_count = 0usize;
     for py in 0..h {
@@ -595,17 +673,19 @@ pub fn render_all_zones_eroded(
             let x = px as f32 + 0.5;
             let y = py as f32 + 0.5;
             if let Some(p) = world.plates.iter().find(|p| p.contains(x, y)) {
-                let e = blended_height(&subattrs[p.id], x, y);
+                let (e, idx) = blended_height_with_owner(&subattrs[p.id], x, y);
                 let i = py * w + px;
                 elev[i] = e;
                 is_land[i] = true;
+                plate_at[i] = p.id as i16;
+                subattr_idx_at[i] = idx as u16;
                 min_land = min_land.min(e);
                 land_count += 1;
             }
         }
     }
     if land_count == 0 {
-        return vec![VOID[0]; n * 3]; // degenerate: all void
+        return RenderState::empty(w, h, subattrs);
     }
 
     // Void = the drainage outlet: set it strictly below all land so the
@@ -618,63 +698,45 @@ pub fn render_all_zones_eroded(
     }
     let land_fraction = land_count as f32 / n as f32;
     let neighbors = grid_neighbors_4(w, h);
-    // Resolution-aware erosion: each iter's depression-fill smooths channels
-    // disproportionately on bigger grids; scale iter count down so the total
-    // smoothing stays comparable to the 1024×640 tuning point.
     let iter_scale = (land_count as f32 / 327_000.0).max(1.0);
-    // Snapshot the pre-erosion terrain — drainage / rivers are derived from
-    // this macro field (it has the coherent gradients), so erosion::apply's
-    // depression-filling doesn't level the river network even when the grid
-    // is large. Erosion still runs and shapes the visible relief (textures /
-    // foothills) for the colour pass.
+    // Snapshot pre-erosion for drainage (macro gradients intact).
     let pre_erosion = elev.clone();
     erosion::apply_scaled(&mut elev, &neighbors, land_fraction, strength, None, iter_scale);
 
-    // Adaptive thresholds (resolution-aware): keep visual density consistent
-    // whether the map is rendered at 1024² or 10× area.
     let beach_band = (w.min(h) as f32 * BEACH_FRAC).round().max(2.0) as u32;
     let outlet_t = ((land_count as f32) * OUTLET_FRAC).round().max(20.0) as u32;
     let trib_t = ((land_count as f32) * TRIB_FRAC).round().max(8.0) as u32;
     let brush_hi = ((land_count as f32) * BRUSH_HI_FRAC).max((outlet_t * 2) as f32);
 
-    // B3b-2 coast shaping: taper plains/hills land toward the shore over a
-    // beach_band-wide band along the plate↔void edge (beach). Mountains and
-    // plateau land keep their height at the edge (cliff — the sharp drop into
-    // void *is* the cliff). Class comes from the nearest sub-site (same as
-    // the blend). `is_beach` tracks pixels that received the beach taper so
-    // the colour pass can paint them sand (vs hypso).
-    let edge_dist = edge_dist_from_void(&is_land, w, h);
+    // **v2 sea proxy**: void OR low-eroded land. In v2 the coast taper holds
+    // every land pixel ≥ shore_level so this is structurally identical to
+    // `!is_land`. The API is v3-lake-ready: when hydrology adds lakes, lake
+    // pixels enter `is_sea` and continentality respects them without refactor.
     let shore_level = min_land + SHORE_LEVEL_OFFSET;
+    let is_sea: Vec<bool> = (0..n)
+        .map(|i| !is_land[i] || elev[i] < shore_level)
+        .collect();
+    let edge_dist = edge_dist_from_sea(&is_sea, w, h);
+
+    // B3b-2 coast shaping (beach taper for plains/hills); now consumes the
+    // cached (plate, subattr) instead of redoing the lookups.
     let mut is_beach = vec![false; n];
-    let mut beach_t = vec![0f32; n]; // 0 at shore → 1 at inland edge of band
+    let mut beach_t = vec![0f32; n];
     for py in 0..h {
         for px in 0..w {
             let i = py * w + px;
             if !is_land[i] || edge_dist[i] >= beach_band {
                 continue;
             }
-            // Nearest sub-site → class.
-            let x = px as f32 + 0.5;
-            let y = py as f32 + 0.5;
-            let Some(plate) = world.plates.iter().find(|p| p.contains(x, y)) else {
+            let pid = plate_at[i];
+            if pid < 0 {
                 continue;
-            };
-            let subs = &subattrs[plate.id];
+            }
+            let subs = &subattrs[pid as usize];
             if subs.is_empty() {
                 continue;
             }
-            let mut best_d = f32::INFINITY;
-            let mut best = 0usize;
-            for (k, s) in subs.iter().enumerate() {
-                let dx = x - s.site.0;
-                let dy = y - s.site.1;
-                let d = dx * dx + dy * dy;
-                if d < best_d {
-                    best_d = d;
-                    best = k;
-                }
-            }
-            let class = subs[best].class;
+            let class = subs[subattr_idx_at[i] as usize].class;
             if matches!(class, TerrainClass::Plains | TerrainClass::Hills) {
                 let t = (edge_dist[i] as f32 / beach_band as f32).clamp(0.0, 1.0);
                 let s = smoothstep01(t);
@@ -682,23 +744,14 @@ pub fn render_all_zones_eroded(
                 is_beach[i] = true;
                 beach_t[i] = t;
             }
-            // Mountains / Plateau: no-op → cliff at the edge (geologically
-            // correct for active margins / glacial cliffs / volcanic shores).
         }
     }
 
-    // Hydrology MVP: drainage on the eroded (and coast-shaped) grid → rivers.
-    // Cells whose upstream count exceeds STREAM_T/RIVER_T paint blue, overriding
-    // hypso & beach (a river flowing through a beach reads as the river). The
-    // masks are dilated 1 step so rivers/streams paint at least 3 px wide and
-    // stay visible at viewing scale.
-    // Drainage on the **pre-erosion** macro terrain: macro gradients are
-    // coherent (source→outlet drainage paths intact), so rivers placed here
-    // survive any depression-fill artefacts the erosion pass introduced.
+    // Drainage on the pre-erosion macro field (gradients intact).
     let (drainage, receiver) = compute_drainage(&pre_erosion, &is_land, w, h);
     let in_network = build_river_network(&receiver, &drainage, &is_land, outlet_t, trib_t);
 
-    // Re-range over land only (erosion may have lowered peaks/filled pits).
+    // Land range over the (eroded + coast-tapered) elev.
     let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
     for i in 0..n {
         if is_land[i] {
@@ -706,49 +759,194 @@ pub fn render_all_zones_eroded(
             hi = hi.max(elev[i]);
         }
     }
-    let span = (hi - lo).max(1e-6);
 
-    // Sand palette: wet sand at the shore → dry sand at the inland edge of
-    // the beach band. Blended by `beach_t` (0 at shore, 1 inland).
-    const WET_SAND: [u8; 3] = [196, 178, 132];
-    const DRY_SAND: [u8; 3] = [230, 214, 165];
+    RenderState {
+        w,
+        h,
+        elev,
+        is_land,
+        plate_at,
+        subattr_idx_at,
+        edge_dist,
+        drainage,
+        in_network,
+        is_beach,
+        beach_t,
+        lo,
+        hi,
+        outlet_t,
+        brush_hi,
+        subattrs,
+    }
+}
+
+/// Shared per-render state. Computed once in [`compute_render_state`];
+/// consumed by both colourize passes + the river overlay.
+struct RenderState {
+    w: usize,
+    h: usize,
+    elev: Vec<f32>,
+    is_land: Vec<bool>,
+    /// `-1` = void; else plate id.
+    plate_at: Vec<i16>,
+    /// Valid when `plate_at[i] >= 0`: index into `subattrs[plate_at[i]]` of the
+    /// nearest sub-zone (the `i1` of the 2-nearest blend).
+    subattr_idx_at: Vec<u16>,
+    /// Hop distance from each pixel to the nearest sea pixel (BFS).
+    edge_dist: Vec<u32>,
+    drainage: Vec<u32>,
+    in_network: Vec<bool>,
+    is_beach: Vec<bool>,
+    beach_t: Vec<f32>,
+    /// Land-only range of `elev` post-erosion + post-coast-taper.
+    lo: f32,
+    hi: f32,
+    outlet_t: u32,
+    brush_hi: f32,
+    subattrs: Vec<Vec<SubAttr>>,
+}
+
+impl RenderState {
+    fn empty(w: usize, h: usize, subattrs: Vec<Vec<SubAttr>>) -> Self {
+        let n = w * h;
+        RenderState {
+            w,
+            h,
+            elev: vec![0.0; n],
+            is_land: vec![false; n],
+            plate_at: vec![-1; n],
+            subattr_idx_at: vec![0; n],
+            edge_dist: vec![0; n],
+            drainage: vec![0; n],
+            in_network: vec![false; n],
+            is_beach: vec![false; n],
+            beach_t: vec![0.0; n],
+            lo: 0.0,
+            hi: 1.0,
+            outlet_t: 0,
+            brush_hi: 1.0,
+            subattrs,
+        }
+    }
+}
+
+const VOID_COLOR: [u8; 3] = [12, 16, 28];
+const WET_SAND: [u8; 3] = [196, 178, 132];
+const DRY_SAND: [u8; 3] = [230, 214, 165];
+
+fn beach_color(t: f32) -> [u8; 3] {
+    [
+        (WET_SAND[0] as f32 + (DRY_SAND[0] as f32 - WET_SAND[0] as f32) * t) as u8,
+        (WET_SAND[1] as f32 + (DRY_SAND[1] as f32 - WET_SAND[1] as f32) * t) as u8,
+        (WET_SAND[2] as f32 + (DRY_SAND[2] as f32 - WET_SAND[2] as f32) * t) as u8,
+    ]
+}
+
+/// Paint pixels with the hypsometric ramp (lowland → upland → snow). Void
+/// stays slate; beach pixels paint sand by `beach_t`.
+fn colorize_hypso(state: &RenderState) -> Vec<u8> {
+    let n = state.w * state.h;
+    let span = (state.hi - state.lo).max(1e-6);
     let mut rgb = vec![0u8; n * 3];
     for i in 0..n {
-        let c = if !is_land[i] {
-            VOID
-        } else if is_beach[i] {
-            let t = beach_t[i];
-            [
-                (WET_SAND[0] as f32 + (DRY_SAND[0] as f32 - WET_SAND[0] as f32) * t) as u8,
-                (WET_SAND[1] as f32 + (DRY_SAND[1] as f32 - WET_SAND[1] as f32) * t) as u8,
-                (WET_SAND[2] as f32 + (DRY_SAND[2] as f32 - WET_SAND[2] as f32) * t) as u8,
-            ]
+        let c = if !state.is_land[i] {
+            VOID_COLOR
+        } else if state.is_beach[i] {
+            beach_color(state.beach_t[i])
         } else {
-            let t = ((elev[i] - lo) / span).clamp(0.0, 1.0).powf(0.55);
+            let t = ((state.elev[i] - state.lo) / span).clamp(0.0, 1.0).powf(0.55);
             hypso_color(t)
         };
         rgb[i * 3] = c[0];
         rgb[i * 3 + 1] = c[1];
         rgb[i * 3 + 2] = c[2];
     }
+    rgb
+}
 
-    // River pass: variable-width stamps so river width tracks drainage
-    // (mainstems near the mouth = wide+dark; tributaries near headwaters
-    // = thin+light). Painted in ASCENDING drainage so big rivers overlap
-    // smaller ones at confluences (mainstream dominates the seam).
+/// Paint pixels with their **biome** colour (B5 v2). Void stays slate; beach
+/// pixels paint sand (the coast-band is shared with the hypso pass — beach is
+/// purely a terrain feature, not a biome). Land non-beach pixels: look up the
+/// zone's pre-computed [`crate::flat_climate::ZoneClimate`] via the
+/// `subattr_idx_at` cache, then apply the per-pixel lapse override.
+fn colorize_biome(
+    state: &RenderState,
+    world: &FlatWorld,
+    climate: &crate::flat_climate::WorldClimateParams,
+) -> Vec<u8> {
+    use crate::flat_climate::{compute_zone_climate, pixel_biome, ZoneClimate};
+
+    let n = state.w * state.h;
+
+    // Precompute one ZoneClimate per L1 zone of every plate, in parallel
+    // shape to `world.plates[*].zone_sites`. The biome lookup at colour-pass
+    // time is then O(1).
+    let zone_climates: Vec<Vec<ZoneClimate>> = world
+        .plates
+        .iter()
+        .map(|p| {
+            (0..p.zone_sites.len())
+                .map(|zi| compute_zone_climate(world, climate, p.id, zi, &state.edge_dist))
+                .collect()
+        })
+        .collect();
+
+    // Cache each L1 zone's base_elevation (the lapse anchor).
+    let zone_base: Vec<Vec<f32>> = world
+        .plates
+        .iter()
+        .map(|p| {
+            p.zone_sites
+                .iter()
+                .map(|&(sx, sy)| world.elevation_at(sx, sy))
+                .collect()
+        })
+        .collect();
+
+    let mut rgb = vec![0u8; n * 3];
+    for i in 0..n {
+        let c = if !state.is_land[i] {
+            VOID_COLOR
+        } else if state.is_beach[i] {
+            beach_color(state.beach_t[i])
+        } else {
+            // `is_land[i]` is true ⟺ `plate_at[i] >= 0` (both set together at
+            // rasterize time). COSMETIC-2 fix: assert the invariant in dev
+            // builds instead of silently falling back — a real bug shouldn't
+            // hide behind a cosmetic VOID pixel.
+            let pid = state.plate_at[i];
+            debug_assert!(pid >= 0, "is_land[{i}] without plate_at[{i}] >= 0");
+            let plate_id = pid as usize;
+            let subs = &state.subattrs[plate_id];
+            let sub_idx = state.subattr_idx_at[i] as usize;
+            let l1 = subs[sub_idx].zone;
+            let zc = &zone_climates[plate_id][l1];
+            let base = zone_base[plate_id][l1];
+            let biome = pixel_biome(zc, state.elev[i], base, climate);
+            biome.color()
+        };
+        rgb[i * 3] = c[0];
+        rgb[i * 3 + 1] = c[1];
+        rgb[i * 3 + 2] = c[2];
+    }
+    rgb
+}
+
+/// Variable-width river stamps overlay. Painted in ASCENDING drainage so big
+/// rivers dominate at confluences. Shared between hypso + biome renders.
+fn apply_river_overlay(rgb: &mut [u8], state: &RenderState) {
+    let n = state.w * state.h;
     let mut river_cells: Vec<(u32, u32)> = (0..n as u32)
-        .filter(|&i| in_network[i as usize])
-        .map(|i| (i, drainage[i as usize]))
+        .filter(|&i| state.in_network[i as usize])
+        .map(|i| (i, state.drainage[i as usize]))
         .collect();
     river_cells.sort_by_key(|&(_, d)| d);
     for (idx, d) in river_cells {
         let i = idx as usize;
-        let (px, py) = (i % w, i / w);
-        let (radius, color) = river_brush(d, outlet_t, brush_hi, w.min(h));
-        stamp_disk(&mut rgb, w, h, px, py, radius, color);
+        let (px, py) = (i % state.w, i / state.w);
+        let (radius, color) = river_brush(d, state.outlet_t, state.brush_hi, state.w.min(state.h));
+        stamp_disk(rgb, state.w, state.h, px, py, radius, color);
     }
-
-    rgb
 }
 
 /// Map a cell's drainage to a (radius, colour) for the river brush. Log scale
@@ -1025,22 +1223,49 @@ mod tests {
     }
 
     #[test]
-    fn edge_distance_from_void_is_zero_at_void_and_grows_inward() {
-        // 5×5 grid: a 3×3 land block centred, surrounded by void.
-        // Distances: void=0; the 4-conn-adjacent land cells (sides of the
-        // 3×3 block) = 1; the centre of the block = 2.
+    fn edge_distance_from_sea_is_zero_at_sea_and_grows_inward() {
+        // 5×5 grid: a 3×3 land block centred, surrounded by sea (= void).
+        // Distances: sea=0; 4-conn land sides = 1; centre = 2.
         let w = 5;
         let h = 5;
-        let mut is_land = vec![false; w * h];
+        let mut is_sea = vec![true; w * h];
         for y in 1..=3 {
             for x in 1..=3 {
-                is_land[y * w + x] = true;
+                is_sea[y * w + x] = false; // land
             }
         }
-        let d = edge_dist_from_void(&is_land, w, h);
-        assert_eq!(d[0], 0, "corner is void");
-        assert_eq!(d[w + 1], 1, "land cell next to void → 1");
+        let d = edge_dist_from_sea(&is_sea, w, h);
+        assert_eq!(d[0], 0, "corner is sea");
+        assert_eq!(d[w + 1], 1, "land cell next to sea → 1");
         assert_eq!(d[2 * w + 2], 2, "interior cell → 2");
+    }
+
+    #[test]
+    fn edge_dist_from_sea_respects_inland_water_cells() {
+        // LOW-2 fix from /review-impl: the v3 "lake support" claim — `is_sea`
+        // is shaped as `!is_land || elev < sea_level` so future lake cells
+        // enter the BFS start set. This test injects a synthetic inland lake
+        // into `is_sea` and confirms the BFS reaches it from surrounding land
+        // (the v2 path is identical to void-only, so without this test the
+        // generality is unproven).
+        //
+        // 7×7 all land, with a single lake cell at (3,3). The 4-conn-
+        // adjacent land cells should all be distance 1.
+        let w = 7;
+        let h = 7;
+        let mut is_sea = vec![false; w * h]; // all land
+        let lake_idx = 3 * w + 3;
+        is_sea[lake_idx] = true; // inland lake
+
+        let d = edge_dist_from_sea(&is_sea, w, h);
+        assert_eq!(d[lake_idx], 0, "lake cell distance is 0");
+        // 4-conn neighbours of the lake → distance 1.
+        assert_eq!(d[lake_idx - w], 1, "north of lake → 1");
+        assert_eq!(d[lake_idx + w], 1, "south of lake → 1");
+        assert_eq!(d[lake_idx - 1], 1, "west of lake → 1");
+        assert_eq!(d[lake_idx + 1], 1, "east of lake → 1");
+        // Corner (0, 0) — 6 steps away via Manhattan: 3 + 3 = 6.
+        assert_eq!(d[0], 6, "corner far from inland lake → Manhattan dist");
     }
 
     #[test]
@@ -1071,5 +1296,115 @@ mod tests {
         let b = render_all_zones(&world, p.seed, &ClassRatios::default(), false);
         assert_eq!(a.len(), 96 * 64 * 3);
         assert_eq!(a, b, "full-map render must be deterministic");
+    }
+
+    #[test]
+    fn eroded_hypso_render_pins_a_content_hash() {
+        // MED-5 fix from /review-impl: the determinism test only proves the
+        // current impl is self-consistent — it does NOT prove the RenderState
+        // refactor preserved the pre-refactor pixel output. Going forward,
+        // this test pins a content hash of the hypso render so any FUTURE
+        // change to the colour pass / pipeline ordering must be a deliberate
+        // hash re-baseline rather than a silent drift.
+        let p = FlatParams {
+            width: 96,
+            height: 64,
+            seed: 7,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let rgb = render_all_zones_eroded(&world, p.seed, &ClassRatios::default(), ErosionStrength::Moderate);
+        let hash = blake3::hash(&rgb);
+        let actual = hash.to_hex().to_string();
+        // Pinned 2026-05-23 (post-B5v2 RenderState refactor); rebaseline only
+        // with intentional algorithm changes.
+        let pinned = "3deb4a2349a8d62d368c634b88276bdf1891e09afb72ec868016d00836fb0375";
+        assert_eq!(
+            actual.as_str(),
+            pinned,
+            "hypso render hash drifted; update pin or revert change. actual={actual}"
+        );
+    }
+
+    #[test]
+    fn biome_render_is_world_sized_and_deterministic() {
+        use crate::flat_climate::WorldClimateParams;
+        let p = FlatParams {
+            width: 96,
+            height: 64,
+            seed: 7,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let climate = WorldClimateParams::default().scaled_for(64);
+        let a = render_all_zones_biome(
+            &world,
+            p.seed,
+            &ClassRatios::default(),
+            ErosionStrength::Moderate,
+            &climate,
+        );
+        let b = render_all_zones_biome(
+            &world,
+            p.seed,
+            &ClassRatios::default(),
+            ErosionStrength::Moderate,
+            &climate,
+        );
+        assert_eq!(a.len(), 96 * 64 * 3);
+        assert_eq!(a, b, "biome render must be deterministic");
+    }
+
+    #[test]
+    fn biome_render_paints_recognisable_biome_colours() {
+        // LOW-1 fix from /review-impl: the prior threshold (≥2 biomes) was
+        // near-tautological. This version asserts ≥4 distinct biomes appear
+        // on a lat-spanning world AND that `Biome::Ice` specifically appears
+        // (locks the AC-4 lapse-on-peaks behavior — previously only verified
+        // by manual visual smoke).
+        use crate::flat_climate::{Biome, WorldClimateParams};
+        let p = FlatParams {
+            width: 256,
+            height: 192,
+            seed: 7,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let climate = WorldClimateParams::default().scaled_for(192);
+        let rgb = render_all_zones_biome(
+            &world,
+            p.seed,
+            &ClassRatios::default(),
+            ErosionStrength::Moderate,
+            &climate,
+        );
+        let biome_colors: std::collections::HashSet<[u8; 3]> = [
+            Biome::Ice,
+            Biome::Tundra,
+            Biome::BorealForest,
+            Biome::TemperateForest,
+            Biome::TemperateGrassland,
+            Biome::HotDesert,
+            Biome::Savanna,
+            Biome::TropicalRainforest,
+        ]
+        .iter()
+        .map(|b| b.color())
+        .collect();
+        let found: std::collections::HashSet<[u8; 3]> = (0..rgb.len() / 3)
+            .map(|i| [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]])
+            .filter(|c| biome_colors.contains(c))
+            .collect();
+        assert!(
+            found.len() >= 4,
+            "biome render produced fewer than 4 biome colours: {found:?}"
+        );
+        // AC-4 lock: Ice must appear (snow caps on tectonically-uplifted
+        // mountain zones). seed 7 has tectonic collisions producing mountain
+        // class zones; some are at high lat → guaranteed Ice on peaks.
+        assert!(
+            found.contains(&Biome::Ice.color()),
+            "biome render missing Ice — peak-lapse override not firing"
+        );
     }
 }
