@@ -67,9 +67,8 @@ ALL_BIOMES = list(BIOME_PROFILE_KEY.values())
 
 VOID = (12, 16, 28)
 # Lat banding allowed/forbidden per refs doc §2.3 + v2.1f extension.
-# DeciduousForest = cool temperate (40-60° lat); Mediterranean = warm
-# temperate west-coast (30-45°). Both fold cleanly into existing bands.
-LAT_BANDS = [
+# Earth-default table — used for Earth-like profile + hemisphere variants.
+LAT_BANDS_EARTH = [
     # (lat_dist_lo, lat_dist_hi, allowed_set, forbidden_set)
     (0.00, 0.20,  # tropics 0-15°
      {"TropicalRainforest", "Savanna", "HotDesert"},
@@ -89,6 +88,77 @@ LAT_BANDS = [
      {"TropicalRainforest", "Savanna", "HotDesert", "Mediterranean",
       "TemperateForest", "DeciduousForest"}),
 ]
+# Hothouse table — warm world, every band can host forests; only Ice/Tundra
+# are forbidden anywhere (they only occur on extreme peaks via pixel lapse).
+LAT_BANDS_HOTHOUSE = [
+    (0.00, 0.20,
+     {"TropicalRainforest", "Savanna", "TemperateForest", "DeciduousForest"},
+     {"Ice", "Tundra", "BorealForest"}),
+    (0.20, 0.40,
+     {"TropicalRainforest", "Savanna", "TemperateForest", "Mediterranean",
+      "DeciduousForest", "HotDesert"},
+     {"Ice", "Tundra", "BorealForest"}),
+    (0.40, 0.60,
+     {"TemperateForest", "DeciduousForest", "Mediterranean",
+      "TemperateGrassland", "Savanna", "HotDesert"},
+     {"Ice"}),
+    (0.60, 0.80,
+     {"TemperateForest", "DeciduousForest", "BorealForest", "TemperateGrassland"},
+     {"Ice"}),
+    (0.80, 1.00,
+     {"DeciduousForest", "BorealForest", "TemperateGrassland", "Tundra"},
+     set()),  # nothing strictly forbidden at hothouse poles
+]
+# Snowball table — cold world, every band can host Tundra/Ice; forests only
+# at the warmest equator stripe.
+LAT_BANDS_SNOWBALL = [
+    (0.00, 0.20,
+     {"Tundra", "BorealForest", "DeciduousForest", "TemperateGrassland", "Ice"},
+     {"HotDesert", "TropicalRainforest"}),
+    (0.20, 0.40,
+     {"Tundra", "BorealForest", "Ice", "TemperateGrassland"},
+     {"HotDesert", "TropicalRainforest", "Savanna"}),
+    (0.40, 0.60,
+     {"Tundra", "Ice", "BorealForest"},
+     {"HotDesert", "TropicalRainforest", "Savanna", "Mediterranean", "TemperateForest"}),
+    (0.60, 1.00,
+     {"Tundra", "Ice"},
+     {"HotDesert", "TropicalRainforest", "Savanna", "Mediterranean",
+      "TemperateForest", "DeciduousForest"}),
+    (1.00, 1.001,  # placeholder to keep 5-band shape
+     {"Ice"}, set()),
+]
+# Desert table — dry world, every band may host HotDesert/Savanna; forests
+# only in rare wet pockets.
+LAT_BANDS_DESERT = [
+    (0.00, 0.20,
+     {"HotDesert", "Savanna", "TropicalRainforest"},
+     {"Ice", "Tundra", "BorealForest"}),
+    (0.20, 0.40,
+     {"HotDesert", "Savanna", "TemperateGrassland"},
+     {"Ice", "Tundra", "BorealForest", "TropicalRainforest"}),
+    (0.40, 0.60,
+     {"HotDesert", "TemperateGrassland", "Mediterranean", "Savanna"},
+     {"TropicalRainforest", "BorealForest", "Ice"}),
+    (0.60, 0.80,
+     {"TemperateGrassland", "Tundra", "BorealForest", "HotDesert"},
+     {"TropicalRainforest", "Savanna", "Mediterranean", "TemperateForest"}),
+    (0.80, 1.00,
+     {"Tundra", "Ice", "BorealForest"},
+     {"TropicalRainforest", "Savanna", "HotDesert", "Mediterranean",
+      "TemperateForest", "DeciduousForest"}),
+]
+# Lever A (v2.1h): per-profile lat-band tables. Scenarios get their own
+# tables because their physics differ from Earth — Hothouse poles SHOULD
+# have forests; Snowball equator SHOULD have Tundra; etc. Without this,
+# scenario sanity_score tanked (Hothouse 2.3 because warm-poles produced
+# forests where the Earth table marked them forbidden).
+PROFILE_LAT_BANDS = {
+    "earth": LAT_BANDS_EARTH,
+    "hothouse": LAT_BANDS_HOTHOUSE,
+    "snowball": LAT_BANDS_SNOWBALL,
+    "desert": LAT_BANDS_DESERT,
+}
 
 
 # ---------- helpers ----------
@@ -104,11 +174,15 @@ def lat_dist_for(y: int, height: int, hemisphere: str) -> float:
     raise ValueError(f"unknown hemisphere {hemisphere!r}")
 
 
-def band_for(lat_dist: float):
-    for lo, hi, allowed, forbidden in LAT_BANDS:
+def band_for(lat_dist: float, bands=None):
+    """Lat-band lookup. `bands` defaults to Earth; pass a scenario table to
+    use scenario-specific lat semantics (Lever A v2.1h)."""
+    if bands is None:
+        bands = LAT_BANDS_EARTH
+    for lo, hi, allowed, forbidden in bands:
         if lo <= lat_dist <= hi:
             return allowed, forbidden
-    return LAT_BANDS[-1][2], LAT_BANDS[-1][3]
+    return bands[-1][2], bands[-1][3]
 
 
 def classify_pixel(rgb: tuple) -> str | None:
@@ -158,10 +232,13 @@ def kl_divergence(observed: dict, target: dict) -> float:
 
 # ---------- scoring ----------
 
-def analyze_render(png_path: Path, hemisphere: str) -> dict:
+def analyze_render(png_path: Path, hemisphere: str, profile_name: str = "earth") -> dict:
     img = Image.open(png_path).convert("RGB")
     w, h = img.size
     pixels = img.load()
+
+    # Lever A (v2.1h): scenario-specific lat-band tables.
+    bands = PROFILE_LAT_BANDS.get(profile_name, LAT_BANDS_EARTH)
 
     biome_counts: Counter = Counter()
     coast_counts: Counter = Counter()      # edge_dist < 0.1 of short side
@@ -169,7 +246,7 @@ def analyze_render(png_path: Path, hemisphere: str) -> dict:
     forbidden_count = 0
     land_total = 0
     band_correct = 0
-    per_band_counts: dict = {i: Counter() for i in range(len(LAT_BANDS))}
+    per_band_counts: dict = {i: Counter() for i in range(len(bands))}
 
     # Compute coast-distance via simple per-row "nearest VOID" scan
     # (cheap approximation good enough for eval; not pixel-exact BFS).
@@ -209,8 +286,8 @@ def analyze_render(png_path: Path, hemisphere: str) -> dict:
 
     for y in range(h):
         lat_d = lat_dist_for(y, h, hemisphere)
-        allowed, forbidden = band_for(lat_d)
-        band_idx = min(int(lat_d * len(LAT_BANDS)), len(LAT_BANDS) - 1)
+        allowed, forbidden = band_for(lat_d, bands)
+        band_idx = min(int(lat_d * len(bands)), len(bands) - 1)
         for x in range(w):
             if not is_land[y][x]:
                 continue
@@ -358,7 +435,9 @@ def main():
         if not args.skip_render or not png.exists():
             print(f"render {name} ...", flush=True)
             render(entry, png)
-        analysis = analyze_render(png, entry.get("hemisphere", "equatorial"))
+        analysis = analyze_render(
+            png, entry.get("hemisphere", "equatorial"), entry["profile"]
+        )
         profile = profiles[entry["profile"]]
         scores = score_render(analysis, profile)
         comp = composite_score(scores, weights)
