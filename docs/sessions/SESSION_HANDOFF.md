@@ -1,48 +1,35 @@
-# Session Handoff — Session 61 (fence-fix + long-chapter perf safety net → next session: semantic-chunking architecture research)
+# Session Handoff — Session 61 (fence-fix + idle-timeout + hierarchical-extraction ADR)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-23 (session 61 — 2 commits)
-> **HEAD:** `5379e34a` (cycle 1 fence-fix) + pending cycle 2 long-chapter perf commit — branch `main`. Push status: NOT pushed (origin at `2d56eb16`).
+> **Date:** 2026-05-23 (session 61 — 3 commits)
+> **HEAD:** `5379e34a` (cycle 1 fence-fix) + `dcded9d9` (cycle 2 idle-timeout) + pending cycle 3 ADR commit — branch `main`. Push status: NOT pushed (origin at `2d56eb16`).
 > **Branch:** `main`.
 
-## What's NEXT — semantic-chunking architecture research + ADR
+## What's NEXT — start P1 of the hierarchical-extraction ADR
 
-The user-PO has explicitly queued a **dedicated research session** for the chunking + long-document extraction architecture. In-session-61 evaluation surfaced that LoreWeave's current pipeline cannot scale to large novels (50MB+ corpora) because:
+**Read first:** [`docs/03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md`](../03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md). This ADR was written at the end of session 61 (cycle 3) after user-PO correction of an earlier sketch.
 
-- All chunking strategies (`tokens` / `paragraphs` / `sentences`) are **syntactic**, not semantic.
-- Chunks are **serial inside a job** (worker hands one at a time to adapter.Stream).
-- **Naive key-based dedup** (no cross-chunk fuzzy coreference).
-- **No cross-chunk context propagation** (known_entities is empty at start of every chunk).
-- **Flat, not hierarchical** — 50MB = 6,000+ chunks all at one level.
-- **No checkpoint/resume** — partial progress is lost on job failure.
-- **One LLM session per chapter** → long-running ⇒ LM Studio TTL eviction (cycle 2's idle-timeout is a band-aid for this, not a cure).
+### TL;DR of the ADR
 
-The user requested: **(1) re-evaluate current architecture; (2) research the SOTA market; (3) propose a fitting architecture + algorithms.**
+- **Problem**: extraction pipeline cannot scale to 50MB+ novels. One-job-per-chapter, serial chunks inside, flat dedup, no cross-section coreference, no checkpoint, 1-hour sessions trip LM Studio TTL eviction.
+- **Correction history**: in-session sketched a "semantic chunking" 4-tier architecture as the primary lever; user-PO rejected that framing as premature optimization on a single algorithm. The ADR replaces it with a **7-tier multi-algorithm composition** with cheap structural decomposition first.
+- **Architecture**: T1 structural decomposition → T2 leaf sizing → T3 parallel map → T4 hierarchical deterministic reduce → T5 gated LLM refinement → T6 cross-level verify → T7 multi-resolution index. Cheap-first; semantic chunking is an **escape valve at T2 stage 3**, not a primary lever.
+- **Key correction**: 50MB on LOCAL is fully feasible (~24h wall-clock with checkpoint resume); cloud is a speed-up option, NOT a requirement.
+- **Roadmap**: P1 (structural decomposer) → P2 (parallel map + checkpoint) → P3 (hierarchical reduce + per-level summaries) → P4 (semantic chunking escape valve) → P5 (gated LLM coref + verify + multi-res retrieval). **P1+P2+P3 alone = capability-complete for 50 MB local.**
 
-The in-session preview (kept here as a starting pointer — DO NOT treat as the final design) sketched a **4-tier architecture**:
+### SOTA references in ADR (for context)
 
-1. **Tier 1 — Hierarchical semantic chunking.** Structural pre-split (book → part → chapter → scene marker) followed by sentence-embedding adjacent-cosine **percentile breakpoint** (LangChain SemanticChunker pattern) with hard token budget cap. Uses existing bge-m3 embedding capability.
-2. **Tier 2 — Parallel map orchestrator.** Per-scene extraction in parallel (semaphore = LM Studio Max Concurrent), per-scene checkpoint table for resume, rolling known_entities window (last ~200 canonical names) for cross-scene context.
-3. **Tier 3 — Hierarchical tree-merge reducer.** scene → chapter → part → book pairwise binary tree merge. Each level: deterministic dedup (existing canonical_id) + **gated LLM-aided coreference** for ambiguous pairs (e.g., "the Master" ↔ "Holmes") + per-level summary.
-4. **Tier 4 — Multi-resolution retrieval.** Per-scene + per-chapter + per-book vector indices (RAPTOR-style); Mode-3 query routes to appropriate level by query abstraction.
+Multi-algorithm composition confirmed across all production systems surveyed: Microsoft GraphRAG (Leiden community detection, no semantic chunking), Anthropic Contextual Retrieval (LLM augmentation), Cohere Compass (multi-vector elements), OpenAI Assistants File Search, NotebookLM, LangChain/LlamaIndex production guides ("Try recursive char splitter first; semantic only as fallback"). Relevant papers: RAPTOR (arXiv:2401.18059), GraphRAG (arXiv:2404.16130), HippoRAG 2 (arXiv:2502.14802), LongRAG (arXiv:2406.15319), LightRAG (arXiv:2410.05779), Late Chunking (Jina 2024), Anthropic Contextual Retrieval (2024).
 
-**SOTA references surveyed** (for the research session to start from):
-- LangChain SemanticChunker + LlamaIndex SemanticSplitterNodeParser (percentile-breakpoint chunking, 2023+).
-- Jina **Late Chunking** (2024) — embed whole doc, project per-chunk.
-- **RAPTOR** (Sarthi 2024, arXiv:2401.18059) — recursive tree of LLM-summarized clusters; multi-level retrieval.
-- **Microsoft GraphRAG** (Edge 2024, arXiv:2404.16130) — entity graph + Leiden community detection + per-community summary. Already cited by `CLAUDE.md`.
-- **HippoRAG / HippoRAG 2** (Gutiérrez 2024-2025, arXiv:2405.14831, 2502.14802) — PageRank retrieval on entity graph. Already cited.
-- **LongRAG** (Jiang 2024, arXiv:2406.15319) — coarse retrieval units + long-context reader (counter-trend).
-- **LightRAG** (Guo 2024, arXiv:2410.05779) — dual-level retrieval.
-- LangChain MapReduce / Refine document chain patterns.
-- Anthropic **Contextual Retrieval** (2024 blog) — LLM-generated per-chunk context augmentation.
+### Suggested next-session start
 
-**Suggested first-session deliverable**: a planning-doc ADR under `docs/03_planning/KNOWLEDGE_SERVICE_SEMANTIC_CHUNKING_ADR.md` covering all four tiers + decision log + roadmap (5 phases P1-P5), then start P1 (semantic strategy in `provider/chunker/chunker.go` + Python sentence-embedding caller + percentile threshold tune via the LLM-judge harness already in place).
+1. **Read** the ADR end-to-end (~600 lines).
+2. **CLARIFY**: confirm scope of P1 (structural decomposer). Which fixture corpora (EPUB / Markdown / plain-text multi-language)? Owner service for the parser — book-service or knowledge-service?
+3. **DESIGN**: parser dispatcher contract + `StructuralTree` Pydantic schema + per-format detector implementations.
+4. **BUILD** P1 — likely M-L cycle. No LLM, no embedding; pure regex/AST.
+5. **VERIFY** with the 9 golden chapters' source texts (already in `tests/fixtures/golden_chapters/`) — must round-trip through the parser without text loss.
 
-Scale targets for the new architecture:
-- 100KB chapter: existing baseline (~10 min local).
-- 1MB novel: ~2h local, ~$1 cloud.
-- **50MB corpus**: requires **tiered model selection** (cloud Haiku for bulk map step, local 35B for high-value reduce + coreference). Estimated ~$50 cloud cost.
+P1 alone unblocks parallel map (P2) which alone is the biggest perf win. Order matters: P1 → P2 → P3 in sequence; P4 and P5 are independent quality polish.
 
 ---
 
