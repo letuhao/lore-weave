@@ -761,6 +761,7 @@ components:
         - relation_extraction
         - event_extraction
         - fact_extraction
+        - summarize_level
         - translation
       description: |
         The semantic operation. The gateway uses this to:

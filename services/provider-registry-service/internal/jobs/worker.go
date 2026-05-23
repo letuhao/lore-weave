@@ -531,6 +531,7 @@ var streamableOperations = map[string]struct{}{
 	"relation_extraction": {},
 	"event_extraction":    {},
 	"fact_extraction":     {}, // Phase 4a-β
+	"summarize_level":     {}, // P3 hierarchical reduce — chat-shaped, default aggregator
 }
 
 // audioJobOperations — Phase 5a. Job operations dispatched through
