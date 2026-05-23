@@ -11,17 +11,37 @@
 > **🆕 Flatworld bottom-up track (2026-05-23).** A NEW, standalone experiment
 > separate from the sphere pipeline: a top-down → bottom-up region generator on
 > a flat rectangle. Modules [`flatworld.rs`](../../../crates/world-gen/src/flatworld.rs)
-> (plates → Voronoi zones → collision uplift → anchor JSON export) +
+> (plates → 2-level Voronoi zones → collision uplift → anchor JSON export) +
 > [`zonegen.rs`](../../../crates/world-gen/src/zonegen.rs) (per-zone LOCAL
 > terrain — no world-framing, no sea/ocean; reuses `noise`/`erosion`
 > primitives). Data architecture locked in
 > [`docs/plans/2026-05-23-flatworld-region-tree-data-architecture.md`](../../plans/2026-05-23-flatworld-region-tree-data-architecture.md).
 > Run via `--example flatworld` (knobs: plates, zones, separation, seed; outputs
-> plate/zone/height/all-zones PNGs + anchor JSON + `--class-demo`). Commits:
-> `0f4762d7` (levels 0–2 + design), `b15620d5` (anchor export), `681e01fa`
-> (zonegen), `0ef14763` (full-map render), + B1 (per-class relief + warp).
-> **Phase plan B1–B5:** B1 enrich per-zone relief ✅ → B2 local erosion → B3
-> seam stitching → B4 macro tuning → B5 hypsometric/biome colour. Next: B2 or B3.
+> plate/zone/height/all-zones PNGs + anchor JSON + `--class-demo` +
+> `--eroded-out` with rivers + coast).
+>
+> **Shipped phases:** B1 per-class relief (`4ab96ec4`) → 2-level zones
+> (`4ea5d6cc`) → B3 seam stitching (`41f9c84b`) → B3b typed seams escarpment/
+> foothills (`d8399cf2`) → B2 local erosion (`c0989bf3`) → B3b-2 typed coast
+> (beach/cliff) (`90aae310`) → Hydrology MVP rivers (`af50af1a`) →
+> Resolution-aware (10× area maps) (`554a0d15`). Plus design/decision docs:
+> region-tree (`0f4762d7`), hierarchy depth + diversity (`0785007e`), seam
+> features roadmap (`41f9c84b`).
+>
+> **⏸ Paused at B5 — Köppen climate/biome (2026-05-23):** v1 (per-pixel
+> formula) rejected as "too random"; the layered hierarchical model is
+> non-trivial. Climate research done + architecture spec written:
+> [`docs/plans/2026-05-23-climate-simulation-research.md`](../../plans/2026-05-23-climate-simulation-research.md).
+> **Next session: implement B5 v2** — decorator layer pipeline
+> (Insolation + Circulation + Continentality + ZoneRefinement + ElevLapse →
+> Whittaker classification), classification **at zone level**, only lapse-rate
+> at pixel level (snow caps). Defer ocean currents (v3), orographic (v4),
+> seasonal Köppen (v5). PO note: complex technique, many experiments needed —
+> dedicated session.
+>
+> **Pending after B5:** Hydrology extras (lakes/delta — need climate's
+> precipitation field), TerrainTile raster + LOD, cross-plate seams,
+> persistence.
 
 **As of 2026-05-21 — branch `geo-generator-amaw`, pushed.** The 4-phase
 generator is built, the post-build human-in-loop review is done, seven
