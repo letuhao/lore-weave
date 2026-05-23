@@ -19,7 +19,7 @@ _SELECT_COLS = """
   project_id, user_id, name, description, project_type, book_id, instructions,
   extraction_enabled, extraction_status, embedding_model, embedding_dimension,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
-  is_archived, tool_calling_enabled, memory_remember_confirm,
+  is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
   version, created_at, updated_at
 """
 
@@ -37,6 +37,10 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # gate. NOT NULL, so — like tool_calling_enabled — deliberately
      # absent from _NULLABLE_UPDATE_COLUMNS; explicit None is skipped.
      "memory_remember_confirm",
+     # P2 (D6): opt-in raw-response retention. NOT NULL DEFAULT false;
+     # FE follow-up D-P2-FE-SAVE-RAW will expose a toggle. PATCH updates
+     # the flag; leaf_processor reads it at extraction time.
+     "save_raw_extraction",
      # D-EMB-MODEL-REF-01: embedding_dimension is now caller-supplied
      # (it was a derived column under the old logical-name design).
      # embedding_model carries the provider-registry user_model UUID,

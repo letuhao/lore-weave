@@ -1,32 +1,41 @@
-# Session Handoff — Session 63 (P2 parallel map + checkpoint XL [partial-build])
+# Session Handoff — Session 63 cont. (P2 Step D MVP shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-23 (sessions 62 + 63 — 1 P1 XL cycle + 1 P2 XL partial-build, pending P2 commit)
-> **HEAD:** `c5e5668b` (session 62 P2 CLARIFY) → pending P2 partial-build commit. Push status: NOT pushed (origin at `2d56eb16`).
+> **Date:** 2026-05-23 (sessions 62 + 63 + 63cont. — 1 P1 XL + 1 P2 XL partial-build + 1 P2 Step D MVP M, pending Step D commit)
+> **HEAD:** `982e407c` (session 63 P2 partial-build) → pending Step D commit. Push status: NOT pushed (origin at `2d56eb16`).
 > **Branch:** `main`.
 
-## What's NEXT — Step D of P2 (orchestrator refactor) then push
+## What's NEXT — push 8 commits, then P3 (hierarchical reduce)
 
-### Step 1 (must-do first): P2 Step D
+### Step 0: push the 8 local commits to origin
 
-Per PO pacing call at session 63 mid-BUILD: only Steps A+B+C committed as a foundation checkpoint. **Step D** is the orchestrator refactor + book_client extension + KnowledgeProject model field + existing test extension. ~4-5 files, ~3-4h.
+User pushes manually. Branch is 8 commits ahead of origin (P1 cycle + D-P1-LIVE-SMOKE clear + P2 CLARIFY + P2 partial-build + P2 Step D MVP). Memory `feedback_verify_deployed_image_matches_source` reminds: confirm image matches source after push (we already rebuilt locally + smoke-tested).
 
-Read first: [`docs/specs/2026-05-23-p2-parallel-map-checkpoint.md`](../specs/2026-05-23-p2-parallel-map-checkpoint.md) §D3 + §D3a + §D8 + §D9 — those are the unimplemented surfaces. Plus [`docs/plans/2026-05-23-p2-parallel-map-checkpoint.md`](../plans/2026-05-23-p2-parallel-map-checkpoint.md) §1 NEW/MODIFY tables for the remaining file list.
+### Step 1: P3 (hierarchical reduce + per-level summaries) — L-XL cycle
 
-Specifically:
-1. NEW knowledge-service `app/clients/book_client.py` methods: `list_scenes_by_chapter(chapter_id)` + `get_chapter_draft_text(chapter_id)` (call the book-service endpoints already shipped in Step A).
-2. MODIFY `app/db/models.py`: add `save_raw_extraction: bool = False` to `Project` Pydantic model.
-3. MODIFY `app/extraction/pass2_orchestrator.py`: implement spec §D3 pseudocode — `_run_pipeline(chapter, model_ref, parent_job_id)` with fetch_scenes (+ legacy fallback), pre-dispatch dedup, asyncio.Semaphore fanout, aggregation back into existing `Pass2Candidates` shape, billing pass-through via parent_job_id.
-4. EXTEND existing `tests/unit/test_pass2_orchestrator.py` with 5 P2 tests (legacy fallback dispatch, parent_job_id threading, pre-dispatch dedup, aggregation shape, concurrent same-book dedupe).
-5. After Step D BUILD passes: live smoke clears **D-P2-STEP-D-LIVE-SMOKE** (extraction-job → orchestrator → leaf_processor → DB writes through extraction_leaves).
+P1 (T1 structural decomposer) + P2 MVP (T3 cache + leaf core) are committed. **P3 is the critical-path next phase per ADR §6 roadmap.**
 
-### Pre-flight at session 64 start
-- Confirm: `python -m pytest tests/unit/test_pass2_orchestrator.py` from knowledge-service is green at HEAD (baseline preservation through the refactor).
-- Confirm: docker compose can rebuild knowledge-service (no pip flake) so live smoke is unblocked.
+**Read first:** [`docs/03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md`](../03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md) §3 T4 + §6 P3 + §7 P3.
 
-### Step 2 (later sessions): P3 (hierarchical reduce + per-level summaries)
+**P3 scope (ADR T4 + T7 stage 1):**
+- Tree-merge bottom-up: scene KGs → chapter KGs → part KGs → book KG.
+- Deterministic merge: canonical_id-keyed entity merge + alias union-find (Tarjan UF) + relation merge by (subject_canonical_id, predicate, object_canonical_id, polarity) + event merge by (name_norm, time_cue).
+- Per-level summary embedding (NEW): LLM-generated 2-3 sentence summary per chapter/part/book node, embedded + indexed.
+- Neo4j hierarchy nodes (`:Scene` / `:Chapter` / `:Part` / `:Book`) with `:HAS_CHILD` edges.
+- P3 acceptance: tree-merge produces book-level KG identical (modulo summaries) to flat-dedup; legacy chapters join baseline (no longer skipped); `sherlock_speckled_band` joins baseline (achievable now with P2 cache+resume per spec).
 
-Per ADR §6: P1+P2+P3 = 50MB local capability complete. P3 is the third critical-path phase. Begin with re-read of ADR §3 T4 + §6 P3 + §7 P3.
+**P3 also fulfils these P2 deferred rows:**
+- D-P2-PER-SCENE-FANOUT: per-scene parallelism is natural at the reduce layer (each scene = independent leaf).
+- D-P2-FULL-EXTRACTION-LIVE-SMOKE: hierarchical extraction live test is the natural smoke.
+
+### Step 2 (later): P2 polish if hit at scale
+
+If first 1MB+ novel extraction shows pain, address:
+- D-P2-PER-SCENE-FANOUT (if intra-chapter parallelism needed)
+- D-P2-STALE-CLAIM-LIFESPAN-HOOK (if extraction jobs crash mid-run)
+- D-P2-PARENT-JOB-ID-PLUMBING (if per-leaf billing telemetry needed)
+
+These are NOT blockers for P3 start.
 
 ## What's NEXT — D-P1-LIVE-SMOKE first, then start P2 (parallel map + checkpoint)
 

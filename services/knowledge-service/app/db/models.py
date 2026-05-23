@@ -62,6 +62,12 @@ class Project(BaseModel):
     # reads back off (mirrors the DB `DEFAULT false`) so memory_remember
     # keeps writing directly until the user turns confirmation on.
     memory_remember_confirm: bool = False
+    # P2 (D6 opt-in raw retention): when True, leaf_processor persists
+    # the full LLM raw response to extraction_leaves_raw alongside the
+    # postprocessed candidates. Default False — power users opt-in for
+    # re-judge / debug / A-B prompt comparison. FE wire-up tracked as
+    # D-P2-FE-SAVE-RAW.
+    save_raw_extraction: bool = False
     version: int  # D-K8-03: bumped on every non-empty PATCH.
     created_at: datetime
     updated_at: datetime
@@ -122,6 +128,7 @@ class ProjectUpdate(BaseModel):
     embedding_dimension: int | None = None
     tool_calling_enabled: bool | None = None
     memory_remember_confirm: bool | None = None
+    save_raw_extraction: bool | None = None
 
 
 class Summary(BaseModel):
