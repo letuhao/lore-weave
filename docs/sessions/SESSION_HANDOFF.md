@@ -1,11 +1,73 @@
-# Session Handoff — Session 60 (LLM-judge eval + catalogue-driven extraction ADR → next session is the REFACTOR)
+# Session Handoff — Session 61 (gateway aggregator markdown-fence fix → catalogue ADR empirically downgraded)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-22 (session 60 — 3 commits)
-> **HEAD:** `5e1001a8` — branch `main`. Push status: user requested push at session 60 close (see below).
+> **Date:** 2026-05-23 (session 61 — 1 commit pending)
+> **HEAD:** `5e1001a8` + pending fence-fix commit — branch `main`. Push status: NOT pushed (origin at `2d56eb16`).
 > **Branch:** `main`.
 
-## Session 60 — what happened
+## Session 61 — what happened
+
+Started as the CLARIFY of catalogue-driven extraction Stage 1 (XL, per session 60's ADR). The empirical gate the ADR mandated — capturing qwen3.6's raw `result.events` BEFORE any catalogue code — returned a **decisively different answer than the ADR assumed**, and the cycle pivoted to a small surgical fix.
+
+### Root cause (CLARIFY)
+
+Captured raw qwen3.6 output for alice_ch01 in two ways:
+1. **Direct LM Studio chat completion** (bypassing the gateway aggregator) — returned **8 well-formed events**, all in-enum `kind` (action/travel/dialogue), all with named participants. JSON wrapped in markdown ` ```json … ``` ` fence.
+2. **Through the production gateway path** — returned **0 events**, `chunk_errors: ["chunk 0: invalid character '`' looking for beginning of value"]`, despite the model emitting real `output_tokens`.
+
+Diagnosis: `provider-registry-service/internal/jobs/aggregator.go:mergeChunkJSON` did `json.Unmarshal([]byte(raw), &parsed)` directly on the chunk content. The leading backtick of the markdown fence failed `Unmarshal`, the chunk's items went to `chunk_errors` instead of `merged`, and the job completed empty with no surfaced failure. **Silent across every extraction op** (`entity` / `relation` / `event` / `fact`) for **every reasoning model that wraps JSON in code fences**, since the aggregator shipped.
+
+### Fix (S — 2 files, single service, single commit)
+
+- NEW `extractJSONObject(raw) (string,bool)` in `aggregator.go` — first-`{`-to-last-`}` substring extractor. Strips markdown fences + any surrounding prose; returns `ok=false` when there is no balanced `{…}` so unrecoverable input still surfaces a `chunk_error` (no silent swallowing).
+- `mergeChunkJSON` tries direct `json.Unmarshal` first, on failure recovers via `extractJSONObject` + retry-Unmarshal, on failure of that records the chunk_error. Clean-JSON path unchanged (zero-perf regression); chat aggregator untouched (different code path).
+- 4 new tests: fenced, prose+fence, no-brace-still-errors (regression-lock against the recovery path swallowing real failures), helper unit.
+
+### Verify (live smoke)
+
+- `go test ./internal/jobs/` green, `go vet` clean.
+- **Cross-service live smoke**: rebuilt provider-registry, re-ran extraction on alice_ch01 through the gateway → **event_extraction 0→8 events**, `chunk_errors` cleared, entity_extraction unaffected.
+- **Full 9-chapter eval** (qwen3.6 extraction → gemma-4-26b LLM-judge): **P=0.97 R=0.81** macro, coverage P=62% R=56%. Raw counts: 65 entities + 49 relations + 60 events across the 9 chapters. The 10th chapter `sherlock_speckled_band` (1139 lines / 17 chunks) hangs the local 35B target under concurrent load — a perf concern orthogonal to the fence-fix; excluded.
+- Updated `services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md` with a "Post-fence-fix LLM-judge baseline (2026-05-23)" section.
+
+### Empirical refutation of the catalogue-driven ADR's premise
+
+Across the 9 golden chapters, **mechanism A (out-of-enum `kind`) and mechanism B (empty participants) — the two failure modes the ADR identified — did NOT trigger once**. The kind enum + the `_postprocess` participants filter are sufficient for the current fixture set. The "8/10 chapters → 0 events" observation session 60 measured against the rule-based scorer was 100% the fence bug; nothing about taxonomy.
+
+**Status of catalogue-driven extraction ADR:** the design is still valid for genre fiction kinds (xianxia / cultivation realm / sect / technique — kinds the closed extractor enum cannot represent) but downgraded from "blocking R&D" to "**re-prioritise when a genre-fiction fixture set exists**". The ADR remains in `docs/03_planning/` as a future option.
+
+### Baseline shift
+
+| Run | Date | Extractor | Scorer | P | R |
+|---|---|---|---|---:|---:|
+| Session 59 pre-fence-fix | 2026-05-13 | gemma-4-26b | rule-based | 0.311 | 0.429 |
+| Session 60 LLM-judge (broken pipeline) | 2026-05-22 | qwen3.6 | gemma judge | ~1.00 | ~0.46 |
+| **Post-fence-fix LLM-judge** | **2026-05-23** | **qwen3.6** | **gemma judge** | **0.97** | **0.81** |
+
+Recall jump 0.46→0.81 is the fence-fix payoff (the dropped chunks were the bulk of the chapter, not low-quality outliers).
+
+## What's NEXT — pick from these (no blocker remains)
+
+Knowledge-service extraction quality is now **demonstrably P=0.97 R=0.81 on local qwen3.6** with the LLM-judge harness. The R&D track is no longer blocked on a measurement instrument or a taxonomy refactor.
+
+Reasonable next moves (in no particular order):
+
+1. **Continue R&D extraction-quality iteration** — the recall gap from 0.81 → higher is now tractable through prompt tuning + chunking knobs; each cycle re-runs the judge harness for relative measurement.
+2. **`sherlock_speckled_band` perf fix** — per-chapter chunk-size cap, or a separate large-chapter eval flow, so the 10th chapter joins the baseline.
+3. **Catalogue-driven extraction (deferred)** — only when a genre-fiction fixture set exists; until then it's a paper exercise.
+4. **`register_lm_studio_models.sql` pricing patch** — session 60 left a TODO; the SQL seed still ships models without `pricing` so a fresh DB hits Phase 6a fail-closed. One-liner per model.
+5. **Non-blocking polish-bucket** (D-K21B-07 Anthropic tool calling, ~6 LIVE-SMOKE items, ~20 polish-bucket deferrals from prior cycles) — "Gap Closure v2" debt-paydown arc.
+
+## Lessons (for agent memory)
+
+- **The CLARIFY empirical gate paid off.** The ADR explicitly mandated capturing the raw output before any catalogue code. That single step refuted the ADR's premise in one chapter, saving the XL refactor.
+- **Memory `feedback_mock_only_coverage_hides_crossservice_bugs` strikes again.** Aggregator unit tests had fed clean JSON for years; the live model emits fences. The fix added a regression-lock test feeding a fenced input + a no-brace-still-errors guard against the recovery path swallowing real failures.
+- **`feedback_no_timeout_on_llm_pipeline` corollary**: when a model "fails", audit the pipeline first. The fence bug had been masking real model quality across all 4 extraction ops since the aggregator shipped.
+- **Concurrent load on a single LM Studio 35B is fragile** — saw repeated transient flakes (cold-model entity-extraction returning 0; mid-chapter event-extraction stuck) during the original concurrency=3 eval run. Serial (concurrency=1) was needed for two stragglers. The eval test should probably default to lower concurrency for the local target.
+
+---
+
+## Session 60 — what happened (for context, superseded by the above)
 
 The session set out to start the R&D extraction-quality track (session 59's "final work") and instead **redirected it**, because two foundations were broken:
 

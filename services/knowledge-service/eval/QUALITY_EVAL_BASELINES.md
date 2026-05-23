@@ -347,3 +347,70 @@ KNOWLEDGE_JUDGE_DUMP_PATH=/path/to/extraction/dump \
 
 The judge model MUST differ from the extraction model. `model_ref` is an
 env var so a cloud judge (calibration pass) is a one-line swap.
+
+---
+
+# Post-fence-fix LLM-judge baseline (2026-05-23)
+
+After the **gateway aggregator markdown-code-fence fix** (`provider-registry-service/internal/jobs/aggregator.go` — `mergeChunkJSON` now retries via `extractJSONObject(raw)` extracting the outermost `{…}` when direct `json.Unmarshal` fails on a leading backtick). qwen3.6 (and any reasoning model that wraps JSON in ` ```json … ``` `) was emitting well-formed extraction output that the gateway aggregator was silently throwing away (`chunk_errors: ["invalid character '`'..."]`, 0 items returned despite real `output_tokens`). The bug had been silent across every extraction op (`entity`/`relation`/`event`/`fact`) for every fenced model since the aggregator shipped.
+
+## Setup
+
+- Extraction: `qwen/qwen3.6-35b-a3b` (LM Studio, host) — user_model `019e21cc-…`
+- Judge: `google/gemma-4-26b-a4b` — user_model `019dc3df-…` (different family, no self-bias)
+- Stack: minimal extraction profile (knowledge-service + provider-registry + deps); Neo4j NOT required for extract-dump + judge
+- Fixtures: 9 chapters covered (the 10th, `sherlock_speckled_band` at 1139 lines / 17 chunks, hung under concurrent load on the local 35B target — perf concern unrelated to fence-fix; excluded from this baseline)
+- Concurrency: 3 for the original concurrent dump; 2 chapters re-extracted serially (concurrency=1) after a transient concurrent-load flake (cold-model entity-extraction returned 0 → `if not entities` short-circuited relations+events)
+
+## Raw extraction counts (post-fix, 9 chapters)
+
+| chapter                | entities | relations | events |
+|------------------------|---------:|----------:|-------:|
+| alice_ch01             |        3 |         0 |      7 |
+| alice_ch02             |        3 |         7 |      5 |
+| journey_west_zh_ch01   |       17 |        10 |      5 |
+| journey_west_zh_ch14   |        9 |         9 |      6 |
+| little_women_ch01      |       10 |         0 |      5 |
+| pride_prejudice_ch01   |       10 |        11 |     10 |
+| sherlock_scandal_ch01  |        3 |         2 |      1 |
+| son_tinh_thuy_tinh_vi  |        6 |         5 |      8 |
+| tam_cam_vi             |        4 |         5 |     13 |
+| **TOTAL**              |   **65** |    **49** | **60** |
+
+Before fix the rule-based-scored session-60 dumps showed **8/10 chapters with 0 events** (the extraction model emitted them, the gateway aggregator threw them away). Post-fix every chapter produces at least one event, with the kind enum exclusively populated by valid in-enum values (action/dialogue/travel/etc.) and every event carrying named participants — mechanisms A (out-of-enum `kind`) and B (empty participants) flagged in the `KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md` did NOT trigger across the golden set. The catalogue-driven refactor still has value for genre fiction (xianxia / cultivation realm kinds), but recall recovery on the current fixtures is dominated by the fence-fix.
+
+## LLM-judge aggregate (macro across 9 chapters)
+
+**P = 0.97 | R = 0.81 | coverage P = 62% R = 56%**
+
+| chapter                | P    | R    | ent P/R       | rel P/R       | evt P/R       | cov P/R    |
+|------------------------|-----:|-----:|---------------|---------------|---------------|------------|
+| alice_ch01             | 0.83 | 0.57 | 0.83 / 0.67   | 1.00 / 0.00   | n/a  / 1.00   | 30% / 100% |
+| alice_ch02             | 1.00 | 0.78 | n/a  / 0.60   | 1.00 / n/a    | 1.00 / 1.00   | 80% / 90%  |
+| journey_west_zh_ch01   | 1.00 | 1.00 | 1.00 / 1.00   | n/a           | n/a           | 53% / 48%  |
+| journey_west_zh_ch14   | 1.00 | n/a  | 1.00 / n/a    | 1.00 / n/a    | n/a           | 42% / 0%   |
+| little_women_ch01      | 0.93 | 0.86 | 0.90 / 1.00   | 1.00 / 0.00   | 1.00 / n/a    | 100% / 70% |
+| pride_prejudice_ch01   | 1.00 | 1.00 | 1.00 / n/a    | 1.00 / 1.00   | 1.00 / n/a    | 65% / 14%  |
+| sherlock_scandal_ch01  | 1.00 | 0.67 | 1.00 / 0.75   | 1.00 / 0.50   | n/a           | 83% / 75%  |
+| son_tinh_thuy_tinh_vi  | 1.00 | 1.00 | 1.00 / 1.00   | n/a           | n/a  / 1.00   | 32% / 69%  |
+| tam_cam_vi             | 1.00 | 0.57 | 1.00 / 0.57   | 1.00 / n/a    | 1.00 / n/a    | 77% / 41%  |
+
+Run time: 19 min for 9 chapters (judge=gemma-4-26b-a4b).
+
+## Comparison vs prior baselines
+
+| Run | Date | Extractor | Scorer | Precision | Recall |
+|---|---|---|---|---:|---:|
+| C19 baseline (pre-align) | 2026-04-25 | gemma-4-26b-a4b | rule-based exact-string | 0.251 | 0.356 |
+| Session 59 (C-PRED-ALIGN done) | 2026-05-13 | gemma-4-26b-a4b | rule-based | 0.311 | 0.429 |
+| Session 60 LLM-judge (broken pipeline — fence bug undetected) | 2026-05-22 | qwen3.6 | gemma-4-26b judge | ~1.00 | ~0.46 |
+| **Post-fence-fix LLM-judge** (this baseline) | **2026-05-23** | **qwen3.6** | **gemma-4-26b judge** | **0.97** | **0.81** |
+
+Precision lift from session 60 to this run is small (extraction was already accurate when it survived); the **recall jump from ~0.46 to 0.81** is the fence-fix payoff — the chunks that were getting silently dropped were not low-quality, they were the bulk of the chapter.
+
+## Open follow-ups (not blocking)
+
+- `sherlock_speckled_band` (1139 lines / 17 chunks × 4 ops) — local-target perf limit; consider a per-chapter chunk-size cap or a separate large-chapter eval flow.
+- Judge coverage is 62% / 56% — gemma-4-26b emits reasoning tokens that occasionally swallow a judge batch's verdicts (the original session-60 caveat carries over). A non-reasoning judge would harden the absolute numbers; a reasoning judge keeps the relative-improvement signal honest.
+- Some chapters land with very low judge coverage (alice_ch01 P=30%, pride_prejudice R=14%) — uneven because the judge selects which items to grade per batch; a smaller batch size would even it out at the cost of more LLM calls.
+- The catalogue-driven extraction ADR (`docs/03_planning/KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md`) remains a real design improvement for genre fiction kinds, but its premise ("event recall ≈ 0 because of kind-enum drop") is empirically refuted on the current fixtures. Re-prioritise only when a genre-fiction fixture set exists.
