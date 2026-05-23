@@ -6,7 +6,7 @@
 > **Genre prior art surveyed:** Heroes of Might and Magic III (1999, NWC), Battle for Wesnoth (open source), Civilization V/VI (Firaxis), Dwarf Fortress (Bay 12), Caves of Qud (Freehold), VCMI (GPL v2+, open-source HoMM3 reimpl). See [TMP_001 §1.1](TMP_001_tilemap_foundation.md) for the genre survey + LoreWeave-specific design choices.
 > **Graduated from:** [`features/_spikes/SPIKE_03_tilemap_world_view.md`](../_spikes/SPIKE_03_tilemap_world_view.md) (DRAFT 2026-04-27).
 
-**Active:** none (folder closure pass 2026-05-13 — all 9 docs at CANDIDATE-LOCK).
+**Active:** TMP_009 isometric asset pipeline (DRAFT 2026-05-23 — V2 extension; opens reserved slot TMP-D6). Core 9 docs remain at CANDIDATE-LOCK.
 
 **Folder closure status:** **CLOSED for V1+30d design 2026-05-13.** 9 docs at CANDIDATE-LOCK: TMP_001 foundation + TMP_002 zone placement + TMP_003 pipeline + TMP_004 template authoring + TMP_005 biome + TMP_006 treasure (Phase 3 finding: §8.5 questions restored — were lost in license-hygiene revision pass) + TMP_007 connections + TMP_008 LLM integration architecture + TMP_008b LLM contract spec. **Closure pass deliverables**: §15 AC-TMP-1..10 walked + expanded (setup / action / expected outcome triples with concrete rule_ids + event types); all 43 open questions RESOLVED (40 batch-accept-default + 3 user-locked: TMP-Q3 V2 default LLM-on / TMP-Q4 Phaser 3 FE engine / TMP-LLM-Q4 cross-zone L4 context YES with cost bump); Phase 3 review surfaced `tilemap.density_reduced` info-level rule_id missing from §9.2 inventory (added — 17 V1+30d rule_ids now, was 16); cost model bumped per TMP-LLM-Q4 closure-lock (~$8.50/reality Y1 from ~$7; +21% for cross-zone narrative continuity). LOCK promotion pending integration tests + V2 PoC validation. No further design work in TMP folder until V2 PoC findings or new V2+ extensions.
 
@@ -25,6 +25,7 @@
 | TMP_007 | **Connections & Guards** (TMP-CONN) | 5-variant `PassageKind` (Threshold/Open/Hint/Adversarial/Portal) + 3-pass placement (Portal → direct → indirect) + dining-philosopher cross-zone locking (Dijkstra 1965) + water route + monolith fallback + A* path search (Hart et al. 1968). | CANDIDATE-LOCK 2026-05-13 | ~400 | [`TMP_007_connections_and_guards.md`](TMP_007_connections_and_guards.md) |
 | TMP_008 | **LLM Integration (L3+L4)** (TMP-LLM) | Architecture / V-tier / cost story for the V2 LLM augmentation layer. L3 zone classifier (categorical placement) + L4 regional narration (cached prose) + integration with 05_llm_safety + AIT-A4 hybrid 2-stage pattern reuse + corrected cost model (~$0.032/tilemap initial; ~$7/reality Y1). I/O contract detail lives in TMP_008b. | CANDIDATE-LOCK 2026-05-13 | ~400 | [`TMP_008_llm_integration.md`](TMP_008_llm_integration.md) |
 | TMP_008b | **LLM Contract Spec** (TMP-LLM-C) | I/O detail for L3 + L4: cacheable 3-segment prompt structure (TMP-45) + Anthropic tool-use structured output (TMP-46) + structured per-case validation feedback (TMP-47) + per-object retry granularity + canonical-default fallback (TMP-48) + prompt-injection defense via `<author_text>` delimiting + tag-close-escape + 05_llm_safety + World Oracle (TMP-49) + L4 cache key with L3-digest (TMP-50) + deterministic key-phrase extraction (TMP-51) + closed-enum style hints (TMP-52). Addresses 4 HIGH + 4 MED LLM-friendliness gaps from `/review-impl` follow-up 2026-05-13. | CANDIDATE-LOCK 2026-05-13 | ~560 | [`TMP_008b_llm_contract_spec.md`](TMP_008b_llm_contract_spec.md) |
+| TMP_009 | **Isometric Asset Pipeline** (TMP-ASSET) | Two-layer anchor static-prop pipeline, exercised n=9 (1 entry × 3 biomes × 3 seeds) 2026-05-23 — **NOT yet production-ready**, mixed cross-biome results: (1) gen-time — in-tree `NAGuidance` node patches Flux dev distilled at CFG=1.0 so a hardened negative bites — works on dark palettes (chaos_rift 3/3), partial on light (grassland 1/3 clean), poor on snow (0/3 clean); (2) post-process — RMBG strip + scale normalise + composite onto canonical 2:1 dimetric diamond. RMBG model swap (DEBT #8) is now load-bearing because the white-threshold spike cannot trim coloured baked bases. Adds additive `facing: Option<Facing>` (TMP-A8). Actor multi-facing UNRESOLVED (TMP-ASSET-Q10). Mesh-anchor / Blender deferred (Q8). Prior art HoMM3/VCMI sprites + NAG (Chen et al. 2025). | DRAFT 2026-05-23 | ~390 | [`TMP_009_isometric_asset_pipeline.md`](TMP_009_isometric_asset_pipeline.md) |
 
 ---
 
@@ -48,7 +49,7 @@
 ## Naming convention
 
 `TMP_<NNN>_<short_name>.md`. Sequence per-category. TMP_001..TMP_008 covers V1+30d + V2 design surface. Future TMP_NNN reserved for V2+ extensions:
-- TMP_009 V2 sprite atlas pipeline (TMP-D6)
+- TMP_009 V2 isometric asset pipeline (TMP-D6) — **opened DRAFT 2026-05-23**
 - TMP_010 V2 procedural settlement layouts (TMP-D8)
 - TMP_011 V3 RMG wizard UX (TMP-D1 + TMP-D2)
 - TMP_012 V2+ tactical combat tilemap derivative (TMP-D7)

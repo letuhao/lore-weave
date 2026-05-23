@@ -81,7 +81,92 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-22 — session ended) — read this first
+## ⏭️ CURRENT STATE (2026-05-23) — TMP_009 spike validated on n=1 — read this first
+
+PO raised the asset-gap: engine emits a **complete map as data but no visual
+assets**, and the existing ComfyUI Flux batch is "lộn xộn" (inconsistent base /
+scale / camera per seed). Worked through decision tree → render target locked
+**Phaser 3 iso 2:1 dimetric** (TMP-Q4) → first-draft hypothesis was a Blender
+mesh-anchor "golden rig"; **that hypothesis was abandoned** when (a) the team
+lacked Blender skill and (b) a different root cause was found.
+
+**Actual root cause** (discovered after research + spike): Flux dev distilled at
+CFG=1.0 → ComfyUI's `cfg1_optimization` skips the uncond pass → standard negative
+prompt is silently ignored. The model's training prior ("iso strategy map flora")
+adds a ground/base every time; no amount of prompt rewording fixes it as long as
+the negative path is bypassed.
+
+**Solution exercised on n=9 (1 entry × 3 biomes × 3 seeds) — MIXED results, NOT yet production-ready.** Two-layer anchor:
+1. **Gen-time** — in-tree `NAGuidance` node (`comfy_extras/nodes_nag.py`) patches
+   the model: `disable_model_cfg1_optimization()` restores the uncond pass at
+   CFG=1.0, then computes guided attention `z_pos·s − z_neg·(s−1)` with L1 norm.
+   Paired with a hardened negative listing ground/rock/platform/base/terrain terms.
+2. **Post-process** — RMBG strip → tight-crop → scale-normalise to fixed prop
+   height → composite onto ONE canonical 2:1 dimetric diamond tile. Residual SD
+   bake-in is absorbed by the canonical tile underneath.
+
+**Cross-biome result on `alpine_dwarf_shrub_cluster × 3 seeds × 3 biomes` (n=9):**
+- `abyss_chaos_rift` (dark/violet): **3/3 clean**, LoRA style preserved
+- `grassland_temperate` (light): **1 clean / 1 partial / 1 iso-platform baked**
+- `snow_frost` (cold/pale): **0 clean / 1 subject drift to rock pile / 2 base baked**
+
+NAG is **biome-dependent**, not universal — works cleanly on the dark palette that
+aligns with the `dark_fantasy_digital_v11` LoRA's prior, weaker as biomes lighten.
+A/B (chaos_rift only): `outputs/spike-strict-prompt/alpine_dwarf_shrub_cluster_original_vs_strict.png`;
+3-biome grid: `outputs/spike-strict-prompt/biome_grid.png`; end-to-end composites:
+`outputs/spike-static-consistency-nag*/...`. Grassland composite reveals the
+white-threshold RMBG fallback CANNOT trim coloured iso-platform residues → DEBT #8
+(real RMBG model swap) is **load-bearing** before any rollout, not optional.
+
+**Doc state:** [TMP_009](features/00_tilemap/TMP_009_isometric_asset_pipeline.md)
+rewritten end-to-end to match the validated pipeline (was: mesh-anchor centric).
+- Title + §1 root-cause + solution → NAG + composite
+- §3 → two-layer anchor (3.1 NAG, 3.2 composite, 3.3 actors UNRESOLVED)
+- §5 → validated 4-stage pipeline (Flux+NAG → RMBG → composite → atlas)
+- §6 → manifest schema adds `gen_method` / `lora_chain` / `nag` provenance
+- §7 → validation state + artifact list
+- §8 → prior art adds NAG; demotes Blender to advanced fallback
+- §9 → TMP-ASSET-Q10 added (actor multi-facing UNRESOLVED)
+- §11 → AC-1..7 rewritten with ✅/⚠/☐ status; honest about n=1 limit
+- `_index.md` row updated to match.
+
+**Artifacts (image-gen repo `G:\Works\local-image-generator-service`, uncommitted):**
+- `docker-compose.yml` + `.override.yml` + `.env` — switched default backend to
+  `comfyui-clean` (the user-managed venv stack with NAG-in-core ComfyUI), pushed
+  legacy `comfyui` (WAN 2.2) behind `--profile wan22-legacy`
+- `workflows/flux_gguf_nag.json` (new) — Flux GGUF graph with `NAGuidance[10]`
+  between `UnetLoaderGGUF[1]` and `KSampler[6]`
+- `config/models.yaml` — new alias `flux1-dev-q8-tree-nag`
+- `experiments/tmp_009/nag-cfg1.0-bush-spike-pack.json` (new) — NAG spike pack (3 biomes)
+- `experiments/tmp_009/poc_static_consistency.py` (new) — composite spike, argparse-aware
+- `experiments/tmp_009/poc_strict_prompt_compare.py` (new) — A/B compare script
+- `experiments/tmp_009/poc_nag_biome_grid.py` (new) — 3-biome × 3-seed honesty grid
+- `experiments/tmp_009/rmbg_cutout.py` (new) — BRIA RMBG-1.4 ONNX cutout (DEBT #8, ~1 s/image on CPU)
+- `experiments/tmp_009/README.md` (new) — v1→v2→v3 mutation log + how-to-run
+
+**LoRA-through-NAG verified empirically** via `/history` graph trace: chain was
+`UnetLoaderGGUF[1] → LoraLoader[11]/dark_fantasy_digital_v11@0.8 → NAGuidance[10]
+→ KSampler[6]`. `inject_loras()` (`app/registry/workflows.py:347`) splices
+LoraLoader between the anchor and downstream consumers via `_rewrite_inputs`,
+which correctly remapped NAGuidance's `model: [1,0]` input to `[11,0]`.
+
+**Debt acknowledged before any rollout** (cleared in order during this session;
+remaining items below):
+- ✅ #1 LoRA injection verified
+- ✅ #2 TMP_009 rewrite for actual pipeline
+- 🟡 #3 SESSION_HANDOFF update — this entry
+- ☐ #4 NAG generalisation to n>1 biomes (grassland_temperate, snow_frost candidates)
+- ☐ #5 gen time + VRAM measurement under NAG
+- ☐ #6 spike-pack JSONs re-shaped as versioned variants
+- ☐ #7 spike artifacts moved to `experiments/` (off production path)
+- ☐ #8 vectorise `strip_white_bg` (or swap to RMBG) — current loop is ~3-5 s/image, would be ~3h for 2445-image rollout
+
+**Next action:** finish debts #4-#8 → commit per repo (design + image-gen) →
+then decide on rollout (full bundle regen with NAG) vs actor spike (TMP-ASSET-Q10).
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-22 — session ended)
 
 `services/tilemap-service/` — the text-LLM-driven tilemap / zone-map generator
 (V2 PoC), branch `mmo-rpg/zone-map-amaw`. **The engine is feature-complete and
