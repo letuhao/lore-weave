@@ -431,8 +431,14 @@ async def _call_judge(
     finish_reason = result.get("finish_reason")
     reasoning_tokens = int(usage.get("reasoning_tokens") or 0)
     output_tokens = int(usage.get("output_tokens") or 0)
+    # Two truncation modes:
+    #   1. finish_reason="length" → hard cap, JSON definitely cut
+    #   2. reasoning ate >100 tokens AND content space tight (<100 tokens
+    #      remaining) → likely truncated even with finish=stop (rare)
+    # Don't warn when reasoning=1 and finish=stop — that's the anti-think
+    # prompt working as designed; small content is fine for small batches.
     if finish_reason == "length" or (
-        reasoning_tokens and output_tokens - reasoning_tokens < 100
+        reasoning_tokens > 100 and output_tokens - reasoning_tokens < 100
     ):
         logger.warning(
             "judge call near/over budget: max_tokens=%d output=%d "

@@ -405,10 +405,12 @@ Run time: 19 min for 9 chapters (judge=gemma-4-26b-a4b).
 | Session 59 (C-PRED-ALIGN done) | 2026-05-13 | gemma-4-26b-a4b | rule-based | 0.311 | 0.429 |
 | Session 60 LLM-judge (broken pipeline — fence bug undetected) | 2026-05-22 | qwen3.6 | gemma-4-26b judge | ~1.00 | ~0.46 |
 | **Post-fence-fix LLM-judge** (session-61 baseline) | **2026-05-23** | **qwen3.6** | **gemma-4-26b judge** | **0.97** | **0.81** |
-| **Post-P3 non-regression** (session-67 cont.5) | **2026-05-24** | **qwen3-30b-a3b** ¹ | **gemma-4-26b judge** | **0.91** | **0.39** ² |
+| Post-P3 non-regression (judge-truncation-affected) | 2026-05-24 | qwen3-30b-a3b | gemma-4-26b judge | 0.91 (cov 49%) | 0.39 (cov 63%) |
+| **Post-P3 non-regression + judge fix** (session-67 cont.5) | **2026-05-24** | **qwen3-30b-a3b** ¹ | **gemma-4-26b judge** ³ | **0.93** | **0.57** ² |
 
 ¹ Different from session-61 (qwen3.6-35b-a3b not loaded; qwen3-30b is 5B fewer params + older).
-² Lower recall driven by model substitution + judge coverage gap (49% P / 63% R coverage). P3 commits don't touch extraction prompts; non-regression verdict is **P comparable, R drop explained by confounds not P3**. Apples-to-apples re-check requires re-loading qwen3.6-35b-a3b in LM Studio + re-running.
+² R delta vs session-61 (0.57 vs 0.81) driven entirely by extractor model substitution — qwen3-30b under-extracts relations + Vietnamese fixtures vs qwen3.6-35b. P3 commits don't touch extraction prompts. Apples-to-apples re-check requires re-loading qwen3.6-35b-a3b in LM Studio + re-running.
+³ Judge fixed in session 67 cont.5 (commit 63d91095): anti-thinking prompt prefix + batch_size 8→3 + 3× token budget. Coverage jumped 49/63% → 100/100%; gemma reasoning_tokens dropped 989→1 (anti-think worked). Pattern borrowed from RAGAS/DeepEval per-item small-batch approach.
 
 Precision lift from session 60 to this run is small (extraction was already accurate when it survived); the **recall jump from ~0.46 to 0.81** is the fence-fix payoff — the chunks that were getting silently dropped were not low-quality, they were the bulk of the chapter.
 
