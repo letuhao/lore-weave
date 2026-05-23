@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -73,18 +74,29 @@ Category = Literal["entity", "relation", "event"]
 # The budget is deliberately roomy because a *reasoning* judge model
 # (qwen-thinking, deepseek-r1, etc.) spends `reasoning_tokens` from the
 # same max_tokens pool BEFORE emitting any content — a tight budget
-# leaves zero room for the JSON and the response comes back empty. The
-# judge is meant to run on a NON-reasoning model (e.g. gemma); this
-# headroom is the safety net if a thinking model is loaded anyway.
-_BASE_OUTPUT_TOKENS = 512
-_PER_ITEM_OUTPUT_TOKENS = 96
+# leaves zero room for the JSON and the response comes back empty.
+#
+# Session-67 cont.5 calibration: even nominally non-reasoning gemma-4-26b
+# variants on LM Studio emit massive reasoning_tokens (observed ~1000
+# tokens per judge call, finish_reason=length on 67% of jobs). RAGAS /
+# DeepEval / TruLens sidestep this by per-item structured-output calls;
+# we keep batching but bump the budget 3× (per-item 96→256) + base
+# 512→1536 to leave ~2000 tokens for content even after reasoning burns
+# ~1000. Also lower default batch_size 8→3 so each call's content need
+# stays small (verdicts × 60 tokens). Override via env.
+_BASE_OUTPUT_TOKENS = int(os.environ.get("KNOWLEDGE_JUDGE_BASE_TOKENS", "1536"))
+_PER_ITEM_OUTPUT_TOKENS = int(os.environ.get("KNOWLEDGE_JUDGE_PER_ITEM_TOKENS", "256"))
 
 # Max items judged per LLM call. A judge asked to return 30+ verdicts in
 # one JSON object truncates or drops items (observed: speckled_band's 30
 # entities came back wholly unjudged). Small batches keep each response
 # short enough to enumerate reliably; the per-batch idx is mapped back to
 # the global item index by the caller. Trades call count for coverage.
-_JUDGE_BATCH_SIZE = 8
+#
+# Calibrated down 8→3 (session-67 cont.5) because reasoning-heavy local
+# judges (gemma-4-26b on LM Studio) eat the per-call token budget; small
+# batches cap the worst-case content need per response.
+_JUDGE_BATCH_SIZE = int(os.environ.get("KNOWLEDGE_JUDGE_BATCH_SIZE", "3"))
 
 
 # ── Verdict / result types ──────────────────────────────────────────
@@ -250,7 +262,19 @@ class ChapterJudgement:
 # ── Prompt construction ─────────────────────────────────────────────
 
 
-_PRECISION_SYSTEM = (
+# Session-67 cont.5: explicit anti-thinking instruction added — local
+# reasoning-capable judges (gemma-4-26b on LM Studio observed burning
+# ~1000 reasoning_tokens per call, finishing 67% with finish_reason=length
+# and truncated JSON). Pattern borrowed from RAGAS/DeepEval which use
+# structured output for the same reason; we keep prompt-only JSON since
+# the gateway doesn't yet wire tool-use for the judge path.
+_NO_THINK_PREFIX = (
+    "RESPOND DIRECTLY. Do NOT think aloud, do NOT use <think> tags, do "
+    "NOT write reasoning. Emit ONLY the JSON object below — no prose "
+    "before or after, no markdown fences.\n\n"
+)
+
+_PRECISION_SYSTEM = _NO_THINK_PREFIX + (
     "You are a meticulous literary-extraction auditor. You are given the "
     "SOURCE TEXT of one chapter of a novel and a numbered list of items "
     "that some system claims to have extracted from it. For EACH item, "
@@ -271,7 +295,7 @@ _PRECISION_SYSTEM = (
     "Return exactly one verdict per input item, preserving idx."
 )
 
-_RECALL_SYSTEM = (
+_RECALL_SYSTEM = _NO_THINK_PREFIX + (
     "You are a meticulous literary-extraction auditor. You are given the "
     "SOURCE TEXT of one chapter, a REFERENCE list of items that should be "
     "extractable from it, and the list of items a system ACTUALLY "
@@ -368,6 +392,7 @@ async def _call_judge(
     `except ValueError` marks the batch unjudged instead of aborting the
     whole run — a single LM Studio hiccup must not kill a multi-chapter
     judge pass (MED#1, /review-impl)."""
+    max_tokens = _output_tokens(n_items)
     try:
         job = await client.submit_and_wait(
             user_id=user_id,
@@ -381,7 +406,14 @@ async def _call_judge(
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.0,
-                "max_tokens": _output_tokens(n_items),
+                "max_tokens": max_tokens,
+                # Session-67 cont.5 — try to suppress reasoning mode for
+                # thinking-capable models (Qwen3-thinking, gemma variants
+                # finetuned with thinking). LM Studio passes through to
+                # llama.cpp; harmless when the model doesn't expose the
+                # flag. Mirrors the `chat_template_kwargs` pattern from
+                # the Qwen3 / DeepSeek-R1 LM Studio docs.
+                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
             chunking=None,
             job_meta={"extractor": "llm_judge"},
@@ -392,6 +424,26 @@ async def _call_judge(
     if job.status != "completed":
         raise ValueError(f"judge job ended status={job.status}")
     result = job.result or {}
+    # Surface the reasoning-token + finish_reason signal when content
+    # truncation looks likely — helps the eval reader diagnose budget
+    # shortages without re-querying llm_jobs by hand.
+    usage = result.get("usage") or {}
+    finish_reason = result.get("finish_reason")
+    reasoning_tokens = int(usage.get("reasoning_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or 0)
+    if finish_reason == "length" or (
+        reasoning_tokens and output_tokens - reasoning_tokens < 100
+    ):
+        logger.warning(
+            "judge call near/over budget: max_tokens=%d output=%d "
+            "reasoning=%d (%d%%) finish=%s — JSON likely truncated; "
+            "consider raising KNOWLEDGE_JUDGE_BASE_TOKENS / "
+            "KNOWLEDGE_JUDGE_PER_ITEM_TOKENS or lowering "
+            "KNOWLEDGE_JUDGE_BATCH_SIZE",
+            max_tokens, output_tokens, reasoning_tokens,
+            int(reasoning_tokens / output_tokens * 100) if output_tokens else 0,
+            finish_reason,
+        )
     messages = result.get("messages") or []
     if messages and isinstance(messages[0], dict):
         return messages[0].get("content", "") or ""
