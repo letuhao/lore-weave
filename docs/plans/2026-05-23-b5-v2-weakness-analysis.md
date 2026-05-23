@@ -881,6 +881,26 @@ v4.3 ecotone-aware framework absorbs the metric impact well.
 **Roadmap consequence**: v4 unblocks v5 Köppen seasonal (now realistic
 precip patterns exist for seasonality to refine into climate subtypes).
 
+### Batch B5-v5 — "Köppen seasonal" (climate physics)
+
+**DESIGN ONLY 2026-05-24 — implementation deferred.** Full detailed spec:
+[`2026-05-24-v5-koppen-seasonal-design.md`](2026-05-24-v5-koppen-seasonal-design.md)
+
+**Why deferred:** climate generation mature at v4.5 mean 87.93 (89.42 on
+Earth-like); Köppen split is L+ work that warrants its own dedicated
+session(s), not bundled with another track. Design doc captures everything
+needed for future session/contractor to pick up cold:
+
+- 5 new `WorldClimateParams` seasonality fields + amplitude formula
+- 3 new `ZoneClimate` fields (warm/cold-month, precip_winter_frac)
+- ~18 Köppen subtype enum + RGB palette
+- Köppen classifier decision tree + arid-precip threshold formula
+- `climate_eval.py` BIOME_COLORS + 4 PROFILE_LAT_BANDS table rework
+- Sidecar export extension (4 new fields, additive non-breaking)
+- 5-phase implementation order (~7-8h focused work)
+- 3 lower-effort scope variants (v5-lite ~4h, v5-data-only ~1h)
+- Risk analysis + acceptance criteria + Earth-calibration references
+
 ### Cross-batch invariants
 
 - Hypso hash-pin from `eroded_hypso_render_pins_a_content_hash` (commit
