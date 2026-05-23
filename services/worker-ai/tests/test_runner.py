@@ -1110,3 +1110,206 @@ async def test_knowledge_client_persist_pass2_502_returns_retryable_error():
     assert result.retryable is True
     assert result.error is not None
     assert "502" in result.error
+
+
+# ── P3 D-P3-EXTRACTION-CALLER-WIRE-UP — BookClient.get_chapter_hierarchy ──
+
+
+@pytest.mark.asyncio
+async def test_book_client_get_chapter_hierarchy_parses_full_response():
+    """200 with full hierarchy → ChapterHierarchy with part + scenes."""
+    from app.clients import BookClient, ChapterHierarchy
+    client = BookClient("http://book", "tok", timeout_s=5.0)
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    book_id_str = str(uuid4())
+    chapter_id_str = str(uuid4())
+    part_id_str = str(uuid4())
+    scene_id_str = str(uuid4())
+    mock_resp.json.return_value = {
+        "book": {"id": book_id_str, "path": "book", "title": "The Book"},
+        "part": {
+            "id": part_id_str, "path": "book/part-1",
+            "index": 1, "title": "Part 1",
+        },
+        "chapter": {
+            "id": chapter_id_str, "path": "book/part-1/chapter-1",
+            "index": 1, "title": "Chapter 1", "sort_order": 1,
+        },
+        "scenes": [
+            {"id": scene_id_str, "path": "book/part-1/chapter-1/scene-1", "index": 1},
+        ],
+        "book_parts": [
+            {"id": part_id_str, "path": "book/part-1", "index": 1, "title": "Part 1"},
+        ],
+    }
+    with patch.object(client._http, "get", AsyncMock(return_value=mock_resp)):
+        hierarchy = await client.get_chapter_hierarchy(uuid4(), chapter_id_str)
+
+    assert isinstance(hierarchy, ChapterHierarchy)
+    assert hierarchy.book_id == book_id_str
+    assert hierarchy.part is not None
+    assert hierarchy.part.path == "book/part-1"
+    assert len(hierarchy.scenes) == 1
+    assert hierarchy.scenes[0].id == scene_id_str
+    assert len(hierarchy.book_parts) == 1
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_book_client_get_chapter_hierarchy_legacy_chapter_has_null_part():
+    """Legacy chapter (NULL part_id) → part=None + scenes=()."""
+    from app.clients import BookClient
+    client = BookClient("http://book", "tok", timeout_s=5.0)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    chapter_id_str = str(uuid4())
+    mock_resp.json.return_value = {
+        "book": {"id": str(uuid4()), "path": "book", "title": None},
+        "part": None,
+        "chapter": {
+            "id": chapter_id_str, "path": None,
+            "index": 1, "title": "Legacy", "sort_order": 1,
+        },
+        "scenes": [],
+        "book_parts": [],
+    }
+    with patch.object(client._http, "get", AsyncMock(return_value=mock_resp)):
+        hierarchy = await client.get_chapter_hierarchy(uuid4(), chapter_id_str)
+    assert hierarchy is not None
+    assert hierarchy.part is None
+    assert hierarchy.chapter_path is None
+    assert hierarchy.scenes == ()
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_book_client_get_chapter_hierarchy_404_returns_none():
+    from app.clients import BookClient
+    client = BookClient("http://book", "tok", timeout_s=5.0)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    with patch.object(client._http, "get", AsyncMock(return_value=mock_resp)):
+        hierarchy = await client.get_chapter_hierarchy(uuid4(), "ch-1")
+    assert hierarchy is None
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_book_client_get_chapter_hierarchy_http_error_returns_none():
+    import httpx
+    from app.clients import BookClient
+    client = BookClient("http://book", "tok", timeout_s=5.0)
+    with patch.object(
+        client._http, "get",
+        AsyncMock(side_effect=httpx.ConnectError("refused")),
+    ):
+        hierarchy = await client.get_chapter_hierarchy(uuid4(), "ch-1")
+    assert hierarchy is None
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_knowledge_client_persist_pass2_forwards_p3_fields_when_provided():
+    """When all P3 kwargs supplied, persist_pass2 includes them in the body."""
+    client = KnowledgeClient("http://ks", "tok", timeout_s=5.0)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "source_id": "ch-1", "entities_merged": 1,
+        "relations_created": 0, "events_merged": 0, "facts_merged": 0,
+        "evidence_edges": 0,
+    }
+    hp = {"book_id": "b1", "book_path": "book", "part_id": "p1",
+          "part_path": "book/part-1", "part_index": 1,
+          "chapter_id": "c1", "chapter_path": "book/part-1/chapter-1",
+          "chapter_index": 1, "scenes": []}
+    post_mock = AsyncMock(return_value=mock_resp)
+    with patch.object(client._http, "post", post_mock):
+        await client.persist_pass2(
+            user_id=uuid4(), project_id=uuid4(),
+            source_type="chapter", source_id="ch-1", job_id=uuid4(),
+            extraction_model="qwen-test",
+            entities=[], relations=[], events=[], facts=[],
+            hierarchy_paths=hp, book_parts=[("p1", "book/part-1", "1")],
+            is_last_chapter_of_book=True,
+            embedding_model_uuid="emb-uuid", embedding_dimension=1024,
+        )
+    body = post_mock.call_args.kwargs["json"]
+    assert body["hierarchy_paths"] == hp
+    assert body["book_parts"] == [("p1", "book/part-1", "1")]
+    assert body["is_last_chapter_of_book"] is True
+    assert body["embedding_model_uuid"] == "emb-uuid"
+    assert body["embedding_dimension"] == 1024
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_knowledge_client_persist_pass2_omits_p3_fields_when_legacy():
+    """Legacy callers (no P3 kwargs) → body has no P3 keys."""
+    client = KnowledgeClient("http://ks", "tok", timeout_s=5.0)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "source_id": "ch-1", "entities_merged": 0,
+        "relations_created": 0, "events_merged": 0, "facts_merged": 0,
+        "evidence_edges": 0,
+    }
+    post_mock = AsyncMock(return_value=mock_resp)
+    with patch.object(client._http, "post", post_mock):
+        await client.persist_pass2(
+            user_id=uuid4(), project_id=uuid4(),
+            source_type="chapter", source_id="ch-1", job_id=uuid4(),
+            extraction_model="qwen-test",
+            entities=[], relations=[], events=[], facts=[],
+        )
+    body = post_mock.call_args.kwargs["json"]
+    assert "hierarchy_paths" not in body
+    assert "embedding_model_uuid" not in body
+    assert "is_last_chapter_of_book" not in body
+    await client.aclose()
+
+
+# ── P3 runner wire-up — embedding_dimension threaded through JobRow ──
+
+
+@pytest.mark.asyncio
+async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
+    """SQL JOIN to knowledge_projects threads embedding_dimension onto JobRow."""
+    from app.runner import _get_running_jobs
+    project_id = uuid4()
+    user_id = uuid4()
+    fake_row = {
+        "job_id": uuid4(), "user_id": user_id, "project_id": project_id,
+        "scope": "chapters", "scope_range": None, "status": "running",
+        "llm_model": "qwen", "embedding_model": "emb-uuid",
+        "max_spend_usd": Decimal("10"), "items_total": 5,
+        "items_processed": 0, "current_cursor": None,
+        "cost_spent_usd": Decimal("0"),
+        "embedding_dimension": 1024,
+    }
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[fake_row])
+    jobs = await _get_running_jobs(pool)
+    assert len(jobs) == 1
+    assert jobs[0].embedding_dimension == 1024
+
+
+@pytest.mark.asyncio
+async def test_get_running_jobs_handles_null_embedding_dimension():
+    """LEFT JOIN can return NULL dimension for projects with no embedding."""
+    from app.runner import _get_running_jobs
+    fake_row = {
+        "job_id": uuid4(), "user_id": uuid4(), "project_id": uuid4(),
+        "scope": "chapters", "scope_range": None, "status": "running",
+        "llm_model": "qwen", "embedding_model": "",
+        "max_spend_usd": None, "items_total": None,
+        "items_processed": 0, "current_cursor": None,
+        "cost_spent_usd": Decimal("0"),
+        "embedding_dimension": None,
+    }
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[fake_row])
+    jobs = await _get_running_jobs(pool)
+    assert jobs[0].embedding_dimension is None

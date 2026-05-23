@@ -151,6 +151,10 @@ func (s *Server) Router() http.Handler {
 		// for per-leaf orchestration. Spec D8 + scenes.go.
 		r.Get("/books/{book_id}/chapters/{chapter_id}/scenes", s.getInternalScenesByChapter)
 		r.Get("/books/{book_id}/chapters/{chapter_id}/draft-text", s.getInternalChapterDraftText)
+		// P3 D-P3-EXTRACTION-CALLER-WIRE-UP — worker-ai consumes this to
+		// build the HierarchyPathsPayload it forwards to knowledge-service's
+		// /persist-pass2 (so the receiving side can enqueue summaries).
+		r.Get("/books/{book_id}/chapters/{chapter_id}/hierarchy", s.getInternalChapterHierarchy)
 		// C6 (D-K19b.3-01 + D-K19e-β-01) — batch chapter-title resolver.
 		// Cross-book query (caller passes a set of chapter_ids from any
 		// books they own); sits under /internal/chapters rather than
