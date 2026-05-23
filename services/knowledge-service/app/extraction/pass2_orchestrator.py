@@ -47,7 +47,9 @@ from app.db.pool import get_knowledge_pool
 from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
+from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
+from app.jobs.summary_enqueue import SummaryEnqueueFn, SummarizeMessage
 from app.jobs.task_id import compute_task_id
 from app.metrics import knowledge_extraction_dropped_total
 
@@ -282,6 +284,17 @@ async def _run_pipeline(
     book_id: UUID | None = None,
     chapter_id: UUID | None = None,
     save_raw_extraction: bool = False,
+    # P3 (D2 + D2a + D3 + D9): hierarchy threading + async summary enqueue.
+    # When hierarchy_paths supplied: pass2_writer MERGEs Book/Part/Chapter/Scene
+    # in same Tx before entity writes. When summary_enqueue supplied:
+    # after successful write, enqueue summary.chapter (always) + on
+    # is_last_chapter_of_book, also summary.part × N + summary.book.
+    hierarchy_paths: HierarchyPaths | None = None,
+    is_last_chapter_of_book: bool = False,
+    book_parts: list[tuple[str, str, str]] | None = None,  # for book-end: [(part_id, part_path, part_index), ...]
+    embedding_model_uuid: str | None = None,
+    embedding_dimension: int | None = None,
+    summary_enqueue: SummaryEnqueueFn | None = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points.
 
@@ -469,6 +482,7 @@ async def _run_pipeline(
         facts=fact_cands,
         extraction_model=model_ref,
         anchors=anchors,
+        hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
     )
     write_elapsed = time.perf_counter() - write_started
     await _emit_log(
@@ -491,7 +505,94 @@ async def _run_pipeline(
             "duration_ms": int(write_elapsed * 1000),
         },
     )
+
+    # P3 (D3): async summary enqueue. Only fires when caller wired all the
+    # P3 dependencies (hierarchy_paths + summary_enqueue + embedding model
+    # info). Chat-turn path + legacy callers don't trigger.
+    if (
+        hierarchy_paths is not None
+        and summary_enqueue is not None
+        and embedding_model_uuid is not None
+        and embedding_dimension is not None
+    ):
+        await _enqueue_chapter_and_maybe_book_summaries(
+            summary_enqueue=summary_enqueue,
+            hierarchy_paths=hierarchy_paths,
+            user_id=user_id,
+            project_id=project_id or "",
+            job_id=job_id,
+            model_ref=model_ref,
+            embedding_model_uuid=embedding_model_uuid,
+            embedding_dimension=embedding_dimension,
+            is_last_chapter_of_book=is_last_chapter_of_book,
+            book_parts=book_parts or [],
+        )
+
     return write_result
+
+
+async def _enqueue_chapter_and_maybe_book_summaries(
+    *,
+    summary_enqueue: SummaryEnqueueFn,
+    hierarchy_paths: HierarchyPaths,
+    user_id: str,
+    project_id: str,
+    job_id: str,
+    model_ref: str,
+    embedding_model_uuid: str,
+    embedding_dimension: int,
+    is_last_chapter_of_book: bool,
+    book_parts: list[tuple[str, str, str]],
+) -> None:
+    """Always enqueue summary.chapter for this chapter. On is_last_chapter,
+    additionally enqueue summary.part per book_parts + summary.book.
+
+    The summary_processor's D9 defensive check verifies all children exist
+    before generating part/book summaries — caller's is_last_chapter is a
+    HINT, not a hard precondition.
+    """
+    # 1. Chapter summary — always.
+    await summary_enqueue(SummarizeMessage(
+        level="chapter",
+        node_path=hierarchy_paths.chapter_path,
+        node_id=hierarchy_paths.chapter_id,
+        book_id=hierarchy_paths.book_id,
+        user_id=user_id,
+        project_id=project_id,
+        job_id=job_id,
+        model_ref=model_ref,
+        embedding_model_uuid=embedding_model_uuid,
+        embedding_dimension=embedding_dimension,
+    ))
+    if not is_last_chapter_of_book:
+        return
+    # 2. Part summaries — one per (part_id, part_path) for the book.
+    for part_id, part_path, _part_index in book_parts:
+        await summary_enqueue(SummarizeMessage(
+            level="part",
+            node_path=part_path,
+            node_id=part_id,
+            book_id=hierarchy_paths.book_id,
+            user_id=user_id,
+            project_id=project_id,
+            job_id=job_id,
+            model_ref=model_ref,
+            embedding_model_uuid=embedding_model_uuid,
+            embedding_dimension=embedding_dimension,
+        ))
+    # 3. Book summary — last.
+    await summary_enqueue(SummarizeMessage(
+        level="book",
+        node_path=hierarchy_paths.book_path,
+        node_id=hierarchy_paths.book_id,
+        book_id=hierarchy_paths.book_id,
+        user_id=user_id,
+        project_id=project_id,
+        job_id=job_id,
+        model_ref=model_ref,
+        embedding_model_uuid=embedding_model_uuid,
+        embedding_dimension=embedding_dimension,
+    ))
 
 
 async def extract_pass2_chat_turn(
@@ -568,6 +669,14 @@ async def extract_pass2_chapter(
     book_id: UUID | None = None,
     chapter_id: UUID | None = None,
     save_raw_extraction: bool = False,
+    # P3 (D2 + D3 + D9): hierarchy + async summary kwargs passthrough.
+    # See _run_pipeline docstring for semantics.
+    hierarchy_paths: HierarchyPaths | None = None,
+    is_last_chapter_of_book: bool = False,
+    book_parts: list[tuple[str, str, str]] | None = None,
+    embedding_model_uuid: str | None = None,
+    embedding_dimension: int | None = None,
+    summary_enqueue: SummaryEnqueueFn | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -602,4 +711,10 @@ async def extract_pass2_chapter(
         book_id=book_id,
         chapter_id=chapter_id,
         save_raw_extraction=save_raw_extraction,
+        hierarchy_paths=hierarchy_paths,
+        is_last_chapter_of_book=is_last_chapter_of_book,
+        book_parts=book_parts,
+        embedding_model_uuid=embedding_model_uuid,
+        embedding_dimension=embedding_dimension,
+        summary_enqueue=summary_enqueue,
     )

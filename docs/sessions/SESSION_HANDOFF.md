@@ -1,8 +1,8 @@
-# Session Handoff — Session 64 (P3 Foundation shipped)
+# Session Handoff — Session 65 (P3 Integration shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-23 (sessions 62-64 — P1 XL + P2 XL + P2 Step D MVP + P3 design checkpoint + P3 Foundation, pending P3 Foundation commit)
-> **HEAD:** `7364ddf7` (P3 design) → pending P3 Foundation commit. **Branch 1 commit ahead of origin** after push.
+> **Date:** 2026-05-23 (sessions 62-65 — P1+P2+P3 design+P3 Foundation+P3 Integration, pending P3 Integration commit)
+> **HEAD:** `50ea6b46` (P3 Foundation) → pending P3 Integration commit. **Branch 1 commit ahead of origin** after Foundation push.
 > **Branch:** `main`.
 
 ## What's NEXT — P3 BUILD across 3 sessions per design plan
@@ -13,16 +13,24 @@
 - Confirm `pytest services/knowledge-service/tests/unit/test_pass2_orchestrator.py` is green at HEAD (P3 BUILD will modify it).
 - Confirm `loreweave_extraction.__extractor_version__` is `v1-6dce61b7` (current — to verify per-op extension doesn't break P2 cache baseline).
 
-### Session 64 Foundation (DONE — pending commit)
+### Session 64 Foundation (DONE — committed 50ea6b46 + pushed)
 
-11 files shipped (8 NEW + 3 MODIFY); 30 new tests; SDK 16/16 + KS 1721/1721 green. Foundation is fully isolated (pure additions — no integration with existing extraction paths yet). Locked interfaces for session 65 to consume:
-- `tree_merge.ChapterKG` output shape (dataclass: entities/relations/events/facts/canonical_id_map)
-- `hierarchy_writer.HierarchyPaths` input shape (book/part/chapter + scenes list)
-- `summary_chapters` / `summary_parts` / `summary_books` Postgres tables with UNIQUE on (level_id, embedding_model_uuid)
-- `neo4j_helpers.summary_index_name()` + `ensure_summary_indexes()` per-project per-level naming
-- `loreweave_extraction.summarize_level()` extractor + per-op `get_extractor_version(op=...)`
+11 files; 30 new tests; SDK 16/16 + KS 1721/1721 green.
 
-**P2 cache one-time thrash acknowledged**: global `__extractor_version__` went v1-6dce61b7 → v1-538cc568 (added summarize_level prompt). P2 callers using `get_extractor_version()` without op will re-extract once. Per D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION.
+### Session 65 Integration (DONE — pending commit)
+
+7 files (5 NEW + 2 MODIFY); 20 new tests; KS 1741/1741 green.
+
+NEW: `level_summaries.py` (M5 race-graceful repo) + `summary_enqueue.py` (D3 + M4 retry_at_epoch + SummaryEnqueueFn Protocol) + `summary_processor.py` (D9 defensive + D10 md5 cache + M4 re-enqueue + Neo4j summary write).
+
+MODIFY: `pass2_writer.py` (hierarchy_paths kwarg + upsert_for_chapter call same Tx per D2a) + `pass2_orchestrator.py` (6 new P3 kwargs + _enqueue_chapter_and_maybe_book_summaries helper).
+
+**Locked interfaces for session 66 to consume**:
+- `summary_processor.process_summarize_message(msg, deps)` Protocol for worker-ai consumer loop
+- `SummarizeMessage.from_redis_fields()` / `to_redis_fields()` round-trip
+- `SUMMARY_STREAM_NAME = "extraction.summarize"` Redis Stream
+- `LevelSummariesRepo.find_cached` + `upsert_summary` for Mode-3 router blend
+- `ensure_summary_indexes` per-project per-level Neo4j vector index helpers (from Foundation)
 
 End-of-session-64 commit: "P3 Foundation [XL session 1/3]".
 

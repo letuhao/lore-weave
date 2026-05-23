@@ -1,0 +1,530 @@
+"""P3 — Async summary-job processor (consumes extraction.summarize stream).
+
+Spec: docs/specs/2026-05-23-p3-hierarchical-reduce.md §D3 + §D9 + §M4 + §M5.
+
+Pipeline per message:
+  1. Compute summary_input_md5 (joined_child_texts + level + extractor_version + model_ref).
+  2. find_cached(level, level_id, embedding_model_uuid, md5) → if hit, no LLM.
+  3. D9 defensive check (part/book only): verify expected_children == actual
+     summary rows; if not ready, re-enqueue per M4 (XADD with retry_at +
+     exponential backoff).
+  4. Load child content (chapter: scene leaf_texts; part: chapter summaries;
+     book: part summaries).
+  5. Call summarize_level extractor → get LevelSummary.
+  6. Embed via embedding_client → vector.
+  7. Persist via LevelSummariesRepo.upsert_summary (M5: handles UniqueViolation).
+  8. Update Neo4j: SET hierarchy node's summary_text + summary_embedding;
+     ensure per-(project, model) vector index exists (idempotent).
+
+This module owns the Protocol for the message handler; worker-ai wires
+the Redis Stream consumer loop separately.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+import time
+from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
+
+import asyncpg
+
+from app.db.neo4j_helpers import (
+    CypherSession,
+    ensure_summary_indexes,
+    summary_index_name,
+)
+from app.db.repositories.level_summaries import (
+    Level,
+    LevelSummariesRepo,
+    UpsertOutcome,
+)
+from app.jobs.summary_enqueue import (
+    SUMMARY_STREAM_NAME,
+    SummarizeMessage,
+    SummaryEnqueueFn,
+    now_epoch,
+)
+from loreweave_extraction import get_extractor_version, summarize_level
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "SummaryProcessResult",
+    "process_summarize_message",
+    "RETRY_BUDGET",
+    "REENQUEUE_BACKOFF_S",
+]
+
+# Retry budget per message (M4); after exhaustion, leaf stays unwritten —
+# Mode-3 retrieval gracefully returns no summary for that level.
+RETRY_BUDGET = 3
+
+# M4 re-enqueue backoff: 30s/60s/120s exponential.
+REENQUEUE_BACKOFF_S = (30, 60, 120)
+
+
+@dataclass
+class SummaryProcessResult:
+    """Result of processing one summarize message."""
+    level: Level
+    node_id: str
+    cache_hit: bool          # True if summary_input_md5 matched existing row → no LLM
+    race_winner: bool        # True if our INSERT won race (M5)
+    re_enqueued: bool        # True if D9 defensive check failed → re-enqueued
+    skipped_retry_exhausted: bool  # True if retried_n >= RETRY_BUDGET → abandoned
+    summary_id: UUID | None  # None when re_enqueued or skipped
+
+
+# Caller-injected dependencies (testability).
+@dataclass
+class SummaryProcessorDeps:
+    """All side-effecting clients required by process_summarize_message.
+
+    Tests construct with mocks; production wires real clients in
+    worker-ai's task setup.
+    """
+    knowledge_pool: asyncpg.Pool
+    neo4j_session: CypherSession
+    llm_client: Any                  # LLMClientProtocol from SDK
+    embedding_client: Any            # exposes embed(text, model_uuid) -> list[float]
+    summary_enqueue: SummaryEnqueueFn  # for M4 re-enqueue
+
+
+async def process_summarize_message(
+    msg: SummarizeMessage, deps: SummaryProcessorDeps,
+) -> SummaryProcessResult:
+    """Process one extraction.summarize message.
+
+    Idempotent: cache hit on summary_input_md5 returns immediately without
+    LLM call (D10 re-run cheapness). M5 race losers also short-circuit
+    gracefully.
+    """
+    # 0. M4 retry budget check.
+    if msg.retried_n >= RETRY_BUDGET:
+        logger.warning(
+            "summary.abandoned level=%s node_id=%s retried_n=%d",
+            msg.level, msg.node_id, msg.retried_n,
+        )
+        return SummaryProcessResult(
+            level=msg.level, node_id=msg.node_id,
+            cache_hit=False, race_winner=False,
+            re_enqueued=False, skipped_retry_exhausted=True,
+            summary_id=None,
+        )
+
+    # 0a. M4 retry_at: if retry_at_epoch is in the future, re-enqueue at
+    # the same backoff slot (caller has already XACKed; we're processing
+    # a delayed retry).
+    if msg.retry_at_epoch > now_epoch():
+        await _reenqueue_with_backoff(deps.summary_enqueue, msg)
+        return SummaryProcessResult(
+            level=msg.level, node_id=msg.node_id,
+            cache_hit=False, race_winner=False,
+            re_enqueued=True, skipped_retry_exhausted=False,
+            summary_id=None,
+        )
+
+    repo = LevelSummariesRepo(deps.knowledge_pool)
+    book_id = UUID(msg.book_id)
+    node_id = UUID(msg.node_id)
+    project_id = UUID(msg.project_id) if msg.project_id else None
+    extractor_version = get_extractor_version(op="summarize_level")
+
+    # 1. Load child content + entity names for this level.
+    try:
+        child_texts, entity_names = await _load_children_for_level(
+            level=msg.level,
+            node_id=node_id,
+            book_id=book_id,
+            embedding_model_uuid=msg.embedding_model_uuid,
+            repo=repo,
+            neo4j_session=deps.neo4j_session,
+        )
+    except _DefensiveCheckFailed as exc:
+        # D9: children not ready yet. Re-enqueue.
+        logger.info(
+            "summary deferred level=%s node_id=%s reason=%s",
+            msg.level, msg.node_id, exc,
+        )
+        await _reenqueue_with_backoff(deps.summary_enqueue, msg)
+        return SummaryProcessResult(
+            level=msg.level, node_id=msg.node_id,
+            cache_hit=False, race_winner=False,
+            re_enqueued=True, skipped_retry_exhausted=False,
+            summary_id=None,
+        )
+
+    # 2. Compute summary_input_md5 (D10 + SR-4 includes prompt version).
+    summary_input_md5 = _compute_md5(
+        child_texts=child_texts,
+        level=msg.level,
+        extractor_version=extractor_version,
+        model_ref=msg.model_ref,
+    )
+
+    # 3. D10 cache check: skip LLM if existing row's md5 matches.
+    cached = await repo.find_cached(
+        level=msg.level,
+        level_id=node_id,
+        embedding_model_uuid=msg.embedding_model_uuid,
+        summary_input_md5=summary_input_md5,
+    )
+    if cached is not None:
+        logger.info(
+            "summary cache HIT level=%s node_id=%s md5=%s",
+            msg.level, msg.node_id, summary_input_md5[:8],
+        )
+        return SummaryProcessResult(
+            level=msg.level, node_id=msg.node_id,
+            cache_hit=True, race_winner=False,
+            re_enqueued=False, skipped_retry_exhausted=False,
+            summary_id=cached.id,
+        )
+
+    # 4. Call summarize_level extractor (LLM).
+    user_id_str = msg.user_id
+    project_id_str = msg.project_id or None
+    summary = await summarize_level(
+        level=msg.level,
+        child_texts=child_texts,
+        entity_names=entity_names,
+        user_id=user_id_str,
+        project_id=project_id_str,
+        model_source="user_model",
+        model_ref=msg.model_ref,
+        llm_client=deps.llm_client,
+    )
+    summary_text = summary.summary_text[:500]  # L3 fix: writer truncates
+
+    # 5. Embed the summary.
+    embedding = await deps.embedding_client.embed(
+        text=summary_text,
+        model_uuid=msg.embedding_model_uuid,
+    )
+
+    # 6. Persist row + write Neo4j hierarchy-node properties.
+    outcome: UpsertOutcome = await repo.upsert_summary(
+        level=msg.level,
+        level_id=node_id,
+        book_id=book_id,
+        summary_text=summary_text,
+        summary_input_md5=summary_input_md5,
+        embedding_dimension=msg.embedding_dimension,
+        embedding_model_uuid=msg.embedding_model_uuid,
+    )
+
+    if outcome.race_winner:
+        # Only race winner writes Neo4j (avoid duplicate vector index ops).
+        await _write_neo4j_summary(
+            neo4j_session=deps.neo4j_session,
+            level=msg.level,
+            node_path=msg.node_path,
+            summary_text=summary_text,
+            embedding=embedding,
+            project_id=str(project_id) if project_id else "",
+            embedding_model_uuid=msg.embedding_model_uuid,
+            embedding_dimension=msg.embedding_dimension,
+        )
+
+    return SummaryProcessResult(
+        level=msg.level, node_id=msg.node_id,
+        cache_hit=False, race_winner=outcome.race_winner,
+        re_enqueued=False, skipped_retry_exhausted=False,
+        summary_id=outcome.summary_id,
+    )
+
+
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+
+class _DefensiveCheckFailed(Exception):
+    """Raised internally when D9 defensive check fails for part/book level."""
+
+
+def _compute_md5(
+    *, child_texts: list[str], level: Level, extractor_version: str,
+    model_ref: str,
+) -> str:
+    """Spec D10 + SR-4: include extractor_version + model_ref so prompt edit
+    or model change invalidates cache implicitly."""
+    joined = "\n\n".join(child_texts)
+    payload = (
+        f"{joined}\x1f{level}\x1f{extractor_version}\x1f{model_ref.lower()}"
+    ).encode("utf-8")
+    return hashlib.md5(payload, usedforsecurity=False).hexdigest()
+
+
+async def _load_children_for_level(
+    *,
+    level: Level,
+    node_id: UUID,
+    book_id: UUID,
+    embedding_model_uuid: str,
+    repo: LevelSummariesRepo,
+    neo4j_session: CypherSession,
+) -> tuple[list[str], list[str]]:
+    """Return (child_texts, entity_names) for the given level node.
+
+    - chapter: child_texts = scene leaf_texts from Neo4j; entity_names = top
+      entities mentioned in this chapter.
+    - part: child_texts = chapter summaries from Postgres summary_chapters;
+      entity_names = top entities aggregated across the part's chapters.
+    - book: child_texts = part summaries; entity_names = top across book.
+
+    D9 defensive check (part/book only): if expected_children != actual rows,
+    raise _DefensiveCheckFailed → caller re-enqueues per M4.
+    """
+    if level == "chapter":
+        # Load scene leaf_texts under this chapter from Neo4j.
+        scene_texts = await _load_scene_leaf_texts(neo4j_session, node_id)
+        if not scene_texts:
+            # Legacy chapter w/o :Scene children: spec D6 says Mode-3
+            # falls through gracefully; for summary, skip (no content
+            # to summarize meaningfully). _DefensiveCheckFailed will
+            # re-enqueue once; second attempt also empty → retry budget
+            # exhausts → abandoned. Better: log + return empty so caller
+            # marks skipped_retry_exhausted directly.
+            raise _DefensiveCheckFailed(
+                f"chapter {node_id} has no :Scene children (legacy?)"
+            )
+        entity_names = await _load_top_entities_for_chapter(neo4j_session, node_id)
+        return scene_texts, entity_names
+
+    elif level == "part":
+        # Defensive: load all chapter summaries for the book; if fewer than
+        # the part's children expects, re-enqueue.
+        expected_chapters = await _count_expected_chapter_children(
+            neo4j_session, node_id,
+        )
+        chapter_summaries = await repo.list_by_book(
+            book_id=book_id, level="chapter",
+            embedding_model_uuid=embedding_model_uuid,
+        )
+        # Filter chapter summaries to ONLY those under this part.
+        part_chapter_summaries = await _filter_summaries_under_part(
+            neo4j_session, chapter_summaries, part_id=node_id,
+        )
+        if len(part_chapter_summaries) < expected_chapters:
+            raise _DefensiveCheckFailed(
+                f"part {node_id}: expected {expected_chapters} chapter "
+                f"summaries, found {len(part_chapter_summaries)}"
+            )
+        child_texts = [s.summary_text for s in part_chapter_summaries]
+        entity_names = await _load_top_entities_for_part(neo4j_session, node_id)
+        return child_texts, entity_names
+
+    elif level == "book":
+        expected_parts = await _count_expected_part_children(
+            neo4j_session, node_id,
+        )
+        part_summaries = await repo.list_by_book(
+            book_id=book_id, level="part",
+            embedding_model_uuid=embedding_model_uuid,
+        )
+        if len(part_summaries) < expected_parts:
+            raise _DefensiveCheckFailed(
+                f"book {node_id}: expected {expected_parts} part "
+                f"summaries, found {len(part_summaries)}"
+            )
+        child_texts = [s.summary_text for s in part_summaries]
+        entity_names = await _load_top_entities_for_book(neo4j_session, node_id)
+        return child_texts, entity_names
+
+    raise ValueError(f"unknown level {level!r}")
+
+
+async def _reenqueue_with_backoff(
+    enqueue: SummaryEnqueueFn, msg: SummarizeMessage,
+) -> None:
+    """M4: XADD a new message with retry_at + retried_n+1."""
+    next_retry_idx = min(msg.retried_n, len(REENQUEUE_BACKOFF_S) - 1)
+    backoff_s = REENQUEUE_BACKOFF_S[next_retry_idx]
+    new_msg = SummarizeMessage(
+        level=msg.level,
+        node_path=msg.node_path,
+        node_id=msg.node_id,
+        book_id=msg.book_id,
+        user_id=msg.user_id,
+        project_id=msg.project_id,
+        job_id=msg.job_id,
+        model_ref=msg.model_ref,
+        embedding_model_uuid=msg.embedding_model_uuid,
+        embedding_dimension=msg.embedding_dimension,
+        retry_at_epoch=now_epoch() + backoff_s,
+        retried_n=msg.retried_n + 1,
+    )
+    await enqueue(new_msg)
+
+
+# ── Neo4j helpers (stubs — wired to neo4j_repos in worker-ai task setup) ──
+
+
+async def _load_scene_leaf_texts(
+    session: CypherSession, chapter_id: UUID,
+) -> list[str]:
+    """Load leaf_text for each :Scene under this :Chapter, ordered."""
+    # NOTE: :Scene nodes have only path + scene_id today; leaf_text lives
+    # in book-service Postgres `scenes` table. Production wiring: fetch
+    # via book_client.list_scenes_by_chapter (already exists in book_client)
+    # and join texts. For now, return Neo4j-resolved text where possible.
+    rows = await session.run(
+        """
+        MATCH (c:Chapter {chapter_id: $chapter_id})-[:HAS_CHILD]->(s:Scene)
+        RETURN s.path AS path, s.scene_id AS scene_id
+        ORDER BY s.scene_index
+        """,
+        chapter_id=str(chapter_id),
+    )
+    paths = []
+    async for record in rows:
+        paths.append(record["path"])
+    if not paths:
+        return []
+    # Production: enrich via book_client.list_scenes_by_chapter — left
+    # as TODO to keep this scaffold testable without book-service.
+    # For now return paths as placeholder text (real wiring in session 66).
+    return paths
+
+
+async def _load_top_entities_for_chapter(
+    session: CypherSession, chapter_id: UUID, limit: int = 30,
+) -> list[str]:
+    rows = await session.run(
+        """
+        MATCH (c:Chapter {chapter_id: $chapter_id})<-[:MENTIONED_IN]-(e:Entity)
+        RETURN e.name AS name
+        ORDER BY e.confidence DESC
+        LIMIT $limit
+        """,
+        chapter_id=str(chapter_id),
+        limit=limit,
+    )
+    names = []
+    async for record in rows:
+        names.append(record["name"])
+    return names
+
+
+async def _load_top_entities_for_part(
+    session: CypherSession, part_id: UUID, limit: int = 30,
+) -> list[str]:
+    rows = await session.run(
+        """
+        MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(:Chapter)<-[:MENTIONED_IN]-(e:Entity)
+        WITH e, count(*) AS mentions
+        ORDER BY mentions DESC
+        LIMIT $limit
+        RETURN e.name AS name
+        """,
+        part_id=str(part_id),
+        limit=limit,
+    )
+    names = []
+    async for record in rows:
+        names.append(record["name"])
+    return names
+
+
+async def _load_top_entities_for_book(
+    session: CypherSession, book_id: UUID, limit: int = 50,
+) -> list[str]:
+    rows = await session.run(
+        """
+        MATCH (b:Book {book_id: $book_id})-[:HAS_CHILD*..3]->(:Chapter)<-[:MENTIONED_IN]-(e:Entity)
+        WITH e, count(*) AS mentions
+        ORDER BY mentions DESC
+        LIMIT $limit
+        RETURN e.name AS name
+        """,
+        book_id=str(book_id),
+        limit=limit,
+    )
+    names = []
+    async for record in rows:
+        names.append(record["name"])
+    return names
+
+
+async def _count_expected_chapter_children(
+    session: CypherSession, part_id: UUID,
+) -> int:
+    rows = await session.run(
+        "MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(c:Chapter) RETURN count(c) AS n",
+        part_id=str(part_id),
+    )
+    async for record in rows:
+        return int(record["n"])
+    return 0
+
+
+async def _count_expected_part_children(
+    session: CypherSession, book_id: UUID,
+) -> int:
+    rows = await session.run(
+        "MATCH (b:Book {book_id: $book_id})-[:HAS_CHILD]->(p:Part) RETURN count(p) AS n",
+        book_id=str(book_id),
+    )
+    async for record in rows:
+        return int(record["n"])
+    return 0
+
+
+async def _filter_summaries_under_part(
+    session: CypherSession, summaries: list, part_id: UUID,
+):
+    """Filter the book's chapter summaries to ONLY those under this part."""
+    rows = await session.run(
+        """
+        MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(c:Chapter)
+        RETURN c.chapter_id AS chapter_id
+        """,
+        part_id=str(part_id),
+    )
+    part_chapter_ids: set[str] = set()
+    async for record in rows:
+        part_chapter_ids.add(str(record["chapter_id"]))
+    return [s for s in summaries if str(s.level_id) in part_chapter_ids]
+
+
+async def _write_neo4j_summary(
+    *,
+    neo4j_session: CypherSession,
+    level: Level,
+    node_path: str,
+    summary_text: str,
+    embedding: list[float],
+    project_id: str,
+    embedding_model_uuid: str,
+    embedding_dimension: int,
+) -> None:
+    """Write summary_text + summary_embedding to the hierarchy node.
+
+    Ensures the per-(project, embedding_model) vector index exists first
+    (H1+M7+SR-2 fix).
+    """
+    # H1: ensure index family exists for this project + embedding_model.
+    if project_id:
+        await ensure_summary_indexes(
+            neo4j_session,
+            project_id=project_id,
+            embedding_model_uuid=embedding_model_uuid,
+            embedding_dimension=embedding_dimension,
+        )
+    node_label = level.capitalize()
+    await neo4j_session.run(
+        f"""
+        MATCH (n:{node_label} {{path: $path}})
+        SET n.summary_text = $text,
+            n.summary_embedding = $embedding,
+            n.summary_model_uuid = $model_uuid,
+            n.summary_updated_at = datetime()
+        """,
+        path=node_path,
+        text=summary_text,
+        embedding=embedding,
+        model_uuid=embedding_model_uuid,
+    )

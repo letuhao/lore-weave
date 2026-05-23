@@ -42,6 +42,7 @@ from app.extraction.entity_resolver import (
     build_anchor_index,
     resolve_or_merge_entity,
 )
+from app.extraction.hierarchy_writer import HierarchyPaths, upsert_for_chapter
 from app.extraction.injection_defense import neutralize_injection
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
@@ -95,6 +96,13 @@ async def write_pass2_extraction(
     extraction_model: str = "llm-v1",
     anchors: list[Anchor] | None = None,
     alias_map_repo: EntityAliasMapRepo | None = None,
+    # P3 (D2 + D2a): optional hierarchy paths. When supplied, the writer
+    # MERGEs the Book/Part/Chapter/Scene hierarchy in the same session
+    # BEFORE entity writes (per D2a Tx boundary — same CypherSession,
+    # which IS the chapter Tx in the existing per-chapter pattern).
+    # When None: legacy flat-write behavior preserved (chat_turn path +
+    # back-compat for callers that don't yet pass hierarchy).
+    hierarchy_paths: HierarchyPaths | None = None,
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -122,6 +130,15 @@ async def write_pass2_extraction(
     relation_list = relations or []
     event_list = events or []
     fact_list = facts or []
+
+    # P3 (D2 + D2a): MERGE Book/Part/Chapter/Scene hierarchy BEFORE entity
+    # writes when hierarchy_paths supplied. Same CypherSession = same Tx
+    # per chapter — partial failure rolls back hierarchy + entities together.
+    # Per-entity :MENTIONED_IN -> :Scene edges are NOT written here in the
+    # MVP (P2 chapter-cache loses per-scene attribution); per-scene edges
+    # arrive with D-P2-PER-SCENE-FANOUT.
+    if hierarchy_paths is not None:
+        await upsert_for_chapter(session, hierarchy_paths)
 
     # K13.0 resolver: pre-build anchor index. Empty (default) preserves
     # pre-K13.0 behavior where every candidate mints a new :Entity.
