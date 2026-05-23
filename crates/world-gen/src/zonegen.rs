@@ -332,6 +332,157 @@ pub fn render_all_zones(
     rgb
 }
 
+/// Drainage thresholds. **Network membership** is decided by the river-tree
+/// walker (`build_river_network`) — only outlets with at least `OUTLET_T`
+/// drainage start a network, and tributaries below `TRIB_T` are pruned so the
+/// network is a clean tree (source → confluence → outlet), not noise on every
+/// slope. **Paint colour** within the network is then split by drainage:
+/// cells above `RIVER_T` paint as a fuller river, the rest as a stream.
+const OUTLET_T: u32 = 400;
+const TRIB_T: u32 = 120;
+/// River / stream colours.
+const STREAM_COLOR: [u8; 3] = [90, 140, 195];
+const RIVER_COLOR: [u8; 3] = [42, 90, 165];
+
+/// Drainage accumulation per land cell on a (depression-filled) eroded grid.
+/// Each land cell has a D8 **receiver** = its strictly-lowest neighbour; if no
+/// neighbour is lower, the receiver is any adjacent void cell (the sea). We
+/// then walk land cells in **descending elevation** and propagate
+/// `drainage[receiver] += drainage[self] + 1`, so a downstream cell carries
+/// the count of every upstream contributor. Void cells stay 0. Returns
+/// `(drainage, receiver)` so the river-network walker can re-use the topology.
+fn compute_drainage(
+    elev: &[f32],
+    is_land: &[bool],
+    w: usize,
+    h: usize,
+) -> (Vec<u32>, Vec<usize>) {
+    let n = w * h;
+    const OFF: [(isize, isize); 8] = [
+        (-1, -1), (0, -1), (1, -1),
+        (-1, 0),           (1, 0),
+        (-1, 1),  (0, 1),  (1, 1),
+    ];
+    let nb_idx = |x: isize, y: isize| -> Option<usize> {
+        if x < 0 || y < 0 || x >= w as isize || y >= h as isize {
+            None
+        } else {
+            Some(y as usize * w + x as usize)
+        }
+    };
+    let mut receiver = vec![usize::MAX; n];
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            if !is_land[i] {
+                continue;
+            }
+            let mut best_neigh = usize::MAX;
+            let mut best_e = elev[i];
+            for &(dx, dy) in &OFF {
+                if let Some(j) = nb_idx(x as isize + dx, y as isize + dy) {
+                    if elev[j] < best_e {
+                        best_e = elev[j];
+                        best_neigh = j;
+                    }
+                }
+            }
+            if best_neigh == usize::MAX {
+                // No strictly-lower neighbour — drain to any adjacent void.
+                for &(dx, dy) in &OFF {
+                    if let Some(j) = nb_idx(x as isize + dx, y as isize + dy) {
+                        if !is_land[j] {
+                            best_neigh = j;
+                            break;
+                        }
+                    }
+                }
+            }
+            receiver[i] = best_neigh;
+        }
+    }
+    let mut order: Vec<u32> = (0..n as u32).filter(|&i| is_land[i as usize]).collect();
+    order.sort_by(|&a, &b| {
+        elev[b as usize]
+            .partial_cmp(&elev[a as usize])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut drainage = vec![0u32; n];
+    for &i in &order {
+        let i = i as usize;
+        drainage[i] += 1;
+        let r = receiver[i];
+        if r != usize::MAX && is_land[r] {
+            drainage[r] += drainage[i];
+        }
+    }
+    (drainage, receiver)
+}
+
+/// Tree-walker that extracts the **river network** from the receiver tree:
+/// start at every coastal outlet whose drainage ≥ `outlet_t`, then walk
+/// upstream following the highest-drainage child (the mainstream). Other
+/// children are admitted as tributaries only if their drainage ≥ `trib_t` —
+/// smaller branches are pruned so the network is a clean tree (source →
+/// confluence → outlet) instead of scribbles on every slope. Returns a mask
+/// of land cells that belong to the network.
+fn build_river_network(
+    receiver: &[usize],
+    drainage: &[u32],
+    is_land: &[bool],
+    outlet_t: u32,
+    trib_t: u32,
+) -> Vec<bool> {
+    let n = receiver.len();
+    // Inverse: for each downstream cell, list its upstream contributors.
+    let mut children: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for i in 0..n {
+        if !is_land[i] {
+            continue;
+        }
+        let r = receiver[i];
+        if r != usize::MAX && is_land[r] {
+            children[r].push(i as u32);
+        }
+    }
+    // Mainstream first: highest-drainage upstream contributor leads.
+    for kids in children.iter_mut() {
+        kids.sort_by(|&a, &b| drainage[b as usize].cmp(&drainage[a as usize]));
+    }
+    // Outlets: land cells whose receiver is sea (void / MAX).
+    let outlets = (0..n).filter(|&i| {
+        is_land[i] && {
+            let r = receiver[i];
+            r == usize::MAX || !is_land[r]
+        } && drainage[i] >= outlet_t
+    });
+
+    let mut is_river = vec![false; n];
+    let mut stack: Vec<u32> = Vec::new();
+    for o in outlets {
+        stack.push(o as u32);
+    }
+    while let Some(c) = stack.pop() {
+        let ci = c as usize;
+        is_river[ci] = true;
+        let kids = &children[ci];
+        if kids.is_empty() {
+            continue;
+        }
+        // Mainstream = first child (highest drainage). Always extend it (it
+        // carries this cell's flow upstream); the walk naturally terminates
+        // when the mainstream tip has no children.
+        stack.push(kids[0]);
+        // Tributaries = the remaining children, admitted only if big enough.
+        for &k in &kids[1..] {
+            if drainage[k as usize] >= trib_t {
+                stack.push(k);
+            }
+        }
+    }
+    is_river
+}
+
 /// Beach band width (cells/pixels): plains/hills land within this many hops
 /// from a void cell tapers down to the shore (B3b-2 coast). Wider ⇒ broader
 /// shoreline.
@@ -514,6 +665,15 @@ pub fn render_all_zones_eroded(
         }
     }
 
+    // Hydrology MVP: drainage on the eroded (and coast-shaped) grid → rivers.
+    // Cells whose upstream count exceeds STREAM_T/RIVER_T paint blue, overriding
+    // hypso & beach (a river flowing through a beach reads as the river). The
+    // masks are dilated 1 step so rivers/streams paint at least 3 px wide and
+    // stay visible at viewing scale.
+    let (drainage, receiver) = compute_drainage(&elev, &is_land, w, h);
+    // Extract the clean river tree (source → confluence → outlet).
+    let in_network = build_river_network(&receiver, &drainage, &is_land, OUTLET_T, TRIB_T);
+
     // Re-range over land only (erosion may have lowered peaks/filled pits).
     let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
     for i in 0..n {
@@ -547,7 +707,65 @@ pub fn render_all_zones_eroded(
         rgb[i * 3 + 1] = c[1];
         rgb[i * 3 + 2] = c[2];
     }
+
+    // River pass: variable-width stamps so river width tracks drainage
+    // (mainstems near the mouth = wide+dark; tributaries near headwaters
+    // = thin+light). Painted in ASCENDING drainage so big rivers overlap
+    // smaller ones at confluences (mainstream dominates the seam).
+    let mut river_cells: Vec<(u32, u32)> = (0..n as u32)
+        .filter(|&i| in_network[i as usize])
+        .map(|i| (i, drainage[i as usize]))
+        .collect();
+    river_cells.sort_by_key(|&(_, d)| d);
+    for (idx, d) in river_cells {
+        let i = idx as usize;
+        let (px, py) = (i % w, i / w);
+        let (radius, color) = river_brush(d);
+        stamp_disk(&mut rgb, w, h, px, py, radius, color);
+    }
+
     rgb
+}
+
+/// Map a cell's drainage to a (radius, colour) for the river brush. Log scale
+/// on drainage so width grows from headwater (~1 px) to mainstem (~3.5 px)
+/// over the typical drainage range; colour lerps light→dark blue accordingly.
+fn river_brush(drainage: u32) -> (f32, [u8; 3]) {
+    let d_lo = (OUTLET_T as f32).max(1.0);
+    let d_hi = 8_000f32.max(d_lo * 2.0);
+    let t = ((drainage as f32).max(1.0).ln() - d_lo.ln()) / (d_hi.ln() - d_lo.ln());
+    let t = t.clamp(0.0, 1.0);
+    let radius = 0.7 + 3.0 * t;
+    let color = [
+        (STREAM_COLOR[0] as f32 + (RIVER_COLOR[0] as f32 - STREAM_COLOR[0] as f32) * t) as u8,
+        (STREAM_COLOR[1] as f32 + (RIVER_COLOR[1] as f32 - STREAM_COLOR[1] as f32) * t) as u8,
+        (STREAM_COLOR[2] as f32 + (RIVER_COLOR[2] as f32 - STREAM_COLOR[2] as f32) * t) as u8,
+    ];
+    (radius, color)
+}
+
+/// Paint a filled disc of `radius` at pixel `(px, py)` with `color` into the
+/// RGB buffer (clipped to bounds).
+fn stamp_disk(rgb: &mut [u8], w: usize, h: usize, px: usize, py: usize, radius: f32, color: [u8; 3]) {
+    let r = radius.max(0.5);
+    let r2 = r * r;
+    let r_int = r.ceil() as isize;
+    for dy in -r_int..=r_int {
+        for dx in -r_int..=r_int {
+            if (dx * dx + dy * dy) as f32 > r2 {
+                continue;
+            }
+            let x = px as isize + dx;
+            let y = py as isize + dy;
+            if x < 0 || y < 0 || x >= w as isize || y >= h as isize {
+                continue;
+            }
+            let k = (y as usize * w + x as usize) * 3;
+            rgb[k] = color[0];
+            rgb[k + 1] = color[1];
+            rgb[k + 2] = color[2];
+        }
+    }
 }
 
 /// Hypsometric ramp `t ∈ [0,1]`: lowland green → upland tan → brown → snow.
@@ -733,6 +951,49 @@ mod tests {
             max_step < 0.05,
             "seam not continuous: max per-pixel step {max_step} (expected < 0.05)"
         );
+    }
+
+    #[test]
+    fn drainage_accumulates_downstream_on_a_ramp() {
+        // 5×1 land strip with a clean left→right downhill ramp; receiver of
+        // every cell is its right neighbour. Drainage should grow monotonically
+        // left→right: 1, 2, 3, 4, 5.
+        let w = 5;
+        let h = 1;
+        let elev = vec![5.0f32, 4.0, 3.0, 2.0, 1.0];
+        let is_land = vec![true; 5];
+        let (d, _r) = compute_drainage(&elev, &is_land, w, h);
+        assert_eq!(d, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn river_network_is_a_tree_from_outlets() {
+        // 4×3 grid where the rightmost column is sea (void). Land cells
+        // (cols 0-2) slope rightward, so every land cell's receiver is its
+        // right neighbour and the outlets are in column 2 (touching sea).
+        let w = 4;
+        let h = 3;
+        let mut elev = vec![0f32; w * h];
+        let mut is_land = vec![true; w * h];
+        for y in 0..h {
+            is_land[y * w + 3] = false;
+            elev[y * w + 3] = -1.0;
+            for x in 0..3 {
+                elev[y * w + x] = 3.0 - x as f32;
+            }
+        }
+        let (drainage, receiver) = compute_drainage(&elev, &is_land, w, h);
+        let net = build_river_network(&receiver, &drainage, &is_land, 1, 1);
+        // Every land cell should be in the network (small grid, outlet_t=1).
+        for i in 0..w * h {
+            if is_land[i] {
+                assert!(net[i], "land cell {i} should be in network");
+            }
+        }
+        // With outlet_t above the largest drainage, no outlet qualifies → empty.
+        let big = drainage.iter().copied().max().unwrap() + 1;
+        let empty = build_river_network(&receiver, &drainage, &is_land, big, 1);
+        assert!(empty.iter().all(|&b| !b));
     }
 
     #[test]
