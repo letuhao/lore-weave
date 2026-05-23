@@ -412,6 +412,165 @@ Hash-pin rebaseline (biome render changes; hypso unchanged so its pin stays).
 **Goal**: visual depth, mountain detail, soft transitions.
 **Complexity**: S. Estimate: 1 cycle, smaller than originally planned.
 
+#### v2.1b + v4 framework SHIPPED (2026-05-24) — W6 only + law-based eval rework
+
+**TL;DR:** what started as a W6 measurement-fix detour (E2 → E3 fractional)
+became a fundamental eval framework rework (v3 Earth-matching → v4 law-based)
+after PO insight: "we should be evaluating whether maps follow geographic
+*laws*, not whether they match Earth's specific biome distribution — every
+generated world is different, but laws apply to all of them."
+
+W6 ships as a **PO override** — measurably worse on metric (−0.36 mean even
+under v4) but PO judges the intermediate transition strip visually superior
+to the sharp 1-px biome flip without W6 (defined ecotone-like aesthetic).
+
+#### v2.1b: W6 only + E3 fractional classifier (interim)
+
+W6 ships, W9 deferred. Decision driven by **eval-framework incompatibility**
+discovered during BUILD:
+
+**Problem discovered:** W6 zone-seam blending produces blended RGB pixels
+between adjacent biomes (e.g. Tundra/Ice midpoint at `[208, 210, 208]` is ~50
+RGB from both canonicals). The original eval classifier was nearest-canonical
+with tolerance 40 → these blended pixels classified as `None` → polar scenarios
+dropped 3-15 composite points despite no visual regression. Three tolerance
+sweeps (40/50/60) all produced regression; tightest = mean −3.54.
+
+**Fix shipped — E3 fractional-contribution classifier** (`scripts/climate_eval.py`):
+- New `classify_pixel` returns `list[(biome, weight)] | None` instead of single
+  biome.
+- 2-nearest canonical lookup: if both within `NEAR_THRESHOLD = 55.0` RGB,
+  split inverse-distance weighted (closer biome → bigger weight, sum = 1.0);
+  if only nearest within → pure 1.0 (preserves pre-W6 baseline semantics for
+  non-blended pixels); if neither → None (river overlay / distant blend).
+- All `analyze_render` counters refactored int → float; `score_render` math
+  was already float-safe (KL, entropy, ratios).
+
+**Apples-to-apples measurement (W6 on/off, both under E3):**
+
+| Configuration | Mean composite |
+|---|---|
+| v3.0 baseline (E1/E2 nearest-canonical, pre-W6) | 76.65 |
+| noW6 + E3 fractional (`v3.1_noW6_E3.json`) | 72.34 |
+| **W6 + E3 fractional (`v3.1.json` — shipped)** | **72.17** |
+
+**Verdict**:
+- W6 vs noW6 under E3 = **−0.17 mean** (no significant change, all renders
+  within ±1.0, no regression ≥5pt, 3 renders improve slightly inc. snowball
+  +0.54).
+- E3 vs E1/E2 = −4.31 mean (semantics shift cost, not W6 cost). Fractional
+  counts treat seam pixels as fractional contributors to multiple biomes →
+  interior entropy rises universally → continentality scores compress. This is
+  the **proper** measurement; the old 76.65 was inflated by the classifier
+  ignoring blended pixels as None.
+- Headline: W6 is **architecturally good** (visual quality up, real-Earth-like
+  soft transitions) AND **metric-neutral** once the eval framework can read
+  blended pixels correctly.
+
+**Locked artifacts (this batch):**
+- `crates/world-gen/src/zonegen.rs` — W6 seam blend (RenderState caches
+  `subattr_idx_2_at` + `seam_w1_q`; `colorize_biome_with` blends w1·biome(i1)
+  + (1-w1)·biome(i2)). Hash pin updated to `b37691d0...`.
+- `scripts/climate_eval.py` — E3 fractional classifier + float counters.
+- `eval/baselines/v3.1.json` — new "to-beat" mean 72.17 (W6 + E3).
+- `eval/baselines/v3.1_noW6_E3.json` — diagnostic baseline preserved for
+  future regression triage (lets us isolate W6 cost vs eval-only cost in
+  retrospect).
+
+**W9 status**: deferred. The elev-modulated lightness path produced regression
+even under E3 in PoC; would need its own design pass (likely combine elev with
+biome-luminance preservation rather than naive RGB ±15%). Tracked in
+`docs/deferred/DEFERRED.md` as `v2.1b-W9-elev-modulation`.
+
+#### v4 law-based eval framework rework (the bigger ship)
+
+**Problem PO surfaced 2026-05-24:** the v1-v3 eval framework had 40% of
+composite weight tied to "match Earth biome distribution" (25% KL-divergence
+vs Earth target distribution + 15% Earth entropy match). This punished any
+non-Earth-like scenario *by design* — snowball scored 71.91 even though it
+correctly produced a snowball world, desert scored 68.19 even though it
+correctly produced a desert world. The eval was answering the wrong question.
+
+**Reframing:** generated worlds are deliberately different from Earth. What
+should be evaluated is **whether each world follows geographic LAWS** —
+those laws apply universally regardless of whether the world is Earth-like,
+snowball, hothouse, or desert.
+
+**v4 framework (composite weights):**
+
+| Sub-score | Weight | What it measures | Type |
+|---|---:|---|---|
+| `temperature_gradient` (NEW) | 25% | Pearson r(lat_dist, zone temp_mean) → near −1.0 | LAW: cooling toward poles |
+| `lat_banding` | 25% | % land pixels in lat-allowed biome set (per-scenario table) | LAW: tropical at equator etc. |
+| `precipitation_gradient` (NEW) | 15% | Pearson r(observed precip, circulation_curve prediction) | LAW: ITCZ wet, subtropic dry, mid-lat wet, polar dry |
+| `continentality` | 15% | Entropy delta coast vs interior | LAW: interior drier than coast |
+| `sanity` | 20% | Forbidden-biome rate per lat band | LAW negation |
+
+`distribution` and `diversity` (the 2 Earth-matching metrics) **removed**.
+`temperature_gradient` and `precipitation_gradient` are new zone-level
+metrics computed from a JSON sidecar (`--climate-out`) that the renderer
+emits alongside the biome PNG. The sidecar contains every zone's
+`temp_mean / precip_annual / biome / lat_dist` from the same
+`compute_zone_climate` call the renderer uses — single source of truth,
+pinned by `export_matches_in_memory_compute` test in `flat_climate.rs`.
+
+**Why sidecar JSON instead of Python re-implementation of climate physics:**
+- Single source of truth (renderer + eval consume same `compute_zone_climate`)
+- 30 LOC Rust + 5 LOC test vs 200+ LOC Python mirror + ongoing maintenance
+- Future climate layers (v4 orographic, v5 Köppen) automatically picked up
+
+**Composite gains (v3.0 → v4.0):**
+
+| Scenario | v3.0 (Earth-match) | v4.0 (law-based) | Δ |
+|---|---:|---:|---:|
+| Baseline mean (5 Earth-like seeds) | 75.5 | 84.0 | +8.5 |
+| Snowball | 71.91 | 83.44 | +11.5 |
+| Hothouse | 87.40 | 90.26 | +2.9 |
+| Desert | 68.19 | 88.71 | **+20.5** |
+| Overall mean | 76.65 | 86.09 | **+9.4** |
+
+Desert improvement is biggest — under v3 it was punished hardest for not
+matching Earth's biome %; under v4 it's correctly scored on whether it
+follows the gradient + banding + continentality laws.
+
+**W6 under v4 law-based eval:**
+
+| Metric | W6 (shipped) | noW6 | Δ |
+|---|---:|---:|---:|
+| temperature_gradient | 99.5 mean | 99.5 mean | identical (zone-level — W6 only affects pixel render, not physics) |
+| precipitation_gradient | 89.5 mean | 89.5 mean | identical |
+| lat_banding | 63.6 mean | 64.2 mean | −0.6 (W6 blends classify "wrong" slightly more often) |
+| sanity | 93.4 mean | 94.3 mean | −0.9 (same reason) |
+| **composite mean** | **86.09** | **86.45** | **−0.36** |
+
+W6 measurably worse on pixel-level metrics, but the −0.36 mean is well
+under the 5pt per-render regression threshold. PO judgment: intermediate
+strips at zone seams (real Earth has ecotone zones — taiga→tundra,
+forest→grassland transition belts) are visually superior to sharp 1-pixel
+biome flips. Ship W6 as a PO override.
+
+**Locked artifacts (this batch):**
+- `crates/world-gen/src/flat_climate.rs` — added `ZoneClimateExport`,
+  `WorldClimateExport`, `export_zone_climates(world, params)` + 2 tests
+  (`export_matches_in_memory_compute` round-trip + `export_serializes_to_json`)
+- `crates/world-gen/src/zonegen.rs` — W6 seam blend (kept) +
+  `edge_dist_from_sea` exposed as `pub(crate)`
+- `crates/world-gen/examples/flatworld.rs` — `--climate-out PATH` CLI flag
+- `scripts/climate_eval.py` — v4 law-based scoring (drop distribution +
+  diversity; add `temperature_gradient_law` + `precipitation_gradient_law`
+  + Pearson helper + `_circulation_curve_py` reference impl)
+- `scripts/climate_eval_sweep.py` — cached classifier sweep tool (reusable
+  for future tolerance/weighting tuning)
+- `eval/climate-eval-suite.toml` — weights swapped; profile distributions
+  removed; scenario profiles keep only `description` for lat-band lookup
+- `eval/baselines/v4.0.json` — new shipped baseline (W6 + v4, mean 86.09)
+- `eval/baselines/v4.0_noW6.json` — diagnostic (mean 86.45, isolates W6 cost)
+- `eval/baselines/v3.1_noW6_E3.json` — preserved diagnostic (E3 classifier
+  cost before v4 framework rework, mean 72.34)
+- `eval/compare-w6-vs-noW6/` — PNG pairs used for PO visual review
+- `docs/plans/2026-05-23-flatworld-region-tree-data-architecture.md` — §11
+  tilemap consumer contract (auto-updated separately; mentions sidecar)
+
 ### Batch B5-v2.1c — "Continentality polish" (P2-P3 algorithm)
 
 Anti-ring + zone-average. NOT pulling v4 forward — bridge solution only.

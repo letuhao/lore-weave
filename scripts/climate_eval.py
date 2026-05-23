@@ -1,23 +1,36 @@
-"""Climate eval — objective quality measurement for the flatworld biome
-renderer.
+"""Climate eval — geographic-law-based quality measurement for the flatworld
+biome renderer.
 
-Loads `eval/climate-eval-suite.toml`, renders each entry via
-`cargo run --release -p world-gen --example flatworld`, computes 5
-sub-scores per render (per `docs/plans/2026-05-23-climate-eval-references.md`)
-and outputs a JSON + Markdown report.
+**v4 (law-based)**: scores measure how well a render follows geographic LAWS
+(temperature decreases poleward, precipitation follows ITCZ circulation,
+biomes respect their lat band, interior drier than coast) — NOT how closely
+it matches Earth's specific biome distribution. This means snowball worlds,
+desert worlds, hothouse worlds all score honestly against the laws they
+should follow, not penalized for not being Earth.
+
+5 sub-scores:
+  1. temperature_gradient_law (25%) — Pearson r(lat_dist, zone temp_mean)
+     should be strongly negative (cooling toward poles).
+  2. lat_banding (25%) — % land pixels whose biome is in the lat-allowed set
+     for that band (scenario-specific table).
+  3. precipitation_gradient_law (15%) — Pearson r(observed precip, predicted
+     precip from circulation_curve(lat, scenario_params)). Each scenario uses
+     its own params, so high r = lat-circulation law followed in this physics.
+  4. continentality (15%) — Shannon entropy delta between coastal and interior
+     biome distributions. Law: interior is drier/more extreme than coast.
+  5. sanity (20%) — penalty for biomes appearing in their forbidden lat band
+     (e.g. TropicalRainforest at the pole).
+
+Sub-scores 1+3 read the per-zone climate sidecar JSON (`--climate-out`); 2+4+5
+read the biome PNG with E3 fractional-contribution classifier.
 
 Usage:
   python scripts/climate_eval.py
-       → render + score; print Markdown report to stdout
-  python scripts/climate_eval.py --output eval/baselines/v2.1a.json
+       → render PNG + sidecar JSON; score; print Markdown report
+  python scripts/climate_eval.py --output eval/baselines/v4.0.json
        → also save scores as JSON baseline for future diffs
-  python scripts/climate_eval.py --baseline eval/baselines/v2.1a.json
-       → compute current scores + diff against baseline + print regression
-         report (used after every batch to decide improvement / regression)
-
-Replaces subjective rating ("eq_seed42 is 7/10") with objective composite
-("eq_seed42 composite = 64.3, baseline 51.2 → +13.1, no sub-score regressed
-by >5"). See doc §6 for sanity-check methodology.
+  python scripts/climate_eval.py --baseline eval/baselines/v4.0.json
+       → diff against baseline + print regression report
 """
 
 import argparse
@@ -38,6 +51,81 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SUITE_TOML = REPO_ROOT / "eval" / "climate-eval-suite.toml"
 EARTH_REF = REPO_ROOT / "eval" / "earth_reference.png"
 RENDERS_DIR = REPO_ROOT / "target" / "climate-eval"
+
+
+# ---------- v4 law-based metrics (sidecar JSON) ----------
+
+def pearson(xs, ys) -> float:
+    """Pearson correlation coefficient. Returns 0.0 if either series has zero
+    variance (a flat field is "no gradient" rather than "infinite gradient")."""
+    n = len(xs)
+    if n < 2:
+        return 0.0
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    num = sum((xs[i] - mx) * (ys[i] - my) for i in range(n))
+    dx = sum((xs[i] - mx) ** 2 for i in range(n))
+    dy = sum((ys[i] - my) ** 2 for i in range(n))
+    denom = (dx * dy) ** 0.5
+    if denom < 1e-9:
+        return 0.0
+    return num / denom
+
+
+def _circulation_curve_py(lat_dist: float, params: dict) -> float:
+    """Mirror of `flat_climate::circulation_curve` — kept tiny + stable.
+    Returns predicted precip (mm/yr) for a zone at `lat_dist` under the
+    scenario's params. Used to score how well observed precip matches the
+    predicted lat-circulation curve (precipitation_gradient_law)."""
+    t = max(0.0, min(1.0, lat_dist))
+    if t <= 0.33:
+        k = t / 0.33
+        raw = params["precip_eq"] * (1 - k) + params["precip_subtropic"] * k
+    elif t <= 0.67:
+        k = (t - 0.33) / (0.67 - 0.33)
+        raw = params["precip_subtropic"] * (1 - k) + params["precip_midlat"] * k
+    else:
+        k = (t - 0.67) / (1.0 - 0.67)
+        raw = params["precip_midlat"] * (1 - k) + params["precip_polar"] * k
+    return max(0.0, raw)
+
+
+def temperature_gradient_law(zones: list) -> float:
+    """Score how monotonically temperature decreases from equator to pole.
+
+    Score = 100 × max(0, −r) where r = Pearson(lat_dist, temp_mean).
+    - r = −1.0 (perfect cooling poleward) → 100
+    - r = 0 (no gradient) → 0
+    - r > 0 (inverted: pole warmer than equator) → 0
+
+    Scenario-agnostic: snowball / hothouse / desert all measured by INTERNAL
+    monotonicity, not absolute temperature values."""
+    if len(zones) < 3:
+        return 0.0
+    lat = [z["lat_dist"] for z in zones]
+    temp = [z["temp_mean"] for z in zones]
+    r = pearson(lat, temp)
+    return 100.0 * max(0.0, -r)
+
+
+def precipitation_gradient_law(zones: list, params: dict) -> float:
+    """Score how well observed precip matches the lat-circulation prediction.
+
+    Score = 100 × max(0, r) where r = Pearson(predicted_precip, observed_precip).
+    Predicted uses each scenario's own params (precip_eq / sub / mid / polar)
+    so Hothouse / Snowball / Desert measured against THEIR predicted curves —
+    a high r means the lat-circulation law is followed in that physics, not
+    that absolute values match Earth.
+
+    Will not reach 100 in practice because continentality + ocean current add
+    legitimate variance the lat-only prediction cannot capture; ~50-80 is
+    healthy for Earth-like, less for extreme scenarios."""
+    if len(zones) < 3:
+        return 0.0
+    pred = [_circulation_curve_py(z["lat_dist"], params) for z in zones]
+    obs = [z["precip_annual"] for z in zones]
+    r = pearson(pred, obs)
+    return 100.0 * max(0.0, r)
 
 # Biome color → name. Must mirror `Biome::color()` in flat_climate.rs at the
 # current commit. v2.1f: 10 biomes (added DeciduousForest + Mediterranean).
@@ -185,24 +273,81 @@ def band_for(lat_dist: float, bands=None):
     return bands[-1][2], bands[-1][3]
 
 
-def classify_pixel(rgb: tuple) -> str | None:
-    """Return short biome name, or None for ocean/beach-tinted/river pixels.
+# E3 v2.1b parameters (fractional-contribution classifier).
+# - NEAR_THRESHOLD: pixel within this RGB distance of a canonical biome
+#   color counts as a candidate for that biome. Sized to capture W6 seam
+#   midpoints (Tundra↔Ice midpoint sits at ~50 from both canonicals).
+# - BEACH_REJECT_DIST: stage-2 pre-filter distance from WET_SAND/DRY_SAND
+#   (which sit ~25 RGB from Tundra — would false-positive otherwise).
+NEAR_THRESHOLD = 55.0
+BEACH_REJECT_DIST = 30.0
+# WET_SAND + DRY_SAND from zonegen.rs (v2.1a W7 tuning).
+BEACH_COLORS = [(180, 168, 154), (212, 200, 178)]
 
-    Currently EXACT-MATCH only. Beach-tinted pixels (W4 blend of biome × sand
-    color) are intentionally `None` — they're a coast-band feature, not a
-    biome reading, and including them distorts the biome distribution.
-    Rivers are also `None`.
 
-    **W5 v2.1d caveat**: when Whittaker hue interpolation ships, pixels near
-    a biome threshold will have blended colors that won't match canonically.
-    THAT batch must extend this classifier with nearest-neighbor matching
-    against a curated set of (biome_a, biome_b) blend midpoints (NOT just
-    nearest in RGB space — beach-tints would also classify and distort).
-    Tracked in doc §10 v2.1e known limit.
+def classify_pixel(rgb: tuple):
+    """Return `list[(biome, weight)]` for biome contributions, or None
+    (ocean / beach / river overlay).
+
+    **E3 v2.1b fractional contribution** — replaces E2 nearest-canonical
+    so W6 zone-seam blending is measurable correctly. A pixel blended 50/50
+    between Tundra and Ice contributes 0.5 to each biome's count instead of
+    being misclassified as "neither" (the E2 failure mode that punished
+    W6 -3.54 mean).
+
+    Stages:
+      1. Exact VOID → None (ocean).
+      2. Within `BEACH_REJECT_DIST` of any canonical beach color → None
+         (beach pre-filter — beach colors are close to Tundra in RGB
+         space and would false-positive nearest-neighbor otherwise).
+      3. Find 2 nearest canonical biomes by Euclidean RGB distance d1 ≤ d2.
+         - d1 > NEAR_THRESHOLD → None (no biome is close; likely river
+           overlay or distant-biome mid-blend the classifier can't read).
+         - d2 > NEAR_THRESHOLD → `[(biome1, 1.0)]` (pure/dominant pixel —
+           only biome1 is near, preserves non-W6 baseline behavior).
+         - both ≤ NEAR_THRESHOLD → `[(biome1, w1), (biome2, w2)]` where
+           `w1 = d2 / (d1+d2)` and `w2 = d1 / (d1+d2)` (closer biome gets
+           bigger weight; d1=0 → w1=1.0; d1=d2 → split 50/50).
+
+    Invariants:
+      - Pure-canonical pixel (d1=0) returns `[(biome, 1.0)]` — preserves
+        the E2 1:1 mapping for non-blended pixels, so pre-W6 baselines
+        remain comparable.
+      - Each return weights sum to ≤ 1.0 (== 1.0 if not None; 0 if None).
     """
     if rgb == VOID:
         return None
-    return BIOME_COLORS.get(rgb)
+    # Stage 2: beach pre-filter
+    for bc in BEACH_COLORS:
+        dr = rgb[0] - bc[0]; dg = rgb[1] - bc[1]; db = rgb[2] - bc[2]
+        if dr * dr + dg * dg + db * db < BEACH_REJECT_DIST * BEACH_REJECT_DIST:
+            return None
+    # Stage 3: 2-nearest canonical search (linear over ≤10 colors).
+    d1_sq = float("inf"); d2_sq = float("inf")
+    biome1 = None; biome2 = None
+    for color, biome in BIOME_COLORS.items():
+        dr = rgb[0] - color[0]; dg = rgb[1] - color[1]; db = rgb[2] - color[2]
+        d_sq = dr * dr + dg * dg + db * db
+        if d_sq < d1_sq:
+            d2_sq = d1_sq; biome2 = biome1
+            d1_sq = d_sq; biome1 = biome
+        elif d_sq < d2_sq:
+            d2_sq = d_sq; biome2 = biome
+    d1 = math.sqrt(d1_sq)
+    d2 = math.sqrt(d2_sq)
+    if d1 > NEAR_THRESHOLD:
+        return None
+    if d2 > NEAR_THRESHOLD or biome2 is None:
+        return [(biome1, 1.0)]
+    # Blend region: both candidates near. Inverse-distance split.
+    total = d1 + d2
+    if total < 1e-6:
+        # Degenerate: identical canonical colors (shouldn't happen with the
+        # current 10-biome palette). Fall back to pure biome1.
+        return [(biome1, 1.0)]
+    w1 = d2 / total
+    w2 = d1 / total
+    return [(biome1, w1), (biome2, w2)]
 
 
 def shannon_entropy(counts: dict) -> float:
@@ -284,6 +429,12 @@ def analyze_render(png_path: Path, hemisphere: str, profile_name: str = "earth")
                     pass
             edge_dist[y][x] = d
 
+    # E3 fractional: all counters are floats; each pixel contributes its
+    # weight (1.0 if pure, split 0.5+0.5 at seam midpoints). Counter[str, float]
+    # works transparently with `+= weight`.
+    band_correct = 0.0
+    forbidden_count = 0.0
+
     for y in range(h):
         lat_d = lat_dist_for(y, h, hemisphere)
         allowed, forbidden = band_for(lat_d, bands)
@@ -292,22 +443,24 @@ def analyze_render(png_path: Path, hemisphere: str, profile_name: str = "earth")
             if not is_land[y][x]:
                 continue
             land_total += 1
-            biome = classify_pixel(pixels[x, y])
-            if biome is None:
+            contribs = classify_pixel(pixels[x, y])
+            if contribs is None:
                 # river or beach-tinted; skip from biome distribution scoring
                 continue
-            biome_counts[biome] += 1
-            per_band_counts[band_idx][biome] += 1
-            if biome in allowed:
-                band_correct += 1
-            if biome in forbidden:
-                forbidden_count += 1
-            # Coast vs interior buckets.
             ed = edge_dist[y][x]
-            if ed < coast_t:
-                coast_counts[biome] += 1
-            elif ed > interior_t:
-                interior_counts[biome] += 1
+            is_coast = ed < coast_t
+            is_interior = ed > interior_t
+            for biome, weight in contribs:
+                biome_counts[biome] += weight
+                per_band_counts[band_idx][biome] += weight
+                if biome in allowed:
+                    band_correct += weight
+                if biome in forbidden:
+                    forbidden_count += weight
+                if is_coast:
+                    coast_counts[biome] += weight
+                elif is_interior:
+                    interior_counts[biome] += weight
 
     return {
         "biome_counts": dict(biome_counts),
@@ -319,75 +472,73 @@ def analyze_render(png_path: Path, hemisphere: str, profile_name: str = "earth")
     }
 
 
-def score_render(analysis: dict, profile: dict) -> dict:
+def score_render(analysis: dict, climate_sidecar: dict) -> dict:
+    """v4 law-based scoring. `analysis` = pixel-level (lat_banding /
+    continentality / sanity from biome PNG); `climate_sidecar` = per-zone
+    JSON (temperature_gradient + precipitation_gradient_law)."""
     biome_counts = analysis["biome_counts"]
-    land_total = analysis["land_total"]
     total_biome = sum(biome_counts.values())
-    if total_biome == 0:
-        return {
-            "distribution": 0.0, "lat_banding": 0.0,
-            "continentality": 0.0, "diversity": 0.0, "sanity": 0.0,
-        }
 
-    # 4.1 Distribution: 100 × exp(-KL).
-    kl = kl_divergence(biome_counts, profile["distribution"])
-    distribution = 100.0 * math.exp(-kl)
+    # 4.1 Temperature gradient law (zone-level via sidecar).
+    temperature_gradient = temperature_gradient_law(climate_sidecar["zones"])
 
-    # 4.2 Lat banding.
-    lat_banding = 100.0 * analysis["band_correct"] / max(1, total_biome)
+    # 4.2 Lat banding (pixel-level).
+    lat_banding = (
+        100.0 * analysis["band_correct"] / max(1, total_biome)
+        if total_biome > 0 else 0.0
+    )
 
-    # 4.3 Continentality (Δ entropy coast vs interior).
-    # E1 fix (v2.1e): old formula `clamp(50 + 50×Δ, 0, 100)` saturated at 100
-    # because Δ ≥ 1.0 was universal (the eval's aggregate-coast-vs-aggregate-
-    # interior naturally has high Δ). New formula is linear-to-cap, peaking
-    # at Δ_TARGET = 2.0 — Δ = 0 → 0 (no differentiation = bad), Δ = 1 → 50,
-    # Δ = 2 → 100 (well-differentiated, Earth-like cap), Δ > 2 → still 100.
-    # Now discriminative across the typical render range [0.5, 2.0].
+    # 4.3 Precipitation gradient law (zone-level via sidecar).
+    precipitation_gradient = precipitation_gradient_law(
+        climate_sidecar["zones"], climate_sidecar["climate_params"]
+    )
+
+    # 4.4 Continentality (pixel-level).
+    # E1 (v2.1e): linear-to-cap at Δ_TARGET = 2.0 — discriminative across
+    # the typical render range [0.5, 2.0]. Δ = 0 → 0 (no differentiation =
+    # bad); Δ = 2 → 100 (well-differentiated, Earth-like cap).
     h_coast = shannon_entropy(analysis["coast_counts"])
     h_int   = shannon_entropy(analysis["interior_counts"])
     delta   = h_coast - h_int
     DELTA_TARGET = 2.0
     continentality = max(0.0, min(100.0, 100.0 * delta / DELTA_TARGET))
 
-    # 4.4 Diversity vs Earth entropy.
-    # v2.1f update: max entropy for 10 biomes = log2(10) ≈ 3.32. Earth's
-    # observed entropy from the reference image is around 3.0 (all 10
-    # biomes present, but unevenly weighted).
-    h_obs = shannon_entropy(biome_counts)
-    diversity = 100.0 * min(1.0, h_obs / 3.0)
-
-    # 4.5 Sanity (forbidden-biome penalty).
-    forbidden_rate = analysis["forbidden_count"] / max(1, total_biome)
+    # 4.5 Sanity (pixel-level forbidden-biome rate).
+    forbidden_rate = (
+        analysis["forbidden_count"] / max(1, total_biome)
+        if total_biome > 0 else 0.0
+    )
     sanity = 100.0 * max(0.0, 1.0 - 2.0 * forbidden_rate)
 
     return {
-        "distribution":   round(distribution, 1),
-        "lat_banding":    round(lat_banding, 1),
-        "continentality": round(continentality, 1),
-        "diversity":      round(diversity, 1),
-        "sanity":         round(sanity, 1),
+        "temperature_gradient":   round(temperature_gradient, 1),
+        "lat_banding":            round(lat_banding, 1),
+        "precipitation_gradient": round(precipitation_gradient, 1),
+        "continentality":         round(continentality, 1),
+        "sanity":                 round(sanity, 1),
     }
 
 
 def composite_score(scores: dict, weights: dict) -> float:
     return round(
-        weights["distribution"]   * scores["distribution"] +
-        weights["lat_banding"]    * scores["lat_banding"] +
-        weights["continentality"] * scores["continentality"] +
-        weights["diversity"]      * scores["diversity"] +
-        weights["sanity"]         * scores["sanity"],
+        weights["temperature_gradient"]   * scores["temperature_gradient"] +
+        weights["lat_banding"]            * scores["lat_banding"] +
+        weights["precipitation_gradient"] * scores["precipitation_gradient"] +
+        weights["continentality"]         * scores["continentality"] +
+        weights["sanity"]                 * scores["sanity"],
         2,
     )
 
 
 # ---------- rendering ----------
 
-def render(entry: dict, out_path: Path) -> None:
+def render(entry: dict, out_path: Path, climate_out: Path) -> None:
     cmd = [
         "cargo", "run", "--release", "--quiet", "-p", "world-gen",
         "--example", "flatworld", "--",
         "--seed", str(entry["seed"]),
         "--biome-out", str(out_path),
+        "--climate-out", str(climate_out),
     ]
     hemi = entry.get("hemisphere", "equatorial")
     if hemi != "equatorial":
@@ -421,39 +572,42 @@ def main():
         suite = tomllib.load(f)
 
     weights = suite["weights"]
-    profiles = suite["profiles"]
     renders = suite["renders"]
 
     RENDERS_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"# Climate eval — {len(renders)} renders\n")
+    print(f"# Climate eval (v4 law-based) — {len(renders)} renders\n")
 
     all_scores = {}
     for entry in renders:
         name = entry["name"]
         png = RENDERS_DIR / f"{name}.png"
-        if not args.skip_render or not png.exists():
+        climate_json = RENDERS_DIR / f"{name}.climate.json"
+        if not args.skip_render or not png.exists() or not climate_json.exists():
             print(f"render {name} ...", flush=True)
-            render(entry, png)
+            render(entry, png, climate_json)
         analysis = analyze_render(
             png, entry.get("hemisphere", "equatorial"), entry["profile"]
         )
-        profile = profiles[entry["profile"]]
-        scores = score_render(analysis, profile)
+        with climate_json.open() as f:
+            sidecar = json.load(f)
+        scores = score_render(analysis, sidecar)
         comp = composite_score(scores, weights)
         scores["composite"] = comp
         all_scores[name] = scores
 
     # ---- Print Markdown report ----
+    # Column legend: temp = temperature_gradient · band = lat_banding ·
+    # prec = precipitation_gradient · cont = continentality · san = sanity
     print()
     print("## Per-render scores\n")
-    print(f"{'render':<22} {'dist':>5} {'band':>5} {'cont':>5} {'div':>5} {'san':>5} {'COMP':>6}")
+    print(f"{'render':<22} {'temp':>5} {'band':>5} {'prec':>5} {'cont':>5} {'san':>5} {'COMP':>6}")
     print("-" * 60)
     total_composite = 0.0
     for name, sc in all_scores.items():
         print(
-            f"{name:<22} {sc['distribution']:>5.1f} {sc['lat_banding']:>5.1f} "
-            f"{sc['continentality']:>5.1f} {sc['diversity']:>5.1f} "
+            f"{name:<22} {sc['temperature_gradient']:>5.1f} {sc['lat_banding']:>5.1f} "
+            f"{sc['precipitation_gradient']:>5.1f} {sc['continentality']:>5.1f} "
             f"{sc['sanity']:>5.1f} {sc['composite']:>6.1f}"
         )
         total_composite += sc["composite"]

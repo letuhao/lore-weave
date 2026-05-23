@@ -179,15 +179,26 @@ fn plate_subattrs(
 /// (and the class/base it carries) is continuous across the seam. `subs` should
 /// be the candidates to blend among (a whole plate, or one L1 zone).
 fn blended_height(subs: &[SubAttr], x: f32, y: f32) -> f32 {
-    blended_height_with_owner(subs, x, y).0
+    blended_height_with_seam(subs, x, y).0
 }
 
-/// Same as [`blended_height`] but also returns the index of the **nearest**
-/// sub-attr (the i1 of the 2-nearest blend). The biome render pass needs this
-/// to look up the pixel's L1 zone via `subs[i1].zone`; the beach band uses it
-/// for class lookup. Caching `(height, idx)` in one pass avoids a redundant
-/// nearest-site search.
+#[allow(dead_code)]
 fn blended_height_with_owner(subs: &[SubAttr], x: f32, y: f32) -> (f32, usize) {
+    let (h, i1, _, _) = blended_height_with_seam(subs, x, y);
+    (h, i1)
+}
+
+/// Same as [`blended_height`] but also returns the **2-nearest sub-attr
+/// indices** AND the **blend weight** for the nearest. W6 v2.1b biome render
+/// uses this to blend biome COLORS at zone seams (not just heights), which
+/// eliminates the previous 1-pixel sharp biome flip at every zone boundary.
+///
+/// Returns `(blended_height, i1, i2, w1)`:
+///   - `i1`: index of the nearest sub-attr
+///   - `i2`: index of the 2nd-nearest (== i1 if only 1 sub-attr exists)
+///   - `w1`: weight for i1 in `[0.5, 1.0]` — 0.5 at the exact seam, 1.0
+///     deep inside i1's cell
+fn blended_height_with_seam(subs: &[SubAttr], x: f32, y: f32) -> (f32, usize, usize, f32) {
     let mut d1 = f32::INFINITY;
     let mut d2 = f32::INFINITY;
     let mut i1 = 0usize;
@@ -207,7 +218,7 @@ fn blended_height_with_owner(subs: &[SubAttr], x: f32, y: f32) -> (f32, usize) {
     let a = subs[i1];
     let h1 = zone_height(x, y, a.class, a.base, a.salt);
     if !d2.is_finite() || subs.len() < 2 {
-        return (h1, i1);
+        return (h1, i1, i1, 1.0);
     }
     let b = subs[i2];
     let h2 = zone_height(x, y, b.class, b.base, b.salt);
@@ -219,7 +230,7 @@ fn blended_height_with_owner(subs: &[SubAttr], x: f32, y: f32) -> (f32, usize) {
     let gap = d2.sqrt() - d1.sqrt();
     let t = (gap / width).clamp(0.0, 1.0);
     let w1 = 0.5 + 0.5 * smoothstep01(t); // 0.5 at the seam → 1.0 deep in cell 1
-    (w1 * h1 + (1.0 - w1) * h2, i1)
+    (w1 * h1 + (1.0 - w1) * h2, i1, i2, w1)
 }
 
 /// Blend-band width (px) for a seam between two classes — the "type" of the
@@ -516,7 +527,7 @@ pub(crate) const SHORE_LEVEL_OFFSET: f32 = 0.02;
 /// erosion elevation is below `sea_level`). In v2 the coast taper guarantees
 /// land ≥ sea_level so this is identical to "void only"; the API is shaped
 /// for v3 inland-lake support.
-fn edge_dist_from_sea(is_sea: &[bool], w: usize, h: usize) -> Vec<u32> {
+pub(crate) fn edge_dist_from_sea(is_sea: &[bool], w: usize, h: usize) -> Vec<u32> {
     let n = w * h;
     let mut dist = vec![u32::MAX; n];
     let mut frontier: Vec<u32> = Vec::new();
@@ -684,11 +695,17 @@ fn compute_render_state(
     );
 
     // Rasterize blended terrain; track land mask + the lowest land value +
-    // per-pixel (plate, nearest-subattr-idx) for downstream beach/biome use.
+    // per-pixel (plate, 2 nearest subattr indices, seam weight) for beach/
+    // biome use. W6 v2.1b cache: `subattr_idx_2_at` + `seam_w1_q` enable
+    // smooth biome color blending at zone seams (no more 1-pixel sharp flip).
     let mut elev = vec![0f32; n];
     let mut is_land = vec![false; n];
     let mut plate_at = vec![-1i16; n];
     let mut subattr_idx_at = vec![0u16; n];
+    let mut subattr_idx_2_at = vec![0u16; n];
+    // Seam weight quantized to u8 (256 levels) to save memory; convert back to
+    // f32 at colour-pass time. Range [128, 255] = w1 ∈ [0.5, 1.0].
+    let mut seam_w1_q = vec![255u8; n];
     let mut min_land = f32::INFINITY;
     let mut land_count = 0usize;
     for py in 0..h {
@@ -696,12 +713,15 @@ fn compute_render_state(
             let x = px as f32 + 0.5;
             let y = py as f32 + 0.5;
             if let Some(p) = world.plates.iter().find(|p| p.contains(x, y)) {
-                let (e, idx) = blended_height_with_owner(&subattrs[p.id], x, y);
+                let (e, i1, i2, w1) = blended_height_with_seam(&subattrs[p.id], x, y);
                 let i = py * w + px;
                 elev[i] = e;
                 is_land[i] = true;
                 plate_at[i] = p.id as i16;
-                subattr_idx_at[i] = idx as u16;
+                subattr_idx_at[i] = i1 as u16;
+                subattr_idx_2_at[i] = i2 as u16;
+                // w1 ∈ [0.5, 1.0] → quant to [128, 255]
+                seam_w1_q[i] = ((w1 - 0.5) * 2.0 * 254.0 + 128.0).clamp(128.0, 255.0) as u8;
                 min_land = min_land.min(e);
                 land_count += 1;
             }
@@ -790,6 +810,8 @@ fn compute_render_state(
         is_land,
         plate_at,
         subattr_idx_at,
+        subattr_idx_2_at,
+        seam_w1_q,
         edge_dist,
         drainage,
         in_network,
@@ -815,6 +837,13 @@ struct RenderState {
     /// Valid when `plate_at[i] >= 0`: index into `subattrs[plate_at[i]]` of the
     /// nearest sub-zone (the `i1` of the 2-nearest blend).
     subattr_idx_at: Vec<u16>,
+    /// W6 v2.1b: index of the 2nd-nearest sub-attr (== subattr_idx_at[i] if
+    /// only 1 sub-attr exists). Used to blend biome colors at seams.
+    subattr_idx_2_at: Vec<u16>,
+    /// W6 v2.1b: quantized seam weight for the nearest. 128 = 0.5 (seam mid),
+    /// 255 = 1.0 (deep inside cell). Cell colour at pixel i = w × biome(i1) +
+    /// (1-w) × biome(i2) where w = (seam_w1_q[i] - 128) / 254 + 0.5.
+    seam_w1_q: Vec<u8>,
     /// Hop distance from each pixel to the nearest sea pixel (BFS).
     edge_dist: Vec<u32>,
     drainage: Vec<u32>,
@@ -839,6 +868,8 @@ impl RenderState {
             is_land: vec![false; n],
             plate_at: vec![-1; n],
             subattr_idx_at: vec![0; n],
+            subattr_idx_2_at: vec![0; n],
+            seam_w1_q: vec![255; n],
             edge_dist: vec![0; n],
             drainage: vec![0; n],
             in_network: vec![false; n],
@@ -958,15 +989,33 @@ fn colorize_biome_with(
             let base = zone_base[plate_id][l1];
             let biome = pixel_biome(zc, state.elev[i], base, climate);
             let biome_c = biome.color();
-            // W4 fix from B5 v2.1a: beach is now a TINT over biome, not a
-            // replacement. At shore (t≈0) reads as sand; at inland edge of
-            // beach band (t≈1) reads as biome. Preserves climate signal on
-            // small-plate worlds where beach used to dominate 65–80 % of the
-            // visible plate area.
-            if state.is_beach[i] {
-                blend_beach_into_biome(biome_c, state.beach_t[i])
+            // W6 v2.1b: seam-blend biome colors at zone boundaries (no more
+            // 1-pixel sharp biome flip). Uses cached i1, i2, and seam weight.
+            let i2 = state.subattr_idx_2_at[i] as usize;
+            let blended_biome_c = if i2 != sub_idx && i2 < subs.len() {
+                let l1_2 = subs[i2].zone;
+                let zc_2 = &zone_climates[plate_id][l1_2];
+                let base_2 = zone_base[plate_id][l1_2];
+                let biome_2 = pixel_biome(zc_2, state.elev[i], base_2, climate);
+                let biome_2_c = biome_2.color();
+                let w1 = (state.seam_w1_q[i] as f32 - 128.0) / 254.0 + 0.5; // [0.5, 1.0]
+                [
+                    (biome_c[0] as f32 * w1 + biome_2_c[0] as f32 * (1.0 - w1)) as u8,
+                    (biome_c[1] as f32 * w1 + biome_2_c[1] as f32 * (1.0 - w1)) as u8,
+                    (biome_c[2] as f32 * w1 + biome_2_c[2] as f32 * (1.0 - w1)) as u8,
+                ]
             } else {
                 biome_c
+            };
+            // W9 deferred (v2.1b): elev modulation incompatible with current
+            // eval framework. Future v2.1b-eval-rework would handle blended
+            // pixels via fractional-contribution semantics.
+            // W4 fix from B5 v2.1a: beach is now a TINT over biome, not a
+            // replacement.
+            if state.is_beach[i] {
+                blend_beach_into_biome(blended_biome_c, state.beach_t[i])
+            } else {
+                blended_biome_c
             }
         };
         rgb[i * 3] = c[0];
@@ -1442,7 +1491,7 @@ mod tests {
         // added DeciduousForest + Mediterranean biomes → classifier output
         // shifts on temperate zones). Rebaseline only with intentional
         // biome algorithm / palette / pipeline changes.
-        let pinned = "bb77f7e5eca54256cf22c4217d530a9895c0866582c65b86c0f35f1f62800dfd";
+        let pinned = "b37691d0914c0e13ca69a63c75bcc4d2577061f68e8446743a04bc7c47ed9fac";
         assert_eq!(
             actual.as_str(),
             pinned,

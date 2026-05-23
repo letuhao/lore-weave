@@ -7,6 +7,16 @@
 > when per-zone terrain generation is actually built (PO: *"chưa vội … chơi
 > bottom-up"*). No code yet; this locks the design, not the implementation.
 >
+> **🆕 Shipped surface (2026-05-24) → see §11.** Levels 0–2 of the tree
+> (plates / zones / sub-zones) plus climate + 10-biome classification are now
+> implemented in [`crates/world-gen/src/flatworld.rs`](../../crates/world-gen/src/flatworld.rs),
+> [`zonegen.rs`](../../crates/world-gen/src/zonegen.rs), and
+> [`flat_climate.rs`](../../crates/world-gen/src/flat_climate.rs).
+> §11 documents the **consumer contract** that downstream consumers — including
+> the tilemap track ([`features/00_tilemap/`](../03_planning/LLM_MMO_RPG/features/00_tilemap/_index.md))
+> — can build against today: JSON export schema, Rust API, render outputs, and
+> the seed-based reproducibility recipe. §1–§10 below remain unchanged.
+>
 > Designs the **data structures** for the recursive plate→zone→sub-zone
 > hierarchy, grounded in the current
 > [`flatworld.rs`](../../crates/world-gen/src/flatworld.rs) (Level 0 plates +
@@ -314,3 +324,261 @@ passive `TerrainTile` (raster + world transform + skirt) that any swappable
 `TerrainGenerator` fills. Path-derived seeds make every node independently
 reproducible, enabling lazy file/folder expansion for large worlds. The current
 `flatworld.rs` types map onto this 1:1 — it's a promotion, not a rewrite.
+
+---
+
+## 11 — Shipped consumer contract (post-lock update 2026-05-24)
+
+> **Audience:** downstream consumers (tilemap, knowledge, naming, future
+> persistence) who want to **read the world** without participating in its
+> generation. Promised below is what the code surface produces **today** —
+> stable enough to build a parallel pipeline against, and explicitly tagged
+> where the contract is partial.
+>
+> Scope note (per PO 2026-05-24): consumers like the tilemap track build their
+> own per-tile maps from *zone-level* context (climate, biome, plate identity,
+> geometry). They do **not** need per-pixel cell binding into the world map —
+> the two map types are intentionally different. The contract below is shaped
+> accordingly: macro structure + zone attributes + reference renders.
+
+### 11.1 What ships today (Levels 0–2 + climate + biome)
+
+| Layer | Status | Module | Notes |
+|---|---|---|---|
+| Plate polygons (depth 0) | ✅ shipped | [`flatworld`](../../crates/world-gen/src/flatworld.rs) | Polygon + drift velocity + base elevation |
+| Zones (depth 1) | ✅ shipped | [`flatworld`](../../crates/world-gen/src/flatworld.rs) | Voronoi cells inside each plate (sites only; cell polygons derived by nearest-site) |
+| Sub-zones (depth 2) | ✅ shipped | [`flatworld`](../../crates/world-gen/src/flatworld.rs) | Nested Voronoi inside each zone |
+| Zone climate + biome | ✅ shipped | [`flat_climate`](../../crates/world-gen/src/flat_climate.rs) | 5-layer pipeline: Insolation, Circulation, OceanCurrent v3, Continentality, ZoneRefinement; 10 biomes |
+| Per-pixel terrain (relief + erosion) | ✅ shipped | [`zonegen`](../../crates/world-gen/src/zonegen.rs) | 4 terrain classes + ridged fBm + hydraulic erosion + seam blend |
+| Per-pixel biome render | ✅ shipped | [`zonegen::render_all_zones_biome`](../../crates/world-gen/src/zonegen.rs) | RGB buffer with snow caps, coastlines, rivers |
+| Adjacency / seam records (§5) | ❌ deferred | — | Locked design only; tilemap consumers derive their own neighbour graph if needed |
+| Persistence beyond JSON export (§9) | ❌ deferred | — | No `RegionPath`-keyed store yet |
+| Levels ≥ 3 (`LevelParams` vec) | ❌ deferred | — | `FlatParams` only carries plate / zone / sub-zone counts; deeper levels = future work |
+
+### 11.2 JSON contract — `WorldData` (the schema tilemap parses from disk)
+
+Produced by [`flatworld::export(&FlatWorld, seed: u64) -> WorldData`](../../crates/world-gen/src/flatworld.rs);
+serialized via `serde_json::to_string_pretty`. Field names below are the **wire
+names** consumers will see in the JSON file.
+
+```jsonc
+{
+  "width": 1024,            // u32 — render frame width, world pixels
+  "height": 640,            // u32 — render frame height, world pixels
+  "seed": 1,                // u64 — master seed; reproducibility key
+  "plate_count": 12,        // usize — convenience copy of plates.len()
+  "base_level": 0.35,       // f32 — flatworld::BASE_LEVEL constant snapshot
+  "void_level": 0.0,        // f32 — flatworld::VOID_LEVEL constant snapshot
+  "collision_gain": 0.35,   // f32 — uplift gain at converging plate seams
+  "plates": [
+    {
+      "path": [0],          // [plate_id] — file/folder address
+      "center": [x, y],     // [f32; 2] — plate centroid, world px
+      "velocity": [vx, vy], // [f32; 2] — plate drift, arbitrary units/tick
+      "boundary": [[x, y], ...],  // CCW polygon outline, world px
+      "zones": [
+        {
+          "path": [0, 0],   // [plate_id, zone_id]
+          "site": [x, y],   // Voronoi site (also partition key)
+          "base_elevation": 0.35,  // f32 — BASE_LEVEL + collision uplift here
+          "subzones": [
+            {
+              "path": [0, 0, 0],  // [plate_id, zone_id, subzone_id]
+              "site": [x, y]      // nested Voronoi site
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Units:** all coordinates are **world pixels** in the same frame as the render
+PNGs (top-left origin, `+x` right, `+y` down). Elevations are dimensionless
+in `[0, ~1.0]` with `BASE_LEVEL = 0.35` as land floor, `VOID_LEVEL = 0.0` as
+ocean/void, `> 0.35` as uplift.
+
+**Partition contract (load-bearing for tilemap):** zone boundaries are
+**implicit** — a world pixel `(x, y)` belongs to the plate whose polygon
+`contains(x, y)` is true, and within that plate to the zone whose `site` is
+nearest (Euclidean). No edge list is shipped. Consumers replicate this with
+~10 lines of point-in-polygon + nearest-site lookup; see
+[`Plate::contains` and `Plate::zone_at`](../../crates/world-gen/src/flatworld.rs)
+for the canonical impl.
+
+**Gap — climate/biome are NOT in this export.** They are computed in-memory
+during render but not serialized. If tilemap needs per-zone biome via JSON,
+either (a) extend `ZoneData` with `temp_mean: f32`, `precip_annual: f32`,
+`biome: u8` (tracked as a future lever — see §11.5), or (b) parse the biome
+PNG against `Biome::color()` lookup table (§11.4).
+
+### 11.3 Rust API surface (for in-process consumers)
+
+If the consumer is a Rust crate it can link `world-gen` directly and skip the
+JSON hop. Public surface that ships:
+
+**Generation:**
+
+```rust
+use world_gen::flatworld::{generate, FlatParams, FlatWorld};
+use world_gen::flat_climate::{WorldClimateParams, HemisphereLayout, Biome, ZoneClimate,
+    compute_zone_climate, pixel_biome, whittaker_classify};
+use world_gen::zonegen::{ClassRatios, render_all_zones_biome};
+
+let params = FlatParams::default();     // 1024×640, 12 plates, seed 1
+let world: FlatWorld = generate(&params);
+```
+
+**Point queries (live, no JSON):**
+
+| Function | Returns | Use case |
+|---|---|---|
+| `world.plates_at(x, y)` | `Vec<usize>` — plate IDs covering pixel | Tilemap: which plate(s) own this tile |
+| `world.elevation_at(x, y)` | `f32` in `[0, ~1.0]` | Tilemap: per-tile altitude |
+| `plate.contains(x, y)` | `bool` | Tilemap: hit-test plate polygon |
+| `plate.zone_at(x, y)` | `Option<usize>` | Tilemap: which zone owns this tile |
+| `plate.subzone_at(x, y)` | `Option<(usize, usize)>` | Tilemap: depth-2 sub-zone lookup |
+
+**Climate / biome (zone-level, the right grain for tilemap):**
+
+```rust
+// edge_dist_sea: BFS distance-to-nearest-sea over the render grid.
+// Compute once with the helper inside zonegen.rs (currently private — see §11.5
+// gap if you need access). Or pass `vec![0u32; w*h]` to skip continentality.
+let cp: WorldClimateParams = WorldClimateParams::default()
+    .scaled_for(world.width, world.height, world.plates.len());
+
+let zc: ZoneClimate = compute_zone_climate(&world, &cp, plate_id, zone_id, &edge_dist_sea);
+// zc.temp_mean   — °C
+// zc.precip_annual — mm/yr
+// zc.biome       — Biome enum (10 variants)
+
+let pixel: Biome = pixel_biome(&zc, elev_pixel, zone_base_elev, &cp);
+// Applies ElevLapse override: high peaks → Tundra / Ice on top of zone biome
+```
+
+**Biome enum** (stable tag bytes per `Biome::tag()`):
+
+| Tag | Variant | Color (RGB) | Real-world analog |
+|---:|---|---|---|
+| 0 | `Ice` | `[232, 238, 242]` | Greenland, Antarctica (pixel-lapse override only) |
+| 1 | `Tundra` | `[184, 183, 174]` | Siberian tundra |
+| 2 | `BorealForest` | `[74, 107, 71]` | Taiga |
+| 3 | `TemperateForest` | `[79, 139, 65]` | Humid subtropical / oceanic forest |
+| 4 | `TemperateGrassland` | `[184, 180, 90]` | Steppe, prairie |
+| 5 | `HotDesert` | `[216, 144, 96]` | Sahara, Arabian |
+| 6 | `Savanna` | `[201, 192, 74]` | Sub-Saharan, cerrado |
+| 7 | `TropicalRainforest` | `[15, 77, 26]` | Amazon, Congo |
+| 8 | `DeciduousForest` | `[138, 171, 82]` | E North America, Europe, E Asia (NEW v2.1f) |
+| 9 | `Mediterranean` | `[181, 165, 98]` | California, Med basin, SW Australia (NEW v2.1f) |
+
+`Biome::color()` is the canonical lookup if a consumer parses the rendered PNG.
+Tags 0..7 are pinned (preserved across v2.1f expansion) — safe to use as a wire
+format byte.
+
+**Constants stable across the contract** (snapshot via `world_gen::flatworld::*`):
+
+- `BASE_LEVEL = 0.35` — land-floor elevation
+- `VOID_LEVEL = 0.0` — ocean / between-plate void
+- `zonegen::SHORE_LEVEL_OFFSET` — added to `BASE_LEVEL` to derive
+  `sea_level` for the continentality BFS (also `WorldClimateParams::sea_level`'s
+  default expression)
+
+### 11.4 Render outputs (PNG / consumable images)
+
+Driven by [`examples/flatworld.rs`](../../crates/world-gen/examples/flatworld.rs).
+Run:
+
+```bash
+cargo run --release -p world-gen --example flatworld -- \
+    --width 1024 --height 640 --plates 12 --seed 1 \
+    --out flat.png \
+    --height-out height.png \
+    --zones-out zones.png \
+    --all-zones-out terrain.png \
+    --eroded-out terrain_eroded.png --erosion moderate \
+    --biome-out biome.png \
+    --data-out world.json
+```
+
+All renders share the **same frame** (`width × height` world pixels, top-left
+origin). Tilemap can index any of them by `(x, y)` directly.
+
+| File | Encoding | Content |
+|---|---|---|
+| `--out` plate hues | RGB8 | Per-plate distinct hue; overlaps blended; void `[10,10,14]` |
+| `--height-out` | RGB8 (gray) | Elevation × 255, clamped. Void = black, BASE_LEVEL = mid-grey, peaks = white |
+| `--zones-out` | RGB8 | Plate hue stepped by zone (legible per-plate partition) |
+| `--all-zones-out` | RGB8 (gray) | Full-map per-pixel terrain (relief synthesized; no erosion) |
+| `--eroded-out` | RGB8 (gray) | Same as all-zones with hydraulic erosion (`none` / `light` / `moderate` / `heavy`) |
+| **`--biome-out`** | **RGB8** | **B5 v2.1f 10-biome render** (the headline output for visual consumers) — uses `Biome::color()` palette + beach band + river tint + snow caps |
+| `--data-out` | JSON | The §11.2 `WorldData` document |
+| **`--climate-out`** | **JSON** | **🆕 v4 sidecar (2026-05-24)** — per-zone climate snapshot: `temp_mean / precip_annual / biome / lat_dist / site / base_elevation` for every zone + scenario `climate_params`. Pinned by `export_matches_in_memory_compute` test — same `compute_zone_climate` the renderer uses, so JSON matches painted pixels by construction. Lets consumers (eval, tilemap, knowledge service) read per-zone climate without re-implementing physics. |
+
+Recommended for tilemap inheritance: **`--biome-out`** for the visual reference
++ **`--data-out`** for the structural skeleton + **`--climate-out`** when the
+tilemap needs to inherit zone-level temperature/precip for its own biome /
+weather / encounter table decisions.
+
+### 11.5 Reproducibility recipe
+
+The contract guarantees: **same `(seed, FlatParams, WorldClimateParams,
+ClassRatios, ErosionStrength)` → byte-identical output**, on the same binary +
+platform. Pinned by:
+
+- `flatworld::is_deterministic_in_seed` test ([`flatworld.rs`](../../crates/world-gen/src/flatworld.rs))
+- `zonegen` biome render hash pin (blake3, currently `b37691d0...`)
+- All RNG paths derive from the master seed via [`rng::sub_seed`](../../crates/world-gen/src/rng.rs)
+  with stable string salts (`"flatworld-plates"`, `"flatworld-motion"`,
+  `"flatworld-zones"`, etc. — see [`flatworld::generate`](../../crates/world-gen/src/flatworld.rs))
+
+For tilemap to **regenerate** a world locally from a shared seed, the minimal
+recipe is:
+
+1. Pin the `world-gen` crate revision (commit SHA in `Cargo.toml`)
+2. Use `FlatParams::default()` + override only the fields you care about
+   (`seed`, `plate_count`, `width`/`height`)
+3. Use `WorldClimateParams::default().scaled_for(w, h, plate_count)`
+4. Call `flatworld::generate(&params)` → `FlatWorld`
+5. Optionally export JSON or render the biome PNG
+
+Any drift in default values shifts the output — defaults are part of the
+contract. Current defaults (post v2.1f / v3 OceanCurrent):
+- `plate_count: 12`, `min_zones..max_zones: 3..7`, `min_subzones..max_subzones: 3..6`
+- `t_eq: 28.0`, `t_pole: -15.0`, `precip_subtropic: 180.0`
+- `ocean_current_strength: 5.0`, `peak_lapse_min_delta: 0.05`, `ice_precip_min: 100.0`
+
+### 11.6 Known gaps + future levers for the contract
+
+Items downstream consumers may want — explicitly NOT shipped yet:
+
+| Gap | Workaround today | Future lever |
+|---|---|---|
+| **Zone climate/biome in JSON** | Use Rust API (`compute_zone_climate`) or parse biome PNG | Extend `ZoneData` with `temp_mean / precip_annual / biome_tag` (additive, schema-compatible) |
+| **`edge_dist_sea` not exported as a helper** | Tilemap recomputes BFS from `world.elevation_at + sea_level` | Promote `zonegen`'s internal `compute_edge_dist_sea` to `pub`; or export the precomputed `Vec<u32>` as a sidecar |
+| **No zone polygon export** (Voronoi cell boundaries) | Derive by nearest-site rasterization, or `concave_hull` over pixels with matching `(plate_id, zone_id)` | Add `ZoneData.boundary: Vec<[f32;2]>` (denormalized; meaningful for tilemap "draw this zone outline" use case) |
+| **No seam / adjacency records** (§5 of locked design) | Tilemap must rederive neighbour pairs from polygon adjacency | Implement §5 `Adjacency` + `SeamKind` once tilemap consumer has shipped enough to define what it needs |
+| **No `RegionPath` content-addressed store** (§9) | One JSON dump per world | Persistence layer; out of scope until a server-side use case demands it |
+| **Levels ≥ 3** | Only depth-2 supported (sub-zones) | `FlatParams` already has the slot; needs `LevelParams` vec generalization |
+
+When the tilemap team or any consumer hits one of these gaps in practice,
+that's the signal to promote the corresponding lever. The contract is
+**additive** going forward — fields will be added to `WorldData` / `ZoneData`
+but not removed or retyped without a version bump alongside it.
+
+### 11.7 Quick-start for tilemap (or any consumer)
+
+```bash
+# 1. Generate a reference world + biome render + JSON skeleton
+cargo run --release -p world-gen --example flatworld -- \
+    --seed 1 --biome-out biome.png --data-out world.json --height-out height.png
+
+# 2. Parse world.json: get plates[*].zones[*] with paths + sites + base_elevation
+# 3. For visual reference, sample biome.png at (x, y) → match Biome::color() table
+# 4. For your own per-tile biome decisions, link world-gen crate and call
+#    compute_zone_climate(&world, &params, plate_id, zone_id, &edge_dist_sea)
+```
+
+That's the minimum surface to inherit "world shape + biome distribution" into
+a parallel tilemap pipeline without coupling to the per-pixel render.

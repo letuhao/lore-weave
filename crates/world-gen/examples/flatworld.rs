@@ -15,7 +15,7 @@ use world_gen::flatworld::{
     export, generate, render_height_rgb, render_rgb, render_zones_rgb, FlatParams,
 };
 use world_gen::ErosionStrength;
-use world_gen::flat_climate::{HemisphereLayout, WorldClimateParams};
+use world_gen::flat_climate::{export_zone_climates, HemisphereLayout, WorldClimateParams};
 use world_gen::zonegen::{
     render_all_zones, render_all_zones_biome, render_all_zones_eroded, render_zone, zone_height,
     ClassRatios, TerrainClass,
@@ -42,6 +42,8 @@ fn main() {
     let mut erosion = ErosionStrength::Moderate;
     // Optional B5 v2 biome-coloured terrain + climate knobs.
     let mut biome_out: Option<PathBuf> = None;
+    // Optional v4 sidecar: per-zone climate JSON for law-based eval.
+    let mut climate_out: Option<PathBuf> = None;
     let mut climate = WorldClimateParams::default();
     // Whether the user overrode continentality_reach explicitly (skip auto-scale).
     let mut reach_explicit = false;
@@ -92,6 +94,7 @@ fn main() {
                 }
             }
             "--biome-out" => biome_out = Some(PathBuf::from(need())),
+            "--climate-out" => climate_out = Some(PathBuf::from(need())),
             "--hemisphere" => {
                 climate.hemisphere_layout = match need().as_str() {
                     "equatorial" => HemisphereLayout::Equatorial,
@@ -292,6 +295,27 @@ fn main() {
             bpath.display(),
             cm.hemisphere_layout,
             cm.continentality_reach
+        );
+    }
+
+    if let Some(cpath) = climate_out {
+        // v4 law-based eval sidecar: per-zone climate (temp / precip / biome /
+        // lat_dist). Uses the SAME compute_zone_climate the biome render uses,
+        // so values match the painted pixels by construction.
+        let cm = if reach_explicit {
+            climate.clone()
+        } else {
+            climate
+                .clone()
+                .scaled_for(world.width, world.height, world.plates.len())
+        };
+        let export = export_zone_climates(&world, &cm);
+        let json = serde_json::to_string_pretty(&export).expect("serialize climate export");
+        std::fs::write(&cpath, json).expect("failed to write climate JSON");
+        println!(
+            "wrote {} — {} zones (per-zone climate sidecar)",
+            cpath.display(),
+            export.zones.len()
         );
     }
 

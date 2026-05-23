@@ -1,14 +1,22 @@
-# Climate eval suite — 11 fixed reference renders, scored against profile-
-# specific targets. See `docs/plans/2026-05-23-climate-eval-references.md`
-# for methodology + Earth references.
+# Climate eval suite — 11 fixed reference renders, scored against geographic
+# LAWS (not Earth biome-distribution targets). See
+# `docs/plans/2026-05-23-climate-eval-references.md` for methodology.
+#
+# v4 (2026-05-24): replaced "match Earth distribution" + "match Earth entropy"
+# with "follow temperature-by-latitude law" + "follow precip-by-circulation law".
+# Snowball / Hothouse / Desert scenarios now scored honestly against the laws
+# they should follow — not penalized for non-Earth biome mix. Profile entries
+# below carry only `description` + `profile` tag (the PROFILE_LAT_BANDS table
+# in climate_eval.py varies the lat-allowed biome set per scenario; that's
+# the only profile-specific data the eval uses now).
 
-# Scoring weights (composite = weighted sum of 5 sub-scores).
+# Scoring weights (composite = weighted sum of 5 law-based sub-scores).
 [weights]
-distribution   = 0.25
-lat_banding    = 0.25
-continentality = 0.15
-diversity      = 0.15
-sanity         = 0.20
+temperature_gradient   = 0.25  # Pearson r(lat_dist, zone temp) → near -1.0
+lat_banding            = 0.25  # % pixels in lat-allowed biome set
+precipitation_gradient = 0.15  # Pearson r(observed precip, circulation_curve)
+continentality         = 0.15  # entropy delta coast vs interior
+sanity                 = 0.20  # forbidden-biome rate per lat band
 
 # Regression thresholds (used by --baseline diff mode).
 [regression]
@@ -16,65 +24,20 @@ composite_mean_min_improvement = 1.0  # batch claims improvement only if >= this
 composite_per_render_max_regression = 5.0
 subscore_mean_max_regression = 10.0
 
-# Target profiles. Distribution = expected fraction per biome (sums to 1.0).
+# Scenario profiles — kept for lat-band table selection (PROFILE_LAT_BANDS in
+# climate_eval.py). The distribution tables that used to live here are
+# REMOVED (v4 dropped Earth-matching metrics).
 [profiles.earth]
-description = "Earth-like, 10-biome (v2.1f — Olson 2001 + Beck 2018)"
-[profiles.earth.distribution]
-Ice                = 0.100
-Tundra             = 0.070
-BorealForest       = 0.165
-DeciduousForest    = 0.070   # NEW v2.1f — eastern N America, Europe, E Asia
-TemperateForest    = 0.050   # reduced — warm temperate humid only
-Mediterranean      = 0.040   # NEW v2.1f — CA, Med basin, Cape SA, SW Aus, Chile
-TemperateGrassland = 0.075   # slight reduction
-HotDesert          = 0.180   # slight reduction
-Savanna            = 0.130   # slight reduction
-TropicalRainforest = 0.120
+description = "Earth-like — temperate Earth lat bands"
 
-# Snowball: cold world, most land Ice or Tundra.
 [profiles.snowball]
-description = "Snowball: >=80% Ice+Tundra"
-[profiles.snowball.distribution]
-Ice                = 0.50
-Tundra             = 0.30
-BorealForest       = 0.10
-DeciduousForest    = 0.02
-TemperateForest    = 0.03
-Mediterranean      = 0.005
-TemperateGrassland = 0.03
-HotDesert          = 0.005
-Savanna            = 0.005
-TropicalRainforest = 0.005
+description = "Snowball — cold world, lat bands shift Ice/Tundra outward"
 
-# Hothouse: no ice, mostly forest.
 [profiles.hothouse]
-description = "Hothouse: no Ice, >=40% Forest"
-[profiles.hothouse.distribution]
-Ice                = 0.005
-Tundra             = 0.020
-BorealForest       = 0.05
-DeciduousForest    = 0.05
-TemperateForest    = 0.25
-Mediterranean      = 0.05
-TemperateGrassland = 0.075
-HotDesert          = 0.075
-Savanna            = 0.15
-TropicalRainforest = 0.275
+description = "Hothouse — warm world, lat bands allow forests at poles"
 
-# Desert: very dry, mostly HotDesert + Savanna.
 [profiles.desert]
-description = "Desert: >=50% HotDesert+Savanna"
-[profiles.desert.distribution]
-Ice                = 0.020
-Tundra             = 0.050
-BorealForest       = 0.060
-DeciduousForest    = 0.020
-TemperateForest    = 0.020
-Mediterranean      = 0.040
-TemperateGrassland = 0.200
-HotDesert          = 0.340
-Savanna            = 0.200
-TropicalRainforest = 0.050
+description = "Desert — dry world, lat bands shift HotDesert/Savanna outward"
 
 # ── Eval renders. Each gets one entry. ──
 

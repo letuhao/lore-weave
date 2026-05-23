@@ -1,10 +1,11 @@
 # Deferred Items
 
 <!-- Managed by Scribe (AMAW) or main session (default mode). Do not edit manually unless cleaning up. -->
-<!-- Next ID: 024 -->
+<!-- Next ID: 025 -->
 
 | ID | Origin | Description | Target | Severity |
 |---|---|---|---|---|
+| 024 | 2026-05-24 B5 v2.1b BUILD | W9 elev-modulated biome lightness deferred. Naive ±15% RGB modulation regressed under both E2 nearest-canonical AND E3 fractional eval. Needs design pass that preserves biome luminance signal — likely HSL/HSV-space lightness modulation gated by mountain class, not flat RGB ±%. v2.1b shipped W6 alone; W9 promotion needs its own batch with redesigned algorithm. | v2.1b-W9 dedicated batch (post v2.1c-d) | LOW |
 | 023 | 2026-05-17 GEO Path A relief render | Render polish deferred from Path A (render-only, cosmetic — neither blocks Path B): (a) rivers on the biome map are still flat per-cell Voronoi runs — tapered-curve river rendering would read far better; (b) the `atlas` style coastline is the interpolated-mesh land/water crossing + a 1px ink outline, not a true smoothed (marching-squares + curve-fit) coastline. | Render polish pass (post Path B) | LOW |
 | 022 | 2026-05-17 tilemap Phase B spec D7 | `TilemapObjectPlacement` stores only the obstacle's `anchor`, not its footprint extent. TMP_005 §4.5 passes a placed object's *area* to RiverPlacer for river source/sink siting; Phase B's discovery contract is only the `biome_object_type` tag (`Some(Mountain)` = river-source candidate, `Some(Lake)` = river-sink). Whether Phase E's V1+30d RiverPlacer needs the full footprint extent or the `anchor` representative point suffices is a Phase-E decision — if it needs the extent, add an additive footprint/template reference to `TilemapObjectPlacement` (TMP-A8). | Phase E (RiverPlacer) | LOW |
 | 021 | 2026-05-17 tilemap Phase A spec D12 / code-review r3 WARN-3 | `From<PlacementError> for crate::Error` bridge not built. Phase A's `place_and_connect_object` returns the module-local `PlacementError` enum (`NoSpace` / `NoSuchZone`); a placer in Phase C+ that `?`-propagates from `Modificator::process` (returns `crate::Result`) needs the conversion. Phase A has no such consumer, so the bridge is deferred to the first placer. Spec D12 records this. | Phase C (first placer) | LOW |

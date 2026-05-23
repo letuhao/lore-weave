@@ -17,6 +17,8 @@
 //! Pure & deterministic — no RNG. Climate is a function of the world layout +
 //! [`WorldClimateParams`] alone.
 
+use serde::Serialize;
+
 /// Where the equator sits on the flat-rectangle frame and which edge is which
 /// pole. Author-set per seed; default [`HemisphereLayout::Equatorial`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -558,6 +560,143 @@ pub fn pixel_biome(
         Biome::Tundra
     } else {
         zc.biome
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sidecar export — eval / consumer contract (v4 law-based metrics)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Dumps per-zone climate alongside the biome PNG so external eval can score
+// against geographic-law correlations (temperature gradient by latitude,
+// precipitation gradient by circulation curve) without re-implementing the
+// climate physics in another language.
+//
+// Source-of-truth invariant: this calls the SAME `compute_zone_climate` the
+// renderer uses. Pixel painted with biome X for zone Z ⇒ JSON also reports
+// biome X for zone Z. Pinned by `export_matches_in_memory_compute` test.
+
+/// One zone's climate snapshot. Field names are wire-stable for JSON consumers.
+#[derive(Debug, Clone, Serialize)]
+pub struct ZoneClimateExport {
+    pub plate_id: usize,
+    pub zone_id: usize,
+    pub site: [f32; 2],
+    pub lat_dist: f32,
+    pub temp_mean: f32,
+    pub precip_annual: f32,
+    pub biome: &'static str,
+    pub base_elevation: f32,
+}
+
+/// Scenario params snapshot — eval needs these to predict the expected
+/// circulation curve per zone (precipitation_gradient_law correlates observed
+/// vs predicted, normalizing for scenario like Hothouse / Snowball / Desert).
+#[derive(Debug, Clone, Serialize)]
+pub struct ClimateParamsExport {
+    pub t_eq: f32,
+    pub t_pole: f32,
+    pub precip_eq: f32,
+    pub precip_subtropic: f32,
+    pub precip_midlat: f32,
+    pub precip_polar: f32,
+    pub continentality_reach: f32,
+    pub continentality_precip_atten: f32,
+    pub ocean_current_strength: f32,
+}
+
+/// Top-level world climate export (one JSON document per render).
+#[derive(Debug, Clone, Serialize)]
+pub struct WorldClimateExport {
+    pub width: u32,
+    pub height: u32,
+    pub hemisphere_layout: &'static str,
+    pub climate_params: ClimateParamsExport,
+    pub zones: Vec<ZoneClimateExport>,
+}
+
+/// Build a sidecar export of every zone's climate. Uses the same
+/// [`compute_zone_climate`] the renderer uses, so values match the painted
+/// pixels by construction — see `export_matches_in_memory_compute` test.
+///
+/// `is_sea` is derived from plate coverage (matches render's `is_sea` in v2
+/// since coast taper guarantees land ≥ sea_level — only void cells are sea).
+pub fn export_zone_climates(
+    world: &FlatWorld,
+    params: &WorldClimateParams,
+) -> WorldClimateExport {
+    let w = world.width as usize;
+    let h = world.height as usize;
+    let mut is_sea = vec![false; w * h];
+    for py in 0..h {
+        for px in 0..w {
+            if world
+                .plates_at(px as f32 + 0.5, py as f32 + 0.5)
+                .is_empty()
+            {
+                is_sea[py * w + px] = true;
+            }
+        }
+    }
+    let edge_dist = crate::zonegen::edge_dist_from_sea(&is_sea, w, h);
+
+    let mut zones = Vec::new();
+    for (pid, plate) in world.plates.iter().enumerate() {
+        for (zid, &(sx, sy)) in plate.zone_sites.iter().enumerate() {
+            let lat_dist = params.hemisphere_layout.lat_dist(sy, h as f32);
+            let zc = compute_zone_climate(world, params, pid, zid, &edge_dist);
+            zones.push(ZoneClimateExport {
+                plate_id: pid,
+                zone_id: zid,
+                site: [sx, sy],
+                lat_dist,
+                temp_mean: zc.temp_mean,
+                precip_annual: zc.precip_annual,
+                biome: biome_name(zc.biome),
+                base_elevation: world.elevation_at(sx, sy),
+            });
+        }
+    }
+
+    WorldClimateExport {
+        width: world.width,
+        height: world.height,
+        hemisphere_layout: hemisphere_name(params.hemisphere_layout),
+        climate_params: ClimateParamsExport {
+            t_eq: params.t_eq,
+            t_pole: params.t_pole,
+            precip_eq: params.precip_eq,
+            precip_subtropic: params.precip_subtropic,
+            precip_midlat: params.precip_midlat,
+            precip_polar: params.precip_polar,
+            continentality_reach: params.continentality_reach,
+            continentality_precip_atten: params.continentality_precip_atten,
+            ocean_current_strength: params.ocean_current_strength,
+        },
+        zones,
+    }
+}
+
+fn biome_name(b: Biome) -> &'static str {
+    match b {
+        Biome::Ice => "Ice",
+        Biome::Tundra => "Tundra",
+        Biome::BorealForest => "BorealForest",
+        Biome::DeciduousForest => "DeciduousForest",
+        Biome::TemperateForest => "TemperateForest",
+        Biome::Mediterranean => "Mediterranean",
+        Biome::TemperateGrassland => "TemperateGrassland",
+        Biome::HotDesert => "HotDesert",
+        Biome::Savanna => "Savanna",
+        Biome::TropicalRainforest => "TropicalRainforest",
+    }
+}
+
+fn hemisphere_name(h: HemisphereLayout) -> &'static str {
+    match h {
+        HemisphereLayout::Equatorial => "Equatorial",
+        HemisphereLayout::NorthOnly => "NorthOnly",
+        HemisphereLayout::SouthOnly => "SouthOnly",
     }
 }
 
@@ -1116,5 +1255,74 @@ mod tests {
         // Defensive: plate_count = 0 must not divide-by-zero; reach > 0.
         let edge = p.clone().scaled_for(1024, 640, 0).continentality_reach;
         assert!(edge.is_finite() && edge >= 1.0, "0 plates → defensive reach, got {edge}");
+    }
+
+    // ---- export_zone_climates ----
+
+    #[test]
+    fn export_matches_in_memory_compute() {
+        // Source-of-truth invariant: the sidecar JSON's temp_mean/precip/biome
+        // for zone (pid, zid) MUST equal what compute_zone_climate returns
+        // when called directly with the same inputs. Drift here = eval
+        // measures different physics than the painted pixels.
+        let world = test_world();
+        let params = WorldClimateParams::default()
+            .scaled_for(world.width, world.height, world.plates.len());
+
+        // Build the same is_sea grid the export uses, so we can call
+        // compute_zone_climate identically.
+        let w = world.width as usize;
+        let h = world.height as usize;
+        let mut is_sea = vec![false; w * h];
+        for py in 0..h {
+            for px in 0..w {
+                if world.plates_at(px as f32 + 0.5, py as f32 + 0.5).is_empty() {
+                    is_sea[py * w + px] = true;
+                }
+            }
+        }
+        let ed = crate::zonegen::edge_dist_from_sea(&is_sea, w, h);
+
+        let export = export_zone_climates(&world, &params);
+        for ze in &export.zones {
+            let zc = compute_zone_climate(&world, &params, ze.plate_id, ze.zone_id, &ed);
+            assert_eq!(
+                ze.temp_mean.to_bits(),
+                zc.temp_mean.to_bits(),
+                "temp drift at zone ({},{})",
+                ze.plate_id, ze.zone_id
+            );
+            assert_eq!(
+                ze.precip_annual.to_bits(),
+                zc.precip_annual.to_bits(),
+                "precip drift at zone ({},{})",
+                ze.plate_id, ze.zone_id
+            );
+            assert_eq!(
+                ze.biome,
+                biome_name(zc.biome),
+                "biome drift at zone ({},{})",
+                ze.plate_id, ze.zone_id
+            );
+        }
+        assert!(!export.zones.is_empty(), "expected at least one zone in test_world");
+    }
+
+    #[test]
+    fn export_serializes_to_json() {
+        let world = test_world();
+        let params = WorldClimateParams::default()
+            .scaled_for(world.width, world.height, world.plates.len());
+        let export = export_zone_climates(&world, &params);
+        let json = serde_json::to_string(&export).expect("serialize");
+        // Smoke-test the wire format — field names callers will rely on.
+        assert!(json.contains("\"width\""));
+        assert!(json.contains("\"hemisphere_layout\""));
+        assert!(json.contains("\"climate_params\""));
+        assert!(json.contains("\"zones\""));
+        assert!(json.contains("\"temp_mean\""));
+        assert!(json.contains("\"precip_annual\""));
+        assert!(json.contains("\"biome\""));
+        assert!(json.contains("\"lat_dist\""));
     }
 }
