@@ -11,6 +11,9 @@ requires-python = ">=3.11"
 dependencies = [
   "httpx>=0.27",
   "pydantic>=2.6",
+  # P1 (hierarchical extraction T1) — loreweave_parse structural decomposer.
+  # html.parser backend is stdlib; we use bs4 for navigation + decompose.
+  "beautifulsoup4>=4.12,<5",
   # Phase 6c-γ — loreweave_obs tracing helper. These ride in with the
   # distribution, so every service that `pip install /sdk`s gets tracing.
   "opentelemetry-sdk>=1.27",
@@ -27,12 +30,20 @@ test = [
   "fastapi>=0.110",
 ]
 
-# Phase 4b-α — two top-level packages ship under this distribution.
+# Phase 4b-α — top-level packages shipped under this distribution.
 # `loreweave_extraction` depends on `loreweave_llm` (LLM SDK); they're
 # tightly coupled by design (extraction always uses the LLM gateway),
 # so a single `pip install /sdk` brings both.
+# P1 (2026-05-23) — `loreweave_parse` added (structural decomposer T1);
+# pure-Python, no LLM/HTTP deps, consumed by knowledge-service router
+# + via /internal/parse by worker-infra + book-service .txt sync path.
 [tool.setuptools.packages.find]
-include = ["loreweave_llm*", "loreweave_extraction*", "loreweave_obs*"]
+include = [
+  "loreweave_llm*",
+  "loreweave_extraction*",
+  "loreweave_obs*",
+  "loreweave_parse*",
+]
 exclude = ["tests*"]
 
 # D-EMB-MODEL-REF-01 — loreweave_extraction loads its Pass-2 prompts from

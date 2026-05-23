@@ -1,35 +1,87 @@
-# Session Handoff — Session 61 (fence-fix + idle-timeout + hierarchical-extraction ADR)
+# Session Handoff — Session 62 (P1 structural decomposer XL)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-23 (session 61 — 3 commits)
-> **HEAD:** `5379e34a` (cycle 1 fence-fix) + `dcded9d9` (cycle 2 idle-timeout) + pending cycle 3 ADR commit — branch `main`. Push status: NOT pushed (origin at `2d56eb16`).
+> **Date:** 2026-05-23 (session 62 — 1 XL cycle, pending commits)
+> **HEAD:** `23f322ba` → pending commits for P1. Push status: NOT pushed (origin at `2d56eb16`).
 > **Branch:** `main`.
 
-## What's NEXT — start P1 of the hierarchical-extraction ADR
+## What's NEXT — D-P1-LIVE-SMOKE first, then start P2 (parallel map + checkpoint)
 
-**Read first:** [`docs/03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md`](../03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md). This ADR was written at the end of session 61 (cycle 3) after user-PO correction of an earlier sketch.
+### Step 1 (must-do first): close D-P1-LIVE-SMOKE
 
-### TL;DR of the ADR
+Session 62 VERIFY hit a `docker compose build knowledge-service` failure — pip `JSONDecodeError: Unterminated string` during requirements.txt install, repeating across 3 retries. book-service Go rebuilt cleanly in parallel → confirmed **not** P1 code. Likely PyPI metadata cache corruption inside Docker buildkit.
 
-- **Problem**: extraction pipeline cannot scale to 50MB+ novels. One-job-per-chapter, serial chunks inside, flat dedup, no cross-section coreference, no checkpoint, 1-hour sessions trip LM Studio TTL eviction.
-- **Correction history**: in-session sketched a "semantic chunking" 4-tier architecture as the primary lever; user-PO rejected that framing as premature optimization on a single algorithm. The ADR replaces it with a **7-tier multi-algorithm composition** with cheap structural decomposition first.
-- **Architecture**: T1 structural decomposition → T2 leaf sizing → T3 parallel map → T4 hierarchical deterministic reduce → T5 gated LLM refinement → T6 cross-level verify → T7 multi-resolution index. Cheap-first; semantic chunking is an **escape valve at T2 stage 3**, not a primary lever.
-- **Key correction**: 50MB on LOCAL is fully feasible (~24h wall-clock with checkpoint resume); cloud is a speed-up option, NOT a requirement.
-- **Roadmap**: P1 (structural decomposer) → P2 (parallel map + checkpoint) → P3 (hierarchical reduce + per-level summaries) → P4 (semantic chunking escape valve) → P5 (gated LLM coref + verify + multi-res retrieval). **P1+P2+P3 alone = capability-complete for 50 MB local.**
+**Run order:**
+1. `docker compose build knowledge-service` — if it works now (pip cache cleared, metadata refreshed), proceed.
+2. If still fails: try `docker compose build --no-cache knowledge-service`, OR pin a specific bs4 version, OR investigate which package is corrupting the install.
+3. Once built, `docker compose up -d` and execute the live smoke per spec §4.5:
+   - Upload `services/knowledge-service/tests/fixtures/golden_chapters/alice_*.txt` (or an EPUB) via book-service `/v1/books/{id}/import`.
+   - Assert: `import_jobs.status='completed'`; `parts` row created; `chapters.part_id` + `structural_path` populated; `scenes` rows created with sane `leaf_text`.
+   - Round-trip: query joined `leaf_text` for one chapter, compare to pandoc-stripped HTML — must match.
+4. Clear D-P1-LIVE-SMOKE in SESSION_PATCH.
 
-### SOTA references in ADR (for context)
+### Step 2: P2 (parallel map + checkpoint) — L-XL cycle
 
-Multi-algorithm composition confirmed across all production systems surveyed: Microsoft GraphRAG (Leiden community detection, no semantic chunking), Anthropic Contextual Retrieval (LLM augmentation), Cohere Compass (multi-vector elements), OpenAI Assistants File Search, NotebookLM, LangChain/LlamaIndex production guides ("Try recursive char splitter first; semantic only as fallback"). Relevant papers: RAPTOR (arXiv:2401.18059), GraphRAG (arXiv:2404.16130), HippoRAG 2 (arXiv:2502.14802), LongRAG (arXiv:2406.15319), LightRAG (arXiv:2410.05779), Late Chunking (Jina 2024), Anthropic Contextual Retrieval (2024).
+**Read first:** [`docs/03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md`](../03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md) §3 T3 + §6 P2 + §7 P2 acceptance.
 
-### Suggested next-session start
+**P2 scope:**
+- NEW `extraction_leaves` Postgres table on knowledge-service (per-leaf checkpoint: `(book_id, leaf_path, op) UNIQUE`, status, result_jsonb, retried_n, started_at, completed_at).
+- Idempotent task ID: `sha256(leaf.normalized_text + extractor_op_name)` — re-submit same leaf → cache hit, skip LLM call.
+- DAG over leaves bound by `LM_STUDIO_MAX_CONCURRENT`.
+- Rolling `known_entities` window: top-K (cap 200) canonical names from previously-completed leaves IN SAME CHAPTER, threaded to extractor as cross-leaf anchor — OR per the session-62 CLARIFY answer, fetch per-chapter glossary anchor via the existing glossary-service internal endpoint (PO chose the glossary anchor over a rolling window; revisit if perf degrades).
+- Per-leaf retry budget (default 2); on exhaustion mark `failed`, reduce-step ignores.
+- Resume on restart: skip `status='completed'` leaves; recompute everything else from scratch.
+- **P2 fallback contract (M6 locked at P1 DESIGN — DO NOT SKIP):** when reading scenes for a chapter, if `scenes WHERE chapter_id=$1 AND lifecycle_state='active'` returns empty, fall back to `chapter_drafts.body` via `tiptap_json_to_text(body)` as one virtual scene. Legacy (pre-P1) chapters have NULL `structural_path` + zero scenes; this fallback is the bridge. **If P2 skips this contract, legacy chapters silently get zero extraction.**
 
-1. **Read** the ADR end-to-end (~600 lines).
-2. **CLARIFY**: confirm scope of P1 (structural decomposer). Which fixture corpora (EPUB / Markdown / plain-text multi-language)? Owner service for the parser — book-service or knowledge-service?
-3. **DESIGN**: parser dispatcher contract + `StructuralTree` Pydantic schema + per-format detector implementations.
-4. **BUILD** P1 — likely M-L cycle. No LLM, no embedding; pure regex/AST.
-5. **VERIFY** with the 9 golden chapters' source texts (already in `tests/fixtures/golden_chapters/`) — must round-trip through the parser without text loss.
+**P2 reuses existing** `gather_relations_events_facts` extractor. No prompt change. No new ML. Critical-path next session.
 
-P1 alone unblocks parallel map (P2) which alone is the biggest perf win. Order matters: P1 → P2 → P3 in sequence; P4 and P5 are independent quality polish.
+### Step 3 (later sessions): P3 (hierarchical reduce + per-level summaries) → P1+P2+P3 = 50MB capability complete
+
+Per ADR §6: P3 is the third critical-path phase. P4 (semantic chunking escape valve) + P5 (gated LLM coref + multi-res retrieval) are independent quality polish that come after.
+
+---
+
+## Session 62 — what happened
+
+Full 12-phase XL cycle for P1 (structural decomposer / T1 of the hierarchical extraction ADR). PO answered 3 CLARIFY questions, then "approve" repeated through DESIGN → REVIEW (design) → PLAN → BUILD → VERIFY → REVIEW (code) → QC → POST-REVIEW. P1 implementation **capability complete in code**; cross-service live smoke deferred via D-P1-LIVE-SMOKE.
+
+### What changed
+
+| Layer | Files | Test counts |
+|---|---|---|
+| Python SDK `sdks/python/loreweave_parse/` | 5 modules + `__init__.py` + parent `pyproject.toml` registration + `bs4>=4.12` dep | **38/38** SDK tests |
+| knowledge-service `/internal/parse` | NEW router + tests + `max_parse_body_bytes` config + bs4 dep + main.py wire-up | **9/9** router tests; full suite **1654/1654** |
+| book-service schema | parts + scenes tables + chapter.part_id/structural_path + 3 indexes (NO backfill — R-SELF-1 NULL sentinel for legacy) | **5/5** migrate regression tests |
+| worker-infra integration | NEW `parse_client.go` + tests; REWROTE `import_processor.go` (3-level Tx D7); DELETED `splitChapters` + 4 helpers from `html_to_tiptap.go` | **6/6** parse_client contract tests + 4 splitChapters tests removed (replaced by SDK tests) |
+| book-service `.txt` sync path | NEW `parse.go` (parseClientCall + processTxtImport) + tests; ADDED `.md` to `allowedImportFormats`; ROUTED `.txt` through `/internal/parse` per H1 | **6/6** parse tests |
+
+### Review trail
+- DESIGN: 3 self-review (R-SELF-1/2/3) + 10 /review-impl round 1 (3H + 7M + 4L + 1C) — all HIGH+MED folded inline; 2 MED deferred.
+- /review-impl round 2 on BUILD: 0H + 4M + 5L + 3C — 5 fix-now batched (~25 LoC), 6 deferred rows queued.
+
+### 6 deferred rows filed
+- **D-P1-LIVE-SMOKE** — pip JSONDecodeError blocked knowledge-service image rebuild; must run first thing next session.
+- **D-P1-IMPORT-PROCESSOR-INTEG-TESTS** — plan promised 3 processImport orchestrator tests; only HTTP-client unit tests written; rely on live smoke.
+- **D-P1-CHAPTER-RAW-AUDIT** — `.txt` now writes per-chapter joined leaf_text to chapter_raw_objects.body_text (markers stripped vs pre-P1 full body); audit FE callers of `getChapterContent`.
+- **D-P1-LEAF-TEXT-NESTED** — `html_to_leaf_text` direct-text fallback covers `<li>outer<ul>...</ul></li>` + `<div>loose<p>...</p></div>` but deeper edges may surface on real EPUBs.
+- **D-P1-CONTRACT-DRIFT-TEST** — 3 mirrored schemas (Python `_types.py` + 2 Go) have no fixture-based drift test; consider extracting `sdks/go/lwparse/`.
+- **D-WORKER-INFRA-CONFIG-TEST** — pre-existing `TestLoadDefaults` panic (predates P1, confirmed via git stash).
+
+### Memory anchors validated / created
+- `feedback_cheap_structural_before_expensive_semantic` — pandoc + structural walk handle every fixture without semantic chunking.
+- `feedback_review_impl_on_design_cycles` — round 1 caught 3H+7M at DESIGN; round 2 caught 4M post-BUILD. Pattern continues to pay; invoke both rounds.
+- `feedback_design_test_plan_is_a_checklist` — caught the M3 gap (promised processImport integration tests were missing).
+- `feedback_mock_only_coverage_hides_crossservice_bugs` — parse_client_test.go explicitly asserts X-Internal-Token header per D-CHAT-BILLING-01 pattern.
+
+### Lessons (candidate for agent memory)
+- **PyPI metadata corruption inside Docker buildkit can fail an image build for 3+ retries.** Memory `feedback_host_env_drift_masquerades_as_code_bug` corollary: distinguish infra-flake from code-bug — try the OTHER service build in parallel (book-service Go rebuilt fine while knowledge-service Python failed) to confirm it's infra not code. Defer with `live infra unavailable: <reason>` per CLAUDE.md cross-service evidence rule.
+- **2-round /review-impl is the right cadence for XL cycles introducing new abstractions + cross-service contracts.** Round 1 at DESIGN caught H1 (.txt bypass path I'd documented wrongly in D3), H2 (HTML→text algorithm not locked), H3 (body cap unspecified); round 2 at BUILD caught M1 (innermost-only block walker drops outer-text), M3 (missing promised integration tests). Each round costs ~$1-2 of subagent calls; net cost vs. landing those bugs post-release: trivial.
+
+---
+
+## Session 61 — what happened (for context, superseded by session 62)
+
+[earlier session-61 cycle 1+2+3 details retained below in this file for archaeological reference; key takeaway: fence-fix cycle 1 unlocked P=0.97/R=0.81 on 9/10 golden chapters; cycle 2 idle-timeout safety net; cycle 3 ADR written; session 62 implemented P1.]
 
 ---
 

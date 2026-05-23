@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0
 
+    # P1 (2026-05-23) — /internal/parse body size cap. Default 200 MiB
+    # matches book-service's maxImportSize at services/book-service/internal/api/import.go.
+    # H3 fix: explicit ceiling — without this, a misconfigured caller could
+    # OOM the worker on a hot loop with multi-100MB bodies.
+    max_parse_body_bytes: int = 209_715_200
+
     # K17.2 — provider-registry BYOK client for LLM extraction calls.
     # Calls provider-registry's /internal/proxy/v1/chat/completions
     # endpoint, which resolves the user's BYOK model from

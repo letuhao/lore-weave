@@ -24,6 +24,7 @@ from app.routers import (
     health,
     internal_benchmark,
     internal_extraction,
+    internal_parse,
     internal_summarize,
     internal_tools,
     metrics,
@@ -481,6 +482,7 @@ app.include_router(ping.internal_router)
 app.include_router(context.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_extraction.router)
+app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
 app.include_router(internal_tools.router)
 app.include_router(metrics.router)

@@ -24,6 +24,11 @@ type Config struct {
 	LLMGatewayInternalURL  string
 	UsageBillingServiceURL string
 	InternalServiceToken   string
+
+	// P1 (2026-05-23) — knowledge-service /internal/parse for structural
+	// decomposition on the synchronous .txt import branch. EPUB/DOCX go
+	// through worker-infra; .txt stays sync per existing UX (small files).
+	KnowledgeServiceURL string
 }
 
 func Load() (*Config, error) {
@@ -42,6 +47,7 @@ func Load() (*Config, error) {
 		LLMGatewayInternalURL:  os.Getenv("LLM_GATEWAY_INTERNAL_URL"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		KnowledgeServiceURL:    getEnv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

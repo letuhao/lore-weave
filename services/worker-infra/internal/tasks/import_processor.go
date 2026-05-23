@@ -36,7 +36,8 @@ type ImportProcessor struct {
 	BookDB  *pgxpool.Pool
 	Minio   *minio.Client
 
-	amqpCh amqpPublisher
+	amqpCh      amqpPublisher
+	parseClient *ParseClient // P1 — initialised lazily in Run()
 }
 
 func (t *ImportProcessor) Name() string { return "import-processor" }
@@ -49,6 +50,11 @@ const (
 
 func (t *ImportProcessor) Run(ctx context.Context) error {
 	slog.Info("import-processor starting")
+
+	// P1 — initialise the structural-decomposer client.
+	if t.parseClient == nil {
+		t.parseClient = NewParseClient(t.Cfg.KnowledgeServiceURL, t.Cfg.InternalToken)
+	}
 
 	// Connect to RabbitMQ for WebSocket push events
 	if t.Cfg.RabbitMQURL != "" {
@@ -164,71 +170,157 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload struct {
 		return 0, fmt.Errorf("pandoc: %w", err)
 	}
 
-	// 3. Split into chapters and convert HTML→Tiptap JSON
-	chapters := splitChapters(html, payload.FileFormat)
-
+	// 3. P1 — structural decomposition via knowledge-service /internal/parse
+	// (replaces the naive splitChapters helper that handled <h1>/<h2> only
+	// and degraded DOCX to a single chapter).
 	lang := payload.OriginalLanguage
 	if lang == "" {
 		lang = "auto"
 	}
-
-	// 4. Create chapters in book DB
-	count := 0
-	for i, ch := range chapters {
-		tiptapJSON := htmlToTiptapJSON(ch.Content)
-
-		// Extract embedded images (data: URIs) → upload to MinIO → replace src
-		imgPrefix := fmt.Sprintf("chapters/%s/import-%s-%d", payload.BookID, payload.JobID, i)
-		tiptapJSON, imgCount := extractAndUploadImages(ctx, tiptapJSON, t.Minio, t.Cfg.MinioBucket, imgPrefix, "")
-		if imgCount > 0 {
-			slog.Info("import: extracted images", "chapter", i, "count", imgCount)
-		}
-
-		sortOrder := i + 1
-		// Auto-assign sort_order after existing chapters
-		var maxSort int
-		t.BookDB.QueryRow(ctx,
-			`SELECT COALESCE(MAX(sort_order),0) FROM chapters WHERE book_id=$1 AND lifecycle_state='active'`,
-			payload.BookID).Scan(&maxSort)
-		sortOrder = maxSort + 1
-
-		tx, err := t.BookDB.Begin(ctx)
-		if err != nil {
-			return count, fmt.Errorf("db begin: %w", err)
-		}
-
-		var chapterID string
-		err = tx.QueryRow(ctx, `
-INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at)
-VALUES($1, $2, $3, $4, 'application/json', $5, $6, $7, 'active', now(), now())
-RETURNING id
-`, payload.BookID, nullIfEmpty(ch.Title), ch.Filename, lang,
-			len(tiptapJSON), sortOrder,
-			fmt.Sprintf("chapters/%s/import-%s-%d", payload.BookID, payload.JobID, i),
-		).Scan(&chapterID)
-		if err != nil {
-			tx.Rollback(ctx)
-			return count, fmt.Errorf("insert chapter: %w", err)
-		}
-
-		_, _ = tx.Exec(ctx,
-			`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1, $2, 'json', now(), 1)`,
-			chapterID, tiptapJSON)
-		_, _ = tx.Exec(ctx,
-			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4)`,
-			chapterID, tiptapJSON, "imported from "+ch.Filename, payload.UserID)
-		_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
-
-		if err := tx.Commit(ctx); err != nil {
-			return count, fmt.Errorf("commit chapter: %w", err)
-		}
-		count++
+	tree, err := t.parseClient.Call(ctx, "html", html, lang, "")
+	if err != nil {
+		return 0, fmt.Errorf("parse: %w", err)
 	}
 
-	// 5. Clean up import file from MinIO
+	// 4. Find current max sort_order ONCE — we apply chapterGlobalSort
+	// (book-global counter, R-SELF-3) across parts.
+	var maxSort int
+	_ = t.BookDB.QueryRow(ctx,
+		`SELECT COALESCE(MAX(sort_order),0) FROM chapters WHERE book_id=$1 AND lifecycle_state='active'`,
+		payload.BookID).Scan(&maxSort)
+	chapterGlobalSort := maxSort + 1
+
+	// L3 fix: multi-part filename pattern when len(parts) > 1.
+	multiPart := len(tree.Parts) > 1
+
+	// 5. Write parts + chapters + scenes per spec D7 3-level Tx scoping.
+	count := 0
+	for partIdx, part := range tree.Parts {
+		// (a) Per-part Tx: insert ONE parts row.
+		partID, err := t.insertPart(ctx, payload.BookID, partIdx+1, part.Title, part.Path)
+		if err != nil {
+			return count, fmt.Errorf("insert part: %w", err)
+		}
+
+		for chIdxInPart, ch := range part.Chapters {
+			tiptapJSON := htmlToTiptapJSON(ch.HTML)
+
+			// Extract embedded images (data: URIs) → upload to MinIO → replace src.
+			// Use chapterGlobalSort-1 as the per-job index (preserves existing pattern).
+			imgPrefix := fmt.Sprintf(
+				"chapters/%s/import-%s-%d",
+				payload.BookID,
+				payload.JobID,
+				chapterGlobalSort-1,
+			)
+			tiptapJSON, imgCount := extractAndUploadImages(
+				ctx, tiptapJSON, t.Minio, t.Cfg.MinioBucket, imgPrefix, "",
+			)
+			if imgCount > 0 {
+				slog.Info("import: extracted images",
+					"chapter", chapterGlobalSort, "count", imgCount)
+			}
+
+			// L3 — synthesised original_filename pattern. C1 fix: per-part
+			// indexing for BOTH filename and storage_key in multi-part mode
+			// (consistent debug scheme; uniqueness preserved by the inserted
+			// import-job UUID + per-part counter).
+			var origFilename, storageKey string
+			if multiPart {
+				origFilename = fmt.Sprintf("import-pt%02d-ch%03d.epub", partIdx+1, chIdxInPart+1)
+				storageKey = fmt.Sprintf(
+					"chapters/%s/import-%s-pt%d-ch%d",
+					payload.BookID, payload.JobID, partIdx+1, chIdxInPart+1,
+				)
+			} else {
+				origFilename = fmt.Sprintf("import-ch%03d.epub", chapterGlobalSort)
+				storageKey = fmt.Sprintf(
+					"chapters/%s/import-%s-%d",
+					payload.BookID, payload.JobID, chapterGlobalSort-1,
+				)
+			}
+
+			// (b) Per-chapter Tx: chapter + draft + revision + scenes.
+			tx, err := t.BookDB.Begin(ctx)
+			if err != nil {
+				return count, fmt.Errorf("db begin: %w", err)
+			}
+
+			var chapterID string
+			chapterTitle := ""
+			if ch.Title != nil {
+				chapterTitle = *ch.Title
+			}
+			err = tx.QueryRow(ctx, `
+INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, part_id, structural_path)
+VALUES($1, $2, $3, $4, 'application/json', $5, $6, $7, 'active', now(), now(), $8, $9)
+RETURNING id
+`, payload.BookID, nullIfEmpty(chapterTitle), origFilename, lang,
+				len(tiptapJSON), chapterGlobalSort, storageKey,
+				partID, ch.Path,
+			).Scan(&chapterID)
+			if err != nil {
+				tx.Rollback(ctx)
+				return count, fmt.Errorf("insert chapter: %w", err)
+			}
+
+			_, _ = tx.Exec(ctx,
+				`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1, $2, 'json', now(), 1)`,
+				chapterID, tiptapJSON)
+			_, _ = tx.Exec(ctx,
+				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4)`,
+				chapterID, tiptapJSON, "imported from "+origFilename, payload.UserID)
+			_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
+
+			// Insert scenes for this chapter.
+			for _, sc := range ch.Scenes {
+				_, err := tx.Exec(ctx,
+					`INSERT INTO scenes(chapter_id, sort_order, path, leaf_text, content_hash, parse_version) VALUES($1, $2, $3, $4, $5, 1)`,
+					chapterID, sc.SortOrder, sc.Path, sc.LeafText, sc.ContentHash)
+				if err != nil {
+					tx.Rollback(ctx)
+					return count, fmt.Errorf("insert scene: %w", err)
+				}
+			}
+
+			if err := tx.Commit(ctx); err != nil {
+				return count, fmt.Errorf("commit chapter: %w", err)
+			}
+			count++
+			chapterGlobalSort++
+		}
+	}
+
+	// 6. Clean up import file from MinIO.
 	_ = t.Minio.RemoveObject(ctx, t.Cfg.MinioBucket, payload.FileStorageKey, minio.RemoveObjectOptions{})
 
 	return count, nil
+}
+
+// insertPart writes a single parts row in its own short transaction
+// (per spec D7 (a) per-part Tx prelude).
+func (t *ImportProcessor) insertPart(
+	ctx context.Context,
+	bookID string,
+	sortOrder int,
+	title *string,
+	path string,
+) (string, error) {
+	var titleArg any
+	if title != nil && strings.TrimSpace(*title) != "" {
+		titleArg = *title
+	}
+	var partID string
+	err := t.BookDB.QueryRow(ctx, `
+INSERT INTO parts(book_id, sort_order, title, path)
+VALUES($1, $2, $3, $4)
+ON CONFLICT (book_id, sort_order) DO UPDATE SET title = EXCLUDED.title, path = EXCLUDED.path, updated_at = now()
+RETURNING id
+`, bookID, sortOrder, titleArg, path).Scan(&partID)
+	if err != nil {
+		return "", fmt.Errorf("insert part: %w", err)
+	}
+	return partID, nil
 }
 
 func nullIfEmpty(s string) any {
