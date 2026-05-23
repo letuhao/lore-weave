@@ -1,9 +1,50 @@
-# Session Handoff — Session 61 (gateway aggregator markdown-fence fix → catalogue ADR empirically downgraded)
+# Session Handoff — Session 61 (fence-fix + long-chapter perf safety net → next session: semantic-chunking architecture research)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-23 (session 61 — 1 commit pending)
-> **HEAD:** `5e1001a8` + pending fence-fix commit — branch `main`. Push status: NOT pushed (origin at `2d56eb16`).
+> **Date:** 2026-05-23 (session 61 — 2 commits)
+> **HEAD:** `5379e34a` (cycle 1 fence-fix) + pending cycle 2 long-chapter perf commit — branch `main`. Push status: NOT pushed (origin at `2d56eb16`).
 > **Branch:** `main`.
+
+## What's NEXT — semantic-chunking architecture research + ADR
+
+The user-PO has explicitly queued a **dedicated research session** for the chunking + long-document extraction architecture. In-session-61 evaluation surfaced that LoreWeave's current pipeline cannot scale to large novels (50MB+ corpora) because:
+
+- All chunking strategies (`tokens` / `paragraphs` / `sentences`) are **syntactic**, not semantic.
+- Chunks are **serial inside a job** (worker hands one at a time to adapter.Stream).
+- **Naive key-based dedup** (no cross-chunk fuzzy coreference).
+- **No cross-chunk context propagation** (known_entities is empty at start of every chunk).
+- **Flat, not hierarchical** — 50MB = 6,000+ chunks all at one level.
+- **No checkpoint/resume** — partial progress is lost on job failure.
+- **One LLM session per chapter** → long-running ⇒ LM Studio TTL eviction (cycle 2's idle-timeout is a band-aid for this, not a cure).
+
+The user requested: **(1) re-evaluate current architecture; (2) research the SOTA market; (3) propose a fitting architecture + algorithms.**
+
+The in-session preview (kept here as a starting pointer — DO NOT treat as the final design) sketched a **4-tier architecture**:
+
+1. **Tier 1 — Hierarchical semantic chunking.** Structural pre-split (book → part → chapter → scene marker) followed by sentence-embedding adjacent-cosine **percentile breakpoint** (LangChain SemanticChunker pattern) with hard token budget cap. Uses existing bge-m3 embedding capability.
+2. **Tier 2 — Parallel map orchestrator.** Per-scene extraction in parallel (semaphore = LM Studio Max Concurrent), per-scene checkpoint table for resume, rolling known_entities window (last ~200 canonical names) for cross-scene context.
+3. **Tier 3 — Hierarchical tree-merge reducer.** scene → chapter → part → book pairwise binary tree merge. Each level: deterministic dedup (existing canonical_id) + **gated LLM-aided coreference** for ambiguous pairs (e.g., "the Master" ↔ "Holmes") + per-level summary.
+4. **Tier 4 — Multi-resolution retrieval.** Per-scene + per-chapter + per-book vector indices (RAPTOR-style); Mode-3 query routes to appropriate level by query abstraction.
+
+**SOTA references surveyed** (for the research session to start from):
+- LangChain SemanticChunker + LlamaIndex SemanticSplitterNodeParser (percentile-breakpoint chunking, 2023+).
+- Jina **Late Chunking** (2024) — embed whole doc, project per-chunk.
+- **RAPTOR** (Sarthi 2024, arXiv:2401.18059) — recursive tree of LLM-summarized clusters; multi-level retrieval.
+- **Microsoft GraphRAG** (Edge 2024, arXiv:2404.16130) — entity graph + Leiden community detection + per-community summary. Already cited by `CLAUDE.md`.
+- **HippoRAG / HippoRAG 2** (Gutiérrez 2024-2025, arXiv:2405.14831, 2502.14802) — PageRank retrieval on entity graph. Already cited.
+- **LongRAG** (Jiang 2024, arXiv:2406.15319) — coarse retrieval units + long-context reader (counter-trend).
+- **LightRAG** (Guo 2024, arXiv:2410.05779) — dual-level retrieval.
+- LangChain MapReduce / Refine document chain patterns.
+- Anthropic **Contextual Retrieval** (2024 blog) — LLM-generated per-chunk context augmentation.
+
+**Suggested first-session deliverable**: a planning-doc ADR under `docs/03_planning/KNOWLEDGE_SERVICE_SEMANTIC_CHUNKING_ADR.md` covering all four tiers + decision log + roadmap (5 phases P1-P5), then start P1 (semantic strategy in `provider/chunker/chunker.go` + Python sentence-embedding caller + percentile threshold tune via the LLM-judge harness already in place).
+
+Scale targets for the new architecture:
+- 100KB chapter: existing baseline (~10 min local).
+- 1MB novel: ~2h local, ~$1 cloud.
+- **50MB corpus**: requires **tiered model selection** (cloud Haiku for bulk map step, local 35B for high-value reduce + coreference). Estimated ~$50 cloud cost.
+
+---
 
 ## Session 61 — what happened
 
@@ -46,17 +87,21 @@ Across the 9 golden chapters, **mechanism A (out-of-enum `kind`) and mechanism B
 
 Recall jump 0.46→0.81 is the fence-fix payoff (the dropped chunks were the bulk of the chapter, not low-quality outliers).
 
-## What's NEXT — pick from these (no blocker remains)
+## Session 61 cycle 2 — long-chapter perf idle-timeout safety net
 
-Knowledge-service extraction quality is now **demonstrably P=0.97 R=0.81 on local qwen3.6** with the LLM-judge harness. The R&D track is no longer blocked on a measurement instrument or a taxonomy refactor.
+The fence-fix cycle's full-9-chapter baseline run revealed `sherlock_speckled_band` (1139 lines / 17 chunks × 4 ops) hangs the local 35B target under sustained load. In-DB `llm_jobs` records confirmed: even SERIAL mode stalled with `event_extraction` stuck at 4/17 + a sibling `fact_extraction` failed mid-job with HTTP 400 `"Failed to load model qwen/qwen3.6-35b-a3b. Operation canceled."` — LM Studio's auto-eviction had unloaded the model mid-stream, the streamer (deliberately "No wall-clock timeout" per memory `feedback_no_timeout_on_llm_pipeline`) had no idle detection, so the chunk request waited forever.
 
-Reasonable next moves (in no particular order):
+**Fix (M, 6 files, primary in provider-registry-service):**
+- NEW `idleTimeoutReader` + `wrapStreamBody` in `provider/streamer.go` — per-Read `time.AfterFunc` closes the body when no bytes arrive within `LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S`. Atomic flag distinguishes idle-close from upstream-close → `ErrUpstreamTimeout`. Default 0 in code preserves the no-timeout memory principle; compose sets 300s prod default. **Idle vs wall-clock distinction**: only fires when NO bytes arrived in the window — a legitimately slow but progressing model never trips it.
+- Wired at BOTH streamer entry points: `openCompletionStream` (OpenAI/LM Studio/Ollama) + `doStreamPOST` (Anthropic). No path bypasses.
+- 5 new Go tests + `blockingReadCloser` helper.
+- `infra/docker-compose.yml` sets `LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S=300` env-tunable.
+- `test_extraction_eval.py` adds `KNOWLEDGE_EVAL_LONG_CHAPTER_MAX_PARAGRAPHS=200` default skip (sherlock 252 → auto-excluded; set 0 to opt-in).
+- `QUALITY_EVAL_BASELINES.md` "Run notes" section documents LM Studio TTL recommendation + the idle-timeout net.
 
-1. **Continue R&D extraction-quality iteration** — the recall gap from 0.81 → higher is now tractable through prompt tuning + chunking knobs; each cycle re-runs the judge harness for relative measurement.
-2. **`sherlock_speckled_band` perf fix** — per-chapter chunk-size cap, or a separate large-chapter eval flow, so the 10th chapter joins the baseline.
-3. **Catalogue-driven extraction (deferred)** — only when a genre-fiction fixture set exists; until then it's a paper exercise.
-4. **`register_lm_studio_models.sql` pricing patch** — session 60 left a TODO; the SQL seed still ships models without `pricing` so a fresh DB hits Phase 6a fail-closed. One-liner per model.
-5. **Non-blocking polish-bucket** (D-K21B-07 Anthropic tool calling, ~6 LIVE-SMOKE items, ~20 polish-bucket deferrals from prior cycles) — "Gap Closure v2" debt-paydown arc.
+**Verify:** all provider-registry packages `go test` green + `go vet` clean + live smoke (rebuilt provider-registry, sent chat job through SDK → status=completed, idle timer did not spurious-fire).
+
+**Status of the long-chapter problem after this cycle:** the idle-timeout is a **band-aid that makes failures fail-fast** (chunk surfaces error, aggregator records `chunk_errors`, job completes with partial data). It does NOT make sherlock-class chapters succeed — that requires the architectural rework being researched next session (hierarchical semantic chunking + parallel map + tree-merge reducer, see top "What's NEXT").
 
 ## Lessons (for agent memory)
 
@@ -64,6 +109,8 @@ Reasonable next moves (in no particular order):
 - **Memory `feedback_mock_only_coverage_hides_crossservice_bugs` strikes again.** Aggregator unit tests had fed clean JSON for years; the live model emits fences. The fix added a regression-lock test feeding a fenced input + a no-brace-still-errors guard against the recovery path swallowing real failures.
 - **`feedback_no_timeout_on_llm_pipeline` corollary**: when a model "fails", audit the pipeline first. The fence bug had been masking real model quality across all 4 extraction ops since the aggregator shipped.
 - **Concurrent load on a single LM Studio 35B is fragile** — saw repeated transient flakes (cold-model entity-extraction returning 0; mid-chapter event-extraction stuck) during the original concurrency=3 eval run. Serial (concurrency=1) was needed for two stragglers. The eval test should probably default to lower concurrency for the local target.
+- **Idle timeout ≠ wall-clock timeout** (cycle 2). The memory principle "no wall-clock timeout on the LLM path" deliberately leaves long-running models alone, but does NOT prevent us from detecting an upstream that's gone *silent*. The cycle-2 `idleTimeoutReader` fires ONLY when no bytes have arrived in the window — a slow-but-progressing model never trips it. Reconciliation of these two principles is the right pattern for any cross-service stream where the upstream can die without protocol-level notification.
+- **A safety net is not a cure.** Cycle 2's idle-timeout makes sherlock-class chapters *fail fast* instead of hanging. The architectural fix (semantic chunking + parallel map + tree-merge) is queued for the next session. Document the boundary so the safety net isn't mistaken for the solution.
 
 ---
 

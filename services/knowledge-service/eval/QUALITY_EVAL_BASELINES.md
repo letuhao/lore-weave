@@ -414,3 +414,16 @@ Precision lift from session 60 to this run is small (extraction was already accu
 - Judge coverage is 62% / 56% — gemma-4-26b emits reasoning tokens that occasionally swallow a judge batch's verdicts (the original session-60 caveat carries over). A non-reasoning judge would harden the absolute numbers; a reasoning judge keeps the relative-improvement signal honest.
 - Some chapters land with very low judge coverage (alice_ch01 P=30%, pride_prejudice R=14%) — uneven because the judge selects which items to grade per batch; a smaller batch size would even it out at the cost of more LLM calls.
 - The catalogue-driven extraction ADR (`docs/03_planning/KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md`) remains a real design improvement for genre fiction kinds, but its premise ("event recall ≈ 0 because of kind-enum drop") is empirically refuted on the current fixtures. Re-prioritise only when a genre-fiction fixture set exists.
+
+## Run notes — LM Studio config (session-61 long-chapter perf fix)
+
+During session 60–61, sustained extraction runs on the local 35B target (`qwen/qwen3.6-35b-a3b`) repeatedly stalled mid-job: the upstream stopped emitting tokens, the gateway streamer had no idle timeout (memory `feedback_no_timeout_on_llm_pipeline` — wall-clock timeout is deliberately off; idle timeout is fundamentally different and was added in session 61 — see `provider/streamer.go:idleTimeoutReader`), and the chunk waited forever. The trigger was LM Studio **auto-evicting the loaded model** under sustained load — confirmed by an in-DB `llm_jobs` row failing with HTTP 400 `"Failed to load model qwen/qwen3.6-35b-a3b. Operation canceled."` mid-job.
+
+Two recommendations for the LM Studio side when running a long extraction or eval:
+
+1. **Disable TTL / idle-eviction** of the loaded model. In LM Studio Settings → Local Server, switch off any "Unload after N minutes idle" option (or set the TTL high enough — many hours — to outlast the eval run). The 4-op × 17-chunk extraction of `sherlock_speckled_band` consumed ~1h+ of wall-clock; default TTLs are often shorter than that.
+2. **Keep `Max Concurrent Predictions ≥ 4` + `Unified KV Cache ON`** (per `C-PRED-ALIGN-DEF-03`). Continuous batching is what closes the GPU-util gap that the serial loop leaves open.
+
+On the gateway side, the **idle-timeout safety net** is enabled by default in deployment (`LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S=300` in `infra/docker-compose.yml`). 300 s of upstream silence is treated as a stuck connection — the streamer closes the body, the chunk surfaces an `ErrUpstreamTimeout`, the aggregator records a chunk error, and the job completes with partial data instead of hanging. Set `=0` to opt out (preserves the historical no-timeout behavior).
+
+For the eval harness, very long chapters can be excluded via `KNOWLEDGE_EVAL_LONG_CHAPTER_MAX_PARAGRAPHS=200` (default — sherlock_speckled_band at 252 paragraphs is skipped). Set high or to `0` to include them. The aggregate baseline above (P=0.97 R=0.81) was measured on the 9 chapters under this default, since the 10th chapter remained a perf outlier even after the idle-timeout safety net.

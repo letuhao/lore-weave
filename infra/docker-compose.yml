@@ -224,6 +224,14 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
+      # Session-61 long-chapter perf fix — per-Read idle timeout on
+      # streaming upstreams (see provider/streamer.go). Defense-in-depth
+      # against LM Studio auto-evicting a loaded model mid-stream (the
+      # sherlock_speckled_band stall: no `done`, no `err`, streamer
+      # waits forever). 300s is generous — real models stream tokens
+      # within seconds; 300s of upstream silence ≈ certainly dead.
+      # Unset / "0" disables (preserves the historical no-timeout path).
+      LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S: ${LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S:-300}
       # Phase 6a — spend-guardrail estimator tuning knobs. Optional;
       # code defaults apply when unset (token-count estimation, not
       # money limits). See LLM_PIPELINE_PHASE6A_DESIGN.md §3.6.

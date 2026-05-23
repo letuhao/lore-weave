@@ -296,5 +296,5 @@ func doStreamPOST(
 		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
 		return nil, ClassifyUpstreamHTTP(resp.StatusCode, body, retryAfter)
 	}
-	return resp, nil
+	return wrapStreamBody(resp), nil
 }
