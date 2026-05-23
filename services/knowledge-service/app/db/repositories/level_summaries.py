@@ -99,9 +99,15 @@ class LevelSummariesRepo:
         input → cache miss → caller must call LLM + upsert.
         """
         table, level_col = _LEVEL_TABLE[level]
+        # Book-level table only has `book_id` (no separate level_id column);
+        # selecting `book_id` twice raises DuplicateColumnError at psql.
+        # Live-smoke (session 67 cont.3) surfaced this when the book level
+        # actually fired post-cascade — chapter/part levels passed because
+        # `chapter_id`/`part_id` ≠ `book_id`.
+        book_col = "" if level_col == "book_id" else ", book_id"
         row = await self._pool.fetchrow(
             f"""
-            SELECT id, {level_col} AS level_id, book_id, summary_text,
+            SELECT id, {level_col} AS level_id{book_col}, summary_text,
                    summary_input_md5, embedding_dimension, embedding_model_uuid
             FROM {table}
             WHERE {level_col} = $1
@@ -143,18 +149,35 @@ class LevelSummariesRepo:
             (race winner has different summary; ours is dropped).
         """
         table, level_col = _LEVEL_TABLE[level]
+        # Book-level: summary_books has only `book_id`; including both
+        # `level_col` (=book_id) and `book_id` in the INSERT raises
+        # DuplicateColumnError. Drop the redundant column + parameter
+        # for book level only — chapter/part levels still want both.
         try:
-            row = await self._pool.fetchrow(
-                f"""
-                INSERT INTO {table}
-                  ({level_col}, book_id, summary_text, summary_input_md5,
-                   embedding_dimension, embedding_model_uuid)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING id
-                """,
-                level_id, book_id, summary_text, summary_input_md5,
-                embedding_dimension, embedding_model_uuid,
-            )
+            if level_col == "book_id":
+                row = await self._pool.fetchrow(
+                    f"""
+                    INSERT INTO {table}
+                      (book_id, summary_text, summary_input_md5,
+                       embedding_dimension, embedding_model_uuid)
+                    VALUES ($1, $2, $3, $4, $5)
+                    RETURNING id
+                    """,
+                    level_id, summary_text, summary_input_md5,
+                    embedding_dimension, embedding_model_uuid,
+                )
+            else:
+                row = await self._pool.fetchrow(
+                    f"""
+                    INSERT INTO {table}
+                      ({level_col}, book_id, summary_text, summary_input_md5,
+                       embedding_dimension, embedding_model_uuid)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    RETURNING id
+                    """,
+                    level_id, book_id, summary_text, summary_input_md5,
+                    embedding_dimension, embedding_model_uuid,
+                )
             return UpsertOutcome(
                 cache_hit=False, race_winner=True, summary_id=row["id"],
             )
@@ -201,9 +224,12 @@ class LevelSummariesRepo:
           - Mode-3 retrieval blend (when index query needs raw text alongside vector)
         """
         table, level_col = _LEVEL_TABLE[level]
+        # Same duplicate-column avoidance as find_cached (book-level only
+        # has `book_id`; selecting it twice is invalid SQL).
+        book_col = "" if level_col == "book_id" else ", book_id"
         rows = await self._pool.fetch(
             f"""
-            SELECT id, {level_col} AS level_id, book_id, summary_text,
+            SELECT id, {level_col} AS level_id{book_col}, summary_text,
                    summary_input_md5, embedding_dimension, embedding_model_uuid
             FROM {table}
             WHERE book_id = $1 AND embedding_model_uuid = $2
@@ -230,11 +256,15 @@ class LevelSummariesRepo:
 
 
 def _row_to_summary(row: asyncpg.Record, level: Level) -> LevelSummary:
+    # Book-level rows in `summary_books` have only `book_id` (which IS
+    # the level_id); SELECTs for that level skip the redundant `book_id`
+    # column. For book level → derive book_id from level_id.
+    book_id = row["level_id"] if level == "book" else row["book_id"]
     return LevelSummary(
         id=row["id"],
         level=level,
         level_id=row["level_id"],
-        book_id=row["book_id"],
+        book_id=book_id,
         summary_text=row["summary_text"],
         summary_input_md5=row["summary_input_md5"],
         embedding_dimension=row["embedding_dimension"],
