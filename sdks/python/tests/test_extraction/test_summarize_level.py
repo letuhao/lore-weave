@@ -12,14 +12,27 @@ from loreweave_extraction import LevelSummary, summarize_level
 from loreweave_extraction.errors import ExtractionError
 
 
-def _ok_response(text: str, usage: dict | None = None) -> dict:
-    """Build a fake gateway response wrapping a JSON-shaped text payload."""
-    return {
-        "result": {
-            "text": text,
-            "usage": usage or {"input_tokens": 100, "output_tokens": 50},
-        }
-    }
+class _FakeJob:
+    """Minimal Job-shaped object the SDK returns from submit_and_wait."""
+    def __init__(self, result: dict):
+        self.result = result
+
+
+def _ok_response(text: str, usage: dict | None = None) -> _FakeJob:
+    """Build a fake Job whose .result mirrors the chat-aggregator
+    shape that provider-registry produces for `summarize_level` (and
+    every default-aggregator op)."""
+    return _FakeJob({
+        "messages": [{"role": "assistant", "content": text}],
+        "usage": usage or {"input_tokens": 100, "output_tokens": 50},
+    })
+
+
+def _sys_msg_from_call(llm):
+    """Pull the system-prompt string out of the captured submit_and_wait
+    call. Matches the corrected SDK contract: messages live under
+    `input["messages"]`, not as a top-level kwarg."""
+    return llm.submit_and_wait.call_args.kwargs["input"]["messages"][0]["content"]
 
 
 async def test_summarize_level_chapter_happy_path():
@@ -44,8 +57,11 @@ async def test_summarize_level_chapter_happy_path():
     # Prompt was invoked with the right operation tag.
     call_kwargs = llm.submit_and_wait.call_args.kwargs
     assert call_kwargs["operation"] == "summarize_level"
-    # Level substituted into the prompt.
-    sys_msg = call_kwargs["messages"][0]["content"]
+    # project_id rides on job_meta (not a top-level kwarg) per LLMClient
+    # contract caught by session-67 cont.3 live smoke.
+    assert call_kwargs["job_meta"]["project_id"] == "p-1"
+    # Level substituted into the prompt — messages live under input[].
+    sys_msg = _sys_msg_from_call(llm)
     assert "chapter" in sys_msg.lower()
     assert "Alice" in sys_msg  # entity name passed through
 
@@ -110,7 +126,7 @@ async def test_summarize_level_truncates_long_child_texts():
         llm_client=llm,
     )
     assert isinstance(out, LevelSummary)
-    sys_msg = llm.submit_and_wait.call_args.kwargs["messages"][0]["content"]
+    sys_msg = _sys_msg_from_call(llm)
     # Truncation marker present.
     assert "[...truncated]" in sys_msg
     # Total prompt size sanely bounded.
@@ -129,7 +145,9 @@ async def test_summarize_level_raises_extraction_error_on_llm_failure():
             model_source="user_model", model_ref="m",
             llm_client=llm,
         )
-    assert exc_info.value.stage == "summarize"
+    # Stage = "provider" — the SDK wrapper's transient retries already
+    # exhausted before reaching us (corrected session-67 cont.3).
+    assert exc_info.value.stage == "provider"
 
 
 async def test_summarize_level_raises_on_malformed_json():
@@ -175,7 +193,7 @@ async def test_summarize_level_caps_entity_names_in_prompt():
         model_source="user_model", model_ref="m",
         llm_client=llm,
     )
-    sys_msg = llm.submit_and_wait.call_args.kwargs["messages"][0]["content"]
+    sys_msg = _sys_msg_from_call(llm)
     # First 30 included, 31st onward excluded.
     assert "Entity0" in sys_msg
     assert "Entity29" in sys_msg

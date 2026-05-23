@@ -126,45 +126,76 @@ async def _call_llm(
     Returns {"summary_text": ..., "token_usage": ...} from gateway.
     """
     try:
-        # Match the existing extractors' submit pattern via LLMClientProtocol.
-        # Knowledge-service LLMClient + tests both honor this contract.
-        response = await llm_client.submit_and_wait(
-            operation="summarize_level",
+        # Match the existing extractors' submit pattern via LLMClientProtocol:
+        # input dict carries `messages` + response_format + temperature;
+        # job_meta carries non-LLM context like project_id + extractor tag.
+        # Live-smoke caught this contract drift session 67 cont.3 — earlier
+        # code passed project_id and messages as top-level kwargs (rejected
+        # at runtime by LLMClient.submit_and_wait).
+        job = await llm_client.submit_and_wait(
             user_id=user_id,
-            project_id=project_id,
+            operation="summarize_level",
             model_source=model_source,
             model_ref=model_ref,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": "Generate the summary now."},
-            ],
+            input={
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": "Generate the summary now."},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0,
+            },
+            job_meta={
+                "extractor": "summarize_level",
+                "project_id": project_id or "",
+            },
+            transient_retry_budget=1,
         )
     except Exception as exc:
         # Per LLMClientProtocol — re-raise as ExtractionError so caller can
-        # branch on stage. summarize_level stage is "summarize".
+        # branch on stage. summarize_level uses the "provider" terminal
+        # stage since the SDK wrapper already exhausted transient retries.
         raise ExtractionError(
-            stage="summarize",
-            message=f"LLM call failed: {exc}",
+            f"LLM call failed: {exc}",
+            stage="provider",
+            last_error=exc,
         ) from exc
 
-    # Gateway response shape: {"result": {"text": "...", "usage": {...}}} —
-    # may differ by provider adapter; defensive read.
-    result = response.get("result") or {}
+    # Job result shape (mirrors entity extractor): job.result carries the
+    # gateway's response shape; for chat ops it has `messages[].content` +
+    # `usage`. Defensive read against shape drift.
+    result = getattr(job, "result", None) or {}
     if not isinstance(result, dict):
         raise ExtractionError(
-            stage="summarize",
-            message=f"unexpected result shape: {type(result).__name__}",
+            f"unexpected job.result shape: {type(result).__name__}",
+            stage="provider",
         )
     return result
 
 
 def _postprocess(raw: dict[str, Any]) -> LevelSummary:
-    """Parse the LLM's JSON-line response into LevelSummary."""
-    text_content = raw.get("text") or raw.get("content") or ""
+    """Parse the LLM's JSON-line response into LevelSummary.
+
+    Accepts both the chat-aggregator shape (gateway production):
+      `{"messages": [{"role": "assistant", "content": "..."}], "usage": {...}}`
+    and the legacy text-keyed shape for backward-compat with older
+    tests + alternate adapters:
+      `{"text": "...", "usage": {...}}`
+    """
+    text_content = ""
+    # Chat-aggregator shape (gateway default for non-extraction ops).
+    msgs = raw.get("messages")
+    if isinstance(msgs, list) and msgs:
+        first = msgs[0]
+        if isinstance(first, dict):
+            text_content = first.get("content") or ""
+    # Legacy text-keyed shape (tests + some adapters).
+    if not text_content:
+        text_content = raw.get("text") or raw.get("content") or ""
     if not isinstance(text_content, str) or not text_content.strip():
         raise ExtractionError(
-            stage="summarize",
-            message=f"empty or non-string LLM response text: {text_content!r}",
+            f"empty or non-string LLM response text: {text_content!r}",
+            stage="provider",
         )
     # Strip code fences (memory `feedback_mock_only_coverage_hides_crossservice_bugs`
     # — gateway aggregator handles ```json fences but defensive at extractor too).
@@ -180,13 +211,13 @@ def _postprocess(raw: dict[str, Any]) -> LevelSummary:
         parsed = json.loads(stripped)
     except (json.JSONDecodeError, ValueError) as exc:
         raise ExtractionError(
-            stage="summarize",
-            message=f"LLM response not JSON: {exc}",
+            f"LLM response not JSON: {exc}",
+            stage="retry_parse",
         ) from exc
     if not isinstance(parsed, dict) or "summary_text" not in parsed:
         raise ExtractionError(
-            stage="summarize",
-            message=f"LLM response missing summary_text: {parsed!r}",
+            f"LLM response missing summary_text: {parsed!r}",
+            stage="retry_validate",
         )
     try:
         return LevelSummary(
@@ -195,6 +226,6 @@ def _postprocess(raw: dict[str, Any]) -> LevelSummary:
         )
     except ValidationError as exc:
         raise ExtractionError(
-            stage="summarize",
-            message=f"LevelSummary validation failed: {exc.errors()}",
+            f"LevelSummary validation failed: {exc.errors()}",
+            stage="retry_validate",
         ) from exc

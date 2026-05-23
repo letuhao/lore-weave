@@ -53,7 +53,8 @@ var validJobOperations = map[string]struct{}{
 	"audio_gen":         {}, // Phase 5e-β.2 — batch TTS
 	"entity_extraction": {}, "relation_extraction": {},
 	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
-	"translation": {},
+	"summarize_level":   {}, // P3 hierarchical reduce — chapter/part/book summaries
+	"translation":       {},
 }
 
 // jobSubmitRequest mirrors openapi SubmitJobRequest.

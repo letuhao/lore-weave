@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS llm_jobs (
     'audio_gen', -- Phase 5e-β.2
     'entity_extraction','relation_extraction','event_extraction',
     'fact_extraction', -- Phase 4a-β
+    'summarize_level', -- P3 hierarchical reduce
     'translation'
   )),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
@@ -181,6 +182,17 @@ ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN
   'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
   'entity_extraction','relation_extraction','event_extraction',
   'fact_extraction','translation'
+));
+
+-- P3 (D-P3-EXTRACTION-CALLER-WIRE-UP): drop + recreate operation CHECK
+-- to add summarize_level. Per the cross-cutting-enum lesson —
+-- live-smoke caught this — production INSERT would fail with check
+-- violation despite the validJobOperations map already accepting it.
+ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
+ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
+  'chat','completion','embedding','stt','tts','image_gen','video_gen','audio_gen',
+  'entity_extraction','relation_extraction','event_extraction',
+  'fact_extraction','summarize_level','translation'
 ));
 
 -- Phase 6a Subsystem A — USD spend guardrail. The estimator reads a per-model

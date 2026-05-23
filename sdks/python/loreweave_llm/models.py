@@ -158,6 +158,7 @@ JobOperation = Literal[
     "relation_extraction",
     "event_extraction",
     "fact_extraction",  # Phase 4a-β
+    "summarize_level",  # P3 hierarchical reduce — chapter/part/book summaries
     "translation",
 ]
 

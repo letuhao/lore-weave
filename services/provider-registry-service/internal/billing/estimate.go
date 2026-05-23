@@ -112,6 +112,13 @@ func (e Estimator) EstimateUSD(operation string, input map[string]any, pricing P
 	case "entity_extraction", "relation_extraction", "event_extraction", "fact_extraction":
 		ti := e.InputTokens(input, nchunks)
 		return textCost(ti, e.ExtractionOutputCeiling, pricing)
+	case "summarize_level":
+		// P3 hierarchical reduce — single-shot chat-shaped call returning
+		// a short JSON summary (LevelSummary; ~150 tokens worst-case per
+		// the prompt + 2000-char Pydantic ceiling on summary_text). Reuse
+		// the extraction output ceiling for the cap.
+		ti := e.InputTokens(input, nchunks)
+		return textCost(ti, e.ExtractionOutputCeiling, pricing)
 	case "embedding":
 		return embeddingCost(e.InputTokens(input, nchunks), pricing)
 	case "image_gen":
