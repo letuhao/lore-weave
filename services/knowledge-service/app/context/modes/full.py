@@ -50,7 +50,9 @@ from app.context.modes.no_project import BuiltContext, split_at_boundary
 from app.context.selectors.absence import detect_absences
 from app.context.selectors.facts import L2FactResult, select_l2_facts
 from app.context.selectors.glossary import select_glossary_for_context
+from app.context.intent.abstract_query import is_abstract_query
 from app.context.selectors.passages import L3Passage  # select_l3_passages is lazy-imported in _safe_l3_passages for test-patchability
+from app.context.selectors.summary_blend import LevelSummaryHit  # select_summary_blend is lazy-imported in _safe_summary_blend
 from app.context.selectors.projects import load_project_summary
 from app.context.selectors.summaries import load_global_summary
 from app.db.models import Project
@@ -175,6 +177,81 @@ async def _safe_l3_passages(
         return []
 
 
+async def _safe_summary_blend(
+    embedding_client: EmbeddingClient | None,
+    *,
+    user_id: UUID,
+    project: Project,
+    message: str,
+    glossary_entities: list[str],
+) -> list[LevelSummaryHit]:
+    """P3 D5 — abstract-query summary blend.
+
+    Cheap-first gate: `is_abstract_query` returns False for the vast
+    majority of Mode-3 queries (specific entity lookups), in which case
+    we skip the embed call entirely and return []. Only abstract
+    queries pay the embedding + 3-way Neo4j vector cost.
+
+    Degrades silently to [] when:
+      - embedding_client unset or project has no embedding_model
+      - is_abstract_query returns False
+      - the embed call fails
+      - the Neo4j blend call times out or errors
+      - no per-level indexes exist yet (legacy graph, no summaries)
+    """
+    # Lazy import mirrors `_safe_l3_passages` — test helpers monkeypatch
+    # `app.context.selectors.summary_blend.select_summary_blend`.
+    from app.context.selectors.summary_blend import select_summary_blend
+
+    if not is_abstract_query(message, glossary_entities=glossary_entities):
+        return []
+
+    if embedding_client is None or not project.embedding_model:
+        return []
+
+    try:
+        embed_result = await embedding_client.embed(
+            user_id=user_id,
+            model_source="user_model",
+            model_ref=project.embedding_model,
+            texts=[message],
+        )
+    except Exception:
+        logger.warning(
+            "Mode 3 summary_blend embed failed user_id=%s project_id=%s — degrading",
+            user_id, project.project_id, exc_info=True,
+        )
+        return []
+
+    if not embed_result.embeddings or not embed_result.embeddings[0]:
+        return []
+
+    try:
+        async with neo4j_session() as session:
+            return await asyncio.wait_for(
+                select_summary_blend(
+                    session,
+                    project_id=str(project.project_id),
+                    embedding_model_uuid=project.embedding_model,
+                    query_embedding=embed_result.embeddings[0],
+                ),
+                timeout=settings.context_l3_timeout_s,
+            )
+    except asyncio.TimeoutError:
+        layer_timeout_total.labels(layer="summary_blend").inc()
+        logger.warning(
+            "Mode 3 summary_blend timeout user_id=%s project_id=%s budget=%.3fs",
+            user_id, project.project_id, settings.context_l3_timeout_s,
+        )
+        return []
+    except Exception:
+        logger.warning(
+            "Mode 3 summary_blend failed user_id=%s project_id=%s — degrading",
+            user_id, project.project_id, exc_info=True,
+        )
+        return []
+
+
 def _render_facts_block(facts: L2FactResult) -> list[str]:
     """Render the `<facts>` block; empty if nothing to show."""
     if facts.total() == 0:
@@ -208,6 +285,7 @@ def _render_mode3(
     entities: list,
     l2_facts: L2FactResult,
     l3_passages: list[L3Passage],
+    summary_hits: list[LevelSummaryHit],
     absences: list[str],
     intent_obj: IntentResult,
 ) -> tuple[str, str, str]:
@@ -280,6 +358,19 @@ def _render_mode3(
             lines.append("    </passage>")
         lines.append("  </passages>")
 
+    if summary_hits:
+        lines.append("  <summaries>")
+        for h in summary_hits:
+            attrs = (
+                f'level="{sanitize_for_xml(h.level)}" '
+                f'path="{sanitize_for_xml(h.node_path)}" '
+                f'score="{h.weighted_score:.2f}"'
+            )
+            lines.append(f"    <summary {attrs}>")
+            lines.append(f"      {sanitize_for_xml(h.summary_text)}")
+            lines.append("    </summary>")
+        lines.append("  </summaries>")
+
     if absences:
         lines.append("  <no_memory_for>")
         for name in absences:
@@ -290,6 +381,7 @@ def _render_mode3(
         intent_obj.intent,
         has_facts=l2_facts.total() > 0,
         has_passages=bool(l3_passages),
+        has_summaries=bool(summary_hits),
         has_absences=bool(absences),
     )
     lines.append(f"  <instructions>{sanitize_for_xml(instructions)}</instructions>")
@@ -306,6 +398,7 @@ def _enforce_budget(
     entities: list,
     l2_facts: L2FactResult,
     l3_passages: list[L3Passage],
+    summary_hits: list[LevelSummaryHit],
     absences: list[str],
     intent_obj: IntentResult,
     budget_tokens: int,
@@ -316,21 +409,24 @@ def _enforce_budget(
     The passed-in lists are copied defensively; the caller's objects
     are not mutated.
 
-    Drop order (KSA §4.4.4, lowest priority first):
+    Drop order (KSA §4.4.4 + P3 D5, lowest priority first):
       1. `<passages>` — drop lowest-score entries
-      2. `<no_memory_for>` — drop all
-      3. background facts — drop all (keep current/recent/negative)
-      4. glossary — drop lowest-scored entries
+      2. `<summaries>` — drop lowest weighted-score entries (chapter
+         goes first by weight, book sticks longest)
+      3. `<no_memory_for>` — drop all
+      4. background facts — drop all (keep current/recent/negative)
+      5. glossary — drop lowest-scored entries
     Never dropped: L0, project instructions, L1 summary, current /
     recent / negative facts, mode-level instructions.
 
     K18.9: trimming only touches fields AFTER the </project> boundary
-    (glossary, facts, passages, absences, instructions), so the stable
-    prefix is identical across every retry — the split is consistent
-    end-to-end regardless of how many budget passes it takes.
+    (glossary, facts, passages, summaries, absences, instructions), so
+    the stable prefix is identical across every retry — the split is
+    consistent end-to-end regardless of how many budget passes it takes.
     """
     # Defensive copies so retries don't mutate caller state.
     passages = list(l3_passages)
+    summaries = list(summary_hits)
     abs_list = list(absences)
     ent_list = list(entities)
     facts = L2FactResult(
@@ -344,8 +440,8 @@ def _enforce_budget(
         stable, volatile, context = _render_mode3(
             project=project, l0=l0, l1_summary=l1_summary,
             entities=ent_list, l2_facts=facts,
-            l3_passages=passages, absences=abs_list,
-            intent_obj=intent_obj,
+            l3_passages=passages, summary_hits=summaries,
+            absences=abs_list, intent_obj=intent_obj,
         )
         return stable, volatile, context, estimate_tokens(context)
 
@@ -364,6 +460,22 @@ def _enforce_budget(
             logger.info(
                 "K18.7: budget enforced by trimming passages (final=%d, tokens=%d/%d)",
                 len(passages), tokens, budget_tokens,
+            )
+            return stable, volatile, rendered, tokens
+
+    # Pass 2: drop lowest weighted-score summaries progressively.
+    # Selector already returns them in descending weighted_score order,
+    # so pop from the tail. Book-level (highest weight) survives longest.
+    if summaries:
+        summaries.sort(key=lambda h: h.weighted_score, reverse=True)
+        while summaries and tokens > budget_tokens:
+            summaries.pop()
+            stable, volatile, rendered, tokens = render_and_count()
+        if tokens <= budget_tokens:
+            logger.info(
+                "K18.7: budget enforced by trimming summaries "
+                "(final=%d, tokens=%d/%d)",
+                len(summaries), tokens, budget_tokens,
             )
             return stable, volatile, rendered, tokens
 
@@ -475,14 +587,20 @@ async def build_full_mode(
             min_overlap=settings.dedup_min_overlap,
         )
 
-    # ── L2 facts + L3 passages (Neo4j, parallel) ────────────────────────
+    # ── L2 facts + L3 passages + summary blend (Neo4j, parallel) ────────
     # Classify once: the same IntentResult drives both the L2 selector's
     # hop-count / recency gating AND the instruction-block hint text.
     intent_obj = classify(message)
     # D-K18.3-02: opt-in generative rerank via extraction_config. Absent
     # key or empty string = skip the LLM rerank hop, MMR order stands.
     rerank_model = (project.extraction_config or {}).get("rerank_model") or None
-    l2_facts, l3_passages = await asyncio.gather(
+    # P3 D5: glossary-entity names feed `is_abstract_query` inside the
+    # summary_blend wrapper so a long query mentioning a known proper
+    # noun stays specific (no abstract-blend trigger).
+    glossary_entity_names = [
+        e.cached_name for e in entities if getattr(e, "cached_name", None)
+    ]
+    l2_facts, l3_passages, summary_hits = await asyncio.gather(
         _safe_l2_facts(
             user_id=user_id, project=project, intent=intent_obj,
         ),
@@ -492,6 +610,12 @@ async def build_full_mode(
             message=message, intent=intent_obj,
             llm_client=llm_client,
             rerank_model=rerank_model,
+        ),
+        _safe_summary_blend(
+            embedding_client,
+            user_id=user_id, project=project,
+            message=message,
+            glossary_entities=glossary_entity_names,
         ),
     )
     mentioned_entities = list(intent_obj.entities)
@@ -520,6 +644,7 @@ async def build_full_mode(
         entities=list(entities),
         l2_facts=l2_facts,
         l3_passages=l3_passages,
+        summary_hits=summary_hits,
         absences=absences,
         intent_obj=intent_obj,
         budget_tokens=settings.mode3_token_budget,

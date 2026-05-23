@@ -745,3 +745,340 @@ async def test_mode3_split_preserved_after_budget_trim(monkeypatch):
     # no-op, this assertion catches it before the invariant check does.
     passage_count_in_output = result.volatile_context.count("<passage ")
     assert passage_count_in_output < 10
+
+
+# ── P3 D5 summary_blend wire-up ─────────────────────────────────────────────
+
+
+def _embed_returning(dim: int = 1024):
+    """Build a MagicMock embedding_client whose .embed returns a vector."""
+    from app.clients.embedding_client import EmbeddingResult
+    embedding = MagicMock()
+    embedding.embed = AsyncMock(return_value=EmbeddingResult(
+        embeddings=[[0.1] * dim], dimension=dim, model="bge-m3",
+    ))
+    return embedding
+
+
+def _patch_summary_blend(monkeypatch, *, hits=None, raises=False):
+    """Patch the lazy-imported select_summary_blend symbol."""
+    if raises:
+        async def _raise(*a, **kw):
+            raise RuntimeError("neo4j index missing")
+        monkeypatch.setattr(
+            "app.context.selectors.summary_blend.select_summary_blend",
+            _raise,
+        )
+        return None
+    mock = AsyncMock(return_value=hits or [])
+    monkeypatch.setattr(
+        "app.context.selectors.summary_blend.select_summary_blend",
+        mock,
+    )
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_specific_query_skips_summary_blend(monkeypatch):
+    """is_abstract_query=False → selector never called, no <summaries>."""
+    _patch_mode3_pieces(monkeypatch)
+    blend_mock = _patch_summary_blend(monkeypatch, hits=[])
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message="What did Arthur say?",  # short + specific
+    )
+    assert "<summaries>" not in result.context
+    assert blend_mock.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_abstract_query_keyword_renders_summaries_block(monkeypatch):
+    """Abstract keyword 'themes' → selector fires, <summaries> rendered."""
+    from app.context.selectors.summary_blend import LevelSummaryHit
+    hits = [
+        LevelSummaryHit(
+            level="book", node_id="b1", node_path="book",
+            summary_text="The whole book is about redemption.",
+            raw_score=0.9, weighted_score=0.36,
+        ),
+        LevelSummaryHit(
+            level="part", node_id="p1", node_path="book/part-1",
+            summary_text="Part 1 sets the protagonist's fall.",
+            raw_score=0.8, weighted_score=0.24,
+        ),
+    ]
+    _patch_mode3_pieces(monkeypatch)
+    _patch_summary_blend(monkeypatch, hits=hits)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message="What are the themes of this book?",
+    )
+    assert "<summaries>" in result.context
+    assert "redemption" in result.context
+    assert "Part 1 sets" in result.context
+    assert 'level="book"' in result.context
+    assert 'path="book/part-1"' in result.context
+
+
+@pytest.mark.asyncio
+async def test_abstract_query_no_embedding_client_skips_block(monkeypatch):
+    """Abstract query but caller passed embedding_client=None → no block."""
+    _patch_mode3_pieces(monkeypatch)
+    blend_mock = _patch_summary_blend(monkeypatch, hits=[])
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=None,
+        user_id=USER_ID,
+        project=_project(),
+        message="Give me a summary of chapter 5.",
+    )
+    assert "<summaries>" not in result.context
+    assert blend_mock.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_abstract_query_no_embedding_model_skips_block(monkeypatch):
+    """Project has no embedding_model configured → no block."""
+    _patch_mode3_pieces(monkeypatch)
+    blend_mock = _patch_summary_blend(monkeypatch, hits=[])
+
+    # _project() defaults embedding_model=None
+    project = _project()
+    assert project.embedding_model is None
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message="Walk me through the plot arc.",
+    )
+    assert "<summaries>" not in result.context
+    assert blend_mock.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_abstract_query_selector_raises_degrades_gracefully(monkeypatch):
+    """Selector raises (e.g., index missing on legacy graph) → no block,
+    Mode 3 still builds."""
+    _patch_mode3_pieces(monkeypatch)
+    _patch_summary_blend(monkeypatch, raises=True)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message="Give me an overview of the plot.",
+    )
+    assert "<summaries>" not in result.context
+    assert "<memory" in result.context  # Mode 3 still rendered
+
+
+@pytest.mark.asyncio
+async def test_abstract_query_empty_hits_no_block(monkeypatch):
+    """Selector returns [] (no summaries yet) → no <summaries> block."""
+    _patch_mode3_pieces(monkeypatch)
+    _patch_summary_blend(monkeypatch, hits=[])
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message="Summarize the synopsis briefly.",
+    )
+    assert "<summaries>" not in result.context
+
+
+@pytest.mark.asyncio
+async def test_abstract_query_with_glossary_entity_short_circuits(monkeypatch):
+    """Long query that mentions a glossary entity stays specific
+    (entity match wins long-query branch); selector not called."""
+    from app.context.modes.no_project import BuiltContext as _  # noqa
+    # Provide a glossary entity with cached_name="Holmes" so the
+    # entity-name list passed to is_abstract_query matches the message.
+    entity = MagicMock()
+    entity.cached_name = "Holmes"
+    entity.cached_aliases = []
+    entity.short_description = ""
+    entity.kind_code = "char"
+    entity.tier = "primary"
+    entity.rank_score = 1.0
+
+    _patch_mode3_pieces(monkeypatch, glossary_entities=[entity])
+    blend_mock = _patch_summary_blend(monkeypatch, hits=[])
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    # 25 tokens + entity match — no abstract keyword, so Branch 2 runs
+    # and the Holmes match keeps it specific.
+    long_msg = (
+        "Tell me everything that happened to Holmes during the events "
+        "of the third chapter of the second volume of the novel."
+    )
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message=long_msg,
+    )
+    assert "<summaries>" not in result.context
+    assert blend_mock.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_summaries_dropped_after_passages_under_budget(monkeypatch):
+    """K18.7 + P3 D5: passages drop first, summaries drop second,
+    glossary/facts protected ahead of both."""
+    from app.context.selectors.passages import L3Passage
+    from app.context.selectors.summary_blend import LevelSummaryHit
+    passages = [
+        L3Passage(
+            text=("filler " * 30) + f"passage {i}",
+            source_type="chapter", source_id=f"ch-{i}", chunk_index=0,
+            score=0.9 - i * 0.05, is_hub=False, chapter_index=i,
+        )
+        for i in range(5)
+    ]
+    summaries = [
+        LevelSummaryHit(
+            level="book", node_id="b1", node_path="book",
+            summary_text=("summary text " * 20),
+            raw_score=0.9, weighted_score=0.36,
+        ),
+        LevelSummaryHit(
+            level="chapter", node_id="c1", node_path="book/p1/c1",
+            summary_text=("summary text " * 20),
+            raw_score=0.5, weighted_score=0.15,
+        ),
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages)
+    _patch_summary_blend(monkeypatch, hits=summaries)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    # Budget tight enough to drop most passages + some summaries.
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.mode3_token_budget", 200,
+    )
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message="What are the central themes of the book?",
+    )
+    # Token-count contract.
+    assert result.token_count <= 200, (
+        f"budget violated: {result.token_count} > 200"
+    )
+    # Passages drop before summaries — when both pressured, passage
+    # count drops faster (priority 1 vs priority 2).
+    passage_count = result.context.count("<passage ")
+    assert passage_count < 5
+
+
+@pytest.mark.asyncio
+async def test_summaries_lowest_weighted_score_dropped_first(monkeypatch):
+    """When trimming summaries, lowest weighted_score (chapter weight=0.3)
+    drops before higher weighted_score (book weight=0.4)."""
+    from app.context.selectors.summary_blend import LevelSummaryHit
+    hits = [
+        LevelSummaryHit(
+            level="book", node_id="b1", node_path="book",
+            summary_text=("book content " * 80) + "BOOK_MARKER",
+            raw_score=0.9, weighted_score=0.36,
+        ),
+        LevelSummaryHit(
+            level="chapter", node_id="c1", node_path="book/p1/c1",
+            summary_text=("chapter content " * 80) + "CHAPTER_MARKER",
+            raw_score=0.5, weighted_score=0.15,
+        ),
+    ]
+    _patch_mode3_pieces(monkeypatch)
+    _patch_summary_blend(monkeypatch, hits=hits)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    # Each summary payload ≈ 250 tokens; two ≈ 500 tokens; base+CoT
+    # block ≈ 80 tokens. Budget 400 fits one (~330) but not both (~580).
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.mode3_token_budget", 400,
+    )
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message="Give me a synopsis of the book.",
+    )
+    # Higher weighted_score (book) survives; chapter trimmed.
+    assert "BOOK_MARKER" in result.context
+    assert "CHAPTER_MARKER" not in result.context
+
+
+@pytest.mark.asyncio
+async def test_summaries_block_triggers_with_summaries_instruction(monkeypatch):
+    """has_summaries=True must add the <summaries>-specific guidance to
+    the CoT instructions block."""
+    from app.context.selectors.summary_blend import LevelSummaryHit
+    hits = [
+        LevelSummaryHit(
+            level="book", node_id="b1", node_path="book",
+            summary_text="A short summary.",
+            raw_score=0.9, weighted_score=0.36,
+        ),
+    ]
+    _patch_mode3_pieces(monkeypatch)
+    _patch_summary_blend(monkeypatch, hits=hits)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=_embed_returning(),
+        user_id=USER_ID,
+        project=project,
+        message="What are the recurring themes?",
+    )
+    # The _WITH_SUMMARIES instruction line mentions "high-level overviews".
+    assert "high-level overviews" in result.context
