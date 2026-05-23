@@ -21,17 +21,36 @@ async fn main() -> Result<()> {
         Some("classify") => run_classify().await,
         Some("bootstrap") => run_bootstrap().await,
         Some("measure") => run_measure().await,
+        Some("serve") => run_serve().await,
         Some(other) => {
-            anyhow::bail!("unknown subcommand '{other}' (known: classify, bootstrap, measure)");
+            anyhow::bail!("unknown subcommand '{other}' (known: classify, bootstrap, measure, serve)");
         }
         None => {
             tracing::info!(
-                "tilemap-service — `classify` (L3 measurement) | `bootstrap` (small-reality L3 retry-loop demo) | `measure` (continent-scale generation + live L3/L4)"
+                "tilemap-service — `classify` | `bootstrap` | `measure` | `serve` (HTTP server: POST /internal/v1/tilemaps/render)"
             );
             tracing::info!("see services/tilemap-service/DESIGN.md + README.md");
             Ok(())
         }
     }
+}
+
+/// `serve` subcommand — boots the axum HTTP server.
+///
+/// Env (typically sourced from the gitignored `.local/serve.env`):
+///   LOREWEAVE_INTERNAL_TOKEN — service-to-service Bearer token (REQUIRED)
+///   TILEMAP_HTTP_BIND        — bind addr (default `0.0.0.0:7100`)
+async fn run_serve() -> Result<()> {
+    let token = tilemap_service::http::require_internal_token(|| {
+        env::var("LOREWEAVE_INTERNAL_TOKEN").ok()
+    })?;
+    let bind: std::net::SocketAddr = env::var("TILEMAP_HTTP_BIND")
+        .unwrap_or_else(|_| "0.0.0.0:7100".to_string())
+        .parse()
+        .context("TILEMAP_HTTP_BIND must be a valid SocketAddr (e.g. 0.0.0.0:7100)")?;
+    tracing::info!(%bind, "tilemap-service `serve` starting");
+    tilemap_service::http::serve(bind, token).await?;
+    Ok(())
 }
 
 /// Gateway client + routing params from env — shared by `classify` and

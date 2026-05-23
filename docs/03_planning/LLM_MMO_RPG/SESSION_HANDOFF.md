@@ -81,7 +81,72 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — `world_inherit` module BUILD landed + /review-impl-driven hardening) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — tilemap-service HTTP render endpoint landed + /review-impl-driven hardening) — read this first
+
+L task (PLAN [`docs/plans/2026-05-24-tilemap-http-render-endpoint.md`](../../plans/2026-05-24-tilemap-http-render-endpoint.md))
+landed in 4 chunks TDD; PO asked for `/review-impl` at POST-REVIEW; 3 MED +
+3 LOW + 3 COSMETIC findings, all 9 fixed in the same session before COMMIT.
+
+### What shipped — wire surface
+
+```
+POST /internal/v1/tilemaps/render
+Authorization: Bearer $LOREWEAVE_INTERNAL_TOKEN
+Content-Type: application/json
+→ 200 + TilemapView JSON, or 4xx/5xx + application/problem+json
+```
+
+| Concern | Surface |
+|---|---|
+| Endpoint | [`src/http/render.rs`](../../../services/tilemap-service/src/http/render.rs) — `JsonProblem<RenderRequest>` extractor → `spawn_blocking(place_tilemap)` |
+| Auth | [`src/http/auth.rs`](../../../services/tilemap-service/src/http/auth.rs) — `require_bearer` middleware, byte-exact match against `Arc<str>` |
+| Errors | [`src/http/error.rs`](../../../services/tilemap-service/src/http/error.rs) — RFC 7807 `problem+json` with stable URN constants; `From<crate::Error>` covers all 8 variants |
+| Router | [`src/http/router.rs`](../../../services/tilemap-service/src/http/router.rs) — auth on `/internal/v1/...`, 1 MB body limit, 30s timeout |
+| Server bootstrap | [`src/http/mod.rs`](../../../services/tilemap-service/src/http/mod.rs) — `serve(addr, token)` with Ctrl-C + SIGTERM graceful shutdown; `require_internal_token` testable boot guard |
+| CLI wiring | [`src/main.rs`](../../../services/tilemap-service/src/main.rs) — new `serve` subcommand |
+| Tests | [`tests/http_integration.rs`](../../../services/tilemap-service/tests/http_integration.rs) — 10 integration tests |
+| Spec / Plan | [`docs/specs/2026-05-24-tilemap-http-render-endpoint.md`](../../specs/2026-05-24-tilemap-http-render-endpoint.md) ACCEPTED, [`docs/plans/2026-05-24-tilemap-http-render-endpoint.md`](../../plans/2026-05-24-tilemap-http-render-endpoint.md) |
+
+### `/review-impl` findings + fixes (all closed before COMMIT)
+
+| ID | Severity | Issue | Fix |
+|---|---|---|---|
+| MED-1 | MED | Unbounded `grid_size` + zone count → memory-exhaustion DoS via 100k×100k grid alloc | `MAX_GRID_TILES=65_536` + `MAX_ZONES=256` validated BEFORE `spawn_blocking`; new `URN_REQUEST_TOO_LARGE` (413); 2 regression tests |
+| MED-2 | MED | Axum framework rejections (oversized body, wrong CT, syntax errors) bypassed `problem+json` contract | `JsonProblem<T>` extractor maps every `JsonRejection` to `ProblemDetails`; `DefaultBodyLimit::max(1 MiB)` layer; 2 regression tests (malformed body + invalid JSON syntax) |
+| MED-3 | MED | No graceful shutdown — SIGTERM hard-kills in-flight requests | `axum::serve(...).with_graceful_shutdown(shutdown_signal())` resolves on Ctrl-C OR SIGTERM (Unix); logs reason |
+| LOW-4 | LOW | Token from env used byte-exact — trailing newline / leading spaces silently kill auth | `require_internal_token` now trims + re-checks empty; 2 regression tests (whitespace-only rejected, surrounding whitespace trimmed) |
+| LOW-5 | LOW | Only AC-HTTP-3 asserted `Content-Type: problem+json` — other 4xx paths could drift undetected | `assert_problem_json(resp, expected_status, expected_urn)` helper applied to all 4xx integration tests |
+| LOW-6 | LOW | No tracing spans for request lifecycle | `tracing::warn!(reason, "auth rejected")` in middleware, `tracing::debug!(template_id, zones, tiles, seed)` in handler |
+| COSMETIC-7 | COSMETIC | `Arc<String>` had double indirection | `Arc<str>` flattens to one heap allocation |
+| COSMETIC-8 | COSMETIC | `app_state_holds_token_as_arc_string` was a type-check disguised as a test | removed |
+| COSMETIC-9 | COSMETIC | `resp_content_type` dead helper + `let _ = ct;` swallow | removed |
+
+### Test count delta
+
+| Suite | Before HTTP build | After HTTP initial | After review-impl fixes |
+|---|--:|--:|--:|
+| Lib unit (tilemap-service) | 316 | 328 (+12 http) | **330** (+2 LOW-4 trim regression) |
+| Integration (http_integration.rs) | 0 | 8 | **10** (+2 MED-1, +1 MED-2 minus 1 dummy removed) |
+| Other suites | 405 | 405 | 405 (unchanged) |
+
+`cargo clippy --workspace --all-targets -- -D warnings` clean both initial and post-fix.
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks:** any consumer can now hit `tilemap-service` over HTTP — the first natural consumer is the frontend Phaser viewer (next pinned agenda item) or a curl smoke from another container.
+- **Unblocks:** docker-compose entry can wire `tilemap-service` with port 7100 + env `LOREWEAVE_INTERNAL_TOKEN`; SIGTERM-driven `docker compose down` will gracefully drain.
+- **Blocks:** nothing. Phase 4+ Postgres / Forge / DP work is now a sequence of additive endpoints behind the same router.
+
+### Lessons recorded
+
+- **The framework's default error path can silently violate your wire contract.** Axum's `Json` extractor returns `text/plain` rejections by default. If the spec promises problem+json on every error, you need a thin wrapper extractor — not a comment. The MED-2 fix is ~30 LOC that closes a gap no unit test could catch (it lives in the framework boundary, not the application code).
+- **Unbounded numeric inputs are a DoS surface even on internal endpoints.** `grid_size: u32 × u32` is "validated by type" but accepts 4.29B × 4.29B. Bearer auth limits the attacker pool to internal services, but one misconfigured client still nukes the process. Always cap at the boundary.
+- **Boot guards belong in pure functions, not in `main.rs`.** `require_internal_token(|| env::var(...).ok())` lets a test inject `|| None` without polluting `std::env`. The previous version's `env::var(...)?` inside the binary entry point was effectively untestable.
+- **Trim env values once, not at every consumer.** A `\n`-suffixed token would silently break every Bearer comparison forever; trimming at boot fixes the most common shell-quoting accident without any client change.
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — `world_inherit` module BUILD landed + /review-impl-driven hardening)
 
 PO greenlit the spec → BUILD opened with PLAN
 [`docs/plans/2026-05-24-tilemap-world-inherit-module.md`](../../plans/2026-05-24-tilemap-world-inherit-module.md)

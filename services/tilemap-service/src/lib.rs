@@ -21,6 +21,7 @@
 pub mod engine;
 pub mod error;
 pub mod harness;
+pub mod http;
 pub mod seed;
 pub mod types;
 pub mod world_inherit;
