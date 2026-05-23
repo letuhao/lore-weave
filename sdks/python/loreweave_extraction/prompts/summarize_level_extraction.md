@@ -1,3 +1,7 @@
+RESPOND DIRECTLY. Do NOT think aloud, do NOT use <think> tags, do
+NOT write reasoning. Emit ONLY the JSON object — no prose before or
+after, no markdown fences.
+
 You are summarizing a {level} of a novel for a knowledge graph
 hierarchical retrieval index.
 
