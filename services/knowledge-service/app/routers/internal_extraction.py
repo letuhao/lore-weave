@@ -91,6 +91,28 @@ class ExtractItemResponse(BaseModel):
     duration_seconds: float = 0.0
 
 
+class HierarchyPathsPayload(BaseModel):
+    """P3 D-P3-EXTRACTION-CALLER-WIRE-UP — wire shape of HierarchyPaths.
+
+    Worker-ai resolves these from book-service's parts/chapters/scenes
+    rows (or synthesises them for legacy chapters with no part_id).
+    Mirrors `app.extraction.hierarchy_writer.HierarchyPaths` dataclass.
+    """
+    book_id: str = Field(min_length=1)
+    book_path: str = Field(min_length=1)
+    book_title: str | None = None
+    part_id: str = Field(min_length=1)
+    part_path: str = Field(min_length=1)
+    part_index: int = Field(ge=1)
+    part_title: str | None = None
+    chapter_id: str = Field(min_length=1)
+    chapter_path: str = Field(min_length=1)
+    chapter_index: int = Field(ge=1)
+    chapter_title: str | None = None
+    # Scenes: list of [scene_id, scene_path, scene_index] tuples.
+    scenes: list[tuple[str, str, int]] = Field(default_factory=list)
+
+
 class PersistPass2Request(BaseModel):
     """Phase 4b-β — request body for the persist-pass2 endpoint.
 
@@ -103,6 +125,15 @@ class PersistPass2Request(BaseModel):
     The 4 candidate lists are all optional — the writer persists
     whatever's supplied. ``extraction_model`` tags evidence edges so
     operators can later trace which LLM produced which Pass 2 row.
+
+    P3 D-P3-EXTRACTION-CALLER-WIRE-UP — when ALL of `hierarchy_paths`,
+    `embedding_model_uuid`, and `embedding_dimension` are supplied, the
+    endpoint also MERGEs the Book→Part→Chapter→Scene hierarchy in the
+    same Tx and enqueues a `summary.chapter` message. When
+    `is_last_chapter_of_book=True`, additionally enqueues `summary.part`
+    × N (one per `book_parts` entry) and `summary.book`. All P3 fields
+    optional → legacy callers that omit them get the original behaviour
+    unchanged.
     """
 
     user_id: UUID
@@ -116,6 +147,15 @@ class PersistPass2Request(BaseModel):
     relations: list[LLMRelationCandidate] = Field(default_factory=list)
     events: list[LLMEventCandidate] = Field(default_factory=list)
     facts: list[LLMFactCandidate] = Field(default_factory=list)
+
+    # P3 — caller supplies these to opt into hierarchy writes + summary enqueue.
+    hierarchy_paths: HierarchyPathsPayload | None = None
+    # book_parts only consumed when is_last_chapter_of_book=True. Each
+    # entry: [part_id, part_path, part_index_as_string].
+    book_parts: list[tuple[str, str, str]] = Field(default_factory=list)
+    is_last_chapter_of_book: bool = False
+    embedding_model_uuid: str | None = None
+    embedding_dimension: int | None = Field(default=None, ge=1)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -390,6 +430,29 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         user_id=body.user_id, project_id=body.project_id,
     )
 
+    # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — build the HierarchyPaths dataclass
+    # for the writer when the caller opted into hierarchy mode. We do this
+    # OUTSIDE the session so the dataclass construction can fail fast on
+    # bad payloads without leaking a session.
+    from app.extraction.hierarchy_writer import HierarchyPaths
+    hierarchy_paths = None
+    if body.hierarchy_paths is not None:
+        hp = body.hierarchy_paths
+        hierarchy_paths = HierarchyPaths(
+            book_id=hp.book_id,
+            book_path=hp.book_path,
+            book_title=hp.book_title,
+            part_id=hp.part_id,
+            part_path=hp.part_path,
+            part_index=hp.part_index,
+            part_title=hp.part_title,
+            chapter_id=hp.chapter_id,
+            chapter_path=hp.chapter_path,
+            chapter_index=hp.chapter_index,
+            chapter_title=hp.chapter_title,
+            scenes=list(hp.scenes),
+        )
+
     async with neo4j_session() as session:
         result = await write_pass2_extraction(
             session,
@@ -404,9 +467,48 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             facts=body.facts,
             extraction_model=body.extraction_model,
             anchors=anchors,
+            hierarchy_paths=hierarchy_paths,  # P3 D2a — Tx-bound hierarchy MERGE
         )
 
     elapsed = time.perf_counter() - started
+
+    # P3 — async summary enqueue. Fires only when caller wired all the P3
+    # deps. Best-effort wrapper per `feedback_cross_store_best_effort_writes`
+    # — Postgres + Neo4j writes already succeeded; an enqueue failure
+    # mustn't 500 the caller (a later extraction or manual re-run can
+    # re-enqueue). Logged for ops.
+    if (
+        hierarchy_paths is not None
+        and body.embedding_model_uuid is not None
+        and body.embedding_dimension is not None
+    ):
+        from app.extraction.pass2_orchestrator import (
+            enqueue_chapter_and_maybe_book_summaries,
+        )
+        try:
+            await enqueue_chapter_and_maybe_book_summaries(
+                summary_enqueue=_get_summary_enqueue(),
+                hierarchy_paths=hierarchy_paths,
+                user_id=str(body.user_id),
+                project_id=str(body.project_id) if body.project_id else "",
+                job_id=str(body.job_id),
+                model_ref=body.extraction_model,
+                embedding_model_uuid=body.embedding_model_uuid,
+                embedding_dimension=body.embedding_dimension,
+                is_last_chapter_of_book=body.is_last_chapter_of_book,
+                book_parts=list(body.book_parts),
+            )
+            logger.info(
+                "P3: enqueued summaries for chapter source_id=%s "
+                "(is_last=%s, book_parts=%d)",
+                body.source_id, body.is_last_chapter_of_book,
+                len(body.book_parts),
+            )
+        except Exception:
+            logger.warning(
+                "P3: summary enqueue failed source_id=%s (non-fatal)",
+                body.source_id, exc_info=True,
+            )
     logger.info(
         "Phase 4b-β: persist-pass2 done source_id=%s "
         "entities=%d relations=%d events=%d facts=%d in %.1fs",

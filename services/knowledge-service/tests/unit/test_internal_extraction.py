@@ -607,6 +607,197 @@ def test_persist_pass2_passes_anchors_to_writer(
     assert write_kwargs["anchors"] == [fake_anchor]
 
 
+# ── P3 D-P3-EXTRACTION-CALLER-WIRE-UP — /persist-pass2 P3 fields ─────────
+
+
+def _hierarchy_paths_payload(**overrides):
+    defaults = {
+        "book_id": str(uuid4()),
+        "book_path": "book",
+        "book_title": "The Book",
+        "part_id": str(uuid4()),
+        "part_path": "book/part-1",
+        "part_index": 1,
+        "part_title": "Part 1",
+        "chapter_id": str(uuid4()),
+        "chapter_path": "book/part-1/chapter-1",
+        "chapter_index": 1,
+        "chapter_title": "Chapter 1",
+        "scenes": [],
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_forwards_hierarchy_paths_to_writer(
+    mock_settings, mock_write, mock_neo4j, mock_anchors,
+):
+    """When hierarchy_paths supplied, /persist-pass2 forwards a
+    HierarchyPaths dataclass to write_pass2_extraction (D2a Tx)."""
+    from app.extraction.hierarchy_writer import HierarchyPaths
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    body = _persist_body(hierarchy_paths=_hierarchy_paths_payload(
+        chapter_path="book/part-1/chapter-7", chapter_index=7,
+    ))
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    hp_arg = mock_write.call_args.kwargs["hierarchy_paths"]
+    assert isinstance(hp_arg, HierarchyPaths)
+    assert hp_arg.chapter_path == "book/part-1/chapter-7"
+    assert hp_arg.chapter_index == 7
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_enqueues_chapter_summary_when_all_deps_present(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """With hierarchy + embedding model + dimension supplied, the
+    endpoint enqueues a `summary.chapter` message."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(return_value="msg-id-1")
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=str(uuid4()),
+        embedding_dimension=1024,
+        is_last_chapter_of_book=False,
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    # exactly 1 enqueue (chapter only, not last chapter)
+    assert enqueue_mock.await_count == 1
+    msg = enqueue_mock.await_args.args[0]
+    assert msg.level == "chapter"
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_last_chapter_also_enqueues_part_and_book(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """is_last_chapter_of_book=True fires chapter + N parts + book = 2+N total."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(return_value="msg-id")
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=str(uuid4()),
+        embedding_dimension=1024,
+        is_last_chapter_of_book=True,
+        book_parts=[
+            [str(uuid4()), "book/part-1", "1"],
+            [str(uuid4()), "book/part-2", "2"],
+        ],
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    # 1 chapter + 2 parts + 1 book = 4 enqueues
+    assert enqueue_mock.await_count == 4
+    levels = [call.args[0].level for call in enqueue_mock.await_args_list]
+    assert levels == ["chapter", "part", "part", "book"]
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_skips_enqueue_when_embedding_deps_missing(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """hierarchy_paths supplied but no embedding info → no enqueue."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock()
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        # embedding_model_uuid / embedding_dimension intentionally omitted
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    enqueue_mock.assert_not_called()
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_enqueue_failure_does_not_500(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """Best-effort: Redis enqueue failure must not roll back the
+    already-committed Postgres + Neo4j writes."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(side_effect=RuntimeError("redis down"))
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=str(uuid4()),
+        embedding_dimension=1024,
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    # Endpoint still returns 200 — write succeeded; only enqueue failed.
+    assert resp.status_code == 200, resp.text
+
+
 # ── P3 — /internal/extraction/summarize-message ─────────────────────────
 
 

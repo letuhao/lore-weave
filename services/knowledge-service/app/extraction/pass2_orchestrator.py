@@ -56,6 +56,7 @@ from app.metrics import knowledge_extraction_dropped_total
 __all__ = [
     "extract_pass2_chat_turn",
     "extract_pass2_chapter",
+    "enqueue_chapter_and_maybe_book_summaries",
     "gather_relations_events_facts",
 ]
 
@@ -515,7 +516,7 @@ async def _run_pipeline(
         and embedding_model_uuid is not None
         and embedding_dimension is not None
     ):
-        await _enqueue_chapter_and_maybe_book_summaries(
+        await enqueue_chapter_and_maybe_book_summaries(
             summary_enqueue=summary_enqueue,
             hierarchy_paths=hierarchy_paths,
             user_id=user_id,
@@ -531,7 +532,7 @@ async def _run_pipeline(
     return write_result
 
 
-async def _enqueue_chapter_and_maybe_book_summaries(
+async def enqueue_chapter_and_maybe_book_summaries(
     *,
     summary_enqueue: SummaryEnqueueFn,
     hierarchy_paths: HierarchyPaths,
