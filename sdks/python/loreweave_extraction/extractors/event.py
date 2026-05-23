@@ -357,6 +357,11 @@ async def _extract_via_llm_client(
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.0,
+                # See entity.py for rationale (LM Studio KV-cache slot
+                # OOM when extractors don't cap max_tokens — server
+                # reserves full model_ctx per slot, R+E+F gather × 3
+                # slots overflows GPU VRAM).
+                "max_tokens": 4096,
             },
             chunking=ChunkingConfig(strategy="paragraphs", size=15),
             job_meta={

@@ -144,6 +144,11 @@ async def _call_llm(
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.0,
+                # See entity.py for KV-cache OOM rationale. Summary
+                # text capped at 500 chars at the writer + LevelSummary
+                # Pydantic max_length=2000 → 1024 tokens output is
+                # generous even with reasoning-capable judges.
+                "max_tokens": 1024,
             },
             job_meta={
                 "extractor": "summarize_level",

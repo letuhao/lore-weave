@@ -219,6 +219,15 @@ async def _extract_via_llm_client(
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.0,
+                # Cap output so LM Studio (+ similar slot-based servers)
+                # doesn't reserve the full context window per slot. Without
+                # this, parallel R+E+F gather (3 concurrent jobs) made
+                # llama.cpp reserve ~3×model_ctx of KV cache → GPU OOM
+                # "failed to find a memory slot for batch" / slot-purge
+                # warnings. 4096 fits a generous JSON envelope for 15-
+                # paragraph chunks (observed usage ~700 content tokens
+                # + ~600 reasoning on a thinking-capable model).
+                "max_tokens": 4096,
             },
             chunking=ChunkingConfig(strategy="paragraphs", size=15),
             job_meta={
