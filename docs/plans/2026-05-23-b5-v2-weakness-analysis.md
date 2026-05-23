@@ -612,3 +612,45 @@ W6 sharp zone seams; W9 no mountain shading; W5 only 8 biomes.
 ### Batches b / c / d — pending
 
 Per §5 roadmap, unchanged.
+
+### Batch B5-v2.1e — "Metric refinement" (NEW, added 2026-05-24 after eval assessment)
+
+After v2.1a + eval framework shipped (commit 1591a656), objective
+assessment of the captured baseline (mean 74.92) revealed 2 metric flaws
+that would block accurate measurement of v2.1d (Whittaker hue interp):
+
+- **continentality_score saturated at 100.0** on all baselines — formula
+  `clamp(50 + 50×Δ, 0, 100)` always hits 100 because Δ ≥ 1.0 universally.
+  Not discriminative — can't measure any future improvement on this axis.
+- **`BIOME_COLORS` lookup is exact-match** — when v2.1d ships Whittaker hue
+  interpolation (blended colors between adjacent biomes), pixels won't
+  match any key → classified `None` → distribution + diversity scores
+  DROP artifactually, creating a false regression.
+
+Scope: 2 fixes, both XS, ship as 1 batch BEFORE v2.1b/c/d.
+
+- **E1 — SHIPPED** Tighter continentality formula: `clamp(100 × Δ / 2.0, 0, 100)`
+  (linear-to-cap at Δ=2.0). Replaces `clamp(50 + 50×Δ, 0, 100)` which
+  saturated at 100 universally. Now Δ=0 → 0 (no differentiation = bad),
+  Δ=1 → 50, Δ=2+ → 100. Discriminative on scenarios; baselines still
+  saturate because they genuinely have Δ ≥ 2.0 (many small plates with
+  high coast diversity + low interior diversity).
+- **E2 — DEFERRED to v2.1d** Nearest-color biome classifier was initially
+  shipped with `TOLERANCE = 60` (within Euclidean RGB distance of nearest
+  canonical biome → classify). **Reverted** because it picked up beach-
+  tinted pixels (W4 blend of biome × sand ≈ Tundra grey) → false biome
+  counts → composite tanked 74.92 → 48.48 across all baselines. The fix
+  for v2.1d's Whittaker hue interp will need a curated (biome_a, biome_b)
+  blend-midpoint match (not generic nearest-neighbor in RGB space).
+  Re-tackle when v2.1d ships.
+
+Re-baseline `eval/baselines/v2.1a.json` post-E1.
+
+**Result (E1 only)**: mean composite 74.92 → 74.06 (delta = -0.86 from
+scenarios revealing their true differentiation). Baselines unchanged
+because all hit cap 100 → 100. Continentality is now meaningful on
+extreme scenarios; baselines remain at the high end of the discriminative
+range (interpretable as "good").
+
+Ordering: ✅ v2.1e E1 shipped → re-baseline locked → run v2.1b → diff
+→ run v2.1c → diff → run v2.1d (with E2 fix bundled) → diff.

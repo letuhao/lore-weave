@@ -59,18 +59,18 @@
     "hemi_south": {
       "distribution": 40.2,
       "lat_banding": 70.5,
-      "continentality": 100.0,
+      "continentality": 98.3,
       "diversity": 73.3,
       "sanity": 100.0,
-      "composite": 73.67
+      "composite": 73.41
     },
     "scenario_snowball": {
       "distribution": 73.5,
       "lat_banding": 32.0,
-      "continentality": 83.9,
+      "continentality": 33.9,
       "diversity": 25.6,
       "sanity": 59.6,
-      "composite": 54.72
+      "composite": 47.22
     },
     "scenario_hothouse": {
       "distribution": 87.5,
@@ -83,11 +83,11 @@
     "scenario_desert": {
       "distribution": 23.3,
       "lat_banding": 73.5,
-      "continentality": 100.0,
+      "continentality": 89.2,
       "diversity": 66.5,
       "sanity": 99.0,
-      "composite": 68.98
+      "composite": 67.36
     }
   },
-  "mean_composite": 74.92
+  "mean_composite": 74.06
 }

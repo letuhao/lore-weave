@@ -103,7 +103,20 @@ def band_for(lat_dist: float):
 
 
 def classify_pixel(rgb: tuple) -> str | None:
-    """Return short biome name, or None for ocean/beach-tinted/river pixels."""
+    """Return short biome name, or None for ocean/beach-tinted/river pixels.
+
+    Currently EXACT-MATCH only. Beach-tinted pixels (W4 blend of biome × sand
+    color) are intentionally `None` — they're a coast-band feature, not a
+    biome reading, and including them distorts the biome distribution.
+    Rivers are also `None`.
+
+    **W5 v2.1d caveat**: when Whittaker hue interpolation ships, pixels near
+    a biome threshold will have blended colors that won't match canonically.
+    THAT batch must extend this classifier with nearest-neighbor matching
+    against a curated set of (biome_a, biome_b) blend midpoints (NOT just
+    nearest in RGB space — beach-tints would also classify and distort).
+    Tracked in doc §10 v2.1e known limit.
+    """
     if rgb == VOID:
         return None
     return BIOME_COLORS.get(rgb)
@@ -238,10 +251,17 @@ def score_render(analysis: dict, profile: dict) -> dict:
     lat_banding = 100.0 * analysis["band_correct"] / max(1, total_biome)
 
     # 4.3 Continentality (Δ entropy coast vs interior).
+    # E1 fix (v2.1e): old formula `clamp(50 + 50×Δ, 0, 100)` saturated at 100
+    # because Δ ≥ 1.0 was universal (the eval's aggregate-coast-vs-aggregate-
+    # interior naturally has high Δ). New formula is linear-to-cap, peaking
+    # at Δ_TARGET = 2.0 — Δ = 0 → 0 (no differentiation = bad), Δ = 1 → 50,
+    # Δ = 2 → 100 (well-differentiated, Earth-like cap), Δ > 2 → still 100.
+    # Now discriminative across the typical render range [0.5, 2.0].
     h_coast = shannon_entropy(analysis["coast_counts"])
     h_int   = shannon_entropy(analysis["interior_counts"])
     delta   = h_coast - h_int
-    continentality = max(0.0, min(100.0, 50.0 + 50.0 * delta))
+    DELTA_TARGET = 2.0
+    continentality = max(0.0, min(100.0, 100.0 * delta / DELTA_TARGET))
 
     # 4.4 Diversity vs Earth entropy (~2.7 bits with 8 biomes).
     h_obs = shannon_entropy(biome_counts)
