@@ -17,6 +17,10 @@ Top-level exports:
 """
 
 from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction._version import (
+    __extractor_version__,
+    get_extractor_version,
+)
 from loreweave_extraction.canonical import (
     HONORIFICS,
     canonicalize_entity_name,
@@ -78,4 +82,7 @@ __all__ = [
     # Typing
     "LLMClientProtocol",
     "DroppedHandler",
+    # P2 — extractor version (sha256 of prompts/*.md)
+    "__extractor_version__",
+    "get_extractor_version",
 ]

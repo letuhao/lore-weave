@@ -622,6 +622,52 @@ CREATE TABLE IF NOT EXISTS knowledge_pending_facts (
 -- index scan — fine at any realistic per-user pending-fact volume).
 CREATE INDEX IF NOT EXISTS idx_knowledge_pending_facts_user
   ON knowledge_pending_facts(user_id, created_at);
+
+
+-- ═══════════════════════════════════════════════════════════════
+-- P2 (hierarchical extraction T3) — 2026-05-23
+-- Spec: docs/specs/2026-05-23-p2-parallel-map-checkpoint.md §D1
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS extraction_leaves (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id              UUID NOT NULL,
+  scene_id             UUID NOT NULL,
+  leaf_path            TEXT NOT NULL,
+  op                   TEXT NOT NULL
+    CHECK (op IN ('entity','relation','event','fact')),
+  task_id              TEXT NOT NULL,
+  status               TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','running','completed','failed')),
+  candidates_jsonb     JSONB,
+  retried_n            INT  NOT NULL DEFAULT 0,
+  error_message        TEXT,
+  parse_version        INT  NOT NULL DEFAULT 1,
+  extractor_version    TEXT NOT NULL,
+  model_ref            TEXT NOT NULL,
+  glossary_anchor_size INT,
+  started_at           TIMESTAMPTZ,
+  completed_at         TIMESTAMPTZ,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (book_id, leaf_path, op)
+);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_leaves_task_id ON extraction_leaves(task_id);
+CREATE INDEX IF NOT EXISTS idx_extraction_leaves_pending
+  ON extraction_leaves(book_id, status) WHERE status IN ('pending','running');
+CREATE INDEX IF NOT EXISTS idx_extraction_leaves_book ON extraction_leaves(book_id);
+
+CREATE TABLE IF NOT EXISTS extraction_leaves_raw (
+  extraction_leaf_id UUID PRIMARY KEY REFERENCES extraction_leaves(id) ON DELETE CASCADE,
+  raw_response_jsonb JSONB NOT NULL,
+  raw_token_usage    JSONB NOT NULL,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- D6: opt-in raw retention; defaults OFF (D-P2-FE-SAVE-RAW for FE toggle).
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS save_raw_extraction BOOLEAN NOT NULL DEFAULT false;
 """
 
 

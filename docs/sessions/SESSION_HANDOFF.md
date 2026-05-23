@@ -1,9 +1,32 @@
-# Session Handoff — Session 62 (P1 structural decomposer XL)
+# Session Handoff — Session 63 (P2 parallel map + checkpoint XL [partial-build])
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-23 (session 62 — 1 XL cycle, pending commits)
-> **HEAD:** `23f322ba` → pending commits for P1. Push status: NOT pushed (origin at `2d56eb16`).
+> **Date:** 2026-05-23 (sessions 62 + 63 — 1 P1 XL cycle + 1 P2 XL partial-build, pending P2 commit)
+> **HEAD:** `c5e5668b` (session 62 P2 CLARIFY) → pending P2 partial-build commit. Push status: NOT pushed (origin at `2d56eb16`).
 > **Branch:** `main`.
+
+## What's NEXT — Step D of P2 (orchestrator refactor) then push
+
+### Step 1 (must-do first): P2 Step D
+
+Per PO pacing call at session 63 mid-BUILD: only Steps A+B+C committed as a foundation checkpoint. **Step D** is the orchestrator refactor + book_client extension + KnowledgeProject model field + existing test extension. ~4-5 files, ~3-4h.
+
+Read first: [`docs/specs/2026-05-23-p2-parallel-map-checkpoint.md`](../specs/2026-05-23-p2-parallel-map-checkpoint.md) §D3 + §D3a + §D8 + §D9 — those are the unimplemented surfaces. Plus [`docs/plans/2026-05-23-p2-parallel-map-checkpoint.md`](../plans/2026-05-23-p2-parallel-map-checkpoint.md) §1 NEW/MODIFY tables for the remaining file list.
+
+Specifically:
+1. NEW knowledge-service `app/clients/book_client.py` methods: `list_scenes_by_chapter(chapter_id)` + `get_chapter_draft_text(chapter_id)` (call the book-service endpoints already shipped in Step A).
+2. MODIFY `app/db/models.py`: add `save_raw_extraction: bool = False` to `Project` Pydantic model.
+3. MODIFY `app/extraction/pass2_orchestrator.py`: implement spec §D3 pseudocode — `_run_pipeline(chapter, model_ref, parent_job_id)` with fetch_scenes (+ legacy fallback), pre-dispatch dedup, asyncio.Semaphore fanout, aggregation back into existing `Pass2Candidates` shape, billing pass-through via parent_job_id.
+4. EXTEND existing `tests/unit/test_pass2_orchestrator.py` with 5 P2 tests (legacy fallback dispatch, parent_job_id threading, pre-dispatch dedup, aggregation shape, concurrent same-book dedupe).
+5. After Step D BUILD passes: live smoke clears **D-P2-STEP-D-LIVE-SMOKE** (extraction-job → orchestrator → leaf_processor → DB writes through extraction_leaves).
+
+### Pre-flight at session 64 start
+- Confirm: `python -m pytest tests/unit/test_pass2_orchestrator.py` from knowledge-service is green at HEAD (baseline preservation through the refactor).
+- Confirm: docker compose can rebuild knowledge-service (no pip flake) so live smoke is unblocked.
+
+### Step 2 (later sessions): P3 (hierarchical reduce + per-level summaries)
+
+Per ADR §6: P1+P2+P3 = 50MB local capability complete. P3 is the third critical-path phase. Begin with re-read of ADR §3 T4 + §6 P3 + §7 P3.
 
 ## What's NEXT — D-P1-LIVE-SMOKE first, then start P2 (parallel map + checkpoint)
 

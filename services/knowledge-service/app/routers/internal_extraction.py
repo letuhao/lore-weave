@@ -547,3 +547,63 @@ async def glossary_sync_entity(
         action=action,  # type: ignore[arg-type]
         canonical_name=result["canonical_name"],
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# P2 (hierarchical extraction T3) — cache invalidation endpoint (D5)
+# Spec: docs/specs/2026-05-23-p2-parallel-map-checkpoint.md §D5
+# ═══════════════════════════════════════════════════════════════════════
+
+
+_VALID_INVALIDATE_OPS = {"entity", "relation", "event", "fact"}
+
+
+class InvalidateCacheResponse(BaseModel):
+    book_id: UUID
+    invalidated_ops: list[str]
+    deleted_leaves: int
+    deleted_raw: int
+
+
+@router.post(
+    "/invalidate-cache/{book_id}",
+    response_model=InvalidateCacheResponse,
+    summary="P2 — invalidate extraction_leaves cache for one book",
+    description=(
+        "Explicit invalidation per PO choice 2. Triggered by parse_version "
+        "bumps (P3 re-parse), extractor_version drift (prompt edits), or "
+        "FE 'Rebuild Graph' button. Uses two-step CTE Tx (H2 fix) for "
+        "accurate deleted_raw count — CASCADE delete doesn't surface via "
+        "RETURNING."
+    ),
+)
+async def invalidate_cache(
+    book_id: UUID,
+    op: str | None = None,
+) -> InvalidateCacheResponse:
+    # Validate optional op filter.
+    if op is not None and op not in _VALID_INVALIDATE_OPS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"op must be one of {sorted(_VALID_INVALIDATE_OPS)} or omitted",
+        )
+    target_ops = [op] if op else sorted(_VALID_INVALIDATE_OPS)
+
+    from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
+
+    pool = get_knowledge_pool()
+    repo = ExtractionLeavesRepo(pool)
+    deleted_leaves, deleted_raw = await repo.delete_by_book(
+        book_id=book_id, ops=target_ops,
+    )
+
+    logger.info(
+        "p2 invalidate-cache book_id=%s ops=%s deleted_leaves=%d deleted_raw=%d",
+        book_id, target_ops, deleted_leaves, deleted_raw,
+    )
+    return InvalidateCacheResponse(
+        book_id=book_id,
+        invalidated_ops=target_ops,
+        deleted_leaves=deleted_leaves,
+        deleted_raw=deleted_raw,
+    )

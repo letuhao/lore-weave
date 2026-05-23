@@ -147,6 +147,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
+		// P2 (hierarchical extraction T3) — knowledge-service consumes these
+		// for per-leaf orchestration. Spec D8 + scenes.go.
+		r.Get("/books/{book_id}/chapters/{chapter_id}/scenes", s.getInternalScenesByChapter)
+		r.Get("/books/{book_id}/chapters/{chapter_id}/draft-text", s.getInternalChapterDraftText)
 		// C6 (D-K19b.3-01 + D-K19e-β-01) — batch chapter-title resolver.
 		// Cross-book query (caller passes a set of chapter_ids from any
 		// books they own); sits under /internal/chapters rather than
