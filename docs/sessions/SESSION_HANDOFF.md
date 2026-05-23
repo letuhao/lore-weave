@@ -22,18 +22,41 @@ Session 62 VERIFY hit a `docker compose build knowledge-service` failure — pip
 
 ### Step 2: P2 (parallel map + checkpoint) — L-XL cycle
 
+**Status (session 62, end-of-session):** D-P1-LIVE-SMOKE cleared in commit `2a7535b4` (knowledge-service + worker-infra rebuilds succeeded; cross-service `.txt` import end-to-end through `/internal/parse` → DB confirmed). **CLARIFY for P2 done in-session below — DESIGN starts session 63.**
+
 **Read first:** [`docs/03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md`](../03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md) §3 T3 + §6 P2 + §7 P2 acceptance.
 
-**P2 scope:**
-- NEW `extraction_leaves` Postgres table on knowledge-service (per-leaf checkpoint: `(book_id, leaf_path, op) UNIQUE`, status, result_jsonb, retried_n, started_at, completed_at).
-- Idempotent task ID: `sha256(leaf.normalized_text + extractor_op_name)` — re-submit same leaf → cache hit, skip LLM call.
-- DAG over leaves bound by `LM_STUDIO_MAX_CONCURRENT`.
-- Rolling `known_entities` window: top-K (cap 200) canonical names from previously-completed leaves IN SAME CHAPTER, threaded to extractor as cross-leaf anchor — OR per the session-62 CLARIFY answer, fetch per-chapter glossary anchor via the existing glossary-service internal endpoint (PO chose the glossary anchor over a rolling window; revisit if perf degrades).
-- Per-leaf retry budget (default 2); on exhaustion mark `failed`, reduce-step ignores.
+#### P2 CLARIFY answers (session 62 PO, locked)
+
+| Q | PO choice | DESIGN implication |
+|---|---|---|
+| `extraction_leaves.result_jsonb` content scope | **Both — raw in cold storage + candidates hot** | Two tables: `extraction_leaves` (post-processed candidates, hot read path) + `extraction_leaves_raw` (full raw LLM response, cold; for re-judge/re-score without LLM re-call). DESIGN must address: retention policy (prune raw after N days? keep forever?), JOIN cost on re-judge, separate writes vs single Tx. |
+| Cache invalidation when `scenes.parse_version` changes | **Explicit invalidation via DELETE** | P2 worker / new admin endpoint: when `parse_version` is bumped, DELETE FROM extraction_leaves + extraction_leaves_raw WHERE book_id IN (...). DESIGN must address: idempotent invalidation surface (CLI tool? `POST /internal/extraction/invalidate-cache/{book_id}`?), migration ordering with parse_version bump. |
+| P2 worker placement | **Extend knowledge-service worker-ai** | Add `extraction-leaf-processor` consumer to existing worker-ai (Python). Reuse Redis Streams + DB pool + gather_relations_events_facts helper. No new compose service. |
+| Glossary anchor failure mode | **Hard fail — leaf job 502** | Glossary-service uptime is now a hard dependency for extraction. If glossary 5xx → leaf marked failed (after retry budget). **PO accepted trade-off: brief glossary outage = paused extraction.** DESIGN must address: explicit health-check gate at job start (fail-fast vs fail-mid-leaf), retry budget interaction. |
+
+#### P2 scope (consolidates ADR §3 T3 + the CLARIFY answers)
+
+- NEW `extraction_leaves` table on knowledge-service DB: `(book_id, leaf_path, op) UNIQUE`, status, candidates_jsonb (post-processed), retried_n, started_at, completed_at, parse_version (FK semantic to scenes.parse_version).
+- NEW `extraction_leaves_raw` table on knowledge-service DB: `(extraction_leaf_id) FK`, raw_response_jsonb, raw_token_usage, created_at. Cold table — separate write, indexed only by FK.
+- Idempotent task ID: `sha256(leaf.normalized_text + extractor_op_name)` — re-submit same leaf → cache hit, skip LLM call. **Note: parse_version is NOT in the hash** (per PO choice 2: explicit invalidation, not composite-id).
+- DAG over leaves bound by `LM_STUDIO_MAX_CONCURRENT` env (default 4).
+- Per-chapter glossary anchor: fetch via glossary-service `/internal/books/{book_id}/extract-entities` (the existing bulk endpoint; confirm the contract). Per-chapter, not per-leaf. **Hard-fail if 5xx after retry budget.**
+- Per-leaf retry budget (default 2); on exhaustion mark `failed`, reduce-step (P3 future) ignores.
 - Resume on restart: skip `status='completed'` leaves; recompute everything else from scratch.
+- NEW `POST /internal/extraction/invalidate-cache/{book_id}` endpoint for explicit invalidation when parse_version is bumped.
 - **P2 fallback contract (M6 locked at P1 DESIGN — DO NOT SKIP):** when reading scenes for a chapter, if `scenes WHERE chapter_id=$1 AND lifecycle_state='active'` returns empty, fall back to `chapter_drafts.body` via `tiptap_json_to_text(body)` as one virtual scene. Legacy (pre-P1) chapters have NULL `structural_path` + zero scenes; this fallback is the bridge. **If P2 skips this contract, legacy chapters silently get zero extraction.**
 
-**P2 reuses existing** `gather_relations_events_facts` extractor. No prompt change. No new ML. Critical-path next session.
+**P2 reuses existing** `gather_relations_events_facts` extractor. No prompt change. No new ML.
+
+#### Open questions for DESIGN phase (defer to next session)
+
+- **OQ-P2-1**: `extraction_leaves_raw` retention policy. Keep forever (storage grows linearly with extraction runs)? Or prune after N days? Or per-book opt-in flag for "save raw" (debugging mode)? Recommend: **opt-in via project setting** so storage is bounded by user choice.
+- **OQ-P2-2**: Glossary fetch granularity. Per-chapter is locked but the existing `/internal/books/{book_id}/extract-entities` endpoint returns all entities for a book. Should we cache that response in worker memory for the duration of one extraction run (book-scoped LRU)? Or refetch per-chapter (simpler but more glossary load)?
+- **OQ-P2-3**: Concurrent extraction jobs on same book. If a user clicks "Build Graph" twice in succession, do we (a) reject the second job, (b) merge into the first, (c) let both run and dedupe via task_id hash? Recommend: (c) — task_id hash naturally dedupes; if same input, only one LLM call fires.
+- **OQ-P2-4**: Cache invalidation triggers. Beyond `parse_version` bump, what else invalidates? Extractor prompt template change? LLM model change? Recommend: **add `extractor_version` column** to `extraction_leaves`; bump on any prompt/model change; invalidation DELETE filters on `extractor_version != current`.
+
+Critical-path next session.
 
 ### Step 3 (later sessions): P3 (hierarchical reduce + per-level summaries) → P1+P2+P3 = 50MB capability complete
 
