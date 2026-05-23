@@ -332,14 +332,19 @@ pub fn render_all_zones(
     rgb
 }
 
-/// Drainage thresholds. **Network membership** is decided by the river-tree
-/// walker (`build_river_network`) — only outlets with at least `OUTLET_T`
-/// drainage start a network, and tributaries below `TRIB_T` are pruned so the
-/// network is a clean tree (source → confluence → outlet), not noise on every
-/// slope. **Paint colour** within the network is then split by drainage:
-/// cells above `RIVER_T` paint as a fuller river, the rest as a stream.
-const OUTLET_T: u32 = 400;
-const TRIB_T: u32 = 120;
+/// Drainage thresholds **as fractions of the land cell count** — adaptive so
+/// the river-network density is consistent across map resolutions (a 10× area
+/// map yields ~10× drainage values; fixed absolute thresholds would saturate).
+/// `OUTLET_FRAC` = fraction of total land cells an outlet's catchment must
+/// reach to start a river network; `TRIB_FRAC` = same for an admitted
+/// tributary. Tuned at the reference 1024×640 resolution where they were
+/// ≈ 400 / 120 absolute (matching `land_count ≈ 327k`).
+const OUTLET_FRAC: f32 = 0.0012;
+const TRIB_FRAC: f32 = 0.00037;
+/// Upper drainage value (as a fraction of land cells) for the river brush's
+/// log-scale ramp — drainage at or above this maps to the widest, darkest
+/// brush. Below `OUTLET_FRAC` maps to the thinnest/lightest.
+const BRUSH_HI_FRAC: f32 = 0.024;
 /// River / stream colours.
 const STREAM_COLOR: [u8; 3] = [90, 140, 195];
 const RIVER_COLOR: [u8; 3] = [42, 90, 165];
@@ -483,10 +488,10 @@ fn build_river_network(
     is_river
 }
 
-/// Beach band width (cells/pixels): plains/hills land within this many hops
-/// from a void cell tapers down to the shore (B3b-2 coast). Wider ⇒ broader
-/// shoreline.
-const BEACH_BAND: u32 = 22;
+/// Beach band width **as a fraction of the shorter map dimension** — so the
+/// shoreline reads at the same relative width across resolutions (at 1024×640
+/// this gives ≈ 22 px, matching the previous absolute constant).
+const BEACH_FRAC: f32 = 0.034;
 /// How far above `min_land` the shore lip sits (the bottom of the beach
 /// taper, just above the void outlet).
 const SHORE_LEVEL_OFFSET: f32 = 0.02;
@@ -613,10 +618,27 @@ pub fn render_all_zones_eroded(
     }
     let land_fraction = land_count as f32 / n as f32;
     let neighbors = grid_neighbors_4(w, h);
-    erosion::apply(&mut elev, &neighbors, land_fraction, strength, None);
+    // Resolution-aware erosion: each iter's depression-fill smooths channels
+    // disproportionately on bigger grids; scale iter count down so the total
+    // smoothing stays comparable to the 1024×640 tuning point.
+    let iter_scale = (land_count as f32 / 327_000.0).max(1.0);
+    // Snapshot the pre-erosion terrain — drainage / rivers are derived from
+    // this macro field (it has the coherent gradients), so erosion::apply's
+    // depression-filling doesn't level the river network even when the grid
+    // is large. Erosion still runs and shapes the visible relief (textures /
+    // foothills) for the colour pass.
+    let pre_erosion = elev.clone();
+    erosion::apply_scaled(&mut elev, &neighbors, land_fraction, strength, None, iter_scale);
+
+    // Adaptive thresholds (resolution-aware): keep visual density consistent
+    // whether the map is rendered at 1024² or 10× area.
+    let beach_band = (w.min(h) as f32 * BEACH_FRAC).round().max(2.0) as u32;
+    let outlet_t = ((land_count as f32) * OUTLET_FRAC).round().max(20.0) as u32;
+    let trib_t = ((land_count as f32) * TRIB_FRAC).round().max(8.0) as u32;
+    let brush_hi = ((land_count as f32) * BRUSH_HI_FRAC).max((outlet_t * 2) as f32);
 
     // B3b-2 coast shaping: taper plains/hills land toward the shore over a
-    // BEACH_BAND-wide band along the plate↔void edge (beach). Mountains and
+    // beach_band-wide band along the plate↔void edge (beach). Mountains and
     // plateau land keep their height at the edge (cliff — the sharp drop into
     // void *is* the cliff). Class comes from the nearest sub-site (same as
     // the blend). `is_beach` tracks pixels that received the beach taper so
@@ -628,7 +650,7 @@ pub fn render_all_zones_eroded(
     for py in 0..h {
         for px in 0..w {
             let i = py * w + px;
-            if !is_land[i] || edge_dist[i] >= BEACH_BAND {
+            if !is_land[i] || edge_dist[i] >= beach_band {
                 continue;
             }
             // Nearest sub-site → class.
@@ -654,7 +676,7 @@ pub fn render_all_zones_eroded(
             }
             let class = subs[best].class;
             if matches!(class, TerrainClass::Plains | TerrainClass::Hills) {
-                let t = (edge_dist[i] as f32 / BEACH_BAND as f32).clamp(0.0, 1.0);
+                let t = (edge_dist[i] as f32 / beach_band as f32).clamp(0.0, 1.0);
                 let s = smoothstep01(t);
                 elev[i] = shore_level + (elev[i] - shore_level) * s;
                 is_beach[i] = true;
@@ -670,9 +692,11 @@ pub fn render_all_zones_eroded(
     // hypso & beach (a river flowing through a beach reads as the river). The
     // masks are dilated 1 step so rivers/streams paint at least 3 px wide and
     // stay visible at viewing scale.
-    let (drainage, receiver) = compute_drainage(&elev, &is_land, w, h);
-    // Extract the clean river tree (source → confluence → outlet).
-    let in_network = build_river_network(&receiver, &drainage, &is_land, OUTLET_T, TRIB_T);
+    // Drainage on the **pre-erosion** macro terrain: macro gradients are
+    // coherent (source→outlet drainage paths intact), so rivers placed here
+    // survive any depression-fill artefacts the erosion pass introduced.
+    let (drainage, receiver) = compute_drainage(&pre_erosion, &is_land, w, h);
+    let in_network = build_river_network(&receiver, &drainage, &is_land, outlet_t, trib_t);
 
     // Re-range over land only (erosion may have lowered peaks/filled pits).
     let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
@@ -720,7 +744,7 @@ pub fn render_all_zones_eroded(
     for (idx, d) in river_cells {
         let i = idx as usize;
         let (px, py) = (i % w, i / w);
-        let (radius, color) = river_brush(d);
+        let (radius, color) = river_brush(d, outlet_t, brush_hi, w.min(h));
         stamp_disk(&mut rgb, w, h, px, py, radius, color);
     }
 
@@ -728,14 +752,18 @@ pub fn render_all_zones_eroded(
 }
 
 /// Map a cell's drainage to a (radius, colour) for the river brush. Log scale
-/// on drainage so width grows from headwater (~1 px) to mainstem (~3.5 px)
-/// over the typical drainage range; colour lerps light→dark blue accordingly.
-fn river_brush(drainage: u32) -> (f32, [u8; 3]) {
-    let d_lo = (OUTLET_T as f32).max(1.0);
-    let d_hi = 8_000f32.max(d_lo * 2.0);
+/// on drainage so width grows from headwater to mainstem; the brush radius
+/// also scales with the **map's short side** so rivers stay the same relative
+/// thickness at any resolution. Colour lerps stream→river accordingly.
+fn river_brush(drainage: u32, outlet_t: u32, brush_hi: f32, short_side: usize) -> (f32, [u8; 3]) {
+    let d_lo = (outlet_t as f32).max(1.0);
+    let d_hi = brush_hi.max(d_lo * 2.0);
     let t = ((drainage as f32).max(1.0).ln() - d_lo.ln()) / (d_hi.ln() - d_lo.ln());
     let t = t.clamp(0.0, 1.0);
-    let radius = 0.7 + 3.0 * t;
+    // Radius proportional to map short side (so a 10× area map gets ~√10× thick
+    // rivers — they read at the same relative width).
+    let scale = (short_side as f32 / 640.0).max(1.0);
+    let radius = (0.7 + 3.0 * t) * scale;
     let color = [
         (STREAM_COLOR[0] as f32 + (RIVER_COLOR[0] as f32 - STREAM_COLOR[0] as f32) * t) as u8,
         (STREAM_COLOR[1] as f32 + (RIVER_COLOR[1] as f32 - STREAM_COLOR[1] as f32) * t) as u8,

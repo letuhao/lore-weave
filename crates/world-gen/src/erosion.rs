@@ -37,7 +37,7 @@ use crate::creative_seed::ErosionStrength;
 /// produces is dropped only where channel transport capacity falls away —
 /// valley floors and mountain-front fans — instead of blanketing and
 /// re-filling the freshly cut valleys.
-struct ErosionParams {
+pub struct ErosionParams {
     /// Pure-incision passes (phase 1 — carve the valleys).
     carve_iters: u32,
     /// Incision + deposition passes (phase 2 — settle sediment into fans).
@@ -106,7 +106,37 @@ pub fn apply(
     strength: ErosionStrength,
     erodibility: Option<&[f32]>,
 ) {
-    let p = params(strength);
+    apply_inner(elev, neighbors, land_fraction, params(strength), erodibility);
+}
+
+/// Resolution-aware variant of [`apply`]: divides the carve + settle iteration
+/// counts by `iter_scale.max(1.0)`. Use `iter_scale = sqrt(cells / reference)`
+/// when scaling a grid-based caller up — each iteration's per-channel incision
+/// scales with `sqrt(area)`, so the same iter count on a larger grid eats more
+/// total drainage; scaling iters by `√cells` keeps the total work
+/// resolution-independent and prevents over-flattening of river channels.
+pub fn apply_scaled(
+    elev: &mut [f32],
+    neighbors: &[Vec<u32>],
+    land_fraction: f32,
+    strength: ErosionStrength,
+    erodibility: Option<&[f32]>,
+    iter_scale: f32,
+) {
+    let mut p = params(strength);
+    let s = iter_scale.max(1.0);
+    p.carve_iters = ((p.carve_iters as f32) / s).round().max(1.0) as u32;
+    p.settle_iters = ((p.settle_iters as f32) / s).round() as u32;
+    apply_inner(elev, neighbors, land_fraction, p, erodibility);
+}
+
+fn apply_inner(
+    elev: &mut [f32],
+    neighbors: &[Vec<u32>],
+    land_fraction: f32,
+    p: ErosionParams,
+    erodibility: Option<&[f32]>,
+) {
     if (p.carve_iters + p.settle_iters) == 0 || elev.len() < 2 {
         return;
     }
