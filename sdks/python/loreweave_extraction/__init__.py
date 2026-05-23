@@ -21,6 +21,14 @@ from loreweave_extraction._version import (
     __extractor_version__,
     get_extractor_version,
 )
+from loreweave_extraction.context_budget import (
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    DEFAULT_MODEL_CONTEXT,
+    ContextBudget,
+    Language,
+    estimate_paragraph_count,
+    estimate_text_tokens,
+)
 from loreweave_extraction.canonical import (
     HONORIFICS,
     canonicalize_entity_name,
@@ -91,4 +99,11 @@ __all__ = [
     # P2 — extractor version (sha256 of prompts/*.md)
     "__extractor_version__",
     "get_extractor_version",
+    # Model-context-aware chunking + concurrency
+    "ContextBudget",
+    "Language",
+    "estimate_text_tokens",
+    "estimate_paragraph_count",
+    "DEFAULT_MAX_OUTPUT_TOKENS",
+    "DEFAULT_MODEL_CONTEXT",
 ]
