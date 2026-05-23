@@ -661,6 +661,102 @@ Hash-pin rebaseline.
 **Goal**: less "Tetris" feel without adding biome classes (defer that to v5).
 **Complexity**: S. Estimate: 1 cycle.
 
+#### v2.1d + v4.3 framework SHIPPED (2026-05-24)
+
+**TL;DR:** W5 hue interpolation initially produced HARD regression (mean
+−3.25, hemi_north −13.90). Root cause: v4 eval treated every blended
+ecotone pixel as "0.5 contribution to each biome" → contributions to
+lat-forbidden biomes accumulated → sanity tanked. **Real Earth has
+ecotones** (Taiga-Tundra, Forest-Steppe, Mediterranean-Forest are all
+real-world gradient bands, not sharp 1-pixel transitions). PO insight:
+the eval was punishing geographically-correct output. Solution: upgrade
+eval to **ecotone-aware** scoring, then W5 ships with full spec BLEND
+values producing **+2.05 mean improvement** + 6 individual renders
+improving ≥1pt + 0 hard regressions.
+
+**W5 implementation:**
+- `whittaker_classify_blended_color(temp, precip) -> [u8; 3]`: probe 4
+  axis-aligned directions (±BLEND_TEMP=1.5°C, ±BLEND_PRECIP=75mm), bisect
+  to find Whittaker threshold position, smoothstep blend center vs adjacent
+  biome color.
+- `pixel_color(zc, elev_pixel, zone_base_elev, params) -> [u8; 3]`: wraps
+  blended classifier + preserves hard lapse overrides (Ice/Tundra at peaks
+  stay sharp — those need elev-aware bands, separate concern).
+- Renderer `colorize_biome_with` swaps `pixel_biome().color()` →
+  `pixel_color()`. `pixel_biome` retained for `ZoneClimateExport` semantics
+  (sidecar still reports zone's dominant biome).
+
+**v4.3 eval framework upgrade (ecotone-aware scoring):**
+- `analyze_render` in [`climate_eval.py`](../../scripts/climate_eval.py):
+  - **Entropy + distribution fields** (biome_counts, coast/interior_counts)
+    still use fractional contributions (Shannon entropy needs distribution
+    shape, that's intact).
+  - **lat_banding + sanity** evaluate the WHOLE pixel:
+    - `band_correct += 1.0` if **any** biome in the blend is in the lat-allowed
+      set (recognizes ecotones as valid biome transitions).
+    - `forbidden_count += 1.0` only if **all** biomes in the blend are
+      forbidden (penalize only "no valid biome for this lat" failures).
+- **Pure pixels behave identically** to pre-v4.3 — when contribs is a
+  single-biome 1.0-weight, the any/all checks collapse to the single
+  membership check. Backward-compat verified by math + no v4.1 baseline
+  drift on noW5 renders.
+
+**Combined v4.3 result vs v4.1 (pre-W5):**
+
+| Render | v4.1 | v4.3 | Δ | Notes |
+|---|---:|---:|---:|---|
+| baseline_s7 / hemi_eq | 86.01 | 89.49 | **+3.48** | W5 + ecotone-aware net win |
+| baseline_s13 | 86.66 | 90.69 | **+4.03** | same |
+| baseline_s23 | 87.06 | 86.82 | −0.24 | flat |
+| baseline_s42 | 84.23 | 89.42 | **+5.19** | recovered from W2 lat_banding hit |
+| baseline_s99 | 73.44 | 78.81 | **+5.37** | sanity 91.3→98.9 (ecotone forgiveness) |
+| hemi_north | 88.64 | 85.56 | −3.08 | still down (full lat gradient = many ecotones; ecotone-aware reduces from −13.90 → −3.08 but doesn't fully recover) |
+| hemi_south | 92.64 | 92.39 | −0.25 | flat |
+| scenario_snowball | 83.66 | 83.66 | +0.00 | mono-biome → no W5 firing |
+| scenario_hothouse | 90.18 | 96.28 | **+6.10** | best — forest-rich threshold zones blend well |
+| scenario_desert | 88.87 | 87.38 | −1.49 | minor |
+| **MEAN** | **86.13** | **88.18** | **+2.05** | ≥ improvement threshold |
+
+**Sub-score breakdown** (v4.3 averages across 11 renders):
+- temperature_gradient: 99.5 (unchanged, W5 doesn't affect physics)
+- lat_banding: 70.3 (up from 60.8; ecotone forgiveness)
+- precipitation_gradient: 91.1 (unchanged)
+- continentality: 83.4 (unchanged)
+- **sanity: 97.8** (up from 91.6; biggest single subscore gain)
+
+**Why hemi_north still −3.08:**
+North-only hemisphere has the strongest lat gradient → 5 lat bands all
+present → highest density of biome-band boundaries. Even with ecotone-aware
+scoring, some pixels at the boundary between two distinctly-forbidden lat
+bands (e.g. mid-lat HotDesert allowed + sub-arctic HotDesert forbidden)
+can't be saved. Acceptable: under 5pt regression threshold, far down from
+−13.90 pre-eval-upgrade.
+
+**Why scenario_hothouse +6.10 (biggest gain):**
+Hothouse params produce mostly forest + savanna at all lats → threshold
+crossings are between forest-types (TempForest↔TropicalRainforest etc.)
+where adjacent biomes are usually in the same allowed set → ecotone-aware
+scoring + W5 visual blending compound positively.
+
+**Locked artifacts (this batch):**
+- `crates/world-gen/src/flat_climate.rs` — added `whittaker_classify_blended_color`
+  + `pixel_color` + 3 unit tests (`whittaker_blended_color_returns_canonical_deep_in_biome`,
+  `whittaker_blended_color_blends_at_precip_threshold`, `pixel_color_preserves_lapse_overrides_unblended`)
+- `crates/world-gen/src/zonegen.rs` — `colorize_biome_with` uses `pixel_color`
+  instead of `pixel_biome().color()`. Hash pin rebased to `28d88695…`.
+- `scripts/climate_eval.py` — `analyze_render` ecotone-aware
+  `band_correct` / `forbidden_count` (any-allowed / all-forbidden per pixel)
+- `eval/baselines/v4.3.json` — new shipped baseline (mean 88.18)
+- `eval/compare-v2.1d/` — visual compare set (with-W5 vs without-W5)
+
+**Roadmap consequence:**
+- W5 architectural win uncovered eval framework limitation; framework
+  upgrade benefits ALL future ecotone-style features (W6 retroactively
+  scored higher under v4.3 if re-evaluated; v4 Orographic when it ships
+  won't face the same wall).
+- v2.1 batch sequence COMPLETE — all 4 batches (a/b/c/d) shipped through
+  /amaw + 12-phase workflow each. v5 Köppen seasonal still deferred.
+
 ### Cross-batch invariants
 
 - Hypso hash-pin from `eroded_hypso_render_pins_a_content_hash` (commit

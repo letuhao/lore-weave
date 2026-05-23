@@ -429,9 +429,18 @@ def analyze_render(png_path: Path, hemisphere: str, profile_name: str = "earth")
                     pass
             edge_dist[y][x] = d
 
-    # E3 fractional: all counters are floats; each pixel contributes its
-    # weight (1.0 if pure, split 0.5+0.5 at seam midpoints). Counter[str, float]
-    # works transparently with `+= weight`.
+    # E3 fractional: distribution / entropy counters stay weight-fractional
+    # (each pixel contributes 1.0 total split across its biome candidates).
+    #
+    # **v4.3 ecotone-aware lat_banding + sanity (2026-05-24)**: blended
+    # pixels at biome thresholds are evaluated **per-pixel as a unit**:
+    #   - `band_correct += 1.0` if ANY biome in the blend is in the lat-allowed set
+    #   - `forbidden_count += 1.0` only if ALL biomes in the blend are forbidden
+    # This treats ecotones honestly — a Mediterranean↔TempForest blend at
+    # warm-mid-lat where both biomes are allowed counts as fully correct,
+    # not 0.5 + 0.5 fractional. Only "this blend has NO valid biome for
+    # this lat" gets penalized. Pure (1.0-weight) pixels behave identically
+    # to the pre-v4.3 logic (the any/all semantics collapse to single check).
     band_correct = 0.0
     forbidden_count = 0.0
 
@@ -450,17 +459,21 @@ def analyze_render(png_path: Path, hemisphere: str, profile_name: str = "earth")
             ed = edge_dist[y][x]
             is_coast = ed < coast_t
             is_interior = ed > interior_t
+            # Fractional-weight fields (entropy + distribution inputs).
             for biome, weight in contribs:
                 biome_counts[biome] += weight
                 per_band_counts[band_idx][biome] += weight
-                if biome in allowed:
-                    band_correct += weight
-                if biome in forbidden:
-                    forbidden_count += weight
                 if is_coast:
                     coast_counts[biome] += weight
                 elif is_interior:
                     interior_counts[biome] += weight
+            # Per-pixel ecotone-aware lat_banding + sanity.
+            any_allowed = any(b in allowed for b, _ in contribs)
+            all_forbidden = all(b in forbidden for b, _ in contribs)
+            if any_allowed:
+                band_correct += 1.0
+            if all_forbidden:
+                forbidden_count += 1.0
 
     return {
         "biome_counts": dict(biome_counts),

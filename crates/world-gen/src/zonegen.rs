@@ -954,7 +954,7 @@ fn colorize_biome_with(
     climate: &crate::flat_climate::WorldClimateParams,
     zone_climates: &[Vec<crate::flat_climate::ZoneClimate>],
 ) -> Vec<u8> {
-    use crate::flat_climate::pixel_biome;
+    use crate::flat_climate::pixel_color;
 
     let n = state.w * state.h;
 
@@ -987,8 +987,11 @@ fn colorize_biome_with(
             let l1 = subs[sub_idx].zone;
             let zc = &zone_climates[plate_id][l1];
             let base = zone_base[plate_id][l1];
-            let biome = pixel_biome(zc, state.elev[i], base, climate);
-            let biome_c = biome.color();
+            // **W5 (v2.1d)**: `pixel_color` returns a blended RGB at Whittaker
+            // threshold crossings (e.g. precip≈250 or ≈700), preserving the
+            // canonical color deep in each biome. Eliminates "Tetris" feel
+            // at biome boundaries without adding biome classes.
+            let biome_c = pixel_color(zc, state.elev[i], base, climate);
             // W6 v2.1b: seam-blend biome colors at zone boundaries (no more
             // 1-pixel sharp biome flip). Uses cached i1, i2, and seam weight.
             let i2 = state.subattr_idx_2_at[i] as usize;
@@ -996,8 +999,7 @@ fn colorize_biome_with(
                 let l1_2 = subs[i2].zone;
                 let zc_2 = &zone_climates[plate_id][l1_2];
                 let base_2 = zone_base[plate_id][l1_2];
-                let biome_2 = pixel_biome(zc_2, state.elev[i], base_2, climate);
-                let biome_2_c = biome_2.color();
+                let biome_2_c = pixel_color(zc_2, state.elev[i], base_2, climate);
                 let w1 = (state.seam_w1_q[i] as f32 - 128.0) / 254.0 + 0.5; // [0.5, 1.0]
                 [
                     (biome_c[0] as f32 * w1 + biome_2_c[0] as f32 * (1.0 - w1)) as u8,
@@ -1492,9 +1494,11 @@ mod tests {
         // shifts on temperate zones); rebaselined 2026-05-24 (B5 v2.1c W6 +
         // v4 eval framework + W6 ship); rebaselined 2026-05-24 (B5 v2.1c
         // W2 noise overlay + W13 N=9 zone-avg coast_d → continentality
-        // attenuation perturbed). Rebaseline only with intentional biome
-        // algorithm / palette / pipeline changes.
-        let pinned = "d0c3e17cd14b8ef83618a6bdffbf81dc8d6bf65616e1f93954e9a8fe517cd0ed";
+        // attenuation perturbed); rebaselined 2026-05-24 (B5 v2.1d W5
+        // classifier hue interp at thresholds → blended RGB at threshold
+        // crossings instead of hard biome flip). Rebaseline only with
+        // intentional biome algorithm / palette / pipeline changes.
+        let pinned = "28d88695bb8470b9b06298debe73f7b5bc1a6fbebda4f2caafb2359513cde6fe";
         assert_eq!(
             actual.as_str(),
             pinned,

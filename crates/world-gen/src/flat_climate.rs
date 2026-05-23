@@ -358,6 +358,134 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// W5 (v2.1d) — Classifier-level hue interpolation near Whittaker thresholds
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Whittaker classifier is a step function on (temp, precip): adjacent biomes
+// flip at hard thresholds → "Tetris" feel where 10 biome classes appear as
+// 4-5 distinct color blocks. W5 fix (per roadmap): at any threshold band,
+// blend the 2 adjacent biome colors weighted by distance-to-threshold.
+// Doubles effective palette without adding biome classes (option A deferred
+// to v5 — requires seasonality data).
+//
+// Algorithm: probe 4 directions (±BLEND_TEMP, ±BLEND_PRECIP). If any probe
+// returns a different biome, bisect along that axis to find the exact
+// threshold location, then blend center-biome and other-biome colors by
+// a smoothstep curve over the normalized distance to the threshold.
+
+/// Half-width of the temperature blend band, in °C. Threshold crossings within
+/// ±this distance are blended. 1.5°C ≈ 2.5% of the typical [-20, 40] range.
+/// Tested at 0.5°C 2026-05-24 to mitigate regression under v4 eval; reverted
+/// to 1.5°C after upgrading eval to ecotone-aware scoring (v4.3) — ecotones
+/// at full spec width are now recognized as legitimate biome transitions
+/// rather than penalized as "wrong biome" pixels.
+const BLEND_TEMP: f32 = 1.5;
+
+/// Half-width of the precipitation blend band, in mm/yr. 75 mm/yr ≈ 2.5%
+/// of the typical [0, 3000] range — comparable %-band to BLEND_TEMP.
+/// See BLEND_TEMP doc-comment for history of 75 → 25 → 75 round trip.
+const BLEND_PRECIP: f32 = 75.0;
+
+/// Classify `(temp, precip)` and return a color blended with the nearest
+/// adjacent biome across the closest Whittaker threshold within the
+/// `±BLEND_TEMP / ±BLEND_PRECIP` window. Pixels deep in their biome return
+/// the canonical `Biome::color()`; pixels near a threshold return a blend
+/// that fades smoothly from canonical to canonical across the band.
+///
+/// **W5 spec** (v2.1d): doubles effective palette without adding biome
+/// classes. Eliminates the "Tetris" color-block feel at biome boundaries.
+pub fn whittaker_classify_blended_color(temp: f32, precip: f32) -> [u8; 3] {
+    let center = whittaker_classify(temp, precip);
+    let center_c = center.color();
+
+    // Probe 4 axis-aligned directions for a different biome at ±BLEND_X.
+    let probes: [(f32, f32); 4] = [
+        (BLEND_TEMP, 0.0),
+        (-BLEND_TEMP, 0.0),
+        (0.0, BLEND_PRECIP),
+        (0.0, -BLEND_PRECIP),
+    ];
+
+    let mut best: Option<(Biome, f32)> = None; // (other_biome, threshold_dist ∈ [0,1])
+    for (dt, dp) in probes {
+        let nb = whittaker_classify(temp + dt, precip + dp);
+        if nb == center {
+            continue;
+        }
+        // Bisect along this axis to find threshold position. lo = at center,
+        // hi = at probe (where nb classifies). 6 iterations → 1/64 precision.
+        let mut lo = 0.0_f32;
+        let mut hi = 1.0_f32;
+        for _ in 0..6 {
+            let mid = (lo + hi) * 0.5;
+            let mb = whittaker_classify(temp + dt * mid, precip + dp * mid);
+            if mb == center {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        let threshold_dist = (lo + hi) * 0.5;
+        match best {
+            None => best = Some((nb, threshold_dist)),
+            Some((_, td)) if threshold_dist < td => best = Some((nb, threshold_dist)),
+            _ => {}
+        }
+    }
+
+    let Some((other, td)) = best else {
+        return center_c; // No threshold within band → pure biome color.
+    };
+
+    // Smoothstep over [0, 1]: t=0 (at threshold) → 50/50; t=1 (full BLEND_X
+    // away) → 100/0 center. Ease-in-out so band edges don't have a visible
+    // discontinuity where blending switches off.
+    let t = td.clamp(0.0, 1.0);
+    let smooth = t * t * (3.0 - 2.0 * t);
+    let w_center = 0.5 + 0.5 * smooth;
+    let other_c = other.color();
+    [
+        (center_c[0] as f32 * w_center + other_c[0] as f32 * (1.0 - w_center)) as u8,
+        (center_c[1] as f32 * w_center + other_c[1] as f32 * (1.0 - w_center)) as u8,
+        (center_c[2] as f32 * w_center + other_c[2] as f32 * (1.0 - w_center)) as u8,
+    ]
+}
+
+/// Per-pixel COLOR (RGB) with both lapse override (Ice/Tundra at peaks) AND
+/// W5 classifier hue interpolation. Mirrors [`pixel_biome`]'s decision tree
+/// but returns a blended color instead of a single Biome enum.
+///
+/// **Lapse overrides remain hard** (Ice and Tundra at altitude flip cleanly,
+/// no blend) — softening those is a separate concern (would need elev-aware
+/// blend bands). Only the zone-classifier output is blended.
+pub fn pixel_color(
+    zc: &ZoneClimate,
+    elev_pixel: f32,
+    zone_base_elev: f32,
+    params: &WorldClimateParams,
+) -> [u8; 3] {
+    let delta = elev_pixel - zone_base_elev;
+    if delta < params.peak_lapse_min_delta {
+        // No peak override active → blend at zone-level (temp_mean, precip).
+        return whittaker_classify_blended_color(zc.temp_mean, zc.precip_annual);
+    }
+    let temp_pixel = zc.temp_mean - params.lapse_per_elev_unit * delta;
+    if temp_pixel < params.ice_temp {
+        // Same precip-gated Ice / tall-peak logic as pixel_biome; hard flip.
+        let tall_peak_threshold = params.peak_lapse_min_delta * 3.0;
+        if zc.precip_annual >= params.ice_precip_min || delta > tall_peak_threshold {
+            return Biome::Ice.color();
+        } else {
+            return Biome::Tundra.color();
+        }
+    } else if temp_pixel < params.tundra_temp {
+        return Biome::Tundra.color();
+    }
+    // No override → blend at the lapse-cooled (temp_pixel, precip).
+    whittaker_classify_blended_color(temp_pixel, zc.precip_annual)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Layer pipeline — compute_zone_climate (Zone level) + pixel_biome (Pixel)
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -1379,6 +1507,71 @@ mod tests {
     }
 
     // ---- export_zone_climates ----
+
+    // ---- W5 classifier-level hue interpolation (v2.1d) ----
+
+    #[test]
+    fn whittaker_blended_color_returns_canonical_deep_in_biome() {
+        // Pixel at (27, 2500) = deep in TropicalRainforest territory.
+        // All 4 probes (±1.5°C, ±75mm) still classify as TropicalRainforest
+        // (nearest threshold is precip=1500 at distance 1000mm >> 75mm; temp
+        // is at 22 boundary at distance 5°C >> 1.5°C). Should return
+        // canonical color exactly.
+        let c = whittaker_classify_blended_color(27.0, 2500.0);
+        assert_eq!(c, Biome::TropicalRainforest.color());
+
+        // Pixel deep in Tundra (cold tier, far from precip thresholds).
+        let c2 = whittaker_classify_blended_color(-10.0, 50.0);
+        assert_eq!(c2, Biome::Tundra.color());
+    }
+
+    #[test]
+    fn whittaker_blended_color_blends_at_precip_threshold() {
+        // Pixel at (20, 700) — exactly on the warm-tier threshold between
+        // Mediterranean (precip 250..700) and TemperateForest (precip > 700).
+        // At exactly the threshold, bisect finds td → 0, smoothstep(0) = 0,
+        // w_center = 0.5 → 50/50 blend of Mediterranean + TemperateForest.
+        let blend = whittaker_classify_blended_color(20.0, 700.0);
+        let med = Biome::Mediterranean.color();
+        let tf = Biome::TemperateForest.color();
+        let expected = [
+            ((med[0] as u32 + tf[0] as u32) / 2) as u8,
+            ((med[1] as u32 + tf[1] as u32) / 2) as u8,
+            ((med[2] as u32 + tf[2] as u32) / 2) as u8,
+        ];
+        // Allow ±2 for f32 rounding in lerp.
+        for ch in 0..3 {
+            assert!(
+                (blend[ch] as i32 - expected[ch] as i32).abs() <= 2,
+                "channel {ch}: blend {blend:?} vs expected midpoint {expected:?}"
+            );
+        }
+        // Sanity: blend is NEITHER pure Mediterranean NOR pure TemperateForest.
+        assert_ne!(blend, med);
+        assert_ne!(blend, tf);
+    }
+
+    #[test]
+    fn pixel_color_preserves_lapse_overrides_unblended() {
+        // Lapse overrides (Ice / Tundra at peaks) intentionally stay hard —
+        // softening those is a separate concern. Verify pixel_color returns
+        // EXACT Ice.color() at a tall cold peak.
+        let zc = ZoneClimate {
+            temp_mean: 26.0,
+            precip_annual: 2000.0,
+            biome: Biome::TropicalRainforest,
+        };
+        let p = WorldClimateParams::default();
+        // Tall peak: delta = 0.80 → temp_pixel = 26 - 40 = -14 < ice_temp(-10);
+        // precip 2000 ≥ ice_precip_min(100) → Ice override fires.
+        let c = pixel_color(&zc, 0.35 + 0.80, 0.35, &p);
+        assert_eq!(c, Biome::Ice.color(), "lapse override should return pure Ice color, not a blend");
+
+        // Pixel at zone base → no override → blends at zone-level (temp, precip).
+        // (27, 2000) → deep TropicalRainforest → canonical color.
+        let c2 = pixel_color(&zc, 0.35, 0.35, &p);
+        assert_eq!(c2, Biome::TropicalRainforest.color());
+    }
 
     #[test]
     fn export_matches_in_memory_compute() {
