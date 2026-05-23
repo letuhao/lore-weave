@@ -81,7 +81,66 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — tilemap-service HTTP render endpoint landed + /review-impl-driven hardening) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — tilemap-service wired into docker-compose + /livez/readyz + /review-impl hardening) — read this first
+
+M task. tilemap-service now actually starts in `infra/docker-compose.yml`
+alongside the 17 other services. Health probes added; PO chose
+`/review-impl` deeper look; 1 MED + 5 LOW + 2 COSMETIC findings — all
+8 fixed before COMMIT.
+
+### What shipped
+
+| File | Change |
+|---|---|
+| [src/http/health.rs](../../../services/tilemap-service/src/http/health.rs) | NEW — `livez()` + `readyz()` handlers; `HealthBody` with **opt-in** `version` (LOW-5: `TILEMAP_HEALTH_VERBOSE=1` to expose) |
+| [src/http/mod.rs](../../../services/tilemap-service/src/http/mod.rs) | `pub mod health;` |
+| [src/http/router.rs](../../../services/tilemap-service/src/http/router.rs) | `/livez` + `/readyz` merged OUTSIDE the auth gate (probes never see Bearer) |
+| [tests/http_integration.rs](../../../services/tilemap-service/tests/http_integration.rs) | +4 health tests (200 unauth, ignore Bearer, version-absent-by-default, wrong-method → 405) |
+| [services/tilemap-service/Dockerfile](../../../services/tilemap-service/Dockerfile) | rewritten for workspace build (cache stage stubs both loreweave_llm + tilemap-service); debian:bookworm-slim + wget runtime (consistent with auth-service); 7100 exposed |
+| [infra/docker-compose.yml](../../../infra/docker-compose.yml) | NEW service entry `tilemap-service`: 8220:7100, healthcheck via wget /livez with **start_period 10s** (MED-1), env rewrite from `INTERNAL_SERVICE_TOKEN` → `LOREWEAVE_INTERNAL_TOKEN` (LOW-2 comment), port reservation 8217-19 documented (LOW-3), restart: on-failure:5 (LOW-6), profiles `[tilemap, full]` (COSMETIC-8) |
+
+### `/review-impl` findings + fixes (all closed before COMMIT)
+
+| ID | Severity | Issue | Fix |
+|---|---|---|---|
+| MED-1 | MED | No `start_period` — cold-start race could mark container unhealthy on slow hosts | `start_period: 10s` in healthcheck |
+| LOW-2 | LOW | Env-name rewrite (`INTERNAL_SERVICE_TOKEN` → `LOREWEAVE_INTERNAL_TOKEN`) was a hidden gotcha | comment in compose explaining the rewrite |
+| LOW-3 | LOW | Port reservation logic (8217-19 reserved for core-domain) not recorded — future PR collision | inline comment in compose `port allocation note` |
+| LOW-4 | LOW | `/readyz` identical to `/livez` — drift risk when Phase 4+ adds deps | `TODO(readiness)` marker in doc comment; future grep target |
+| LOW-5 | LOW | Health JSON leaked `version` to unauthenticated scanners | gated on `TILEMAP_HEALTH_VERBOSE=1`; default OFF; serde `skip_serializing_if = Option::is_none` |
+| LOW-6 | LOW | No restart policy → bad token causes infinite crash loop | `restart: on-failure:5` (bounded) |
+| COSMETIC-7 | COSMETIC | No test for wrong HTTP method on probes | `cosmetic_7_health_endpoints_reject_non_get` (POST → 405) |
+| COSMETIC-8 | COSMETIC | tilemap-service always-on for `docker compose up` (no profile) | `profiles: [tilemap, full]` opt-in |
+
+### Test count delta
+
+| Suite | Before | After | Δ |
+|---|--:|--:|--:|
+| http_integration | 10 | **14** | +4 (3 health + 1 wrong-method regression) |
+| Lib unit | 330 | 330 | 0 |
+| Other suites | 405 | 405 | 0 |
+
+`cargo clippy --workspace --all-targets -- -D warnings` clean.
+`docker compose -f infra/docker-compose.yml --profile tilemap config --services` lists tilemap-service.
+`docker buildx build --check -f services/tilemap-service/Dockerfile .` reports no warnings.
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks:** `docker compose --profile tilemap up tilemap-service` actually starts the service in containerized form
+- **Unblocks:** other services (api-gateway-bff, frontend) can `depends_on: tilemap-service` and treat `http://tilemap-service:7100` as a reachable host
+- **Unblocks:** the frontend Phaser viewer (next pinned agenda item) has a real endpoint to consume from outside the container (`http://localhost:8220/...`)
+- **Blocks:** nothing — pinned agenda items 2 + 3 (frontend, first playable map) can proceed
+
+### Lessons recorded
+
+- **Healthcheck `start_period` is operational hygiene, not a nice-to-have.** Without it, a 30-second cold-start window in compose can mark a perfectly healthy container as unhealthy, causing dependent services to back off retrying. Always set it explicitly even when bind time is sub-second in practice.
+- **Probe response bodies are an attack-surface metadata leak when unauthenticated.** A `version` field that's useful for dashboards is also useful for CVE-targeting once an endpoint is exposed. Default to minimal, opt-in to verbose via env var — same principle as `RUST_LOG` levels.
+- **Docker workspace builds need both stages stubbed.** The Cargo workspace pattern with path-deps (loreweave_llm) requires stubbing BOTH the workspace member and the path-dep manifest, not just the bin target. Otherwise the dep cache invalidates on every source change.
+- **Env-var rewrites in compose are convenient but hide intent.** When the host env name (`INTERNAL_SERVICE_TOKEN`) differs from the in-container expected name (`LOREWEAVE_INTERNAL_TOKEN`), a deployer setting the in-container name has zero effect. Always comment the rewrite at the rewrite site.
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — tilemap-service HTTP render endpoint landed + /review-impl-driven hardening)
 
 L task (PLAN [`docs/plans/2026-05-24-tilemap-http-render-endpoint.md`](../../plans/2026-05-24-tilemap-http-render-endpoint.md))
 landed in 4 chunks TDD; PO asked for `/review-impl` at POST-REVIEW; 3 MED +

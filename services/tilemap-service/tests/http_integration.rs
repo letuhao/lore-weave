@@ -117,6 +117,89 @@ async fn assert_problem_json(
 }
 
 #[tokio::test]
+async fn health_livez_returns_200_without_auth() {
+    // /livez and /readyz are public probes (k8s pattern). They must
+    // respond 200 with no Authorization header — docker healthcheck +
+    // load-balancer probes cannot present a Bearer token.
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{base}/livez"))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = resp.json().await.expect("json");
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["endpoint"], "livez");
+    assert_eq!(body["service"], "tilemap-service");
+    // LOW-5 from /review-impl: `version` is opt-in via
+    // TILEMAP_HEALTH_VERBOSE=1. The test process doesn't set the env
+    // var, so the field must be ABSENT (Option::None +
+    // skip_serializing_if).
+    assert!(
+        body.get("version").is_none(),
+        "version must be absent by default — leak guard; got body={body}"
+    );
+}
+
+#[tokio::test]
+async fn health_readyz_returns_200_without_auth() {
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{base}/readyz"))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = resp.json().await.expect("json");
+    assert_eq!(body["endpoint"], "readyz");
+}
+
+#[tokio::test]
+async fn health_endpoints_ignore_bearer_token() {
+    // Defensive: even when a (valid or invalid) Bearer is sent, the
+    // probes still return 200. They're outside the auth-gated group.
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let resp_with_wrong = client
+        .get(format!("{base}/livez"))
+        .bearer_auth("garbage-token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_with_wrong.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn cosmetic_7_health_endpoints_reject_non_get() {
+    // COSMETIC-7 regression from /review-impl: probes are GET-only. A
+    // POST/PUT/DELETE to /livez or /readyz should return 405 Method
+    // Not Allowed (axum router default). This catches the case where
+    // a future refactor mistakenly maps multiple methods to the probe.
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{base}/livez"))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(
+        resp.status(),
+        StatusCode::METHOD_NOT_ALLOWED,
+        "POST /livez should be 405; got {}",
+        resp.status()
+    );
+    let resp = client
+        .post(format!("{base}/readyz"))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
 async fn ac_http_2_valid_request_returns_200_with_tilemap_view() {
     let base = boot_server().await;
     let client = reqwest::Client::new();

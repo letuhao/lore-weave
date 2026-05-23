@@ -725,6 +725,56 @@ services:
       - extraction
       - full
 
+  # tilemap-service — procedural tilemap generation (Rust). Stateless:
+  # the full TilemapTemplate is supplied per request; no Postgres or DP
+  # dependency yet (Phase 4+ adds them). Build context is the REPO ROOT
+  # because the Rust workspace lives at the top of the tree.
+  #
+  # Port allocation note (LOW-3 from /review-impl 2026-05-24): external
+  # 8217-19 are deliberately RESERVED for upcoming core-domain services
+  # (likely future auth/book companions). tilemap-service claims 8220 to
+  # leave that gap intentional. New service entries SHOULD pick 8221+
+  # unless they belong to the core-domain band.
+  tilemap-service:
+    build:
+      context: ..
+      dockerfile: services/tilemap-service/Dockerfile
+    environment:
+      # Env name rewrite (LOW-2 from /review-impl 2026-05-24): the host /
+      # .env reads `INTERNAL_SERVICE_TOKEN` (matching auth-service /
+      # book-service convention); we re-expose it under the name the Rust
+      # binary actually consumes (`LOREWEAVE_INTERNAL_TOKEN`). Setting
+      # `LOREWEAVE_INTERNAL_TOKEN` on the HOST has NO effect — compose
+      # always rewrites from `INTERNAL_SERVICE_TOKEN`.
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      TILEMAP_HTTP_BIND: "0.0.0.0:7100"
+      RUST_LOG: ${RUST_LOG:-info,tilemap_service=debug}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7100/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # MED-1 from /review-impl 2026-05-24: give the Rust binary a window
+      # to bind the port on cold start. Without start_period, the first
+      # 1-3 checks can hit "connection refused" on slow hosts and mark
+      # the container unhealthy before it has actually finished booting.
+      start_period: 10s
+    # LOW-6 from /review-impl 2026-05-24: bound the restart count so a
+    # bad LOREWEAVE_INTERNAL_TOKEN doesn't lead to an infinite crash
+    # loop. Project-wide pattern: other services in this file lack any
+    # `restart:` directive — adopting on a per-service basis here.
+    restart: on-failure:5
+    ports:
+      - "8220:7100"
+    # COSMETIC-8 from /review-impl 2026-05-24: opt-in via profile so
+    # contributors running a minimal stack (e.g. just `auth` + `book`)
+    # don't pay the ~30 MB Rust image build cost. `docker compose up`
+    # without --profile excludes tilemap; `--profile tilemap` or
+    # `--profile full` includes it.
+    profiles:
+      - tilemap
+      - full
+
 volumes:
   loreweave_pg:
   loreweave_redis:
