@@ -13,7 +13,6 @@ per spec D6 + D5.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Literal
@@ -75,34 +74,32 @@ async def select_summary_blend(
     # Per-level Neo4j vector query — runs against the index named by
     # summary_index_name(project_id, embedding_model_uuid, level).
     # Index missing (not yet bootstrapped) → Neo4j raises; we catch + skip.
-    chapter_task = _query_one_level(
-        session, "chapter", project_id, embedding_model_uuid,
-        query_embedding, per_level_top_k,
-    )
-    part_task = _query_one_level(
-        session, "part", project_id, embedding_model_uuid,
-        query_embedding, per_level_top_k,
-    )
-    book_task = _query_one_level(
-        session, "book", project_id, embedding_model_uuid,
-        query_embedding, per_level_top_k,
-    )
-
-    results = await asyncio.gather(
-        chapter_task, part_task, book_task, return_exceptions=True,
-    )
-
+    #
+    # NOTE (live-smoke fix, session 67 cont.4): the 3 queries MUST be
+    # serialized on the supplied session. Neo4j's AsyncSession is NOT
+    # safe for concurrent queries — running them under asyncio.gather
+    # silently produces 0 hits for 2 of the 3 levels (the third races
+    # to a result). The cost of sequential is ~3× one vector query
+    # (~10ms total against an ONLINE index), well under our 2s budget.
+    # Tests pre-fix passed because they mocked `session.run` per call
+    # so each "query" returned independently without sharing the real
+    # session's concurrency constraint.
     all_hits: list[LevelSummaryHit] = []
-    for level, result in zip(("chapter", "part", "book"), results, strict=True):
-        if isinstance(result, BaseException):
+    for level in ("chapter", "part", "book"):
+        try:
+            level_hits = await _query_one_level(
+                session, level, project_id, embedding_model_uuid,  # type: ignore[arg-type]
+                query_embedding, per_level_top_k,
+            )
+        except Exception as exc:
             # Index might not exist yet (project never extracted post-P3),
             # or Neo4j transient — log + skip.
             logger.debug(
                 "summary_blend %s-level query failed: %s",
-                level, result,
+                level, exc,
             )
             continue
-        all_hits.extend(result)
+        all_hits.extend(level_hits)
 
     if not all_hits:
         return []
