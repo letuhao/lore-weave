@@ -37,6 +37,10 @@ from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from loreweave_llm.models import ChunkingConfig
 
 from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction.context_budget import (
+    ContextBudget,
+    estimate_text_tokens,
+)
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.prompts import load_prompt
@@ -129,6 +133,7 @@ async def extract_facts(
     model_ref: str,
     llm_client: LLMClientProtocol,
     on_dropped: DroppedHandler | None = None,
+    context_budget: "ContextBudget | None" = None,
 ) -> list[LLMFactCandidate]:
     """Extract factual claims from *text* via the user's BYOK LLM.
 
@@ -173,6 +178,7 @@ async def extract_facts(
         system_prompt=system_prompt,
         text=text,
         on_dropped=on_dropped,
+        context_budget=context_budget,
     )
 
     return _postprocess(
@@ -284,10 +290,18 @@ async def _extract_via_llm_client(
     system_prompt: str,
     text: str,
     on_dropped: DroppedHandler | None,
+    context_budget: ContextBudget | None = None,
 ) -> list[_LLMFact]:
     """Submit fact_extraction job + wait_terminal + tolerant-parse
     `result.facts`. Mirrors entity extractor's SDK path."""
     project_id_meta = project_id or ""  # keep job_meta JSON-stringifiable
+    if context_budget is not None:
+        sys_tokens = estimate_text_tokens(system_prompt)
+        chunk_size = context_budget.max_paragraphs_per_chunk(
+            system_prompt_tokens=sys_tokens, lang="auto",
+        )
+    else:
+        chunk_size = 15
     try:
         job = await llm_client.submit_and_wait(
             user_id=user_id,
@@ -305,9 +319,12 @@ async def _extract_via_llm_client(
                 # OOM when extractors don't cap max_tokens — server
                 # reserves full model_ctx per slot, R+E+F gather × 3
                 # slots overflows GPU VRAM).
-                "max_tokens": 4096,
+                "max_tokens": (
+                    context_budget.max_output_tokens
+                    if context_budget is not None else 4096
+                ),
             },
-            chunking=ChunkingConfig(strategy="paragraphs", size=15),
+            chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
             job_meta={
                 "extractor": "fact",
                 "project_id": project_id_meta,

@@ -31,6 +31,10 @@ from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from loreweave_llm.models import ChunkingConfig
 
 from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction.context_budget import (
+    ContextBudget,
+    estimate_text_tokens,
+)
 from loreweave_extraction.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
@@ -101,6 +105,7 @@ async def extract_entities(
     model_ref: str,
     llm_client: LLMClientProtocol,
     on_dropped: DroppedHandler | None = None,
+    context_budget: "ContextBudget | None" = None,
 ) -> list[LLMEntityCandidate]:
     """Extract named entities from *text* via the user's BYOK LLM.
 
@@ -156,6 +161,7 @@ async def extract_entities(
         system_prompt=system_prompt,
         text=text,
         on_dropped=on_dropped,
+        context_budget=context_budget,
     )
 
     return _postprocess(
@@ -179,6 +185,7 @@ async def _extract_via_llm_client(
     system_prompt: str,
     text: str,
     on_dropped: DroppedHandler | None,
+    context_budget: ContextBudget | None = None,
 ) -> list["_LLMEntity"]:
     """Submit entity_extraction job + wait_terminal + tolerant-parse the
     `result.entities` envelope into a list of `_LLMEntity` records.
@@ -205,7 +212,22 @@ async def _extract_via_llm_client(
 
     `job_meta` carries the reverse-lookup keys so a future business-
     job query can find all LLM jobs for an extraction.
+
+    Chunk size derivation: when ``context_budget`` is supplied, the
+    chunk size is computed from the model's loaded context — accounts
+    for the system prompt length AND CJK token density (Vietnamese /
+    Chinese pack ~4× more tokens per paragraph than English). When
+    omitted (legacy callers + tests), falls back to the original
+    hardcoded ``size=15``.
     """
+    if context_budget is not None:
+        sys_tokens = estimate_text_tokens(system_prompt)
+        chunk_size = context_budget.max_paragraphs_per_chunk(
+            system_prompt_tokens=sys_tokens,
+            lang="auto",
+        )
+    else:
+        chunk_size = 15
     try:
         job = await llm_client.submit_and_wait(
             user_id=user_id,
@@ -227,9 +249,13 @@ async def _extract_via_llm_client(
                 # warnings. 4096 fits a generous JSON envelope for 15-
                 # paragraph chunks (observed usage ~700 content tokens
                 # + ~600 reasoning on a thinking-capable model).
-                "max_tokens": 4096,
+                "max_tokens": (
+                    context_budget.max_output_tokens
+                    if context_budget is not None
+                    else 4096
+                ),
             },
-            chunking=ChunkingConfig(strategy="paragraphs", size=15),
+            chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
             job_meta={
                 "extractor": "entity",
                 "project_id": project_id or "",

@@ -241,6 +241,23 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
     long_chapter_max = int(_env("KNOWLEDGE_EVAL_LONG_CHAPTER_MAX_PARAGRAPHS", "200") or 200)
     llm_client = get_llm_client()
 
+    # Model-aware chunking + concurrency budget. The eval pipeline must
+    # respect the model's loaded context window — local quantized 35B
+    # models load at 24-32K and previously crashed LM Studio with
+    # "failed to find a memory slot for batch" when R+E+F gather × full-
+    # context-reservation overflowed VRAM. Env-tunable for local-vs-
+    # cloud runs; default 32K matches the user's current LM Studio
+    # config for huihui-qwen3.6-abliterated. Set higher (e.g. 128000)
+    # for cloud baselines.
+    from loreweave_extraction import ContextBudget
+    model_context = int(_env("KNOWLEDGE_EVAL_MODEL_CONTEXT", "32000") or 32000)
+    budget = ContextBudget(model_context=model_context)
+    logger.info(
+        "Model context budget: model_context=%d max_parallel=%d max_output=%d",
+        budget.model_context, budget.max_parallel_slots(),
+        budget.max_output_tokens,
+    )
+
     async def _extract_one(fixture: ChapterFixture) -> ChapterScore:
         logger.info("Extracting chapter: %s", fixture.name)
 
@@ -252,6 +269,7 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
             model_source=model_source,
             model_ref=model_ref,
             llm_client=llm_client,
+            context_budget=budget,
         )
 
         if entities:
@@ -274,6 +292,7 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
                 model_source=model_source,
                 model_ref=model_ref,
                 llm_client=llm_client,
+                context_budget=budget,
             )
         else:
             relations, events = [], []

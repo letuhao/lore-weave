@@ -34,7 +34,7 @@ from collections.abc import Iterable
 from typing import Any, Literal
 from uuid import UUID
 
-from loreweave_extraction import get_extractor_version
+from loreweave_extraction import ContextBudget, get_extractor_version
 from loreweave_extraction.extractors.entity import extract_entities
 from loreweave_extraction.extractors.event import extract_events
 from loreweave_extraction.extractors.fact import extract_facts
@@ -224,6 +224,7 @@ async def gather_relations_events_facts(
     model_ref: str,
     llm_client: LLMClient,
     on_dropped: Any = None,
+    context_budget: "ContextBudget | None" = None,
 ) -> tuple[list[Any], list[Any], list[Any]]:
     """C-PRED-ALIGN-DEF-01 — single source of truth for Pass 2 R+E+F
     parallelism. Returns ``(relations, events, facts)``.
@@ -242,6 +243,17 @@ async def gather_relations_events_facts(
     so callers don't have to. The ``on_dropped`` callback is forwarded
     to each extractor for the Prometheus drop counter (eval can pass
     ``None`` if it doesn't track drops).
+
+    Model-aware concurrency (NEW): when ``context_budget`` is
+    supplied, the 3 R/E/F extractors are gated by an
+    ``asyncio.Semaphore(context_budget.max_parallel_slots())``. On
+    tight-context local models (e.g. 24K loaded), this auto-falls-back
+    to 1 or 2 concurrent slots → eliminates the LM Studio
+    "failed to find a memory slot for batch" / slot-purge errors
+    observed when 3 R+E+F × full-model-context-per-slot exceeded
+    available VRAM. The budget is also threaded to each extractor so
+    chunk size scales with the loaded context. Legacy callers (None)
+    keep the unbounded gather behaviour.
     """
     entity_names = [e.name for e in entities]
     all_known = list(set(known_entities + entity_names))
@@ -256,11 +268,26 @@ async def gather_relations_events_facts(
         llm_client=llm_client,
         on_dropped=on_dropped,
     )
-    relations, events, facts = await asyncio.gather(
-        extract_relations(**extractor_kwargs),
-        extract_events(**extractor_kwargs),
-        extract_facts(**extractor_kwargs),
-    )
+    if context_budget is not None:
+        extractor_kwargs["context_budget"] = context_budget
+        max_parallel = context_budget.max_parallel_slots()
+        sem = asyncio.Semaphore(max_parallel)
+
+        async def _gated(coro):
+            async with sem:
+                return await coro
+
+        relations, events, facts = await asyncio.gather(
+            _gated(extract_relations(**extractor_kwargs)),
+            _gated(extract_events(**extractor_kwargs)),
+            _gated(extract_facts(**extractor_kwargs)),
+        )
+    else:
+        relations, events, facts = await asyncio.gather(
+            extract_relations(**extractor_kwargs),
+            extract_events(**extractor_kwargs),
+            extract_facts(**extractor_kwargs),
+        )
     return relations, events, facts
 
 
