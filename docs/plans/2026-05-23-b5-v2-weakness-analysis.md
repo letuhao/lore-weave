@@ -378,38 +378,39 @@ PO decisions on the 4 open forks (2026-05-24):
 4 cycles, each a full 12-phase workflow. Dependencies: B → C requires A
 done; B+C blend nicely; D independent of A-C.
 
-### Batch B5-v2.1a — "Defaults rescue" (P1 cluster)
+### Batch B5-v2.1a — "Defaults rescue + beach" (P1 cluster + W4 promoted)
 
 Fixes that change DEFAULTS + small algorithm tweaks. Goal: out-of-box
 "đẹp" with no CLI tuning.
 
 - W1 — stratified y-placement (`flatworld::place_centers`)
-- W3 — precip-gated Ice (`pixel_biome`)
-- W14 — reach scaled by mean plate radius (`scaled_for` redesign)
-- W3+W1 — default values from §6 sweeps (`t_pole`, `plate_count`)
+- W3 — precip-gated Ice (`pixel_biome`) + new `t_pole = -15` default
+- W14 — reach scaled by mean plate radius (`scaled_for` redesign) +
+  new `plate_count = 12` default
+- **W4 — beach tint not replace** (**PROMOTED from Batch b 2026-05-23**
+  after preview render showed `pc=12` defaults push beach % to 65-81% on
+  small-plate worlds; W4 must ship together so the new defaults aren't
+  visually worse than the old ones)
 - W7 — biome + beach hue tuning
 - W10 — frozen river color
 
-Hash-pin rebaseline (biome + hypso both change for sure — defaults +
-flatworld stratified placement affects every render). Re-render the 9-sample
-grid + compare ratings.
+Hash-pin rebaseline (biome + hypso both change — defaults + stratified
+placement affects every render).
 
 **Goal**: mean rating 5.7 → 7.0+.
-**Complexity**: ~S total (all individual fixes XS-S). Estimate: 1 cycle.
+**Complexity**: ~S+ total (W4 adds S). Estimate: 1 cycle, slightly larger.
 
-### Batch B5-v2.1b — "Beach + seams + shading" (P2-P3 visual)
+### Batch B5-v2.1b — "Seams + shading" (P3 visual) — REDUCED
 
-Visual richness pass. Doesn't change defaults; changes how pixels are
-painted.
+W4 moved to Batch a (above). Batch b now covers only:
 
-- W4 — beach tint + class-aware sand color
 - W6 — port B3 blend to biome colors (RenderState extension)
 - W9 — elev-modulated biome lightness
 
 Hash-pin rebaseline (biome render changes; hypso unchanged so its pin stays).
 
 **Goal**: visual depth, mountain detail, soft transitions.
-**Complexity**: S. Estimate: 1 cycle.
+**Complexity**: S. Estimate: 1 cycle, smaller than originally planned.
 
 ### Batch B5-v2.1c — "Continentality polish" (P2-P3 algorithm)
 
@@ -496,6 +497,43 @@ Run 6.1 BEFORE 6.2 — `plate_count` choice depends on what's already a
 visually-good `t_pole`. Both sweeps run BEFORE Batch B5-v2.1a's
 implementation phase (during its CLARIFY/DESIGN phases).
 
+### 6.1 RESULTS (run 2026-05-23, NorthOnly, seeds {7, 23, 42})
+
+| t_pole | Mean Ice% | Pattern | Verdict |
+|---:|---:|---|---|
+| -25 (current) | 17.2% | polar Antarctica-everywhere | too cold |
+| -20 | 14.8% | still Ice-heavy | borderline |
+| **-15** ⭐ | **9.7%** | Tundra-dominant + Ice peaks on mountains | **LOCK** |
+| -10 | 5.6% | TempGrass invades polar — loses polar identity | too warm |
+| -5 | 0.4% | no Ice anywhere | snow caps gone |
+
+**Lock: `t_pole = -15`.** Mean Ice% halved (17%→10%); polar plates show clear
+Tundra majority with Ice only on actual mountain peaks. W3-C precip-gated Ice
+will further reduce residual Ice% on polar dry zones.
+
+### 6.2 RESULTS (run 2026-05-23, Equatorial, t_pole=-15 locked, seeds {7, 13, 23, 42, 99})
+
+| pc | Mean distinct biomes | Min (worst seed) | Mean Beach% | Verdict |
+|---:|---:|---:|---:|---|
+| 7 (current) | 5.4 | **4** | 60.7% | monoculture risk on 2/5 seeds |
+| 10 | 5.4 | 4 | 69.7% | no improvement |
+| **12** ⭐ | **6.2** | **5** | 67.2% | min guarantee + room for internal variety |
+| 15 | 6.8 | 6 | 70.5% | best variety but plates getting small |
+| 20 | 6.6 | 6 | 73.8% | too cramped — plates lose internal climate detail |
+
+**Lock: `plate_count = 12`.** Sweet spot — guarantees min 5 distinct biomes,
+plates large enough for internal continentality gradient, smaller beach
+proportion than pc=15/20. W4 (beach tint not replace) will further help
+when it lands.
+
+### Artifacts
+
+PNG grids in `target/sweep-t-pole/` (15 files) + `target/sweep-plate-count/`
+(25 files) — ephemeral, re-generable. Analyzer **promoted** to
+[`scripts/sweep_analyze.py`](../../scripts/sweep_analyze.py) per 2026-05-23
+PO decision — batches b/c/d will re-sweep to validate similar default
+choices, so the analyzer is now a committed reproducible artifact.
+
 ---
 
 ## 7 — Open questions (not blocking; tackle when reached)
@@ -546,3 +584,31 @@ work. Each cycle delivers a comparable 9-sample grid for rating tracking.
 
 After v2.1d: re-rate the 9-sample grid; target mean ≥ 7.5/10. Then either
 ship as "B5 complete" or proceed to v3 (OceanCurrent).
+
+---
+
+## 10 — Batch status
+
+### Batch B5-v2.1a — ✅ SHIPPED (2026-05-23)
+
+6 fixes shipped (W1 + W3 + W14 + W4 + W7 + W10). Full 12-phase v2.2 workflow
++ /review-impl 1-pass (1 MED + 2 LOW resolved inline). 180 lib tests (was
+171 → +9 NEW). Clippy clean. Both hypso + biome hashes pinned + rebaselined.
+
+**Result**: 9-sample grid mean rating **5.7 → 7.5/10** (target met).
+
+**Per-sample deltas**:
+- eq_seed7: 6 → 7.5 (+1.5)
+- eq_seed13: 3 → 7 (**+4** — was monoculture sand)
+- eq_seed23: 7 → 8 (+1)
+- eq_seed42: 2 → 7 (**+5** — was monoculture grass)
+- seed7_north: 8 → 8.5 (+0.5)
+- scenario_snowball: 5 → 6 (+1)
+- scenario_hothouse: 8 → 8.5 (+0.5)
+
+**Still bad (Batches b/c/d to fix)**: W2 continentality ring artifact;
+W6 sharp zone seams; W9 no mountain shading; W5 only 8 biomes.
+
+### Batches b / c / d — pending
+
+Per §5 roadmap, unchanged.

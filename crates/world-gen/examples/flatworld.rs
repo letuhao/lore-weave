@@ -268,12 +268,15 @@ fn main() {
     }
 
     if let Some(bpath) = biome_out {
-        // Auto-scale continentality_reach to map size unless the user pinned it
-        // explicitly (mirrors the river-brush resolution scale).
+        // Auto-scale continentality_reach to mean plate radius (W14 fix) —
+        // reach saturates at ~40 % of plate radius regardless of how many
+        // plates or how big the map. Unless the user pinned reach explicitly.
         let cm = if reach_explicit {
             climate.clone()
         } else {
-            climate.clone().scaled_for(world.width.min(world.height))
+            climate
+                .clone()
+                .scaled_for(world.width, world.height, world.plates.len())
         };
         let rgb = render_all_zones_biome(&world, p.seed, &ClassRatios::default(), erosion, &cm);
         image::save_buffer(

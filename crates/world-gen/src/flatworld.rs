@@ -64,7 +64,10 @@ impl Default for FlatParams {
         Self {
             width: 1024,
             height: 640,
-            plate_count: 7,
+            // B5 v2.1a default: 7 → 12 (per §6.2 sweep result). Min biome
+            // variety guaranteed 4 → 5 distinct biomes; mean 5.4 → 6.2; no
+            // more monoculture seeds.
+            plate_count: 12,
             seed: 1,
             min_vertices: 6,
             max_vertices: 11,
@@ -318,10 +321,55 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 /// Place `n` plate centres in the rectangle, rejecting any that fall within
 /// `min_sep` of an already-placed centre (so plates spread out). Relaxes the
 /// constraint if it can't place all centres (keeps generation total).
+/// Place `n` plate centres with two-pass sampling:
+///
+/// **Pass 1 (y-quartile stratification):** for each of 4 horizontal strips
+/// `[k·h/4, (k+1)·h/4]`, sample at least ONE centre within that strip,
+/// respecting `min_sep` against earlier picks. This guarantees the world
+/// spans all latitudes regardless of seed luck — the root fix for W1
+/// (climate monotony from plates clustering in one lat band).
+///
+/// **Pass 2 (uniform fill):** sample the remaining `n - 4` centres uniformly
+/// over the whole rectangle, respecting `min_sep`. If `n < 4`, the first
+/// `n` strata each get one centre and pass 2 is skipped.
+///
+/// Both passes share the same `Rng` and the same `min_sep` constraint, so
+/// the result remains fully deterministic from the seed. A final fallback
+/// (unconstrained sampling) honors the plate count if `min_sep` is too
+/// tight for the requested `n`.
 fn place_centers(rng: &mut Rng, w: f32, h: f32, n: usize, min_sep: f32) -> Vec<(f32, f32)> {
     let mut pts: Vec<(f32, f32)> = Vec::with_capacity(n);
     let min_sep2 = min_sep * min_sep;
-    let cap = n * 40;
+    const STRATA: usize = 4;
+
+    // Pass 1: stratified — one mandatory plate per y-quartile (up to STRATA).
+    let strata_to_fill = n.min(STRATA);
+    for k in 0..strata_to_fill {
+        let y_lo = h * (k as f32) / (STRATA as f32);
+        let y_hi = h * ((k + 1) as f32) / (STRATA as f32);
+        let cap = 60;
+        let mut placed = false;
+        for _ in 0..cap {
+            let c = (rng.next_f32() * w, y_lo + rng.next_f32() * (y_hi - y_lo));
+            if pts
+                .iter()
+                .all(|&(x, y)| (c.0 - x) * (c.0 - x) + (c.1 - y) * (c.1 - y) >= min_sep2)
+            {
+                pts.push(c);
+                placed = true;
+                break;
+            }
+        }
+        if !placed {
+            // Couldn't satisfy min_sep in this stratum — drop the constraint
+            // for this one plate to keep the stratum guarantee.
+            let c = (rng.next_f32() * w, y_lo + rng.next_f32() * (y_hi - y_lo));
+            pts.push(c);
+        }
+    }
+
+    // Pass 2: uniform fill the rest, respecting min_sep.
+    let cap = (n - pts.len()) * 40;
     let mut tries = 0;
     while pts.len() < n && tries < cap {
         let c = (rng.next_f32() * w, rng.next_f32() * h);
@@ -651,6 +699,52 @@ pub fn export(world: &FlatWorld, seed: u64) -> WorldData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn place_centers_stratifies_y_quartiles() {
+        // W1 fix: y-quartile stratified placement guarantees ≥1 plate per
+        // horizontal quartile, eliminating monoculture seeds where all plates
+        // randomly clustered in one lat band. Verified across multiple seeds.
+        for seed in [7u64, 13, 23, 42, 99, 555, 1024] {
+            let p = FlatParams {
+                plate_count: 7, // ≥4 so all strata fire
+                seed,
+                ..Default::default()
+            };
+            let world = generate(&p);
+            let h = world.height as f32;
+            let mut strata_hits = [0u32; 4];
+            for plate in &world.plates {
+                let k = ((plate.center.1 / h) * 4.0).floor().clamp(0.0, 3.0) as usize;
+                strata_hits[k] += 1;
+            }
+            assert!(
+                strata_hits.iter().all(|&c| c >= 1),
+                "seed {seed}: y-quartiles must each have ≥1 plate, got {strata_hits:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn place_centers_fewer_than_strata_still_distributes() {
+        // If plate_count < 4, can't fill all strata — should still produce
+        // exactly `plate_count` plates, distributed across the first N strata.
+        let p = FlatParams {
+            plate_count: 2,
+            seed: 7,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        assert_eq!(world.plates.len(), 2);
+        let h = world.height as f32;
+        let strata: std::collections::HashSet<usize> = world
+            .plates
+            .iter()
+            .map(|pl| ((pl.center.1 / h) * 4.0).floor().clamp(0.0, 3.0) as usize)
+            .collect();
+        // 2 plates should land in 2 different strata (stratum 0 and stratum 1).
+        assert_eq!(strata.len(), 2, "2 plates should occupy 2 distinct strata");
+    }
 
     #[test]
     fn generates_the_requested_plate_count() {

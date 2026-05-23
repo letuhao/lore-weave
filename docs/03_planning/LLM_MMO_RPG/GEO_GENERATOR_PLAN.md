@@ -29,7 +29,20 @@
 > hierarchy depth + diversity (`0785007e`), seam features roadmap
 > (`41f9c84b`), climate research + B5 v2 plan (`f5e3d5e5`).
 >
-> **✅ B5 v2 SHIPPED (2026-05-23):** hierarchical layered climate. NEW
+> **✅ B5 v2.1a SHIPPED (2026-05-23):** defaults rescue + beach tint. After
+> visual eval of B5 v2 (mean rating 5.7/10, 2 of 4 baseline seeds monoculture),
+> shipped 6 tuning fixes per
+> [`docs/plans/2026-05-23-b5-v2-weakness-analysis.md`](../../plans/2026-05-23-b5-v2-weakness-analysis.md):
+> W1 stratified y-quartile placement; W3 precip-gated Ice + `t_pole=-15`
+> default (calibration §6.1); W14 plate-radius scaled reach + `plate_count=12`
+> default (calibration §6.2); W4 beach tint not replace; W7 reddish HotDesert
+> + cooler WET_SAND; W10 frozen-river color on Tundra/Ice zones. Result:
+> **mean rating 5.7 → 7.5/10**; the 2 monoculture seeds jumped +4 / +5
+> rating points. 180 lib tests (+9 NEW), clippy clean, both hypso + biome
+> hashes pinned.
+>
+> **✅ B5 v2 SHIPPED (2026-05-23) — original ship:** hierarchical layered
+> climate. NEW
 > [`crates/world-gen/src/flat_climate.rs`](../../../crates/world-gen/src/flat_climate.rs):
 > 5-layer pipeline (Insolation + Circulation + Continentality + ZoneRefinement
 > + ElevLapse) → Whittaker 8-biome classifier. Classification **at zone level**;

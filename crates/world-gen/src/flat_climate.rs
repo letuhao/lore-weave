@@ -88,6 +88,13 @@ pub struct WorldClimateParams {
     /// noise on a polar zone's plains from flickering to Ice — the override
     /// is reserved for actual *peaks* sticking out of the zone base.
     pub peak_lapse_min_delta: f32,
+    /// Annual precipitation (mm/yr) BELOW which a cold-enough pixel becomes
+    /// Tundra instead of Ice — real ice caps need snow accumulation. Polar
+    /// dry plains read as Tundra; polar wet zones or true mountain peaks
+    /// (delta > 3 × peak_lapse_min_delta) still earn Ice. W3-C fix from B5
+    /// v2.1a; defaults from climate literature (~100mm separates true ice
+    /// cap from polar desert).
+    pub ice_precip_min: f32,
 }
 
 impl Default for WorldClimateParams {
@@ -95,7 +102,11 @@ impl Default for WorldClimateParams {
         Self {
             hemisphere_layout: HemisphereLayout::default(),
             t_eq: 28.0,
-            t_pole: -25.0,
+            // B5 v2.1a default: -25 → -15 (per §6.1 sweep result). Mean Ice%
+            // halved (17%→10%); polar Tundra majority with Ice on actual
+            // mountain peaks. W3-C precip-gated Ice (`ice_precip_min`) further
+            // reduces Ice on polar dry zones.
+            t_pole: -15.0,
             precip_eq: 2400.0,
             precip_subtropic: 300.0,
             precip_midlat: 900.0,
@@ -114,19 +125,39 @@ impl Default for WorldClimateParams {
             // sits just above that, so plains stay flat-coloured while Hills
             // (up to +0.13) and Mountain peaks (up to +0.48) earn the override.
             peak_lapse_min_delta: 0.05,
+            // Ice cap accumulation threshold (mm/yr). Polar dry zones
+            // (precip < 100) → Tundra; polar wet zones AND tall mountain
+            // peaks (delta > 3 × peak_lapse_min_delta) → Ice. Allows snow
+            // caps on dry tall peaks (Antarctica is dry but ice; Atacama
+            // is dry without ice — the height makes the difference).
+            ice_precip_min: 100.0,
         }
     }
 }
 
+/// Fraction of a plate's mean radius beyond which continentality saturates.
+/// 0.4 → at ~40% of plate-radius from coast, attenuation hits max → the
+/// inland 60% of every plate reads fully continental. Bigger plates auto-
+/// scale; smaller plates auto-scale; the climate signal stays plate-relative
+/// regardless of how many plates the world has. (W14 fix from B5 v2.1a.)
+pub const CONTINENTALITY_REACH_FRAC: f32 = 0.4;
+
 impl WorldClimateParams {
-    /// Return a copy with [`Self::continentality_reach`] scaled proportionally
-    /// to a non-baseline map size. The baseline tuning is at `short_side =
-    /// 640`; a `1280`-tall map gets `reach × 2`; a `320`-tall map gets
-    /// `reach × 0.5`. Mirrors the resolution-scale pattern used by the river
-    /// brush in [`crate::zonegen`].
-    pub fn scaled_for(mut self, short_side: u32) -> Self {
-        let s = (short_side as f32 / 640.0).max(0.1);
-        self.continentality_reach *= s;
+    /// Return a copy with [`Self::continentality_reach`] scaled to **mean
+    /// plate radius**, not map size. Per W14: the right scale for
+    /// "continentality saturates at the interior of a typical plate" is the
+    /// plate's own size, not the rectangle's. `mean_radius = 0.5 ×
+    /// sqrt(map_area / plate_count)`. With 12 plates on 1024×640 → mean
+    /// radius ≈ 116 px → reach ≈ 46 px (saturates ~40% from coast). With 7
+    /// plates same size → mean radius ≈ 151 px → reach ≈ 60 px.
+    ///
+    /// The baseline fallback (`continentality_reach = 200.0`) applies if
+    /// `scaled_for` is never called — useful for tests with synthetic
+    /// continentality input.
+    pub fn scaled_for(mut self, width: u32, height: u32, plate_count: usize) -> Self {
+        let area = (width as f32) * (height as f32);
+        let mean_radius = 0.5 * (area / plate_count.max(1) as f32).sqrt();
+        self.continentality_reach = (mean_radius * CONTINENTALITY_REACH_FRAC).max(1.0);
         self
     }
 }
@@ -175,7 +206,9 @@ impl Biome {
 
     /// Display RGB for renderers. Calibrated for visual contrast — the two
     /// "dark green" biomes (tropical / boreal) are deliberately spread on the
-    /// hue axis to read distinctly.
+    /// hue axis to read distinctly. **W7 tuning (B5 v2.1a)**: HotDesert
+    /// reddened to distinguish from beach sand; previously `#D8B070` was
+    /// visually ambiguous with WET_SAND `#C4B284`.
     pub fn color(self) -> [u8; 3] {
         match self {
             Biome::Ice => [232, 238, 242],                // near-white
@@ -183,7 +216,7 @@ impl Biome {
             Biome::BorealForest => [74, 107, 71],         // muted grey-green
             Biome::TemperateForest => [79, 139, 65],      // bright forest
             Biome::TemperateGrassland => [184, 180, 90],  // tan/khaki
-            Biome::HotDesert => [216, 176, 112],          // sand
+            Biome::HotDesert => [216, 144, 96],           // reddish sand (Sahara) — W7
             Biome::Savanna => [201, 192, 74],             // yellow-green
             Biome::TropicalRainforest => [15, 77, 26],    // deep dark green
         }
@@ -385,7 +418,18 @@ pub fn pixel_biome(
     }
     let temp_pixel = zc.temp_mean - params.lapse_per_elev_unit * delta;
     if temp_pixel < params.ice_temp {
-        Biome::Ice
+        // W3-C precip-gated Ice: real ice caps need snow accumulation. A
+        // cold dry plain stays Tundra; a cold wet zone OR a truly tall peak
+        // (delta > 3 × peak_gate) earns Ice. Polar dry plain (low precip,
+        // shallow delta) → Tundra. Polar Antarctica-style ice cap (low
+        // precip BUT tall delta) → Ice. Polar moist mountain (wet + tall)
+        // → Ice.
+        let tall_peak_threshold = params.peak_lapse_min_delta * 3.0;
+        if zc.precip_annual >= params.ice_precip_min || delta > tall_peak_threshold {
+            Biome::Ice
+        } else {
+            Biome::Tundra
+        }
     } else if temp_pixel < params.tundra_temp {
         Biome::Tundra
     } else {
@@ -648,6 +692,74 @@ mod tests {
     }
 
     #[test]
+    fn pixel_biome_precip_gated_ice_polar_dry_plain_stays_tundra() {
+        // W3-C fix (B5 v2.1a): a polar zone classified Tundra with LOW precip
+        // and a SHALLOW peak (just above the gate, NOT tall) — even though
+        // temp_pixel falls below ice_temp, Ice should NOT fire because
+        // (a) precip < ice_precip_min AND (b) delta is not > 3 × peak gate.
+        // This is the "polar dry desert" case (Atacama-like, Antarctica's
+        // dry valleys) — Tundra, not Ice.
+        let zc = ZoneClimate {
+            temp_mean: -18.0,
+            precip_annual: 50.0, // dry — below ice_precip_min (100)
+            biome: Biome::Tundra,
+        };
+        let p = WorldClimateParams::default(); // gate=0.05, ice_temp=-10, lapse=50
+        // Shallow peak: delta = 0.08 (just above gate, NOT > 3×gate=0.15).
+        // temp_pixel = -18 - 50*0.08 = -22 < ice_temp → would be Ice in v2.
+        // W3-C: Tundra (low precip + shallow delta).
+        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Tundra);
+    }
+
+    #[test]
+    fn pixel_biome_precip_gated_ice_polar_wet_zone_becomes_ice() {
+        // Same shallow peak but the zone has accumulation-grade precip
+        // (≥ ice_precip_min) → Ice fires.
+        let zc = ZoneClimate {
+            temp_mean: -18.0,
+            precip_annual: 200.0, // wet — above ice_precip_min
+            biome: Biome::Tundra,
+        };
+        let p = WorldClimateParams::default();
+        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Ice);
+    }
+
+    #[test]
+    fn pixel_biome_precip_gated_ice_dry_tall_peak_still_ice() {
+        // Antarctica-style: dry zone (no snowfall) BUT very tall peak — the
+        // peak's altitude alone earns Ice (delta > 3 × peak_lapse_min_delta).
+        let zc = ZoneClimate {
+            temp_mean: -18.0,
+            precip_annual: 50.0, // dry
+            biome: Biome::Tundra,
+        };
+        let p = WorldClimateParams::default(); // 3×gate = 0.15
+        // Tall peak: delta = 0.30 > 0.15 → Ice via tall-peak override.
+        assert_eq!(pixel_biome(&zc, 0.70, 0.40, &p), Biome::Ice);
+    }
+
+    #[test]
+    fn pixel_biome_precip_gated_ice_works_on_non_tundra_zone() {
+        // LOW-2 fix from /review-impl: the 3 precip-gated Ice tests use
+        // `biome=Tundra`. A refactor that accidentally gated the precip
+        // check on `zc.biome == Tundra` would pass those tests but break for
+        // other zones. Confirm the logic is zone-biome-independent: a
+        // BorealForest zone with very cold pixel + low precip → Tundra
+        // (precip-gated NOT Ice), not BorealForest.
+        let zc = ZoneClimate {
+            temp_mean: -15.0,
+            precip_annual: 50.0, // dry — below ice_precip_min
+            biome: Biome::BorealForest, // NOT Tundra
+        };
+        let p = WorldClimateParams::default();
+        // Shallow peak: delta = 0.08 (NOT > 3 × peak_gate=0.15).
+        // temp_pixel = -15 - 50*0.08 = -19 < ice_temp=-10 → would be Ice in v2.
+        // W3-C: precip < ice_precip_min AND delta < tall_peak → fall through to
+        // Tundra branch (temp_pixel < tundra_temp=0).
+        assert_eq!(pixel_biome(&zc, 0.48, 0.40, &p), Biome::Tundra);
+    }
+
+    #[test]
     fn pixel_biome_polar_zone_plains_stay_tundra_only_peaks_become_ice() {
         // Regression: a polar zone (Tundra, temp_mean = -28 °C) must NOT have
         // its flat / shallow-noise pixels overridden to Ice just because
@@ -738,14 +850,38 @@ mod tests {
     // ---- scaled_for ----
 
     #[test]
-    fn params_scaled_for_proportional() {
+    fn params_scaled_for_uses_plate_radius_not_map_size() {
+        // W14 fix: reach scales by mean plate radius, not absolute map size.
+        // Two maps with same plate_count → reach scales linearly with map dim
+        // (sqrt(area) ~ side, so reach ~ side). Same map with 4× plate_count
+        // → mean_radius halves → reach halves.
         let p = WorldClimateParams::default();
-        let base_reach = p.continentality_reach;
-        // Baseline (640) → unchanged.
-        assert!((p.clone().scaled_for(640).continentality_reach - base_reach).abs() < 1e-3);
-        // 1280 → 2× reach.
-        assert!((p.clone().scaled_for(1280).continentality_reach - 2.0 * base_reach).abs() < 1e-3);
-        // 320 → 0.5× reach.
-        assert!((p.clone().scaled_for(320).continentality_reach - 0.5 * base_reach).abs() < 1e-3);
+
+        // 1024×640, 12 plates: mean_radius = 0.5 × sqrt(1024×640/12) ≈ 116.6
+        // reach ≈ 116.6 × 0.4 ≈ 46.6
+        let baseline = p.clone().scaled_for(1024, 640, 12).continentality_reach;
+        assert!(
+            (baseline - 46.6).abs() < 1.0,
+            "12-plate 1024×640 reach should ≈ 46.6, got {baseline}"
+        );
+
+        // Same area (1024×640) but 48 plates → mean_radius halves → reach halves.
+        let many = p.clone().scaled_for(1024, 640, 48).continentality_reach;
+        assert!(
+            (many - baseline / 2.0).abs() < 1.0,
+            "4× plate_count should halve reach; baseline={baseline} many={many}"
+        );
+
+        // Same plate_count, 4× area (2048×1280, 12 plates) → mean_radius
+        // doubles → reach doubles.
+        let big = p.clone().scaled_for(2048, 1280, 12).continentality_reach;
+        assert!(
+            (big - baseline * 2.0).abs() < 1.0,
+            "4× area should double reach; baseline={baseline} big={big}"
+        );
+
+        // Defensive: plate_count = 0 must not divide-by-zero; reach > 0.
+        let edge = p.clone().scaled_for(1024, 640, 0).continentality_reach;
+        assert!(edge.is_finite() && edge >= 1.0, "0 plates → defensive reach, got {edge}");
     }
 }

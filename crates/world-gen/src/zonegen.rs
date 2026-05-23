@@ -623,9 +623,32 @@ pub fn render_all_zones_biome(
     climate: &crate::flat_climate::WorldClimateParams,
 ) -> Vec<u8> {
     let state = compute_render_state(world, master_seed, ratios, strength);
-    let mut rgb = colorize_biome(&state, world, climate);
-    apply_river_overlay(&mut rgb, &state);
+    let zone_climates = compute_zone_climates(world, climate, &state);
+    let mut rgb = colorize_biome_with(&state, world, climate, &zone_climates);
+    // W10 fix: climate-aware river overlay — Tundra / Ice zones get
+    // FROZEN_RIVER instead of temperate stream/river blue.
+    apply_river_overlay_biome(&mut rgb, &state, &zone_climates);
     rgb
+}
+
+/// Compute one [`crate::flat_climate::ZoneClimate`] per L1 zone of every
+/// plate. Shared by `colorize_biome` and `apply_river_overlay_biome` so the
+/// expensive per-zone climate computation runs exactly once per render.
+fn compute_zone_climates(
+    world: &FlatWorld,
+    climate: &crate::flat_climate::WorldClimateParams,
+    state: &RenderState,
+) -> Vec<Vec<crate::flat_climate::ZoneClimate>> {
+    use crate::flat_climate::compute_zone_climate;
+    world
+        .plates
+        .iter()
+        .map(|p| {
+            (0..p.zone_sites.len())
+                .map(|zi| compute_zone_climate(world, climate, p.id, zi, &state.edge_dist))
+                .collect()
+        })
+        .collect()
 }
 
 /// Shared precompute for both render fns. Pure-procedural; no RNG (terrain
@@ -831,14 +854,39 @@ impl RenderState {
 }
 
 const VOID_COLOR: [u8; 3] = [12, 16, 28];
-const WET_SAND: [u8; 3] = [196, 178, 132];
-const DRY_SAND: [u8; 3] = [230, 214, 165];
+// W7 tuning (B5 v2.1a): wet sand pulled cooler/grayer to distinguish from
+// the new reddish HotDesert biome `#D89060`. Old WET_SAND `#C4B284` lived
+// in the same hue family as HotDesert — now visually unambiguous.
+const WET_SAND: [u8; 3] = [180, 168, 154];
+const DRY_SAND: [u8; 3] = [212, 200, 178];
+/// W10 fix from B5 v2.1a: rivers in Tundra / Ice zones paint as frozen
+/// (light blue-grey) rather than the default stream/river blue. Climate-
+/// aware overlay; only applies on the biome render path.
+const FROZEN_RIVER: [u8; 3] = [200, 213, 224];
 
 fn beach_color(t: f32) -> [u8; 3] {
     [
         (WET_SAND[0] as f32 + (DRY_SAND[0] as f32 - WET_SAND[0] as f32) * t) as u8,
         (WET_SAND[1] as f32 + (DRY_SAND[1] as f32 - WET_SAND[1] as f32) * t) as u8,
         (WET_SAND[2] as f32 + (DRY_SAND[2] as f32 - WET_SAND[2] as f32) * t) as u8,
+    ]
+}
+
+/// W4 fix from B5 v2.1a: blend beach sand INTO the biome colour by
+/// `smoothstep(beach_t)` instead of replacing the biome colour with sand.
+/// At `t = 0` (shore): full sand. At `t = 1` (inland edge): full biome.
+/// Preserves the climate signal everywhere — small-plate worlds no longer
+/// erase 65 %+ of their biome interior to sand.
+///
+/// The smoothstep curve eases the transition (sand-dominant near shore,
+/// biome-dominant inland) rather than a hard linear lerp.
+fn blend_beach_into_biome(biome: [u8; 3], beach_t: f32) -> [u8; 3] {
+    let sand = beach_color(beach_t);
+    let s = smoothstep01(beach_t.clamp(0.0, 1.0));
+    [
+        (sand[0] as f32 + (biome[0] as f32 - sand[0] as f32) * s) as u8,
+        (sand[1] as f32 + (biome[1] as f32 - sand[1] as f32) * s) as u8,
+        (sand[2] as f32 + (biome[2] as f32 - sand[2] as f32) * s) as u8,
     ]
 }
 
@@ -869,27 +917,15 @@ fn colorize_hypso(state: &RenderState) -> Vec<u8> {
 /// purely a terrain feature, not a biome). Land non-beach pixels: look up the
 /// zone's pre-computed [`crate::flat_climate::ZoneClimate`] via the
 /// `subattr_idx_at` cache, then apply the per-pixel lapse override.
-fn colorize_biome(
+fn colorize_biome_with(
     state: &RenderState,
     world: &FlatWorld,
     climate: &crate::flat_climate::WorldClimateParams,
+    zone_climates: &[Vec<crate::flat_climate::ZoneClimate>],
 ) -> Vec<u8> {
-    use crate::flat_climate::{compute_zone_climate, pixel_biome, ZoneClimate};
+    use crate::flat_climate::pixel_biome;
 
     let n = state.w * state.h;
-
-    // Precompute one ZoneClimate per L1 zone of every plate, in parallel
-    // shape to `world.plates[*].zone_sites`. The biome lookup at colour-pass
-    // time is then O(1).
-    let zone_climates: Vec<Vec<ZoneClimate>> = world
-        .plates
-        .iter()
-        .map(|p| {
-            (0..p.zone_sites.len())
-                .map(|zi| compute_zone_climate(world, climate, p.id, zi, &state.edge_dist))
-                .collect()
-        })
-        .collect();
 
     // Cache each L1 zone's base_elevation (the lapse anchor).
     let zone_base: Vec<Vec<f32>> = world
@@ -907,8 +943,6 @@ fn colorize_biome(
     for i in 0..n {
         let c = if !state.is_land[i] {
             VOID_COLOR
-        } else if state.is_beach[i] {
-            beach_color(state.beach_t[i])
         } else {
             // `is_land[i]` is true ⟺ `plate_at[i] >= 0` (both set together at
             // rasterize time). COSMETIC-2 fix: assert the invariant in dev
@@ -923,7 +957,17 @@ fn colorize_biome(
             let zc = &zone_climates[plate_id][l1];
             let base = zone_base[plate_id][l1];
             let biome = pixel_biome(zc, state.elev[i], base, climate);
-            biome.color()
+            let biome_c = biome.color();
+            // W4 fix from B5 v2.1a: beach is now a TINT over biome, not a
+            // replacement. At shore (t≈0) reads as sand; at inland edge of
+            // beach band (t≈1) reads as biome. Preserves climate signal on
+            // small-plate worlds where beach used to dominate 65–80 % of the
+            // visible plate area.
+            if state.is_beach[i] {
+                blend_beach_into_biome(biome_c, state.beach_t[i])
+            } else {
+                biome_c
+            }
         };
         rgb[i * 3] = c[0];
         rgb[i * 3 + 1] = c[1];
@@ -933,7 +977,9 @@ fn colorize_biome(
 }
 
 /// Variable-width river stamps overlay. Painted in ASCENDING drainage so big
-/// rivers dominate at confluences. Shared between hypso + biome renders.
+/// rivers dominate at confluences. **Hypso-mode**: stream/river blue colors
+/// regardless of climate. For climate-aware coloring (frozen rivers on
+/// Tundra/Ice) see [`apply_river_overlay_biome`].
 fn apply_river_overlay(rgb: &mut [u8], state: &RenderState) {
     let n = state.w * state.h;
     let mut river_cells: Vec<(u32, u32)> = (0..n as u32)
@@ -945,6 +991,45 @@ fn apply_river_overlay(rgb: &mut [u8], state: &RenderState) {
         let i = idx as usize;
         let (px, py) = (i % state.w, i / state.w);
         let (radius, color) = river_brush(d, state.outlet_t, state.brush_hi, state.w.min(state.h));
+        stamp_disk(rgb, state.w, state.h, px, py, radius, color);
+    }
+}
+
+/// Climate-aware river overlay for the biome render path (W10 fix from B5
+/// v2.1a). Looks up the biome at each river cell via `subattr_idx_at +
+/// zone_climates`; if it's Ice or Tundra → paint `FROZEN_RIVER` (light
+/// blue-grey) instead of the stream/river blue. A cold river is now visually
+/// distinct from a temperate one.
+fn apply_river_overlay_biome(
+    rgb: &mut [u8],
+    state: &RenderState,
+    zone_climates: &[Vec<crate::flat_climate::ZoneClimate>],
+) {
+    use crate::flat_climate::Biome;
+    let n = state.w * state.h;
+    let mut river_cells: Vec<(u32, u32)> = (0..n as u32)
+        .filter(|&i| state.in_network[i as usize])
+        .map(|i| (i, state.drainage[i as usize]))
+        .collect();
+    river_cells.sort_by_key(|&(_, d)| d);
+    for (idx, d) in river_cells {
+        let i = idx as usize;
+        let (px, py) = (i % state.w, i / state.w);
+        let (radius, default_color) =
+            river_brush(d, state.outlet_t, state.brush_hi, state.w.min(state.h));
+        // Look up zone biome at this river cell (river is always on land →
+        // plate_at[i] >= 0 by construction; debug_assert mirrors colorize_biome).
+        let pid = state.plate_at[i];
+        debug_assert!(pid >= 0, "river on non-land at {i}");
+        let plate_id = pid as usize;
+        let subs = &state.subattrs[plate_id];
+        let l1 = subs[state.subattr_idx_at[i] as usize].zone;
+        let zone_biome = zone_climates[plate_id][l1].biome;
+        let color = if matches!(zone_biome, Biome::Ice | Biome::Tundra) {
+            FROZEN_RIVER
+        } else {
+            default_color
+        };
         stamp_disk(rgb, state.w, state.h, px, py, radius, color);
     }
 }
@@ -1316,13 +1401,50 @@ mod tests {
         let rgb = render_all_zones_eroded(&world, p.seed, &ClassRatios::default(), ErosionStrength::Moderate);
         let hash = blake3::hash(&rgb);
         let actual = hash.to_hex().to_string();
-        // Pinned 2026-05-23 (post-B5v2 RenderState refactor); rebaseline only
-        // with intentional algorithm changes.
-        let pinned = "3deb4a2349a8d62d368c634b88276bdf1891e09afb72ec868016d00836fb0375";
+        // Pinned 2026-05-23 (post-B5v2 RenderState refactor); rebaselined
+        // 2026-05-23 (B5 v2.1a W1 stratified y-placement); rebaselined again
+        // 2026-05-23 (B5 v2.1a W7 WET_SAND/DRY_SAND hue tuning affects beach
+        // pixels in hypso too). Rebaseline only with intentional algorithm/
+        // palette changes.
+        let pinned = "996d2af581cc04f081db3068b900e896bfe997ebb41d77205c737ce27d286002";
         assert_eq!(
             actual.as_str(),
             pinned,
             "hypso render hash drifted; update pin or revert change. actual={actual}"
+        );
+    }
+
+    #[test]
+    fn biome_render_pins_a_content_hash() {
+        // MED-1 fix from /review-impl: hypso has a hash pin but biome didn't.
+        // Batch v2.1a changed biome semantics (W3 precip-gated Ice, W4 beach
+        // tint, W7 hue, W10 frozen river) — without a hash pin a future
+        // refactor could silently change biome output and only subjective
+        // rating-comparison would catch it.
+        use crate::flat_climate::WorldClimateParams;
+        let p = FlatParams {
+            width: 96,
+            height: 64,
+            seed: 7,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let climate = WorldClimateParams::default().scaled_for(96, 64, world.plates.len());
+        let rgb = render_all_zones_biome(
+            &world,
+            p.seed,
+            &ClassRatios::default(),
+            ErosionStrength::Moderate,
+            &climate,
+        );
+        let actual = blake3::hash(&rgb).to_hex().to_string();
+        // Pinned 2026-05-23 (B5 v2.1a). Rebaseline only with intentional
+        // biome algorithm / palette / pipeline changes.
+        let pinned = "36d5acdd8d212f05c81b7e912272cac1b58da13b8a624d0621f606bd4242f2d5";
+        assert_eq!(
+            actual.as_str(),
+            pinned,
+            "biome render hash drifted; update pin or revert change. actual={actual}"
         );
     }
 
@@ -1336,7 +1458,7 @@ mod tests {
             ..Default::default()
         };
         let world = generate(&p);
-        let climate = WorldClimateParams::default().scaled_for(64);
+        let climate = WorldClimateParams::default().scaled_for(96, 64, world.plates.len());
         let a = render_all_zones_biome(
             &world,
             p.seed,
@@ -1356,6 +1478,71 @@ mod tests {
     }
 
     #[test]
+    fn biome_render_paints_frozen_river_on_polar_zones() {
+        // LOW-1 fix from /review-impl: `apply_river_overlay_biome` was only
+        // visual-smoke-verified. Lock the semantic: among all river pixels of
+        // a biome render that contains polar zones, at least SOME must paint
+        // the FROZEN_RIVER color (proves the climate-aware branch fires).
+        //
+        // We use NorthOnly + seed 7 + the new defaults (12 plates) — polar
+        // half is guaranteed to contain Tundra/Ice zones, and the river
+        // network is dense enough that some rivers cross polar plates.
+        use crate::flat_climate::WorldClimateParams;
+        let p = FlatParams {
+            width: 256,
+            height: 192,
+            seed: 7,
+            ..Default::default()
+        };
+        let world = generate(&p);
+        let climate = WorldClimateParams {
+            hemisphere_layout: crate::flat_climate::HemisphereLayout::NorthOnly,
+            ..WorldClimateParams::default()
+        }
+        .scaled_for(256, 192, world.plates.len());
+        let rgb = render_all_zones_biome(
+            &world,
+            p.seed,
+            &ClassRatios::default(),
+            ErosionStrength::Moderate,
+            &climate,
+        );
+        let mut found_frozen = false;
+        for i in 0..rgb.len() / 3 {
+            if [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]] == FROZEN_RIVER {
+                found_frozen = true;
+                break;
+            }
+        }
+        assert!(
+            found_frozen,
+            "biome render of a NorthOnly map should contain FROZEN_RIVER pixels"
+        );
+    }
+
+    #[test]
+    fn beach_tint_preserves_biome_signal_at_inland_edge() {
+        // W4 fix: at beach_t = 1 (inland edge of beach band), the smoothstep
+        // pushes the blend to ≥90% biome. Pure-sand replacement (v2 behavior)
+        // would give a pixel indistinguishable from the wet-sand color
+        // regardless of biome. This test locks the new tint semantic.
+        let biome_dark_green = [15u8, 77, 26]; // TropicalRainforest
+        let blended_inland = blend_beach_into_biome(biome_dark_green, 1.0);
+        // At t=1, smoothstep(1)=1, so blend = biome × 1.0 + sand × 0 = biome.
+        assert_eq!(blended_inland, biome_dark_green, "inland edge must be pure biome");
+
+        // At t=0 (shore), smoothstep(0)=0, so blend = biome × 0 + sand × 1 = sand.
+        let blended_shore = blend_beach_into_biome(biome_dark_green, 0.0);
+        assert_eq!(blended_shore, WET_SAND, "shore must be pure wet sand");
+
+        // At t=0.5, smoothstep(0.5)=0.5, so blend is halfway — must differ
+        // from BOTH pure sand AND pure biome (proves it's actually blending).
+        let blended_mid = blend_beach_into_biome(biome_dark_green, 0.5);
+        assert_ne!(blended_mid, WET_SAND, "mid must not be pure sand");
+        assert_ne!(blended_mid, biome_dark_green, "mid must not be pure biome");
+    }
+
+    #[test]
     fn biome_render_paints_recognisable_biome_colours() {
         // LOW-1 fix from /review-impl: the prior threshold (≥2 biomes) was
         // near-tautological. This version asserts ≥4 distinct biomes appear
@@ -1370,7 +1557,7 @@ mod tests {
             ..Default::default()
         };
         let world = generate(&p);
-        let climate = WorldClimateParams::default().scaled_for(192);
+        let climate = WorldClimateParams::default().scaled_for(256, 192, world.plates.len());
         let rgb = render_all_zones_biome(
             &world,
             p.seed,
