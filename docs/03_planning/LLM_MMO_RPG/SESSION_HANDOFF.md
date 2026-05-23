@@ -81,7 +81,109 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-23 — SESSION CLOSE, asset spike paused, next session = tilemap backend + frontend prep) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — tilemap data-architecture review LANDED, mock-first contract scaffolded) — read this first
+
+PO opened the next session with a **data-architecture review** before resuming
+the pinned tilemap-backend agenda. Trigger: `lore-weave-game/world-gen`
+(sibling repo) shipped a stable consumer contract on 2026-05-24 (Levels 0-2 +
+climate + 10-biome Whittaker). Tilemap-service was built before that contract
+existed → risk of paradoxical content (e.g. `hot_desert` tilemap in `ice`
+world zone).
+
+### What got reviewed
+
+Read [`lore-weave-game/docs/plans/2026-05-23-flatworld-region-tree-data-architecture.md`](../../../../lore-weave-game/docs/plans/2026-05-23-flatworld-region-tree-data-architecture.md)
+in full. PO answered six load-bearing alignment questions:
+
+1. **Repo relationship:** world map (game menu, strategy layer) + tilemap
+   (RPG environment). Two roles, not replacement.
+2. **Biome bridging:** information-only inheritance. World biome constrains
+   the *set* of tilemap biomes; tilemap keeps its own taxonomy + handling.
+3. **Zone source of truth:** world zone info is SSOT; tilemap augments.
+   Macro → micro inheritance.
+4. **Spatial frame:** flexible — tilemap may inhabit a world region at any
+   depth; practically zone or sub-zone.
+5. **Determinism:** information flows down, seeds don't. Replay = same seed
+   + same `WorldZoneSnapshot` input.
+6. **Existing investment:** all 16k LOC survives. Change is additive — one
+   new input layer + one new validation layer.
+
+### What shipped this review
+
+Three artifacts; no production code touched yet (CLARIFY/DESIGN only):
+
+| Artifact | Purpose |
+|---|---|
+| [`docs/specs/2026-05-24-tilemap-world-inheritance-contract.md`](../../specs/2026-05-24-tilemap-world-inheritance-contract.md) | 13-section DESIGN spec — 2-layer architecture, `WorldZoneSnapshot` Rust types, `BiomeBridge` mechanism, mockup-first then HTTP-after-merge, PO sign-off checklist |
+| [`services/tilemap-service/tests/fixtures/world-mock/minimal.json`](../../../services/tilemap-service/tests/fixtures/world-mock/minimal.json) | Smallest viable fixture (3 plates × 2 zones × 1 subzone, 6 biomes covered) |
+| [`services/tilemap-service/tests/fixtures/world-mock/diverse-biomes.json`](../../../services/tilemap-service/tests/fixtures/world-mock/diverse-biomes.json) | Bridge-exercise fixture (5 plates × 2 zones × 1 subzone, all 10 Whittaker biomes covered) |
+| [`services/tilemap-service/tests/fixtures/world-mock/README.md`](../../../services/tilemap-service/tests/fixtures/world-mock/README.md) | Schema reference, SSOT vs §11.5 lever boundary, biome tag table, versioning, extension protocol |
+
+Fixtures mirror upstream §11.2 base schema and pre-emptively include two §11.5
+levers (per-zone `climate`, per-zone `boundary`) that tilemap NEEDS but
+upstream lists as planned-additive. When upstream ships those levers, mock
+and wire converge with no parser rewrite.
+
+### Architecture decision (locked, pending PO sign-off)
+
+```
+world-gen (sibling repo, SSOT)
+  - plates, climate, biome (10 Whittaker), elevation, polygon
+  ↓ WorldZoneSnapshot (typed pull, no seed, no control flow)
+tilemap-service (this repo, downstream)
+  - parses snapshot from MockFileWorldSource (now) / HttpWorldSource (post-merge)
+  - BiomeBridge: Whittaker → allowed game biomes set
+  - existing engine/L3/L4/placers unchanged; bridge sits in front of biome_select
+  - own determinism contract preserved
+```
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks:** PLAN phase for the `world_inherit` module (~L sized BUILD).
+  Migration plan §10 of the spec lists 7 concrete steps.
+- **Blocks:** tilemap BUILD work that touches `biome_select.rs` — must wait
+  for `BiomeBridge` to land first (otherwise biome picks may need re-doing).
+- **Does NOT block:** any work in `engine/placement/`, `engine/modificators/`,
+  `harness/` (L3/L4) — those are downstream of biome_select and won't see
+  the bridge directly.
+
+### PO sign-off received 2026-05-24
+
+PO replied "approve" → all 7 spec §13 checkboxes cleared en bloc. Spec status
+flipped DESIGN → **ACCEPTED**. CLARIFY/DESIGN phase complete; PLAN file is
+the next gate.
+
+### NEXT SESSION agenda — revised
+
+PO's prior pinned agenda (tilemap backend → frontend → playable map) is
+**unchanged**, but a prerequisite step is now ahead of it:
+
+1. **PO sign-off** on the world-inheritance spec (§13 checklist) — fast
+2. **PLAN file** for the `world_inherit` module BUILD (L task) → then BUILD
+3. **THEN** original agenda continues: tilemap-service HTTP surface (Phase 4+),
+   frontend Phaser 3 design, first playable map
+
+The world-inheritance work is small enough (~L, 7 files, no perf impact) that
+it should land before the larger Phase 4+ HTTP work — otherwise the HTTP
+surface ships a contract that can't represent inherited world facts.
+
+### Lessons recorded
+
+- **"đi xa nhưng không có gì kiểm chứng"** — PO's framing from the asset
+  spike (now closed) generalizes: any new layer that lacks a downstream
+  consumer is at risk of drift. This is exactly why upstream's §11
+  consumer-contract document is the right kind of artifact. We are now its
+  named consumer; tilemap mirrors the same discipline by shipping a parser
+  spec **before** wiring code.
+- **Information-only inheritance pattern** — when two repos own related
+  domains (here: world strategy vs RPG environment), prefer flowing
+  *information* (typed snapshots) over flowing *control* (RPC calls inside
+  generation loops). The snapshot can be cached, versioned, audited; an RPC
+  inside a generator destroys determinism.
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-23 — SESSION CLOSE, asset spike paused, next session = tilemap backend + frontend prep)
 
 PO decided to **pause asset-generation work** after **16 spike iterations** in
 the sister image-gen repo. PO verbatim: *"đã đi rất xa nhưng không có gì để

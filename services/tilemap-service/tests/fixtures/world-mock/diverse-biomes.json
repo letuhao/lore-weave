@@ -1,0 +1,281 @@
+{
+  "schema_version": "world-gen.v1+climate.v1+polygon.v1",
+  "schema_note": "Bridge-test fixture. 5 plates × 2 zones cover all 10 Whittaker biomes (tags 0-9) so BiomeBridge logic can be exercised against every upstream biome variant. Layout is climate-banded north-to-south (polar → tropical) for legibility, not realism.",
+  "generator": "mock@2026-05-24",
+  "world": {
+    "width": 1024,
+    "height": 640,
+    "seed": 42,
+    "plate_count": 5,
+    "base_level": 0.35,
+    "void_level": 0.0,
+    "collision_gain": 0.35
+  },
+  "plates": [
+    {
+      "path": [0],
+      "center": [512.0, 100.0],
+      "velocity": [0.0, -0.4],
+      "boundary": [
+        [60.0, 40.0],
+        [960.0, 40.0],
+        [960.0, 160.0],
+        [60.0, 160.0]
+      ],
+      "zones": [
+        {
+          "path": [0, 0],
+          "site": [285.0, 100.0],
+          "base_elevation": 0.62,
+          "boundary": [
+            [60.0, 40.0],
+            [510.0, 40.0],
+            [510.0, 160.0],
+            [60.0, 160.0]
+          ],
+          "climate": {
+            "temp_mean": -38.4,
+            "precip_annual": 95.0,
+            "biome_tag": 0,
+            "biome_name": "ice"
+          },
+          "subzones": [
+            { "path": [0, 0, 0], "site": [260.0, 95.0] }
+          ]
+        },
+        {
+          "path": [0, 1],
+          "site": [735.0, 100.0],
+          "base_elevation": 0.48,
+          "boundary": [
+            [510.0, 40.0],
+            [960.0, 40.0],
+            [960.0, 160.0],
+            [510.0, 160.0]
+          ],
+          "climate": {
+            "temp_mean": -14.6,
+            "precip_annual": 240.0,
+            "biome_tag": 1,
+            "biome_name": "tundra"
+          },
+          "subzones": [
+            { "path": [0, 1, 0], "site": [710.0, 110.0] }
+          ]
+        }
+      ]
+    },
+    {
+      "path": [1],
+      "center": [512.0, 220.0],
+      "velocity": [0.2, -0.1],
+      "boundary": [
+        [60.0, 160.0],
+        [960.0, 160.0],
+        [960.0, 280.0],
+        [60.0, 280.0]
+      ],
+      "zones": [
+        {
+          "path": [1, 0],
+          "site": [285.0, 220.0],
+          "base_elevation": 0.44,
+          "boundary": [
+            [60.0, 160.0],
+            [510.0, 160.0],
+            [510.0, 280.0],
+            [60.0, 280.0]
+          ],
+          "climate": {
+            "temp_mean": -0.5,
+            "precip_annual": 520.0,
+            "biome_tag": 2,
+            "biome_name": "boreal_forest"
+          },
+          "subzones": [
+            { "path": [1, 0, 0], "site": [310.0, 230.0] }
+          ]
+        },
+        {
+          "path": [1, 1],
+          "site": [735.0, 220.0],
+          "base_elevation": 0.42,
+          "boundary": [
+            [510.0, 160.0],
+            [960.0, 160.0],
+            [960.0, 280.0],
+            [510.0, 280.0]
+          ],
+          "climate": {
+            "temp_mean": 8.1,
+            "precip_annual": 740.0,
+            "biome_tag": 3,
+            "biome_name": "temperate_forest"
+          },
+          "subzones": [
+            { "path": [1, 1, 0], "site": [760.0, 230.0] }
+          ]
+        }
+      ]
+    },
+    {
+      "path": [2],
+      "center": [512.0, 340.0],
+      "velocity": [-0.3, 0.2],
+      "boundary": [
+        [60.0, 280.0],
+        [960.0, 280.0],
+        [960.0, 400.0],
+        [60.0, 400.0]
+      ],
+      "zones": [
+        {
+          "path": [2, 0],
+          "site": [285.0, 340.0],
+          "base_elevation": 0.39,
+          "boundary": [
+            [60.0, 280.0],
+            [510.0, 280.0],
+            [510.0, 400.0],
+            [60.0, 400.0]
+          ],
+          "climate": {
+            "temp_mean": 12.3,
+            "precip_annual": 440.0,
+            "biome_tag": 4,
+            "biome_name": "temperate_grassland"
+          },
+          "subzones": [
+            { "path": [2, 0, 0], "site": [270.0, 360.0] }
+          ]
+        },
+        {
+          "path": [2, 1],
+          "site": [735.0, 340.0],
+          "base_elevation": 0.41,
+          "boundary": [
+            [510.0, 280.0],
+            [960.0, 280.0],
+            [960.0, 400.0],
+            [510.0, 400.0]
+          ],
+          "climate": {
+            "temp_mean": 14.2,
+            "precip_annual": 950.0,
+            "biome_tag": 8,
+            "biome_name": "deciduous_forest"
+          },
+          "subzones": [
+            { "path": [2, 1, 0], "site": [780.0, 360.0] }
+          ]
+        }
+      ]
+    },
+    {
+      "path": [3],
+      "center": [512.0, 450.0],
+      "velocity": [0.1, 0.3],
+      "boundary": [
+        [60.0, 400.0],
+        [960.0, 400.0],
+        [960.0, 500.0],
+        [60.0, 500.0]
+      ],
+      "zones": [
+        {
+          "path": [3, 0],
+          "site": [285.0, 450.0],
+          "base_elevation": 0.40,
+          "boundary": [
+            [60.0, 400.0],
+            [510.0, 400.0],
+            [510.0, 500.0],
+            [60.0, 500.0]
+          ],
+          "climate": {
+            "temp_mean": 17.5,
+            "precip_annual": 610.0,
+            "biome_tag": 9,
+            "biome_name": "mediterranean"
+          },
+          "subzones": [
+            { "path": [3, 0, 0], "site": [300.0, 460.0] }
+          ]
+        },
+        {
+          "path": [3, 1],
+          "site": [735.0, 450.0],
+          "base_elevation": 0.37,
+          "boundary": [
+            [510.0, 400.0],
+            [960.0, 400.0],
+            [960.0, 500.0],
+            [510.0, 500.0]
+          ],
+          "climate": {
+            "temp_mean": 28.6,
+            "precip_annual": 75.0,
+            "biome_tag": 5,
+            "biome_name": "hot_desert"
+          },
+          "subzones": [
+            { "path": [3, 1, 0], "site": [770.0, 460.0] }
+          ]
+        }
+      ]
+    },
+    {
+      "path": [4],
+      "center": [512.0, 550.0],
+      "velocity": [0.4, 0.0],
+      "boundary": [
+        [60.0, 500.0],
+        [960.0, 500.0],
+        [960.0, 600.0],
+        [60.0, 600.0]
+      ],
+      "zones": [
+        {
+          "path": [4, 0],
+          "site": [285.0, 550.0],
+          "base_elevation": 0.38,
+          "boundary": [
+            [60.0, 500.0],
+            [510.0, 500.0],
+            [510.0, 600.0],
+            [60.0, 600.0]
+          ],
+          "climate": {
+            "temp_mean": 26.1,
+            "precip_annual": 1080.0,
+            "biome_tag": 6,
+            "biome_name": "savanna"
+          },
+          "subzones": [
+            { "path": [4, 0, 0], "site": [260.0, 570.0] }
+          ]
+        },
+        {
+          "path": [4, 1],
+          "site": [735.0, 550.0],
+          "base_elevation": 0.39,
+          "boundary": [
+            [510.0, 500.0],
+            [960.0, 500.0],
+            [960.0, 600.0],
+            [510.0, 600.0]
+          ],
+          "climate": {
+            "temp_mean": 27.3,
+            "precip_annual": 2380.0,
+            "biome_tag": 7,
+            "biome_name": "tropical_rainforest"
+          },
+          "subzones": [
+            { "path": [4, 1, 0], "site": [780.0, 570.0] }
+          ]
+        }
+      ]
+    }
+  ]
+}
