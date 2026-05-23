@@ -81,7 +81,72 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — tilemap-service wired into docker-compose + /livez/readyz + /review-impl hardening) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — frontend-game architecture SPEC ACCEPTED + /review-impl hardening) — read this first
+
+Multi-round PO Q&A landed 11 architecture decisions for the upcoming
+frontend-game/ MMORPG client. Spec doc written + PO requested
+`/review-impl` deeper adversarial review BEFORE commit. 15 findings
+(9 MED + 5 LOW + 1 COSMETIC) all applied to spec inline.
+
+### Spec doc
+
+[docs/specs/2026-05-24-frontend-game-architecture.md](../../specs/2026-05-24-frontend-game-architecture.md)
+— 21 sections + /review-impl revisions, ~800 lines:
+
+| § | Content |
+|--:|---|
+| 1 | 11 PO decisions (Phaser 4 MIT, Colyseus locked, pnpm workspace, turn-based + idle, desktop+mobile-landscape, Kenney CC0, iso 128×64 HD, i18n cluster langs) |
+| 2-3 | Stack + license audit, full directory structure |
+| 4-5 | React-Phaser bridge + state hierarchy (5 tiers + 5 omitted scenarios per MED-5) |
+| 6-7 | Scene state machine + responsive layouts (desktop + mobile landscape; portrait deferred V2+ per MED-4) |
+| 8 | Network phased V0-V3 + single-domain path-routing auth (per MED-8 rejecting cross-subdomain cookie complexity) |
+| 9 | 8 + 5 design patterns (CQRS, offline-first, error boundary, cache invalidation, bootstrap sequence per MED-6) |
+| 10 | 8 + 3 anti-patterns |
+| 11 | Visual style + Phaser 4 validation gate at Session C + FX registry |
+| 12-13 | i18n (NPC bubble direct DOM transform per LOW-10) + asset pipeline (per-pack Kenney license per MED-9) |
+| 14 | Phased perf budget V0-V3 + WebP + CDN (per MED-3) |
+| 15 | Phased delivery V0 → V3 (V1 revised 15-25 sessions per LOW-12) |
+| 16 | 6 BUILD sessions A-F + Session B AC for existing frontend preservation (per MED-7) |
+| 17 | Backend services growth + Colyseus migration triggers (per MED-2) |
+| 18 | 16 V0 acceptance criteria (+ CORS, HMR, build size, browser compat per LOW-11) |
+| 19-21 | Compliance + 10 deferred items + PO sign-off checklist |
+
+### `/review-impl` findings + fixes (15 items, all applied)
+
+| ID | Severity | Issue | Fix location |
+|---|---|---|---|
+| MED-1 | MED | Phaser 4 GA only 6 weeks; no fallback plan | §11.1 validation gate at Session C, Phaser 3 LTS fallback |
+| MED-2 | MED | Colyseus lock-in no migration triggers | §17.1 triggers + ~6 weeks cost estimate |
+| MED-3 | MED | 2 MB asset budget unrealistic | §14 phased budget V0-V3 + WebP + CDN promoted to V1 prerequisite |
+| MED-4 | MED | Mobile portrait 375px + 128×64 HD = unplayable | §7.3 portrait deferred V2+; V0 landscape-lock + RotatePrompt |
+| MED-5 | MED | State hierarchy missing 5 scenarios | §5.1 optimistic UI rollback, multi-step, persistent prefs, net error, bootstrap |
+| MED-6 | MED | 5 missing patterns | §9.1 CQRS, offline-first, error boundary, cache invalidation, bootstrap sequence + 3 anti-patterns |
+| MED-7 | MED | pnpm migration "minimal disruption" optimistic | §16 Session B AC: lockfile audit + bundle size delta cap + Dockerfile rewrite test |
+| MED-8 | MED | Cross-subdomain cookie auth too complex (Safari ITP) | §8 single-domain + path-routing via api-gateway-bff (rejected subdomain) |
+| MED-9 | MED | Kenney CC0 assumption | §13 per-pack license audit + LICENSES.md + PACKAGES.md |
+| LOW-10 | LOW | NPC speech bubble React setState per frame | §12 direct `ref.style.transform` mutation + `will-change` |
+| LOW-11 | LOW | AC gaps | §18 AC-FG-13..16 (CORS, HMR, build size, browser compat) |
+| LOW-12 | LOW | V1 estimate optimistic | §15 V1 revised 5-10 → 15-25 sessions |
+| LOW-13 | LOW | V0 client-authority not explicit | §10 anti-pattern #7 inline note |
+| LOW-14 | LOW | V0 demo tier unspecified | §11 V0 = ChannelTier::Town 64² |
+| COSMETIC-15 | COSMETIC | No FX strategy | §11.2 FX registry + stacking budget |
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks Session B** (next session): pnpm workspace setup + `packages/{auth-client, api-types, design-tokens, i18n}` skeletons with explicit existing-frontend preservation ACs
+- **Unblocks Sessions C-F**: scaffold + V0 demo + WS echo + compose entry
+- **Blocks**: nothing immediate. Future MMORPG architecture (V1 game-server, V2 character-service, V3 marketplace) has clear migration triggers documented
+
+### Lessons recorded
+
+- **Spec adversarial review caught load-bearing mistakes early.** "Mobile portrait at 375px with 128×64 HD tiles = ~3×6 visible tiles" was invisible to me when I was writing the spec but obvious in 30 seconds during /review-impl. Going to commit + scaffold then discover would have wasted sessions B-D
+- **"Minimal disruption" claims need test plans.** pnpm workspace ADD is not a free operation for existing frontend/; lockfile regen + bundle size + dep version audit is required to confirm
+- **Cross-domain cookie auth is harder than it sounds in 2026.** Safari ITP + SameSite + CORS preflight makes the "elegant subdomain split" expensive. Single-domain + path routing is dramatically simpler and the same security model. The reverse-proxy gateway already exists (api-gateway-bff) — use it
+- **Asset budget at architecture time is load-bearing.** A 2 MB cap that one character animation blows through silently constrains everything downstream. Per-phase budget table with explicit numbers makes future PRs reject themselves at review
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — tilemap-service wired into docker-compose + /livez/readyz + /review-impl hardening)
 
 M task. tilemap-service now actually starts in `infra/docker-compose.yml`
 alongside the 17 other services. Health probes added; PO chose
