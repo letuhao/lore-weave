@@ -607,3 +607,166 @@ async def invalidate_cache(
         deleted_leaves=deleted_leaves,
         deleted_raw=deleted_raw,
     )
+
+
+# ── P3 D-P3-WORKER-AI-CONSUMER-WIRING — summarize-message dispatch ────
+
+
+class SummarizeMessageRequest(BaseModel):
+    """Wire shape of `SummarizeMessage` from `app.jobs.summary_enqueue`.
+
+    Fields mirror `SummarizeMessage.from_redis_fields`; worker-ai posts
+    these after XREADGROUP without needing to import the dataclass.
+    """
+    level: Literal["chapter", "part", "book"]
+    node_path: str = Field(min_length=1)
+    node_id: str = Field(min_length=1)
+    book_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1)
+    project_id: str = ""  # may be empty for legacy paths
+    job_id: str = Field(min_length=1)
+    model_ref: str = Field(min_length=1)
+    embedding_model_uuid: str = Field(min_length=1)
+    embedding_dimension: int = Field(ge=1)
+    retry_at_epoch: float = 0.0
+    retried_n: int = 0
+
+
+class SummarizeMessageResponse(BaseModel):
+    """Mirror of `SummaryProcessResult`."""
+    level: str
+    node_id: str
+    cache_hit: bool
+    race_winner: bool
+    re_enqueued: bool
+    skipped_retry_exhausted: bool
+    summary_id: str | None
+
+
+# Module-level singleton — Redis client is reusable across all
+# summarize-message dispatches and we want one connection pool.
+_summary_enqueue_singleton = None
+
+
+def _get_summary_enqueue():
+    """Lazy-build the redis-backed enqueue function.
+
+    Per `make_redis_summary_enqueue` — opens a long-lived async Redis
+    connection on first use; subsequent calls reuse the same client.
+    Used by `process_summarize_message` for M4 re-enqueue when D9
+    defensive checks fail.
+    """
+    global _summary_enqueue_singleton
+    if _summary_enqueue_singleton is None:
+        from app.jobs.summary_enqueue import make_redis_summary_enqueue
+        _summary_enqueue_singleton = make_redis_summary_enqueue(settings.redis_url)
+    return _summary_enqueue_singleton
+
+
+class _EmbeddingAdapter:
+    """Bridges the real EmbeddingClient to the `embed(text, model_uuid)`
+    shape `process_summarize_message` expects.
+
+    `EmbeddingClient.embed` returns an `EmbeddingResult` (batched API).
+    The summary processor calls one embed per summary and wants the
+    vector list directly — this adapter unwraps and returns
+    `embeddings[0]`.
+    """
+
+    def __init__(self, real, *, user_id: UUID) -> None:
+        self._real = real
+        self._user_id = user_id
+
+    async def embed(self, *, text: str, model_uuid: str) -> list[float]:
+        result = await self._real.embed(
+            user_id=self._user_id,
+            model_source="user_model",
+            model_ref=model_uuid,
+            texts=[text],
+        )
+        if not result.embeddings or not result.embeddings[0]:
+            raise RuntimeError("embedding probe returned empty vector")
+        return result.embeddings[0]
+
+
+@router.post(
+    "/summarize-message",
+    response_model=SummarizeMessageResponse,
+    summary="P3 — process one extraction.summarize stream message",
+    description=(
+        "Dispatch entrypoint for worker-ai's Redis Stream consumer "
+        "(D-P3-WORKER-AI-CONSUMER-WIRING). Worker-ai XREADGROUPs "
+        "`extraction.summarize`, posts the message body here, then "
+        "XACKs on 200. Body shape mirrors "
+        "`app.jobs.summary_enqueue.SummarizeMessage`."
+    ),
+)
+async def process_summarize_message_endpoint(
+    req: SummarizeMessageRequest,
+) -> SummarizeMessageResponse:
+    """Worker-ai consumer entrypoint.
+
+    Builds `SummaryProcessorDeps` from the existing knowledge-service
+    singletons (pool, neo4j session, llm_client, embedding_client +
+    adapter) and delegates to `process_summarize_message`. The async
+    `process_summarize_message` does all the heavy lifting (cache
+    check, D9 defensive, LLM call, embed, Postgres + Neo4j writes,
+    M4 re-enqueue).
+    """
+    from app.clients.embedding_client import get_embedding_client
+    from app.clients.llm_client import get_llm_client
+    from app.jobs.summary_enqueue import SummarizeMessage
+    from app.jobs.summary_processor import (
+        SummaryProcessorDeps,
+        process_summarize_message,
+    )
+
+    msg = SummarizeMessage(
+        level=req.level,
+        node_path=req.node_path,
+        node_id=req.node_id,
+        book_id=req.book_id,
+        user_id=req.user_id,
+        project_id=req.project_id,
+        job_id=req.job_id,
+        model_ref=req.model_ref,
+        embedding_model_uuid=req.embedding_model_uuid,
+        embedding_dimension=req.embedding_dimension,
+        retry_at_epoch=req.retry_at_epoch,
+        retried_n=req.retried_n,
+    )
+
+    try:
+        pool = get_knowledge_pool()
+    except Exception as exc:
+        logger.error("summarize-message: knowledge pool unavailable: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="knowledge storage is unavailable",
+        ) from exc
+
+    # Open a fresh Neo4j session per dispatch — `process_summarize_message`
+    # does multiple session.run calls but treats them as a single logical
+    # work unit; a per-call session matches the existing /persist-pass2
+    # pattern and avoids leaking sessions across worker-ai requests.
+    async with neo4j_session() as session:
+        deps = SummaryProcessorDeps(
+            knowledge_pool=pool,
+            neo4j_session=session,
+            llm_client=get_llm_client(),
+            embedding_client=_EmbeddingAdapter(
+                get_embedding_client(), user_id=UUID(req.user_id),
+            ),
+            summary_enqueue=_get_summary_enqueue(),
+        )
+        result = await process_summarize_message(msg, deps)
+
+    return SummarizeMessageResponse(
+        level=result.level,
+        node_id=result.node_id,
+        cache_hit=result.cache_hit,
+        race_winner=result.race_winner,
+        re_enqueued=result.re_enqueued,
+        skipped_retry_exhausted=result.skipped_retry_exhausted,
+        summary_id=str(result.summary_id) if result.summary_id else None,
+    )

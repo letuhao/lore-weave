@@ -18,6 +18,7 @@ from app.clients import BookClient, GlossaryClient, KnowledgeClient
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
 from app.runner import poll_and_run
+from app.summary_consumer import consume_summary_stream
 
 logger = logging.getLogger("worker-ai")
 
@@ -50,6 +51,11 @@ async def main() -> None:
         # longer gates the LLM stage (worker-ai runs LLM in-process
         # via the SDK with no overall wall-clock cap).
         timeout_s=settings.persist_pass2_timeout_s,
+        # P3 D-P3-WORKER-AI-CONSUMER-WIRING: summarize-message is an
+        # LLM + embed + persist round-trip; cold local models can run
+        # minutes. Separate, longer timeout per
+        # `feedback_polling_sdk_http_client_timeout_trap`.
+        summarize_message_timeout_s=settings.summary_dispatch_timeout_s,
     )
     book_client = BookClient(
         base_url=settings.book_service_url,
@@ -68,7 +74,7 @@ async def main() -> None:
     # than at the first job.
     llm_client = get_llm_client()
 
-    try:
+    async def _job_poll_loop() -> None:
         while True:
             try:
                 count = await poll_and_run(
@@ -81,6 +87,26 @@ async def main() -> None:
                 logger.exception("Poll cycle error (will retry)")
 
             await asyncio.sleep(settings.poll_interval_s)
+
+    # P3 D-P3-WORKER-AI-CONSUMER-WIRING: run the extraction-job poll loop
+    # AND the Redis Stream consumer for `extraction.summarize` in
+    # parallel. asyncio.gather propagates cancellation to both tasks on
+    # shutdown; either task crashing brings the worker down (no silent
+    # half-running state).
+    coroutines = [_job_poll_loop()]
+    if settings.summary_consumer_enabled:
+        coroutines.append(consume_summary_stream(
+            knowledge_client,
+            redis_url=settings.redis_url,
+            consumer_group=settings.summary_consumer_group,
+            consumer_name=settings.summary_consumer_name,
+            block_ms=settings.summary_consumer_block_ms,
+        ))
+    else:
+        logger.info("summary consumer disabled via config")
+
+    try:
+        await asyncio.gather(*coroutines)
     except asyncio.CancelledError:
         logger.info("worker-ai shutting down")
     finally:

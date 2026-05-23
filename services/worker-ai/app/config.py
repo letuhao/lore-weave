@@ -42,6 +42,23 @@ class Settings(BaseSettings):
     # Lower = more responsive to pause/cancel, higher = less DB overhead.
     items_per_status_check: int = 1
 
+    # ── P3 D-P3-WORKER-AI-CONSUMER-WIRING ──────────────────────────
+    # Redis Stream consumer for the extraction.summarize job feed.
+    # When `summary_consumer_enabled=False` the consumer task does not
+    # start (useful for local dev without Redis OR rolling stack ups
+    # where summarize-message can't yet be served).
+    redis_url: str = "redis://redis:6379"
+    summary_consumer_enabled: bool = True
+    summary_consumer_group: str = "worker-ai-summarize"
+    summary_consumer_name: str = "worker-ai-1"
+    # XREADGROUP BLOCK timeout (ms). Short enough to react to shutdown
+    # promptly; long enough to avoid CPU spin when idle.
+    summary_consumer_block_ms: int = 5000
+    # Per-dispatch HTTP timeout for the knowledge-service summarize-
+    # message endpoint. Summary processing is one LLM call + one embed
+    # + Postgres + Neo4j writes — minutes worst-case on a cold model.
+    summary_dispatch_timeout_s: float = 300.0
+
     log_level: str = "INFO"
 
 

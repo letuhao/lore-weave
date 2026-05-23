@@ -36,6 +36,7 @@ __all__ = [
     "GlossaryEntity",
     "GlossaryPage",
     "GlossarySyncResult",
+    "SummarizeMessageResult",
 ]
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,22 @@ class GlossaryPage:
 
 
 @dataclass(frozen=True)
+class SummarizeMessageResult:
+    """P3 D-P3-WORKER-AI-CONSUMER-WIRING — parsed response from
+    knowledge-service's `/internal/extraction/summarize-message` endpoint.
+    Mirrors `SummaryProcessResult` on the server side."""
+    level: str
+    node_id: str
+    cache_hit: bool
+    race_winner: bool
+    re_enqueued: bool
+    skipped_retry_exhausted: bool
+    summary_id: str | None
+    retryable: bool = False
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class GlossarySyncResult:
     """C12c-a — parsed response from knowledge-service's
     POST /internal/extraction/glossary-sync-entity endpoint."""
@@ -99,15 +116,36 @@ class GlossarySyncResult:
 class KnowledgeClient:
     """Calls knowledge-service's internal extraction endpoint."""
 
-    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        internal_token: str,
+        timeout_s: float,
+        *,
+        summarize_message_timeout_s: float | None = None,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._http = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout_s),
             headers={"X-Internal-Token": internal_token},
         )
+        # P3: summarize-message can run minutes on a cold local LLM; use
+        # a dedicated longer-timeout client so the default persist-pass2
+        # timeout (30s) doesn't truncate a legitimately-slow summary.
+        # Memory anchor `feedback_polling_sdk_http_client_timeout_trap`
+        # — separate the I/O budgets per logical operation.
+        if summarize_message_timeout_s is not None:
+            self._summarize_http = httpx.AsyncClient(
+                timeout=httpx.Timeout(summarize_message_timeout_s),
+                headers={"X-Internal-Token": internal_token},
+            )
+        else:
+            self._summarize_http = self._http
 
     async def aclose(self) -> None:
         await self._http.aclose()
+        if self._summarize_http is not self._http:
+            await self._summarize_http.aclose()
 
     async def persist_pass2(
         self,
@@ -179,6 +217,85 @@ class KnowledgeClient:
             entities_merged=0, relations_created=0,
             events_merged=0, facts_merged=0,
             retryable=resp.status_code in (502, 503, 429),
+            error=f"HTTP {resp.status_code}: {resp.text[:200]}",
+        )
+
+    async def process_summarize_message(
+        self,
+        *,
+        level: str,
+        node_path: str,
+        node_id: str,
+        book_id: str,
+        user_id: str,
+        project_id: str,
+        job_id: str,
+        model_ref: str,
+        embedding_model_uuid: str,
+        embedding_dimension: int,
+        retry_at_epoch: float = 0.0,
+        retried_n: int = 0,
+    ) -> SummarizeMessageResult:
+        """P3 D-P3-WORKER-AI-CONSUMER-WIRING — POST one extraction.summarize
+        message to knowledge-service for processing.
+
+        Worker-ai's Redis Stream consumer calls this after XREADGROUP;
+        on a non-error response the consumer XACKs the stream message.
+        Transient failures (HTTP timeout, 502/503/429) return
+        `retryable=True` so the consumer can leave the message NACKed
+        (no XACK) and let it surface on the next XREADGROUP via the
+        pending-entries-list mechanism.
+        """
+        url = f"{self._base_url}/internal/extraction/summarize-message"
+        body: dict[str, Any] = {
+            "level": level,
+            "node_path": node_path,
+            "node_id": node_id,
+            "book_id": book_id,
+            "user_id": user_id,
+            "project_id": project_id,
+            "job_id": job_id,
+            "model_ref": model_ref,
+            "embedding_model_uuid": embedding_model_uuid,
+            "embedding_dimension": embedding_dimension,
+            "retry_at_epoch": retry_at_epoch,
+            "retried_n": retried_n,
+        }
+        try:
+            resp = await self._summarize_http.post(url, json=body)
+        except httpx.HTTPError as exc:
+            logger.warning("summarize-message HTTP error: %s", exc)
+            return SummarizeMessageResult(
+                level=level, node_id=node_id,
+                cache_hit=False, race_winner=False,
+                re_enqueued=False, skipped_retry_exhausted=False,
+                summary_id=None,
+                retryable=True, error=f"HTTP error: {exc}",
+            )
+
+        if resp.status_code == 200:
+            data = resp.json()
+            return SummarizeMessageResult(
+                level=data.get("level", level),
+                node_id=data.get("node_id", node_id),
+                cache_hit=bool(data.get("cache_hit", False)),
+                race_winner=bool(data.get("race_winner", False)),
+                re_enqueued=bool(data.get("re_enqueued", False)),
+                skipped_retry_exhausted=bool(
+                    data.get("skipped_retry_exhausted", False),
+                ),
+                summary_id=data.get("summary_id"),
+            )
+
+        # 422 = validation failure — message is malformed; not retryable
+        # (re-XREAD would just re-fail). Bigger transients are retryable.
+        retryable = resp.status_code in (502, 503, 429)
+        return SummarizeMessageResult(
+            level=level, node_id=node_id,
+            cache_hit=False, race_winner=False,
+            re_enqueued=False, skipped_retry_exhausted=False,
+            summary_id=None,
+            retryable=retryable,
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )
 
