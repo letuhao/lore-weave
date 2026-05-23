@@ -18,15 +18,17 @@ subscore_mean_max_regression = 10.0
 
 # Target profiles. Distribution = expected fraction per biome (sums to 1.0).
 [profiles.earth]
-description = "Earth-like (Olson 2001 + Beck 2018)"
+description = "Earth-like, 10-biome (v2.1f — Olson 2001 + Beck 2018)"
 [profiles.earth.distribution]
 Ice                = 0.100
 Tundra             = 0.070
 BorealForest       = 0.165
-TemperateForest    = 0.130
-TemperateGrassland = 0.090
-HotDesert          = 0.185
-Savanna            = 0.140
+DeciduousForest    = 0.070   # NEW v2.1f — eastern N America, Europe, E Asia
+TemperateForest    = 0.050   # reduced — warm temperate humid only
+Mediterranean      = 0.040   # NEW v2.1f — CA, Med basin, Cape SA, SW Aus, Chile
+TemperateGrassland = 0.075   # slight reduction
+HotDesert          = 0.180   # slight reduction
+Savanna            = 0.130   # slight reduction
 TropicalRainforest = 0.120
 
 # Snowball: cold world, most land Ice or Tundra.
@@ -36,7 +38,9 @@ description = "Snowball: >=80% Ice+Tundra"
 Ice                = 0.50
 Tundra             = 0.30
 BorealForest       = 0.10
-TemperateForest    = 0.05
+DeciduousForest    = 0.02
+TemperateForest    = 0.03
+Mediterranean      = 0.005
 TemperateGrassland = 0.03
 HotDesert          = 0.005
 Savanna            = 0.005
@@ -48,12 +52,14 @@ description = "Hothouse: no Ice, >=40% Forest"
 [profiles.hothouse.distribution]
 Ice                = 0.005
 Tundra             = 0.020
-BorealForest       = 0.10
+BorealForest       = 0.05
+DeciduousForest    = 0.05
 TemperateForest    = 0.25
-TemperateGrassland = 0.10
+Mediterranean      = 0.05
+TemperateGrassland = 0.075
 HotDesert          = 0.075
 Savanna            = 0.15
-TropicalRainforest = 0.30
+TropicalRainforest = 0.275
 
 # Desert: very dry, mostly HotDesert + Savanna.
 [profiles.desert]
@@ -61,10 +67,12 @@ description = "Desert: >=50% HotDesert+Savanna"
 [profiles.desert.distribution]
 Ice                = 0.020
 Tundra             = 0.050
-BorealForest       = 0.080
-TemperateForest    = 0.030
-TemperateGrassland = 0.220
-HotDesert          = 0.350
+BorealForest       = 0.060
+DeciduousForest    = 0.020
+TemperateForest    = 0.020
+Mediterranean      = 0.040
+TemperateGrassland = 0.200
+HotDesert          = 0.340
 Savanna            = 0.200
 TropicalRainforest = 0.050
 

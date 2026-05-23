@@ -609,6 +609,52 @@ ship as "B5 complete" or proceed to v3 (OceanCurrent).
 **Still bad (Batches b/c/d to fix)**: W2 continentality ring artifact;
 W6 sharp zone seams; W9 no mountain shading; W5 only 8 biomes.
 
+### Batch B5-v2.1f — ✅ SHIPPED (2026-05-24) — biome expansion 8→10
+
+Added DeciduousForest + Mediterranean per PO decision after v2.1a +
+v2.1e eval revealed distribution_score mean ~55 (Earth-likeness gap was
+the largest single bottleneck — old 8-biome catchall collapsed 3 distinct
+Earth biome types into TemperateForest).
+
+**Changes**:
+- `flat_climate::Biome` enum: 8→10 variants (tags 0-9; old tags 0-7 preserved
+  for forward compat)
+- `whittaker_classify`: refined to 4 thermal tiers × precip splits (cold,
+  cool 5-14°C, warm 14-22°C, hot ≥22°C). Mediterranean approximated by
+  `temp 14..22 ∧ precip 250..700` (dry-summer signature without explicit
+  cold-month gating — true Köppen Csa/Csb subtypes need v5 seasonality).
+- `Biome::color()`: DeciduousForest = `#8AAB52` autumn olive;
+  Mediterranean = `#B5A562` olive-tan.
+- Earth reference image: regenerated; DeciduousForest at 40-50° coastal,
+  Mediterranean at 30-40° western coasts (CA/Med basin analogues).
+- `scripts/climate_eval.py`: BIOME_COLORS + LAT_BANDS extended; diversity
+  divisor updated 2.7 → 3.0 (10-biome reference entropy).
+- `eval/climate-eval-suite.toml`: all 4 profile distributions rebuilt for
+  10 biomes (Earth + Snowball + Hothouse + Desert).
+- Biome render hash pin rebaselined.
+
+**Result (vs v2.1a baseline)**:
+- 8 baselines mean composite: 77.82 → 76.23 (-1.59) — modest drop because
+  10-biome distribution target is structurally stricter than 8-biome (3
+  Earth biomes in the warm-temperate band vs 1 → tighter KL divergence
+  required for high distribution_score)
+- `scenario_hothouse`: -19.77 — sanity tanked because Hothouse warm-poles
+  produce Mediterranean/TemperateForest at sub-arctic lats, which the
+  Earth lat-band table marks forbidden. **By scenario design**; future
+  refinement could give scenarios their own lat-band tables. Accept now.
+- New baseline saved as `eval/baselines/v2.1f.json` (mean 71.18). The
+  v2.1a baseline is preserved for historical reference but is NOT
+  directly comparable — the metric got stricter.
+
+**Honest interpretation**: the score went DOWN but the biome model got
+RICHER. Composite drop is metric recalibration, not quality regression.
+The benefit is that v2.1b/c/d (and future batches) now have headroom to
+improve distribution_score (currently ~40-55) by genuinely matching the
+10-biome Earth target. With 8 biomes, the score was capped at ~60-70 from
+the structural mismatch.
+
+180 tests pass + clippy clean. Workflow: XL, full 12-phase v2.2.
+
 ### Batches b / c / d — pending
 
 Per §5 roadmap, unchanged.

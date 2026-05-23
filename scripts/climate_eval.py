@@ -40,13 +40,15 @@ EARTH_REF = REPO_ROOT / "eval" / "earth_reference.png"
 RENDERS_DIR = REPO_ROOT / "target" / "climate-eval"
 
 # Biome color → name. Must mirror `Biome::color()` in flat_climate.rs at the
-# current commit; W7 v2.1a colors (HotDesert reddish, WET_SAND cooler).
+# current commit. v2.1f: 10 biomes (added DeciduousForest + Mediterranean).
 BIOME_COLORS = {
     (232, 238, 242): "Ice",
     (184, 183, 174): "Tundra",
     (74, 107, 71):   "BorealForest",
+    (138, 171, 82):  "DeciduousForest",     # NEW v2.1f
     (79, 139, 65):   "TemperateForest",
-    (184, 180, 90):  "TempGrassland",  # alias for TemperateGrassland
+    (181, 165, 98):  "Mediterranean",       # NEW v2.1f
+    (184, 180, 90):  "TempGrassland",       # alias for TemperateGrassland
     (216, 144, 96):  "HotDesert",
     (201, 192, 74):  "Savanna",
     (15, 77, 26):    "TropicalRainforest",
@@ -54,31 +56,38 @@ BIOME_COLORS = {
 # Map our short name → profile distribution key.
 BIOME_PROFILE_KEY = {
     "Ice": "Ice", "Tundra": "Tundra", "BorealForest": "BorealForest",
-    "TemperateForest": "TemperateForest", "TempGrassland": "TemperateGrassland",
+    "DeciduousForest": "DeciduousForest",
+    "TemperateForest": "TemperateForest",
+    "Mediterranean": "Mediterranean",
+    "TempGrassland": "TemperateGrassland",
     "HotDesert": "HotDesert", "Savanna": "Savanna",
     "TropicalRainforest": "TropicalRainforest",
 }
 ALL_BIOMES = list(BIOME_PROFILE_KEY.values())
 
 VOID = (12, 16, 28)
-# Lat banding allowed/forbidden per refs doc §2.3.
+# Lat banding allowed/forbidden per refs doc §2.3 + v2.1f extension.
+# DeciduousForest = cool temperate (40-60° lat); Mediterranean = warm
+# temperate west-coast (30-45°). Both fold cleanly into existing bands.
 LAT_BANDS = [
     # (lat_dist_lo, lat_dist_hi, allowed_set, forbidden_set)
-    (0.00, 0.20,
+    (0.00, 0.20,  # tropics 0-15°
      {"TropicalRainforest", "Savanna", "HotDesert"},
+     {"Ice", "Tundra", "BorealForest", "DeciduousForest"}),
+    (0.20, 0.40,  # subtropics 15-30°
+     {"HotDesert", "Savanna", "TemperateForest", "Mediterranean", "TemperateGrassland"},
      {"Ice", "Tundra", "BorealForest"}),
-    (0.20, 0.40,
-     {"HotDesert", "Savanna", "TemperateForest", "TemperateGrassland"},
-     {"Ice", "Tundra"}),
-    (0.40, 0.60,
-     {"TemperateForest", "TemperateGrassland", "HotDesert", "BorealForest"},
-     {"TropicalRainforest"}),
-    (0.60, 0.80,
-     {"BorealForest", "TemperateGrassland", "Tundra"},
-     {"TropicalRainforest", "Savanna", "HotDesert"}),
-    (0.80, 1.00,
+    (0.40, 0.60,  # mid-lat 30-50°
+     {"TemperateForest", "Mediterranean", "DeciduousForest",
+      "TemperateGrassland", "HotDesert", "BorealForest"},
+     {"TropicalRainforest", "Savanna"}),
+    (0.60, 0.80,  # sub-arctic 50-70°
+     {"BorealForest", "DeciduousForest", "TemperateGrassland", "Tundra"},
+     {"TropicalRainforest", "Savanna", "HotDesert", "Mediterranean", "TemperateForest"}),
+    (0.80, 1.00,  # polar 70-90°
      {"Tundra", "Ice", "BorealForest"},
-     {"TropicalRainforest", "Savanna", "HotDesert"}),
+     {"TropicalRainforest", "Savanna", "HotDesert", "Mediterranean",
+      "TemperateForest", "DeciduousForest"}),
 ]
 
 
@@ -263,9 +272,12 @@ def score_render(analysis: dict, profile: dict) -> dict:
     DELTA_TARGET = 2.0
     continentality = max(0.0, min(100.0, 100.0 * delta / DELTA_TARGET))
 
-    # 4.4 Diversity vs Earth entropy (~2.7 bits with 8 biomes).
+    # 4.4 Diversity vs Earth entropy.
+    # v2.1f update: max entropy for 10 biomes = log2(10) ≈ 3.32. Earth's
+    # observed entropy from the reference image is around 3.0 (all 10
+    # biomes present, but unevenly weighted).
     h_obs = shannon_entropy(biome_counts)
-    diversity = 100.0 * min(1.0, h_obs / 2.7)
+    diversity = 100.0 * min(1.0, h_obs / 3.0)
 
     # 4.5 Sanity (forbidden-biome penalty).
     forbidden_rate = analysis["forbidden_count"] / max(1, total_biome)

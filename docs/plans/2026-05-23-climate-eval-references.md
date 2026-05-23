@@ -44,22 +44,34 @@ This doc + the eval script give us:
 
 ### 2.2 Earth biome distribution (target %)
 
-The 8-biome target is derived by mapping Olson's 14 ecoregions onto our 8
-classes. Earth's actual land-cover percentages (excluding open ocean):
+**v2.1f update (2026-05-24)**: expanded from 8 to 10 biomes. Added
+DeciduousForest (cool temperate, eastern N America / Europe / E Asia) and
+Mediterranean (warm temperate dry-summer, CA / Med basin / Cape SA / SW Aus /
+central Chile). Previous TemperateForest catchall (13%) now splits into 3
+distinct types matching Earth's actual distribution.
 
 | Our Biome | Earth % | Notes |
 |---|---:|---|
 | **Ice** | 10.0 | Antarctica (~9%) + Greenland (~1%) |
 | **Tundra** | 7.0 | Arctic + sub-Antarctic + alpine tundra |
 | **BorealForest** | 16.5 | Taiga (Russia + Canada + Scandinavia) |
-| **TemperateForest** | 13.0 | Deciduous + mixed + temperate-coniferous |
-| **TemperateGrassland** | 9.0 | Prairie + steppe + pampas |
-| **HotDesert** | 18.5 | Hot + cold desert (Sahara, Arabian, Gobi, Atacama, Australian) |
-| **Savanna** | 14.0 | Tropical grassland + xeric shrubland (African + Cerrado + Sahel) |
+| **DeciduousForest** ⭐NEW | 7.0 | Eastern N America, Europe, E Asia mixed forest |
+| **TemperateForest** | 5.0 | Warm humid subtropical only (SE US, Yangzi) |
+| **Mediterranean** ⭐NEW | 4.0 | Dry-summer warm temperate (5 distinct regions) |
+| **TemperateGrassland** | 7.5 | Prairie + steppe + pampas |
+| **HotDesert** | 18.0 | Hot + cold desert |
+| **Savanna** | 13.0 | Tropical grassland + xeric shrubland |
 | **TropicalRainforest** | 12.0 | Amazon + Congo + SE Asia + New Guinea |
 | **(total)** | 100.0 | |
 
-These targets are the `distribution_target` profile used by the runner.
+These targets are the `distribution_target` profile in
+`eval/climate-eval-suite.toml`.
+
+**Metric calibration shift**: 10-biome targets are more demanding than the
+old 8-biome ones (3 buckets where there was 1 → tighter KL divergence
+required to score well). The v2.1a baseline (74.06 mean) is NOT directly
+comparable to v2.1f baseline (71.18 mean) because the metric changed
+underneath; comparison going forward must use `eval/baselines/v2.1f.json`.
 
 ### 2.3 Latitudinal banding (which biomes appear at which lat)
 

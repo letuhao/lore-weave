@@ -25,11 +25,14 @@ from PIL import Image
 from pathlib import Path
 
 # Same palette as `flat_climate::Biome::color()` — direct visual compare.
+# v2.1f: 10 biomes total (added DeciduousForest + Mediterranean).
 BIOMES = {
     "Ice":                [232, 238, 242],
     "Tundra":             [184, 183, 174],
     "BorealForest":       [74, 107, 71],
+    "DeciduousForest":    [138, 171, 82],   # NEW v2.1f autumn olive
     "TemperateForest":    [79, 139, 65],
+    "Mediterranean":      [181, 165, 98],   # NEW v2.1f olive-tan
     "TemperateGrassland": [184, 180, 90],
     "HotDesert":          [216, 144, 96],   # B5 v2.1a W7 reddish
     "Savanna":            [201, 192, 74],
@@ -95,14 +98,29 @@ def biome_at(x: int, y: int) -> str | None:
         if in_eurasia and abs_lat > 60 and not is_interior:
             return "Tundra"
         return "BorealForest"
-    # Mid-lat (30-50°) — TemperateForest at coast, TempGrassland interior,
-    # HotDesert in continental rain shadows.
+    # Mid-lat (30-50°) — DeciduousForest at humid coast, TempGrassland
+    # interior, HotDesert in continental rain shadows. v2.1f: split previous
+    # blanket-TemperateForest by lat sub-band and continentality.
     if 30 <= abs_lat < 50:
         if is_interior:
             # Eurasia has Gobi / Central Asian deserts at this lat
             if in_eurasia and abs_lat < 45:
                 return "HotDesert"
             return "TemperateGrassland"
+        # Coast: cool temperate (40-50°) = DeciduousForest (NE US, Europe,
+        # E Asia mixed forest). Warm temperate (30-40°) = TemperateForest
+        # (SE US, Yangzi humid subtropical) — UNLESS this is an open
+        # Mediterranean-climate fringe (CA / Med basin / Cape SA = 30-40°
+        # warm temperate coastal). v2.1f Mediterranean placement: western-
+        # coast strips of the warm sub-band.
+        if abs_lat >= 40:
+            return "DeciduousForest"   # NEW v2.1f
+        # 30-40° coastal warm. Mediterranean on west coast (cont_frac < 0.2
+        # AND specific x ranges representing the 5 real Med-climate zones).
+        if in_americas and x <= 25:
+            return "Mediterranean"     # NEW v2.1f — California analogue
+        if in_eurasia and x <= 105:
+            return "Mediterranean"     # NEW v2.1f — Med basin analogue
         return "TemperateForest"
     # Subtropics (20-30°) — HotDesert belt (Sahara, Arabian, Mexican)
     if 20 <= abs_lat < 30:

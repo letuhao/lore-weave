@@ -175,14 +175,25 @@ pub struct ZoneClimate {
     pub biome: Biome,
 }
 
-/// 8 Whittaker biomes. **Ice** is reserved for the per-pixel lapse override
-/// ([`pixel_biome`]) — the zone-level classifier never returns Ice.
+/// 10 Whittaker-derived biomes. **Ice** is reserved for the per-pixel lapse
+/// override ([`pixel_biome`]) — the zone-level classifier never returns Ice.
+///
+/// **B5 v2.1f expansion**: added DeciduousForest (cool temperate forest with
+/// cold winters — Eastern N America, Europe, E Asia) and Mediterranean
+/// (warm temperate dry-summer — California, Mediterranean basin, Cape SA,
+/// SW Australia, central Chile). Splits TemperateForest (was previously
+/// catch-all for any temperate forest) into 3 distinct types matching
+/// Earth's actual distribution. Without seasonality data (v5 Köppen),
+/// Mediterranean is approximated by `temp 14..22 ∧ precip 250..700` (the
+/// dry-summer signature without explicit cold-month gating).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Biome {
     Ice,
     Tundra,
     BorealForest,
+    DeciduousForest,    // NEW v2.1f
     TemperateForest,
+    Mediterranean,      // NEW v2.1f
     TemperateGrassland,
     HotDesert,
     Savanna,
@@ -191,6 +202,9 @@ pub enum Biome {
 
 impl Biome {
     /// Stable discriminant byte (intended for any future content hash).
+    /// Old 8-biome tags 0..7 preserved; new biomes get 8 (DeciduousForest) +
+    /// 9 (Mediterranean) so existing hash-pinned tests stay stable for
+    /// biomes that classifier-paths still produce.
     pub fn tag(self) -> u8 {
         match self {
             Biome::Ice => 0,
@@ -201,20 +215,24 @@ impl Biome {
             Biome::HotDesert => 5,
             Biome::Savanna => 6,
             Biome::TropicalRainforest => 7,
+            Biome::DeciduousForest => 8,
+            Biome::Mediterranean => 9,
         }
     }
 
-    /// Display RGB for renderers. Calibrated for visual contrast — the two
-    /// "dark green" biomes (tropical / boreal) are deliberately spread on the
-    /// hue axis to read distinctly. **W7 tuning (B5 v2.1a)**: HotDesert
-    /// reddened to distinguish from beach sand; previously `#D8B070` was
-    /// visually ambiguous with WET_SAND `#C4B284`.
+    /// Display RGB for renderers. Calibrated for visual contrast.
+    /// - W7 tuning (B5 v2.1a): HotDesert reddened to distinguish from beach.
+    /// - v2.1f: DeciduousForest = autumn olive (warmer than TempForest's
+    ///   bright green); Mediterranean = olive-tan (cooler/drier hue than
+    ///   TempGrassland's khaki, distinct from Savanna's yellow).
     pub fn color(self) -> [u8; 3] {
         match self {
             Biome::Ice => [232, 238, 242],                // near-white
             Biome::Tundra => [184, 183, 174],             // pale grey-tan
             Biome::BorealForest => [74, 107, 71],         // muted grey-green
+            Biome::DeciduousForest => [138, 171, 82],     // autumn olive — v2.1f
             Biome::TemperateForest => [79, 139, 65],      // bright forest
+            Biome::Mediterranean => [181, 165, 98],       // olive-tan — v2.1f
             Biome::TemperateGrassland => [184, 180, 90],  // tan/khaki
             Biome::HotDesert => [216, 144, 96],           // reddish sand (Sahara) — W7
             Biome::Savanna => [201, 192, 74],             // yellow-green
@@ -248,46 +266,77 @@ pub fn circulation_curve(lat_dist: f32, p: &WorldClimateParams) -> f32 {
     raw.max(0.0)
 }
 
-/// Classify a `(temp, precip)` point into a Whittaker biome (8 zones).
+/// Classify a `(temp, precip)` point into a Whittaker biome (10 zones).
 ///
 /// **Ice is excluded by design** — it is reserved for the per-pixel lapse
 /// override in [`pixel_biome`]. The zone-level classifier returns Tundra at
 /// the coldest end.
 ///
-/// Order of checks (precedence): cold tier → dry tier → hot tier → default
-/// temperate.
+/// **v2.1f tiers** (temp °C × precip mm/yr):
+/// ```text
+/// temp < 0                           → Tundra
+/// temp 0..5
+///   precip > 250                     → BorealForest
+///   else                             → Tundra
+/// temp 5..14 (cool temperate)
+///   precip > 500                     → DeciduousForest    ← NEW
+///   precip 250..500                  → TemperateGrassland
+///   else                             → HotDesert
+/// temp 14..22 (warm temperate)
+///   precip > 700                     → TemperateForest    (humid subtropical)
+///   precip 250..700                  → Mediterranean      ← NEW
+///   else                             → HotDesert
+/// temp >= 22 (hot)
+///   precip > 1500                    → TropicalRainforest
+///   precip 250..1500                 → Savanna
+///   else                             → HotDesert
+/// ```
+///
+/// Order of checks (precedence): cold tier → cool tier → warm tier → hot
+/// tier. Each tier splits by precip.
 pub fn whittaker_classify(temp: f32, precip: f32) -> Biome {
-    // Cold tier — temp dominates regardless of precip.
+    // Cold tier (temp < 0): always Tundra.
     if temp < 0.0 {
         return Biome::Tundra;
     }
-    if temp < 7.0 {
-        // 0..7 °C — subarctic. Borealforest if any precip, else still Tundra
-        // (very cold + very dry — Yakutia steppe-tundra reads as Tundra here).
+    // Subarctic (0..5 °C): Boreal if precip, else Tundra (Yakutia-style).
+    if temp < 5.0 {
         if precip > 250.0 {
             return Biome::BorealForest;
         }
         return Biome::Tundra;
     }
-    // Warm tier — split by precip.
-    // Hot (> 22 °C): TropicalRainforest > 1500, Savanna 250..1500, HotDesert < 250.
-    if temp >= 22.0 {
-        if precip < 250.0 {
-            return Biome::HotDesert;
+    // Cool temperate (5..14 °C): cold-winter forest if wet, grassland if
+    // medium, cold desert (folded into HotDesert) if dry.
+    if temp < 14.0 {
+        if precip > 500.0 {
+            return Biome::DeciduousForest;
         }
-        if precip > 1500.0 {
-            return Biome::TropicalRainforest;
+        if precip > 250.0 {
+            return Biome::TemperateGrassland;
         }
-        return Biome::Savanna;
-    }
-    // Mid (7..22 °C): HotDesert if very dry, Grassland if mid, Forest if wet.
-    if precip < 250.0 {
         return Biome::HotDesert;
     }
-    if precip < 600.0 {
-        return Biome::TemperateGrassland;
+    // Warm temperate (14..22 °C): humid subtropical → TempForest if wet;
+    // Mediterranean dry-summer proxy if medium; HotDesert if dry.
+    if temp < 22.0 {
+        if precip > 700.0 {
+            return Biome::TemperateForest;
+        }
+        if precip > 250.0 {
+            return Biome::Mediterranean;
+        }
+        return Biome::HotDesert;
     }
-    Biome::TemperateForest
+    // Hot (temp ≥ 22): tropical rainforest if very wet, savanna if medium,
+    // desert if dry.
+    if precip > 1500.0 {
+        return Biome::TropicalRainforest;
+    }
+    if precip > 250.0 {
+        return Biome::Savanna;
+    }
+    Biome::HotDesert
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -524,8 +573,10 @@ mod tests {
     // ---- whittaker_classify ----
 
     #[test]
-    fn whittaker_seven_biomes_reachable_ice_excluded() {
-        let mut seen = [false; 8];
+    fn whittaker_nine_biomes_reachable_ice_excluded() {
+        // v2.1f: 10-biome enum; classifier reaches 9 (Ice excluded — that's
+        // pixel-lapse-override only).
+        let mut seen = [false; 10];
         for ti in 0..=30 {
             for pi in 0..=30 {
                 let t = -20.0 + (ti as f32) * 2.0; // -20 .. 40 °C
@@ -538,7 +589,9 @@ mod tests {
         for b in [
             Biome::Tundra,
             Biome::BorealForest,
+            Biome::DeciduousForest,    // NEW v2.1f
             Biome::TemperateForest,
+            Biome::Mediterranean,       // NEW v2.1f
             Biome::TemperateGrassland,
             Biome::HotDesert,
             Biome::Savanna,
@@ -550,11 +603,18 @@ mod tests {
 
     #[test]
     fn whittaker_canonical_points() {
+        // Cold tier
         assert_eq!(whittaker_classify(-15.0, 100.0), Biome::Tundra);
-        assert_eq!(whittaker_classify(3.0, 600.0), Biome::BorealForest);
-        assert_eq!(whittaker_classify(15.0, 1000.0), Biome::TemperateForest);
-        assert_eq!(whittaker_classify(15.0, 400.0), Biome::TemperateGrassland);
-        assert_eq!(whittaker_classify(15.0, 100.0), Biome::HotDesert);
+        assert_eq!(whittaker_classify(2.0, 400.0), Biome::BorealForest);
+        // Cool temperate (5..14)
+        assert_eq!(whittaker_classify(10.0, 800.0), Biome::DeciduousForest);   // wet cool
+        assert_eq!(whittaker_classify(10.0, 400.0), Biome::TemperateGrassland); // mid
+        assert_eq!(whittaker_classify(10.0, 100.0), Biome::HotDesert);          // cold desert
+        // Warm temperate (14..22)
+        assert_eq!(whittaker_classify(17.0, 1000.0), Biome::TemperateForest);   // humid subtropical
+        assert_eq!(whittaker_classify(17.0, 500.0), Biome::Mediterranean);      // dry-summer
+        assert_eq!(whittaker_classify(17.0, 100.0), Biome::HotDesert);          // warm desert
+        // Hot
         assert_eq!(whittaker_classify(25.0, 100.0), Biome::HotDesert);
         assert_eq!(whittaker_classify(25.0, 800.0), Biome::Savanna);
         assert_eq!(whittaker_classify(27.0, 2500.0), Biome::TropicalRainforest);

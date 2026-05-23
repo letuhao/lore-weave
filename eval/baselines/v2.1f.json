@@ -1,0 +1,93 @@
+{
+  "renders": {
+    "baseline_s7": {
+      "distribution": 51.7,
+      "lat_banding": 64.6,
+      "continentality": 100.0,
+      "diversity": 81.6,
+      "sanity": 99.8,
+      "composite": 76.28
+    },
+    "baseline_s13": {
+      "distribution": 53.1,
+      "lat_banding": 84.2,
+      "continentality": 100.0,
+      "diversity": 88.4,
+      "sanity": 100.0,
+      "composite": 82.59
+    },
+    "baseline_s23": {
+      "distribution": 41.6,
+      "lat_banding": 61.9,
+      "continentality": 100.0,
+      "diversity": 79.4,
+      "sanity": 99.5,
+      "composite": 72.69
+    },
+    "baseline_s42": {
+      "distribution": 35.1,
+      "lat_banding": 72.2,
+      "continentality": 100.0,
+      "diversity": 75.9,
+      "sanity": 99.8,
+      "composite": 73.17
+    },
+    "baseline_s99": {
+      "distribution": 44.0,
+      "lat_banding": 68.6,
+      "continentality": 100.0,
+      "diversity": 82.6,
+      "sanity": 97.6,
+      "composite": 75.06
+    },
+    "hemi_eq": {
+      "distribution": 51.7,
+      "lat_banding": 64.6,
+      "continentality": 100.0,
+      "diversity": 81.6,
+      "sanity": 99.8,
+      "composite": 76.28
+    },
+    "hemi_north": {
+      "distribution": 55.9,
+      "lat_banding": 70.9,
+      "continentality": 100.0,
+      "diversity": 91.5,
+      "sanity": 100.0,
+      "composite": 80.43
+    },
+    "hemi_south": {
+      "distribution": 35.3,
+      "lat_banding": 76.4,
+      "continentality": 100.0,
+      "diversity": 69.5,
+      "sanity": 100.0,
+      "composite": 73.35
+    },
+    "scenario_snowball": {
+      "distribution": 73.5,
+      "lat_banding": 32.0,
+      "continentality": 33.9,
+      "diversity": 23.0,
+      "sanity": 59.6,
+      "composite": 46.83
+    },
+    "scenario_hothouse": {
+      "distribution": 77.6,
+      "lat_banding": 40.4,
+      "continentality": 100.0,
+      "diversity": 85.3,
+      "sanity": 2.3,
+      "composite": 57.76
+    },
+    "scenario_desert": {
+      "distribution": 25.4,
+      "lat_banding": 77.2,
+      "continentality": 92.1,
+      "diversity": 61.7,
+      "sanity": 99.2,
+      "composite": 68.56
+    }
+  },
+  "mean_composite": 71.18
+}

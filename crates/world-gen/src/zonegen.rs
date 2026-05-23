@@ -1438,9 +1438,11 @@ mod tests {
             &climate,
         );
         let actual = blake3::hash(&rgb).to_hex().to_string();
-        // Pinned 2026-05-23 (B5 v2.1a). Rebaseline only with intentional
+        // Pinned 2026-05-23 (B5 v2.1a); rebaselined 2026-05-24 (B5 v2.1f
+        // added DeciduousForest + Mediterranean biomes → classifier output
+        // shifts on temperate zones). Rebaseline only with intentional
         // biome algorithm / palette / pipeline changes.
-        let pinned = "36d5acdd8d212f05c81b7e912272cac1b58da13b8a624d0621f606bd4242f2d5";
+        let pinned = "782fd4d294bed660ac76f9dece0d0d1c0e8edf98d3dfc17f8d4b6966c308cdd8";
         assert_eq!(
             actual.as_str(),
             pinned,
