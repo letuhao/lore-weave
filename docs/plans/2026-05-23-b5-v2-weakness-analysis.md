@@ -300,6 +300,58 @@ color). Geographic depth lost.
 
 **Complexity**: XS. **Priority**: 3.
 
+**v2.1e SHIPPED (2026-05-24) — amplitude-gated foundation, awaits 3D terrain to be visible**
+
+Implementation `colorize_biome_with` in [`zonegen.rs`](../../crates/world-gen/src/zonegen.rs):
+- Precomputes per-zone (elev_min, elev_max) in a single state.elev scan
+- For each land pixel: `shading_intensity = ((e_max - e_min) / 0.5).clamp(0, 1)`
+  - Plains zones (relief ~0.02) → intensity ~0.04 → ~no shading
+  - Mountains zones (relief ~0.48) → intensity 1.0 → full ±15% modulation
+- Applies `factor = 1.0 + (elev_norm - 0.5) × 0.30 × intensity` multiplicatively
+  on the W6-blended biome color, BEFORE beach tint
+- Auto-gated by **continuous relief amplitude** instead of categorical
+  Mountains class (categorical Mountains rare in current default plate
+  layout — separation=0.90 → minimal collision → few zones cross 0.43
+  MOUNTAIN_FLOOR; amplitude gate works for ANY world config).
+
+**Empirical findings (default test renders):**
+- Mean v4.3 → v4.4: 88.18 → 87.94 (**−0.24 mean**, no hard regression)
+- All deltas within ±1.6pt; biggest hit `baseline_s99 −1.58`, biggest gain `scenario_desert +0.54`
+- 11/11 PNG bytes differ from v4.3 baseline (W9 IS firing) but visually subtle on default test seeds
+
+**Visual review (PO + Claude self-review, 2026-05-24):**
+- High-collision test world (seed=7, plates=5, separation=0.5, collision_gain=0.7)
+  forced Mountains zones to verify algorithm works visually
+- W9 visible ONLY on Ice/snow zones (white amplifies ±15% modulation
+  perceptibly) — appears as subtle darker→brighter gradient within white
+  patches
+- W9 invisible on mid-tone biomes (TempForest greens, HotDesert orange,
+  TempGrassland yellow) — ±15% modulation on mid-luminance colors below
+  perception threshold
+- **Does NOT create "this is a mountain" terrain perception** — only
+  uniform per-pixel modulation, not slope-aware hillshade
+
+**Decision: ship as foundation despite limited current visual benefit.**
+PO rationale (paraphrased): "when we eventually have proper 3D map with
+clear elevation rendering, this shading will become useful — keep the
+infrastructure ready." Same pattern as v2.1c W2/W13 (architectural-correct
+foundation, marginal current visual value, ready for downstream consumers).
+
+**True hillshade (slope-aware lambertian, spec option B) remains deferred**
+to v3+ when sphere/world-map gets proper terrain visualization — that's the
+correct fix for "mountain perception"; W9 as shipped is the cheap RGB
+prelude.
+
+**Locked artifacts:**
+- `crates/world-gen/src/zonegen.rs` — W9 amplitude-gated block in
+  `colorize_biome_with` (+ pre-loop `zone_elev_range` precomputation).
+  Hash pin rebased to `d26a9c67…`.
+- `eval/baselines/v4.4.json` — new shipped baseline (W6 + W2 + W13 + W5 + W9, mean 87.94)
+- `eval/compare-v2.1e/` — 3 compare sets:
+  - `with-W9/` + `without-W9/` (default test renders — show identical-ish)
+  - `mountainous/with-W9.png` + `mountainous/without-W9.png` (high-collision
+    test world used to verify W9 fires)
+
 ---
 
 #### W13 — Continentality sampled at single zone-site point

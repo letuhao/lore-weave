@@ -970,6 +970,31 @@ fn colorize_biome_with(
         })
         .collect();
 
+    // **W9 (v2.1e quick-test)**: precompute per-zone (min, max) elevation for
+    // mountain-shading normalization. Single linear scan; cheap.
+    let mut zone_elev_range: Vec<Vec<(f32, f32)>> = world
+        .plates
+        .iter()
+        .map(|p| vec![(f32::INFINITY, f32::NEG_INFINITY); p.zone_sites.len()])
+        .collect();
+    for i in 0..n {
+        if !state.is_land[i] {
+            continue;
+        }
+        let pid = state.plate_at[i] as usize;
+        let sub_idx = state.subattr_idx_at[i] as usize;
+        let subs_p = &state.subattrs[pid];
+        let l1 = subs_p[sub_idx].zone;
+        let elev = state.elev[i];
+        let r = &mut zone_elev_range[pid][l1];
+        if elev < r.0 {
+            r.0 = elev;
+        }
+        if elev > r.1 {
+            r.1 = elev;
+        }
+    }
+
     let mut rgb = vec![0u8; n * 3];
     for i in 0..n {
         let c = if !state.is_land[i] {
@@ -1009,15 +1034,33 @@ fn colorize_biome_with(
             } else {
                 biome_c
             };
-            // W9 deferred (v2.1b): elev modulation incompatible with current
-            // eval framework. Future v2.1b-eval-rework would handle blended
-            // pixels via fractional-contribution semantics.
+            // **W9 (v2.1e)**: amplitude-gated relief shading. RGB multiplicative
+            // modulation by elevation-within-zone, scaled by zone's actual relief
+            // amplitude. Auto-gates: Plains (relief ~0.02) → intensity ~0.04 →
+            // ~no shading; Mountains (relief ~0.48) → intensity 1.0 → full
+            // ±15% shading. Continuous-amplitude gating works for ANY world
+            // config (more useful than categorical Mountains-class gate which
+            // is rare in current default plate layout).
+            let (e_min, e_max) = zone_elev_range[plate_id][l1];
+            let amp = (e_max - e_min).max(0.0);
+            let shading_intensity = (amp / 0.5).clamp(0.0, 1.0);
+            let shaded_biome_c = if shading_intensity > 0.0 && amp > 1e-4 {
+                let elev_norm = ((state.elev[i] - e_min) / amp).clamp(0.0, 1.0);
+                let factor = 1.0 + (elev_norm - 0.5) * 0.30 * shading_intensity;
+                [
+                    (blended_biome_c[0] as f32 * factor).round().clamp(0.0, 255.0) as u8,
+                    (blended_biome_c[1] as f32 * factor).round().clamp(0.0, 255.0) as u8,
+                    (blended_biome_c[2] as f32 * factor).round().clamp(0.0, 255.0) as u8,
+                ]
+            } else {
+                blended_biome_c
+            };
             // W4 fix from B5 v2.1a: beach is now a TINT over biome, not a
             // replacement.
             if state.is_beach[i] {
-                blend_beach_into_biome(blended_biome_c, state.beach_t[i])
+                blend_beach_into_biome(shaded_biome_c, state.beach_t[i])
             } else {
-                blended_biome_c
+                shaded_biome_c
             }
         };
         rgb[i * 3] = c[0];
@@ -1498,7 +1541,7 @@ mod tests {
         // classifier hue interp at thresholds → blended RGB at threshold
         // crossings instead of hard biome flip). Rebaseline only with
         // intentional biome algorithm / palette / pipeline changes.
-        let pinned = "28d88695bb8470b9b06298debe73f7b5bc1a6fbebda4f2caafb2359513cde6fe";
+        let pinned = "d26a9c67a17eed38410d76e94742a96506a18fa7c5173ac470ff12dd63e3223a";
         assert_eq!(
             actual.as_str(),
             pinned,
