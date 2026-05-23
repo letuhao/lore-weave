@@ -15,7 +15,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.clients.llm_client import LLMClient
-from loreweave_llm.errors import LLMTransientRetryNeededError, LLMUpstreamError
+from loreweave_llm.errors import (
+    LLMHttpError,
+    LLMTransientRetryNeededError,
+    LLMUpstreamError,
+)
 from loreweave_llm.models import (
     Job,
     JobError,
@@ -197,3 +201,52 @@ async def test_wrapper_per_call_user_id_threaded_to_sdk():
     wait_kwargs: dict[str, Any] = sdk.wait_terminal.await_args.kwargs
     assert submit_kwargs["user_id"] == "11111111-1111-1111-1111-111111111111"
     assert wait_kwargs["user_id"] == "11111111-1111-1111-1111-111111111111"
+
+
+@pytest.mark.asyncio
+async def test_wrapper_retries_on_http_error_then_succeeds():
+    """P3 D-P3-EXTRACTION-CALLER-WIRE-UP regression-lock — wrapper MUST
+    retry transport-level LLMHttpError (ConnectTimeout, stale-pool
+    failures) under the same transient_retry_budget that gates SDK-side
+    retries. Live smoke surfaced this when knowledge-service's httpx
+    pool held stale sockets after a provider-registry restart, so
+    every summarize_level POST ConnectTimeout'd."""
+    sdk = AsyncMock()
+    # First attempt: SDK submit raises LLMHttpError (stale pool).
+    # Second attempt: succeeds.
+    sdk.submit_job = AsyncMock(side_effect=[
+        LLMHttpError("submit_job transport failure"),
+        _make_submit_response(),
+    ])
+    sdk.wait_terminal = AsyncMock(return_value=_make_job(status="completed"))
+
+    wrapper = LLMClient(sdk)
+    job = await wrapper.submit_and_wait(
+        user_id="u-1", operation="chat",
+        model_source="user_model", model_ref="m-1",
+        input={"messages": []},
+        transient_retry_budget=1,
+    )
+    assert job.status == "completed"
+    assert sdk.submit_job.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_wrapper_raises_when_http_retry_budget_exhausted():
+    """Persistent LLMHttpError → re-raise after the budget runs out;
+    don't swallow the failure."""
+    sdk = AsyncMock()
+    sdk.submit_job = AsyncMock(side_effect=LLMHttpError("transport down"))
+    sdk.wait_terminal = AsyncMock()
+
+    wrapper = LLMClient(sdk)
+    with pytest.raises(LLMHttpError, match="transport down"):
+        await wrapper.submit_and_wait(
+            user_id="u-1", operation="chat",
+            model_source="user_model", model_ref="m-1",
+            input={"messages": []},
+            transient_retry_budget=2,
+        )
+    # 1 initial + 2 retries = 3 attempts; wait_terminal never reached.
+    assert sdk.submit_job.await_count == 3
+    sdk.wait_terminal.assert_not_called()
