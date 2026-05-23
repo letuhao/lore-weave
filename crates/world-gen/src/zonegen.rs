@@ -332,6 +332,58 @@ pub fn render_all_zones(
     rgb
 }
 
+/// Beach band width (cells/pixels): plains/hills land within this many hops
+/// from a void cell tapers down to the shore (B3b-2 coast). Wider ⇒ broader
+/// shoreline.
+const BEACH_BAND: u32 = 22;
+/// How far above `min_land` the shore lip sits (the bottom of the beach
+/// taper, just above the void outlet).
+const SHORE_LEVEL_OFFSET: f32 = 0.02;
+
+/// Multi-source BFS over a `w × h` 4-conn grid: starting from every cell with
+/// `is_land[i] == false`, returns the hop distance from each land cell to the
+/// nearest void cell. Void cells = 0; unreachable land = `u32::MAX`.
+fn edge_dist_from_void(is_land: &[bool], w: usize, h: usize) -> Vec<u32> {
+    let n = w * h;
+    let mut dist = vec![u32::MAX; n];
+    let mut frontier: Vec<u32> = Vec::new();
+    for i in 0..n {
+        if !is_land[i] {
+            dist[i] = 0;
+            frontier.push(i as u32);
+        }
+    }
+    let mut d = 0u32;
+    while !frontier.is_empty() {
+        let mut next = Vec::new();
+        for &c in &frontier {
+            let i = c as usize;
+            let (x, y) = (i % w, i / w);
+            let mut try_neighbour = |j: usize| {
+                if is_land[j] && dist[j] == u32::MAX {
+                    dist[j] = d + 1;
+                    next.push(j as u32);
+                }
+            };
+            if x > 0 {
+                try_neighbour(i - 1);
+            }
+            if x + 1 < w {
+                try_neighbour(i + 1);
+            }
+            if y > 0 {
+                try_neighbour(i - w);
+            }
+            if y + 1 < h {
+                try_neighbour(i + w);
+            }
+        }
+        frontier = next;
+        d += 1;
+    }
+    dist
+}
+
 /// 4-connectivity neighbour lists for a `w × h` grid (the adjacency
 /// `erosion::apply` expects). Cell index = `y * w + x`.
 fn grid_neighbors_4(w: usize, h: usize) -> Vec<Vec<u32>> {
@@ -412,6 +464,56 @@ pub fn render_all_zones_eroded(
     let neighbors = grid_neighbors_4(w, h);
     erosion::apply(&mut elev, &neighbors, land_fraction, strength, None);
 
+    // B3b-2 coast shaping: taper plains/hills land toward the shore over a
+    // BEACH_BAND-wide band along the plate↔void edge (beach). Mountains and
+    // plateau land keep their height at the edge (cliff — the sharp drop into
+    // void *is* the cliff). Class comes from the nearest sub-site (same as
+    // the blend). `is_beach` tracks pixels that received the beach taper so
+    // the colour pass can paint them sand (vs hypso).
+    let edge_dist = edge_dist_from_void(&is_land, w, h);
+    let shore_level = min_land + SHORE_LEVEL_OFFSET;
+    let mut is_beach = vec![false; n];
+    let mut beach_t = vec![0f32; n]; // 0 at shore → 1 at inland edge of band
+    for py in 0..h {
+        for px in 0..w {
+            let i = py * w + px;
+            if !is_land[i] || edge_dist[i] >= BEACH_BAND {
+                continue;
+            }
+            // Nearest sub-site → class.
+            let x = px as f32 + 0.5;
+            let y = py as f32 + 0.5;
+            let Some(plate) = world.plates.iter().find(|p| p.contains(x, y)) else {
+                continue;
+            };
+            let subs = &subattrs[plate.id];
+            if subs.is_empty() {
+                continue;
+            }
+            let mut best_d = f32::INFINITY;
+            let mut best = 0usize;
+            for (k, s) in subs.iter().enumerate() {
+                let dx = x - s.site.0;
+                let dy = y - s.site.1;
+                let d = dx * dx + dy * dy;
+                if d < best_d {
+                    best_d = d;
+                    best = k;
+                }
+            }
+            let class = subs[best].class;
+            if matches!(class, TerrainClass::Plains | TerrainClass::Hills) {
+                let t = (edge_dist[i] as f32 / BEACH_BAND as f32).clamp(0.0, 1.0);
+                let s = smoothstep01(t);
+                elev[i] = shore_level + (elev[i] - shore_level) * s;
+                is_beach[i] = true;
+                beach_t[i] = t;
+            }
+            // Mountains / Plateau: no-op → cliff at the edge (geologically
+            // correct for active margins / glacial cliffs / volcanic shores).
+        }
+    }
+
     // Re-range over land only (erosion may have lowered peaks/filled pits).
     let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
     for i in 0..n {
@@ -422,13 +524,24 @@ pub fn render_all_zones_eroded(
     }
     let span = (hi - lo).max(1e-6);
 
+    // Sand palette: wet sand at the shore → dry sand at the inland edge of
+    // the beach band. Blended by `beach_t` (0 at shore, 1 inland).
+    const WET_SAND: [u8; 3] = [196, 178, 132];
+    const DRY_SAND: [u8; 3] = [230, 214, 165];
     let mut rgb = vec![0u8; n * 3];
     for i in 0..n {
-        let c = if is_land[i] {
+        let c = if !is_land[i] {
+            VOID
+        } else if is_beach[i] {
+            let t = beach_t[i];
+            [
+                (WET_SAND[0] as f32 + (DRY_SAND[0] as f32 - WET_SAND[0] as f32) * t) as u8,
+                (WET_SAND[1] as f32 + (DRY_SAND[1] as f32 - WET_SAND[1] as f32) * t) as u8,
+                (WET_SAND[2] as f32 + (DRY_SAND[2] as f32 - WET_SAND[2] as f32) * t) as u8,
+            ]
+        } else {
             let t = ((elev[i] - lo) / span).clamp(0.0, 1.0).powf(0.55);
             hypso_color(t)
-        } else {
-            VOID
         };
         rgb[i * 3] = c[0];
         rgb[i * 3 + 1] = c[1];
@@ -620,6 +733,25 @@ mod tests {
             max_step < 0.05,
             "seam not continuous: max per-pixel step {max_step} (expected < 0.05)"
         );
+    }
+
+    #[test]
+    fn edge_distance_from_void_is_zero_at_void_and_grows_inward() {
+        // 5×5 grid: a 3×3 land block centred, surrounded by void.
+        // Distances: void=0; the 4-conn-adjacent land cells (sides of the
+        // 3×3 block) = 1; the centre of the block = 2.
+        let w = 5;
+        let h = 5;
+        let mut is_land = vec![false; w * h];
+        for y in 1..=3 {
+            for x in 1..=3 {
+                is_land[y * w + x] = true;
+            }
+        }
+        let d = edge_dist_from_void(&is_land, w, h);
+        assert_eq!(d[0], 0, "corner is void");
+        assert_eq!(d[w + 1], 1, "land cell next to void → 1");
+        assert_eq!(d[2 * w + 2], 2, "interior cell → 2");
     }
 
     #[test]
