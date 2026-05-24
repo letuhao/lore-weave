@@ -38,6 +38,7 @@ __all__ = [
     "tool_call_duration_seconds",
     "tool_call_result_size_bytes",
     "memory_remember_rate_limited_total",
+    "mode3_intent_classifier_glossary_unavailable_total",
 ]
 
 registry = CollectorRegistry()
@@ -48,6 +49,23 @@ layer_timeout_total = Counter(
     ["layer"],
     registry=registry,
 )
+
+# D-P3-INTENT-CLASSIFIER-GLOSSARY-METRIC. Distinct from the general
+# layer_timeout_total{layer="glossary"} so a dashboard can split
+# "glossary is generally flaky" from "Mode-3 intent classifier
+# specifically ran without glossary input". The intent classifier
+# falls back to a less-precise heuristic when glossary is unavailable
+# (long queries → forced abstract path → unnecessary summary_blend
+# cost). A spike here means Mode-3 retrieval quality is degraded.
+mode3_intent_classifier_glossary_unavailable_total = Counter(
+    "knowledge_mode3_intent_classifier_glossary_unavailable_total",
+    "Mode-3 query was classified by the intent heuristic while "
+    "glossary input was unavailable (timeout/exception); the classifier "
+    "fell back to the less-precise long-query branch",
+    registry=registry,
+)
+# Pre-initialise to 0 so the counter is visible on first scrape.
+mode3_intent_classifier_glossary_unavailable_total.inc(0)
 
 cache_hit_total = Counter(
     "knowledge_cache_hit_total",

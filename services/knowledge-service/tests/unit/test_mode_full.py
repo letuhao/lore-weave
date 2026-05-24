@@ -1082,3 +1082,55 @@ async def test_summaries_block_triggers_with_summaries_instruction(monkeypatch):
     )
     # The _WITH_SUMMARIES instruction line mentions "high-level overviews".
     assert "high-level overviews" in result.context
+
+
+@pytest.mark.asyncio
+async def test_glossary_timeout_increments_intent_classifier_metric(monkeypatch):
+    """D-P3-INTENT-CLASSIFIER-GLOSSARY-METRIC regression-lock.
+
+    When glossary lookup times out in `build_full_mode`, BOTH
+    `layer_timeout_total{layer="glossary"}` AND
+    `mode3_intent_classifier_glossary_unavailable_total` must
+    increment. The new counter exists because the layer_timeout
+    counter is shared with the static-mode builder; a Mode-3
+    operator dashboard needs to split "intent classifier degraded"
+    from "any glossary timeout anywhere".
+    """
+    import asyncio as _asyncio
+    from app.config import settings
+    from app.metrics import (
+        layer_timeout_total,
+        mode3_intent_classifier_glossary_unavailable_total,
+    )
+
+    monkeypatch.setattr(settings, "context_glossary_timeout_s", 0.05)
+    _patch_mode3_pieces(monkeypatch)
+
+    async def slow_glossary(*_a, **_kw):
+        await _asyncio.sleep(0.5)
+        return []
+
+    monkeypatch.setattr(
+        "app.context.modes.full.select_glossary_for_context",
+        slow_glossary,
+    )
+
+    project = _project(name="t")
+    before_layer = layer_timeout_total.labels(layer="glossary")._value.get()
+    before_intent = mode3_intent_classifier_glossary_unavailable_total._value.get()
+
+    await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="hello world",
+    )
+
+    after_layer = layer_timeout_total.labels(layer="glossary")._value.get()
+    after_intent = mode3_intent_classifier_glossary_unavailable_total._value.get()
+
+    assert after_layer == before_layer + 1, "general glossary timeout counter must fire"
+    assert after_intent == before_intent + 1, (
+        "Mode-3-specific intent classifier degradation counter must also fire"
+    )

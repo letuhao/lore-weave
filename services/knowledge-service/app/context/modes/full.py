@@ -58,7 +58,10 @@ from app.context.selectors.summaries import load_global_summary
 from app.db.models import Project
 from app.db.neo4j import neo4j_session
 from app.db.repositories.summaries import SummariesRepo
-from app.metrics import layer_timeout_total
+from app.metrics import (
+    layer_timeout_total,
+    mode3_intent_classifier_glossary_unavailable_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -578,6 +581,11 @@ async def build_full_mode(
         )
     except asyncio.TimeoutError:
         layer_timeout_total.labels(layer="glossary").inc()
+        # D-P3-INTENT-CLASSIFIER-GLOSSARY-METRIC. Downstream Mode-3 intent
+        # classifier runs WITHOUT glossary input → falls back to the
+        # less-precise long-query heuristic, which over-classifies as
+        # "abstract" and triggers unnecessary summary_blend cost.
+        mode3_intent_classifier_glossary_unavailable_total.inc()
         entities = []
 
     if l1_summary is not None and entities:
