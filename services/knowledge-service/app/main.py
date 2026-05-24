@@ -22,6 +22,7 @@ from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     context,
     health,
+    internal_admin,
     internal_benchmark,
     internal_extraction,
     internal_parse,
@@ -480,6 +481,7 @@ app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
+app.include_router(internal_admin.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
