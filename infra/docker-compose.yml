@@ -779,6 +779,38 @@ services:
       - tilemap
       - full
 
+  # ────────────────────────────────────────────────────────────────
+  # game-server — Node + TypeScript + Colyseus.
+  # V0 ships EchoRoom for Session E WS path validation. V1+ adds real
+  # game rooms (zone instances, combat, chat) per spec §17.
+  # Port 2567 is Colyseus convention.
+  # ────────────────────────────────────────────────────────────────
+  game-server:
+    build:
+      context: ../services/game-server
+      dockerfile: Dockerfile
+    environment:
+      PORT: "2567"
+      # Dev auth token — EchoRoom.onAuth checks options.jwt against this.
+      # Same env name convention as tilemap-service for cross-service consistency.
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # CORS for matchmaking HTTP endpoint (POST /matchmake/<room>);
+      # WS upgrade itself doesn't preflight. Default frontend-game dev :5174.
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: on-failure:5
+    ports:
+      - "2567:2567"
+    profiles:
+      - game
+      - full
+
 volumes:
   loreweave_pg:
   loreweave_redis:

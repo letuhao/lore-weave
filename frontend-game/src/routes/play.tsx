@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/sidebar/Sidebar';
 import { Modal } from '@/components/modal/Modal';
 import { RotatePrompt } from '@/components/mobile/RotatePrompt';
 import { VirtualGamepad } from '@/components/mobile/VirtualGamepad';
+import { EchoPanel } from '@/components/echo/EchoPanel';
 import { useTilemapHealth } from '@/api/tilemap-client';
 
 // Main play route. Per spec §1 #3 hybrid React+Phaser:
@@ -33,6 +34,9 @@ export function PlayRoute(): JSX.Element {
       <div className="absolute top-0 right-0 h-full">
         <Sidebar />
       </div>
+
+      {/* Session E WS echo demo panel */}
+      <EchoPanel />
 
       {/* Mobile + modal overlays */}
       <VirtualGamepad />

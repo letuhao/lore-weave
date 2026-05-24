@@ -6,7 +6,8 @@
 export type ClientToServer =
   | { kind: 'auth-handshake'; jwt: string }
   | { kind: 'enter-zone'; zoneId: string }
-  | { kind: 'player-action'; action: 'move' | 'attack' | 'use-item'; targetX?: number; targetY?: number };
+  | { kind: 'player-action'; action: 'move' | 'attack' | 'use-item'; targetX?: number; targetY?: number }
+  | { kind: 'echo'; text: string };
 
 export type ServerToClient =
   | { kind: 'session-established'; characterId: string }

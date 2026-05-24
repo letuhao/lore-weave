@@ -81,7 +81,79 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — Session D: V0 demo end-to-end ✓ all spec §16 ACs satisfied) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — Session E: WebSocket echo demo end-to-end via full Colyseus stack) — read this first
+
+XL task. New `services/game-server/` (Node + TypeScript + Colyseus 0.16)
+with EchoRoom. Frontend-game ws-client.ts rewritten to use colyseus.js.
+EchoPanel React component in /play. Auth handshake + echo round-trip +
+disconnect detect + reconnect verified via Playwright e2e.
+
+PO chose full Colyseus stack from V0 (not raw WS) so wire protocol
+matches V1+ prod from day 1. Per spec §1 #7 + §17 game-server was V1
+scope; brought forward to V0 this session.
+
+### V0 demo acceptance (spec §16 Session E)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Connect + auth handshake | ✓ | EchoPanel shows "game-server: connected" + sessionId; EchoRoom.onAuth accepted `dev_internal_token` jwt; rejection paths verified by spec §17.1 contract |
+| Bidirectional echo | ✓ | `[out] hello from Session E` → server EchoRoom.onMessage('echo') → `[in] echo: {original:{kind:'echo',text:'hello from Session E'}, receivedAt:..., echoedBy:'EchoRoom', userId:'guest'}` |
+| Reconnect after server restart | ✓ | docker stop → disconnect detected (red dot, "room left (code 1006)", Reconnect button) → docker start → Reconnect click → fresh session `7MUSHNcX6` (token expired during >30s downtime → fell back to fresh connect via my catch handler in EchoPanel — correct UX) |
+
+### Files landed (14 changed: 9 new + 5 modified)
+
+| File | Change | Note |
+|---|---|---|
+| `services/game-server/package.json` | NEW | colyseus@^0.16 + @colyseus/ws-transport + express + cors + TS |
+| `services/game-server/tsconfig.json` | NEW | strict, ES2022, NodeNext |
+| `services/game-server/Dockerfile` | NEW | Multi-stage Node 20 alpine + git (Colyseus transitive dep needs git for npm install — caught + fixed inline) |
+| `services/game-server/.dockerignore` | NEW | node_modules + dist |
+| `services/game-server/README.md` | NEW | Run instructions + V0/V1 scope |
+| `services/game-server/src/index.ts` | NEW | Express + CORS + http server + Colyseus WebSocketTransport + EchoRoom registration + graceful shutdown |
+| `services/game-server/src/rooms/EchoRoom.ts` | NEW | onAuth (dev token check) + onMessage('echo') + onJoin (welcome) + onLeave (allowReconnection 30s window) |
+| `infra/docker-compose.yml` | M | + game-server entry: port 2567, profile [game, full], LOREWEAVE_INTERNAL_TOKEN, LOREWEAVE_CORS_ORIGINS, /livez healthcheck |
+| `frontend-game/package.json` | M | + colyseus.js@^0.16 |
+| `frontend-game/src/net/ws-client.ts` | REWRITE | Real Colyseus Client + Room wrapped in WsClient interface; spec §17.1 abstraction (only file importing colyseus.js); reconnectionToken stored in localStorage |
+| `frontend-game/src/net/protocol.ts` | M | + `{ kind: 'echo'; text: string }` to ClientToServer union (so EchoPanel sends typed) |
+| `frontend-game/src/components/echo/EchoPanel.tsx` | NEW | Bottom-right /play overlay: status indicator + text input + send button + scrollable response history + Reconnect button on disconnect |
+| `frontend-game/src/routes/play.tsx` | M | + `<EchoPanel />` |
+| `docs/plans/2026-05-24-frontend-game-session-e-ws-echo.md` | NEW | Plan doc (XL gate requirement) |
+| `docs/03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md` | M | This update |
+
+### 1 real bug caught + fixed (this session)
+
+**npm install fails on node:20-alpine without git** (`services/game-server/Dockerfile`)
+- Symptom: `docker compose build game-server` failed with `npm error syscall spawn git ... ENOENT`
+- Root cause: one of Colyseus 0.16's transitive deps is fetched from a git URL. `node:20-alpine` doesn't ship git. npm tried to spawn it → ENOENT.
+- Fix: `RUN apk add --no-cache git` in the builder stage (kept off the runtime stage to keep image small).
+- This generalizes to any Node service shipping a dep with git-source resolution. Saved to memory.
+
+### Verification evidence
+
+- `cd services/game-server && npm install && npm run build` → clean
+- `pnpm --filter frontend-game typecheck` → clean
+- `pnpm --filter frontend-game build` → 484 KB gzipped (+43 KB for colyseus.js, still under 700 KB V0 budget)
+- `docker compose --profile game build game-server` → clean (multi-stage, prod-only deps in runtime)
+- `docker compose --profile game up -d game-server` → healthchecks in <8s
+- `curl http://localhost:2567/livez` → `{"status":"ok",...}`
+- Playwright `/play` smoke: connect+auth+echo+disconnect+reconnect all verified (screenshots taken during smoke, cleaned up before commit)
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks Session F** (spec §16): Dockerfile + docker-compose for frontend-game itself. With game-server + tilemap-service both runnable via compose, frontend-game is the only piece missing from "one-command local stack".
+- **Unblocks V1 game design**: WS protocol layer is proven; Colyseus rooms can be added as needed (zone room, combat room, chat room) per spec §17.
+- **Blocks**: nothing immediate.
+
+### Lessons recorded
+
+- **Colyseus 0.16 needs explicit WebSocketTransport in 0.16+.** The default-bundled transport was deprecated; import from @colyseus/ws-transport and pass to new Server({transport})
+- **node:20-alpine missing git breaks npm install for deps with git URLs.** Solution: `apk add --no-cache git` in builder stage (multi-stage keeps runtime image lean)
+- **Token-based reconnect requires server seatReservationTime > likely downtime.** Default 30s window is short; restarting a docker container often exceeds it. Frontend should fall back to fresh `joinOrCreate` when `client.reconnect(token)` throws — my EchoPanel does this and shows the correct UX (Reconnect button works regardless of token state)
+- **PO bringing V1-scope items forward to V0 is a fair call when WS protocol is the load-bearing piece.** Doing Colyseus from V0 saves a future migration; spec §17 already locked Colyseus, so moving it forward 1 session is low risk
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — Session D: V0 demo end-to-end ✓ all spec §16 ACs satisfied)
 
 L task. Replaced stub iso textures with real Kenney CC0 isometric-tiles-
 landscape pack, wired click-to-walk Player movement, booted tilemap-
