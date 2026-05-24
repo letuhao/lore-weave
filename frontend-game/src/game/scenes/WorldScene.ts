@@ -1,30 +1,35 @@
 import Phaser from 'phaser';
 import { EventBus, getLatestTilemap, type PlayerActionEvent } from '../EventBus';
-import { tileToScreen } from '../../lib/world-math';
 import { TILE_PX } from '../config/constants';
 import { Player } from '../entities/Player';
 import { InputSystem } from '../systems/input-system';
-import { terrainKindTag, type TilemapView } from '@/types/tilemap';
+import { TERRAIN_TILESET_KEY } from './PreloaderScene';
+import type { TilemapView } from '@/types/tilemap';
 
-// V1 tilemap-viewer World scene.
+// V1 tilemap-viewer World scene — Batch 2.0 render strategy.
 //
-// Renders the real `TilemapView.terrain_layer` (flat array, index =
-// y*width + x, value = TerrainKind u8) as a top-down orthogonal grid
-// using HoMM3-placeholder textures keyed by `terrain-<tag>`. Spec:
-// `docs/specs/2026-05-24-v1-tilemap-viewer-rescope.md` §5.
+// Foundation (L0) uses Phaser 4 `TilemapGPULayer`: tile indices are
+// packed into a GPU texture and the entire grid renders as a single
+// shader-driven quad → O(1) draw calls regardless of grid size
+// (Town 64² and Continent 256² both cost the same).
 //
-// Data delivery: the React side passes a TilemapView in via
-// `scene.data.set('tilemap', view)` before `scene.start('WorldScene')`.
-// If no tilemap is present at create() time, the scene renders a small
-// placeholder grid + waits for `tilemap-updated` events.
+// Tile index in `TilemapView.terrain_layer` is 1-based (TerrainKind
+// enum, 1..10). The tileset spritesheet has 10 frames in TerrainKind
+// order; we subtract 1 when calling `putTileAt` so frame 0 = grass.
+//
+// Data delivery: React side emits `tilemap-updated` via EventBus when
+// `useZoneTilemap` data settles. `getLatestTilemap()` cache handles
+// the case where data arrived before scene boot.
 
 const FALLBACK_GRID_WIDTH = 8;
 const FALLBACK_GRID_HEIGHT = 8;
+const FALLBACK_TERRAIN_TILE_INDEX = 0; // grass
 
 export class WorldScene extends Phaser.Scene {
   private player: Player | null = null;
   private moveHandler: ((event: PlayerActionEvent) => void) | null = null;
   private tilemapHandler: ((view: TilemapView) => void) | null = null;
+  private foundationMap: Phaser.Tilemaps.Tilemap | null = null;
 
   constructor() {
     super({ key: 'WorldScene' });
@@ -33,11 +38,6 @@ export class WorldScene extends Phaser.Scene {
   create(): void {
     EventBus.emit('scene-ready', { key: 'WorldScene' });
 
-    // The React side passes the current TilemapView via EventBus
-    // `tilemap-updated` whenever useZoneTilemap data settles. On scene
-    // boot the React fetch may have already finished before WorldScene
-    // was created (Phaser boot chain takes 2-3s for asset load) — so
-    // check the cached last-emitted view first.
     this.tilemapHandler = (next: TilemapView) => {
       this.clearAndRerender(next);
     };
@@ -50,8 +50,70 @@ export class WorldScene extends Phaser.Scene {
       this.renderFallback();
     }
 
-    // Launch the optional Phaser-side HUD scene running in parallel.
     this.scene.launch('HudScene');
+  }
+
+  /**
+   * Build a Phaser Tilemap + GPU-rendered foundation layer from the
+   * server's `terrain_layer` flat array. Falls back to standard
+   * `TilemapLayer` if `TilemapGPULayer` is unavailable.
+   */
+  private buildFoundationLayer(
+    terrainLayer: number[],
+    gridWidth: number,
+    gridHeight: number,
+  ): void {
+    // Convert flat u8 (1..10) → 2D matrix of zero-based tile indices.
+    // Out-of-range u8 values fall back to grass (index 0).
+    const data: number[][] = [];
+    for (let y = 0; y < gridHeight; y++) {
+      const row: number[] = [];
+      for (let x = 0; x < gridWidth; x++) {
+        const u8 = terrainLayer[y * gridWidth + x];
+        const idx = u8 !== undefined && u8 >= 1 && u8 <= 10 ? u8 - 1 : FALLBACK_TERRAIN_TILE_INDEX;
+        row.push(idx);
+      }
+      data.push(row);
+    }
+
+    this.foundationMap = this.make.tilemap({
+      data,
+      tileWidth: TILE_PX,
+      tileHeight: TILE_PX,
+    });
+
+    const tileset = this.foundationMap.addTilesetImage(
+      TERRAIN_TILESET_KEY,
+      TERRAIN_TILESET_KEY,
+      TILE_PX,
+      TILE_PX,
+    );
+    if (!tileset) {
+      throw new Error(`failed to add tileset image ${TERRAIN_TILESET_KEY}`);
+    }
+
+    // Try GPU layer first (single-quad shader render); fall back to the
+    // standard tilemap layer if the GPU layer fails (e.g. WebGL context
+    // lost or extension missing).
+    try {
+      const gpu = new Phaser.Tilemaps.TilemapGPULayer(
+        this,
+        this.foundationMap,
+        0,
+        tileset,
+        0,
+        0,
+      );
+      this.add.existing(gpu);
+      gpu.generateLayerDataTexture();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('TilemapGPULayer unavailable, falling back to TilemapLayer', err);
+      const std = this.foundationMap.createLayer(0, tileset, 0, 0);
+      if (!std) {
+        throw new Error('foundation tilemap layer creation failed');
+      }
+    }
   }
 
   private renderTilemap(view: TilemapView): void {
@@ -60,34 +122,8 @@ export class WorldScene extends Phaser.Scene {
     const renderedW = w * TILE_PX;
     const renderedH = h * TILE_PX;
 
-    // Render at world (0,0); camera zoom + centerOn position the visible
-    // viewport, no extra offset needed.
+    this.buildFoundationLayer(view.terrain_layer, w, h);
 
-    // Render each tile in terrain_layer.
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const idx = y * w + x;
-        const u8 = view.terrain_layer[idx];
-        if (u8 === undefined || u8 < 1 || u8 > 10) {
-          // Unknown TerrainKind — render magenta debug rect.
-          this.add
-            .rectangle(x * TILE_PX, y * TILE_PX, TILE_PX, TILE_PX, 0xff00ff)
-            .setOrigin(0, 0);
-          continue;
-        }
-        const tag = terrainKindTag(u8);
-        const s = tileToScreen({ x, y }, TILE_PX);
-        this.add
-          .image(s.x, s.y, `terrain-${tag}`)
-          .setDisplaySize(TILE_PX, TILE_PX)
-          .setOrigin(0, 0);
-      }
-    }
-
-    // Viewer zoom: default = 4× fit-to-viewport, so tiles are visible at
-    // readable size (~50 px each on a 64² grid) instead of getting
-    // shrunk to ~13 px. User pans / wheel-zooms to explore the rest.
-    // Wheel-zoom handler attached in `attachCameraControls` below.
     const viewW = this.scale.gameSize.width;
     const viewH = this.scale.gameSize.height;
     const fitZoom = Math.min(viewW / renderedW, viewH / renderedH);
@@ -97,8 +133,6 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.centerOn(renderedW / 2, renderedH / 2);
     this.attachCameraControls();
 
-    // Spawn the Player at the first Hub-zone center if present, else
-    // at the grid center.
     const hubZone = view.zones.find((z) => z.zone_role === 'hub');
     const startTile = hubZone
       ? hubZone.center_position
@@ -113,7 +147,6 @@ export class WorldScene extends Phaser.Scene {
       zoneHeight: h,
     });
 
-    // Attach input + move handler.
     InputSystem.attach({ scene: this, offsetX: 0, offsetY: 0 });
     this.moveHandler = (event: PlayerActionEvent) => {
       if (event.kind === 'move' && event.target && this.player) {
@@ -129,15 +162,10 @@ export class WorldScene extends Phaser.Scene {
     const renderedW = w * TILE_PX;
     const renderedH = h * TILE_PX;
 
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const s = tileToScreen({ x, y }, TILE_PX);
-        this.add
-          .image(s.x, s.y, 'terrain-grass')
-          .setDisplaySize(TILE_PX, TILE_PX)
-          .setOrigin(0, 0);
-      }
-    }
+    // Build an all-grass fallback so we exercise the same layer path
+    // when the scene boots before any TilemapView arrives.
+    const fallbackTerrain = new Array<number>(w * h).fill(1);
+    this.buildFoundationLayer(fallbackTerrain, w, h);
 
     const viewW = this.scale.gameSize.width;
     const viewH = this.scale.gameSize.height;
@@ -145,6 +173,7 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, renderedW, renderedH);
     this.cameras.main.setZoom(fitZoom);
     this.cameras.main.centerOn(renderedW / 2, renderedH / 2);
+    this.attachCameraControls();
 
     this.player = new Player({
       scene: this,
@@ -164,11 +193,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * Mouse-wheel zoom (V1 viewer ergonomics). Wheel up = zoom in, wheel
-   * down = zoom out. Zoom is clamped so the user can't zoom past the
-   * tile pixel grid (max 4×) or shrink below the fit-to-viewport limit.
-   * Pan is handled by Phaser's default camera scroll on cursor keys via
-   * keyboard; drag-to-pan deferred to V2.
+   * Mouse-wheel zoom + arrow-key pan. Wheel up = zoom in. Clamp keeps
+   * zoom in [0.05, 4.0]. Drag-to-pan deferred to a follow-up.
    */
   private attachCameraControls(): void {
     const cam = this.cameras.main;
@@ -186,8 +212,6 @@ export class WorldScene extends Phaser.Scene {
       },
     );
 
-    // Arrow-key panning — Phaser doesn't ship this out of the box, but
-    // adding a quick handler is cheap. Drag-pan deferred to V2.
     const cursors = this.input.keyboard?.createCursorKeys();
     if (cursors) {
       this.events.on(Phaser.Scenes.Events.UPDATE, () => {
@@ -201,15 +225,16 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private clearAndRerender(view: TilemapView): void {
-    // Tear down current handlers + display list, then re-render with the
-    // new tilemap. Phaser's scene.restart() would also work but skips our
-    // event-handler cleanup — manual is cheap + explicit.
     if (this.moveHandler) {
       EventBus.off('player-action', this.moveHandler);
       this.moveHandler = null;
     }
     InputSystem.detach({ scene: this });
     this.children.removeAll(true);
+    if (this.foundationMap) {
+      this.foundationMap.destroy();
+      this.foundationMap = null;
+    }
     this.player = null;
     this.renderTilemap(view);
   }
@@ -224,5 +249,10 @@ export class WorldScene extends Phaser.Scene {
       this.tilemapHandler = null;
     }
     InputSystem.detach({ scene: this });
+    if (this.foundationMap) {
+      this.foundationMap.destroy();
+      this.foundationMap = null;
+    }
   }
 }
+

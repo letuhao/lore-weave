@@ -1,33 +1,20 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
-import { terrainKindTag, TerrainKind } from '@/types/tilemap';
 
-// Loads game assets and shows a progress bar.
+// Loads critical assets for V1 tilemap viewer.
 //
-// V1 tilemap-viewer rescope: loads 10 HoMM3-placeholder terrain tiles
-// keyed by `terrain-<tag>` (one per TerrainKind variant 1-10). See
-// `public/assets/tiles/homm3-placeholder/LICENSES.md` for source +
-// license caveat (NON-COMMERCIAL placeholder only).
+// Batch 2.0 (render-strategy spec): foundation now uses one stitched
+// `terrain-tileset.png` strip (10 × 256 px tiles) consumed directly by
+// Phaser 4 `TilemapGPULayer`. This replaces 10 individual `terrain-*.png`
+// loads from Batch 1, and replaces per-tile `add.image()` calls in
+// WorldScene with a single GPU-shader-rendered quad layer.
+//
+// Per-tile PNGs are kept on disk (the generator outputs both) so debug
+// tooling and asset-review workflows can inspect tiles individually
+// without slicing the strip back open.
 
 const TILE_BASE = '/assets/tiles/homm3-placeholder';
-
-const TILES_TO_LOAD: ReadonlyArray<{ key: string; file: string }> = (
-  [
-    TerrainKind.Grass,
-    TerrainKind.Forest,
-    TerrainKind.Mountain,
-    TerrainKind.Water,
-    TerrainKind.Sand,
-    TerrainKind.Snow,
-    TerrainKind.Swamp,
-    TerrainKind.Road,
-    TerrainKind.Rough,
-    TerrainKind.Subterranean,
-  ] as const
-).map((k) => {
-  const tag = terrainKindTag(k);
-  return { key: `terrain-${tag}`, file: `${TILE_BASE}/${tag}.png` };
-});
+const TERRAIN_TILESET_KEY = 'terrain-tileset';
 
 export class PreloaderScene extends Phaser.Scene {
   constructor() {
@@ -35,9 +22,9 @@ export class PreloaderScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Generate a Player placeholder sprite programmatically — a yellow
-    // circle. Per-book character art lands in a separate branch (see
-    // SESSION_HANDOFF + DEFERRED #037).
+    // Programmatic Player placeholder — yellow circle 32×32.
+    // (Will be replaced by a programmatic warrior sprite at 384×384 in
+    // Batch 2.1 per the tier table; the stub is fine for Batch 2.0.)
     const playerGfx = this.add.graphics();
     playerGfx.fillStyle(0xfbbf24, 1);
     playerGfx.fillCircle(16, 16, 14);
@@ -60,9 +47,13 @@ export class PreloaderScene extends Phaser.Scene {
       barBg.destroy();
     });
 
-    for (const t of TILES_TO_LOAD) {
-      this.load.image(t.key, t.file);
-    }
+    // Critical-path: the stitched tileset strip used by TilemapGPULayer
+    // for the foundation layer. Frame size 64×64 matches TILE_PX so the
+    // tilemap renders at 1:1 source → screen ratio at zoom 1.0.
+    this.load.spritesheet(TERRAIN_TILESET_KEY, `${TILE_BASE}/terrain-tileset.png`, {
+      frameWidth: 64,
+      frameHeight: 64,
+    });
   }
 
   create(): void {
@@ -70,3 +61,5 @@ export class PreloaderScene extends Phaser.Scene {
     this.scene.start('MainMenuScene');
   }
 }
+
+export { TERRAIN_TILESET_KEY };

@@ -204,7 +204,12 @@ SPECIALS = {
 }
 
 
-def gen_one(tag: str, idx: int) -> Path:
+def gen_one(tag: str, idx: int) -> tuple[Path, np.ndarray]:
+    """Return (output path, raw uint8 RGB array) for the tile.
+
+    The array is returned so `main` can stitch tiles into the tileset
+    strip without re-reading the PNG files.
+    """
     base_rgb, (low_amp, mid_amp) = TERRAINS[tag]
     seed = SEED_BASE + idx * 1000
     rgb = base_tile(base_rgb, low_amp, mid_amp, seed)
@@ -216,18 +221,62 @@ def gen_one(tag: str, idx: int) -> Path:
     out = OUT_DIR / f"{tag}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out, "PNG", optimize=True)
+    return out, img8
+
+
+TILESET_FRAME_PX = 64  # matches `frontend-game/src/game/config/constants.ts` TILE_PX
+
+
+def build_tileset_strip(tiles: list[np.ndarray]) -> Path:
+    """Stitch N tiles horizontally into a single tileset strip PNG, frame
+    size = `TILESET_FRAME_PX` (must match `TILE_PX` in the frontend).
+
+    For Phaser 4 `TilemapGPULayer` consumption: the GPU shader samples
+    tile-index `k` from a single texture by reading the rect
+    `(k * tileWidth, 0, tileWidth, tileHeight)`. Storing all tiles in
+    one strip image lets Phaser bind one texture per frame regardless
+    of how many distinct tiles the layer references.
+
+    The strip uses 64×64 frames — Phaser tilemap renders at 1:1 source
+    → screen pixel ratio at zoom 1.0; viewer-zoom scales up cleanly via
+    Phaser's built-in texture sampling. Individual 256×256 PNGs are
+    kept on disk for asset-review tooling; only the strip is consumed
+    by the runtime tilemap layer.
+
+    Strip layout: tiles in TerrainKind u8 order (1..N).
+        column 0 = TerrainKind 1 (grass)
+        column 1 = TerrainKind 2 (forest)
+        ...
+    """
+    n = len(tiles)
+    strip = np.zeros((TILESET_FRAME_PX, TILESET_FRAME_PX * n, 3), dtype=np.uint8)
+    for i, t in enumerate(tiles):
+        small = Image.fromarray(t, mode="RGB").resize(
+            (TILESET_FRAME_PX, TILESET_FRAME_PX),
+            Image.LANCZOS,
+        )
+        strip[:, i * TILESET_FRAME_PX : (i + 1) * TILESET_FRAME_PX, :] = np.asarray(small)
+    img = Image.fromarray(strip, mode="RGB")
+    out = OUT_DIR / "terrain-tileset.png"
+    img.save(out, "PNG", optimize=True)
     return out
 
 
 def main() -> None:
     print(f"out dir: {OUT_DIR}")
     total = 0
+    tiles_arr: list[np.ndarray] = []
     for i, tag in enumerate(TERRAINS):
-        out = gen_one(tag, i)
+        out, arr = gen_one(tag, i)
         sz = os.path.getsize(out)
         total += sz
+        tiles_arr.append(arr)
         print(f"  {tag}: {sz//1024} KB")
-    print(f"\n10 terrains, {total//1024} KB total")
+    strip_path = build_tileset_strip(tiles_arr)
+    strip_sz = os.path.getsize(strip_path)
+    print(f"\n10 individual tiles: {total//1024} KB")
+    print(f"stitched tileset strip ({strip_path.name}): {strip_sz//1024} KB")
+    print(f"  (Phaser 4 TilemapGPULayer consumes this strip directly)")
 
 
 if __name__ == "__main__":
