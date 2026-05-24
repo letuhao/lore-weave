@@ -33,8 +33,17 @@ var errStreamBudgetExceeded = errors.New("stream aborted: budget exceeded")
 type streamGuard struct {
 	guardrail     *billing.GuardrailClient
 	reservationID uuid.UUID
-	op            string // "chat" | "tts"
-	pricing       billing.Pricing
+	// jobID is the synthetic per-stream id used as the reservation's
+	// request_id AND as RecordUsage's request_id (the /record
+	// idempotency key, D-PHASE6A-BETA-STREAM-RECORD). Mirrors the
+	// jobs.Worker.settleBilling pattern where the llm_jobs row id
+	// serves both roles.
+	jobID       uuid.UUID
+	ownerUserID uuid.UUID
+	modelSource string // "user_model" | "platform_model"
+	modelRef    uuid.UUID
+	op          string // "chat" | "tts"
+	pricing     billing.Pricing
 
 	// chat-only running tally.
 	inputCostUSD float64 // fixed: estimated input tokens × input price
@@ -53,7 +62,8 @@ type streamGuard struct {
 // stream proceeds unguarded and the nil-safe observe/settle no-op.
 func (s *Server) preflightStream(
 	w http.ResponseWriter, r *http.Request,
-	userID uuid.UUID, op, modelSource string, pricing billing.Pricing, inputMap map[string]any,
+	userID uuid.UUID, op, modelSource string, modelRef uuid.UUID,
+	pricing billing.Pricing, inputMap map[string]any,
 ) (*streamGuard, bool) {
 	if s.guardrail == nil {
 		return nil, true
@@ -90,6 +100,10 @@ func (s *Server) preflightStream(
 	g := &streamGuard{
 		guardrail:     s.guardrail,
 		reservationID: res.ReservationID,
+		jobID:         jobID,
+		ownerUserID:   userID,
+		modelSource:   modelSource,
+		modelRef:      modelRef,
 		op:            op,
 		pricing:       pricing,
 		abortUSD:      minFloat(res.DailyAvailable, res.MonthlyAvailable),
@@ -165,6 +179,40 @@ func (g *streamGuard) settle(ctx context.Context) {
 	if err := g.guardrail.Reconcile(ctx, g.reservationID, actual); err != nil {
 		slog.Warn("stream guardrail reconcile failed",
 			"reservation_id", g.reservationID.String(), "err", err)
+	}
+
+	// D-PHASE6A-BETA-STREAM-RECORD. Mirror jobs.Worker.settleBilling step (2):
+	// after the reservation is reconciled, write a model-level `usage_logs`
+	// audit row via /internal/model-billing/record so streaming jobs appear
+	// in the same per-model spend ledger as non-streaming jobs. Only when:
+	//   - the stream is chat (tts has no token usage)
+	//   - the stream completed normally (no hard-abort — partial output
+	//     is not a successful billable unit; the reservation reconcile
+	//     already captured the spend, but the audit row is reserved for
+	//     successful requests like jobs.Worker.settleBilling does)
+	//   - the provider sent a final usage chunk (authoritative token
+	//     counts). Without it the estimate is too noisy for a billing
+	//     ledger entry; we skip rather than guess.
+	// Best-effort: a failure is logged, never propagated; the sweeper is
+	// the backstop. RequestID = jobID so a retry is idempotent on the
+	// usage-billing side (same pattern as the job path).
+	if g.op == "chat" && !g.aborted && g.finalUsage != nil {
+		reasoning := 0
+		if g.finalUsage.ReasoningTokens != nil {
+			reasoning = *g.finalUsage.ReasoningTokens
+		}
+		if err := g.guardrail.RecordUsage(ctx, billing.UsageRecord{
+			RequestID:    g.jobID,
+			OwnerUserID:  g.ownerUserID,
+			ModelSource:  g.modelSource,
+			ModelRef:     g.modelRef,
+			Operation:    g.op,
+			InputTokens:  g.finalUsage.InputTokens,
+			OutputTokens: g.finalUsage.OutputTokens + reasoning,
+		}); err != nil {
+			slog.Warn("stream usage record failed",
+				"request_id", g.jobID.String(), "err", err)
+		}
 	}
 }
 

@@ -259,7 +259,7 @@ WHERE platform_model_id=$1 AND status='active'
 			return
 		}
 	}
-	guard, ok := s.preflightStream(w, r, userID, op, in.ModelSource, pricing, estimateInput)
+	guard, ok := s.preflightStream(w, r, userID, op, in.ModelSource, modelRef, pricing, estimateInput)
 	if !ok {
 		return // preflightStream wrote the rejection
 	}

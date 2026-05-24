@@ -150,11 +150,23 @@ func TestMinFloat(t *testing.T) {
 // TestStreamGuard_Settle_Dispatch locks which actual_usd settle sends for
 // each of its three branches (/review-impl 6a-δ LOW#2).
 func TestStreamGuard_Settle_Dispatch(t *testing.T) {
-	var lastBody map[string]any
+	var lastReconcile map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
-		lastBody = map[string]any{}
-		_ = json.Unmarshal(raw, &lastBody)
+		// Only capture reconcile payloads here so /record doesn't overwrite
+		// what each chat-branch assertion is checking. The new
+		// D-PHASE6A-BETA-STREAM-RECORD path fires /record after /reconcile,
+		// and the original test asserted on the LAST body of either kind —
+		// that became chat+usage's /record payload (no actual_usd field) and
+		// silently broke the test. /record gets its own dedicated test
+		// below.
+		if !strings.Contains(r.URL.Path, "/reconcile") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
+		lastReconcile = map[string]any{}
+		_ = json.Unmarshal(raw, &lastReconcile)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
@@ -164,8 +176,8 @@ func TestStreamGuard_Settle_Dispatch(t *testing.T) {
 	// tts → actual_usd omitted (nil → usage-billing charges the stored estimate).
 	tts := &streamGuard{guardrail: gc, reservationID: uuid.New(), op: "tts"}
 	tts.settle(context.Background())
-	if _, present := lastBody["actual_usd"]; present {
-		t.Fatalf("tts settle must omit actual_usd, got %v", lastBody["actual_usd"])
+	if _, present := lastReconcile["actual_usd"]; present {
+		t.Fatalf("tts settle must omit actual_usd, got %v", lastReconcile["actual_usd"])
 	}
 
 	// chat + a final usage chunk → authoritative provider cost.
@@ -179,7 +191,7 @@ func TestStreamGuard_Settle_Dispatch(t *testing.T) {
 	}
 	chatU.settle(context.Background())
 	// 1000/1e6·2 + 500/1e6·10 = 0.002 + 0.005 = 0.007.
-	if got, _ := lastBody["actual_usd"].(float64); got != 0.007 {
+	if got, _ := lastReconcile["actual_usd"].(float64); got != 0.007 {
 		t.Fatalf("chat+usage settle actual_usd: got %v want 0.007", got)
 	}
 
@@ -192,8 +204,175 @@ func TestStreamGuard_Settle_Dispatch(t *testing.T) {
 	}
 	chatT.settle(context.Background())
 	// 0.005 + 100/1e6·10 = 0.006.
-	if got, _ := lastBody["actual_usd"].(float64); got != 0.006 {
+	if got, _ := lastReconcile["actual_usd"].(float64); got != 0.006 {
 		t.Fatalf("chat+tally settle actual_usd: got %v want 0.006", got)
+	}
+}
+
+// ── D-PHASE6A-BETA-STREAM-RECORD: model-level usage audit row ───────────────
+
+// usageCapture records every call to a usage-billing stub so a single
+// settle invocation can be inspected for both /reconcile AND /record.
+type usageCapture struct {
+	reconcileCount int
+	recordCount    int
+	recordBody     map[string]any
+}
+
+func newUsageStub(t *testing.T) (*httptest.Server, *usageCapture) {
+	t.Helper()
+	cap := &usageCapture{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		switch {
+		case strings.Contains(r.URL.Path, "/reconcile"):
+			cap.reconcileCount++
+		case strings.Contains(r.URL.Path, "/record"):
+			cap.recordCount++
+			cap.recordBody = map[string]any{}
+			_ = json.Unmarshal(raw, &cap.recordBody)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, cap
+}
+
+// TestStreamGuard_Settle_RecordUsage_HappyPath locks the new audit-row
+// write. A successfully-completed chat stream with a final usage chunk
+// MUST fire BOTH /reconcile AND /record, with the record carrying the
+// authoritative token counts + the synthetic job_id as request_id.
+func TestStreamGuard_Settle_RecordUsage_HappyPath(t *testing.T) {
+	srv, cap := newUsageStub(t)
+	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
+
+	jobID := uuid.New()
+	ownerID := uuid.New()
+	modelRef := uuid.New()
+	reasoning := 7
+	g := &streamGuard{
+		guardrail: gc, reservationID: uuid.New(),
+		jobID: jobID, ownerUserID: ownerID,
+		modelSource: "user_model", modelRef: modelRef,
+		op:      "chat",
+		pricing: billing.Pricing{InputPerMTok: ptr(2), OutputPerMTok: ptr(10)},
+		finalUsage: &provider.StreamChunk{
+			Kind: provider.StreamChunkUsage,
+			InputTokens: 1000, OutputTokens: 500,
+			ReasoningTokens: &reasoning,
+		},
+	}
+	g.settle(context.Background())
+
+	if cap.reconcileCount != 1 || cap.recordCount != 1 {
+		t.Fatalf("expected 1 reconcile + 1 record, got reconcile=%d record=%d",
+			cap.reconcileCount, cap.recordCount)
+	}
+	body := cap.recordBody
+	if body["request_id"] != jobID.String() {
+		t.Errorf("request_id: got %v want %v", body["request_id"], jobID)
+	}
+	if body["owner_user_id"] != ownerID.String() {
+		t.Errorf("owner_user_id: got %v want %v", body["owner_user_id"], ownerID)
+	}
+	if body["model_ref"] != modelRef.String() {
+		t.Errorf("model_ref: got %v want %v", body["model_ref"], modelRef)
+	}
+	if body["model_source"] != "user_model" {
+		t.Errorf("model_source: got %v want user_model", body["model_source"])
+	}
+	if body["purpose"] != "chat" {
+		t.Errorf("purpose: got %v want chat", body["purpose"])
+	}
+	// Input tokens: 1000. Output: provider 500 + reasoning 7 = 507
+	// (reasoning bills as output, mirrors usageCostUSD's pricing rule).
+	if in, _ := body["input_tokens"].(float64); int(in) != 1000 {
+		t.Errorf("input_tokens: got %v want 1000", body["input_tokens"])
+	}
+	if out, _ := body["output_tokens"].(float64); int(out) != 507 {
+		t.Errorf("output_tokens: got %v want 507 (500 output + 7 reasoning)", body["output_tokens"])
+	}
+}
+
+// TestStreamGuard_Settle_RecordUsage_SkipsOnAbort. A hard-aborted stream
+// reconciles its (partial) spend but MUST NOT write an audit row —
+// mirrors the jobs.Worker.settleBilling rule that /record fires only
+// on a `completed` status.
+func TestStreamGuard_Settle_RecordUsage_SkipsOnAbort(t *testing.T) {
+	srv, cap := newUsageStub(t)
+	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
+
+	g := &streamGuard{
+		guardrail: gc, reservationID: uuid.New(),
+		jobID: uuid.New(), ownerUserID: uuid.New(),
+		modelSource: "user_model", modelRef: uuid.New(),
+		op:      "chat",
+		pricing: billing.Pricing{InputPerMTok: ptr(2), OutputPerMTok: ptr(10)},
+		finalUsage: &provider.StreamChunk{
+			Kind: provider.StreamChunkUsage, InputTokens: 1000, OutputTokens: 500,
+		},
+		aborted: true, // hard-abort from observe()
+	}
+	g.settle(context.Background())
+
+	if cap.reconcileCount != 1 {
+		t.Fatalf("expected 1 reconcile (always runs), got %d", cap.reconcileCount)
+	}
+	if cap.recordCount != 0 {
+		t.Fatalf("aborted stream must NOT call /record, got %d calls", cap.recordCount)
+	}
+}
+
+// TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk. When the
+// provider omitted the final usage chunk, we have no authoritative
+// token counts. Skip /record rather than guess — the estimate-based
+// tally already drove reconcile, but the audit ledger only stores
+// confirmed numbers.
+func TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk(t *testing.T) {
+	srv, cap := newUsageStub(t)
+	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
+
+	g := &streamGuard{
+		guardrail: gc, reservationID: uuid.New(),
+		jobID: uuid.New(), ownerUserID: uuid.New(),
+		modelSource: "user_model", modelRef: uuid.New(),
+		op:           "chat",
+		pricing:      billing.Pricing{OutputPerMTok: ptr(10)},
+		inputCostUSD: 0.005,
+		outChars:     350,
+		// finalUsage intentionally nil
+	}
+	g.settle(context.Background())
+
+	if cap.reconcileCount != 1 {
+		t.Fatalf("expected 1 reconcile, got %d", cap.reconcileCount)
+	}
+	if cap.recordCount != 0 {
+		t.Fatalf("chat with no usage chunk must NOT call /record, got %d", cap.recordCount)
+	}
+}
+
+// TestStreamGuard_Settle_RecordUsage_SkipsForTts. tts streams have no
+// token usage to record — the audit row is tied to per-token pricing
+// which doesn't apply to fixed-per-char tts cost. Skip /record.
+func TestStreamGuard_Settle_RecordUsage_SkipsForTts(t *testing.T) {
+	srv, cap := newUsageStub(t)
+	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
+
+	g := &streamGuard{
+		guardrail: gc, reservationID: uuid.New(),
+		jobID: uuid.New(), ownerUserID: uuid.New(),
+		modelSource: "user_model", modelRef: uuid.New(),
+		op: "tts",
+	}
+	g.settle(context.Background())
+
+	if cap.reconcileCount != 1 {
+		t.Fatalf("expected 1 reconcile, got %d", cap.reconcileCount)
+	}
+	if cap.recordCount != 0 {
+		t.Fatalf("tts must NOT call /record, got %d", cap.recordCount)
 	}
 }
 
