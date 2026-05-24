@@ -2,9 +2,8 @@
 // `services/tilemap-service/src/types/{tilemap,tile,zone}.rs` Serialize
 // derives; keep in sync if backend bumps schema.
 //
-// V1 rescope: only `terrain_layer` is consumed by the viewer.
-// `zones`, `road_segments`, `river_segments`, `object_placements`
-// are typed for completeness but not yet rendered.
+// V1.2 expanded scope: all 5 layers consumed by the viewer
+// (terrain_layer + roads + rivers + object_placements + zones).
 
 export type ZoneId = string;
 
@@ -84,6 +83,38 @@ export interface RiverSegment {
   crossings: RiverCrossing[];
 }
 
+/** Mirrors backend `TilemapObjectKind` (9 variants). */
+export type TilemapObjectKind =
+  | 'treasure'
+  | 'monster_lair'
+  | 'town'
+  | 'mine'
+  | 'landmark'
+  | 'monolith'
+  | 'decoration'
+  | 'obstacle'
+  | 'ferry';
+
+/** Mirrors backend `BiomeObjectType` (9 variants — applies to `obstacle`). */
+export type BiomeObjectType =
+  | 'mountain'
+  | 'tree'
+  | 'lake'
+  | 'crater'
+  | 'rock'
+  | 'plant'
+  | 'structure'
+  | 'animal'
+  | 'other';
+
+export interface TilemapObjectPlacement {
+  kind: TilemapObjectKind;
+  anchor: TileCoord;
+  canon_ref?: string;
+  biome_object_type?: BiomeObjectType;
+  value?: number;
+}
+
 export type GenerationSource =
   | { kind: 'engine_generated' }
   | { kind: 'llm_augmented'; model: string; attempts: number; generated_at_fiction_time: string };
@@ -108,7 +139,7 @@ export interface TilemapView {
   zones: ZoneRuntime[];
   /** Flat array; index = y*width + x; value = `TerrainKind` u8 index (1-10). */
   terrain_layer: number[];
-  object_placements: unknown[];
+  object_placements: TilemapObjectPlacement[];
   road_segments: RoadSegment[];
   river_segments: RiverSegment[];
   child_cell_anchors: Record<string, TileCoord>;

@@ -1,0 +1,214 @@
+{
+  "tier_display_px": {
+    "xl": 384,
+    "l": 256,
+    "m": 192,
+    "s": 160,
+    "xs": 128,
+    "marker": 128
+  },
+  "tier_source_px": {
+    "xl": 768,
+    "l": 512,
+    "m": 384,
+    "s": 320,
+    "xs": 256,
+    "marker": 128
+  },
+  "webp_quality": 85,
+  "sprites": [
+    {
+      "name": "town",
+      "tier": "xl",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/castle_quarter_wide__1536_1024__s101.png",
+      "out_path": "public/assets/sprites/xl/town.webp",
+      "size_kb": 52
+    },
+    {
+      "name": "landmark_statue",
+      "tier": "xl",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/hero_monument_statue_tall__1024_1536__s101.png",
+      "out_path": "public/assets/sprites/xl/landmark_statue.webp",
+      "size_kb": 41
+    },
+    {
+      "name": "mine_gold",
+      "tier": "l",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/mine_gold_entrance__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/l/mine_gold.webp",
+      "size_kb": 43
+    },
+    {
+      "name": "mine_ore",
+      "tier": "l",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/mine_ore_entrance__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/l/mine_ore.webp",
+      "size_kb": 37
+    },
+    {
+      "name": "mine_gem",
+      "tier": "l",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/mine_gem_cavern_mouth__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/l/mine_gem.webp",
+      "size_kb": 38
+    },
+    {
+      "name": "shrine",
+      "tier": "l",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/shrine_magic_arcane__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/l/shrine.webp",
+      "size_kb": 29
+    },
+    {
+      "name": "monolith",
+      "tier": "l",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/portal_gate_stone__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/l/monolith.webp",
+      "size_kb": 28
+    },
+    {
+      "name": "tower_ruin",
+      "tier": "l",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/wizard_tower_ruin__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/l/tower_ruin.webp",
+      "size_kb": 31
+    },
+    {
+      "name": "monument_obelisk",
+      "tier": "l",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/monument_obelisk__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/l/monument_obelisk.webp",
+      "size_kb": 24
+    },
+    {
+      "name": "mountain_rocks",
+      "tier": "m",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/rock_pillar_obstacle__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/m/mountain_rocks.webp",
+      "size_kb": 19
+    },
+    {
+      "name": "siege_tower_fragment",
+      "tier": "m",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/siege_tower_fragment_tall__1024_1536__s101.png",
+      "out_path": "public/assets/sprites/m/siege_tower_fragment.webp",
+      "size_kb": 19
+    },
+    {
+      "name": "palisade_fence",
+      "tier": "m",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/palisade_fence_segment__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/m/palisade_fence.webp",
+      "size_kb": 20
+    },
+    {
+      "name": "tree",
+      "tier": "s",
+      "source": "homm3",
+      "src_path": "trees/grassland_temperate/silver_birch_grove_tree__s101.png",
+      "out_path": "public/assets/sprites/s/tree.webp",
+      "size_kb": 22
+    },
+    {
+      "name": "bush",
+      "tier": "s",
+      "source": "homm3",
+      "src_path": "homm3/bush/grassland_temperate/bush/thorn_scrub_shrub_cluster__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/s/bush.webp",
+      "size_kb": 20
+    },
+    {
+      "name": "treasure_pile",
+      "tier": "s",
+      "source": "homm3",
+      "src_path": "homm3/structures/grassland_temperate/structures/treasure_pile_prop__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/s/treasure_pile.webp",
+      "size_kb": 15
+    },
+    {
+      "name": "decoration_boundary_stones",
+      "tier": "xs",
+      "source": "homm3",
+      "src_path": "homm3/misc/grassland_temperate/misc/boundary_stones_ring__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/xs/decoration_boundary_stones.webp",
+      "size_kb": 14
+    },
+    {
+      "name": "decoration_lantern_post",
+      "tier": "xs",
+      "source": "homm3",
+      "src_path": "homm3/misc/grassland_temperate/misc/lantern_post_double__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/xs/decoration_lantern_post.webp",
+      "size_kb": 14
+    },
+    {
+      "name": "mushroom_cluster",
+      "tier": "xs",
+      "source": "homm3",
+      "src_path": "homm3/mushroom/grassland_temperate/mushroom/toadstool_ring_cluster_fantasy__1024_1024__s101.png",
+      "out_path": "public/assets/sprites/xs/mushroom_cluster.webp",
+      "size_kb": 15
+    },
+    {
+      "name": "monster_lair",
+      "tier": "marker",
+      "source": "programmatic",
+      "out_path": "public/assets/sprites/marker/monster_lair.webp",
+      "size_kb": 1
+    },
+    {
+      "name": "ferry",
+      "tier": "marker",
+      "source": "programmatic",
+      "out_path": "public/assets/sprites/marker/ferry.webp",
+      "size_kb": 0
+    },
+    {
+      "name": "lake",
+      "tier": "marker",
+      "source": "programmatic",
+      "out_path": "public/assets/sprites/marker/lake.webp",
+      "size_kb": 1
+    },
+    {
+      "name": "crater",
+      "tier": "marker",
+      "source": "programmatic",
+      "out_path": "public/assets/sprites/marker/crater.webp",
+      "size_kb": 1
+    },
+    {
+      "name": "animal",
+      "tier": "marker",
+      "source": "programmatic",
+      "out_path": "public/assets/sprites/marker/animal.webp",
+      "size_kb": 1
+    },
+    {
+      "name": "other",
+      "tier": "marker",
+      "source": "programmatic",
+      "out_path": "public/assets/sprites/marker/other.webp",
+      "size_kb": 1
+    },
+    {
+      "name": "player",
+      "tier": "player",
+      "source": "programmatic",
+      "out_path": "public/assets/sprites/player.webp",
+      "size_kb": 4
+    }
+  ]
+}

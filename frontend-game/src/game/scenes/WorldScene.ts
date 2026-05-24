@@ -4,6 +4,7 @@ import { TILE_PX } from '../config/constants';
 import { Player } from '../entities/Player';
 import { InputSystem } from '../systems/input-system';
 import { TERRAIN_TILESET_KEY } from './PreloaderScene';
+import { buildObjectOverlay, type ObjectOverlayHandle } from '../render/object-overlay';
 import type { TilemapView } from '@/types/tilemap';
 
 // V1 tilemap-viewer World scene — Batch 2.0 render strategy.
@@ -30,6 +31,7 @@ export class WorldScene extends Phaser.Scene {
   private moveHandler: ((event: PlayerActionEvent) => void) | null = null;
   private tilemapHandler: ((view: TilemapView) => void) | null = null;
   private foundationMap: Phaser.Tilemaps.Tilemap | null = null;
+  private objectOverlay: ObjectOverlayHandle | null = null;
 
   constructor() {
     super({ key: 'WorldScene' });
@@ -123,6 +125,7 @@ export class WorldScene extends Phaser.Scene {
     const renderedH = h * TILE_PX;
 
     this.buildFoundationLayer(view.terrain_layer, w, h);
+    this.objectOverlay = buildObjectOverlay(this, view);
 
     const viewW = this.scale.gameSize.width;
     const viewH = this.scale.gameSize.height;
@@ -213,15 +216,17 @@ export class WorldScene extends Phaser.Scene {
     );
 
     const cursors = this.input.keyboard?.createCursorKeys();
-    if (cursors) {
-      this.events.on(Phaser.Scenes.Events.UPDATE, () => {
+    this.events.on(Phaser.Scenes.Events.UPDATE, () => {
+      if (cursors) {
         const speed = 12 / cam.zoom;
         if (cursors.left?.isDown) cam.scrollX -= speed;
         if (cursors.right?.isDown) cam.scrollX += speed;
         if (cursors.up?.isDown) cam.scrollY -= speed;
         if (cursors.down?.isDown) cam.scrollY += speed;
-      });
-    }
+      }
+      // Chunk culling + LOD update each frame.
+      this.objectOverlay?.update();
+    });
   }
 
   private clearAndRerender(view: TilemapView): void {
@@ -230,6 +235,10 @@ export class WorldScene extends Phaser.Scene {
       this.moveHandler = null;
     }
     InputSystem.detach({ scene: this });
+    if (this.objectOverlay) {
+      this.objectOverlay.destroy();
+      this.objectOverlay = null;
+    }
     this.children.removeAll(true);
     if (this.foundationMap) {
       this.foundationMap.destroy();
@@ -249,6 +258,10 @@ export class WorldScene extends Phaser.Scene {
       this.tilemapHandler = null;
     }
     InputSystem.detach({ scene: this });
+    if (this.objectOverlay) {
+      this.objectOverlay.destroy();
+      this.objectOverlay = null;
+    }
     if (this.foundationMap) {
       this.foundationMap.destroy();
       this.foundationMap = null;
