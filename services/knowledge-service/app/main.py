@@ -106,6 +106,27 @@ async def lifespan(app: FastAPI):
         # Track 1 mode skips this entirely.
         if settings.neo4j_uri:
             await run_neo4j_schema(get_neo4j_driver())
+        # D-P2-STALE-CLAIM-LIFESPAN-HOOK. Reset extraction_leaves rows
+        # stuck in status='running' for >30 min back to 'pending' so
+        # new workers can pick them up. Idempotent + multi-replica safe
+        # (status='running' filter atomically scopes the UPDATE).
+        # Best-effort: a Postgres hiccup here MUST NOT block startup
+        # of the rest of the service — claim_pending also has its own
+        # retry path, this hook just removes the multi-hour wait until
+        # that natural retry catches up.
+        try:
+            from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
+            reset_n = await ExtractionLeavesRepo(get_knowledge_pool()).reset_stale_claims()
+            if reset_n > 0:
+                logger.info(
+                    "D-P2-STALE-CLAIM-LIFESPAN-HOOK: reset %d stale 'running' claims to 'pending'",
+                    reset_n,
+                )
+        except Exception:
+            logger.warning(
+                "D-P2-STALE-CLAIM-LIFESPAN-HOOK: stale-claim recovery failed (non-fatal)",
+                exc_info=True,
+            )
     except Exception:
         logger.exception(
             "lifespan startup failed before yield — running partial cleanup"
