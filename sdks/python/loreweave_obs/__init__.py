@@ -7,7 +7,46 @@ HTTP services, or at the top of a worker's `main()`. Mirrors the Go
 
 import os
 
-__all__ = ["setup_tracing"]
+__all__ = ["setup_tracing", "current_otel_trace_id"]
+
+
+def current_otel_trace_id() -> str:
+    """Return the 32-char hex OTel trace id for the in-flight span, or "".
+
+    D-PHASE6C-TRACE-ID-UNIFY companion helper. The service-level
+    ``TraceIdMiddleware`` issues its own ``X-Trace-Id`` (uuid4 hex)
+    that 500 handlers embed in the response body so a user staring at
+    a UI error can grep server logs. That id is UNRELATED to the OTel
+    trace id that Grafana Tempo indexes by — copying ``X-Trace-Id``
+    off a 500 and pasting it into Tempo finds nothing. This helper
+    pulls the OTel trace id so the 500 handler can emit BOTH ids:
+    ``trace_id`` (logs) + ``otel_trace_id`` (Tempo).
+
+    Returns "" when:
+      - OTel tracing is not configured (``OTEL_EXPORTER_OTLP_ENDPOINT``
+        unset → ``setup_tracing`` was a no-op → ``get_current_span``
+        returns the NoOp span with an INVALID context). Same return
+        path as "called outside any request scope" — callers cannot
+        and need not distinguish.
+      - ``opentelemetry`` is not installed (defensive import; the SDK
+        is normally pulled in by ``setup_tracing``'s lazy imports but
+        a stripped-down deployment might skip it).
+
+    Safe to call from any async/sync context; reads the current span
+    from the global tracer provider, no I/O.
+    """
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        return ""
+    span = trace.get_current_span()
+    ctx = span.get_span_context()
+    # `is_valid` is False for the OTel NoOp span (returned when no
+    # provider is set OR no span is active). 0 is the sentinel "no
+    # trace" value; defensive check survives any future API drift.
+    if not ctx.is_valid or ctx.trace_id == 0:
+        return ""
+    return format(ctx.trace_id, "032x")
 
 
 def setup_tracing(service_name: str, app=None) -> None:

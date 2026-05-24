@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from loreweave_obs import setup_tracing
+from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.clients.book_client import close_book_client, get_book_client
 from app.clients.embedding_client import close_embedding_client, get_embedding_client
@@ -480,10 +480,18 @@ setup_tracing("knowledge-service", app=app)
 
 @app.exception_handler(Exception)
 async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONResponse:
-    """K7e: include the trace id in the 500 body so a caller staring
-    at an error in the UI can grep it straight to this service's
-    logs. Starlette's default handler returns plain text; overriding
-    it is the standard FastAPI pattern.
+    """K7e + D-PHASE6C-TRACE-ID-UNIFY: include BOTH ids in the 500 body
+    so a caller staring at a UI error can:
+      - `trace_id` → grep this service's structured logs
+      - `otel_trace_id` → paste straight into Grafana Tempo to follow
+        the request across services (chat → knowledge → book → glossary)
+
+    The two ids are unrelated by design: TraceIdMiddleware's id is a
+    uuid4 hex per-request set BEFORE any OTel span exists; Tempo
+    indexes by the OTel trace id minted inside FastAPIInstrumentor's
+    SERVER span. Empty string when OTel is no-op
+    (`OTEL_EXPORTER_OTLP_ENDPOINT` unset) — operators can tell apart
+    "Tempo down" from "this service crashed before the span started".
 
     HTTPException (4xx + explicit 5xx from handlers) is NOT caught
     here — FastAPI's built-in HTTPException handler runs first and
@@ -491,9 +499,14 @@ async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONRespons
     """
     logger.exception("unhandled exception (500): %s", exc)
     tid = trace_id_var.get()
+    otel_tid = current_otel_trace_id()
     return JSONResponse(
         status_code=500,
-        content={"detail": "internal server error", "trace_id": tid},
+        content={
+            "detail": "internal server error",
+            "trace_id": tid,
+            "otel_trace_id": otel_tid,
+        },
         headers={"X-Trace-Id": tid or ""},
     )
 

@@ -168,6 +168,65 @@ def test_python_service_wires_setup_tracing(service):
         )
 
 
+# ── D-PHASE6C-TRACE-ID-UNIFY: current_otel_trace_id() helper ──────────
+
+
+def test_current_otel_trace_id_empty_without_active_span():
+    """No active span (e.g. called from background task / outside any
+    instrumented request) → returns "". 500 handlers must not crash
+    when there's nothing to embed."""
+    from loreweave_obs import current_otel_trace_id
+
+    # OTel's get_current_span() outside any started span returns the
+    # NoOp span, whose context.is_valid is False — helper returns "".
+    assert current_otel_trace_id() == ""
+
+
+def test_current_otel_trace_id_returns_32hex_inside_started_span(span_exporter):
+    """Active span → 32-char lowercase hex string matching the span's
+    trace_id. This is the form Grafana Tempo indexes by — pasted from
+    the 500 body's `otel_trace_id` field into Tempo's search box
+    should resolve the trace.
+    """
+    import re
+    from loreweave_obs import current_otel_trace_id
+
+    tracer = trace.get_tracer("test")
+    with tracer.start_as_current_span("test-span"):
+        tid = current_otel_trace_id()
+    assert re.fullmatch(r"[0-9a-f]{32}", tid), (
+        f"expected 32-char lowercase hex trace id, got {tid!r}"
+    )
+    # Sanity: same id appears on the exported span (proves we read
+    # from the live span context, not e.g. a stale ContextVar).
+    spans = [s for s in span_exporter.get_finished_spans() if s.name == "test-span"]
+    assert spans, "test span did not export"
+    assert format(spans[0].context.trace_id, "032x") == tid
+
+
+def test_current_otel_trace_id_no_opentelemetry_returns_empty(monkeypatch):
+    """Defensive: if `opentelemetry` is somehow not importable (stripped
+    deployment, packaging miss), the helper returns "" instead of
+    raising — 500 handler must keep working even on a broken obs stack."""
+    import builtins
+    import sys
+
+    # Simulate ImportError on `from opentelemetry import trace` by
+    # patching the import machinery to refuse the package only on the
+    # next access.
+    real_import = builtins.__import__
+    def _fake_import(name, *args, **kwargs):
+        if name.startswith("opentelemetry"):
+            raise ImportError("simulated missing opentelemetry")
+        return real_import(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    # Force reload of the module so the patched import takes effect on
+    # the next `from opentelemetry import trace` inside the helper.
+    sys.modules.pop("loreweave_obs", None)
+    from loreweave_obs import current_otel_trace_id as helper
+    assert helper() == ""
+
+
 def test_gateway_imports_tracing_first():
     """api-gateway-bff/src/main.ts must `import './tracing'` before any other
     import — Node auto-instrumentation patches modules on require, so a module
