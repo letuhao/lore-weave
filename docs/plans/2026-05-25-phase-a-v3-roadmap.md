@@ -1,12 +1,14 @@
 # Phase A v3 — Plate Shape & Size Diversity Roadmap
 
-> **Status:** PLAN 2026-05-25 — multi-session (~12-16h, 4 sub-phases).
+> **Status:** v3.0 SHIPPED (commit f022cf82) — multi-session (~12-16h, 4 sub-phases).
 > **Companions:**
 > - [`2026-05-25-world-map-v1-buildout.md`](2026-05-25-world-map-v1-buildout.md) (V1 spec, A-F phases)
 > - Phase A v1 SHIPPED: `crates/world-gen/src/flatworld.rs` — 24/48 vertices, multi-octave fbm,
 >   `Plate::zone_warp_salt` domain warp, eval composite **89.30** (was 89.56).
-> - Research reports — 2026-05-25 (this session): 17-algorithm catalog + 7-template taxonomy +
->   Azgaar FMG analysis + Pareto/log-normal sizing.
+> - **Research base — read first**: [`../research/INDEX.md`](../research/INDEX.md) →
+>   [Research 1](../research/2026-05-25-phase-a-research-1-procgen-algorithms.md) (10-algo catalog),
+>   [Research 2](../research/2026-05-25-phase-a-research-2-shape-templates-sizing.md) (17-algo + Azgaar FMG + Pareto sizing),
+>   [Research 3](../research/2026-05-25-phase-a-research-3-topology-game-algos.md) (12 topology-specific algos + 20 game industry refs + Bézier spine recommendation for S/sock/hook/L).
 >
 > **PO directive (2026-05-25):** "current plates are still rounded, equal-sized.
 > Real continents have very diverse sizes. Need more edges and more complex shapes.
