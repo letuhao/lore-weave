@@ -1,6 +1,121 @@
-# Session Handoff — Session 66 (P3 Router MVP shipped)
+# Session Handoff — Session 67 (10-cycle polish-debt burn-down)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
+> **Date:** 2026-05-24 (session 67 sub-sessions cont.4 through cont.13)
+> **HEAD:** `b1b5cbef` — 10 commits ahead of session 67 cont.3 start; all pushed to `origin/main`.
+> **Branch:** `main`.
+
+## Session 67 summary — 10 cycles, 16 deferred items cleared
+
+Pure deferred-row burn-down session. No new feature work; every cycle picked an open deferred row, scoped it, fixed/cleaned/tested it, committed. Five cycles were XS (≤1 LoC), five were S–M.
+
+| # | Sub-session | Cycle | Size | Commit | Items cleared |
+|---|---|---|---|---|---|
+| 1 | cont.4 | D-EXTRACTION-CONTEXT-FIX-STAGE-4 | M | `590f22ce` | gateway-forward `chat_template_kwargs` + pre-flight `LLM_CONTEXT_OVERFLOW` 400 |
+| 2 | cont.5 | D-P3-BOOK-SUMMARY-PERSIST-AUDIT | S | `18a64fb1` | Redis Stream `retry_at_epoch` burned budget in ms → inline-sleep fix |
+| 3 | cont.6 | D-P3-INDEX-PRUNE-ENDPOINT | M | `2c0e405a` | `POST /internal/admin/summary-indexes/prune` with 3 orphan reasons |
+| 4 | cont.7 | D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION | XS | `98bbd931` | P2 task_id `v1-{op}-{hash}` instead of global hash |
+| 5 | cont.8 | D-P2-STALE-CLAIM-LIFESPAN-HOOK | XS | `d90d5417` | `reset_stale_claims` wired into lifespan + 5 unit tests |
+| 6 | cont.9 | 3-XS bundle | 3×XS | `3b610565` | worker-infra config test fix + prompts README + intent-classifier glossary-unavailable metric |
+| 7 | cont.10 | D-PHASE6C-TRACE-ID-UNIFY | M | `35439e26` | NEW `loreweave_obs.current_otel_trace_id()`; 500 body emits both ids |
+| 8 | cont.11 | D-PHASE6C-WORKERAI-JOB-SPAN | S | `f4dc68e1` | `@_with_job_span` decorator on `process_job` |
+| 9 | cont.12 | D-PHASE6A-BETA-STREAM-RECORD | S | `9d2f1dac` | `streamGuard.settle` writes `usage_logs` row alongside reconcile |
+| 10 | cont.13 | 5-item batch (6A polish + stale rows) | 2×S + 3 stale | `b1b5cbef` | EstimateNChunks overlap + affordableMaxTokens quantum headroom + 3 stale-row markup fixups |
+
+**Cumulative impact:**
+- Deferred-items table went from ~30 active to ~14 active (16 cleared).
+- 4 new memory entries: `redis-streams-no-time-based-delivery`, `gateway-passthrough-must-forward-all-optional-fields`. Plus 2 reinforced (`feedback_batch_small_tasks`, `feedback_scope_audit_before_batching`).
+- 1 latent test bug fixed during cont.12 (Settle_Dispatch was capturing last POST body across reconcile+record; would have silently broken when /record landed).
+- 1 unexpected discovery during cont.13: 3 of 5 deferred rows were already-implemented but never-marked-cleared (D-PHASE6A-BETA-402-MESSAGE + D-K17.2a-02 + D-K4a-02). Saved the cycle from false implementation work.
+
+## What's NEXT — three tracks open
+
+### Track A: Model swap + live extraction baselines (USER-DRIVEN, blocking)
+
+User said cont.4 they'd swap LLM model before resuming extraction (huihui-qwen3.6 ran at 7.6 tok/s parallel — too slow). Once the new model is registered, several deferred LIVE-SMOKE rows fold into one natural verification cycle:
+
+- `D-EXTRACTION-CONTEXT-FIX-STAGE-4-LIVE-SMOKE` — verify `thinking_tokens` drops from 55-89% → ~0 with `chat_template_kwargs` now flowing through gateway; verify 400 `LLM_CONTEXT_OVERFLOW` fires on a fat prompt.
+- `D-P3-LLM-JUDGE-BASELINE-CHECK` — verify P=0.97 / R=0.81 (9 golden chapters) holds post-P3.
+- `D-P3-SHERLOCK-BASELINE` — sherlock_speckled_band joins baseline (P ≥ 0.85, R ≥ 0.70) thanks to P2 cache + P3 hierarchy enabling resumption.
+- `D-P3-BASELINE-QWEN3.6-RERUN` — apples-to-apples baseline rerun on the new model.
+- `D-P2-FULL-EXTRACTION-LIVE-SMOKE` + `D-P3-LIVE-SMOKE` + `D-P3-BOOK-SUMMARY-PERSIST-AUDIT` functional re-trigger naturally fold in (the unit-level fixes are shipped + deployed; live verification just confirms the deployed behaviour).
+
+### Track B: Larger single-cycle items (no model dependency)
+
+- `D-P1-IMPORT-PROCESSOR-INTEG-TESTS` [M-L] — 3 orchestrator tests (CallsParseEndpoint, TxRollbackOnSceneInsertFailure, ParseFailureMarksJobFailed). Needs Go testcontainer infra OR pgx.Pool interface refactor.
+- `D-P3-MIXED-STATE-CONSOLIDATION` [M] — feature: one-click cleanup endpoint for mixed-state chapters (entities with `:EVIDENCED_BY` but no `:MENTIONED_IN` after partial P3 re-extraction).
+- `D-PHASE6A-WORKER-SETTLE-IT` [M] — integration test for `worker.settleBilling` reconcile/release DB path; needs `jobs`-package DB harness.
+- `D-PHASE6A-BETA-ACCOUNT-BALANCES-RETIRE` [M] — dead-code cleanup: remove `/record`'s `account_balances` deduction (ADR-superseded).
+- `D-PHASE6C-DB-SPANS` [M-L] — OTel-instrument asyncpg/pgx/Neo4j calls monorepo-wide.
+- `D-PHASE6B-RETRY-USAGE-DOUBLECOUNT` [M] — a retry can double-count usage tokens in `chatAggregator` / `jsonListAggregator`.
+- `D-PHASE6B-MEDIA-DOUBLE-CHARGE` [M] — retrying media-gen after ambiguous transient error can double-generate.
+
+### Track C: Small batchable polish (next batch candidates)
+
+- `D-K21A-03` [S] — Redis `incr` rate-limit key leak (no TTL) in `memory_remember`.
+- `D-K21A-04` [S] — `get_tools_redis()` singleton never closed.
+- `D-PHASE6-REASONING-CONTENT` [S] — read `reasoning_content` from chat aggregator (DeepSeek-R1, o1 put answers there).
+- `D-PHASE6-RERANK-CANCEL-ON-TIMEOUT` [S-M] — gateway job leaks when `wait_for(timeout=1.0s)` cancels SDK task.
+- `D-P2-EXTRACTOR-VERSION-DEV-RECOMPUTE` — ✅ already cleared in cont.9 bundle (this row label is stale; remove next batch).
+
+Per `feedback_batch_small_tasks`: next session can batch 3-4 of these into one workflow pass.
+
+## Status snapshot — 5-phase hierarchical extraction
+
+| Phase | Status |
+|---|---|
+| P1 Structural Decomposer | ✅ shipped (sessions 62-63) + live-smoked |
+| P2 Cache + Leaf Core | ✅ MVP shipped (session 63) + per-op version migrated (cont.7) + stale-claim hook (cont.8) |
+| P3 Hierarchical Reduce + Summaries | ✅ shipped (sessions 64-66 + cont.5 audit fix + cont.6 prune endpoint + cont.11 worker span) |
+| P4 Semantic Chunking Escape Valve | not started — not critical-path |
+| P5 Gated LLM Coref + Multi-res Refinement | not started — not critical-path |
+
+**50MB local capability:** P1+P2+P3 shipped + all known correctness bugs from cascade smoke cleared. Pending: Track A model swap + baseline reruns.
+
+## Status snapshot — observability (Phase 6c)
+
+| Item | Status |
+|---|---|
+| 6c-α/β/γ baseline (W3C tracecontext across services) | ✅ shipped (sessions 53-57) |
+| Trace-id unification (X-Trace-Id ↔ OTel trace_id) | ✅ shipped (cont.10) |
+| Worker-ai per-job parent span | ✅ shipped (cont.11) |
+| Mode-3 intent-classifier glossary-unavailable counter | ✅ shipped (cont.9) |
+| DB-span instrumentation (asyncpg/pgx/Neo4j) | ❌ deferred — Track B |
+| Tempo durability beyond dev | ❌ deferred — production polish |
+| Metrics + log correlation (vs traces only) | ❌ deferred — production polish |
+
+## Status snapshot — billing (Phase 6a)
+
+| Item | Status |
+|---|---|
+| Subsystem A (user budget guardrail) for jobs | ✅ shipped |
+| Subsystem B (platform free tier + credits) for jobs | ✅ shipped |
+| Streaming guardrail (chat) | ✅ shipped + writes usage_logs (cont.12) |
+| Subsystem A for stt-multipart | ❌ deferred (`D-PHASE6A-STT-MULTIPART-GUARDRAIL`) |
+| `EstimateNChunks` accounts for chunk overlap | ✅ shipped (cont.13) |
+| `affordableMaxTokens` reserves quantum headroom | ✅ shipped (cont.13) |
+| `worker.settleBilling` integration test | ❌ deferred (Track B) |
+| `account_balances` dead-code cleanup | ❌ deferred (Track B) |
+| Retry double-count guard | ❌ deferred (Track B) |
+
+## Recently cleared this session (cont.4 → cont.13)
+
+D-EXTRACTION-CONTEXT-FIX-STAGE-4 · D-P3-BOOK-SUMMARY-PERSIST-AUDIT · D-P3-INDEX-PRUNE-ENDPOINT · D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION · D-P2-STALE-CLAIM-LIFESPAN-HOOK · D-WORKER-INFRA-CONFIG-TEST · D-P2-EXTRACTOR-VERSION-DEV-RECOMPUTE · D-P3-INTENT-CLASSIFIER-GLOSSARY-METRIC · D-PHASE6C-TRACE-ID-UNIFY · D-PHASE6C-WORKERAI-JOB-SPAN · D-PHASE6A-BETA-STREAM-RECORD · D-PHASE6A-NCHUNKS-OVERLAP · D-PHASE6A-CAP-ROUNDUP · D-PHASE6A-BETA-402-MESSAGE (stale row) · D-K17.2a-02 (stale row) · D-K4a-02 (stale row).
+
+## Operator notes
+
+- All 10 commits pushed to `origin/main`. No local-only state.
+- Knowledge-service + chat-service + provider-registry-service + worker-ai images rebuilt + deployed mid-session as their changes landed. All healthy at end of session.
+- `extraction.summarize` Redis stream had 109 entries pre-cont.5 (the bug). Post-fix, future jobs should leave only the 3 logical messages per book in the stream. Worth monitoring on next extraction run.
+- New `billing.UsdQuantum` constant is exported — other Go callers reasoning about USD precision can now import it instead of redefining `1e-8`.
+- Test bug discovered + fixed in cont.12 (`TestStreamGuard_Settle_Dispatch` was last-body capture): pre-existing bug, would have failed silently if `/record` landed without the filter. Pattern worth remembering: when an httpest stub captures "the last body" and a feature adds a second POST, the test silently asserts on the wrong payload.
+
+---
+
+# Historical handoff — Session 66 (P3 Router MVP shipped)
+
+> Content below preserved from the prior session's handoff. Refer to SESSION_PATCH.md for authoritative state.
+
 > **Date:** 2026-05-23 (sessions 62-66 — P1+P2+P3 design+Foundation+Integration+Router MVP, pending P3 Router commit)
 > **HEAD:** `faeb9b07` (P3 Integration) → pending P3 Router commit. **Branch 1 commit ahead of origin** after Integration push.
 > **Branch:** `main`.
