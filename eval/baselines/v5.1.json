@@ -1,0 +1,93 @@
+{
+  "renders": {
+    "baseline_s7": {
+      "temperature_gradient": 99.4,
+      "lat_banding": 72.0,
+      "precipitation_gradient": 82.4,
+      "continentality": 97.2,
+      "sanity": 98.7,
+      "composite": 89.53
+    },
+    "baseline_s13": {
+      "temperature_gradient": 99.3,
+      "lat_banding": 73.5,
+      "precipitation_gradient": 79.0,
+      "continentality": 100.0,
+      "sanity": 100.0,
+      "composite": 90.05
+    },
+    "baseline_s23": {
+      "temperature_gradient": 99.6,
+      "lat_banding": 69.2,
+      "precipitation_gradient": 88.4,
+      "continentality": 100.0,
+      "sanity": 92.4,
+      "composite": 88.94
+    },
+    "baseline_s42": {
+      "temperature_gradient": 99.5,
+      "lat_banding": 70.6,
+      "precipitation_gradient": 89.2,
+      "continentality": 100.0,
+      "sanity": 97.6,
+      "composite": 90.42
+    },
+    "baseline_s99": {
+      "temperature_gradient": 99.8,
+      "lat_banding": 61.6,
+      "precipitation_gradient": 91.9,
+      "continentality": 100.0,
+      "sanity": 99.6,
+      "composite": 89.06
+    },
+    "hemi_eq": {
+      "temperature_gradient": 99.4,
+      "lat_banding": 72.0,
+      "precipitation_gradient": 82.4,
+      "continentality": 97.2,
+      "sanity": 98.7,
+      "composite": 89.53
+    },
+    "hemi_north": {
+      "temperature_gradient": 99.4,
+      "lat_banding": 79.6,
+      "precipitation_gradient": 81.5,
+      "continentality": 100.0,
+      "sanity": 99.9,
+      "composite": 91.95
+    },
+    "hemi_south": {
+      "temperature_gradient": 99.3,
+      "lat_banding": 77.7,
+      "precipitation_gradient": 90.6,
+      "continentality": 100.0,
+      "sanity": 100.0,
+      "composite": 92.84
+    },
+    "scenario_snowball": {
+      "temperature_gradient": 99.6,
+      "lat_banding": 99.3,
+      "precipitation_gradient": 82.4,
+      "continentality": 6.6,
+      "sanity": 100.0,
+      "composite": 83.07
+    },
+    "scenario_hothouse": {
+      "temperature_gradient": 99.1,
+      "lat_banding": 78.8,
+      "precipitation_gradient": 80.0,
+      "continentality": 100.0,
+      "sanity": 99.9,
+      "composite": 91.45
+    },
+    "scenario_desert": {
+      "temperature_gradient": 99.4,
+      "lat_banding": 57.0,
+      "precipitation_gradient": 83.7,
+      "continentality": 100.0,
+      "sanity": 94.1,
+      "composite": 85.47
+    }
+  },
+  "mean_composite": 89.3
+}

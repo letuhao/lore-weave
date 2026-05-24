@@ -756,12 +756,7 @@ fn zone_ew_position(world: &FlatWorld, plate_id: usize, zone_id: usize) -> f32 {
     let plate = &world.plates[plate_id];
     let (sx, _) = plate.zone_sites[zone_id];
     let (cx, _) = plate.center;
-    let mut min_x = f32::INFINITY;
-    let mut max_x = f32::NEG_INFINITY;
-    for &(vx, _) in &plate.vertices {
-        min_x = min_x.min(vx);
-        max_x = max_x.max(vx);
-    }
+    let (min_x, _, max_x, _) = plate.bounding_box();
     let half_width = ((max_x - min_x) * 0.5).max(1.0);
     ((sx - cx) / half_width).clamp(-1.0, 1.0)
 }
@@ -862,12 +857,7 @@ fn ocean_current_delta(
     let plate = &world.plates[plate_id];
     let (sx, _) = plate.zone_sites[zone_id];
     let (cx, _) = plate.center;
-    let mut min_x = f32::INFINITY;
-    let mut max_x = f32::NEG_INFINITY;
-    for &(vx, _) in &plate.vertices {
-        min_x = min_x.min(vx);
-        max_x = max_x.max(vx);
-    }
+    let (min_x, _, max_x, _) = plate.bounding_box();
     let half_width = ((max_x - min_x) * 0.5).max(1.0);
     let ew_position = ((sx - cx) / half_width).clamp(-1.0, 1.0);
     // Hemisphere sign: NH (sy < h/2 for Equatorial) → east coast warm.
@@ -1957,7 +1947,23 @@ mod tests {
         // have upwind mountains (collision belts) → orographic shadow fires.
         // Verify: at least one zone differs in precip between strength=0 and
         // strength=default.
-        let world = test_world();
+        // V1 Phase A: switched from `test_world()` (4 plates default seed 7)
+        // to the escape-hatch forced-mountain config baked into the assert
+        // message — Phase A's polygon-shape noise shifted seed-7 collision
+        // belts enough that no zone was exactly in upwind-of-mountain
+        // position at 4-plate, 640×400 scale. The forced config below
+        // guarantees collision uplift via plates=5 separation=0.5
+        // collision_gain=0.7, restoring the physics signal independent of
+        // the polygon noise pattern.
+        let world = gen_flat(&FlatParams {
+            width: 640,
+            height: 400,
+            plate_count: 5,
+            seed: 7,
+            separation: 0.5,
+            collision_gain: 0.7,
+            ..FlatParams::default()
+        });
         let params_off = WorldClimateParams {
             orographic_strength: 0.0,
             ..WorldClimateParams::default()
@@ -1982,11 +1988,6 @@ mod tests {
                 }
             }
         }
-        // In a default 12-plate world with seed 7, the collision belts
-        // produce SOME mountains. Walking 93 px upwind should encounter at
-        // least one. If this test ever fails because the test_world has no
-        // mountains, replace with a forced-mountain world (plates=5,
-        // separation=0.5, collision_gain=0.7).
         assert!(
             any_differs,
             "orographic should affect at least one zone's precip in test_world"

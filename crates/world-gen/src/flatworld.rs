@@ -69,8 +69,12 @@ impl Default for FlatParams {
             // more monoculture seeds.
             plate_count: 12,
             seed: 1,
-            min_vertices: 6,
-            max_vertices: 11,
+            // V1 Phase A: bump 6/11 → 24/48 so plate outlines stop looking
+            // like a kid's drawing — enough vertices to host multi-octave
+            // noise deformation (bays + peninsulas) without aliasing the
+            // low-freq lobes. See docs/plans/2026-05-25-world-map-v1-buildout.md §3.A.1.
+            min_vertices: 24,
+            max_vertices: 48,
             // Radius as a fraction of the centre pitch: just over 0.5 so
             // adjacent plates overlap in a thin seam (the boundary), not a
             // full stack — Earth-like. With `separation` ≈ 0.9 the closest
@@ -96,50 +100,230 @@ pub const BASE_LEVEL: f32 = 0.35;
 /// Elevation of the void (uncovered space between plates).
 pub const VOID_LEVEL: f32 = 0.0;
 
-/// One tectonic plate: a simple (non-self-intersecting) polygon in pixel
-/// coordinates, ordered counter-clockwise around its centre.
+/// V1 Phase A v3.0: a single closed polygon ring. A [`Plate`] now holds 1+
+/// of these (the first is the **primary** continent; subsequent entries are
+/// satellite islands once v3.3 ships true archipelago generation).
+pub type Polygon = Vec<(f32, f32)>;
+
+/// V1 Phase A v3.0: deterministic size class for plate generation. Real
+/// continental landmasses span ~120× area ratio (Eurasia 54.8M km² vs
+/// Baffin 0.5M km²) — uniform sampling can't capture that. Each rank gets
+/// a calibrated radius band; total expected area across all ranks matches
+/// the pre-v3.0 distribution within 5% so the climate eval composite
+/// stays stable.
+///
+/// Distribution for the default 12-plate world: 1 Giant + 2 Large + 3
+/// Medium + 4 Small + 2 Micro. See `assign_size_ranks`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+pub enum SizeRank {
+    /// Eurasia-scale supercontinent (~1.6× per-rank-mean area). One per world.
+    Giant,
+    /// Africa / N.America / S.America scale.
+    Large,
+    /// Australia / Antarctica / Greenland scale.
+    Medium,
+    /// Madagascar / Borneo / Sumatra scale.
+    Small,
+    /// Iceland / Hispaniola / island microplate scale.
+    Micro,
+}
+
+impl SizeRank {
+    /// Radius band `(r_min, r_max)` in units of `pitch = sqrt(area / plate_count)`.
+    /// Calibrated so the default 12-plate distribution preserves expected
+    /// total land area within 5% of pre-v3.0 (`12 × π × 0.34 × pitch² ≈ 12.76`).
+    pub fn radius_band(self) -> (f32, f32) {
+        match self {
+            SizeRank::Giant => (1.00, 1.20),
+            SizeRank::Large => (0.70, 0.85),
+            SizeRank::Medium => (0.50, 0.62),
+            SizeRank::Small => (0.28, 0.40),
+            SizeRank::Micro => (0.15, 0.22),
+        }
+    }
+
+    /// Aspect ratio range `(min, max)` — most ranks slightly anisotropic,
+    /// large ranks more so (Eurasia 2.3:1 E-W; Italy 4:1 NW-SE).
+    pub fn aspect_band(self) -> (f32, f32) {
+        match self {
+            SizeRank::Giant => (1.3, 2.5),    // forced elongation (Eurasia-like)
+            SizeRank::Large => (1.0, 2.0),
+            SizeRank::Medium => (1.0, 1.6),
+            SizeRank::Small => (1.0, 2.0),    // small but can be peninsular
+            SizeRank::Micro => (1.0, 1.4),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SizeRank::Giant => "Giant",
+            SizeRank::Large => "Large",
+            SizeRank::Medium => "Medium",
+            SizeRank::Small => "Small",
+            SizeRank::Micro => "Micro",
+        }
+    }
+}
+
+/// V1 Phase A v3.0: assign size ranks to `n` plates deterministically.
+/// Default 12-plate distribution: 1 Giant + 2 Large + 3 Medium + 4 Small + 2
+/// Micro. For other counts, scale proportionally (giant always ≥1 for n≥1).
+pub fn assign_size_ranks(n: usize) -> Vec<SizeRank> {
+    if n == 0 { return Vec::new(); }
+    if n == 12 {
+        // Canonical hand-tuned distribution for the reference world.
+        return vec![
+            SizeRank::Giant,
+            SizeRank::Large, SizeRank::Large,
+            SizeRank::Medium, SizeRank::Medium, SizeRank::Medium,
+            SizeRank::Small, SizeRank::Small, SizeRank::Small, SizeRank::Small,
+            SizeRank::Micro, SizeRank::Micro,
+        ];
+    }
+    // Scaled fallback: 8% Giant, 17% Large, 25% Medium, 33% Small, 17% Micro.
+    let weights = [
+        (SizeRank::Giant, 0.08),
+        (SizeRank::Large, 0.17),
+        (SizeRank::Medium, 0.25),
+        (SizeRank::Small, 0.33),
+        (SizeRank::Micro, 0.17),
+    ];
+    let mut counts: Vec<(SizeRank, usize)> = weights
+        .iter()
+        .map(|&(r, w)| (r, ((n as f32) * w).round() as usize))
+        .collect();
+    // Guarantee at least 1 Giant; absorb the deficit/surplus into Small.
+    if counts[0].1 == 0 { counts[0].1 = 1; }
+    let total: usize = counts.iter().map(|(_, c)| *c).sum();
+    if total < n {
+        counts[3].1 += n - total;
+    } else if total > n {
+        let mut over = total - n;
+        for (_, c) in counts.iter_mut().rev() {
+            if over == 0 { break; }
+            let take = (*c).min(over);
+            *c -= take;
+            over -= take;
+        }
+    }
+    counts.into_iter().flat_map(|(r, c)| std::iter::repeat_n(r, c)).collect()
+}
+
+// ── V1 Phase A: polygon realism constants ──────────────────────────────────
+//
+// Vertex deformation: multi-octave fbm warps each polygon vertex radially.
+// AMP=0.30 keeps r in roughly [0.7·radius, 1.3·radius] (fbm range ~±0.71
+// × 0.30 = ±0.21 on the (1 + ...) scale) — visibly more organic than the
+// old smooth octagons, small enough to keep the angular spoke layout
+// simple and to preserve the climate eval composite (~±1pt). FREQ=1.5 + 3
+// octaves gives ~4-6 main lobes per plate perimeter at octave 1
+// (continent-scale capes/bays), cascading to ~10 / ~20 lobes for smaller
+// bumps and inlets. AMP=0.40 was tried but added a -6pt regression on a
+// single eval seed (s42) — defer pushing further to Phase B+ when more
+// rendering polish is in place to mask the geometry change.
+//
+// Crucially the old per-vertex random shrink (35% range, RNG-per-vertex)
+// is GONE — at high vertex counts (24-48) it produced spiky stars instead
+// of organic shapes. The shrink is now a constant bias derived from
+// `edge_jitter` so E[r] still matches old behavior (preserves land:ocean
+// ratio), while multi-octave noise carries all the geometric variation.
+const EDGE_NOISE_AMP: f32 = 0.30;
+const EDGE_NOISE_FREQ: f32 = 1.5;
+const EDGE_NOISE_OCTAVES: u32 = 3;
+// Per-vertex random shrink kept for "natural character" but scaled DOWN
+// from 1.0 to avoid the spiky-star look at high vertex counts. ~0.10 means
+// 10% of the old jitter magnitude per vertex (∼3.5% radius variation at
+// default edge_jitter=0.35), which preserves the eval's per-vertex
+// variability without dominating the smooth-noise lobes visually. Bias
+// term in the vertex loop compensates so E[r] is unchanged.
+const JITTER_RESIDUAL_SCALE: f32 = 0.10;
+
+// Voronoi zone-boundary domain warp: at render time `zone_at` perturbs
+// (x, y) by fbm noise before nearest-site lookup. WAVELENGTH ≈ 1/FREQ = 50px,
+// AMP=8.0 → max displacement ≈ 8·0.71 ≈ 5.7px (fbm range ≈ [-0.71, 0.71]).
+// Safe vs sliver creation: default site spacing ≥ ~80px (12 plates, 3–7
+// zones each) → warp ≪ 0.3 × spacing, the cap recommended in spec §3.A.3.
+const ZONE_WARP_AMP: f32 = 8.0;
+const ZONE_WARP_FREQ: f32 = 0.02;
+const ZONE_WARP_OCTAVES: u32 = 2;
+
+/// One tectonic plate: a primary continent polygon + zero or more satellite
+/// island polygons (the multi-component support is wired up in v3.0; only
+/// `components.len() == 1` is produced until the Archipelago / IslandArc
+/// templates land in v3.3).
 #[derive(Debug, Clone)]
 pub struct Plate {
     pub id: usize,
     pub center: (f32, f32),
-    pub vertices: Vec<(f32, f32)>,
+    /// 1+ closed polygon rings. `components[0]` is the **primary** (largest,
+    /// first-generated) continent body; `components[1..]` are satellite
+    /// islands. Always at least 1 entry. Each polygon is simple
+    /// (non-self-intersecting), ordered counter-clockwise around its own
+    /// centre.
+    pub components: Vec<Polygon>,
     /// Drift velocity (pixels-per-tick, arbitrary). Drives collision strength.
     pub velocity: (f32, f32),
     /// Voronoi sites for the plate's interior zones — [`Plate::zone_at`] assigns
     /// each interior point to its nearest site. `zone_sites.len()` = zone count.
+    /// Zones span the **union** of all components; satellite islands inherit
+    /// the nearest mainland zone.
     pub zone_sites: Vec<(f32, f32)>,
     /// Nested (depth-2) sub-zone Voronoi sites, indexed by L1 zone id:
     /// `subzone_sites[l1]` are the sub-sites belonging to zone `l1`.
     pub subzone_sites: Vec<Vec<(f32, f32)>>,
+    /// V1 Phase A: per-plate noise seed for the [`Plate::zone_at`] domain
+    /// warp (makes Voronoi seams wavy without changing site positions).
+    /// Derived deterministically from the world seed + plate id.
+    pub zone_warp_salt: u32,
+    /// V1 Phase A v3.0: deterministic size class (Giant/Large/Medium/Small/Micro).
+    /// Drives both the radius band sampled during generation and the template
+    /// choice (v3.1+).
+    pub size_rank: SizeRank,
+    /// V1 Phase A v3.0: per-plate template-determinism seed. Each generation
+    /// algorithm (v3.1 templates) seeds its randomness from this so dispatching
+    /// to different templates doesn't interfere with cross-plate RNG order.
+    /// Reserved for v3.1+ but populated already.
+    pub shape_seed: u32,
 }
 
 impl Plate {
-    /// Point-in-polygon (ray-casting). Coordinates in the same pixel space as
-    /// [`Plate::vertices`].
-    pub fn contains(&self, x: f32, y: f32) -> bool {
-        let v = &self.vertices;
-        let mut inside = false;
-        let mut j = v.len() - 1;
-        for i in 0..v.len() {
-            let (xi, yi) = v[i];
-            let (xj, yj) = v[j];
-            // Does the horizontal ray at `y` cross edge (j → i)?
-            if (yi > y) != (yj > y) {
-                let t = (y - yi) / (yj - yi);
-                if x < xi + t * (xj - xi) {
-                    inside = !inside;
-                }
+    /// Primary (first / largest) component polygon. Always present.
+    pub fn primary(&self) -> &Polygon { &self.components[0] }
+
+    /// Axis-aligned bounding box across **all** components: `(min_x, min_y, max_x, max_y)`.
+    pub fn bounding_box(&self) -> (f32, f32, f32, f32) {
+        let (mut minx, mut miny) = (f32::INFINITY, f32::INFINITY);
+        let (mut maxx, mut maxy) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+        for poly in &self.components {
+            for &(x, y) in poly {
+                minx = minx.min(x);
+                miny = miny.min(y);
+                maxx = maxx.max(x);
+                maxy = maxy.max(y);
             }
-            j = i;
         }
-        inside
+        (minx, miny, maxx, maxy)
+    }
+
+    /// Point-in-polygon (ray-casting), checking **every** component. Coordinates
+    /// in the same pixel space as the plate's polygons.
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        self.components.iter().any(|poly| point_in_polygon(poly, x, y))
     }
 
     /// Index of the interior zone containing `(x, y)` — the nearest Voronoi
     /// site. `None` if the plate has no zones. (Does not check `contains`; the
     /// caller passes interior points.)
+    ///
+    /// **V1 Phase A**: applies a domain warp to `(x, y)` before the
+    /// nearest-site search so zone boundaries become wavy instead of
+    /// straight Voronoi edges, without moving the underlying sites
+    /// (climate and adjacency code still index `zone_sites[zone_id]`
+    /// directly). The warp scale is small enough vs. site spacing that no
+    /// slivers form; see [`ZONE_WARP_AMP`].
     pub fn zone_at(&self, x: f32, y: f32) -> Option<usize> {
-        nearest_site(&self.zone_sites, x, y)
+        let (qx, qy) = warped_query(x, y, self.zone_warp_salt);
+        nearest_site(&self.zone_sites, qx, qy)
     }
 
     /// Nested (L1 zone, L2 sub-zone) indices containing `(x, y)`: the nearest
@@ -154,6 +338,50 @@ impl Plate {
             .unwrap_or(0);
         Some((l1, l2))
     }
+}
+
+/// Point-in-polygon ray-cast for a single closed ring. Returns true if `(x, y)`
+/// is inside the polygon (exclusive of the boundary itself, by convention).
+fn point_in_polygon(poly: &Polygon, x: f32, y: f32) -> bool {
+    let n = poly.len();
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = poly[i];
+        let (xj, yj) = poly[j];
+        if (yi > y) != (yj > y) {
+            let t = (y - yi) / (yj - yi);
+            if x < xi + t * (xj - xi) {
+                inside = !inside;
+            }
+        }
+        j = i;
+    }
+    inside
+}
+
+/// V1 Phase A: domain warp for [`Plate::zone_at`] queries — perturbs the
+/// query position by 2D fbm so Voronoi seams render as wavy curves instead
+/// of straight edges. X and Y warp use decorrelated noise (different salts
+/// + offset) so the displacement is genuinely 2D, not a 1D ridge.
+fn warped_query(x: f32, y: f32, salt: u32) -> (f32, f32) {
+    let salt_y = salt.wrapping_add(0xDEAD_BEEF);
+    let wx = crate::noise::fbm(
+        x * ZONE_WARP_FREQ,
+        y * ZONE_WARP_FREQ,
+        salt,
+        ZONE_WARP_OCTAVES,
+    );
+    let wy = crate::noise::fbm(
+        x * ZONE_WARP_FREQ,
+        y * ZONE_WARP_FREQ,
+        salt_y,
+        ZONE_WARP_OCTAVES,
+    );
+    (x + wx * ZONE_WARP_AMP, y + wy * ZONE_WARP_AMP)
 }
 
 /// Index of the nearest site to `(x, y)` (`None` if empty).
@@ -251,28 +479,88 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
 
     let max_zones = params.max_zones.max(params.min_zones).max(1);
 
+    // V1 Phase A v3.0: deterministic size-rank assignment. For the default
+    // 12-plate world this is `[Giant, Large, Large, Medium×3, Small×4, Micro×2]`
+    // — 120×-area-ratio diversity matching real-Earth continental landmasses.
+    let size_ranks = assign_size_ranks(params.plate_count);
+
     let plates = centers
         .into_iter()
         .enumerate()
         .map(|(id, (cx, cy))| {
-            let radius =
-                pitch * lerp(params.min_radius_frac, params.max_radius_frac, rng.next_f32());
+            // V1 Phase A v3.0: Pareto-style size diversity via per-rank radius
+            // bands instead of one global [min_radius_frac, max_radius_frac].
+            // Old `params.min/max_radius_frac` is no longer consulted (kept on
+            // FlatParams for backwards struct compat; v3.1 templates can read
+            // them if a particular template wants to override per-rank bands).
+            let rank = size_ranks.get(id).copied().unwrap_or(SizeRank::Medium);
+            let (rmin, rmax) = rank.radius_band();
+            let radius = pitch * lerp(rmin, rmax, rng.next_f32());
+
+            // V1 Phase A v3.0: anisotropic (rx, ry, theta_rot) instead of
+            // scalar radius. rx · ry = radius² preserves expected area for
+            // any aspect — climate-eval-stable. Most ranks slightly
+            // elongated; Giant/Large/Small forced more anisotropic to
+            // produce Eurasia/Italy/Korea-like shapes.
+            let (amin, amax) = rank.aspect_band();
+            let aspect = lerp(amin, amax, rng.next_f32());
+            let rx = radius * aspect.sqrt();
+            let ry = radius / aspect.sqrt();
+            let theta_rot = rng.next_f32() * TAU;
 
             let nv = params.min_vertices
                 + (rng.next_f32() * (max_v - params.min_vertices + 1) as f32) as usize;
             let nv = nv.clamp(3, max_v.max(3));
 
             // Even angular spokes + small per-spoke angular wobble keep the
-            // ring ordered (simple polygon), while radial jitter makes the
-            // outline ragged rather than a clean circle.
+            // ring ordered (simple polygon).
+            //
+            // V1 Phase A v1: multi-octave fbm noise on the radius adds the
+            // organic lobes the spec wanted (low-freq → bay-scale; mid/high
+            // → smaller bumps). Sampled at (cos·FREQ, sin·FREQ) so the noise
+            // is naturally periodic around the perimeter.
+            //
+            // V1 Phase A v3.0: per-vertex computation uses ELLIPTICAL local
+            // coords (rx·cos, ry·sin) then rotates by theta_rot, instead of
+            // r·(cos, sin). Anisotropy makes Giant/Large plates look like
+            // Eurasia (2.3:1 E-W) instead of fuzzy disks.
+            //
+            // Per-vertex RNG jitter is KEPT (the spec's "small residual
+            // jitter for character") but scaled down by JITTER_RESIDUAL_SCALE
+            // so the visual no longer reads as spiky stars at 24-48 verts;
+            // `shrink_bias` compensates exactly so E[r] still equals
+            // `(1 − edge_jitter/2) × radius` (the old expectation that
+            // governs land:ocean ratio → climate eval composite is stable
+            // within ±2pt).
+            let plate_salt =
+                (params.seed as u32).wrapping_mul(0x9E37_79B9) ^ (id as u32);
             let phase = rng.next_f32() * TAU;
-            let vertices = (0..nv)
+            let cos_t = theta_rot.cos();
+            let sin_t = theta_rot.sin();
+            // Calibrated so E[shrink × bias] = 1 − edge_jitter/2 (preserves
+            // mean polygon area despite the residual scale being < 1.0).
+            let target_mean = 1.0 - params.edge_jitter * 0.5;
+            let residual_mean = 1.0 - params.edge_jitter * JITTER_RESIDUAL_SCALE * 0.5;
+            let shrink_bias = target_mean / residual_mean.max(1e-3);
+            let primary: Polygon = (0..nv)
                 .map(|k| {
-                    let base = phase + TAU * (k as f32 + 0.0) / nv as f32;
+                    let base = phase + TAU * (k as f32) / nv as f32;
                     let wobble = (rng.next_f32() - 0.5) * (TAU / nv as f32) * 0.6;
                     let ang = base + wobble;
-                    let r = radius * (1.0 - params.edge_jitter * rng.next_f32());
-                    (cx + r * ang.cos(), cy + r * ang.sin())
+                    let nx = ang.cos() * EDGE_NOISE_FREQ;
+                    let ny = ang.sin() * EDGE_NOISE_FREQ;
+                    let noise =
+                        crate::noise::fbm(nx, ny, plate_salt, EDGE_NOISE_OCTAVES);
+                    // Small per-vertex random shrink: ~3% range at default
+                    // edge_jitter=0.35 → enough to give honest character,
+                    // not so much that high-vertex polygons look fuzzy.
+                    let residual =
+                        1.0 - params.edge_jitter * JITTER_RESIDUAL_SCALE * rng.next_f32();
+                    let radial_factor = shrink_bias * residual * (1.0 + EDGE_NOISE_AMP * noise);
+                    // Elliptical local frame, then rotate by theta_rot.
+                    let lx = rx * radial_factor * ang.cos();
+                    let ly = ry * radial_factor * ang.sin();
+                    (cx + lx * cos_t - ly * sin_t, cy + lx * sin_t + ly * cos_t)
                 })
                 .collect();
 
@@ -280,13 +568,28 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
             let vdir = mrng.next_f32() * TAU;
             let velocity = (speed * vdir.cos(), speed * vdir.sin());
 
+            // V1 Phase A: per-plate domain-warp salt for `zone_at`
+            // — distinct from `plate_salt` so the vertex noise and the
+            // zone-seam noise don't share a hash signature.
+            let zone_warp_salt =
+                (params.seed as u32).wrapping_mul(0x85EB_CA6B) ^ (id as u32).wrapping_mul(0xC2B2_AE35);
+            // V1 Phase A v3.0: per-plate template-determinism seed.
+            // Distinct from plate_salt and zone_warp_salt so v3.1 templates
+            // can run their own RNG without interfering with vertex/warp
+            // noise. Populated already so the struct shape is stable.
+            let shape_seed =
+                (params.seed as u32).wrapping_mul(0x27D4_EB2F) ^ (id as u32).wrapping_mul(0x1656_67B1);
+
             let mut plate = Plate {
                 id,
                 center: (cx, cy),
-                vertices,
+                components: vec![primary],
                 velocity,
                 zone_sites: Vec::new(),
                 subzone_sites: Vec::new(),
+                zone_warp_salt,
+                size_rank: rank,
+                shape_seed,
             };
             let zone_count = params.min_zones
                 + (zrng.next_f32() * (max_zones - params.min_zones + 1) as f32) as usize;
@@ -393,14 +696,7 @@ fn place_centers(rng: &mut Rng, w: f32, h: f32, n: usize, min_sep: f32) -> Vec<(
 /// its bounding box, kept if inside). Falls back to the centre if the polygon
 /// is too thin to hit.
 fn sample_zone_sites(plate: &Plate, count: usize, rng: &mut Rng) -> Vec<(f32, f32)> {
-    let (mut minx, mut miny) = (f32::INFINITY, f32::INFINITY);
-    let (mut maxx, mut maxy) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
-    for &(x, y) in &plate.vertices {
-        minx = minx.min(x);
-        miny = miny.min(y);
-        maxx = maxx.max(x);
-        maxy = maxy.max(y);
-    }
+    let (minx, miny, maxx, maxy) = plate.bounding_box();
     let mut sites = Vec::with_capacity(count);
     let cap = count * 60;
     let mut tries = 0;
@@ -422,14 +718,7 @@ fn sample_zone_sites(plate: &Plate, count: usize, rng: &mut Rng) -> Vec<(f32, f3
 /// the plate **and** whose nearest L1 site is `l1` (i.e. inside that zone's
 /// Voronoi cell). Falls back to the L1 site if the cell is too thin to hit.
 fn sample_subzone_sites(plate: &Plate, l1: usize, count: usize, rng: &mut Rng) -> Vec<(f32, f32)> {
-    let (mut minx, mut miny) = (f32::INFINITY, f32::INFINITY);
-    let (mut maxx, mut maxy) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
-    for &(x, y) in &plate.vertices {
-        minx = minx.min(x);
-        miny = miny.min(y);
-        maxx = maxx.max(x);
-        maxy = maxy.max(y);
-    }
+    let (minx, miny, maxx, maxy) = plate.bounding_box();
     let mut sites = Vec::with_capacity(count);
     let cap = count * 120;
     let mut tries = 0;
@@ -620,8 +909,12 @@ pub struct PlateData {
     pub center: [f32; 2],
     /// Drift velocity — drives collision strength at boundaries.
     pub velocity: [f32; 2],
-    /// Polygon outline (world pixels).
-    pub boundary: Vec<[f32; 2]>,
+    /// V1 Phase A v3.0: list of polygon outlines. `boundaries[0]` is the
+    /// primary continent; subsequent entries are satellite islands (single
+    /// entry until v3.3 ships Archipelago templates).
+    pub boundaries: Vec<Vec<[f32; 2]>>,
+    /// V1 Phase A v3.0: deterministic size class.
+    pub size_rank: &'static str,
     pub zones: Vec<ZoneData>,
 }
 
@@ -657,7 +950,12 @@ pub fn export(world: &FlatWorld, seed: u64) -> WorldData {
             path: vec![p.id as u32],
             center: [p.center.0, p.center.1],
             velocity: [p.velocity.0, p.velocity.1],
-            boundary: p.vertices.iter().map(|&(x, y)| [x, y]).collect(),
+            boundaries: p
+                .components
+                .iter()
+                .map(|poly| poly.iter().map(|&(x, y)| [x, y]).collect())
+                .collect(),
+            size_rank: p.size_rank.as_str(),
             zones: p
                 .zone_sites
                 .iter()
@@ -755,7 +1053,8 @@ mod tests {
         let world = generate(&p);
         assert_eq!(world.plates.len(), 7);
         for plate in &world.plates {
-            assert!(plate.vertices.len() >= 3, "polygon needs ≥3 vertices");
+            assert!(!plate.components.is_empty(), "plate needs ≥1 component");
+            assert!(plate.primary().len() >= 3, "polygon needs ≥3 vertices");
         }
     }
 
@@ -765,10 +1064,13 @@ mod tests {
         let a = generate(&p);
         let b = generate(&p);
         for (pa, pb) in a.plates.iter().zip(&b.plates) {
-            assert_eq!(pa.vertices.len(), pb.vertices.len());
-            for (va, vb) in pa.vertices.iter().zip(&pb.vertices) {
-                assert_eq!(va.0.to_bits(), vb.0.to_bits());
-                assert_eq!(va.1.to_bits(), vb.1.to_bits());
+            assert_eq!(pa.components.len(), pb.components.len());
+            for (poly_a, poly_b) in pa.components.iter().zip(&pb.components) {
+                assert_eq!(poly_a.len(), poly_b.len());
+                for (va, vb) in poly_a.iter().zip(poly_b) {
+                    assert_eq!(va.0.to_bits(), vb.0.to_bits());
+                    assert_eq!(va.1.to_bits(), vb.1.to_bits());
+                }
             }
         }
     }
@@ -814,15 +1116,22 @@ mod tests {
         Plate {
             id,
             center: c,
-            vertices: vec![
+            components: vec![vec![
                 (c.0 - r, c.1 - r),
                 (c.0 + r, c.1 - r),
                 (c.0 + r, c.1 + r),
                 (c.0 - r, c.1 + r),
-            ],
+            ]],
             velocity,
             zone_sites: vec![c],
             subzone_sites: vec![vec![c]],
+            // V1 Phase A: deterministic per-plate salt for `zone_at` warp.
+            // Tests that don't care about warp can leave this at 0.
+            zone_warp_salt: 0,
+            // V1 Phase A v3.0: Medium rank is a neutral default for test
+            // helpers (used by collision/elevation tests, not size-aware).
+            size_rank: SizeRank::Medium,
+            shape_seed: 0,
         }
     }
 
@@ -986,6 +1295,117 @@ mod tests {
         // Serializes cleanly.
         let json = serde_json::to_string(&data).expect("serialize");
         assert!(json.contains("\"base_elevation\""));
+    }
+
+    // ── V1 Phase A: polygon-realism regression tests ─────────────────────
+
+    #[test]
+    fn phase_a_defaults_use_high_vertex_count() {
+        // V1 Phase A: defaults bumped to 24..=48 vertices so plate outlines
+        // stop looking like a child's drawing. Regression: future tweaks
+        // mustn't quietly drop back to the toy-era 6..11 range.
+        let p = FlatParams::default();
+        assert!(p.min_vertices >= 24, "min_vertices regressed: {}", p.min_vertices);
+        assert!(p.max_vertices >= 48, "max_vertices regressed: {}", p.max_vertices);
+        let world = generate(&p);
+        for plate in &world.plates {
+            let n = plate.primary().len();
+            assert!(
+                n >= p.min_vertices,
+                "plate {} primary has {} vertices (< min {})",
+                plate.id, n, p.min_vertices,
+            );
+            assert!(
+                n <= p.max_vertices,
+                "plate {} primary has {} vertices (> max {})",
+                plate.id, n, p.max_vertices,
+            );
+        }
+    }
+
+    #[test]
+    fn phase_a_vertex_noise_keeps_centre_inside() {
+        // V1 Phase A: multi-octave fbm warps each vertex radially. AMP=0.18
+        // is small enough that the spoke-ordered polygon stays simple
+        // (non-self-intersecting), so every plate must still contain its
+        // own centre. Repeat across several seeds to catch unlucky noise.
+        for seed in [1u64, 7, 13, 23, 42, 99, 555, 1024] {
+            let world = generate(&FlatParams { seed, ..Default::default() });
+            for plate in &world.plates {
+                assert!(
+                    plate.contains(plate.center.0, plate.center.1),
+                    "seed {seed} plate {}: centre must stay inside post-warp",
+                    plate.id,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn phase_a_zone_warp_is_deterministic() {
+        // V1 Phase A: `zone_at` applies a domain warp keyed by
+        // `Plate::zone_warp_salt`. Same plate + same (x, y) must yield the
+        // same zone every call — otherwise climate / adjacency / hash pins
+        // would jitter render-to-render.
+        let world = generate(&FlatParams::default());
+        let plate = &world.plates[0];
+        for &(x, y) in &[(100.0_f32, 100.0_f32), (200.0, 300.0), (500.0, 250.0)] {
+            let a = plate.zone_at(x, y);
+            let b = plate.zone_at(x, y);
+            assert_eq!(a, b, "zone_at must be deterministic at ({x}, {y})");
+        }
+    }
+
+    #[test]
+    fn phase_a_zone_warp_actually_perturbs_lookup() {
+        // V1 Phase A: prove the warp is wired up — for a non-zero salt,
+        // at least ONE query position in a dense grid must land in a
+        // different zone than the unwarped (salt=0) lookup would give.
+        // Otherwise the warp would be effectively dead code.
+        let world = generate(&FlatParams { plate_count: 6, seed: 7, ..Default::default() });
+        let plate = world
+            .plates
+            .iter()
+            .find(|p| p.zone_sites.len() >= 4 && p.zone_warp_salt != 0)
+            .expect("at least one plate with ≥4 zones and a warp salt");
+        let mut differs = 0u32;
+        // Sample a coarse grid covering the plate's bounding box.
+        let (minx, miny, maxx, maxy) = plate.bounding_box();
+        let steps = 24;
+        for j in 0..steps {
+            for i in 0..steps {
+                let x = lerp(minx, maxx, i as f32 / (steps - 1) as f32);
+                let y = lerp(miny, maxy, j as f32 / (steps - 1) as f32);
+                if !plate.contains(x, y) { continue; }
+                let warped = plate.zone_at(x, y);
+                let plain = nearest_site(&plate.zone_sites, x, y);
+                if warped != plain {
+                    differs += 1;
+                }
+            }
+        }
+        assert!(
+            differs > 0,
+            "zone-warp didn't perturb a single lookup across {}² grid pts — warp is dead code?",
+            steps,
+        );
+    }
+
+    #[test]
+    fn phase_a_zone_warp_salt_differs_per_plate() {
+        // V1 Phase A: each plate must get its own salt — otherwise all
+        // plates would share an identical noise pattern and the warp would
+        // become a global shift rather than per-plate organic boundaries.
+        let world = generate(&FlatParams::default());
+        let salts: std::collections::HashSet<u32> =
+            world.plates.iter().map(|p| p.zone_warp_salt).collect();
+        assert_eq!(
+            salts.len(),
+            world.plates.len(),
+            "all {} plates must have distinct zone_warp_salt; got {} unique",
+            world.plates.len(),
+            salts.len(),
+        );
     }
 
     #[test]

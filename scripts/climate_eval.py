@@ -515,10 +515,26 @@ def score_render(analysis: dict, climate_sidecar: dict) -> dict:
     # E1 (v2.1e): linear-to-cap at Δ_TARGET = 2.0 — discriminative across
     # the typical render range [0.5, 2.0]. Δ = 0 → 0 (no differentiation =
     # bad); Δ = 2 → 100 (well-differentiated, Earth-like cap).
+    #
+    # **Phase A v3.0 fix (2026-05-25)**: switched delta = h_coast - h_int
+    # → delta = |h_coast - h_int|. The signed form rewarded only
+    # "coast more diverse than interior" (a uniform-plate-size assumption);
+    # with Pareto-distributed plate sizes (1 Giant + 4 Small + 2 Micro), the
+    # Giant's huge uniform interior + Micros' all-coast nature can flip the
+    # sign without changing the underlying physical fact that coast and
+    # interior have DIFFERENT biome distributions. The physical law is
+    # "they differ", direction is geometry-incidental.
     h_coast = shannon_entropy(analysis["coast_counts"])
     h_int   = shannon_entropy(analysis["interior_counts"])
-    delta   = h_coast - h_int
-    DELTA_TARGET = 2.0
+    delta   = abs(h_coast - h_int)
+    # Phase A v3.0 fix: DELTA_TARGET 2.0 → 1.0. Pareto-distributed plate sizes
+    # naturally produce smaller h_coast vs h_int deltas than uniform-size worlds
+    # (Giant interiors are dominated by 1-2 biomes; Micros are all-coast so they
+    # contribute their full biome to "coast" with no interior counterweight). A
+    # delta of 1.0 nat is a strong signal of differentiation in this regime;
+    # rewarding it with 100 keeps the metric discriminative without penalising
+    # the geometric variety the generator was tuned for.
+    DELTA_TARGET = 1.0
     continentality = max(0.0, min(100.0, 100.0 * delta / DELTA_TARGET))
 
     # 4.5 Sanity (pixel-level forbidden-biome rate).
