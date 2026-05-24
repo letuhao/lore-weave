@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createWsClient, type WsClient } from '@/net/ws-client';
 import type { ServerToClient } from '@/net/protocol';
 import { Button } from '@/components/shared/Button';
+import { SERVICES } from '@/config/services';
 
 // EchoPanel — Session E V0 demo UI for verifying the WebSocket path
 // end-to-end. Sends `echo` messages to game-server's EchoRoom and
@@ -12,9 +13,12 @@ import { Button } from '@/components/shared/Button';
 //  - Type → send → see echo response
 //  - Disconnect indicator when server stops
 //  - Reconnect button when disconnected (uses stored token)
+//
+// Service URL + dev token now centralized in @/config/services (V0
+// close-out cleanup) so V1 env-var injection lands in one place.
 
-const GAME_SERVER_URL = 'ws://localhost:2567';
-const DEV_TOKEN = 'dev_internal_token';
+const GAME_SERVER_URL = SERVICES.gameServer;
+const DEV_TOKEN = SERVICES.devToken;
 
 type Status = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 

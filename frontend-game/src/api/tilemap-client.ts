@@ -7,8 +7,9 @@
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { queryKeys } from './query-keys';
+import { SERVICES } from '@/config/services';
 
-const TILEMAP_SERVICE_BASE = 'http://localhost:8220';
+const TILEMAP_SERVICE_BASE = SERVICES.tilemap;
 
 export interface TilemapHealth {
   status: 'ok' | 'down';

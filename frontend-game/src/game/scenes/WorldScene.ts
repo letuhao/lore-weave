@@ -58,6 +58,8 @@ export class WorldScene extends Phaser.Scene {
       startTile: { x: Math.floor(halfW), y: Math.floor(halfH) },
       offsetX: this.offsetX,
       offsetY: this.offsetY,
+      zoneWidth: DEFAULT_ZONE_WIDTH,
+      zoneHeight: DEFAULT_ZONE_HEIGHT,
     });
 
     // Attach input (canvas pointer → tile coords → move event).
@@ -76,9 +78,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    // HMR-friendly + scene-transition cleanup. EventBus is a module
+    // singleton so without explicit removeListener the handler closure
+    // (and thus this scene + Player) would leak across hot reloads.
     if (this.moveHandler) {
       EventBus.off('player-action', this.moveHandler);
       this.moveHandler = null;
     }
+    InputSystem.detach({ scene: this });
   }
 }

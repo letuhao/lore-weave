@@ -254,3 +254,4 @@ chat-history/
 .claude/scheduled_tasks.lock
 
 chat.txt
+frontend-game/test-results/

@@ -37,7 +37,6 @@ export function createWsClient(): WsClient {
       try {
         h(msg);
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[ws-client] handler threw', err);
       }
     }

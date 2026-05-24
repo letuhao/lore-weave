@@ -1,0 +1,111 @@
+name: Game subtree CI
+
+# Runs on PRs that touch the game subtree (frontend-game/, services/game-server/,
+# packages/*, services/tilemap-service/). Skips for novel-workflow-only changes
+# so frontend/ + other services don't pay this cost.
+#
+# Per spec AC-FG-15 the bundle size guard fails the build at >700 KB gzipped.
+# Per spec AC-FG-16 cross-browser smoke runs on chromium + firefox + webkit.
+
+on:
+  pull_request:
+    paths:
+      - 'frontend-game/**'
+      - 'services/game-server/**'
+      - 'services/tilemap-service/**'
+      - 'packages/**'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/game-subtree-ci.yml'
+  push:
+    branches: [main, 'mmo-rpg/**']
+
+concurrency:
+  group: game-subtree-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-game:
+    name: frontend-game (lint + typecheck + test + build + bundle size)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter frontend-game lint
+      - run: pnpm --filter frontend-game typecheck
+      - run: pnpm --filter frontend-game test
+      - run: pnpm --filter frontend-game build
+      - run: pnpm --filter frontend-game check:bundle-size
+
+  frontend-game-e2e:
+    name: frontend-game cross-browser e2e (AC-FG-16)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm --filter frontend-game e2e:install
+
+      - name: Run e2e cross-browser smoke
+        run: pnpm --filter frontend-game e2e:all-browsers
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend-game/playwright-report/
+          retention-days: 7
+
+  game-server:
+    name: game-server (build + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/game-server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  tilemap-service:
+    name: tilemap-service (cargo test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: true
+
+      - run: cargo test --release -p tilemap-service

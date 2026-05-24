@@ -10,12 +10,12 @@ import { Room, Client, ServerError } from 'colyseus';
 // chat) per spec §17. The pattern of onAuth + onMessage + onDispose
 // stays the same; only the message types and state schema grow.
 
-interface JoinOptions {
+export interface JoinOptions {
   jwt?: string;
   userId?: string;
 }
 
-interface AuthedUser {
+export interface AuthedUser {
   userId: string;
 }
 
@@ -23,28 +23,29 @@ interface AuthedUser {
 // V1+ Rooms will use Colyseus Schema for state sync.
 interface EmptyState {}
 
-export class EchoRoom extends Room<EmptyState, AuthedUser> {
-  /**
-   * V0 dev token check. Any non-empty jwt that matches the expected
-   * env var is accepted. Real JWT verification against auth-service is
-   * V1+ scope.
-   *
-   * Returning the user object makes it available as `client.auth` in
-   * onJoin/onLeave/onMessage handlers.
-   */
-  static expectedToken(): string {
-    return process.env.LOREWEAVE_INTERNAL_TOKEN ?? 'dev_token';
+/**
+ * Pure auth check — extracted from EchoRoom so it can be unit-tested
+ * without instantiating a full Colyseus Room. Returns the AuthedUser
+ * on success; throws ServerError on failure. V1+ replaces the body
+ * with real JWT verification against auth-service.
+ */
+export function authenticate(options: JoinOptions | undefined, expected: string): AuthedUser {
+  if (!options?.jwt) {
+    throw new ServerError(401, 'missing jwt');
   }
+  if (options.jwt !== expected) {
+    throw new ServerError(403, 'invalid jwt');
+  }
+  return { userId: options.userId ?? 'guest' };
+}
 
+export function expectedToken(): string {
+  return process.env.LOREWEAVE_INTERNAL_TOKEN ?? 'dev_token';
+}
+
+export class EchoRoom extends Room<EmptyState, AuthedUser> {
   onAuth(_client: Client, options: JoinOptions): AuthedUser {
-    const expected = EchoRoom.expectedToken();
-    if (!options?.jwt) {
-      throw new ServerError(401, 'missing jwt');
-    }
-    if (options.jwt !== expected) {
-      throw new ServerError(403, 'invalid jwt');
-    }
-    return { userId: options.userId ?? 'guest' };
+    return authenticate(options, expectedToken());
   }
 
   onCreate(): void {

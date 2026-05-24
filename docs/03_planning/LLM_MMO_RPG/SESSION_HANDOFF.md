@@ -81,7 +81,78 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — Session F: frontend-game containerized — **V0 MILESTONE COMPLETE** 🎉) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — V0 CLOSE-OUT: 5-batch debt cleanup, 27 line-items cleared) — read this first
+
+Post-V0-milestone audit caught 27 line-item debts across 6 buckets. PO
+chose "clear all V0 debts" rather than ship-and-defer. This entry tracks
+the cleanup batch landed in 1 commit. After this commit V0 is "shipped
++ swept" — no known critical debts; remaining items in DEFERRED.md are
+V1+ scope (7 entries, IDs 030-036).
+
+### Batches landed
+
+**BATCH 1 — Critical (close final spec ACs):**
+- Workflow gate Session F closed (post-review + session + commit + retro phases marked complete)
+- `docs/sessions/SESSION_PATCH.md` updated with V0 MILESTONE entry (main project session log was missing this — per CLAUDE.md mandate)
+- **AC-FG-14 HMR verified** — edited `HpBar.tsx` (`bg-rose-500` → `bg-orange-500`) → React fast-refresh hot-swapped, canvas count stayed at 1 (no recreation, no React state loss). Reverted, confirmed. Phaser scene file edit falls back to Vite controlled full-reload (default, "controlled" per spec, not silent freeze).
+- **AC-FG-16 cross-browser verified** — wrote `e2e/smoke.spec.ts` (Playwright Test) covering /login, /world-select, /play navigation + canvas mount + HUD render + EchoPanel render across **chromium + firefox + webkit**. 15/15 tests pass. Permanent regression artifact under `frontend-game/e2e/`.
+
+**BATCH 2 — Code cleanup:**
+- **Player boundary check** — `Player.walkTo` silently drops out-of-zone clicks via new `isInBounds(target)` method; constructor takes `zoneWidth`/`zoneHeight`. Previously Player tweened off the 8×8 grid into the void (visible in Session D screenshots).
+- **Centralized service URLs** — new `src/config/services.ts` exports `SERVICES.tilemap` / `SERVICES.gameServer` / `SERVICES.devToken`. Driven by Vite `VITE_*` env vars with V0 localhost defaults. `tilemap-client.ts` + `EchoPanel.tsx` import from one place instead of duplicating constants.
+- **Env-driven DEV_TOKEN** — same `SERVICES.devToken` env support. V0 default `dev_internal_token` still bundles into client JS (visible in DevTools) — added as DEFERRED #033 with explicit V1 JWT-replacement plan.
+- **InputSystem cleanup** — added `detach({ scene })` removing the pointerdown listener via per-scene handler registry. `WorldScene.shutdown()` now calls both `EventBus.off` and `InputSystem.detach` — no leaks across Vite HMR or scene transitions.
+- **`frontend-game/README.md`** — comprehensive: run instructions (one-command + dev), test commands, architecture map of `src/`, V0 capabilities, Phaser 4 quirks, env vars, V1+ scope.
+
+**BATCH 3 — Test baseline:**
+- `tests/game/Player.test.ts` — 6 tests: `isInBounds` (3 cases) + `walkTo` (in-bounds tween, out-of-bounds drop, spam-click dedup)
+- `tests/store/game-store.test.ts` — 3 tests: default vitals, `setVitals` atomic, inventory empty
+- `tests/game/EventBus.test.ts` — 3 tests: emit/listen, off removes, multiple listeners
+- `services/game-server/src/rooms/EchoRoom.test.ts` — 8 tests (`node:test`): extracted pure `authenticate(options, expected)` + `expectedToken()` from EchoRoom class so they're testable without instantiating a full Colyseus Room. Covers: missing jwt → 401, undefined options → 401, empty jwt → 401, wrong jwt → 403, valid → guest userId default, valid + userId override, env var present, env var fallback.
+- `tests/setup.ts` (vitest) — mocks `phaser` module to a minimal Node-EventEmitter-backed stub so EventBus contract tests run in jsdom without Phaser's WebGL detection blowing up
+- **Total: frontend-game 15/15 + game-server 8/8 = 23 unit tests** (was 3 before cleanup)
+
+**BATCH 4 — Tooling:**
+- `eslint.config.js` (flat config, ESLint 9) + typescript-eslint + eslint-plugin-react + eslint-plugin-react-hooks. Lint clean across `src/`.
+- `.prettierrc.json` + `.prettierignore` (singleQuote, semi, trailingComma=all, printWidth=100, eol=lf)
+- `scripts/check-bundle-size.mjs` — post-build script: reads dist/assets, gzips, asserts ≤ 700 KB (overridable via `LOREWEAVE_BUNDLE_BUDGET_KB` env). Current: 472 KB gzip, 227 KB headroom.
+- 5 new pnpm scripts: `lint`, `lint:fix`, `format`, `format:check`, `check:bundle-size`
+
+**BATCH 5 — Docs + CI:**
+- `.github/workflows/game-subtree-ci.yml` — 4 parallel jobs (frontend-game lint+typecheck+test+build+bundle, frontend-game cross-browser e2e via Playwright Test, game-server build+test, tilemap-service cargo test). Triggers on PRs touching the game subtree paths.
+- `docs/deferred/DEFERRED.md` — 7 new entries (IDs 030-036) covering V1 work that intentionally stays out of V0
+- Spec audit: scaffold matches spec §3 directory structure exactly + `src/config/` added (justified V0 cleanup centralization, V1 env-var injection target)
+- `docs/sessions/SESSION_PATCH.md` — main project session log updated with V0 MILESTONE entry
+
+### Verification evidence (post-cleanup)
+
+```
+$ pnpm --filter frontend-game lint        # 0 errors, 0 warnings
+$ pnpm --filter frontend-game typecheck   # clean
+$ pnpm --filter frontend-game test        # 15/15 ✓ (4 test files)
+$ pnpm --filter frontend-game build       # clean
+$ pnpm --filter frontend-game check:bundle-size  # 472.61 KB gzip / 700 budget (227 KB headroom)
+$ pnpm --filter frontend-game e2e:all-browsers   # 15/15 ✓ across chromium + firefox + webkit
+$ cd services/game-server && npm test     # 8/8 ✓ (2 suites)
+```
+
+### What's left in DEFERRED.md as V1+ scope
+
+7 V0 close-out entries (030-036):
+- **4 LOW**: Phaser ESM shim removal (#036), HMR docs (#030), TilemapGPULayer iso N/A (#031), reconnect window tuning (#032)
+- **3 MED**: DEV_TOKEN bundled → V1 JWT (#033), CORS prod hardening (#034), EchoRoom rate limiting (#035)
+
+**No HIGH-severity deferrals. No spec AC unsatisfied.**
+
+### Lessons recorded
+
+- **Phaser ESM + jsdom doesn't mix** — vitest tests that import any module which transitively imports `phaser` need `vi.mock('phaser', ...)` in `tests/setup.ts`. Otherwise Phaser's WebGL/Canvas detection blows up at module load. Inline stub in setup.ts (not a separate memory entry since it's tightly coupled to vitest.config.ts).
+- **V0 close-out is not optional** — 27 line-items found in audit after declaring V0 done. Many small (1-2 LOC fixes), some real (HMR verification, browser compat). The discipline of "audit before V1" is cheap (one batch) and prevents V1 sessions from being interrupted to fix V0 oversights.
+- **PO "clear all debts" call paid off** — most items were 5-30 min fixes; the batch landed in one focused session vs spreading across V1. The "must-clear before V0 done" items (AC-FG-14, AC-FG-16, SESSION_PATCH) would have been pricier to revisit later. The "tooling baseline" items (lint/format/bundle/CI) also pay off immediately on V1 first PR.
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — Session F: frontend-game containerized — V0 MILESTONE)
 
 L task. Final piece of V0 per spec §16. frontend-game is now served by
 nginx in a multi-stage docker image; `docker compose --profile full up`
