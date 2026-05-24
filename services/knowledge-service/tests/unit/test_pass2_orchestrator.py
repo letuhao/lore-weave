@@ -525,3 +525,72 @@ async def test_p2_extractor_failure_marks_failed_and_reraises(
     repo.mark_failed.assert_awaited_once()
     err = repo.mark_failed.call_args.kwargs["error_message"]
     assert "RuntimeError" in err and "timeout" in err
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.ExtractionLeavesRepo")
+@patch(f"{_ORCH}.get_knowledge_pool")
+async def test_p2_uses_per_op_extractor_version(
+    mock_pool, mock_repo_cls,
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION regression-lock.
+
+    Each op's claim_pending call MUST receive an extractor_version
+    scoped to that op (format `v1-{op}-{8hex}`), NOT the global
+    `v1-{8hex}` shape. The migration ensures editing one op's prompt
+    only invalidates that op's cache slice.
+    """
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    book_id = uuid4()
+    chapter_id = uuid4()
+    mock_pool.return_value = MagicMock()
+
+    repo = MagicMock()
+    repo.fetch_cached = AsyncMock(return_value=None)  # force cache miss → claim_pending
+    repo.claim_pending = AsyncMock(return_value=True)
+    repo.persist = AsyncMock(return_value=None)
+    mock_repo_cls.return_value = repo
+
+    # Must yield at least 1 entity so the orchestrator's "no entities"
+    # gate doesn't short-circuit before R/E/F run.
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id=str(chapter_id), job_id=_JOB_ID,
+        chapter_text="Alice met Bob.",
+        model_source="user_model", model_ref="m-uuid",
+        llm_client=MagicMock(),
+        book_id=book_id,
+        chapter_id=chapter_id,
+    )
+
+    # Each claim_pending call MUST use the op-scoped extractor_version.
+    # The global form would be `v1-XXXXXXXX` (no `-{op}-` segment).
+    assert repo.claim_pending.await_count == 4
+    seen_per_op_versions: dict[str, str] = {}
+    for call in repo.claim_pending.await_args_list:
+        op = call.kwargs["op"]
+        ver = call.kwargs["extractor_version"]
+        assert ver.startswith(f"v1-{op}-"), (
+            f"op={op} got extractor_version={ver!r} — must be per-op "
+            f"(starts with 'v1-{op}-')"
+        )
+        seen_per_op_versions[op] = ver
+
+    # All 4 ops produced their own DISTINCT version slugs — no global
+    # collapse to one shared version.
+    assert sorted(seen_per_op_versions.keys()) == ["entity", "event", "fact", "relation"]
+    assert len(set(seen_per_op_versions.values())) == 4

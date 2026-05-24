@@ -114,7 +114,12 @@ async def _p2_cache_wrap(
         # Chat-turn or other non-chapter path — no cache, pass through.
         return await extractor_callable(**extractor_kwargs)
 
-    extractor_version = get_extractor_version()
+    # D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION. Per-op hash so editing
+    # one op's prompt only invalidates that op's cache slice — previously
+    # the global hash invalidated all 4 ops on any prompt edit.
+    # Format: `v1-{op}-{8hex}` (vs old `v1-{8hex}`). One-time cache
+    # thrash on first deploy: every existing P2 task_id changes once.
+    extractor_version = get_extractor_version(op=op)
     task_id = compute_task_id(leaf_text, op, extractor_version, model_ref)
     pool = get_knowledge_pool()
     repo = ExtractionLeavesRepo(pool)
