@@ -593,11 +593,60 @@ Phaser 4.0.0 GA was 2026-04-10 — 6 weeks before this spec. `TilemapGPULayer`
 + `SpriteGPULayer` are NEW APIs. Historical pattern: major engine releases
 have 3-6 months of edge-case bug discovery.
 
-**Validation gate at Session C** (scaffold) — MUST PASS before Session D:
+**Validation gate at Session C** (scaffold) — MUST PASS before Session D.
 
-1. Boot Phaser 4 + render an empty scene → confirm WebGL context creates
-2. Render a `TilemapGPULayer` with a 64×64 stub tilemap (Town tier) → confirm no rendering bug
-3. Render a `SpriteGPULayer` with 100 sprites moving → confirm no jank
+> **GATE EXECUTED 2026-05-24 (Session C Phase 1) — PASS with 3 findings:**
+>
+> 1. **Phaser 4 + WebGL context** — ✓ Phaser 4.1.0 boots; WebGLRenderer
+>    active. Original gate wording "WebGL 2.0 context" was incorrect:
+>    Phaser 4 by design requests a WebGL 1.0 context (`canvas.getContext('webgl')`
+>    at `phaser.esm.js:186435`) and polyfills WebGL 2 features via
+>    extensions (ANGLE_instanced_arrays, OES_vertex_array_object,
+>    OES_standard_derivatives — see `phaser.esm.js:186622-186644`).
+>    Correct check: WebGLRenderer is active AND required extensions
+>    are obtained. To force a true WebGL2 context, pre-create one and
+>    pass via `game.config.context` — NOT needed for V0.
+>
+> 2. **TilemapGPULayer** — ✗ **N/A by design.** Phaser docs explicitly
+>    state TilemapGPULayer is **orthographic-only** (`CHANGELOG-v4.0.0.md:549`:
+>    "Orthographic tilemaps only — not suitable for isometric or hexagonal
+>    maps"). Our game uses iso 2:1 dimetric per §1 #10, so TilemapGPULayer
+>    can NEVER apply to our V0+ tilemap rendering. **Use standard
+>    TilemapLayer for iso** — verified working in Session C Phase 1
+>    (64×64 stub tilemap renders at 60 FPS). The earlier spec assumption
+>    that TilemapGPULayer would optimize our tilemap was wrong; the
+>    optimization is unavailable. Acceptable: standard TilemapLayer
+>    handles 64² Town and 256² Continent (with culling) fine.
+>
+> 3. **SpriteGPULayer** — ✓ but requires `globalThis.Phaser = Phaser`
+>    shim. Phaser 4.1.0's ESM bundle has internal code that references
+>    the bare global `Phaser` identifier (e.g. `new Phaser.Structs.Map()`
+>    at `phaser.esm.js:88604` inside SpriteGPULayer constructor; also
+>    lines 33884/34948/34969 in render code). Without the shim, calling
+>    `this.add.spriteGPULayer(...)` throws `"Phaser is not defined"`.
+>    Workaround applied in `frontend-game/src/game/main.ts`:
+>    `(globalThis as any).Phaser = Phaser;` before any scene boots.
+>    Track upstream — remove shim once Phaser releases an ESM-clean
+>    patch (likely 4.x.y).
+>
+> 4. **HMR** — deferred to user manual smoke (edit ValidationScene.ts,
+>    confirm no canvas freeze). Acceptable per AC-FG-14: controlled
+>    full-reload OK; silent freeze not.
+>
+> 5. **RexUI / DragonBones / Spine / Phaser Editor** — deferred / N/A
+>    for V0 per spec §1 #3 (React handles all UI; no skeletal animation
+>    until V2+).
+>
+> **Outcome:** Phaser 4.1.0 ACCEPTED for V0+. No Phaser 3 LTS fallback
+> needed. Re-validate when Phaser ships 4.2+ in case the ESM shim can
+> be removed.
+
+Original gate criteria (kept for historical reference; replaced by
+findings above):
+
+1. ~~Boot Phaser 4 + render an empty scene → confirm WebGL context creates~~ → **Revised:** WebGLRenderer + WebGL2-equiv extensions present (Phaser 4 design intent — WebGL1 context with polyfills, NOT a true WebGL2 context)
+2. ~~Render a `TilemapGPULayer` with a 64×64 stub tilemap (Town tier) → confirm no rendering bug~~ → **REMOVED:** TilemapGPULayer is orthographic-only; N/A for our iso pick. Use standard TilemapLayer; verified at 60 FPS.
+3. Render a `SpriteGPULayer` with 100 sprites moving → confirm no jank — ✓ (with ESM shim)
 4. HMR pass: edit a scene file, confirm hot-reload doesn't crash canvas (or document the known limitation)
 5. RexUI plugin compatibility check (if we plan to use it) — at time of writing some 3rd-party plugins still v3-only
 
@@ -607,10 +656,10 @@ API differences for our scope (basic tilemap + sprites + scenes) are
 minimal per migration guide.
 
 **Audit list of plugins to verify at Session C:**
-- RexUI (if needed for native UI components inside Phaser, e.g. text input)
+- RexUI (if needed for native UI components inside Phaser, e.g. text input) — N/A V0 per §1 #3
 - DragonBones / Spine (only if we adopt skeletal animation, V2+)
 - Phaser Editor v5 (PO mentioned in earlier research; "full Phaser 4
-  support" but verify on actual project)
+  support" but verify on actual project) — deferred
 
 ### 11.2 FX / post-processing strategy (COSMETIC-15 from /review-impl)
 

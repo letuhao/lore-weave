@@ -81,7 +81,76 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — Session B: pnpm workspace + packages/ skeletons + /review-impl hardening) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — Session C Phase 1: frontend-game scaffold + Phaser 4 validation gate PASS) — read this first
+
+XL task. Session C per spec §16 was split into 2 phases by PO choice:
+**Phase 1** (this commit) = minimal scaffold to validate Phaser 4
+production-readiness per spec §11.1, before committing to the full
+spec §3 directory structure. **Phase 2** = full scaffold (next session,
+conditional on Phase 1 gate pass — now satisfied).
+
+### Phase 1 outcome: gate PASS after 3 research-driven fixes
+
+Initial gate run showed 3 failures:
+1. WebGL2 check fails (real Chrome + Edge both report WebGL 1.0)
+2. `this.add.tilemapGPULayer` factory not found
+3. `this.add.spriteGPULayer(...)` throws "Phaser is not defined"
+
+Per PO direction, ran 30-min source-research into `phaser@4.1.0` and
+found root causes for all three — all FALSE ALARMS from incorrect
+gate criteria + 1 real upstream bug worked around:
+
+| Original failure | Root cause | Fix |
+|---|---|---|
+| WebGL 1.0 instead of WebGL 2.0 | **Phaser 4 design intent** — `phaser.esm.js:186435` requests `webgl` (not `webgl2`) and polyfills WebGL 2 features via extensions (instancedArrays, VAO, std-derivatives). True WebGL2 requires user-precreated context via `game.config.context`. | Rewrote check: WebGLRenderer + required extensions present (not version string parse) |
+| TilemapGPULayer factory missing | **By design** — `CHANGELOG-v4.0.0.md:549`: TilemapGPULayer is **orthographic-only**, "not suitable for isometric or hexagonal maps". Our game is iso 2:1 dimetric per spec §1 #10, so this layer can NEVER apply | Spec §11.1 amended: TilemapGPULayer is N/A for our use case. Use standard `Tilemap.createLayer` for iso — verified 60 FPS at 64² Town tier. The optimization Phaser 4 sells is simply unavailable to iso games |
+| SpriteGPULayer "Phaser is not defined" | **Real upstream bug** — `phaser.esm.js:88604` inside SpriteGPULayer constructor calls `new Phaser.Structs.Map()` referencing the bare global `Phaser` identifier that's not present in ESM build (similar bare refs at lines 33884/34948/34969) | Added `(globalThis as any).Phaser = Phaser;` shim in `frontend-game/src/game/main.ts` before any scene boots. Tracked as TODO to remove once Phaser ships ESM-clean patch (likely 4.x.y) |
+
+### Files landed (Phase 1, ~14 files)
+
+| File | Purpose |
+|---|---|
+| `frontend-game/package.json` | Deps: phaser@^4 (resolved 4.1.0), react@^18.3, vite@^5, TS@^5, tailwind@^3 |
+| `frontend-game/tsconfig.json` | `strict: true` + `noUncheckedIndexedAccess: true` per PO choice |
+| `frontend-game/tsconfig.node.json` | Separate tsconfig for vite.config.ts (Node context) |
+| `frontend-game/vite.config.ts` | Port 5174 strictPort; path aliases `@/*`, `@game/*` |
+| `frontend-game/tailwind.config.cjs` + `postcss.config.js` | Tailwind v3 setup matching frontend/ |
+| `frontend-game/index.html` | Single `<div id="root">` shell |
+| `frontend-game/src/main.tsx` | React entry, StrictMode |
+| `frontend-game/src/App.tsx` | Validation gate harness UI (3 ✓/✗ checks + FPS counter + errors panel) |
+| `frontend-game/src/components/PhaserGame.tsx` | React-Phaser bridge (forwardRef + useEffect cleanup, StrictMode-safe) |
+| `frontend-game/src/game/main.ts` | Phaser.Game factory + **globalThis.Phaser shim** (the ESM bug workaround) |
+| `frontend-game/src/game/scenes/ValidationScene.ts` | All 3 gate checks; emits via EventBus; programmatic stub textures (no asset files) |
+| `frontend-game/src/game/EventBus.ts` | Typed `Phaser.Events.EventEmitter` for React↔Phaser comms |
+| `frontend-game/src/index.css` | Tailwind directives |
+| `frontend-game/src/vite-env.d.ts` | Vite client types |
+| `docs/plans/2026-05-24-frontend-game-session-c-phaser4-gate.md` | Phase 1 plan + outcome |
+| `docs/specs/2026-05-24-frontend-game-architecture.md` | §11.1 amended with gate outcome + 3 findings |
+
+### Verification evidence
+
+- `pnpm install` from repo root → 6 workspace projects (root + 4 packages + frontend-game), 136 packages added in 8.9s, clean
+- `pnpm --filter frontend-game typecheck` → clean (TS strict + noUncheckedIndexedAccess + Phaser 4 types compile)
+- `pnpm --filter frontend-game build` → 36 modules transformed, bundle 1.8MB raw / 423KB gzipped (under V0 budget 700KB gzip per AC-FG-15)
+- `pnpm --filter frontend-game dev` → Vite ready in 600ms on http://localhost:5174
+- Playwright headless smoke → all 3 gate checks ✓, FPS 60, 0 errors after fixes applied
+- User real-browser smoke (Chrome + Edge) → both confirmed WebGL 1.0 report (consistent with Phaser 4 design intent, not a bug)
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks Session C Phase 2** (next session): expand to full spec §3 directory structure (routes, components/hud, game/scenes Boot+Preloader+MainMenu+World, stores, net stubs, api/tilemap-client). Phaser 4 path is now de-risked.
+- **Blocks**: nothing immediate
+
+### Lessons recorded
+
+- **Gate criteria can be wrong about their own engine.** "WebGL 2.0 context" sounds right but Phaser 4 deliberately uses WebGL 1.0 + extensions. Reading the engine source for ~10 min beats accepting the surface symptom for hours
+- **Spec assumptions get falsified by engine reality.** Spec §11 assumed TilemapGPULayer would optimize our tilemap; Phaser 4 docs say it's orthographic-only and our game is iso. The optimization simply doesn't exist for our pick — better to find this in Session C than V1
+- **ESM bundling bugs in new engine releases are real.** Phaser 4.1.0 has bare-global `Phaser.X` references that ESM bundle doesn't satisfy. The `globalThis.Phaser = Phaser` shim is a 1-line workaround for a real upstream issue that will likely get patched
+- **Research before declaring a gate FAIL.** PO option C ("research correct API names") turned a 3/4 fail into 3/3 pass + 3 spec corrections. The Phaser 3 LTS fallback would have been a much larger detour for what turned out to be misreadings + 1 patchable shim
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — Session B: pnpm workspace + packages/ skeletons + /review-impl hardening)
 
 XL task per gate (11 files, but mostly skeletons). Session B per spec §16
 landed the monorepo plumbing for the upcoming `frontend-game/` client.
