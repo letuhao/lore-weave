@@ -66,6 +66,16 @@ RETRY_BUDGET = 3
 # M4 re-enqueue backoff: 30s/60s/120s exponential.
 REENQUEUE_BACKOFF_S = (30, 60, 120)
 
+# D-P3-BOOK-SUMMARY-PERSIST-AUDIT fix. Upper bound on the inline sleep
+# used when a message's retry_at_epoch is in the future. Set to the
+# longest backoff (120s) so the consumer can absorb the full M4 schedule
+# without re-enqueueing. KnowledgeClient.summarize_message_timeout_s
+# defaults to 300s so a 120s server-side sleep stays well within the
+# HTTP budget. Defensive cap on absurd `retry_at_epoch` values (clock
+# skew, manual injection) — never sleep longer than this regardless of
+# what the message claims.
+MAX_INLINE_RETRY_SLEEP_S = 120
+
 
 @dataclass
 class SummaryProcessResult:
@@ -116,17 +126,25 @@ async def process_summarize_message(
             summary_id=None,
         )
 
-    # 0a. M4 retry_at: if retry_at_epoch is in the future, re-enqueue at
-    # the same backoff slot (caller has already XACKed; we're processing
-    # a delayed retry).
-    if msg.retry_at_epoch > now_epoch():
-        await _reenqueue_with_backoff(deps.summary_enqueue, msg)
-        return SummaryProcessResult(
-            level=msg.level, node_id=msg.node_id,
-            cache_hit=False, race_winner=False,
-            re_enqueued=True, skipped_retry_exhausted=False,
-            summary_id=None,
-        )
+    # 0a. M4 retry_at: if retry_at_epoch is in the future, SLEEP in-process
+    # until then, then fall through to normal processing. Do NOT re-enqueue
+    # + increment retried_n on this branch.
+    #
+    # The earlier impl re-enqueued via _reenqueue_with_backoff here, which
+    # silently burned the entire retry budget within seconds: Redis Streams
+    # have no time-based delivery, so the re-enqueued message was picked up
+    # immediately, bumped retried_n, pushed back, and so on — RETRY_BUDGET=3
+    # was exhausted in milliseconds. Caught by D-P3-BOOK-SUMMARY-PERSIST-
+    # AUDIT (stream archaeology showed retried_n=0→1→2→3 consecutive
+    # messages with the wall-clock gap << the intended 30+60+120s window).
+    #
+    # Inline sleep blocks the consumer worker on this one message for up
+    # to 120s; the worker-ai consumer reads up to 10 messages per
+    # XREADGROUP and processes them serially, so a busy stream pays the
+    # latency. Acceptable for extraction workloads (low per-book volume).
+    delay_s = msg.retry_at_epoch - now_epoch()
+    if delay_s > 0:
+        await asyncio.sleep(min(delay_s, MAX_INLINE_RETRY_SLEEP_S))
 
     repo = LevelSummariesRepo(deps.knowledge_pool)
     book_id = UUID(msg.book_id)

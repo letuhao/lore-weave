@@ -78,20 +78,96 @@ async def test_retry_budget_exhaustion_returns_skipped_no_llm_call():
     deps.summary_enqueue.assert_not_called()
 
 
-async def test_retry_at_in_future_reenqueues_without_processing():
-    """M4: retry_at_epoch > now() → XADD a new message + return re_enqueued=True.
+@patch("app.jobs.summary_processor.asyncio.sleep", new_callable=AsyncMock)
+@patch("app.jobs.summary_processor.LevelSummariesRepo")
+@patch("app.jobs.summary_processor._load_scene_leaf_texts", new_callable=AsyncMock)
+@patch("app.jobs.summary_processor._load_top_entities_for_chapter", new_callable=AsyncMock)
+@patch("app.jobs.summary_processor.summarize_level", new_callable=AsyncMock)
+async def test_retry_at_in_future_sleeps_then_processes_without_burning_budget(
+    mock_summarize, mock_entities, mock_scenes, mock_repo_cls, mock_sleep,
+):
+    """D-P3-BOOK-SUMMARY-PERSIST-AUDIT regression-lock.
 
-    Defensive: this happens when a stream consumer picks up a delayed
-    message before its retry_at fires (cheap server-side skip).
+    When a message arrives with retry_at_epoch in the future, the processor
+    must SLEEP in-place (not re-enqueue + increment retried_n). The earlier
+    impl re-enqueued, which Redis Streams delivered immediately, burning
+    the entire RETRY_BUDGET in milliseconds and abandoning higher-level
+    summaries before their children settled.
     """
-    msg = _msg(retried_n=1, retry_at_epoch=9999999999.0)  # far future
+    from loreweave_extraction import LevelSummary as ExtLevelSummary
+
+    mock_scenes.return_value = ["s1", "s2"]
+    mock_entities.return_value = []
+    mock_summarize.return_value = ExtLevelSummary(
+        summary_text="A summary text long enough to satisfy validation.",
+        token_usage={},
+    )
+    repo = MagicMock()
+    repo.find_cached = AsyncMock(return_value=None)
+    upsert_id = uuid4()
+    repo.upsert_summary = AsyncMock(return_value=UpsertOutcome(
+        cache_hit=False, race_winner=True, summary_id=upsert_id,
+    ))
+    mock_repo_cls.return_value = repo
+
+    # retry_at_epoch 30s in the future — should sleep, not re-enqueue.
+    import time as _time
+    msg = _msg(retried_n=1, retry_at_epoch=_time.time() + 30)
     deps = _deps()
+    deps.embedding_client = MagicMock()
+    deps.embedding_client.embed = AsyncMock(return_value=[0.1] * 1024)
+    deps.neo4j_session.run = AsyncMock()
+
     result = await process_summarize_message(msg, deps)
-    assert result.re_enqueued is True
-    deps.summary_enqueue.assert_awaited_once()
-    # New message has retried_n incremented.
-    new_msg = deps.summary_enqueue.await_args.args[0]
-    assert new_msg.retried_n == msg.retried_n + 1
+
+    # Must have slept (mocked) — not re-enqueued.
+    mock_sleep.assert_awaited_once()
+    sleep_arg = mock_sleep.await_args.args[0]
+    assert 0 < sleep_arg <= 30  # roughly the requested delay (or cap)
+    # Budget MUST NOT be burned: no XADD of a re-enqueued message.
+    deps.summary_enqueue.assert_not_called()
+    # Processing proceeded normally → upsert happened.
+    assert result.re_enqueued is False
+    assert result.summary_id == upsert_id
+
+
+@patch("app.jobs.summary_processor.asyncio.sleep", new_callable=AsyncMock)
+@patch("app.jobs.summary_processor.LevelSummariesRepo")
+@patch("app.jobs.summary_processor._load_scene_leaf_texts", new_callable=AsyncMock)
+@patch("app.jobs.summary_processor._load_top_entities_for_chapter", new_callable=AsyncMock)
+@patch("app.jobs.summary_processor.summarize_level", new_callable=AsyncMock)
+async def test_retry_at_absurd_future_sleep_capped_at_max(
+    mock_summarize, mock_entities, mock_scenes, mock_repo_cls, mock_sleep,
+):
+    """Clock-skew defense: retry_at_epoch far in the future (decades) must
+    be capped at MAX_INLINE_RETRY_SLEEP_S (120s) — never sleep longer
+    regardless of what the message claims."""
+    from loreweave_extraction import LevelSummary as ExtLevelSummary
+    from app.jobs.summary_processor import MAX_INLINE_RETRY_SLEEP_S
+
+    mock_scenes.return_value = ["s1"]
+    mock_entities.return_value = []
+    mock_summarize.return_value = ExtLevelSummary(
+        summary_text="A summary text long enough to satisfy validation.",
+        token_usage={},
+    )
+    repo = MagicMock()
+    repo.find_cached = AsyncMock(return_value=None)
+    repo.upsert_summary = AsyncMock(return_value=UpsertOutcome(
+        cache_hit=False, race_winner=True, summary_id=uuid4(),
+    ))
+    mock_repo_cls.return_value = repo
+
+    msg = _msg(retried_n=0, retry_at_epoch=9999999999.0)  # year 2286
+    deps = _deps()
+    deps.embedding_client = MagicMock()
+    deps.embedding_client.embed = AsyncMock(return_value=[0.1] * 1024)
+    deps.neo4j_session.run = AsyncMock()
+
+    await process_summarize_message(msg, deps)
+
+    mock_sleep.assert_awaited_once()
+    assert mock_sleep.await_args.args[0] == MAX_INLINE_RETRY_SLEEP_S
 
 
 @patch("app.jobs.summary_processor.LevelSummariesRepo")
