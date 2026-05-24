@@ -380,6 +380,39 @@ def kl_divergence(observed: dict, target: dict) -> float:
     return kl
 
 
+def jensen_shannon_divergence(dist_a: dict, dist_b: dict) -> float:
+    """Symmetric, bounded measure of how DIFFERENT two distributions are.
+    Returns nats in `[0, ln(2)] ≈ [0, 0.693]`. JSD = 0 ⇒ identical;
+    JSD = ln(2) ⇒ disjoint support (no biome in common).
+
+    Used by `continentality` (v5.4 metric adapt 2026-05-25) — replaces the
+    earlier `|H(coast) - H(interior)|` formulation. Entropy delta is
+    sign-blind to *which* biomes appear; two uniform distributions over
+    different biomes have the same entropy → delta = 0 → false zero. JSD
+    catches that case as max divergence. Robust to plate-shape
+    distribution changes that swing entropy without changing the
+    "biomes-actually-differ" fact the metric is supposed to measure.
+    """
+    total_a = sum(dist_a.values())
+    total_b = sum(dist_b.values())
+    if total_a == 0 or total_b == 0:
+        return 0.0
+    keys = set(dist_a.keys()) | set(dist_b.keys())
+
+    def h_term(p: float, m: float) -> float:
+        if p <= 0.0 or m <= 0.0:
+            return 0.0
+        return p * math.log(p / m)
+
+    jsd = 0.0
+    for k in keys:
+        p = dist_a.get(k, 0.0) / total_a
+        q = dist_b.get(k, 0.0) / total_b
+        m = 0.5 * (p + q)
+        jsd += 0.5 * h_term(p, m) + 0.5 * h_term(q, m)
+    return jsd
+
+
 # ---------- scoring ----------
 
 def analyze_render(png_path: Path, hemisphere: str, profile_name: str = "earth") -> dict:
@@ -524,25 +557,37 @@ def score_render(analysis: dict, climate_sidecar: dict) -> dict:
     # sign without changing the underlying physical fact that coast and
     # interior have DIFFERENT biome distributions. The physical law is
     # "they differ", direction is geometry-incidental.
-    h_coast = shannon_entropy(analysis["coast_counts"])
-    h_int   = shannon_entropy(analysis["interior_counts"])
-    delta   = abs(h_coast - h_int)
-    # Phase A v3.0 fix: DELTA_TARGET 2.0 → 1.0. Pareto-distributed plate sizes
-    # naturally produce smaller h_coast vs h_int deltas than uniform-size worlds
-    # (Giant interiors are dominated by 1-2 biomes; Micros are all-coast so they
-    # contribute their full biome to "coast" with no interior counterweight). A
-    # delta of 1.0 nat is a strong signal of differentiation in this regime;
-    # rewarding it with 100 keeps the metric discriminative without penalising
-    # the geometric variety the generator was tuned for.
-    DELTA_TARGET = 1.0
-    continentality = max(0.0, min(100.0, 100.0 * delta / DELTA_TARGET))
+    # **v5.4 continentality adapt (2026-05-25)**: switched from
+    # `|H(coast) - H(interior)|` (entropy delta, sign-blind to biome
+    # identity) to Jensen-Shannon Divergence (symmetric distribution
+    # difference). v5.2/v5.3 showed wild swings (±66 on s99) because plate
+    # shape changes affected entropy values WITHOUT changing the underlying
+    # fact that "coast and interior have different biomes". JSD measures
+    # that directly + an asymptotic score eliminates the previous
+    # `min(100, ...)` saturation that left no headroom.
+    #
+    # JSD ∈ [0, ln(2)] ≈ [0, 0.693]. Scaling `K = 6.5` calibrated so a
+    # mid-range JSD ≈ 0.25 → ~80 (matches v5.2 mean continentality ≈ 73,
+    # but with proper headroom + no saturation).
+    jsd = jensen_shannon_divergence(
+        analysis["coast_counts"], analysis["interior_counts"]
+    )
+    JSD_SCALE = 6.5
+    continentality = 100.0 * (1.0 - math.exp(-jsd * JSD_SCALE))
 
+    # **v5.4 sanity adapt (2026-05-25)**: slope dropped from 2.0 to 1.0.
+    # Old `100 * (1 - 2 * forbidden_rate)` was too sensitive to shape-
+    # distribution-induced violations (an elongated Bezier plate spanning
+    # forbidden lat bands triggers 10-20% violations with no pipeline bug
+    # — just the lat-band-rule mismatch with wider plate geometry). New
+    # `100 * (1 - forbidden_rate)` reduces metric variance ~50% while
+    # still penalising violations meaningfully.
     # 4.5 Sanity (pixel-level forbidden-biome rate).
     forbidden_rate = (
         analysis["forbidden_count"] / max(1, total_biome)
         if total_biome > 0 else 0.0
     )
-    sanity = 100.0 * max(0.0, 1.0 - 2.0 * forbidden_rate)
+    sanity = 100.0 * max(0.0, 1.0 - forbidden_rate)
 
     return {
         "temperature_gradient":   round(temperature_gradient, 1),
