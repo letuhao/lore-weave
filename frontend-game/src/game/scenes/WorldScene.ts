@@ -5,6 +5,7 @@ import { Player } from '../entities/Player';
 import { InputSystem } from '../systems/input-system';
 import { TERRAIN_TILESET_KEY } from './PreloaderScene';
 import { buildObjectOverlay, type ObjectOverlayHandle } from '../render/object-overlay';
+import { buildOverlayRt, type OverlayRtHandle } from '../render/overlay-rt';
 import type { TilemapView } from '@/types/tilemap';
 
 // V1 tilemap-viewer World scene — Batch 2.0 render strategy.
@@ -32,6 +33,7 @@ export class WorldScene extends Phaser.Scene {
   private tilemapHandler: ((view: TilemapView) => void) | null = null;
   private foundationMap: Phaser.Tilemaps.Tilemap | null = null;
   private objectOverlay: ObjectOverlayHandle | null = null;
+  private overlayRt: OverlayRtHandle | null = null;
 
   constructor() {
     super({ key: 'WorldScene' });
@@ -125,6 +127,9 @@ export class WorldScene extends Phaser.Scene {
     const renderedH = h * TILE_PX;
 
     this.buildFoundationLayer(view.terrain_layer, w, h);
+    // L1/L2/L2.5/L6 (roads, rivers, crossings, zone centers) baked first
+    // so prop sprites depth-sort above them; L4 props next.
+    this.overlayRt = buildOverlayRt(this, view);
     this.objectOverlay = buildObjectOverlay(this, view);
 
     const viewW = this.scale.gameSize.width;
@@ -239,6 +244,10 @@ export class WorldScene extends Phaser.Scene {
       this.objectOverlay.destroy();
       this.objectOverlay = null;
     }
+    if (this.overlayRt) {
+      this.overlayRt.destroy();
+      this.overlayRt = null;
+    }
     this.children.removeAll(true);
     if (this.foundationMap) {
       this.foundationMap.destroy();
@@ -261,6 +270,10 @@ export class WorldScene extends Phaser.Scene {
     if (this.objectOverlay) {
       this.objectOverlay.destroy();
       this.objectOverlay = null;
+    }
+    if (this.overlayRt) {
+      this.overlayRt.destroy();
+      this.overlayRt = null;
     }
     if (this.foundationMap) {
       this.foundationMap.destroy();
