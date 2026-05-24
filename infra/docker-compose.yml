@@ -811,6 +811,40 @@ services:
       - game
       - full
 
+  # ────────────────────────────────────────────────────────────────
+  # frontend-game — Static SPA served by nginx.
+  # V0 final piece (Session F per spec §16) — completes the
+  # one-command local stack: `docker compose --profile full up`
+  # boots tilemap-service + game-server + frontend-game and the user
+  # opens http://localhost:5174 for the V0 demo (iso tilemap +
+  # click-to-walk Player + HUD reading /livez + WS echo panel).
+  # Build context = repo root (pnpm-workspace.yaml lives there +
+  # frontend-game depends on @loreweave/* packages).
+  # ────────────────────────────────────────────────────────────────
+  frontend-game:
+    build:
+      context: ..
+      dockerfile: frontend-game/Dockerfile
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5174/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # nginx itself boots in <1s; give it a moment for any first-load
+      # warmup in case Docker is slow on a cold cache.
+      start_period: 5s
+    restart: on-failure:5
+    ports:
+      - "5174:5174"
+    # V0 demo: frontend-game's bundled JS still hardcodes
+    # localhost:8220 (tilemap-service) and localhost:2567 (game-server).
+    # Both are exposed to host via compose port maps; browser sees them
+    # as separate localhost services. V1+ wires env-var injection for
+    # production deploys behind api-gateway-bff.
+    profiles:
+      - game
+      - full
+
 volumes:
   loreweave_pg:
   loreweave_redis:

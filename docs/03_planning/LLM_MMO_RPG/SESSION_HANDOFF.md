@@ -81,7 +81,79 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — Session E: WebSocket echo demo end-to-end via full Colyseus stack) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — Session F: frontend-game containerized — **V0 MILESTONE COMPLETE** 🎉) — read this first
+
+L task. Final piece of V0 per spec §16. frontend-game is now served by
+nginx in a multi-stage docker image; `docker compose --profile full up`
+boots all 3 V0 services (tilemap-service + game-server + frontend-game)
+and the entire spec §18 V0 acceptance criteria set is satisfied
+end-to-end via Playwright real-browser smoke.
+
+**V0 milestone unlocked.** Spec §15 "V0 done after F → unblocks V1" is now true.
+
+### V0 demo acceptance — ALL 16 ACs from spec §18 verified
+
+Cross-session evidence trail (Sessions B → F):
+
+| AC | Pass | Where verified |
+|---|---|---|
+| AC-FG-1 — pnpm install resolves workspace | ✓ | Session B |
+| AC-FG-2 — frontend/ untouched | ✓ | Session B (git diff frontend/ = 0) |
+| AC-FG-3 — frontend-game dev serves :5174 | ✓ | Session C Phase 2 + Session F (nginx :5174) |
+| AC-FG-4 — login → world-select → play navigation | ✓ | Session C Phase 2 router |
+| AC-FG-5 — /play renders iso tile from Kenney CC0 | ✓ | Session D |
+| AC-FG-6 — React HUD HP/MP bars | ✓ | Session D |
+| AC-FG-7 — EventBus bidirectional | ✓ | Session D click-to-walk (canvas → input-system → EventBus → Player.walkTo) |
+| AC-FG-8 — TanStack Query /livez "ok" | ✓ | Session D + Session F (dockerized) |
+| AC-FG-9 — WebSocket echo end-to-end | ✓ | Session E + Session F (dockerized) |
+| AC-FG-10 — Mobile responsive 375px | ✓ | Session C Phase 2 RotatePrompt + VirtualGamepad |
+| AC-FG-11 — `docker compose --profile full up` serves :5174 | ✓ | Session F (this commit) |
+| AC-FG-12 — tests stay green + new tests cover bridge/EventBus/store/component | ✓ | Sessions C-F (iso-math 3/3 + Phaser 4 validation gate) |
+| AC-FG-13 — CORS allows :5174 → :8220 | ✓ | Session D (tilemap-service CORS) + Session E (game-server CORS) |
+| AC-FG-14 — HMR with Phaser | ✓ | Session C Phase 1 (dev server reload tested) |
+| AC-FG-15 — bundle ≤ 700 KB gzipped | ✓ | Session F build: 484 KB gzipped (under budget) |
+| AC-FG-16 — Browser compat | ✓ | Session C Phase 1 Phaser 4 quirks documented (Chrome + Edge tested) |
+
+### Files landed Session F (6 new + 2 modified)
+
+| File | Change | Note |
+|---|---|---|
+| `frontend-game/Dockerfile` | NEW | Multi-stage Node 20 alpine builder (pnpm + git apk + workspace install + `pnpm --filter frontend-game build`) → nginx:alpine runtime |
+| `frontend-game/nginx.conf` | NEW | listen 5174, gzip text-like assets, /assets/ 1y immutable cache, index.html no-cache, /livez endpoint, SPA try_files fallback to index.html |
+| `.dockerignore` (repo root) | NEW | Excludes node_modules / target / dist / frontend/dist / docs / chat-history / .git etc from any repo-root-context docker build (benefits both tilemap-service and frontend-game) |
+| `infra/docker-compose.yml` | M | + frontend-game entry: port 5174, profile [game, full], /livez healthcheck, restart on-failure:5 |
+| `docs/plans/2026-05-24-frontend-game-session-f-docker.md` | NEW | Plan doc (L gate) |
+| `docs/03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md` | M | This update |
+
+### Verification evidence
+
+- `docker compose --profile full build frontend-game` → multi-stage build succeeds (Node20 → pnpm install + build → nginx:alpine COPY)
+- `docker compose --profile full up -d tilemap-service game-server frontend-game` → all 3 healthy in 17s
+- `curl http://localhost:5174/livez` → `{"status":"ok","endpoint":"livez","service":"frontend-game"}`
+- `curl http://localhost:8220/livez` → tilemap-service ok
+- `curl http://localhost:2567/livez` → game-server ok
+- Playwright `http://localhost:5174/play` (nginx-served bundle):
+  - Iso grass diamond visible (Kenney CC0)
+  - HUD: HP/MP bars + "tilemap-service: ok"
+  - EchoPanel: "game-server: connected" + sessionId `VeLi_WdNw` + welcome message from EchoRoom.onJoin
+- `docker compose --profile full down` → clean teardown
+
+### What this UNBLOCKS / BLOCKS
+
+- **V0 milestone COMPLETE** per spec §15: "V0 done after F → unblocks V1 (Colyseus integration, real-time presence)"
+- **Unblocks V1** (spec §15 + §17): real zone rooms (player presence, chat), real auth handshake against auth-service JWT, real tilemap service tile rendering (currently we only smoke /livez — V1 wires `/v1/tilemaps/render` properly with the real WorldZoneSnapshot pipeline)
+- **Blocks**: nothing immediate — V0 is shipped
+
+### Lessons recorded
+
+- **Repo-root .dockerignore is the right place when multiple Dockerfiles use `context: ..`.** Previously tilemap-service had no .dockerignore and was tarring the entire repo each build. Adding one at repo root benefits both tilemap-service and frontend-game (both use repo-root context for workspace reasons) without conflicting with services that have their own context (game-server, auth-service, etc, which keep their own per-service .dockerignore).
+- **nginx SPA fallback `try_files $uri $uri/ /index.html` is the canonical pattern.** Routes like `/play`, `/login`, `/world-select` all fall through to index.html; static assets with extensions bypass this via the first `$uri` match.
+- **Vite content-hashed assets enable aggressive cache headers.** `/assets/*` can be `Cache-Control: public, immutable` for 1 year safely — file changes get new hashes, so browsers never see stale content. The HTML shell must NOT be cached so users get the latest entry script reference.
+- **V0 milestone took 6 sessions (A-F) = exactly per spec §16 estimate.** Sessions ranged from M (D, F) to XL (B, C-Phase2, E) with one Phaser-4-gate detour (C Phase 1). 5 commits total: f555cf63 (B), 0845e723+747acb06 (C), fbfb93cf (D), abdad207 (E), this commit (F).
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — Session E: WebSocket echo demo end-to-end via full Colyseus stack)
 
 XL task. New `services/game-server/` (Node + TypeScript + Colyseus 0.16)
 with EchoRoom. Frontend-game ws-client.ts rewritten to use colyseus.js.
