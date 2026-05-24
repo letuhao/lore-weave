@@ -512,17 +512,110 @@ crates/world-gen/src/
 - Time dynamics (plates drift, continents merge over time) — V6+
 - Spherical world support (currently flat 1024×640 only) — separate track
 
-## 14 — Open Questions for PO
+## 14 — Locked Decisions (answered 2026-05-25)
 
-To finalise the plan before v3.1 implementation starts:
+PO answered all 7 open questions in session 59. Decisions are now spec, not draft:
 
-1. **LLM client choice**: do we use existing `author.rs` / `naming.rs` LLM integration, or set up dedicated shape-dispatcher LLM client? (Probably reuse.)
-2. **LLM cost**: at 12 plates × 5 zones × 3 sub-zones = 180 LLM calls per world. Is that within budget? (Cache makes repeat-runs free.)
-3. **Stamp authoring**: should v3.5 stamps be hand-drawn polygons (PO authors in SVG/JSON) or LLM-generated? Or both?
-4. **Per-rank weight philosophy**: should Giants ALWAYS be elongated (Eurasia-like) or have variety? Current proposal: weighted toward elongation but allows other.
-5. **Per-rank stamps**: should stamps only apply to certain SizeRanks (e.g., Italy only for Medium)?
-6. **Eval acceptance**: are we OK with eval composite swinging widely (e.g., 75-95) during v3.1-v3.5 phases, with calibration in v4.5? Or strict ±5 of baseline per phase?
-7. **Visual review cadence**: render + compare at end of each phase (v3.1, v3.2, ...) or only at tier boundaries?
+### Q1 — LLM client: **Reuse `author.rs` / `naming.rs`**
+Add shape-selection prompts as new function in the existing LLM module. Less code duplication, less maintenance.
+
+### Q2 — Dispatcher default: **Random or ByContext (rule-based), LLM is opt-in, USER can also play LLM role**
+This is the key architectural insight from PO. The dispatcher must support:
+- **Default modes**: `Random` (deterministic weighted-sample) or `ByContext` (rules). No LLM dependency for normal play.
+- **LLM mode**: opt-in for users who want LLM to make the calls.
+- **Manual mode (NEW)**: user manually overrides ShapeKind for specific plates/zones via config or UI — "user plays as the LLM" by adjusting templates themselves.
+
+Updated `DispatchMode` enum:
+```rust
+pub enum DispatchMode {
+    Random { weights: HashMap<ShapeKind, f32> },        // default
+    Fixed(ShapeKind),                                    // tests / debug
+    ByContext { rules: Vec<(ContextPredicate, ShapeKind)> },  // alt default
+    Llm { client: LlmClient, cache: Arc<Mutex<LlmShapeCache>> },  // opt-in
+    Manual { user_selections: HashMap<TargetId, ShapeKind> },     // NEW — user override
+    PerDepth([Box<DispatchMode>; 3]),                    // mix per level
+    Layered(Vec<DispatchMode>),                          // Manual > LLM > Random fallback chain
+}
+
+pub enum TargetId {
+    Plate(usize),
+    Zone(usize, usize),       // (plate_id, zone_id)
+    SubZone(usize, usize, usize),
+}
+```
+
+Default chain: `Layered([Manual, Random])` — Manual overrides take precedence, Random fills the rest.
+
+### Q3 — Stamps: **Both — hand-drawn for named (Italy/Korea/Cuba), LLM for themed**
+Hand-author 10 high-value stamps:
+- Italy (Mediterranean boot), Korea (peninsular hook), Cuba (crescent island), Japan (4-island arc), Iceland (volcanic compact)
+- Greenland (largest island), Sicily (triangular), Sri Lanka (teardrop), Madagascar (elongated), Hispaniola (irregular)
+
+LLM generates additional themed stamps on demand:
+- Alien continent, ice shelf, volcanic chain, archipelago cluster, ring-of-fire arc, etc.
+
+### Q4 — Giant variety: **Varied — Giant can be elongated OR branching OR round**
+Match PO's "more diverse" directive. Updated weights table (replaces §6 table):
+
+| ShapeKind | Giant | Large | Medium | Small | Micro |
+|-----------|------:|------:|-------:|------:|------:|
+| Ellipse | 0.15 | 0.15 | 0.20 | 0.20 | 0.30 |
+| BezierSpine | 0.20 | 0.25 | 0.25 | 0.20 | 0.10 |
+| Polar | 0.10 | 0.10 | 0.20 | 0.25 | 0.30 |
+| Boolean | 0.10 | 0.15 | 0.10 | 0.05 | 0.05 |
+| SdfCapsuleChain | 0.20 | 0.15 | 0.10 | 0.10 | 0.05 |
+| MarchingNoise | 0.10 | 0.10 | 0.05 | 0.10 | 0.10 |
+| Slime | 0.05 | 0.05 | 0.05 | 0.10 | 0.10 |
+| Stamp | 0.10 | 0.05 | 0.05 | 0.00 | 0.00 |
+| **Total** | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+
+Giant probabilities now flatter — no single algorithm dominates. Each Giant could be elongated (SdfCapsule), branched (BezierSpine), or round (Ellipse) with comparable probability.
+
+### Q5 — Stamps per SizeRank: **Both — default per-rank, Manual mode can force**
+Each stamp tagged with `allowed_ranks: HashSet<SizeRank>` (default per-rank realism). Manual mode bypasses the lock — user can force "Giant Italy" if they want.
+
+```rust
+pub struct StampMetadata {
+    pub id: StampId,
+    pub name: &'static str,
+    pub allowed_ranks: &'static [SizeRank],  // realism gate
+    pub allowed_lat_bands: &'static [LatBand], // (Cuba only equatorial, Greenland only polar, etc.)
+}
+```
+
+### Q6 — Eval policy: **Eval framework EVOLVES per phase (tool, not gate)**
+
+PO insight: "eval policy có khả năng là cần điều chỉnh mỗi phase vì hiện tại nó cản trở hơn là giúp ích" (eval policy needs adjustment per phase because right now it's blocking more than helping).
+
+Eval is **a tool to validate progress, not a strict gate to pass**. Each phase includes:
+- **Eval framework adaptation work** (estimated +2-4h per phase) — update metrics to handle new shape variety
+- Acceptance is "**eval was adapted appropriately AND visual review approved**", not "eval composite within ±5"
+
+Phase acceptance pattern becomes:
+1. Implementation works (tests pass, clippy clean)
+2. Visual review by PO approves the shape variety improvement
+3. Eval framework adapted to recognise new shape kinds as valid (NOT to score higher artificially — to score correctly given the new geometric reality)
+4. Per-phase baseline locked at whatever the (new) eval reports
+
+Examples of eval adaptations expected per phase:
+- v3.1 (Bézier spine): lat_banding metric tolerates elongated plates that span multiple lat bands
+- v3.3 (multi-component): continentality measured per-component, not per-plate
+- v4.1 (templated zones): biome distribution measured per-zone, not per-plate
+- v4.5 (final calibration): unify all evolved metrics, lock v5.3 baseline
+
+This shifts ~10-20h from v4.5 calibration into per-phase eval adaptation (net same total).
+
+### Q7 — Visual review cadence: **Per phase — render + PO review after each v3.X / v4.X**
+End of each phase commits render artifacts (`eval/compare-phase-X/{plates,biome}_s{7,13,42}.png`) and pauses for PO visual review before next phase.
+
+Adds ~15-30min per phase. Net workflow:
+1. Phase impl (BUILD)
+2. Tests pass (VERIFY)
+3. Render seeds 7/13/42 (QC)
+4. Eval adapted + numbers reported (QC)
+5. **PO review of PNGs + decision: ship or iterate** (POST-REVIEW)
+6. Commit (SESSION + COMMIT)
+7. Next phase
 
 ## 15 — References
 
@@ -533,4 +626,11 @@ To finalise the plan before v3.1 implementation starts:
 
 ---
 
-**Status:** PLAN — pending PO greenlight on §14 open questions before v3.1 implementation kickoff.
+**Status:** PLAN LOCKED 2026-05-25 — all §14 questions answered. **Ready for v3.1 implementation kickoff** in next session.
+
+Pre-v3.1 prep notes:
+- Review existing `author.rs` / `naming.rs` LLM client to confirm reusable interface
+- Decide DispatchMode default for first impl: `Random` (simplest) or `Layered([Manual, Random])` (production-ready)
+- Decide stamp authoring format: SVG (rich) vs JSON polygon vertices (simpler)
+
+**Next session focus:** v3.1 — extract `crates/world-gen/src/shape/` module + implement Bézier spine + Polar/superformula + Boolean polygon ops (3 algorithms, plate-level only, ~12-15h).
