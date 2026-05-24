@@ -6,6 +6,7 @@ import { InputSystem } from '../systems/input-system';
 import { TERRAIN_TILESET_KEY } from './PreloaderScene';
 import { buildObjectOverlay, type ObjectOverlayHandle } from '../render/object-overlay';
 import { buildOverlayRt, type OverlayRtHandle } from '../render/overlay-rt';
+import { useViewerStore } from '@/store/viewer-store';
 import type { TilemapView } from '@/types/tilemap';
 
 // V1 tilemap-viewer World scene — Batch 2.0 render strategy.
@@ -34,6 +35,8 @@ export class WorldScene extends Phaser.Scene {
   private foundationMap: Phaser.Tilemaps.Tilemap | null = null;
   private objectOverlay: ObjectOverlayHandle | null = null;
   private overlayRt: OverlayRtHandle | null = null;
+  private foundationDisplay: Phaser.GameObjects.GameObject | null = null;
+  private viewerStoreUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super({ key: 'WorldScene' });
@@ -110,6 +113,7 @@ export class WorldScene extends Phaser.Scene {
       );
       this.add.existing(gpu);
       gpu.generateLayerDataTexture();
+      this.foundationDisplay = gpu;
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn('TilemapGPULayer unavailable, falling back to TilemapLayer', err);
@@ -117,6 +121,7 @@ export class WorldScene extends Phaser.Scene {
       if (!std) {
         throw new Error('foundation tilemap layer creation failed');
       }
+      this.foundationDisplay = std;
     }
   }
 
@@ -162,6 +167,32 @@ export class WorldScene extends Phaser.Scene {
       }
     };
     EventBus.on('player-action', this.moveHandler);
+
+    this.applyViewerStoreVisibility();
+    this.subscribeViewerStore();
+  }
+
+  /** Apply the current viewer-store visibility flags to all live layers. */
+  private applyViewerStoreVisibility(): void {
+    const v = useViewerStore.getState().visibleLayers;
+    if (this.foundationDisplay && 'visible' in this.foundationDisplay) {
+      (this.foundationDisplay as unknown as { visible: boolean }).visible = v.foundation;
+    }
+    this.overlayRt?.setRtVisible(v.paths);
+    this.overlayRt?.setZoneCentersVisible(v.zone_centers);
+    this.objectOverlay?.setEnabled(v.objects);
+    if (this.player) {
+      this.player.sprite.visible = v.player;
+    }
+  }
+
+  private subscribeViewerStore(): void {
+    if (this.viewerStoreUnsubscribe) {
+      this.viewerStoreUnsubscribe();
+    }
+    this.viewerStoreUnsubscribe = useViewerStore.subscribe(() => {
+      this.applyViewerStoreVisibility();
+    });
   }
 
   private renderFallback(): void {
@@ -240,6 +271,10 @@ export class WorldScene extends Phaser.Scene {
       this.moveHandler = null;
     }
     InputSystem.detach({ scene: this });
+    if (this.viewerStoreUnsubscribe) {
+      this.viewerStoreUnsubscribe();
+      this.viewerStoreUnsubscribe = null;
+    }
     if (this.objectOverlay) {
       this.objectOverlay.destroy();
       this.objectOverlay = null;
@@ -253,6 +288,7 @@ export class WorldScene extends Phaser.Scene {
       this.foundationMap.destroy();
       this.foundationMap = null;
     }
+    this.foundationDisplay = null;
     this.player = null;
     this.renderTilemap(view);
   }
@@ -267,6 +303,10 @@ export class WorldScene extends Phaser.Scene {
       this.tilemapHandler = null;
     }
     InputSystem.detach({ scene: this });
+    if (this.viewerStoreUnsubscribe) {
+      this.viewerStoreUnsubscribe();
+      this.viewerStoreUnsubscribe = null;
+    }
     if (this.objectOverlay) {
       this.objectOverlay.destroy();
       this.objectOverlay = null;
@@ -279,6 +319,7 @@ export class WorldScene extends Phaser.Scene {
       this.foundationMap.destroy();
       this.foundationMap = null;
     }
+    this.foundationDisplay = null;
   }
 }
 

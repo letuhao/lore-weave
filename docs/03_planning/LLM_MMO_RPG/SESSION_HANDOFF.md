@@ -81,14 +81,48 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — V1 RESCOPE + DELIVERED: tilemap viewer) — read this first
+## ⏭️ CURRENT STATE (2026-05-25 — V1.2 DELIVERED: full tilemap viewer with all backend layers) — read this first
 
-V1 of this branch (`mmo-rpg/zone-map-amaw`) has been **rescoped + shipped
-in a single session**: branch's actual scope is **zone-map viewer / debug
-tool**, not full MMO infrastructure. Prior spec §17 V1 list pulled in
-MMO infrastructure (character-service, JWT, ZoneRoom presence,
-ChatRoom, CombatRoom) — those are NOT zone-map; they move to dedicated
-future branches.
+V1.2 expands V1's "foundation-only" render into a **full tilemap
+viewer** showing every visualizable layer the backend returns. PO
+caught the prior scope gap ("v1 làm gì đã xong? có mỗi foundation,
+chúng ta build tilemap rồi đâu?") and lesson saved:
+[`feedback-viewer-scope-enumerate-all-backend-fields`](file:///C:/Users/NeneScarlet/.claude/projects/d--Works-source-lore-weave-zone-map-design/memory/feedback_viewer_scope_enumerate_all_backend_fields.md).
+
+V1.2 ships as **4 incremental commits on top of V1**:
+
+| Commit | Batch | Scope |
+|---|---|---|
+| `ae5c3e30` | 2.0 | Foundation refactor: per-tile sprites → `TilemapGPULayer` (1 GL draw call regardless of grid size; scales to Continent 256² without crash) + stitched tileset PNG strip |
+| `1b4be773` | 2.1 | L4 object overlay: 25-sprite tier-bundle (XL/L/M/S/XS/Marker, min 128 px per PO request) via `gen-prop-bundle.py` (HoMM3 sources downsampled to tier sizes + 5 programmatic markers + 1 player). Container chunked culling (16×16 tile chunks → only visible chunks rendered at Continent scale) + LOD by zoom (skip smaller tiers at zoom <0.5). 500 KB WebP @ q=85 |
+| `f0fe6891` | 2.2 | RenderTexture overlays: L1 roads + L2 rivers + L2.5 crossings (bridges/fords) baked into one RT, blitted at depth 50 between foundation and props. L6 zone centers as live Container at depth 200 (role-colored ring + label) |
+| (pending) | 2.3 | UX panels: LayerToggles (6 checkboxes wired to Zustand viewer-store; WorldScene subscribes + applies visibility) + TileInspector (Shift-click tile → side-panel metadata) + MetadataPanel (template_id/seed/tier/zones summary) |
+
+### Render pipeline coverage (V1 → V1.2 progression)
+
+| TilemapView field | V1 (34fa39bf) | V1.2 |
+|---|---|---|
+| `terrain_layer` (L0) | ✓ per-tile sprites | ✓ TilemapGPULayer |
+| `road_segments` (L1) | ✗ ignored | ✓ RT polyline |
+| `river_segments` (L2) | ✗ ignored | ✓ RT polyline |
+| crossings (L2.5) | ✗ ignored | ✓ bridge/ford markers |
+| `object_placements` (L4) | ✗ ignored | ✓ Container chunked + LOD |
+| zone boundaries (L5) | ✗ ignored | ⏸ deferred V2 (needs BigInt JSON reviver for u64 bitmap) |
+| zone centers (L6) | ✗ ignored | ✓ live markers + zone_id label |
+| Player (L7) | ✓ | ✓ |
+
+**6 of 7 layers** render. L5 is the only deferred (deliberately — JSON parse loses u64 precision past 2^53).
+
+### Two PO scope-correction lessons saved this V1.2 cycle
+
+1. **`viewer-scope-enumerate-all-backend-fields`** — when scoping a
+   viewer/debugger, AC list MUST cover every field the backend returns.
+   Spec data-shape documentation ≠ render scope. Scope can drift
+   narrow (this case) as well as wide (the earlier MMO-infra creep).
+2. **`branch-name-as-scope-cap`** (already saved V1) — still load-
+   bearing: V1.2 stays within `mmo-rpg/zone-map-amaw` scope. MMO
+   infrastructure (character-service, JWT, multiplayer rooms) still
+   on future branches.
 
 ### What V1 actually shipped
 

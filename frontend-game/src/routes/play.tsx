@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PhaserGame } from '@/components/PhaserGame';
 import { HpBar, ManaBar } from '@/components/hud';
-import { Sidebar } from '@/components/sidebar/Sidebar';
 import { Modal } from '@/components/modal/Modal';
 import { RotatePrompt } from '@/components/mobile/RotatePrompt';
 import { VirtualGamepad } from '@/components/mobile/VirtualGamepad';
 import { EchoPanel } from '@/components/echo/EchoPanel';
+import { LayerToggles } from '@/components/viewer/LayerToggles';
+import { TileInspector } from '@/components/viewer/TileInspector';
+import { MetadataPanel } from '@/components/viewer/MetadataPanel';
 import { useTilemapHealth, useZoneTilemap } from '@/api/tilemap-client';
+import { EventBus } from '@/game/EventBus';
+import { useViewerStore } from '@/store/viewer-store';
 import {
   DEFAULT_SEED,
   DEFAULT_TIER,
@@ -15,10 +19,12 @@ import {
 } from '@/game/config/constants';
 import type { ChannelTier } from '@/types/tilemap';
 
-// V1 tilemap-viewer route. Renders one zone fetched from tilemap-service
-// /internal/v1/tilemaps/render. A controls panel lets the user pick
-// seed / tier / grid size and re-fetch. Spec
-// `docs/specs/2026-05-24-v1-tilemap-viewer-rescope.md`.
+// V1.2 tilemap-viewer route. Renders one zone fetched from
+// tilemap-service /internal/v1/tilemaps/render with all 7 visualizable
+// layers (foundation + roads + rivers + crossings + objects + zone
+// centers + Player). Spec:
+// `docs/specs/2026-05-24-v1-tilemap-viewer-scope-expansion.md` +
+// `2026-05-24-v1-tilemap-viewer-render-strategy.md`.
 
 const TIER_OPTIONS: readonly ChannelTier[] = ['town', 'district', 'country', 'continent'] as const;
 const GRID_DEFAULTS_BY_TIER: Record<ChannelTier, { w: number; h: number }> = {
@@ -36,6 +42,22 @@ export function PlayRoute(): JSX.Element {
   const [gridHeight, setGridHeight] = useState<number>(DEFAULT_ZONE_HEIGHT);
 
   const tilemap = useZoneTilemap({ seed, tier, gridWidth, gridHeight });
+  const openInspectorFor = useViewerStore((s) => s.openInspectorFor);
+
+  // Bridge Phaser EventBus → viewer-store: Shift-click on a tile
+  // emits `inspect-tile`; here we resolve with the current TilemapView
+  // and open the inspector. Skipped when no view loaded yet.
+  useEffect(() => {
+    const handler = (tile: { x: number; y: number }): void => {
+      if (tilemap.data) {
+        openInspectorFor(tile, tilemap.data);
+      }
+    };
+    EventBus.on('inspect-tile', handler);
+    return () => {
+      EventBus.off('inspect-tile', handler);
+    };
+  }, [tilemap.data, openInspectorFor]);
 
   const onRender = (): void => {
     void tilemap.refetch();
@@ -61,7 +83,7 @@ export function PlayRoute(): JSX.Element {
         </div>
       </div>
 
-      {/* Tilemap viewer controls — top-right above sidebar */}
+      {/* Tilemap viewer render-controls — top-right */}
       <div className="absolute top-4 right-4 bg-slate-900/90 border border-slate-700 rounded-md p-3 text-xs text-slate-200 font-mono pointer-events-auto flex flex-col gap-2 z-10 w-64">
         <div className="font-semibold text-sm">Tilemap viewer</div>
         <label className="flex justify-between items-center gap-2">
@@ -128,9 +150,19 @@ export function PlayRoute(): JSX.Element {
         )}
       </div>
 
-      {/* Right-side sidebar */}
-      <div className="absolute top-0 right-0 h-full hidden lg:block">
-        <Sidebar />
+      {/* Layer toggles — left side under HUD */}
+      <div className="absolute top-44 left-4 pointer-events-auto z-10">
+        <LayerToggles />
+      </div>
+
+      {/* Metadata panel — bottom-left */}
+      <div className="absolute bottom-4 left-4 pointer-events-auto z-10">
+        <MetadataPanel view={tilemap.data} />
+      </div>
+
+      {/* Tile inspector — right side under render-controls */}
+      <div className="absolute top-[420px] right-4 pointer-events-auto z-10">
+        <TileInspector />
       </div>
 
       {/* Session E WS echo demo panel */}

@@ -21,6 +21,11 @@ export type PlayerActionEvent = {
  *  the running WorldScene can re-render without a full scene restart. */
 export type TilemapUpdatedEvent = TilemapView;
 
+/** V1.2 Batch 2.3: emitted by InputSystem when user Shift-clicks a tile;
+ *  consumed by React (play.tsx via EventBus subscription) → opens
+ *  TileInspector via viewer-store. */
+export type InspectTileEvent = { x: number; y: number };
+
 export const EventBus = new Phaser.Events.EventEmitter();
 
 // Latest TilemapView seen on the bus. React side may emit

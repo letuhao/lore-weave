@@ -129,6 +129,8 @@ export interface ObjectOverlayHandle {
   update(): void;
   /** Dispose all sprites + containers. Idempotent. */
   destroy(): void;
+  /** Toggle ALL object chunks on/off (viewer layer panel). */
+  setEnabled(v: boolean): void;
 }
 
 export function buildObjectOverlay(
@@ -212,5 +214,17 @@ export function buildObjectOverlay(
   // First-frame update so initial render is culled correctly.
   update();
 
-  return { update, destroy };
+  let enabled = true;
+  return {
+    update: () => {
+      if (!enabled) return;
+      update();
+    },
+    destroy,
+    setEnabled: (v) => {
+      enabled = v;
+      for (const entry of chunks.values()) entry.container.visible = v;
+      if (v) update();
+    },
+  };
 }

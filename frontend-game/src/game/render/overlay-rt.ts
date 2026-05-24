@@ -38,6 +38,10 @@ const ZONE_CENTER_COLORS: Record<string, number> = {
 
 export interface OverlayRtHandle {
   destroy(): void;
+  /** Toggle the baked road/river/crossing layer (RT blit) on/off. */
+  setRtVisible(v: boolean): void;
+  /** Toggle the zone-center markers Container on/off. */
+  setZoneCentersVisible(v: boolean): void;
 }
 
 function tileCenterX(x: number): number {
@@ -166,6 +170,12 @@ export function buildOverlayRt(
     destroy: () => {
       rt.destroy();
       zoneContainer.destroy(true);
+    },
+    setRtVisible: (v) => {
+      rt.visible = v;
+    },
+    setZoneCentersVisible: (v) => {
+      zoneContainer.visible = v;
     },
   };
 }

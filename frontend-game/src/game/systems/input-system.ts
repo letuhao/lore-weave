@@ -32,7 +32,14 @@ export const InputSystem = {
       const sx = pointer.worldX - config.offsetX;
       const sy = pointer.worldY - config.offsetY;
       const target = screenToTile({ x: sx, y: sy }, TILE_PX);
-      EventBus.emit('player-action', { kind: 'move', target });
+      // Shift-click → inspector; plain click → walk.
+      const eventShift =
+        pointer.event instanceof MouseEvent ? pointer.event.shiftKey : false;
+      if (eventShift) {
+        EventBus.emit('inspect-tile', target);
+      } else {
+        EventBus.emit('player-action', { kind: 'move', target });
+      }
     };
 
     handlers.set(key, handler);
