@@ -15,6 +15,7 @@ subset the worker needs.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from decimal import Decimal
 from uuid import UUID
 
 import asyncpg
+from opentelemetry import trace as _ot_trace
 
 from loreweave_extraction import extract_pass2
 from loreweave_extraction.errors import ExtractionError
@@ -40,6 +42,56 @@ from app.llm_client import LLMClient
 __all__ = ["process_job", "poll_and_run"]
 
 logger = logging.getLogger(__name__)
+
+# D-PHASE6C-WORKERAI-JOB-SPAN. Module-level tracer; when OTel is no-op
+# (OTEL_EXPORTER_OTLP_ENDPOINT unset) this is the NoOp tracer and
+# `start_as_current_span` is a zero-cost context manager. When
+# configured, every loreweave_llm SDK call inside `process_job`
+# becomes a CHILD of the parent `worker_ai.process_job` span (httpx
+# instrumentor populates the W3C tracecontext on outbound calls) →
+# Grafana Tempo shows the whole job lifecycle as one trace instead
+# of N disconnected SDK-call traces.
+tracer = _ot_trace.get_tracer(__name__)
+
+
+def _with_job_span(func):
+    """Decorator: wrap a `process_job`-shaped coroutine in an OTel parent
+    span keyed on the job's identifiers.
+
+    Decorator pattern (vs in-place `with` block) is deliberate — the
+    body has ~14 inline `return` statements and the existing outer
+    try/except SWALLOWS errors so a `try/finally`-around-body would
+    require either re-indenting ~430 lines or refactoring the
+    try/except semantic. The decorator approach lets the body stay
+    verbatim and the span ends naturally on inner return.
+
+    Span status caveat: because the inner body swallows exceptions and
+    calls `_fail_job` itself, this wrapper sees a normal return on
+    failed jobs and ends the span with OK status. Operators
+    investigating a failure should grep logs for the job_id (still
+    structured by the existing logger.exception) to find the trace
+    id; the parent span correlates the SDK-call children regardless.
+    A future enrichment can have the inner signal failure (e.g. via
+    span context attribute) so the wrapper can set ERROR status.
+    """
+    @functools.wraps(func)
+    async def wrapper(pool, knowledge_client, llm_client, book_client, glossary_client, job):
+        with tracer.start_as_current_span(
+            "worker_ai.process_job",
+            attributes={
+                "job.id": str(job.job_id),
+                "job.scope": job.scope,
+                "job.project_id": str(job.project_id),
+                "job.user_id": str(job.user_id),
+                "job.items_total": job.items_total or 0,
+            },
+        ):
+            return await func(
+                pool, knowledge_client, llm_client,
+                book_client, glossary_client, job,
+            )
+
+    return wrapper
 
 # Default token cost estimate per item for try_spend. The real cost
 # is reconciled after the LLM call via the extraction result, but
@@ -581,6 +633,7 @@ async def _extract_and_persist(
 # ── Core job processing ─────────────────────────────────────────────
 
 
+@_with_job_span
 async def process_job(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,

@@ -1313,3 +1313,102 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert jobs[0].embedding_dimension is None
+
+
+# ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───
+
+
+@pytest.fixture(scope="module")
+def _worker_ai_span_exporter():
+    """Install an in-memory OTel exporter as the global provider so
+    every `tracer.start_as_current_span` in app.runner exports here.
+
+    Module-scoped because OTel's `set_tracer_provider` is set-once;
+    re-installing per test silently no-ops on the second call.
+    """
+    from opentelemetry import trace as _trace
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider(resource=Resource.create({"service.name": "worker-ai-test"}))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    _trace.set_tracer_provider(provider)
+
+    # Re-create the module-level tracer so it binds to the new provider
+    # (the original was created at module import before the test provider
+    # existed).
+    from app import runner as _runner
+    _runner.tracer = _trace.get_tracer(_runner.__name__)
+    return exporter
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_emits_parent_span_with_job_attributes(
+    mock_extract_persist, _worker_ai_span_exporter,
+):
+    """The decorator MUST wrap each process_job call in one OTel span
+    named `worker_ai.process_job`, carrying the job's identifiers as
+    attributes so an operator filtering Tempo by `job.id` finds the
+    whole job trace (and all SDK-call children under it via httpx
+    instrumentation in production).
+    """
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", items_total=7)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()
+    gc = _mock_glossary_client()
+
+    _worker_ai_span_exporter.clear()
+    await process_job(pool, kc, llm, bc, gc, job)
+
+    spans = [
+        s for s in _worker_ai_span_exporter.get_finished_spans()
+        if s.name == "worker_ai.process_job"
+    ]
+    assert len(spans) == 1, (
+        f"expected exactly one worker_ai.process_job span, got "
+        f"{[s.name for s in _worker_ai_span_exporter.get_finished_spans()]}"
+    )
+    span = spans[0]
+    attrs = dict(span.attributes or {})
+    assert attrs["job.id"] == str(job.job_id)
+    assert attrs["job.scope"] == "chapters"
+    assert attrs["job.project_id"] == str(job.project_id)
+    assert attrs["job.user_id"] == str(job.user_id)
+    assert attrs["job.items_total"] == 7
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_span_handles_none_items_total(
+    mock_extract_persist, _worker_ai_span_exporter,
+):
+    """Defensive: `items_total` is nullable on the JobRow (backfill case,
+    pre-K16.7 jobs). The span attribute must coerce to 0 so the OTel
+    SDK doesn't reject the None value (attribute values must be
+    primitive types)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", items_total=None)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()
+    gc = _mock_glossary_client()
+
+    _worker_ai_span_exporter.clear()
+    await process_job(pool, kc, llm, bc, gc, job)
+
+    spans = [
+        s for s in _worker_ai_span_exporter.get_finished_spans()
+        if s.name == "worker_ai.process_job"
+    ]
+    assert len(spans) == 1
+    assert dict(spans[0].attributes or {})["job.items_total"] == 0
