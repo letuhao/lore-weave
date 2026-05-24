@@ -1,23 +1,33 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
+import { terrainKindTag, TerrainKind } from '@/types/tilemap';
 
-// Loads game assets and shows a progress bar. V0 demo loads the Kenney
-// CC0 isometric-tiles-landscape pack — specific tile filenames are
-// documented in public/assets/PACKAGES.md.
+// Loads game assets and shows a progress bar.
+//
+// V1 tilemap-viewer rescope: loads 10 HoMM3-placeholder terrain tiles
+// keyed by `terrain-<tag>` (one per TerrainKind variant 1-10). See
+// `public/assets/tiles/homm3-placeholder/LICENSES.md` for source +
+// license caveat (NON-COMMERCIAL placeholder only).
 
-const TILE_BASE = '/assets/tiles/kenney-isometric-landscape/PNG';
+const TILE_BASE = '/assets/tiles/homm3-placeholder';
 
-interface TileToLoad {
-  key: string;
-  file: string;
-}
-
-const TILES_TO_LOAD: readonly TileToLoad[] = [
-  // V0 demo: grass only. Session E+ adds dirt/stone/water variants per
-  // PACKAGES.md when biome bridge gates which tile is rendered per
-  // WorldZoneSnapshot.biome.
-  { key: 'tile-grass', file: `${TILE_BASE}/landscapeTiles_067.png` },
-];
+const TILES_TO_LOAD: ReadonlyArray<{ key: string; file: string }> = (
+  [
+    TerrainKind.Grass,
+    TerrainKind.Forest,
+    TerrainKind.Mountain,
+    TerrainKind.Water,
+    TerrainKind.Sand,
+    TerrainKind.Snow,
+    TerrainKind.Swamp,
+    TerrainKind.Road,
+    TerrainKind.Rough,
+    TerrainKind.Subterranean,
+  ] as const
+).map((k) => {
+  const tag = terrainKindTag(k);
+  return { key: `terrain-${tag}`, file: `${TILE_BASE}/${tag}.png` };
+});
 
 export class PreloaderScene extends Phaser.Scene {
   constructor() {
@@ -25,8 +35,9 @@ export class PreloaderScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Generate a quick Player placeholder sprite programmatically —
-    // a yellow circle. Kenney character pack is V0+1 / V1 scope.
+    // Generate a Player placeholder sprite programmatically — a yellow
+    // circle. Per-book character art lands in a separate branch (see
+    // SESSION_HANDOFF + DEFERRED #037).
     const playerGfx = this.add.graphics();
     playerGfx.fillStyle(0xfbbf24, 1);
     playerGfx.fillCircle(16, 16, 14);
@@ -49,7 +60,6 @@ export class PreloaderScene extends Phaser.Scene {
       barBg.destroy();
     });
 
-    // Real Kenney tile loads.
     for (const t of TILES_TO_LOAD) {
       this.load.image(t.key, t.file);
     }

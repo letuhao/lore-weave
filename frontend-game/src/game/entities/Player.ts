@@ -1,24 +1,20 @@
 import Phaser from 'phaser';
-import { worldToScreen, type WorldCoord } from '../../lib/iso-math';
+import { tileToScreen, type WorldCoord } from '../../lib/world-math';
+import { TILE_PX } from '../config/constants';
 
-// Player sprite + walk-to-tile queue. Per spec §1 #6 (turn-based + idle
-// MMO model): no client prediction, no input buffer past 1-2 queued
-// targets, no interpolation between server snapshots. V0 is single-
-// player local; Session E+ wires server-validated movement.
+// Player sprite + walk-to-tile queue. V1 tilemap-viewer rescope: top-down
+// orthogonal walking on the real server-provided grid_size from
+// TilemapView. No iso projection; sprite is centered on its tile.
 
 const WALK_MS_PER_TILE = 250;
 
 export interface PlayerInit {
   scene: Phaser.Scene;
   startTile: WorldCoord;
+  /** Scene render offset (matches WorldScene.offsetX/Y). */
   offsetX: number;
   offsetY: number;
-  /**
-   * Zone bounds for client-side boundary check. V0 has no server-side
-   * collision; the Player would otherwise tween off the visible grid.
-   * V1 server validates movement and rejects out-of-bounds — this check
-   * becomes a UX hint rather than the only guard.
-   */
+  /** Zone bounds from server-provided grid_size. */
   zoneWidth: number;
   zoneHeight: number;
 }
@@ -41,9 +37,13 @@ export class Player {
     this.zoneWidth = init.zoneWidth;
     this.zoneHeight = init.zoneHeight;
     this.tile = init.startTile;
-    const screen = worldToScreen(this.tile);
+    const screen = tileToScreen(this.tile, TILE_PX);
     this.sprite = init.scene.add
-      .sprite(init.offsetX + screen.x, init.offsetY + screen.y - 32, 'player-stub')
+      .sprite(
+        init.offsetX + screen.x + TILE_PX / 2,
+        init.offsetY + screen.y + TILE_PX / 2,
+        'player-stub',
+      )
       .setOrigin(0.5, 0.5)
       .setDepth(1000);
   }
@@ -52,10 +52,6 @@ export class Player {
     return { ...this.tile };
   }
 
-  /**
-   * Returns true if the given tile is within zone bounds. Exposed for
-   * tests + callers that want to validate before queueing.
-   */
   isInBounds(target: WorldCoord): boolean {
     return (
       target.x >= 0 &&
@@ -66,14 +62,9 @@ export class Player {
   }
 
   walkTo(target: WorldCoord): void {
-    // Boundary check (V0 cleanup): silently drop out-of-zone clicks so
-    // the Player doesn't tween into the void. V1 server-validated
-    // movement makes this a UX hint, but for V0 demo it's the only guard.
     if (!this.isInBounds(target)) {
       return;
     }
-    // If already heading there (or queued there), no-op so spam-clicking
-    // the same tile doesn't stack tweens.
     const last = this.queue.length > 0 ? this.queue[this.queue.length - 1] : this.tile;
     if (last && last.x === target.x && last.y === target.y) {
       return;
@@ -91,11 +82,11 @@ export class Player {
       return;
     }
     this.walking = true;
-    const screen = worldToScreen(next);
+    const screen = tileToScreen(next, TILE_PX);
     this.scene.tweens.add({
       targets: this.sprite,
-      x: this.offsetX + screen.x,
-      y: this.offsetY + screen.y - 32,
+      x: this.offsetX + screen.x + TILE_PX / 2,
+      y: this.offsetY + screen.y + TILE_PX / 2,
       duration: WALK_MS_PER_TILE,
       ease: 'Sine.easeInOut',
       onComplete: () => {

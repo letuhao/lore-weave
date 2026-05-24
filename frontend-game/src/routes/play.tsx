@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { PhaserGame } from '@/components/PhaserGame';
 import { HpBar, ManaBar } from '@/components/hud';
 import { Sidebar } from '@/components/sidebar/Sidebar';
@@ -5,21 +6,51 @@ import { Modal } from '@/components/modal/Modal';
 import { RotatePrompt } from '@/components/mobile/RotatePrompt';
 import { VirtualGamepad } from '@/components/mobile/VirtualGamepad';
 import { EchoPanel } from '@/components/echo/EchoPanel';
-import { useTilemapHealth } from '@/api/tilemap-client';
+import { useTilemapHealth, useZoneTilemap } from '@/api/tilemap-client';
+import {
+  DEFAULT_SEED,
+  DEFAULT_TIER,
+  DEFAULT_ZONE_HEIGHT,
+  DEFAULT_ZONE_WIDTH,
+} from '@/game/config/constants';
+import type { ChannelTier } from '@/types/tilemap';
 
-// Main play route. Per spec §1 #3 hybrid React+Phaser:
-// - <PhaserGame> renders canvas (absolute inset-0)
-// - HUD components are React DOM overlays on top
-// - Sidebar is a React DOM panel
-// - <Modal> renders conditionally based on ui-store
-// - <RotatePrompt> overlays on portrait mobile (landscape-lock per §7.3)
-// - <VirtualGamepad> overlays on touch devices
+// V1 tilemap-viewer route. Renders one zone fetched from tilemap-service
+// /internal/v1/tilemaps/render. A controls panel lets the user pick
+// seed / tier / grid size and re-fetch. Spec
+// `docs/specs/2026-05-24-v1-tilemap-viewer-rescope.md`.
+
+const TIER_OPTIONS: readonly ChannelTier[] = ['town', 'district', 'country', 'continent'] as const;
+const GRID_DEFAULTS_BY_TIER: Record<ChannelTier, { w: number; h: number }> = {
+  town: { w: 64, h: 64 },
+  district: { w: 128, h: 128 },
+  country: { w: 192, h: 192 },
+  continent: { w: 256, h: 256 },
+};
 
 export function PlayRoute(): JSX.Element {
   const health = useTilemapHealth();
+  const [seed, setSeed] = useState<number>(DEFAULT_SEED);
+  const [tier, setTier] = useState<ChannelTier>(DEFAULT_TIER);
+  const [gridWidth, setGridWidth] = useState<number>(DEFAULT_ZONE_WIDTH);
+  const [gridHeight, setGridHeight] = useState<number>(DEFAULT_ZONE_HEIGHT);
+
+  const tilemap = useZoneTilemap({ seed, tier, gridWidth, gridHeight });
+
+  const onRender = (): void => {
+    void tilemap.refetch();
+  };
+
+  const onTierChange = (next: ChannelTier): void => {
+    setTier(next);
+    const d = GRID_DEFAULTS_BY_TIER[next];
+    setGridWidth(d.w);
+    setGridHeight(d.h);
+  };
+
   return (
     <div className="relative w-screen h-screen overflow-hidden">
-      <PhaserGame />
+      <PhaserGame tilemap={tilemap.data} />
 
       {/* HUD overlay top-left */}
       <div className="absolute top-4 left-4 flex flex-col gap-2 pointer-events-auto">
@@ -30,8 +61,75 @@ export function PlayRoute(): JSX.Element {
         </div>
       </div>
 
+      {/* Tilemap viewer controls — top-right above sidebar */}
+      <div className="absolute top-4 right-4 bg-slate-900/90 border border-slate-700 rounded-md p-3 text-xs text-slate-200 font-mono pointer-events-auto flex flex-col gap-2 z-10 w-64">
+        <div className="font-semibold text-sm">Tilemap viewer</div>
+        <label className="flex justify-between items-center gap-2">
+          <span>seed</span>
+          <input
+            type="number"
+            value={seed}
+            onChange={(e) => setSeed(Number(e.target.value) || 0)}
+            className="bg-slate-800 border border-slate-600 rounded px-2 py-1 w-24 text-right"
+          />
+        </label>
+        <label className="flex justify-between items-center gap-2">
+          <span>tier</span>
+          <select
+            value={tier}
+            onChange={(e) => onTierChange(e.target.value as ChannelTier)}
+            className="bg-slate-800 border border-slate-600 rounded px-2 py-1 w-24"
+          >
+            {TIER_OPTIONS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex justify-between items-center gap-2">
+          <span>width</span>
+          <input
+            type="number"
+            min={4}
+            max={256}
+            value={gridWidth}
+            onChange={(e) => setGridWidth(Math.max(4, Math.min(256, Number(e.target.value) || 0)))}
+            className="bg-slate-800 border border-slate-600 rounded px-2 py-1 w-24 text-right"
+          />
+        </label>
+        <label className="flex justify-between items-center gap-2">
+          <span>height</span>
+          <input
+            type="number"
+            min={4}
+            max={256}
+            value={gridHeight}
+            onChange={(e) => setGridHeight(Math.max(4, Math.min(256, Number(e.target.value) || 0)))}
+            className="bg-slate-800 border border-slate-600 rounded px-2 py-1 w-24 text-right"
+          />
+        </label>
+        <button
+          onClick={onRender}
+          disabled={tilemap.isFetching}
+          className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 rounded px-3 py-1.5 text-sm font-semibold mt-1"
+        >
+          {tilemap.isFetching ? 'rendering…' : 'render zone'}
+        </button>
+        {tilemap.error && (
+          <div className="text-rose-400 text-[10px] break-words mt-1">
+            {String(tilemap.error)}
+          </div>
+        )}
+        {tilemap.data && (
+          <div className="text-emerald-400 text-[10px] mt-1">
+            ok · {tilemap.data.terrain_layer.length} tiles · {tilemap.data.zones.length} zones
+          </div>
+        )}
+      </div>
+
       {/* Right-side sidebar */}
-      <div className="absolute top-0 right-0 h-full">
+      <div className="absolute top-0 right-0 h-full hidden lg:block">
         <Sidebar />
       </div>
 
@@ -42,7 +140,7 @@ export function PlayRoute(): JSX.Element {
       <VirtualGamepad />
       <Modal>
         <h2 className="text-lg font-semibold mb-2 text-slate-100">Modal placeholder</h2>
-        <p className="text-slate-300 text-sm">Session D wires real Settings/Confirm/Dialog content.</p>
+        <p className="text-slate-300 text-sm">Future encounter scenes will live here.</p>
       </Modal>
       <RotatePrompt />
     </div>
