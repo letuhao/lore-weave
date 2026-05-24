@@ -332,11 +332,11 @@ func (s *Server) runGuardrailPreflight(
 
 	// 2. Estimate. nchunks is derived from the chunk config + the raw input
 	//    token count (no overhead) so the per-chunk overhead lands once.
-	strategy, size := "", 0
+	strategy, size, overlap := "", 0, 0
 	if chunkCfg != nil {
-		strategy, size = chunkCfg.Strategy, chunkCfg.Size
+		strategy, size, overlap = chunkCfg.Strategy, chunkCfg.Size, chunkCfg.Overlap
 	}
-	nchunks := billing.EstimateNChunks(strategy, size, s.estimator.InputTokens(inputMap, 1))
+	nchunks := billing.EstimateNChunks(strategy, size, overlap, s.estimator.InputTokens(inputMap, 1))
 
 	estimate, err := s.estimator.EstimateUSD(operation, inputMap, pricing, nchunks)
 	if errors.Is(err, billing.ErrUnpriced) {
@@ -425,6 +425,14 @@ func (s *Server) affordableMaxTokens(
 	if res.MonthlyAvailable < budget {
 		budget = res.MonthlyAvailable
 	}
+	// D-PHASE6A-CAP-ROUNDUP. Reserve one usdQuantum of headroom: the re-
+	// estimate after capping runs through `roundUpUSD` which bumps the
+	// total to the next quantum boundary. Without the headroom, a value
+	// that mathematically fit exactly at the budget can re-estimate to
+	// budget+ε and 402 spuriously on the cap retry. Ultra-rare, fails
+	// SAFE (it's a 402, not a leak), but a needless rejection — the
+	// fix costs at most one cent of one cent of one cent of budget.
+	budget -= billing.UsdQuantum
 	inputCost := float64(s.estimator.InputTokens(inputMap, nchunks)) / 1e6 * (*pricing.InputPerMTok)
 	outPerTok := *pricing.OutputPerMTok / 1e6
 	if outPerTok <= 0 {

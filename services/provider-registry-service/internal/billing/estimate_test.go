@@ -274,26 +274,47 @@ func TestRoundUpUSD_NeverFreeByRounding(t *testing.T) {
 
 func TestEstimateNChunks(t *testing.T) {
 	cases := []struct {
-		name       string
-		strategy   string
-		size, toks int
-		want       int
+		name                string
+		strategy            string
+		size, overlap, toks int
+		want                int
 	}{
-		{"none → 1", "none", 0, 10000, 1},
-		{"empty → 1", "", 0, 10000, 1},
-		{"zero input → 1", "tokens", 500, 0, 1},
-		{"tokens exact", "tokens", 2000, 10000, 5},
-		{"tokens ceil", "tokens", 2000, 10001, 6},
-		{"tokens default size", "tokens", 0, 10000, 5},
-		{"paragraphs proxy", "paragraphs", 8, 10000, 5},
-		{"sentences proxy", "sentences", 30, 4001, 3},
-		{"unknown strategy proxy", "magic", 0, 2000, 1},
+		{"none → 1", "none", 0, 0, 10000, 1},
+		{"empty → 1", "", 0, 0, 10000, 1},
+		{"zero input → 1", "tokens", 500, 0, 0, 1},
+		{"tokens exact no overlap", "tokens", 2000, 0, 10000, 5},
+		{"tokens ceil no overlap", "tokens", 2000, 0, 10001, 6},
+		{"tokens default size no overlap", "tokens", 0, 0, 10000, 5},
+		{"paragraphs proxy", "paragraphs", 8, 0, 10000, 5},
+		{"sentences proxy", "sentences", 30, 0, 4001, 3},
+		{"unknown strategy proxy", "magic", 0, 0, 2000, 1},
+
+		// D-PHASE6A-NCHUNKS-OVERLAP regression-lock. With overlap > 0 the
+		// real chunker advances by stride = size - overlap, so MORE chunks
+		// than ceil(tokens/size). Caller-supplied overlap = 200 against
+		// size = 2000 + 10000 tokens → stride 1800 → ceil(10000/1800) = 6
+		// (vs old behaviour of 5 ignoring overlap → 1 chunk's worth of
+		// system-prompt overhead silently under-counted on every chunked
+		// extraction job).
+		{"tokens with overlap 200", "tokens", 2000, 200, 10000, 6},
+		// Default chunker overlap of 200 against the default size of 2000
+		// → same shape as above (we let the test exercise an explicit
+		// caller value; the chunker's own default is applied at runtime
+		// when caller omits overlap).
+		{"tokens with overlap default-shape", "tokens", 2000, 200, 18000, 10},
+		// Defensive clamps: negative overlap treated as 0; overlap ≥ size
+		// treated as 0 (would otherwise divide by zero / negative).
+		{"tokens negative overlap → 0", "tokens", 2000, -50, 10000, 5},
+		{"tokens overlap >= size → fallback", "tokens", 2000, 2000, 10000, 5},
+		// Non-token strategies must ignore overlap (semantic units are
+		// not re-overlapped).
+		{"paragraphs ignores overlap", "paragraphs", 8, 999, 10000, 5},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := EstimateNChunks(tc.strategy, tc.size, tc.toks); got != tc.want {
-				t.Fatalf("EstimateNChunks(%q,%d,%d): got %d want %d",
-					tc.strategy, tc.size, tc.toks, got, tc.want)
+			if got := EstimateNChunks(tc.strategy, tc.size, tc.overlap, tc.toks); got != tc.want {
+				t.Fatalf("EstimateNChunks(%q,size=%d,overlap=%d,toks=%d): got %d want %d",
+					tc.strategy, tc.size, tc.overlap, tc.toks, got, tc.want)
 			}
 		})
 	}

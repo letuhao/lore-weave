@@ -72,6 +72,12 @@ const (
 	// estimate rounds UP to this so no job is ever free-by-rounding.
 	usdQuantum = 1e-8
 
+	// UsdQuantum exports usdQuantum for callers that need to reason about
+	// the post-rounding cost cliff — e.g. `affordableMaxTokens` reserves
+	// one quantum of price headroom so a re-estimate's `roundUpUSD` can't
+	// push the capped cost back over budget (D-PHASE6A-CAP-ROUNDUP).
+	UsdQuantum = usdQuantum
+
 	// sttFallbackChars — conservative flat char-equivalent for a speech job
 	// whose input carries no `audio_chars` hint (design §3.3 "flat fallback
 	// if unknown"). The multipart submit path should pass `audio_chars`
@@ -170,11 +176,20 @@ func (e Estimator) InputTokens(input map[string]any, nchunks int) int {
 // cost, the safe direction for a guardrail.
 //
 //   - empty / "none" strategy → 1 (unchunked).
-//   - "tokens" → ceil(inputTokens / size).
+//   - "tokens" → ceil(inputTokens / stride), where stride = size - overlap
+//     (the chunker re-overlaps `overlap` tokens at the start of every chunk
+//     after the first, so the effective advance per chunk is the stride; a
+//     positive overlap means MORE chunks than ceil(tokens/size) and a slightly
+//     larger system-prompt overhead total — D-PHASE6A-NCHUNKS-OVERLAP).
 //   - "paragraphs" / "sentences" / anything else → ceil(inputTokens /
 //     chunkSizeTokensDefault), a coarse proxy (the strategy's unit is not
-//     tokens; this assumes a ~2000-token chunk).
-func EstimateNChunks(strategy string, size, inputTokens int) int {
+//     tokens; this assumes a ~2000-token chunk). overlap is irrelevant for
+//     non-token strategies (semantic units are not re-overlapped).
+//
+// `overlap` is silently clamped to [0, size-1]; an overlap >= size would
+// produce a non-positive stride (the chunker itself rejects this at runtime,
+// but the estimator must never divide by zero).
+func EstimateNChunks(strategy string, size, overlap, inputTokens int) int {
 	if inputTokens <= 0 {
 		return 1
 	}
@@ -185,7 +200,17 @@ func EstimateNChunks(strategy string, size, inputTokens int) int {
 		if size <= 0 {
 			size = chunkSizeTokensDefault
 		}
-		return ceilDiv(inputTokens, size)
+		if overlap < 0 {
+			overlap = 0
+		}
+		if overlap >= size {
+			// Defensive: a malformed config would otherwise divide by zero
+			// or negative. Treat as no-overlap so we still produce a
+			// finite (and over-estimated, hence guardrail-safe) count.
+			overlap = 0
+		}
+		stride := size - overlap
+		return ceilDiv(inputTokens, stride)
 	default:
 		return ceilDiv(inputTokens, chunkSizeTokensDefault)
 	}

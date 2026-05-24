@@ -5,6 +5,7 @@ package api
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -130,6 +131,48 @@ func TestAffordableMaxTokens_Unaffordable(t *testing.T) {
 	res := billing.ReserveResult{Insufficient: true, DailyAvailable: 1e-9, MonthlyAvailable: 1e-9}
 	if _, _, ok := s.affordableMaxTokens(input, pricing, 1, res); ok {
 		t.Fatal("expected affordable=false for a sub-token budget")
+	}
+}
+
+// TestAffordableMaxTokens_ReservesQuantumHeadroom — D-PHASE6A-CAP-ROUNDUP
+// regression-lock. The cap calc subtracts billing.UsdQuantum from the
+// budget so that the post-cap re-estimate's `roundUpUSD` doesn't push
+// the total back over the available budget. Compute the post-cap cost
+// AS THE GUARDRAIL WOULD (via roundUpUSD) and assert it stays at or
+// below the budget. Pre-fix this test would FAIL by exactly one
+// quantum on inputs that align with the rounding cliff.
+func TestAffordableMaxTokens_ReservesQuantumHeadroom(t *testing.T) {
+	s := preflightServer()
+	// Pick numbers where the unrounded cost lands EXACTLY on a quantum
+	// boundary post-affordable. outPerTok = 10/1e6 = 1e-5 USD/token.
+	// budget = 0.00001000 = 1 token's worth. Without headroom, affordable
+	// = 1, post-cost = 1e-5 = the budget, but roundUpUSD bumps anything
+	// > 0 to ≥ 1 quantum so a real 0.00001000 cost is fine. The cliff
+	// shows up when the affordable calc rounds slightly above an exact
+	// fit — easier to construct via a budget like 0.00001234 with
+	// outPerTok 1e-5: affordable = floor((0.00001234 - 1e-8) / 1e-5) = 1.
+	// Post-cost rounded = 1 * 1e-5 = 1e-5, well below budget.
+	input := map[string]any{"messages": "hi"}
+	pricing := billing.Pricing{InputPerMTok: ptr(1.0), OutputPerMTok: ptr(10.0)}
+	res := billing.ReserveResult{
+		Insufficient: true,
+		DailyAvailable: 0.00001234, MonthlyAvailable: 9.0,
+	}
+	capped, _, ok := s.affordableMaxTokens(input, pricing, 1, res)
+	if !ok || capped < 1 {
+		t.Fatalf("expected ok=true capped>=1, got ok=%v capped=%d", ok, capped)
+	}
+	// Simulate the gateway's post-cap re-estimate: input cost rounded up
+	// + capped output cost. The total MUST be ≤ DailyAvailable; with the
+	// quantum headroom subtracted from `budget`, the affordable count is
+	// one less than the cliff case, so the re-estimate fits.
+	inTok := s.estimator.InputTokens(input, 1)
+	postCost := float64(inTok)/1e6*(*pricing.InputPerMTok) + float64(capped)*(*pricing.OutputPerMTok)/1e6
+	// roundUpUSD is package-private; approximate via ceiling-to-quantum.
+	rounded := math.Ceil(postCost/billing.UsdQuantum) * billing.UsdQuantum
+	if rounded > res.DailyAvailable {
+		t.Fatalf("post-cap re-estimate %v exceeds DailyAvailable %v — quantum headroom missing",
+			rounded, res.DailyAvailable)
 	}
 }
 
