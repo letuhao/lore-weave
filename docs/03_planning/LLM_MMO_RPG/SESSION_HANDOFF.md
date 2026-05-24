@@ -81,7 +81,97 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — V0 CLOSE-OUT: 5-batch debt cleanup, 27 line-items cleared) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — V1 OPEN: no work started yet) — read this first
+
+V0 is **COMPLETE + SWEPT**. All 16 AC-FG-* from spec §18 verified
+end-to-end, 27 line-item debts cleared in close-out batch, no critical
+debts outstanding. V1 is now the active phase but no V1 work has been
+committed yet — this entry just marks the phase transition.
+
+### V0 — closed (don't reopen unless scope changes)
+
+- Architecture spec accepted (Session A)
+- 6 implementation sessions (B-F) shipped commits `f555cf63` → `68e9058f`
+- V0 close-out (`ac6b8619`) cleared 27 line-items: HMR + cross-browser
+  verified, ESLint + Prettier + bundle-size guard + CI workflow added,
+  23 unit tests + 15 cross-browser e2e tests landed
+- Branch `mmo-rpg/zone-map-amaw` at `ac6b8619` — 8 commits ahead of `main`
+- Source-of-truth docs:
+  - Spec: [`docs/specs/2026-05-24-frontend-game-architecture.md`](../../specs/2026-05-24-frontend-game-architecture.md)
+  - Deferred items (V1+ scope): [`docs/deferred/DEFERRED.md`](../../deferred/DEFERRED.md) IDs 030-036
+  - Per-session plans: `docs/plans/2026-05-24-frontend-game-session-*.md` (7 files)
+
+### V1 scope (per spec §15 + §17)
+
+Spec §15 estimate: **15-25 sessions for V1** (revised per LOW-12 from
+spec /review-impl — originally 5-10 was optimistic).
+
+Spec §17 V1 scope:
+- **`game-server` real rooms** — replace EchoRoom with `ZoneRoom`
+  (player presence + position sync), `CombatRoom` (turn-based), `ChatRoom`
+  (global + party + zone-local). Colyseus `@colyseus/schema` for state.
+- **`character-service` (Go)** — new backend service for character
+  creation, persistence, vitals, inventory ownership
+- **JWT auth handshake** — replace V0 dev-token with real JWT obtained
+  via auth-service login flow. EchoRoom.onAuth → ZoneRoom.onAuth
+  verifies signed token. Addresses DEFERRED #033.
+- **`tilemap-service` `/v1/tilemaps/render` real integration** — currently
+  V0 only polls `/livez`. V1 wires `POST /internal/v1/tilemaps/render`
+  (the endpoint built in Session world_inherit) into a real WorldZoneSnapshot
+  pipeline; frontend-game `useTilemapHealth` becomes `useZoneTilemap(zoneId)`
+- **Phaser scene** — replace 8×8 stub grass field with server-fetched
+  tilemap rendered to real WorldZoneSnapshot data; Player position from
+  server snapshot, not local-only
+
+### V1 candidate first sessions (rough ordering)
+
+These are placeholder names; first CLARIFY session will refine.
+
+| # | Session | Size | Why first |
+|---|---|---|---|
+| V1-A | game-server room scaffolding — ZoneRoom + Schema design | L | All other V1 work assumes this room shape |
+| V1-B | character-service Go scaffold + DB schema | XL | Needed before V1-C JWT (character_id resolution) |
+| V1-C | JWT auth handshake + cookie storage (auth-service ↔ frontend-game ↔ game-server) | XL | Unblocks real per-user sessions; addresses DEFERRED #033 + #034 |
+| V1-D | tilemap-service `/v1/tilemaps/render` real integration + Phaser scene swap | L | First end-to-end "real" rendering vs stub |
+| V1-E | ZoneRoom presence sync (multi-player visible in same zone) | M | First multiplayer feature |
+| V1-F | ChatRoom (global → party → zone-local) | M | High-value V1 feature |
+| V1-G+ | CombatRoom + inventory + Schema state sync etc. | TBD | Spec §17 V2 boundary likely |
+
+### V1 design-track decisions to make BEFORE V1-A
+
+Per spec §17.1 + DEFERRED items, before V1-A starts the user should
+decide:
+
+1. **Colyseus Schema vs raw messages** — Schema gives delta sync but
+   adds boilerplate per room. V1 ZoneRoom benefits; smaller rooms may not.
+2. **Token storage**: HTTP-only cookie (set by auth-service) vs
+   localStorage JWT? Cookie wins on XSS resistance but cross-origin
+   complications (DEFERRED #033, spec §8 single-domain decision).
+3. **character-service DB**: own Postgres per CLAUDE.md per-service DB
+   rule? Or piggyback auth-service for V1 then split?
+4. **Tilemap caching** — render-on-demand from `/v1/tilemaps/render` is
+   slow (the Rust generator takes seconds at Continent scale). V1 needs
+   a cache layer (Redis? edge CDN? server-side LRU?). Spec §17 doesn't
+   pin this; first V1-D session is when it gets answered.
+5. **DEFERRED items revisit** — IDs 030-036 from V0 close-out: which
+   carry forward as V1 must-do vs Track-2?
+
+### How to start V1
+
+First V1 session: **CLARIFY** what V1 ships first. The candidates above
+are rough; the actual order depends on dependency analysis + PO priority.
+Typical CLARIFY questions:
+- Which V1 capability is most user-visible / demo-able?
+- Which has the highest design-risk that needs early validation?
+- Which unblocks the most other work?
+
+V0's first BUILD session (B) shipped pnpm workspace before any actual
+game code; V1's equivalent likely is V1-B character-service scaffold
+since auth + characters underpin everything else.
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — V0 CLOSE-OUT: 5-batch debt cleanup, 27 line-items cleared)
 
 Post-V0-milestone audit caught 27 line-item debts across 6 buckets. PO
 chose "clear all V0 debts" rather than ship-and-defer. This entry tracks
