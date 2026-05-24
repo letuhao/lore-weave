@@ -4,13 +4,15 @@
 
 ## Reading Order
 
-The three research files were produced in sequence during session 59 (2026-05-25), each in response to PO feedback after the prior iteration:
+The four research files were produced in sequence during session 59 (2026-05-25), each in response to PO feedback after the prior iteration:
 
 1. **[Research 1 — Procgen Continent Algorithms](2026-05-25-phase-a-research-1-procgen-algorithms.md)** — Original 10-algorithm catalog after PO feedback "polygons still toy-blob". Recommended Rec #1 (multi-tier noise + midpoint displacement). Result: spike test showed peninsular plates but with eval regression on 2 seeds.
 
 2. **[Research 2 — Shape Templates + Size Diversity + Azgaar FMG Pattern](2026-05-25-phase-a-research-2-shape-templates-sizing.md)** — After PO feedback "still circles same size, need TEMPLATES + multi-algo". 17-algorithm catalog + Pareto/log-normal sizing + Azgaar FMG analysis + 7-template taxonomy + 4-phase v3 roadmap. **Result: v3.0 shipped (commit f022cf82)** — schema refactor + Pareto sizing + anisotropy.
 
 3. **[Research 3 — Topology-Specific Algorithms + Game Industry References](2026-05-25-phase-a-research-3-topology-game-algos.md)** — After PO feedback "still ovals, need S-shape/sock/hook/ring, what algos do games use?". 12 topology-specific algorithms + 20 game industry references (Civ V/VI, DF, NMS, Stellaris, Minecraft, Bad North, Townscaper, Caves of Qud, Brogue, Spelunky, Spore, Diablo II, etc.) + 8-template taxonomy + 3 ranked recs. **Result: PO requested research saved before v3.1 impl.**
+
+4. **[Research 4 — Multi-Agent Slime Mold / Physarum / DLA Algorithms](2026-05-25-phase-a-research-4-slime-physarum.md)** — PO proposed novel algorithm: multi-agent random walks with energy decay → connect nodes → trace boundary. Verified the algorithm exists (Physarum/Jones 2010 + DLA + concave hull). Catalogued game examples (Sebastian Lague slime sim, Sage Jenson Physarum art, DF rivers, Brogue caves). Verdict: **most topologically diverse** of all researched algorithms but lowest production-readiness. Recommended **hybrid use**: templates for Giant/Large plates + slime for Small/Micro plates.
 
 ## Quick Reference Tables
 
@@ -60,6 +62,8 @@ The three research files were produced in sequence during session 59 (2026-05-25
 | **#2 (broader)** | SDF capsule chain + smooth-min + marching squares | 14 | 3/5 | ★★★★★ | ALL incl. Y/T branching, archipelago |
 | **#3 (production-grade hybrid)** | Spine (A1) + superformula (A7) + boolean (A6 w/ geo-clipper) | 18 | 3/5 | ★★★★★ | 7/8 topologies, deferred Y/T branching |
 | **#4 (authored-feel)** | Hand-authored stamps (Diablo II school) | 1h/stamp × N | 1/5 | ★★★★ | whatever you author |
+| **#5 (most emergent — PO's idea)** | **Multi-agent slime/Physarum + concave hull** (Research 4) | 6-8 | 4/5 (fragile) | ★★★★★ | **UNLIMITED** but unpredictable per-seed |
+| **#6 (hybrid w/ slime)** | Templates for Giant/Large + slime for Small/Micro | 10 + 8 | 3/5 | ★★★★★ | Predictable bigs + wild smalls |
 
 ## Roadmap (locked)
 
@@ -96,6 +100,22 @@ Preserving exact PO direction in original language so future agents read intent 
 **Translation:** Save all research knowledge into files so it doesn't drift away. This knowledge will be used in next research phase — first save knowledge.
 
 (This INDEX + the 3 research files satisfy that request.)
+
+### After Research 3 saved — PO proposed novel algorithm (Research 4 trigger)
+> "dùng thuật toán vết dầu loang hay dùng thuật toán vẽ câu nhiều nhanh ngẫu tiên từ 1 hoặc n xuất phát điểm, sau khi di chuyển ngẫu nhiên tới các node cố định gồm n node thì chúng ta nối ngẫu nhiên các node này lại với nhau rồi vẽ edge đi qua các node thì sao?
+>
+> giống kiểu giả lập nấm slime hay tia chớp di chuyển ấy?
+> hình dạng của mảng kiến tạo sẽ random hơn và hình dáng tạo ra chúng ta không biết trước
+>
+> kiểu dữ bỏ vào đó n seed chưa biết, mỗi seed có thể lực khác nhau, cho chúng di chuyển dò đường random cho tới khi hết thể lức và dừng lại
+> sau đó chúng ta lại cho các seed khác đi tìm đường đi ngẫu nhiên đễ vẽ biên cho các seed rồi loại bỏ các đường giao dư thừa, cuối cùng chúng ta có 1 polygon phức tạp nhưng trông thực hơn?
+>
+> với thuật toán này của tôi thì sao, có đa dạng hơn mấy cái vừa research ở trên không?
+> có thuật toán nào như vậy không? có game nào áp dụng không?"
+
+**Translation:** Use "spreading oil stain" / multi-branch random walk from N starting points with energy-decay; reach fixed nodes; connect nodes; trace boundary; remove redundant edges. Like slime mold / lightning simulation. More diverse than the research'd algorithms? Does this exist? Any games?
+
+(Answered in Research 4: yes exists as Physarum + DLA + concave hull hybrid; rarely in games; most diverse of all but least production-ready; recommended hybrid use with templates.)
 
 ## Visual Evidence (eval/compare-phase-a/)
 
