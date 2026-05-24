@@ -32,6 +32,7 @@ pub mod render;
 pub mod rng;
 pub mod routes;
 pub mod settlement;
+pub mod shape;
 pub mod terrain;
 pub mod world_map;
 pub mod zonegen;

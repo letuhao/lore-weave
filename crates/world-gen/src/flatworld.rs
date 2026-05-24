@@ -11,6 +11,7 @@
 //! layout can be steered or pinned.
 
 use crate::rng::Rng;
+use crate::shape::{DispatchMode, ShapeContext, ShapeKind, ShapeRegistry};
 use serde::Serialize;
 use std::f32::consts::TAU;
 
@@ -57,6 +58,12 @@ pub struct FlatParams {
     /// This is the depth-2 level of the region tree.
     pub min_subzones: usize,
     pub max_subzones: usize,
+    /// V1 Phase A v3.1a: dispatch mode for the per-plate shape selection.
+    /// `None` (default) uses [`DispatchMode::Fixed`] with [`ShapeKind::Ellipse`]
+    /// for **byte-identical** render vs v3.0. v3.1b will flip the default to
+    /// [`DispatchMode::Weighted`] with per-rank algorithm weights. Tests /
+    /// debug callers can pin `Fixed(<kind>)` to force a single algorithm.
+    pub plate_dispatch: Option<DispatchMode>,
 }
 
 impl Default for FlatParams {
@@ -89,6 +96,10 @@ impl Default for FlatParams {
             max_zones: 7,
             min_subzones: 3,
             max_subzones: 6,
+            // v3.1a default: None → routes through Fixed(Ellipse) below in
+            // `generate`, preserving byte-identical render vs v3.0.
+            // v3.1b will flip the resolved default to Weighted(...).
+            plate_dispatch: None,
         }
     }
 }
@@ -209,34 +220,13 @@ pub fn assign_size_ranks(n: usize) -> Vec<SizeRank> {
     counts.into_iter().flat_map(|(r, c)| std::iter::repeat_n(r, c)).collect()
 }
 
-// ── V1 Phase A: polygon realism constants ──────────────────────────────────
+// ── V1 Phase A polygon-realism constants ──────────────────────────────────
 //
-// Vertex deformation: multi-octave fbm warps each polygon vertex radially.
-// AMP=0.30 keeps r in roughly [0.7·radius, 1.3·radius] (fbm range ~±0.71
-// × 0.30 = ±0.21 on the (1 + ...) scale) — visibly more organic than the
-// old smooth octagons, small enough to keep the angular spoke layout
-// simple and to preserve the climate eval composite (~±1pt). FREQ=1.5 + 3
-// octaves gives ~4-6 main lobes per plate perimeter at octave 1
-// (continent-scale capes/bays), cascading to ~10 / ~20 lobes for smaller
-// bumps and inlets. AMP=0.40 was tried but added a -6pt regression on a
-// single eval seed (s42) — defer pushing further to Phase B+ when more
-// rendering polish is in place to mask the geometry change.
-//
-// Crucially the old per-vertex random shrink (35% range, RNG-per-vertex)
-// is GONE — at high vertex counts (24-48) it produced spiky stars instead
-// of organic shapes. The shrink is now a constant bias derived from
-// `edge_jitter` so E[r] still matches old behavior (preserves land:ocean
-// ratio), while multi-octave noise carries all the geometric variation.
-const EDGE_NOISE_AMP: f32 = 0.30;
-const EDGE_NOISE_FREQ: f32 = 1.5;
-const EDGE_NOISE_OCTAVES: u32 = 3;
-// Per-vertex random shrink kept for "natural character" but scaled DOWN
-// from 1.0 to avoid the spiky-star look at high vertex counts. ~0.10 means
-// 10% of the old jitter magnitude per vertex (∼3.5% radius variation at
-// default edge_jitter=0.35), which preserves the eval's per-vertex
-// variability without dominating the smooth-noise lobes visually. Bias
-// term in the vertex loop compensates so E[r] is unchanged.
-const JITTER_RESIDUAL_SCALE: f32 = 0.10;
+// The plate vertex-deformation constants `EDGE_NOISE_AMP/FREQ/OCTAVES` +
+// `JITTER_RESIDUAL_SCALE` lived here in v3.0; they moved to
+// `crate::shape::ellipse` in v3.1a alongside the `EllipseGenerator`
+// extraction. The math and noise calibration are unchanged — see the
+// commentary in `shape/ellipse.rs` for rationale.
 
 // Voronoi zone-boundary domain warp: at render time `zone_at` perturbs
 // (x, y) by fbm noise before nearest-site lookup. WAVELENGTH ≈ 1/FREQ = 50px,
@@ -284,6 +274,11 @@ pub struct Plate {
     /// to different templates doesn't interfere with cross-plate RNG order.
     /// Reserved for v3.1+ but populated already.
     pub shape_seed: u32,
+    /// V1 Phase A v3.1a: which algorithm produced this plate's `components`.
+    /// In v3.1a the only registered generator is [`ShapeKind::Ellipse`] (so
+    /// every plate carries `Ellipse` here); v3.1b adds BezierSpine, Polar,
+    /// Boolean. Mirrored to the serialisable [`PlateData::shape_kind`] export.
+    pub shape_kind: ShapeKind,
 }
 
 impl Plate {
@@ -459,7 +454,24 @@ pub fn collision_strength(a: &Plate, b: &Plate) -> f32 {
 }
 
 /// Generate the flat plate layout from `params`. Deterministic in `seed`.
+///
+/// V1 Phase A v3.1a: plate polygons are produced via the [`shape`] module —
+/// a [`ShapeRegistry`] resolves [`ShapeKind`] tags to [`crate::shape::ShapeGenerator`]
+/// impls, and a [`DispatchMode`] picks which kind to run per plate. The default
+/// dispatch is [`DispatchMode::Fixed`] with [`ShapeKind::Ellipse`], so the
+/// output is **byte-identical** to v3.0 — the dispatcher and registry add
+/// indirection but consume no RNG in this configuration. v3.1b will register
+/// 3 more generators and flip the default to `Weighted(...)`.
 pub fn generate(params: &FlatParams) -> FlatWorld {
+    // v3.1a registry: Ellipse only. The dispatcher routes through here even
+    // though there's a single kind, so v3.1b can wire `Weighted(...)` in
+    // without touching this loop. Default `None` → `Fixed(Ellipse)`.
+    let registry = ShapeRegistry::engine_default();
+    let dispatcher = params
+        .plate_dispatch
+        .clone()
+        .unwrap_or(DispatchMode::Fixed(ShapeKind::Ellipse));
+
     let mut rng = Rng::for_stage(params.seed, b"flatworld-plates");
     // Separate stream for motion, so adding velocities doesn't perturb the
     // polygon layout produced by the plate stream.
@@ -488,81 +500,43 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
         .into_iter()
         .enumerate()
         .map(|(id, (cx, cy))| {
-            // V1 Phase A v3.0: Pareto-style size diversity via per-rank radius
-            // bands instead of one global [min_radius_frac, max_radius_frac].
-            // Old `params.min/max_radius_frac` is no longer consulted (kept on
-            // FlatParams for backwards struct compat; v3.1 templates can read
-            // them if a particular template wants to override per-rank bands).
             let rank = size_ranks.get(id).copied().unwrap_or(SizeRank::Medium);
-            let (rmin, rmax) = rank.radius_band();
-            let radius = pitch * lerp(rmin, rmax, rng.next_f32());
 
-            // V1 Phase A v3.0: anisotropic (rx, ry, theta_rot) instead of
-            // scalar radius. rx · ry = radius² preserves expected area for
-            // any aspect — climate-eval-stable. Most ranks slightly
-            // elongated; Giant/Large/Small forced more anisotropic to
-            // produce Eurasia/Italy/Korea-like shapes.
-            let (amin, amax) = rank.aspect_band();
-            let aspect = lerp(amin, amax, rng.next_f32());
-            let rx = radius * aspect.sqrt();
-            let ry = radius / aspect.sqrt();
-            let theta_rot = rng.next_f32() * TAU;
-
-            let nv = params.min_vertices
-                + (rng.next_f32() * (max_v - params.min_vertices + 1) as f32) as usize;
-            let nv = nv.clamp(3, max_v.max(3));
-
-            // Even angular spokes + small per-spoke angular wobble keep the
-            // ring ordered (simple polygon).
-            //
-            // V1 Phase A v1: multi-octave fbm noise on the radius adds the
-            // organic lobes the spec wanted (low-freq → bay-scale; mid/high
-            // → smaller bumps). Sampled at (cos·FREQ, sin·FREQ) so the noise
-            // is naturally periodic around the perimeter.
-            //
-            // V1 Phase A v3.0: per-vertex computation uses ELLIPTICAL local
-            // coords (rx·cos, ry·sin) then rotates by theta_rot, instead of
-            // r·(cos, sin). Anisotropy makes Giant/Large plates look like
-            // Eurasia (2.3:1 E-W) instead of fuzzy disks.
-            //
-            // Per-vertex RNG jitter is KEPT (the spec's "small residual
-            // jitter for character") but scaled down by JITTER_RESIDUAL_SCALE
-            // so the visual no longer reads as spiky stars at 24-48 verts;
-            // `shrink_bias` compensates exactly so E[r] still equals
-            // `(1 − edge_jitter/2) × radius` (the old expectation that
-            // governs land:ocean ratio → climate eval composite is stable
-            // within ±2pt).
+            // V1 Phase A: per-plate fbm noise salt. The Ellipse generator
+            // reads this through ShapeContext.plate_salt so the vertex
+            // noise pattern matches v3.0 byte-for-byte.
             let plate_salt =
                 (params.seed as u32).wrapping_mul(0x9E37_79B9) ^ (id as u32);
-            let phase = rng.next_f32() * TAU;
-            let cos_t = theta_rot.cos();
-            let sin_t = theta_rot.sin();
-            // Calibrated so E[shrink × bias] = 1 − edge_jitter/2 (preserves
-            // mean polygon area despite the residual scale being < 1.0).
-            let target_mean = 1.0 - params.edge_jitter * 0.5;
-            let residual_mean = 1.0 - params.edge_jitter * JITTER_RESIDUAL_SCALE * 0.5;
-            let shrink_bias = target_mean / residual_mean.max(1e-3);
-            let primary: Polygon = (0..nv)
-                .map(|k| {
-                    let base = phase + TAU * (k as f32) / nv as f32;
-                    let wobble = (rng.next_f32() - 0.5) * (TAU / nv as f32) * 0.6;
-                    let ang = base + wobble;
-                    let nx = ang.cos() * EDGE_NOISE_FREQ;
-                    let ny = ang.sin() * EDGE_NOISE_FREQ;
-                    let noise =
-                        crate::noise::fbm(nx, ny, plate_salt, EDGE_NOISE_OCTAVES);
-                    // Small per-vertex random shrink: ~3% range at default
-                    // edge_jitter=0.35 → enough to give honest character,
-                    // not so much that high-vertex polygons look fuzzy.
-                    let residual =
-                        1.0 - params.edge_jitter * JITTER_RESIDUAL_SCALE * rng.next_f32();
-                    let radial_factor = shrink_bias * residual * (1.0 + EDGE_NOISE_AMP * noise);
-                    // Elliptical local frame, then rotate by theta_rot.
-                    let lx = rx * radial_factor * ang.cos();
-                    let ly = ry * radial_factor * ang.sin();
-                    (cx + lx * cos_t - ly * sin_t, cy + lx * sin_t + ly * cos_t)
-                })
-                .collect();
+            // V1 Phase A v3.0: per-plate template-determinism seed.
+            // Distinct from plate_salt and zone_warp_salt so v3.1 templates
+            // can run their own RNG without interfering with vertex/warp
+            // noise.
+            let shape_seed = (params.seed as u32).wrapping_mul(0x27D4_EB2F)
+                ^ (id as u32).wrapping_mul(0x1656_67B1);
+
+            let ctx = ShapeContext {
+                depth: 0,
+                center: (cx, cy),
+                envelope: (pitch, pitch),
+                size_rank: rank,
+                seed: shape_seed,
+                plate_salt,
+                parent_path: Vec::new(),
+                world_theme: None,
+                edge_jitter: params.edge_jitter,
+                vertex_count_range: (params.min_vertices, max_v),
+            };
+
+            // BYTE-IDENTICAL contract: with default `Fixed(Ellipse)` dispatch
+            // this call consumes ZERO `rng` values, and `EllipseGenerator`
+            // below consumes exactly `5 + 2 * nv` `next_f32` calls in the
+            // same order as v3.0's inline loop. `tests::byte_identical_*`
+            // pin both invariants.
+            let kind = dispatcher.select(&registry, &ctx, &mut rng);
+            let components = registry
+                .get(kind)
+                .expect("dispatcher must only return kinds registered in the registry")
+                .generate(&ctx, &mut rng);
 
             let speed = mrng.next_f32() * params.max_speed;
             let vdir = mrng.next_f32() * TAU;
@@ -571,25 +545,20 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
             // V1 Phase A: per-plate domain-warp salt for `zone_at`
             // — distinct from `plate_salt` so the vertex noise and the
             // zone-seam noise don't share a hash signature.
-            let zone_warp_salt =
-                (params.seed as u32).wrapping_mul(0x85EB_CA6B) ^ (id as u32).wrapping_mul(0xC2B2_AE35);
-            // V1 Phase A v3.0: per-plate template-determinism seed.
-            // Distinct from plate_salt and zone_warp_salt so v3.1 templates
-            // can run their own RNG without interfering with vertex/warp
-            // noise. Populated already so the struct shape is stable.
-            let shape_seed =
-                (params.seed as u32).wrapping_mul(0x27D4_EB2F) ^ (id as u32).wrapping_mul(0x1656_67B1);
+            let zone_warp_salt = (params.seed as u32).wrapping_mul(0x85EB_CA6B)
+                ^ (id as u32).wrapping_mul(0xC2B2_AE35);
 
             let mut plate = Plate {
                 id,
                 center: (cx, cy),
-                components: vec![primary],
+                components,
                 velocity,
                 zone_sites: Vec::new(),
                 subzone_sites: Vec::new(),
                 zone_warp_salt,
                 size_rank: rank,
                 shape_seed,
+                shape_kind: kind,
             };
             let zone_count = params.min_zones
                 + (zrng.next_f32() * (max_zones - params.min_zones + 1) as f32) as usize;
@@ -915,6 +884,8 @@ pub struct PlateData {
     pub boundaries: Vec<Vec<[f32; 2]>>,
     /// V1 Phase A v3.0: deterministic size class.
     pub size_rank: &'static str,
+    /// V1 Phase A v3.1a: which algorithm produced `boundaries`.
+    pub shape_kind: ShapeKind,
     pub zones: Vec<ZoneData>,
 }
 
@@ -956,6 +927,7 @@ pub fn export(world: &FlatWorld, seed: u64) -> WorldData {
                 .map(|poly| poly.iter().map(|&(x, y)| [x, y]).collect())
                 .collect(),
             size_rank: p.size_rank.as_str(),
+            shape_kind: p.shape_kind,
             zones: p
                 .zone_sites
                 .iter()
@@ -1058,6 +1030,97 @@ mod tests {
         }
     }
 
+    /// Hash every load-bearing field of a `FlatWorld` (polygon vertices,
+    /// velocities, zone sites, subzone sites, salts, ranks) into a single
+    /// blake3 digest. Used by the v3.0 byte-identical snapshot pins below.
+    fn hash_world(world: &FlatWorld) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&world.width.to_le_bytes());
+        hasher.update(&world.height.to_le_bytes());
+        hasher.update(&world.collision_gain.to_le_bytes());
+        hasher.update(&(world.plates.len() as u32).to_le_bytes());
+        for p in &world.plates {
+            hasher.update(&(p.id as u32).to_le_bytes());
+            hasher.update(&p.center.0.to_le_bytes());
+            hasher.update(&p.center.1.to_le_bytes());
+            hasher.update(&p.velocity.0.to_le_bytes());
+            hasher.update(&p.velocity.1.to_le_bytes());
+            hasher.update(&p.zone_warp_salt.to_le_bytes());
+            hasher.update(&p.shape_seed.to_le_bytes());
+            hasher.update(p.size_rank.as_str().as_bytes());
+            // Note: shape_kind is NOT in the hash — for v3.1a the default
+            // dispatcher returns Ellipse for every plate; including it
+            // would make the snapshot diverge if v3.1b flips the default,
+            // even when underlying geometry is unchanged. The polygon
+            // vertices below are the load-bearing byte-identical witness.
+            hasher.update(&(p.components.len() as u32).to_le_bytes());
+            for poly in &p.components {
+                hasher.update(&(poly.len() as u32).to_le_bytes());
+                for &(x, y) in poly {
+                    hasher.update(&x.to_le_bytes());
+                    hasher.update(&y.to_le_bytes());
+                }
+            }
+            hasher.update(&(p.zone_sites.len() as u32).to_le_bytes());
+            for &(x, y) in &p.zone_sites {
+                hasher.update(&x.to_le_bytes());
+                hasher.update(&y.to_le_bytes());
+            }
+            hasher.update(&(p.subzone_sites.len() as u32).to_le_bytes());
+            for sublist in &p.subzone_sites {
+                hasher.update(&(sublist.len() as u32).to_le_bytes());
+                for &(x, y) in sublist {
+                    hasher.update(&x.to_le_bytes());
+                    hasher.update(&y.to_le_bytes());
+                }
+            }
+        }
+        *hasher.finalize().as_bytes()
+    }
+
+    /// **Byte-identical to v3.0 (commit f022cf82) at canonical seeds 1, 7,
+    /// 13, 42, 100.** The v3.1a refactor (extract Ellipse algorithm + thread
+    /// through ShapeRegistry+DispatchMode) MUST preserve every RNG draw and
+    /// arithmetic operation — any drift here means the load-bearing
+    /// invariant of the whole roadmap (eval stays at v5.2 baseline 85.24
+    /// after a refactor-only commit) is broken.
+    ///
+    /// To regenerate after an intentional output change (e.g. v3.1b ships a
+    /// new default dispatcher): run this test, copy the printed hex into
+    /// the constants below, justify the change in the commit message.
+    #[test]
+    fn flatworld_v3_0_byte_identical_seeds_1_7_13_42_100() {
+        // v3.0 reference hashes captured at commit f022cf82 (PRE-v3.1a).
+        // Re-validated under v3.1a: dispatcher routes through
+        // `Fixed(Ellipse)` by default → byte-identical render.
+        // Captured from f022cf82 via a git-worktree replay (an inline copy
+        // of `hash_world` ran in the v3.0 source tree); v3.1a's refactor
+        // reproduces every hash exactly. Documented in
+        // docs/sessions/SESSION_PATCH.md under the v3.1a entry.
+        let expected: &[(u64, &str)] = &[
+            (1,   "edcbd2262d8371d17bf67b2aab889fd6c3ab25dbbaf59a6adfbc87ca8263cd66"),
+            (7,   "a8677f9abd411164e9f564159f2c1cbb84d0f2c69969c1e534215f60059e6229"),
+            (13,  "06218f6396a293bd1f2d8a7a6da6ef7a6fb6074d4adb8c45b5ff1c37bfeb2464"),
+            (42,  "cb8b0395a7b115cd1c53e4a48dc20ca98005ec723d5662e766136180384f6658"),
+            (100, "4235724c256df3763481937ba783fbe6d08358552833610de3f246766cbe80ba"),
+        ];
+        for &(seed, expected_hex) in expected {
+            let world = generate(&FlatParams {
+                seed,
+                ..Default::default()
+            });
+            let actual = hash_world(&world);
+            let actual_hex = actual
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>();
+            assert_eq!(
+                actual_hex, expected_hex,
+                "seed {seed}: byte-identical broke. Investigate RNG order in shape dispatcher or EllipseGenerator extraction"
+            );
+        }
+    }
+
     #[test]
     fn is_deterministic_in_seed() {
         let p = FlatParams::default();
@@ -1132,6 +1195,7 @@ mod tests {
             // helpers (used by collision/elevation tests, not size-aware).
             size_rank: SizeRank::Medium,
             shape_seed: 0,
+            shape_kind: ShapeKind::Ellipse,
         }
     }
 
