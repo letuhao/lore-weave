@@ -81,7 +81,82 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — Session C Phase 2: full frontend-game scaffold per spec §3) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — Session D: V0 demo end-to-end ✓ all spec §16 ACs satisfied) — read this first
+
+L task. Replaced stub iso textures with real Kenney CC0 isometric-tiles-
+landscape pack, wired click-to-walk Player movement, booted tilemap-
+service docker container, fixed 2 real bugs along the way (Dockerfile
+mtime stale-cache + missing CORS layer), and verified the full V0 demo
+end-to-end via Playwright screenshot.
+
+### V0 demo acceptance (spec §16 + §18 ACs)
+
+| AC | Status | Evidence |
+|---|---|---|
+| AC-FG-5 — `/play` renders iso tile from Kenney CC0 | ✓ | 8×8 grass cube diamond visible from `landscapeTiles_067.png` |
+| AC-FG-6 — React HUD HP/MP bars | ✓ | Red + cyan bars top-left, reading Zustand `game-store` |
+| AC-FG-8 — TanStack Query fetches `tilemap-service/livez` | ✓ | "tilemap-service: ok" shown after CORS fix + container running |
+| AC-FG-13 — CORS allows :5174 → :8220 | ✓ | `access-control-allow-origin: http://localhost:5174` header verified |
+| Click-to-walk Player (turn-based per §1 #6) | ✓ | Real Playwright mouse click → Phaser pointerdown → input-system → EventBus → Player.walkTo tween (visual confirmation: Player moved off-center) |
+
+### 2 real bugs found + fixed (this session)
+
+1. **Dockerfile mtime stale-cache** (services/tilemap-service/Dockerfile)
+   - Symptom: `docker compose build` failed with `error[E0432]: unresolved import tilemap_service::http` even though `lib.rs` declared `pub mod http;`
+   - Root cause: Stage 1 stub writes empty `lib.rs` via `echo "" >`, setting mtime to NOW. Stage 2 `COPY` preserves the host's older mtime for the real `lib.rs`. Cargo's fingerprint compares mtimes and sees the real file as "older" — skips rebuilding the lib, then main.rs fails against stale lib metadata.
+   - Fix: added `RUN find ... -exec touch {} +` after COPY in Stage 2 to bump mtimes past the stub-stage build time.
+   - This affected ANY scenario where `docker build` happens after the host's source last save — likely many prior sessions' rebuilds would have failed too with newer host sources. Worth committing as a Dockerfile robustness fix.
+
+2. **CORS layer missing on tilemap-service** (services/tilemap-service/src/http/router.rs)
+   - Symptom: Browser fetch from `localhost:5174` → `localhost:8220/livez` blocked with `No 'Access-Control-Allow-Origin' header is present on the requested resource`
+   - Root cause: Spec AC-FG-13 predicted this would be needed for dev; never implemented. The router was assembled without a `CorsLayer`.
+   - Fix: added `tower_http::cors::CorsLayer` (enabled `cors` feature in workspace Cargo.toml) configured from `LOREWEAVE_CORS_ORIGINS` env var (default `http://localhost:5174`). Layered outermost so OPTIONS preflight responds before any middleware runs. Compose entry sets the env var explicitly for discoverability.
+   - All 386 tilemap-service tests still pass after the change.
+
+### Files landed (8 changed)
+
+| File | Change | Note |
+|---|---|---|
+| `frontend-game/public/assets/tiles/kenney-isometric-landscape/` | NEW | Unzipped Kenney pack (128 PNGs + License.txt + Spritesheet/ + Preview.png); CC0 |
+| `frontend-game/public/assets/tiles/LICENSES.md` | NEW | Per-pack license audit per spec §13 + LOW-9 |
+| `frontend-game/public/assets/PACKAGES.md` | NEW | Filename → use-case manifest; updated with PO-confirmed tile picks |
+| `frontend-game/src/game/scenes/PreloaderScene.ts` | REWRITE | Load real Kenney `tile-grass` PNG + Player placeholder graphic + progress bar |
+| `frontend-game/src/game/scenes/WorldScene.ts` | REWRITE | Render with real `tile-grass` texture, spawn Player at center, attach input-system, listen for `player-action` events |
+| `frontend-game/src/game/entities/Player.ts` | REWRITE | Real sprite + `walkTo` queue with Phaser tween (250 ms per tile) |
+| `frontend-game/src/game/systems/input-system.ts` | REWRITE | Phaser pointerdown listener → screenToTile → EventBus `player-action` emit |
+| `frontend-game/src/game/config/constants.ts` | M | `DEFAULT_ZONE_*` 32 → 8 (visible scope for V0 demo) |
+| `services/tilemap-service/src/http/router.rs` | M | + `CorsLayer` from env-configurable origins, layered outermost |
+| `services/tilemap-service/Dockerfile` | M | + `touch` after Stage 2 COPY to fix mtime cache |
+| `Cargo.toml` (workspace root) | M | tower-http: + `cors` feature |
+| `infra/docker-compose.yml` | M | + `LOREWEAVE_CORS_ORIGINS` env (default `:5174`) for tilemap-service |
+| `docs/plans/2026-05-24-frontend-game-session-d-v0-demo.md` | NEW | Plan doc (L gate) |
+| `docs/03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md` | M | This update |
+
+### Verification evidence
+
+- `pnpm --filter frontend-game typecheck` → clean
+- `pnpm --filter frontend-game test` → 3/3 ✓ (iso-math round-trip)
+- `pnpm --filter frontend-game build` → 111 modules, 441 KB gzipped (under V0 budget)
+- `cargo test -p tilemap-service` → 386/386 ✓ (CORS layer didn't regress anything)
+- `docker compose --profile tilemap up tilemap-service` → starts cleanly, healthcheck passes in <15s
+- `curl -H "Origin: http://localhost:5174" -I http://localhost:8220/livez` → 200 + `access-control-allow-origin: http://localhost:5174`
+- Playwright `/play` smoke after docker boot → "tilemap-service: ok" shown in React HUD; iso grass field visible; Player at center; click→walk tween works
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks Session E** (spec §16): WebSocket echo demo. The auth handshake + reconnect verification can now build on a known-good Phaser + React + TanStack Query foundation. Session E needs to introduce minimum Rust/Node echo service + frontend-game/net/ ws-client.ts implementation.
+- **Unblocks Session F**: Dockerfile + docker-compose for frontend-game (the only missing piece for full local stack)
+- **Blocks**: nothing immediate
+
+### Lessons recorded
+
+- **Docker layer cache + Cargo mtime fingerprints don't mix without explicit `touch`.** The stub-stage Cargo trick has a subtle bug: when stage 2 COPY preserves host mtimes that are older than the stub build, cargo skips rebuilding the lib and downstream main.rs fails. Add `RUN touch` after COPY in any stub-stage Cargo Dockerfile.
+- **Spec ACs predicting infrastructure issues are load-bearing.** AC-FG-13 (CORS for dev origin) was added during the spec /review-impl round — without that pre-flagged AC, the CORS issue would have surfaced as a confusing "TanStack Query says down" symptom during Session D smoke. Pre-flagged ACs let us recognize the symptom instantly.
+- **Kenney "Isometric Tiles Landscape" cubes have ground-diamond at top of PNG, height extending down.** Use `setOrigin(0.5, 0)` so the iso grid cell aligns with the visible diamond. Pack tiles at world step (128 horizontal / 64 vertical) overlap densely, producing solid-filled diamond visuals rather than gapped individual tiles — this is correct for a cube-stack landscape.
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — Session C Phase 2: full frontend-game scaffold per spec §3)
 
 XL task. Phase 2 expanded the Phase 1 validation-gate scaffold into the
 full directory structure per spec §3. Scaffold compiles, 3/3 unit tests

@@ -748,6 +748,10 @@ services:
       # always rewrites from `INTERNAL_SERVICE_TOKEN`.
       LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       TILEMAP_HTTP_BIND: "0.0.0.0:7100"
+      # CORS origins for browser smoke (Session D V0 demo, spec AC-FG-13).
+      # Comma-separated; defaults to frontend-game dev server on :5174.
+      # Prod goes through api-gateway-bff (single-origin per spec §8).
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
       RUST_LOG: ${RUST_LOG:-info,tilemap_service=debug}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7100/livez"]

@@ -48,6 +48,14 @@ COPY sdks/rust/loreweave_llm/src ./sdks/rust/loreweave_llm/src
 COPY services/tilemap-service/src ./services/tilemap-service/src
 COPY services/tilemap-service/config ./services/tilemap-service/config
 
+# Touch all real sources so Cargo's mtime-based fingerprint detects them
+# as newer than the Stage-1 stub build. Without this, Docker COPY
+# preserves the host's source-file mtime, which may be OLDER than the
+# `echo "" >` files Stage 1 wrote. Cargo then skips recompiling lib.rs
+# and main.rs fails with "could not find module" against stale lib
+# metadata. (Session D debugging 2026-05-24.)
+RUN find sdks/rust/loreweave_llm/src services/tilemap-service/src services/tilemap-service/config -exec touch {} +
+
 RUN cargo build --release -p tilemap-service --bin tilemap-service
 
 # ─── Runtime ──────────────────────────────────────────────────────────

@@ -12,9 +12,11 @@ export const TILE_HALF_HEIGHT = TILE_HEIGHT / 2;
 // Camera follow lerp factor (0-1). Lower = smoother lag, higher = snappier.
 export const CAMERA_LERP = 0.1;
 
-// V0 demo zone size — Town tier per spec §11 (small enough for quick load).
-export const DEFAULT_ZONE_WIDTH = 32;
-export const DEFAULT_ZONE_HEIGHT = 32;
+// V0 demo zone size — small enough to fit comfortably in viewport with
+// clear visible iso cube spacing. Spec §11 Town tier is 64²; V0 demo
+// uses 8² for clear visual smoke + room for Player to walk on screen.
+export const DEFAULT_ZONE_WIDTH = 8;
+export const DEFAULT_ZONE_HEIGHT = 8;
 
 // Game container element id (matches index.html).
 export const GAME_CONTAINER_ID = 'game-container';
