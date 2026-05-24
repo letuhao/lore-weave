@@ -18,12 +18,13 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "types": ["vitest/globals"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
       "@game/*": ["src/game/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "tests"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

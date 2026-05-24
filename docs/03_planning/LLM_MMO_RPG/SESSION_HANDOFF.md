@@ -81,7 +81,100 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-24 — Session C Phase 1: frontend-game scaffold + Phaser 4 validation gate PASS) — read this first
+## ⏭️ CURRENT STATE (2026-05-24 — Session C Phase 2: full frontend-game scaffold per spec §3) — read this first
+
+XL task. Phase 2 expanded the Phase 1 validation-gate scaffold into the
+full directory structure per spec §3. Scaffold compiles, 3/3 unit tests
+pass, dev server boots, /play route renders 32×32 iso tilemap with React
+HUD overlay (HpBar + ManaBar reading from Zustand) + Sidebar placeholder
++ TanStack Query attempting to fetch tilemap-service/livez.
+
+### Files landed (~40 new, ~5 modified)
+
+**App + routing:**
+- `frontend-game/src/main.tsx` (M): wraps with `QueryClientProvider` + `SessionProvider` + `BrowserRouter`
+- `frontend-game/src/App.tsx` (M): rewritten from validation harness → Router shell (login → world-select → play)
+- `frontend-game/src/routes/{login,world-select,play}.tsx` (NEW)
+
+**Components (5 categories per spec §3):**
+- `frontend-game/src/components/PhaserGame.tsx` (M): simplified bridge (no validation-status props; Session D wires real onSceneReady events)
+- `frontend-game/src/components/hud/{HpBar,ManaBar,index}.{tsx,ts}` (NEW)
+- `frontend-game/src/components/sidebar/Sidebar.tsx` (NEW)
+- `frontend-game/src/components/modal/Modal.tsx` (NEW)
+- `frontend-game/src/components/mobile/{RotatePrompt,VirtualGamepad}.tsx` (NEW) — landscape-lock per spec §7.3
+- `frontend-game/src/components/shared/Button.tsx` (NEW) — vendored shadcn-style
+
+**Game (Phaser side):**
+- `frontend-game/src/game/main.ts` (M): scene chain Boot→Preloader→MainMenu→World→Hud; keeps globalThis.Phaser shim
+- `frontend-game/src/game/EventBus.ts` (M): expanded typed events (`SceneReadyEvent`, `PlayerActionEvent`)
+- `frontend-game/src/game/config/constants.ts` (NEW): TILE_WIDTH=128, TILE_HEIGHT=64, CAMERA_LERP, DEFAULT_ZONE_*
+- `frontend-game/src/game/scenes/{BootScene,PreloaderScene,MainMenuScene,WorldScene,HudScene}.ts` (NEW) — replaces deleted ValidationScene
+- `frontend-game/src/game/entities/{Player,Npc,ItemPickup,IsoTile}.ts` (NEW stubs)
+- `frontend-game/src/game/systems/{input-system,movement-system,camera-system,iso-projection}.ts` (NEW stubs; iso-projection is a thin re-export from lib/iso-math)
+- `frontend-game/src/game/state-machine/StateMachine.ts` (NEW real impl — generic FSM with State<TContext> interface)
+- `frontend-game/src/game/data/items.ts` (NEW placeholder item defs)
+
+**Net (V0 stubs):**
+- `frontend-game/src/net/{ws-client,http-action,protocol,reconnect}.ts` — Session E fills
+
+**Store (Zustand + Context):**
+- `frontend-game/src/store/{game-store,ui-store,net-store}.ts` — minimal Zustand shells
+- `frontend-game/src/store/session-context.tsx` — React Context for stable session
+
+**API (TanStack Query):**
+- `frontend-game/src/api/tilemap-client.ts` — `useTilemapHealth` hook fetching localhost:8220/livez
+- `frontend-game/src/api/auth-client.ts` — re-exports `@loreweave/auth-client` workspace pkg
+- `frontend-game/src/api/query-keys.ts` — central key factory
+
+**Lib (real implementations):**
+- `frontend-game/src/lib/iso-math.ts` — `worldToScreen` / `screenToWorld` / `screenToTile` for 2:1 dimetric
+- `frontend-game/src/lib/seeded-rng.ts` — Mulberry32 PRNG (mirror Rust if needed)
+
+**Styles (moved from src/index.css):**
+- `frontend-game/src/styles/{globals,overlay,responsive}.css` — old `src/index.css` deleted
+
+**Types (TS shared shapes):**
+- `frontend-game/src/types/{tilemap,domain}.ts`
+
+**Test setup:**
+- `frontend-game/vitest.config.ts` — jsdom env, globals enabled
+- `frontend-game/tests/lib/iso-math.test.ts` — 3 tests (round-trip on (0,0); 11×11 integer grid; floating-point inverse) — all pass
+
+**Package + deps:**
+- `frontend-game/package.json` (M): added react-router-dom@^6, zustand@^5, @tanstack/react-query@^5, vitest@^1, @testing-library/react@^16, @testing-library/jest-dom@^6, jsdom@^29; added 4 `@loreweave/*` workspace packages
+- `frontend-game/tsconfig.json` (M): + `types: ["vitest/globals"]`, + `tests` in `include`
+- `pnpm-lock.yaml` (M): +125 packages
+- `public/assets/{tiles,sprites,audio,ui}/.gitkeep` — placeholder dirs for Session D Kenney CC0 assets
+
+**Plan + docs:**
+- `docs/plans/2026-05-24-frontend-game-session-c-phase2-full-scaffold.md` (NEW)
+- `docs/specs/2026-05-24-frontend-game-architecture.md` — unchanged this phase
+- `docs/03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md` (this update)
+
+### Verification evidence
+
+- `pnpm install` from repo root → 6 workspace projects, 125 new pkgs, clean
+- `pnpm --filter frontend-game typecheck` → clean (TS strict + noUncheckedIndexedAccess)
+- `pnpm --filter frontend-game test` → 3/3 ✓ in iso-math round-trip
+- `pnpm --filter frontend-game build` → 111 modules, 1.86 MB raw / 440.88 KB gzipped (under V0 budget 700 KB)
+- `pnpm --filter frontend-game dev` → Vite ready in 775 ms on :5174
+- Playwright smoke `/play` → 32×32 iso tilemap visible; HpBar + ManaBar HUD; Sidebar placeholder; TanStack Query firing `/livez` (ERR_CONNECTION_REFUSED expected since tilemap container not running locally); 0 unexpected errors
+
+### What this UNBLOCKS / BLOCKS
+
+- **Unblocks Session D**: V0 demo per spec §16 — replace stub texture with Kenney CC0 iso tile pack, wire Player entity walking tile-by-tile, real HUD HP/MP from server snapshot, TanStack Query proves `/livez` returns "ok" when tilemap-service is running
+- **Unblocks Session E** (slightly): net/protocol.ts shape ready for ws-client.ts impl
+- **Blocks**: nothing immediate
+
+### Lessons recorded
+
+- **TS strict + Phaser 4 = `fillPoints` wants Vector2 instances, not plain `{x,y}`.** Caught at typecheck — Phaser's geometry helpers expect their own Vector2 type even though shape-compatible plain objects look fine. Use `new Phaser.Math.Vector2(x, y)` explicitly
+- **React Router v6 v7-future-flag warnings are informational only.** Vite dev console will surface `v7_startTransition` and `v7_relativeSplatPath` warnings; not blocking; flip the flags in Session D when bumping to v7-prep
+- **Scaffold-first then concrete saved a lot of churn.** Writing the directory tree as stubs + 1 sanity test makes Sessions D-F have concrete `git mv`-free homes for new code. Reduces "where does this go" overhead during V0 demo work
+
+---
+
+## ⏭️ PRIOR STATE (2026-05-24 — Session C Phase 1: frontend-game scaffold + Phaser 4 validation gate PASS)
 
 XL task. Session C per spec §16 was split into 2 phases by PO choice:
 **Phase 1** (this commit) = minimal scaffold to validate Phaser 4
