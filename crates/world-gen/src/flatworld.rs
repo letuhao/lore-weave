@@ -11,7 +11,7 @@
 //! layout can be steered or pinned.
 
 use crate::rng::Rng;
-use crate::shape::{DispatchMode, ShapeContext, ShapeKind, ShapeRegistry};
+use crate::shape::{DispatchMode, ShapeContext, ShapeKind, ShapeRegistry, dispatch::engine_v3_1b_weights};
 use serde::Serialize;
 use std::f32::consts::TAU;
 
@@ -125,7 +125,7 @@ pub type Polygon = Vec<(f32, f32)>;
 ///
 /// Distribution for the default 12-plate world: 1 Giant + 2 Large + 3
 /// Medium + 4 Small + 2 Micro. See `assign_size_ranks`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize)]
 pub enum SizeRank {
     /// Eurasia-scale supercontinent (~1.6× per-rank-mean area). One per world.
     Giant,
@@ -463,14 +463,16 @@ pub fn collision_strength(a: &Plate, b: &Plate) -> f32 {
 /// indirection but consume no RNG in this configuration. v3.1b will register
 /// 3 more generators and flip the default to `Weighted(...)`.
 pub fn generate(params: &FlatParams) -> FlatWorld {
-    // v3.1a registry: Ellipse only. The dispatcher routes through here even
-    // though there's a single kind, so v3.1b can wire `Weighted(...)` in
-    // without touching this loop. Default `None` → `Fixed(Ellipse)`.
+    // v3.1b registry: Ellipse + BezierSpine + Polar + Boolean (4 generators).
+    // Default dispatch is `Weighted(engine_v3_1b_weights())` — per-rank
+    // weighted random with Giants favouring branching shapes and Micros
+    // favouring simple shapes. Callers can override via
+    // `FlatParams.plate_dispatch` for tests / debug / future LLM modes.
     let registry = ShapeRegistry::engine_default();
     let dispatcher = params
         .plate_dispatch
         .clone()
-        .unwrap_or(DispatchMode::Fixed(ShapeKind::Ellipse));
+        .unwrap_or_else(|| DispatchMode::Weighted(engine_v3_1b_weights()));
 
     let mut rng = Rng::for_stage(params.seed, b"flatworld-plates");
     // Separate stream for motion, so adding velocities doesn't perturb the
@@ -532,11 +534,19 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
             // below consumes exactly `5 + 2 * nv` `next_f32` calls in the
             // same order as v3.0's inline loop. `tests::byte_identical_*`
             // pin both invariants.
-            let kind = dispatcher.select(&registry, &ctx, &mut rng);
-            let components = registry
-                .get(kind)
+            //
+            // v3.1b: store `result.effective_kind` (not the dispatcher's
+            // selection) so `Plate.shape_kind` reflects what was actually
+            // rendered — Boolean generators that fall back to a clean
+            // ellipse on geo-clipper failure honestly report
+            // `ShapeKind::Ellipse`. See `shape::ShapeResult`.
+            let selected_kind = dispatcher.select(&registry, &ctx, &mut rng);
+            let result = registry
+                .get(selected_kind)
                 .expect("dispatcher must only return kinds registered in the registry")
                 .generate(&ctx, &mut rng);
+            let components = result.polygons;
+            let kind = result.effective_kind;
 
             let speed = mrng.next_f32() * params.max_speed;
             let vdir = mrng.next_f32() * TAU;
@@ -1105,8 +1115,13 @@ mod tests {
             (100, "4235724c256df3763481937ba783fbe6d08358552833610de3f246766cbe80ba"),
         ];
         for &(seed, expected_hex) in expected {
+            // v3.1b: default dispatch flipped to Weighted, so we must
+            // explicitly pin Fixed(Ellipse) here. This test now witnesses
+            // EllipseGenerator's bit-exact extraction independently of
+            // the platform's default shape distribution.
             let world = generate(&FlatParams {
                 seed,
+                plate_dispatch: Some(DispatchMode::Fixed(ShapeKind::Ellipse)),
                 ..Default::default()
             });
             let actual = hash_world(&world);
@@ -1312,9 +1327,17 @@ mod tests {
     #[test]
     fn separation_reduces_overlap() {
         // With strong separation, fewer pixels are covered by 2+ plates than
-        // with none — plates meet at seams rather than stacking.
-        let spread = generate(&FlatParams { separation: 1.1, seed: 9, ..Default::default() });
-        let stacked = generate(&FlatParams { separation: 0.0, seed: 9, ..Default::default() });
+        // with none — plates meet at seams rather than stacking. Pinned to
+        // Ellipse shape so the test reflects the spatial-separation
+        // property, not the algorithm distribution.
+        let mk = |sep: f32| FlatParams {
+            separation: sep,
+            seed: 9,
+            plate_dispatch: Some(DispatchMode::Fixed(ShapeKind::Ellipse)),
+            ..Default::default()
+        };
+        let spread = generate(&mk(1.1));
+        let stacked = generate(&mk(0.0));
         let overlap = |wld: &FlatWorld| {
             let mut n = 0u32;
             for py in (0..wld.height).step_by(4) {
@@ -1389,12 +1412,17 @@ mod tests {
 
     #[test]
     fn phase_a_vertex_noise_keeps_centre_inside() {
-        // V1 Phase A: multi-octave fbm warps each vertex radially. AMP=0.18
-        // is small enough that the spoke-ordered polygon stays simple
-        // (non-self-intersecting), so every plate must still contain its
-        // own centre. Repeat across several seeds to catch unlucky noise.
+        // V1 Phase A: multi-octave fbm warps each Ellipse vertex radially.
+        // AMP=0.30 is small enough that the spoke-ordered polygon stays
+        // simple (non-self-intersecting), so every Ellipse plate contains
+        // its centre. v3.1b: pinned to Ellipse — Bezier hooks + Boolean
+        // crescents legitimately produce centroid-outside polygons.
         for seed in [1u64, 7, 13, 23, 42, 99, 555, 1024] {
-            let world = generate(&FlatParams { seed, ..Default::default() });
+            let world = generate(&FlatParams {
+                seed,
+                plate_dispatch: Some(DispatchMode::Fixed(ShapeKind::Ellipse)),
+                ..Default::default()
+            });
             for plate in &world.plates {
                 assert!(
                     plate.contains(plate.center.0, plate.center.1),

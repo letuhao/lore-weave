@@ -31,6 +31,14 @@ rand_chacha = "0.3"
 delaunator = "1.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 clap = { version = "4", features = ["derive"] }
+# v3.1b — Boolean polygon ops (union/difference/intersection) for the Boolean
+# ShapeGenerator (`shape/csg.rs`). Wraps the Clipper library (Angus Johnson)
+# via i64 fixed-point internally; the `safe_boolean` wrapper handles
+# f32↔fixed conversion + degenerate/empty result fallback.
+geo-clipper = "0.9"
+# Re-exported by geo-clipper but we use `geo_types::Coord`/`LineString`/`Polygon`
+# directly in `shape/csg.rs` — declare a direct dep so the import resolves.
+geo-types = "0.7"
 # blocking HTTP for the optional LLM CreativeSeed authoring (Phase 4).
 reqwest = { workspace = true, features = ["blocking"] }
 

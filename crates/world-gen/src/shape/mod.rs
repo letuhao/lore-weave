@@ -19,11 +19,17 @@
 //! See [`dispatch`] for [`ShapeRegistry`] and [`DispatchMode`] (the wire-up).
 //! See [`ellipse`] for the v3.0 algorithm extracted as [`ellipse::EllipseGenerator`].
 
+pub mod csg;
 pub mod dispatch;
 pub mod ellipse;
+pub mod polar;
+pub mod spine;
 
-pub use dispatch::{DispatchMode, ShapeRegistry};
+pub use csg::{BooleanGenerator, BooleanTemplate};
+pub use dispatch::{DispatchMode, ShapeRegistry, engine_v3_1b_weights};
 pub use ellipse::EllipseGenerator;
+pub use polar::{PolarGenerator, PolarTemplate};
+pub use spine::{BezierSpineGenerator, BezierTemplate};
 
 use crate::flatworld::{Polygon, SizeRank};
 use crate::rng::Rng;
@@ -122,6 +128,33 @@ pub struct ShapeContext {
     pub vertex_count_range: (usize, usize),
 }
 
+/// Output of [`ShapeGenerator::generate`]. Carries the rendered polygons
+/// plus the **effective** [`ShapeKind`] — equal to `generator.kind()`
+/// on the happy path, but possibly downgraded on a fallback (e.g.
+/// [`BooleanGenerator`] returning a clean ellipse when `geo-clipper`
+/// produces a degenerate result).
+///
+/// Plate / Zone / SubZone code stores `effective_kind` on
+/// `Plate.shape_kind` so telemetry, downstream eval, and future LLM
+/// dispatch see the kind that was **actually rendered**, not the kind the
+/// dispatcher asked for.
+#[derive(Debug, Clone)]
+pub struct ShapeResult {
+    pub polygons: Vec<Polygon>,
+    pub effective_kind: ShapeKind,
+}
+
+impl ShapeResult {
+    /// Build a result whose effective kind equals the requested kind.
+    /// Use for happy-path generator returns.
+    pub fn single_kind(polygons: Vec<Polygon>, kind: ShapeKind) -> Self {
+        Self {
+            polygons,
+            effective_kind: kind,
+        }
+    }
+}
+
 /// Generate one or more closed polygons for a `ShapeContext`. Each impl
 /// MUST be deterministic in `(ctx, rng)` and produce simple (non-self-
 /// intersecting) polygons under typical jitter.
@@ -136,10 +169,15 @@ pub trait ShapeGenerator: Send + Sync {
     /// Produce 1+ closed polygon rings.
     ///
     /// **v3.1 invariant:** every implementation MUST return exactly one
-    /// component (`result.len() == 1`). Multi-component output (true
-    /// archipelagos) is reserved for v3.3's marching-squares pipeline; a
-    /// `debug_assert` in tests enforces this until v3.3 lands.
-    fn generate(&self, ctx: &ShapeContext, rng: &mut Rng) -> Vec<Polygon>;
+    /// component (`result.polygons.len() == 1`). Multi-component output
+    /// (true archipelagos) is reserved for v3.3's marching-squares
+    /// pipeline.
+    ///
+    /// `result.effective_kind` reports the kind that was actually rendered:
+    /// equals `self.kind()` on the happy path; may differ on a fallback
+    /// (currently only [`BooleanGenerator`] downgrades to `Ellipse` when
+    /// `geo-clipper` fails).
+    fn generate(&self, ctx: &ShapeContext, rng: &mut Rng) -> ShapeResult;
 }
 
 #[cfg(test)]

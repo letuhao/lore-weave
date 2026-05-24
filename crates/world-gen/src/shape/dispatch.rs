@@ -10,9 +10,13 @@
 
 use std::collections::BTreeMap;
 
+use crate::flatworld::SizeRank;
 use crate::rng::Rng;
 
 use super::{ShapeContext, ShapeGenerator, ShapeKind};
+
+#[cfg(test)]
+use super::ShapeResult;
 
 /// Lookup table from [`ShapeKind`] to its registered generator. Uses
 /// [`BTreeMap`] so [`ShapeRegistry::kinds`] returns kinds in a deterministic
@@ -30,15 +34,15 @@ impl ShapeRegistry {
         }
     }
 
-    /// Engine-default registry. v3.1a registers exactly [`super::EllipseGenerator`].
-    /// v3.1b will extend to 4 generators (Ellipse + BezierSpine + Polar + Boolean).
+    /// Engine-default registry. **v3.1b**: registers all 4 first-tier
+    /// generators (Ellipse + BezierSpine + Polar + Boolean). v3.2+ will
+    /// extend to SdfCapsuleChain / MarchingNoise / Slime / Stamp.
     pub fn engine_default() -> Self {
         let mut r = Self::empty();
         r.register(Box::new(super::EllipseGenerator));
-        // v3.1b registrations land here:
-        //   r.register(Box::new(super::spine::BezierSpineGenerator));
-        //   r.register(Box::new(super::polar::PolarGenerator));
-        //   r.register(Box::new(super::csg::BooleanGenerator));
+        r.register(Box::new(super::BezierSpineGenerator));
+        r.register(Box::new(super::PolarGenerator));
+        r.register(Box::new(super::BooleanGenerator));
         r
     }
 
@@ -90,6 +94,17 @@ pub enum DispatchMode {
     /// renders, and the v3.1a default (`Fixed(Ellipse)`) that guarantees
     /// byte-identical render vs v3.0.
     Fixed(ShapeKind),
+    /// **v3.1b**: per-rank weighted random selection. Inner map is
+    /// `SizeRank → [(kind, weight), ...]`; weights MUST sum to ~1.0 per
+    /// rank (`debug_assert`). The `Vec<(kind, weight)>` layout is chosen
+    /// over `HashMap<kind, weight>` so iteration order is deterministic
+    /// across runs without relying on hash-seed stability.
+    ///
+    /// **Robustness:** if cumulative-weight selection overshoots target due
+    /// to f32 rounding, falls through to the LAST kind in the vec
+    /// (debug builds catch malformed tables via assert; release degrades
+    /// gracefully). See spec §4.6.4.
+    Weighted(BTreeMap<SizeRank, Vec<(ShapeKind, f32)>>),
 }
 
 impl DispatchMode {
@@ -101,7 +116,7 @@ impl DispatchMode {
     pub fn select(
         &self,
         registry: &ShapeRegistry,
-        _ctx: &ShapeContext,
+        ctx: &ShapeContext,
         rng: &mut Rng,
     ) -> ShapeKind {
         match self {
@@ -120,8 +135,108 @@ impl DispatchMode {
                 }
                 kinds[(rng.next_u32() as usize) % kinds.len()]
             }
+            DispatchMode::Weighted(table) => {
+                let weights = match table.get(&ctx.size_rank) {
+                    Some(w) if !w.is_empty() => w,
+                    _ => {
+                        // Fall back to first registered kind so a missing
+                        // entry is loud (debug) but recoverable (release).
+                        debug_assert!(
+                            false,
+                            "Weighted table has no entry for {:?}",
+                            ctx.size_rank
+                        );
+                        return registry
+                            .kinds()
+                            .first()
+                            .copied()
+                            .unwrap_or(ShapeKind::Ellipse);
+                    }
+                };
+                let sum: f32 = weights.iter().map(|(_, w)| *w).sum();
+                debug_assert!(
+                    (sum - 1.0).abs() < 1e-2,
+                    "Weighted weights for {:?} sum to {sum}, expected ~1.0",
+                    ctx.size_rank
+                );
+                let pick = rng.next_f32() * sum;
+                let mut acc = 0.0;
+                for (kind, w) in weights {
+                    acc += *w;
+                    if pick <= acc {
+                        // Verify the kind is actually registered before
+                        // returning it — a misconfigured table won't crash
+                        // the caller (which would panic on registry.get(kind).unwrap()).
+                        if registry.get(*kind).is_some() {
+                            return *kind;
+                        }
+                    }
+                }
+                // fp-overshoot fallback: return the LAST registered kind in
+                // the weight list (clamped to whatever's in the registry).
+                weights
+                    .iter()
+                    .rev()
+                    .find_map(|(k, _)| registry.get(*k).map(|_| *k))
+                    .unwrap_or(ShapeKind::Ellipse)
+            }
         }
     }
+}
+
+/// **v3.1b** per-rank weight table for `DispatchMode::Weighted`. Giants
+/// favour branching / hooked shapes (BezierSpine + Boolean — Eurasia,
+/// Africa); Micros stay simple (Ellipse + Polar — Iceland / Hispaniola
+/// scale). Tuned for the 12-plate default world; v3.2 will rebalance once
+/// SDF + MarchingNoise + Slime register. See spec §4.6.4.
+pub fn engine_v3_1b_weights() -> BTreeMap<SizeRank, Vec<(ShapeKind, f32)>> {
+    let mut table = BTreeMap::new();
+    table.insert(
+        SizeRank::Giant,
+        vec![
+            (ShapeKind::Ellipse, 0.30),
+            (ShapeKind::BezierSpine, 0.35),
+            (ShapeKind::Polar, 0.10),
+            (ShapeKind::Boolean, 0.25),
+        ],
+    );
+    table.insert(
+        SizeRank::Large,
+        vec![
+            (ShapeKind::Ellipse, 0.30),
+            (ShapeKind::BezierSpine, 0.40),
+            (ShapeKind::Polar, 0.10),
+            (ShapeKind::Boolean, 0.20),
+        ],
+    );
+    table.insert(
+        SizeRank::Medium,
+        vec![
+            (ShapeKind::Ellipse, 0.40),
+            (ShapeKind::BezierSpine, 0.30),
+            (ShapeKind::Polar, 0.20),
+            (ShapeKind::Boolean, 0.10),
+        ],
+    );
+    table.insert(
+        SizeRank::Small,
+        vec![
+            (ShapeKind::Ellipse, 0.40),
+            (ShapeKind::BezierSpine, 0.20),
+            (ShapeKind::Polar, 0.30),
+            (ShapeKind::Boolean, 0.10),
+        ],
+    );
+    table.insert(
+        SizeRank::Micro,
+        vec![
+            (ShapeKind::Ellipse, 0.60),
+            (ShapeKind::BezierSpine, 0.10),
+            (ShapeKind::Polar, 0.25),
+            (ShapeKind::Boolean, 0.05),
+        ],
+    );
+    table
 }
 
 #[cfg(test)]
@@ -138,16 +253,15 @@ mod tests {
         fn kind(&self) -> ShapeKind {
             self.kind
         }
-        fn generate(
-            &self,
-            ctx: &ShapeContext,
-            _rng: &mut Rng,
-        ) -> Vec<crate::flatworld::Polygon> {
-            vec![vec![
-                (ctx.center.0 - 1.0, ctx.center.1 - 1.0),
-                (ctx.center.0 + 1.0, ctx.center.1 - 1.0),
-                (ctx.center.0, ctx.center.1 + 1.0),
-            ]]
+        fn generate(&self, ctx: &ShapeContext, _rng: &mut Rng) -> ShapeResult {
+            ShapeResult::single_kind(
+                vec![vec![
+                    (ctx.center.0 - 1.0, ctx.center.1 - 1.0),
+                    (ctx.center.0 + 1.0, ctx.center.1 - 1.0),
+                    (ctx.center.0, ctx.center.1 + 1.0),
+                ]],
+                self.kind,
+            )
         }
     }
 

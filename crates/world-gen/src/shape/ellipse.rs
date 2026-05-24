@@ -35,7 +35,7 @@ use crate::flatworld::Polygon;
 use crate::noise::lerp;
 use crate::rng::Rng;
 
-use super::{ShapeContext, ShapeGenerator, ShapeKind};
+use super::{ShapeContext, ShapeGenerator, ShapeKind, ShapeResult};
 
 // ── V1 Phase A polygon-realism constants (preserved verbatim from v3.0) ─────
 //
@@ -68,7 +68,7 @@ impl ShapeGenerator for EllipseGenerator {
     ///
     /// Always returns a `Vec` of length 1 (the primary ring). Multi-component
     /// plates are reserved for v3.3.
-    fn generate(&self, ctx: &ShapeContext, rng: &mut Rng) -> Vec<Polygon> {
+    fn generate(&self, ctx: &ShapeContext, rng: &mut Rng) -> ShapeResult {
         // For depth-0 plates, envelope.0 == envelope.1 == pitch. The v3.0
         // code used `pitch` directly; we recover it from envelope.0.
         let pitch = ctx.envelope.0;
@@ -120,7 +120,7 @@ impl ShapeGenerator for EllipseGenerator {
             })
             .collect();
 
-        vec![primary]
+        ShapeResult::single_kind(vec![primary], ShapeKind::Ellipse)
     }
 }
 
@@ -153,7 +153,7 @@ mod tests {
     fn ellipse_returns_single_component() {
         let ctx = ctx_for(SizeRank::Medium, 1);
         let mut rng = Rng::for_stage(1, b"ellipse-test");
-        let polys = EllipseGenerator.generate(&ctx, &mut rng);
+        let polys = EllipseGenerator.generate(&ctx, &mut rng).polygons;
         assert_eq!(polys.len(), 1, "v3.1 invariant: single component");
         assert!(polys[0].len() >= 24, "vertex count within configured range");
     }
@@ -162,7 +162,7 @@ mod tests {
     fn ellipse_centre_inside_polygon() {
         let ctx = ctx_for(SizeRank::Large, 7);
         let mut rng = Rng::for_stage(7, b"ellipse-test");
-        let polys = EllipseGenerator.generate(&ctx, &mut rng);
+        let polys = EllipseGenerator.generate(&ctx, &mut rng).polygons;
         let poly = &polys[0];
         // Ray-cast point-in-polygon at ctx.center.
         let (cx, cy) = ctx.center;
@@ -188,8 +188,8 @@ mod tests {
         let ctx = ctx_for(SizeRank::Medium, 42);
         let mut rng_a = Rng::for_stage(42, b"ellipse-test");
         let mut rng_b = Rng::for_stage(42, b"ellipse-test");
-        let polys_a = EllipseGenerator.generate(&ctx, &mut rng_a);
-        let polys_b = EllipseGenerator.generate(&ctx, &mut rng_b);
+        let polys_a = EllipseGenerator.generate(&ctx, &mut rng_a).polygons;
+        let polys_b = EllipseGenerator.generate(&ctx, &mut rng_b).polygons;
         assert_eq!(polys_a.len(), polys_b.len());
         for (a, b) in polys_a[0].iter().zip(polys_b[0].iter()) {
             assert_eq!(a.0.to_bits(), b.0.to_bits());
@@ -230,9 +230,9 @@ mod tests {
         // Giant should produce visibly larger polygon than Micro at the
         // same envelope. (Approx area via bounding box.)
         let mut rng_g = Rng::for_stage(1, b"size-g");
-        let polys_g = EllipseGenerator.generate(&ctx_for(SizeRank::Giant, 1), &mut rng_g);
+        let polys_g = EllipseGenerator.generate(&ctx_for(SizeRank::Giant, 1), &mut rng_g).polygons;
         let mut rng_m = Rng::for_stage(1, b"size-m");
-        let polys_m = EllipseGenerator.generate(&ctx_for(SizeRank::Micro, 1), &mut rng_m);
+        let polys_m = EllipseGenerator.generate(&ctx_for(SizeRank::Micro, 1), &mut rng_m).polygons;
 
         fn bbox_area(poly: &Polygon) -> f32 {
             let (mut minx, mut miny) = (f32::INFINITY, f32::INFINITY);

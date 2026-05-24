@@ -1513,9 +1513,15 @@ mod tests {
         // vertex generation. Plate sizes now span ~6× radius range (vs
         // 1.32× pre-v3.0) and shapes are anisotropic rather than disk-like.
         // E[area] calibrated to within 5% of pre-v3.0 total.
+        // **v5.3 Phase A v3.1b rebase 2026-05-25**: ShapeRegistry registers
+        // 4 generators (Ellipse + BezierSpine + Polar + Boolean); default
+        // dispatch flipped Fixed(Ellipse) → Weighted(engine_v3_1b_weights()).
+        // Bezier Hook/Boot template tightening + Ring template removed from
+        // ACTIVE rotation + ShapeResult/effective_kind plumbing. Plate
+        // footprints reflect new shape distribution; hypso bytes shift.
         // Rebaseline only with intentional polygon-shape / palette /
         // pipeline changes.
-        let pinned = "8dc87f789fa355df36f8bbcbcf61ced7c5a7517281896398b0fd7321aa1772a2";
+        let pinned = "042f167f098fa26cad2210699c29a3eba53d14f339a71924a3bfa9a78dadf38b";
         assert_eq!(
             actual.as_str(),
             pinned,
@@ -1560,9 +1566,13 @@ mod tests {
         // multi-component) + Pareto size ranks + anisotropic ellipsoidal
         // vertices. Plate sizes now diverse (Giant 1.0-1.2 → Micro 0.15-0.22
         // pitch units, ratio ~6×) and shapes anisotropic.
+        // **v5.3 Phase A v3.1b rebase 2026-05-25**: 4-generator registry
+        // + Weighted dispatch + tightened Bezier templates + Ring removed
+        // from ACTIVE rotation + ShapeResult honest-kind plumbing. Plate
+        // shape class varies per SizeRank; biome bytes shift accordingly.
         // Rebaseline only with intentional biome algorithm / palette /
         // pipeline / polygon-shape changes.
-        let pinned = "389ee01b12440f6305cc0488acc4ba5b8f577e6e47023d94eee0c4c3e59579bd";
+        let pinned = "b8c28d510c2aa4eedbadafe8e65db85c878465d6ae159f962ace801655430c91";
         assert_eq!(
             actual.as_str(),
             pinned,
