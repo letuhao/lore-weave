@@ -658,6 +658,51 @@ walkability_pattern = { mask = [true, false, false, false] }
     }
 
     #[test]
+    fn terrain_v2_cells_match_default_registry() {
+        // Drift-prevention: `TerrainKind::v2_cell()` + the
+        // `default_terrain_vocabulary` must align with `default.toml`.
+        // If they ever drift, terrain_vocabulary will report a
+        // different primitive/tag from what the registry says — exactly
+        // the silent corruption Batch 3.1 needs to avoid.
+        use crate::types::tile::{default_terrain_vocabulary, TerrainKind};
+
+        let reg = Registry::load_default().unwrap();
+
+        // Every V1 TerrainKind variant resolves to a default.toml entry.
+        for kind in [
+            TerrainKind::Grass,
+            TerrainKind::Forest,
+            TerrainKind::Mountain,
+            TerrainKind::Water,
+            TerrainKind::Sand,
+            TerrainKind::Snow,
+            TerrainKind::Swamp,
+            TerrainKind::Road,
+            TerrainKind::Rough,
+            TerrainKind::Subterranean,
+        ] {
+            let cell = kind.v2_cell();
+            let def = reg.get_terrain(&cell.tag).unwrap_or_else(|| {
+                panic!("default registry missing terrain tag {:?} (kind {kind:?})", cell.tag)
+            });
+            assert_eq!(def.primitive, cell.primitive, "primitive drift for {kind:?}");
+        }
+
+        // Default vocabulary's V1 indexes must agree with the registry.
+        let vocab = default_terrain_vocabulary();
+        for kind in [
+            TerrainKind::Grass,
+            TerrainKind::Water,
+            TerrainKind::Road,
+            TerrainKind::Subterranean,
+        ] {
+            let cell = &vocab[kind as usize];
+            let def = reg.get_terrain(&cell.tag).expect("vocab cell must be in registry");
+            assert_eq!(def.primitive, cell.primitive);
+        }
+    }
+
+    #[test]
     fn v2_defaults_match_default_registry() {
         // Drift-prevention: `TilemapObjectKind::v2_defaults` (used during
         // V1→V2 migration at placement-construction sites) must produce

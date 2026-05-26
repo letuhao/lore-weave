@@ -4852,6 +4852,56 @@
     4,
     4
   ],
+  "terrain_vocabulary": [
+    {
+      "primitive": "void",
+      "tag": "lw:void"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:grass"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:forest"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:mountain"
+    },
+    {
+      "primitive": "water",
+      "tag": "lw:water"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:sand"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:snow"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:swamp"
+    },
+    {
+      "primitive": "path",
+      "tag": "lw:road"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:rough"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:subterranean"
+    }
+  ],
+  "registry_ref": {
+    "id": "lw",
+    "version": "1.0.0"
+  },
   "object_placements": [
     {
       "kind": "monolith",

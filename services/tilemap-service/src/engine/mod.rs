@@ -17,7 +17,8 @@ use crate::engine::placement::place_zones;
 use crate::seed::TilemapSeed;
 use crate::types::channel::{ChannelId, ChannelTier};
 use crate::types::template::TilemapTemplate;
-use crate::types::tile::TerrainKind;
+use crate::types::registry::RegistryRef;
+use crate::types::tile::{default_terrain_vocabulary, TerrainKind};
 use crate::types::tilemap::{GenerationSource, GridSize, TilemapView, ZoneRuntime};
 
 pub mod biome_library;
@@ -157,6 +158,12 @@ fn place_tilemap_inner(
         seed: seed.raw(),
         zones,
         terrain_layer: state.terrain_layer,
+        // V2 additive: dictionary indexed by `terrain_layer` u8 values.
+        // Default registry vocabulary (lw: namespace) — Batch 3.1 plumbs
+        // a Registry reference and replaces this with
+        // `registry.build_terrain_vocabulary()`.
+        terrain_vocabulary: default_terrain_vocabulary(),
+        registry_ref: Some(RegistryRef::new("lw", "1.0.0")),
         object_placements: state.object_placements,
         road_segments: state.road_segments,
         river_segments: state.river_segments,

@@ -31,7 +31,7 @@ pub use registry::{
     Direction, FootprintSize, ObjectKindDef, RegistryRef, TerrainKindDef, WalkabilityPattern,
 };
 pub use template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
-pub use tile::{TerrainKind, TileCoord, TileState};
+pub use tile::{default_terrain_vocabulary, TerrainCell, TerrainKind, TileCoord, TileState};
 pub use tile_mask::TileMask;
 pub use tilemap::{GenerationSource, GridSize, TilemapView, ZoneRuntime};
 pub use treasure::TreasureTierSpec;

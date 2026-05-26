@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::channel::{ChannelId, ChannelTier};
 use crate::types::object::TilemapObjectPlacement;
+use crate::types::registry::RegistryRef;
 use crate::types::template::TilemapTemplateId;
-use crate::types::tile::{TerrainKind, TileCoord};
+use crate::types::tile::{TerrainCell, TerrainKind, TileCoord};
 use crate::types::tile_mask::TileMask;
 use crate::types::zone::{ZoneId, ZoneRole};
 
@@ -123,11 +124,26 @@ pub struct TilemapView {
     /// Runtime zone state.
     #[serde(default)]
     pub zones: Vec<ZoneRuntime>,
-    /// Flat terrain layer — index = y*width + x; value = `TerrainKind` u8 index.
-    /// Length MUST equal `grid_size.tile_count()`. Empty in Phase 0a until
-    /// modificator pipeline lands at Phase 1.
+    /// Flat terrain layer — index = y*width + x; value = u8 indexing into
+    /// `terrain_vocabulary`. Length MUST equal `grid_size.tile_count()`.
+    /// Empty in Phase 0a until modificator pipeline lands at Phase 1.
+    ///
+    /// V1 wire compat: u8 values 1..=10 align with the legacy
+    /// `TerrainKind` enum order; `terrain_vocabulary` is keyed by these
+    /// values so existing fixtures continue to load.
     #[serde(default)]
     pub terrain_layer: Vec<u8>,
+    /// V2 terrain dictionary indexed by `terrain_layer` u8 values.
+    /// `terrain_vocabulary[k]` describes what tile-kind k means in
+    /// terms of engine primitive + registry tag. Skipped on wire
+    /// when empty so pre-V2 fixtures still round-trip.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub terrain_vocabulary: Vec<TerrainCell>,
+    /// V2 registry pin — which registry was used to build this view.
+    /// Frontend reads this to know which sprite pack / behavior table
+    /// applies; mismatched versions warn but don't crash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_ref: Option<RegistryRef>,
     /// All placed objects (treasures, towns, landmarks, mines, monoliths, decorations).
     #[serde(default)]
     pub object_placements: Vec<TilemapObjectPlacement>,
@@ -170,6 +186,8 @@ impl TilemapView {
             seed,
             zones: Vec::new(),
             terrain_layer: Vec::new(),
+            terrain_vocabulary: Vec::new(),
+            registry_ref: None,
             object_placements: Vec::new(),
             road_segments: Vec::new(),
             river_segments: Vec::new(),
