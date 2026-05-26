@@ -222,6 +222,70 @@ impl Registry {
     pub fn object_count(&self) -> usize {
         self.object_by_tag.len()
     }
+
+    /// V2 — build the `terrain_vocabulary` for V1 wire-shape compatibility.
+    /// Indexed by the `u8` values written into `TilemapView.terrain_layer`:
+    /// `[0]` is a `lw:void` sentinel, `[1..=10]` are the V1 `TerrainKind`
+    /// variants. For each V1 kind, consults this registry for the canonical
+    /// tag (e.g. `lw:grass`); per-book registries that override `lw:` entries
+    /// produce a different primitive while keeping the same tag. Falls back
+    /// to the static `TerrainKind::v2_cell()` defaults when an entry is
+    /// absent — keeping wire shape compatible even for partial registries.
+    pub fn build_default_terrain_vocabulary(&self) -> Vec<crate::types::tile::TerrainCell> {
+        use crate::types::tile::TerrainKind;
+        let mut vocab = Vec::with_capacity(11);
+        vocab.push(crate::types::tile::TerrainCell {
+            primitive: crate::types::primitive::TerrainPrimitive::Void,
+            tag: "lw:void".to_string(),
+        });
+        for kind in [
+            TerrainKind::Grass,
+            TerrainKind::Forest,
+            TerrainKind::Mountain,
+            TerrainKind::Water,
+            TerrainKind::Sand,
+            TerrainKind::Snow,
+            TerrainKind::Swamp,
+            TerrainKind::Road,
+            TerrainKind::Rough,
+            TerrainKind::Subterranean,
+        ] {
+            let default_cell = kind.v2_cell();
+            let cell = match self.get_terrain(&default_cell.tag) {
+                Some(def) => crate::types::tile::TerrainCell {
+                    primitive: def.primitive,
+                    tag: default_cell.tag,
+                },
+                None => default_cell,
+            };
+            vocab.push(cell);
+        }
+        vocab
+    }
+
+    /// V2 — resolve the (primitive, footprint, tag) triple for a placed object.
+    /// First derives the canonical `lw:` tag from `(kind, biome_obj_type)` via
+    /// the static `v2_defaults` helper, then looks it up in this registry. If
+    /// the registry overrides the entry (per-book registries), uses the
+    /// override; otherwise falls back to the static defaults. The drift-
+    /// prevention test (`v2_defaults_match_default_registry`) guarantees the
+    /// default registry's entry agrees with the static helper, so default-
+    /// registry runs produce bit-identical output before/after the swap.
+    pub fn resolve_object_v2(
+        &self,
+        kind: crate::types::object::TilemapObjectKind,
+        biome_obj_type: Option<crate::types::biome::BiomeObjectType>,
+    ) -> crate::types::object::V2Defaults {
+        let defaults = kind.v2_defaults(biome_obj_type);
+        match self.get_object(&defaults.tag) {
+            Some(def) => crate::types::object::V2Defaults {
+                tag: defaults.tag,
+                primitive: def.primitive,
+                footprint: def.footprint,
+            },
+            None => defaults,
+        }
+    }
 }
 
 /// Embedded default registry — covers all current V1 kinds under
@@ -655,6 +719,22 @@ walkability_pattern = { mask = [true, false, false, false] }
         let toml_err: toml::de::Error = toml::from_str::<RegistryFile>("not = }").unwrap_err();
         let err: RegistryError = toml_err.into();
         assert!(matches!(err, RegistryError::Parse(_)));
+    }
+
+    #[test]
+    fn build_default_terrain_vocabulary_matches_static_helper() {
+        // Drift-prevention: `Registry::build_default_terrain_vocabulary()`
+        // on the default registry produces the same `Vec<TerrainCell>` as
+        // `default_terrain_vocabulary()`. Engine swapped from helper to
+        // registry-built in Batch 3.1c; this test guards the swap.
+        let reg = Registry::load_default().unwrap();
+        let from_registry = reg.build_default_terrain_vocabulary();
+        let from_helper = crate::types::tile::default_terrain_vocabulary();
+        assert_eq!(
+            from_registry, from_helper,
+            "registry-built vocab must equal static helper for default registry"
+        );
+        assert_eq!(from_registry.len(), 11, "11 entries: void + 10 V1 kinds");
     }
 
     #[test]

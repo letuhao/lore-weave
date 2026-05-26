@@ -341,11 +341,13 @@ mod tests {
         };
         let grid = GridSize { width: 2, height: 2 };
         let mut state = TilemapBuildState::from_zones(vec![], grid);
+        let registry = crate::registry::Registry::load_default().unwrap();
         let mut ctx = ModificatorContext {
             template: &template,
             grid,
             seed: TilemapSeed(0),
             state: &mut state,
+            registry: &registry,
         };
         let timings = reg.execute_with_timing(&mut ctx).unwrap();
 
@@ -380,11 +382,13 @@ mod tests {
         };
         let grid = GridSize { width: 2, height: 2 };
         let mut state = TilemapBuildState::from_zones(vec![], grid);
+        let registry = crate::registry::Registry::load_default().unwrap();
         let mut ctx = ModificatorContext {
             template: &template,
             grid,
             seed: TilemapSeed(0),
             state: &mut state,
+            registry: &registry,
         };
         reg.execute(&mut ctx).unwrap();
         assert_eq!(*log.borrow(), ["c", "a", "b"]);

@@ -146,7 +146,7 @@ impl Modificator for ConnectionsPlacer {
             if edge.kind == PassageKind::Portal
                 && completed.insert(canonical_pair(edge.a, edge.b))
             {
-                place_monolith_pair(ctx.state, edge.a, edge.b, &mut monolith_counter);
+                place_monolith_pair(ctx.state, edge.a, edge.b, &mut monolith_counter, ctx.registry);
             }
         }
 
@@ -156,7 +156,7 @@ impl Modificator for ConnectionsPlacer {
                 continue; // realised in Pass 1
             }
             let pair = canonical_pair(edge.a, edge.b);
-            if !completed.contains(&pair) && place_direct_passage(ctx.state, edge) {
+            if !completed.contains(&pair) && place_direct_passage(ctx.state, edge, ctx.registry) {
                 completed.insert(pair);
             }
         }
@@ -175,11 +175,11 @@ impl Modificator for ConnectionsPlacer {
             if completed.contains(&pair) {
                 continue;
             }
-            if place_water_route(ctx.state, edge.a, edge.b) {
+            if place_water_route(ctx.state, edge.a, edge.b, ctx.registry) {
                 water_route_zones.insert(edge.a);
                 water_route_zones.insert(edge.b);
             } else {
-                place_monolith_pair(ctx.state, edge.a, edge.b, &mut monolith_counter);
+                place_monolith_pair(ctx.state, edge.a, edge.b, &mut monolith_counter, ctx.registry);
             }
             completed.insert(pair);
         }
@@ -237,12 +237,18 @@ fn canonical_pair(a: usize, b: usize) -> (usize, usize) {
 /// TMP_007 §3 Pass 1 / §8 / spec D4 — place a teleport monolith pair: one
 /// `Monolith` object carrying a shared `pair_id` in each zone. Always succeeds
 /// (every zone has at least one tile).
-fn place_monolith_pair(state: &mut TilemapBuildState, a: usize, b: usize, counter: &mut u32) {
+fn place_monolith_pair(
+    state: &mut TilemapBuildState,
+    a: usize,
+    b: usize,
+    counter: &mut u32,
+    registry: &crate::registry::Registry,
+) {
     let pair_id = *counter;
     *counter += 1;
     for zone_idx in [a, b] {
         if let Some(tile) = monolith_target(state, zone_idx) {
-            place_connection_object(state, tile, TilemapObjectKind::Monolith, Some(pair_id));
+            place_connection_object(state, tile, TilemapObjectKind::Monolith, Some(pair_id), registry);
         }
     }
 }
@@ -290,9 +296,10 @@ fn place_connection_object(
     tile: TileCoord,
     kind: TilemapObjectKind,
     value: Option<u32>,
+    registry: &crate::registry::Registry,
 ) {
     state.set_tile_state(tile, TileState::Occupied);
-    let v2 = kind.v2_defaults(None);
+    let v2 = registry.resolve_object_v2(kind, None);
     state.object_placements.push(TilemapObjectPlacement {
         kind,
         anchor: tile,
@@ -323,7 +330,11 @@ fn place_connection_object(
 /// connection for Pass 3) if the terrains forbid a transition, the zones do
 /// not share a border, no candidate passage point survives, or a path search
 /// fails.
-fn place_direct_passage(state: &mut TilemapBuildState, edge: &Edge) -> bool {
+fn place_direct_passage(
+    state: &mut TilemapBuildState,
+    edge: &Edge,
+    registry: &crate::registry::Registry,
+) -> bool {
     let terrain_a = state.zone_terrain[edge.a]
         .expect("TerrainPainter runs before ConnectionsPlacer (dependency edge)");
     let terrain_b = state.zone_terrain[edge.b]
@@ -354,7 +365,7 @@ fn place_direct_passage(state: &mut TilemapBuildState, edge: &Edge) -> bool {
     attach_walkable_path(state, &their_path);
     // §2 — only a `Threshold` passage is guarded; an `Open` border never is.
     if edge.kind == PassageKind::Threshold && edge.guard_strength > 0 {
-        place_connection_guard(state, edge.a, p, edge.guard_strength);
+        place_connection_guard(state, edge.a, p, edge.guard_strength, registry);
     }
     if edge.road != RoadOption::False {
         state.road_nodes.push(p);
@@ -455,7 +466,13 @@ fn attach_walkable_path(state: &mut TilemapBuildState, path: &[TileCoord]) {
 /// tile 4-adjacent to the passage point `p`, inside zone `zone_idx`. If no
 /// gap-safe `Open` neighbour exists the passage is left unguarded — valid; an
 /// unguarded crossing is still a crossing.
-fn place_connection_guard(state: &mut TilemapBuildState, zone_idx: usize, p: TileCoord, strength: u32) {
+fn place_connection_guard(
+    state: &mut TilemapBuildState,
+    zone_idx: usize,
+    p: TileCoord,
+    strength: u32,
+    registry: &crate::registry::Registry,
+) {
     let terrain = state.zone_terrain[zone_idx]
         .expect("TerrainPainter runs before ConnectionsPlacer (dependency edge)");
     let guard = choose_guard(terrain, strength);
@@ -471,7 +488,7 @@ fn place_connection_guard(state: &mut TilemapBuildState, zone_idx: usize, p: Til
         let seals = would_seal_a_gap(&footprint, &passable);
         footprint.clear(n);
         if !seals {
-            place_connection_object(state, n, TilemapObjectKind::MonsterLair, Some(guard.strength));
+            place_connection_object(state, n, TilemapObjectKind::MonsterLair, Some(guard.strength), registry);
             return;
         }
     }
@@ -481,7 +498,12 @@ fn place_connection_guard(state: &mut TilemapBuildState, zone_idx: usize, p: Til
 /// non-bordering zones by a water-route ferry. Returns `true` on success;
 /// `false` (so the caller falls back to a monolith pair) when there is no Sea
 /// zone, a zone has no gap-safe shore, or no navigable route links the shores.
-fn place_water_route(state: &mut TilemapBuildState, a: usize, b: usize) -> bool {
+fn place_water_route(
+    state: &mut TilemapBuildState,
+    a: usize,
+    b: usize,
+    registry: &crate::registry::Registry,
+) -> bool {
     let Some(sea) = state.zones.iter().position(|z| z.role == ZoneRole::Sea) else {
         return false;
     };
@@ -504,8 +526,8 @@ fn place_water_route(state: &mut TilemapBuildState, a: usize, b: usize) -> bool 
     // V1+30d: a ferry crossing at each shore — click → instant transit. The Sea
     // route itself is not marked (the ferry teleports; nothing walks the
     // water), so the Sea zone's own passable region is left intact.
-    place_connection_object(state, start, TilemapObjectKind::Ferry, None);
-    place_connection_object(state, end, TilemapObjectKind::Ferry, None);
+    place_connection_object(state, start, TilemapObjectKind::Ferry, None, registry);
+    place_connection_object(state, end, TilemapObjectKind::Ferry, None, registry);
     true
 }
 
@@ -673,7 +695,14 @@ mod tests {
     /// Run `ConnectionsPlacer` over `state` with `template`.
     fn run_connections(state: &mut TilemapBuildState, template: &TilemapTemplate) {
         let grid = state.grid;
-        let mut ctx = ModificatorContext { template, grid, seed: TilemapSeed(1), state };
+        let reg = crate::registry::Registry::load_default().unwrap();
+        let mut ctx = ModificatorContext {
+            template,
+            grid,
+            seed: TilemapSeed(1),
+            state,
+            registry: &reg,
+        };
         ConnectionsPlacer
             .process(&mut ctx)
             .expect("ConnectionsPlacer::process must not error");

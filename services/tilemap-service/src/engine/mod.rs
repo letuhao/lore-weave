@@ -14,11 +14,11 @@ use crate::engine::modificators::{
 };
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
+use crate::registry::Registry;
 use crate::seed::TilemapSeed;
 use crate::types::channel::{ChannelId, ChannelTier};
 use crate::types::template::TilemapTemplate;
-use crate::types::registry::RegistryRef;
-use crate::types::tile::{default_terrain_vocabulary, TerrainKind};
+use crate::types::tile::TerrainKind;
 use crate::types::tilemap::{GenerationSource, GridSize, TilemapView, ZoneRuntime};
 
 pub mod biome_library;
@@ -53,7 +53,23 @@ pub fn place_tilemap(
     grid: GridSize,
     seed: TilemapSeed,
 ) -> crate::Result<TilemapView> {
-    let (view, _) = place_tilemap_inner(template, channel_id, tier, grid, seed, false)?;
+    let registry = Registry::load_default().map_err(|e| crate::Error::Config(e.to_string()))?;
+    let (view, _) = place_tilemap_inner(template, channel_id, tier, grid, seed, &registry, false)?;
+    Ok(view)
+}
+
+/// Same as [`place_tilemap`] but uses an explicit caller-supplied registry —
+/// the entry point for per-book worlds (V2). The default-namespace path
+/// (`place_tilemap`) is a thin wrapper around this with `Registry::load_default()`.
+pub fn place_tilemap_with_registry(
+    template: &TilemapTemplate,
+    channel_id: ChannelId,
+    tier: ChannelTier,
+    grid: GridSize,
+    seed: TilemapSeed,
+    registry: &Registry,
+) -> crate::Result<TilemapView> {
+    let (view, _) = place_tilemap_inner(template, channel_id, tier, grid, seed, registry, false)?;
     Ok(view)
 }
 
@@ -80,7 +96,9 @@ pub fn place_tilemap_with_timings(
     grid: GridSize,
     seed: TilemapSeed,
 ) -> crate::Result<(TilemapView, PlacementStageTimings)> {
-    let (view, timings) = place_tilemap_inner(template, channel_id, tier, grid, seed, true)?;
+    let registry = Registry::load_default().map_err(|e| crate::Error::Config(e.to_string()))?;
+    let (view, timings) =
+        place_tilemap_inner(template, channel_id, tier, grid, seed, &registry, true)?;
     Ok((view, timings.expect("collect_timings=true must return Some")))
 }
 
@@ -94,6 +112,7 @@ fn place_tilemap_inner(
     tier: ChannelTier,
     grid: GridSize,
     seed: TilemapSeed,
+    registry: &Registry,
     collect_timings: bool,
 ) -> crate::Result<(TilemapView, Option<PlacementStageTimings>)> {
     // TMP_002 §3-§5 — placed zones with assigned_tiles + free_paths.
@@ -111,25 +130,26 @@ fn place_tilemap_inner(
     // river source/sink tags pre-erosion, ObstacleFillPlacer erodes + fills the
     // rest post-river).
     let mut state = TilemapBuildState::from_zones(tiled, grid);
-    let mut registry = ModificatorRegistry::new();
-    registry.add(Box::new(TerrainPainter));
-    registry.add(Box::new(ConnectionsPlacer));
-    registry.add(Box::new(TreasurePlacer));
-    registry.add(Box::new(RoadPlacer));
-    registry.add(Box::new(ObstacleSourcePlacer));
-    registry.add(Box::new(RiverPlacer));
-    registry.add(Box::new(ObstacleFillPlacer));
+    let mut modificators = ModificatorRegistry::new();
+    modificators.add(Box::new(TerrainPainter));
+    modificators.add(Box::new(ConnectionsPlacer));
+    modificators.add(Box::new(TreasurePlacer));
+    modificators.add(Box::new(RoadPlacer));
+    modificators.add(Box::new(ObstacleSourcePlacer));
+    modificators.add(Box::new(RiverPlacer));
+    modificators.add(Box::new(ObstacleFillPlacer));
     let modificator_timings = {
         let mut ctx = ModificatorContext {
             template,
             grid,
             seed,
             state: &mut state,
+            registry,
         };
         if collect_timings {
-            Some(registry.execute_with_timing(&mut ctx)?)
+            Some(modificators.execute_with_timing(&mut ctx)?)
         } else {
-            registry.execute(&mut ctx)?;
+            modificators.execute(&mut ctx)?;
             None
         }
     };
@@ -158,12 +178,11 @@ fn place_tilemap_inner(
         seed: seed.raw(),
         zones,
         terrain_layer: state.terrain_layer,
-        // V2 additive: dictionary indexed by `terrain_layer` u8 values.
-        // Default registry vocabulary (lw: namespace) — Batch 3.1 plumbs
-        // a Registry reference and replaces this with
-        // `registry.build_terrain_vocabulary()`.
-        terrain_vocabulary: default_terrain_vocabulary(),
-        registry_ref: Some(RegistryRef::new("lw", "1.0.0")),
+        // V2 — dictionary indexed by `terrain_layer` u8 values. Built from
+        // the active registry so per-book registries (`xianxia:`, etc.) get
+        // their own primitive/tag mapping for the V1 wire-shape u8 slots.
+        terrain_vocabulary: registry.build_default_terrain_vocabulary(),
+        registry_ref: Some(registry.reference().clone()),
         object_placements: state.object_placements,
         road_segments: state.road_segments,
         river_segments: state.river_segments,
@@ -279,6 +298,7 @@ mod tests {
         // property is falsely green).
         let template = fixture();
         let grid = GridSize { width: 64, height: 64 };
+        let reg = Registry::load_default().unwrap();
         // No-op detector — RiverPlacer carves a real river on at least one
         // seed, so the per-zone connectivity check is not vacuous w.r.t. it.
         let mut any_river = false;
@@ -294,22 +314,23 @@ mod tests {
             // terrain — connectivity-neutral) and RiverPlacer, whose carve is
             // `would_seal_a_gap`-gated per-zone (AC-8). TreasurePlacer no-ops
             // here — `fixture()` declares no `treasure_tiers`.
-            let mut registry = ModificatorRegistry::new();
-            registry.add(Box::new(TerrainPainter));
-            registry.add(Box::new(ConnectionsPlacer));
-            registry.add(Box::new(TreasurePlacer));
-            registry.add(Box::new(RoadPlacer));
-            registry.add(Box::new(ObstacleSourcePlacer));
-            registry.add(Box::new(RiverPlacer));
-            registry.add(Box::new(ObstacleFillPlacer));
+            let mut modificators = ModificatorRegistry::new();
+            modificators.add(Box::new(TerrainPainter));
+            modificators.add(Box::new(ConnectionsPlacer));
+            modificators.add(Box::new(TreasurePlacer));
+            modificators.add(Box::new(RoadPlacer));
+            modificators.add(Box::new(ObstacleSourcePlacer));
+            modificators.add(Box::new(RiverPlacer));
+            modificators.add(Box::new(ObstacleFillPlacer));
             {
                 let mut ctx = ModificatorContext {
                     template: &template,
                     grid,
                     seed,
                     state: &mut state,
+                    registry: &reg,
                 };
-                registry.execute(&mut ctx).expect("modificator pipeline");
+                modificators.execute(&mut ctx).expect("modificator pipeline");
             }
             any_river |= !state.river_segments.is_empty();
 
@@ -372,6 +393,7 @@ mod tests {
         // fixture's `inland_sea` is a sink, so a river reliably carves.
         let template = fixture();
         let grid = GridSize { width: 64, height: 64 };
+        let reg = Registry::load_default().unwrap();
         let mut any_river = false;
         for raw_seed in [0xA11CE_u64, 1, 2, 0xB0B, 0xC0FFEE] {
             let seed = TilemapSeed(raw_seed);
@@ -387,7 +409,7 @@ mod tests {
             pre_river.add(Box::new(RoadPlacer));
             pre_river.add(Box::new(ObstacleSourcePlacer));
             {
-                let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state };
+                let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state, registry: &reg };
                 pre_river.execute(&mut ctx).expect("pre-river pipeline");
             }
             let map_pre = map_passable(&state, grid);
@@ -396,7 +418,7 @@ mod tests {
             let mut river = ModificatorRegistry::new();
             river.add(Box::new(RiverPlacer));
             {
-                let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state };
+                let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state, registry: &reg };
                 river.execute(&mut ctx).expect("river pipeline");
             }
             any_river |= !state.river_segments.is_empty();
@@ -500,6 +522,7 @@ mod tests {
             world_zone: None,
         };
 
+        let reg = Registry::load_default().unwrap();
         for raw_seed in [0xA11CE_u64, 7, 99, 0xC0FFEE] {
             let seed = TilemapSeed(raw_seed);
             let zones = vec![
@@ -514,18 +537,23 @@ mod tests {
             // The same modificator set `place_tilemap` registers. `fixture()`
             // declares no connections, so ConnectionsPlacer only runs §3.1/§9
             // border sealing here — itself `would_seal_a_gap`-gated.
-            let mut registry = ModificatorRegistry::new();
-            registry.add(Box::new(TerrainPainter));
-            registry.add(Box::new(ConnectionsPlacer));
-            registry.add(Box::new(TreasurePlacer));
-            registry.add(Box::new(RoadPlacer));
-            registry.add(Box::new(ObstacleSourcePlacer));
-            registry.add(Box::new(RiverPlacer));
-            registry.add(Box::new(ObstacleFillPlacer));
+            let mut modificators = ModificatorRegistry::new();
+            modificators.add(Box::new(TerrainPainter));
+            modificators.add(Box::new(ConnectionsPlacer));
+            modificators.add(Box::new(TreasurePlacer));
+            modificators.add(Box::new(RoadPlacer));
+            modificators.add(Box::new(ObstacleSourcePlacer));
+            modificators.add(Box::new(RiverPlacer));
+            modificators.add(Box::new(ObstacleFillPlacer));
             {
-                let mut ctx =
-                    ModificatorContext { template: &template, grid, seed, state: &mut state };
-                registry.execute(&mut ctx).expect("modificator pipeline");
+                let mut ctx = ModificatorContext {
+                    template: &template,
+                    grid,
+                    seed,
+                    state: &mut state,
+                    registry: &reg,
+                };
+                modificators.execute(&mut ctx).expect("modificator pipeline");
             }
 
             // No-op detector — the pipeline genuinely placed Phase-C objects,

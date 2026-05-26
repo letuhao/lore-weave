@@ -142,11 +142,13 @@ mod tests {
     /// Build a `TilemapBuildState`, run TerrainPainter over it, return the state.
     fn run(zones: Vec<ZoneTiles>, template: &TilemapTemplate, grid: GridSize) -> TilemapBuildState {
         let mut state = TilemapBuildState::from_zones(zones, grid);
+        let reg = crate::registry::Registry::load_default().unwrap();
         let mut ctx = ModificatorContext {
             template,
             grid,
             seed: TilemapSeed(1),
             state: &mut state,
+            registry: &reg,
         };
         TerrainPainter.process(&mut ctx).unwrap();
         state

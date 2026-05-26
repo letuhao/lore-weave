@@ -104,8 +104,14 @@ impl Modificator for ObstacleSourcePlacer {
             let zone_pass = ctx.state.zone_passable(zone_idx);
             let map_pass = map_passable(ctx.state, ctx.grid);
             fill_region(
-                ctx.state, &selection, &library, &target, is_river_marker, false,
+                ctx.state,
+                &selection,
+                &library,
+                &target,
+                is_river_marker,
+                false,
                 vec![zone_pass, map_pass],
+                ctx.registry,
             );
         }
         Ok(())
@@ -140,7 +146,7 @@ impl Modificator for ObstacleFillPlacer {
             // No connectivity gate — the Obstacle region is already
             // non-passable, so an obstacle footprint cannot split the passable
             // region (spec D6).
-            fill_region(ctx.state, &selection, &library, &target, |t| !is_river_marker(t), true, Vec::new());
+            fill_region(ctx.state, &selection, &library, &target, |t| !is_river_marker(t), true, Vec::new(), ctx.registry);
         }
         Ok(())
     }
@@ -357,6 +363,7 @@ struct FillItem {
 ///
 /// Returns the footprint `area()` of each placed obstacle **in placement
 /// order** — a non-increasing sequence when the largest-first sort holds.
+#[allow(clippy::too_many_arguments)]
 fn fill_region(
     state: &mut TilemapBuildState,
     selection: &BiomeSelection,
@@ -365,6 +372,7 @@ fn fill_region(
     place_type: impl Fn(BiomeObjectType) -> bool,
     skip_water: bool,
     mut gates: Vec<TileMask>,
+    registry: &crate::registry::Registry,
 ) -> Vec<usize> {
     let grid = state.grid;
 
@@ -436,7 +444,10 @@ fn fill_region(
             for g in gates.iter_mut() {
                 g.subtract(&footprint); // the placed footprint is no longer passable
             }
-            let v2 = TilemapObjectKind::Obstacle.v2_defaults(Some(item.object_type));
+            let v2 = registry.resolve_object_v2(
+                TilemapObjectKind::Obstacle,
+                Some(item.object_type),
+            );
             state.object_placements.push(TilemapObjectPlacement {
                 kind: TilemapObjectKind::Obstacle,
                 anchor,
@@ -550,6 +561,13 @@ mod tests {
     use crate::types::zone::ZoneId;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
+    use std::sync::OnceLock;
+
+    /// Default `lw:` registry — the standard `&Registry` arg in tests.
+    fn default_reg() -> &'static crate::registry::Registry {
+        static REG: OnceLock<crate::registry::Registry> = OnceLock::new();
+        REG.get_or_init(|| crate::registry::Registry::load_default().unwrap())
+    }
 
     /// A single-`Wilderness`-zone build state covering a `w × h` grid; `free`
     /// tiles are the `Walkable` skeleton, the rest `Open`.
@@ -948,7 +966,7 @@ mod tests {
         let rules = engine_default_biome_selection_rules();
         let sel = select_biomes(&ZoneId("z".to_string()), TerrainKind::Grass, &rules, &lib, TilemapSeed(1));
         let target = st.zone_obstacle(0);
-        fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new());
+        fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new(), default_reg());
         for p in &st.object_placements {
             assert_eq!(p.kind, TilemapObjectKind::Obstacle);
             assert!(p.biome_object_type.is_some(), "obstacle placement must be tagged");
@@ -998,7 +1016,7 @@ mod tests {
             .expect("the Grass selection has at least one template");
 
         let target = st.zone_obstacle(0);
-        let areas = fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new());
+        let areas = fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new(), default_reg());
         assert_eq!(areas.len(), st.object_placements.len(), "one reported area per placement");
         assert!(areas.len() >= 2, "fixture must place ≥2 obstacles to test ordering: {areas:?}");
         assert_eq!(areas[0], max_area, "the first obstacle placed is not the largest template");
@@ -1024,7 +1042,7 @@ mod tests {
         let rules = engine_default_biome_selection_rules();
         let sel = select_biomes(&ZoneId("z".to_string()), TerrainKind::Grass, &rules, &lib, TilemapSeed(9));
         let target = st.zone_obstacle(0);
-        fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new());
+        fill_region(&mut st, &sel, &lib, &target, |_| true, false, Vec::new(), default_reg());
         let mountain_kinds: Vec<_> = st
             .object_placements
             .iter()
@@ -1043,7 +1061,7 @@ mod tests {
         let mut lake_sel = BiomeSelection::default();
         lake_sel.push(BiomeObjectType::Lake, BiomeId("grass_lake".to_string()));
         let lake_target = lake_st.zone_obstacle(0);
-        fill_region(&mut lake_st, &lake_sel, &lib, &lake_target, |_| true, false, Vec::new());
+        fill_region(&mut lake_st, &lake_sel, &lib, &lake_target, |_| true, false, Vec::new(), default_reg());
         assert!(!lake_st.object_placements.is_empty(), "the Lake biome placed no obstacle");
         assert!(
             lake_st
@@ -1067,7 +1085,7 @@ mod tests {
         let open_before = st.zone_area_open(0);
         let target = st.zone_area_open(0);
         let passable = st.zone_passable(0);
-        fill_region(&mut st, &sel, &lib, &target, is_river_marker, false, vec![passable]);
+        fill_region(&mut st, &sel, &lib, &target, is_river_marker, false, vec![passable], default_reg());
 
         assert!(!st.object_placements.is_empty(), "the source pass placed a marker");
         for p in &st.object_placements {
@@ -1143,7 +1161,7 @@ mod tests {
         let target = st.zone_area_open(0);
         let zone_pass = st.zone_passable(0);
         let map_pass = map_passable(&st, grid);
-        fill_region(&mut st, &sel, &lib, &target, is_river_marker, false, vec![zone_pass, map_pass]);
+        fill_region(&mut st, &sel, &lib, &target, is_river_marker, false, vec![zone_pass, map_pass], default_reg());
 
         // The corridor (2,2) must remain passable — the map-wide gate refused
         // to place a marker there.
@@ -1178,7 +1196,7 @@ mod tests {
         let rules = engine_default_biome_selection_rules();
         let sel = select_biomes(&ZoneId("z".to_string()), TerrainKind::Grass, &rules, &lib, TilemapSeed(3));
         let target = st.zone_obstacle(0);
-        fill_region(&mut st, &sel, &lib, &target, |_| true, true, Vec::new());
+        fill_region(&mut st, &sel, &lib, &target, |_| true, true, Vec::new(), default_reg());
         // No placed obstacle footprint may sit on a Water tile.
         for p in &st.object_placements {
             assert_ne!(

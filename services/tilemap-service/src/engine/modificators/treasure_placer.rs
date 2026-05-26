@@ -88,7 +88,7 @@ impl Modificator for TreasurePlacer {
             ));
 
             for tier in tiers {
-                place_tier(ctx.state, zone_idx, tier, assigned_count, &assets, &mut rng);
+                place_tier(ctx.state, zone_idx, tier, assigned_count, &assets, &mut rng, ctx.registry);
             }
         }
         Ok(())
@@ -141,6 +141,7 @@ fn place_tier(
     assigned_count: usize,
     assets: &TreasureAssets,
     rng: &mut ChaCha8Rng,
+    registry: &crate::registry::Registry,
 ) {
     // D6 — piles per zone-tile-thousand; the `as u32` truncation means a zone
     // with `density × tiles < 1000` holds no piles of this tier (intended).
@@ -174,6 +175,7 @@ fn place_tier(
             &search_area,
             min_distance(pile.value),
             OptimizeType::BothDistanceAndCenter,
+            registry,
         );
         match outcome {
             Ok(placement) => {
@@ -186,6 +188,7 @@ fn place_tier(
                         pile.value,
                         &placement.footprint,
                         &assets.guard_template,
+                        registry,
                     );
                 }
             }
@@ -219,6 +222,7 @@ fn place_guard(
     pile_value: u32,
     pile_footprint: &TileMask,
     guard_template: &TilemapObjectTemplate,
+    registry: &crate::registry::Registry,
 ) {
     // D5 — terrain is `Some`: TerrainPainter is a declared dependency, so the
     // registry runs it first. A `None` here is a pipeline-wiring bug, so a
@@ -249,6 +253,7 @@ fn place_guard(
         &guard_search_area,
         0.0,
         OptimizeType::Center,
+        registry,
     ) {
         // Guard placed, or skipped for want of a non-sealing adjacent `Open`
         // tile (D5) — either way the pile stands; nothing more to do.
@@ -356,7 +361,14 @@ mod tests {
     /// Run `TreasurePlacer` over `state` with `template` at `seed`.
     fn run_placer(state: &mut TilemapBuildState, template: &TilemapTemplate, seed: u64) {
         let grid = state.grid;
-        let mut ctx = ModificatorContext { template, grid, seed: TilemapSeed(seed), state };
+        let reg = crate::registry::Registry::load_default().unwrap();
+        let mut ctx = ModificatorContext {
+            template,
+            grid,
+            seed: TilemapSeed(seed),
+            state,
+            registry: &reg,
+        };
         TreasurePlacer
             .process(&mut ctx)
             .expect("TreasurePlacer::process must not error");
