@@ -142,7 +142,7 @@ async def _call_llm(
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": "Generate the summary now."},
                 ],
-                "response_format": {"type": "json_object"},
+                "response_format": {"type": "text"},
                 "temperature": 0.0,
                 # See entity.py for KV-cache OOM rationale. Summary
                 # text capped at 500 chars at the writer + LevelSummary

@@ -239,7 +239,7 @@ async def _extract_via_llm_client(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text},
                 ],
-                "response_format": {"type": "json_object"},
+                "response_format": {"type": "text"},
                 "temperature": 0.0,
                 # Cap output so LM Studio (+ similar slot-based servers)
                 # doesn't reserve the full context window per slot. Without

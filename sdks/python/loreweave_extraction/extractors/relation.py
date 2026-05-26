@@ -253,7 +253,7 @@ async def _extract_via_llm_client(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text},
                 ],
-                "response_format": {"type": "json_object"},
+                "response_format": {"type": "text"},
                 "temperature": 0.0,
                 # See entity.py for rationale (LM Studio KV-cache slot
                 # OOM when extractors don't cap max_tokens — server

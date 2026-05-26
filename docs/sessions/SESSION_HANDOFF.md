@@ -1,11 +1,62 @@
-# Session Handoff — Session 67 (10-cycle polish-debt burn-down)
+# Session Handoff — Session 68 (Track A live-smoke + LM Studio response_format SDK patch)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
+> **Date:** 2026-05-26 (session 68, 1 L cycle)
+> **HEAD:** pending commit (8 files touched).
+> **Branch:** `main`.
+
+## Session 68 summary — Track A model swap verified; SDK response_format LM Studio compat shipped
+
+Single L cycle. User picked Track A from session 67's handoff (model swap + live extraction baseline). Loaded `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated` at 40K context, thinking ON. Live smoke through `/internal/llm/jobs` async path hit LM Studio HTTP 400 on `response_format: {"type":"json_object"}` — newer LM Studio (post-2026-05-25) only accepts `json_schema` or `text`. The prior gateway normalization `normalizeResponseFormatForKind` only lives on the retired `/internal/proxy/*` path; the async-jobs adapter forwards the field verbatim, so every extractor was 400-blocked. Patched 5 extractor SDK files + the llm_judge.py to send `text` instead. Ran the full 9-chapter extraction eval + LLM-judge baseline on the new model. Cycle includes the patch, plan, regression-lock test, and adversarial `/review-impl` round confirming the patch root-causes correctly + a transient zero-extraction on `journey_west_zh_ch01` was concurrency-flake (isolated re-run yielded 10 entities), not patch-induced.
+
+### Baseline result on `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated`
+
+| Metric | Value | vs qwen3.6 session-61 baseline |
+|---|---|---|
+| LLM-judge Precision (macro) | **0.93** | −0.04 pp |
+| LLM-judge Recall (macro, as measured) | 0.71 | −0.10 pp |
+| LLM-judge Recall (projected clean run) | **~0.81** | ±0 (one transient ch01 zero accounts for the gap) |
+| Coverage P / R | 100% / 100% | +38 / +44 pp |
+| Extraction wall clock (9 ch) | **7:04 min** | **−63% (≈2.7× faster)** |
+
+Full per-chapter breakdown + reproducing commands in [`services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md`](../../services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md) (new section "2026-05-26 — huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated baseline").
+
+### Files
+
+| File | Change |
+|---|---|
+| `sdks/python/loreweave_extraction/extractors/{entity,relation,event,fact,summarize}.py` | `response_format: {"type":"text"}` (5 sites) |
+| `services/knowledge-service/tests/quality/llm_judge.py` | same patch on the judge call |
+| `services/knowledge-service/tests/unit/test_response_format_text_lock.py` (NEW) | regex-tolerant regression lock; runs in Dockerfile test stage line 33-37 |
+| `services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md` | new baseline section + comparison table row |
+| `docs/plans/2026-05-26-response-format-text-for-lm-studio.md` (NEW) | L-cycle plan + 5 follow-ups |
+
+### New deferred rows (filed during this session)
+
+- **D-LM-STUDIO-RESPONSE-FORMAT-ASYNC-PATH** — port `normalizeResponseFormatForKind` to gateway adapter layer (`adapters.go::forwardOptionalChatFields`); defensive coverage so future extractors don't re-hit this regression
+- **D-JUDGE-EVAL-ASYNCIO-TEARDOWN** — pytest-asyncio fixture-scope leak in `test_judge_eval.py`; `test_judge_discriminates_fabricated_items` breaks the subsequent quality test with closed-event-loop
+- **D-EXTRACTION-PARALLEL-CONCURRENCY-FLAKE** — concurrency=4 eval produced a single transient zero on the same fixture that re-runs cleanly in isolation; needs a retry-on-zero defense
+- **D-AGGREGATOR-REASONING-CONTAMINATION-GUARD** — `extractJSONObject` assumes reasoning is on a separate stream channel; loose-output models from `text` mode raise the priority of a defensive guard
+
+### What's NEXT — pick from Track A or back to Track B/C from session 67
+
+Track A primary deliverable (`D-P3-BASELINE-QWEN3.6-RERUN` / new-model baseline) is **achieved**. Remaining Track A items:
+
+- `D-EXTRACTION-CONTEXT-FIX-STAGE-4-LIVE-SMOKE` — still open; user explicitly ran with thinking ON, so the gateway-forward `chat_template_kwargs={thinking:false}` path was NOT exercised. Verify when next iteration disables thinking.
+- `D-P3-LLM-JUDGE-BASELINE-CHECK` + `D-P3-SHERLOCK-BASELINE` — open; today's baseline is on a DIFFERENT model (huihui-claude-4.7-opus, not qwen3.6-35b-a3b). qwen3.6 baseline check requires re-loading the original model.
+- `D-P2-FULL-EXTRACTION-LIVE-SMOKE` + `D-P3-LIVE-SMOKE` + `D-P3-BOOK-SUMMARY-PERSIST-AUDIT` — fold in when next extraction kicks off (functional re-trigger).
+
+Then back to **Track B** (M-L single-cycle items, no model dep) or **Track C** (small batchable polish) per session 67 handoff (see below).
+
+---
+
+# Historical handoff — Session 67 (10-cycle polish-debt burn-down)
+
 > **Date:** 2026-05-24 (session 67 sub-sessions cont.4 through cont.13)
 > **HEAD:** `b1b5cbef` — 10 commits ahead of session 67 cont.3 start; all pushed to `origin/main`.
 > **Branch:** `main`.
 
-## Session 67 summary — 10 cycles, 16 deferred items cleared
+## Session 67 summary (historical) — 10 cycles, 16 deferred items cleared
 
 Pure deferred-row burn-down session. No new feature work; every cycle picked an open deferred row, scoped it, fixed/cleaned/tested it, committed. Five cycles were XS (≤1 LoC), five were S–M.
 

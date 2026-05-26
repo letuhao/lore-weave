@@ -404,7 +404,7 @@ async def _call_judge(
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-                "response_format": {"type": "json_object"},
+                "response_format": {"type": "text"},
                 "temperature": 0.0,
                 "max_tokens": max_tokens,
                 # Session-67 cont.5 — try to suppress reasoning mode for
