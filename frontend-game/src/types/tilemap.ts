@@ -59,12 +59,29 @@ export type ZoneRole =
   | 'mine_camp'
   | 'town';
 
+/** Backend `TileMask` (services/tilemap-service/src/types/tile_mask.rs):
+ *  bits packed as u64 array; bit at index `y*width + x` indicates ownership.
+ *  Wire format on the JSON line ships u64 values that overflow IEEE 754
+ *  mantissa (53 bits) so values > 2^53 lose precision under default
+ *  `JSON.parse`. Use `parseTilemapView()` (api/tilemap-client.ts) which
+ *  preprocesses the response text to convert bit values to BigInt. */
+export interface TileMask {
+  width: number;
+  height: number;
+  bits: bigint[];
+}
+
 export interface ZoneRuntime {
   zone_id: ZoneId;
   zone_role: ZoneRole;
   center_position: TileCoord;
-  /** Bitset packed as u64 array per backend `TileMask`. Not used by V1 viewer. */
-  assigned_tiles?: unknown;
+  /** Bitset packed as u64 array per backend `TileMask`. V1.2 L5 zone-
+   *  boundary outline reads this; expected to be a `TileMask` after
+   *  BigInt-aware parsing. */
+  assigned_tiles?: TileMask;
+  /** Connected free-path skeleton bitmap (TMP_002 §5 fractalize). Not
+   *  used by V1.2 viewer yet — typed as unknown to avoid promising a
+   *  shape we don't consume. */
   free_paths?: unknown;
   terrain_type: string;
 }

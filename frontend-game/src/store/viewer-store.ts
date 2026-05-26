@@ -20,7 +20,8 @@ const DEFAULT_VISIBLE: Record<ViewerLayer, boolean> = {
   foundation: true,
   paths: true,
   objects: true,
-  zone_boundaries: false, // V2 — needs BigInt JSON reviver
+  // L5 zone boundaries — debug toggle, default OFF (visually busy when on)
+  zone_boundaries: false,
   zone_centers: true,
   player: true,
 };

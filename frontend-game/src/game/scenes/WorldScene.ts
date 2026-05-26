@@ -6,6 +6,10 @@ import { InputSystem } from '../systems/input-system';
 import { TERRAIN_TILESET_KEY } from './PreloaderScene';
 import { buildObjectOverlay, type ObjectOverlayHandle } from '../render/object-overlay';
 import { buildOverlayRt, type OverlayRtHandle } from '../render/overlay-rt';
+import {
+  buildZoneBoundaryOverlay,
+  type ZoneBoundaryHandle,
+} from '../render/zone-boundary-overlay';
 import { useViewerStore } from '@/store/viewer-store';
 import type { TilemapView } from '@/types/tilemap';
 
@@ -35,6 +39,7 @@ export class WorldScene extends Phaser.Scene {
   private foundationMap: Phaser.Tilemaps.Tilemap | null = null;
   private objectOverlay: ObjectOverlayHandle | null = null;
   private overlayRt: OverlayRtHandle | null = null;
+  private zoneBoundary: ZoneBoundaryHandle | null = null;
   private foundationDisplay: Phaser.GameObjects.GameObject | null = null;
   private viewerStoreUnsubscribe: (() => void) | null = null;
 
@@ -135,6 +140,9 @@ export class WorldScene extends Phaser.Scene {
     // L1/L2/L2.5/L6 (roads, rivers, crossings, zone centers) baked first
     // so prop sprites depth-sort above them; L4 props next.
     this.overlayRt = buildOverlayRt(this, view);
+    // L5 zone-boundary outline — RT at depth 60 between paths RT (50)
+    // and props (100). Default hidden; viewer-store toggle controls.
+    this.zoneBoundary = buildZoneBoundaryOverlay(this, view);
     this.objectOverlay = buildObjectOverlay(this, view);
 
     const viewW = this.scale.gameSize.width;
@@ -180,6 +188,7 @@ export class WorldScene extends Phaser.Scene {
     }
     this.overlayRt?.setRtVisible(v.paths);
     this.overlayRt?.setZoneCentersVisible(v.zone_centers);
+    this.zoneBoundary?.setVisible(v.zone_boundaries);
     this.objectOverlay?.setEnabled(v.objects);
     if (this.player) {
       this.player.sprite.visible = v.player;
@@ -279,6 +288,10 @@ export class WorldScene extends Phaser.Scene {
       this.objectOverlay.destroy();
       this.objectOverlay = null;
     }
+    if (this.zoneBoundary) {
+      this.zoneBoundary.destroy();
+      this.zoneBoundary = null;
+    }
     if (this.overlayRt) {
       this.overlayRt.destroy();
       this.overlayRt = null;
@@ -310,6 +323,10 @@ export class WorldScene extends Phaser.Scene {
     if (this.objectOverlay) {
       this.objectOverlay.destroy();
       this.objectOverlay = null;
+    }
+    if (this.zoneBoundary) {
+      this.zoneBoundary.destroy();
+      this.zoneBoundary = null;
     }
     if (this.overlayRt) {
       this.overlayRt.destroy();

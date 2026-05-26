@@ -16,12 +16,7 @@ const LAYERS: ReadonlyArray<{
   { key: 'foundation', label: 'L0 Foundation' },
   { key: 'paths', label: 'L1/L2 Roads + Rivers + Crossings' },
   { key: 'objects', label: 'L4 Objects (props)' },
-  {
-    key: 'zone_boundaries',
-    label: 'L5 Zone boundaries',
-    disabled: true,
-    hint: 'V2',
-  },
+  { key: 'zone_boundaries', label: 'L5 Zone boundaries' },
   { key: 'zone_centers', label: 'L6 Zone centers' },
   { key: 'player', label: 'L7 Player' },
 ];
