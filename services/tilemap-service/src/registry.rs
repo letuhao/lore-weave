@@ -656,4 +656,58 @@ walkability_pattern = { mask = [true, false, false, false] }
         let err: RegistryError = toml_err.into();
         assert!(matches!(err, RegistryError::Parse(_)));
     }
+
+    #[test]
+    fn v2_defaults_match_default_registry() {
+        // Drift-prevention: `TilemapObjectKind::v2_defaults` (used during
+        // V1→V2 migration at placement-construction sites) must produce
+        // the same tag + primitive + footprint as the corresponding
+        // `registry/default.toml` entry. If the two ever drift, the
+        // wire-shape's V2 fields would silently report something
+        // different from what the registry says — perfect setup for a
+        // mismatch in Batch 3.1 when placers switch to registry lookup.
+        use crate::types::biome::BiomeObjectType;
+        use crate::types::object::TilemapObjectKind;
+
+        let reg = Registry::load_default().unwrap();
+
+        // Non-obstacle kinds (no biome_object_type subtype).
+        for kind in [
+            TilemapObjectKind::Treasure,
+            TilemapObjectKind::MonsterLair,
+            TilemapObjectKind::Town,
+            TilemapObjectKind::Mine,
+            TilemapObjectKind::Landmark,
+            TilemapObjectKind::Monolith,
+            TilemapObjectKind::Decoration,
+            TilemapObjectKind::Ferry,
+        ] {
+            let v2 = kind.v2_defaults(None);
+            let def = reg.get_object(&v2.tag).unwrap_or_else(|| {
+                panic!("default registry missing entry for v2 tag {:?} (kind {kind:?})", v2.tag)
+            });
+            assert_eq!(def.primitive, v2.primitive, "primitive drift for {kind:?}");
+            assert_eq!(def.footprint, v2.footprint, "footprint drift for {kind:?}");
+        }
+
+        // Obstacle subtypes (every BiomeObjectType variant).
+        for sub in [
+            BiomeObjectType::Mountain,
+            BiomeObjectType::Tree,
+            BiomeObjectType::Lake,
+            BiomeObjectType::Crater,
+            BiomeObjectType::Rock,
+            BiomeObjectType::Plant,
+            BiomeObjectType::Structure,
+            BiomeObjectType::Animal,
+            BiomeObjectType::Other,
+        ] {
+            let v2 = TilemapObjectKind::Obstacle.v2_defaults(Some(sub));
+            let def = reg.get_object(&v2.tag).unwrap_or_else(|| {
+                panic!("default registry missing entry for v2 tag {:?} (subtype {sub:?})", v2.tag)
+            });
+            assert_eq!(def.primitive, v2.primitive, "primitive drift for obstacle.{sub:?}");
+            assert_eq!(def.footprint, v2.footprint, "footprint drift for obstacle.{sub:?}");
+        }
+    }
 }

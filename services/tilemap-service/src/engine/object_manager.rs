@@ -245,12 +245,18 @@ fn commit_placement(
     for tile in blocking.iter_set() {
         state.set_tile_state(tile, TileState::Occupied);
     }
+    let v2 = kind.v2_defaults(None);
     state.object_placements.push(TilemapObjectPlacement {
         kind,
         anchor,
         canon_ref: None,
         biome_object_type: None,
         value,
+        primitive: Some(v2.primitive),
+        tag: Some(v2.tag),
+        footprint: Some(v2.footprint),
+        orientation: None,
+        properties: serde_json::Value::Null,
     });
     let width = grid.width;
     for y in 0..grid.height {

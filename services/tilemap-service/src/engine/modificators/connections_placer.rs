@@ -292,12 +292,18 @@ fn place_connection_object(
     value: Option<u32>,
 ) {
     state.set_tile_state(tile, TileState::Occupied);
+    let v2 = kind.v2_defaults(None);
     state.object_placements.push(TilemapObjectPlacement {
         kind,
         anchor: tile,
         canon_ref: None,
         biome_object_type: None,
         value,
+        primitive: Some(v2.primitive),
+        tag: Some(v2.tag),
+        footprint: Some(v2.footprint),
+        orientation: None,
+        properties: serde_json::Value::Null,
     });
     let grid = state.grid;
     for y in 0..grid.height {

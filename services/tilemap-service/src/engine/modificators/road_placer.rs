@@ -169,12 +169,18 @@ mod tests {
     }
 
     fn lair(at: (u32, u32)) -> TilemapObjectPlacement {
+        let v2 = TilemapObjectKind::MonsterLair.v2_defaults(None);
         TilemapObjectPlacement {
             kind: TilemapObjectKind::MonsterLair,
             anchor: TileCoord::new(at.0, at.1),
             canon_ref: None,
             biome_object_type: None,
             value: Some(1),
+            primitive: Some(v2.primitive),
+            tag: Some(v2.tag),
+            footprint: Some(v2.footprint),
+            orientation: None,
+            properties: serde_json::Value::Null,
         }
     }
 

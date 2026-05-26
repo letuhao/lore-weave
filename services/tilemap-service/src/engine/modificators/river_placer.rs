@@ -233,12 +233,18 @@ mod tests {
     use crate::types::zone::ZoneId;
 
     fn obstacle(at: (u32, u32), kind: BiomeObjectType) -> TilemapObjectPlacement {
+        let v2 = TilemapObjectKind::Obstacle.v2_defaults(Some(kind));
         TilemapObjectPlacement {
             kind: TilemapObjectKind::Obstacle,
             anchor: TileCoord::new(at.0, at.1),
             canon_ref: None,
             biome_object_type: Some(kind),
             value: None,
+            primitive: Some(v2.primitive),
+            tag: Some(v2.tag),
+            footprint: Some(v2.footprint),
+            orientation: None,
+            properties: serde_json::Value::Null,
         }
     }
 

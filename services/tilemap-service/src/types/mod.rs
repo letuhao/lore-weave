@@ -24,7 +24,7 @@ pub use biome::{
     BiomeSelectionRule, BiomeSelectionRules, BiomeSet,
 };
 pub use channel::{ChannelId, ChannelTier};
-pub use object::{TilemapObjectKind, TilemapObjectPlacement};
+pub use object::{TilemapObjectKind, TilemapObjectPlacement, V2Defaults};
 pub use object_template::{FootprintCell, TilemapObjectTemplate};
 pub use primitive::{ObjectPrimitive, TerrainPrimitive};
 pub use registry::{

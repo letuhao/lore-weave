@@ -436,12 +436,18 @@ fn fill_region(
             for g in gates.iter_mut() {
                 g.subtract(&footprint); // the placed footprint is no longer passable
             }
+            let v2 = TilemapObjectKind::Obstacle.v2_defaults(Some(item.object_type));
             state.object_placements.push(TilemapObjectPlacement {
                 kind: TilemapObjectKind::Obstacle,
                 anchor,
                 canon_ref: None,
                 biome_object_type: Some(item.object_type),
                 value: None,
+                primitive: Some(v2.primitive),
+                tag: Some(v2.tag),
+                footprint: Some(v2.footprint),
+                orientation: None,
+                properties: serde_json::Value::Null,
             });
             placed_areas.push(item.area);
         }
