@@ -1519,9 +1519,15 @@ mod tests {
         // Bezier Hook/Boot template tightening + Ring template removed from
         // ACTIVE rotation + ShapeResult/effective_kind plumbing. Plate
         // footprints reflect new shape distribution; hypso bytes shift.
+        // **v5.4 Phase A v3.2 rebase 2026-05-26**: 6-generator registry
+        // (added SdfCapsuleChain + MarchingNoise); default dispatch flipped
+        // to Weighted(engine_v3_2_weights()) with PO-approved per-rank table
+        // (spec §4.6). Marching-squares lookup table corrected (6 case
+        // orientations fixed). Plate footprints reflect new branching /
+        // noise-field shapes; hypso bytes shift.
         // Rebaseline only with intentional polygon-shape / palette /
         // pipeline changes.
-        let pinned = "042f167f098fa26cad2210699c29a3eba53d14f339a71924a3bfa9a78dadf38b";
+        let pinned = "df1d6b0a4f3d177a35fe50fec43a9e69c48022be061fb793660f28e8557566f9";
         assert_eq!(
             actual.as_str(),
             pinned,
@@ -1570,9 +1576,13 @@ mod tests {
         // + Weighted dispatch + tightened Bezier templates + Ring removed
         // from ACTIVE rotation + ShapeResult honest-kind plumbing. Plate
         // shape class varies per SizeRank; biome bytes shift accordingly.
+        // **v5.4 Phase A v3.2 rebase 2026-05-26**: 6-generator registry
+        // (added SdfCapsuleChain + MarchingNoise) + engine_v3_2_weights
+        // default + corrected marching-squares lookup table. Biome bytes
+        // shift along with every downstream pixel.
         // Rebaseline only with intentional biome algorithm / palette /
         // pipeline / polygon-shape changes.
-        let pinned = "b8c28d510c2aa4eedbadafe8e65db85c878465d6ae159f962ace801655430c91";
+        let pinned = "ba0993ffbe22588567fca239462116bc7af05ef0ee6fd6358e630cdafbf3e8c1";
         assert_eq!(
             actual.as_str(),
             pinned,

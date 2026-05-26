@@ -1947,23 +1947,14 @@ mod tests {
         // have upwind mountains (collision belts) → orographic shadow fires.
         // Verify: at least one zone differs in precip between strength=0 and
         // strength=default.
-        // V1 Phase A: switched from `test_world()` (4 plates default seed 7)
-        // to the escape-hatch forced-mountain config baked into the assert
-        // message — Phase A's polygon-shape noise shifted seed-7 collision
-        // belts enough that no zone was exactly in upwind-of-mountain
-        // position at 4-plate, 640×400 scale. The forced config below
-        // guarantees collision uplift via plates=5 separation=0.5
-        // collision_gain=0.7, restoring the physics signal independent of
-        // the polygon noise pattern.
-        let world = gen_flat(&FlatParams {
-            width: 640,
-            height: 400,
-            plate_count: 5,
-            seed: 7,
-            separation: 0.5,
-            collision_gain: 0.7,
-            ..FlatParams::default()
-        });
+        //
+        // V1 Phase A v3.2 (2026-05-26): default 12-plate config replaces
+        // the prior small custom (plates=5, seed=7) config because v3.2's
+        // SDF/Marching shape distribution at the small config no longer
+        // produces an upwind-of-mountain zone at every seed — the bigger
+        // 12-plate world has enough collision belts that the orographic
+        // signal is present regardless of which kinds the dispatcher picks.
+        let world = gen_flat(&FlatParams::default());
         let params_off = WorldClimateParams {
             orographic_strength: 0.0,
             ..WorldClimateParams::default()

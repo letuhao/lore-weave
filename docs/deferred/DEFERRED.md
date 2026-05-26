@@ -1,10 +1,11 @@
 # Deferred Items
 
 <!-- Managed by Scribe (AMAW) or main session (default mode). Do not edit manually unless cleaning up. -->
-<!-- Next ID: 025 -->
+<!-- Next ID: 026 -->
 
 | ID | Origin | Description | Target | Severity |
 |---|---|---|---|---|
+| 025 | 2026-05-26 v3.2 spec §6 design review | `lat_banding` metric entropy rewrite for v3.2's branching shapes (Y-branch, Crab-radial legitimately span 3+ lat bands by design). Spec §6 described an area-weighted band entropy replacement; PO approved defer because v4.5 unified calibration pass will rewrite multiple metrics together. v3.2 ships with current ecotone-aware `lat_banding` and accepts whatever composite delta lands — v5.5.json regenerated at that value. If composite drops >10 PO can flag specific seeds for follow-up via /review-impl. | v4.5 calibration phase | MED |
 <!-- #024 cleared 2026-05-24 by v2.1e ship — see "Recently cleared" below -->
 | 023 | 2026-05-17 GEO Path A relief render | Render polish deferred from Path A (render-only, cosmetic — neither blocks Path B): (a) rivers on the biome map are still flat per-cell Voronoi runs — tapered-curve river rendering would read far better; (b) the `atlas` style coastline is the interpolated-mesh land/water crossing + a 1px ink outline, not a true smoothed (marching-squares + curve-fit) coastline. | Render polish pass (post Path B) | LOW |
 | 022 | 2026-05-17 tilemap Phase B spec D7 | `TilemapObjectPlacement` stores only the obstacle's `anchor`, not its footprint extent. TMP_005 §4.5 passes a placed object's *area* to RiverPlacer for river source/sink siting; Phase B's discovery contract is only the `biome_object_type` tag (`Some(Mountain)` = river-source candidate, `Some(Lake)` = river-sink). Whether Phase E's V1+30d RiverPlacer needs the full footprint extent or the `anchor` representative point suffices is a Phase-E decision — if it needs the extent, add an additive footprint/template reference to `TilemapObjectPlacement` (TMP-A8). | Phase E (RiverPlacer) | LOW |

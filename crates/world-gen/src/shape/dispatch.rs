@@ -34,15 +34,19 @@ impl ShapeRegistry {
         }
     }
 
-    /// Engine-default registry. **v3.1b**: registers all 4 first-tier
-    /// generators (Ellipse + BezierSpine + Polar + Boolean). v3.2+ will
-    /// extend to SdfCapsuleChain / MarchingNoise / Slime / Stamp.
+    /// Engine-default registry. **v3.2**: registers all 6 active generators
+    /// (Ellipse + BezierSpine + Polar + Boolean + SdfCapsuleChain +
+    /// MarchingNoise). Slime + Stamp variants remain reserved on
+    /// [`ShapeKind`] and will be added in v3.4 / v3.5.
     pub fn engine_default() -> Self {
         let mut r = Self::empty();
         r.register(Box::new(super::EllipseGenerator));
         r.register(Box::new(super::BezierSpineGenerator));
         r.register(Box::new(super::PolarGenerator));
         r.register(Box::new(super::BooleanGenerator));
+        // v3.2 additions:
+        r.register(Box::new(super::SdfCapsuleChainGenerator));
+        r.register(Box::new(super::MarchingNoiseGenerator));
         r
     }
 
@@ -239,6 +243,78 @@ pub fn engine_v3_1b_weights() -> BTreeMap<SizeRank, Vec<(ShapeKind, f32)>> {
     table
 }
 
+/// **v3.2** per-rank weight table for [`DispatchMode::Weighted`]. Extends
+/// the v3.1b 4-kind mix with `SdfCapsuleChain` (branching topologies) and
+/// `MarchingNoise` (noise-field continents). Small/Micro plates EXCLUDE
+/// both new kinds: capsule chain degenerates at small scale and a 256²
+/// raster wastes resolution on micro-sized polygons. Values approved by PO
+/// 2026-05-26 (spec §4.6).
+///
+/// Reserved-but-not-impl kinds (Slime, Stamp) have their roadmap weights
+/// merged into `Ellipse` here so the per-rank distribution sums to 1.0
+/// while v3.4/v3.5 generators are not yet registered. The redistribution
+/// will be undone (and weights restored to roadmap §14 Q4 values) once
+/// those generators ship.
+pub fn engine_v3_2_weights() -> BTreeMap<SizeRank, Vec<(ShapeKind, f32)>> {
+    let mut table = BTreeMap::new();
+    table.insert(
+        SizeRank::Giant,
+        vec![
+            (ShapeKind::Ellipse, 0.30),
+            (ShapeKind::BezierSpine, 0.20),
+            (ShapeKind::Polar, 0.10),
+            (ShapeKind::Boolean, 0.10),
+            (ShapeKind::SdfCapsuleChain, 0.20),
+            (ShapeKind::MarchingNoise, 0.10),
+        ],
+    );
+    table.insert(
+        SizeRank::Large,
+        vec![
+            (ShapeKind::Ellipse, 0.25),
+            (ShapeKind::BezierSpine, 0.25),
+            (ShapeKind::Polar, 0.10),
+            (ShapeKind::Boolean, 0.15),
+            (ShapeKind::SdfCapsuleChain, 0.15),
+            (ShapeKind::MarchingNoise, 0.10),
+        ],
+    );
+    table.insert(
+        SizeRank::Medium,
+        vec![
+            (ShapeKind::Ellipse, 0.30),
+            (ShapeKind::BezierSpine, 0.25),
+            (ShapeKind::Polar, 0.20),
+            (ShapeKind::Boolean, 0.10),
+            (ShapeKind::SdfCapsuleChain, 0.10),
+            (ShapeKind::MarchingNoise, 0.05),
+        ],
+    );
+    table.insert(
+        SizeRank::Small,
+        vec![
+            (ShapeKind::Ellipse, 0.40),
+            (ShapeKind::BezierSpine, 0.20),
+            (ShapeKind::Polar, 0.25),
+            (ShapeKind::Boolean, 0.05),
+            (ShapeKind::SdfCapsuleChain, 0.10),
+            (ShapeKind::MarchingNoise, 0.00),
+        ],
+    );
+    table.insert(
+        SizeRank::Micro,
+        vec![
+            (ShapeKind::Ellipse, 0.55),
+            (ShapeKind::BezierSpine, 0.10),
+            (ShapeKind::Polar, 0.30),
+            (ShapeKind::Boolean, 0.05),
+            (ShapeKind::SdfCapsuleChain, 0.00),
+            (ShapeKind::MarchingNoise, 0.00),
+        ],
+    );
+    table
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,5 +492,64 @@ mod tests {
             // panic tests, not by us here.
             assert!(r.is_empty());
         }
+    }
+
+    // -- v3.2 weights + registry checks ---------------------------------------
+
+    #[test]
+    fn engine_default_v3_2_registers_six_kinds() {
+        let r = ShapeRegistry::engine_default();
+        let kinds = r.kinds();
+        assert_eq!(kinds.len(), 6, "v3.2 engine_default should register 6 kinds; got {kinds:?}");
+        for k in [
+            ShapeKind::Ellipse,
+            ShapeKind::BezierSpine,
+            ShapeKind::Polar,
+            ShapeKind::Boolean,
+            ShapeKind::SdfCapsuleChain,
+            ShapeKind::MarchingNoise,
+        ] {
+            assert!(r.get(k).is_some(), "engine_default should register {k:?}");
+        }
+        assert!(r.get(ShapeKind::Slime).is_none(), "Slime is reserved, not impl");
+        assert!(r.get(ShapeKind::Stamp).is_none(), "Stamp is reserved, not impl");
+    }
+
+    #[test]
+    fn engine_v3_2_weights_each_rank_sums_to_one() {
+        let table = engine_v3_2_weights();
+        for (rank, weights) in &table {
+            let sum: f32 = weights.iter().map(|(_, w)| *w).sum();
+            assert!(
+                (sum - 1.0).abs() < 0.001,
+                "rank {rank:?} weights sum {sum}, expected 1.0"
+            );
+        }
+    }
+
+    #[test]
+    fn engine_v3_2_weights_micro_excludes_sdf_and_marching() {
+        let table = engine_v3_2_weights();
+        let micro = table.get(&SizeRank::Micro).unwrap();
+        for (k, w) in micro {
+            if matches!(*k, ShapeKind::SdfCapsuleChain | ShapeKind::MarchingNoise) {
+                assert_eq!(*w, 0.0, "Micro rank weight for {k:?} should be 0.0");
+            }
+        }
+        // Small also excludes MarchingNoise (but allows SDF at 0.10).
+        let small = table.get(&SizeRank::Small).unwrap();
+        for (k, w) in small {
+            if matches!(*k, ShapeKind::MarchingNoise) {
+                assert_eq!(*w, 0.0, "Small rank weight for MarchingNoise should be 0.0");
+            }
+        }
+    }
+
+    #[test]
+    fn engine_v3_2_weights_giant_features_sdf_at_twenty_pct() {
+        let table = engine_v3_2_weights();
+        let giant = table.get(&SizeRank::Giant).unwrap();
+        let sdf_weight = giant.iter().find(|(k, _)| *k == ShapeKind::SdfCapsuleChain).map(|(_, w)| *w);
+        assert_eq!(sdf_weight, Some(0.20), "Giant SDF weight per PO-approved table");
     }
 }

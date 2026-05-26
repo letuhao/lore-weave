@@ -11,7 +11,10 @@
 //! layout can be steered or pinned.
 
 use crate::rng::Rng;
-use crate::shape::{DispatchMode, ShapeContext, ShapeKind, ShapeRegistry, dispatch::engine_v3_1b_weights};
+use crate::shape::{
+    DispatchMode, ShapeContext, ShapeKind, ShapeRegistry,
+    dispatch::{engine_v3_1b_weights, engine_v3_2_weights},
+};
 use serde::Serialize;
 use std::f32::consts::TAU;
 
@@ -463,16 +466,19 @@ pub fn collision_strength(a: &Plate, b: &Plate) -> f32 {
 /// indirection but consume no RNG in this configuration. v3.1b will register
 /// 3 more generators and flip the default to `Weighted(...)`.
 pub fn generate(params: &FlatParams) -> FlatWorld {
-    // v3.1b registry: Ellipse + BezierSpine + Polar + Boolean (4 generators).
-    // Default dispatch is `Weighted(engine_v3_1b_weights())` — per-rank
-    // weighted random with Giants favouring branching shapes and Micros
-    // favouring simple shapes. Callers can override via
-    // `FlatParams.plate_dispatch` for tests / debug / future LLM modes.
+    // v3.2 registry: Ellipse + BezierSpine + Polar + Boolean + SdfCapsuleChain
+    // + MarchingNoise (6 generators). Default dispatch is
+    // `Weighted(engine_v3_2_weights())` — per-rank weights from PO-approved
+    // table (spec §4.6) with Giants favouring branching shapes (BezierSpine
+    // + SdfCapsuleChain) and Micros excluding SDF + MarchingNoise.
+    // `engine_v3_1b_weights()` retained as `pub` for reproducing v3.1
+    // baselines via `FlatParams.plate_dispatch`.
+    let _ = engine_v3_1b_weights; // keep the v3.1 baseline weights reachable
     let registry = ShapeRegistry::engine_default();
     let dispatcher = params
         .plate_dispatch
         .clone()
-        .unwrap_or_else(|| DispatchMode::Weighted(engine_v3_1b_weights()));
+        .unwrap_or_else(|| DispatchMode::Weighted(engine_v3_2_weights()));
 
     let mut rng = Rng::for_stage(params.seed, b"flatworld-plates");
     // Separate stream for motion, so adding velocities doesn't perturb the
@@ -1171,8 +1177,35 @@ mod tests {
         for plate in &world.plates {
             assert!(
                 plate.contains(plate.center.0, plate.center.1),
-                "plate {} should contain its own centre",
-                plate.id
+                "plate {} should contain its own centre (kind={:?})",
+                plate.id,
+                plate.shape_kind,
+            );
+        }
+    }
+
+    #[test]
+    fn v3_2_default_renders_use_new_shape_kinds() {
+        // Acceptance per docs/specs/2026-05-26-flatworld-v3-2-sdf-marching.md §7:
+        // at least one plate per default render must use SdfCapsuleChain or
+        // MarchingNoise (the two new v3.2 kinds). Verified across the 5
+        // visual-review seeds 13/42/108/256/512.
+        for seed in [13u64, 42, 108, 256, 512] {
+            let world = generate(&FlatParams {
+                seed,
+                ..FlatParams::default()
+            });
+            let has_new_kind = world.plates.iter().any(|p| {
+                matches!(
+                    p.shape_kind,
+                    crate::shape::ShapeKind::SdfCapsuleChain | crate::shape::ShapeKind::MarchingNoise
+                )
+            });
+            assert!(
+                has_new_kind,
+                "seed {seed}: no plate uses SdfCapsuleChain or MarchingNoise — \
+                 v3.2 dispatcher weights may have regressed (kinds = {:?})",
+                world.plates.iter().map(|p| p.shape_kind).collect::<Vec<_>>(),
             );
         }
     }
