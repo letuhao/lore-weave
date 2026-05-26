@@ -10,6 +10,8 @@ pub mod biome;
 pub mod channel;
 pub mod object;
 pub mod object_template;
+pub mod primitive;
+pub mod registry;
 pub mod template;
 pub mod tile;
 pub mod tile_mask;
@@ -24,6 +26,10 @@ pub use biome::{
 pub use channel::{ChannelId, ChannelTier};
 pub use object::{TilemapObjectKind, TilemapObjectPlacement};
 pub use object_template::{FootprintCell, TilemapObjectTemplate};
+pub use primitive::{ObjectPrimitive, TerrainPrimitive};
+pub use registry::{
+    Direction, FootprintSize, ObjectKindDef, RegistryRef, TerrainKindDef, WalkabilityPattern,
+};
 pub use template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
 pub use tile::{TerrainKind, TileCoord, TileState};
 pub use tile_mask::TileMask;
