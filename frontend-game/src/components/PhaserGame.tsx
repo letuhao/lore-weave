@@ -28,7 +28,19 @@ export function PhaserGame({ tilemap }: PhaserGameProps): JSX.Element {
     if (gameRef.current) {
       return;
     }
-    gameRef.current = startGame(container);
+    // Defensive: Phaser 4 only supports WebGL (no canvas fallback). On
+    // hosts without WebGL (firefox CI, users with WebGL disabled in
+    // about:config) `startGame` throws synchronously. Without this
+    // guard React 18 unmounts the entire /play subtree, hiding the HUD
+    // and viewer controls.
+    try {
+      gameRef.current = startGame(container);
+    } catch (err) {
+      console.error(
+        'PhaserGame: failed to start Phaser (WebGL likely unavailable). HUD continues without canvas.',
+        err,
+      );
+    }
 
     return () => {
       gameRef.current?.destroy(true);

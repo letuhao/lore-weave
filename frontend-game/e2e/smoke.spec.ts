@@ -31,68 +31,65 @@ test.describe('V0 smoke — static routes (no backend)', () => {
 });
 
 test.describe('/play smoke — V0 HUD + V1.2 viewer surface', () => {
-  // Shared diagnostic capture for /play tests: page errors + console errors
-  // are echoed at test-end on failure so CI logs reveal the firefox-CI
-  // root cause without needing artifact downloads.
-  const installDiagCapture = (page: import('@playwright/test').Page): { dump: () => string } => {
+  // Per-test capture: pageerror + console.error/warning, surfaced on
+  // failure so CI logs reveal root cause without artifact download.
+  test.beforeEach(async ({ page }, testInfo) => {
     const events: string[] = [];
-    page.on('pageerror', (err) => events.push(`[pageerror] ${err.message}\n${err.stack ?? ''}`));
+    page.on('pageerror', (err) => events.push(`[pageerror] ${err.message}`));
     page.on('console', (msg) => {
       if (msg.type() === 'error' || msg.type() === 'warning') {
         events.push(`[console.${msg.type()}] ${msg.text()}`);
       }
     });
-    return { dump: () => (events.length ? `\n--- captured ---\n${events.join('\n')}\n----------------` : '\n(no captured events)') };
-  };
+    testInfo.attach.bind(testInfo);
+    // Stash the capture array onto testInfo for the afterEach hook.
+    (testInfo as unknown as { _capturedEvents: string[] })._capturedEvents = events;
+  });
 
-  test('canvas mounts + HUD visible (AC-FG-5, AC-FG-6)', async ({ page }, testInfo) => {
-    const diag = installDiagCapture(page);
+  test.afterEach(async ({}, testInfo) => {
+    const events = (testInfo as unknown as { _capturedEvents?: string[] })._capturedEvents ?? [];
+    if (testInfo.status !== testInfo.expectedStatus && events.length) {
+      await testInfo.attach('captured-events', {
+        body: events.join('\n'),
+        contentType: 'text/plain',
+      });
+    }
+  });
+
+  test('HUD + viewer surface visible on /play (AC-FG-6, V1.2 viewer)', async ({ page }) => {
     await page.goto('/play');
 
-    // Canvas exists — Phaser bridge mounted (AC-FG-5 needs backend assets;
-    // here we just verify the bridge lifecycle runs).
+    // HUD bars — pure React DOM overlay, must render even when WebGL
+    // is unavailable (firefox CI). PhaserGame catches WebGL init errors
+    // defensively so the React subtree stays mounted.
+    await expect(page.getByText(/HP \d+ \/ \d+/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/MP \d+ \/ \d+/)).toBeVisible();
+
+    // V1.2 viewer surface — also pure React DOM.
+    await expect(page.getByText(/Tilemap viewer/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /render zone|rendering/ })).toBeVisible();
+    await expect(page.getByText(/^Layers$/)).toBeVisible();
+    await expect(page.getByText(/L0 Foundation/)).toBeVisible();
+
+    // EchoPanel — also DOM-only (status text), tolerant of "connecting".
+    await expect(page.getByText(/game-server:/)).toBeVisible();
+  });
+
+  test('Phaser canvas mounts (AC-FG-5)', async ({ page, browserName }) => {
+    // Phaser 4 only supports WebGL (no canvas fallback). The ubuntu-CI
+    // playwright firefox image cannot create a WebGL context
+    // (FEATURE_FAILURE_WEBGL_EXHAUSTED_DRIVERS) so canvas is absent on
+    // that combination. Chromium and webkit both create WebGL fine.
+    // Coverage for firefox lives in the cross-browser HUD test above —
+    // that verifies the React tree survives WebGL failure.
+    test.skip(
+      browserName === 'firefox' && !!process.env.CI,
+      'firefox CI has no WebGL; canvas-mount asserted on chromium + webkit only',
+    );
+
+    await page.goto('/play');
     // .first() because React StrictMode double-mounts Phaser in dev,
     // briefly producing 2 canvas elements before cleanup.
-    try {
-      // 30s budget: firefox CI cold-start mounts Phaser 4 + WebGL slower than 10s.
-      await expect(page.locator('canvas').first()).toBeVisible({ timeout: 30_000 });
-
-      // HUD bars render — React DOM overlay on top of canvas (AC-FG-6).
-      await expect(page.getByText(/HP \d+ \/ \d+/)).toBeVisible();
-      await expect(page.getByText(/MP \d+ \/ \d+/)).toBeVisible();
-    } catch (e) {
-      testInfo.attach('captured-events', { body: diag.dump(), contentType: 'text/plain' });
-      throw new Error(`${(e as Error).message}${diag.dump()}`);
-    }
-  });
-
-  test('EchoPanel renders connecting state (AC-FG-9 partial)', async ({ page }, testInfo) => {
-    const diag = installDiagCapture(page);
-    await page.goto('/play');
-    try {
-      // EchoPanel always renders; status is "connecting" without game-server,
-      // "connected" with it. Either is acceptable for cross-browser smoke.
-      // 15s budget: firefox CI ws-init under cold runners exceeds 5s.
-      await expect(page.getByText(/game-server:/)).toBeVisible({ timeout: 15_000 });
-    } catch (e) {
-      testInfo.attach('captured-events', { body: diag.dump(), contentType: 'text/plain' });
-      throw new Error(`${(e as Error).message}${diag.dump()}`);
-    }
-  });
-
-  test('V1.2 viewer surface renders (render-controls + LayerToggles)', async ({ page }, testInfo) => {
-    const diag = installDiagCapture(page);
-    await page.goto('/play');
-    try {
-      // Render-controls panel (top-right): seed/tier inputs + render button.
-      await expect(page.getByText(/Tilemap viewer/)).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByRole('button', { name: /render zone|rendering/ })).toBeVisible();
-      // LayerToggles panel (left-mid): heading + at least one known layer checkbox label.
-      await expect(page.getByText(/^Layers$/)).toBeVisible();
-      await expect(page.getByText(/L0 Foundation/)).toBeVisible();
-    } catch (e) {
-      testInfo.attach('captured-events', { body: diag.dump(), contentType: 'text/plain' });
-      throw new Error(`${(e as Error).message}${diag.dump()}`);
-    }
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 30_000 });
   });
 });
