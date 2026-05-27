@@ -19,7 +19,8 @@ _SELECT_COLS = """
   project_id, user_id, name, description, project_type, book_id, instructions,
   extraction_enabled, extraction_status, embedding_model, embedding_dimension,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
-  is_archived, version, created_at, updated_at
+  is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
+  version, created_at, updated_at
 """
 
 # Explicit allowlist for dynamic UPDATE SET. Pydantic's ProjectUpdate already
@@ -28,12 +29,23 @@ _SELECT_COLS = """
 _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
     {"name", "description", "instructions", "book_id", "is_archived",
      "embedding_model",
-     # K12.4: embedding_dimension is a DERIVED column — it's not
-     # present on ProjectUpdate, Pydantic will reject it on direct
-     # PATCH attempts. It's added to `updates` inside the auto-derive
-     # block when embedding_model changes, and needs allowlist
-     # membership so the defense-in-depth check doesn't treat it
-     # as a code bug.
+     # K21.12-BE (design D9): per-project tool-calling toggle. NOT NULL,
+     # so it is deliberately absent from _NULLABLE_UPDATE_COLUMNS — an
+     # explicit None on this field is skipped like name/description.
+     "tool_calling_enabled",
+     # K21-C (design D4): per-project memory_remember confirmation
+     # gate. NOT NULL, so — like tool_calling_enabled — deliberately
+     # absent from _NULLABLE_UPDATE_COLUMNS; explicit None is skipped.
+     "memory_remember_confirm",
+     # P2 (D6): opt-in raw-response retention. NOT NULL DEFAULT false;
+     # FE follow-up D-P2-FE-SAVE-RAW will expose a toggle. PATCH updates
+     # the flag; leaf_processor reads it at extraction time.
+     "save_raw_extraction",
+     # D-EMB-MODEL-REF-01: embedding_dimension is now caller-supplied
+     # (it was a derived column under the old logical-name design).
+     # embedding_model carries the provider-registry user_model UUID,
+     # which is not derivable to a dimension — so the caller (FE picker /
+     # config flow) sends embedding_model + embedding_dimension together.
      "embedding_dimension"}
 )
 
@@ -41,11 +53,11 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
 # explicitly-set field is treated as "skip" (not "set to NULL") so we
 # don't violate NOT NULL constraints.
 # - `book_id`: None clears the book link.
-# - `embedding_model` (K12.4): None clears the model selection. When
-#   embedding_model is updated we also auto-update embedding_dimension
-#   via the EMBEDDING_MODEL_TO_DIM map in the update() method.
-# - `embedding_dimension` (K12.4 derived): nullable when model is
-#   cleared or unknown to the map.
+# - `embedding_model` (D-EMB-MODEL-REF-01): the provider-registry
+#   user_model UUID of the embedding model. None clears the selection;
+#   clearing it also clears embedding_dimension (see update()).
+# - `embedding_dimension` (D-EMB-MODEL-REF-01): caller-supplied; nullable
+#   so the model selection can be cleared.
 _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
     {"book_id", "embedding_model", "embedding_dimension"}
 )
@@ -216,20 +228,14 @@ class ProjectsRepo:
                 continue
             updates[field] = value
 
-        # K12.4: when embedding_model changes, auto-derive embedding_dimension
-        # from the single-source-of-truth map in the L3 selector. Unknown
-        # models get dimension=None and the downstream L3 / passage pipeline
-        # skips cleanly. Clearing the model (None) clears the dim too.
-        if "embedding_model" in updates:
-            # Local import sidesteps a circular with context.selectors at
-            # module load — projects.py is imported by deps.py which gets
-            # pulled into app startup well before context modules.
-            from app.context.selectors.passages import EMBEDDING_MODEL_TO_DIM
-            model = updates["embedding_model"]
-            if model is None:
-                updates["embedding_dimension"] = None
-            else:
-                updates["embedding_dimension"] = EMBEDDING_MODEL_TO_DIM.get(model)
+        # D-EMB-MODEL-REF-01: embedding_model now carries the provider-
+        # registry user_model UUID — a dimension is not derivable from it,
+        # so the caller supplies embedding_dimension explicitly. The only
+        # invariant kept here: clearing the model (None) clears the
+        # dimension too, so a project can't be left model-less but
+        # dimension-tagged.
+        if updates.get("embedding_model", "unset") is None:
+            updates["embedding_dimension"] = None
 
         if not updates:
             # No-op: K7b contract preserves updated_at AND version. Even
@@ -284,6 +290,7 @@ class ProjectsRepo:
         extraction_enabled: bool,
         extraction_status: ExtractionStatus,
         embedding_model: str | None = None,
+        embedding_dimension: int | None = None,
         conn: "asyncpg.Connection | None" = None,
     ) -> Project | None:
         """K16.3: atomically update extraction-related fields on a project.
@@ -291,6 +298,11 @@ class ProjectsRepo:
         Accepts an optional `conn` so the caller can run this inside
         an existing transaction (e.g., the start-job endpoint creates
         the job row and updates the project in one transaction).
+
+        `embedding_model` / `embedding_dimension` are COALESCE-updated —
+        pass both together (D-EMB-MODEL-REF-03: the dimension is probed
+        by the caller and must stay paired with the model); pass neither
+        to leave them unchanged.
 
         Returns the updated project or None if the project doesn't
         exist / belongs to another user.
@@ -300,6 +312,7 @@ class ProjectsRepo:
         SET extraction_enabled = $3,
             extraction_status = $4,
             embedding_model = COALESCE($5, embedding_model),
+            embedding_dimension = COALESCE($6, embedding_dimension),
             updated_at = now()
         WHERE user_id = $1 AND project_id = $2
         RETURNING {_SELECT_COLS}
@@ -307,13 +320,15 @@ class ProjectsRepo:
         if conn is not None:
             row = await conn.fetchrow(
                 query, user_id, project_id,
-                extraction_enabled, extraction_status, embedding_model,
+                extraction_enabled, extraction_status,
+                embedding_model, embedding_dimension,
             )
         else:
             async with self._pool.acquire() as c:
                 row = await c.fetchrow(
                     query, user_id, project_id,
-                    extraction_enabled, extraction_status, embedding_model,
+                    extraction_enabled, extraction_status,
+                    embedding_model, embedding_dimension,
                 )
         return _row_to_project(row) if row else None
 

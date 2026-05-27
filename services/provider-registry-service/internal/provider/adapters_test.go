@@ -58,6 +58,74 @@ func TestExtractMessages_Fallback(t *testing.T) {
 	}
 }
 
+func TestForwardOptionalChatFields_ChatTemplateKwargs(t *testing.T) {
+	t.Parallel()
+	// D-EXTRACTION-CONTEXT-FIX-STAGE-4 regression-lock — the
+	// chat_template_kwargs passthrough MUST survive SDK → gateway →
+	// adapter. Local thinking-capable models (Qwen3-thinking,
+	// DeepSeek-R1, abliterated variants) rely on
+	// {thinking:false} to disable reasoning-mode generation.
+	input := map[string]any{
+		"messages": []any{},
+		"chat_template_kwargs": map[string]any{
+			"thinking":         false,
+			"enable_thinking":  false,
+		},
+	}
+	body := map[string]any{}
+	forwardOptionalChatFields(input, body)
+	got, ok := body["chat_template_kwargs"].(map[string]any)
+	if !ok {
+		t.Fatalf("chat_template_kwargs missing from body: %v", body)
+	}
+	if got["thinking"] != false || got["enable_thinking"] != false {
+		t.Errorf("unexpected chat_template_kwargs: %v", got)
+	}
+}
+
+func TestForwardOptionalChatFields_ResponseFormat(t *testing.T) {
+	t.Parallel()
+	input := map[string]any{
+		"response_format": map[string]any{"type": "json_object"},
+	}
+	body := map[string]any{}
+	forwardOptionalChatFields(input, body)
+	got, ok := body["response_format"].(map[string]any)
+	if !ok || got["type"] != "json_object" {
+		t.Errorf("response_format not forwarded: %v", body)
+	}
+}
+
+func TestForwardOptionalChatFields_AllSamplingControls(t *testing.T) {
+	t.Parallel()
+	input := map[string]any{
+		"reasoning_effort":  "low",
+		"top_p":             0.9,
+		"top_k":             40,
+		"presence_penalty":  0.2,
+		"frequency_penalty": 0.1,
+		"seed":              42,
+	}
+	body := map[string]any{}
+	forwardOptionalChatFields(input, body)
+	for k, want := range input {
+		if body[k] != want {
+			t.Errorf("field %s missing or wrong: got %v want %v", k, body[k], want)
+		}
+	}
+}
+
+func TestForwardOptionalChatFields_SkipsAbsentFields(t *testing.T) {
+	t.Parallel()
+	// Empty input → body stays empty. No unknown-key pollution
+	// (some OpenAI endpoints 400 on unrecognized fields).
+	body := map[string]any{}
+	forwardOptionalChatFields(map[string]any{}, body)
+	if len(body) != 0 {
+		t.Errorf("expected empty body, got: %v", body)
+	}
+}
+
 func TestToFloat(t *testing.T) {
 	t.Parallel()
 

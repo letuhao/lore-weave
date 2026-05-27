@@ -53,6 +53,9 @@ PromptName = Literal[
     "relation_system",
     "event_system",
     "fact_system",
+    # P3 (hierarchical extraction T4 + T7 stage 1) — single-prompt
+    # summarize_level (no _system variant; input is bounded, no chunking).
+    "summarize_level",
 ]
 
 ALLOWED_PROMPT_NAMES: frozenset[str] = frozenset(get_args(PromptName))

@@ -154,6 +154,31 @@ async def test_no_l0_omits_user_element():
 
 
 @pytest.mark.asyncio
+async def test_built_context_surfaces_tool_calling_enabled():
+    """K21.12-BE (design D9) — Mode 2 carries the project's
+    tool_calling_enabled onto BuiltContext. Default True comes through,
+    and an explicitly-disabled project comes through as False."""
+    summaries = AsyncMock(spec=SummariesRepo)
+    summaries.get = AsyncMock(side_effect=[None, None, None, None])
+    glossary = AsyncMock(spec=GlossaryClient)
+    glossary.select_for_context = AsyncMock(return_value=[])
+
+    enabled = await build_static_mode(
+        summaries, glossary,
+        user_id=uuid4(), project=_project(tool_calling_enabled=True),
+        message="",
+    )
+    assert enabled.tool_calling_enabled is True
+
+    disabled = await build_static_mode(
+        summaries, glossary,
+        user_id=uuid4(), project=_project(tool_calling_enabled=False),
+        message="",
+    )
+    assert disabled.tool_calling_enabled is False
+
+
+@pytest.mark.asyncio
 async def test_no_l1_summary_project_still_renders():
     summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, None])

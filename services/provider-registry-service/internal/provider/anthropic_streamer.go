@@ -62,9 +62,9 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 		// Anthropic uses event-name lines AND a `type` field inside the
 		// data payload — they're redundant; we trust the inner type.
 		var parsed struct {
-			Type    string `json:"type"`
-			Index   int    `json:"index"`
-			Delta   struct {
+			Type  string `json:"type"`
+			Index int    `json:"index"`
+			Delta struct {
 				Type       string `json:"type"`
 				Text       string `json:"text"`
 				Thinking   string `json:"thinking"`
@@ -296,5 +296,5 @@ func doStreamPOST(
 		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
 		return nil, ClassifyUpstreamHTTP(resp.StatusCode, body, retryAfter)
 	}
-	return resp, nil
+	return wrapStreamBody(resp), nil
 }

@@ -8,6 +8,7 @@ import type {
   ChatSession,
   CreateSessionPayload,
   PatchSessionPayload,
+  PendingFact,
 } from './types';
 
 const base = () => import.meta.env.VITE_API_BASE || 'http://localhost:3000';
@@ -110,6 +111,36 @@ export const chatApi = {
         created_at: string;
       }>;
     }>(`/v1/chat/sessions/search?q=${encodeURIComponent(query)}&limit=${limit}`, { token });
+  },
+
+  // ── K21-C (D7/D8): pending-facts review ───────────────────────────────────────
+  // Served by knowledge-service through the gateway, so the path is
+  // /v1/knowledge/... not /v1/chat/... — same apiJson base. The chat
+  // feature owns these calls because the FE surfaces queued facts
+  // below the chat (PendingFactsCard).
+
+  listPendingFacts(token: string, sessionId: string) {
+    return apiJson<PendingFact[]>(
+      `/v1/knowledge/pending-facts?session_id=${encodeURIComponent(sessionId)}`,
+      { token },
+    );
+  },
+
+  // Returns the created `:Fact` (200). The FE doesn't render the body —
+  // a confirm just refetches the list — so the return is typed loosely.
+  confirmPendingFact(token: string, pendingFactId: string) {
+    return apiJson<unknown>(
+      `/v1/knowledge/pending-facts/${encodeURIComponent(pendingFactId)}/confirm`,
+      { method: 'POST', token },
+    );
+  },
+
+  // BE returns 204 No Content — apiJson resolves undefined.
+  rejectPendingFact(token: string, pendingFactId: string) {
+    return apiJson<void>(
+      `/v1/knowledge/pending-facts/${encodeURIComponent(pendingFactId)}/reject`,
+      { method: 'POST', token },
+    );
   },
 
   // ── Streaming endpoint base URL ───────────────────────────────────────────────

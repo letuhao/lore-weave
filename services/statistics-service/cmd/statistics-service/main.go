@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/statistics-service/internal/api"
 	"github.com/loreweave/statistics-service/internal/config"
 	"github.com/loreweave/statistics-service/internal/consumer"
@@ -26,6 +28,19 @@ func main() {
 		slog.Error("config", "error", err)
 		os.Exit(1)
 	}
+
+	// Phase 6c — OpenTelemetry tracing. No-op when OTEL_EXPORTER_OTLP_ENDPOINT
+	// is unset, so a broker-less / collector-less dev run still boots.
+	shutdownTracer, err := observability.InitTracer(context.Background(), "statistics-service")
+	if err != nil {
+		slog.Error("tracer init", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracer(ctx)
+	}()
 
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {

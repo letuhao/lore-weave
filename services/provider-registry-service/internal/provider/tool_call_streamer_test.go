@@ -167,7 +167,9 @@ func TestAdapterSupportsTools(t *testing.T) {
 		{&openaiAdapter{}, true},
 		{&lmStudioAdapter{}, true},
 		{&ollamaAdapter{}, true},
-		{&anthropicAdapter{}, false},
+		// anthropicAdapter flipped to true in Phase K21-B / D12 — the
+		// adapter now converts the OpenAI tool shape to Anthropic's.
+		{&anthropicAdapter{}, true},
 	}
 	for _, c := range cases {
 		if got := c.adapter.SupportsTools(); got != c.want {

@@ -11,10 +11,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/api"
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/migrate"
+	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
 func main() {
@@ -25,6 +27,19 @@ func main() {
 		slog.Error("config", "error", err)
 		os.Exit(1)
 	}
+
+	// Phase 6c — OpenTelemetry tracing. No-op when OTEL_EXPORTER_OTLP_ENDPOINT
+	// is unset, so a collector-less dev run still boots.
+	shutdownTracer, err := observability.InitTracer(context.Background(), "provider-registry-service")
+	if err != nil {
+		slog.Error("tracer init", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracer(ctx)
+	}()
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("db config parse failed", "error", err)
@@ -68,7 +83,28 @@ func main() {
 		defer func() { _ = notifier.Close() }()
 	}
 
-	srv := api.NewServer(pool, cfg, notifier)
+	// Phase 5e-β.2 — bootstrap audio cache for audio_gen URL mode.
+	// Optional: empty MINIO_ENDPOINT or MINIO_EXTERNAL_URL leaves audioCache
+	// nil; gateway boots without URL-mode support but b64_json mode works.
+	var audioCache *storage.AudioCache
+	if cfg.MinioEndpoint != "" && cfg.MinioExternalURL != "" {
+		ac, err := storage.NewAudioCache(context.Background(), storage.Config{
+			Endpoint:    cfg.MinioEndpoint,
+			AccessKey:   cfg.MinioAccessKey,
+			SecretKey:   cfg.MinioSecretKey,
+			UseSSL:      cfg.MinioUseSSL,
+			Bucket:      cfg.AudioCacheBucket,
+			ExternalURL: cfg.MinioExternalURL,
+		}, slog.Default())
+		if err != nil {
+			slog.Error("audio_cache bootstrap failed; audio_gen url-mode disabled", "error", err)
+		} else {
+			audioCache = ac
+			slog.Info("audio_cache ready", "bucket", ac.Bucket(), "external_url", cfg.MinioExternalURL)
+		}
+	}
+
+	srv := api.NewServer(pool, cfg, notifier, audioCache)
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

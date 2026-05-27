@@ -34,22 +34,142 @@ from collections.abc import Iterable
 from typing import Any, Literal
 from uuid import UUID
 
+from loreweave_extraction import ContextBudget, get_extractor_version
 from loreweave_extraction.extractors.entity import extract_entities
 from loreweave_extraction.extractors.event import extract_events
 from loreweave_extraction.extractors.fact import extract_facts
 from loreweave_extraction.extractors.relation import extract_relations
 
+from app.clients.book_client import get_book_client
 from app.clients.llm_client import LLMClient
 from app.db.neo4j_helpers import CypherSession
+from app.db.pool import get_knowledge_pool
+from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
+from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import Pass2WriteResult, write_pass2_extraction
+from app.jobs.summary_enqueue import SummaryEnqueueFn, SummarizeMessage
+from app.jobs.task_id import compute_task_id
 from app.metrics import knowledge_extraction_dropped_total
 
 __all__ = [
     "extract_pass2_chat_turn",
     "extract_pass2_chapter",
+    "enqueue_chapter_and_maybe_book_summaries",
+    "gather_relations_events_facts",
 ]
+
+
+# ── P2 (hierarchical extraction T3) — D3 cache integration ──────────────────
+
+
+async def _fetch_chapter_leaf_text(
+    book_id: UUID,
+    chapter_id: UUID,
+) -> tuple[str | None, str]:
+    """P2 D8 — fetch chapter content via book-service.
+
+    Returns (text, source) where source is "scenes" if scenes existed, or
+    "draft_text" if we fell back to the legacy-chapter path (NULL
+    structural_path → chapter_drafts.body Tiptap-to-text projection).
+
+    Returns (None, "missing") on transport failure or empty chapter.
+    """
+    client = get_book_client()
+    scenes = await client.list_scenes_by_chapter(book_id, chapter_id)
+    if scenes:
+        # P1-decomposed chapter: join scene leaf_texts in sort_order.
+        joined = "\n\n".join(s.get("leaf_text", "") for s in scenes if s.get("leaf_text"))
+        return (joined.strip() or None, "scenes")
+    # Legacy chapter (P1 R-SELF-1 NULL sentinel) — fall back to draft text.
+    draft = await client.get_chapter_draft_text(book_id, chapter_id)
+    if draft and draft.strip():
+        return (draft.strip(), "draft_text")
+    return (None, "missing")
+
+
+async def _p2_cache_wrap(
+    *,
+    op: Literal["entity", "relation", "event", "fact"],
+    leaf_text: str,
+    extractor_callable,
+    extractor_kwargs: dict[str, Any],
+    deserializer,  # callable(dict) -> Pydantic candidate
+    book_id: UUID | None,
+    chapter_id: UUID | None,
+    model_ref: str,
+    save_raw: bool,
+) -> list[Any]:
+    """P2 cache wrapper around a single extractor call.
+
+    When book_id+chapter_id are provided: compute task_id, check cache,
+    on miss claim + call extractor + persist. On hit, deserialize cached
+    candidates back to Pydantic and return — NO LLM call.
+
+    When book_id+chapter_id are None (chat_turn path): no cache, just
+    call extractor as before.
+    """
+    if book_id is None or chapter_id is None:
+        # Chat-turn or other non-chapter path — no cache, pass through.
+        return await extractor_callable(**extractor_kwargs)
+
+    # D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION. Per-op hash so editing
+    # one op's prompt only invalidates that op's cache slice — previously
+    # the global hash invalidated all 4 ops on any prompt edit.
+    # Format: `v1-{op}-{8hex}` (vs old `v1-{8hex}`). One-time cache
+    # thrash on first deploy: every existing P2 task_id changes once.
+    extractor_version = get_extractor_version(op=op)
+    task_id = compute_task_id(leaf_text, op, extractor_version, model_ref)
+    pool = get_knowledge_pool()
+    repo = ExtractionLeavesRepo(pool)
+
+    cached = await repo.fetch_cached(task_id)
+    if cached is not None and cached.candidates_jsonb is not None:
+        logger.info(
+            "p2 cache HIT op=%s chapter_id=%s candidates=%d task_id=%s",
+            op, chapter_id, len(cached.candidates_jsonb), task_id[:12],
+        )
+        return [deserializer(c) for c in cached.candidates_jsonb]
+
+    # Cache miss — claim then call extractor.
+    leaf_path = f"book/legacy/chapter-{chapter_id}/scene-1"
+    await repo.claim_pending(
+        book_id=book_id,
+        scene_id=chapter_id,  # placeholder until per-scene fanout (D-P2-PER-SCENE-FANOUT)
+        leaf_path=leaf_path,
+        op=op,
+        task_id=task_id,
+        parse_version=1,
+        extractor_version=extractor_version,
+        model_ref=model_ref,
+    )
+    try:
+        candidates = await extractor_callable(**extractor_kwargs)
+    except Exception as exc:
+        await repo.mark_failed(
+            task_id=task_id,
+            error_message=f"{type(exc).__name__}: {exc}",
+        )
+        raise
+
+    # Persist candidates (model_dump for JSONB).
+    await repo.persist(
+        task_id=task_id,
+        candidates=[c.model_dump(mode="json") for c in candidates],
+        glossary_anchor_size=None,
+        raw_response=None,  # raw_response stitching across the chunked
+                            # extractor calls is non-trivial; save_raw
+                            # opt-in deferred to D-P2-PER-SCENE-FANOUT
+                            # where per-leaf raw is naturally one call.
+        raw_token_usage=None,
+    )
+    logger.info(
+        "p2 cache MISS op=%s chapter_id=%s candidates=%d task_id=%s persisted",
+        op, chapter_id, len(candidates), task_id[:12],
+    )
+    _ = save_raw  # explicit consumption — see comment above
+    return candidates
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +218,84 @@ async def _emit_log(
         )
 
 
+async def gather_relations_events_facts(
+    *,
+    text: str,
+    entities: list[Any],
+    known_entities: list[str],
+    user_id: str,
+    project_id: str | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    llm_client: LLMClient,
+    on_dropped: Any = None,
+    context_budget: "ContextBudget | None" = None,
+) -> tuple[list[Any], list[Any], list[Any]]:
+    """C-PRED-ALIGN-DEF-01 — single source of truth for Pass 2 R+E+F
+    parallelism. Returns ``(relations, events, facts)``.
+
+    Why this helper exists: production ``_run_pipeline`` and the
+    ``tests/quality/test_extraction_eval.py`` golden-set harness both
+    need the same concurrent fan-out across the relation/event/fact
+    extractors. Before this helper existed, the eval test ran them
+    serially (and was missing ``extract_facts`` entirely), so any
+    future change to the gather shape — say a 4th sibling extractor
+    or a switch to ``TaskGroup`` — would silently desync the test
+    from production. Both call sites now go through here.
+
+    Pure: no Neo4j, no telemetry, no logging. Merges
+    ``known_entities`` with the entity names just like production did
+    so callers don't have to. The ``on_dropped`` callback is forwarded
+    to each extractor for the Prometheus drop counter (eval can pass
+    ``None`` if it doesn't track drops).
+
+    Model-aware concurrency (NEW): when ``context_budget`` is
+    supplied, the 3 R/E/F extractors are gated by an
+    ``asyncio.Semaphore(context_budget.max_parallel_slots())``. On
+    tight-context local models (e.g. 24K loaded), this auto-falls-back
+    to 1 or 2 concurrent slots → eliminates the LM Studio
+    "failed to find a memory slot for batch" / slot-purge errors
+    observed when 3 R+E+F × full-model-context-per-slot exceeded
+    available VRAM. The budget is also threaded to each extractor so
+    chunk size scales with the loaded context. Legacy callers (None)
+    keep the unbounded gather behaviour.
+    """
+    entity_names = [e.name for e in entities]
+    all_known = list(set(known_entities + entity_names))
+    extractor_kwargs = dict(
+        text=text,
+        entities=entities,
+        known_entities=all_known,
+        user_id=user_id,
+        project_id=project_id,
+        model_source=model_source,
+        model_ref=model_ref,
+        llm_client=llm_client,
+        on_dropped=on_dropped,
+    )
+    if context_budget is not None:
+        extractor_kwargs["context_budget"] = context_budget
+        max_parallel = context_budget.max_parallel_slots()
+        sem = asyncio.Semaphore(max_parallel)
+
+        async def _gated(coro):
+            async with sem:
+                return await coro
+
+        relations, events, facts = await asyncio.gather(
+            _gated(extract_relations(**extractor_kwargs)),
+            _gated(extract_events(**extractor_kwargs)),
+            _gated(extract_facts(**extractor_kwargs)),
+        )
+    else:
+        relations, events, facts = await asyncio.gather(
+            extract_relations(**extractor_kwargs),
+            extract_events(**extractor_kwargs),
+            extract_facts(**extractor_kwargs),
+        )
+    return relations, events, facts
+
+
 async def _run_pipeline(
     session: CypherSession,
     *,
@@ -113,6 +311,23 @@ async def _run_pipeline(
     llm_client: LLMClient,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
+    # P2 (D3): when book_id+chapter_id supplied, the per-op extractor
+    # calls are wrapped in the extraction_leaves cache (hit -> no LLM
+    # call). When None (chat_turn path), legacy behaviour — direct calls.
+    book_id: UUID | None = None,
+    chapter_id: UUID | None = None,
+    save_raw_extraction: bool = False,
+    # P3 (D2 + D2a + D3 + D9): hierarchy threading + async summary enqueue.
+    # When hierarchy_paths supplied: pass2_writer MERGEs Book/Part/Chapter/Scene
+    # in same Tx before entity writes. When summary_enqueue supplied:
+    # after successful write, enqueue summary.chapter (always) + on
+    # is_last_chapter_of_book, also summary.part × N + summary.book.
+    hierarchy_paths: HierarchyPaths | None = None,
+    is_last_chapter_of_book: bool = False,
+    book_parts: list[tuple[str, str, str]] | None = None,  # for book-end: [(part_id, part_path, part_index), ...]
+    embedding_model_uuid: str | None = None,
+    embedding_dimension: int | None = None,
+    summary_enqueue: SummaryEnqueueFn | None = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points.
 
@@ -142,15 +357,27 @@ async def _run_pipeline(
     # can anchor against entity_names + known_entities). Routes through
     # SDK + gateway job pattern (entity_extraction op + paragraphs/15
     # chunking + per-op JSON aggregator).
-    entities = await extract_entities(
-        text=text,
-        known_entities=known_entities,
-        user_id=user_id,
-        project_id=project_id,
-        model_source=model_source,
+    # P2 (D3): wrap with extraction_leaves cache when book/chapter known.
+    from loreweave_extraction.extractors.entity import LLMEntityCandidate
+    entities = await _p2_cache_wrap(
+        op="entity",
+        leaf_text=text,
+        extractor_callable=extract_entities,
+        extractor_kwargs=dict(
+            text=text,
+            known_entities=known_entities,
+            user_id=user_id,
+            project_id=project_id,
+            model_source=model_source,
+            model_ref=model_ref,
+            llm_client=llm_client,
+            on_dropped=_on_dropped,
+        ),
+        deserializer=LLMEntityCandidate.model_validate,
+        book_id=book_id,
+        chapter_id=chapter_id,
         model_ref=model_ref,
-        llm_client=llm_client,
-        on_dropped=_on_dropped,
+        save_raw=save_raw_extraction,
     )
 
     entities_elapsed = time.perf_counter() - started
@@ -195,12 +422,18 @@ async def _run_pipeline(
             anchors=anchors,
         )
 
-    entity_names = [e.name for e in entities]
-    all_known = list(set(known_entities + entity_names))
-
     # Steps 2-4 — relation/event/fact run concurrently. All three
     # extractors route through SDK + chunking + jsonListAggregator.
-    extractor_kwargs = dict(
+    # P2 (D3): each of the 3 ops is independently cache-wrapped — a
+    # re-extraction of unchanged text gets 4 cache hits (entity above
+    # + R/E/F here) = 0 LLM calls. When book_id/chapter_id are None
+    # (chat_turn), wrappers passthrough to legacy gather behaviour.
+    from loreweave_extraction.extractors.event import LLMEventCandidate
+    from loreweave_extraction.extractors.fact import LLMFactCandidate
+    from loreweave_extraction.extractors.relation import LLMRelationCandidate
+    entity_names = [e.name for e in entities]
+    all_known = list(set(known_entities + entity_names))
+    common_kwargs = dict(
         text=text,
         entities=entities,
         known_entities=all_known,
@@ -211,12 +444,35 @@ async def _run_pipeline(
         llm_client=llm_client,
         on_dropped=_on_dropped,
     )
-
     gather_started = time.perf_counter()
     relation_cands, event_cands, fact_cands = await asyncio.gather(
-        extract_relations(**extractor_kwargs),
-        extract_events(**extractor_kwargs),
-        extract_facts(**extractor_kwargs),
+        _p2_cache_wrap(
+            op="relation",
+            leaf_text=text,
+            extractor_callable=extract_relations,
+            extractor_kwargs=common_kwargs,
+            deserializer=LLMRelationCandidate.model_validate,
+            book_id=book_id, chapter_id=chapter_id,
+            model_ref=model_ref, save_raw=save_raw_extraction,
+        ),
+        _p2_cache_wrap(
+            op="event",
+            leaf_text=text,
+            extractor_callable=extract_events,
+            extractor_kwargs=common_kwargs,
+            deserializer=LLMEventCandidate.model_validate,
+            book_id=book_id, chapter_id=chapter_id,
+            model_ref=model_ref, save_raw=save_raw_extraction,
+        ),
+        _p2_cache_wrap(
+            op="fact",
+            leaf_text=text,
+            extractor_callable=extract_facts,
+            extractor_kwargs=common_kwargs,
+            deserializer=LLMFactCandidate.model_validate,
+            book_id=book_id, chapter_id=chapter_id,
+            model_ref=model_ref, save_raw=save_raw_extraction,
+        ),
     )
     gather_elapsed = time.perf_counter() - gather_started
 
@@ -259,6 +515,7 @@ async def _run_pipeline(
         facts=fact_cands,
         extraction_model=model_ref,
         anchors=anchors,
+        hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
     )
     write_elapsed = time.perf_counter() - write_started
     await _emit_log(
@@ -281,7 +538,94 @@ async def _run_pipeline(
             "duration_ms": int(write_elapsed * 1000),
         },
     )
+
+    # P3 (D3): async summary enqueue. Only fires when caller wired all the
+    # P3 dependencies (hierarchy_paths + summary_enqueue + embedding model
+    # info). Chat-turn path + legacy callers don't trigger.
+    if (
+        hierarchy_paths is not None
+        and summary_enqueue is not None
+        and embedding_model_uuid is not None
+        and embedding_dimension is not None
+    ):
+        await enqueue_chapter_and_maybe_book_summaries(
+            summary_enqueue=summary_enqueue,
+            hierarchy_paths=hierarchy_paths,
+            user_id=user_id,
+            project_id=project_id or "",
+            job_id=job_id,
+            model_ref=model_ref,
+            embedding_model_uuid=embedding_model_uuid,
+            embedding_dimension=embedding_dimension,
+            is_last_chapter_of_book=is_last_chapter_of_book,
+            book_parts=book_parts or [],
+        )
+
     return write_result
+
+
+async def enqueue_chapter_and_maybe_book_summaries(
+    *,
+    summary_enqueue: SummaryEnqueueFn,
+    hierarchy_paths: HierarchyPaths,
+    user_id: str,
+    project_id: str,
+    job_id: str,
+    model_ref: str,
+    embedding_model_uuid: str,
+    embedding_dimension: int,
+    is_last_chapter_of_book: bool,
+    book_parts: list[tuple[str, str, str]],
+) -> None:
+    """Always enqueue summary.chapter for this chapter. On is_last_chapter,
+    additionally enqueue summary.part per book_parts + summary.book.
+
+    The summary_processor's D9 defensive check verifies all children exist
+    before generating part/book summaries — caller's is_last_chapter is a
+    HINT, not a hard precondition.
+    """
+    # 1. Chapter summary — always.
+    await summary_enqueue(SummarizeMessage(
+        level="chapter",
+        node_path=hierarchy_paths.chapter_path,
+        node_id=hierarchy_paths.chapter_id,
+        book_id=hierarchy_paths.book_id,
+        user_id=user_id,
+        project_id=project_id,
+        job_id=job_id,
+        model_ref=model_ref,
+        embedding_model_uuid=embedding_model_uuid,
+        embedding_dimension=embedding_dimension,
+    ))
+    if not is_last_chapter_of_book:
+        return
+    # 2. Part summaries — one per (part_id, part_path) for the book.
+    for part_id, part_path, _part_index in book_parts:
+        await summary_enqueue(SummarizeMessage(
+            level="part",
+            node_path=part_path,
+            node_id=part_id,
+            book_id=hierarchy_paths.book_id,
+            user_id=user_id,
+            project_id=project_id,
+            job_id=job_id,
+            model_ref=model_ref,
+            embedding_model_uuid=embedding_model_uuid,
+            embedding_dimension=embedding_dimension,
+        ))
+    # 3. Book summary — last.
+    await summary_enqueue(SummarizeMessage(
+        level="book",
+        node_path=hierarchy_paths.book_path,
+        node_id=hierarchy_paths.book_id,
+        book_id=hierarchy_paths.book_id,
+        user_id=user_id,
+        project_id=project_id,
+        job_id=job_id,
+        model_ref=model_ref,
+        embedding_model_uuid=embedding_model_uuid,
+        embedding_dimension=embedding_dimension,
+    ))
 
 
 async def extract_pass2_chat_turn(
@@ -351,6 +695,21 @@ async def extract_pass2_chapter(
     llm_client: LLMClient,
     anchors: list[Anchor] | None = None,
     job_logs_repo: JobLogsRepo | None = None,
+    # P2 (D3): pass book_id+chapter_id to enable the extraction_leaves
+    # cache. Re-extraction of unchanged chapters -> 4 cache hits per
+    # chapter (entity + R/E/F) -> 0 LLM calls. When omitted, legacy
+    # cache-bypass behaviour for back-compat.
+    book_id: UUID | None = None,
+    chapter_id: UUID | None = None,
+    save_raw_extraction: bool = False,
+    # P3 (D2 + D3 + D9): hierarchy + async summary kwargs passthrough.
+    # See _run_pipeline docstring for semantics.
+    hierarchy_paths: HierarchyPaths | None = None,
+    is_last_chapter_of_book: bool = False,
+    book_parts: list[tuple[str, str, str]] | None = None,
+    embedding_model_uuid: str | None = None,
+    embedding_dimension: int | None = None,
+    summary_enqueue: SummaryEnqueueFn | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -362,6 +721,11 @@ async def extract_pass2_chapter(
 
     All 4 extractors route through the loreweave_llm SDK (job pattern +
     chunking + per-op JSON aggregator).
+
+    P2 (D3): when book_id+chapter_id are provided, each per-op extractor
+    call is wrapped in the extraction_leaves cache — same task_id
+    (sha256 of text+op+extractor_version+model_ref) hit = no LLM call,
+    cached candidates returned. See _p2_cache_wrap for semantics.
     """
     return await _run_pipeline(
         session,
@@ -377,4 +741,13 @@ async def extract_pass2_chapter(
         llm_client=llm_client,
         anchors=anchors,
         job_logs_repo=job_logs_repo,
+        book_id=book_id,
+        chapter_id=chapter_id,
+        save_raw_extraction=save_raw_extraction,
+        hierarchy_paths=hierarchy_paths,
+        is_last_chapter_of_book=is_last_chapter_of_book,
+        book_parts=book_parts,
+        embedding_model_uuid=embedding_model_uuid,
+        embedding_dimension=embedding_dimension,
+        summary_enqueue=summary_enqueue,
     )

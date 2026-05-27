@@ -22,8 +22,12 @@ import (
 	"sync"
 
 	rabbitmq "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/google/uuid"
+
+	"github.com/loreweave/observability"
 )
 
 const (
@@ -39,7 +43,7 @@ type TerminalEvent struct {
 	JobID        uuid.UUID       `json:"job_id"`
 	OwnerUserID  uuid.UUID       `json:"owner_user_id"`
 	Operation    string          `json:"operation"`
-	Status       string          `json:"status"`        // completed | failed | cancelled
+	Status       string          `json:"status"` // completed | failed | cancelled
 	TraceID      string          `json:"trace_id,omitempty"`
 	Result       json.RawMessage `json:"result,omitempty"`
 	ErrorCode    string          `json:"error_code,omitempty"`
@@ -66,7 +70,7 @@ type Notifier interface {
 type NoopNotifier struct{}
 
 func (NoopNotifier) PublishTerminal(_ context.Context, _ TerminalEvent) error { return nil }
-func (NoopNotifier) Close() error                                              { return nil }
+func (NoopNotifier) Close() error                                             { return nil }
 
 // rabbitMQNotifier holds a connection + channel. Both are reused across
 // PublishTerminal calls; we re-declare the topic exchange on construction
@@ -115,6 +119,22 @@ func (n *rabbitMQNotifier) PublishTerminal(ctx context.Context, ev TerminalEvent
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
+
+	// Phase 6c — PRODUCER span + W3C traceparent in the message headers, so
+	// the notification-service consumer (6c-β) continues this trace instead
+	// of starting a disconnected one.
+	ctx, span := observability.Tracer("notifier").Start(ctx, "llm.job.terminal-event",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("job.id", ev.JobID.String()),
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", llmEventsExchange),
+			attribute.String("messaging.rabbitmq.routing_key", ev.RoutingKey()),
+		))
+	defer span.End()
+	headers := rabbitmq.Table{}
+	observability.Inject(ctx, observability.AMQPCarrier(headers))
+
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	err = n.ch.PublishWithContext(
@@ -126,10 +146,12 @@ func (n *rabbitMQNotifier) PublishTerminal(ctx context.Context, ev TerminalEvent
 		rabbitmq.Publishing{
 			ContentType:  "application/json",
 			DeliveryMode: rabbitmq.Persistent,
+			Headers:      headers,
 			Body:         body,
 		},
 	)
 	if err != nil {
+		span.RecordError(err)
 		n.logger.Warn("publish terminal event failed",
 			"job_id", ev.JobID.String(), "status", ev.Status, "err", err)
 		return fmt.Errorf("amqp publish: %w", err)

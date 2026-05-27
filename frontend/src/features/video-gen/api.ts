@@ -11,15 +11,6 @@ export type GenerateVideoResponse = {
   content_type: string | null;
 };
 
-export type VideoModel = {
-  id: string;
-  name: string;
-  provider: string;
-  max_duration_seconds: number;
-  supported_aspect_ratios: string[];
-  supported_styles: string[];
-};
-
 export const videoGenApi = {
   async generate(
     token: string,
@@ -46,15 +37,6 @@ export const videoGenApi = {
         status: res.status,
       });
     }
-    return data;
-  },
-
-  async listModels(token: string): Promise<{ items: VideoModel[] }> {
-    const res = await fetch(`${base()}/v1/video-gen/models`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.detail || res.statusText);
     return data;
   },
 };

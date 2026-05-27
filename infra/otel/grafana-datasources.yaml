@@ -1,0 +1,11 @@
+# Grafana datasource provisioning — Phase 6c. Auto-wires the Tempo trace
+# store so Grafana → Explore → Tempo works with no manual setup.
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: true
+    editable: false

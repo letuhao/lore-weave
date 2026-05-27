@@ -1,10 +1,19 @@
 import { createContext, useContext, useEffect } from 'react';
 import { useChatMessages } from '../hooks/useChatMessages';
+import { usePendingFacts } from '../hooks/usePendingFacts';
 import { useChatSession } from './ChatSessionContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export type ChatStreamValue = ReturnType<typeof useChatMessages>;
+// K21-C (D8): the stream context also surfaces the pending-facts
+// review state. usePendingFacts lives here — not in ChatView —
+// because `onStreamEndRef` is a single mutable ref with exactly one
+// writer (this provider). Owning the hook here lets the one
+// stream-end callback fan out to BOTH the session refresh and the
+// pending-facts refetch without clobbering.
+export type ChatStreamValue = ReturnType<typeof useChatMessages> & {
+  pendingFacts: ReturnType<typeof usePendingFacts>;
+};
 
 const ChatStreamCtx = createContext<ChatStreamValue | null>(null);
 
@@ -21,15 +30,23 @@ export function useChatStream() {
 export function ChatStreamProvider({ children }: { children: React.ReactNode }) {
   const { activeSession, refreshSessions, updateActiveSession } = useChatSession();
   const chat = useChatMessages(activeSession?.session_id ?? null);
+  // K21-C (D8): pending-facts review for the active session. A turn
+  // may have queued a fact (knowledge-service design D6); the FE
+  // discovers it by polling, so we refetch on stream-end below.
+  const pendingFacts = usePendingFacts(activeSession?.session_id ?? null);
 
   // Wire up onStreamEnd callback — explicit handler, not a useEffect chain.
-  // Refreshes session list after streaming ends (picks up auto-generated title).
+  // Fires after streaming ends: refreshes the session list (picks up
+  // the auto-generated title) AND refetches pending facts (the turn may
+  // have queued a `memory_remember` fact — K21-C D8). The ref has a
+  // single writer, so both behaviors must live in this one callback.
   useEffect(() => {
     chat.onStreamEndRef.current = () => {
       setTimeout(() => { void refreshSessions(); }, 2000);
+      pendingFacts.refetch();
     };
     return () => { chat.onStreamEndRef.current = null; };
-  }, [chat.onStreamEndRef, refreshSessions]);
+  }, [chat.onStreamEndRef, refreshSessions, pendingFacts]);
 
   // K-CLEAN-5 (D-K8-04): wire up the per-turn memory-mode SSE event
   // so the chat header MemoryIndicator can flip to a degraded badge
@@ -47,5 +64,9 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
     return () => { chat.onMemoryModeRef.current = null; };
   }, [chat.onMemoryModeRef, activeSession, updateActiveSession]);
 
-  return <ChatStreamCtx.Provider value={chat}>{children}</ChatStreamCtx.Provider>;
+  return (
+    <ChatStreamCtx.Provider value={{ ...chat, pendingFacts }}>
+      {children}
+    </ChatStreamCtx.Provider>
+  );
 }

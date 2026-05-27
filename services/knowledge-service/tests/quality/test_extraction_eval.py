@@ -42,9 +42,11 @@ from typing import Literal, cast
 
 import pytest
 
+import asyncio
+
 from loreweave_extraction.extractors.entity import extract_entities
-from loreweave_extraction.extractors.event import extract_events
-from loreweave_extraction.extractors.relation import extract_relations
+from app.clients.llm_client import get_llm_client
+from app.extraction.pass2_orchestrator import gather_relations_events_facts
 from dataclasses import asdict
 from tests.quality.eval_harness import (
     ActualExtraction,
@@ -222,8 +224,41 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
 
     assert GOLDEN_ROOT.is_dir(), f"Missing golden fixtures: {GOLDEN_ROOT}"
 
-    scores: list[ChapterScore] = []
-    for fixture in iter_chapter_fixtures(GOLDEN_ROOT):
+    # C-PRED-ALIGN-DEF-01: parallelize chapters across the LM Studio
+    # Max-Concurrent-Predictions slots (default 4 in LM Studio 0.4.0+,
+    # with Unified KV Cache ON). RTX 4090 sat at ~20% util during the
+    # serial loop; bounded gather + continuous batching closes that gap.
+    chapter_concurrency = int(_env("KNOWLEDGE_EVAL_CHAPTER_CONCURRENCY", "4") or 4)
+    # Session-61 long-chapter perf fix — skip outlier-sized chapters that
+    # historically stall the local 35B target via model auto-eviction
+    # (sherlock_speckled_band: 252 paragraphs → 17 chunks × 4 ops ≈ 1h+
+    # of sustained inference; LM Studio TTL evicted the model mid-job).
+    # The streamer idle timeout (LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S) lets
+    # the job fail-fast once the upstream goes idle, but the chapter
+    # still consumes ~1h of wall-clock before that ceiling triggers per
+    # op; for routine baselines we'd rather just exclude it. Set the env
+    # to a high number (or 0) to opt back into the long chapter.
+    long_chapter_max = int(_env("KNOWLEDGE_EVAL_LONG_CHAPTER_MAX_PARAGRAPHS", "200") or 200)
+    llm_client = get_llm_client()
+
+    # Model-aware chunking + concurrency budget. The eval pipeline must
+    # respect the model's loaded context window — local quantized 35B
+    # models load at 24-32K and previously crashed LM Studio with
+    # "failed to find a memory slot for batch" when R+E+F gather × full-
+    # context-reservation overflowed VRAM. Env-tunable for local-vs-
+    # cloud runs; default 32K matches the user's current LM Studio
+    # config for huihui-qwen3.6-abliterated. Set higher (e.g. 128000)
+    # for cloud baselines.
+    from loreweave_extraction import ContextBudget
+    model_context = int(_env("KNOWLEDGE_EVAL_MODEL_CONTEXT", "32000") or 32000)
+    budget = ContextBudget(model_context=model_context)
+    logger.info(
+        "Model context budget: model_context=%d max_parallel=%d max_output=%d",
+        budget.model_context, budget.max_parallel_slots(),
+        budget.max_output_tokens,
+    )
+
+    async def _extract_one(fixture: ChapterFixture) -> ChapterScore:
         logger.info("Extracting chapter: %s", fixture.name)
 
         entities = await extract_entities(
@@ -233,31 +268,34 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
             project_id=project_id,
             model_source=model_source,
             model_ref=model_ref,
+            llm_client=llm_client,
+            context_budget=budget,
         )
-        known_names = [e.name for e in entities]
 
         if entities:
-            relations = await extract_relations(
+            # C-PRED-ALIGN-DEF-01: shared helper with production
+            # _run_pipeline — locks the R+E+F parallelism shape so a
+            # future regression in the gather (extra extractor, switch
+            # to TaskGroup, etc.) breaks here in lockstep.
+            #
+            # Pre-fix drift: this test ran extract_relations then
+            # extract_events serially AND was missing extract_facts
+            # entirely. The helper restores the production shape;
+            # facts are discarded because ActualExtraction's scoring
+            # contract is entities + relations + events only.
+            relations, events, _facts = await gather_relations_events_facts(
                 text=fixture.text,
                 entities=entities,
-                known_entities=known_names,
+                known_entities=[],
                 user_id=user_id,
                 project_id=project_id,
                 model_source=model_source,
                 model_ref=model_ref,
-            )
-            events = await extract_events(
-                text=fixture.text,
-                entities=entities,
-                known_entities=known_names,
-                user_id=user_id,
-                project_id=project_id,
-                model_source=model_source,
-                model_ref=model_ref,
+                llm_client=llm_client,
+                context_budget=budget,
             )
         else:
-            relations = []
-            events = []
+            relations, events = [], []
 
         actual = ActualExtraction(
             entities=[(e.name, e.kind) for e in entities],
@@ -269,8 +307,32 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
             _write_chapter_dump(dump_root, fixture, actual, attribution)
         else:
             score = score_chapter(fixture, actual)
-        scores.append(score)
         print(_format_score(score))  # visible with pytest -s
+        return score
+
+    sem = asyncio.Semaphore(chapter_concurrency)
+
+    async def _bounded(fixture: ChapterFixture) -> ChapterScore:
+        async with sem:
+            return await _extract_one(fixture)
+
+    fixtures = list(iter_chapter_fixtures(GOLDEN_ROOT))
+    skipped: list[str] = []
+    if long_chapter_max > 0:
+        kept = []
+        for f in fixtures:
+            paras = sum(1 for line in f.text.split("\n\n") if line.strip())
+            if paras > long_chapter_max:
+                skipped.append(f"{f.name} ({paras} paragraphs > max {long_chapter_max})")
+                continue
+            kept.append(f)
+        fixtures = kept
+    if skipped:
+        # Visible without -v so the baseline reader knows what was excluded.
+        print(f"SKIPPED long chapters: {skipped} (KNOWLEDGE_EVAL_LONG_CHAPTER_MAX_PARAGRAPHS={long_chapter_max})")
+    scores: list[ChapterScore] = list(
+        await asyncio.gather(*[_bounded(f) for f in fixtures])
+    )
 
     agg = aggregate_scores(scores)
     _write_report(agg, tmp_path / "eval_report.json")

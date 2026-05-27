@@ -85,9 +85,13 @@ def test_without_confirm_returns_warning():
     assert "warning" in data
 
 
+@patch("app.routers.public.extraction.probe_embedding_dimension",
+       new_callable=AsyncMock, return_value=1024)
 @patch("app.routers.public.extraction.neo4j_session")
 @patch("app.routers.public.extraction.app_settings")
-def test_with_confirm_deletes_graph_and_updates_model(mock_settings, mock_neo4j):
+def test_with_confirm_deletes_graph_and_updates_model(
+    mock_settings, mock_neo4j, mock_probe,
+):
     mock_settings.neo4j_uri = "bolt://localhost:7687"
 
     mock_result = AsyncMock()
@@ -102,15 +106,60 @@ def test_with_confirm_deletes_graph_and_updates_model(mock_settings, mock_neo4j)
     assert resp.status_code == 200
     data = resp.json()
     assert data["new_model"] == "text-embedding-3-small"
+    assert data["embedding_dimension"] == 1024  # D-EMB-MODEL-REF-03 — probed
     assert data["nodes_deleted"] == 20  # 4 labels × 5
     assert data["extraction_status"] == "disabled"
 
+    # D-EMB-MODEL-REF-03 — the probed dimension is stored with the model.
     repo.set_extraction_state.assert_called_once_with(
         _TEST_USER, _TEST_PROJECT,
         extraction_enabled=False,
         extraction_status="disabled",
         embedding_model="text-embedding-3-small",
+        embedding_dimension=1024,
     )
+
+
+@patch("app.routers.public.extraction.probe_embedding_dimension")
+@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.app_settings")
+def test_confirm_probe_failure_aborts_with_422_no_delete(
+    mock_settings, mock_neo4j, mock_probe,
+):
+    """D-EMB-MODEL-REF-03 — a probe failure (non-embedding model /
+    provider down) aborts with 422 BEFORE the destructive graph
+    delete."""
+    from app.clients.embedding_client import EmbeddingError
+
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_probe.side_effect = EmbeddingError("provider unreachable")
+
+    client, repo = _make_client()
+    resp = client.put(_url(confirm=True), json=_body())
+    assert resp.status_code == 422
+    assert "probe failed" in resp.json()["detail"]
+    # The graph was NOT touched and the model was NOT changed.
+    mock_neo4j.assert_not_called()
+    repo.set_extraction_state.assert_not_called()
+
+
+@patch("app.routers.public.extraction.probe_embedding_dimension",
+       new_callable=AsyncMock, return_value=768)
+@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.app_settings")
+def test_confirm_unsupported_dimension_aborts_with_422(
+    mock_settings, mock_neo4j, mock_probe,
+):
+    """D-EMB-MODEL-REF-03 — a probed dimension with no :Passage vector
+    index (e.g. 768) is rejected with 422, graph untouched."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+
+    client, repo = _make_client()
+    resp = client.put(_url(confirm=True), json=_body())
+    assert resp.status_code == 422
+    assert "vector index" in resp.json()["detail"]
+    mock_neo4j.assert_not_called()
+    repo.set_extraction_state.assert_not_called()
 
 
 def test_project_not_found_returns_404():

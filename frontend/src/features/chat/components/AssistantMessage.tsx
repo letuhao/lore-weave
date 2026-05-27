@@ -5,7 +5,9 @@ import rehypeHighlight from 'rehype-highlight';
 import { toast } from 'sonner';
 import { ThinkingBlock } from './ThinkingBlock';
 import { AudioReplayPlayer } from './AudioReplayPlayer';
+import { ToolCallIndicator } from './ToolCallIndicator';
 import { firePasteToEditor } from '../utils/pasteToEditor';
+import type { ToolCallRecord } from '../types';
 
 interface AssistantMessageProps {
   content: string;
@@ -28,6 +30,8 @@ interface AssistantMessageProps {
   sessionId?: string;
   messageId?: string;
   voiceTtsSentences?: number;
+  /** K21-C (D2): memory tool calls made during this turn. */
+  toolCalls?: ToolCallRecord[] | null;
 }
 
 export function AssistantMessage({
@@ -45,6 +49,7 @@ export function AssistantMessage({
   sessionId,
   messageId,
   voiceTtsSentences,
+  toolCalls,
 }: AssistantMessageProps) {
   const [showMore, setShowMore] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -99,6 +104,10 @@ export function AssistantMessage({
           <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-accent opacity-80" />
         )}
       </div>
+
+      {/* K21-C (D2): memory tool calls used in this reply. Renders
+          nothing when toolCalls is empty/null. */}
+      {toolCalls && toolCalls.length > 0 && <ToolCallIndicator toolCalls={toolCalls} />}
 
       {/* Audio replay (voice pipeline V2) */}
       {!isStreaming && sessionId && messageId && voiceTtsSentences && voiceTtsSentences > 0 && (

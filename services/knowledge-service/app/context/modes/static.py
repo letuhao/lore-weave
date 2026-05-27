@@ -199,4 +199,6 @@ async def build_static_mode(
         token_count=estimate_tokens(context),
         stable_context=stable,
         volatile_context=volatile,
+        # K21.12-BE (design D9): surface the project's tool-calling toggle.
+        tool_calling_enabled=project.tool_calling_enabled,
     )

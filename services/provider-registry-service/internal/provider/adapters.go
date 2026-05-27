@@ -85,6 +85,32 @@ type Adapter interface {
 	// adapter MUST stop streaming and return that error. Adapters that
 	// don't support TTS return ErrOperationNotSupported.
 	Speak(ctx context.Context, endpointBaseURL, secret, modelName string, input SpeakInput, emit AudioEmitFn) error
+
+	// GenerateImage — Phase 5c-α. Text-to-image generation via the
+	// OpenAI-compatible /v1/images/generations endpoint. Adapter posts
+	// the request and parses the response into GenerateImageOutput.
+	// Adapters that don't support image generation return
+	// ErrOperationNotSupported.
+	GenerateImage(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateImageInput) (GenerateImageOutput, Usage, error)
+
+	// GenerateVideo — Phase 5d. Text-to-video (and optionally image-
+	// to-video) generation. Adapter dispatches to
+	// /v1/videos/generations/text-to-video or
+	// /v1/videos/generations/image-to-video based on InitImage presence
+	// (path matches local-image-generator-service per
+	// /review-impl(DESIGN) HIGH#1; NOT the singular /v1/video/generations
+	// from the stale integration guide). Returns single-data-item
+	// result. Adapters that don't support video gen return
+	// ErrOperationNotSupported.
+	GenerateVideo(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateVideoInput) (GenerateVideoOutput, Usage, error)
+
+	// GenerateAudio — Phase 5e-β.2. Batch TTS via /v1/audio/speech
+	// (distinct from Speak which streams). Submits N inputs sequentially
+	// upstream (v1; parallel via D-PHASE5E-BETA2-AUDIO-GEN-PARALLEL-ADAPTER).
+	// MUST preserve input order: output.Items[i] corresponds 1:1 to
+	// input.Texts[i] per /review-impl(DESIGN) MED#5. Adapters that don't
+	// support TTS return ErrOperationNotSupported.
+	GenerateAudio(ctx context.Context, endpointBaseURL, secret, modelName string, input GenerateAudioInput) (GenerateAudioOutput, Usage, error)
 }
 
 // ErrStreamNotSupported — returned by adapters that don't yet implement
@@ -116,14 +142,148 @@ var ErrAudioTooLarge = fmt.Errorf("audio too large")
 // LLM_AUDIO_URL_DISALLOWED.
 var ErrAudioURLDisallowed = fmt.Errorf("audio_url disallowed")
 
-// ── Audio types (Phase 5a) ────────────────────────────────────────────
+// ErrTranscribeInputInvalid — Phase 5b /review-impl HIGH#2. Returned by
+// Transcribe when the (AudioURL, AudioBytes) pair violates the exactly-
+// one-set invariant: BOTH set (caller ambiguity) OR NEITHER set (caller
+// forgot to supply audio). Caller (worker.runSttJob) maps to LLM_INVALID_REQUEST.
+//
+// Distinct from ErrAudioFetchFailed (which means "we had a source, but
+// fetching/reading it failed") and from ErrOperationNotSupported (which
+// means "no adapter implements this op"). This sentinel is specifically
+// for the input-shape invariant.
+var ErrTranscribeInputInvalid = fmt.Errorf("transcribe input invalid")
 
-// TranscribeInput holds STT request parameters.
+// ErrImageGenerationFailed — Phase 5c-α. Returned when upstream rejects
+// the prompt or fails in a way the typed upstream classifier doesn't
+// bucket as rate-limit/permanent/transient (model loading, unspecified
+// backend error, response body exceeds MaxImageResponseBytes). Caller
+// maps to LLM_IMAGE_GENERATION_FAILED.
+var ErrImageGenerationFailed = fmt.Errorf("image generation failed")
+
+// ErrImageContentPolicy — Phase 5c-α. Returned specifically when
+// upstream signals a content-policy rejection (DALL-E
+// "your_request_was_rejected" + safety system block; OpenAI 400 with
+// `error.code: "content_policy_violation"`). Distinct so callers can
+// surface the right UX hint ("rephrase your prompt") vs the generic
+// "generation failed" (might be retryable). Caller maps to
+// LLM_IMAGE_CONTENT_POLICY_VIOLATION.
+var ErrImageContentPolicy = fmt.Errorf("image generation rejected by content policy")
+
+// ErrImageInvalidParams — Phase 5c-α /review-impl(DESIGN) MED#5.
+// Returned when adapter-level invariant check rejects a caller-provided
+// field (n > MaxImagesPerJob, prompt empty, bad response_format).
+// Distinct from the typed upstream errors because the upstream was
+// never called. Caller maps to LLM_INVALID_REQUEST.
+//
+// Belt-and-suspenders with handler-level validation: handler caps via
+// validateImageGenInput, adapter caps here so a non-handler caller
+// (cron, future RabbitMQ submit, background re-run) can't bypass.
+var ErrImageInvalidParams = fmt.Errorf("image generation params invalid")
+
+// MaxImagesPerJob — Phase 5c-α /review-impl(DESIGN) MED#5. Adapter-level
+// upper bound on n (images per job). LoreWeave imposes 4 as a deliberate
+// spend cap (cheapest BYOK image-gen still costs ≈$0.02/image; 4×
+// keeps a single-job-gone-wrong at the cost-of-coffee level).
+const MaxImagesPerJob = 4
+
+// ErrVideoGenerationFailed — Phase 5d. Generic upstream-failed sentinel
+// (not content-policy, not rate-limited; e.g., model loading, ambiguous
+// backend error, response body cap exceeded). Caller maps to
+// LLM_VIDEO_GENERATION_FAILED.
+var ErrVideoGenerationFailed = fmt.Errorf("video generation failed")
+
+// ErrVideoContentPolicy — Phase 5d. Content-policy rejection (rare for
+// most local video backends; reserved for OpenAI/managed services with
+// safety filters). Caller maps to LLM_VIDEO_CONTENT_POLICY_VIOLATION.
+var ErrVideoContentPolicy = fmt.Errorf("video generation rejected by content policy")
+
+// ErrVideoInvalidParams — Phase 5d /review-impl(DESIGN) MED-anticipated.
+// Adapter-level invariant rejection (Prompt empty, N out of range,
+// bad ResponseFormat, init_image oversize). Caller maps to
+// LLM_INVALID_REQUEST.
+//
+// Belt-and-suspenders with handler-level validation: handler caps via
+// validateVideoGenInput, adapter caps here so non-handler callers
+// can't bypass.
+var ErrVideoInvalidParams = fmt.Errorf("video generation params invalid")
+
+// MaxImg2VidInputBytes — Phase 5d /review-impl(DESIGN) MED#2.
+// Adapter-level cap on the base64-encoded init_image input field.
+// 10MB covers 4K PNGs (~10-15MB raw → 13-20MB b64) for typical cases
+// while bounding worst-case DB row size + worker goroutine memory.
+// Larger init frames typically don't help video gen quality (the
+// model resizes anyway).
+const MaxImg2VidInputBytes = 10 * 1024 * 1024
+
+// ── audio_gen sentinels (Phase 5e-β.2) ────────────────────────────────
+
+// ErrAudioGenerationFailed — Phase 5e-β.2. Generic upstream-failed
+// sentinel for batch TTS (not auth, not rate-limited, not invalid-params;
+// e.g., model loading, unspecified backend error, zero-byte response).
+// Caller maps to LLM_AUDIO_GENERATION_FAILED.
+var ErrAudioGenerationFailed = fmt.Errorf("audio generation failed")
+
+// ErrAudioGenInvalidParams — Phase 5e-β.2 /review-impl(DESIGN) MED#5.
+// Adapter-level invariant rejection (empty Texts, batch over cap, per-
+// text empty/oversize). Caller maps to LLM_INVALID_REQUEST.
+//
+// Belt-and-suspenders with handler-level validation: handler caps via
+// validateAudioGenInput, adapter caps here so non-handler callers
+// (cron, future RabbitMQ submit, background re-run) can't bypass.
+var ErrAudioGenInvalidParams = fmt.Errorf("audio_gen params invalid")
+
+// MaxAudioGenInputs — Phase 5e-β.2 /review-impl(DESIGN) MED#1. Adapter-
+// level upper bound on batch size. Capped at 10 (was 20 in initial
+// design) to bound double-bill exposure on mid-batch failure: TTS is
+// char-billed per upstream request; a batch failing on input 9 of 10
+// still charged 8 prior calls. Cap at 10× per retry.
+const MaxAudioGenInputs = 10
+
+// MaxAudioGenInputCharsLen — Phase 5e-β.2 /review-impl(DESIGN) LOW#8.
+// Per-input character cap (matches OpenAI TTS exactly).
+const MaxAudioGenInputCharsLen = 4096
+
+// MaxImageResponseBytes — Phase 5c-α /review-impl(DESIGN) LOW#6.
+// Adapter-level cap on the upstream image response body. 8MB covers
+// 4 × ~1024×1024 PNG b64 (~670KB each) with comfortable margin for
+// JSON envelope + revised_prompt fields. Larger responses → LLM_UPSTREAM_ERROR
+// with "exceeds N bytes" message. Documented in openapi.yaml
+// ImageGenInput.response_format description so callers know the limit.
+//
+// /review-impl(BUILD) LOW#2 — this cap is on the DECOMPRESSED body
+// size. Go's net/http transparently decompresses gzip when the request
+// didn't explicitly set Accept-Encoding (the default), so a small
+// wire payload could expand past 8MB once decompressed. For image gen
+// this rarely matters (PNG/JPG already-compressed → 1:1 ratio); for
+// b64_json strings (highly compressible — ~3:1 ratio for base64) it
+// could surprise. If a real gzip-friendly upstream surfaces, document
+// or raise the cap then.
+const MaxImageResponseBytes = 8 * 1024 * 1024
+
+// ── Audio types (Phase 5a + 5b) ────────────────────────────────────────
+
+// TranscribeInput holds STT request parameters. EXACTLY ONE of AudioURL
+// or AudioBytes must be set per call — the adapter pre-checks this and
+// returns ErrTranscribeInputInvalid if violated. Both set OR neither set
+// is an invariant violation, not a "pick one" preference.
 type TranscribeInput struct {
-	// AudioURL — gateway-fetchable HTTPS URL pointing to the audio bytes.
-	// Caller (e.g. chat-service voice flow) is responsible for upload +
-	// URL signing. Only http:// and https:// schemes are accepted.
+	// AudioURL — Phase 5a. Gateway-fetchable HTTPS URL pointing to the
+	// audio bytes. Caller is responsible for upload + URL signing.
+	// Only http:// and https:// schemes are accepted. Set this OR
+	// AudioBytes, never both.
 	AudioURL string
+
+	// AudioBytes — Phase 5b. Raw audio bytes already in the adapter's
+	// address space. Used by the multipart-POST entrypoint to /v1/llm/jobs
+	// so callers don't need to stage audio in a presigned URL. Set this
+	// OR AudioURL, never both.
+	AudioBytes []byte
+
+	// ContentType — Phase 5b. MIME type of AudioBytes (e.g. "audio/webm",
+	// "audio/wav"). Informs the adapter's filename-extension pick when
+	// posting to the upstream multipart endpoint. Ignored in URL mode
+	// (fetchAudioURL returns the upstream's Content-Type header instead).
+	ContentType string
 
 	// Language — ISO 639-1 code or "auto" for upstream auto-detection.
 	// "auto" is converted to "omit param" at the provider HTTP layer
@@ -157,6 +317,166 @@ type AudioChunk struct {
 // emit returning an error means the downstream caller is gone; Speak MUST
 // stop streaming and return that error.
 type AudioEmitFn = func(AudioChunk) error
+
+// ── Image-gen types (Phase 5c-α) ──────────────────────────────────────
+
+// GenerateImageInput mirrors the OpenAI Image API request shape 1:1 so
+// any OpenAI-compatible backend works without per-backend adapter code.
+// "" / 0 values omit the field at the upstream call so we don't override
+// upstream defaults — except where the field carries an invariant
+// (Prompt MUST be non-empty; N MUST be ≤ MaxImagesPerJob).
+type GenerateImageInput struct {
+	// Prompt — required, max 32K (validated at handler before reaching
+	// adapter). Adapter pre-checks empty as a defense for non-handler callers.
+	Prompt string
+
+	// Size — e.g. "1024x1024"; "" → upstream default.
+	Size string
+
+	// N — number of images (1..MaxImagesPerJob). 0 → upstream default
+	// (treated as 1 by most backends). Adapter rejects N > MaxImagesPerJob.
+	N int
+
+	// ResponseFormat — "url" | "b64_json"; "" → omit (upstream chooses).
+	// Adapter validates the enum so a non-handler caller can't slip in
+	// "jpeg" or similar.
+	ResponseFormat string
+
+	// Quality — "standard" | "hd" | "high" | "medium" | "low"; "" → omit.
+	Quality string
+
+	// Style — "vivid" | "natural" (DALL-E-3 only); "" → omit.
+	Style string
+
+	// Background — "auto" | "transparent" | "opaque" (gpt-image-1 only); "" → omit.
+	Background string
+}
+
+// GenerateImageOutput holds the parsed response from
+// /v1/images/generations.
+type GenerateImageOutput struct {
+	// Created — unix timestamp (seconds) when the generation finished.
+	Created int64
+
+	// Data — 1..MaxImagesPerJob entries (handler caps; adapter respects
+	// upstream's response). Each entry has exactly one of URL or B64JSON
+	// populated based on the request's ResponseFormat.
+	Data []GeneratedImage
+}
+
+// GeneratedImage is a single image in the response. RevisedPrompt is
+// upstream-populated when the model rewrote the prompt (DALL-E-3 +
+// gpt-image-1 do this; local models typically don't).
+type GeneratedImage struct {
+	URL           string
+	B64JSON       string
+	RevisedPrompt string
+}
+
+// ── Video-gen types (Phase 5d) ────────────────────────────────────────
+
+// GenerateVideoInput mirrors the OpenAI-compatible video generation
+// request shape but with field names matching the actual
+// local-image-generator-service backend (NOT the stale integration
+// guide). Specifically, the img2vid conditioning field is named
+// `init_image` (per local-image-generator-service's VideoGenerateRequest),
+// NOT `image` per the guide.
+//
+// Path dispatch is handled by the adapter based on InitImage presence:
+//   - InitImage == ""  → POST /v1/videos/generations/text-to-video
+//   - InitImage != ""  → POST /v1/videos/generations/image-to-video
+//
+// /review-impl(DESIGN) HIGH#1 — the integration guide's singular
+// /v1/video/generations is aspirational; the real backend uses plural
+// + text-to-video/image-to-video sub-segments.
+type GenerateVideoInput struct {
+	// Prompt — required, max 32K (validated at handler). Adapter
+	// pre-checks empty.
+	Prompt string
+
+	// Size — e.g. "1920x1080"; "" → upstream default.
+	Size string
+
+	// Duration — seconds (1..60); 0 → omit (upstream default ≈5s).
+	Duration int
+
+	// N — Phase 5d locks to n=1. Adapter rejects N>1 or N<0 with
+	// ErrVideoInvalidParams.
+	N int
+
+	// ResponseFormat — Phase 5d accepts "url" only per
+	// /review-impl(DESIGN) MED#3 (b64_json impractical for video — even
+	// short clips exceed MaxImageResponseBytes). "" → omit (upstream
+	// defaults to url-like behavior).
+	ResponseFormat string
+
+	// Style — optional style hint; "" → omit.
+	Style string
+
+	// InitImage — Phase 5d. Optional base64-encoded image for
+	// image-to-video models (Wan, LTX Video). When non-empty, adapter
+	// dispatches to /v1/videos/generations/image-to-video. Capped at
+	// MaxImg2VidInputBytes (10MB).
+	InitImage string
+}
+
+// GenerateVideoOutput holds the parsed response from
+// /v1/videos/generations/{text,image}-to-video (sync mode).
+type GenerateVideoOutput struct {
+	// Created — unix timestamp when generation finished.
+	Created int64
+
+	// Data — Phase 5d locks to len(1). Single generated video.
+	Data []GeneratedVideo
+}
+
+// GeneratedVideo is a single video in the response. RevisedPrompt is
+// upstream-populated when the model rewrote the prompt (rare for video
+// — most local backends don't do safety-system rewriting).
+type GeneratedVideo struct {
+	URL           string
+	RevisedPrompt string
+}
+
+// ── audio_gen types (Phase 5e-β.2) ────────────────────────────────────
+
+// GenerateAudioInput — batch TTS input. Texts MUST be ordered (output
+// preserves input position); per-text limits enforced at adapter +
+// handler.
+type GenerateAudioInput struct {
+	// Texts — 1..MaxAudioGenInputs strings, each 1..MaxAudioGenInputCharsLen chars.
+	Texts []string
+
+	// Voice — upstream voice name; "" → adapter default ("alloy" for OpenAI).
+	Voice string
+
+	// Speed — 0.25..4.0; 0 → adapter default (1.0).
+	Speed float64
+
+	// Format — "mp3" (default if empty) | "opus" | "aac" | "flac" | "wav" | "pcm".
+	Format string
+
+	// ResponseFormat — "b64_json" (default if empty) | "url".
+	// b64_json: bytes in result; url: gateway stages to MinIO + returns public URL.
+	ResponseFormat string
+}
+
+// GenerateAudioOutput — adapter returns raw bytes per input. Worker
+// converts to b64 or stages to MinIO based on input.ResponseFormat
+// AFTER the adapter call returns.
+type GenerateAudioOutput struct {
+	// Items[i] corresponds 1:1 to input.Texts[i] (order-preserving invariant
+	// per /review-impl(DESIGN) MED#5).
+	Items []GeneratedAudio
+}
+
+// GeneratedAudio is one audio file in the batch response.
+type GeneratedAudio struct {
+	Data        []byte // raw audio bytes; non-empty (adapter rejects 0-byte upstream)
+	Format      string // canonical format string ("mp3", "opus", etc.)
+	ContentType string // upstream MIME, e.g. "audio/mpeg"
+	DurationMs  int    // 0 if upstream didn't report
+}
 
 type ModelInventory struct {
 	ProviderModelName string         `json:"provider_model_name"`
@@ -261,10 +581,49 @@ func extractMessages(input map[string]any) []map[string]any {
 	return []map[string]any{{"role": "user", "content": "Hi"}}
 }
 
+// forwardOptionalChatFields copies passthrough fields from the SDK's
+// `input` dict into the upstream request body when present. Centralizes
+// the per-field "if ok, forward" pattern so every OpenAI-compatible
+// adapter (openai, lm_studio, ollama) treats these the same way.
+//
+// Fields forwarded:
+//   - response_format    — JSON-schema enforcement (OpenAI structured
+//     output, LM Studio + Ollama via llama.cpp's grammar layer)
+//   - chat_template_kwargs — llama.cpp passthrough (e.g.
+//     {"thinking": false}, {"enable_thinking": false}) to suppress
+//     thinking-mode generation on reasoning-capable local models
+//     (Qwen3-thinking, DeepSeek-R1, abliterated variants). Critical
+//     for extraction pipelines whose JSON output is otherwise
+//     swallowed by reasoning_tokens (D-EXTRACTION-CONTEXT-FIX-STAGE-4).
+//   - reasoning_effort   — OpenAI o1/o3-style reasoning budget knob
+//   - top_p, top_k, presence_penalty, frequency_penalty, seed —
+//     standard sampling controls
+//
+// Providers that don't recognize a field generally ignore it; OpenAI
+// rejects unknown fields with 400, but the SDK doesn't include those
+// fields unless explicitly set. We keep the surface narrow + boring.
+func forwardOptionalChatFields(input, body map[string]any) {
+	passthrough := []string{
+		"response_format",
+		"chat_template_kwargs",
+		"reasoning_effort",
+		"top_p",
+		"top_k",
+		"presence_penalty",
+		"frequency_penalty",
+		"seed",
+	}
+	for _, k := range passthrough {
+		if v, ok := input[k]; ok {
+			body[k] = v
+		}
+	}
+}
+
 // ── OpenAI adapter ────────────────────────────────────────────────────────────
 
 type openaiAdapter struct {
-	client         *http.Client
+	client          *http.Client
 	staticInventory []ModelInventory
 }
 
@@ -409,6 +768,7 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	if v, ok := input["tool_choice"]; ok {
 		body["tool_choice"] = v
 	}
+	forwardOptionalChatFields(input, body)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err
@@ -423,7 +783,7 @@ func (a *openaiAdapter) SupportsTools() bool { return true }
 // ── Anthropic adapter ─────────────────────────────────────────────────────────
 
 type anthropicAdapter struct {
-	client         *http.Client
+	client          *http.Client
 	staticInventory []ModelInventory
 }
 
@@ -526,12 +886,17 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	}
 	payload := map[string]any{
 		"model":      modelName,
-		"messages":   extractMessages(input),
+		"messages":   convertAnthropicMessages(input),
 		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
 		payload["temperature"] = v
 	}
+	// D12 — request-side tool support. Convert the OpenAI-shaped tools /
+	// tool_choice to Anthropic's shape. Omit both when tool_choice is
+	// "none" or no tools were supplied (zero behavior change for
+	// tool-free Anthropic requests).
+	applyAnthropicTools(payload, input)
 	out, err := postJSON(ctx, a.client, base+"/v1/messages",
 		map[string]string{
 			"x-api-key":         secret,
@@ -578,7 +943,7 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	}
 	body := map[string]any{
 		"model":      modelName,
-		"messages":   extractMessages(input),
+		"messages":   convertAnthropicMessages(input),
 		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
@@ -587,6 +952,11 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	if v, ok := input["system"]; ok {
 		body["system"] = v
 	}
+	// D12 — request-side tool support. Convert the OpenAI-shaped tools /
+	// tool_choice to Anthropic's shape. Omit both when tool_choice is
+	// "none" or no tools were supplied (zero behavior change for
+	// tool-free Anthropic requests).
+	applyAnthropicTools(body, input)
 	resp, err := openAnthropicStream(ctx, a.client, base, secret, body)
 	if err != nil {
 		return err
@@ -595,13 +965,13 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	return streamAnthropicSSE(ctx, resp.Body, emit)
 }
 
-// SupportsTools — false. anthropicAdapter.Stream does not forward `tools`
-// (Anthropic-shaped tools differ from the OpenAI-shaped contract `tools`
-// field); request-side Anthropic tool support is deferred. The streamer
-// parse-side DOES map tool_use blocks, but without a request-side tools
-// array the model never emits them — so the handler rejects tools/tool_choice
-// for this adapter rather than silently dropping them.
-func (a *anthropicAdapter) SupportsTools() bool { return false }
+// SupportsTools — true (Phase K21-B / D12). anthropicAdapter.Stream and
+// .Invoke convert the OpenAI-shaped `tools` / `tool_choice` / tool-result
+// `messages` into Anthropic's /v1/messages shape (see anthropic_tools.go),
+// and the streamer parse-side already maps tool_use blocks → ToolCallEvent.
+// With both sides wired, the handler may forward tools/tool_choice to this
+// adapter; no first-class provider rejects tools any more.
+func (a *anthropicAdapter) SupportsTools() bool { return true }
 
 // ── Ollama adapter ────────────────────────────────────────────────────────────
 
@@ -715,6 +1085,7 @@ func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, m
 	if v, ok := input["tool_choice"]; ok {
 		body["tool_choice"] = v
 	}
+	forwardOptionalChatFields(input, body)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", nil, body)
 	if err != nil {
 		return err
@@ -914,6 +1285,7 @@ func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, m
 	if v, ok := input["tool_choice"]; ok {
 		body["tool_choice"] = v
 	}
+	forwardOptionalChatFields(input, body)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err

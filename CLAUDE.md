@@ -244,6 +244,14 @@ When playing each role, shift perspective — don't just check boxes:
 
 Run command → Read complete output → Confirm match → THEN claim. No "should work", no trusting prior runs. **Red flags:** "probably passes", "seems fine", about to commit without fresh test run, trusting cached output.
 
+**Cross-service live-smoke evidence (added session 59 cycle B).** When the cycle touches **≥2 services**, unit suite green is insufficient — mock-only coverage repeatedly hid cross-service contract bugs (4 hits sessions 58-59: K21 `execute_tool` timeout, embedding model-ref UUID drift, eval/ docker shipping, chat-service `/record` 401). At VERIFY completion the evidence string MUST include ONE of these tokens, or `workflow-gate.py` emits a soft warning (never blocks):
+
+- `live smoke: <one-liner>` — confirm a real cross-service call ran on a stack-up (the bug surface)
+- `LIVE-SMOKE deferred to D-<NAME>-LIVE-SMOKE` — track the deferral row in SESSION_PATCH
+- `live infra unavailable: <reason>` — legitimate skip when full stack isn't bootable at dev time
+
+`workflow-gate.py` autodetects cross-service via `git diff --name-only HEAD` matching ≥2 distinct `services/<name>/` prefixes. The warning is advisory; the agent decides whether to live-smoke now or defer it explicitly.
+
 ### Phase 7 REVIEW (2-Stage Code Review)
 
 | Stage | Focus |

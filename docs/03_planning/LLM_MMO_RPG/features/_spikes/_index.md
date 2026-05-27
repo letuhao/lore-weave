@@ -13,6 +13,7 @@
 | [SPIKE_01](SPIKE_01_two_sessions_reality_time.md) | Two-Sessions Reality Time (Thần Điêu Đại Hiệp, Yên Vũ Lâu) | DRAFT Session 1 | PL + NPC + PCS; exercises MV12 | pending |
 | [SPIKE_02](SPIKE_02_reference_games_gap_analysis.md) | Reference Games Gap Analysis (RPG/strategy/sim/adventure backlog) | DRAFT 2026-04-27 | cross-cat — A..N domains; informs V1+30d / V2 / V3 / V4+ feature triage | pending |
 | [SPIKE_03](SPIKE_03_tilemap_world_view.md) | Tilemap World View (HOMM3-style camera-rendered map) | **GRADUATED 2026-05-13 → [TMP_001](../00_tilemap/TMP_001_tilemap_foundation.md)** (DRAFT). Multi-game genre prior art surveyed (HoMM3, Wesnoth, Civ V/VI, Dwarf Fortress, Caves of Qud, VCMI as one open-source reference); algorithm foundations cited per academic literature (Fruchterman & Reingold 1991, Penrose 1974, Kahn 1962, Tarjan 1976, Dijkstra 1965, Hart et al. 1968, Gamma et al. 1994). Full design surface in `features/00_tilemap/` (TMP_001..TMP_008 + catalog row + boundary lock). | TMP_* namespace claimed; sibling of MAP/PF/CSC; demo PoC retained at `_ui_drafts/MAP_GUI_v1.html` and SPIKE_03 §3-§5 | pending |
+| [SPIKE_04](SPIKE_04_geo_procgen_validation.md) | GEO Procgen + Authoring Validation (walks AC-GEO-1..11 + AC-AUTHOR-1..10 against Thần Điêu Đại Hiệp Nam Tống fixture) | DRAFT 2026-05-13 (single-session walk; 6 scenarios × 21 ACs validated; 23 gaps surfaced; 5 sub-decisions queued for user approval) | GEO_001 + GEO_001b; feeds V1 implementation phase | pending |
 
 ---
 

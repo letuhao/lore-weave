@@ -66,11 +66,12 @@ __all__ = [
 ]
 
 
-# Known model → dim mapping. Keys mirror common BYOK model names;
-# production projects should have `embedding_dimension` populated
-# directly on knowledge_projects (K12.3). This fallback table keeps
-# the selector functional when the column isn't projected into the
-# in-memory Project model.
+# LEGACY (D-EMB-MODEL-REF-01) — no longer consulted at runtime. The
+# embedding dimension is now the caller-supplied `embedding_dimension`
+# column on `knowledge_projects`, and `embedding_model` carries a
+# provider-registry `user_model` UUID (not a logical name). Kept only
+# as a reference of historically-known model dimensions; safe to delete
+# once nothing imports it. See KNOWLEDGE_SERVICE_EMBEDDING_MODEL_REF_ADR.
 EMBEDDING_MODEL_TO_DIM: dict[str, int] = {
     "bge-small": 384,
     "bge-m3": 1024,

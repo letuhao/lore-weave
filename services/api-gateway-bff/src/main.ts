@@ -1,3 +1,7 @@
+// Phase 6c-γ — MUST be first: starts OpenTelemetry before @nestjs/core / http
+// load so auto-instrumentation can patch them. No-op without OTEL_EXPORTER_OTLP_ENDPOINT.
+import './tracing';
+
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';

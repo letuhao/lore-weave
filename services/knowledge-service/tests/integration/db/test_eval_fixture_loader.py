@@ -1,4 +1,4 @@
-"""K17.9 — integration tests for `eval.fixture_loader` against live
+"""K17.9 — integration tests for `app.benchmark.fixture_loader` against live
 Neo4j. Skipped when TEST_NEO4J_URI is unset."""
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.benchmark.core import GoldenSet
+from app.benchmark.fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
 from app.clients.embedding_client import EmbeddingResult
 from app.db.neo4j_repos.passages import find_passages_by_vector
-from eval.fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
-from eval.run_benchmark import GoldenSet
 
 
 DIM = 1024

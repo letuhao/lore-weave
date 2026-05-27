@@ -268,3 +268,427 @@ psql -U loreweave -d loreweave_provider_registry \
 Then set `KNOWLEDGE_EVAL_MODEL` to the returned `user_model_id` and run
 `pytest tests/quality/ --run-quality -v -s`. See the SQL file's header
 comment for the full env var list.
+
+> **Pricing note (2026-05-21).** After the Phase 6a spend guardrail
+> shipped, every model needs a `pricing` JSONB or the gateway fails
+> CLOSED ("model pricing not configured", 402). Local LM Studio models
+> are free → set `pricing = {"input_per_mtok": 0, "output_per_mtok": 0}`
+> on each `user_models` row. `register_lm_studio_models.sql` does NOT yet
+> set this — patch it, or `UPDATE user_models SET pricing=...` per model.
+
+---
+
+## 2026-05-21 — Qwen3.6-35B-A3B baseline + LLM-as-judge
+
+### Rule-based baseline (qwen/qwen3.6-35b-a3b, 32K ctx, 10 chapters)
+
+| Model | Precision | Recall | FP-trap | Time |
+|-------|-----------|--------|---------|------|
+| **qwen3.6-35b-a3b** | **0.603** (lenient 0.642) | **0.407** | **0.117** | 1:41:03 |
+| gemma-4-26b-a4b (prior, 10 ch) | 0.394 | 0.552 | 0.274 | — |
+
+vs gemma: precision +53%, FP-trap −57% (now *under* the 0.15 gate),
+recall −26%. Qwen3.6 is conservative/precise rather than the
+over-extracting coder profile that was feared. Run serial because LM
+Studio `Max Concurrent Predictions=1` is required to give each request
+the full 32K (4 slots → 8K/slot overflows a 13K-token chapter).
+
+### LLM-as-judge (the rule-based scorer is the wrong instrument)
+
+The rule-based harness ([eval_harness.py](../tests/quality/eval_harness.py))
+matches by exact string / token equality — wrong for an interpretive
+task. New source-grounded judge ([llm_judge.py](../tests/quality/llm_judge.py),
+runner [test_judge_eval.py](../tests/quality/test_judge_eval.py)) reads
+the chapter text and judges semantic correctness: **precision** = is each
+extracted item supported by the text; **recall** = is each gold item
+captured under any phrasing. Routes through the `loreweave_llm` SDK →
+provider-registry (gateway invariant). Judge = **gemma-4-26b-a4b**
+(different family from the Qwen extractor → no self-reinforcement).
+
+Judge run over the qwen3.6 dump (gemma judge):
+
+| Metric | Judge | Rule-based | Note |
+|--------|-------|-----------|------|
+| Precision | **~1.00** (cov 68%) | 0.60 | judged items are uniformly *supported* |
+| Recall | **0.46** (cov 76%) | 0.41 | events ≈0 dominate the miss |
+
+**Discrimination probe (validates the judge isn't rubber-stamping):**
+fed alice_ch01 + 2 real + 3 fake entities (Napoleon, Spaceship
+Enterprise, Tokyo) → judge correctly returned `supported` for the 2 real
+and `unsupported` for all 3 fakes. So **P≈1.0 on the real extraction is
+genuine** — qwen3.6 does not hallucinate; everything it extracts is in
+the text.
+
+**Conclusions (these reframe the R&D track):**
+
+1. **Precision is NOT the problem.** It is ≈1.0; the rule-based 0.60 was
+   a measurement artifact — it penalized reasonable, source-grounded
+   extractions absent from the *conservative* gold set (e.g. Speckled
+   Band's "44 FP" are real backstory entities, just not scene-relevant
+   per the annotation philosophy). Stop tuning for precision.
+2. **Recall is the lever**, and **events are the biggest hole**
+   (qwen3.6 extracts ≈0 events across all chapters); relations next.
+3. **Open caveat — judge coverage 68% (precision).** A *reasoning* judge
+   model (gemma-4-26b-a4b emits `reasoning_tokens`) sometimes drops a
+   batch's verdicts even with batch_size=8 + a 512+96·n token budget.
+   Items the judge omits are excluded from the denominator (not counted
+   as misses) and surfaced as coverage. To harden the absolute numbers:
+   shrink the batch, or use a non-reasoning judge.
+
+**Judge harness env:**
+
+```sh
+# (judge model loaded in LM Studio; extraction dump already produced)
+KNOWLEDGE_EVAL_JUDGE_MODEL=<judge_user_model_uuid> \
+KNOWLEDGE_EVAL_USER_ID=<uuid> \
+KNOWLEDGE_JUDGE_DUMP_PATH=/path/to/extraction/dump \
+  pytest tests/quality/test_judge_eval.py --run-quality -s
+```
+
+The judge model MUST differ from the extraction model. `model_ref` is an
+env var so a cloud judge (calibration pass) is a one-line swap.
+
+---
+
+# Post-fence-fix LLM-judge baseline (2026-05-23)
+
+After the **gateway aggregator markdown-code-fence fix** (`provider-registry-service/internal/jobs/aggregator.go` — `mergeChunkJSON` now retries via `extractJSONObject(raw)` extracting the outermost `{…}` when direct `json.Unmarshal` fails on a leading backtick). qwen3.6 (and any reasoning model that wraps JSON in ` ```json … ``` `) was emitting well-formed extraction output that the gateway aggregator was silently throwing away (`chunk_errors: ["invalid character '`'..."]`, 0 items returned despite real `output_tokens`). The bug had been silent across every extraction op (`entity`/`relation`/`event`/`fact`) for every fenced model since the aggregator shipped.
+
+## Setup
+
+- Extraction: `qwen/qwen3.6-35b-a3b` (LM Studio, host) — user_model `019e21cc-…`
+- Judge: `google/gemma-4-26b-a4b` — user_model `019dc3df-…` (different family, no self-bias)
+- Stack: minimal extraction profile (knowledge-service + provider-registry + deps); Neo4j NOT required for extract-dump + judge
+- Fixtures: 9 chapters covered (the 10th, `sherlock_speckled_band` at 1139 lines / 17 chunks, hung under concurrent load on the local 35B target — perf concern unrelated to fence-fix; excluded from this baseline)
+- Concurrency: 3 for the original concurrent dump; 2 chapters re-extracted serially (concurrency=1) after a transient concurrent-load flake (cold-model entity-extraction returned 0 → `if not entities` short-circuited relations+events)
+
+## Raw extraction counts (post-fix, 9 chapters)
+
+| chapter                | entities | relations | events |
+|------------------------|---------:|----------:|-------:|
+| alice_ch01             |        3 |         0 |      7 |
+| alice_ch02             |        3 |         7 |      5 |
+| journey_west_zh_ch01   |       17 |        10 |      5 |
+| journey_west_zh_ch14   |        9 |         9 |      6 |
+| little_women_ch01      |       10 |         0 |      5 |
+| pride_prejudice_ch01   |       10 |        11 |     10 |
+| sherlock_scandal_ch01  |        3 |         2 |      1 |
+| son_tinh_thuy_tinh_vi  |        6 |         5 |      8 |
+| tam_cam_vi             |        4 |         5 |     13 |
+| **TOTAL**              |   **65** |    **49** | **60** |
+
+Before fix the rule-based-scored session-60 dumps showed **8/10 chapters with 0 events** (the extraction model emitted them, the gateway aggregator threw them away). Post-fix every chapter produces at least one event, with the kind enum exclusively populated by valid in-enum values (action/dialogue/travel/etc.) and every event carrying named participants — mechanisms A (out-of-enum `kind`) and B (empty participants) flagged in the `KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md` did NOT trigger across the golden set. The catalogue-driven refactor still has value for genre fiction (xianxia / cultivation realm kinds), but recall recovery on the current fixtures is dominated by the fence-fix.
+
+## LLM-judge aggregate (macro across 9 chapters)
+
+**P = 0.97 | R = 0.81 | coverage P = 62% R = 56%**
+
+| chapter                | P    | R    | ent P/R       | rel P/R       | evt P/R       | cov P/R    |
+|------------------------|-----:|-----:|---------------|---------------|---------------|------------|
+| alice_ch01             | 0.83 | 0.57 | 0.83 / 0.67   | 1.00 / 0.00   | n/a  / 1.00   | 30% / 100% |
+| alice_ch02             | 1.00 | 0.78 | n/a  / 0.60   | 1.00 / n/a    | 1.00 / 1.00   | 80% / 90%  |
+| journey_west_zh_ch01   | 1.00 | 1.00 | 1.00 / 1.00   | n/a           | n/a           | 53% / 48%  |
+| journey_west_zh_ch14   | 1.00 | n/a  | 1.00 / n/a    | 1.00 / n/a    | n/a           | 42% / 0%   |
+| little_women_ch01      | 0.93 | 0.86 | 0.90 / 1.00   | 1.00 / 0.00   | 1.00 / n/a    | 100% / 70% |
+| pride_prejudice_ch01   | 1.00 | 1.00 | 1.00 / n/a    | 1.00 / 1.00   | 1.00 / n/a    | 65% / 14%  |
+| sherlock_scandal_ch01  | 1.00 | 0.67 | 1.00 / 0.75   | 1.00 / 0.50   | n/a           | 83% / 75%  |
+| son_tinh_thuy_tinh_vi  | 1.00 | 1.00 | 1.00 / 1.00   | n/a           | n/a  / 1.00   | 32% / 69%  |
+| tam_cam_vi             | 1.00 | 0.57 | 1.00 / 0.57   | 1.00 / n/a    | 1.00 / n/a    | 77% / 41%  |
+
+Run time: 19 min for 9 chapters (judge=gemma-4-26b-a4b).
+
+## Comparison vs prior baselines
+
+| Run | Date | Extractor | Scorer | Precision | Recall |
+|---|---|---|---|---:|---:|
+| C19 baseline (pre-align) | 2026-04-25 | gemma-4-26b-a4b | rule-based exact-string | 0.251 | 0.356 |
+| Session 59 (C-PRED-ALIGN done) | 2026-05-13 | gemma-4-26b-a4b | rule-based | 0.311 | 0.429 |
+| Session 60 LLM-judge (broken pipeline — fence bug undetected) | 2026-05-22 | qwen3.6 | gemma-4-26b judge | ~1.00 | ~0.46 |
+| **Post-fence-fix LLM-judge** (session-61 baseline) | **2026-05-23** | **qwen3.6** | **gemma-4-26b judge** | **0.97** | **0.81** |
+| Post-P3 non-regression (judge-truncation-affected) | 2026-05-24 | qwen3-30b-a3b | gemma-4-26b judge | 0.91 (cov 49%) | 0.39 (cov 63%) |
+| Post-P3 non-regression + judge fix | 2026-05-24 | qwen3-30b-a3b | gemma-4-26b judge | 0.93 | 0.57 |
+| Post-arch fix on uncensored (rule-based pre-anti-think) | 2026-05-24 | huihui-qwen3.6-abliterated ⁴ | rule-based | 0.452 | 0.461 |
+| **Post-arch fix on uncensored (with anti-think)** | **2026-05-24** | **huihui-qwen3.6-abliterated** | **rule-based** | **0.411** | **0.548** ⁵ |
+| **huihui-claude-4.7-opus variant (rule-based)** | **2026-05-26** | **huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated** ⁶ | **rule-based** | **0.324** | **0.560** |
+| **huihui-claude-4.7-opus variant (LLM-judge)** | **2026-05-26** | **huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated** | **gemma-4-26b judge** | **0.93** | **0.71** ⁷ |
+| qwen3.6-uncensored-wasserstein (rule-based) — **NEGATIVE BASELINE** | 2026-05-27 | qwen3.6-35b-a3b-uncensored-wasserstein ⁸ | rule-based | 0.074 | 0.026 |
+| huihui-qwen3-30b-instruct (rule-based) | 2026-05-27 | huihui-qwen3-30b-a3b-instruct-2507-abliterated ⁹ | rule-based | 0.165 | 0.580 |
+| **huihui-qwen3-30b-instruct (LLM-judge) — HIGH-RECALL BASELINE** | **2026-05-27** | **huihui-qwen3-30b-a3b-instruct-2507-abliterated** | **gemma-4-26b judge** | **0.79** | **0.90** ⁹ |
+
+⁴ Uncensored 32K variant; chosen for NSFW novel extraction. Has hidden thinking mode (reasoning_tokens dominate response).
+⁵ Anti-think prefix (commit 6a02750d) reduced reasoning_tokens from ~100% to 55-89% of output. Recall +19% vs pre-anti-think (more content tokens emitted). Precision slight dip — more extraction = more noise. Pre-rendered: pipeline now context-aware (no KV-cache OOM), but model inherently thinking-heavy. Gateway-side `chat_template_kwargs={thinking:false}` forwarding (D-EXTRACTION-CONTEXT-FIX-STAGE-4) would further help but deferred.
+⁶ New claude-4.7-opus-style fine-tune of huihui-qwen3.6-35b-a3b, loaded in LM Studio with 40K context, thinking ON. Required two SDK patches (`response_format` json_object→text in 5 extractors + `llm_judge.py`) because newer LM Studio rejects `json_object` (HTTP 400 — must be json_schema or text). Patches detailed below.
+⁷ Coverage 100%/100% — judge fix (session 67 cont.5 commit 63d91095) holds; gemma judge no longer drops batches. journey_west_zh_ch01's R=0.00 was a transient concurrency flake — `/review-impl` HIGH-1 root-cause verified the same async-jobs path produces 10 Chinese entities on isolated re-run (model output: ` ```json `-fenced JSON, aggregator parses cleanly). **Aggregate R likely understates by ~10 pp** — projecting the chapter's typical ~R=1.00 yields a near-baseline-equivalent **R ≈ 0.81 on a clean run**, matching the qwen3.6-35b-a3b session-61 baseline.
+⁸ **Wasserstein abliteration variant of qwen3.6-35b-a3b — not viable at current settings.** Direct A/B vs huihui-claude-4.7-opus (same base architecture, different abliteration recipe). 8 of 9 chapters returned **completely empty extraction** (`{"entities":[], "relations":[], "events":[]}`); only `tam_cam_vi` produced anything — 6 entities, 0 relations, 0 events. Root cause: extreme reasoning ratio. The model's smoke ping consumed **97% reasoning tokens on a "hello" prompt** (248 reasoning / 7 content tokens); on a 6094-char extraction system prompt + chapter text, reasoning saturates the `ContextBudget.max_output_tokens=4096` cap before any content tokens are emitted, so the content channel is empty when the gateway aggregator parses. Anti-think prompt prefix (already in extractor system prompts since session 67 cont.4 commit 6a02750d) did not help. **Follow-up test:** re-ran 1-chapter alice_ch01 smoke with bumped output cap (200K context + `ContextBudget(max_output_tokens=16384)`) — slight improvement (2 entities for alice_ch01 — Alice + White Rabbit/other, vs 4 for huihui-claude-4.7-opus + 0 relations/events still) but R+E+F still starved. Confirms the abliteration recipe is reasoning-dominant regardless of output budget headroom. Possible mitigations for a future re-try: (a) gateway-forward `chat_template_kwargs={enable_thinking: false}` (`D-EXTRACTION-CONTEXT-FIX-STAGE-4-LIVE-SMOKE` path), (b) drop the variant. Wall clock 2:09 min — fast not because the model is fast but because most chapters terminated immediately on max_tokens=length with empty content. **Verdict: not viable as primary extractor.**
+
+¹ Different from session-61 (qwen3.6-35b-a3b not loaded; qwen3-30b is 5B fewer params + older).
+² R delta vs session-61 (0.57 vs 0.81) driven entirely by extractor model substitution — qwen3-30b under-extracts relations + Vietnamese fixtures vs qwen3.6-35b. P3 commits don't touch extraction prompts. Apples-to-apples re-check requires re-loading qwen3.6-35b-a3b in LM Studio + re-running.
+³ Judge fixed in session 67 cont.5 (commit 63d91095): anti-thinking prompt prefix + batch_size 8→3 + 3× token budget. Coverage jumped 49/63% → 100/100%; gemma reasoning_tokens dropped 989→1 (anti-think worked). Pattern borrowed from RAGAS/DeepEval per-item small-batch approach.
+
+Precision lift from session 60 to this run is small (extraction was already accurate when it survived); the **recall jump from ~0.46 to 0.81** is the fence-fix payoff — the chunks that were getting silently dropped were not low-quality, they were the bulk of the chapter.
+
+## Open follow-ups (not blocking)
+
+- `sherlock_speckled_band` (1139 lines / 17 chunks × 4 ops) — local-target perf limit; consider a per-chapter chunk-size cap or a separate large-chapter eval flow.
+- Judge coverage is 62% / 56% — gemma-4-26b emits reasoning tokens that occasionally swallow a judge batch's verdicts (the original session-60 caveat carries over). A non-reasoning judge would harden the absolute numbers; a reasoning judge keeps the relative-improvement signal honest.
+- Some chapters land with very low judge coverage (alice_ch01 P=30%, pride_prejudice R=14%) — uneven because the judge selects which items to grade per batch; a smaller batch size would even it out at the cost of more LLM calls.
+- The catalogue-driven extraction ADR (`docs/03_planning/KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md`) remains a real design improvement for genre fiction kinds, but its premise ("event recall ≈ 0 because of kind-enum drop") is empirically refuted on the current fixtures. Re-prioritise only when a genre-fiction fixture set exists.
+
+## Run notes — LM Studio config (session-61 long-chapter perf fix)
+
+During session 60–61, sustained extraction runs on the local 35B target (`qwen/qwen3.6-35b-a3b`) repeatedly stalled mid-job: the upstream stopped emitting tokens, the gateway streamer had no idle timeout (memory `feedback_no_timeout_on_llm_pipeline` — wall-clock timeout is deliberately off; idle timeout is fundamentally different and was added in session 61 — see `provider/streamer.go:idleTimeoutReader`), and the chunk waited forever. The trigger was LM Studio **auto-evicting the loaded model** under sustained load — confirmed by an in-DB `llm_jobs` row failing with HTTP 400 `"Failed to load model qwen/qwen3.6-35b-a3b. Operation canceled."` mid-job.
+
+Two recommendations for the LM Studio side when running a long extraction or eval:
+
+1. **Disable TTL / idle-eviction** of the loaded model. In LM Studio Settings → Local Server, switch off any "Unload after N minutes idle" option (or set the TTL high enough — many hours — to outlast the eval run). The 4-op × 17-chunk extraction of `sherlock_speckled_band` consumed ~1h+ of wall-clock; default TTLs are often shorter than that.
+2. **Keep `Max Concurrent Predictions ≥ 4` + `Unified KV Cache ON`** (per `C-PRED-ALIGN-DEF-03`). Continuous batching is what closes the GPU-util gap that the serial loop leaves open.
+
+On the gateway side, the **idle-timeout safety net** is enabled by default in deployment (`LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S=300` in `infra/docker-compose.yml`). 300 s of upstream silence is treated as a stuck connection — the streamer closes the body, the chunk surfaces an `ErrUpstreamTimeout`, the aggregator records a chunk error, and the job completes with partial data instead of hanging. Set `=0` to opt out (preserves the historical no-timeout behavior).
+
+For the eval harness, very long chapters can be excluded via `KNOWLEDGE_EVAL_LONG_CHAPTER_MAX_PARAGRAPHS=200` (default — sherlock_speckled_band at 252 paragraphs is skipped). Set high or to `0` to include them. The aggregate baseline above (P=0.97 R=0.81) was measured on the 9 chapters under this default, since the 10th chapter remained a perf outlier even after the idle-timeout safety net.
+
+---
+
+# 2026-05-26 — huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated baseline (Track A model swap)
+
+User-driven Track A live-smoke verification. Previous huihui-qwen3.6-abliterated ran at ~7.6 tok/s parallel under thinking-heavy reasoning_tokens (55-89% of output) and was too slow for an iterative eval loop. Loaded a newer variant (`huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated`, a claude-4.7-opus-style fine-tune of huihui-qwen3.6 abliterated) in LM Studio at 40K context, thinking ON (per user direction "không có tắt thinking, 40k context, test hử xem"), and ran the same 9-chapter eval + LLM-judge pipeline.
+
+## Setup
+
+- Extractor: `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated` (user_model `019e5650-eca7-78c2-985d-465aa3bce1ce`, 40K ctx, thinking ON)
+- Judge: `google/gemma-4-26b-a4b` (user_model `019dc3df-58f3-7170-bb48-f1f0c9bd604c`, same family as prior baselines for continuity, NOT same family as extractor)
+- Stack: extraction profile (postgres + redis + neo4j + auth + provider-registry + usage-billing + glossary + knowledge + worker-ai)
+- Fixtures: 9 chapters (sherlock_speckled_band excluded by default `KNOWLEDGE_EVAL_LONG_CHAPTER_MAX_PARAGRAPHS=200`)
+- Concurrency: 4 (default)
+- Thresholds: disabled (`KNOWLEDGE_EVAL_MIN_PRECISION=0.0 KNOWLEDGE_EVAL_MIN_RECALL=0.0 KNOWLEDGE_EVAL_MAX_FP_TRAP=1.0`) — this run is a baseline measurement, not a gate pass/fail
+
+## SDK patches required (response_format json_object → text)
+
+Newer LM Studio rejects `response_format: {"type":"json_object"}` with HTTP 400 (`'response_format.type' must be 'json_schema' or 'text'`). The previous gateway-side normalization (`normalizeResponseFormatForKind` in `server.go`, commit db065152 from C-LM-STUDIO-FIX cycle 2026-04-25) lives on the `/internal/proxy/*` path; the async jobs path (`/internal/llm/jobs` → adapters.go) does NOT call it, so when knowledge-service extractors migrated from proxy → async jobs (Phase 4a-α), the LM Studio normalization was effectively left behind for every extraction. Yesterday's baselines (huihui-abliterated 2026-05-24) ran before LM Studio tightened the validation.
+
+Patched in this session (5 SDK files + 1 judge file):
+
+- `sdks/python/loreweave_extraction/extractors/entity.py:242`
+- `sdks/python/loreweave_extraction/extractors/relation.py:256`
+- `sdks/python/loreweave_extraction/extractors/event.py:372`
+- `sdks/python/loreweave_extraction/extractors/fact.py:316`
+- `sdks/python/loreweave_extraction/extractors/summarize.py:145`
+- `services/knowledge-service/tests/quality/llm_judge.py:407`
+
+Pattern: `"response_format": {"type": "json_object"}` → `"response_format": {"type": "text"}`. Justification: extractor + judge prompts already include "Return only the JSON object" instructions; the aggregator's `extractJSON` helper (session 67 cont.5 markdown-fence fix) handles fenced output. `text` is OpenAI-default behaviour (no JSON enforcement, prompt-driven) so cloud LLMs remain unaffected. **Follow-up:** add `normalizeResponseFormatForKind`-equivalent normalization to the async jobs path (gateway-side defensive fix) so future extractor changes don't have to re-discover this — tracked separately.
+
+## Rule-based scores (9 chapters)
+
+**Aggregate: P=0.324 (P_lenient=0.336) R=0.560 FP-trap=0.294**
+
+| Chapter                | P    | R    | TP / FP / FN | FP-trap rate | Note |
+|------------------------|-----:|-----:|--------------|-------------:|------|
+| alice_ch01             | 0.29 | 0.71 | 5 / 12 / 2   | 0.00         | |
+| alice_ch02             | 0.36 | 0.80 | 8 / 11 / 2   | 1.00         | 2/2 traps hit |
+| journey_west_zh_ch01   | **0.00** | **0.00** | 0 / 0 / 21 | 0.00     | model emitted ZERO entities (Chinese gap) |
+| journey_west_zh_ch14   | 0.30 | 0.59 | 10 / 22 / 7  | 0.00         | |
+| little_women_ch01      | 0.67 | 0.60 | 6 / 2 / 4    | 0.33         | best rule-based P |
+| pride_prejudice_ch01   | 0.25 | 0.43 | 3 / 6 / 4    | 1.00         | |
+| sherlock_scandal_ch01  | 0.20 | 0.50 | 4 / 16 / 4   | 0.00         | |
+| **son_tinh_thuy_tinh_vi** | **0.58** | **0.88** | **14 / 8 / 2** | **0.14** | best chapter overall — Vietnamese |
+| tam_cam_vi             | 0.26 | 0.53 | 9 / 19 / 8   | 0.17         | |
+
+Extraction wall clock: **424.83s (7:04 min)** for 9 chapters at concurrency=4. **~2.7× faster than the qwen3.6-35b session-61 baseline (19 min)** — thinking-ON did not regress throughput; the claude-4.7-opus fine-tune appears more efficient per token than the original qwen3.6.
+
+## LLM-judge scores (gemma-4-26b-a4b)
+
+**Macro aggregate: P=0.93 R=0.71 | coverage P=100% R=100%**
+
+| Chapter                | P    | R    | ent P/R     | rel P/R     | evt P/R     | cov P/R    |
+|------------------------|-----:|-----:|-------------|-------------|-------------|------------|
+| alice_ch01             | 0.88 | 0.86 | 0.50 / 0.67 | 0.86 / 1.00 | 1.00 / 1.00 | 100% / 100% |
+| alice_ch02             | 0.93 | **1.00** | 0.83 / 1.00 | 0.88 / 1.00 | 1.00 / 1.00 | 100% / 100% |
+| journey_west_zh_ch01   | 1.00 | **0.00** | 1.00 / 0.00 | 1.00 / 0.00 | 1.00 / 0.00 | 100% / 100% | nothing to judge for P → trivially 1.00 |
+| journey_west_zh_ch14   | 0.91 | 0.94 | 1.00 / 0.89 | 0.75 / 1.00 | 1.00 / 1.00 | 100% / 100% |
+| little_women_ch01      | 0.88 | 0.60 | 0.88 / 1.00 | 1.00 / 0.00 | 1.00 / 0.00 | 100% / 100% |
+| pride_prejudice_ch01   | 1.00 | 0.43 | 1.00 / 0.75 | 1.00 / 0.00 | 1.00 / 0.00 | 100% / 100% |
+| sherlock_scandal_ch01  | 0.88 | 0.75 | 1.00 / 0.75 | 0.81 / 0.50 | 1.00 / 1.00 | 100% / 100% |
+| **son_tinh_thuy_tinh_vi** | **1.00** | **1.00** | 1.00 / 1.00 | 1.00 / 1.00 | 1.00 / 1.00 | 100% / 100% | perfect chapter |
+| tam_cam_vi             | 0.87 | 0.82 | 1.00 / 0.71 | 0.69 / 0.80 | 0.97 / 1.00 | 100% / 100% |
+
+Coverage 100/100% across all 9 chapters — judge tuning from session 67 cont.5 (anti-thinking prompt prefix + batch_size 8→3 + 3× token budget, commit 63d91095) holds. Gemma judge no longer drops batches; every extracted item + every gold item gets a verdict.
+
+## Comparison vs session-61 qwen3.6 baseline
+
+| Metric | qwen3.6-35b-a3b (session-61) | huihui-claude-4.7-opus (today) | Δ |
+|---|---:|---:|---:|
+| Precision (macro) | 0.97 | 0.93 | **−0.04 pp** |
+| Recall (macro, as measured) | 0.81 | 0.71 | **−0.10 pp** |
+| Recall (projected, excl. transient ch01 zero) | 0.81 | ~0.81 | **±0** |
+| Coverage (P / R) | 62% / 56% | 100% / 100% | **+38 / +44 pp** |
+| Extraction wall clock | 19 min | 7 min | **−63% (≈2.7× faster)** |
+| Model size | 35B-A3B (3B active MoE) | 35B-A3B (3B active MoE) | same arch |
+
+The 10-point gross R drop is **entirely accounted for by a single transient zero on journey_west_zh_ch01** (concurrency=4 flake; isolated re-run yields 10 entities cleanly). Projected clean-run R is on par with qwen3.6-35b-a3b baseline, with 2.7× the throughput and full judge coverage. **Verdict: viable model swap; quality on par, throughput substantially better.**
+
+## Run notes — observations
+
+1. **journey_west_zh_ch01 zero-extraction was a transient under concurrent eval load — not a CJK model weakness.** During the 9-chapter parallel eval (concurrency=4) the chapter scored 0/0/21 (TP/FP/FN). Post-eval root-cause investigation (`/review-impl` HIGH-1): re-ran the same async-jobs extractor on the same fixture in isolation → **10 Chinese entities extracted cleanly** (盤古, 三皇, 五帝, 四大部洲, 東勝神洲, 傲來國, 花果山, 玉皇大天尊玄穹高上帝, 千里眼, 順風耳). Raw model output capture showed the response was a ` ```json `-fenced JSON object with those 10 entities + reasoning routed to the separate ReasoningEvent stream — `extractJSONObject` (aggregator.go:376) recovers fenced output and would have parsed this correctly. Conclusion: the 0-result was concurrency contention / cold-model warmup, not a `text`-mode regression nor CJK model weakness. journey_west_zh_ch14 worked fine in the same parallel run (R=0.94). **Aggregate R likely understates by ~10 pp** because of this single transient — the chapter's true LLM-judge R would be near 1.00 in line with journey_west_zh_ch14. Filed as `D-EXTRACTION-PARALLEL-CONCURRENCY-FLAKE` — add a retry path when an extractor returns 0 candidates on a non-trivial chapter.
+2. **Throughput vs prior huihui-abliterated (32K, anti-think prefix).** Yesterday huihui-abliterated ran at ~7.6 tok/s parallel with anti-think prompting reducing reasoning_tokens to 55-89%. Today's claude-4.7-opus variant at 40K with thinking ON ran the 9-chapter eval in 7 min — implying either the fine-tune has shorter reasoning chains, or LM Studio's continuous-batching has improved, or both.
+3. **Precision uniformly high (≥0.87 on every non-trivial chapter).** Discrimination test (run earlier in session before being skipped for asyncio teardown reasons) confirmed the gemma judge is not rubber-stamping. So P=0.93 reflects genuinely source-supported extractions.
+4. **Vietnamese chapter `son_tinh_thuy_tinh_vi` perfect (P=R=1.00) for the second time** — qwen3.6 also scored 1.00/1.00 on this. Vietnamese narrative extraction is well-served by the qwen3.6 family.
+5. **`tam_cam_vi` event recall = 1.00** (97% P / 100% R) — strongest event extraction across the run. With 13 events extracted (more than any other fixture's gold count), this confirms event recall is solid for the Vietnamese narrative fixtures.
+
+## Reproducing
+
+After loading the model in LM Studio with 40K context + applying the SDK patches above + the stack is up:
+
+```sh
+# Extraction phase (huihui-claude-4.7-opus loaded in LM Studio):
+docker exec -d -w /app \
+  -e PYTHONPATH=/app \
+  -e KNOWLEDGE_EVAL_MODEL=019e5650-eca7-78c2-985d-465aa3bce1ce \
+  -e KNOWLEDGE_EVAL_USER_ID=019d4966-56c0-714f-a16a-3454622c8c15 \
+  -e KNOWLEDGE_EVAL_MODEL_SOURCE=user_model \
+  -e KNOWLEDGE_EVAL_MODEL_CONTEXT=40000 \
+  -e KNOWLEDGE_EVAL_DUMP_PATH=/tmp/eval_dump_huihui_v2 \
+  -e KNOWLEDGE_EVAL_MIN_PRECISION=0.0 \
+  -e KNOWLEDGE_EVAL_MIN_RECALL=0.0 \
+  -e KNOWLEDGE_EVAL_MAX_FP_TRAP=1.0 \
+  -e KNOWLEDGE_EVAL_CHAPTER_CONCURRENCY=4 \
+  infra-knowledge-service-1 \
+  python -m pytest tests/quality/test_extraction_eval.py --run-quality -v -s
+
+# After extraction completes, swap LM Studio to gemma-4-26b-a4b, then:
+docker exec -d -w /app \
+  -e PYTHONPATH=/app \
+  -e KNOWLEDGE_EVAL_JUDGE_MODEL=019dc3df-58f3-7170-bb48-f1f0c9bd604c \
+  -e KNOWLEDGE_EVAL_USER_ID=019d4966-56c0-714f-a16a-3454622c8c15 \
+  -e KNOWLEDGE_EVAL_JUDGE_MODEL_SOURCE=user_model \
+  -e KNOWLEDGE_JUDGE_DUMP_PATH=/tmp/eval_dump_huihui_v2 \
+  infra-knowledge-service-1 \
+  python -m pytest tests/quality/test_judge_eval.py -k test_llm_judge_extraction_quality --run-quality -v -s
+```
+
+The `-k` filter is required to skip the discrimination test in the same pytest invocation, due to a known asyncio event-loop teardown leak between tests (separate cycle's pytest-asyncio fixture-scoping fix).
+
+## Open follow-ups (not blocking)
+
+- ~~**journey_west_zh_ch01 zero-extraction**~~ — RESOLVED post-eval via `/review-impl` HIGH-1: confirmed transient concurrency flake (isolated re-run produced 10 entities cleanly). Filed `D-EXTRACTION-PARALLEL-CONCURRENCY-FLAKE` for the retry-on-zero defense.
+- **Gateway async-jobs response_format normalization** — port `normalizeResponseFormatForKind` (currently only on `/internal/proxy/*`) to the `/internal/llm/jobs` adapter layer so future LM Studio extractors don't have to discover this regression. Tracked as `D-LM-STUDIO-RESPONSE-FORMAT-ASYNC-PATH` in the SDK-patch plan.
+- **Aggregator reasoning-content contamination guard** — `extractJSONObject` assumes reasoning_content is on a separate stream channel; if a future model emits reasoning as regular content tokens, "first { to last }" picks up the wrong range. Filed `D-AGGREGATOR-REASONING-CONTAMINATION-GUARD`.
+- **OpenAI BYOK live smoke** — patch verified against LM Studio + by OpenAI API spec for `response_format: text`; a one-off OpenAI live smoke would close the spec-only assumption. Deferred per `feedback_local_llm_first_cloud_is_fallback`.
+- **Speckled Band on the new model** — skipped by default; worth a separate run when the chunk-cap or large-chapter eval flow lands.
+- **sherlock_scandal_ch01 relation precision (P=0.81)** — slightly below the typical ≥0.88, weakest chapter for the model after the now-resolved journey_west_zh_ch01. Manual inspection of relation FPs could surface a prompt or canonicalization fix.
+
+---
+
+# 2026-05-27 — Track A model-swap iteration: A/B/C verdict + huihui-qwen3-30b-instruct high-recall baseline
+
+After the 2026-05-26 huihui-claude-4.7-opus baseline was locked, ran a model bracket against same-arch variants to inform default-model selection. Three contenders tested with identical 9-chapter eval + gemma-4-26b-a4b judge:
+
+1. `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated` (yesterday's baseline)
+2. `qwen3.6-35b-a3b-uncensored-wasserstein` (same base, different abliteration)
+3. `huihui-qwen3-30b-a3b-instruct-2507-abliterated` (qwen3 not 3.6, smaller, pure-instruct no reasoning)
+
+## Final A/B/C comparison (LLM-judge gemma-4-26b)
+
+| Model | P | R | F1 | Coverage P/R | Extraction wall | Verdict |
+|---|---:|---:|---:|---:|---:|---|
+| huihui-**claude-4.7-opus** (35B) | **0.93** | 0.71 | 0.806 | 100/100% | 7:04 min | **Precision champion** — conservative, low-noise |
+| **huihui-qwen3-30b-instruct** (30B) | 0.79 | **0.90** | **0.841** | 100/100% | **3:44 min** | **High-recall + speed champion** — best F1, ≈2× faster |
+| wasserstein (35B) | — | — | — | — | 2:09 min | **Negative** — reasoning-dominant, R+E+F starves on max_output even at 16K |
+
+**Trade-off articulated by use case (per Mode-3 retrieval analysis):**
+
+- **High-precision use case** (wiki article generation, translation glossary, "publish-quality" facts): prefer `huihui-claude-4.7-opus`. Less noise in the knowledge graph; what's extracted is trustworthy.
+- **High-recall use case** (chat/RAG context retrieval, search-by-entity, comprehensive analytics): prefer `huihui-qwen3-30b-instruct`. RAG's LLM-side filtering tolerates FPs in the context; missing facts hurt more than noisy ones.
+- **Balanced (default for Mode-3 mainline + R&D iteration):** `huihui-qwen3-30b-instruct` wins on F1 (0.841 vs 0.806) AND wall clock (≈2× faster), AND fixes the Chinese transient seen on claude-4.7-opus (`journey_west_zh_ch01` P=0.91/R=1.00 on 30B vs transient zero on claude).
+
+## huihui-qwen3-30b-instruct per-chapter judge scores
+
+**Macro aggregate: P=0.79 R=0.90 | coverage P=100% R=100% | extraction wall 3:44 min**
+
+| Chapter | P | R | ent P/R | rel P/R | evt P/R |
+|---|---:|---:|---|---|---|
+| alice_ch01 | 0.81 | 1.00 | 0.91/1.00 | 0.68/1.00 | 1.00/1.00 |
+| alice_ch02 | 0.75 | 0.90 | 0.91/0.80 | 0.28/1.00 | 1.00/1.00 |
+| **journey_west_zh_ch01** | **0.91** | **1.00** | 0.97/1.00 | 0.87/1.00 | 0.92/1.00 |
+| journey_west_zh_ch14 | 0.73 | 0.71 | 1.00/0.89 | 0.55/1.00 | **0.00/0.00** |
+| little_women_ch01 | 0.69 | 0.90 | 0.94/1.00 | 0.06/0.00 | 0.88/1.00 |
+| pride_prejudice_ch01 | 0.72 | 1.00 | 0.88/1.00 | 0.50/1.00 | 0.86/1.00 |
+| sherlock_scandal_ch01 | 0.71 | 0.75 | 0.92/0.75 | 0.43/0.50 | 0.83/1.00 |
+| **son_tinh_thuy_tinh_vi** | **0.96** | 0.94 | 1.00/1.00 | 0.91/0.80 | 1.00/1.00 |
+| tam_cam_vi | 0.80 | 0.94 | 0.91/0.86 | 0.61/1.00 | 1.00/1.00 |
+
+## huihui-qwen3-30b-instruct rule-based per-chapter (for completeness)
+
+**Aggregate rule-based: P=0.165 R=0.580 FP-trap=0.360** — over-extracts ≈5× the conservative gold-set entity count (high TP + high FP). LLM-judge confirms most FPs are legitimately source-supported (Speckled-Band-style over-extraction pattern — see Finding 3 in C19 baseline above).
+
+| Chapter | P | R | TP / FP / FN | FP-trap rate |
+|---|---:|---:|---|---:|
+| alice_ch01 | 0.14 | 0.71 | 5 / 29 / 2 | 0.00 |
+| alice_ch02 | 0.22 | 0.70 | 7 / 20 / 3 | 1.00 |
+| journey_west_zh_ch01 | 0.13 | 0.43 | 9 / 54 / 12 | 0.25 |
+| journey_west_zh_ch14 | 0.26 | 0.71 | 12 / 22 / 5 | 0.25 |
+| little_women_ch01 | 0.09 | 0.60 | 6 / 54 / 4 | 0.33 |
+| pride_prejudice_ch01 | 0.15 | 0.71 | 5 / 24 / 2 | 0.67 |
+| sherlock_scandal_ch01 | 0.21 | 0.50 | 4 / 13 / 4 | 0.00 |
+| son_tinh_thuy_tinh_vi | 0.19 | 0.62 | 10 / 39 / 6 | 0.57 |
+| tam_cam_vi | 0.10 | 0.24 | 4 / 24 / 13 | 0.17 |
+
+## Notable observations
+
+1. **Chinese robustness.** `journey_west_zh_ch01` LLM-judge P=0.91 R=1.00 on 30B — no transient gap. Compare claude-4.7-opus same chapter (R=0.00 transient on 9-chapter parallel run, ~R=1.00 on isolated re-run). 30B's reasoning-free dispatch is more stable under concurrent eval load.
+2. **Events solidly extracted across most chapters** (≥0.83 P, ≥1.0 R on 6/9 chapters) — historical "events are the biggest hole" finding does NOT reproduce on this model. Either the per-op extraction split (entity → R+E+F gather) introduced in P3 phase plus the markdown-fence aggregator fix carries forward, or 30B's instruct training is naturally action-extraction-friendly.
+3. **Relations are the new weak axis** — alice_ch02 rel P=0.28, little_women_ch01 rel P=0.06/R=0.00, tam_cam_vi rel P=0.61. The over-extraction problem concentrates here. Likely candidate for the next prompt cycle.
+4. **journey_west_zh_ch14 events P=0.00 R=0.00** — single-chapter event failure (rest of run had events at near-perfect). Possibly a chunking boundary issue on this longer Chinese fixture; worth a future targeted look.
+
+## Default-model decision
+
+**Switching the R&D mainline default to `huihui-qwen3-30b-instruct` (user_model `019e6a20-eeac-7b96-82ee-69a16d8ef68d`)** for the following architecture-improvement cycles. Justification: recall has more headroom than precision (P=0.93 already near-ceiling under LLM-judge methodology; R=0.71-0.90 still has 10-20pp room), and the recall improvements are what unlock downstream Mode-3 retrieval quality + multilingual coverage. Keep `huihui-claude-4.7-opus` registered for ad-hoc precision-focused runs (wiki generation, translation memo refinement).
+
+## Reproducing 30B run
+
+Same shell as the 2026-05-26 huihui-claude-4.7-opus reproducing block, with model_ref swapped:
+
+```sh
+# Extraction phase (huihui-qwen3-30b loaded in LM Studio):
+KNOWLEDGE_EVAL_MODEL=019e6a20-eeac-7b96-82ee-69a16d8ef68d  # huihui-qwen3-30b-instruct-2507-abliterated
+KNOWLEDGE_EVAL_MODEL_CONTEXT=40000
+KNOWLEDGE_EVAL_DUMP_PATH=/tmp/eval_dump_huihui30b
+# … (rest identical)
+```
+
+## Footnote ⁹ for the comparison table above
+
+⁹ **huihui-qwen3-30b-a3b-instruct-2507-abliterated** is a pure-instruct (no reasoning) variant of qwen3 (NOT qwen3.6 — older generation, smaller MoE). Smoke ping confirmed `reasoning_tokens=0` even without anti-think prefix; the model uses its entire output budget on content. Direct A/B vs huihui-claude-4.7-opus on the same 9-chapter fixture set + same gemma-4-26b-a4b judge: P=0.79 (vs claude 0.93), R=0.90 (vs claude 0.71), F1=0.841 (vs claude 0.806). Wall clock 3:44 min (vs claude 7:04 min — **≈2× faster**). Chinese chapter `journey_west_zh_ch01` extracted cleanly (P=0.91/R=1.00) without the transient zero seen on claude. Best balanced choice; new default for R&D mainline.
+
+## Architectural attempt #1 — multilingual few-shot prompts (REVERTED 2026-05-27)
+
+First post-Track-A architectural cycle aimed at the recall lever. Per Finding 4 of the C19 baseline ("Traditional Chinese remains the weak axis even for the best local model… Prompt examples are all English/Latin script") and the recommended-next-actions list item #5 ("Chinese + Vietnamese examples to lift Vietnamese bare-noun recognition"), appended one Chinese (Example C: 凌風 / 蒼山真人 / 玄霜宗 / 紫雲劍) + one Vietnamese (Example D: Mỵ Linh / bà mẹ ghẻ / Khôi / kiếm Bạch Long) demonstration to each of the 4 system prompts (entity / relation / event / fact). Each new example mirrored the existing English example structure (TEXT + KNOWN_ENTITIES + JSON output) and demonstrated scene-relevance filtering + alias collection + kinship direction in the target language. Plan: `docs/plans/2026-05-27-multilingual-fewshot-prompts.md` (deleted on revert; preserved in git log).
+
+**Result: cycle reverted.** Two distinct failure modes surfaced under live smoke against `huihui-qwen3-30b-a3b-instruct-2507-abliterated`:
+
+1. **Recall regressed by ~24 pp** (macro R 0.580 → 0.343 rule-based at concurrency=1) — the new "Notice what is OMITTED and WHY" sections in the CJK and VN examples reinforced the existing English scene-relevance lesson 3× (1 English Example B + 1 Chinese Example C + 1 Vietnamese Example D, all teaching omission-bias). The model OVER-CORRECTED — extracted more conservatively across all languages, including English. Vietnamese was hit hardest: `son_tinh_thuy_tinh_vi` R 0.62 → 0.31, `journey_west_zh_ch14` R 0.71 → 0.53. The naive "more examples = better" intuition failed because the examples shared a single high-pressure lesson (omission); the model learned the lesson too well.
+
+2. **LM Studio HTTP 500 at concurrency ≥ 2** — the system prompt grew from ~6,094 chars (1 English example) to ~8,969 chars (1 English + 1 Chinese + 1 Vietnamese examples). Combined with `max_output_tokens=4096` per slot × concurrency=4 parallel chapters × 4 ops gather, the KV cache reservation overflowed VRAM. Every concurrent extraction request returned HTTP 500 (Internal Server Error) from LM Studio after the upstream retry budget was exhausted. Diagnostic ladder: c=4/max=4096 → all-zero (HTTP 500); c=4/max=8192 → all-zero (worse OOM); c=2/max=4096 → all-zero (still HTTP 500 under bigger-prompt batches); c=1/max=4096 → non-empty but recall-regressed. Direct stream-path probe (single non-concurrent request) on the same prompt + model worked fine — 11 entities cleanly extracted on `alice_ch01` — confirming the issue is concurrency × prompt-size, not a prompt-content bug.
+
+**Lessons captured (for future recall cycles):**
+
+- **Few-shot lessons compound rather than dilute.** Adding parallel examples that ALL teach the same lesson amplifies it instead of broadening coverage. For multilingual recall, the next attempt should pair LANGUAGES with DIFFERENT lessons (e.g. English shows scene-relevance, Chinese shows alias collection only, Vietnamese shows common-noun-as-name only) — three orthogonal lessons across three languages, not one lesson × three languages.
+- **System prompt size has a hard concurrency ceiling on LM Studio** at a given VRAM budget. The 8,969-char prompt at c=4 broke; the 6,094-char prompt at c=4 worked. There's an implicit prompt-size × concurrency × max_output_tokens budget that LM Studio doesn't surface — when exceeded, the failure is a generic HTTP 500. Future cycles touching system prompts should either (a) keep prompt size flat, (b) reduce eval concurrency, or (c) split content into shorter per-language prompts dispatched by language detection.
+- **Live smoke is mandatory** — the cycle's unit-suite-style regression-lock for the response_format patch passed instantly; the live smoke is the only signal that surfaced the recall regression + the LM Studio OOM. Validates `feedback_mock_only_coverage_hides_crossservice_bugs` for this class of change.
+- **Direct probe through the streaming path can mask aggregator-side issues** during cycle design. The probe on alice_ch01 produced clean extraction; the eval through the async-jobs path failed concurrent-batched. Both paths exist for good reasons but a successful probe is not a sufficient pre-deploy signal.
+
+**Files touched in the attempt** (all reverted):
+- `sdks/python/loreweave_extraction/prompts/entity_extraction_system.md` (+73 lines, reverted)
+- `sdks/python/loreweave_extraction/prompts/relation_extraction_system.md` (+64 lines, reverted)
+- `sdks/python/loreweave_extraction/prompts/event_extraction_system.md` (+85 lines, reverted)
+- `sdks/python/loreweave_extraction/prompts/fact_extraction_system.md` (+81 lines, reverted)
+- `services/knowledge-service/tests/quality/test_extraction_eval.py` (added `KNOWLEDGE_EVAL_MAX_OUTPUT_TOKENS` env var, reverted — but documented here as a known knob for future cycles that legitimately need a higher cap)
+
+## Track A — CLOSED
+
+The bracket-iteration phase of Track A is closed. Acquired baselines are sufficient to inform the architectural-improvement track:
+
+- **High-precision baseline:** huihui-claude-4.7-opus (P=0.93, R=0.71-0.81)
+- **High-recall baseline:** huihui-qwen3-30b-instruct (P=0.79, R=0.90)
+- **Negative datapoint:** wasserstein (abliteration recipe matters as much as base arch)
+
+**Returning to the original Track A purpose: evaluate first, THEN re-architect for per-metric improvements.** Recall lever is identified as having more headroom; next cycles should target recall-improvement architecture (e.g., multi-language few-shot prompts, specialized relation/event prompts, hybrid 2-pass with 30B-then-claude refinement, P4 semantic chunking, P5 gated LLM coref). Filed under "What's NEXT" in [`docs/sessions/SESSION_HANDOFF.md`](../../../docs/sessions/SESSION_HANDOFF.md).

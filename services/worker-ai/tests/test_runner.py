@@ -1110,3 +1110,305 @@ async def test_knowledge_client_persist_pass2_502_returns_retryable_error():
     assert result.retryable is True
     assert result.error is not None
     assert "502" in result.error
+
+
+# ── P3 D-P3-EXTRACTION-CALLER-WIRE-UP — BookClient.get_chapter_hierarchy ──
+
+
+@pytest.mark.asyncio
+async def test_book_client_get_chapter_hierarchy_parses_full_response():
+    """200 with full hierarchy → ChapterHierarchy with part + scenes."""
+    from app.clients import BookClient, ChapterHierarchy
+    client = BookClient("http://book", "tok", timeout_s=5.0)
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    book_id_str = str(uuid4())
+    chapter_id_str = str(uuid4())
+    part_id_str = str(uuid4())
+    scene_id_str = str(uuid4())
+    mock_resp.json.return_value = {
+        "book": {"id": book_id_str, "path": "book", "title": "The Book"},
+        "part": {
+            "id": part_id_str, "path": "book/part-1",
+            "index": 1, "title": "Part 1",
+        },
+        "chapter": {
+            "id": chapter_id_str, "path": "book/part-1/chapter-1",
+            "index": 1, "title": "Chapter 1", "sort_order": 1,
+        },
+        "scenes": [
+            {"id": scene_id_str, "path": "book/part-1/chapter-1/scene-1", "index": 1},
+        ],
+        "book_parts": [
+            {"id": part_id_str, "path": "book/part-1", "index": 1, "title": "Part 1"},
+        ],
+    }
+    with patch.object(client._http, "get", AsyncMock(return_value=mock_resp)):
+        hierarchy = await client.get_chapter_hierarchy(uuid4(), chapter_id_str)
+
+    assert isinstance(hierarchy, ChapterHierarchy)
+    assert hierarchy.book_id == book_id_str
+    assert hierarchy.part is not None
+    assert hierarchy.part.path == "book/part-1"
+    assert len(hierarchy.scenes) == 1
+    assert hierarchy.scenes[0].id == scene_id_str
+    assert len(hierarchy.book_parts) == 1
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_book_client_get_chapter_hierarchy_legacy_chapter_has_null_part():
+    """Legacy chapter (NULL part_id) → part=None + scenes=()."""
+    from app.clients import BookClient
+    client = BookClient("http://book", "tok", timeout_s=5.0)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    chapter_id_str = str(uuid4())
+    mock_resp.json.return_value = {
+        "book": {"id": str(uuid4()), "path": "book", "title": None},
+        "part": None,
+        "chapter": {
+            "id": chapter_id_str, "path": None,
+            "index": 1, "title": "Legacy", "sort_order": 1,
+        },
+        "scenes": [],
+        "book_parts": [],
+    }
+    with patch.object(client._http, "get", AsyncMock(return_value=mock_resp)):
+        hierarchy = await client.get_chapter_hierarchy(uuid4(), chapter_id_str)
+    assert hierarchy is not None
+    assert hierarchy.part is None
+    assert hierarchy.chapter_path is None
+    assert hierarchy.scenes == ()
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_book_client_get_chapter_hierarchy_404_returns_none():
+    from app.clients import BookClient
+    client = BookClient("http://book", "tok", timeout_s=5.0)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    with patch.object(client._http, "get", AsyncMock(return_value=mock_resp)):
+        hierarchy = await client.get_chapter_hierarchy(uuid4(), "ch-1")
+    assert hierarchy is None
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_book_client_get_chapter_hierarchy_http_error_returns_none():
+    import httpx
+    from app.clients import BookClient
+    client = BookClient("http://book", "tok", timeout_s=5.0)
+    with patch.object(
+        client._http, "get",
+        AsyncMock(side_effect=httpx.ConnectError("refused")),
+    ):
+        hierarchy = await client.get_chapter_hierarchy(uuid4(), "ch-1")
+    assert hierarchy is None
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_knowledge_client_persist_pass2_forwards_p3_fields_when_provided():
+    """When all P3 kwargs supplied, persist_pass2 includes them in the body."""
+    client = KnowledgeClient("http://ks", "tok", timeout_s=5.0)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "source_id": "ch-1", "entities_merged": 1,
+        "relations_created": 0, "events_merged": 0, "facts_merged": 0,
+        "evidence_edges": 0,
+    }
+    hp = {"book_id": "b1", "book_path": "book", "part_id": "p1",
+          "part_path": "book/part-1", "part_index": 1,
+          "chapter_id": "c1", "chapter_path": "book/part-1/chapter-1",
+          "chapter_index": 1, "scenes": []}
+    post_mock = AsyncMock(return_value=mock_resp)
+    with patch.object(client._http, "post", post_mock):
+        await client.persist_pass2(
+            user_id=uuid4(), project_id=uuid4(),
+            source_type="chapter", source_id="ch-1", job_id=uuid4(),
+            extraction_model="qwen-test",
+            entities=[], relations=[], events=[], facts=[],
+            hierarchy_paths=hp, book_parts=[("p1", "book/part-1", "1")],
+            is_last_chapter_of_book=True,
+            embedding_model_uuid="emb-uuid", embedding_dimension=1024,
+        )
+    body = post_mock.call_args.kwargs["json"]
+    assert body["hierarchy_paths"] == hp
+    assert body["book_parts"] == [("p1", "book/part-1", "1")]
+    assert body["is_last_chapter_of_book"] is True
+    assert body["embedding_model_uuid"] == "emb-uuid"
+    assert body["embedding_dimension"] == 1024
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_knowledge_client_persist_pass2_omits_p3_fields_when_legacy():
+    """Legacy callers (no P3 kwargs) → body has no P3 keys."""
+    client = KnowledgeClient("http://ks", "tok", timeout_s=5.0)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "source_id": "ch-1", "entities_merged": 0,
+        "relations_created": 0, "events_merged": 0, "facts_merged": 0,
+        "evidence_edges": 0,
+    }
+    post_mock = AsyncMock(return_value=mock_resp)
+    with patch.object(client._http, "post", post_mock):
+        await client.persist_pass2(
+            user_id=uuid4(), project_id=uuid4(),
+            source_type="chapter", source_id="ch-1", job_id=uuid4(),
+            extraction_model="qwen-test",
+            entities=[], relations=[], events=[], facts=[],
+        )
+    body = post_mock.call_args.kwargs["json"]
+    assert "hierarchy_paths" not in body
+    assert "embedding_model_uuid" not in body
+    assert "is_last_chapter_of_book" not in body
+    await client.aclose()
+
+
+# ── P3 runner wire-up — embedding_dimension threaded through JobRow ──
+
+
+@pytest.mark.asyncio
+async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
+    """SQL JOIN to knowledge_projects threads embedding_dimension onto JobRow."""
+    from app.runner import _get_running_jobs
+    project_id = uuid4()
+    user_id = uuid4()
+    fake_row = {
+        "job_id": uuid4(), "user_id": user_id, "project_id": project_id,
+        "scope": "chapters", "scope_range": None, "status": "running",
+        "llm_model": "qwen", "embedding_model": "emb-uuid",
+        "max_spend_usd": Decimal("10"), "items_total": 5,
+        "items_processed": 0, "current_cursor": None,
+        "cost_spent_usd": Decimal("0"),
+        "embedding_dimension": 1024,
+    }
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[fake_row])
+    jobs = await _get_running_jobs(pool)
+    assert len(jobs) == 1
+    assert jobs[0].embedding_dimension == 1024
+
+
+@pytest.mark.asyncio
+async def test_get_running_jobs_handles_null_embedding_dimension():
+    """LEFT JOIN can return NULL dimension for projects with no embedding."""
+    from app.runner import _get_running_jobs
+    fake_row = {
+        "job_id": uuid4(), "user_id": uuid4(), "project_id": uuid4(),
+        "scope": "chapters", "scope_range": None, "status": "running",
+        "llm_model": "qwen", "embedding_model": "",
+        "max_spend_usd": None, "items_total": None,
+        "items_processed": 0, "current_cursor": None,
+        "cost_spent_usd": Decimal("0"),
+        "embedding_dimension": None,
+    }
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[fake_row])
+    jobs = await _get_running_jobs(pool)
+    assert jobs[0].embedding_dimension is None
+
+
+# ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───
+
+
+@pytest.fixture(scope="module")
+def _worker_ai_span_exporter():
+    """Install an in-memory OTel exporter as the global provider so
+    every `tracer.start_as_current_span` in app.runner exports here.
+
+    Module-scoped because OTel's `set_tracer_provider` is set-once;
+    re-installing per test silently no-ops on the second call.
+    """
+    from opentelemetry import trace as _trace
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider(resource=Resource.create({"service.name": "worker-ai-test"}))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    _trace.set_tracer_provider(provider)
+
+    # Re-create the module-level tracer so it binds to the new provider
+    # (the original was created at module import before the test provider
+    # existed).
+    from app import runner as _runner
+    _runner.tracer = _trace.get_tracer(_runner.__name__)
+    return exporter
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_emits_parent_span_with_job_attributes(
+    mock_extract_persist, _worker_ai_span_exporter,
+):
+    """The decorator MUST wrap each process_job call in one OTel span
+    named `worker_ai.process_job`, carrying the job's identifiers as
+    attributes so an operator filtering Tempo by `job.id` finds the
+    whole job trace (and all SDK-call children under it via httpx
+    instrumentation in production).
+    """
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", items_total=7)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()
+    gc = _mock_glossary_client()
+
+    _worker_ai_span_exporter.clear()
+    await process_job(pool, kc, llm, bc, gc, job)
+
+    spans = [
+        s for s in _worker_ai_span_exporter.get_finished_spans()
+        if s.name == "worker_ai.process_job"
+    ]
+    assert len(spans) == 1, (
+        f"expected exactly one worker_ai.process_job span, got "
+        f"{[s.name for s in _worker_ai_span_exporter.get_finished_spans()]}"
+    )
+    span = spans[0]
+    attrs = dict(span.attributes or {})
+    assert attrs["job.id"] == str(job.job_id)
+    assert attrs["job.scope"] == "chapters"
+    assert attrs["job.project_id"] == str(job.project_id)
+    assert attrs["job.user_id"] == str(job.user_id)
+    assert attrs["job.items_total"] == 7
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_span_handles_none_items_total(
+    mock_extract_persist, _worker_ai_span_exporter,
+):
+    """Defensive: `items_total` is nullable on the JobRow (backfill case,
+    pre-K16.7 jobs). The span attribute must coerce to 0 so the OTel
+    SDK doesn't reject the None value (attribute values must be
+    primitive types)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", items_total=None)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()
+    gc = _mock_glossary_client()
+
+    _worker_ai_span_exporter.clear()
+    await process_job(pool, kc, llm, bc, gc, job)
+
+    spans = [
+        s for s in _worker_ai_span_exporter.get_finished_spans()
+        if s.name == "worker_ai.process_job"
+    ]
+    assert len(spans) == 1
+    assert dict(spans[0].attributes or {})["job.items_total"] == 0

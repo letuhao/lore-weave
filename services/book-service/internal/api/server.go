@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,14 +21,35 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/book-service/internal/config"
+	"github.com/loreweave/llmgw"
 )
 
+// imageGenerator is book-service's consumer-defined interface against
+// the unified gateway SDK. Tests inject a mock; production wires the
+// concrete *llmgw.Client (which satisfies this implicitly).
+type imageGenerator interface {
+	GenerateImage(ctx context.Context, req llmgw.GenerateImageRequest) (*llmgw.ImageGenResult, error)
+}
+
+// audioGenerator — Phase 5e-β.2. Consumer-defined interface for batch
+// TTS through the unified gateway. Separate from imageGenerator so
+// audio.go's tests can mock without stubbing image_gen, and vice versa.
+// Production wires the SAME concrete *llmgw.Client to both fields
+// (Go's structural-typing satisfies both implicitly).
+type audioGenerator interface {
+	GenerateAudio(ctx context.Context, req llmgw.GenerateAudioRequest) (*llmgw.AudioGenResult, error)
+}
+
 type Server struct {
-	pool   *pgxpool.Pool
-	cfg    *config.Config
-	secret []byte
-	minio  *minio.Client
+	pool           *pgxpool.Pool
+	cfg            *config.Config
+	secret         []byte
+	minio          *minio.Client
+	llmgw          imageGenerator // Phase 5e-β.1; nil if config missing — handler checks
+	audioGenClient audioGenerator // Phase 5e-β.2; satisfied by same *llmgw.Client
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -41,10 +63,37 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 			s.minio = mc
 		}
 	}
+	// Phase 5e-β.1 — wire unified gateway SDK. nil-on-misconfig matches
+	// the s.minio pattern above; handler checks `if s.llmgw == nil`.
+	// config.Load() already enforces both env vars are non-empty, so the
+	// outer guard is dead-defensive — but the NewClient error path is
+	// real (future SDK validation may add checks). Log loudly on failure
+	// so a silent 503-forever loop is debuggable. (/review-impl(BUILD)
+	// HIGH#3.)
+	if cfg.LLMGatewayInternalURL != "" && cfg.InternalServiceToken != "" {
+		lc, err := llmgw.NewClient(llmgw.Options{
+			BaseURL:       cfg.LLMGatewayInternalURL,
+			AuthMode:      llmgw.AuthInternal,
+			InternalToken: cfg.InternalServiceToken,
+			// UserID empty at ctor — book-service is multi-tenant; the
+			// per-call UserID override (set to the owner_id in the route
+			// handler) is the actual identity per request.
+		})
+		if err != nil {
+			slog.Error("book-service: llmgw.NewClient failed; /media-generate + /audio will return 503 until fixed",
+				"err", err,
+				"base_url", cfg.LLMGatewayInternalURL)
+		} else {
+			s.llmgw = lc
+			// Phase 5e-β.2 — same *llmgw.Client also satisfies audioGenerator.
+			s.audioGenClient = lc
+		}
+	}
 	return s
 }
 
-var internalClient = &http.Client{Timeout: 10 * time.Second}
+// Phase 6c — traced transport so outbound calls carry a W3C traceparent + emit a CLIENT span.
+var internalClient = &http.Client{Timeout: 10 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +109,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before Recoverer so the span
+	// survives (and is marked 500) when a handler panics.
+	r.Use(observability.ChiMiddleware())
 	r.Use(middleware.Recoverer)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {
@@ -95,6 +147,14 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
+		// P2 (hierarchical extraction T3) — knowledge-service consumes these
+		// for per-leaf orchestration. Spec D8 + scenes.go.
+		r.Get("/books/{book_id}/chapters/{chapter_id}/scenes", s.getInternalScenesByChapter)
+		r.Get("/books/{book_id}/chapters/{chapter_id}/draft-text", s.getInternalChapterDraftText)
+		// P3 D-P3-EXTRACTION-CALLER-WIRE-UP — worker-ai consumes this to
+		// build the HierarchyPathsPayload it forwards to knowledge-service's
+		// /persist-pass2 (so the receiving side can enqueue summaries).
+		r.Get("/books/{book_id}/chapters/{chapter_id}/hierarchy", s.getInternalChapterHierarchy)
 		// C6 (D-K19b.3-01 + D-K19e-β-01) — batch chapter-title resolver.
 		// Cross-book query (caller passes a set of chapter_ids from any
 		// books they own); sits under /internal/chapters rather than
@@ -399,7 +459,7 @@ func (s *Server) createBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Title            string `json:"title"`
+		Title            string   `json:"title"`
 		Description      string   `json:"description"`
 		OriginalLanguage string   `json:"original_language"`
 		Summary          string   `json:"summary"`
@@ -558,23 +618,23 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 		genreTags = []string{}
 	}
 	writeJSON(w, status, map[string]any{
-		"book_id":           id,
-		"owner_user_id":     owner,
-		"title":             title,
-		"description":       desc,
-		"original_language": lang,
-		"summary":           summary,
-		"cover":             cover,
-		"chapter_count":     chapterCount,
-		"visibility":        s.fetchSharingVisibility(ctx, id),
-		"lifecycle_state":   state,
-		"genre_tags":        genreTags,
-		"wiki_settings":        json.RawMessage(wikiSettings),
-		"extraction_profile":   json.RawMessage(extractionProfile),
-		"trashed_at":           trashedAt,
-		"purge_eligible_at": purgeAt,
-		"created_at":        createdAt,
-		"updated_at":        updatedAt,
+		"book_id":            id,
+		"owner_user_id":      owner,
+		"title":              title,
+		"description":        desc,
+		"original_language":  lang,
+		"summary":            summary,
+		"cover":              cover,
+		"chapter_count":      chapterCount,
+		"visibility":         s.fetchSharingVisibility(ctx, id),
+		"lifecycle_state":    state,
+		"genre_tags":         genreTags,
+		"wiki_settings":      json.RawMessage(wikiSettings),
+		"extraction_profile": json.RawMessage(extractionProfile),
+		"trashed_at":         trashedAt,
+		"purge_eligible_at":  purgeAt,
+		"created_at":         createdAt,
+		"updated_at":         updatedAt,
 	})
 }
 
@@ -1698,20 +1758,20 @@ FROM books b WHERE b.id=$1
 	}
 	ProjectionTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"book_id":           id,
-		"owner_user_id":     owner,
-		"title":             title,
-		"description":       nullableString(desc),
-		"original_language": nullableString(lang),
-		"summary_excerpt":   excerpt(summary, 180),
-		"has_cover":         hasCover,
-		"cover_url":         coverURL,
-		"chapter_count":     chapterCount,
-		"lifecycle_state":   state,
-		"genre_tags":        genreTags,
-		"wiki_settings":        json.RawMessage(wikiSettings),
-		"extraction_profile":   json.RawMessage(extractionProfile),
-		"created_at":           createdAt,
+		"book_id":            id,
+		"owner_user_id":      owner,
+		"title":              title,
+		"description":        nullableString(desc),
+		"original_language":  nullableString(lang),
+		"summary_excerpt":    excerpt(summary, 180),
+		"has_cover":          hasCover,
+		"cover_url":          coverURL,
+		"chapter_count":      chapterCount,
+		"lifecycle_state":    state,
+		"genre_tags":         genreTags,
+		"wiki_settings":      json.RawMessage(wikiSettings),
+		"extraction_profile": json.RawMessage(extractionProfile),
+		"created_at":         createdAt,
 	})
 }
 
@@ -1863,13 +1923,13 @@ FROM chapter_blocks WHERE chapter_id=$1
 // service response instead of per-row.
 //
 // /review-impl M2 test gap: the Go tests for this handler (in
-// ``server_test.go``) exercise only the pre-DB paths (empty list /
-// oversized / invalid JSON) via ``s := &Server{}`` with a nil pool.
-// The happy-path SQL (column names, ``ANY($1::uuid[])`` array codec,
-// ``lifecycle_state='active'`` filter) follows the conventions from
-// ``getInternalBookChapters`` / ``getInternalBookChapter`` which ARE
+// “server_test.go“) exercise only the pre-DB paths (empty list /
+// oversized / invalid JSON) via “s := &Server{}“ with a nil pool.
+// The happy-path SQL (column names, “ANY($1::uuid[])“ array codec,
+// “lifecycle_state='active'“ filter) follows the conventions from
+// “getInternalBookChapters“ / “getInternalBookChapter“ which ARE
 // exercised by knowledge-service integration tests hitting
-// ``/internal/books/{book_id}/chapters`` live. A manual-curl smoke
+// “/internal/books/{book_id}/chapters“ live. A manual-curl smoke
 // in docker before prod promotion is the current safety net for this
 // specific handler — if the pattern proves fragile across cycles,
 // add a testcontainer-backed Go integration test.
@@ -1957,7 +2017,7 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 		writeJSON(
 			w, http.StatusOK,
 			map[string]any{
-				"titles":          titles,
+				"titles":           titles,
 				"scan_error_count": scanErrors,
 			},
 		)

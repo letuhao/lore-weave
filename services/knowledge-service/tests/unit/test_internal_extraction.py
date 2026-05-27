@@ -605,3 +605,376 @@ def test_persist_pass2_passes_anchors_to_writer(
     assert resp.status_code == 200
     write_kwargs = mock_write.call_args.kwargs
     assert write_kwargs["anchors"] == [fake_anchor]
+
+
+# ── P3 D-P3-EXTRACTION-CALLER-WIRE-UP — /persist-pass2 P3 fields ─────────
+
+
+def _hierarchy_paths_payload(**overrides):
+    defaults = {
+        "book_id": str(uuid4()),
+        "book_path": "book",
+        "book_title": "The Book",
+        "part_id": str(uuid4()),
+        "part_path": "book/part-1",
+        "part_index": 1,
+        "part_title": "Part 1",
+        "chapter_id": str(uuid4()),
+        "chapter_path": "book/part-1/chapter-1",
+        "chapter_index": 1,
+        "chapter_title": "Chapter 1",
+        "scenes": [],
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_forwards_hierarchy_paths_to_writer(
+    mock_settings, mock_write, mock_neo4j, mock_anchors,
+):
+    """When hierarchy_paths supplied, /persist-pass2 forwards a
+    HierarchyPaths dataclass to write_pass2_extraction (D2a Tx)."""
+    from app.extraction.hierarchy_writer import HierarchyPaths
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    body = _persist_body(hierarchy_paths=_hierarchy_paths_payload(
+        chapter_path="book/part-1/chapter-7", chapter_index=7,
+    ))
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    hp_arg = mock_write.call_args.kwargs["hierarchy_paths"]
+    assert isinstance(hp_arg, HierarchyPaths)
+    assert hp_arg.chapter_path == "book/part-1/chapter-7"
+    assert hp_arg.chapter_index == 7
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_enqueues_chapter_summary_when_all_deps_present(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """With hierarchy + embedding model + dimension supplied, the
+    endpoint enqueues a `summary.chapter` message."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(return_value="msg-id-1")
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=str(uuid4()),
+        embedding_dimension=1024,
+        is_last_chapter_of_book=False,
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    # exactly 1 enqueue (chapter only, not last chapter)
+    assert enqueue_mock.await_count == 1
+    msg = enqueue_mock.await_args.args[0]
+    assert msg.level == "chapter"
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_last_chapter_also_enqueues_part_and_book(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """is_last_chapter_of_book=True fires chapter + N parts + book = 2+N total."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(return_value="msg-id")
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=str(uuid4()),
+        embedding_dimension=1024,
+        is_last_chapter_of_book=True,
+        book_parts=[
+            [str(uuid4()), "book/part-1", "1"],
+            [str(uuid4()), "book/part-2", "2"],
+        ],
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    # 1 chapter + 2 parts + 1 book = 4 enqueues
+    assert enqueue_mock.await_count == 4
+    levels = [call.args[0].level for call in enqueue_mock.await_args_list]
+    assert levels == ["chapter", "part", "part", "book"]
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_skips_enqueue_when_embedding_deps_missing(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """hierarchy_paths supplied but no embedding info → no enqueue."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock()
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        # embedding_model_uuid / embedding_dimension intentionally omitted
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    assert resp.status_code == 200, resp.text
+    enqueue_mock.assert_not_called()
+
+
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_p3_enqueue_failure_does_not_500(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_get_enqueue,
+):
+    """Best-effort: Redis enqueue failure must not roll back the
+    already-committed Postgres + Neo4j writes."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+    enqueue_mock = AsyncMock(side_effect=RuntimeError("redis down"))
+    mock_get_enqueue.return_value = enqueue_mock
+
+    body = _persist_body(
+        hierarchy_paths=_hierarchy_paths_payload(),
+        embedding_model_uuid=str(uuid4()),
+        embedding_dimension=1024,
+    )
+    client = _client()
+    resp = _post_persist(client, body)
+
+    # Endpoint still returns 200 — write succeeded; only enqueue failed.
+    assert resp.status_code == 200, resp.text
+
+
+# ── P3 — /internal/extraction/summarize-message ─────────────────────────
+
+
+def _summarize_message_body(**overrides):
+    defaults = {
+        "level": "chapter",
+        "node_path": "book/part-1/chapter-3",
+        "node_id": str(uuid4()),
+        "book_id": str(uuid4()),
+        "user_id": str(uuid4()),
+        "project_id": str(uuid4()),
+        "job_id": str(uuid4()),
+        "model_ref": "gemma-4-26b",
+        "embedding_model_uuid": str(uuid4()),
+        "embedding_dimension": 1024,
+        "retry_at_epoch": 0.0,
+        "retried_n": 0,
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+def _post_summarize_message(client, body, token=_TEST_TOKEN):
+    headers = {"X-Internal-Token": token} if token else {}
+    return client.post(
+        "/internal/extraction/summarize-message", json=body, headers=headers,
+    )
+
+
+def test_summarize_message_requires_internal_token():
+    client = _client()
+    resp = _post_summarize_message(client, _summarize_message_body(), token=None)
+    assert resp.status_code == 401
+
+
+def test_summarize_message_validates_level_enum():
+    client = _client()
+    body = _summarize_message_body(level="paragraph")  # not in chapter/part/book
+    resp = _post_summarize_message(client, body)
+    assert resp.status_code == 422
+
+
+def test_summarize_message_validates_embedding_dimension_positive():
+    client = _client()
+    body = _summarize_message_body(embedding_dimension=0)
+    resp = _post_summarize_message(client, body)
+    assert resp.status_code == 422
+
+
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+def test_summarize_message_dispatches_to_processor(
+    mock_get_enqueue, mock_get_pool, mock_neo4j,
+):
+    """Happy path: router builds deps, calls process_summarize_message,
+    returns SummaryProcessResult JSON."""
+    from app.jobs.summary_processor import SummaryProcessResult
+    expected_summary_id = uuid4()
+
+    # Stub process_summarize_message at import site.
+    fake_result = SummaryProcessResult(
+        level="chapter",
+        node_id="node-1",
+        cache_hit=False,
+        race_winner=True,
+        re_enqueued=False,
+        skipped_retry_exhausted=False,
+        summary_id=expected_summary_id,
+    )
+
+    async def _fake_process(msg, deps):
+        # Confirm deps wiring — message_id round-trip + all 5 fields present.
+        assert deps.knowledge_pool is mock_get_pool.return_value
+        assert deps.summary_enqueue is mock_get_enqueue.return_value
+        assert deps.embedding_client is not None
+        assert deps.llm_client is not None
+        assert deps.neo4j_session is not None
+        return fake_result
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "app.jobs.summary_processor.process_summarize_message",
+        side_effect=_fake_process,
+    ):
+        client = _client()
+        body = _summarize_message_body(node_id="node-1")
+        resp = _post_summarize_message(client, body)
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["level"] == "chapter"
+    assert data["node_id"] == "node-1"
+    assert data["race_winner"] is True
+    assert data["summary_id"] == str(expected_summary_id)
+
+
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._get_summary_enqueue")
+def test_summarize_message_returns_re_enqueued_flag(
+    mock_get_enqueue, mock_get_pool, mock_neo4j,
+):
+    """D9 defensive-failure path: processor re-enqueues, router surfaces flag."""
+    from app.jobs.summary_processor import SummaryProcessResult
+
+    async def _fake_process(msg, deps):
+        return SummaryProcessResult(
+            level="part", node_id="p1",
+            cache_hit=False, race_winner=False,
+            re_enqueued=True, skipped_retry_exhausted=False,
+            summary_id=None,
+        )
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "app.jobs.summary_processor.process_summarize_message",
+        side_effect=_fake_process,
+    ):
+        client = _client()
+        body = _summarize_message_body(level="part", node_id="p1")
+        resp = _post_summarize_message(client, body)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["re_enqueued"] is True
+    assert data["summary_id"] is None
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+def test_summarize_message_pool_unavailable_returns_503(mock_get_pool):
+    """Knowledge pool init failure → 503 (matches existing pattern in
+    internal_summarize.py)."""
+    mock_get_pool.side_effect = RuntimeError("pool not initialized")
+    client = _client()
+    resp = _post_summarize_message(client, _summarize_message_body())
+    assert resp.status_code == 503
+
+
+def test_embedding_adapter_unwraps_first_vector():
+    """Adapter bridges EmbeddingClient.embed (batch) → single-vector return."""
+    from app.routers.internal_extraction import _EmbeddingAdapter
+    from app.clients.embedding_client import EmbeddingResult
+    import asyncio
+
+    real = MagicMock()
+    real.embed = AsyncMock(return_value=EmbeddingResult(
+        embeddings=[[0.1, 0.2, 0.3]], dimension=3, model="bge-m3",
+    ))
+    user_id = uuid4()
+    adapter = _EmbeddingAdapter(real, user_id=user_id)
+    vec = asyncio.run(adapter.embed(text="hello", model_uuid="model-uuid-1"))
+
+    assert vec == [0.1, 0.2, 0.3]
+    real.embed.assert_awaited_once_with(
+        user_id=user_id, model_source="user_model",
+        model_ref="model-uuid-1", texts=["hello"],
+    )
+
+
+def test_embedding_adapter_raises_on_empty_vector():
+    """Defensive: real client should never return an empty result, but
+    if it does, surface as RuntimeError so the worker retries."""
+    from app.routers.internal_extraction import _EmbeddingAdapter
+    from app.clients.embedding_client import EmbeddingResult
+    import asyncio
+
+    real = MagicMock()
+    real.embed = AsyncMock(return_value=EmbeddingResult(
+        embeddings=[[]], dimension=0, model="bge-m3",
+    ))
+    adapter = _EmbeddingAdapter(real, user_id=uuid4())
+    with pytest.raises(RuntimeError, match="empty vector"):
+        asyncio.run(adapter.embed(text="x", model_uuid="m"))

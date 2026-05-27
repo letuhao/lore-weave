@@ -18,9 +18,9 @@ import (
 // upstream's `Retry-After` header value in seconds (delta-seconds form
 // only; HTTP-date form is ignored). Nil when header absent/unparseable.
 type ErrUpstreamRateLimited struct {
-	StatusCode   int
-	Body         string // truncated provider response body for logging
-	RetryAfterS  *float64
+	StatusCode  int
+	Body        string // truncated provider response body for logging
+	RetryAfterS *float64
 }
 
 func (e *ErrUpstreamRateLimited) Error() string {

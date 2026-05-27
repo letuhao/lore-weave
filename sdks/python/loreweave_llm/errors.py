@@ -49,9 +49,24 @@ class LLMUpstreamError(LLMError):
 
     Distinguished from `LLMRateLimited` etc. because these surface as
     `event: error` SSE frames, not as HTTP-level errors.
+
+    /review-impl(BUILD round 3) H#2 — accepts `body` kwarg for diagnostic
+    forwarding from streaming-error paths. 8 call sites across client.py
+    pass `body=""` when the upstream gave no error body; previously this
+    raised TypeError at runtime.
     """
 
     code = "LLM_UPSTREAM_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        body: str | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(message, **kwargs)
+        self.body = body
 
 
 class LLMStreamNotSupported(LLMError):
@@ -94,6 +109,135 @@ class LLMHttpError(LLMError):
     """
 
     code = "LLM_HTTP_ERROR"
+
+
+# ── Phase 5b — audio-specific exceptions ─────────────────────────────
+
+
+class LLMAudioTooLarge(LLMError):
+    """Caller-side audio exceeds the gateway's 25MB cap.
+
+    Fires from TWO places in the gateway:
+    - Multipart submit handler — request body exceeds the
+      http.MaxBytesReader cap; rejected with HTTP 413 BEFORE the row
+      is inserted.
+    - Adapter belt-and-suspenders — AudioBytes slice exceeds
+      provider.MaxAudioBytes; finalizes the job as failed.
+
+    Either way the caller's audio is bad; not retryable.
+    """
+
+    code = "LLM_AUDIO_TOO_LARGE"
+
+
+class LLMAudioFetchFailed(LLMError):
+    """URL-mode STT: gateway couldn't GET the audio_url.
+
+    Covers 4xx/5xx responses from the URL, DNS lookup failures,
+    transport timeouts, and parse errors on the URL string itself.
+    Distinguishes "we couldn't reach your audio host" from "Whisper
+    upstream rejected the audio" (LLMUpstreamError).
+
+    Phase 5a only — bytes-mode (Phase 5b) skips the fetch step entirely.
+    """
+
+    code = "LLM_AUDIO_FETCH_FAILED"
+
+
+class LLMAudioURLDisallowed(LLMError):
+    """URL-mode STT: audio_url host resolves to a disallowed IP range.
+
+    SSRF guard rejects loopback (127.0.0.0/8, ::1), private (RFC1918 +
+    ULA), link-local (169.254.0.0/16 — AWS IMDS endpoint), unspecified
+    (0.0.0.0), and multicast addresses. The audio_url scheme must also
+    be http:// or https://.
+
+    Phase 5a only.
+    """
+
+    code = "LLM_AUDIO_URL_DISALLOWED"
+
+
+# ── Phase 5c-α — image-gen-specific exceptions ───────────────────────
+
+
+class LLMImageContentPolicy(LLMError):
+    """Upstream rejected the prompt by content-policy / safety rules
+    (DALL-E "your_request_was_rejected", gpt-image-1 safety system,
+    local backends with policy filters).
+
+    Distinct from generic LLMUpstreamError so caller's UX can surface
+    a "rephrase your prompt" hint rather than a "try again" retry.
+    Maps from gateway code: LLM_IMAGE_CONTENT_POLICY_VIOLATION.
+    """
+
+    code = "LLM_IMAGE_CONTENT_POLICY_VIOLATION"
+
+
+class LLMImageGenerationFailed(LLMError):
+    """Upstream image generation failed for a non-content-policy reason
+    (model loading, backend timeout, ambiguous failure, oversized
+    response body). Caller MAY retry once; persistent failures suggest
+    a backend issue rather than a caller-side problem.
+
+    Maps from gateway code: LLM_IMAGE_GENERATION_FAILED.
+    """
+
+    code = "LLM_IMAGE_GENERATION_FAILED"
+
+
+# ── Phase 5d — video-gen-specific exceptions ────────────────────────
+
+
+class LLMVideoContentPolicy(LLMError):
+    """Upstream rejected the prompt by content-policy / safety rules
+    for video generation (rare for local backends; reserved for
+    OpenAI/managed services with safety filters).
+
+    Maps from gateway code: LLM_VIDEO_CONTENT_POLICY_VIOLATION.
+    """
+
+    code = "LLM_VIDEO_CONTENT_POLICY_VIOLATION"
+
+
+class LLMVideoGenerationFailed(LLMError):
+    """Upstream video generation failed for a non-content-policy reason
+    (model loading, backend timeout, ambiguous failure, oversized
+    response body). Caller MAY retry once; persistent failures suggest
+    a backend issue.
+
+    Maps from gateway code: LLM_VIDEO_GENERATION_FAILED.
+    """
+
+    code = "LLM_VIDEO_GENERATION_FAILED"
+
+
+# ── Phase 5e-β.2 — audio_gen-specific exceptions ─────────────────────
+
+
+class LLMAudioGenerationFailed(LLMError):
+    """Upstream batch TTS generation failed for a non-content-policy
+    reason (model loading, ambiguous backend error, zero-byte response).
+    Caller MAY retry but should expect double-bill exposure (TTS is
+    char-billed per upstream request).
+
+    Maps from gateway code: LLM_AUDIO_GENERATION_FAILED.
+    """
+
+    code = "LLM_AUDIO_GENERATION_FAILED"
+
+
+class LLMGatewayStorageError(LLMError):
+    """Phase 5e-β.2 — gateway-side storage failure (upstream TTS
+    succeeded but MinIO staging failed). Distinct from upstream errors
+    so callers DON'T auto-retry — the upstream call burned BYOK char-
+    billing already; retrying would double-charge. Caller should
+    surface the failure to the user and let them decide.
+
+    Maps from gateway code: LLM_GATEWAY_STORAGE_ERROR.
+    """
+
+    code = "LLM_GATEWAY_STORAGE_ERROR"
 
 
 class LLMTransientRetryNeededError(LLMError):
@@ -150,6 +294,21 @@ _CODE_TO_EXC: dict[str, type[LLMError]] = {
     "LLM_DECODE_ERROR": LLMDecodeError,
     "LLM_JOB_NOT_FOUND": LLMJobNotFound,
     "LLM_JOB_TERMINAL": LLMJobTerminal,
+    # Phase 5b — audio-specific exceptions (previously fell through to LLMError).
+    "LLM_AUDIO_TOO_LARGE": LLMAudioTooLarge,
+    "LLM_AUDIO_FETCH_FAILED": LLMAudioFetchFailed,
+    "LLM_AUDIO_URL_DISALLOWED": LLMAudioURLDisallowed,
+    # Phase 5c-α — image-gen-specific exceptions.
+    "LLM_IMAGE_CONTENT_POLICY_VIOLATION": LLMImageContentPolicy,
+    "LLM_IMAGE_GENERATION_FAILED": LLMImageGenerationFailed,
+    # Phase 5d — video-gen-specific exceptions.
+    "LLM_VIDEO_CONTENT_POLICY_VIOLATION": LLMVideoContentPolicy,
+    "LLM_VIDEO_GENERATION_FAILED": LLMVideoGenerationFailed,
+    # Phase 5e-β.2 — audio_gen-specific exception.
+    "LLM_AUDIO_GENERATION_FAILED": LLMAudioGenerationFailed,
+    # Phase 5e-β.2 — gateway-side storage failure (TTS succeeded but
+    # staging failed). Distinct so callers don't auto-retry double-bill.
+    "LLM_GATEWAY_STORAGE_ERROR": LLMGatewayStorageError,
 }
 
 

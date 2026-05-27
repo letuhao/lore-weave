@@ -7,6 +7,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/auth-service/internal/config"
 	"github.com/loreweave/auth-service/internal/ratelimit"
 )
@@ -31,6 +33,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before Recoverer so the span
+	// survives (and is marked 500) when a handler panics.
+	r.Use(observability.ChiMiddleware())
 	r.Use(middleware.Recoverer)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {

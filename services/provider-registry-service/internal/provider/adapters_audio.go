@@ -25,6 +25,11 @@ func (a *anthropicAdapter) Speak(_ context.Context, _, _, _ string, _ SpeakInput
 	return ErrOperationNotSupported
 }
 
+// Phase 5e-β.2 — GenerateAudio stub.
+func (a *anthropicAdapter) GenerateAudio(_ context.Context, _, _, _ string, _ GenerateAudioInput) (GenerateAudioOutput, Usage, error) {
+	return GenerateAudioOutput{}, Usage{}, ErrOperationNotSupported
+}
+
 // ── Ollama ────────────────────────────────────────────────────────────
 
 func (a *ollamaAdapter) Transcribe(_ context.Context, _, _, _ string, _ TranscribeInput) (TranscribeOutput, Usage, error) {
@@ -35,6 +40,10 @@ func (a *ollamaAdapter) Speak(_ context.Context, _, _, _ string, _ SpeakInput, _
 	return ErrOperationNotSupported
 }
 
+func (a *ollamaAdapter) GenerateAudio(_ context.Context, _, _, _ string, _ GenerateAudioInput) (GenerateAudioOutput, Usage, error) {
+	return GenerateAudioOutput{}, Usage{}, ErrOperationNotSupported
+}
+
 // ── LM Studio ─────────────────────────────────────────────────────────
 
 func (a *lmStudioAdapter) Transcribe(_ context.Context, _, _, _ string, _ TranscribeInput) (TranscribeOutput, Usage, error) {
@@ -43,4 +52,8 @@ func (a *lmStudioAdapter) Transcribe(_ context.Context, _, _, _ string, _ Transc
 
 func (a *lmStudioAdapter) Speak(_ context.Context, _, _, _ string, _ SpeakInput, _ AudioEmitFn) error {
 	return ErrOperationNotSupported
+}
+
+func (a *lmStudioAdapter) GenerateAudio(_ context.Context, _, _, _ string, _ GenerateAudioInput) (GenerateAudioOutput, Usage, error) {
+	return GenerateAudioOutput{}, Usage{}, ErrOperationNotSupported
 }

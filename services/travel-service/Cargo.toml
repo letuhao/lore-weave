@@ -1,0 +1,17 @@
+[package]
+name = "travel-service"
+version = "0.1.0-cycle0"
+description = "Travel mechanics service for the LLM MMO RPG — hosts the actor_travel_state / composite_journey / mount / travel_encounter / travel_party aggregates (TVL_001..TVL_005). Cycle 0 scaffold: no behavior; awaits the DP-kernel + the foundation actor substrate."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "travel-service"
+path = "src/main.rs"
+
+# Cycle 0 is an empty-compiling scaffold — no dependencies yet.
+# Cycle 4 (TVL_001) adds deps once the DP-kernel + foundation actor substrate exist.
+[dependencies]

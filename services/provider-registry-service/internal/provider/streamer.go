@@ -22,9 +22,94 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 )
+
+// streamIdleTimeout — per-Read idle timeout applied to streaming response
+// bodies via wrapStreamBody. 0 means "disabled" — the historical default,
+// preserving the "No wall-clock timeout anywhere on this path" philosophy
+// documented at the top of this file. The env var allows operators to opt
+// in to defense-in-depth against an upstream provider (notably LM Studio
+// under model auto-eviction) that drops a streaming connection without
+// emitting `done` or `err`. A non-idle timeout is fundamentally different
+// from a wall-clock timeout — it only fires when NO bytes have arrived in
+// the window, so a legitimately slow but progressing model never trips it.
+//
+// Default 300s in deployment (compose) — real models stream tokens within
+// seconds; 300s of no upstream activity ≈ certainly dead.
+var streamIdleTimeout time.Duration
+
+func init() {
+	if s := os.Getenv("LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			streamIdleTimeout = time.Duration(n) * time.Second
+		}
+	}
+}
+
+// idleTimeoutReader wraps an io.ReadCloser with a per-Read idle timer.
+// When no Read returns within `timeout`, the timer closes the underlying
+// body which unblocks the pending Read with a "use of closed" error; the
+// next Read call (or this one's err handling) sees `closed.Load() == true`
+// and returns ErrUpstreamTimeout so callers can classify the failure mode
+// instead of seeing a generic transport error.
+//
+// timeout <= 0 makes Read a transparent pass-through. The check is at the
+// top of every Read so callers can swap the timeout at runtime if needed.
+type idleTimeoutReader struct {
+	body    io.ReadCloser
+	timeout time.Duration
+	closed  atomic.Bool // set true when our timer closed body (vs caller-driven close)
+}
+
+func newIdleTimeoutReader(body io.ReadCloser, timeout time.Duration) *idleTimeoutReader {
+	return &idleTimeoutReader{body: body, timeout: timeout}
+}
+
+func (r *idleTimeoutReader) Read(p []byte) (int, error) {
+	if r.timeout <= 0 {
+		return r.body.Read(p)
+	}
+	// Per-Read timer: as long as Read returns within the window, the timer
+	// is Stopped and never fires. If Read blocks past the window, the timer
+	// closes the body, the pending Read returns an error, and we translate
+	// to ErrUpstreamTimeout below.
+	timer := time.AfterFunc(r.timeout, func() {
+		r.closed.Store(true)
+		_ = r.body.Close()
+	})
+	n, err := r.body.Read(p)
+	timer.Stop()
+	if err != nil && r.closed.Load() {
+		// Body was closed by OUR timer mid-read → upstream went idle.
+		// Surface as the canonical upstream-timeout error so caller code
+		// (worker.go retry/permanent classification) treats it correctly.
+		return n, &ErrUpstreamTimeout{
+			Underlying: fmt.Errorf("no upstream data for %s", r.timeout),
+		}
+	}
+	return n, err
+}
+
+func (r *idleTimeoutReader) Close() error {
+	return r.body.Close()
+}
+
+// wrapStreamBody installs the idle-timeout reader on a streaming response's
+// Body when streamIdleTimeout is enabled. Called by openCompletionStream
+// (OpenAI / LM Studio / Ollama path) and doStreamPOST (Anthropic path) so
+// every streaming upstream goes through the same defense.
+func wrapStreamBody(resp *http.Response) *http.Response {
+	if resp == nil || resp.Body == nil || streamIdleTimeout <= 0 {
+		return resp
+	}
+	resp.Body = newIdleTimeoutReader(resp.Body, streamIdleTimeout)
+	return resp
+}
 
 // StreamChunkKind enumerates the canonical event types emitted to callers.
 // These map 1:1 to the StreamEventEnvelope discriminator in
@@ -200,8 +285,8 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
 			Usage *struct {
-				PromptTokens             int  `json:"prompt_tokens"`
-				CompletionTokens         int  `json:"completion_tokens"`
+				PromptTokens            int `json:"prompt_tokens"`
+				CompletionTokens        int `json:"completion_tokens"`
 				CompletionTokensDetails *struct {
 					ReasoningTokens int `json:"reasoning_tokens"`
 				} `json:"completion_tokens_details"`
@@ -352,7 +437,7 @@ func openCompletionStream(
 		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
 		return nil, ClassifyUpstreamHTTP(resp.StatusCode, body, retryAfter)
 	}
-	return resp, nil
+	return wrapStreamBody(resp), nil
 }
 
 // parseRetryAfter parses the "Retry-After: N" header (delta-seconds form

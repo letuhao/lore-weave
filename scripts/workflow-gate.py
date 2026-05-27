@@ -195,6 +195,69 @@ def _bridge_to_contexthub(lesson_type: str, title: str, content: str, tags: list
         print(f"WARN: bridge exception: {e}", file=sys.stderr)
 
 
+def _check_live_smoke_evidence(evidence: str) -> None:
+    """Emit a soft WARN (stderr only, never blocks) when VERIFY evidence on a
+    cross-service change lacks a live-smoke acknowledgement token.
+
+    Motivation — recurring pattern caught 4 times in sessions 58-59:
+    a feature ships across two service boundaries, the unit suite is green
+    against mocks, but the actual cross-service contract is broken (timeout
+    drift, header omission, UUID-vs-name drift, env mismatch). The bug surfaces
+    only when the full stack runs. Mock-only coverage hides it for months.
+
+    Soft signal: this prompts the agent / human to either:
+      - paste a one-liner of live-smoke evidence, or
+      - acknowledge the deferral (D-<NAME>-LIVE-SMOKE), or
+      - acknowledge live infra unavailable (legitimate at dev time).
+
+    "Cross-service" = git diff (HEAD baseline = staged + unstaged + working tree)
+    touches ≥ 2 distinct ``services/<name>/`` prefixes. frontend/, contracts/,
+    infra/, docs/ are NOT counted (service boundary risk lives in BE-to-BE
+    contracts). Git failure → silent skip (workflow-gate must never break on
+    infra failure).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return
+        files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except (subprocess.SubprocessError, OSError, FileNotFoundError):
+        return
+
+    services = set()
+    for path in files:
+        m = re.match(r"^services/([^/]+)/", path)
+        if m:
+            services.add(m.group(1))
+
+    if len(services) < 2:
+        return
+
+    # Acknowledgement tokens — any one in evidence satisfies the gate.
+    ev_lower = evidence.lower()
+    tokens = ("live smoke", "live-smoke", "live infra unavailable")
+    if any(t in ev_lower for t in tokens):
+        return
+
+    services_list = ", ".join(sorted(services))
+    print(
+        f"WARN: VERIFY evidence does not acknowledge live-smoke for a cross-service\n"
+        f"      change ({len(services)} services touched: {services_list}).\n"
+        f"      Memory pattern feedback_mock_only_coverage_hides_crossservice_bugs:\n"
+        f"      a feature green-on-mocks across a service boundary has ~40% chance\n"
+        f"      of broken-at-birth on the first live smoke (4 hits sessions 58-59).\n"
+        f"      Acknowledge by including ONE of these tokens in your evidence:\n"
+        f"        - 'live smoke: <one-liner>' — confirm a real cross-service call ran\n"
+        f"        - 'LIVE-SMOKE deferred to D-<NAME>-LIVE-SMOKE' — track the deferral\n"
+        f"        - 'live infra unavailable: <reason>' — legitimate dev-time skip\n"
+        f"      This is a soft warning only; the verify phase IS marked complete.",
+        file=sys.stderr,
+    )
+
+
 def load_state() -> dict:
     if not STATE_FILE.exists():
         save_state(dict(INITIAL_STATE))
@@ -356,6 +419,10 @@ def cmd_complete(args: list[str]) -> None:
     save_state(state)
 
     print(f"OK: Phase '{phase}' marked complete")
+
+    # Soft cross-service live-smoke check (debt-prevention; never blocks).
+    if phase == "verify":
+        _check_live_smoke_evidence(evidence)
 
     # AMAW L3 — log to AUDIT_LOG and selectively bridge to ContextHub.
     # No-op for default v2.2 (amaw_enabled=False).

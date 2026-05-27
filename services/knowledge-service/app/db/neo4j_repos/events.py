@@ -120,6 +120,13 @@ class Event(BaseModel):
     # lexicographically. Distinct from `time_cue` (free-text narrative
     # hint, kept for display).
     event_date_iso: str | None = None
+    # C18-DEF-01 — narrative time hint preserved verbatim from the LLM
+    # (e.g. "the next morning", "in his youth", "summer 1880"). Distinct
+    # from event_date_iso: time_cue is free-text for FE display;
+    # event_date_iso is the structured timeline-filter axis (parsed via
+    # parse_time_cue_to_iso when possible). First-write-wins on
+    # ON MATCH so re-mentions don't churn the original phrasing.
+    time_cue: str | None = None
     participants: list[str] = Field(default_factory=list)
     confidence: float = 0.0
     source_types: list[str] = Field(default_factory=list)
@@ -156,6 +163,7 @@ ON CREATE SET
   e.event_order = $event_order,
   e.chronological_order = $chronological_order,
   e.event_date_iso = $event_date_iso,
+  e.time_cue = $time_cue,
   e.participants = $participants,
   e.confidence = $confidence,
   e.source_types = [$source_type],
@@ -179,6 +187,11 @@ ON MATCH SET
     WHEN size($event_date_iso) > size(e.event_date_iso) THEN $event_date_iso
     ELSE e.event_date_iso
   END,
+  // C18-DEF-01: first-write-wins for narrative time hint. Re-mentions
+  // of the same event in different chapters keep the original phrasing
+  // rather than churning to whatever the latest chapter happened to say.
+  // Mirrors event_order / chronological_order's first-write-wins intent.
+  e.time_cue = coalesce(e.time_cue, $time_cue),
   e.participants = CASE
     WHEN size($participants) = 0 THEN e.participants
     ELSE e.participants + [p IN $participants WHERE NOT p IN e.participants]
@@ -209,6 +222,7 @@ async def merge_event(
     event_order: int | None = None,
     chronological_order: int | None = None,
     event_date_iso: str | None = None,
+    time_cue: str | None = None,
     participants: list[str] | None = None,
     source_type: str = "book_content",
     confidence: float = 0.0,
@@ -259,8 +273,11 @@ async def merge_event(
     # order, so the first-spotted entity stays at index 0.
     deduped_participants = list(dict.fromkeys(participants or []))
     # R4: empty string → None so coalesce in Cypher treats it as
-    # "no new value", not "deliberate clear".
+    # "no new value", not "deliberate clear". Applied to time_cue too
+    # for the same reason — a blank narrative hint must not clobber a
+    # stored one on ON MATCH.
     normalized_summary = summary or None
+    normalized_time_cue = time_cue or None
     result = await run_write(
         session,
         _MERGE_EVENT_CYPHER,
@@ -274,6 +291,7 @@ async def merge_event(
         event_order=event_order,
         chronological_order=chronological_order,
         event_date_iso=event_date_iso,
+        time_cue=normalized_time_cue,
         participants=deduped_participants,
         source_type=source_type,
         confidence=confidence,

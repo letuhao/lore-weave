@@ -204,6 +204,56 @@ CREATE TABLE IF NOT EXISTS user_favorites (
   PRIMARY KEY (user_id, book_id)
 );
 CREATE INDEX IF NOT EXISTS idx_favorites_book ON user_favorites(book_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- P1 (hierarchical extraction T1) - 2026-05-23
+-- Spec: docs/specs/2026-05-23-p1-structural-decomposer.md §D2
+--
+-- parts + scenes tables for structural decomposition of imported books.
+-- chapters.part_id + chapters.structural_path tie chapters into the
+-- hierarchy. Legacy chapters: part_id and structural_path stay NULL —
+-- P2 extraction code falls back to chapter_drafts.body when no scenes
+-- exist (R-SELF-1 fix). NO backfill.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS parts (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id         UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  sort_order      INT  NOT NULL,
+  title           TEXT,
+  path            TEXT NOT NULL,
+  parse_version   INT  NOT NULL DEFAULT 1,
+  lifecycle_state TEXT NOT NULL DEFAULT 'active',
+  trashed_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (book_id, sort_order)
+);
+
+CREATE TABLE IF NOT EXISTS scenes (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id      UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  sort_order      INT  NOT NULL,
+  path            TEXT NOT NULL,
+  leaf_text       TEXT NOT NULL,
+  content_hash    TEXT NOT NULL,
+  parse_version   INT  NOT NULL DEFAULT 1,
+  lifecycle_state TEXT NOT NULL DEFAULT 'active',
+  trashed_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (chapter_id, sort_order)
+);
+
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS part_id UUID
+  REFERENCES parts(id) ON DELETE SET NULL;
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS structural_path TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_scenes_chapter_sort_active
+  ON scenes(chapter_id, sort_order) WHERE lifecycle_state = 'active';
+CREATE INDEX IF NOT EXISTS idx_scenes_content_hash ON scenes(content_hash);
+CREATE INDEX IF NOT EXISTS idx_chapters_part ON chapters(part_id)
+  WHERE part_id IS NOT NULL;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

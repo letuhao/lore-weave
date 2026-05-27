@@ -229,6 +229,80 @@ class BookClient:
             return None
 
 
+    # ── P2 (hierarchical extraction T3) — D8 fallback contract ─────────
+
+    async def list_scenes_by_chapter(
+        self, book_id: UUID, chapter_id: UUID,
+    ) -> list[dict] | None:
+        """GET /internal/books/{book_id}/chapters/{chapter_id}/scenes.
+
+        Returns the active scenes for one chapter (P1-decomposed).
+        Empty list means legacy chapter (NULL structural_path) — caller
+        MUST fall back to get_chapter_draft_text (D8 fallback contract).
+
+        Returns None on transport failure (caller treats as transient).
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}/scenes"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d, trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return None
+            data = resp.json()
+            scenes = data.get("scenes") if isinstance(data, dict) else None
+            if not isinstance(scenes, list):
+                return None
+            return scenes
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable fetching scenes: %s trace_id=%s",
+                exc, tid,
+            )
+            return None
+
+    async def get_chapter_draft_text(
+        self, book_id: UUID, chapter_id: UUID,
+    ) -> str | None:
+        """GET /internal/books/{book_id}/chapters/{chapter_id}/draft-text.
+
+        Returns the plain-text projection of chapter_drafts.body (Tiptap
+        JSON → text via book-service-side walker). Used as the P2 legacy
+        fallback per D8: when list_scenes_by_chapter returns empty, the
+        orchestrator wraps this text in one virtual scene.
+
+        Returns None on transport failure or when text is empty/whitespace.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}/draft-text"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d, trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return None
+            data = resp.json()
+            text = data.get("text") if isinstance(data, dict) else None
+            if not isinstance(text, str) or not text.strip():
+                return None
+            return text
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable fetching chapter draft text: %s trace_id=%s",
+                exc, tid,
+            )
+            return None
+
+
 def init_book_client() -> "BookClient":
     global _client
     if _client is not None:

@@ -3,8 +3,10 @@ package api
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +18,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
+
+	"github.com/loreweave/llmgw"
+	"github.com/loreweave/observability"
 )
 
 const maxAudioSize = 20 << 20 // 20 MB
@@ -215,11 +220,55 @@ func (s *Server) deleteAudioSegments(w http.ResponseWriter, r *http.Request) {
 
 // ── Generate TTS audio ─────────────────────────────────────────────────────────
 
-var ttsClient = &http.Client{Timeout: 120 * time.Second}
+// Phase 6c — traced transport so the outbound TTS call carries a W3C
+// traceparent + emits a CLIENT span.
+var ttsClient = &http.Client{Timeout: 120 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 func textHash(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
+}
+
+// writeAudioGenError maps a typed *llmgw.Error (potentially wrapped) to
+// HTTP response. Mirrors writeImageGenError from Phase 5e-β.1.
+//
+// /review-impl(DESIGN) MED#4 — ErrAuthFailed → 402 NO_PROVIDER (BYOK
+// key revoked is the dominant case); ErrRateLimited surfaces Retry-After
+// header per (DESIGN) MED#4 + (BUILD) MED#4 from 5e-β.1.
+func writeAudioGenError(w http.ResponseWriter, err error) {
+	var llmErr *llmgw.Error
+	_ = errors.As(err, &llmErr)
+
+	switch {
+	case errors.Is(err, llmgw.ErrQuotaExceeded):
+		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "AI provider quota exceeded")
+	case errors.Is(err, llmgw.ErrModelNotFound):
+		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "no active AI provider configured")
+	case errors.Is(err, llmgw.ErrInvalidRequest):
+		writeError(w, http.StatusBadRequest, "AUDIO_VALIDATION_ERROR", err.Error())
+	case errors.Is(err, llmgw.ErrRateLimited):
+		if llmErr != nil && llmErr.RetryAfterS > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(llmErr.RetryAfterS)))
+		}
+		writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "AI provider rate-limit")
+	case errors.Is(err, llmgw.ErrAudioGenerationFailed):
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI audio generation failed (retryable)")
+	case errors.Is(err, llmgw.ErrGatewayStorage):
+		// /review-impl(BUILD round 3) C#1 — distinct surface. TTS
+		// succeeded; gateway storage failed. DO NOT auto-retry (would
+		// double-bill BYOK). User should refresh + check if any segments
+		// were preserved before manually re-submitting.
+		writeError(w, http.StatusBadGateway, "GENERATION_STORAGE_FAILED",
+			"TTS succeeded but gateway storage failed; check status before retrying to avoid double-bill")
+	case errors.Is(err, llmgw.ErrUpstream):
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI provider upstream error")
+	case errors.Is(err, llmgw.ErrJobTerminal):
+		writeError(w, http.StatusGatewayTimeout, "GENERATION_CANCELLED", "AI generation cancelled")
+	case errors.Is(err, llmgw.ErrAuthFailed):
+		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "AI provider authentication failed (check API key)")
+	default:
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI audio generation failed")
+	}
 }
 
 func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
@@ -227,7 +276,10 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
 		return
 	}
-	if s.cfg.ProviderRegistryURL == "" || s.cfg.InternalServiceToken == "" {
+	// Phase 5e-β.2 — unified gateway audio_gen replaces direct credential
+	// resolve + per-block TTS POST. s.audioGenClient is nil only when
+	// LLM_GATEWAY_INTERNAL_URL or INTERNAL_SERVICE_TOKEN missing at startup.
+	if s.audioGenClient == nil {
 		writeError(w, http.StatusServiceUnavailable, "GENERATION_UNAVAILABLE", "AI generation not configured")
 		return
 	}
@@ -284,70 +336,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// 1. Resolve provider credentials
-	credURL := fmt.Sprintf("%s/internal/credentials/%s/%s?user_id=%s",
-		s.cfg.ProviderRegistryURL, body.ModelSource, body.ModelRef, ownerID)
-	credReq, _ := http.NewRequestWithContext(ctx, "GET", credURL, nil)
-	credReq.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
-	credResp, err := internalClient.Do(credReq)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "failed to reach provider registry")
-		return
-	}
-	defer credResp.Body.Close()
-	if credResp.StatusCode == http.StatusNotFound {
-		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "no active AI provider configured")
-		return
-	}
-	if credResp.StatusCode != http.StatusOK {
-		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider registry error")
-		return
-	}
-
-	var creds struct {
-		ProviderKind      string `json:"provider_kind"`
-		ProviderModelName string `json:"provider_model_name"`
-		BaseURL           string `json:"base_url"`
-		APIKey            string `json:"api_key"`
-	}
-	if err := json.NewDecoder(credResp.Body).Decode(&creds); err != nil {
-		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "invalid provider response")
-		return
-	}
-
-	baseURL := strings.TrimRight(creds.BaseURL, "/")
-	if baseURL == "" {
-		baseURL = "https://api.openai.com"
-	}
-
-	// 2. Ensure MinIO bucket
-	if err := s.ensureMediaBucket(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "storage init failed")
-		return
-	}
-
-	// 3. Delete existing segments for this (chapter, language, voice)
-	var oldKeys []string
-	rows, err := s.pool.Query(ctx,
-		`SELECT media_key FROM chapter_audio_segments WHERE chapter_id=$1 AND language=$2 AND voice=$3`,
-		chapterID, body.Language, body.Voice)
-	if err == nil {
-		for rows.Next() {
-			var k string
-			if rows.Scan(&k) == nil {
-				oldKeys = append(oldKeys, k)
-			}
-		}
-		rows.Close()
-	}
-	_, _ = s.pool.Exec(ctx,
-		`DELETE FROM chapter_audio_segments WHERE chapter_id=$1 AND language=$2 AND voice=$3`,
-		chapterID, body.Language, body.Voice)
-	for _, k := range oldKeys {
-		_ = s.minio.RemoveObject(ctx, mediaBucket, k, minio.RemoveObjectOptions{})
-	}
-
-	// 4. Generate TTS for each block
+	// Result + error envelope types (same shape as before).
 	type segResult struct {
 		BlockIndex int    `json:"block_index"`
 		MediaURL   string `json:"media_url"`
@@ -359,96 +348,180 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 		Error      string `json:"error"`
 	}
 
+	// Filter non-empty blocks BEFORE submit; track original indices so
+	// result.Data[i] can be mapped back via inputs[i].idx
+	// (/review-impl(DESIGN) MED#5 — adapter preserves input order).
+	type indexedText struct {
+		idx  int
+		text string
+	}
+	var inputs []indexedText
+	for _, b := range body.Blocks {
+		if strings.TrimSpace(b.Text) != "" {
+			inputs = append(inputs, indexedText{idx: b.Index, text: b.Text})
+		}
+	}
+	if len(inputs) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"segments": []segResult{},
+			"errors":   []segError{},
+		})
+		return
+	}
+
+	// Ensure MinIO bucket.
+	if err := s.ensureMediaBucket(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "storage init failed")
+		return
+	}
+
+	// /review-impl(BUILD) H#2 — defer the prior-segment delete until
+	// AFTER the SDK call returns successfully. If the gateway returns a
+	// contract violation (len(result.Data) != len(inputs)) or a transient
+	// upstream error, we DON'T want to have already nuked the user's
+	// prior audio.
+
+	// Single batch SDK call. Caller-side b64_json mode — gateway returns
+	// inline base64; we decode + upload to our loreweave-media bucket
+	// (uniform with non-TTS audio upload path).
+	texts := make([]string, len(inputs))
+	for i, it := range inputs {
+		texts[i] = it.text
+	}
+	voice := body.Voice
+	format := "mp3"
+	responseFormat := "b64_json"
+	result, err := s.audioGenClient.GenerateAudio(ctx, llmgw.GenerateAudioRequest{
+		Texts:          texts,
+		ModelSource:    llmgw.ModelSource(body.ModelSource),
+		ModelRef:       body.ModelRef,
+		Voice:          &voice,
+		Format:         &format,
+		ResponseFormat: &responseFormat,
+		UserID:         ownerID.String(),
+	})
+	if err != nil {
+		writeAudioGenError(w, err)
+		return
+	}
+	if len(result.Data) != len(inputs) {
+		// /review-impl(BUILD) H#2 — log contract violation explicitly;
+		// 502 GENERATION_FAILED is the closest user-facing surface but
+		// the underlying issue is an adapter-or-worker bug, not AI failure.
+		slog.Error("generateAudio: gateway contract violation",
+			"got_results", len(result.Data), "want_results", len(inputs))
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED",
+			fmt.Sprintf("audio_gen returned %d results for %d inputs", len(result.Data), len(inputs)))
+		return
+	}
+
+	// /review-impl(BUILD round 3) H#1 — DO NOT delete old segments yet.
+	// Stage all new audio to MinIO first; only after ALL successful
+	// inserts do we delete the prior set. If a per-item op fails,
+	// user keeps their prior audio AND sees error details for the
+	// failing blocks. Previously: SDK-success → DELETE old → per-item
+	// loop → some fail → user has prior set GONE + new partial set.
+	// Now: per-item loop → all succeed → DELETE old. Per-item failures
+	// leave new partial set + old set both visible; FE can present a
+	// "regenerate failed blocks" UX.
+	//
+	// Trade-off: brief window with BOTH old + new segments in DB.
+	// chapter_audio_segments may have duplicates per block_index (no
+	// unique constraint blocks this). Acceptable since the DELETE
+	// runs immediately after per-item loop on success path.
+
+	// Decode base64 + upload + insert DB row per block, preserving order.
+	// Use timestamp-suffixed keys so new uploads don't collide with old.
 	var segments []segResult
 	var genErrors []segError
-	totalChars := 0
-
-	for _, block := range body.Blocks {
-		if strings.TrimSpace(block.Text) == "" {
+	for i, item := range result.Data {
+		if item.B64JSON == "" {
+			genErrors = append(genErrors, segError{BlockIndex: inputs[i].idx, Error: "empty audio payload"})
 			continue
 		}
-
-		// Call OpenAI-compatible TTS API
-		ttsPayload, _ := json.Marshal(map[string]any{
-			"model":           creds.ProviderModelName,
-			"voice":           body.Voice,
-			"input":           block.Text,
-			"response_format": "mp3",
-		})
-		ttsReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/v1/audio/speech",
-			bytes.NewReader(ttsPayload))
-		ttsReq.Header.Set("Authorization", "Bearer "+creds.APIKey)
-		ttsReq.Header.Set("Content-Type", "application/json")
-
-		ttsResp, err := ttsClient.Do(ttsReq)
+		audioBytes, err := base64.StdEncoding.DecodeString(item.B64JSON)
 		if err != nil {
-			slog.Warn("generateAudio TTS call failed", "block_index", block.Index, "error", err)
-			genErrors = append(genErrors, segError{BlockIndex: block.Index, Error: "TTS request failed"})
+			slog.Error("generateAudio b64 decode", "block_index", inputs[i].idx, "error", err)
+			genErrors = append(genErrors, segError{BlockIndex: inputs[i].idx, Error: "audio decode failed"})
 			continue
 		}
-
-		if ttsResp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(io.LimitReader(ttsResp.Body, 2048))
-			ttsResp.Body.Close()
-			slog.Warn("generateAudio TTS error", "block_index", block.Index, "status", ttsResp.StatusCode, "body", string(respBody))
-			genErrors = append(genErrors, segError{
-				BlockIndex: block.Index,
-				Error:      fmt.Sprintf("TTS API returned %d", ttsResp.StatusCode),
-			})
-			continue
-		}
-
-		// Upload to MinIO
 		objectKey := fmt.Sprintf("audio/%s/tts/%s_%s_%d_%s.mp3",
-			chapterID, body.Language, body.Voice, block.Index, uuid.New().String())
-
-		uploadInfo, err := s.minio.PutObject(ctx, mediaBucket, objectKey, ttsResp.Body, -1,
+			chapterID, body.Language, body.Voice, inputs[i].idx, uuid.New().String())
+		_, err = s.minio.PutObject(ctx, mediaBucket, objectKey,
+			bytes.NewReader(audioBytes), int64(len(audioBytes)),
 			minio.PutObjectOptions{ContentType: "audio/mpeg"})
-		ttsResp.Body.Close()
 		if err != nil {
-			slog.Error("generateAudio minio upload", "block_index", block.Index, "error", err)
-			genErrors = append(genErrors, segError{BlockIndex: block.Index, Error: "failed to store audio"})
+			slog.Error("generateAudio minio upload", "block_index", inputs[i].idx, "error", err)
+			genErrors = append(genErrors, segError{BlockIndex: inputs[i].idx, Error: "failed to store audio"})
 			continue
 		}
-
-		// Insert DB row
-		hash := textHash(block.Text)
+		hash := textHash(inputs[i].text)
 		_, err = s.pool.Exec(ctx, `
 			INSERT INTO chapter_audio_segments(chapter_id, block_index, source_text, source_text_hash, voice, provider, language, media_key, duration_ms)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		`, chapterID, block.Index, block.Text, hash, body.Voice, body.Provider, body.Language, objectKey, 0)
+		`, chapterID, inputs[i].idx, inputs[i].text, hash, body.Voice, body.Provider, body.Language, objectKey, item.DurationMs)
 		if err != nil {
-			slog.Error("generateAudio db insert", "block_index", block.Index, "error", err)
-			// Clean up the uploaded object
+			slog.Error("generateAudio db insert", "block_index", inputs[i].idx, "error", err)
 			_ = s.minio.RemoveObject(ctx, mediaBucket, objectKey, minio.RemoveObjectOptions{})
-			genErrors = append(genErrors, segError{BlockIndex: block.Index, Error: "failed to save segment record"})
+			genErrors = append(genErrors, segError{BlockIndex: inputs[i].idx, Error: "failed to save segment record"})
 			continue
 		}
-
-		totalChars += len(block.Text)
+		// Inserted successfully; tracking for response below. Old-segment
+		// cleanup runs AFTER this loop only if no failures occurred.
 		segments = append(segments, segResult{
-			BlockIndex: block.Index,
+			BlockIndex: inputs[i].idx,
 			MediaURL:   s.mediaURL(objectKey),
 			MediaKey:   objectKey,
-			DurationMs: 0,
+			DurationMs: item.DurationMs,
 		})
-
-		_ = uploadInfo // used by PutObject
 	}
 
-	// 5. Best-effort usage billing
+	// /review-impl(BUILD round 3) H#1 — Only delete old segments if ALL
+	// new items succeeded. On partial failure, leave old set intact so
+	// user has fallback content; FE can offer "retry failed blocks" UX.
+	if len(genErrors) == 0 && len(segments) > 0 {
+		newKeys := make([]string, len(segments))
+		for i, s := range segments {
+			newKeys[i] = s.MediaKey
+		}
+		var oldKeys []string
+		rows, err := s.pool.Query(ctx,
+			`SELECT media_key FROM chapter_audio_segments WHERE chapter_id=$1 AND language=$2 AND voice=$3 AND media_key != ALL($4::text[])`,
+			chapterID, body.Language, body.Voice, newKeys)
+		if err == nil {
+			for rows.Next() {
+				var k string
+				if rows.Scan(&k) == nil {
+					oldKeys = append(oldKeys, k)
+				}
+			}
+			rows.Close()
+		}
+		_, _ = s.pool.Exec(ctx,
+			`DELETE FROM chapter_audio_segments WHERE chapter_id=$1 AND language=$2 AND voice=$3 AND media_key != ALL($4::text[])`,
+			chapterID, body.Language, body.Voice, newKeys)
+		for _, k := range oldKeys {
+			_ = s.minio.RemoveObject(ctx, mediaBucket, k, minio.RemoveObjectOptions{})
+		}
+	}
+
+	// Best-effort usage billing — provider_kind="" per 5e-α QC MED#1.
 	if s.cfg.UsageBillingServiceURL != "" && len(segments) > 0 {
+		totalChars := 0
+		for _, it := range inputs {
+			totalChars += len(it.text)
+		}
 		modelRefUUID, _ := uuid.Parse(body.ModelRef)
 		usagePayload, _ := json.Marshal(map[string]any{
-			"request_id":    uuid.New(),
-			"owner_user_id": ownerID,
-			"provider_kind": creds.ProviderKind,
-			"model_source":  body.ModelSource,
-			"model_ref":     modelRefUUID,
-			"input_tokens":  totalChars, // TTS bills by characters, map to "tokens" field
-			"output_tokens": 0,
+			"request_id":     uuid.New(),
+			"owner_user_id":  ownerID,
+			"provider_kind":  "",
+			"model_source":   body.ModelSource,
+			"model_ref":      modelRefUUID,
+			"input_tokens":   totalChars,
+			"output_tokens":  0,
 			"request_status": "success",
-			"purpose":       "tts_generation",
+			"purpose":        "tts_generation",
 		})
 		billingURL := fmt.Sprintf("%s/internal/model-billing/record",
 			strings.TrimRight(s.cfg.UsageBillingServiceURL, "/"))

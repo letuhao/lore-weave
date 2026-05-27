@@ -307,7 +307,7 @@ type jsonListAggregator struct {
 	order           []string                  // preserve insertion order
 	chunkErrors     []string
 	inputTokens     int
-	outputTokens   int
+	outputTokens    int
 	reasoningTokens int
 	finishReason    string
 }
@@ -365,6 +365,23 @@ func (a *jsonListAggregator) Accept(chunk provider.StreamChunk) bool {
 	return true
 }
 
+// extractJSONObject returns the substring from the first '{' to the
+// last '}' in raw — the outermost JSON object. This strips markdown
+// ```json fences and any surrounding prose that reasoning models emit
+// around their answer (the reasoning itself is routed to a separate
+// StreamChunkReasoning channel, so `raw` here is the answer content
+// only). Returns ok=false when there is no balanced {...} to extract,
+// so unrecoverable non-JSON still surfaces as a chunk error rather than
+// being silently swallowed.
+func extractJSONObject(raw string) (string, bool) {
+	start := strings.IndexByte(raw, '{')
+	end := strings.LastIndexByte(raw, '}')
+	if start == -1 || end <= start {
+		return "", false
+	}
+	return raw[start : end+1], true
+}
+
 // mergeChunkJSON parses a chunk's JSON output and merges its list
 // items into `merged` keyed by keyFn. Tie-break: keep highest
 // confidence; on equal confidence, first writer wins (insertion
@@ -372,9 +389,23 @@ func (a *jsonListAggregator) Accept(chunk provider.StreamChunk) bool {
 func (a *jsonListAggregator) mergeChunkJSON(idx int, raw string) {
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		a.chunkErrors = append(a.chunkErrors,
-			fmt.Sprintf("chunk %d: %s", idx, err.Error()))
-		return
+		// Reasoning models (e.g. qwen3.6 via LM Studio) frequently wrap
+		// their JSON in a markdown ```json fence or surround it with
+		// prose. The leading backtick fails json.Unmarshal ("invalid
+		// character '`'"), so EVERY extraction silently returned 0 items
+		// (the loss showed only in chunk_errors). Recover by extracting
+		// the outermost {...} object and re-parsing before giving up.
+		cleaned, ok := extractJSONObject(raw)
+		if !ok {
+			a.chunkErrors = append(a.chunkErrors,
+				fmt.Sprintf("chunk %d: %s", idx, err.Error()))
+			return
+		}
+		if err2 := json.Unmarshal([]byte(cleaned), &parsed); err2 != nil {
+			a.chunkErrors = append(a.chunkErrors,
+				fmt.Sprintf("chunk %d: %s", idx, err2.Error()))
+			return
+		}
 	}
 	rawList, ok := parsed[a.listField].([]any)
 	if !ok {
@@ -519,4 +550,3 @@ func (a *jsonListAggregator) Finalize() (map[string]any, int, int) {
 	}
 	return result, a.inputTokens, a.outputTokens
 }
-

@@ -255,3 +255,6 @@ chat-history/
 
 chat.txt
 frontend-game/test-results/
+
+# Local extraction-quality eval run artifacts (dumps, judge verdicts, logs)
+.eval_dumps/

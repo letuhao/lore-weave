@@ -84,6 +84,18 @@ def test_projects_alter_adds_budget_columns():
         assert f"ADD COLUMN IF NOT EXISTS {col}" in DDL, f"missing column: {col}"
 
 
+def test_projects_alter_adds_tool_calling_enabled():
+    """K21.12-BE (design D9) — the per-project tool-calling toggle.
+    NOT NULL DEFAULT true so a project row that predates the column
+    reads back enabled (the model default in models.py is the other
+    half of that contract). Idempotent ADD COLUMN IF NOT EXISTS so
+    run_migrations stays safe on every startup."""
+    assert (
+        "ADD COLUMN IF NOT EXISTS tool_calling_enabled BOOLEAN NOT NULL DEFAULT true"
+        in DDL
+    )
+
+
 def test_no_cross_db_fk_on_user_id():
     # The module header is explicit: user_id references a different DB,
     # so no FK. A regression that adds `REFERENCES users` would crash at
@@ -146,6 +158,38 @@ def test_benchmark_runs_project_fk_cascades():
     assert DDL.count(
         "REFERENCES knowledge_projects(project_id) ON DELETE CASCADE"
     ) >= 4
+
+
+def test_knowledge_projects_embedding_provider_id_dropped():
+    """D-EMB-CLEANUP-01: the K12.3 embedding_provider_id column on
+    knowledge_projects was never populated/read/plumbed (not in
+    _SELECT_COLS, every writer passed None). The cycle-3 fix retired
+    the logical-name concept and kept embedding_model + a separate
+    embedding_dimension column, so this column was vestigial.
+
+    Regression-lock: assert (a) the DROP COLUMN block is present in DDL
+    on knowledge_projects and (b) the SAME-NAMED column on
+    project_embedding_benchmark_runs (a different, actively-used table)
+    is NOT touched — defense against future cleanups that conflate the
+    two columns by name."""
+    # (a) drop block present on knowledge_projects.
+    assert (
+        "ALTER TABLE knowledge_projects" in DDL
+        and "DROP COLUMN IF EXISTS embedding_provider_id" in DDL
+    ), "knowledge_projects.embedding_provider_id DROP block missing"
+    # (b) The benchmark_runs column is still alive. Use the same regex
+    # scope as test_benchmark_runs_no_cross_db_fk_on_provider — find the
+    # CREATE TABLE body and assert the column is declared inside it.
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS project_embedding_benchmark_runs\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "benchmark_runs table missing — wrong cleanup target"
+    body = m.group(1)
+    assert any(
+        "embedding_provider_id" in line for line in body.splitlines()
+    ), "benchmark_runs.embedding_provider_id was wrongly dropped"
 
 
 def test_benchmark_runs_no_cross_db_fk_on_provider():
@@ -354,3 +398,90 @@ def test_entity_alias_map_target_index():
     """Reverse-lookup index for list_for_entity (FE display + audit)."""
     assert "idx_entity_alias_map_target" in DDL
     assert "ON entity_alias_map(target_entity_id)" in DDL
+
+
+# ── K21-C — memory_remember confirmation gate + pending-facts table ────
+
+
+def test_projects_alter_adds_memory_remember_confirm():
+    """K21-C (design D4) — the per-project memory_remember confirmation
+    gate. NOT NULL DEFAULT false so it is OPT-IN: a project row that
+    predates the column reads back off and keeps writing facts directly
+    (the model default in models.py is the other half of that
+    contract). Idempotent ADD COLUMN IF NOT EXISTS so run_migrations
+    stays safe on every startup."""
+    assert (
+        "ADD COLUMN IF NOT EXISTS memory_remember_confirm "
+        "BOOLEAN NOT NULL DEFAULT false" in DDL
+    )
+
+
+def test_pending_facts_table_present():
+    """K21-C (design D5) — knowledge_pending_facts is the transient
+    queue for memory_remember facts awaiting user confirmation. A
+    future migration that drops or renames it would silently break the
+    confirm/reject flow — the repo + endpoints gate on this exact
+    table name."""
+    assert "CREATE TABLE IF NOT EXISTS knowledge_pending_facts" in DDL
+
+
+def test_pending_facts_schema_shape():
+    """K21-C (design D5) — scoped columns: pending_fact_id UUID PK
+    (uuidv7), user_id UUID NOT NULL, project_id UUID nullable
+    (no-project chats can queue), session_id TEXT NOT NULL, fact_type
+    TEXT NOT NULL, fact_text TEXT NOT NULL, created_at TIMESTAMPTZ."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS knowledge_pending_facts\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "knowledge_pending_facts table body not found"
+    body = m.group(1)
+    assert "pending_fact_id  UUID PRIMARY KEY DEFAULT uuidv7()" in body
+    assert "user_id          UUID NOT NULL" in body
+    # project_id nullable — a no-project chat can still queue a fact.
+    assert "project_id       UUID," in body
+    assert "session_id       TEXT NOT NULL" in body
+    assert "fact_type        TEXT NOT NULL" in body
+    assert "fact_text        TEXT NOT NULL" in body
+    assert "created_at       TIMESTAMPTZ NOT NULL DEFAULT now()" in body
+
+
+def test_pending_facts_fact_type_check_constraint():
+    """K21-C — fact_type CHECK locks the vocabulary in sync with the
+    Neo4j FactType closed enum + the PendingFact Pydantic model. A
+    drift would let an unknown type reach merge_fact's own validation
+    and 500."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS knowledge_pending_facts\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    assert (
+        "CHECK (fact_type IN ('decision','preference','milestone','negation'))"
+        in body
+    )
+
+
+def test_pending_facts_no_cross_db_fk():
+    """K21-C — no FK on user_id (auth-service, cross-DB). project_id is
+    intentionally FK-free too: it is nullable and the public endpoints
+    enforce authority via user_id, so an in-DB FK buys nothing here."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS knowledge_pending_facts\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    assert "REFERENCES" not in body
+
+
+def test_pending_facts_user_list_index():
+    """K21-C — list path is WHERE user_id=$1 [AND session_id=$2]
+    ORDER BY created_at. The (user_id, created_at) composite index
+    serves both the all-sessions and per-session variants."""
+    assert "idx_knowledge_pending_facts_user" in DDL
+    assert "ON knowledge_pending_facts(user_id, created_at)" in DDL

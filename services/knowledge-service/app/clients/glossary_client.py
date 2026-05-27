@@ -320,6 +320,86 @@ class GlossaryClient:
             logger.warning("glossary list-entities failed: %s", exc)
             return None
 
+    async def list_known_entities_for_chapter(
+        self,
+        book_id: UUID,
+        *,
+        before_chapter_index: int,
+        recency_window: int = 100,
+        min_frequency: int = 2,
+        limit: int = 50,
+    ) -> list[dict]:
+        """P2 — fetch the glossary anchor for ONE chapter position.
+
+        Spec D4. Uses the existing /internal/books/{id}/known-entities
+        endpoint with full filtering: alive=true, min_frequency,
+        before_chapter_index, recency_window, limit.
+
+        Hard-fail contract (PO choice 4):
+          - HTTP 200 -> return list (possibly empty)
+          - HTTP 4xx -> raise GlossaryAnchorMalformed (no retry)
+          - HTTP 5xx / timeout / network error -> raise GlossaryAnchorUnavailable
+            (retry budget applies upstream)
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/known-entities"
+        tid = trace_id_var.get()
+        params = {
+            "alive": "true",
+            "min_frequency": str(min_frequency),
+            "before_chapter_index": str(before_chapter_index),
+            "recency_window": str(recency_window),
+            "limit": str(limit),
+        }
+        try:
+            resp = await self._http.get(
+                url,
+                headers={"X-Trace-Id": tid} if tid else None,
+                params=params,
+            )
+        except httpx.HTTPError as exc:
+            raise GlossaryAnchorUnavailable(
+                f"glossary known-entities transport error: {exc}"
+            ) from exc
+        if 400 <= resp.status_code < 500:
+            raise GlossaryAnchorMalformed(
+                f"glossary known-entities {resp.status_code}: {resp.text[:200]}"
+            )
+        if resp.status_code >= 500:
+            raise GlossaryAnchorUnavailable(
+                f"glossary known-entities {resp.status_code}: {resp.text[:200]}"
+            )
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise GlossaryAnchorMalformed(
+                f"glossary known-entities returned non-JSON: {exc}"
+            ) from exc
+        # Endpoint returns {"entities": [...], "count": N} OR a plain list
+        # (handler variance). Normalize both.
+        if isinstance(data, dict):
+            return list(data.get("entities") or [])
+        if isinstance(data, list):
+            return data
+        raise GlossaryAnchorMalformed(
+            f"glossary known-entities returned unexpected shape: {type(data).__name__}"
+        )
+
+    async def _ping_glossary_health(self) -> bool:
+        """P2 — explicit health probe at extraction-job start to fail-fast
+        if glossary is down BEFORE wasting LLM cycles.
+
+        Returns True if glossary /health returns 200, False otherwise.
+        Never raises.
+        """
+        try:
+            resp = await self._http.get(
+                f"{self._base_url}/health",
+            )
+            return resp.status_code == 200
+        except httpx.HTTPError:
+            return False
+
+
     async def propose_entities(
         self,
         book_id: UUID,
@@ -420,3 +500,20 @@ def get_glossary_client() -> GlossaryClient:
     if _client is None:
         raise RuntimeError("glossary client not initialised")
     return _client
+
+
+# ── P2 exception types (placed at module scope after the class) ────────────
+
+
+class GlossaryAnchorUnavailable(Exception):
+    """P2 — glossary anchor fetch failed due to transport / 5xx.
+
+    Caller (leaf_processor) marks the leaf failed + retry budget applies.
+    """
+
+
+class GlossaryAnchorMalformed(Exception):
+    """P2 — glossary returned 4xx or malformed JSON.
+
+    Caller surfaces as job error (no retry — not transient).
+    """

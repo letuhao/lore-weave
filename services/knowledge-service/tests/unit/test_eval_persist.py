@@ -1,4 +1,4 @@
-"""K17.9 — unit tests for `eval.persist.persist_benchmark_report`."""
+"""K17.9 — unit tests for `app.benchmark.persist.persist_benchmark_report`."""
 from __future__ import annotations
 
 import json
@@ -8,8 +8,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from eval.persist import persist_benchmark_report
-from eval.run_benchmark import BenchmarkReport
+from app.benchmark.core import BenchmarkReport
+from app.benchmark.persist import persist_benchmark_report
 
 
 def _report(

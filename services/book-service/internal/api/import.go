@@ -22,6 +22,7 @@ var allowedImportFormats = map[string]string{
 	".docx": "docx",
 	".epub": "epub",
 	".txt":  "txt",
+	".md":   "markdown", // P1 (2026-05-23) — pandoc -f markdown -t html in worker-infra.
 }
 
 // startImport handles POST /v1/books/{book_id}/import
@@ -72,19 +73,20 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 	fileFormat, ok := allowedImportFormats[ext]
 	if !ok {
 		writeError(w, http.StatusBadRequest, "UNSUPPORTED_FORMAT",
-			"supported formats: .docx, .epub, .txt")
+			"supported formats: .docx, .epub, .md, .txt")
 		return
 	}
 
-	// For .txt files, use existing path directly
+	// P1 (H1 fix): .txt path now goes through knowledge-service /internal/parse
+	// (source_format=plain) for multi-language structural decomposition.
+	// Synchronous because .txt files are small; preserves existing UX.
 	if fileFormat == "txt" {
 		data, _ := io.ReadAll(f)
-		title := strings.TrimSuffix(fh.Filename, ext)
 		lang := r.FormValue("original_language")
 		if lang == "" {
 			lang = "auto"
 		}
-		s.createChapterRecord(w, r.Context(), ownerID, bookID, title, fh.Filename, lang, 0, string(data), "imported from "+fh.Filename, true)
+		s.processTxtImport(w, r, ownerID, bookID, fh.Filename, string(data), lang)
 		return
 	}
 
@@ -133,11 +135,11 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 
 	// Outbox event for worker-infra to pick up
 	if err := insertOutboxEvent(r.Context(), tx, "import.requested", jobID, map[string]any{
-		"job_id":           jobID,
-		"book_id":          bookID,
-		"user_id":          ownerID,
-		"file_format":      fileFormat,
-		"file_storage_key": storageKey,
+		"job_id":            jobID,
+		"book_id":           bookID,
+		"user_id":           ownerID,
+		"file_format":       fileFormat,
+		"file_storage_key":  storageKey,
 		"original_language": r.FormValue("original_language"),
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to queue import")
@@ -150,11 +152,11 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"id":        jobID,
-		"book_id":   bookID,
-		"status":    "pending",
-		"filename":  fh.Filename,
-		"file_size": int64(len(data)),
+		"id":         jobID,
+		"book_id":    bookID,
+		"status":     "pending",
+		"filename":   fh.Filename,
+		"file_size":  int64(len(data)),
 		"created_at": "now",
 	})
 }
@@ -177,17 +179,17 @@ func (s *Server) getImportJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var job struct {
-		ID              uuid.UUID  `json:"id"`
-		BookID          uuid.UUID  `json:"book_id"`
-		Status          string     `json:"status"`
-		Filename        string     `json:"filename"`
-		FileFormat      string     `json:"file_format"`
-		FileSize        int64      `json:"file_size"`
-		ChaptersCreated int        `json:"chapters_created"`
-		Error           *string    `json:"error"`
-		CreatedAt       string     `json:"created_at"`
-		UpdatedAt       string     `json:"updated_at"`
-		CompletedAt     *string    `json:"completed_at"`
+		ID              uuid.UUID `json:"id"`
+		BookID          uuid.UUID `json:"book_id"`
+		Status          string    `json:"status"`
+		Filename        string    `json:"filename"`
+		FileFormat      string    `json:"file_format"`
+		FileSize        int64     `json:"file_size"`
+		ChaptersCreated int       `json:"chapters_created"`
+		Error           *string   `json:"error"`
+		CreatedAt       string    `json:"created_at"`
+		UpdatedAt       string    `json:"updated_at"`
+		CompletedAt     *string   `json:"completed_at"`
 	}
 	err = s.pool.QueryRow(r.Context(), `
 SELECT id, book_id, status, filename, file_format, file_size, chapters_created, error,
@@ -297,4 +299,3 @@ UPDATE import_jobs SET status=$1, chapters_created=$2, error=$3, updated_at=now(
 
 	w.WriteHeader(http.StatusNoContent)
 }
-

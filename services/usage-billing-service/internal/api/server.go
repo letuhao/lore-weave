@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/usage-billing-service/internal/config"
 )
 
@@ -62,6 +63,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before Recoverer so the span
+	// survives (and is marked 500) when a handler panics.
+	r.Use(observability.ChiMiddleware())
 	r.Use(middleware.Recoverer)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +95,10 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Post("/model-billing/record", s.recordInvocation)
+		// Phase 6a — spend guardrail (Subsystem A).
+		r.Post("/billing/guardrail/reserve", s.guardrailReserve)
+		r.Post("/billing/guardrail/reconcile", s.guardrailReconcile)
+		r.Post("/billing/guardrail/release", s.guardrailRelease)
 	})
 
 	r.Route("/v1/model-billing", func(r chi.Router) {
@@ -98,6 +106,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/usage-logs/{usage_log_id}", s.getUsageLogDetail)
 		r.Get("/usage-summary", s.getUsageSummary)
 		r.Get("/account-balance", s.getAccountBalance)
+		// Phase 6a-γ — user-facing spend guardrail + platform balance.
+		r.Get("/guardrail", s.getGuardrail)
+		r.Patch("/guardrail", s.patchGuardrail)
+		r.Get("/platform-balance", s.getPlatformBalance)
 		r.Get("/admin/usage", s.adminListUsage)
 		r.Post("/admin/reconciliation", s.createReconciliation)
 	})
@@ -266,28 +278,35 @@ FOR UPDATE
 		writeError(w, http.StatusInternalServerError, "M03_BILLING_BALANCE_FAILED", "failed to load balance")
 		return
 	}
+	// Phase 6a-β — the balance deduction is the one non-idempotent side
+	// effect. Compute the decision now but DEFER the UPDATE; it runs only if
+	// the usage_logs insert below is fresh (a duplicate request_id must not
+	// double-deduct). applyDeduction is nil for the 'rejected' path.
+	var applyDeduction func() error
 	if quotaRemaining >= totalTokens {
-		_, err = tx.Exec(r.Context(), `
+		applyDeduction = func() error {
+			_, e := tx.Exec(r.Context(), `
 UPDATE account_balances SET month_quota_remaining_tokens = month_quota_remaining_tokens - $2, updated_at=now()
 WHERE owner_user_id=$1
 `, in.OwnerUserID, totalTokens)
+			return e
+		}
 	} else {
 		over := totalTokens - quotaRemaining
 		if credits >= over {
 			decision = "credits"
-			_, err = tx.Exec(r.Context(), `
+			applyDeduction = func() error {
+				_, e := tx.Exec(r.Context(), `
 UPDATE account_balances
 SET month_quota_remaining_tokens = 0, credits_balance = credits_balance - $2, updated_at=now()
 WHERE owner_user_id=$1
 `, in.OwnerUserID, over)
+				return e
+			}
 		} else {
 			decision = "rejected"
 			requestStatus = "billing_rejected"
 		}
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_BILLING_BALANCE_FAILED", "failed to update balance")
-		return
 	}
 
 	// Generate one session key for both payloads so decrypt works with single stored key
@@ -315,6 +334,10 @@ WHERE owner_user_id=$1
 	}
 	keyRef := uuid.New().String()
 
+	// The usage_logs insert is the idempotency gate: ON CONFLICT DO NOTHING
+	// RETURNING yields a row only on a FRESH insert. A duplicate request_id
+	// (a retry) returns no row — we then skip the balance deduction + the
+	// detail write and return the already-recorded result (Phase 6a-β).
 	var usageLogID uuid.UUID
 	err = tx.QueryRow(r.Context(), `
 INSERT INTO usage_logs(
@@ -322,26 +345,42 @@ INSERT INTO usage_logs(
   input_tokens, output_tokens, total_tokens, total_cost_usd, billing_decision, request_status, policy_version,
   input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16)
-ON CONFLICT (request_id) DO UPDATE SET request_id = EXCLUDED.request_id
+ON CONFLICT (request_id) DO NOTHING
 RETURNING usage_log_id
 `, in.RequestID, in.OwnerUserID, in.ProviderKind, in.ModelSource, in.ModelRef,
 		in.InputTokens, in.OutputTokens, totalTokens, costUSD, decision, requestStatus, policyVersion,
 		inputCipher, outputCipher, keyRef, purpose).Scan(&usageLogID)
-	if err != nil {
+	fresh := true
+	if err == pgx.ErrNoRows {
+		// Duplicate request_id — already recorded. Re-read the original
+		// row's outcome so the response is identical across retries.
+		fresh = false
+		if e := tx.QueryRow(r.Context(), `
+SELECT usage_log_id, billing_decision, total_cost_usd FROM usage_logs WHERE request_id=$1`,
+			in.RequestID).Scan(&usageLogID, &decision, &costUSD); e != nil {
+			writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to load existing record")
+			return
+		}
+	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
 		return
 	}
-	_, err = tx.Exec(r.Context(), `
+	if fresh {
+		// Fresh insert → apply the deferred balance deduction exactly once.
+		if applyDeduction != nil {
+			if err := applyDeduction(); err != nil {
+				writeError(w, http.StatusInternalServerError, "M03_BILLING_BALANCE_FAILED", "failed to update balance")
+				return
+			}
+		}
+		if _, err = tx.Exec(r.Context(), `
 INSERT INTO usage_log_details(usage_log_id, payload_encryption_key_ciphertext, input_payload_ciphertext, output_payload_ciphertext)
 VALUES ($1,$2,$3,$4)
-ON CONFLICT (usage_log_id) DO UPDATE SET
-  payload_encryption_key_ciphertext = EXCLUDED.payload_encryption_key_ciphertext,
-  input_payload_ciphertext = EXCLUDED.input_payload_ciphertext,
-  output_payload_ciphertext = EXCLUDED.output_payload_ciphertext
-`, usageLogID, keyCipherRaw, inputCipher, outputCipher)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to write usage log details")
-		return
+ON CONFLICT (usage_log_id) DO NOTHING
+`, usageLogID, keyCipherRaw, inputCipher, outputCipher); err != nil {
+			writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to write usage log details")
+			return
+		}
 	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_BILLING_TX_FAILED", "failed to commit")

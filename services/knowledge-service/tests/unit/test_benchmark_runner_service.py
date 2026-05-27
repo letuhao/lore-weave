@@ -46,7 +46,7 @@ from app.benchmark.runner import (
 )
 from app.db.models import Project
 from app.db.neo4j_repos.passages import KNOWN_SOURCE_TYPES
-from eval.fixture_loader import BENCHMARK_SOURCE_TYPE
+from app.benchmark.fixture_loader import BENCHMARK_SOURCE_TYPE
 
 
 _USER = uuid4()
@@ -103,12 +103,20 @@ class _FakeReport:
 
 class _FakeAsyncRunner:
     """Returned by ``AsyncBenchmarkRunner`` patch — captures the ``runs``
-    kwarg so tests can assert it propagated."""
+    and ``dimension`` kwargs so tests can assert they propagated."""
 
     last_runs: int | None = None
+    # D-EMB-BENCHMARK-CAL-01: regression-lock — runner.py must forward
+    # the project's embedding_dimension so per-dim threshold overrides
+    # in the golden set merge over the flat defaults.
+    last_dimension: int | None = None
 
-    def __init__(self, golden: Any, runner: Any) -> None:  # noqa: ARG002
+    def __init__(
+        self, golden: Any, runner: Any,  # noqa: ARG002
+        dimension: int | None = None,
+    ) -> None:
         self.golden = golden
+        _FakeAsyncRunner.last_dimension = dimension
 
     async def run(self, runs: int = 3) -> _FakeReport:
         _FakeAsyncRunner.last_runs = runs
@@ -125,6 +133,7 @@ def _fake_projects_repo(project: Project | None) -> AsyncMock:
 def _isolate_locks():
     runner_module._reset_locks_for_tests()
     _FakeAsyncRunner.last_runs = None
+    _FakeAsyncRunner.last_dimension = None
     yield
     runner_module._reset_locks_for_tests()
 
@@ -202,25 +211,14 @@ async def test_raises_no_embedding_model_when_dim_missing():
 
 
 @pytest.mark.asyncio
-async def test_raises_unknown_embedding_model_when_not_in_map():
-    repo = _fake_projects_repo(
-        _project(embedding_model="fantasy-model-v9", embedding_dimension=1024),
-    )
-    with pytest.raises(UnknownEmbeddingModelError):
-        await run_project_benchmark(
-            user_id=_USER, project_id=_PROJECT, runs=3,
-            pool=AsyncMock(), projects_repo=repo,
-            embedding_client=AsyncMock(),
-        )
-
-
-@pytest.mark.asyncio
 async def test_raises_unknown_embedding_model_when_dim_unsupported():
-    """nomic-embed-text is in the map at dim 768 but 768 isn't in
-    SUPPORTED_PASSAGE_DIMS — we should surface as 409 not a late
-    ValueError from upsert_passage."""
+    """D-EMB-MODEL-REF-01 — embedding_model is now an opaque provider
+    user_model UUID and is no longer name-validated; only the configured
+    embedding_dimension is checked. A dimension outside
+    SUPPORTED_PASSAGE_DIMS (no :Passage vector index) must surface as a
+    clean 409, not a late ValueError from upsert_passage."""
     repo = _fake_projects_repo(
-        _project(embedding_model="nomic-embed-text", embedding_dimension=768),
+        _project(embedding_model="some-user-model-uuid", embedding_dimension=768),
     )
     with pytest.raises(UnknownEmbeddingModelError):
         await run_project_benchmark(
@@ -374,6 +372,26 @@ async def test_runs_parameter_forwarded_to_async_runner(monkeypatch):
     )
 
     assert _FakeAsyncRunner.last_runs == 5
+
+
+@pytest.mark.asyncio
+async def test_dimension_forwarded_to_async_runner(monkeypatch):
+    """D-EMB-BENCHMARK-CAL-01 regression-lock: runner.py must forward
+    the project's embedding_dimension to AsyncBenchmarkRunner so per-
+    dimension threshold overrides in the golden set merge over the
+    flat defaults. Without this wiring, bge-m3 projects (dim=1024)
+    silently get gated against the strict flat negative-control
+    ceiling and fail every clean run."""
+    repo = _fake_projects_repo(_project(embedding_dimension=1024))
+    _patch_happy_path(monkeypatch)
+
+    await run_project_benchmark(
+        user_id=_USER, project_id=_PROJECT, runs=3,
+        pool=AsyncMock(), projects_repo=repo,
+        embedding_client=AsyncMock(),
+    )
+
+    assert _FakeAsyncRunner.last_dimension == 1024
 
 
 @pytest.mark.asyncio

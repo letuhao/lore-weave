@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/loreweave/observability"
 )
 
 // bookHTTPClient is shared across requests; 5 s timeout prevents goroutine leaks
 // when book-service is slow or unreachable.
-var bookHTTPClient = &http.Client{Timeout: 5 * time.Second}
+// Phase 6c — traced transport so outbound calls carry a W3C traceparent + emit a CLIENT span.
+var bookHTTPClient = &http.Client{Timeout: 5 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 type wikiSettingsProjection struct {
 	Visibility     string `json:"visibility"`

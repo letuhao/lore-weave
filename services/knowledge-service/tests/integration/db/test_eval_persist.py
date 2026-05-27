@@ -1,12 +1,12 @@
-"""K17.9 — integration test for `eval.persist` against live Postgres."""
+"""K17.9 — integration test for `app.benchmark.persist` against live Postgres."""
 from __future__ import annotations
 
 from uuid import UUID, uuid4
 
 import pytest
 
-from eval.persist import persist_benchmark_report
-from eval.run_benchmark import BenchmarkReport
+from app.benchmark.core import BenchmarkReport
+from app.benchmark.persist import persist_benchmark_report
 
 
 def _report(passed: bool = True) -> BenchmarkReport:

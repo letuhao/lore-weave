@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS knowledge_projects (
   extraction_enabled  BOOLEAN NOT NULL DEFAULT false,
   extraction_status   TEXT NOT NULL DEFAULT 'disabled'
     CHECK (extraction_status IN ('disabled','building','paused','ready','failed')),
+  -- D-EMB-MODEL-REF-01: holds the provider-registry user_model UUID of
+  -- the embedding model (the /internal/embed model_ref). TEXT-typed for
+  -- back-compat; the value is a UUID string. Pair with embedding_dimension.
   embedding_model     TEXT,
   extraction_config   JSONB NOT NULL DEFAULT '{}'::jsonb,
   last_extracted_at   TIMESTAMPTZ,
@@ -219,8 +222,17 @@ ALTER TABLE knowledge_projects
 -- (same pattern as budget columns), NOT through the Project Pydantic
 -- model or _SELECT_COLS — kept separate to avoid bloating generic reads.
 ALTER TABLE knowledge_projects
-  ADD COLUMN IF NOT EXISTS embedding_provider_id  UUID,
   ADD COLUMN IF NOT EXISTS embedding_dimension    INT;
+
+-- D-EMB-CLEANUP-01 (session 58 cycle 2 ADR §7.2): the K12.3
+-- embedding_provider_id column on knowledge_projects was created but
+-- never populated/read/plumbed (not in _SELECT_COLS, every writer
+-- passed None). The cycle-3 fix kept embedding_model + added a separate
+-- embedding_dimension column; provider_id was vestigial. Drop it.
+-- The same-named column on project_embedding_benchmark_runs is a
+-- DIFFERENT, ACTIVELY-USED column and is intentionally untouched.
+ALTER TABLE knowledge_projects
+  DROP COLUMN IF EXISTS embedding_provider_id;
 
 -- ═══════════════════════════════════════════════════════════════
 -- K10.1 — extraction_pending
@@ -541,6 +553,178 @@ CREATE TABLE IF NOT EXISTS entity_alias_map (
 
 CREATE INDEX IF NOT EXISTS idx_entity_alias_map_target
   ON entity_alias_map(target_entity_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- K21.12-BE (design D9) — per-project tool-calling toggle.
+-- chat-service's tool-calling loop (K21 Cycle B) gates `_stream_with_tools`
+-- on this flag, surfaced through `build_context`. DEFAULT true so a
+-- project row that predates the column reads back enabled — combined
+-- with the Pydantic model default this means tool calling stays on for
+-- every existing project until the user explicitly turns it off (the
+-- toggle UI is Cycle C). ADD COLUMN IF NOT EXISTS keeps the DDL
+-- idempotent; wrapped in a DO block to match the house style for the
+-- post-K1 column adds above.
+-- ═══════════════════════════════════════════════════════════════
+DO $$
+BEGIN
+  ALTER TABLE knowledge_projects
+    ADD COLUMN IF NOT EXISTS tool_calling_enabled BOOLEAN NOT NULL DEFAULT true;
+END$$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- K21-C (design D4) — per-project memory_remember confirmation gate.
+-- When true, the chat-service tool-calling loop's `memory_remember`
+-- writes are queued into knowledge_pending_facts (below) for explicit
+-- user confirmation instead of landing directly in the graph.
+-- DEFAULT false — opt-in: today's behaviour (write directly) is the
+-- default so a project row that predates the column keeps writing
+-- straight through. The Pydantic model default in models.py is the
+-- other half of that contract. ADD COLUMN IF NOT EXISTS keeps the DDL
+-- idempotent; wrapped in a DO block to match the house style for the
+-- post-K1 column adds above.
+-- ═══════════════════════════════════════════════════════════════
+DO $$
+BEGIN
+  ALTER TABLE knowledge_projects
+    ADD COLUMN IF NOT EXISTS memory_remember_confirm BOOLEAN NOT NULL DEFAULT false;
+END$$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- K21-C (design D5) — knowledge_pending_facts.
+-- A pending fact is a transient queue item awaiting user confirmation,
+-- not a graph node, so it lives in Postgres not Neo4j. The executor
+-- INSERTs a row here (carrying the already-injection-neutralized
+-- fact_text — design D6) when a project has memory_remember_confirm
+-- on; the public confirm/reject endpoints (design D7) drain it.
+-- `fact_text` is already neutralized at queue time, so confirm writes
+-- it through to merge_fact as-is.
+--
+-- No FK on user_id (cross-DB convention). No FK on project_id either:
+-- project_id is nullable here (a no-project chat can still queue) and
+-- the executor only ever inserts a project_id it just loaded; the
+-- public endpoints filter on user_id for authority.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS knowledge_pending_facts (
+  pending_fact_id  UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id          UUID NOT NULL,                    -- no FK (cross-DB)
+  project_id       UUID,                             -- nullable: no-project chats
+  session_id       TEXT NOT NULL,
+  fact_type        TEXT NOT NULL
+    CHECK (fact_type IN ('decision','preference','milestone','negation')),
+  fact_text        TEXT NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- List path: WHERE user_id=$1 [AND session_id=$2] ORDER BY created_at.
+-- The optional session filter is a column equality, so a composite
+-- (user_id, created_at) index serves both the all-sessions list and
+-- the per-session variant (the planner filters session_id after the
+-- index scan — fine at any realistic per-user pending-fact volume).
+CREATE INDEX IF NOT EXISTS idx_knowledge_pending_facts_user
+  ON knowledge_pending_facts(user_id, created_at);
+
+
+-- ═══════════════════════════════════════════════════════════════
+-- P2 (hierarchical extraction T3) — 2026-05-23
+-- Spec: docs/specs/2026-05-23-p2-parallel-map-checkpoint.md §D1
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS extraction_leaves (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id              UUID NOT NULL,
+  scene_id             UUID NOT NULL,
+  leaf_path            TEXT NOT NULL,
+  op                   TEXT NOT NULL
+    CHECK (op IN ('entity','relation','event','fact')),
+  task_id              TEXT NOT NULL,
+  status               TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','running','completed','failed')),
+  candidates_jsonb     JSONB,
+  retried_n            INT  NOT NULL DEFAULT 0,
+  error_message        TEXT,
+  parse_version        INT  NOT NULL DEFAULT 1,
+  extractor_version    TEXT NOT NULL,
+  model_ref            TEXT NOT NULL,
+  glossary_anchor_size INT,
+  started_at           TIMESTAMPTZ,
+  completed_at         TIMESTAMPTZ,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (book_id, leaf_path, op)
+);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_leaves_task_id ON extraction_leaves(task_id);
+CREATE INDEX IF NOT EXISTS idx_extraction_leaves_pending
+  ON extraction_leaves(book_id, status) WHERE status IN ('pending','running');
+CREATE INDEX IF NOT EXISTS idx_extraction_leaves_book ON extraction_leaves(book_id);
+
+CREATE TABLE IF NOT EXISTS extraction_leaves_raw (
+  extraction_leaf_id UUID PRIMARY KEY REFERENCES extraction_leaves(id) ON DELETE CASCADE,
+  raw_response_jsonb JSONB NOT NULL,
+  raw_token_usage    JSONB NOT NULL,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- D6: opt-in raw retention; defaults OFF (D-P2-FE-SAVE-RAW for FE toggle).
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS save_raw_extraction BOOLEAN NOT NULL DEFAULT false;
+
+
+-- ═══════════════════════════════════════════════════════════════
+-- P3 (hierarchical extraction T4 + T7 stage 1) — 2026-05-23
+-- Spec: docs/specs/2026-05-23-p3-hierarchical-reduce.md §D4
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS summary_chapters (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id           UUID NOT NULL,
+  book_id              UUID NOT NULL,
+  summary_text         TEXT NOT NULL,
+  summary_input_md5    TEXT NOT NULL,
+  embedding_dimension  INT  NOT NULL,
+  embedding_model_uuid TEXT NOT NULL,
+  generated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (chapter_id, embedding_model_uuid)
+);
+CREATE INDEX IF NOT EXISTS idx_summary_chapters_book ON summary_chapters(book_id);
+
+CREATE TABLE IF NOT EXISTS summary_parts (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  part_id              UUID NOT NULL,
+  book_id              UUID NOT NULL,
+  summary_text         TEXT NOT NULL,
+  summary_input_md5    TEXT NOT NULL,
+  embedding_dimension  INT  NOT NULL,
+  embedding_model_uuid TEXT NOT NULL,
+  generated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (part_id, embedding_model_uuid)
+);
+CREATE INDEX IF NOT EXISTS idx_summary_parts_book ON summary_parts(book_id);
+
+CREATE TABLE IF NOT EXISTS summary_books (
+  id                   UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id              UUID NOT NULL,
+  summary_text         TEXT NOT NULL,
+  summary_input_md5    TEXT NOT NULL,
+  embedding_dimension  INT  NOT NULL,
+  embedding_model_uuid TEXT NOT NULL,
+  generated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (book_id, embedding_model_uuid)
+);
+
+-- M1: extend extraction_jobs.status CHECK to include 'summarizing'.
+-- Idempotent via DROP IF EXISTS + re-add. Wrap in DO block so a missing
+-- constraint doesn't abort the migration.
+DO $$ BEGIN
+  ALTER TABLE extraction_jobs
+    DROP CONSTRAINT IF EXISTS extraction_jobs_status_check;
+  ALTER TABLE extraction_jobs ADD CONSTRAINT extraction_jobs_status_check
+    CHECK (status IN ('pending','running','summarizing','completed','failed'));
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 """
 
 
