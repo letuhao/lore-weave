@@ -727,6 +727,36 @@ The `tilemap-service classify` measurement harness ran the L3 contract against
    suggested set, snake_case tags, valid `canon_ref`) with **no retry needed**.
    Encouraging for the §5 retry budget, though n=1.
 
+### §12.9 Phase 2-3 contract findings (2026-05-17, tilemap-service L3/L4 build)
+
+Phases 2 (L3 retry loop) + 3 (L4 narration) implemented §4.2/§4.3/§5/§6 + §10
++ §11 in `tilemap-service`. Adversarial review caught contract holes worth
+folding back into this doc:
+
+1. **§4.2's retry preamble assumes the full object set, but §5 sends only the
+   failing subset.** §4.2's "Fix ONLY the entries below; keep all other entries
+   unchanged" was written for a whole-batch resend; §5's per-object retry
+   re-sends just the still-failing subset, so that wording references objects
+   no longer in the payload. The implementation **reframes the preamble** for
+   subset retries ("previously-valid entries are already saved — re-classify
+   ONLY the objects in this payload"); §4.2's wording should be read as the
+   *intent*, not the literal retry string. L4 (which §4.3 left without any
+   retry-message format) uses the same reframed shape.
+2. **Transport failure vs validation failure must not be discriminated on
+   response emptiness.** A parsed-but-empty `{"classifications":[]}` /
+   `{"zone_narrations":[]}` is a *validation* failure (every item missing) whose
+   errors must drive the retry context — not a transport failure. The loop
+   discriminates on an explicit per-attempt `failure` field, never on
+   `result.is_empty()`.
+3. **§4.3 R1 covers both directions.** The L4 R1 ("every input zone_id has a
+   narration") also flags an output narration whose `zone_id` is not an input
+   zone (`UnknownZoneId`) — symmetric with §4.1 R1's `UnknownObjId`.
+4. **No new live measurement.** The §5/§6 retry + fallback branches need
+   controlled LLM failures a clean live model does not produce, so Phases 2-3
+   were verified against a **mock gateway** (wiremock). §12.8's Phase-0b
+   qwen3-14b run remains the sole live data point; a full continent-scale live
+   measurement is still pending.
+
 ---
 
 ## §13 LLM-friendliness summary scorecard

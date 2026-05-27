@@ -1,0 +1,25 @@
+# pnpm workspace — game subtree only
+#
+# Scope decided 2026-05-24 (PO pushback):
+#   - frontend-game/ + packages/* are managed by pnpm
+#   - frontend/ is INTENTIONALLY excluded — it keeps its own npm + package-lock.json
+#     + Dockerfile workflow, untouched. Decision in spec §1 #5.
+#
+# When to add frontend/ here: only when there is a real need to share runtime code
+# (e.g., a UI component used by both apps). Until then, keep the workspace narrow.
+
+# /review-impl 2026-05-24 LOW #3: "frontend-game" doesn't exist on disk
+# until Session C scaffolds it. pnpm silently skips missing workspace
+# entries (no warning), so `pnpm --filter frontend-game ...` between
+# Sessions B and C is a silent no-op. Accept — Session C populates.
+#
+# /review-impl 2026-05-24 LOW #7: "packages/*" matches ANY directory
+# under packages/, including non-package dirs (packages/.cache,
+# packages/scripts). Such dirs cause pnpm to error loudly at install
+# time, not corrupt silently. Accept — fail-fast is the right behavior.
+# If we ever need helper scripts here, put them under tools/ or
+# packages/<name>/scripts/ instead of packages/<helper>/.
+
+packages:
+  - "frontend-game"
+  - "packages/*"

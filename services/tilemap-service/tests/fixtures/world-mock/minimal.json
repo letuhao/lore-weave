@@ -1,0 +1,193 @@
+{
+  "schema_version": "world-gen.v1+climate.v1+polygon.v1",
+  "schema_note": "Mirrors lore-weave-game/world-gen §11.2 WorldData. Extends with two §11.5 levers (climate per zone, zone boundary polygon) which the upstream contract notes will be added additively. Mock data only; real generation will replace this when world-gen-service is wired into docker-compose.",
+  "generator": "mock@2026-05-24",
+  "world": {
+    "width": 1024,
+    "height": 640,
+    "seed": 1,
+    "plate_count": 3,
+    "base_level": 0.35,
+    "void_level": 0.0,
+    "collision_gain": 0.35
+  },
+  "plates": [
+    {
+      "path": [0],
+      "center": [200.0, 180.0],
+      "velocity": [0.4, -0.2],
+      "boundary": [
+        [60.0, 60.0],
+        [380.0, 60.0],
+        [380.0, 320.0],
+        [60.0, 320.0]
+      ],
+      "zones": [
+        {
+          "path": [0, 0],
+          "site": [150.0, 130.0],
+          "base_elevation": 0.78,
+          "boundary": [
+            [60.0, 60.0],
+            [220.0, 60.0],
+            [220.0, 190.0],
+            [60.0, 190.0]
+          ],
+          "climate": {
+            "temp_mean": -18.5,
+            "precip_annual": 220.0,
+            "biome_tag": 1,
+            "biome_name": "tundra"
+          },
+          "subzones": [
+            {
+              "path": [0, 0, 0],
+              "site": [120.0, 110.0]
+            }
+          ]
+        },
+        {
+          "path": [0, 1],
+          "site": [300.0, 240.0],
+          "base_elevation": 0.51,
+          "boundary": [
+            [220.0, 60.0],
+            [380.0, 60.0],
+            [380.0, 320.0],
+            [220.0, 320.0]
+          ],
+          "climate": {
+            "temp_mean": 4.2,
+            "precip_annual": 480.0,
+            "biome_tag": 2,
+            "biome_name": "boreal_forest"
+          },
+          "subzones": [
+            {
+              "path": [0, 1, 0],
+              "site": [320.0, 220.0]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": [1],
+      "center": [580.0, 280.0],
+      "velocity": [-0.3, 0.1],
+      "boundary": [
+        [420.0, 120.0],
+        [760.0, 120.0],
+        [760.0, 440.0],
+        [420.0, 440.0]
+      ],
+      "zones": [
+        {
+          "path": [1, 0],
+          "site": [510.0, 220.0],
+          "base_elevation": 0.46,
+          "boundary": [
+            [420.0, 120.0],
+            [600.0, 120.0],
+            [600.0, 320.0],
+            [420.0, 320.0]
+          ],
+          "climate": {
+            "temp_mean": 12.4,
+            "precip_annual": 720.0,
+            "biome_tag": 3,
+            "biome_name": "temperate_forest"
+          },
+          "subzones": [
+            {
+              "path": [1, 0, 0],
+              "site": [490.0, 200.0]
+            }
+          ]
+        },
+        {
+          "path": [1, 1],
+          "site": [680.0, 360.0],
+          "base_elevation": 0.43,
+          "boundary": [
+            [600.0, 120.0],
+            [760.0, 120.0],
+            [760.0, 440.0],
+            [600.0, 440.0]
+          ],
+          "climate": {
+            "temp_mean": 14.8,
+            "precip_annual": 540.0,
+            "biome_tag": 4,
+            "biome_name": "temperate_grassland"
+          },
+          "subzones": [
+            {
+              "path": [1, 1, 0],
+              "site": [690.0, 380.0]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": [2],
+      "center": [880.0, 440.0],
+      "velocity": [0.1, 0.5],
+      "boundary": [
+        [800.0, 300.0],
+        [990.0, 300.0],
+        [990.0, 580.0],
+        [800.0, 580.0]
+      ],
+      "zones": [
+        {
+          "path": [2, 0],
+          "site": [870.0, 380.0],
+          "base_elevation": 0.41,
+          "boundary": [
+            [800.0, 300.0],
+            [990.0, 300.0],
+            [990.0, 460.0],
+            [800.0, 460.0]
+          ],
+          "climate": {
+            "temp_mean": 26.5,
+            "precip_annual": 90.0,
+            "biome_tag": 5,
+            "biome_name": "hot_desert"
+          },
+          "subzones": [
+            {
+              "path": [2, 0, 0],
+              "site": [850.0, 360.0]
+            }
+          ]
+        },
+        {
+          "path": [2, 1],
+          "site": [900.0, 510.0],
+          "base_elevation": 0.39,
+          "boundary": [
+            [800.0, 460.0],
+            [990.0, 460.0],
+            [990.0, 580.0],
+            [800.0, 580.0]
+          ],
+          "climate": {
+            "temp_mean": 24.1,
+            "precip_annual": 1180.0,
+            "biome_tag": 6,
+            "biome_name": "savanna"
+          },
+          "subzones": [
+            {
+              "path": [2, 1, 0],
+              "site": [910.0, 520.0]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

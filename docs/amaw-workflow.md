@@ -103,13 +103,20 @@ Read ONLY:
 - docs/audit/AUDIT_LOG.jsonl (for prior context if review round > 1)
 - The relevant code files for code-review variants
 
-Step 0 — Load captured rules (MUST run BEFORE finding 3 problems):
-- **First, derive the actual <task topic> from the spec file's H1 title or task slug.** Do NOT pass the literal string `<task topic>` to the helper. If you can't find a topic, use the spec filename (without extension and date prefix).
-- Run: `python scripts/mcp-query.py search_lessons "<actual derived topic>" --type guardrail --limit 10 --format json`
-- Run: `python scripts/mcp-query.py search_lessons "<changed-file pattern>" --tags adversary-rejection --limit 5 --format json`
-- Parse the JSON output. Note any guardrails or prior REJECTED findings relevant to this review.
-- Your "3 problems" MUST be informed by these results. If a guardrail is being violated by the proposed change, that's a BLOCK finding. If a prior adversary REJECTED a similar pattern, frame your finding as "this regressed prior fix X" or "this resembles the pattern that produced REJECTED finding Y".
-- Informational lessons (general_note, decision, preference) are CONTEXT — do NOT auto-promote them to findings.
+Step 0 — Captured rules (PRE-LOADED — read them BEFORE finding 3 problems):
+- The orchestrator (main session) has already queried ContextHub and embedded the
+  relevant captured rules into the **`## Captured rules`** section near the end of
+  this prompt. **Do NOT run `search_lessons` yourself** — it is pre-loaded, and
+  agent-driven lookup over a young corpus was empirically inert (the search
+  returned `(none)` across a full task). Determinism beats discretion.
+- Read that section. Your "3 problems" MUST be informed by it. If a guardrail is
+  being violated by the proposed change, that's a BLOCK finding. If a prior
+  adversary REJECTED a similar pattern, frame your finding as "this regressed prior
+  fix X" or "this resembles the pattern that produced REJECTED finding Y".
+- Informational lessons (general_note, decision, preference) are CONTEXT — do NOT
+  auto-promote them to findings.
+- If the `## Captured rules` section is absent or says "(none pre-loaded)", proceed
+  on the files alone — do not block on it.
 
 Instructions:
 - Find EXACTLY 3 things that could go wrong. Use BLOCK or WARN severity.
@@ -120,6 +127,11 @@ Adversarial lens (vary by review type):
 - Design review: contract holes, side effects not enumerated, idempotency claims that are false, transaction scope issues
 - Code review: typeerror/null cases, resource leaks, race conditions, error handling that silently swallows, off-by-one in pagination/iteration
 
+## Captured rules
+<orchestrator: replace this block with the verbatim JSON / summary from the
+search_lessons + check_guardrails calls you ran before spawning this agent.
+If nothing relevant came back, write exactly: (none pre-loaded)>
+
 Output: append ONE JSON line to docs/audit/AUDIT_LOG.jsonl:
 {"ts":"<iso>","task":"<slug>","phase":"review-design","agent":"adversary","action":"review","round":<N>,"status":"APPROVED|APPROVED_WITH_WARNINGS|REJECTED","findings_count":3,"block_count":<n>,"warn_count":<n>,"note":"<one-liner summarizing the 3 findings>"}
 
@@ -128,9 +140,8 @@ Write a separate findings document to docs/audit/findings-<task>-r<N>.md with th
   return findings as text, not write report files"). This is expected. Write the findings doc
   with a Bash heredoc instead: `cat > docs/audit/findings-<task>-r<N>.md <<'EOF' ... EOF`.
   Include footer:
-  Lessons consulted: <N> (from search_lessons calls in Step 0)
-  Step 0 query strings used: <verbatim text passed to search_lessons>  ← detect literal-placeholder failures
-  Guardrails relevant: <list of guardrail titles>, or "(none)" if Step 0 returned 0 guardrails
+  Captured rules: read pre-loaded `## Captured rules` block | (none pre-loaded)
+  Guardrails relevant: <list of guardrail titles from the pre-loaded block>, or "(none)"
   Prior REJECTED patterns: <list of titles>, or "(none)"
 
 Status rules:
@@ -158,10 +169,17 @@ Read ONLY:
 - Latest diff or relevant code files
 
 Step 0 — Captured-rules check (MUST run BEFORE rendering verdict):
-- **Derive <task area> from the spec file's title or task slug — do NOT pass the literal string `<task area>`.**
-- Run: `python scripts/mcp-query.py check_guardrails "ready-to-commit" --format json` and respect its verdict. If guardrails return `pass:false` or non-empty `violated` → your verdict MUST be BLOCKED with that reason quoted verbatim.
-- Run: `python scripts/mcp-query.py search_lessons "<actual task area>" --type guardrail --limit 5 --format json` to verify no captured rule is being violated by the diff.
-- Run: `python scripts/mcp-query.py search_lessons "<actual task area>" --limit 3 --format json` to surface prior similar verdicts. Note them in your AUDIT_LOG event with verbatim query strings used.
+- The orchestrator pre-loaded relevant lessons into the `## Captured rules` block of
+  this prompt — read it. Do NOT run `search_lessons` yourself.
+- Run ONE live check: `python scripts/mcp-query.py check_guardrails "<the riskiest
+  concrete action this change enables — e.g. 'git push origin main', 'run a database
+  migration'>" --format json`. Pass a real action string, NOT a phrase like
+  "ready-to-commit" (no guardrail has that trigger — it always returns pass:true and
+  tells you nothing). If `check_guardrails` returns `pass:false` with a non-empty
+  `matched_rules`, your verdict MUST be BLOCKED, quoting the `prompt` field verbatim.
+- NOTE: `search_lessons --type guardrail` does NOT surface guardrails (it returns
+  `(none)` — guardrails are not indexed as searchable lessons). `check_guardrails`
+  is the only API that evaluates them. Use it; do not rely on `--type guardrail`.
 
 Your authority: conservative wins. If ANY prior agent finding is unresolved, OR any acceptance criterion uncovered, OR spec fingerprint shows unexplained drift, OR check_guardrails returned BLOCKED → BLOCKED. Otherwise → CLEAR.
 
@@ -292,8 +310,25 @@ AMAW's MCP integration was deepened from shallow (~15-20%) to ~70-80% via 4 comp
 
 1. **`scripts/mcp-query.py`** — stdlib REST CLI wrapper for ContextHub. Sub-agents shell out to it via `python scripts/mcp-query.py <verb>` instead of relying on MCP-tool-inheritance.
 2. **AUDIT_LOG → ContextHub bridge** in `workflow-gate.py`: when `amaw_enabled=True`, `cmd_complete` writes events to `docs/audit/AUDIT_LOG.jsonl` AND selectively bridges high-signal events (sprint_complete, REJECTED reviews, pragmatic_stop) to `add_lesson`. Default v2.2 mode → silent.
-3. **Sub-agent prompts (Adversary / Scope Guard / Scribe)** include Step 0 calls to `mcp-query.py search_lessons` / `check_guardrails` for captured-rules awareness — see templates above.
-4. **Pre-commit hook chain** — `.claude/settings.json` runs `workflow-gate.sh pre-commit && workflow-gate.sh amaw-pre-commit`. Second gate is no-op for default v2.2; calls `check_guardrails` when AMAW mode active.
+3. **Sub-agent prompts (Adversary / Scope Guard / Scribe)** — the **orchestrator
+   pre-loads** captured rules: before spawning a sub-agent the main session runs
+   `search_lessons` (for the task topic) + `check_guardrails` (for the riskiest
+   concrete action) and embeds the verbatim results into the prompt's
+   `## Captured rules` block. The sub-agent reads that block — it does **not** run
+   `search_lessons` itself (agent-driven lookup over a young corpus was empirically
+   inert; deterministic injection replaces discretion — the Kiro-steering pattern).
+4. **Harness hooks** (`.claude/settings.json`):
+   - `PreToolUse` (Bash) — `scripts/amaw-guardrail-gate.py`: cheap local pre-check,
+     then `check_guardrails` for risky actions (git push / force-push / `rm -r` /
+     `git reset --hard` / destructive docker / migration) → surfaces a permission
+     `ask`. Fail-open. Plus the existing `git commit` v2.2 phase gate.
+   - `SessionStart` — `scripts/amaw-context-inject.py`: injects the active guardrail
+     set + recent lessons into context once per session (steering). Fail-open.
+   - The canonical guardrail set is (re-)seeded idempotently by
+     `scripts/seed-amaw-guardrails.py`.
+   - Guardrail triggers use `/regex/` form (ContextHub does exact-match for plain
+     triggers); guardrails are evaluated via `check_guardrails`, NOT
+     `search_lessons --type guardrail` (which does not surface them).
 
 **Activation:** `/amaw` slash command runs `bash scripts/workflow-gate.sh amaw-enable [task-slug]` which sets `state['amaw_enabled']=True`. All L3 behaviors gate on this flag.
 

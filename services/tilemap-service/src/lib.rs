@@ -18,10 +18,14 @@
 #![warn(missing_debug_implementations)]
 #![warn(rust_2018_idioms)]
 
+pub mod engine;
 pub mod error;
 pub mod harness;
+pub mod http;
+pub mod registry;
 pub mod seed;
 pub mod types;
+pub mod world_inherit;
 
 pub use error::{Error, Result};
 pub use seed::{TilemapSeed, derive_seed};

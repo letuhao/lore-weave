@@ -1,0 +1,16 @@
+{
+  "name": "@loreweave/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Tailwind config preset + CSS variables + Phaser color palette for frontend-game.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ]
+}

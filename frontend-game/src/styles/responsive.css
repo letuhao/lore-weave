@@ -1,0 +1,7 @@
+/* Responsive breakpoints + mobile drawer behavior. Per spec §7:
+   desktop = ≥ 1024px, mobile-landscape = 700-1024px, mobile-portrait
+   blocked (RotatePrompt overlays). */
+
+@media (max-width: 1023px) and (orientation: landscape) {
+  /* Mobile landscape — Session D wires drawer-style sidebar */
+}

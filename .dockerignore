@@ -1,0 +1,62 @@
+# Repo-root .dockerignore — applies to ALL docker builds with context=repo-root
+# (currently: tilemap-service + frontend-game). Services with their own
+# build context (e.g., game-server uses context=services/game-server) get
+# their own .dockerignore separately.
+#
+# Goal: keep build context small so cache invalidation is granular and
+# Docker daemon doesn't tar GBs of node_modules every build.
+
+# Generated artifacts — anything we'd rebuild anyway
+node_modules
+**/node_modules
+target
+**/target
+dist
+**/dist
+.pnpm-store
+
+# Workspace siblings irrelevant to either tilemap-service or frontend-game.
+# Includes:
+#   - frontend/ (separate npm app, not part of pnpm workspace per spec §1 #5)
+#   - chat-history, tests/test_data, infra/test-data (local-only data)
+#   - .github (CI defs not needed for build)
+frontend/node_modules
+frontend/dist
+chat-history
+infra/test-data
+tests/test_data
+.github
+
+# Dev/IDE/OS noise
+.git
+.gitignore
+.vscode
+.idea
+.cursor*
+.claude
+.workflow-state.json
+*.log
+chat.txt
+.DS_Store
+Thumbs.db
+*.swp
+
+# Docs are large and immutable at build time — only the running code matters
+# (Dockerfile itself + nginx.conf etc are not in docs/)
+docs
+
+# Test outputs / coverage
+coverage
+.pytest_cache
+.ruff_cache
+htmlcov
+
+# Local env / creds (NEVER ship into images)
+.env
+.env.local
+.local
+
+# Playwright + browser test artifacts
+.playwright-mcp
+playwright-report
+playwright/.cache

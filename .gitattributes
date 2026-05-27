@@ -3,3 +3,12 @@
 Dockerfile text eol=lf
 *.sql text eol=lf
 *.conf text eol=lf
+
+# /review-impl 2026-05-24 LOW #6: pnpm always writes LF; Windows Git with
+# core.autocrlf=true (Windows installer default) would convert to CRLF on
+# checkout, then pnpm rewrites back to LF on next install — producing a
+# noisy "lockfile changed" diff on every commit. Pin LF for pnpm-lock +
+# all YAML to avoid the round-trip churn.
+pnpm-lock.yaml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf

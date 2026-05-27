@@ -11,15 +11,19 @@ use serde_json::{Value, json};
 pub struct L3Placeholder {
     pub obj_id: String,
     pub kind: String,
+    /// The zone this object sits in — used by the §6 canonical-default tag and
+    /// the Phase-2 bootstrap to associate objects with placed zones.
+    pub zone_id: String,
     /// Closed set the LLM must pick from — index 0 is the engine default.
     pub suggested_canon_kind: Vec<String>,
 }
 
 impl L3Placeholder {
-    fn new(obj_id: &str, kind: &str, suggested: &[&str]) -> Self {
+    pub fn new(obj_id: &str, kind: &str, zone_id: &str, suggested: &[&str]) -> Self {
         Self {
             obj_id: obj_id.to_string(),
             kind: kind.to_string(),
+            zone_id: zone_id.to_string(),
             suggested_canon_kind: suggested.iter().map(|s| s.to_string()).collect(),
         }
     }
@@ -32,16 +36,19 @@ pub fn fixture_placeholders() -> Vec<L3Placeholder> {
         L3Placeholder::new(
             "obj_1",
             "Treasure",
+            "zone_1",
             &["BanditCache", "AbandonedCellar", "OldShrine"],
         ),
         L3Placeholder::new(
             "obj_2",
             "MonsterLair",
+            "zone_1",
             &["BanditCamp", "WolfDen", "ElvenWatcher"],
         ),
         L3Placeholder::new(
             "obj_3",
             "Landmark",
+            "zone_1",
             &["AncientTree", "RuinedWell", "RobberShrine"],
         ),
     ]
@@ -81,20 +88,32 @@ Expected tool call submit_zone_classifications:
     {obj_id=obj_3, canon_kind=AncientTree, narrative_tag=world_tree_relic, canon_ref=null, rationale="The iconic landmark of an elven grove is its great tree"}
   ]"#;
 
-/// The variable per-call payload — the zone summary + objects to classify.
+/// The variable per-call payload — the distinct zones followed by the objects
+/// to classify. Each object line carries its `zone_id` (TMP_008b §3 — objects
+/// are classified within their zone), so a multi-zone placeholder set (the
+/// Phase-2 bootstrap) renders honestly rather than collapsing to one zone.
 pub fn user_payload(placeholders: &[L3Placeholder]) -> String {
-    let mut s = String::from(
-        "Classify the objects in this tilemap.\n\n\
-         zone_1: zone_role=Wilderness terrain=forest monster_strength=normal\n        \
-         narrative_hint=<author_text>\"ancestral homeland of the Lotus Sect lay disciples\"</author_text>\n\n\
-         book_canon_refs available: ",
-    );
+    let mut s = String::from("Classify the objects in this tilemap.\n\nZones:\n");
+
+    // Distinct zone_ids in first-appearance order (deterministic).
+    let mut zones: Vec<&str> = Vec::new();
+    for p in placeholders {
+        if !zones.contains(&p.zone_id.as_str()) {
+            zones.push(p.zone_id.as_str());
+        }
+    }
+    for z in &zones {
+        s.push_str(&format!("  {z}\n"));
+    }
+
+    s.push_str("\nbook_canon_refs available: ");
     s.push_str(&book_canon_refs().join(", "));
     s.push_str("\n\nObjects to classify:\n");
     for p in placeholders {
         s.push_str(&format!(
-            "  {}: kind={} suggested_canon_kind=[{}]\n",
+            "  {}: zone={} kind={} suggested_canon_kind=[{}]\n",
             p.obj_id,
+            p.zone_id,
             p.kind,
             p.suggested_canon_kind.join(",")
         ));

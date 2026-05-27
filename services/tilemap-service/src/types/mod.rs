@@ -3,20 +3,36 @@
 //! Per TMP-A1 cell tier has no `tilemap_view` — these types only apply to
 //! non-cell channels (continent / country / district / town).
 //!
-//! Phase 0a scope: data types only — no behaviour. Inner detail (e.g.,
-//! [`ZoneRuntime::assigned_tiles`]) is intentionally opaque; concrete shapes land
-//! at Phase 1 when the zone placer + modificator pipeline is built.
+//! Data types + the [`TileMask`] bitset. Behaviour (the zone placer +
+//! modificator pipeline) lives in the `engine` module (added Phase 1).
 
+pub mod biome;
 pub mod channel;
 pub mod object;
+pub mod object_template;
+pub mod primitive;
+pub mod registry;
 pub mod template;
 pub mod tile;
+pub mod tile_mask;
 pub mod tilemap;
+pub mod treasure;
 pub mod zone;
 
+pub use biome::{
+    Alignment, BiomeId, BiomeLevel, BiomeObjectType, BiomePriority, BiomeSelection,
+    BiomeSelectionRule, BiomeSelectionRules, BiomeSet,
+};
 pub use channel::{ChannelId, ChannelTier};
-pub use object::{TilemapObjectKind, TilemapObjectPlacement};
-pub use template::{TilemapTemplate, TilemapTemplateId, ZoneSpec};
-pub use tile::{TerrainKind, TileCoord, TileState};
+pub use object::{TilemapObjectKind, TilemapObjectPlacement, V2Defaults};
+pub use object_template::{FootprintCell, TilemapObjectTemplate};
+pub use primitive::{ObjectPrimitive, TerrainPrimitive};
+pub use registry::{
+    Direction, FootprintSize, ObjectKindDef, RegistryRef, TerrainKindDef, WalkabilityPattern,
+};
+pub use template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
+pub use tile::{default_terrain_vocabulary, TerrainCell, TerrainKind, TileCoord, TileState};
+pub use tile_mask::TileMask;
 pub use tilemap::{GenerationSource, GridSize, TilemapView, ZoneRuntime};
-pub use zone::{PassageKind, ZoneEdge, ZoneId, ZoneRole};
+pub use treasure::TreasureTierSpec;
+pub use zone::{PassageKind, RoadOption, ZoneEdge, ZoneId, ZoneRole};
