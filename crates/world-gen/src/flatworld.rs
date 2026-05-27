@@ -67,6 +67,13 @@ pub struct FlatParams {
     /// [`DispatchMode::Weighted`] with per-rank algorithm weights. Tests /
     /// debug callers can pin `Fixed(<kind>)` to force a single algorithm.
     pub plate_dispatch: Option<DispatchMode>,
+    /// v3.5: Coastline fractalize post-process. Applied after each plate
+    /// generator returns so all generators benefit from Mandelbrot-style
+    /// fractal coastline detail. See [`crate::shape::FractalizeConfig`].
+    /// Default ON with moderate roughness; set to
+    /// `FractalizeConfig::disabled()` to bypass for v3.4 byte-identical
+    /// comparison.
+    pub coastline: crate::shape::FractalizeConfig,
 }
 
 impl Default for FlatParams {
@@ -103,6 +110,10 @@ impl Default for FlatParams {
             // `generate`, preserving byte-identical render vs v3.0.
             // v3.1b will flip the resolved default to Weighted(...).
             plate_dispatch: None,
+            // v3.5: fractalize enabled by default with moderate roughness.
+            // Set via `FractalizeConfig::disabled()` for byte-identical
+            // v3.4 comparison.
+            coastline: crate::shape::FractalizeConfig::default(),
         }
     }
 }
@@ -551,8 +562,38 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
                 .get(selected_kind)
                 .expect("dispatcher must only return kinds registered in the registry")
                 .generate(&ctx, &mut rng);
-            let components = result.polygons;
+            let mut components = result.polygons;
             let kind = result.effective_kind;
+
+            // v3.5: coastline fractalize post-process. Applies hybrid
+            // midpoint displacement + Perlin warp uniformly across all
+            // generators so every plate ends up with Hausdorff-1.25 coast
+            // detail. Skipped when `coastline.is_active() == false` (e.g.
+            // when caller passes `FractalizeConfig::disabled()` for v3.4
+            // byte-identical comparison).
+            if params.coastline.is_active() && !components.is_empty() {
+                let mut fract_rng = Rng::for_stage(shape_seed as u64, b"coastline");
+                let base_salt = plate_salt.wrapping_add(0xC047_5712);
+                let primary = std::mem::take(&mut components[0]);
+                components[0] = crate::shape::fractalize_polygon(
+                    &primary,
+                    &params.coastline,
+                    base_salt,
+                    &mut fract_rng,
+                );
+                if params.coastline.apply_to_satellites {
+                    let n_components = components.len();
+                    for (i, slot) in components.iter_mut().enumerate().take(n_components).skip(1) {
+                        let sat = std::mem::take(slot);
+                        *slot = crate::shape::fractalize_polygon(
+                            &sat,
+                            &params.coastline,
+                            base_salt.wrapping_add(i as u32),
+                            &mut fract_rng,
+                        );
+                    }
+                }
+            }
 
             let speed = mrng.next_f32() * params.max_speed;
             let vdir = mrng.next_f32() * TAU;
@@ -1128,6 +1169,9 @@ mod tests {
             let world = generate(&FlatParams {
                 seed,
                 plate_dispatch: Some(DispatchMode::Fixed(ShapeKind::Ellipse)),
+                // v3.5: coastline fractalize disabled to keep v3.0 byte-
+                // identical hash. v3.0 had no post-process.
+                coastline: crate::shape::FractalizeConfig::disabled(),
                 ..Default::default()
             });
             let actual = hash_world(&world);
@@ -1466,7 +1510,17 @@ mod tests {
         // V1 Phase A: defaults bumped to 24..=48 vertices so plate outlines
         // stop looking like a child's drawing. Regression: future tweaks
         // mustn't quietly drop back to the toy-era 6..11 range.
-        let p = FlatParams::default();
+        //
+        // **v3.5 adapt**: with coastline fractalize ON, the generator
+        // contract is `min_vertices..=max_vertices` PRE-fractalize and
+        // the post-process can grow vertex count by `2^iterations × ε`
+        // (default iter=3 → up to 8× plus Perlin warp jitter). To keep
+        // the regression check meaningful we test with coastline disabled
+        // so the generator's own vertex-count fit is asserted directly.
+        let p = FlatParams {
+            coastline: crate::shape::FractalizeConfig::disabled(),
+            ..FlatParams::default()
+        };
         assert!(p.min_vertices >= 24, "min_vertices regressed: {}", p.min_vertices);
         assert!(p.max_vertices >= 48, "max_vertices regressed: {}", p.max_vertices);
         let world = generate(&p);

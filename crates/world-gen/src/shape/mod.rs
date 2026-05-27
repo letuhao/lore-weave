@@ -19,6 +19,7 @@
 //! See [`dispatch`] for [`ShapeRegistry`] and [`DispatchMode`] (the wire-up).
 //! See [`ellipse`] for the v3.0 algorithm extracted as [`ellipse::EllipseGenerator`].
 
+pub mod coastline;
 pub mod csg;
 pub mod dispatch;
 pub mod ellipse;
@@ -28,6 +29,7 @@ pub mod sdf;
 pub mod slime;
 pub mod spine;
 
+pub use coastline::{FractalizeConfig, fractalize_polygon};
 pub use csg::{BooleanGenerator, BooleanTemplate};
 pub use dispatch::{
     DispatchMode, ShapeRegistry, engine_v3_1b_weights, engine_v3_2_weights,

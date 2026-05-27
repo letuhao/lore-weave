@@ -1,10 +1,11 @@
 # Deferred Items
 
 <!-- Managed by Scribe (AMAW) or main session (default mode). Do not edit manually unless cleaning up. -->
-<!-- Next ID: 026 -->
+<!-- Next ID: 027 -->
 
 | ID | Origin | Description | Target | Severity |
 |---|---|---|---|---|
+| 026 | 2026-05-28 v3.5 POST-REVIEW PO directive | **Natural-fragmentation enhancements** (umbrella entry for ~10 features). Real continents are sculpted by water + wind + tectonic break-up — not just drawn algorithmically. v3.5 fractalize ships RANDOM fractal detail; future passes add PHYSICS-DRIVEN fractal detail: (a) coastal wave erosion; (b) wind/Aeolian erosion; (c) river-mouth carving/deltas; (d) tectonic rifting (active plate break-up); (e) sea-level dynamics (glacial/interglacial floods); (f) subduction-driven asymmetric coast modification; (g) hotspot volcanic island chains; (h) karst/dissolution coast detail per-biome; (i) glacial fjord carving; (j) storm-track erosion bands. Full list documented in `docs/plans/2026-05-25-phase-a-v3-roadmap.md` §13 "Natural-fragmentation enhancements". | Phase B+ (water/wind erosion) and V5 (time dynamics) | LOW |
 | 025 | 2026-05-26 v3.2 spec §6 design review | `lat_banding` metric entropy rewrite for v3.2's branching shapes (Y-branch, Crab-radial legitimately span 3+ lat bands by design). Spec §6 described an area-weighted band entropy replacement; PO approved defer because v4.5 unified calibration pass will rewrite multiple metrics together. v3.2 ships with current ecotone-aware `lat_banding` and accepts whatever composite delta lands — v5.5.json regenerated at that value. If composite drops >10 PO can flag specific seeds for follow-up via /review-impl. | v4.5 calibration phase | MED |
 <!-- #024 cleared 2026-05-24 by v2.1e ship — see "Recently cleared" below -->
 | 023 | 2026-05-17 GEO Path A relief render | Render polish deferred from Path A (render-only, cosmetic — neither blocks Path B): (a) rivers on the biome map are still flat per-cell Voronoi runs — tapered-curve river rendering would read far better; (b) the `atlas` style coastline is the interpolated-mesh land/water crossing + a 1px ink outline, not a true smoothed (marching-squares + curve-fit) coastline. | Render polish pass (post Path B) | LOW |

@@ -1533,7 +1533,12 @@ mod tests {
         // origin). Hypso bytes shift on the seed-7 96×64 hash-pin world.
         // Rebaseline only with intentional polygon-shape / palette /
         // pipeline changes.
-        let pinned = "c5647e907edebd6f76bc7c9ad74b06d947c87923a3b962eefffc324e4f335b3c";
+        // **v5.6 Phase A v3.5 rebase 2026-05-28**: Coastline fractalize
+        // shipped — universal post-process applies hybrid midpoint
+        // displacement + Perlin warp to every plate polygon (Mandelbrot
+        // Hausdorff-1.25 coast detail). Hypso pixels shift via fractal
+        // coast modifying which world cells are land vs void.
+        let pinned = "0ebab38e385d52ae89ad4dfd5fe734cd46b31b9e1ffe838e0194a6e86d8b7251";
         assert_eq!(
             actual.as_str(),
             pinned,
@@ -1592,7 +1597,9 @@ mod tests {
         // bytes shift on the seed-7 96×64 hash-pin world.
         // Rebaseline only with intentional biome algorithm / palette /
         // pipeline / polygon-shape changes.
-        let pinned = "37b759688416edb73af8f8f6c01b14c68e982e8a0ab9637c1a2b24f64ee11011";
+        // **v5.6 Phase A v3.5 rebase 2026-05-28**: Coastline fractalize
+        // shipped. Biome pixel composite shifts with the new coast detail.
+        let pinned = "a3bde9e96f812b82ad2aa594d0b2e16a632f4918488c88bcb15caa7ec02d2b02";
         assert_eq!(
             actual.as_str(),
             pinned,

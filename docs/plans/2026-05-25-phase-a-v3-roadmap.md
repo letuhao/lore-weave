@@ -506,11 +506,29 @@ crates/world-gen/src/
 
 ## 13 — Out-of-V3/V4-Scope (deferred to V5+)
 
+### Already enumerated
 - True plate-tectonic simulation (rigid body motion, collision dynamics) — V5 if requested
 - Hydraulic erosion as post-process (carving fjords from existing heightmaps) — Phase B+
 - Wave Function Collapse on tile grid (Townscaper-style) — alternative architecture, V5
 - Time dynamics (plates drift, continents merge over time) — V6+
 - Spherical world support (currently flat 1024×640 only) — separate track
+
+### Natural-fragmentation enhancements (PO directive 2026-05-28, post v3.5)
+
+PO observation: real continents are sculpted by water, wind, and natural break-up — not just drawn by an algorithm. v3.5 fractalize gives Mandelbrot coast detail at one instant; the features below make that detail **dynamic and physics-driven**:
+
+- **Coastal wave erosion** — Aeolian-style boundary recession applied to plate exteriors. Erosion magnitude proportional to (exposure to open water, wave fetch, latitude). Per-pixel mask + iterative shore-cell removal. **Phase B+** companion to hydraulic erosion.
+- **Wind / Aeolian erosion** — Smooths leeward coasts and roughens windward coasts. Couples with prevailing-wind direction from climate. Sand-dune carving on desert biomes. **Phase B+**.
+- **River-mouth carving** — D8 drainage outlets cut deltas / estuaries into the coast (visible inlets that breach the v3.5 fractal coastline). Reverses the "smooth coast" assumption of hydrology.rs. **Phase B+**.
+- **Tectonic rifting** — Active continental break-up. A "rift seed" point splits a plate into 2-3 components along a noise-warped line. Outputs match v3.3's hybrid-multi-component schema (primary + satellites). **V5 (time dynamics)**.
+- **Sea level dynamics** — Glacial / interglacial sea-level shifts (±100 m). Low-lying coast pixels flood / desiccate. Affects which fractal coast detail is "land" vs "ocean". **V5**.
+- **Subduction-driven coast modification** — When two plates collide, the subducting plate's coast gets uplifted into mountain ranges (current orogeny logic), but the OVERRIDING plate's coast should retreat (oceanic crust forced down). Asymmetric coast effect at collision boundaries. **V5**.
+- **Hotspot / volcanic island chains** — Linear chains of small new plates spawn along a fixed lat/lon line as the plate drifts (e.g. Hawaii). Each new island is small + Slime/MarchingNoise-shaped. **V5 (time dynamics)**.
+- **Karst / dissolution coast detail** — Limestone-belt biomes get extra coast irregularity (sinkholes, sea caves) via micro-scale Perlin warp with high frequency. Per-biome fractalize config. **Phase B+** (requires biome → terrain feedback).
+- **Glacial retreat scarring** — Fjord carving on polar plates: deep narrow inlets cut into the v3.5 fractal coast, oriented along ice-flow lines. **Phase B+**.
+- **Storm-track erosion bands** — Latitudes with high storm activity (mid-latitude westerlies) get extra coast roughening above the baseline fractal. Couples to climate `storm_intensity`. **Phase B+**.
+
+**Status:** documented for future implementation. None ship in Phase A v3.x. v3.5 fractalize is the *first* of this family (random fractal detail); the rest add *physics-driven* fractal detail. Tracked in [`../deferred/DEFERRED.md`](../deferred/DEFERRED.md) as **D-NATURAL-FRAGMENTATION-** entries.
 
 ## 14 — Locked Decisions (answered 2026-05-25)
 

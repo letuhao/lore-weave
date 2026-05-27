@@ -71,6 +71,19 @@ fn main() {
             "--separation" => p.separation = need().parse().expect("separation"),
             "--min-zones" => p.min_zones = need().parse().expect("min-zones"),
             "--max-zones" => p.max_zones = need().parse().expect("max-zones"),
+            "--coastline-roughness" => {
+                p.coastline.roughness = need().parse().expect("coastline-roughness 0..1");
+            }
+            "--coastline-iter" => {
+                p.coastline.iterations = need().parse().expect("coastline-iter 0..5");
+            }
+            "--coastline-enabled" => {
+                // 0 = disabled, anything else = use existing roughness/iter knobs.
+                let v: u32 = need().parse().expect("coastline-enabled 0|1");
+                if v == 0 {
+                    p.coastline = world_gen::shape::FractalizeConfig::disabled();
+                }
+            }
             "--force-kind" => {
                 let kind = match need().as_str() {
                     "ellipse" => world_gen::shape::ShapeKind::Ellipse,
