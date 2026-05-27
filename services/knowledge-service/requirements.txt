@@ -31,3 +31,13 @@ tiktoken>=0.7
 # P1 (2026-05-23) — loreweave_parse SDK uses bs4 + stdlib html.parser
 # for the /internal/parse endpoint. Pure Python, no native deps.
 beautifulsoup4>=4.12,<5
+
+# Eval framework overhaul (2026-05-27 spec D8 + plan LOW-10 pinning).
+# Pinned for reproducibility — DeepEval especially has rapid API churn.
+# Realistic added image footprint ~500MB-1GB including transitive
+# pydantic v2 + sentence-transformers + pyarrow (per plan LOW-12).
+# Used only in tests/quality/* and only opt-in via --run-quality.
+deepeval==4.0.4
+seqeval==1.2.2
+datasets==2.21.0
+krippendorff==0.7.0
