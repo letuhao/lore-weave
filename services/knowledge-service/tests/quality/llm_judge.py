@@ -60,6 +60,7 @@ __all__ = [
     "judge_category",
     "judge_chapter",
     "format_items_for_judge",
+    "run_dump_judge",
 ]
 
 
@@ -664,3 +665,154 @@ async def judge_chapter(
         extracted=actual.get("events", []), gold=expected.get("events", []),
     )
     return ChapterJudgement(chapter=chapter, entity=ent, relation=rel, event=evt)
+
+
+# ── Multi-judge ensemble adapter (cycle 2026-05-27 — spec D4) ─────────
+
+
+def _chapter_judgement_to_verdicts(
+    judgement: "ChapterJudgement",
+) -> list:
+    """Flatten a `ChapterJudgement` into a list of `JudgeVerdict` records
+    matching the shape `judge_ensemble.py` consumes.
+
+    Maps each ItemVerdict/GoldVerdict into the (chapter, category, kind, idx,
+    verdict_label) shape:
+      - precision verdicts: verdict_label ∈ {supported, partial, unsupported, unjudged}
+      - recall verdicts: convert `found` bool → {covered if True, uncovered if False};
+        `judged=False` → unjudged
+    """
+
+    # Lazy import to avoid hard coupling at module-collection time.
+    from tests.quality.judge_ensemble import JudgeVerdict
+
+    verdicts: list[JudgeVerdict] = []
+    for cat_judgement, category in (
+        (judgement.entity, "entity"),
+        (judgement.relation, "relation"),
+        (judgement.event, "event"),
+    ):
+        for pv in cat_judgement.precision_verdicts:
+            verdicts.append(
+                JudgeVerdict(
+                    chapter=judgement.chapter,
+                    category=category,  # type: ignore[arg-type]
+                    kind="precision",
+                    idx=pv.idx,
+                    verdict=pv.verdict,  # type: ignore[arg-type]
+                )
+            )
+        for rv in cat_judgement.recall_verdicts:
+            if not rv.judged:
+                label = "unjudged"
+            else:
+                label = "covered" if rv.found else "uncovered"
+            verdicts.append(
+                JudgeVerdict(
+                    chapter=judgement.chapter,
+                    category=category,  # type: ignore[arg-type]
+                    kind="recall",
+                    idx=rv.idx,
+                    verdict=label,  # type: ignore[arg-type]
+                )
+            )
+    return verdicts
+
+
+async def run_dump_judge(
+    client: LLMClient,
+    *,
+    judge_model_uuid: str,
+    judge_label: str,
+    user_id: str,
+    model_source: str,
+    dump_root: "Path",  # noqa: F821 — typed via TYPE_CHECKING import below
+    source_text_loader,  # callable: (chapter_name) -> str | None
+) -> "JudgeRunResult":  # noqa: F821
+    """Run ONE judge over a whole extraction-dump tree + collect verdicts.
+
+    The ensemble runner in `judge_ensemble.run_ensemble_judges` calls this
+    (via a closure) once per judge in sequence. JIT model swaps happen at
+    the LM Studio side when `judge_model_uuid` differs between calls.
+
+    Returns a `JudgeRunResult` with status `complete` / `incomplete` /
+    `failed` per spec D11:
+      - complete: every chapter in dump_root produced verdicts
+      - incomplete: some chapters failed mid-run but others succeeded
+      - failed: raised before any chapter processed (handled by ensemble
+        runner; this function does NOT catch — let exception propagate so
+        the runner marks `failed` with the failure reason)
+    """
+
+    from pathlib import Path  # local import; module-level Path TYPE_CHECKING'd below
+    import json as _json
+
+    from tests.quality.judge_ensemble import JudgeRunResult
+
+    chapter_dirs = sorted(
+        p for p in dump_root.iterdir()
+        if p.is_dir() and (p / "actual.json").is_file()
+    )
+
+    verdicts: list = []
+    chapters_complete: list[str] = []
+    chapters_incomplete: list[str] = []
+
+    for ch_dir in chapter_dirs:
+        chapter = ch_dir.name
+        try:
+            actual = _json.loads((ch_dir / "actual.json").read_text(encoding="utf-8"))
+            expected_path = ch_dir / "expected.json"
+            expected = (
+                _json.loads(expected_path.read_text(encoding="utf-8"))
+                if expected_path.is_file()
+                else {"entities": [], "relations": [], "events": []}
+            )
+            source_text = source_text_loader(chapter)
+            if source_text is None:
+                logger.warning(
+                    "run_dump_judge: no source text for %s — skipping (judge=%s)",
+                    chapter, judge_label,
+                )
+                chapters_incomplete.append(chapter)
+                continue
+
+            judgement = await judge_chapter(
+                client,
+                judge_model=judge_model_uuid,
+                user_id=user_id,
+                model_source=model_source,
+                chapter=chapter,
+                source_text=source_text,
+                actual=actual,
+                expected=expected,
+            )
+            verdicts.extend(_chapter_judgement_to_verdicts(judgement))
+            chapters_complete.append(chapter)
+        except Exception as e:  # noqa: BLE001 — surface as `incomplete`, not `failed`
+            logger.warning(
+                "run_dump_judge: chapter %s failed for judge %s: %s",
+                chapter, judge_label, e,
+            )
+            chapters_incomplete.append(chapter)
+
+    if chapters_incomplete and not chapters_complete:
+        # Every chapter failed for this judge — treat as failed dimension
+        status = "failed"
+        reason = f"all chapters failed; first incomplete: {chapters_incomplete[0]}"
+    elif chapters_incomplete:
+        status = "incomplete"
+        reason = f"chapters incomplete: {chapters_incomplete}"
+    else:
+        status = "complete"
+        reason = ""
+
+    return JudgeRunResult(
+        judge_uuid=judge_model_uuid,
+        judge_label=judge_label,
+        judge_status=status,  # type: ignore[arg-type]
+        failure_reason=reason,
+        chapters_complete=chapters_complete,
+        chapters_incomplete=chapters_incomplete,
+        verdicts=verdicts,
+    )

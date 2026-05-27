@@ -256,3 +256,136 @@ async def test_llm_judge_extraction_quality() -> None:
         for j in judgements for c in j.categories
     )
     assert total_verdicts > 0, "judge produced zero verdicts across all chapters"
+
+
+# ── Multi-judge ensemble mode (cycle 2026-05-27 — spec D3/D4/D11/D12) ─────
+
+
+@pytest.mark.quality
+@pytest.mark.asyncio
+async def test_llm_judge_ensemble() -> None:
+    """Run a multi-judge ensemble over an existing extraction dump.
+
+    Triggered by env `KNOWLEDGE_EVAL_ENSEMBLE_JUDGES` — comma-separated
+    UUIDs of registered user_models. Each judge runs sequentially over
+    the full dump (LM Studio JIT model swap between calls per spec D3).
+    Emits:
+      - per-judge `judge_verdicts_<label>.json` (D4)
+      - `judge_ensemble_report.json` with Fleiss κ + per-chapter majority
+        + D12 bias metrics + D11 judge_status
+    Acceptance: ensemble_acceptable=True (≥ 2 complete judges per D11).
+    No silent 2-judge fallback — failed judges surface as dimensions.
+
+    Ensemble label-mapping (informational; doesn't affect computation):
+      first uuid → "gemma" (Judge A) (override via KNOWLEDGE_EVAL_ENSEMBLE_LABELS)
+      second uuid → "qwen-30b"
+      third uuid → "claude-4.7-opus"
+    """
+
+    ensemble_env = _env("KNOWLEDGE_EVAL_ENSEMBLE_JUDGES")
+    if not ensemble_env:
+        pytest.skip(
+            "KNOWLEDGE_EVAL_ENSEMBLE_JUDGES (comma-sep judge UUIDs) required for ensemble mode"
+        )
+    user_id = _env("KNOWLEDGE_EVAL_USER_ID")
+    if not user_id:
+        pytest.skip("KNOWLEDGE_EVAL_USER_ID env var required")
+    model_source = _env("KNOWLEDGE_EVAL_JUDGE_MODEL_SOURCE", "user_model")
+    dump_root_env = _env("KNOWLEDGE_JUDGE_DUMP_PATH") or _env("KNOWLEDGE_EVAL_DUMP_PATH")
+    if not dump_root_env:
+        pytest.skip(
+            "KNOWLEDGE_JUDGE_DUMP_PATH (or KNOWLEDGE_EVAL_DUMP_PATH) required — "
+            "point it at an extraction dump produced by test_extraction_eval.py"
+        )
+    dump_root = Path(dump_root_env).resolve()
+    assert dump_root.is_dir(), f"dump path not found: {dump_root}"
+
+    # Parse judge list
+    judge_uuids = [s.strip() for s in ensemble_env.split(",") if s.strip()]
+    assert len(judge_uuids) >= 2, (
+        f"ensemble needs ≥ 2 judges; got {len(judge_uuids)} from "
+        f"KNOWLEDGE_EVAL_ENSEMBLE_JUDGES={ensemble_env!r}"
+    )
+
+    label_env = _env("KNOWLEDGE_EVAL_ENSEMBLE_LABELS")
+    if label_env:
+        labels = [s.strip() for s in label_env.split(",")]
+        assert len(labels) == len(judge_uuids), (
+            "KNOWLEDGE_EVAL_ENSEMBLE_LABELS count must match JUDGE count"
+        )
+    else:
+        # Default ordering matches spec D3 default 3-judge layout
+        default_labels = ["gemma", "qwen-30b", "claude-4.7-opus"]
+        labels = default_labels[: len(judge_uuids)] + judge_uuids[len(default_labels):]
+
+    judges = list(zip(judge_uuids, labels))
+    print(
+        f"\nEnsemble run: {len(judges)} judges over {dump_root}: "
+        + ", ".join(f"{lbl}({uuid[:8]})" for uuid, lbl in judges)
+    )
+
+    # Foundation imports — defer so the rest of this file imports without
+    # the deepeval/anchor modules at collection time.
+    from tests.quality.judge_ensemble import (
+        assemble_report,
+        persist_ensemble_report,
+        persist_verdicts,
+        run_ensemble_judges,
+    )
+    from tests.quality.llm_judge import run_dump_judge
+
+    client = get_llm_client()
+
+    async def _judge_fn(judge_uuid: str):
+        # Find the matching label for this UUID
+        label = next((lbl for uuid_, lbl in judges if uuid_ == judge_uuid), judge_uuid[:8])
+        logger.info("Ensemble: running judge %s (%s)", label, judge_uuid)
+        print(f"  → judge {label}: starting", flush=True)
+        result = await run_dump_judge(
+            client,
+            judge_model_uuid=judge_uuid,
+            judge_label=label,
+            user_id=cast(str, user_id),
+            model_source=cast(str, model_source),
+            dump_root=dump_root,
+            source_text_loader=_load_source_text,
+        )
+        print(
+            f"  → judge {label}: status={result.judge_status} "
+            f"verdicts={len(result.verdicts)} complete={len(result.chapters_complete)} "
+            f"incomplete={len(result.chapters_incomplete)}",
+            flush=True,
+        )
+        return result
+
+    judge_results = await run_ensemble_judges(judges, _judge_fn)
+    report = assemble_report(judge_results)
+    verdict_paths = persist_verdicts(judge_results, dump_root)
+    report_path = persist_ensemble_report(report, dump_root)
+
+    print(f"\nEnsemble report: {report_path}")
+    print(f"  acceptable: {report.ensemble_acceptable}")
+    print(
+        f"  fleiss_kappa: {report.fleiss_kappa} "
+        f"({report.fleiss_kappa_interpretation}, basis={report.fleiss_kappa_basis})"
+    )
+    print(f"  judge_status:")
+    for uuid, status in report.judge_status.items():
+        label = report.judge_labels.get(uuid, uuid[:8])
+        reason = report.judge_failure_reasons.get(uuid, "")
+        suffix = f" — {reason}" if reason else ""
+        print(f"    - {label}: {status}{suffix}")
+    print(f"  bias_metrics:")
+    for bias in report.bias_metrics:
+        flagged = ", ".join(bias.flagged_dimensions) if bias.flagged_dimensions else "—"
+        print(
+            f"    - {bias.judge_label}: strictness={bias.strictness:.2f} "
+            f"(gap {bias.strictness_gap:.2f}) lang_bias={bias.language_bias:.2f} "
+            f"rp_bias={bias.rp_bias:+.2f} flagged={flagged}"
+        )
+
+    # D11 hard gate
+    assert report.ensemble_acceptable, (
+        f"ensemble failed acceptance per D11 — {report.judge_status} "
+        f"(< 2 judges 'complete')"
+    )
