@@ -72,12 +72,15 @@ jobs:
       - name: Run e2e cross-browser smoke
         run: pnpm --filter frontend-game e2e:all-browsers
 
-      - name: Upload Playwright report on failure
+      - name: Upload Playwright test-results on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
-          path: frontend-game/playwright-report/
+          name: playwright-test-results
+          path: |
+            frontend-game/playwright-report/
+            frontend-game/test-results/
+          if-no-files-found: warn
           retention-days: 7
 
   game-server:
