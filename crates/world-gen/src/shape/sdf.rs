@@ -223,11 +223,16 @@ impl ShapeGenerator for SdfCapsuleChainGenerator {
         // the shape-preserving fit (re-DP + edge subdivision) instead of
         // arc-length resampling so concave corners on Y / Crab / Z templates
         // survive the count-clamp step.
+        //
+        // v3.3: pass min_area_frac=0.01 so loose-smin templates (Z-zigzag,
+        // Worm-chain) can produce satellites when capsules don't bridge.
+        // Y-branch / Crab with their higher smin_k values keep their main
+        // blob as the primary (no fragmentation in practice).
         let range = (ctx.vertex_count_range.0.max(3), ctx.vertex_count_range.1.max(ctx.vertex_count_range.0));
-        let poly = field_to_polygon(
-            field, bbox, 0.0, 256, 2, 0.005, &mut rng, ctx.center, Some(range),
+        let polys = field_to_polygon(
+            field, bbox, 0.0, 256, 2, 0.005, &mut rng, ctx.center, Some(range), 0.01,
         );
-        ShapeResult::single_kind(vec![poly], ShapeKind::SdfCapsuleChain)
+        ShapeResult::single_kind(polys, ShapeKind::SdfCapsuleChain)
     }
 }
 

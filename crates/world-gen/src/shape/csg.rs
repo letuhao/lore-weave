@@ -81,10 +81,15 @@ impl ShapeGenerator for BooleanGenerator {
         // degenerate and `safe_boolean` had to return operand A unchanged
         // — the resulting polygon is effectively a clean ellipse, so we
         // downgrade `effective_kind` to Ellipse for honest telemetry.
+        //
+        // v3.3: pieces is `Vec<GeoPolygon>` (sorted desc by area). For
+        // current templates this is always len == 1 (all unions/diffs
+        // produce connected geometry). v3.5+ templates may emit multiple
+        // disjoint pieces — the dispatcher path handles both.
         let mut fallback_used = false;
-        let local_f64 = match template {
+        let pieces_f64 = match template {
             BooleanTemplate::Ring => {
-                // Reserved for v3.3 hole support — `pick_template` never
+                // Reserved for v3.3+ hole support — `pick_template` never
                 // returns Ring today. The arm exists so future hole-aware
                 // callers can request it via `DispatchMode::Fixed`.
                 let outer = unit_ellipse_f64(1.0, 0.8, 0.0, 0.0, 48);
@@ -108,47 +113,94 @@ impl ShapeGenerator for BooleanGenerator {
             }
         };
 
-        // Drop holes (v3.3 will support them properly). Convert exterior to f32.
-        let mut local: Polygon = local_f64
-            .exterior()
-            .coords()
-            .map(|c| (c.x as f32, c.y as f32))
+        // Convert each piece to f32 + filter by 1% min-area-of-bbox.
+        // For multi-piece output the bbox covers ALL pieces so satellites
+        // are measured against the same yardstick as the primary.
+        let f32_pieces: Vec<Polygon> = pieces_f64
+            .iter()
+            .map(|gp| {
+                let mut p: Polygon = gp
+                    .exterior()
+                    .coords()
+                    .map(|c| (c.x as f32, c.y as f32))
+                    .collect();
+                if p.len() >= 2 && p.first() == p.last() {
+                    p.pop();
+                }
+                p
+            })
+            .filter(|p| p.len() >= 3)
             .collect();
-        // geo-clipper exteriors close the ring (first == last). Strip the
-        // duplicate so downstream point-in-polygon code stays consistent
-        // with the other shape generators.
-        if local.len() >= 2 && local.first() == local.last() {
-            local.pop();
-        }
-        if local.len() < 3 {
-            // Defensive: clipper returned a degenerate polygon. Hard-fallback
-            // to a clean ellipse so the dispatcher never sees an empty plate.
-            local = (0..32)
+        let pieces_filtered = filter_pieces_by_area(f32_pieces);
+        let pieces = if pieces_filtered.is_empty() {
+            // Defensive: every piece was degenerate. Hard-fallback to a
+            // clean ellipse so the dispatcher never sees an empty plate.
+            vec![(0..32)
                 .map(|k| {
                     let t = TAU * (k as f32) / 32.0;
                     (t.cos() * 0.9, t.sin() * 0.7)
                 })
-                .collect();
-        }
+                .collect()]
+        } else {
+            pieces_filtered
+        };
 
-        // Resample to target vertex count via arc-length walk.
+        // Shared rotation + target vertex count across all pieces (visual
+        // consistency for multi-piece Boolean continents).
         let (vmin, vmax) = ctx.vertex_count_range;
         let max_v = vmax.max(vmin);
-        let target_nv = (vmin + (rng.next_f32() * (max_v - vmin + 1) as f32) as usize)
+        let target_nv_primary = (vmin + (rng.next_f32() * (max_v - vmin + 1) as f32) as usize)
             .clamp(12, max_v.max(12));
-        let resampled = resample_arclength(&local, target_nv);
-
-        // Per-vertex jitter, scale to envelope, rotate, translate.
         let theta_rot = rng.next_f32() * TAU;
-        let jitters: Vec<f32> = (0..resampled.len()).map(|_| rng.next_f32()).collect();
-        let jittered: Polygon = resampled
+
+        // First pass: resample + jitter each piece in local coords (where the
+        // SHARED transform later applies the same scale to all of them).
+        let mut jittered_pieces: Vec<Polygon> = Vec::with_capacity(pieces.len());
+        for (idx, piece) in pieces.into_iter().enumerate() {
+            let nv = if idx == 0 { target_nv_primary } else { vmin.max(12) };
+            let resampled = resample_arclength(&piece, nv);
+            let jitters: Vec<f32> = (0..resampled.len()).map(|_| rng.next_f32()).collect();
+            let j: Polygon = resampled
+                .iter()
+                .enumerate()
+                .map(|(i, &(x, y))| {
+                    let r = (x * x + y * y).sqrt();
+                    let theta = y.atan2(x);
+                    let r2 = r * (1.0 + (jitters[i] - 0.5) * ctx.edge_jitter * 0.6);
+                    (r2 * theta.cos(), r2 * theta.sin())
+                })
+                .collect();
+            jittered_pieces.push(j);
+        }
+
+        // Pre-compute combined bbox + max distance-from-bbox-centre across
+        // all pieces, so all pieces share one scale. Single-piece case
+        // matches v3.2 `fit_to_envelope` exactly (max_dist is computed the
+        // same way), preserving hash pins.
+        let (mut all_minx, mut all_miny) = (f32::INFINITY, f32::INFINITY);
+        let (mut all_maxx, mut all_maxy) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+        for p in &jittered_pieces {
+            for &(x, y) in p {
+                all_minx = all_minx.min(x);
+                all_miny = all_miny.min(y);
+                all_maxx = all_maxx.max(x);
+                all_maxy = all_maxy.max(y);
+            }
+        }
+        let combined_bbox = (all_minx, all_miny, all_maxx, all_maxy);
+        let lcx = (all_minx + all_maxx) * 0.5;
+        let lcy = (all_miny + all_maxy) * 0.5;
+        let combined_max_dist = jittered_pieces
             .iter()
-            .enumerate()
-            .map(|(i, &(x, y))| {
-                let r = (x * x + y * y).sqrt();
-                let theta = y.atan2(x);
-                let r2 = r * (1.0 + (jitters[i] - 0.5) * ctx.edge_jitter * 0.6);
-                (r2 * theta.cos(), r2 * theta.sin())
+            .flat_map(|p| p.iter())
+            .map(|&(x, y)| ((x - lcx).powi(2) + (y - lcy).powi(2)).sqrt())
+            .fold(0.0_f32, f32::max)
+            .max(1e-6);
+
+        let polygons: Vec<Polygon> = jittered_pieces
+            .into_iter()
+            .map(|j| {
+                fit_piece_to_envelope_shared(&j, ctx, theta_rot, combined_bbox, combined_max_dist)
             })
             .collect();
 
@@ -161,7 +213,7 @@ impl ShapeGenerator for BooleanGenerator {
             ShapeKind::Boolean
         };
         ShapeResult {
-            polygons: vec![fit_to_envelope(&jittered, ctx, theta_rot)],
+            polygons,
             effective_kind,
         }
     }
@@ -209,42 +261,48 @@ fn safe_union(
     a: &GeoPolygon<f64>,
     b: &GeoPolygon<f64>,
     fallback_used: &mut bool,
-) -> GeoPolygon<f64> {
+) -> Vec<GeoPolygon<f64>> {
     let result: MultiPolygon<f64> = a.union(b, CLIPPER_SCALE);
-    largest_or_fallback(result, a, fallback_used)
+    sort_or_fallback(result, a, fallback_used)
 }
 
 fn safe_difference(
     a: &GeoPolygon<f64>,
     b: &GeoPolygon<f64>,
     fallback_used: &mut bool,
-) -> GeoPolygon<f64> {
+) -> Vec<GeoPolygon<f64>> {
     let result: MultiPolygon<f64> = a.difference(b, CLIPPER_SCALE);
-    largest_or_fallback(result, a, fallback_used)
+    sort_or_fallback(result, a, fallback_used)
 }
 
-fn largest_or_fallback(
+/// **v3.3**: return all pieces from the clipper output, sorted by descending
+/// area so `[0]` is the primary. v3.5+ multi-component Boolean templates
+/// (e.g. `EllipseBinary` = two disjoint ellipses union) will exercise the
+/// multi-piece path. Current v3.3 templates (EllipseUnion / EllipseDifference
+/// / WedgeCut) all produce connected geometry so `result.len() == 1` in
+/// practice — but the API path is now multi-aware.
+///
+/// Falls back to operand `a` when the clipper op returns empty or degenerate.
+fn sort_or_fallback(
     result: MultiPolygon<f64>,
     fallback: &GeoPolygon<f64>,
     fallback_used: &mut bool,
-) -> GeoPolygon<f64> {
+) -> Vec<GeoPolygon<f64>> {
     if result.0.is_empty() {
         *fallback_used = true;
-        return fallback.clone();
+        return vec![fallback.clone()];
     }
-    // Pick the polygon with the largest |signed area|.
-    match result.0.into_iter().max_by(|a, b| {
-        signed_area_f64(a)
-            .abs()
-            .partial_cmp(&signed_area_f64(b).abs())
-            .unwrap_or(std::cmp::Ordering::Equal)
-    }) {
-        Some(p) => p,
-        None => {
-            *fallback_used = true;
-            fallback.clone()
-        }
+    let mut sorted: Vec<(f64, GeoPolygon<f64>)> = result
+        .0
+        .into_iter()
+        .map(|p| (signed_area_f64(&p).abs(), p))
+        .collect();
+    sorted.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    if sorted.is_empty() {
+        *fallback_used = true;
+        return vec![fallback.clone()];
     }
+    sorted.into_iter().map(|(_, p)| p).collect()
 }
 
 fn signed_area_f64(poly: &GeoPolygon<f64>) -> f64 {
@@ -301,28 +359,78 @@ fn resample_arclength(poly: &Polygon, target_nv: usize) -> Polygon {
     out
 }
 
-fn fit_to_envelope(local: &Polygon, ctx: &ShapeContext, theta_rot: f32) -> Polygon {
-    // Rotation-invariant max-radius scaling — see spine.rs.
-    let (mut minx, mut miny) = (f32::INFINITY, f32::INFINITY);
-    let (mut maxx, mut maxy) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
-    for &(x, y) in local {
-        minx = minx.min(x);
-        miny = miny.min(y);
-        maxx = maxx.max(x);
-        maxy = maxy.max(y);
+/// **v3.3**: drop pieces whose area is < 1% of the combined-bbox area. The
+/// primary (largest) is always kept regardless. Mirrors the
+/// `raster::finalize_multi_component` semantics for parity across generators.
+fn filter_pieces_by_area(pieces: Vec<Polygon>) -> Vec<Polygon> {
+    if pieces.is_empty() {
+        return pieces;
     }
+    let (mut all_minx, mut all_miny) = (f32::INFINITY, f32::INFINITY);
+    let (mut all_maxx, mut all_maxy) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for p in &pieces {
+        for &(x, y) in p {
+            all_minx = all_minx.min(x);
+            all_miny = all_miny.min(y);
+            all_maxx = all_maxx.max(x);
+            all_maxy = all_maxy.max(y);
+        }
+    }
+    let bbox_area = (all_maxx - all_minx).abs() * (all_maxy - all_miny).abs();
+    let threshold = bbox_area * 0.01;
+    let mut sorted: Vec<(f32, Polygon)> = pieces
+        .into_iter()
+        .map(|p| (signed_area_f32(&p).abs(), p))
+        .collect();
+    sorted.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut iter = sorted.into_iter();
+    let primary = match iter.next() {
+        Some((_, p)) => p,
+        None => return Vec::new(),
+    };
+    let mut out = vec![primary];
+    for (a, p) in iter {
+        if a >= threshold {
+            out.push(p);
+        }
+    }
+    out
+}
+
+fn signed_area_f32(poly: &Polygon) -> f32 {
+    let n = poly.len();
+    if n < 3 {
+        return 0.0;
+    }
+    let mut a = 0.0f32;
+    for i in 0..n {
+        let (x1, y1) = poly[i];
+        let (x2, y2) = poly[(i + 1) % n];
+        a += x1 * y2 - x2 * y1;
+    }
+    a * 0.5
+}
+
+/// Scale + rotate + translate `piece` using a SHARED transform derived from
+/// the `combined_bbox` centre + `combined_max_dist` across all sibling
+/// pieces — preserves relative positions between primary and satellites,
+/// and (for the single-piece case) matches the v3.2 `fit_to_envelope`
+/// behaviour byte-for-byte so single-piece Boolean plates don't shift.
+fn fit_piece_to_envelope_shared(
+    piece: &Polygon,
+    ctx: &ShapeContext,
+    theta_rot: f32,
+    combined_bbox: (f32, f32, f32, f32),
+    combined_max_dist: f32,
+) -> Polygon {
+    let (minx, miny, maxx, maxy) = combined_bbox;
     let lcx = (minx + maxx) * 0.5;
     let lcy = (miny + maxy) * 0.5;
-    let max_dist = local
-        .iter()
-        .map(|&(x, y)| ((x - lcx).powi(2) + (y - lcy).powi(2)).sqrt())
-        .fold(0.0_f32, f32::max)
-        .max(1e-6);
     let target_radius = ctx.envelope.0.min(ctx.envelope.1);
-    let scale = target_radius / max_dist;
+    let scale = target_radius / combined_max_dist.max(1e-6);
     let cos_t = theta_rot.cos();
     let sin_t = theta_rot.sin();
-    local
+    piece
         .iter()
         .map(|&(x, y)| {
             let sx = (x - lcx) * scale;
@@ -441,9 +549,10 @@ mod tests {
         let outer = unit_ellipse_f64(1.0, 0.8, 0.0, 0.0, 64);
         let inner = unit_ellipse_f64(0.4, 0.32, 0.0, 0.0, 48);
         let mut fallback = false;
-        let ring = safe_difference(&outer, &inner, &mut fallback);
+        let ring_pieces = safe_difference(&outer, &inner, &mut fallback);
         assert!(!fallback, "outer-minus-inner should produce non-empty result");
-        let ring_area = signed_area_f64(&ring).abs();
+        assert_eq!(ring_pieces.len(), 1, "Ring outer-minus-inner is a single connected ring");
+        let ring_area = signed_area_f64(&ring_pieces[0]).abs();
         let outer_area = signed_area_f64(&outer).abs();
         // Ring exterior is the outer ellipse (interior holes dropped),
         // so the *exterior* area equals the outer area. The actual "ring
@@ -461,9 +570,10 @@ mod tests {
         let a = unit_ellipse_f64(0.7, 0.55, -0.35, 0.0, 36);
         let b = unit_ellipse_f64(0.7, 0.55, 0.35, 0.0, 36);
         let mut fallback = false;
-        let union = safe_union(&a, &b, &mut fallback);
+        let union_pieces = safe_union(&a, &b, &mut fallback);
         assert!(!fallback, "union of two overlapping ellipses should not fall back");
-        let area = signed_area_f64(&union).abs();
+        assert_eq!(union_pieces.len(), 1, "Overlapping ellipses union → single connected piece");
+        let area = signed_area_f64(&union_pieces[0]).abs();
         // Each ellipse area ≈ π·0.7·0.55 = 1.21; two overlapping ≈ 1.8-2.1.
         assert!(
             (1.5..=2.6).contains(&area),

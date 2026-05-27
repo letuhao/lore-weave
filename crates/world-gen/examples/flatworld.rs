@@ -71,6 +71,18 @@ fn main() {
             "--separation" => p.separation = need().parse().expect("separation"),
             "--min-zones" => p.min_zones = need().parse().expect("min-zones"),
             "--max-zones" => p.max_zones = need().parse().expect("max-zones"),
+            "--force-kind" => {
+                let kind = match need().as_str() {
+                    "ellipse" => world_gen::shape::ShapeKind::Ellipse,
+                    "bezier" => world_gen::shape::ShapeKind::BezierSpine,
+                    "polar" => world_gen::shape::ShapeKind::Polar,
+                    "boolean" => world_gen::shape::ShapeKind::Boolean,
+                    "sdf" => world_gen::shape::ShapeKind::SdfCapsuleChain,
+                    "marching" => world_gen::shape::ShapeKind::MarchingNoise,
+                    other => panic!("unknown --force-kind {other}"),
+                };
+                p.plate_dispatch = Some(world_gen::shape::DispatchMode::Fixed(kind));
+            }
             "--out" => out = PathBuf::from(need()),
             "--height-out" => height_out = Some(PathBuf::from(need())),
             "--zones-out" => zones_out = Some(PathBuf::from(need())),

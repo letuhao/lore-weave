@@ -33,15 +33,19 @@ use crate::rng::Rng;
 use super::{ShapeContext, ShapeGenerator, ShapeKind, ShapeResult};
 
 /// Rasterize `field` (negative inside, positive outside; iso typically `0.0`)
-/// into a single closed CCW polygon anchored at `target_center`.
+/// into one or more closed CCW polygons.
 ///
-/// `grid_res` MUST be ≥ 4. `chaikin_passes` MUST be ≤ 4. If
-/// `target_vertex_count_range` is `Some((vmin, vmax))`, the output is
-/// shape-preservingly fit into that range — re-DPing with growing eps
-/// when over-max, subdividing longest edges when under-min. This is the
-/// SDF / MarchingNoise contract: callers can require vertex counts that
-/// match what Ellipse / Bezier / Polar produce, without losing concave
-/// corners (a concern arc-length resampling has on Y-branch / Crab shapes).
+/// **v3.3**: returns `Vec<Polygon>` — the largest by area is the primary
+/// (sorted to index 0, anchored at `target_center`); any additional rings
+/// whose area is ≥ `min_area_frac × bbox_area` ride along as satellites
+/// at their own centroid positions. To preserve v3.2 single-component
+/// behaviour, callers pass `min_area_frac = f32::INFINITY` (drops every
+/// non-largest ring) or `1.0` (drops anything < 100% of bbox = same effect).
+/// `0.01` is the v3.3 default — keeps satellites that are ≥ 1% of plate
+/// bbox area, archipelago-style.
+///
+/// Single-component contract (v3.2): if `min_area_frac >= 1.0`, exactly
+/// one polygon is returned (the primary), matching the old API.
 #[allow(clippy::too_many_arguments)]
 pub fn field_to_polygon<F>(
     field: F,
@@ -53,12 +57,14 @@ pub fn field_to_polygon<F>(
     rng: &mut Rng,
     target_center: (f32, f32),
     target_vertex_count_range: Option<(usize, usize)>,
-) -> Polygon
+    min_area_frac: f32,
+) -> Vec<Polygon>
 where
     F: Fn((f32, f32)) -> f32,
 {
     debug_assert!(grid_res >= 4, "grid_res must be ≥ 4");
     debug_assert!(chaikin_passes <= 4, "chaikin_passes must be ≤ 4");
+    debug_assert!(min_area_frac >= 0.0, "min_area_frac must be ≥ 0");
 
     // Step 1 — grid sample
     let grid = sample_grid(&field, bbox, grid_res);
@@ -66,44 +72,89 @@ where
     // Step 2 — marching squares → segments keyed by their two edge IDs
     let segments = marching_squares(&grid, iso, &field, rng);
 
-    // Step 3 — stitch + largest ring
+    // Step 3 — stitch + multi-component finalize
     let rings = stitch_rings(segments);
     if rings.is_empty() {
-        // Empty field — return a degenerate triangle at target_center so
-        // callers downstream don't panic on `polygon[0]` access.
-        return vec![
+        return vec![vec![
             (target_center.0, target_center.1),
             (target_center.0 + 1.0, target_center.1),
             (target_center.0, target_center.1 + 1.0),
-        ];
+        ]];
     }
-    let largest = largest_ring(rings);
+    let kept = finalize_multi_component(rings, bbox, min_area_frac);
+    if kept.is_empty() {
+        return vec![vec![
+            (target_center.0, target_center.1),
+            (target_center.0 + 1.0, target_center.1),
+            (target_center.0, target_center.1 + 1.0),
+        ]];
+    }
 
-    // Step 4 — Chaikin smoothing (skip on very short rings to avoid blow-up)
-    let smoothed = if largest.len() >= 4 {
-        chaikin(&largest, chaikin_passes)
-    } else {
-        largest
-    };
-
-    // Step 5 — Douglas-Peucker simplify
     let diag = ((bbox.2 - bbox.0).hypot(bbox.3 - bbox.1)).max(1e-6);
     let eps = simplify_eps_frac * diag;
-    let simplified = douglas_peucker(&smoothed, eps);
 
-    // Step 5b — shape-preserving fit to vertex-count range (if requested).
-    let fitted = match target_vertex_count_range {
-        Some((vmin, vmax)) if vmax >= vmin && vmin >= 3 => {
-            fit_vertex_count_range(simplified, vmin, vmax, diag)
+    let mut out = Vec::with_capacity(kept.len());
+    for (idx, ring) in kept.into_iter().enumerate() {
+        // Step 4 — Chaikin smoothing per component
+        let smoothed = if ring.len() >= 4 {
+            chaikin(&ring, chaikin_passes)
+        } else {
+            ring
+        };
+        // Step 5 — DP simplify
+        let simplified = douglas_peucker(&smoothed, eps);
+        // Step 5b — vertex-count fit (each component independent)
+        let fitted = match target_vertex_count_range {
+            Some((vmin, vmax)) if vmax >= vmin && vmin >= 3 => {
+                fit_vertex_count_range(simplified, vmin, vmax, diag)
+            }
+            _ => simplified,
+        };
+        // Step 6 — alignment. Primary aligns to target_center if it's
+        // currently outside the polygon (concave-shape fallback). Satellites
+        // keep their natural noise/SDF/Boolean position — no alignment.
+        let aligned = if idx == 0 {
+            align_centroid(fitted, target_center)
+        } else {
+            fitted
+        };
+        // Step 7 — CCW
+        out.push(ensure_ccw(aligned));
+    }
+    out
+}
+
+/// Sort rings by descending area and keep the primary (`[0]`) unconditionally;
+/// for satellites (`[1..]`) keep only those with area ≥
+/// `min_area_frac × bbox_area`. Setting `min_area_frac ≥ 1.0` drops every
+/// satellite (single-component compat mode); `0.01` keeps satellites ≥ 1%
+/// of plate bbox (v3.3 default per PO).
+fn finalize_multi_component(
+    rings: Vec<Polygon>,
+    bbox: (f32, f32, f32, f32),
+    min_area_frac: f32,
+) -> Vec<Polygon> {
+    let mut sorted: Vec<(f32, Polygon)> = rings
+        .into_iter()
+        .map(|p| (signed_area(&p).abs(), p))
+        .collect();
+    sorted.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    if sorted.is_empty() {
+        return Vec::new();
+    }
+    let bbox_area = (bbox.2 - bbox.0).abs() * (bbox.3 - bbox.1).abs();
+    let threshold = bbox_area * min_area_frac;
+
+    let mut iter = sorted.into_iter();
+    let primary = iter.next().expect("non-empty checked").1;
+    let mut out = vec![primary];
+    for (area, p) in iter {
+        if area >= threshold {
+            out.push(p);
         }
-        _ => simplified,
-    };
-
-    // Step 6 — centroid alignment (skip if target already inside polygon)
-    let aligned = align_centroid(fitted, target_center);
-
-    // Step 7 — CCW enforcement
-    ensure_ccw(aligned)
+    }
+    out
 }
 
 /// Shape-preserving vertex-count fit: if over-max, re-run DP with geometrically
@@ -479,11 +530,6 @@ fn stitch_rings(segments: Vec<Segment>) -> Vec<Polygon> {
     rings
 }
 
-fn largest_ring(mut rings: Vec<Polygon>) -> Polygon {
-    rings.sort_by(|a, b| signed_area(b).abs().partial_cmp(&signed_area(a).abs()).unwrap());
-    rings.into_iter().next().unwrap_or_default()
-}
-
 fn signed_area(poly: &Polygon) -> f32 {
     let n = poly.len();
     if n < 3 {
@@ -711,31 +757,144 @@ impl ShapeGenerator for MarchingNoiseGenerator {
         let (cx, cy) = ctx.center;
         let env = ctx.envelope.0;
         let salt = ctx.plate_salt;
-        // Per-rank target radius in unit-envelope space (mid-band).
         let (rmin, rmax) = ctx.size_rank.radius_band();
         let target_r = (rmin + rmax) * 0.5;
-        // Noise frequency: ~3 lobes across envelope.
-        let freq = 3.0 / env;
+
+        // **v3.3 redesign (post-PO diagnosis 2026-05-27)**: archipelago =
+        // a GROUP of distinct islands, NOT a single noise-perturbed blob.
+        // The v3.3-round-1 field `(r - target_r) - n * amp` was fundamentally
+        // a blob generator — it produced at best 1 main blob + tiny fringe
+        // satellites. True archipelago needs MULTIPLE seed centres scattered
+        // across the plate bbox; each centre gets its own SDF disk warped by
+        // its own noise; field = min(per-island SDF) so marching squares
+        // produces N disjoint contours naturally.
+
+        // Island count: 2..=6 per plate. Picked uniformly so most plates have
+        // 3-4 islands (Indonesia / Japan / Philippines scale typical).
+        let n_islands = 2 + (rng.next_u32() % 5) as usize;
+
+        // Place island centres inside a disk of radius `target_r * 0.9 * env`
+        // (wider than v3.3-r3 0.7 so Poisson-disk rejection has room to
+        // separate islands without collapsing into the disk centre).
+        let placement_radius = target_r * 0.9 * env;
+        // Per-island base radius: Pareto-ish distribution — most islands
+        // medium, occasional small ones. Total area is calibrated against
+        // `target_r * env * PI` (the equivalent single-blob area) so a
+        // multi-island plate has comparable total land area to a single-blob
+        // plate at the same rank.
+        let total_target_area = std::f32::consts::PI * (target_r * env).powi(2);
+
+        // Step 1 — pick per-island size weights upfront so we know each
+        // island's radius BEFORE Poisson-disk placement.
+        let size_weights: Vec<f32> = (0..n_islands)
+            .map(|_| 1.0 - rng.next_f32().sqrt())
+            .collect();
+        let total_w: f32 = size_weights.iter().sum::<f32>().max(1e-6);
+        let radii: Vec<f32> = size_weights
+            .iter()
+            .map(|w| {
+                let area_share = (w / total_w) * total_target_area;
+                (area_share / std::f32::consts::PI).sqrt()
+            })
+            .collect();
+
+        // Step 2 — Poisson-disk-style placement with minimum-separation
+        // rejection. Two islands i, j are "too close" when their centres are
+        // within `(radii[i] + radii[j]) * (1 + SEPARATION_GAP)`. The 0.45 gap
+        // factor leaves clear water between island coasts when the noise
+        // warp is at its mean — visible PNG-scale separation even after
+        // ±30% coast jitter.
+        const SEPARATION_GAP: f32 = 0.45;
+        const MAX_PLACEMENT_TRIES: usize = 24;
+        let mut placed: Vec<(f32, f32)> = Vec::with_capacity(n_islands);
+        for i in 0..n_islands {
+            let r_i = radii[i];
+            let mut chosen: Option<(f32, f32)> = None;
+            for _ in 0..MAX_PLACEMENT_TRIES {
+                let t = rng.next_f32();
+                let r = t.sqrt() * placement_radius;
+                let theta = rng.next_f32() * std::f32::consts::TAU;
+                let pos = (cx + r * theta.cos(), cy + r * theta.sin());
+                let mut clear = true;
+                for (j, &p_pos) in placed.iter().enumerate() {
+                    let d = ((pos.0 - p_pos.0).powi(2) + (pos.1 - p_pos.1).powi(2)).sqrt();
+                    let min_dist = (r_i + radii[j]) * (1.0 + SEPARATION_GAP);
+                    if d < min_dist {
+                        clear = false;
+                        break;
+                    }
+                }
+                if clear {
+                    chosen = Some(pos);
+                    break;
+                }
+            }
+            // If rejection sampling failed all tries (very crowded plate),
+            // place at the LAST candidate position — caller still gets the
+            // requested island count, even if it overlaps. Better to render
+            // a merged blob than to drop islands silently.
+            let final_pos = chosen.unwrap_or_else(|| {
+                let t = rng.next_f32();
+                let r = t.sqrt() * placement_radius;
+                let theta = rng.next_f32() * std::f32::consts::TAU;
+                (cx + r * theta.cos(), cy + r * theta.sin())
+            });
+            placed.push(final_pos);
+        }
+
+        // Step 3 — bundle (position, size_w_unused, per-island noise salt)
+        // for the field closure. size_w is no longer used directly because
+        // radii is the authoritative list.
+        let islands: Vec<((f32, f32), f32, u32)> = placed
+            .into_iter()
+            .enumerate()
+            .map(|(i, pos)| (pos, size_weights[i], salt.wrapping_add((i as u32).wrapping_mul(0x9E37_79B9))))
+            .collect();
+
+        // Frequency for per-island noise warp: high enough that each island
+        // gets a wobbly coast within its diameter.
+        let coast_freq = 4.0 / env;
+
+        // Compute bbox before moving `radii` into the closure.
+        let max_radius = radii.iter().cloned().fold(0.0_f32, f32::max);
+        let bbox_half = placement_radius + max_radius * 1.4;
+        let bbox = (cx - bbox_half, cy - bbox_half, cx + bbox_half, cy + bbox_half);
 
         let field = move |p: (f32, f32)| -> f32 {
-            // 3-octave fbm centred so iso = 0 carves a closed contour.
-            let n = crate::noise::fbm(p.0 * freq, p.1 * freq, salt, 3);
-            // Radial falloff in unit-envelope space — `target_r` is the
-            // "natural" radius before noise pushes the contour in/out.
-            let r = ((p.0 - cx).hypot(p.1 - cy)) / env;
-            (r - target_r) - n * 0.3
+            // SDF: min across all islands. Inside = below 0.
+            let mut best = 1e6_f32;
+            for (i, &(ipos, _, island_salt)) in islands.iter().enumerate() {
+                let dx = p.0 - ipos.0;
+                let dy = p.1 - ipos.1;
+                let d = (dx * dx + dy * dy).sqrt();
+                let n = crate::noise::fbm(
+                    p.0 * coast_freq,
+                    p.1 * coast_freq,
+                    island_salt,
+                    3,
+                );
+                // Coast warp: ±30% of base radius.
+                let warped_r = radii[i] * (1.0 + n * 0.30);
+                let island_sdf = d - warped_r;
+                if island_sdf < best {
+                    best = island_sdf;
+                }
+            }
+            best
         };
 
-        let bbox = (cx - env, cy - env, cx + env, cy + env);
         // Shape-preserving fit to caller's vertex-count range.
         let range = (
             ctx.vertex_count_range.0.max(3),
             ctx.vertex_count_range.1.max(ctx.vertex_count_range.0),
         );
-        let poly = field_to_polygon(
-            field, bbox, 0.0, 256, 2, 0.005, &mut rng, ctx.center, Some(range),
+        // Multi-component output per PO directive: min_area_frac=0.01 keeps
+        // every island ≥ 1% of plate bbox. With N=2-6 distinct centres, the
+        // pipeline emits N polygons naturally.
+        let polys = field_to_polygon(
+            field, bbox, 0.0, 256, 2, 0.005, &mut rng, ctx.center, Some(range), 0.01,
         );
-        ShapeResult::single_kind(vec![poly], ShapeKind::MarchingNoise)
+        ShapeResult::single_kind(polys, ShapeKind::MarchingNoise)
     }
 }
 
@@ -776,7 +935,7 @@ mod tests {
     #[test]
     fn unit_circle_renders_closed_ccw_polygon() {
         let mut rng = make_rng();
-        let poly = field_to_polygon(
+        let polys = field_to_polygon(
             unit_circle_field(1.0),
             (-2.0, -2.0, 2.0, 2.0),
             0.0,
@@ -786,9 +945,12 @@ mod tests {
             &mut rng,
             (0.0, 0.0),
             None::<(usize, usize)>,
+            1.0, // single-component (v3.2 compat)
         );
+        assert_eq!(polys.len(), 1, "single-component circle should yield 1 polygon");
+        let poly = &polys[0];
         assert!(poly.len() >= 3, "polygon should have ≥3 vertices, got {}", poly.len());
-        assert!(signed_area(&poly) > 0.0, "polygon should be CCW (positive signed area)");
+        assert!(signed_area(poly) > 0.0, "polygon should be CCW (positive signed area)");
         // Centroid should be ~near origin.
         let cx = poly.iter().map(|p| p.0).sum::<f32>() / poly.len() as f32;
         let cy = poly.iter().map(|p| p.1).sum::<f32>() / poly.len() as f32;
@@ -800,7 +962,7 @@ mod tests {
     fn rotated_square_field_renders_4_corners_approximately() {
         let square_field = |p: (f32, f32)| p.0.abs().max(p.1.abs()) - 1.0;
         let mut rng = make_rng();
-        let poly = field_to_polygon(
+        let polys = field_to_polygon(
             square_field,
             (-2.0, -2.0, 2.0, 2.0),
             0.0,
@@ -810,10 +972,12 @@ mod tests {
             &mut rng,
             (0.0, 0.0),
             None::<(usize, usize)>,
+            1.0,
         );
+        let poly = &polys[0];
         assert!(poly.len() >= 4, "square needs ≥4 vertices, got {}", poly.len());
         // Area of unit square = 4 (since side = 2).
-        let area = signed_area(&poly).abs();
+        let area = signed_area(poly).abs();
         assert!((area - 4.0).abs() < 0.3, "area should be ~4.0 ± 0.3, got {area}");
     }
 
@@ -823,7 +987,7 @@ mod tests {
         let target = (50.0, 50.0);
         // Circle in world coords centred at (50, 50), radius 10.
         let field = |p: (f32, f32)| ((p.0 - 50.0).powi(2) + (p.1 - 50.0).powi(2)).sqrt() - 10.0;
-        let poly = field_to_polygon(
+        let polys = field_to_polygon(
             field,
             (35.0, 35.0, 65.0, 65.0),
             0.0,
@@ -833,11 +997,76 @@ mod tests {
             &mut rng,
             target,
             None::<(usize, usize)>,
+            1.0,
         );
+        let poly = &polys[0];
         let cx = poly.iter().map(|p| p.0).sum::<f32>() / poly.len() as f32;
         let cy = poly.iter().map(|p| p.1).sum::<f32>() / poly.len() as f32;
         assert!((cx - target.0).abs() < 0.5, "centroid x off by {}", (cx - target.0).abs());
         assert!((cy - target.1).abs() < 0.5, "centroid y off by {}", (cy - target.1).abs());
+    }
+
+    // -- v3.3 multi-component ------------------------------------------------
+
+    #[test]
+    fn two_distant_disks_render_as_two_components() {
+        // Two non-overlapping unit disks at (-5, 0) and (5, 0). bbox = 16×6.
+        // Each disk area ≈ π ≈ 3.14; bbox area = 96. Ratio per disk ≈ 3.3%
+        // → passes 1% threshold.
+        let field = |p: (f32, f32)| {
+            let d_left = ((p.0 + 5.0).powi(2) + p.1.powi(2)).sqrt() - 1.0;
+            let d_right = ((p.0 - 5.0).powi(2) + p.1.powi(2)).sqrt() - 1.0;
+            d_left.min(d_right)
+        };
+        let mut rng = make_rng();
+        let polys = field_to_polygon(
+            field,
+            (-8.0, -3.0, 8.0, 3.0),
+            0.0,
+            96,
+            2,
+            0.005,
+            &mut rng,
+            (-5.0, 0.0),
+            None::<(usize, usize)>,
+            0.01,
+        );
+        assert_eq!(polys.len(), 2, "two-disk field should produce 2 components");
+        // Primary [0] is the LARGEST (by area, descending sort). Satellite [1]
+        // is the smaller (or equal-and-after-tie) ring. The disks have
+        // nominally equal area but Chaikin / DP can introduce tiny variance,
+        // so we don't compare areas strictly — just confirm the sort order.
+        let area_primary = signed_area(&polys[0]).abs();
+        let area_sat = signed_area(&polys[1]).abs();
+        assert!(
+            area_primary >= area_sat - 0.01,
+            "polys[0] must be at least as large as polys[1] (primary={area_primary}, sat={area_sat})"
+        );
+    }
+
+    #[test]
+    fn tiny_islands_below_area_threshold_are_dropped() {
+        // One big disk (area ≈ π) + one tiny disk (area ≈ π × 0.04 = 0.13).
+        // bbox ≈ 16×6 = 96. Tiny ratio ≈ 0.13% < 1% → dropped.
+        let field = |p: (f32, f32)| {
+            let d_big = ((p.0 + 5.0).powi(2) + p.1.powi(2)).sqrt() - 1.0;
+            let d_tiny = ((p.0 - 5.0).powi(2) + p.1.powi(2)).sqrt() - 0.2;
+            d_big.min(d_tiny)
+        };
+        let mut rng = make_rng();
+        let polys = field_to_polygon(
+            field,
+            (-8.0, -3.0, 8.0, 3.0),
+            0.0,
+            96,
+            2,
+            0.005,
+            &mut rng,
+            (-5.0, 0.0),
+            None::<(usize, usize)>,
+            0.01,
+        );
+        assert_eq!(polys.len(), 1, "tiny island below 1% threshold should be dropped");
     }
 
     #[test]
@@ -912,7 +1141,7 @@ mod tests {
     fn field_to_polygon_bit_identical_two_runs() {
         let mut rng_a = Rng::for_stage(7, b"det-test");
         let mut rng_b = Rng::for_stage(7, b"det-test");
-        let pa = field_to_polygon(
+        let pa_all = field_to_polygon(
             unit_circle_field(1.0),
             (-2.0, -2.0, 2.0, 2.0),
             0.0,
@@ -922,8 +1151,9 @@ mod tests {
             &mut rng_a,
             (0.0, 0.0),
             None::<(usize, usize)>,
+            1.0,
         );
-        let pb = field_to_polygon(
+        let pb_all = field_to_polygon(
             unit_circle_field(1.0),
             (-2.0, -2.0, 2.0, 2.0),
             0.0,
@@ -933,7 +1163,10 @@ mod tests {
             &mut rng_b,
             (0.0, 0.0),
             None::<(usize, usize)>,
+            1.0,
         );
+        let pa = &pa_all[0];
+        let pb = &pb_all[0];
         assert_eq!(pa.len(), pb.len(), "polygon lengths must match");
         for (a, b) in pa.iter().zip(pb.iter()) {
             assert_eq!(a.0.to_bits(), b.0.to_bits(), "x bits diverge");
