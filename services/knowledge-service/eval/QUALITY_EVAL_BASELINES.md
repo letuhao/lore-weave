@@ -659,6 +659,30 @@ KNOWLEDGE_EVAL_DUMP_PATH=/tmp/eval_dump_huihui30b
 
 ⁹ **huihui-qwen3-30b-a3b-instruct-2507-abliterated** is a pure-instruct (no reasoning) variant of qwen3 (NOT qwen3.6 — older generation, smaller MoE). Smoke ping confirmed `reasoning_tokens=0` even without anti-think prefix; the model uses its entire output budget on content. Direct A/B vs huihui-claude-4.7-opus on the same 9-chapter fixture set + same gemma-4-26b-a4b judge: P=0.79 (vs claude 0.93), R=0.90 (vs claude 0.71), F1=0.841 (vs claude 0.806). Wall clock 3:44 min (vs claude 7:04 min — **≈2× faster**). Chinese chapter `journey_west_zh_ch01` extracted cleanly (P=0.91/R=1.00) without the transient zero seen on claude. Best balanced choice; new default for R&D mainline.
 
+## Architectural attempt #1 — multilingual few-shot prompts (REVERTED 2026-05-27)
+
+First post-Track-A architectural cycle aimed at the recall lever. Per Finding 4 of the C19 baseline ("Traditional Chinese remains the weak axis even for the best local model… Prompt examples are all English/Latin script") and the recommended-next-actions list item #5 ("Chinese + Vietnamese examples to lift Vietnamese bare-noun recognition"), appended one Chinese (Example C: 凌風 / 蒼山真人 / 玄霜宗 / 紫雲劍) + one Vietnamese (Example D: Mỵ Linh / bà mẹ ghẻ / Khôi / kiếm Bạch Long) demonstration to each of the 4 system prompts (entity / relation / event / fact). Each new example mirrored the existing English example structure (TEXT + KNOWN_ENTITIES + JSON output) and demonstrated scene-relevance filtering + alias collection + kinship direction in the target language. Plan: `docs/plans/2026-05-27-multilingual-fewshot-prompts.md` (deleted on revert; preserved in git log).
+
+**Result: cycle reverted.** Two distinct failure modes surfaced under live smoke against `huihui-qwen3-30b-a3b-instruct-2507-abliterated`:
+
+1. **Recall regressed by ~24 pp** (macro R 0.580 → 0.343 rule-based at concurrency=1) — the new "Notice what is OMITTED and WHY" sections in the CJK and VN examples reinforced the existing English scene-relevance lesson 3× (1 English Example B + 1 Chinese Example C + 1 Vietnamese Example D, all teaching omission-bias). The model OVER-CORRECTED — extracted more conservatively across all languages, including English. Vietnamese was hit hardest: `son_tinh_thuy_tinh_vi` R 0.62 → 0.31, `journey_west_zh_ch14` R 0.71 → 0.53. The naive "more examples = better" intuition failed because the examples shared a single high-pressure lesson (omission); the model learned the lesson too well.
+
+2. **LM Studio HTTP 500 at concurrency ≥ 2** — the system prompt grew from ~6,094 chars (1 English example) to ~8,969 chars (1 English + 1 Chinese + 1 Vietnamese examples). Combined with `max_output_tokens=4096` per slot × concurrency=4 parallel chapters × 4 ops gather, the KV cache reservation overflowed VRAM. Every concurrent extraction request returned HTTP 500 (Internal Server Error) from LM Studio after the upstream retry budget was exhausted. Diagnostic ladder: c=4/max=4096 → all-zero (HTTP 500); c=4/max=8192 → all-zero (worse OOM); c=2/max=4096 → all-zero (still HTTP 500 under bigger-prompt batches); c=1/max=4096 → non-empty but recall-regressed. Direct stream-path probe (single non-concurrent request) on the same prompt + model worked fine — 11 entities cleanly extracted on `alice_ch01` — confirming the issue is concurrency × prompt-size, not a prompt-content bug.
+
+**Lessons captured (for future recall cycles):**
+
+- **Few-shot lessons compound rather than dilute.** Adding parallel examples that ALL teach the same lesson amplifies it instead of broadening coverage. For multilingual recall, the next attempt should pair LANGUAGES with DIFFERENT lessons (e.g. English shows scene-relevance, Chinese shows alias collection only, Vietnamese shows common-noun-as-name only) — three orthogonal lessons across three languages, not one lesson × three languages.
+- **System prompt size has a hard concurrency ceiling on LM Studio** at a given VRAM budget. The 8,969-char prompt at c=4 broke; the 6,094-char prompt at c=4 worked. There's an implicit prompt-size × concurrency × max_output_tokens budget that LM Studio doesn't surface — when exceeded, the failure is a generic HTTP 500. Future cycles touching system prompts should either (a) keep prompt size flat, (b) reduce eval concurrency, or (c) split content into shorter per-language prompts dispatched by language detection.
+- **Live smoke is mandatory** — the cycle's unit-suite-style regression-lock for the response_format patch passed instantly; the live smoke is the only signal that surfaced the recall regression + the LM Studio OOM. Validates `feedback_mock_only_coverage_hides_crossservice_bugs` for this class of change.
+- **Direct probe through the streaming path can mask aggregator-side issues** during cycle design. The probe on alice_ch01 produced clean extraction; the eval through the async-jobs path failed concurrent-batched. Both paths exist for good reasons but a successful probe is not a sufficient pre-deploy signal.
+
+**Files touched in the attempt** (all reverted):
+- `sdks/python/loreweave_extraction/prompts/entity_extraction_system.md` (+73 lines, reverted)
+- `sdks/python/loreweave_extraction/prompts/relation_extraction_system.md` (+64 lines, reverted)
+- `sdks/python/loreweave_extraction/prompts/event_extraction_system.md` (+85 lines, reverted)
+- `sdks/python/loreweave_extraction/prompts/fact_extraction_system.md` (+81 lines, reverted)
+- `services/knowledge-service/tests/quality/test_extraction_eval.py` (added `KNOWLEDGE_EVAL_MAX_OUTPUT_TOKENS` env var, reverted — but documented here as a known knob for future cycles that legitimately need a higher cap)
+
 ## Track A — CLOSED
 
 The bracket-iteration phase of Track A is closed. Acquired baselines are sufficient to inform the architectural-improvement track:
