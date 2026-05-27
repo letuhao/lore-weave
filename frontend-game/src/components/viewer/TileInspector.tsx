@@ -7,6 +7,8 @@ import { TerrainKind, terrainKindTag } from '@/types/tilemap';
 // InputSystem when the user holds Shift while clicking, OR via a
 // future "inspector mode" toggle. For V1.2 the Shift-click path is the
 // only entry; non-Shift click still triggers Player.walkTo.
+// V2 — extra rows expose `terrainCell` (primitive + tag) and per-placement
+// (primitive · tag · footprint · orientation) when present.
 
 export function TileInspector(): JSX.Element | null {
   const inspector = useViewerStore((s) => s.inspector);
@@ -35,6 +37,12 @@ export function TileInspector(): JSX.Element | null {
         k="terrain"
         v={`${terrainTag} [u8=${inspector.terrainKind}]`}
       />
+      {inspector.terrainCell && (
+        <Row
+          k="primitive · tag"
+          v={`${inspector.terrainCell.primitive} · ${inspector.terrainCell.tag}`}
+        />
+      )}
       <Row
         k="zone (nearest)"
         v={
@@ -56,6 +64,35 @@ export function TileInspector(): JSX.Element | null {
                 .join(', ')
         }
       />
+      {inspector.placementsAtTile.length > 0 && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-slate-400 text-[10px]">
+            V2 placement detail
+          </summary>
+          <div className="mt-1 flex flex-col gap-1">
+            {inspector.placementsAtTile.map((p, i) => (
+              <div
+                key={`${p.kind}-${i}`}
+                className="border-l-2 border-slate-700 pl-2 py-0.5"
+              >
+                <Row k="kind" v={p.kind} />
+                {p.tag && <Row k="tag" v={p.tag} />}
+                {p.primitive && <Row k="primitive" v={p.primitive} />}
+                {p.footprint && (
+                  <Row
+                    k="footprint"
+                    v={`${p.footprint.width} × ${p.footprint.height}`}
+                  />
+                )}
+                {p.orientation && <Row k="orientation" v={p.orientation} />}
+                {p.value !== undefined && p.value !== null && (
+                  <Row k="value" v={String(p.value)} />
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       <Row
         k="road hits"
         v={String(inspector.roadHits)}

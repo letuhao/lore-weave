@@ -1,11 +1,61 @@
 // TS mirrors of tilemap-service wire contract. These shapes mirror
-// `services/tilemap-service/src/types/{tilemap,tile,zone}.rs` Serialize
-// derives; keep in sync if backend bumps schema.
+// `services/tilemap-service/src/types/{tilemap,tile,zone,primitive,registry}.rs`
+// Serialize derives; keep in sync if backend bumps schema.
 //
 // V1.2 expanded scope: all 5 layers consumed by the viewer
 // (terrain_layer + roads + rivers + object_placements + zones).
+// V2 additive: TerrainCell + terrain_vocabulary + registry_ref +
+// per-placement (primitive, tag, footprint, orientation, properties).
 
 export type ZoneId = string;
+
+/** V2 — engine-coded terrain behavior class. Mirrors backend
+ *  `crate::types::primitive::TerrainPrimitive`. */
+export type TerrainPrimitive =
+  | 'land'
+  | 'water'
+  | 'wall'
+  | 'path'
+  | 'hazard'
+  | 'void';
+
+/** V2 — engine-coded object behavior class. Mirrors backend
+ *  `crate::types::primitive::ObjectPrimitive`. */
+export type ObjectPrimitive =
+  | 'decoration'
+  | 'pickup'
+  | 'container'
+  | 'habitable'
+  | 'blocker'
+  | 'door'
+  | 'trigger'
+  | 'vehicle'
+  | 'spawner'
+  | 'producer'
+  | 'plant';
+
+/** V2 — tile footprint dimensions. Mirrors backend
+ *  `crate::types::registry::FootprintSize`. */
+export interface FootprintSize {
+  width: number;
+  height: number;
+}
+
+/** V2 — 8-way orientation. Mirrors backend `Direction`. */
+export type Direction = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw';
+
+/** V2 — registry pin. Mirrors backend `RegistryRef`. */
+export interface RegistryRef {
+  id: string;
+  version: string;
+}
+
+/** V2 — per-tile terrain cell. Indexed by `terrain_layer` u8 values
+ *  via `terrain_vocabulary`. Mirrors backend `TerrainCell`. */
+export interface TerrainCell {
+  primitive: TerrainPrimitive;
+  tag: string;
+}
 
 /** TerrainKind u8 index per `services/tilemap-service/src/types/tile.rs` */
 export enum TerrainKind {
@@ -125,11 +175,24 @@ export type BiomeObjectType =
   | 'other';
 
 export interface TilemapObjectPlacement {
+  // V1 fields (frozen)
   kind: TilemapObjectKind;
   anchor: TileCoord;
   canon_ref?: string;
   biome_object_type?: BiomeObjectType;
   value?: number;
+  // V2 additive — populated by backend Batch 3.0c.1+. Absent on pre-V2 fixtures.
+  /** Engine behavior class. */
+  primitive?: ObjectPrimitive;
+  /** Registry tag (e.g. `lw:treasure`, `xianxia:dao-stone`). */
+  tag?: string;
+  /** Tile footprint. Frontend currently uses for inspector readout only;
+   *  sprite display sizing still derived from tier table (object-overlay.ts). */
+  footprint?: FootprintSize;
+  /** 8-way orientation. */
+  orientation?: Direction;
+  /** Open property bag for per-book extension (charge_count, faction, etc.). */
+  properties?: Record<string, unknown> | null;
 }
 
 export type GenerationSource =
@@ -156,6 +219,12 @@ export interface TilemapView {
   zones: ZoneRuntime[];
   /** Flat array; index = y*width + x; value = `TerrainKind` u8 index (1-10). */
   terrain_layer: number[];
+  /** V2 — dictionary indexed by `terrain_layer` u8 values. Index 0 = void
+   *  sentinel, indexes 1..=10 carry the V1 terrain cells. Absent on
+   *  pre-V2 fixtures; use `terrainKindTag(layer[i])` as fallback. */
+  terrain_vocabulary?: TerrainCell[];
+  /** V2 — which registry was used to render this view. */
+  registry_ref?: RegistryRef;
   object_placements: TilemapObjectPlacement[];
   road_segments: RoadSegment[];
   river_segments: RiverSegment[];

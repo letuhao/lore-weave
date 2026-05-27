@@ -25,6 +25,18 @@ export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.
       <Row k="crossings" v={String(crossings)} />
       <Row k="source" v={view.generation_source.kind} />
       <Row k="prompt_v" v={String(view.prompt_template_version)} />
+      {view.registry_ref && (
+        <Row
+          k="registry"
+          v={`${view.registry_ref.id} @ ${view.registry_ref.version}`}
+        />
+      )}
+      {view.terrain_vocabulary && (
+        <Row
+          k="vocab entries"
+          v={String(view.terrain_vocabulary.length)}
+        />
+      )}
       <details className="mt-1">
         <summary className="cursor-pointer text-slate-400 text-[10px]">zones</summary>
         <div className="mt-1 max-h-32 overflow-y-auto">

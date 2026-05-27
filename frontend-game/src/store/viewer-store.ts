@@ -1,5 +1,9 @@
 import { create } from 'zustand';
-import type { TilemapObjectPlacement, TilemapView } from '@/types/tilemap';
+import type {
+  TerrainCell,
+  TilemapObjectPlacement,
+  TilemapView,
+} from '@/types/tilemap';
 
 // V1.2 Batch 2.3 viewer state — layer toggles + tile inspector.
 //
@@ -29,6 +33,9 @@ const DEFAULT_VISIBLE: Record<ViewerLayer, boolean> = {
 export interface InspectorPayload {
   tile: { x: number; y: number };
   terrainKind: number; // 1..10 or 0 for unknown
+  /** V2 — resolved from `terrain_vocabulary[terrain_layer[i]]`. Absent on
+   *  pre-V2 fixtures (no vocabulary present). */
+  terrainCell: TerrainCell | null;
   zone: { id: string; role: string; terrain: string } | null;
   placementsAtTile: TilemapObjectPlacement[];
   roadHits: number;
@@ -59,6 +66,10 @@ function lookupAt(
     idx >= 0 && idx < view.terrain_layer.length
       ? (view.terrain_layer[idx] ?? 0)
       : 0;
+  const terrainCell =
+    view.terrain_vocabulary && terrainKind >= 0 && terrainKind < view.terrain_vocabulary.length
+      ? (view.terrain_vocabulary[terrainKind] ?? null)
+      : null;
 
   // Nearest-zone by center_position (Voronoi). Bitmap-precise lookup
   // needs BigInt JSON reviver (DEFERRED V2 with L5).
@@ -108,6 +119,7 @@ function lookupAt(
   return {
     tile,
     terrainKind,
+    terrainCell,
     zone: bestZone,
     placementsAtTile,
     roadHits,
