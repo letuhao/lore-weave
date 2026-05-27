@@ -835,4 +835,163 @@ walkability_pattern = { mask = [true, false, false, false] }
             assert_eq!(def.footprint, v2.footprint, "footprint drift for obstacle.{sub:?}");
         }
     }
+
+    #[test]
+    fn xianxia_sample_registry_loads_and_overrides_lw_tags() {
+        // Batch 3.3 — proof-of-concept that a per-book registry loads from
+        // disk and overrides the canonical `lw:*` tags. The xianxia sample
+        // re-skins every V1 kind with thematic labels + properties while
+        // keeping primitives compatible with the engine's V1 placement
+        // algorithm (so e.g. `lw:water` stays `water` primitive and
+        // RiverPlacer continues to work).
+        let path = std::path::Path::new("registry/xianxia_sample.toml");
+        let reg = Registry::load_from_path(path)
+            .expect("xianxia_sample.toml must load successfully");
+
+        assert_eq!(reg.reference().id, "xianxia");
+        assert!(!reg.reference().version.is_empty());
+
+        // Override evidence — `lw:treasure` is re-labelled "Spirit Stone Cache".
+        let treasure = reg.get_object("lw:treasure").expect("lw:treasure present");
+        assert_eq!(treasure.label, "Spirit Stone Cache");
+
+        // Override evidence — `lw:grass` carries xianxia properties.
+        let grass = reg.get_terrain("lw:grass").expect("lw:grass present");
+        assert_eq!(grass.label, "Qi Meadow");
+        let qi_density = grass.properties.get("qi_density").and_then(|v| v.as_str());
+        assert_eq!(qi_density, Some("low"));
+
+        // Primitives compatible with the engine algorithm — confirms the
+        // re-skin does not break placement (water stays water, mountain
+        // obstacle stays blocker = river source resolver).
+        assert_eq!(
+            reg.get_terrain("lw:water").unwrap().primitive,
+            crate::types::primitive::TerrainPrimitive::Water
+        );
+        assert_eq!(
+            reg.get_object("lw:obstacle.mountain").unwrap().primitive,
+            crate::types::primitive::ObjectPrimitive::Blocker
+        );
+
+        // New xianxia-namespace tags exist (V3 placement engine fodder).
+        for new_tag in ["xianxia:dao-stone", "xianxia:qi-spring", "xianxia:formation-array"] {
+            assert!(
+                reg.get_object(new_tag).is_some(),
+                "xianxia sample must define {new_tag}"
+            );
+        }
+    }
+
+    #[test]
+    fn place_tilemap_with_xianxia_registry_uses_xianxia_registry_ref() {
+        // Batch 3.3 — `place_tilemap_with_registry` correctly propagates the
+        // caller's registry into the resulting `TilemapView`. View shape is
+        // still byte-compatible (V1 wire shape + V2 additive fields); the
+        // override surface is `registry_ref` + `terrain_vocabulary` (rebuilt
+        // from the per-book registry) + per-placement V2 fields (now
+        // resolved against the per-book registry's overrides via
+        // `resolve_object_v2`).
+        use crate::engine::place_tilemap_with_registry;
+        use crate::seed::TilemapSeed;
+        use crate::types::channel::{ChannelId, ChannelTier};
+        use crate::types::template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
+        use crate::types::tilemap::GridSize;
+        use crate::types::zone::{PassageKind, ZoneId, ZoneRole};
+
+        let xianxia = Registry::load_from_path(std::path::Path::new(
+            "registry/xianxia_sample.toml",
+        ))
+        .expect("xianxia sample must load");
+
+        let template = TilemapTemplate {
+            template_id: TilemapTemplateId("xianxia_smoke".to_string()),
+            zones: vec![
+                ZoneSpec {
+                    zone_id: ZoneId("z0".to_string()),
+                    zone_role: ZoneRole::Wilderness,
+                    size: 100,
+                    terrain_types: vec![],
+                    monster_strength: None,
+                    connections: vec![TemplateConnection::new(
+                        ZoneId("z1".to_string()),
+                        PassageKind::Open,
+                    )],
+                    treasure_tiers: vec![],
+                    biome_selection_rules: None,
+                    inherit_treasure_from: None,
+                },
+                ZoneSpec {
+                    zone_id: ZoneId("z1".to_string()),
+                    zone_role: ZoneRole::Hub,
+                    size: 100,
+                    terrain_types: vec![],
+                    monster_strength: None,
+                    connections: vec![],
+                    treasure_tiers: vec![],
+                    biome_selection_rules: None,
+                    inherit_treasure_from: None,
+                },
+            ],
+            seed_offset: 0,
+            world_zone: None,
+        };
+
+        let view = place_tilemap_with_registry(
+            &template,
+            ChannelId("ch_xianxia".to_string()),
+            ChannelTier::Town,
+            GridSize { width: 32, height: 32 },
+            TilemapSeed(0xCAFE_F00D),
+            &xianxia,
+        )
+        .expect("place_tilemap_with_registry must succeed");
+
+        // The view's `registry_ref` must match the xianxia registry's reference.
+        let registry_ref = view.registry_ref.as_ref().expect("registry_ref must be present");
+        assert_eq!(registry_ref.id, "xianxia");
+        assert_eq!(registry_ref.version, "0.1.0");
+
+        // The terrain vocabulary must have 11 entries (void + 10 V1 kinds),
+        // each carrying the canonical `lw:*` tag (since the algorithm still
+        // emits V1 u8 indexes). Per-book overrides change primitives /
+        // properties but tags stay `lw:*`.
+        let vocab = &view.terrain_vocabulary;
+        assert_eq!(vocab.len(), 11, "vocab must be 11 entries: void + 10 V1 kinds");
+        assert_eq!(vocab[1].tag, "lw:grass");
+        assert_eq!(vocab[4].tag, "lw:water");
+        assert_eq!(
+            vocab[4].primitive,
+            crate::types::primitive::TerrainPrimitive::Water,
+            "xianxia water must still report Water primitive (engine compat)",
+        );
+
+        // At least one placement (the Hub zone always gets a monolith pair
+        // via ConnectionsPlacer fallback or its `Open` passage; either way
+        // the Wilderness + Hub generally yields some objects).
+        assert!(
+            !view.object_placements.is_empty(),
+            "smoke template should place at least one object"
+        );
+
+        // For every placement, the V2 `tag` field must resolve to the
+        // xianxia registry — confirming `resolve_object_v2` consulted the
+        // per-book registry, not the default one. Spot-check that the
+        // first placement's tag is a key into the xianxia registry.
+        let placement = &view.object_placements[0];
+        let tag = placement
+            .tag
+            .as_ref()
+            .expect("placement.tag must be populated (V2 wire shape)");
+        let def = xianxia
+            .get_object(tag)
+            .unwrap_or_else(|| panic!("placement tag {tag:?} must be in xianxia registry"));
+        // Footprint matches the registry (xianxia overrides). For most
+        // objects we kept the same 1×1 footprint, but the test asserts the
+        // shape comes from the registry — not the static helper.
+        assert_eq!(
+            placement.footprint.as_ref().expect("footprint populated"),
+            &def.footprint,
+            "placement footprint must match xianxia registry entry"
+        );
+    }
 }
