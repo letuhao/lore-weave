@@ -81,7 +81,68 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
-## ⏭️ CURRENT STATE (2026-05-25 — V1.2 DELIVERED: full tilemap viewer with all backend layers) — read this first
+## ⏭️ CURRENT STATE (2026-05-27 — V2 DATA-MODEL DELIVERED + bundled PR opened) — read this first
+
+V2 closes the closed-enum scalability gap diagnosed during V1.2 review (multi-book platform → per-book thematic types needed). Engine algorithms remain V1-kind-driven for compatibility, but the **wire shape, registry surface, and frontend viewer all now carry V2 primitive + tag + footprint metadata** that per-book registries can override.
+
+Per user directive: V1 viewer + V2 data model **land in one bundled PR**, no intermediate V1 release. PR opened at **https://github.com/letuhao/lore-weave/pull/6** covering 75 commits / 573 files since `main`.
+
+V2 ships as **4 commits on top of V1.2**:
+
+| Commit | Batch | Scope |
+|---|---|---|
+| `c2d94df7` | 3.0 | Closed-primitive enums (6 `TerrainPrimitive` + 11 `ObjectPrimitive`) + `TerrainKindDef` / `ObjectKindDef` types + `Registry` TOML loader (`registry/default.toml`) + 37 new tests covering validation gates (id format, footprint area, mask length, dup detection) |
+| `b49eb456` | 3.0c.1 | `TilemapObjectPlacement` V2 additive fields (`primitive`, `tag`, `footprint`, `orientation`, `properties`) + `TilemapObjectKind::v2_defaults` helper + drift-prevention test (`v2_defaults_match_default_registry`) |
+| `516e5f85` | 3.0c.2 | `TerrainCell` + `terrain_vocabulary` (Vec indexed by `terrain_layer` u8) + `registry_ref` on `TilemapView` + drift-prevention test (`terrain_v2_cells_match_default_registry`) |
+| `ab59069f` | 3.1 | Registry plumbed through `ModificatorContext` + 5 placer/modificator call sites; new `place_tilemap_with_registry` public API; placers resolve V2 fields via `registry.resolve_object_v2`; `terrain_vocabulary` now built from `Registry::build_default_terrain_vocabulary`. **Pure refactor — determinism golden byte-identical for default registry.** |
+| `3f2bdd55` | 3.2 | Frontend: TS types for `TerrainPrimitive`, `ObjectPrimitive`, `FootprintSize`, `Direction`, `RegistryRef`, `TerrainCell`; `viewer-store.lookupAt` resolves `InspectorPayload.terrainCell` from `terrain_vocabulary[terrainKind]`; `TileInspector` shows terrain primitive · tag + collapsible V2 placement detail (kind / tag / primitive / footprint / orientation); `MetadataPanel` shows `registry: <id> @ <version>` + `vocab entries: <n>` |
+| `c2fda99f` | 3.3a | Per-book sample registry `services/tilemap-service/registry/xianxia_sample.toml` (10 `lw:*` terrain + 9 `lw:*` object + 9 `lw:obstacle.*` re-skinned with xianxia themes + 3 new `xianxia:*` tags as V3 placement-engine fodder); 2 new tests prove `place_tilemap_with_registry` end-to-end with the xianxia registry produces correct `registry_ref` + V2 fields |
+
+### Browser smoke evidence (2026-05-27)
+
+Manual end-to-end smoke before PR:
+- `cargo run --bin tilemap-service -- serve` (port 8220) + `pnpm dev` (port 5174) → http://localhost:5174/play renders foundation + roads + rivers + objects (88 placements, 4 roads, 93 crossings on default minimal fixture, seed=1)
+- `MetadataPanel` shows `registry: lw @ 1.0.0` + `vocab entries: 11`
+- `viewer-store.lookupAt({x:3,y:0})` returns `terrainCell: {primitive: "water", tag: "lw:water"}` + placement V2 fields (`primitive: blocker, tag: lw:obstacle.mountain, footprint: 1×1`) end-to-end through the wire
+- **Red herring root cause documented**: a stale `docker compose --profile tilemap` container (PID 36816 wslrelay + PID 5496 com.docker.backend) intercepted port 8220 on IPv6/IPv4 binds and served pre-V2 code. Killed via `docker stop infra-tilemap-service-1`; cargo binary then bound the port cleanly. **Future smoke runs MUST check Docker bindings before assuming source-code mismatch.**
+
+### V2 architecture decision
+
+Hybrid **closed-primitive + open tag-registry** pattern (precedent: Minecraft blocks, RimWorld defs):
+- **Engine code paths use closed primitives** (water primitive → river placement; blocker primitive → obstacle source; pickup primitive → treasure collection). Stable across registries.
+- **Open `lw:*` and per-book `xianxia:*` tags** carry the visual + lore + property surface. Per-book registries override `lw:*` for thematic re-skin, or add namespace-prefixed tags for V3 placement.
+- **Drift-prevention tests** guarantee per-book registries that don't override `lw:*` produce default behavior (deterministic golden equality).
+- **6 + 11 primitive count** derived from 6-game world-sim survey (Dwarf Fortress, RimWorld, Minecraft, Stellaris, Project Zomboid, Caves of Qud) — not the initial RPG-shaped 5+5. Saved as cross-session lesson `feedback_world_sim_primitives_broader_than_rpg`.
+
+ADR: [`docs/specs/2026-05-26-data-model-v2-registry-footprint.md`](../../specs/2026-05-26-data-model-v2-registry-footprint.md)
+Plan: [`docs/plans/2026-05-26-data-model-v2-build.md`](../../plans/2026-05-26-data-model-v2-build.md)
+
+### Test totals (V2 end state)
+
+- `services/tilemap-service` lib: **377 tests** (was 332 pre-V2)
+- `services/tilemap-service` integration: **56 tests** across determinism + http_integration + l4_mock + retry_mock + harness_mock + world_inherit + smoke
+- `frontend-game` vitest: **49 tests** (was 45 pre-V2; +4 viewer-store V2 inspector tests)
+- Determinism golden byte-identical → V2 wire shape purely additive
+- 0 clippy regressions; 0 new eslint warnings; tsc clean
+
+### What V2 does NOT do (deferred to V3)
+
+- HTTP `/internal/v1/tilemaps/render` always loads `Registry::load_default()`; per-channel registry selection is V3
+- Placement algorithm reads V1 `TilemapObjectKind` for routing; V3 will read primitive directly from registry
+- L4 object overlay still sizes sprites via fixed-tier `displayPx`; V3 could honor `footprint.{width,height}`
+- New `xianxia:*` tags (dao-stone, qi-spring, formation-array) are inert metadata until V3 placement engine
+
+### Next-session start point
+
+If PR #6 is approved + merged: V3 spec drafting (registry-driven placement, per-channel registry selection, asset pipeline thaw — DEFERRED #037).
+
+If PR #6 has review feedback: address it on `mmo-rpg/zone-map-amaw` (don't open new branches until merge).
+
+If branching to spec §17 V1 MMO infrastructure (character-service, JWT auth, ChatRoom, CombatRoom): start a fresh branch — per `feedback_branch_name_as_scope_cap`, `mmo-rpg/zone-map-amaw` does NOT cover those.
+
+---
+
+## ARCHIVE — V1.2 (2026-05-25 — full tilemap viewer with all backend layers)
 
 V1.2 expands V1's "foundation-only" render into a **full tilemap
 viewer** showing every visualizable layer the backend returns. PO
