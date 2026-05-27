@@ -34,10 +34,10 @@ impl ShapeRegistry {
         }
     }
 
-    /// Engine-default registry. **v3.2**: registers all 6 active generators
+    /// Engine-default registry. **v3.4**: registers all 7 active generators
     /// (Ellipse + BezierSpine + Polar + Boolean + SdfCapsuleChain +
-    /// MarchingNoise). Slime + Stamp variants remain reserved on
-    /// [`ShapeKind`] and will be added in v3.4 / v3.5.
+    /// MarchingNoise + Slime). Stamp remains reserved on [`ShapeKind`] and
+    /// will ship in v3.5.
     pub fn engine_default() -> Self {
         let mut r = Self::empty();
         r.register(Box::new(super::EllipseGenerator));
@@ -47,6 +47,8 @@ impl ShapeRegistry {
         // v3.2 additions:
         r.register(Box::new(super::SdfCapsuleChainGenerator));
         r.register(Box::new(super::MarchingNoiseGenerator));
+        // v3.4 addition:
+        r.register(Box::new(super::SlimeGenerator));
         r
     }
 
@@ -315,6 +317,76 @@ pub fn engine_v3_2_weights() -> BTreeMap<SizeRank, Vec<(ShapeKind, f32)>> {
     table
 }
 
+/// **v3.4** per-rank weight table for [`DispatchMode::Weighted`]. Restores
+/// `Slime` weights per roadmap §14 Q4 (G=0.05, L=0.05, M=0.05, S=0.10,
+/// μ=0.10 — Small/Micro favored because slime is best at organic island /
+/// peninsula shapes). All other weights match v3.2 except Ellipse's share
+/// is reduced to make room for Slime. Stamp remains zero (ships v3.5).
+pub fn engine_v3_4_weights() -> BTreeMap<SizeRank, Vec<(ShapeKind, f32)>> {
+    let mut table = BTreeMap::new();
+    table.insert(
+        SizeRank::Giant,
+        vec![
+            (ShapeKind::Ellipse, 0.25),
+            (ShapeKind::BezierSpine, 0.20),
+            (ShapeKind::Polar, 0.10),
+            (ShapeKind::Boolean, 0.10),
+            (ShapeKind::SdfCapsuleChain, 0.20),
+            (ShapeKind::MarchingNoise, 0.10),
+            (ShapeKind::Slime, 0.05),
+        ],
+    );
+    table.insert(
+        SizeRank::Large,
+        vec![
+            (ShapeKind::Ellipse, 0.20),
+            (ShapeKind::BezierSpine, 0.25),
+            (ShapeKind::Polar, 0.10),
+            (ShapeKind::Boolean, 0.15),
+            (ShapeKind::SdfCapsuleChain, 0.15),
+            (ShapeKind::MarchingNoise, 0.10),
+            (ShapeKind::Slime, 0.05),
+        ],
+    );
+    table.insert(
+        SizeRank::Medium,
+        vec![
+            (ShapeKind::Ellipse, 0.25),
+            (ShapeKind::BezierSpine, 0.25),
+            (ShapeKind::Polar, 0.20),
+            (ShapeKind::Boolean, 0.10),
+            (ShapeKind::SdfCapsuleChain, 0.10),
+            (ShapeKind::MarchingNoise, 0.05),
+            (ShapeKind::Slime, 0.05),
+        ],
+    );
+    table.insert(
+        SizeRank::Small,
+        vec![
+            (ShapeKind::Ellipse, 0.30),
+            (ShapeKind::BezierSpine, 0.20),
+            (ShapeKind::Polar, 0.25),
+            (ShapeKind::Boolean, 0.05),
+            (ShapeKind::SdfCapsuleChain, 0.10),
+            (ShapeKind::MarchingNoise, 0.00),
+            (ShapeKind::Slime, 0.10),
+        ],
+    );
+    table.insert(
+        SizeRank::Micro,
+        vec![
+            (ShapeKind::Ellipse, 0.45),
+            (ShapeKind::BezierSpine, 0.10),
+            (ShapeKind::Polar, 0.30),
+            (ShapeKind::Boolean, 0.05),
+            (ShapeKind::SdfCapsuleChain, 0.00),
+            (ShapeKind::MarchingNoise, 0.00),
+            (ShapeKind::Slime, 0.10),
+        ],
+    );
+    table
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,10 +569,10 @@ mod tests {
     // -- v3.2 weights + registry checks ---------------------------------------
 
     #[test]
-    fn engine_default_v3_2_registers_six_kinds() {
+    fn engine_default_v3_4_registers_seven_kinds() {
         let r = ShapeRegistry::engine_default();
         let kinds = r.kinds();
-        assert_eq!(kinds.len(), 6, "v3.2 engine_default should register 6 kinds; got {kinds:?}");
+        assert_eq!(kinds.len(), 7, "v3.4 engine_default should register 7 kinds; got {kinds:?}");
         for k in [
             ShapeKind::Ellipse,
             ShapeKind::BezierSpine,
@@ -508,10 +580,10 @@ mod tests {
             ShapeKind::Boolean,
             ShapeKind::SdfCapsuleChain,
             ShapeKind::MarchingNoise,
+            ShapeKind::Slime,
         ] {
             assert!(r.get(k).is_some(), "engine_default should register {k:?}");
         }
-        assert!(r.get(ShapeKind::Slime).is_none(), "Slime is reserved, not impl");
         assert!(r.get(ShapeKind::Stamp).is_none(), "Stamp is reserved, not impl");
     }
 

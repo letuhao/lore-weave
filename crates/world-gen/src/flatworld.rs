@@ -13,7 +13,7 @@
 use crate::rng::Rng;
 use crate::shape::{
     DispatchMode, ShapeContext, ShapeKind, ShapeRegistry,
-    dispatch::{engine_v3_1b_weights, engine_v3_2_weights},
+    dispatch::{engine_v3_1b_weights, engine_v3_2_weights, engine_v3_4_weights},
 };
 use serde::Serialize;
 use std::f32::consts::TAU;
@@ -466,19 +466,19 @@ pub fn collision_strength(a: &Plate, b: &Plate) -> f32 {
 /// indirection but consume no RNG in this configuration. v3.1b will register
 /// 3 more generators and flip the default to `Weighted(...)`.
 pub fn generate(params: &FlatParams) -> FlatWorld {
-    // v3.2 registry: Ellipse + BezierSpine + Polar + Boolean + SdfCapsuleChain
-    // + MarchingNoise (6 generators). Default dispatch is
-    // `Weighted(engine_v3_2_weights())` — per-rank weights from PO-approved
-    // table (spec §4.6) with Giants favouring branching shapes (BezierSpine
-    // + SdfCapsuleChain) and Micros excluding SDF + MarchingNoise.
-    // `engine_v3_1b_weights()` retained as `pub` for reproducing v3.1
+    // v3.4 registry: 7 generators (Ellipse + BezierSpine + Polar + Boolean +
+    // SdfCapsuleChain + MarchingNoise + Slime). Default dispatch is
+    // `Weighted(engine_v3_4_weights())` — restores Slime weights per
+    // roadmap §14 Q4 (Small/Micro favored). `engine_v3_1b_weights` and
+    // `engine_v3_2_weights` are retained as `pub` for reproducing earlier
     // baselines via `FlatParams.plate_dispatch`.
-    let _ = engine_v3_1b_weights; // keep the v3.1 baseline weights reachable
+    let _ = engine_v3_1b_weights;
+    let _ = engine_v3_2_weights;
     let registry = ShapeRegistry::engine_default();
     let dispatcher = params
         .plate_dispatch
         .clone()
-        .unwrap_or_else(|| DispatchMode::Weighted(engine_v3_2_weights()));
+        .unwrap_or_else(|| DispatchMode::Weighted(engine_v3_4_weights()));
 
     let mut rng = Rng::for_stage(params.seed, b"flatworld-plates");
     // Separate stream for motion, so adding velocities doesn't perturb the

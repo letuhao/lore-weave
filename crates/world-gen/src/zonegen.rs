@@ -1525,9 +1525,15 @@ mod tests {
         // (spec §4.6). Marching-squares lookup table corrected (6 case
         // orientations fixed). Plate footprints reflect new branching /
         // noise-field shapes; hypso bytes shift.
+        // **v5.5 Phase A v3.4 rebase 2026-05-27**: 7-generator registry
+        // (added Slime); default dispatch flipped to v3_4_weights restoring
+        // Slime weights per roadmap §14 Q4. Boolean WedgeCut + EllipseDifference
+        // templates retuned so result polygons contain their own centre
+        // (subtracted region offset to right side instead of through
+        // origin). Hypso bytes shift on the seed-7 96×64 hash-pin world.
         // Rebaseline only with intentional polygon-shape / palette /
         // pipeline changes.
-        let pinned = "df1d6b0a4f3d177a35fe50fec43a9e69c48022be061fb793660f28e8557566f9";
+        let pinned = "c5647e907edebd6f76bc7c9ad74b06d947c87923a3b962eefffc324e4f335b3c";
         assert_eq!(
             actual.as_str(),
             pinned,
@@ -1580,9 +1586,13 @@ mod tests {
         // (added SdfCapsuleChain + MarchingNoise) + engine_v3_2_weights
         // default + corrected marching-squares lookup table. Biome bytes
         // shift along with every downstream pixel.
+        // **v5.5 Phase A v3.4 rebase 2026-05-27**: 7-generator registry
+        // (added Slime) + engine_v3_4_weights default + Boolean WedgeCut /
+        // EllipseDifference templates retuned for centre-containment. Biome
+        // bytes shift on the seed-7 96×64 hash-pin world.
         // Rebaseline only with intentional biome algorithm / palette /
         // pipeline / polygon-shape changes.
-        let pinned = "ba0993ffbe22588567fca239462116bc7af05ef0ee6fd6358e630cdafbf3e8c1";
+        let pinned = "37b759688416edb73af8f8f6c01b14c68e982e8a0ab9637c1a2b24f64ee11011";
         assert_eq!(
             actual.as_str(),
             pinned,

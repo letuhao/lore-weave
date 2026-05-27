@@ -103,12 +103,26 @@ impl ShapeGenerator for BooleanGenerator {
             }
             BooleanTemplate::EllipseDifference => {
                 let a = unit_ellipse_f64(1.0, 0.7, 0.0, 0.0, 48);
-                let b = unit_ellipse_f64(0.6, 0.5, 0.5, 0.2, 32);
+                // **v3.4 fix**: smaller inner ellipse placed FURTHER from
+                // origin so the subtracted region does not contain (0, 0).
+                // Previously rx=0.6/ry=0.5 at (0.5, 0.2) still covered the
+                // origin (normalized dist ≈ 0.92 < 1), so `contains` failed
+                // on the difference result. Now rx=0.45/ry=0.40 at (0.6, 0.25)
+                // → origin at normalized dist (-0.6/0.45)² + (-0.25/0.4)² ≈
+                // 1.78 + 0.39 ≈ 2.17 (outside the inner ellipse).
+                let b = unit_ellipse_f64(0.45, 0.40, 0.6, 0.25, 32);
                 safe_difference(&a, &b, &mut fallback_used)
             }
             BooleanTemplate::WedgeCut => {
                 let a = unit_ellipse_f64(1.0, 0.8, 0.0, 0.0, 48);
-                let wedge = wedge_f64(0.0, 0.0, 1.2, 0.5);
+                // **v3.4 fix**: wedge vertex at (0.5, 0) instead of origin —
+                // the wedge bites IN from the right side of the ellipse, not
+                // THROUGH the centre. Previously the (0, 0) vertex placed
+                // the centre of the plate on the boundary of the resulting
+                // Pac-Man polygon, which `plate.contains(plate.center)`
+                // reports as outside. Caught when v3.4 dispatcher weights
+                // pushed WedgeCut into plate 8 at default seed.
+                let wedge = wedge_f64(0.5, 0.0, 0.7, 0.45);
                 safe_difference(&a, &wedge, &mut fallback_used)
             }
         };
@@ -212,11 +226,43 @@ impl ShapeGenerator for BooleanGenerator {
         } else {
             ShapeKind::Boolean
         };
+
+        // **v3.4 defensive check**: if the Boolean polygon does not contain
+        // ctx.center (rare interaction of per-vertex jitter × concave
+        // wedge/difference cut × rotation), fall back to a clean Ellipse so
+        // downstream `plate.contains(plate.center)` succeeds. Honest
+        // `effective_kind = Ellipse` reporting consistent with v3.1c.
+        if !polygons.is_empty() && !point_in_polygon(&polygons[0], ctx.center) {
+            let mut fallback_rng = Rng::for_stage(ctx.seed as u64, b"boolean-fallback");
+            let ell = super::EllipseGenerator;
+            let mut fallback = ell.generate(ctx, &mut fallback_rng);
+            fallback.effective_kind = ShapeKind::Ellipse;
+            return fallback;
+        }
+
         ShapeResult {
             polygons,
             effective_kind,
         }
     }
+}
+
+fn point_in_polygon(poly: &Polygon, point: (f32, f32)) -> bool {
+    let n = poly.len();
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    for i in 0..n {
+        let (xi, yi) = poly[i];
+        let (xj, yj) = poly[(i + 1) % n];
+        let cond = ((yi > point.1) != (yj > point.1))
+            && (point.0 < (xj - xi) * (point.1 - yi) / (yj - yi + f32::EPSILON) + xi);
+        if cond {
+            inside = !inside;
+        }
+    }
+    inside
 }
 
 fn pick_template(seed: u32) -> BooleanTemplate {

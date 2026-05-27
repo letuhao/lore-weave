@@ -25,14 +25,19 @@ pub mod ellipse;
 pub mod polar;
 pub mod raster;
 pub mod sdf;
+pub mod slime;
 pub mod spine;
 
 pub use csg::{BooleanGenerator, BooleanTemplate};
-pub use dispatch::{DispatchMode, ShapeRegistry, engine_v3_1b_weights, engine_v3_2_weights};
+pub use dispatch::{
+    DispatchMode, ShapeRegistry, engine_v3_1b_weights, engine_v3_2_weights,
+    engine_v3_4_weights,
+};
 pub use ellipse::EllipseGenerator;
 pub use polar::{PolarGenerator, PolarTemplate};
 pub use raster::MarchingNoiseGenerator;
 pub use sdf::{CapsuleTemplate, SdfCapsuleChainGenerator};
+pub use slime::{SlimeGenerator, SlimeTemplate};
 pub use spine::{BezierSpineGenerator, BezierTemplate};
 
 use crate::flatworld::{Polygon, SizeRank};
