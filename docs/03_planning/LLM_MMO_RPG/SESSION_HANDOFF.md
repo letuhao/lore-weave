@@ -132,11 +132,32 @@ Plan: [`docs/plans/2026-05-26-data-model-v2-build.md`](../../plans/2026-05-26-da
 - L4 object overlay still sizes sprites via fixed-tier `displayPx`; V3 could honor `footprint.{width,height}`
 - New `xianxia:*` tags (dao-stone, qi-spring, formation-array) are inert metadata until V3 placement engine
 
+### CI-fix follow-up (2026-05-27, post V2 close — same branch)
+
+PR #6 opened red on 2 jobs (game-server + cross-browser e2e). Diagnosed and fixed on `mmo-rpg/zone-map-amaw`:
+
+- **`game-server (build + test)`**: Node 20's built-in `--test` runner does not support glob patterns (added stable in 22+). The script `node --test "dist/**/*.test.js"` passed a literal glob that Node 20 couldn't expand. **Fix**: `actions/setup-node@v4` `node-version` bumped `'20'` → `'22'` in all 3 Node jobs (frontend-game, frontend-game-e2e, game-server). Local verify on Node 25: 8/8 game-server tests pass.
+- **`frontend-game cross-browser e2e (AC-FG-16)`**: V1.2 viewer refactor removed `<Sidebar>` from `/play` but smoke.spec.ts kept asserting `getByRole('button', { name: /Sidebar/ })`. Firefox CI also flaked on canvas + EchoPanel timeouts under cold runners. **Fix**: deleted stale Sidebar assertion, bumped canvas timeout 10s→30s, EchoPanel 5s→15s (3-4× margin over local firefox 3.8s). Renamed describe label to `/play smoke — V0 HUD + V1.2 viewer surface`.
+- **/review-impl follow-up applied in same task**:
+  - **MED-1 (Sidebar dead code)**: deleted `frontend-game/src/components/sidebar/Sidebar.tsx` + removed `sidebarCollapsed` / `toggleSidebar` from `ui-store.ts`. Grep confirmed zero callers outside Sidebar.tsx itself. Bundle budget reclaimed.
+  - **LOW-1 (V1.2 viewer e2e coverage gap)**: added new test `V1.2 viewer surface renders` asserting Tilemap-viewer controls + LayerToggles panel + L0 Foundation label. Passes chromium 720ms / firefox 3.7s.
+  - **LOW-2 (Node 22 unverified locally)**: accepted per finding's own recommendation; CI is the verifier. Fall-back path documented (switch to explicit `dist/rooms/*.test.js` if Node 22 regresses).
+  - **LOW-3 (one-cycle pnpm cache invalidation)**: accept — first push after Node bump pays slow install once.
+  - **COSMETIC-2 (ungrounded timeout budgets)**: accept — revisit after a few CI cycles capture actual firefox cold-runner timings.
+
+Local verification (HEAD pre-commit):
+- `frontend-game` typecheck: clean ✓
+- `frontend-game` lint: 1 pre-existing warning in WorldScene (unrelated) ✓
+- `frontend-game` vitest: 49/49 still pass ✓
+- `frontend-game` chromium e2e: 6/6 in 3.4s ✓
+- `frontend-game` firefox e2e: 6/6 in 8.9s ✓
+- `services/game-server` npm test on local Node 25: 8/8 ✓
+
 ### Next-session start point
 
 If PR #6 is approved + merged: V3 spec drafting (registry-driven placement, per-channel registry selection, asset pipeline thaw — DEFERRED #037).
 
-If PR #6 has review feedback: address it on `mmo-rpg/zone-map-amaw` (don't open new branches until merge).
+If PR #6 has additional review feedback: address it on `mmo-rpg/zone-map-amaw` (don't open new branches until merge).
 
 If branching to spec §17 V1 MMO infrastructure (character-service, JWT auth, ChatRoom, CombatRoom): start a fresh branch — per `feedback_branch_name_as_scope_cap`, `mmo-rpg/zone-map-amaw` does NOT cover those.
 
