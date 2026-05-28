@@ -7,6 +7,20 @@ import type { TilemapView } from '@/types/tilemap';
 export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.Element | null {
   if (!view) return null;
   const objects = view.object_placements.length;
+  // TMP-Q1 chunk D: count decorations separately from total placements
+  // so the operator can see the visual-density pass output at a glance.
+  //
+  // Filter rationale: V2+ chunk-C placer always sets BOTH primitive and
+  // kind to Decoration, so either check alone catches today's data. The
+  // OR is forward-compat for two cases:
+  // (1) pre-V2 fixtures (no primitive field) — kind match is the
+  //     fallback path
+  // (2) future per-book registries that declare new kinds with
+  //     primitive: Decoration semantics — primitive is the SoT
+  // Confirmed at LOW-4 from chunk-D /review-impl.
+  const decorations = view.object_placements.filter(
+    (p) => p.primitive === 'decoration' || p.kind === 'decoration',
+  ).length;
   const roads = view.road_segments.length;
   const rivers = view.river_segments.length;
   const crossings = view.river_segments.reduce((a, r) => a + r.crossings.length, 0);
@@ -21,6 +35,7 @@ export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.
       <Row k="tiles" v={String(view.terrain_layer.length)} />
       <Row k="zones" v={String(view.zones.length)} />
       <Row k="placements" v={String(objects)} />
+      <Row k="decorations" v={String(decorations)} />
       <Row k="roads / rivers" v={`${roads} / ${rivers}`} />
       <Row k="crossings" v={String(crossings)} />
       <Row k="source" v={view.generation_source.kind} />

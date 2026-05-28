@@ -75,6 +75,47 @@ test.describe('/play smoke — V0 HUD + V1.2 viewer surface', () => {
     await expect(page.getByText(/game-server:/)).toBeVisible();
   });
 
+  test('MetadataPanel shows decorations count ≥ 20 (AC-DECO-8)', async ({ page, request }) => {
+    // TMP-Q1 chunk D — verifies the decoration density pass produces
+    // visible output end-to-end via the MetadataPanel "decorations: N"
+    // row. Requires tilemap-service backend on :8220 to handle
+    // /internal/v1/tilemaps/render.
+    //
+    // Skip strategy (LOW-5 from chunk-D /review-impl): probe /livez
+    // first to distinguish "backend down" (skip) from "backend up but
+    // MetadataPanel didn't render" (real failure). The original
+    // catch-all-on-invisible pattern masked the second case.
+    const backendUp = await request
+      .get('http://localhost:8220/livez', { timeout: 3_000 })
+      .then((r) => r.ok())
+      .catch(() => false);
+    test.skip(
+      !backendUp,
+      'tilemap-service backend not reachable at http://localhost:8220/livez. ' +
+        'Run cargo run --bin tilemap-service -- serve to activate AC-DECO-8.',
+    );
+
+    await page.goto('/play');
+    // MetadataPanel's Row component renders `k` and `v` as TWO sibling
+    // spans (flex layout), not a single text node. `getByText(/k v/)`
+    // doesn't match across siblings; need a parent-div locator whose
+    // .textContent() concatenates: "decorations 66".
+    const decorationsRow = page
+      .locator('div')
+      .filter({ hasText: /^decorations\s*\d+$/ })
+      .first();
+    await expect(decorationsRow).toBeVisible({ timeout: 15_000 });
+
+    const text = (await decorationsRow.textContent()) ?? '';
+    const match = text.match(/decorations\s*(\d+)/);
+    expect(match, `expected decorations text to match pattern, got: ${text}`).toBeTruthy();
+    const count = parseInt(match![1], 10);
+    expect(
+      count,
+      `AC-DECO-8 browser smoke: visible decoration count must be ≥ 20 (got ${count})`,
+    ).toBeGreaterThanOrEqual(20);
+  });
+
   test('Phaser canvas mounts (AC-FG-5)', async ({ page, browserName }) => {
     // Phaser 4 only supports WebGL (no canvas fallback). The ubuntu-CI
     // playwright firefox image cannot create a WebGL context

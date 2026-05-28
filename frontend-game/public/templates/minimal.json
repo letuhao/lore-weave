@@ -42,5 +42,10 @@
       "treasure_tiers": []
     }
   ],
-  "seed_offset": 0
+  "seed_offset": 0,
+  "decoration_density": {
+    "min_per_zone": 20,
+    "max_per_zone": 40,
+    "fraction_of_free": 0.10
+  }
 }

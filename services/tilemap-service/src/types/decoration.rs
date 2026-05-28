@@ -25,7 +25,77 @@ pub struct DecorationDensity {
     pub fraction_of_free: f32,
 }
 
+/// TMP-Q1 chunk D MED-2 — validation error for misconfigured
+/// `DecorationDensity` fields. Surfaces source-pinpoint diagnostics
+/// when an author template ships pathological values.
+///
+/// `Eq` dropped because the `FractionOutOfRange` variant carries `f32`
+/// which only impls `PartialEq`. Same discipline as `TilemapTemplate`
+/// (see `types/template.rs` "Note on Eq").
+#[derive(Debug, Clone, PartialEq)]
+pub enum DecorationDensityError {
+    /// `min_per_zone > max_per_zone` — clamp would degenerate to min.
+    MinExceedsMax { min: u32, max: u32 },
+    /// `fraction_of_free` outside `[0.0, 1.0]` or non-finite.
+    FractionOutOfRange { value: f32 },
+    /// `max_per_zone > MAX_REASONABLE_PER_ZONE` — practical upper limit
+    /// to prevent operator typos from running the algorithm to free-mask
+    /// exhaustion needlessly.
+    MaxTooHigh { max: u32, limit: u32 },
+}
+
+impl std::fmt::Display for DecorationDensityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MinExceedsMax { min, max } => write!(
+                f,
+                "decoration_density.min_per_zone ({min}) > max_per_zone ({max}) — clamp would degenerate"
+            ),
+            Self::FractionOutOfRange { value } => write!(
+                f,
+                "decoration_density.fraction_of_free ({value}) must be in [0.0, 1.0] and finite"
+            ),
+            Self::MaxTooHigh { max, limit } => write!(
+                f,
+                "decoration_density.max_per_zone ({max}) exceeds practical limit ({limit})"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for DecorationDensityError {}
+
 impl DecorationDensity {
+    /// Practical upper bound on `max_per_zone`. The algorithm self-limits
+    /// via free-mask exhaustion so larger values don't DoS, but a value
+    /// in the millions is almost certainly an author typo.
+    pub const MAX_REASONABLE_PER_ZONE: u32 = 10_000;
+
+    /// TMP-Q1 chunk D MED-2 — validate field bounds at template-load /
+    /// placer-entry. Called from `DecorationPlacer::process` before the
+    /// per-zone loop so a bad template fails fast with a clear error
+    /// rather than producing silent under-placement.
+    pub fn validate(&self) -> Result<(), DecorationDensityError> {
+        if self.min_per_zone > self.max_per_zone {
+            return Err(DecorationDensityError::MinExceedsMax {
+                min: self.min_per_zone,
+                max: self.max_per_zone,
+            });
+        }
+        if !self.fraction_of_free.is_finite() || !(0.0..=1.0).contains(&self.fraction_of_free) {
+            return Err(DecorationDensityError::FractionOutOfRange {
+                value: self.fraction_of_free,
+            });
+        }
+        if self.max_per_zone > Self::MAX_REASONABLE_PER_ZONE {
+            return Err(DecorationDensityError::MaxTooHigh {
+                max: self.max_per_zone,
+                limit: Self::MAX_REASONABLE_PER_ZONE,
+            });
+        }
+        Ok(())
+    }
+
     /// Town-tier preset.
     pub const TOWN: Self = Self {
         min_per_zone: 20,
@@ -117,6 +187,56 @@ mod tests {
         let json = serde_json::to_string(&DecorationDensity::TOWN).unwrap();
         let back: DecorationDensity = serde_json::from_str(&json).unwrap();
         assert_eq!(back, DecorationDensity::TOWN);
+    }
+
+    #[test]
+    fn validate_accepts_all_tier_presets() {
+        // MED-2 from chunk-D /review-impl: all PO-locked tier presets
+        // must pass validation (they are the conformant baseline).
+        DecorationDensity::TOWN.validate().expect("TOWN must validate");
+        DecorationDensity::DISTRICT.validate().expect("DISTRICT must validate");
+        DecorationDensity::COUNTRY.validate().expect("COUNTRY must validate");
+        DecorationDensity::CONTINENT.validate().expect("CONTINENT must validate");
+    }
+
+    #[test]
+    fn validate_rejects_min_exceeds_max() {
+        let bad = DecorationDensity { min_per_zone: 50, max_per_zone: 20, fraction_of_free: 0.10 };
+        assert!(matches!(
+            bad.validate().unwrap_err(),
+            DecorationDensityError::MinExceedsMax { min: 50, max: 20 }
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_fraction_out_of_range() {
+        for bad_fraction in [-0.1, 1.1, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let bad = DecorationDensity {
+                min_per_zone: 20,
+                max_per_zone: 40,
+                fraction_of_free: bad_fraction,
+            };
+            assert!(
+                matches!(
+                    bad.validate().unwrap_err(),
+                    DecorationDensityError::FractionOutOfRange { .. }
+                ),
+                "fraction {bad_fraction} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_rejects_max_too_high() {
+        let bad = DecorationDensity {
+            min_per_zone: 10,
+            max_per_zone: 1_000_000,
+            fraction_of_free: 0.10,
+        };
+        assert!(matches!(
+            bad.validate().unwrap_err(),
+            DecorationDensityError::MaxTooHigh { max: 1_000_000, .. }
+        ));
     }
 
     #[test]

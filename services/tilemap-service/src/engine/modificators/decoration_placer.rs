@@ -68,6 +68,15 @@ impl Modificator for DecorationPlacer {
             return Ok(());
         };
 
+        // TMP-Q1 chunk D MED-2: fail fast on pathological density values
+        // with a source-pinpoint error rather than silently under-placing.
+        density
+            .validate()
+            .map_err(|e| crate::Error::Modificator {
+                name: "decoration_placer".to_string(),
+                reason: format!("decoration_density invalid: {e}"),
+            })?;
+
         for zone_idx in 0..ctx.state.zones.len() {
             place_in_zone(zone_idx, density, ctx);
         }
