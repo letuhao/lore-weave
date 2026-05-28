@@ -7,3 +7,21 @@
 ---
 
 (empty — no escalations yet)
+
+## Cycle 0 — SPEC DRIFT — 2026-05-28T21:35:53Z
+
+### Type
+`spec_drift`
+
+### Phase
+clarify
+
+### Reason / details
+CYCLE_DECOMPOSITION header version v1.4 != RAID_WORKFLOW v1.5
+
+
+
+### Suggested human action
+Re-run scripts/raid/regenerate-briefs.sh; sync CYCLE_DECOMPOSITION header version with RAID_WORKFLOW.md frontmatter; re-attempt cycle
+
+---

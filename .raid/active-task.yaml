@@ -1,0 +1,36 @@
+# .raid/active-task.yaml — RAID v1.6 active-task config
+#
+# Declares which RAID task this branch is executing. All RAID scripts read
+# this file (via scripts/raid/task-config.py) instead of hardcoded paths.
+#
+# Per-branch: each branch with a different RAID task commits its own copy.
+# Switching branches automatically switches task context.
+#
+# Schema validated by: python scripts/raid/task-config.py validate
+
+task_id: foundation-mega-task
+task_slug: 2026-05-29-foundation-mega-task
+
+# Task-specific docs (under docs/plans/<task_slug>/)
+plan_dir: docs/plans/2026-05-29-foundation-mega-task
+workflow_doc: docs/plans/2026-05-29-foundation-mega-task/RAID_WORKFLOW.md
+decomposition_doc: docs/plans/2026-05-29-foundation-mega-task/CYCLE_DECOMPOSITION.md
+locked_qs_doc: docs/plans/2026-05-29-foundation-mega-task/OPEN_QUESTIONS_LOCKED.md
+pre_flight_doc: docs/plans/2026-05-29-foundation-mega-task/PRE_FLIGHT_CHECKLIST.md
+
+# Cross-task runtime state (under docs/raid/ — same dir for all tasks)
+brief_dir: docs/raid/cycle_briefs
+cycle_log: docs/raid/CYCLE_LOG.md
+audit_log: docs/audit/AUDIT_LOG.jsonl
+escalations_log: docs/raid/ESCALATIONS.md
+in_progress_dir: docs/raid/IN_PROGRESS
+quota_log: docs/raid/QUOTA_LOG.jsonl
+
+# Execution parameters
+cycle_count: 38
+first_cycle: 1
+last_cycle: 38
+bootstrap_cycle: 0  # C0 already shipped; Coordinator skips it
+
+# Quota profile (per Q3 — see contracts/raid/quota-profile.yaml)
+quota_profile: contracts/raid/quota-profile.yaml

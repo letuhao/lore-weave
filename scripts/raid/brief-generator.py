@@ -26,11 +26,15 @@ import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PLANS_DIR = REPO_ROOT / "docs" / "plans" / "2026-05-29-foundation-mega-task"
-DECOMP = PLANS_DIR / "CYCLE_DECOMPOSITION.md"
-RAID_SPEC = PLANS_DIR / "RAID_WORKFLOW.md"
-BRIEFS_DIR = REPO_ROOT / "docs" / "raid" / "cycle_briefs"
-AUDIT_LOG = REPO_ROOT / "docs" / "audit" / "AUDIT_LOG.jsonl"
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "raid"))
+from task_config import load_config  # noqa: E402
+
+_CFG = load_config()
+PLANS_DIR = REPO_ROOT / _CFG["plan_dir"]
+DECOMP = REPO_ROOT / _CFG["decomposition_doc"]
+RAID_SPEC = REPO_ROOT / _CFG["workflow_doc"]
+BRIEFS_DIR = REPO_ROOT / _CFG["brief_dir"]
+AUDIT_LOG = REPO_ROOT / _CFG["audit_log"]
 
 CYCLE_ROW_RE = re.compile(
     r"^\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*`([^`]+)`\s*\|",

@@ -1,16 +1,21 @@
 ---
-description: Enable RAID v1.5 Coordinator mode — main session dispatches each pending cycle as Agent-tool sub-agent (cold-start = P1 fresh-session spirit) and runs the entire foundation in ONE invocation.
+description: Enable RAID v1.6 Coordinator mode — main session dispatches each pending cycle as Agent-tool sub-agent (cold-start = P1 fresh-session spirit) and runs the entire active RAID task in ONE invocation. Task identity is read from .raid/active-task.yaml (per-branch portability).
 ---
 
-# /raid — RAID v1.5 Coordinator mode
+# /raid — RAID v1.6 Coordinator mode
 
 By default the LoreWeave repo uses v2.2 human-in-loop workflow. Invoke `/raid` to enter
-**Coordinator mode** for the foundation mega-task: main session auto-dispatches each
-pending cycle as a cold-start Agent-tool sub-agent until all cycles are DONE OR an
-escalation halts the loop.
+**Coordinator mode** for whichever RAID task is declared in `.raid/active-task.yaml`:
+main session auto-dispatches each pending cycle as a cold-start Agent-tool sub-agent
+until all cycles are DONE OR an escalation halts the loop.
 
 This supersedes RAID v1.4 §13.7 Semi-AUTO (which required manual `/raid <N>` per cycle).
-See `docs/plans/2026-05-29-foundation-mega-task/RAID_WORKFLOW.md` §15 for the spec.
+v1.6 adds task portability — paths are no longer hardcoded; switch branch → different
+`.raid/active-task.yaml` → Coordinator picks up the new task automatically.
+
+For the foundation mega-task spec, see the file referenced by
+`.raid/active-task.yaml::workflow_doc` (currently
+`docs/plans/2026-05-29-foundation-mega-task/RAID_WORKFLOW.md` §15-§16).
 
 ## When to invoke /raid
 
@@ -49,12 +54,14 @@ Maintain Coordinator main-session token budget per RAID_WORKFLOW.md §15.2
 
 ## Process when /raid is invoked
 
-1. **Acknowledge:** "RAID v1.5 Coordinator mode active. Will dispatch pending cycles via Agent-tool sub-agents until all DONE or escalation."
-2. **Verify prerequisites:** check `docs/raid/.session-cycle-lock` is `UNLOCKED` or empty; check at least one PENDING cycle exists in CYCLE_LOG.md; check no stale worktrees (`scripts/raid/worktrees-check.sh`).
-3. **Enter LOOP** (per pseudo-flow above).
-4. **Status reporting:** between cycle dispatches, briefly state "Cycle <N> DONE (sha <abbrev>, <count> files). Next: cycle <M>." Don't dump full sub-agent summaries — they're already in CYCLE_LOG.
-5. **On escalation:** halt; print cycle, type, reason, suggested action.
-6. **On all-done:** print foundation completion summary (38/38 cycles DONE, total wall clock, total quota burn estimate from QUOTA_LOG).
+1. **Acknowledge:** "RAID v1.6 Coordinator mode active. Will dispatch pending cycles via Agent-tool sub-agents until all DONE or escalation."
+2. **Load task config (NEW in v1.6):** run `python scripts/raid/task_config.py dump` — keep the JSON in working memory. Every path used below is read from this config (NOT hardcoded). Fail loud if loader exits non-zero ("missing `.raid/active-task.yaml` — cannot determine which RAID task is active on this branch").
+3. **Validate task config:** run `python scripts/raid/task_config.py validate` — exits non-zero if any declared path doesn't exist (catches branch-mismatch where config references files from another branch). If validate fails, halt and ask user to fix.
+4. **Verify prerequisites:** check `docs/raid/.session-cycle-lock` is `UNLOCKED` or empty; check at least one PENDING cycle exists in `<cycle_log>`; check no stale worktrees (`scripts/raid/worktrees-check.sh`).
+5. **Enter LOOP** (per pseudo-flow above).
+6. **Status reporting:** between cycle dispatches, briefly state "Cycle <N> DONE (sha <abbrev>, <count> files). Next: cycle <M>." Don't dump full sub-agent summaries — they're already in `<cycle_log>`.
+7. **On escalation:** halt; print cycle, type, reason, suggested action.
+8. **On all-done:** print task completion summary (`<cycle_count>/<cycle_count>` cycles DONE, total wall clock, total quota burn estimate from `<quota_log>`).
 
 ## What the sub-agent (cycle runner) does
 

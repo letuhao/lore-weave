@@ -31,9 +31,17 @@ if [ -z "$CYCLE" ]; then
 fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-RAID_DIR="$REPO_ROOT/docs/raid"
-PLANS_DIR="$REPO_ROOT/docs/plans/2026-05-29-foundation-mega-task"
-AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+TASK_CONFIG="$REPO_ROOT/scripts/raid/task_config.py"
+if [ ! -f "$TASK_CONFIG" ]; then
+  echo "ERROR: scripts/raid/task_config.py missing — RAID v1.6 task-config required" >&2
+  exit 3
+fi
+PLANS_DIR="$REPO_ROOT/$(python3 "$TASK_CONFIG" get plan_dir 2>/dev/null)"
+RAID_DIR="$REPO_ROOT/$(python3 "$TASK_CONFIG" get brief_dir 2>/dev/null | xargs dirname)"
+AUDIT_LOG="$REPO_ROOT/$(python3 "$TASK_CONFIG" get audit_log 2>/dev/null)"
+DECOMP_DOC="$REPO_ROOT/$(python3 "$TASK_CONFIG" get decomposition_doc 2>/dev/null)"
+WORKFLOW_DOC="$REPO_ROOT/$(python3 "$TASK_CONFIG" get workflow_doc 2>/dev/null)"
+LOCKED_DOC="$REPO_ROOT/$(python3 "$TASK_CONFIG" get locked_qs_doc 2>/dev/null)"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 audit() {
@@ -104,7 +112,7 @@ echo "  ok: branch=$BRANCH; git status lines=$(echo "$GIT_STATUS" | grep -c . ||
 
 # ───────── Step 5 ─────────
 step 5 "Read OPEN_QUESTIONS_LOCKED.md sections (deferred to caller for layer-specific load)"
-LOCKED="$PLANS_DIR/OPEN_QUESTIONS_LOCKED.md"
+LOCKED="$LOCKED_DOC"
 if [ ! -f "$LOCKED" ]; then
   echo "  ERROR: OPEN_QUESTIONS_LOCKED.md missing" >&2
   exit 4
@@ -113,8 +121,8 @@ echo "  ok ($(wc -l < "$LOCKED") lines)"
 
 # ───────── Step 6 (R3 D-CYCLE-0-DRIFT-ENFORCER) ─────────
 step 6 "Drift check — CYCLE_DECOMPOSITION header version vs RAID_WORKFLOW frontmatter"
-CD_VERSION="$(grep -m1 'last_synced_with_RAID_WORKFLOW_version:' "$PLANS_DIR/CYCLE_DECOMPOSITION.md" 2>/dev/null | sed -E 's/.*last_synced_with_RAID_WORKFLOW_version:\*{0,2}[[:space:]]*//' | awk '{print $1}' || true)"
-RW_VERSION="$(grep -m1 -E 'Version[^A-Za-z]+RAID[[:space:]]+v[0-9]+\.[0-9]+' "$PLANS_DIR/RAID_WORKFLOW.md" 2>/dev/null | sed -E 's/.*RAID[[:space:]]+(v[0-9]+\.[0-9]+).*/\1/' || true)"
+CD_VERSION="$(grep -m1 'last_synced_with_RAID_WORKFLOW_version:' "$DECOMP_DOC" 2>/dev/null | sed -E 's/.*last_synced_with_RAID_WORKFLOW_version:\*{0,2}[[:space:]]*//' | awk '{print $1}' || true)"
+RW_VERSION="$(grep -m1 -E 'Version[^A-Za-z]+RAID[[:space:]]+v[0-9]+\.[0-9]+' "$WORKFLOW_DOC" 2>/dev/null | sed -E 's/.*RAID[[:space:]]+(v[0-9]+\.[0-9]+).*/\1/' || true)"
 if [ -z "$CD_VERSION" ] || [ -z "$RW_VERSION" ]; then
   echo "  WARN: could not extract version markers (CD=$CD_VERSION RW=$RW_VERSION) — drift check inconclusive"
   audit "startup_drift_check_inconclusive" "\"cd\":\"$CD_VERSION\",\"rw\":\"$RW_VERSION\""

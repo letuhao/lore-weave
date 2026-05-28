@@ -1,10 +1,16 @@
-# Cycle runner sub-agent prompt template (RAID v1.5)
+# Cycle runner sub-agent prompt template (RAID v1.6)
 
-> **Used by:** RAID v1.5 Coordinator (see `.claude/commands/raid.md`) when dispatching
+> **Used by:** RAID v1.6 Coordinator (see `.claude/commands/raid.md`) when dispatching
 > each pending cycle as an Agent-tool sub-agent (cold-start).
 >
-> **Coordinator interpolation:** replace `<CYCLE>`, `<BRIEF_PATH>`, `<BRIEF_TITLE>`,
-> `<LAYER_PLAN_PATH>`, `<LOCKED_QIDS>` before passing as `prompt` to Agent tool.
+> **Coordinator interpolation:** before passing as `prompt` to Agent tool, the Coordinator
+> reads `.raid/active-task.yaml` via `python scripts/raid/task_config.py dump` and
+> substitutes ALL placeholders below:
+> - `<CYCLE>` `<BRIEF_PATH>` `<BRIEF_TITLE>` `<LAYER_PLAN_PATH>` `<LOCKED_QIDS>` — per cycle
+> - `<TASK_SLUG>` `<PLAN_DIR>` `<LOCKED_QS_DOC>` `<WORKFLOW_DOC>` — from task-config
+>
+> A cycle-runner sub-agent that finds an un-substituted `<...>` placeholder MUST halt
+> immediately and return `{result: ESCALATED, type: prompt_interpolation_failure}`.
 
 ---
 
@@ -26,8 +32,8 @@ ONLY the files listed below; everything you need is on disk.
 2. `docs/raid/CYCLE_LOG.md` — confirm your cycle is PENDING; confirm all deps DONE
 3. `docs/raid/IN_PROGRESS/cycle-<CYCLE>-state.md` IF EXISTS — you are resuming from prior partial run (read state to determine current_phase)
 4. `<LAYER_PLAN_PATH>` — full layer spec (your cycle implements a slice of this)
-5. `docs/plans/2026-05-29-foundation-mega-task/OPEN_QUESTIONS_LOCKED.md` — only sections matching your LOCKED Q-IDs
-6. `docs/raid/RAID_WORKFLOW.md` §3-§12 — phase definitions + workflow rules
+5. `<LOCKED_QS_DOC>` — only sections matching your LOCKED Q-IDs (resolved from `.raid/active-task.yaml::locked_qs_doc`)
+6. `<WORKFLOW_DOC>` §3-§12 — phase definitions + workflow rules (resolved from `.raid/active-task.yaml::workflow_doc`)
 
 ## Required initial commands (Phase 1 CLARIFY equivalent)
 

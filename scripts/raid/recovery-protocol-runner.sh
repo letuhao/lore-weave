@@ -27,9 +27,15 @@ if [ -z "$CYCLE" ]; then
 fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-RAID_DIR="$REPO_ROOT/docs/raid"
-PLANS_DIR="$REPO_ROOT/docs/plans/2026-05-29-foundation-mega-task"
-AUDIT_LOG="$REPO_ROOT/docs/audit/AUDIT_LOG.jsonl"
+TASK_CONFIG="$REPO_ROOT/scripts/raid/task_config.py"
+if [ ! -f "$TASK_CONFIG" ]; then
+  echo "ERROR: scripts/raid/task_config.py missing — RAID v1.6 task-config required" >&2
+  exit 3
+fi
+RAID_DIR="$REPO_ROOT/$(python3 "$TASK_CONFIG" get brief_dir 2>/dev/null | xargs dirname)"
+PLANS_DIR="$REPO_ROOT/$(python3 "$TASK_CONFIG" get plan_dir 2>/dev/null)"
+LOCKED_DOC="$REPO_ROOT/$(python3 "$TASK_CONFIG" get locked_qs_doc 2>/dev/null)"
+AUDIT_LOG="$REPO_ROOT/$(python3 "$TASK_CONFIG" get audit_log 2>/dev/null)"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 CYCLE_PADDED="$(printf '%03d' "$CYCLE" 2>/dev/null || echo "$CYCLE")"
 
@@ -79,7 +85,7 @@ fi
 echo "[recovery] step 4 ok: brief=$BRIEF"
 
 # Step 5 — Re-read OPEN_QUESTIONS_LOCKED.md (existence check is enough; layer-specific load is caller's job)
-LOCKED="$PLANS_DIR/OPEN_QUESTIONS_LOCKED.md"
+LOCKED="$LOCKED_DOC"
 if [ ! -f "$LOCKED" ]; then
   echo "[recovery] step 5 FAIL: LOCKED file missing" >&2
   audit "recovery_halted" "\"reason\":\"locked_missing\""

@@ -23,9 +23,9 @@ Each cycle is a **single RAID workflow run** (12 phases — see [RAID_WORKFLOW.m
 
 ## §2. Cycle inventory (38 cycles)
 
-### Cycle 0 — RAID Workflow Infrastructure (amended v1.4)
+### Cycle 0 — RAID Workflow Infrastructure (amended v1.6)
 
-> **last_synced_with_RAID_WORKFLOW_version:** v1.4 (2026-05-29)
+> **last_synced_with_RAID_WORKFLOW_version:** v1.6 (2026-05-29 — synced after v1.6 §16 task-portability amendment)
 > **Drift detection:** brief-generator.py + startup-verifier.sh assert this header matches RAID_WORKFLOW.md frontmatter; mismatch → halt + ESCALATIONS row.
 
 **Size:** XL (v1.4: was S/M v1.0; M v1.1; L v1.2; XL v1.3+v1.4). 45 canonical deliverables (28 new + 9 pre-staged + 8 dirs/archives).
@@ -90,7 +90,7 @@ Each cycle is a **single RAID workflow run** (12 phases — see [RAID_WORKFLOW.m
 - RAID infra functional; smoke test on 00X_helloworld_smoke cycle proves orchestrator works end-to-end
 - Smoke exercises 24 checks: 10 P-protections (incl. P5 TWO scenarios per R3) + 6 B-protections + 8 Q-protections + paired-state probes for lock state machine R3
 - All 37 auto-generated cycle briefs + smoke brief follow §4 template + each ≤ 4000 tokens (P6)
-- `last_synced_with_RAID_WORKFLOW_version` header matches RAID_WORKFLOW.md current version (v1.4)
+- `last_synced_with_RAID_WORKFLOW_version` header matches RAID_WORKFLOW.md current version (v1.6)
 
 ---
 

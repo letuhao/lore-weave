@@ -1302,3 +1302,42 @@ All 3 R3 design WARNs + 1 code-R1 WARN addressed in BUILD per CYCLE_0_PLAN.md §
 3. Monitor `docs/raid/CYCLE_LOG.md` and `docs/raid/ESCALATIONS.md` periodically.
 4. Investigate + re-run `/raid` if escalation halts the loop.
 
+---
+
+## Session 69 amendment 2 — RAID v1.6 §16 task portability shipped (2026-05-29 post-v1.5)
+
+**Trigger:** User raised valid portability concern after v1.5 ship — "RAID v1.5 hardcoded `docs/plans/2026-05-29-foundation-mega-task/` in 5 scripts; switching branch with different RAID task won't work; also no single canonical 'task index' file for Coordinator to read first." Concurred — gap was real.
+
+**v1.6 fix:** §16 task-config layer — per-branch `.raid/active-task.yaml` declares task identity + 12 paths; Python loader `scripts/raid/task_config.py` makes config available to bash (via `get/path/abspath/validate/dump/keys` subcommands) AND Python (via `from task_config import load_config`). All 5 hardcoded-path consumers refactored to read from config. Coordinator now runs `task_config.py dump` + `validate` as Step 2/3 before LOOP.
+
+**v1.6 deliverables (10 files):**
+- **NEW:** `.raid/active-task.yaml` — per-branch task config (18 keys, 12 paths)
+- **NEW:** `scripts/raid/task_config.py` — CLI + importable Python loader
+- **NEW:** `docs/plans/2026-05-29-raid-v1.6-portability.md` — L-size plan doc
+- **REFACTOR:** `scripts/raid/brief-generator.py` — PLANS_DIR/DECOMP/RAID_SPEC/BRIEFS_DIR/AUDIT_LOG from config
+- **REFACTOR:** `scripts/raid/startup-verifier.sh` — PLANS_DIR/RAID_DIR/AUDIT_LOG/DECOMP_DOC/WORKFLOW_DOC/LOCKED_DOC from config
+- **REFACTOR:** `scripts/raid/recovery-protocol-runner.sh` — same paths from config
+- **REFACTOR:** `scripts/raid/cycle-runner-prompt.md` — `<LOCKED_QS_DOC>` `<WORKFLOW_DOC>` placeholders + interpolation contract
+- **REFACTOR:** `.claude/commands/raid.md` — Step 2 dump + Step 3 validate added before LOOP; placeholder refs for cycle_log/cycle_count/quota_log
+- **AMENDMENT:** `RAID_WORKFLOW.md` v1.5 → v1.6 + new §16 (7 subsections: problem, solution, refactored consumers, Coordinator startup contract, portability semantics, out-of-scope, sources)
+- **VERSION SYNC:** `CYCLE_DECOMPOSITION.md` drift marker bumped v1.4 → v1.6 (matches RW; clears the long-standing drift detected by startup-verifier)
+
+**VERIFY evidence:** 5/5 smoke checks pass — `task_config.py dump` (18 keys), `validate` (12 path keys OK), `startup-verifier.sh 0` all 6 steps clean with drift v1.6=v1.6, `brief-generator.py --check-drift` pass, `brief-generator.py --cycle 17 --dry-run` renders valid brief.
+
+**Stage 2 code-review finding fixed:** `python` → `python3` consistency in 4 places (matches existing RAID bash convention from `quota-check.sh`, `regenerate-briefs.sh`, etc.).
+
+**Portability semantics matrix:**
+| Scenario | Behavior |
+|---|---|
+| Same branch, same task | Identical to v1.5 — config declares what was hardcoded |
+| Same branch, different task | Edit `.raid/active-task.yaml` to point to new plan_dir; `/raid` picks up |
+| Different branch, different task | Each branch ships its own `.raid/active-task.yaml`; switching branches = switching task context |
+| Branch with no config | `task_config.py` exits 3 loud; `/raid` refuses to start |
+| Config refs missing files (branch mismatch) | `validate` exits 5 with diff of missing paths |
+
+**Migration:** v1.5 commit a8eb239c artifacts remain valid (Coordinator pattern unchanged). v1.6 amendment is additive (2 new files + path indirection in 5 files + spec section + version sync). No behavior change for current foundation task — `/raid` behaves identically; portability is the only new capability.
+
+**Out of scope per §16.6 (deferred to v1.7+):** multi-task concurrent execution in same repo; docs refactor (task-specific docs keep their references); schema validation (only path-existence checked); auto-detect fallback for missing config.
+
+**Updated next-session user action:** unchanged from v1.5 amendment — run `/raid`. v1.6 Coordinator additionally runs `task_config.py dump` + `validate` as Step 2/3 before LOOP; you'll see "RAID v1.6 Coordinator mode active" instead of v1.5's acknowledgment.
+

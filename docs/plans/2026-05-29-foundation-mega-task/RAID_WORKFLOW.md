@@ -1,8 +1,8 @@
 # RAID — Recursive Autonomous Implementation Drive Workflow Spec
 
-> **Version:** RAID v1.5 (amended 2026-05-29 — v1.5 §15 Agent-tool Coordinator dispatch supersedes v1.4 Semi-AUTO)
-> **Prior versions:** v1.4 (§13.7 Semi-AUTO — superseded), v1.3 (§14 quota), v1.2 (§13 production-readiness), v1.1 (§12 context), v1.0
-> **Status:** SPEC — v1.5 amendment supersedes v1.4's per-cycle manual `/raid <N>` user step
+> **Version:** RAID v1.6 (amended 2026-05-29 — v1.6 §16 task-portability via `.raid/active-task.yaml`; supersedes v1.5 hardcoded paths)
+> **Prior versions:** v1.5 (§15 Coordinator dispatch — still active), v1.4 (§13.7 Semi-AUTO — superseded), v1.3 (§14 quota), v1.2 (§13 production-readiness), v1.1 (§12 context), v1.0
+> **Status:** SPEC — v1.6 amendment adds branch/task portability; v1.5 Coordinator pattern unchanged
 > **Parallel to:** AMAW v3.0 (Autonomous Multi-Agent Workflow) and v2.2 (human-in-loop)
 > **Replaces AMAW:** NO — RAID is a SEPARATE workflow for autonomous multi-cycle execution. With v1.5 §15 Coordinator pattern, RAID's autonomy promise is restored: user invokes `/raid` ONCE; main session becomes the Coordinator and dispatches each cycle as Agent-tool sub-agent (cold-start = P1 fresh-session spirit satisfied without separate Claude Code sessions).
 >
@@ -1792,3 +1792,65 @@ end-to-end.
 - Anthropic Claude Code Agent tool documentation (sub-agent cold-start pattern)
 - Workflow tool documentation (pipeline/parallel orchestration — RAID v1.5 borrows the orchestrator-coordinator pattern but uses direct Agent calls for simpler resume semantics)
 - AMAW v3.0 sub-agent dispatch pattern (review-only) — RAID v1.5 extends to per-cycle execution
+
+---
+
+## §16. Task portability via `.raid/active-task.yaml` (v1.6 ADDED 2026-05-29 — supersedes hardcoded paths)
+
+### §16.1 — Problem v1.6 solves
+
+v1.5 hardcoded `docs/plans/2026-05-29-foundation-mega-task/` in 5 script files + 2 prompt templates. Consequences:
+- Cannot run RAID on a different branch without forking + editing all scripts
+- Cannot run two RAID tasks in the same repo on different branches
+- Adversary R1 BLOCK 3 (resolved in v1.5) noted the broader problem of "RAID infrastructure tied to a single task instance"
+
+### §16.2 — Solution: per-branch task config
+
+- **File:** `.raid/active-task.yaml` (committed per branch — like CI config, not user-local)
+- **Schema:** declares task_id, task_slug, plan_dir, workflow_doc, decomposition_doc, locked_qs_doc, pre_flight_doc, brief_dir, cycle_log, audit_log, escalations_log, in_progress_dir, quota_log, cycle_count, first_cycle, last_cycle, bootstrap_cycle, quota_profile
+- **Loader:** `scripts/raid/task_config.py` (Python, pyyaml stdlib-adjacent dep already used by `in-progress-state-writer.py`). Subcommands: `dump`, `get <key>`, `path <key>`, `abspath <key>`, `validate`, `keys`
+- **Importable:** `from task_config import load_config; cfg = load_config()` — used by `brief-generator.py` and any future Python RAID script
+- **Bash invocation:** `python scripts/raid/task_config.py get <key>` — used by `startup-verifier.sh`, `recovery-protocol-runner.sh`
+
+### §16.3 — Refactored consumers
+
+| Script | Before (hardcoded) | After (config-driven) |
+|---|---|---|
+| `brief-generator.py` | `PLANS_DIR = REPO_ROOT/"docs"/"plans"/"2026-05-29-foundation-mega-task"` | `from task_config import load_config; PLANS_DIR = REPO_ROOT / load_config()["plan_dir"]` |
+| `startup-verifier.sh` | `PLANS_DIR="$REPO_ROOT/docs/plans/2026-05-29-foundation-mega-task"` | `PLANS_DIR="$REPO_ROOT/$(python "$TASK_CONFIG" get plan_dir)"` |
+| `recovery-protocol-runner.sh` | Same as above | Same fix |
+| `cycle-runner-prompt.md` | Literal path string in required-reading list | `<LOCKED_QS_DOC>` `<WORKFLOW_DOC>` placeholders interpolated by Coordinator from `task_config.py dump` |
+| `.claude/commands/raid.md` | Literal reference to `docs/plans/2026-05-29-foundation-mega-task/RAID_WORKFLOW.md` | Reference to `.raid/active-task.yaml::workflow_doc`; Coordinator Step 2 runs `task_config.py dump` first |
+
+### §16.4 — Coordinator startup contract (updated for v1.6)
+
+When `/raid` is invoked, the Coordinator MUST run these steps BEFORE entering the dispatch LOOP:
+
+1. **Acknowledge** "RAID v1.6 Coordinator mode active..."
+2. **Load:** `python scripts/raid/task_config.py dump` → keep JSON in working memory
+3. **Validate:** `python scripts/raid/task_config.py validate` → exits non-zero if any declared path missing (catches branch-mismatch). If fails, halt and ask user to fix `.raid/active-task.yaml`.
+4. **Verify prereqs:** lock state UNLOCKED, ≥1 PENDING cycle exists in `<cycle_log>`, no stale worktrees
+5. Then enter LOOP per §15
+
+### §16.5 — Portability semantics
+
+| Scenario | Behavior |
+|---|---|
+| Same branch, same task | Identical to v1.5 — config just declares what was hardcoded |
+| Same branch, different task (e.g. v2.0 foundation rev) | Edit `.raid/active-task.yaml` to point to new plan_dir/workflow_doc; commit; `/raid` picks up new task |
+| Different branch, different task | Each branch commits its own `.raid/active-task.yaml`; switching branches switches task context automatically |
+| Branch with no `.raid/active-task.yaml` | `task_config.py` exits 3 with clear message; `/raid` refuses to start |
+| `.raid/active-task.yaml` references missing files (branch mismatch) | `task_config.py validate` exits 5; Coordinator halts with diff of missing paths |
+
+### §16.6 — What v1.6 does NOT do (deferred to v1.7+)
+
+- **Multi-task concurrent execution in same repo:** v1.6 assumes ONE active task per repo at any time. Running 2 RAID tasks in parallel (e.g. foundation + a parallel L8-server work) would need lock/worktree namespacing per task — defer until needed
+- **Docs refactor:** CYCLE_DECOMPOSITION, BEGIN_CYCLE_0, SESSION_PATCH retain hardcoded `2026-05-29-foundation-mega-task` references — those are task-specific by nature; not paths a different task would inherit
+- **Schema validation:** v1.6 loader checks declared paths exist; does NOT enforce schema (e.g. cycle_count is int, plan_dir is dir). Add `cerberus` or `pydantic` validation if config typos start causing problems
+- **Auto-detect fallback:** if `.raid/active-task.yaml` missing, v1.6 fails loud rather than auto-detecting the newest `docs/plans/*-foundation-mega-task` dir. Loud-fail is intentional for now — auto-detect can mask config drift
+
+### §16.7 — Sources
+
+- 12-Factor App: Config (https://12factor.net/config) — config separate from code
+- POSIX environment-variable + config-file pattern (cron, systemd unit files)
+- Anthropic Agent SDK file-tool conventions — read-config-first as Step 0
