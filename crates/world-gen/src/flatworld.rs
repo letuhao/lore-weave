@@ -374,6 +374,25 @@ impl Plate {
         nearest_site(&self.zone_sites, qx, qy)
     }
 
+    /// **v4.1b**: Polygon-based zone lookup over `self.zones[zi].components`.
+    /// Returns the index of the first zone whose polygon set contains
+    /// `(x, y)`. Falls back to [`Plate::zone_at`] (Voronoi nearest-site)
+    /// when no zone polygon contains the point — typical for points in the
+    /// plate body that lie outside every templated zone polygon (each
+    /// zone covers a sub-region; the union is rarely 100% of the plate).
+    ///
+    /// v4.1c rendering can opt in to this method for per-zone polygon
+    /// paint; flat_climate.rs (v4.1b) continues to use the default
+    /// `zone_at` Voronoi for byte-identical climate output.
+    pub fn zone_at_polygon(&self, x: f32, y: f32) -> Option<usize> {
+        for (i, zone) in self.zones.iter().enumerate() {
+            if zone.contains(x, y) {
+                return Some(i);
+            }
+        }
+        self.zone_at(x, y)
+    }
+
     /// Nested (L1 zone, L2 sub-zone) indices containing `(x, y)`: the nearest
     /// L1 zone site, then the nearest sub-site **of that zone**. `None` if the
     /// plate has no zones.
@@ -1410,6 +1429,46 @@ mod tests {
     }
 
     // ─── v4.1a Zone templating regression tests ──────────────────────────
+
+    #[test]
+    fn v4_1b_zone_at_polygon_returns_containing_zone() {
+        // For each zone in the world, `zone_at_polygon` queried at the
+        // zone's own centre should return either THIS zone's index (when
+        // the zone polygon happens to contain its centre) OR some other
+        // zone (multi-component / agent-walk cases). Either way it must
+        // return Some — the Voronoi fallback guarantees no None.
+        let world = generate(&FlatParams::default());
+        for plate in &world.plates {
+            for zone in &plate.zones {
+                let hit = plate.zone_at_polygon(zone.center.0, zone.center.1);
+                assert!(
+                    hit.is_some(),
+                    "plate {} zone {}: zone_at_polygon at zone's own centre returned None",
+                    zone.plate_id,
+                    zone.id,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn v4_1b_zone_at_polygon_falls_back_to_voronoi_outside_all_zones() {
+        // Query a point that's clearly outside the plate (and therefore
+        // outside every zone polygon). The Voronoi fallback should still
+        // return the nearest zone — graceful degradation.
+        let world = generate(&FlatParams::default());
+        let plate = &world.plates[0];
+        // Pick a point well outside the world.
+        let far_x = -10_000.0;
+        let far_y = -10_000.0;
+        let hit = plate.zone_at_polygon(far_x, far_y);
+        // The Voronoi fallback always returns Some when the plate has zones.
+        assert_eq!(
+            hit.is_some(),
+            !plate.zones.is_empty(),
+            "fallback should return Some iff plate has zones",
+        );
+    }
 
     #[test]
     fn v4_1a_zones_populated_for_every_plate() {

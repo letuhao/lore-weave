@@ -607,7 +607,11 @@ pub fn compute_zone_climate(
     zone_id: usize,
     edge_dist_sea: &[u32],
 ) -> ZoneClimate {
-    let (sx, sy) = world.plates[plate_id].zone_sites[zone_id];
+    // **v4.1b**: read from `Zone.center` instead of legacy `zone_sites[zi]`.
+    // Identity-preserving rename — both fields populated in parallel in
+    // v4.1a so values match bit-for-bit; default `zone_at()` Voronoi
+    // semantics unchanged.
+    let (sx, sy) = world.plates[plate_id].zones[zone_id].center;
     let h = world.height as f32;
 
     // 1. Insolation (World) — sea-level temp at the zone's latitude.
@@ -754,7 +758,7 @@ pub fn precip_winter_frac(
 /// logic. Returns 0 if plate degenerate (no horizontal extent).
 fn zone_ew_position(world: &FlatWorld, plate_id: usize, zone_id: usize) -> f32 {
     let plate = &world.plates[plate_id];
-    let (sx, _) = plate.zone_sites[zone_id];
+    let (sx, _) = plate.zones[zone_id].center;
     let (cx, _) = plate.center;
     let (min_x, _, max_x, _) = plate.bounding_box();
     let half_width = ((max_x - min_x) * 0.5).max(1.0);
@@ -855,7 +859,7 @@ fn ocean_current_delta(
     };
     // East-west position relative to plate centroid: -1 = far west, +1 = far east
     let plate = &world.plates[plate_id];
-    let (sx, _) = plate.zone_sites[zone_id];
+    let (sx, _) = plate.zones[zone_id].center;
     let (cx, _) = plate.center;
     let (min_x, _, max_x, _) = plate.bounding_box();
     let half_width = ((max_x - min_x) * 0.5).max(1.0);
@@ -1129,7 +1133,9 @@ pub fn export_zone_climates(
 
     let mut zones = Vec::new();
     for (pid, plate) in world.plates.iter().enumerate() {
-        for (zid, &(sx, sy)) in plate.zone_sites.iter().enumerate() {
+        for (zid, zone) in plate.zones.iter().enumerate() {
+            let (sx, sy) = zone.center;
+            let _ = sx;
             let lat_dist = params.hemisphere_layout.lat_dist(sy, h as f32);
             let zc = compute_zone_climate(world, params, pid, zid, &edge_dist);
             zones.push(ZoneClimateExport {
@@ -1431,11 +1437,12 @@ mod tests {
         // Pick a plate — any plate works because ocean_current_delta only
         // needs (plate.vertices, plate.center, plate.zone_sites).
         let p = &world.plates[0];
-        if p.zone_sites.len() < 2 { return; } // skip if test_world degenerate
+        if p.zones.len() < 2 { return; } // skip if test_world degenerate
         // Manually compute east-most and west-most zone indices.
         let mut min_x = (f32::INFINITY, 0usize);
         let mut max_x = (f32::NEG_INFINITY, 0usize);
-        for (zi, &(sx, _)) in p.zone_sites.iter().enumerate() {
+        for (zi, zone) in p.zones.iter().enumerate() {
+            let sx = zone.center.0;
             if sx < min_x.0 { min_x = (sx, zi); }
             if sx > max_x.0 { max_x = (sx, zi); }
         }
@@ -1471,10 +1478,11 @@ mod tests {
         // Use east-most zone of plate 0; sy doesn't matter for the envelope check
         // since we control lat_dist directly.
         let p = &world.plates[0];
-        if p.zone_sites.is_empty() { return; }
+        if p.zones.is_empty() { return; }
         // Find some zone with non-trivial ew_position.
         let mut max_x = (f32::NEG_INFINITY, 0usize);
-        for (zi, &(sx, _)) in p.zone_sites.iter().enumerate() {
+        for (zi, zone) in p.zones.iter().enumerate() {
+            let sx = zone.center.0;
             if sx > max_x.0 { max_x = (sx, zi); }
         }
         // Equator (lat_dist 0.1) → envelope = 0.
@@ -1504,7 +1512,7 @@ mod tests {
         // robust against plate-layout reshuffling per Phase A iteration.)
         let zc_off_anchor = compute_zone_climate(&world, &params_off, 0, 0, &ed);
         let any_zone_differs = world.plates.iter().enumerate().any(|(pi, p)| {
-            (0..p.zone_sites.len()).any(|zi| {
+            (0..p.zones.len()).any(|zi| {
                 let off = compute_zone_climate(&world, &params_off, pi, zi, &ed);
                 let on = compute_zone_climate(&world, &params_on, pi, zi, &ed);
                 (off.temp_mean - on.temp_mean).abs() > 0.01
@@ -1536,7 +1544,8 @@ mod tests {
         let mut eq_dy = f32::INFINITY;
         let mut po_dy = 0.0f32;
         for (pi, p) in world.plates.iter().enumerate() {
-            for (zi, &(_, sy)) in p.zone_sites.iter().enumerate() {
+            for (zi, zone) in p.zones.iter().enumerate() {
+                let sy = zone.center.1;
                 let dy = (sy - h * 0.5).abs();
                 let zc = compute_zone_climate(&world, &params, pi, zi, &ed);
                 if dy < eq_dy {
@@ -1928,7 +1937,7 @@ mod tests {
         let params_on = WorldClimateParams::default();
         let ed = edge_dist_all_coast(&world);
         for (pi, p) in world.plates.iter().enumerate() {
-            for zi in 0..p.zone_sites.len() {
+            for zi in 0..p.zones.len() {
                 let zc_off = compute_zone_climate(&world, &params_off, pi, zi, &ed);
                 let zc_on = compute_zone_climate(&world, &params_on, pi, zi, &ed);
                 // params_off can ONLY differ in precip if orographic fires
@@ -1968,7 +1977,7 @@ mod tests {
         let mut any_differs = false;
         let mut any_reduced = false;
         for (pi, p) in world.plates.iter().enumerate() {
-            for zi in 0..p.zone_sites.len() {
+            for zi in 0..p.zones.len() {
                 let off = compute_zone_climate(&world, &params_off, pi, zi, &ed);
                 let on = compute_zone_climate(&world, &params_on, pi, zi, &ed);
                 let delta = on.precip_annual - off.precip_annual;
@@ -2136,7 +2145,7 @@ mod tests {
 
         let mut any_diff = false;
         for (pi, plate) in world.plates.iter().enumerate() {
-            for zi in 0..plate.zone_sites.len() {
+            for zi in 0..plate.zones.len() {
                 let on = compute_zone_climate(&world, &params_on, pi, zi, &ed_interior);
                 let off = compute_zone_climate(&world, &params_off, pi, zi, &ed_interior);
                 if (on.precip_annual - off.precip_annual).abs() > 0.1 {
@@ -2171,7 +2180,8 @@ mod tests {
         let h_f = world.height as f32;
         let mut by_lat_band: std::collections::HashMap<u32, Vec<f32>> = Default::default();
         for (pi, plate) in world.plates.iter().enumerate() {
-            for (zi, &(_, sy)) in plate.zone_sites.iter().enumerate() {
+            for (zi, zone) in plate.zones.iter().enumerate() {
+                let sy = zone.center.1;
                 let lat_d = params.hemisphere_layout.lat_dist(sy, h_f);
                 let band = (lat_d * 10.0) as u32; // 10 bands
                 let zc = compute_zone_climate(&world, &params, pi, zi, &ed);
