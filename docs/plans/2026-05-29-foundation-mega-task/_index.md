@@ -83,3 +83,18 @@ Cycle 0 deliverables expanded to 36 items total. Cycle 0 size bumped to L. User 
 AUTO continue (no human checkpoint before C1) — auto-dispatcher with 60s pause window.
 See [RAID_WORKFLOW.md §13](RAID_WORKFLOW.md) for BLOCKER fix contract +
 [PRE_FLIGHT_CHECKLIST.md](PRE_FLIGHT_CHECKLIST.md) for user sign-off items.
+
+**v1.3 amendment 2026-05-29 (same day, post subscription-quota clarification):** Project
+owner uses Anthropic **Max 20x ($200/mo) subscription**, not API pay-as-you-go. RAID
+workflow amended with §14 Quota-Aware Execution superseding §13.3 B3 cost-kill-switch.
+Q1 confirms Max 20x plan + limits (5h window ~2M tokens, 50 sessions/month cap, weekly
+cap). Q2 sub-agent model tiering: Opus 4.7 reserved for Raid Leader only; Sonnet 4.6
+for DPS/Tank/Healer/Adversary; Haiku 4.5 for Scope Guard + Auditor + post-commit
+verifier (~40% quota reduction per Anthropic guidance). Q3 DPS count cap reduced
+(mega cycles 4-5 instead of 8-11). Q4 pre-cycle quota check. Q5 graceful quota-block
+pause via P3 IN_PROGRESS. Q6 block-recovery resume protocol (user manual re-invoke
+after reset). Q7 QUOTA_LOG.jsonl observability. Q8 50-session/month tracking. Q9
+deprecates B3 $-caps (kept as no-op for API users in future). Cycle 0 deliverables
+expanded to 43 items. Wall-clock revised to ~2-3 calendar weeks. Foundation uses
+~8-10 sessions of 50-session monthly cap (16-20% of budget). See
+[RAID_WORKFLOW.md §14](RAID_WORKFLOW.md) for quota contract.

@@ -52,6 +52,15 @@ Each cycle is a **single RAID workflow run** (12 phases — see [RAID_WORKFLOW.m
 - `docs/raid/.session-cycle-lock` (sentinel file for P1 enforcement)
 - `docs/raid/cycle_briefs/TEMPLATE.md` — canonical brief template per §4 (P6 structure)
 
+**Deliverables (v1.3 §14 quota-aware execution — MANDATORY for subscription users):**
+- `contracts/raid/quota-profile.yaml` (Q3) — current profile: `max-20x`
+- `scripts/raid/quota-check.sh` (Q4) — pre-cycle quota check + RUNNABLE/RISKY/WAIT decision
+- `scripts/raid/sub-agent-spawn.py` (Q2) — enforces model tiering per role (Opus/Sonnet/Haiku)
+- `scripts/raid/quota-summary.py` (Q7) — quota dashboard
+- `scripts/raid/session-counter.py` (Q8) — 50-session/month tracking
+- `docs/raid/QUOTA_LOG.jsonl` (Q7) — supersedes COST_LOG.jsonl for subscription users
+- `docs/raid/RESET_SCHEDULE.md` (Q5-Q6) — known reset windows documentation
+
 **Exit:**
 - RAID infra functional; smoke test on a no-op cycle proves orchestrator works
 - Smoke test exercises all 10 §12 protections: fresh session, startup routine, IN_PROGRESS state, sub-agent return budget, compaction simulation, brief structure validation, cross-cycle reference, token budget, post-commit verification, health dashboard

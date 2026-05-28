@@ -1,6 +1,6 @@
 # RAID — Recursive Autonomous Implementation Drive Workflow Spec
 
-> **Version:** RAID v1.2 (amended 2026-05-29 with §12 context + §13 production-readiness)
+> **Version:** RAID v1.3 (amended 2026-05-29 with §12 context + §13 production-readiness + §14 quota-awareness)
 > **Status:** SPEC — locked 2026-05-29 by foundation mega-task CLARIFY
 > **Parallel to:** AMAW v3.0 (Autonomous Multi-Agent Workflow) and v2.2 (human-in-loop)
 > **Replaces AMAW:** NO — RAID is a SEPARATE workflow for tasks where 100% autonomous execution is required (no human checkpoint per cycle)
@@ -19,6 +19,18 @@
 > Protections) covering B1-B6 + a smoke-test auto-gate from C0 to C1 (user opted for
 > AUTO continue, not human checkpoint). See §13 for the full BLOCKER fix contract +
 > [PRE_FLIGHT_CHECKLIST.md](PRE_FLIGHT_CHECKLIST.md) for manual sign-off items.
+>
+> **v1.3 amendment rationale:** v1.2 §13.3 framed cost as $-budget assuming API
+> pay-as-you-go. Project owner runs Claude on **subscription (Max 20x $200/mo)** with
+> quota-based blocking (~900 messages / 5h window + monthly + weekly caps + 50
+> sessions/month) — NOT dollar billing. §14 supersedes B3 with **B3-Q (Quota-Aware
+> Execution)**: pre-cycle quota check, sub-agent model tiering (Opus reserved for
+> Raid Leader; Sonnet/Haiku for DPS+Adversary+Scope-Guard+Auditor — Anthropic
+> guidance: lighter models reduce hourly consumption ~40%), DPS count cap reduced
+> (default 2-4 instead of 4-11), and graceful pause-on-quota-block via P3
+> IN_PROGRESS state. User opted "run until quota out then resume after reset" — no
+> auto-resume; user manually re-invokes `/raid <N>` after Anthropic's reset window
+> (5h / weekly). See §14 for the full quota contract.
 
 ---
 
@@ -1282,3 +1294,315 @@ Failing any = C0 INCOMPLETE = no RAID execution.
 
 **Total Cycle 0: 36 deliverables.** Cycle 0 is now size **L** (was M v1.1; was S/M v1.0).
 This is the largest single non-RAID cycle but required for safe autonomous execution.
+
+---
+
+## §14. Quota-Aware Execution (v1.3 ADDED 2026-05-29 — supersedes §13.3 B3)
+
+> **Why this section exists:** v1.2 §13.3 B3 assumed pay-as-you-go API billing. Project
+> owner runs Claude on subscription (**Max 20x at $200/mo**). Anthropic protects
+> subscription users via QUOTA blocking — not dollar billing. Tokens drained from
+> conversation history + tool definitions + file references + sub-agent contexts all
+> count against the same 5-hour rolling quota. Sub-agents are particularly expensive
+> (~7× standard usage per Anthropic guidance — each maintains its own context window).
+>
+> §14 supersedes the B3 cost-kill-switch logic in §13.3 with quota-aware execution.
+> All other v1.2 §13 protections (B1, B2, B4, B5, B6) remain in force unchanged.
+
+### §14.1 — Q1: Subscription plan context (Max 20x)
+
+**Locked plan:** Anthropic Max 20x ($200/month) — per PRE_FLIGHT_CHECKLIST §3.
+
+**Known limits (Anthropic published, May 2026):**
+- ~900 messages per 5-hour rolling window (estimate; varies by message length + files)
+- Weekly cap (separate from 5h)
+- 50 sessions/month soft guideline (each session ≈ 5h window)
+- Cross-surface aggregation: claude.ai + Claude Code + Desktop all share quota
+
+**Quota signal:** Anthropic returns `"Claude usage limit reached"` message or HTTP 429
+when window hit. Tool calls are blocked until reset.
+
+**Reset windows:**
+- 5h: rolling from first message of session
+- Weekly: rolling from first message of week
+- Monthly session cap: rolling from first session of month
+
+---
+
+### §14.2 — Q2: Sub-agent model tiering (CRITICAL quota reduction)
+
+**Per Anthropic guidance:** "Letting Sonnet conduct the orchestra while Haiku handles
+repetitive lookups and research cuts hourly consumption by up to 40%."
+
+**RAID v1.3 role → model assignment:**
+
+| Role | Model | Reason |
+|---|---|---|
+| **Raid Leader** (main session) | **Opus 4.7** (current model) | Orchestration requires deep reasoning + tool selection |
+| **DPS** (per worktree, parallel) | **Sonnet 4.6** for std slices; Opus 4.7 only for DP-kernel (C17), macros (C17), per-reality DB migrations (C9, C13) — complex slices | Build work doable in Sonnet for most slices |
+| **Tank** (rebase + integration) | **Sonnet 4.6** | Mostly mechanical merge work |
+| **Healer** (test repair) | **Sonnet 4.6** | Test fixes seldom need deep reasoning |
+| **Adversary** (cold-start review) | **Sonnet 4.6** | Adequate for code review per Anthropic guidance |
+| **Scope Guard** (brief vs diff) | **Haiku 4.5** | Simple comparison task; Haiku sufficient |
+| **Auditor** (write logs) | **Haiku 4.5** | Pure write task; minimal reasoning |
+| **Post-commit verifier** (P9) | **Haiku 4.5** | Cross-check facts, no synthesis |
+
+**Estimated quota multiplier reduction:** 7× sub-agent overhead → ~3× when most are
+Sonnet/Haiku. **Net cycle quota: ~400-500K tokens** (was projected ~1M-1.5M with all-Opus).
+
+**Per Max 20x window (≈ 2M tokens equivalent):** 4-5 cycles per 5h window.
+
+**Implementation:**
+- DPS prompts include `model: "sonnet-4-6"` or `model: "opus-4-7"` directive
+- Agent tool calls explicitly pass `model` parameter
+- `scripts/raid/sub-agent-spawn.py` enforces tier assignment per role
+
+---
+
+### §14.3 — Q3: DPS count cap (reduce parallelism for quota)
+
+**v1.0 default DPS counts** in CYCLE_DECOMPOSITION.md §2 ranged 1-11 per cycle. v1.3
+caps for Max 20x:
+
+| Cycle complexity | DPS count cap (Max 20x) | Was (v1.0) |
+|---|---|---|
+| Simple (1-2 components) | 1-2 | 1-2 (unchanged) |
+| Medium (3-5 components) | **2-3** | 3-4 |
+| Complex (6-8 components) | **3-4** | 5-7 |
+| Mega (9+ components — e.g., C7, C36) | **4-5** | 8-11 |
+
+**Wall-clock tradeoff:** less parallelism → cycles take longer (1.5-2× wall-clock per
+cycle). Quota savings: each DPS = full context spawn = significant tokens. Reducing 8
+DPS → 4 DPS = ~50% sub-agent quota saving per cycle.
+
+**Mega-cycle splitting:** if reducing DPS makes a cycle exceed 6h wall-clock, the cycle
+is SPLIT into 2 cycles. Cycle 36 (L7.A admin-cli with ~30 commands) and Cycle 7 (L1
+remainder) are candidates for splitting; brief-generator (B4) detects and proposes.
+
+**Configurable:** `contracts/raid/quota-profile.yaml`:
+
+```yaml
+plan: max-20x
+dps_count_cap_per_complexity:
+  simple: 2
+  medium: 3
+  complex: 4
+  mega: 5
+mega_split_wall_clock_threshold_hours: 6
+preferred_models:
+  default_sub_agent: sonnet-4-6
+  light_sub_agent: haiku-4-5
+  heavy_sub_agent: opus-4-7
+```
+
+Future profiles (`pro.yaml`, `max-5x.yaml`, `api-payg.yaml`) for other users.
+
+---
+
+### §14.4 — Q4: Pre-cycle quota check
+
+**Rule:** Before invoking `/raid <N>`, the orchestrator (or user manually) runs a
+pre-flight check:
+
+```bash
+scripts/raid/quota-check.sh
+  → reads docs/raid/QUOTA_LOG.jsonl (estimated burn since session start)
+  → computes: estimated_remaining_5h_quota / typical_cycle_quota_burn
+  → output:
+    - cycles_runnable_in_window: <int>
+    - estimated_remaining_pct: <%>
+    - recommendation: PROCEED | WAIT-FOR-RESET | RISKY
+```
+
+**Decision matrix:**
+- Remaining ≥ 1.5× typical cycle: PROCEED
+- 0.5-1.5× typical cycle: RISKY (warn — cycle may halt mid-execution)
+- < 0.5× typical cycle: WAIT-FOR-RESET (5h wait recommended)
+
+**User-initiated mode:** User runs `/raid <N>` and the prompt template's startup routine
+(P2) includes:
+
+```
+Step 0 (NEW v1.3): Check QUOTA_LOG.jsonl
+  - If estimated remaining < 0.5× cycle burn: print warning, ask user to confirm
+    "Quota likely insufficient for full cycle. Continue anyway? [Y/n]"
+  - If user proceeds: log explicit acceptance to AUDIT_LOG
+```
+
+---
+
+### §14.5 — Q5: Quota-block detection + graceful pause
+
+**Rule:** If Anthropic returns "usage limit reached" / 429 mid-cycle, Raid Leader MUST:
+
+1. **Catch the error** (orchestrator wraps tool calls with retry-on-rate-limit handler)
+2. **Save IN_PROGRESS state** (P3 already does this — quota block uses same mechanism)
+3. **Log to ESCALATIONS.md** with `type=quota_block` (not a true escalation — recoverable):
+
+```markdown
+## Cycle <N> — QUOTA BLOCK <date>
+
+### Status
+- Phase reached: <name>
+- Phase progress: <description>
+- Last successful tool call: <ISO>
+- Block detected at: <ISO>
+
+### Estimated reset
+- 5h window resets at: <ISO + 5h from session start>
+- Weekly window resets at: <ISO of week start + 7d>
+
+### Recovery action
+- User manually re-invokes `/raid <N>` after reset window
+- Orchestrator reads IN_PROGRESS state, resumes from documented phase
+- No work lost (all DPS branches preserved in worktrees per B1)
+```
+
+4. **Exit gracefully** (do NOT loop on retries — that burns tokens trying to recover)
+
+**This is NOT an ESCALATION in the v1.0 sense** (no fix needed — just wait + resume).
+Auditor distinguishes `type=quota_block` rows from `type=error` rows in cost dashboard.
+
+---
+
+### §14.6 — Q6: Block-recovery protocol (resume after reset)
+
+**Rule:** After Anthropic's reset window passes, user manually runs `/raid <N>` again.
+The startup routine (P2) detects an in-progress cycle and resumes:
+
+```
+P2 Step 3 (already exists): Read docs/raid/IN_PROGRESS/cycle-<N>-state.md IF EXISTS
+  → if exists with current_phase != COMMIT:
+    → Resume mode activated
+    → Reload completed DPS states from worktrees
+    → Continue from documented current_phase
+    → Skip phases already complete (idempotent operation)
+```
+
+**Idempotency requirement:** every phase action MUST be safe to run twice. Critical:
+- BUILD phase: skip DPS that already shows `complete` status in IN_PROGRESS
+- VERIFY phase: don't re-run verify if last result was PASS
+- COMMIT phase: detect if commit already exists (sha match) and skip
+
+**Worktree state preservation:** B1 worktree-cleanup is SKIPPED on quota-block exit —
+worktrees persist until cycle completes. Only completed cycles trigger cleanup.
+
+---
+
+### §14.7 — Q7: Quota observability (QUOTA_LOG.jsonl)
+
+**Rule:** Auditor records estimated quota burn per phase event in QUOTA_LOG.jsonl:
+
+```jsonl
+{"ts":"<ISO>","cycle":17,"phase":"build","event":"dps_complete","dps_id":1,"model":"sonnet-4-6","estimated_tokens":45000}
+{"ts":"<ISO>","cycle":17,"phase":"build","event":"dps_complete","dps_id":2,"model":"opus-4-7","estimated_tokens":92000}
+{"ts":"<ISO>","cycle":17,"phase":"verify","event":"verify_script","model":"main-opus-4-7","estimated_tokens":12000}
+{"ts":"<ISO>","cycle":17,"phase":"review","event":"adversary","model":"sonnet-4-6","estimated_tokens":28000}
+{"ts":"<ISO>","cycle":17,"phase":"qc","event":"scope_guard","model":"haiku-4-5","estimated_tokens":4000}
+```
+
+**Dashboard (`scripts/raid/quota-summary.py`):**
+
+```
+Foundation quota burn so far: ~14.3M tokens
+Sessions used this month: 3 / 50 (Max 20x cap)
+Cycles per window average: 4.2
+Most expensive cycle: C17 (DP-kernel macros) — 680K tokens
+Cheapest cycle: C4 (audit tables) — 220K tokens
+Current 5h window estimated remaining: ~600K tokens (3 cycles runnable)
+Weekly window resets in: 2 days 14h
+Recommendation: PROCEED
+```
+
+**Estimation accuracy:** Anthropic doesn't expose exact subscription quota state via
+API. Estimates use:
+- Input/output token counts from API response metadata (where exposed)
+- Conservative multiplier per model (Opus 1×, Sonnet 0.4×, Haiku 0.1× equivalent quota
+  burn per Anthropic Max 20x informal guidance)
+- Phase-based heuristic (PLAN heavy on Raid Leader; BUILD heavy on sub-agents; etc.)
+
+Cycle 0 calibrates the heuristic against actual Max 20x experience during the smoke
+test cycle.
+
+---
+
+### §14.8 — Q8: 50-session/month awareness
+
+**Rule:** Max 20x has a 50-session/month soft guideline. Each "session" ≈ 5h window of
+activity. Foundation needs ~8-10 sessions total at projected pace (4-5 cycles/window ×
+8-10 windows = 38 cycles).
+
+**Risk:** If user uses subscription for OTHER work concurrently (claude.ai, other CC
+projects), session count rises faster.
+
+**Mitigation:**
+- PRE_FLIGHT_CHECKLIST §3.2 user acknowledges "foundation will use 8-10 sessions/month"
+- `scripts/raid/session-counter.py` tracks new-session-spawn events from CYCLE_LOG
+- Warning at 40 sessions used; halt at 48 sessions (2-session safety buffer)
+
+---
+
+### §14.9 — Q9: Replaces B3 cost-kill-switch
+
+**v1.2 B3 deprecated (but scripts retained for API users):**
+
+- `scripts/raid/cost-tracker.py` — KEPT (works for both subscription token estimate + API $ cost)
+- `scripts/raid/cost-summary.py` — KEPT (same)
+- `COST_LOG.jsonl` — RENAMED to `QUOTA_LOG.jsonl` per §14.7
+- Per-cycle $50 cap → **REMOVED for subscription users**; estimated cycle burn warning
+  at 300K tokens (not abort, just warn user)
+- Per-foundation $1500 cap → **REMOVED for subscription users**; session-count cap
+  (§14.8) is the relevant boundary
+
+**Subscription users (Max 20x): no hard $-cap; user controls via plan choice.**
+**API users (future, separate profile): existing B3 caps still apply.**
+
+---
+
+### §14.10 — Q10: Cycle 0 amended deliverables (v1.3 additions)
+
+**Adds to §13.9 list:**
+
+- `contracts/raid/quota-profile.yaml` (Q3) — current: `max-20x` profile
+- `scripts/raid/quota-check.sh` (Q4) — pre-cycle quota check
+- `scripts/raid/sub-agent-spawn.py` (Q2) — enforces model tiering per role
+- `scripts/raid/quota-summary.py` (Q7) — quota dashboard
+- `scripts/raid/session-counter.py` (Q8) — 50-session tracking
+- `docs/raid/QUOTA_LOG.jsonl` (Q7) — replaces COST_LOG.jsonl
+- `docs/raid/RESET_SCHEDULE.md` (Q5-Q6) — tracks known reset windows for documentation
+
+**Renamed:**
+- `scripts/raid/cost-tracker.py` → still exists, dual-purpose ($ cost + quota tokens)
+- `scripts/raid/cost-summary.py` → still exists, dual-purpose
+
+**Total Cycle 0 deliverables: 43** (was 36 in v1.2). Still size L; ~20% larger.
+
+---
+
+### §14.11 — Wall-clock expectations (Max 20x)
+
+**Per Anthropic Max 20x:**
+- 5h window: ~2M tokens equivalent
+- Per cycle with §14.2 model tiering: ~400-500K tokens
+- **4-5 cycles per 5h window**
+- 38 cycles / 4.5 per window = **8.5 windows ≈ 42.5 hours of execution time**
+- With realistic user availability (8h/day): **~5-6 calendar days at sustained pace**
+- With weekly cap pauses: **~2-3 calendar weeks** (more realistic)
+- 50-session cap: foundation uses ~8-10 sessions → 16-20% of monthly budget
+
+**User commitment estimate:**
+- ~3-5 "active sessions" per week (5h each — but user is mostly idle during cycle work)
+- Watching CYCLE_LOG + ESCALATIONS periodically: 30-60 min/day
+- Active intervention on escalations: 1-2h total across 38 cycles
+- C38 acceptance review: 2-4h at end
+
+---
+
+### §14.12 — Sources
+
+- [Anthropic Claude Code rate limits and quotas (Aug 2026)](https://www.truefoundry.com/blog/claude-code-limits-explained)
+- [Claude Max plan limits guide](https://intuitionlabs.ai/articles/claude-max-plan-pricing-usage-limits)
+- [Sub-agent 7× consumption finding](https://www.morphllm.com/claude-rate-limits)
+- [40% reduction via Sonnet-conductor + Haiku-researcher pattern](https://www.truefoundry.com/blog/claude-code-limits-explained)
+- [Anthropic effective harnesses (model tier guidance)](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
+- [Claude usage limits help center](https://support.claude.com/en/articles/11647753-how-do-usage-and-length-limits-work)

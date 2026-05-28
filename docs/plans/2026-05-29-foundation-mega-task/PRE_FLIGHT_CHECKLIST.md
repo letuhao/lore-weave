@@ -49,21 +49,40 @@ If any item CANNOT be checked, the foundation is NOT ready — resolve before C0
 
 ---
 
-## §3. Cost + budget acknowledgment
+## §3. Subscription quota acknowledgment (v1.3 supersedes v1.2 $-cost framing)
 
-### 3.1 Anthropic API credentials + billing
+### 3.1 Subscription plan confirmation
 
-- [ ] Anthropic API key with billing enabled
-- [ ] Confirmed billing cap on API key ≥ $2000 USD (foundation $1500 hard cap + $500
-  buffer for retries + smoke runs)
-- [ ] Budget alert configured at $1000 + $1400 (B3 cost-tracker also enforces $1500)
+- [ ] I am on Anthropic **Max 20x ($200/month)** plan — confirmed in claude.ai account
+- [ ] I understand quota is per ~5h rolling window (~900 messages / ~2M tokens
+  equivalent) + weekly cap + 50 sessions/month soft guideline
+- [ ] I understand quota is shared across claude.ai + Claude Code + Desktop
+- [ ] I will NOT use other quota-consuming activity in this account during foundation
+  execution unless I accept slower foundation completion
 
-### 3.2 Cost expectations sign-off
+### 3.2 Quota expectations sign-off (per RAID_WORKFLOW.md §14.11)
 
-- [ ] I acknowledge foundation execution estimated $570-1140; hard cap $1500
-- [ ] I acknowledge per-cycle cap $50; cost-tracker auto-halts if exceeded
-- [ ] I acknowledge if hard cap hit, foundation halts at last completed cycle (state
-  preserved; can resume manually after investigating)
+- [ ] I acknowledge wall-clock: **~2-3 calendar weeks** at realistic pace (4-5 cycles
+  per 5h window × 8-10 windows for 38 cycles)
+- [ ] I acknowledge foundation will consume **~8-10 sessions of 50-session monthly cap**
+  (16-20% of monthly budget)
+- [ ] I acknowledge per-cycle quota burn (~400-500K tokens with §14.2 model tiering);
+  no $-cost
+- [ ] I acknowledge when quota hits 5h window cap mid-cycle: orchestrator gracefully
+  pauses (IN_PROGRESS state saved), I manually re-invoke `/raid <N>` after Anthropic's
+  reset window — no auto-resume
+- [ ] I acknowledge sub-agent model tiering (§14.2): Raid Leader uses Opus 4.7
+  (current); DPS/Tank/Healer/Adversary use Sonnet 4.6; Scope Guard/Auditor use Haiku
+  4.5. Quota reduction ~40% per Anthropic guidance.
+- [ ] I acknowledge DPS count cap (§14.3): mega cycles use 4-5 DPS (not 8-11) to fit
+  quota budget; some cycles may be split if they would exceed 6h wall-clock
+
+### 3.3 (DEPRECATED v1.2 items — kept for API-billing users; not applicable to me)
+
+- ~~Anthropic API key with billing enabled~~ — N/A (subscription)
+- ~~Confirmed billing cap ≥ $2000 USD~~ — N/A (subscription)
+- ~~Budget alert at $1000 + $1400~~ — N/A (subscription)
+- ~~Per-cycle $50 cap, per-foundation $1500 cap~~ — REPLACED by §14 quota model
 
 ---
 
@@ -199,8 +218,12 @@ The following sub-programs are NOT foundation; coordinate scheduling:
 
 - [ ] You will check `docs/raid/CYCLE_LOG.md` periodically (daily?)
 - [ ] You will check `docs/raid/ESCALATIONS.md` for any halt (alerts if present)
-- [ ] You will check `docs/raid/COST_LOG.jsonl` to track budget vs cap
+- [ ] You will check `docs/raid/QUOTA_LOG.jsonl` to track quota burn vs Max 20x window
 - [ ] You will check `scripts/raid/health-dashboard.py` output for context health
+- [ ] You will check `scripts/raid/quota-summary.py` output for quota remaining +
+  session-count remaining (50/month cap)
+- [ ] You will check claude.ai/usage page periodically to cross-verify quota
+  estimates vs Anthropic's official counters
 
 ### 9.2 Emergency stop
 
@@ -223,8 +246,10 @@ NOTES (deviations from defaults):
 
 - [ ] **User signature:** ______________  **Date:** ______________
 - [ ] **Confirmation:** I am ready to invoke Cycle 0 with the understanding that RAID
-  v1.2 (with §12 + §13 protections) will autonomously execute cycles 1-37 after C0
-  smoke green. Escalations will halt execution and notify me.
+  v1.3 (with §12 context + §13 production-readiness + §14 quota-aware protections)
+  will autonomously execute cycles 1-37 after C0 smoke green, pausing gracefully on
+  Anthropic quota blocks for me to manually resume after reset windows. Escalations
+  (real errors, not quota blocks) will halt execution and notify me.
 
 ---
 
