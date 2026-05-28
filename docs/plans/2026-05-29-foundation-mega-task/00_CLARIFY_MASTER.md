@@ -18,6 +18,7 @@
 | L4 | SDK / Kernel API | `contracts/*` (Rust + Go), `#[derive(Aggregate)]` proc-macro |
 | L5 | Inbound canon ingestion | push (xreality.canon.*), pull (`[WORLD_CANON]`), reality seeding |
 | L6 | WS security + Obs/Cap + LLM safety pre-spec | WS ticket handshake, obs inventory, capacity budgets, prompt skeleton |
+| L7 | Operations + Logging + Monitoring substrate | admin-cli library, 27-runbook gate, on-call+incident infra, structured logging, OTEL tracing, Prom+Grafana+Thanos, SLO+error budget, alertmanager, deploy pipeline+canary, status page (added 2026-05-29) |
 
 ### OUT of scope (pushed to subsequent sub-programs)
 

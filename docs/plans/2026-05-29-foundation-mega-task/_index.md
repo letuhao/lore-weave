@@ -28,9 +28,12 @@ after CLARIFY closes.
 | `L3_snapshot_projection.md` | PENDING | After L2 confirmed |
 | `L4_sdk_kernel_api.md` | PENDING | After L3 confirmed |
 | `L5_inbound_canon.md` | PENDING | After L4 confirmed |
-| `L6_ws_obs_llm_prespec.md` | PENDING | After L5 confirmed |
-| `RAID_WORKFLOW.md` | PENDING | After all layers confirmed |
-| `CYCLE_DECOMPOSITION.md` | PENDING | After RAID workflow confirmed |
+| `L6_ws_obs_llm_prespec.md` | DONE | 12 sub-components, ~4 cycles |
+| `L7_ops_logs_monitor.md` | DONE | 12 sub-components, ~7 cycles — added 2026-05-29 after gap discovered |
+| `OPEN_QUESTIONS_LOCKED.md` | DONE | 73 LOCKED decisions consolidated |
+| `CYCLE_DECOMPOSITION.md` | DONE | 38 RAID cycles + dependency graph + per-cycle prompt template |
+| `RAID_WORKFLOW.md` | DONE | RAID v1.0 full 12-phase spec + role contract + audit schemas + bootstrap |
+| `I3_INVARIANT_AMENDMENT.md` | DONE | I3 amendment text + service map updates + CI lint spec, ready for Cycle 7 PR |
 
 ## Reading order
 
@@ -45,12 +48,19 @@ after CLARIFY closes.
 - [x] Confirm scope boundary (drop actor substrate from this program)
 - [x] Lock tech stack (Rust kernel-derived / Go meta+existing / Python LLM-heavy)
 - [x] Define acceptance-criteria philosophy (CI gates + retry 3x + cold-start review + auto post-review)
-- [ ] L1 deep-dive (in progress)
-- [ ] L2 deep-dive
-- [ ] L3 deep-dive
-- [ ] L4 deep-dive
-- [ ] L5 deep-dive
-- [ ] L6 deep-dive
-- [ ] Decompose layers into RAID cycles
-- [ ] Specify RAID workflow
-- [ ] Final CLARIFY artifacts (including I3 invariant amendment)
+- [x] L1 deep-dive — 12 sub-components, ~135 artifacts, ~7 cycles
+- [x] L2 deep-dive — 12 sub-components, ~50 artifacts, ~4 cycles
+- [x] L3 deep-dive — 11 sub-components, ~30 artifacts, ~5 cycles
+- [x] L4 deep-dive — 17 sub-components, ~100 artifacts, ~6 cycles
+- [x] L5 deep-dive — 10 sub-components, ~40 artifacts, ~5 cycles
+- [x] L6 deep-dive — 12 sub-components, ~40 artifacts, ~4 cycles
+- [x] L7 deep-dive — 12 sub-components, ~150 artifacts, ~7 cycles (added 2026-05-29 — gap discovered)
+- [x] All 73 open Qs LOCKED (3 L1.A + 19 L1.B-L + 8 L2 + 8 L3 + 8 L4 + 7 L5 + 8 L6 + 12 L7)
+- [x] Write OPEN_QUESTIONS_LOCKED.md
+- [x] Write CYCLE_DECOMPOSITION.md (38 cycles total)
+- [x] Write RAID_WORKFLOW.md (12 phases mapped)
+- [x] Write I3_INVARIANT_AMENDMENT.md (final artifact)
+
+**Cumulative scope:** 86 sub-components, ~545 artifacts, **38 RAID XL cycles** (Cycle 0 RAID infra + 37 foundation cycles).
+
+**CLARIFY COMPLETE 2026-05-29.** Ready for RAID execution starting at Cycle 0.
