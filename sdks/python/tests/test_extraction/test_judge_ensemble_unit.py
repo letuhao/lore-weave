@@ -26,10 +26,33 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _KSVC_TESTS = _REPO_ROOT / "services" / "knowledge-service" / "tests"
+_KSVC_APP = _REPO_ROOT / "services" / "knowledge-service"
 if str(_KSVC_TESTS) not in sys.path:
     sys.path.insert(0, str(_KSVC_TESTS))
+# Also add the knowledge-service root so `from tests.quality.judge_ensemble
+# import ...` (used by llm_judge._chapter_judgement_to_verdicts as a lazy
+# import) resolves.
+if str(_KSVC_APP) not in sys.path:
+    sys.path.insert(0, str(_KSVC_APP))
 
-# Import after sys.path adjustment
+# Stub `app.clients.llm_client` so quality.llm_judge can import without the
+# full knowledge-service app on sys.path. The stub only needs to satisfy the
+# `from ... import LLMClient` statement; the unit tests below don't exercise
+# any LLMClient behavior.
+import types  # noqa: E402
+
+if "app" not in sys.modules:
+    _stub_app = types.ModuleType("app")
+    _stub_clients = types.ModuleType("app.clients")
+    _stub_llm_client = types.ModuleType("app.clients.llm_client")
+    _stub_llm_client.LLMClient = type("LLMClient", (), {})  # type: ignore[attr-defined]
+    _stub_app.clients = _stub_clients  # type: ignore[attr-defined]
+    _stub_clients.llm_client = _stub_llm_client  # type: ignore[attr-defined]
+    sys.modules["app"] = _stub_app
+    sys.modules["app.clients"] = _stub_clients
+    sys.modules["app.clients.llm_client"] = _stub_llm_client
+
+# Import after sys.path + stub
 from quality.judge_ensemble import (  # noqa: E402
     BiasMetric,
     EnsembleItemVote,
@@ -421,3 +444,96 @@ def test_chapter_language_known_fixtures() -> None:
 
 def test_chapter_language_unknown_chapter() -> None:
     assert chapter_language("invented_chapter_xyz") == "unk"
+
+
+# ── llm_judge._chapter_judgement_to_verdicts flattening ───────────────────
+# Regression-lock for the GoldVerdict.idx vs gold_idx bug discovered in the
+# 2026-05-28 ensemble live-smoke (60 min of LM Studio work wasted because
+# the flatten function accessed `rv.idx` on GoldVerdict, which uses
+# `gold_idx`). Per `feedback_test_input_fields_from_producer_schema` —
+# the unit test must access the SAME attribute the producer (ItemVerdict /
+# GoldVerdict) actually exposes, not the consumer's wishful name.
+
+
+def test_chapter_judgement_to_verdicts_uses_gold_idx_on_recall() -> None:
+    """The flattener must read GoldVerdict.gold_idx (not .idx) for recall
+    verdicts. Bug regression: cycle 2026-05-28 ensemble run crashed with
+    `'GoldVerdict' object has no attribute 'idx'` on every judge's first
+    chapter, wasting ~60 min of LM Studio work."""
+
+    from quality.judge_ensemble import chapter_judgement_to_verdicts
+    from quality.llm_judge import (
+        ItemVerdict,
+        GoldVerdict,
+        CategoryJudgement,
+        ChapterJudgement,
+    )
+
+    judgement = ChapterJudgement(
+        chapter="alice_ch01",
+        entity=CategoryJudgement(
+            category="entity",
+            n_extracted=1,
+            n_gold=1,
+            precision_verdicts=[
+                ItemVerdict(idx=0, verdict="supported", reason="ok")
+            ],
+            recall_verdicts=[
+                GoldVerdict(
+                    gold_idx=0,
+                    found=True,
+                    matched_actual_idx=0,
+                    reason="captured",
+                    judged=True,
+                )
+            ],
+        ),
+        relation=CategoryJudgement(
+            category="relation", n_extracted=0, n_gold=0,
+            precision_verdicts=[], recall_verdicts=[],
+        ),
+        event=CategoryJudgement(
+            category="event", n_extracted=0, n_gold=0,
+            precision_verdicts=[], recall_verdicts=[],
+        ),
+    )
+    verdicts = chapter_judgement_to_verdicts(judgement)
+    assert len(verdicts) == 2  # 1 precision + 1 recall
+    precision = next(v for v in verdicts if v.kind == "precision")
+    recall = next(v for v in verdicts if v.kind == "recall")
+    assert precision.idx == 0
+    assert precision.verdict == "supported"
+    assert recall.idx == 0  # ← THIS line crashed pre-fix with AttributeError
+    assert recall.verdict == "covered"
+
+
+def test_chapter_judgement_to_verdicts_unjudged_gold_label() -> None:
+    """Recall verdicts marked judged=False produce verdict label 'unjudged'."""
+
+    from quality.judge_ensemble import chapter_judgement_to_verdicts
+    from quality.llm_judge import (
+        CategoryJudgement,
+        ChapterJudgement,
+        GoldVerdict,
+    )
+
+    judgement = ChapterJudgement(
+        chapter="alice_ch01",
+        entity=CategoryJudgement(
+            category="entity", n_extracted=0, n_gold=1,
+            precision_verdicts=[],
+            recall_verdicts=[
+                GoldVerdict(
+                    gold_idx=0, found=False, matched_actual_idx=None,
+                    reason="judge omitted", judged=False,
+                )
+            ],
+        ),
+        relation=CategoryJudgement(category="relation", n_extracted=0, n_gold=0, precision_verdicts=[], recall_verdicts=[]),
+        event=CategoryJudgement(category="event", n_extracted=0, n_gold=0, precision_verdicts=[], recall_verdicts=[]),
+    )
+    verdicts = chapter_judgement_to_verdicts(judgement)
+    assert len(verdicts) == 1
+    assert verdicts[0].kind == "recall"
+    assert verdicts[0].verdict == "unjudged"
+    assert verdicts[0].idx == 0

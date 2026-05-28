@@ -130,6 +130,65 @@ class EnsembleReport:
     ensemble_acceptable: bool  # D11: requires ≥ 2 judges `complete`
 
 
+# ── ChapterJudgement → JudgeVerdict flatten (D4 adapter) ─────────────────────
+
+
+def chapter_judgement_to_verdicts(judgement: Any) -> list[JudgeVerdict]:
+    """Flatten a `llm_judge.ChapterJudgement` into a list of `JudgeVerdict`
+    records the ensemble consumes.
+
+    Maps each ItemVerdict/GoldVerdict into the (chapter, category, kind, idx,
+    verdict_label) shape:
+      - precision verdicts (ItemVerdict): verdict_label ∈ {supported, partial,
+        unsupported, unjudged}
+      - recall verdicts (GoldVerdict): convert `found` bool → {covered if True,
+        uncovered if False}; `judged=False` → unjudged
+
+    The function lives here (judge_ensemble.py) rather than in llm_judge.py
+    so it can be unit-tested independently of the LLMClient import surface,
+    AND so the regression-lock test for the GoldVerdict.gold_idx attribute
+    (not `idx`) survives across both monorepo and container test runs.
+
+    `judgement` is typed `Any` to avoid the circular import; the duck-typing
+    expects `.chapter` str + `.entity / .relation / .event` CategoryJudgement-
+    shaped objects with `.precision_verdicts` (ItemVerdict-like, with `.idx`
+    + `.verdict`) and `.recall_verdicts` (GoldVerdict-like, with `.gold_idx`
+    + `.found` + `.judged`).
+    """
+
+    verdicts: list[JudgeVerdict] = []
+    for cat_judgement, category in (
+        (judgement.entity, "entity"),
+        (judgement.relation, "relation"),
+        (judgement.event, "event"),
+    ):
+        for pv in cat_judgement.precision_verdicts:
+            verdicts.append(
+                JudgeVerdict(
+                    chapter=judgement.chapter,
+                    category=category,  # type: ignore[arg-type]
+                    kind="precision",
+                    idx=pv.idx,
+                    verdict=pv.verdict,  # type: ignore[arg-type]
+                )
+            )
+        for rv in cat_judgement.recall_verdicts:
+            if not rv.judged:
+                label = "unjudged"
+            else:
+                label = "covered" if rv.found else "uncovered"
+            verdicts.append(
+                JudgeVerdict(
+                    chapter=judgement.chapter,
+                    category=category,  # type: ignore[arg-type]
+                    kind="recall",
+                    idx=rv.gold_idx,  # GoldVerdict uses `gold_idx` (NOT `idx`)
+                    verdict=label,  # type: ignore[arg-type]
+                )
+            )
+    return verdicts
+
+
 # ── Fleiss kappa ─────────────────────────────────────────────────────────────
 
 

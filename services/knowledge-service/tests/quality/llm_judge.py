@@ -670,55 +670,6 @@ async def judge_chapter(
 # ── Multi-judge ensemble adapter (cycle 2026-05-27 — spec D4) ─────────
 
 
-def _chapter_judgement_to_verdicts(
-    judgement: "ChapterJudgement",
-) -> list:
-    """Flatten a `ChapterJudgement` into a list of `JudgeVerdict` records
-    matching the shape `judge_ensemble.py` consumes.
-
-    Maps each ItemVerdict/GoldVerdict into the (chapter, category, kind, idx,
-    verdict_label) shape:
-      - precision verdicts: verdict_label ∈ {supported, partial, unsupported, unjudged}
-      - recall verdicts: convert `found` bool → {covered if True, uncovered if False};
-        `judged=False` → unjudged
-    """
-
-    # Lazy import to avoid hard coupling at module-collection time.
-    from tests.quality.judge_ensemble import JudgeVerdict
-
-    verdicts: list[JudgeVerdict] = []
-    for cat_judgement, category in (
-        (judgement.entity, "entity"),
-        (judgement.relation, "relation"),
-        (judgement.event, "event"),
-    ):
-        for pv in cat_judgement.precision_verdicts:
-            verdicts.append(
-                JudgeVerdict(
-                    chapter=judgement.chapter,
-                    category=category,  # type: ignore[arg-type]
-                    kind="precision",
-                    idx=pv.idx,
-                    verdict=pv.verdict,  # type: ignore[arg-type]
-                )
-            )
-        for rv in cat_judgement.recall_verdicts:
-            if not rv.judged:
-                label = "unjudged"
-            else:
-                label = "covered" if rv.found else "uncovered"
-            verdicts.append(
-                JudgeVerdict(
-                    chapter=judgement.chapter,
-                    category=category,  # type: ignore[arg-type]
-                    kind="recall",
-                    idx=rv.idx,
-                    verdict=label,  # type: ignore[arg-type]
-                )
-            )
-    return verdicts
-
-
 async def run_dump_judge(
     client: LLMClient,
     *,
@@ -747,7 +698,21 @@ async def run_dump_judge(
     from pathlib import Path  # local import; module-level Path TYPE_CHECKING'd below
     import json as _json
 
-    from tests.quality.judge_ensemble import JudgeRunResult
+    # Import judge_ensemble via a path that resolves in both environments:
+    # - inside the knowledge-service container: PYTHONPATH=/app exposes
+    #   `tests.quality.judge_ensemble`
+    # - unit-tested from sdks/python with `quality` package on path:
+    #   `quality.judge_ensemble`
+    try:
+        from tests.quality.judge_ensemble import (
+            JudgeRunResult,
+            chapter_judgement_to_verdicts,
+        )
+    except ModuleNotFoundError:
+        from quality.judge_ensemble import (  # type: ignore[no-redef]
+            JudgeRunResult,
+            chapter_judgement_to_verdicts,
+        )
 
     chapter_dirs = sorted(
         p for p in dump_root.iterdir()
@@ -787,7 +752,7 @@ async def run_dump_judge(
                 actual=actual,
                 expected=expected,
             )
-            verdicts.extend(_chapter_judgement_to_verdicts(judgement))
+            verdicts.extend(chapter_judgement_to_verdicts(judgement))
             chapters_complete.append(chapter)
         except Exception as e:  # noqa: BLE001 — surface as `incomplete`, not `failed`
             logger.warning(
