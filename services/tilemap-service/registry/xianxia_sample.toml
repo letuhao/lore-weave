@@ -239,3 +239,271 @@ footprint = { width = 3, height = 3 }
 min_spacing = 6
 walkability_pattern = { mask = [true, true, true, true, false, true, true, true, true] }
 properties = { condition = "on_walk", formation_type = "seal", break_difficulty = "core" }
+
+# ── DECORATION (TMP-Q1 chunk B — visual density pass, xianxia theme) ──
+#
+# Parallel to lw:decoration.* — same 29 kinds, xianxia labels.
+# Biome keys are universal (TerrainKind::tag()): grass/forest/mountain/
+# water/sand/snow/swamp/road/rough/subterranean. min_spacing classes
+# same as default registry (cluster=0, close=2, spread=4, rare=8).
+
+[[object]]
+id = "xianxia:decoration.spirit_stone_shard"
+primitive = "decoration"
+label = "Spirit Stone Shard"
+walkability_pattern = "all_walkable"
+biomes = ["grass", "rough", "mountain", "sand"]
+density_weight = 1.0
+min_spacing = 2
+
+[[object]]
+id = "xianxia:decoration.dao_inscribed_rock"
+primitive = "decoration"
+label = "Dao-Inscribed Rock"
+walkability_pattern = "all_walkable"
+biomes = ["rough", "mountain", "sand"]
+density_weight = 0.8
+min_spacing = 4
+
+[[object]]
+id = "xianxia:decoration.withered_spirit_tree"
+primitive = "decoration"
+label = "Withered Spirit Tree"
+walkability_pattern = "all_walkable"
+biomes = ["forest", "swamp"]
+density_weight = 0.7
+min_spacing = 4
+
+[[object]]
+id = "xianxia:decoration.spirit_mushroom_cluster"
+primitive = "decoration"
+label = "Spirit Mushroom Cluster"
+walkability_pattern = "all_walkable"
+biomes = ["forest", "swamp"]
+density_weight = 1.0
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.heaven_touched_shrub"
+primitive = "decoration"
+label = "Heaven-Touched Shrub"
+walkability_pattern = "all_walkable"
+biomes = ["grass", "rough"]
+density_weight = 1.0
+min_spacing = 4
+
+[[object]]
+id = "xianxia:decoration.shattered_spirit_vessel"
+primitive = "decoration"
+label = "Shattered Spirit Vessel"
+walkability_pattern = "all_walkable"
+biomes = ["grass", "road"]
+density_weight = 0.3
+min_spacing = 8
+
+[[object]]
+id = "xianxia:decoration.demon_beast_remains"
+primitive = "decoration"
+label = "Demon Beast Remains"
+walkability_pattern = "all_walkable"
+biomes = ["swamp", "sand", "subterranean"]
+density_weight = 0.5
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.demonic_fungus"
+primitive = "decoration"
+label = "Demonic Fungus"
+walkability_pattern = "all_walkable"
+biomes = ["swamp", "subterranean"]
+density_weight = 0.8
+min_spacing = 2
+
+[[object]]
+id = "xianxia:decoration.dao_crystal_shard"
+primitive = "decoration"
+label = "Dao Crystal Shard"
+walkability_pattern = "all_walkable"
+biomes = ["subterranean", "mountain"]
+density_weight = 0.5
+min_spacing = 8
+
+[[object]]
+id = "xianxia:decoration.spirit_flower_field"
+primitive = "decoration"
+label = "Spirit Flower Field"
+walkability_pattern = "all_walkable"
+biomes = ["grass"]
+density_weight = 1.5
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.qi_imbued_grass"
+primitive = "decoration"
+label = "Qi-Imbued Grass"
+walkability_pattern = "all_walkable"
+biomes = ["grass"]
+density_weight = 1.2
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.sect_marker"
+primitive = "decoration"
+label = "Sect Boundary Marker"
+walkability_pattern = "all_walkable"
+biomes = ["grass"]
+density_weight = 0.3
+min_spacing = 8
+
+[[object]]
+id = "xianxia:decoration.heaven_spirit_fern"
+primitive = "decoration"
+label = "Heaven-Spirit Fern"
+walkability_pattern = "all_walkable"
+biomes = ["forest"]
+density_weight = 1.2
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.felled_cultivation_tree"
+primitive = "decoration"
+label = "Felled Cultivation Tree"
+walkability_pattern = "all_walkable"
+biomes = ["forest"]
+density_weight = 0.5
+min_spacing = 4
+
+[[object]]
+id = "xianxia:decoration.mountain_spirit_stone"
+primitive = "decoration"
+label = "Mountain Spirit Stone"
+walkability_pattern = "all_walkable"
+biomes = ["mountain"]
+density_weight = 0.6
+min_spacing = 4
+
+[[object]]
+id = "xianxia:decoration.ancient_bones"
+primitive = "decoration"
+label = "Ancient Bones"
+walkability_pattern = "all_walkable"
+biomes = ["mountain"]
+density_weight = 0.4
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.spirit_miners_pickaxe"
+primitive = "decoration"
+label = "Spirit Miner's Pickaxe"
+walkability_pattern = "all_walkable"
+biomes = ["mountain"]
+density_weight = 0.2
+min_spacing = 8
+
+[[object]]
+id = "xianxia:decoration.demonic_bog"
+primitive = "decoration"
+label = "Demonic Bog"
+walkability_pattern = "all_walkable"
+biomes = ["swamp"]
+density_weight = 0.6
+min_spacing = 4
+
+[[object]]
+id = "xianxia:decoration.desert_spirit_plant"
+primitive = "decoration"
+label = "Desert Spirit Plant"
+walkability_pattern = "all_walkable"
+biomes = ["sand"]
+density_weight = 1.0
+min_spacing = 4
+
+[[object]]
+id = "xianxia:decoration.sun_bleached_cultivator_remains"
+primitive = "decoration"
+label = "Sun-Bleached Cultivator Remains"
+walkability_pattern = "all_walkable"
+biomes = ["sand"]
+density_weight = 0.5
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.sacred_oasis_stones"
+primitive = "decoration"
+label = "Sacred Oasis Stones"
+walkability_pattern = "all_walkable"
+biomes = ["sand"]
+density_weight = 0.3
+min_spacing = 8
+
+[[object]]
+id = "xianxia:decoration.frost_spirit_drift"
+primitive = "decoration"
+label = "Frost Spirit Drift"
+walkability_pattern = "all_walkable"
+biomes = ["snow"]
+density_weight = 1.3
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.ice_pine_branch"
+primitive = "decoration"
+label = "Ice Pine Branch"
+walkability_pattern = "all_walkable"
+biomes = ["snow"]
+density_weight = 0.9
+min_spacing = 2
+
+[[object]]
+id = "xianxia:decoration.frozen_spirit_log"
+primitive = "decoration"
+label = "Frozen Spirit Log"
+walkability_pattern = "all_walkable"
+biomes = ["snow"]
+density_weight = 0.6
+min_spacing = 4
+
+[[object]]
+id = "xianxia:decoration.ice_dao_shard"
+primitive = "decoration"
+label = "Ice Dao Shard"
+walkability_pattern = "all_walkable"
+biomes = ["snow"]
+density_weight = 0.7
+min_spacing = 2
+
+[[object]]
+id = "xianxia:decoration.water_spirit_reed"
+primitive = "decoration"
+label = "Water Spirit Reed"
+walkability_pattern = "all_walkable"
+biomes = ["water"]
+density_weight = 1.0
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.lotus_of_tranquility"
+primitive = "decoration"
+label = "Lotus of Tranquility"
+walkability_pattern = "all_walkable"
+biomes = ["water"]
+density_weight = 0.8
+min_spacing = 0
+
+[[object]]
+id = "xianxia:decoration.ancient_sect_ruins"
+primitive = "decoration"
+label = "Ancient Sect Ruins"
+walkability_pattern = "all_walkable"
+biomes = ["subterranean"]
+density_weight = 0.4
+min_spacing = 8
+
+[[object]]
+id = "xianxia:decoration.spirit_cart_track"
+primitive = "decoration"
+label = "Spirit-Cart Track"
+walkability_pattern = "all_walkable"
+biomes = ["road"]
+density_weight = 0.6
+min_spacing = 2

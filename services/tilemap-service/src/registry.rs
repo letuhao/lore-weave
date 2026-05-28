@@ -10,12 +10,14 @@
 //!   `RegistryRef`, property bag conventions
 //! - ADR `docs/specs/2026-05-26-data-model-v2-registry-footprint.md` §2.3
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::primitive::ObjectPrimitive;
 use crate::types::registry::{ObjectKindDef, RegistryRef, TerrainKindDef};
+use crate::types::tile::TerrainKind;
 
 /// Errors surfaced by registry loading + validation.
 #[derive(Debug)]
@@ -73,6 +75,27 @@ fn is_valid_id(id: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | ':' | '.' | '-'))
 }
 
+/// TMP-Q1 chunk B — biome-key validation. Every entry in an
+/// `ObjectKindDef.biomes` list MUST be a `TerrainKind::tag()` value
+/// (snake_case). Enumerated against the `TerrainKind` enum directly so
+/// adding a future variant fails the registry-load until the literal
+/// is mirrored here.
+fn is_valid_biome_key(key: &str) -> bool {
+    matches!(
+        key,
+        "grass"
+            | "forest"
+            | "mountain"
+            | "water"
+            | "sand"
+            | "snow"
+            | "swamp"
+            | "road"
+            | "rough"
+            | "subterranean"
+    )
+}
+
 /// Wire-shape for a TOML registry file. Combines terrain + object kinds
 /// + metadata into a single document — easier per-book editing than two
 /// separate files.
@@ -95,6 +118,26 @@ pub struct Registry {
     reference: RegistryRef,
     terrain_by_tag: HashMap<String, TerrainKindDef>,
     object_by_tag: HashMap<String, ObjectKindDef>,
+    /// TMP-Q1 chunk B — index: biome key (snake_case `TerrainKind::tag()`)
+    /// → decoration tags applicable in that biome. BTreeMap (not HashMap)
+    /// for deterministic iteration: the DecorationPlacer's per-zone RNG
+    /// stream samples this map and order must be stable across runs.
+    /// Built at `from_file` time from every `ObjectKindDef` whose
+    /// `primitive` is `Decoration` — bucketed once per biome listed in
+    /// the kind's `biomes` field. Within each bucket, refs are sorted by
+    /// `kind_id` for the same determinism reason.
+    decoration_by_biome: BTreeMap<String, Vec<DecorationRef>>,
+}
+
+/// TMP-Q1 chunk B — denormalized decoration entry stored in the
+/// per-biome index. Carries the placement-time fields the
+/// `DecorationPlacer` reads (kind_id for lookup, density_weight for
+/// weighted random selection, min_spacing for the Chebyshev gate).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DecorationRef {
+    pub kind_id: String,
+    pub density_weight: f32,
+    pub min_spacing: u32,
 }
 
 impl Registry {
@@ -158,6 +201,41 @@ impl Registry {
                     )));
                 }
             }
+            // TMP-Q1 chunk B — biome + density_weight validation runs for
+            // EVERY object kind (MED-1: silent skip on non-decoration kinds
+            // hides author errors). Even an obstacle with biomes = ["dessert"]
+            // typo gets caught here.
+            //
+            // Duplicate biome keys in a single def's list (MED-3) are also
+            // rejected — silently double-listing in the index would over-
+            // weight the tag in chunk-C's weighted sample.
+            let mut seen_biomes: std::collections::HashSet<&str> =
+                std::collections::HashSet::with_capacity(def.biomes.len());
+            for biome in &def.biomes {
+                if !is_valid_biome_key(biome) {
+                    return Err(RegistryError::Validation(format!(
+                        "object {:?} lists unknown biome {:?}: must be a \
+                         TerrainKind::tag() value (grass, forest, mountain, water, \
+                         sand, snow, swamp, road, rough, subterranean)",
+                        def.id, biome
+                    )));
+                }
+                if !seen_biomes.insert(biome.as_str()) {
+                    return Err(RegistryError::Validation(format!(
+                        "object {:?} biomes list contains duplicate key {:?}",
+                        def.id, biome
+                    )));
+                }
+            }
+            // MED-2 — density_weight must be finite + positive so chunk C's
+            // weighted-sample `rng.gen_range(0.0..total)` never panics on
+            // NaN/Inf and never silently never-picks on negative.
+            if !def.density_weight.is_finite() || def.density_weight <= 0.0 {
+                return Err(RegistryError::Validation(format!(
+                    "object {:?} density_weight must be finite + positive, got {}",
+                    def.id, def.density_weight
+                )));
+            }
             if object_by_tag.contains_key(&def.id) {
                 return Err(RegistryError::Validation(format!(
                     "duplicate object id {:?}",
@@ -166,7 +244,39 @@ impl Registry {
             }
             object_by_tag.insert(def.id.clone(), def);
         }
-        Ok(Self { reference: file.registry, terrain_by_tag, object_by_tag })
+
+        // TMP-Q1 chunk B — build the per-biome decoration index. Walks
+        // `object_by_tag` in sorted-id order (collected into a Vec first)
+        // so the index Vecs are deterministic regardless of HashMap's
+        // internal iteration order. Validation already happened in the
+        // outer loop above (MED-1/2/3 from chunk-B /review-impl); this
+        // step is pure projection of validated state into the index.
+        let mut decoration_by_biome: BTreeMap<String, Vec<DecorationRef>> = BTreeMap::new();
+        let mut sorted_object_ids: Vec<&String> = object_by_tag.keys().collect();
+        sorted_object_ids.sort_unstable();
+        for id in sorted_object_ids {
+            let def = &object_by_tag[id];
+            if def.primitive != ObjectPrimitive::Decoration {
+                continue;
+            }
+            for biome in &def.biomes {
+                decoration_by_biome
+                    .entry(biome.clone())
+                    .or_default()
+                    .push(DecorationRef {
+                        kind_id: def.id.clone(),
+                        density_weight: def.density_weight,
+                        min_spacing: def.min_spacing,
+                    });
+            }
+        }
+
+        Ok(Self {
+            reference: file.registry,
+            terrain_by_tag,
+            object_by_tag,
+            decoration_by_biome,
+        })
     }
 
     /// Parse + validate from a TOML string.
@@ -221,6 +331,36 @@ impl Registry {
 
     pub fn object_count(&self) -> usize {
         self.object_by_tag.len()
+    }
+
+    /// TMP-Q1 chunk B — decorations registered for `terrain`'s biome.
+    /// `terrain.tag()` is the snake_case key (e.g. `Grass → "grass"`,
+    /// `Subterranean → "subterranean"`) used by the `decoration_by_biome`
+    /// index. Returns `&[]` for biomes with no decorations declared
+    /// (defensive — DecorationPlacer skips the zone silently). Order
+    /// within a biome's slice is deterministic (sorted by `kind_id` at
+    /// `from_file` time).
+    pub fn decorations_for_terrain(&self, terrain: TerrainKind) -> &[DecorationRef] {
+        self.decoration_by_biome
+            .get(terrain.tag())
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// TMP-Q1 chunk B — total slice-entry count across all biome buckets
+    /// (a tag listed in N biomes counts N times). General-purpose
+    /// introspection of the index; not the same as "number of unique
+    /// decoration kinds" (use `object_tags` filtered by primitive for
+    /// that count).
+    pub fn decoration_index_size(&self) -> usize {
+        self.decoration_by_biome.values().map(Vec::len).sum()
+    }
+
+    /// TMP-Q1 chunk B — biome keys that have at least one decoration
+    /// declared. Iteration is deterministic (BTreeMap order). General-
+    /// purpose introspection; chunk-C placer uses `decorations_for_terrain`.
+    pub fn decoration_biome_keys(&self) -> impl Iterator<Item = &str> {
+        self.decoration_by_biome.keys().map(String::as_str)
     }
 
     /// V2 — build the `terrain_vocabulary` for V1 wire-shape compatibility.
@@ -295,7 +435,296 @@ const DEFAULT_REGISTRY_TOML: &str = include_str!("../registry/default.toml");
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::primitive::{ObjectPrimitive, TerrainPrimitive};
+    use crate::types::primitive::TerrainPrimitive;
+    use crate::types::tile::TerrainKind;
+
+    // TMP-Q1 chunk B — decoration registry tests. Lock the four
+    // load-bearing invariants per plan v2 §B test list.
+
+    #[test]
+    fn default_registry_has_decoration_coverage_for_all_terrain_kinds() {
+        // AC-DECO-12 — every TerrainKind variant must have ≥2 decorations
+        // registered. Chunk-C placer falls back gracefully on empty pools
+        // (skips the zone) but the spec promises non-empty coverage for
+        // visible density across all 10 biomes.
+        let reg = Registry::load_default().unwrap();
+        for tk in [
+            TerrainKind::Grass,
+            TerrainKind::Forest,
+            TerrainKind::Mountain,
+            TerrainKind::Water,
+            TerrainKind::Sand,
+            TerrainKind::Snow,
+            TerrainKind::Swamp,
+            TerrainKind::Road,
+            TerrainKind::Rough,
+            TerrainKind::Subterranean,
+        ] {
+            let pool = reg.decorations_for_terrain(tk);
+            assert!(
+                pool.len() >= 2,
+                "TerrainKind::{:?} (tag={:?}) must have >=2 decorations, got {}",
+                tk,
+                tk.tag(),
+                pool.len()
+            );
+            // Each ref is well-formed: kind_id non-empty, weight finite & positive.
+            for r in pool {
+                assert!(!r.kind_id.is_empty(), "decoration kind_id must not be empty");
+                assert!(r.density_weight.is_finite() && r.density_weight > 0.0,
+                    "density_weight must be finite + positive, got {} on {}",
+                    r.density_weight, r.kind_id);
+            }
+        }
+    }
+
+    #[test]
+    fn every_decoration_biome_key_is_known_terrain_kind() {
+        // Registry-load validation: a decoration that lists an unknown
+        // biome key (e.g. "desert" — the TerrainKind variant is `Sand`,
+        // not Desert) fails the load with a named error. This guards
+        // against silent drift when adding per-book registries.
+        let bad_toml = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:grass"
+primitive = "land"
+label = "Grass"
+
+[[object]]
+id = "test:decoration.broken"
+primitive = "decoration"
+label = "Broken"
+biomes = ["desert"]
+"#;
+        let err = Registry::from_toml_str(bad_toml).unwrap_err();
+        match err {
+            RegistryError::Validation(msg) => {
+                assert!(msg.contains("unknown biome"),
+                    "expected 'unknown biome' in error, got: {msg}");
+                assert!(msg.contains("desert"),
+                    "expected the offending biome key in error, got: {msg}");
+            }
+            other => panic!("expected RegistryError::Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decoration_by_biome_iteration_is_deterministic() {
+        // BTreeMap discipline: two loads of the same TOML produce
+        // identical biome-key iteration order AND identical
+        // sorted-by-kind_id order within EVERY biome's slice. Chunk C's
+        // determinism golden relies on this. LOW-3 from chunk-B
+        // /review-impl: iterate ALL biomes (not a sample of 3) so a
+        // future refactor that walks object_by_tag.values() unsorted
+        // gets caught here.
+        let reg1 = Registry::load_default().unwrap();
+        let reg2 = Registry::load_default().unwrap();
+        let keys1: Vec<&str> = reg1.decoration_biome_keys().collect();
+        let keys2: Vec<&str> = reg2.decoration_biome_keys().collect();
+        assert_eq!(keys1, keys2, "biome key iteration must be deterministic");
+        // Within each biome, refs are sorted by kind_id. Iterate every biome.
+        for tk in [
+            TerrainKind::Grass,
+            TerrainKind::Forest,
+            TerrainKind::Mountain,
+            TerrainKind::Water,
+            TerrainKind::Sand,
+            TerrainKind::Snow,
+            TerrainKind::Swamp,
+            TerrainKind::Road,
+            TerrainKind::Rough,
+            TerrainKind::Subterranean,
+        ] {
+            let pool = reg1.decorations_for_terrain(tk);
+            let ids: Vec<&str> = pool.iter().map(|r| r.kind_id.as_str()).collect();
+            let mut sorted = ids.clone();
+            sorted.sort_unstable();
+            assert_eq!(ids, sorted,
+                "decoration_by_biome[{:?}] refs must be sorted by kind_id", tk);
+        }
+    }
+
+    #[test]
+    fn default_registry_has_at_least_28_decoration_tags_total() {
+        // LOW-1 from chunk-B /review-impl. AC-DECO-12 clause 1 (≥28
+        // total unique decoration tags). PO chose Q2(b) over Q2(a) for
+        // higher variety; this test locks the lower bound so a future
+        // contributor reducing variety silently fails.
+        let reg = Registry::load_default().unwrap();
+        let count = reg.object_tags()
+            .filter(|tag| {
+                reg.get_object(tag)
+                    .map(|def| def.primitive == ObjectPrimitive::Decoration)
+                    .unwrap_or(false)
+            })
+            .count();
+        assert!(
+            count >= 28,
+            "AC-DECO-12 clause 1: expected ≥28 unique decoration tags, got {count}"
+        );
+    }
+
+    #[test]
+    fn registry_rejects_non_decoration_with_unknown_biome() {
+        // MED-1 from chunk-B /review-impl. A blocker (or any non-decoration)
+        // with biomes = ["dessert"] (typo for "sand") must fail at load
+        // time. Previously the index step skipped non-decorations
+        // without validating their biomes — author errors hidden.
+        let bad = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+[[terrain]]
+id = "test:grass"
+primitive = "land"
+label = "Grass"
+[[object]]
+id = "test:obstacle.peak"
+primitive = "blocker"
+label = "Peak"
+biomes = ["dessert"]
+"#;
+        let err = Registry::from_toml_str(bad).unwrap_err();
+        match err {
+            RegistryError::Validation(msg) => {
+                assert!(msg.contains("unknown biome"), "got: {msg}");
+                assert!(msg.contains("dessert"), "got: {msg}");
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn registry_rejects_non_finite_or_non_positive_density_weight() {
+        // MED-2 from chunk-B /review-impl. NaN, Inf, negative, and zero
+        // density_weight values fail at load time.
+        for (label, weight) in [
+            ("nan", "nan"),
+            ("inf", "inf"),
+            ("negative", "-0.5"),
+            ("zero", "0.0"),
+        ] {
+            let toml = format!(r#"
+[registry]
+id = "test"
+version = "0.0.1"
+[[terrain]]
+id = "test:grass"
+primitive = "land"
+label = "Grass"
+[[object]]
+id = "test:decoration.bad"
+primitive = "decoration"
+label = "Bad"
+biomes = ["grass"]
+density_weight = {weight}
+"#);
+            let err = Registry::from_toml_str(&toml).expect_err(
+                &format!("expected {label} density_weight to fail load"));
+            match err {
+                RegistryError::Validation(msg) => {
+                    assert!(msg.contains("density_weight"),
+                        "[{label}] msg missing 'density_weight': {msg}");
+                }
+                other => panic!("[{label}] expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn registry_rejects_duplicate_biomes_in_one_kind() {
+        // MED-3 from chunk-B /review-impl. A decoration listing the same
+        // biome twice would double-list in the index and over-weight in
+        // chunk-C's weighted sample. Caught at load.
+        let bad = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+[[terrain]]
+id = "test:grass"
+primitive = "land"
+label = "Grass"
+[[object]]
+id = "test:decoration.dup"
+primitive = "decoration"
+label = "Dup"
+biomes = ["grass", "grass"]
+"#;
+        let err = Registry::from_toml_str(bad).unwrap_err();
+        match err {
+            RegistryError::Validation(msg) => {
+                assert!(msg.contains("duplicate"), "got: {msg}");
+                assert!(msg.contains("grass"), "got: {msg}");
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_biomes_field_serializes_omitted() {
+        // MED-4 from chunk-B /review-impl. ObjectKindDef.biomes default
+        // is empty Vec; serde discipline matches world_zone — empty list
+        // is skipped from JSON / TOML output so V2 entries that don't
+        // declare the field stay byte-identical on round-trip.
+        let def = crate::types::registry::ObjectKindDef {
+            id: "lw:obstacle.peak".to_string(),
+            primitive: ObjectPrimitive::Blocker,
+            label: "Peak".to_string(),
+            footprint: crate::types::registry::FootprintSize::unit(),
+            walkability_pattern: None,
+            min_spacing: 0,
+            biomes: vec![],
+            density_weight: 1.0,
+            properties: serde_json::Value::Object(serde_json::Map::new()),
+        };
+        let json = serde_json::to_string(&def).unwrap();
+        assert!(!json.contains("biomes"),
+            "empty biomes must NOT appear in JSON (skip_serializing_if discipline): {json}");
+        assert!(!json.contains("density_weight"),
+            "default density_weight=1.0 must NOT appear in JSON: {json}");
+    }
+
+    #[test]
+    fn xianxia_decoration_parallel_loads_clean() {
+        // AC-DECO-3 — xianxia_sample.toml mirrors default coverage with
+        // xianxia:decoration.* namespace. Same coverage invariants hold:
+        // every TerrainKind variant has >=2 decorations, all ids start
+        // with the xianxia namespace.
+        // LOW-2 from chunk-B /review-impl: embed at compile-time via
+        // include_str! to match the default registry's discipline —
+        // working-directory-independent.
+        let toml_text = include_str!("../registry/xianxia_sample.toml");
+        let reg = Registry::from_toml_str(toml_text)
+            .expect("xianxia sample must load clean");
+        for tk in [
+            TerrainKind::Grass,
+            TerrainKind::Forest,
+            TerrainKind::Mountain,
+            TerrainKind::Water,
+            TerrainKind::Sand,
+            TerrainKind::Snow,
+            TerrainKind::Swamp,
+            TerrainKind::Road,
+            TerrainKind::Rough,
+            TerrainKind::Subterranean,
+        ] {
+            let pool = reg.decorations_for_terrain(tk);
+            assert!(
+                pool.len() >= 2,
+                "xianxia TerrainKind::{:?} must have >=2 decorations, got {}",
+                tk, pool.len()
+            );
+            for r in pool {
+                assert!(r.kind_id.starts_with("xianxia:decoration."),
+                    "xianxia decoration id must use the xianxia namespace, got {}",
+                    r.kind_id);
+            }
+        }
+    }
 
     #[test]
     fn load_default_registry_succeeds() {
