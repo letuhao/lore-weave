@@ -1538,7 +1538,11 @@ mod tests {
         // displacement + Perlin warp to every plate polygon (Mandelbrot
         // Hausdorff-1.25 coast detail). Hypso pixels shift via fractal
         // coast modifying which world cells are land vs void.
-        let pinned = "0ebab38e385d52ae89ad4dfd5fe734cd46b31b9e1ffe838e0194a6e86d8b7251";
+        // **v5.7 Phase A v3.6 rebase 2026-05-28**: Stamp generator shipped
+        // — 8-generator registry, engine_v3_6_weights restores Stamp
+        // per-rank (G=0.10/L=0.05/M=0.05). Hypso bytes shift on the
+        // seed-7 96×64 hash-pin world.
+        let pinned = "e6b1260c4e4deb15be1c8fde778dc544f2220767d9dd33dd64ad6a4d21aa1898";
         assert_eq!(
             actual.as_str(),
             pinned,
@@ -1599,7 +1603,10 @@ mod tests {
         // pipeline / polygon-shape changes.
         // **v5.6 Phase A v3.5 rebase 2026-05-28**: Coastline fractalize
         // shipped. Biome pixel composite shifts with the new coast detail.
-        let pinned = "a3bde9e96f812b82ad2aa594d0b2e16a632f4918488c88bcb15caa7ec02d2b02";
+        // **v5.7 Phase A v3.6 rebase 2026-05-28**: Stamp generator shipped.
+        // Biome pixel composite shifts with v3.6 dispatch + 8-generator
+        // registry.
+        let pinned = "30280d499cb2860ffdc463fece165480ae095bd34555b0c69a306bc501f687a0";
         assert_eq!(
             actual.as_str(),
             pinned,

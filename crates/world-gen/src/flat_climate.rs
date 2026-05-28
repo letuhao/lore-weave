@@ -1497,25 +1497,26 @@ mod tests {
         };
         let params_on = WorldClimateParams::default();
         let ed = edge_dist_all_coast(&world);
-        // Compare temp of the same zone with current on/off.
-        let p = &world.plates[0];
-        let zi = 0;
-        let zc_off = compute_zone_climate(&world, &params_off, 0, zi, &ed);
-        let zc_on = compute_zone_climate(&world, &params_on, 0, zi, &ed);
-        // Difference should be exactly the current delta (could be 0 if zone is
-        // tropics or at plate center). For at least one zone in the world, the
-        // two should differ.
-        let any_zone_differs = (0..p.zone_sites.len()).any(|zi| {
-            let off = compute_zone_climate(&world, &params_off, 0, zi, &ed);
-            let on  = compute_zone_climate(&world, &params_on, 0, zi, &ed);
-            (off.temp_mean - on.temp_mean).abs() > 0.01
+        // Compare temp of the same zone with current on/off across ALL plates.
+        // (The original test only checked plate 0, but v3.6 dispatcher RNG
+        // shift can land plate 0 at a latitude where the ocean current
+        // delta is identically 0. Iterating all plates makes the test
+        // robust against plate-layout reshuffling per Phase A iteration.)
+        let zc_off_anchor = compute_zone_climate(&world, &params_off, 0, 0, &ed);
+        let any_zone_differs = world.plates.iter().enumerate().any(|(pi, p)| {
+            (0..p.zone_sites.len()).any(|zi| {
+                let off = compute_zone_climate(&world, &params_off, pi, zi, &ed);
+                let on = compute_zone_climate(&world, &params_on, pi, zi, &ed);
+                (off.temp_mean - on.temp_mean).abs() > 0.01
+            })
         });
-        assert!(any_zone_differs, "current should affect at least one zone in test_world plate 0");
-        // And the off-version of zone 0 itself must NOT be modified by current.
-        let zc_off_2 = compute_zone_climate(&world, &params_off, 0, zi, &ed);
-        assert_eq!(zc_off.temp_mean, zc_off_2.temp_mean, "deterministic when off");
-        // (silence unused warning if zc_on irrelevant)
-        let _ = zc_on;
+        assert!(
+            any_zone_differs,
+            "current should affect at least one zone somewhere in test_world"
+        );
+        // And the off-version of plate 0 zone 0 itself must NOT be modified by current.
+        let zc_off_2 = compute_zone_climate(&world, &params_off, 0, 0, &ed);
+        assert_eq!(zc_off_anchor.temp_mean, zc_off_2.temp_mean, "deterministic when off");
     }
 
     #[test]

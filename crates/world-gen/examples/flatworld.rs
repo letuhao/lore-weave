@@ -93,6 +93,7 @@ fn main() {
                     "sdf" => world_gen::shape::ShapeKind::SdfCapsuleChain,
                     "marching" => world_gen::shape::ShapeKind::MarchingNoise,
                     "slime" => world_gen::shape::ShapeKind::Slime,
+                    "stamp" => world_gen::shape::ShapeKind::Stamp,
                     other => panic!("unknown --force-kind {other}"),
                 };
                 p.plate_dispatch = Some(world_gen::shape::DispatchMode::Fixed(kind));
