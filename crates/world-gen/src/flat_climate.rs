@@ -648,9 +648,18 @@ pub fn compute_zone_climate(
     // sub-zone sites — scales with the zone's actual size, not a magic
     // number. Falls back to `params.continentality_reach * 0.3` for
     // degenerate cases (1 sub-zone).
-    let subzone_sites = world.plates[plate_id].subzone_sites.get(zone_id);
-    let sample_radius = subzone_sites
-        .map(|s| mean_nearest_neighbour(s))
+    // **v4.2b**: read sub-zone centres from `zones[zi].subzones[].center`
+    // instead of the legacy `subzone_sites[zi]` Vec. Identity-preserving
+    // rename — both fields populated in parallel in v4.2a so values match
+    // bit-for-bit; default `subzone_at()` Voronoi semantics unchanged.
+    let subzone_centers: Option<Vec<(f32, f32)>> = world
+        .plates
+        .get(plate_id)
+        .and_then(|p| p.zones.get(zone_id))
+        .map(|z| z.subzones.iter().map(|s| s.center).collect());
+    let sample_radius = subzone_centers
+        .as_deref()
+        .map(mean_nearest_neighbour)
         .unwrap_or(params.continentality_reach * 0.3)
         .max(1.0);
     let coast_d = sample_edge_dist_avg(edge_dist_sea, sx, sy, world.width, sample_radius);
