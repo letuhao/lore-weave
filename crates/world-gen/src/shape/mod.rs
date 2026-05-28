@@ -28,6 +28,7 @@ pub mod llm;
 pub mod ollama;
 pub mod openai;
 pub mod polar;
+pub mod postgres_cache;
 pub mod raster;
 pub mod sdf;
 pub mod slime;
@@ -48,6 +49,7 @@ pub use llm::{
 };
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
+pub use postgres_cache::{PostgresCacheError, PostgresDispatchCache};
 pub use polar::{PolarGenerator, PolarTemplate};
 pub use raster::MarchingNoiseGenerator;
 pub use sdf::{CapsuleTemplate, SdfCapsuleChainGenerator};
