@@ -1,0 +1,1 @@
+{"ts":"2026-05-29T00:00:00Z","cycle":0,"phase":"init","event":"quota_log_created","plan":"max-20x","note":"Quota tracking for subscription Max 20x. Tokens estimated per Anthropic API response metadata + model-tier multipliers (Opus 1×, Sonnet 0.4×, Haiku 0.1× equivalent quota burn)."}
