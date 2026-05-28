@@ -265,7 +265,11 @@ fn zone_attrs(
     zone_id: usize,
     ratios: &ClassRatios,
 ) -> (TerrainClass, f32) {
-    let (sx, sy) = world.plates[plate_id].zone_sites[zone_id];
+    // **v4.1c**: read from `Zone.center` instead of legacy `zone_sites[zi]`.
+    // Identity-preserving rename (parallel population from v4.1a) so this
+    // rename alone is byte-identical; the visible change ships at the
+    // per-pixel `zone_at_polygon` switch below.
+    let (sx, sy) = world.plates[plate_id].zones[zone_id].center;
     let base = world.elevation_at(sx, sy);
     let mut crng = Rng::for_stage(master_seed, b"zone-class");
     for _ in 0..(plate_id * 97 + zone_id * 13) {
@@ -655,7 +659,7 @@ fn compute_zone_climates(
         .plates
         .iter()
         .map(|p| {
-            (0..p.zone_sites.len())
+            (0..p.zones.len())
                 .map(|zi| compute_zone_climate(world, climate, p.id, zi, &state.edge_dist))
                 .collect()
         })
@@ -963,9 +967,13 @@ fn colorize_biome_with(
         .plates
         .iter()
         .map(|p| {
-            p.zone_sites
+            // v4.1c: iterate Zone.center instead of legacy zone_sites tuple.
+            p.zones
                 .iter()
-                .map(|&(sx, sy)| world.elevation_at(sx, sy))
+                .map(|zone| {
+                    let (sx, sy) = zone.center;
+                    world.elevation_at(sx, sy)
+                })
                 .collect()
         })
         .collect();
@@ -975,7 +983,7 @@ fn colorize_biome_with(
     let mut zone_elev_range: Vec<Vec<(f32, f32)>> = world
         .plates
         .iter()
-        .map(|p| vec![(f32::INFINITY, f32::NEG_INFINITY); p.zone_sites.len()])
+        .map(|p| vec![(f32::INFINITY, f32::NEG_INFINITY); p.zones.len()])
         .collect();
     for i in 0..n {
         if !state.is_land[i] {
@@ -1242,7 +1250,15 @@ pub fn render_zone(
         for px in 0..w {
             let x = px as f32 + 0.5;
             let y = py as f32 + 0.5;
-            if plate.contains(x, y) && plate.zone_at(x, y) == Some(zone_id) {
+            // **v4.1c VISIBLE CHANGE**: zone assignment now uses polygon-
+            // based lookup (Plate::zone_at_polygon) which point-in-polygons
+            // over the templated `zone.components` and falls back to Voronoi
+            // nearest-centre when the pixel is outside every zone polygon.
+            // This is the first ship in the v4.1 staged migration that
+            // changes pixel colours — biome / hypso hash pins rebase v5.7
+            // → v5.8 to reflect the new zone boundaries that follow each
+            // zone's templated shape instead of the Voronoi cell decomposition.
+            if plate.contains(x, y) && plate.zone_at_polygon(x, y) == Some(zone_id) {
                 let e = blended_height(&zone_subs, x, y);
                 heights[py * w + px] = e;
                 lo = lo.min(e);
