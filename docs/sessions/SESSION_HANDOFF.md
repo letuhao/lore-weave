@@ -1,6 +1,60 @@
-# Session Handoff — Session 70 (specialized relation prompt — first recall-improvement cycle on the new eval framework)
+# Session Handoff — Session 71 (specialized event prompt — NEGATIVE cycle, revert)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
+> **Date:** 2026-05-29 (session 71, 1 M cycle attempted, A + B refinement both regressed, reverted).
+> **HEAD:** pending final commit on top of `1c0b2a08` (cycle 70 c70a ship).
+> **Branch:** `main`.
+
+## Session 71 summary — cycle 71 attempt failed; prompt reverted; cycle 71-bis queued
+
+Cycle 71 attempted to mirror cycle 70's pattern (Rule + CJK example + VN example + Lesson prose) onto the EVENT prompt. **Both variants regressed empirically vs c70a baseline; the prompt was reverted.** Event prompts are more sensitive than relation prompts to language-example presence — partial multilingual coverage creates failure modes that the relation cycle didn't surface.
+
+### A/B/B' executed at user direction
+
+| Variant | Prompt size | gemma macro P/R | ch14 events | Failure mode |
+|---|---:|---:|---:|---|
+| **c69 baseline** | 4522 | 0.83 / 0.94 | 6 evts CJK, 0/6 TP (granularity drift, but real extraction) | — |
+| **c71a** (Rule 10 + Example B CJK + Example C VN + Lessons) | 7475 | **0.79 / 0.89** | **2 evts copying Example A English (regurgitation)** | Example B text overlaps ch14 narrative → model emits Example A as fallback |
+| **c71b** (Rule 10 + remove Example B + keep Example C) | 6355 | not judged (script audit definitive) | 11 evts but 8 EN / 3 CJK | No CJK anchor example → Chinese chapters drift to English summary |
+
+Empirical evidence:
+- c71a extraction completed in 219.60s on huihui-qwen3-30b; dump at `/tmp/eval_dump_30b_c71a` inside `infra-knowledge-service-1`
+- c71a gemma single-judge completed in 254.90s; per-chapter log: `/tmp/judge_gemma_c71a.log`
+- c71b extraction completed in 249.91s; dump at `/tmp/eval_dump_30b_c71b`
+- c71b CJK→EN drift: journey_west_zh_ch01 3 EN / 0 nonascii; ch14 8 EN / 3 nonascii — violates "Keep summary in ORIGINAL script of TEXT" rule
+- Revert: `git checkout HEAD -- sdks/python/loreweave_extraction/prompts/event_extraction_system.md` restored 4522 chars
+
+### Lessons captured
+
+- **Event prompts ≠ relation prompts under the cycle-70 pattern.** Cycle 70 (CJK+VN examples + Lessons) worked for relations because it taught new VOCABULARY (predicates `disciple_of` / `stepchild_of`). Cycle 71 tried to teach STRUCTURAL granularity to events — the model resisted in two distinct ways.
+- **Example text-overlap with eval fixtures triggers regurgitation.** Example B's "三藏揭壓帖" text overlapped journey_west_zh_ch14's actual narrative → model output Example A (the first example) as fallback for the overlapping chapter. **Future language-specific examples must source from text NOT in the eval fixture set.**
+- **Asymmetric multilingual examples cause script drift.** c71b's EN + VN coverage left no CJK anchor → all Chinese chapters drifted to English summary. **For multilingual event prompts, need either symmetric coverage (1 example per supported language sourced from outside fixtures) OR no language-specific examples at all (rules-only).**
+- **Rule 10 (granularity) MAY still have value isolated.** Most chapters showed clean per-category event metrics under c71a (≥0.86 P, ≥0.60 R) — the granularity-only signal wasn't isolated cleanly because the regurgitation + script-drift confounded it. Cycle 71-bis tests R10 alone.
+
+### New deferred rows
+
+- **D-CYCLE71-SYMMETRIC-CJK-EXAMPLE** — if attempting CJK event example again, source text from a chapter NOT in `tests/fixtures/golden_chapters/` (avoid the text-overlap trap). Pair with symmetric EN + VN examples sourced similarly.
+- **D-EVENT-AGGREGATOR-FUZZY-MATCH** — judge-side fix for the granularity drift identified in cycle 69 (ch14 model extracts the same scenes as gold but folded/padded; matching at semantic level not literal). Alternative to prompt-side teaching.
+
+### Cycle 71-bis queued (S size, ~30-40 min)
+
+Test Rule 10 (granularity) IN ISOLATION — no language-specific examples added. Apply just the Rule 10 text block to the event prompt, re-extract, gemma single-judge. Decision input for whether prompt-side event work is viable at all.
+
+### Cycle 72+ candidates (after 71-bis verdict)
+
+| # | Candidate | Size | Status |
+|---|---|---|---|
+| 1 | **71-bis** (Rule 10 isolated) | S (~30-40 min) | **NEXT — approved post-cycle-71-revert** |
+| 2 | **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) | L (~half-day) | Pivot here if 71-bis is also negative — structural lever, no prompt risk |
+| 3 | **D-CLAUDE-JUDGE-VS-GEMMA-JUDGE-DIVERGENCE-AUDIT** | S (~1-2h) | Still pending from cycle 70 close |
+| 4 | **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** | M (~half-day) | Multilingual NER anchor; closes EN-vs-CJK judge bias question |
+| 5 | **D-EVENT-AGGREGATOR-FUZZY-MATCH** | M (~half-day) | Judge-side fix for granularity drift; alternative to prompt-side |
+| 6 | **Catalogue-driven extraction** (resume paused ADR) | XL (multi-session) | Architectural; defer until smaller cycles plateau |
+
+---
+
+# Session Handoff — Session 70 (specialized relation prompt — first recall-improvement cycle on the new eval framework) — historical
+
 > **Date:** 2026-05-29 (session 70, 1 M cycle with A/B/B' refinement test).
 > **HEAD:** pending final commit on top of `e9c5f3ff` (cycle 69 close).
 > **Branch:** `main`.

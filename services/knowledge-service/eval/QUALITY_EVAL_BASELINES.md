@@ -873,10 +873,46 @@ First recall-improvement cycle measured against the cycle-69 ensemble baseline. 
 
 Same as cycle 69's "Reproducing the 30B baseline (ensemble + anchors)" block, but with the patched `relation_extraction_system.md` (post-cycle-70 commit). Wall clock: ~30 min for ensemble after the cycle 69 budget-bump fixes (KNOWLEDGE_JUDGE_BASE_TOKENS=3072 etc.) baked in.
 
+---
+
+# 2026-05-29 — Cycle 71: specialized event prompt — NEGATIVE cycle (reverted)
+
+Target: lift `journey_west_zh_ch14` event recall (cycle 69's biggest hole — model extracted 6 events but all 6 folded/padded, judge matched 0/4 gold). Approach: mirror cycle 70 pattern (Rule + CJK example + VN example + Lesson prose) on the EVENT prompt.
+
+## A/B/B' results (gemma single-judge, c70a baseline = 0.81/0.92 macro P/R)
+
+| Variant | Prompt size | gemma macro P/R | ch14 events extracted | Failure mode |
+|---|---:|---:|---|---|
+| **c70a baseline** | 5872 (relation prompt) + 4522 (event prompt unchanged) | 0.81 / 0.92 | n/a (c70 was relations) | — |
+| **c71a** Rule 10 + Ex B (CJK) + Ex C (VN) + Lessons | 7475 event prompt | **0.79 / 0.89** | 2 events copying Example A English ("Kai departs from Harbin", "Zhao fights rebels at Iron Gate") | **Regurgitation** — Example B's text overlapped ch14 narrative; model defaulted to Example A for the overlapping chapter |
+| **c71b** Rule 10 + remove Ex B + keep Ex C | 6355 event prompt | not judged (script audit definitive) | 11 events, **8 English / 3 mixed-Chinese** | **Script drift** — no CJK anchor example → Chinese chapters defaulted to English summary; journey_west_zh_ch01 went 3/0 EN/CJK |
+
+## Decision: revert + close cycle as negative
+
+Both variants empirically regressed vs c70a baseline. Prompt reverted (`git checkout HEAD --`); no code shipped.
+
+## Why both failed (lessons)
+
+1. **Event prompts ≠ relation prompts under cycle-70 pattern.** Cycle 70 taught new VOCABULARY (predicates `disciple_of` / `stepchild_of`) — model accepted readily. Cycle 71 tried to teach STRUCTURAL granularity ("one verb-of-change per event"); model resisted in TWO distinct ways depending on language-example coverage.
+2. **Example text-overlap with eval fixtures triggers regurgitation.** Example B sourced from `journey_west_zh_ch14`'s seal-lifting scene. Same chapter is in `tests/fixtures/golden_chapters/`. When the model saw overlapping tokens in BOTH the prompt and the user TEXT, it emitted the first example (Example A) as a "safe default." → **Future language examples MUST source text NOT in the eval fixture set.**
+3. **Asymmetric multilingual examples cause script drift.** c71b's EN + VN coverage left no CJK example anchor → all Chinese chapters drifted to English summary. → **Multilingual event prompts need symmetric coverage (1 per language, sourced outside fixtures) OR no language-specific examples at all.**
+4. **Granularity Rule 10 wasn't isolated cleanly.** Most chapters showed event metrics ≥0.86 P / ≥0.60 R under c71a — but the regurgitation + script-drift confounded the granularity-only signal. Cycle 71-bis (S size) tests R10 alone.
+
+## New deferred rows
+
+- **D-CYCLE71-SYMMETRIC-CJK-EXAMPLE** — if attempting CJK event example again, source text from a chapter NOT in `tests/fixtures/golden_chapters/`. Pair with symmetric EN + VN examples sourced similarly.
+- **D-EVENT-AGGREGATOR-FUZZY-MATCH** — judge-side fix for the granularity drift identified in cycle 69 (ch14 model extracts the same scenes as gold but folded/padded; matching at semantic level not literal). Alternative to prompt-side teaching.
+
+## Cycle 71-bis queued (S size, ~30-40 min)
+
+Test Rule 10 (granularity) in isolation. Apply just the Rule 10 block to the event prompt — no Example B/C, no language-specific examples. Re-extract on huihui-qwen3-30b, run gemma single-judge, compare events macro vs c70a baseline. Decision input for whether prompt-side event work is viable at all.
+
 ## Open follow-ups (not blocking)
 
-- **Cycle 71+ candidates** (per session 67 "cheap to expensive" sequence, now updated with cycle 70's lessons):
-  - **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) — L cycle, no prompt growth risk, F1 target ~0.88
-  - **Specialized event prompt** (events are 30B's secondary weak axis — most chapters scored 0.92-0.98 P, but `journey_west_zh_ch14` evt P=0.00 R=0.00 in cycle 69)
-  - **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** — multilingual NER anchor; closes the EN-vs-CJK/VN judge bias question
+- **Cycle 72+ candidates** (per cheap-to-expensive ordering, updated with cycle 71's revert lessons):
+  - **71-bis** (Rule 10 isolated) — S cycle, **NEXT after cycle 71 commit**
+  - **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) — L cycle, no prompt growth risk, pivot here if 71-bis also negative
+  - **D-CLAUDE-JUDGE-VS-GEMMA-JUDGE-DIVERGENCE-AUDIT** — S cycle, still pending from cycle 70 close
+  - **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** — multilingual NER anchor; closes EN-vs-CJK/VN judge bias question
+  - **D-EVENT-AGGREGATOR-FUZZY-MATCH** — judge-side alternative to prompt-side event teaching
   - **D-CYCLE1-ENSEMBLE-FORENSIC** — re-baseline cycle-1 multilang-fewshot dump for D9 verdict
