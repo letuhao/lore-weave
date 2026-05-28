@@ -9,9 +9,11 @@
 >
 > ---
 > **STATUS: ✅ SIGNED OFF — 2026-05-29 via interactive walkthrough in fresh pre-C0 session.**
-> All §2-§9 items verified with user letuhao1994@gmail.com. 4 deviations captured in
+> All §2-§9 items verified with user letuhao1994@gmail.com. **6 deviations** captured in
 > §10 NOTES (D1: AWS staging defer · D2: no rebase · D3: push-per-cycle + CI disable
-> on foundation branch · D4: Actor/V1+30d defer indefinitely). Ready for `/amaw` + C0
+> on foundation branch · D4: Actor/V1+30d defer indefinitely · D5: existing prod
+> isolation clarified · **D6: auto-dispatch redesigned as Semi-AUTO signal emitter
+> after Adversary R1 BLOCK 3 surfaced structural impossibility**). Ready for `/amaw` + C0
 > invocation per §11.
 
 ---
@@ -279,6 +281,23 @@ D4 — §8.1 Actor substrate + V1+30d (GEO/ROUTE/TVL) scheduling:
 D5 — §6.1 Existing prod safety (clarification, not deviation):
   Existing LoreWeave novel-platform 12 services remain running during foundation
   execution. B5 prod-isolation-lint enforcement blocks any accidental touch.
+
+D6 — §3.2/§11 Auto-dispatch contract change (added 2026-05-29 after Adversary R1):
+  STATUS: User re-confirmed "Semi-AUTO: signal emit + user starts /raid 1" via
+  interactive dialogue 2026-05-29. Original PRE_FLIGHT §3.2 implied claude-session
+  spawning was possible; Adversary R1 BLOCK 3 surfaced this is structurally impossible
+  (Claude tool calls cannot fork a fresh Claude Code session).
+  IMPACT: auto-dispatcher.py redesigned as ready-signal emitter:
+    1. 60s pause with countdown
+    2. Write docs/raid/READY_FOR_CYCLE_<N>.signal
+    3. Update .session-cycle-lock: UNLOCKED → READY_FOR_<N>
+    4. Print clear user instruction: "Open fresh Claude Code session + run /raid <N>"
+    5. Exit 0 (signal file is durable handoff)
+  USER ACTION REQUIRED per cycle handoff: open new Claude Code session, run /raid <N>.
+  Estimated additional user time: ~30 sec per cycle × 37 cycles ≈ 18 minutes total
+  across foundation execution (versus PRE_FLIGHT §8.2 estimate 2-4h — well within).
+  RAID_WORKFLOW.md §13.7 amended to reflect this contract; "AUTO" relabeled
+  "Semi-AUTO with user step".
 ```
 
 - [x] **User signature:** letuhao1994@gmail.com  **Date:** 2026-05-29

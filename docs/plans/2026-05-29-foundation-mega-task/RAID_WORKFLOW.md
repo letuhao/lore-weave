@@ -1,9 +1,10 @@
 # RAID — Recursive Autonomous Implementation Drive Workflow Spec
 
-> **Version:** RAID v1.3 (amended 2026-05-29 with §12 context + §13 production-readiness + §14 quota-awareness)
-> **Status:** SPEC — locked 2026-05-29 by foundation mega-task CLARIFY
+> **Version:** RAID v1.4 (amended 2026-05-29 — v1.4 §13.7 Semi-AUTO correction after Adversary R1 BLOCK 3)
+> **Prior versions:** v1.3 (§14 quota), v1.2 (§13 production-readiness), v1.1 (§12 context), v1.0
+> **Status:** SPEC — locked 2026-05-29 by foundation mega-task CLARIFY; §13.7 amended in C0 build
 > **Parallel to:** AMAW v3.0 (Autonomous Multi-Agent Workflow) and v2.2 (human-in-loop)
-> **Replaces AMAW:** NO — RAID is a SEPARATE workflow for tasks where 100% autonomous execution is required (no human checkpoint per cycle)
+> **Replaces AMAW:** NO — RAID is a SEPARATE workflow for tasks where mostly-autonomous execution is required (one ~30s user step per cycle handoff — see §13.7 v1.4)
 >
 > **v1.1 amendment rationale:** initial v1.0 spec did not explicitly protect against
 > context-window bloat, compaction-induced state loss, or lost-in-the-middle
@@ -1156,12 +1157,21 @@ before merge.
 
 ---
 
-### §13.7 — C0→C1 auto-gate via smoke test (user opted AUTO continue)
+### §13.7 — C0→C1 Semi-AUTO gate via smoke test (REVISED v1.4 — was AUTO)
+
+> **v1.4 amendment (2026-05-29, Cycle 0 build phase):** Original "AUTO continue" was
+> structurally impossible — a Claude Code session cannot spawn a fresh Claude Code
+> session from inside its tool harness, violating P1 fresh-session invariant. Adversary
+> R1 surfaced this BLOCK during C0 design review. User re-confirmed "Semi-AUTO: signal
+> emit + user starts /raid <N>" (see PRE_FLIGHT D6). The pause + dispatch mechanism
+> remains; only the final step changes from "auto-spawn" to "emit ready-signal +
+> instruct user".
 
 **Rule:** Cycle 0 (RAID infra) does NOT require human review before C1 fires. Instead,
 C0 ends with a comprehensive smoke test that exercises ALL §12 (P1-P10) + §13 (B1-B6)
-protections on a NO-OP cycle. If smoke passes → orchestrator auto-dispatches `/raid 1`.
-If smoke fails → halt + ESCALATIONS.
++ §14 (Q1-Q9) protections on a NO-OP cycle. If smoke passes → orchestrator emits
+ready-signal + user opens fresh session + invokes `/raid 1`. If smoke fails → halt +
+ESCALATIONS.
 
 **Smoke test cycle: `cycle_test_helloworld`**
 
@@ -1185,7 +1195,7 @@ Acceptance criteria:
   - Health dashboard reports peak < 50K tokens
 ```
 
-**Auto-dispatch logic:**
+**Semi-AUTO dispatch logic (v1.4 — REVISED):**
 
 ```
 End of C0:
@@ -1193,9 +1203,9 @@ End of C0:
   smoke_exit=$?
 
   if [ $smoke_exit -eq 0 ]; then
-    echo "[C0] Smoke green — auto-dispatching /raid 1 in 60 seconds"
-    sleep 60  # gives user a chance to Ctrl-C if seen in real-time
-    bash scripts/raid/auto-dispatcher.py --start-cycle 1
+    echo "[C0] Smoke green — emitting ready-signal for cycle 1 in 60 seconds"
+    python scripts/raid/auto-dispatcher.py --next-cycle 1
+    # auto-dispatcher.py runs the 60s countdown + signal-emit (NOT a session spawn)
   else
     echo "[C0] SMOKE FAILED — exit $smoke_exit"
     # ESCALATIONS row already written by smoke script
@@ -1203,17 +1213,46 @@ End of C0:
   fi
 ```
 
-**The 60-second pause is the only "human checkpoint"** in RAID v1.2: user watching the
-output has a window to ctrl-C if something looks wrong. If absent, auto-continues.
+**The 60-second pause + user-step is the C0→C1 boundary** in RAID v1.4 (was "AUTO" in v1.2;
+revised after Adversary R1). User watching the output has a window to ctrl-C if
+something looks wrong; otherwise reads the ready-signal instruction block and opens a
+fresh Claude Code session manually.
 
-**Auto-dispatcher behavior:**
+**auto-dispatcher.py behavior (v1.4):**
 
-- Reads CYCLE_LOG.md to find next NOT-STARTED cycle whose deps are all DONE
-- Spawns `/raid <next>` in a FRESH session (per P1)
-- Cycles run **strictly sequential** (NOT parallel — clarified per pre-flight checklist
-  policy decision; parallel cycles defer to RAID v2.0)
-- Continues until all 38 cycles DONE OR escalation row written
-- If escalation: dispatcher halts, sends notification (email/Slack via Cycle 0 hook)
+- Reads CYCLE_LOG.md to find next PENDING cycle whose deps are all DONE
+- Acquires lock transition: `UNLOCKED` (or `00X`) → `READY_FOR_<N>` (paired state)
+- Writes `docs/raid/READY_FOR_CYCLE_<N>.signal` with metadata (next cycle, ready_at, deps, smoke evidence SHA)
+- Prints 60-second countdown with `Ctrl-C to halt` banner (short sleep increments)
+- After countdown without interrupt: emits user instruction block:
+  ```
+  ═══════════════════════════════════════════════════════════
+  C0 SMOKE GREEN — READY FOR CYCLE <N>
+  ═══════════════════════════════════════════════════════════
+  1. Close this Claude Code session (P1 fresh-session invariant)
+  2. Open a NEW Claude Code session in the same repo
+  3. Run:  /raid <N>
+  4. Orchestrator detects READY_FOR_CYCLE_<N>.signal +
+     acquires lock transition READY_FOR_<N> → <N>
+  ═══════════════════════════════════════════════════════════
+  ```
+- Exit 0 (signal file is the durable handoff; user is the dispatcher's continuation)
+
+**Why not actual session spawn?** Two structural blockers:
+1. Claude Code CLI is not designed to be invoked as `claude /raid 1` from a Python
+   subprocess from a Bash tool call from a Claude session — even if technically wired,
+   the parent session's tool harness would lose handle on the child.
+2. P1 fresh-session invariant requires the new `/raid <N>` to begin with NEAR-ZERO
+   main-session context. A parent-spawned child would inherit the parent's authentication
+   + working dir but the orchestration handle would remain in the parent, which has
+   already burned its context on C0 — defeating P1.
+
+**Cycles still run strictly sequential** (NOT parallel — per PRE_FLIGHT decision;
+parallel cycles defer to RAID v2.0).
+
+**Continues until all 38 cycles DONE OR escalation row written.** If escalation:
+dispatcher halts, user is the notification channel (no Slack/email integration in v1.4;
+deferred to V1+30d).
 
 **Smoke test failure modes (each blocks C1):**
 
@@ -1274,9 +1313,9 @@ Failing any = C0 INCOMPLETE = no RAID execution.
 - `scripts/raid/test-infra-up-dps.sh` (B2)
 - `scripts/raid/test-infra-down-dps.sh` (B2)
 - `scripts/raid/test-infra-template.docker-compose.yml` (B2)
-- `scripts/raid/cost-tracker.py` (B3)
-- `scripts/raid/cost-summary.py` (B3)
-- `docs/raid/COST_LOG.jsonl` (B3)
+- `scripts/raid/cost-tracker.py` (B3 — dual-use per §14.9)
+- `scripts/raid/cost-summary.py` (B3 — dual-use per §14.9)
+- ~~`docs/raid/COST_LOG.jsonl` (B3)~~ — **SUPERSEDED** by `docs/raid/QUOTA_LOG.jsonl` per §14.9; do NOT create COST_LOG.jsonl (subscription users)
 - `scripts/raid/brief-generator.py` (B4)
 - `scripts/raid/brief-structure-validator.sh` (B4)
 - `scripts/raid/regenerate-briefs.sh` (B4)

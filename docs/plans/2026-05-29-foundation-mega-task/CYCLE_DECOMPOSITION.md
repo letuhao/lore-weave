@@ -23,48 +23,74 @@ Each cycle is a **single RAID workflow run** (12 phases — see [RAID_WORKFLOW.m
 
 ## §2. Cycle inventory (38 cycles)
 
-### Cycle 0 — RAID Workflow Infrastructure (amended v1.1)
+### Cycle 0 — RAID Workflow Infrastructure (amended v1.4)
 
-**Size:** M (was S/M; v1.1 amendment added 10 protection scripts → bumped to M)
-**Workflow:** Default workflow, NOT RAID — bootstrap problem
-**Scope:** Set up RAID v1.1 infrastructure (including §12 context protections) before any RAID-driven cycle.
-**Dependencies:** —
+> **last_synced_with_RAID_WORKFLOW_version:** v1.4 (2026-05-29)
+> **Drift detection:** brief-generator.py + startup-verifier.sh assert this header matches RAID_WORKFLOW.md frontmatter; mismatch → halt + ESCALATIONS row.
 
-**Deliverables (core, v1.0):**
+**Size:** XL (v1.4: was S/M v1.0; M v1.1; L v1.2; XL v1.3+v1.4). 45 canonical deliverables (28 new + 9 pre-staged + 8 dirs/archives).
+**Workflow:** Default workflow + AMAW v3.0 (bootstrap; cannot use RAID itself). Build plan: [CYCLE_0_PLAN.md](CYCLE_0_PLAN.md).
+**Scope:** Set up RAID v1.4 infrastructure (§12 context + §13 production-readiness + §14 quota-aware + v1.4 Semi-AUTO dispatch) before any RAID-driven cycle.
+**Dependencies:** — (PRE_FLIGHT_CHECKLIST sign-off required per §11)
+
+**Deliverables (core, v1.0 — 5):**
 - `docs/raid/RAID_WORKFLOW.md` (copy of [RAID_WORKFLOW.md](RAID_WORKFLOW.md))
-- `scripts/raid/orchestrator.py` — main RAID dispatcher
+- `scripts/raid/orchestrator.py` — main RAID dispatcher (v1.4 enforces lock acceptance rule)
 - `scripts/raid/verify-cycle-template.sh` — template for per-cycle verify scripts
-- `scripts/raid/escalation-writer.py` — writes ESCALATIONS.md row after 3 failed attempts
-- `docs/raid/AUDIT_LOG.jsonl` (empty file, append-only)
-- `docs/raid/CYCLE_LOG.md` (skeleton)
-- `docs/raid/ESCALATIONS.md` (skeleton)
-- `docs/raid/cycle_briefs/` directory — pre-generated briefs for cycles 1-37 (one .md per cycle, per §4 template)
+- `scripts/raid/escalation-writer.py` — writes ESCALATIONS.md row (supports quota_block + error + p5_recovery_inconsistent types)
+- Pre-staged: `docs/raid/{AUDIT_LOG.jsonl, CYCLE_LOG.md, ESCALATIONS.md, cycle_briefs/}`
 
-**Deliverables (v1.1 §12 context protections — MANDATORY):**
-- `scripts/raid/startup-verifier.sh` — 5-step session startup routine (P2)
+**Deliverables (v1.1 §12 context protections — MANDATORY — 11 incl. R3 additions):**
+- `scripts/raid/startup-verifier.sh` — P2 5-step session startup routine
 - `scripts/raid/in-progress-state-writer.py` — IN_PROGRESS state file writer/reader (P3)
-- `scripts/raid/compaction-detector.py` — compaction event detection heuristic (P5)
-- `scripts/raid/post-commit-verifier-prompt.md` — Auditor post-commit verifier prompt (P9)
-- `scripts/raid/health-dashboard.py` — per-cycle health gauge from AUDIT_LOG (P10)
-- `scripts/raid/files-from-cycle.sh` — cross-cycle file lookup helper (P7)
-- `docs/raid/IN_PROGRESS/` directory (empty + README schema docs) (P3)
-- `docs/raid/IN_PROGRESS/_archive/` directory (empty, archived completed-cycle states) (P3)
-- `docs/raid/.session-cycle-lock` (sentinel file for P1 enforcement)
-- `docs/raid/cycle_briefs/TEMPLATE.md` — canonical brief template per §4 (P6 structure)
+- `scripts/raid/compaction-detector.py` — P5 compaction event detection heuristic
+- `scripts/raid/recovery-protocol-runner.sh` — **NEW R3:** P5 8-step recovery PROTOCOL executor (CONSISTENT/INCONSISTENT branches)
+- `scripts/raid/recover-from-crash.sh` — **NEW R3:** operator-only crash recovery toolkit (--reset-lock, --rewrite-signal, --inspect)
+- `scripts/raid/post-commit-verifier-prompt.md` — Auditor P9 verifier prompt
+- `scripts/raid/health-dashboard.py` — P10 per-cycle health gauge from AUDIT_LOG
+- `scripts/raid/files-from-cycle.sh` — P7 cross-cycle file lookup helper
+- Pre-staged: `docs/raid/IN_PROGRESS/` + `_archive/` dirs + `.session-cycle-lock` + `cycle_briefs/TEMPLATE.md` (to write in B5)
 
-**Deliverables (v1.3 §14 quota-aware execution — MANDATORY for subscription users):**
+**Deliverables (v1.2 §13 production-readiness — MANDATORY — 21):**
+- `scripts/raid/worktrees-create.sh` (B1)
+- `scripts/raid/worktrees-cleanup.sh` (B1)
+- `scripts/raid/worktrees-check.sh` (B1)
+- `scripts/raid/test-infra-up-dps.sh` (B2)
+- `scripts/raid/test-infra-down-dps.sh` (B2)
+- `scripts/raid/test-infra-template.docker-compose.yml` (B2)
+- `scripts/raid/cost-tracker.py` (B3 dual-use with Q9)
+- `scripts/raid/cost-summary.py` (B3 dual-use with Q9)
+- `scripts/raid/brief-generator.py` (B4)
+- `scripts/raid/brief-structure-validator.sh` (B4)
+- `scripts/raid/regenerate-briefs.sh` (B4)
+- `scripts/raid/prod-isolation-lint.sh` (B5)
+- `.gitleaks.toml` (B6)
+- `scripts/raid/secret-scan-dps.sh` (B6)
+- `scripts/raid/secret-scan-cycle.sh` (B6)
+- `scripts/raid/secret-scan-final.sh` (B6)
+- `scripts/raid/run-smoke-test.sh` (AUTO gate)
+- `scripts/raid/auto-dispatcher.py` (Semi-AUTO per v1.4)
+- `docs/raid/cycle_briefs/00X_helloworld_smoke.md` (AUTO gate)
+- `infra/foundation-dev/docker-compose.yml` (B5)
+- `infra/foundation-staging/terraform/` skeleton (B5)
+- `../foundation-worktrees/{,_archive/,_quarantine/}` dirs (B1, B6)
+
+**Deliverables (v1.3 §14 quota-aware — MANDATORY for subscription users — 7):**
 - `contracts/raid/quota-profile.yaml` (Q3) — current profile: `max-20x`
-- `scripts/raid/quota-check.sh` (Q4) — pre-cycle quota check + RUNNABLE/RISKY/WAIT decision
+- `scripts/raid/quota-check.sh` (Q4) — pre-cycle quota check + PROCEED/RISKY/WAIT
 - `scripts/raid/sub-agent-spawn.py` (Q2) — enforces model tiering per role (Opus/Sonnet/Haiku)
 - `scripts/raid/quota-summary.py` (Q7) — quota dashboard
 - `scripts/raid/session-counter.py` (Q8) — 50-session/month tracking
-- `docs/raid/QUOTA_LOG.jsonl` (Q7) — supersedes COST_LOG.jsonl for subscription users
-- `docs/raid/RESET_SCHEDULE.md` (Q5-Q6) — known reset windows documentation
+- Pre-staged: `docs/raid/QUOTA_LOG.jsonl` (Q7) — supersedes the deprecated COST_LOG.jsonl (RAID_WORKFLOW §14.9)
+- Pre-staged: `docs/raid/RESET_SCHEDULE.md` (Q5-Q6) — known reset windows documentation
+
+**Phase 9 POST-REVIEW context:** per-cycle Phase 9 is AUTO (cold-start Scope Guard sub-agent — RAID_WORKFLOW §3 row 9). **C0→C1 boundary is Semi-AUTO** per RAID_WORKFLOW v1.4 §13.7 (auto-dispatcher emits ready signal; user opens fresh Claude Code session and runs `/raid 1` manually). These are different gates; do not confuse.
 
 **Exit:**
-- RAID infra functional; smoke test on a no-op cycle proves orchestrator works
-- Smoke test exercises all 10 §12 protections: fresh session, startup routine, IN_PROGRESS state, sub-agent return budget, compaction simulation, brief structure validation, cross-cycle reference, token budget, post-commit verification, health dashboard
-- All 37 pre-written cycle briefs follow §4 template + each ≤ 4000 tokens (P6)
+- RAID infra functional; smoke test on 00X_helloworld_smoke cycle proves orchestrator works end-to-end
+- Smoke exercises 24 checks: 10 P-protections (incl. P5 TWO scenarios per R3) + 6 B-protections + 8 Q-protections + paired-state probes for lock state machine R3
+- All 37 auto-generated cycle briefs + smoke brief follow §4 template + each ≤ 4000 tokens (P6)
+- `last_synced_with_RAID_WORKFLOW_version` header matches RAID_WORKFLOW.md current version (v1.4)
 
 ---
 
@@ -333,8 +359,11 @@ RAID-specific rules:
 - All-or-nothing CI gates (scripts/raid/verify-cycle-<N>.sh exit 0 = pass)
 - Retry 3x on VERIFY fail; after 3 fails → write
   docs/raid/ESCALATIONS.md row + ABORT cycle
-- POST-REVIEW is AUTO (no human stop) — cold-start sub-agent comparison
-  against cycle brief
+- Per-cycle Phase 9 POST-REVIEW is AUTO (cold-start Scope Guard sub-agent compares
+  against cycle brief; no human stop)
+- C0→C1 boundary is Semi-AUTO per RAID_WORKFLOW v1.4 §13.7 (auto-dispatcher emits
+  READY_FOR_CYCLE_<N>.signal; user opens fresh Claude Code session + runs /raid <N>
+  manually — Claude cannot spawn fresh sessions structurally)
 - Spawn DPS sub-agents per the DPS parallelism plan in the brief
   (worktrees, run_in_background:true, isolation:worktree)
 - Sub-agents return ≤1500-2000 tokens condensed summaries (P4) — NOT full
