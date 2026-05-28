@@ -1,9 +1,80 @@
-# Session Handoff — Session 68 (Track A live-smoke + LM Studio response_format SDK patch)
+# Session Handoff — Session 69 (eval framework overhaul: anchor + 3-judge ensemble)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-26 (session 68, 1 L cycle)
-> **HEAD:** pending commit (8 files touched).
+> **Date:** 2026-05-27 → 2026-05-28 (session 69, 1 XL cycle)
+> **HEAD:** pending final commit on top of `a8aa9fb0`.
 > **Branch:** `main`.
+
+## Session 69 summary — eval framework overhaul (anchor + ensemble), baseline relocked
+
+The architectural meta-cycle session 68 (cycle 1 multilang-fewshot revert) pointed at: our single-judge bespoke eval has no inter-rater reliability check + no external anchor. Cycle 69 builds that framework. Spec: [`docs/specs/2026-05-27-eval-framework-overhaul.md`](../specs/2026-05-27-eval-framework-overhaul.md); plan: [`docs/plans/2026-05-27-eval-framework-overhaul.md`](../plans/2026-05-27-eval-framework-overhaul.md) — both committed pre-BUILD as a design-checkpoint artifact (8c7c0c9d) per `feedback_design_checkpoint_commit_separates_design_from_implementation`.
+
+### 5 commits, sequenced per `feedback_xl_cycle_natural_checkpoint_pattern`
+
+| # | Commit | Stage | Notes |
+|---|---|---|---|
+| 1 | `8c7c0c9d` | design checkpoint | spec (12 decisions D1-D12) + plan with all 15 /review-impl findings folded inline pre-BUILD |
+| 2 | `d6478020` | sub-checkpoint 1a | pinned deps: deepeval==4.0.4 (langchain 1.x compat issue at 2.5.0 forced bump) + seqeval==1.2.2 + datasets==2.21.0 + krippendorff==0.7.0 |
+| 3 | `28e1a3a4` | sub-checkpoint 1b | 5 foundation modules: anchor_runner.py + judge_ensemble.py + deepeval_metrics.py + test_anchor_eval.py + test_judge_ensemble_unit.py (19 unit tests covering Fleiss math + D11 failure handling + D12 bias formulas) |
+| 4 | `ab5353b4` | integration | llm_judge.run_dump_judge + test_llm_judge_ensemble + test_eval_with_deepeval + MED-8 asyncio teardown fix (closes D-JUDGE-EVAL-ASYNCIO-TEARDOWN) |
+| 5 | `a8aa9fb0` | bug fix at live VERIFY | chapter_judgement_to_verdicts moved to judge_ensemble.py + GoldVerdict.gold_idx (not .idx) + 2 regression-lock unit tests. Caught by the live ensemble run — 60 min of LM Studio compute wasted on the first attempt before the 1-line typo crashed every judge |
+
+### Live VERIFY results (locked baseline for 30B extractor)
+
+**Anchor benchmarks (informational, sanity-floor only per spec D2):**
+
+| Anchor | Dataset | n | F1 | P | R | avg extracted / gold | Sanity floor |
+|---|---|---:|---:|---:|---:|---|---|
+| CoNLL-2003 NER | `tner/conll2003` test | 100 | 0.219 | 0.204 | 0.237 | 3.4 / 2.1 | ✅ PASS |
+| DocRED unlabeled-triple | `thunlp/docred` validation | 50 | 0.127 | 0.110 | 0.149 | 15.0 / 10.4 | ✅ PASS |
+
+~24-28% of SOTA — consistent ratio across both benchmarks; calibration signal not quality claim. Anchor sanity-floor (F1≥0.10 AND avg_extracted≥0.1×avg_gold) catches the false-negative trap that yesterday's "any F1 value" accepted.
+
+**3-judge ensemble (locked default measurement):**
+
+| Judge | Model | Macro P | Macro R | Strictness | Lang bias span |
+|---|---|---:|---:|---:|---:|
+| gemma | google/gemma-4-26b-a4b | 0.834 | 0.937 | 0.841 (median) | 0.138 |
+| qwen-30b | huihui-qwen3-30b-instruct | 0.980 | 1.000 | 0.933 (outlier+0.09) | 0.049 |
+| claude-4.7-opus | huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated | 0.983 | 0.879 | 0.845 (median) | 0.127 |
+
+**Fleiss κ = 0.708 ("substantial" per Landis-Koch 1977)** over 461 items voted by all 3 judges. 487 total verdicts; 32 disputed (6.6%); 455 majority (93.4%). **Median over the 3 judges: P≈0.93 / R≈0.94.** No bias dimension exceeded its flag threshold (strictness_gap < 0.15, language_bias < 0.15).
+
+Key bias signals captured:
+- **qwen-30b is lenient** (strictness +0.09 over median, R=1.00) — confirms our prior suspicion that single-judge qwen overstates. Don't use it solo.
+- **All 3 judges accept CJK + VN more readily than English** (87-96% vs 78-91%). Could be over-extraction reality OR judge under-rejection. English anchor can't disambiguate; defer until WikiNeural multilingual anchor lands.
+- **All 3 judges favor recall over precision** (rp_bias negative across the board) — they accept gold items as "covered" more readily than they accept extracted items as "supported." For high-precision use cases, prefer claude-4.7-opus's narrower bias (−0.05) over gemma's (−0.13).
+
+### New deferred rows
+
+- **D-CYCLE1-ENSEMBLE-FORENSIC** — re-baseline the cycle-1 (multilang-fewshot) dump with the ensemble to apply spec D9 decision rule on extract-vs-scoring. Dump was wiped by mid-cycle Docker restart; recreating requires temporarily re-applying the reverted multilang prompts. Informational only — cycle-1's recall regression conclusion stands per single-judge data; the ensemble would refine the verdict's confidence interval. ~30 min next session.
+- **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** — multilingual NER anchor (CJK + VN) to disambiguate the EN-vs-CJK/VN judge acceptance pattern. Currently the only signal we have is the ensemble itself; an external multilingual benchmark would corroborate or refute.
+- **D-EVAL-FRAMEWORK-CLOUD-JUDGE** — 4th gold-standard cloud Claude judge for ground-truth calibration. Adds ~$1-3/run; defer until first ensemble run surfaces variance worth ground-truthing (this run shows κ=0.71 → currently sufficient).
+
+### Default measurement methodology (effective 2026-05-28)
+
+- **In-cycle iteration smokes:** single-judge gemma via `test_judge_eval.py::test_llm_judge_extraction_quality` (~20 min). Fast feedback.
+- **Baseline-lock runs (every new model / every prompt-aggregator-scoring change / quarterly drift / pre-ship gate):** 3-judge ensemble via `test_judge_eval.py::test_llm_judge_ensemble` (~30 min after bug fix + budget bumps) + CoNLL-2003 + DocRED anchors (~10 min total). Full lock = ~40 min.
+- **Single source of metric authority:** the ensemble's majority verdict + Fleiss κ. Per-judge numbers informational; ensemble is the lock.
+
+### What's NEXT
+
+Eval framework is the new measurement floor. Next session can confidently iterate on the architecture-improvement levers identified in cycle 67 / 68 / 69 with reliable scoring:
+
+| # | Candidate | Size | Status |
+|---|---|---|---|
+| 1 | **Specialized relation prompt** (cycle 2 candidate from session 67) | M (~3-4h) | Pending; relations are 30B's weak axis (`little_women_ch01` 17% disputed mostly relation FPs) — targeted predicate vocab + few-shot per language could lift R+P together without compounding the cycle-1 omission lesson |
+| 2 | **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) | L (~half-day) | Combines best of both per ensemble bias profile; F1 expected ~0.88+ |
+| 3 | **D-CYCLE1-ENSEMBLE-FORENSIC** | XS (~30 min) | Definitive answer to "did cycle 1 regress extract or scoring" |
+| 4 | **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** | M (~half-day) | Closes the EN/CJK/VN judge bias question; needs WikiNeural dataset wiring + new anchor_runner overload |
+| 5 | **Catalogue-driven extraction** (resume paused ADR) | XL (multi-session) | Architectural; kind-specific extractors with closed vocabulary per genre |
+
+Recommend **cycle 2's specialized relation prompt** as the next "cheap to expensive" lever, **bounded by the lessons from cycle 1 (multilang-fewshot revert)**:
+- Keep prompt growth ≤ +500 chars to dodge concurrency × prompt-size limits
+- Pair LANGUAGES with DIFFERENT lessons (don't compound a single high-pressure omission lesson 3×)
+- VERIFY gate = ensemble re-baseline (not single-judge) per spec D10 cadence policy
+
+---
 
 ## Session 68 summary — Track A model swap verified; SDK response_format LM Studio compat shipped
 

@@ -692,3 +692,141 @@ The bracket-iteration phase of Track A is closed. Acquired baselines are suffici
 - **Negative datapoint:** wasserstein (abliteration recipe matters as much as base arch)
 
 **Returning to the original Track A purpose: evaluate first, THEN re-architect for per-metric improvements.** Recall lever is identified as having more headroom; next cycles should target recall-improvement architecture (e.g., multi-language few-shot prompts, specialized relation/event prompts, hybrid 2-pass with 30B-then-claude refinement, P4 semantic chunking, P5 gated LLM coref). Filed under "What's NEXT" in [`docs/sessions/SESSION_HANDOFF.md`](../../../docs/sessions/SESSION_HANDOFF.md).
+
+---
+
+# 2026-05-28 — Eval framework overhaul: anchor + multi-judge ensemble baseline
+
+The XL meta-cycle (spec: [`docs/specs/2026-05-27-eval-framework-overhaul.md`](../../../docs/specs/2026-05-27-eval-framework-overhaul.md), plan: [`docs/plans/2026-05-27-eval-framework-overhaul.md`](../../../docs/plans/2026-05-27-eval-framework-overhaul.md)) shipped the anchor + multi-judge ensemble framework + re-baselined the 30B extractor under that framework. This section records what's now the canonical measurement methodology.
+
+## Anchor benchmarks (informational; sanity-floor only, not quality gates)
+
+Two published-baseline datasets establish external truth signals for our extractor. Per spec D2 + HIGH-1 fix, each anchor enforces a **sanity floor** (F1 ≥ 0.10 AND avg_n_extracted ≥ 0.1 × avg_n_gold). Below the floor → extractor regressed to ~empty + cycle does not pass; above → F1 is recorded as informational.
+
+| Anchor | Dataset (HF) | n_samples | Extractor | F1 | P | R | avg ext / avg gold |
+|---|---|---|---|---:|---:|---:|---|
+| **CoNLL-2003 NER** (English news, strict span match) | `tner/conll2003` test | 100 | huihui-qwen3-30b-instruct (40K ctx) | **0.219** | 0.204 | 0.237 | 3.4 / 2.1 |
+| **DocRED unlabeled-triple** (English Wikipedia) | `thunlp/docred` validation | 50 | huihui-qwen3-30b-instruct (40K ctx) | **0.127** | 0.110 | 0.149 | 15.0 / 10.4 |
+
+**How to read these numbers.** RoBERTa-large SOTA on CoNLL-2003 ≈ 92.4 F1 (we hit ~24%); RoBERTa-baseline on DocRED unlabeled-F1 ≈ 0.45-0.55 (we hit ~28%). Our extractor isn't trained on either schema — it's a narrative-fiction extractor — so getting ~25-30% of SOTA across two different external domains is the **calibration signal**, not a quality claim. Both anchors clear the sanity floor (`passes_sanity_floor=True` in both reports). Future cycles that touch prompts / aggregator / scoring re-run these anchors as part of acceptance per spec D10 cadence policy.
+
+Spec D9 cross-check caveat: CoNLL + DocRED are English-only. For CJK/VN regressions (e.g., the cycle 1 multilang fewshot Vietnamese drop), the anchor is silent — verdicts come from the ensemble alone until the WikiNeural multilingual anchor lands.
+
+## Multi-judge ensemble baseline (30B extractor)
+
+Three local LM Studio judges run sequentially via JIT model swap, each scoring the same 9-chapter `huihui-qwen3-30b-instruct` extraction dump independently. The framework's correctness gate (D11) requires ≥ 2 judges complete; this run produced **3/3 complete** + 100% chapter coverage across 487 total verdict items.
+
+### Per-judge macro P/R
+
+| Judge | Model | Macro P | Macro R | Notes |
+|---|---|---:|---:|---|
+| **A (gemma)** | google/gemma-4-26b-a4b | **0.834** | **0.937** | strictness=0.84 (median); slight recall preference (rp_bias=−0.13) |
+| **B (qwen-30b)** | huihui-qwen3-30b-instruct | 0.980 | 1.000 | **lenient outlier** (strictness=0.93, +0.09 over median); accepts almost everything; would inflate single-judge metrics |
+| **C (claude-4.7-opus)** | huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated | 0.983 | 0.879 | strictness=0.85; strict on precision (0.98) but lower recall (0.88) |
+
+Median over the 3 judges: **P ≈ 0.93 / R ≈ 0.94**. Single-judge gemma run (yesterday's locked baseline for 30B) was P=0.79 / R=0.90 — today's gemma re-run is P=0.83 / R=0.94 (within run-to-run variance + judge-side budget bump per spec D5 vs cycle 67 cont.5's prior tuning).
+
+### Fleiss kappa — substantial inter-rater reliability
+
+`κ = 0.708` over 461 items voted by all 3 judges (94.7% of the 487 total items). Per Landis & Koch 1977 cutoffs, that's "substantial" agreement — the ensemble methodology is producing trustworthy data.
+
+- Total items voted: 487
+- Items disputed (no majority): 32 (6.6%)
+- Items with full majority: 455 (93.4%)
+
+### Per-judge bias profile (D12 dimensions)
+
+| Judge | strictness | gap from median | language acceptance (en/zh/vi) | language_bias span | precision_accept | recall_accept | rp_bias |
+|---|---:|---:|---|---:|---:|---:|---:|
+| gemma | 0.841 | 0.004 | 0.78 / 0.87 / 0.92 | 0.138 | 0.812 | 0.938 | −0.126 |
+| qwen-30b | 0.933 | **0.088** | 0.91 / 0.94 / 0.96 | 0.049 | 0.913 | 1.000 | −0.087 |
+| claude-4.7-opus | 0.845 | 0.000 | 0.79 / 0.87 / 0.91 | 0.127 | 0.834 | 0.883 | −0.049 |
+
+**No flags fired** (all bias metrics below their thresholds: strictness_gap < 0.15, language_bias < 0.15). But the pattern matters:
+- **EN-stricter than CJK/VN** across all 3 judges (acceptance 0.78-0.91 EN → 0.87-0.96 zh → 0.91-0.96 vi). The judges accept CJK + VN extractions more readily than English. Two possible reasons: (a) the extractor genuinely IS better on CJK/VN at over-extracting (matches our prior "30B over-extracts" finding); (b) the judges are slightly more permissive on non-English content (fewer training-data anchors → weaker rejection). The English anchor (CoNLL) can't disambiguate; multilingual anchor cycle (WikiNeural) would.
+- **All 3 judges favor recall over precision** (rp_bias is negative for all — they accept gold items "covered" more readily than they accept extracted items as "supported"). Consistent with judges that hedge toward "give credit when reasonable." For high-precision use cases, prefer claude-4.7-opus's narrower bias (−0.05) over gemma's wider bias (−0.13).
+
+### Per-chapter dispute distribution
+
+| Chapter | Total votes | Majority | Disputed | Dispute rate |
+|---|---:|---:|---:|---:|
+| son_tinh_thuy_tinh_vi | 70 | 70 | 0 | **0.0%** — clean consensus |
+| sherlock_scandal_ch01 | 25 | 24 | 1 | 4.0% |
+| pride_prejudice_ch01 | 39 | 38 | 1 | 2.6% |
+| alice_ch01 | 37 | 34 | 3 | 8.1% |
+| alice_ch02 | 44 | 42 | 2 | 4.5% |
+| tam_cam_vi | 59 | 56 | 3 | 5.1% |
+| journey_west_zh_ch01 | 80 | 76 | 4 | 5.0% |
+| journey_west_zh_ch14 | 63 | 57 | 6 | 9.5% |
+| **little_women_ch01** | 70 | 58 | **12** | **17.1%** — most contentious |
+
+`little_women_ch01` is the new weak chapter under ensemble — 17% disputed. Worth a manual review of disputed items to find the systematic disagreement (likely event-summary phrasing differences across judges).
+
+### Wall clock
+
+`28:29 min` for 3 judges × 9 chapters sequential. Budget bump (KNOWLEDGE_JUDGE_BASE_TOKENS=3072, KNOWLEDGE_JUDGE_PER_ITEM_TOKENS=384, KNOWLEDGE_JUDGE_BATCH_SIZE=2) reduced JSON truncation warnings from the first attempt and actually sped up the run vs the initial 60-90 min estimate — fewer wasted reasoning cycles per call.
+
+## D9 cycle-1 re-baseline — DEFERRED
+
+Spec D9's "extract vs scoring" decision rule on the cycle-1 (multilang fewshot) dump was scoped into this cycle. **Deferred to next session** — the cycle-1 dump (`/tmp/eval_dump_30b_ml_c1`) was wiped by mid-cycle Docker stack restart + has not been re-created (cycle 1 prompts were reverted, so re-creating means temporarily restoring the multilang prompts + re-extracting + reverting again — clean cycle, ~10 min). Once recreated, run the same ensemble against it + apply D9 decision rule. Filed as `D-CYCLE1-ENSEMBLE-FORENSIC` (informational, not blocking).
+
+## Methodology lessons captured (RETRO)
+
+- **Live smoke is the only signal that surfaces test-adapter bugs.** The cycle's 19 foundation unit tests covered Fleiss/D11/D12 math but NOT the `_chapter_judgement_to_verdicts` flatten — which crashed on `rv.idx` vs `rv.gold_idx` only when given a producer-typed `GoldVerdict`. ~60 min of LM Studio compute wasted on the first ensemble run. **Fix landed inline:** moved flatten to `judge_ensemble.chapter_judgement_to_verdicts` (public) + added 2 regression-lock unit tests that instantiate the real `GoldVerdict` producer type. Validates `feedback_test_input_fields_from_producer_schema` again.
+- **Bumping judge token budgets sped up the run.** Counter-intuitive: KNOWLEDGE_JUDGE_BASE_TOKENS bump from 1536 → 3072 reduced overall wall clock by reducing JSON-truncation retries on reasoning-heavy judges. The first ensemble had ~30 "judge call near/over budget" warnings; the re-run had ~5. Lesson: tight budgets on reasoning models are penny-wise, pound-foolish.
+- **The qwen-30b judge over-accepts.** When used as the SOLE judge (yesterday's R=0.90), it gives artificially inflated metrics. Ensemble corrects for this. Future single-judge runs should prefer gemma (more median, closer to ensemble consensus).
+- **CJK/VN judges are MORE LENIENT than English judges.** All 3 judges accepted CJK + VN at 87-96% vs English at 78-91%. Could be over-extraction reality OR judge under-rejection on non-English. The current anchor benchmarks (English-only) can't disambiguate; defer until WikiNeural multilingual anchor lands.
+
+## Default measurement methodology (effective 2026-05-28)
+
+Per cycle's D10 cadence policy:
+
+- **In-cycle iteration smokes:** single-judge gemma via `test_judge_eval.py::test_llm_judge_extraction_quality` (~20 min). Fast feedback.
+- **Baseline-lock runs (every new model, every prompt/aggregator change, quarterly drift check, pre-ship gate):** 3-judge ensemble via `test_judge_eval.py::test_llm_judge_ensemble` (~30 min after the cycle-1 bug fix + budget bumps) + CoNLL + DocRED anchors (~10 min total). Total: ~40 min for full baseline lock.
+- **Single source of metric authority:** the ensemble's majority verdict + Fleiss κ. Per-judge numbers are informational; ensemble is the lock.
+
+## Reproducing the 30B baseline (ensemble + anchors)
+
+```sh
+# Anchors first (any judge model loaded in LM Studio works since these
+# only invoke the extractor):
+docker exec -d -w /app \
+  -e PYTHONPATH=/app \
+  -e KNOWLEDGE_EVAL_MODEL=019e6a20-eeac-7b96-82ee-69a16d8ef68d \
+  -e KNOWLEDGE_EVAL_USER_ID=019d4966-56c0-714f-a16a-3454622c8c15 \
+  -e KNOWLEDGE_EVAL_MODEL_CONTEXT=40000 \
+  -e KNOWLEDGE_EVAL_DUMP_PATH=/tmp/eval_dump_anchors \
+  -e HF_DATASETS_CACHE=/tmp/hf_cache \
+  -e HOME=/tmp/hf_cache \
+  infra-knowledge-service-1 \
+  python -m pytest tests/quality/test_anchor_eval.py --run-quality -v -s
+
+# Then extraction (huihui-qwen3-30b-instruct loaded in LM Studio):
+docker exec -d -w /app \
+  -e PYTHONPATH=/app \
+  -e KNOWLEDGE_EVAL_MODEL=019e6a20-eeac-7b96-82ee-69a16d8ef68d \
+  -e KNOWLEDGE_EVAL_USER_ID=019d4966-56c0-714f-a16a-3454622c8c15 \
+  -e KNOWLEDGE_EVAL_MODEL_CONTEXT=40000 \
+  -e KNOWLEDGE_EVAL_DUMP_PATH=/tmp/eval_dump_30b_baseline_v2 \
+  -e KNOWLEDGE_EVAL_CHAPTER_CONCURRENCY=4 \
+  infra-knowledge-service-1 \
+  python -m pytest tests/quality/test_extraction_eval.py --run-quality -v -s
+
+# Then ensemble (3 judges sequential JIT — KNOWLEDGE_JUDGE_BASE_TOKENS bump
+# avoids JSON truncation on reasoning-heavy judges):
+docker exec -d -w /app \
+  -e PYTHONPATH=/app \
+  -e KNOWLEDGE_EVAL_USER_ID=019d4966-56c0-714f-a16a-3454622c8c15 \
+  -e KNOWLEDGE_JUDGE_DUMP_PATH=/tmp/eval_dump_30b_baseline_v2 \
+  -e KNOWLEDGE_EVAL_ENSEMBLE_JUDGES=019dc3df-58f3-7170-bb48-f1f0c9bd604c,019e6a20-eeac-7b96-82ee-69a16d8ef68d,019e5650-eca7-78c2-985d-465aa3bce1ce \
+  -e KNOWLEDGE_EVAL_ENSEMBLE_LABELS=gemma,qwen-30b,claude-4.7-opus \
+  -e KNOWLEDGE_JUDGE_BASE_TOKENS=3072 \
+  -e KNOWLEDGE_JUDGE_PER_ITEM_TOKENS=384 \
+  -e KNOWLEDGE_JUDGE_BATCH_SIZE=2 \
+  infra-knowledge-service-1 \
+  python -m pytest tests/quality/test_judge_eval.py::test_llm_judge_ensemble --run-quality -v -s
+```
+
+Output files (under `KNOWLEDGE_JUDGE_DUMP_PATH`):
+- `judge_verdicts_gemma.json` + `judge_verdicts_qwen-30b.json` + `judge_verdicts_claude-4_7-opus.json` — per-judge raw verdicts
+- `judge_ensemble_report.json` — Fleiss κ, per-chapter majority, D12 bias metrics, D11 judge_status
