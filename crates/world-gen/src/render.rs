@@ -1,45 +1,158 @@
-//! Land/sea raster export.
+//! Raster + SVG map export.
 //!
-//! Rasterizes a [`WorldMap`] by nearest-cell-centre lookup — which *is* the
-//! Voronoi diagram — so no cell polygon is needed. Rendering is a CLI side
-//! output: it is not part of the `WorldMap` value or its `content_hash`, so
-//! an approximate nearest-neighbour is fine here.
+//! Rendering is a CLI side output: it is *not* part of the `WorldMap` value or
+//! its `content_hash`. Categorical maps (biome / political / culture) place
+//! pixels by nearest-cell-centre lookup — which *is* the Voronoi diagram —
+//! then composite a hillshade from [`crate::relief`] over the flat fill. The
+//! hypsometric [`relief_image`] renders the relief field directly.
 
 use image::{Rgb, RgbImage};
 
 use crate::biome::BiomeKind;
+use crate::projection::Projection;
+use crate::relief::{ReliefField, RenderStyle};
 use crate::world_map::{RouteKind, SettlementRole, WorldMap};
 
+/// Background colour for canvas pixels outside the projected world (the
+/// Orthographic disc exterior). Neutral near-black so the globe reads as a
+/// body in space.
+const BACKGROUND: Rgb<u8> = Rgb([12, 14, 18]);
+
+/// Internal supersampling factor. Every raster `*_image` renders at `SS×` the
+/// requested size, then box-downsamples — anti-aliasing coastlines, the
+/// hillshade and the Voronoi cell edges, and letting the fBm detail sample
+/// finer. Rendering is an offline one-shot, so the ~`SS²` cost is fine.
+const SS: u32 = 2;
+
+/// Render `inner` at `SS×` the requested size, then box-downsample back. The
+/// public render entry points are thin wrappers over this.
+fn supersampled(width: u32, height: u32, inner: impl Fn(u32, u32) -> RgbImage) -> RgbImage {
+    downsample(&inner(width * SS, height * SS), SS)
+}
+
+/// Box-downsample `src` by an integer `factor`: each output pixel is the mean
+/// of its `factor × factor` source block. Deterministic.
+fn downsample(src: &RgbImage, factor: u32) -> RgbImage {
+    let (dw, dh) = (src.width() / factor, src.height() / factor);
+    let area = factor * factor;
+    let mut out = RgbImage::new(dw, dh);
+    for dy in 0..dh {
+        for dx in 0..dw {
+            let (mut r, mut g, mut b) = (0u32, 0u32, 0u32);
+            for fy in 0..factor {
+                for fx in 0..factor {
+                    let p = src.get_pixel(dx * factor + fx, dy * factor + fy);
+                    r += u32::from(p[0]);
+                    g += u32::from(p[1]);
+                    b += u32::from(p[2]);
+                }
+            }
+            out.put_pixel(dx, dy, Rgb([(r / area) as u8, (g / area) as u8, (b / area) as u8]));
+        }
+    }
+    out
+}
+
 /// Rasterize `map` to `width × height`: each pixel takes the colour of its
-/// nearest cell centre — which *is* the Voronoi diagram.
+/// nearest cell centre — which *is* the Voronoi diagram. Pixels outside the
+/// projected world (the Orthographic disc exterior) take [`BACKGROUND`].
+///
+/// `(u, v)` has `v = 0` at the north pole (top), matching raster row 0 — so
+/// no image-y flip is needed (Stage B sphere migration).
 fn rasterize<F: Fn(usize) -> Rgb<u8>>(
     map: &WorldMap,
     width: u32,
     height: u32,
+    proj: Projection,
     color: F,
 ) -> RgbImage {
-    let index = SpatialIndex::build(map);
+    let index = SpatialIndex::build(map, proj);
     let mut img = RgbImage::new(width, height);
     for py in 0..height {
         for px in 0..width {
             let x = (px as f32 + 0.5) / width as f32;
             let y = (py as f32 + 0.5) / height as f32;
+            // Outside the projected world (Orthographic disc exterior) → bg.
+            if proj.back_project((x, y)).is_none() {
+                img.put_pixel(px, py, BACKGROUND);
+                continue;
+            }
             let cell = index.nearest(map, x, y);
-            // Image y grows downward; flip so map y=0 is the image bottom.
-            img.put_pixel(px, height - 1 - py, color(cell));
+            img.put_pixel(px, py, color(cell));
         }
     }
     img
 }
 
-/// Render a land/sea (elevation-shaded) image of `map`.
-pub fn land_sea_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
-    rasterize(map, width, height, |cell| shade(map, cell))
+/// Render a hypsometric relief image — the showcase terrain render. Continuous
+/// barycentric-interpolated elevation, fBm detail, NW hillshade; palette and
+/// coastline treatment per `style`. Supersampled (see [`supersampled`]).
+pub fn relief_image(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    supersampled(width, height, |w, h| {
+        relief_image_inner(map, w, h, style, proj)
+    })
 }
 
-/// Render a biome-coloured image of `map` (Phase 2).
-pub fn biome_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
-    rasterize(map, width, height, |cell| biome_color(map.biome[cell]))
+fn relief_image_inner(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style, proj);
+    let mut img = RgbImage::new(width, height);
+    for py in 0..height {
+        for px in 0..width {
+            let i = (py * width + px) as usize;
+            if !relief.visible[i] {
+                img.put_pixel(px, py, BACKGROUND);
+                continue;
+            }
+            let base = if relief.water[i] {
+                water_color(relief.elev[i], relief.sea, style)
+            } else {
+                land_color(relief.elev[i], relief.sea, style)
+            };
+            img.put_pixel(px, py, shade_rgb(base, relief.shade[i]));
+        }
+    }
+    if style == RenderStyle::Atlas {
+        draw_coast_outline(&mut img, &relief);
+    }
+    img
+}
+
+/// Render a biome-coloured image of `map`, hillshaded by the relief field.
+pub fn biome_image(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    supersampled(width, height, |w, h| {
+        biome_image_inner(map, w, h, style, proj)
+    })
+}
+
+fn biome_image_inner(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style, proj);
+    let mut img = rasterize(map, width, height, proj, |cell| biome_color(map.biome[cell]));
+    apply_shade(&mut img, &relief);
+    img
 }
 
 /// Colour for each `BiomeKind`.
@@ -63,16 +176,138 @@ fn biome_color(b: BiomeKind) -> Rgb<u8> {
 }
 
 /// Render a culture-region image of `map` — each land cell tinted by its
-/// culture id; water cells are ocean-blue.
-pub fn culture_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
-    rasterize(map, width, height, |cell| {
+/// culture id, hillshaded by the relief field; water cells are ocean-blue.
+pub fn culture_image(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    supersampled(width, height, |w, h| {
+        culture_image_inner(map, w, h, style, proj)
+    })
+}
+
+fn culture_image_inner(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style, proj);
+    let mut img = rasterize(map, width, height, proj, |cell| {
         let cid = map.culture_of[cell];
         if cid == u32::MAX {
             Rgb([40, 70, 120]) // water
         } else {
             culture_color(cid)
         }
-    })
+    });
+    apply_shade(&mut img, &relief);
+    img
+}
+
+/// Render a tectonic-plate image (Phase 2): cells tinted by plate id —
+/// continental plates warm, oceanic plates cool — boundary cells overdrawn by
+/// their `BoundaryKind` colour, hillshaded by the relief field. In `Profile`
+/// `TerrainMode` (no plates) this falls back to the biome image.
+pub fn plate_image(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    if map.plates.is_empty() {
+        return biome_image(map, width, height, style, proj);
+    }
+    supersampled(width, height, |w, h| plate_image_inner(map, w, h, style, proj))
+}
+
+fn plate_image_inner(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style, proj);
+    // Per-cell boundary kind: the kind of the (cell plate, lowest differing
+    // neighbour plate) pair — mirrors `plates::boundary_field`'s seeding so
+    // the outline matches the orogeny.
+    let boundary_kind = cell_boundary_kinds(map);
+    let mut img = rasterize(map, width, height, proj, |cell| {
+        let pid = map.plate_of[cell];
+        if pid == u32::MAX {
+            return Rgb([40, 70, 120]);
+        }
+        match boundary_kind[cell] {
+            Some(bk) => boundary_color(bk),
+            None => plate_color(map.plates[pid as usize].kind, pid),
+        }
+    });
+    apply_shade(&mut img, &relief);
+    img
+}
+
+/// Per-cell `Some(BoundaryKind)` for boundary cells (a neighbour on a
+/// different plate), else `None`. The pair kind comes from `map.plate_boundaries`.
+fn cell_boundary_kinds(map: &WorldMap) -> Vec<Option<crate::world_map::BoundaryKind>> {
+    use std::collections::BTreeMap;
+    let mut pair_kind: BTreeMap<(u32, u32), crate::world_map::BoundaryKind> = BTreeMap::new();
+    for b in &map.plate_boundaries {
+        pair_kind.insert((b.plate_a, b.plate_b), b.kind);
+    }
+    (0..map.cells.len())
+        .map(|c| {
+            let pa = map.plate_of[c];
+            if pa == u32::MAX {
+                return None;
+            }
+            let mut other: Option<u32> = None;
+            for &nb in &map.neighbors[c] {
+                let pb = map.plate_of[nb as usize];
+                if pb != pa {
+                    other = Some(other.map_or(pb, |o| o.min(pb)));
+                }
+            }
+            other.map(|pb| {
+                let key = if pa < pb { (pa, pb) } else { (pb, pa) };
+                pair_kind
+                    .get(&key)
+                    .copied()
+                    .unwrap_or(crate::world_map::BoundaryKind::Interior)
+            })
+        })
+        .collect()
+}
+
+/// Warm tint for continental plates, cool for oceanic; varied per id.
+fn plate_color(kind: crate::world_map::PlateKind, id: u32) -> Rgb<u8> {
+    use crate::world_map::PlateKind;
+    // a small per-id jitter so adjacent same-kind plates still read apart.
+    let j = ((id.wrapping_mul(2654435761)) >> 24) as i32 % 40 - 20;
+    let clamp = |v: i32| v.clamp(0, 255) as u8;
+    match kind {
+        PlateKind::Continental => Rgb([clamp(150 + j), clamp(120 + j), clamp(70 + j / 2)]),
+        PlateKind::Oceanic => Rgb([clamp(40 + j / 2), clamp(70 + j), clamp(130 + j)]),
+    }
+}
+
+/// Outline colour per boundary kind.
+fn boundary_color(k: crate::world_map::BoundaryKind) -> Rgb<u8> {
+    use crate::world_map::BoundaryKind as B;
+    match k {
+        B::FoldMountain => Rgb([220, 60, 50]),   // red — collision belts
+        B::Subduction => Rgb([240, 140, 30]),    // orange — trench + arc
+        B::IslandArc => Rgb([240, 210, 60]),     // yellow — oceanic arc
+        B::Ridge => Rgb([90, 220, 200]),         // teal — spreading ridge
+        B::Rift => Rgb([200, 90, 220]),          // violet — continental rift
+        B::Fault => Rgb([180, 180, 180]),        // grey — transform
+        B::Interior => Rgb([0, 0, 0]),
+    }
 }
 
 /// A distinct tint per culture id (`culture_count` is clamped to 1..=16).
@@ -98,40 +333,77 @@ fn culture_color(id: u32) -> Rgb<u8> {
     Rgb(PALETTE[(id as usize) % PALETTE.len()])
 }
 
-/// A uniform bucket grid over cell centres for fast nearest-centre lookup.
-struct SpatialIndex {
+/// A uniform bucket grid over the **projected** cell centres `(u, v) ∈ [0,1]²`
+/// for fast nearest-centre lookup. Projection-aware (Stage B-2): only cells
+/// the projection makes *visible* are indexed (the Orthographic far side is
+/// excluded), and the `u` axis **wraps** under Equirectangular so the nearest
+/// search has no antimeridian seam.
+pub(crate) struct SpatialIndex {
     side: usize,
     buckets: Vec<Vec<u32>>,
+    proj: Projection,
+    /// Whether the `u` axis wraps (Equirectangular longitude seam).
+    wrap_u: bool,
 }
 
 impl SpatialIndex {
-    fn build(map: &WorldMap) -> Self {
+    pub(crate) fn build(map: &WorldMap, proj: Projection) -> Self {
         let side = (map.cells.len() as f32).sqrt().round().max(1.0) as usize;
         let mut buckets = vec![Vec::new(); side * side];
         for (i, c) in map.cells.iter().enumerate() {
-            let b = bucket_of(c.center.0, c.center.1, side);
-            buckets[b].push(i as u32);
+            // Only index cells the projection makes visible.
+            if let Some((cu, cv)) = proj.project(c.center) {
+                let b = bucket_of(cu, cv, side);
+                buckets[b].push(i as u32);
+            }
         }
-        SpatialIndex { side, buckets }
+        let wrap_u = matches!(proj, Projection::Equirectangular);
+        SpatialIndex {
+            side,
+            buckets,
+            proj,
+            wrap_u,
+        }
     }
 
-    /// Nearest cell index to normalized `(x,y)`; widening ring search with a
-    /// distance-correct stop — only stops once no unsearched bucket can hold
-    /// a closer centre than the current best.
-    fn nearest(&self, map: &WorldMap, x: f32, y: f32) -> usize {
+    /// Nearest *visible* cell to the canvas point `(x, y) ∈ [0,1]²`, measured
+    /// in projected `(u, v)` distance (with `u`-wrap under Equirectangular).
+    /// Widening-ring search with a distance-correct stop.
+    pub(crate) fn nearest(&self, map: &WorldMap, x: f32, y: f32) -> usize {
         let side = self.side as isize;
         let gx = ((x * self.side as f32) as isize).clamp(0, side - 1);
         let gy = ((y * self.side as f32) as isize).clamp(0, side - 1);
         let mut best = 0usize;
         let mut best_d = f32::INFINITY;
-        let mut radius = 1isize;
+        let mut radius = 0isize;
         while radius <= side {
             for by in (gy - radius).max(0)..=(gy + radius).min(side - 1) {
-                for bx in (gx - radius).max(0)..=(gx + radius).min(side - 1) {
+                for dbx in -radius..=radius {
+                    // `u`-wrap: bucket column wraps modulo `side` under
+                    // Equirectangular; otherwise clamp to the grid.
+                    let bx = if self.wrap_u {
+                        (gx + dbx).rem_euclid(side)
+                    } else {
+                        let v = gx + dbx;
+                        if v < 0 || v >= side {
+                            continue;
+                        }
+                        v
+                    };
                     for &ci in &self.buckets[(by * side + bx) as usize] {
                         let c = &map.cells[ci as usize];
-                        let d = (c.center.0 - x) * (c.center.0 - x)
-                            + (c.center.1 - y) * (c.center.1 - y);
+                        let (cu, cv) = self
+                            .proj
+                            .project(c.center)
+                            .expect("indexed cells are visible");
+                        let du = if self.wrap_u {
+                            let d = (cu - x).abs();
+                            d.min(1.0 - d)
+                        } else {
+                            cu - x
+                        };
+                        let dv = cv - y;
+                        let d = du * du + dv * dv;
                         if d < best_d {
                             best_d = d;
                             best = ci as usize;
@@ -139,11 +411,12 @@ impl SpatialIndex {
                     }
                 }
             }
-            // Every cell in a not-yet-searched bucket is at least
-            // (radius-1)/side away from the pixel. Stop once the best hit is
-            // provably no farther than that (compare squared distances).
+            // Every cell in a not-yet-searched ring is at least `radius/side`
+            // away from the pixel's bucket. Stop once the best hit is provably
+            // no farther (compare squared distances). `radius` starts at 0 so
+            // the home bucket is searched before any stop test.
             if best_d.is_finite() {
-                let covered = (radius - 1) as f32 / self.side as f32;
+                let covered = radius as f32 / self.side as f32;
                 if covered * covered >= best_d {
                     break;
                 }
@@ -161,58 +434,179 @@ fn bucket_of(x: f32, y: f32, side: usize) -> usize {
     cy * side + cx
 }
 
-/// Colour a cell: blue ramp for water (deeper = darker), green→brown→white
-/// ramp for land (higher = lighter).
-fn shade(map: &WorldMap, cell: usize) -> Rgb<u8> {
-    let e = map.cells[cell].elevation;
-    if e < map.sea_level {
-        let depth = f32::from(map.sea_level - e) / f32::from(map.sea_level.max(1));
-        let blue = (200.0 - 120.0 * depth).clamp(60.0, 200.0);
-        Rgb([20, 60, blue as u8])
-    } else {
-        let span = f32::from((65535 - map.sea_level).max(1));
-        let t = (f32::from(e - map.sea_level) / span).clamp(0.0, 1.0);
-        land_ramp(t)
+/// Multiply every pixel of `img` by the relief hillshade — turns a flat
+/// categorical map (biome / political / culture) into a relief-shaded one.
+/// `img` and `relief` must share dimensions.
+fn apply_shade(img: &mut RgbImage, relief: &ReliefField) {
+    debug_assert_eq!(
+        (img.width(), img.height()),
+        (relief.width, relief.height),
+        "apply_shade: image and relief field must share dimensions"
+    );
+    for py in 0..img.height() {
+        for px in 0..img.width() {
+            let i = (py * relief.width + px) as usize;
+            // Don't shade background pixels (Orthographic disc exterior) — they
+            // are not part of the lit globe surface.
+            if !relief.visible[i] {
+                continue;
+            }
+            let s = relief.shade[i];
+            let p = img.get_pixel_mut(px, py);
+            *p = shade_rgb(*p, s);
+        }
     }
 }
 
-/// Land colour ramp: `t=0` coastal green, `t=0.5` brown, `t=1` snow white.
-fn land_ramp(t: f32) -> Rgb<u8> {
-    if t < 0.5 {
-        let k = t / 0.5;
-        Rgb([
-            (70.0 + 100.0 * k) as u8,
-            (130.0 - 20.0 * k) as u8,
-            (60.0 + 10.0 * k) as u8,
-        ])
-    } else {
-        let k = (t - 0.5) / 0.5;
-        Rgb([
-            (170.0 + 85.0 * k) as u8,
-            (110.0 + 145.0 * k) as u8,
-            (70.0 + 185.0 * k) as u8,
-        ])
+/// Scale an `Rgb` by a `[0,1]` shade factor.
+fn shade_rgb(c: Rgb<u8>, s: f32) -> Rgb<u8> {
+    let ch = |v: u8| (f32::from(v) * s).round().clamp(0.0, 255.0) as u8;
+    Rgb([ch(c.0[0]), ch(c.0[1]), ch(c.0[2])])
+}
+
+/// Linear-interpolate a colour through an ascending `(stop, rgb)` ramp.
+fn ramp(stops: &[(f32, [u8; 3])], t: f32) -> Rgb<u8> {
+    let t = t.clamp(stops[0].0, stops[stops.len() - 1].0);
+    for pair in stops.windows(2) {
+        let (t0, c0) = pair[0];
+        let (t1, c1) = pair[1];
+        if t <= t1 {
+            let k = if t1 > t0 { (t - t0) / (t1 - t0) } else { 0.0 };
+            return Rgb([
+                lerp_u8(c0[0], c1[0], k),
+                lerp_u8(c0[1], c1[1], k),
+                lerp_u8(c0[2], c1[2], k),
+            ]);
+        }
+    }
+    Rgb(stops[stops.len() - 1].1)
+}
+
+/// Linear interpolation between two `u8` channel values.
+fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {
+    (f32::from(a) + (f32::from(b) - f32::from(a)) * t.clamp(0.0, 1.0))
+        .round()
+        .clamp(0.0, 255.0) as u8
+}
+
+/// Hypsometric land colour by normalized height above sea level. Land stops
+/// keep blue off the dominant channel so a water test can be `b > r && b > g`.
+fn land_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
+    let t = ((elev - sea) / (1.0 - sea).max(1e-3)).clamp(0.0, 1.0);
+    match style {
+        RenderStyle::Realistic => ramp(
+            &[
+                (0.00, [78, 126, 68]),   // coastal lowland green
+                (0.10, [100, 146, 78]),  // plains
+                (0.24, [132, 154, 90]),  // dry grassland
+                (0.42, [160, 150, 100]), // foothills / steppe
+                (0.60, [150, 120, 84]),  // upland tan
+                (0.76, [126, 112, 104]), // bare rock
+                (0.90, [172, 168, 162]), // high rock
+                (1.00, [255, 255, 255]), // snow cap
+            ],
+            t,
+        ),
+        RenderStyle::Atlas => ramp(
+            &[
+                (0.00, [208, 202, 170]),
+                (0.30, [196, 184, 146]),
+                (0.60, [178, 160, 132]),
+                (0.85, [162, 152, 138]),
+                (1.00, [200, 199, 197]),
+            ],
+            t,
+        ),
     }
 }
 
-/// Render a political map (Phase 3): cells tinted by state, with routes drawn
-/// as lines and settlements as dots.
-pub fn political_image(map: &WorldMap, width: u32, height: u32) -> RgbImage {
-    let mut img = rasterize(map, width, height, |cell| political_cell_color(map, cell));
+/// Water colour by normalized depth below sea level.
+fn water_color(elev: f32, sea: f32, style: RenderStyle) -> Rgb<u8> {
+    let d = ((sea - elev) / sea.max(1e-3)).clamp(0.0, 1.0);
+    match style {
+        RenderStyle::Realistic => ramp(
+            &[
+                (0.00, [128, 182, 200]), // bright coastal shallows
+                (0.12, [86, 144, 184]),  // shelf
+                (0.45, [44, 94, 148]),   // open water
+                (1.00, [16, 38, 84]),    // deep ocean
+            ],
+            d,
+        ),
+        RenderStyle::Atlas => ramp(&[(0.00, [182, 196, 202]), (1.00, [138, 160, 180])], d),
+    }
+}
+
+/// Atlas style: stroke an ink line wherever a land pixel touches water. The
+/// line is stamped `SS` pixels thick so it survives the supersample
+/// downsample as a crisp outline rather than a faint ~quarter-strength edge.
+fn draw_coast_outline(img: &mut RgbImage, relief: &ReliefField) {
+    const INK: Rgb<u8> = Rgb([66, 56, 48]);
+    let (w, h) = (relief.width, relief.height);
+    let is_water = |px: u32, py: u32| relief.water[(py * w + px) as usize];
+    for py in 0..h {
+        for px in 0..w {
+            if is_water(px, py) {
+                continue;
+            }
+            let coast = (px > 0 && is_water(px - 1, py))
+                || (px + 1 < w && is_water(px + 1, py))
+                || (py > 0 && is_water(px, py - 1))
+                || (py + 1 < h && is_water(px, py + 1));
+            if coast {
+                for oy in 0..SS {
+                    for ox in 0..SS {
+                        let (sx, sy) = (px + ox, py + oy);
+                        if sx < w && sy < h {
+                            img.put_pixel(sx, sy, INK);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Render a political map (Phase 3): cells tinted by state and hillshaded,
+/// with routes drawn as lines and settlements as dots.
+pub fn political_image(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    supersampled(width, height, |w, h| {
+        political_image_inner(map, w, h, style, proj)
+    })
+}
+
+fn political_image_inner(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style, proj);
+    let mut img = rasterize(map, width, height, proj, |cell| political_cell_color(map, cell));
+    apply_shade(&mut img, &relief);
     for r in &map.routes {
         // Trace the route's actual cell path, not a straight endpoint line.
         let color = route_color(r.kind);
         for seg in r.path.windows(2) {
-            draw_line(&mut img, map, seg[0], seg[1], color);
+            draw_line(&mut img, map, seg[0], seg[1], color, proj);
         }
     }
     for s in &map.settlements {
+        // Rendering at SS× — scale the dot radius so it survives downsampling.
         draw_dot(
             &mut img,
             map,
             s.cell,
-            1 + u32::from(s.population_tier),
+            SS * (1 + u32::from(s.population_tier)),
             settlement_color(s.role),
+            proj,
         );
     }
     img
@@ -267,26 +661,49 @@ fn settlement_color(r: SettlementRole) -> Rgb<u8> {
     }
 }
 
-/// Pixel coordinate of a cell centre (with the map-y → image-y flip).
-fn cell_px(map: &WorldMap, cell: u32, w: i32, h: i32) -> (i32, i32) {
-    let (x, y) = map.cells[cell as usize].center;
-    let px = ((x * w as f32) as i32).clamp(0, w - 1);
-    let py = ((h - 1) - (y * h as f32) as i32).clamp(0, h - 1);
-    (px, py)
+/// Pixel coordinate of a cell centre under `proj`. `None` when the cell is on
+/// the hidden hemisphere (Orthographic far side). `(u, v)` has `v = 0` at the
+/// top (north pole) — matches raster row 0 at top, so no flip is needed.
+fn cell_px(map: &WorldMap, cell: u32, w: i32, h: i32, proj: Projection) -> Option<(i32, i32)> {
+    let (u, v) = proj.project(map.cells[cell as usize].center)?;
+    let px = ((u * w as f32) as i32).clamp(0, w - 1);
+    let py = ((v * h as f32) as i32).clamp(0, h - 1);
+    Some((px, py))
 }
 
-/// Bresenham line between two cell centres.
-fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>) {
+/// Bresenham line between two cell centres, stamped `SS` pixels thick so it
+/// stays solid through the supersample downsample. Skipped if either endpoint
+/// is on the hidden hemisphere (Orthographic). Endpoints whose projected `u`
+/// straddle the antimeridian seam would draw a long wrong line; such segments
+/// are skipped when the pixel gap exceeds half the canvas width.
+fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>, proj: Projection) {
     let (w, h) = (img.width() as i32, img.height() as i32);
-    let (mut x0, mut y0) = cell_px(map, a, w, h);
-    let (x1, y1) = cell_px(map, b, w, h);
+    let (Some((mut x0, mut y0)), Some((x1, y1))) =
+        (cell_px(map, a, w, h, proj), cell_px(map, b, w, h, proj))
+    else {
+        return; // a hidden endpoint — skip this segment
+    };
+    // Antimeridian seam guard (Equirectangular): a route segment whose
+    // endpoints sit on opposite sides of the lon=±π seam would otherwise be
+    // drawn as a long horizontal streak across the whole map.
+    if matches!(proj, Projection::Equirectangular) && (x1 - x0).abs() > w / 2 {
+        return;
+    }
     let dx = (x1 - x0).abs();
     let dy = -(y1 - y0).abs();
     let sx = if x0 < x1 { 1 } else { -1 };
     let sy = if y0 < y1 { 1 } else { -1 };
     let mut err = dx + dy;
+    let t = SS as i32;
     loop {
-        img.put_pixel(x0 as u32, y0 as u32, color);
+        for oy in 0..t {
+            for ox in 0..t {
+                let (px, py) = (x0 + ox, y0 + oy);
+                if px >= 0 && py >= 0 && px < w && py < h {
+                    img.put_pixel(px as u32, py as u32, color);
+                }
+            }
+        }
         if x0 == x1 && y0 == y1 {
             break;
         }
@@ -302,10 +719,12 @@ fn draw_line(img: &mut RgbImage, map: &WorldMap, a: u32, b: u32, color: Rgb<u8>)
     }
 }
 
-/// Filled square dot at a cell centre.
-fn draw_dot(img: &mut RgbImage, map: &WorldMap, cell: u32, radius: u32, color: Rgb<u8>) {
+/// Filled square dot at a cell centre. Skipped for a hidden-hemisphere cell.
+fn draw_dot(img: &mut RgbImage, map: &WorldMap, cell: u32, radius: u32, color: Rgb<u8>, proj: Projection) {
     let (w, h) = (img.width() as i32, img.height() as i32);
-    let (cx, cy) = cell_px(map, cell, w, h);
+    let Some((cx, cy)) = cell_px(map, cell, w, h, proj) else {
+        return;
+    };
     let r = radius as i32;
     for dy in -r..=r {
         for dx in -r..=r {
@@ -318,8 +737,9 @@ fn draw_dot(img: &mut RgbImage, map: &WorldMap, cell: u32, radius: u32, color: R
 }
 
 /// Render the political map as an SVG string (Phase 4 vector export):
-/// land cells as state-tinted `<rect>`s, routes as `<line>`s, settlements as
-/// `<circle>`s. Water cells are omitted — the ocean background shows through.
+/// land cells as state-tinted `<polygon>`s, routes as `<polyline>`s,
+/// settlements as `<circle>`s. Water cells are omitted — the ocean background
+/// shows through.
 pub fn political_svg(map: &WorldMap, size: u32) -> String {
     let s = size as f32;
     let mut svg = String::with_capacity(map.cells.len() * 120);
@@ -374,13 +794,119 @@ pub fn political_svg(map: &WorldMap, size: u32) -> String {
             hex(settlement_color(st.role)),
         ));
     }
+    // Feature-name labels — only features the `naming` step has named emit a
+    // `<text>`; a freshly-generated (unnamed) map produces no labels.
+    for st in &map.settlements {
+        if st.name.is_empty() {
+            continue;
+        }
+        let (px, py) = svg_px(map.cells[st.cell as usize].center, s);
+        svg.push_str(&svg_text(&st.name, px, py - 4.0, 11.0, "#1a1a1a"));
+    }
+    for state in &map.states {
+        if state.name.is_empty() {
+            continue;
+        }
+        // The realm name sits at the state's centroid, not its capital — the
+        // capital cell already carries the capital settlement's own label.
+        let (px, py) = state_centroid_px(map, state.id, s);
+        svg.push_str(&svg_text(&state.name, px, py, 16.0, "#3a2a14"));
+    }
+    for mr in &map.mountain_ranges {
+        if mr.name.is_empty() {
+            continue;
+        }
+        let (px, py) = centroid_px(map, &mr.cells, s);
+        svg.push_str(&svg_text(&mr.name, px, py, 12.0, "#4a3a2a"));
+    }
+    for rv in &map.rivers {
+        if rv.name.is_empty() {
+            continue;
+        }
+        let (px, py) = centroid_px(map, &rv.cells, s);
+        svg.push_str(&svg_text(&rv.name, px, py, 11.0, "#1e4a6e"));
+    }
+    for wb in &map.water_bodies {
+        if wb.name.is_empty() {
+            continue;
+        }
+        let (px, py) = centroid_px(map, &wb.cells, s);
+        svg.push_str(&svg_text(&wb.name, px, py, 13.0, "#cfe2ee"));
+    }
     svg.push_str("</svg>\n");
     svg
 }
 
-/// Cell centre → SVG pixel (map y=0 is the bottom; SVG y grows downward).
-fn svg_px(center: (f32, f32), s: f32) -> (f32, f32) {
-    (center.0 * s, s - center.1 * s)
+/// SVG pixel coordinates for a feature's label — the cell-centroid, snapped to
+/// the member cell nearest it. Snapping keeps the label *on* the feature even
+/// when the raw centroid falls outside it (a sea rings the land, so its
+/// centroid lands on the continent).
+fn centroid_px(map: &WorldMap, cells: &[u32], s: f32) -> (f32, f32) {
+    if cells.is_empty() {
+        return (0.0, 0.0);
+    }
+    // B2 sphere migration: project each 3D cell centre to (u, v) for the
+    // SVG centroid pick. The (u, v) projection is equirectangular.
+    let (mut sx, mut sy) = (0.0f32, 0.0f32);
+    for &c in cells {
+        let (x, y) = crate::projection::equirectangular(map.cells[c as usize].center);
+        sx += x;
+        sy += y;
+    }
+    let n = cells.len() as f32;
+    let (cx, cy) = (sx / n, sy / n);
+    let mut best = cells[0];
+    let mut best_d = f32::INFINITY;
+    for &c in cells {
+        let (x, y) = crate::projection::equirectangular(map.cells[c as usize].center);
+        let d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        if d < best_d {
+            best_d = d;
+            best = c;
+        }
+    }
+    svg_px(map.cells[best as usize].center, s)
+}
+
+/// SVG pixel coordinates for a realm's label — the state's land cells, their
+/// centroid snapped to a member cell by [`centroid_px`].
+fn state_centroid_px(map: &WorldMap, state_id: u32, s: f32) -> (f32, f32) {
+    let cells: Vec<u32> = map
+        .province_of
+        .iter()
+        .enumerate()
+        .filter(|&(_, &pid)| pid != u32::MAX && map.provinces[pid as usize].state == state_id)
+        .map(|(c, _)| c as u32)
+        .collect();
+    centroid_px(map, &cells, s)
+}
+
+/// One SVG `<text>` label, centred at `(px, py)`.
+fn svg_text(label: &str, px: f32, py: f32, size: f32, fill: &str) -> String {
+    format!(
+        "<text x=\"{px:.1}\" y=\"{py:.1}\" font-size=\"{size:.0}\" fill=\"{fill}\" \
+         text-anchor=\"middle\" font-family=\"serif\">{}</text>\n",
+        xml_escape(label)
+    )
+}
+
+/// Escape the five XML metacharacters so an LLM-authored name is safe inside
+/// SVG text content. `&` is replaced first so the other escapes are not
+/// double-escaped.
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+/// Cell centre (3D unit-sphere) → SVG pixel via equirectangular projection.
+/// `(u, v)` from `project_uv` has `v = 0` at the north pole (top of canvas),
+/// matching SVG's y-down convention — **no flip needed**.
+fn svg_px(center: [f32; 3], s: f32) -> (f32, f32) {
+    let (u, v) = crate::projection::equirectangular(center);
+    (u * s, v * s)
 }
 
 /// `Rgb` → `#rrggbb`.
@@ -402,45 +928,165 @@ mod tests {
         generate(2026, &cs)
     }
 
+    /// A pixel is "water" iff blue is its strictly dominant channel — true for
+    /// every water ramp colour and false for every land ramp colour, in both
+    /// styles, and stable under the uniform per-pixel hillshade scaling.
+    fn is_blue(p: &Rgb<u8>) -> bool {
+        p.0[2] > p.0[0] && p.0[2] > p.0[1]
+    }
+
     #[test]
-    fn image_has_requested_dimensions() {
-        let img = land_sea_image(&island_map(), 128, 96);
+    fn relief_image_has_requested_dimensions() {
+        let img = relief_image(&island_map(), 128, 96, RenderStyle::Realistic, Projection::Equirectangular);
         assert_eq!(img.width(), 128);
         assert_eq!(img.height(), 96);
     }
 
     #[test]
-    fn island_render_shows_both_land_and_water() {
-        let img = land_sea_image(&island_map(), 160, 160);
-        let mut water = 0u32;
-        let mut land = 0u32;
-        for px in img.pixels() {
-            // Water shading keeps blue dominant over green; land never does.
-            if px.0[2] > px.0[1] {
-                water += 1;
-            } else {
-                land += 1;
-            }
-        }
-        assert!(water > 0, "island map rendered no water");
-        assert!(land > 0, "island map rendered no land");
+    fn relief_image_shows_land_and_water() {
+        let img = relief_image(&island_map(), 160, 160, RenderStyle::Realistic, Projection::Equirectangular);
+        assert!(img.pixels().any(is_blue), "relief render shows no water");
+        assert!(img.pixels().any(|p| !is_blue(p)), "relief render shows no land");
     }
 
     #[test]
-    fn land_ramp_is_total_over_unit_range() {
-        // Exercises every `as u8` cast in the ramp; must not panic / wrap.
-        for i in 0..=1000 {
-            let _ = land_ramp(i as f32 / 1000.0);
+    fn relief_image_styles_differ() {
+        let map = generate(3, &CreativeSeed::default());
+        let r = relief_image(&map, 128, 128, RenderStyle::Realistic, Projection::Equirectangular);
+        let a = relief_image(&map, 128, 128, RenderStyle::Atlas, Projection::Equirectangular);
+        assert!(
+            r.pixels().zip(a.pixels()).any(|(x, y)| x != y),
+            "realistic and atlas relief renders are identical"
+        );
+    }
+
+    #[test]
+    fn relief_image_is_deterministic() {
+        let map = generate(5, &CreativeSeed::default());
+        let a = relief_image(&map, 100, 100, RenderStyle::Realistic, Projection::Equirectangular);
+        let b = relief_image(&map, 100, 100, RenderStyle::Realistic, Projection::Equirectangular);
+        assert_eq!(a.as_raw(), b.as_raw(), "relief render is not deterministic");
+    }
+
+    fn ortho() -> Projection {
+        Projection::Orthographic {
+            camera: [1.0, 0.0, 0.0],
         }
-        // out-of-range inputs are clamped by `shade`, but the ramp itself
-        // must still be total.
-        let _ = land_ramp(-0.3);
-        let _ = land_ramp(1.7);
+    }
+
+    #[test]
+    fn orthographic_relief_corners_are_background() {
+        // The disc is inscribed in the square, so the four corners fall
+        // outside it and must be the background colour.
+        let img = relief_image(&island_map(), 128, 128, RenderStyle::Realistic, ortho());
+        let (w, h) = (img.width(), img.height());
+        for &(x, y) in &[(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)] {
+            assert_eq!(
+                img.get_pixel(x, y),
+                &BACKGROUND,
+                "orthographic corner ({x},{y}) is not the background colour"
+            );
+        }
+        // The disc centre must NOT be background (it's the visible globe).
+        assert_ne!(img.get_pixel(w / 2, h / 2), &BACKGROUND);
+    }
+
+    #[test]
+    fn orthographic_relief_shows_land_and_water() {
+        let img = relief_image(&island_map(), 160, 160, RenderStyle::Realistic, ortho());
+        assert!(img.pixels().any(is_blue), "orthographic relief shows no water");
+        assert!(
+            img.pixels().any(|p| !is_blue(p) && p != &BACKGROUND),
+            "orthographic relief shows no land"
+        );
+    }
+
+    #[test]
+    fn orthographic_render_is_deterministic() {
+        let map = generate(5, &CreativeSeed::default());
+        let a = relief_image(&map, 96, 96, RenderStyle::Realistic, ortho());
+        let b = relief_image(&map, 96, 96, RenderStyle::Realistic, ortho());
+        assert_eq!(a.as_raw(), b.as_raw(), "orthographic render is not deterministic");
+    }
+
+    #[test]
+    fn orthographic_and_equirectangular_differ() {
+        let map = generate(3, &CreativeSeed::default());
+        let e = relief_image(&map, 128, 128, RenderStyle::Realistic, Projection::Equirectangular);
+        let o = relief_image(&map, 128, 128, RenderStyle::Realistic, ortho());
+        assert!(
+            e.pixels().zip(o.pixels()).any(|(x, y)| x != y),
+            "the two projections produced identical images"
+        );
+    }
+
+    #[test]
+    fn orthographic_biome_corners_are_background() {
+        let img = biome_image(&island_map(), 100, 100, RenderStyle::Realistic, ortho());
+        assert_eq!(img.get_pixel(0, 0), &BACKGROUND);
+        assert_ne!(img.get_pixel(50, 50), &BACKGROUND);
+    }
+
+    #[test]
+    fn plate_image_renders_and_is_not_uniform() {
+        // Default (Tectonic) map → plate layer present → distinct plate tints.
+        let map = generate(7, &CreativeSeed::default());
+        assert!(!map.plates.is_empty(), "tectonic map must expose plates");
+        let img = plate_image(&map, 160, 160, RenderStyle::Realistic, Projection::Equirectangular);
+        assert_eq!((img.width(), img.height()), (160, 160));
+        let first = *img.get_pixel(0, 0);
+        assert!(
+            img.pixels().any(|p| *p != first),
+            "plate image rendered a single flat colour"
+        );
+    }
+
+    #[test]
+    fn plate_image_falls_back_to_biome_in_profile_mode() {
+        // Profile mode → no plates → plate_image == biome_image.
+        let cs = CreativeSeed {
+            terrain_mode: crate::TerrainMode::Profile,
+            ..CreativeSeed::default()
+        };
+        let map = generate(7, &cs);
+        assert!(map.plates.is_empty());
+        let plate = plate_image(&map, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
+        let biome = biome_image(&map, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
+        assert_eq!(plate.as_raw(), biome.as_raw(), "profile-mode plate_image must equal biome_image");
+    }
+
+    #[test]
+    fn land_and_water_colors_are_total() {
+        // exercises every `as u8` cast in the ramps for both styles.
+        for style in [RenderStyle::Realistic, RenderStyle::Atlas] {
+            for i in 0..=1000 {
+                let e = i as f32 / 1000.0;
+                let _ = land_color(e, 0.4, style);
+                let _ = water_color(e, 0.4, style);
+            }
+            // out-of-range inputs must clamp, not panic.
+            let _ = land_color(-0.5, 0.4, style);
+            let _ = land_color(1.9, 0.4, style);
+            let _ = water_color(-0.5, 0.4, style);
+        }
+    }
+
+    #[test]
+    fn downsample_averages_each_block() {
+        // a 4×4 source → 2×2; the top-left 2×2 block averages to 100.
+        let mut src = RgbImage::new(4, 4);
+        for (x, y, v) in [(0, 0, 0u8), (1, 0, 100), (0, 1, 200), (1, 1, 100)] {
+            src.put_pixel(x, y, Rgb([v, v, v]));
+        }
+        let out = downsample(&src, 2);
+        assert_eq!((out.width(), out.height()), (2, 2));
+        // (0 + 100 + 200 + 100) / 4 == 100
+        assert_eq!(out.get_pixel(0, 0), &Rgb([100, 100, 100]));
     }
 
     #[test]
     fn biome_image_has_requested_dimensions() {
-        let img = biome_image(&island_map(), 100, 80);
+        let img = biome_image(&island_map(), 100, 80, RenderStyle::Realistic, Projection::Equirectangular);
         assert_eq!(img.width(), 100);
         assert_eq!(img.height(), 80);
     }
@@ -448,7 +1094,7 @@ mod tests {
     #[test]
     fn biome_image_is_not_uniform() {
         // A real island map has ocean + several land biomes ⇒ >1 colour.
-        let img = biome_image(&island_map(), 128, 128);
+        let img = biome_image(&island_map(), 128, 128, RenderStyle::Realistic, Projection::Equirectangular);
         let first = *img.get_pixel(0, 0);
         assert!(
             img.pixels().any(|p| *p != first),
@@ -459,7 +1105,7 @@ mod tests {
     #[test]
     fn political_image_dimensions_and_not_uniform() {
         let map = generate(3, &CreativeSeed::default());
-        let img = political_image(&map, 200, 150);
+        let img = political_image(&map, 200, 150, RenderStyle::Realistic, Projection::Equirectangular);
         assert_eq!(img.width(), 200);
         assert_eq!(img.height(), 150);
         // ocean + ≥1 state tint + route/settlement marks ⇒ >1 colour.
@@ -479,8 +1125,43 @@ mod tests {
             svg.trim_end().ends_with("</svg>"),
             "SVG must end with </svg>"
         );
-        assert!(svg.contains("<rect"), "SVG must contain land-cell rects");
+        assert!(svg.contains("<rect"), "SVG must contain the background rect");
         assert!(svg.contains("<polyline"), "SVG must contain route polylines");
         assert!(svg.contains("<circle"), "SVG must contain settlement circles");
+    }
+
+    #[test]
+    fn named_map_svg_has_text_labels() {
+        let mut map = generate(3, &CreativeSeed::default());
+        // a freshly generated map is unnamed → no <text> labels.
+        assert!(
+            !political_svg(&map, 256).contains("<text"),
+            "an unnamed map must emit no labels"
+        );
+        // name a settlement, a state, and a mountain range — each distinct
+        // label code path must render.
+        map.settlements[0].name = "Testburg".to_string();
+        map.states[0].name = "Testrealm".to_string();
+        if let Some(mr) = map.mountain_ranges.first_mut() {
+            mr.name = "Testpeaks".to_string();
+        }
+        let svg = political_svg(&map, 256);
+        assert!(svg.contains("<text"), "a named map must emit <text> labels");
+        assert!(svg.contains("Testburg"), "the settlement label must be in the SVG");
+        assert!(svg.contains("Testrealm"), "the state label must be in the SVG");
+        if !map.mountain_ranges.is_empty() {
+            assert!(svg.contains("Testpeaks"), "the range label must be in the SVG");
+        }
+    }
+
+    #[test]
+    fn xml_escape_neutralizes_metacharacters() {
+        let escaped = xml_escape("A & B <tag> \"q\" it's");
+        assert!(!escaped.contains('<') && !escaped.contains('>'));
+        assert!(!escaped.contains('\''), "a raw apostrophe must be escaped");
+        assert!(escaped.contains("&amp;"));
+        assert!(escaped.contains("&lt;"));
+        assert!(escaped.contains("&quot;"));
+        assert!(escaped.contains("&apos;"));
     }
 }

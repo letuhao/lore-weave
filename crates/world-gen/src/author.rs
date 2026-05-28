@@ -17,28 +17,38 @@ meanings: world_scale = overall map size; world_archetype = genre; \
 coastline_profile = landmass shape (Island/Peninsula/Coastal/Inland/Archipelago); \
 hemisphere_orientation = which way the continent faces the poles; climate_bias = \
 a climate zone to skew toward, or null for none; settlement_density = how dense \
-settlements are; culture_count = number of distinct cultures (1-16). \
+settlements are; culture_count = number of distinct cultures (1-16); \
+prevailing_wind = the compass direction the wind blows from, driving rain-shadow \
+deserts on the lee side of mountains; \
+erosion = how hard water carves the terrain (None/Light/Moderate/Heavy) — \
+heavier erosion means deeper valleys, broader river networks, softer mountains; \
+terrain_mode = Tectonic (a multi-continent plate-tectonic planet — the default \
+and best for a whole world) or Profile (a single landmass shaped by \
+coastline_profile — for a region/zone); plate_count = number of tectonic plates \
+when Tectonic (3-24, ~8 for an Earth-like world); continental_fraction = share \
+of plates that are land when Tectonic (0.1-0.9, ~0.4 for an ocean-rich world). \
 Choose values that fit the brief. Output only the JSON object.";
 
 /// The JSON Schema constraining the LLM output to the `CreativeSeed` shape.
 ///
 /// MAINTENANCE: the `enum` value lists below are hand-mirrored from the Rust
 /// enums — keep them in sync with `WorldScale`, `WorldArchetype` (minus
-/// `Custom`), `CoastlineProfile`, `HemisphereOrientation`, `SettlementDensity`,
-/// and `ClimateZone`. The `schema_enums_match_rust_enums` test catches a
-/// stale or bogus entry.
+/// `Custom`), `CoastlineProfile`, `HemisphereOrientation`, `PrevailingWind`,
+/// `ErosionStrength`, `SettlementDensity`, and `ClimateZone`. The
+/// `schema_enums_match_rust_enums` test catches a stale or bogus entry.
 pub fn creative_seed_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
         "required": [
             "world_scale", "world_archetype", "coastline_profile",
-            "hemisphere_orientation", "climate_bias", "settlement_density",
-            "culture_count"
+            "hemisphere_orientation", "prevailing_wind", "erosion",
+            "climate_bias", "settlement_density", "culture_count"
         ],
         "properties": {
             "world_scale": { "enum": [
-                "Pocket", "Region", "Continent", "SuperContinent", "Megaplanet"
+                "Pocket", "Region", "Continent", "SuperContinent", "Megaplanet",
+                "Gigaplanet"
             ] },
             "world_archetype": { "enum": [
                 "Wuxia", "HighFantasy", "LowFantasy", "Cyberpunk", "SteamPunk",
@@ -51,12 +61,22 @@ pub fn creative_seed_schema() -> Value {
             "hemisphere_orientation": { "enum": [
                 "Northern", "Southern", "Equatorial"
             ] },
+            "prevailing_wind": { "enum": [
+                "North", "NorthEast", "East", "SouthEast",
+                "South", "SouthWest", "West", "NorthWest"
+            ] },
+            "erosion": { "enum": ["None", "Light", "Moderate", "Heavy"] },
             "climate_bias": { "enum": [
                 "Polar", "Boreal", "Temperate", "Mediterranean", "Subtropical",
                 "Tropical", "Arid", "Highland", null
             ] },
             "settlement_density": { "enum": ["Sparse", "Medium", "Dense"] },
-            "culture_count": { "type": "integer", "minimum": 1, "maximum": 16 }
+            "culture_count": { "type": "integer", "minimum": 1, "maximum": 16 },
+            // Phase 2 — optional (serde defaults: Tectonic / 8 / 0.4), so a
+            // pre-Phase-2 brief still validates. Not in `required`.
+            "terrain_mode": { "enum": ["Tectonic", "Profile"] },
+            "plate_count": { "type": "integer", "minimum": 3, "maximum": 24 },
+            "continental_fraction": { "type": "number", "minimum": 0.1, "maximum": 0.9 }
         }
     })
 }
@@ -68,6 +88,10 @@ pub fn parse_creative_seed(content: &str) -> Result<CreativeSeed, String> {
     let mut cs: CreativeSeed = serde_json::from_str(content.trim())
         .map_err(|e| format!("CreativeSeed JSON parse failed: {e}"))?;
     cs.culture_count = cs.culture_count.clamp(1, 16);
+    // Phase 2 — clamp the tectonic knobs to their valid bands (the generator
+    // also clamps at use; this keeps the stored CreativeSeed sane).
+    cs.plate_count = cs.plate_count.clamp(3, 24);
+    cs.continental_fraction = cs.continental_fraction.clamp(0.1, 0.9);
     Ok(cs)
 }
 
@@ -96,24 +120,46 @@ pub fn request_creative_seed(
     llm_url: &str,
     model: &str,
 ) -> Result<CreativeSeed, String> {
+    let content = llm_json_request(
+        llm_url,
+        model,
+        SYSTEM_PROMPT,
+        brief,
+        creative_seed_schema(),
+        "creative_seed",
+    )?;
+    parse_creative_seed(&content)
+}
+
+/// Shared LLM call — POST a json-schema-constrained chat completion to an
+/// OpenAI-compatible endpoint and return the message `content` string. Used by
+/// [`request_creative_seed`] and `crate::naming`. Every failure path returns a
+/// descriptive `Err` — no panic; an explicit timeout stops a stalled endpoint
+/// from hanging the CLI forever.
+pub(crate) fn llm_json_request(
+    llm_url: &str,
+    model: &str,
+    system_prompt: &str,
+    user_prompt: &str,
+    schema: Value,
+    schema_name: &str,
+) -> Result<String, String> {
     let body = json!({
         "model": model,
         "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
-            { "role": "user", "content": brief }
+            { "role": "system", "content": system_prompt },
+            { "role": "user", "content": user_prompt }
         ],
         "response_format": {
             "type": "json_schema",
             "json_schema": {
-                "name": "creative_seed",
+                "name": schema_name,
                 "strict": true,
-                "schema": creative_seed_schema()
+                "schema": schema
             }
         }
     });
     let url = format!("{}/chat/completions", llm_url.trim_end_matches('/'));
-    // An explicit timeout — without one a stalled endpoint hangs the CLI
-    // forever; a timeout instead surfaces as a descriptive `send()` error.
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
@@ -131,8 +177,7 @@ pub fn request_creative_seed(
         let snippet: String = text.chars().take(200).collect();
         return Err(format!("LLM HTTP {status}: {snippet}"));
     }
-    let content = extract_message_content(&text)?;
-    parse_creative_seed(&content)
+    extract_message_content(&text)
 }
 
 #[cfg(test)]
@@ -140,7 +185,8 @@ mod tests {
     use super::*;
     use crate::climate::ClimateZone;
     use crate::creative_seed::{
-        CoastlineProfile, HemisphereOrientation, SettlementDensity, WorldArchetype, WorldScale,
+        CoastlineProfile, ErosionStrength, HemisphereOrientation, PrevailingWind, SettlementDensity,
+        WorldArchetype, WorldScale,
     };
 
     const VALID: &str = r#"{
@@ -148,6 +194,7 @@ mod tests {
         "world_archetype": "Wuxia",
         "coastline_profile": "Coastal",
         "hemisphere_orientation": "Northern",
+        "prevailing_wind": "East",
         "climate_bias": "Arid",
         "settlement_density": "Medium",
         "culture_count": 6
@@ -160,6 +207,7 @@ mod tests {
         assert_eq!(cs.world_archetype, WorldArchetype::Wuxia);
         assert_eq!(cs.coastline_profile, CoastlineProfile::Coastal);
         assert_eq!(cs.hemisphere_orientation, HemisphereOrientation::Northern);
+        assert_eq!(cs.prevailing_wind, PrevailingWind::East);
         assert_eq!(cs.climate_bias, Some(ClimateZone::Arid));
         assert_eq!(cs.settlement_density, SettlementDensity::Medium);
         assert_eq!(cs.culture_count, 6);
@@ -252,6 +300,12 @@ mod tests {
         parses("hemisphere_orientation", &|s| {
             serde_json::from_value::<HemisphereOrientation>(json!(s)).is_ok()
         });
+        parses("prevailing_wind", &|s| {
+            serde_json::from_value::<PrevailingWind>(json!(s)).is_ok()
+        });
+        parses("erosion", &|s| {
+            serde_json::from_value::<ErosionStrength>(json!(s)).is_ok()
+        });
         parses("settlement_density", &|s| {
             serde_json::from_value::<SettlementDensity>(json!(s)).is_ok()
         });
@@ -270,11 +324,44 @@ mod tests {
                 .and_then(Value::as_array)
                 .map_or(0, Vec::len)
         };
-        assert_eq!(count("world_scale"), 5, "world_scale enum count");
+        assert_eq!(count("world_scale"), 6, "world_scale enum count");
         assert_eq!(count("world_archetype"), 11, "world_archetype enum count (12 - Custom)");
         assert_eq!(count("coastline_profile"), 5, "coastline_profile enum count");
         assert_eq!(count("hemisphere_orientation"), 3, "hemisphere enum count");
+        assert_eq!(count("prevailing_wind"), 8, "prevailing_wind enum count");
+        assert_eq!(count("erosion"), 4, "erosion enum count");
         assert_eq!(count("settlement_density"), 3, "settlement_density enum count");
         assert_eq!(count("climate_bias"), 9, "climate_bias enum count (8 zones + null)");
+
+        // No schema enum list may repeat a value — `parses` + `count` together
+        // would still pass a list that duplicated one variant and dropped
+        // another (review-impl finding 6).
+        let no_dups = |field: &str| {
+            let arr = schema
+                .get("properties")
+                .and_then(|p| p.get(field))
+                .and_then(|f| f.get("enum"))
+                .and_then(Value::as_array)
+                .unwrap_or_else(|| panic!("schema field {field} has no enum array"));
+            let mut seen = std::collections::HashSet::new();
+            for v in arr {
+                assert!(
+                    seen.insert(v.to_string()),
+                    "schema {field} enum repeats a value: {v}"
+                );
+            }
+        };
+        for field in [
+            "world_scale",
+            "world_archetype",
+            "coastline_profile",
+            "hemisphere_orientation",
+            "prevailing_wind",
+            "erosion",
+            "settlement_density",
+            "climate_bias",
+        ] {
+            no_dups(field);
+        }
     }
 }

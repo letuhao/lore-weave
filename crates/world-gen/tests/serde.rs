@@ -1,8 +1,8 @@
 //! Phase 4 — JSON round-trip stability + hash verification.
 
 use world_gen::{
-    BiomeKind, ClimateZone, CoastlineProfile, CreativeSeed, HemisphereOrientation,
-    SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
+    BiomeKind, ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
+    PrevailingWind, SettlementDensity, WorldArchetype, WorldMap, WorldScale, generate,
 };
 
 /// `generate → to_string_pretty → from_str` is identity, and the loaded map
@@ -57,9 +57,12 @@ fn config_loaded_creative_seed_matches_flag_built() {
         world_archetype: WorldArchetype::Wuxia,
         coastline_profile: CoastlineProfile::Island,
         hemisphere_orientation: HemisphereOrientation::Southern,
+        prevailing_wind: PrevailingWind::SouthEast,
+        erosion: ErosionStrength::Heavy,
         climate_bias: Some(ClimateZone::Highland),
         settlement_density: SettlementDensity::Sparse,
         culture_count: 7,
+        ..CreativeSeed::default()
     };
     // the `--config` load path: serialize to a JSON file's contents, reload.
     let json = serde_json::to_string_pretty(&flag_built).expect("serialize");
@@ -92,10 +95,12 @@ fn hand_edited_map_fails_hash_verification() {
     );
 }
 
-/// review-impl C3 — every `WorldMap` field must feed `compute_hash`. Tamper
-/// each field of a generated map and assert `verify_hash` then fails; this
-/// pins field-list completeness, so a future field added without extending
-/// `compute_hash` (silently weakening the determinism digest) is caught.
+/// review-impl C3 — every *deterministic* `WorldMap` field must feed
+/// `compute_hash`. Tamper each field of a generated map and assert
+/// `verify_hash` then fails; this pins field-list completeness. The `name`
+/// fields are the deliberate exception (a non-deterministic LLM authoring
+/// layer, `crate::naming`) — tampering a name must instead LEAVE `verify_hash`
+/// true.
 #[test]
 fn compute_hash_covers_every_field() {
     let base = generate(31, &CreativeSeed::default());
@@ -105,6 +110,11 @@ fn compute_hash_covers_every_field() {
     assert!(!base.provinces.is_empty() && !base.states.is_empty());
     assert!(!base.settlements.is_empty() && !base.routes.is_empty());
     assert!(!base.culture_regions.is_empty());
+    assert!(!base.water_bodies.is_empty(), "ocean ⇒ ≥1 water body");
+    assert!(
+        !base.mountain_ranges.is_empty() && !base.rivers.is_empty(),
+        "the default Continent has mountains and rivers"
+    );
 
     let tamper = |label: &str, mutate: &dyn Fn(&mut WorldMap)| {
         let mut m = base.clone();
@@ -123,10 +133,10 @@ fn compute_hash_covers_every_field() {
             WorldScale::Continent
         };
     });
-    tamper("cells.center", &|m| m.cells[0].center.0 += 1.0);
+    tamper("cells.center", &|m| m.cells[0].center[0] += 1.0);
     tamper("cells.elevation", &|m| m.cells[0].elevation ^= 1);
     tamper("cells.vertex_polygon", &|m| {
-        m.cells[0].vertex_polygon.push((0.5, 0.5));
+        m.cells[0].vertex_polygon.push([0.5, 0.5, 0.5]);
     });
     tamper("neighbors", &|m| m.neighbors[0].push(0));
     tamper("sea_level", &|m| m.sea_level ^= 1);
@@ -154,4 +164,39 @@ fn compute_hash_covers_every_field() {
     tamper("routes.path", &|m| m.routes[0].path.push(0));
     tamper("culture_of", &|m| m.culture_of[0] ^= 1);
     tamper("culture_regions", &|m| m.culture_regions[0].id ^= 1);
+    // Tamper `cells` — the geometry-bearing field — not just `id`: a
+    // regression dropping `cells` from `compute_hash` must be caught.
+    tamper("mountain_ranges.cells", &|m| m.mountain_ranges[0].cells.push(0));
+    tamper("rivers.cells", &|m| m.rivers[0].cells.push(0));
+    tamper("water_bodies.cells", &|m| m.water_bodies[0].cells.push(0));
+    // Phase 2 plate layer — the default (Tectonic) map populates all three.
+    assert!(
+        !base.plates.is_empty() && !base.plate_boundaries.is_empty(),
+        "the default Tectonic map has plates + boundaries"
+    );
+    tamper("plate_of", &|m| m.plate_of[0] ^= 1);
+    tamper("plates", &|m| m.plates[0].id ^= 1);
+    tamper("plates.motion", &|m| m.plates[0].motion[0] += 1.0);
+    tamper("plate_boundaries", &|m| {
+        m.plate_boundaries[0].plate_a ^= 1;
+    });
+
+    // Names are the deliberate carve-out: `compute_hash` excludes them, so a
+    // name tamper must LEAVE `verify_hash` true — proof that the naming step
+    // (`crate::naming`) can never break a map's determinism digest.
+    let name_tamper = |label: &str, mutate: &dyn Fn(&mut WorldMap)| {
+        let mut m = base.clone();
+        mutate(&mut m);
+        assert!(
+            m.verify_hash(),
+            "tampering `{label}` broke verify_hash — names must be excluded from compute_hash"
+        );
+    };
+    name_tamper("settlements.name", &|m| m.settlements[0].name.push('x'));
+    name_tamper("states.name", &|m| m.states[0].name.push('x'));
+    name_tamper("provinces.name", &|m| m.provinces[0].name.push('x'));
+    name_tamper("culture_regions.name", &|m| m.culture_regions[0].name.push('x'));
+    name_tamper("mountain_ranges.name", &|m| m.mountain_ranges[0].name.push('x'));
+    name_tamper("rivers.name", &|m| m.rivers[0].name.push('x'));
+    name_tamper("water_bodies.name", &|m| m.water_bodies[0].name.push('x'));
 }

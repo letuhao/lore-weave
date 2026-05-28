@@ -13,9 +13,13 @@ pub struct Culture {
 }
 
 /// Build the culture layer. `culture_count` is clamped to `1..=16`.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
+/// hearth spacing uses great-circle angle in radians. The flood-fill stays
+/// graph-based.
 pub fn build(
     seed: u64,
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
     biomes: &[BiomeKind],
     culture_count: u8,
@@ -48,10 +52,8 @@ pub fn build(
         q
     };
 
-    let min_sep2 = {
-        let s = 0.85 / (k as f32).sqrt();
-        s * s
-    };
+    // Hearth spacing — radians of great-circle angle (sphere migration).
+    let min_sep = 0.85_f32 / (k as f32).sqrt() * std::f32::consts::PI;
     let mut rng = Rng::for_stage(seed, b"culture");
     let mut hearths: Vec<u32> = Vec::with_capacity(k);
     for (ci, comp) in comps.iter().enumerate() {
@@ -66,7 +68,7 @@ pub fn build(
             if hearths.len() - start >= quota {
                 break;
             }
-            if pathfind::spaced_ok(cell, &hearths, centers, min_sep2) {
+            if pathfind::spaced_ok(cell, &hearths, centers, min_sep) {
                 hearths.push(cell);
             }
         }
@@ -97,6 +99,7 @@ pub fn build(
         .map(|(i, &cell)| CultureRegion {
             id: i as u32,
             hearth_cell: cell,
+            name: String::new(),
         })
         .collect();
 

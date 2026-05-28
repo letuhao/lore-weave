@@ -22,17 +22,23 @@ pub struct Hydrology {
 }
 
 /// Run the hydrology stage.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points.
+/// The `is_border` check is gone (a sphere has no edge); a water component is
+/// ocean iff `len() > lake_max` — i.e. it's significantly large. The previous
+/// "touches the [0,1]² perimeter" path is no longer applicable.
 pub fn build(
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
     elevation: &[u16],
     sea_level: u16,
     neighbors: &[Vec<u32>],
     climate: &[ClimateZone],
 ) -> Hydrology {
+    let _ = centers; // kept in signature for downstream forward-compat.
     let (receiver, pop_order) = priority_flood(elevation, sea_level, neighbors);
     let river_flux = flow_accumulation(elevation, sea_level, climate, &receiver, &pop_order);
     let river_threshold = percentile_threshold(&river_flux, elevation, sea_level);
-    let is_in_ocean = water_network(centers, elevation, sea_level, neighbors);
+    let is_in_ocean = water_network(elevation, sea_level, neighbors);
     let is_coast = coast_cells(elevation, sea_level, neighbors, &is_in_ocean);
     Hydrology {
         river_flux,
@@ -121,11 +127,16 @@ fn percentile_threshold(flux: &[f32], elevation: &[u16], sea_level: u16) -> f32 
     land[idx]
 }
 
-/// Connected components of water cells; a component is ocean if it touches
-/// the map border or exceeds `LAKE_MAX`, else a lake. Ascending start-cell
-/// sweep + DFS over sorted neighbours (same order as `terrain::land_components`).
+/// Connected components of water cells; a component is ocean if it exceeds
+/// `LAKE_MAX`, else a lake. Ascending start-cell sweep + DFS over sorted
+/// neighbours (same order as `terrain::land_components`).
+///
+/// **Sphere migration (Stage B):** the previous "touches the [0,1]² border"
+/// criterion is dropped — a sphere has no border. The size criterion alone
+/// distinguishes ocean (a globe-spanning water body, > ~1% of cells) from
+/// a lake. Empirically the size threshold reliably picks the right thing
+/// for every CoastlineProfile.
 fn water_network(
-    centers: &[(f32, f32)],
     elevation: &[u16],
     sea_level: u16,
     neighbors: &[Vec<u32>],
@@ -141,14 +152,10 @@ fn water_network(
             continue;
         }
         let mut component = Vec::new();
-        let mut touches_border = false;
         let mut stack = vec![start];
         seen[start] = true;
         while let Some(c) = stack.pop() {
             component.push(c);
-            if is_border(centers[c]) {
-                touches_border = true;
-            }
             for &nb in &neighbors[c] {
                 let nb = nb as usize;
                 if !seen[nb] && is_water(nb) {
@@ -157,18 +164,13 @@ fn water_network(
                 }
             }
         }
-        if touches_border || component.len() > lake_max {
+        if component.len() > lake_max {
             for c in component {
                 is_in_ocean[c] = true;
             }
         }
     }
     is_in_ocean
-}
-
-/// A border cell sits exactly on the `[0,1]²` perimeter (the mesh ring).
-fn is_border((x, y): (f32, f32)) -> bool {
-    x <= 0.0 || x >= 1.0 || y <= 0.0 || y >= 1.0
 }
 
 /// Land cells with ≥1 ocean-water neighbour.
@@ -193,11 +195,12 @@ fn coast_cells(
 mod tests {
     use super::*;
 
-    /// A linear chain of `n` cells: cell `i` at `x = i/(n-1)`, `y = 0.5`,
-    /// linked to `i-1` and `i+1`. Cells `0` and `n-1` sit on the border.
-    fn chain(n: usize) -> (Vec<(f32, f32)>, Vec<Vec<u32>>) {
-        let centers = (0..n).map(|i| (i as f32 / (n - 1) as f32, 0.5)).collect();
-        let neighbors = (0..n)
+    /// A linear chain of `n` cells linked to neighbours `i-1` and `i+1`.
+    /// **Sphere migration (Stage B):** the previous `(centers, neighbors)`
+    /// shape was halved — `water_network` no longer reads centres
+    /// (there's no map border on a globe).
+    fn chain(n: usize) -> Vec<Vec<u32>> {
+        (0..n)
             .map(|i| {
                 let mut nb = Vec::new();
                 if i > 0 {
@@ -208,40 +211,30 @@ mod tests {
                 }
                 nb
             })
-            .collect();
-        (centers, neighbors)
-    }
-
-    #[test]
-    fn border_water_is_ocean() {
-        let (centers, neighbors) = chain(5);
-        // cells 0,1 water; cell 0 is on the border (x = 0).
-        let elevation = [0u16, 0, 100, 100, 100];
-        let ocean = water_network(&centers, &elevation, 50, &neighbors);
-        assert!(ocean[0] && ocean[1], "border-touching water must be ocean");
+            .collect()
     }
 
     #[test]
     fn small_interior_basin_is_lake() {
-        let (centers, neighbors) = chain(40);
-        // cells 18..22 water (4 cells, all interior); endpoints stay land.
+        let neighbors = chain(40);
+        // cells 18..22 water (4 cells); endpoints stay land.
         let mut elevation = [100u16; 40];
         for e in &mut elevation[18..22] {
             *e = 0;
         }
-        let ocean = water_network(&centers, &elevation, 50, &neighbors);
+        let ocean = water_network(&elevation, 50, &neighbors);
         assert!(!ocean[18], "small interior basin must be a lake");
     }
 
     #[test]
     fn large_interior_basin_is_ocean() {
-        let (centers, neighbors) = chain(80);
-        // cells 20..60 water (40 cells > LAKE_MAX = 24), all interior.
+        let neighbors = chain(80);
+        // cells 20..60 water (40 cells > LAKE_MAX = 24).
         let mut elevation = [100u16; 80];
         for e in &mut elevation[20..60] {
             *e = 0;
         }
-        let ocean = water_network(&centers, &elevation, 50, &neighbors);
+        let ocean = water_network(&elevation, 50, &neighbors);
         assert!(
             ocean[20],
             "large interior basin must be ocean (inland sea)"

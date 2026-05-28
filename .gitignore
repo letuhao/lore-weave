@@ -254,6 +254,9 @@ chat-history/
 .claude/scheduled_tasks.lock
 
 chat.txt
+
+geo-review-2026-05-21/
+
 frontend-game/test-results/
 
 # Local extraction-quality eval run artifacts (dumps, judge verdicts, logs)

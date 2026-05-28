@@ -45,14 +45,18 @@ fn distinct_seeds_distinct_hashes() {
     );
 }
 
-/// The content hash depends on creative direction too.
+/// The content hash depends on creative direction too. `coastline_profile`
+/// only drives terrain in `Profile` mode (the `Tectonic` default ignores it),
+/// so this test pins both to `Profile`.
 #[test]
 fn distinct_profiles_distinct_hashes() {
     let island = CreativeSeed {
+        terrain_mode: world_gen::TerrainMode::Profile,
         coastline_profile: CoastlineProfile::Island,
         ..CreativeSeed::default()
     };
     let inland = CreativeSeed {
+        terrain_mode: world_gen::TerrainMode::Profile,
         coastline_profile: CoastlineProfile::Inland,
         ..CreativeSeed::default()
     };
@@ -60,6 +64,21 @@ fn distinct_profiles_distinct_hashes() {
         generate(5, &island).content_hash,
         generate(5, &inland).content_hash,
         "distinct coastline profiles produced an identical content_hash"
+    );
+}
+
+/// `terrain_mode` itself changes the map — Tectonic vs Profile differ.
+#[test]
+fn terrain_mode_changes_the_hash() {
+    let tectonic = CreativeSeed::default();
+    let profile = CreativeSeed {
+        terrain_mode: world_gen::TerrainMode::Profile,
+        ..CreativeSeed::default()
+    };
+    assert_ne!(
+        generate(13, &tectonic).content_hash,
+        generate(13, &profile).content_hash,
+        "Tectonic and Profile terrain modes produced an identical map"
     );
 }
 

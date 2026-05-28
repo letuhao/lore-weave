@@ -14,9 +14,13 @@ pub struct Political {
 }
 
 /// Build the political layer.
+///
+/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
+/// spacing tests use great-circle angle (radians). The flood-fill is
+/// graph-based and unchanged.
 pub fn build(
     seed: u64,
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
     biomes: &[BiomeKind],
 ) -> Political {
@@ -39,10 +43,11 @@ pub fn build(
     let quotas = pathfind::apportion(n_prov, &comp_sizes);
 
     // --- place exactly n_prov province seeds, `quota` per component ---
-    let min_sep2 = {
-        let s = 0.85 / (n_prov as f32).sqrt();
-        s * s
-    };
+    // Min-separation in **radians** of great-circle angle on the sphere.
+    // The original `0.85 / sqrt(n_prov)` was in `[0,1]²` units; multiplied
+    // by ~π (the sphere's radius scale in great-circle terms) brings the
+    // visual seed density close to the prior look. Empirical retune.
+    let min_sep = 0.85_f32 / (n_prov as f32).sqrt() * std::f32::consts::PI;
     let mut rng = Rng::for_stage(seed, b"political");
     let mut seeds: Vec<u32> = Vec::with_capacity(n_prov);
     for (ci, comp) in comps.iter().enumerate() {
@@ -55,7 +60,7 @@ pub fn build(
             if seeds.len() - start >= quota {
                 break;
             }
-            if pathfind::spaced_ok(cell, &seeds, centers, min_sep2) {
+            if pathfind::spaced_ok(cell, &seeds, centers, min_sep) {
                 seeds.push(cell);
             }
         }
@@ -129,6 +134,7 @@ pub fn build(
         .map(|(sid, &sp)| State {
             id: sid as u32,
             capital_province: sp as u32,
+            name: String::new(),
         })
         .collect();
     let provinces: Vec<Province> = (0..np)
@@ -136,6 +142,7 @@ pub fn build(
             id: p as u32,
             capital_cell: seeds[p],
             state: state_of_prov[p],
+            name: String::new(),
         })
         .collect();
 
@@ -153,7 +160,7 @@ fn farthest_point(
     provs: &[usize],
     quota: usize,
     seeds: &[u32],
-    centers: &[(f32, f32)],
+    centers: &[[f32; 3]],
 ) -> Vec<usize> {
     if provs.is_empty() {
         return Vec::new();
@@ -166,11 +173,17 @@ fn farthest_point(
             if chosen.contains(&q) {
                 continue;
             }
-            let (qx, qy) = centers[seeds[q] as usize];
+            // Sphere distance² (in radians²) — `acos` is monotone in dot,
+            // so we can stay in cosine space for monotone comparisons.
+            // We use **(1 − dot)** as a monotonically-equivalent distance²
+            // surrogate to keep the f32 ordering identical to the old
+            // Euclidean distance² flow without branching into acos.
+            let q3 = centers[seeds[q] as usize];
             let mut mind2 = f32::INFINITY;
             for &c in &chosen {
-                let (cx, cy) = centers[seeds[c] as usize];
-                let d2 = (qx - cx) * (qx - cx) + (qy - cy) * (qy - cy);
+                let c3 = centers[seeds[c] as usize];
+                let dot = q3[0] * c3[0] + q3[1] * c3[1] + q3[2] * c3[2];
+                let d2 = 1.0 - dot;
                 mind2 = mind2.min(d2);
             }
             // `mind2` is a finite, identically-recomputed min of sums of
