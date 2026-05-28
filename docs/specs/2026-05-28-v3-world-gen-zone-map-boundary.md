@@ -1,9 +1,26 @@
 # V3 world-gen ↔ zone-map Architectural Boundary (ADR)
 
+> ## ⚠️ DRIVER MISSING — DO NOT IMPLEMENT
+>
+> This ADR is **forward-looking design** with **no concrete user flow** currently requiring it. PO flagged 2026-05-28 (same session it was drafted): there is no book or gameplay flow today that drills from continental view → zone view. Both `crates/world-gen` (Rust library, ~1 week old on main, still in active development) and `services/tilemap-service` (V2 just merged) are still evolving — pinning a contract between them now is premature and locks against a moving target.
+>
+> **Hold conditions** — implement only when ALL three appear:
+> 1. A concrete user flow that requires drill-down (e.g. "click a continental cell in the UI → load the zone tilemap").
+> 2. `crates/world-gen`'s public API has stabilized (no breaking changes for 2+ weeks).
+> 3. At least one book design (default `lw` or `xianxia`) declares an actual `WorldGenBiome → TilemapBiomeId` mapping it needs.
+>
+> **Status:** PARKED 2026-05-28 — preserved as a reference design when a real driver appears.
+>
+> **Risk if implemented early:** wrong abstraction (the "1 cell = 1 zone" assumption may not hold), churn against world-gen API drift, sunk `crates/loreweave_world` infra that doesn't fit when real user flows arrive.
+>
+> See `feedback_validate_adr_driver_before_drafting` in memory for the lesson behind this banner.
+
+---
+
 > **Branch:** `mmo-rpg/zone-map-v3-spec` (CLARIFY/DESIGN only — no code yet; second V3 ADR)
 > **Builds on:** V2 data model [`2026-05-26-data-model-v2-registry-footprint.md`](2026-05-26-data-model-v2-registry-footprint.md) (primitive + registry + footprint), V3 placement engine [`2026-05-28-v3-registry-driven-placement.md`](2026-05-28-v3-registry-driven-placement.md) (primitive-based dispatch).
-> **Status:** PROPOSED 2026-05-28 — pending PO scope approval (4 open decisions)
-> **Sizing estimate:** L implementation across 1 new shared crate + adapter modules in both services + integration tests
+> **Status:** PARKED 2026-05-28 — see banner above.
+> **Sizing estimate:** L implementation across 1 new shared crate + adapter modules in both services + integration tests (if/when a driver justifies it)
 
 ## 1. Why this ADR exists
 
@@ -447,9 +464,12 @@ Validates the entire contract end-to-end before scaling to other sub-ADRs.
 - Footprint-honoring frontend rendering (separate sibling V3 ADR; frontend-only).
 - Asset pipeline thaw (DEFERRED #037; separate sibling V3 ADR).
 
-## 11. Next steps after PO lock
+## 11. Next steps — none scheduled (PARKED status)
 
-1. PO approves B1–B4 (or counter-proposes).
-2. Write `docs/plans/2026-05-28-v3-world-gen-boundary-build.md` chunking the 4-phase migration.
-3. Start Phase 0 (shared crate scaffold) on a fresh implementation branch `mmo-rpg/zone-map-v3-world-boundary` off main.
-4. /amaw recommended for Phase 1 (vocabulary migration — touches world-gen's hash-stable enums) and Phase 3 (tilemap-service seed composition — touches the V2/V3 determinism golden).
+Per the banner at the top of this ADR, no implementation work is queued. The ADR remains in the spec folder as a forward-looking reference. When a real driver appears (see banner Hold conditions 1–3), re-validate:
+
+1. **Re-read this entire ADR critically.** Check: do the §3.2 `DrilldownInput` fields match what the driver actually needs? Is the "1 cell = 1 zone" assumption still right? Has world-gen's API moved since 2026-05-28?
+2. If yes to all: PO locks B1–B4 (or counter-proposes), then write `docs/plans/2026-05-28-v3-world-gen-boundary-build.md` chunking the 4-phase migration.
+3. If no to any: rewrite the ADR — do not back-fit the design to a different driver. The original "park" decision exists because design-without-driver leads exactly to that kind of back-fit.
+
+Until then: `crates/world-gen` and `services/tilemap-service` continue evolving independently. Their APIs are not boundary-stable yet — that's fine, because no consumer crosses the boundary.
