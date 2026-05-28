@@ -6,6 +6,13 @@
 >
 > **Created:** 2026-05-29 (v1.2 amendment to foundation CLARIFY)
 > **Sign-off required:** YES (user must check each item before C0)
+>
+> ---
+> **STATUS: ✅ SIGNED OFF — 2026-05-29 via interactive walkthrough in fresh pre-C0 session.**
+> All §2-§9 items verified with user letuhao1994@gmail.com. 4 deviations captured in
+> §10 NOTES (D1: AWS staging defer · D2: no rebase · D3: push-per-cycle + CI disable
+> on foundation branch · D4: Actor/V1+30d defer indefinitely). Ready for `/amaw` + C0
+> invocation per §11.
 
 ---
 
@@ -236,20 +243,50 @@ The following sub-programs are NOT foundation; coordinate scheduling:
 
 ## §10. Sign-off
 
-- [ ] All items above checked OR deviations explicitly documented in a NOTES section
-  below
+- [x] All items above verified via interactive PRE_FLIGHT walkthrough dialogue
+  (2026-05-29 fresh Claude Code session pre-C0). Deviations documented below.
 
 ```
 NOTES (deviations from defaults):
-(if any — paste here)
+
+D1 — §2.3 AWS staging account:
+  STATUS: Deferred to V1+30d.
+  IMPACT: C38 IaC apply will not run end-to-end at acceptance. Foundation cycles 1-37
+  still ship to local foundation-dev only. AWS provisioning becomes a separate
+  sub-program after C38 main goals are met.
+
+D2 — §5.2 Main branch rebase strategy:
+  STATUS: No rebase during foundation execution; team self-freezes main.
+  IMPACT: Orchestrator skip rebase logic at C18/C28/C38. If main moves anyway,
+  conflict resolution becomes a manual post-C38 task. User commits to coordinating
+  with team to freeze main commits for ~2-3 weeks.
+
+D3 — §5.3 Push policy + CI disable:
+  STATUS: Push to origin after every cycle commit; CI disabled for
+  mmo-rpg/foundation-mega-task branch to avoid 10-15 min CI runtime on each push.
+  ACTION: .github/workflows/game-subtree-ci.yml push trigger amended with
+  `!mmo-rpg/foundation-mega-task` exclusion in this same commit. Re-enable at C38
+  merge prep.
+  IMPACT: Foundation work has no CI safety net during execution; relies on per-cycle
+  RAID verify scripts + smoke test. Acceptable given foundation cycles do not touch
+  frontend-game / game-server / tilemap-service packages.
+
+D4 — §8.1 Actor substrate + V1+30d (GEO/ROUTE/TVL) scheduling:
+  STATUS: Deferred indefinitely. Decision deferred to post-C38.
+  IMPACT: No commitment on Actor substrate or V1+30d start date. User will assess
+  bandwidth + foundation outcomes at C38 acceptance and re-plan.
+
+D5 — §6.1 Existing prod safety (clarification, not deviation):
+  Existing LoreWeave novel-platform 12 services remain running during foundation
+  execution. B5 prod-isolation-lint enforcement blocks any accidental touch.
 ```
 
-- [ ] **User signature:** ______________  **Date:** ______________
-- [ ] **Confirmation:** I am ready to invoke Cycle 0 with the understanding that RAID
-  v1.3 (with §12 context + §13 production-readiness + §14 quota-aware protections)
-  will autonomously execute cycles 1-37 after C0 smoke green, pausing gracefully on
-  Anthropic quota blocks for me to manually resume after reset windows. Escalations
-  (real errors, not quota blocks) will halt execution and notify me.
+- [x] **User signature:** letuhao1994@gmail.com  **Date:** 2026-05-29
+- [x] **Confirmation:** User is ready to invoke Cycle 0 with the understanding that
+  RAID v1.3 (with §12 context + §13 production-readiness + §14 quota-aware
+  protections) will autonomously execute cycles 1-37 after C0 smoke green, pausing
+  gracefully on Anthropic quota blocks for manual resume after reset windows.
+  Escalations (real errors, not quota blocks) will halt execution and notify the user.
 
 ---
 

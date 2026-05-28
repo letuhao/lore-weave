@@ -19,7 +19,10 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/game-subtree-ci.yml'
   push:
-    branches: [main, 'mmo-rpg/**']
+    branches:
+      - main
+      - 'mmo-rpg/**'
+      - '!mmo-rpg/foundation-mega-task'  # CI disabled during foundation execution (PRE_FLIGHT §5.3); re-enable at C38 merge
 
 concurrency:
   group: game-subtree-ci-${{ github.ref }}
