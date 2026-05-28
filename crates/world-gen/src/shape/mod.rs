@@ -19,6 +19,7 @@
 //! See [`dispatch`] for [`ShapeRegistry`] and [`DispatchMode`] (the wire-up).
 //! See [`ellipse`] for the v3.0 algorithm extracted as [`ellipse::EllipseGenerator`].
 
+pub mod anthropic;
 pub mod coastline;
 pub mod csg;
 pub mod dispatch;
@@ -38,6 +39,7 @@ pub use dispatch::{
     engine_v3_4_weights, engine_v3_6_weights,
 };
 pub use ellipse::EllipseGenerator;
+pub use anthropic::AnthropicProvider;
 pub use llm::{
     DispatchCache, InMemoryDispatchCache, LlmDecision, LlmError, LlmProvider, LlmPrompt,
     MockLlmProvider,
