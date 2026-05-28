@@ -1269,3 +1269,36 @@ All 3 R3 design WARNs + 1 code-R1 WARN addressed in BUILD per CYCLE_0_PLAN.md §
 
 ---
 
+
+---
+
+## Session 69 amendment — RAID v1.5 §15 Coordinator pattern shipped (2026-05-29 post-C0)
+
+**Trigger:** User raised valid criticism after C0 v1.4 ship — "RAID v1.4 with 37 manual /raid N invocations isn't different from AMAW; the autonomy promise was bent." Concurred.
+
+**v1.5 fix:** Insight missed in Adversary R1 BLOCK 3 — Claude Code CLI can't fork Claude session, BUT **Agent tool sub-agents are cold-start** (no inherited conversation), which IS the P1 fresh-session invariant's actual goal. v1.5 §15 Coordinator pattern: user invokes `/raid` ONCE; main session loops spawning each cycle as cold-start sub-agent via Agent tool.
+
+**v1.5 deliverables (4):**
+- `.claude/commands/raid.md` — slash command Coordinator prompt
+- `scripts/raid/cycle-runner-prompt.md` — cycle sub-agent prompt template
+- `scripts/raid/coordinator-helper.py` — next-pending-cycle query utility
+- `docs/plans/.../RAID_WORKFLOW.md` §15 — Coordinator spec (8 subsections incl. token budgets, escalation handling, v1.4 migration table)
+
+**v1.5 LIVE DISPATCH TEST:** spawned synthetic cycle 999 via Agent tool with cycle-runner-prompt. Sub-agent executed 5 steps (startup-verifier, in-progress init/update/archive, audit row append) + returned valid JSON. Cold-start context confirmed. Returned token usage 41,872 + 6 tool uses in 40 sec. **Mechanism works end-to-end.**
+
+**v1.5 deprecates (kept for backwards-compat):**
+- `auto-dispatcher.py` Semi-AUTO ready-signal emitter — Coordinator does not call it
+- `READY_FOR_CYCLE_<N>.signal` files — not written by Coordinator
+- 5 paired-state probes in run-smoke-test.sh — no lock state machine to probe
+- User manual `/raid <N>` per cycle — replaced by single `/raid` invocation
+
+**Migration:** C0 v1.4 commit 203ff879 artifacts remain valid (46 deliverables). v1.5 amendment is additive (4 new files + spec section). All v1.4 scripts still work as fallback per §15.4/§15.7 tables.
+
+**Estimated user time savings:** v1.4 = ~18 min total (~30s × 37 manual invocations). v1.5 = ~0 (single /raid kicks off; user only intervenes on escalations).
+
+**Updated next-session user action:**
+1. ~~Close session + open fresh session + run /raid 1~~ (v1.4 — superseded)
+2. **v1.5: Run `/raid` (no number) — Coordinator dispatches C1 → C2 → ... → C38 automatically as Agent-tool sub-agents.** Foundation execution becomes single-invocation as originally intended.
+3. Monitor `docs/raid/CYCLE_LOG.md` and `docs/raid/ESCALATIONS.md` periodically.
+4. Investigate + re-run `/raid` if escalation halts the loop.
+

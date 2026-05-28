@@ -392,6 +392,38 @@ Any `[FAIL]` → `run-smoke-test.sh` writes ESCALATIONS row with failing check n
 | 2 | BLOCK — Lock state machine self-contradictory + paired-state suppression of `/raid <N>` refusal | §3 B6 fully redesigned R3: ATOMIC `00X → READY_FOR_<N>` (no UNLOCKED window); orchestrator refusal rule with 5 cases; crash-recovery table for 8 observed states; signal file YAML schema validated; §4 P1 rewritten with 1A normal flow + 1B 5 paired-state probes + 1C atomicity check |
 | 3 | WARN — Spec/plan drift: CYCLE_DECOMPOSITION §Cycle 0 stale (Size M, ~25 items); RAID_WORKFLOW §13.9 references renamed COST_LOG.jsonl | CYCLE_DECOMPOSITION §Cycle 0 fully rewritten v1.4 (Size XL, 45 items, all v1.0+v1.1+v1.2+v1.3+R3 enumerated + added `last_synced_with_RAID_WORKFLOW_version` header); RAID_WORKFLOW §13.9 COST_LOG.jsonl marked SUPERSEDED; §5 RAID prompt template clarified per-cycle Phase 9 vs C0→C1 boundary distinction |
 
+### Code R2 — POST-COMMIT user feedback: v1.5 redesign (2026-05-29)
+
+**Status:** SHIPPED post-commit per user feedback after v1.4 commit `203ff879`.
+**Trigger:** User noted that v1.4 Semi-AUTO requires 37 manual `/raid <N>` invocations,
+which "isn't really different from AMAW" — the autonomy promise was structurally bent
+by the Adversary R1 BLOCK 3 fix (Claude can't fork Claude session).
+
+**Insight missed in R3:** Adversary R1 BLOCK 3 was half-right. Claude Code CLI can't be
+invoked from Bash subprocess respecting P1, BUT **Agent tool sub-agents** are cold-start
+(no inherited conversation), which IS what P1 actually protects (Raid Leader main-session
+bloat). v1.5 §15 Coordinator pattern uses Agent tool dispatch — user invokes `/raid` ONCE,
+main session loops spawning each cycle as cold-start sub-agent.
+
+**v1.5 ADDS:**
+- RAID_WORKFLOW.md §15 (Agent-tool Coordinator dispatch spec)
+- `.claude/commands/raid.md` (slash command — paste-and-go Coordinator prompt)
+- `scripts/raid/cycle-runner-prompt.md` (cycle sub-agent prompt template)
+- `scripts/raid/coordinator-helper.py` (next-pending-cycle + done-cycle utilities)
+
+**v1.5 DEPRECATES (kept for backwards-compat fallback):**
+- `auto-dispatcher.py` Semi-AUTO ready-signal emitter
+- `READY_FOR_CYCLE_<N>.signal` files
+- 5 paired-state probes in run-smoke-test.sh
+- User manual `/raid <N>` per cycle (now `/raid` ONCE)
+
+**Live dispatch test (v1.5 mechanism verification):** spawned synthetic cycle 999 via
+Agent tool with cycle-runner-prompt; sub-agent executed 5 steps + returned valid JSON
+structured summary. Cold-start context confirmed. Mechanism works end-to-end.
+
+**v1.5 commit:** pending (see this commit). v1.4 commit `203ff879` artifacts remain
+valid per §15.7 migration table.
+
 ### Round 3 (2026-05-29) — APPROVED_WITH_WARNINGS · 0 BLOCK · 3 WARN — **PRAGMATIC STOP (AMAW XL cap)**
 
 **Findings:** `docs/audit/findings-cycle-0-foundation-bootstrap-r3.md`

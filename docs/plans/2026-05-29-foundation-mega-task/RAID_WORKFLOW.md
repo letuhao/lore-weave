@@ -1,10 +1,10 @@
 # RAID — Recursive Autonomous Implementation Drive Workflow Spec
 
-> **Version:** RAID v1.4 (amended 2026-05-29 — v1.4 §13.7 Semi-AUTO correction after Adversary R1 BLOCK 3)
-> **Prior versions:** v1.3 (§14 quota), v1.2 (§13 production-readiness), v1.1 (§12 context), v1.0
-> **Status:** SPEC — locked 2026-05-29 by foundation mega-task CLARIFY; §13.7 amended in C0 build
+> **Version:** RAID v1.5 (amended 2026-05-29 — v1.5 §15 Agent-tool Coordinator dispatch supersedes v1.4 Semi-AUTO)
+> **Prior versions:** v1.4 (§13.7 Semi-AUTO — superseded), v1.3 (§14 quota), v1.2 (§13 production-readiness), v1.1 (§12 context), v1.0
+> **Status:** SPEC — v1.5 amendment supersedes v1.4's per-cycle manual `/raid <N>` user step
 > **Parallel to:** AMAW v3.0 (Autonomous Multi-Agent Workflow) and v2.2 (human-in-loop)
-> **Replaces AMAW:** NO — RAID is a SEPARATE workflow for tasks where mostly-autonomous execution is required (one ~30s user step per cycle handoff — see §13.7 v1.4)
+> **Replaces AMAW:** NO — RAID is a SEPARATE workflow for autonomous multi-cycle execution. With v1.5 §15 Coordinator pattern, RAID's autonomy promise is restored: user invokes `/raid` ONCE; main session becomes the Coordinator and dispatches each cycle as Agent-tool sub-agent (cold-start = P1 fresh-session spirit satisfied without separate Claude Code sessions).
 >
 > **v1.1 amendment rationale:** initial v1.0 spec did not explicitly protect against
 > context-window bloat, compaction-induced state loss, or lost-in-the-middle
@@ -1645,3 +1645,150 @@ projects), session count rises faster.
 - [40% reduction via Sonnet-conductor + Haiku-researcher pattern](https://www.truefoundry.com/blog/claude-code-limits-explained)
 - [Anthropic effective harnesses (model tier guidance)](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
 - [Claude usage limits help center](https://support.claude.com/en/articles/11647753-how-do-usage-and-length-limits-work)
+
+---
+
+## §15. Agent-tool Coordinator dispatch (v1.5 ADDED 2026-05-29 — supersedes §13.7 v1.4 Semi-AUTO)
+
+> **Why this section exists:** v1.4 §13.7 amended the auto-dispatcher to a "Semi-AUTO"
+> ready-signal emitter because the Cycle 0 build assumed Claude tool harness could not
+> spawn a fresh Claude session (Adversary R1 BLOCK 3 finding). That assumption was
+> half-right: Claude Code CLI cannot be invoked from inside a Bash subprocess in a way
+> that respects P1 fresh-session, BUT the **Agent tool** spawns sub-agents with
+> cold-start context (no inherited conversation), which IS the P1 invariant's actual
+> goal — preventing main-session Raid Leader bloat over 38 cycles.
+>
+> v1.5 §15 fixes the under-design: replace Semi-AUTO + manual `/raid <N>` per cycle
+> with a Coordinator pattern that runs the entire foundation in ONE main session via
+> Agent-tool sub-agent dispatch. User invokes `/raid` ONCE.
+
+### §15.1 — Coordinator pattern
+
+When user invokes `/raid` (no cycle number), Claude main session enters Coordinator
+mode (defined by `.claude/commands/raid.md` slash command). The Coordinator:
+
+```
+LOOP:
+  1. Read docs/raid/CYCLE_LOG.md to find next PENDING cycle whose deps are all DONE
+  2. If none -> all cycles done -> exit (report success)
+  3. Read the cycle brief docs/raid/cycle_briefs/<NN>_*.md
+  4. Construct cycle-runner prompt (template at scripts/raid/cycle-runner-prompt.md)
+  5. Invoke Agent tool with:
+       subagent_type: general-purpose
+       prompt: cycle-runner-prompt + cycle-specific scope
+       model: <per §14.2 tier — usually opus-4-7 for cycle leader>
+  6. Sub-agent runs full 12-phase cycle in COLD-START context (P1 satisfied)
+  7. Sub-agent returns <=1500 token condensed summary (P4 satisfied)
+  8. Coordinator validates summary + updates CYCLE_LOG row + AUDIT_LOG
+  9. Goto LOOP
+```
+
+**Key invariants preserved from prior versions:**
+- **P1 fresh-session-per-cycle:** Agent-tool sub-agent cold-start = NEAR-ZERO context (no inherited conversation). Equivalent to a fresh Claude Code session in the only way that matters (preventing Raid Leader bloat).
+- **P4 sub-agent return budget:** Coordinator enforces <=1500 token return; rejects oversized returns.
+- **P2 startup routine:** sub-agent executes startup-verifier.sh as Step 1.
+- **P5 compaction recovery:** sub-agent runs recovery-protocol-runner.sh if IN_PROGRESS state exists.
+- **P3 IN_PROGRESS:** sub-agent writes its own IN_PROGRESS state; Coordinator can monitor.
+- All §13 B-protections (worktrees, test-infra, prod-isolation, secret-scan, briefs) execute inside sub-agent.
+- All §14 Q-protections (quota-check, model tiering, session-counter) honored by Coordinator before each dispatch.
+
+### §15.2 — Coordinator main-session token budget
+
+Per-cycle Coordinator overhead:
+- Read CYCLE_LOG row (~200 tokens)
+- Read cycle brief (~4000 tokens)
+- Construct prompt + invoke Agent (~5000 tokens prompt context — Agent call cost is in sub-agent)
+- Receive <=1500 token summary
+- Update CYCLE_LOG + AUDIT_LOG (~500 tokens)
+
+**Coordinator main-session cumulative per cycle: ~11K tokens.** Over 38 cycles: ~420K tokens.
+Well within 1M context budget. If quota window hits cap mid-foundation, Coordinator
+pauses gracefully (Anthropic 429); user waits for reset window; re-invokes `/raid`;
+Coordinator resumes from CYCLE_LOG state.
+
+### §15.3 — Sub-agent per-cycle context cost
+
+Each cycle sub-agent has its OWN fresh context window:
+- Prompt + brief + repo context: ~10-20K tokens
+- BUILD work + tool calls: ~50-200K tokens depending on cycle size
+- DPS sub-spawns if cycle requires: nested Agent calls (one level deep)
+- Return summary: <=1500 tokens to Coordinator
+
+Per §14.2 model tiering, sub-agent uses Sonnet/Haiku where appropriate. Cycle leader
+sub-agent typically Opus 4.7 (orchestration); DPS nested sub-agents Sonnet 4.6.
+
+### §15.4 — What v1.5 deprecates from v1.4
+
+| v1.4 Component | v1.5 disposition |
+|---|---|
+| `auto-dispatcher.py` (Semi-AUTO ready-signal emitter) | DEPRECATED — kept for backwards compat; v1.5 Coordinator does not call it |
+| `READY_FOR_CYCLE_<N>.signal` files | DEPRECATED — no longer written by Coordinator |
+| `.session-cycle-lock` paired states (UNLOCKED <-> 00X <-> READY_FOR_N <-> N) | SIMPLIFIED — only tracks "Coordinator session active" with cycle N (no READY_FOR_N intermediate) |
+| `orchestrator.py raid <N>` per-cycle entry point | DEPRECATED — fallback only for manual single-cycle re-run; primary flow is Coordinator |
+| 5 paired-state probes in smoke (P1-1B) | DEPRECATED — no lock state machine to probe |
+| User opens fresh Claude Code session per cycle | NOT REQUIRED — single main session for all 38 cycles |
+| User runs `/raid <N>` 37 times | NOT REQUIRED — user runs `/raid` ONCE |
+
+**v1.4 mechanism remains available as fallback** for cycles that genuinely need
+manual single-cycle invocation (e.g., debugging a specific cycle in isolation).
+
+### §15.5 — What v1.5 ADDS
+
+| New deliverable | Purpose |
+|---|---|
+| `.claude/commands/raid.md` | Slash command — paste-and-go Coordinator prompt for user invocation |
+| `scripts/raid/cycle-runner-prompt.md` | Cold-start sub-agent prompt template Coordinator interpolates per cycle |
+| `scripts/raid/coordinator-helper.py` | Small utility: Coordinator next-pending-cycle query against CYCLE_LOG.md |
+| RAID_WORKFLOW.md §15 (this section) | The spec |
+
+### §15.6 — Escalation handling in v1.5
+
+If cycle sub-agent returns escalation (e.g., 3-retry exhausted, design gap surfaced,
+secret leak detected):
+1. Sub-agent writes ESCALATIONS.md row before returning
+2. Returns summary with `result: ESCALATED, type: <error-type>`
+3. Coordinator detects ESCALATED status -> halts loop -> prints escalation summary to user
+4. Coordinator exits gracefully (no further cycles dispatched)
+5. User investigates + resolves + re-invokes `/raid` to resume
+
+Quota-block (§14.5 Q5/Q6) is NOT an escalation — Coordinator pauses gracefully on
+Anthropic 429; user re-invokes `/raid` after reset window; Coordinator resumes.
+
+### §15.7 — Migration from v1.4 (what to do with existing C0 artifacts)
+
+C0 v1.4 already shipped 46 deliverables (commit 203ff879). v1.5 does NOT require
+re-shipping those — most are still valid:
+
+**Still valid (no change):** orchestrator.py (raid command kept for fallback);
+startup-verifier.sh; recovery-protocol-runner.sh; recover-from-crash.sh; in-progress-state-writer.py;
+escalation-writer.py; compaction-detector.py; files-from-cycle.sh; sub-agent-spawn.py;
+quota-check.sh + _quota_helper.py; quota-summary.py; session-counter.py; cost-tracker.py +
+cost-summary.py; brief-generator.py; brief-structure-validator.sh; regenerate-briefs.sh;
+worktrees-{create,cleanup,check}.sh; test-infra-{up,down,template}; prod-isolation-lint.sh;
+.gitleaks.toml; secret-scan-{dps,cycle,final}.sh; health-dashboard.py; verify-cycle-template.sh;
+post-commit-verifier-prompt.md; force-lock-state.sh (testing helper); all 38 cycle briefs;
+infra/foundation-{dev,staging}/; contracts/raid/quota-profile.yaml; docs/raid/RAID_WORKFLOW.md.
+
+**Deprecated but kept (for backwards compat):** auto-dispatcher.py;
+READY_FOR_CYCLE_1.signal (already in repo — Coordinator ignores it).
+
+**To add in v1.5 amendment commit:**
+- `.claude/commands/raid.md`
+- `scripts/raid/cycle-runner-prompt.md`
+- `scripts/raid/coordinator-helper.py`
+- This §15 amendment (already done)
+- Update CYCLE_0_PLAN.md §8 (Adversary code-R2 entry — what v1.5 fixes)
+- Update SESSION_PATCH.md (v1.5 amendment entry)
+
+**Smoke test:** v1.4 smoke (40/40 PASS, commit 203ff879) remains valid — the 5
+paired-state probes still exercise orchestrator refusal logic (kept for fallback).
+v1.5 adds NEW lighter-weight smoke: spawn 1 dummy "cycle 999 helloworld" via Agent
+tool, verify cold-start sub-agent receives correct prompt + returns valid summary +
+Coordinator updates state. This proves the dispatch mechanism actually works
+end-to-end.
+
+### §15.8 — Sources
+
+- Anthropic Claude Code Agent tool documentation (sub-agent cold-start pattern)
+- Workflow tool documentation (pipeline/parallel orchestration — RAID v1.5 borrows the orchestrator-coordinator pattern but uses direct Agent calls for simpler resume semantics)
+- AMAW v3.0 sub-agent dispatch pattern (review-only) — RAID v1.5 extends to per-cycle execution
