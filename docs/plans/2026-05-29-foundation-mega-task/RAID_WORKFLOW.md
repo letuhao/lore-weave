@@ -1,6 +1,6 @@
 # RAID — Recursive Autonomous Implementation Drive Workflow Spec
 
-> **Version:** RAID v1.1 (amended 2026-05-29 with §12 context protections)
+> **Version:** RAID v1.2 (amended 2026-05-29 with §12 context + §13 production-readiness)
 > **Status:** SPEC — locked 2026-05-29 by foundation mega-task CLARIFY
 > **Parallel to:** AMAW v3.0 (Autonomous Multi-Agent Workflow) and v2.2 (human-in-loop)
 > **Replaces AMAW:** NO — RAID is a SEPARATE workflow for tasks where 100% autonomous execution is required (no human checkpoint per cycle)
@@ -11,6 +11,14 @@
 > Protections) covering 10 mitigations derived from Anthropic's published guidance
 > on long-running agent harnesses and effective context engineering, plus 2025-2026
 > research on lost-in-the-middle. See §12 for the full protection contract.
+>
+> **v1.2 amendment rationale:** v1.1 protected the agent loop but missed 6 production-
+> readiness BLOCKERs: git worktree lifecycle, per-DPS isolated test infra, cost
+> kill-switch, brief auto-generation + validation, foundation-vs-existing-prod
+> isolation, and secret-scan in DPS workflow. v1.2 adds §13 (Production-Readiness
+> Protections) covering B1-B6 + a smoke-test auto-gate from C0 to C1 (user opted for
+> AUTO continue, not human checkpoint). See §13 for the full BLOCKER fix contract +
+> [PRE_FLIGHT_CHECKLIST.md](PRE_FLIGHT_CHECKLIST.md) for manual sign-off items.
 
 ---
 
@@ -798,3 +806,479 @@ in CYCLE_DECOMPOSITION.md §"Cycle 0"):
 Cycle 0 also amends each of the 37 pre-written cycle briefs to follow P6 structure
 (TL;DR top, REMINDERS bottom). The token budget per brief: 4000 token soft cap; cycles
 that exceed must be split.
+
+---
+
+## §13. Production-Readiness Protections (v1.2 ADDED 2026-05-29)
+
+> **Why this section exists:** v1.1 §12 protected the AGENT LOOP against context
+> degradation, but missed REAL-WORLD operational hazards. Over 38 cycles + ~$1K cost +
+> hundreds of git worktrees + DPS sub-agents touching test infra, several BLOCKER-class
+> failure modes were unaddressed. v1.2 §13 closes them.
+
+### §13.1 — B1: Git worktree lifecycle discipline
+
+**Rule:** Every worktree spawned by Phase 5 (BUILD) MUST be cleaned up by Phase 11
+(COMMIT). Stale worktrees from prior cycles MUST be detected and refused at Phase 1
+startup.
+
+**Worktree naming convention:**
+- Pattern: `../foundation-worktrees/cycle-<N>-dps-<I>` (sibling to main repo)
+- Branch pattern: `mmo-rpg/foundation-mega-task/cycle-<N>-dps-<I>-<slice-name>`
+
+**Lifecycle per cycle:**
+
+```
+Phase 4 (PLAN):
+  - Raid Leader calls: scripts/raid/worktrees-create.sh <N> <DPS_COUNT>
+  - Creates N worktrees at known paths
+
+Phase 5 (BUILD):
+  - DPS agents work in their worktrees, commit to their branches
+
+Phase 6 (VERIFY) — Tank:
+  - Tank rebases all DPS branches onto cycle base branch
+  - On success: each DPS branch merged + worktree marked for cleanup
+
+Phase 11 (COMMIT) — Raid Leader:
+  - Calls: scripts/raid/worktrees-cleanup.sh <N>
+  - For each DPS worktree:
+    - If branch successfully merged AND working tree clean:
+      → git worktree remove <path> + delete branch
+    - If working tree DIRTY (unexpected — Tank's rebase should have left it clean):
+      → ARCHIVE to ../foundation-worktrees/_archive/cycle-<N>-dps-<I>-<timestamp>
+      → write WARNING to AUDIT_LOG (forensic later)
+```
+
+**Pre-cycle startup check (extends P2 startup routine):**
+
+```bash
+# scripts/raid/worktrees-check.sh — runs as step 4.5 of P2 startup routine
+existing=$(git worktree list --porcelain | grep "foundation-worktrees" | grep -v "_archive")
+if [ -n "$existing" ]; then
+  echo "STALE WORKTREES from prior cycles:"
+  echo "$existing"
+  echo "Refusing to start cycle. Manually investigate or run worktrees-cleanup.sh"
+  exit 1
+fi
+```
+
+**Why:** Without discipline, 38 cycles × 5-15 DPS = 200-500 stale worktrees → disk fills
++ confused git state + risk of accidentally merging wrong branch.
+
+---
+
+### §13.2 — B2: Per-DPS isolated test infrastructure
+
+**Rule:** Each DPS sub-agent MUST have its own isolated test stack (Postgres + Redis +
+MinIO). No shared test infra → no cross-DPS data races → no flaky tests.
+
+**Port allocation strategy:**
+
+```
+Postgres port = 10000 + cycle_num * 100 + dps_id
+Redis port    = 12000 + cycle_num * 100 + dps_id
+MinIO port    = 14000 + cycle_num * 100 + dps_id (MinIO API)
+MinIO console = 15000 + cycle_num * 100 + dps_id
+
+Examples:
+- Cycle 17, DPS 1: Postgres=11701, Redis=13701, MinIO=15701/16701
+- Cycle 17, DPS 2: Postgres=11702, Redis=13702, MinIO=15702/16702
+- Cycle 26, DPS 1: Postgres=12601, Redis=14601, MinIO=16601/17601
+
+Deterministic — multiple cycles can't collide.
+```
+
+**Lifecycle scripts (delivered by Cycle 0):**
+
+- `scripts/raid/test-infra-up-dps.sh <N> <DPS_ID>` — `docker compose -p raid-c<N>-dps<I> up -d`
+  using a templated docker-compose with port overrides
+- `scripts/raid/test-infra-down-dps.sh <N> <DPS_ID>` — `docker compose -p raid-c<N>-dps<I> down -v`
+  (volumes wiped — no state between DPS runs)
+- `scripts/raid/test-infra-template.docker-compose.yml` — base template
+
+**DPS prompt augmentation (added to brief DPS plan):**
+
+```
+Before BUILD: bash scripts/raid/test-infra-up-dps.sh <N> <DPS_ID>
+After BUILD (success or failure): bash scripts/raid/test-infra-down-dps.sh <N> <DPS_ID>
+Use POSTGRES_URL=postgres://test:test@localhost:<port>/test in tests.
+```
+
+**Why:** Per-DPS isolation = parallel DPS work doesn't corrupt each other's test DB. No
+flaky tests from race conditions on shared port 5432.
+
+---
+
+### §13.3 — B3: Cost kill-switch + per-cycle budget
+
+**Rule:** Hard cost caps enforced at orchestrator level. Per-cycle: $50 USD. Per-
+foundation: $1500 USD (≈50% over $1140 estimate, allows headroom for retries).
+
+**Tracking:**
+
+- AUDIT_LOG.jsonl every phase event includes `estimated_cost_usd` (from Anthropic API
+  response metadata: `usage.input_tokens` × $15/M + `usage.output_tokens` × $75/M for
+  Opus 4.7)
+- `scripts/raid/cost-tracker.py` reads AUDIT_LOG, sums per cycle + cumulative
+- Pre-flight check per cycle: if cumulative cost > $1400 → ABORT cycle + ESCALATIONS
+  (last-100-buffer rule — don't blow past the cap silently)
+- Per-cycle check at every phase boundary: if cycle cost > $40 → WARNING in AUDIT_LOG;
+  if > $50 → ABORT cycle + ESCALATIONS
+
+**Escalation row template:**
+
+```
+## Cycle <N> — COST EXCEEDED — ESCALATED <date>
+
+### Cost details
+- Cycle cost so far: $<X.XX>
+- Cumulative foundation cost: $<Y.YY>
+- Cap exceeded: per-cycle | per-foundation
+- Last 5 phase events (cost breakdown):
+  - PHASE | ESTIMATED COST | RUNNING TOTAL
+  - ...
+
+### Suggested action
+- [ ] Investigate which phase consumed unexpected tokens (look for retry loops)
+- [ ] Check for compaction recovery loop (P5 may have triggered repeatedly)
+- [ ] Manually approve to continue with explicit `--accept-cost-overrun=$<Z.ZZ>` flag
+- [ ] Pause foundation; revise estimate; replan cycles 38..N
+```
+
+**Cost dashboard (delivered by Cycle 0):**
+
+- `docs/raid/COST_LOG.jsonl` (append-only, machine-readable)
+- `scripts/raid/cost-summary.py` outputs:
+
+```
+Foundation cost so far: $872 / $1500 cap (58% used)
+Per-cycle averages: $24.50 (target $30; under budget)
+Most expensive cycle: Cycle 17 (DP-kernel macros) at $87 (RETRIED 2x)
+Cheapest cycle: Cycle 4 (audit tables) at $11
+Projected remaining: $200-400 for cycles 33-38
+Recommendation: ON TRACK
+```
+
+**Why:** Without hard caps, a runaway cycle (e.g., DP-kernel macros looping on compile
+errors) could burn $200+ before detection. Per-cycle $50 cap is generous but bounded.
+
+---
+
+### §13.4 — B4: Brief auto-generation + schema validator
+
+**Rule:** The 37 cycle briefs are NOT hand-written. They are AUTO-GENERATED by Cycle 0
+from the CLARIFY artifacts (layer plans + OPEN_QUESTIONS_LOCKED + CYCLE_DECOMPOSITION),
+then validated against the §4 schema.
+
+**Generator pipeline:**
+
+```
+scripts/raid/brief-generator.py <cycle_num>
+  ↓
+Reads:
+  - docs/plans/2026-05-29-foundation-mega-task/CYCLE_DECOMPOSITION.md §2 (cycle row)
+  - docs/plans/2026-05-29-foundation-mega-task/L<X>_*.md (parent layer plan)
+  - docs/plans/2026-05-29-foundation-mega-task/OPEN_QUESTIONS_LOCKED.md (relevant Qs)
+  ↓
+Generates:
+  docs/raid/cycle_briefs/<NN>_<short>.md following §4 template:
+  - TL;DR (top)
+  - Dependencies
+  - Scope IN / OUT
+  - Acceptance criteria
+  - DPS parallelism plan (extracted from CYCLE_DECOMPOSITION §2 "DPS parallel" column)
+  - Adversary review focus (from layer plan §X)
+  - Scope Guard CLEAR criteria
+  - Cross-references
+  - LOCKED decisions (auto-pulled from OPEN_QUESTIONS_LOCKED for this layer)
+  - 🔴 REMINDERS (top 3 most critical LOCKEDs + most likely scope drift)
+```
+
+**Schema validator (CI lint):**
+
+```
+scripts/raid/brief-structure-validator.sh <brief_path>
+  ↓
+Checks:
+  - All 10 required sections present (TL;DR, Deps, Scope IN, Scope OUT,
+    Acceptance, DPS plan, Adversary, Scope Guard, Cross-refs, REMINDERS)
+  - TL;DR section ≤ 300 tokens
+  - REMINDERS section has ≥ 3 🔴 lines AND ≤ 600 tokens
+  - Total brief ≤ 4000 tokens
+  - All Q-IDs referenced exist in OPEN_QUESTIONS_LOCKED.md
+  - All file paths referenced exist OR are explicitly future-created
+  - Markdown links valid
+  ↓
+Exit 0 = valid; non-zero = lint fail with specific reason
+```
+
+**Re-generation on LOCKED changes:**
+
+- If OPEN_QUESTIONS_LOCKED.md changes (re-litigation), `scripts/raid/regenerate-briefs.sh`
+  detects affected cycles + re-generates their briefs
+- Pre-cycle check: brief's `last_generated_from_LOCKED_sha` matches current LOCKED file sha
+
+**Why:** Hand-written briefs are themselves vulnerable to lost-in-middle from CLARIFY.
+Auto-generation guarantees structure compliance + traceability to LOCKED decisions.
+
+---
+
+### §13.5 — B5: Foundation-vs-existing-prod isolation
+
+**Rule:** Foundation infrastructure (Patroni Postgres HA, Redis Sentinel, MinIO,
+pgbouncer) is built and tested in DEDICATED dev/staging environments that are SEPARATE
+from the existing LoreWeave novel-platform prod. Foundation cycles MUST NOT touch
+existing prod services or DBs.
+
+**Environment topology:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ EXISTING LoreWeave novel-platform prod (untouched)                      │
+│  - Postgres: single instance, no Patroni                                │
+│  - Redis: single instance, no Sentinel                                  │
+│  - 12 existing services running                                         │
+│  - URL: prod.loreweave.app                                              │
+└─────────────────────────────────────────────────────────────────────────┘
+
+                              ╳ ISOLATION ╳
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ FOUNDATION dev (built by RAID cycles)                                   │
+│  - infra/foundation-dev/docker-compose.yml                              │
+│  - Local Patroni + etcd + Redis Sentinel + MinIO                        │
+│  - All foundation cycle tests target this env                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ FOUNDATION staging (built by RAID cycles, deployed at C38 acceptance)   │
+│  - infra/foundation-staging/terraform/                                  │
+│  - AWS staging account (NEW account, separate from prod)                │
+│  - E2E smoke test runs here at C38                                      │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ FOUNDATION prod (NOT built by RAID — separate V1+30d sub-program)       │
+│  - infra/foundation-prod/terraform/                                     │
+│  - Migration from existing prod → foundation prod is OUT of foundation  │
+│  - Foundation runs in parallel as "shadow" until migration sub-program  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**RAID cycle scope:**
+
+- Cycles 1-37 build foundation in `infra/foundation-dev/` + `infra/foundation-staging/`
+- Existing prod is read-only from foundation perspective (`prod.loreweave.app` may be
+  referenced for design but never written to)
+- Foundation service scaffolds compile + run in foundation-dev; they do NOT replace
+  existing services in prod
+
+**C38 acceptance smoke runs in foundation-staging, NOT existing prod.**
+
+**Post-foundation sub-program (out of this CLARIFY):** Migration program designs the
+cutover from existing prod (single Postgres + Redis) → foundation prod (Patroni +
+Sentinel + MinIO). That program owns its own risk assessment.
+
+**CI lint to enforce isolation:**
+
+- `scripts/raid/prod-isolation-lint.sh` — blocks any DPS commit that references
+  `prod.loreweave.app` hostname OR existing prod IPs OR prod connection strings
+- Blocks any commit touching `infra/existing-prod/` or `infra/loreweave-novel-platform/`
+- Foundation cycles only touch `infra/foundation-*/`
+
+**Why:** Without isolation, a buggy DPS could attempt schema migration on existing prod
+DB → catastrophic outage of existing services. Hard isolation = no risk.
+
+---
+
+### §13.6 — B6: Secret scan in DPS workflow
+
+**Rule:** Every DPS branch is scanned by gitleaks BEFORE Tank rebase. Any secret found
+→ DPS slice ABORTS, branch quarantined, ESCALATIONS row written.
+
+**Setup (delivered by Cycle 0):**
+
+- `.gitleaks.toml` at repo root — config tuned for LoreWeave (whitelist test fixtures,
+  flag real-looking AWS/GCP/Anthropic/Postgres URLs)
+- `scripts/raid/secret-scan-dps.sh <N> <DPS_ID>` — runs gitleaks on DPS branch + worktree
+- Pre-commit hook installed in DPS worktrees: refuses commit if gitleaks detects secret
+
+**Workflow integration:**
+
+```
+Phase 5 (BUILD) end — DPS finishes its work:
+  DPS sub-agent prompt augmented:
+  > "Before returning summary, run: bash scripts/raid/secret-scan-dps.sh <N> <DPS_ID>
+  > If exit non-zero, abort + return {status: 'aborted_secret_detected', details}"
+
+Phase 6 (VERIFY) — Tank rebase:
+  Before rebase, Tank runs scan again across ALL DPS branches:
+  > bash scripts/raid/secret-scan-cycle.sh <N>
+  > If any leak detected → halt rebase + ESCALATIONS row + quarantine all DPS branches
+
+Phase 11 (COMMIT) — final scan:
+  Before final commit:
+  > bash scripts/raid/secret-scan-final.sh <N>
+  > Last defense; aborts commit if leak somehow survived
+```
+
+**Quarantine on leak:**
+
+- Affected branch renamed to `quarantine/cycle-<N>-dps-<I>-LEAK-<timestamp>`
+- Worktree moved to `../foundation-worktrees/_quarantine/`
+- ESCALATIONS row includes: file path, line, secret pattern matched (REDACTED), DPS ID
+- Cycle halts; human investigates + manually rotates the leaked credential if real
+
+**False-positive handling:**
+
+- `.gitleaks.toml` allowlist for test fixtures using placeholder secrets
+  (`<REDACTED-FAKE-SECRET>`, `test-only-not-a-real-token`)
+- Project secrets convention: real secrets ONLY in env vars (per CLAUDE.md "no
+  hardcoded secrets"); never in test fixtures
+- Allowlist additions require code review (CODEOWNERS check)
+
+**Why:** DPS agents have full repo write access. A single accidental secret commit =
+credential rotation + possible breach disclosure. Pre-Tank scan = caught at branch level
+before merge.
+
+---
+
+### §13.7 — C0→C1 auto-gate via smoke test (user opted AUTO continue)
+
+**Rule:** Cycle 0 (RAID infra) does NOT require human review before C1 fires. Instead,
+C0 ends with a comprehensive smoke test that exercises ALL §12 (P1-P10) + §13 (B1-B6)
+protections on a NO-OP cycle. If smoke passes → orchestrator auto-dispatches `/raid 1`.
+If smoke fails → halt + ESCALATIONS.
+
+**Smoke test cycle: `cycle_test_helloworld`**
+
+Located at `docs/raid/cycle_briefs/00X_helloworld_smoke.md` — a deliberately tiny cycle:
+
+```
+Scope IN:
+  - Create file `docs/raid/_smoke/HELLO_FROM_<TIMESTAMP>.md` with content "RAID smoke test"
+  - Single DPS, single file commit
+  - Auto-cleanup after verify
+
+Acceptance criteria:
+  - All 10 P-protections exercised: fresh session, startup routine, IN_PROGRESS file
+    written + read, sub-agent return within budget, compaction simulation (force a
+    summarization), cycle brief structure validated, cross-cycle ref tested, token
+    budget tracked, post-commit verifier run, health dashboard updated
+  - All 6 B-protections exercised: worktree created + cleaned up, isolated Postgres
+    spun up + torn down, cost tracked + under $1, brief auto-generated + validated,
+    no real prod reference, gitleaks scan green
+  - All 38 cycle briefs validated by brief-structure-validator
+  - Health dashboard reports peak < 50K tokens
+```
+
+**Auto-dispatch logic:**
+
+```
+End of C0:
+  bash scripts/raid/run-smoke-test.sh
+  smoke_exit=$?
+
+  if [ $smoke_exit -eq 0 ]; then
+    echo "[C0] Smoke green — auto-dispatching /raid 1 in 60 seconds"
+    sleep 60  # gives user a chance to Ctrl-C if seen in real-time
+    bash scripts/raid/auto-dispatcher.py --start-cycle 1
+  else
+    echo "[C0] SMOKE FAILED — exit $smoke_exit"
+    # ESCALATIONS row already written by smoke script
+    exit $smoke_exit
+  fi
+```
+
+**The 60-second pause is the only "human checkpoint"** in RAID v1.2: user watching the
+output has a window to ctrl-C if something looks wrong. If absent, auto-continues.
+
+**Auto-dispatcher behavior:**
+
+- Reads CYCLE_LOG.md to find next NOT-STARTED cycle whose deps are all DONE
+- Spawns `/raid <next>` in a FRESH session (per P1)
+- Cycles run **strictly sequential** (NOT parallel — clarified per pre-flight checklist
+  policy decision; parallel cycles defer to RAID v2.0)
+- Continues until all 38 cycles DONE OR escalation row written
+- If escalation: dispatcher halts, sends notification (email/Slack via Cycle 0 hook)
+
+**Smoke test failure modes (each blocks C1):**
+
+| Smoke failure | Likely cause | Remediation |
+|---|---|---|
+| P1 fresh-session check fails | session-cycle-lock sentinel buggy | Fix orchestrator before C0 retry |
+| P3 IN_PROGRESS write fails | path permissions / disk full | Ops fix |
+| P4 sub-agent return exceeds budget | smoke sub-agent prompt allows verbosity | Tighten prompt |
+| B1 worktree cleanup fails | `git worktree remove` race | Investigate + retry |
+| B2 docker-compose port conflict | port allocation bug | Fix allocator |
+| B3 cost > $1 for smoke | Anthropic API metering off | Investigate |
+| B4 brief validator fails on smoke brief | template generator bug | Fix generator + regenerate all briefs |
+| B6 gitleaks false positive on test fixture | allowlist incomplete | Update `.gitleaks.toml` |
+
+---
+
+### §13.8 — Summary BLOCKER fix contract
+
+| ID | BLOCKER | Fix delivered by Cycle 0 | Anti-pattern prevented |
+|---|---|---|---|
+| B1 | Git worktree lifecycle | `worktrees-create.sh`, `worktrees-cleanup.sh`, `worktrees-check.sh`, archive dir | 200-500 stale worktrees over 38 cycles |
+| B2 | Per-DPS isolated test infra | `test-infra-up-dps.sh`, `test-infra-down-dps.sh`, port allocator | Cross-DPS test data races, flaky tests |
+| B3 | Cost kill-switch | `cost-tracker.py`, `cost-summary.py`, COST_LOG.jsonl, $50/cycle + $1500/foundation caps | Runaway cycle burns $200+ silently |
+| B4 | Brief auto-gen + validator | `brief-generator.py`, `brief-structure-validator.sh`, `regenerate-briefs.sh` | Hand-written briefs with lost-in-middle |
+| B5 | Foundation-vs-prod isolation | dev/staging/prod env split, `prod-isolation-lint.sh` | Buggy DPS migrates existing prod DB → outage |
+| B6 | Secret scan | `.gitleaks.toml`, `secret-scan-dps.sh`, `secret-scan-cycle.sh`, `secret-scan-final.sh`, quarantine flow | Credential commit → rotation + breach |
+| AUTO | C0→C1 auto-gate | `run-smoke-test.sh`, `auto-dispatcher.py`, 60s pause window | C0 broken but C1 fires anyway |
+
+**Hard rule:** All 6 BLOCKERs + the AUTO gate are MANDATORY for Cycle 0 success.
+Failing any = C0 INCOMPLETE = no RAID execution.
+
+---
+
+### §13.9 — Cycle 0 amended deliverables (full list across v1.0, v1.1, v1.2)
+
+**v1.0 core (5 items):**
+- `scripts/raid/orchestrator.py`
+- `scripts/raid/verify-cycle-template.sh`
+- `scripts/raid/escalation-writer.py`
+- `docs/raid/{AUDIT_LOG.jsonl, CYCLE_LOG.md, ESCALATIONS.md, cycle_briefs/}`
+- Copy of RAID_WORKFLOW.md
+
+**v1.1 §12 context protections (10 items):**
+- `scripts/raid/startup-verifier.sh` (P2)
+- `scripts/raid/in-progress-state-writer.py` (P3)
+- `scripts/raid/compaction-detector.py` (P5)
+- `scripts/raid/post-commit-verifier-prompt.md` (P9)
+- `scripts/raid/health-dashboard.py` (P10)
+- `scripts/raid/files-from-cycle.sh` (P7)
+- `docs/raid/IN_PROGRESS/` + `_archive/` dirs
+- `docs/raid/.session-cycle-lock`
+- `docs/raid/cycle_briefs/TEMPLATE.md`
+
+**v1.2 §13 production-readiness (12 items):**
+- `scripts/raid/worktrees-create.sh` (B1)
+- `scripts/raid/worktrees-cleanup.sh` (B1)
+- `scripts/raid/worktrees-check.sh` (B1)
+- `scripts/raid/test-infra-up-dps.sh` (B2)
+- `scripts/raid/test-infra-down-dps.sh` (B2)
+- `scripts/raid/test-infra-template.docker-compose.yml` (B2)
+- `scripts/raid/cost-tracker.py` (B3)
+- `scripts/raid/cost-summary.py` (B3)
+- `docs/raid/COST_LOG.jsonl` (B3)
+- `scripts/raid/brief-generator.py` (B4)
+- `scripts/raid/brief-structure-validator.sh` (B4)
+- `scripts/raid/regenerate-briefs.sh` (B4)
+- `scripts/raid/prod-isolation-lint.sh` (B5)
+- `.gitleaks.toml` (B6)
+- `scripts/raid/secret-scan-dps.sh` (B6)
+- `scripts/raid/secret-scan-cycle.sh` (B6)
+- `scripts/raid/secret-scan-final.sh` (B6)
+- `scripts/raid/run-smoke-test.sh` (AUTO)
+- `scripts/raid/auto-dispatcher.py` (AUTO)
+- `docs/raid/cycle_briefs/00X_helloworld_smoke.md` (AUTO)
+- `infra/foundation-dev/docker-compose.yml` (B5)
+- `infra/foundation-staging/terraform/` skeleton (B5)
+- `../foundation-worktrees/` + `_archive/` + `_quarantine/` dirs (B1, B6)
+
+**Total Cycle 0: 36 deliverables.** Cycle 0 is now size **L** (was M v1.1; was S/M v1.0).
+This is the largest single non-RAID cycle but required for safe autonomous execution.

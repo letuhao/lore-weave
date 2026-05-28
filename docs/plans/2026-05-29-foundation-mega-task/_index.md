@@ -34,6 +34,7 @@ after CLARIFY closes.
 | `CYCLE_DECOMPOSITION.md` | DONE | 38 RAID cycles + dependency graph + per-cycle prompt template |
 | `RAID_WORKFLOW.md` | DONE | RAID v1.0 full 12-phase spec + role contract + audit schemas + bootstrap |
 | `I3_INVARIANT_AMENDMENT.md` | DONE | I3 amendment text + service map updates + CI lint spec, ready for Cycle 7 PR |
+| `PRE_FLIGHT_CHECKLIST.md` | LIVE | Manual user sign-off items before invoking Cycle 0 (added v1.2 amendment) |
 
 ## Reading order
 
@@ -71,3 +72,14 @@ without context bloat / compaction loss / lost-in-the-middle. Cycle 0 deliverabl
 expanded with 6 new scripts + 2 directories. Per-cycle brief template now mandates
 TL;DR-top + REMINDERS-bottom structure (lost-in-middle aware) with 4000-token cap.
 See [RAID_WORKFLOW.md §12](RAID_WORKFLOW.md) for protection contract.
+
+**v1.2 amendment 2026-05-29 (same day, post production-readiness audit):** RAID workflow
+amended with §13 Production-Readiness Protections covering 6 BLOCKER fixes (B1-B6) +
+auto C0→C1 dispatch gate. B1 git worktree lifecycle. B2 per-DPS isolated test infra
+(deterministic port allocation). B3 cost kill-switch ($50/cycle + $1500/foundation
+hard caps). B4 brief auto-generation + schema validator. B5 foundation-vs-existing-prod
+isolation (dev/staging/prod env split). B6 secret scan in DPS workflow (gitleaks).
+Cycle 0 deliverables expanded to 36 items total. Cycle 0 size bumped to L. User opted
+AUTO continue (no human checkpoint before C1) — auto-dispatcher with 60s pause window.
+See [RAID_WORKFLOW.md §13](RAID_WORKFLOW.md) for BLOCKER fix contract +
+[PRE_FLIGHT_CHECKLIST.md](PRE_FLIGHT_CHECKLIST.md) for user sign-off items.
