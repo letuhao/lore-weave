@@ -113,22 +113,124 @@ pub enum DispatchMode {
     /// (debug builds catch malformed tables via assert; release degrades
     /// gracefully). See spec §4.6.4.
     Weighted(BTreeMap<SizeRank, Vec<(ShapeKind, f32)>>),
+    /// **v4.0** Manual override. Lookup by path string (e.g. `"plate.3"` for
+    /// plate 3, `"plate.3.zone.1"` for zone 1 in plate 3 in v4.1+). PO
+    /// pins specific kinds for specific entities; useful for tests, debug
+    /// renders, and PO-as-LLM workflow per roadmap §14 Q2.
+    /// Returns `None` from `select_opt` when the path is not in the map
+    /// — caller falls through to next layer (typically Random).
+    Manual(std::collections::HashMap<String, ShapeKind>),
+    /// **v4.0** Rules-based selection. First rule whose predicate matches
+    /// `ctx` wins. Returns `None` if no rule matches.
+    ByContext(Vec<ContextRule>),
+    /// **v4.0** Layered fallback. Each inner mode is tried in order; first
+    /// one returning `Some` wins. Returns `None` if every layer abstains
+    /// (Layered itself never abstains at the public `select` boundary —
+    /// see fallback path).
+    Layered(Vec<DispatchMode>),
+    /// **v4.0** Different mode per depth (0 = plate, 1 = zone, 2 = subzone).
+    /// Forward-compat for v4.1 zone templating + v4.2 subzone templating.
+    /// In v4.0 only depth=0 is exercised by `flatworld::generate`.
+    PerDepth([Box<DispatchMode>; 3]),
+    /// **v4.0 STUB** — full LLM-driven dispatch ships in v4.3 with cache
+    /// architecture decision. v4.0 panics if reached — wire your `FlatParams.plate_dispatch`
+    /// to avoid this arm until v4.3.
+    Llm,
+}
+
+/// **v4.0** A single rules-based dispatch rule: predicate + the kind to
+/// return if it matches.
+#[derive(Debug, Clone)]
+pub struct ContextRule {
+    pub predicate: ContextPredicate,
+    pub kind: ShapeKind,
+}
+
+/// **v4.0** Predicate evaluated against a `ShapeContext`. Boolean
+/// combinators (`And`, `Or`, `Not`) compose simple atoms.
+#[derive(Debug, Clone)]
+pub enum ContextPredicate {
+    /// Always matches.
+    Any,
+    /// Matches when `ctx.size_rank == rank`.
+    Rank(SizeRank),
+    /// Matches when `ctx.depth == d`.
+    Depth(u32),
+    /// Matches when the entity centre's normalised latitude (computed by
+    /// the caller from world height) falls within `[min, max]` inclusive.
+    /// **Caller convention**: `lat_norm = (ctx.center.1 / world_height) ∈ [0, 1]`
+    /// stored in `ctx.edge_jitter` as a temporary carrier when the
+    /// predicate fires. v4.1 will add an explicit `ctx.lat_norm: f32`
+    /// field; v4.0 piggybacks edge_jitter for the demo path.
+    LatBand { min: f32, max: f32 },
+    /// All inner predicates must match.
+    And(Vec<ContextPredicate>),
+    /// At least one inner predicate must match.
+    Or(Vec<ContextPredicate>),
+    /// Inner predicate must NOT match.
+    Not(Box<ContextPredicate>),
+}
+
+impl ContextPredicate {
+    pub fn matches(&self, ctx: &ShapeContext) -> bool {
+        match self {
+            ContextPredicate::Any => true,
+            ContextPredicate::Rank(r) => ctx.size_rank == *r,
+            ContextPredicate::Depth(d) => ctx.depth == *d,
+            ContextPredicate::LatBand { min, max } => {
+                let l = ctx.edge_jitter; // v4.0 piggyback — see docs above
+                l >= *min && l <= *max
+            }
+            ContextPredicate::And(ps) => ps.iter().all(|p| p.matches(ctx)),
+            ContextPredicate::Or(ps) => ps.iter().any(|p| p.matches(ctx)),
+            ContextPredicate::Not(p) => !p.matches(ctx),
+        }
+    }
 }
 
 impl DispatchMode {
     /// Pick a [`ShapeKind`] for `ctx` using `rng` as needed.
     ///
-    /// Returned kind is always one of `registry.kinds()`. Panics in
-    /// `debug` mode if the registry is empty; in release builds returns
-    /// `ShapeKind::Ellipse` as a defensive default.
+    /// **v4.0**: takes an `entity_path` string ("plate.{N}" for plates,
+    /// "plate.{N}.zone.{M}" for zones in v4.1+) so the Manual override
+    /// path-keyed map can be looked up. Returned kind is always one of
+    /// `registry.kinds()`. Panics in `debug` mode if the registry is
+    /// empty; in release builds returns `ShapeKind::Ellipse` as a
+    /// defensive default.
     pub fn select(
         &self,
         registry: &ShapeRegistry,
         ctx: &ShapeContext,
+        entity_path: &str,
         rng: &mut Rng,
     ) -> ShapeKind {
+        if let Some(k) = self.select_opt(registry, ctx, entity_path, rng) {
+            return k;
+        }
+        // Public-boundary fallback when all layers abstained: uniform Random.
+        let kinds = registry.kinds();
+        if kinds.is_empty() {
+            return ShapeKind::Ellipse;
+        }
+        if kinds.len() == 1 {
+            return kinds[0];
+        }
+        kinds[(rng.next_u32() as usize) % kinds.len()]
+    }
+
+    /// **v4.0** Internal — returns `None` for modes that can "pass" (Manual
+    /// when path not pinned; ByContext when no rule matches; Layered when
+    /// every layer abstains). Always-committing modes (Fixed, Random,
+    /// Weighted) return `Some` unconditionally.
+    fn select_opt(
+        &self,
+        registry: &ShapeRegistry,
+        ctx: &ShapeContext,
+        entity_path: &str,
+        rng: &mut Rng,
+    ) -> Option<ShapeKind> {
         match self {
-            DispatchMode::Fixed(k) => *k,
+            DispatchMode::Fixed(k) => Some(*k),
             DispatchMode::Random => {
                 debug_assert!(
                     !registry.is_empty(),
@@ -136,29 +238,23 @@ impl DispatchMode {
                 );
                 let kinds = registry.kinds();
                 if kinds.is_empty() {
-                    return ShapeKind::Ellipse;
+                    return Some(ShapeKind::Ellipse);
                 }
                 if kinds.len() == 1 {
-                    return kinds[0]; // BYTE-IDENTICAL: no RNG consumption
+                    return Some(kinds[0]);
                 }
-                kinds[(rng.next_u32() as usize) % kinds.len()]
+                Some(kinds[(rng.next_u32() as usize) % kinds.len()])
             }
             DispatchMode::Weighted(table) => {
                 let weights = match table.get(&ctx.size_rank) {
                     Some(w) if !w.is_empty() => w,
                     _ => {
-                        // Fall back to first registered kind so a missing
-                        // entry is loud (debug) but recoverable (release).
                         debug_assert!(
                             false,
                             "Weighted table has no entry for {:?}",
                             ctx.size_rank
                         );
-                        return registry
-                            .kinds()
-                            .first()
-                            .copied()
-                            .unwrap_or(ShapeKind::Ellipse);
+                        return registry.kinds().first().copied();
                     }
                 };
                 let sum: f32 = weights.iter().map(|(_, w)| *w).sum();
@@ -171,22 +267,45 @@ impl DispatchMode {
                 let mut acc = 0.0;
                 for (kind, w) in weights {
                     acc += *w;
-                    if pick <= acc {
-                        // Verify the kind is actually registered before
-                        // returning it — a misconfigured table won't crash
-                        // the caller (which would panic on registry.get(kind).unwrap()).
-                        if registry.get(*kind).is_some() {
-                            return *kind;
-                        }
+                    if pick <= acc && registry.get(*kind).is_some() {
+                        return Some(*kind);
                     }
                 }
-                // fp-overshoot fallback: return the LAST registered kind in
-                // the weight list (clamped to whatever's in the registry).
                 weights
                     .iter()
                     .rev()
                     .find_map(|(k, _)| registry.get(*k).map(|_| *k))
-                    .unwrap_or(ShapeKind::Ellipse)
+            }
+            DispatchMode::Manual(map) => map.get(entity_path).copied(),
+            DispatchMode::ByContext(rules) => {
+                for rule in rules {
+                    if rule.predicate.matches(ctx) && registry.get(rule.kind).is_some() {
+                        return Some(rule.kind);
+                    }
+                }
+                None
+            }
+            DispatchMode::Layered(layers) => {
+                for layer in layers {
+                    if let Some(k) = layer.select_opt(registry, ctx, entity_path, rng) {
+                        return Some(k);
+                    }
+                }
+                None
+            }
+            DispatchMode::PerDepth(modes) => {
+                let idx = (ctx.depth as usize).min(2);
+                modes[idx].select_opt(registry, ctx, entity_path, rng)
+            }
+            DispatchMode::Llm => {
+                // v4.0 stub — full LLM dispatch ships in v4.3 with cache
+                // architecture decision (per PO directive 2026-05-28).
+                panic!(
+                    "DispatchMode::Llm is a v4.0 stub — full implementation \
+                     ships in v4.3 with cache architecture decision (Postgres \
+                     vs file vs none). Use Manual / ByContext / Layered / \
+                     Weighted in the meantime."
+                );
             }
         }
     }
@@ -551,7 +670,7 @@ mod tests {
         let mode = DispatchMode::Fixed(ShapeKind::Polar);
 
         for _ in 0..5 {
-            let kind = mode.select(&r, &dummy_ctx(), &mut rng_a);
+            let kind = mode.select(&r, &dummy_ctx(), "plate.0", &mut rng_a);
             assert_eq!(kind, ShapeKind::Polar);
         }
         // rng_b is untouched (matching `Fixed` no-RNG contract).
@@ -578,7 +697,7 @@ mod tests {
         let mut rng_b = Rng::for_stage(42, b"single-kind");
 
         for _ in 0..10 {
-            let k = DispatchMode::Random.select(&r, &dummy_ctx(), &mut rng_a);
+            let k = DispatchMode::Random.select(&r, &dummy_ctx(), "plate.0", &mut rng_a);
             assert_eq!(k, ShapeKind::Ellipse);
         }
         // Streams must still be aligned.
@@ -612,7 +731,7 @@ mod tests {
         let mut rng = Rng::for_stage(1, b"distribution");
         let mut counts = std::collections::HashMap::new();
         for _ in 0..10_000 {
-            let k = DispatchMode::Random.select(&r, &dummy_ctx(), &mut rng);
+            let k = DispatchMode::Random.select(&r, &dummy_ctx(), "plate.0", &mut rng);
             *counts.entry(k).or_insert(0u32) += 1;
         }
         // 4 kinds, 10k samples, expected ~2500 each. Allow ±10%.
@@ -633,7 +752,7 @@ mod tests {
         let r = ShapeRegistry::empty();
         let mut rng = Rng::for_stage(0, b"fallback");
         if !cfg!(debug_assertions) {
-            let k = DispatchMode::Random.select(&r, &dummy_ctx(), &mut rng);
+            let k = DispatchMode::Random.select(&r, &dummy_ctx(), "plate.0", &mut rng);
             assert_eq!(k, ShapeKind::Ellipse);
         } else {
             // In debug builds, just verify the registry is empty; the
@@ -701,5 +820,119 @@ mod tests {
         let giant = table.get(&SizeRank::Giant).unwrap();
         let sdf_weight = giant.iter().find(|(k, _)| *k == ShapeKind::SdfCapsuleChain).map(|(_, w)| *w);
         assert_eq!(sdf_weight, Some(0.20), "Giant SDF weight per PO-approved table");
+    }
+
+    // ─── v4.0 dispatcher variants ──────────────────────────────────────────
+
+    fn populated_registry() -> ShapeRegistry {
+        let mut r = ShapeRegistry::empty();
+        r.register(Box::new(StubGenerator { kind: ShapeKind::Ellipse }));
+        r.register(Box::new(StubGenerator { kind: ShapeKind::BezierSpine }));
+        r.register(Box::new(StubGenerator { kind: ShapeKind::Polar }));
+        r
+    }
+
+    #[test]
+    fn manual_dispatch_returns_pinned_kind_for_matching_path() {
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("plate.3".to_string(), ShapeKind::Polar);
+        let mode = DispatchMode::Manual(overrides);
+        let r = populated_registry();
+        let mut rng = Rng::for_stage(1, b"test");
+        let k = mode.select(&r, &dummy_ctx(), "plate.3", &mut rng);
+        assert_eq!(k, ShapeKind::Polar);
+    }
+
+    #[test]
+    fn manual_dispatch_falls_through_for_unpinned_path() {
+        // Manual alone falls back via public select() to uniform Random.
+        let overrides = std::collections::HashMap::new();
+        let mode = DispatchMode::Manual(overrides);
+        let r = populated_registry();
+        let mut rng = Rng::for_stage(1, b"test");
+        let k = mode.select(&r, &dummy_ctx(), "plate.99", &mut rng);
+        assert!(r.kinds().contains(&k), "fallback should pick registered kind");
+    }
+
+    #[test]
+    fn by_context_rule_fires_on_rank_match() {
+        let rule = ContextRule {
+            predicate: ContextPredicate::Rank(SizeRank::Medium),
+            kind: ShapeKind::BezierSpine,
+        };
+        let mode = DispatchMode::ByContext(vec![rule]);
+        let r = populated_registry();
+        let mut rng = Rng::for_stage(1, b"test");
+        let k = mode.select(&r, &dummy_ctx(), "plate.0", &mut rng);
+        // dummy_ctx() uses Medium rank.
+        assert_eq!(k, ShapeKind::BezierSpine);
+    }
+
+    #[test]
+    fn layered_falls_through_manual_to_random() {
+        // Manual with no entries → ByContext with no matching rule →
+        // Random as final layer.
+        let manual = DispatchMode::Manual(std::collections::HashMap::new());
+        let context = DispatchMode::ByContext(vec![ContextRule {
+            predicate: ContextPredicate::Rank(SizeRank::Giant),
+            kind: ShapeKind::Ellipse,
+        }]);
+        let random = DispatchMode::Random;
+        let layered = DispatchMode::Layered(vec![manual, context, random]);
+        let r = populated_registry();
+        let mut rng = Rng::for_stage(7, b"test");
+        let k = layered.select(&r, &dummy_ctx(), "plate.0", &mut rng);
+        // Medium ctx doesn't trigger the Giant rule → falls to Random.
+        assert!(r.kinds().contains(&k));
+    }
+
+    #[test]
+    fn layered_manual_first_wins() {
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("plate.42".to_string(), ShapeKind::Polar);
+        let manual = DispatchMode::Manual(overrides);
+        let layered = DispatchMode::Layered(vec![manual, DispatchMode::Random]);
+        let r = populated_registry();
+        let mut rng = Rng::for_stage(7, b"test");
+        let k = layered.select(&r, &dummy_ctx(), "plate.42", &mut rng);
+        assert_eq!(k, ShapeKind::Polar, "Manual layer should win for pinned path");
+    }
+
+    #[test]
+    fn per_depth_dispatches_by_ctx_depth() {
+        let plate_mode = Box::new(DispatchMode::Fixed(ShapeKind::Ellipse));
+        let zone_mode = Box::new(DispatchMode::Fixed(ShapeKind::Polar));
+        let subzone_mode = Box::new(DispatchMode::Fixed(ShapeKind::BezierSpine));
+        let mode = DispatchMode::PerDepth([plate_mode, zone_mode, subzone_mode]);
+        let r = populated_registry();
+        let mut rng = Rng::for_stage(7, b"test");
+        // dummy_ctx() has depth=0 → Ellipse.
+        let k0 = mode.select(&r, &dummy_ctx(), "plate.0", &mut rng);
+        assert_eq!(k0, ShapeKind::Ellipse);
+    }
+
+    #[test]
+    fn context_predicate_and_or_not_compose() {
+        let mid = ContextPredicate::Rank(SizeRank::Medium);
+        let depth_zero = ContextPredicate::Depth(0);
+        let and = ContextPredicate::And(vec![mid.clone(), depth_zero.clone()]);
+        assert!(and.matches(&dummy_ctx()));
+
+        let or = ContextPredicate::Or(vec![
+            ContextPredicate::Rank(SizeRank::Giant),
+            depth_zero.clone(),
+        ]);
+        assert!(or.matches(&dummy_ctx()));
+
+        let not_giant = ContextPredicate::Not(Box::new(ContextPredicate::Rank(SizeRank::Giant)));
+        assert!(not_giant.matches(&dummy_ctx()));
+    }
+
+    #[test]
+    #[should_panic(expected = "v4.0 stub")]
+    fn llm_dispatch_panics_in_v4_0() {
+        let r = populated_registry();
+        let mut rng = Rng::for_stage(1, b"test");
+        let _ = DispatchMode::Llm.select(&r, &dummy_ctx(), "plate.0", &mut rng);
     }
 }

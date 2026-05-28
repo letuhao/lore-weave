@@ -560,7 +560,8 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
             // rendered — Boolean generators that fall back to a clean
             // ellipse on geo-clipper failure honestly report
             // `ShapeKind::Ellipse`. See `shape::ShapeResult`.
-            let selected_kind = dispatcher.select(&registry, &ctx, &mut rng);
+            let entity_path = format!("plate.{}", id);
+            let selected_kind = dispatcher.select(&registry, &ctx, &entity_path, &mut rng);
             let result = registry
                 .get(selected_kind)
                 .expect("dispatcher must only return kinds registered in the registry")
