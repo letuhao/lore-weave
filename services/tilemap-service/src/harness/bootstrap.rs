@@ -263,6 +263,7 @@ fn bootstrap_template() -> TilemapTemplate {
         ],
         seed_offset: 0,
         world_zone: None,
+        decoration_density: None,
     };
     // TreasurePlacer only acts on zones with `treasure_tiers`; a `min ≥ 2000`
     // tier guarantees each pile is guarded, so the demo classifies Treasure

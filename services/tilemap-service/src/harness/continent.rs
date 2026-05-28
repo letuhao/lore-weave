@@ -113,6 +113,7 @@ fn continent_template() -> TilemapTemplate {
         zones,
         seed_offset: 0,
         world_zone: None,
+        decoration_density: None,
     }
 }
 

@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use crate::engine::build_state::TilemapBuildState;
 use crate::engine::modificators::{
-    ConnectionsPlacer, ObstacleFillPlacer, ObstacleSourcePlacer, RiverPlacer, RoadPlacer,
-    TerrainPainter, TreasurePlacer,
+    ConnectionsPlacer, DecorationPlacer, ObstacleFillPlacer, ObstacleSourcePlacer, RiverPlacer,
+    RoadPlacer, TerrainPainter, TreasurePlacer,
 };
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
@@ -138,6 +138,7 @@ fn place_tilemap_inner(
     modificators.add(Box::new(ObstacleSourcePlacer));
     modificators.add(Box::new(RiverPlacer));
     modificators.add(Box::new(ObstacleFillPlacer));
+    modificators.add(Box::new(DecorationPlacer));
     let modificator_timings = {
         let mut ctx = ModificatorContext {
             template,
@@ -244,6 +245,7 @@ mod tests {
             ],
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
         }
     }
 
@@ -322,6 +324,7 @@ mod tests {
             modificators.add(Box::new(ObstacleSourcePlacer));
             modificators.add(Box::new(RiverPlacer));
             modificators.add(Box::new(ObstacleFillPlacer));
+            modificators.add(Box::new(DecorationPlacer));
             {
                 let mut ctx = ModificatorContext {
                     template: &template,
@@ -408,6 +411,9 @@ mod tests {
             pre_river.add(Box::new(TreasurePlacer));
             pre_river.add(Box::new(RoadPlacer));
             pre_river.add(Box::new(ObstacleSourcePlacer));
+            // DecorationPlacer registered for production-parity; no-ops here
+            // when fixture template's decoration_density is None.
+            pre_river.add(Box::new(DecorationPlacer));
             {
                 let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state, registry: &reg };
                 pre_river.execute(&mut ctx).expect("pre-river pipeline");
@@ -417,6 +423,7 @@ mod tests {
             // Half 2 — RiverPlacer alone, on the same state.
             let mut river = ModificatorRegistry::new();
             river.add(Box::new(RiverPlacer));
+            river.add(Box::new(DecorationPlacer));
             {
                 let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state, registry: &reg };
                 river.execute(&mut ctx).expect("river pipeline");
@@ -520,6 +527,7 @@ mod tests {
             ],
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
         };
 
         let reg = Registry::load_default().unwrap();
@@ -545,6 +553,7 @@ mod tests {
             modificators.add(Box::new(ObstacleSourcePlacer));
             modificators.add(Box::new(RiverPlacer));
             modificators.add(Box::new(ObstacleFillPlacer));
+            modificators.add(Box::new(DecorationPlacer));
             {
                 let mut ctx = ModificatorContext {
                     template: &template,
@@ -635,8 +644,17 @@ mod tests {
                 "obstacle_source_placer",
                 "river_placer",
                 "obstacle_fill_placer",
+                "decoration_placer",
             ],
-            "per-modificator timing must list all seven in topological order",
+            // REGRESSION LOCK (LOW-3 from chunk-A /review-impl): pipeline
+            // order changes require updating BOTH this list AND the PR
+            // description explaining why the new ordering is intentional.
+            // The Kahn topo-sort + lexicographic tie-break makes this
+            // order deterministic — see engine/pipeline/registry.rs:96-110.
+            // Adding a new modificator without updating this assertion
+            // means the new placer's position in the pipeline is
+            // un-audited; reject by intent.
+            "per-modificator timing must list all eight in topological order",
         );
         // Total of per-stage durations should be the bulk of wall time
         // (impossible to assert an exact equality — Instant::now overhead /

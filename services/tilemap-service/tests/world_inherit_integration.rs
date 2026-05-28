@@ -46,6 +46,7 @@ fn template_for_world_zone(
         }],
         seed_offset: 0,
         world_zone: Some(snapshot),
+        decoration_density: None,
     }
 }
 

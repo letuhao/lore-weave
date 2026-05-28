@@ -60,6 +60,7 @@ fn fixture() -> TilemapTemplate {
         ],
         seed_offset: 0,
         world_zone: None,
+        decoration_density: None,
     };
     // Phase C — give the Wilderness zones a treasure tier so the rebaselined
     // golden exercises TreasurePlacer; `min ≥ 2000` ⇒ every pile is guarded, so

@@ -162,6 +162,7 @@ mod tests {
             zones,
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
         }
     }
 

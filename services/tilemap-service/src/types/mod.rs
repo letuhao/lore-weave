@@ -8,6 +8,7 @@
 
 pub mod biome;
 pub mod channel;
+pub mod decoration;
 pub mod object;
 pub mod object_template;
 pub mod primitive;
@@ -24,6 +25,7 @@ pub use biome::{
     BiomeSelectionRule, BiomeSelectionRules, BiomeSet,
 };
 pub use channel::{ChannelId, ChannelTier};
+pub use decoration::DecorationDensity;
 pub use object::{TilemapObjectKind, TilemapObjectPlacement, V2Defaults};
 pub use object_template::{FootprintCell, TilemapObjectTemplate};
 pub use primitive::{ObjectPrimitive, TerrainPrimitive};

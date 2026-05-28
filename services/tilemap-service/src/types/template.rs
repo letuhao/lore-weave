@@ -109,6 +109,14 @@ pub struct TilemapTemplate {
     /// Additive — fields default to None and skip-serializing when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub world_zone: Option<WorldZoneSnapshot>,
+    /// Optional V3 quality-push opt-in for the decoration-density pass
+    /// (spec `docs/specs/2026-05-28-decoration-placer-density-pass.md`).
+    /// `None` (the implicit serde default) keeps every V2 golden test
+    /// byte-identical; `DecorationPlacer` early-returns. `Some(_)`
+    /// activates the chunk-C density logic. Additive Option pattern
+    /// matches `world_zone` discipline above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decoration_density: Option<crate::types::decoration::DecorationDensity>,
 }
 
 #[cfg(test)]
@@ -149,6 +157,63 @@ mod tests {
         assert!(z.treasure_tiers.is_empty());
         assert_eq!(z.size, 100, "size still falls back to default_zone_size");
         assert!(z.connections.is_empty());
+    }
+
+    #[test]
+    fn tilemap_template_deserializes_without_decoration_density() {
+        // TMP-Q1 chunk A — MED-1 fix from /review-impl. A pre-chunk-A
+        // template JSON (no decoration_density field) still loads with
+        // decoration_density = None — the load-bearing invariant for V2
+        // wire-format byte-identical preservation. Mirrors the
+        // template_connection_deserializes_without_the_new_fields +
+        // zone_spec_deserializes_without_treasure_tiers patterns.
+        let json = r#"{"template_id":"t","zones":[],"seed_offset":0}"#;
+        let t: TilemapTemplate = serde_json::from_str(json).unwrap();
+        assert!(t.decoration_density.is_none(),
+            "missing field must serde-default to None, not Some(_) or error");
+        assert!(t.world_zone.is_none(), "world_zone unchanged");
+        assert_eq!(t.seed_offset, 0);
+    }
+
+    #[test]
+    fn tilemap_template_round_trips_with_decoration_density_some() {
+        // TMP-Q1 chunk A — LOW-2 fix from /review-impl. A TilemapTemplate
+        // with decoration_density: Some(TOWN) survives a JSON round-trip
+        // and is Eq to the original. Mirrors zone_spec_round_trips_with_*
+        // round-trip discipline.
+        use crate::types::decoration::DecorationDensity;
+        let t = TilemapTemplate {
+            template_id: TilemapTemplateId("rt".to_string()),
+            zones: vec![],
+            seed_offset: 7,
+            world_zone: None,
+            decoration_density: Some(DecorationDensity::TOWN),
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("decoration_density"),
+            "Some(_) must be serialized (only None is skipped)");
+        let back: TilemapTemplate = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+    }
+
+    #[test]
+    fn tilemap_template_with_decoration_density_none_omits_field_from_json() {
+        // TMP-Q1 chunk A — wire-format invariant: skip_serializing_if =
+        // "Option::is_none" means None fields are absent from JSON. This
+        // is what keeps V2 HTTP API consumers byte-identical against
+        // default templates.
+        let t = TilemapTemplate {
+            template_id: TilemapTemplateId("rt".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+            decoration_density: None,
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(!json.contains("decoration_density"),
+            "None must NOT appear in JSON (skip_serializing_if discipline)");
+        assert!(!json.contains("world_zone"),
+            "world_zone None also skipped (pattern consistency check)");
     }
 
     #[test]
@@ -270,6 +335,7 @@ mod tests {
                     biome_name: WorldBiome::HotDesert,
                 },
             }),
+            decoration_density: None,
         };
         let s = serde_json::to_string(&t).unwrap();
         let back: TilemapTemplate = serde_json::from_str(&s).unwrap();
@@ -289,6 +355,7 @@ mod tests {
             zones: vec![],
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
         };
         let s = serde_json::to_string(&t).unwrap();
         assert!(!s.contains("world_zone"), "absent world_zone must not appear in JSON: {s}");

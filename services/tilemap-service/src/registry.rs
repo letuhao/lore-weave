@@ -934,6 +934,7 @@ walkability_pattern = { mask = [true, false, false, false] }
             ],
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
         };
 
         let view = place_tilemap_with_registry(
