@@ -903,9 +903,44 @@ Both variants empirically regressed vs c70a baseline. Prompt reverted (`git chec
 - **D-CYCLE71-SYMMETRIC-CJK-EXAMPLE** — if attempting CJK event example again, source text from a chapter NOT in `tests/fixtures/golden_chapters/`. Pair with symmetric EN + VN examples sourced similarly.
 - **D-EVENT-AGGREGATOR-FUZZY-MATCH** — judge-side fix for the granularity drift identified in cycle 69 (ch14 model extracts the same scenes as gold but folded/padded; matching at semantic level not literal). Alternative to prompt-side teaching.
 
-## Cycle 71-bis queued (S size, ~30-40 min)
+## Cycle 71-bis (Rule 10 isolated) — ALSO NEGATIVE, reverted
 
-Test Rule 10 (granularity) in isolation. Apply just the Rule 10 block to the event prompt — no Example B/C, no language-specific examples. Re-extract on huihui-qwen3-30b, run gemma single-judge, compare events macro vs c70a baseline. Decision input for whether prompt-side event work is viable at all.
+Test: apply ONLY Rule 10 (English-only illustrative phrases) to event prompt; no Example B/C; rule-only granularity teaching.
+
+### Result table (gemma single-judge)
+
+| Variant | Prompt size | gemma macro P/R | ch14 evt P/R | ch14 script (EN/CJK) |
+|---|---:|---:|---:|---:|
+| c70a baseline | 4522 | 0.81 / 0.92 | not measured per-chapter by gemma | (c69: 0 / 6) |
+| **71-bis** Rule 10 only | 5101 | **0.79 / 0.91** | **0.91 / 1.00** ⭐ | **8 / 3** (drift) |
+
+### Why 71-bis was rejected
+
+1. **Macro P regressed −2pp** (0.81 → 0.79), right at the ship threshold.
+2. **CJK script drift** despite English-only rule prose — adding ANY rule with English illustrative phrases ("after praying", "happily", "walked across the bridge") biased the model to emit English summaries on Chinese chapters. journey_west_zh_ch01 went 3 EN / 0 CJK; ch14 went 8 EN / 3 CJK. Violates the prompt's explicit "Keep summary in ORIGINAL script of TEXT" rule.
+3. **Relation regression pattern replicated** — alice_ch02 rel R=0 and little_women rel R=0 in 71-bis match the same chapters in c71a/c71b. Adding any rule to event prompt seems to have hidden interaction with relation extraction.
+4. **The ch14 "win" is apples-to-oranges** — c69/c70a never measured per-chapter event metrics via gemma judge (only rule-based attribution showed 0 TP). Within-cycle comparison 71-bis vs c71a shows ch14 fixed (0/0 → 0.91/1.00) but vs c70a baseline we lack the gemma per-chapter data.
+
+### Combined cycle-71 + 71-bis lessons (3 attempts, 3 failure modes)
+
+1. **c71a** (Rule + CJK + VN + Lessons) → regurgitation when example text overlaps fixture chapter
+2. **c71b** (Rule + VN only) → script drift on CJK chapters (no anchor)
+3. **71-bis** (Rule only, English illustrative phrases) → script drift on CJK chapters (English bias in rule prose)
+
+**Conclusion: event prompts are intrinsically resistant to prompt-side improvements.** Pivot to structural lever (#2 hybrid 2-pass).
+
+### New deferred row (cycle 71-bis specific)
+
+- **D-EVENT-RULE-ENGLISH-PROSE-CJK-DRIFT** — adding ANY new rule with English-only illustrative phrases biases the model to emit English summaries on Chinese chapters. If a future cycle adds rules to event prompt, use ONLY abstract phrasing OR symmetric multilingual examples sourced outside the fixture set.
+
+## Open follow-ups (updated post-71-bis)
+
+- **Cycle 72 candidates** (post-cycle-71+71-bis revert):
+  - **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) — **RECOMMENDED**, L cycle, structural lever, no prompt risk, F1 target ~0.88
+  - **D-CLAUDE-JUDGE-VS-GEMMA-JUDGE-DIVERGENCE-AUDIT** — S cycle, still pending from cycle 70 close
+  - **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** — multilingual NER anchor; closes EN-vs-CJK judge bias question
+  - **D-EVENT-AGGREGATOR-FUZZY-MATCH** — judge-side fix for granularity drift; alternative to prompt-side
+  - **D-CYCLE1-ENSEMBLE-FORENSIC** — re-baseline cycle-1 multilang-fewshot dump for D9 verdict
 
 ## Open follow-ups (not blocking)
 

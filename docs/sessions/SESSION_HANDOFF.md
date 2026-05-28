@@ -5,7 +5,45 @@
 > **HEAD:** pending final commit on top of `1c0b2a08` (cycle 70 c70a ship).
 > **Branch:** `main`.
 
-## Session 71 summary — cycle 71 attempt failed; prompt reverted; cycle 71-bis queued
+## Session 71 summary — cycle 71 + 71-bis BOTH reverted; pivoting to #2 hybrid 2-pass next
+
+Both prompt-side event-extraction attempts (cycle 71 c71a/c71b + cycle 71-bis) regressed empirically. The cycle is decisively NEGATIVE for prompt-side event work — pivot direction confirmed.
+
+### 71-bis attempt (Rule 10 isolated, English-only illustrative phrases)
+
+Test: apply ONLY Rule 10 granularity to event prompt, no Examples B/C, English-only illustrative phrases (stripped overlap risk).
+
+| Variant | Prompt size | gemma macro P/R | ch14 events | Script (ch14 EN/CJK) |
+|---|---:|---:|---:|---:|
+| c70a baseline | 4522 (event prompt unchanged) | 0.81 / 0.92 | not per-chapter measured by gemma | (c69 was 0/6) |
+| **71-bis** Rule 10 only | 5101 | **0.79 / 0.91** | **0.91 / 1.00** (lifted from c71a's 0/0) | **8 / 3** (drift!) |
+
+Empirical:
+- 71-bis extraction completed in 279.92s; dump at `/tmp/eval_dump_30b_c71bis`
+- 71-bis gemma judge completed in 348.11s; log at `/tmp/judge_gemma_c71bis.log`
+- ch14 events: c71a 0/0 → 71-bis 0.91/1.00 (target chapter fixed via semantic match)
+- BUT CJK script drift: journey_west_zh_ch01 3 EN / 0 CJK, ch14 8 EN / 3 CJK — judge tolerates semantic match but explicit prompt rule "Keep summary in ORIGINAL script of TEXT" is violated
+- Relation regression replicated: alice_ch02 rel R=0, little_women rel R=0 (same pattern as c71a/c71b — adding any rule to event prompt seems to affect relation extraction)
+- Revert: `git checkout HEAD --` restored 4522 chars
+
+### Why 71-bis was rejected despite ch14 win
+
+1. **Script drift is a hard rule violation.** Even if the judge accepts English summaries semantically, downstream consumers (Neo4j storage, multilingual retrieval, UI rendering) may struggle with English summaries on Chinese chapters. The prompt's explicit "Keep summary in ORIGINAL script of TEXT" rule is contract-level, not advisory.
+2. **Relation regression pattern is consistent across all 3 prompt-side attempts.** c71a/c71b/71-bis all show alice_ch02 + little_women rel R=0. Adding ANY rule to the event prompt has hidden interaction with relation extraction (possibly shared context/budget at the model level).
+3. **Macro P regression hits −2pp threshold exactly.** Marginal win on ch14 doesn't offset the −2pp macro + the script drift + the relation regression.
+4. **The "ch14 win" comparison is apples-to-oranges.** c69/c70a never measured per-chapter event metrics via gemma judge; only rule-based attribution showed 0 TP. The clean comparison 71-bis vs c71a (within-cycle measurement) shows ch14 fixed; but vs c70a baseline we don't have the data.
+
+### Combined lessons captured (cycle 71 + 71-bis)
+
+- **Event prompts are intrinsically resistant to prompt-side improvements.** Three distinct attempts (c71a with overlapping examples, c71b with VN-only, 71-bis with rules-only English) all failed in different ways. The model's event extraction behavior is more stable than its relation behavior — adding signal to the event prompt creates side effects.
+- **Pivot to structural levers.** Per cycle-70 commit's open follow-ups: cycle 72 should test **#2 Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) — bigger lever, no prompt risk, F1 target ~0.88.
+- **Script drift via English-only rule prose.** Adding instruction prose in English alone (no CJK/VN illustrative phrases) STILL caused CJK chapters to drift to English summaries. The presence of English illustrative content in the prompt biases the model toward English output, even when the chapter is in another script. Future multilingual prompts need symmetric language signal OR no language-specific signal at all.
+
+### New deferred row (from 71-bis specifically)
+
+- **D-EVENT-RULE-ENGLISH-PROSE-CJK-DRIFT** — adding ANY new rule with English-only illustrative phrases (Rule 10 had "after praying" / "happily" / "walked across the bridge") biased the model to emit English summaries on Chinese chapters. If a future cycle adds rules to the event prompt, use ONLY abstract phrasing (no concrete language-specific examples) OR symmetric multilingual examples sourced outside the fixture set.
+
+
 
 Cycle 71 attempted to mirror cycle 70's pattern (Rule + CJK example + VN example + Lesson prose) onto the EVENT prompt. **Both variants regressed empirically vs c70a baseline; the prompt was reverted.** Event prompts are more sensitive than relation prompts to language-example presence — partial multilingual coverage creates failure modes that the relation cycle didn't surface.
 
@@ -36,20 +74,18 @@ Empirical evidence:
 - **D-CYCLE71-SYMMETRIC-CJK-EXAMPLE** — if attempting CJK event example again, source text from a chapter NOT in `tests/fixtures/golden_chapters/` (avoid the text-overlap trap). Pair with symmetric EN + VN examples sourced similarly.
 - **D-EVENT-AGGREGATOR-FUZZY-MATCH** — judge-side fix for the granularity drift identified in cycle 69 (ch14 model extracts the same scenes as gold but folded/padded; matching at semantic level not literal). Alternative to prompt-side teaching.
 
-### Cycle 71-bis queued (S size, ~30-40 min)
-
-Test Rule 10 (granularity) IN ISOLATION — no language-specific examples added. Apply just the Rule 10 text block to the event prompt, re-extract, gemma single-judge. Decision input for whether prompt-side event work is viable at all.
-
-### Cycle 72+ candidates (after 71-bis verdict)
+### Cycle 72 candidates (post-cycle-71+71-bis revert)
 
 | # | Candidate | Size | Status |
 |---|---|---|---|
-| 1 | **71-bis** (Rule 10 isolated) | S (~30-40 min) | **NEXT — approved post-cycle-71-revert** |
-| 2 | **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) | L (~half-day) | Pivot here if 71-bis is also negative — structural lever, no prompt risk |
-| 3 | **D-CLAUDE-JUDGE-VS-GEMMA-JUDGE-DIVERGENCE-AUDIT** | S (~1-2h) | Still pending from cycle 70 close |
+| 1 | ~~Specialized event prompt~~ | M | **TRIED, NEGATIVE — cycle 71 + 71-bis both reverted** |
+| 2 | **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) | L (~half-day) | **RECOMMENDED NEXT — pivot to structural lever; no prompt risk; F1 target ~0.88** |
+| 3 | **D-CLAUDE-JUDGE-VS-GEMMA-JUDGE-DIVERGENCE-AUDIT** | S (~1-2h) | Still pending from cycle 70 close; can run before #2 |
 | 4 | **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** | M (~half-day) | Multilingual NER anchor; closes EN-vs-CJK judge bias question |
-| 5 | **D-EVENT-AGGREGATOR-FUZZY-MATCH** | M (~half-day) | Judge-side fix for granularity drift; alternative to prompt-side |
+| 5 | **D-EVENT-AGGREGATOR-FUZZY-MATCH** | M (~half-day) | Judge-side fix for granularity drift; alternative to prompt-side event teaching |
 | 6 | **Catalogue-driven extraction** (resume paused ADR) | XL (multi-session) | Architectural; defer until smaller cycles plateau |
+
+Recommend cycle 72 = #2 (hybrid 2-pass) for the structural-lever bet. Session-end checkpoint advisable since 71/71-bis already burned this session's iteration budget; fresh session for #2 design + build.
 
 ---
 
