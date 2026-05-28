@@ -267,13 +267,11 @@ pub struct Plate {
     pub components: Vec<Polygon>,
     /// Drift velocity (pixels-per-tick, arbitrary). Drives collision strength.
     pub velocity: (f32, f32),
-    /// Voronoi sites for the plate's interior zones — [`Plate::zone_at`] assigns
-    /// each interior point to its nearest site. `zone_sites.len()` = zone count.
-    /// Zones span the **union** of all components; satellite islands inherit
-    /// the nearest mainland zone.
-    pub zone_sites: Vec<(f32, f32)>,
     /// Nested (depth-2) sub-zone Voronoi sites, indexed by L1 zone id:
-    /// `subzone_sites[l1]` are the sub-sites belonging to zone `l1`.
+    /// `subzone_sites[l1]` are the sub-sites belonging to zone `l1`. Sub-zones
+    /// are still Voronoi-only in v4.1d (templated sub-polygons land in v4.2,
+    /// which will then drop `subzone_sites` the same way v4.1d dropped
+    /// `zone_sites`).
     pub subzone_sites: Vec<Vec<(f32, f32)>>,
     /// V1 Phase A: per-plate noise seed for the [`Plate::zone_at`] domain
     /// warp (makes Voronoi seams wavy without changing site positions).
@@ -293,16 +291,10 @@ pub struct Plate {
     /// every plate carries `Ellipse` here); v3.1b adds BezierSpine, Polar,
     /// Boolean. Mirrored to the serialisable [`PlateData::shape_kind`] export.
     pub shape_kind: ShapeKind,
-    /// **v4.1a**: templated zones (one templated polygon per zone, generated
-    /// via the dispatcher at `depth = 1`). For backward compatibility,
-    /// `zone_sites` above is STILL maintained — v4.1b will migrate
-    /// `flat_climate.rs` to use `zones[i].center` and `zones[i].components`;
-    /// v4.1c will migrate `zonegen.rs` rendering; v4.1d will drop
-    /// `zone_sites` after consumers have migrated.
-    ///
-    /// `zones.len()` MAY differ from `zone_sites.len()` — these are
-    /// independently populated in v4.1a. v4.1d will collapse to a single
-    /// source of truth.
+    /// **v4.1a→d**: templated zones (one templated polygon per zone, generated
+    /// via the dispatcher at `depth = 1`). The single source of truth for the
+    /// L1 zone layout — [`Plate::zone_at`] does Voronoi over
+    /// `zones[i].center`, and climate/render iterate `zones[i].components`.
     pub zones: Vec<Zone>,
 }
 
@@ -360,30 +352,25 @@ impl Plate {
     }
 
     /// Index of the interior zone containing `(x, y)` — the nearest Voronoi
-    /// site. `None` if the plate has no zones. (Does not check `contains`; the
-    /// caller passes interior points.)
+    /// site over `self.zones[i].center`. `None` if the plate has no zones.
+    /// (Does not check `contains`; the caller passes interior points.)
     ///
     /// **V1 Phase A**: applies a domain warp to `(x, y)` before the
     /// nearest-site search so zone boundaries become wavy instead of
-    /// straight Voronoi edges, without moving the underlying sites
-    /// (climate and adjacency code still index `zone_sites[zone_id]`
-    /// directly). The warp scale is small enough vs. site spacing that no
-    /// slivers form; see [`ZONE_WARP_AMP`].
+    /// straight Voronoi edges, without moving the underlying centres.
+    /// The warp scale is small enough vs. centre spacing that no slivers
+    /// form; see [`ZONE_WARP_AMP`].
     pub fn zone_at(&self, x: f32, y: f32) -> Option<usize> {
         let (qx, qy) = warped_query(x, y, self.zone_warp_salt);
-        nearest_site(&self.zone_sites, qx, qy)
+        nearest_zone_center(&self.zones, qx, qy)
     }
 
     /// **v4.1b**: Polygon-based zone lookup over `self.zones[zi].components`.
     /// Returns the index of the first zone whose polygon set contains
-    /// `(x, y)`. Falls back to [`Plate::zone_at`] (Voronoi nearest-site)
+    /// `(x, y)`. Falls back to [`Plate::zone_at`] (Voronoi nearest-centre)
     /// when no zone polygon contains the point — typical for points in the
     /// plate body that lie outside every templated zone polygon (each
     /// zone covers a sub-region; the union is rarely 100% of the plate).
-    ///
-    /// v4.1c rendering can opt in to this method for per-zone polygon
-    /// paint; flat_climate.rs (v4.1b) continues to use the default
-    /// `zone_at` Voronoi for byte-identical climate output.
     pub fn zone_at_polygon(&self, x: f32, y: f32) -> Option<usize> {
         for (i, zone) in self.zones.iter().enumerate() {
             if zone.contains(x, y) {
@@ -393,9 +380,9 @@ impl Plate {
         self.zone_at(x, y)
     }
 
-    /// Nested (L1 zone, L2 sub-zone) indices containing `(x, y)`: the nearest
-    /// L1 zone site, then the nearest sub-site **of that zone**. `None` if the
-    /// plate has no zones.
+    /// Nested (L1 zone, L2 sub-zone) indices containing `(x, y)`: the
+    /// containing L1 zone, then the nearest sub-site **of that zone**.
+    /// `None` if the plate has no zones.
     pub fn subzone_at(&self, x: f32, y: f32) -> Option<(usize, usize)> {
         let l1 = self.zone_at(x, y)?;
         let l2 = self
@@ -405,6 +392,23 @@ impl Plate {
             .unwrap_or(0);
         Some((l1, l2))
     }
+}
+
+/// Nearest-zone-centre lookup — Voronoi over `zones[i].center`. Allocation-free
+/// counterpart to [`nearest_site`] that reads directly from the [`Zone`] slice
+/// so render-time `zone_at` calls never have to materialise an intermediate
+/// `Vec<(f32, f32)>` of centres.
+fn nearest_zone_center(zones: &[Zone], qx: f32, qy: f32) -> Option<usize> {
+    let mut best: Option<(f32, usize)> = None;
+    for (i, zone) in zones.iter().enumerate() {
+        let (zx, zy) = zone.center;
+        let d2 = (qx - zx) * (qx - zx) + (qy - zy) * (qy - zy);
+        match best {
+            Some((bd, _)) if d2 >= bd => {}
+            _ => best = Some((d2, i)),
+        }
+    }
+    best.map(|(_, i)| i)
 }
 
 /// Point-in-polygon ray-cast for a single closed ring. Returns true if `(x, y)`
@@ -680,7 +684,6 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
                 center: (cx, cy),
                 components,
                 velocity,
-                zone_sites: Vec::new(),
                 subzone_sites: Vec::new(),
                 zone_warp_salt,
                 size_rank: rank,
@@ -690,25 +693,31 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
             };
             let zone_count = params.min_zones
                 + (zrng.next_f32() * (max_zones - params.min_zones + 1) as f32) as usize;
-            plate.zone_sites = sample_zone_sites(&plate, zone_count.max(1), &mut zrng);
+            // **v4.1d**: zone centres are no longer stored on `Plate` — they
+            // live on `Plate.zones[i].center`. During construction we still
+            // need them as a Vec for L2 sub-site Voronoi filtering and to
+            // seed the templated-zone dispatcher loop.
+            let zone_centers: Vec<(f32, f32)> =
+                sample_zone_sites(&plate, zone_count.max(1), &mut zrng);
 
             // Depth-2: each L1 zone gets its own nested Voronoi sub-sites,
             // sampled inside the plate and filtered to that zone's cell.
+            // Sub-zones remain Voronoi-only in v4.1d (templated sub-polygons
+            // arrive in v4.2).
             let max_sub = params.max_subzones.max(params.min_subzones).max(1);
-            plate.subzone_sites = (0..plate.zone_sites.len())
+            plate.subzone_sites = (0..zone_centers.len())
                 .map(|l1| {
                     let k = params.min_subzones
                         + (zrng.next_f32() * (max_sub - params.min_subzones + 1) as f32) as usize;
-                    sample_subzone_sites(&plate, l1, k.max(1), &mut zrng)
+                    sample_subzone_sites(&plate, &zone_centers, l1, k.max(1), &mut zrng)
                 })
                 .collect();
 
-            // **v4.1a**: populate Plate.zones with templated polygons (one
-            // per zone_sites entry, so existing and new APIs agree on zone
-            // count). Each zone goes through the dispatcher at depth=1.
-            // For backward compat, zone_sites is still populated above —
-            // v4.1b/c migrate consumers; v4.1d drops zone_sites.
-            for (zi, &zone_center) in plate.zone_sites.iter().enumerate() {
+            // **v4.1a→d**: populate `Plate.zones` with templated polygons (one
+            // per sampled zone centre). Each zone goes through the dispatcher
+            // at depth=1. Post-v4.1d, `zones` is the single source of truth
+            // for L1 zone layout.
+            for (zi, &zone_center) in zone_centers.iter().enumerate() {
                 let zone_shape_seed = shape_seed
                     .wrapping_mul(0x1656_67B1)
                     .wrapping_add(zi as u32);
@@ -899,9 +908,20 @@ fn sample_zone_sites(plate: &Plate, count: usize, rng: &mut Rng) -> Vec<(f32, f3
 }
 
 /// Rejection-sample `count` nested sub-sites for L1 zone `l1`: points inside
-/// the plate **and** whose nearest L1 site is `l1` (i.e. inside that zone's
-/// Voronoi cell). Falls back to the L1 site if the cell is too thin to hit.
-fn sample_subzone_sites(plate: &Plate, l1: usize, count: usize, rng: &mut Rng) -> Vec<(f32, f32)> {
+/// the plate **and** whose nearest L1 centre (with warp applied) is `l1`.
+/// Falls back to the L1 centre if the cell is too thin to hit.
+///
+/// **v4.1d**: takes `zone_centers` explicitly because `plate.zones` is not
+/// yet populated at the call site — sub-sites are sampled in the same
+/// construction pass that builds `plate.zones`, so we hand the centres
+/// straight from `sample_zone_sites`'s return value.
+fn sample_subzone_sites(
+    plate: &Plate,
+    zone_centers: &[(f32, f32)],
+    l1: usize,
+    count: usize,
+    rng: &mut Rng,
+) -> Vec<(f32, f32)> {
     let (minx, miny, maxx, maxy) = plate.bounding_box();
     let mut sites = Vec::with_capacity(count);
     let cap = count * 120;
@@ -909,13 +929,16 @@ fn sample_subzone_sites(plate: &Plate, l1: usize, count: usize, rng: &mut Rng) -
     while sites.len() < count && tries < cap {
         let x = lerp(minx, maxx, rng.next_f32());
         let y = lerp(miny, maxy, rng.next_f32());
-        if plate.contains(x, y) && plate.zone_at(x, y) == Some(l1) {
-            sites.push((x, y));
+        if plate.contains(x, y) {
+            let (qx, qy) = warped_query(x, y, plate.zone_warp_salt);
+            if nearest_site(zone_centers, qx, qy) == Some(l1) {
+                sites.push((x, y));
+            }
         }
         tries += 1;
     }
     if sites.is_empty() {
-        sites.push(plate.zone_sites.get(l1).copied().unwrap_or(plate.center));
+        sites.push(zone_centers.get(l1).copied().unwrap_or(plate.center));
     }
     sites
 }
@@ -1011,7 +1034,7 @@ pub fn render_zones_rgb(world: &FlatWorld) -> Vec<u8> {
                 None => VOID,
                 Some(p) => {
                     let z = p.zone_at(x, y).unwrap_or(0);
-                    zone_color(p.id, n, z, p.zone_sites.len().max(1))
+                    zone_color(p.id, n, z, p.zones.len().max(1))
                 }
             };
             let o = (py * w + px) * 3;
@@ -1144,26 +1167,29 @@ pub fn export(world: &FlatWorld, seed: u64) -> WorldData {
             size_rank: p.size_rank.as_str(),
             shape_kind: p.shape_kind,
             zones: p
-                .zone_sites
+                .zones
                 .iter()
                 .enumerate()
-                .map(|(z, &(sx, sy))| ZoneData {
-                    path: vec![p.id as u32, z as u32],
-                    site: [sx, sy],
-                    base_elevation: world.elevation_at(sx, sy),
-                    subzones: p
-                        .subzone_sites
-                        .get(z)
-                        .map(|subs| {
-                            subs.iter()
-                                .enumerate()
-                                .map(|(sz, &(bx, by))| SubZoneData {
-                                    path: vec![p.id as u32, z as u32, sz as u32],
-                                    site: [bx, by],
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default(),
+                .map(|(z, zone)| {
+                    let (sx, sy) = zone.center;
+                    ZoneData {
+                        path: vec![p.id as u32, z as u32],
+                        site: [sx, sy],
+                        base_elevation: world.elevation_at(sx, sy),
+                        subzones: p
+                            .subzone_sites
+                            .get(z)
+                            .map(|subs| {
+                                subs.iter()
+                                    .enumerate()
+                                    .map(|(sz, &(bx, by))| SubZoneData {
+                                        path: vec![p.id as u32, z as u32, sz as u32],
+                                        site: [bx, by],
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    }
                 })
                 .collect(),
         })
@@ -1276,10 +1302,14 @@ mod tests {
                     hasher.update(&y.to_le_bytes());
                 }
             }
-            hasher.update(&(p.zone_sites.len() as u32).to_le_bytes());
-            for &(x, y) in &p.zone_sites {
-                hasher.update(&x.to_le_bytes());
-                hasher.update(&y.to_le_bytes());
+            // **v4.1d**: read zone centres from `zones[].center` (was
+            // `zone_sites`). The two were populated in parallel from v4.1a
+            // onward — values match bit-for-bit, so the v3.0 pinned digests
+            // hold across this rename.
+            hasher.update(&(p.zones.len() as u32).to_le_bytes());
+            for zone in &p.zones {
+                hasher.update(&zone.center.0.to_le_bytes());
+                hasher.update(&zone.center.1.to_le_bytes());
             }
             hasher.update(&(p.subzone_sites.len() as u32).to_le_bytes());
             for sublist in &p.subzone_sites {
@@ -1472,20 +1502,15 @@ mod tests {
 
     #[test]
     fn v4_1a_zones_populated_for_every_plate() {
-        // Acceptance per docs/sessions/SESSION_PATCH.md v4.1a entry:
-        // every plate gets `zones: Vec<Zone>` populated. Length matches
-        // `zone_sites.len()` since v4.1a populates them in parallel.
+        // Acceptance per docs/sessions/SESSION_PATCH.md v4.1a entry: every
+        // plate gets `zones: Vec<Zone>` populated. The parallel-population
+        // invariant against `zone_sites` was dropped in v4.1d alongside the
+        // field — `zones` is now the single source of truth.
         let world = generate(&FlatParams::default());
         for plate in &world.plates {
             assert!(
                 !plate.zones.is_empty(),
                 "plate {} should have at least one zone",
-                plate.id
-            );
-            assert_eq!(
-                plate.zones.len(),
-                plate.zone_sites.len(),
-                "plate {} zones count should match zone_sites in v4.1a",
                 plate.id
             );
         }
@@ -1597,9 +1622,8 @@ mod tests {
                 (c.0 - r, c.1 + r),
             ]],
             velocity,
-            zone_sites: vec![c],
             subzone_sites: vec![vec![c]],
-            // v4.1a: test helpers don't exercise zones — empty Vec keeps
+            // v4.1d: test helpers don't exercise zones — empty Vec keeps
             // collision/elevation tests size-agnostic.
             zones: Vec::new(),
             // V1 Phase A: deterministic per-plate salt for `zone_at` warp.
@@ -1692,7 +1716,7 @@ mod tests {
         };
         let world = generate(&p);
         for plate in &world.plates {
-            assert_eq!(plate.subzone_sites.len(), plate.zone_sites.len());
+            assert_eq!(plate.subzone_sites.len(), plate.zones.len());
             for (l1, subs) in plate.subzone_sites.iter().enumerate() {
                 assert_eq!(subs.len(), 2, "plate {} zone {l1} subzone count", plate.id);
                 // Each sub-site lies in its own L1 zone cell.
@@ -1714,11 +1738,12 @@ mod tests {
         };
         let world = generate(&p);
         for plate in &world.plates {
-            assert_eq!(plate.zone_sites.len(), 4, "plate {} zone count", plate.id);
-            // Every interior site resolves to a valid zone index.
-            for &(sx, sy) in &plate.zone_sites {
-                let z = plate.zone_at(sx, sy).expect("site has a zone");
-                assert!(z < plate.zone_sites.len());
+            assert_eq!(plate.zones.len(), 4, "plate {} zone count", plate.id);
+            // Every interior centre resolves to a valid zone index.
+            for zone in &plate.zones {
+                let (sx, sy) = zone.center;
+                let z = plate.zone_at(sx, sy).expect("centre has a zone");
+                assert!(z < plate.zones.len());
             }
         }
     }
@@ -1867,7 +1892,7 @@ mod tests {
         let plate = world
             .plates
             .iter()
-            .find(|p| p.zone_sites.len() >= 4 && p.zone_warp_salt != 0)
+            .find(|p| p.zones.len() >= 4 && p.zone_warp_salt != 0)
             .expect("at least one plate with ≥4 zones and a warp salt");
         let mut differs = 0u32;
         // Sample a coarse grid covering the plate's bounding box.
@@ -1879,7 +1904,10 @@ mod tests {
                 let y = lerp(miny, maxy, j as f32 / (steps - 1) as f32);
                 if !plate.contains(x, y) { continue; }
                 let warped = plate.zone_at(x, y);
-                let plain = nearest_site(&plate.zone_sites, x, y);
+                // v4.1d: compare against unwarped Voronoi over zones[].center
+                // (the new SSOT). Equivalent to the old plain
+                // `nearest_site(&zone_sites, x, y)` call by v4.1a invariant.
+                let plain = nearest_zone_center(&plate.zones, x, y);
                 if warped != plain {
                     differs += 1;
                 }

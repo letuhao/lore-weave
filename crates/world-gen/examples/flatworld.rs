@@ -194,7 +194,7 @@ fn main() {
             image::ExtendedColorType::Rgb8,
         )
         .expect("failed to write zones PNG");
-        let total: usize = world.plates.iter().map(|p| p.zone_sites.len()).sum();
+        let total: usize = world.plates.iter().map(|p| p.zones.len()).sum();
         println!("wrote {} — {} zones across {} plates", zpath.display(), total, world.plates.len());
     }
 

@@ -598,7 +598,7 @@ use crate::flatworld::FlatWorld;
 /// # Panics
 ///
 /// Panics if `plate_id >= world.plates.len()` or
-/// `zone_id >= world.plates[plate_id].zone_sites.len()`. Callers must pass
+/// `zone_id >= world.plates[plate_id].zones.len()`. Callers must pass
 /// indices derived from those bounds (the in-crate `colorize_biome` does).
 pub fn compute_zone_climate(
     world: &FlatWorld,
@@ -1435,7 +1435,7 @@ mod tests {
         let params = WorldClimateParams::default();
         let h = world.height as f32;
         // Pick a plate — any plate works because ocean_current_delta only
-        // needs (plate.vertices, plate.center, plate.zone_sites).
+        // needs (plate.vertices, plate.center, plate.zones[].center).
         let p = &world.plates[0];
         if p.zones.len() < 2 { return; } // skip if test_world degenerate
         // Manually compute east-most and west-most zone indices.
