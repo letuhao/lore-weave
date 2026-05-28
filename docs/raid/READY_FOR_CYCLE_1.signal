@@ -1,0 +1,7 @@
+# Emitted by auto-dispatcher.py at 2026-05-28T20:57:24Z
+schema_version: 1
+next_cycle: 1
+ready_at: 2026-05-28T20:57:24Z
+deps_satisfied: []
+smoke_evidence_sha: 78f9290ed3d157aeaa4e992bba5a15720221f1d0
+dispatcher_pid: 26992

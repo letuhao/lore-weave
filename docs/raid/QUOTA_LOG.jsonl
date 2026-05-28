@@ -1,1 +1,4 @@
 {"ts":"2026-05-29T00:00:00Z","cycle":0,"phase":"init","event":"quota_log_created","plan":"max-20x","note":"Quota tracking for subscription Max 20x. Tokens estimated per Anthropic API response metadata + model-tier multipliers (Opus 1×, Sonnet 0.4×, Haiku 0.1× equivalent quota burn)."}
+{"ts":"2026-05-28T20:45:54Z","cycle":"00X","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-05-28T20:49:02Z","cycle":"00X","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-05-28T20:57:21Z","cycle":"00X","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}

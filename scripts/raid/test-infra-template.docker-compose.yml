@@ -1,0 +1,49 @@
+# RAID per-DPS test infrastructure template — B2
+# Per RAID_WORKFLOW.md §13.2
+#
+# Invoked by test-infra-up-dps.sh / test-infra-down-dps.sh with env vars:
+#   RAID_PG_PORT, RAID_REDIS_PORT, RAID_MINIO_PORT, RAID_MINIO_CONSOLE
+# and project name `-p raid-c<N>-dps<I>` for container scope isolation.
+#
+# All services bind to localhost only (no external exposure during cycle work).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test
+    ports:
+      - "127.0.0.1:${RAID_PG_PORT}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data  # ephemeral; volumes wiped on down -v
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d test"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${RAID_REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${RAID_MINIO_PORT}:9000"
+      - "127.0.0.1:${RAID_MINIO_CONSOLE}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 15

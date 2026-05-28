@@ -1,8 +1,2 @@
-UNLOCKED
-# Sentinel file for RAID P1 (fresh-session-per-cycle invariant).
-# Per RAID_WORKFLOW.md §12.1:
-#   - Each /raid <N> session writes its cycle number here at startup
-#   - On subsequent /raid <M> in same session: orchestrator detects mismatch + refuses
-#   - On cycle completion: orchestrator resets to UNLOCKED
-#
-# Current state: UNLOCKED (no cycle running)
+READY_FOR_1
+# Last updated: 2026-05-28T20:57:24Z by auto-dispatcher.py

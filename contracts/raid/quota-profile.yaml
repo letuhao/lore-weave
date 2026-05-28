@@ -1,0 +1,53 @@
+# RAID quota profile — Anthropic subscription plan parameters
+# Per RAID_WORKFLOW.md §14.3 Q3
+# Active profile pinned to user's plan (PRE_FLIGHT §3.1 confirmed Max 20x).
+
+plan: max-20x
+
+# DPS count caps per cycle complexity (§14.3)
+dps_count_cap_per_complexity:
+  simple: 2    # 1-2 components — was 1-2
+  medium: 3    # 3-5 components — was 3-4
+  complex: 4   # 6-8 components — was 5-7
+  mega: 5      # 9+ components — was 8-11 (cycles 7, 31, 36 candidates)
+
+# Above this wall-clock estimate, a cycle is SPLIT into 2 cycles
+mega_split_wall_clock_threshold_hours: 6
+
+# Sub-agent model tiering (§14.2 — central truth for sub-agent-spawn.py)
+preferred_models:
+  default_sub_agent: claude-sonnet-4-6
+  light_sub_agent: claude-haiku-4-5
+  heavy_sub_agent: claude-opus-4-7
+
+role_to_model:
+  raid_leader: claude-opus-4-7        # main session — orchestration
+  dps_default: claude-sonnet-4-6      # parallel build slices
+  dps_heavy: claude-opus-4-7          # complex slices (DP-kernel C17, macros, per-reality migrations C9 C13)
+  tank: claude-sonnet-4-6             # mostly mechanical merge work
+  healer: claude-sonnet-4-6           # test repair
+  adversary: claude-sonnet-4-6        # cold-start code review
+  scope_guard: claude-haiku-4-5       # brief vs diff comparison
+  auditor: claude-haiku-4-5           # write logs
+  post_commit_verifier: claude-haiku-4-5  # P9 cross-check
+
+# Known limits (Anthropic published, May 2026 — see §14.1)
+limits:
+  five_hour_window_tokens_estimate: 2_000_000
+  five_hour_window_messages_estimate: 900
+  sessions_per_month_soft_cap: 50
+
+# Quota-burn multiplier per model (informal Anthropic Max 20x guidance — §14.7)
+model_quota_multiplier:
+  claude-opus-4-7: 1.0
+  claude-sonnet-4-6: 0.4
+  claude-haiku-4-5: 0.1
+
+# Per-cycle typical burn (calibrated during smoke; updated by health-dashboard)
+typical_cycle_tokens: 450_000
+
+# Pre-cycle quota decision thresholds (§14.4)
+quota_check_thresholds:
+  proceed_min_remaining_ratio: 1.5      # >=1.5× typical → PROCEED
+  risky_min_remaining_ratio: 0.5        # 0.5×-1.5× → RISKY (warn)
+  # below 0.5× → WAIT-FOR-RESET

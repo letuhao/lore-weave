@@ -1200,3 +1200,72 @@ Driver: first implementation cycle off `BILLING_MODEL_REDESIGN_ADR.md`. Subsyste
 | **Media-rich chapters** — images and video for visual novel-style storytelling | **Phase 3.5 Done** | E4+E5 complete, image/video/code blocks | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
 | **Video generation provider integration** — connect video-gen-service to real providers (Sora, Veo, etc.) | Skeleton deployed | 10 tasks planned (VG-01..VG-10) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
 | **Media version retention** — auto-delete old versions, retention policy, MinIO GC, storage usage UI | Planned | 7 tasks (MV-01..MV-07) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
+
+---
+
+## Session 69 — Cycle 0 Foundation RAID Bootstrap SHIPPED (2026-05-29)
+
+**Status:** ✅ COMPLETE. C0 smoke 40/40 PASS · handoff state `lock=READY_FOR_1 + READY_FOR_CYCLE_1.signal` intact · ready for fresh-session `/raid 1`.
+
+### What shipped (46 canonical deliverables)
+**B1 core (8 files):** orchestrator.py · escalation-writer.py · in-progress-state-writer.py · startup-verifier.sh (P2 5-step + Step 6 drift check) · files-from-cycle.sh · compaction-detector.py · recovery-protocol-runner.sh (P5 8-step executor — R3 D-CYCLE-0-LOCK-PROBE-SETUP completion) · recover-from-crash.sh (operator toolkit) · test/force-lock-state.sh
+
+**B2 production-readiness (10 files + dirs):** worktrees-{create,cleanup,check}.sh · test-infra-{up,down}-dps.sh + docker-compose template · prod-isolation-lint.sh · .gitleaks.toml · secret-scan-{dps,cycle,final}.sh · ../foundation-worktrees/{,_archive,_quarantine}/
+
+**B3 quota-aware (7 files):** contracts/raid/quota-profile.yaml (max-20x) · quota-check.sh + _quota_helper.py · sub-agent-spawn.py (model tier resolver) · quota-summary.py · session-counter.py · cost-tracker.py + cost-summary.py (dual-use)
+
+**B4 observability (3 files):** health-dashboard.py · post-commit-verifier-prompt.md · verify-cycle-template.sh
+
+**B5 brief tooling (3 scripts + 39 briefs):** brief-generator.py · brief-structure-validator.sh · regenerate-briefs.sh · TEMPLATE.md + 38 cycle briefs (00X_helloworld_smoke + 01..38 auto-generated)
+
+**B6 Semi-AUTO + infra (5 items):** run-smoke-test.sh (40-check harness) · auto-dispatcher.py (Semi-AUTO ready-signal emitter — R3 BLOCK 3 fix) · docs/raid/RAID_WORKFLOW.md (v1.4 copy) · infra/foundation-dev/docker-compose.yml · infra/foundation-staging/terraform/main.tf skeleton
+
+**Plus:** _recovery_dps_check.py helper (recovery-protocol-runner support)
+
+### Phase progression (12/12)
+CLARIFY → DESIGN → REVIEW-DESIGN R1 REJECTED 3 BLOCK → R2 REJECTED 2 BLOCK + 1 WARN → R3 APPROVED_WITH_WARNINGS 3 WARN → PLAN → BUILD (29 new files) → VERIFY (smoke 40/40 PASS) → REVIEW-CODE R1 REJECTED 2 BLOCK + 1 WARN (handoff cleanup destroying state; probes accepting any non-zero; non-atomic dispatcher write order) → all 3 fixed + smoke re-run 40/40 → QC + POST-REVIEW Scope Guard CLEAR → SESSION → COMMIT (pending this entry) → RETRO
+
+### Key adversary findings (all addressed)
+- **Design R1 BLOCK 1:** Q-protections missing in smoke § → added 8 Q checks
+- **Design R1 BLOCK 2 / R2 BLOCK 1:** P5 false-green ("runs without error") → recovery-protocol-runner.sh + 5A CONSISTENT + 5B INCONSISTENT dual scenario (9 assertions)
+- **Design R1 BLOCK 3:** auto-dispatcher "spawn fresh /raid 1" structurally impossible (Claude tool harness cannot fork Claude sessions) → redesigned as Semi-AUTO ready-signal emitter; user re-confirmed contract (PRE_FLIGHT D6); RAID_WORKFLOW.md amended to v1.4
+- **Design R2 BLOCK 2:** lock state machine self-contradictory + paired-state suppression → atomic 00X→READY_FOR_N transition; orchestrator refusal rule with 5 cases; crash-recovery table 8 rows
+- **Design R2 WARN 3 / R3 all WARNs:** spec/plan drift + downstream-incomplete propagations → last_synced_with_RAID_WORKFLOW_version header in CYCLE_DECOMPOSITION + drift check in startup-verifier Step 6 + brief-generator refusal + force-lock-state.sh test helper + orchestrator pid-file contract
+- **Code R1 BLOCK 1:** smoke teardown destroyed C0→C1 handoff → removed lock/signal cleanup from PASS branch + added HANDOFF assertion (smoke now 40 checks)
+- **Code R1 BLOCK 2:** P1-1B probes accepted any non-zero exit → probe_refuse() helper asserts specific stderr substring + lock unchanged
+- **Code R1 WARN 1:** auto-dispatcher non-atomic (out-of-table crash state) → swap to lock-first write order → crash leaves in-table state row 4
+
+### PRE_FLIGHT 6 deviations honored
+D1 AWS staging defer V1+30d · D2 no rebase main · D3 push-per-cycle + CI disable foundation branch · D4 Actor/V1+30d defer indefinitely · D5 existing prod isolation clarified · D6 Semi-AUTO contract (added 2026-05-29 after Adversary R1 BLOCK 3)
+
+### Spec amendments shipped
+- RAID_WORKFLOW.md v1.0 → v1.4: §13.7 Semi-AUTO correction; §13.9 COST_LOG.jsonl SUPERSEDED note
+- CYCLE_DECOMPOSITION.md §Cycle 0 rewritten v1.4 (Size XL, 46 deliverables enumerated, drift-detection header added); §5 per-cycle Phase 9 vs C0→C1 boundary disambiguated
+- PRE_FLIGHT_CHECKLIST.md §10 NOTES added D6 deviation
+
+### Smoke evidence (live VERIFY)
+- 4 successive runs (39→40 checks; iterative fix cycles): runs 1-3 surfaced 7→4→0 failures via real code execution; run 4 added HANDOFF check after BLOCK 1 fix
+- Final: `{"event":"smoke_complete","cycle":"00X","result":"PASS","check_count":40}` in docs/audit/AUDIT_LOG.jsonl
+- Coverage: 10 P-protections incl. 5 lock-state paired probes + P5 dual scenario (CONSISTENT + INCONSISTENT HALT) · 6 B-protections · 8 Q-protections · AUTO gate · final HANDOFF check
+- Handoff verified intact: `lock=READY_FOR_1 + READY_FOR_CYCLE_1.signal` present with valid YAML (schema_version=1, next_cycle=1, smoke_evidence_sha=78f9290e)
+
+### Commits this session
+- `78f9290e` — design + plan phases (3-round AMAW adversary loop, 4 audit findings files, 4 spec amendment files)
+- `3202beb0` (prior) — PRE_FLIGHT signed off + CI disabled for foundation branch
+- _pending C0 BUILD commit_ — single atomic commit with 29 new files + smoke evidence + workflow gate complete
+
+### Audit trail
+- `docs/audit/AUDIT_LOG.jsonl` (690 lines) — phase transitions + 4 adversary verdicts + 40 smoke check rows × 4 runs + handoff intact + Scope Guard CLEAR
+- `docs/audit/findings-cycle-0-foundation-bootstrap-{r1,r2,r3,code-r1}.md` — 4 adversary rounds persisted
+
+### Residual risk (none BLOCK-class)
+All 3 R3 design WARNs + 1 code-R1 WARN addressed in BUILD per CYCLE_0_PLAN.md §9 register. Operational notes: brief-generator emits Q-ID placeholders (per-layer LOCKED enumeration is future BUILD task D-CYCLE-0-LOCKED-ENUM-PERCYCLE); quota heuristic calibrates during real cycles; per-cycle ~30s user step (open fresh session + /raid N) totals ~18m across 37 cycles per PRE_FLIGHT §8.2 budget.
+
+### Next session (user action)
+1. Close THIS Claude Code session (P1 fresh-session invariant)
+2. Open a NEW Claude Code session in same repo
+3. Run `/raid 1` — orchestrator detects READY_FOR_CYCLE_1.signal + lock=READY_FOR_1 → atomic transition → cycle 1 (L1.E Meta HA) begins
+4. Subsequent C0→C1 → ... → C38 cycles each pause 60s post-smoke for ctrl-C window then emit next ready-signal
+
+---
+
