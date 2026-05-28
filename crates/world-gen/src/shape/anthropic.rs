@@ -28,9 +28,11 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::shape::csg::BooleanTemplate;
-use crate::shape::llm::{LlmDecision, LlmError, LlmPrompt, LlmProvider};
-use crate::shape::{ParamOverride, ShapeKind};
+use crate::shape::llm::{
+    parse_params_from_value, parse_shape_kind_str, pick_shape_schema_strict,
+    shape_dispatch_system_prompt, shape_dispatch_user_message, LlmDecision, LlmError, LlmPrompt,
+    LlmProvider,
+};
 
 /// Default model — Anthropic's cheapest+fastest as of 2026-01.
 pub const DEFAULT_MODEL: &str = "claude-haiku-4-5-20251001";
@@ -94,15 +96,21 @@ impl AnthropicProvider {
     pub fn build_request(&self, prompt: &LlmPrompt) -> MessagesRequest {
         let system = vec![SystemBlock {
             block_type: "text".to_string(),
-            text: build_system_prompt(),
+            text: shape_dispatch_system_prompt(),
             cache_control: Some(CacheControl {
                 control_type: "ephemeral".to_string(),
             }),
         }];
 
-        let user_text = build_user_message(prompt);
+        let user_text = shape_dispatch_user_message(prompt);
 
-        let tool = build_pick_shape_tool();
+        let tool = ToolDef {
+            name: "pick_shape".to_string(),
+            description: "Choose a shape generator and (optionally) its \
+                          parameter override for the described entity."
+                .to_string(),
+            input_schema: pick_shape_schema_strict(),
+        };
 
         MessagesRequest {
             model: self.model.clone(),
@@ -150,14 +158,14 @@ impl AnthropicProvider {
                     "tool_use.input.kind missing or not a string".to_string(),
                 )
             })?;
-        let kind = parse_shape_kind(kind_str)?;
+        let kind = parse_shape_kind_str(kind_str)?;
         if !prompt.allowed_kinds.contains(&kind) {
             return Err(LlmError::InvalidResponse(format!(
                 "kind {kind:?} not in allowed_kinds {:?}",
                 prompt.allowed_kinds
             )));
         }
-        let params = parse_params(kind, tool_use.get("params"))?;
+        let params = parse_params_from_value(kind, tool_use.get("params"))?;
         Ok(LlmDecision { kind, params })
     }
 }
@@ -269,225 +277,18 @@ pub enum ResponseContentBlock {
     },
 }
 
-// ---------- Prompt / schema builders ----------
-
-fn build_system_prompt() -> String {
-    // Capped at ~1200 tokens. Updates require bumping the schema rev in
-    // the system message so a stale cached prefix invalidates cleanly.
-    String::from(
-        "You are a procedural-world-generation dispatcher. For each \
-         entity (plate, zone, sub-zone) you pick one shape generator \
-         from a fixed catalog and emit a structured `pick_shape` tool \
-         call. Output ONLY the tool call — no prose.\n\
-         \n\
-         ## Catalog (return one of these as `kind`):\n\
-         - `Ellipse` — smooth anisotropic ellipsoid with fbm warp. \
-           Defaults; works for any rank.\n\
-         - `BezierSpine` — cubic Bezier spine + variable-radius sweep. \
-           Good for long thin continents (Italy / Korea / Madagascar \
-           shapes).\n\
-         - `Polar` — superformula closed curve. Picks small-rank \
-           rotationally-symmetric continents (Iceland / Hispaniola).\n\
-         - `Boolean` — polygon CSG (union / difference / wedge cut). \
-           Good for inland seas, gulfs, peanut shapes.\n\
-         - `SdfCapsuleChain` — chained capsules + smooth-min. Branching \
-           or limb-like landmasses.\n\
-         - `MarchingNoise` — noise field contoured. Best for archipelagos \
-           and irregular coastlines.\n\
-         - `Slime` — multi-agent random walk + concave hull. Most \
-           organic / tendrilly continents.\n\
-         - `Stamp` — pre-authored signature templates (Italy boot, Japan \
-           4-arc, Cuba crescent, etc.). Picks via `template_id`.\n\
-         \n\
-         ## Parameter overrides (return matching variant in `params`):\n\
-         - For `Ellipse` set `params.ellipse.aspect_ratio` in [0.5, 3.0].\n\
-         - For `Boolean` set `params.boolean.template` to one of \
-           [`EllipseUnion`, `EllipseDifference`, `WedgeCut`].\n\
-         - For `Stamp` set `params.stamp.template_id` to a u32 in [0, 9].\n\
-         - Other kinds: leave `params` null.\n\
-         \n\
-         ## Picking rules:\n\
-         - Bias by `depth`: plates (0) prefer interesting Bezier/Boolean/\
-           Stamp variety; zones (1) skew Ellipse/Polar for cleaner \
-           subdivisions; sub-zones (2) lean Ellipse/Polar minimal.\n\
-         - Bias by `size_rank`: Giant → branched (Slime, SDF, Bezier); \
-           Micro → simple (Ellipse, Polar).\n\
-         - Latitude `lat_norm` is `0..1` (north=0). Tropical mid-band \
-           may favour archipelagos (MarchingNoise).\n\
-         - Stay coherent within a `parent_path` family — sister zones of \
-           the same plate should share a stylistic register.",
-    )
-}
-
-fn build_user_message(prompt: &LlmPrompt) -> String {
-    let parent = if prompt.parent_path.is_empty() {
-        "(root)".to_string()
-    } else {
-        prompt
-            .parent_path
-            .iter()
-            .map(|p| p.to_string())
-            .collect::<Vec<_>>()
-            .join(".")
-    };
-    let allowed = prompt
-        .allowed_kinds
-        .iter()
-        .map(|k| format!("{k:?}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        "Entity:\n\
-         - path: {path}\n\
-         - depth: {depth}\n\
-         - size_rank: {rank:?}\n\
-         - lat_norm: {lat:.3}\n\
-         - parent: {parent}\n\
-         - allowed_kinds: [{allowed}]\n\
-         \n\
-         Call `pick_shape` with your choice.",
-        path = prompt.entity_path,
-        depth = prompt.depth,
-        rank = prompt.size_rank,
-        lat = prompt.lat_norm,
-    )
-}
-
-fn build_pick_shape_tool() -> ToolDef {
-    let schema = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "kind": {
-                "type": "string",
-                "enum": [
-                    "Ellipse",
-                    "BezierSpine",
-                    "Polar",
-                    "Boolean",
-                    "SdfCapsuleChain",
-                    "MarchingNoise",
-                    "Slime",
-                    "Stamp"
-                ],
-                "description": "Which generator from the catalog to use."
-            },
-            "params": {
-                "type": "object",
-                "properties": {
-                    "ellipse": {
-                        "type": "object",
-                        "properties": {
-                            "aspect_ratio": { "type": "number", "minimum": 0.5, "maximum": 3.0 }
-                        }
-                    },
-                    "boolean": {
-                        "type": "object",
-                        "properties": {
-                            "template": {
-                                "type": "string",
-                                "enum": ["EllipseUnion", "EllipseDifference", "WedgeCut"]
-                            }
-                        }
-                    },
-                    "stamp": {
-                        "type": "object",
-                        "properties": {
-                            "template_id": { "type": "integer", "minimum": 0, "maximum": 9 }
-                        }
-                    }
-                }
-            }
-        },
-        "required": ["kind"]
-    });
-    ToolDef {
-        name: "pick_shape".to_string(),
-        description: "Choose a shape generator and (optionally) its \
-                      parameter override for the described entity."
-            .to_string(),
-        input_schema: schema,
-    }
-}
-
-// ---------- Response parsing helpers ----------
-
-fn parse_shape_kind(s: &str) -> Result<ShapeKind, LlmError> {
-    Ok(match s {
-        "Ellipse" => ShapeKind::Ellipse,
-        "BezierSpine" => ShapeKind::BezierSpine,
-        "Polar" => ShapeKind::Polar,
-        "Boolean" => ShapeKind::Boolean,
-        "SdfCapsuleChain" => ShapeKind::SdfCapsuleChain,
-        "MarchingNoise" => ShapeKind::MarchingNoise,
-        "Slime" => ShapeKind::Slime,
-        "Stamp" => ShapeKind::Stamp,
-        other => {
-            return Err(LlmError::InvalidResponse(format!(
-                "unknown ShapeKind `{other}`"
-            )));
-        }
-    })
-}
-
-fn parse_boolean_template(s: &str) -> Result<BooleanTemplate, LlmError> {
-    Ok(match s {
-        "EllipseUnion" => BooleanTemplate::EllipseUnion,
-        "EllipseDifference" => BooleanTemplate::EllipseDifference,
-        "WedgeCut" => BooleanTemplate::WedgeCut,
-        // `Ring` is reserved for v3.3+ — not picked by v4.3c.
-        other => {
-            return Err(LlmError::InvalidResponse(format!(
-                "unknown BooleanTemplate `{other}`"
-            )));
-        }
-    })
-}
-
-fn parse_params(
-    kind: ShapeKind,
-    params_node: Option<&serde_json::Value>,
-) -> Result<Option<ParamOverride>, LlmError> {
-    let Some(params_node) = params_node.filter(|v| !v.is_null()) else {
-        return Ok(None);
-    };
-    let obj = match params_node.as_object() {
-        Some(o) => o,
-        None => return Ok(None),
-    };
-    Ok(match kind {
-        ShapeKind::Ellipse => obj.get("ellipse").and_then(|e| e.as_object()).map(|e| {
-            ParamOverride::Ellipse {
-                aspect_ratio: e
-                    .get("aspect_ratio")
-                    .and_then(|v| v.as_f64())
-                    .map(|n| n as f32),
-            }
-        }),
-        ShapeKind::Boolean => match obj.get("boolean").and_then(|b| b.as_object()) {
-            Some(b) => {
-                let template = match b.get("template").and_then(|v| v.as_str()) {
-                    Some(s) => Some(parse_boolean_template(s)?),
-                    None => None,
-                };
-                Some(ParamOverride::Boolean { template })
-            }
-            None => None,
-        },
-        ShapeKind::Stamp => obj
-            .get("stamp")
-            .and_then(|s| s.as_object())
-            .map(|s| ParamOverride::Stamp {
-                template_id: s.get("template_id").and_then(|v| v.as_u64()).map(|n| n as u32),
-            }),
-        _ => None,
-    })
-}
+// Prompt + schema + response-parsing helpers were extracted to
+// `crate::shape::llm` in v4.3d so the OpenAI and Ollama providers share
+// them. Anthropic uses the strict schema even though tool_use doesn't
+// require strict mode — keeping a single schema definition is worth
+// more than the marginal output-space loss.
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::flatworld::SizeRank;
-    use crate::shape::ParamOverride;
+    use crate::shape::csg::BooleanTemplate;
+    use crate::shape::{ParamOverride, ShapeKind};
 
     fn sample_prompt() -> LlmPrompt {
         LlmPrompt {

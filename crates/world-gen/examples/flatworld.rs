@@ -23,6 +23,8 @@ use world_gen::zonegen::{
 
 fn main() {
     let mut p = FlatParams::default();
+    // v4.3d: optional model override for any of the --llm-* flags.
+    let mut llm_model: Option<String> = None;
     let mut out = PathBuf::from("flatworld.png");
     // Optional second output: grayscale elevation (void dark → collisions white).
     let mut height_out: Option<PathBuf> = None;
@@ -98,6 +100,73 @@ fn main() {
                 };
                 p.plate_dispatch = Some(world_gen::shape::DispatchMode::Fixed(kind));
             }
+            // **v4.3d** opt-in LLM dispatch. Pick exactly one of these
+            // three flags; `--llm-model` overrides the provider default.
+            // API keys come from env vars; Ollama doesn't need one.
+            "--llm-anthropic" => {
+                use std::sync::Arc;
+                use world_gen::shape::{
+                    AnthropicProvider, DispatchMode, InMemoryDispatchCache,
+                };
+                let key = std::env::var("ANTHROPIC_API_KEY")
+                    .expect("--llm-anthropic requires ANTHROPIC_API_KEY env var");
+                let provider: Arc<dyn world_gen::shape::LlmProvider> = match llm_model.as_ref() {
+                    Some(m) => Arc::new(AnthropicProvider::with_base_url(
+                        key,
+                        world_gen::shape::anthropic::DEFAULT_BASE_URL,
+                        m,
+                    )),
+                    None => Arc::new(AnthropicProvider::new(key)),
+                };
+                let cache: Arc<dyn world_gen::shape::DispatchCache> =
+                    Arc::new(InMemoryDispatchCache::new());
+                // Layered([Llm, Weighted]) so transport / parse errors
+                // fall through to the deterministic v3.6 default.
+                p.plate_dispatch = Some(DispatchMode::Layered(vec![
+                    DispatchMode::Llm { provider, cache },
+                    DispatchMode::Weighted(world_gen::shape::engine_v3_6_weights()),
+                ]));
+            }
+            "--llm-openai" => {
+                use std::sync::Arc;
+                use world_gen::shape::{
+                    DispatchMode, InMemoryDispatchCache, OpenAIProvider,
+                };
+                let key = std::env::var("OPENAI_API_KEY")
+                    .expect("--llm-openai requires OPENAI_API_KEY env var");
+                let provider: Arc<dyn world_gen::shape::LlmProvider> = match llm_model.as_ref() {
+                    Some(m) => Arc::new(OpenAIProvider::with_base_url(
+                        key,
+                        world_gen::shape::openai::DEFAULT_BASE_URL,
+                        m,
+                    )),
+                    None => Arc::new(OpenAIProvider::new(key)),
+                };
+                let cache: Arc<dyn world_gen::shape::DispatchCache> =
+                    Arc::new(InMemoryDispatchCache::new());
+                p.plate_dispatch = Some(DispatchMode::Layered(vec![
+                    DispatchMode::Llm { provider, cache },
+                    DispatchMode::Weighted(world_gen::shape::engine_v3_6_weights()),
+                ]));
+            }
+            "--llm-ollama" => {
+                use std::sync::Arc;
+                use world_gen::shape::{
+                    DispatchMode, InMemoryDispatchCache, OllamaProvider,
+                };
+                let model = llm_model
+                    .clone()
+                    .unwrap_or_else(|| world_gen::shape::ollama::DEFAULT_MODEL.to_string());
+                let provider: Arc<dyn world_gen::shape::LlmProvider> =
+                    Arc::new(OllamaProvider::new(model));
+                let cache: Arc<dyn world_gen::shape::DispatchCache> =
+                    Arc::new(InMemoryDispatchCache::new());
+                p.plate_dispatch = Some(DispatchMode::Layered(vec![
+                    DispatchMode::Llm { provider, cache },
+                    DispatchMode::Weighted(world_gen::shape::engine_v3_6_weights()),
+                ]));
+            }
+            "--llm-model" => llm_model = Some(need()),
             "--out" => out = PathBuf::from(need()),
             "--height-out" => height_out = Some(PathBuf::from(need())),
             "--zones-out" => zones_out = Some(PathBuf::from(need())),

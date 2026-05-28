@@ -21,7 +21,226 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Mutex;
 
+use crate::shape::csg::BooleanTemplate;
 use crate::shape::{ParamOverride, ShapeContext, ShapeKind, SizeRank};
+
+// ---------- v4.3d: shared system prompt + user-message + schema +
+// parsing helpers used by all three concrete providers (Anthropic,
+// OpenAI, Ollama). Pub(crate) so the provider modules see them but the
+// crate's external surface stays clean. ----------
+
+/// Catalog + dispatch rubric. Identical across providers — Anthropic
+/// tags it `cache_control: ephemeral`, OpenAI / Ollama rely on their
+/// own automatic prompt caching. Update bumps an effective cache key
+/// because the text contents flow into the prefix hash.
+pub(crate) fn shape_dispatch_system_prompt() -> String {
+    String::from(
+        "You are a procedural-world-generation dispatcher. For each \
+         entity (plate, zone, sub-zone) you pick one shape generator \
+         from a fixed catalog and emit a structured `pick_shape` call. \
+         Output ONLY the structured call — no prose.\n\
+         \n\
+         ## Catalog (return one of these as `kind`):\n\
+         - `Ellipse` — smooth anisotropic ellipsoid with fbm warp. \
+           Defaults; works for any rank.\n\
+         - `BezierSpine` — cubic Bezier spine + variable-radius sweep. \
+           Good for long thin continents (Italy / Korea / Madagascar \
+           shapes).\n\
+         - `Polar` — superformula closed curve. Picks small-rank \
+           rotationally-symmetric continents (Iceland / Hispaniola).\n\
+         - `Boolean` — polygon CSG (union / difference / wedge cut). \
+           Good for inland seas, gulfs, peanut shapes.\n\
+         - `SdfCapsuleChain` — chained capsules + smooth-min. Branching \
+           or limb-like landmasses.\n\
+         - `MarchingNoise` — noise field contoured. Best for archipelagos \
+           and irregular coastlines.\n\
+         - `Slime` — multi-agent random walk + concave hull. Most \
+           organic / tendrilly continents.\n\
+         - `Stamp` — pre-authored signature templates (Italy boot, Japan \
+           4-arc, Cuba crescent, etc.). Picks via `template_id`.\n\
+         \n\
+         ## Parameter overrides (return matching variant in `params`):\n\
+         - For `Ellipse` set `params.ellipse.aspect_ratio` in [0.5, 3.0].\n\
+         - For `Boolean` set `params.boolean.template` to one of \
+           [`EllipseUnion`, `EllipseDifference`, `WedgeCut`].\n\
+         - For `Stamp` set `params.stamp.template_id` to a u32 in [0, 9].\n\
+         - Other kinds: leave `params` null.\n\
+         \n\
+         ## Picking rules:\n\
+         - Bias by `depth`: plates (0) prefer interesting Bezier/Boolean/\
+           Stamp variety; zones (1) skew Ellipse/Polar for cleaner \
+           subdivisions; sub-zones (2) lean Ellipse/Polar minimal.\n\
+         - Bias by `size_rank`: Giant → branched (Slime, SDF, Bezier); \
+           Micro → simple (Ellipse, Polar).\n\
+         - Latitude `lat_norm` is `0..1` (north=0). Tropical mid-band \
+           may favour archipelagos (MarchingNoise).\n\
+         - Stay coherent within a `parent_path` family — sister zones of \
+           the same plate should share a stylistic register.",
+    )
+}
+
+pub(crate) fn shape_dispatch_user_message(prompt: &LlmPrompt) -> String {
+    let parent = if prompt.parent_path.is_empty() {
+        "(root)".to_string()
+    } else {
+        prompt
+            .parent_path
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(".")
+    };
+    let allowed = prompt
+        .allowed_kinds
+        .iter()
+        .map(|k| format!("{k:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "Entity:\n\
+         - path: {path}\n\
+         - depth: {depth}\n\
+         - size_rank: {rank:?}\n\
+         - lat_norm: {lat:.3}\n\
+         - parent: {parent}\n\
+         - allowed_kinds: [{allowed}]\n\
+         \n\
+         Pick a shape via the structured call.",
+        path = prompt.entity_path,
+        depth = prompt.depth,
+        rank = prompt.size_rank,
+        lat = prompt.lat_norm,
+    )
+}
+
+/// Strict JSON Schema for the `pick_shape` structured-output call. Used
+/// by OpenAI's `strict: true` mode and accepted (with strictness ignored)
+/// by Anthropic's tool_use and Ollama's `format`. `additionalProperties:
+/// false` everywhere so the strict mode validates.
+pub(crate) fn pick_shape_schema_strict() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "kind": {
+                "type": "string",
+                "enum": [
+                    "Ellipse",
+                    "BezierSpine",
+                    "Polar",
+                    "Boolean",
+                    "SdfCapsuleChain",
+                    "MarchingNoise",
+                    "Slime",
+                    "Stamp"
+                ],
+                "description": "Which generator from the catalog to use."
+            },
+            "params": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "properties": {
+                    "ellipse": {
+                        "type": ["object", "null"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "aspect_ratio": { "type": "number", "minimum": 0.5, "maximum": 3.0 }
+                        }
+                    },
+                    "boolean": {
+                        "type": ["object", "null"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "template": {
+                                "type": "string",
+                                "enum": ["EllipseUnion", "EllipseDifference", "WedgeCut"]
+                            }
+                        }
+                    },
+                    "stamp": {
+                        "type": ["object", "null"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "template_id": { "type": "integer", "minimum": 0, "maximum": 9 }
+                        }
+                    }
+                }
+            }
+        },
+        "required": ["kind"]
+    })
+}
+
+pub(crate) fn parse_shape_kind_str(s: &str) -> Result<ShapeKind, LlmError> {
+    Ok(match s {
+        "Ellipse" => ShapeKind::Ellipse,
+        "BezierSpine" => ShapeKind::BezierSpine,
+        "Polar" => ShapeKind::Polar,
+        "Boolean" => ShapeKind::Boolean,
+        "SdfCapsuleChain" => ShapeKind::SdfCapsuleChain,
+        "MarchingNoise" => ShapeKind::MarchingNoise,
+        "Slime" => ShapeKind::Slime,
+        "Stamp" => ShapeKind::Stamp,
+        other => {
+            return Err(LlmError::InvalidResponse(format!(
+                "unknown ShapeKind `{other}`"
+            )));
+        }
+    })
+}
+
+pub(crate) fn parse_boolean_template_str(s: &str) -> Result<BooleanTemplate, LlmError> {
+    Ok(match s {
+        "EllipseUnion" => BooleanTemplate::EllipseUnion,
+        "EllipseDifference" => BooleanTemplate::EllipseDifference,
+        "WedgeCut" => BooleanTemplate::WedgeCut,
+        other => {
+            return Err(LlmError::InvalidResponse(format!(
+                "unknown BooleanTemplate `{other}`"
+            )));
+        }
+    })
+}
+
+pub(crate) fn parse_params_from_value(
+    kind: ShapeKind,
+    params_node: Option<&serde_json::Value>,
+) -> Result<Option<ParamOverride>, LlmError> {
+    let Some(params_node) = params_node.filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let obj = match params_node.as_object() {
+        Some(o) => o,
+        None => return Ok(None),
+    };
+    Ok(match kind {
+        ShapeKind::Ellipse => obj.get("ellipse").and_then(|e| e.as_object()).map(|e| {
+            ParamOverride::Ellipse {
+                aspect_ratio: e
+                    .get("aspect_ratio")
+                    .and_then(|v| v.as_f64())
+                    .map(|n| n as f32),
+            }
+        }),
+        ShapeKind::Boolean => match obj.get("boolean").and_then(|b| b.as_object()) {
+            Some(b) => {
+                let template = match b.get("template").and_then(|v| v.as_str()) {
+                    Some(s) => Some(parse_boolean_template_str(s)?),
+                    None => None,
+                };
+                Some(ParamOverride::Boolean { template })
+            }
+            None => None,
+        },
+        ShapeKind::Stamp => obj
+            .get("stamp")
+            .and_then(|s| s.as_object())
+            .map(|s| ParamOverride::Stamp {
+                template_id: s.get("template_id").and_then(|v| v.as_u64()).map(|n| n as u32),
+            }),
+        _ => None,
+    })
+}
 
 /// What the LLM gets as input. Captures the dispatch context as a
 /// provider-agnostic struct so a single provider impl can serve every

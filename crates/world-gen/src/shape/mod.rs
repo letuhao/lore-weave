@@ -25,6 +25,8 @@ pub mod csg;
 pub mod dispatch;
 pub mod ellipse;
 pub mod llm;
+pub mod ollama;
+pub mod openai;
 pub mod polar;
 pub mod raster;
 pub mod sdf;
@@ -44,6 +46,8 @@ pub use llm::{
     DispatchCache, InMemoryDispatchCache, LlmDecision, LlmError, LlmProvider, LlmPrompt,
     MockLlmProvider,
 };
+pub use ollama::OllamaProvider;
+pub use openai::OpenAIProvider;
 pub use polar::{PolarGenerator, PolarTemplate};
 pub use raster::MarchingNoiseGenerator;
 pub use sdf::{CapsuleTemplate, SdfCapsuleChainGenerator};
