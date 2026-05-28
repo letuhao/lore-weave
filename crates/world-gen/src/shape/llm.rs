@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Mutex;
 
-use crate::shape::{ShapeContext, ShapeKind, SizeRank};
+use crate::shape::{ParamOverride, ShapeContext, ShapeKind, SizeRank};
 
 /// What the LLM gets as input. Captures the dispatch context as a
 /// provider-agnostic struct so a single provider impl can serve every
@@ -65,16 +65,20 @@ impl LlmPrompt {
 }
 
 /// What the LLM returns. `kind` is the selected `ShapeKind`; `params` is
-/// reserved for v4.3b's typed parameter overrides — for v4.3a SCAFFOLD it
-/// holds an opaque `serde_json::Value` so provider impls can already round-
-/// trip structured output without forcing the schema design now.
+/// the typed [`ParamOverride`] that the matching generator reads from
+/// [`ShapeContext::params`] when the dispatcher threads the decision
+/// through.
 #[derive(Debug, Clone)]
 pub struct LlmDecision {
     pub kind: ShapeKind,
-    /// **v4.3a stub**: opaque JSON. v4.3b replaces this with a typed
-    /// `ParamOverride` enum (one variant per generator) so `ShapeRegistry::
-    /// generate_with_params` can read params per algorithm.
-    pub params: Option<serde_json::Value>,
+    /// **v4.3b**: typed per-generator parameter override. Set to a variant
+    /// matching `kind` (e.g. `kind = Ellipse` → `params =
+    /// Some(ParamOverride::Ellipse { .. })`). `None` means "use generator
+    /// defaults". Mismatched variant + kind pairings are silently ignored
+    /// by generators — they only match their own variant. v4.3b ships
+    /// variants for Ellipse / Boolean / Stamp; remaining generators
+    /// receive `None` until v4.3d.
+    pub params: Option<ParamOverride>,
 }
 
 /// Error returned by [`LlmProvider::pick`]. `DispatchMode::Llm` treats any
@@ -199,11 +203,45 @@ impl LlmProvider for MockLlmProvider {
             h ^= *byte as u32;
             h = h.wrapping_mul(0x0100_0193);
         }
-        let idx = (h as usize) % prompt.allowed_kinds.len();
-        Ok(LlmDecision {
-            kind: prompt.allowed_kinds[idx],
-            params: None,
-        })
+        let kind = prompt.allowed_kinds[(h as usize) % prompt.allowed_kinds.len()];
+        // **v4.3b**: populate `params` per kind for the variants v4.3b
+        // wires up (Ellipse / Boolean / Stamp). Other kinds receive
+        // `None` — generators ignore unmatched variants anyway, so the
+        // contract stays clean as more generators get LLM-tunable knobs.
+        let params = mock_params_for_kind(kind, h);
+        Ok(LlmDecision { kind, params })
+    }
+}
+
+/// Deterministic mock parameters for a given kind + entity-path hash.
+/// `kind` selects the variant; `h` seeds the per-variant choice so different
+/// paths get different param values. Pure function of inputs — calling it
+/// twice with the same args returns the same params.
+fn mock_params_for_kind(kind: ShapeKind, h: u32) -> Option<ParamOverride> {
+    match kind {
+        ShapeKind::Ellipse => {
+            // aspect_ratio cycles through 1.0 / 1.5 / 2.0 / 2.5 across
+            // adjacent entity paths so a default render visibly varies.
+            let ratios = [1.0_f32, 1.5, 2.0, 2.5];
+            Some(ParamOverride::Ellipse {
+                aspect_ratio: Some(ratios[(h as usize) % ratios.len()]),
+            })
+        }
+        ShapeKind::Boolean => {
+            use crate::shape::csg::BooleanTemplate;
+            let templates = [
+                BooleanTemplate::EllipseUnion,
+                BooleanTemplate::WedgeCut,
+                BooleanTemplate::EllipseDifference,
+            ];
+            Some(ParamOverride::Boolean {
+                template: Some(templates[(h as usize) % templates.len()]),
+            })
+        }
+        ShapeKind::Stamp => Some(ParamOverride::Stamp {
+            template_id: Some(h % 10),
+        }),
+        _ => None,
     }
 }
 
@@ -224,6 +262,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.5,
             vertex_count_range: (32, 96),
+            params: None,
         }
     }
 
@@ -278,5 +317,74 @@ mod tests {
         cache.put("plate.0", LlmDecision { kind: ShapeKind::Slime, params: None });
         assert_eq!(cache.get("plate.0").unwrap().kind, ShapeKind::Slime);
         assert_eq!(cache.len(), 1, "second put must overwrite, not append");
+    }
+
+    #[test]
+    fn v4_3b_mock_populates_ellipse_aspect_ratio() {
+        // Mock provider must hand back `ParamOverride::Ellipse { aspect_ratio: Some(_) }`
+        // whenever it picks `ShapeKind::Ellipse`.
+        let mock = MockLlmProvider::new();
+        // Force kind=Ellipse via allowed_kinds == [Ellipse].
+        let prompt = LlmPrompt::from_context(&ctx(), "plate.0", vec![ShapeKind::Ellipse]);
+        let d = mock.pick(&prompt).expect("mock should pick");
+        assert_eq!(d.kind, ShapeKind::Ellipse);
+        let params = d.params.expect("Ellipse kind should carry params");
+        match params {
+            ParamOverride::Ellipse { aspect_ratio: Some(r) } => {
+                assert!(r >= 0.5 && r <= 3.0, "aspect_ratio {r} out of expected mock range");
+            }
+            _ => panic!("expected ParamOverride::Ellipse with aspect_ratio, got {params:?}"),
+        }
+    }
+
+    #[test]
+    fn v4_3b_mock_populates_boolean_template() {
+        let mock = MockLlmProvider::new();
+        let prompt = LlmPrompt::from_context(&ctx(), "plate.5", vec![ShapeKind::Boolean]);
+        let d = mock.pick(&prompt).expect("mock should pick");
+        assert_eq!(d.kind, ShapeKind::Boolean);
+        let params = d.params.expect("Boolean kind should carry params");
+        assert!(
+            matches!(params, ParamOverride::Boolean { template: Some(_) }),
+            "expected ParamOverride::Boolean with template, got {params:?}"
+        );
+    }
+
+    #[test]
+    fn v4_3b_mock_populates_stamp_template_id() {
+        let mock = MockLlmProvider::new();
+        let prompt = LlmPrompt::from_context(&ctx(), "plate.7", vec![ShapeKind::Stamp]);
+        let d = mock.pick(&prompt).expect("mock should pick");
+        assert_eq!(d.kind, ShapeKind::Stamp);
+        let params = d.params.expect("Stamp kind should carry params");
+        match params {
+            ParamOverride::Stamp { template_id: Some(id) } => {
+                assert!(id < 10, "mock template_id {id} should be in [0, 9]");
+            }
+            _ => panic!("expected ParamOverride::Stamp with template_id, got {params:?}"),
+        }
+    }
+
+    #[test]
+    fn v4_3b_mock_returns_none_params_for_unwired_kinds() {
+        // BezierSpine / Polar / SDF / MarchingNoise / Slime are not wired
+        // for LLM params yet — Mock must return None for those.
+        let mock = MockLlmProvider::new();
+        for kind in [
+            ShapeKind::BezierSpine,
+            ShapeKind::Polar,
+            ShapeKind::SdfCapsuleChain,
+            ShapeKind::MarchingNoise,
+            ShapeKind::Slime,
+        ] {
+            let prompt = LlmPrompt::from_context(&ctx(), "plate.0", vec![kind]);
+            let d = mock.pick(&prompt).expect("mock should pick");
+            assert_eq!(d.kind, kind);
+            assert!(
+                d.params.is_none(),
+                "kind {kind:?} should have None params in v4.3b, got {:?}",
+                d.params,
+            );
+        }
     }
 }

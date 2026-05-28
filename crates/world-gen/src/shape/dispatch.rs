@@ -226,6 +226,36 @@ impl DispatchMode {
         kinds[(rng.next_u32() as usize) % kinds.len()]
     }
 
+    /// **v4.3b** Look up the [`ParamOverride`] previously stashed by an
+    /// [`DispatchMode::Llm`] arm for `entity_path` (and matching depth via
+    /// the same `PerDepth` index `select_opt` would use). Returns `None`
+    /// for non-LLM modes, for paths the cache hasn't seen, or when the
+    /// stored decision has `params: None`.
+    ///
+    /// Call AFTER `select` (or `select_opt`) so the cache is guaranteed
+    /// to be warm — the typical site is `flatworld::generate` right
+    /// before invoking the picked generator: `ctx.params =
+    /// dispatcher.lookup_params(&ctx, entity_path)`.
+    pub fn lookup_params(
+        &self,
+        ctx: &ShapeContext,
+        entity_path: &str,
+    ) -> Option<super::ParamOverride> {
+        match self {
+            DispatchMode::Llm { cache, .. } => {
+                cache.get(entity_path).and_then(|d| d.params)
+            }
+            DispatchMode::Layered(layers) => layers
+                .iter()
+                .find_map(|l| l.lookup_params(ctx, entity_path)),
+            DispatchMode::PerDepth(modes) => {
+                let idx = (ctx.depth as usize).min(2);
+                modes[idx].lookup_params(ctx, entity_path)
+            }
+            _ => None,
+        }
+    }
+
     /// **v4.0** Internal — returns `None` for modes that can "pass" (Manual
     /// when path not pinned; ByContext when no rule matches; Layered when
     /// every layer abstains). Always-committing modes (Fixed, Random,
@@ -647,6 +677,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.3,
             vertex_count_range: (8, 12),
+            params: None,
         }
     }
 

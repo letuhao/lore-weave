@@ -643,7 +643,7 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
             let shape_seed = (params.seed as u32).wrapping_mul(0x27D4_EB2F)
                 ^ (id as u32).wrapping_mul(0x1656_67B1);
 
-            let ctx = ShapeContext {
+            let mut ctx = ShapeContext {
                 depth: 0,
                 center: (cx, cy),
                 envelope: (pitch, pitch),
@@ -654,6 +654,7 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
                 world_theme: None,
                 edge_jitter: params.edge_jitter,
                 vertex_count_range: (params.min_vertices, max_v),
+                params: None,
             };
 
             // BYTE-IDENTICAL contract: with default `Fixed(Ellipse)` dispatch
@@ -669,6 +670,11 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
             // `ShapeKind::Ellipse`. See `shape::ShapeResult`.
             let entity_path = format!("plate.{}", id);
             let selected_kind = dispatcher.select(&registry, &ctx, &entity_path, &mut rng);
+            // **v4.3b**: pick up any LLM-decided ParamOverride the
+            // dispatcher stashed under `entity_path`. Non-LLM modes
+            // return `None` so the byte-identical default path is
+            // unchanged.
+            ctx.params = dispatcher.lookup_params(&ctx, &entity_path);
             let result = registry
                 .get(selected_kind)
                 .expect("dispatcher must only return kinds registered in the registry")
@@ -762,7 +768,7 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
                 let zone_size_rank = derive_zone_rank(plate.size_rank);
                 let (zrmin, zrmax) = zone_size_rank.radius_band();
                 let zone_envelope = pitch * (zrmin + zrmax) * 0.5;
-                let zone_ctx = ShapeContext {
+                let mut zone_ctx = ShapeContext {
                     depth: 1,
                     center: zone_center,
                     envelope: (zone_envelope, zone_envelope),
@@ -773,10 +779,12 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
                     world_theme: None,
                     edge_jitter: params.edge_jitter,
                     vertex_count_range: (params.min_vertices, max_v),
+                    params: None,
                 };
                 let zone_entity_path = format!("plate.{}.zone.{}", id, zi);
                 let mut zone_rng = Rng::for_stage(zone_shape_seed as u64, b"zone");
                 let zone_kind = dispatcher.select(&registry, &zone_ctx, &zone_entity_path, &mut zone_rng);
+                zone_ctx.params = dispatcher.lookup_params(&zone_ctx, &zone_entity_path);
                 let zone_result = registry
                     .get(zone_kind)
                     .expect("dispatcher must only return kinds registered in the registry")
@@ -826,7 +834,7 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
                     let subzone_shape_seed = zone_shape_seed
                         .wrapping_mul(0x1656_67B1)
                         .wrapping_add(si as u32);
-                    let sub_ctx = ShapeContext {
+                    let mut sub_ctx = ShapeContext {
                         depth: 2,
                         center: subzone_center,
                         envelope: (subzone_envelope, subzone_envelope),
@@ -839,10 +847,12 @@ pub fn generate(params: &FlatParams) -> FlatWorld {
                         world_theme: None,
                         edge_jitter: params.edge_jitter,
                         vertex_count_range: (params.min_vertices, max_v),
+                        params: None,
                     };
                     let sub_entity_path = format!("plate.{}.zone.{}.subzone.{}", id, zi, si);
                     let mut sub_rng = Rng::for_stage(subzone_shape_seed as u64, b"subzone");
                     let sub_kind = dispatcher.select(&registry, &sub_ctx, &sub_entity_path, &mut sub_rng);
+                    sub_ctx.params = dispatcher.lookup_params(&sub_ctx, &sub_entity_path);
                     let sub_result = registry
                         .get(sub_kind)
                         .expect("dispatcher must only return kinds registered in the registry")
