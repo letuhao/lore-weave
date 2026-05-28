@@ -1,6 +1,7 @@
 //! TMP_003 §2 — the `Modificator` trait + its execution context.
 
 use crate::engine::build_state::TilemapBuildState;
+use crate::registry::Registry;
 use crate::seed::TilemapSeed;
 use crate::types::template::TilemapTemplate;
 use crate::types::tilemap::GridSize;
@@ -14,6 +15,10 @@ use crate::types::tilemap::GridSize;
 /// per-zone build records. The engine is single-threaded (spec D4), so the
 /// §2.2 per-(zone, modificator) instance model with `RwLock` state is not
 /// needed — one `process` call iterates every zone.
+///
+/// V2 — `registry` carries the active TerrainKindDef / ObjectKindDef
+/// dictionary. Modificators look up tag → primitive / footprint via
+/// `ctx.registry.get_object(tag)` / `ctx.registry.get_terrain(tag)`.
 #[derive(Debug)]
 pub struct ModificatorContext<'a> {
     /// The authoring template — modificators read `ZoneSpec` detail (e.g.
@@ -25,6 +30,10 @@ pub struct ModificatorContext<'a> {
     /// `object_placements`, the nearest-object-distance oracle, and per-zone
     /// build records.
     pub state: &'a mut TilemapBuildState,
+    /// V2 — the active terrain + object registry. Default is
+    /// `Registry::load_default()` (lw: namespace); per-book registries
+    /// override at `place_tilemap_with_registry` entry.
+    pub registry: &'a Registry,
 }
 
 /// A single generation pass (TMP_003 §2 — the Strategy pattern, Gamma 1994).

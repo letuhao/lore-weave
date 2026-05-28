@@ -2,130 +2,16 @@ package tasks
 
 import (
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"strings"
 )
 
-// Chapter represents a split chapter from an imported document.
-type Chapter struct {
-	Title    string
-	Filename string
-	Content  string // HTML content for this chapter
-}
-
-// splitChapters splits pandoc HTML output into chapters.
-// For epub: splits on <h1> boundaries.
-// For docx: returns a single chapter.
-func splitChapters(html string, format string) []Chapter {
-	if format == "docx" {
-		title := extractFirstHeading(html)
-		if title == "" {
-			title = "Imported Chapter"
-		}
-		return []Chapter{{
-			Title:    title,
-			Filename: "import.docx",
-			Content:  html,
-		}}
-	}
-
-	// For epub: split on <h1> tags
-	sections := splitOnH1(html)
-	if len(sections) == 0 {
-		// No h1 found — try h2
-		sections = splitOnTag(html, "h2")
-	}
-	if len(sections) == 0 {
-		// No headings at all — single chapter
-		return []Chapter{{
-			Title:    "Imported Chapter",
-			Filename: "import.epub",
-			Content:  html,
-		}}
-	}
-
-	chapters := make([]Chapter, 0, len(sections))
-	for i, sec := range sections {
-		title := sec.Title
-		if title == "" {
-			title = fmt.Sprintf("Chapter %d", i+1)
-		}
-		chapters = append(chapters, Chapter{
-			Title:    title,
-			Filename: fmt.Sprintf("import-ch%03d.epub", i+1),
-			Content:  sec.HTML,
-		})
-	}
-	return chapters
-}
-
-type section struct {
-	Title string
-	HTML  string
-}
-
-var h1Re = regexp.MustCompile(`(?i)<h1[^>]*>(.*?)</h1>`)
-var h2Re = regexp.MustCompile(`(?i)<h2[^>]*>(.*?)</h2>`)
-
-func splitOnH1(html string) []section {
-	return splitOnTag(html, "h1")
-}
-
-func splitOnTag(html string, tag string) []section {
-	var re *regexp.Regexp
-	if tag == "h1" {
-		re = h1Re
-	} else {
-		re = h2Re
-	}
-
-	locs := re.FindAllStringIndex(html, -1)
-	if len(locs) == 0 {
-		return nil
-	}
-
-	matches := re.FindAllStringSubmatch(html, -1)
-	sections := make([]section, 0, len(locs))
-
-	for i, loc := range locs {
-		start := loc[0]
-		var end int
-		if i+1 < len(locs) {
-			end = locs[i+1][0]
-		} else {
-			end = len(html)
-		}
-		content := strings.TrimSpace(html[start:end])
-		if content == "" {
-			continue
-		}
-		title := stripTags(matches[i][1])
-		sections = append(sections, section{Title: title, HTML: content})
-	}
-
-	// If there's content before the first heading, prepend it
-	if locs[0][0] > 0 {
-		preamble := strings.TrimSpace(html[:locs[0][0]])
-		if preamble != "" {
-			sections = append([]section{{Title: "Preamble", HTML: preamble}}, sections...)
-		}
-	}
-
-	return sections
-}
-
-func extractFirstHeading(html string) string {
-	m := h1Re.FindStringSubmatch(html)
-	if m != nil {
-		return stripTags(m[1])
-	}
-	m = h2Re.FindStringSubmatch(html)
-	if m != nil {
-		return stripTags(m[1])
-	}
-	return ""
-}
+// P1 (2026-05-23): splitChapters / splitOnH1 / splitOnTag / extractFirstHeading
+// + h1Re / h2Re / section / Chapter — DELETED. Structural decomposition now
+// happens via knowledge-service /internal/parse (see parse_client.go +
+// import_processor.go). htmlToTiptapJSON + parseHTMLToNodes are retained;
+// they convert the per-chapter HTML slice (Chapter.HTML in the parse response)
+// into Tiptap doc JSON for chapter_drafts.body — a separate concern.
 
 var tagStripRe = regexp.MustCompile(`<[^>]+>`)
 

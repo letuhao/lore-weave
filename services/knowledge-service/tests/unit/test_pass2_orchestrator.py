@@ -308,3 +308,289 @@ async def test_chat_turn_filters_empty_halves(mock_entities, mock_write):
 
     entity_kwargs = mock_entities.call_args.kwargs
     assert entity_kwargs["text"] == "Just user."
+
+
+# ── P2 (D3) cache integration tests ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_p2_no_cache_when_book_id_chapter_id_omitted(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """P2 D3 backward-compat: when book_id+chapter_id are None (chat_turn
+    path or legacy callers), _p2_cache_wrap passes through to extractors
+    WITHOUT touching the cache. Mocks for cache layer would error if called."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    # No book_id / chapter_id passed -> passthrough path.
+    result = await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+        chapter_text="Alice met Bob.",
+        model_source="user_model", model_ref="test-model",
+        llm_client=MagicMock(),
+    )
+    assert result.entities_merged == 1
+    # All 4 extractors called once each (no cache).
+    mock_entities.assert_awaited_once()
+    mock_relations.assert_awaited_once()
+    mock_events.assert_awaited_once()
+    mock_facts.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.ExtractionLeavesRepo")
+@patch(f"{_ORCH}.get_knowledge_pool")
+async def test_p2_cache_hit_skips_all_4_llm_calls(
+    mock_pool, mock_repo_cls,
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """P2 D3 cache-hit lock: 4 cached rows -> 0 LLM calls.
+
+    When book_id+chapter_id provided + all 4 task_ids hit in the cache,
+    extractors must NOT be called. Cached candidates flow through to writer.
+    """
+    from app.db.repositories.extraction_leaves import ExtractionLeaf
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    book_id = uuid4()
+    chapter_id = uuid4()
+    mock_pool.return_value = MagicMock()
+
+    repo = MagicMock()
+    cached_entity = ExtractionLeaf(
+        id=uuid4(), book_id=book_id, scene_id=chapter_id,
+        leaf_path="p", op="entity", task_id="t-e", status="completed",
+        candidates_jsonb=[{
+            "name": "CachedAlice", "kind": "person", "aliases": [],
+            "confidence": 0.8, "canonical_name": "cachedalice",
+            "canonical_id": "eid-cachedalice",
+        }],
+        retried_n=0, error_message=None,
+        parse_version=1, extractor_version="v1", model_ref="m",
+        glossary_anchor_size=None,
+    )
+    def _empty_cache_leaf(op: str) -> ExtractionLeaf:
+        return ExtractionLeaf(
+            id=uuid4(), book_id=book_id, scene_id=chapter_id,
+            leaf_path="p", op=op, task_id=f"t-{op}", status="completed",
+            candidates_jsonb=[],
+            retried_n=0, error_message=None,
+            parse_version=1, extractor_version="v1", model_ref="m",
+            glossary_anchor_size=None,
+        )
+    # 1st call (entity) returns the entity cache; 2-4 are R/E/F empty.
+    repo.fetch_cached = AsyncMock(side_effect=[
+        cached_entity,
+        _empty_cache_leaf("relation"),
+        _empty_cache_leaf("event"),
+        _empty_cache_leaf("fact"),
+    ])
+    mock_repo_cls.return_value = repo
+
+    mock_write.return_value = _write_result(entities=1)
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id=str(chapter_id), job_id=_JOB_ID,
+        chapter_text="Alice met Bob.",
+        model_source="user_model", model_ref="m-uuid",
+        llm_client=MagicMock(),
+        book_id=book_id,
+        chapter_id=chapter_id,
+    )
+
+    # NONE of the 4 extractors called — pure cache-hit path.
+    mock_entities.assert_not_called()
+    mock_relations.assert_not_called()
+    mock_events.assert_not_called()
+    mock_facts.assert_not_called()
+    # claim_pending + persist NOT called on the cache-hit path.
+    repo.claim_pending.assert_not_called()
+    repo.persist.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.ExtractionLeavesRepo")
+@patch(f"{_ORCH}.get_knowledge_pool")
+async def test_p2_cache_miss_calls_extractor_and_persists(
+    mock_pool, mock_repo_cls,
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cache miss -> extractor called + candidates persisted via repo.persist."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    book_id = uuid4()
+    chapter_id = uuid4()
+    mock_pool.return_value = MagicMock()
+
+    repo = MagicMock()
+    repo.fetch_cached = AsyncMock(return_value=None)  # all misses
+    repo.claim_pending = AsyncMock(return_value=True)
+    repo.persist = AsyncMock(return_value=None)
+    mock_repo_cls.return_value = repo
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id=str(chapter_id), job_id=_JOB_ID,
+        chapter_text="Alice met Bob.",
+        model_source="user_model", model_ref="m-uuid",
+        llm_client=MagicMock(),
+        book_id=book_id,
+        chapter_id=chapter_id,
+    )
+
+    # All 4 extractors called (cache miss).
+    mock_entities.assert_awaited_once()
+    mock_relations.assert_awaited_once()
+    mock_events.assert_awaited_once()
+    mock_facts.assert_awaited_once()
+    # repo.persist called once per op = 4 total.
+    assert repo.persist.await_count == 4
+    # repo.claim_pending called once per op.
+    assert repo.claim_pending.await_count == 4
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.ExtractionLeavesRepo")
+@patch(f"{_ORCH}.get_knowledge_pool")
+async def test_p2_extractor_failure_marks_failed_and_reraises(
+    mock_pool, mock_repo_cls,
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """When extractor raises, _p2_cache_wrap calls repo.mark_failed and re-raises."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    book_id = uuid4()
+    chapter_id = uuid4()
+    mock_pool.return_value = MagicMock()
+
+    repo = MagicMock()
+    repo.fetch_cached = AsyncMock(return_value=None)
+    repo.claim_pending = AsyncMock(return_value=True)
+    repo.mark_failed = AsyncMock(return_value=1)
+    repo.persist = AsyncMock(return_value=None)
+    mock_repo_cls.return_value = repo
+
+    # Entity extractor explodes; later ops aren't reached.
+    mock_entities.side_effect = RuntimeError("LLM gateway timeout")
+
+    with pytest.raises(RuntimeError, match="LLM gateway timeout"):
+        await extract_pass2_chapter(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chapter", source_id=str(chapter_id), job_id=_JOB_ID,
+            chapter_text="Alice met Bob.",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+            book_id=book_id,
+            chapter_id=chapter_id,
+        )
+
+    repo.mark_failed.assert_awaited_once()
+    err = repo.mark_failed.call_args.kwargs["error_message"]
+    assert "RuntimeError" in err and "timeout" in err
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+@patch(f"{_ORCH}.ExtractionLeavesRepo")
+@patch(f"{_ORCH}.get_knowledge_pool")
+async def test_p2_uses_per_op_extractor_version(
+    mock_pool, mock_repo_cls,
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION regression-lock.
+
+    Each op's claim_pending call MUST receive an extractor_version
+    scoped to that op (format `v1-{op}-{8hex}`), NOT the global
+    `v1-{8hex}` shape. The migration ensures editing one op's prompt
+    only invalidates that op's cache slice.
+    """
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    book_id = uuid4()
+    chapter_id = uuid4()
+    mock_pool.return_value = MagicMock()
+
+    repo = MagicMock()
+    repo.fetch_cached = AsyncMock(return_value=None)  # force cache miss → claim_pending
+    repo.claim_pending = AsyncMock(return_value=True)
+    repo.persist = AsyncMock(return_value=None)
+    mock_repo_cls.return_value = repo
+
+    # Must yield at least 1 entity so the orchestrator's "no entities"
+    # gate doesn't short-circuit before R/E/F run.
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result(entities=1)
+
+    await extract_pass2_chapter(
+        session=MagicMock(),
+        user_id=_USER_ID, project_id=_PROJECT_ID,
+        source_type="chapter", source_id=str(chapter_id), job_id=_JOB_ID,
+        chapter_text="Alice met Bob.",
+        model_source="user_model", model_ref="m-uuid",
+        llm_client=MagicMock(),
+        book_id=book_id,
+        chapter_id=chapter_id,
+    )
+
+    # Each claim_pending call MUST use the op-scoped extractor_version.
+    # The global form would be `v1-XXXXXXXX` (no `-{op}-` segment).
+    assert repo.claim_pending.await_count == 4
+    seen_per_op_versions: dict[str, str] = {}
+    for call in repo.claim_pending.await_args_list:
+        op = call.kwargs["op"]
+        ver = call.kwargs["extractor_version"]
+        assert ver.startswith(f"v1-{op}-"), (
+            f"op={op} got extractor_version={ver!r} — must be per-op "
+            f"(starts with 'v1-{op}-')"
+        )
+        seen_per_op_versions[op] = ver
+
+    # All 4 ops produced their own DISTINCT version slugs — no global
+    # collapse to one shared version.
+    assert sorted(seen_per_op_versions.keys()) == ["entity", "event", "fact", "relation"]
+    assert len(set(seen_per_op_versions.values())) == 4

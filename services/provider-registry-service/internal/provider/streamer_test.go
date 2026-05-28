@@ -7,8 +7,13 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"io"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func collectChunks(t *testing.T, body string) []StreamChunk {
@@ -319,5 +324,153 @@ data: {"hello":"world"}
 	}
 	if len(seenData) != 1 || seenData[0] != `{"hello":"world"}` {
 		t.Errorf("data not parsed: %v", seenData)
+	}
+}
+
+// blockingReadCloser is a test ReadCloser whose Read blocks until either
+// (a) Close is called (Read returns io.ErrClosedPipe) or (b) the test
+// pushes bytes via Send. Used to simulate an upstream that goes idle —
+// the failure mode that bit `sherlock_speckled_band` extraction when LM
+// Studio auto-evicted the model mid-stream and the streamer waited
+// forever (no `done`, no `err` ever arrived).
+type blockingReadCloser struct {
+	in     chan []byte
+	closed chan struct{}
+	once   sync.Once
+}
+
+func newBlockingReadCloser() *blockingReadCloser {
+	return &blockingReadCloser{
+		in:     make(chan []byte, 4),
+		closed: make(chan struct{}),
+	}
+}
+
+func (b *blockingReadCloser) Read(p []byte) (int, error) {
+	select {
+	case data, ok := <-b.in:
+		if !ok {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		return n, nil
+	case <-b.closed:
+		return 0, io.ErrClosedPipe
+	}
+}
+
+func (b *blockingReadCloser) Close() error {
+	b.once.Do(func() { close(b.closed) })
+	return nil
+}
+
+func (b *blockingReadCloser) Send(data []byte) { b.in <- data }
+
+func TestIdleTimeoutReader_FiresWhenNoData(t *testing.T) {
+	// Upstream goes idle: no data, no close. Timer must fire and
+	// translate the close-induced Read error into ErrUpstreamTimeout so
+	// the worker classifies the chunk as upstream-stuck instead of seeing
+	// a generic transport error. Regression-lock for the
+	// sherlock_speckled_band stall.
+	body := newBlockingReadCloser()
+	r := newIdleTimeoutReader(body, 100*time.Millisecond)
+	buf := make([]byte, 16)
+	start := time.Now()
+	n, err := r.Read(buf)
+	elapsed := time.Since(start)
+	if n != 0 {
+		t.Errorf("expected 0 bytes, got %d", n)
+	}
+	var ute *ErrUpstreamTimeout
+	if !errors.As(err, &ute) {
+		t.Fatalf("expected *ErrUpstreamTimeout, got %T: %v", err, err)
+	}
+	if elapsed < 80*time.Millisecond || elapsed > 400*time.Millisecond {
+		t.Errorf("timer fired at the wrong time: %s", elapsed)
+	}
+}
+
+func TestIdleTimeoutReader_PassThroughWhenDataFlows(t *testing.T) {
+	// Per-Read timer is Stopped on every successful Read. As long as data
+	// keeps arriving (within the window), the timer never fires.
+	body := newBlockingReadCloser()
+	r := newIdleTimeoutReader(body, 200*time.Millisecond)
+	go func() {
+		for i := 0; i < 3; i++ {
+			time.Sleep(50 * time.Millisecond)
+			body.Send([]byte("chunk"))
+		}
+		body.Close()
+	}()
+	buf := make([]byte, 16)
+	totalReads := 0
+	for {
+		_, err := r.Read(buf)
+		if err == io.EOF || errors.Is(err, io.ErrClosedPipe) {
+			break
+		}
+		var ute *ErrUpstreamTimeout
+		if errors.As(err, &ute) {
+			t.Fatalf("idle timeout fired despite flowing data: %v", err)
+		}
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		totalReads++
+		if totalReads > 5 {
+			t.Fatalf("loop runaway")
+		}
+	}
+	if totalReads != 3 {
+		t.Errorf("expected 3 successful reads, got %d", totalReads)
+	}
+}
+
+func TestIdleTimeoutReader_ZeroTimeoutDisables(t *testing.T) {
+	// timeout <= 0 must be a transparent pass-through (preserves the
+	// historical "No wall-clock timeout" behavior when the env var is
+	// unset in deployment).
+	body := newBlockingReadCloser()
+	body.Send([]byte("hello"))
+	body.Close()
+	r := newIdleTimeoutReader(body, 0)
+	buf := make([]byte, 16)
+	n, err := r.Read(buf)
+	if err != nil {
+		t.Fatalf("first read err: %v", err)
+	}
+	if string(buf[:n]) != "hello" {
+		t.Errorf("payload wrong: %q", buf[:n])
+	}
+	if _, err := r.Read(buf); err != io.ErrClosedPipe && err != io.EOF {
+		t.Errorf("expected EOF/ErrClosedPipe on closed body, got %v", err)
+	}
+}
+
+func TestWrapStreamBody_SkipsWhenTimeoutDisabled(t *testing.T) {
+	// wrapStreamBody must be a no-op when streamIdleTimeout == 0 so the
+	// callers don't add overhead in the default-off configuration.
+	prev := streamIdleTimeout
+	streamIdleTimeout = 0
+	defer func() { streamIdleTimeout = prev }()
+
+	body := io.NopCloser(strings.NewReader("payload"))
+	resp := &http.Response{Body: body}
+	out := wrapStreamBody(resp)
+	if out.Body != body {
+		t.Errorf("wrap should be a no-op when timeout disabled; body was swapped")
+	}
+}
+
+func TestWrapStreamBody_AppliesWhenEnabled(t *testing.T) {
+	prev := streamIdleTimeout
+	streamIdleTimeout = 50 * time.Millisecond
+	defer func() { streamIdleTimeout = prev }()
+
+	body := io.NopCloser(strings.NewReader("payload"))
+	resp := &http.Response{Body: body}
+	out := wrapStreamBody(resp)
+	if _, ok := out.Body.(*idleTimeoutReader); !ok {
+		t.Errorf("body not wrapped: %T", out.Body)
 	}
 }

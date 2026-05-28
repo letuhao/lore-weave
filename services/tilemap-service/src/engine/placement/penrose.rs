@@ -28,6 +28,7 @@ use crate::types::tile::TileCoord;
 use crate::types::tile_mask::TileMask;
 use crate::types::tilemap::GridSize;
 
+use super::spatial::UniformBuckets;
 use super::{PlacedZone, Vec2, ZoneTiles};
 
 /// Golden ratio φ = (1 + √5) / 2.
@@ -86,7 +87,15 @@ pub fn assign_zone_tiles(
     let vertices = penrose_vertices(target, rotation)?;
 
     // §4.3 step 1 — each vertex belongs to its nearest zone centre.
+    // Off the per-tile hot path — |vertices| calls only, not bucketed.
     let vertex_zone: Vec<usize> = vertices.iter().map(|&v| nearest_zone(v, zones)).collect();
+
+    // Bucket the vertex field once — `bucket_dim ≈ sqrt(N)` ⇒ ~1 vertex per
+    // bucket on average. DEFERRED #018 — promoted by the 2026-05-18 continent
+    // measurement. The bucketed nearest-vertex lookup is bit-exact equivalent
+    // to the prior linear scan (`nearest_vertex_naive`, kept under
+    // `#[cfg(test)]` as the oracle for AC-2/AC-3 in spec §9.3).
+    let vbuckets = build_vertex_buckets(&vertices);
 
     // §4.3 step 2 — each tile belongs to the zone of its nearest vertex.
     let mut masks: Vec<TileMask> = (0..zones.len())
@@ -98,7 +107,7 @@ pub fn assign_zone_tiles(
                 (x as f64 + 0.5) / grid.width as f64,
                 (y as f64 + 0.5) / grid.height as f64,
             );
-            let vi = nearest_vertex(p, &vertices);
+            let vi = nearest_vertex_bucketed(p, &vbuckets);
             masks[vertex_zone[vi]].set(TileCoord::new(x, y));
         }
     }
@@ -270,8 +279,65 @@ fn nearest_zone(v: Vec2, zones: &[PlacedZone]) -> usize {
     best
 }
 
-/// Index of the vertex nearest `p` (ties → lower index).
-fn nearest_vertex(p: Vec2, vertices: &[Vec2]) -> usize {
+/// Build the vertex bucket grid over `[0,1]²`. `bucket_dim = ceil(sqrt(N))`
+/// ⇒ ~1 vertex per cell on average; `.max(1)` so the empty-vertex case is
+/// still a valid 1×1 grid (defensive — `penrose_vertices` errors on <3).
+fn build_vertex_buckets(vertices: &[Vec2]) -> UniformBuckets<Vec2> {
+    let bucket_dim = (vertices.len() as f64).sqrt().ceil().max(1.0) as i32;
+    let bucket_size = 1.0 / bucket_dim as f64;
+    let mut vb: UniformBuckets<Vec2> =
+        UniformBuckets::new((0.0, 0.0), bucket_size, bucket_dim, bucket_dim);
+    for (i, &v) in vertices.iter().enumerate() {
+        vb.insert(i, v);
+    }
+    vb
+}
+
+/// Index of the vertex nearest `p` (ties → lower index) — bucketed spiral
+/// search over a `UniformBuckets<Vec2>` built by [`build_vertex_buckets`].
+///
+/// Bit-exact equivalent to [`nearest_vertex_naive`] (kept under `#[cfg(test)]`)
+/// because the spiral exhausts every bucket within `best_d` before terminating
+/// — any tie has been considered — and the update rule
+/// `(d == best_d && i < best_i)` preserves the lowest-index tie-break.
+fn nearest_vertex_bucketed(p: Vec2, vb: &UniformBuckets<Vec2>) -> usize {
+    let (cx, cy) = vb.bucket_xy(p);
+    let mut best_d = f64::INFINITY;
+    let mut best_i = 0usize;
+
+    let max_ring = vb.max_dim();
+    let mut ring = 0i32;
+    loop {
+        vb.for_each_in_ring(cx, cy, ring, |i, v| {
+            let d = p.distance_sq(v);
+            if d < best_d || (d == best_d && i < best_i) {
+                best_d = d;
+                best_i = i;
+            }
+        });
+
+        // Lower bound on any vertex in ring `ring+1`: its bucket starts at
+        // Chebyshev distance `ring+1` from p's bucket, so the closest
+        // possible point is ≥ `ring * bucket_size` Euclidean (worst case: p
+        // sits on the far edge of its bucket toward ring r+1). Strict `>`
+        // so any d == best_d in an outer ring is still considered.
+        let next_lb = (ring as f64) * vb.bucket_size();
+        if best_d.is_finite() && next_lb * next_lb > best_d {
+            break;
+        }
+        ring += 1;
+        if ring > max_ring {
+            break; // safety — every vertex already scanned
+        }
+    }
+
+    best_i
+}
+
+/// The pre-perf linear scan — kept under `#[cfg(test)]` as the oracle for
+/// AC-2 (`nearest_vertex_matches_naive_oracle`).
+#[cfg(test)]
+fn nearest_vertex_naive(p: Vec2, vertices: &[Vec2]) -> usize {
     let mut best = 0;
     let mut best_d = f64::INFINITY;
     for (i, &v) in vertices.iter().enumerate() {
@@ -460,6 +526,60 @@ mod tests {
     fn empty_template_yields_no_zones() {
         let tiled = assign_zone_tiles(&[], grid(16, 16), TilemapSeed(1)).unwrap();
         assert!(tiled.is_empty());
+    }
+
+    #[test]
+    fn ac2_nearest_vertex_matches_naive_oracle() {
+        // AC-2 — DEFERRED #018 promote. The bucketed spiral search must return
+        // the same vertex index as the naive linear scan for arbitrary query
+        // points over real Penrose vertex fields. Iterates 200 query points ×
+        // 3 vertex-field configurations.
+        use rand::Rng;
+        use rand_chacha::ChaCha8Rng;
+
+        // Targets span the production vertex-count regime — `penrose_vertices`
+        // over-shoots `target` by subdividing until the count is reached, so
+        // a continent (target 200) lands at ~500-1200 vertices in practice.
+        // The (0.3, 1500, 4) case exercises the dense-grid spiral.
+        for (rotation, target, seed) in [(0.3, 200, 1u64), (1.7, 500, 2), (2.5, 200, 3), (0.3, 1500, 4)] {
+            let vertices = penrose_vertices(target, rotation).unwrap();
+            let vb = build_vertex_buckets(&vertices);
+            let mut rng = ChaCha8Rng::seed_from_u64(seed);
+            for _ in 0..200 {
+                let p = Vec2::new(rng.gen_range(0.0..1.0), rng.gen_range(0.0..1.0));
+                let bucketed = nearest_vertex_bucketed(p, &vb);
+                let naive = nearest_vertex_naive(p, &vertices);
+                assert_eq!(
+                    bucketed, naive,
+                    "bucketed lookup diverged from naive at p={p:?} seed={seed} target={target}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ac3_nearest_vertex_tie_break_prefers_lower_index() {
+        // AC-3 — hand-constructed cross-bucket tie. Query point at (0.5, 0.5);
+        // vertices at (0.4, 0.5) and (0.6, 0.5) sit at exactly equal Euclidean
+        // distance, in *different* buckets (bucket_dim sqrt(2)≈2, bucket_size
+        // 0.5 ⇒ buckets (0,1) and (1,1)). The tie-break must return the
+        // lower index (vertex 0), regardless of bucket iteration order.
+        let vertices = vec![
+            Vec2::new(0.4, 0.5), // index 0
+            Vec2::new(0.6, 0.5), // index 1
+        ];
+        let vb = build_vertex_buckets(&vertices);
+        let query = Vec2::new(0.5, 0.5);
+        assert_eq!(nearest_vertex_bucketed(query, &vb), 0);
+
+        // And if we flip insertion order — index 0 is now the (0.6, 0.5)
+        // vertex — the tie-break still returns the (new) lower index.
+        let vertices_flipped = vec![
+            Vec2::new(0.6, 0.5), // index 0
+            Vec2::new(0.4, 0.5), // index 1
+        ];
+        let vb_flipped = build_vertex_buckets(&vertices_flipped);
+        assert_eq!(nearest_vertex_bucketed(query, &vb_flipped), 0);
     }
 
     #[test]

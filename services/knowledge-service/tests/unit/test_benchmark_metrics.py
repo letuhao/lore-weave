@@ -9,18 +9,17 @@ Acceptance (scaffold slice):
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from eval.metrics import mean, recall_at_k, reciprocal_rank, stddev
-from eval.run_benchmark import (
+from app.benchmark.core import (
     BenchmarkRunner,
     GoldenQuery,
     GoldenSet,
     ScoredResult,
+    _default_golden_path,
     load_golden_set,
 )
+from app.benchmark.metrics import mean, recall_at_k, reciprocal_rank, stddev
 
 
 # ── metrics ───────────────────────────────────────────────────────────
@@ -93,7 +92,7 @@ def test_stddev_known_value():
 # ── fixture load ──────────────────────────────────────────────────────
 
 
-FIXTURE_PATH = Path(__file__).parents[2] / "eval" / "golden_set.yaml"
+FIXTURE_PATH = _default_golden_path()
 
 
 def test_golden_set_loads():
@@ -250,6 +249,99 @@ def test_runner_rejects_zero_runs():
     golden = _tiny_golden()
     with pytest.raises(ValueError):
         BenchmarkRunner(golden, _PerfectRunner(golden)).run(runs=0)
+
+
+# ── D-EMB-BENCHMARK-CAL-01: per-dimension threshold overrides ─────────
+
+
+def test_golden_set_loads_thresholds_by_dimension_with_int_keys():
+    """The shipped YAML has a 1024 override entry; load_golden_set must
+    coerce the YAML key to int (YAML safe_load already does this for
+    numeric keys, but the loader's defensive normalization protects
+    future entries that may end up quoted in the YAML)."""
+    gs = load_golden_set(FIXTURE_PATH)
+    assert 1024 in gs.thresholds_by_dimension
+    assert isinstance(list(gs.thresholds_by_dimension.keys())[0], int)
+    # The bge-m3 override raises only the negative-control ceiling.
+    assert gs.thresholds_by_dimension[1024]["negative_control_max_score"] == 0.70
+
+
+def _negative_at(score: float) -> "type":
+    """Factory for a QueryRunner that mirrors `_PerfectRunner` on
+    positives but emits a single negative hit at the configured
+    score — used to land precisely between flat-default and
+    per-dim threshold ceilings."""
+
+    class _R:
+        def __init__(self, golden: GoldenSet) -> None:
+            self._by_q = {q.q: q for q in golden.queries}
+
+        def run(self, query: str):
+            gq = self._by_q[query]
+            if gq.band == "negative":
+                return [ScoredResult(entity_id="noise", score=score)]
+            return [ScoredResult(entity_id=eid, score=0.9) for eid in gq.expected]
+
+    return _R
+
+
+def _tiny_golden_with_1024_override() -> GoldenSet:
+    """Tiny golden with `negative_control_max_score` 0.50 (flat) +
+    1024-dim override 0.70 — mirrors the shipped YAML's shape."""
+    return GoldenSet(
+        entities=(),
+        queries=(
+            GoldenQuery(q="q1", expected=("a",), band="easy"),
+            GoldenQuery(q="q2", expected=("b",), band="hard"),
+            GoldenQuery(q="q3", expected=(), band="negative"),
+        ),
+        thresholds={
+            "recall_at_3": 0.75,
+            "mrr": 0.65,
+            "avg_score_positive": 0.60,
+            "negative_control_max_score": 0.50,
+            "max_stddev": 0.05,
+            "min_runs": 3,
+        },
+        thresholds_by_dimension={
+            1024: {"negative_control_max_score": 0.70},
+        },
+    )
+
+
+def test_runner_applies_per_dimension_override_for_matching_dim():
+    """negative_control_max_score=0.65 sits between flat (0.50) and
+    1024 override (0.70). With dimension=1024 the override applies and
+    the run passes; the persisted thresholds reflect the 0.70 ceiling
+    so the gate decision is traceable."""
+    golden = _tiny_golden_with_1024_override()
+    Runner = _negative_at(0.65)
+    report = BenchmarkRunner(golden, Runner(golden), dimension=1024).run(runs=3)
+    assert report.negative_control_max_score == pytest.approx(0.65)
+    # Merged thresholds — record what actually gated this run.
+    assert report.thresholds["negative_control_max_score"] == 0.70
+    # The other 5 keys inherit from flat.
+    assert report.thresholds["recall_at_3"] == 0.75
+    assert report.passes_thresholds() is True
+
+
+def test_runner_falls_back_to_flat_for_unknown_dimension():
+    """The same 0.65 negative-control score blows past the flat 0.50
+    ceiling when no dimension is supplied — fallback path."""
+    golden = _tiny_golden_with_1024_override()
+    Runner = _negative_at(0.65)
+    report = BenchmarkRunner(golden, Runner(golden), dimension=None).run(runs=3)
+    assert report.thresholds["negative_control_max_score"] == 0.50
+    assert report.passes_thresholds() is False
+
+
+def test_runner_falls_back_to_flat_for_dim_without_override():
+    """dimension=1536 has no override entry → flat thresholds apply."""
+    golden = _tiny_golden_with_1024_override()
+    Runner = _negative_at(0.65)
+    report = BenchmarkRunner(golden, Runner(golden), dimension=1536).run(runs=3)
+    assert report.thresholds["negative_control_max_score"] == 0.50
+    assert report.passes_thresholds() is False
 
 
 def test_report_to_json_is_serializable():

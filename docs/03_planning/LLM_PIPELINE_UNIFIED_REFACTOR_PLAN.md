@@ -356,9 +356,9 @@ provider-registry → RabbitMQ topic "user.{user_id}.llm.{op}.{event}"
 
 | Cycle | Deliverable | Effort |
 |-------|-------------|--------|
-| **6a** | Gateway: rate-limit + quota enforcement at job submission (uses usage-billing-service; emits 429 with Retry-After) | M |
-| **6b** | Gateway: job-level retry policy (per-chunk independent retries with exponential backoff) | M |
-| **6c** | Job-level tracing (OpenTelemetry trace_id end-to-end through gateway → adapter → upstream → notification → FE) | M |
+| **6a** | ~~rate-limit + quota enforcement, 429~~ — **redesigned**. Scoping found the billing model itself is wrong (token-count unit, doesn't protect BYOK users, conflates wallet-guardrail with platform resale). See [BILLING_MODEL_REDESIGN_ADR.md](./BILLING_MODEL_REDESIGN_ADR.md). 6a is now **Subsystem A — USD spend-guardrail** (all models, pre-flight estimate → 402 → max_tokens cap + reservation). Followed by **6a-β** (Subsystem B — platform resale ledger) and **6a-γ** (FE guardrail config). | 6a XL · 6a-β L · 6a-γ M |
+| **6b** | Gateway: job-level retry policy — exponential backoff replacing the current fixed-1s budget=1 (`worker.go:348` already marks this); per-chunk independent retries across image/video/audio job paths | M |
+| **6c** | Job-level tracing — OpenTelemetry trace_id end-to-end. NOTE: monorepo has **zero** OTel today; this is a greenfield observability foundation (SDK + collector + docker-compose + HTTP/RabbitMQ propagation), realistically L–XL not M | L–XL |
 
 ---
 

@@ -4,9 +4,11 @@
 //! hold no engine state, so they are trivially deterministic.
 
 pub mod connectivity;
+pub mod mst;
 pub mod pathfind;
 
 pub use connectivity::{connected_components, would_seal_a_gap};
+pub use mst::minimum_spanning_tree;
 pub use pathfind::{Path, search_path};
 
 use crate::types::tile::TileCoord;

@@ -102,10 +102,10 @@
           4096,
           4096,
           4096,
-          8128,
-          576,
-          576,
-          576,
+          16320,
+          8768,
+          25152,
+          16960,
           512,
           512,
           512,
@@ -254,7 +254,7 @@
           0,
           0,
           35184372056064,
-          0,
+          32768,
           0,
           0,
           0,
@@ -453,7 +453,7 @@
           0
         ]
       },
-      "terrain_type": "grass"
+      "terrain_type": "mountain"
     },
     {
       "zone_id": "inland_sea",
@@ -756,16 +756,22 @@
   ],
   "terrain_layer": [
     1,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
     9,
     9,
     9,
@@ -794,29 +800,25 @@
     9,
     9,
     9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -824,37 +826,8 @@
     1,
     1,
     1,
+    4,
     1,
-    1,
-    1,
-    1,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
     9,
     9,
     9,
@@ -862,37 +835,8 @@
     9,
     9,
     9,
+    4,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
     9,
@@ -919,37 +863,26 @@
     9,
     9,
     9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -957,6 +890,8 @@
     1,
     1,
     1,
+    4,
+    4,
     1,
     9,
     9,
@@ -964,6 +899,7 @@
     9,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -990,6 +926,27 @@
     9,
     9,
     9,
+    3,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -998,36 +955,15 @@
     1,
     1,
     1,
+    4,
+    4,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
     9,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1054,12 +990,27 @@
     9,
     9,
     9,
-    9,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1069,29 +1020,14 @@
     1,
     1,
     1,
+    4,
+    4,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1119,19 +1055,26 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1142,20 +1085,13 @@
     1,
     1,
     1,
+    4,
+    4,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1183,26 +1119,26 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1214,12 +1150,12 @@
     1,
     1,
     1,
+    4,
+    4,
     1,
-    1,
-    1,
-    9,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1247,18 +1183,26 @@
     9,
     9,
     9,
-    9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1271,18 +1215,11 @@
     1,
     1,
     1,
+    4,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1311,13 +1248,25 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1330,24 +1279,11 @@
     1,
     1,
     1,
+    4,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1375,21 +1311,26 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1402,16 +1343,11 @@
     1,
     1,
     1,
+    4,
     1,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    9,
     9,
+    4,
     9,
     9,
     9,
@@ -1439,14 +1375,26 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1459,22 +1407,11 @@
     1,
     1,
     1,
+    4,
     1,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    9,
     9,
+    4,
     9,
     9,
     9,
@@ -1502,8 +1439,26 @@
     9,
     9,
     9,
-    1,
-    1,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1516,29 +1471,11 @@
     1,
     1,
     1,
+    4,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1565,16 +1502,27 @@
     9,
     9,
     9,
-    9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    4,
+    3,
+    3,
+    3,
+    8,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1587,24 +1535,11 @@
     1,
     1,
     1,
+    4,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    9,
-    9,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1631,43 +1566,44 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
     1,
     1,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    9,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1695,43 +1631,43 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    8,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
     1,
     1,
+    8,
+    8,
     1,
     1,
     1,
     1,
     1,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    8,
     9,
     9,
+    4,
     9,
     9,
     9,
@@ -1759,32 +1695,97 @@
     9,
     9,
     9,
-    9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    8,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
     1,
     1,
     1,
+    8,
     1,
     1,
     1,
     1,
     1,
     1,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
     1,
     1,
     1,
+    8,
     1,
     1,
     1,
@@ -1792,8 +1793,7 @@
     1,
     1,
     1,
-    1,
-    1,
+    8,
     9,
     9,
     9,
@@ -1824,20 +1824,25 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1853,11 +1858,6 @@
     1,
     1,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
     9,
@@ -1888,16 +1888,25 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1913,15 +1922,6 @@
     1,
     1,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
     9,
@@ -1951,12 +1951,26 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
+    3,
+    3,
     1,
     1,
     1,
@@ -1972,20 +1986,6 @@
     1,
     1,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
     9,
     9,
     9,
@@ -2016,23 +2016,23 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    3,
+    3,
+    3,
     4,
     4,
     1,
@@ -2079,21 +2079,21 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    4,
+    4,
+    3,
     4,
     4,
     4,
@@ -2141,87 +2141,23 @@
     9,
     9,
     9,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
     4,
     4,
-    4,
-    4,
-    4,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    9,
-    1,
-    1,
-    1,
-    1,
-    4,
-    1,
-    4,
-    4,
-    1,
-    1,
-    1,
-    4,
-    4,
-    4,
-    4,
-    4,
-    4,
+    3,
     4,
     4,
     4,
@@ -2269,16 +2205,80 @@
     9,
     9,
     9,
+    3,
+    3,
+    3,
+    3,
+    4,
+    3,
+    4,
+    4,
+    3,
+    3,
+    3,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
     9,
-    1,
-    1,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    3,
+    3,
     4,
     4,
     4,
     4,
     4,
     4,
-    1,
+    3,
     4,
     4,
     4,
@@ -4852,270 +4852,196 @@
     4,
     4
   ],
+  "terrain_vocabulary": [
+    {
+      "primitive": "void",
+      "tag": "lw:void"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:grass"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:forest"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:mountain"
+    },
+    {
+      "primitive": "water",
+      "tag": "lw:water"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:sand"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:snow"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:swamp"
+    },
+    {
+      "primitive": "path",
+      "tag": "lw:road"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:rough"
+    },
+    {
+      "primitive": "land",
+      "tag": "lw:subterranean"
+    }
+  ],
+  "registry_ref": {
+    "id": "lw",
+    "version": "1.0.0"
+  },
   "object_placements": [
     {
-      "kind": "obstacle",
+      "kind": "monolith",
       "anchor": {
-        "x": 0,
-        "y": 0
+        "x": 9,
+        "y": 1
       },
-      "biome_object_type": "crater"
+      "value": 0,
+      "primitive": "trigger",
+      "tag": "lw:monolith",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 3,
-        "y": 0
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 6,
-        "y": 0
-      },
-      "biome_object_type": "crater"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 0,
-        "y": 3
-      },
-      "biome_object_type": "crater"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 8,
-        "y": 2
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 3,
-        "y": 3
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 6,
-        "y": 3
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 0,
-        "y": 5
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
+      "kind": "monolith",
       "anchor": {
         "x": 10,
-        "y": 4
+        "y": 31
       },
-      "biome_object_type": "crater"
+      "value": 0,
+      "primitive": "trigger",
+      "tag": "lw:monolith",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "treasure",
+      "anchor": {
+        "x": 5,
+        "y": 16
+      },
+      "value": 2000,
+      "primitive": "pickup",
+      "tag": "lw:treasure",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "monster_lair",
+      "anchor": {
+        "x": 5,
+        "y": 15
+      },
+      "value": 200,
+      "primitive": "spawner",
+      "tag": "lw:monster_lair",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "treasure",
+      "anchor": {
+        "x": 58,
+        "y": 11
+      },
+      "value": 2750,
+      "primitive": "pickup",
+      "tag": "lw:treasure",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "monster_lair",
+      "anchor": {
+        "x": 57,
+        "y": 11
+      },
+      "value": 275,
+      "primitive": "spawner",
+      "tag": "lw:monster_lair",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 2,
-        "y": 5
+        "x": 0,
+        "y": 0
       },
-      "biome_object_type": "mountain"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 4,
-        "y": 5
+        "x": 3,
+        "y": 0
       },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 2,
-        "y": 7
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 6,
-        "y": 6
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 4,
-        "y": 7
-      },
-      "biome_object_type": "rock"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 5,
-        "y": 7
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 7,
-        "y": 7
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 8,
         "y": 0
       },
-      "biome_object_type": "plant"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 8,
-        "y": 7
+        "x": 5,
+        "y": 2
       },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 8,
-        "y": 5
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 9,
-        "y": 7
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 11,
-        "y": 7
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 0,
-        "y": 8
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 9,
-        "y": 8
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 1,
-        "y": 9
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 13,
-        "y": 8
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 3,
-        "y": 9
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 10,
-        "y": 3
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 12,
-        "y": 5
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 1,
-        "y": 8
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 6,
-        "y": 9
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 8,
-        "y": 9
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 9,
-        "y": 9
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 10,
-        "y": 0
-      },
-      "biome_object_type": "mountain"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
@@ -5123,15 +5049,41 @@
         "x": 13,
         "y": 0
       },
-      "biome_object_type": "mountain"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 15,
+        "x": 16,
         "y": 0
       },
-      "biome_object_type": "mountain"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 10,
+        "y": 0
+      },
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
@@ -5139,455 +5091,69 @@
         "x": 18,
         "y": 0
       },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 20,
-        "y": 0
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 22,
-        "y": 0
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 24,
-        "y": 0
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 26,
-        "y": 0
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 28,
-        "y": 0
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 29,
-        "y": 0
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 30,
-        "y": 0
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 31,
-        "y": 0
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 9,
-        "y": 0
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 32,
-        "y": 0
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 33,
-        "y": 0
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 35,
-        "y": 0
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 37,
-        "y": 0
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 38,
-        "y": 0
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 39,
-        "y": 0
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 41,
-        "y": 0
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 43,
-        "y": 0
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 33,
-        "y": 1
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 44,
-        "y": 0
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 34,
-        "y": 1
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 35,
-        "y": 1
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 36,
-        "y": 1
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 39,
-        "y": 1
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 40,
-        "y": 1
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 45,
-        "y": 0
-      },
-      "biome_object_type": "crater"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 48,
-        "y": 0
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 51,
-        "y": 0
-      },
-      "biome_object_type": "crater"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 53,
-        "y": 0
-      },
-      "biome_object_type": "crater"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 56,
-        "y": 0
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 58,
-        "y": 0
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 61,
-        "y": 0
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 58,
-        "y": 2
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 43,
-        "y": 2
-      },
-      "biome_object_type": "crater"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 53,
-        "y": 2
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 56,
-        "y": 3
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 60,
-        "y": 3
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 63,
-        "y": 0
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 62,
-        "y": 3
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 63,
-        "y": 3
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 44,
-        "y": 4
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 55,
-        "y": 2
-      },
-      "biome_object_type": "plant"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 46,
-        "y": 5
+        "y": 0
       },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 45,
-        "y": 3
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 47,
-        "y": 3
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 47,
-        "y": 5
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 48,
-        "y": 5
-      },
-      "biome_object_type": "rock"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 49,
-        "y": 3
+        "y": 0
       },
-      "biome_object_type": "rock"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 51,
-        "y": 3
+        "y": 0
       },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 49,
-        "y": 5
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 50,
-        "y": 5
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 44,
-        "y": 1
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 60,
-        "y": 2
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 51,
-        "y": 5
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 52,
-        "y": 5
-      },
-      "biome_object_type": "plant"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 54,
-        "y": 5
+        "y": 0
       },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 55,
-        "y": 5
-      },
-      "biome_object_type": "rock"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
@@ -5595,7 +5161,13 @@
         "x": 59,
         "y": 20
       },
-      "biome_object_type": "mountain"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
@@ -5603,23 +5175,13 @@
         "x": 62,
         "y": 19
       },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 62,
-        "y": 22
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 46,
-        "y": 24
-      },
-      "biome_object_type": "mountain"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
@@ -5627,127 +5189,3208 @@
         "x": 60,
         "y": 23
       },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 53,
-        "y": 24
-      },
-      "biome_object_type": "mountain"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 49,
-        "y": 24
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 56,
-        "y": 24
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 57,
-        "y": 24
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 59,
-        "y": 24
-      },
-      "biome_object_type": "tree"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 44,
-        "y": 25
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 48,
-        "y": 22
-      },
-      "biome_object_type": "plant"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 51,
-        "y": 25
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 52,
-        "y": 25
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 54,
-        "y": 22
-      },
-      "biome_object_type": "rock"
-    },
-    {
-      "kind": "obstacle",
-      "anchor": {
-        "x": 56,
-        "y": 22
-      },
-      "biome_object_type": "rock"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 46,
-        "y": 22
+        "y": 24
       },
-      "biome_object_type": "plant"
+      "biome_object_type": "mountain",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.mountain",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
-        "x": 58,
-        "y": 22
+        "x": 0,
+        "y": 3
       },
-      "biome_object_type": "plant"
+      "biome_object_type": "crater",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.crater",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 3,
+        "y": 3
+      },
+      "biome_object_type": "crater",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.crater",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 5,
+        "y": 4
+      },
+      "biome_object_type": "crater",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.crater",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 0,
+        "y": 6
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 2,
+        "y": 6
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 4,
+        "y": 6
+      },
+      "biome_object_type": "crater",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.crater",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 6,
+        "y": 7
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 8,
+        "y": 7
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 4,
+        "y": 8
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 5,
+        "y": 8
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 10,
+        "y": 8
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 13,
+        "y": 8
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 8,
+        "y": 0
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 8,
+        "y": 4
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 0,
+        "y": 9
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 2,
+        "y": 9
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 6,
+        "y": 9
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 7,
+        "y": 9
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 8,
+        "y": 9
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 0,
+        "y": 10
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 14,
+        "y": 9
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 2,
+        "y": 10
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 9,
+        "y": 2
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 7,
+        "y": 3
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 10,
+        "y": 3
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 11,
+        "y": 4
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 12,
+        "y": 5
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 6,
+        "y": 6
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 20,
+        "y": 0
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 22,
+        "y": 0
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 24,
+        "y": 0
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 26,
+        "y": 0
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 28,
+        "y": 0
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 29,
+        "y": 0
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 30,
+        "y": 0
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 31,
+        "y": 0
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 32,
+        "y": 0
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 33,
+        "y": 0
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 34,
+        "y": 0
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 36,
+        "y": 0
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 38,
+        "y": 0
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 39,
+        "y": 0
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 40,
-        "y": 25
+        "y": 0
       },
-      "biome_object_type": "rock"
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 42,
+        "y": 0
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 34,
+        "y": 1
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 35,
+        "y": 1
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 9,
+        "y": 0
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 44,
+        "y": 0
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 36,
+        "y": 1
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 37,
+        "y": 1
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 40,
+        "y": 1
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 41,
+        "y": 1
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 56,
+        "y": 0
+      },
+      "biome_object_type": "crater",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.crater",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 59,
+        "y": 0
+      },
+      "biome_object_type": "crater",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.crater",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 61,
+        "y": 0
+      },
+      "biome_object_type": "crater",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.crater",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 44,
+        "y": 1
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 61,
+        "y": 2
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 51,
+        "y": 2
+      },
+      "biome_object_type": "crater",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.crater",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 53,
+        "y": 2
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 56,
+        "y": 3
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 63,
+        "y": 2
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 58,
+        "y": 3
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 59,
+        "y": 3
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
     },
     {
       "kind": "obstacle",
       "anchor": {
         "x": 60,
-        "y": 25
+        "y": 3
       },
-      "biome_object_type": "rock"
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 43,
+        "y": 2
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 55,
+        "y": 2
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 47,
+        "y": 3
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 49,
+        "y": 3
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 44,
+        "y": 4
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 47,
+        "y": 5
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 48,
+        "y": 5
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 50,
+        "y": 5
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 52,
+        "y": 5
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 54,
+        "y": 5
+      },
+      "biome_object_type": "tree",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 45,
+        "y": 0
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 55,
+        "y": 5
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 56,
+        "y": 5
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 57,
+        "y": 5
+      },
+      "biome_object_type": "plant",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.plant",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 61,
+        "y": 5
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    },
+    {
+      "kind": "obstacle",
+      "anchor": {
+        "x": 62,
+        "y": 5
+      },
+      "biome_object_type": "rock",
+      "primitive": "blocker",
+      "tag": "lw:obstacle.rock",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      }
+    }
+  ],
+  "road_segments": [
+    {
+      "waypoints": [
+        {
+          "x": 53,
+          "y": 10
+        },
+        {
+          "x": 54,
+          "y": 10
+        },
+        {
+          "x": 55,
+          "y": 10
+        },
+        {
+          "x": 56,
+          "y": 10
+        },
+        {
+          "x": 57,
+          "y": 10
+        }
+      ]
+    },
+    {
+      "waypoints": [
+        {
+          "x": 53,
+          "y": 10
+        },
+        {
+          "x": 52,
+          "y": 10
+        },
+        {
+          "x": 51,
+          "y": 10
+        },
+        {
+          "x": 50,
+          "y": 10
+        },
+        {
+          "x": 50,
+          "y": 11
+        },
+        {
+          "x": 50,
+          "y": 12
+        },
+        {
+          "x": 49,
+          "y": 12
+        },
+        {
+          "x": 48,
+          "y": 12
+        },
+        {
+          "x": 47,
+          "y": 12
+        },
+        {
+          "x": 46,
+          "y": 12
+        },
+        {
+          "x": 45,
+          "y": 12
+        },
+        {
+          "x": 45,
+          "y": 13
+        },
+        {
+          "x": 45,
+          "y": 14
+        },
+        {
+          "x": 45,
+          "y": 15
+        },
+        {
+          "x": 44,
+          "y": 15
+        }
+      ]
+    },
+    {
+      "waypoints": [
+        {
+          "x": 44,
+          "y": 15
+        },
+        {
+          "x": 43,
+          "y": 15
+        },
+        {
+          "x": 42,
+          "y": 15
+        },
+        {
+          "x": 41,
+          "y": 15
+        },
+        {
+          "x": 40,
+          "y": 15
+        },
+        {
+          "x": 39,
+          "y": 15
+        },
+        {
+          "x": 38,
+          "y": 15
+        },
+        {
+          "x": 37,
+          "y": 15
+        },
+        {
+          "x": 36,
+          "y": 15
+        },
+        {
+          "x": 35,
+          "y": 15
+        },
+        {
+          "x": 34,
+          "y": 15
+        },
+        {
+          "x": 33,
+          "y": 15
+        },
+        {
+          "x": 32,
+          "y": 15
+        },
+        {
+          "x": 31,
+          "y": 15
+        },
+        {
+          "x": 30,
+          "y": 15
+        },
+        {
+          "x": 29,
+          "y": 15
+        },
+        {
+          "x": 28,
+          "y": 15
+        },
+        {
+          "x": 27,
+          "y": 15
+        }
+      ]
+    },
+    {
+      "waypoints": [
+        {
+          "x": 27,
+          "y": 15
+        },
+        {
+          "x": 26,
+          "y": 15
+        },
+        {
+          "x": 25,
+          "y": 15
+        },
+        {
+          "x": 24,
+          "y": 15
+        },
+        {
+          "x": 23,
+          "y": 15
+        },
+        {
+          "x": 22,
+          "y": 15
+        },
+        {
+          "x": 21,
+          "y": 15
+        },
+        {
+          "x": 20,
+          "y": 15
+        },
+        {
+          "x": 19,
+          "y": 15
+        },
+        {
+          "x": 18,
+          "y": 15
+        },
+        {
+          "x": 17,
+          "y": 15
+        },
+        {
+          "x": 16,
+          "y": 15
+        },
+        {
+          "x": 15,
+          "y": 15
+        },
+        {
+          "x": 14,
+          "y": 15
+        },
+        {
+          "x": 14,
+          "y": 16
+        }
+      ]
+    },
+    {
+      "waypoints": [
+        {
+          "x": 14,
+          "y": 16
+        },
+        {
+          "x": 14,
+          "y": 15
+        },
+        {
+          "x": 13,
+          "y": 15
+        },
+        {
+          "x": 13,
+          "y": 14
+        },
+        {
+          "x": 13,
+          "y": 13
+        },
+        {
+          "x": 12,
+          "y": 13
+        },
+        {
+          "x": 11,
+          "y": 13
+        },
+        {
+          "x": 10,
+          "y": 13
+        },
+        {
+          "x": 9,
+          "y": 13
+        },
+        {
+          "x": 8,
+          "y": 13
+        },
+        {
+          "x": 7,
+          "y": 13
+        },
+        {
+          "x": 6,
+          "y": 13
+        },
+        {
+          "x": 6,
+          "y": 14
+        },
+        {
+          "x": 6,
+          "y": 15
+        },
+        {
+          "x": 6,
+          "y": 16
+        }
+      ]
+    },
+    {
+      "waypoints": [
+        {
+          "x": 6,
+          "y": 16
+        },
+        {
+          "x": 6,
+          "y": 15
+        },
+        {
+          "x": 6,
+          "y": 14
+        },
+        {
+          "x": 5,
+          "y": 14
+        }
+      ]
+    }
+  ],
+  "river_segments": [
+    {
+      "tiles": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 1,
+          "y": 0
+        },
+        {
+          "x": 2,
+          "y": 0
+        },
+        {
+          "x": 3,
+          "y": 0
+        },
+        {
+          "x": 4,
+          "y": 0
+        },
+        {
+          "x": 5,
+          "y": 0
+        },
+        {
+          "x": 6,
+          "y": 0
+        },
+        {
+          "x": 7,
+          "y": 0
+        },
+        {
+          "x": 7,
+          "y": 1
+        },
+        {
+          "x": 7,
+          "y": 2
+        },
+        {
+          "x": 8,
+          "y": 2
+        },
+        {
+          "x": 8,
+          "y": 3
+        },
+        {
+          "x": 9,
+          "y": 3
+        },
+        {
+          "x": 9,
+          "y": 4
+        },
+        {
+          "x": 10,
+          "y": 4
+        },
+        {
+          "x": 10,
+          "y": 5
+        },
+        {
+          "x": 11,
+          "y": 5
+        },
+        {
+          "x": 11,
+          "y": 6
+        },
+        {
+          "x": 12,
+          "y": 6
+        },
+        {
+          "x": 12,
+          "y": 7
+        },
+        {
+          "x": 12,
+          "y": 8
+        },
+        {
+          "x": 12,
+          "y": 9
+        },
+        {
+          "x": 12,
+          "y": 10
+        },
+        {
+          "x": 12,
+          "y": 11
+        },
+        {
+          "x": 12,
+          "y": 12
+        },
+        {
+          "x": 12,
+          "y": 13
+        },
+        {
+          "x": 13,
+          "y": 13
+        },
+        {
+          "x": 13,
+          "y": 14
+        },
+        {
+          "x": 13,
+          "y": 15
+        },
+        {
+          "x": 14,
+          "y": 15
+        },
+        {
+          "x": 15,
+          "y": 15
+        },
+        {
+          "x": 16,
+          "y": 15
+        },
+        {
+          "x": 17,
+          "y": 15
+        },
+        {
+          "x": 18,
+          "y": 15
+        },
+        {
+          "x": 19,
+          "y": 15
+        },
+        {
+          "x": 20,
+          "y": 15
+        },
+        {
+          "x": 21,
+          "y": 15
+        },
+        {
+          "x": 22,
+          "y": 15
+        },
+        {
+          "x": 23,
+          "y": 15
+        },
+        {
+          "x": 24,
+          "y": 15
+        },
+        {
+          "x": 25,
+          "y": 15
+        },
+        {
+          "x": 26,
+          "y": 15
+        },
+        {
+          "x": 27,
+          "y": 15
+        },
+        {
+          "x": 28,
+          "y": 15
+        },
+        {
+          "x": 29,
+          "y": 15
+        },
+        {
+          "x": 30,
+          "y": 15
+        },
+        {
+          "x": 31,
+          "y": 15
+        },
+        {
+          "x": 32,
+          "y": 15
+        },
+        {
+          "x": 33,
+          "y": 15
+        },
+        {
+          "x": 34,
+          "y": 15
+        },
+        {
+          "x": 35,
+          "y": 15
+        },
+        {
+          "x": 36,
+          "y": 15
+        },
+        {
+          "x": 37,
+          "y": 15
+        },
+        {
+          "x": 38,
+          "y": 15
+        },
+        {
+          "x": 39,
+          "y": 15
+        },
+        {
+          "x": 40,
+          "y": 15
+        },
+        {
+          "x": 41,
+          "y": 15
+        },
+        {
+          "x": 42,
+          "y": 15
+        },
+        {
+          "x": 43,
+          "y": 15
+        },
+        {
+          "x": 44,
+          "y": 15
+        },
+        {
+          "x": 45,
+          "y": 15
+        },
+        {
+          "x": 45,
+          "y": 14
+        },
+        {
+          "x": 45,
+          "y": 13
+        },
+        {
+          "x": 45,
+          "y": 12
+        },
+        {
+          "x": 46,
+          "y": 12
+        },
+        {
+          "x": 47,
+          "y": 12
+        },
+        {
+          "x": 48,
+          "y": 12
+        },
+        {
+          "x": 49,
+          "y": 12
+        },
+        {
+          "x": 50,
+          "y": 12
+        },
+        {
+          "x": 50,
+          "y": 11
+        },
+        {
+          "x": 50,
+          "y": 10
+        },
+        {
+          "x": 51,
+          "y": 10
+        },
+        {
+          "x": 52,
+          "y": 10
+        },
+        {
+          "x": 53,
+          "y": 10
+        },
+        {
+          "x": 54,
+          "y": 10
+        },
+        {
+          "x": 55,
+          "y": 10
+        },
+        {
+          "x": 56,
+          "y": 10
+        },
+        {
+          "x": 56,
+          "y": 11
+        },
+        {
+          "x": 56,
+          "y": 12
+        },
+        {
+          "x": 56,
+          "y": 13
+        },
+        {
+          "x": 56,
+          "y": 14
+        },
+        {
+          "x": 56,
+          "y": 15
+        },
+        {
+          "x": 56,
+          "y": 16
+        },
+        {
+          "x": 56,
+          "y": 17
+        },
+        {
+          "x": 56,
+          "y": 18
+        },
+        {
+          "x": 56,
+          "y": 19
+        },
+        {
+          "x": 56,
+          "y": 20
+        },
+        {
+          "x": 56,
+          "y": 21
+        },
+        {
+          "x": 56,
+          "y": 22
+        }
+      ],
+      "crossings": [
+        {
+          "at": {
+            "x": 9,
+            "y": 3
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 9,
+            "y": 4
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 12,
+            "y": 7
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 12,
+            "y": 10
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 12,
+            "y": 13
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 13,
+            "y": 13
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 13,
+            "y": 14
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 13,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 14,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 15,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 16,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 17,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 18,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 19,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 20,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 21,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 22,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 23,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 24,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 25,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 26,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 27,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 28,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 29,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 30,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 31,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 32,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 33,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 34,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 35,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 36,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 37,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 38,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 39,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 40,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 41,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 42,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 43,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 44,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 45,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 45,
+            "y": 14
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 45,
+            "y": 13
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 45,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 46,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 47,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 48,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 49,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 11
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 51,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 52,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 53,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 54,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 55,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 56,
+            "y": 10
+          },
+          "kind": "bridge"
+        }
+      ]
+    },
+    {
+      "tiles": [
+        {
+          "x": 10,
+          "y": 0
+        },
+        {
+          "x": 11,
+          "y": 0
+        },
+        {
+          "x": 12,
+          "y": 0
+        },
+        {
+          "x": 13,
+          "y": 0
+        },
+        {
+          "x": 14,
+          "y": 0
+        },
+        {
+          "x": 15,
+          "y": 0
+        },
+        {
+          "x": 16,
+          "y": 0
+        },
+        {
+          "x": 16,
+          "y": 1
+        },
+        {
+          "x": 16,
+          "y": 2
+        },
+        {
+          "x": 16,
+          "y": 3
+        },
+        {
+          "x": 16,
+          "y": 4
+        },
+        {
+          "x": 16,
+          "y": 5
+        },
+        {
+          "x": 16,
+          "y": 6
+        },
+        {
+          "x": 16,
+          "y": 7
+        },
+        {
+          "x": 16,
+          "y": 8
+        },
+        {
+          "x": 16,
+          "y": 9
+        },
+        {
+          "x": 16,
+          "y": 10
+        },
+        {
+          "x": 16,
+          "y": 11
+        },
+        {
+          "x": 16,
+          "y": 12
+        },
+        {
+          "x": 16,
+          "y": 13
+        },
+        {
+          "x": 16,
+          "y": 14
+        },
+        {
+          "x": 16,
+          "y": 15
+        },
+        {
+          "x": 17,
+          "y": 15
+        },
+        {
+          "x": 18,
+          "y": 15
+        },
+        {
+          "x": 19,
+          "y": 15
+        },
+        {
+          "x": 20,
+          "y": 15
+        },
+        {
+          "x": 21,
+          "y": 15
+        },
+        {
+          "x": 22,
+          "y": 15
+        },
+        {
+          "x": 23,
+          "y": 15
+        },
+        {
+          "x": 24,
+          "y": 15
+        },
+        {
+          "x": 25,
+          "y": 15
+        },
+        {
+          "x": 26,
+          "y": 15
+        },
+        {
+          "x": 27,
+          "y": 15
+        },
+        {
+          "x": 28,
+          "y": 15
+        },
+        {
+          "x": 29,
+          "y": 15
+        },
+        {
+          "x": 30,
+          "y": 15
+        },
+        {
+          "x": 31,
+          "y": 15
+        },
+        {
+          "x": 32,
+          "y": 15
+        },
+        {
+          "x": 33,
+          "y": 15
+        },
+        {
+          "x": 34,
+          "y": 15
+        },
+        {
+          "x": 35,
+          "y": 15
+        },
+        {
+          "x": 36,
+          "y": 15
+        },
+        {
+          "x": 37,
+          "y": 15
+        },
+        {
+          "x": 38,
+          "y": 15
+        },
+        {
+          "x": 39,
+          "y": 15
+        },
+        {
+          "x": 40,
+          "y": 15
+        },
+        {
+          "x": 41,
+          "y": 15
+        },
+        {
+          "x": 42,
+          "y": 15
+        },
+        {
+          "x": 43,
+          "y": 15
+        },
+        {
+          "x": 44,
+          "y": 15
+        },
+        {
+          "x": 45,
+          "y": 15
+        },
+        {
+          "x": 45,
+          "y": 14
+        },
+        {
+          "x": 45,
+          "y": 13
+        },
+        {
+          "x": 45,
+          "y": 12
+        },
+        {
+          "x": 46,
+          "y": 12
+        },
+        {
+          "x": 47,
+          "y": 12
+        },
+        {
+          "x": 48,
+          "y": 12
+        },
+        {
+          "x": 49,
+          "y": 12
+        },
+        {
+          "x": 50,
+          "y": 12
+        },
+        {
+          "x": 50,
+          "y": 11
+        },
+        {
+          "x": 50,
+          "y": 10
+        },
+        {
+          "x": 51,
+          "y": 10
+        },
+        {
+          "x": 52,
+          "y": 10
+        },
+        {
+          "x": 53,
+          "y": 10
+        },
+        {
+          "x": 54,
+          "y": 10
+        },
+        {
+          "x": 55,
+          "y": 10
+        },
+        {
+          "x": 56,
+          "y": 10
+        },
+        {
+          "x": 57,
+          "y": 10
+        },
+        {
+          "x": 57,
+          "y": 11
+        },
+        {
+          "x": 57,
+          "y": 12
+        },
+        {
+          "x": 57,
+          "y": 13
+        },
+        {
+          "x": 57,
+          "y": 14
+        },
+        {
+          "x": 57,
+          "y": 15
+        },
+        {
+          "x": 57,
+          "y": 16
+        },
+        {
+          "x": 57,
+          "y": 17
+        },
+        {
+          "x": 57,
+          "y": 18
+        },
+        {
+          "x": 57,
+          "y": 19
+        },
+        {
+          "x": 57,
+          "y": 20
+        },
+        {
+          "x": 57,
+          "y": 21
+        },
+        {
+          "x": 57,
+          "y": 22
+        }
+      ],
+      "crossings": [
+        {
+          "at": {
+            "x": 16,
+            "y": 6
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 16,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 17,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 18,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 19,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 20,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 21,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 22,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 23,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 24,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 25,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 26,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 27,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 28,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 29,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 30,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 31,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 32,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 33,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 34,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 35,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 36,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 37,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 38,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 39,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 40,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 41,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 42,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 43,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 44,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 45,
+            "y": 15
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 45,
+            "y": 14
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 45,
+            "y": 13
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 45,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 46,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 47,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 48,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 49,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 11
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 51,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 52,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 53,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 54,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 55,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 56,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 57,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 57,
+            "y": 19
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 57,
+            "y": 20
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 57,
+            "y": 21
+          },
+          "kind": "ford"
+        }
+      ]
+    },
+    {
+      "tiles": [
+        {
+          "x": 46,
+          "y": 0
+        },
+        {
+          "x": 46,
+          "y": 1
+        },
+        {
+          "x": 46,
+          "y": 2
+        },
+        {
+          "x": 46,
+          "y": 3
+        },
+        {
+          "x": 46,
+          "y": 4
+        },
+        {
+          "x": 46,
+          "y": 5
+        },
+        {
+          "x": 46,
+          "y": 6
+        },
+        {
+          "x": 46,
+          "y": 7
+        },
+        {
+          "x": 46,
+          "y": 8
+        },
+        {
+          "x": 46,
+          "y": 9
+        },
+        {
+          "x": 46,
+          "y": 10
+        },
+        {
+          "x": 46,
+          "y": 11
+        },
+        {
+          "x": 46,
+          "y": 12
+        },
+        {
+          "x": 47,
+          "y": 12
+        },
+        {
+          "x": 48,
+          "y": 12
+        },
+        {
+          "x": 49,
+          "y": 12
+        },
+        {
+          "x": 50,
+          "y": 12
+        },
+        {
+          "x": 50,
+          "y": 11
+        },
+        {
+          "x": 50,
+          "y": 10
+        },
+        {
+          "x": 51,
+          "y": 10
+        },
+        {
+          "x": 52,
+          "y": 10
+        },
+        {
+          "x": 53,
+          "y": 10
+        },
+        {
+          "x": 54,
+          "y": 10
+        },
+        {
+          "x": 55,
+          "y": 10
+        },
+        {
+          "x": 56,
+          "y": 10
+        },
+        {
+          "x": 57,
+          "y": 10
+        },
+        {
+          "x": 57,
+          "y": 11
+        },
+        {
+          "x": 58,
+          "y": 11
+        },
+        {
+          "x": 58,
+          "y": 12
+        },
+        {
+          "x": 58,
+          "y": 13
+        },
+        {
+          "x": 58,
+          "y": 14
+        },
+        {
+          "x": 58,
+          "y": 15
+        },
+        {
+          "x": 58,
+          "y": 16
+        },
+        {
+          "x": 58,
+          "y": 17
+        },
+        {
+          "x": 58,
+          "y": 18
+        },
+        {
+          "x": 58,
+          "y": 19
+        },
+        {
+          "x": 57,
+          "y": 19
+        },
+        {
+          "x": 57,
+          "y": 20
+        },
+        {
+          "x": 57,
+          "y": 21
+        },
+        {
+          "x": 57,
+          "y": 22
+        }
+      ],
+      "crossings": [
+        {
+          "at": {
+            "x": 46,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 47,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 48,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 49,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 12
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 11
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 50,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 51,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 52,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 53,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 54,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 55,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 56,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 57,
+            "y": 10
+          },
+          "kind": "bridge"
+        },
+        {
+          "at": {
+            "x": 58,
+            "y": 18
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 58,
+            "y": 19
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 57,
+            "y": 19
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 57,
+            "y": 20
+          },
+          "kind": "ford"
+        },
+        {
+          "at": {
+            "x": 57,
+            "y": 21
+          },
+          "kind": "ford"
+        }
+      ]
+    },
+    {
+      "tiles": [
+        {
+          "x": 62,
+          "y": 19
+        }
+      ],
+      "crossings": []
     }
   ],
   "child_cell_anchors": {},

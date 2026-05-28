@@ -128,6 +128,75 @@ paths:
         '401':
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/model-billing/guardrail:
+    get:
+      tags: [account-balance]
+      summary: Get the current user's USD spend guardrail (Phase 6a-γ)
+      description: |
+        The Subsystem-A daily/monthly USD limits + spend. Spend figures are
+        window-aware — a rolled-over calendar window reports 0. No row yet ⇒
+        config defaults.
+      operationId: getGuardrail
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Guardrail' }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [account-balance]
+      summary: Configure the current user's spend-guardrail limits (Phase 6a-γ)
+      description: |
+        Sets the daily and/or monthly USD limit. Either field may be omitted;
+        a supplied limit must be > 0. Lowering a limit below current spend is
+        allowed — it bounds new work, never aborts in-flight work.
+      operationId: patchGuardrail
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                daily_limit_usd: { type: number, minimum: 0, exclusiveMinimum: true }
+                monthly_limit_usd: { type: number, minimum: 0, exclusiveMinimum: true }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Guardrail' }
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-billing/platform-balance:
+    get:
+      tags: [account-balance]
+      summary: Get the current user's platform balance (Phase 6a-γ)
+      description: |
+        The Subsystem-B platform resale ledger — LoreWeave-funded free tier
+        + prepaid credits (USD). free_tier_used is window-aware. No row yet ⇒
+        config free tier.
+      operationId: getPlatformBalance
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlatformBalance' }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
   /v1/model-billing/admin/usage:
     get:
       tags: [admin-billing]
@@ -391,6 +460,42 @@ components:
           minimum: 0
         billing_policy_version:
           type: string
+
+    Guardrail:
+      type: object
+      description: Phase 6a-γ — Subsystem-A USD spend guardrail.
+      required:
+        - daily_limit_usd
+        - monthly_limit_usd
+        - daily_spent_usd
+        - monthly_spent_usd
+        - reserved_usd
+        - daily_available_usd
+        - monthly_available_usd
+      properties:
+        daily_limit_usd: { type: number }
+        monthly_limit_usd: { type: number }
+        daily_spent_usd: { type: number }
+        monthly_spent_usd: { type: number }
+        reserved_usd: { type: number }
+        daily_available_usd: { type: number }
+        monthly_available_usd: { type: number }
+
+    PlatformBalance:
+      type: object
+      description: Phase 6a-γ — Subsystem-B platform resale ledger.
+      required:
+        - free_tier_allowance_usd
+        - free_tier_used_usd
+        - free_tier_remaining_usd
+        - credits_balance_usd
+        - reserved_usd
+      properties:
+        free_tier_allowance_usd: { type: number }
+        free_tier_used_usd: { type: number }
+        free_tier_remaining_usd: { type: number }
+        credits_balance_usd: { type: number }
+        reserved_usd: { type: number }
 
     AdminUsageLogListResponse:
       type: object

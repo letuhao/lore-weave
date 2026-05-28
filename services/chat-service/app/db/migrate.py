@@ -138,6 +138,15 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox_events(created_at) WHERE published_at IS NULL;
+
+-- K21-B — per-message tool-call history (JSONB) for UI replay. NULL when
+-- the turn made no tool calls; otherwise an ordered list of
+-- {iteration, tool, args, ok, result|error} entries.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='tool_calls') THEN
+    ALTER TABLE chat_messages ADD COLUMN tool_calls JSONB;
+  END IF;
+END $$;
 """
 
 

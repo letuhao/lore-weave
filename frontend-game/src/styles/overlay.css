@@ -1,0 +1,14 @@
+/* z-index + pointer-events orchestration for hybrid React+Phaser
+   composition. Per spec §1 #3 + §4: Phaser canvas is the bottom layer
+   (pointer-events: auto for canvas input), React HUD overlays sit on top
+   with selective pointer-events to let mouse/touch fall through to canvas
+   where the HUD isn't drawn. */
+
+/* When a layer is purely visual (no interactions), set pointer-events:none
+   on the wrapper and re-enable per-child where needed. */
+.overlay-passthrough {
+  pointer-events: none;
+}
+.overlay-passthrough > * {
+  pointer-events: auto;
+}

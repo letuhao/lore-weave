@@ -38,9 +38,17 @@ pub struct TilemapBuildState {
     pub zone_terrain: Vec<Option<TerrainKind>>,
     /// Every object the pipeline has placed.
     pub object_placements: Vec<TilemapObjectPlacement>,
+    /// Road anchors recorded by `ConnectionsPlacer` (TMP_007 / Phase D) — the
+    /// passage tile of every connection with `road != False` that received a
+    /// physical passage. Phase E's `RoadPlacer` consumes these.
+    pub road_nodes: Vec<TileCoord>,
     /// Map-wide "distance to nearest placed object" oracle (spec D10), index
     /// `y*width + x`, init `f32::INFINITY`.
     pub nearest_object_distance: Vec<f32>,
+    /// Road polylines realised by `RoadPlacer` (Phase E).
+    pub road_segments: Vec<crate::types::tilemap::RoadSegment>,
+    /// River polylines realised by `RiverPlacer` (Phase E).
+    pub river_segments: Vec<crate::types::tilemap::RiverSegment>,
     /// Per-zone build records.
     pub zones: Vec<ZoneBuildState>,
 }
@@ -103,7 +111,10 @@ impl TilemapBuildState {
             terrain_layer: vec![0u8; tile_count],
             zone_terrain: vec![None; zones.len()],
             object_placements: Vec::new(),
+            road_nodes: Vec::new(),
             nearest_object_distance: vec![f32::INFINITY; tile_count],
+            road_segments: Vec::new(),
+            river_segments: Vec::new(),
             zones,
         }
     }

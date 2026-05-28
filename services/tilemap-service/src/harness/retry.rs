@@ -3,7 +3,7 @@
 //! gateway call) and the pure [`super::validate::partition_response`]
 //! accept/narrow core.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use loreweave_llm::{GatewayClient, ModelSource};
 use uuid::Uuid;
@@ -26,6 +26,10 @@ pub struct L3Result {
     pub llm_attempts: u32,
     /// Count of objects filled by the §6 canonical default.
     pub fallback_count: usize,
+    /// Prompt + completion tokens summed across every gateway attempt — the
+    /// token-cost measurement input (a transport-failed attempt adds 0).
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 /// TMP_008b §5 — classify `placeholders` with a per-object partial-success
@@ -74,6 +78,8 @@ pub async fn run_l3_with_retries(
     let mut accepted: Vec<L3Classification> = Vec::new();
     let mut accepted_ids: HashSet<String> = HashSet::new();
     let mut llm_attempts = 0u32;
+    let mut input_tokens = 0u32;
+    let mut output_tokens = 0u32;
     // Validation errors from the prior attempt — the §4.2 retry context. Empty
     // after a transport failure (no usable response) so the next attempt is a
     // fresh try, not a correction (spec D3).
@@ -104,6 +110,8 @@ pub async fn run_l3_with_retries(
         let outcome =
             call_l3_attempt(client, model_source, model_ref, user_id, &subset, ctx).await;
         llm_attempts += 1;
+        input_tokens = input_tokens.saturating_add(outcome.input_tokens);
+        output_tokens = output_tokens.saturating_add(outcome.output_tokens);
 
         let (newly_accepted, mut errors) =
             partition_response(&subset, &outcome.classifications, book_canon_refs);
@@ -147,5 +155,88 @@ pub async fn run_l3_with_retries(
         classifications: accepted,
         llm_attempts,
         fallback_count,
+        input_tokens,
+        output_tokens,
     })
+}
+
+/// Default per-batch object cap for [`run_l3_batched`] — a local model handles
+/// roughly this many objects per structured tool call comfortably.
+pub const L3_BATCH_SIZE: usize = 40;
+
+/// TMP_008b §5 at continent scale — classify `placeholders` zone-by-zone in
+/// bounded batches. Groups by `zone_id` (first-appearance order), sub-chunks
+/// any zone larger than `batch_size`, runs [`run_l3_with_retries`] once per
+/// batch, and aggregates: `classifications` concatenated, `llm_attempts` /
+/// `fallback_count` / token counts summed.
+///
+/// The batches are a disjoint partition of the input, so every object is still
+/// classified **exactly once** (spec D6) across the union.
+///
+/// `Err` only on the [`run_l3_with_retries`] precondition — but checked here
+/// **globally** before batching, since a cross-batch duplicate `obj_id` would
+/// slip the per-batch check. Panics if `batch_size == 0` (a caller bug).
+#[allow(clippy::too_many_arguments)]
+pub async fn run_l3_batched(
+    client: &GatewayClient,
+    model_source: ModelSource,
+    model_ref: Uuid,
+    user_id: Uuid,
+    placeholders: &[L3Placeholder],
+    book_canon_refs: &[String],
+    max_attempts: u32,
+    batch_size: usize,
+) -> crate::Result<L3Result> {
+    assert!(batch_size > 0, "run_l3_batched: batch_size must be > 0");
+
+    // Global precondition (mirrors run_l3_with_retries, applied across batches).
+    let mut seen_ids: HashSet<&str> = HashSet::new();
+    for p in placeholders {
+        if p.suggested_canon_kind.is_empty() {
+            return Err(crate::Error::Config(format!(
+                "L3Placeholder '{}' has an empty suggested_canon_kind — the §6 \
+                 canonical-default fallback has no engine default to fall back on",
+                p.obj_id
+            )));
+        }
+        if !seen_ids.insert(p.obj_id.as_str()) {
+            return Err(crate::Error::Config(format!(
+                "duplicate L3Placeholder obj_id '{}' across the batched input",
+                p.obj_id
+            )));
+        }
+    }
+
+    // Group by zone_id in first-appearance order — deterministic batching.
+    let mut zone_order: Vec<&str> = Vec::new();
+    let mut by_zone: HashMap<&str, Vec<L3Placeholder>> = HashMap::new();
+    for p in placeholders {
+        let zid = p.zone_id.as_str();
+        if !by_zone.contains_key(zid) {
+            zone_order.push(zid);
+        }
+        by_zone.entry(zid).or_default().push(p.clone());
+    }
+
+    let mut result = L3Result {
+        classifications: Vec::new(),
+        llm_attempts: 0,
+        fallback_count: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+    };
+    for zid in zone_order {
+        for batch in by_zone[zid].chunks(batch_size) {
+            let r = run_l3_with_retries(
+                client, model_source, model_ref, user_id, batch, book_canon_refs, max_attempts,
+            )
+            .await?;
+            result.classifications.extend(r.classifications);
+            result.llm_attempts = result.llm_attempts.saturating_add(r.llm_attempts);
+            result.fallback_count += r.fallback_count;
+            result.input_tokens = result.input_tokens.saturating_add(r.input_tokens);
+            result.output_tokens = result.output_tokens.saturating_add(r.output_tokens);
+        }
+    }
+    Ok(result)
 }

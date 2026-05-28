@@ -16,6 +16,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/catalog-service/internal/config"
 )
 
@@ -29,7 +31,8 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 }
 
 // internalClient has a 10s timeout to prevent goroutine leaks when downstream is slow.
-var internalClient = &http.Client{Timeout: 10 * time.Second}
+// Phase 6c — traced transport so outbound calls carry a W3C traceparent + emit a CLIENT span.
+var internalClient = &http.Client{Timeout: 10 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 // internalGet makes a GET request to an internal service endpoint with X-Internal-Token.
 // Retries once after 500ms on network error.
@@ -56,6 +59,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before Recoverer so the span
+	// survives (and is marked 500) when a handler panics.
+	r.Use(observability.ChiMiddleware())
 	r.Use(middleware.Recoverer)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {

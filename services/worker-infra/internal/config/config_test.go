@@ -1,25 +1,41 @@
 package config
 
 import (
-	"os"
 	"testing"
 )
 
+// setRequiredEnvs satisfies the required-env panics in Load() so tests
+// that only care about OPTIONAL defaults don't blow up at requireEnv.
+// Pre-D-WORKER-INFRA-CONFIG-TEST the suite called os.Unsetenv on every
+// required var and asserted cfg.EventsDBURL != "" — Load() panicked
+// before reaching the asserts; the test never ran in CI (likely never
+// did, since the panic would have caught attention).
+func setRequiredEnvs(t *testing.T) {
+	t.Helper()
+	t.Setenv("EVENTS_DB_URL", "postgres://test/events")
+	t.Setenv("REDIS_URL", "redis://test:6379")
+	t.Setenv("PANDOC_URL", "http://test:3030")
+	t.Setenv("MINIO_ENDPOINT", "test:9000")
+	t.Setenv("MINIO_ACCESS_KEY", "test")
+	t.Setenv("MINIO_SECRET_KEY", "test")
+	t.Setenv("BOOK_SERVICE_URL", "http://test:8080")
+	t.Setenv("INTERNAL_SERVICE_TOKEN", "test_token")
+}
+
 func TestLoadDefaults(t *testing.T) {
-	// Clear env to test defaults
-	os.Unsetenv("EVENTS_DB_URL")
-	os.Unsetenv("REDIS_URL")
-	os.Unsetenv("WORKER_TASKS")
-	os.Unsetenv("OUTBOX_SOURCES")
-	os.Unsetenv("OUTBOX_CLEANUP_RETAIN_DAYS")
+	setRequiredEnvs(t)
+	// Optional vars: explicitly unset (via t.Setenv to empty so cleanup is automatic).
+	t.Setenv("WORKER_TASKS", "")
+	t.Setenv("OUTBOX_SOURCES", "")
+	t.Setenv("OUTBOX_CLEANUP_RETAIN_DAYS", "")
 
 	cfg := Load()
 
 	if cfg.EventsDBURL == "" {
-		t.Fatal("expected default EventsDBURL")
+		t.Fatal("expected EventsDBURL to carry the test value")
 	}
 	if cfg.RedisURL == "" {
-		t.Fatal("expected default RedisURL")
+		t.Fatal("expected RedisURL to carry the test value")
 	}
 	if cfg.CleanupRetainDays != 7 {
 		t.Fatalf("expected default 7 retain days, got %d", cfg.CleanupRetainDays)
@@ -30,6 +46,7 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadOutboxSources(t *testing.T) {
+	setRequiredEnvs(t)
 	t.Setenv("OUTBOX_SOURCES", "book:postgres://host/loreweave_book,glossary:postgres://host/loreweave_glossary")
 
 	cfg := Load()
@@ -46,6 +63,7 @@ func TestLoadOutboxSources(t *testing.T) {
 }
 
 func TestLoadWorkerTasks(t *testing.T) {
+	setRequiredEnvs(t)
 	t.Setenv("WORKER_TASKS", "outbox-relay,outbox-cleanup")
 
 	cfg := Load()

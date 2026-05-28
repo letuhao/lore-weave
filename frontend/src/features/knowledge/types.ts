@@ -23,6 +23,14 @@ export interface Project {
   book_id: string | null;
   instructions: string;
   extraction_enabled: boolean;
+  // K21-C (D3 / K21.12): when false, the chat tool loop skips this
+  // project's memory tools entirely. Default true (the BE Cycle-B
+  // column). PATCH /v1/knowledge/projects/{id} already accepts it.
+  tool_calling_enabled: boolean;
+  // K21-C (D4 / K21.7 sf4): when true, a `memory_remember` tool call
+  // queues a pending fact for the user to confirm/reject instead of
+  // writing it straight to the graph. Default false — opt-in.
+  memory_remember_confirm: boolean;
   extraction_status: ExtractionStatus;
   embedding_model: string | null;
   // K12.4: dimension derived from embedding_model server-side.
@@ -64,6 +72,12 @@ export interface ProjectUpdatePayload {
   // Omit to leave unchanged; null to clear; a known model name to set.
   // The backend auto-derives embedding_dimension from the model name.
   embedding_model?: string | null;
+  // K21-C (D3): per-project memory-tool opt-out. Omit to leave
+  // unchanged. The public PATCH endpoint accepted this since Cycle B.
+  tool_calling_enabled?: boolean;
+  // K21-C (D4): per-project `memory_remember` confirmation gate.
+  // Omit to leave unchanged.
+  memory_remember_confirm?: boolean;
 }
 
 export interface ProjectListResponse {

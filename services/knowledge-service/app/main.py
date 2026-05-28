@@ -6,6 +6,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from loreweave_obs import current_otel_trace_id, setup_tracing
+
 from app.clients.book_client import close_book_client, get_book_client
 from app.clients.embedding_client import close_embedding_client, get_embedding_client
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
@@ -20,9 +22,12 @@ from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     context,
     health,
+    internal_admin,
     internal_benchmark,
     internal_extraction,
+    internal_parse,
     internal_summarize,
+    internal_tools,
     metrics,
     ping,
 )
@@ -31,6 +36,7 @@ from app.routers.public import drawers as public_drawers
 from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
+from app.routers.public import pending_facts as public_pending_facts
 from app.routers.public import projects as public_projects
 from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
@@ -100,6 +106,27 @@ async def lifespan(app: FastAPI):
         # Track 1 mode skips this entirely.
         if settings.neo4j_uri:
             await run_neo4j_schema(get_neo4j_driver())
+        # D-P2-STALE-CLAIM-LIFESPAN-HOOK. Reset extraction_leaves rows
+        # stuck in status='running' for >30 min back to 'pending' so
+        # new workers can pick them up. Idempotent + multi-replica safe
+        # (status='running' filter atomically scopes the UPDATE).
+        # Best-effort: a Postgres hiccup here MUST NOT block startup
+        # of the rest of the service — claim_pending also has its own
+        # retry path, this hook just removes the multi-hour wait until
+        # that natural retry catches up.
+        try:
+            from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
+            reset_n = await ExtractionLeavesRepo(get_knowledge_pool()).reset_stale_claims()
+            if reset_n > 0:
+                logger.info(
+                    "D-P2-STALE-CLAIM-LIFESPAN-HOOK: reset %d stale 'running' claims to 'pending'",
+                    reset_n,
+                )
+        except Exception:
+            logger.warning(
+                "D-P2-STALE-CLAIM-LIFESPAN-HOOK: stale-claim recovery failed (non-fatal)",
+                exc_info=True,
+            )
     except Exception:
         logger.exception(
             "lifespan startup failed before yield — running partial cleanup"
@@ -444,12 +471,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Phase 6c-γ — OpenTelemetry: instrument this app for SERVER spans + httpx
+# for outbound CLIENT spans. No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+# Called AFTER add_middleware so the OTel ASGI middleware lands OUTERMOST
+# (Starlette prepends middleware) — the SERVER span then covers the full
+# request, CORS + TraceId middleware included. /review-impl(6c-γ) LOW#4.
+setup_tracing("knowledge-service", app=app)
+
 @app.exception_handler(Exception)
 async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONResponse:
-    """K7e: include the trace id in the 500 body so a caller staring
-    at an error in the UI can grep it straight to this service's
-    logs. Starlette's default handler returns plain text; overriding
-    it is the standard FastAPI pattern.
+    """K7e + D-PHASE6C-TRACE-ID-UNIFY: include BOTH ids in the 500 body
+    so a caller staring at a UI error can:
+      - `trace_id` → grep this service's structured logs
+      - `otel_trace_id` → paste straight into Grafana Tempo to follow
+        the request across services (chat → knowledge → book → glossary)
+
+    The two ids are unrelated by design: TraceIdMiddleware's id is a
+    uuid4 hex per-request set BEFORE any OTel span exists; Tempo
+    indexes by the OTel trace id minted inside FastAPIInstrumentor's
+    SERVER span. Empty string when OTel is no-op
+    (`OTEL_EXPORTER_OTLP_ENDPOINT` unset) — operators can tell apart
+    "Tempo down" from "this service crashed before the span started".
 
     HTTPException (4xx + explicit 5xx from handlers) is NOT caught
     here — FastAPI's built-in HTTPException handler runs first and
@@ -457,9 +499,14 @@ async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONRespons
     """
     logger.exception("unhandled exception (500): %s", exc)
     tid = trace_id_var.get()
+    otel_tid = current_otel_trace_id()
     return JSONResponse(
         status_code=500,
-        content={"detail": "internal server error", "trace_id": tid},
+        content={
+            "detail": "internal server error",
+            "trace_id": tid,
+            "otel_trace_id": otel_tid,
+        },
         headers={"X-Trace-Id": tid or ""},
     )
 
@@ -468,9 +515,12 @@ app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
+app.include_router(internal_admin.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_extraction.router)
+app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
+app.include_router(internal_tools.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_drawers.router)
@@ -479,6 +529,7 @@ app.include_router(public_entities.entities_router)
 app.include_router(public_extraction.router)
 app.include_router(public_extraction.jobs_router)
 app.include_router(public_logs.router)
+app.include_router(public_pending_facts.router)
 app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
 app.include_router(public_timeline.timeline_router)

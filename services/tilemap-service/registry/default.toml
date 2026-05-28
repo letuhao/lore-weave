@@ -1,0 +1,215 @@
+# Default LoreWeave registry (`lw:` namespace).
+#
+# Covers all V1 TerrainKind variants + TilemapObjectKind variants +
+# BiomeObjectType subtypes as their respective `lw:*` tags. Loaded by
+# `Registry::load_default()` (embedded at compile time via include_str!).
+#
+# Per-book registries follow this same shape with different namespace
+# prefix (e.g. `xianxia:qi-meadow`). See
+# `docs/specs/2026-05-26-data-model-v2-registry-footprint.md` for the
+# full schema.
+
+[registry]
+id = "lw"
+version = "1.0.0"
+
+# ── TERRAIN (10 V1 TerrainKind variants) ──────────────────────────────
+
+[[terrain]]
+id = "lw:grass"
+primitive = "land"
+label = "Grass"
+properties = { movement_speed = 1.0, growth_capacity = 1.0 }
+
+[[terrain]]
+id = "lw:forest"
+primitive = "land"
+label = "Forest Floor"
+# Land with rich growth; visual density via frontend tag-driven sprite.
+properties = { movement_speed = 0.85, growth_capacity = 1.5 }
+
+[[terrain]]
+id = "lw:mountain"
+primitive = "land"
+label = "Mountain Slope"
+# Mountain TERRAIN is walkable (slope); mountain OBSTACLE is
+# `lw:obstacle.mountain` (Blocker peak).
+properties = { movement_speed = 0.5, elevation = "high" }
+
+[[terrain]]
+id = "lw:water"
+primitive = "water"
+label = "Water"
+# Bridges/fords cross via L1/L2 overlay placements.
+properties = { depth = "shallow" }
+
+[[terrain]]
+id = "lw:sand"
+primitive = "land"
+label = "Sand"
+properties = { movement_speed = 0.85 }
+
+[[terrain]]
+id = "lw:snow"
+primitive = "land"
+label = "Snow"
+properties = { movement_speed = 0.7, climate_zone = "cold" }
+
+[[terrain]]
+id = "lw:swamp"
+primitive = "land"
+label = "Swamp"
+properties = { movement_speed = 0.5, growth_capacity = 0.8 }
+
+[[terrain]]
+id = "lw:road"
+primitive = "path"
+label = "Road"
+properties = { movement_speed = 1.2 }
+
+[[terrain]]
+id = "lw:rough"
+primitive = "land"
+label = "Rough"
+properties = { movement_speed = 0.8 }
+
+[[terrain]]
+id = "lw:subterranean"
+primitive = "land"
+label = "Subterranean"
+properties = { z_level = "underground", movement_speed = 0.9 }
+
+# ── OBJECTS (9 V1 TilemapObjectKind variants) ─────────────────────────
+
+[[object]]
+id = "lw:treasure"
+primitive = "pickup"
+label = "Treasure Pile"
+footprint = { width = 1, height = 1 }
+properties = { loot_table_id = "lw:default-treasure" }
+
+[[object]]
+id = "lw:monster_lair"
+primitive = "spawner"
+label = "Monster Lair"
+footprint = { width = 1, height = 1 }
+properties = { spawn_pool = ["lw:goblin", "lw:orc"], tick_interval = 600 }
+
+[[object]]
+id = "lw:town"
+primitive = "habitable"
+label = "Town"
+footprint = { width = 4, height = 4 }
+min_spacing = 8
+properties = { drill_down_target = "csc_interior" }
+
+[[object]]
+id = "lw:mine"
+primitive = "habitable"
+label = "Mine"
+footprint = { width = 2, height = 2 }
+min_spacing = 3
+walkability_pattern = { mask = [true, false, false, false] }
+properties = { drill_down_target = "mine_interior", resource_hint = "ore" }
+
+[[object]]
+id = "lw:landmark"
+primitive = "decoration"
+label = "Landmark"
+footprint = { width = 1, height = 1 }
+properties = { lore_hook = true }
+
+[[object]]
+id = "lw:monolith"
+primitive = "trigger"
+label = "Monolith"
+footprint = { width = 1, height = 1 }
+properties = { condition = "on_walk", paired_via = "passage_kind_portal" }
+
+[[object]]
+id = "lw:decoration"
+primitive = "decoration"
+label = "Decoration"
+footprint = { width = 1, height = 1 }
+
+[[object]]
+id = "lw:ferry"
+primitive = "vehicle"
+label = "Ferry"
+footprint = { width = 1, height = 1 }
+properties = { destination_event = "ferry_cross", terrain_requirement = "lw:water" }
+
+# ── BiomeObjectType subtypes (9 — Obstacle.* variants) ────────────────
+# These are the V1 `BiomeObjectType` enum variants, materialised under
+# tag `lw:obstacle.<subtype>` when the engine places an Obstacle in
+# the current closed-enum world. The placer reads `primitive = blocker`
+# + the optional `obstacle_subtype` property to keep biome-specific
+# behaviour (river source = mountain, lake sink etc.).
+
+[[object]]
+id = "lw:obstacle.mountain"
+primitive = "blocker"
+label = "Mountain"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "mountain", river_role = "source" }
+
+[[object]]
+id = "lw:obstacle.tree"
+primitive = "blocker"
+label = "Tree"
+footprint = { width = 1, height = 1 }
+# When growth + harvest systems ship, promote to `plant` primitive +
+# add `growth_capacity` + `harvest_yield` properties.
+properties = { obstacle_subtype = "tree", future_promotion = "plant" }
+
+[[object]]
+id = "lw:obstacle.lake"
+primitive = "blocker"
+label = "Lake"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "lake", river_role = "sink" }
+
+[[object]]
+id = "lw:obstacle.crater"
+primitive = "blocker"
+label = "Crater"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "crater" }
+
+[[object]]
+id = "lw:obstacle.rock"
+primitive = "blocker"
+label = "Rock"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "rock" }
+
+[[object]]
+id = "lw:obstacle.plant"
+primitive = "blocker"
+label = "Plant"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "plant", future_promotion = "plant" }
+
+[[object]]
+id = "lw:obstacle.structure"
+primitive = "blocker"
+label = "Structure"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "structure" }
+
+[[object]]
+id = "lw:obstacle.animal"
+primitive = "blocker"
+label = "Animal"
+# V2 reserve — when entity-system branch ships, promote primitive
+# to `npc` (or `animal` if distinct) + remove `blocker` fallback.
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "animal", future_promotion = "npc" }
+
+[[object]]
+id = "lw:obstacle.other"
+primitive = "blocker"
+label = "Other"
+# Catch-all for biome-object variants not yet specialized.
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "other" }

@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::time::{Duration, Instant};
 
 use super::{Modificator, ModificatorContext};
 
@@ -69,6 +70,27 @@ impl ModificatorRegistry {
             self.modificators[i].process(ctx)?;
         }
         Ok(())
+    }
+
+    /// Same as [`Self::execute`] but timestamps each `process` call and
+    /// returns the per-modificator wall time in execution order. Used by the
+    /// `tilemap-service measure` harness (DEFERRED #029) to narrow the
+    /// continent-pipeline cost onto a specific placer. Production callers
+    /// should keep using [`Self::execute`] — the `Instant` overhead is
+    /// trivial but the `Vec` allocation is not zero.
+    pub fn execute_with_timing(
+        &self,
+        ctx: &mut ModificatorContext<'_>,
+    ) -> crate::Result<Vec<(String, Duration)>> {
+        let order = self.topological_order()?;
+        let mut timings = Vec::with_capacity(order.len());
+        for i in order {
+            let modificator = &self.modificators[i];
+            let t = Instant::now();
+            modificator.process(ctx)?;
+            timings.push((modificator.name().to_string(), t.elapsed()));
+        }
+        Ok(timings)
     }
 
     /// Kahn's algorithm (Kahn 1962) → modificator indices in execution order.
@@ -295,6 +317,50 @@ mod tests {
     }
 
     #[test]
+    fn ac1_execute_with_timing_returns_per_modificator_durations_in_execution_order() {
+        // AC-1 — DEFERRED #029 instrumentation. `execute_with_timing` must
+        // return one `(name, duration)` per modificator, in the same
+        // topological execution order as `execute`. Durations are non-zero
+        // (each `process` does at least the LogMod push).
+        let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        let mut reg = ModificatorRegistry::new();
+        for name in ["a", "b", "c"] {
+            reg.add(Box::new(LogMod {
+                name,
+                log: Rc::clone(&log),
+            }));
+        }
+        reg.dependency("a", "c");
+        reg.dependency("b", "c");
+
+        let template = TilemapTemplate {
+            template_id: TilemapTemplateId("t".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+        };
+        let grid = GridSize { width: 2, height: 2 };
+        let mut state = TilemapBuildState::from_zones(vec![], grid);
+        let registry = crate::registry::Registry::load_default().unwrap();
+        let mut ctx = ModificatorContext {
+            template: &template,
+            grid,
+            seed: TilemapSeed(0),
+            state: &mut state,
+            registry: &registry,
+        };
+        let timings = reg.execute_with_timing(&mut ctx).unwrap();
+
+        // Same execution order as `execute_runs_modificators_in_topological_order`.
+        let names: Vec<&str> = timings.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["c", "a", "b"]);
+        // process() ran (the log captured it).
+        assert_eq!(*log.borrow(), ["c", "a", "b"]);
+        // One entry per modificator.
+        assert_eq!(timings.len(), 3);
+    }
+
+    #[test]
     fn execute_runs_modificators_in_topological_order() {
         let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
         let mut reg = ModificatorRegistry::new();
@@ -312,14 +378,17 @@ mod tests {
             template_id: TilemapTemplateId("t".to_string()),
             zones: vec![],
             seed_offset: 0,
+            world_zone: None,
         };
         let grid = GridSize { width: 2, height: 2 };
         let mut state = TilemapBuildState::from_zones(vec![], grid);
+        let registry = crate::registry::Registry::load_default().unwrap();
         let mut ctx = ModificatorContext {
             template: &template,
             grid,
             seed: TilemapSeed(0),
             state: &mut state,
+            registry: &registry,
         };
         reg.execute(&mut ctx).unwrap();
         assert_eq!(*log.borrow(), ["c", "a", "b"]);

@@ -6,6 +6,8 @@ import type {
   AccountBalance,
   UsageFilters,
   Period,
+  Guardrail,
+  PlatformBalance,
 } from './types';
 
 export const usageApi = {
@@ -44,5 +46,25 @@ export const usageApi = {
 
   getBalance(token: string) {
     return apiJson<AccountBalance>('/v1/model-billing/account-balance', { token });
+  },
+
+  // Phase 6a-γ — spend guardrail (Subsystem A) + platform balance (Subsystem B).
+  getGuardrail(token: string) {
+    return apiJson<Guardrail>('/v1/model-billing/guardrail', { token });
+  },
+
+  patchGuardrail(
+    token: string,
+    body: { daily_limit_usd?: number; monthly_limit_usd?: number },
+  ) {
+    return apiJson<Guardrail>('/v1/model-billing/guardrail', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+
+  getPlatformBalance(token: string) {
+    return apiJson<PlatformBalance>('/v1/model-billing/platform-balance', { token });
   },
 };

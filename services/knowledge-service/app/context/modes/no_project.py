@@ -61,6 +61,13 @@ class BuiltContext:
     # stable carries everything; for Mode 2/3 stable ends at </project>.
     stable_context: str = ""
     volatile_context: str = ""
+    # K21.12-BE (design D9): per-project tool-calling toggle, surfaced
+    # to chat-service so it can gate its tool-calling loop. Mode 1
+    # (no_project) has no project row, so the default `True` stands;
+    # Mode 2/3 overwrite it from the loaded project. Defaulting True
+    # also keeps any degraded path tool-enabled rather than silently
+    # disabling tools.
+    tool_calling_enabled: bool = True
 
 
 def split_at_boundary(lines: list[str], stable_line_count: int) -> tuple[str, str, str]:

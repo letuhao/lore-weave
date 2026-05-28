@@ -55,6 +55,12 @@ export function ProjectFormModal({
   // not on create (new projects have no extracted data yet).
   const [embeddingModel, setEmbeddingModel] = useState<string | null>(null);
   const [initialEmbeddingModel, setInitialEmbeddingModel] = useState<string | null>(null);
+  // K21-C (D3/D4): per-project memory-tool toggles. Edit-only (like
+  // embedding_model) — they govern the chat tool loop, which is
+  // meaningless on a project with no chat history yet. Both mirror
+  // the boolean-toggle pattern used elsewhere in the project UI.
+  const [toolCallingEnabled, setToolCallingEnabled] = useState(true);
+  const [memoryRememberConfirm, setMemoryRememberConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   // D-K8-03: track the version at dialog open time so we can send it
   // back in If-Match on save. Updated on 412 so the user can retry
@@ -84,6 +90,8 @@ export function ProjectFormModal({
       setBookId(project.book_id ?? '');
       setEmbeddingModel(project.embedding_model);
       setInitialEmbeddingModel(project.embedding_model);
+      setToolCallingEnabled(project.tool_calling_enabled);
+      setMemoryRememberConfirm(project.memory_remember_confirm);
       setBaselineVersion(project.version);
     } else {
       setName('');
@@ -93,6 +101,8 @@ export function ProjectFormModal({
       setBookId('');
       setEmbeddingModel(null);
       setInitialEmbeddingModel(null);
+      setToolCallingEnabled(true);
+      setMemoryRememberConfirm(false);
       setBaselineVersion(null);
     }
   }, [open, mode, project]);
@@ -127,6 +137,10 @@ export function ProjectFormModal({
           description: trimmedDescription,
           instructions: trimmedInstructions,
           book_id: bookIdPayload,
+          // K21-C (D3/D4): always send the memory-tool toggles on
+          // edit — they're plain form fields like name/description.
+          tool_calling_enabled: toolCallingEnabled,
+          memory_remember_confirm: memoryRememberConfirm,
         };
         // K12.4: include embedding_model only when the user changed it.
         // Omitting the field leaves the column unchanged on the backend
@@ -299,6 +313,58 @@ export function ProjectFormModal({
             disabled={saving}
             projectId={project?.project_id}
           />
+        )}
+
+        {/* K21-C (D3/D4): memory-tool toggles — edit-only, mirroring
+            the embedding-model picker's edit-only placement. */}
+        {mode === 'edit' && (
+          <div className="flex flex-col gap-2 border-t pt-3">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={toolCallingEnabled}
+                onChange={(e) => setToolCallingEnabled(e.target.checked)}
+                disabled={saving}
+                className="mt-0.5 h-3.5 w-3.5 rounded border"
+                data-testid="project-tool-calling-toggle"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium text-foreground">
+                  {t('projects.form.toolCalling', { defaultValue: 'Memory tools in chat' })}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {t('projects.form.toolCallingHint', {
+                    defaultValue:
+                      'Let the AI search, recall, and note memory while chatting in this project.',
+                  })}
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={memoryRememberConfirm}
+                onChange={(e) => setMemoryRememberConfirm(e.target.checked)}
+                disabled={saving || !toolCallingEnabled}
+                className="mt-0.5 h-3.5 w-3.5 rounded border"
+                data-testid="project-memory-confirm-toggle"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium text-foreground">
+                  {t('projects.form.memoryConfirm', {
+                    defaultValue: 'Confirm before saving memories',
+                  })}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {t('projects.form.memoryConfirmHint', {
+                    defaultValue:
+                      'Facts the AI wants to remember wait for your approval instead of saving automatically.',
+                  })}
+                </span>
+              </span>
+            </label>
+          </div>
         )}
       </div>
     </FormDialog>

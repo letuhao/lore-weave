@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from loreweave_obs import setup_tracing
+
 # Phase 5e-α: import settings at module load so missing required env
 # vars (internal_service_token, minio_*, jwt_secret) fail FAST at process
 # start rather than at first request. Mirrors translation-service pattern.
@@ -29,6 +31,13 @@ app = FastAPI(
 )
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Phase 6c-γ — OpenTelemetry: instrument this app for SERVER spans + httpx
+# for outbound CLIENT spans. No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+# Called AFTER add_middleware so the OTel ASGI middleware lands OUTERMOST
+# (Starlette prepends middleware) — the SERVER span then covers the full
+# request, CORS included. /review-impl(6c-γ) LOW#4.
+setup_tracing("video-gen-service", app=app)
 app.include_router(generate_router, prefix="/v1/video-gen", tags=["video-gen"])
 
 

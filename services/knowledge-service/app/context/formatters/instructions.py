@@ -43,6 +43,12 @@ _WITH_PASSAGES = (
     "<facts> higher when they conflict (facts are curated, passages are "
     "excerpts)."
 )
+_WITH_SUMMARIES = (
+    "Use <summaries> as high-level overviews of chapters, parts, and the "
+    "whole book — answer abstract questions about themes, arcs, and plot "
+    "from them. Higher-level summaries (book > part > chapter) cover broader "
+    "scope; prefer the most specific level that still answers the question."
+)
 _WITH_ABSENCES = (
     "For any entity listed in <no_memory_for>, you have no reliable "
     "information. Ask the user a clarifying question rather than "
@@ -81,6 +87,7 @@ def build_instructions_block(
     has_facts: bool,
     has_passages: bool,
     has_absences: bool,
+    has_summaries: bool = False,
     locale: str = "en",
 ) -> str:
     """Return the plain-text body for a Mode 3 `<instructions>` block.
@@ -98,6 +105,8 @@ def build_instructions_block(
         lines.append(_WITH_FACTS)
     if has_passages:
         lines.append(_WITH_PASSAGES)
+    if has_summaries:
+        lines.append(_WITH_SUMMARIES)
     if has_absences:
         lines.append(_WITH_ABSENCES)
     return " ".join(lines)

@@ -8,6 +8,11 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 ProjectType = Literal["book", "translation", "code", "general"]
 ExtractionStatus = Literal["disabled", "building", "paused", "ready", "failed"]
 ScopeType = Literal["global", "project", "session", "entity"]
+# K21-C (design D5): mirrors the Neo4j FactType closed enum in
+# app/db/neo4j_repos/facts.py. Kept as a local Literal (same pattern
+# as ProjectType / ScopeType) so app.db.models stays free of any
+# neo4j_repos import.
+FactType = Literal["decision", "preference", "milestone", "negation"]
 
 # Names are stripped of surrounding whitespace and must contain at least
 # one non-whitespace character. Max 200 chars, chat-service convention.
@@ -34,15 +39,35 @@ class Project(BaseModel):
     instructions: str
     extraction_enabled: bool
     extraction_status: ExtractionStatus
+    # D-EMB-MODEL-REF-01: the provider-registry `user_model` UUID of the
+    # project's embedding model (the `model_ref` for `/internal/embed`).
+    # TEXT-typed for back-compat; holds a UUID string. NULL = not yet
+    # configured. (Pre-fix this held a logical name like "bge-m3", which
+    # provider-registry 400'd — see KNOWLEDGE_SERVICE_EMBEDDING_MODEL_REF_ADR.)
     embedding_model: str | None = None
-    # K12.3 column surfaced for K18.3 / D-K18.3-01 ingestion; the
-    # passage_ingester + L3 selector need the dim at call time.
+    # D-EMB-MODEL-REF-01: caller-supplied vector dimension; the
+    # passage_ingester + L3 selector + benchmark read it at call time.
     embedding_dimension: int | None = None
     extraction_config: dict
     last_extracted_at: datetime | None = None
     estimated_cost_usd: Decimal
     actual_cost_usd: Decimal
     is_archived: bool
+    # K21.12-BE (design D9): per-project tool-calling toggle. Default
+    # True so a project row that predates the column reads back enabled
+    # (mirrors the DB `DEFAULT true`).
+    tool_calling_enabled: bool = True
+    # K21-C (design D4): per-project memory_remember confirmation gate.
+    # Default False — opt-in; a project row that predates the column
+    # reads back off (mirrors the DB `DEFAULT false`) so memory_remember
+    # keeps writing directly until the user turns confirmation on.
+    memory_remember_confirm: bool = False
+    # P2 (D6 opt-in raw retention): when True, leaf_processor persists
+    # the full LLM raw response to extraction_leaves_raw alongside the
+    # postprocessed candidates. Default False — power users opt-in for
+    # re-judge / debug / A-B prompt comparison. FE wire-up tracked as
+    # D-P2-FE-SAVE-RAW.
+    save_raw_extraction: bool = False
     version: int  # D-K8-03: bumped on every non-empty PATCH.
     created_at: datetime
     updated_at: datetime
@@ -68,12 +93,30 @@ class ProjectUpdate(BaseModel):
       to `true` is rejected at the router with 422 — archive uses the
       dedicated `POST /archive` endpoint which has the 404-oracle
       hardening (does not leak whether a project exists). K-CLEAN-3.
-    - `embedding_model` (K12.4): omit to leave unchanged. Set to a
-      known model name (e.g. "bge-m3", "text-embedding-3-small") to
-      switch the project's vector space. Set to None to clear. The
-      repo auto-derives `embedding_dimension` from the model name
-      via the `EMBEDDING_MODEL_TO_DIM` map — callers never pass the
-      dimension directly.
+    - `embedding_model` (D-EMB-MODEL-REF-01): omit to leave unchanged.
+      Set to a provider-registry `user_model` UUID (the embedding
+      model's `model_ref`) to switch the project's vector space; set to
+      None to clear. Send `embedding_dimension` alongside it — the two
+      define the vector space together and the dimension is no longer
+      derivable from the (now opaque UUID) model ref. Clearing the model
+      (None) clears the dimension.
+    - `embedding_dimension` (D-EMB-MODEL-REF-01): omit to leave
+      unchanged. The vector dimension of the chosen embedding model;
+      caller-supplied (the FE picker / config flow knows it, e.g. from a
+      probe call). Must pair with `embedding_model`.
+    - `tool_calling_enabled` (K21.12-BE, design D9): omit to leave
+      unchanged. Set to `true`/`false` to toggle whether the
+      chat-service tool-calling loop offers memory tools for this
+      project. NOT NULL in the DB, so setting it explicitly to None
+      is treated as "skip" by the repo (same as name/description).
+      The settings toggle UI that drives this is Cycle C — accepting
+      the field now lets that be a FE-only change.
+    - `memory_remember_confirm` (K21-C, design D4): omit to leave
+      unchanged. Set to `true`/`false` to toggle whether the
+      executor queues `memory_remember` facts for user confirmation
+      instead of writing them directly. NOT NULL in the DB, so
+      setting it explicitly to None is treated as "skip" by the repo
+      (same as tool_calling_enabled).
     """
 
     name: ProjectName | None = None
@@ -82,6 +125,10 @@ class ProjectUpdate(BaseModel):
     book_id: UUID | None = None
     is_archived: bool | None = None
     embedding_model: str | None = None
+    embedding_dimension: int | None = None
+    tool_calling_enabled: bool | None = None
+    memory_remember_confirm: bool | None = None
+    save_raw_extraction: bool | None = None
 
 
 class Summary(BaseModel):
@@ -116,3 +163,21 @@ class SummaryVersion(BaseModel):
     token_count: int | None = None
     created_at: datetime
     edit_source: EditSource
+
+
+# K21-C (design D5): a transient queue row awaiting user confirmation
+# before a `memory_remember` fact lands in the graph. `fact_type`
+# mirrors the Neo4j FactType closed enum. `fact_text` is stored already
+# injection-neutralized (design D6) so the confirm endpoint writes it
+# through to merge_fact as-is. `project_id` is nullable — a no-project
+# chat can still queue a fact.
+class PendingFact(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pending_fact_id: UUID
+    user_id: UUID
+    project_id: UUID | None = None
+    session_id: str
+    fact_type: FactType
+    fact_text: str
+    created_at: datetime

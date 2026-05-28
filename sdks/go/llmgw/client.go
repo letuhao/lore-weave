@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Options configures NewClient.
@@ -33,7 +34,11 @@ type Options struct {
 	// every per-call request must supply a UserID override.
 	UserID string
 
-	// Optional. Default: http.DefaultTransport.
+	// Optional. When nil, the SDK uses an OpenTelemetry-instrumented
+	// transport (otelhttp over http.DefaultTransport) so gateway calls
+	// carry a W3C traceparent + emit a CLIENT span — provided the host
+	// process ran a tracer init (Phase 6c). A caller-supplied Transport is
+	// used as-is (the caller owns instrumentation in that case).
 	Transport http.RoundTripper
 }
 
@@ -71,7 +76,9 @@ func NewClient(opts Options) (*Client, error) {
 
 	transport := opts.Transport
 	if transport == nil {
-		transport = http.DefaultTransport
+		// Phase 6c — default to a traced transport so SDK gateway calls
+		// propagate the caller's trace + emit CLIENT spans.
+		transport = otelhttp.NewTransport(http.DefaultTransport)
 	}
 
 	return &Client{

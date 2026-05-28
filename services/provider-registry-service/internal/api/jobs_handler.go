@@ -13,11 +13,11 @@ package api
 // the result.
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
@@ -27,6 +27,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/loreweave/observability"
+	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
 )
@@ -51,7 +53,8 @@ var validJobOperations = map[string]struct{}{
 	"audio_gen":         {}, // Phase 5e-β.2 — batch TTS
 	"entity_extraction": {}, "relation_extraction": {},
 	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
-	"translation": {},
+	"summarize_level":   {}, // P3 hierarchical reduce — chapter/part/book summaries
+	"translation":       {},
 }
 
 // jobSubmitRequest mirrors openapi SubmitJobRequest.
@@ -171,42 +174,58 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		return
 	}
 
-	jobID, err := s.jobsRepo.Insert(r.Context(), jobs.InsertParams{
-		OwnerUserID: userID,
-		Operation:   in.Operation,
-		ModelSource: in.ModelSource,
-		ModelRef:    modelRef,
-		Input:       json.RawMessage(in.Input),
-		Chunking:    rawOrNil(in.Chunking),
-		Callback:    rawOrNil(in.Callback),
-		JobMeta:     rawOrNil(in.JobMeta),
-		TraceID:     in.TraceID,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to create job")
-		return
-	}
-
-	// Phase 3c — decode the optional chunking config now so the worker
-	// goroutine doesn't need to re-parse the JSONB. Decode failure here
-	// is non-fatal: we fall back to single-call mode (caller's
-	// chunking field is malformed but the job itself can still run).
+	// Phase 3c — decode the optional chunking config up front. Moved ahead
+	// of the guardrail pre-flight (Phase 6a): a malformed chunking config is
+	// a 400 BEFORE any reservation is placed, so a bad request never leaks a
+	// held reservation.
 	chunkCfg, decodeErr := jobs.DecodeChunkConfig(in.Chunking)
 	if decodeErr != nil {
-		// Treat as caller error rather than silent fallback so the
-		// caller learns their config was malformed. Job already
-		// inserted — finalize as failed.
-		_, _ = s.jobsRepo.Cancel(r.Context(), jobID, userID)
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST",
 			"invalid chunking config: "+decodeErr.Error())
 		return
 	}
 
-	// Spawn the worker goroutine. Use a fresh context detached from the
-	// inbound HTTP request so the goroutine survives the response.
+	// Phase 6a — spend-guardrail pre-flight: model lookup (404 if missing),
+	// worst-case cost estimate (402 if unpriced), max_tokens cap, and the
+	// usage-billing reservation. The job_id is generated up front so the
+	// reservation can reference it before the row exists (design §3.5).
+	jobID, err := uuid.NewV7()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to allocate job id")
+		return
+	}
+	pf, ok := s.runGuardrailPreflight(w, r, jobID, userID, modelRef, in.Operation, in.ModelSource, in.Input, chunkCfg)
+	if !ok {
+		return // runGuardrailPreflight already wrote the error response
+	}
+
+	if _, err := s.jobsRepo.Insert(r.Context(), jobs.InsertParams{
+		JobID:         jobID,
+		OwnerUserID:   userID,
+		Operation:     in.Operation,
+		ModelSource:   in.ModelSource,
+		ModelRef:      modelRef,
+		Input:         pf.input,
+		Chunking:      rawOrNil(in.Chunking),
+		Callback:      rawOrNil(in.Callback),
+		JobMeta:       mergeJobMeta(in.JobMeta, pf.capApplied),
+		TraceID:       in.TraceID,
+		ReservationID: &pf.reservationID,
+	}); err != nil {
+		// The reservation is now orphaned (held, no job to settle it). Per
+		// design §3.5 LOW#13 this is accepted — the usage-billing sweeper
+		// releases it after RESERVATION_TTL.
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to create job")
+		return
+	}
+
+	// Spawn the worker goroutine. observability.DetachedContext carries the
+	// request's trace context (so the job span joins this trace) WITHOUT its
+	// cancellation — the goroutine must survive the 202 response. The worker
+	// gets pf.input — the possibly max_tokens-capped input.
+	workerCtx := observability.DetachedContext(r.Context())
 	go func() {
-		bgCtx := context.Background()
-		s.jobsWorker.Process(bgCtx, jobID, userID, in.Operation, in.ModelSource, modelRef, in.Input, chunkCfg)
+		s.jobsWorker.Process(workerCtx, jobID, userID, in.Operation, in.ModelSource, modelRef, pf.input, chunkCfg)
 	}()
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
@@ -214,6 +233,262 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		"status":       "pending",
 		"submitted_at": nowRFC3339Nano(),
 	})
+}
+
+// maxTokensCap records a budget-driven max_tokens reduction. It is folded into
+// the job's job_meta so the caller sees the cap was applied — the result is
+// not silently truncated (design §3.5 MED#6).
+type maxTokensCap struct {
+	Requested int    `json:"requested"`
+	Applied   int    `json:"applied"`
+	Reason    string `json:"reason"`
+}
+
+// preflightResult carries the guardrail pre-flight outcome into doSubmitJob.
+type preflightResult struct {
+	reservationID uuid.UUID
+	input         json.RawMessage // original, or with max_tokens capped
+	capApplied    *maxTokensCap   // non-nil → a cap was applied
+}
+
+// runGuardrailPreflight performs the Phase 6a pre-flight for a job submission:
+// model lookup, cost estimate, optional max_tokens cap, and reservation. On
+// any rejection it writes the HTTP error itself and returns ok=false.
+func (s *Server) runGuardrailPreflight(
+	w http.ResponseWriter, r *http.Request,
+	jobID, userID, modelRef uuid.UUID,
+	operation, modelSource string,
+	rawInput json.RawMessage,
+	chunkCfg *jobs.ChunkConfig,
+) (preflightResult, bool) {
+	ctx := r.Context()
+
+	var inputMap map[string]any
+	if err := json.Unmarshal(rawInput, &inputMap); err != nil {
+		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "input must be a JSON object")
+		return preflightResult{}, false
+	}
+
+	// 1. Model lookup. A model that does not exist is a 404 — distinct from
+	//    a model that exists but is unpriced (a 402 below). (design MED#7)
+	pricing, found, err := s.jobsRepo.ModelPricing(ctx, modelSource, userID, modelRef)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "model lookup failed")
+		return preflightResult{}, false
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "LLM_MODEL_NOT_FOUND", "model not found")
+		return preflightResult{}, false
+	}
+
+	// 1b. D-EXTRACTION-CONTEXT-FIX-STAGE-4 — context-fit preflight.
+	//     When the model has a registered context_length, reject requests
+	//     whose input + max_tokens + safety margin would overflow. Without
+	//     this, llama.cpp/LM Studio silently truncates the prompt OR
+	//     reserves the full context per slot for parallel jobs → "failed
+	//     to find a memory slot for batch" / KV-cache OOM observed live
+	//     on huihui-qwen3.6-abliterated 32K with R+E+F gather.
+	//
+	//     Skipped when context_length is NULL (legacy rows, platform
+	//     models). Skipped when the request omits max_tokens (chat path
+	//     where the server decides; preflight has no upper bound).
+	ctxLen, ctxFound, ctxErr := s.jobsRepo.ModelContextLength(ctx, modelSource, userID, modelRef)
+	if ctxErr != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "context_length lookup failed")
+		return preflightResult{}, false
+	}
+	// ctxFound mirrors ModelPricing's found flag — both query the same row;
+	// a divergence (found=true here but false there) would mean the row was
+	// deleted mid-preflight (race). Treat as 404 like the pricing path.
+	if !ctxFound {
+		writeError(w, http.StatusNotFound, "LLM_MODEL_NOT_FOUND", "model not found")
+		return preflightResult{}, false
+	}
+	if ctxLen > 0 {
+		// safety margin mirrors the Python ContextBudget default (15%) so
+		// SDK + gateway agree on what "fits".
+		inTokens := s.estimator.InputTokens(inputMap, 1)
+		maxTok := 0
+		if v, ok := inputMap["max_tokens"]; ok {
+			switch x := v.(type) {
+			case float64:
+				maxTok = int(x)
+			case int:
+				maxTok = x
+			case int64:
+				maxTok = int(x)
+			}
+		}
+		safety := ctxLen * 15 / 100
+		needed := inTokens + maxTok + safety
+		if needed > ctxLen {
+			writeError(w, http.StatusBadRequest, "LLM_CONTEXT_OVERFLOW", fmt.Sprintf(
+				"request would overflow model context: input=%d + max_tokens=%d + safety=%d = %d > context_length=%d",
+				inTokens, maxTok, safety, needed, ctxLen,
+			))
+			return preflightResult{}, false
+		}
+	}
+
+	// 2. Estimate. nchunks is derived from the chunk config + the raw input
+	//    token count (no overhead) so the per-chunk overhead lands once.
+	strategy, size, overlap := "", 0, 0
+	if chunkCfg != nil {
+		strategy, size, overlap = chunkCfg.Strategy, chunkCfg.Size, chunkCfg.Overlap
+	}
+	nchunks := billing.EstimateNChunks(strategy, size, overlap, s.estimator.InputTokens(inputMap, 1))
+
+	estimate, err := s.estimator.EstimateUSD(operation, inputMap, pricing, nchunks)
+	if errors.Is(err, billing.ErrUnpriced) {
+		writeError(w, http.StatusPaymentRequired, "LLM_QUOTA_EXCEEDED", "model pricing not configured")
+		return preflightResult{}, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "cost estimate failed")
+		return preflightResult{}, false
+	}
+
+	// 3 + 4. Reserve. A success carries the reservation onto the job row.
+	res, err := s.guardrail.Reserve(ctx, userID, jobID, estimate, modelSource)
+	if err != nil {
+		// Fail CLOSED — no job runs on an unconfirmed reservation. This is
+		// a deliberate availability coupling (/review-impl MED#4): while
+		// usage-billing is unreachable, job submission is blocked rather
+		// than letting unbounded spend through. Fail-open would defeat the
+		// guardrail. The 503 lets callers retry once billing recovers.
+		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "billing service unavailable")
+		return preflightResult{}, false
+	}
+	if !res.Insufficient {
+		return preflightResult{reservationID: res.ReservationID, input: rawInput}, true
+	}
+
+	// A Subsystem-B rejection (platform free tier + credits) is not a
+	// max_tokens-cap situation — capping shrinks the estimate but the
+	// platform pool, not the user's daily/monthly budget, is the binding
+	// constraint. Propagate it directly (Phase 6a-γ).
+	if res.Code == "PLATFORM_BALANCE_EXHAUSTED" {
+		writeBudget402(w, res)
+		return preflightResult{}, false
+	}
+	// Over budget. Only chat/completion may be salvaged by capping
+	// max_tokens — truncating a translation/extraction/media artifact is
+	// corruption, not degradation, so those propagate the 402 (design §3.5).
+	if operation != "chat" && operation != "completion" {
+		writeBudget402(w, res)
+		return preflightResult{}, false
+	}
+	capped, reqMax, capOK := s.affordableMaxTokens(inputMap, pricing, nchunks, res)
+	if !capOK {
+		writeBudget402(w, res)
+		return preflightResult{}, false
+	}
+	inputMap["max_tokens"] = capped
+	cappedInput, err := json.Marshal(inputMap)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to apply max_tokens cap")
+		return preflightResult{}, false
+	}
+	estimate2, err := s.estimator.EstimateUSD(operation, inputMap, pricing, nchunks)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "re-estimate failed")
+		return preflightResult{}, false
+	}
+	res2, err := s.guardrail.Reserve(ctx, userID, jobID, estimate2, modelSource)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "billing service unavailable")
+		return preflightResult{}, false
+	}
+	if res2.Insufficient {
+		writeBudget402(w, res2)
+		return preflightResult{}, false
+	}
+	return preflightResult{
+		reservationID: res2.ReservationID,
+		input:         cappedInput,
+		capApplied:    &maxTokensCap{Requested: reqMax, Applied: capped, Reason: "budget"},
+	}, true
+}
+
+// affordableMaxTokens computes how many output tokens the remaining budget
+// affords for a chat/completion job, AFTER subtracting the worst-case input
+// cost (design §3.5 LOW#12). capOK is false when not even a usable output is
+// affordable, or output is free (so capping cannot help) — the caller 402s.
+func (s *Server) affordableMaxTokens(
+	inputMap map[string]any, pricing billing.Pricing, nchunks int, res billing.ReserveResult,
+) (capped, reqMax int, capOK bool) {
+	reqMax = mapInt(inputMap, "max_tokens", s.cfg.MaxOutputTokensDefault)
+	if pricing.InputPerMTok == nil || pricing.OutputPerMTok == nil {
+		return 0, reqMax, false
+	}
+	budget := res.DailyAvailable
+	if res.MonthlyAvailable < budget {
+		budget = res.MonthlyAvailable
+	}
+	// D-PHASE6A-CAP-ROUNDUP. Reserve one usdQuantum of headroom: the re-
+	// estimate after capping runs through `roundUpUSD` which bumps the
+	// total to the next quantum boundary. Without the headroom, a value
+	// that mathematically fit exactly at the budget can re-estimate to
+	// budget+ε and 402 spuriously on the cap retry. Ultra-rare, fails
+	// SAFE (it's a 402, not a leak), but a needless rejection — the
+	// fix costs at most one cent of one cent of one cent of budget.
+	budget -= billing.UsdQuantum
+	inputCost := float64(s.estimator.InputTokens(inputMap, nchunks)) / 1e6 * (*pricing.InputPerMTok)
+	outPerTok := *pricing.OutputPerMTok / 1e6
+	if outPerTok <= 0 {
+		// Output is free → the 402 is driven by the input cost alone;
+		// capping max_tokens cannot bring the job under budget.
+		return 0, reqMax, false
+	}
+	affordable := int((budget - inputCost) / outPerTok)
+	if affordable < 1 {
+		return 0, reqMax, false
+	}
+	if affordable > reqMax {
+		affordable = reqMax // never RAISE the caller's requested ceiling
+	}
+	return affordable, reqMax, true
+}
+
+// writeBudget402 emits the over-budget rejection. The message distinguishes
+// the two gates: Subsystem A (the user's daily/monthly cap) vs Subsystem B
+// (the platform free tier + credits) — /review-impl D-PHASE6A-BETA-402-MESSAGE.
+func writeBudget402(w http.ResponseWriter, res billing.ReserveResult) {
+	msg := fmt.Sprintf("insufficient budget: estimated $%.8f, available daily $%.8f / monthly $%.8f",
+		res.Requested, res.DailyAvailable, res.MonthlyAvailable)
+	if res.Code == "PLATFORM_BALANCE_EXHAUSTED" {
+		msg = fmt.Sprintf("platform free tier + credits exhausted: estimated $%.8f, available $%.8f",
+			res.Requested, res.PlatformAvailable)
+	}
+	writeError(w, http.StatusPaymentRequired, "LLM_QUOTA_EXCEEDED", msg)
+}
+
+// mergeJobMeta folds a max_tokens cap into the caller's job_meta. Returns a
+// value suitable for jobs.InsertParams.JobMeta (nil → SQL NULL).
+func mergeJobMeta(raw json.RawMessage, cap *maxTokensCap) any {
+	if cap == nil {
+		return rawOrNil(raw)
+	}
+	meta := map[string]any{}
+	if len(raw) > 0 && string(raw) != "null" {
+		// Best-effort: a non-object job_meta is replaced by the cap object.
+		_ = json.Unmarshal(raw, &meta)
+	}
+	meta["max_tokens_capped"] = cap
+	return meta
+}
+
+// mapInt reads a JSON-decoded numeric field (float64 in a decoded map) as an
+// int, falling back to def.
+func mapInt(m map[string]any, key string, def int) int {
+	switch v := m[key].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	default:
+		return def
+	}
 }
 
 // rawOrNil treats an empty json.RawMessage as a true SQL NULL rather
@@ -397,12 +672,12 @@ func (s *Server) doSubmitSttMultipart(w http.ResponseWriter, r *http.Request, us
 	}
 
 	// Spawn the worker goroutine. audioBytes is captured by closure;
-	// bgCtx detaches from the HTTP request so the goroutine survives
-	// the 202 response.
+	// observability.DetachedContext carries the request trace context
+	// without its cancellation, so the goroutine survives the 202 response.
+	workerCtx := observability.DetachedContext(r.Context())
 	go func() {
-		bgCtx := context.Background()
 		s.jobsWorker.ProcessAudioInline(
-			bgCtx, jobID, userID, modelSource, modelRef,
+			workerCtx, jobID, userID, modelSource, modelRef,
 			language, audioBytes, contentType,
 		)
 	}()
@@ -651,17 +926,25 @@ func (s *Server) cancelLlmJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Phase 2c — emit terminal event so notification-service can fan out.
-	// Best-effort: DB row is the source of truth; failure here just means
-	// FE has to poll. Re-read the row to fold operation/trace_id into
-	// the envelope without trusting client-supplied fields.
-	if s.jobsNotifier != nil {
-		if job, getErr := s.jobsRepo.Get(r.Context(), jobID, userID); getErr == nil {
+	// Phase 6a — release the spend reservation (cancelled job: no spend).
+	// Both best-effort: the DB row is the source of truth; a notifier blip
+	// just means FE polls, and a release blip is caught by the usage-billing
+	// sweeper. Re-read the row once to fold operation/trace_id into the
+	// envelope and to recover the reservation_id.
+	if job, getErr := s.jobsRepo.Get(r.Context(), jobID, userID); getErr == nil {
+		if s.jobsNotifier != nil {
 			_ = s.jobsNotifier.PublishTerminal(r.Context(), jobs.TerminalEvent{
 				JobID:       job.JobID,
 				OwnerUserID: job.OwnerUserID,
 				Operation:   job.Operation,
 				Status:      "cancelled",
 			})
+		}
+		if job.ReservationID != nil && s.guardrail != nil {
+			if relErr := s.guardrail.Release(r.Context(), *job.ReservationID); relErr != nil {
+				slog.Warn("guardrail release on cancel failed",
+					"job_id", jobID.String(), "err", relErr)
+			}
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -84,6 +84,11 @@ class ContextBuildResponse(BaseModel):
     # older chat-service clients that read only `context` keep working.
     stable_context: str = ""
     volatile_context: str = ""
+    # K21.12-BE (design D9) — per-project tool-calling toggle. Read off
+    # BuiltContext via from_attributes. Default True so an older
+    # chat-service that doesn't read this field still behaves as before
+    # (tools offered) and a degraded build stays tool-enabled.
+    tool_calling_enabled: bool = True
 
 
 @router.post("/build", response_model=ContextBuildResponse)

@@ -23,6 +23,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/observability"
+	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
@@ -48,6 +50,13 @@ type Server struct {
 	// is missing; URL mode falls back to LLM_INVALID_REQUEST at the
 	// worker, b64_json mode still works.
 	audioCache *storage.AudioCache
+
+	// Phase 6a — USD spend guardrail. estimator computes the pre-flight
+	// cost upper bound; guardrail is the usage-billing reserve/reconcile/
+	// release client. Both are always constructed (stateless); doSubmitJob
+	// gates on jobsRepo != nil before using them.
+	estimator billing.Estimator
+	guardrail *billing.GuardrailClient
 }
 
 // NewServer constructs the HTTP server. notifier may be nil (router-only
@@ -77,9 +86,17 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 	}
 	s.jobsNotifier = notifier
 	s.audioCache = audioCache
+	// Phase 6a — spend-guardrail estimator + usage-billing client. The
+	// guardrail client builds its own short-timeout http.Client (nil arg).
+	s.estimator = billing.Estimator{
+		MaxOutputTokensDefault:    cfg.MaxOutputTokensDefault,
+		ExtractionOutputCeiling:   cfg.ExtractionOutputCeiling,
+		SystemPromptTokenEstimate: cfg.SystemPromptTokenEstimate,
+	}
+	s.guardrail = billing.NewGuardrailClient(cfg.UsageBillingServiceURL, cfg.InternalServiceToken, nil)
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
-		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache)
+		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache, s.guardrail, cfg.JobMaxRetries)
 	}
 	return s
 }
@@ -153,6 +170,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before Recoverer so the span
+	// survives (and is marked 500) when a handler panics.
+	r.Use(observability.ChiMiddleware())
 	r.Use(middleware.Recoverer)
 
 	// D-K17.2a-01 — Prometheus metrics. Unauthed on purpose (same
@@ -1246,13 +1266,14 @@ func (s *Server) createUserModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		ProviderCredentialID string         `json:"provider_credential_id"`
-		ProviderModelName    string         `json:"provider_model_name"`
-		ContextLength        *int           `json:"context_length"`
-		Alias                string         `json:"alias"`
-		CapabilityFlags      map[string]any `json:"capability_flags"`
-		Tags                 []modelTag     `json:"tags"`
-		Notes                string         `json:"notes"`
+		ProviderCredentialID string          `json:"provider_credential_id"`
+		ProviderModelName    string          `json:"provider_model_name"`
+		ContextLength        *int            `json:"context_length"`
+		Alias                string          `json:"alias"`
+		CapabilityFlags      map[string]any  `json:"capability_flags"`
+		Tags                 []modelTag      `json:"tags"`
+		Notes                string          `json:"notes"`
+		Pricing              json.RawMessage `json:"pricing,omitempty"` // Phase 6a
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1285,12 +1306,40 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2 AND status='active'
 		return
 	}
 	flagsBytes, _ := json.Marshal(in.CapabilityFlags)
+
+	// Phase 6a — pricing pre-fill. An explicit `pricing` from the caller
+	// wins; otherwise the default price table seeds known cloud text models.
+	// An unknown model is left empty ('{}') so the spend guardrail fails
+	// closed (402) until the user prices it (design §3.2).
+	//
+	// An explicit pricing is validated here (/review-impl MED#3): unvalidated
+	// it would either brick the model with a 500 at every job (unmarshal
+	// failure in ModelPricing) or — if negative — silently disable the
+	// guardrail for that model.
+	pricingJSON := []byte("{}")
+	if len(in.Pricing) > 0 && string(in.Pricing) != "null" {
+		var p billing.Pricing
+		if uErr := json.Unmarshal(in.Pricing, &p); uErr != nil {
+			writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid pricing: "+uErr.Error())
+			return
+		}
+		if vErr := p.Validate(); vErr != nil {
+			writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", vErr.Error())
+			return
+		}
+		pricingJSON = in.Pricing
+	} else if def, ok := billing.DefaultPricing(providerKind, in.ProviderModelName); ok {
+		if b, mErr := json.Marshal(def); mErr == nil {
+			pricingJSON = b
+		}
+	}
+
 	var out userModelRow
 	err = s.pool.QueryRow(r.Context(), `
-INSERT INTO user_models(owner_user_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, capability_flags, notes)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+INSERT INTO user_models(owner_user_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, capability_flags, notes, pricing)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 RETURNING user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, notes, created_at, updated_at
-`, userID, credentialID, providerKind, in.ProviderModelName, in.ContextLength, nullableString(in.Alias), flagsBytes, in.Notes).
+`, userID, credentialID, providerKind, in.ProviderModelName, in.ContextLength, nullableString(in.Alias), flagsBytes, in.Notes, pricingJSON).
 		Scan(&out.UserModelID, &out.ProviderCredentialID, &out.ProviderKind, &out.ProviderModelName, &out.ContextLength, &out.Alias, &out.IsActive, &out.IsFavorite, &out.CapabilityFlags, &out.Notes, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_CREATE_FAILED", "failed to create user model")

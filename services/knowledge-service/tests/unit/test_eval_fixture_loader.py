@@ -1,4 +1,4 @@
-"""K17.9 — unit tests for `eval.fixture_loader.load_golden_set_as_passages`.
+"""K17.9 — unit tests for `app.benchmark.fixture_loader.load_golden_set_as_passages`.
 
 Verifies the loader calls `embedding_client.embed` + `upsert_passage`
 once per entity with the right tags. Does NOT touch Neo4j or a real
@@ -12,8 +12,8 @@ from uuid import UUID
 import pytest
 
 from app.clients.embedding_client import EmbeddingError, EmbeddingResult
-from eval.fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
-from eval.run_benchmark import GoldenSet
+from app.benchmark.core import GoldenSet
+from app.benchmark.fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
 
 
 USER_ID = "user-1"
@@ -40,7 +40,7 @@ async def test_loader_upserts_one_passage_per_entity(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     upsert = AsyncMock()
-    monkeypatch.setattr("eval.fixture_loader.upsert_passage", upsert)
+    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
 
     count = await load_golden_set_as_passages(
         MagicMock(), client, _golden(3),
@@ -73,7 +73,7 @@ async def test_loader_indexed_text_includes_name_and_summary(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     upsert = AsyncMock()
-    monkeypatch.setattr("eval.fixture_loader.upsert_passage", upsert)
+    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
 
     one_entity = GoldenSet(
         entities=(
@@ -100,7 +100,7 @@ async def test_loader_indexed_text_includes_name_and_summary(monkeypatch):
 
 def test_build_indexed_text_fallback_to_single_field():
     """When one field is blank, the non-blank one stands alone."""
-    from eval.fixture_loader import _build_indexed_text
+    from app.benchmark.fixture_loader import _build_indexed_text
     assert _build_indexed_text("Alice", "") == "Alice"
     assert _build_indexed_text("", "Tale of Alice.") == "Tale of Alice."
     assert _build_indexed_text("", "") == ""
@@ -119,7 +119,7 @@ async def test_loader_skips_entity_on_embedding_error(monkeypatch):
         _embed_result(),  # ent-003 ok
     ])
     upsert = AsyncMock()
-    monkeypatch.setattr("eval.fixture_loader.upsert_passage", upsert)
+    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
 
     count = await load_golden_set_as_passages(
         MagicMock(), client, _golden(3),
@@ -141,7 +141,7 @@ async def test_loader_skips_entity_with_no_indexable_text(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     upsert = AsyncMock()
-    monkeypatch.setattr("eval.fixture_loader.upsert_passage", upsert)
+    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
 
     golden = GoldenSet(
         entities=(
@@ -171,7 +171,7 @@ async def test_loader_skips_entity_on_empty_embeddings_response(monkeypatch):
         embeddings=[], dimension=1024, model="bge-m3",
     ))
     upsert = AsyncMock()
-    monkeypatch.setattr("eval.fixture_loader.upsert_passage", upsert)
+    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
 
     count = await load_golden_set_as_passages(
         MagicMock(), client, _golden(2),

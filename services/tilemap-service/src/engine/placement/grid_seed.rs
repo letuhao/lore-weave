@@ -158,6 +158,7 @@ mod tests {
                 .collect(),
             treasure_tiers: vec![],
             biome_selection_rules: None,
+            inherit_treasure_from: None,
         }
     }
 
@@ -166,6 +167,7 @@ mod tests {
             template_id: TilemapTemplateId("t".to_string()),
             zones,
             seed_offset: 0,
+            world_zone: None,
         }
     }
 

@@ -57,7 +57,7 @@ func TestNoopNotifier_NeverErrors(t *testing.T) {
 func TestNewWorker_NilNotifierFallsBackToNoop(t *testing.T) {
 	// Phase 2c — test/dev callers may pass nil; constructor must not
 	// crash and must default to NoopNotifier so worker.publish is safe.
-	w := NewWorker(nil, nil, nil, nil, nil, nil)
+	w := NewWorker(nil, nil, nil, nil, nil, nil, nil, 0)
 	if _, ok := w.notifier.(NoopNotifier); !ok {
 		t.Errorf("expected NoopNotifier fallback, got %T", w.notifier)
 	}

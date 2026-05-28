@@ -17,8 +17,11 @@ import type { BenchmarkStatus } from '../types';
  *
  * Fetches the user's BYOK models tagged `capability=embedding` from
  * provider-registry and renders a `<select>` bound to the caller's
- * state. Selecting `""` clears the project's embedding_model
- * (backend treats null as "no L3 for this project").
+ * state. The bound value is the model's `user_model_id` UUID — the
+ * provider `model_ref` the backend embeds with (D-EMB-MODEL-REF-03;
+ * the backend probes the UUID to derive `embedding_dimension`).
+ * Selecting `""` clears the project's embedding model (backend treats
+ * null as "no L3 for this project").
  *
  * Why this lives in the knowledge feature rather than ai-models:
  * ai-models is the registry management page (add/remove/edit
@@ -33,8 +36,9 @@ import type { BenchmarkStatus } from '../types';
  * backend gate.
  */
 interface Props {
+  /** The selected embedding model's `user_model_id` UUID, or null. */
   value: string | null;
-  onChange: (modelName: string | null) => void;
+  onChange: (userModelId: string | null) => void;
   disabled?: boolean;
   /** Enables the K17.9 benchmark-status badge. Omit in create
    * flows (no project yet) — the badge simply doesn't render. */
@@ -85,15 +89,14 @@ export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: P
   }, [accessToken]);
 
   const loading = models === null;
-  // Guard: if the project's current `value` doesn't appear in the
-  // fetched models (model deleted from registry, server-side fallback
-  // name, etc.) the <select> would render no matching <option> and
-  // the browser would silently show "None" — misrepresenting the
-  // real state. Detect and surface a synthetic option so the user
-  // sees the truth.
+  // Guard: if the project's current `value` (a user_model UUID) doesn't
+  // appear in the fetched models (model deleted from registry, etc.)
+  // the <select> would render no matching <option> and the browser
+  // would silently show "None" — misrepresenting the real state.
+  // Detect and surface a synthetic option so the user sees the truth.
   const valueInOptions =
     value === null ||
-    (models?.some((m) => m.provider_model_name === value) ?? false);
+    (models?.some((m) => m.user_model_id === value) ?? false);
 
   return (
     <label className="flex flex-col gap-1">
@@ -119,8 +122,7 @@ export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: P
         {!valueInOptions && value !== null && (
           <option value={value}>
             {t('projects.form.embeddingModelOrphan', {
-              defaultValue: '{{name}} (not in your registry)',
-              name: value,
+              defaultValue: 'Previously selected model (no longer in your registry)',
             })}
           </option>
         )}
@@ -129,7 +131,7 @@ export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: P
             ? `${m.alias} (${m.provider_model_name})`
             : `${m.provider_kind}/${m.provider_model_name}`;
           return (
-            <option key={m.user_model_id} value={m.provider_model_name}>
+            <option key={m.user_model_id} value={m.user_model_id}>
               {label}
             </option>
           );

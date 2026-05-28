@@ -7,12 +7,15 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/provider-registry-service/internal/billing"
 )
 
 // Job is the in-memory representation of an `llm_jobs` row. Field names
@@ -45,6 +48,11 @@ type Job struct {
 	StartedAt   *time.Time `json:"started_at,omitempty"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 	ExpiresAt   time.Time  `json:"-"`
+
+	// Phase 6a — the usage-billing spend reservation held for this job's
+	// pre-flight estimate. NULL for jobs submitted before the guardrail, or
+	// via a path that does not reserve (stt multipart). json:"-" — internal.
+	ReservationID *uuid.UUID `json:"-"`
 }
 
 // Repo wraps the pgx pool with typed CRUD over llm_jobs.
@@ -59,6 +67,12 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 // InsertParams captures the request inputs bundled at submit time.
 // Mirrors the openapi SubmitJobRequest.
 type InsertParams struct {
+	// JobID, when non-nil, is used as the row's primary key. The guardrail
+	// pre-flight (doSubmitJob) generates the id up front so it can RESERVE
+	// against usage-billing before the row exists; a uuid.Nil falls back to
+	// a server-generated uuidv7.
+	JobID uuid.UUID
+
 	OwnerUserID uuid.UUID
 	Operation   string
 	ModelSource string
@@ -68,6 +82,10 @@ type InsertParams struct {
 	Callback    any // optional, marshaled to JSONB or NULL
 	JobMeta     any // optional, marshaled to JSONB or NULL
 	TraceID     string
+
+	// ReservationID, when non-nil, is the usage-billing hold this job will
+	// reconcile/release on terminal state (Phase 6a).
+	ReservationID *uuid.UUID
 }
 
 // Insert creates a pending job row and returns the new job_id.
@@ -100,13 +118,21 @@ func (r *Repo) Insert(ctx context.Context, p InsertParams) (uuid.UUID, error) {
 		traceID = &p.TraceID
 	}
 
-	var jobID uuid.UUID
-	err = r.pool.QueryRow(ctx, `
-INSERT INTO llm_jobs (owner_user_id, operation, model_source, model_ref, input, chunking, callback, job_meta, trace_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING job_id
-`, p.OwnerUserID, p.Operation, p.ModelSource, p.ModelRef,
-		inputJSON, chunkingJSON, callbackJSON, jobMetaJSON, traceID).Scan(&jobID)
+	// Use the caller-supplied id when present (guardrail pre-flight reserves
+	// before insert); otherwise generate a uuidv7 so ordering still holds.
+	jobID := p.JobID
+	if jobID == uuid.Nil {
+		jobID, err = uuid.NewV7()
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("generate job_id: %w", err)
+		}
+	}
+
+	_, err = r.pool.Exec(ctx, `
+INSERT INTO llm_jobs (job_id, owner_user_id, operation, model_source, model_ref, input, chunking, callback, job_meta, trace_id, reservation_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+`, jobID, p.OwnerUserID, p.Operation, p.ModelSource, p.ModelRef,
+		inputJSON, chunkingJSON, callbackJSON, jobMetaJSON, traceID, p.ReservationID)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("insert llm_jobs: %w", err)
 	}
@@ -122,7 +148,7 @@ SELECT job_id, owner_user_id, operation, status, model_source, model_ref,
        input, chunking, callback, job_meta, trace_id,
        chunks_total, chunks_done, tokens_used, last_progress_at,
        result, error_code, error_message, finish_reason,
-       submitted_at, started_at, completed_at, expires_at
+       submitted_at, started_at, completed_at, expires_at, reservation_id
 FROM llm_jobs
 WHERE job_id = $1 AND owner_user_id = $2
 `
@@ -135,6 +161,7 @@ WHERE job_id = $1 AND owner_user_id = $2
 		&job.ChunksTotal, &job.ChunksDone, &job.TokensUsed, &job.LastProgressAt,
 		&job.Result, &job.ErrorCode, &job.ErrorMessage, &job.FinishReason,
 		&job.SubmittedAt, &job.StartedAt, &job.CompletedAt, &job.ExpiresAt,
+		&job.ReservationID,
 	)
 	if err != nil {
 		return nil, err
@@ -250,6 +277,92 @@ WHERE job_id = $1 AND owner_user_id = $2
 		return 0, fmt.Errorf("cancel: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// ModelPricing reads a model's pricing JSONB. For a user_model the lookup is
+// scoped to ownerUserID. found=false means no such model exists — the caller
+// treats that as a 404, distinct from a found-but-unpriced model (whose empty
+// pricing makes the estimator fail closed with a 402).
+func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (billing.Pricing, bool, error) {
+	var raw []byte
+	var err error
+	switch modelSource {
+	case "user_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT pricing FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&raw)
+	case "platform_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT pricing FROM platform_models WHERE platform_model_id=$1`,
+			modelRef).Scan(&raw)
+	default:
+		return billing.Pricing{}, false, fmt.Errorf("unknown model_source %q", modelSource)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return billing.Pricing{}, false, nil
+	}
+	if err != nil {
+		return billing.Pricing{}, false, fmt.Errorf("model pricing lookup: %w", err)
+	}
+	var p billing.Pricing
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return billing.Pricing{}, true, fmt.Errorf("decode pricing: %w", err)
+		}
+	}
+	return p, true, nil
+}
+
+// ModelContextLength reads a model's registered context window (tokens).
+// Used by the D-EXTRACTION-CONTEXT-FIX-STAGE-4 preflight to reject 400
+// requests whose input + max_tokens would overflow the model's loaded
+// context. Returns (0, true, nil) when the model exists but
+// context_length is NULL — preflight then skips the fit check (legacy
+// rows, platform models, or providers without a known limit).
+// found=false → 404 at caller (mirrors ModelPricing's contract).
+//
+// platform_models do NOT have a context_length column (admin-curated
+// + presumed safe); this method returns (0, true, nil) for them so
+// preflight skips the fit check. The pricing lookup already verifies
+// the platform model exists.
+func (r *Repo) ModelContextLength(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (int, bool, error) {
+	if modelSource == "platform_model" {
+		return 0, true, nil
+	}
+	if modelSource != "user_model" {
+		return 0, false, fmt.Errorf("unknown model_source %q", modelSource)
+	}
+	var ctxLen *int
+	err := r.pool.QueryRow(ctx,
+		`SELECT context_length FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+		modelRef, ownerUserID).Scan(&ctxLen)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("model context_length lookup: %w", err)
+	}
+	if ctxLen == nil {
+		return 0, true, nil
+	}
+	return *ctxLen, true, nil
+}
+
+// BillingInfo returns the reservation + model identity a finalizing worker
+// needs to reconcile/release a job's spend hold. reservationID is nil when
+// the job carries no reservation (pre-guardrail rows, or the stt-multipart
+// path). found=false means no such job row.
+func (r *Repo) BillingInfo(ctx context.Context, jobID uuid.UUID) (reservationID *uuid.UUID, modelSource string, modelRef uuid.UUID, found bool, err error) {
+	err = r.pool.QueryRow(ctx,
+		`SELECT reservation_id, model_source, model_ref FROM llm_jobs WHERE job_id=$1`,
+		jobID).Scan(&reservationID, &modelSource, &modelRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, "", uuid.Nil, false, nil
+	}
+	if err != nil {
+		return nil, "", uuid.Nil, false, fmt.Errorf("billing info lookup: %w", err)
+	}
+	return reservationID, modelSource, modelRef, true, nil
 }
 
 // IsTerminal returns true for the three statuses that close out a job.

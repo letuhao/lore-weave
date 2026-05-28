@@ -1,0 +1,18 @@
+# Scope Guard — POST-REVIEW — tilemap-service Phase C: TreasurePlacer
+
+**Verdict: CLEAR** — safe to commit. (AMAW POST-REVIEW conservative final gate; cold-start Scope Guard sub-agent. Sub-agent file-write policy-blocked; persisted by the orchestrator from the verbatim report.)
+
+- **Guardrail check:** Ran `check_guardrails "git commit 27 files: additive schema + new TreasurePlacer modificator + rebaselined golden baseline"` → `{ "pass": true, "rules_checked": 6 }`. `pass:true`, empty `matched_rules` — no rule blocks the commit, so proceeded to the scope review. (The pre-loaded `check_guardrails` for the same commit also returned `pass:true` / 6 rules — consistent.)
+
+- **Scope assessment:** The change stays within §2 scope. Every in-scope item 1-10 is present and nothing out-of-scope leaked in:
+  - NEW files exactly match the §5 census: `treasure_pool.rs` (D1), `treasure_select.rs` (D2/D3), `modificators/treasure_placer.rs` (D4/D5/D6/D9). MOD files `object.rs`, `template.rs`, `object_manager.rs`, `obstacle_placer.rs`, `modificators/mod.rs`, `engine/mod.rs`, `determinism.rs`, `tilemap_baseline.json` all match.
+  - Schema changes are strictly additive: `ZoneSpec.inherit_treasure_from` (`#[serde(default)]`) and `TilemapObjectPlacement.value` (`#[serde(default, skip_serializing_if)]`) — the `biome_object_type` precedent, with round-trip / pre-Phase-C-JSON tests (AC-11). No existing field touched.
+  - The 5 off-census files (`terrain_painter.rs`, `force_directed.rs`, `grid_seed.rs`, `placement/mod.rs`, `bootstrap.rs`) each received exactly **one** mechanical `inherit_treasure_from: None` in a test-helper `ZoneSpec` literal — compiler-forced by D9 adding a field to a struct that derives no `Default`. This is **not scope creep**: it is the irreducible consequence of an in-scope change, touches zero production logic, and is byte-for-byte mechanical. The §5 census gap (it enumerated `TilemapObjectPlacement` literal sites for D10 but not `ZoneSpec` literal sites for D9) is a minor spec-completeness miss, not a scope violation — acceptable.
+  - Out-of-scope items are correctly held back: object filtering (`banned_objects` etc.) is logged as **DEFERRED #023** with an explicit target and the REPLACE-vs-UNION reconciliation note — tracked, not drift. The golden rebaseline is the spec-sanctioned D7/AC-9 action (only `Treasure`+`MonsterLair` records added; obstacle records unchanged).
+
+- **Residual risk:**
+  - `place_and_connect_object` now takes 8 args (an `#[allow(clippy::too_many_arguments)]` was added). Cosmetic, clippy-clean, justified by comment — no action needed.
+  - D7 documents that future per-zone parallel placement is **blocked** until `nearest_object_distance` is made placement-order-insensitive. Not a Phase-C risk (engine is single-threaded), but the human committer should be aware this constraint exists for any later parallelism work.
+  - Connectivity is correctly enforced over `Walkable ∪ Open` via `place_and_connect_object` (rule 9ba274f5), and AC-5(e)/AC-7 independently confirm the failure path actually ran (replay assertion `nones >= 1`) — no vacuous-escape or fixture-masking risk (rules 82a9e1a4 / d29dbaba satisfied).
+
+- **Reasoning:** The diff implements precisely the Phase-C spec (D1-D10) and its 5 build chunks — no feature outside §2 in-scope, all §2 out-of-scope items either deferred-with-ID or absent. The only census deviation is 5 single-line, compiler-mandated `None` additions to test fixtures, which is mechanical fallout of in-scope D9, not new behaviour. The live guardrail check passed, the Adversary's 3 WARNs are already fixed, and the test suite is green with the golden reproducing. Nothing must be fixed before commit.

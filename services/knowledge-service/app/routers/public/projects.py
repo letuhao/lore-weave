@@ -25,7 +25,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
 from app.db.models import Project, ProjectCreate, ProjectUpdate
+from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_projects_repo
@@ -236,6 +238,54 @@ async def patch_project(
             status_code=status.HTTP_428_PRECONDITION_REQUIRED,
             detail="If-Match header required — GET the row first to obtain an ETag",
         )
+
+    # D-EMB-MODEL-REF-04 — changing embedding_model on a project that
+    # already has a graph would orphan the existing passages: they stay
+    # in Neo4j tagged with the old model UUID while Mode-3 retrieval
+    # queries the new model's vector space — silent zero-recall.
+    # Route those changes through PUT /embedding-model?confirm=true
+    # which deletes the stale graph first. First-time setup
+    # (extraction_status='disabled') is fine because there is nothing
+    # to orphan. Same-value sets are no-ops, also fine.
+    if "embedding_model" in body.model_fields_set:
+        current = await repo.get(user_id, project_id)
+        if current is None:
+            raise _not_found()
+        if (
+            body.embedding_model != current.embedding_model
+            and current.extraction_status != "disabled"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "embedding_model change on a project with a graph "
+                    "requires deleting the stale vectors first — use "
+                    "PUT /v1/knowledge/projects/{id}/embedding-model?confirm=true"
+                ),
+            )
+
+    # D-EMB-MODEL-REF-03 — embedding_model is a provider-registry
+    # user_model UUID. When it is being set to a value, probe the model
+    # to derive its vector dimension and store the paired
+    # embedding_dimension (the caller never knows the dimension). A
+    # probe failure (provider unreachable / non-embedding model) → 422.
+    if "embedding_model" in body.model_fields_set and body.embedding_model:
+        try:
+            dim = await probe_embedding_dimension(user_id, body.embedding_model)
+        except EmbeddingError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"embedding model probe failed: {exc}",
+            )
+        if dim not in SUPPORTED_PASSAGE_DIMS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"embedding model has dimension {dim}, which has no "
+                    f":Passage vector index (supported: {sorted(SUPPORTED_PASSAGE_DIMS)})"
+                ),
+            )
+        body = body.model_copy(update={"embedding_dimension": dim})
 
     try:
         updated = await repo.update(

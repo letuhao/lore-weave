@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/api"
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
@@ -26,6 +27,19 @@ func main() {
 		slog.Error("config", "error", err)
 		os.Exit(1)
 	}
+
+	// Phase 6c — OpenTelemetry tracing. No-op when OTEL_EXPORTER_OTLP_ENDPOINT
+	// is unset, so a collector-less dev run still boots.
+	shutdownTracer, err := observability.InitTracer(context.Background(), "provider-registry-service")
+	if err != nil {
+		slog.Error("tracer init", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracer(ctx)
+	}()
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("db config parse failed", "error", err)

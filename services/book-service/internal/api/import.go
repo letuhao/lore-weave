@@ -22,6 +22,7 @@ var allowedImportFormats = map[string]string{
 	".docx": "docx",
 	".epub": "epub",
 	".txt":  "txt",
+	".md":   "markdown", // P1 (2026-05-23) — pandoc -f markdown -t html in worker-infra.
 }
 
 // startImport handles POST /v1/books/{book_id}/import
@@ -72,19 +73,20 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 	fileFormat, ok := allowedImportFormats[ext]
 	if !ok {
 		writeError(w, http.StatusBadRequest, "UNSUPPORTED_FORMAT",
-			"supported formats: .docx, .epub, .txt")
+			"supported formats: .docx, .epub, .md, .txt")
 		return
 	}
 
-	// For .txt files, use existing path directly
+	// P1 (H1 fix): .txt path now goes through knowledge-service /internal/parse
+	// (source_format=plain) for multi-language structural decomposition.
+	// Synchronous because .txt files are small; preserves existing UX.
 	if fileFormat == "txt" {
 		data, _ := io.ReadAll(f)
-		title := strings.TrimSuffix(fh.Filename, ext)
 		lang := r.FormValue("original_language")
 		if lang == "" {
 			lang = "auto"
 		}
-		s.createChapterRecord(w, r.Context(), ownerID, bookID, title, fh.Filename, lang, 0, string(data), "imported from "+fh.Filename, true)
+		s.processTxtImport(w, r, ownerID, bookID, fh.Filename, string(data), lang)
 		return
 	}
 

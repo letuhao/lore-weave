@@ -1,9 +1,645 @@
-# Session Handoff — Session 57 (cycle 1 shipped · Phase 5f video-gen-service hardening COMPLETE · unified-gateway program effectively done)
+# Session Handoff — Session 69 (eval framework overhaul: anchor + 3-judge ensemble)
 
-> **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-05-15 (session 57, cycle 1 shipped)
-> **HEAD:** `12a3930f` (Phase 5f feat commit) — Phase 5e-β.2 closed at `ae8fc33f`; Phase 5e-β.1 closed at `1430014d`; Phase 5e-α closed at `9f985d41`; Phase 5d closed at `b3f046ab`; Phase 5c-α closed at `12fe6273`; Phase 5b closed at `58fd1acd`; Phase 5a closed at `2317bcb0`
-> **Branch:** `mmo-rpg/design-resume` (user pushes manually)
+> **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
+> **Date:** 2026-05-27 → 2026-05-28 (session 69, 1 XL cycle)
+> **HEAD:** pending final commit on top of `a8aa9fb0`.
+> **Branch:** `main`.
+
+## Session 69 summary — eval framework overhaul (anchor + ensemble), baseline relocked
+
+The architectural meta-cycle session 68 (cycle 1 multilang-fewshot revert) pointed at: our single-judge bespoke eval has no inter-rater reliability check + no external anchor. Cycle 69 builds that framework. Spec: [`docs/specs/2026-05-27-eval-framework-overhaul.md`](../specs/2026-05-27-eval-framework-overhaul.md); plan: [`docs/plans/2026-05-27-eval-framework-overhaul.md`](../plans/2026-05-27-eval-framework-overhaul.md) — both committed pre-BUILD as a design-checkpoint artifact (8c7c0c9d) per `feedback_design_checkpoint_commit_separates_design_from_implementation`.
+
+### 5 commits, sequenced per `feedback_xl_cycle_natural_checkpoint_pattern`
+
+| # | Commit | Stage | Notes |
+|---|---|---|---|
+| 1 | `8c7c0c9d` | design checkpoint | spec (12 decisions D1-D12) + plan with all 15 /review-impl findings folded inline pre-BUILD |
+| 2 | `d6478020` | sub-checkpoint 1a | pinned deps: deepeval==4.0.4 (langchain 1.x compat issue at 2.5.0 forced bump) + seqeval==1.2.2 + datasets==2.21.0 + krippendorff==0.7.0 |
+| 3 | `28e1a3a4` | sub-checkpoint 1b | 5 foundation modules: anchor_runner.py + judge_ensemble.py + deepeval_metrics.py + test_anchor_eval.py + test_judge_ensemble_unit.py (19 unit tests covering Fleiss math + D11 failure handling + D12 bias formulas) |
+| 4 | `ab5353b4` | integration | llm_judge.run_dump_judge + test_llm_judge_ensemble + test_eval_with_deepeval + MED-8 asyncio teardown fix (closes D-JUDGE-EVAL-ASYNCIO-TEARDOWN) |
+| 5 | `a8aa9fb0` | bug fix at live VERIFY | chapter_judgement_to_verdicts moved to judge_ensemble.py + GoldVerdict.gold_idx (not .idx) + 2 regression-lock unit tests. Caught by the live ensemble run — 60 min of LM Studio compute wasted on the first attempt before the 1-line typo crashed every judge |
+
+### Live VERIFY results (locked baseline for 30B extractor)
+
+**Anchor benchmarks (informational, sanity-floor only per spec D2):**
+
+| Anchor | Dataset | n | F1 | P | R | avg extracted / gold | Sanity floor |
+|---|---|---:|---:|---:|---:|---|---|
+| CoNLL-2003 NER | `tner/conll2003` test | 100 | 0.219 | 0.204 | 0.237 | 3.4 / 2.1 | ✅ PASS |
+| DocRED unlabeled-triple | `thunlp/docred` validation | 50 | 0.127 | 0.110 | 0.149 | 15.0 / 10.4 | ✅ PASS |
+
+~24-28% of SOTA — consistent ratio across both benchmarks; calibration signal not quality claim. Anchor sanity-floor (F1≥0.10 AND avg_extracted≥0.1×avg_gold) catches the false-negative trap that yesterday's "any F1 value" accepted.
+
+**3-judge ensemble (locked default measurement):**
+
+| Judge | Model | Macro P | Macro R | Strictness | Lang bias span |
+|---|---|---:|---:|---:|---:|
+| gemma | google/gemma-4-26b-a4b | 0.834 | 0.937 | 0.841 (median) | 0.138 |
+| qwen-30b | huihui-qwen3-30b-instruct | 0.980 | 1.000 | 0.933 (outlier+0.09) | 0.049 |
+| claude-4.7-opus | huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated | 0.983 | 0.879 | 0.845 (median) | 0.127 |
+
+**Fleiss κ = 0.708 ("substantial" per Landis-Koch 1977)** over 461 items voted by all 3 judges. 487 total verdicts; 32 disputed (6.6%); 455 majority (93.4%). **Median over the 3 judges: P≈0.93 / R≈0.94.** No bias dimension exceeded its flag threshold (strictness_gap < 0.15, language_bias < 0.15).
+
+Key bias signals captured:
+- **qwen-30b is lenient** (strictness +0.09 over median, R=1.00) — confirms our prior suspicion that single-judge qwen overstates. Don't use it solo.
+- **All 3 judges accept CJK + VN more readily than English** (87-96% vs 78-91%). Could be over-extraction reality OR judge under-rejection. English anchor can't disambiguate; defer until WikiNeural multilingual anchor lands.
+- **All 3 judges favor recall over precision** (rp_bias negative across the board) — they accept gold items as "covered" more readily than they accept extracted items as "supported." For high-precision use cases, prefer claude-4.7-opus's narrower bias (−0.05) over gemma's (−0.13).
+
+### New deferred rows
+
+- **D-CYCLE1-ENSEMBLE-FORENSIC** — re-baseline the cycle-1 (multilang-fewshot) dump with the ensemble to apply spec D9 decision rule on extract-vs-scoring. Dump was wiped by mid-cycle Docker restart; recreating requires temporarily re-applying the reverted multilang prompts. Informational only — cycle-1's recall regression conclusion stands per single-judge data; the ensemble would refine the verdict's confidence interval. ~30 min next session.
+- **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** — multilingual NER anchor (CJK + VN) to disambiguate the EN-vs-CJK/VN judge acceptance pattern. Currently the only signal we have is the ensemble itself; an external multilingual benchmark would corroborate or refute.
+- **D-EVAL-FRAMEWORK-CLOUD-JUDGE** — 4th gold-standard cloud Claude judge for ground-truth calibration. Adds ~$1-3/run; defer until first ensemble run surfaces variance worth ground-truthing (this run shows κ=0.71 → currently sufficient).
+
+### Default measurement methodology (effective 2026-05-28)
+
+- **In-cycle iteration smokes:** single-judge gemma via `test_judge_eval.py::test_llm_judge_extraction_quality` (~20 min). Fast feedback.
+- **Baseline-lock runs (every new model / every prompt-aggregator-scoring change / quarterly drift / pre-ship gate):** 3-judge ensemble via `test_judge_eval.py::test_llm_judge_ensemble` (~30 min after bug fix + budget bumps) + CoNLL-2003 + DocRED anchors (~10 min total). Full lock = ~40 min.
+- **Single source of metric authority:** the ensemble's majority verdict + Fleiss κ. Per-judge numbers informational; ensemble is the lock.
+
+### What's NEXT
+
+Eval framework is the new measurement floor. Next session can confidently iterate on the architecture-improvement levers identified in cycle 67 / 68 / 69 with reliable scoring:
+
+| # | Candidate | Size | Status |
+|---|---|---|---|
+| 1 | **Specialized relation prompt** (cycle 2 candidate from session 67) | M (~3-4h) | Pending; relations are 30B's weak axis (`little_women_ch01` 17% disputed mostly relation FPs) — targeted predicate vocab + few-shot per language could lift R+P together without compounding the cycle-1 omission lesson |
+| 2 | **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) | L (~half-day) | Combines best of both per ensemble bias profile; F1 expected ~0.88+ |
+| 3 | **D-CYCLE1-ENSEMBLE-FORENSIC** | XS (~30 min) | Definitive answer to "did cycle 1 regress extract or scoring" |
+| 4 | **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** | M (~half-day) | Closes the EN/CJK/VN judge bias question; needs WikiNeural dataset wiring + new anchor_runner overload |
+| 5 | **Catalogue-driven extraction** (resume paused ADR) | XL (multi-session) | Architectural; kind-specific extractors with closed vocabulary per genre |
+
+Recommend **cycle 2's specialized relation prompt** as the next "cheap to expensive" lever, **bounded by the lessons from cycle 1 (multilang-fewshot revert)**:
+- Keep prompt growth ≤ +500 chars to dodge concurrency × prompt-size limits
+- Pair LANGUAGES with DIFFERENT lessons (don't compound a single high-pressure omission lesson 3×)
+- VERIFY gate = ensemble re-baseline (not single-judge) per spec D10 cadence policy
+
+---
+
+## Session 68 summary — Track A model swap verified; SDK response_format LM Studio compat shipped
+
+Single L cycle. User picked Track A from session 67's handoff (model swap + live extraction baseline). Loaded `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated` at 40K context, thinking ON. Live smoke through `/internal/llm/jobs` async path hit LM Studio HTTP 400 on `response_format: {"type":"json_object"}` — newer LM Studio (post-2026-05-25) only accepts `json_schema` or `text`. The prior gateway normalization `normalizeResponseFormatForKind` only lives on the retired `/internal/proxy/*` path; the async-jobs adapter forwards the field verbatim, so every extractor was 400-blocked. Patched 5 extractor SDK files + the llm_judge.py to send `text` instead. Ran the full 9-chapter extraction eval + LLM-judge baseline on the new model. Cycle includes the patch, plan, regression-lock test, and adversarial `/review-impl` round confirming the patch root-causes correctly + a transient zero-extraction on `journey_west_zh_ch01` was concurrency-flake (isolated re-run yielded 10 entities), not patch-induced.
+
+### Baseline result on `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated`
+
+| Metric | Value | vs qwen3.6 session-61 baseline |
+|---|---|---|
+| LLM-judge Precision (macro) | **0.93** | −0.04 pp |
+| LLM-judge Recall (macro, as measured) | 0.71 | −0.10 pp |
+| LLM-judge Recall (projected clean run) | **~0.81** | ±0 (one transient ch01 zero accounts for the gap) |
+| Coverage P / R | 100% / 100% | +38 / +44 pp |
+| Extraction wall clock (9 ch) | **7:04 min** | **−63% (≈2.7× faster)** |
+
+Full per-chapter breakdown + reproducing commands in [`services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md`](../../services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md) (new section "2026-05-26 — huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated baseline").
+
+### Files
+
+| File | Change |
+|---|---|
+| `sdks/python/loreweave_extraction/extractors/{entity,relation,event,fact,summarize}.py` | `response_format: {"type":"text"}` (5 sites) |
+| `services/knowledge-service/tests/quality/llm_judge.py` | same patch on the judge call |
+| `services/knowledge-service/tests/unit/test_response_format_text_lock.py` (NEW) | regex-tolerant regression lock; runs in Dockerfile test stage line 33-37 |
+| `services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md` | new baseline section + comparison table row |
+| `docs/plans/2026-05-26-response-format-text-for-lm-studio.md` (NEW) | L-cycle plan + 5 follow-ups |
+
+### New deferred rows (filed during this session)
+
+- **D-LM-STUDIO-RESPONSE-FORMAT-ASYNC-PATH** — port `normalizeResponseFormatForKind` to gateway adapter layer (`adapters.go::forwardOptionalChatFields`); defensive coverage so future extractors don't re-hit this regression
+- **D-JUDGE-EVAL-ASYNCIO-TEARDOWN** — pytest-asyncio fixture-scope leak in `test_judge_eval.py`; `test_judge_discriminates_fabricated_items` breaks the subsequent quality test with closed-event-loop
+- **D-EXTRACTION-PARALLEL-CONCURRENCY-FLAKE** — concurrency=4 eval produced a single transient zero on the same fixture that re-runs cleanly in isolation; needs a retry-on-zero defense
+- **D-AGGREGATOR-REASONING-CONTAMINATION-GUARD** — `extractJSONObject` assumes reasoning is on a separate stream channel; loose-output models from `text` mode raise the priority of a defensive guard
+
+### What's NEXT — pick from Track A or back to Track B/C from session 67
+
+Track A primary deliverable (`D-P3-BASELINE-QWEN3.6-RERUN` / new-model baseline) is **achieved**. Remaining Track A items:
+
+- `D-EXTRACTION-CONTEXT-FIX-STAGE-4-LIVE-SMOKE` — still open; user explicitly ran with thinking ON, so the gateway-forward `chat_template_kwargs={thinking:false}` path was NOT exercised. Verify when next iteration disables thinking.
+- `D-P3-LLM-JUDGE-BASELINE-CHECK` + `D-P3-SHERLOCK-BASELINE` — open; today's baseline is on a DIFFERENT model (huihui-claude-4.7-opus, not qwen3.6-35b-a3b). qwen3.6 baseline check requires re-loading the original model.
+- `D-P2-FULL-EXTRACTION-LIVE-SMOKE` + `D-P3-LIVE-SMOKE` + `D-P3-BOOK-SUMMARY-PERSIST-AUDIT` — fold in when next extraction kicks off (functional re-trigger).
+
+Then back to **Track B** (M-L single-cycle items, no model dep) or **Track C** (small batchable polish) per session 67 handoff (see below).
+
+---
+
+# Historical handoff — Session 67 (10-cycle polish-debt burn-down)
+
+> **Date:** 2026-05-24 (session 67 sub-sessions cont.4 through cont.13)
+> **HEAD:** `b1b5cbef` — 10 commits ahead of session 67 cont.3 start; all pushed to `origin/main`.
+> **Branch:** `main`.
+
+## Session 67 summary (historical) — 10 cycles, 16 deferred items cleared
+
+Pure deferred-row burn-down session. No new feature work; every cycle picked an open deferred row, scoped it, fixed/cleaned/tested it, committed. Five cycles were XS (≤1 LoC), five were S–M.
+
+| # | Sub-session | Cycle | Size | Commit | Items cleared |
+|---|---|---|---|---|---|
+| 1 | cont.4 | D-EXTRACTION-CONTEXT-FIX-STAGE-4 | M | `590f22ce` | gateway-forward `chat_template_kwargs` + pre-flight `LLM_CONTEXT_OVERFLOW` 400 |
+| 2 | cont.5 | D-P3-BOOK-SUMMARY-PERSIST-AUDIT | S | `18a64fb1` | Redis Stream `retry_at_epoch` burned budget in ms → inline-sleep fix |
+| 3 | cont.6 | D-P3-INDEX-PRUNE-ENDPOINT | M | `2c0e405a` | `POST /internal/admin/summary-indexes/prune` with 3 orphan reasons |
+| 4 | cont.7 | D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION | XS | `98bbd931` | P2 task_id `v1-{op}-{hash}` instead of global hash |
+| 5 | cont.8 | D-P2-STALE-CLAIM-LIFESPAN-HOOK | XS | `d90d5417` | `reset_stale_claims` wired into lifespan + 5 unit tests |
+| 6 | cont.9 | 3-XS bundle | 3×XS | `3b610565` | worker-infra config test fix + prompts README + intent-classifier glossary-unavailable metric |
+| 7 | cont.10 | D-PHASE6C-TRACE-ID-UNIFY | M | `35439e26` | NEW `loreweave_obs.current_otel_trace_id()`; 500 body emits both ids |
+| 8 | cont.11 | D-PHASE6C-WORKERAI-JOB-SPAN | S | `f4dc68e1` | `@_with_job_span` decorator on `process_job` |
+| 9 | cont.12 | D-PHASE6A-BETA-STREAM-RECORD | S | `9d2f1dac` | `streamGuard.settle` writes `usage_logs` row alongside reconcile |
+| 10 | cont.13 | 5-item batch (6A polish + stale rows) | 2×S + 3 stale | `b1b5cbef` | EstimateNChunks overlap + affordableMaxTokens quantum headroom + 3 stale-row markup fixups |
+
+**Cumulative impact:**
+- Deferred-items table went from ~30 active to ~14 active (16 cleared).
+- 4 new memory entries: `redis-streams-no-time-based-delivery`, `gateway-passthrough-must-forward-all-optional-fields`. Plus 2 reinforced (`feedback_batch_small_tasks`, `feedback_scope_audit_before_batching`).
+- 1 latent test bug fixed during cont.12 (Settle_Dispatch was capturing last POST body across reconcile+record; would have silently broken when /record landed).
+- 1 unexpected discovery during cont.13: 3 of 5 deferred rows were already-implemented but never-marked-cleared (D-PHASE6A-BETA-402-MESSAGE + D-K17.2a-02 + D-K4a-02). Saved the cycle from false implementation work.
+
+## What's NEXT — three tracks open
+
+### Track A: Model swap + live extraction baselines (USER-DRIVEN, blocking)
+
+User said cont.4 they'd swap LLM model before resuming extraction (huihui-qwen3.6 ran at 7.6 tok/s parallel — too slow). Once the new model is registered, several deferred LIVE-SMOKE rows fold into one natural verification cycle:
+
+- `D-EXTRACTION-CONTEXT-FIX-STAGE-4-LIVE-SMOKE` — verify `thinking_tokens` drops from 55-89% → ~0 with `chat_template_kwargs` now flowing through gateway; verify 400 `LLM_CONTEXT_OVERFLOW` fires on a fat prompt.
+- `D-P3-LLM-JUDGE-BASELINE-CHECK` — verify P=0.97 / R=0.81 (9 golden chapters) holds post-P3.
+- `D-P3-SHERLOCK-BASELINE` — sherlock_speckled_band joins baseline (P ≥ 0.85, R ≥ 0.70) thanks to P2 cache + P3 hierarchy enabling resumption.
+- `D-P3-BASELINE-QWEN3.6-RERUN` — apples-to-apples baseline rerun on the new model.
+- `D-P2-FULL-EXTRACTION-LIVE-SMOKE` + `D-P3-LIVE-SMOKE` + `D-P3-BOOK-SUMMARY-PERSIST-AUDIT` functional re-trigger naturally fold in (the unit-level fixes are shipped + deployed; live verification just confirms the deployed behaviour).
+
+### Track B: Larger single-cycle items (no model dependency)
+
+- `D-P1-IMPORT-PROCESSOR-INTEG-TESTS` [M-L] — 3 orchestrator tests (CallsParseEndpoint, TxRollbackOnSceneInsertFailure, ParseFailureMarksJobFailed). Needs Go testcontainer infra OR pgx.Pool interface refactor.
+- `D-P3-MIXED-STATE-CONSOLIDATION` [M] — feature: one-click cleanup endpoint for mixed-state chapters (entities with `:EVIDENCED_BY` but no `:MENTIONED_IN` after partial P3 re-extraction).
+- `D-PHASE6A-WORKER-SETTLE-IT` [M] — integration test for `worker.settleBilling` reconcile/release DB path; needs `jobs`-package DB harness.
+- `D-PHASE6A-BETA-ACCOUNT-BALANCES-RETIRE` [M] — dead-code cleanup: remove `/record`'s `account_balances` deduction (ADR-superseded).
+- `D-PHASE6C-DB-SPANS` [M-L] — OTel-instrument asyncpg/pgx/Neo4j calls monorepo-wide.
+- `D-PHASE6B-RETRY-USAGE-DOUBLECOUNT` [M] — a retry can double-count usage tokens in `chatAggregator` / `jsonListAggregator`.
+- `D-PHASE6B-MEDIA-DOUBLE-CHARGE` [M] — retrying media-gen after ambiguous transient error can double-generate.
+
+### Track C: Small batchable polish (next batch candidates)
+
+- `D-K21A-03` [S] — Redis `incr` rate-limit key leak (no TTL) in `memory_remember`.
+- `D-K21A-04` [S] — `get_tools_redis()` singleton never closed.
+- `D-PHASE6-REASONING-CONTENT` [S] — read `reasoning_content` from chat aggregator (DeepSeek-R1, o1 put answers there).
+- `D-PHASE6-RERANK-CANCEL-ON-TIMEOUT` [S-M] — gateway job leaks when `wait_for(timeout=1.0s)` cancels SDK task.
+- `D-P2-EXTRACTOR-VERSION-DEV-RECOMPUTE` — ✅ already cleared in cont.9 bundle (this row label is stale; remove next batch).
+
+Per `feedback_batch_small_tasks`: next session can batch 3-4 of these into one workflow pass.
+
+## Status snapshot — 5-phase hierarchical extraction
+
+| Phase | Status |
+|---|---|
+| P1 Structural Decomposer | ✅ shipped (sessions 62-63) + live-smoked |
+| P2 Cache + Leaf Core | ✅ MVP shipped (session 63) + per-op version migrated (cont.7) + stale-claim hook (cont.8) |
+| P3 Hierarchical Reduce + Summaries | ✅ shipped (sessions 64-66 + cont.5 audit fix + cont.6 prune endpoint + cont.11 worker span) |
+| P4 Semantic Chunking Escape Valve | not started — not critical-path |
+| P5 Gated LLM Coref + Multi-res Refinement | not started — not critical-path |
+
+**50MB local capability:** P1+P2+P3 shipped + all known correctness bugs from cascade smoke cleared. Pending: Track A model swap + baseline reruns.
+
+## Status snapshot — observability (Phase 6c)
+
+| Item | Status |
+|---|---|
+| 6c-α/β/γ baseline (W3C tracecontext across services) | ✅ shipped (sessions 53-57) |
+| Trace-id unification (X-Trace-Id ↔ OTel trace_id) | ✅ shipped (cont.10) |
+| Worker-ai per-job parent span | ✅ shipped (cont.11) |
+| Mode-3 intent-classifier glossary-unavailable counter | ✅ shipped (cont.9) |
+| DB-span instrumentation (asyncpg/pgx/Neo4j) | ❌ deferred — Track B |
+| Tempo durability beyond dev | ❌ deferred — production polish |
+| Metrics + log correlation (vs traces only) | ❌ deferred — production polish |
+
+## Status snapshot — billing (Phase 6a)
+
+| Item | Status |
+|---|---|
+| Subsystem A (user budget guardrail) for jobs | ✅ shipped |
+| Subsystem B (platform free tier + credits) for jobs | ✅ shipped |
+| Streaming guardrail (chat) | ✅ shipped + writes usage_logs (cont.12) |
+| Subsystem A for stt-multipart | ❌ deferred (`D-PHASE6A-STT-MULTIPART-GUARDRAIL`) |
+| `EstimateNChunks` accounts for chunk overlap | ✅ shipped (cont.13) |
+| `affordableMaxTokens` reserves quantum headroom | ✅ shipped (cont.13) |
+| `worker.settleBilling` integration test | ❌ deferred (Track B) |
+| `account_balances` dead-code cleanup | ❌ deferred (Track B) |
+| Retry double-count guard | ❌ deferred (Track B) |
+
+## Recently cleared this session (cont.4 → cont.13)
+
+D-EXTRACTION-CONTEXT-FIX-STAGE-4 · D-P3-BOOK-SUMMARY-PERSIST-AUDIT · D-P3-INDEX-PRUNE-ENDPOINT · D-P2-MIGRATE-TO-PER-OP-EXTRACTOR-VERSION · D-P2-STALE-CLAIM-LIFESPAN-HOOK · D-WORKER-INFRA-CONFIG-TEST · D-P2-EXTRACTOR-VERSION-DEV-RECOMPUTE · D-P3-INTENT-CLASSIFIER-GLOSSARY-METRIC · D-PHASE6C-TRACE-ID-UNIFY · D-PHASE6C-WORKERAI-JOB-SPAN · D-PHASE6A-BETA-STREAM-RECORD · D-PHASE6A-NCHUNKS-OVERLAP · D-PHASE6A-CAP-ROUNDUP · D-PHASE6A-BETA-402-MESSAGE (stale row) · D-K17.2a-02 (stale row) · D-K4a-02 (stale row).
+
+## Operator notes
+
+- All 10 commits pushed to `origin/main`. No local-only state.
+- Knowledge-service + chat-service + provider-registry-service + worker-ai images rebuilt + deployed mid-session as their changes landed. All healthy at end of session.
+- `extraction.summarize` Redis stream had 109 entries pre-cont.5 (the bug). Post-fix, future jobs should leave only the 3 logical messages per book in the stream. Worth monitoring on next extraction run.
+- New `billing.UsdQuantum` constant is exported — other Go callers reasoning about USD precision can now import it instead of redefining `1e-8`.
+- Test bug discovered + fixed in cont.12 (`TestStreamGuard_Settle_Dispatch` was last-body capture): pre-existing bug, would have failed silently if `/record` landed without the filter. Pattern worth remembering: when an httpest stub captures "the last body" and a feature adds a second POST, the test silently asserts on the wrong payload.
+
+---
+
+# Historical handoff — Session 66 (P3 Router MVP shipped)
+
+> Content below preserved from the prior session's handoff. Refer to SESSION_PATCH.md for authoritative state.
+
+> **Date:** 2026-05-23 (sessions 62-66 — P1+P2+P3 design+Foundation+Integration+Router MVP, pending P3 Router commit)
+> **HEAD:** `faeb9b07` (P3 Integration) → pending P3 Router commit. **Branch 1 commit ahead of origin** after Integration push.
+> **Branch:** `main`.
+
+## What's NEXT — P3 BUILD across 3 sessions per design plan
+
+### Pre-flight at session 64 start
+
+- Push the 9 local commits to origin (user manual). Memory `feedback_verify_deployed_image_matches_source` reminds: confirm deployed image after push (we rebuilt + smoke-tested locally for P1+P2).
+- Confirm `pytest services/knowledge-service/tests/unit/test_pass2_orchestrator.py` is green at HEAD (P3 BUILD will modify it).
+- Confirm `loreweave_extraction.__extractor_version__` is `v1-6dce61b7` (current — to verify per-op extension doesn't break P2 cache baseline).
+
+### Session 64 Foundation (DONE — committed 50ea6b46 + pushed)
+
+11 files; 30 new tests; SDK 16/16 + KS 1721/1721 green.
+
+### Session 65 Integration (DONE — committed faeb9b07 + pushed)
+
+7 files; 20 new tests; KS 1741/1741 green.
+
+### Session 66 Router MVP (DONE — pending commit)
+
+4 files (2 NEW + 2 tests); 23 new tests; KS 1764/1764 green.
+
+NEW: `abstract_query.py` (D5 heuristic: keyword + long-query+no-entity) + `summary_blend.py` (per-project per-level Neo4j vector index parallel query + score-weighted blend).
+
+**Locked primitives ready for wire-up**:
+- `is_abstract_query(message, glossary_entities) -> bool` — intent gate
+- `select_summary_blend(session, project_id, embedding_model_uuid, query_embedding) -> list[LevelSummaryHit]` — multi-index retrieval
+
+## What's NEXT — 2 wire-up tasks + live smoke to close P3
+
+### D-P3-MODE3-ROUTER-WIRE-UP (~20 LoC, session 67)
+
+In `app/context/modes/full.py`, add `_safe_summary_blend` parallel to `_safe_l3_passages`. Call it when `is_abstract_query(message, glossary_entities)` returns True. Merge results into the Mode-3 prompt builder (new `<summaries>` block similar to `<passages>`).
+
+Files: 1 MODIFY (full.py) + maybe NEW renderer block. ~2-3h.
+
+### D-P3-WORKER-AI-CONSUMER-WIRING (~3-4h, session 67-68)
+
+NEW worker-ai task module that:
+1. XREADs `extraction.summarize` Redis Stream with consumer group `worker-ai-summary`
+2. For each message: `SummarizeMessage.from_redis_fields()` + dispatch `process_summarize_message(msg, deps)`
+3. Wires `SummaryProcessorDeps`: knowledge_pool + neo4j_session + llm_client + embedding_client + summary_enqueue (for M4 re-enqueue)
+4. XACK on success; let pending claim on failure (idle worker re-fetches)
+
+Mirror existing `worker-ai/app/tasks/extraction_job_processor.py` pattern. Tests live in worker-ai.
+
+### D-P3-LIVE-SMOKE + LLM-JUDGE-BASELINE + SHERLOCK-BASELINE (after wire-ups)
+
+Cross-service smoke: full extraction → hierarchy nodes → per-chapter/part/book summaries → Mode-3 abstract query blend. Then LLM-judge baseline check + sherlock_speckled_band joining baseline.
+
+## Status of 5-phase hierarchical extraction
+
+| Phase | Status |
+|---|---|
+| P1 Structural Decomposer | ✅ shipped (sessions 62-63) |
+| P2 Cache + Leaf Core | ✅ MVP shipped (session 63) |
+| P3 Hierarchical Reduce + Summaries | ✅ primitives complete (sessions 64-66); 2 wire-ups pending |
+| P4 Semantic Chunking Escape Valve | not started |
+| P5 Gated LLM Coref + Multi-res Refinement | not started |
+
+**50MB local capability**: P1+P2+P3 primitives ready; full integration requires the 2 wire-ups.
+
+End-of-session-64 commit: "P3 Foundation [XL session 1/3]".
+
+### Session 65 Integration (~5-6h)
+
+Files:
+1. MODIFY `pass2_writer.py` per M1 (hierarchy threading + `:MENTIONED_IN -> :Scene` edges in same Tx per D2a).
+2. MODIFY `pass2_orchestrator.py` per M2 (summary message enqueue + `is_last_chapter` flag plumbing per D9).
+3. EXTEND `SummaryRepo` with upsert methods + `UniqueViolationError` handling per M5.
+4. NEW `services/knowledge-service/app/jobs/summary_processor.py` + worker-ai task registration + 5 unit tests + extractor tests.
+
+End-of-session-65 commit: "P3 Integration [XL session 2/3]".
+
+### Session 66 Router + live smoke (~3-4h)
+
+Files:
+1. NEW `app/context/intent/classifier.py` OR EXTEND `app/context/modes/full.py` per D5.
+2. 5 router unit tests.
+3. Live smoke per spec §4.6: full extraction → hierarchy nodes → summary indexes → Mode-3 abstract query blend.
+4. SESSION_PATCH clears D-P3-LIVE-SMOKE + D-P3-LLM-JUDGE-BASELINE-CHECK + D-P3-SHERLOCK-BASELINE.
+
+End-of-session-66 commit: "P3 Router + live smoke [XL session 3/3]".
+
+### Step 2 (later): P4 + P5
+
+Per ADR §6 roadmap. P3 + P2 caching + P1 structural decomp = **50MB local capability complete** per acceptance. P4 (semantic chunking escape valve) and P5 (gated LLM coreference + multi-resolution retrieval refinement) are quality polish; non-critical-path.
+
+P1 (T1 structural decomposer) + P2 MVP (T3 cache + leaf core) are committed. **P3 is the critical-path next phase per ADR §6 roadmap.**
+
+**Read first:** [`docs/03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md`](../03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md) §3 T4 + §6 P3 + §7 P3.
+
+**P3 scope (ADR T4 + T7 stage 1):**
+- Tree-merge bottom-up: scene KGs → chapter KGs → part KGs → book KG.
+- Deterministic merge: canonical_id-keyed entity merge + alias union-find (Tarjan UF) + relation merge by (subject_canonical_id, predicate, object_canonical_id, polarity) + event merge by (name_norm, time_cue).
+- Per-level summary embedding (NEW): LLM-generated 2-3 sentence summary per chapter/part/book node, embedded + indexed.
+- Neo4j hierarchy nodes (`:Scene` / `:Chapter` / `:Part` / `:Book`) with `:HAS_CHILD` edges.
+- P3 acceptance: tree-merge produces book-level KG identical (modulo summaries) to flat-dedup; legacy chapters join baseline (no longer skipped); `sherlock_speckled_band` joins baseline (achievable now with P2 cache+resume per spec).
+
+**P3 also fulfils these P2 deferred rows:**
+- D-P2-PER-SCENE-FANOUT: per-scene parallelism is natural at the reduce layer (each scene = independent leaf).
+- D-P2-FULL-EXTRACTION-LIVE-SMOKE: hierarchical extraction live test is the natural smoke.
+
+### Step 2 (later): P2 polish if hit at scale
+
+If first 1MB+ novel extraction shows pain, address:
+- D-P2-PER-SCENE-FANOUT (if intra-chapter parallelism needed)
+- D-P2-STALE-CLAIM-LIFESPAN-HOOK (if extraction jobs crash mid-run)
+- D-P2-PARENT-JOB-ID-PLUMBING (if per-leaf billing telemetry needed)
+
+These are NOT blockers for P3 start.
+
+## What's NEXT — D-P1-LIVE-SMOKE first, then start P2 (parallel map + checkpoint)
+
+### Step 1 (must-do first): close D-P1-LIVE-SMOKE
+
+Session 62 VERIFY hit a `docker compose build knowledge-service` failure — pip `JSONDecodeError: Unterminated string` during requirements.txt install, repeating across 3 retries. book-service Go rebuilt cleanly in parallel → confirmed **not** P1 code. Likely PyPI metadata cache corruption inside Docker buildkit.
+
+**Run order:**
+1. `docker compose build knowledge-service` — if it works now (pip cache cleared, metadata refreshed), proceed.
+2. If still fails: try `docker compose build --no-cache knowledge-service`, OR pin a specific bs4 version, OR investigate which package is corrupting the install.
+3. Once built, `docker compose up -d` and execute the live smoke per spec §4.5:
+   - Upload `services/knowledge-service/tests/fixtures/golden_chapters/alice_*.txt` (or an EPUB) via book-service `/v1/books/{id}/import`.
+   - Assert: `import_jobs.status='completed'`; `parts` row created; `chapters.part_id` + `structural_path` populated; `scenes` rows created with sane `leaf_text`.
+   - Round-trip: query joined `leaf_text` for one chapter, compare to pandoc-stripped HTML — must match.
+4. Clear D-P1-LIVE-SMOKE in SESSION_PATCH.
+
+### Step 2: P2 (parallel map + checkpoint) — L-XL cycle
+
+**Status (session 62, end-of-session):** D-P1-LIVE-SMOKE cleared in commit `2a7535b4` (knowledge-service + worker-infra rebuilds succeeded; cross-service `.txt` import end-to-end through `/internal/parse` → DB confirmed). **CLARIFY for P2 done in-session below — DESIGN starts session 63.**
+
+**Read first:** [`docs/03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md`](../03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md) §3 T3 + §6 P2 + §7 P2 acceptance.
+
+#### P2 CLARIFY answers (session 62 PO, locked)
+
+| Q | PO choice | DESIGN implication |
+|---|---|---|
+| `extraction_leaves.result_jsonb` content scope | **Both — raw in cold storage + candidates hot** | Two tables: `extraction_leaves` (post-processed candidates, hot read path) + `extraction_leaves_raw` (full raw LLM response, cold; for re-judge/re-score without LLM re-call). DESIGN must address: retention policy (prune raw after N days? keep forever?), JOIN cost on re-judge, separate writes vs single Tx. |
+| Cache invalidation when `scenes.parse_version` changes | **Explicit invalidation via DELETE** | P2 worker / new admin endpoint: when `parse_version` is bumped, DELETE FROM extraction_leaves + extraction_leaves_raw WHERE book_id IN (...). DESIGN must address: idempotent invalidation surface (CLI tool? `POST /internal/extraction/invalidate-cache/{book_id}`?), migration ordering with parse_version bump. |
+| P2 worker placement | **Extend knowledge-service worker-ai** | Add `extraction-leaf-processor` consumer to existing worker-ai (Python). Reuse Redis Streams + DB pool + gather_relations_events_facts helper. No new compose service. |
+| Glossary anchor failure mode | **Hard fail — leaf job 502** | Glossary-service uptime is now a hard dependency for extraction. If glossary 5xx → leaf marked failed (after retry budget). **PO accepted trade-off: brief glossary outage = paused extraction.** DESIGN must address: explicit health-check gate at job start (fail-fast vs fail-mid-leaf), retry budget interaction. |
+
+#### P2 scope (consolidates ADR §3 T3 + the CLARIFY answers)
+
+- NEW `extraction_leaves` table on knowledge-service DB: `(book_id, leaf_path, op) UNIQUE`, status, candidates_jsonb (post-processed), retried_n, started_at, completed_at, parse_version (FK semantic to scenes.parse_version).
+- NEW `extraction_leaves_raw` table on knowledge-service DB: `(extraction_leaf_id) FK`, raw_response_jsonb, raw_token_usage, created_at. Cold table — separate write, indexed only by FK.
+- Idempotent task ID: `sha256(leaf.normalized_text + extractor_op_name)` — re-submit same leaf → cache hit, skip LLM call. **Note: parse_version is NOT in the hash** (per PO choice 2: explicit invalidation, not composite-id).
+- DAG over leaves bound by `LM_STUDIO_MAX_CONCURRENT` env (default 4).
+- Per-chapter glossary anchor: fetch via glossary-service `/internal/books/{book_id}/extract-entities` (the existing bulk endpoint; confirm the contract). Per-chapter, not per-leaf. **Hard-fail if 5xx after retry budget.**
+- Per-leaf retry budget (default 2); on exhaustion mark `failed`, reduce-step (P3 future) ignores.
+- Resume on restart: skip `status='completed'` leaves; recompute everything else from scratch.
+- NEW `POST /internal/extraction/invalidate-cache/{book_id}` endpoint for explicit invalidation when parse_version is bumped.
+- **P2 fallback contract (M6 locked at P1 DESIGN — DO NOT SKIP):** when reading scenes for a chapter, if `scenes WHERE chapter_id=$1 AND lifecycle_state='active'` returns empty, fall back to `chapter_drafts.body` via `tiptap_json_to_text(body)` as one virtual scene. Legacy (pre-P1) chapters have NULL `structural_path` + zero scenes; this fallback is the bridge. **If P2 skips this contract, legacy chapters silently get zero extraction.**
+
+**P2 reuses existing** `gather_relations_events_facts` extractor. No prompt change. No new ML.
+
+#### Open questions for DESIGN phase (defer to next session)
+
+- **OQ-P2-1**: `extraction_leaves_raw` retention policy. Keep forever (storage grows linearly with extraction runs)? Or prune after N days? Or per-book opt-in flag for "save raw" (debugging mode)? Recommend: **opt-in via project setting** so storage is bounded by user choice.
+- **OQ-P2-2**: Glossary fetch granularity. Per-chapter is locked but the existing `/internal/books/{book_id}/extract-entities` endpoint returns all entities for a book. Should we cache that response in worker memory for the duration of one extraction run (book-scoped LRU)? Or refetch per-chapter (simpler but more glossary load)?
+- **OQ-P2-3**: Concurrent extraction jobs on same book. If a user clicks "Build Graph" twice in succession, do we (a) reject the second job, (b) merge into the first, (c) let both run and dedupe via task_id hash? Recommend: (c) — task_id hash naturally dedupes; if same input, only one LLM call fires.
+- **OQ-P2-4**: Cache invalidation triggers. Beyond `parse_version` bump, what else invalidates? Extractor prompt template change? LLM model change? Recommend: **add `extractor_version` column** to `extraction_leaves`; bump on any prompt/model change; invalidation DELETE filters on `extractor_version != current`.
+
+Critical-path next session.
+
+### Step 3 (later sessions): P3 (hierarchical reduce + per-level summaries) → P1+P2+P3 = 50MB capability complete
+
+Per ADR §6: P3 is the third critical-path phase. P4 (semantic chunking escape valve) + P5 (gated LLM coref + multi-res retrieval) are independent quality polish that come after.
+
+---
+
+## Session 62 — what happened
+
+Full 12-phase XL cycle for P1 (structural decomposer / T1 of the hierarchical extraction ADR). PO answered 3 CLARIFY questions, then "approve" repeated through DESIGN → REVIEW (design) → PLAN → BUILD → VERIFY → REVIEW (code) → QC → POST-REVIEW. P1 implementation **capability complete in code**; cross-service live smoke deferred via D-P1-LIVE-SMOKE.
+
+### What changed
+
+| Layer | Files | Test counts |
+|---|---|---|
+| Python SDK `sdks/python/loreweave_parse/` | 5 modules + `__init__.py` + parent `pyproject.toml` registration + `bs4>=4.12` dep | **38/38** SDK tests |
+| knowledge-service `/internal/parse` | NEW router + tests + `max_parse_body_bytes` config + bs4 dep + main.py wire-up | **9/9** router tests; full suite **1654/1654** |
+| book-service schema | parts + scenes tables + chapter.part_id/structural_path + 3 indexes (NO backfill — R-SELF-1 NULL sentinel for legacy) | **5/5** migrate regression tests |
+| worker-infra integration | NEW `parse_client.go` + tests; REWROTE `import_processor.go` (3-level Tx D7); DELETED `splitChapters` + 4 helpers from `html_to_tiptap.go` | **6/6** parse_client contract tests + 4 splitChapters tests removed (replaced by SDK tests) |
+| book-service `.txt` sync path | NEW `parse.go` (parseClientCall + processTxtImport) + tests; ADDED `.md` to `allowedImportFormats`; ROUTED `.txt` through `/internal/parse` per H1 | **6/6** parse tests |
+
+### Review trail
+- DESIGN: 3 self-review (R-SELF-1/2/3) + 10 /review-impl round 1 (3H + 7M + 4L + 1C) — all HIGH+MED folded inline; 2 MED deferred.
+- /review-impl round 2 on BUILD: 0H + 4M + 5L + 3C — 5 fix-now batched (~25 LoC), 6 deferred rows queued.
+
+### 6 deferred rows filed
+- **D-P1-LIVE-SMOKE** — pip JSONDecodeError blocked knowledge-service image rebuild; must run first thing next session.
+- **D-P1-IMPORT-PROCESSOR-INTEG-TESTS** — plan promised 3 processImport orchestrator tests; only HTTP-client unit tests written; rely on live smoke.
+- **D-P1-CHAPTER-RAW-AUDIT** — `.txt` now writes per-chapter joined leaf_text to chapter_raw_objects.body_text (markers stripped vs pre-P1 full body); audit FE callers of `getChapterContent`.
+- **D-P1-LEAF-TEXT-NESTED** — `html_to_leaf_text` direct-text fallback covers `<li>outer<ul>...</ul></li>` + `<div>loose<p>...</p></div>` but deeper edges may surface on real EPUBs.
+- **D-P1-CONTRACT-DRIFT-TEST** — 3 mirrored schemas (Python `_types.py` + 2 Go) have no fixture-based drift test; consider extracting `sdks/go/lwparse/`.
+- **D-WORKER-INFRA-CONFIG-TEST** — pre-existing `TestLoadDefaults` panic (predates P1, confirmed via git stash).
+
+### Memory anchors validated / created
+- `feedback_cheap_structural_before_expensive_semantic` — pandoc + structural walk handle every fixture without semantic chunking.
+- `feedback_review_impl_on_design_cycles` — round 1 caught 3H+7M at DESIGN; round 2 caught 4M post-BUILD. Pattern continues to pay; invoke both rounds.
+- `feedback_design_test_plan_is_a_checklist` — caught the M3 gap (promised processImport integration tests were missing).
+- `feedback_mock_only_coverage_hides_crossservice_bugs` — parse_client_test.go explicitly asserts X-Internal-Token header per D-CHAT-BILLING-01 pattern.
+
+### Lessons (candidate for agent memory)
+- **PyPI metadata corruption inside Docker buildkit can fail an image build for 3+ retries.** Memory `feedback_host_env_drift_masquerades_as_code_bug` corollary: distinguish infra-flake from code-bug — try the OTHER service build in parallel (book-service Go rebuilt fine while knowledge-service Python failed) to confirm it's infra not code. Defer with `live infra unavailable: <reason>` per CLAUDE.md cross-service evidence rule.
+- **2-round /review-impl is the right cadence for XL cycles introducing new abstractions + cross-service contracts.** Round 1 at DESIGN caught H1 (.txt bypass path I'd documented wrongly in D3), H2 (HTML→text algorithm not locked), H3 (body cap unspecified); round 2 at BUILD caught M1 (innermost-only block walker drops outer-text), M3 (missing promised integration tests). Each round costs ~$1-2 of subagent calls; net cost vs. landing those bugs post-release: trivial.
+
+---
+
+## Session 61 — what happened (for context, superseded by session 62)
+
+[earlier session-61 cycle 1+2+3 details retained below in this file for archaeological reference; key takeaway: fence-fix cycle 1 unlocked P=0.97/R=0.81 on 9/10 golden chapters; cycle 2 idle-timeout safety net; cycle 3 ADR written; session 62 implemented P1.]
+
+---
+
+## Session 61 — what happened
+
+Started as the CLARIFY of catalogue-driven extraction Stage 1 (XL, per session 60's ADR). The empirical gate the ADR mandated — capturing qwen3.6's raw `result.events` BEFORE any catalogue code — returned a **decisively different answer than the ADR assumed**, and the cycle pivoted to a small surgical fix.
+
+### Root cause (CLARIFY)
+
+Captured raw qwen3.6 output for alice_ch01 in two ways:
+1. **Direct LM Studio chat completion** (bypassing the gateway aggregator) — returned **8 well-formed events**, all in-enum `kind` (action/travel/dialogue), all with named participants. JSON wrapped in markdown ` ```json … ``` ` fence.
+2. **Through the production gateway path** — returned **0 events**, `chunk_errors: ["chunk 0: invalid character '`' looking for beginning of value"]`, despite the model emitting real `output_tokens`.
+
+Diagnosis: `provider-registry-service/internal/jobs/aggregator.go:mergeChunkJSON` did `json.Unmarshal([]byte(raw), &parsed)` directly on the chunk content. The leading backtick of the markdown fence failed `Unmarshal`, the chunk's items went to `chunk_errors` instead of `merged`, and the job completed empty with no surfaced failure. **Silent across every extraction op** (`entity` / `relation` / `event` / `fact`) for **every reasoning model that wraps JSON in code fences**, since the aggregator shipped.
+
+### Fix (S — 2 files, single service, single commit)
+
+- NEW `extractJSONObject(raw) (string,bool)` in `aggregator.go` — first-`{`-to-last-`}` substring extractor. Strips markdown fences + any surrounding prose; returns `ok=false` when there is no balanced `{…}` so unrecoverable input still surfaces a `chunk_error` (no silent swallowing).
+- `mergeChunkJSON` tries direct `json.Unmarshal` first, on failure recovers via `extractJSONObject` + retry-Unmarshal, on failure of that records the chunk_error. Clean-JSON path unchanged (zero-perf regression); chat aggregator untouched (different code path).
+- 4 new tests: fenced, prose+fence, no-brace-still-errors (regression-lock against the recovery path swallowing real failures), helper unit.
+
+### Verify (live smoke)
+
+- `go test ./internal/jobs/` green, `go vet` clean.
+- **Cross-service live smoke**: rebuilt provider-registry, re-ran extraction on alice_ch01 through the gateway → **event_extraction 0→8 events**, `chunk_errors` cleared, entity_extraction unaffected.
+- **Full 9-chapter eval** (qwen3.6 extraction → gemma-4-26b LLM-judge): **P=0.97 R=0.81** macro, coverage P=62% R=56%. Raw counts: 65 entities + 49 relations + 60 events across the 9 chapters. The 10th chapter `sherlock_speckled_band` (1139 lines / 17 chunks) hangs the local 35B target under concurrent load — a perf concern orthogonal to the fence-fix; excluded.
+- Updated `services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md` with a "Post-fence-fix LLM-judge baseline (2026-05-23)" section.
+
+### Empirical refutation of the catalogue-driven ADR's premise
+
+Across the 9 golden chapters, **mechanism A (out-of-enum `kind`) and mechanism B (empty participants) — the two failure modes the ADR identified — did NOT trigger once**. The kind enum + the `_postprocess` participants filter are sufficient for the current fixture set. The "8/10 chapters → 0 events" observation session 60 measured against the rule-based scorer was 100% the fence bug; nothing about taxonomy.
+
+**Status of catalogue-driven extraction ADR:** the design is still valid for genre fiction kinds (xianxia / cultivation realm / sect / technique — kinds the closed extractor enum cannot represent) but downgraded from "blocking R&D" to "**re-prioritise when a genre-fiction fixture set exists**". The ADR remains in `docs/03_planning/` as a future option.
+
+### Baseline shift
+
+| Run | Date | Extractor | Scorer | P | R |
+|---|---|---|---|---:|---:|
+| Session 59 pre-fence-fix | 2026-05-13 | gemma-4-26b | rule-based | 0.311 | 0.429 |
+| Session 60 LLM-judge (broken pipeline) | 2026-05-22 | qwen3.6 | gemma judge | ~1.00 | ~0.46 |
+| **Post-fence-fix LLM-judge** | **2026-05-23** | **qwen3.6** | **gemma judge** | **0.97** | **0.81** |
+
+Recall jump 0.46→0.81 is the fence-fix payoff (the dropped chunks were the bulk of the chapter, not low-quality outliers).
+
+## Session 61 cycle 2 — long-chapter perf idle-timeout safety net
+
+The fence-fix cycle's full-9-chapter baseline run revealed `sherlock_speckled_band` (1139 lines / 17 chunks × 4 ops) hangs the local 35B target under sustained load. In-DB `llm_jobs` records confirmed: even SERIAL mode stalled with `event_extraction` stuck at 4/17 + a sibling `fact_extraction` failed mid-job with HTTP 400 `"Failed to load model qwen/qwen3.6-35b-a3b. Operation canceled."` — LM Studio's auto-eviction had unloaded the model mid-stream, the streamer (deliberately "No wall-clock timeout" per memory `feedback_no_timeout_on_llm_pipeline`) had no idle detection, so the chunk request waited forever.
+
+**Fix (M, 6 files, primary in provider-registry-service):**
+- NEW `idleTimeoutReader` + `wrapStreamBody` in `provider/streamer.go` — per-Read `time.AfterFunc` closes the body when no bytes arrive within `LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S`. Atomic flag distinguishes idle-close from upstream-close → `ErrUpstreamTimeout`. Default 0 in code preserves the no-timeout memory principle; compose sets 300s prod default. **Idle vs wall-clock distinction**: only fires when NO bytes arrived in the window — a legitimately slow but progressing model never trips it.
+- Wired at BOTH streamer entry points: `openCompletionStream` (OpenAI/LM Studio/Ollama) + `doStreamPOST` (Anthropic). No path bypasses.
+- 5 new Go tests + `blockingReadCloser` helper.
+- `infra/docker-compose.yml` sets `LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S=300` env-tunable.
+- `test_extraction_eval.py` adds `KNOWLEDGE_EVAL_LONG_CHAPTER_MAX_PARAGRAPHS=200` default skip (sherlock 252 → auto-excluded; set 0 to opt-in).
+- `QUALITY_EVAL_BASELINES.md` "Run notes" section documents LM Studio TTL recommendation + the idle-timeout net.
+
+**Verify:** all provider-registry packages `go test` green + `go vet` clean + live smoke (rebuilt provider-registry, sent chat job through SDK → status=completed, idle timer did not spurious-fire).
+
+**Status of the long-chapter problem after this cycle:** the idle-timeout is a **band-aid that makes failures fail-fast** (chunk surfaces error, aggregator records `chunk_errors`, job completes with partial data). It does NOT make sherlock-class chapters succeed — that requires the architectural rework being researched next session (hierarchical semantic chunking + parallel map + tree-merge reducer, see top "What's NEXT").
+
+## Lessons (for agent memory)
+
+- **The CLARIFY empirical gate paid off.** The ADR explicitly mandated capturing the raw output before any catalogue code. That single step refuted the ADR's premise in one chapter, saving the XL refactor.
+- **Memory `feedback_mock_only_coverage_hides_crossservice_bugs` strikes again.** Aggregator unit tests had fed clean JSON for years; the live model emits fences. The fix added a regression-lock test feeding a fenced input + a no-brace-still-errors guard against the recovery path swallowing real failures.
+- **`feedback_no_timeout_on_llm_pipeline` corollary**: when a model "fails", audit the pipeline first. The fence bug had been masking real model quality across all 4 extraction ops since the aggregator shipped.
+- **Concurrent load on a single LM Studio 35B is fragile** — saw repeated transient flakes (cold-model entity-extraction returning 0; mid-chapter event-extraction stuck) during the original concurrency=3 eval run. Serial (concurrency=1) was needed for two stragglers. The eval test should probably default to lower concurrency for the local target.
+- **Idle timeout ≠ wall-clock timeout** (cycle 2). The memory principle "no wall-clock timeout on the LLM path" deliberately leaves long-running models alone, but does NOT prevent us from detecting an upstream that's gone *silent*. The cycle-2 `idleTimeoutReader` fires ONLY when no bytes have arrived in the window — a slow-but-progressing model never trips it. Reconciliation of these two principles is the right pattern for any cross-service stream where the upstream can die without protocol-level notification.
+- **A safety net is not a cure.** Cycle 2's idle-timeout makes sherlock-class chapters *fail fast* instead of hanging. The architectural fix (semantic chunking + parallel map + tree-merge) is queued for the next session. Document the boundary so the safety net isn't mistaken for the solution.
+
+---
+
+## Session 60 — what happened (for context, superseded by the above)
+
+The session set out to start the R&D extraction-quality track (session 59's "final work") and instead **redirected it**, because two foundations were broken:
+
+1. **The measuring instrument was wrong.** The rule-based golden-set scorer matches by exact string/token equality — invalid for an interpretive task. Built an **LLM-as-judge** eval (`tests/quality/llm_judge.py` + `test_judge_eval.py` + 25 unit tests; judge routes through the SDK→provider-registry gateway; judge model = gemma-4-26b, different family from the Qwen extractor → no self-bias; **discrimination-probe-validated**, codified as a `--run-quality` test). **Finding: extraction precision ≈ 1.0** (the rule-based 0.60 was an artifact); **recall is the real gap, events ≈ 0**.
+2. **Taxonomy rot.** Investigating events surfaced **three divergent kind vocabularies** — glossary `entity_kinds` catalogue (12 open, genre-aware) / extractor 6-enum / FE `KIND_OPTIONS` (7-set). None aligned. Extraction's closed enums drop data (event sub-type isn't even persisted) and can't represent genre kinds.
+
+**Decision:** wrote **`docs/03_planning/KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md`** (option A — glossary catalogue = taxonomy SSOT; keep `:Event` node + open subtype; entity-kind catalogue-driven; staged). `/review-impl` folded 3 MED + 4 LOW. **R&D + eval-dataset rebuild are DEFERRED behind the refactor.** Sequence: **(1) catalogue-driven extraction refactor → (2) eval dataset → (3) R&D.**
+
+**3 commits on `main`** (origin at `2d56eb16`): `68291181` (LLM-judge), `f7510c3e` (judge hardening + `/review-impl` fixes), `5e1001a8` (ADR + session notes).
+
+**Runtime gaps fixed in passing:** all LM Studio user_models lacked `pricing` → Phase 6a fail-closed ("model pricing not configured" 402); set `{"input_per_mtok":0,"output_per_mtok":0}` on qwen3.6 (`019e21cc-…`) + gemma-4-26b (`019dc3df-…`) in the provider-registry DB. `register_lm_studio_models.sql` still needs the same pricing patch.
+
+## What's NEXT — Stage-1 of the catalogue-driven extraction refactor
+
+**Read first:** `docs/03_planning/KNOWLEDGE_SERVICE_CATALOGUE_DRIVEN_EXTRACTION_ADR.md` (the full design + the folded review findings + acceptance criteria).
+
+**Start at CLARIFY (the ADR says do this BEFORE any code):**
+1. **Reload `qwen/qwen3.6-35b-a3b` in LM Studio** (session 60 left gemma-4-26b loaded for the judge) and **capture raw `result.events`** for a failing chapter (e.g. alice_ch01) → confirm whether events are lost to (a) out-of-enum `kind`, (b) the no-participants `_postprocess` filter, or (c) the model emitting none. Do NOT assume; the ADR's event-recall fix is unverified (MED#3).
+2. **Resolve R4** — what writes `event_ref` / `preference` in the FE `KIND_OPTIONS`? They match neither catalogue nor extractor vocab; may be legitimate knowledge-only kinds that should NOT be forced into the glossary catalogue.
+
+**Then BUILD (Stage 1):** glossary `GET /internal/books/{book_id}/entity-kinds` endpoint + `GlossaryClient.list_kinds` + `app/extraction/kind_catalogue.py` (cache + degradation fallback); remove the entity/event kind `Literal`s (never drop); `normalize_kind_to_catalogue` before anchor lookup + persist; persist `:Event.kind`; delete `_EXTRACTOR_TO_GLOSSARY_KIND` (audit all callers); reconcile the FE `EntitiesTab` filter to fetch dynamically. Measure before/after with the LLM-judge harness (judge-coverage ~68% caveat noted).
+
+**Eval-dataset rebuild (after the refactor):** the conservative golden fixtures + exact-string scoring are being superseded by the LLM-judge; revisit the fixture philosophy (LLM-as-judge against source, not a hand-annotated subset) once extraction is catalogue-aligned.
+
+**How to run the judge** (judge model loaded in LM Studio; an extraction dump already produced under `.eval_dumps/` — gitignored):
+```
+KNOWLEDGE_EVAL_JUDGE_MODEL=<judge_user_model_uuid> KNOWLEDGE_EVAL_USER_ID=<uuid> \
+KNOWLEDGE_JUDGE_DUMP_PATH=.eval_dumps/<run> \
+  pytest services/knowledge-service/tests/quality/test_judge_eval.py --run-quality -s
+```
+Extraction dump first via `test_extraction_eval.py` with `KNOWLEDGE_EVAL_DUMP_PATH` set. Stack: `docker compose up -d provider-registry-service` (pulls postgres/rabbitmq/minio/usage-billing) is enough for extraction+judge — Neo4j NOT needed (judge scores in-memory). LM Studio must serve the requested model (it serves whatever is LOADED regardless of model_ref → load the right one; `Max Concurrent Predictions=1` gives each request the full context at 32K).
+
+---
+
+## Session 59 — what happened (previous session)
+
+Session 59 cleared the post-session-58 follow-up deferrals, then — on the user's call after a debt-vs-R&D discussion — added two **structural debt-prevention** fixes before the final R&D track, then cleared the three R&D-blocking prep items.
+
+**10 commits on `main`:**
+
+| Commit | Cycle | What |
+|---|---|---|
+| `3fd6e022` | 1 | **D-EMB-CLEANUP-01** — dropped dead `knowledge_projects.embedding_provider_id` column (the same-named col on `project_embedding_benchmark_runs` stays). |
+| `dc78d3a3` | 2 | **D-EMB-EVAL-PKG-01** — moved K17.9 benchmark runtime into `app/benchmark/core.py` (+ `fixture_loader`/`mode3_query_runner`/`persist`/`metrics`/`golden_set.yaml`); `eval/run_benchmark.py` is now a thin CLI shell; Dockerfile no longer ships `eval/`. |
+| `29955655` | 3 | **D-EMB-BENCHMARK-CAL-01** — per-dimension threshold overrides in `golden_set.yaml`; 1024 (bge-m3) `negative_control_max_score` 0.50→0.70. |
+| `03424d43` | 4 | **D-EMB-MODEL-REF-04** — `patch_project` rejects 422 when changing `embedding_model` on a project with a graph (`extraction_status != 'disabled'`) → forces the destructive `PUT /embedding-model?confirm=true`. |
+| `c2330176` | 5 | **D-CHAT-BILLING-01** — chat-service `BillingClient` now sends `X-Internal-Token` (was 401-rejected → per-model usage silently dropped since the service shipped). |
+| `d5c2acbc` | A | **SESSION_PATCH archive** — file was 6030 lines / 1.3 MB (exceeds Read tool limit). Archived sessions 46-57c8 → NEW `SESSION_ARCHIVE.md`; SESSION_PATCH now **689 lines**. |
+| `65b4b0e3` | B | **Live-smoke evidence soft-WARN** — `workflow-gate.py` warns at VERIFY when a cross-service change (≥2 `services/X/`) lacks a live-smoke acknowledgement token; CLAUDE.md Phase 6 documents it. Process guard against the recurring "mock-green but live-broken" pattern (4 hits sessions 58-59). |
+| `a95d53eb` | DEF-03 | **C-PRED-ALIGN-DEF-03** — user confirmed LM Studio `Max Concurrent Predictions ≥4` + `Unified KV Cache ON` (RTX 4090 was at 20% util → single-request mode). |
+| `39c3f261` | DEF-01 | **C-PRED-ALIGN-DEF-01** — extracted `gather_relations_events_facts` helper (single source of truth for Pass-2 R+E+F parallelism); eval test now mirrors production shape + adds the missing `extract_facts` + cross-chapter `asyncio.Semaphore(4)`. Also fixed a latent missing-`llm_client` `TypeError` in the eval test. |
+| `26fd589e` | C18-DEF-01 | **C18-DEF-01** — `time_cue` now persisted on `:Event` nodes (was dropped at write time); also activates the previously-dead C18 `event_date_backfill` helper. |
+
+**State now:** knowledge-service Tracks 1-3 + Track 2/3 Gap Closure (C1-C18) + K21 are all feature-complete. All post-session-58 follow-up deferrals cleared. SESSION_PATCH is navigable again. The eval harness is production-aligned + parallelized + LM Studio-tuned. knowledge-service unit suite **1620/1620**; chat-service **247/247**.
+
+## Session 59 — what was next (SUPERSEDED by session 60 — R&D deferred behind the catalogue-driven refactor; see top)
+
+**The only remaining knowledge-service work is the R&D extraction-quality track** (a.k.a. the gemma-eval track). Everything else is either done or a non-blocking polish/live-smoke deferral.
+
+**Goal:** improve Pass-2 extraction quality (precision / recall / FP-trap-rate) on the **local** LM Studio target `google/gemma-4-26b-a4b` (per agent memory `feedback_local_llm_first_cloud_is_fallback` — cloud LLMs are calibration-only; token cost makes iterative cloud tuning prohibitive).
+
+**Prior baseline** (`services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md`): gemma-4-26b-a4b post-C-PRED-ALIGN scored **P 0.311 / R 0.429 / FP-trap 0.238** (pre-align was P 0.251 / R 0.356 / FP-trap 0.275). Gates (`P≥0.80 / R≥0.70 / FP-trap≤0.15`) are tuned for strict cloud LLMs + conservative fixtures; local-LLM runs fail them by design — the metric is *relative improvement per cycle*, not gate-pass.
+
+**Readiness — all set up this session:**
+- Eval harness mirrors production R+E+F parallelism (DEF-01) + runs chapters with `asyncio.Semaphore(4)` (env-tunable `KNOWLEDGE_EVAL_CHAPTER_CONCURRENCY`).
+- LM Studio continuous batching confirmed ON (DEF-03) → expect 2-3× throughput vs the old serial runs.
+- `time_cue` now persists on `:Event` (C18-DEF-01) → event-extraction quality is measurable + the `event_date_iso` backfill is tunable.
+- 9 golden fixtures (5 English + 4 multilingual CJK/Vietnamese) in `tests/fixtures/golden_chapters/`.
+
+**How to run** (needs the full stack + a registered LM Studio model):
+```
+docker compose --profile extraction up        # stack incl. neo4j (default-on)
+KNOWLEDGE_EVAL_MODEL=<user_model_uuid> \
+KNOWLEDGE_EVAL_USER_ID=<uuid> \
+KNOWLEDGE_EVAL_PROJECT_ID=<uuid> \
+KNOWLEDGE_EVAL_DUMP_PATH=/tmp/eval_dump \      # per-chapter actual/expected/attribution JSON
+  pytest services/knowledge-service/tests/quality/test_extraction_eval.py --run-quality -s
+```
+The `--run-quality` flag + the `KNOWLEDGE_EVAL_MODEL` env are both required (the test skips otherwise). The dump path writes per-chapter diagnostics for semantic FP/FN analysis without re-running.
+
+**Suggested first move (user-decided at session start):** capture a fresh **baseline** on the production-aligned + parallelized harness (no tuning) so the R&D track has a clean reference, THEN iterate. Each cycle: tweak prompt vocab / extraction rules → re-run → compare P/R/FP-trap per chapter via the dump.
+
+**Non-blocking deferrals remaining** (none gate the R&D track — all explicitly targeted to their own phases in SESSION_PATCH "Deferred Items"):
+- `D-K21B-07` — live-verify D12 Anthropic tool-calling (needs an Anthropic BYOK key).
+- `C-PRED-ALIGN-DEF-02` — production events consumer in-process concurrency (Track 3 perf).
+- ~6 LIVE-SMOKE items (Phase 6a/6c guardrail + OTel) — orthogonal to R&D paths; need a full live stack.
+- ~20 polish-bucket items (K21 polish, 6a/6b/6c follow-ups, FE cosmetics) — see SESSION_PATCH. The strategic plan (user-agreed) is a periodic **"Gap Closure v2" debt-paydown arc** *after* the R&D track, not item-by-item now.
+
+**Read in this order:** 1. `SESSION_PATCH.md` (top 10 bullets = session 59). 2. `services/knowledge-service/eval/QUALITY_EVAL_BASELINES.md` (prior P/R/FP-trap progression + per-chapter signal). 3. `docs/03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md` §6 (roll-up). 4. This handoff.
+
+**Recurring lesson (agent memory):** several knowledge-service phases shipped "complete" on unit-mock-only coverage and broke the first time they ran live (4 hits sessions 58-59). Cycle B's live-smoke WARN now flags this at VERIFY — but the judgment to actually live-smoke (or explicitly defer) is still the agent's. The R&D track runs the real LM Studio stack, so it IS the live smoke for the extraction pipeline.
+
+---
+
+## Session 57 cycle 2 — billing-model redesign ADR · /review-impl round 1 (3H+6M+3L all folded)
+
+**Why this cycle exists:** the session set out to do Phase 6a ("quota enforcement at job submission"). Scoping it surfaced that the **billing model itself is broken**, so the 6a code cycle was abandoned mid-DESIGN and replaced with this ADR.
+
+**The discovery chain:** (1) the gateway's `recordInvocation` is **unwired** — the gateway doesn't bill jobs; book/video/chat-service each call `/internal/model-billing/record` post-hoc. (2) `account_balances` meters a **token count** — wrong unit (models cost 10–30× different per token; the flat `0.000002`/token cost is fiction). (3) LoreWeave is **BYOK** — for `user_model` jobs the user pays their own provider, so a runaway loop drains the *user's* account; a platform-vs-BYOK quota gate does **not** protect them. Web research (LiteLLM/Bifrost/OpenRouter/Cloudflare AI Gateway) confirmed the norm: **USD per-user budgets, pre-flight worst-case estimate, `max_tokens` capped to remaining budget**.
+
+**Deliverable:** [`docs/03_planning/BILLING_MODEL_REDESIGN_ADR.md`](../03_planning/BILLING_MODEL_REDESIGN_ADR.md) — billing split into **two subsystems**:
+- **A — Spend Guardrail**: per-user **USD** budget (daily+monthly windows), applies to **every** job (BYOK + platform); pre-flight estimate → **402** before the provider call + `max_tokens` cap + estimate-based reservation. Protects the *user's* wallet.
+- **B — Platform Resale Ledger**: `platform_model` only; config-driven free-tier USD + prepaid credits. Protects *LoreWeave's* wallet.
+- Schema: `account_balances` → `spend_guardrails` + `token_reservations` + `platform_balances` (`NUMERIC(16,8)`).
+
+**`/review-impl` round 1:** 3 HIGH + 6 MED + 3 LOW, all folded — fail-CLOSED on unpriced models, `NUMERIC(16,8)` (not 12,4 which rounds per-call cost to $0), per-operation pricing dimensions, `available = limit − spent − reserved` invariant, `FOR UPDATE`, `/record` `request_id` idempotency, streaming approach, leaked-reservation sweeper.
+
+### What's NEXT for the next agent
+
+**Phase 6a — Subsystem A (USD spend guardrail)** — a fresh **XL** cycle. Per ADR §4: `spend_guardrails` + `token_reservations` tables + migration; per-model USD pricing fields on `user_models` + platform-model config; gateway USD estimator; pre-flight 402 + `max_tokens` cap in `doSubmitJob`; terminal reconciliation in `worker.go finalizeAndNotify`; wire the gateway as job biller (`/record` idempotent by `request_id`). Then **6a-β** (Subsystem B, L) and **6a-γ** (FE guardrail config, M). 6b (retry — `worker.go:348` already marks it) and 6c (tracing — **greenfield OTel, L–XL not M**) follow.
+
+ADR §6 open questions to settle at 6a CLARIFY: BYOK pricing-entry UX, per-unit estimate magnitudes (image/video/audio), window-reset policy, streaming tally cadence.
+
+**Read in this order:** 1. `SESSION_PATCH.md` (top entry). 2. `BILLING_MODEL_REDESIGN_ADR.md`. 3. `LLM_PIPELINE_UNIFIED_REFACTOR_PLAN.md` §6 (rows updated). 4. This handoff.
+
+---
 
 ## Session 57 cycle 1 — Phase 5f · video-gen-service hardening · /review-impl rounds (DESIGN: 1H+3M+3L+1C; BUILD: 0H+1M+4L+2C — all fixed inline)
 

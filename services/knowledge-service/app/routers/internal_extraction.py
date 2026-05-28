@@ -91,6 +91,28 @@ class ExtractItemResponse(BaseModel):
     duration_seconds: float = 0.0
 
 
+class HierarchyPathsPayload(BaseModel):
+    """P3 D-P3-EXTRACTION-CALLER-WIRE-UP — wire shape of HierarchyPaths.
+
+    Worker-ai resolves these from book-service's parts/chapters/scenes
+    rows (or synthesises them for legacy chapters with no part_id).
+    Mirrors `app.extraction.hierarchy_writer.HierarchyPaths` dataclass.
+    """
+    book_id: str = Field(min_length=1)
+    book_path: str = Field(min_length=1)
+    book_title: str | None = None
+    part_id: str = Field(min_length=1)
+    part_path: str = Field(min_length=1)
+    part_index: int = Field(ge=1)
+    part_title: str | None = None
+    chapter_id: str = Field(min_length=1)
+    chapter_path: str = Field(min_length=1)
+    chapter_index: int = Field(ge=1)
+    chapter_title: str | None = None
+    # Scenes: list of [scene_id, scene_path, scene_index] tuples.
+    scenes: list[tuple[str, str, int]] = Field(default_factory=list)
+
+
 class PersistPass2Request(BaseModel):
     """Phase 4b-β — request body for the persist-pass2 endpoint.
 
@@ -103,6 +125,15 @@ class PersistPass2Request(BaseModel):
     The 4 candidate lists are all optional — the writer persists
     whatever's supplied. ``extraction_model`` tags evidence edges so
     operators can later trace which LLM produced which Pass 2 row.
+
+    P3 D-P3-EXTRACTION-CALLER-WIRE-UP — when ALL of `hierarchy_paths`,
+    `embedding_model_uuid`, and `embedding_dimension` are supplied, the
+    endpoint also MERGEs the Book→Part→Chapter→Scene hierarchy in the
+    same Tx and enqueues a `summary.chapter` message. When
+    `is_last_chapter_of_book=True`, additionally enqueues `summary.part`
+    × N (one per `book_parts` entry) and `summary.book`. All P3 fields
+    optional → legacy callers that omit them get the original behaviour
+    unchanged.
     """
 
     user_id: UUID
@@ -116,6 +147,15 @@ class PersistPass2Request(BaseModel):
     relations: list[LLMRelationCandidate] = Field(default_factory=list)
     events: list[LLMEventCandidate] = Field(default_factory=list)
     facts: list[LLMFactCandidate] = Field(default_factory=list)
+
+    # P3 — caller supplies these to opt into hierarchy writes + summary enqueue.
+    hierarchy_paths: HierarchyPathsPayload | None = None
+    # book_parts only consumed when is_last_chapter_of_book=True. Each
+    # entry: [part_id, part_path, part_index_as_string].
+    book_parts: list[tuple[str, str, str]] = Field(default_factory=list)
+    is_last_chapter_of_book: bool = False
+    embedding_model_uuid: str | None = None
+    embedding_dimension: int | None = Field(default=None, ge=1)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -390,6 +430,29 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         user_id=body.user_id, project_id=body.project_id,
     )
 
+    # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — build the HierarchyPaths dataclass
+    # for the writer when the caller opted into hierarchy mode. We do this
+    # OUTSIDE the session so the dataclass construction can fail fast on
+    # bad payloads without leaking a session.
+    from app.extraction.hierarchy_writer import HierarchyPaths
+    hierarchy_paths = None
+    if body.hierarchy_paths is not None:
+        hp = body.hierarchy_paths
+        hierarchy_paths = HierarchyPaths(
+            book_id=hp.book_id,
+            book_path=hp.book_path,
+            book_title=hp.book_title,
+            part_id=hp.part_id,
+            part_path=hp.part_path,
+            part_index=hp.part_index,
+            part_title=hp.part_title,
+            chapter_id=hp.chapter_id,
+            chapter_path=hp.chapter_path,
+            chapter_index=hp.chapter_index,
+            chapter_title=hp.chapter_title,
+            scenes=list(hp.scenes),
+        )
+
     async with neo4j_session() as session:
         result = await write_pass2_extraction(
             session,
@@ -404,9 +467,48 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             facts=body.facts,
             extraction_model=body.extraction_model,
             anchors=anchors,
+            hierarchy_paths=hierarchy_paths,  # P3 D2a — Tx-bound hierarchy MERGE
         )
 
     elapsed = time.perf_counter() - started
+
+    # P3 — async summary enqueue. Fires only when caller wired all the P3
+    # deps. Best-effort wrapper per `feedback_cross_store_best_effort_writes`
+    # — Postgres + Neo4j writes already succeeded; an enqueue failure
+    # mustn't 500 the caller (a later extraction or manual re-run can
+    # re-enqueue). Logged for ops.
+    if (
+        hierarchy_paths is not None
+        and body.embedding_model_uuid is not None
+        and body.embedding_dimension is not None
+    ):
+        from app.extraction.pass2_orchestrator import (
+            enqueue_chapter_and_maybe_book_summaries,
+        )
+        try:
+            await enqueue_chapter_and_maybe_book_summaries(
+                summary_enqueue=_get_summary_enqueue(),
+                hierarchy_paths=hierarchy_paths,
+                user_id=str(body.user_id),
+                project_id=str(body.project_id) if body.project_id else "",
+                job_id=str(body.job_id),
+                model_ref=body.extraction_model,
+                embedding_model_uuid=body.embedding_model_uuid,
+                embedding_dimension=body.embedding_dimension,
+                is_last_chapter_of_book=body.is_last_chapter_of_book,
+                book_parts=list(body.book_parts),
+            )
+            logger.info(
+                "P3: enqueued summaries for chapter source_id=%s "
+                "(is_last=%s, book_parts=%d)",
+                body.source_id, body.is_last_chapter_of_book,
+                len(body.book_parts),
+            )
+        except Exception:
+            logger.warning(
+                "P3: summary enqueue failed source_id=%s (non-fatal)",
+                body.source_id, exc_info=True,
+            )
     logger.info(
         "Phase 4b-β: persist-pass2 done source_id=%s "
         "entities=%d relations=%d events=%d facts=%d in %.1fs",
@@ -546,4 +648,227 @@ async def glossary_sync_entity(
         glossary_entity_id=result["glossary_entity_id"],
         action=action,  # type: ignore[arg-type]
         canonical_name=result["canonical_name"],
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# P2 (hierarchical extraction T3) — cache invalidation endpoint (D5)
+# Spec: docs/specs/2026-05-23-p2-parallel-map-checkpoint.md §D5
+# ═══════════════════════════════════════════════════════════════════════
+
+
+_VALID_INVALIDATE_OPS = {"entity", "relation", "event", "fact"}
+
+
+class InvalidateCacheResponse(BaseModel):
+    book_id: UUID
+    invalidated_ops: list[str]
+    deleted_leaves: int
+    deleted_raw: int
+
+
+@router.post(
+    "/invalidate-cache/{book_id}",
+    response_model=InvalidateCacheResponse,
+    summary="P2 — invalidate extraction_leaves cache for one book",
+    description=(
+        "Explicit invalidation per PO choice 2. Triggered by parse_version "
+        "bumps (P3 re-parse), extractor_version drift (prompt edits), or "
+        "FE 'Rebuild Graph' button. Uses two-step CTE Tx (H2 fix) for "
+        "accurate deleted_raw count — CASCADE delete doesn't surface via "
+        "RETURNING."
+    ),
+)
+async def invalidate_cache(
+    book_id: UUID,
+    op: str | None = None,
+) -> InvalidateCacheResponse:
+    # Validate optional op filter.
+    if op is not None and op not in _VALID_INVALIDATE_OPS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"op must be one of {sorted(_VALID_INVALIDATE_OPS)} or omitted",
+        )
+    target_ops = [op] if op else sorted(_VALID_INVALIDATE_OPS)
+
+    from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
+
+    pool = get_knowledge_pool()
+    repo = ExtractionLeavesRepo(pool)
+    deleted_leaves, deleted_raw = await repo.delete_by_book(
+        book_id=book_id, ops=target_ops,
+    )
+
+    logger.info(
+        "p2 invalidate-cache book_id=%s ops=%s deleted_leaves=%d deleted_raw=%d",
+        book_id, target_ops, deleted_leaves, deleted_raw,
+    )
+    return InvalidateCacheResponse(
+        book_id=book_id,
+        invalidated_ops=target_ops,
+        deleted_leaves=deleted_leaves,
+        deleted_raw=deleted_raw,
+    )
+
+
+# ── P3 D-P3-WORKER-AI-CONSUMER-WIRING — summarize-message dispatch ────
+
+
+class SummarizeMessageRequest(BaseModel):
+    """Wire shape of `SummarizeMessage` from `app.jobs.summary_enqueue`.
+
+    Fields mirror `SummarizeMessage.from_redis_fields`; worker-ai posts
+    these after XREADGROUP without needing to import the dataclass.
+    """
+    level: Literal["chapter", "part", "book"]
+    node_path: str = Field(min_length=1)
+    node_id: str = Field(min_length=1)
+    book_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1)
+    project_id: str = ""  # may be empty for legacy paths
+    job_id: str = Field(min_length=1)
+    model_ref: str = Field(min_length=1)
+    embedding_model_uuid: str = Field(min_length=1)
+    embedding_dimension: int = Field(ge=1)
+    retry_at_epoch: float = 0.0
+    retried_n: int = 0
+
+
+class SummarizeMessageResponse(BaseModel):
+    """Mirror of `SummaryProcessResult`."""
+    level: str
+    node_id: str
+    cache_hit: bool
+    race_winner: bool
+    re_enqueued: bool
+    skipped_retry_exhausted: bool
+    summary_id: str | None
+
+
+# Module-level singleton — Redis client is reusable across all
+# summarize-message dispatches and we want one connection pool.
+_summary_enqueue_singleton = None
+
+
+def _get_summary_enqueue():
+    """Lazy-build the redis-backed enqueue function.
+
+    Per `make_redis_summary_enqueue` — opens a long-lived async Redis
+    connection on first use; subsequent calls reuse the same client.
+    Used by `process_summarize_message` for M4 re-enqueue when D9
+    defensive checks fail.
+    """
+    global _summary_enqueue_singleton
+    if _summary_enqueue_singleton is None:
+        from app.jobs.summary_enqueue import make_redis_summary_enqueue
+        _summary_enqueue_singleton = make_redis_summary_enqueue(settings.redis_url)
+    return _summary_enqueue_singleton
+
+
+class _EmbeddingAdapter:
+    """Bridges the real EmbeddingClient to the `embed(text, model_uuid)`
+    shape `process_summarize_message` expects.
+
+    `EmbeddingClient.embed` returns an `EmbeddingResult` (batched API).
+    The summary processor calls one embed per summary and wants the
+    vector list directly — this adapter unwraps and returns
+    `embeddings[0]`.
+    """
+
+    def __init__(self, real, *, user_id: UUID) -> None:
+        self._real = real
+        self._user_id = user_id
+
+    async def embed(self, *, text: str, model_uuid: str) -> list[float]:
+        result = await self._real.embed(
+            user_id=self._user_id,
+            model_source="user_model",
+            model_ref=model_uuid,
+            texts=[text],
+        )
+        if not result.embeddings or not result.embeddings[0]:
+            raise RuntimeError("embedding probe returned empty vector")
+        return result.embeddings[0]
+
+
+@router.post(
+    "/summarize-message",
+    response_model=SummarizeMessageResponse,
+    summary="P3 — process one extraction.summarize stream message",
+    description=(
+        "Dispatch entrypoint for worker-ai's Redis Stream consumer "
+        "(D-P3-WORKER-AI-CONSUMER-WIRING). Worker-ai XREADGROUPs "
+        "`extraction.summarize`, posts the message body here, then "
+        "XACKs on 200. Body shape mirrors "
+        "`app.jobs.summary_enqueue.SummarizeMessage`."
+    ),
+)
+async def process_summarize_message_endpoint(
+    req: SummarizeMessageRequest,
+) -> SummarizeMessageResponse:
+    """Worker-ai consumer entrypoint.
+
+    Builds `SummaryProcessorDeps` from the existing knowledge-service
+    singletons (pool, neo4j session, llm_client, embedding_client +
+    adapter) and delegates to `process_summarize_message`. The async
+    `process_summarize_message` does all the heavy lifting (cache
+    check, D9 defensive, LLM call, embed, Postgres + Neo4j writes,
+    M4 re-enqueue).
+    """
+    from app.clients.embedding_client import get_embedding_client
+    from app.clients.llm_client import get_llm_client
+    from app.jobs.summary_enqueue import SummarizeMessage
+    from app.jobs.summary_processor import (
+        SummaryProcessorDeps,
+        process_summarize_message,
+    )
+
+    msg = SummarizeMessage(
+        level=req.level,
+        node_path=req.node_path,
+        node_id=req.node_id,
+        book_id=req.book_id,
+        user_id=req.user_id,
+        project_id=req.project_id,
+        job_id=req.job_id,
+        model_ref=req.model_ref,
+        embedding_model_uuid=req.embedding_model_uuid,
+        embedding_dimension=req.embedding_dimension,
+        retry_at_epoch=req.retry_at_epoch,
+        retried_n=req.retried_n,
+    )
+
+    try:
+        pool = get_knowledge_pool()
+    except Exception as exc:
+        logger.error("summarize-message: knowledge pool unavailable: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="knowledge storage is unavailable",
+        ) from exc
+
+    # Open a fresh Neo4j session per dispatch — `process_summarize_message`
+    # does multiple session.run calls but treats them as a single logical
+    # work unit; a per-call session matches the existing /persist-pass2
+    # pattern and avoids leaking sessions across worker-ai requests.
+    async with neo4j_session() as session:
+        deps = SummaryProcessorDeps(
+            knowledge_pool=pool,
+            neo4j_session=session,
+            llm_client=get_llm_client(),
+            embedding_client=_EmbeddingAdapter(
+                get_embedding_client(), user_id=UUID(req.user_id),
+            ),
+            summary_enqueue=_get_summary_enqueue(),
+        )
+        result = await process_summarize_message(msg, deps)
+
+    return SummarizeMessageResponse(
+        level=result.level,
+        node_id=result.node_id,
+        cache_hit=result.cache_hit,
+        race_winner=result.race_winner,
+        re_enqueued=result.re_enqueued,
+        skipped_retry_exhausted=result.skipped_retry_exhausted,
+        summary_id=str(result.summary_id) if result.summary_id else None,
     )

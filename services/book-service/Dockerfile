@@ -7,8 +7,12 @@ RUN apk add --no-cache git
 # inside the container. The compose file sets context: .. and
 # dockerfile: services/book-service/Dockerfile.
 #
-# Copy SDK first (separate cache layer), then service files.
+# Phase 6c — also COPY sdks/go/observability for the second replace
+# directive (github.com/loreweave/observability).
+#
+# Copy SDKs first (separate cache layers), then service files.
 COPY sdks/go/llmgw /src/sdks/go/llmgw
+COPY sdks/go/observability /src/sdks/go/observability
 COPY services/book-service /src/services/book-service
 
 WORKDIR /src/services/book-service

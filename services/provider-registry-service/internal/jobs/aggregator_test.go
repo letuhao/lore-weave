@@ -558,6 +558,76 @@ func TestJSONListAggregator_UnchunkedSingleParseStillWorks(t *testing.T) {
 	}
 }
 
+func TestJSONListAggregator_StripsMarkdownCodeFence(t *testing.T) {
+	// Reasoning models (e.g. qwen3.6 via LM Studio) wrap JSON output in
+	// markdown ```json fences. The raw leading backtick fails
+	// json.Unmarshal ("invalid character '`'"); the aggregator must
+	// recover by extracting the outermost {...} object. Regression lock
+	// for the live cross-service bug: every event_extraction returned 0
+	// items with chunk_errors=["... invalid character '`' ..."] despite
+	// the model emitting well-formed events.
+	a := NewAggregator("event_extraction")
+	feedJSON(a, 0, "```json\n"+
+		`{"events":[{"name":"Alice chases Rabbit","kind":"travel","participants":["Alice"],"time_cue":null,"summary":"Alice runs after the White Rabbit.","confidence":0.95}]}`+
+		"\n```", 100, 50)
+
+	result, _, _ := a.Finalize()
+	events, ok := result["events"].([]any)
+	if !ok || len(events) != 1 {
+		t.Fatalf("expected 1 event recovered from fenced JSON, got %d: %#v", len(events), result["events"])
+	}
+	if errs, ok := result["chunk_errors"].([]string); ok && len(errs) != 0 {
+		t.Errorf("fenced-but-recoverable chunk should not surface chunk_errors, got %#v", errs)
+	}
+}
+
+func TestJSONListAggregator_StripsFenceWithSurroundingProse(t *testing.T) {
+	// Some models add a sentence before/after the fenced block.
+	a := NewAggregator("entity_extraction")
+	feedJSON(a, 0, "Here is the JSON you requested:\n```json\n"+
+		`{"entities":[{"name":"Holmes","kind":"person","aliases":[],"confidence":0.9}]}`+
+		"\n```\nLet me know if you need more.", 100, 50)
+
+	result, _, _ := a.Finalize()
+	entities, ok := result["entities"].([]any)
+	if !ok || len(entities) != 1 {
+		t.Fatalf("expected 1 entity recovered from prose+fence, got %d: %#v", len(entities), result["entities"])
+	}
+}
+
+func TestJSONListAggregator_NoBraceStillSurfacesError(t *testing.T) {
+	// Recovery only kicks in when there's a {...} to extract. Pure
+	// non-JSON with no closing brace must still surface a chunk_error
+	// (guards against the recovery path swallowing real failures).
+	a := NewAggregator("entity_extraction")
+	feedJSON(a, 0, "not-valid-json{{", 10, 5)
+	result, _, _ := a.Finalize()
+	if errs, ok := result["chunk_errors"].([]string); !ok || len(errs) != 1 {
+		t.Errorf("expected 1 chunk_errors entry for unrecoverable input, got %#v", result["chunk_errors"])
+	}
+}
+
+func TestExtractJSONObject(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+		ok   bool
+	}{
+		{"bare", `{"a":1}`, `{"a":1}`, true},
+		{"fenced", "```json\n{\"a\":1}\n```", `{"a":1}`, true},
+		{"prose", "blah\n```json\n{\"a\":1}\n```\ntail", `{"a":1}`, true},
+		{"no_close", "not-json{{", "", false},
+		{"empty", "", "", false},
+	}
+	for _, c := range cases {
+		got, ok := extractJSONObject(c.in)
+		if ok != c.ok || (ok && got != c.want) {
+			t.Errorf("%s: extractJSONObject(%q) = (%q,%v), want (%q,%v)", c.name, c.in, got, ok, c.want, c.ok)
+		}
+	}
+}
+
 func TestIsTerminal(t *testing.T) {
 	for _, s := range []string{"completed", "failed", "cancelled"} {
 		if !IsTerminal(s) {

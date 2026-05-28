@@ -1,0 +1,241 @@
+# Xianxia per-book sample registry — proof-of-concept that books can
+# ship their own registry overriding `lw:` defaults + adding new tags.
+#
+# This file is loaded only by tests + future per-channel registry
+# selection (V3 scope). The engine algorithms remain V1-kind-driven;
+# this registry overrides what the V2 wire-shape *reports* for those
+# placements (primitive, footprint, label, properties), so a viewer
+# pinned to a xianxia book sees thematic labels + properties instead
+# of the default `lw:*` ones.
+#
+# Architecture:
+# - Override the canonical `lw:*` tags so existing placer code routes
+#   through them unchanged but with xianxia themes (primitives kept
+#   compatible — switching `lw:water` to `hazard` would break river
+#   placement; switching `lw:obstacle.mountain` to `plant` would break
+#   river source resolution).
+# - Add new `xianxia:*` tags for book-specific objects that the V3
+#   placement engine will be able to place once registry-driven
+#   placement ships. For V2 these new tags are inert metadata.
+
+[registry]
+id = "xianxia"
+version = "0.1.0"
+
+# ── TERRAIN — Xianxia-themed re-skin of the 10 V1 TerrainKind variants ──
+
+[[terrain]]
+id = "lw:grass"
+primitive = "land"
+label = "Qi Meadow"
+properties = { movement_speed = 1.0, qi_density = "low", cultivation_tier = "mortal" }
+
+[[terrain]]
+id = "lw:forest"
+primitive = "land"
+label = "Spirit Grove"
+properties = { movement_speed = 0.85, qi_density = "medium", spirit_herb_chance = 0.15 }
+
+[[terrain]]
+id = "lw:mountain"
+primitive = "land"
+label = "Dao Mountain Slope"
+properties = { movement_speed = 0.45, qi_density = "high", dao_resonance = "earth" }
+
+[[terrain]]
+id = "lw:water"
+primitive = "water"
+label = "Spirit Spring"
+properties = { qi_density = "medium", dao_resonance = "water", purity = "high" }
+
+[[terrain]]
+id = "lw:sand"
+primitive = "land"
+label = "Desolation Sands"
+properties = { movement_speed = 0.7, qi_density = "very_low", climate = "arid" }
+
+[[terrain]]
+id = "lw:snow"
+primitive = "land"
+label = "Frost Plain"
+properties = { movement_speed = 0.6, qi_density = "low", dao_resonance = "ice" }
+
+[[terrain]]
+id = "lw:swamp"
+primitive = "land"
+label = "Yin Bog"
+properties = { movement_speed = 0.4, qi_density = "high", dao_resonance = "yin", taint = true }
+
+[[terrain]]
+id = "lw:road"
+primitive = "path"
+label = "Pilgrim Trail"
+properties = { movement_speed = 1.2, cultivation_safe = true }
+
+[[terrain]]
+id = "lw:rough"
+primitive = "land"
+label = "Broken Earth"
+properties = { movement_speed = 0.75, qi_density = "low" }
+
+[[terrain]]
+id = "lw:subterranean"
+primitive = "land"
+label = "Underdark Vein"
+properties = { z_level = "underground", qi_density = "very_high", dao_resonance = "metal" }
+
+# ── OBJECTS — Xianxia re-skin of V1 TilemapObjectKind variants ────────
+
+[[object]]
+id = "lw:treasure"
+primitive = "pickup"
+label = "Spirit Stone Cache"
+footprint = { width = 1, height = 1 }
+properties = { loot_table_id = "xianxia:spirit-stones", cultivation_tier = "foundation" }
+
+[[object]]
+id = "lw:monster_lair"
+primitive = "spawner"
+label = "Demonic Beast Den"
+footprint = { width = 1, height = 1 }
+properties = { spawn_pool = ["xianxia:corrupt-beast", "xianxia:shadow-fiend"], tick_interval = 1200 }
+
+[[object]]
+id = "lw:town"
+primitive = "habitable"
+label = "Cultivation Sect"
+footprint = { width = 4, height = 4 }
+min_spacing = 8
+properties = { drill_down_target = "sect_interior", sect_rank = "outer" }
+
+[[object]]
+id = "lw:mine"
+primitive = "habitable"
+label = "Spirit Mine"
+footprint = { width = 2, height = 2 }
+min_spacing = 3
+walkability_pattern = { mask = [true, false, false, false] }
+properties = { drill_down_target = "spirit_mine_interior", resource_hint = "spirit_ore", purity_tier = "low" }
+
+[[object]]
+id = "lw:landmark"
+primitive = "decoration"
+label = "Ancient Dao Inscription"
+footprint = { width = 1, height = 1 }
+properties = { lore_hook = true, dao_comprehension_bonus = 0.05 }
+
+[[object]]
+id = "lw:monolith"
+primitive = "trigger"
+label = "Formation Pillar"
+footprint = { width = 1, height = 1 }
+properties = { condition = "on_walk", paired_via = "passage_kind_portal", formation_type = "teleport" }
+
+[[object]]
+id = "lw:decoration"
+primitive = "decoration"
+label = "Spirit Lantern"
+footprint = { width = 1, height = 1 }
+
+[[object]]
+id = "lw:ferry"
+primitive = "vehicle"
+label = "Spirit Boat"
+footprint = { width = 1, height = 1 }
+properties = { destination_event = "ferry_cross", terrain_requirement = "lw:water", min_cultivation = "qi_condensation" }
+
+# Obstacle subtypes (xianxia re-skin) — primitives left as `blocker`
+# to preserve river-source / lake-sink behavior keyed on
+# obstacle_subtype.
+
+[[object]]
+id = "lw:obstacle.mountain"
+primitive = "blocker"
+label = "Sacred Peak"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "mountain", river_role = "source", dao_resonance = "earth" }
+
+[[object]]
+id = "lw:obstacle.tree"
+primitive = "blocker"
+label = "Spirit Tree"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "tree", future_promotion = "plant", spirit_herb_chance = 0.25 }
+
+[[object]]
+id = "lw:obstacle.lake"
+primitive = "blocker"
+label = "Reflection Pool"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "lake", river_role = "sink", dao_resonance = "water" }
+
+[[object]]
+id = "lw:obstacle.crater"
+primitive = "blocker"
+label = "Tribulation Scar"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "crater", legacy_event = "heavenly_tribulation" }
+
+[[object]]
+id = "lw:obstacle.rock"
+primitive = "blocker"
+label = "Qi-Soaked Boulder"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "rock", qi_density = "medium" }
+
+[[object]]
+id = "lw:obstacle.plant"
+primitive = "blocker"
+label = "Demonic Vine"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "plant", future_promotion = "plant", taint = true }
+
+[[object]]
+id = "lw:obstacle.structure"
+primitive = "blocker"
+label = "Fallen Pagoda"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "structure", origin = "ancient_sect" }
+
+[[object]]
+id = "lw:obstacle.animal"
+primitive = "blocker"
+label = "Spirit Beast"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "animal", future_promotion = "npc", cultivation_tier = "foundation" }
+
+[[object]]
+id = "lw:obstacle.other"
+primitive = "blocker"
+label = "Misc Hazard"
+footprint = { width = 1, height = 1 }
+properties = { obstacle_subtype = "other" }
+
+# ── NEW xianxia-namespace tags (inert metadata in V2; V3 placement
+#    engine will be registry-driven and able to spawn these). Included
+#    to prove the per-book extension surface works end-to-end. ───────
+
+[[object]]
+id = "xianxia:dao-stone"
+primitive = "trigger"
+label = "Dao Comprehension Stone"
+footprint = { width = 1, height = 1 }
+properties = { condition = "on_meditate", comprehension_gain = 1.0, rarity = "epic" }
+
+[[object]]
+id = "xianxia:qi-spring"
+primitive = "habitable"
+label = "Qi-Gathering Spring"
+footprint = { width = 2, height = 2 }
+min_spacing = 12
+walkability_pattern = { mask = [true, false, false, false] }
+properties = { drill_down_target = "qi_spring_interior", qi_regen_per_tick = 5.0 }
+
+[[object]]
+id = "xianxia:formation-array"
+primitive = "trigger"
+label = "Sealing Formation Array"
+footprint = { width = 3, height = 3 }
+min_spacing = 6
+walkability_pattern = { mask = [true, true, true, true, false, true, true, true, true] }
+properties = { condition = "on_walk", formation_type = "seal", break_difficulty = "core" }

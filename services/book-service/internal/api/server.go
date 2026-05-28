@@ -21,6 +21,8 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
+	"github.com/loreweave/observability"
+
 	"github.com/loreweave/book-service/internal/config"
 	"github.com/loreweave/llmgw"
 )
@@ -90,7 +92,8 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return s
 }
 
-var internalClient = &http.Client{Timeout: 10 * time.Second}
+// Phase 6c — traced transport so outbound calls carry a W3C traceparent + emit a CLIENT span.
+var internalClient = &http.Client{Timeout: 10 * time.Second, Transport: observability.HTTPTransport(nil)}
 
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +109,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// Phase 6c — OpenTelemetry SERVER span. Before Recoverer so the span
+	// survives (and is marked 500) when a handler panics.
+	r.Use(observability.ChiMiddleware())
 	r.Use(middleware.Recoverer)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {
@@ -141,6 +147,14 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
+		// P2 (hierarchical extraction T3) — knowledge-service consumes these
+		// for per-leaf orchestration. Spec D8 + scenes.go.
+		r.Get("/books/{book_id}/chapters/{chapter_id}/scenes", s.getInternalScenesByChapter)
+		r.Get("/books/{book_id}/chapters/{chapter_id}/draft-text", s.getInternalChapterDraftText)
+		// P3 D-P3-EXTRACTION-CALLER-WIRE-UP — worker-ai consumes this to
+		// build the HierarchyPathsPayload it forwards to knowledge-service's
+		// /persist-pass2 (so the receiving side can enqueue summaries).
+		r.Get("/books/{book_id}/chapters/{chapter_id}/hierarchy", s.getInternalChapterHierarchy)
 		// C6 (D-K19b.3-01 + D-K19e-β-01) — batch chapter-title resolver.
 		// Cross-book query (caller passes a set of chapter_ids from any
 		// books they own); sits under /internal/chapters rather than

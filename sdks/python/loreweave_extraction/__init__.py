@@ -17,6 +17,18 @@ Top-level exports:
 """
 
 from loreweave_extraction._types import DroppedHandler, LLMClientProtocol
+from loreweave_extraction._version import (
+    __extractor_version__,
+    get_extractor_version,
+)
+from loreweave_extraction.context_budget import (
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    DEFAULT_MODEL_CONTEXT,
+    ContextBudget,
+    Language,
+    estimate_paragraph_count,
+    estimate_text_tokens,
+)
 from loreweave_extraction.canonical import (
     HONORIFICS,
     canonicalize_entity_name,
@@ -45,6 +57,10 @@ from loreweave_extraction.extractors.relation import (
     RelationExtractionResponse,
     extract_relations,
 )
+from loreweave_extraction.extractors.summarize import (
+    LevelSummary,
+    summarize_level,
+)
 from loreweave_extraction.pass2 import Pass2Candidates, extract_pass2
 
 __all__ = [
@@ -56,6 +72,8 @@ __all__ = [
     "extract_relations",
     "extract_events",
     "extract_facts",
+    "summarize_level",
+    "LevelSummary",
     # Candidate models
     "LLMEntityCandidate",
     "LLMRelationCandidate",
@@ -78,4 +96,14 @@ __all__ = [
     # Typing
     "LLMClientProtocol",
     "DroppedHandler",
+    # P2 — extractor version (sha256 of prompts/*.md)
+    "__extractor_version__",
+    "get_extractor_version",
+    # Model-context-aware chunking + concurrency
+    "ContextBudget",
+    "Language",
+    "estimate_text_tokens",
+    "estimate_paragraph_count",
+    "DEFAULT_MAX_OUTPUT_TOKENS",
+    "DEFAULT_MODEL_CONTEXT",
 ]

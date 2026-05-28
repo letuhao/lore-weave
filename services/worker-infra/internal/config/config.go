@@ -28,6 +28,9 @@ type Config struct {
 	BookServiceURL  string
 	InternalToken   string
 	RabbitMQURL     string
+
+	// P1 (2026-05-23) — knowledge-service /internal/parse for structural decomposition.
+	KnowledgeServiceURL string
 }
 
 func Load() *Config {
@@ -44,6 +47,8 @@ func Load() *Config {
 		BookServiceURL:    requireEnv("BOOK_SERVICE_URL"),
 		InternalToken:     requireEnv("INTERNAL_SERVICE_TOKEN"),
 		RabbitMQURL:       envOrDefault("RABBITMQ_URL", ""),
+		// P1 — defaults match docker-compose KNOWLEDGE_SERVICE_URL.
+		KnowledgeServiceURL: envOrDefault("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
 	}
 
 	if v := os.Getenv("WORKER_TASKS"); v != "" {

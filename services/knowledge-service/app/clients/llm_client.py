@@ -25,7 +25,11 @@ import logging
 from typing import Any
 
 from loreweave_llm.client import Client as SDKClient
-from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
+from loreweave_llm.errors import (
+    LLMError,
+    LLMHttpError,
+    LLMTransientRetryNeededError,
+)
 from loreweave_llm.models import (
     ChunkingConfig,
     Job,
@@ -249,6 +253,37 @@ class LLMClient:
                 ).inc()
                 knowledge_llm_poll_total.labels(outcome="terminal").inc()
                 return job
+            except LLMHttpError as exc:
+                # Transport-level failure (ConnectTimeout, RemoteProtocolError,
+                # stale-pool reconnect after upstream restart). Per
+                # `feedback_specific_sdk_exception_catches_before_generic` —
+                # catch the SPECIFIC subclass first so it doesn't get demoted
+                # to "sdk_error". P3 D-P3-EXTRACTION-CALLER-WIRE-UP live
+                # smoke surfaced this: after provider-registry restart the
+                # cached pool's stale sockets caused every summarize_level
+                # POST to ConnectTimeout, so the chapter summary never ran.
+                knowledge_llm_job_total.labels(
+                    operation=operation, outcome="http_retry"
+                ).inc()
+                if attempts >= max_attempts:
+                    knowledge_llm_job_total.labels(
+                        operation=operation, outcome="failed"
+                    ).inc()
+                    logger.warning(
+                        "submit_and_wait HTTP retry exhausted op=%s err=%s",
+                        operation, exc,
+                    )
+                    raise
+                # Exponential backoff capped at 4s — short enough to
+                # respond within a typical caller timeout, long enough
+                # to let DNS/socket state recover.
+                backoff_s = min(0.5 * (2 ** (attempts - 1)), 4.0)
+                logger.info(
+                    "submit_and_wait HTTP retry op=%s attempt=%d/%d backoff=%.1fs err=%s",
+                    operation, attempts, max_attempts, backoff_s, exc,
+                )
+                await asyncio.sleep(backoff_s)
+                continue
             except LLMError:
                 knowledge_llm_job_total.labels(
                     operation=operation, outcome="sdk_error"

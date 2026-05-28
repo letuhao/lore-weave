@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 
 use loreweave_llm::{
-    ChatStreamRequest, GatewayClient, ModelSource, StreamFormat, ToolCallAccumulator,
+    ChatStreamRequest, GatewayClient, ModelSource, StreamEvent, StreamFormat, ToolCallAccumulator,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -27,6 +27,8 @@ use super::style::{NarrationLanguage, NarrationVoice, NarrativeTone};
 pub struct L4Attempt {
     pub narrations: Vec<L4Narration>,
     pub failure: Option<String>,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 /// Run ONE L4 gateway call for `inputs` (TMP_008b §3.3 tool + forced
@@ -76,7 +78,13 @@ pub async fn call_l4_attempt(
     let mut acc = ToolCallAccumulator::new();
     while let Some(ev) = handle.next().await {
         match ev {
-            Ok(event) => acc.push(&event),
+            Ok(event) => {
+                acc.push(&event);
+                if let StreamEvent::Usage { input_tokens, output_tokens, .. } = event {
+                    attempt.input_tokens = input_tokens;
+                    attempt.output_tokens = output_tokens;
+                }
+            }
             Err(e) => {
                 attempt.failure = Some(format!("stream error: {e}"));
                 break;
@@ -126,6 +134,9 @@ pub struct L4Result {
     pub llm_attempts: u32,
     /// Count of zones filled by the §6 canonical-default narration.
     pub fallback_count: usize,
+    /// Prompt + completion tokens summed across every gateway attempt.
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 /// TMP_008b §5/§6 for L4 — narrate `inputs` with a per-zone partial-success
@@ -163,6 +174,8 @@ pub async fn run_l4_with_retries(
     let mut accepted: Vec<L4Narration> = Vec::new();
     let mut accepted_ids: HashSet<String> = HashSet::new();
     let mut llm_attempts = 0u32;
+    let mut input_tokens = 0u32;
+    let mut output_tokens = 0u32;
     let mut last_errors: Vec<L4ValidationError> = Vec::new();
 
     for attempt in 1..=max_attempts {
@@ -191,6 +204,8 @@ pub async fn run_l4_with_retries(
         )
         .await;
         llm_attempts += 1;
+        input_tokens = input_tokens.saturating_add(outcome.input_tokens);
+        output_tokens = output_tokens.saturating_add(outcome.output_tokens);
 
         let (newly_accepted, mut errors) =
             partition_l4_response(&subset, &outcome.narrations, language);
@@ -225,5 +240,7 @@ pub async fn run_l4_with_retries(
         narrations: accepted,
         llm_attempts,
         fallback_count,
+        input_tokens,
+        output_tokens,
     })
 }

@@ -182,14 +182,23 @@ func TestClassifyStreamErrorCode_TransientFolds(t *testing.T) {
 // fakeAdapter records adapter.Stream invocations and replays a scripted
 // sequence of errors (then nil for success). Used to drive streamWithRetry
 // without a real upstream HTTP server.
+//
+// emitDelta, when non-empty, makes every Stream call emit one token chunk
+// with that delta BEFORE returning its scripted error — so a retry-after-
+// partial-emit scenario can be exercised (the per-chunk reset discipline
+// must discard a failed attempt's emitted tokens).
 type fakeAdapter struct {
-	calls  int32
-	errSeq []error // err[0] returned on first call, err[1] on retry, ...
+	calls     int32
+	errSeq    []error // err[0] returned on first call, err[1] on retry, ...
+	emitDelta string
 	provider.Adapter
 }
 
-func (f *fakeAdapter) Stream(_ context.Context, _, _, _ string, _ map[string]any, _ provider.EmitFn) error {
+func (f *fakeAdapter) Stream(_ context.Context, _, _, _ string, _ map[string]any, emit provider.EmitFn) error {
 	idx := atomic.AddInt32(&f.calls, 1) - 1
+	if f.emitDelta != "" {
+		_ = emit(provider.StreamChunk{Kind: provider.StreamChunkToken, Delta: f.emitDelta})
+	}
 	if int(idx) < len(f.errSeq) {
 		return f.errSeq[int(idx)]
 	}
@@ -204,146 +213,3 @@ func newWorkerForRetryTest() *Worker {
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
-
-func TestStreamWithRetry_TransientThenSuccess(t *testing.T) {
-	w := newWorkerForRetryTest()
-	adapter := &fakeAdapter{
-		errSeq: []error{
-			&provider.ErrUpstreamTransient{StatusCode: 502, Body: "first attempt fails"},
-			// nil on second attempt = success
-		},
-	}
-	err := w.streamWithRetry(context.Background(), adapter, "", "", "", nil, nil, w.logger)
-	if err != nil {
-		t.Fatalf("expected success after retry, got %v", err)
-	}
-	if got := atomic.LoadInt32(&adapter.calls); got != 2 {
-		t.Errorf("expected 2 adapter calls (initial + 1 retry), got %d", got)
-	}
-}
-
-func TestStreamWithRetry_NonTransientFailsImmediately(t *testing.T) {
-	w := newWorkerForRetryTest()
-	adapter := &fakeAdapter{
-		errSeq: []error{
-			&provider.ErrUpstreamPermanent{StatusCode: 400, Body: "bad input"},
-		},
-	}
-	err := w.streamWithRetry(context.Background(), adapter, "", "", "", nil, nil, w.logger)
-	if err == nil {
-		t.Fatal("expected error to propagate, got nil")
-	}
-	if got := atomic.LoadInt32(&adapter.calls); got != 1 {
-		t.Errorf("expected 1 adapter call (no retry on permanent), got %d", got)
-	}
-}
-
-func TestStreamWithRetry_TransientBudgetExhausted(t *testing.T) {
-	w := newWorkerForRetryTest()
-	adapter := &fakeAdapter{
-		errSeq: []error{
-			&provider.ErrUpstreamTransient{StatusCode: 502, Body: "first"},
-			&provider.ErrUpstreamTransient{StatusCode: 503, Body: "retry also fails"},
-		},
-	}
-	err := w.streamWithRetry(context.Background(), adapter, "", "", "", nil, nil, w.logger)
-	if err == nil {
-		t.Fatal("expected error after budget exhausted, got nil")
-	}
-	if got := atomic.LoadInt32(&adapter.calls); got != 2 {
-		t.Errorf("expected 2 adapter calls (initial + 1 retry), got %d", got)
-	}
-}
-
-func TestStreamWithRetry_RateLimitedHonorsRetryAfter(t *testing.T) {
-	// Smoke test that retry-after path is exercised. We don't time the
-	// sleep itself (would slow tests); instead set a tiny retry_after_s
-	// and assert the second call still happens.
-	w := newWorkerForRetryTest()
-	tinyWait := 0.01
-	adapter := &fakeAdapter{
-		errSeq: []error{
-			&provider.ErrUpstreamRateLimited{StatusCode: 429, Body: "slow down", RetryAfterS: &tinyWait},
-		},
-	}
-	err := w.streamWithRetry(context.Background(), adapter, "", "", "", nil, nil, w.logger)
-	if err != nil {
-		t.Fatalf("expected success after rate-limit retry, got %v", err)
-	}
-	if got := atomic.LoadInt32(&adapter.calls); got != 2 {
-		t.Errorf("expected 2 adapter calls, got %d", got)
-	}
-}
-
-func TestStreamWithRetry_ContextCancelledDuringBackoff(t *testing.T) {
-	// A cancel mid-backoff (from caller-side DELETE /v1/llm/jobs/{id})
-	// must propagate ctx.Err() instead of swallowing it as a successful
-	// retry. Cancel-race correctness invariant (ADR §5.5).
-	w := newWorkerForRetryTest()
-	adapter := &fakeAdapter{
-		errSeq: []error{
-			&provider.ErrUpstreamTransient{StatusCode: 502, Body: "first"},
-		},
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // pre-cancel — backoff sleep returns immediately via ctx.Done
-	err := w.streamWithRetry(ctx, adapter, "", "", "", nil, nil, w.logger)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled, got %v", err)
-	}
-}
-
-// /review-impl MED#5 — job-level shared budget across chunks.
-
-func TestStreamWithBudget_SharedBudgetExhaustsAcrossChunks(t *testing.T) {
-	// Simulates 3 chunks each hitting transient on first attempt. With
-	// shared budget=1, ONLY the first chunk gets to retry; chunks 2+3
-	// must fail immediately on transient because budget is depleted.
-	// This pins the "9 chunks × 2 attempts ≠ N×2 amplification" fix.
-	w := newWorkerForRetryTest()
-	budget := 1
-
-	// Chunk 0: transient → retry (budget consumed) → success
-	adapter0 := &fakeAdapter{
-		errSeq: []error{
-			&provider.ErrUpstreamTransient{StatusCode: 502, Body: "chunk0 first"},
-		},
-	}
-	if err := w.streamWithBudget(context.Background(), adapter0, "", "", "", nil, nil, &budget, w.logger); err != nil {
-		t.Fatalf("chunk0 expected success after retry, got %v", err)
-	}
-	if budget != 0 {
-		t.Fatalf("expected budget=0 after chunk0 retry, got %d", budget)
-	}
-
-	// Chunk 1: transient → NO retry (budget exhausted) → propagate failure
-	adapter1 := &fakeAdapter{
-		errSeq: []error{
-			&provider.ErrUpstreamTransient{StatusCode: 502, Body: "chunk1 first"},
-		},
-	}
-	err := w.streamWithBudget(context.Background(), adapter1, "", "", "", nil, nil, &budget, w.logger)
-	if err == nil {
-		t.Fatal("chunk1 expected failure (budget exhausted), got nil")
-	}
-	if got := atomic.LoadInt32(&adapter1.calls); got != 1 {
-		t.Errorf("chunk1 expected 1 adapter call (no retry), got %d", got)
-	}
-}
-
-func TestStreamWithBudget_SuccessfulChunksDoNotConsumeBudget(t *testing.T) {
-	// Successful chunks must NOT consume budget — only transient errors do.
-	// Otherwise a job with all-successful chunks would still deplete budget.
-	w := newWorkerForRetryTest()
-	budget := 1
-	adapter := &fakeAdapter{errSeq: []error{}} // all success
-
-	for i := 0; i < 5; i++ {
-		if err := w.streamWithBudget(context.Background(), adapter, "", "", "", nil, nil, &budget, w.logger); err != nil {
-			t.Fatalf("call %d unexpected error: %v", i, err)
-		}
-	}
-	if budget != 1 {
-		t.Errorf("expected budget=1 (untouched after all-success), got %d", budget)
-	}
-}

@@ -1,0 +1,46 @@
+{
+  "template_id": "v1_viewer_minimal",
+  "zones": [
+    {
+      "zone_id": "capital",
+      "zone_role": "wilderness",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [{ "to_zone": "crossroad", "kind": "threshold" }],
+      "treasure_tiers": []
+    },
+    {
+      "zone_id": "crossroad",
+      "zone_role": "hub",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [{ "to_zone": "frontier", "kind": "open" }],
+      "treasure_tiers": []
+    },
+    {
+      "zone_id": "frontier",
+      "zone_role": "wilderness",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [],
+      "treasure_tiers": []
+    },
+    {
+      "zone_id": "inland_sea",
+      "zone_role": "sea",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [],
+      "treasure_tiers": []
+    },
+    {
+      "zone_id": "rival",
+      "zone_role": "forbidden",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [],
+      "treasure_tiers": []
+    }
+  ],
+  "seed_offset": 0
+}

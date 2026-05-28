@@ -262,48 +262,43 @@ async def test_update_clears_book_id(pool):
 
 
 @pytest.mark.asyncio
-async def test_k12_4_update_embedding_model_auto_derives_dimension(pool):
-    """K12.4: PATCH embedding_model also sets embedding_dimension via
-    the EMBEDDING_MODEL_TO_DIM map. Clearing the model (None) clears
-    the dim. Unknown models yield dim=None so the downstream L3
-    pipeline skips cleanly."""
+async def test_update_embedding_model_and_dimension(pool):
+    """D-EMB-MODEL-REF-01: embedding_model (a provider user_model UUID)
+    and embedding_dimension are set together by the caller — the
+    dimension is no longer auto-derived from a logical-name map.
+    Clearing the model (None) still clears the dimension."""
     repo = ProjectsRepo(pool)
     user = uuid4()
     p = await repo.create(user, _mk("s"))
     assert p.embedding_model is None
     assert p.embedding_dimension is None
 
-    # Set a known model → dim auto-derived.
-    out = await repo.update(
-        user, p.project_id, ProjectUpdate(embedding_model="bge-m3"),
-    )
-    assert out is not None
-    assert out.embedding_model == "bge-m3"
-    assert out.embedding_dimension == 1024
-
-    # Switch to another known model → dim updates.
+    # Set a model UUID + its dimension together.
+    model_a = str(uuid4())
     out = await repo.update(
         user, p.project_id,
-        ProjectUpdate(embedding_model="text-embedding-3-small"),
+        ProjectUpdate(embedding_model=model_a, embedding_dimension=1024),
     )
     assert out is not None
+    assert out.embedding_model == model_a
+    assert out.embedding_dimension == 1024
+
+    # Switch to another model + dimension.
+    model_b = str(uuid4())
+    out = await repo.update(
+        user, p.project_id,
+        ProjectUpdate(embedding_model=model_b, embedding_dimension=1536),
+    )
+    assert out is not None
+    assert out.embedding_model == model_b
     assert out.embedding_dimension == 1536
 
-    # Clear the model → dim also cleared.
+    # Clear the model → dimension also cleared (the kept invariant).
     out = await repo.update(
         user, p.project_id, ProjectUpdate(embedding_model=None),
     )
     assert out is not None
     assert out.embedding_model is None
-    assert out.embedding_dimension is None
-
-    # Unknown model → dim stays None (downstream L3 skips cleanly).
-    out = await repo.update(
-        user, p.project_id,
-        ProjectUpdate(embedding_model="some-unsupported-model"),
-    )
-    assert out is not None
-    assert out.embedding_model == "some-unsupported-model"
     assert out.embedding_dimension is None
 
 

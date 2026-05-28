@@ -263,48 +263,10 @@ func TestHtmlToTiptapJSON_DivUnwrap(t *testing.T) {
 	}
 }
 
-func TestSplitChapters_Docx_SingleChapter(t *testing.T) {
-	chapters := splitChapters("<h1>My Chapter</h1><p>content</p>", "docx")
-	if len(chapters) != 1 {
-		t.Fatalf("expected 1 chapter for docx, got %d", len(chapters))
-	}
-	if chapters[0].Title != "My Chapter" {
-		t.Errorf("expected title 'My Chapter', got %q", chapters[0].Title)
-	}
-}
-
-func TestSplitChapters_Epub_MultipleChapters(t *testing.T) {
-	html := "<h1>Chapter 1</h1><p>content 1</p><h1>Chapter 2</h1><p>content 2</p><h1>Chapter 3</h1><p>content 3</p>"
-	chapters := splitChapters(html, "epub")
-	if len(chapters) != 3 {
-		t.Fatalf("expected 3 chapters for epub, got %d", len(chapters))
-	}
-	if chapters[0].Title != "Chapter 1" {
-		t.Errorf("expected 'Chapter 1', got %q", chapters[0].Title)
-	}
-	if chapters[2].Title != "Chapter 3" {
-		t.Errorf("expected 'Chapter 3', got %q", chapters[2].Title)
-	}
-}
-
-func TestSplitChapters_Epub_WithPreamble(t *testing.T) {
-	html := "<p>preamble</p><h1>Chapter 1</h1><p>content</p>"
-	chapters := splitChapters(html, "epub")
-	if len(chapters) != 2 {
-		t.Fatalf("expected 2 chapters (preamble + 1), got %d", len(chapters))
-	}
-	if chapters[0].Title != "Preamble" {
-		t.Errorf("expected 'Preamble', got %q", chapters[0].Title)
-	}
-}
-
-func TestSplitChapters_Epub_NoHeadings(t *testing.T) {
-	html := "<p>just some text</p><p>more text</p>"
-	chapters := splitChapters(html, "epub")
-	if len(chapters) != 1 {
-		t.Fatalf("expected 1 chapter when no headings, got %d", len(chapters))
-	}
-}
+// P1 (2026-05-23): TestSplitChapters_* deleted. Structural decomposition now
+// lives in the loreweave_parse SDK (sdks/python/loreweave_parse/) consumed via
+// knowledge-service /internal/parse. Cross-service coverage lives in
+// services/worker-infra/internal/tasks/import_processor_test.go (P1 cycle).
 
 func TestHtmlToTiptapJSON_ComplexPandocOutput(t *testing.T) {
 	// Simulate typical pandoc output from a docx

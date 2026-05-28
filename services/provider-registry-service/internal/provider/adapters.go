@@ -581,6 +581,45 @@ func extractMessages(input map[string]any) []map[string]any {
 	return []map[string]any{{"role": "user", "content": "Hi"}}
 }
 
+// forwardOptionalChatFields copies passthrough fields from the SDK's
+// `input` dict into the upstream request body when present. Centralizes
+// the per-field "if ok, forward" pattern so every OpenAI-compatible
+// adapter (openai, lm_studio, ollama) treats these the same way.
+//
+// Fields forwarded:
+//   - response_format    — JSON-schema enforcement (OpenAI structured
+//     output, LM Studio + Ollama via llama.cpp's grammar layer)
+//   - chat_template_kwargs — llama.cpp passthrough (e.g.
+//     {"thinking": false}, {"enable_thinking": false}) to suppress
+//     thinking-mode generation on reasoning-capable local models
+//     (Qwen3-thinking, DeepSeek-R1, abliterated variants). Critical
+//     for extraction pipelines whose JSON output is otherwise
+//     swallowed by reasoning_tokens (D-EXTRACTION-CONTEXT-FIX-STAGE-4).
+//   - reasoning_effort   — OpenAI o1/o3-style reasoning budget knob
+//   - top_p, top_k, presence_penalty, frequency_penalty, seed —
+//     standard sampling controls
+//
+// Providers that don't recognize a field generally ignore it; OpenAI
+// rejects unknown fields with 400, but the SDK doesn't include those
+// fields unless explicitly set. We keep the surface narrow + boring.
+func forwardOptionalChatFields(input, body map[string]any) {
+	passthrough := []string{
+		"response_format",
+		"chat_template_kwargs",
+		"reasoning_effort",
+		"top_p",
+		"top_k",
+		"presence_penalty",
+		"frequency_penalty",
+		"seed",
+	}
+	for _, k := range passthrough {
+		if v, ok := input[k]; ok {
+			body[k] = v
+		}
+	}
+}
+
 // ── OpenAI adapter ────────────────────────────────────────────────────────────
 
 type openaiAdapter struct {
@@ -729,6 +768,7 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 	if v, ok := input["tool_choice"]; ok {
 		body["tool_choice"] = v
 	}
+	forwardOptionalChatFields(input, body)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err
@@ -846,12 +886,17 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	}
 	payload := map[string]any{
 		"model":      modelName,
-		"messages":   extractMessages(input),
+		"messages":   convertAnthropicMessages(input),
 		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
 		payload["temperature"] = v
 	}
+	// D12 — request-side tool support. Convert the OpenAI-shaped tools /
+	// tool_choice to Anthropic's shape. Omit both when tool_choice is
+	// "none" or no tools were supplied (zero behavior change for
+	// tool-free Anthropic requests).
+	applyAnthropicTools(payload, input)
 	out, err := postJSON(ctx, a.client, base+"/v1/messages",
 		map[string]string{
 			"x-api-key":         secret,
@@ -898,7 +943,7 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	}
 	body := map[string]any{
 		"model":      modelName,
-		"messages":   extractMessages(input),
+		"messages":   convertAnthropicMessages(input),
 		"max_tokens": maxTokens,
 	}
 	if v, ok := input["temperature"]; ok {
@@ -907,6 +952,11 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	if v, ok := input["system"]; ok {
 		body["system"] = v
 	}
+	// D12 — request-side tool support. Convert the OpenAI-shaped tools /
+	// tool_choice to Anthropic's shape. Omit both when tool_choice is
+	// "none" or no tools were supplied (zero behavior change for
+	// tool-free Anthropic requests).
+	applyAnthropicTools(body, input)
 	resp, err := openAnthropicStream(ctx, a.client, base, secret, body)
 	if err != nil {
 		return err
@@ -915,13 +965,13 @@ func (a *anthropicAdapter) Stream(ctx context.Context, endpointBaseURL, secret, 
 	return streamAnthropicSSE(ctx, resp.Body, emit)
 }
 
-// SupportsTools — false. anthropicAdapter.Stream does not forward `tools`
-// (Anthropic-shaped tools differ from the OpenAI-shaped contract `tools`
-// field); request-side Anthropic tool support is deferred. The streamer
-// parse-side DOES map tool_use blocks, but without a request-side tools
-// array the model never emits them — so the handler rejects tools/tool_choice
-// for this adapter rather than silently dropping them.
-func (a *anthropicAdapter) SupportsTools() bool { return false }
+// SupportsTools — true (Phase K21-B / D12). anthropicAdapter.Stream and
+// .Invoke convert the OpenAI-shaped `tools` / `tool_choice` / tool-result
+// `messages` into Anthropic's /v1/messages shape (see anthropic_tools.go),
+// and the streamer parse-side already maps tool_use blocks → ToolCallEvent.
+// With both sides wired, the handler may forward tools/tool_choice to this
+// adapter; no first-class provider rejects tools any more.
+func (a *anthropicAdapter) SupportsTools() bool { return true }
 
 // ── Ollama adapter ────────────────────────────────────────────────────────────
 
@@ -1035,6 +1085,7 @@ func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, m
 	if v, ok := input["tool_choice"]; ok {
 		body["tool_choice"] = v
 	}
+	forwardOptionalChatFields(input, body)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", nil, body)
 	if err != nil {
 		return err
@@ -1234,6 +1285,7 @@ func (a *lmStudioAdapter) Stream(ctx context.Context, endpointBaseURL, secret, m
 	if v, ok := input["tool_choice"]; ok {
 		body["tool_choice"] = v
 	}
+	forwardOptionalChatFields(input, body)
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err

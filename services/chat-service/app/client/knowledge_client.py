@@ -78,6 +78,11 @@ class KnowledgeContext(BaseModel):
     token_count: int = 0
     stable_context: str = ""
     volatile_context: str = ""
+    # K21-B — per-project tool-calling opt-out, surfaced from
+    # knowledge-service `projects.tool_calling_enabled`. Defaults True so
+    # an older knowledge-service that omits the field, the no-project
+    # path, and the degraded path all leave tool-calling enabled.
+    tool_calling_enabled: bool = True
 
 
 def _degraded() -> KnowledgeContext:
@@ -103,9 +108,17 @@ class KnowledgeClient:
         timeout_s: float,
         retries: int,
         *,
+        tool_timeout_s: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """Construct the client.
+
+        `timeout_s` is the client-wide default — sized for `build_context`,
+        a fast read on the chat hot path. `tool_timeout_s` is the longer
+        per-call timeout `execute_tool` overrides with: a memory tool does
+        real work (`memory_remember` runs injection-neutralisation + a
+        Neo4j write) and routinely exceeds the build_context budget
+        (D-K21B-06 live-smoke finding).
 
         `transport` is an optional httpx transport to inject at test time
         (K5-I7 fix). Tests use `httpx.MockTransport(handler)` so they
@@ -116,6 +129,7 @@ class KnowledgeClient:
         """
         self._base_url = base_url.rstrip("/")
         self._retries = max(0, retries)
+        self._tool_timeout_s = tool_timeout_s
         client_kwargs: dict = {
             "timeout": httpx.Timeout(timeout_s),
             "headers": {"X-Internal-Token": internal_token},
@@ -123,6 +137,9 @@ class KnowledgeClient:
         if transport is not None:
             client_kwargs["transport"] = transport
         self._http = httpx.AsyncClient(**client_kwargs)
+        # K21-B — process cache for GET /internal/tools/definitions.
+        # None = not fetched yet; a list = the cached OpenAI schemas.
+        self._tool_definitions: list[dict] | None = None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -231,6 +248,99 @@ class KnowledgeClient:
         )
         return _degraded()
 
+    async def get_tool_definitions(self) -> list[dict]:
+        """GET /internal/tools/definitions — the OpenAI tool schemas
+        (K21-B D1). Cached process-wide after the first success.
+
+        Returns ``[]`` on any failure; the caller then runs the chat turn
+        tool-free. A failure is deliberately NOT cached, so a later turn
+        retries — ``build_context`` already runs every turn, so one extra
+        GET while knowledge-service is unreachable is negligible.
+        """
+        if self._tool_definitions is not None:
+            return self._tool_definitions
+
+        url = f"{self._base_url}/internal/tools/definitions"
+        tid = current_trace_id()
+        call_headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.get(url, headers=call_headers)
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge tool definitions fetch failed: %s", exc)
+            return []
+        if resp.status_code != 200:
+            logger.warning(
+                "knowledge tool definitions fetch %d", resp.status_code
+            )
+            return []
+        try:
+            tools = resp.json().get("tools", [])
+        except Exception as exc:
+            logger.warning("knowledge tool definitions decode failed: %s", exc)
+            return []
+        if not isinstance(tools, list):
+            logger.warning("knowledge tool definitions: unexpected shape")
+            return []
+        self._tool_definitions = tools
+        return tools
+
+    async def execute_tool(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        tool_name: str,
+        tool_args: dict,
+        project_id: str | None = None,
+    ) -> dict:
+        """POST /internal/tools/execute (K21-B).
+
+        Returns the ``{success, result, error}`` envelope. On a transport
+        failure or a non-200 it returns a synthesised ``success=False``
+        envelope so the tool-calling loop can tell the LLM the tool
+        failed and carry on — this never raises.
+        """
+        url = f"{self._base_url}/internal/tools/execute"
+        body: dict = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "tool_name": tool_name,
+            "tool_args": tool_args,
+        }
+        # Omit project_id when empty/None — a no-project chat is valid
+        # and the executor handles a null project per Cycle A design D3.
+        if project_id:
+            body["project_id"] = project_id
+
+        tid = current_trace_id()
+        call_headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            # Override the client-wide build_context budget — a memory
+            # tool does real work and would ReadTimeout at 500ms (D-K21B-06).
+            resp = await self._http.post(
+                url, json=body, headers=call_headers, timeout=self._tool_timeout_s
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge execute_tool transport error: %s", exc)
+            return {
+                "success": False, "result": None,
+                "error": f"tool backend unavailable: {type(exc).__name__}",
+            }
+        if resp.status_code != 200:
+            logger.warning("knowledge execute_tool HTTP %d", resp.status_code)
+            return {
+                "success": False, "result": None,
+                "error": f"tool backend error (HTTP {resp.status_code})",
+            }
+        try:
+            return resp.json()
+        except Exception as exc:
+            logger.warning("knowledge execute_tool decode failed: %s", exc)
+            return {
+                "success": False, "result": None,
+                "error": "tool backend returned an invalid response",
+            }
+
 
 # ── module-level singleton managed by lifespan ─────────────────────────────
 
@@ -250,6 +360,7 @@ def init_knowledge_client() -> KnowledgeClient:
         internal_token=settings.internal_service_token,
         timeout_s=settings.knowledge_client_timeout_s,
         retries=settings.knowledge_client_retries,
+        tool_timeout_s=settings.knowledge_tool_timeout_s,
     )
     return _client
 

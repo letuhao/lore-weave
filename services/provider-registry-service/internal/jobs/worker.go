@@ -11,10 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/loreweave/observability"
+	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/chunker"
 	"github.com/loreweave/provider-registry-service/internal/provider"
 	"github.com/loreweave/provider-registry-service/internal/storage"
@@ -53,16 +56,23 @@ type Worker struct {
 	// May be nil; URL-mode audio_gen jobs return LLM_INVALID_REQUEST in
 	// that case. b64_json mode works without an audioCache.
 	audioCache *storage.AudioCache
+	// Phase 6a — usage-billing spend-guardrail client. May be nil
+	// (router-only tests, dev without usage-billing); settleBilling then
+	// no-ops and the usage-billing sweeper releases any leaked hold.
+	guardrail *billing.GuardrailClient
+	// Phase 6b — transient-retry budget (config JOB_MAX_RETRIES). 0 → a
+	// failed upstream call is not retried.
+	maxRetries int
 }
 
-func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache) *Worker {
+func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache, guardrail *billing.GuardrailClient, maxRetries int) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if notifier == nil {
 		notifier = NoopNotifier{}
 	}
-	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache}
+	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache, guardrail: guardrail, maxRetries: maxRetries}
 }
 
 // finalizeAndNotify is the only path through which the worker ends a
@@ -84,6 +94,7 @@ func (w *Worker) finalizeAndNotify(
 	}
 	if rows == 0 {
 		// Race lost — cancel won. Cancel handler already published.
+		// The cancel handler also releases the spend reservation.
 		return
 	}
 	var resultJSON json.RawMessage
@@ -104,6 +115,126 @@ func (w *Worker) finalizeAndNotify(
 		// still poll. Log + move on.
 		w.logger.Warn("notifier publish failed", "job_id", jobID.String(), "err", err)
 	}
+	// Phase 6a — settle the spend reservation (reconcile or release). Runs
+	// only on a real transition (rows > 0), so a job whose finalize lost to
+	// a cancel is settled by the cancel handler, not double-counted here.
+	// Ordered AFTER the notification (/review-impl LOW#7) so a slow/hung
+	// usage-billing call cannot delay the terminal event.
+	w.settleBilling(ctx, jobID, ownerUserID, operation, status, result)
+}
+
+// settleBilling settles a terminal job's billing — Phase 6a + 6a-β. Two
+// independent best-effort steps: (1) reconcile/release the spend reservation
+// (Subsystem A + B); (2) on a completed job, record model-level usage to the
+// /record audit ledger (the gateway as biller). A usage-billing failure is
+// logged, never propagated.
+func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID, operation, status string, result any) {
+	if w.guardrail == nil {
+		return // billing not wired
+	}
+	resID, modelSource, modelRef, found, err := w.repo.BillingInfo(ctx, jobID)
+	if err != nil {
+		w.logger.Warn("billing info lookup failed", "job_id", jobID.String(), "err", err)
+		return
+	}
+	if !found {
+		return // no job row — nothing to settle or record
+	}
+
+	// (1) Spend reservation — only when the job carries one.
+	if resID != nil {
+		if status != "completed" {
+			// failed — free the hold, record no spend. (Cancellation is
+			// settled by the cancel handler, not the worker.)
+			if relErr := w.guardrail.Release(ctx, *resID); relErr != nil {
+				w.logger.Warn("guardrail release failed", "job_id", jobID.String(), "err", relErr)
+			}
+		} else {
+			// completed — reconcile. A non-nil actual is the measured
+			// spend; nil tells usage-billing to charge the reservation's
+			// own estimate (media jobs, or usage/pricing unresolved).
+			actual := w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
+			if recErr := w.guardrail.Reconcile(ctx, *resID, actual); recErr != nil {
+				w.logger.Warn("guardrail reconcile failed", "job_id", jobID.String(), "err", recErr)
+			}
+		}
+	}
+
+	// (2) Phase 6a-β — model-level usage record (gateway as biller). Only on
+	// a completed job with resolvable token usage; request_id = job_id so a
+	// settle retry is idempotent on the usage-billing side.
+	if status == "completed" {
+		if tokIn, tokOut, ok := usageTokens(result); ok {
+			if recErr := w.guardrail.RecordUsage(ctx, billing.UsageRecord{
+				RequestID:    jobID,
+				OwnerUserID:  ownerUserID,
+				ModelSource:  modelSource,
+				ModelRef:     modelRef,
+				Operation:    operation,
+				InputTokens:  tokIn,
+				OutputTokens: tokOut,
+			}); recErr != nil {
+				w.logger.Warn("usage record failed", "job_id", jobID.String(), "err", recErr)
+			}
+		}
+	}
+}
+
+// usageTokens extracts the input/output token counts from a completed job's
+// result `usage` block. ok=false when absent (every media operation).
+func usageTokens(result any) (inTok, outTok int, ok bool) {
+	rm, isMap := result.(map[string]any)
+	if !isMap {
+		return 0, 0, false
+	}
+	usage, isMap := rm["usage"].(map[string]any)
+	if !isMap {
+		return 0, 0, false
+	}
+	i, iok := numField(usage, "input_tokens")
+	o, ook := numField(usage, "output_tokens")
+	if !iok || !ook {
+		return 0, 0, false
+	}
+	return i, o, true
+}
+
+// actualUSD computes the measured spend of a completed job from its result
+// `usage` block × the model's pricing. Returns nil — "fall back to the stored
+// estimate" — whenever the usage tokens or a required price dimension is
+// unavailable (notably every media operation, which carries no token usage).
+func (w *Worker) actualUSD(ctx context.Context, ownerUserID uuid.UUID, modelSource string, modelRef uuid.UUID, result any) *float64 {
+	tokIn, tokOut, ok := usageTokens(result)
+	if !ok {
+		return nil
+	}
+	pricing, found, err := w.repo.ModelPricing(ctx, modelSource, ownerUserID, modelRef)
+	if err != nil || !found || pricing.InputPerMTok == nil || pricing.OutputPerMTok == nil {
+		return nil
+	}
+	usd := float64(tokIn)/1e6*(*pricing.InputPerMTok) + float64(tokOut)/1e6*(*pricing.OutputPerMTok)
+	return &usd
+}
+
+// numField extracts a non-negative integer from a JSON-decoded usage map.
+// The aggregator stores Go ints; a value that round-tripped through JSON is
+// a float64 — both are accepted. ok=false for an absent/negative/other value.
+func numField(m map[string]any, key string) (int, bool) {
+	var n int
+	switch v := m[key].(type) {
+	case int:
+		n = v
+	case int64:
+		n = int(v)
+	case float64:
+		n = int(v)
+	default:
+		return 0, false
+	}
+	if n < 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // Process runs a single job to completion. Caller passes in the inserted
@@ -128,6 +259,16 @@ func (w *Worker) Process(
 	input json.RawMessage,
 	chunking *ChunkConfig,
 ) {
+	// Phase 6c — the job span. ctx arrived via observability.DetachedContext
+	// (jobs_handler), carrying the submit request's trace_id but not its
+	// cancellation; this span re-roots the detached worker under that trace.
+	ctx, span := observability.Tracer("jobs").Start(ctx, "llm.job.process",
+		trace.WithAttributes(
+			attribute.String("llm.operation", operation),
+			attribute.String("job.id", jobID.String()),
+		))
+	defer span.End()
+
 	logger := w.logger.With("job_id", jobID.String(), "operation", operation)
 
 	rowsRunning, err := w.repo.MarkRunning(ctx, jobID)
@@ -235,7 +376,7 @@ func (w *Worker) Process(
 		}
 	} else {
 		// Single-call Phase 2b path with Phase 4a-α Step 0b transient retry.
-		streamErr := w.streamWithRetry(ctx, adapter, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
+		streamErr := w.streamWithRetry(ctx, agg, adapter, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
 		if streamErr != nil {
 			logger.Error("stream failed", "err", streamErr)
 			errCode := classifyStreamErrorCode(streamErr)
@@ -278,11 +419,11 @@ func (w *Worker) maybeChunk(inputMap map[string]any, cfg *ChunkConfig, logger *s
 // by agg.StartChunk/EndChunk so the aggregator builds a multi-chunk
 // result. Sequential for now; goroutine-safe parallel is a follow-up.
 //
-// Phase 4a-α Step 0b + /review-impl MED#5 — transient retry budget is
-// JOB-LEVEL (shared across all chunks), NOT per-chunk. A 9-chunk job
-// gets ONE retry total, not 9. This bounds upstream-call amplification
-// under sustained transient errors and matches the SDK's caller-side
-// budget=1 contract.
+// Phase 6b — each chunk retries on its OWN budget (Worker.maxRetries), no
+// longer a single budget shared across all chunks. One chunk's transient
+// failure no longer starves the rest. A pathological N-chunk job is still
+// bounded (N·maxRetries worst case, capped backoff; if every chunk fails the
+// upstream is down and the job fails anyway).
 func (w *Worker) processChunks(
 	ctx context.Context,
 	jobID uuid.UUID,
@@ -296,91 +437,66 @@ func (w *Worker) processChunks(
 ) error {
 	total := len(chunks)
 	totalPtr := &total
-	budget := 1 // shared across all chunks
 	for i, piece := range chunks {
 		perChunkInput, err := SubstituteLastUserMessage(inputMap, piece)
 		if err != nil {
 			return fmt.Errorf("substitute chunk %d: %w", i, err)
 		}
-		agg.StartChunk(i)
-		streamErr := w.streamWithBudget(ctx, adapter, endpointBaseURL, secret, providerModelName, perChunkInput, emit, &budget, logger)
-		agg.EndChunk(i)
+		streamErr := retryTransient(ctx, w.maxRetries, logger, func() error {
+			// StartChunk resets the per-chunk buffer — so a retry after a
+			// partial stream discards that attempt's partial (Phase 6b).
+			agg.StartChunk(i)
+			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+		})
 		if streamErr != nil {
+			// EndChunk is NOT called on failure: the job fails and the
+			// aggregator result is discarded, so committing this chunk's
+			// partial buffer would only be a latent trap if processChunks
+			// ever returned a partial result (/review-impl Phase 6b #4).
 			logger.Error("chunk stream failed", "chunk", i, "err", streamErr)
 			return streamErr
 		}
-		// Progress update so polling shows N/total.
-		_ = w.repo.UpdateProgress(ctx, jobID, totalPtr, i+1, 0)
+		agg.EndChunk(i)
+		// Progress update so polling shows N/total. Best-effort; the
+		// nil-repo guard keeps processChunks unit-testable without a DB.
+		if w.repo != nil {
+			_ = w.repo.UpdateProgress(ctx, jobID, totalPtr, i+1, 0)
+		}
 	}
 	return nil
 }
 
-// streamWithRetry — single-call (unchunked) path. Owns its own budget=1
-// because there are no other chunks to share with. Wraps streamWithBudget.
+// streamWithRetry runs the single-call (unchunked) stream with transient
+// retry — Phase 6b. Exponential backoff via retryTransient; the budget is
+// Worker.maxRetries. Non-transient errors propagate immediately.
+//
+// agg.StartChunk(0) is called inside the retry op so a retry after a
+// partial stream discards that attempt's accumulated tokens — the same
+// reset discipline as processChunks. Without it, a transient failure
+// mid-stream followed by a successful retry would double-accumulate the
+// re-emitted deltas into the aggregator (/review-impl Phase 6b #2).
+// StartChunk(0)/EndChunk(0) on a single chunk is behaviour-equivalent to
+// the unframed Phase 2b path for both aggregator types.
 func (w *Worker) streamWithRetry(
 	ctx context.Context,
+	agg Aggregator,
 	adapter provider.Adapter,
 	endpointBaseURL, secret, providerModelName string,
 	input map[string]any,
 	emit EmitFn,
 	logger *slog.Logger,
 ) error {
-	budget := 1
-	return w.streamWithBudget(ctx, adapter, endpointBaseURL, secret, providerModelName, input, emit, &budget, logger)
-}
-
-// streamWithBudget calls adapter.Stream with retry on transient upstream
-// errors (rate-limit / 5xx / network timeout) consuming from a SHARED
-// budget pointer. The pointer enables job-level (cross-chunk) budget per
-// /review-impl MED#5: a 9-chunk job gets ONE retry total, not 9.
-//
-// Honors `Retry-After` from rate-limit responses; falls back to a fixed
-// 1s backoff otherwise. Non-transient errors (4xx other than 429,
-// ErrStreamNotSupported, etc.) propagate immediately without retry.
-//
-// When *budget reaches 0 a transient error propagates as failure — caller
-// (worker.processChunks or worker.Process single-call path) finalizes
-// the job with the appropriate error code. Budget is NOT replenished
-// across chunks so a slow drain still terminates.
-//
-// Replaces knowledge-service's K17.3 caller-side retry loop — Phase 4a
-// migration drops K17.3 so this gateway-side retry MUST cover the same
-// quality contract. Phase 6b will replace with exponential backoff +
-// per-user budget.
-func (w *Worker) streamWithBudget(
-	ctx context.Context,
-	adapter provider.Adapter,
-	endpointBaseURL, secret, providerModelName string,
-	input map[string]any,
-	emit EmitFn,
-	budget *int,
-	logger *slog.Logger,
-) error {
-	const fixedBackoffS = 1.0
-	for {
-		err := adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
-		if err == nil {
-			return nil
-		}
-		if !provider.IsTransientUpstreamError(err) {
-			return err
-		}
-		if *budget <= 0 {
-			logger.Warn("transient retry budget exhausted (job-level)", "err", err)
-			return err
-		}
-		*budget--
-		wait := provider.RetryAfter(err)
-		if wait <= 0 {
-			wait = fixedBackoffS
-		}
-		logger.Info("transient upstream error — retrying", "err", err, "wait_s", wait, "remaining_budget", *budget)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Duration(wait * float64(time.Second))):
-		}
+	err := retryTransient(ctx, w.maxRetries, logger, func() error {
+		agg.StartChunk(0)
+		return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+	})
+	if err != nil {
+		// EndChunk skipped on failure — the failed job's result is
+		// discarded (consistent with processChunks, /review-impl 6b #4).
+		return err
 	}
+	agg.EndChunk(0)
+	return nil
 }
 
 // classifyStreamErrorCode picks the canonical LLM_* error code for a
@@ -415,6 +531,7 @@ var streamableOperations = map[string]struct{}{
 	"relation_extraction": {},
 	"event_extraction":    {},
 	"fact_extraction":     {}, // Phase 4a-β
+	"summarize_level":     {}, // P3 hierarchical reduce — chat-shaped, default aggregator
 }
 
 // audioJobOperations — Phase 5a. Job operations dispatched through

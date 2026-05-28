@@ -1,0 +1,138 @@
+# BiomeBridge — Whittaker (upstream world-gen) → game biome allow-sets.
+#
+# When a tilemap template carries a `world_zone: Some(snapshot)`, the
+# `BiomeBridge` consults this table to constrain which entries of
+# `engine/biome_library.rs` the picker may consider. World zone biome
+# `tundra` → tilemap is permitted only `snow_*` and `rough_*` game biomes;
+# a paradoxical `hot_desert` pick is structurally impossible.
+#
+# Game biome IDs follow the engine library convention `{terrain}_{object}`
+# where terrain ∈ {grass, forest, mountain, water, sand, snow, swamp, rough}
+# and object ∈ {mountain, tree, lake, crater, rock, plant}. See
+# `engine/biome_library.rs::engine_biome_library` for the full set.
+#
+# Initial table is intentionally CONSERVATIVE — over-restrictive entries are
+# safe (a pick simply falls back), over-permissive entries (e.g. hot_desert
+# in glacier) defeat the whole point. Refine as `biome_library.rs` evolves.
+#
+# Statistical-distribution note (LOW-7 from /review-impl 2026-05-24): when
+# the allow-set admits ONE side of an `xor_with` rule pair but not the other
+# (e.g. allows `forest_lake` but no `*_crater` for some biome), the xor coin
+# can still pick the unallowed type, causing both sides to no-op. Net effect:
+# the "feature appears" rate drops from ~67 % to ~33 % whenever a single
+# side is admitted. Authors targeting a specific water-feature rate should
+# either admit both sides or accept the halved rate.
+
+schema_version = "biome-bridge.v1"
+
+[allow]
+# Ice cap / polar — frozen ground, no flora. Lakes count (frozen).
+ice = [
+    "snow_mountain",
+    "snow_rock",
+    "snow_plant",
+    "snow_lake",
+    "snow_crater",
+]
+
+# Cold low-precip — sparse mosses + lichens; rocky outcrops; rough scree.
+tundra = [
+    "snow_mountain",
+    "snow_rock",
+    "snow_plant",
+    "snow_tree",
+    "snow_lake",
+    "rough_rock",
+    "rough_plant",
+]
+
+# Taiga — boreal conifers + foothills + frozen edges.
+boreal_forest = [
+    "forest_mountain",
+    "forest_tree",
+    "forest_rock",
+    "forest_plant",
+    "forest_lake",
+    "snow_tree",
+    "rough_rock",
+]
+
+# Mid-latitude humid forest — full forest stack + grassy edges.
+temperate_forest = [
+    "forest_mountain",
+    "forest_tree",
+    "forest_rock",
+    "forest_plant",
+    "forest_lake",
+    "forest_crater",
+    "grass_tree",
+    "grass_plant",
+]
+
+# Steppe / prairie — grass dominant; sparse rocks; no closed canopy.
+temperate_grassland = [
+    "grass_mountain",
+    "grass_tree",
+    "grass_rock",
+    "grass_plant",
+    "grass_lake",
+    "grass_crater",
+    "rough_rock",
+]
+
+# Hot arid — sand + rocky scree; sparse plants; rare oases (lake).
+hot_desert = [
+    "sand_mountain",
+    "sand_rock",
+    "sand_plant",
+    "sand_lake",
+    "sand_crater",
+    "rough_rock",
+]
+
+# Tropical grassland with scattered trees + dry season scrub.
+savanna = [
+    "grass_mountain",
+    "grass_tree",
+    "grass_rock",
+    "grass_plant",
+    "grass_lake",
+    "sand_plant",
+    "sand_rock",
+]
+
+# Hot wet — closed canopy + swamps + streams.
+tropical_rainforest = [
+    "forest_mountain",
+    "forest_tree",
+    "forest_rock",
+    "forest_plant",
+    "forest_lake",
+    "swamp_mountain",
+    "swamp_lake",
+    "swamp_plant",
+]
+
+# Mid-latitude broadleaf — similar to temperate forest but warmer; admits
+# more grass-edge biomes.
+deciduous_forest = [
+    "forest_mountain",
+    "forest_tree",
+    "forest_rock",
+    "forest_plant",
+    "forest_lake",
+    "forest_crater",
+    "grass_tree",
+    "grass_plant",
+]
+
+# Warm-temperate dry-summer — chaparral + scattered olive/oak + rocky.
+mediterranean = [
+    "forest_tree",
+    "forest_rock",
+    "grass_mountain",
+    "grass_tree",
+    "grass_rock",
+    "grass_plant",
+    "rough_rock",
+]

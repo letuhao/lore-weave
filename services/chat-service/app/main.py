@@ -6,6 +6,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from loreweave_obs import current_otel_trace_id, setup_tracing
+
 from app.client.knowledge_client import close_knowledge_client, init_knowledge_client
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -74,16 +76,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Phase 6c-γ — OpenTelemetry: instrument this app for SERVER spans + httpx
+# for outbound CLIENT spans. No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+# Called AFTER add_middleware so the OTel ASGI middleware lands OUTERMOST
+# (Starlette prepends middleware) — the SERVER span then covers the full
+# request, CORS + TraceId middleware included. /review-impl(6c-γ) LOW#4.
+setup_tracing("chat-service", app=app)
+
 @app.exception_handler(Exception)
 async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONResponse:
-    """K7e: include the trace id in the 500 body so a caller staring
-    at an error can grep it straight to this service's logs.
+    """K7e + D-PHASE6C-TRACE-ID-UNIFY: emit BOTH the middleware's
+    trace_id (for log grep) AND the OTel trace id (for Tempo lookup).
+    See knowledge-service's matching handler for the rationale —
+    both services keep the same response shape so a single FE error
+    surface can render either id when present.
     HTTPException keeps its own envelope via FastAPI's built-in handler."""
     logger.exception("unhandled exception (500): %s", exc)
     tid = current_trace_id()
+    otel_tid = current_otel_trace_id()
     return JSONResponse(
         status_code=500,
-        content={"detail": "internal server error", "trace_id": tid},
+        content={
+            "detail": "internal server error",
+            "trace_id": tid,
+            "otel_trace_id": otel_tid,
+        },
         headers={"X-Trace-Id": tid or ""},
     )
 

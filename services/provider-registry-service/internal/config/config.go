@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -26,6 +27,26 @@ type Config struct {
 	MinioUseSSL      bool
 	MinioExternalURL string // public URL prefix (e.g. http://localhost:9123)
 	AudioCacheBucket string // default "loreweave-audio-cache" when empty
+
+	// Phase 6a Subsystem A — spend-guardrail estimator tuning knobs. These
+	// are token-count estimation parameters (not money limits), so they
+	// carry code defaults overridable via env — mirrors RESERVATION_TTL.
+	// See docs/03_planning/LLM_PIPELINE_PHASE6A_DESIGN.md §3.3 / §3.6.
+	//
+	// MaxOutputTokensDefault   — output ceiling for a chat/completion job
+	//                            that omits max_tokens.
+	// ExtractionOutputCeiling  — per-op output-token estimate for the
+	//                            extraction operations (bounded JSON list).
+	// SystemPromptTokenEstimate — per-chunk system-prompt overhead; a
+	//                            chunked job re-sends the prompt nchunks×.
+	MaxOutputTokensDefault    int
+	ExtractionOutputCeiling   int
+	SystemPromptTokenEstimate int
+
+	// Phase 6b — job-level transient-retry budget: the number of retries a
+	// worker attempts on a transient upstream error before failing the job.
+	// Config-driven (env JOB_MAX_RETRIES), code default 3.
+	JobMaxRetries int
 }
 
 func Load() (*Config, error) {
@@ -56,6 +77,20 @@ func Load() (*Config, error) {
 	if c.UsageBillingServiceURL == "" {
 		return nil, fmt.Errorf("USAGE_BILLING_SERVICE_URL is required")
 	}
+
+	var err error
+	if c.MaxOutputTokensDefault, err = getEnvInt("MAX_OUTPUT_TOKENS_DEFAULT", 4096); err != nil {
+		return nil, err
+	}
+	if c.ExtractionOutputCeiling, err = getEnvInt("EXTRACTION_OUTPUT_CEILING", 8192); err != nil {
+		return nil, err
+	}
+	if c.SystemPromptTokenEstimate, err = getEnvInt("SYSTEM_PROMPT_TOKEN_ESTIMATE", 1024); err != nil {
+		return nil, err
+	}
+	if c.JobMaxRetries, err = getEnvInt("JOB_MAX_RETRIES", 3); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 
@@ -64,4 +99,21 @@ func getEnv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// getEnvInt reads a strictly-positive int env var, falling back to def when
+// unset. A present-but-invalid or non-positive value is a hard error.
+func getEnvInt(k string, def int) (int, error) {
+	v := os.Getenv(k)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer: %w", k, err)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("%s must be > 0", k)
+	}
+	return n, nil
 }

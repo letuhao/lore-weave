@@ -20,17 +20,37 @@ async fn main() -> Result<()> {
     match args.get(1).map(String::as_str) {
         Some("classify") => run_classify().await,
         Some("bootstrap") => run_bootstrap().await,
+        Some("measure") => run_measure().await,
+        Some("serve") => run_serve().await,
         Some(other) => {
-            anyhow::bail!("unknown subcommand '{other}' (known: classify, bootstrap)");
+            anyhow::bail!("unknown subcommand '{other}' (known: classify, bootstrap, measure, serve)");
         }
         None => {
             tracing::info!(
-                "tilemap-service — `classify` (L3 measurement) | `bootstrap` (small-reality L3 retry-loop demo)"
+                "tilemap-service — `classify` | `bootstrap` | `measure` | `serve` (HTTP server: POST /internal/v1/tilemaps/render)"
             );
             tracing::info!("see services/tilemap-service/DESIGN.md + README.md");
             Ok(())
         }
     }
+}
+
+/// `serve` subcommand — boots the axum HTTP server.
+///
+/// Env (typically sourced from the gitignored `.local/serve.env`):
+///   LOREWEAVE_INTERNAL_TOKEN — service-to-service Bearer token (REQUIRED)
+///   TILEMAP_HTTP_BIND        — bind addr (default `0.0.0.0:7100`)
+async fn run_serve() -> Result<()> {
+    let token = tilemap_service::http::require_internal_token(|| {
+        env::var("LOREWEAVE_INTERNAL_TOKEN").ok()
+    })?;
+    let bind: std::net::SocketAddr = env::var("TILEMAP_HTTP_BIND")
+        .unwrap_or_else(|_| "0.0.0.0:7100".to_string())
+        .parse()
+        .context("TILEMAP_HTTP_BIND must be a valid SocketAddr (e.g. 0.0.0.0:7100)")?;
+    tracing::info!(%bind, "tilemap-service `serve` starting");
+    tilemap_service::http::serve(bind, token).await?;
+    Ok(())
 }
 
 /// Gateway client + routing params from env — shared by `classify` and
@@ -84,6 +104,36 @@ async fn run_bootstrap() -> Result<()> {
             .await
             .context("running the small-reality bootstrap")?;
     println!("{}", harness::bootstrap::render_bootstrap_report(&report));
+    Ok(())
+}
+
+/// `tilemap-service measure` — time continent-scale (256²) generation, then,
+/// when the gateway env is present, run the live engine→L3-batched→L4 flow and
+/// report token cost + latency. The offline section prints before the (slow)
+/// live run starts.
+async fn run_measure() -> Result<()> {
+    tracing::info!("placing the continent (256²) — the offline generation measurement");
+    let (tilemap, offline) =
+        harness::continent::measure_offline().context("placing the continent")?;
+    println!("{}", harness::continent::render_offline(&offline));
+
+    match gateway_from_env() {
+        Ok((client, model_source, model_ref, user_id)) => {
+            tracing::info!(
+                ?model_source, %model_ref,
+                "running the live continent measurement (engine→L3-batched→L4)",
+            );
+            let live = harness::continent::measure_live(
+                &tilemap, &client, model_source, model_ref, user_id,
+            )
+            .await
+            .context("running the live continent measurement")?;
+            println!("{}", harness::continent::render_live(&live));
+        }
+        Err(e) => {
+            println!("live measurement skipped — gateway env not set ({e})");
+        }
+    }
     Ok(())
 }
 

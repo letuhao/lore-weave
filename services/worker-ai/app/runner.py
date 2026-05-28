@@ -15,6 +15,7 @@ subset the worker needs.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from decimal import Decimal
 from uuid import UUID
 
 import asyncpg
+from opentelemetry import trace as _ot_trace
 
 from loreweave_extraction import extract_pass2
 from loreweave_extraction.errors import ExtractionError
@@ -40,6 +42,56 @@ from app.llm_client import LLMClient
 __all__ = ["process_job", "poll_and_run"]
 
 logger = logging.getLogger(__name__)
+
+# D-PHASE6C-WORKERAI-JOB-SPAN. Module-level tracer; when OTel is no-op
+# (OTEL_EXPORTER_OTLP_ENDPOINT unset) this is the NoOp tracer and
+# `start_as_current_span` is a zero-cost context manager. When
+# configured, every loreweave_llm SDK call inside `process_job`
+# becomes a CHILD of the parent `worker_ai.process_job` span (httpx
+# instrumentor populates the W3C tracecontext on outbound calls) →
+# Grafana Tempo shows the whole job lifecycle as one trace instead
+# of N disconnected SDK-call traces.
+tracer = _ot_trace.get_tracer(__name__)
+
+
+def _with_job_span(func):
+    """Decorator: wrap a `process_job`-shaped coroutine in an OTel parent
+    span keyed on the job's identifiers.
+
+    Decorator pattern (vs in-place `with` block) is deliberate — the
+    body has ~14 inline `return` statements and the existing outer
+    try/except SWALLOWS errors so a `try/finally`-around-body would
+    require either re-indenting ~430 lines or refactoring the
+    try/except semantic. The decorator approach lets the body stay
+    verbatim and the span ends naturally on inner return.
+
+    Span status caveat: because the inner body swallows exceptions and
+    calls `_fail_job` itself, this wrapper sees a normal return on
+    failed jobs and ends the span with OK status. Operators
+    investigating a failure should grep logs for the job_id (still
+    structured by the existing logger.exception) to find the trace
+    id; the parent span correlates the SDK-call children regardless.
+    A future enrichment can have the inner signal failure (e.g. via
+    span context attribute) so the wrapper can set ERROR status.
+    """
+    @functools.wraps(func)
+    async def wrapper(pool, knowledge_client, llm_client, book_client, glossary_client, job):
+        with tracer.start_as_current_span(
+            "worker_ai.process_job",
+            attributes={
+                "job.id": str(job.job_id),
+                "job.scope": job.scope,
+                "job.project_id": str(job.project_id),
+                "job.user_id": str(job.user_id),
+                "job.items_total": job.items_total or 0,
+            },
+        ):
+            return await func(
+                pool, knowledge_client, llm_client,
+                book_client, glossary_client, job,
+            )
+
+    return wrapper
 
 # Default token cost estimate per item for try_spend. The real cost
 # is reconciled after the LLM call via the extraction result, but
@@ -74,21 +126,35 @@ class JobRow:
     items_processed: int
     current_cursor: dict | None
     cost_spent_usd: Decimal
+    # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — sourced from knowledge_projects
+    # (extraction_jobs doesn't carry the dimension; the project's
+    # embedding_model UUID + dimension are the per-project vector-space
+    # identity). NULL = project has no embedding configured → P3 enqueue
+    # silently skipped by the receiving endpoint.
+    embedding_dimension: int | None = None
 
 
 # ── DB helpers ───────────────────────────────────────────────────────
 
 
 async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
-    """Fetch all jobs in 'running' status."""
+    """Fetch all jobs in 'running' status.
+
+    P3 D-P3-EXTRACTION-CALLER-WIRE-UP: also pull the project's
+    embedding_dimension (kept on knowledge_projects, not on the job)
+    so the worker can forward it to /persist-pass2 for summary enqueue.
+    """
     rows = await pool.fetch(
         """
-        SELECT job_id, user_id, project_id, scope, scope_range,
-               status, llm_model, embedding_model, max_spend_usd,
-               items_total, items_processed, current_cursor, cost_spent_usd
-        FROM extraction_jobs
-        WHERE status = 'running'
-        ORDER BY created_at ASC
+        SELECT j.job_id, j.user_id, j.project_id, j.scope, j.scope_range,
+               j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
+               j.items_total, j.items_processed, j.current_cursor,
+               j.cost_spent_usd, p.embedding_dimension
+        FROM extraction_jobs j
+        LEFT JOIN knowledge_projects p
+          ON p.user_id = j.user_id AND p.project_id = j.project_id
+        WHERE j.status = 'running'
+        ORDER BY j.created_at ASC
         """
     )
     result = []
@@ -113,6 +179,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             items_processed=r["items_processed"],
             current_cursor=cc,
             cost_spent_usd=r["cost_spent_usd"],
+            embedding_dimension=r["embedding_dimension"],
         ))
     return result
 
@@ -488,6 +555,14 @@ async def _extract_and_persist(
     job_id: UUID,
     model_ref: str,
     text: str,
+    # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — all optional. Caller (chapter
+    # branch) supplies these to opt into hierarchy MERGE + summary
+    # enqueue. chat_turn branch keeps the legacy behaviour.
+    hierarchy_paths: dict | None = None,
+    book_parts: list[tuple[str, str, str]] | None = None,
+    is_last_chapter_of_book: bool = False,
+    embedding_model_uuid: str | None = None,
+    embedding_dimension: int | None = None,
 ) -> ExtractionResult:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -545,12 +620,20 @@ async def _extract_and_persist(
         relations=candidates.relations,
         events=candidates.events,
         facts=candidates.facts,
+        # P3 — pass-through to the receiving endpoint. When None →
+        # endpoint skips hierarchy MERGE + summary enqueue.
+        hierarchy_paths=hierarchy_paths,
+        book_parts=book_parts,
+        is_last_chapter_of_book=is_last_chapter_of_book,
+        embedding_model_uuid=embedding_model_uuid,
+        embedding_dimension=embedding_dimension,
     )
 
 
 # ── Core job processing ─────────────────────────────────────────────
 
 
+@_with_job_span
 async def process_job(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,
@@ -671,6 +754,51 @@ async def process_job(
                     )
                     continue
 
+                # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — fetch hierarchy
+                # info (book/part/chapter/scenes/book_parts) so the
+                # /persist-pass2 endpoint can MERGE the hierarchy in
+                # the same Tx + enqueue summaries. Best-effort: None
+                # response (legacy chapter w/o part_id, or HTTP
+                # failure) → skip P3 fields, fall back to the legacy
+                # entity-only persist path.
+                p3_hierarchy_paths: dict | None = None
+                p3_book_parts: list[tuple[str, str, str]] | None = None
+                p3_is_last = False
+                hierarchy = await book_client.get_chapter_hierarchy(
+                    book_id, ch.chapter_id,
+                )
+                if (
+                    hierarchy is not None
+                    and hierarchy.part is not None
+                    and hierarchy.chapter_path is not None
+                    and job.embedding_dimension is not None
+                ):
+                    p3_hierarchy_paths = {
+                        "book_id": hierarchy.book_id,
+                        "book_path": hierarchy.book_path,
+                        "book_title": hierarchy.book_title,
+                        "part_id": hierarchy.part.id,
+                        "part_path": hierarchy.part.path,
+                        "part_index": hierarchy.part.index,
+                        "part_title": hierarchy.part.title,
+                        "chapter_id": hierarchy.chapter_id,
+                        "chapter_path": hierarchy.chapter_path,
+                        "chapter_index": hierarchy.chapter_index,
+                        "chapter_title": hierarchy.chapter_title,
+                        "scenes": [
+                            [s.id, s.path, s.index] for s in hierarchy.scenes
+                        ],
+                    }
+                    p3_book_parts = [
+                        [bp.id, bp.path, str(bp.index)]
+                        for bp in hierarchy.book_parts
+                    ]
+                    # is_last when this chapter is the last in the
+                    # pre-enumerated chapter list AND no retry — runner
+                    # already filters cursor-resumed chapters, so the
+                    # tail of pre_chapters is the natural last.
+                    p3_is_last = ch.chapter_id == pre_chapters[-1].chapter_id
+
                 # Extract: Phase 4b-γ — worker-ai now runs the LLM
                 # stage in-process via loreweave_extraction.extract_pass2,
                 # then POSTs candidates to /persist-pass2.
@@ -684,6 +812,15 @@ async def process_job(
                     job_id=job.job_id,
                     model_ref=job.llm_model,
                     text=text,
+                    hierarchy_paths=p3_hierarchy_paths,
+                    book_parts=p3_book_parts,
+                    is_last_chapter_of_book=p3_is_last,
+                    embedding_model_uuid=(
+                        job.embedding_model if p3_hierarchy_paths else None
+                    ),
+                    embedding_dimension=(
+                        job.embedding_dimension if p3_hierarchy_paths else None
+                    ),
                 )
 
                 if result.error:

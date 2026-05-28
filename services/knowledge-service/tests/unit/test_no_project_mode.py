@@ -126,3 +126,18 @@ async def test_mode1_split_without_bio():
     built = await build_no_project_mode(repo, uuid4())
     assert built.stable_context == built.context
     assert built.volatile_context == ""
+
+
+# ── K21.12-BE (design D9): tool_calling_enabled ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mode1_defaults_tool_calling_enabled_true():
+    """D9 — a no-project (Mode 1) chat has no project row, so the
+    BuiltContext default `True` stands and chat-service still offers
+    memory tools (the executor handles a null project per Cycle A D3)."""
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=None)
+
+    built = await build_no_project_mode(repo, uuid4())
+    assert built.tool_calling_enabled is True

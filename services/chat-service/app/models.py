@@ -109,6 +109,10 @@ class ChatMessage(BaseModel):
     role: str
     content: str
     content_parts: Any | None
+    # K21-B/C (D-K21B-05): per-message tool-call history — the
+    # chat_messages.tool_calls JSONB column. NULL when the turn made no
+    # tool calls.
+    tool_calls: Any | None = None
     sequence_num: int
     input_tokens: int | None
     output_tokens: int | None

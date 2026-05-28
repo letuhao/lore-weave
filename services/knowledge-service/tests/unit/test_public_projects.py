@@ -35,6 +35,8 @@ def _make_project(
     created_at: datetime | None = None,
     is_archived: bool = False,
     version: int = 1,
+    extraction_status: str = "disabled",
+    embedding_model: str | None = None,
 ) -> Project:
     now = created_at or datetime.now(timezone.utc)
     return Project(
@@ -46,8 +48,8 @@ def _make_project(
         book_id=None,
         instructions="",
         extraction_enabled=False,
-        extraction_status="disabled",
-        embedding_model=None,
+        extraction_status=extraction_status,
+        embedding_model=embedding_model,
         extraction_config={},
         last_extracted_at=None,
         estimated_cost_usd=Decimal("0"),
@@ -121,8 +123,11 @@ class FakeProjectsRepo:
             return None
         raw = patch.model_dump(exclude_unset=True)
         # Strip None on NOT-NULL columns to mirror the real repo
-        # (book_id is the only nullable updatable column).
-        for f in ("name", "description", "instructions"):
+        # (book_id is the only nullable updatable column;
+        # tool_calling_enabled + memory_remember_confirm are NOT NULL —
+        # design D9 / K21-C D4).
+        for f in ("name", "description", "instructions",
+                  "tool_calling_enabled", "memory_remember_confirm"):
             if raw.get(f) is None:
                 raw.pop(f, None)
         # K7b no-op contract: empty patch returns current row without
@@ -491,6 +496,222 @@ def test_patch_stale_if_match_returns_412_with_current_row(
     assert repo._rows[(auth_user_id, proj.project_id)].version == 5
 
 
+# ── K21.12-BE (design D9): tool_calling_enabled ──────────────────────────
+
+
+def test_project_defaults_tool_calling_enabled_true():
+    """A Project built without tool_calling_enabled reads back true —
+    this is the model-default half of the 'a row that predates the
+    column reads back enabled' contract (the DB DEFAULT true is the
+    other half)."""
+    proj = _make_project(uuid4())
+    assert proj.tool_calling_enabled is True
+
+
+def test_get_project_surfaces_tool_calling_enabled(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """The field is on the Project response model, so GET carries it."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"tool_calling_enabled": False}
+    )
+    repo.seed(proj)
+    resp = client.get(f"/v1/knowledge/projects/{proj.project_id}")
+    assert resp.status_code == 200
+    assert resp.json()["tool_calling_enabled"] is False
+
+
+def test_patch_toggles_tool_calling_enabled(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """D9 — ProjectUpdate accepts the field and PATCH round-trips it
+    through the repo (the Cycle C settings UI drives this same path)."""
+    proj = _make_project(auth_user_id)  # defaults tool_calling_enabled=True
+    repo.seed(proj)
+
+    # Turn it off.
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"tool_calling_enabled": False},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tool_calling_enabled"] is False
+    assert repo._rows[(auth_user_id, proj.project_id)].tool_calling_enabled is False
+
+    # Turn it back on.
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"tool_calling_enabled": True},
+        headers=_im(proj.version + 1),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tool_calling_enabled"] is True
+
+
+def test_patch_omitting_tool_calling_enabled_leaves_it_unchanged(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """ProjectUpdate uses exclude_unset — a PATCH that doesn't mention
+    tool_calling_enabled must not reset it."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"tool_calling_enabled": False}
+    )
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"name": "renamed"},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tool_calling_enabled"] is False
+
+
+def test_project_update_model_accepts_tool_calling_enabled():
+    """D9 — the field is settable on ProjectUpdate, omittable (so an
+    untouched PATCH leaves it alone), and absent from a default
+    instance (exclude_unset must drop it)."""
+    assert ProjectUpdate(tool_calling_enabled=False).tool_calling_enabled is False
+    assert ProjectUpdate(tool_calling_enabled=True).tool_calling_enabled is True
+    # Omitted → not in the exclude_unset dump → repo treats as no-op.
+    assert "tool_calling_enabled" not in ProjectUpdate().model_dump(
+        exclude_unset=True
+    )
+    assert ProjectUpdate().tool_calling_enabled is None
+
+
+async def test_repo_update_skips_none_tool_calling_enabled(
+    repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """tool_calling_enabled is NOT NULL — explicitly passing None must
+    be skipped (treated as a no-op for that field), mirroring the real
+    repo's exclusion from _NULLABLE_UPDATE_COLUMNS. An explicit-None
+    patch must not flip the stored true to NULL."""
+    proj = _make_project(auth_user_id)  # tool_calling_enabled=True
+    repo.seed(proj)
+    result = await repo.update(
+        auth_user_id, proj.project_id,
+        ProjectUpdate(tool_calling_enabled=None),
+    )
+    assert result is not None
+    assert result.tool_calling_enabled is True
+
+
+# ── K21-C (design D4): memory_remember_confirm ───────────────────────────
+
+
+def test_project_defaults_memory_remember_confirm_false():
+    """A Project built without memory_remember_confirm reads back false
+    — the model-default half of the 'a row that predates the column
+    reads back OFF' contract (the DB DEFAULT false is the other half).
+    The setting is opt-in: default off preserves today's write-directly
+    behaviour."""
+    proj = _make_project(uuid4())
+    assert proj.memory_remember_confirm is False
+
+
+def test_get_project_surfaces_memory_remember_confirm(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """The field is on the Project response model, so GET carries it."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"memory_remember_confirm": True}
+    )
+    repo.seed(proj)
+    resp = client.get(f"/v1/knowledge/projects/{proj.project_id}")
+    assert resp.status_code == 200
+    assert resp.json()["memory_remember_confirm"] is True
+
+
+def test_patch_toggles_memory_remember_confirm(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """K21-C D4 — ProjectUpdate accepts the field and PATCH round-trips
+    it through the repo (the Cycle C settings UI drives this path)."""
+    proj = _make_project(auth_user_id)  # defaults memory_remember_confirm=False
+    repo.seed(proj)
+
+    # Turn it on.
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"memory_remember_confirm": True},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["memory_remember_confirm"] is True
+    assert (
+        repo._rows[(auth_user_id, proj.project_id)].memory_remember_confirm
+        is True
+    )
+
+    # Turn it back off.
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"memory_remember_confirm": False},
+        headers=_im(proj.version + 1),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["memory_remember_confirm"] is False
+
+
+def test_patch_omitting_memory_remember_confirm_leaves_it_unchanged(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """ProjectUpdate uses exclude_unset — a PATCH that doesn't mention
+    memory_remember_confirm must not reset it."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"memory_remember_confirm": True}
+    )
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"name": "renamed"},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["memory_remember_confirm"] is True
+
+
+def test_project_update_model_accepts_memory_remember_confirm():
+    """K21-C D4 — the field is settable on ProjectUpdate, omittable (so
+    an untouched PATCH leaves it alone), and absent from a default
+    instance (exclude_unset must drop it)."""
+    assert (
+        ProjectUpdate(memory_remember_confirm=True).memory_remember_confirm
+        is True
+    )
+    assert (
+        ProjectUpdate(memory_remember_confirm=False).memory_remember_confirm
+        is False
+    )
+    # Omitted → not in the exclude_unset dump → repo treats as no-op.
+    assert "memory_remember_confirm" not in ProjectUpdate().model_dump(
+        exclude_unset=True
+    )
+    assert ProjectUpdate().memory_remember_confirm is None
+
+
+async def test_repo_update_skips_none_memory_remember_confirm(
+    repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """memory_remember_confirm is NOT NULL — explicitly passing None
+    must be skipped, mirroring the real repo's exclusion from
+    _NULLABLE_UPDATE_COLUMNS. An explicit-None patch must not flip the
+    stored value to NULL."""
+    proj = _make_project(auth_user_id).model_copy(
+        update={"memory_remember_confirm": True}
+    )
+    repo.seed(proj)
+    result = await repo.update(
+        auth_user_id, proj.project_id,
+        ProjectUpdate(memory_remember_confirm=None),
+    )
+    assert result is not None
+    assert result.memory_remember_confirm is True
+
+
 def test_patch_valid_if_match_accepts_various_formats(
     client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
 ):
@@ -638,6 +859,104 @@ def test_patch_db_check_violation_maps_to_422(
     )
     assert resp.status_code == 422
     assert "knowledge_projects_instructions_len" in resp.json()["detail"]
+
+
+# ── D-EMB-MODEL-REF-04: PATCH embedding_model dual-path guard ────────────
+
+
+def test_patch_embedding_model_rejected_on_project_with_graph(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """D-EMB-MODEL-REF-04: PATCH /{id} cannot change embedding_model
+    when the project already has a graph (extraction_status != 'disabled').
+    Without this guard, the old vectors stay in Neo4j tagged with the
+    old model UUID while Mode-3 retrieval queries the new model space —
+    silent zero-recall."""
+    old_uuid = "11111111-1111-1111-1111-111111111111"
+    new_uuid = "22222222-2222-2222-2222-222222222222"
+    proj = _make_project(
+        auth_user_id,
+        extraction_status="ready",
+        embedding_model=old_uuid,
+    )
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"embedding_model": new_uuid},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "embedding-model?confirm=true" in detail
+    # Defense-in-depth: row must be unchanged + status sticks.
+    after = repo._rows.get((auth_user_id, proj.project_id))
+    assert after is not None
+    assert after.embedding_model == old_uuid
+    assert after.extraction_status == "ready"
+
+
+def test_patch_embedding_model_allowed_first_time_setup_status_disabled(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID,
+    monkeypatch,
+):
+    """First-time embedding-model setup goes through generic PATCH
+    when the project has no graph yet (status='disabled'). This is the
+    K12.4 picker flow on a fresh project."""
+    from unittest.mock import AsyncMock
+
+    new_uuid = "33333333-3333-3333-3333-333333333333"
+    monkeypatch.setattr(
+        "app.routers.public.projects.probe_embedding_dimension",
+        AsyncMock(return_value=1024),
+    )
+
+    proj = _make_project(
+        auth_user_id,
+        extraction_status="disabled",
+        embedding_model=None,
+    )
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"embedding_model": new_uuid},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["embedding_model"] == new_uuid
+
+
+def test_patch_embedding_model_same_value_is_noop_even_when_status_ready(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID,
+    monkeypatch,
+):
+    """A FE that re-sends the current embedding_model in a PATCH body
+    (e.g. unchanged form submit) must NOT be rejected — the value is
+    not actually changing, so no graph orphaning risk. The probe still
+    runs since model_fields_set is set."""
+    from unittest.mock import AsyncMock
+
+    uuid_value = "44444444-4444-4444-4444-444444444444"
+    monkeypatch.setattr(
+        "app.routers.public.projects.probe_embedding_dimension",
+        AsyncMock(return_value=1024),
+    )
+
+    proj = _make_project(
+        auth_user_id,
+        extraction_status="ready",
+        embedding_model=uuid_value,
+    )
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"embedding_model": uuid_value},
+        headers=_im(proj.version),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["embedding_model"] == uuid_value
 
 
 def test_create_db_check_violation_maps_to_422(

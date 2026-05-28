@@ -96,6 +96,78 @@ async fn scripted_server(responses: Vec<(u16, String)>) -> MockServer {
     server
 }
 
+/// Parse one L3 `user_payload` object line —
+/// `  obj_N: zone=Z kind=K suggested_canon_kind=[A,B,C]` — into
+/// `(obj_id, first_suggested_kind)`. The bootstrap places a *variable*
+/// engine-derived object set, so the L3 mock cannot hardcode obj_ids — it
+/// echoes back whatever the request asked it to classify.
+fn parse_obj_line(line: &str) -> Option<(String, String)> {
+    let line = line.trim();
+    if !line.starts_with("obj_") {
+        return None;
+    }
+    let obj_id = line.split(':').next()?.trim().to_string();
+    let inner = line.split("suggested_canon_kind=[").nth(1)?.split(']').next()?;
+    let first = inner.split(',').next()?.trim().to_string();
+    (!first.is_empty()).then_some((obj_id, first))
+}
+
+/// A two-call mock for `bootstrap_small_reality`: call 0 is the L3 request —
+/// parsed, then echoed with one classification per object (its default
+/// suggested kind, or a deliberately-invalid kind when `l3_fallback_all` is
+/// set, to force every object through the §6 canonical-default fallback);
+/// call 1+ returns the static L4 narration body.
+struct BootstrapMock {
+    calls: AtomicUsize,
+    l4_body: String,
+    l3_fallback_all: bool,
+}
+
+impl Respond for BootstrapMock {
+    fn respond(&self, req: &Request) -> ResponseTemplate {
+        let n = self.calls.fetch_add(1, Ordering::SeqCst);
+        let body = if n == 0 {
+            // `req.body` is the StreamRequest JSON — the L3 `user_payload`
+            // newlines are JSON-escaped, so un-escape `\n` before splitting.
+            // System-prompt example lines use `suggested=[` (not
+            // `suggested_canon_kind=[`), so `parse_obj_line` ignores them.
+            let text = String::from_utf8_lossy(&req.body).replace("\\n", "\n");
+            let parsed: Vec<(String, String)> = text.lines().filter_map(parse_obj_line).collect();
+            let entries: Vec<(&str, &str, &str)> = parsed
+                .iter()
+                .map(|(id, sug)| {
+                    let kind = if self.l3_fallback_all { "__not_a_suggested_kind__" } else { sug.as_str() };
+                    (id.as_str(), kind, "t")
+                })
+                .collect();
+            classify_sse(&entries)
+        } else {
+            self.l4_body.clone()
+        };
+        ResponseTemplate::new(200)
+            .insert_header("content-type", "text/event-stream")
+            .set_body_string(body)
+    }
+}
+
+async fn bootstrap_mock_server(l4_body: String, l3_fallback_all: bool) -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/internal/llm/stream"))
+        .respond_with(BootstrapMock {
+            calls: AtomicUsize::new(0),
+            l4_body,
+            l3_fallback_all,
+        })
+        .mount(&server)
+        .await;
+    server
+}
+
+/// The four zone_ids `bootstrap_template` defines (all narrated by L4).
+const BOOTSTRAP_ZONES: [&str; 4] =
+    ["jianghu_capital", "western_wilds", "lotus_grove", "forbidden_vault"];
+
 /// Build `ZoneNarrationInput`s with a fixed `forest` terrain + no L3 objects.
 fn inputs(ids: &[&str]) -> Vec<ZoneNarrationInput> {
     ids.iter()
@@ -193,68 +265,58 @@ async fn ac10_parsed_empty_response_is_a_validation_failure() {
 
 #[tokio::test]
 async fn ac7_bootstrap_runs_l3_then_l4() {
-    let l3 = classify_sse(&[
-        ("obj_1", "BanditCache", "t1"),
-        ("obj_2", "AncientTree", "t2"),
-        ("obj_3", "BanditCache", "t3"),
-        ("obj_4", "BanditCamp", "t4"),
-        ("obj_5", "BanditCamp", "t5"),
-        ("obj_6", "AncientTree", "t6"),
-    ]);
-    let l4 = narrate_sse(&[
-        ("jianghu_capital", &good()),
-        ("western_wilds", &good()),
-        ("lotus_grove", &good()),
-    ]);
-    let server = scripted_server(vec![(200, l3), (200, l4)]).await;
+    // The bootstrap classifies its own engine-placed object set (a variable
+    // count) — the L3 mock echoes a valid classification for each, then L4
+    // narrates all four template zones.
+    let g = good();
+    let l4_entries: Vec<(&str, &str)> = BOOTSTRAP_ZONES.iter().map(|z| (*z, g.as_str())).collect();
+    let server = bootstrap_mock_server(narrate_sse(&l4_entries), false).await;
     let client = GatewayClient::new(server.uri(), "test-token");
     let report = bootstrap_small_reality(&client, ModelSource::PlatformModel, Uuid::nil(), Uuid::nil(), 3)
         .await
         .expect("bootstrap runs L3 then L4");
 
-    assert_eq!(report.l3.classifications.len(), 6);
-    assert_eq!(report.l3.fallback_count, 0);
-    assert_eq!(report.l4.narrations.len(), 3);
+    assert!(!report.l3.classifications.is_empty(), "L3 classified the engine objects");
+    assert_eq!(
+        report.l3.classifications.len(),
+        report.tilemap.object_placements.len(),
+        "every engine-placed object was classified",
+    );
+    assert_eq!(report.l3.fallback_count, 0, "a clean L3 echo — no fallback");
+    assert_eq!(report.l3.llm_attempts, 1, "a clean L3 echo completes in one attempt");
+    assert_eq!(report.l4.narrations.len(), 4, "all four zones narrated");
     assert_eq!(report.l4.fallback_count, 0);
 }
 
 #[tokio::test]
-async fn ac11_all_l3_fallback_zone_is_still_narrated() {
-    // lotus_grove's objects (obj_5, obj_6) get canon_kinds not in their
-    // suggested lists → both fall back in L3. With max_attempts=1 L3 makes one
-    // call, then L4 makes one — two scripted responses.
-    let l3 = classify_sse(&[
-        ("obj_1", "BanditCache", "t1"),
-        ("obj_2", "AncientTree", "t2"),
-        ("obj_3", "BanditCache", "t3"),
-        ("obj_4", "BanditCamp", "t4"),
-        ("obj_5", "LavaLair", "t5"),
-        ("obj_6", "LavaLair", "t6"),
-    ]);
-    let l4 = narrate_sse(&[
-        ("jianghu_capital", &good()),
-        ("western_wilds", &good()),
-        ("lotus_grove", &good()),
-    ]);
-    let server = scripted_server(vec![(200, l3), (200, l4)]).await;
+async fn ac11_zones_are_narrated_even_when_every_l3_object_falls_back() {
+    // The L3 mock returns an invalid canon_kind for every engine object ⇒ all
+    // fall back to the §6 canonical default. L4 must still narrate every zone
+    // cleanly (the L4 join is robust to total L3 fallback). max_attempts=1 so
+    // L3 makes exactly one call before the L4 body is served.
+    let g = good();
+    let l4_entries: Vec<(&str, &str)> = BOOTSTRAP_ZONES.iter().map(|z| (*z, g.as_str())).collect();
+    let server = bootstrap_mock_server(narrate_sse(&l4_entries), true).await;
     let client = GatewayClient::new(server.uri(), "test-token");
     let report = bootstrap_small_reality(&client, ModelSource::PlatformModel, Uuid::nil(), Uuid::nil(), 1)
         .await
         .expect("bootstrap runs");
 
-    assert_eq!(report.l3.fallback_count, 2, "obj_5 + obj_6 fell back in L3");
-    assert_eq!(report.l4.narrations.len(), 3, "every zone narrated, incl. lotus_grove");
-    assert_eq!(report.l4.fallback_count, 0);
-    let lg = report
-        .l4
-        .narrations
-        .iter()
-        .find(|n| n.zone_id == "lotus_grove")
-        .expect("lotus_grove narrated");
-    assert!(
-        !lg.narration.contains("Engine-default"),
-        "lotus_grove was L4-narrated despite its zone's L3 objects all falling back",
+    assert!(!report.l3.classifications.is_empty());
+    assert_eq!(
+        report.l3.fallback_count,
+        report.l3.classifications.len(),
+        "every L3 object fell back — each got an invalid canon_kind",
     );
+    assert_eq!(report.l4.narrations.len(), 4, "every zone narrated despite total L3 fallback");
+    assert_eq!(report.l4.fallback_count, 0);
+    for n in &report.l4.narrations {
+        assert!(
+            !n.narration.contains("Engine-default"),
+            "zone {} was L4-narrated, not L3-fallback'd",
+            n.zone_id,
+        );
+    }
 }
 
 #[tokio::test]

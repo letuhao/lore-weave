@@ -36,20 +36,19 @@ from uuid import UUID
 import asyncpg
 
 from app.clients.embedding_client import EmbeddingClient
-from app.context.selectors.passages import EMBEDDING_MODEL_TO_DIM
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.projects import ProjectsRepo
-from eval.fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
-from eval.mode3_query_runner import Mode3QueryRunner
-from eval.persist import persist_benchmark_report
-from eval.run_benchmark import (
+from .core import (
     AsyncBenchmarkRunner,
     BenchmarkReport,
     _default_golden_path,
     _default_run_id,
     load_golden_set,
 )
+from .fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
+from .mode3_query_runner import Mode3QueryRunner
+from .persist import persist_benchmark_report
 
 __all__ = [
     "BenchmarkRunError",
@@ -74,13 +73,14 @@ class NoEmbeddingModelError(BenchmarkRunError):
 
 
 class UnknownEmbeddingModelError(BenchmarkRunError):
-    """Project's ``embedding_model`` is not in ``EMBEDDING_MODEL_TO_DIM`` —
-    the harness can't look up the right vector index dim."""
+    """Project's configured ``embedding_dimension`` has no matching
+    ``:Passage`` vector index, so the harness can't run."""
 
 
 class NotBenchmarkProjectError(BenchmarkRunError):
     """Project already contains real (chapter/chat/glossary) passages.
-    K17.9 assumes a dedicated benchmark project per ``eval/fixture_loader.py``.
+    K17.9 assumes a dedicated benchmark project per
+    ``app/benchmark/fixture_loader.py``.
     """
 
 
@@ -204,21 +204,20 @@ async def run_project_benchmark(
             "project has no embedding_model/embedding_dimension configured",
         )
 
-    embedding_dim = EMBEDDING_MODEL_TO_DIM.get(project.embedding_model)
-    if embedding_dim is None:
-        raise UnknownEmbeddingModelError(
-            f"embedding model {project.embedding_model!r} not in "
-            "EMBEDDING_MODEL_TO_DIM — extend the map before running",
-        )
-    # Guard: EMBEDDING_MODEL_TO_DIM carries some models (e.g. nomic-
-    # embed-text at dim 768) whose dim isn't in SUPPORTED_PASSAGE_DIMS.
-    # Those models skip the L3 selector silently in production; here
-    # we'd fail later inside upsert_passage with a ValueError — convert
-    # to a clean 409 instead.
+    # D-EMB-MODEL-REF-01 — the dimension is the caller-supplied
+    # `embedding_dimension` column; `project.embedding_model` now carries
+    # the provider-registry `user_model` UUID (the embed `model_ref`), not
+    # a logical name, so the old `EMBEDDING_MODEL_TO_DIM` name lookup is
+    # gone. The `not project.embedding_dimension` guard above already
+    # ensured it is a positive int.
+    embedding_dim = project.embedding_dimension
+    # Guard: the configured dimension must have a :Passage vector index —
+    # otherwise upsert_passage fails later with a ValueError; convert to a
+    # clean 409 here (review-impl M2).
     if embedding_dim not in SUPPORTED_PASSAGE_DIMS:
         raise UnknownEmbeddingModelError(
-            f"embedding model {project.embedding_model!r} uses dim "
-            f"{embedding_dim} which has no :Passage vector index",
+            f"project embedding dimension {embedding_dim} has no "
+            f":Passage vector index (supported: {sorted(SUPPORTED_PASSAGE_DIMS)})",
         )
 
     if await _has_real_passages(str(user_id), str(project_id)):
@@ -273,7 +272,12 @@ async def run_project_benchmark(
                 embedding_model=project.embedding_model,
                 embedding_dim=embedding_dim,
             )
-            report = await AsyncBenchmarkRunner(golden, runner).run(runs=runs)
+            # D-EMB-BENCHMARK-CAL-01: pass embedding_dim so per-dimension
+            # threshold overrides in the golden set get merged over the
+            # flat defaults; the persisted report records the actual gate.
+            report = await AsyncBenchmarkRunner(
+                golden, runner, dimension=embedding_dim,
+            ).run(runs=runs)
 
         run_id = _default_run_id()
         passed = report.passes_thresholds()

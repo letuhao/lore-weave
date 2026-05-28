@@ -72,9 +72,11 @@ services:
       - "8148:8025"
 
   auth-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/auth-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/auth-service/Dockerfile
     environment:
       HTTP_ADDR: ":8081"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_auth?sslmode=disable
@@ -88,6 +90,8 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5296}
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,6 +127,8 @@ services:
       LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,15 +143,19 @@ services:
       - "8205:8082"
 
   sharing-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/sharing-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/sharing-service/Dockerfile
     environment:
       HTTP_ADDR: ":8083"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_sharing?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -161,9 +171,11 @@ services:
       - "8206:8083"
 
   catalog-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/catalog-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/catalog-service/Dockerfile
     environment:
       HTTP_ADDR: ":8084"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_catalog?sslmode=disable
@@ -171,6 +183,8 @@ services:
       SHARING_SERVICE_INTERNAL_URL: http://sharing-service:8083
       TRANSLATION_SERVICE_INTERNAL_URL: http://translation-service:8087
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -187,9 +201,11 @@ services:
       - "8207:8084"
 
   provider-registry-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/provider-registry-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/provider-registry-service/Dockerfile
     environment:
       HTTP_ADDR: ":8085"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
@@ -208,6 +224,27 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
+      # Session-61 long-chapter perf fix — per-Read idle timeout on
+      # streaming upstreams (see provider/streamer.go). Defense-in-depth
+      # against LM Studio auto-evicting a loaded model mid-stream (the
+      # sherlock_speckled_band stall: no `done`, no `err`, streamer
+      # waits forever). 300s is generous — real models stream tokens
+      # within seconds; 300s of upstream silence ≈ certainly dead.
+      # Unset / "0" disables (preserves the historical no-timeout path).
+      LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S: ${LLM_GATEWAY_STREAM_IDLE_TIMEOUT_S:-300}
+      # Phase 6a — spend-guardrail estimator tuning knobs. Optional;
+      # code defaults apply when unset (token-count estimation, not
+      # money limits). See LLM_PIPELINE_PHASE6A_DESIGN.md §3.6.
+      MAX_OUTPUT_TOKENS_DEFAULT: ${MAX_OUTPUT_TOKENS_DEFAULT:-4096}
+      EXTRACTION_OUTPUT_CEILING: ${EXTRACTION_OUTPUT_CEILING:-8192}
+      SYSTEM_PROMPT_TOKEN_ESTIMATE: ${SYSTEM_PROMPT_TOKEN_ESTIMATE:-1024}
+      # Phase 6b — transient-retry budget for a worker job. Optional; the
+      # code default (3) applies when unset.
+      JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
+      # Phase 6c — OpenTelemetry trace export. Unset = no-op tracer (the
+      # service still boots). Set it + bring up the `observability` profile
+      # to wire tracing to the collector; see the otel-collector block.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -226,14 +263,34 @@ services:
       - "8208:8085"
 
   usage-billing-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/usage-billing-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/usage-billing-service/Dockerfile
     environment:
       HTTP_ADDR: ":8086"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6a — spend-guardrail default budgets (USD). REQUIRED — the
+      # service fails to start if unset (no hardcoded literal, billing
+      # ADR P5). Effectively-unlimited for the test/UAT environment.
+      # CEILING: spend_guardrails/platform_balances columns are
+      # numeric(16,8) — absolute value must be < 10^8, so 99_000_000 is
+      # the largest round "unlimited" default that does not overflow the
+      # seed INSERT. RESERVATION_TTL is the leaked-hold sweeper horizon;
+      # the code default (45m) exceeds the longest job timeout.
+      GUARDRAIL_DEFAULT_DAILY_USD: ${GUARDRAIL_DEFAULT_DAILY_USD:-99000000}
+      GUARDRAIL_DEFAULT_MONTHLY_USD: ${GUARDRAIL_DEFAULT_MONTHLY_USD:-99000000}
+      RESERVATION_TTL: ${RESERVATION_TTL:-45m}
+      # Phase 6a-β — Subsystem B platform free-tier allowance (USD). REQUIRED
+      # — the service fails to start if unset (no DDL default, billing ADR
+      # P5). Generous for the test/UAT environment so it never gates.
+      # Same numeric(16,8) ceiling as the guardrail budgets above.
+      PLATFORM_FREE_TIER_USD: ${PLATFORM_FREE_TIER_USD:-99000000}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -330,9 +387,11 @@ services:
         condition: service_healthy
 
   glossary-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/glossary-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/glossary-service/Dockerfile
     environment:
       HTTP_ADDR: ":8088"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary?sslmode=disable
@@ -340,6 +399,8 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8081
       BOOK_SERVICE_URL: http://book-service:8082
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -369,6 +430,8 @@ services:
       # MED#2 — was only used by the deleted resolve_credentials() flow.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -403,10 +466,18 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # build_context is a fast read on the chat hot path — 500ms.
       KNOWLEDGE_CLIENT_TIMEOUT_S: "0.5"
       KNOWLEDGE_CLIENT_RETRIES: "1"
+      # K21-B tool execution (memory_remember etc.) does real work —
+      # injection-neutralisation + a Neo4j write — and routinely exceeds
+      # 500ms. execute_tool uses this longer per-call timeout instead of
+      # the build_context budget above (D-K21B-06 live-smoke finding).
+      KNOWLEDGE_TOOL_TIMEOUT_S: "30"
     depends_on:
       postgres:
         condition: service_healthy
@@ -439,13 +510,17 @@ services:
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
-      # K11.1 — Neo4j connection (Track 2). Empty NEO4J_URI means
-      # "skip Neo4j init at startup" — Track 1 dev keeps working.
-      # Set NEO4J_URI=bolt://neo4j:7687 (and bring up the neo4j
-      # service via `--profile neo4j`) to enable Track 2 features.
-      NEO4J_URI: ${NEO4J_URI:-}
+      # K11.1 — Neo4j connection (Track 2). Defaults to the in-compose
+      # neo4j service so the full Track 2/3 graph (entities, timeline,
+      # passage vector index, K21 memory tools) works out of the box.
+      # K11.2 driver init fail-fasts on an unreachable URI, hence the
+      # `depends_on: neo4j` below. Override NEO4J_URI= (empty) for a
+      # deliberate Track-1-only run without the neo4j container.
+      NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-loreweave_dev_neo4j}
     depends_on:
@@ -454,6 +529,8 @@ services:
       redis:
         condition: service_healthy
       glossary-service:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     ports:
       - "8216:8092"
@@ -471,9 +548,11 @@ services:
         max-file: "5"
 
   worker-infra:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/worker-infra
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/worker-infra/Dockerfile
     environment:
       WORKER_TASKS: "outbox-relay,outbox-cleanup,import-processor"
       EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
@@ -489,6 +568,8 @@ services:
       BOOK_SERVICE_URL: http://book-service:8082
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -511,6 +592,8 @@ services:
     environment:
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       BOOK_SERVICE_URL: http://book-service:8082
       # Phase 4b-γ: SDK posts to provider-registry's internal LLM
@@ -531,9 +614,11 @@ services:
         max-file: "5"
 
   statistics-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/statistics-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/statistics-service/Dockerfile
     environment:
       HTTP_ADDR: ":8089"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_statistics?sslmode=disable
@@ -542,6 +627,8 @@ services:
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
       REFRESH_INTERVAL: "600"
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -560,9 +647,11 @@ services:
       - "8214:8089"
 
   notification-service:
+    # Phase 6c — repo-root build context so the Dockerfile can COPY
+    # sdks/go/observability for the go.mod replace directive.
     build:
-      context: ../services/notification-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
     environment:
       HTTP_ADDR: ":8091"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_notification?sslmode=disable
@@ -572,6 +661,8 @@ services:
       # `loreweave.events` topic and persist as notifications rows.
       # Empty/unset disables the consumer (REST API stays usable).
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -607,6 +698,8 @@ services:
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       auth-service:
         condition: service_healthy
@@ -694,19 +787,16 @@ services:
     # profiles:
     #   - v2
 
-  # ── K11.1 — Neo4j for Track 2 extraction graph ────────────────────────
-  # Hidden behind the `neo4j` profile so Track 1 dev doesn't pay the
-  # ~4GB / ~60s startup cost. Bring up explicitly via:
-  #   docker compose --profile neo4j up -d neo4j
-  # Or as part of the full Track 2 stack (once the profile chain is
-  # wired up):
-  #   docker compose --profile extraction up -d
-  #
-  # knowledge-service does NOT depends_on neo4j so a Track 1
-  # `docker compose up knowledge-service` continues to work without
-  # Neo4j running. K11.2 driver init is gated on NEO4J_URI being
-  # set in the env — unset = skip silently, set = fail-fast on
-  # unreachable.
+  # ── K11.1 — Neo4j for the Track 2/3 knowledge graph ───────────────────
+  # Default-on: Tracks 1-3 are feature-complete and the graph (entities,
+  # relations, events, timeline, passage vector index, K21 memory tools)
+  # is core product surface — a profile-gated default silently degraded
+  # all of it. knowledge-service `depends_on: neo4j` (condition healthy)
+  # so its K11.2 driver init — which fail-fasts on an unreachable URI —
+  # doesn't race startup. Costs ~4GB / ~60s. For a deliberate lightweight
+  # Track-1-only run, start with `NEO4J_URI= docker compose up -d`
+  # (empty URI skips the driver) and the neo4j container can be left
+  # stopped.
   neo4j:
     image: neo4j:2026.03-community
     environment:
@@ -740,9 +830,177 @@ services:
       resources:
         limits:
           memory: 4G
+
+  # ── Phase 6c — OpenTelemetry tracing stack ────────────────────────────
+  # Distributed tracing for the LLM pipeline (6c-α); 6c-β/γ extend it to
+  # every service. Hidden behind the `observability` profile so a plain
+  # `docker compose up` doesn't pay for 3 extra containers. Enable with:
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+  #     docker compose --profile observability up
+  # Then open Grafana at http://localhost:3200 (Explore → Tempo). Host
+  # port 3200, not 3000 — 3000 is ContextHub MCP. Services keep a no-op
+  # tracer while OTEL_EXPORTER_OTLP_ENDPOINT is unset, so they boot fine
+  # with the profile off — no service depends_on the collector.
+  otel-collector:
+    # Pin a concrete release tag, never `latest`.
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    depends_on:
+      - tempo
     profiles:
-      - neo4j
-      - extraction
+      - observability
+      - full
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./otel/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - loreweave_tempo:/var/tempo
+    profiles:
+      - observability
+      - full
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      # Dev-only: anonymous admin, no login form. NOT for any shared env.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./otel/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/tempo.yaml:ro
+    ports:
+      - "3200:3000"
+    depends_on:
+      - tempo
+    profiles:
+      - observability
+      - full
+
+  # tilemap-service — procedural tilemap generation (Rust). Stateless:
+  # the full TilemapTemplate is supplied per request; no Postgres or DP
+  # dependency yet (Phase 4+ adds them). Build context is the REPO ROOT
+  # because the Rust workspace lives at the top of the tree.
+  #
+  # Port allocation note (LOW-3 from /review-impl 2026-05-24): external
+  # 8217-19 are deliberately RESERVED for upcoming core-domain services
+  # (likely future auth/book companions). tilemap-service claims 8220 to
+  # leave that gap intentional. New service entries SHOULD pick 8221+
+  # unless they belong to the core-domain band.
+  tilemap-service:
+    build:
+      context: ..
+      dockerfile: services/tilemap-service/Dockerfile
+    environment:
+      # Env name rewrite (LOW-2 from /review-impl 2026-05-24): the host /
+      # .env reads `INTERNAL_SERVICE_TOKEN` (matching auth-service /
+      # book-service convention); we re-expose it under the name the Rust
+      # binary actually consumes (`LOREWEAVE_INTERNAL_TOKEN`). Setting
+      # `LOREWEAVE_INTERNAL_TOKEN` on the HOST has NO effect — compose
+      # always rewrites from `INTERNAL_SERVICE_TOKEN`.
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      TILEMAP_HTTP_BIND: "0.0.0.0:7100"
+      # CORS origins for browser smoke (Session D V0 demo, spec AC-FG-13).
+      # Comma-separated; defaults to frontend-game dev server on :5174.
+      # Prod goes through api-gateway-bff (single-origin per spec §8).
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      RUST_LOG: ${RUST_LOG:-info,tilemap_service=debug}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7100/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # MED-1 from /review-impl 2026-05-24: give the Rust binary a window
+      # to bind the port on cold start. Without start_period, the first
+      # 1-3 checks can hit "connection refused" on slow hosts and mark
+      # the container unhealthy before it has actually finished booting.
+      start_period: 10s
+    # LOW-6 from /review-impl 2026-05-24: bound the restart count so a
+    # bad LOREWEAVE_INTERNAL_TOKEN doesn't lead to an infinite crash
+    # loop. Project-wide pattern: other services in this file lack any
+    # `restart:` directive — adopting on a per-service basis here.
+    restart: on-failure:5
+    ports:
+      - "8220:7100"
+    # COSMETIC-8 from /review-impl 2026-05-24: opt-in via profile so
+    # contributors running a minimal stack (e.g. just `auth` + `book`)
+    # don't pay the ~30 MB Rust image build cost. `docker compose up`
+    # without --profile excludes tilemap; `--profile tilemap` or
+    # `--profile full` includes it.
+    profiles:
+      - tilemap
+      - full
+
+  # ────────────────────────────────────────────────────────────────
+  # game-server — Node + TypeScript + Colyseus.
+  # V0 ships EchoRoom for Session E WS path validation. V1+ adds real
+  # game rooms (zone instances, combat, chat) per spec §17.
+  # Port 2567 is Colyseus convention.
+  # ────────────────────────────────────────────────────────────────
+  game-server:
+    build:
+      context: ../services/game-server
+      dockerfile: Dockerfile
+    environment:
+      PORT: "2567"
+      # Dev auth token — EchoRoom.onAuth checks options.jwt against this.
+      # Same env name convention as tilemap-service for cross-service consistency.
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # CORS for matchmaking HTTP endpoint (POST /matchmake/<room>);
+      # WS upgrade itself doesn't preflight. Default frontend-game dev :5174.
+      LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5174}
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: on-failure:5
+    ports:
+      - "2567:2567"
+    profiles:
+      - game
+      - full
+
+  # ────────────────────────────────────────────────────────────────
+  # frontend-game — Static SPA served by nginx.
+  # V0 final piece (Session F per spec §16) — completes the
+  # one-command local stack: `docker compose --profile full up`
+  # boots tilemap-service + game-server + frontend-game and the user
+  # opens http://localhost:5174 for the V0 demo (iso tilemap +
+  # click-to-walk Player + HUD reading /livez + WS echo panel).
+  # Build context = repo root (pnpm-workspace.yaml lives there +
+  # frontend-game depends on @loreweave/* packages).
+  # ────────────────────────────────────────────────────────────────
+  frontend-game:
+    build:
+      context: ..
+      dockerfile: frontend-game/Dockerfile
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5174/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # nginx itself boots in <1s; give it a moment for any first-load
+      # warmup in case Docker is slow on a cold cache.
+      start_period: 5s
+    restart: on-failure:5
+    ports:
+      - "5174:5174"
+    # V0 demo: frontend-game's bundled JS still hardcodes
+    # localhost:8220 (tilemap-service) and localhost:2567 (game-server).
+    # Both are exposed to host via compose port maps; browser sees them
+    # as separate localhost services. V1+ wires env-var injection for
+    # production deploys behind api-gateway-bff.
+    profiles:
+      - game
       - full
 
 volumes:
@@ -753,3 +1011,4 @@ volumes:
   loreweave_languagetool:
   loreweave_neo4j_data:
   loreweave_neo4j_logs:
+  loreweave_tempo:

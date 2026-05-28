@@ -11,6 +11,7 @@ pub mod force_directed;
 pub mod fractalize;
 pub mod grid_seed;
 pub mod penrose;
+pub(crate) mod spatial;
 
 pub use force_directed::{ConvergenceCaps, ConvergenceResult, force_directed_converge};
 pub use fractalize::fractalize_zone;
@@ -151,6 +152,7 @@ mod tests {
                 .collect(),
             treasure_tiers: vec![],
             biome_selection_rules: None,
+            inherit_treasure_from: None,
         }
     }
 
@@ -159,6 +161,7 @@ mod tests {
             template_id: TilemapTemplateId("t".to_string()),
             zones,
             seed_offset: 0,
+            world_zone: None,
         }
     }
 

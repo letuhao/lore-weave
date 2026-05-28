@@ -82,3 +82,22 @@ export type UsageFilters = {
 };
 
 export type Period = 'last_24h' | 'last_7d' | 'last_30d' | 'last_90d';
+
+// Phase 6a-γ — spend guardrail (Subsystem A) + platform balance (Subsystem B).
+export type Guardrail = {
+  daily_limit_usd: number;
+  monthly_limit_usd: number;
+  daily_spent_usd: number;
+  monthly_spent_usd: number;
+  reserved_usd: number;
+  daily_available_usd: number;
+  monthly_available_usd: number;
+};
+
+export type PlatformBalance = {
+  free_tier_allowance_usd: number;
+  free_tier_used_usd: number;
+  free_tier_remaining_usd: number;
+  credits_balance_usd: number;
+  reserved_usd: number;
+};

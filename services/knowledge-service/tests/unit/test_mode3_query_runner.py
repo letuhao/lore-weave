@@ -1,4 +1,4 @@
-"""K17.9 — unit tests for `eval.mode3_query_runner.Mode3QueryRunner`.
+"""K17.9 — unit tests for `app.benchmark.mode3_query_runner.Mode3QueryRunner`.
 
 Everything is mocked — embedding_client.embed and
 find_passages_by_vector. The runner is a pure adapter: query →
@@ -15,7 +15,7 @@ import pytest
 
 from app.clients.embedding_client import EmbeddingResult
 from app.db.neo4j_repos.passages import Passage, PassageSearchHit
-from eval.mode3_query_runner import Mode3QueryRunner
+from app.benchmark.mode3_query_runner import Mode3QueryRunner
 
 
 USER_ID = "user-1"
@@ -49,7 +49,7 @@ def _embed_result(dim: int = 1024) -> EmbeddingResult:
 
 def _runner(monkeypatch, find_hits: AsyncMock, *, dim: int = 1024) -> Mode3QueryRunner:
     monkeypatch.setattr(
-        "eval.mode3_query_runner.find_passages_by_vector", find_hits,
+        "app.benchmark.mode3_query_runner.find_passages_by_vector", find_hits,
     )
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result(dim))
@@ -98,7 +98,7 @@ async def test_run_returns_empty_on_empty_embedding(monkeypatch):
     """Provider returned an empty list — don't invoke search."""
     find_hits = AsyncMock(return_value=[])
     monkeypatch.setattr(
-        "eval.mode3_query_runner.find_passages_by_vector", find_hits,
+        "app.benchmark.mode3_query_runner.find_passages_by_vector", find_hits,
     )
     client = MagicMock()
     client.embed = AsyncMock(return_value=EmbeddingResult(

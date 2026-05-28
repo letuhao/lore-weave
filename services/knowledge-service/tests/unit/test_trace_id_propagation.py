@@ -117,6 +117,36 @@ def test_500_handler_includes_trace_id_in_body_and_header():
     assert body["trace_id"] == "env-test"
     assert "detail" in body
     assert resp.headers["x-trace-id"] == "env-test"
+    # D-PHASE6C-TRACE-ID-UNIFY: otel_trace_id field MUST be present
+    # (empty string when OTel is no-op — that's the no-tracing-stack
+    # signal, distinct from missing-field which would mean the
+    # handler regressed).
+    assert "otel_trace_id" in body, (
+        "500 body must always include otel_trace_id (empty when OTel off)"
+    )
+    assert body["otel_trace_id"] == "", (
+        "no OTEL_EXPORTER_OTLP_ENDPOINT → no active span → otel_trace_id empty"
+    )
+
+
+def test_500_handler_emits_otel_trace_id_when_helper_returns_value(monkeypatch):
+    """D-PHASE6C-TRACE-ID-UNIFY regression-lock. When `current_otel_trace_id`
+    returns a real 32-hex string (production: OTel configured + active
+    SERVER span), the 500 handler MUST emit it in the body so an
+    operator can paste it into Grafana Tempo. Patches the helper at
+    its import site in app.main."""
+    monkeypatch.setattr(
+        "app.main.current_otel_trace_id",
+        lambda: "deadbeef" * 4,  # 32 hex chars
+    )
+    c = TestClient(_app_with_500_handler(), raise_server_exceptions=False)
+    resp = c.get("/boom", headers={"X-Trace-Id": "log-id"})
+    body = resp.json()
+    assert body["trace_id"] == "log-id"
+    assert body["otel_trace_id"] == "deadbeef" * 4
+    # Both ids should differ — log-id is the middleware uuid, otel is
+    # the W3C tracecontext id; an operator must be able to pick.
+    assert body["trace_id"] != body["otel_trace_id"]
 
 
 def test_500_handler_does_not_swallow_httpexception():

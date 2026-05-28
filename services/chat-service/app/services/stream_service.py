@@ -26,6 +26,7 @@ from loreweave_llm import (
     ReasoningEvent,
     StreamRequest,
     TokenEvent,
+    ToolCallEvent,
     UsageEvent,
 )
 
@@ -120,6 +121,207 @@ async def _stream_via_gateway(
             "finish_reason": finish_reason or "stop",
             "usage": last_usage,
         }
+    finally:
+        await client.aclose()
+
+
+# ── K21-B: tool-calling loop ────────────────────────────────────────────────
+
+# Max LLM passes per chat turn. Passes 0..N-2 may call tools; the final
+# pass is forced tool-free (tool_choice="none") so the loop always
+# terminates with a text answer (design D7).
+MAX_TOOL_ITERATIONS = 5
+
+
+def _is_tools_unsupported(exc: LLMError) -> bool:
+    """True when an LLMError is the gateway's 'this provider does not
+    support tools' rejection — the K21.11 / design-D8 capability
+    fallback. Robust to whether the SDK exposes a `.code` attribute."""
+    code = getattr(exc, "code", "") or ""
+    return "TOOLS_NOT_SUPPORTED" in code or "TOOLS_NOT_SUPPORTED" in str(exc)
+
+
+def _parse_tool_args(raw: str) -> dict:
+    """Parse a tool call's accumulated `arguments` JSON string. A
+    malformed or empty string yields {} so `execute_tool` still receives
+    a dict (knowledge-service then surfaces an arg-validation error)."""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _reassemble_tool_calls(frags: dict) -> list[dict]:
+    """Collapse accumulated ToolCallEvent fragments (keyed by `index`)
+    into an ordered list of `{id, name, arguments}` — `arguments` is the
+    concatenated JSON string the gateway streamed."""
+    calls: list[dict] = []
+    for idx in sorted(frags):
+        f = frags[idx]
+        calls.append({
+            "id": f.get("id") or "",
+            "name": f.get("name") or "",
+            "arguments": f.get("arguments", ""),
+        })
+    return calls
+
+
+async def _stream_with_tools(
+    model_source: str,
+    model_ref: str,
+    user_id: str,
+    messages: list[dict],
+    gen_params: dict,
+    tools: list[dict],
+    knowledge_client,
+    session_id: str,
+    project_id: str | None,
+) -> AsyncGenerator[dict, None]:
+    """K21-B — the tool-calling loop.
+
+    Streams a chat turn that may call knowledge-service memory tools
+    mid-response. Yields the same chunk dicts as `_stream_via_gateway`
+    (`content` / `reasoning_content` / `finish_reason` / `usage`) plus
+    `{"tool_call": {...}}` chunks — one per executed tool call — which the
+    caller emits as an SSE event and persists.
+
+    Each loop pass is one `client.stream()` call (a separate gateway
+    job — usage is summed across passes, design D10). Passes 0..N-2
+    stream with `tool_choice="auto"`; the final pass is forced tool-free
+    so the model must answer in text, making the loop self-terminating
+    (design D7). A provider that rejects tools triggers a one-shot
+    tool-free retry (design D8).
+    """
+    client = Client(
+        base_url=settings.provider_registry_internal_url,
+        auth_mode="internal",
+        internal_token=settings.internal_service_token,
+        user_id=user_id,
+    )
+    try:
+        working: list[dict] = list(messages)
+        total_input = 0
+        total_output = 0
+        max_tokens = gen_params.get("max_tokens")
+        if max_tokens is not None and max_tokens <= 0:
+            max_tokens = None
+        tools_supported = True  # D8 — flipped off if the provider rejects tools
+
+        for iteration in range(MAX_TOOL_ITERATIONS):
+            last_iter = iteration == MAX_TOOL_ITERATIONS - 1
+            request_kwargs: dict = {
+                "model_source": model_source,
+                "model_ref": model_ref,
+                "messages": working,
+            }
+            if gen_params.get("temperature") is not None:
+                request_kwargs["temperature"] = gen_params["temperature"]
+            if max_tokens is not None:
+                request_kwargs["max_tokens"] = max_tokens
+            # Offer tools unless the provider rejected them (D8) or this
+            # is the forced-final pass (D7 — must answer in text).
+            offered_tools = tools_supported and not last_iter
+            if offered_tools:
+                request_kwargs["tools"] = tools
+                request_kwargs["tool_choice"] = "auto"
+            request = StreamRequest(**request_kwargs)
+
+            tool_frags: dict = {}
+            text_parts: list[str] = []
+            finish_reason: str | None = None
+            try:
+                async for ev in client.stream(request):
+                    if isinstance(ev, TokenEvent):
+                        text_parts.append(ev.delta)
+                        yield {"content": ev.delta, "reasoning_content": "",
+                               "finish_reason": None, "usage": None}
+                    elif isinstance(ev, ReasoningEvent):
+                        yield {"content": "", "reasoning_content": ev.delta,
+                               "finish_reason": None, "usage": None}
+                    elif isinstance(ev, ToolCallEvent):
+                        slot = tool_frags.setdefault(
+                            ev.index, {"id": None, "name": None, "arguments": ""}
+                        )
+                        if ev.id:
+                            slot["id"] = ev.id
+                        if ev.name:
+                            slot["name"] = ev.name
+                        slot["arguments"] += ev.arguments_delta
+                    elif isinstance(ev, UsageEvent):
+                        total_input += ev.input_tokens
+                        total_output += ev.output_tokens
+                    elif isinstance(ev, DoneEvent):
+                        finish_reason = ev.finish_reason
+            except LLMError as exc:
+                # D8 — provider doesn't support tools: drop tools and
+                # retry. Only meaningful when this pass actually offered
+                # them; otherwise the error is real and propagates.
+                if offered_tools and _is_tools_unsupported(exc):
+                    logger.info(
+                        "K21-B: provider rejected tools (%s); retrying tool-free",
+                        model_ref,
+                    )
+                    tools_supported = False
+                    continue
+                raise
+
+            if not tool_frags:
+                # No tool calls — this pass IS the final text response.
+                yield {"content": "", "reasoning_content": "",
+                       "finish_reason": finish_reason or "stop",
+                       "usage": _Usage(prompt_tokens=total_input,
+                                       completion_tokens=total_output)}
+                return
+
+            # The model called tools — record the assistant turn, execute
+            # each call, append the results, and loop.
+            calls = _reassemble_tool_calls(tool_frags)
+            working.append({
+                "role": "assistant",
+                "content": "".join(text_parts),
+                "tool_calls": [
+                    {"id": c["id"], "type": "function",
+                     "function": {"name": c["name"], "arguments": c["arguments"]}}
+                    for c in calls
+                ],
+            })
+            for c in calls:
+                args_obj = _parse_tool_args(c["arguments"])
+                envelope = await knowledge_client.execute_tool(
+                    user_id=user_id,
+                    session_id=session_id,
+                    project_id=project_id,
+                    tool_name=c["name"],
+                    tool_args=args_obj,
+                )
+                ok = bool(envelope.get("success"))
+                tool_payload = (
+                    envelope.get("result") if ok
+                    else {"error": envelope.get("error")}
+                )
+                working.append({
+                    "role": "tool",
+                    "tool_call_id": c["id"],
+                    "content": json.dumps(tool_payload),
+                })
+                yield {"tool_call": {
+                    "iteration": iteration,
+                    "tool": c["name"],
+                    "args": args_obj,
+                    "ok": ok,
+                    "result": envelope.get("result") if ok else None,
+                    "error": None if ok else envelope.get("error"),
+                }}
+
+        # MAX_TOOL_ITERATIONS exhausted. The final pass is forced
+        # tool-free (D7) so this is unreachable in practice — defensive.
+        yield {"content": "", "reasoning_content": "",
+               "finish_reason": "stop",
+               "usage": _Usage(prompt_tokens=total_input,
+                               completion_tokens=total_output)}
     finally:
         await client.aclose()
 
@@ -258,9 +460,19 @@ async def stream_response(
     # internally; service no longer needs them. We keep `creds.provider_kind`
     # for the Anthropic cache_control branch above.
 
+    # ── K21-B: resolve memory tools ─────────────────────────────────────────
+    # Offer tool-calling when the project hasn't opted out
+    # (kctx.tool_calling_enabled) AND knowledge-service serves the tool
+    # schemas. A fetch failure → empty list → the turn runs tool-free.
+    tool_defs: list[dict] = []
+    if kctx.tool_calling_enabled:
+        tool_defs = await knowledge_client.get_tool_definitions()
+    use_tools = bool(tool_defs)
+
     # ── Stream ──────────────────────────────────────────────────────────────
     full_content: list[str] = []
     full_reasoning: list[str] = []
+    tool_calls_history: list[dict] = []
     last_usage = None
     msg_id = str(uuid4())
     import time as _time
@@ -274,15 +486,41 @@ async def stream_response(
     yield f'data: {json.dumps({"type": "memory-mode", "mode": fe_memory_mode})}\n\n'
 
     try:
-        chunk_stream = _stream_via_gateway(
-            model_source=model_source,
-            model_ref=model_ref,
-            user_id=user_id,
-            messages=messages,
-            gen_params=gen_params,
-        )
+        if use_tools:
+            chunk_stream = _stream_with_tools(
+                model_source=model_source,
+                model_ref=model_ref,
+                user_id=user_id,
+                messages=messages,
+                gen_params=gen_params,
+                tools=tool_defs,
+                knowledge_client=knowledge_client,
+                session_id=session_id,
+                project_id=str(project_id) if project_id else None,
+            )
+        else:
+            chunk_stream = _stream_via_gateway(
+                model_source=model_source,
+                model_ref=model_ref,
+                user_id=user_id,
+                messages=messages,
+                gen_params=gen_params,
+            )
 
         async for chunk_data in chunk_stream:
+            # K21-B: a tool_call chunk → record it for persistence + emit
+            # the SSE indicator. It carries no text/usage, so skip the rest.
+            tool_call = chunk_data.get("tool_call")
+            if tool_call is not None:
+                tool_calls_history.append(tool_call)
+                yield (
+                    'data: '
+                    + json.dumps({"type": "tool-call",
+                                  "tool": tool_call["tool"],
+                                  "ok": tool_call["ok"]})
+                    + '\n\n'
+                )
+                continue
             reasoning = chunk_data["reasoning_content"]
             content = chunk_data["content"]
             if chunk_data.get("usage"):
@@ -326,16 +564,21 @@ async def stream_response(
                 if time_to_first_token is not None:
                     parts["time_to_first_token_ms"] = round(time_to_first_token)
                 content_parts = json.dumps(parts) if parts else None
+                # K21-B: tool-call history for UI replay — NULL when the
+                # turn made no tool calls.
+                tool_calls_json = (
+                    json.dumps(tool_calls_history) if tool_calls_history else None
+                )
 
                 await conn.execute(
                     """
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
-                       sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0)
+                       sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb)
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
-                    input_tok, output_tok, model_ref, parent_message_id,
+                    input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                 )
 
                 # Extract and persist output artifacts
