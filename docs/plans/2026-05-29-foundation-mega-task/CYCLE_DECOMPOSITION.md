@@ -23,23 +23,39 @@ Each cycle is a **single RAID workflow run** (12 phases — see [RAID_WORKFLOW.m
 
 ## §2. Cycle inventory (38 cycles)
 
-### Cycle 0 — RAID Workflow Infrastructure
+### Cycle 0 — RAID Workflow Infrastructure (amended v1.1)
 
-**Size:** S/M (runs in default workflow, NOT RAID — bootstrap problem)
-**Scope:** Set up RAID infrastructure before any RAID-driven cycle.
+**Size:** M (was S/M; v1.1 amendment added 10 protection scripts → bumped to M)
+**Workflow:** Default workflow, NOT RAID — bootstrap problem
+**Scope:** Set up RAID v1.1 infrastructure (including §12 context protections) before any RAID-driven cycle.
 **Dependencies:** —
 
-**Deliverables:**
-- `docs/raid/RAID_WORKFLOW.md` (this CLARIFY's RAID_WORKFLOW.md → copied to `docs/raid/`)
-- `scripts/raid-orchestrator.py` — main RAID dispatcher (spawns DPS worktrees, gathers results, runs verify-cycle-N.sh)
+**Deliverables (core, v1.0):**
+- `docs/raid/RAID_WORKFLOW.md` (copy of [RAID_WORKFLOW.md](RAID_WORKFLOW.md))
+- `scripts/raid/orchestrator.py` — main RAID dispatcher
 - `scripts/raid/verify-cycle-template.sh` — template for per-cycle verify scripts
 - `scripts/raid/escalation-writer.py` — writes ESCALATIONS.md row after 3 failed attempts
 - `docs/raid/AUDIT_LOG.jsonl` (empty file, append-only)
 - `docs/raid/CYCLE_LOG.md` (skeleton)
 - `docs/raid/ESCALATIONS.md` (skeleton)
-- `docs/raid/cycle_briefs/` directory — pre-generated briefs for cycles 1-37 (one .md per cycle, copy-paste-ready agent prompts)
+- `docs/raid/cycle_briefs/` directory — pre-generated briefs for cycles 1-37 (one .md per cycle, per §4 template)
 
-**Exit:** RAID infra functional; smoke test on a no-op cycle proves orchestrator works.
+**Deliverables (v1.1 §12 context protections — MANDATORY):**
+- `scripts/raid/startup-verifier.sh` — 5-step session startup routine (P2)
+- `scripts/raid/in-progress-state-writer.py` — IN_PROGRESS state file writer/reader (P3)
+- `scripts/raid/compaction-detector.py` — compaction event detection heuristic (P5)
+- `scripts/raid/post-commit-verifier-prompt.md` — Auditor post-commit verifier prompt (P9)
+- `scripts/raid/health-dashboard.py` — per-cycle health gauge from AUDIT_LOG (P10)
+- `scripts/raid/files-from-cycle.sh` — cross-cycle file lookup helper (P7)
+- `docs/raid/IN_PROGRESS/` directory (empty + README schema docs) (P3)
+- `docs/raid/IN_PROGRESS/_archive/` directory (empty, archived completed-cycle states) (P3)
+- `docs/raid/.session-cycle-lock` (sentinel file for P1 enforcement)
+- `docs/raid/cycle_briefs/TEMPLATE.md` — canonical brief template per §4 (P6 structure)
+
+**Exit:**
+- RAID infra functional; smoke test on a no-op cycle proves orchestrator works
+- Smoke test exercises all 10 §12 protections: fresh session, startup routine, IN_PROGRESS state, sub-agent return budget, compaction simulation, brief structure validation, cross-cycle reference, token budget, post-commit verification, health dashboard
+- All 37 pre-written cycle briefs follow §4 template + each ≤ 4000 tokens (P6)
 
 ---
 
@@ -208,12 +224,25 @@ C0 (RAID infra)
 
 ---
 
-## §4. Per-cycle brief template
+## §4. Per-cycle brief template (v1.1 — lost-in-middle aware per RAID_WORKFLOW.md §12.6 / P6)
 
-Each `docs/raid/cycle_briefs/<NN>_<short_name>.md` follows this structure:
+Each `docs/raid/cycle_briefs/<NN>_<short_name>.md` follows this structure. **Token cap:
+4000 tokens per brief.** Critical info appears at TOP (TL;DR) AND BOTTOM (REMINDERS) —
+the middle holds details, which research shows are less reliably retrieved.
 
 ```markdown
 # Cycle <N>: <Title>
+
+## 🎯 TL;DR (30 seconds — TOP critical info)
+- **Scope:** <one paragraph>
+- **Acceptance gate:** `scripts/raid/verify-cycle-<N>.sh` exits 0
+- **Top 3 LOCKED decisions consumed:** <Q-ID>, <Q-ID>, <Q-ID>
+- **DPS count:** <N>
+- **Estimated wall time:** <hours>
+
+## Dependencies (must show DONE in CYCLE_LOG.md)
+- Cycles: <list>
+- Files expected to exist (grep-able paths): <list>
 
 ## Scope (IN)
 - <bullet list of artifacts to build>
@@ -221,53 +250,72 @@ Each `docs/raid/cycle_briefs/<NN>_<short_name>.md` follows this structure:
 ## Scope (OUT — explicitly)
 - <bullet list of what NOT to touch in this cycle>
 
-## Acceptance criteria (CI gates)
-- `scripts/raid/verify-cycle-<N>.sh` exits 0
-- Tests pass: <list>
+## Acceptance criteria (CI gates — exit code 0 = pass)
+- Tests pass: <list with paths>
 - Lints pass: <list>
 - Integration smoke: <description>
 
-## Dependencies
-- Cycles: <list>
-- Files expected to exist: <list with grep-able paths>
-
 ## DPS parallelism plan
-- DPS 1: <slice + worktree files>
+- DPS 1: <slice + worktree files> (return budget: 1500 tokens summary)
 - DPS 2: <slice + worktree files>
 - ...
 
-## Adversary review focus
+## Adversary review focus (cold-start sub-agent — return budget 2000 tokens)
 - <what the cold-start adversary should specifically check>
+- <known pitfalls / common mistakes for this kind of cycle>
 
-## Scope Guard CLEAR criteria
+## Scope Guard CLEAR criteria (cold-start sub-agent — return budget 500 tokens)
 - All scope items present
 - No OUT items touched
 - All acceptance criteria met
 - Cross-cycle invariants not violated
 
-## Cross-references
-- Layer plan: [L<N>_*.md](../plans/2026-05-29-foundation-mega-task/L<N>_*.md)
-- Kernel chunks: <list>
-- LOCKED decisions consumed: <list>
+## Cross-references (for deep-read IF Raid Leader needs to FOCUS mode)
+- Layer plan: [L<N>_*.md](../docs/plans/2026-05-29-foundation-mega-task/L<N>_*.md)
+- Kernel chunks: <list with §-anchors>
+- LOCKED decisions consumed (full list): <all Q-IDs>
+
+## ⚠️ REMINDERS (BOTTOM — re-stated critical info, anti-lost-in-middle)
+- 🔴 **Top LOCKED 1:** <Q-ID> → <one-line resolution>
+- 🔴 **Top LOCKED 2:** <Q-ID> → <one-line resolution>
+- 🔴 **Top LOCKED 3:** <Q-ID> → <one-line resolution>
+- 🔴 **Acceptance MUST include:** <key gate that's easiest to forget>
+- 🔴 **Do NOT touch:** <out-of-scope items most likely to drift>
+- 🔴 **Fresh session reminder:** this is a new `/raid <N>` invocation; no carry-over from prior cycles. Read CYCLE_LOG.md + this brief + LOCKED file ONLY.
 ```
+
+**Validation (CI lint):**
+- `scripts/raid/brief-structure-validator.sh` checks every brief has all 9 sections
+  (TL;DR, Dependencies, Scope IN, Scope OUT, Acceptance, DPS plan, Adversary, Scope
+  Guard, Cross-references, REMINDERS) + REMINDERS has ≥ 3 🔴 lines + brief ≤ 4000 tokens
+- Failing briefs block Cycle 0 exit and any RAID cycle invocation
 
 ---
 
-## §5. RAID prompt template (paste-and-go for each cycle)
+## §5. RAID prompt template v1.1 (paste-and-go for each cycle)
 
 ```
 /raid
 
 Execute Cycle <N> of the foundation mega-task.
 
-Read docs/raid/cycle_briefs/<NN>_<short_name>.md — that brief is your full
-scope, acceptance, dependencies, DPS plan, adversary focus, and Scope Guard
-criteria.
+⚠️ FRESH SESSION REMINDER (RAID_WORKFLOW.md §12.1 / P1):
+This is a new session. You have NO memory of prior cycles. All state lives
+in files — read them.
+
+STARTUP ROUTINE (mandatory 5 steps — RAID_WORKFLOW.md §12.2 / P2):
+1. Read docs/raid/CYCLE_LOG.md tail (last 5 entries) — know what's DONE
+2. Read docs/raid/cycle_briefs/<NN>_<short_name>.md — THIS cycle's brief
+3. Read docs/raid/IN_PROGRESS/cycle-<N>-state.md IF EXISTS (P3 resume)
+4. Run scripts/raid/startup-verifier.sh <N> — verify git + deps + clean
+5. Read OPEN_QUESTIONS_LOCKED.md sections relevant to this cycle
+
+ONLY AFTER STARTUP ROUTINE: begin Phase 1 (CLARIFY).
 
 Read docs/plans/2026-05-29-foundation-mega-task/L<X>_*.md (the parent layer
 plan) and the kernel chunks the brief cites — these give you the FULL spec.
 
-Then execute the full 12-phase RAID workflow (see docs/raid/RAID_WORKFLOW.md)
+Execute the full 12-phase RAID workflow (see docs/raid/RAID_WORKFLOW.md)
 as ONE task:
   CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC →
   POST-REVIEW → SESSION → COMMIT → RETRO
@@ -280,16 +328,35 @@ RAID-specific rules:
   against cycle brief
 - Spawn DPS sub-agents per the DPS parallelism plan in the brief
   (worktrees, run_in_background:true, isolation:worktree)
+- Sub-agents return ≤1500-2000 tokens condensed summaries (P4) — NOT full
+  diffs/logs. Raid Leader queries git/files directly if more needed.
+- Write docs/raid/IN_PROGRESS/cycle-<N>-state.md at every phase transition
+  (P3) — enables crash recovery
+- Cross-cycle reference: read CYCLE_LOG.md row only (~200 tokens), NOT
+  prior cycle briefs (P7)
 - All decisions LOCKED in OPEN_QUESTIONS_LOCKED.md — do NOT re-litigate
 
 Hard rules:
-- This task is Cycle <N> ONLY — do not start any other cycle
+- This task is Cycle <N> ONLY — do not start any other cycle (P1)
 - Every Depends-on cycle in the brief must already show "DONE" in
   docs/raid/CYCLE_LOG.md; if not, STOP and report
 - VERIFY must pass with fresh evidence (no "should work")
 - At COMMIT: append cycle to CYCLE_LOG.md as DONE in same commit as code
+- AFTER COMMIT: spawn post-commit Auditor for verification (P9) — if
+  DRIFT_DETECTED → git reset --soft HEAD~1 + ESCALATIONS row
 - STOP and write ESCALATIONS.md row if: VERIFY 3-fails, Scope Guard
-  BLOCKED, design-gap surfaced not in LOCKED decisions
+  BLOCKED, post-commit verifier DRIFT_DETECTED, design-gap surfaced not
+  in LOCKED decisions, compaction recovery state inconsistent (P5)
+- Hard token ceiling: 150K Raid Leader main context per cycle (P8). If
+  cumulative exceeds → halt + ESCALATIONS.
+
+On compaction event (if mid-cycle):
+- Pause new tool calls
+- Re-read IN_PROGRESS state file (P3)
+- Re-read cycle brief
+- Verify git log + AUDIT_LOG.jsonl + DPS worktree states match IN_PROGRESS
+- If CONSISTENT → continue from documented phase
+- If INCONSISTENT → halt + ESCALATIONS (corrupted recovery worse than halt)
 ```
 
 ---

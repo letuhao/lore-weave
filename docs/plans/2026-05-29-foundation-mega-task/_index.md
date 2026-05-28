@@ -64,3 +64,10 @@ after CLARIFY closes.
 **Cumulative scope:** 86 sub-components, ~545 artifacts, **38 RAID XL cycles** (Cycle 0 RAID infra + 37 foundation cycles).
 
 **CLARIFY COMPLETE 2026-05-29.** Ready for RAID execution starting at Cycle 0.
+
+**v1.1 amendment 2026-05-29 (same day, post-research):** RAID workflow amended with
+§12 Context Management Protections (10 protections P1-P10) to handle 38-cycle execution
+without context bloat / compaction loss / lost-in-the-middle. Cycle 0 deliverables
+expanded with 6 new scripts + 2 directories. Per-cycle brief template now mandates
+TL;DR-top + REMINDERS-bottom structure (lost-in-middle aware) with 4000-token cap.
+See [RAID_WORKFLOW.md §12](RAID_WORKFLOW.md) for protection contract.

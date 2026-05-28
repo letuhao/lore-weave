@@ -1,9 +1,16 @@
 # RAID — Recursive Autonomous Implementation Drive Workflow Spec
 
-> **Version:** RAID v1.0
+> **Version:** RAID v1.1 (amended 2026-05-29 with §12 context protections)
 > **Status:** SPEC — locked 2026-05-29 by foundation mega-task CLARIFY
 > **Parallel to:** AMAW v3.0 (Autonomous Multi-Agent Workflow) and v2.2 (human-in-loop)
 > **Replaces AMAW:** NO — RAID is a SEPARATE workflow for tasks where 100% autonomous execution is required (no human checkpoint per cycle)
+>
+> **v1.1 amendment rationale:** initial v1.0 spec did not explicitly protect against
+> context-window bloat, compaction-induced state loss, or lost-in-the-middle
+> degradation over a 38-cycle execution. v1.1 adds §12 (Context Management
+> Protections) covering 10 mitigations derived from Anthropic's published guidance
+> on long-running agent harnesses and effective context engineering, plus 2025-2026
+> research on lost-in-the-middle. See §12 for the full protection contract.
 
 ---
 
@@ -398,4 +405,396 @@ At Opus 4.7 pricing (~$15/M input, $75/M output, rough estimate): **~$15-30 per 
 - ML-assisted Adversary (specialized model for code review)
 - DPS specialization (Rust DPS vs Go DPS vs IaC DPS)
 
-These are out of foundation scope; RAID v1.0 is the locked spec for foundation mega-task execution.
+These are out of foundation scope; RAID v1.1 is the locked spec for foundation mega-task execution.
+
+---
+
+## §12. Context Management Protections (v1.1 ADDED 2026-05-29)
+
+> **Why this section exists:** RAID executes 38 cycles over many hours/days. The Raid
+> Leader main session, sub-agent results, cycle briefs, audit logs, and git diffs all
+> compete for finite context window. Without explicit protections, the workflow degrades:
+> Raid Leader forgets cycle 5's decision by cycle 25 (lost-in-middle), sub-agent results
+> pollute orchestrator context (context bloat), compaction summarizes away critical state,
+> and recovery from crash mid-cycle is ad-hoc.
+>
+> This section locks 10 protections (P1-P10) derived from Anthropic's effective-harnesses
+> guidance + 2025-2026 lost-in-the-middle research. Every RAID cycle MUST honor these.
+
+### §12.1 — P1: Fresh-session-per-cycle invariant
+
+**Rule:** Each cycle MUST be a SEPARATE `/raid <N>` invocation in a fresh main session.
+The Raid Leader main context starts at near-zero at every cycle boundary.
+
+**Rationale:** Anthropic's "Long-Running Agent Harness" pattern uses initializer +
+worker phases where "each new session begins with no memory of what came before." This
+is a feature, not a bug — it bounds the per-cycle context cost regardless of how many
+cycles have run.
+
+**Enforcement:**
+- `scripts/raid/orchestrator.py` rejects `/raid <N>` invocation if the same session
+  already executed a different cycle (sentinel check via `docs/raid/.session-cycle-lock`)
+- Cross-cycle reference is ONLY via files (CYCLE_LOG.md, AUDIT_LOG.jsonl,
+  OPEN_QUESTIONS_LOCKED.md, IN_PROGRESS state files), NEVER via conversation memory
+
+**Anti-pattern:** Running multiple cycles in one session ("just keep going after this
+one"). Always exit and re-`/raid` for the next cycle.
+
+---
+
+### §12.2 — P2: Session startup routine (5-step "wake up" before any work)
+
+**Rule:** Every `/raid <N>` invocation MUST execute these 5 steps in order BEFORE any
+DESIGN/BUILD work. Skipping = ESCALATIONS row + abort.
+
+```
+Step 1: Read docs/raid/CYCLE_LOG.md tail (last 5 entries)
+        → understand which cycles are DONE, which is current
+Step 2: Read docs/raid/cycle_briefs/<NN>_*.md (the brief for THIS cycle)
+        → get scope, acceptance, DPS plan, REMINDERS block
+Step 3: Read docs/raid/IN_PROGRESS/cycle-<N>-state.md IF EXISTS
+        → resume from prior checkpoint if crashed mid-cycle (see P5)
+Step 4: Run `scripts/raid/startup-verifier.sh <N>`
+        → verifies: git is on right branch, working tree clean OR
+          matches IN_PROGRESS state, dependency cycles all DONE,
+          no orphan ESCALATIONS rows blocking
+Step 5: Read OPEN_QUESTIONS_LOCKED.md sections relevant to current cycle
+        → load LOCKED decisions for this cycle's layer + cross-cutting
+```
+
+**Output:** Raid Leader has minimal-but-sufficient state to begin Phase 1 (CLARIFY).
+
+**Why:** Anthropic's long-running harness spec mandates "session startup routines:
+reading logs, verifying git history, and running basic end-to-end tests before new work
+begins" — this is exactly that.
+
+---
+
+### §12.3 — P3: In-progress state file (claude-progress.txt analog)
+
+**Rule:** Raid Leader writes `docs/raid/IN_PROGRESS/cycle-<N>-state.md` at every phase
+transition. File contains:
+
+```yaml
+---
+cycle: <N>
+title: <from brief>
+current_phase: <one of: CLARIFY|DESIGN|REVIEW1|PLAN|BUILD|VERIFY|REVIEW2|QC|POST_REVIEW|SESSION|COMMIT|RETRO>
+phase_started_at: <ISO>
+last_checkpoint_at: <ISO>
+retry_count: <0..3>
+dps_status:
+  - dps_id: 1
+    worktree: ../cycle-<N>-dps-1
+    branch: cycle-<N>-dps-1-<slice>
+    status: pending|in_progress|complete|failed
+    started_at: <ISO>
+    completed_at: <ISO or null>
+  - ... (per DPS)
+adversary_findings: <count or null if phase not yet>
+scope_guard_result: <CLEAR|BLOCKED|null>
+verify_script_exit: <0..255 or null>
+notes: <free-text, < 500 chars>
+---
+
+# Cycle <N> in-progress state
+
+<short narrative of where we are, what's next, any anomalies>
+```
+
+**Update points (mandatory):**
+- After Step 5 of startup routine (initial state written)
+- At every phase transition (Phase 1→2, 2→3, …, 11→12)
+- After every DPS completion notification
+- After every retry attempt
+- Before any sub-agent spawn (so spawn is recoverable)
+
+**On successful COMMIT (Phase 11):** Move file to `docs/raid/IN_PROGRESS/_archive/cycle-<N>-state.md`
+(append-only audit; don't delete).
+
+**On compaction event:** If the main session detects compaction (token count drop
+between consecutive tool results), Raid Leader IMMEDIATELY:
+1. Re-reads its IN_PROGRESS state file (regains state)
+2. Re-reads the cycle brief (regains plan)
+3. Cross-references against git log + AUDIT_LOG.jsonl (verifies no work lost)
+4. Continues from documented phase
+
+**Rationale:** Anthropic's `claude-progress.txt` pattern. Files are the source of truth;
+context window is ephemeral.
+
+---
+
+### §12.4 — P4: Sub-agent return budget (1000-2000 tokens condensed summaries)
+
+**Rule:** Sub-agents (DPS, Tank, Healer, Adversary, Scope Guard, Auditor) MUST return
+condensed summaries, NEVER full diffs/logs/dumps.
+
+**Per-role return contracts:**
+
+| Role | Max return size | Content |
+|---|---|---|
+| DPS | 1500 tokens | `{branch_name, commit_sha, test_results: pass/fail counts, files_modified: [paths only], known_issues: []}` |
+| Tank | 1000 tokens | `{rebase_result: ok|conflict|fail, conflicts_resolved: count, integration_test: pass|fail, branches_merged: [names]}` |
+| Healer | 1200 tokens | `{tests_fixed: [test names], root_causes: [<50 chars each], remaining_failures: count, files_touched: [paths]}` |
+| Adversary | 2000 tokens | `{findings: [{severity, file:line, category, one_line_description}]}` (max 30 findings) |
+| Scope Guard | 500 tokens | `{result: CLEAR|BLOCKED, reason: <200 chars>, items_missing: [...] or items_out_of_scope: [...]}` |
+| Auditor | 800 tokens | `{audit_log_appended: ok, cycle_log_appended: ok, retro_note: <500 chars>}` |
+
+**Enforcement:** Sub-agent prompts include hard instruction:
+> "Return only the structured summary specified. Do NOT include code diffs, test output,
+> or commentary. If Raid Leader needs more, it will query git/files directly."
+
+**Why:** Anthropic guidance: "specialized sub-agents tackle focused tasks and return
+condensed summaries (typically 1,000-2,000 tokens)" — keeps Raid Leader context lean.
+
+**Verification path:** If Raid Leader needs full info from a sub-agent, it queries via
+Bash (`git diff`, `cat tests/output.log`, etc.) — NOT by asking the sub-agent for more.
+
+---
+
+### §12.5 — P5: Compaction recovery protocol
+
+**Rule:** If Anthropic's server-side compaction fires mid-cycle, Raid Leader MUST:
+
+1. Detect compaction (heuristic: prior tool results referenced by ID disappear OR token
+   count between consecutive turns drops > 30%)
+2. Pause new tool calls
+3. Re-read IN_PROGRESS state file (P3)
+4. Re-read cycle brief (full)
+5. Re-read OPEN_QUESTIONS_LOCKED.md sections relevant to cycle
+6. Cross-reference against:
+   - `git log --since=<phase_started_at>` (verify no work lost)
+   - `docs/raid/AUDIT_LOG.jsonl` tail (verify last logged phase)
+   - DPS worktrees (verify branch states match IN_PROGRESS dps_status)
+7. If state CONSISTENT: continue from documented phase
+8. If state INCONSISTENT (worktree dirty unexpectedly, branch SHA mismatch, audit log
+   shows different phase): **HALT + write ESCALATIONS.md row** (corrupted recovery is
+   worse than halt)
+
+**Why:** Compaction loses high-fidelity state. Recovery via files is safe; recovery via
+inferred memory is dangerous.
+
+---
+
+### §12.6 — P6: Cycle brief structure (lost-in-middle aware)
+
+**Rule:** Every cycle brief MUST follow this structure to minimize lost-in-middle:
+
+```markdown
+# Cycle <N>: <Title>
+
+## 🎯 TL;DR (30 seconds — TOP critical info)
+- Scope: <one paragraph>
+- Acceptance: <bullet of CI gates>
+- Top 3 LOCKED decisions consumed: Q-XXX-N, Q-YYY-N, Q-ZZZ-N
+- DPS count: <N>
+- Estimated cycle wall time: <hours>
+
+## Dependencies (must show DONE in CYCLE_LOG.md)
+- <list>
+
+## Scope (IN)
+<bullets>
+
+## Scope (OUT — explicitly)
+<bullets>
+
+## Acceptance criteria (CI gates)
+<bullets>
+
+## DPS parallelism plan
+<per-DPS slice + worktree>
+
+## Adversary review focus
+<bullets>
+
+## Scope Guard CLEAR criteria
+<bullets>
+
+## Cross-references
+<links to layer plans + kernel chunks>
+
+## LOCKED decisions consumed (full list)
+<all Q-IDs)>
+
+## ⚠️ REMINDERS (BOTTOM — re-stated critical info, anti-lost-in-middle)
+- 🔴 **Top LOCKED decision 1:** <Q-ID resolution one-liner>
+- 🔴 **Top LOCKED decision 2:** <Q-ID resolution one-liner>
+- 🔴 **Top LOCKED decision 3:** <Q-ID resolution one-liner>
+- 🔴 **Acceptance MUST include:** <key gate>
+- 🔴 **Do NOT touch:** <out-of-scope items most likely to drift>
+```
+
+**Why:** Lost-in-the-middle research (Liu et al. 2023; Chroma 2025): info at start and
+end of context receives stronger attention. By placing critical info BOTH at top (TL;DR)
+AND at bottom (REMINDERS), we reduce reliance on middle retrieval.
+
+**Hard rule:** Cycle brief size ≤ 4000 tokens. If a cycle's brief exceeds this, the
+cycle MUST be split into 2 cycles (CYCLE_DECOMPOSITION.md amendment required).
+
+---
+
+### §12.7 — P7: Cross-cycle reference via CYCLE_LOG row only (DACS pattern)
+
+**Rule:** When current cycle references a prior cycle's outcome, Raid Leader reads the
+ONE CYCLE_LOG.md row for that cycle (~200 tokens). It does NOT re-read the prior cycle
+brief OR prior cycle's IN_PROGRESS state.
+
+**Allowed lookups:**
+- CYCLE_LOG.md row (≤200 tokens summary per cycle)
+- AUDIT_LOG.jsonl entries by cycle filter (machine-readable, slim)
+- Git log + diff for specific files (targeted query, not bulk)
+
+**Forbidden:**
+- Reloading prior cycle's full brief (waste of context)
+- Reloading prior cycle's IN_PROGRESS file
+- Asking a sub-agent to summarize a prior cycle (overhead, drift risk)
+
+**Why:** DACS (Dynamic Attentional Context Scoping) research: orchestrator operates in
+"REGISTRY mode" with ≤200 tokens per agent/cycle status, only escalating to "FOCUS mode"
+when absolutely necessary. RAID applies this cross-cycle.
+
+**Concrete example:** Cycle 25 (L5.G reality seeder) needs to know how L1.C provisioner
+(Cycle 5) registers Prometheus scrape targets. Raid Leader reads CYCLE_LOG row for Cycle
+5 (sees: "L1.C ships provisioner with scrape-config-generator.sh hook"), then queries
+`scripts/raid/files-from-cycle.sh 5` to get the file list, then `cat` the specific
+provisioner code. NOT re-reading the entire L1C_to_L_infrastructure.md file.
+
+---
+
+### §12.8 — P8: Token budgets per phase + cycle ceiling
+
+**Rule:** Per-phase soft budgets (token-count of Raid Leader's main context across the
+phase). Exceeding triggers a warning in AUDIT_LOG; sustained exceeding triggers halt.
+
+| Phase | Soft budget (Raid Leader main) | Notes |
+|---|---|---|
+| 1. CLARIFY | 5K | Just reads brief + startup routine output |
+| 2. DESIGN | 8K | Applies brief, maps DPS assignments |
+| 3. REVIEW1 | 3K | Self-check |
+| 4. PLAN | 10K | DPS prompts written |
+| 5. BUILD | 15K | Notifications from N DPS (each returns ≤1.5K) |
+| 6. VERIFY | 8K | Tank + Healer summaries + verify script output |
+| 7. REVIEW2 | 5K | Adversary findings list |
+| 8. QC | 3K | Scope Guard |
+| 9. POST-REVIEW | 3K | Second Scope Guard |
+| 10. SESSION | 4K | Auditor writes log |
+| 11. COMMIT | 5K | Commit message + status update |
+| 12. RETRO | 3K | Auditor reflects |
+| **Per-cycle ceiling (hard)** | **150K** | If exceeded → halt + ESCALATIONS |
+
+**Cumulative Raid Leader per cycle target: ~70K-100K** (≈ 10-15% of 1M context budget,
+matches Anthropic's thin-orchestrator guidance).
+
+**Enforcement:** Auditor sub-agent (Phase 10) records `raid_leader_token_count` in
+AUDIT_LOG.jsonl per phase. If cumulative > 150K → next cycle reads the warning and may
+reduce DPS count or split into 2 cycles.
+
+---
+
+### §12.9 — P9: Auditor cross-check (anti-hallucination)
+
+**Rule:** After Raid Leader writes the COMMIT (Phase 11), the Auditor sub-agent (Phase
+10 ran before; runs again as a post-COMMIT verifier) is spawned ONE MORE TIME with a
+verification prompt:
+
+> "You are the post-commit verifier. Read the latest git commit (HEAD), the
+> CYCLE_LOG.md tail entry, and the AUDIT_LOG.jsonl entries for cycle <N>. Check:
+> 1. Commit SHA matches what CYCLE_LOG claims
+> 2. CYCLE_LOG status=DONE matches AUDIT_LOG final phase=commit event
+> 3. File count in commit matches IN_PROGRESS state's expected files
+> 4. No phantom phases (every claimed phase in AUDIT_LOG has timestamp + sub-agent return)
+> Return: VERIFIED or DRIFT_DETECTED with specific mismatch."
+
+**On VERIFIED:** Cycle officially closes. Archive IN_PROGRESS state file.
+
+**On DRIFT_DETECTED:** This is RAID's last line of defense against lost-in-middle
+Raid Leader hallucination. ROLLBACK the commit (`git reset --soft HEAD~1`), write
+ESCALATIONS.md row, halt cycle.
+
+**Why:** Self-verification by an independent (cold-start) reader catches Raid Leader's
+fabricated successes (e.g., "I claim DPS-3 succeeded but actually it errored and I
+missed it after compaction").
+
+---
+
+### §12.10 — P10: Heartbeat metric + per-cycle health gauge
+
+**Rule:** AUDIT_LOG.jsonl every per-phase event includes:
+
+```jsonl
+{
+  "ts": "<ISO>",
+  "cycle": <N>,
+  "phase": "<name>",
+  "event": "<event_type>",
+  "raid_leader_token_count": <int>,  // estimated from API metadata
+  "wall_time_in_phase_sec": <int>,
+  "sub_agent_invocations_so_far": <int>,
+  "memory_pressure": "<low|medium|high>"  // derived from token budget %
+}
+```
+
+**Cycle 0 (RAID infra) ships `scripts/raid/health-dashboard.py`** that reads AUDIT_LOG
+and emits a per-cycle health summary:
+
+```
+Cycle 17 — L4.A+B DP-kernel core + Macros — DONE
+├─ Wall time: 4h 12min
+├─ Sub-agent invocations: 11 (2 DPS, 1 Tank, 1 Healer, 1 Adversary, 2 Scope Guard, 1 Auditor, 1 post-commit verifier, 2 retries)
+├─ Raid Leader peak tokens: 87,432 / 150K ceiling (58% — healthy)
+├─ Compaction events detected: 0
+├─ Memory pressure: low (peaked at medium during BUILD phase)
+└─ Drift events: 0
+```
+
+**Pre-flight check for next cycle:** orchestrator reads prior cycle's health summary.
+If prior cycle's peak tokens > 80% of ceiling OR > 1 compaction event detected →
+warning logged + recommendation to reduce DPS count for next cycle.
+
+**Why:** Without observability, context degradation is silent. Heartbeat + health gauge
+makes the problem visible BEFORE it causes a cycle abort.
+
+---
+
+### §12.11 — Summary protection contract
+
+| ID | Protection | Anti-pattern it prevents |
+|---|---|---|
+| P1 | Fresh-session-per-cycle | Raid Leader memory bloat across 38 cycles |
+| P2 | 5-step startup routine | Beginning a cycle without proper state load |
+| P3 | IN_PROGRESS state file | Crash recovery requires guessing state |
+| P4 | Sub-agent return budget (1-2K tokens) | Sub-agent results polluting orchestrator context |
+| P5 | Compaction recovery protocol | Hallucinated state after server-side compaction |
+| P6 | Cycle brief TL;DR + REMINDERS structure | Lost-in-middle for critical LOCKED decisions |
+| P7 | Cross-cycle ref via CYCLE_LOG only | Reloading prior briefs wastes context |
+| P8 | Per-phase + cycle token budgets | Silent context bloat across phases |
+| P9 | Auditor post-commit verification | Raid Leader hallucinating cycle success |
+| P10 | Heartbeat + health dashboard | Context degradation invisible until cycle abort |
+
+**Hard rule:** All 10 protections are MANDATORY for RAID execution. Cycle 0 (RAID infra)
+delivers the supporting scripts for P2, P3, P5, P9, P10. Briefs are pre-written
+following P6's structure. P1, P4, P7, P8 are agent-discipline rules enforced by
+orchestrator and prompt templates.
+
+---
+
+### §12.12 — Cycle 0 additional deliverables (for §12 protections)
+
+These are NEW deliverables added to Cycle 0 by this v1.1 amendment (in addition to those
+in CYCLE_DECOMPOSITION.md §"Cycle 0"):
+
+- `scripts/raid/startup-verifier.sh` — implements P2 5-step routine
+- `scripts/raid/in-progress-state-writer.py` — implements P3 state file writer
+- `scripts/raid/compaction-detector.py` — implements P5 detection heuristic
+- `scripts/raid/post-commit-verifier-prompt.md` — implements P9 verifier prompt
+- `scripts/raid/health-dashboard.py` — implements P10 health gauge
+- `docs/raid/IN_PROGRESS/` directory — empty, with README explaining schema
+- `docs/raid/IN_PROGRESS/_archive/` directory — empty, for archived completed-cycle states
+- `docs/raid/.session-cycle-lock` — sentinel file for P1 enforcement
+- `docs/raid/cycle_briefs/TEMPLATE.md` — canonical brief template per P6 structure
+- `scripts/raid/files-from-cycle.sh` — helper for P7 cross-cycle file lookup
+
+Cycle 0 also amends each of the 37 pre-written cycle briefs to follow P6 structure
+(TL;DR top, REMINDERS bottom). The token budget per brief: 4000 token soft cap; cycles
+that exceed must be split.
