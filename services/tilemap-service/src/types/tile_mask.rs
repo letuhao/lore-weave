@@ -150,6 +150,23 @@ impl TileMask {
         self.assert_same_dims(other);
         self.bits.iter().zip(&other.bits).any(|(a, b)| a & b != 0)
     }
+
+    /// TMP-Q1 chunk C — uniformly sample one set tile via `rng`. Returns
+    /// `None` if the mask is empty. O(n) where n = count_ones (collects
+    /// `iter_set` into a Vec before indexing) — the DecorationPlacer's
+    /// per-zone budget is bounded, so this is the simplest correct
+    /// implementation. If perf becomes a concern at Continent tier,
+    /// replace with reservoir sampling. Deterministic for a given
+    /// `(self, rng)` pair: `iter_set` is flat-index ascending, then `rng`
+    /// picks an index from `[0, n)`.
+    pub fn sample_set(&self, rng: &mut impl rand::Rng) -> Option<TileCoord> {
+        let n = self.count_ones();
+        if n == 0 {
+            return None;
+        }
+        let idx = rng.gen_range(0..n);
+        self.iter_set().nth(idx)
+    }
 }
 
 #[cfg(test)]
@@ -268,5 +285,55 @@ mod tests {
         assert!(m.is_empty());
         m.set(c(0, 0));
         assert!(m.is_empty());
+    }
+
+    // LOW-6 from chunk-C /review-impl: TileMask::sample_set unit tests.
+    // The helper is exercised indirectly by DecorationPlacer integration
+    // tests, but the contract ("None on empty, uniform across set bits")
+    // is locked here directly.
+
+    #[test]
+    fn sample_set_returns_none_on_empty_mask() {
+        use rand::SeedableRng;
+        let m = TileMask::new(8, 8);
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(1);
+        assert_eq!(m.sample_set(&mut rng), None);
+    }
+
+    #[test]
+    fn sample_set_returns_a_set_bit() {
+        use rand::SeedableRng;
+        let mut m = TileMask::new(8, 8);
+        m.set(c(1, 1));
+        m.set(c(5, 3));
+        m.set(c(7, 7));
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        for _ in 0..100 {
+            let sampled = m.sample_set(&mut rng).expect("non-empty mask must yield Some");
+            assert!(m.get(sampled), "sample_set must return a set bit, got {sampled:?}");
+        }
+    }
+
+    #[test]
+    fn sample_set_distribution_is_approximately_uniform_over_set_bits() {
+        use rand::SeedableRng;
+        let mut m = TileMask::new(4, 4);
+        m.set(c(0, 0));
+        m.set(c(1, 0));
+        m.set(c(2, 0));
+        m.set(c(3, 0));
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(123);
+        let mut counts = [0u32; 4];
+        for _ in 0..1000 {
+            let sampled = m.sample_set(&mut rng).unwrap();
+            counts[sampled.x as usize] += 1;
+        }
+        // 1000 / 4 = 250 expected per cell, ±50 for sample noise.
+        for (i, c) in counts.iter().enumerate() {
+            assert!(
+                (200..=300).contains(c),
+                "sample_set distribution skewed: cell {i} got {c}, expected ~250"
+            );
+        }
     }
 }
