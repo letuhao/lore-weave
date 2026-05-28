@@ -23,6 +23,7 @@ pub mod coastline;
 pub mod csg;
 pub mod dispatch;
 pub mod ellipse;
+pub mod llm;
 pub mod polar;
 pub mod raster;
 pub mod sdf;
@@ -37,6 +38,10 @@ pub use dispatch::{
     engine_v3_4_weights, engine_v3_6_weights,
 };
 pub use ellipse::EllipseGenerator;
+pub use llm::{
+    DispatchCache, InMemoryDispatchCache, LlmDecision, LlmError, LlmProvider, LlmPrompt,
+    MockLlmProvider,
+};
 pub use polar::{PolarGenerator, PolarTemplate};
 pub use raster::MarchingNoiseGenerator;
 pub use sdf::{CapsuleTemplate, SdfCapsuleChainGenerator};

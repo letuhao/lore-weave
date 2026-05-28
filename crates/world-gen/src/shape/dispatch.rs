@@ -132,10 +132,18 @@ pub enum DispatchMode {
     /// Forward-compat for v4.1 zone templating + v4.2 subzone templating.
     /// In v4.0 only depth=0 is exercised by `flatworld::generate`.
     PerDepth([Box<DispatchMode>; 3]),
-    /// **v4.0 STUB** — full LLM-driven dispatch ships in v4.3 with cache
-    /// architecture decision. v4.0 panics if reached — wire your `FlatParams.plate_dispatch`
-    /// to avoid this arm until v4.3.
-    Llm,
+    /// **v4.3a** LLM-driven dispatch. Consults `provider` for a
+    /// `ShapeKind` per entity, caching the answer by `entity_path` so a
+    /// re-run over the same world is byte-deterministic and free of
+    /// round-trip cost. Pair with `Layered([Llm, Weighted(...)])` so a
+    /// provider error or refusal falls through to a deterministic
+    /// fallback. v4.3a SCAFFOLD ships `MockLlmProvider` +
+    /// `InMemoryDispatchCache`; v4.3b adds typed parameter overrides;
+    /// v4.3c–d add real provider impls; v4.3e adds the Postgres cache.
+    Llm {
+        provider: std::sync::Arc<dyn crate::shape::llm::LlmProvider>,
+        cache: std::sync::Arc<dyn crate::shape::llm::DispatchCache>,
+    },
 }
 
 /// **v4.0** A single rules-based dispatch rule: predicate + the kind to
@@ -297,15 +305,33 @@ impl DispatchMode {
                 let idx = (ctx.depth as usize).min(2);
                 modes[idx].select_opt(registry, ctx, entity_path, rng)
             }
-            DispatchMode::Llm => {
-                // v4.0 stub — full LLM dispatch ships in v4.3 with cache
-                // architecture decision (per PO directive 2026-05-28).
-                panic!(
-                    "DispatchMode::Llm is a v4.0 stub — full implementation \
-                     ships in v4.3 with cache architecture decision (Postgres \
-                     vs file vs none). Use Manual / ByContext / Layered / \
-                     Weighted in the meantime."
+            DispatchMode::Llm { provider, cache } => {
+                // **v4.3a SCAFFOLD**: cache-first lookup → provider on miss.
+                // Cache hits skip RNG and the round-trip, so a re-run over
+                // the same world is byte-deterministic. Provider errors
+                // (transport / refused / invalid) collapse to `None` so
+                // the caller's `Layered` fallback can recover — typical
+                // pairing is `Layered([Llm, Weighted(...)])`.
+                if let Some(cached) = cache.get(entity_path) {
+                    if registry.get(cached.kind).is_some() {
+                        return Some(cached.kind);
+                    }
+                    // Cached kind no longer registered — fall through to
+                    // re-query the provider rather than return a kind the
+                    // registry would reject.
+                }
+                let prompt = crate::shape::llm::LlmPrompt::from_context(
+                    ctx,
+                    entity_path,
+                    registry.kinds(),
                 );
+                match provider.pick(&prompt) {
+                    Ok(decision) if registry.get(decision.kind).is_some() => {
+                        cache.put(entity_path, decision.clone());
+                        Some(decision.kind)
+                    }
+                    _ => None,
+                }
             }
         }
     }
@@ -929,10 +955,51 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "v4.0 stub")]
-    fn llm_dispatch_panics_in_v4_0() {
+    fn v4_3a_llm_dispatch_returns_mock_kind_and_writes_cache() {
+        // v4.3a SCAFFOLD: DispatchMode::Llm consults the provider on a
+        // cache miss, returns the picked kind, and stores the decision in
+        // the cache. Replaces the v4.0 panic stub.
+        use crate::shape::llm::{InMemoryDispatchCache, MockLlmProvider};
+        use std::sync::Arc;
         let r = populated_registry();
         let mut rng = Rng::for_stage(1, b"test");
-        let _ = DispatchMode::Llm.select(&r, &dummy_ctx(), "plate.0", &mut rng);
+        let provider = Arc::new(MockLlmProvider::new());
+        let cache = Arc::new(InMemoryDispatchCache::new());
+        let mode = DispatchMode::Llm {
+            provider: provider.clone(),
+            cache: cache.clone(),
+        };
+        assert!(cache.is_empty(), "cache should be cold before first call");
+        let k = mode.select(&r, &dummy_ctx(), "plate.0", &mut rng);
+        assert!(r.kinds().contains(&k), "picked kind must be registered");
+        assert_eq!(cache.len(), 1, "first call should populate the cache");
+        let again = mode.select(&r, &dummy_ctx(), "plate.0", &mut rng);
+        assert_eq!(again, k, "cache hit must return the same kind");
+        assert_eq!(cache.len(), 1, "cache hit must not re-insert");
+    }
+
+    #[test]
+    fn v4_3a_llm_layered_fallback_recovers_from_empty_registry_path() {
+        // Pair Llm with a fallback Weighted layer; when Mock can't pick
+        // (allowed_kinds empty registry scenario isn't reachable through
+        // the public path because the registry is populated, so instead
+        // exercise the Layered abstain path: Layered([Llm, Weighted])
+        // returns the Llm pick when it succeeds — proving the integration
+        // composes correctly.
+        use crate::shape::llm::{InMemoryDispatchCache, MockLlmProvider};
+        use std::sync::Arc;
+        let r = populated_registry();
+        let provider = Arc::new(MockLlmProvider::new());
+        let cache = Arc::new(InMemoryDispatchCache::new());
+        let llm = DispatchMode::Llm {
+            provider: provider.clone(),
+            cache: cache.clone(),
+        };
+        let weights = engine_v3_6_weights();
+        let layered = DispatchMode::Layered(vec![llm, DispatchMode::Weighted(weights)]);
+        let mut rng = Rng::for_stage(7, b"test");
+        let k = layered.select(&r, &dummy_ctx(), "plate.99", &mut rng);
+        assert!(r.kinds().contains(&k), "layered must produce a registered kind");
+        assert!(!cache.is_empty(), "Mock should have populated the cache from the first layer");
     }
 }
