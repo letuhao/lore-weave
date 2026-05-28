@@ -116,5 +116,42 @@ Output:
 }}
 ```
 
+## Example B (Chinese) — mentorship direction
+
+TEXT: "凌風拜蒼山真人為師。"
+KNOWN_ENTITIES: ["凌風", "蒼山真人"]
+
+Output:
+```json
+{{
+  "relations": [
+    {{"subject": "凌風", "predicate": "disciple_of", "object": "蒼山真人",
+      "polarity": "affirm", "modality": "asserted", "confidence": 0.95}}
+  ]
+}}
+```
+
+Lesson: "拜...為師" → `disciple_of` (kid-side, disciple as subject). Do NOT
+emit `mentor_of` as the primary — the kid→parent direction is canonical.
+
+## Example C (Vietnamese) — kinship stepchild direction
+
+TEXT: "Mỵ Linh là con riêng của bà mẹ ghẻ."
+KNOWN_ENTITIES: ["Mỵ Linh", "bà mẹ ghẻ"]
+
+Output:
+```json
+{{
+  "relations": [
+    {{"subject": "Mỵ Linh", "predicate": "stepchild_of", "object": "bà mẹ ghẻ",
+      "polarity": "affirm", "modality": "asserted", "confidence": 0.95}}
+  ]
+}}
+```
+
+Lesson: "con riêng của X" → `stepchild_of` (kid as subject; X is the
+stepparent). The Vietnamese surface form "con riêng" maps to the
+`stepchild_of` predicate from the canonical set above.
+
 Now extract relations from the TEXT in the user message that follows.
 Return only the JSON object.
