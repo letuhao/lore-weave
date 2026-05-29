@@ -1,11 +1,108 @@
-# Session Handoff — Session 72.S1 (cycle 72 pass2 precision filter — DESIGN-CHECKPOINT, no code)
+# Session Handoff — Session 72.S2 (cycle 72 pass2 precision filter — SHIPPED c72c)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-29 (session 72.S1 — XL design-checkpoint per `feedback_design_checkpoint_commit_separates_design_from_implementation`).
-> **HEAD:** pending final commit on top of `2b254e88` (cycle 71-bis NEGATIVE close).
+> **Date:** 2026-05-30 (session 72.S2 — XL BUILD + VERIFY + ship-or-revert).
+> **HEAD:** pending ship commit on top of `5f36802a` (Phase 3 eval validation).
 > **Branch:** `main`.
 
-## Session 72.S1 summary — cycle 72 pass2-precision-filter DESIGN-CHECKPOINT (spec + plan locked, no code shipped)
+## Session 72.S2 summary — cycle 72 SHIPPED c72c (drop policy) — median F1 +2.2pp, κ +0.105, D10 4/4 PASS
+
+Ran the full BUILD + VERIFY + ship flow planned in S1. Filter `partial_policy="drop"` config (c72c variant) decisively cleared the D10 4-clause symmetric ship gate; activated by default in [`infra/docker-compose.yml`](../../infra/docker-compose.yml) for both knowledge-service and worker-ai. Filter is OFF in raw production envs (no compose; explicit env required) — dev compose ships it on by default to surface the F1 lift in routine use.
+
+### Phases executed (S2)
+
+| Phase | Commit | Output |
+|---|---|---|
+| CLARIFY-lite | — | c70a dump still in container; pass2.py / __init__.py / llm_judge.py unchanged since `1c0b2a08` baseline = no design drift |
+| DESIGN | — | inherited from S1 spec; no re-litigation per `feedback_design_checkpoint_commit_separates_design_from_implementation` |
+| REVIEW (design) | — | inherited from S1 round-1 fold (7 findings) |
+| PLAN | — | inherited from S1 plan |
+| **BUILD-1** SDK foundation | `f2d03c90` | 4 NEW SDK files (pass2_filter.py + precision_filter_prompts.py + precision_filter_system.md + c70a fixture dir) + 22 unit/integration tests; ships as dead code |
+| **BUILD-2** orchestrator + caller wiring | `0211d3c3` | extract_pass2 kwarg + worker-ai env reader + knowledge-service orchestrator + metrics counter/gauge; 16 new regression tests; 288 tests pass cross-service |
+| **BUILD-3** eval validation | `5f36802a` | c72b + c72c filter dumps + ensemble re-judge against c70a baseline; 2 bug fixes mid-Phase-3 (Pydantic model_construct for c70a-shape dump loading + messages[0].content extraction for production gateway response); c72_compare.md with full D10 4-clause evaluation |
+| **SHIP** activation + handoff | pending | docker-compose.yml activation envs + this SESSION_HANDOFF update + RETRO lessons |
+
+### Ship verdict — c72c (`partial_policy="drop"`)
+
+| Variant | gemma F1 Δ | qwen-30b F1 Δ | claude F1 Δ | Median F1 Δ | Fleiss κ Δ | D10 4-clause |
+|---|---:|---:|---:|---:|---:|---|
+| c70a baseline | — | — | — | (0.895) | (0.671) | — |
+| c72b (keep) | +0.5pp | +1.4pp | +1.4pp | +1.4pp | +0.019 | **borderline FAIL on (a)** by 0.1pp |
+| **c72c (drop)** | **+4.3pp** | **+1.8pp** | **+2.2pp** | **+2.2pp** | **+0.105** | **PASS 4/4** |
+
+D10 clauses:
+- (a) median F1 lift ≥ +1.5pp — c72c +2.2pp PASS
+- (b) min F1 lift ≥ -0.5pp — c72c +1.8pp (qwen-30b) PASS
+- (c) claude F1 lift ≤ 2× median — c72c 2.2pp ≤ 4.4pp PASS (no self-reinforcement; gemma is the high outlier)
+- (d) Fleiss κ ≥ 0.60 — c72c 0.776 PASS (substantial→strong)
+
+**Anti-self-reinforcement signature absent**: filter uses claude-4.7-opus; gemma judge lifted MORE than claude (+4.3pp vs +2.2pp). The filter model is NOT getting an artificial boost from being the judge.
+
+**Bonus signal**: gemma `language_bias` dropped 0.15 → 0.06, partially closing the EN-vs-CJK/VN judge bias concern from cycle 69's eval framework overhaul.
+
+### Activation (default-on in dev compose, override to disable)
+
+```yaml
+# infra/docker-compose.yml — knowledge-service + worker-ai
+KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF: ${...:-019e5650-eca7-78c2-985d-465aa3bce1ce}
+KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY: ${...:-drop}
+KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE: ${...:-user_model}
+
+WORKER_AI_PRECISION_FILTER_MODEL_REF: ${...:-019e5650-eca7-78c2-985d-465aa3bce1ce}
+WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY: ${...:-drop}
+WORKER_AI_PRECISION_FILTER_MODEL_SOURCE: ${...:-user_model}
+```
+
+To disable: set the model_ref env to empty string. Override in `.env` for ops who don't want the +30-90s/chapter latency cost.
+
+### Bug fixes folded during Phase 3 sanity smoke (caught by ad-hoc diagnostic BEFORE the 19-min c72b ensemble launch — both saved from full-run waste)
+
+1. **`load_candidates_from_dump` Pydantic strict-validate** ([sdks/python/loreweave_extraction/pass2_filter.py:570](../../sdks/python/loreweave_extraction/pass2_filter.py#L570)) — c70a eval dump format is a minimal projection `{name, kind, ...}`; full Pydantic candidates require more fields (`aliases`, `confidence`, `canonical_*`). Switched to `model_construct` + safe defaults. The eval dump format ↔ SDK candidate format is now bridged.
+
+2. **`_call_filter_llm` content-extraction key wrong** ([sdks/python/loreweave_extraction/pass2_filter.py:_call_filter_llm](../../sdks/python/loreweave_extraction/pass2_filter.py)) — gateway returns `result["messages"][0]["content"]` per the chat-completion shape, NOT `result["content"]`. Filter was reading wrong key → empty content → all batches `unjudged` → 0% coverage on first smoke. Mirrored `llm_judge.py:443` pattern.
+
+Both fixes verified by 16 cycle-72 unit tests + 1 single-chapter smoke (alice_ch01, 24.2s, 100% coverage) BEFORE launching the full c72b + c72c filter runs and ensemble re-judges.
+
+### Cycle 72 close — 4 ship commits + 1 SHIP commit pending
+
+| # | Commit | Phase |
+|---|---|---|
+| 1 | `32c251f1` | DESIGN spec + plan (session 72.S1) |
+| 2 | `f2d03c90` | BUILD-1 SDK foundation |
+| 3 | `0211d3c3` | BUILD-2 orchestrator + caller wiring |
+| 4 | `5f36802a` | BUILD-3 eval validation + 2 bug fixes |
+| 5 | _pending_ | SHIP — docker-compose activation + handoff + RETRO |
+
+### Next session entry point
+
+Cycle 72 closed POSITIVE. Filter is ON by default in dev compose. Next session's natural starting points:
+
+1. **Verify filter activation in dev** — bring up the stack, run a chapter extraction, observe stage logs `pass2_precision_filter` events in [job_logs](../../services/knowledge-service/app/db/repositories/job_logs.py). Confirm Prometheus shows non-zero `knowledge_extraction_filter_decisions_total{verdict=*}`.
+2. **D-PASS2-FILTER-NEO4J-REALIZED-F1** follow-up — measure F1 after pass2_writer cascade (separate from the filter-output F1 measured in c72_compare.md).
+3. **Cycle 73 candidates** — per [docs/specs/2026-05-29-pass2-precision-filter.md](../specs/2026-05-29-pass2-precision-filter.md) deferred section. Top candidates:
+   - **D-PASS2-FILTER-RELATION-ONLY-OPTIMIZATION** — relations contributed most of c72c's +2.2pp lift; relation-only filter saves 2/3 of the latency
+   - **D-PASS2-FILTER-FACTS-SUPPORT** — extend filter to facts
+   - **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** — multilingual NER anchor (predates cycle 71)
+   - **D-CLAUDE-JUDGE-VS-GEMMA-JUDGE-DIVERGENCE-AUDIT** — partially-closed by c72c's improved κ + lower gemma language_bias, but not fully
+
+### Deferred rows added this cycle (carry-over)
+
+- **D-PASS2-FILTER-NEO4J-REALIZED-F1** — Neo4j-realized F1 measurement (after writer cascade)
+- **D-PASS2-FILTER-FACTS-SUPPORT** — extend filter to facts (per spec D2)
+- **D-PASS2-FILTER-RELATION-ONLY-OPTIMIZATION** — relations contribute most lift; latency-vs-yield tradeoff to validate (NEW from c72c analysis)
+- **D-PASS2-FILTER-CLOUD-CALIBRATION** — cloud Claude calibration cycle
+- **D-PASS2-FILTER-RUNTIME-FLAG** — per-request header override
+- **D-PASS2-FILTER-CACHE** — verdict caching
+- **D-PASS2-FILTER-PER-USER-UI** — UI surface
+
+### Lessons captured to durable memory this cycle (per `feedback_review_impl_on_design_cycles`)
+
+- **gateway-response-shape-messages-array-not-content-string** — gateway returns `result["messages"][0]["content"]`, not `result["content"]`. Any new gateway consumer in this codebase must mirror `llm_judge.py:441-443`.
+- **pydantic-strict-validate-rejects-dump-projection-format** — eval dumps are a minimal projection of full Pydantic candidates; loading them back via `model_validate` fails on missing required fields. Use `model_construct` + safe defaults for loader paths.
+
+---
+
+## Session 72.S1 summary — cycle 72 pass2-precision-filter DESIGN-CHECKPOINT (spec + plan locked, no code shipped) — historical
 
 XL cycle for the hybrid 2-pass extraction direction (30B recall → claude-4.7-opus precision filter) per cycle 71/71-bis pivot. This session ships ONLY the design artifacts; session 72.S2 will implement Phase 1 (SDK foundation) → Phase 2 (orchestrator wiring) → Phase 3 (eval validation against c70a saved-dump fixture).
 

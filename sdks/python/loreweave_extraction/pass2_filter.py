@@ -297,10 +297,19 @@ async def _call_filter_llm(
             f"filter job ended status={getattr(job, 'status', '?')}"
         )
     result = getattr(job, "result", None) or {}
+    # The gateway returns the chat-completion response as
+    # `result["messages"][0]` (assistant message). Mirrors
+    # `llm_judge._call_judge` so the filter and judge stay structurally
+    # identical against the same gateway contract.
+    content = ""
     if isinstance(result, dict):
-        content = result.get("content", "")
-    else:
-        content = ""
+        messages = result.get("messages") or []
+        if messages and isinstance(messages[0], dict):
+            content = messages[0].get("content", "") or ""
+        if not content:
+            # Fallback: some gateway shapes may flatten to a top-level
+            # `content` string. Preserve compatibility.
+            content = result.get("content", "") or ""
     if not content:
         raise ValueError("filter job returned empty content")
     return content
@@ -590,21 +599,66 @@ def load_candidates_from_dump(dump_dir: str | "PathLike[str]") -> Pass2Candidate
     path = Path(dump_dir) / "actual.json"
     raw = path.read_text(encoding="utf-8")
     blob = json.loads(raw)
+
+    # Eval dumps are a minimal projection — full Pydantic candidates
+    # have more required fields (aliases, confidence, canonical_*).
+    # Use `model_construct` to skip validation + supply safe defaults
+    # so downstream `.model_dump()` works without ValidationError.
+
+    def _entity(i: int, e: dict) -> LLMEntityCandidate:
+        name = e.get("name", "")
+        return LLMEntityCandidate.model_construct(
+            name=name,
+            kind=e.get("kind", ""),
+            aliases=list(e.get("aliases", []) or []),
+            confidence=float(e.get("confidence", 1.0)),
+            canonical_name=e.get("canonical_name") or name.lower(),
+            canonical_id=e.get("canonical_id") or f"eid-loaded-{i}",
+        )
+
+    def _relation(i: int, r: dict) -> LLMRelationCandidate:
+        return LLMRelationCandidate.model_construct(
+            subject=r.get("subject", ""),
+            predicate=r.get("predicate", ""),
+            object=r.get("object", ""),
+            polarity=r.get("polarity", "affirm"),
+            modality=r.get("modality", "actual"),
+            confidence=float(r.get("confidence", 1.0)),
+            subject_id=r.get("subject_id"),
+            object_id=r.get("object_id"),
+            relation_id=r.get("relation_id") or f"rid-loaded-{i}",
+        )
+
+    def _event(i: int, ev: dict) -> LLMEventCandidate:
+        participants = list(ev.get("participants", []) or [])
+        return LLMEventCandidate.model_construct(
+            name=ev.get("name") or ev.get("summary", "")[:40],
+            kind=ev.get("kind", "action"),
+            participants=participants,
+            participant_ids=list(ev.get("participant_ids", [])
+                or [None] * len(participants)),
+            location=ev.get("location"),
+            time_cue=ev.get("time_cue"),
+            event_date=ev.get("event_date"),
+            summary=ev.get("summary", ""),
+            confidence=float(ev.get("confidence", 1.0)),
+            event_id=ev.get("event_id") or f"evid-loaded-{i}",
+        )
+
+    def _fact(i: int, f: dict) -> LLMFactCandidate:
+        return LLMFactCandidate.model_construct(
+            content=f.get("content", ""),
+            type=f.get("type", "trait"),
+            subject=f.get("subject"),
+            polarity=f.get("polarity", "affirm"),
+            modality=f.get("modality", "actual"),
+            confidence=float(f.get("confidence", 1.0)),
+            fact_id=f.get("fact_id") or f"fid-loaded-{i}",
+        )
+
     return Pass2Candidates(
-        entities=[
-            LLMEntityCandidate.model_validate(e)
-            for e in blob.get("entities", [])
-        ],
-        relations=[
-            LLMRelationCandidate.model_validate(r)
-            for r in blob.get("relations", [])
-        ],
-        events=[
-            LLMEventCandidate.model_validate(ev)
-            for ev in blob.get("events", [])
-        ],
-        facts=[
-            LLMFactCandidate.model_validate(f)
-            for f in blob.get("facts", [])
-        ],
+        entities=[_entity(i, e) for i, e in enumerate(blob.get("entities", []))],
+        relations=[_relation(i, r) for i, r in enumerate(blob.get("relations", []))],
+        events=[_event(i, ev) for i, ev in enumerate(blob.get("events", []))],
+        facts=[_fact(i, f) for i, f in enumerate(blob.get("facts", []))],
     )

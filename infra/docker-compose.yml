@@ -523,6 +523,16 @@ services:
       NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-loreweave_dev_neo4j}
+      # Cycle 72 — Pass2 precision filter activation. Ships ON in the
+      # dev compose stack so chapter-extraction runs get the +2.2pp
+      # median F1 lift from c72c validation (see
+      # services/knowledge-service/tests/quality/eval_runs/c72_compare.md).
+      # Filter adds ~30-90s wall-clock per chapter; override to empty
+      # to disable. Filter model UUID is the locked claude-4.7-opus
+      # judge (huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated).
+      KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF:-019e5650-eca7-78c2-985d-465aa3bce1ce}
+      KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY:-drop}
+      KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE:-user_model}
     depends_on:
       postgres:
         condition: service_healthy
@@ -601,6 +611,13 @@ services:
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       LOG_LEVEL: INFO
       POLL_INTERVAL_S: "5"
+      # Cycle 72 — Pass2 precision filter activation (mirrors
+      # knowledge-service config above). Worker-ai runs Pass 2 in-process
+      # via extract_pass2(); the env-driven filter wraps each chapter.
+      # Override to empty string to disable.
+      WORKER_AI_PRECISION_FILTER_MODEL_REF: ${WORKER_AI_PRECISION_FILTER_MODEL_REF:-019e5650-eca7-78c2-985d-465aa3bce1ce}
+      WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY: ${WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY:-drop}
+      WORKER_AI_PRECISION_FILTER_MODEL_SOURCE: ${WORKER_AI_PRECISION_FILTER_MODEL_SOURCE:-user_model}
     depends_on:
       postgres:
         condition: service_healthy
