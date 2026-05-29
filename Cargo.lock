@@ -1521,6 +1521,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rebuilder"
+version = "0.1.0"
+dependencies = [
+ "dp-kernel",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "regex"
 version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

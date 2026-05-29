@@ -35,6 +35,12 @@ members = [
     "crates/projections/region",
     "crates/projections/world_kv",
     "crates/projections/session",
+    # Cycle 14 — L3.D per-aggregate parallel rebuilder. Consumes
+    # `dp-kernel::Projection` + `ProjectionRunner` (cycle 12) to replay events
+    # from the L2.A event log into the cycle-13 projection tables. Used by
+    # the cycle-14 L3.G freeze-rebuild script and the cycle-14 L3.H
+    # catastrophic admin-cli command (Q-L3-3 admin-cli + rolling_rebuild).
+    "crates/rebuilder",
 ]
 
 [workspace.package]
