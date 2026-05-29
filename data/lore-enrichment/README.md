@@ -11,8 +11,13 @@ Public-domain source corpus for the lore-enrichment demo (封神演义 place enr
 ### Re-fetch (if needed)
 PowerShell loop over `封神演義/卷{001..100}` against the Wikisource extracts API with retry+backoff (see session history / commit message). No login or key required.
 
-## Still to fetch (technique-b cultural corpora — at/near cycle C10)
-- **山海经 (Shan Hai Jing)** — public domain; ctext.org/shan-hai-jing + Wikisource. Not yet downloaded.
-- **Shang–Zhou (商周) history** references — public-domain classics.
+## `shanhaijing.txt` (technique-b cultural-grounding corpus)
+- **Work:** 山海經 (Shan Hai Jing / Classic of Mountains and Seas). **Public domain** (incl. 郭璞 commentary).
+- **Source:** Chinese Wikisource — `山海經/` 19 sections (郭璞序 + 五臧山經 5 + 海外經 4 + 海內經 4 + 大荒經 4 + 海內經 1).
+- **Fetched:** 2026-05-30, same extracts-API method, 19/19, UTF-8, ~51k chars.
+- **Grounding relevance (verified):** 崑崙/昆侖 ×33 (where 玉虛宮 sits), 蓬萊 ×1, 西王母 ×17 — directly grounds the locked demo places' geography/mythology.
+
+## Still to fetch (optional, at/near C10)
+- **Shang–Zhou (商周) history** references — public-domain classics (e.g. 史記·殷本紀/周本紀 on ctext.org) — for historical grounding of cities/passes.
 
 > Sources are public-domain; safe to commit. Modern/news sources (technique d, P3) require separate licensing review.
