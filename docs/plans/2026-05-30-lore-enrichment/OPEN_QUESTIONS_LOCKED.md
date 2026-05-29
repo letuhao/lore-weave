@@ -32,8 +32,15 @@ Conflict-checked: foundation branch (54 commits ahead) touches **0** files in kn
 - **Output language = Chinese (source-faithful).** Enriched lore is generated in Chinese to match the 封神演义 original tone; translation is a later/separate step. Aligns with knowledge-service's CJK-aware pipeline. Eval/anachronism checks must operate on Chinese.
 - **Cost posture = conservative / batched.** RAID runs with **low DPS (2–3)**, executes cycles in **batches**, **pause-on-quota** (Max subscription), and **stops for human review between batches** before continuing. Demo target = batch ending at C14.
 
+## Demo scope (locked 2026-05-30) — PLACE-focused enrichment
+The first demo enriches a **small set of under-described LOCATIONS** in 封神演义 — NOT the whole world. This bounds C6/C7 (gap-model anchors on entity-kind = location) and the demo milestone.
+- **Target entity-kind:** location/place (地点) that is *mentioned in canon but lacks detail*.
+- **Examples:** sage dwellings / 洞府宫阙 (e.g. 玉虛宮, 碧遊宮, 八景宮, 火雲洞), **蓬萊山/蓬莱島**, cities & prefectures / 城池·州郡·关隘 referenced without description.
+- **Dimensions to enrich:** 历史 (history) · 地理 (geography) · 文化 (culture) · notable features · inhabitants.
+- **Gap = a canon-mentioned location missing these dimensions.** Pick ~3–5 such places for the demo batch (→ C14).
+- **Sources confirmed PUBLIC-DOMAIN** (resolves the corpora licensing default for the demo): 封神演义 full text on Chinese Wikisource + ctext.org; 山海经 on ctext.org + Wikisource; Shang–Zhou history from public-domain classics. → technique (b) corpora are clear for the demo; only modern/news (technique d) need later licensing review.
+
 ## Defaults (overridable)
-- Corpora: public-domain classical Chinese texts for the demo; modern/news sources need licensing review gated to P3.
 - Admission: **always human-gate** initially; auto-admit thresholds calibrated later from eval data.
 
 ## Inputs the author must supply at execution time (not blocking the plan)
