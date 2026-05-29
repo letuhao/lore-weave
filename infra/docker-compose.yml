@@ -557,6 +557,35 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  lore-enrichment-service:
+    build:
+      # Repo-root context so a later cycle can COPY sdks/python (loreweave_llm).
+      context: ..
+      dockerfile: services/lore-enrichment-service/Dockerfile
+    environment:
+      PORT: "8093"
+      LORE_ENRICHMENT_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Read-dependency URLs — C1 wires the clients; defaults match in-net svc names.
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      BOOK_SERVICE_URL: http://book-service:8082
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8221:8093"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8093/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+    restart: unless-stopped
+
   worker-infra:
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
@@ -712,6 +741,7 @@ services:
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -742,6 +772,12 @@ services:
         condition: service_healthy
       knowledge-service:
         condition: service_healthy
+      lore-enrichment-service:
+        # C0 skeleton — start-ordering only, NOT a hard health gate: the gateway
+        # must not wedge the whole stack if this nascent service is unhealthy
+        # (adversary r2 BLOCK#1). Upgrade to service_healthy once it carries real
+        # routes (post-C3).
+        condition: service_started
       rabbitmq:
         condition: service_healthy
     healthcheck:

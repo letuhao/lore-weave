@@ -1153,3 +1153,23 @@ Driver: first implementation cycle off `BILLING_MODEL_REDESIGN_ADR.md`. Subsyste
 | **Media-rich chapters** — images and video for visual novel-style storytelling | **Phase 3.5 Done** | E4+E5 complete, image/video/code blocks | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
 | **Video generation provider integration** — connect video-gen-service to real providers (Sora, Veo, etc.) | Skeleton deployed | 10 tasks planned (VG-01..VG-10) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
 | **Media version retention** — auto-delete old versions, retention policy, MinIO GC, storage usage UI | Planned | 7 tasks (MV-01..MV-07) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
+
+---
+
+## 2026-05-30 — lore-enrichment C0 bootstrap (default+AMAW) + RAID-policy fix
+
+**HEAD before:** b5f2d86a · **Branch:** lore-enrichment/foundation · **Updated by:** main (AMAW)
+
+### Done this session
+1. **RAID-policy fix** (commit `fe6a1af3`): removed the "stop for human review between batches" human-gate from `OPEN_QUESTIONS_LOCKED.md` + `RAID_WORKFLOW.md` + `PRE_FLIGHT_CHECKLIST.md`. RAID is autonomous (Coordinator runs C0→C18, halts only on escalation/quota/cost/secret; Phase 9 = AUTO Scope Guard). Human touchpoints = pre-flight (before) + final report (after). Cost controlled by the C15 eval gate (auto-blocks/escalates C16/C17) + per-cycle guardrails. `.claude/commands/raid.md` (generic tooling) left untouched (clean copy from foundation).
+2. **C0 bootstrap** (this commit): new `services/lore-enrichment-service/` FastAPI skeleton (config fail-fast, `/health`, asyncpg pool, deps, Dockerfile) + infra (DB `loreweave_lore_enrichment` in postgres-init + db-ensure; docker-compose service block internal 8093/host 8221) + gateway `/v1/lore-enrichment/*` route (gateway-setup + main.ts + proxy-routing.spec). Size L, default+AMAW.
+   - **AMAW:** design adversary r1 REJECTED (1 BLOCK DB-ordering + 2 WARN) → fixed; code adversary r2 REJECTED (1 BLOCK gateway hard-coupling + 2 WARN) → fixed; r3 APPROVED. Scope Guard CLEAR.
+   - **VERIFY:** pytest 3/3, gateway nest build exit0 + jest proxy-routing 9/9, **live smoke /health 200 ok on stack-up** (RestartCount=0, healthy).
+   - CYCLE_LOG C0 = DONE. AUDIT_LOG has all phase + adversary verdict rows. Findings r1/r2/r3 + scope-guard in docs/audit/.
+
+### Key discovery (BLOCKER for /raid)
+The RAID Coordinator could not run: the task was **planned but never bootstrapped**, AND the generic RAID scripts (ported from the foundation 38-cycle task) are **incompatible with this task's CYCLE_DECOMPOSITION format** — `brief-generator.py` expects bare-digit cycle numbers + a backtick brief-path column; this decomposition uses `**C0**` + a "Depends on" column → parses 0 rows (exit 6). `coordinator-helper.py` fallback also hardcodes `range(1,39)`.
+
+### Next
+- **Bootstrap RAID dispatch-readiness** for C1–C18: author task-specific briefs (`docs/raid/cycle_briefs/NN_*.md`) — do NOT rely on the broken generic generator — + populate CYCLE_LOG C1–C18 rows. Then `/raid` can drive C1→C18 autonomously.
+- Deferred: **042** `/health` DB-readiness probe → C18.

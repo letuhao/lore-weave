@@ -23,6 +23,7 @@ export function configureGatewayApp(
     statisticsUrl: string;
     notificationUrl: string;
     knowledgeUrl: string;
+    loreEnrichmentUrl: string;
   },
 ): void {
   app.enableCors({
@@ -170,6 +171,11 @@ export function configureGatewayApp(
       },
     },
   });
+  const loreEnrichmentProxy = createProxyMiddleware({
+    target: urls.loreEnrichmentUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/lore-enrichment'),
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -243,6 +249,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const loreEnrichmentProxyFn = loreEnrichmentProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
       return authProxyFn(req, res, next);
@@ -288,6 +299,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/knowledge')) {
       return knowledgeProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/lore-enrichment')) {
+      return loreEnrichmentProxyFn(req, res, next);
     }
     return next();
   });
