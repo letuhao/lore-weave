@@ -34,6 +34,7 @@
 //! province / settlement / route placement.
 
 use delaunator::{triangulate, Point};
+use serde::{Deserialize, Serialize};
 
 use crate::biome::BiomeKind;
 use crate::climate::ClimateZone;
@@ -47,7 +48,7 @@ use crate::political::{self, Political};
 use crate::rng::Rng;
 use crate::routes::{self};
 use crate::settlement::{self};
-use crate::world_map::{Route, Settlement};
+use crate::world_map::{CultureRegion, MountainRange, Province, River, Route, Settlement, State, WaterBody};
 
 /// A mesh-shaped view of a `FlatWorld` ready to feed into the System-A
 /// civilization stack. Lengths of every per-cell vector equal
@@ -406,6 +407,136 @@ pub fn build_settlement(
         &political,
     );
     (view, features, political, hydro, settlements)
+}
+
+// ============================================================================
+// Civ Ship 9 — CivBundle + JSON round-trip + content_hash
+// ============================================================================
+
+/// **Civ Ship 9** — flat, Serialize-able bundle of every civ-layer
+/// output. Use [`bundle_civ`] to build one from the full pipeline; use
+/// [`compute_civ_hash`] to (re)verify the bundled state.
+///
+/// All embedded types come from `world_map.rs` (Province / State /
+/// Settlement / Route / CultureRegion / MountainRange / River /
+/// WaterBody / BiomeKind / ClimateZone), which already derive
+/// Serialize / Deserialize — so JSON round-trip is automatic. Fields
+/// from Political / Hydrology / Culture are unrolled to their component
+/// vectors so we don't have to add Serialize derives to System-A's
+/// stage-output structs (would ripple through `lib.rs::generate`).
+///
+/// `content_hash` is blake3 over every field except itself, so a
+/// freshly-built bundle that gets serialized → deserialized must
+/// validate via [`verify_civ_hash`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CivBundle {
+    pub centers: Vec<[f32; 3]>,
+    pub neighbors: Vec<Vec<u32>>,
+    pub biomes: Vec<BiomeKind>,
+    pub climate: Vec<ClimateZone>,
+    pub river_flux: Vec<f32>,
+    pub is_coast: Vec<bool>,
+    pub elevation: Vec<f32>,
+    pub sea_level: f32,
+
+    // From Political (unrolled).
+    pub province_of: Vec<u32>,
+    pub provinces: Vec<Province>,
+    pub states: Vec<State>,
+
+    pub settlements: Vec<Settlement>,
+    pub routes: Vec<Route>,
+
+    // From Culture (unrolled).
+    pub culture_of: Vec<u32>,
+    pub culture_regions: Vec<CultureRegion>,
+
+    // From Features (unrolled).
+    pub mountain_ranges: Vec<MountainRange>,
+    pub rivers: Vec<River>,
+    pub water_bodies: Vec<WaterBody>,
+
+    /// Blake3 digest over every other field. Computed by
+    /// [`bundle_civ`]; cross-check with [`verify_civ_hash`] after
+    /// JSON round-trip.
+    pub content_hash: [u8; 32],
+}
+
+/// **Civ Ship 9** — run the full civ pipeline (build_culture +
+/// apply_synthetic_names) and pack the output into a [`CivBundle`]
+/// with a fresh [`content_hash`].
+#[allow(clippy::too_many_arguments)]
+pub fn bundle_civ(
+    world: &FlatWorld,
+    climate_params: &WorldClimateParams,
+    ocean_target: usize,
+    seed: u64,
+    density: SettlementDensity,
+    culture_count: u8,
+) -> CivBundle {
+    let (view, mut features, mut political, _hydro, mut settlements, routes_v, mut culture_v) =
+        build_culture(world, climate_params, ocean_target, seed, density, culture_count);
+    apply_synthetic_names(
+        &mut features,
+        &mut political,
+        &mut settlements,
+        &mut culture_v,
+        seed,
+    );
+    let mut bundle = CivBundle {
+        centers: view.centers,
+        neighbors: view.neighbors,
+        biomes: view.biomes,
+        climate: view.climate,
+        river_flux: view.river_flux,
+        is_coast: view.is_coast,
+        elevation: view.elevation,
+        sea_level: view.sea_level,
+        province_of: political.province_of,
+        provinces: political.provinces,
+        states: political.states,
+        settlements,
+        routes: routes_v,
+        culture_of: culture_v.culture_of,
+        culture_regions: culture_v.culture_regions,
+        mountain_ranges: features.mountain_ranges,
+        rivers: features.rivers,
+        water_bodies: features.water_bodies,
+        content_hash: [0u8; 32],
+    };
+    bundle.content_hash = compute_civ_hash(&bundle);
+    bundle
+}
+
+/// Blake3 digest of every CivBundle field EXCEPT `content_hash` itself.
+///
+/// Implementation: clone the bundle with `content_hash = [0; 32]`,
+/// serialize the clone to JSON, hash the bytes. `serde_json` output is
+/// stable for a given struct definition, the encoding is already a
+/// dependency, and the round-trip test asserts the only property that
+/// matters externally — deserialize-then-rehash equals the original
+/// hash. Switch to a `bincode`-style fixed encoder later if hash
+/// computation becomes a hot path.
+pub fn compute_civ_hash(bundle: &CivBundle) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    // The simplest stable encoding: serialize to JSON without
+    // content_hash, then hash that. JSON serialization is already a
+    // dependency of the crate, the output is stable for `serde_json`,
+    // and the round-trip test asserts exactly the property that
+    // matters (deserialize-then-rehash equals the original hash).
+    let mut clone = bundle.clone();
+    clone.content_hash = [0u8; 32];
+    let bytes = serde_json::to_vec(&clone)
+        .expect("CivBundle is composed of Serialize types; encoding cannot fail");
+    hasher.update(&bytes);
+    *hasher.finalize().as_bytes()
+}
+
+/// Recompute the hash and compare it to the bundled `content_hash`.
+/// Used by the round-trip test to assert serialize → deserialize did
+/// not perturb any field.
+pub fn verify_civ_hash(bundle: &CivBundle) -> bool {
+    compute_civ_hash(bundle) == bundle.content_hash
 }
 
 // ============================================================================
@@ -1553,6 +1684,81 @@ mod tests {
         for (a, b) in pa.provinces.iter().zip(pb.provinces.iter()) {
             assert_eq!(a.name, b.name);
         }
+    }
+
+    #[test]
+    fn civ_bundle_json_round_trip_preserves_content_hash() {
+        // Ship 9 acceptance: serialize CivBundle to JSON → deserialize
+        // back → verify_civ_hash holds. The round-trip must be
+        // byte-stable for the content_hash to be load-bearing.
+        let world = generate(&FlatParams::default());
+        let bundle = bundle_civ(
+            &world,
+            &WorldClimateParams::default(),
+            64,
+            42,
+            SettlementDensity::Medium,
+            5,
+        );
+        assert!(verify_civ_hash(&bundle), "fresh bundle should verify");
+        let json = serde_json::to_string(&bundle).expect("serialize");
+        let parsed: CivBundle = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(
+            parsed.content_hash, bundle.content_hash,
+            "round-trip content_hash should be identical"
+        );
+        assert!(
+            verify_civ_hash(&parsed),
+            "deserialized bundle should still verify against the hash"
+        );
+        assert_eq!(parsed, bundle, "round-trip bundle equality");
+    }
+
+    #[test]
+    fn civ_bundle_hash_is_deterministic_per_seed() {
+        let world = generate(&FlatParams::default());
+        let a = bundle_civ(
+            &world,
+            &WorldClimateParams::default(),
+            32,
+            99,
+            SettlementDensity::Medium,
+            5,
+        );
+        let b = bundle_civ(
+            &world,
+            &WorldClimateParams::default(),
+            32,
+            99,
+            SettlementDensity::Medium,
+            5,
+        );
+        assert_eq!(a.content_hash, b.content_hash);
+    }
+
+    #[test]
+    fn civ_bundle_hash_differs_across_seeds() {
+        let world = generate(&FlatParams::default());
+        let a = bundle_civ(
+            &world,
+            &WorldClimateParams::default(),
+            32,
+            7,
+            SettlementDensity::Medium,
+            5,
+        );
+        let b = bundle_civ(
+            &world,
+            &WorldClimateParams::default(),
+            32,
+            999,
+            SettlementDensity::Medium,
+            5,
+        );
+        assert_ne!(
+            a.content_hash, b.content_hash,
+            "two distinct seeds should hash differently"
+        );
     }
 
     #[test]
