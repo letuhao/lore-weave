@@ -861,3 +861,8 @@
 {"ts": "2026-05-29T05:35:07Z", "event": "in_progress_update", "cycle": 7, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T05:36:22Z", "event": "in_progress_archived", "cycle": 7, "archived_to": "cycle-007-state.md"}
 {"ts":"2026-05-29T00:00:00Z","event":"cycle_retro","cycle":7,"reflection":"XL cycle 7 closed L1 foundation. 5 DPS slices inline serial (Task tool absent 7th consecutive cycle). All 15 L1.K lints PASS after iterative regex hardening (false positives discovered against real codebase drove tightening; pattern-quality improved over bench-test alone). I3 amendment process (Q-L1K-2 same-commit) worked cleanly — companion config + lint + kernel-doc edit landed atomically. Token budget stayed under 100K (XL target 120K) via priority order: I3 first, then financial+SRE tables, then degraded mode (needed Redis from cycle 5), backup, lints (largest), capacity last. Bash hygiene rules continue to keep prompt count low. Reusable pattern for L2-L7: external-metric-primary HPA (NOT CPU%), audit-row-via-MetaWrite (financial-grade for billing), in-process FallbackBuffer + FIFO partial-flush requeue, lint-with-iterative-regex-hardening."}
+{"ts":"2026-05-29T05:37:33Z","event":"worktree_removed","cycle":7,"name":"cycle-7-dps-1"}
+{"ts":"2026-05-29T05:37:33Z","event":"worktree_removed","cycle":7,"name":"cycle-7-dps-2"}
+{"ts":"2026-05-29T05:37:33Z","event":"worktree_removed","cycle":7,"name":"cycle-7-dps-3"}
+{"ts":"2026-05-29T05:37:33Z","event":"worktree_removed","cycle":7,"name":"cycle-7-dps-4"}
+{"ts":"2026-05-29T05:37:33Z","event":"worktree_removed","cycle":7,"name":"cycle-7-dps-5"}
