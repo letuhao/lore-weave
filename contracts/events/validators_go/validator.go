@@ -203,5 +203,31 @@ func BuildSeedRegistry() *Registry {
 		},
 	})
 
+	// ── L2.L xreality.* events (RAID cycle 10) ──────────────────────
+	// Same validation surface as any other event_type; the cross-reality
+	// fanout selection happens via Envelope.Metadata["cross_reality"]=true
+	// at the publisher level (not here).
+	r.Register(SchemaDescriptor{
+		EventType:    "xreality.canon.promoted",
+		EventVersion: 1,
+		RequiredFields: []RequiredField{
+			{Name: "source_reality_id", Ty: FieldString},
+			{Name: "entry_id", Ty: FieldString},
+			{Name: "entry_type", Ty: FieldString},
+			{Name: "promoted_by", Ty: FieldString},
+			{Name: "promoted_at", Ty: FieldString},
+		},
+	})
+
+	r.Register(SchemaDescriptor{
+		EventType:    "xreality.user.erased",
+		EventVersion: 1,
+		RequiredFields: []RequiredField{
+			{Name: "user_id", Ty: FieldString},
+			{Name: "erased_at", Ty: FieldString},
+			{Name: "request_id", Ty: FieldString},
+		},
+	})
+
 	return r
 }

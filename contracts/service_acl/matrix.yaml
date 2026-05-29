@@ -105,6 +105,61 @@ services:
       meta_write_audit:
         - INSERT
 
+  # ── Cycle 10 (L2.D) — publisher
+  - name: publisher
+    svid_spiffe_id: spiffe://loreweave.dev/sa/publisher
+    notes: |
+      L2.D — drains per-reality events_outbox into Redis Streams. Reads
+      outbox rows with FOR UPDATE SKIP LOCKED (multi-replica-safe per
+      Q-L2D-1 V2; V1 single replica). Writes outbox row state
+      (published/attempts/last_error/dead_lettered_at). Reads events
+      table to assemble wire envelope. Writes publisher_heartbeats every
+      10s for L1.J degraded-mode + meta-worker monitoring.
+      NO DELETE anywhere — outbox prune is the responsibility of a future
+      cycle (D-OUTBOX-PRUNE deferred row). Reads reality_registry only
+      for shard-host routing decisions.
+    permissions:
+      # READ from per-reality DB to fetch outbox rows + assemble envelope
+      events_outbox:
+        - SELECT
+        - UPDATE
+      events:
+        - SELECT
+      # WRITE on meta for liveness + control-plane
+      publisher_heartbeats:
+        - INSERT
+        - UPDATE
+        - SELECT
+      reality_registry:
+        - SELECT
+      # WRITE: every MetaWrite() lands a meta_write_audit row in the same TX
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 10 (L2.L) — meta-worker (SOLE consumer of xreality.* topics; I7)
+  - name: meta-worker
+    svid_spiffe_id: spiffe://loreweave.dev/sa/meta-worker
+    notes: |
+      L2.L — sole consumer of xreality.* Redis Streams per I7 invariant.
+      Dispatches xreality.canon.*, xreality.user.*, xreality.reality.*
+      to handler shims that write meta-side projections (canon_projection,
+      user_realities, reality_stats). Reads publisher_heartbeats to
+      detect dead publishers (writes status='dead' transition).
+      ACL is INTENTIONALLY narrow — adding a new meta-side projection
+      requires explicit ALLOWLIST entry here, NOT default-deny.
+    permissions:
+      publisher_heartbeats:
+        - SELECT
+        - UPDATE
+      # Per-reality canon projection writes — populated lazily as L5 lands.
+      # Empty perm set for now; meta-worker dispatch handlers in V1 ship
+      # SKELETON impls (see services/meta-worker/internal/dispatch). When
+      # L5 wires real canon_projection tables, add SELECT/INSERT/UPDATE here.
+      reality_registry:
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
   # ── Cycle 7 (L1.L) — admin-cli (capacity-override sub-command for now;
   # full surface ships cycle 36).
   - name: admin-cli

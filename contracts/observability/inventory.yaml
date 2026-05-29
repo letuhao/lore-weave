@@ -314,6 +314,97 @@ metrics:
     owner: world-platform
     source: crates/dp-kernel (loader — wired in cycle 12)
 
+  # ────────────────────────────────────────────────────────────────────
+  # L2.C — events_outbox (cycle 10 — THIS CYCLE)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_outbox_enqueued_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [reality_id, event_type]
+    description: 'outbox rows enqueued (one per emitted event); written via events.OutboxWrite'
+    owner: world-platform
+    source: contracts/events (OutboxWrite helper)
+    cardinality_notes: 'reality_id × event_type — same multiplicative cap as L2.A lw_events_appended_total'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.D — Publisher (cycle 10)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_outbox_lag_seconds
+    kind: gauge
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host]
+    description: 'now() - min(enqueued_at) WHERE published=FALSE AND dead_lettered_at IS NULL; SLO 1s P50 / 10s P99 (R06 §12F.3)'
+    owner: sre
+    source: services/publisher
+
+  - name: lw_publisher_active_replicas
+    kind: gauge
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host]
+    description: 'count of publisher replicas currently active per shard (V1 always 1; V2+ counts leader-elected actives)'
+    owner: sre
+    source: services/publisher (heartbeat loop)
+
+  - name: lw_publisher_xadd_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host, event_type, outcome]
+    description: 'publisher XADD outcomes; outcome ∈ {ok, transient_fail, dead_letter}'
+    owner: world-platform
+    source: services/publisher (poll_loop)
+
+  - name: lw_outbox_dead_lettered_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host, reality_id, event_type]
+    description: 'rows transitioned to dead_lettered_at IS NOT NULL after attempts >= max_attempts'
+    owner: sre
+    source: services/publisher (retry policy)
+
+  - name: lw_publisher_heartbeat_failures_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host]
+    description: 'consecutive heartbeat write failures; resets to 0 on success; 3 in a row → ServiceMode=Limited (L1.J)'
+    owner: sre
+    source: services/publisher (heartbeat)
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.L — xreality fanout + meta-worker (cycle 10)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_xreality_fanout_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [event_type, outcome]
+    description: 'publisher xreality fanout outcomes; outcome ∈ {ok, error}; event_type bounded by xreality.* registry entries'
+    owner: world-platform
+    source: services/publisher (xreality_fanout)
+
+  - name: lw_meta_worker_dispatch_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [event_type, outcome]
+    description: 'meta-worker xreality dispatcher outcomes; outcome ∈ {ok, no_handler, handler_error}'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+
+  - name: lw_meta_worker_lag_seconds
+    kind: gauge
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'now() - max(xreality stream entry ts already consumed); SLO 2s P99 per L2.L acceptance'
+    owner: sre
+    source: services/meta-worker
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

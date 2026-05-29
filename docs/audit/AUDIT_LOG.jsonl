@@ -904,3 +904,21 @@
 {"ts": "2026-05-29T06:15:14Z", "event": "in_progress_update", "cycle": 9, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T06:16:12Z", "event": "in_progress_archived", "cycle": 9, "archived_to": "cycle-009-state.md"}
 {"ts": "2026-05-29T06:16:33Z", "event": "cycle_retro", "cycle": 9, "reflection": {"wall_time_minutes": 45, "prompt_count": "~12 (no spam hits; PROMPT-FIX still holding)", "adversary_findings": {"blockers": 0, "majors": 0, "minors": 2, "notes": 8}, "cycle10_carryforward": ["0002_events PK includes recorded_at for partition-PK; document the server-side NOW() convention loud in L2.C outbox helper", "partition-manager.sh + audit-retention-cron.sh ship as contract+dry-run; cycle 10 publisher should call create-ahead on schedule", "snapshot_policy.yaml is empty; cycle 14 L3 rebuild orchestrator picks first opt-in aggregates"], "l3_pattern_reuse": ["Monthly RANGE partition pattern reusable for L3 projection tables (cycle 13)", "registry_version forward-compat column pattern reusable for projection rows", "UUID-pointer-not-FK pattern for any cross-lifecycle-table reference (archive boundary)"]}}
+{"ts": "2026-05-29T06:17:07Z", "event": "coordinator_next_cycle_emitted", "cycle": 10}
+{"ts":"2026-05-29T06:18:55Z","event":"startup_drift_check_passed","cycle":10,"version":"v1.6"}
+{"ts":"2026-05-29T06:18:55Z","event":"startup_verifier_complete","cycle":10,"steps":6}
+{"ts": "2026-05-29T06:19:09Z", "event": "in_progress_init", "cycle": 10, "title": "L2 Outbox + Publisher + xreality (C+D+L)"}
+{"ts": "2026-05-29T06:22:20Z", "event": "in_progress_update", "cycle": 10, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T06:22:40Z", "event": "in_progress_update", "cycle": 10, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-29T07:05:18Z","event":"secret_scan_skipped","cycle":10,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T07:05:49Z", "event": "in_progress_update", "cycle": 10, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-05-29T07:05:57Z", "event": "in_progress_update", "cycle": 10, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T07:06:24Z", "event": "in_progress_update", "cycle": 10, "phase": "QC", "retry": 0}
+{"ts":"2026-05-29T07:07:14Z","event":"secret_scan_skipped","cycle":10,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T07:07:22Z", "event": "in_progress_update", "cycle": 10, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T07:07:22Z", "event": "in_progress_update", "cycle": 10, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T07:09:17Z", "event": "in_progress_update", "cycle": 10, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T07:09:17Z", "event": "in_progress_archived", "cycle": 10, "archived_to": "cycle-010-state.md"}
+{"ts":"2026-05-29T07:09:23Z","event":"worktree_removed","cycle":10,"name":"cycle-10-dps-1"}
+{"ts":"2026-05-29T07:09:23Z","event":"worktree_removed","cycle":10,"name":"cycle-10-dps-2"}
+{"ts":"2026-05-29T07:09:23Z","event":"worktree_removed","cycle":10,"name":"cycle-10-dps-3"}

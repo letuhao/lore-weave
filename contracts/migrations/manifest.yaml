@@ -59,6 +59,16 @@ migrations:
     dependencies: ["0002_events_table"]
     description: "L2 cycle 9 — aggregate_snapshots table (replaces cycle-5 skeleton 'snapshots'): PK (reality_id, agg_type, agg_id, agg_version), OPT-IN per-aggregate policy via contracts/events/snapshot_policy.yaml"
 
-  # Future entries continue here in L2 cycles 10-11.
-  # Reserved slot 5: 0005_events_outbox_table (cycle 10, L2.C).
+  # ── L2 per-reality outbox (RAID cycle 10 — L2.C)
+  #
+  # NOT breaking: cycle-5 placeholder `outbox` was dropped by cycle 9's 0002
+  # migration; this migration creates a NEW table `events_outbox` and never
+  # touches user data (table is empty by construction at first apply).
+  - id: "0005_events_outbox_table"
+    version: 5
+    breaking: false
+    dependencies: ["0002_events_table"]
+    description: "L2 cycle 10 — events_outbox table (L2.C): event_id UUID pointer (NOT FK; Q-L2-3 archive-cut), 2 partial indexes (pending + dead_letter), drained by L2.D publisher; same-TX with event append per Q-L1B-3."
+
+  # Future entries continue here in L2 cycle 11.
   # Reserved slot 6: 0006_archive_metadata_table (cycle 11, L2.J archive worker).

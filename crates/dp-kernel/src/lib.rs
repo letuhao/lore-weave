@@ -34,8 +34,10 @@
 
 pub mod errors;
 pub mod event_validator;
+pub mod outbox;
 pub mod upcaster;
 
 pub use errors::EventError;
 pub use event_validator::{EventValidator, SchemaDescriptor, ValidatorRegistry};
+pub use outbox::{insert_sql as outbox_insert_sql, write as outbox_write, OutboxError, OutboxRow, OutboxWriter};
 pub use upcaster::{Upcaster, UpcasterChain, UpcasterRegistry};

@@ -78,3 +78,33 @@ events:
     description: Periodic in-world heartbeat. Drives scheduled NPC behaviors, weather, faction simulation.
     shipped_cycle: 8
     owner: world-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # xreality.* — cross-reality fanout events (RAID cycle 10, L2.L)
+  # ────────────────────────────────────────────────────────────────────
+  # These events are a SUBSET of the normal event flow: they emit through
+  # the normal per-reality outbox + publisher, AND additionally fan out to
+  # the `xreality.<entity>.<verb>` Redis Stream (Q-L2-4 naming) where
+  # meta-worker (sole consumer per I7) dispatches them. The selection is
+  # made by the envelope's `metadata.cross_reality: true` flag (set by
+  # the emitting service). The L2.I validator accepts xreality events
+  # like any other registered event_type.
+  - name: xreality.canon.promoted
+    aggregate: reality
+    versions: [1]
+    active_version: 1
+    cross_reality: true
+    go_struct: XRealityCanonPromotedV1
+    description: A canon entry was promoted in one reality; meta-worker dispatches projection writes across consumer realities.
+    shipped_cycle: 10
+    owner: glossary-service
+
+  - name: xreality.user.erased
+    aggregate: reality
+    versions: [1]
+    active_version: 1
+    cross_reality: true
+    go_struct: XRealityUserErasedV1
+    description: GDPR erasure event for a user; meta-worker fans out the deletion to every reality the user touched.
+    shipped_cycle: 10
+    owner: auth-service

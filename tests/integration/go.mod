@@ -19,19 +19,24 @@ go 1.22
 
 require (
 	github.com/lib/pq v1.10.9
+
+	// Cycle 10 — outbox_atomicity_test + xreality_propagation_test
+	github.com/loreweave/foundation/contracts/events v0.0.0
 	github.com/loreweave/foundation/contracts/lifecycle v0.0.0
 
 	// Cycle 7 — degraded-mode / tiered-backup / capacity-override tests
 	github.com/loreweave/foundation/contracts/meta v0.0.0
 	github.com/loreweave/foundation/services/admin-cli v0.0.0
 	github.com/loreweave/foundation/services/backup-scheduler v0.0.0
+	github.com/loreweave/foundation/services/meta-worker v0.0.0
 
 	// Cycle 6 — migration_run_test imports runner / canary / manifest
 	github.com/loreweave/foundation/services/migration-orchestrator v0.0.0
+	github.com/loreweave/foundation/services/publisher v0.0.0
 )
 
 require (
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -45,3 +50,10 @@ replace github.com/loreweave/foundation/contracts/lifecycle => ../../contracts/l
 replace github.com/loreweave/foundation/services/backup-scheduler => ../../services/backup-scheduler
 
 replace github.com/loreweave/foundation/services/admin-cli => ../../services/admin-cli
+
+// Cycle 10 — outbox + publisher + meta-worker
+replace github.com/loreweave/foundation/contracts/events => ../../contracts/events
+
+replace github.com/loreweave/foundation/services/publisher => ../../services/publisher
+
+replace github.com/loreweave/foundation/services/meta-worker => ../../services/meta-worker
