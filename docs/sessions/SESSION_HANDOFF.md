@@ -1,8 +1,77 @@
-# Session Handoff — Session 71 (specialized event prompt — NEGATIVE cycle, revert)
+# Session Handoff — Session 72.S1 (cycle 72 pass2 precision filter — DESIGN-CHECKPOINT, no code)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
+> **Date:** 2026-05-29 (session 72.S1 — XL design-checkpoint per `feedback_design_checkpoint_commit_separates_design_from_implementation`).
+> **HEAD:** pending final commit on top of `2b254e88` (cycle 71-bis NEGATIVE close).
+> **Branch:** `main`.
+
+## Session 72.S1 summary — cycle 72 pass2-precision-filter DESIGN-CHECKPOINT (spec + plan locked, no code shipped)
+
+XL cycle for the hybrid 2-pass extraction direction (30B recall → claude-4.7-opus precision filter) per cycle 71/71-bis pivot. This session ships ONLY the design artifacts; session 72.S2 will implement Phase 1 (SDK foundation) → Phase 2 (orchestrator wiring) → Phase 3 (eval validation against c70a saved-dump fixture).
+
+### Phases executed (S1)
+
+| Phase | Output |
+|---|---|
+| CLARIFY | [docs/specs/2026-05-29-pass2-precision-filter.md](../specs/2026-05-29-pass2-precision-filter.md) — 12 decisions D1-D12, 8 risks gradient, 3 OQs deferred to DESIGN |
+| DESIGN | Same spec — D6 revised (operation=chat removes 10-pt cascade), 3 OQs resolved (OQ-1 separate model_source, OQ-2 Option B post-gather step, OQ-3 no Neo4j flag), module map 11 files, interfaces locked (PrecisionFilterConfig + Pass2Candidates extension + apply_precision_filter signature) |
+| REVIEW (design) | /review-impl round 1: 7 findings (2 HIGH + 4 MED + 1 LOW substantive, 2 LOW deferred) — all folded inline; module count 11→12 with c70a saved-dump fixture added + precision_filter_prompts.py SOT |
+| PLAN | [docs/plans/2026-05-29-pass2-precision-filter.md](../plans/2026-05-29-pass2-precision-filter.md) — 2-session split with natural seam at Phase 1/Phase 2; 8 sub-phases in S2; 23-test-case map; risk→mitigation→test cross-checked end-to-end |
+
+### Key design decisions (locked, do not re-litigate in S2)
+
+- **D1 (filter as SDK module, opt-in kwarg)** — `precision_filter: PrecisionFilterConfig | None = None` on `extract_pass2`; default None = zero behavior change
+- **D2 (categories)** — all 3 (entity/relation/event); facts deferred (`D-PASS2-FILTER-FACTS-SUPPORT`)
+- **D3 (filter model)** — `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated` (UUID `019e5650-eca7-78c2-985d-465aa3bce1ce`)
+- **D4 (partial policy)** — `keep` / `drop` runtime-configurable; `demote` reserved but raises in `__post_init__`
+- **D5 (failure policy)** — filter NEVER raises; degrades to Pass A with `filter_status="degraded"` field
+- **D6 (op enum)** — REUSE `operation="chat"` per `llm_judge.py` precedent; NO JobOperation enum change
+- **D7 (telemetry)** — `knowledge_extraction_filter_decisions_total{category, verdict}` counter + `knowledge_extraction_filter_coverage_ratio{category}` gauge
+- **D8 (caller envs)** — `WORKER_AI_PRECISION_FILTER_MODEL_REF` + `KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF`; unset = filter off
+- **D10 (ship gate, 4-clause symmetric)**: median F1 lift ≥+1.5pp AND min ≥-0.5pp AND claude ≤2× median AND κ ≥0.60
+
+### Round-1 fixes folded inline (no BUILD deferred work)
+
+- **HIGH-1** — c70a saved dump (recoverable from `/tmp/eval_dump_cycle70/` in `infra-knowledge-service-1`) replaces nondeterministic re-extraction baseline; copy as repo fixture `services/knowledge-service/tests/quality/eval_runs/c70a/`
+- **HIGH-2** — Promote BOTH `_NO_THINK_PREFIX` + `_PRECISION_SYSTEM` via `build_precision_prompt(suppress_thinking=...)` SOT helper in SDK
+- **MED-1** — Pydantic→dict adapter at filter boundary (`model_dump(mode="json")`) pinned
+- **MED-2** — D10 cross-judge gate revised from 3-clause asymmetric to 4-clause symmetric (anti-self-reinforcement + anti-recall-loss)
+- **MED-3** — Measurement validity caveat: filter-output F1 ≠ Neo4j-realized F1; documented; deferred `D-PASS2-FILTER-NEO4J-REALIZED-F1` for future cycle
+- **MED-4** — `apply_precision_filter` immutability contract via `dataclasses.replace`; 2 new tests pin it
+
+### Session 72.S2 entry point (READ THIS FIRST in next session)
+
+When you start S2:
+1. **Re-read** [docs/specs/2026-05-29-pass2-precision-filter.md](../specs/2026-05-29-pass2-precision-filter.md) + [docs/plans/2026-05-29-pass2-precision-filter.md](../plans/2026-05-29-pass2-precision-filter.md) — verify no drift since this commit (per memory `verify-plan-prescriptions-against-code`)
+2. **Re-classify** if scope changed (Phase 1 alone could be L if you slice the SDK foundation discretely)
+3. **Verify c70a dump still exists** in `infra-knowledge-service-1:/tmp/eval_dump_cycle70/` — if container has been restarted, the dump is GONE and Session 72.S2 must re-run cycle 70 extraction first (~5 min on huihui-qwen3-30b)
+4. **Phase 1 first** — pure SDK foundation, zero caller change, ships as dead code. Natural checkpoint after Phase 1 if session-2 budget runs short.
+5. Phase 2 + Phase 3 = the actual filter activation + validation
+
+### Files in this S1 commit
+
+- [docs/specs/2026-05-29-pass2-precision-filter.md](../specs/2026-05-29-pass2-precision-filter.md) (NEW)
+- [docs/plans/2026-05-29-pass2-precision-filter.md](../plans/2026-05-29-pass2-precision-filter.md) (NEW)
+
+NOT in this commit (left for the author to commit separately or per their own cadence):
+- `README.md` (modified, untouched by cycle 72)
+- `docs/MILESTONE.md` (untracked, from earlier 17:40 session work)
+
+### Deferred rows added (carry over to deferred items list)
+
+- **D-PASS2-FILTER-NEO4J-REALIZED-F1** (MED-3 fold) — Neo4j-realized F1 measurement after writer cascade
+- **D-PASS2-FILTER-FACTS-SUPPORT** (LOW-2 fold) — extend filter to facts
+- **D-PASS2-FILTER-CLOUD-CALIBRATION** (spec non-goal) — cloud Claude calibration cycle
+- **D-PASS2-FILTER-RUNTIME-FLAG** (spec non-goal) — per-request header override
+- **D-PASS2-FILTER-CACHE** (spec non-goal) — verdict cache `(text_hash, model_ref, item_canonical) → verdict`
+- **D-PASS2-FILTER-PER-USER-UI** (spec non-goal) — UI surface for filter toggle
+
+---
+
+# Session Handoff — Session 71 (specialized event prompt — NEGATIVE cycle, revert) — historical
+
 > **Date:** 2026-05-29 (session 71, 1 M cycle attempted, A + B refinement both regressed, reverted).
-> **HEAD:** pending final commit on top of `1c0b2a08` (cycle 70 c70a ship).
+> **HEAD:** `2b254e88` (cycle 71-bis NEGATIVE commit).
 > **Branch:** `main`.
 
 ## Session 71 summary — cycle 71 + 71-bis BOTH reverted; pivoting to #2 hybrid 2-pass next
