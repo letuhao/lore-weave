@@ -88,6 +88,25 @@ entries:
     notes: "S04 §12T.6 — enumerated sensitive-read audit. NEVER outbox."
     events: []
 
+  # ── L1.A-3 §3.3 (cycle 4) — admin command audit; never outboxed (the
+  # data write the command performs has its own meta_write_audit + outbox row)
+  - table: admin_action_audit
+    owner: admin-cli (writer ships cycle 36)
+    notes: "R13 §12L.3 — admin command-level audit. error_detail scrubbed via S08 §12X.5. Never outbox."
+    events: []
+
+  # ── L1.A-3 §3.4 (cycle 4) — service-to-service RPC audit; never outboxed
+  - table: service_to_service_audit
+    owner: rpc entry middleware (ships L4 cycle 18+)
+    notes: "S11 §12AA — full audit (Q-L1A-3, no sampling). Never outbox."
+    events: []
+
+  # ── L1.A-3 §3.5 (cycle 4) — prompt assembly audit; never outboxed
+  - table: prompt_audit
+    owner: contracts/prompt (writer ships L4 cycle 21+)
+    notes: "S09 §12Y — prompt context hash only, NEVER body. Never outbox."
+    events: []
+
   # ── L1.A-2 §2.1 (cycle 3) — PII envelope; user.created on insert, user.erased on UPDATE-with-erased_at
   - table: pii_registry
     owner: auth-service

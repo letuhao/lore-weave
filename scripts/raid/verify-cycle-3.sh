@@ -16,8 +16,9 @@
 # Notes:
 #   - SQL migration UP/DOWN dry-run against docker-compose.meta-ha.yml (C1) is
 #     attempted IF docker is available; structural check fallback otherwise.
-#   - meta_write_audit table doesn't exist yet (cycle 10); production MetaWrite()
-#     would fail on audit insert. Test fakes bypass — same pattern as cycle 2.
+#   - meta_write_audit table ships in cycle 4 (L1.A-3). Before cycle 4 landed,
+#     production MetaWrite() would have failed on the audit insert step; this
+#     verify script still uses fake-Tx coverage (same as cycle 2).
 
 set -euo pipefail
 
@@ -75,14 +76,14 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────────────────────
-step "3/9 — Cycle-10 scope-guard: NO meta_*_audit tables shipped this cycle"
+step "3/9 — Cycle-4 scope-guard: NO meta_*_audit tables shipped this cycle (L1.A-3 ships separately)"
 audit_pattern='CREATE TABLE.*meta_write_audit\|CREATE TABLE.*meta_read_audit\|CREATE TABLE.*admin_action_audit\|CREATE TABLE.*service_to_service_audit\|CREATE TABLE.*prompt_audit'
 for f in migrations/meta/009_*.up.sql migrations/meta/010_*.up.sql migrations/meta/011_*.up.sql migrations/meta/012_*.up.sql; do
   if grep -qE "$audit_pattern" "$f" 2>/dev/null; then
-    fail "$f creates a meta_*_audit table (cycle 10 scope violation)"
+    fail "$f creates a meta_*_audit table (cycle 4 scope violation)"
   fi
 done
-ok "no meta_*_audit tables in cycle-3 migrations (cycle 10 scope respected)"
+ok "no meta_*_audit tables in cycle-3 migrations (cycle 4 scope respected)"
 
 # ────────────────────────────────────────────────────────────────────────────────
 step "4/9 — Cycle-2 scope-guard: routing+lifecycle tables NOT modified by cycle 3"

@@ -159,7 +159,11 @@ func writeLifecycleAudit(ctx context.Context, cfg *Config, row LifecycleTransiti
 //       audit lookups. Callers needing the full PK pass all three in MetaWriteIntent.PK.
 //   - player_character_index: PK = pc_index_id
 //
-// Cycles 4-10 will extend further (audit tables, billing tables, SRE tables).
+// Cycle 4 (L1.A-3) added the 5 audit tables (all use surrogate audit_id PKs).
+//   - meta_write_audit, meta_read_audit, admin_action_audit,
+//     service_to_service_audit, prompt_audit — every row is a new audit_id.
+//
+// Cycles 5-10 will extend further (billing tables, SRE tables).
 // At some point we should load this map from transitions.yaml or a dedicated
 // schema map file — until then, this hard-coded switch is the canonical source.
 func pkColumnFor(table string) string {
@@ -174,6 +178,13 @@ func pkColumnFor(table string) string {
 		return "user_ref_id"
 	case "player_character_index":
 		return "pc_index_id"
+	// Cycle 4 — L1.A-3 audit tables
+	case "meta_write_audit",
+		"meta_read_audit",
+		"admin_action_audit",
+		"service_to_service_audit",
+		"prompt_audit":
+		return "audit_id"
 	}
 	// Fallback heuristic — strip common suffixes; safe enough for service
 	// teams to follow naming convention while we wait for explicit mapping.
