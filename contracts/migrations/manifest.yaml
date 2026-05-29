@@ -70,5 +70,32 @@ migrations:
     dependencies: ["0002_events_table"]
     description: "L2 cycle 10 — events_outbox table (L2.C): event_id UUID pointer (NOT FK; Q-L2-3 archive-cut), 2 partial indexes (pending + dead_letter), drained by L2.D publisher; same-TX with event append per Q-L1B-3."
 
-  # Future entries continue here in L2 cycle 11.
-  # Reserved slot 6: 0006_archive_metadata_table (cycle 11, L2.J archive worker).
+  # ── L3 per-reality projection tables (RAID cycle 13 — L3.A + L3.K)
+  #
+  # 0006 ships the 10 L3.A projection tables (pc, npc, region, world_kv,
+  # session_participants, npc_session_memory, npc_session_memory_embedding,
+  # npc_pc_relationship, pc_inventory, pc_relationship). 0007 ships the
+  # L3.K drift-state summary table + stale_projections view + 10-row seed.
+  - id: "0006_projections"
+    version: 6
+    breaking: false
+    dependencies: ["0001_initial"]
+    description: "L3 cycle 13 — 10 L3.A projection tables (PC/NPC/region/world_kv/session) + VerificationMeta cols per Q-L3-4. npc_session_memory_embedding uses VECTOR(1536) when pgvector ext present (Q-L3I-1), BYTEA(1536*4) fallback otherwise (cycle 16 0008_pgvector_setup ALTERs to VECTOR(1536))."
+
+  - id: "0007_drift_metadata"
+    version: 7
+    breaking: false
+    dependencies: ["0006_projections"]
+    description: "L3 cycle 13 — L3.K projection_drift_state summary table (PK=table_name, CHECK allowlist=10 L3.A tables) + stale_projections view; idempotent seed of 10 rows. Cycle 14 L3.E sampler + L3.F monthly check write here."
+
+  # ── L3.I pgvector finalizer (RAID cycle 16 — L3.I)
+  #
+  # Three-part migration: (a) CREATE EXTENSION vector (idempotent), (b) ALTER
+  # npc_session_memory_embedding.embedding BYTEA → VECTOR(1536) (conditional
+  # — skips if cycle 13's path-A already created with VECTOR), (c) CREATE
+  # HNSW INDEX (m=16, ef_construction=64). Closes the L3 layer.
+  - id: "0008_pgvector_setup"
+    version: 8
+    breaking: false
+    dependencies: ["0006_projections"]
+    description: "L3 cycle 16 — L3.I pgvector finalizer: CREATE EXTENSION vector + ALTER npc_session_memory_embedding.embedding to VECTOR(1536) when BYTEA placeholder still present + HNSW(m=16, ef_construction=64). Q-L3I-1 dim=1536 LOCKED. Closes L3 layer."

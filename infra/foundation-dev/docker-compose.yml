@@ -13,7 +13,17 @@
 
 services:
   postgres-foundation:
-    image: postgres:16-alpine
+    # Cycle 16 (L3.I) switched from `postgres:16-alpine` to
+    # `pgvector/pgvector:pg16` so the `vector` extension is preinstalled in
+    # the image. The image is a thin layer on top of the official Postgres
+    # 16 image — same volume layout, same env vars, same default user.
+    # See https://hub.docker.com/r/pgvector/pgvector.
+    #
+    # Per-reality DBs created by the world-service provisioner (cycle 5
+    # `apply_initial_migration` step) inherit this image since they're
+    # CREATE DATABASE'd on the same cluster. The extension itself is
+    # installed per-database by 0008_pgvector_setup.up.sql.
+    image: pgvector/pgvector:pg16
     container_name: foundation-dev-postgres
     environment:
       POSTGRES_USER: foundation
@@ -23,6 +33,13 @@ services:
       - "127.0.0.1:5432:5432"  # foundation-dev uses standard 5432; existing prod uses 5555
     volumes:
       - foundation-pg-data:/var/lib/postgresql/data
+      # Cycle 16 (L3.I) — init script that runs once on first container
+      # boot (when /var/lib/postgresql/data is empty). Creates the `vector`
+      # extension in the `foundation` template database so any per-reality
+      # DB cloned from template inherits it. Per-reality DB migrations
+      # (0008_pgvector_setup) still run `CREATE EXTENSION IF NOT EXISTS`
+      # for explicitness + dev databases not cloned from template.
+      - ./pgvector-init.sh:/docker-entrypoint-initdb.d/10-pgvector.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U foundation -d foundation"]
       interval: 5s

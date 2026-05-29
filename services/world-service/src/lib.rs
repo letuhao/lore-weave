@@ -35,11 +35,17 @@
 pub mod capacity_planner;
 pub mod db_pool;
 pub mod deprovisioner;
+pub mod embedding_queue;
 pub mod errors;
 pub mod provisioner;
 
 pub use capacity_planner::{CapacityPlanner, CapacityThresholds, ShardCapacity, ShardId};
 pub use db_pool::{DbPoolKey, DbPoolRegistry, ShardHost};
 pub use deprovisioner::{DeprovisionReport, DeprovisionRequest, Deprovisioner};
+// L3.I cycle 16 — embedding queue (Q-L3-1 V1: in world-service).
+pub use embedding_queue::{
+    AuditEvent, AuditOutcome, AuditWriter, CountingAuditWriter, EmbedResult, EmbeddingProvider,
+    EmbeddingWriter, MemoryRef, Queue as EmbeddingQueue, Worker as EmbeddingWorker, EMBEDDING_DIM,
+};
 pub use errors::ProvisionerError;
 pub use provisioner::{ProvisionReport, ProvisionRequest, Provisioner};
