@@ -46,6 +46,12 @@ The first demo enriches a **small set of under-described LOCATIONS** in 封神�
   4. **陳塘關** — Nezha's birthplace; rich frontier-pass culture/daily-life angle. (32)
 - **Sources confirmed PUBLIC-DOMAIN** (resolves the corpora licensing default for the demo): 封神演义 full text on Chinese Wikisource + ctext.org; 山海经 on ctext.org + Wikisource; Shang–Zhou history from public-domain classics. → technique (b) corpora are clear for the demo; only modern/news (technique d) need later licensing review.
 
+## Posture decisions (locked 2026-05-30)
+- **Promotion authority** = the **book/project owner** (the "author"). Demo uses the test account `claude-test@loreweave.dev`. Only this principal may promote enriched→canon.
+- **Push to remote** = only **on explicit user instruction** (guardrail). Work stays local until then.
+- **C4/C5 platform edits (glossary/knowledge-service) merge strategy** = decided **at merge time** (in-branch vs separate PR); kept additive/backward-compatible so either path is clean.
+- **pre-commit hook** = **installed** on this branch's working copy (`.git/hooks/pre-commit` → `workflow-gate.py pre-commit`; warns-and-passes with no state, enforces when a v2.2 task is active). Note: `.git/hooks` is not version-controlled — re-install on a fresh clone.
+
 ## Defaults (overridable)
 - Admission: **always human-gate** initially; auto-admit thresholds calibrated later from eval data.
 
