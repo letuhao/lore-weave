@@ -5,16 +5,17 @@
 
 ## Environment & isolation
 - [x] On branch `lore-enrichment/foundation`; **0** edits to `world-service`/`game-server`/`tilemap-service` in this branch's commits (isolation holds).
-- [x] `infra/docker-compose.yml` has all dependencies: postgres, redis, neo4j, knowledge-service, glossary-service, book-service, **provider-registry-service**, api-gateway-bff. *(presence verified; runtime stack-up is C1 live-smoke)*
+- [x] Dependencies **UP and healthy (verified live, 29h uptime):** postgres (host :5555 → in-net `postgres:5432`), redis (:6399), neo4j (:7688), knowledge-service (:8216), glossary-service (:8211), book-service (:8205), provider-registry-service (:8208), rabbitmq (:5795), minio (:9123). *(api-gateway-bff route wired at C0)*
 - [~] New DB `loreweave_lore_enrichment` created — by the C2 migration.
 - [x] Service port = **internal 8093 / host 8221** (8093 free; 8221+ per compose convention, 8217-19 reserved, 8220=tilemap). Gateway route `/v1/lore-enrichment/*` registered at C0.
 
 ## Secrets / config (service fails to start if missing)
 - [~] `LORE_ENRICHMENT_DB_URL`, `INTERNAL_SERVICE_TOKEN`, `JWT_SECRET` set — at C0.
 - [~] Read DSNs / tokens for knowledge-service, glossary, book-service — at C0/C1.
-- [!] **Qwen 3.6 (LM Studio) registered in provider-registry** + endpoint (`http://host.docker.internal:1234/v1`) **reachable from the service container**. — **only you can set this up.**
-- [!] **Embedding model in LM Studio** (bge-m3 / nomic-embed) + registered, for technique-(b) retrieval (C10).
-- [~] `REDIS_URL` reachable — infra/C0.
+- [x] **VERIFIED LIVE (2026-05-30):** `qwen/qwen3.6-35b-a3b` registered + active in provider-registry; lm_studio credential @ `host.docker.internal:1234`; reachable from container (python urllib → **200**). Judges `qwen/qwen3-30b-a3b` + gemma also registered (for C15 ensemble).
+- [x] **VERIFIED:** `text-embedding-bge-m3` registered + active + present in LM Studio (technique-b retrieval, C10).
+- [x] **JIT auto-load:** LM Studio loads models on demand (judges ≠ enrich model can't co-reside) — call models by id; tolerate first-call load latency. Matches other branches + the eval framework.
+- [x] `REDIS_URL` — redis container up (host :6399, in-network `redis:6379`).
 
 ## Upstream readiness (endpoints exist in code; live-smoke at C1)
 - [~] knowledge-service graph / graph-stats / context / embedding-model + `/internal/embed` for a test project.
@@ -37,7 +38,8 @@
 
 ---
 
-## ⛳ Gating summary
-- **Ready now:** branch/isolation, ports, compose deps, RAID config + logs + hook, prefetched corpora, cost policy. ✅
-- **Built during cycles (no action):** DB, env vars, ingest, runtime live-smokes. ⏳
-- **NEEDS YOU before C7/C10 can live-smoke:** LM Studio up with **Qwen 3.6 + an embedding model**, registered in provider-registry, reachable from containers. 🔴
+## ⛳ Gating summary (2026-05-30 — pre-flight COMPLETE)
+- **Verified live ✅:** stack up + healthy; Qwen 3.6 + bge-m3 + judges registered & active; LM Studio reachable from container (200); branch/isolation; ports (8093/8221); RAID config + logs + hook; corpora prefetched; cost policy.
+- **Built during cycles (no pre-flight action) ⏳:** `loreweave_lore_enrichment` DB (C2), service env vars + skeleton (C0), Fengshen ingest (C0/C1), runtime live-smokes (C1+).
+- **No outstanding USER gate.** Pre-flight passes → ready for `/raid`.
+- Dev note: in-network DSN uses `postgres:5432` (service name), not host `:5555`; provider-registry in-net `:8085` (host `:8208`).
