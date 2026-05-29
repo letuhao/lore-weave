@@ -89,23 +89,52 @@ func (d *Dispatcher) Registered() []string {
 	return out
 }
 
-// ValidateAllowlist enforces the ALLOWLIST invariant — every registered
-// event_type MUST start with `xreality.`. Returns an error listing
-// non-conforming entries. Called at startup.
+// ValidateAllowlist enforces the ALLOWLIST invariant.
+//
+// Originally (cycle 10) restricted to `xreality.*` prefix. Cycle 24 L5.B
+// extended the allowlist to ALSO permit `canon.entry.*` inner event_types
+// because the publisher fans the canon.* events out via the xreality
+// stream (xreality.book.canon.updated) carrying the INNER event_type in
+// the envelope's `event_type` field. The dispatcher routes by inner
+// event_type (see consumer.Message.EventType), so the registry keys
+// MUST be the inner names — but they remain I7-compliant because the
+// only ingress is the xreality.* stream.
+//
+// Returns an error listing non-conforming entries. Called at startup.
 func (d *Dispatcher) ValidateAllowlist() error {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	var bad []string
 	for k := range d.handlers {
-		if !strings.HasPrefix(k, "xreality.") {
-			bad = append(bad, k)
+		if isAllowlistedEventType(k) {
+			continue
 		}
+		bad = append(bad, k)
 	}
 	if len(bad) > 0 {
 		sort.Strings(bad)
-		return fmt.Errorf("dispatch: non-xreality handlers registered (I7 violation): %s", strings.Join(bad, ", "))
+		return fmt.Errorf("dispatch: non-allowlisted handlers registered (I7 violation): %s", strings.Join(bad, ", "))
 	}
 	return nil
+}
+
+// isAllowlistedEventType reports whether eventType is permitted as a
+// meta-worker dispatch key under the I7 invariant.
+//
+// Permitted prefixes:
+//   - `xreality.*` (cycle 10) — original cross-reality fan-out events
+//   - `canon.entry.*` (cycle 24 L5.B) — inner event types fanned out via
+//     the xreality.book.canon.updated stream; the dispatcher routes by
+//     inner event_type field, so the registry key is the inner name.
+//     I7 compliance preserved because the only ingress is xreality.*.
+func isAllowlistedEventType(eventType string) bool {
+	switch {
+	case strings.HasPrefix(eventType, "xreality."):
+		return true
+	case strings.HasPrefix(eventType, "canon.entry."):
+		return true
+	}
+	return false
 }
 
 // ── V1 skeleton handlers ─────────────────────────────────────────────────

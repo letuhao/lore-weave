@@ -13,3 +13,5 @@ module github.com/loreweave/foundation/services/meta-worker
 go 1.22
 
 replace github.com/loreweave/foundation/contracts/events => ../../contracts/events
+
+require github.com/google/uuid v1.6.0 // indirect

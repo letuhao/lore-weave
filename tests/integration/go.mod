@@ -31,10 +31,10 @@ require (
 	// Cycle 11 — archive_roundtrip_test + outbox_prune_test
 	github.com/loreweave/foundation/services/archive-worker v0.0.0
 	github.com/loreweave/foundation/services/backup-scheduler v0.0.0
-	github.com/loreweave/foundation/services/meta-worker v0.0.0
 
 	// Cycle 15 — integrity_drift_test + full_integrity_test (L3.E + L3.F)
 	github.com/loreweave/foundation/services/integrity-checker v0.0.0
+	github.com/loreweave/foundation/services/meta-worker v0.0.0
 
 	// Cycle 6 — migration_run_test imports runner / canary / manifest
 	github.com/loreweave/foundation/services/migration-orchestrator v0.0.0

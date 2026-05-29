@@ -1123,3 +1123,23 @@
 {"ts": "2026-05-29T12:06:15Z", "event": "in_progress_update", "cycle": 23, "phase": "SESSION", "retry": 0}
 {"ts": "2026-05-29T12:07:35Z", "event": "in_progress_update", "cycle": 23, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T12:07:55Z", "event": "in_progress_archived", "cycle": 23, "archived_to": "cycle-023-state.md"}
+{"ts":"2026-05-29T12:09:18Z","event":"recovery_halted","cycle":23,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T12:09:19Z", "event": "escalation_written", "cycle": 23, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T12:09:47Z", "event": "coordinator_next_cycle_emitted", "cycle": 24}
+{"ts":"2026-05-29T12:10:51Z","event":"startup_drift_check_passed","cycle":24,"version":"v1.6"}
+{"ts":"2026-05-29T12:10:51Z","event":"startup_verifier_complete","cycle":24,"steps":6}
+{"ts": "2026-05-29T12:11:09Z", "event": "in_progress_init", "cycle": 24, "title": "L5 meta-worker consumers (B+C)"}
+{"ts":"2026-05-29T12:13:14Z","event":"startup_resume_detected","cycle":24,"state_file":"/d/Works/source/lore-weave-game-foundation/docs/raid/IN_PROGRESS/cycle-024-state.md"}
+{"ts":"2026-05-29T12:13:14Z","event":"startup_drift_check_passed","cycle":24,"version":"v1.6"}
+{"ts":"2026-05-29T12:13:14Z","event":"startup_verifier_complete","cycle":24,"steps":6}
+{"ts": "2026-05-29T12:13:30Z", "event": "in_progress_init", "cycle": 24, "title": "L5 meta-worker consumers (B+C)"}
+{"ts": "2026-05-29T12:17:26Z", "event": "in_progress_update", "cycle": 24, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T12:17:57Z", "event": "in_progress_update", "cycle": 24, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T12:18:18Z", "event": "in_progress_update", "cycle": 24, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T12:27:36Z", "event": "in_progress_update", "cycle": 24, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T12:27:46Z","event":"secret_scan_skipped","cycle":24,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T12:28:36Z", "event": "in_progress_update", "cycle": 24, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T12:28:57Z", "event": "in_progress_update", "cycle": 24, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T12:29:07Z", "event": "in_progress_update", "cycle": 24, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T12:29:19Z", "event": "in_progress_update", "cycle": 24, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T12:30:21Z", "event": "in_progress_update", "cycle": 24, "phase": "COMMIT", "retry": 0}
