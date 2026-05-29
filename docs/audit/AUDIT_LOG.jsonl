@@ -797,3 +797,7 @@
 {"ts":"2026-05-29T03:51:34Z","event":"cycle_complete","cycle":4,"title":"L1.A-3 Audit Infrastructure (5 tables)","dps_count":3,"verify_exit":0,"notable":"audit wiring activated; worktrees fix landed; doc cycle-10 stale ref corrected"}
 {"ts": "2026-05-29T03:51:36Z", "event": "in_progress_update", "cycle": 4, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T03:51:43Z", "event": "in_progress_archived", "cycle": 4, "archived_to": "cycle-004-state.md"}
+{"ts":"2026-05-29T03:52:33Z","event":"worktree_removed","cycle":4,"name":"cycle-4-dps-1"}
+{"ts":"2026-05-29T03:52:33Z","event":"worktree_removed","cycle":4,"name":"cycle-4-dps-2"}
+{"ts":"2026-05-29T03:52:33Z","event":"worktree_removed","cycle":4,"name":"cycle-4-dps-3"}
+{"ts":"2026-05-29T03:52:46Z","event":"retro","cycle":4,"reflection":"worktrees-create.sh fix shipped (4-cycle deferral cleared); Task tool absent for 4th cycle; MetaWrite audit-wiring activated by table landing; pkColumnFor extension pattern stable for cycles 5+ (5 tables in single multi-line case clause); body-never-stored invariant enforced at three layers (DDL no body column, struct no body field, interface single-param signature) — reflection tests block future drift"}
