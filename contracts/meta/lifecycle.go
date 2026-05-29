@@ -163,7 +163,19 @@ func writeLifecycleAudit(ctx context.Context, cfg *Config, row LifecycleTransiti
 //   - meta_write_audit, meta_read_audit, admin_action_audit,
 //     service_to_service_audit, prompt_audit — every row is a new audit_id.
 //
-// Cycles 5-10 will extend further (billing tables, SRE tables).
+// Cycle 7 (L1.A-4) added 8 billing + SRE tables:
+//   - user_cost_ledger: PK = ledger_id (financial ledger; append-only)
+//   - user_daily_cost:  COMPOSITE PK (user_ref_id, cost_date); we return
+//       user_ref_id as the primary identity column (matches consent ledger pattern).
+//   - user_queue_metrics: PK = user_ref_id (user-scoped counter row)
+//   - incidents:        PK = incident_id (state-machine lifecycle via SR02)
+//   - feature_flags:    PK = flag_name (text PK — keep as flag_name for clarity)
+//   - deploy_audit:     PK = deploy_id (append-only)
+//   - shard_utilization: PK = snapshot_id (append-only snapshots)
+//   - scaling_events:   PK = scaling_event_id (append-only)
+//
+// Cycles 10+ will extend further as remaining SR-domain tables (chaos_drills,
+// turn_outcomes, alert_outcomes, etc.) land in their owning sub-program cycles.
 // At some point we should load this map from transitions.yaml or a dedicated
 // schema map file — until then, this hard-coded switch is the canonical source.
 func pkColumnFor(table string) string {
@@ -185,6 +197,25 @@ func pkColumnFor(table string) string {
 		"service_to_service_audit",
 		"prompt_audit":
 		return "audit_id"
+	// Cycle 7 — L1.A-4 billing + SRE tables
+	case "user_cost_ledger":
+		return "ledger_id"
+	case "user_daily_cost":
+		// Composite PK (user_ref_id, cost_date); return primary identity column.
+		// Callers needing the full PK pass both keys in MetaWriteIntent.PK.
+		return "user_ref_id"
+	case "user_queue_metrics":
+		return "user_ref_id"
+	case "incidents":
+		return "incident_id"
+	case "feature_flags":
+		return "flag_name"
+	case "deploy_audit":
+		return "deploy_id"
+	case "shard_utilization":
+		return "snapshot_id"
+	case "scaling_events":
+		return "scaling_event_id"
 	}
 	// Fallback heuristic — strip common suffixes; safe enough for service
 	// teams to follow naming convention while we wait for explicit mapping.

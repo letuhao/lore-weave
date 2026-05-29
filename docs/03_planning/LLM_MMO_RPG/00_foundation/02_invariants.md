@@ -21,10 +21,21 @@ No direct LLM/AI provider SDK calls anywhere in the codebase. All AI calls go th
 - **Source:** [02_storage/S09_prompt_assembly.md](../02_storage/S09_prompt_assembly.md) §12Y.1; ADMIN_ACTION_POLICY §4.
 
 ### I3. Language rule
-Go for domain services · Python for AI/LLM services · TypeScript for gateway/BFF.
-- **Why:** skill specialization + runtime-stack boundaries.
-- **Enforced by:** code review.
-- **Source:** CLAUDE.md §Key Rules.
+**Rust** for kernel-derived services · **Go** for meta-registry-adjacent + existing domain services · **Python** for LLM-heavy services · **TypeScript** for gateway/BFF.
+
+**Full language matrix:**
+
+| Language | Services / scope | Why |
+|---|---|---|
+| **Rust** | `world-service`, `travel-service`, `roleplay-service`, future actor-substrate services — any service that uses `#[derive(Aggregate)]` proc-macro | Kernel uses `#[derive(Aggregate)]` proc-macro from `crates/dp-kernel-macros/` (L4.B); macro can only be consumed by Rust crates. Plus zero-cost abstractions + type safety for the event-sourcing hot path. |
+| **Go** | `auth-service`, `book-service`, `sharing-service`, `catalog-service`, `provider-registry-service`, `usage-billing-service`, `translation-service`, `glossary-service`, `publisher`, `meta-worker`, `event-handler`, `migration-orchestrator`, `admin-cli`, `archive-worker`, `retention-worker`, `integrity-checker`, `chaos-engine`, `backup-scheduler`, `session-cost-rollup-worker`, `slo-budget-calculator`, `canary-controller`, `oncall-bot`, `incident-bot`, `postmortem-bot`, `statuspage-updater`, `alert-recorder` | Domain services that do NOT use `#[derive(Aggregate)]`. Meta-registry primitives (`MetaWrite()` / `AttemptStateTransition()`) are Go-native. |
+| **Python** | `chat-service`, `knowledge-service`, `video-gen-service` | LiteLLM + Pydantic + asyncio ecosystem for LLM-heavy services. |
+| **TypeScript** | `api-gateway-bff`, `frontend-game` | I1 gateway invariant (NestJS); frontend tooling. |
+
+- **Why:** skill specialization + runtime-stack boundaries + macro-based kernel derivation requires Rust for downstream services.
+- **Enforced by:** CI lint `scripts/language-rule-lint.sh` (L1.K.10) reads `contracts/language-rule.yaml` mapping `services/<name>/` → expected language; rejects PRs whose service code is in wrong language. Plus code review backup.
+- **Source:** CLAUDE.md §Key Rules + D-C0-1 (Cycle 0 decision establishing Rust for world-service + travel-service) + L4.A-B foundation CLARIFY (extends rule to all kernel-derived services). Full amendment + companion service-map updates: [I3_INVARIANT_AMENDMENT.md](../../../plans/2026-05-29-foundation-mega-task/I3_INVARIANT_AMENDMENT.md).
+- **Amendment status:** **AMENDED 2026-05-29** (RAID cycle 7 — Q-L1K-2 LOCKED).
 
 ### I4. DB-per-service
 Each microservice owns its own Postgres database. Cross-service reads go through RPC, not direct SQL.

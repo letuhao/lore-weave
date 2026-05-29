@@ -1,0 +1,101 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "iteration": 1716960000000,
+  "links": [
+    {
+      "icon": "external link",
+      "tags": [],
+      "targetBlank": true,
+      "title": "Restore runbook",
+      "type": "link",
+      "url": "/runbooks/backup/restore.md"
+    },
+    {
+      "icon": "external link",
+      "tags": [],
+      "targetBlank": true,
+      "title": "Backup policy",
+      "type": "link",
+      "url": "/contracts/backup/policy.yaml"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "description": "Drill outcomes over last 30d (per Q-L1H-2 monthly cadence).",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {},
+      "targets": [
+        {
+          "expr": "sum by (status) (increase(lw_backup_drill_outcome_total[30d]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Restore drills — last 30d",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Backup volume by tier; verify retention policy applies.",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": {},
+      "targets": [
+        {
+          "expr": "sum by (tier) (lw_backup_bucket_bytes{bucket=\"lw-db-backups\"})",
+          "legendFormat": "{{tier}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Backup size by tier (lw-db-backups)",
+      "type": "graph"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Time since last successful drill per shard; alert if > 35d.",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "id": 3,
+      "options": {},
+      "targets": [
+        {
+          "expr": "(time() - lw_backup_drill_last_passed_timestamp_seconds) / 86400",
+          "legendFormat": "{{shard_host}} (days)",
+          "refId": "A"
+        }
+      ],
+      "title": "Days since last successful drill per shard",
+      "type": "graph"
+    }
+  ],
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": ["backup", "L1.H", "SRE"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Backup verification (L1.H)",
+  "uid": "backup-verification",
+  "version": 1
+}

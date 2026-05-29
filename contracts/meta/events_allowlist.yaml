@@ -142,3 +142,69 @@ entries:
         event_name: pc.index.created
       - op: UPDATE
         event_name: pc.index.status.changed
+
+  # ── L1.A-4 §4.1 (cycle 7) — user_cost_ledger (financial; events to billing dashboards)
+  - table: user_cost_ledger
+    owner: usage-billing-service
+    notes: "L1A §4.1 — per-user LLM cost ledger. Every INSERT emits a billing event for dashboards + budget enforcement."
+    events:
+      - op: INSERT
+        event_name: billing.charge.recorded
+
+  # ── L1.A-4 §4.3 (cycle 7) — user_daily_cost (rollup; cap events on UPDATE-with-capped_at)
+  - table: user_daily_cost
+    owner: usage-billing-service
+    notes: "L1A §4.3 — daily aggregate cap. UPDATE setting capped_at emits billing.daily.capped."
+    events:
+      - op: UPDATE
+        event_name: billing.daily.capped
+
+  # ── L1.A-4 §4.4 (cycle 7) — user_queue_metrics (counters only; no outbox)
+  - table: user_queue_metrics
+    owner: world-service
+    notes: "L1A §4.4 — NPC queue abuse counters. No outbox; metrics ship via Prometheus."
+    events: []
+
+  # ── L1.A-4 §6.1 (cycle 7) — incidents (lifecycle state machine; transitions emit events)
+  - table: incidents
+    owner: incident-bot (cycle 37); manual via admin-cli at V1
+    notes: "L1A §6.1 / SR02 — incident lifecycle. State transitions emit incident.<state>; auto-declare on SEV0 alerts."
+    events:
+      - op: INSERT
+        event_name: incident.declared
+      - op: UPDATE
+        event_name: incident.status.changed
+
+  # ── L1.A-4 §6.2 (cycle 7) — feature_flags (toggle audit)
+  - table: feature_flags
+    owner: admin-cli (cycle 36)
+    notes: "L1A §6.2 / SR05 — runtime flags. INSERT = created; UPDATE = toggled (default_enabled or targets changed)."
+    events:
+      - op: INSERT
+        event_name: feature_flag.created
+      - op: UPDATE
+        event_name: feature_flag.toggled
+
+  # ── L1.A-4 §6.3 (cycle 7) — deploy_audit (deploy + canary events)
+  - table: deploy_audit
+    owner: canary-controller (cycle 38) + deploy pipeline
+    notes: "L1A §6.3 / SR05 — per-deploy audit. INSERT = started; UPDATE drives canary stage advances + rollback."
+    events:
+      - op: INSERT
+        event_name: deploy.started
+      - op: UPDATE
+        event_name: deploy.status.changed
+
+  # ── L1.A-4 §6.4 (cycle 7) — shard_utilization (snapshots; no outbox)
+  - table: shard_utilization
+    owner: shard health agent (per-shard sidecar; cycle TBD L7)
+    notes: "L1A §6.4 / SR08 — shard utilization snapshots. Pure metrics; read by capacity_planner."
+    events: []
+
+  # ── L1.A-4 §6.5 (cycle 7) — scaling_events (capacity action audit)
+  - table: scaling_events
+    owner: capacity-planner (cycle 5 world-service module) + admin-cli capacity-override
+    notes: "L1A §6.5 / SR08 — capacity action audit. Tier-2 overrides emit scaling.override.granted."
+    events:
+      - op: INSERT
+        event_name: scaling.event.recorded

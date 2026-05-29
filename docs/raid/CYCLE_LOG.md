@@ -17,7 +17,7 @@
 | 4 | L1.A-3 Audit Infrastructure (5 tables) | DONE | 2026-05-29 | 2026-05-29 | 3 | meta_write/read/admin_action/svc_to_svc/prompt audit tables + scrubber stub + body-never-stored PromptAudit iface + pkColumnFor extended + worktrees-create.sh base-branch-collision FIXED + doc.go cycle-10 stale ref corrected |
 | 5 | L1.C Provisioner + L1.G Pgbouncer + L1.F Cache | DONE | 2026-05-29 | 2026-05-29 | 3 | services/world-service Rust crate (provisioner/deprovisioner/capacity_planner/db_pool + orphan_scanner) + contracts/meta/{pool.go,cache.go} Go mirrors + per-reality 0001 skeleton + docker-compose pgbouncer/redis overlays |
 | 6 | L1.D Migration Orchestrator + L1.I Per-DB Metrics | DONE | 2026-05-29 | 2026-05-29 | 2 | migration-orchestrator Go service (manifest+runner concurrency-10+canary 1-reality-first) + manifest.yaml references cycle-5 0001_initial + ACL matrix (no DELETE) + idempotency-validator + Prom scrape-config dynamic file_sd_configs + recording/alert rules + postgres-exporter cardinality-controls (7 metrics × N realities ≤ 700 series at V1=100) + inventory.yaml cycles 1-6 enumerated + 2 Grafana dashboards |
-| 7 | L1.A-4 Billing/SRE tables + L1.H Backup + L1.L Capacity + L1.J Degraded + L1.K 15 lints | PENDING | — | — | 5 | I3 amendment PR ships here |
+| 7 | L1.A-4 Billing/SRE tables + L1.H Backup + L1.L Capacity + L1.J Degraded + L1.K 15 lints | DONE | 2026-05-29 | 2026-05-29 | 5 | XL bundle; I3 amendment shipped (lint + config + kernel-doc); 8 billing+SRE tables (018-025); 15 lints all PASS; ServiceMode 5-enum; FallbackBuffer 10K cap; capacity-budget covers 31 services |
 | 8 | L2 Schema Infra (F+G+H+I) | PENDING | — | — | 4 | |
 | 9 | L2 Per-reality tables (A+B+E) | PENDING | — | — | 3 | |
 | 10 | L2 Outbox + Publisher + xreality (C+D+L) | PENDING | — | — | 3 | |
@@ -414,6 +414,138 @@
 - `contracts/meta/errors.go` (added ErrDbPoolConflict / ErrDbPoolMissing / ErrDbPoolInvalid / ErrCacheRegistryInvalid / ErrCacheKindUnregistered for the new pool + cache surfaces)
 - `docs/raid/CYCLE_LOG.md` (this file)
 - `docs/audit/AUDIT_LOG.jsonl` (append-only verify_cycle_complete + cycle-5 phase events)
+
+
+---
+
+## Cycle 7 — L1.A-4 Billing/SRE + L1.H Backup + L1.J Degraded + L1.K 15 lints + L1.L Capacity — DONE 2026-05-29
+
+- **Started:** 2026-05-29
+- **Completed:** 2026-05-29
+- **DPS count:** 5 (planned) — INLINE serial fallback (Task tool unavailable; 7th consecutive cycle confirmed via `ToolSearch select:Agent` probe at startup; outcome documented in cycle-runner-prompt as expected behavior)
+  - DPS 1: L1.A-4 billing + SRE tables (8 migrations 018-025 + pkColumnFor extension + allowlist + ACL matrix)
+  - DPS 2: L1.H tiered backup (policy.yaml + MinIO bucket .tf + backup-scheduler skeleton + restore-drill + chaos drill + 2 runbooks + Grafana dashboard)
+  - DPS 3: L1.J degraded mode (contracts/meta/fallback.go + contracts/lifecycle/{service_mode,mode_propagation}.go + chaos drill + runbook + integration test)
+  - DPS 4: L1.K 15 lints (14 new shell+grep scripts + CI workflow + Makefile + lint-catalog.md; cycle 6's migration-idempotency-validator included)
+  - DPS 5: L1.L capacity (budgets.yaml for 31 services + capacity-progression.md + admin-cli capacity_override + K8s HPA/KEDA manifests + dashboard + integration test)
+- **Worktrees created (B1):** `../foundation-worktrees/cycle-7-dps-{1..5}` on branches `raid/c7/dps-{1..5}` — automatic flat namespace (cycle-4 fix continues working); main worktree authored all code
+- **Acceptance gate:** `scripts/raid/verify-cycle-7.sh` exit 0 (19 steps PASS)
+
+### LOCKED decisions consumed
+- **Q-L1H-1** (line 43) — MinIO pre-existing; foundation adds ONLY `lw-db-backups` bucket. Shipped `infra/minio/lw-db-backups-bucket.tf` (STUB per Q-L1C-1 pattern) + README documenting bucket isolation + bootstrap path.
+- **Q-L1H-2** (line 44) — Restore drills: monthly per-shard automated + quarterly full-system manual. Shipped in `contracts/backup/policy.yaml::restore_drill` block + pinned by `TestLoadPolicyFile_ShippedYAML` regression test (verify step 10).
+- **Q-L1J-1** (line 47) — Redis control channel SHARED with cache Redis (`lw:dependency:control`); risk documented in `runbooks/degraded_mode/recovery.md` "Shared-Redis-channel risk" section. ControlChannel constant pinned by `TestControlChannel_ConstantStable`.
+- **Q-L1K-1** (line 48) — Lint tool mix: V1 ships all-shell (15 lints); semgrep upgrades planned per-lint as patterns mature. Documented in `docs/governance/lint-catalog.md` §"Tooling discipline".
+- **Q-L1K-2** (line 49) — I3 amendment + lint ship in SAME COMMIT. Cycle 7 ships: (1) `contracts/language-rule.yaml`, (2) `scripts/language-rule-lint.sh`, (3) kernel doc `02_invariants.md` AMENDED I3 with full language matrix + "AMENDED 2026-05-29" marker. Verified by `verify-cycle-7.sh` step 13.
+- **Q-L1L-1** (line 50) — K8s HPA + KEDA (per CLAUDE.md AWS EKS hosting model). Manifests in `infra/k8s/{hpa,keda}/` derived from `contracts/capacity/budgets.yaml` per-service v1 block. Manifest YAML parses via `kubectl --validate=false` (full validation needs cluster connectivity).
+- **Q-L1A-3** (line 24) — full audit V1 already shipped cycle 4; billing tables this cycle follow same principle (no sampling). `billing_ledger` retention = 7y (S08 matrix); pseudonymize-at-2y enforced via `pseudonymized_at`+`pseudonymization_method` columns with CHECK constraint.
+
+### Test results (verify-cycle-7.sh PASS — 19 steps)
+- `contracts/meta` 40 existing tests + 7 cycle-7 (fallback ×6 + pkColumnFor_L1A4 + billing_sre_l1a4 ×3 + allowlist regressions) → all PASS (47+)
+- `contracts/lifecycle` (NEW package) 16 tests (ServiceMode round-trip + AcceptsWrites/BackgroundJobs/FreshAck + Exhaustive5 + GreaterOrEqual + ModePropagation encode/decode/rejects ×6 + ControlChannelStable + WireFormatStable) → all PASS
+- `services/backup-scheduler` (NEW package) 5 tests (LoadPolicyFile_ShippedYAML pinning Q-L1H-2 + TierFor_FallsBackToDefault + Rejects_MissingDefault + Rejects_ZeroRetention + ParseDuration_NullSemantics) → all PASS
+- `services/admin-cli/commands` (NEW package) 6 tests (Apply_HappyPath + Rejects25h/ZeroHours/MissingReason/MissingActor + WriterError) → all PASS
+- `tests/integration` build-tag=integration suite (existing 4 + cycle-7 3 new = 7 total) → all PASS (auto-skip live harness when env unset)
+- 15 L1.K lints — all PASS on green codebase; each lint had real false-positives detected during iteration that drove regex hardening (documented per-lint in scripts)
+- Structural SQL: 8 migration pairs (018-025) all have CREATE+DROP TABLE; all 8 have `@pii_sensitivity` + `@retention_class` + `@retention_hot` + `@erasure_method` + `@legal_basis` tags; financial + audit-tier tables have REVOKE UPDATE,DELETE
+- B5 prod-isolation-lint: clean
+- B6 secret-scan-cycle: clean
+
+### Notable design choices + carryforward for cycles 8-38
+- **15-lint suite hardening discovered ~10 false-positive patterns during build:** every lint required tightening to avoid catching comments/strings/non-API patterns. Pattern documented in each lint header comment. Recommend cycles that ADD new lints follow the "iterate-with-real-codebase" discipline rather than bench-test only.
+- **`contracts/lifecycle/` is a new top-level Go package** — held the service-mode enum + control-channel envelope so EVERY service (Go + Rust via meta-rs port future) can share the wire contract. The contract is intentionally tiny (~250 LOC); concrete Redis pubsub wiring lives in each service's `internal/buffer_flush/`.
+- **`fallback.go` partial-flush re-enqueue semantics:** on hard error mid-flush, the unprocessed tail is re-prepended to the buffer (FIFO preserved); CAS conflicts are NOT re-enqueued (they resolve toward the winning writer). Pattern reusable for any other "deferred-then-flush" semantics.
+- **K8s manifests use external metrics (req/s, queue, inflight) as PRIMARY scale signal, CPU as FALLBACK.** Pattern documented in `infra/k8s/hpa/world-service.yaml` header comment: "CPU is a lagging indicator; queue depth signals load BEFORE saturation". Cycles 36-38 (L7 ops) should follow.
+- **I3 amendment process (Q-L1K-2 design) is reusable for future invariant amendments.** The lockstep "amendment doc + companion config + companion lint + kernel-doc edit in same commit" pattern keeps the invariant + enforcement tightly coupled. If L2/L3 needs a similar amendment (e.g., per-reality table naming rules), follow the same shape.
+- **`pkColumnFor` extension (cycles 3-7 pattern continued):** 8 new cases added cleanly in the existing switch + commented per-cycle. Should continue this pattern for L2-L7. At 50+ entries (estimate L5), consider loading from `transitions.yaml` or a dedicated map file.
+- **Backup-scheduler skeleton + runbook + chaos drill ship BEFORE the live runner.** Pattern from cycle 5 (orphan_scanner) and cycle 6 (cmd/migrate non-dry-run) continues: the SAFETY surface ships first (dry-run mode, runbook, alert wiring), live runner ships in a follow-on integration cycle. Prevents accidental prod mutation.
+- **Capacity-override is the FIRST admin-cli command shipped.** Establishes the package layout for cycle 36's full ~30 commands. Pattern: per-command package under `commands/`, ClockFn injectable, MetaWriter interface. Pure-function `Apply()` returns the record; CLI wiring is separate (lands cycle 36).
+- **Task tool unavailable — 7th consecutive cycle.** ToolSearch probe still returns empty. Inline serial accepted by spec; cycle-runner-prompt v1.6 codifies the expected fallback.
+- **Token budget: cycle stayed under 100K (XL target ≤120K).** All 5 sub-components landed in single session; no PARTIAL_DONE checkpoint needed. The "priority order" + small focused diffs per slice (with intermediate VERIFY) kept context clean.
+- **Worktrees-create.sh continues working** (cycle-4 base-branch fix holds; 7th consecutive successful use).
+
+### DEFERRED dispositions (cycle 7)
+- **D-MIGRATE-CLI-LIVE-WIRING** (row 044, target cycle 7) — **NOT IMPLEMENTED THIS CYCLE.** Re-evaluated: the live MetaWriter RPC binding requires the meta-worker service + RPC contract, neither of which exists yet (meta-worker ships cycle 24 L5). Re-targeting to cycle 24+ where the RPC infra lands. The orphan_scanner pattern (dry-run + clear "live not wired" message) is sufficient until then.
+- **D-PROVISIONER-PROM-SCRAPE-WIRING** (row 045, target cycle 7) — **PARTIALLY IMPLEMENTED.** Cycle 7's L1.K observability-inventory-lint enforces the inventory ↔ code drift gate, which is the precondition for safely wiring the dynamic scrape file-write. The file-write itself (provisioner Effect impl) still needs the Rust→file IO concrete impl; re-targeting to cycle 17 (L4.A DP-kernel) where the world-service gets its full Effects implementation.
+- **D-DEGRADED-LIVE-SMOKE** (NEW row to add) — the live docker-compose meta-outage drill is gated on having the full meta-HA + cache + control-channel stack bootable in CI. Defer to L7 ops (cycle 33+).
+- **D-BACKUP-LIVE-RESTORE-RUNNER** (NEW row) — the actual pg_basebackup → restore-DB pipeline within `restore-drill.sh` is a Go service binding (libpq + pg_restore exec); defer to a backup-scheduler integration cycle (likely concurrent with L7 cycle 33).
+
+### Files touched (60 new + 12 modified)
+
+**New (60):**
+
+DPS 1 — L1.A-4 billing + SRE:
+- `migrations/meta/018_user_cost_ledger.up.sql` + `.down.sql`
+- `migrations/meta/019_user_daily_cost.up.sql` + `.down.sql`
+- `migrations/meta/020_user_queue_metrics.up.sql` + `.down.sql`
+- `migrations/meta/021_incidents.up.sql` + `.down.sql`
+- `migrations/meta/022_feature_flags.up.sql` + `.down.sql`
+- `migrations/meta/023_deploy_audit.up.sql` + `.down.sql`
+- `migrations/meta/024_shard_utilization.up.sql` + `.down.sql`
+- `migrations/meta/025_scaling_events.up.sql` + `.down.sql`
+- `contracts/meta/billing_sre_l1a4_test.go`
+
+DPS 2 — L1.H backup:
+- `contracts/backup/policy.yaml`
+- `infra/minio/lw-db-backups-bucket.tf` + `README.md`
+- `services/backup-scheduler/{go.mod,go.sum,README.md,policy.go,policy_test.go}` (5 files)
+- `scripts/restore-drill.sh`
+- `chaos/drills/meta_outage.yaml` (drill spec — exercised by both L1.J + L1.H paths)
+- `runbooks/backup/restore.md`
+- `runbooks/degraded_mode/recovery.md`
+- `dashboards/backup-verification.json`
+- `tests/integration/tiered_backup_test.go`
+
+DPS 3 — L1.J degraded mode:
+- `contracts/meta/fallback.go` + `fallback_test.go`
+- `contracts/lifecycle/{go.mod,go.sum,doc.go,service_mode.go,mode_propagation.go,service_mode_test.go,mode_propagation_test.go}` (7 files)
+- `tests/integration/degraded_mode_test.go`
+
+DPS 4 — L1.K 15 lints + ship infra:
+- `scripts/meta-write-discipline-lint.sh` (L1.K.1)
+- `scripts/pii-classify-lint.sh` (L1.K.2)
+- `scripts/transitions-validation-lint.sh` (L1.K.3)
+- `scripts/shard-allocation-validation.sh` (L1.K.4)
+- `scripts/observability-inventory-lint.sh` (L1.K.6)
+- `scripts/capacity-budget-lint.sh` (L1.K.7)
+- `scripts/dep-pinning-lint.sh` (L1.K.8)
+- `scripts/timeout-discipline-lint.sh` (L1.K.9)
+- `scripts/language-rule-lint.sh` (L1.K.10)
+- `scripts/role-grant-validator.sh` (L1.K.11)
+- `scripts/outbox-event-emit-lint.sh` (L1.K.12)
+- `scripts/service-acl-matrix-lint.sh` (L1.K.13)
+- `scripts/prompt-assembly-discipline-lint.sh` (L1.K.14)
+- `scripts/meta-sensitive-read-bypass-lint.sh` (L1.K.15)
+- `.github/workflows/lint-foundation.yml` (L1.K.16)
+- `Makefile` (L1.K.17)
+- `docs/governance/lint-catalog.md` (L1.K.18)
+- `contracts/language-rule.yaml` (I3 amendment companion per Q-L1K-2)
+
+DPS 5 — L1.L capacity:
+- `contracts/capacity/budgets.yaml`
+- `docs/governance/capacity-progression.md`
+- `infra/k8s/README.md`
+- `infra/k8s/hpa/world-service.yaml`
+- `infra/k8s/hpa/api-gateway-bff.yaml`
+- `infra/k8s/keda/publisher.yaml`
+- `infra/k8s/keda/session-cost-rollup-worker.yaml`
+- `services/admin-cli/{go.mod,go.sum}` + `commands/capacity_override.go` + `commands/capacity_override_test.go` (4 files)
+- `dashboards/capacity-planner.json`
+- `tests/integration/capacity_override_test.go`
+
+Cycle infra:
+- `scripts/raid/verify-cycle-7.sh`
+- `docs/raid/IN_PROGRESS/cycle-007-state.md` (archived at COMMIT)
+
+**Modified (12):**
+- `contracts/meta/lifecycle.go` (pkColumnFor extended with 8 L1.A-4 tables + cycle-7 comment block)
+- `contracts/meta/events_allowlist.yaml` (8 new entries for L1.A-4 tables)
+- `contracts/service_acl/matrix.yaml` (3 new entries: world-service + backup-scheduler + admin-cli)
+- `docs/03_planning/LLM_MMO_RPG/00_foundation/02_invariants.md` (I3 amended — full language matrix; "AMENDED 2026-05-29")
+- `tests/integration/go.mod` + `go.sum` (added 4 cycle-7 dep replaces)
+- `docs/deferred/DEFERRED.md` (4 new rows: 046-049 — see below)
+- `docs/raid/CYCLE_LOG.md` (this file — status flip PENDING → DONE + this entry)
+- `docs/audit/AUDIT_LOG.jsonl` (append-only verify_cycle_complete + cycle-7 phase events)
 
 
 ---

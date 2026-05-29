@@ -53,3 +53,73 @@ services:
       # the lint cross-check sees the dependency.
       meta_write_audit:
         - INSERT
+
+  # ── Cycle 7 — world-service (Rust provisioner/deprovisioner; calls MetaWrite
+  # via RPC to meta-worker per L1.B §4; full RPC binding ships L1.C live-wiring
+  # cycle).
+  - name: world-service
+    svid_spiffe_id: spiffe://loreweave.dev/sa/world-service
+    notes: |
+      Rust provisioner + deprovisioner (cycle 5) + orphan_scanner. All meta
+      writes go through MetaWrite() via the Go meta-worker RPC. Direct read
+      access on reality_registry for routing decisions.
+    permissions:
+      reality_registry:
+        - SELECT
+        - INSERT
+        - UPDATE
+      lifecycle_transition_audit:
+        - INSERT
+        - SELECT
+      reality_close_audit:
+        - INSERT
+        - SELECT
+      archive_verification_log:
+        - INSERT
+        - SELECT
+      player_character_index:
+        - INSERT
+        - UPDATE
+        - SELECT
+      user_queue_metrics:
+        - INSERT
+        - UPDATE
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 7 (L1.H) — backup-scheduler
+  - name: backup-scheduler
+    svid_spiffe_id: spiffe://loreweave.dev/sa/backup-scheduler
+    notes: |
+      L1.H.1 — reads reality_registry.status to dispatch tiered backups,
+      writes archive_verification_log rows on every restore-drill run.
+      No DELETE anywhere (audit-table principle + reality_registry is
+      governed by lifecycle transitions).
+    permissions:
+      reality_registry:
+        - SELECT
+      archive_verification_log:
+        - INSERT
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 7 (L1.L) — admin-cli (capacity-override sub-command for now;
+  # full surface ships cycle 36).
+  - name: admin-cli
+    svid_spiffe_id: spiffe://loreweave.dev/sa/admin-cli
+    notes: |
+      L1.L.3 — admin capacity-override (S5-D5 Tier-2). Future cycle 36 adds
+      the full ~30 commands. Each subcommand owns a precise grant set; this
+      entry seeds the Tier-2 capacity surface.
+    permissions:
+      scaling_events:
+        - INSERT
+        - SELECT
+      admin_action_audit:
+        - INSERT
+      meta_write_audit:
+        - INSERT
+      reality_registry:
+        - SELECT

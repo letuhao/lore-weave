@@ -1,0 +1,66 @@
+# contracts/language-rule.yaml — I3 invariant amendment (LOCKED 2026-05-29)
+#
+# Maps services/<name>/ → expected language. Consumed by
+# scripts/language-rule-lint.sh (L1.K.10). The lint walks every services/<name>/
+# directory, detects its language by toolchain marker (Cargo.toml | go.mod |
+# pyproject.toml | package.json) and FAILS if detected != expected.
+#
+# Source of truth for the amendment text: docs/plans/2026-05-29-foundation-mega-task/I3_INVARIANT_AMENDMENT.md §5
+# Companion service map updates: same doc §4
+# Locked Q-IDs: Q-L1K-2 ("same commit as I3 amendment")
+#
+# Convention:
+#   - Languages: rust | go | python | typescript
+#   - "missing": directory exists but is intentionally an empty stub (services
+#     scheduled to ship in later cycles); the lint logs a NOTE but does not
+#     fail. Promote to a real language once the scaffold lands.
+#
+# Cycle 7 (L1.K.10) ships this file + the lint. Future cycles MUST add a
+# row when a new services/<name>/ directory is introduced — the
+# service-map-lint cross-check ensures drift can't slip through.
+
+version: 1
+services:
+  # ── Rust kernel-derived services
+  world-service: rust
+  travel-service: missing       # deferred per D-C0-1; lint notes only
+  roleplay-service: missing     # ships L4 cycle 17+
+  embedding-worker: missing     # V1+30d extract (Q-L3-1)
+
+  # ── Go: existing 12 LoreWeave novel-platform services
+  auth-service: missing         # existing platform — not in foundation tree
+  book-service: missing
+  sharing-service: missing
+  catalog-service: missing
+  provider-registry-service: missing
+  usage-billing-service: missing
+  translation-service: missing
+  glossary-service: missing
+
+  # ── Go: foundation new services
+  publisher: missing            # ships L2 cycle 10
+  meta-worker: missing          # ships L5 cycle 24
+  event-handler: missing        # ships L4 cycle 22+
+  migration-orchestrator: go    # ships cycle 6 (current)
+  admin-cli: missing            # ships cycle 36
+  archive-worker: missing       # ships L2 cycle 11
+  retention-worker: missing     # ships L2 cycle 11
+  integrity-checker: missing    # ships L3 cycle 15
+  chaos-engine: missing         # ships L4 cycle 22 (V1+30d)
+  backup-scheduler: go          # ships cycle 7 (this cycle)
+  session-cost-rollup-worker: missing  # ships L7 ops
+  slo-budget-calculator: missing       # ships L7 cycle 34
+  canary-controller: missing           # ships L7 cycle 38
+  oncall-bot: missing                  # ships L7 cycle 35 (V1+30d)
+  incident-bot: missing                # ships L7 cycle 37
+  postmortem-bot: missing              # ships L7 cycle 37
+  statuspage-updater: missing          # ships L7 cycle 37
+  alert-recorder: missing              # ships L7 cycle 34
+
+  # ── Python LLM-heavy services (existing platform)
+  chat-service: missing
+  knowledge-service: missing
+  video-gen-service: missing
+
+  # ── TypeScript gateway (existing platform)
+  api-gateway-bff: missing

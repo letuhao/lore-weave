@@ -8,9 +8,10 @@
 // in this module is a no-op in environments without docker; CI gates that
 // require the live stack run `go test -tags=integration ./...`.
 //
-// Cycle 6 (L1.D.8) adds the migration-orchestrator dep via local replace —
-// the monorepo doesn't publish modules so every cross-module import in
-// tests/integration uses a `replace` to the on-disk path.
+// Cycle 6 (L1.D.8) added migration-orchestrator via local replace.
+// Cycle 7 (L1.J / L1.H / L1.L) adds contracts/meta + contracts/lifecycle +
+// backup-scheduler + admin-cli for the new degraded_mode / tiered_backup /
+// capacity_override integration tests.
 
 module github.com/loreweave/foundation/tests/integration
 
@@ -18,11 +19,29 @@ go 1.22
 
 require (
 	github.com/lib/pq v1.10.9
+	github.com/loreweave/foundation/contracts/lifecycle v0.0.0
+
+	// Cycle 7 — degraded-mode / tiered-backup / capacity-override tests
+	github.com/loreweave/foundation/contracts/meta v0.0.0
+	github.com/loreweave/foundation/services/admin-cli v0.0.0
+	github.com/loreweave/foundation/services/backup-scheduler v0.0.0
 
 	// Cycle 6 — migration_run_test imports runner / canary / manifest
 	github.com/loreweave/foundation/services/migration-orchestrator v0.0.0
 )
 
-require gopkg.in/yaml.v3 v3.0.1 // indirect
+require (
+	github.com/google/uuid v1.6.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 replace github.com/loreweave/foundation/services/migration-orchestrator => ../../services/migration-orchestrator
+
+// Cycle 7 — local replaces for new dependencies (monorepo pattern; no modules published).
+replace github.com/loreweave/foundation/contracts/meta => ../../contracts/meta
+
+replace github.com/loreweave/foundation/contracts/lifecycle => ../../contracts/lifecycle
+
+replace github.com/loreweave/foundation/services/backup-scheduler => ../../services/backup-scheduler
+
+replace github.com/loreweave/foundation/services/admin-cli => ../../services/admin-cli
