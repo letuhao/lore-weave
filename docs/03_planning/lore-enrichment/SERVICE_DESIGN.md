@@ -85,18 +85,33 @@ The differentiator is composing the four techniques into one governed pipeline. 
 - `GET  /v1/enrichment/templates` — list/scaffold templates.
 - Internal: `POST /internal/enrichment/seed-kg` (extract seed graph), consumers for knowledge-service events.
 
-## 7. Open design questions (for REVIEW)
+## 7. Design decisions & open questions
 
-1. **New service vs module of knowledge-service?** Current lean: separate `lore-enrichment-service` (distinct lifecycle, heavy LLM/RAG workload), but it depends tightly on knowledge-service's KG — confirm boundary.
-2. **External cultural corpora** — licensing, sourcing, and storage of Shan Hai Jing / Shang–Zhou history texts (technique b/d). Public-domain classical Chinese texts likely OK; modern translations/news need care.
-3. **Cultural-anachronism evaluation** — open research question (Pass 1 OQ#3): how to *measure* canon-fidelity + cultural-faithfulness, not just JSON validity. Needs an eval harness.
-4. **"Re-cooking real news" technique (d)** — scope for the Fengshen mythological demo vs later realistic settings; may be deferred.
-5. **Confidence thresholds & auto-admit** — which confidence tier may auto-write vs always require human gate.
+### Resolved at REVIEW (2026-05-29)
+
+1. **✅ Separate service** — `lore-enrichment-service` (Python/FastAPI, own DB, independent lifecycle). It depends on knowledge-service's KG via API/events. **Sequencing risk:** knowledge-service is still "planned" — so the enrichment service must define a thin KG-layer **interface/port** it depends on, and either (i) stub it initially, or (ii) own a minimal KG slice until knowledge-service ships. Resolve the exact split in PLAN.
+2. **✅ Implement all 4 techniques, phased by effectiveness-per-cost** — all four are first-class **pluggable strategies** behind one `EnrichmentStrategy` interface, toggled via feature-flags, with **cost tracking + a quality-eval gate** before enabling the next. Rollout order (cheapest/most-grounded → most expensive/risky):
+
+   | Phase | Technique | Why this order | Cost / risk |
+   |---|---|---|---|
+   | P1 | **(a) template scaffolding** | deterministic-ish, cheapest, immediate coverage of gaps | low |
+   | P1 | **(b) external cultural retrieval** | grounded (Shan Hai Jing, Shang–Zhou history), low hallucination | low-med |
+   | P2 | **(c) canon-grounded fabrication** | fills gaps retrieval can't; needs canon-verify + confidence gating | med-high |
+   | P3 | **(d) real history/news re-cook** | most external sourcing + tone-matching; defer until P1/P2 proven | high |
+
+   Architecture supports all four from day one; **only the rollout/enablement is phased** to control LLM cost. A per-job cost cap + the quality gate decide when to promote a technique.
+
+### Remaining open (defaults applied unless overridden)
+
+3. **External cultural corpora licensing** — default: public-domain classical Chinese texts (Shan Hai Jing, Fengshen Yanyi source, dynastic histories) for the demo. Modern translations / news sources need a licensing review — gate that to when technique (d) is enabled (P3).
+4. **Cultural-fidelity eval harness** — *needed before (c)/(d) promotion* (the quality gate). How to measure canon-fidelity + cultural-faithfulness (not just JSON validity) is an open research item (Pass 1 OQ#3); design the harness in PLAN.
+5. **Confidence auto-admit thresholds** — default: **always human-gate initially**; calibrate auto-admit tiers later from eval data.
 
 ## 8. Next steps
 
 - [x] Fold Pass 3 competitive findings into RESEARCH_LANDSCAPE.md.
-- [ ] REVIEW this design (Lead + PO perspectives) → resolve §7 open questions.
+- [x] REVIEW round 1 — resolved: separate service; all 4 techniques, phased by effectiveness-per-cost (§7).
+- [ ] PLAN: resolve knowledge-service dependency split (stub vs own minimal KG slice); design the `EnrichmentStrategy` interface + cost/quality gate; design the cultural-fidelity eval harness.
 - [ ] Freeze API contract (`contracts/api/lore-enrichment.yaml`).
 - [ ] RAID-decompose into cycles → write `.raid/active-task.yaml` + `docs/plans/<slug>/` (decomposition, locked questions, pre-flight).
 - [ ] Confirm task size (likely **XL** — new service, schema, multi-service contracts → spec + plan + subagent recommended).
