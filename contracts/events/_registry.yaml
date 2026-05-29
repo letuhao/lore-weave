@@ -1,0 +1,80 @@
+# contracts/events/_registry.yaml — L2.F event schema registry (R03 §12C.2)
+#
+# AUTHORITATIVE list of every event_type emitted by LoreWeave services.
+# Each entry MUST declare:
+#   - name           — canonical event_type (e.g. "npc.said")
+#   - aggregate      — aggregate_type the event mutates ("npc", "reality", "world", "pc", "region")
+#   - versions       — ordered list of versions currently in use [1, 2, ...]
+#   - active_version — the version NEW events SHOULD emit (lowest acceptable read version)
+#   - go_struct      — qualified Go struct name in `contracts/events/`
+#   - description    — one-line semantics; matches @description annotation
+#   - shipped_cycle  — RAID cycle that first landed this event
+#   - owner          — service/team responsible
+# Optional:
+#   - deprecated_at  — ISO date when version[*] retirement starts (R03 §12C.5
+#                      cooldown; v1 must remain readable for 6 months after
+#                      v2 ships)
+#   - retire_after   — ISO date AFTER which the version is removed (loader
+#                      refuses to register; archive-only)
+#
+# Adding a NEW event:
+#   1. Add a struct in `contracts/events/<aggregate>.go` with @event annotation
+#   2. Add an entry here
+#   3. Run `make eventgen` to regenerate dispatch table + polyglot outputs
+#   4. CI gate `scripts/eventgen-validate.sh` fails on drift
+#
+# Bumping a version (additive field):
+#   1. Add a NEW struct (e.g. NpcSaidV2)
+#   2. Add `@upcast 1->2` on the new struct
+#   3. Add the version + upcaster to the entry here
+#   4. Implement the upcaster in `contracts/events/upcasters_go/`
+#
+# Breaking changes:
+#   - DO NOT mutate an existing version's fields. Add a new event_type
+#     (e.g. `npc.said.v2_breaking`) and deprecate the old one with cooldown.
+#
+
+version: 1
+
+events:
+  # ────────────────────────────────────────────────────────────────────
+  # reality.* — reality lifecycle (00_overview §4.2)
+  # ────────────────────────────────────────────────────────────────────
+  - name: reality.created
+    aggregate: reality
+    versions: [1]
+    active_version: 1
+    go_struct: RealityCreatedV1
+    description: A new reality (LLM MMO RPG instance) is provisioned and ready for player commands.
+    shipped_cycle: 8
+    owner: world-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # npc.* — NPC behavior + utterances
+  # ────────────────────────────────────────────────────────────────────
+  - name: npc.said
+    aggregate: npc
+    versions: [1, 2]
+    active_version: 2
+    go_struct: NpcSaidV2
+    description: NPC utters a line of dialogue in-world.
+    shipped_cycle: 8
+    owner: roleplay-service
+    # v1 ships with @deprecated_at; cooldown timer starts when v2 active.
+    deprecations:
+      - version: 1
+        deprecated_at: '2026-05-29'
+        retire_after: '2026-12-31'
+        upcaster_to: 2 # v1→v2 must exist (contracts/events/upcasters_go/npc_said_v1_to_v2.go)
+
+  # ────────────────────────────────────────────────────────────────────
+  # world.* — world-tick + simulation pulse
+  # ────────────────────────────────────────────────────────────────────
+  - name: world.tick
+    aggregate: world
+    versions: [1]
+    active_version: 1
+    go_struct: WorldTickV1
+    description: Periodic in-world heartbeat. Drives scheduled NPC behaviors, weather, faction simulation.
+    shipped_cycle: 8
+    owner: world-service

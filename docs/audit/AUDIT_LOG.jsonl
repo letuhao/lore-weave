@@ -866,3 +866,18 @@
 {"ts":"2026-05-29T05:37:33Z","event":"worktree_removed","cycle":7,"name":"cycle-7-dps-3"}
 {"ts":"2026-05-29T05:37:33Z","event":"worktree_removed","cycle":7,"name":"cycle-7-dps-4"}
 {"ts":"2026-05-29T05:37:33Z","event":"worktree_removed","cycle":7,"name":"cycle-7-dps-5"}
+{"ts": "2026-05-29T05:38:34Z", "event": "coordinator_next_cycle_emitted", "cycle": 8}
+{"ts":"2026-05-29T05:40:35Z","event":"startup_drift_check_passed","cycle":8,"version":"v1.6"}
+{"ts":"2026-05-29T05:40:35Z","event":"startup_verifier_complete","cycle":8,"steps":6}
+{"ts": "2026-05-29T05:40:44Z", "event": "in_progress_init", "cycle": 8, "title": "L2 Schema Infra (F+G+H+I)"}
+{"ts": "2026-05-29T05:42:15Z", "event": "in_progress_update", "cycle": 8, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T05:42:39Z", "event": "in_progress_update", "cycle": 8, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T05:43:09Z", "event": "in_progress_update", "cycle": 8, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T05:55:52Z", "event": "in_progress_update", "cycle": 8, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T05:56:46Z","event":"secret_scan_skipped","cycle":8,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T05:57:35Z", "event": "in_progress_update", "cycle": 8, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T05:59:11Z", "event": "in_progress_update", "cycle": 8, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T05:59:32Z", "event": "in_progress_update", "cycle": 8, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T05:59:55Z", "event": "in_progress_update", "cycle": 8, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-29T13:00:00Z","event":"cycle_complete","cycle":8,"phase":"SESSION","files_count":31,"dps_count":4,"verify_exit_code":0,"adversary":{"blockers":0,"majors":0,"minors":1,"notes":3},"scope_guard":"CLEAR","notable":"L2.F-I shipped: YAML registry+3 seed events, eventgen Go binary emits 4 langs, dp-kernel new crate (upcaster+validator), Go-side mirrors"}
+{"ts": "2026-05-29T06:00:28Z", "event": "in_progress_update", "cycle": 8, "phase": "COMMIT", "retry": 0}

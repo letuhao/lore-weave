@@ -25,6 +25,7 @@ members = [
     "services/travel-service",
     "crates/world-gen",
     "crates/meta-rs",
+    "crates/dp-kernel",
 ]
 
 [workspace.package]

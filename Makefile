@@ -39,6 +39,28 @@ ci-local: lint
 	cd contracts/meta && go test ./...
 	@echo "=== go test contracts/lifecycle ==="
 	cd contracts/lifecycle && go test ./...
+	@echo "=== go test contracts/events ==="
+	cd contracts/events && go test ./...
+	@echo "=== go test tools/eventgen ==="
+	cd tools/eventgen && go test ./...
+	@echo "=== eventgen-validate (codegen drift) ==="
+	bash scripts/eventgen-validate.sh
 	@echo "=== cargo check workspace ==="
 	cargo check --workspace
 	@echo "All local CI gates PASS"
+
+# L2.G — regenerate L2.F event registry into contracts/events/generated/ for
+# all four polyglot targets (Go + Rust + TS + Python). Idempotent. CI gate is
+# `scripts/eventgen-validate.sh` (see ci-local target).
+.PHONY: eventgen
+eventgen:
+	@echo "=== building eventgen ==="
+	cd tools/eventgen && go build -o eventgen .
+	@echo "=== running eventgen --target all ==="
+	./tools/eventgen/eventgen \
+	  --registry contracts/events/_registry.yaml \
+	  --events-dir contracts/events \
+	  --out-dir   contracts/events/generated \
+	  --target    all
+	@rm -f tools/eventgen/eventgen tools/eventgen/eventgen.exe
+	@echo "eventgen regeneration complete"

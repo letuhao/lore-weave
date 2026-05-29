@@ -1,0 +1,18 @@
+[package]
+name = "dp-kernel"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Data-platform kernel — L2 event sourcing primitives (upcaster chain, event validator). Shipped in RAID cycle 8 for L2.H + L2.I."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
