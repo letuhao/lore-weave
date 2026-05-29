@@ -27,8 +27,15 @@ declared=$(grep -E '^[[:space:]]*-[[:space:]]*name:[[:space:]]*"?lw_' "$inventor
 # Pattern: prom metric names follow lw_<subsystem>_<verb>(_<unit>?) — at least
 # 2 underscore-separated segments after `lw_`. Single-segment names like
 # `lw_reality_000…` are typically DB-name format strings, not metrics.
+#
+# Cycle 19 (L4.H) refinement: exclude *_test.go and *_test.rs because test
+# files legitimately reference fake/fixture metric names (e.g.,
+# `lw_test_registered_total`, `lw_foo_bar_total`) for admission-control
+# unit tests. The lint MUST only fire on REAL emission sites in non-test
+# code.
 emitted=$(grep -rhE '"lw_[a-z][a-z0-9]*_[a-z][a-z0-9_]+"' \
   --include='*.go' --include='*.rs' \
+  --exclude='*_test.go' --exclude='*_test.rs' \
   "$repo_root/services" "$repo_root/crates" "$repo_root/contracts" 2>/dev/null \
   | grep -oE '"lw_[a-z][a-z0-9]*_[a-z][a-z0-9_]+"' \
   | tr -d '"' | sort -u || true)

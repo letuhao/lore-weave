@@ -32,6 +32,18 @@
 //! - [`event_store_pg`] — Postgres impl of [`EventStore`]; WRAPPED `PgPool`
 //!   behind `pub(crate) pool: Arc<PgPool>` per Q-L4A-1.
 //!
+//! ### Cycle 19 / L4.H + L4.I + L4.J — observability + capacity + supply_chain Rust mirrors
+//! - [`observability`] — Rust mirror of `contracts/observability/` (SR12 §12AO):
+//!   typed [`observability::Inventory`] + [`observability::Admission`] +
+//!   [`observability::TraceConvention`]. Q-L4-1 parity with the Go contracts.
+//!   Same JSON-only architectural pattern as cycle-18 `dependencies` mirror.
+//! - [`capacity`] — Rust mirror of `contracts/capacity/` (SR08 I17):
+//!   typed [`capacity::Budgets`] + per-service replica/CPU/memory plan +
+//!   admission check on service registration.
+//! - [`supply_chain`] — Rust mirror of `contracts/supply_chain/` (SR10 I18):
+//!   typed [`supply_chain::Policy`] + license allowlist + SBOM emit row +
+//!   programmatic [`supply_chain::Provenance::verify`] helper (cosign stub).
+//!
 //! ### Cycle 18 / L4.F + L4.G + L4.N — resilience + lifecycle + dependencies Rust mirrors
 //! - [`resilience`] — Rust mirror of `contracts/resilience/` (4 primitives:
 //!   [`resilience::with_timeout`], [`resilience::CircuitBreaker`],
@@ -59,6 +71,7 @@
 //! re-exports.
 
 pub mod aggregate;
+pub mod capacity;
 pub mod dependencies;
 pub mod envelope;
 pub mod errors;
@@ -69,11 +82,13 @@ pub mod event_validator;
 pub mod lifecycle;
 pub mod load_aggregate;
 pub mod metadata;
+pub mod observability;
 pub mod outbox;
 pub mod projection;
 pub mod resilience;
 pub mod snapshot;
 pub mod snapshot_cache;
+pub mod supply_chain;
 pub mod upcaster;
 
 // ── Cycle 8 + 10 + 12 re-exports (unchanged from prior cycles) ────────────
