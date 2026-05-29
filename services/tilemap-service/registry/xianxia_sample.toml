@@ -507,3 +507,72 @@ walkability_pattern = "all_walkable"
 biomes = ["road"]
 density_weight = 0.6
 min_spacing = 2
+
+# ── BIOME THEMES (TMP-Q2 chunk A — xianxia re-skin) ───────────────────
+#
+# Parallel to default.toml's lw:biome.* set. Same TerrainKind primitives
+# (the closed-set sampling rule applies cross-registry) but xianxia
+# labels evoke the genre.
+
+[[biome]]
+id = "xianxia:biome.qi_forest_jade"
+label = "Jade Qi Forest"
+mix = [
+  { terrain = "forest", weight = 70.0 },
+  { terrain = "grass", weight = 20.0 },
+  { terrain = "rough", weight = 10.0 },
+]
+
+[[biome]]
+id = "xianxia:biome.bamboo_sea_dense"
+label = "Dense Bamboo Sea"
+mix = [
+  { terrain = "forest", weight = 85.0 },
+  { terrain = "snow", weight = 10.0 },
+  { terrain = "mountain", weight = 5.0 },
+]
+
+[[biome]]
+id = "xianxia:biome.peak_immortal_ascent"
+label = "Immortal Ascent Peak"
+mix = [
+  { terrain = "mountain", weight = 70.0 },
+  { terrain = "rough", weight = 20.0 },
+  { terrain = "snow", weight = 10.0 },
+]
+
+[[biome]]
+id = "xianxia:biome.lotus_swamp_serene"
+label = "Serene Lotus Swamp"
+mix = [
+  { terrain = "swamp", weight = 60.0 },
+  { terrain = "water", weight = 25.0 },
+  { terrain = "grass", weight = 15.0 },
+]
+
+[[biome]]
+id = "xianxia:biome.gobi_yang_searing"
+label = "Searing Yang Gobi"
+mix = [
+  { terrain = "sand", weight = 80.0 },
+  { terrain = "rough", weight = 15.0 },
+  { terrain = "grass", weight = 5.0 },
+]
+
+[[biome]]
+id = "xianxia:biome.qi_meadow_verdant"
+label = "Verdant Qi Meadow"
+mix = [
+  { terrain = "grass", weight = 75.0 },
+  { terrain = "forest", weight = 15.0 },
+  { terrain = "rough", weight = 10.0 },
+]
+
+[[biome]]
+id = "xianxia:biome.northern_frost_eternal"
+label = "Eternal Northern Frost"
+mix = [
+  { terrain = "snow", weight = 70.0 },
+  { terrain = "rough", weight = 20.0 },
+  { terrain = "mountain", weight = 10.0 },
+]

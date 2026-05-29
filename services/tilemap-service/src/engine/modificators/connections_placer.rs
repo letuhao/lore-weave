@@ -672,6 +672,7 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         };
         TilemapTemplate {
             template_id: TilemapTemplateId("connections_test".to_string()),
@@ -690,6 +691,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         }
     }
 
@@ -1020,6 +1022,7 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         };
         let template = TilemapTemplate {
             template_id: TilemapTemplateId("ac4".to_string()),
@@ -1034,6 +1037,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         run_connections(&mut state, &template);
 
@@ -1182,6 +1186,7 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         };
         let template = TilemapTemplate {
             template_id: TilemapTemplateId("ac8".to_string()),
@@ -1202,6 +1207,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         let mut state = three_zones(24, 9, false);
         run_connections(&mut state, &template);
@@ -1245,6 +1251,7 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         };
         let template = TilemapTemplate {
             template_id: TilemapTemplateId("ac9".to_string()),
@@ -1252,6 +1259,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         let mut state = two_column_state(8, 6);
         run_connections(&mut state, &template);
@@ -1292,6 +1300,7 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         };
         let template = TilemapTemplate {
             template_id: TilemapTemplateId("ac9_open".to_string()),
@@ -1299,6 +1308,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         let mut state = bordering_zones(14, 9);
         run_connections(&mut state, &template);
@@ -1406,6 +1416,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         run_connections(&mut state, &template);
 

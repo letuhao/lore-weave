@@ -32,6 +32,7 @@ fn zone(id: &str, role: ZoneRole, terrains: Vec<TerrainKind>, conns: &[(&str, Pa
         treasure_tiers: vec![],
         biome_selection_rules: None,
         inherit_treasure_from: None,
+        biome_theme: None,
     }
 }
 
@@ -61,6 +62,7 @@ fn fixture() -> TilemapTemplate {
         seed_offset: 0,
         world_zone: None,
         decoration_density: None,
+        background_biome: None,
     };
     // Phase C — give the Wilderness zones a treasure tier so the rebaselined
     // golden exercises TreasurePlacer; `min ≥ 2000` ⇒ every pile is guarded, so

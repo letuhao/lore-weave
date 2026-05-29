@@ -339,6 +339,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         let grid = GridSize { width: 2, height: 2 };
         let mut state = TilemapBuildState::from_zones(vec![], grid);
@@ -381,6 +382,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         let grid = GridSize { width: 2, height: 2 };
         let mut state = TilemapBuildState::from_zones(vec![], grid);

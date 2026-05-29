@@ -229,6 +229,7 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         }
     }
 
@@ -246,6 +247,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         }
     }
 
@@ -516,6 +518,7 @@ mod tests {
                 treasure_tiers,
                 biome_selection_rules: None,
                 inherit_treasure_from: None,
+                biome_theme: None,
             }
         };
         let template = TilemapTemplate {
@@ -528,6 +531,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
 
         let reg = Registry::load_default().unwrap();

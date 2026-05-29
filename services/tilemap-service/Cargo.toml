@@ -31,6 +31,10 @@ tower-http = { workspace = true }
 blake3 = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
+# TMP-Q2 chunk A — Perlin/value noise for the biome-theme painter
+# (chunk B placer). Exact-version pin so cross-OS byte-identical
+# `terrain_layer` golden tests survive upstream version bumps.
+noise = "=0.9.0"
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }

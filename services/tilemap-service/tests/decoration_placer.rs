@@ -46,6 +46,7 @@ fn fixture(density: Option<DecorationDensity>) -> TilemapTemplate {
                 treasure_tiers: vec![TreasureTierSpec { min: 100, max: 800, density: 2 }],
                 biome_selection_rules: None,
                 inherit_treasure_from: None,
+                biome_theme: None,
             },
             ZoneSpec {
                 zone_id: ZoneId("crossroad".to_string()),
@@ -60,6 +61,7 @@ fn fixture(density: Option<DecorationDensity>) -> TilemapTemplate {
                 treasure_tiers: vec![],
                 biome_selection_rules: None,
                 inherit_treasure_from: None,
+                biome_theme: None,
             },
             ZoneSpec {
                 zone_id: ZoneId("frontier".to_string()),
@@ -71,11 +73,13 @@ fn fixture(density: Option<DecorationDensity>) -> TilemapTemplate {
                 treasure_tiers: vec![],
                 biome_selection_rules: None,
                 inherit_treasure_from: None,
+                biome_theme: None,
             },
         ],
         seed_offset: 0,
         world_zone: None,
         decoration_density: density,
+        background_biome: None,
     }
 }
 

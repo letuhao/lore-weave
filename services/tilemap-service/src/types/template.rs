@@ -56,6 +56,22 @@ pub struct ZoneSpec {
     /// ⇒ this zone uses its own `treasure_tiers`. Additive (TMP-A8).
     #[serde(default)]
     pub inherit_treasure_from: Option<ZoneId>,
+    /// TMP-Q2 chunk A — opt-in biome-theme override for this zone.
+    /// `Some(id)` resolves to a `Registry::get_biome(id)` BiomeThemeDef;
+    /// chunk-B `BiomeThemePainter` overrides per-tile terrain with a
+    /// Perlin-sampled `mix` instead of TerrainPainter's single-fill.
+    /// `None` keeps the V2 single-fill path (byte-identical golden).
+    /// Additive Option pattern matches `inherit_treasure_from` discipline.
+    ///
+    /// **Validation contract:** the id string is NOT validated against
+    /// the active Registry at template-load. An unknown id template-loads
+    /// cleanly; chunk-B placer treats unknown ids as a silent no-op
+    /// (zone falls back to TerrainPainter's single-fill output). Same
+    /// discipline as `inherit_treasure_from`'s zone-id contract:
+    /// referential integrity is a placer-time concern, not a
+    /// template-load gate. LOW-5 fix from chunk-A /review-impl.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub biome_theme: Option<String>,
 }
 
 /// Default `ZoneSpec.size` — a neutral mid weight (all zones equal when the
@@ -117,6 +133,23 @@ pub struct TilemapTemplate {
     /// matches `world_zone` discipline above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decoration_density: Option<crate::types::decoration::DecorationDensity>,
+    /// TMP-Q2 chunk A — opt-in biome theme for the *open-space*
+    /// background (tiles outside any zone, which TerrainPainter leaves
+    /// at `u8 = 0` void). `Some(id)` resolves to a
+    /// `Registry::get_biome(id)` BiomeThemeDef; chunk-B placer paints
+    /// background tiles with a Perlin-sampled mix. `None` (the implicit
+    /// default) preserves V2 — open space stays void. Additive Option
+    /// pattern matches `decoration_density` discipline above.
+    ///
+    /// **Validation contract:** the id string is NOT validated against
+    /// the active Registry at template-load. An unknown id template-loads
+    /// cleanly; chunk-B placer treats unknown ids as a silent no-op
+    /// (open-space falls back to V2 void). Same discipline as
+    /// `ZoneSpec.biome_theme` above. LOW-5 fix from chunk-A /review-impl.
+    ///
+    /// Spec: `docs/specs/2026-05-29-biome-theme-painter.md`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_biome: Option<String>,
 }
 
 #[cfg(test)]
@@ -188,6 +221,7 @@ mod tests {
             seed_offset: 7,
             world_zone: None,
             decoration_density: Some(DecorationDensity::TOWN),
+            background_biome: None,
         };
         let json = serde_json::to_string(&t).unwrap();
         assert!(json.contains("decoration_density"),
@@ -208,6 +242,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         let json = serde_json::to_string(&t).unwrap();
         assert!(!json.contains("decoration_density"),
@@ -232,6 +267,7 @@ mod tests {
             ],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         };
         let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
         assert_eq!(z, back);
@@ -280,6 +316,7 @@ mod tests {
                 ],
             }),
             inherit_treasure_from: None,
+            biome_theme: None,
         };
         let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
         assert_eq!(z, back);
@@ -336,6 +373,7 @@ mod tests {
                 },
             }),
             decoration_density: None,
+            background_biome: None,
         };
         let s = serde_json::to_string(&t).unwrap();
         let back: TilemapTemplate = serde_json::from_str(&s).unwrap();
@@ -356,6 +394,7 @@ mod tests {
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
         let s = serde_json::to_string(&t).unwrap();
         assert!(!s.contains("world_zone"), "absent world_zone must not appear in JSON: {s}");
@@ -376,9 +415,103 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: Some(ZoneId("treasury".to_string())),
+            biome_theme: None,
         };
         let back: ZoneSpec = serde_json::from_str(&serde_json::to_string(&z).unwrap()).unwrap();
         assert_eq!(z, back);
         assert_eq!(back.inherit_treasure_from, Some(ZoneId("treasury".to_string())));
+    }
+
+    #[test]
+    fn zone_spec_deserializes_without_biome_theme() {
+        // TMP-Q2 chunk A — pre-Q2 ZoneSpec JSON still loads with
+        // biome_theme = None. Mirrors the
+        // zone_spec_deserializes_without_inherit_treasure_from pattern.
+        let json = r#"{"zone_id":"capital","zone_role":"wilderness"}"#;
+        let z: ZoneSpec = serde_json::from_str(json).unwrap();
+        assert!(z.biome_theme.is_none(),
+            "missing field must serde-default to None");
+    }
+
+    #[test]
+    fn zone_spec_round_trips_with_biome_theme_some() {
+        // TMP-Q2 chunk A — a ZoneSpec carrying a biome_theme id
+        // survives JSON round-trip + the field IS present in JSON
+        // (only None is skipped via skip_serializing_if).
+        let z = ZoneSpec {
+            zone_id: ZoneId("z".to_string()),
+            zone_role: ZoneRole::Wilderness,
+            size: 100,
+            terrain_types: vec![],
+            monster_strength: None,
+            connections: vec![],
+            treasure_tiers: vec![],
+            biome_selection_rules: None,
+            inherit_treasure_from: None,
+            biome_theme: Some("lw:biome.forest_temperate".to_string()),
+        };
+        let json = serde_json::to_string(&z).unwrap();
+        assert!(json.contains("biome_theme"),
+            "Some(_) must be serialized: {json}");
+        assert!(json.contains("forest_temperate"),
+            "id must round-trip: {json}");
+        let back: ZoneSpec = serde_json::from_str(&json).unwrap();
+        assert_eq!(z, back);
+    }
+
+    #[test]
+    fn tilemap_template_deserializes_without_background_biome() {
+        // TMP-Q2 chunk A — pre-Q2 template JSON still loads with
+        // background_biome = None. Mirrors the
+        // tilemap_template_deserializes_without_decoration_density
+        // pattern.
+        let json = r#"{"template_id":"t","zones":[],"seed_offset":0}"#;
+        let t: TilemapTemplate = serde_json::from_str(json).unwrap();
+        assert!(t.background_biome.is_none(),
+            "missing field must serde-default to None");
+        assert!(t.world_zone.is_none(),
+            "world_zone unchanged");
+        assert!(t.decoration_density.is_none(),
+            "decoration_density unchanged");
+    }
+
+    #[test]
+    fn tilemap_template_round_trips_with_background_biome_some() {
+        // TMP-Q2 chunk A — a TilemapTemplate carrying a
+        // background_biome id survives JSON round-trip.
+        let t = TilemapTemplate {
+            template_id: TilemapTemplateId("rt".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+            decoration_density: None,
+            background_biome: Some("lw:biome.grassland_meadow".to_string()),
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("background_biome"),
+            "Some(_) must be serialized: {json}");
+        assert!(json.contains("grassland_meadow"),
+            "id must round-trip: {json}");
+        let back: TilemapTemplate = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+    }
+
+    #[test]
+    fn tilemap_template_with_background_biome_none_omits_field_from_json() {
+        // TMP-Q2 chunk A — wire-format invariant matching the
+        // tilemap_template_with_decoration_density_none_omits_field_from_json
+        // test. None must NOT appear in serialized JSON; this is what
+        // keeps V2 HTTP consumers byte-identical against default templates.
+        let t = TilemapTemplate {
+            template_id: TilemapTemplateId("rt".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+            decoration_density: None,
+            background_biome: None,
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(!json.contains("background_biome"),
+            "None must NOT appear in JSON (skip_serializing_if discipline)");
     }
 }

@@ -506,3 +506,77 @@ walkability_pattern = "all_walkable"
 biomes = ["road"]
 density_weight = 0.6
 min_spacing = 2
+
+# ── BIOME THEMES (TMP-Q2 chunk A) ─────────────────────────────────────
+#
+# Each [[biome]] is a weighted mix of TerrainKind tags. Sampled per-tile
+# at chunk-B placer time via Perlin noise + CDF threshold so the patches
+# emerge spatially correlated (~3-8 tiles per kind cluster) instead of
+# i.i.d. salt-and-pepper.
+#
+# `mix.terrain` must be a TerrainKind::tag() value (closed set: grass,
+# forest, mountain, water, sand, snow, swamp, road, rough, subterranean).
+# `mix.weight` must be > 0 and finite. Registry-load validates both.
+
+[[biome]]
+id = "lw:biome.forest_temperate"
+label = "Temperate Forest"
+mix = [
+  { terrain = "forest", weight = 70.0 },
+  { terrain = "grass", weight = 20.0 },
+  { terrain = "rough", weight = 10.0 },
+]
+
+[[biome]]
+id = "lw:biome.forest_dense_pine"
+label = "Dense Pine Forest"
+mix = [
+  { terrain = "forest", weight = 85.0 },
+  { terrain = "snow", weight = 10.0 },
+  { terrain = "mountain", weight = 5.0 },
+]
+
+[[biome]]
+id = "lw:biome.mountain_alpine"
+label = "Alpine Mountain"
+mix = [
+  { terrain = "mountain", weight = 70.0 },
+  { terrain = "rough", weight = 20.0 },
+  { terrain = "snow", weight = 10.0 },
+]
+
+[[biome]]
+id = "lw:biome.swamp_mangrove"
+label = "Mangrove Swamp"
+mix = [
+  { terrain = "swamp", weight = 60.0 },
+  { terrain = "water", weight = 25.0 },
+  { terrain = "grass", weight = 15.0 },
+]
+
+[[biome]]
+id = "lw:biome.desert_dune"
+label = "Dune Desert"
+mix = [
+  { terrain = "sand", weight = 80.0 },
+  { terrain = "rough", weight = 15.0 },
+  { terrain = "grass", weight = 5.0 },
+]
+
+[[biome]]
+id = "lw:biome.grassland_meadow"
+label = "Open Grassland"
+mix = [
+  { terrain = "grass", weight = 75.0 },
+  { terrain = "forest", weight = 15.0 },
+  { terrain = "rough", weight = 10.0 },
+]
+
+[[biome]]
+id = "lw:biome.tundra_frost"
+label = "Frozen Tundra"
+mix = [
+  { terrain = "snow", weight = 70.0 },
+  { terrain = "rough", weight = 20.0 },
+  { terrain = "mountain", weight = 10.0 },
+]

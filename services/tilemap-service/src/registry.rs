@@ -15,6 +15,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::biome_theme::BiomeThemeDef;
 use crate::types::primitive::ObjectPrimitive;
 use crate::types::registry::{ObjectKindDef, RegistryRef, TerrainKindDef};
 use crate::types::tile::TerrainKind;
@@ -66,7 +67,11 @@ impl From<toml::de::Error> for RegistryError {
 /// id format check: must start with `[a-z]`, then any of `[a-z0-9_:.-]*`.
 /// Matches the ADR §2.1.1 convention without pulling in the `regex`
 /// crate as a dependency.
-fn is_valid_id(id: &str) -> bool {
+///
+/// `pub(crate)` so [`crate::types::biome_theme`] can validate
+/// [`BiomeThemeDef::id`] with the same rule that gates terrain + object
+/// ids — keeps id-format invariants consistent across the registry.
+pub(crate) fn is_valid_id(id: &str) -> bool {
     let mut chars = id.chars();
     match chars.next() {
         Some(c) if c.is_ascii_lowercase() => {}
@@ -80,7 +85,11 @@ fn is_valid_id(id: &str) -> bool {
 /// (snake_case). Enumerated against the `TerrainKind` enum directly so
 /// adding a future variant fails the registry-load until the literal
 /// is mirrored here.
-fn is_valid_biome_key(key: &str) -> bool {
+///
+/// TMP-Q2 chunk A — also called by [`BiomeThemeDef::validate`] to gate
+/// the `terrain` tag in each `BiomeMixEntry`. Same closed-set rule so a
+/// future `TerrainKind` variant fails both places at once.
+pub(crate) fn is_valid_biome_key(key: &str) -> bool {
     matches!(
         key,
         "grass"
@@ -109,6 +118,13 @@ pub struct RegistryFile {
     /// `[[object]]` array of inline tables.
     #[serde(default)]
     pub object: Vec<ObjectKindDef>,
+    /// TMP-Q2 chunk A — `[[biome]]` array of inline tables.
+    /// `#[serde(default)]` keeps pre-Q2 per-book registry files loading
+    /// without a `[[biome]]` section (the biome-theme pass is opt-in
+    /// via [`crate::types::template::TilemapTemplate::background_biome`]
+    /// / [`crate::types::template::ZoneSpec::biome_theme`]).
+    #[serde(default)]
+    pub biome: Vec<BiomeThemeDef>,
 }
 
 /// In-memory tag-keyed registry. Cheap clone (Arc would be nicer at
@@ -127,6 +143,12 @@ pub struct Registry {
     /// the kind's `biomes` field. Within each bucket, refs are sorted by
     /// `kind_id` for the same determinism reason.
     decoration_by_biome: BTreeMap<String, Vec<DecorationRef>>,
+    /// TMP-Q2 chunk A — id → [`BiomeThemeDef`] lookup. BTreeMap (not
+    /// HashMap) for the same determinism rationale as `decoration_by_biome`:
+    /// chunk-B `BiomeThemePainter` iterates over this when emitting
+    /// per-biome statistics + (future) palette previews, and the iteration
+    /// order must be stable across runs.
+    biome_by_id: BTreeMap<String, BiomeThemeDef>,
 }
 
 /// TMP-Q1 chunk B — denormalized decoration entry stored in the
@@ -271,11 +293,36 @@ impl Registry {
             }
         }
 
+        // TMP-Q2 chunk A — validate + index biome themes. Empty
+        // `file.biome` is allowed (registries without a `[[biome]]`
+        // section); the chunk-B placer early-returns when the lookup
+        // misses.
+        let mut biome_by_id: BTreeMap<String, BiomeThemeDef> = BTreeMap::new();
+        for def in file.biome {
+            if !is_valid_id(&def.id) {
+                return Err(RegistryError::Validation(format!(
+                    "invalid biome id {:?}: must match ^[a-z][a-z0-9_:.-]*$",
+                    def.id
+                )));
+            }
+            if biome_by_id.contains_key(&def.id) {
+                return Err(RegistryError::Validation(format!(
+                    "duplicate biome id {:?}",
+                    def.id
+                )));
+            }
+            def.validate().map_err(|e| {
+                RegistryError::Validation(format!("biome {:?}: {e}", def.id))
+            })?;
+            biome_by_id.insert(def.id.clone(), def);
+        }
+
         Ok(Self {
             reference: file.registry,
             terrain_by_tag,
             object_by_tag,
             decoration_by_biome,
+            biome_by_id,
         })
     }
 
@@ -331,6 +378,26 @@ impl Registry {
 
     pub fn object_count(&self) -> usize {
         self.object_by_tag.len()
+    }
+
+    /// TMP-Q2 chunk A — look up a biome theme by id. Returns `None` for
+    /// ids not declared in the registry (chunk-B placer treats as a
+    /// silent no-op for that zone / background — the field is opt-in
+    /// and an unknown id is recoverable, not a panic).
+    pub fn get_biome(&self, id: &str) -> Option<&BiomeThemeDef> {
+        self.biome_by_id.get(id)
+    }
+
+    /// TMP-Q2 chunk A — declared biome theme ids in BTreeMap (sorted)
+    /// order. Used by introspection tests + future inspector UIs.
+    pub fn biome_ids(&self) -> impl Iterator<Item = &str> {
+        self.biome_by_id.keys().map(String::as_str)
+    }
+
+    /// TMP-Q2 chunk A — number of biome themes in this registry.
+    /// Pre-Q2 registries (no `[[biome]]` section) report 0.
+    pub fn biome_count(&self) -> usize {
+        self.biome_by_id.len()
     }
 
     /// TMP-Q1 chunk B — decorations registered for `terrain`'s biome.
@@ -723,6 +790,169 @@ biomes = ["grass", "grass"]
                     "xianxia decoration id must use the xianxia namespace, got {}",
                     r.kind_id);
             }
+        }
+    }
+
+    // ── TMP-Q2 chunk A biome-theme registry tests ──────────────────────
+    //
+    // LOW-2/LOW-3/LOW-4 from chunk-A /review-impl. Mirror the chunk-B
+    // decoration-validation discipline above for the new biome-theme
+    // surface: empty section path, id format reject, duplicate id reject.
+
+    #[test]
+    fn registry_loads_clean_without_biome_section() {
+        // LOW-2 fix — pre-Q2 per-book registries that don't ship a
+        // [[biome]] section must continue to load with biome_count() == 0.
+        // The #[serde(default)] on RegistryFile.biome is what makes this
+        // safe; locking it with a test prevents future refactors from
+        // silently making it required.
+        let toml = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:grass"
+primitive = "land"
+label = "Grass"
+
+[[object]]
+id = "test:treasure"
+primitive = "pickup"
+label = "Treasure"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("must load without [[biome]]");
+        assert_eq!(reg.biome_count(), 0,
+            "registry without [[biome]] section must report biome_count == 0");
+        assert!(reg.get_biome("anything").is_none(),
+            "get_biome must return None when no themes registered");
+        let ids: Vec<&str> = reg.biome_ids().collect();
+        assert!(ids.is_empty(),
+            "biome_ids() iterator must be empty for biome-less registry");
+    }
+
+    #[test]
+    fn registry_rejects_invalid_biome_id_format() {
+        // LOW-3 fix — invalid biome ids (uppercase, empty, leading digit)
+        // must fail registry-load with a clear error. Same is_valid_id
+        // rule that gates terrain + object ids applies here.
+        for (label, bad_id) in [
+            ("uppercase", "INVALID"),
+            ("empty", ""),
+            ("leading-digit", "1lw:biome.bad"),
+        ] {
+            let toml = format!(r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:grass"
+primitive = "land"
+label = "Grass"
+
+[[object]]
+id = "test:treasure"
+primitive = "pickup"
+label = "Treasure"
+
+[[biome]]
+id = "{bad_id}"
+label = "Bad"
+mix = [{{ terrain = "grass", weight = 1.0 }}]
+"#);
+            let err = Registry::from_toml_str(&toml).expect_err(
+                &format!("expected {label} biome id ({bad_id:?}) to fail registry load"));
+            match err {
+                RegistryError::Validation(msg) => {
+                    assert!(msg.contains("invalid biome id"),
+                        "[{label}] msg missing 'invalid biome id': {msg}");
+                }
+                other => panic!("[{label}] expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn registry_rejects_duplicate_biome_id() {
+        // LOW-4 fix — two [[biome]] entries sharing an id must fail
+        // registry-load. Without this guard a duplicate would either
+        // second-wins (BTreeMap.insert) or silently merge — both wrong
+        // for the per-zone Some(id) → Registry lookup contract.
+        let bad = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:grass"
+primitive = "land"
+label = "Grass"
+
+[[object]]
+id = "test:treasure"
+primitive = "pickup"
+label = "Treasure"
+
+[[biome]]
+id = "test:biome.forest"
+label = "Forest A"
+mix = [{ terrain = "forest", weight = 1.0 }]
+
+[[biome]]
+id = "test:biome.forest"
+label = "Forest B (duplicate id)"
+mix = [{ terrain = "grass", weight = 1.0 }]
+"#;
+        let err = Registry::from_toml_str(bad).expect_err(
+            "duplicate biome id must fail registry load");
+        match err {
+            RegistryError::Validation(msg) => {
+                assert!(msg.contains("duplicate biome id"),
+                    "msg missing 'duplicate biome id': {msg}");
+                assert!(msg.contains("test:biome.forest"),
+                    "msg must name the duplicated id: {msg}");
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn registry_rejects_biome_with_malformed_mix() {
+        // LOW-3 companion — make sure the biome-load path actually
+        // invokes `BiomeThemeDef::validate()` (not just id checks). A
+        // theme with an unknown terrain tag must fail registry-load,
+        // wrapping the BiomeThemeError into RegistryError::Validation.
+        let bad = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:grass"
+primitive = "land"
+label = "Grass"
+
+[[object]]
+id = "test:treasure"
+primitive = "pickup"
+label = "Treasure"
+
+[[biome]]
+id = "test:biome.bad"
+label = "Bad"
+mix = [{ terrain = "atmosphere", weight = 1.0 }]
+"#;
+        let err = Registry::from_toml_str(bad).expect_err(
+            "biome with unknown terrain tag must fail registry load");
+        match err {
+            RegistryError::Validation(msg) => {
+                assert!(msg.contains("test:biome.bad"),
+                    "msg must name the offending biome id: {msg}");
+                assert!(msg.contains("atmosphere"),
+                    "msg must name the offending terrain tag: {msg}");
+            }
+            other => panic!("expected Validation, got {other:?}"),
         }
     }
 
@@ -1348,6 +1578,7 @@ walkability_pattern = { mask = [true, false, false, false] }
                     treasure_tiers: vec![],
                     biome_selection_rules: None,
                     inherit_treasure_from: None,
+                    biome_theme: None,
                 },
                 ZoneSpec {
                     zone_id: ZoneId("z1".to_string()),
@@ -1359,11 +1590,13 @@ walkability_pattern = { mask = [true, false, false, false] }
                     treasure_tiers: vec![],
                     biome_selection_rules: None,
                     inherit_treasure_from: None,
+                    biome_theme: None,
                 },
             ],
             seed_offset: 0,
             world_zone: None,
             decoration_density: None,
+            background_biome: None,
         };
 
         let view = place_tilemap_with_registry(
