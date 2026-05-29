@@ -1,0 +1,33 @@
+# infra/comms/templates/incident_investigating.yaml — L7.D.5 / Q-L7-2
+#
+# Pre-approved customer comms template (SR2 problem 7 — avoids bad copy under
+# pressure). New templates require review before landing; formal legal-review
+# workflow is V2+ (Q-L7-2). i18n EN + VI minimum (L7.L.4).
+
+id: incident_investigating
+description: 'Initial public notice — we are investigating a SEV0/SEV1 issue.'
+channel: status_page
+severities:
+  - SEV0
+  - SEV1
+placeholders:
+  - incident_id
+  - components
+  - started_at
+locales:
+  en:
+    subject: 'Investigating: service disruption'
+    body: |
+      We are investigating an issue affecting {{components}}.
+      Some users may experience errors or degraded performance.
+      Our team has been paged and is actively working on it.
+      Reference: {{incident_id}} (started {{started_at}} UTC).
+      We will post an update within 30 minutes.
+  vi:
+    subject: 'Đang điều tra: gián đoạn dịch vụ'
+    body: |
+      Chúng tôi đang điều tra sự cố ảnh hưởng đến {{components}}.
+      Một số người dùng có thể gặp lỗi hoặc hiệu năng suy giảm.
+      Đội ngũ của chúng tôi đã được thông báo và đang xử lý.
+      Mã tham chiếu: {{incident_id}} (bắt đầu {{started_at}} UTC).
+      Chúng tôi sẽ cập nhật trong vòng 30 phút.

@@ -1,0 +1,38 @@
+# infra/comms/templates/gdpr_breach_notice.yaml — L7.D.5 + L7.D.7 / Q-L7-2
+#
+# Pre-approved GDPR Art.33 personal-data-breach notification copy. This is
+# the DPO-facing internal notice body, NOT the public status page. Drafting
+# this under pressure is exactly the SR2 problem 7 risk; legal sign-off on
+# this template happens at the V2+ formal-review milestone (Q-L7-2).
+
+id: gdpr_breach_notice
+description: 'GDPR Art.33 personal-data-breach notification to the DPO.'
+channel: email
+severities:
+  - SEV0
+placeholders:
+  - incident_id
+  - detected_at
+  - data_categories
+  - affected_count
+locales:
+  en:
+    subject: 'GDPR Art.33 notification — personal data breach {{incident_id}}'
+    body: |
+      A personal data breach has been detected.
+      Incident: {{incident_id}}
+      Detected at: {{detected_at}} UTC
+      Data categories involved: {{data_categories}}
+      Approximate affected data subjects: {{affected_count}}
+      The 72-hour supervisory-authority notification clock starts at detection.
+      This notice records the timeline for the DPO. Do not delay.
+  vi:
+    subject: 'Thông báo GDPR Điều 33 — vi phạm dữ liệu cá nhân {{incident_id}}'
+    body: |
+      Đã phát hiện vi phạm dữ liệu cá nhân.
+      Sự cố: {{incident_id}}
+      Phát hiện lúc: {{detected_at}} UTC
+      Loại dữ liệu liên quan: {{data_categories}}
+      Số chủ thể dữ liệu bị ảnh hưởng (ước tính): {{affected_count}}
+      Đồng hồ thông báo cơ quan giám sát 72 giờ bắt đầu từ thời điểm phát hiện.
+      Thông báo này ghi lại mốc thời gian cho DPO. Không được trì hoãn.
