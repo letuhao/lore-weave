@@ -405,6 +405,65 @@ metrics:
     owner: sre
     source: services/meta-worker
 
+  # ──────────────────────────────────────────────────────────────────
+  # Cycle 11 — L2.J archive-worker + L2.K retention-worker
+  # ──────────────────────────────────────────────────────────────────
+
+  - name: lw_archive_partitions_archived_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: [outcome]
+    description: 'archive-worker partition-archive outcomes; outcome ∈ {ok, upload_failed, verify_failed, drop_failed}; counts iterations not partitions'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+
+  - name: lw_archive_bytes_uploaded_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'cumulative bytes uploaded to lw-event-archive bucket (post-ZSTD compression); used to track cold-tier storage growth'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+
+  - name: lw_archive_rows_archived_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'cumulative event rows archived (sum of archive_state.row_count); cross-checked vs partition row counts pre-DROP'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+
+  - name: lw_archive_lag_hours
+    kind: gauge
+    layer: L2
+    shipped_cycle: 11
+    labels: [reality_id]
+    description: 'now() - max(archive_state.archived_at) per reality; alert when > stale_alert_threshold (72h per archive-worker-cron.yaml)'
+    owner: sre
+    source: services/archive-worker
+    cardinality_notes: 'reality_id — bounded by V1=100 / V1+30d=1000 realities; folded into per-reality budget'
+
+  - name: lw_retention_outbox_pruned_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'cumulative events_outbox rows DELETEd by retention-worker (addresses D-OUTBOX-PRUNE row 055). NEVER includes dead-letter rows.'
+    owner: world-platform
+    source: services/retention-worker (pkg/outbox_pruner)
+
+  - name: lw_retention_audit_invocations_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: [outcome]
+    description: 'retention-worker audit-script invocations; outcome ∈ {ok, error}; one per per-reality scheduling tick'
+    owner: world-platform
+    source: services/retention-worker (pkg/audit_invoker)
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

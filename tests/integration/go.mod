@@ -27,12 +27,16 @@ require (
 	// Cycle 7 — degraded-mode / tiered-backup / capacity-override tests
 	github.com/loreweave/foundation/contracts/meta v0.0.0
 	github.com/loreweave/foundation/services/admin-cli v0.0.0
+
+	// Cycle 11 — archive_roundtrip_test + outbox_prune_test
+	github.com/loreweave/foundation/services/archive-worker v0.0.0
 	github.com/loreweave/foundation/services/backup-scheduler v0.0.0
 	github.com/loreweave/foundation/services/meta-worker v0.0.0
 
 	// Cycle 6 — migration_run_test imports runner / canary / manifest
 	github.com/loreweave/foundation/services/migration-orchestrator v0.0.0
 	github.com/loreweave/foundation/services/publisher v0.0.0
+	github.com/loreweave/foundation/services/retention-worker v0.0.0
 )
 
 require (
@@ -57,3 +61,8 @@ replace github.com/loreweave/foundation/contracts/events => ../../contracts/even
 replace github.com/loreweave/foundation/services/publisher => ../../services/publisher
 
 replace github.com/loreweave/foundation/services/meta-worker => ../../services/meta-worker
+
+// Cycle 11 — archive + retention workers
+replace github.com/loreweave/foundation/services/archive-worker => ../../services/archive-worker
+
+replace github.com/loreweave/foundation/services/retention-worker => ../../services/retention-worker

@@ -178,3 +178,70 @@ services:
         - INSERT
       reality_registry:
         - SELECT
+
+  # ── Cycle 11 (L2.J) — archive-worker
+  - name: archive-worker
+    svid_spiffe_id: spiffe://loreweave.dev/sa/archive-worker
+    notes: |
+      L2.J — per-reality archive worker. DETACHes oldest monthly partition
+      of `events`, COPYs to Parquet (lw-event-archive MinIO bucket), then
+      DROPs the partition.
+      ACL grants:
+        * SELECT on events       — reads partition row data for parquet encode
+        * DELETE on events       — DROPs the (detached) partition. Constrained
+                                   by archive_state idempotency guard.
+        * INSERT on archive_state — manifest row per archived partition
+      NEVER touches events_outbox, event_audit, aggregate_snapshots — those
+      are retention-worker's surface (Q-L2K-1 separation).
+      Heartbeats reuse publisher_heartbeats with publisher_id namespace
+      "archive-worker-<replica>" (cycle-11 single-observability-surface
+      decision).
+    permissions:
+      events:
+        - SELECT
+        - DELETE  # DROP partition is technically a DDL but ACL-wise treated as DELETE on the partitioned table
+      archive_state:
+        - SELECT
+        - INSERT
+      reality_registry:
+        - SELECT
+      publisher_heartbeats:
+        - INSERT
+        - UPDATE
+        - SELECT
+      meta_write_audit:
+        - INSERT
+
+  # ── Cycle 11 (L2.K) — retention-worker (SEPARATE binary from archive-worker)
+  - name: retention-worker
+    svid_spiffe_id: spiffe://loreweave.dev/sa/retention-worker
+    notes: |
+      L2.K — per-reality retention worker. SEPARATE binary from archive-worker
+      (Q-L2K-1: different ops cadence, different alert SLOs).
+      Surface:
+        * events_outbox  — DELETE published+old rows (addresses D-OUTBOX-PRUNE
+                            row 055). NEVER touches dead_lettered rows.
+        * event_audit    — wraps scripts/event-audit-retention-cron.sh (per-class
+                            retention; the script holds DELETE perms).
+        * aggregate_snapshots — placeholder V1 (L3 cycle 12+).
+      CRITICAL INVARIANT: NEVER touches the events table — that is
+      archive-worker's surface. A retention-worker DELETE on events would
+      race archive-worker. Code review rejects any PR adding `events:`
+      perms to this entry.
+      Heartbeats reuse publisher_heartbeats with publisher_id namespace
+      "retention-worker-<replica>".
+    permissions:
+      events_outbox:
+        - SELECT
+        - DELETE  # published+old prune ONLY; dead-letter rows preserved by query predicate
+      event_audit:
+        - SELECT
+        - DELETE  # per-class retention via wrapped audit script
+      reality_registry:
+        - SELECT
+      publisher_heartbeats:
+        - INSERT
+        - UPDATE
+        - SELECT
+      meta_write_audit:
+        - INSERT

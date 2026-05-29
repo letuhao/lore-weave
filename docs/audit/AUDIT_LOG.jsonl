@@ -924,3 +924,17 @@
 {"ts":"2026-05-29T07:09:23Z","event":"worktree_removed","cycle":10,"name":"cycle-10-dps-3"}
 {"ts":"2026-05-29T07:10:29Z","event":"recovery_halted","cycle":10,"reason":"in_progress_missing"}
 {"ts": "2026-05-29T07:10:29Z", "event": "escalation_written", "cycle": 10, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T07:11:36Z", "event": "coordinator_next_cycle_emitted", "cycle": 11}
+{"ts":"2026-05-29T07:13:13Z","event":"startup_drift_check_passed","cycle":11,"version":"v1.6"}
+{"ts":"2026-05-29T07:13:13Z","event":"startup_verifier_complete","cycle":11,"steps":6}
+{"ts": "2026-05-29T07:13:22Z", "event": "in_progress_init", "cycle": 11, "title": "L2 Archive + Retention (J+K)"}
+{"ts": "2026-05-29T07:14:43Z", "event": "in_progress_update", "cycle": 11, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T07:15:13Z", "event": "in_progress_update", "cycle": 11, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T07:15:30Z", "event": "in_progress_update", "cycle": 11, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T07:33:46Z", "event": "in_progress_update", "cycle": 11, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T07:34:11Z","event":"secret_scan_skipped","cycle":11,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T07:35:13Z", "event": "in_progress_update", "cycle": 11, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T07:35:31Z", "event": "in_progress_update", "cycle": 11, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T07:35:33Z", "event": "in_progress_update", "cycle": 11, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T07:35:35Z", "event": "in_progress_update", "cycle": 11, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T07:36:17Z", "event": "in_progress_update", "cycle": 11, "phase": "COMMIT", "retry": 0}
