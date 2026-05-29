@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use crate::engine::build_state::TilemapBuildState;
 use crate::engine::modificators::{
-    ConnectionsPlacer, DecorationPlacer, ObstacleFillPlacer, ObstacleSourcePlacer, RiverPlacer,
-    RoadPlacer, TerrainPainter, TreasurePlacer,
+    BiomeThemePainter, ConnectionsPlacer, DecorationPlacer, ObstacleFillPlacer,
+    ObstacleSourcePlacer, RiverPlacer, RoadPlacer, TerrainPainter, TreasurePlacer,
 };
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
@@ -132,6 +132,7 @@ fn place_tilemap_inner(
     let mut state = TilemapBuildState::from_zones(tiled, grid);
     let mut modificators = ModificatorRegistry::new();
     modificators.add(Box::new(TerrainPainter));
+    modificators.add(Box::new(BiomeThemePainter));
     modificators.add(Box::new(ConnectionsPlacer));
     modificators.add(Box::new(TreasurePlacer));
     modificators.add(Box::new(RoadPlacer));
@@ -320,6 +321,7 @@ mod tests {
             // here — `fixture()` declares no `treasure_tiers`.
             let mut modificators = ModificatorRegistry::new();
             modificators.add(Box::new(TerrainPainter));
+            modificators.add(Box::new(BiomeThemePainter));
             modificators.add(Box::new(ConnectionsPlacer));
             modificators.add(Box::new(TreasurePlacer));
             modificators.add(Box::new(RoadPlacer));
@@ -409,6 +411,9 @@ mod tests {
             // placer, the river's Mountain/Lake tags now placed pre-erosion.
             let mut pre_river = ModificatorRegistry::new();
             pre_river.add(Box::new(TerrainPainter));
+            // BiomeThemePainter registered for production-parity; no-ops here
+            // when fixture template's biome_theme + background_biome are None.
+            pre_river.add(Box::new(BiomeThemePainter));
             pre_river.add(Box::new(ConnectionsPlacer));
             pre_river.add(Box::new(TreasurePlacer));
             pre_river.add(Box::new(RoadPlacer));
@@ -551,6 +556,7 @@ mod tests {
             // border sealing here — itself `would_seal_a_gap`-gated.
             let mut modificators = ModificatorRegistry::new();
             modificators.add(Box::new(TerrainPainter));
+            modificators.add(Box::new(BiomeThemePainter));
             modificators.add(Box::new(ConnectionsPlacer));
             modificators.add(Box::new(TreasurePlacer));
             modificators.add(Box::new(RoadPlacer));
@@ -642,6 +648,7 @@ mod tests {
             names,
             [
                 "terrain_painter",
+                "biome_theme_painter",
                 "connections_placer",
                 "treasure_placer",
                 "road_placer",

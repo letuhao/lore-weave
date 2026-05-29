@@ -147,6 +147,17 @@ pub struct TilemapTemplate {
     /// (open-space falls back to V2 void). Same discipline as
     /// `ZoneSpec.biome_theme` above. LOW-5 fix from chunk-A /review-impl.
     ///
+    /// **Note on Penrose coverage (chunk-B LOW-2):** the current
+    /// [`crate::engine::placement::place_zones`] Penrose tiling assigns
+    /// every grid tile to some zone, so the `BiomeThemePainter` finds
+    /// `terrain_layer[i] != 0` for every tile by the time its
+    /// background pass runs — meaning this field has **no observable
+    /// effect on production fixtures today**. The painter's
+    /// background-fill code is exercised via direct unit tests
+    /// (`paint_background_fills_void_tiles_with_mix_kinds`) and is
+    /// reserved for future `place_zones` modes (sparse grids,
+    /// archipelagos, partial tilings) that intentionally leave gaps.
+    ///
     /// Spec: `docs/specs/2026-05-29-biome-theme-painter.md`
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_biome: Option<String>,
