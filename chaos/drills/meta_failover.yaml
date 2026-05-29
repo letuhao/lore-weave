@@ -1,0 +1,126 @@
+# chaos/drills/meta_failover.yaml
+#
+# L1.E.11 — Meta Postgres failover chaos drill
+# Cycle 1 of foundation-mega-task.
+#
+# Drives the SR07 (chaos engineering) periodic drill that exercises
+# patronictl failover end-to-end + verifies the SRE runbook
+# (runbooks/meta/failover.md) matches reality.
+#
+# Cadence: weekly in staging; monthly in prod (V1+30d).
+# Owning chunk: C03 §12O.7 (app-level retry + recovery).
+
+apiVersion: chaos.loreweave.app/v1
+kind: Drill
+metadata:
+  name: meta-failover
+  layer: L1.E
+  owner: platform-sre
+  cycle: raid-c1
+spec:
+  description: |
+    Kill the meta Postgres primary; verify Patroni promotes sync_replica_a
+    within 30s; verify writes resume; verify WAL archive continues; verify
+    L1.J degraded-mode services correctly buffer + flush.
+
+  schedule:
+    staging:  "0 4 * * 1"   # weekly Monday 04:00 UTC
+    prod:     "0 4 1 * *"   # monthly first-of-month 04:00 UTC (V1+30d)
+
+  preconditions:
+    - name: cluster_healthy
+      check: |
+        patronictl -c /etc/patroni/patroni.yml list | grep -q "Leader"
+        patronictl -c /etc/patroni/patroni.yml list | grep -q "streaming"
+    - name: etcd_quorum_healthy
+      check: etcdctl endpoint health --cluster
+    - name: replication_lag_low
+      check: |
+        psql -h primary -c "
+          SELECT EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())
+          FROM pg_stat_replication WHERE application_name = 'sync_replica_a'
+        " | awk '$1 < 5'
+
+  steps:
+    - name: snapshot-baseline
+      run: |
+        BASELINE_TS=$(date -u +%s)
+        echo "BASELINE_TS=$BASELINE_TS" >> $DRILL_STATE
+        psql -h primary -c "INSERT INTO _lw_chaos_meta_failover (drill_ts, phase) VALUES (now(), 'baseline');"
+
+    - name: kill-primary
+      run: |
+        # SIGKILL the primary Postgres process (simulates host loss)
+        docker exec lw-meta-pg-primary kill -9 1
+        KILL_TS=$(date -u +%s)
+        echo "KILL_TS=$KILL_TS" >> $DRILL_STATE
+
+    - name: wait-for-promotion
+      timeout: 60s            # RTO target 30s + 30s grace
+      run: |
+        # Poll until sync_replica_a becomes Leader
+        until patronictl -c /etc/patroni/patroni.yml list \
+              | grep "sync_replica_a" | grep -q "Leader"; do
+          sleep 1
+        done
+        PROMOTED_TS=$(date -u +%s)
+        echo "PROMOTED_TS=$PROMOTED_TS" >> $DRILL_STATE
+
+    - name: verify-rto
+      run: |
+        source $DRILL_STATE
+        RTO=$((PROMOTED_TS - KILL_TS))
+        echo "Failover RTO: ${RTO}s (target: <30s)"
+        if [ "$RTO" -gt 30 ]; then
+          echo "FAIL: RTO ${RTO}s exceeds 30s target"
+          exit 1
+        fi
+
+    - name: verify-writes-resume
+      run: |
+        # Insert via new leader (was sync_replica_a, now primary)
+        psql -h sync_replica_a -c "
+          INSERT INTO _lw_chaos_meta_failover (drill_ts, phase)
+          VALUES (now(), 'post-failover-write');
+        "
+
+    - name: verify-wal-archive-resumes
+      run: |
+        # Wait one archive_timeout cycle (60s) then check new WAL segments
+        sleep 65
+        mc ls wal-archive/lw-meta-wal-archive/$(date -u +%Y/%m/%d/) | \
+          tail -5 | tee -a $DRILL_LOG
+
+    - name: verify-l1j-buffered-writes
+      condition: l1j_buffer_flush_hooks_deployed     # cycle 7+
+      run: |
+        # Services using contracts/meta/fallback.go should have buffered writes
+        # during the failover window; verify those writes are now in meta DB
+        psql -h sync_replica_a -c "
+          SELECT count(*) FROM _lw_chaos_l1j_buffered
+          WHERE buffered_at BETWEEN to_timestamp($KILL_TS) AND to_timestamp($PROMOTED_TS);
+        "
+
+    - name: cleanup-restart-old-primary
+      run: |
+        # Restart the killed primary; it should rejoin as replica
+        docker start lw-meta-pg-primary
+        until patronictl -c /etc/patroni/patroni.yml list \
+              | grep "primary" | grep -q "streaming"; do
+          sleep 2
+        done
+
+  postconditions:
+    - name: cluster_back_to_baseline
+      check: |
+        # Same member count as baseline, no dead members
+        patronictl -c /etc/patroni/patroni.yml list | grep -c "running" \
+          | grep -q "^3$"
+
+  alerts_on_failure:
+    - severity: P1
+      target: platform-sre-oncall
+      runbook: runbooks/meta/failover.md
+      message: |
+        meta-failover chaos drill FAILED. Either Patroni failover is broken,
+        or the runbook is out of date. Investigate before next deployment.
