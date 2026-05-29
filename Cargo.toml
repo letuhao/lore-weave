@@ -96,8 +96,11 @@ rand_chacha = "0.3"
 thiserror = "1.0"
 anyhow = "1.0"
 
-# UUIDs (gateway StreamRequest.model_ref + user_id query param)
-uuid = { version = "1.10", features = ["serde", "v4"] }
+# UUIDs (gateway StreamRequest.model_ref + user_id query param).
+# v5 enables deterministic UUIDs (namespace + name → UUID) — used by the
+# cycle-26 L5.G reality_seeder to derive synthetic seed event_ids from
+# (reality_id, canon_entry_id) so retries don't multiply audit entries.
+uuid = { version = "1.10", features = ["serde", "v4", "v5"] }
 
 # Structured logging
 tracing = "0.1"

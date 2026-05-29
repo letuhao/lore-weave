@@ -19,6 +19,27 @@
 //! call into the meta library (`crates/meta-rs`) for `RealityRouting` reads
 //! and (in a later cycle) MetaWrite via RPC to the meta-worker.
 //!
+//! ## Cycle 26 (L5.G) surface
+//!
+//! RAID cycle 26 adds the L5.G reality seeder module per
+//! `docs/plans/2026-05-29-foundation-mega-task/L5_inbound_canon.md` §L5.G:
+//!
+//! | Module                        | Layer plan ID | Purpose                                                          |
+//! |-------------------------------|---------------|------------------------------------------------------------------|
+//! | [`reality_seeder`]            | L5.G.1        | Background orchestrator: seeding → active flow                   |
+//! | [`reality_seeder::book_reader`]      | L5.G.2 | book-service RPC trait (regions + locale)                        |
+//! | [`reality_seeder::canon_reader`]     | L5.G.3 | glossary-service RPC trait (binds to L5.F.2 ExportCanonForSeed) |
+//! | [`reality_seeder::knowledge_reader`] | L5.G.4 | knowledge-service RPC trait (NPC proxies)                        |
+//! | [`reality_seeder::translation_orchestrator`] | L5.G.5 | Q-L5-2 translation gate (when locales differ)            |
+//! | [`reality_seeder::checkpointer`]     | L5.G.6 | Per-100-entry checkpoint for resumability                        |
+//! | [`reality_seeder::lifecycle_transitioner`] | L5.G.7 | Wraps AttemptStateTransition (cycle-5 contract)            |
+//! | [`reality_seeder::audit`]            | L5.G    | Q-L1A-3 full audit sink (per-phase + per-write)                  |
+//!
+//! The seeder hands off canon entries via the cycle-24 L5.B meta-worker
+//! `canon_writer` interface — the seeder's `CanonProjectionWriter` trait
+//! aligns 1:1 with the meta-worker writer's `UpsertCanon` shape so the
+//! production binding is a one-line adapter.
+//!
 //! ## Why Rust here
 //!
 //! Per CLAUDE.md "Language rule: Go for domain services, Python for AI/LLM
@@ -38,6 +59,7 @@ pub mod deprovisioner;
 pub mod embedding_queue;
 pub mod errors;
 pub mod provisioner;
+pub mod reality_seeder;
 
 pub use capacity_planner::{CapacityPlanner, CapacityThresholds, ShardCapacity, ShardId};
 pub use db_pool::{DbPoolKey, DbPoolRegistry, ShardHost};
@@ -49,3 +71,11 @@ pub use embedding_queue::{
 };
 pub use errors::ProvisionerError;
 pub use provisioner::{ProvisionReport, ProvisionRequest, Provisioner};
+// L5.G cycle 26 — reality seeder + supporting traits.
+pub use reality_seeder::{
+    AuditEvent as SeederAuditEvent, AuditSink as SeederAuditSink, BookMetadata, BookReader,
+    CanonEntry as SeedCanonEntry, CanonExporter, CanonProjectionIntent, CanonProjectionWriter,
+    CheckpointStore, KnowledgeReader, LifecycleTransitioner, NpcProxy, RealitySeeder,
+    RealityStatus, Region, SeedCheckpoint, SeedExportResult, SeedReport, SeedRequest,
+    SeederDeps, SeederError, TranslationGateway, TranslationOrchestrator,
+};

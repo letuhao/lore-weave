@@ -1,7 +1,7 @@
 [package]
 name = "world-service"
-version = "0.1.0-cycle5"
-description = "Geography substrate service for the LLM MMO RPG. Cycle 5 (L1.C) adds the per-reality DB provisioner / deprovisioner / capacity_planner / orphan_scanner modules + db_pool (L1.G.3); the GEO_001 aggregate behavior still awaits the DP-kernel (cycle 17)."
+version = "0.1.0-cycle26"
+description = "Geography substrate service for the LLM MMO RPG. Cycle 5 (L1.C) added the per-reality DB provisioner / deprovisioner / capacity_planner / orphan_scanner modules + db_pool (L1.G.3). Cycle 16 (L3.I) added the embedding queue. Cycle 26 (L5.G) adds the reality_seeder module: orchestrator + canon/book/knowledge RPC traits + Q-L5-2 translation gate + Q-L1A-3 audit sink + per-100-entry checkpointing + lifecycle transitioner for seeding→active/failed_seeding. The GEO_001 aggregate behavior still awaits the DP-kernel (cycle 17)."
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true

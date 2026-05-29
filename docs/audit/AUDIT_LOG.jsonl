@@ -1165,3 +1165,23 @@
 {"ts": "2026-05-29T12:56:11Z", "event": "in_progress_update", "cycle": 25, "phase": "SESSION", "retry": 0}
 {"ts": "2026-05-29T12:57:14Z", "event": "in_progress_update", "cycle": 25, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T12:57:16Z", "event": "in_progress_archived", "cycle": 25, "archived_to": "cycle-025-state.md"}
+{"ts":"2026-05-29T12:58:38Z","event":"recovery_halted","cycle":25,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T12:58:38Z", "event": "escalation_written", "cycle": 25, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T12:59:10Z", "event": "coordinator_next_cycle_emitted", "cycle": 26}
+{"ts":"2026-05-29T13:00:29Z","event":"startup_drift_check_passed","cycle":26,"version":"v1.6"}
+{"ts":"2026-05-29T13:00:29Z","event":"startup_verifier_complete","cycle":26,"steps":6}
+{"ts": "2026-05-29T13:00:44Z", "event": "in_progress_init", "cycle": 26, "title": "L5 Reality seeder (G)"}
+{"ts": "2026-05-29T13:03:27Z", "event": "in_progress_update", "cycle": 26, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T13:03:47Z", "event": "in_progress_update", "cycle": 26, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T13:04:05Z", "event": "in_progress_update", "cycle": 26, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T13:22:56Z", "event": "in_progress_update", "cycle": 26, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T13:23:10Z","event":"secret_scan_skipped","cycle":26,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts":"2026-05-29T13:23:40Z","event":"secret_scan_skipped","cycle":26,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T13:25:15Z", "event": "in_progress_update", "cycle": 26, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T13:26:47Z", "event": "in_progress_archived", "cycle": 26, "archived_to": "cycle-026-state.md"}
+{"ts":"2026-05-29T13:26:52Z","event":"recovery_halted","cycle":26,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T13:26:52Z", "event": "escalation_written", "cycle": 26, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts":"2026-05-29T13:26:54Z","event":"worktree_removed","cycle":26,"name":"cycle-26-dps-1"}
+{"ts": "2026-05-29T13:27:10Z", "event": "in_progress_init", "cycle": 26, "title": "L5 Reality seeder (G)"}
+{"ts": "2026-05-29T13:27:10Z", "event": "in_progress_update", "cycle": 26, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T13:27:27Z", "event": "in_progress_archived", "cycle": 26, "archived_to": "cycle-026-state-20260529T132727.md"}

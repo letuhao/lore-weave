@@ -299,6 +299,66 @@ services:
           - world-service
         principal_mode: system_only
 
+  # ── Cycle 26 (L5.G.8) — RPC entries used by the world-service reality
+  # seeder. The base world-service entry above (line 65) carries the
+  # per-table permissions; these "-rpcs" entries declare the cross-service
+  # call surface per the cycle-22 L4.M separate-entry pattern (keeps the
+  # cycle-6 table-grant lint clean).
+  #
+  # Q-L5-2 honored: translation-service is ACL-permitted at seed time
+  # ONLY (system_only principal). The seeder constructs the translation
+  # call ONLY when reality.locale != book.source_locale; the ACL surface
+  # being open is necessary but not sufficient — the seeder enforces the
+  # gate.
+  #
+  # Q-L5-4 honored: HTTP/JSON V1 (matches glossary_client cycle-25).
+  #
+  # book-service-rpcs + knowledge-service-rpcs are pre-declared so the
+  # seeder's RPC trait wiring lands cleanly when those service-side
+  # implementations join foundation scope (currently outside this cycle).
+  - name: translation-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/translation-service
+    notes: |
+      L5.G.8 — RPC declarations for translation-service. The
+      `TranslateCanonValue` RPC is called by world-service's reality_seeder
+      (L5.G.5) ONLY when `reality.locale != book.source_locale` per
+      Q-L5-2 LOCKED. The seeder is the sole authorized caller in V1.
+    rpcs:
+      TranslateCanonValue:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+
+  - name: book-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/book-service
+    notes: |
+      L5.G.8 — RPC declarations for book-service (pre-declared, cycle 26).
+      Production book-service HTTP/JSON client lands when book-service
+      joins foundation scope. world-service consumes via the
+      `BookReader` trait (L5.G.2).
+    rpcs:
+      GetBook:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+      ListRegions:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+
+  - name: knowledge-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/knowledge-service
+    notes: |
+      L5.G.8 — RPC declarations for knowledge-service (pre-declared,
+      cycle 26). Production knowledge-service HTTP/JSON client lands when
+      knowledge-service joins foundation scope. world-service consumes
+      via the `KnowledgeReader` trait (L5.G.4).
+    rpcs:
+      ListNpcProxies:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+
   # ── Cycle 11 (L2.K) — retention-worker (SEPARATE binary from archive-worker)
   - name: retention-worker
     svid_spiffe_id: spiffe://loreweave.dev/sa/retention-worker

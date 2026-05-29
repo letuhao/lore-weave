@@ -121,6 +121,23 @@ pub struct CanonWriteResponse {
     pub canon_layer: String,
 }
 
+/// L5.F.2 NDJSON final-line envelope returned by
+/// [`Client::export_canon_for_seed`]. Sentinel `_envelope` field is
+/// always `"seed_export_complete"` (matches OpenAPI spec).
+///
+/// `next_cursor`, when present, signals the caller to repeat the call
+/// with `cursor=<value>` to drain the next page (used only by very
+/// large books).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SeedExportEnvelope {
+    #[serde(rename = "_envelope")]
+    pub envelope: String,
+    pub snapshot_at: String,
+    pub entry_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
 /// Async SVID provider.
 pub type SvidProvider =
     Box<dyn Fn() -> futures_returning_string::BoxedSvidFuture + Send + Sync + 'static>;
@@ -304,6 +321,86 @@ impl Client {
             serde_json::from_slice::<CanonWriteResponse>(&body)
                 .map_err(|e| Error::Decode(e.to_string()))
         })
+    }
+
+    /// L5.F.2 / L5.G — bulk export canon entries for reality seeding.
+    ///
+    /// Streams NDJSON: one [`CanonEntry`] per line, followed by exactly one
+    /// [`SeedExportEnvelope`] sentinel line carrying the snapshot
+    /// timestamp + entry count + optional pagination cursor.
+    ///
+    /// Returns `(Vec<CanonEntry>, SeedExportEnvelope)` so the L5.G reality
+    /// seeder can drive its idempotent UPSERT in a single pass.
+    ///
+    /// # Pagination
+    /// For large books, the server may set `envelope.next_cursor`. Callers
+    /// (cycle 26 `reality_seeder/canon_reader.rs`) drain pages in a loop
+    /// until `next_cursor` is `None`.
+    ///
+    /// # ACL (cycle 25 L5.F.3)
+    /// Only `world-service` SVID is permitted (system_only principal mode).
+    /// Other callers receive 403 → [`Error::Forbidden`].
+    ///
+    /// # Q-L5-4
+    /// HTTP/JSON V1 (NDJSON is JSON-per-line, not a separate protocol).
+    pub async fn export_canon_for_seed(
+        &self,
+        book_id: &str,
+        cursor: Option<&str>,
+    ) -> Result<(Vec<CanonEntry>, SeedExportEnvelope), Error> {
+        if book_id.is_empty() {
+            return Err(Error::Validation("book_id required".into()));
+        }
+        let mut url = format!(
+            "{}/v1/canon/{}/seed_export",
+            self.base_url,
+            urlencode(book_id)
+        );
+        if let Some(c) = cursor {
+            url.push_str(&format!("?cursor={}", urlencode(c)));
+        }
+        let token = self.svid_token().await?;
+        let resp = self
+            .http
+            .get(&url)
+            .headers(self.auth_headers(&token))
+            .send()
+            .await
+            .map_err(|e| Error::Transport(e.to_string()))?;
+        let body = classify(resp).await?;
+
+        // NDJSON: split on newlines; tolerate trailing newline.
+        let text = std::str::from_utf8(&body)
+            .map_err(|e| Error::Decode(format!("ndjson utf8: {e}")))?;
+        let mut entries: Vec<CanonEntry> = Vec::new();
+        let mut envelope: Option<SeedExportEnvelope> = None;
+        for (idx, line) in text.split('\n').enumerate() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // Probe for the envelope sentinel before attempting CanonEntry
+            // decode (CanonEntry fields would error on the envelope shape).
+            #[derive(Deserialize)]
+            struct Probe {
+                #[serde(default, rename = "_envelope")]
+                envelope: String,
+            }
+            let probe: Probe = serde_json::from_str(line).unwrap_or(Probe { envelope: String::new() });
+            if probe.envelope == "seed_export_complete" {
+                let env: SeedExportEnvelope = serde_json::from_str(line)
+                    .map_err(|e| Error::Decode(format!("envelope line {idx}: {e}")))?;
+                envelope = Some(env);
+                continue;
+            }
+            let entry: CanonEntry = serde_json::from_str(line)
+                .map_err(|e| Error::Decode(format!("entry line {idx}: {e}")))?;
+            entries.push(entry);
+        }
+        let envelope = envelope.ok_or_else(|| {
+            Error::Decode("seed_export NDJSON missing envelope sentinel".into())
+        })?;
+        Ok((entries, envelope))
     }
 }
 
@@ -667,5 +764,147 @@ mod tests {
     fn urlencode_escapes_query_special_chars() {
         assert!(urlencode("a b").contains("%20"));
         assert!(urlencode("&").contains("%26"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // L5.G / L5.F.2 — export_canon_for_seed NDJSON tests (cycle 26)
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn export_canon_for_seed_streams_ndjson() {
+        let srv = MockServer::start().await;
+        let ndjson = concat!(
+            r#"{"canon_entry_id":"ce-1","book_id":"b1","attribute_path":"world.climate","value":"arid","canon_layer":"L1_axiom","lock_level":"hard","last_synced_at":"2026-05-29T12:00:00Z"}"#,
+            "\n",
+            r#"{"canon_entry_id":"ce-2","book_id":"b1","attribute_path":"world.gravity","value":1.0,"canon_layer":"L1_axiom","lock_level":"hard","last_synced_at":"2026-05-29T12:00:00Z"}"#,
+            "\n",
+            r#"{"_envelope":"seed_export_complete","snapshot_at":"2026-05-29T12:00:00Z","entry_count":2}"#,
+            "\n",
+        );
+        Mock::given(method("GET"))
+            .and(path("/v1/canon/b1/seed_export"))
+            .and(header("Authorization", "Bearer test-svid"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(ndjson, "application/x-ndjson"),
+            )
+            .mount(&srv)
+            .await;
+
+        let c = Client::new(ClientConfig {
+            base_url: srv.uri(),
+            svid: static_svid("test-svid"),
+            client_id: None,
+            timeout: None,
+        })
+        .unwrap();
+        let (entries, env) = c
+            .export_canon_for_seed("b1", None)
+            .await
+            .expect("ndjson stream");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].canon_entry_id, "ce-1");
+        assert_eq!(entries[1].attribute_path, "world.gravity");
+        assert_eq!(env.envelope, "seed_export_complete");
+        assert_eq!(env.entry_count, 2);
+        assert!(env.next_cursor.is_none());
+    }
+
+    #[tokio::test]
+    async fn export_canon_for_seed_paginates_with_cursor() {
+        let srv = MockServer::start().await;
+        let ndjson = concat!(
+            r#"{"canon_entry_id":"ce-3","book_id":"b1","attribute_path":"world.x","value":"y","canon_layer":"L2_seeded","lock_level":"soft","last_synced_at":"2026-05-29T12:00:00Z"}"#,
+            "\n",
+            r#"{"_envelope":"seed_export_complete","snapshot_at":"2026-05-29T12:00:00Z","entry_count":1,"next_cursor":"page-2"}"#,
+            "\n",
+        );
+        Mock::given(method("GET"))
+            .and(path("/v1/canon/b1/seed_export"))
+            .and(query_param("cursor", "page-1"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(ndjson, "application/x-ndjson"),
+            )
+            .mount(&srv)
+            .await;
+
+        let c = Client::new(ClientConfig {
+            base_url: srv.uri(),
+            svid: static_svid("x"),
+            client_id: None,
+            timeout: None,
+        })
+        .unwrap();
+        let (_entries, env) = c
+            .export_canon_for_seed("b1", Some("page-1"))
+            .await
+            .expect("paginated");
+        assert_eq!(env.next_cursor.as_deref(), Some("page-2"));
+    }
+
+    #[tokio::test]
+    async fn export_canon_for_seed_rejects_missing_envelope() {
+        let srv = MockServer::start().await;
+        let ndjson = r#"{"canon_entry_id":"ce-1","book_id":"b1","attribute_path":"a","value":1,"canon_layer":"L1_axiom","lock_level":"hard","last_synced_at":"2026-05-29T12:00:00Z"}"#;
+        Mock::given(method("GET"))
+            .and(path("/v1/canon/b1/seed_export"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(ndjson, "application/x-ndjson"),
+            )
+            .mount(&srv)
+            .await;
+        let c = Client::new(ClientConfig {
+            base_url: srv.uri(),
+            svid: static_svid("x"),
+            client_id: None,
+            timeout: None,
+        })
+        .unwrap();
+        let err = c
+            .export_canon_for_seed("b1", None)
+            .await
+            .expect_err("missing envelope");
+        assert!(matches!(err, Error::Decode(_)));
+    }
+
+    #[tokio::test]
+    async fn export_canon_for_seed_forbidden_without_acl() {
+        // L5.F.3 ACL: only world-service is permitted; other SVIDs get 403.
+        let srv = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/canon/b1/seed_export"))
+            .respond_with(ResponseTemplate::new(403))
+            .mount(&srv)
+            .await;
+        let c = Client::new(ClientConfig {
+            base_url: srv.uri(),
+            svid: static_svid("x"),
+            client_id: None,
+            timeout: None,
+        })
+        .unwrap();
+        let err = c
+            .export_canon_for_seed("b1", None)
+            .await
+            .expect_err("acl reject");
+        assert!(matches!(err, Error::Forbidden));
+    }
+
+    #[tokio::test]
+    async fn export_canon_for_seed_rejects_empty_book_id() {
+        // Validation only — no HTTP issued. Use a placeholder svid + base_url.
+        let c = Client::new(ClientConfig {
+            base_url: "http://localhost:0".into(),
+            svid: static_svid("x"),
+            client_id: None,
+            timeout: None,
+        })
+        .unwrap();
+        let err = c
+            .export_canon_for_seed("", None)
+            .await
+            .expect_err("empty book_id");
+        assert!(matches!(err, Error::Validation(_)));
     }
 }
