@@ -28,6 +28,16 @@ Conflict-checked: foundation branch (54 commits ahead) touches **0** files in kn
 - **D4-03 wiki-from-KG** — rich wiki **content** generation from the KG/entity (fixes H3: a real renderer for enriched lore; replaces empty `generateWikiStubs`).
 - Both become cycles in this effort (task size → **XXL**). Rationale: kill long-standing drift while we are in these services.
 
+## Execution decisions (locked 2026-05-30)
+- **Output language = Chinese (source-faithful).** Enriched lore is generated in Chinese to match the 封神演义 original tone; translation is a later/separate step. Aligns with knowledge-service's CJK-aware pipeline. Eval/anachronism checks must operate on Chinese.
+- **Cost posture = conservative / batched.** RAID runs with **low DPS (2–3)**, executes cycles in **batches**, **pause-on-quota** (Max subscription), and **stops for human review between batches** before continuing. Demo target = batch ending at C14.
+
 ## Defaults (overridable)
 - Corpora: public-domain classical Chinese texts for the demo; modern/news sources need licensing review gated to P3.
 - Admission: **always human-gate** initially; auto-admit thresholds calibrated later from eval data.
+
+## Inputs the author must supply at execution time (not blocking the plan)
+- **封神演义 source text** (form? import via book-service?) — needed for C7/C13/C14 live-smoke. *(Verified: no Fengshen data exists in the repo yet.)*
+- **Cultural corpora** (山海经 / Shang–Zhou history) + license — for technique (b), C10.
+- **Provider-registry entries** (LLM gen + embedding + verify model) — BYOK, author-controlled.
+- **Promotion authority** — who may promote enriched→canon (book owner? test account?).

@@ -15,4 +15,6 @@ This task uses the canonical RAID spec without amendment:
 - Cross-service cycles (C1, C4, C5, C10, C13, C14) MUST carry a live-smoke evidence token at VERIFY (real call against a stacked-up knowledge-service/glossary/book-service), per CLAUDE.md.
 - Platform cycles C4 (K14 event pipeline) + C5 (D4-03 wiki-from-KG) edit glossary/knowledge-service — additive/backward-compatible only; conflict-checked safe (foundation touches 0 files there).
 - Isolation: never modify the mmo-rpg foundation work (`world-service`, `game-server`, etc.) or other agents' files.
-- Cost: P1 techniques only until the eval gate (C12); fabrication/re-cook gated.
+- Cost: P1 techniques only until the eval gate (C15); fabrication/re-cook gated.
+- **Cost posture (locked): conservative / batched** — DPS 2–3, run cycles in batches, pause-on-quota (Max subscription), stop for human review between batches. First batch target = C14 (demo).
+- **Output language = Chinese** (source-faithful); eval operates on Chinese.
