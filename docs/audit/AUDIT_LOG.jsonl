@@ -376,3 +376,27 @@
 {"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment-c0","phase":"post-review","agent":"scope-guard","action":"verdict","verdict":"CLEAR","guardrails_pass":true}
 {"ts": "2026-05-30T03:15:48.169118", "task": "lore-enrichment-c0", "phase": "post-review", "agent": "main", "action": "phase_complete", "evidence": "Scope Guard CLEAR; guardrails pass:true (6 checked, 0 matched); all 5 scope checks pass; AUTO gate per AMAW (no human wait)"}
 {"ts": "2026-05-30T03:16:49.091161", "task": "lore-enrichment-c0", "phase": "session", "agent": "main", "action": "phase_complete", "evidence": "SESSION_PATCH appended (C0 + RAID-policy fix + tooling-incompat discovery + next steps); CYCLE_LOG C0=DONE; DEFERRED 042 added"}
+{"ts": "2026-05-30T03:17:37.476348", "task": "lore-enrichment-c0", "phase": "commit", "agent": "main", "action": "phase_complete", "evidence": "committed C0 bootstrap (28 files); raid.md left untracked per user"}
+{"ts": "2026-05-30T03:19:48.727505", "task": "lore-enrichment-c0", "phase": "retro", "agent": "main", "action": "phase_complete", "evidence": "lesson 444db0ef added (ported RAID tooling carries origin-task schema assumptions); project memory written (lore-enrichment-raid-bootstrap)"}
+{"ts": "2026-05-30T03:19:48.727505", "task": "lore-enrichment-c0", "phase": "retro", "agent": "main", "action": "sprint_complete", "evidence": "lesson 444db0ef added (ported RAID tooling carries origin-task schema assumptions); project memory written (lore-enrichment-raid-bootstrap)"}
+{"ts": "2026-05-29T20:31:37Z", "event": "coordinator_next_cycle_emitted", "cycle": 1}
+{"ts": "2026-05-29T20:34:02Z", "event": "coordinator_next_cycle_emitted", "cycle": 1}
+{"ts":"2026-05-29T20:39:22Z","event":"startup_drift_check_inconclusive","cycle":1,"cd":"","rw":""}
+{"ts":"2026-05-29T20:39:22Z","event":"startup_verifier_complete","cycle":1,"steps":6}
+{"ts": "2026-05-29T20:39:40Z", "event": "in_progress_init", "cycle": 1, "title": "KG-read port + verifies"}
+{"ts": "2026-05-29T20:41:33Z", "event": "in_progress_update", "cycle": 1, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T20:41:53Z", "event": "in_progress_update", "cycle": 1, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-05-29T20:41:59Z", "event": "in_progress_update", "cycle": 1, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T20:43:20Z", "event": "in_progress_update", "cycle": 1, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-29T20:48:16Z","event":"secret_scan_skipped","cycle":1,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T20:48:40Z", "event": "in_progress_update", "cycle": 1, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T20:51:17Z","event":"verify_cycle_pass","cycle":1}
+{"ts": "2026-05-29T20:51:27Z", "event": "in_progress_update", "cycle": 1, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T20:51:48Z", "event": "in_progress_update", "cycle": 1, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T20:52:09Z", "event": "in_progress_update", "cycle": 1, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T20:52:20Z", "event": "in_progress_update", "cycle": 1, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "review", "event": "adversary_findings", "blockers": 0, "majors": 0, "minors": 1, "notes": 3, "model": "main-opus(self-review; Agent tool unavailable)"}
+{"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "qc", "event": "scope_guard", "result": "CLEAR"}
+{"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "post_review", "event": "scope_guard", "result": "CLEAR"}
+{"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "session", "event": "dps_count", "count": 1, "note": "in-place fallback: worktrees-create base branch mismatch (mmo-rpg/foundation-mega-task lacks C0 skeleton); Agent tool unavailable so DPS+reviews run in-place per coordinator fallback"}
+{"ts": "2026-05-29T20:53:00Z", "event": "in_progress_update", "cycle": 1, "phase": "COMMIT", "retry": 0}

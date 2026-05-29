@@ -7,7 +7,7 @@
 | Cycle | Title | Status | DPS | Commit | Verify / notes |
 |---|---|---|---|---|---|
 | 0 | Bootstrap service skeleton | DONE | 1 | 9272ffbc | live smoke /health 200 ok (RestartCount=0); pytest 3/3; gateway nest build + jest 9/9. default+AMAW, not /raid. |
-| 1 | KG-read port + verifies | PENDING | 2 | | dep C0; cross-service live-smoke (read graph-stats) |
+| 1 | KG-read port + verifies | DONE | 1 | | verify-cycle-1.sh exit 0; live smoke: read graph-stats from running knowledge-service (HTTP 401, reachability+scoping confirmed); 27 pytest pass; adversary 0blk/0maj/1min/3note; scope-guard CLEAR. In-place fallback (worktree base-branch mismatch; Agent tool unavailable). H1/H2/M4 recorded in docs/raid/findings/C1-verifies.md |
 | 2 | Data model + H0 | PENDING | 2 | | dep C0; migrations + H0 lifecycle |
 | 3 | API contract freeze | PENDING | 2 | | dep C0; OpenAPI + stub handlers incl. author promote |
 | 4 | PLATFORM K14 event pipeline | PENDING | 2 | | dep C1; glossary→KG auto-sync; cross-service live-smoke |
