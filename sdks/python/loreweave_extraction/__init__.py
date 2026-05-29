@@ -61,12 +61,32 @@ from loreweave_extraction.extractors.summarize import (
     LevelSummary,
     summarize_level,
 )
-from loreweave_extraction.pass2 import Pass2Candidates, extract_pass2
+from loreweave_extraction.pass2 import FilterStatus, Pass2Candidates, extract_pass2
+from loreweave_extraction.pass2_filter import (
+    FilterDecision,
+    PrecisionFilterConfig,
+    apply_precision_filter,
+    load_candidates_from_dump,
+)
+from loreweave_extraction.extractors.precision_filter_prompts import (
+    NO_THINK_PREFIX,
+    build_precision_prompt,
+    precision_prompt_body,
+)
 
 __all__ = [
     # Orchestration
     "Pass2Candidates",
+    "FilterStatus",
     "extract_pass2",
+    # Cycle 72 — Pass2 precision filter
+    "apply_precision_filter",
+    "PrecisionFilterConfig",
+    "FilterDecision",
+    "load_candidates_from_dump",
+    "build_precision_prompt",
+    "precision_prompt_body",
+    "NO_THINK_PREFIX",
     # Per-op extractors
     "extract_entities",
     "extract_relations",

@@ -39,19 +39,38 @@ from loreweave_extraction.extractors.relation import (
     extract_relations,
 )
 
-__all__ = ["Pass2Candidates", "extract_pass2"]
+__all__ = ["Pass2Candidates", "FilterStatus", "extract_pass2"]
+
+
+# Cycle-72 Pass2 precision filter status. "skipped" = filter not run
+# (default); "applied" = filter ran and returned verdicts; "degraded"
+# = filter LLM call failed and Pass A candidates were returned
+# unchanged. Caller can inspect to know whether downstream metrics
+# should attribute results to filter or raw extraction.
+FilterStatus = Literal["applied", "degraded", "skipped"]
 
 
 @dataclass
 class Pass2Candidates:
     """All four candidate lists produced by `extract_pass2`. Caller
     feeds these into a Neo4j write layer (or equivalent) — the library
-    has no persistence opinion."""
+    has no persistence opinion.
+
+    Cycle 72 — Pass2 precision filter extension:
+      - `filter_status` marks whether the optional precision filter
+        ran. Default ``"skipped"`` preserves the pre-cycle-72 contract
+        for every caller that doesn't pass a filter config.
+      - `filter_coverage` records the per-category fraction of items
+        the filter actually returned a verdict for (1.0 when no items
+        existed in the category — vacuously covered).
+    """
 
     entities: list[LLMEntityCandidate] = field(default_factory=list)
     relations: list[LLMRelationCandidate] = field(default_factory=list)
     events: list[LLMEventCandidate] = field(default_factory=list)
     facts: list[LLMFactCandidate] = field(default_factory=list)
+    filter_status: FilterStatus = "skipped"
+    filter_coverage: dict[str, float] = field(default_factory=dict)
 
     def is_empty(self) -> bool:
         return not (self.entities or self.relations or self.events or self.facts)

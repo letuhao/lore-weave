@@ -1,0 +1,246 @@
+{
+  "entities": [
+    {
+      "name": "Bụt",
+      "kind": "concept"
+    },
+    {
+      "name": "Tấm",
+      "kind": "person"
+    },
+    {
+      "name": "Cám",
+      "kind": "person"
+    },
+    {
+      "name": "cá bống",
+      "kind": "artifact"
+    },
+    {
+      "name": "dì ghẻ",
+      "kind": "person"
+    },
+    {
+      "name": "vua",
+      "kind": "person"
+    },
+    {
+      "name": "giày thêu",
+      "kind": "artifact"
+    },
+    {
+      "name": "giếng",
+      "kind": "place"
+    },
+    {
+      "name": "ngựa quý",
+      "kind": "artifact"
+    },
+    {
+      "name": "hội lớn",
+      "kind": "concept"
+    },
+    {
+      "name": "lọ",
+      "kind": "artifact"
+    },
+    {
+      "name": "quần áo lụa là",
+      "kind": "artifact"
+    },
+    {
+      "name": "giường",
+      "kind": "artifact"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Bụt",
+      "predicate": "instructs",
+      "object": "Tấm",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "child_of",
+      "object": "mẹ ruột Tấm",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "stepchild_of",
+      "object": "dì ghẻ",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "vua",
+      "predicate": "courts",
+      "object": "Tấm",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Cám",
+      "predicate": "sibling_of",
+      "object": "Tấm",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "works_for",
+      "object": "dì ghẻ",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "helps",
+      "object": "cá bống",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "owns",
+      "object": "cá bống",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "follows",
+      "object": "Bụt",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "lives_in",
+      "object": "cung",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Cám",
+      "predicate": "lives_with",
+      "object": "dì ghẻ",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "dì ghẻ",
+      "predicate": "married_to",
+      "object": "cha Tấm",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "born_from",
+      "object": "giếng",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "rents",
+      "object": "giường",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "dì ghẻ",
+      "predicate": "imprisoned_by",
+      "object": "Tấm",
+      "polarity": "negate"
+    }
+  ],
+  "events": [
+    {
+      "summary": "After Tấm cries over the task, Bụt sends a flock of sparrows to assist her in sorting rice and barley.",
+      "participants": [
+        "Bụt",
+        "chim sẻ"
+      ]
+    },
+    {
+      "summary": "After Tấm cries over her stolen shrimp, Bụt appears and tells her to release a small bống fish into the well and feed it rice daily.",
+      "participants": [
+        "Bụt",
+        "Tấm"
+      ]
+    },
+    {
+      "summary": "After Tấm discovers her fish missing and cries again, Bụt appears and commands her to bury the fish bones in four jars under the four legs of the bed.",
+      "participants": [
+        "Bụt",
+        "Tấm"
+      ]
+    },
+    {
+      "summary": "Cám tricks Tấm into bathing and transfers all of Tấm's shrimp to her own basket, returning home first.",
+      "participants": [
+        "Cám",
+        "Tấm"
+      ]
+    },
+    {
+      "summary": "After learning of Tấm's daily ritual, the stepmother and Cám lure Tấm away to graze cattle and cook the bống fish for dinner.",
+      "participants": [
+        "dì ghẻ",
+        "Cám",
+        "Tấm"
+      ]
+    },
+    {
+      "summary": "After their mother's death and father's passing, Tấm and Cám live with their stepmother, who favors Cám over Tấm.",
+      "participants": [
+        "Tấm",
+        "Cám",
+        "dì ghẻ"
+      ]
+    },
+    {
+      "summary": "Tấm uncovers the buried jars, finding silk clothes, embroidered shoes, and a noble horse.",
+      "participants": [
+        "Tấm"
+      ]
+    },
+    {
+      "summary": "Tấm successfully tries on the shoe and is brought to the palace by the king to become empress.",
+      "participants": [
+        "Tấm",
+        "vua"
+      ]
+    },
+    {
+      "summary": "The stepmother mixes rice and barley, requiring Tấm to separate them before she can attend the festival.",
+      "participants": [
+        "dì ghẻ",
+        "Tấm"
+      ]
+    },
+    {
+      "summary": "The king picks up the lost shoe and proclaims that any girl who fits it perfectly will be married to him as queen.",
+      "participants": [
+        "vua"
+      ]
+    },
+    {
+      "summary": "Tấm diligently gathers a full basket of shrimp, while Cám plays and fails to catch any.",
+      "participants": [
+        "Tấm",
+        "Cám"
+      ]
+    },
+    {
+      "summary": "Tấm consistently feeds rice to the bống fish every meal, treating it as her closest friend.",
+      "participants": [
+        "Tấm",
+        "cá bống"
+      ]
+    },
+    {
+      "summary": "While traveling to the festival, Tấm drops one of her embroidered shoes into a body of water.",
+      "participants": [
+        "Tấm"
+      ]
+    },
+    {
+      "summary": "The king announces a large gathering, inviting all citizens to celebrate.",
+      "participants": [
+        "vua"
+      ]
+    }
+  ]
+}

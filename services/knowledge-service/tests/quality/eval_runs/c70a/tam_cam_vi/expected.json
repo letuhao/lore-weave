@@ -1,0 +1,145 @@
+{
+  "entities": [
+    {
+      "name": "Tấm",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "Cám",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "dì ghẻ",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "Bụt",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "vua",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "cá bống",
+      "kind": "person",
+      "aliases": [
+        "bống"
+      ]
+    },
+    {
+      "name": "yếm đỏ",
+      "kind": "artifact",
+      "aliases": []
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Tấm",
+      "predicate": "stepsibling_of",
+      "object": "Cám",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Cám",
+      "predicate": "child_of",
+      "object": "dì ghẻ",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "stepchild_of",
+      "object": "dì ghẻ",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Bụt",
+      "predicate": "helps",
+      "object": "Tấm",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "vua",
+      "predicate": "married_to",
+      "object": "Tấm",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "Cám lừa Tấm xuống tắm rồi cướp giỏ tép của Tấm",
+      "participants": [
+        "Tấm",
+        "Cám"
+      ]
+    },
+    {
+      "summary": "Bụt cho Tấm con cá bống làm bạn",
+      "participants": [
+        "Bụt",
+        "Tấm",
+        "cá bống"
+      ]
+    },
+    {
+      "summary": "Dì ghẻ và Cám lừa Tấm đi chăn trâu rồi giết cá bống",
+      "participants": [
+        "dì ghẻ",
+        "Cám",
+        "Tấm",
+        "cá bống"
+      ]
+    },
+    {
+      "summary": "Bụt sai đàn chim sẻ xuống giúp Tấm nhặt thóc",
+      "participants": [
+        "Bụt",
+        "Tấm"
+      ]
+    },
+    {
+      "summary": "Vua ướm giày tìm chủ nhân và cưới Tấm về làm hoàng hậu",
+      "participants": [
+        "vua",
+        "Tấm"
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "kind": "entity",
+      "name": "cha Tấm",
+      "reason": "Backstory reference — father died before the events; not an actor"
+    },
+    {
+      "kind": "entity",
+      "name": "mẹ ruột Tấm",
+      "reason": "Backstory reference — birth mother died before the events; not an actor"
+    },
+    {
+      "kind": "entity",
+      "name": "đàn chim sẻ",
+      "reason": "Generic flock helping Tấm; agency belongs to Bụt who summoned them"
+    },
+    {
+      "kind": "event",
+      "summary": "Cám bắt được nhiều tép hơn Tấm",
+      "reason": "The opposite happens — Cám doesn't bother bắt tép, just steals from Tấm"
+    },
+    {
+      "kind": "entity",
+      "name": "hoàng hậu",
+      "reason": "Title bestowed on Tấm at the end; folds into Tấm's role, not a separate entity"
+    },
+    {
+      "kind": "entity",
+      "name": "giếng",
+      "reason": "Unnamed common-noun location ('the well'), not a proper-noun entity"
+    }
+  ]
+}
