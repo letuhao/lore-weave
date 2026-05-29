@@ -53,10 +53,11 @@ require (
 	github.com/loreweave/foundation/pkg/metrics v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 
-	// Cycle 37 — L7.D incident_flow_test (incident-bot + postmortem-bot)
+	// Cycle 37 — L7.D incident_flow_test + L7.L statuspage_test
 	github.com/loreweave/foundation/contracts/incidents v0.0.0
 	github.com/loreweave/foundation/services/incident-bot v0.0.0
 	github.com/loreweave/foundation/services/postmortem-bot v0.0.0
+	github.com/loreweave/foundation/services/statuspage-updater v0.0.0
 )
 
 replace github.com/loreweave/foundation/services/migration-orchestrator => ../../services/migration-orchestrator
@@ -97,9 +98,11 @@ replace github.com/loreweave/foundation/pkg/metrics => ../../pkg/metrics
 
 replace github.com/loreweave/foundation/infra/k8s/admission-webhook => ../../infra/k8s/admission-webhook
 
-// Cycle 37 — L7.D incident-bot + postmortem-bot + shared incidents contract
+// Cycle 37 — L7.D incident-bot + postmortem-bot + L7.L statuspage-updater + shared incidents contract
 replace github.com/loreweave/foundation/contracts/incidents => ../../contracts/incidents
 
 replace github.com/loreweave/foundation/services/incident-bot => ../../services/incident-bot
 
 replace github.com/loreweave/foundation/services/postmortem-bot => ../../services/postmortem-bot
+
+replace github.com/loreweave/foundation/services/statuspage-updater => ../../services/statuspage-updater
