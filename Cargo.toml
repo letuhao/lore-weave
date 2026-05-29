@@ -52,6 +52,12 @@ members = [
     # + `#[handles_event("...")]` attribute (Q-L4B-1). Separate crate because
     # proc-macro = true crates cannot ship runtime types in the same crate.
     "crates/dp-kernel-macros",
+    # Cycle 25 — L5.F.4 Rust HTTP/JSON client for glossary-service canon
+    # RPCs (cycle 25 L5.F). Q-L5-4 LOCKED: HTTP/JSON V1. Mirror of the Go
+    # client at `clients/go/glossary_client/`. Used by Rust services
+    # (world-service Rust shards, future roleplay-service Rust shards) to
+    # call glossary-service canon RPCs (read + write + seed-export).
+    "clients/rust/glossary_client",
 ]
 
 [workspace.package]

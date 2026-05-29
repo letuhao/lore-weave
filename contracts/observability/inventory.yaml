@@ -583,6 +583,39 @@ metrics:
     source: contracts/lifecycle::ServiceMode emitted by each service health-endpoint
     cardinality_notes: 'service ≤ 20 = ≤ 20 series.'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L5.E — Canon cache (RAID cycle 25)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_canon_cache_hits_total
+    kind: counter
+    layer: L5
+    shipped_cycle: 25
+    labels: [reality_id]
+    description: 'cumulative cache hits in the L5.E per-reality canon cache (contracts/prompt/canon_cache.go + crates/dp-kernel/src/canon_cache.rs). Combined with lw_canon_cache_misses_total, drives the L5.E.4 hit-rate ≥ 90% SLO via recording rule lw_canon_cache_hit_rate{reality_id} = hits / (hits + misses). Q-L5-1 event-driven invalidation is PRIMARY; this counter tells SRE if the TTL fallback is firing instead.'
+    owner: platform
+    source: contracts/prompt::Cache.metrics.IncHit + dp-kernel::canon_cache::MetricsSink.inc_hit
+    cardinality_notes: 'reality_id is HIGH-cardinality (1 series per active reality). At V1 = 100 realities = 100 series; V3 = 10K realities = 10K series. Within 70K per-reality budget.'
+
+  - name: lw_canon_cache_misses_total
+    kind: counter
+    layer: L5
+    shipped_cycle: 25
+    labels: [reality_id]
+    description: 'cumulative cache misses in the L5.E canon cache. Pairs with lw_canon_cache_hits_total to compute hit-rate. Spike in misses = stale invalidation pattern or capacity issue.'
+    owner: platform
+    source: contracts/prompt::Cache.metrics.IncMiss + dp-kernel::canon_cache::MetricsSink.inc_miss
+    cardinality_notes: 'reality_id = 1 series per reality (matches hits).'
+
+  - name: lw_canon_cache_invalidations_total
+    kind: counter
+    layer: L5
+    shipped_cycle: 25
+    labels: [reality_id]
+    description: 'cumulative invalidations issued (Q-L5-1 PRIMARY path — canon_writer post-UPSERT). Sustained zero on an active reality = canon_writer NOT calling Invalidate (Q-L5-1 violation; TTL fallback compensates but the hit-rate degrades).'
+    owner: platform
+    source: contracts/prompt::Cache.metrics.AddInvalidations + dp-kernel::canon_cache::MetricsSink.add_invalidations
+    cardinality_notes: 'reality_id = 1 series per reality.'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

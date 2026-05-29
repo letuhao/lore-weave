@@ -253,6 +253,52 @@ services:
           - publisher
         principal_mode: requires_user
 
+  # ── Cycle 25 (L5.F) — glossary-service RPC entries (canon read + write +
+  # seed-export). Per Q-L5-4 LOCKED transport = HTTP/JSON V1.
+  - name: glossary-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/glossary-service
+    notes: |
+      L5.F.3 RPC declarations for glossary-service canon RPCs.
+      Companion to the existing `glossary-service` service entry — this
+      "-rpcs" entry holds the RPC-level allowed_callers list per the
+      cycle-22 L4.M pattern (separate entry so the cycle-6 table-grant
+      lint sees the unchanged shape).
+
+      Q-L5-4 LOCKED: HTTP/JSON V1 (canon_read.yaml, canon_write.yaml,
+      seed_export.yaml). gRPC V2+ if perf demands.
+
+      Q-L5-5 LOCKED: WriteCanonEntry server impl MUST invoke
+      canon_guardrail (L5.I.3) pre-write. Cycle 25 ships the interface
+      only; full impl downstream.
+
+      Roleplay-service is permitted GetCanonEntry / ListCanonEntries —
+      hot prompt-assembly path. World-service additionally permitted
+      ExportCanonForSeed (cycle 26+ L5.G reality seeder).
+      Knowledge-service permitted WriteCanonEntry for the canon-extraction
+      worker (cycle 26+ canon promotion path).
+    rpcs:
+      GetCanonEntry:
+        allowed_callers:
+          - roleplay-service
+          - world-service
+          - knowledge-service
+        principal_mode: either
+      ListCanonEntries:
+        allowed_callers:
+          - roleplay-service
+          - world-service
+          - knowledge-service
+        principal_mode: either
+      WriteCanonEntry:
+        allowed_callers:
+          - knowledge-service
+          - admin-cli
+        principal_mode: requires_user
+      ExportCanonForSeed:
+        allowed_callers:
+          - world-service
+        principal_mode: system_only
+
   # ── Cycle 11 (L2.K) — retention-worker (SEPARATE binary from archive-worker)
   - name: retention-worker
     svid_spiffe_id: spiffe://loreweave.dev/sa/retention-worker

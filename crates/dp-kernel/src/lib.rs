@@ -100,6 +100,7 @@
 //! re-exports.
 
 pub mod aggregate;
+pub mod canon_cache;
 pub mod capacity;
 pub mod dependencies;
 pub mod entity_status;
