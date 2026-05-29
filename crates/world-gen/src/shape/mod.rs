@@ -19,11 +19,16 @@
 //! See [`dispatch`] for [`ShapeRegistry`] and [`DispatchMode`] (the wire-up).
 //! See [`ellipse`] for the v3.0 algorithm extracted as [`ellipse::EllipseGenerator`].
 
+pub mod anthropic;
 pub mod coastline;
 pub mod csg;
 pub mod dispatch;
 pub mod ellipse;
+pub mod llm;
+pub mod ollama;
+pub mod openai;
 pub mod polar;
+pub mod postgres_cache;
 pub mod raster;
 pub mod sdf;
 pub mod slime;
@@ -37,6 +42,14 @@ pub use dispatch::{
     engine_v3_4_weights, engine_v3_6_weights,
 };
 pub use ellipse::EllipseGenerator;
+pub use anthropic::AnthropicProvider;
+pub use llm::{
+    DispatchCache, InMemoryDispatchCache, LlmDecision, LlmError, LlmProvider, LlmPrompt,
+    MockLlmProvider, MockTextProvider, TextPrompt, TextProvider,
+};
+pub use ollama::OllamaProvider;
+pub use openai::OpenAIProvider;
+pub use postgres_cache::{PostgresCacheError, PostgresDispatchCache};
 pub use polar::{PolarGenerator, PolarTemplate};
 pub use raster::MarchingNoiseGenerator;
 pub use sdf::{CapsuleTemplate, SdfCapsuleChainGenerator};
@@ -139,6 +152,46 @@ pub struct ShapeContext {
     pub edge_jitter: f32,
     /// Inclusive vertex-count range. Generators clamp to `[3, range.1.max(3)]`.
     pub vertex_count_range: (usize, usize),
+    /// **v4.3b** typed parameter override. When `Some(ParamOverride::Foo {..})`
+    /// is set AND the dispatched generator matches `Foo`, the generator
+    /// reads the override fields. Non-matching variants are ignored;
+    /// generators without override support drop this silently. Populated
+    /// by `DispatchMode::Llm` from its provider's [`LlmDecision`]; all
+    /// non-LLM modes leave it `None`.
+    pub params: Option<ParamOverride>,
+}
+
+/// **v4.3b** typed parameter override returned by [`LlmProvider::pick`]
+/// alongside a `ShapeKind`. One variant per generator that exposes
+/// LLM-tunable knobs. Variants are intentionally minimal in v4.3b —
+/// they cover the load-bearing creative knobs only:
+///
+/// - [`ParamOverride::Ellipse`] — `aspect_ratio` (1.0 = circle, 2.0 = 2:1)
+/// - [`ParamOverride::Boolean`] — template variant (Union / WedgeCut /
+///   etc.) plus an optional `pieces_kept`
+/// - [`ParamOverride::Stamp`] — `template_id` (selects which signature
+///   continent silhouette to render)
+///
+/// Generators not listed here ignore params entirely in v4.3b; v4.3d
+/// extends the enum as more generators get LLM-tunable knobs (Slime
+/// template, SDF template, MarchingNoise island_count, Polar `m`).
+#[derive(Debug, Clone)]
+pub enum ParamOverride {
+    Ellipse {
+        /// Major / minor axis ratio. `1.0` = circle. Clamped to `[0.5,
+        /// 3.0]` by the generator before use.
+        aspect_ratio: Option<f32>,
+    },
+    Boolean {
+        /// Pick a specific [`BooleanTemplate`] instead of the per-seed
+        /// default selection.
+        template: Option<crate::shape::csg::BooleanTemplate>,
+    },
+    Stamp {
+        /// Pick a specific stamp template by zero-based index.
+        /// Out-of-range falls back to the seed-driven default.
+        template_id: Option<u32>,
+    },
 }
 
 /// Output of [`ShapeGenerator::generate`]. Carries the rendered polygons

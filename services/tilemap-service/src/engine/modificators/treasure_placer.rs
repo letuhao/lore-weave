@@ -345,6 +345,7 @@ mod tests {
             treasure_tiers: tiers,
             biome_selection_rules: None,
             inherit_treasure_from: inherit.map(|s| ZoneId(s.to_string())),
+            biome_theme: None,
         }
     }
 
@@ -355,6 +356,8 @@ mod tests {
             zones,
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
+            background_biome: None,
         }
     }
 

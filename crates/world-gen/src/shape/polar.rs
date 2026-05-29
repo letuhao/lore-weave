@@ -220,6 +220,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.15,
             vertex_count_range: (32, 48),
+            params: None,
         }
     }
 
@@ -237,6 +238,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.35,
             vertex_count_range: (24, 48),
+            params: None,
         }
     }
 

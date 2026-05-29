@@ -355,6 +355,8 @@ mod tests {
             zones: vec![],
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
+            background_biome: None,
         };
         let result = library_for_template(&template);
         let full = engine_biome_library();
@@ -385,6 +387,8 @@ mod tests {
                     biome_name: WorldBiome::HotDesert,
                 },
             }),
+            decoration_density: None,
+            background_biome: None,
         };
         let result = library_for_template(&template);
         let full = engine_biome_library();

@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use crate::engine::build_state::TilemapBuildState;
 use crate::engine::modificators::{
-    ConnectionsPlacer, ObstacleFillPlacer, ObstacleSourcePlacer, RiverPlacer, RoadPlacer,
-    TerrainPainter, TreasurePlacer,
+    BiomeThemePainter, ConnectionsPlacer, DecorationPlacer, ObstacleFillPlacer,
+    ObstacleSourcePlacer, RiverPlacer, RoadPlacer, TerrainPainter, TreasurePlacer,
 };
 use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
@@ -132,12 +132,14 @@ fn place_tilemap_inner(
     let mut state = TilemapBuildState::from_zones(tiled, grid);
     let mut modificators = ModificatorRegistry::new();
     modificators.add(Box::new(TerrainPainter));
+    modificators.add(Box::new(BiomeThemePainter));
     modificators.add(Box::new(ConnectionsPlacer));
     modificators.add(Box::new(TreasurePlacer));
     modificators.add(Box::new(RoadPlacer));
     modificators.add(Box::new(ObstacleSourcePlacer));
     modificators.add(Box::new(RiverPlacer));
     modificators.add(Box::new(ObstacleFillPlacer));
+    modificators.add(Box::new(DecorationPlacer));
     let modificator_timings = {
         let mut ctx = ModificatorContext {
             template,
@@ -228,6 +230,7 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         }
     }
 
@@ -244,6 +247,8 @@ mod tests {
             ],
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
+            background_biome: None,
         }
     }
 
@@ -316,12 +321,14 @@ mod tests {
             // here — `fixture()` declares no `treasure_tiers`.
             let mut modificators = ModificatorRegistry::new();
             modificators.add(Box::new(TerrainPainter));
+            modificators.add(Box::new(BiomeThemePainter));
             modificators.add(Box::new(ConnectionsPlacer));
             modificators.add(Box::new(TreasurePlacer));
             modificators.add(Box::new(RoadPlacer));
             modificators.add(Box::new(ObstacleSourcePlacer));
             modificators.add(Box::new(RiverPlacer));
             modificators.add(Box::new(ObstacleFillPlacer));
+            modificators.add(Box::new(DecorationPlacer));
             {
                 let mut ctx = ModificatorContext {
                     template: &template,
@@ -404,10 +411,16 @@ mod tests {
             // placer, the river's Mountain/Lake tags now placed pre-erosion.
             let mut pre_river = ModificatorRegistry::new();
             pre_river.add(Box::new(TerrainPainter));
+            // BiomeThemePainter registered for production-parity; no-ops here
+            // when fixture template's biome_theme + background_biome are None.
+            pre_river.add(Box::new(BiomeThemePainter));
             pre_river.add(Box::new(ConnectionsPlacer));
             pre_river.add(Box::new(TreasurePlacer));
             pre_river.add(Box::new(RoadPlacer));
             pre_river.add(Box::new(ObstacleSourcePlacer));
+            // DecorationPlacer registered for production-parity; no-ops here
+            // when fixture template's decoration_density is None.
+            pre_river.add(Box::new(DecorationPlacer));
             {
                 let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state, registry: &reg };
                 pre_river.execute(&mut ctx).expect("pre-river pipeline");
@@ -417,6 +430,7 @@ mod tests {
             // Half 2 — RiverPlacer alone, on the same state.
             let mut river = ModificatorRegistry::new();
             river.add(Box::new(RiverPlacer));
+            river.add(Box::new(DecorationPlacer));
             {
                 let mut ctx = ModificatorContext { template: &template, grid, seed, state: &mut state, registry: &reg };
                 river.execute(&mut ctx).expect("river pipeline");
@@ -509,6 +523,7 @@ mod tests {
                 treasure_tiers,
                 biome_selection_rules: None,
                 inherit_treasure_from: None,
+                biome_theme: None,
             }
         };
         let template = TilemapTemplate {
@@ -520,6 +535,8 @@ mod tests {
             ],
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
+            background_biome: None,
         };
 
         let reg = Registry::load_default().unwrap();
@@ -539,12 +556,14 @@ mod tests {
             // border sealing here — itself `would_seal_a_gap`-gated.
             let mut modificators = ModificatorRegistry::new();
             modificators.add(Box::new(TerrainPainter));
+            modificators.add(Box::new(BiomeThemePainter));
             modificators.add(Box::new(ConnectionsPlacer));
             modificators.add(Box::new(TreasurePlacer));
             modificators.add(Box::new(RoadPlacer));
             modificators.add(Box::new(ObstacleSourcePlacer));
             modificators.add(Box::new(RiverPlacer));
             modificators.add(Box::new(ObstacleFillPlacer));
+            modificators.add(Box::new(DecorationPlacer));
             {
                 let mut ctx = ModificatorContext {
                     template: &template,
@@ -629,14 +648,24 @@ mod tests {
             names,
             [
                 "terrain_painter",
+                "biome_theme_painter",
                 "connections_placer",
                 "treasure_placer",
                 "road_placer",
                 "obstacle_source_placer",
                 "river_placer",
                 "obstacle_fill_placer",
+                "decoration_placer",
             ],
-            "per-modificator timing must list all seven in topological order",
+            // REGRESSION LOCK (LOW-3 from chunk-A /review-impl): pipeline
+            // order changes require updating BOTH this list AND the PR
+            // description explaining why the new ordering is intentional.
+            // The Kahn topo-sort + lexicographic tie-break makes this
+            // order deterministic — see engine/pipeline/registry.rs:96-110.
+            // Adding a new modificator without updating this assertion
+            // means the new placer's position in the pipeline is
+            // un-audited; reject by intent.
+            "per-modificator timing must list all eight in topological order",
         );
         // Total of per-stage durations should be the bulk of wall time
         // (impossible to assert an exact equality — Instant::now overhead /
