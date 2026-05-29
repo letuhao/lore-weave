@@ -738,6 +738,39 @@ metrics:
     source: contracts/prompt/canary_token.go::DefaultCanaryDetector.Detect (caller-side emit)
     cardinality_notes: 'intent ≤ 7 enumerated values per S09 §12Y.2 — 7 series total.'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L7.E + L7.G — Logging + Tracing libs (cycle 32)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_log_redactions_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 32
+    labels: [kind]
+    description: 'Cycle-32 L7.E.2/3 — count of log fields redacted by the structured-logger PII/Sensitive pipeline. kind ∈ {pii, sensitive}. A non-zero value at startup signals legitimate redaction discipline; a spike signals a regression that started leaking PII into log lines (caught at L7.E redactor seam, not at ingest scrubber).'
+    owner: platform
+    source: contracts/logging/logger.go::jsonLogger.Emit (caller-side emit via WithRedactionCounter)
+    cardinality_notes: 'kind ∈ {pii, sensitive} — 2 series total.'
+
+  - name: lw_trace_spans_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 32
+    labels: [service, kind, status]
+    description: 'Cycle-32 L7.G — count of spans exported by the foundation tracing library. service is the cycle-19 service-name (kebab-case); kind ∈ {internal, server, client, producer, consumer}; status ∈ {unset, ok, error}. Drives the cycle 33+ Tempo dashboard span-throughput panel + per-service trace volume budget.'
+    owner: platform
+    source: contracts/tracing/exporter.go::Exporter.Export (caller-side emit)
+    cardinality_notes: 'service × kind × status ≤ 40 services × 5 × 3 = 600 series ceiling.'
+
+  - name: lw_trace_sampling_decisions_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 32
+    labels: [decision, reason]
+    description: 'Cycle-32 L7.G — sampler decisions (counts dropped vs sampled). decision ∈ {drop, record_and_sample}; reason ∈ {probabilistic, force, parent_sampled, hint_drop}. Used to verify Q-L7-3 (no service mesh = sampler is in-library) is honored: per cycle-19 L4.H adaptive policy, prod default = 1% baseline + 100% on SEV0/SEV1.'
+    owner: platform
+    source: contracts/tracing/sampler.go::ProbabilisticSampler.ShouldSample (caller-side emit)
+    cardinality_notes: 'decision ∈ {drop, record_and_sample} × reason ∈ {probabilistic, force, parent_sampled, hint_drop} = 8 series total.'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

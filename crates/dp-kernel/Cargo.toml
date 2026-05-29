@@ -11,6 +11,15 @@ description = "Data-platform kernel — L2/L3/L4 event sourcing primitives (Even
 [lib]
 path = "src/lib.rs"
 
+[features]
+# Cycle 32 (L7.E) — compile-time prod-build flag. With `prod` enabled:
+#   - `logging::Level::Debug` is dropped at the Logger boundary
+#   - `logging::FieldKind::Sensitive` is dropped at all levels
+#   - `logging::JsonLogger::new_prod` refuses `NoopRedactor`
+# Default builds (no feature) keep dev visibility for ergonomic local work.
+default = []
+prod = []
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

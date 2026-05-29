@@ -113,6 +113,8 @@ pub mod event_store_pg;
 pub mod event_validator;
 pub mod lifecycle;
 pub mod load_aggregate;
+pub mod logging;
+pub mod tracing;
 pub mod metadata;
 pub mod observability;
 pub mod outbox;
