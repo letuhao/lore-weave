@@ -359,6 +359,33 @@ services:
           - world-service
         principal_mode: system_only
 
+  # ── Cycle 31 (L6.J.3) — provider-registry-service RPC entries used by
+  # the roleplay-service prompt-assembly path. Per CLAUDE.md provider
+  # gateway invariant: roleplay-service MUST NOT call provider SDKs
+  # directly — it resolves model_id → ProviderConfig via this RPC, then
+  # the LLM-gateway adapter performs the actual provider call.
+  #
+  # principal_mode: requires_user — BYOK credentials are user-scoped;
+  # the call must carry the actor user identity so provider-registry
+  # selects the right BYOK key.
+  - name: provider-registry-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/provider-registry-service
+    notes: |
+      L6.J.3 — RPC declarations for provider-registry-service. Cycle 31
+      ships the ACL surface only; the concrete HTTP/JSON client lives
+      in the LLM-gateway sub-program (foundation does NOT call provider
+      SDKs — CLAUDE.md provider gateway invariant + Q-L4D-1 LOCKED).
+
+      GetProviderConfig resolves a model_id to a ProviderConfig
+      (provider_name + model_ref + endpoint_url + training_on_input).
+      Cached client-side per L6.J acceptance criterion (5min TTL,
+      matches cycle 1 L1.B consent.go cache discipline).
+    rpcs:
+      GetProviderConfig:
+        allowed_callers:
+          - roleplay-service
+        principal_mode: requires_user
+
   # ── Cycle 11 (L2.K) — retention-worker (SEPARATE binary from archive-worker)
   - name: retention-worker
     svid_spiffe_id: spiffe://loreweave.dev/sa/retention-worker

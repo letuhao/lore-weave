@@ -1248,3 +1248,19 @@
 {"ts": "2026-05-29T15:05:59Z", "event": "in_progress_archived", "cycle": 30, "archived_to": "cycle-030-state.md"}
 {"ts":"2026-05-29T15:06:04Z","event":"recovery_halted","cycle":30,"reason":"in_progress_missing"}
 {"ts": "2026-05-29T15:06:04Z", "event": "escalation_written", "cycle": 30, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T15:07:30Z", "event": "coordinator_next_cycle_emitted", "cycle": 31}
+{"ts":"2026-05-29T15:08:41Z","event":"startup_drift_check_passed","cycle":31,"version":"v1.6"}
+{"ts":"2026-05-29T15:08:41Z","event":"startup_verifier_complete","cycle":31,"steps":6}
+{"ts": "2026-05-29T15:08:53Z", "event": "in_progress_init", "cycle": 31, "title": "L6 Prompt stack (H+I+J+K+L)"}
+{"ts": "2026-05-29T15:13:16Z", "event": "in_progress_update", "cycle": 31, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T15:13:51Z", "event": "in_progress_update", "cycle": 31, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T15:28:58Z", "event": "in_progress_update", "cycle": 31, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-05-29T15:32:55Z", "event": "in_progress_update", "cycle": 31, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T15:34:42Z", "event": "in_progress_archived", "cycle": 31, "archived_to": "cycle-031-state.md"}
+{"ts":"2026-05-29T15:34:45Z","event":"recovery_halted","cycle":31,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T15:34:46Z", "event": "escalation_written", "cycle": 31, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts":"2026-05-29T15:34:54Z","event":"worktree_removed","cycle":31,"name":"cycle-31-dps-1"}
+{"ts":"2026-05-29T15:34:54Z","event":"worktree_removed","cycle":31,"name":"cycle-31-dps-2"}
+{"ts":"2026-05-29T15:34:54Z","event":"worktree_removed","cycle":31,"name":"cycle-31-dps-3"}
+{"ts":"2026-05-29T15:34:54Z","event":"worktree_removed","cycle":31,"name":"cycle-31-dps-4"}
+{"ts":"2026-05-29T15:34:54Z","event":"worktree_removed","cycle":31,"name":"cycle-31-dps-5"}

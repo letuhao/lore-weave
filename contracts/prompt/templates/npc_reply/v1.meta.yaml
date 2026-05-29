@@ -1,0 +1,14 @@
+# Cycle 31 L6.K.2 — npc_reply template metadata (v1 skeleton).
+# Q-L6K-1 LOCKED: foundation ships EMPTY templates. Feature team owns copy.
+
+intent: npc_reply
+version: 1
+status: skeleton
+compatible_model_tiers:
+  - tier_high
+  - tier_mid
+expected_token_budget: 12000   # S09 §12Y.7 cap for npc_reply
+fixture_set: v1.fixtures/
+deprecated_at: null
+replay_window_days: 90
+owner: llm-logic-subprogram

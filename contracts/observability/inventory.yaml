@@ -725,6 +725,19 @@ metrics:
     source: infra/k8s/admission-webhook/capacity_checker.go::Checker.Review
     cardinality_notes: 'no labels — one histogram per webhook replica.'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L6.I — Prompt user-input wrap + canary token (cycle 31, Q-L6L-1)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_prompt_canary_leak_count
+    kind: counter
+    layer: L6
+    shipped_cycle: 31
+    labels: [intent]
+    description: 'Cycle-31 L6.I.3 canary detector — counts post-LLM-output responses containing the per-prompt canary token embedded in SectionSystem. A non-zero count signals prompt regurgitation / injection. Foundation V1 emits the counter only; LLM-safety sub-program (Q-L6L-1) wires fail-closed actions.'
+    owner: llm-safety
+    source: contracts/prompt/canary_token.go::DefaultCanaryDetector.Detect (caller-side emit)
+    cardinality_notes: 'intent ≤ 7 enumerated values per S09 §12Y.2 — 7 series total.'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

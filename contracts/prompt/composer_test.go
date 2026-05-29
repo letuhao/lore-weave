@@ -76,10 +76,13 @@ func newComposer(t *testing.T) (*DefaultComposer, *fakeEncoder, *InMemoryAuditWr
 }
 
 func validSections() SectionMap {
+	// Cycle 31 L6.I: user bytes are wrapped via input_wrapper before
+	// reaching the Composer. We use the literal marker shape here so
+	// tests don't take a cyclic dep on WrapUserInput's canary token.
 	return SectionMap{
 		SectionSystem:      []byte("you are a roleplay engine"),
 		SectionInstruction: []byte("describe the scene"),
-		SectionInput:       []byte("the player swings their sword"),
+		SectionInput:       []byte("<user_input>the player swings their sword</user_input>"),
 	}
 }
 
@@ -183,7 +186,7 @@ func TestAssemblePrompt_FailOnMissingSystem(t *testing.T) {
 	pc := ctxWithSession()
 	bad := SectionMap{
 		SectionInstruction: []byte("describe"),
-		SectionInput:       []byte("input"),
+		SectionInput:       []byte("<user_input>input</user_input>"),
 	} // no SectionSystem
 	b, err := c.AssemblePrompt(context.Background(), pc, bad)
 	if err == nil {

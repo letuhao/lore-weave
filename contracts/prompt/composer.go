@@ -147,13 +147,26 @@ var ErrComposerFailed = errors.New("prompt: composer failed")
 //   - Enforce per-intent token budgets (interface present; threshold
 //     check belongs to LLM-logic sub-program with real tokenizer).
 type DefaultComposer struct {
-	Encoder      ProviderEncoder
-	Audit        PromptAuditWriter
-	Safety       SafetyHooks
-	Consent      ConsentGate
-	TokenBudget  TokenBudgetGate
-	NewAuditID   func() string // returns UUID string; tests override
-	Now          func() int64  // returns unix nanos; tests override
+	Encoder     ProviderEncoder
+	Audit       PromptAuditWriter
+	Safety      SafetyHooks
+	Consent     ConsentGate
+	TokenBudget TokenBudgetGate
+	NewAuditID  func() string // returns UUID string; tests override
+	Now         func() int64  // returns unix nanos; tests override
+
+	// SectionRenderer renders each section's bytes before concatenation
+	// (cycle 31 L6.H.2). Defaults to DefaultSectionRenderer{} when nil.
+	SectionRenderer SectionRenderer
+
+	// SectionValidator enforces per-section structural rules
+	// (cycle 31 L6.H.3). Defaults to DefaultSectionValidator{} when nil.
+	SectionValidator SectionValidator
+
+	// Contracts maps Intent → required+optional sections (cycle 31
+	// L6.H.1). When nil, IntentContracts() is used. The LLM-logic
+	// sub-program overrides with template-specific contracts.
+	Contracts map[Intent]TemplateContract
 }
 
 // AssemblePrompt — see Composer interface comment for FAIL discipline
@@ -174,6 +187,23 @@ func (c *DefaultComposer) AssemblePrompt(ctx context.Context, pc PromptContext, 
 		return PromptBundle{}, fmt.Errorf("%w: %v", ErrComposerFailed, err)
 	}
 
+	// Cycle 31 L6.H.1 — enforce per-Intent required-section contract.
+	// Q-L6H-1: FAIL on any missing required section + any section
+	// outside the per-Intent contract.
+	if contract, ok := c.activeContracts()[pc.Intent]; ok {
+		if err := ValidateAgainstContract(contract, sections); err != nil {
+			return PromptBundle{}, fmt.Errorf("%w: %v", ErrComposerFailed, err)
+		}
+	}
+
+	// Cycle 31 L6.H.3 — per-section structural validators (e.g.,
+	// reject <user_input> markers in non-INPUT sections).
+	for sec, raw := range sections {
+		if err := c.SectionValidator.Validate(sec, raw); err != nil {
+			return PromptBundle{}, fmt.Errorf("%w: %v", ErrComposerFailed, err)
+		}
+	}
+
 	// Safety hooks (no-op V1; Q-L6L-1). PreAssembly may reject by
 	// returning an error → FAIL (don't best-effort).
 	if err := c.Safety.PreAssembly(ctx, pc, sections); err != nil {
@@ -183,10 +213,14 @@ func (c *DefaultComposer) AssemblePrompt(ctx context.Context, pc PromptContext, 
 		return PromptBundle{}, fmt.Errorf("%w: consent gate: %v", ErrComposerFailed, err)
 	}
 
-	// Render = concatenate sections in canonical order, each prefixed
-	// with its section header. **This is the rendered text that NEVER
-	// leaves the Composer call stack** (body-never-stored).
-	rendered := renderInOrder(sections)
+	// Render = per-section render via c.SectionRenderer (cycle 31
+	// L6.H.2) → concatenate in canonical order, each prefixed with its
+	// section header. **This is the rendered text that NEVER leaves
+	// the Composer call stack** (body-never-stored).
+	rendered, err := c.renderAll(sections)
+	if err != nil {
+		return PromptBundle{}, fmt.Errorf("%w: %v", ErrComposerFailed, err)
+	}
 
 	if err := c.TokenBudget.Check(ctx, pc, rendered); err != nil {
 		return PromptBundle{}, fmt.Errorf("%w: token budget: %v", ErrComposerFailed, err)
@@ -283,6 +317,12 @@ func (c *DefaultComposer) depsReady() error {
 	if c.TokenBudget == nil {
 		c.TokenBudget = NoopTokenBudgetGate{}
 	}
+	if c.SectionRenderer == nil {
+		c.SectionRenderer = DefaultSectionRenderer{}
+	}
+	if c.SectionValidator == nil {
+		c.SectionValidator = DefaultSectionValidator{}
+	}
 	if c.NewAuditID == nil {
 		return fmt.Errorf("%w: NewAuditID factory missing", ErrComposerFailed)
 	}
@@ -290,6 +330,38 @@ func (c *DefaultComposer) depsReady() error {
 		return fmt.Errorf("%w: Now clock missing", ErrComposerFailed)
 	}
 	return nil
+}
+
+// activeContracts returns the configured per-Intent contract map. When
+// c.Contracts is nil (cycle 21 callers), the foundation default
+// (IntentContracts()) supplies the minimum SYSTEM + INSTRUCTION rule.
+func (c *DefaultComposer) activeContracts() map[Intent]TemplateContract {
+	if c.Contracts != nil {
+		return c.Contracts
+	}
+	return IntentContracts()
+}
+
+// renderAll invokes c.SectionRenderer for each section in canonical
+// order. Empty sections render as a single header + blank line
+// (preserves position for deterministic hashing). Per Q-L6H-1: any
+// renderer error FAILS the assembly.
+func (c *DefaultComposer) renderAll(m SectionMap) ([]byte, error) {
+	var out []byte
+	for _, sec := range sectionOrder {
+		header := append([]byte("\n["), sec...)
+		header = append(header, []byte("]\n")...)
+		out = append(out, header...)
+		if v, ok := m[sec]; ok {
+			rendered, err := c.SectionRenderer.Render(sec, v)
+			if err != nil {
+				return nil, fmt.Errorf("section %s render: %v", sec, err)
+			}
+			out = append(out, rendered...)
+		}
+		out = append(out, '\n')
+	}
+	return out, nil
 }
 
 // validateSections enforces the template+input contract:
