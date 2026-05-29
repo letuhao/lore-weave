@@ -1,0 +1,44 @@
+# L7.A archive-domain admin commands — RAID cycle 36 DPS 4.
+# CONSOLIDATES cycle 11 archive-restore CLI under the unified `admin` binary.
+
+domain: archive
+commands:
+  - name: archive list
+    version: "1.0.0"
+    summary: "List archived months for a reality (reads archive_state — CONSOLIDATED cycle 11)."
+    handler: archiveList
+    params:
+      - {name: reality_id, type: uuid, required: true, description: "Target reality UUID"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "11"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: archive fetch
+    version: "1.0.0"
+    summary: "Download an archived Parquet blob from MinIO + decode header (CONSOLIDATED cycle 11)."
+    handler: archiveFetch
+    params:
+      - {name: reality_id, type: uuid,   required: true,  description: "Target reality UUID"}
+      - {name: month,      type: string, required: true,  description: "YYYY-MM"}
+      - {name: out_path,   type: path,   required: false, description: "Destination file (default stdout)"}
+    impact_class: tier-3-informational
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "11"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: archive replay
+    version: "1.0.0"
+    summary: "Replay archived events into a temp table for investigation (no prod write)."
+    handler: archiveReplay
+    params:
+      - {name: reality_id, type: uuid,   required: true, description: "Target reality UUID"}
+      - {name: month,      type: string, required: true, description: "YYYY-MM"}
+      - {name: reason,     type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "11"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]

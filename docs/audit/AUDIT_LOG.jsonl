@@ -1335,3 +1335,12 @@
 {"ts":"2026-05-29T17:38:19Z","event":"worktree_removed","cycle":35,"name":"cycle-35-dps-2"}
 {"ts":"2026-05-29T17:39:40Z","event":"recovery_halted","cycle":35,"reason":"in_progress_missing"}
 {"ts": "2026-05-29T17:39:41Z", "event": "escalation_written", "cycle": 35, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T17:40:34Z", "event": "coordinator_next_cycle_emitted", "cycle": 36}
+{"ts":"2026-05-29T17:41:53Z","event":"startup_drift_check_passed","cycle":36,"version":"v1.6"}
+{"ts":"2026-05-29T17:41:53Z","event":"startup_verifier_complete","cycle":36,"steps":6}
+{"ts": "2026-05-29T17:42:02Z", "event": "in_progress_init", "cycle": 36, "title": "L7 admin-cli framework + ~30 commands (A)"}
+{"ts": "2026-05-29T17:43:51Z", "event": "in_progress_update", "cycle": 36, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T17:44:34Z", "event": "in_progress_update", "cycle": 36, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T17:44:45Z", "event": "in_progress_update", "cycle": 36, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T18:04:17Z", "event": "in_progress_update", "cycle": 36, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T18:07:28Z", "event": "in_progress_update", "cycle": 36, "phase": "COMMIT", "retry": 0}
