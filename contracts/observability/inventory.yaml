@@ -487,6 +487,39 @@ metrics:
     source: services/integrity-checker (cycle 14) — backed by projection_drift_state SELECT in cycle 13 cron skeleton
     cardinality_notes: 'identical bounds to lw_projection_drift_count'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L3.J — Projection lag + check observability (cycle 15)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_projection_lag_seconds
+    kind: gauge
+    layer: L3
+    shipped_cycle: 15
+    labels: [reality_id, table]
+    description: 'wall-clock lag = NOW() - max(projection.applied_at) per (reality, table). Backs the LWProjectionLagWarning (60s) + LWProjectionLagCritical (300s) alerts in infra/prometheus/alerts/projection.yaml. Distinct from lw_projection_drift_last_check_age_seconds (cycle 13) — THIS metric measures publisher→projection latency; that one measures integrity-checker freshness.'
+    owner: world-platform
+    source: services/integrity-checker (pkg/metrics MetricProjectionLagSeconds)
+    cardinality_notes: 'table — bounded by 10 (L3.A allowlist enforced by sampler+state_writer). reality_id — bounded by per-reality budget. Identical bounds to lw_projection_drift_count.'
+
+  - name: lw_projection_check_duration_seconds
+    kind: histogram
+    layer: L3
+    shipped_cycle: 15
+    labels: [mode, table]
+    description: 'wall-time of one (reality, table, mode) integrity-checker run. mode ∈ {daily, monthly}. Daily P99 expected < 30s per table; monthly P99 expected < 1h for 10K-aggregate reality (per L3.F acceptance). SRE uses this to spot a runaway full-scan early (e.g. 6h on a 1K-row table = bug).'
+    owner: world-platform
+    source: services/integrity-checker (pkg/metrics MetricProjectionCheckDurationSeconds)
+    cardinality_notes: 'mode ∈ {daily, monthly} (bounded 2). table — bounded by 10 (L3.A allowlist). 2 × 10 = 20 series total (NOT multiplied by reality_id — duration is per (mode, table) aggregate; reality breakdown lives on the drift/lag gauges).'
+
+  - name: lw_projection_check_runs_total
+    kind: counter
+    layer: L3
+    shipped_cycle: 15
+    labels: [mode, outcome]
+    description: 'integrity-checker run counts. mode ∈ {daily, monthly}; outcome ∈ {ok, error}. error path includes loader failures, fetch failures, cursor stuck, ctx-cancelled mid-scan. Counts ALL across realities — per-reality breakdown lives on the drift/lag gauges.'
+    owner: world-platform
+    source: services/integrity-checker (pkg/metrics MetricProjectionCheckRunsTotal)
+    cardinality_notes: 'mode × outcome = 4 series total. Fixed cardinality (no reality_id, no table).'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

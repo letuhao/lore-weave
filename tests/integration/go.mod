@@ -33,6 +33,9 @@ require (
 	github.com/loreweave/foundation/services/backup-scheduler v0.0.0
 	github.com/loreweave/foundation/services/meta-worker v0.0.0
 
+	// Cycle 15 — integrity_drift_test + full_integrity_test (L3.E + L3.F)
+	github.com/loreweave/foundation/services/integrity-checker v0.0.0
+
 	// Cycle 6 — migration_run_test imports runner / canary / manifest
 	github.com/loreweave/foundation/services/migration-orchestrator v0.0.0
 	github.com/loreweave/foundation/services/publisher v0.0.0
@@ -66,3 +69,6 @@ replace github.com/loreweave/foundation/services/meta-worker => ../../services/m
 replace github.com/loreweave/foundation/services/archive-worker => ../../services/archive-worker
 
 replace github.com/loreweave/foundation/services/retention-worker => ../../services/retention-worker
+
+// Cycle 15 — integrity-checker
+replace github.com/loreweave/foundation/services/integrity-checker => ../../services/integrity-checker

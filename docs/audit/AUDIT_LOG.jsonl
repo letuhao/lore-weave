@@ -988,3 +988,21 @@
 {"ts": "2026-05-29T08:28:40Z", "event": "in_progress_update", "cycle": 14, "phase": "VERIFY", "retry": 0}
 {"ts": "2026-05-29T08:28:56Z", "event": "in_progress_update", "cycle": 14, "phase": "POST_REVIEW", "retry": 0}
 {"ts": "2026-05-29T08:28:56Z", "event": "in_progress_update", "cycle": 14, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T08:30:17Z", "event": "in_progress_archived", "cycle": 14, "archived_to": "cycle-014-state.md"}
+{"ts":"2026-05-29T08:30:19Z","event":"recovery_halted","cycle":14,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T08:30:20Z", "event": "escalation_written", "cycle": 14, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts":"2026-05-29T08:30:20Z","event":"worktree_removed","cycle":14,"name":"cycle-14-dps-1"}
+{"ts":"2026-05-29T08:30:20Z","event":"worktree_removed","cycle":14,"name":"cycle-14-dps-2"}
+{"ts":"2026-05-29T08:30:20Z","event":"worktree_removed","cycle":14,"name":"cycle-14-dps-3"}
+{"ts": "2026-05-29T08:30:52Z", "event": "coordinator_next_cycle_emitted", "cycle": 15}
+{"ts":"2026-05-29T08:31:51Z","event":"startup_drift_check_passed","cycle":15,"version":"v1.6"}
+{"ts":"2026-05-29T08:31:51Z","event":"startup_verifier_complete","cycle":15,"steps":6}
+{"ts": "2026-05-29T08:31:58Z", "event": "in_progress_init", "cycle": 15, "title": "L3 Integrity (E+F+J)"}
+{"ts": "2026-05-29T08:33:48Z", "event": "in_progress_update", "cycle": 15, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T08:34:26Z", "event": "in_progress_update", "cycle": 15, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T08:34:47Z", "event": "in_progress_update", "cycle": 15, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T08:50:01Z", "event": "in_progress_update", "cycle": 15, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T08:50:13Z","event":"secret_scan_skipped","cycle":15,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T08:50:51Z", "event": "in_progress_update", "cycle": 15, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T08:51:37Z", "event": "in_progress_update", "cycle": 15, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T08:51:39Z", "event": "in_progress_archived", "cycle": 15, "archived_to": "cycle-015-state.md"}
