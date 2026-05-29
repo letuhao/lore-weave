@@ -26,6 +26,15 @@ members = [
     "crates/world-gen",
     "crates/meta-rs",
     "crates/dp-kernel",
+    # Cycle 13 — L3.B per-aggregate projection skeletons (consume
+    # `crates/dp-kernel::Projection` trait shipped cycle 12; write to the
+    # `contracts/migrations/per_reality/0006_projections.sql` tables shipped
+    # this cycle). Full event coverage lands with L4-L7 domain cycles.
+    "crates/projections/pc",
+    "crates/projections/npc",
+    "crates/projections/region",
+    "crates/projections/world_kv",
+    "crates/projections/session",
 ]
 
 [workspace.package]

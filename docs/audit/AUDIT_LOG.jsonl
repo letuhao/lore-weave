@@ -960,3 +960,18 @@
 {"ts": "2026-05-29T07:53:00Z", "event": "cycle_done", "cycle": 12, "title": "L3 Projection trait + Snapshot read runtime (B+C)", "dps_count": 2, "files_added": 5, "files_modified": 1, "tests_added": 30, "tests_total": 57, "verify_exit": 0, "locked_qs_honored": ["Q-L3B-1", "Q-L3-2", "Q-L3-4", "Q-L3-5"], "carryforward_to_cycle_13": ["L3.A projection tables wire VerificationMeta columns (last_verified_event_version, last_verified_at)", "Per-aggregate projection impls (PC, NPC, region, world_kv, session)"], "carryforward_to_cycle_14": ["Publisher wire-up of SnapshotCache::invalidate on event emit"]}
 {"ts": "2026-05-29T07:53:39Z", "event": "in_progress_update", "cycle": 12, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T07:53:44Z", "event": "in_progress_archived", "cycle": 12, "archived_to": "cycle-012-state.md"}
+{"ts":"2026-05-29T07:55:13Z","event":"worktree_removed","cycle":12,"name":"cycle-12-dps-1"}
+{"ts":"2026-05-29T07:55:13Z","event":"worktree_removed","cycle":12,"name":"cycle-12-dps-2"}
+{"ts": "2026-05-29T07:55:49Z", "event": "coordinator_next_cycle_emitted", "cycle": 13}
+{"ts":"2026-05-29T07:56:54Z","event":"startup_drift_check_passed","cycle":13,"version":"v1.6"}
+{"ts":"2026-05-29T07:56:54Z","event":"startup_verifier_complete","cycle":13,"steps":6}
+{"ts": "2026-05-29T07:57:03Z", "event": "in_progress_init", "cycle": 13, "title": "L3 Projection tables + verification metadata (A+K)"}
+{"ts": "2026-05-29T07:58:49Z", "event": "in_progress_update", "cycle": 13, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T07:58:50Z", "event": "in_progress_update", "cycle": 13, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T08:07:17Z", "event": "in_progress_update", "cycle": 13, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T08:08:19Z","event":"secret_scan_skipped","cycle":13,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T08:09:11Z", "event": "in_progress_update", "cycle": 13, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T08:09:11Z", "event": "in_progress_update", "cycle": 13, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T08:09:11Z", "event": "in_progress_update", "cycle": 13, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T08:09:11Z", "event": "in_progress_update", "cycle": 13, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T08:10:16Z", "event": "in_progress_update", "cycle": 13, "phase": "COMMIT", "retry": 0}

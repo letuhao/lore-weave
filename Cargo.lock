@@ -1315,6 +1315,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "projections-npc"
+version = "0.1.0"
+dependencies = [
+ "dp-kernel",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "projections-pc"
+version = "0.1.0"
+dependencies = [
+ "dp-kernel",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "projections-region"
+version = "0.1.0"
+dependencies = [
+ "dp-kernel",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "projections-session"
+version = "0.1.0"
+dependencies = [
+ "dp-kernel",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "projections-world-kv"
+version = "0.1.0"
+dependencies = [
+ "dp-kernel",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "pxfm"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -464,6 +464,29 @@ metrics:
     owner: world-platform
     source: services/retention-worker (pkg/audit_invoker)
 
+  # ────────────────────────────────────────────────────────────────────
+  # L3.K — Drift detection metadata (cycle 13)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_projection_drift_count
+    kind: gauge
+    layer: L3
+    shipped_cycle: 13
+    labels: [reality_id, table]
+    description: 'per-projection-table drift count from last L3.E/F integrity sweep (= projection_drift_state.drift_count). 0 = healthy. Cycle 13 ships skeleton populator (scripts/projection-drift-check.sh) that always emits 0; cycle 14 L3.E integrity-checker writes real values from sample re-replay.'
+    owner: world-platform
+    source: services/integrity-checker (cycle 14) — placeholder script in cycle 13 (scripts/projection-drift-check.sh)
+    cardinality_notes: 'table — bounded by 10 (L3.A allowlist enforced by projection_drift_table_name_allowlist CHECK in 0007_drift_metadata.up.sql). reality_id — bounded by per-reality budget. Total = 10 × N realities ≤ 10K series at V1+30d.'
+
+  - name: lw_projection_drift_last_check_age_seconds
+    kind: gauge
+    layer: L3
+    shipped_cycle: 13
+    labels: [reality_id, table]
+    description: 'now() - projection_drift_state.last_verified_at per (reality, table). Backs L3.J stale-verification alert (fire at > 7d per L3.K acceptance). NULL last_verified_at surfaces as -1 sentinel; downstream alert treats negative as STALE_NEVER.'
+    owner: world-platform
+    source: services/integrity-checker (cycle 14) — backed by projection_drift_state SELECT in cycle 13 cron skeleton
+    cardinality_notes: 'identical bounds to lw_projection_drift_count'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────
