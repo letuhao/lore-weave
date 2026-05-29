@@ -1,0 +1,426 @@
+{
+  "entities": [
+    {
+      "name": "Amy",
+      "kind": "person"
+    },
+    {
+      "name": "Jo",
+      "kind": "person"
+    },
+    {
+      "name": "Meg",
+      "kind": "person"
+    },
+    {
+      "name": "Beth",
+      "kind": "person"
+    },
+    {
+      "name": "Christmas",
+      "kind": "concept"
+    },
+    {
+      "name": "Father",
+      "kind": "person"
+    },
+    {
+      "name": "Margaret",
+      "kind": "person"
+    },
+    {
+      "name": "Mother",
+      "kind": "person"
+    },
+    {
+      "name": "Undine and Sintran",
+      "kind": "artifact"
+    },
+    {
+      "name": "December snow",
+      "kind": "concept"
+    },
+    {
+      "name": "Faber's drawing pencils",
+      "kind": "artifact"
+    },
+    {
+      "name": "Mouse",
+      "kind": "person"
+    },
+    {
+      "name": "the King children",
+      "kind": "person"
+    },
+    {
+      "name": "Tomboy",
+      "kind": "concept"
+    },
+    {
+      "name": "blue army sock",
+      "kind": "artifact"
+    },
+    {
+      "name": "fire crackled cheerfully within",
+      "kind": "concept"
+    },
+    {
+      "name": "the hearth brush and kettle-holder",
+      "kind": "artifact"
+    },
+    {
+      "name": "geese",
+      "kind": "person"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Jo",
+      "predicate": "works_for",
+      "object": "Mother",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Jo",
+      "predicate": "owns",
+      "object": "Undine and Sintran",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Meg",
+      "predicate": "trusts",
+      "object": "Beth",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Amy",
+      "predicate": "enjoys",
+      "object": "boy's games and work and manners",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Amy",
+      "predicate": "courts",
+      "object": "fancy words and refined speech",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Amy",
+      "predicate": "practices",
+      "object": "music at home",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Beth",
+      "predicate": "lives_with",
+      "object": "Mother",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Beth",
+      "predicate": "lives_in",
+      "object": "the room with the fire crackled cheerfully within",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Jo",
+      "predicate": "follows",
+      "object": "Beth",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Meg",
+      "predicate": "teaches",
+      "object": "tiresome children",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Amy",
+      "predicate": "enjoys",
+      "object": "Faber's drawing pencils",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Beth",
+      "predicate": "lives_in",
+      "object": "December snow",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Jo",
+      "predicate": "instructs",
+      "object": "Beth",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Jo",
+      "predicate": "helps",
+      "object": "Mother",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Jo",
+      "predicate": "born_from",
+      "object": "the hearth brush and kettle-holder",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Meg",
+      "predicate": "knows",
+      "object": "the reason for not having presents this Christmas",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Meg",
+      "predicate": "enjoys",
+      "object": "home peace and comfort",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Beth",
+      "predicate": "lives_in",
+      "object": "the King children",
+      "polarity": "negate"
+    }
+  ],
+  "events": [
+    {
+      "summary": "Jo reveals that their father is far away at war and will not return soon.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo sits upright, places her hands in her pockets, and starts whistling with a refined air.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo passionately resists the idea of being a young lady and vows to keep her hair in two tails.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo shares her deep longing to be a boy and join her father in the army.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo expresses her disappointment that Christmas will not be complete without gifts.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo suggests that the sisters spend their dollars freely on personal gifts while still making sacrifices.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo knits with great energy, causing her knitting needles to rattle and her ball to bounce across the room.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "The four sisters sit knitting in the fading light, as December snow falls quietly outside and fire crackles within.",
+      "participants": [
+        "Jo",
+        "Meg",
+        "Beth",
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Amy voices her sense of injustice that some girls have many possessions while others have none.",
+      "participants": [
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Amy observes and appreciates the informal, colloquial language used by Jo.",
+      "participants": [
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Amy details her daily trials at school, including mockery from peers and social judgment.",
+      "participants": [
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Amy expresses her dislike of rough or unrefined behavior in women.",
+      "participants": [
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Amy defends her use of sophisticated language and explains the importance of expanding vocabulary.",
+      "participants": [
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Amy announces her decision to use her dollar for a set of Faber's drawing pencils.",
+      "participants": [
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Beth humorously inquires about her own identity after being compared to the other sisters.",
+      "participants": [
+        "Beth"
+      ]
+    },
+    {
+      "summary": "Beth strokes Jo's rough head with a hand that has been shaped by years of dishwashing and dusting.",
+      "participants": [
+        "Beth"
+      ]
+    },
+    {
+      "summary": "Beth recalls and elaborates on her sister Meg's earlier comparison between their family and the wealthy King children.",
+      "participants": [
+        "Beth"
+      ]
+    },
+    {
+      "summary": "Beth shares her joy in having Father, Mother, and each other as the greatest blessings.",
+      "participants": [
+        "Beth"
+      ]
+    },
+    {
+      "summary": "Beth expresses her frustration with dishwashing and housekeeping, which make her hands stiff and hinder her music practice.",
+      "participants": [
+        "Beth"
+      ]
+    },
+    {
+      "summary": "Beth sings a lullaby-like phrase to calm the sisters after their argument.",
+      "participants": [
+        "Beth"
+      ]
+    },
+    {
+      "summary": "Beth shares her intention to use her dollar for new music, expressing quiet longing.",
+      "participants": [
+        "Beth"
+      ]
+    },
+    {
+      "summary": "Jo gently corrects Amy for using 'label' instead of the more precise word 'libel'.",
+      "participants": [
+        "Jo",
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Jo explains that she whistles precisely because she wants to be boyish and enjoys the habit.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo vividly describes her daily struggle of caring for an irritable and demanding elderly woman.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo declares her long-held wish to purchase the book 'Undine and Sintran' with her dollar.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Jo removes her hairnet and lets her long, thick brown hair fall freely.",
+      "participants": [
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Meg recounts the challenges of teaching children all day while longing for personal enjoyment.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "Meg mocks Amy for being overly refined and delicate in manner.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "Meg gently chides Jo for her boyish behavior, especially whistling.",
+      "participants": [
+        "Meg",
+        "Jo"
+      ]
+    },
+    {
+      "summary": "Meg gives a formal and thoughtful talk about the importance of proper conduct for young women.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "Meg recounts that Mother proposed no presents this Christmas to save money for the army during a hard winter.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "Meg compliments Amy on her refined speech while gently criticizing her overdone elegance.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "Meg warmly affirms that Beth is simply 'a dear'—lovable and essential to the family.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "Meg affirms that the March sisters are happier than the King children despite their daily labor and challenges.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "Meg imagines a happier life if they had recovered the money their father lost in earlier years.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "Meg reflects on the hardships of poverty while looking at her old dress.",
+      "participants": [
+        "Meg"
+      ]
+    },
+    {
+      "summary": "The four sisters' expressions change in response to Beth's words, first brightening with hope and then darkening with sorrow.",
+      "participants": [
+        "Jo",
+        "Meg",
+        "Beth",
+        "Amy"
+      ]
+    },
+    {
+      "summary": "The sisters’ playful bickering, or 'pecking', comes to a joyful close with shared laughter.",
+      "participants": [
+        "Meg",
+        "Jo",
+        "Amy"
+      ]
+    }
+  ]
+}

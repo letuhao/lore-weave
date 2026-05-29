@@ -59,6 +59,70 @@ impl TerrainKind {
             Self::Subterranean => "subterranean",
         }
     }
+
+    /// TMP-Q2 chunk B — inverse of [`Self::tag`]. Resolves a snake_case
+    /// `TerrainKind::tag()` value to its enum variant. Returns `None`
+    /// for unknown strings — chunk-B [`crate::engine::modificators::biome_theme_painter`]
+    /// relies on this AFTER registry-load validation (`is_valid_biome_key`)
+    /// already gated the input, so an `Option::expect` at call site is
+    /// safe.
+    ///
+    /// Closed-set match against the enum variants directly so adding a
+    /// future variant fails this lookup AND `is_valid_biome_key` AND
+    /// `tag()` in the same commit — no silent drift between the three.
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        match tag {
+            "grass" => Some(Self::Grass),
+            "forest" => Some(Self::Forest),
+            "mountain" => Some(Self::Mountain),
+            "water" => Some(Self::Water),
+            "sand" => Some(Self::Sand),
+            "snow" => Some(Self::Snow),
+            "swamp" => Some(Self::Swamp),
+            "road" => Some(Self::Road),
+            "rough" => Some(Self::Rough),
+            "subterranean" => Some(Self::Subterranean),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_terrain_kind_tag {
+    use super::*;
+
+    #[test]
+    fn from_tag_round_trips_all_ten_variants() {
+        for tk in [
+            TerrainKind::Grass,
+            TerrainKind::Forest,
+            TerrainKind::Mountain,
+            TerrainKind::Water,
+            TerrainKind::Sand,
+            TerrainKind::Snow,
+            TerrainKind::Swamp,
+            TerrainKind::Road,
+            TerrainKind::Rough,
+            TerrainKind::Subterranean,
+        ] {
+            assert_eq!(
+                TerrainKind::from_tag(tk.tag()),
+                Some(tk),
+                "round-trip failed for {tk:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_tag_returns_none_for_unknown() {
+        for unknown in ["atmosphere", "GRASS", "", " grass", "grass "] {
+            assert_eq!(
+                TerrainKind::from_tag(unknown),
+                None,
+                "from_tag({unknown:?}) should be None"
+            );
+        }
+    }
 }
 
 /// V1+30d 4-variant tile state machine per TMP_001 §5 (standard procedural

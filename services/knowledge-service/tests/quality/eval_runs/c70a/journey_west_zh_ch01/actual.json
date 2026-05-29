@@ -1,0 +1,164 @@
+{
+  "entities": [
+    {
+      "name": "傲來國",
+      "kind": "place"
+    },
+    {
+      "name": "千里眼",
+      "kind": "person"
+    },
+    {
+      "name": "東勝神洲",
+      "kind": "place"
+    },
+    {
+      "name": "玉皇大天尊玄穹高上帝",
+      "kind": "person"
+    },
+    {
+      "name": "石猴",
+      "kind": "person"
+    },
+    {
+      "name": "花果山",
+      "kind": "place"
+    },
+    {
+      "name": "順風耳",
+      "kind": "person"
+    },
+    {
+      "name": "仙石",
+      "kind": "artifact"
+    },
+    {
+      "name": "北俱蘆洲",
+      "kind": "place"
+    },
+    {
+      "name": "南贍部洲",
+      "kind": "place"
+    },
+    {
+      "name": "盤古開闢",
+      "kind": "concept"
+    },
+    {
+      "name": "西牛賀洲",
+      "kind": "place"
+    },
+    {
+      "name": "金闕雲宮靈霄寶殿",
+      "kind": "place"
+    },
+    {
+      "name": "三皇治世",
+      "kind": "concept"
+    },
+    {
+      "name": "五帝定倫",
+      "kind": "concept"
+    },
+    {
+      "name": "石卵",
+      "kind": "artifact"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "仙石",
+      "predicate": "located_in",
+      "object": "花果山",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "千里眼",
+      "predicate": "works_for",
+      "object": "玉皇大天尊玄穹高上帝",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "石卵",
+      "predicate": "born_from",
+      "object": "仙石",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "石猴",
+      "predicate": "lives_in",
+      "object": "花果山",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "花果山",
+      "predicate": "located_in",
+      "object": "東勝神洲",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "順風耳",
+      "predicate": "works_for",
+      "object": "玉皇大天尊玄穹高上帝",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "玉皇大天尊玄穹高上帝",
+      "predicate": "commands",
+      "object": "仙卿",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "玉皇大天尊玄穹高上帝",
+      "predicate": "trusts",
+      "object": "石猴",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "花果山",
+      "predicate": "located_on",
+      "object": "大海",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "石猴",
+      "predicate": "knows",
+      "object": "四方",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "石猴",
+      "predicate": "instructs",
+      "object": "四方",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "The Jade Emperor, seated in the Golden Palace of Clouds and Palaces, observes golden light from Earth and summons his celestial ministers.",
+      "participants": [
+        "玉皇大天尊玄穹高上帝"
+      ]
+    },
+    {
+      "summary": "The two celestial officials return and report that the golden light originates from a stone egg on Flower-God Mountain in Aolai Country, which has hatched into a stone monkey now worshiping the four directions.",
+      "participants": [
+        "千里眼",
+        "順風耳"
+      ]
+    },
+    {
+      "summary": "The Jade Emperor declares that the stone monkey, born from earthly essence and celestial light, is a remarkable being worthy of divine recognition.",
+      "participants": [
+        "玉皇大天尊玄穹高上帝"
+      ]
+    },
+    {
+      "summary": "The celestial officials Thousand-Eyed and Thousand-Hearing are sent from the Jade Emperor’s palace to observe the source of the golden light.",
+      "participants": [
+        "千里眼",
+        "順風耳"
+      ]
+    }
+  ]
+}

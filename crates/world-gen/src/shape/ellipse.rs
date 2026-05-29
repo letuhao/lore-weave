@@ -77,7 +77,19 @@ impl ShapeGenerator for EllipseGenerator {
         let radius = pitch * lerp(rmin, rmax, rng.next_f32());
 
         let (amin, amax) = ctx.size_rank.aspect_band();
-        let aspect = lerp(amin, amax, rng.next_f32());
+        let mut aspect = lerp(amin, amax, rng.next_f32());
+        // **v4.3b**: honour the LLM-decided aspect_ratio override when the
+        // dispatcher threaded `ParamOverride::Ellipse { aspect_ratio:
+        // Some(_) }` into `ctx.params`. Clamped to `[0.5, 3.0]` so a
+        // hallucinated extreme value doesn't break the polygon shape.
+        // RNG draw above STAYS — preserves byte-identical determinism
+        // when override is absent.
+        if let Some(crate::shape::ParamOverride::Ellipse {
+            aspect_ratio: Some(r),
+        }) = &ctx.params
+        {
+            aspect = r.clamp(0.5, 3.0);
+        }
         let rx = radius * aspect.sqrt();
         let ry = radius / aspect.sqrt();
 
@@ -141,6 +153,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.35,
             vertex_count_range: (24, 48),
+            params: None,
         }
     }
 

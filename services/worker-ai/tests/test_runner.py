@@ -1412,3 +1412,180 @@ async def test_process_job_span_handles_none_items_total(
     ]
     assert len(spans) == 1
     assert dict(spans[0].attributes or {})["job.items_total"] == 0
+
+
+# ── Cycle 72 — precision filter env wiring regression tests ────────────
+
+
+@pytest.mark.asyncio
+async def test_runner_env_unset_skips_filter() -> None:
+    """When WORKER_AI_PRECISION_FILTER_MODEL_REF is unset, the runner
+    calls extract_pass2 with precision_filter=None (current behavior
+    preserved). Regression-lock for the kwarg default — see
+    docs/specs/2026-05-29-pass2-precision-filter.md acceptance #3."""
+    from app.runner import _extract_and_persist
+
+    captured: list[dict] = []
+
+    async def _stub_extract_pass2(**kwargs):
+        captured.append(kwargs)
+        from loreweave_extraction import Pass2Candidates
+        return Pass2Candidates()
+
+    with patch("app.runner._PRECISION_FILTER_CONFIG", None), \
+         patch("app.runner.extract_pass2", new=_stub_extract_pass2):
+        kc = _mock_knowledge_client()
+        llm = _mock_llm_client()
+
+        await _extract_and_persist(
+            knowledge_client=kc,
+            llm_client=llm,
+            user_id=uuid4(),
+            project_id=uuid4(),
+            source_type="chapter",
+            source_id="ch-1",
+            job_id=uuid4(),
+            model_ref="test-model",
+            text="A short passage.",
+        )
+
+    assert len(captured) == 1
+    # The kwarg is present and explicitly None
+    assert captured[0].get("precision_filter") is None
+
+
+@pytest.mark.asyncio
+async def test_runner_env_set_passes_filter_config_to_extract_pass2() -> None:
+    """When WORKER_AI_PRECISION_FILTER_MODEL_REF is set, the runner
+    threads the resulting PrecisionFilterConfig through to extract_pass2.
+    """
+    from loreweave_extraction import PrecisionFilterConfig
+
+    sentinel = PrecisionFilterConfig(
+        model_ref="test-filter-model",
+        partial_policy="drop",
+        categories=("relation", "event"),
+    )
+
+    captured: list[dict] = []
+
+    async def _stub_extract_pass2(**kwargs):
+        captured.append(kwargs)
+        from loreweave_extraction import Pass2Candidates
+        return Pass2Candidates()
+
+    from app.runner import _extract_and_persist
+
+    with patch("app.runner._PRECISION_FILTER_CONFIG", sentinel), \
+         patch("app.runner.extract_pass2", new=_stub_extract_pass2):
+        kc = _mock_knowledge_client()
+        llm = _mock_llm_client()
+
+        await _extract_and_persist(
+            knowledge_client=kc,
+            llm_client=llm,
+            user_id=uuid4(),
+            project_id=uuid4(),
+            source_type="chapter",
+            source_id="ch-2",
+            job_id=uuid4(),
+            model_ref="test-model",
+            text="A short passage.",
+        )
+
+    assert len(captured) == 1
+    assert captured[0].get("precision_filter") is sentinel
+
+
+@pytest.mark.asyncio
+async def test_runner_filter_degraded_status_still_persists_pass_a() -> None:
+    """Even when extract_pass2 returns filter_status='degraded', the
+    runner persists the Pass A candidates (filter is best-effort).
+    Regression-lock for the no-raise contract."""
+    from loreweave_extraction import (
+        LLMEntityCandidate, Pass2Candidates, PrecisionFilterConfig,
+    )
+
+    pass_a_entity = LLMEntityCandidate(
+        name="Kai", kind="person", aliases=[],
+        confidence=0.9, canonical_name="kai", canonical_id="eid-kai",
+    )
+
+    async def _stub_extract_pass2(**kwargs):
+        # Simulate filter degradation: Pass A returned, status=degraded
+        return Pass2Candidates(
+            entities=[pass_a_entity],
+            filter_status="degraded",
+            filter_coverage={"entity": 0.0},
+        )
+
+    from app.runner import _extract_and_persist
+
+    config = PrecisionFilterConfig(model_ref="test-filter")
+    with patch("app.runner._PRECISION_FILTER_CONFIG", config), \
+         patch("app.runner.extract_pass2", new=_stub_extract_pass2):
+        kc = _mock_knowledge_client()
+        llm = _mock_llm_client()
+
+        result = await _extract_and_persist(
+            knowledge_client=kc,
+            llm_client=llm,
+            user_id=uuid4(),
+            project_id=uuid4(),
+            source_type="chapter",
+            source_id="ch-3",
+            job_id=uuid4(),
+            model_ref="test-model",
+            text="A short passage.",
+        )
+
+    # persist_pass2 was called with the Pass A entity intact
+    kc.persist_pass2.assert_called_once()
+    call_kwargs = kc.persist_pass2.call_args.kwargs
+    assert call_kwargs["entities"] == [pass_a_entity]
+    # ExtractionResult is the mocked _ok_result return
+    assert isinstance(result, ExtractionResult)
+
+
+def test_load_precision_filter_config_env_unset_returns_none() -> None:
+    """Empty / unset env returns None (filter disabled)."""
+    import os
+    from app.runner import _load_precision_filter_config
+
+    original = os.environ.pop("WORKER_AI_PRECISION_FILTER_MODEL_REF", None)
+    try:
+        assert _load_precision_filter_config() is None
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = ""
+        assert _load_precision_filter_config() is None
+    finally:
+        os.environ.pop("WORKER_AI_PRECISION_FILTER_MODEL_REF", None)
+        if original is not None:
+            os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = original
+
+
+def test_load_precision_filter_config_env_set_builds_config() -> None:
+    """Env set → PrecisionFilterConfig with parsed kwargs."""
+    import os
+    from app.runner import _load_precision_filter_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "WORKER_AI_PRECISION_FILTER_MODEL_REF",
+            "WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY",
+            "WORKER_AI_PRECISION_FILTER_MODEL_SOURCE",
+        )
+    }
+    try:
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY"] = "drop"
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_SOURCE"] = "platform_model"
+        config = _load_precision_filter_config()
+        assert config is not None
+        assert config.model_ref == "claude-4.7-opus-uuid"
+        assert config.partial_policy == "drop"
+        assert config.model_source == "platform_model"
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v

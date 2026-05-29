@@ -1,0 +1,281 @@
+{
+  "entities": [
+    {
+      "name": "三藏",
+      "kind": "person"
+    },
+    {
+      "name": "伯欽",
+      "kind": "person"
+    },
+    {
+      "name": "唵嘛呢叭𠺗吽",
+      "kind": "concept"
+    },
+    {
+      "name": "如來",
+      "kind": "person"
+    },
+    {
+      "name": "孫悟空",
+      "kind": "person"
+    },
+    {
+      "name": "孫行者",
+      "kind": "person"
+    },
+    {
+      "name": "觀音菩薩",
+      "kind": "person"
+    },
+    {
+      "name": "陳玄奘",
+      "kind": "person"
+    },
+    {
+      "name": "齊天大聖",
+      "kind": "person"
+    },
+    {
+      "name": "佛祖",
+      "kind": "person"
+    },
+    {
+      "name": "金字壓帖",
+      "kind": "artifact"
+    },
+    {
+      "name": "靈山",
+      "kind": "place"
+    },
+    {
+      "name": "山頂上",
+      "kind": "place"
+    },
+    {
+      "name": "東土",
+      "kind": "place"
+    },
+    {
+      "name": "神猴",
+      "kind": "person"
+    },
+    {
+      "name": "行者",
+      "kind": "concept"
+    },
+    {
+      "name": "取經人",
+      "kind": "concept"
+    },
+    {
+      "name": "家僮",
+      "kind": "person"
+    },
+    {
+      "name": "小頭陀",
+      "kind": "concept"
+    },
+    {
+      "name": "師父",
+      "kind": "person"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "三藏",
+      "predicate": "knows",
+      "object": "齊天大聖",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "mentor_of",
+      "object": "齊天大聖",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "born_from",
+      "object": "大鬧天宮",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "imprisoned_by",
+      "object": "佛祖",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "works_for",
+      "object": "取經人",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "helps",
+      "object": "取經人",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "located_on",
+      "object": "山頂上",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "owns",
+      "object": "金字壓帖",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "伯欽",
+      "predicate": "serves",
+      "object": "家僮",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "觀音菩薩",
+      "predicate": "commands",
+      "object": "取經人",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "lives_in",
+      "object": "山頂上",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "trusts",
+      "object": "觀音菩薩",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "follows",
+      "object": "齊天大聖",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "courts",
+      "object": "齊天大聖",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "三藏",
+      "predicate": "knows",
+      "object": "伯欽",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "觀音菩薩",
+      "predicate": "serves",
+      "object": "東土",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "instructs",
+      "object": "觀音菩薩",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "disciple_of",
+      "object": "觀音菩薩",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "lives_with",
+      "object": "佛祖",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "齊天大聖",
+      "predicate": "enjoys",
+      "object": "金字壓帖",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "三藏在山頂的四方大石前，跪拜禱祝後，將刻有「唵嘛呢叭𠺗吽」六個金字的壓帖輕輕揭下。",
+      "participants": [
+        "陳玄奘"
+      ]
+    },
+    {
+      "summary": "三藏揭起金字壓帖後，孫悟空自石中現身而出。",
+      "participants": [
+        "孫悟空"
+      ]
+    },
+    {
+      "summary": "孫悟空向三藏敘述自己五百年前大鬧天宮的經歷，並表達願意保護取經人、歸依佛法、與師父一同前往西方拜佛。",
+      "participants": [
+        "孫悟空",
+        "陳玄奘"
+      ]
+    },
+    {
+      "summary": "三藏問孫悟空姓氏，得知其名為孫，並起法名孫悟空。",
+      "participants": [
+        "陳玄奘",
+        "孫悟空"
+      ]
+    },
+    {
+      "summary": "三藏見孫悟空形貌如小頭陀，遂為其起混名「行者」。",
+      "participants": [
+        "陳玄奘",
+        "孫悟空"
+      ]
+    },
+    {
+      "summary": "伯欽扶著三藏，攀藤附葛，一同登上高山。",
+      "participants": [
+        "伯欽",
+        "陳玄奘"
+      ]
+    },
+    {
+      "summary": "三藏問孫悟空如何能從山中救出他，孫悟空答以金字壓帖之法。",
+      "participants": [
+        "陳玄奘",
+        "孫悟空"
+      ]
+    },
+    {
+      "summary": "觀音菩薩勸導孫悟空不再行兇，歸依佛法，並教他殷勤保護取經人。",
+      "participants": [
+        "觀音菩薩",
+        "孫悟空"
+      ]
+    },
+    {
+      "summary": "自此時起，孫悟空被稱為孫行者。",
+      "participants": [
+        "孫悟空"
+      ]
+    },
+    {
+      "summary": "觀音菩薩奉佛旨意，前往東土尋找取經人。",
+      "participants": [
+        "觀音菩薩"
+      ]
+    },
+    {
+      "summary": "伯欽呼叫家僮，並牽來馬匹。",
+      "participants": [
+        "伯欽",
+        "家僮"
+      ]
+    }
+  ]
+}

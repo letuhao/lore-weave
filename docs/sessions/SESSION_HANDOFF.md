@@ -1,6 +1,165 @@
-# Session Handoff — Session 70 (specialized relation prompt — first recall-improvement cycle on the new eval framework)
+# Session Handoff — Session 72.S1 (cycle 72 pass2 precision filter — DESIGN-CHECKPOINT, no code)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
+> **Date:** 2026-05-29 (session 72.S1 — XL design-checkpoint per `feedback_design_checkpoint_commit_separates_design_from_implementation`).
+> **HEAD:** pending final commit on top of `2b254e88` (cycle 71-bis NEGATIVE close).
+> **Branch:** `main`.
+
+## Session 72.S1 summary — cycle 72 pass2-precision-filter DESIGN-CHECKPOINT (spec + plan locked, no code shipped)
+
+XL cycle for the hybrid 2-pass extraction direction (30B recall → claude-4.7-opus precision filter) per cycle 71/71-bis pivot. This session ships ONLY the design artifacts; session 72.S2 will implement Phase 1 (SDK foundation) → Phase 2 (orchestrator wiring) → Phase 3 (eval validation against c70a saved-dump fixture).
+
+### Phases executed (S1)
+
+| Phase | Output |
+|---|---|
+| CLARIFY | [docs/specs/2026-05-29-pass2-precision-filter.md](../specs/2026-05-29-pass2-precision-filter.md) — 12 decisions D1-D12, 8 risks gradient, 3 OQs deferred to DESIGN |
+| DESIGN | Same spec — D6 revised (operation=chat removes 10-pt cascade), 3 OQs resolved (OQ-1 separate model_source, OQ-2 Option B post-gather step, OQ-3 no Neo4j flag), module map 11 files, interfaces locked (PrecisionFilterConfig + Pass2Candidates extension + apply_precision_filter signature) |
+| REVIEW (design) | /review-impl round 1: 7 findings (2 HIGH + 4 MED + 1 LOW substantive, 2 LOW deferred) — all folded inline; module count 11→12 with c70a saved-dump fixture added + precision_filter_prompts.py SOT |
+| PLAN | [docs/plans/2026-05-29-pass2-precision-filter.md](../plans/2026-05-29-pass2-precision-filter.md) — 2-session split with natural seam at Phase 1/Phase 2; 8 sub-phases in S2; 23-test-case map; risk→mitigation→test cross-checked end-to-end |
+
+### Key design decisions (locked, do not re-litigate in S2)
+
+- **D1 (filter as SDK module, opt-in kwarg)** — `precision_filter: PrecisionFilterConfig | None = None` on `extract_pass2`; default None = zero behavior change
+- **D2 (categories)** — all 3 (entity/relation/event); facts deferred (`D-PASS2-FILTER-FACTS-SUPPORT`)
+- **D3 (filter model)** — `huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated` (UUID `019e5650-eca7-78c2-985d-465aa3bce1ce`)
+- **D4 (partial policy)** — `keep` / `drop` runtime-configurable; `demote` reserved but raises in `__post_init__`
+- **D5 (failure policy)** — filter NEVER raises; degrades to Pass A with `filter_status="degraded"` field
+- **D6 (op enum)** — REUSE `operation="chat"` per `llm_judge.py` precedent; NO JobOperation enum change
+- **D7 (telemetry)** — `knowledge_extraction_filter_decisions_total{category, verdict}` counter + `knowledge_extraction_filter_coverage_ratio{category}` gauge
+- **D8 (caller envs)** — `WORKER_AI_PRECISION_FILTER_MODEL_REF` + `KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF`; unset = filter off
+- **D10 (ship gate, 4-clause symmetric)**: median F1 lift ≥+1.5pp AND min ≥-0.5pp AND claude ≤2× median AND κ ≥0.60
+
+### Round-1 fixes folded inline (no BUILD deferred work)
+
+- **HIGH-1** — c70a saved dump (recoverable from `/tmp/eval_dump_cycle70/` in `infra-knowledge-service-1`) replaces nondeterministic re-extraction baseline; copy as repo fixture `services/knowledge-service/tests/quality/eval_runs/c70a/`
+- **HIGH-2** — Promote BOTH `_NO_THINK_PREFIX` + `_PRECISION_SYSTEM` via `build_precision_prompt(suppress_thinking=...)` SOT helper in SDK
+- **MED-1** — Pydantic→dict adapter at filter boundary (`model_dump(mode="json")`) pinned
+- **MED-2** — D10 cross-judge gate revised from 3-clause asymmetric to 4-clause symmetric (anti-self-reinforcement + anti-recall-loss)
+- **MED-3** — Measurement validity caveat: filter-output F1 ≠ Neo4j-realized F1; documented; deferred `D-PASS2-FILTER-NEO4J-REALIZED-F1` for future cycle
+- **MED-4** — `apply_precision_filter` immutability contract via `dataclasses.replace`; 2 new tests pin it
+
+### Session 72.S2 entry point (READ THIS FIRST in next session)
+
+When you start S2:
+1. **Re-read** [docs/specs/2026-05-29-pass2-precision-filter.md](../specs/2026-05-29-pass2-precision-filter.md) + [docs/plans/2026-05-29-pass2-precision-filter.md](../plans/2026-05-29-pass2-precision-filter.md) — verify no drift since this commit (per memory `verify-plan-prescriptions-against-code`)
+2. **Re-classify** if scope changed (Phase 1 alone could be L if you slice the SDK foundation discretely)
+3. **Verify c70a dump still exists** in `infra-knowledge-service-1:/tmp/eval_dump_cycle70/` — if container has been restarted, the dump is GONE and Session 72.S2 must re-run cycle 70 extraction first (~5 min on huihui-qwen3-30b)
+4. **Phase 1 first** — pure SDK foundation, zero caller change, ships as dead code. Natural checkpoint after Phase 1 if session-2 budget runs short.
+5. Phase 2 + Phase 3 = the actual filter activation + validation
+
+### Files in this S1 commit
+
+- [docs/specs/2026-05-29-pass2-precision-filter.md](../specs/2026-05-29-pass2-precision-filter.md) (NEW)
+- [docs/plans/2026-05-29-pass2-precision-filter.md](../plans/2026-05-29-pass2-precision-filter.md) (NEW)
+
+NOT in this commit (left for the author to commit separately or per their own cadence):
+- `README.md` (modified, untouched by cycle 72)
+- `docs/MILESTONE.md` (untracked, from earlier 17:40 session work)
+
+### Deferred rows added (carry over to deferred items list)
+
+- **D-PASS2-FILTER-NEO4J-REALIZED-F1** (MED-3 fold) — Neo4j-realized F1 measurement after writer cascade
+- **D-PASS2-FILTER-FACTS-SUPPORT** (LOW-2 fold) — extend filter to facts
+- **D-PASS2-FILTER-CLOUD-CALIBRATION** (spec non-goal) — cloud Claude calibration cycle
+- **D-PASS2-FILTER-RUNTIME-FLAG** (spec non-goal) — per-request header override
+- **D-PASS2-FILTER-CACHE** (spec non-goal) — verdict cache `(text_hash, model_ref, item_canonical) → verdict`
+- **D-PASS2-FILTER-PER-USER-UI** (spec non-goal) — UI surface for filter toggle
+
+---
+
+# Session Handoff — Session 71 (specialized event prompt — NEGATIVE cycle, revert) — historical
+
+> **Date:** 2026-05-29 (session 71, 1 M cycle attempted, A + B refinement both regressed, reverted).
+> **HEAD:** `2b254e88` (cycle 71-bis NEGATIVE commit).
+> **Branch:** `main`.
+
+## Session 71 summary — cycle 71 + 71-bis BOTH reverted; pivoting to #2 hybrid 2-pass next
+
+Both prompt-side event-extraction attempts (cycle 71 c71a/c71b + cycle 71-bis) regressed empirically. The cycle is decisively NEGATIVE for prompt-side event work — pivot direction confirmed.
+
+### 71-bis attempt (Rule 10 isolated, English-only illustrative phrases)
+
+Test: apply ONLY Rule 10 granularity to event prompt, no Examples B/C, English-only illustrative phrases (stripped overlap risk).
+
+| Variant | Prompt size | gemma macro P/R | ch14 events | Script (ch14 EN/CJK) |
+|---|---:|---:|---:|---:|
+| c70a baseline | 4522 (event prompt unchanged) | 0.81 / 0.92 | not per-chapter measured by gemma | (c69 was 0/6) |
+| **71-bis** Rule 10 only | 5101 | **0.79 / 0.91** | **0.91 / 1.00** (lifted from c71a's 0/0) | **8 / 3** (drift!) |
+
+Empirical:
+- 71-bis extraction completed in 279.92s; dump at `/tmp/eval_dump_30b_c71bis`
+- 71-bis gemma judge completed in 348.11s; log at `/tmp/judge_gemma_c71bis.log`
+- ch14 events: c71a 0/0 → 71-bis 0.91/1.00 (target chapter fixed via semantic match)
+- BUT CJK script drift: journey_west_zh_ch01 3 EN / 0 CJK, ch14 8 EN / 3 CJK — judge tolerates semantic match but explicit prompt rule "Keep summary in ORIGINAL script of TEXT" is violated
+- Relation regression replicated: alice_ch02 rel R=0, little_women rel R=0 (same pattern as c71a/c71b — adding any rule to event prompt seems to affect relation extraction)
+- Revert: `git checkout HEAD --` restored 4522 chars
+
+### Why 71-bis was rejected despite ch14 win
+
+1. **Script drift is a hard rule violation.** Even if the judge accepts English summaries semantically, downstream consumers (Neo4j storage, multilingual retrieval, UI rendering) may struggle with English summaries on Chinese chapters. The prompt's explicit "Keep summary in ORIGINAL script of TEXT" rule is contract-level, not advisory.
+2. **Relation regression pattern is consistent across all 3 prompt-side attempts.** c71a/c71b/71-bis all show alice_ch02 + little_women rel R=0. Adding ANY rule to the event prompt has hidden interaction with relation extraction (possibly shared context/budget at the model level).
+3. **Macro P regression hits −2pp threshold exactly.** Marginal win on ch14 doesn't offset the −2pp macro + the script drift + the relation regression.
+4. **The "ch14 win" comparison is apples-to-oranges.** c69/c70a never measured per-chapter event metrics via gemma judge; only rule-based attribution showed 0 TP. The clean comparison 71-bis vs c71a (within-cycle measurement) shows ch14 fixed; but vs c70a baseline we don't have the data.
+
+### Combined lessons captured (cycle 71 + 71-bis)
+
+- **Event prompts are intrinsically resistant to prompt-side improvements.** Three distinct attempts (c71a with overlapping examples, c71b with VN-only, 71-bis with rules-only English) all failed in different ways. The model's event extraction behavior is more stable than its relation behavior — adding signal to the event prompt creates side effects.
+- **Pivot to structural levers.** Per cycle-70 commit's open follow-ups: cycle 72 should test **#2 Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) — bigger lever, no prompt risk, F1 target ~0.88.
+- **Script drift via English-only rule prose.** Adding instruction prose in English alone (no CJK/VN illustrative phrases) STILL caused CJK chapters to drift to English summaries. The presence of English illustrative content in the prompt biases the model toward English output, even when the chapter is in another script. Future multilingual prompts need symmetric language signal OR no language-specific signal at all.
+
+### New deferred row (from 71-bis specifically)
+
+- **D-EVENT-RULE-ENGLISH-PROSE-CJK-DRIFT** — adding ANY new rule with English-only illustrative phrases (Rule 10 had "after praying" / "happily" / "walked across the bridge") biased the model to emit English summaries on Chinese chapters. If a future cycle adds rules to the event prompt, use ONLY abstract phrasing (no concrete language-specific examples) OR symmetric multilingual examples sourced outside the fixture set.
+
+
+
+Cycle 71 attempted to mirror cycle 70's pattern (Rule + CJK example + VN example + Lesson prose) onto the EVENT prompt. **Both variants regressed empirically vs c70a baseline; the prompt was reverted.** Event prompts are more sensitive than relation prompts to language-example presence — partial multilingual coverage creates failure modes that the relation cycle didn't surface.
+
+### A/B/B' executed at user direction
+
+| Variant | Prompt size | gemma macro P/R | ch14 events | Failure mode |
+|---|---:|---:|---:|---|
+| **c69 baseline** | 4522 | 0.83 / 0.94 | 6 evts CJK, 0/6 TP (granularity drift, but real extraction) | — |
+| **c71a** (Rule 10 + Example B CJK + Example C VN + Lessons) | 7475 | **0.79 / 0.89** | **2 evts copying Example A English (regurgitation)** | Example B text overlaps ch14 narrative → model emits Example A as fallback |
+| **c71b** (Rule 10 + remove Example B + keep Example C) | 6355 | not judged (script audit definitive) | 11 evts but 8 EN / 3 CJK | No CJK anchor example → Chinese chapters drift to English summary |
+
+Empirical evidence:
+- c71a extraction completed in 219.60s on huihui-qwen3-30b; dump at `/tmp/eval_dump_30b_c71a` inside `infra-knowledge-service-1`
+- c71a gemma single-judge completed in 254.90s; per-chapter log: `/tmp/judge_gemma_c71a.log`
+- c71b extraction completed in 249.91s; dump at `/tmp/eval_dump_30b_c71b`
+- c71b CJK→EN drift: journey_west_zh_ch01 3 EN / 0 nonascii; ch14 8 EN / 3 nonascii — violates "Keep summary in ORIGINAL script of TEXT" rule
+- Revert: `git checkout HEAD -- sdks/python/loreweave_extraction/prompts/event_extraction_system.md` restored 4522 chars
+
+### Lessons captured
+
+- **Event prompts ≠ relation prompts under the cycle-70 pattern.** Cycle 70 (CJK+VN examples + Lessons) worked for relations because it taught new VOCABULARY (predicates `disciple_of` / `stepchild_of`). Cycle 71 tried to teach STRUCTURAL granularity to events — the model resisted in two distinct ways.
+- **Example text-overlap with eval fixtures triggers regurgitation.** Example B's "三藏揭壓帖" text overlapped journey_west_zh_ch14's actual narrative → model output Example A (the first example) as fallback for the overlapping chapter. **Future language-specific examples must source from text NOT in the eval fixture set.**
+- **Asymmetric multilingual examples cause script drift.** c71b's EN + VN coverage left no CJK anchor → all Chinese chapters drifted to English summary. **For multilingual event prompts, need either symmetric coverage (1 example per supported language sourced from outside fixtures) OR no language-specific examples at all (rules-only).**
+- **Rule 10 (granularity) MAY still have value isolated.** Most chapters showed clean per-category event metrics under c71a (≥0.86 P, ≥0.60 R) — the granularity-only signal wasn't isolated cleanly because the regurgitation + script-drift confounded it. Cycle 71-bis tests R10 alone.
+
+### New deferred rows
+
+- **D-CYCLE71-SYMMETRIC-CJK-EXAMPLE** — if attempting CJK event example again, source text from a chapter NOT in `tests/fixtures/golden_chapters/` (avoid the text-overlap trap). Pair with symmetric EN + VN examples sourced similarly.
+- **D-EVENT-AGGREGATOR-FUZZY-MATCH** — judge-side fix for the granularity drift identified in cycle 69 (ch14 model extracts the same scenes as gold but folded/padded; matching at semantic level not literal). Alternative to prompt-side teaching.
+
+### Cycle 72 candidates (post-cycle-71+71-bis revert)
+
+| # | Candidate | Size | Status |
+|---|---|---|---|
+| 1 | ~~Specialized event prompt~~ | M | **TRIED, NEGATIVE — cycle 71 + 71-bis both reverted** |
+| 2 | **Hybrid 2-pass extraction** (30B recall → claude-4.7-opus precision filter) | L (~half-day) | **RECOMMENDED NEXT — pivot to structural lever; no prompt risk; F1 target ~0.88** |
+| 3 | **D-CLAUDE-JUDGE-VS-GEMMA-JUDGE-DIVERGENCE-AUDIT** | S (~1-2h) | Still pending from cycle 70 close; can run before #2 |
+| 4 | **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** | M (~half-day) | Multilingual NER anchor; closes EN-vs-CJK judge bias question |
+| 5 | **D-EVENT-AGGREGATOR-FUZZY-MATCH** | M (~half-day) | Judge-side fix for granularity drift; alternative to prompt-side event teaching |
+| 6 | **Catalogue-driven extraction** (resume paused ADR) | XL (multi-session) | Architectural; defer until smaller cycles plateau |
+
+Recommend cycle 72 = #2 (hybrid 2-pass) for the structural-lever bet. Session-end checkpoint advisable since 71/71-bis already burned this session's iteration budget; fresh session for #2 design + build.
+
+---
+
+# Session Handoff — Session 70 (specialized relation prompt — first recall-improvement cycle on the new eval framework) — historical
+
 > **Date:** 2026-05-29 (session 70, 1 M cycle with A/B/B' refinement test).
 > **HEAD:** pending final commit on top of `e9c5f3ff` (cycle 69 close).
 > **Branch:** `main`.

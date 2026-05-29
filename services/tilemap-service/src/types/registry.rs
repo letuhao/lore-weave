@@ -114,6 +114,31 @@ pub struct ObjectKindDef {
     /// 0 = no spacing rule. Engine enforces during placement.
     #[serde(default)]
     pub min_spacing: u32,
+    /// TMP-Q1 chunk B — biome filter applied to every kind regardless
+    /// of primitive (so author errors on Town/Mine entries fail at
+    /// load-time, not silently). Each entry MUST be a
+    /// `TerrainKind::tag()` value (snake_case: `"grass"`, `"forest"`,
+    /// `"mountain"`, `"water"`, `"sand"`, `"snow"`, `"swamp"`, `"road"`,
+    /// `"rough"`, `"subterranean"`). Empty list is allowed (the V2
+    /// default; means "no biome restriction"). Duplicate keys in this
+    /// list are rejected at registry load.
+    ///
+    /// V2 wire-discipline: `skip_serializing_if = "Vec::is_empty"`
+    /// matches `world_zone` / `walkability_pattern` Option-skipping.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub biomes: Vec<String>,
+    /// TMP-Q1 chunk B — relative weight for the DecorationPlacer's
+    /// weighted random selection within a biome's pool. 1.0 is neutral;
+    /// 1.5 makes the tag 50% more likely than a 1.0 neighbour; 0.3
+    /// makes it rare. Ignored for non-decoration kinds. Registry-load
+    /// validation rejects non-finite or non-positive values to keep
+    /// chunk-C's weighted-sample call total-positive.
+    ///
+    /// `skip_serializing_if = "is_default_density_weight"` keeps the
+    /// wire shape unchanged for V2 entries that don't set the field.
+    #[serde(default = "default_density_weight",
+            skip_serializing_if = "is_default_density_weight")]
+    pub density_weight: f32,
     /// Open property bag — see ADR §2.1.1.
     #[serde(default = "default_properties")]
     pub properties: JsonValue,
@@ -125,6 +150,17 @@ fn default_properties() -> JsonValue {
 
 fn default_unit_footprint() -> FootprintSize {
     FootprintSize::unit()
+}
+
+fn default_density_weight() -> f32 {
+    1.0
+}
+
+/// Tests whether a `density_weight` equals the default exactly (1.0).
+/// Used by `#[serde(skip_serializing_if)]` so V2 entries that don't
+/// declare the field stay omitted from a round-trip.
+fn is_default_density_weight(weight: &f32) -> bool {
+    *weight == 1.0
 }
 
 /// Registry identifier + version, embedded in TilemapView responses so

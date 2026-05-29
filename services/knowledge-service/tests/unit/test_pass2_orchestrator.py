@@ -594,3 +594,276 @@ async def test_p2_uses_per_op_extractor_version(
     # collapse to one shared version.
     assert sorted(seen_per_op_versions.keys()) == ["entity", "event", "fact", "relation"]
     assert len(set(seen_per_op_versions.values())) == 4
+
+
+# ── Cycle 72 — precision filter integration tests ──────────────────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_env_unset_skips_filter_call(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cycle 72: env unset → orchestrator does NOT invoke filter.
+    Regression-lock for the kwarg default."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    apf_calls: list[Any] = []
+
+    async def _stub_apf(candidates, **kwargs):
+        apf_calls.append(kwargs)
+        return candidates
+
+    with patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", None), \
+         patch(f"{_ORCH}.apply_precision_filter", new=_stub_apf):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-1", job_id=_JOB_ID,
+            user_message="hello",
+            assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+        )
+
+    # apply_precision_filter must NOT have been called
+    assert apf_calls == []
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_env_set_calls_filter_post_gather_pre_write(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cycle 72: env set → filter called AFTER extractors gather, BEFORE
+    write_pass2_extraction. Order matters: filter output is what gets
+    persisted (not pre-filter Pass A)."""
+    from loreweave_extraction import (
+        Pass2Candidates, PrecisionFilterConfig,
+    )
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    pass_a_entity = _entity("Alice")
+    pass_a_relation = MagicMock()
+    pass_a_event = MagicMock()
+    pass_a_fact = MagicMock()
+    mock_entities.return_value = [pass_a_entity]
+    mock_relations.return_value = [pass_a_relation]
+    mock_events.return_value = [pass_a_event]
+    mock_facts.return_value = [pass_a_fact]
+    mock_write.return_value = _write_result()
+
+    config = PrecisionFilterConfig(model_ref="claude-4.7-opus-uuid")
+    apf_calls: list[Any] = []
+
+    async def _stub_apf(candidates, **kwargs):
+        apf_calls.append((candidates, kwargs))
+        # Simulate filter dropping the entity and event but keeping the relation
+        return Pass2Candidates(
+            entities=[],
+            relations=candidates.relations,
+            events=[],
+            facts=candidates.facts,
+            filter_status="applied",
+            filter_coverage={"entity": 1.0, "relation": 1.0, "event": 1.0},
+        )
+
+    with patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", config), \
+         patch(f"{_ORCH}.apply_precision_filter", new=_stub_apf):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-2", job_id=_JOB_ID,
+            user_message="hello",
+            assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+        )
+
+    # Filter was called exactly once
+    assert len(apf_calls) == 1
+    # Pass A candidates went IN
+    in_cands, in_kwargs = apf_calls[0]
+    assert in_cands.entities == [pass_a_entity]
+    assert in_cands.relations == [pass_a_relation]
+    assert in_cands.events == [pass_a_event]
+    # Config got threaded through
+    assert in_kwargs["config"] is config
+
+    # write_pass2_extraction received the FILTERED candidates, not Pass A.
+    mock_write.assert_awaited_once()
+    write_kwargs = mock_write.call_args.kwargs
+    assert write_kwargs["entities"] == []   # filter dropped
+    assert write_kwargs["relations"] == [pass_a_relation]  # filter kept
+    assert write_kwargs["events"] == []     # filter dropped
+    # Facts are NEVER filtered per spec D2 — Pass A passes through
+    assert write_kwargs["facts"] == [pass_a_fact]
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_filter_degraded_logs_warning_continues_write(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cycle 72: filter returns filter_status='degraded' → write proceeds
+    with Pass A candidates (filter never raises)."""
+    from loreweave_extraction import (
+        Pass2Candidates, PrecisionFilterConfig,
+    )
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    pass_a_entity = _entity("Alice")
+    mock_entities.return_value = [pass_a_entity]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    async def _stub_apf(candidates, **kwargs):
+        # Degraded — return Pass A unchanged
+        return Pass2Candidates(
+            entities=candidates.entities,
+            relations=candidates.relations,
+            events=candidates.events,
+            facts=candidates.facts,
+            filter_status="degraded",
+            filter_coverage={"entity": 0.0, "relation": 0.0, "event": 0.0},
+        )
+
+    config = PrecisionFilterConfig(model_ref="failing-filter")
+    with patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", config), \
+         patch(f"{_ORCH}.apply_precision_filter", new=_stub_apf):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-3", job_id=_JOB_ID,
+            user_message="hello",
+            assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+        )
+
+    # Write happens with Pass A candidates (filter degraded, no data loss)
+    mock_write.assert_awaited_once()
+    assert mock_write.call_args.kwargs["entities"] == [pass_a_entity]
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_emits_filter_applied_stage_log(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cycle 72: when filter runs, a 'pass2_precision_filter' stage log is
+    emitted to job_logs so the FE log panel can render it."""
+    from loreweave_extraction import (
+        Pass2Candidates, PrecisionFilterConfig,
+    )
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    async def _stub_apf(candidates, **kwargs):
+        return Pass2Candidates(
+            entities=candidates.entities,
+            relations=candidates.relations,
+            events=candidates.events,
+            facts=candidates.facts,
+            filter_status="applied",
+            filter_coverage={"entity": 1.0, "relation": 1.0, "event": 1.0},
+        )
+
+    repo = MagicMock()
+    repo.append = AsyncMock()
+
+    config = PrecisionFilterConfig(model_ref="claude-4.7-opus-uuid")
+    with patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", config), \
+         patch(f"{_ORCH}.apply_precision_filter", new=_stub_apf):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-4", job_id=_JOB_ID,
+            user_message="hello",
+            assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+            job_logs_repo=repo,
+        )
+
+    # job_logs_repo.append received the precision_filter event
+    appended_contexts = [
+        call.args[4] if len(call.args) > 4 else call.kwargs.get("context", {})
+        for call in repo.append.await_args_list
+    ]
+    filter_events = [
+        ctx for ctx in appended_contexts
+        if ctx.get("event") == "pass2_precision_filter"
+    ]
+    assert len(filter_events) == 1
+    ev = filter_events[0]
+    assert ev["filter_status"] == "applied"
+    assert "filter_coverage" in ev
+
+
+def test_load_precision_filter_config_orchestrator_env_set() -> None:
+    """Env reader: KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF set
+    → PrecisionFilterConfig parsed correctly."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_precision_filter_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF",
+            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY",
+        )
+    }
+    try:
+        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY"] = "drop"
+        config = _load_precision_filter_config()
+        assert config is not None
+        assert config.model_ref == "claude-4.7-opus-uuid"
+        assert config.partial_policy == "drop"
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_load_precision_filter_config_orchestrator_env_unset() -> None:
+    """Env reader: empty/unset → None."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_precision_filter_config
+
+    original = os.environ.pop("KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF", None)
+    try:
+        assert _load_precision_filter_config() is None
+    finally:
+        if original is not None:
+            os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = original
