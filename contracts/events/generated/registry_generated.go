@@ -8,6 +8,18 @@ package events
 // contracts/events/. Consumers use this for runtime dispatch (logging, telemetry,
 // generic serialization paths).
 var EventDispatch = map[string]map[uint32]string{
+	"canon.entry.created": {
+		1: "CanonEntryCreatedV1",
+	},
+	"canon.entry.decanonized": {
+		1: "CanonEntryDecanonizedV1",
+	},
+	"canon.entry.promoted": {
+		1: "CanonEntryPromotedV1",
+	},
+	"canon.entry.updated": {
+		1: "CanonEntryUpdatedV1",
+	},
 	"npc.said": {
 		1: "NpcSaidV1",
 		2: "NpcSaidV2",
@@ -18,12 +30,24 @@ var EventDispatch = map[string]map[uint32]string{
 	"world.tick": {
 		1: "WorldTickV1",
 	},
+	"xreality.canon.promoted": {
+		1: "XRealityCanonPromotedV1",
+	},
+	"xreality.user.erased": {
+		1: "XRealityUserErasedV1",
+	},
 }
 
 // EventTypesGenerated is the alphabetically-sorted list of event_type names
 // known to the registry at codegen time.
 var EventTypesGenerated = []string{
+	"canon.entry.created",
+	"canon.entry.decanonized",
+	"canon.entry.promoted",
+	"canon.entry.updated",
 	"npc.said",
 	"reality.created",
 	"world.tick",
+	"xreality.canon.promoted",
+	"xreality.user.erased",
 }

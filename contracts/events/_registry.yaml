@@ -108,3 +108,52 @@ events:
     description: GDPR erasure event for a user; meta-worker fans out the deletion to every reality the user touched.
     shipped_cycle: 10
     owner: auth-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # canon.* — L5.A glossary-service canon mutation events (RAID cycle 23)
+  # ────────────────────────────────────────────────────────────────────
+  # Glossary-service emits these via its own outbox (R06 §12F). Publisher
+  # drains + also fans out as xreality.book.canon.updated (cycle 10 xreality
+  # protocol) for per-reality canon_projection writes (L5.B/D, cycle 24).
+  #
+  # Per Q-L5A-1 LOCKED: foundation owns ONLY the schema + contract test
+  # fixture; the outbox emission lives in a separate sub-program in
+  # services/glossary-service/ (NOT touched by this cycle).
+  #
+  # Per Q-L5-3 LOCKED: canon_layer enum is {L1_axiom, L2_seeded} — single
+  # column on per-reality canon_projection (L5.D cycle 23).
+  - name: canon.entry.created
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonEntryCreatedV1
+    description: A new canon entry was authored in glossary-service. Emitted via glossary-service outbox (Q-L5A-1 separate sub-program); foundation owns schema + contract test fixture only.
+    shipped_cycle: 23
+    owner: glossary-service
+
+  - name: canon.entry.updated
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonEntryUpdatedV1
+    description: Existing canon entry value/attribute changed. Carries old_value+new_value for audit and L5.J change-history.
+    shipped_cycle: 23
+    owner: glossary-service
+
+  - name: canon.entry.promoted
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonEntryPromotedV1
+    description: Canon entry promoted from L2_seeded to L1_axiom (M4 §9.7.4 harder L2→L1 gate). Distinct from cycle-10 xreality.canon.promoted (cross-reality fan-out signal).
+    shipped_cycle: 23
+    owner: glossary-service
+
+  - name: canon.entry.decanonized
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonEntryDecanonizedV1
+    description: Canon entry retracted (no longer canonical). Q-L5A-1 sub-program handles outbox-tombstone; foundation ships schema only.
+    shipped_cycle: 23
+    owner: glossary-service

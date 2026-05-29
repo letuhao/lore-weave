@@ -35,6 +35,13 @@ members = [
     "crates/projections/region",
     "crates/projections/world_kv",
     "crates/projections/session",
+    # Cycle 23 — L5.D.3 canon projection (11th projection table; consumes the
+    # cycle-13 cycle-12 `Projection` trait + writes to the cycle-23 L5.D.1
+    # `canon_projection` table in per-reality DB). Glossary-service authoring
+    # is OUT of foundation scope per Q-L5A-1; this crate handles the
+    # per-reality projection write path from canon.* events fanned out via
+    # the xreality protocol (cycle 10) + meta-worker canon writer (cycle 24+).
+    "crates/projections/canon",
     # Cycle 14 — L3.D per-aggregate parallel rebuilder. Consumes
     # `dp-kernel::Projection` + `ProjectionRunner` (cycle 12) to replay events
     # from the L2.A event log into the cycle-13 projection tables. Used by

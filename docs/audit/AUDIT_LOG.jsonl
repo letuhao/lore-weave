@@ -1109,3 +1109,17 @@
 {"ts": "2026-05-29T11:44:54Z", "event": "in_progress_update", "cycle": 22, "phase": "POST_REVIEW", "retry": 0}
 {"ts": "2026-05-29T11:46:26Z", "event": "in_progress_update", "cycle": 22, "phase": "SESSION", "retry": 0}
 {"ts": "2026-05-29T11:46:36Z", "event": "in_progress_update", "cycle": 22, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T11:47:23Z", "event": "in_progress_update", "cycle": 22, "phase": "RETRO", "retry": 0}
+{"ts": "2026-05-29T11:47:23Z", "event": "in_progress_archived", "cycle": 22, "archived_to": "cycle-022-state.md"}
+{"ts":"2026-05-29T11:47:26Z","event":"recovery_halted","cycle":22,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T11:47:26Z", "event": "escalation_written", "cycle": 22, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T11:48:08Z", "event": "coordinator_next_cycle_emitted", "cycle": 23}
+{"ts":"2026-05-29T11:49:25Z","event":"startup_drift_check_passed","cycle":23,"version":"v1.6"}
+{"ts":"2026-05-29T11:49:25Z","event":"startup_verifier_complete","cycle":23,"steps":6}
+{"ts": "2026-05-29T11:49:36Z", "event": "in_progress_init", "cycle": 23, "title": "L5 Contracts + Per-reality canon_projection (A+D)"}
+{"ts": "2026-05-29T11:51:53Z", "event": "in_progress_update", "cycle": 23, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T12:02:28Z", "event": "in_progress_update", "cycle": 23, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T12:05:27Z","event":"secret_scan_skipped","cycle":23,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T12:06:15Z", "event": "in_progress_update", "cycle": 23, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T12:07:35Z", "event": "in_progress_update", "cycle": 23, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T12:07:55Z", "event": "in_progress_archived", "cycle": 23, "archived_to": "cycle-023-state.md"}
