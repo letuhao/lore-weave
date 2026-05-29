@@ -400,3 +400,7 @@
 {"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "post_review", "event": "scope_guard", "result": "CLEAR"}
 {"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "session", "event": "dps_count", "count": 1, "note": "in-place fallback: worktrees-create base branch mismatch (mmo-rpg/foundation-mega-task lacks C0 skeleton); Agent tool unavailable so DPS+reviews run in-place per coordinator fallback"}
 {"ts": "2026-05-29T20:53:00Z", "event": "in_progress_update", "cycle": 1, "phase": "COMMIT", "retry": 0}
+{"ts":"2026-05-29T20:53:31Z","event":"secret_scan_skipped","cycle":1,"scope":"final","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T20:54:15Z", "event": "in_progress_update", "cycle": 1, "phase": "RETRO", "retry": 0}
+{"ts": "2026-05-29T20:54:35Z", "cycle": 1, "phase": "retro", "event": "retro", "note": "Smooth: read-client TDD + respx mocking + real live-smoke against running KG (HTTP 401 = reachability proof). Surprise: worktrees-create base is mmo-rpg/foundation-mega-task, not lore-enrichment/foundation, so DPS worktrees lacked the C0 skeleton; with Agent tool unavailable, fell back to in-place single-DPS per coordinator note. Next: fix worktrees-create base-branch resolution or expect in-place builds. Also: httpx json= escapes CJK to backslash-u; fixed via ensure_ascii=False."}
+{"ts": "2026-05-29T20:54:50Z", "event": "in_progress_archived", "cycle": 1, "archived_to": "cycle-001-state.md"}
