@@ -86,6 +86,8 @@ async def extract_pass2(
     model_ref: str,
     llm_client: LLMClientProtocol,
     on_dropped: DroppedHandler | None = None,
+    precision_filter: "PrecisionFilterConfig | None" = None,
+    on_filter_decision: "DecisionHandler | None" = None,
 ) -> Pass2Candidates:
     """Run the full Pass 2 extraction pipeline.
 
@@ -93,8 +95,25 @@ async def extract_pass2(
     calling the LLM. Empty entity result short-circuits — no point
     extracting relations/events/facts that have nothing to anchor to.
 
+    Cycle 72 — when ``precision_filter`` is non-None, runs the
+    ``apply_precision_filter`` pass after the gather to drop items the
+    filter LLM says are unsupported by the source text. When None
+    (default), filter is skipped and the returned
+    ``Pass2Candidates.filter_status`` is ``"skipped"`` — zero behavior
+    change for pre-cycle-72 callers.
+
+    Args:
+        precision_filter: optional config controlling the precision
+            filter pass. ``None`` (default) = no filter.
+        on_filter_decision: optional per-item telemetry callback
+            forwarded to ``apply_precision_filter``. Ignored when
+            ``precision_filter is None``.
+
     Raises:
-        ExtractionError: on terminal LLM / parse failure in any stage.
+        ExtractionError: on terminal LLM / parse failure in any
+            extractor stage. Filter LLM failure does NOT raise — see
+            ``apply_precision_filter`` (degrades to Pass A with
+            ``filter_status="degraded"``).
     """
     if not text or not text.strip():
         return Pass2Candidates()
@@ -137,9 +156,26 @@ async def extract_pass2(
         extract_facts(**extractor_kwargs),
     )
 
-    return Pass2Candidates(
+    candidates = Pass2Candidates(
         entities=entities,
         relations=relations,
         events=events,
         facts=facts,
     )
+
+    # Cycle 72 — optional precision filter pass.
+    if precision_filter is not None:
+        # Lazy import to break the SDK module import cycle (pass2_filter
+        # imports Pass2Candidates + FilterStatus from this module).
+        from loreweave_extraction.pass2_filter import apply_precision_filter
+
+        candidates = await apply_precision_filter(
+            candidates,
+            text=text,
+            config=precision_filter,
+            user_id=user_id,
+            llm_client=llm_client,
+            on_decision=on_filter_decision,
+        )
+
+    return candidates
