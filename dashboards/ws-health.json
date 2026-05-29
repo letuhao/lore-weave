@@ -1,0 +1,135 @@
+{
+  "title": "LoreWeave / WS Health",
+  "uid": "lw-ws-health",
+  "schemaVersion": 39,
+  "description": "L6.E.4 — WebSocket server health per replica + per region. RAID cycle 28.",
+  "tags": ["loreweave", "ws", "L6", "cycle-28"],
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "region",
+        "type": "query",
+        "query": "label_values(lw_ws_active_connections, region)",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "deploy_cohort",
+        "type": "query",
+        "query": "label_values(lw_ws_active_connections, deploy_cohort)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active connections per replica (cap = 10 000)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom"},
+      "targets": [
+        {
+          "expr": "lw_ws_active_connections",
+          "legendFormat": "{{instance}}"
+        },
+        {
+          "expr": "0.8 * 10000",
+          "legendFormat": "80% saturation alert threshold"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 7000},
+              {"color": "red", "value": 8000}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Handshake failures per reason (rate / 2m)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom"},
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(lw_ws_handshake_failures_total[2m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Ticket redeem outcomes (rate / 1m)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom"},
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(lw_ws_ticket_redeemed_total[1m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Message rate by direction + kind (rate / 1m)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom"},
+      "targets": [
+        {
+          "expr": "sum by (direction, kind) (rate(lw_ws_messages_total[1m]))",
+          "legendFormat": "{{direction}}-{{kind}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Authz rejections per reason (rate / 5m)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom"},
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(lw_ws_authz_rejections_total[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Connection evictions per reason (rate / 5m)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prom"},
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(lw_ws_connection_evictions_total[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "type": "tags",
+        "tags": ["deploy"]
+      }
+    ]
+  }
+}

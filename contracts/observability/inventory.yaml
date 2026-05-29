@@ -616,6 +616,69 @@ metrics:
     source: contracts/prompt::Cache.metrics.AddInvalidations + dp-kernel::canon_cache::MetricsSink.add_invalidations
     cardinality_notes: 'reality_id = 1 series per reality.'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L6.E — WebSocket server (cycle 28: L6.A + L6.B + L6.E)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_ws_active_connections
+    kind: gauge
+    layer: L6
+    shipped_cycle: 28
+    labels: []
+    description: 'active WS connections on this gateway replica. Driver for cap-saturation alert (>80% of Q-L6-2 10K cap → HPA scale signal).'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.activeConnections
+    cardinality_notes: 'unlabeled gauge — exactly 1 series per replica. No per-connection cardinality (auditor focus).'
+
+  - name: lw_ws_handshake_failures_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [reason]
+    description: 'WS handshake rejections per reason — missing_ticket, invalid_protocol_header, ticket_redeem_failed, ticket_expired, origin_mismatch, fingerprint_mismatch, cap_reached, session_store_failed, unknown.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.handshakeFailures
+    cardinality_notes: 'reason ≤ 9 enumerated values — 9 series per replica.'
+
+  - name: lw_ws_messages_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [direction, kind]
+    description: 'WS frames flowing through the gateway — direction = c2s|s2c × kind = control|data. Drives msg-rate alert.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.messages
+    cardinality_notes: 'direction × kind = 2 × 2 = 4 series per replica.'
+
+  - name: lw_ws_authz_rejections_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [reason]
+    description: 'WS per-message authz rejections (foundation here; populated by cycle 29 L6.C). Reasons = s2_not_in_session, s3_privacy_violation, scope_not_allowed, reality_not_allowed, schema_invalid.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.authzRejections
+    cardinality_notes: 'reason ≤ 5 enumerated values — 5 series per replica.'
+
+  - name: lw_ws_ticket_redeemed_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [outcome]
+    description: 'WS ticket redeem outcomes — success, expired, not_found, origin_mismatch, fingerprint_mismatch. High `not_found` rate may signal replay attacks; high `expired` rate signals clock skew or slow upgrade.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.ticketRedeemed
+    cardinality_notes: 'outcome ≤ 5 enumerated values — 5 series per replica.'
+
+  - name: lw_ws_connection_evictions_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [reason]
+    description: 'WS connection close causes — normal_close, cap_reached_lru, forced_disconnect, session_expired. Force-disconnect spikes signal admin actions or token revocations.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.evictions
+    cardinality_notes: 'reason ≤ 4 enumerated values — 4 series per replica.'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

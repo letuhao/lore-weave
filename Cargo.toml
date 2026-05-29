@@ -49,6 +49,11 @@ members = [
     # placeholder. Rules data-driven via YAML manifest
     # (`contracts/canon/guardrail_rules.yaml`).
     "crates/contracts-prompt",
+    # Cycle 28 — L6.A.5 WS server-lib + envelope/close-code types for
+    # downstream Rust services (roleplay-service, world-service). Per
+    # Q-L6-1 the gateway WS impl lives in NestJS api-gateway-bff; this
+    # crate is server-LIB types only (no Rust WS server).
+    "crates/contracts-ws",
     # Cycle 14 — L3.D per-aggregate parallel rebuilder. Consumes
     # `dp-kernel::Projection` + `ProjectionRunner` (cycle 12) to replay events
     # from the L2.A event log into the cycle-13 projection tables. Used by
