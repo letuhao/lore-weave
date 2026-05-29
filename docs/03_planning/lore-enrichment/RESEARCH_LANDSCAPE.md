@@ -112,3 +112,34 @@ Best-fit architecture to compose: **seed-KG → expand → external-refine** (25
 
 ## Net competitive conclusion
 Seed-driven enrichment exists only in **shallow keyword-injected** forms. The two-layer (authored-SSOT + semantic-KG) pattern, schema-governed canon-anchoring, and cultural grounding for an under-described classical source are **all absent from the verified commercial set** — the same white space Pass 1 found in research, now confirmed on the product side.
+
+---
+
+# Pass 3 — Fuller Product Coverage + KG-for-Fiction Entrants (2026-05-29)
+
+> **Method:** deep-research — 5 angles → 21 sources → 85 claims → 25 verified → **22 confirmed / 3 refuted** → 9 findings. (run `wf_86bd6084-7d6`)
+> **Goal:** cover products Pass 2 missed + probe for 2025-26 "knowledge graph for fiction" entrants and cultural-grounding competitors.
+
+## Notable findings
+
+| Entrant | Pattern | Verdict | Source |
+|---|---|---|---|
+| **Graphify Novel** ⭐ | **Genuine two-layer**: bible SSOT + derived KG (NetworkX); edges labeled `EXTRACTED/INFERRED/AMBIGUOUS` (= provenance) | Closest architectural analogue — but early-stage personal OSS, single-user, no benchmarks, no cultural grounding | github.com/Anshler/graphify-novel |
+| **arXiv:2505.24803** (IJHCI 2025) | Seed → init KG → progressively expand canon-consistent; editable KG layer | Closest research analogue to seed-driven KG enrichment — but research prototype (n=15), not productized, not anchored to an authored-SSOT service. ("RAG+KG" claim refuted — mechanism is KG-grounded, not RAG+KG) | arXiv:2505.24803 |
+| **Convai** | Single-layer vector-RAG (embedding + BM25), retrieval-only | No KG, no generation/expansion | convai.com/blog |
+| **HammerAI / Character.AI Lorebook / Inkfluence AI** | Keyword / whole-bible injection | Inkfluence *deliberately* avoids RAG/KG; Character.AI not GA | vendor docs |
+| **World Anvil** (Oct 2025) | UI/UX release only; "Sage" = contextual completion | No KG/RAG | blog.worldanvil.com |
+| **AI Cultivation World Simulator** (Steam, xianxia) | Blank-page emergent per-NPC LLM, grounded by **genre rules** | **Only Chinese/xianxia entrant** — but simulation not enrichment-over-canon → **confirms the gap** | store.steampowered.com/app/4443180 |
+| **Inworld** | Prior-pass characterization **refuted 0-3** | Unresolved this pass | docs.inworld.ai |
+
+## Net conclusion (after fuller coverage)
+White space **remains unfilled**. Only TWO genuine two-layer entrants exist (Graphify Novel = early OSS; IJHCI paper = research) — **neither is a shipping product doing culturally-grounded enrichment over an authored SSOT**. **Cultural / non-English (Chinese mythology–history) grounding as a deliberate KG-anchored capability is genuinely unserved** — the lone xianxia product confirms rather than competes.
+
+## Refuted (3): Inworld authored-facts characterization (×2), 2505.24803 "RAG+KG" mechanism.
+
+## Still-uncovered (no surviving claims, 3 passes): Campfire/Blaze AI, LegendKeeper, Kanka, Fantasia Archive, Obsidian plugins, Charisma.ai, Hidden Door, Ludo.ai, Scenario.gg, Layer AI. Diminishing returns — these are unlikely to overturn the thesis; revisit only if a specific one becomes a positioning concern.
+
+## Design takeaways
+- **Study Graphify Novel** — its edge-provenance labels (`EXTRACTED/INFERRED/AMBIGUOUS`) validate our provenance/confidence principle; its NetworkX KG engine + community/path/hub detection is a reference implementation.
+- **arXiv:2505.24803 is the pipeline blueprint** for seed→init-KG→iterative-expand with a human-editable KG.
+- **Our durable differentiators**: cultural grounding (CHisAgent-style external resource integration) + anchoring to a *separate authored glossary-SSOT service* + schema-governed game-ready output + per-fact provenance/confidence. No verified system combines these.
