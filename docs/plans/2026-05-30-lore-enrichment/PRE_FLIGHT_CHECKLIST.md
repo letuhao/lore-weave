@@ -18,7 +18,9 @@
 - [ ] knowledge-service exposes graph / graph-stats / context / embedding-model for a test project.
 - [ ] glossary `POST /books/{book_id}/extract-entities` + wiki generate reachable with internal token.
 - [ ] book-service chapter/hierarchy read reachable.
-- [ ] A Fengshen Yanyi test book/project seeded for the demo path (book + initial glossary + extracted KG).
+- [x] Fengshen Yanyi **source text downloaded** → `data/lore-enrichment/fengshen-yanyi.txt` (100 回, public-domain, prefetched 2026-05-30). Demo place targets verified present.
+- [ ] Fengshen book/project **seeded** for the demo path (import the txt via book-service + initial glossary + extracted KG). Source is on disk; ingest still to run.
+- [ ] 山海经 + Shang–Zhou corpora fetched (technique b, ~C10) — not yet downloaded.
 
 ## RAID operational
 - [ ] `.raid/active-task.yaml` validates: `python scripts/raid/task_config.py validate` → exit 0.
