@@ -12,7 +12,21 @@
 //!   is appended to the log (per R03 §12C.4 — never let malformed events
 //!   poison the stream).
 //!
-//! - [`errors`] — typed error enum shared by both modules.
+//! - [`envelope`] — RAID cycle 12: Rust mirror of
+//!   `contracts/events/envelope.go::Envelope`. Single canonical wire shape
+//!   consumed by projections (L3.B) and the snapshot loader (L3.C).
+//!
+//! - [`projection`] — RAID cycle 12 / L3.B: sync `Projection` trait +
+//!   `ProjectionRunner`. One event ↦ `Vec<ProjectionUpdate>` (Q-L3B-1);
+//!   carries [`projection::VerificationMeta`] per Q-L3-4 contract.
+//!
+//! - [`load_aggregate`] + [`snapshot_cache`] — RAID cycle 12 / L3.C:
+//!   `load_aggregate<A: Aggregate>` reconstructs aggregate state from
+//!   `aggregate_snapshots` (L2.E) + delta events (L2.A). Three load paths:
+//!   (A) no snapshot full replay, (B) snapshot + delta, (C) snapshot direct.
+//!   Bounded LRU snapshot cache backs the read path.
+//!
+//! - [`errors`] — typed error enum shared by all modules.
 //!
 //! The Go side of these libraries lives in `contracts/events/upcasters_go/`
 //! and `contracts/events/validators_go/` — both follow the same trait shape
@@ -32,12 +46,20 @@
 //! Symbols exported at the root (`pub use`) are V1-stable. Sub-module paths
 //! may be reshaped within `dp-kernel` between cycles 8-11 as L2 fills out.
 
+pub mod envelope;
 pub mod errors;
 pub mod event_validator;
+pub mod load_aggregate;
 pub mod outbox;
+pub mod projection;
+pub mod snapshot_cache;
 pub mod upcaster;
 
+pub use envelope::{EventEnvelope, Rfc3339Timestamp};
 pub use errors::EventError;
 pub use event_validator::{EventValidator, SchemaDescriptor, ValidatorRegistry};
+pub use load_aggregate::{load_aggregate, Aggregate, EventReader, LoadError, SnapshotRecord, SnapshotStore};
 pub use outbox::{insert_sql as outbox_insert_sql, write as outbox_write, OutboxError, OutboxRow, OutboxWriter};
+pub use projection::{Projection, ProjectionRunner, ProjectionUpdate, VerificationMeta};
+pub use snapshot_cache::{CacheEntry, CacheKey, SnapshotCache};
 pub use upcaster::{Upcaster, UpcasterChain, UpcasterRegistry};

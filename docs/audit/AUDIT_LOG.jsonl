@@ -938,3 +938,25 @@
 {"ts": "2026-05-29T07:35:33Z", "event": "in_progress_update", "cycle": 11, "phase": "POST_REVIEW", "retry": 0}
 {"ts": "2026-05-29T07:35:35Z", "event": "in_progress_update", "cycle": 11, "phase": "SESSION", "retry": 0}
 {"ts": "2026-05-29T07:36:17Z", "event": "in_progress_update", "cycle": 11, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T07:37:18Z", "event": "in_progress_update", "cycle": 11, "phase": "RETRO", "retry": 0}
+{"ts": "2026-05-29T07:37:20Z", "event": "in_progress_archived", "cycle": 11, "archived_to": "cycle-011-state.md"}
+{"ts":"2026-05-29T07:37:22Z","event":"worktree_removed","cycle":11,"name":"cycle-11-dps-1"}
+{"ts":"2026-05-29T07:37:22Z","event":"worktree_removed","cycle":11,"name":"cycle-11-dps-2"}
+{"ts":"2026-05-29T07:37:31Z","event":"recovery_halted","cycle":11,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T07:37:31Z", "event": "escalation_written", "cycle": 11, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T07:38:26Z", "event": "coordinator_next_cycle_emitted", "cycle": 12}
+{"ts":"2026-05-29T07:40:05Z","event":"startup_drift_check_passed","cycle":12,"version":"v1.6"}
+{"ts":"2026-05-29T07:40:05Z","event":"startup_verifier_complete","cycle":12,"steps":6}
+{"ts": "2026-05-29T07:40:17Z", "event": "in_progress_init", "cycle": 12, "title": "L3 Projection trait + Snapshot read runtime (B+C)"}
+{"ts": "2026-05-29T07:42:51Z", "event": "in_progress_update", "cycle": 12, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T07:43:11Z", "event": "in_progress_update", "cycle": 12, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T07:43:33Z", "event": "in_progress_update", "cycle": 12, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T07:49:27Z", "event": "in_progress_update", "cycle": 12, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T07:51:20Z","event":"secret_scan_skipped","cycle":12,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T07:51:58Z", "event": "in_progress_update", "cycle": 12, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T07:52:37Z", "event": "in_progress_update", "cycle": 12, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T07:52:42Z", "event": "in_progress_update", "cycle": 12, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T07:52:52Z", "event": "in_progress_update", "cycle": 12, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T07:53:00Z", "event": "cycle_done", "cycle": 12, "title": "L3 Projection trait + Snapshot read runtime (B+C)", "dps_count": 2, "files_added": 5, "files_modified": 1, "tests_added": 30, "tests_total": 57, "verify_exit": 0, "locked_qs_honored": ["Q-L3B-1", "Q-L3-2", "Q-L3-4", "Q-L3-5"], "carryforward_to_cycle_13": ["L3.A projection tables wire VerificationMeta columns (last_verified_event_version, last_verified_at)", "Per-aggregate projection impls (PC, NPC, region, world_kv, session)"], "carryforward_to_cycle_14": ["Publisher wire-up of SnapshotCache::invalidate on event emit"]}
+{"ts": "2026-05-29T07:53:39Z", "event": "in_progress_update", "cycle": 12, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T07:53:44Z", "event": "in_progress_archived", "cycle": 12, "archived_to": "cycle-012-state.md"}
