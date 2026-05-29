@@ -39,7 +39,7 @@ PLAN component designs + the adversarial [DESIGN_PLAN_REVIEW](DESIGN_PLAN_REVIEW
 - **Option B:** pulled in long-drifting platform deferrals as cycles — **K14 event pipeline** (C4, fixes H1 sync) + **D4-03 wiki-from-KG** (C5, fixes H3 renderer). Conflict-checked safe.
 
 Before `/raid`:
-1. Work the [PRE_FLIGHT_CHECKLIST](../../plans/2026-05-30-lore-enrichment/PRE_FLIGHT_CHECKLIST.md) (port 8093/8217, DB, dependency stack-up, secrets, Fengshen test project seeded, pre-commit-hook decision).
+1. Work the [PRE_FLIGHT_CHECKLIST](../../plans/2026-05-30-lore-enrichment/PRE_FLIGHT_CHECKLIST.md) (port 8093/8221, DB, dependency stack-up, secrets, Fengshen test project seeded, pre-commit-hook decision).
 2. Invoke `/raid` (or `/raid 0` to start at bootstrap C0). RAID reads `.raid/active-task.yaml`.
 3. Demo milestone = after **C14** (P1 end-to-end: Fengshen → gap-detect → template+retrieval → review → author-promote → write-back + K14 auto-sync + D4-03 wiki).
 

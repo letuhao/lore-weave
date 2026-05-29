@@ -66,7 +66,7 @@ Needed before promoting P2/P3 techniques. Measures more than JSON validity:
 - `GET /v1/lore-enrichment/jobs/{id}/proposals` (filter) · `POST /v1/lore-enrichment/proposals/{id}/{approve|reject|edit}`.
 - `POST /v1/lore-enrichment/sources` · `GET /v1/lore-enrichment/templates`.
 - Internal: `POST /internal/lore-enrichment/gap-detect`; subscribe `glossary.entity_updated` / `knowledge.*` events.
-- Gateway route `/v1/lore-enrichment/*` via api-gateway-bff; internal port (next free, e.g. 8093 / host 8217 — confirm in PRE_FLIGHT).
+- Gateway route `/v1/lore-enrichment/*` via api-gateway-bff; internal port (next free, e.g. 8093 / host 8221 — confirm in PRE_FLIGHT).
 
 ## P6 + P7. RAID decomposition & size
 - Decomposition → [CYCLE_DECOMPOSITION.md](../../plans/2026-05-30-lore-enrichment/CYCLE_DECOMPOSITION.md). Locked questions → [OPEN_QUESTIONS_LOCKED.md](../../plans/2026-05-30-lore-enrichment/OPEN_QUESTIONS_LOCKED.md). Pre-flight → [PRE_FLIGHT_CHECKLIST.md](../../plans/2026-05-30-lore-enrichment/PRE_FLIGHT_CHECKLIST.md).

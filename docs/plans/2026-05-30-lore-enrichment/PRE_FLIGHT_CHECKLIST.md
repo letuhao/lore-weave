@@ -1,36 +1,43 @@
 # Lore-Enrichment — Pre-Flight Checklist
 
-> Manual sign-off BEFORE RAID cycle execution begins. Mostly verified at C0/C1; some are human-confirm.
+> Sign-off BEFORE RAID cycle execution. Legend: **[x] verified now** · **[~] at C0/C1 (built in-cycle)** · **[!] NEEDS USER (gating)**.
+> Static checks run 2026-05-30.
 
 ## Environment & isolation
-- [ ] On branch `lore-enrichment/foundation`; **no edits** to `world-service`/`game-server` or other agents' files (isolation rule).
-- [ ] `infra/docker-compose.yml` can bring up dependencies: postgres, redis, neo4j, **knowledge-service**, **glossary-service**, **book-service**, provider-registry, api-gateway-bff.
-- [ ] New DB `loreweave_lore_enrichment` created (or migration creates it).
-- [ ] Service port assigned + free (proposed internal 8093 / host 8217 — **confirm not taken**) and gateway route registered.
+- [x] On branch `lore-enrichment/foundation`; **0** edits to `world-service`/`game-server`/`tilemap-service` in this branch's commits (isolation holds).
+- [x] `infra/docker-compose.yml` has all dependencies: postgres, redis, neo4j, knowledge-service, glossary-service, book-service, **provider-registry-service**, api-gateway-bff. *(presence verified; runtime stack-up is C1 live-smoke)*
+- [~] New DB `loreweave_lore_enrichment` created — by the C2 migration.
+- [x] Service port = **internal 8093 / host 8221** (8093 free; 8221+ per compose convention, 8217-19 reserved, 8220=tilemap). Gateway route `/v1/lore-enrichment/*` registered at C0.
 
 ## Secrets / config (service fails to start if missing)
-- [ ] `LORE_ENRICHMENT_DB_URL`, `INTERNAL_SERVICE_TOKEN`, `JWT_SECRET` set.
-- [ ] Read access DSNs / tokens for knowledge-service, glossary, book-service.
-- [ ] Provider-registry configured (no hardcoded model names; LLM/embedding via adapter layer).
-- [ ] **Qwen 3.6 (LM Studio)** registered in provider-registry; LM Studio OpenAI-compatible endpoint (e.g. `http://host.docker.internal:1234/v1`) **reachable from the service container** (docker host networking).
-- [ ] **Embedding model** available in LM Studio (e.g. bge-m3 / nomic-embed) + registered, for technique-(b) retrieval (C10).
-- [ ] `REDIS_URL` reachable for events + cost tracking.
+- [~] `LORE_ENRICHMENT_DB_URL`, `INTERNAL_SERVICE_TOKEN`, `JWT_SECRET` set — at C0.
+- [~] Read DSNs / tokens for knowledge-service, glossary, book-service — at C0/C1.
+- [!] **Qwen 3.6 (LM Studio) registered in provider-registry** + endpoint (`http://host.docker.internal:1234/v1`) **reachable from the service container**. — **only you can set this up.**
+- [!] **Embedding model in LM Studio** (bge-m3 / nomic-embed) + registered, for technique-(b) retrieval (C10).
+- [~] `REDIS_URL` reachable — infra/C0.
 
-## Upstream readiness
-- [ ] knowledge-service exposes graph / graph-stats / context / embedding-model for a test project.
-- [ ] glossary `POST /books/{book_id}/extract-entities` + wiki generate reachable with internal token.
-- [ ] book-service chapter/hierarchy read reachable.
-- [x] Fengshen Yanyi **source text downloaded** → `data/lore-enrichment/fengshen-yanyi.txt` (100 回, public-domain, prefetched 2026-05-30). Demo place targets verified present.
-- [ ] Fengshen book/project **seeded** for the demo path (import the txt via book-service + initial glossary + extracted KG). Source is on disk; ingest still to run.
-- [x] **山海经 downloaded** → `data/lore-enrichment/shanhaijing.txt` (19 sections, public-domain, prefetched 2026-05-30; 崑崙/蓬萊/西王母 grounding verified).
-- [ ] Shang–Zhou history corpus (optional, ~C10) —史記 殷/周本紀 etc., not yet downloaded.
+## Upstream readiness (endpoints exist in code; live-smoke at C1)
+- [~] knowledge-service graph / graph-stats / context / embedding-model + `/internal/embed` for a test project.
+- [~] glossary `POST /internal/books/{book_id}/extract-entities` + wiki reachable with internal token.
+- [~] book-service chapter/hierarchy read reachable.
+- [x] 封神演义 **source downloaded** → `data/lore-enrichment/fengshen-yanyi.txt` (100 回; demo places verified present).
+- [x] 山海经 **downloaded** → `data/lore-enrichment/shanhaijing.txt` (19 sections; 崑崙/蓬萊 grounding verified).
+- [~] Fengshen book/project **seeded** (import txt via book-service + initial glossary + extracted KG) — C0/C1.
+- [ ] Shang–Zhou history corpus (optional, ~C10) — not yet downloaded.
 
 ## RAID operational
-- [ ] `.raid/active-task.yaml` validates: `python scripts/raid/task_config.py validate` → exit 0.
-- [ ] Quota profile present (`contracts/raid/quota-profile.yaml`); cost-cap policy understood.
-- [ ] Runtime logs initialized: `docs/raid/CYCLE_LOG.md`, `ESCALATIONS.md`, `QUOTA_LOG.jsonl`, `docs/audit/AUDIT_LOG.jsonl`.
-- [ ] pre-commit hook decision: install RAID/workflow-gate hook on this branch or rely on manual gate.
+- [x] `.raid/active-task.yaml` validates → `task_config.py validate` exit 0 (12 keys).
+- [x] Quota profile present (`contracts/raid/quota-profile.yaml`); cost posture = conservative/batched (locked).
+- [x] Runtime logs initialized: `CYCLE_LOG.md`, `ESCALATIONS.md`, `QUOTA_LOG.jsonl`, `AUDIT_LOG.jsonl`.
+- [x] pre-commit hook installed (`.git/hooks/pre-commit` → workflow-gate; warn-and-pass on no state).
 
 ## Cost / safety
-- [ ] P1 (template+retrieval) only until the eval gate (C12) exists; fabrication/re-cook stay disabled.
-- [ ] Secret-scan + prod-isolation lint wired for DPS cycles.
+- [x] (policy, locked) P1 (template+retrieval) only until the eval gate (**C15**); fabrication/re-cook (C16/C17) stay disabled until then.
+- [x] Secret-scan + prod-isolation lint scripts present (`scripts/raid/secret-scan-cycle.sh`, `prod-isolation-lint.sh`) — wired per DPS at brief time.
+
+---
+
+## ⛳ Gating summary
+- **Ready now:** branch/isolation, ports, compose deps, RAID config + logs + hook, prefetched corpora, cost policy. ✅
+- **Built during cycles (no action):** DB, env vars, ingest, runtime live-smokes. ⏳
+- **NEEDS YOU before C7/C10 can live-smoke:** LM Studio up with **Qwen 3.6 + an embedding model**, registered in provider-registry, reachable from containers. 🔴

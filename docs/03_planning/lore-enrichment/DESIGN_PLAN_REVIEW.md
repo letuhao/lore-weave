@@ -33,7 +33,7 @@ Q3 locks **per-user/project**, but enrichment writes **canonical** entities to g
 
 - **L1 — Decomposition is largely serial** (C4→C5→C6→C7→C8→C9→C10→C11 is a chain) → limited DPS parallelism, blunting RAID's throughput advantage. Parallelizable: {C1,C2,C3} after C0; {C13,C14}; C15 alongside C12+. Acknowledge and exploit.
 - **L2 — Uneven cycle sizing.** C8 (gen + repair + provenance), C10 (review API + write-back + sync-trigger), C11 (orchestration + events + cost-cap) are heavy; C3 is light. Consider splitting the heavy ones at brief time.
-- **L3 — Port 8093/8217 unverified free** (knowledge=8092/8216 adjacent). Confirm in PRE_FLIGHT.
+- **L3 — Port 8093/8221 unverified free** (knowledge=8092/8216 adjacent). Confirm in PRE_FLIGHT.
 - **L4 — Doc path errors:** actual write API is `POST /internal/books/{book_id}/extract-entities` (behind `requireInternalToken`), not `/books/...`; wiki route is `generateWikiStubs` (confirm exact path). Fix CLARIFY/DESIGN/PLAN strings.
 
 ## What's solid (keep)
