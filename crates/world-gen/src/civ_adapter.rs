@@ -1,0 +1,440 @@
+//! **Civ Ship 1** — adapter that exposes a `flatworld::FlatWorld` through
+//! the same `(centers, neighbors, biomes, climate, river_flux, is_coast,
+//! elevation, sea_level)` interface the System-A civilization stack
+//! ([`crate::political`], [`crate::settlement`], [`crate::routes`],
+//! [`crate::culture`], [`crate::feature`], [`crate::naming`]) already
+//! consumes. The downstream code is 100% mesh-agnostic — it doesn't care
+//! whether `centers` come from a Fibonacci sphere or a flat rectangle —
+//! so a single adapter unlocks all those layers for the flatworld track.
+//!
+//! ## Cell granularity
+//!
+//! v1 uses **L2 sub-zone = cell** (`world.plates[p].zones[z].subzones[s]`).
+//! The default world is ~150 sub-zones — coarse but enough to validate the
+//! adapter wiring; later civilization ships can opt for finer granularity
+//! by sampling extra cells inside each sub-zone polygon.
+//!
+//! ## Adjacency
+//!
+//! Built via Delaunay triangulation over sub-zone centers using the
+//! `delaunator` crate (already a dependency from `shape::slime`). Each
+//! Delaunay edge becomes a bidirectional neighbor link. This produces a
+//! planar graph with the right asymptotic density for the System-A
+//! political/route algorithms (≈6 neighbors per cell vs. the spherical
+//! Voronoi's ≈6 — same scale).
+//!
+//! ## Biome / climate
+//!
+//! Sub-zone biome is computed by sampling [`flat_climate::compute_zone_climate`]
+//! at the sub-zone centre, then translating the Köppen classification
+//! (`flat_climate::Biome` — 21 cells) to System A's coarser
+//! [`crate::biome::BiomeKind`] (14 cells) and [`crate::climate::ClimateZone`]
+//! (8 cells). The translation is intentionally lossy — System A's
+//! political/settlement code only needs the coarser distinctions to drive
+//! province / settlement / route placement.
+
+use delaunator::{triangulate, Point};
+
+use crate::biome::BiomeKind;
+use crate::climate::ClimateZone;
+use crate::flat_climate::{compute_zone_climate, Biome, WorldClimateParams, ZoneClimate};
+use crate::flatworld::FlatWorld;
+
+/// A mesh-shaped view of a `FlatWorld` ready to feed into the System-A
+/// civilization stack. Lengths of every per-cell vector equal
+/// `centers.len()`.
+#[derive(Debug, Clone)]
+pub struct CivView {
+    /// Sub-zone centres in 3D (z=0 for the flat substrate). Cell `i` is
+    /// at `centers[i]`.
+    pub centers: Vec<[f32; 3]>,
+    /// Adjacency lists from a Delaunay triangulation over `centers`. Each
+    /// `neighbors[i]` is the deduped sorted set of cell indices sharing a
+    /// triangle edge with cell `i`.
+    pub neighbors: Vec<Vec<u32>>,
+    /// Coarse System-A biome — translated from the Köppen
+    /// `flat_climate::Biome` via [`koppen_to_biome_kind`].
+    pub biomes: Vec<BiomeKind>,
+    /// Coarse System-A climate zone — translated from `flat_climate`
+    /// per-cell mean temperature + annual precipitation via
+    /// [`derive_climate_zone`].
+    pub climate: Vec<ClimateZone>,
+    /// Per-cell river flux. v1 leaves this at `0.0`; civ-layer Ship 2+
+    /// will sample the flatworld hydrology MVP at the cell centre.
+    pub river_flux: Vec<f32>,
+    /// Whether a cell sits next to the ocean (any neighbor cell is
+    /// `BiomeKind::Ocean`). Used by `settlement::build` to bias toward
+    /// coastal cities.
+    pub is_coast: Vec<bool>,
+    /// Per-cell elevation read from [`FlatWorld::elevation_at`] at the
+    /// sub-zone centre. Units: same as `FlatWorld` elevation (relative;
+    /// `0.0` = void floor, ~1.0 = collision peaks).
+    pub elevation: Vec<f32>,
+    /// Sea level. v1 uses a fixed `0.5` — the FlatWorld's `BASE_LEVEL`
+    /// per-plate floor; cells above are "land", at or below are "sea".
+    pub sea_level: f32,
+}
+
+impl CivView {
+    /// Number of cells.
+    pub fn len(&self) -> usize {
+        self.centers.len()
+    }
+
+    /// True when the cell list is empty (degenerate world).
+    pub fn is_empty(&self) -> bool {
+        self.centers.is_empty()
+    }
+}
+
+/// Build the civilization-view from a `FlatWorld` + the climate params
+/// the caller used (or will use) for biome rendering. The climate sweep
+/// runs **once per sub-zone**, not per pixel — significantly cheaper
+/// than `flat_climate::export_zone_climates`'s default coverage.
+///
+/// **Pre-condition**: `world.plates[*].zones[*].subzones` must be
+/// populated (true since v4.2a SCHEMA ship).
+pub fn build_civ_view(world: &FlatWorld, climate_params: &WorldClimateParams) -> CivView {
+    // Edge-distance grid drives the continentality term in
+    // `compute_zone_climate`. Build it the same way
+    // `flat_climate::export_zone_climates` does: classify every pixel as
+    // sea (no plate covers it) vs. land, then BFS distances out of the
+    // sea set via `zonegen::edge_dist_from_sea`.
+    let w = world.width as usize;
+    let h = world.height as usize;
+    let mut is_sea = vec![false; w * h];
+    for py in 0..h {
+        for px in 0..w {
+            if world
+                .plates_at(px as f32 + 0.5, py as f32 + 0.5)
+                .is_empty()
+            {
+                is_sea[py * w + px] = true;
+            }
+        }
+    }
+    let edge_dist_sea = crate::zonegen::edge_dist_from_sea(&is_sea, w, h);
+
+    let mut centers_2d: Vec<(f32, f32)> = Vec::new();
+    let mut zone_climates: Vec<ZoneClimate> = Vec::new();
+    let mut elevation: Vec<f32> = Vec::new();
+    for plate in &world.plates {
+        for (zi, zone) in plate.zones.iter().enumerate() {
+            // Compute the parent-zone climate once; sub-zones inherit it
+            // for biome/temp/precip in v1. Differentiating climate per
+            // sub-zone is a civ-layer Ship 6+ refinement.
+            let zone_clim = compute_zone_climate(
+                world,
+                climate_params,
+                plate.id,
+                zi,
+                &edge_dist_sea,
+            );
+            for sub in &zone.subzones {
+                centers_2d.push(sub.center);
+                zone_climates.push(zone_clim);
+                elevation.push(world.elevation_at(sub.center.0, sub.center.1));
+            }
+        }
+    }
+
+    let centers: Vec<[f32; 3]> = centers_2d
+        .iter()
+        .map(|&(x, y)| [x, y, 0.0])
+        .collect();
+
+    let neighbors = build_delaunay_neighbors(&centers_2d);
+
+    // Biome derivation: physical features (Ocean / Mountain / Hill) win
+    // over climate-driven Köppen biomes. A sub-zone centre that falls in
+    // void (no plate covers it) is Ocean; high-elevation centres are
+    // Mountain/Hill; everything else is classified by Köppen via
+    // [`koppen_to_biome_kind`].
+    let biomes: Vec<BiomeKind> = centers_2d
+        .iter()
+        .zip(zone_climates.iter())
+        .zip(elevation.iter())
+        .map(|((&(x, y), c), &elev)| {
+            if world.plates_at(x, y).is_empty() {
+                BiomeKind::Ocean
+            } else if elev > 0.95 {
+                BiomeKind::Mountain
+            } else if elev > 0.7 {
+                BiomeKind::Hill
+            } else {
+                koppen_to_biome_kind(c.biome)
+            }
+        })
+        .collect();
+    let climate: Vec<ClimateZone> = zone_climates
+        .iter()
+        .map(|c| derive_climate_zone(c.temp_mean, c.precip_annual))
+        .collect();
+
+    let is_coast = compute_is_coast(&biomes, &neighbors);
+
+    CivView {
+        centers,
+        neighbors,
+        biomes,
+        climate,
+        river_flux: vec![0.0; centers_2d.len()],
+        is_coast,
+        elevation,
+        sea_level: 0.5,
+    }
+}
+
+/// Build neighbor lists from a Delaunay triangulation over the 2D cell
+/// centres. The triangulation's edge set becomes the adjacency.
+fn build_delaunay_neighbors(centers_2d: &[(f32, f32)]) -> Vec<Vec<u32>> {
+    let n = centers_2d.len();
+    let mut neighbors: Vec<Vec<u32>> = vec![Vec::new(); n];
+    if n < 3 {
+        // Delaunay needs at least 3 points; degenerate cases produce no
+        // edges. The civilization stack still works on a disconnected
+        // graph — it just won't have any provinces / settlements.
+        return neighbors;
+    }
+    let points: Vec<Point> = centers_2d
+        .iter()
+        .map(|&(x, y)| Point { x: x as f64, y: y as f64 })
+        .collect();
+    let tri = triangulate(&points);
+    // Each triangle is 3 consecutive entries in `tri.triangles`.
+    for t in tri.triangles.chunks_exact(3) {
+        let (a, b, c) = (t[0] as u32, t[1] as u32, t[2] as u32);
+        for (u, v) in [(a, b), (b, c), (c, a)] {
+            neighbors[u as usize].push(v);
+            neighbors[v as usize].push(u);
+        }
+    }
+    for nb in neighbors.iter_mut() {
+        nb.sort_unstable();
+        nb.dedup();
+    }
+    neighbors
+}
+
+/// Cells that sit next to an ocean cell are coast — `settlement::build`
+/// biases toward these.
+fn compute_is_coast(biomes: &[BiomeKind], neighbors: &[Vec<u32>]) -> Vec<bool> {
+    let mut out = vec![false; biomes.len()];
+    for (i, nb) in neighbors.iter().enumerate() {
+        if biomes[i] == BiomeKind::Ocean {
+            continue; // ocean itself isn't "coast"
+        }
+        if nb
+            .iter()
+            .any(|&j| matches!(biomes[j as usize], BiomeKind::Ocean))
+        {
+            out[i] = true;
+        }
+    }
+    out
+}
+
+/// Lossy mapping from the flatworld 21-cell Köppen classification to the
+/// System-A 14-cell coarse biome. Trade-off: political / settlement /
+/// route algorithms care about Forest-vs-Plain-vs-Desert distinctions,
+/// not the Köppen subtypes that drive biome render colours.
+pub fn koppen_to_biome_kind(koppen: Biome) -> BiomeKind {
+    match koppen {
+        // Polar
+        Biome::Ef => BiomeKind::Glacier,
+        Biome::Et => BiomeKind::Tundra,
+        // Continental
+        Biome::Dfd | Biome::Dfc => BiomeKind::Forest, // boreal forest (taiga)
+        Biome::Dfb | Biome::Dfa | Biome::Dwa => BiomeKind::Forest,
+        // Temperate
+        Biome::Cfb | Biome::Cfa | Biome::Cwa => BiomeKind::Forest,
+        Biome::Csa | Biome::Csb => BiomeKind::Plain, // Mediterranean — open
+        // Arid
+        Biome::Bsh | Biome::Bsk => BiomeKind::Plain, // steppe → grassland
+        Biome::Bwh | Biome::Bwk => BiomeKind::Desert,
+        // Tropical
+        Biome::Af | Biome::Am => BiomeKind::Jungle,
+        Biome::Aw => BiomeKind::Plain, // savanna
+    }
+}
+
+/// Coarse System-A `ClimateZone` from per-cell temperature + precipitation
+/// — the simple bucket-classifier System A's `climate::build` would have
+/// produced with the same inputs.
+pub fn derive_climate_zone(temp_mean: f32, precip_annual: f32) -> ClimateZone {
+    if temp_mean < -5.0 {
+        return ClimateZone::Polar;
+    }
+    if temp_mean < 5.0 {
+        return ClimateZone::Boreal;
+    }
+    if precip_annual < 250.0 {
+        return ClimateZone::Arid;
+    }
+    if temp_mean > 22.0 {
+        return ClimateZone::Tropical;
+    }
+    if temp_mean > 15.0 {
+        if precip_annual < 600.0 {
+            ClimateZone::Mediterranean
+        } else {
+            ClimateZone::Subtropical
+        }
+    } else {
+        ClimateZone::Temperate
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::feature;
+    use crate::flatworld::{generate, FlatParams};
+
+    fn small_world() -> FlatWorld {
+        // Small but multi-plate so neighbors / coast detection have
+        // something to chew on — 4 plates × default zone/sub counts is
+        // ~30-40 cells.
+        let p = FlatParams {
+            width: 256,
+            height: 192,
+            plate_count: 4,
+            seed: 7,
+            ..Default::default()
+        };
+        generate(&p)
+    }
+
+    #[test]
+    fn civ_view_has_one_cell_per_subzone() {
+        let world = small_world();
+        let view = build_civ_view(&world, &WorldClimateParams::default());
+        let expected: usize = world
+            .plates
+            .iter()
+            .flat_map(|p| p.zones.iter())
+            .map(|z| z.subzones.len())
+            .sum();
+        assert_eq!(view.centers.len(), expected);
+        assert_eq!(view.neighbors.len(), expected);
+        assert_eq!(view.biomes.len(), expected);
+        assert_eq!(view.climate.len(), expected);
+        assert_eq!(view.river_flux.len(), expected);
+        assert_eq!(view.is_coast.len(), expected);
+        assert_eq!(view.elevation.len(), expected);
+    }
+
+    #[test]
+    fn delaunay_neighbors_are_symmetric_and_deduped() {
+        let world = small_world();
+        let view = build_civ_view(&world, &WorldClimateParams::default());
+        for (i, nb) in view.neighbors.iter().enumerate() {
+            let mut sorted = nb.clone();
+            sorted.sort_unstable();
+            assert_eq!(*nb, sorted, "cell {i}: neighbors should be sorted");
+            assert!(
+                nb.windows(2).all(|w| w[0] != w[1]),
+                "cell {i}: neighbors should be deduped"
+            );
+            for &j in nb {
+                assert!(
+                    view.neighbors[j as usize].contains(&(i as u32)),
+                    "adjacency asymmetric: {i} -> {j} but not back"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn delaunay_produces_planar_density() {
+        // A Delaunay triangulation over interior points has on average ≈6
+        // neighbors per vertex (Euler's formula, planar graph). Boundary
+        // vertices have fewer. The average across the view should land in
+        // a sane window — proves the triangulation is actually building
+        // edges, not returning an empty mesh.
+        let world = small_world();
+        let view = build_civ_view(&world, &WorldClimateParams::default());
+        if view.centers.len() < 4 {
+            return; // degenerate small test world
+        }
+        let total_edges: usize = view.neighbors.iter().map(|nb| nb.len()).sum();
+        let avg = total_edges as f32 / view.centers.len() as f32;
+        assert!(
+            (3.0..=12.0).contains(&avg),
+            "average neighbors per cell {avg:.2} outside [3, 12]; planar graph density is broken",
+        );
+    }
+
+    #[test]
+    fn feature_extract_accepts_civ_view_without_panicking() {
+        // Smoke: System-A's mesh-agnostic feature::extract should accept
+        // the adapter's (biomes, neighbors) and not panic. We don't pin
+        // a specific feature count here — Ship 1's civilization adapter
+        // only emits BiomeKind from L2 sub-zone centres, and those are
+        // by construction inside plates (no synthetic Ocean cells yet),
+        // so feature counts can be zero on small test worlds. Synthetic
+        // ocean/river adjacency lands in civ-layer Ship 2.
+        let world = small_world();
+        let view = build_civ_view(&world, &WorldClimateParams::default());
+        let features = feature::extract(&view.biomes, &view.neighbors);
+        // Just touch the result so the compiler doesn't optimise it out.
+        let _ = features.mountain_ranges.len()
+            + features.rivers.len()
+            + features.water_bodies.len();
+    }
+
+    #[test]
+    fn koppen_translation_covers_every_input_variant() {
+        // Exhaustive: every Köppen variant must map to *some* BiomeKind.
+        // Compiler enforcement — adding a Köppen variant fails this test
+        // with E0004 until the match arm is added in
+        // koppen_to_biome_kind.
+        let variants = [
+            Biome::Ef, Biome::Et,
+            Biome::Dfd, Biome::Dfc, Biome::Dfb, Biome::Dfa, Biome::Dwa,
+            Biome::Cfb, Biome::Cfa, Biome::Csa, Biome::Csb, Biome::Cwa,
+            Biome::Bsk, Biome::Bwk, Biome::Bsh, Biome::Bwh,
+            Biome::Af, Biome::Am, Biome::Aw,
+        ];
+        for v in variants {
+            let _ = koppen_to_biome_kind(v);
+        }
+    }
+
+    #[test]
+    fn climate_zone_derivation_hits_each_bucket() {
+        // Smoke that the cutoffs aren't tangled: a hot wet point lands in
+        // Tropical; a cold point lands in Polar; etc.
+        assert_eq!(derive_climate_zone(-20.0, 200.0), ClimateZone::Polar);
+        assert_eq!(derive_climate_zone(0.0, 600.0), ClimateZone::Boreal);
+        assert_eq!(derive_climate_zone(10.0, 100.0), ClimateZone::Arid);
+        assert_eq!(derive_climate_zone(28.0, 2000.0), ClimateZone::Tropical);
+        assert_eq!(derive_climate_zone(18.0, 400.0), ClimateZone::Mediterranean);
+        assert_eq!(derive_climate_zone(20.0, 1200.0), ClimateZone::Subtropical);
+        assert_eq!(derive_climate_zone(12.0, 1200.0), ClimateZone::Temperate);
+    }
+
+    #[test]
+    fn coast_flag_set_for_cells_neighbouring_ocean() {
+        // If any cell is ocean and any of its neighbours is land, the
+        // land neighbour must be flagged is_coast. If no ocean cell
+        // exists in the test world the assertion vacuously holds.
+        let world = small_world();
+        let view = build_civ_view(&world, &WorldClimateParams::default());
+        for (i, &biome) in view.biomes.iter().enumerate() {
+            if biome == BiomeKind::Ocean {
+                for &nb in &view.neighbors[i] {
+                    let j = nb as usize;
+                    if view.biomes[j] != BiomeKind::Ocean {
+                        assert!(
+                            view.is_coast[j],
+                            "cell {j} (biome {:?}) is adjacent to ocean cell {i} \
+                             but is_coast is false",
+                            view.biomes[j]
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
