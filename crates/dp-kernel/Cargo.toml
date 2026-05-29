@@ -6,7 +6,7 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Data-platform kernel — L2 event sourcing primitives (upcaster chain, event validator). Shipped in RAID cycle 8 for L2.H + L2.I."
+description = "Data-platform kernel — L2/L3/L4 event sourcing primitives (Event/Aggregate/Snapshot/Projection traits + Postgres-backed EventStore). Shipped in RAID cycles 8 (L2.H/I), 10 (L2.C outbox), 12 (L3.B/C projection + load_aggregate), 17 (L4.A Event/EventStore + Snapshot trait + Postgres backend)."
 
 [lib]
 path = "src/lib.rs"
@@ -16,3 +16,28 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+
+# Cycle 17 (L4.A) — async EventStore trait. `async_trait` lets us write
+# `async fn append(...)` inside a trait while staying compatible with stable
+# Rust 1.85 (edition 2024). Native async-in-trait works on stable but the
+# `dyn EventStore` upcasts we need for the shared test suite require the
+# macro shim.
+async-trait = "0.1"
+
+# Cycle 17 (L4.A) — Tokio is the async runtime contract for the EventStore.
+# Pulled in via the workspace dep (rt-multi-thread + macros + signal).
+tokio = { workspace = true }
+
+# Cycle 17 (L4.A) — Structured logging. Useful for the integration tests but
+# also a contract: every `append` / `read_stream` call emits a span. Pulled
+# via workspace dep so the version matches the rest of the repo.
+tracing = { workspace = true }
+
+# Cycle 17 (L4.A) — Postgres backend. WRAPPED behind `PgEventStore` (Q-L4A-1)
+# so the `sqlx::PgPool` is never exposed in our public API.
+sqlx = { workspace = true }
+
+[dev-dependencies]
+# Test runtime for the EventStore integration test suite. Multi-thread flavor
+# matches the production runtime.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }

@@ -1,0 +1,31 @@
+[package]
+name = "dp-kernel-macros"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Proc-macros for dp-kernel — #[derive(Aggregate)] + #[handles_event(\"...\")] attribute. Shipped in RAID cycle 17 (L4.B)."
+
+[lib]
+path = "src/lib.rs"
+# proc-macro = true forces this crate to ONLY export proc-macros — it cannot
+# also ship runtime types or fns, which is why dp-kernel and dp-kernel-macros
+# are separate crates (workspace rule, not a project preference).
+proc-macro = true
+
+[dependencies]
+syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
+
+[dev-dependencies]
+# Runtime types the generated code references — needed for the derive_*
+# integration tests.
+dp-kernel = { path = "../dp-kernel" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+# compile-test harness (UI tests for friendly error messages).
+trybuild = { workspace = true }

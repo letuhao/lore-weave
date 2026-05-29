@@ -41,6 +41,10 @@ members = [
     # the cycle-14 L3.G freeze-rebuild script and the cycle-14 L3.H
     # catastrophic admin-cli command (Q-L3-3 admin-cli + rolling_rebuild).
     "crates/rebuilder",
+    # Cycle 17 — L4.B proc-macros for `dp-kernel`. Ships `#[derive(Aggregate)]`
+    # + `#[handles_event("...")]` attribute (Q-L4B-1). Separate crate because
+    # proc-macro = true crates cannot ship runtime types in the same crate.
+    "crates/dp-kernel-macros",
 ]
 
 [workspace.package]
@@ -88,6 +92,28 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # HTTP mock server for offline SSE-parser / gateway integration tests (dev-only)
 wiremock = "0.6"
+
+# Cycle 17 (L4.A) — Postgres async client for the dp-kernel EventStore wrapper.
+# Per Q-L4A-1 we WRAP the `PgPool` behind a `PgEventStore { pool: Arc<PgPool> }`
+# struct (not exposed via `pub`) so future backend swaps (Redis Streams, NATS
+# JetStream) only touch the EventStore trait impl boundary, never callers.
+# `runtime-tokio-rustls` matches the project's preference for rustls-tls (cycle
+# 0 reqwest decision) and avoids OpenSSL on Windows dev.
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+    "json",
+    "macros",
+] }
+
+# Cycle 17 (L4.B) — proc-macro toolkit for `#[derive(Aggregate)]`.
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+# trybuild is used by L4.B macros' tests to assert compile-error messages stay
+# friendly. Dev-only — pinned in the macros crate's [dev-dependencies] only.
+trybuild = "1.0"
 
 [profile.release]
 lto = "thin"

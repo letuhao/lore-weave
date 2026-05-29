@@ -1,60 +1,66 @@
-//! `dp-kernel` — LoreWeave data-platform kernel (RAID cycle 8 / L2.H + L2.I).
+//! `dp-kernel` — LoreWeave data-platform kernel.
 //!
-//! ## Scope
+//! ## Module scope by RAID cycle
 //!
-//! - [`upcaster`] — L2.H upcaster chain library. Lets a service declare
-//!   per-event transformations `vN -> vN+1` and compose chains automatically.
-//!   Designed to be IDEMPOTENT + REPLAY-SAFE: upcasting an already-vN event
-//!   to vN is a no-op, and the chain refuses to downcast (`v3 -> v2`).
+//! ### Cycle 8 / L2.H + L2.I — schema-evolution + write-time validation
+//! - [`upcaster`] — per-event `vN -> vN+1` transformation chain;
+//!   IDEMPOTENT + REPLAY-SAFE; refuses backward upcasts.
+//! - [`event_validator`] — schema validation on write (R03 §12C.4).
 //!
-//! - [`event_validator`] — L2.I schema validation on write. Validates an
-//!   incoming event payload against the registered schema BEFORE the event
-//!   is appended to the log (per R03 §12C.4 — never let malformed events
-//!   poison the stream).
+//! ### Cycle 10 / L2.C — outbox
+//! - [`outbox`] — transport-agnostic outbox writer; caller owns the TX.
 //!
-//! - [`envelope`] — RAID cycle 12: Rust mirror of
-//!   `contracts/events/envelope.go::Envelope`. Single canonical wire shape
-//!   consumed by projections (L3.B) and the snapshot loader (L3.C).
+//! ### Cycle 12 / L3.B + L3.C — projections + snapshot read
+//! - [`envelope`] — Rust mirror of `contracts/events/envelope.go::Envelope`.
+//! - [`projection`] — sync `Projection` trait; one event ↦ `Vec<ProjectionUpdate>`
+//!   (Q-L3B-1). Carries [`projection::VerificationMeta`] per Q-L3-4.
+//! - [`load_aggregate`] + [`snapshot_cache`] — `load_aggregate<A: Aggregate>`
+//!   reconstructs aggregate state from `aggregate_snapshots` (L2.E) + delta
+//!   events. Bounded LRU snapshot cache.
 //!
-//! - [`projection`] — RAID cycle 12 / L3.B: sync `Projection` trait +
-//!   `ProjectionRunner`. One event ↦ `Vec<ProjectionUpdate>` (Q-L3B-1);
-//!   carries [`projection::VerificationMeta`] per Q-L3-4 contract.
+//! ### Cycle 17 / L4.A — Event + EventStore + Snapshot trait + Postgres backend
+//! - [`event`] — domain-typed [`Event`] trait. Service code works in typed
+//!   terms then converts to [`EventEnvelope`] at the EventStore boundary.
+//! - [`metadata`] — typed [`EventMetadata`] view over the envelope's
+//!   free-form `metadata` blob (additive only; flatten preserves unknown fields).
+//! - [`aggregate`] — canonical re-export of cycle-12 [`Aggregate`] + the
+//!   additive [`AggregateMeta`] trait (used by `#[derive(Aggregate)]`).
+//! - [`snapshot`] — [`Snapshot`] trait (encoder/decoder + schema version);
+//!   distinct from cycle-12 `SnapshotStore` (I/O abstraction).
+//! - [`event_store`] — async [`EventStore`] trait + canonical errors +
+//!   `shared_test_suite::run_event_store_tests` + `InMemoryEventStore`.
+//! - [`event_store_pg`] — Postgres impl of [`EventStore`]; WRAPPED `PgPool`
+//!   behind `pub(crate) pool: Arc<PgPool>` per Q-L4A-1.
 //!
-//! - [`load_aggregate`] + [`snapshot_cache`] — RAID cycle 12 / L3.C:
-//!   `load_aggregate<A: Aggregate>` reconstructs aggregate state from
-//!   `aggregate_snapshots` (L2.E) + delta events (L2.A). Three load paths:
-//!   (A) no snapshot full replay, (B) snapshot + delta, (C) snapshot direct.
-//!   Bounded LRU snapshot cache backs the read path.
+//! ### Shared
+//! - [`errors`] — typed [`EventError`] enum (schema / upcaster / etc.).
 //!
-//! - [`errors`] — typed error enum shared by all modules.
-//!
-//! The Go side of these libraries lives in `contracts/events/upcasters_go/`
-//! and `contracts/events/validators_go/` — both follow the same trait shape
-//! so logic is portable.
-//!
-//! ## Why a new crate (vs adding to `meta-rs`)?
-//!
-//! `meta-rs` (cycle 2) is the routing/read library for the META database. It
-//! must stay tiny + free of YAML / event-schema dependencies because the
-//! kernel hot-path links it. L2 event-sourcing primitives are a different
-//! concern (data-platform vs meta-routing) and have their own deferral path
-//! (`crates/dp-kernel/` keeps growing as L2 lands more pieces — outbox,
-//! snapshot policy, projection trait — in cycles 9-11).
+//! The Go side of the legacy modules lives in `contracts/events/upcasters_go/`
+//! and `contracts/events/validators_go/`. The L4.A EventStore is Rust-first
+//! (no Go mirror in scope this cycle; cycle 19+ adds Go client per Q-L4-1).
 //!
 //! ## Stability contract
 //!
 //! Symbols exported at the root (`pub use`) are V1-stable. Sub-module paths
-//! may be reshaped within `dp-kernel` between cycles 8-11 as L2 fills out.
+//! may be reshaped within `dp-kernel` between cycles — prefer the root
+//! re-exports.
 
+pub mod aggregate;
 pub mod envelope;
 pub mod errors;
+pub mod event;
+pub mod event_store;
+pub mod event_store_pg;
 pub mod event_validator;
 pub mod load_aggregate;
+pub mod metadata;
 pub mod outbox;
 pub mod projection;
+pub mod snapshot;
 pub mod snapshot_cache;
 pub mod upcaster;
 
+// ── Cycle 8 + 10 + 12 re-exports (unchanged from prior cycles) ────────────
 pub use envelope::{EventEnvelope, Rfc3339Timestamp};
 pub use errors::EventError;
 pub use event_validator::{EventValidator, SchemaDescriptor, ValidatorRegistry};
@@ -63,3 +69,11 @@ pub use outbox::{insert_sql as outbox_insert_sql, write as outbox_write, OutboxE
 pub use projection::{Projection, ProjectionRunner, ProjectionUpdate, VerificationMeta};
 pub use snapshot_cache::{CacheEntry, CacheKey, SnapshotCache};
 pub use upcaster::{Upcaster, UpcasterChain, UpcasterRegistry};
+
+// ── Cycle 17 / L4.A re-exports ────────────────────────────────────────────
+pub use aggregate::AggregateMeta;
+pub use event::{Event, EventFromEnvelope};
+pub use event_store::{EventStore, EventStoreError, EventStoreResult};
+pub use event_store_pg::PgEventStore;
+pub use metadata::EventMetadata;
+pub use snapshot::Snapshot;
