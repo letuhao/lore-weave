@@ -48,4 +48,21 @@ var (
 	// load when transitions.yaml fails sanity checks (unreachable states,
 	// undefined target states, etc.).
 	ErrTransitionGraphInvalid = errors.New("meta: transitions.yaml graph invalid")
+
+	// ErrPIIErased is returned by OpenPII when the linked pii_kek row has
+	// destroyed_at set (crypto-shred satisfied — GDPR Art. 17 erasure).
+	// The caller MUST handle this as "user PII no longer accessible" and
+	// MUST NOT retry or escalate to admin — the row is intentionally
+	// unreadable.
+	ErrPIIErased = errors.New("meta: PII crypto-shredded (user erased)")
+
+	// ErrKMSUnavailable is returned by OpenPII when the KMS adapter cannot
+	// be reached for decrypt. Callers may retry with backoff; this is NOT
+	// the same as ErrPIIErased (which is permanent).
+	ErrKMSUnavailable = errors.New("meta: KMS adapter unavailable")
+
+	// ErrPIINotFound is returned by OpenPII when the user_ref_id has no
+	// pii_registry row at all (never existed, or row was hard-deleted in
+	// non-production tear-down).
+	ErrPIINotFound = errors.New("meta: pii_registry row not found")
 )

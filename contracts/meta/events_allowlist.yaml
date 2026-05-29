@@ -87,3 +87,39 @@ entries:
     owner: contracts/meta (library-internal)
     notes: "S04 §12T.6 — enumerated sensitive-read audit. NEVER outbox."
     events: []
+
+  # ── L1.A-2 §2.1 (cycle 3) — PII envelope; user.created on insert, user.erased on UPDATE-with-erased_at
+  - table: pii_registry
+    owner: auth-service
+    notes: "L1A §2.1 — PII envelope. user.created on INSERT; user.erased is emitted via pii_kek destroyed_at path (single source of truth)."
+    events:
+      - op: INSERT
+        event_name: user.created
+
+  # ── L1.A-2 §2.2 (cycle 3) — KEK envelope; user.erased on UPDATE-with-destroyed_at (crypto-shred)
+  - table: pii_kek
+    owner: auth-service
+    notes: "L1A §2.2 — per-user KEK. Crypto-shred = UPDATE destroyed_at; emits user.erased so downstream caches purge."
+    events:
+      - op: UPDATE
+        event_name: user.erased
+
+  # ── L1.A-2 §2.3 (cycle 3) — consent ledger
+  - table: user_consent_ledger
+    owner: auth-service
+    notes: "L1A §2.3 — GDPR consent. INSERT = granted; UPDATE = revoked (single transition guarded by ExpectedBefore revoked_at IS NULL)."
+    events:
+      - op: INSERT
+        event_name: user.consent.granted
+      - op: UPDATE
+        event_name: user.consent.revoked
+
+  # ── L1.A-2 §2.4 (cycle 3) — player character index (dashboard view)
+  - table: player_character_index
+    owner: world-service
+    notes: "L1A §2.4 — cross-reality PC index. Status transitions emit pc.index.status.changed."
+    events:
+      - op: INSERT
+        event_name: pc.index.created
+      - op: UPDATE
+        event_name: pc.index.status.changed

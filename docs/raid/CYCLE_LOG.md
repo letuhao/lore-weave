@@ -13,7 +13,7 @@
 | 0 | RAID Workflow Infrastructure | PENDING | — | — | n/a | Bootstrap; default workflow |
 | 1 | L1.E Meta HA Infrastructure | DONE | 2026-05-29 | 2026-05-29 | 4 | Patroni + etcd + sync + async |
 | 2 | L1.A-1 Routing + Lifecycle tables + L1.B Meta library | DONE | 2026-05-29 | 2026-05-29 | 3 | 7 routing+lifecycle tables + session_cost_summary + Go meta lib + Rust meta-rs port; carryforward tests/integration/go.mod fixed |
-| 3 | L1.A-2 PII + Identity + Consent tables | PENDING | — | — | 2 | |
+| 3 | L1.A-2 PII + Identity + Consent tables | DONE | 2026-05-29 | 2026-05-29 | 2 | pii_registry + pii_kek + user_consent_ledger + player_character_index; KMSClient interface + OpenPII crypto-shred path; pkColumnFor extended for all 4 |
 | 4 | L1.A-3 Audit Infrastructure (5 tables) | PENDING | — | — | 3 | |
 | 5 | L1.C Provisioner + L1.G Pgbouncer + L1.F Cache | PENDING | — | — | 3 | |
 | 6 | L1.D Migration Orchestrator + L1.I Per-DB Metrics | PENDING | — | — | 2 | |
@@ -197,3 +197,65 @@
 - `docs/audit/AUDIT_LOG.jsonl` (append-only)
 - `docs/raid/QUOTA_LOG.jsonl` (append-only)
 - `docs/raid/CYCLE_LOG.md` (this file — status flip PENDING → DONE + this entry)
+
+
+---
+
+## Cycle 3 — L1.A-2 PII + Identity + Consent tables — DONE 2026-05-29
+
+- **Started:** 2026-05-29
+- **Completed:** 2026-05-29
+- **DPS count:** 2 (planned: pii crypto-shred + consent ledger) — INLINE serial fallback (Task tool unavailable in agent runtime, confirmed via `ToolSearch select:Agent` probe; matches cycle 1/2 carryforward)
+- **Worktrees created (B1):** `../foundation-worktrees/cycle-3-dps-{1,2}` on branches `raid/c3/dps-{1,2}` (flat namespace workaround again — `worktrees-create.sh` still hits `cannot lock ref` when base branch is `mmo-rpg/foundation-mega-task`)
+- **Acceptance gate:** `scripts/raid/verify-cycle-3.sh` exit 0 (all 9 steps PASS)
+
+### LOCKED decisions consumed
+- **Q-L1A-2** — `events_allowlist.yaml` extended ONLY with the 4 PII+identity+consent tables; verify step 2 + 9 regression-check for absence of any canon table (`canon_entries|canonization_audit|book_authorship|canon_change_log`).
+- **Q-L1A-3** — full audit assumed (no sampling) — applies transitively; PII tables don't add their own sampling clauses.
+- **Q-L5H-1** — `user_consent_ledger` ships with `revoke_reason` + `revoke_order` CHECK shape so the L5.H force-propagate worker (24h timeout, default-to-consent) has a stable ledger to operate against. Force-propagate worker itself ships in cycle 27 (L5).
+- **Q-L1B-1/2/3/4** — additive: 4 new entries in `events_allowlist.yaml`, `player_index_cross_user` sensitive-path id (declared cycle 2, now backed by real `player_character_index` table).
+
+### Test results (verify-cycle-3.sh PASS)
+- `go build ./...` in `contracts/meta` → clean
+- `go vet ./...` in `contracts/meta` → clean
+- `go test ./...` in `contracts/meta` → ok (33 tests = cycle 2's 24 + cycle 3's 9: 7 OpenPII crypto-shred semantics + TestPkColumnFor_L1A2Tables + TestAllowlist_L1A2Tables_Loaded + TestSensitivePaths_PlayerIndexCrossUserStillTagged)
+- `go build -tags=integration` in `tests/integration` → clean (regression guard for cycle-2 carryforward)
+- Structural SQL check (docker stack absent) → 4 UP + 4 DOWN files have CREATE/DROP TABLE
+- Crypto-shred specific assertions:
+  - `TestOpenPII_CryptoShred_KEKDestroyed` asserts `len(kms.Calls) == 0` after `destroyed_at` is set → KMS never round-trips after crypto-shred
+  - `TestOpenPII_RegistryErasedTombstone` covers the registry-tombstone-first race ordering
+- B5 `prod-isolation-lint.sh` → no prod references
+- B6 `secret-scan-cycle.sh` → gitleaks absent on dev machine; CI gate runs on push
+
+### Notable design choices + carryforward for cycles 4-10
+- **pkColumnFor extension pattern (REUSE in cycles 4-7+10):** added a switch arm per cycle inside `contracts/meta/lifecycle.go`. Every future cycle that ships a meta table MUST:
+  1. Add one `case "<table>":` returning the PK column
+  2. Add a regression test case to `pii_l1a2_test.go` (or its sibling test file for that cycle)
+  3. Add an allowlist entry to `events_allowlist.yaml` (even with `events: []`)
+  At some point (cycle 10 or later) we should load this map from `transitions.yaml` or a dedicated schema map; until then this hard-coded switch is the canonical source.
+- **KMS interface shape decision (`contracts/meta/kms.go`):** `KMSClient.Decrypt(ctx, DecryptInput) DecryptOutput`. Single method. Concrete adapters (AWS KMS / Vault) ship in security-track sub-program; L7 cycles should expect this surface and not invent a parallel one. `DeterministicTestKMS` is the test fake — XOR-style "encryption" placeholder; verify step 5/9 lints that it's never CONSTRUCTED outside `_test.go`. Foundation L1.K lint cycle should harden this pattern (currently a single grep in verify).
+- **Crypto-shred semantics test pattern:** the strong invariant is "after `destroyed_at` is set, NO KMS call is made". Asserted by `len(kms.Calls) == 0`. Future L7/security cycles must NOT weaken this — adding a KMS call after destroyed_at would defeat the GDPR Art. 17 erasure proof.
+- **pii_registry ↔ pii_kek FK strategy:** `pii_kek.user_ref_id` FK → `pii_registry` is `DEFERRABLE INITIALLY DEFERRED`. `pii_registry.kek_id` is NOT a FK (rotation creates new KEK row then UPDATEs pointer; old KEKs stay for audit). Documented in 009/010 migration headers; cycle that adds `MetaWriteBatch` flow for user-creation must use deferred-constraint TX.
+- **Consent ledger composite PK (user_ref_id, consent_scope, scope_version):** `pkColumnFor` returns just `user_ref_id` — the "primary identity column" for routing/audit. Callers needing the full composite must pass all three keys in `MetaWriteIntent.PK`. Documented in `lifecycle.go` comment.
+- **Task tool unavailable** — same as cycles 1+2. Inline serial fallback accepted by spec now. `worktrees-create.sh` still has the base-branch-collision bug; flat namespace `raid/c3/dps-{1,2}` workaround applied. Recommend fixing the script before cycle 10+ (more cycles, more worktree churn).
+
+### Files touched (10 new + 3 modified)
+
+**New (10):**
+- `migrations/meta/009_pii_registry.up.sql` + `.down.sql`
+- `migrations/meta/010_pii_kek.up.sql` + `.down.sql`
+- `migrations/meta/011_user_consent_ledger.up.sql` + `.down.sql`
+- `migrations/meta/012_player_character_index.up.sql` + `.down.sql`
+- `contracts/meta/kms.go`
+- `contracts/meta/kms_test.go`
+- `contracts/meta/pii_l1a2_test.go`
+- `scripts/raid/verify-cycle-3.sh`
+- `docs/raid/IN_PROGRESS/cycle-003-state.md` (archived at COMMIT)
+
+**Modified (3):**
+- `contracts/meta/lifecycle.go` (pkColumnFor extended with 4 L1.A-2 tables + comment block)
+- `contracts/meta/doc.go` (cycle-3 section + LOCKED-Qs list expanded)
+- `contracts/meta/errors.go` (added ErrPIIErased, ErrKMSUnavailable, ErrPIINotFound)
+- `contracts/meta/events_allowlist.yaml` (added 4 L1.A-2 entries with event bindings)
+- `docs/raid/CYCLE_LOG.md` (this file)
+- `docs/audit/AUDIT_LOG.jsonl` (append-only verify_cycle_complete + cycle-3 phase events)

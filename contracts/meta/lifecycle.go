@@ -149,11 +149,31 @@ func writeLifecycleAudit(ctx context.Context, cfg *Config, row LifecycleTransiti
 
 // pkColumnFor returns the PK column name for a known resource table.
 // Convention: <singular_resource>_id; reality_registry → reality_id.
-// Hard-coded for cycle 2 (only resource = reality); generalized later.
+//
+// Cycle 2 (L1.A-1) seeded with reality_registry.
+// Cycle 3 (L1.A-2) added the 4 PII+identity+consent tables.
+//   - pii_registry: PK = user_ref_id (user-scoped, not a separate surrogate)
+//   - pii_kek:      PK = kek_id (every rotation creates a new kek_id)
+//   - user_consent_ledger: COMPOSITE PK (user_ref_id, consent_scope, scope_version);
+//       we return user_ref_id as the "primary identity column" used by routing/
+//       audit lookups. Callers needing the full PK pass all three in MetaWriteIntent.PK.
+//   - player_character_index: PK = pc_index_id
+//
+// Cycles 4-10 will extend further (audit tables, billing tables, SRE tables).
+// At some point we should load this map from transitions.yaml or a dedicated
+// schema map file — until then, this hard-coded switch is the canonical source.
 func pkColumnFor(table string) string {
 	switch table {
 	case "reality_registry":
 		return "reality_id"
+	case "pii_registry":
+		return "user_ref_id"
+	case "pii_kek":
+		return "kek_id"
+	case "user_consent_ledger":
+		return "user_ref_id"
+	case "player_character_index":
+		return "pc_index_id"
 	}
 	// Fallback heuristic — strip common suffixes; safe enough for service
 	// teams to follow naming convention while we wait for explicit mapping.

@@ -763,3 +763,19 @@
 {"ts":"2026-05-29T02:48:54Z","event":"cycle_session_complete","cycle":2,"phase":"SESSION","summary":"L1.A-1 routing+lifecycle tables (7) + session_cost_summary + Go meta lib + Rust meta-rs port; carryforward tests/integration/go.mod fixed; verify-cycle-2.sh PASS"}
 {"ts": "2026-05-29T02:49:01Z", "event": "in_progress_update", "cycle": 2, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T02:49:39Z", "event": "in_progress_archived", "cycle": 2, "archived_to": "cycle-002-state.md"}
+{"ts":"2026-05-29T02:51:03Z","event":"worktree_removed","cycle":2,"name":"cycle-2-dps-1"}
+{"ts":"2026-05-29T02:51:03Z","event":"worktree_removed","cycle":2,"name":"cycle-2-dps-2"}
+{"ts":"2026-05-29T02:51:03Z","event":"worktree_removed","cycle":2,"name":"cycle-2-dps-3"}
+{"ts":"2026-05-29T02:51:31Z","event":"cycle_retro","cycle":2,"reflections":{"task_tool_probe":"unavailable_via_toolsearch — inline serial fallback used per cycle-1 spec","worktree_workaround":"cycle-1 flat namespace (raid/c2/dps-N) reused; worktrees-create.sh still not auto-fixed — recommend near-term cycle to detect when BASE_BRANCH exists as a ref and switch to flat naming","l1a2_boundary":"PII tables (pii_registry, pii_kek, user_consent_ledger, player_character_index) correctly absent — verify gate 4/9 grep-enforces and cycle 8 owns those","canon_boundary":"canon_entries + canonization_audit + book_authorship + canon_change_log correctly absent (Q-L1A-2; glossary DB owns) — verify gate 2/9 enforces","meta_audit_table_chicken_egg":"MetaWrite/MetaWriteBatch insert meta_write_audit rows in same TX, but meta_write_audit table itself ships in L1.A-3 cycle 10. Until then real production calls fail on audit insert. Tests pass because fake Tx accepts any SQL. doc.go now documents this. Service onboarding to meta-lib should be sequenced after cycle 10.","pkColumnFor_hard_coded":"reality_registry→reality_id hardcoded; future cycles adding incident/deploy resources to transitions.yaml need to extend this function or load PK column from the YAML. Trade: keeps cycle 2 simple, but flagged for incident cycle (TBD).","failed_attempt_audit_pattern":"AttemptStateTransition writes failed-attempt lifecycle_transition_audit rows in their own TX (separate from any data write that rolled back) so Q-L1A-3 full-audit holds even for graph rejections + CAS losses. Useful precedent for L1.B.7+ resources."}}
+{"ts": "2026-05-29T02:52:29Z", "event": "coordinator_next_cycle_emitted", "cycle": 3}
+{"ts":"2026-05-29T02:55:05Z","event":"startup_drift_check_passed","cycle":3,"version":"v1.6"}
+{"ts":"2026-05-29T02:55:05Z","event":"startup_verifier_complete","cycle":3,"steps":6}
+{"ts": "2026-05-29T02:55:17Z", "event": "in_progress_init", "cycle": 3, "title": "L1.A-2 PII + Identity + Consent tables"}
+{"ts": "2026-05-29T02:56:07Z", "event": "in_progress_update", "cycle": 3, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T02:56:31Z", "event": "in_progress_update", "cycle": 3, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-29T03:03:17Z","event":"verify_cycle_complete","cycle":3,"failed":1}
+{"ts":"2026-05-29T03:03:42Z","event":"verify_cycle_complete","cycle":3,"failed":0}
+{"ts":"2026-05-29T03:03:50Z","event":"secret_scan_skipped","cycle":3,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T03:04:07Z", "event": "in_progress_update", "cycle": 3, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-29T03:05:17Z","event":"cycle_complete","cycle":3,"title":"L1.A-2 PII + Identity + Consent tables","dps_count":2,"verify_exit":0,"task_tool_probe":"absent","fallback":"inline_serial","pkColumnFor_extended":["pii_registry","pii_kek","user_consent_ledger","player_character_index"]}
+{"ts": "2026-05-29T03:05:34Z", "event": "in_progress_archived", "cycle": 3, "archived_to": "cycle-003-state.md"}

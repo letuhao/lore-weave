@@ -11,6 +11,17 @@
 //   - events_allowlist.yaml          — which MetaWrite ops emit outbox events (Q-L1B-1)
 //   - meta-sensitive-read-paths.yml  — which read paths trigger meta_read_audit (Q-L1B-2)
 //
+// Cycle 3 (L1.A-2) extends with the PII + identity + consent surface:
+//
+//   - KMSClient interface + OpenPII()      — crypto-shred decrypt path
+//   - DeterministicTestKMS                 — test-only stand-in (NEVER prod)
+//   - pkColumnFor() extended               — pii_registry / pii_kek /
+//                                            user_consent_ledger / player_character_index
+//   - events_allowlist.yaml extended       — user.created, user.erased,
+//                                            user.consent.granted/revoked,
+//                                            pc.index.created/status.changed
+//   - migrations/meta/009..012             — DDL for the 4 tables
+//
 // Hot-path read accessors (cache, routing, entity_status) ship in later cycles
 // alongside their dependent kernel infrastructure (Redis, etc.).
 //
@@ -26,6 +37,8 @@
 // Parent layer plan:
 //   docs/plans/2026-05-29-foundation-mega-task/L1B_meta_access_library.md
 //
-// LOCKED decisions consumed this cycle:
-//   Q-L1A-1, Q-L1A-3, Q-L1B-1, Q-L1B-2, Q-L1B-3, Q-L1B-4
+// LOCKED decisions consumed across cycles 2+3:
+//   Q-L1A-1, Q-L1A-2 (canon OUT — no canon tables in meta),
+//   Q-L1A-3, Q-L1B-1, Q-L1B-2, Q-L1B-3, Q-L1B-4,
+//   Q-L5H-1 (consent ledger shape — force-propagate timeout enforced later)
 package meta
