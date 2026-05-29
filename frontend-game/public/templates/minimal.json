@@ -7,7 +7,8 @@
       "size": 100,
       "terrain_types": [],
       "connections": [{ "to_zone": "crossroad", "kind": "threshold" }],
-      "treasure_tiers": []
+      "treasure_tiers": [],
+      "biome_theme": "lw:biome.forest_temperate"
     },
     {
       "zone_id": "crossroad",
@@ -23,7 +24,8 @@
       "size": 100,
       "terrain_types": [],
       "connections": [],
-      "treasure_tiers": []
+      "treasure_tiers": [],
+      "biome_theme": "lw:biome.mountain_alpine"
     },
     {
       "zone_id": "inland_sea",

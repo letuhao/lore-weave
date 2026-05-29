@@ -21,6 +21,25 @@ export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.
   const decorations = view.object_placements.filter(
     (p) => p.primitive === 'decoration' || p.kind === 'decoration',
   ).length;
+  // TMP-Q2 chunk C: distinct TerrainKind count across terrain_layer.
+  // Used as the visible signal that BiomeThemePainter expanded the
+  // single-fill-per-zone V2 baseline into multi-kind Perlin patches.
+  //
+  // **Metric scope (MED-1 from chunk-C /review-impl):** this counts
+  // distinct kinds across ALL placers (TerrainPainter single-fill +
+  // BiomeThemePainter mix + RoadPlacer + Sea-zone Water), not just
+  // biome-painted tiles. The spec AC-BIOME-8 promise of
+  // "biome-painted tile count" requires backend metadata to compute
+  // exactly; this distinct-kind count is a practical proxy that
+  // visibly grows when biome is enabled (V2 baseline ≈ 3-5, biome
+  // enabled ≈ 6-8). The browser smoke pairs this with a direct
+  // /render HTTP call asserting specific mix kinds present, so a
+  // stale backend that silently drops biome_theme is caught.
+  //
+  // Excludes u8=0 (void / unpainted) since it isn't a TerrainKind.
+  const distinctTerrains = new Set(
+    view.terrain_layer.filter((v) => v !== 0),
+  ).size;
   const roads = view.road_segments.length;
   const rivers = view.river_segments.length;
   const crossings = view.river_segments.reduce((a, r) => a + r.crossings.length, 0);
@@ -36,6 +55,7 @@ export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.
       <Row k="zones" v={String(view.zones.length)} />
       <Row k="placements" v={String(objects)} />
       <Row k="decorations" v={String(decorations)} />
+      <Row k="distinct terrains" v={String(distinctTerrains)} />
       <Row k="roads / rivers" v={`${roads} / ${rivers}`} />
       <Row k="crossings" v={String(crossings)} />
       <Row k="source" v={view.generation_source.kind} />

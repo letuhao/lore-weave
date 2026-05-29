@@ -50,7 +50,13 @@ V2 byte-identical golden tests stay green via additive `Option<>` +
 | **AC-BIOME-5** | Template with `background_biome = Some("lw:biome.grassland_meadow")` produces 0 tiles with `u8 = 0` in the final `terrain_layer` | Integration test asserting no void tiles outside zones |
 | **AC-BIOME-6** | Same `(template, seed)` → byte-identical `terrain_layer` across 100 runs (determinism axiom) | Cargo test running placer 100× over the same input |
 | **AC-BIOME-7** | Per-zone Perlin pattern uncorrelated with neighbor zones (different sub-seeds) | Integration test asserting two zones with same theme have ≠ kind distributions modulo same fixed seed |
-| **AC-BIOME-8** | Frontend `MetadataPanel` shows "biomes: N" count (number of zone tiles assigned via a biome theme) | Playwright e2e test (chunk C) |
+| **AC-BIOME-8** | Frontend `MetadataPanel` shows "distinct terrains: N" count AND a direct `/render` HTTP probe confirms the biome mix kinds present in `terrain_layer` (Forest from `forest_temperate`, Mountain from `mountain_alpine`) | Playwright e2e test (chunk C) — UI-only proxy + HTTP histogram assertion |
+
+**AC-BIOME-8 note (chunk C MED-1 fix):** the original wording promised "biome-painted tile count" which would require backend metadata to compute exactly. The 2-prong realization in `frontend-game/e2e/smoke.spec.ts` is faithful to the spec's intent (visible proof biome ran) without needing a new wire-shape field: the UI row counts distinct kinds (proxy), and a sibling HTTP call asserts the specific mix kinds the demo template should have produced.
+
+**AC-BIOME-5 note (chunk C MED-2 fix):** `background_biome` is currently DORMANT in production fixtures — `place_zones` Penrose tiling assigns every tile to some zone, so the background pass finds `terrain_layer[i] != 0` everywhere and no-ops. AC-BIOME-5 remains a CONTRACT test for when future `place_zones` modes leave gaps (verified via direct unit tests on synthetic state in `biome_theme_painter.rs::tests`). `minimal.json` does NOT set `background_biome` to avoid shipping a dormant demo field — see chunk-B LOW-2 docstring on `TilemapTemplate.background_biome` for the full rationale.
+
+**`minimal.json` calibration anchor (chunk C LOW-1 fix):** the demo template's biome shape (capital `forest_temperate` + frontier `mountain_alpine` + 5 zones total incl. Sea + Forbidden) is what produces the empirically-observed distinct-kind range. 100-seed sweep via `scripts/check_biome_variety.js sweep 1 100` reports min=6, max=9, mean=7.29 — current UI threshold ≥6 (chunk C LOW-5 fix). If a future edit reshapes the zone list or removes biome opt-in, AC-BIOME-8's UI threshold must be recalibrated (re-run the sweep) AND the HTTP histogram kinds (Forest/Mountain) must be updated to match the new theme choices.
 
 ## 4. Wire Shape (additive — V2 preserved)
 
