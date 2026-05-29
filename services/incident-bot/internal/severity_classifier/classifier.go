@@ -66,7 +66,6 @@ var keywordTriggers = []struct {
 	{"personaldatabreach", "personal_data_breach"},
 	{"databreach", "personal_data_breach"},
 	{"totaloutage", "total_outage"},
-	{"caoninjection", "canon_injection"}, // tolerate a common typo seen in alert names
 	{"canoninjection", "canon_injection"},
 	{"canon_injection", "canon_injection"},
 	{"securityexposure", "security_exposure"},

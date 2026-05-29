@@ -223,3 +223,24 @@ func TestNewStatuspageIOClient_RequiresCreds(t *testing.T) {
 		t.Error("client without creds must error")
 	}
 }
+
+// TestDurString_HumanReadable — regression for a review finding: the prior
+// TrimSuffix-based helper produced "3" for 30s and dangling "1h0m" for round
+// hours. The fix relies on time.Duration.String after rounding to seconds.
+func TestDurString_HumanReadable(t *testing.T) {
+	cases := map[time.Duration]string{
+		0:                  "0s",
+		-time.Second:       "0s",
+		30 * time.Second:   "30s",
+		time.Minute:        "1m0s",
+		90 * time.Minute:   "1h30m0s",
+		time.Hour:          "1h0m0s",
+		2 * time.Hour:      "2h0m0s",
+		1500 * time.Millisecond: "2s", // rounds to nearest second
+	}
+	for d, want := range cases {
+		if got := durString(d); got != want {
+			t.Errorf("durString(%v) = %q want %q", d, got, want)
+		}
+	}
+}

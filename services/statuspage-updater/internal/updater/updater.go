@@ -3,7 +3,6 @@ package updater
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/loreweave/foundation/contracts/incidents"
@@ -164,9 +163,12 @@ func (u *Updater) OnClosed(ctx context.Context, ev incidents.IncidentClosedV1) e
 // (test helper + readiness signal).
 func (u *Updater) TrackedCount() int { return len(u.providerIDs) }
 
+// durString renders a duration for customer-facing copy. Rounds to whole
+// seconds (sub-second precision is noise in an incident-duration line) and
+// relies on time.Duration's own human-readable String (e.g. "1h30m0s").
 func durString(d time.Duration) string {
 	if d <= 0 {
 		return "0s"
 	}
-	return strings.TrimSuffix(d.String(), "0s")
+	return d.Round(time.Second).String()
 }
