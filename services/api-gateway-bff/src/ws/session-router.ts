@@ -34,7 +34,7 @@ export const ENVELOPE_VERSION = 1;
 
 export type RouteOutcome =
   | { tag: 'control_ack'; reply: Envelope }
-  | { tag: 'data_forward'; payload: unknown; type: string }
+  | { tag: 'data_forward'; payload: unknown; type: string; envelope: Envelope }
   | { tag: 'refresh_requested' }
   | { tag: 'rejected'; reason: RejectReason };
 
@@ -147,5 +147,8 @@ export function routeInbound(env: unknown, metrics: WsMetrics, deps: RouterDeps 
   }
 
   // Data — caller forwards downstream after running L6.C authz (cycle 29).
-  return { tag: 'data_forward', payload: parsed.payload, type: parsed.type };
+  // The envelope is returned alongside the payload so the caller can pluck
+  // session_id / reality_id / privacy_level out of the wire payload metadata
+  // to feed `PerMessageAuthz.evaluateInbound`.
+  return { tag: 'data_forward', payload: parsed.payload, type: parsed.type, envelope: parsed };
 }

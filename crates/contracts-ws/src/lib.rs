@@ -42,7 +42,11 @@
 pub mod envelope;
 pub mod close_codes;
 pub mod server_lib;
+pub mod authz;
+pub mod control_channel;
 
 pub use envelope::{Envelope, Direction, MessageKind, ENVELOPE_VERSION};
 pub use close_codes::CloseCode;
 pub use server_lib::{ServerLib, ServerLibError, OutboundFrame};
+pub use authz::{AuthzOutcome, AuthzRejectionReason, AuthzRequest};
+pub use control_channel::{WsControlMessage, WsControlKind, WS_CONTROL_VERSION};

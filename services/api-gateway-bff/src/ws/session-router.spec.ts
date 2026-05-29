@@ -93,6 +93,10 @@ describe('session-router', () => {
       if (out.tag !== 'data_forward') return;
       expect(out.type).toBe('chat.message');
       expect(out.payload).toEqual({ body: 'hi' });
+      // L6.C (cycle 29): envelope returned so caller can extract authz
+      // metadata (session_id / reality_id / privacy_level).
+      expect(out.envelope.type).toBe('chat.message');
+      expect(out.envelope.nonce).toBe('n1');
       expect(metrics.messages.read({ direction: 'c2s', kind: 'data' })).toBe(1);
     });
 

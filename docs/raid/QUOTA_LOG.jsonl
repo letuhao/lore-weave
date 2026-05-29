@@ -57,3 +57,7 @@
 {"ts":"2026-05-29T13:00:49Z","cycle":"26","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
 {"ts":"2026-05-29T13:28:35Z","cycle":"27","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
 {"ts":"2026-05-29T13:29:52Z","cycle":"27","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-05-29T14:03:24Z","cycle":"28","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-05-29T14:04:28Z","cycle":"28","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-05-29T14:26:14Z","cycle":"29","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}
+{"ts":"2026-05-29T14:27:30Z","cycle":"29","phase":"pre_cycle","event":"quota_check","recommendation":"PROCEED","estimated_remaining":2000000,"typical_cycle":450000,"recent_burn":0}

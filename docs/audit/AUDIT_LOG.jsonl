@@ -1199,3 +1199,41 @@
 {"ts": "2026-05-29T13:59:06Z", "event": "in_progress_update", "cycle": 27, "phase": "POST_REVIEW", "retry": 0}
 {"ts": "2026-05-29T13:59:23Z", "event": "in_progress_update", "cycle": 27, "phase": "SESSION", "retry": 0}
 {"ts": "2026-05-29T14:01:04Z", "event": "in_progress_archived", "cycle": 27, "archived_to": "cycle-027-state.md"}
+{"ts":"2026-05-29T14:02:33Z","event":"worktree_removed","cycle":27,"name":"cycle-27-dps-1"}
+{"ts":"2026-05-29T14:02:33Z","event":"worktree_removed","cycle":27,"name":"cycle-27-dps-2"}
+{"ts":"2026-05-29T14:02:33Z","event":"worktree_removed","cycle":27,"name":"cycle-27-dps-3"}
+{"ts":"2026-05-29T14:02:41Z","event":"recovery_halted","cycle":27,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T14:02:41Z", "event": "escalation_written", "cycle": 27, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T14:03:22Z", "event": "coordinator_next_cycle_emitted", "cycle": 28}
+{"ts":"2026-05-29T14:04:19Z","event":"startup_drift_check_passed","cycle":28,"version":"v1.6"}
+{"ts":"2026-05-29T14:04:19Z","event":"startup_verifier_complete","cycle":28,"steps":6}
+{"ts": "2026-05-29T14:04:26Z", "event": "in_progress_init", "cycle": 28, "title": "L6 WS server + Ticket + Metrics (A+B+E)"}
+{"ts": "2026-05-29T14:05:42Z", "event": "in_progress_update", "cycle": 28, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T14:06:13Z", "event": "in_progress_update", "cycle": 28, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T14:06:15Z", "event": "in_progress_update", "cycle": 28, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-29T14:22:13Z","event":"secret_scan_skipped","cycle":28,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T14:22:20Z", "event": "in_progress_update", "cycle": 28, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-05-29T14:22:44Z", "event": "in_progress_update", "cycle": 28, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T14:22:44Z", "event": "in_progress_update", "cycle": 28, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T14:22:44Z", "event": "in_progress_update", "cycle": 28, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T14:22:44Z", "event": "in_progress_update", "cycle": 28, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T14:24:38Z", "event": "in_progress_update", "cycle": 28, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T14:25:32Z", "event": "in_progress_update", "cycle": 28, "phase": "RETRO", "retry": 0}
+{"ts": "2026-05-29T14:25:32Z", "event": "in_progress_archived", "cycle": 28, "archived_to": "cycle-028-state.md"}
+{"ts":"2026-05-29T14:25:37Z","event":"recovery_halted","cycle":28,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T14:25:37Z", "event": "escalation_written", "cycle": 28, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T14:26:12Z", "event": "coordinator_next_cycle_emitted", "cycle": 29}
+{"ts":"2026-05-29T14:27:15Z","event":"startup_drift_check_passed","cycle":29,"version":"v1.6"}
+{"ts":"2026-05-29T14:27:15Z","event":"startup_verifier_complete","cycle":29,"steps":6}
+{"ts": "2026-05-29T14:27:26Z", "event": "in_progress_init", "cycle": 29, "title": "L6 WS security (C+D)"}
+{"ts": "2026-05-29T14:30:27Z", "event": "in_progress_update", "cycle": 29, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T14:30:51Z", "event": "in_progress_update", "cycle": 29, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T14:42:07Z", "event": "in_progress_update", "cycle": 29, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T14:43:32Z","event":"secret_scan_skipped","cycle":29,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T14:44:18Z", "event": "in_progress_update", "cycle": 29, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T14:44:41Z", "event": "in_progress_update", "cycle": 29, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T14:44:51Z", "event": "in_progress_update", "cycle": 29, "phase": "POST_REVIEW", "retry": 0}
+{"ts":"2026-05-29T14:44:59Z","event":"recovery_consistent","cycle":29,"phase":"POST_REVIEW","dps_resumed_from":"see in_progress dps_status"}
+{"ts": "2026-05-29T14:45:08Z", "event": "in_progress_update", "cycle": 29, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T14:46:51Z", "event": "in_progress_update", "cycle": 29, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T14:47:31Z", "event": "in_progress_archived", "cycle": 29, "archived_to": "cycle-029-state.md"}

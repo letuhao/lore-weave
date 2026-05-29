@@ -4,6 +4,7 @@ import { EventsGateway } from './events.gateway';
 import { WsV1Gateway } from './ws-server';
 import { TicketController, TICKET_STORE_TOKEN } from './ticket-endpoint';
 import { InMemoryTicketStore, type TicketStore } from './ticket-store';
+import { InMemoryAuthzProvider, type SessionAuthzProvider } from './per-message-authz';
 
 /**
  * Foundation-grade WS server wiring.
@@ -13,11 +14,20 @@ import { InMemoryTicketStore, type TicketStore } from './ticket-store';
  *   - `TicketController` at POST /v1/ws/ticket
  *   - Shared TicketStore (in-memory V1; Redis swap-in in L7 deploy track)
  *
+ * Cycle 29 (L6.C + L6.D) adds:
+ *   - `PerMessageAuthz` wired into WsV1Gateway via 'AUTHZ_PROVIDER' token
+ *     (foundation uses InMemoryAuthzProvider; downstream service swaps in
+ *     a roleplay-service RPC client)
+ *   - Forced-disconnect Redis pubsub consumer (wired by deploy code at
+ *     boot — kept out of the module here because Redis isn't required
+ *     for unit tests to pass)
+ *
  * The legacy `EventsGateway` (/ws, JWT-on-query) stays online for
  * parallel rollout — frontend-game flips clients to /ws/v1 once the
  * browser ticket lib (their domain, per Q-L6-3) is ready.
  */
 const sharedTicketStore: TicketStore = new InMemoryTicketStore();
+const sharedAuthzProvider: SessionAuthzProvider = new InMemoryAuthzProvider();
 
 @Module({
   providers: [
@@ -27,6 +37,10 @@ const sharedTicketStore: TicketStore = new InMemoryTicketStore();
     {
       provide: TICKET_STORE_TOKEN,
       useValue: sharedTicketStore,
+    },
+    {
+      provide: 'AUTHZ_PROVIDER',
+      useValue: sharedAuthzProvider,
     },
   ],
   controllers: [TicketController],

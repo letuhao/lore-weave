@@ -39,9 +39,16 @@ import {
 } from './upgrade-handler';
 import { WsMetrics, type EvictionReason, type HandshakeFailureReason } from './metrics';
 import { loadWsServerConfig, type WsServerConfig } from './config';
-import { routeInbound, ENVELOPE_VERSION } from './session-router';
+import { routeInbound, ENVELOPE_VERSION, type Envelope } from './session-router';
+import {
+  InMemoryAuthzProvider,
+  PerMessageAuthz,
+  type AuthzRequest,
+  type SessionAuthzContext,
+  type SessionAuthzProvider,
+} from './per-message-authz';
 
-interface ActiveConnection {
+export interface ActiveConnection {
   readonly connectionId: string;
   readonly userRefId: string;
   readonly allowedRealities: readonly string[];
@@ -167,15 +174,26 @@ export class WsV1Gateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   readonly metrics = new WsMetrics();
   readonly config: WsServerConfig = loadWsServerConfig();
   readonly tickets: TicketStore;
+  readonly authz: PerMessageAuthz;
 
   private readonly active = new Map<WebSocket, ActiveConnection>();
+  /** Reverse index user_ref_id → set of sockets (L6.D fan-out). */
+  private readonly byUser = new Map<string, Set<WebSocket>>();
   private pingInterval?: NodeJS.Timeout;
 
-  constructor(@Optional() @Inject('TICKET_STORE') tickets?: TicketStore) {
+  constructor(
+    @Optional() @Inject('TICKET_STORE') tickets?: TicketStore,
+    @Optional() @Inject('AUTHZ_PROVIDER') authzProvider?: SessionAuthzProvider,
+  ) {
     // In production the WsModule binds the same InMemoryTicketStore
     // (or future RedisTicketStore) to both this gateway and the
     // TicketController — issue + redeem must share state.
     this.tickets = tickets ?? new InMemoryTicketStore();
+    // L6.C (cycle 29): per-message re-authz. Foundation ships the
+    // in-memory provider; production swaps in the roleplay-service RPC
+    // client. The provider only matters once data messages flow — control
+    // frames skip authz via the router fast-path.
+    this.authz = new PerMessageAuthz(authzProvider ?? new InMemoryAuthzProvider(), this.metrics);
   }
 
   afterInit(): void {
@@ -198,6 +216,7 @@ export class WsV1Gateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       return;
     }
     this.active.set(socket, outcome.connection);
+    this.addToUserIndex(outcome.connection.userRefId, socket);
 
     socket.on('message', (raw) => this.onInbound(socket, raw));
     this.logger.log(
@@ -206,8 +225,10 @@ export class WsV1Gateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   handleDisconnect(socket: WebSocket): void {
-    if (this.active.has(socket)) {
+    const conn = this.active.get(socket);
+    if (conn) {
       this.active.delete(socket);
+      this.removeFromUserIndex(conn.userRefId, socket);
       this.metrics.onConnectionClose('normal_close' as EvictionReason);
       this.logger.log(`WS /ws/v1 closed — active=${this.active.size}`);
     }
@@ -266,8 +287,17 @@ export class WsV1Gateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         }
         return;
       case 'data_forward':
-        // Downstream service wiring lives in outbound-fanout + roleplay
-        // RPC — placeholder log to keep the foundation contract bisectable.
+        // L6.C cycle 29 — re-run S2/S3 authz on EVERY data frame. Without
+        // this, a user kicked mid-connection can keep sending until the
+        // next handshake (the S2-regression-via-WS class).
+        void this.authorizeAndForward(conn, outcome.envelope).catch((err) => {
+          // Defense in depth: an authz provider that throws MUST drop the
+          // frame, not crash the gateway. The error path here is a bug
+          // (provider should return false, not throw) so we count it as a
+          // generic schema_invalid for now.
+          this.logger.error(`WS /ws/v1 authz error: ${(err as Error)?.message ?? err}`);
+          this.metrics.onAuthzReject('schema_invalid');
+        });
         return;
       case 'rejected':
         if (outcome.reason === 'schema_invalid') {
@@ -303,4 +333,114 @@ export class WsV1Gateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   inspectActiveCount(): number {
     return this.active.size;
   }
+
+  /**
+   * Forced disconnect entry-point (L6.D, cycle 29). Closes all live
+   * connections belonging to `userRefId` with the supplied close code.
+   * Idempotent: closing an already-closed socket is a no-op. Returns the
+   * count of sockets that were touched.
+   *
+   * Called by `WsControlChannelConsumer` on incoming WS-disconnect signals;
+   * also callable directly from in-process admin tooling.
+   */
+  disconnectUser(userRefId: string, closeCode: number, reasonCode: string): number {
+    const sockets = this.byUser.get(userRefId);
+    if (!sockets || sockets.size === 0) return 0;
+    let count = 0;
+    // Snapshot the set — `handleDisconnect` removes entries during the close.
+    for (const sock of [...sockets]) {
+      try {
+        const rs = (sock as { readyState?: number }).readyState;
+        if (rs === 0 || rs === 1) {
+          // CONNECTING (0) or OPEN (1) — close it.
+          sock.close(closeCode, reasonCode);
+        }
+        // CLOSING (2) / CLOSED (3) — already closing; idempotent no-op.
+        count += 1;
+      } catch (err) {
+        this.logger.warn(`WS /ws/v1 force-disconnect close threw: ${(err as Error).message}`);
+      }
+      // Note: handleDisconnect on the socket fires the 'close' event which
+      // calls metrics.onConnectionClose('normal_close'); we override the
+      // reason to 'forced_disconnect' here so the metric is accurate.
+      this.metrics.onConnectionClose('forced_disconnect' as EvictionReason);
+    }
+    // Authz cache invalidation — the forced-disconnect SLA assumes the
+    // next time this user reconnects, the authz cache for them is empty.
+    this.authz.invalidateUser(userRefId);
+    return count;
+  }
+
+  /**
+   * Per-message authz check + downstream forward. Split out of the inbound
+   * switch so the hot path stays readable.
+   */
+  private async authorizeAndForward(conn: ActiveConnection, env: Envelope): Promise<void> {
+    const req = buildAuthzRequest(conn, env);
+    const outcome = await this.authz.evaluateInbound(req);
+    if (outcome.tag === 'deny') {
+      // Per S12 §12AB.L3 — drop the frame, increment metric, NEVER
+      // tear down the connection (a single bad frame is not connection
+      // poisoning — that's the rate-limit path 4006 instead).
+      return;
+    }
+    // Authorized — downstream service wiring is the roleplay-service RPC
+    // (cycle 30+). Keep the foundation bisectable: log + count.
+    this.metrics.onMessage('c2s', env.kind);
+  }
+
+  private addToUserIndex(userRefId: string, sock: WebSocket): void {
+    let s = this.byUser.get(userRefId);
+    if (!s) {
+      s = new Set<WebSocket>();
+      this.byUser.set(userRefId, s);
+    }
+    s.add(sock);
+  }
+
+  private removeFromUserIndex(userRefId: string, sock: WebSocket): void {
+    const s = this.byUser.get(userRefId);
+    if (!s) return;
+    s.delete(sock);
+    if (s.size === 0) this.byUser.delete(userRefId);
+  }
+}
+
+/**
+ * Pure helper — derives the authz request from a connection + envelope.
+ * Exported so unit tests can build the same request shape the gateway
+ * passes to PerMessageAuthz.
+ *
+ * Payload contract (foundation V1, refined by downstream service in cycle
+ * 30+): when the envelope payload is an object, we lift `session_id`,
+ * `reality_id`, `privacy_level` if present. Unknown / missing fields
+ * remain undefined and the authz evaluator handles that gracefully.
+ */
+export function buildAuthzRequest(conn: ActiveConnection, env: Envelope): AuthzRequest {
+  const payload = (env.payload && typeof env.payload === 'object') ? (env.payload as Record<string, unknown>) : {};
+  const ctx: SessionAuthzContext = {
+    userRefId: conn.userRefId,
+    allowedRealities: conn.allowedRealities,
+    allowedScopes: conn.allowedScopes,
+  };
+  return {
+    ctx,
+    messageType: env.type,
+    sessionId: typeof payload.session_id === 'string' ? payload.session_id : undefined,
+    realityId: typeof payload.reality_id === 'string' ? payload.reality_id : undefined,
+    privacyLevel: typeof payload.privacy_level === 'string' ? payload.privacy_level : undefined,
+    requiredScope: requiredScopeForType(env.type),
+  };
+}
+
+/**
+ * Foundation-grade type → scope mapping. Each message type declares one
+ * required scope; cycle 30+ moves this to a registry-driven table.
+ */
+function requiredScopeForType(messageType: string): string | undefined {
+  // Convention: dot-separated, first segment = scope name.
+  // 'chat.message' → 'chat'; 'session.update' → 'session'; etc.
+  const dot = messageType.indexOf('.');
+  if (dot <= 0) return undefined;
+  return messageType.slice(0, dot);
 }
