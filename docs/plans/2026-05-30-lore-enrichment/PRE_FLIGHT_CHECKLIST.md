@@ -12,6 +12,8 @@
 - [ ] `LORE_ENRICHMENT_DB_URL`, `INTERNAL_SERVICE_TOKEN`, `JWT_SECRET` set.
 - [ ] Read access DSNs / tokens for knowledge-service, glossary, book-service.
 - [ ] Provider-registry configured (no hardcoded model names; LLM/embedding via adapter layer).
+- [ ] **Qwen 3.6 (LM Studio)** registered in provider-registry; LM Studio OpenAI-compatible endpoint (e.g. `http://host.docker.internal:1234/v1`) **reachable from the service container** (docker host networking).
+- [ ] **Embedding model** available in LM Studio (e.g. bge-m3 / nomic-embed) + registered, for technique-(b) retrieval (C10).
 - [ ] `REDIS_URL` reachable for events + cost tracking.
 
 ## Upstream readiness

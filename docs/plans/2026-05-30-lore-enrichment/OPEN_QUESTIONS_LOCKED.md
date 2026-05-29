@@ -31,6 +31,7 @@ Conflict-checked: foundation branch (54 commits ahead) touches **0** files in kn
 ## Execution decisions (locked 2026-05-30)
 - **Output language = Chinese (source-faithful).** Enriched lore is generated in Chinese to match the 封神演义 original tone; translation is a later/separate step. Aligns with knowledge-service's CJK-aware pipeline. Eval/anachronism checks must operate on Chinese.
 - **Cost posture = conservative / batched.** RAID runs with **low DPS (2–3)**, executes cycles in **batches**, **pause-on-quota** (Max subscription), and **stops for human review between batches** before continuing. Demo target = batch ending at C14.
+- **Application LLM = Qwen 3.6 via LM Studio** (strong Classical-Chinese / 文言文 — addresses the CHisAgent Chinese-reasoning gap). **Resolved via provider-registry, NOT hardcoded** — registry entry points to the LM Studio OpenAI-compatible endpoint (e.g. `http://host.docker.internal:1234/v1`), must be reachable from the service container. **Embedding model** for retrieval (C10) still to confirm in LM Studio (e.g. bge-m3 / nomic-embed). Both used by reference; no model name in code.
 
 ## Demo scope (locked 2026-05-30) — PLACE-focused enrichment
 The first demo enriches a **small set of under-described LOCATIONS** in 封神演义 — NOT the whole world. This bounds C6/C7 (gap-model anchors on entity-kind = location) and the demo milestone.
