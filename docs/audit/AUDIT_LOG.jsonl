@@ -922,3 +922,5 @@
 {"ts":"2026-05-29T07:09:23Z","event":"worktree_removed","cycle":10,"name":"cycle-10-dps-1"}
 {"ts":"2026-05-29T07:09:23Z","event":"worktree_removed","cycle":10,"name":"cycle-10-dps-2"}
 {"ts":"2026-05-29T07:09:23Z","event":"worktree_removed","cycle":10,"name":"cycle-10-dps-3"}
+{"ts":"2026-05-29T07:10:29Z","event":"recovery_halted","cycle":10,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T07:10:29Z", "event": "escalation_written", "cycle": 10, "type": "p5_recovery_inconsistent", "phase": "recovery"}

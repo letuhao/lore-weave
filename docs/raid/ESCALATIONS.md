@@ -25,3 +25,22 @@ CYCLE_DECOMPOSITION header version v1.4 != RAID_WORKFLOW v1.5
 Re-run scripts/raid/regenerate-briefs.sh; sync CYCLE_DECOMPOSITION header version with RAID_WORKFLOW.md frontmatter; re-attempt cycle
 
 ---
+
+## Cycle 10 — P5 RECOVERY INCONSISTENT (halted) — 2026-05-29T07:10:29Z
+
+### Type
+`p5_recovery_inconsistent`
+
+### Phase
+recovery
+
+### Reason / details
+(no reason provided)
+
+### Mismatch
+IN_PROGRESS state file missing for cycle 10; cannot reconstruct phase
+
+### Suggested human action
+Manually investigate worktree state; run scripts/raid/recover-from-crash.sh --inspect; restore consistency before re-invoking
+
+---
