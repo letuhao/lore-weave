@@ -13,8 +13,10 @@ A new `lore-enrichment-service` that GENERATES the missing "off-page" canon a no
 | Market research (3 deep-research passes) | ✅ `905df5ba`, `ff2aa392` — white space confirmed |
 | REVIEW round-1 decisions | ✅ `76974490` |
 | Bottom-up CLARIFY (code-verified, 6 Qs locked) | ✅ `0106dc1a`, `d90a1e14` |
-| DESIGN v2 (corrected boundary) | ✅ `175fc811` — but still architecture-level, needs component detail |
-| PLAN / RAID decomposition | ⬜ NOT STARTED — next |
+| DESIGN v2 (corrected boundary) | ✅ `175fc811` |
+| PLAN (component designs P1–P7) | ✅ [PLAN.md](PLAN.md) |
+| RAID decomposition + artifacts | ✅ `docs/plans/2026-05-30-lore-enrichment/` + `.raid/active-task.yaml` — **`task_config.py validate` → exit 0 (12 keys)** |
+| RAID READY TO RUN | ✅ — next action is `/raid` (after PRE_FLIGHT manual sign-off) |
 
 ## Key docs (read in this order)
 1. [CLARIFY_GROUND_TRUTH.md](CLARIFY_GROUND_TRUTH.md) — code-verified boundary + 6 locked answers. **Most important.**
@@ -29,14 +31,13 @@ A new `lore-enrichment-service` that GENERATES the missing "off-page" canon a no
 - Own proposal store; **mirror** `pending_facts` confirm/reject + injection-defense + confidence/quarantine.
 - Keep game-entity schema **isolated** from world-service/game-server (mmo-rpg).
 
-## Next phase — PLAN (what's left before RAID can run)
-1. Detail the **KG-read port** (how enrichment queries knowledge-service: REST `/v1/knowledge/...` + Neo4j graph-stats for gap-detection).
-2. Define the **`EnrichmentStrategy`** plug-in interface (4 techniques) + the cost-cap + **quality/eval gate** that promotes a technique.
-3. Design the **proposal store** schema + review gate (mirror pending_facts).
-4. Design the **cultural-fidelity eval harness** (needed before promoting fabrication/re-cook).
-5. Freeze API contract `contracts/api/lore-enrichment/` (per monorepo convention).
-6. RAID-decompose into cycles → write `.raid/active-task.yaml` + `docs/plans/<slug>/` (CYCLE_DECOMPOSITION, OPEN_QUESTIONS_LOCKED, PRE_FLIGHT_CHECKLIST, RAID_WORKFLOW copy).
-7. Classify task size (expected **XL** — new service, schema, multi-service contracts).
+## Next action — RUN RAID (CLARIFY+DESIGN+PLAN done)
+PLAN component designs (KG-read port, EnrichmentStrategy + gate, proposal store + review gate, eval harness, API surface, size=XL) are in [PLAN.md](PLAN.md). RAID is decomposed into **16 cycles C0–C15** ([CYCLE_DECOMPOSITION](../../plans/2026-05-30-lore-enrichment/CYCLE_DECOMPOSITION.md)); `.raid/active-task.yaml` validates.
+
+Before `/raid`:
+1. Work the [PRE_FLIGHT_CHECKLIST](../../plans/2026-05-30-lore-enrichment/PRE_FLIGHT_CHECKLIST.md) (confirm port 8093/8217 free, DB, dependency stack-up, secrets, Fengshen test project seeded, pre-commit-hook decision).
+2. Invoke `/raid` (or `/raid 0` to start at bootstrap C0). RAID reads `.raid/active-task.yaml` automatically.
+3. Demo milestone = after **C11** (P1 end-to-end: Fengshen source → gap-detect → template+retrieval → review → write-back to glossary).
 
 ## Reusable infra discovered (adopt, don't reinvent)
 confidence/quarantine/pending_validation · pending_facts confirm-reject + injection-defense · extraction job state machine (estimate/start/pause/resume/cancel) · per-project embedding-model · Neo4j graph-stats (gap-detect input) · CJK-aware splitting (`loreweave_extraction`) · Redis Streams event pipeline · chat-service skeleton + `client/` provider-adapter (no direct SDK, no hardcoded model).
