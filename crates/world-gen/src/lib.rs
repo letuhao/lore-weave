@@ -12,6 +12,7 @@
 
 pub mod author;
 pub mod biome;
+pub mod civ_adapter;
 pub mod climate;
 pub mod creative_seed;
 pub mod culture;
