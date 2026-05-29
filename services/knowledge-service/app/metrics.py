@@ -39,6 +39,8 @@ __all__ = [
     "tool_call_result_size_bytes",
     "memory_remember_rate_limited_total",
     "mode3_intent_classifier_glossary_unavailable_total",
+    "knowledge_extraction_filter_decisions_total",
+    "knowledge_extraction_filter_coverage_ratio",
 ]
 
 registry = CollectorRegistry()
@@ -490,3 +492,35 @@ memory_remember_rate_limited_total = Counter(
     registry=registry,
 )
 memory_remember_rate_limited_total.inc(0)
+
+
+# ── Cycle 72 — Pass2 precision filter observability ────────────────────
+#
+# `category` cardinality is closed at 3 (entity / relation / event).
+# `verdict` cardinality is closed at 5 (supported / partial / unsupported
+# / unjudged / failed) — covers every value the filter can record.
+# Total series: 3 × 5 = 15. Coverage gauge is 1 series per category.
+knowledge_extraction_filter_decisions_total = Counter(
+    "knowledge_extraction_filter_decisions_total",
+    "Cycle 72 Pass2 precision filter — per-item verdicts emitted by "
+    "the filter LLM (or 'unjudged' when verdict missing, 'failed' on "
+    "filter degradation).",
+    ["category", "verdict"],
+    registry=registry,
+)
+for _cat in ("entity", "relation", "event"):
+    for _v in ("supported", "partial", "unsupported", "unjudged", "failed"):
+        knowledge_extraction_filter_decisions_total.labels(
+            category=_cat, verdict=_v
+        )
+
+knowledge_extraction_filter_coverage_ratio = Gauge(
+    "knowledge_extraction_filter_coverage_ratio",
+    "Cycle 72 Pass2 precision filter — last-observed coverage ratio "
+    "(verdicts returned / items submitted) per category. <0.9 suggests "
+    "the per-batch reasoning-token budget needs tuning.",
+    ["category"],
+    registry=registry,
+)
+for _cat in ("entity", "relation", "event"):
+    knowledge_extraction_filter_coverage_ratio.labels(category=_cat).set(1.0)

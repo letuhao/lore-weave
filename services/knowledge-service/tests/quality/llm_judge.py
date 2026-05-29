@@ -46,9 +46,15 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from app.clients.llm_client import LLMClient
+from loreweave_extraction import NO_THINK_PREFIX, build_precision_prompt
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 
 logger = logging.getLogger(__name__)
+
+# Cycle 72 — _NO_THINK_PREFIX is now sourced from the SDK so the
+# precision filter (production) and the precision judge (eval-side)
+# stay byte-identical. Keep the alias for `_RECALL_SYSTEM` below.
+_NO_THINK_PREFIX = NO_THINK_PREFIX
 
 __all__ = [
     "ItemVerdict",
@@ -269,32 +275,13 @@ class ChapterJudgement:
 # and truncated JSON). Pattern borrowed from RAGAS/DeepEval which use
 # structured output for the same reason; we keep prompt-only JSON since
 # the gateway doesn't yet wire tool-use for the judge path.
-_NO_THINK_PREFIX = (
-    "RESPOND DIRECTLY. Do NOT think aloud, do NOT use <think> tags, do "
-    "NOT write reasoning. Emit ONLY the JSON object below — no prose "
-    "before or after, no markdown fences.\n\n"
-)
-
-_PRECISION_SYSTEM = _NO_THINK_PREFIX + (
-    "You are a meticulous literary-extraction auditor. You are given the "
-    "SOURCE TEXT of one chapter of a novel and a numbered list of items "
-    "that some system claims to have extracted from it. For EACH item, "
-    "decide whether the item is actually supported by the SOURCE TEXT.\n\n"
-    "Judge by MEANING, not by surface wording — a different phrasing of "
-    "the same fact is still supported. The text may be in English, "
-    "Chinese, or Vietnamese; judge it in its own language and script.\n\n"
-    "Verdict values:\n"
-    '  - "supported": the item is clearly stated or unambiguously implied '
-    "by the text.\n"
-    '  - "partial": partially correct — e.g. right entity but wrong kind, '
-    "right relation but wrong direction, or only weakly implied.\n"
-    '  - "unsupported": not present in the text, contradicted by it, or '
-    "hallucinated.\n\n"
-    "Reply with ONLY a JSON object, no prose or markdown fences:\n"
-    '{"verdicts":[{"idx":<int>,"verdict":"supported|partial|unsupported",'
-    '"reason":"<=15 words"}]}\n'
-    "Return exactly one verdict per input item, preserving idx."
-)
+#
+# Cycle 72: _PRECISION_SYSTEM is now SDK-sourced — see
+# loreweave_extraction.extractors.precision_filter_prompts. The
+# production precision filter (sdks/python/loreweave_extraction/
+# pass2_filter.py) and this eval-side judge MUST stay byte-identical
+# or filter F1 will not match judge F1.
+_PRECISION_SYSTEM = build_precision_prompt(suppress_thinking=True)
 
 _RECALL_SYSTEM = _NO_THINK_PREFIX + (
     "You are a meticulous literary-extraction auditor. You are given the "

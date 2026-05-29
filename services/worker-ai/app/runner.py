@@ -18,6 +18,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -26,7 +27,10 @@ from uuid import UUID
 import asyncpg
 from opentelemetry import trace as _ot_trace
 
-from loreweave_extraction import extract_pass2
+from loreweave_extraction import (
+    PrecisionFilterConfig,
+    extract_pass2,
+)
 from loreweave_extraction.errors import ExtractionError
 
 from app.clients import (
@@ -42,6 +46,45 @@ from app.llm_client import LLMClient
 __all__ = ["process_job", "poll_and_run"]
 
 logger = logging.getLogger(__name__)
+
+
+# ── Cycle 72 — precision filter env-driven config ──────────────────────
+
+
+def _load_precision_filter_config() -> PrecisionFilterConfig | None:
+    """Read the cycle-72 precision filter env config.
+
+    Returns:
+        ``PrecisionFilterConfig`` when ``WORKER_AI_PRECISION_FILTER_MODEL_REF``
+        is set; ``None`` otherwise (filter disabled — default).
+
+    Envs:
+        WORKER_AI_PRECISION_FILTER_MODEL_REF: gateway model_ref / UUID
+            for the precision filter LLM call. Empty/unset = disabled.
+        WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY: ``"keep"`` (default)
+            or ``"drop"``. ``"demote"`` raises NotImplementedError per
+            spec D4.
+        WORKER_AI_PRECISION_FILTER_MODEL_SOURCE: ``"user_model"``
+            (default) or ``"platform_model"``.
+    """
+    model_ref = os.environ.get("WORKER_AI_PRECISION_FILTER_MODEL_REF", "").strip()
+    if not model_ref:
+        return None
+    partial_policy = os.environ.get(
+        "WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY", "keep"
+    ).strip() or "keep"
+    model_source = os.environ.get(
+        "WORKER_AI_PRECISION_FILTER_MODEL_SOURCE", "user_model"
+    ).strip() or "user_model"
+    return PrecisionFilterConfig(
+        model_ref=model_ref,
+        model_source=model_source,  # type: ignore[arg-type]
+        partial_policy=partial_policy,  # type: ignore[arg-type]
+    )
+
+
+# Cached at module load; None when env unset = zero-overhead default.
+_PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
 
 # D-PHASE6C-WORKERAI-JOB-SPAN. Module-level tracer; when OTel is no-op
 # (OTEL_EXPORTER_OTLP_ENDPOINT unset) this is the NoOp tracer and
@@ -592,6 +635,11 @@ async def _extract_and_persist(
             model_source="user_model",
             model_ref=model_ref,
             llm_client=llm_client,
+            # Cycle 72 — opt-in precision filter via
+            # WORKER_AI_PRECISION_FILTER_MODEL_REF env. None = current
+            # behavior (no filter). Filter degraded path is
+            # surfaced via candidates.filter_status without raising.
+            precision_filter=_PRECISION_FILTER_CONFIG,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"

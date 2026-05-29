@@ -1,0 +1,211 @@
+{
+  "entities": [
+    {
+      "name": "Mr. Bennet",
+      "kind": "person"
+    },
+    {
+      "name": "Netherfield Park",
+      "kind": "place"
+    },
+    {
+      "name": "Bingley",
+      "kind": "person"
+    },
+    {
+      "name": "Mrs. Long",
+      "kind": "person"
+    },
+    {
+      "name": "Lizzy",
+      "kind": "person"
+    },
+    {
+      "name": "Sir William and Lady Lucas",
+      "kind": "organization"
+    },
+    {
+      "name": "Jane",
+      "kind": "person"
+    },
+    {
+      "name": "Lydia",
+      "kind": "person"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Bingley",
+      "predicate": "lives_in",
+      "object": "Netherfield Park",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Lizzy",
+      "predicate": "child_of",
+      "object": "Mr. Bennet",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mr. Bennet",
+      "predicate": "lives_in",
+      "object": "Netherfield Park",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Bingley",
+      "predicate": "rents",
+      "object": "Netherfield Park",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Bingley",
+      "predicate": "born_from",
+      "object": "north of England",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Jane",
+      "predicate": "sibling_of",
+      "object": "Lydia",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Lydia",
+      "predicate": "sibling_of",
+      "object": "Jane",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mrs. Long",
+      "predicate": "instructs",
+      "object": "Mr. Bennet",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mr. Bennet",
+      "predicate": "knows",
+      "object": "Sir William and Lady Lucas",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mr. Bennet",
+      "predicate": "commands",
+      "object": "Mrs. Long",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mrs. Long",
+      "predicate": "works_for",
+      "object": "Netherfield Park",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mr. Bennet",
+      "predicate": "trusts",
+      "object": "Mrs. Long",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mr. Bennet",
+      "predicate": "instructs",
+      "object": "Mrs. Long",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mr. Bennet",
+      "predicate": "helps",
+      "object": "Mrs. Long",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Mr. Bennet",
+      "predicate": "member_of",
+      "object": "Sir William and Lady Lucas",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Bingley",
+      "predicate": "married_to",
+      "object": "Netherfield Park",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "Mrs. Bennet informs Mr. Bennet that a young man named Bingley has taken Netherfield Park, and she elaborates on his background and intentions.",
+      "participants": [
+        "Mrs. Bennet",
+        "Mr. Bennet"
+      ]
+    },
+    {
+      "summary": "Mrs. Long informs Mrs. Bennet that Netherfield Park has finally been leased.",
+      "participants": [
+        "Mrs. Long"
+      ]
+    },
+    {
+      "summary": "Bingley finalizes the lease agreement with Mr. Morris upon being delighted by Netherfield Park.",
+      "participants": [
+        "Bingley",
+        "Mr. Morris"
+      ]
+    },
+    {
+      "summary": "A young man of large fortune from the north of England arrives at Netherfield Park in a chaise and four to inspect the property.",
+      "participants": [
+        "Bingley"
+      ]
+    },
+    {
+      "summary": "Mrs. Bennet formulates the idea that Mr. Bingley may marry one of her daughters, and she begins to plan accordingly.",
+      "participants": [
+        "Mrs. Bennet"
+      ]
+    },
+    {
+      "summary": "Mrs. Bennet insists that Mr. Bennet must visit Bingley, arguing that it will benefit their daughters and be essential for securing a marriage.",
+      "participants": [
+        "Mrs. Bennet",
+        "Mr. Bennet"
+      ]
+    },
+    {
+      "summary": "It is announced that Bingley will assume full residence at Netherfield Park prior to the feast of Michaelmas.",
+      "participants": [
+        "Bingley"
+      ]
+    },
+    {
+      "summary": "Mr. Bennet composes and dispatches a letter to Mr. Bingley, expressing his hearty consent for him to marry any of the daughters.",
+      "participants": [
+        "Mr. Bennet"
+      ]
+    },
+    {
+      "summary": "Mr. Bennet decides to visit Mr. Bingley upon his arrival in the neighbourhood.",
+      "participants": [
+        "Mr. Bennet"
+      ]
+    },
+    {
+      "summary": "It is suggested that Bingley might fall in love with one of the Bennet daughters during his stay at Netherfield.",
+      "participants": [
+        "Bingley"
+      ]
+    },
+    {
+      "summary": "Some of Bingley’s servants are expected to be in Netherfield Park by the conclusion of the following week.",
+      "participants": [
+        "Bingley"
+      ]
+    },
+    {
+      "summary": "The Lucases resolve to visit Mr. Bingley, motivated by the prospect of one of their daughters marrying him.",
+      "participants": [
+        "Sir William and Lady Lucas"
+      ]
+    }
+  ]
+}
