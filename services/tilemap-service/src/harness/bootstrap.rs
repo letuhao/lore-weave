@@ -240,6 +240,7 @@ fn bootstrap_template() -> TilemapTemplate {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         }
     }
     let mut template = TilemapTemplate {
@@ -263,6 +264,8 @@ fn bootstrap_template() -> TilemapTemplate {
         ],
         seed_offset: 0,
         world_zone: None,
+        decoration_density: None,
+        background_biome: None,
     };
     // TreasurePlacer only acts on zones with `treasure_tiers`; a `min ≥ 2000`
     // tier guarantees each pile is guarded, so the demo classifies Treasure

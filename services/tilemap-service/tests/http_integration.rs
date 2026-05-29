@@ -54,6 +54,7 @@ fn minimal_template() -> TilemapTemplate {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         }
     }
     TilemapTemplate {
@@ -67,6 +68,8 @@ fn minimal_template() -> TilemapTemplate {
         ],
         seed_offset: 0,
         world_zone: None,
+        decoration_density: None,
+        background_biome: None,
     }
 }
 
@@ -373,6 +376,7 @@ async fn med_1_oversized_zone_count_returns_413_problem_json() {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         })
         .collect();
     let template = TilemapTemplate {
@@ -380,6 +384,8 @@ async fn med_1_oversized_zone_count_returns_413_problem_json() {
         zones,
         seed_offset: 0,
         world_zone: None,
+        decoration_density: None,
+        background_biome: None,
     };
     let base = boot_server().await;
     let client = reqwest::Client::new();

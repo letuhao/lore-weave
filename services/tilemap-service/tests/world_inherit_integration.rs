@@ -43,9 +43,12 @@ fn template_for_world_zone(
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         }],
         seed_offset: 0,
         world_zone: Some(snapshot),
+        decoration_density: None,
+        background_biome: None,
     }
 }
 

@@ -153,6 +153,7 @@ mod tests {
             treasure_tiers: vec![],
             biome_selection_rules: None,
             inherit_treasure_from: None,
+            biome_theme: None,
         }
     }
 
@@ -162,6 +163,8 @@ mod tests {
             zones,
             seed_offset: 0,
             world_zone: None,
+            decoration_density: None,
+            background_biome: None,
         }
     }
 
