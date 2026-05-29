@@ -1,7 +1,8 @@
 # Lore-Enrichment Service — Architecture Design (DRAFT)
 
-> **Status:** DRAFT (DESIGN phase) · **Date:** 2026-05-29 · **Branch:** `lore-enrichment/foundation`
-> **Grounded in:** [RESEARCH_LANDSCAPE.md](RESEARCH_LANDSCAPE.md) (passes 1, 2 & 3 complete — white space confirmed from research + product sides).
+> **Status:** DRAFT v2 (revised after bottom-up CLARIFY) · **Date:** 2026-05-30 · **Branch:** `lore-enrichment/foundation`
+> **Grounded in:** [RESEARCH_LANDSCAPE.md](RESEARCH_LANDSCAPE.md) (research/product white space) + [CLARIFY_GROUND_TRUTH.md](CLARIFY_GROUND_TRUTH.md) (code-verified boundary).
+> **⚠️ Correction:** an earlier v1 assumed knowledge-service was "planned". It is **real and substantial** (extractive KG pipeline). This doc is corrected accordingly — enrichment **builds on** knowledge-service, it does not re-implement extraction. See CLARIFY §1–§4.
 > **Demo target:** 封神演义 (Fengshen Yanyi) worldbuilding for a game.
 
 ---
@@ -15,9 +16,10 @@ A novel cannot be turned into a game world directly: authors describe "off-page"
 ## 2. Position in the platform
 
 - **Language:** Python / FastAPI (per language rule — AI/LLM service). 
-- **Two-layer anchoring** (already in `CLAUDE.md`):
-  - `glossary-service` (Go) = **authored SSOT**. Canonical entities written back via its existing `/internal/books/{book_id}/extract-entities` bulk API; wiki stubs via `/v1/glossary/books/{book_id}/wiki/generate`.
-  - `knowledge-service` (Python, planned) = **fuzzy/semantic entity layer** (Postgres SSOT + Neo4j derived). Enrichment entities anchor via `glossary_entity_id` FK.
+- **Two-layer anchoring** (verified built, not planned):
+  - `book-service` (Go) = **source canon** — chapters/chunks read via `GET /internal/books/{book_id}/chapters/{chapter_id}/hierarchy`.
+  - `glossary-service` (Go) = **authored SSOT**. Approved canonical entities written back via `POST /books/{book_id}/extract-entities`; wiki via `/v1/glossary/books/{book_id}/wiki/generate`. `glossary_sync` then propagates to Neo4j (single authoritative path).
+  - `knowledge-service` (Python, **REAL**) = **fuzzy/semantic KG layer** — already does extractive entity/triple/fact extraction (Pass1 CJK → Pass2 LLM → validator), Neo4j graph, confidence/quarantine, `pending_facts` review, summaries, timeline, graph-stats, per-project embedding, event pipeline. Enrichment **consumes** this KG (anchored by `glossary_entity_id`) and adds the generative layer on top.
 - **Provider gateway invariant:** all LLM/embedding calls go through the adapter layer — NO direct provider SDK calls. **No hardcoded model names** (resolved from provider-registry).
 - **Gateway invariant:** external traffic via `api-gateway-bff`.
 - **Own Postgres DB** (per-service ownership). Jobs via Redis Streams; source/artifact blobs in MinIO.
@@ -27,8 +29,9 @@ A novel cannot be turned into a game world directly: authors describe "off-page"
 The differentiator is composing the four techniques into one governed pipeline. Mirrors the strongest research pattern: **seed-KG → expand → external-refine** (arXiv:2509.03540) + GraphRAG corpus synthesis + schema-governed admission (G-KMS).
 
 ```
-[1] INGEST & SEED        source canon (book text + glossary entries)
-                          → extract seed entity-KG (GraphRAG-style), anchor to glossary_entity_id
+[1] SEED (DELEGATED)     knowledge-service ALREADY extracts the entity/triple/fact KG
+                          from book text + glossary (Pass1 CJK → Pass2 LLM → validator).
+                          Enrichment READS this KG — it does NOT re-extract.
         │
 [2] GAP DETECTION        per entity × dimension (geography/economy/factions/daily-life/...)
                           → template coverage check → list of under-described gaps
@@ -89,7 +92,7 @@ The differentiator is composing the four techniques into one governed pipeline. 
 
 ### Resolved at REVIEW (2026-05-29)
 
-1. **✅ Separate service** — `lore-enrichment-service` (Python/FastAPI, own DB, independent lifecycle). It depends on knowledge-service's KG via API/events. **Sequencing risk:** knowledge-service is still "planned" — so the enrichment service must define a thin KG-layer **interface/port** it depends on, and either (i) stub it initially, or (ii) own a minimal KG slice until knowledge-service ships. Resolve the exact split in PLAN.
+1. **✅ Separate service** — `lore-enrichment-service` (Python/FastAPI, own DB, independent lifecycle). It depends on knowledge-service's KG (real, built) + glossary (SSOT) + book-service (source). Define a **thin KG-read port** so enrichment degrades gracefully if KG is unavailable. No stubbing needed — the dependency is real; CLARIFY resolved the sequencing risk (the v1 "planned" assumption was wrong).
 2. **✅ Implement all 4 techniques, phased by effectiveness-per-cost** — all four are first-class **pluggable strategies** behind one `EnrichmentStrategy` interface, toggled via feature-flags, with **cost tracking + a quality-eval gate** before enabling the next. Rollout order (cheapest/most-grounded → most expensive/risky):
 
    | Phase | Technique | Why this order | Cost / risk |
@@ -111,7 +114,8 @@ The differentiator is composing the four techniques into one governed pipeline. 
 
 - [x] Fold Pass 3 competitive findings into RESEARCH_LANDSCAPE.md.
 - [x] REVIEW round 1 — resolved: separate service; all 4 techniques, phased by effectiveness-per-cost (§7).
-- [ ] PLAN: resolve knowledge-service dependency split (stub vs own minimal KG slice); design the `EnrichmentStrategy` interface + cost/quality gate; design the cultural-fidelity eval harness.
+- [x] Bottom-up CLARIFY complete — knowledge-service is real; boundary corrected; 6 questions locked ([CLARIFY_GROUND_TRUTH.md](CLARIFY_GROUND_TRUTH.md)).
+- [ ] PLAN: design the KG-read port (consume knowledge-service); the `EnrichmentStrategy` interface + cost/quality gate; the proposal store + review gate (mirror pending_facts); the cultural-fidelity eval harness.
 - [ ] Freeze API contract (`contracts/api/lore-enrichment.yaml`).
 - [ ] RAID-decompose into cycles → write `.raid/active-task.yaml` + `docs/plans/<slug>/` (decomposition, locked questions, pre-flight).
 - [ ] Confirm task size (likely **XL** — new service, schema, multi-service contracts → spec + plan + subagent recommended).
