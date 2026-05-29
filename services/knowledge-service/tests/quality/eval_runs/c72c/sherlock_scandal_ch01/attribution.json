@@ -1,0 +1,210 @@
+{
+  "chapter": "sherlock_scandal_ch01",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 0,
+        "actual_name": "Sherlock Holmes",
+        "actual_kind": "person",
+        "expected_name": "Sherlock Holmes",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 1,
+        "actual_name": "Irene Adler",
+        "actual_kind": "person",
+        "expected_name": "Irene Adler",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 2,
+        "expected_idx": 3,
+        "actual_name": "Baker Street",
+        "actual_kind": "place",
+        "expected_name": "Baker Street",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 3,
+        "actual_name": "Study in Scarlet",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 4,
+        "actual_name": "March",
+        "actual_kind": "concept"
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 2,
+        "expected_name": "Watson",
+        "expected_kind": "person",
+        "expected_aliases": [
+          "I",
+          "narrator"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [
+      {
+        "actual_idx": 1,
+        "expected_idx": 1,
+        "actual": [
+          "Sherlock Holmes",
+          "lives_in",
+          "Baker Street",
+          "affirm"
+        ],
+        "expected": [
+          "Sherlock Holmes",
+          "resides_at",
+          "Baker Street",
+          "affirm"
+        ]
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 2,
+        "actual": [
+          "Sherlock Holmes",
+          "eclipses",
+          "her sex",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual": [
+          "Irene Adler",
+          "born_from",
+          "Study in Scarlet",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "Sherlock Holmes",
+          "predominates",
+          "her sex",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "Sherlock Holmes",
+          "married_to",
+          "Irene Adler",
+          "negate"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "Sherlock Holmes",
+          "works_for",
+          "civil practice",
+          "affirm"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected": [
+          "Watson",
+          "lives_with",
+          "Sherlock Holmes",
+          "affirm"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 0,
+        "actual": [
+          "Sherlock Holmes",
+          "knows",
+          "Irene Adler",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "The narrator arrives in Baker Street on the twentieth of March, 1888, after a journey to visit a patient.",
+        "actual_participants": [
+          "Narrator"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "Sherlock Holmes encounters Irene Adler, who becomes the definitive woman in his life.",
+        "actual_participants": [
+          "Sherlock Holmes",
+          "Irene Adler"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual_summary": "Sherlock Holmes develops a profound and enduring admiration for Irene Adler, surpassing all other women.",
+        "actual_participants": [
+          "Sherlock Holmes"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "Sherlock Holmes expresses his thoughts about Irene Adler, highlighting her significance in his life.",
+        "actual_participants": [
+          "Sherlock Holmes"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual_summary": "The narrator, returning from a patient visit, feels a strong desire to reunite with Sherlock Holmes in Baker Street.",
+        "actual_participants": [
+          "Narrator"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "Watson passes through Baker Street on the night of 20 March 1888",
+        "expected_participants": [
+          "Watson"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected_summary": "Watson resolves to visit Sherlock Holmes again",
+        "expected_participants": [
+          "Watson",
+          "Sherlock Holmes"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  }
+}

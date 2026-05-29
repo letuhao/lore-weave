@@ -1,0 +1,528 @@
+{
+  "chapter": "journey_west_zh_ch14",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 1,
+        "actual_name": "三藏",
+        "actual_kind": "person",
+        "expected_name": "三藏",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 2,
+        "actual_name": "伯欽",
+        "actual_kind": "person",
+        "expected_name": "伯欽",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 3,
+        "expected_idx": 4,
+        "actual_name": "如來",
+        "actual_kind": "person",
+        "expected_name": "佛祖",
+        "expected_kind": "person",
+        "matched_via": "alias"
+      },
+      {
+        "actual_idx": 4,
+        "expected_idx": 0,
+        "actual_name": "孫悟空",
+        "actual_kind": "person",
+        "expected_name": "孫悟空",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 6,
+        "expected_idx": 3,
+        "actual_name": "觀音菩薩",
+        "actual_kind": "person",
+        "expected_name": "觀音菩薩",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 10,
+        "expected_idx": 8,
+        "actual_name": "金字壓帖",
+        "actual_kind": "artifact",
+        "expected_name": "唵嘛呢叭𠺗吽",
+        "expected_kind": "artifact",
+        "matched_via": "alias"
+      },
+      {
+        "actual_idx": 11,
+        "expected_idx": 5,
+        "actual_name": "靈山",
+        "actual_kind": "place",
+        "expected_name": "靈山",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 13,
+        "expected_idx": 6,
+        "actual_name": "東土",
+        "actual_kind": "place",
+        "expected_name": "東土",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 2,
+        "actual_name": "唵嘛呢叭𠺗吽",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 5,
+        "actual_name": "孫行者",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 7,
+        "actual_name": "陳玄奘",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 8,
+        "actual_name": "齊天大聖",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 9,
+        "actual_name": "佛祖",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 12,
+        "actual_name": "山頂上",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 14,
+        "actual_name": "神猴",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 15,
+        "actual_name": "行者",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 16,
+        "actual_name": "取經人",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 17,
+        "actual_name": "家僮",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 18,
+        "actual_name": "小頭陀",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 19,
+        "actual_name": "師父",
+        "actual_kind": "person"
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 7,
+        "expected_name": "西方",
+        "expected_kind": "place",
+        "expected_aliases": [
+          "西天"
+        ]
+      }
+    ],
+    "fp_trap": [
+      {
+        "actual_idx": 17,
+        "actual_name": "家僮",
+        "actual_kind": "person",
+        "trap_idx": 0,
+        "trap_name": "家僮",
+        "trap_reason": "Generic 'servant boy' reference, not a named individual"
+      },
+      {
+        "actual_idx": 18,
+        "actual_name": "小頭陀",
+        "actual_kind": "concept",
+        "trap_idx": 6,
+        "trap_name": "小頭陀",
+        "trap_reason": "Comparison/simile reference ('like a young wandering monk'), not a named entity"
+      }
+    ],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [
+      {
+        "actual_idx": 1,
+        "expected_idx": 1,
+        "actual": [
+          "三藏",
+          "mentor_of",
+          "齊天大聖",
+          "affirm"
+        ],
+        "expected": [
+          "三藏",
+          "mentor_of",
+          "孫悟空",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "expected_idx": 2,
+        "actual": [
+          "齊天大聖",
+          "imprisoned_by",
+          "佛祖",
+          "affirm"
+        ],
+        "expected": [
+          "孫悟空",
+          "imprisoned_by",
+          "佛祖",
+          "affirm"
+        ]
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 2,
+        "actual": [
+          "齊天大聖",
+          "born_from",
+          "大鬧天宮",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "齊天大聖",
+          "works_for",
+          "取經人",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "齊天大聖",
+          "helps",
+          "取經人",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "齊天大聖",
+          "located_on",
+          "山頂上",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual": [
+          "伯欽",
+          "serves",
+          "家僮",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual": [
+          "觀音菩薩",
+          "commands",
+          "取經人",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual": [
+          "齊天大聖",
+          "lives_in",
+          "山頂上",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 19,
+        "actual": [
+          "齊天大聖",
+          "enjoys",
+          "金字壓帖",
+          "affirm"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected": [
+          "孫悟空",
+          "disciple_of",
+          "三藏",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 3,
+        "expected": [
+          "觀音菩薩",
+          "instructs",
+          "孫悟空",
+          "affirm"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 0,
+        "actual": [
+          "三藏",
+          "knows",
+          "齊天大聖",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 7,
+        "actual": [
+          "三藏",
+          "owns",
+          "金字壓帖",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 11,
+        "actual": [
+          "齊天大聖",
+          "trusts",
+          "觀音菩薩",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 12,
+        "actual": [
+          "三藏",
+          "follows",
+          "齊天大聖",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 13,
+        "actual": [
+          "三藏",
+          "courts",
+          "齊天大聖",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 14,
+        "actual": [
+          "三藏",
+          "knows",
+          "伯欽",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 15,
+        "actual": [
+          "觀音菩薩",
+          "serves",
+          "東土",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 16,
+        "actual": [
+          "齊天大聖",
+          "instructs",
+          "觀音菩薩",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 17,
+        "actual": [
+          "齊天大聖",
+          "disciple_of",
+          "觀音菩薩",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 18,
+        "actual": [
+          "齊天大聖",
+          "lives_with",
+          "佛祖",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "三藏在山頂的四方大石前，跪拜禱祝後，將刻有「唵嘛呢叭𠺗吽」六個金字的壓帖輕輕揭下。",
+        "actual_participants": [
+          "陳玄奘"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "三藏揭起金字壓帖後，孫悟空自石中現身而出。",
+        "actual_participants": [
+          "孫悟空"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual_summary": "孫悟空向三藏敘述自己五百年前大鬧天宮的經歷，並表達願意保護取經人、歸依佛法、與師父一同前往西方拜佛。",
+        "actual_participants": [
+          "孫悟空",
+          "陳玄奘"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "三藏問孫悟空姓氏，得知其名為孫，並起法名孫悟空。",
+        "actual_participants": [
+          "陳玄奘",
+          "孫悟空"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual_summary": "三藏見孫悟空形貌如小頭陀，遂為其起混名「行者」。",
+        "actual_participants": [
+          "陳玄奘",
+          "孫悟空"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual_summary": "伯欽扶著三藏，攀藤附葛，一同登上高山。",
+        "actual_participants": [
+          "伯欽",
+          "陳玄奘"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual_summary": "三藏問孫悟空如何能從山中救出他，孫悟空答以金字壓帖之法。",
+        "actual_participants": [
+          "陳玄奘",
+          "孫悟空"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual_summary": "觀音菩薩勸導孫悟空不再行兇，歸依佛法，並教他殷勤保護取經人。",
+        "actual_participants": [
+          "觀音菩薩",
+          "孫悟空"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual_summary": "自此時起，孫悟空被稱為孫行者。",
+        "actual_participants": [
+          "孫悟空"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual_summary": "觀音菩薩奉佛旨意，前往東土尋找取經人。",
+        "actual_participants": [
+          "觀音菩薩"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual_summary": "伯欽呼叫家僮，並牽來馬匹。",
+        "actual_participants": [
+          "伯欽",
+          "家僮"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "孫悟空向三藏自述身份為齊天大聖，請求做徒弟保護取經",
+        "expected_participants": [
+          "孫悟空",
+          "三藏"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected_summary": "三藏揭起金字壓帖救出孫悟空",
+        "expected_participants": [
+          "三藏",
+          "孫悟空"
+        ]
+      },
+      {
+        "expected_idx": 2,
+        "expected_summary": "孫悟空告知三藏自己原有法名孫悟空",
+        "expected_participants": [
+          "孫悟空",
+          "三藏"
+        ]
+      },
+      {
+        "expected_idx": 3,
+        "expected_summary": "三藏為孫悟空起混名稱為行者",
+        "expected_participants": [
+          "三藏",
+          "孫悟空"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  }
+}

@@ -1,0 +1,282 @@
+{
+  "variant": "c72b",
+  "partial_policy": "keep",
+  "filter_model_ref": "019e5650-eca7-78c2-985d-465aa3bce1ce",
+  "elapsed_sec": 343.5,
+  "chapters": [
+    {
+      "chapter": "alice_ch01",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 11,
+        "relations": 11,
+        "events": 7,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 11,
+        "relations": 10,
+        "events": 7,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 1.0,
+        "event": 1.0
+      },
+      "decisions": {
+        "event|supported": 6,
+        "event|partial": 1,
+        "entity|supported": 7,
+        "entity|partial": 4,
+        "relation|supported": 7,
+        "relation|unsupported": 1,
+        "relation|partial": 3
+      },
+      "duration_sec": 24.2
+    },
+    {
+      "chapter": "alice_ch02",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 13,
+        "relations": 11,
+        "events": 12,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 13,
+        "relations": 9,
+        "events": 12,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 1.0,
+        "event": 1.0
+      },
+      "decisions": {
+        "entity|supported": 12,
+        "entity|partial": 1,
+        "event|partial": 1,
+        "event|supported": 11,
+        "relation|unsupported": 2,
+        "relation|supported": 5,
+        "relation|partial": 4
+      },
+      "duration_sec": 26.1
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 16,
+        "relations": 11,
+        "events": 4,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 16,
+        "relations": 10,
+        "events": 4,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 1.0,
+        "event": 1.0
+      },
+      "decisions": {
+        "event|supported": 3,
+        "event|partial": 1,
+        "relation|supported": 8,
+        "relation|partial": 2,
+        "relation|unsupported": 1,
+        "entity|supported": 16
+      },
+      "duration_sec": 34.9
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 20,
+        "relations": 20,
+        "events": 11,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 20,
+        "relations": 20,
+        "events": 11,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 0.95,
+        "event": 1.0
+      },
+      "decisions": {
+        "event|supported": 10,
+        "event|partial": 1,
+        "entity|supported": 19,
+        "entity|partial": 1,
+        "relation|supported": 11,
+        "relation|partial": 8,
+        "relation|unjudged": 1
+      },
+      "duration_sec": 56.1
+    },
+    {
+      "chapter": "little_women_ch01",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 18,
+        "relations": 18,
+        "events": 38,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 18,
+        "relations": 15,
+        "events": 38,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 1.0,
+        "event": 1.0
+      },
+      "decisions": {
+        "entity|supported": 17,
+        "entity|partial": 1,
+        "relation|unsupported": 3,
+        "relation|partial": 7,
+        "relation|supported": 8,
+        "event|supported": 33,
+        "event|partial": 5
+      },
+      "duration_sec": 87.9
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 8,
+        "relations": 16,
+        "events": 12,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 8,
+        "relations": 10,
+        "events": 12,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 1.0,
+        "event": 1.0
+      },
+      "decisions": {
+        "entity|supported": 7,
+        "entity|partial": 1,
+        "relation|supported": 6,
+        "relation|unsupported": 6,
+        "relation|partial": 4,
+        "event|supported": 10,
+        "event|partial": 2
+      },
+      "duration_sec": 33.2
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 5,
+        "relations": 7,
+        "events": 5,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 5,
+        "relations": 6,
+        "events": 5,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 1.0,
+        "event": 1.0
+      },
+      "decisions": {
+        "entity|supported": 5,
+        "event|supported": 4,
+        "event|partial": 1,
+        "relation|supported": 3,
+        "relation|partial": 3,
+        "relation|unsupported": 1
+      },
+      "duration_sec": 18.2
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 16,
+        "relations": 12,
+        "events": 10,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 16,
+        "relations": 11,
+        "events": 10,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 1.0,
+        "event": 1.0
+      },
+      "decisions": {
+        "event|supported": 10,
+        "entity|supported": 16,
+        "relation|supported": 10,
+        "relation|partial": 1,
+        "relation|unsupported": 1
+      },
+      "duration_sec": 26.1
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "status": "applied",
+      "pre_counts": {
+        "entities": 13,
+        "relations": 15,
+        "events": 14,
+        "facts": 0
+      },
+      "post_counts": {
+        "entities": 13,
+        "relations": 13,
+        "events": 14,
+        "facts": 0
+      },
+      "filter_coverage": {
+        "entity": 1.0,
+        "relation": 1.0,
+        "event": 1.0
+      },
+      "decisions": {
+        "entity|partial": 2,
+        "entity|supported": 11,
+        "relation|supported": 13,
+        "relation|unsupported": 2,
+        "event|supported": 13,
+        "event|partial": 1
+      },
+      "duration_sec": 36.6
+    }
+  ]
+}

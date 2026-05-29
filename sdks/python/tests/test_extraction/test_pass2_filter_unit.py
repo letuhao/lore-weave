@@ -120,7 +120,10 @@ def _make_mock_client(content_by_batch: list[str] | str | Exception) -> Any:
             content = content_by_batch
         job = MagicMock()
         job.status = "completed"
-        job.result = {"content": content}
+        # Mirror the production gateway shape — assistant message under
+        # result.messages[0]. The filter's content extraction must look
+        # there (mirrors llm_judge.py contract).
+        job.result = {"messages": [{"role": "assistant", "content": content}]}
         return job
 
     client.submit_and_wait = AsyncMock(side_effect=_submit)
@@ -369,7 +372,11 @@ async def test_three_categories_run_concurrently_in_gather() -> None:
         await asyncio.sleep(0.1)
         job = MagicMock()
         job.status = "completed"
-        job.result = {"content": _verdict_json(supported=[0])}
+        job.result = {
+            "messages": [
+                {"role": "assistant", "content": _verdict_json(supported=[0])}
+            ]
+        }
         return job
 
     client = MagicMock()
@@ -447,7 +454,11 @@ async def test_pydantic_model_to_judge_format_adapter() -> None:
                 captured_user_msgs.append(m["content"])
         job = MagicMock()
         job.status = "completed"
-        job.result = {"content": _verdict_json(supported=[0])}
+        job.result = {
+            "messages": [
+                {"role": "assistant", "content": _verdict_json(supported=[0])}
+            ]
+        }
         return job
 
     client.submit_and_wait = AsyncMock(side_effect=_capture)
