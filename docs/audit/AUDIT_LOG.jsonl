@@ -881,3 +881,8 @@
 {"ts": "2026-05-29T05:59:55Z", "event": "in_progress_update", "cycle": 8, "phase": "SESSION", "retry": 0}
 {"ts":"2026-05-29T13:00:00Z","event":"cycle_complete","cycle":8,"phase":"SESSION","files_count":31,"dps_count":4,"verify_exit_code":0,"adversary":{"blockers":0,"majors":0,"minors":1,"notes":3},"scope_guard":"CLEAR","notable":"L2.F-I shipped: YAML registry+3 seed events, eventgen Go binary emits 4 langs, dp-kernel new crate (upcaster+validator), Go-side mirrors"}
 {"ts": "2026-05-29T06:00:28Z", "event": "in_progress_update", "cycle": 8, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T06:01:37Z", "event": "in_progress_archived", "cycle": 8, "archived_to": "cycle-008-state.md"}
+{"ts":"2026-05-29T06:01:39Z","event":"worktree_removed","cycle":8,"name":"cycle-8-dps-1"}
+{"ts":"2026-05-29T06:01:39Z","event":"worktree_removed","cycle":8,"name":"cycle-8-dps-2"}
+{"ts":"2026-05-29T06:01:39Z","event":"worktree_removed","cycle":8,"name":"cycle-8-dps-3"}
+{"ts":"2026-05-29T06:01:39Z","event":"worktree_removed","cycle":8,"name":"cycle-8-dps-4"}
