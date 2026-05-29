@@ -10,10 +10,11 @@ provisioned per-reality DB, in lexical order (`0001_*`, `0002_*`, ...).
 
 | Table             | Purpose                                              | Real DDL ships in |
 |-------------------|------------------------------------------------------|-------------------|
-| `events`          | Append-only event log (event-sourcing kernel)        | Cycle 8 (L2)      |
-| `outbox`          | Transactional outbox for cross-reality events        | Cycle 8 (L2)      |
-| `snapshots`       | Aggregate snapshot table                             | Cycle 12 (L3)     |
+| `events`          | Append-only event log (event-sourcing kernel)        | Cycle 9 (L2.A) — 0002_events_table |
+| `outbox`          | Transactional outbox for cross-reality events        | Cycle 10 (L2.C) — 0005_events_outbox |
+| `snapshots`       | Aggregate snapshot table (renamed `aggregate_snapshots`) | Cycle 9 (L2.E) — 0004_aggregate_snapshots_table |
 | `projection_meta` | Per-projection cursor + verification metadata        | Cycle 13 (L3)     |
+| `event_audit`     | LLM forensic ledger (high-volume, short retention)   | Cycle 9 (L2.B) — 0003_event_audit_table |
 
 The cycle-5 file establishes the minimum scaffolding so:
 - the provisioner's step 5 has something concrete to apply

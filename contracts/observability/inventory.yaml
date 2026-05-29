@@ -250,6 +250,70 @@ metrics:
     owner: sre
     source: services/migration-orchestrator
 
+  # ────────────────────────────────────────────────────────────────────
+  # L2.A — Events table (cycle 9)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_events_appended_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [reality_id, aggregate_type, event_type, outcome]
+    description: 'event append attempts per aggregate_type + event_type; outcome ∈ {ok, conflict, schema_violation, error}'
+    owner: world-platform
+    source: contracts/events (write helper)
+    cardinality_notes: 'aggregate_type bounded by _registry.yaml aggregates (~5); event_type bounded by _registry.yaml events (~3 V1, ~50 V3); reality_id × event_type is the dominant factor and is the same bound as L1.I per-reality budget'
+
+  - name: lw_partition_manager_runs_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [table, op, outcome]
+    description: 'per-reality-partition-manager.sh run outcomes; table ∈ {events, event_audit}, op ∈ {create_ahead, detach_old, list}, outcome ∈ {ok, dry_run, error}'
+    owner: world-platform
+    source: scripts/per-reality-partition-manager.sh
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.B — Event audit (cycle 9)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_event_audit_writes_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [reality_id, actor_type, flagged]
+    description: 'event_audit rows written; actor_type ∈ {system,user,service,llm}; flagged ∈ {true,false}'
+    owner: world-platform
+    source: contracts/events (audit_helpers)
+
+  - name: lw_event_audit_retention_pruned_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [class, partition_drop]
+    description: 'rows pruned by event-audit-retention-cron.sh; class ∈ {flagged, non_flagged}; partition_drop ∈ {true, false}'
+    owner: world-platform
+    source: scripts/event-audit-retention-cron.sh
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.E — Aggregate snapshots (cycle 9)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_aggregate_snapshots_taken_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [reality_id, aggregate_type]
+    description: 'snapshots persisted per aggregate_type (per snapshot_policy.yaml opt-in)'
+    owner: world-platform
+    source: crates/dp-kernel (snapshot worker — wired in cycle 14)
+
+  - name: lw_aggregate_snapshots_loaded_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [reality_id, aggregate_type, outcome]
+    description: 'aggregate loader snapshot lookups; outcome ∈ {hit, miss_full_replay, schema_drift_fallback}'
+    owner: world-platform
+    source: crates/dp-kernel (loader — wired in cycle 12)
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────
