@@ -1,0 +1,262 @@
+# contracts/dependencies/matrix.yaml — L4.N (RAID cycle 18)
+#
+# SR06 §12AI.2 — single source of truth for every external dependency
+# called by any LoreWeave service. Every entry MUST declare:
+#
+#   - name              — canonical lowercase identifier (used by metrics
+#                          labels and the dependency_events table)
+#   - owner_service     — primary caller
+#   - also_used_by      — other services that call this dep
+#   - criticality       — P0 (platform-critical) | P1 (feature-critical) | P2 (background)
+#   - type              — http_external | http_internal | postgres | redis | s3 | grpc
+#   - sla_target        — upstream availability % (informational; alerting uses
+#                          internal SLI rollups not this number)
+#   - timeout_ms        — default per-call timeout
+#   - circuit_breaker   — error_rate_threshold + min_requests + open_duration_ms
+#   - retry_class       — idempotent | non_idempotent | critical_write
+#   - bulkhead          — max_concurrent + queue_depth + queue_timeout_ms
+#   - fallback          — ordered list of fallback dep names (cycles forbidden)
+#   - degraded_modes    — service-modes activated when this dep is down
+#   - runbook           — relative path to docs/sre/runbooks/...
+#
+# The cycle-18 L4.N lint script `scripts/dependency-registry-lint.sh`
+# enforces that every new HTTP/DB/Redis client outside this file is
+# rejected at PR time. The cycle-18 client_factory.go produces wrapped
+# clients (timeout + breaker + retry + bulkhead) keyed off this matrix.
+#
+# Governance: changing criticality OR adding a new dep requires architect
+# sign-off + a paired SR3 runbook entry. The matrix is intentionally NOT
+# auto-generated; PR review IS the gate.
+
+version: 1
+
+dependencies:
+  # ────────────────────────────────────────────────────────────────────
+  # P0 — Platform-critical (any one down = full or near-full outage)
+  # ────────────────────────────────────────────────────────────────────
+  - name: meta-db
+    owner_service: world-service
+    also_used_by:
+      - auth-service
+      - publisher
+      - integrity-checker
+      - migration-orchestrator
+    criticality: P0
+    type: postgres
+    sla_target: "99.95%"
+    timeout_ms: 3000
+    circuit_breaker:
+      error_rate_threshold: 0.10
+      min_requests: 50
+      open_duration_ms: 15000
+    retry_class: critical_write
+    bulkhead:
+      max_concurrent: 50
+      queue_depth: 20
+      queue_timeout_ms: 100
+    fallback: []
+    degraded_modes:
+      - essentials
+    runbook: docs/sre/runbooks/meta-db/down.md
+
+  - name: auth-service
+    owner_service: api-gateway-bff
+    also_used_by:
+      - world-service
+      - chat-service
+      - roleplay-service
+    criticality: P0
+    type: http_internal
+    sla_target: "99.95%"
+    timeout_ms: 5000
+    circuit_breaker:
+      error_rate_threshold: 0.10
+      min_requests: 30
+      open_duration_ms: 15000
+    retry_class: idempotent
+    bulkhead:
+      max_concurrent: 50
+      queue_depth: 20
+      queue_timeout_ms: 100
+    fallback: []
+    degraded_modes:
+      - essentials
+    runbook: docs/sre/runbooks/auth-service/down.md
+
+  # ────────────────────────────────────────────────────────────────────
+  # P1 — Feature-critical (degrades one feature; others continue)
+  # ────────────────────────────────────────────────────────────────────
+  - name: per-reality-db
+    owner_service: world-service
+    also_used_by:
+      - publisher
+      - integrity-checker
+    criticality: P1
+    type: postgres
+    sla_target: "99.9%"
+    timeout_ms: 10000
+    circuit_breaker:
+      error_rate_threshold: 0.25
+      min_requests: 30
+      open_duration_ms: 30000
+    retry_class: critical_write
+    bulkhead:
+      max_concurrent: 30
+      queue_depth: 15
+      queue_timeout_ms: 200
+    fallback: []
+    degraded_modes:
+      - read_only
+    runbook: docs/sre/runbooks/per-reality-db/down.md
+
+  - name: redis-streams
+    owner_service: publisher
+    also_used_by:
+      - api-gateway-bff
+      - session-router
+    criticality: P1
+    type: redis
+    sla_target: "99.9%"
+    timeout_ms: 500
+    circuit_breaker:
+      error_rate_threshold: 0.25
+      min_requests: 20
+      open_duration_ms: 30000
+    retry_class: idempotent
+    bulkhead:
+      max_concurrent: 30
+      queue_depth: 15
+      queue_timeout_ms: 200
+    fallback: []
+    degraded_modes:
+      - limited
+    runbook: docs/sre/runbooks/redis-streams/down.md
+
+  - name: llm-anthropic
+    owner_service: roleplay-service
+    also_used_by:
+      - chat-service
+      - world-service
+    criticality: P1
+    type: http_external
+    sla_target: "99.5%"
+    timeout_ms: 60000
+    circuit_breaker:
+      error_rate_threshold: 0.25
+      min_requests: 20
+      open_duration_ms: 30000
+    retry_class: non_idempotent
+    bulkhead:
+      max_concurrent: 30
+      queue_depth: 15
+      queue_timeout_ms: 200
+    fallback:
+      - llm-openai
+      - llm-byok-user
+    degraded_modes:
+      - limited
+    runbook: docs/sre/runbooks/llm-provider/llm-anthropic-down.md
+
+  - name: llm-openai
+    owner_service: roleplay-service
+    also_used_by:
+      - chat-service
+    criticality: P1
+    type: http_external
+    sla_target: "99.5%"
+    timeout_ms: 60000
+    circuit_breaker:
+      error_rate_threshold: 0.25
+      min_requests: 20
+      open_duration_ms: 30000
+    retry_class: non_idempotent
+    bulkhead:
+      max_concurrent: 30
+      queue_depth: 15
+      queue_timeout_ms: 200
+    fallback:
+      - llm-byok-user
+    degraded_modes:
+      - limited
+    runbook: docs/sre/runbooks/llm-provider/llm-openai-down.md
+
+  - name: llm-byok-user
+    owner_service: roleplay-service
+    also_used_by:
+      - chat-service
+    criticality: P1
+    type: http_external
+    sla_target: "99.0%"
+    timeout_ms: 60000
+    circuit_breaker:
+      error_rate_threshold: 0.40
+      min_requests: 10
+      open_duration_ms: 60000
+    retry_class: non_idempotent
+    bulkhead:
+      max_concurrent: 10
+      queue_depth: 5
+      queue_timeout_ms: 500
+    fallback: []
+    degraded_modes:
+      - limited
+    runbook: docs/sre/runbooks/llm-provider/llm-byok-down.md
+
+  # ────────────────────────────────────────────────────────────────────
+  # P2 — Background (failure doesn't block active play)
+  # ────────────────────────────────────────────────────────────────────
+  - name: minio
+    owner_service: book-service
+    also_used_by:
+      - publisher
+      - integrity-checker
+    criticality: P2
+    type: s3
+    sla_target: "99.5%"
+    timeout_ms: 10000
+    circuit_breaker:
+      error_rate_threshold: 0.40
+      min_requests: 20
+      open_duration_ms: 60000
+    retry_class: idempotent
+    bulkhead:
+      max_concurrent: 10
+      queue_depth: 5
+      queue_timeout_ms: 500
+    fallback: []
+    degraded_modes:
+      - limited
+    runbook: docs/sre/runbooks/minio/down.md
+
+  - name: translation-service
+    owner_service: book-service
+    also_used_by:
+      - world-service
+    criticality: P2
+    type: http_internal
+    sla_target: "99.0%"
+    timeout_ms: 30000
+    circuit_breaker:
+      error_rate_threshold: 0.40
+      min_requests: 10
+      open_duration_ms: 60000
+    retry_class: idempotent
+    bulkhead:
+      max_concurrent: 10
+      queue_depth: 5
+      queue_timeout_ms: 500
+    fallback: []
+    degraded_modes: []
+    runbook: docs/sre/runbooks/translation-service/down.md
+
+# ────────────────────────────────────────────────────────────────────
+# FALLBACK DAG INVARIANT
+# ────────────────────────────────────────────────────────────────────
+# The `fallback` field forms a DAG (directed-acyclic-graph) across
+# dependencies. A cycle (llm-anthropic → llm-openai → llm-anthropic)
+# would cause unbounded recursion in the client_factory when both deps
+# are down — failover would loop instead of giving up.
+#
+# The cycle-18 matrix_loader.go LoadAndValidate fn detects cycles via
+# DFS + WHITE/GREY/BLACK colors and refuses to load on detection.
+# `scripts/dependency-registry-lint.sh` invokes this check in CI.

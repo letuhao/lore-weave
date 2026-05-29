@@ -1032,3 +1032,20 @@
 {"ts": "2026-05-29T09:15:31Z", "event": "in_progress_update", "cycle": 17, "phase": "BUILD", "retry": 0}
 {"ts":"2026-05-29T09:29:05Z","event":"secret_scan_skipped","cycle":17,"scope":"cycle","reason":"gitleaks_not_installed"}
 {"ts": "2026-05-29T09:34:40Z", "event": "in_progress_update", "cycle": 17, "phase": "RETRO", "retry": 0}
+{"ts": "2026-05-29T09:35:36Z", "event": "in_progress_archived", "cycle": 17, "archived_to": "cycle-017-state.md"}
+{"ts":"2026-05-29T09:35:41Z","event":"recovery_halted","cycle":17,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T09:35:41Z", "event": "escalation_written", "cycle": 17, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts":"2026-05-29T09:35:43Z","event":"worktree_removed","cycle":17,"name":"cycle-17-dps-1"}
+{"ts":"2026-05-29T09:35:43Z","event":"worktree_removed","cycle":17,"name":"cycle-17-dps-2"}
+{"ts": "2026-05-29T09:36:28Z", "event": "coordinator_next_cycle_emitted", "cycle": 18}
+{"ts":"2026-05-29T09:37:44Z","event":"startup_drift_check_passed","cycle":18,"version":"v1.6"}
+{"ts":"2026-05-29T09:37:44Z","event":"startup_verifier_complete","cycle":18,"steps":6}
+{"ts": "2026-05-29T09:37:54Z", "event": "in_progress_init", "cycle": 18, "title": "L4 Resilience + Lifecycle + Dependencies (F+G+N)"}
+{"ts": "2026-05-29T09:40:14Z", "event": "in_progress_update", "cycle": 18, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T09:40:35Z", "event": "in_progress_update", "cycle": 18, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T09:40:57Z", "event": "in_progress_update", "cycle": 18, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T10:00:18Z", "event": "in_progress_update", "cycle": 18, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T10:01:05Z","event":"secret_scan_skipped","cycle":18,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts":"2026-05-29T10:02:43Z","event":"secret_scan_skipped","cycle":18,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T10:02:52Z", "event": "in_progress_update", "cycle": 18, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T10:03:52Z", "event": "in_progress_update", "cycle": 18, "phase": "COMMIT", "retry": 0}

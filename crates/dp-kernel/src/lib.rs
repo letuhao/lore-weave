@@ -32,6 +32,19 @@
 //! - [`event_store_pg`] — Postgres impl of [`EventStore`]; WRAPPED `PgPool`
 //!   behind `pub(crate) pool: Arc<PgPool>` per Q-L4A-1.
 //!
+//! ### Cycle 18 / L4.F + L4.G + L4.N — resilience + lifecycle + dependencies Rust mirrors
+//! - [`resilience`] — Rust mirror of `contracts/resilience/` (4 primitives:
+//!   [`resilience::with_timeout`], [`resilience::CircuitBreaker`],
+//!   [`resilience::retry`], [`resilience::Bulkhead`]). Q-L4-1 parity with
+//!   the Go contracts.
+//! - [`lifecycle`] — Rust mirror of `contracts/lifecycle/`. Re-exports the
+//!   cycle-7 [`lifecycle::ServiceMode`] enum (kept in lockstep with the Go
+//!   side) + cycle-18 additions: [`lifecycle::drain`] orchestrator and
+//!   [`lifecycle::PresenceState`] 6-variant enum (SR11).
+//! - [`dependencies`] — Rust mirror of `contracts/dependencies/`. The
+//!   typed [`dependencies::Matrix`] + [`dependencies::ClientFactory`] +
+//!   YAML loader with DAG cycle detection.
+//!
 //! ### Shared
 //! - [`errors`] — typed [`EventError`] enum (schema / upcaster / etc.).
 //!
@@ -46,16 +59,19 @@
 //! re-exports.
 
 pub mod aggregate;
+pub mod dependencies;
 pub mod envelope;
 pub mod errors;
 pub mod event;
 pub mod event_store;
 pub mod event_store_pg;
 pub mod event_validator;
+pub mod lifecycle;
 pub mod load_aggregate;
 pub mod metadata;
 pub mod outbox;
 pub mod projection;
+pub mod resilience;
 pub mod snapshot;
 pub mod snapshot_cache;
 pub mod upcaster;

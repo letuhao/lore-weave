@@ -520,6 +520,69 @@ metrics:
     source: services/integrity-checker (pkg/metrics MetricProjectionCheckRunsTotal)
     cardinality_notes: 'mode × outcome = 4 series total. Fixed cardinality (no reality_id, no table).'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L4.F + L4.G + L4.N — resilience + lifecycle + dependencies (cycle 18)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_dependency_circuit_state
+    kind: gauge
+    layer: L4
+    shipped_cycle: 18
+    labels: [dep, service]
+    description: 'circuit breaker state per (caller_service, dep) pair. Values match SR06 §12AI.8: 0=closed / 1=half_open / 2=open. SR06-D5 fault-domain rule: one gauge per (caller, dep); two services calling the same dep maintain INDEPENDENT gauges.'
+    owner: platform
+    source: contracts/resilience (Go) + crates/dp-kernel::resilience (Rust)
+    cardinality_notes: 'service — bounded by registered foundation services (~20); dep — bounded by matrix.yaml entries (~10 at V1, ~30 at V3). Worst case ~600 series. Well within budget.'
+
+  - name: lw_dependency_circuit_transitions_total
+    kind: counter
+    layer: L4
+    shipped_cycle: 18
+    labels: [dep, service, from, to]
+    description: 'cumulative circuit-state transitions per (caller_service, dep) per (from, to) pair. Mirrors the dependency_events rows for circuit_open / circuit_half_open / circuit_closed (SR06 §12AI.9). Postmortem use: confirm a SEV0 outage was preceded by N transitions.'
+    owner: platform
+    source: contracts/resilience (Go) + crates/dp-kernel::resilience (Rust)
+    cardinality_notes: 'service × dep × from × to = ~20 × 10 × 3 × 3 / 2 (forbidden self-transitions) ≈ 2700 series upper bound. Realistic ≤ 600 (most pairs idle).'
+
+  - name: lw_dependency_bulkhead_inflight
+    kind: gauge
+    layer: L4
+    shipped_cycle: 18
+    labels: [dep, service]
+    description: 'current in-flight calls held by the bulkhead per (caller_service, dep). Useful for spotting "always at MaxConcurrent" deps that need capacity bump (SR06 §12AI.10).'
+    owner: platform
+    source: contracts/resilience::Bulkhead.Active() + crates/dp-kernel::resilience::Bulkhead::active()
+    cardinality_notes: 'service × dep ≤ 200 series.'
+
+  - name: lw_dependency_bulkhead_rejected_total
+    kind: counter
+    layer: L4
+    shipped_cycle: 18
+    labels: [dep, service]
+    description: 'cumulative ErrBulkheadFull rejections per (caller_service, dep). Counterpart to the dependency_events bulkhead_full_burst row + the SR06 §12AI.8 lw_dependency_errors_total{error_class="bulkhead_full"} aggregate. Sustained > 5/min suggests capacity bump per SR06 §12AI.10.'
+    owner: platform
+    source: contracts/resilience::Bulkhead.Rejected()
+    cardinality_notes: 'service × dep ≤ 200 series.'
+
+  - name: lw_lifecycle_drain_duration_seconds
+    kind: histogram
+    layer: L4
+    shipped_cycle: 18
+    labels: [service, outcome]
+    description: 'wall-clock duration of one Drain invocation per (service, outcome). outcome ∈ {success, deadline_exceeded, hook_error}. Per SR06 §12AI.11 the V1 budget is 30s default / 10s stateless / 120s long-runner; this histogram tells SRE when a service routinely brushes its cap.'
+    owner: platform
+    source: contracts/lifecycle::Drain + crates/dp-kernel::lifecycle::drain
+    cardinality_notes: 'service ≤ 20; outcome ∈ {3} = ≤ 60 series.'
+
+  - name: lw_service_mode
+    kind: gauge
+    layer: L4
+    shipped_cycle: 18
+    labels: [service]
+    description: 'current ServiceMode per service. Integer values match the lifecycle.ServiceMode enum: 0=full / 1=limited / 2=essentials / 3=read_only / 4=offline. Per SR06 §12AI.6 a mode > 0 indicates a degraded dep; combine with lw_dependency_circuit_state to identify the trigger.'
+    owner: platform
+    source: contracts/lifecycle::ServiceMode emitted by each service health-endpoint
+    cardinality_notes: 'service ≤ 20 = ≤ 20 series.'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────
