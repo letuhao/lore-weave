@@ -118,14 +118,15 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 - Genre groups for entity categorization
 - Soft delete with full restore
 
-### Knowledge Graph & Wiki (Phase 2 — In Progress)
+### Knowledge Graph & Wiki (Phase 2 — Live)
 - Two-layer model: glossary (authored SSOT) + knowledge-service (fuzzy/semantic layer) anchored via `glossary_entity_id`
 - Automated entity extraction from chapters into a structured knowledge graph
 - **Postgres SSOT + Neo4j** derived graph via outbox → publisher → projections pipeline
-- Scheduled multi-tier entity summary regeneration (L0 global / L1 project / L2 chapter)
+- 3-pass hierarchical extraction: structural decompose → per-op cache-wrap → hierarchical reduce + per-level summaries
 - Relation merge with conflict resolution (MAX confidence, UNION evidence, earliest `valid_from`)
 - Wiki articles + revisions + suggestions hosted inside glossary-service (not a separate service)
 - Pattern validated by Microsoft GraphRAG (arXiv:2404.16130) and HippoRAG (arXiv:2405.14831)
+- **Current focus:** RAG retrieval quality evaluation — building golden-set eval dataset, target P ≥ 0.85 R ≥ 0.70
 
 ### Community
 - Public book catalog with search, genre, and language filters
@@ -145,7 +146,7 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 
 ## Architecture
 
-Self-hosted Docker Compose monorepo. **17 application services + 7 infra containers + frontend.** Contract-first API design. Event-driven with the outbox pattern.
+Self-hosted Docker Compose monorepo. **19 application services + infra containers + frontend.** Contract-first API design. Event-driven with the outbox pattern.
 
 ```
                     ┌─────────────────────────┐
@@ -192,6 +193,9 @@ Self-hosted Docker Compose monorepo. **17 application services + 7 infra contain
 | **video-gen-service** | Python / FastAPI | Media generation BFF; ComfyUI workloads live in sibling repo **local-image-generator-service** (SD 1.5 / SDXL / Illustrious / Flux 1–2 / Qwen Image / Wan / LTX Video + custom game-asset, object-sheet, and animation pipelines) |
 | **worker-infra** | Go | Outbox relay, cleanup, import processing, Pandoc conversion |
 | **worker-ai** | Python | AI-driven async tasks (entity extraction, summary regen, embedding jobs) |
+| **tilemap-service** | Rust | Living Worlds (Phase 6+) — tile/spatial layer |
+| **travel-service** | Rust | Living Worlds (Phase 6+) — movement/travel mechanics |
+| **world-service** | Rust | Living Worlds (Phase 6+) — world state, reality model |
 
 ### Tech Stack
 
@@ -391,18 +395,18 @@ LoreWeave is model-agnostic. Connect any provider:
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| **Phase 1** | Platform Core — Auth, Books, Sharing, Providers, Translation, Glossary | Done |
-| **Phase 2** | Workflow & RAG — Event streams, knowledge graph, vector indexing | In Progress |
-| **Phase 3** | Knowledge Services — Wiki builder, Q&A extraction, timeline | Planned |
+| **Phase 1** | Platform Core — Auth, Books, Sharing, Providers, Translation, Glossary | ✅ Done |
+| **Phase 2** | Knowledge Graph & RAG — entity extraction, Postgres+Neo4j, hierarchical summaries, RAG eval | 🔄 In Progress |
+| **Phase 3** | Knowledge Services — grounded Q&A extraction, timeline | Planned |
 | **Phase 4** | Continuation & Canon Safety — AI story continuation grounded in canon | Planned |
 | **Phase 5** | Hardening & Scale — Performance, multi-tenancy, cloud deployment | Planned |
 | **Phase 6+** | **Living Worlds (extension)** — LLM-driven NPCs, shared persistent realities, player characters, multiverse model ([design track](docs/03_planning/LLM_MMO_RPG/)) | Design track |
 
-**In-flight services (Phase 2):** `knowledge-service` (live) — entity extraction, Postgres+Neo4j knowledge graph, scheduled L0/L1/L2 summary regen; wiki hosted inside `glossary-service` (articles/revisions/suggestions).
+**Phase 2 (active):** 3-pass hierarchical extraction live — structural decompose (P1 ✅) → per-op cache-wrap (P2 ✅) → hierarchical reduce + summaries (P3 🔄). Current focus: RAG quality eval dataset, target Sherlock baseline P ≥ 0.85 R ≥ 0.70.
 
 **Planned services (Phase 3–5):** QA Extraction (grounded Q&A), Continuation (canon-aware drafting), Orchestrator (LangGraph multi-agent workflows).
 
-**Extension services (Phase 6+):** `world-service`, `roleplay-service`, `publisher`, `meta-worker`, `event-handler`, `migration-orchestrator`, `admin-cli` — see [LLM_MMO_RPG/](docs/03_planning/LLM_MMO_RPG/) for architecture.
+**Extension services (Phase 6+):** `world-service` (Rust, skeleton live), `tilemap-service` (Rust, skeleton live), `travel-service` (Rust, skeleton live), `roleplay-service`, `publisher`, `meta-worker` — see [LLM_MMO_RPG/](docs/03_planning/LLM_MMO_RPG/) for architecture.
 
 ---
 
