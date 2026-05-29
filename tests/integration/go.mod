@@ -45,6 +45,12 @@ require (
 require (
 	github.com/google/uuid v1.6.0
 	github.com/loreweave/foundation/contracts/canon/timeline v0.0.0-00010101000000-000000000000
+
+	// Cycle 30 — L6.F + L6.G admission runtimes
+	github.com/loreweave/foundation/contracts/capacity v0.0.0
+	github.com/loreweave/foundation/contracts/observability v0.0.0
+	github.com/loreweave/foundation/infra/k8s/admission-webhook v0.0.0
+	github.com/loreweave/foundation/pkg/metrics v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -76,3 +82,12 @@ replace github.com/loreweave/foundation/services/integrity-checker => ../../serv
 
 // Cycle 27 — L5.J change-history timeline contract
 replace github.com/loreweave/foundation/contracts/canon/timeline => ../../contracts/canon/timeline
+
+// Cycle 30 — L6.F observability admission lib + L6.G K8s capacity admission webhook
+replace github.com/loreweave/foundation/contracts/observability => ../../contracts/observability
+
+replace github.com/loreweave/foundation/contracts/capacity => ../../contracts/capacity
+
+replace github.com/loreweave/foundation/pkg/metrics => ../../pkg/metrics
+
+replace github.com/loreweave/foundation/infra/k8s/admission-webhook => ../../infra/k8s/admission-webhook

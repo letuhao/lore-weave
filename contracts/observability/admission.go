@@ -107,6 +107,21 @@ func (a *Admission) Stats() (emitted, warned, rejected uint64) {
 	return a.emitted.Load(), a.warned.Load(), a.rejected.Load()
 }
 
+// Inventory returns a snapshot of the registered inventory entries.
+// Used by L6.F pkg/metrics wrappers that want to enforce a Kind check
+// (Counter() vs Gauge()) before pushing to the underlying Prometheus
+// client. The snapshot is taken at construction time — the slice is
+// stable for the lifetime of the Admission.
+//
+// Returned slice is owned by the caller (safe to read; do not mutate).
+func (a *Admission) Inventory() []Entry {
+	out := make([]Entry, 0, len(a.lookup))
+	for _, e := range a.lookup {
+		out = append(out, e)
+	}
+	return out
+}
+
 // EmitMetric is the admission-control entry point. Call it BEFORE
 // pushing the metric to the underlying Prometheus client.
 //

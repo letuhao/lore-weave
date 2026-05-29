@@ -1237,3 +1237,14 @@
 {"ts": "2026-05-29T14:45:08Z", "event": "in_progress_update", "cycle": 29, "phase": "SESSION", "retry": 0}
 {"ts": "2026-05-29T14:46:51Z", "event": "in_progress_update", "cycle": 29, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T14:47:31Z", "event": "in_progress_archived", "cycle": 29, "archived_to": "cycle-029-state.md"}
+{"ts":"2026-05-29T14:48:27Z","event":"worktree_removed","cycle":29,"name":"cycle-29-dps-1"}
+{"ts":"2026-05-29T14:48:27Z","event":"worktree_removed","cycle":29,"name":"cycle-29-dps-2"}
+{"ts": "2026-05-29T14:48:58Z", "event": "coordinator_next_cycle_emitted", "cycle": 30}
+{"ts":"2026-05-29T14:50:11Z","event":"startup_drift_check_passed","cycle":30,"version":"v1.6"}
+{"ts":"2026-05-29T14:50:11Z","event":"startup_verifier_complete","cycle":30,"steps":6}
+{"ts": "2026-05-29T14:50:15Z", "event": "in_progress_init", "cycle": 30, "title": "L6 Admission runtimes (F+G)"}
+{"ts": "2026-05-29T14:51:17Z", "event": "in_progress_update", "cycle": 30, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T15:03:29Z", "event": "in_progress_update", "cycle": 30, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T15:05:59Z", "event": "in_progress_archived", "cycle": 30, "archived_to": "cycle-030-state.md"}
+{"ts":"2026-05-29T15:06:04Z","event":"recovery_halted","cycle":30,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T15:06:04Z", "event": "escalation_written", "cycle": 30, "type": "p5_recovery_inconsistent", "phase": "recovery"}

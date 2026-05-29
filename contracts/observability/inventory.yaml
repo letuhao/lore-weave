@@ -679,6 +679,52 @@ metrics:
     source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.evictions
     cardinality_notes: 'reason ≤ 4 enumerated values — 4 series per replica.'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L6.F — Observability admission runtime (cycle 30, Q-L6F-1)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_metric_admission_warn_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 30
+    labels: [reason]
+    description: 'V1 warn-and-drop admission counter — increments whenever an unregistered metric is emitted while admission mode = warn. Reasons = unregistered_metric, unregistered_label. SRE watches this counter during the V1+30d adoption window; non-zero means an emission path is missing from inventory.yaml.'
+    owner: platform
+    source: pkg/metrics/admission_lib.go (Lib wraps contracts/observability/admission.go::Admission)
+    cardinality_notes: 'reason ≤ 2 enumerated values; metric-name dimension intentionally NOT a label (would explode cardinality during typo storms — see budget_breach_writer instead).'
+
+  - name: lw_metric_admission_rejections_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 30
+    labels: [reason]
+    description: 'V1+30d hard-reject admission counter — increments whenever an unregistered metric is dropped while admission mode = reject. Non-zero post-flip indicates an emission escaped the 30-day warn window; file P1 ticket to owning team.'
+    owner: platform
+    source: pkg/metrics/admission_lib.go (Lib wraps contracts/observability/admission.go::Admission)
+    cardinality_notes: 'reason ≤ 2 enumerated values; same cardinality discipline as warn counter.'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L6.G — Capacity admission webhook (cycle 30, Q-L6G-1: K8s)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_capacity_admission_decisions_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 30
+    labels: [decision]
+    description: 'K8s ValidatingAdmissionWebhook decision outcomes — allow, deny_no_budget, deny_over_budget, allow_via_override. Decisions are emitted by the cycle-30 admission webhook (infra/k8s/admission-webhook/) and consumed by the SRE deployment dashboard.'
+    owner: platform
+    source: infra/k8s/admission-webhook/capacity_checker.go::Checker.Review
+    cardinality_notes: 'decision ≤ 4 enumerated values — 4 series per webhook replica.'
+
+  - name: lw_capacity_admission_latency_seconds
+    kind: histogram
+    layer: L6
+    shipped_cycle: 30
+    labels: []
+    description: 'K8s admission webhook decision latency. Acceptance criterion: P99 < 100ms (per L6.G layer plan §177).'
+    owner: platform
+    source: infra/k8s/admission-webhook/capacity_checker.go::Checker.Review
+    cardinality_notes: 'no labels — one histogram per webhook replica.'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────
