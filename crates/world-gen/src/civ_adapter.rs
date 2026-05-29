@@ -37,8 +37,10 @@ use delaunator::{triangulate, Point};
 
 use crate::biome::BiomeKind;
 use crate::climate::ClimateZone;
+use crate::feature::{self, Features};
 use crate::flat_climate::{compute_zone_climate, Biome, WorldClimateParams, ZoneClimate};
 use crate::flatworld::FlatWorld;
+use crate::rng::Rng;
 
 /// A mesh-shaped view of a `FlatWorld` ready to feed into the System-A
 /// civilization stack. Lengths of every per-cell vector equal
@@ -155,11 +157,19 @@ pub fn build_civ_view(world: &FlatWorld, climate_params: &WorldClimateParams) ->
         .zip(zone_climates.iter())
         .zip(elevation.iter())
         .map(|((&(x, y), c), &elev)| {
+            // Thresholds calibrated against `flatworld` elevation
+            // constants: `BASE_LEVEL = 0.35` (interior of a single
+            // plate), collision overlap adds `collision_strength *
+            // collision_gain` (typically 0.05-0.25 per overlapping
+            // pair). Mountain at `> 0.55` catches collision peaks
+            // (≥0.20 above base); Hill at `> 0.45` catches modest
+            // collision uplift (≥0.10 above base). Cells exactly at
+            // BASE_LEVEL stay climate-classified.
             if world.plates_at(x, y).is_empty() {
                 BiomeKind::Ocean
-            } else if elev > 0.95 {
+            } else if elev > 0.55 {
                 BiomeKind::Mountain
-            } else if elev > 0.7 {
+            } else if elev > 0.45 {
                 BiomeKind::Hill
             } else {
                 koppen_to_biome_kind(c.biome)
@@ -183,6 +193,142 @@ pub fn build_civ_view(world: &FlatWorld, climate_params: &WorldClimateParams) ->
         elevation,
         sea_level: 0.5,
     }
+}
+
+/// **Civ Ship 2** — augment a `CivView` with synthetic ocean cells.
+///
+/// Sub-zones are by construction inside plates, so a raw
+/// [`build_civ_view`] never produces `BiomeKind::Ocean` cells. Without
+/// ocean cells:
+///
+/// - [`feature::extract`] can't find water bodies.
+/// - `is_coast` stays false for every cell.
+/// - `settlement::build` has no incentive to place coastal cities.
+///
+/// This pass samples points in the world's **void region** (any spot
+/// where `world.plates_at` returns empty), assigns
+/// `BiomeKind::Ocean` to each, rebuilds the Delaunay adjacency over the
+/// combined point set, and recomputes `is_coast` so coastal land
+/// sub-zones flip to `true`.
+///
+/// Sampling is deterministic — seeded from `world.collision_gain` +
+/// `target_count` so the same `(world, target_count)` always yields the
+/// same ocean point set. Uses simple Poisson-disk rejection with a
+/// minimum-separation derived from the world's area so coverage stays
+/// even.
+pub fn augment_with_ocean(view: CivView, world: &FlatWorld, target_count: usize) -> CivView {
+    let w = world.width as f32;
+    let h = world.height as f32;
+    let target = target_count.max(1);
+
+    // Min-separation tuned for even coverage. Area / target = expected
+    // cell area; the rejection radius is ~70 % of that side length so
+    // we get a slightly-jittered grid pattern, not a Poisson-blue spot
+    // distribution. Coarser is fine — we just need enough ocean cells
+    // for water-body components to form and is_coast to fire.
+    let cell_area = (w * h) / (target as f32);
+    let min_sep = cell_area.sqrt() * 0.7;
+    let min_sep2 = min_sep * min_sep;
+
+    let mut rng = Rng::for_stage(
+        ((world.width as u64) << 32) | (world.height as u64) | (target as u64),
+        b"civ-ocean",
+    );
+    let max_attempts = target.saturating_mul(80).max(2_000);
+    let mut ocean_centers: Vec<(f32, f32)> = Vec::with_capacity(target);
+    let mut attempts = 0_usize;
+    while ocean_centers.len() < target && attempts < max_attempts {
+        attempts += 1;
+        let x = rng.next_f32() * w;
+        let y = rng.next_f32() * h;
+        if !world.plates_at(x, y).is_empty() {
+            continue; // inside a plate — not void
+        }
+        if ocean_centers
+            .iter()
+            .all(|&(ox, oy)| (x - ox) * (x - ox) + (y - oy) * (y - oy) >= min_sep2)
+        {
+            ocean_centers.push((x, y));
+        }
+    }
+
+    if ocean_centers.is_empty() {
+        // World is entirely covered by plates (rare; tiny test worlds).
+        // Return the view unchanged — no synthetic Ocean is honest.
+        return view;
+    }
+
+    // Stitch ocean cells onto the existing CivView.
+    let land_n = view.centers.len();
+    let mut centers_2d: Vec<(f32, f32)> = view
+        .centers
+        .iter()
+        .map(|c| (c[0], c[1]))
+        .collect();
+    let mut centers = view.centers;
+    let mut biomes = view.biomes;
+    let mut climate = view.climate;
+    let mut river_flux = view.river_flux;
+    let mut elevation = view.elevation;
+    for &(ox, oy) in &ocean_centers {
+        centers_2d.push((ox, oy));
+        centers.push([ox, oy, 0.0]);
+        biomes.push(BiomeKind::Ocean);
+        // Ocean climate is `Tropical` (warmest of the system-A buckets);
+        // settlement/route code doesn't read climate on water cells, so
+        // the specific bucket doesn't matter — just stays consistent.
+        climate.push(ClimateZone::Tropical);
+        river_flux.push(0.0);
+        elevation.push(0.0);
+    }
+
+    // Rebuild Delaunay neighbors over the union of land+ocean centers,
+    // then re-derive coast flags on the joint biome vec.
+    let neighbors = build_delaunay_neighbors(&centers_2d);
+    let is_coast = compute_is_coast(&biomes, &neighbors);
+
+    debug_assert_eq!(centers.len(), land_n + ocean_centers.len());
+    debug_assert_eq!(biomes.len(), centers.len());
+    debug_assert_eq!(neighbors.len(), centers.len());
+
+    CivView {
+        centers,
+        neighbors,
+        biomes,
+        climate,
+        river_flux,
+        is_coast,
+        elevation,
+        sea_level: view.sea_level,
+    }
+}
+
+/// **Civ Ship 2** — convenience pipeline: build a civ view, augment it
+/// with synthetic ocean cells, then run System-A's mesh-agnostic
+/// [`feature::extract`] to get named mountain ranges, rivers, and water
+/// bodies for downstream naming / political / settlement layers.
+///
+/// `ocean_target` is the number of ocean cells to synthesize. A default
+/// world (1280×720, 12 plates) reads well with 40-80 ocean cells; tiny
+/// test worlds with 8-16. Pass `0` to skip ocean augmentation (matches
+/// Ship-1 behaviour).
+///
+/// Returns `(view, features)` so callers can pass both to System-A's
+/// political / settlement / route builders without re-running the
+/// expensive climate sweep inside [`build_civ_view`].
+pub fn extract_features(
+    world: &FlatWorld,
+    climate_params: &WorldClimateParams,
+    ocean_target: usize,
+) -> (CivView, Features) {
+    let view = build_civ_view(world, climate_params);
+    let view = if ocean_target > 0 {
+        augment_with_ocean(view, world, ocean_target)
+    } else {
+        view
+    };
+    let features = feature::extract(&view.biomes, &view.neighbors);
+    (view, features)
 }
 
 /// Build neighbor lists from a Delaunay triangulation over the 2D cell
@@ -436,5 +582,114 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn augment_with_ocean_adds_synthetic_ocean_cells() {
+        // Ship 2: augment pass should append BiomeKind::Ocean cells AND
+        // those cells should fall in void area (no plate covers them).
+        let world = small_world();
+        let view = build_civ_view(&world, &WorldClimateParams::default());
+        let land_n = view.centers.len();
+        let augmented = augment_with_ocean(view, &world, 16);
+        let total_n = augmented.centers.len();
+        assert!(
+            total_n > land_n,
+            "augment should grow the cell count; before {land_n}, after {total_n}",
+        );
+        let ocean_n = augmented
+            .biomes
+            .iter()
+            .filter(|&&b| b == BiomeKind::Ocean)
+            .count();
+        assert!(ocean_n >= 1, "should have ≥1 synthetic Ocean cell");
+        // Each synthetic ocean cell's centre must be in void.
+        for (i, &biome) in augmented.biomes.iter().enumerate().skip(land_n) {
+            assert_eq!(biome, BiomeKind::Ocean, "appended cell {i} should be Ocean");
+            let [x, y, _] = augmented.centers[i];
+            assert!(
+                world.plates_at(x, y).is_empty(),
+                "synthetic ocean cell {i} at ({x:.1},{y:.1}) lands inside a plate"
+            );
+        }
+    }
+
+    #[test]
+    fn augment_with_ocean_flips_coast_flag_on_neighbouring_land() {
+        // After ocean augmentation a coastal land sub-zone (adjacent to
+        // at least one synthetic ocean cell) must have is_coast=true.
+        let world = small_world();
+        let view = build_civ_view(&world, &WorldClimateParams::default());
+        let land_n = view.centers.len();
+        let augmented = augment_with_ocean(view, &world, 16);
+        let mut coast_hits = 0usize;
+        for (i, &biome) in augmented.biomes.iter().enumerate().take(land_n) {
+            if biome == BiomeKind::Ocean {
+                continue;
+            }
+            let touches_ocean = augmented.neighbors[i]
+                .iter()
+                .any(|&j| augmented.biomes[j as usize] == BiomeKind::Ocean);
+            if touches_ocean {
+                assert!(
+                    augmented.is_coast[i],
+                    "land cell {i} touches ocean but is_coast is false"
+                );
+                coast_hits += 1;
+            }
+        }
+        assert!(
+            coast_hits > 0,
+            "expected at least one coast cell after augment; got 0"
+        );
+    }
+
+    #[test]
+    fn augment_with_ocean_is_deterministic_per_target() {
+        // Same world + same target_count must produce the same ocean
+        // point set (Civ-layer must be byte-deterministic to keep the
+        // generate→export pipeline reproducible).
+        let world = small_world();
+        let a = augment_with_ocean(
+            build_civ_view(&world, &WorldClimateParams::default()),
+            &world,
+            12,
+        );
+        let b = augment_with_ocean(
+            build_civ_view(&world, &WorldClimateParams::default()),
+            &world,
+            12,
+        );
+        assert_eq!(a.centers, b.centers);
+        assert_eq!(a.biomes, b.biomes);
+    }
+
+    #[test]
+    fn extract_features_default_world_yields_water_and_mountains() {
+        // Ship 2 acceptance: on a default-sized world the convenience
+        // pipeline must produce ≥1 water_body AND ≥1 mountain_range —
+        // proves the (ocean synthesis + biome derivation + Delaunay
+        // adjacency + feature::extract) chain actually does work
+        // end-to-end. Smaller worlds were too sparse in Ship 1.
+        let world = generate(&FlatParams::default());
+        let (_view, features) = extract_features(&world, &WorldClimateParams::default(), 64);
+        assert!(
+            !features.water_bodies.is_empty(),
+            "default world should produce ≥1 water body after ocean synth"
+        );
+        assert!(
+            !features.mountain_ranges.is_empty(),
+            "default world should produce ≥1 mountain range from collision uplift"
+        );
+    }
+
+    #[test]
+    fn extract_features_with_zero_ocean_target_skips_augment() {
+        // ocean_target=0 should be a no-op (matches Ship 1 behaviour).
+        let world = small_world();
+        let view_ship1 = build_civ_view(&world, &WorldClimateParams::default());
+        let (view_skip, _) = extract_features(&world, &WorldClimateParams::default(), 0);
+        assert_eq!(view_skip.centers.len(), view_ship1.centers.len());
+        assert_eq!(view_skip.biomes, view_ship1.biomes);
     }
 }
