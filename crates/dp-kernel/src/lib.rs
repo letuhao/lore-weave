@@ -32,6 +32,21 @@
 //! - [`event_store_pg`] — Postgres impl of [`EventStore`]; WRAPPED `PgPool`
 //!   behind `pub(crate) pool: Arc<PgPool>` per Q-L4A-1.
 //!
+//! ### Cycle 21 / L4.D + L4.L — prompt SDK + WS envelope Rust mirrors
+//! - [`prompt`] — Rust mirror of `contracts/prompt/` (S09 §12Y SKELETON):
+//!   typed [`prompt::Intent`] (7-variant) + [`prompt::Section`] (8-variant,
+//!   fixed order) + [`prompt::PromptContext`] + [`prompt::PromptBundle`]
+//!   (body-never-stored) + [`prompt::Composer`] trait (Q-L6H-1 FAIL not
+//!   best-effort) + no-op safety/consent/budget hooks (Q-L6L-1) + audit
+//!   writer bridging cycle-4 `prompt_audit`. ProviderPayload OPAQUE
+//!   (Q-L4D-1). Empty templates (Q-L6K-1 — foundation does not own copy).
+//! - [`ws`] — Rust mirror of `contracts/ws/` (S12 §12AB SKELETON):
+//!   typed [`ws::Ticket`] (60s TTL) + [`ws::Envelope`] (control vs data
+//!   + 11 close codes) + [`ws::WSSession`] (15-min TTL, refresh, seq /
+//!   nonce tracking) + ServiceMode integration (cycle 18 lifecycle:
+//!   ReadOnly mode rejects WS writes). SERVER-only — no browser TS lib
+//!   (Q-L6-3: frontend-game team owns browser lib).
+//!
 //! ### Cycle 20 / L4.C + L4.E + L4.K — entity_status + turn + errors Rust mirrors
 //! - [`entity_status`] — Rust mirror of `contracts/entity_status/` (S10 §12Z):
 //!   typed [`entity_status::GoneState`] + [`entity_status::Resolver`] 4-layer
@@ -100,6 +115,7 @@ pub mod metadata;
 pub mod observability;
 pub mod outbox;
 pub mod projection;
+pub mod prompt;
 pub mod resilience;
 pub mod snapshot;
 pub mod snapshot_cache;
@@ -107,6 +123,7 @@ pub mod supply_chain;
 pub mod turn;
 pub mod turn_errors;
 pub mod upcaster;
+pub mod ws;
 
 // ── Cycle 8 + 10 + 12 re-exports (unchanged from prior cycles) ────────────
 pub use envelope::{EventEnvelope, Rfc3339Timestamp};

@@ -37,6 +37,12 @@ tracing = { workspace = true }
 # so the `sqlx::PgPool` is never exposed in our public API.
 sqlx = { workspace = true }
 
+# Cycle 21 (L4.D) — SHA-256 of the rendered prompt for `prompt::PromptBundle::context_hash`.
+# The rendered body itself never leaves the Composer call stack (S09 §12Y
+# body-never-stored invariant); the hash is what crosses into the audit row
+# and the bundle. RustCrypto's sha2 = no openssl dep, no Windows pain.
+sha2 = "0.10"
+
 [dev-dependencies]
 # Test runtime for the EventStore integration test suite. Multi-thread flavor
 # matches the production runtime.
