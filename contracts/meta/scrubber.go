@@ -3,6 +3,7 @@ package meta
 import (
 	"crypto/sha256"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -99,6 +100,68 @@ func (p PassthroughScrubber) Scrub(raw string) ScrubbedField {
 		RawHash:    h[:],
 		Scrubbed:   raw,
 		Version:    version,
+		ScrubbedAt: ts,
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RegexScrubber — production Scrubber (S08 §12X.5, PRR-01)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// regexScrubberVersion identifies the ruleset that produced a Scrubbed value.
+// Bump when regexScrubRules change so retroactive re-scrub jobs can target old rows.
+const regexScrubberVersion = "regex-v1"
+
+// scrubRule pairs a compiled pattern with the placeholder that replaces it.
+type scrubRule struct {
+	re          *regexp.Regexp
+	placeholder string
+}
+
+// regexScrubRules are applied IN ORDER (most specific first). The scrubber is
+// security-first: over-redaction is acceptable, under-redaction is the risk.
+// Covers the seven L4.Q.6 pattern classes: email, SSN, IPv6, IPv4,
+// credit-card, API-key/token, phone.
+var regexScrubRules = []scrubRule{
+	{regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`), "[EMAIL]"},
+	{regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`), "[SSN]"},
+	{regexp.MustCompile(`\b(?:[0-9A-Fa-f]{1,4}:){3,7}[0-9A-Fa-f]{1,4}\b`), "[IPV6]"},
+	{regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`), "[IPV4]"},
+	{regexp.MustCompile(`\b(?:\d[ -]?){13,19}\b`), "[CC]"},
+	{regexp.MustCompile(`(?i)\b(?:sk|pk|api|key|token|secret|bearer)[_\-][A-Za-z0-9_\-]{12,}\b`), "[APIKEY]"},
+	{regexp.MustCompile(`\b(?:\+?\d{1,3}[ .\-])?\(?\d{2,4}\)?[ .\-]\d{2,4}[ .\-]\d{2,4}\b`), "[PHONE]"},
+}
+
+// RegexScrubber is the production Scrubber. It rewrites the seven PII pattern
+// classes to placeholders before free text lands in any audit table, and
+// records SHA-256(original) for forensic correlation. There is deliberately no
+// way to recover the raw text. This is the non-test Scrubber the write path
+// and admin-cli inject (PRR-01).
+type RegexScrubber struct {
+	// Clock is the timestamp source; nil = time.Now().UTC().
+	Clock Clock
+}
+
+// NewRegexScrubber returns a production RegexScrubber. clock=nil → time.Now.
+func NewRegexScrubber(clock Clock) RegexScrubber { return RegexScrubber{Clock: clock} }
+
+// Scrub implements Scrubber: PII patterns → placeholders; RawHash = SHA-256(raw).
+func (r RegexScrubber) Scrub(raw string) ScrubbedField {
+	h := sha256.Sum256([]byte(raw))
+	scrubbed := raw
+	for _, rule := range regexScrubRules {
+		scrubbed = rule.re.ReplaceAllString(scrubbed, rule.placeholder)
+	}
+	var ts time.Time
+	if r.Clock != nil {
+		ts = time.Unix(0, r.Clock.NowUnixNano())
+	} else {
+		ts = time.Now().UTC()
+	}
+	return ScrubbedField{
+		RawHash:    h[:],
+		Scrubbed:   scrubbed,
+		Version:    regexScrubberVersion,
 		ScrubbedAt: ts,
 	}
 }

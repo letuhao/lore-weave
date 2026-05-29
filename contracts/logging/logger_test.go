@@ -209,21 +209,25 @@ func TestEmit_PII_RedactedViaInterface(t *testing.T) {
 	}
 }
 
-func TestEmit_PII_NotRedactedWhenRedactorPassThrough(t *testing.T) {
-	// The fake redactor only masks "PII:" prefix — without the prefix, it
-	// passes through and reports redacted=false.
+func TestEmit_PII_FloorMaskedWhenRedactorPassThrough(t *testing.T) {
+	// PRR-28: when the redactor declines (NoopRedactor / fake passthrough), the
+	// logger MUST still mask the PII via the hard floor — raw PII never leaks,
+	// regardless of build tag. (Previously this leaked the raw value.)
 	buf, r, lg := newTestLogger(t, logging.LevelInfo)
 	red := lg.Emit(logging.LevelInfo, "hi", logging.PII("user_id", "u-42"))
-	if red != 0 {
-		t.Errorf("expected 0 redactions when redactor passes through, got %d", red)
+	if red != 1 {
+		t.Errorf("expected 1 redaction (floor mask) when redactor passes through, got %d", red)
 	}
 	if r.calls.Load() != 1 {
 		t.Errorf("Redactor should still be invoked (defense pattern), got %d", r.calls.Load())
 	}
 	m := mustParse(t, bytes.TrimSpace(buf.Bytes()))
 	fields := m["fields"].(map[string]any)
-	if fields["user_id"] != "u-42" {
-		t.Errorf("user_id = %v, want \"u-42\"", fields["user_id"])
+	if fields["user_id"] == "u-42" {
+		t.Errorf("PRR-28: raw PII leaked — user_id = %v, want masked floor", fields["user_id"])
+	}
+	if !strings.Contains(buf.String(), "[REDACTED:PII]") {
+		t.Errorf("expected floor mask placeholder in output, got %q", buf.String())
 	}
 }
 

@@ -34,6 +34,10 @@
 - **PRR-44** typed-confirmation wired: tier-1 `--confirm` now enforces `confirmation.Check(challenge, --confirm-token)` (challenge = target resource id). The previously-dead `confirmation` package is now live. (`dispatcher.go` + `cmd/admin/main.go`)
 - **PRR-05** (safety half): `NotWiredHandler` now returns an ERROR for tier-1-destructive / tier-2-griefing — an unimplemented destructive command (e.g. user-erasure) can no longer exit-0 "success". Added `HandlerRegistry.Resolve(c)`. (`internal/framework/handlers.go`) — *Remaining: wiring the 4 real command bodies needs the deferred MetaWrite adapter (D-ADMIN-CLI-METAWRITE / D-ADMIN-CLI-LIVE-WIRING), F3/infra.*
 
+### F2 — Logging PII mask floor + real PII scrubber ✅ DONE *(contracts/logging dev + `-tags=prod`, contracts/meta — build+vet+test green)*
+- **PRR-28** logging fail-safe: `jsonLogger.Emit` now applies a hard `piiFloorMask` to any `FieldKindPII` value the redactor declines → raw PII can no longer leak in a non-prod / NoopRedactor build (the previous passthrough leaked it). **Build-tag-agnostic** — no longer depends on `-tags=prod` for the safety floor. (`contracts/logging/logger.go`; the test that asserted the leak was rewritten to assert the floor.)
+- **PRR-01** real scrubber: implemented `RegexScrubber` — 7 patterns (email / SSN / IPv4 / IPv6 / credit-card / API-key / phone → placeholders, SHA-256 of original retained), security-first (over-redaction preferred) — replacing the test-only passthrough. (`contracts/meta/scrubber.go` + `scrubber_regex_test.go`.) — *Remaining: wire the scrubber into the metawrite audit write-path seam (PRR-01 NEW-3, needs MetaWrite injection); KMS-backed KEK manager (PRR-02) + erasure runbook (PRR-03) + integration tests (PRR-04) need KMS infra → F3/later.*
+
 ---
 
 ## 🔴 MAJOR — to fix

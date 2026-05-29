@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// piiFloorMask is the hard fallback applied to any FieldKindPII value the
+// Redactor declines to mask (PRR-28). It guarantees raw PII never reaches the
+// sink even in a misconfigured or non-prod build (where a NoopRedactor would
+// otherwise pass the raw value through). A real Redactor that wants smarter
+// rendering returns (masked, true) and is used instead.
+const piiFloorMask = "[REDACTED:PII]"
+
 // Logger is the typed structured-logging surface every LoreWeave service
 // uses. Concrete impl is JSONLogger below. Tests may swap a CapturingLogger
 // (logger_test.go).
@@ -199,17 +206,19 @@ func (l *jsonLogger) Emit(level Level, msg string, fields ...Field) int {
 					continue
 				}
 			}
-			// FieldKindPII: ALWAYS routed through Redactor.
+			// FieldKindPII: ALWAYS routed through Redactor, with a hard mask
+			// FLOOR (PRR-28). If the redactor declines (e.g. NoopRedactor in a
+			// non-prod build), we MUST NOT pass the raw value to the sink —
+			// apply piiFloorMask so raw PII never leaks regardless of build tag.
 			if f.Kind == FieldKindPII {
-				masked, applied := l.redactor.Redact(f.Value)
-				if applied {
-					redactions++
-					if l.redactionCb != nil {
-						l.redactionCb(FieldKindPII)
-					}
+				if masked, applied := l.redactor.Redact(f.Value); applied {
 					fieldMap[f.Name] = masked
 				} else {
-					fieldMap[f.Name] = f.Value
+					fieldMap[f.Name] = piiFloorMask
+				}
+				redactions++
+				if l.redactionCb != nil {
+					l.redactionCb(FieldKindPII)
 				}
 				continue
 			}
