@@ -45,7 +45,7 @@ pub use ellipse::EllipseGenerator;
 pub use anthropic::AnthropicProvider;
 pub use llm::{
     DispatchCache, InMemoryDispatchCache, LlmDecision, LlmError, LlmProvider, LlmPrompt,
-    MockLlmProvider,
+    MockLlmProvider, MockTextProvider, TextPrompt, TextProvider,
 };
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;

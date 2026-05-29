@@ -387,6 +387,136 @@ impl DispatchCache for InMemoryDispatchCache {
     }
 }
 
+/// **Civ Ship 7b** — what a [`TextProvider`] is asked to complete. Wraps
+/// the system + user + optional JSON schema you would normally hand to
+/// a Messages-style API into one provider-agnostic struct.
+#[derive(Debug, Clone)]
+pub struct TextPrompt {
+    /// The system message — instruction-tuned models use this as the
+    /// persistent role prompt.
+    pub system: String,
+    /// The user message — the per-call request body.
+    pub user: String,
+    /// Optional JSON Schema the response must validate against.
+    /// Providers translate this into their structured-output mode
+    /// (Anthropic tool_use, OpenAI response_format, Ollama format).
+    pub schema: Option<serde_json::Value>,
+    /// Optional schema name used by providers that need one (OpenAI
+    /// `json_schema.name`). Defaults to `"response"`.
+    pub schema_name: Option<String>,
+}
+
+impl TextPrompt {
+    pub fn new(system: impl Into<String>, user: impl Into<String>) -> Self {
+        Self {
+            system: system.into(),
+            user: user.into(),
+            schema: None,
+            schema_name: None,
+        }
+    }
+
+    pub fn with_schema(mut self, schema: serde_json::Value, name: impl Into<String>) -> Self {
+        self.schema = Some(schema);
+        self.schema_name = Some(name.into());
+        self
+    }
+}
+
+/// **Civ Ship 7b** — free-form text generation interface. Parallel to
+/// [`LlmProvider`] (which returns a constrained `ShapeKind`); this trait
+/// returns a raw string so callers can parse domain-specific JSON
+/// (naming, summarisation, etc).
+///
+/// Implementations MUST be `Send + Sync + Debug` for the same reasons
+/// as [`LlmProvider`].
+pub trait TextProvider: fmt::Debug + Send + Sync {
+    /// Run the prompt; return the assistant's response as a string. The
+    /// caller is responsible for parsing — typically `serde_json::from_str`
+    /// when a schema was attached.
+    fn complete(&self, prompt: &TextPrompt) -> Result<String, LlmError>;
+}
+
+/// Deterministic stand-in [`TextProvider`] for tests + offline runs.
+/// Returns a stable JSON string when a schema is attached, otherwise a
+/// short canned string. Output is keyed on the prompt content so the
+/// same `TextPrompt` always yields the same response — the property
+/// real providers preserve via cache + `temperature = 0`.
+#[derive(Debug, Clone)]
+pub struct MockTextProvider;
+
+impl MockTextProvider {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for MockTextProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TextProvider for MockTextProvider {
+    fn complete(&self, prompt: &TextPrompt) -> Result<String, LlmError> {
+        // FNV-1a 32-bit hash of the user message to give deterministic
+        // variety across distinct prompts.
+        let mut h: u32 = 0x811C_9DC5;
+        for byte in prompt.user.as_bytes() {
+            h ^= *byte as u32;
+            h = h.wrapping_mul(0x0100_0193);
+        }
+        if let Some(schema) = &prompt.schema {
+            // Emit a minimal-but-valid object: for every property
+            // declared in the schema, fill it with a synthetic value.
+            // The civ-layer naming caller validates against its own
+            // typed `WorldNames` struct so we only need to produce
+            // string-array values (no nested type variety yet).
+            let mut out = serde_json::Map::new();
+            if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
+                for (key, prop_schema) in props {
+                    let ty = prop_schema
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("string");
+                    let value = match ty {
+                        "array" => {
+                            // Default to 5 mock entries; the caller can
+                            // request specifics via the prompt body.
+                            let stems = ["alpha", "beta", "gamma", "delta", "epsilon"];
+                            serde_json::Value::Array(
+                                stems
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, s)| {
+                                        serde_json::Value::String(format!(
+                                            "{}-{}-{}",
+                                            key,
+                                            s,
+                                            h.wrapping_add(i as u32)
+                                        ))
+                                    })
+                                    .collect(),
+                            )
+                        }
+                        "object" => serde_json::Value::Object(serde_json::Map::new()),
+                        _ => serde_json::Value::String(format!(
+                            "{}-{:08x}",
+                            key, h
+                        )),
+                    };
+                    out.insert(key.clone(), value);
+                }
+            }
+            return Ok(
+                serde_json::to_string(&serde_json::Value::Object(out)).expect("mock JSON"),
+            );
+        }
+        // No schema — return a stable canned string keyed on the hash.
+        Ok(format!("mock-response-{h:08x}"))
+    }
+}
+
 /// Deterministic stand-in provider for testing + offline runs. Picks a
 /// `ShapeKind` by hashing `prompt.entity_path` mod `allowed_kinds.len()`
 /// so the same path always produces the same kind (the property the

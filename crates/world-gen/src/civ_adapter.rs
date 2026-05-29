@@ -410,6 +410,134 @@ pub fn build_settlement(
 }
 
 // ============================================================================
+// Civ Ship 7b — LLM-driven naming via TextProvider trait
+// ============================================================================
+
+use crate::shape::llm::{LlmError, TextPrompt, TextProvider};
+
+/// **Civ Ship 7b** — JSON schema the LLM-driven naming caller asks the
+/// [`TextProvider`] to fill. One string array per named-feature
+/// category. Matches the structure System-A's `naming::WorldNames`
+/// expects, kept local here so we don't need to make the original `pub`.
+fn civ_names_schema() -> serde_json::Value {
+    let str_array = || serde_json::json!({ "type": "array", "items": { "type": "string" } });
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+            "settlements", "states", "provinces", "cultures",
+            "mountain_ranges", "rivers", "water_bodies"
+        ],
+        "properties": {
+            "settlements": str_array(),
+            "states": str_array(),
+            "provinces": str_array(),
+            "cultures": str_array(),
+            "mountain_ranges": str_array(),
+            "rivers": str_array(),
+            "water_bodies": str_array(),
+        }
+    })
+}
+
+/// Decoded structure of the LLM's reply. Each field is
+/// `#[serde(default)]` so an omitted category leaves those features
+/// unnamed rather than failing the whole parse — matches System A's
+/// `naming::WorldNames` behaviour.
+#[derive(Debug, serde::Deserialize)]
+struct CivNames {
+    #[serde(default)]
+    settlements: Vec<String>,
+    #[serde(default)]
+    states: Vec<String>,
+    #[serde(default)]
+    provinces: Vec<String>,
+    #[serde(default)]
+    cultures: Vec<String>,
+    #[serde(default)]
+    mountain_ranges: Vec<String>,
+    #[serde(default)]
+    rivers: Vec<String>,
+    #[serde(default)]
+    water_bodies: Vec<String>,
+}
+
+/// **Civ Ship 7b** — name civilization features via an
+/// [`TextProvider`]. Builds a structured prompt with feature counts,
+/// asks for one name list per category, parses the JSON reply, applies
+/// the names by position (short lists leave surplus features unnamed;
+/// long lists are truncated).
+///
+/// **NOT deterministic when using a real LLM.** [`MockTextProvider`]
+/// IS deterministic; Anthropic / OpenAI / Ollama at `temperature = 0`
+/// are deterministic-ish (sometimes drift on retries). Treat this as an
+/// authoring step separate from the deterministic Ship 7
+/// [`apply_synthetic_names`] — use one or the other per render.
+pub fn name_civ_via_llm(
+    features: &mut Features,
+    political: &mut Political,
+    settlements: &mut [Settlement],
+    culture: &mut Culture,
+    provider: &dyn TextProvider,
+    archetype: &str,
+) -> Result<(), LlmError> {
+    let system = "You are a world-naming assistant for a procedural fantasy-map \
+                  generator. Given a world's archetype and the counts of its \
+                  features, produce ONE JSON object of name lists matching the \
+                  provided schema. For each category produce exactly the \
+                  requested number of distinct, evocative proper names that \
+                  fit the archetype. Output only the JSON object.";
+    let user = format!(
+        "Archetype: {archetype}.\n\
+         Name these features — produce exactly the given count of distinct \
+         names per category:\n\
+         - settlements: {}\n\
+         - states: {}\n\
+         - provinces: {}\n\
+         - cultures: {}\n\
+         - mountain_ranges: {}\n\
+         - rivers: {}\n\
+         - water_bodies: {}",
+        settlements.len(),
+        political.states.len(),
+        political.provinces.len(),
+        culture.culture_regions.len(),
+        features.mountain_ranges.len(),
+        features.rivers.len(),
+        features.water_bodies.len(),
+    );
+
+    let prompt = TextPrompt::new(system, user).with_schema(civ_names_schema(), "world_names");
+    let raw = provider.complete(&prompt)?;
+    let names: CivNames = serde_json::from_str(raw.trim()).map_err(|e| {
+        LlmError::InvalidResponse(format!("CivNames JSON parse failed: {e}"))
+    })?;
+
+    for (s, n) in settlements.iter_mut().zip(&names.settlements) {
+        s.name = n.clone();
+    }
+    for (s, n) in political.states.iter_mut().zip(&names.states) {
+        s.name = n.clone();
+    }
+    for (p, n) in political.provinces.iter_mut().zip(&names.provinces) {
+        p.name = n.clone();
+    }
+    for (c, n) in culture.culture_regions.iter_mut().zip(&names.cultures) {
+        c.name = n.clone();
+    }
+    for (mr, n) in features.mountain_ranges.iter_mut().zip(&names.mountain_ranges) {
+        mr.name = n.clone();
+    }
+    for (rv, n) in features.rivers.iter_mut().zip(&names.rivers) {
+        rv.name = n.clone();
+    }
+    for (wb, n) in features.water_bodies.iter_mut().zip(&names.water_bodies) {
+        wb.name = n.clone();
+    }
+    Ok(())
+}
+
+// ============================================================================
 // Civ Ship 9 — CivBundle + JSON round-trip + content_hash
 // ============================================================================
 
@@ -1684,6 +1812,145 @@ mod tests {
         for (a, b) in pa.provinces.iter().zip(pb.provinces.iter()) {
             assert_eq!(a.name, b.name);
         }
+    }
+
+    #[test]
+    fn name_civ_via_llm_with_mock_populates_every_category() {
+        // Ship 7b: name_civ_via_llm with MockTextProvider must fill in
+        // names for every named feature. Same property as Ship 7
+        // synthetic naming, just via the trait path.
+        use crate::shape::llm::MockTextProvider;
+        let world = generate(&FlatParams::default());
+        let (_, mut features, mut political, _, mut settlements, _routes_v, mut culture_v) =
+            build_culture(
+                &world,
+                &WorldClimateParams::default(),
+                64,
+                42,
+                SettlementDensity::Medium,
+                5,
+            );
+        let provider = MockTextProvider::new();
+        name_civ_via_llm(
+            &mut features,
+            &mut political,
+            &mut settlements,
+            &mut culture_v,
+            &provider,
+            "HighFantasy",
+        )
+        .expect("mock should succeed");
+
+        // Mock returns exactly 5 entries per category — every feature
+        // up to index 5 should be named; surplus features stay unnamed.
+        let named_settlements = settlements.iter().filter(|s| !s.name.is_empty()).count();
+        let named_states = political.states.iter().filter(|s| !s.name.is_empty()).count();
+        assert!(
+            named_settlements >= 1,
+            "expected ≥1 named settlement after mock LLM naming"
+        );
+        assert!(
+            named_states >= 1,
+            "expected ≥1 named state after mock LLM naming"
+        );
+    }
+
+    #[test]
+    fn name_civ_via_llm_is_deterministic_with_mock_and_archetype() {
+        use crate::shape::llm::MockTextProvider;
+        let world = generate(&FlatParams::default());
+
+        let make_bundle = || {
+            let (_, f, p, _, s, _, c) = build_culture(
+                &world,
+                &WorldClimateParams::default(),
+                32,
+                99,
+                SettlementDensity::Medium,
+                5,
+            );
+            (f, p, s, c)
+        };
+        let (mut fa, mut pa, mut sa, mut ca) = make_bundle();
+        let (mut fb, mut pb, mut sb, mut cb) = make_bundle();
+        let provider = MockTextProvider::new();
+        name_civ_via_llm(&mut fa, &mut pa, &mut sa, &mut ca, &provider, "HighFantasy").unwrap();
+        name_civ_via_llm(&mut fb, &mut pb, &mut sb, &mut cb, &provider, "HighFantasy").unwrap();
+        for (a, b) in sa.iter().zip(sb.iter()) {
+            assert_eq!(a.name, b.name, "settlement name should match across runs");
+        }
+        for (a, b) in pa.provinces.iter().zip(pb.provinces.iter()) {
+            assert_eq!(a.name, b.name);
+        }
+    }
+
+    #[test]
+    fn name_civ_via_llm_differs_across_archetypes_via_mock_hash() {
+        // Different archetype string → different user prompt → different
+        // mock hash → different name set. Proves the archetype actually
+        // flows into the provider call.
+        use crate::shape::llm::MockTextProvider;
+        let world = generate(&FlatParams::default());
+
+        let make_bundle = || {
+            let (_, f, p, _, s, _, c) = build_culture(
+                &world,
+                &WorldClimateParams::default(),
+                32,
+                7,
+                SettlementDensity::Medium,
+                5,
+            );
+            (f, p, s, c)
+        };
+        let (mut fa, mut pa, mut sa, mut ca) = make_bundle();
+        let (mut fb, mut pb, mut sb, mut cb) = make_bundle();
+        let provider = MockTextProvider::new();
+        name_civ_via_llm(&mut fa, &mut pa, &mut sa, &mut ca, &provider, "HighFantasy").unwrap();
+        name_civ_via_llm(&mut fb, &mut pb, &mut sb, &mut cb, &provider, "Cyberpunk").unwrap();
+        let differ = sa.iter().zip(sb.iter()).any(|(a, b)| a.name != b.name);
+        assert!(
+            differ,
+            "two distinct archetypes produced identical settlement names; \
+             archetype not reaching prompt"
+        );
+    }
+
+    #[test]
+    fn name_civ_via_llm_returns_invalid_response_on_garbage() {
+        // A custom provider that returns junk must surface as
+        // LlmError::InvalidResponse — caller can then fall back to
+        // synthetic naming.
+        use crate::shape::llm::{LlmError, TextPrompt, TextProvider};
+
+        #[derive(Debug)]
+        struct GarbageProvider;
+        impl TextProvider for GarbageProvider {
+            fn complete(&self, _: &TextPrompt) -> Result<String, LlmError> {
+                Ok("definitely not json {".to_string())
+            }
+        }
+
+        let world = generate(&FlatParams::default());
+        let (_, mut features, mut political, _, mut settlements, _, mut culture_v) =
+            build_culture(
+                &world,
+                &WorldClimateParams::default(),
+                32,
+                7,
+                SettlementDensity::Medium,
+                5,
+            );
+        let err = name_civ_via_llm(
+            &mut features,
+            &mut political,
+            &mut settlements,
+            &mut culture_v,
+            &GarbageProvider,
+            "HighFantasy",
+        )
+        .expect_err("garbage should fail");
+        assert!(matches!(err, LlmError::InvalidResponse(_)));
     }
 
     #[test]
