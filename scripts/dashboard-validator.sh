@@ -129,17 +129,14 @@ else:
 PYEOF
 }
 
-# Grandfathered dashboards (pre-STANDARDS.md, cycle 6) — these will be
-# backfilled in a dedicated cycle (D-DASHBOARD-STANDARDS-BACKFILL). The
-# validator reports their violations as INFO but does not exit-1 on them.
-# A future cycle that does the backfill removes them from this list.
+# Grandfathered dashboards (pre-STANDARDS.md). RAID cycle 33 introduced
+# STANDARDS.md + grandfathered 6 pre-existing dashboards.
+# RAID cycle 34 BACKFILLED all 6 to STANDARDS.md conformance
+# (D-DASHBOARD-STANDARDS-BACKFILL row 062 ADDRESSED).
+# The list now empty — any new pre-STANDARDS.md dashboard MUST be brought
+# up to standard in the cycle that introduces it.
 declare -A GRANDFATHERED
-GRANDFATHERED[dashboards/backup-verification.json]=1
-GRANDFATHERED[dashboards/capacity-planner.json]=1
-GRANDFATHERED[dashboards/per-reality-health.json]=1
-GRANDFATHERED[dashboards/projection-health.json]=1
-GRANDFATHERED[dashboards/shard-health.json]=1
-GRANDFATHERED[dashboards/ws-health.json]=1
+# (intentionally empty post-cycle-34 backfill)
 
 # The _library/TEMPLATE.json is the template itself — the uid "_template"
 # is intentionally non-kebab-case (the underscore marks it as not for prod

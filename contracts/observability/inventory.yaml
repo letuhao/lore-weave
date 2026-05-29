@@ -804,6 +804,97 @@ metrics:
     source: infra/prometheus/recording-rules/aggregation.yaml::lw:obs_stack_up
     cardinality_notes: 'instance label per obs-stack container — typically ≤ 5 series (vector + loki + grafana + prom-a + prom-b).'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L7.I + L7.J — SLO infra + Alertmanager (cycle 34)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw:sli_session_availability:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 recording rule — sli_session_availability over 5m window per (tier). Feeds the burn-rate alert ladder + the slo-burn-rate dashboard. Derived from raw lw_session_starts_total.'
+    owner: sre
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_turn_completion:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 — sli_turn_completion 5m ratio per tier.'
+    owner: platform
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_event_delivery:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 — sli_event_delivery 5m ratio per tier.'
+    owner: sre
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_realtime_freshness:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 — sli_realtime_freshness 5m ratio per tier.'
+    owner: platform
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_auth_success:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 — sli_auth_success 5m ratio per tier (7d window, 99.9% target flat).'
+    owner: sre
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_admin_action_success:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: []
+    description: 'Cycle-34 L7.I.3 — sli_admin_action_success 5m ratio (platform-scoped; no tier).'
+    owner: sre
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_platform_scoped
+    cardinality_notes: '1 series (no labels).'
+
+  - name: lw:sli_cross_reality_propagation:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: []
+    description: 'Cycle-34 L7.I.3 — sli_cross_reality_propagation 5m ratio (platform-scoped).'
+    owner: platform
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_platform_scoped
+    cardinality_notes: '1 series.'
+
+  - name: lw_alert_recorder_outcomes_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 34
+    labels: [state, sli_ref]
+    description: 'Cycle-34 L7.J.5 — count of alert_outcomes written by alert-recorder. state ∈ {received, dispatched, resolved, silenced}. Spike here without a corresponding sli_ref burn = alert storm warning.'
+    owner: sre
+    source: services/alert-recorder
+
+  - name: lw_alert_silence_policy_violation_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 34
+    labels: [category, protected]
+    description: 'Cycle-34 L7.J — count of silence requests that violated silence_admission_policy.yaml. protected ∈ {true, false}. Non-zero with protected=true is a HARD escalation per runbooks/alerts/silence_misuse.md.'
+    owner: sre
+    source: services/alert-recorder
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

@@ -1,0 +1,177 @@
+# contracts/alerts/rules.yaml — L4.P.1 + L7.J.6 (RAID cycle 34)
+#
+# Registry of ALL LoreWeave alert rules with severity_map + escalation
+# per SR2 §12AE.4. This file is the source-of-truth alert catalog;
+# infra/prometheus/alerts/*.yaml expressions MUST appear here.
+#
+# CI lint (scripts/alert-rule-validator.sh) enforces:
+#   1. Every Prom alert in infra/prometheus/alerts/*.yaml has an entry here
+#   2. Every entry references a runbook that exists on disk
+#   3. severity_map declares default + escalation triggers
+#   4. routing block names a primary + fallback chain
+#
+# Cycle-19 alert envelope: every alert flowing through alertmanager
+# carries the labels + annotations declared here.
+
+version: 1
+shipped_cycle: 34
+
+# ────────────────────────────────────────────────────────────────────
+# Meta + Postgres alerts (cycle 6/7 carry-forward)
+# ────────────────────────────────────────────────────────────────────
+rules:
+  - alert: LWMetaPostgresPrimaryDown
+    sli_ref: sli_admin_action_success
+    derivation_rule: 'patroni primary up == 0 AND pg_replication_is_replica == 0'
+    runbook: runbooks/meta/failover.md
+    severity_map:
+      default: sev1
+      escalate_to_sev0_if: 'sustained > 5m'
+    routing:
+      primary: pagerduty-data
+      fallback: [pagerduty-sre, tech_lead]
+
+  - alert: LWMetaPostgresSyncReplicaLag
+    sli_ref: sli_admin_action_success
+    derivation_rule: 'pg_stat_replication_lag_bytes > 100 MiB'
+    runbook: runbooks/meta/failover.md
+    severity_map:
+      default: sev2
+      escalate_to_sev1_if: 'sustained > 10m'
+    routing:
+      primary: pagerduty-data
+      fallback: [pagerduty-sre]
+
+  - alert: LWMetaWriteAuditInsertStopped
+    sli_ref: sli_admin_action_success
+    derivation_rule: 'rate(pg_stat_user_tables_n_tup_ins{relname="meta_write_audit"}[5m]) == 0'
+    runbook: runbooks/meta/failover.md
+    severity_map:
+      default: sev1
+    routing:
+      primary: pagerduty-data
+      fallback: [pagerduty-sre]
+
+  # ──────────────────────────────────────────────────────────────────
+  # WebSocket alerts (cycle 28)
+  # ──────────────────────────────────────────────────────────────────
+  - alert: LWWsConnectionSaturation
+    sli_ref: sli_event_delivery
+    derivation_rule: 'lw_ws_active_connections > 0.8 * 10000 (Q-L6-2)'
+    runbook: runbooks/ws/saturation.md
+    severity_map:
+      default: sev2
+      escalate_to_sev1_if: 'sustained > 5m at > 0.9 cap'
+    routing:
+      primary: pagerduty-sre
+      fallback: [tech_lead]
+
+  # ──────────────────────────────────────────────────────────────────
+  # SLO burn alerts (cycle 34 L7.I.6)
+  # ──────────────────────────────────────────────────────────────────
+  - alert: LWSLOBurnWarnSessionAvailability
+    sli_ref: sli_session_availability
+    derivation_rule: '(1 - sli_1h_ratio) > 2 × (1 - target) and <= 5 × (1 - target)'
+    runbook: runbooks/slo/burn-rate-spike.md
+    severity_map:
+      default: sev2
+    routing:
+      primary: slack-alerts
+      fallback: []
+
+  - alert: LWSLOBurnPageSessionAvailability
+    sli_ref: sli_session_availability
+    derivation_rule: '(1 - sli_1h_ratio) > 5 × (1 - target) and <= 10 × (1 - target)'
+    runbook: runbooks/slo/burn-rate-spike.md
+    severity_map:
+      default: sev2
+      escalate_to_sev1_if: 'sustained > 15m'
+    routing:
+      primary: pagerduty-sre
+      fallback: [tech_lead]
+
+  - alert: LWSLOBurnFreezeSessionAvailability
+    sli_ref: sli_session_availability
+    derivation_rule: '(1 - sli_1h_ratio) > 10 × (1 - target)'
+    runbook: runbooks/slo/burn-rate-spike.md
+    severity_map:
+      default: sev1
+    routing:
+      primary: pagerduty-sev1
+      fallback: [pagerduty-sre, tech_lead]
+
+  - alert: LWSLOBurnFreezeAuthSuccess
+    sli_ref: sli_auth_success
+    derivation_rule: '(1 - sli_1h_ratio) > 10 × (1 - 0.999)'
+    runbook: runbooks/slo/burn-rate-spike.md
+    severity_map:
+      default: sev1
+    routing:
+      primary: pagerduty-security
+      fallback: [pagerduty-sev1, tech_lead]
+
+  - alert: LWSLOBreachSessionAvailability
+    sli_ref: sli_session_availability
+    derivation_rule: '(1 - sli_1h_ratio) > 14.4 × (1 - target)'
+    runbook: runbooks/slo/burn-rate-spike.md
+    severity_map:
+      default: sev0
+    routing:
+      primary: pagerduty-sev0
+      fallback: [pagerduty-sre, tech_lead, founder]
+
+  - alert: LWMultiTenantIsolationViolation
+    sli_ref: sli_session_availability
+    derivation_rule: 'usage > 10% AND stddev_1h > 3 × stddev_24h (SR1 §12AD.5)'
+    runbook: runbooks/slo/multi-tenant-isolation-violation.md
+    severity_map:
+      default: sev2
+      escalate_to_sev1_if: 'cross_reality_impact_confirmed'
+    routing:
+      primary: slack-alerts
+      fallback: [pagerduty-sre]
+
+  - alert: LWSLOBurnWarnTurnCompletion
+    sli_ref: sli_turn_completion
+    derivation_rule: '(1 - sli_1h_ratio) > 2 × (1 - target) and <= 5 × (1 - target)'
+    runbook: runbooks/slo/burn-rate-spike.md
+    severity_map:
+      default: sev2
+    routing:
+      primary: slack-alerts
+      fallback: []
+
+  - alert: LWSLOBurnPageTurnCompletion
+    sli_ref: sli_turn_completion
+    derivation_rule: '(1 - sli_1h_ratio) > 5 × (1 - target) and <= 10 × (1 - target)'
+    runbook: runbooks/slo/burn-rate-spike.md
+    severity_map:
+      default: sev2
+    routing:
+      primary: pagerduty-sre
+      fallback: [tech_lead]
+
+  - alert: LWSLOBurnWarnEventDelivery
+    sli_ref: sli_event_delivery
+    derivation_rule: '(1 - sli_1h_ratio) > 2 × (1 - target) and <= 5 × (1 - target)'
+    runbook: runbooks/slo/burn-rate-spike.md
+    severity_map:
+      default: sev2
+    routing:
+      primary: slack-alerts
+      fallback: []
+
+# ────────────────────────────────────────────────────────────────────
+# Schema invariants (drift guards)
+# ────────────────────────────────────────────────────────────────────
+required_fields:
+  - alert
+  - sli_ref
+  - derivation_rule
+  - runbook
+  - severity_map
+  - routing
+locked_decisions_consumed:
+  - Q-L7C-1: PagerDuty V1 — routing.primary values reference 5 PagerDuty services
+  - Q-L7-1: alert-recorder + slo-budget-calculator separate
+  - SR1 §12AD.7: every alert has sli_ref + derivation_rule (no magic numbers)

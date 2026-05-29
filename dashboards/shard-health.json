@@ -1,106 +1,82 @@
 {
-  "annotations": {"list": []},
-  "description": "Per-shard overview — L1.I.8 (RAID cycle 6). Aggregates across all realities on a shard. Uses recording rules from infra/prometheus/recording-rules.yaml. Q-L1I-1: HA pair via federation; this dashboard reads from federated prom.",
+  "title": "LoreWeave — Shard Health (cycle 6 L1.I.8 — backfilled cycle 34)",
+  "uid": "lw-shard-health",
+  "tags": ["lw", "shard", "cycle-6", "cycle-34-backfill", "L1.I"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
   "editable": true,
   "graphTooltip": 0,
-  "id": null,
-  "panels": [
-    {
-      "datasource": "Prometheus",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-      "id": 1,
-      "targets": [
-        {
-          "expr": "lw:reality_db_size_bytes:sum_by_shard{shard_host=\"$shard\"}",
-          "legendFormat": "total bytes on {{ shard_host }}",
-          "refId": "A"
-        }
-      ],
-      "title": "Total per-reality DB bytes (aggregated)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "id": 2,
-      "targets": [
-        {
-          "expr": "lw:reality_db_connections:sum_by_shard{shard_host=\"$shard\"}",
-          "legendFormat": "{{ shard_host }} connections",
-          "refId": "A"
-        }
-      ],
-      "title": "Backend connections on shard",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-      "id": 3,
-      "targets": [
-        {
-          "expr": "shard_utilization_realities_used{shard_host=\"$shard\"} / shard_utilization_realities_total{shard_host=\"$shard\"}",
-          "legendFormat": "utilization fraction",
-          "refId": "A"
-        }
-      ],
-      "title": "Capacity utilization (warning at 0.7, full at 0.9 per capacity-thresholds.yaml)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-      "id": 4,
-      "targets": [
-        {
-          "expr": "lw:meta_replication_lag_bytes:max",
-          "legendFormat": "max meta replica lag",
-          "refId": "A"
-        }
-      ],
-      "title": "Meta-postgres replication lag (across all replicas)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 16},
-      "id": 5,
-      "targets": [
-        {
-          "expr": "pgbouncer_pool_waiting_clients{shard_host=\"$shard\"}",
-          "legendFormat": "{{ pool_name }} waiting",
-          "refId": "A"
-        }
-      ],
-      "title": "Pgbouncer waiting clients (zero = healthy)",
-      "type": "timeseries"
-    }
-  ],
-  "refresh": "30s",
-  "schemaVersion": 27,
-  "style": "dark",
-  "tags": ["lw", "shard", "l1"],
+  "description": "Per-shard overview — L1.I.8 (RAID cycle 6). Aggregates across all realities on a shard. Uses recording rules from infra/prometheus/recording-rules.yaml. Q-L1I-1: HA pair via federation; this dashboard reads from federated prom. Cycle 34 backfill brought to STANDARDS.md conformance.",
+  "annotations": {"list": []},
   "templating": {
     "list": [
       {
-        "current": {"selected": false, "text": "All", "value": "$__all"},
-        "datasource": "Prometheus",
+        "name": "shard",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prom-primary"},
         "definition": "label_values(shard_utilization_realities_used, shard_host)",
-        "hide": 0,
+        "query": "label_values(shard_utilization_realities_used, shard_host)",
+        "current": {"selected": false, "text": "All", "value": "$__all"},
         "includeAll": false,
         "label": "Shard",
         "multi": false,
-        "name": "shard",
-        "options": [],
-        "query": "label_values(shard_utilization_realities_used, shard_host)",
-        "refresh": 2,
-        "type": "query"
+        "refresh": 2
       }
     ]
   },
   "time": {"from": "now-6h", "to": "now"},
-  "timezone": "",
-  "title": "LoreWeave — Shard Health",
-  "uid": "lw-shard-health",
-  "version": 1
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Total per-reality DB bytes (aggregated)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {"expr": "lw:reality_db_size_bytes:sum_by_shard{shard_host=\"$shard\"}", "legendFormat": "total bytes on {{ shard_host }}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Backend connections on shard",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {"expr": "lw:reality_db_connections:sum_by_shard{shard_host=\"$shard\"}", "legendFormat": "{{ shard_host }} connections", "refId": "A"}
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Capacity utilization (warning at 0.7, full at 0.9 per capacity-thresholds.yaml)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {"expr": "shard_utilization_realities_used{shard_host=\"$shard\"} / shard_utilization_realities_total{shard_host=\"$shard\"}", "legendFormat": "utilization fraction", "refId": "A"}
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Meta-postgres replication lag (across all replicas)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {"expr": "lw:meta_replication_lag_bytes:max", "legendFormat": "max meta replica lag", "refId": "A"}
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Pgbouncer waiting clients (zero = healthy)",
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {"expr": "pgbouncer_pool_waiting_clients{shard_host=\"$shard\"}", "legendFormat": "{{ pool_name }} waiting", "refId": "A"}
+      ]
+    }
+  ]
 }

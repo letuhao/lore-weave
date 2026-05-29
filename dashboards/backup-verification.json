@@ -1,9 +1,18 @@
 {
+  "title": "Backup verification (cycle 6 L1.H — backfilled cycle 34)",
+  "uid": "backup-verification",
+  "tags": ["backup", "cycle-6", "cycle-34-backfill", "L1.H", "SRE"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "editable": true,
+  "graphTooltip": 0,
   "annotations": {
     "list": [
       {
         "builtIn": 1,
-        "datasource": "-- Grafana --",
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -12,90 +21,65 @@
       }
     ]
   },
-  "editable": true,
-  "gnetId": null,
-  "graphTooltip": 0,
-  "id": null,
-  "iteration": 1716960000000,
+  "templating": {"list": []},
+  "time": {"from": "now-30d", "to": "now"},
   "links": [
     {
-      "icon": "external link",
-      "tags": [],
-      "targetBlank": true,
       "title": "Restore runbook",
-      "type": "link",
-      "url": "/runbooks/backup/restore.md"
+      "url": "/runbooks/backup/restore.md",
+      "targetBlank": true
     },
     {
-      "icon": "external link",
-      "tags": [],
-      "targetBlank": true,
       "title": "Backup policy",
-      "type": "link",
-      "url": "/contracts/backup/policy.yaml"
+      "url": "/contracts/backup/policy.yaml",
+      "targetBlank": true
     }
   ],
   "panels": [
     {
-      "datasource": "Prometheus",
-      "description": "Drill outcomes over last 30d (per Q-L1H-2 monthly cadence).",
-      "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "id": 1,
-      "options": {},
+      "type": "stat",
+      "title": "Restore drills — last 30d",
+      "description": "Drill outcomes over last 30d (per Q-L1H-2 monthly cadence).",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
         {
           "expr": "sum by (status) (increase(lw_backup_drill_outcome_total[30d]))",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
-      ],
-      "title": "Restore drills — last 30d",
-      "type": "stat"
+      ]
     },
     {
-      "datasource": "Prometheus",
-      "description": "Backup volume by tier; verify retention policy applies.",
-      "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "id": 2,
-      "options": {},
+      "type": "timeseries",
+      "title": "Backup size by tier (lw-db-backups)",
+      "description": "Backup volume by tier; verify retention policy applies.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
         {
           "expr": "sum by (tier) (lw_backup_bucket_bytes{bucket=\"lw-db-backups\"})",
           "legendFormat": "{{tier}}",
           "refId": "A"
         }
-      ],
-      "title": "Backup size by tier (lw-db-backups)",
-      "type": "graph"
+      ]
     },
     {
-      "datasource": "Prometheus",
-      "description": "Time since last successful drill per shard; alert if > 35d.",
-      "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
       "id": 3,
-      "options": {},
+      "type": "timeseries",
+      "title": "Days since last successful drill per shard",
+      "description": "Time since last successful drill per shard; alert if > 35d.",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
         {
           "expr": "(time() - lw_backup_drill_last_passed_timestamp_seconds) / 86400",
           "legendFormat": "{{shard_host}} (days)",
           "refId": "A"
         }
-      ],
-      "title": "Days since last successful drill per shard",
-      "type": "graph"
+      ]
     }
-  ],
-  "schemaVersion": 27,
-  "style": "dark",
-  "tags": ["backup", "L1.H", "SRE"],
-  "templating": { "list": [] },
-  "time": { "from": "now-30d", "to": "now" },
-  "timepicker": {},
-  "timezone": "",
-  "title": "Backup verification (L1.H)",
-  "uid": "backup-verification",
-  "version": 1
+  ]
 }

@@ -1,48 +1,51 @@
 {
-  "annotations": {"list": []},
+  "title": "Capacity planner (cycle 6 L1.L — backfilled cycle 34)",
+  "uid": "capacity-planner",
+  "tags": ["capacity", "cycle-6", "cycle-34-backfill", "L1.L", "SR08"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
   "editable": true,
   "graphTooltip": 0,
-  "id": null,
+  "annotations": {"list": []},
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
   "panels": [
     {
-      "datasource": "Prometheus",
+      "id": 1,
+      "type": "timeseries",
+      "title": "Per-shard utilization %",
       "description": "Per-shard utilization vs warning + full thresholds.",
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-      "id": 1,
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {"expr": "lw_shard_utilization_pct{}", "legendFormat": "{{shard_host}}"},
-        {"expr": "vector(80)", "legendFormat": "warning_pct"},
-        {"expr": "vector(95)", "legendFormat": "full_pct"}
-      ],
-      "title": "Per-shard utilization %",
-      "type": "graph"
+        {"expr": "lw_shard_utilization_pct{}", "legendFormat": "{{shard_host}}", "refId": "A"},
+        {"expr": "vector(80)", "legendFormat": "warning_pct", "refId": "B"},
+        {"expr": "vector(95)", "legendFormat": "full_pct", "refId": "C"}
+      ]
     },
     {
-      "datasource": "Prometheus",
+      "id": 2,
+      "type": "stat",
+      "title": "Active capacity overrides (24h cap)",
       "description": "Active capacity overrides (Tier-2 S5-D5).",
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "id": 2,
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {"expr": "lw_capacity_override_active_count{}", "legendFormat": "active overrides"}
-      ],
-      "title": "Active capacity overrides (24h cap)",
-      "type": "stat"
+        {"expr": "lw_capacity_override_active_count{}", "legendFormat": "active overrides", "refId": "A"}
+      ]
     },
     {
-      "datasource": "Prometheus",
+      "id": 3,
+      "type": "timeseries",
+      "title": "Replica count by service+class",
       "description": "Per-class replica count vs budget min/max.",
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
-      "id": 3,
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {"expr": "sum by (service, class) (lw_replica_count{})", "legendFormat": "{{service}} ({{class}})"}
-      ],
-      "title": "Replica count by service+class",
-      "type": "graph"
+        {"expr": "sum by (service, class) (lw_replica_count{})", "legendFormat": "{{service}} ({{class}})", "refId": "A"}
+      ]
     }
-  ],
-  "schemaVersion": 27,
-  "tags": ["capacity", "L1.L", "SR08"],
-  "title": "Capacity planner (L1.L)",
-  "uid": "capacity-planner",
-  "version": 1
+  ]
 }

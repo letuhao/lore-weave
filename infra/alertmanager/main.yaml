@@ -1,0 +1,253 @@
+# infra/alertmanager/main.yaml — L7.J.1 (RAID cycle 34)
+#
+# Routing per SR2 §12AE.4 alert routing matrix.
+#
+# Q-L7C-1 LOCKED — PagerDuty V1 (industry standard, ~$25/user/month).
+# Q-L7C-2 LOCKED — Solo-dev weekend SLA = internal docs/governance/oncall-sla.md V1.
+#
+# Receivers are declared in channels.yaml (separate file for secret-scan
+# hygiene; channels.yaml has the env-var indirection for PagerDuty key).
+#
+# Inhibition rules in inhibition_rules.yaml prevent alert storm during
+# major incidents per cycle 19 L4.P envelope discipline.
+
+global:
+  resolve_timeout: 5m
+
+  # SMTP defaults; concrete settings overridden per-receiver in channels.yaml.
+  smtp_from: 'alerts@loreweave.dev'
+  smtp_smarthost: 'localhost:25'
+  smtp_require_tls: false  # local SMTP relay; loopback only
+
+route:
+  # Default receiver — silent fallback. Real routing happens via the
+  # match rules below per SR2 routing table.
+  receiver: 'default'
+
+  # Group alerts by (alertname, sli_ref, tier) so a thundering herd of
+  # the same burn-rate alert across 3 tiers gets ONE PagerDuty page
+  # with the full label context, not 3.
+  group_by: ['alertname', 'sli_ref', 'tier']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # ─────────────────────────────────────────────────────────────────
+    # SLO BREACH — SEV0 path (≥ 100% burn = budget exhausted)
+    # ─────────────────────────────────────────────────────────────────
+    # Route name carries `[sev=0]` so the receiver template can format
+    # accordingly. Repeat aggressively.
+    - match:
+        severity: page
+        sev: '0'
+      receiver: pagerduty-sev0
+      continue: true       # also fan-out to slack-incidents
+      group_wait: 10s
+      repeat_interval: 30m
+
+    # ─────────────────────────────────────────────────────────────────
+    # FREEZE — SEV1 path (≥ 90% burn)
+    # ─────────────────────────────────────────────────────────────────
+    - match:
+        severity: page
+        sev: '1'
+      receiver: pagerduty-sev1
+      continue: true
+      group_wait: 15s
+      repeat_interval: 1h
+
+    # ─────────────────────────────────────────────────────────────────
+    # SECURITY ON-CALL — auth + canon-injection alerts (SR2 §12AE.4)
+    # ─────────────────────────────────────────────────────────────────
+    - match_re:
+        alertname: '^(LW.*Auth.*|LW.*CanonInjection.*|LWAudit.*HashMismatch.*)$'
+      receiver: pagerduty-security
+      continue: true       # also fan-out to slack-security
+
+    # ─────────────────────────────────────────────────────────────────
+    # DATA ON-CALL — meta + projection alerts (SR2 §12AE.4)
+    # ─────────────────────────────────────────────────────────────────
+    - match_re:
+        alertname: '^(LWMeta.*|LWProjection.*)$'
+      receiver: pagerduty-data
+      continue: true
+
+    # ─────────────────────────────────────────────────────────────────
+    # SRE PRIMARY — generic page (cycle-7 ws / cost / rpc / service alerts)
+    # ─────────────────────────────────────────────────────────────────
+    - match:
+        severity: page
+      receiver: pagerduty-sre
+      continue: true
+
+    # ─────────────────────────────────────────────────────────────────
+    # SLACK WARN — 50-75% burn + degraded-mode + capacity 75%
+    # ─────────────────────────────────────────────────────────────────
+    - match:
+        severity: warn
+      receiver: slack-alerts
+      group_wait: 1m
+      group_interval: 15m
+      repeat_interval: 24h
+
+    # ─────────────────────────────────────────────────────────────────
+    # SLACK INFO — capacity 50% + auto-mitigated drills
+    # ─────────────────────────────────────────────────────────────────
+    - match:
+        severity: info
+      receiver: slack-alerts-info
+
+    # ─────────────────────────────────────────────────────────────────
+    # LOG-ONLY (cycle 7 internal envelope `action: log_only`) —
+    # fired but never delivered (silenced trail for audit). Routes to
+    # the alert-recorder service via webhook.
+    # ─────────────────────────────────────────────────────────────────
+    - match:
+        action: log_only
+      receiver: alert-recorder-only
+
+# ────────────────────────────────────────────────────────────────────
+# receivers are sourced from channels.yaml at start. Listed here so
+# the route → receiver lookup is statically resolvable by amtool
+# check-config.
+# ────────────────────────────────────────────────────────────────────
+receivers:
+  - name: default
+    # Default sink — webhook to alert-recorder for the audit trail. No
+    # human notification; only used when no specific route matches.
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+        send_resolved: true
+
+  - name: alert-recorder-only
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+        send_resolved: true
+
+  - name: pagerduty-sev0
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_INTEGRATION_KEY_SEV0}'
+        send_resolved: true
+        client: 'loreweave-foundation'
+        client_url: 'https://grafana.local'
+        severity: 'critical'
+        details:
+          sli_ref: '{{ .GroupLabels.sli_ref }}'
+          tier: '{{ .GroupLabels.tier }}'
+          correlation_id: '{{ .CommonAnnotations.correlation_id }}'
+    # Also fan-out to slack #incidents
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+        send_resolved: true
+
+  - name: pagerduty-sev1
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_INTEGRATION_KEY_SEV1}'
+        send_resolved: true
+        client: 'loreweave-foundation'
+        severity: 'error'
+        details:
+          sli_ref: '{{ .GroupLabels.sli_ref }}'
+          tier: '{{ .GroupLabels.tier }}'
+          correlation_id: '{{ .CommonAnnotations.correlation_id }}'
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+
+  - name: pagerduty-sre
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_INTEGRATION_KEY_SRE}'
+        send_resolved: true
+        severity: 'error'
+        client: 'loreweave-foundation'
+        details:
+          alertname: '{{ .GroupLabels.alertname }}'
+          team: '{{ .CommonLabels.team }}'
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+
+  - name: pagerduty-security
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_INTEGRATION_KEY_SECURITY}'
+        send_resolved: true
+        severity: 'error'
+        client: 'loreweave-foundation'
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+
+  - name: pagerduty-data
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_INTEGRATION_KEY_DATA}'
+        send_resolved: true
+        severity: 'error'
+        client: 'loreweave-foundation'
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+
+  - name: slack-alerts
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_ALERTS}'
+        channel: '#alerts'
+        send_resolved: true
+        title: '{{ .GroupLabels.alertname }} — {{ .GroupLabels.tier }}'
+        text: |
+          *severity* {{ .CommonLabels.severity }}
+          *sli_ref* {{ .CommonLabels.sli_ref }}
+          *runbook* {{ .CommonAnnotations.runbook }}
+          *dashboard* {{ .CommonAnnotations.dashboard }}
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+
+  - name: slack-alerts-info
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_ALERTS_INFO}'
+        channel: '#alerts-info'
+        send_resolved: true
+    webhook_configs:
+      - url: 'http://alert-recorder:8091/v1/alerts/inbox'
+
+# ────────────────────────────────────────────────────────────────────
+# Inhibitions inlined from inhibition_rules.yaml so amtool check-config
+# can validate the full graph. The source-of-truth annotation in
+# inhibition_rules.yaml stays authoritative for human review.
+# ────────────────────────────────────────────────────────────────────
+inhibit_rules:
+  # SEV0 inhibits SEV1 of the same SLI
+  - source_match:
+      sev: '0'
+    target_match:
+      sev: '1'
+    equal: ['sli_ref', 'tier']
+
+  # SEV0 inhibits warn-level of the same SLI
+  - source_match:
+      sev: '0'
+    target_match:
+      severity: warn
+    equal: ['sli_ref', 'tier']
+
+  # SEV1 inhibits warn-level of the same SLI (during freeze, warn is noise)
+  - source_match:
+      sev: '1'
+    target_match:
+      severity: warn
+    equal: ['sli_ref', 'tier']
+
+  # Service-down inhibits SLO burn for the same service
+  # (during full outage we don't need to be paged separately about burn)
+  - source_match_re:
+      alertname: '^LW.*ServiceDown$'
+    target_match_re:
+      alertname: '^LWSLOBurn.*$'
+    equal: ['service']
+
+# ────────────────────────────────────────────────────────────────────
+# Drift guards (verify-cycle-34.sh asserts these)
+# ────────────────────────────────────────────────────────────────────
+# expected_receiver_count: 8 (default, alert-recorder-only, 4× pagerduty, 2× slack)
+# expected_route_count: 8 routes + default
+# expected_inhibit_rule_count: 4
+# locked_decisions_consumed:
+#   - Q-L7C-1: PagerDuty V1 (5 service keys via env)
+#   - Q-L7C-2: oncall SLA documented separately
+#   - Q-L7-1: separate alert-recorder service

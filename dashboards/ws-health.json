@@ -1,21 +1,32 @@
 {
-  "title": "LoreWeave / WS Health",
+  "title": "LoreWeave / WS Health (cycle 28 L6.E.4 — backfilled cycle 34)",
   "uid": "lw-ws-health",
+  "tags": ["loreweave", "ws", "cycle-28", "cycle-34-backfill", "L6.E"],
+  "timezone": "utc",
   "schemaVersion": 39,
-  "description": "L6.E.4 — WebSocket server health per replica + per region. RAID cycle 28.",
-  "tags": ["loreweave", "ws", "L6", "cycle-28"],
-  "editable": true,
-  "timezone": "browser",
+  "version": 2,
   "refresh": "30s",
-  "time": {
-    "from": "now-6h",
-    "to": "now"
+  "editable": true,
+  "graphTooltip": 0,
+  "description": "L6.E.4 — WebSocket server health per replica + per region. RAID cycle 28. Cycle 34 backfill brought to STANDARDS.md conformance (datasource UID prom→prom-primary, tag cycle-34-backfill, timezone utc).",
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "type": "tags",
+        "tags": ["deploy"]
+      }
+    ]
   },
   "templating": {
     "list": [
       {
         "name": "region",
         "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prom-primary"},
         "query": "label_values(lw_ws_active_connections, region)",
         "includeAll": true,
         "multi": true
@@ -23,27 +34,24 @@
       {
         "name": "deploy_cohort",
         "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prom-primary"},
         "query": "label_values(lw_ws_active_connections, deploy_cohort)",
         "includeAll": true,
         "multi": true
       }
     ]
   },
+  "time": {"from": "now-6h", "to": "now"},
   "panels": [
     {
       "id": 1,
       "title": "Active connections per replica (cap = 10 000)",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "prom"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {
-          "expr": "lw_ws_active_connections",
-          "legendFormat": "{{instance}}"
-        },
-        {
-          "expr": "0.8 * 10000",
-          "legendFormat": "80% saturation alert threshold"
-        }
+        {"expr": "lw_ws_active_connections", "legendFormat": "{{instance}}", "refId": "A"},
+        {"expr": "0.8 * 10000", "legendFormat": "80% saturation alert threshold", "refId": "B"}
       ],
       "fieldConfig": {
         "defaults": {
@@ -63,73 +71,51 @@
       "id": 2,
       "title": "Handshake failures per reason (rate / 2m)",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "prom"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {
-          "expr": "sum by (reason) (rate(lw_ws_handshake_failures_total[2m]))",
-          "legendFormat": "{{reason}}"
-        }
+        {"expr": "sum by (reason) (rate(lw_ws_handshake_failures_total[2m]))", "legendFormat": "{{reason}}", "refId": "A"}
       ]
     },
     {
       "id": 3,
       "title": "Ticket redeem outcomes (rate / 1m)",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "prom"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {
-          "expr": "sum by (outcome) (rate(lw_ws_ticket_redeemed_total[1m]))",
-          "legendFormat": "{{outcome}}"
-        }
+        {"expr": "sum by (outcome) (rate(lw_ws_ticket_redeemed_total[1m]))", "legendFormat": "{{outcome}}", "refId": "A"}
       ]
     },
     {
       "id": 4,
       "title": "Message rate by direction + kind (rate / 1m)",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "prom"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {
-          "expr": "sum by (direction, kind) (rate(lw_ws_messages_total[1m]))",
-          "legendFormat": "{{direction}}-{{kind}}"
-        }
+        {"expr": "sum by (direction, kind) (rate(lw_ws_messages_total[1m]))", "legendFormat": "{{direction}}-{{kind}}", "refId": "A"}
       ]
     },
     {
       "id": 5,
       "title": "Authz rejections per reason (rate / 5m)",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "prom"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {
-          "expr": "sum by (reason) (rate(lw_ws_authz_rejections_total[5m]))",
-          "legendFormat": "{{reason}}"
-        }
+        {"expr": "sum by (reason) (rate(lw_ws_authz_rejections_total[5m]))", "legendFormat": "{{reason}}", "refId": "A"}
       ]
     },
     {
       "id": 6,
       "title": "Connection evictions per reason (rate / 5m)",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "prom"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
       "targets": [
-        {
-          "expr": "sum by (reason) (rate(lw_ws_connection_evictions_total[5m]))",
-          "legendFormat": "{{reason}}"
-        }
+        {"expr": "sum by (reason) (rate(lw_ws_connection_evictions_total[5m]))", "legendFormat": "{{reason}}", "refId": "A"}
       ]
     }
-  ],
-  "annotations": {
-    "list": [
-      {
-        "name": "Deploys",
-        "datasource": "-- Grafana --",
-        "enable": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "type": "tags",
-        "tags": ["deploy"]
-      }
-    ]
-  }
+  ]
 }

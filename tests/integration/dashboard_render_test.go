@@ -26,16 +26,13 @@ func TestDashboardRender_AllDashboardsConform(t *testing.T) {
 		"thanos-query":   true,
 	}
 
-	// Grandfathered cycle-6 dashboards exempted from cycle-33 STANDARDS.md
-	// (tracked as D-DASHBOARD-STANDARDS-BACKFILL — see DEFERRED.md).
+	// Grandfathered cycle-6 dashboards exempted from cycle-33 STANDARDS.md.
+	// RAID cycle 34 BACKFILLED the 6 pre-existing dashboards
+	// (D-DASHBOARD-STANDARDS-BACKFILL row 062 ADDRESSED). Only TEMPLATE.json
+	// remains exempted because its `_template` uid is intentional and would
+	// fail the kebab-case rule.
 	grandfathered := map[string]bool{
-		"backup-verification.json":  true,
-		"capacity-planner.json":     true,
-		"per-reality-health.json":   true,
-		"projection-health.json":    true,
-		"shard-health.json":         true,
-		"ws-health.json":            true,
-		"TEMPLATE.json":             true, // intentionally non-kebab uid
+		"TEMPLATE.json": true, // intentionally non-kebab uid
 	}
 
 	root := "../../dashboards"

@@ -173,6 +173,77 @@ services:
       - prom-b
       - loki
 
+  # ───────────────────────────────────────────────────────────────────
+  # Alertmanager — RAID cycle 34 L7.J (Q-L7C-1 PagerDuty V1)
+  # ───────────────────────────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    hostname: alertmanager.internal
+    networks:
+      lw-obs-net:
+        aliases: [alertmanager.internal]
+    ports:
+      - "9093:9093"
+    environment:
+      # PagerDuty integration keys (Q-L7C-1) — set via .env or secret
+      # store. Defaults are DUMMY values to satisfy template substitution
+      # during dry-run; real deploys MUST inject the actual keys.
+      PAGERDUTY_INTEGRATION_KEY_SEV0: ${PAGERDUTY_INTEGRATION_KEY_SEV0:-dummy-sev0-key}
+      PAGERDUTY_INTEGRATION_KEY_SEV1: ${PAGERDUTY_INTEGRATION_KEY_SEV1:-dummy-sev1-key}
+      PAGERDUTY_INTEGRATION_KEY_SRE: ${PAGERDUTY_INTEGRATION_KEY_SRE:-dummy-sre-key}
+      PAGERDUTY_INTEGRATION_KEY_SECURITY: ${PAGERDUTY_INTEGRATION_KEY_SECURITY:-dummy-security-key}
+      PAGERDUTY_INTEGRATION_KEY_DATA: ${PAGERDUTY_INTEGRATION_KEY_DATA:-dummy-data-key}
+      SLACK_WEBHOOK_ALERTS: ${SLACK_WEBHOOK_ALERTS:-https://hooks.slack.com/services/dummy}
+      SLACK_WEBHOOK_ALERTS_INFO: ${SLACK_WEBHOOK_ALERTS_INFO:-https://hooks.slack.com/services/dummy}
+      SMTP_SMARTHOST: ${SMTP_SMARTHOST:-localhost:25}
+    volumes:
+      - ./alertmanager/main.yaml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--cluster.listen-address='
+    depends_on:
+      - alert-recorder
+
+  # ───────────────────────────────────────────────────────────────────
+  # slo-budget-calculator — RAID cycle 34 L7.I (Q-L7-1 SEPARATE service)
+  # ───────────────────────────────────────────────────────────────────
+  slo-budget-calculator:
+    build:
+      context: ../services/slo-budget-calculator
+      dockerfile: Dockerfile
+    container_name: slo-budget-calculator
+    hostname: slo-budget-calculator.internal
+    networks:
+      lw-obs-net:
+        aliases: [slo-budget-calculator.internal]
+    ports:
+      - "8090:8090"
+    environment:
+      LW_SLI_CONFIG: /etc/slo-budget-calculator/sli_definitions.yaml
+      LW_SLO_TARGET_CONFIG: /etc/slo-budget-calculator/slo_targets.yaml
+      LW_LISTEN: ":8090"
+    depends_on:
+      - prom-a
+
+  # ───────────────────────────────────────────────────────────────────
+  # alert-recorder — RAID cycle 34 L7.J (Q-L7-1 SEPARATE service)
+  # ───────────────────────────────────────────────────────────────────
+  alert-recorder:
+    build:
+      context: ../services/alert-recorder
+      dockerfile: Dockerfile
+    container_name: alert-recorder
+    hostname: alert-recorder.internal
+    networks:
+      lw-obs-net:
+        aliases: [alert-recorder.internal]
+    ports:
+      - "8091:8091"
+    environment:
+      LW_LISTEN: ":8091"
+
 # ─────────────────────────────────────────────────────────────────────
 # STUBBED V1 — DO NOT UNCOMMENT WITHOUT REMOVING infra/thanos/STUB_FLAG.md
 # ─────────────────────────────────────────────────────────────────────

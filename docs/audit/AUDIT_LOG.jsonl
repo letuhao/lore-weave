@@ -1295,3 +1295,19 @@
 {"ts": "2026-05-29T16:35:55Z", "event": "in_progress_archived", "cycle": 33, "archived_to": "cycle-033-state.md"}
 {"ts":"2026-05-29T16:36:00Z","event":"worktree_removed","cycle":33,"name":"cycle-33-dps-1"}
 {"ts":"2026-05-29T16:36:00Z","event":"worktree_removed","cycle":33,"name":"cycle-33-dps-2"}
+{"ts":"2026-05-29T16:37:29Z","event":"recovery_halted","cycle":33,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T16:37:30Z", "event": "escalation_written", "cycle": 33, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T16:38:17Z", "event": "coordinator_next_cycle_emitted", "cycle": 34}
+{"ts":"2026-05-29T16:39:17Z","event":"startup_drift_check_passed","cycle":34,"version":"v1.6"}
+{"ts":"2026-05-29T16:39:17Z","event":"startup_verifier_complete","cycle":34,"steps":6}
+{"ts": "2026-05-29T16:39:27Z", "event": "in_progress_init", "cycle": 34, "title": "L7 SLO infra + Alertmanager (I+J)"}
+{"ts": "2026-05-29T16:43:56Z", "event": "in_progress_update", "cycle": 34, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T16:44:03Z", "event": "in_progress_update", "cycle": 34, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T17:08:44Z", "event": "in_progress_update", "cycle": 34, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T17:10:57Z","event":"secret_scan_skipped","cycle":34,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T17:11:56Z", "event": "in_progress_update", "cycle": 34, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T17:12:26Z", "event": "in_progress_update", "cycle": 34, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T17:12:54Z", "event": "in_progress_update", "cycle": 34, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T17:13:06Z", "event": "in_progress_update", "cycle": 34, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-30T00:00:00Z","event":"cycle_done","cycle":34,"phase":"session","title":"L7 SLO infra + Alertmanager (I+J)","dps_count":2,"verify_exit_code":0,"adversary_findings":{"blockers":0,"majors":0,"minors":3,"notes":1},"scope_guard":"CLEAR","files_count":36,"locked_decisions":["Q-L7C-1","Q-L7C-2","Q-L7-1"],"deferred_addressed":["D-DASHBOARD-STANDARDS-BACKFILL"],"deferred_new":["D-PRE-SLI-ALERTS-BACKFILL","D-SLO-CALC-LIVE-WIRING","D-ALERT-RECORDER-LIVE-WIRING","D-AMTOOL-LIVE-VERIFY","D-LIVE-SMOKE-ALERTMANAGER-WEBHOOK"]}
+{"ts": "2026-05-29T17:15:07Z", "event": "in_progress_update", "cycle": 34, "phase": "COMMIT", "retry": 0}

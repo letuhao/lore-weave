@@ -1,0 +1,125 @@
+# infra/alertmanager/channels.yaml — L7.J.2 (RAID cycle 34)
+#
+# Channel CONTRACT for alertmanager receivers. The ACTIVE receivers live
+# in main.yaml (alertmanager loads only main.yaml). This file documents
+# the canonical channel set + env-var indirection so operators know which
+# secrets to provision.
+#
+# Q-L7C-1 LOCKED — PagerDuty V1 is the primary paging channel.
+# Secret hygiene: PagerDuty integration keys are loaded via env-vars at
+# alertmanager start. NEVER commit a real key to this file. The
+# B6 secret-scan (verify-cycle-34.sh) enforces this — any literal
+# 32-char hex string here will fail the build.
+
+version: 1
+shipped_cycle: 34
+
+# ────────────────────────────────────────────────────────────────────
+# PagerDuty integration keys (5 services per SR2 routing table)
+# ────────────────────────────────────────────────────────────────────
+# Each key is a separate PagerDuty service so escalation policies + on-call
+# rotations are independent. Solo-dev V1 = same person + same phone, but
+# the routing graph is in place for V1+30d team growth.
+pagerduty:
+  enabled: true
+  provider: 'pagerduty.com'
+  services:
+    - name: sev0
+      env: PAGERDUTY_INTEGRATION_KEY_SEV0
+      escalation_policy: 'sev0-immediate'
+      description: 'SLO breach (budget exhausted) — wake everyone'
+
+    - name: sev1
+      env: PAGERDUTY_INTEGRATION_KEY_SEV1
+      escalation_policy: 'sev1-15min-tta'
+      description: 'Feature freeze (≥ 90% burn) — primary + secondary'
+
+    - name: sre
+      env: PAGERDUTY_INTEGRATION_KEY_SRE
+      escalation_policy: 'sre-primary-rotation'
+      description: 'SR2 default — meta + ws + service alerts'
+
+    - name: security
+      env: PAGERDUTY_INTEGRATION_KEY_SECURITY
+      escalation_policy: 'security-oncall'
+      description: 'auth + canon-injection + audit-hash-mismatch'
+
+    - name: data
+      env: PAGERDUTY_INTEGRATION_KEY_DATA
+      escalation_policy: 'data-oncall'
+      description: 'meta-postgres + projection-runner + outbox alerts'
+
+# ────────────────────────────────────────────────────────────────────
+# Slack webhooks (warn + info routes)
+# ────────────────────────────────────────────────────────────────────
+slack:
+  enabled: true
+  channels:
+    - name: alerts
+      env: SLACK_WEBHOOK_ALERTS
+      description: '#alerts — warn-severity routes (50–75% burn + degraded mode)'
+
+    - name: alerts-info
+      env: SLACK_WEBHOOK_ALERTS_INFO
+      description: '#alerts-info — info-severity (50% capacity, drills)'
+
+    - name: incidents
+      env: SLACK_WEBHOOK_INCIDENTS
+      description: '#incidents — sev0/sev1 fan-out (auto-created per inc-<id>)'
+
+    - name: security
+      env: SLACK_WEBHOOK_SECURITY
+      description: '#security — auth + canon-injection fan-out'
+
+# ────────────────────────────────────────────────────────────────────
+# Email (TTA escalation fallback + audit BCC)
+# ────────────────────────────────────────────────────────────────────
+email:
+  enabled: true
+  smtp_smarthost: '${SMTP_SMARTHOST}'        # default localhost:25 loopback
+  smtp_from: 'alerts@loreweave.dev'
+  smtp_require_tls: false
+  recipients:
+    - name: oncall-sre
+      address: 'oncall-sre@loreweave.dev'
+      description: 'Catch-all SRE escalation'
+
+    - name: postmortem-archive
+      address: 'postmortems@loreweave.dev'
+      description: 'BCC every sev0/sev1 + auto-archive in 7y mailbox'
+
+# ────────────────────────────────────────────────────────────────────
+# Webhook (alert-recorder service — Q-L7-1 SEPARATE)
+# ────────────────────────────────────────────────────────────────────
+webhook:
+  enabled: true
+  endpoints:
+    - name: alert-recorder
+      url: 'http://alert-recorder:8091/v1/alerts/inbox'
+      send_resolved: true
+      description: |
+        Cycle-19 alert envelope ingest. Every alert (every severity,
+        every route) gets a parallel webhook POST to alert-recorder so
+        the audit trail captures EVERY firing — including silenced
+        ones. This is the source-of-truth `alert_outcomes` table per
+        SR2 §12AE.8.
+
+    - name: alert-recorder-silences
+      url: 'http://alert-recorder:8091/v1/alerts/silences'
+      description: 'Silence admission policy webhook — see silence_admission_policy.yaml'
+
+# ────────────────────────────────────────────────────────────────────
+# Secret rotation expectations (audit log entry on rotation)
+# ────────────────────────────────────────────────────────────────────
+rotation:
+  pagerduty_keys: 'quarterly via admin-cli secret rotate'
+  slack_webhooks: 'on team change OR quarterly'
+  smtp_credentials: 'on smarthost migration'
+
+# ────────────────────────────────────────────────────────────────────
+# locked_decisions_consumed
+# ────────────────────────────────────────────────────────────────────
+locked_decisions_consumed:
+  - Q-L7C-1: PagerDuty V1 — channels.yaml lists 5 PagerDuty services
+  - Q-L7C-2: Solo-dev SLA documented in docs/governance/oncall-sla.md (internal)
+  - Q-L7-1: alert-recorder is SEPARATE service from slo-budget-calculator + incident-bot
