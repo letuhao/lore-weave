@@ -1333,3 +1333,5 @@
 {"ts": "2026-05-29T17:38:17Z", "event": "in_progress_archived", "cycle": 35, "archived_to": "cycle-035-state.md"}
 {"ts":"2026-05-29T17:38:19Z","event":"worktree_removed","cycle":35,"name":"cycle-35-dps-1"}
 {"ts":"2026-05-29T17:38:19Z","event":"worktree_removed","cycle":35,"name":"cycle-35-dps-2"}
+{"ts":"2026-05-29T17:39:40Z","event":"recovery_halted","cycle":35,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T17:39:41Z", "event": "escalation_written", "cycle": 35, "type": "p5_recovery_inconsistent", "phase": "recovery"}

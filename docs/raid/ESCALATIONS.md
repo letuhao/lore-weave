@@ -443,3 +443,22 @@ IN_PROGRESS state file missing for cycle 34; cannot reconstruct phase
 Manually investigate worktree state; run scripts/raid/recover-from-crash.sh --inspect; restore consistency before re-invoking
 
 ---
+
+## Cycle 35 — P5 RECOVERY INCONSISTENT (halted) — 2026-05-29T17:39:41Z
+
+### Type
+`p5_recovery_inconsistent`
+
+### Phase
+recovery
+
+### Reason / details
+(no reason provided)
+
+### Mismatch
+IN_PROGRESS state file missing for cycle 35; cannot reconstruct phase
+
+### Suggested human action
+Manually investigate worktree state; run scripts/raid/recover-from-crash.sh --inspect; restore consistency before re-invoking
+
+---
