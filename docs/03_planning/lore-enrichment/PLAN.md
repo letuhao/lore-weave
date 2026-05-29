@@ -15,7 +15,7 @@ A thin, typed adapter (`app/clients/`) so the enrichment core never talks to ups
 | Upstream | What enrichment reads | Endpoint(s) |
 |---|---|---|
 | knowledge-service | entities, graph, **graph-stats** (gap-detect input), context | `GET /v1/knowledge/projects/{pid}/extraction/graph`, `.../graph-stats`, `/internal/context/*` |
-| knowledge-service | per-project embedding-model (reuse for retrieval) | `GET /v1/knowledge/projects/{pid}/embedding-model` |
+| knowledge-service | per-project embedding-model + **`/internal/embed`** (reuse for technique-b RAG; no new RAG framework) | `GET /v1/knowledge/projects/{pid}/embedding-model`, `POST /internal/embed` |
 | glossary-service | canonical entities + kinds + attributes (the SSOT to enrich) | glossary read APIs (entity/kinds/attribute handlers) |
 | book-service | source chapter/scene text | `GET /internal/books/{book_id}/chapters/{chapter_id}/hierarchy` |
 
@@ -57,7 +57,8 @@ Needed before promoting P2/P3 techniques. Measures more than JSON validity:
 - **Canon consistency** — adversarial LLM check vs the KG/glossary canon (contradiction detection).
 - **Cultural faithfulness / anachronism guard** — check generated detail against grounding sources (Shan Hai Jing, Shang–Zhou history); flag culturally-anachronistic claims.
 - **Provenance completeness** — every fact tagged technique + source + confidence.
-- Output: per-proposal scorecard + per-strategy aggregate that the quality gate (P2) consumes. Harness is itself a deliverable cycle; open research item (no standard metric for non-English mythological grounding — see RESEARCH_LANDSCAPE OQ#4).
+- Output: per-proposal scorecard + per-strategy aggregate that the quality gate (P2) consumes.
+- **EXTENDS the existing eval framework (not a standalone harness):** mirror the platform pattern — `scripts/enrichment_eval.py` + `eval/enrichment-eval-suite.toml` (weighted sub-scores + regression thresholds + baseline-diff, like `eval/climate-eval-suite.toml`) + versioned `eval/baselines/enrichment-vX.json`, plus an in-service benchmark module persisting `enrichment_eval_runs` (mirror knowledge-service `app/benchmark/persist.py`). Reuse the multilingual LM-Studio quality-gate pattern (proven on Chinese). **Additive only** — never edit the climate/geo eval files (isolation). Versioned baselines give the longitudinal improvement space.
 
 ## P5. API surface (freeze in early cycle → `contracts/api/lore-enrichment/`)
 

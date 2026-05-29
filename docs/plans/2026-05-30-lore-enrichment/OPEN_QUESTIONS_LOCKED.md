@@ -52,6 +52,11 @@ The first demo enriches a **small set of under-described LOCATIONS** in 封神�
 - **C4/C5 platform edits (glossary/knowledge-service) merge strategy** = decided **at merge time** (in-branch vs separate PR); kept additive/backward-compatible so either path is clean.
 - **pre-commit hook** = **installed** on this branch's working copy (`.git/hooks/pre-commit` → `workflow-gate.py pre-commit`; warns-and-passes with no state, enforces when a v2.2 task is active). Note: `.git/hooks` is not version-controlled — re-install on a fresh clone.
 
+## Tooling decisions (locked 2026-05-30)
+- **Retrieval/RAG = REUSE knowledge-service, don't build a framework.** Technique-(b) corpus retrieval uses knowledge-service `/internal/embed` (model_ref) + per-project embedding model + sentence-transformers; LM Studio embed already wired (`eval/register_lm_studio_models.sql`). No heavy deps (platform deliberately avoids langchain/llamaindex — keep custom lightweight retrieval).
+- **Web/internet search = OUT of demo scope.** Grounding comes from the owned corpora (Fengshen + 山海经, both downloaded). If broader sourcing is needed later (technique d), prefer FREE OSS (`ddgs`/duckduckgo_search, or self-host SearXNG) — NOT paid (Tavily/SerpAPI), NOT MCP (MCP is Claude-Code tooling, not a runtime-service capability); if required, embed a small in-service search client.
+- **Eval = EXTEND the existing framework, additively.** The platform eval is a script-based pattern: `scripts/climate_eval.py` + `eval/*-suite.toml` (weights + regression thresholds + baseline-diff) + versioned `eval/baselines/*.json`, plus knowledge-service `app/benchmark/` (load→run→**persist** to a runs table) with multilingual LM-Studio quality gates. Enrichment **mirrors the methodology in SEPARATE files** — `scripts/enrichment_eval.py`, `eval/enrichment-eval-suite.toml`, `eval/baselines/enrichment-vX.json`, + an in-service benchmark module persisting `enrichment_eval_runs` — and **does NOT modify the climate/geo eval files** (isolation: those are the geo pipeline's). Records results per version → longitudinal improvement space.
+
 ## Defaults (overridable)
 - Admission: **always human-gate** initially; auto-admit thresholds calibrated later from eval data.
 
