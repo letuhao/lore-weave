@@ -408,6 +408,116 @@ pub fn build_settlement(
     (view, features, political, hydro, settlements)
 }
 
+// ============================================================================
+// Civ Ship 7 — synthetic deterministic naming
+// ============================================================================
+
+// Pools of evocative fantasy names — seeded RNG picks one per feature.
+// Short on purpose: the goal of Ship 7 is to give every feature a
+// stable, non-empty name so SVG export (Ship 9) has labels to render.
+// LLM-driven naming via a future `TextProvider` trait can replace these
+// in Ship 7b without changing the rest of the civ pipeline.
+const SETTLEMENT_NAMES: &[&str] = &[
+    "Aetherholt", "Brightford", "Cinderwatch", "Dawnreach", "Embervale",
+    "Frostmere", "Goldenhall", "Hollowbarrow", "Ironkeep", "Jadewood",
+    "Kingsford", "Larkspur", "Mistmoor", "Northwatch", "Oakenshield",
+    "Pinevale", "Quietwater", "Ravenholm", "Stonehearth", "Thornbury",
+    "Umbergate", "Vinewreath", "Willowbrook", "Yewglen", "Zephyrport",
+];
+
+const STATE_NAMES: &[&str] = &[
+    "Aelvarra", "Brennor", "Caldaris", "Drakhalim", "Eronthel",
+    "Faerondale", "Glenwarde", "Hjarsgrad", "Iskandar", "Jorvik",
+    "Kelmarine", "Lirenoth", "Mythraal", "Northkin", "Ostralia",
+    "Parthenor", "Querion", "Rikhalim", "Sundarial", "Thalassia",
+];
+
+const PROVINCE_PREFIXES: &[&str] = &[
+    "Vale of", "March of", "Reach of", "Hold of", "Span of", "Realm of",
+    "Domain of", "Land of",
+];
+
+const PROVINCE_ROOTS: &[&str] = &[
+    "Ashwynne", "Briarfall", "Caelwood", "Deepford", "Elder Pines",
+    "Falconcrest", "Glimmerlake", "Hawthorn", "Ironbark", "Larkmere",
+    "Mistgate", "Nightspire", "Oldhollow", "Pondbridge", "Quartzcliff",
+    "Redmoor", "Silverbrook", "Twilight Glade", "Umbra", "Whitewater",
+];
+
+const CULTURE_NAMES: &[&str] = &[
+    "Aelir", "Brenn", "Caelori", "Dhuran", "Eldari",
+    "Fenni", "Gwynar", "Hjorl", "Iskari", "Jolvik",
+    "Kelmar", "Lirthen", "Myrran", "Norval", "Ostren",
+];
+
+const MOUNTAIN_DESCRIPTORS: &[&str] = &[
+    "Cloudpiercer", "Frostfang", "Sunspear", "Stormcrown", "Ashpeak",
+    "Greyhorn", "Ironreach", "Mistwall", "Skyforge", "Thunderridge",
+];
+
+const RIVER_DESCRIPTORS: &[&str] = &[
+    "Quickwater", "Silvercourse", "Black", "Goldrun", "Whisper",
+    "Coldstream", "Greenway", "Bright", "Stillrun", "Hollow",
+];
+
+const WATER_BODY_DESCRIPTORS: &[&str] = &[
+    "Whitecap Sea", "Sunken Bay", "Twilight Reach", "Sapphire Strait",
+    "Mistwarden Sea", "Forgotten Bay", "Crystal Reach", "Halcyon Sound",
+    "Verdant Coast", "Stormwatch Sea",
+];
+
+fn pick<'a>(pool: &'a [&'a str], rng: &mut Rng) -> &'a str {
+    pool[(rng.next_u32() as usize) % pool.len()]
+}
+
+/// **Civ Ship 7** — assign deterministic synthetic names to every named
+/// feature in the bundle. Seeded RNG picks each name from a small
+/// per-category pool so a given `seed` always produces the same name
+/// set. Settlement IDs disambiguate when the pool is smaller than the
+/// settlement count (e.g. `"Brightford-7"`).
+///
+/// **NOT an LLM call.** LLM-driven naming requires a new `TextProvider`
+/// trait (the v4.3 [`crate::shape::llm::LlmProvider`] is structured for
+/// ShapeKind picking, not free-form text generation). Ship 7b will add
+/// that trait + Anthropic / OpenAI / Ollama impls and replace this
+/// stub. Until then synthetic names keep SVG export (Ship 9) labelable.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_synthetic_names(
+    features: &mut Features,
+    political: &mut Political,
+    settlements: &mut [Settlement],
+    culture: &mut Culture,
+    seed: u64,
+) {
+    let mut rng = Rng::for_stage(seed, b"civ-naming");
+    for (i, s) in settlements.iter_mut().enumerate() {
+        s.name = format!("{}-{i}", pick(SETTLEMENT_NAMES, &mut rng));
+    }
+    for (i, st) in political.states.iter_mut().enumerate() {
+        st.name = format!("{}-{i}", pick(STATE_NAMES, &mut rng));
+    }
+    for (i, p) in political.provinces.iter_mut().enumerate() {
+        let prefix = pick(PROVINCE_PREFIXES, &mut rng);
+        let root = pick(PROVINCE_ROOTS, &mut rng);
+        p.name = format!("{prefix} {root}-{i}");
+    }
+    for (i, c) in culture.culture_regions.iter_mut().enumerate() {
+        c.name = format!("{}-{i}", pick(CULTURE_NAMES, &mut rng));
+    }
+    for (i, mr) in features.mountain_ranges.iter_mut().enumerate() {
+        mr.name = format!(
+            "{} Mountains-{i}",
+            pick(MOUNTAIN_DESCRIPTORS, &mut rng)
+        );
+    }
+    for (i, rv) in features.rivers.iter_mut().enumerate() {
+        rv.name = format!("{} River-{i}", pick(RIVER_DESCRIPTORS, &mut rng));
+    }
+    for (i, wb) in features.water_bodies.iter_mut().enumerate() {
+        wb.name = format!("{}-{i}", pick(WATER_BODY_DESCRIPTORS, &mut rng));
+    }
+}
+
 /// **Civ Ship 5** — full pipeline through System-A's routes builder.
 /// Chains [`build_settlement`] then [`routes::build`] using the
 /// `Hydrology.river_threshold` for river-route detection.
@@ -1077,5 +1187,108 @@ mod tests {
         );
         assert_eq!(a.culture_of, b.culture_of);
         assert_eq!(a.culture_regions.len(), b.culture_regions.len());
+    }
+
+    #[test]
+    fn synthetic_names_populate_every_named_feature() {
+        // Ship 7: every named feature in the bundle must end up with a
+        // non-empty `name` after `apply_synthetic_names`. Empty names
+        // would crash the SVG export label rendering in Ship 9.
+        let world = generate(&FlatParams::default());
+        let (_view, mut features, mut political, _hyd, mut settlements, _routes_v, mut culture_v) =
+            build_culture(
+                &world,
+                &WorldClimateParams::default(),
+                64,
+                42,
+                SettlementDensity::Medium,
+                5,
+            );
+        apply_synthetic_names(
+            &mut features,
+            &mut political,
+            &mut settlements,
+            &mut culture_v,
+            42,
+        );
+        for s in &settlements {
+            assert!(!s.name.is_empty(), "settlement {} unnamed", s.cell);
+        }
+        for st in &political.states {
+            assert!(!st.name.is_empty(), "state {} unnamed", st.id);
+        }
+        for p in &political.provinces {
+            assert!(!p.name.is_empty(), "province {} unnamed", p.id);
+        }
+        for c in &culture_v.culture_regions {
+            assert!(!c.name.is_empty(), "culture {} unnamed", c.id);
+        }
+        for mr in &features.mountain_ranges {
+            assert!(!mr.name.is_empty(), "mountain {} unnamed", mr.id);
+        }
+        for wb in &features.water_bodies {
+            assert!(!wb.name.is_empty(), "water body {} unnamed", wb.id);
+        }
+    }
+
+    #[test]
+    fn synthetic_names_are_deterministic_per_seed() {
+        // Same seed → same names.
+        let world = generate(&FlatParams::default());
+
+        let make_bundle = || {
+            let (_, f, p, _, s, _, c) = build_culture(
+                &world,
+                &WorldClimateParams::default(),
+                32,
+                99,
+                SettlementDensity::Medium,
+                5,
+            );
+            (f, p, s, c)
+        };
+        let (mut fa, mut pa, mut sa, mut ca) = make_bundle();
+        let (mut fb, mut pb, mut sb, mut cb) = make_bundle();
+        apply_synthetic_names(&mut fa, &mut pa, &mut sa, &mut ca, 99);
+        apply_synthetic_names(&mut fb, &mut pb, &mut sb, &mut cb, 99);
+        for (a, b) in sa.iter().zip(sb.iter()) {
+            assert_eq!(a.name, b.name);
+        }
+        for (a, b) in pa.provinces.iter().zip(pb.provinces.iter()) {
+            assert_eq!(a.name, b.name);
+        }
+    }
+
+    #[test]
+    fn synthetic_names_differ_across_seeds() {
+        // Different seeds should produce different name sets — proves
+        // the seed actually flows into the picker (regression catch).
+        let world = generate(&FlatParams::default());
+
+        let make_bundle = || {
+            let (_, f, p, _, s, _, c) = build_culture(
+                &world,
+                &WorldClimateParams::default(),
+                32,
+                7,
+                SettlementDensity::Medium,
+                5,
+            );
+            (f, p, s, c)
+        };
+        let (mut fa, mut pa, mut sa, mut ca) = make_bundle();
+        let (mut fb, mut pb, mut sb, mut cb) = make_bundle();
+        apply_synthetic_names(&mut fa, &mut pa, &mut sa, &mut ca, 1);
+        apply_synthetic_names(&mut fb, &mut pb, &mut sb, &mut cb, 999);
+        // At least one settlement name must differ between seeds.
+        let differ = sa
+            .iter()
+            .zip(sb.iter())
+            .any(|(a, b)| a.name != b.name);
+        assert!(
+            differ,
+            "two distinct seeds produced identical settlement names; \
+             RNG isn't reaching the picker"
+        );
     }
 }
