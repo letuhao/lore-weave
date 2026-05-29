@@ -1,0 +1,89 @@
+# events_allowlist.yaml — Q-L1B-1 resolution
+#
+# This file is the AUTHORITATIVE list of (meta_table, op) pairs that MetaWrite
+# is allowed to emit + which outbox event it produces. Two purposes:
+#   1. Defense-in-depth: MetaWrite rejects writes to tables not listed here.
+#   2. Outbox emit map: services don't decide "do I emit an event?" — the
+#      library does, from this file.
+#
+# Q-L1B-1 resolution: "Auto-derive from service map's Emits events column +
+#   cross-check with outbox_event_emit_lint (L1.K.12)."  The L1.K lint that
+#   cross-references this file with the service-map ships in cycle 11 (L1.K).
+#
+# Cycle 2 (L1.A-1 + L1.B) seeds the 7 routing+lifecycle tables + the
+# session_cost_summary rollup table. Add rows as future cycles land tables.
+#
+# Owner: platform team (per Q-L1B-2 pattern — security team has CODEOWNERS
+# approval on schema changes here).
+
+version: 1
+entries:
+  # ── L1.A-1 §1.1 — primary routing table
+  - table: reality_registry
+    owner: world-service
+    notes: "L1A §1.1 — primary routing; AttemptStateTransition wraps all UPDATEs"
+    events:
+      - op: INSERT
+        event_name: reality.created
+      - op: UPDATE
+        event_name: reality.status.changed
+
+  # ── L1.A-1 §1.2 — per-reality migration tracker (no outbox events; orchestrator owns state)
+  - table: instance_schema_migrations
+    owner: migration-orchestrator
+    notes: "L1A §1.2 — no outbox events per layer plan"
+    events: []
+
+  # ── L1.A-1 §1.3 — publisher liveness (no outbox events; direct write)
+  - table: publisher_heartbeats
+    owner: publisher
+    notes: "L1A §1.3 — heartbeats are direct writes; not outboxed"
+    events: []
+
+  # ── L1.A-1 §1.4 — lifecycle transition audit (audit-only; no outbox)
+  - table: lifecycle_transition_audit
+    owner: contracts/meta (library-internal)
+    notes: "L1A §1.4 — written by MetaWrite() via AttemptStateTransition; audit-only"
+    events: []
+
+  # ── L1.A-1 §1.5 — close-lifecycle compliance trail (events come from reality_registry transitions)
+  - table: reality_close_audit
+    owner: world-service
+    notes: "L1A §1.5 — close events emitted from reality_registry transitions; this table is the audit"
+    events:
+      - op: INSERT
+        event_name: reality.close.audit_recorded
+
+  # ── L1.A-1 §1.6 — archive verification (event on verified)
+  - table: archive_verification_log
+    owner: world-service
+    notes: "L1A §1.6 — emit archive.verified on successful row"
+    events:
+      - op: INSERT
+        event_name: archive.verified
+
+  # ── L1.A-1 §1.7 — per-reality migration audit (events on milestones)
+  - table: reality_migration_audit
+    owner: migration-orchestrator
+    notes: "L1A §1.7 — migration.applied / migration.failed milestones"
+    events:
+      - op: INSERT
+        event_name: migration.audit_recorded
+
+  # ── L1.A-1 Q-L1A-1 — session_cost_summary rollup table (no outbox events; cost dashboards pull)
+  - table: session_cost_summary
+    owner: session-cost-rollup-worker (ships later cycle)
+    notes: "Q-L1A-1 hybrid — meta-side 60s rollup; cost dashboards read directly"
+    events: []
+
+  # ── meta_write_audit — written by MetaWrite itself; never outboxed (would infinite-loop)
+  - table: meta_write_audit
+    owner: contracts/meta (library-internal)
+    notes: "S04 §12T.5 — every MetaWrite() writes 1 row here in same TX. NEVER outbox."
+    events: []
+
+  # ── meta_read_audit — written by read_audit.go; never outboxed
+  - table: meta_read_audit
+    owner: contracts/meta (library-internal)
+    notes: "S04 §12T.6 — enumerated sensitive-read audit. NEVER outbox."
+    events: []
