@@ -16,7 +16,7 @@
 | 3 | L1.A-2 PII + Identity + Consent tables | DONE | 2026-05-29 | 2026-05-29 | 2 | pii_registry + pii_kek + user_consent_ledger + player_character_index; KMSClient interface + OpenPII crypto-shred path; pkColumnFor extended for all 4 |
 | 4 | L1.A-3 Audit Infrastructure (5 tables) | DONE | 2026-05-29 | 2026-05-29 | 3 | meta_write/read/admin_action/svc_to_svc/prompt audit tables + scrubber stub + body-never-stored PromptAudit iface + pkColumnFor extended + worktrees-create.sh base-branch-collision FIXED + doc.go cycle-10 stale ref corrected |
 | 5 | L1.C Provisioner + L1.G Pgbouncer + L1.F Cache | DONE | 2026-05-29 | 2026-05-29 | 3 | services/world-service Rust crate (provisioner/deprovisioner/capacity_planner/db_pool + orphan_scanner) + contracts/meta/{pool.go,cache.go} Go mirrors + per-reality 0001 skeleton + docker-compose pgbouncer/redis overlays |
-| 6 | L1.D Migration Orchestrator + L1.I Per-DB Metrics | PENDING | — | — | 2 | |
+| 6 | L1.D Migration Orchestrator + L1.I Per-DB Metrics | DONE | 2026-05-29 | 2026-05-29 | 2 | migration-orchestrator Go service (manifest+runner concurrency-10+canary 1-reality-first) + manifest.yaml references cycle-5 0001_initial + ACL matrix (no DELETE) + idempotency-validator + Prom scrape-config dynamic file_sd_configs + recording/alert rules + postgres-exporter cardinality-controls (7 metrics × N realities ≤ 700 series at V1=100) + inventory.yaml cycles 1-6 enumerated + 2 Grafana dashboards |
 | 7 | L1.A-4 Billing/SRE tables + L1.H Backup + L1.L Capacity + L1.J Degraded + L1.K 15 lints | PENDING | — | — | 5 | I3 amendment PR ships here |
 | 8 | L2 Schema Infra (F+G+H+I) | PENDING | — | — | 4 | |
 | 9 | L2 Per-reality tables (A+B+E) | PENDING | — | — | 3 | |
@@ -414,3 +414,89 @@
 - `contracts/meta/errors.go` (added ErrDbPoolConflict / ErrDbPoolMissing / ErrDbPoolInvalid / ErrCacheRegistryInvalid / ErrCacheKindUnregistered for the new pool + cache surfaces)
 - `docs/raid/CYCLE_LOG.md` (this file)
 - `docs/audit/AUDIT_LOG.jsonl` (append-only verify_cycle_complete + cycle-5 phase events)
+
+
+---
+
+## Cycle 6 — L1.D Migration Orchestrator + L1.I Per-DB Metrics — DONE 2026-05-29
+
+- **Started:** 2026-05-29
+- **Completed:** 2026-05-29
+- **DPS count:** 2 — INLINE serial (Task tool unavailable; 6th consecutive cycle confirmed via `ToolSearch select:Agent` probe at startup; outcome documented in cycle-runner-prompt as expected behavior)
+  - DPS 1: L1.D migration-orchestrator Go service — manifest loader + runner (concurrency-10 + retry/backoff) + canary (1-reality-first for breaking) + cmd/migrate CLI + idempotency-validator + ACL matrix entry + runbook + integration test
+  - DPS 2: L1.I per-db metrics — Prom scrape-config (dynamic file_sd_configs) + recording/alert rules + postgres-exporter with cardinality controls + observability inventory (cycles 1-6 enumerated) + 2 Grafana dashboards + cardinality test
+- **Worktrees created (B1):** `../foundation-worktrees/cycle-6-dps-{1,2}` on branches `raid/c6/dps-{1,2}` — automatic flat namespace (cycle-4 fix continues working); main worktree authored all code
+- **Acceptance gate:** `scripts/raid/verify-cycle-6.sh` exit 0 (12 steps PASS)
+
+### LOCKED decisions consumed
+- **Q-L1D-1** (line 38, V1 doc-only manual rollback) — verify step 2 scans the migration-orchestrator Go packages for any rollback/AutoRollback/revert symbols; only acceptable matches are the `migration_rolled_back` event_type CHECK enum value (cycle 2 audit table CHECK) and the runbook narrative. No rollback CODE path exists. `runbooks/migration/persistent_failure.md` cites Q-L1D-1 directly + spells out V2+ scope.
+- **Q-L1I-1** (line 45, HA pair via federation V1+) — `infra/prometheus/scrape-config.yaml` declares `external_labels.prom_replica: '${PROM_REPLICA_ID}'` so the HA pair (`prom-a` + `prom-b`) can deduplicate via federation. Verify step 3 pins this.
+- **Q-L1I-2** (line 46, V1 = 30d native retention; Thanos V1+30d) — NO Thanos/Cortex/Mimir/M3DB references in any active prom config; verify step 4 strips comments first (the documentation-comment naming the deferred Thanos sidecar is fine, only active config refs would fail). No `infra/thanos/` directory exists.
+- **Q-L2-2** (line 60, events partition strategy = monthly) — transitively honored; manifest.yaml documents `0002_events_partitioning` as the reserved future-cycle slot but does NOT ship the migration (lands cycle 8).
+
+### Test results (verify-cycle-6.sh PASS — 12 steps)
+- 26 unit tests in `services/migration-orchestrator/pkg/*` (manifest 7, runner 8, canary 7, cmd/migrate 4) — all PASS via `go test ./services/migration-orchestrator/...`
+- 3 NEW cycle-6 integration tests passing in `tests/integration/` (build-tag `integration`, mock-only — no docker needed):
+  - `TestMigrationRun_TenRealities_VerifyStateAndRetryAndDeadLetter` — 10-reality run; reality-0 transient×2 then succeed (3 attempts); reality-2 always-fail → dead-letter; verifies attempt counts + audit event types + MarkApplied/MarkFailed state + ≤ 10 concurrent
+  - `TestMigrationManifest_ReferencesPerRealitySkeleton` — cycle-5 carryforward regression guard
+  - `TestCanary_BreakingMigration_OneRealityFirstThenFanout` — 5-reality breaking migration; assert dispatcher.calls[0].len == 1 (canary) then calls[1].len == 4 (fanout)
+- 6 NEW cardinality tests in `tests/integration/metrics_cardinality_test.go`:
+  - `TestInventory_ExistsAndParses` + `TestInventory_AllLabelsInAllowlist` + `TestInventory_EnumeratesCyclesOneThroughSix` + `TestCardinalityBudget_V1Target700Series` (7 metrics × 100 realities = 700 ≤ 1000 sanity ceiling) + `TestPostgresExporter_RestrictsAuditTablesOnly` + `TestNoThanosSidecarPresent`
+- `promtool check rules` — recording-rules + per-reality alerts + meta alerts all valid (promtool was present on dev host)
+- `bash scripts/migration-idempotency-validator.sh` exit 0 on shipped 0001_initial; injected non-idempotent SQL → exit 1 (negative test in verify step 7)
+- B5 `prod-isolation-lint.sh` → no prod references
+- B6 `secret-scan-cycle.sh` → gitleaks absent on dev machine; CI gate will run on push
+
+### Live-smoke evidence
+- **live infra unavailable: docker-compose stack not booted in cycle runner session** (Windows host, no docker compose up invoked). Cycle 6 doesn't add ANY cross-service runtime wiring — the migration-orchestrator's MetaWriter binding and the provisioner→prom-scrape file-write binding both DEFER to cycle 7. All shipped tests are unit / mock-backed and exercise the static-config + library contracts. Cross-service-touched is contracts/meta (read-only — for the matrix entry) + tests/integration (new test files) — minor counter-evidence: cycle 6 touches services/migration-orchestrator (new) + tests/integration + contracts (matrix.yaml + manifest.yaml + observability/inventory.yaml + migrations/manifest.yaml). The cross-service test surface is contract-level (matrix declares write set; manifest references cycle-5 SQL; inventory enumerates cycles 1-6 metrics) — all checked statically by verify-cycle-6.sh steps 5/6/10.
+
+### Notable design choices + carryforward for cycles 7-10
+- **pkg/ over internal/ directory layout (decision in cycle 6).** Go's `internal/` packages can't be imported across modules. The integration test (`tests/integration/migration_run_test.go`) needs to import runner/canary/manifest to exercise the contracts end-to-end, so the migration-orchestrator service ships them under `pkg/` instead. The `replace` directive in `tests/integration/go.mod` provides the local module resolution. Pattern is reusable for future per-service Go modules that need integration test imports.
+- **Effects pattern carries through to migration-orchestrator.** Cycle 5 introduced the `Effects` trait for the Rust provisioner; cycle 6 ports the same idea to Go via the `Applier` + `Auditor` + `StateWriter` + `Sleeper` interfaces. Test fakes inject deterministic behavior; production wiring (cycle 7+) provides the real RPC adapters. This separation is what kept cycle 6 entirely mock-backed and fast (all unit tests run in <1s) without compromising the integration contract.
+- **Dynamic Prometheus targets via `file_sd_configs`, NOT consul/k8s SD.** Q-L1C-1 V1 = docker-compose; no Consul. `file_sd_configs` watches `/etc/prometheus/targets/per-reality/*.yaml` for mtime changes (no SIGHUP), 30s refresh. The provisioner's `register_prometheus_scrape` Effect (cycle 5 trait method) is the canonical writer; cycle 6 ships the static scrape-config + README contract; cycle 7 wires the actual file-write. Tracked as DEFERRED #045.
+- **Cardinality budget is 7 metrics × N realities (NOT 8).** Brief said "≤ 7 metrics × N realities". I dropped `pg_stat_database_tup_deleted` from V1 because (a) we don't issue per-row DELETEs on per-reality data (soft-delete via status enum), and (b) we needed an exact 7 to honor the brief literally. Documented in inventory.yaml comment so a future cycle that genuinely needs DELETE tracking knows the trade-off. Pattern worth reusing in L2 per-reality metrics (cycles 9-13): every new per-reality metric MUST add 1 line to inventory + assert against the budget.
+- **Concurrency model worth reusing for archive-worker/retention-worker (cycles 10/11).** The semaphore-channel + WaitGroup pattern in `pkg/runner` is generic — it works for any "N jobs, K active at once" workload. The injected `Sleeper` interface makes tests instant. The retry strategy (3 attempts × exponential backoff capped at 30s, transient-vs-permanent error switch) is the right default for IO-bound workloads. Recommend porting to a shared `pkg/concurrency_limited_dispatcher` in cycle 10.
+- **Strict cardinality controls in postgres-exporter via `WHERE relname IN (...)`.** The single highest-risk pattern is `FROM pg_stat_user_tables` without a WHERE clause — every table per reality becomes a series. We enumerate the 7 audit tables explicitly; verify step 9 + the cardinality test both pin this. Pattern is essential for L2 per-reality metrics: never expose `pg_stat_*` whole; always WHERE-list.
+- **migration-orchestrator's ACL matrix entry is the MINIMUM-needed write set.** No DELETE anywhere (Q-L1D-1 V1 + S04 §12T.4 audit append-only). UPDATE only on `instance_schema_migrations` (state column toggles between applied/failed). INSERT-only on the two append-only audits + meta_write_audit (the library does this transparently). Verify step 6 enforces.
+- **Task tool unavailable** — 6th consecutive cycle. ToolSearch probe returns empty. Inline serial accepted by spec; cycle-runner-prompt now codifies "Task-tool probe → inline fallback expected" in the carry-forward block.
+- **No `pkColumnFor` extension this cycle** (cycle 6 ships ZERO new meta tables — only contracts/manifest, contracts/observability, infra/prometheus, contracts/service_acl, dashboards/, services/migration-orchestrator/, runbooks/, tests/integration/, scripts/). Cycle 7 (L1.A-4 billing + SRE tables) will resume the extension pattern.
+- **DEFERRED.md cleanup.** Cycle 6 appended 5 deferred rows (041–045) capturing cycle-5 deferred items (live infra smoke, real provisioner RPC, real Redis adapter) + cycle-6 specific (D-MIGRATE-CLI-LIVE-WIRING for cmd/migrate non-dry-run, D-PROVISIONER-PROM-SCRAPE-WIRING for the file_sd_configs writer). All target cycle 7 or L7 ops — none in cycle-6 scope.
+
+### Files touched (24 new + 4 modified)
+
+**New (24):**
+
+DPS 1 (migration-orchestrator):
+- `services/migration-orchestrator/go.mod` + `go.sum`
+- `services/migration-orchestrator/README.md`
+- `services/migration-orchestrator/cmd/migrate/main.go` + `main_test.go`
+- `services/migration-orchestrator/pkg/manifest/manifest.go` + `manifest_test.go`
+- `services/migration-orchestrator/pkg/runner/runner.go` + `runner_test.go`
+- `services/migration-orchestrator/pkg/canary/canary.go` + `canary_test.go`
+- `contracts/migrations/manifest.yaml`
+- `contracts/service_acl/matrix.yaml`
+- `scripts/migration-idempotency-validator.sh`
+- `runbooks/migration/persistent_failure.md`
+- `tests/integration/migration_run_test.go`
+
+DPS 2 (per-db metrics):
+- `infra/prometheus/scrape-config.yaml`
+- `infra/prometheus/recording-rules.yaml`
+- `infra/prometheus/alerts/per-reality.yaml`
+- `infra/prometheus/alerts/meta.yaml`
+- `infra/prometheus/targets/per-reality/README.md`
+- `infra/postgres-exporter/postgres-exporter.yaml`
+- `contracts/observability/inventory.yaml`
+- `dashboards/per-reality-health.json`
+- `dashboards/shard-health.json`
+- `tests/integration/metrics_cardinality_test.go`
+
+Cycle infra:
+- `scripts/raid/verify-cycle-6.sh`
+- `docs/raid/IN_PROGRESS/cycle-006-state.md` (archived at COMMIT)
+
+**Modified (4):**
+- `tests/integration/go.mod` + `go.sum` (added migration-orchestrator dep + `replace` directive)
+- `docs/deferred/DEFERRED.md` (5 new rows 041-045)
+- `docs/raid/CYCLE_LOG.md` (this file — status flip PENDING → DONE + this entry)
+- `docs/audit/AUDIT_LOG.jsonl` (append-only verify_cycle_complete + cycle-6 phase events)

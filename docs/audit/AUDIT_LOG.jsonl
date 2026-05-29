@@ -825,3 +825,19 @@
 {"ts":"2026-05-29T04:31:50Z","event":"worktree_removed","cycle":5,"name":"cycle-5-dps-1"}
 {"ts":"2026-05-29T04:31:50Z","event":"worktree_removed","cycle":5,"name":"cycle-5-dps-2"}
 {"ts":"2026-05-29T04:31:50Z","event":"worktree_removed","cycle":5,"name":"cycle-5-dps-3"}
+{"ts": "2026-05-29T04:32:45Z", "event": "coordinator_next_cycle_emitted", "cycle": 6}
+{"ts":"2026-05-29T04:34:53Z","event":"startup_drift_check_passed","cycle":6,"version":"v1.6"}
+{"ts":"2026-05-29T04:34:53Z","event":"startup_verifier_complete","cycle":6,"steps":6}
+{"ts": "2026-05-29T04:35:01Z", "event": "in_progress_init", "cycle": 6, "title": "L1.D Migration Orchestrator + L1.I Per-DB Metrics"}
+{"ts": "2026-05-29T04:36:06Z", "event": "in_progress_update", "cycle": 6, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T04:36:23Z", "event": "in_progress_update", "cycle": 6, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T04:52:30Z", "event": "in_progress_update", "cycle": 6, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T04:52:37Z","event":"secret_scan_skipped","cycle":6,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts":"2026-05-29T04:52:32Z","event":"verify_cycle_complete","cycle":6,"failed":1}
+{"ts":"2026-05-29T04:53:12Z","event":"secret_scan_skipped","cycle":6,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts":"2026-05-29T04:53:09Z","event":"verify_cycle_complete","cycle":6,"failed":0}
+{"ts": "2026-05-29T04:53:48Z", "event": "in_progress_update", "cycle": 6, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T04:54:22Z", "event": "in_progress_update", "cycle": 6, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-29T00:00:00Z","event":"cycle_complete","cycle":6,"dps_count":2,"verify_exit_code":0,"scope_guard":"CLEAR","adversary":{"blockers":0,"majors":0,"minors":0,"notes":4}}
+{"ts": "2026-05-29T04:56:05Z", "event": "in_progress_update", "cycle": 6, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T04:56:13Z", "event": "in_progress_archived", "cycle": 6, "archived_to": "cycle-006-state.md"}

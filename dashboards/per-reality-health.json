@@ -1,0 +1,179 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Per-reality DB inspector — L1.I.7 (RAID cycle 6). Pin one reality_id; see size, connection count, transaction rates, and replication state. Cardinality controls per L1.I.5 (only reality_id + shard_host labels). Q-L1I-2: 30d native retention, no Thanos.",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "iteration": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 85899345920},
+              {"color": "red", "value": 102005473280}
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "pg_database_size_bytes{reality_id=\"$reality\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "DB Size",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "spanNulls": false
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0},
+      "id": 2,
+      "options": {
+        "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "targets": [
+        {
+          "expr": "rate(pg_stat_database_xact_commit{reality_id=\"$reality\"}[5m])",
+          "legendFormat": "commit/sec",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(pg_stat_database_xact_rollback{reality_id=\"$reality\"}[5m])",
+          "legendFormat": "rollback/sec",
+          "refId": "B"
+        }
+      ],
+      "title": "Transaction rate (commit vs rollback)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 6},
+      "id": 3,
+      "targets": [
+        {
+          "expr": "pg_stat_database_numbackends{reality_id=\"$reality\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Active connections",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "id": 4,
+      "targets": [
+        {
+          "expr": "rate(pg_stat_database_tup_returned{reality_id=\"$reality\"}[5m])",
+          "legendFormat": "read rows/sec",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(pg_stat_database_tup_inserted{reality_id=\"$reality\"}[5m]) + rate(pg_stat_database_tup_updated{reality_id=\"$reality\"}[5m])",
+          "legendFormat": "write rows/sec",
+          "refId": "B"
+        }
+      ],
+      "title": "Read vs write throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 12},
+      "id": 5,
+      "targets": [
+        {
+          "expr": "rate(pg_stat_user_tables_n_tup_ins{reality_id=\"$reality\",relname=\"meta_write_audit\"}[5m])",
+          "refId": "A"
+        }
+      ],
+      "title": "MetaWrite() audit insert rate (proxy for write throughput)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": ["lw", "per-reality", "l1"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": false, "text": "All", "value": "$__all"},
+        "datasource": "Prometheus",
+        "definition": "label_values(pg_database_size_bytes, reality_id)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Reality",
+        "multi": false,
+        "name": "reality",
+        "options": [],
+        "query": "label_values(pg_database_size_bytes, reality_id)",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      }
+    ]
+  },
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {"refresh_intervals": ["10s", "30s", "1m", "5m"]},
+  "timezone": "",
+  "title": "LoreWeave — Per-Reality Health",
+  "uid": "lw-per-reality-health",
+  "version": 1
+}

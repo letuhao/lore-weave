@@ -1,0 +1,43 @@
+# contracts/migrations/manifest.yaml — L1.D.5 (RAID cycle 6)
+#
+# Ordered declarative manifest of every per-reality schema migration the
+# orchestrator (services/migration-orchestrator) may apply. The first entry
+# is mandatory and MUST be "0001_initial" — it references the per-reality
+# skeleton shipped in cycle 5 (contracts/migrations/per_reality/0001_initial.up.sql).
+#
+# Schema (see internal/manifest/manifest.go):
+#   version: 1                         — manifest schema version
+#   migrations:                        — ordered, monotonically-increasing
+#     - id: "<filename-stem>"          — matches per_reality/<id>.up.sql
+#       version: <uint>                — strictly increasing
+#       breaking: <bool>               — true ⇒ route through canary module
+#       dependencies: [<id>, ...]      — must reference earlier ids
+#       description: "<one-line>"      — for runbook + dashboards
+#
+# Locked decisions:
+#   - Q-L1D-1 (OPEN_QUESTIONS_LOCKED.md line 38): V1 = doc-only manual rollback.
+#     `breaking: true` triggers canary (1 reality first); a canary failure
+#     halts the fan-out and surfaces the failure in reality_migration_audit
+#     for SRE follow-up. NO auto-rollback in V1.
+#   - Q-L2-2: events partition strategy = monthly. Lands in cycle 8 as
+#     0002_events_partitioning (NOT shipped here — only declared as the
+#     reserved next slot).
+
+version: 1
+
+migrations:
+  - id: "0001_initial"
+    version: 1
+    breaking: false
+    dependencies: []
+    description: "per-reality skeleton (events / outbox / snapshots / projection_meta) — shipped RAID cycle 5"
+
+  # Future entries land here in L2 cycles 8-11. The reserved version 2
+  # slot is intentional so cycle 8 doesn't have to renumber. Example
+  # placeholder commented out so the manifest stays valid:
+  #
+  # - id: "0002_events_partitioning"
+  #   version: 2
+  #   breaking: true            # ALTER TABLE on existing rows ⇒ canary
+  #   dependencies: ["0001_initial"]
+  #   description: "L2 cycle 8 — events monthly partitioning per Q-L2-2"

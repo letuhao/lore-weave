@@ -1,0 +1,275 @@
+# contracts/observability/inventory.yaml — L1.I.6 (RAID cycle 6)
+#
+# I19 observability inventory — the AUTHORITATIVE list of every metric +
+# log channel + trace span the LoreWeave platform emits.
+#
+# Each entry MUST declare:
+#   - name           — canonical metric/log/trace name
+#   - kind           — counter | gauge | histogram | summary | log | trace
+#   - layer          — L1 | L2 | L3 | L4 | L5 | L6 | L7
+#   - shipped_cycle  — RAID cycle that landed it
+#   - labels         — bounded list of label dimensions (cardinality controls)
+#   - description    — one-line semantics
+#   - owner          — service/team responsible
+#
+# The L1.K observability-inventory-lint.sh (cycle 7) enforces that:
+#   1. every metric scraped by Prometheus appears here
+#   2. no metric appears here without a Prometheus scrape config OR alert
+#   3. label sets in inventory match label sets in actual emissions
+#
+# Cycle 6 enumerates EVERY metric emitted by cycles 1-6 (see below). Future
+# cycles MUST append entries for each new metric.
+
+version: 1
+
+metrics:
+  # ────────────────────────────────────────────────────────────────────
+  # L1.E — Meta HA (cycle 1)
+  # ────────────────────────────────────────────────────────────────────
+  - name: pg_stat_replication_lag_bytes
+    kind: gauge
+    layer: L1
+    shipped_cycle: 1
+    labels: [application_name, shard_host, db_class]
+    description: 'replication lag in bytes per replica'
+    owner: sre
+    source: postgres-exporter
+
+  - name: pg_archive_last_archived_seconds
+    kind: gauge
+    layer: L1
+    shipped_cycle: 1
+    labels: [shard_host, db_class]
+    description: 'unix seconds of last successful WAL archive'
+    owner: sre
+    source: postgres-exporter
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.A-1/2/3/4 + L1.B — Meta tables + library (cycles 2/3/4)
+  # ────────────────────────────────────────────────────────────────────
+  - name: pg_stat_user_tables_n_tup_ins
+    kind: counter
+    layer: L1
+    shipped_cycle: 2
+    labels: [relname, reality_id, shard_host, db_class]
+    description: 'rows inserted per table — restricted to 7 audit tables for cardinality'
+    owner: platform
+    source: postgres-exporter
+    cardinality_notes: 'relname is restricted to the 7 audit-table allowlist in infra/postgres-exporter/postgres-exporter.yaml'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.C — Provisioner (cycle 5)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_provisioner_steps_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 5
+    labels: [step, outcome, shard_host]
+    description: 'provisioner 11-step outcomes (done/skipped) per shard'
+    owner: world-platform
+    source: services/world-service
+    cardinality_notes: 'step is from PROVISION_STEPS const (11 values); outcome ∈ {done, skipped}; shard_host is bounded by physical shard count'
+
+  - name: lw_deprovisioner_steps_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 5
+    labels: [step, outcome, shard_host]
+    description: 'deprovisioner 6-step outcomes per shard'
+    owner: world-platform
+    source: services/world-service
+
+  - name: shard_utilization_realities_used
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [shard_host]
+    description: 'count of active realities per shard'
+    owner: world-platform
+    source: services/world-service
+
+  - name: shard_utilization_realities_total
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [shard_host]
+    description: 'capacity (total realities slot) per shard'
+    owner: world-platform
+    source: services/world-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.G — Pgbouncer pool metrics (cycle 5)
+  # ────────────────────────────────────────────────────────────────────
+  - name: pgbouncer_pool_active_connections
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [pool_name, database, shard_host]
+    description: 'active backend connections per pgbouncer pool'
+    owner: sre
+    source: pgbouncer-exporter
+    cardinality_notes: 'pool_name + database bounded by databases.ini entries'
+
+  - name: pgbouncer_pool_waiting_clients
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [pool_name, database, shard_host]
+    description: 'clients waiting for a backend connection'
+    owner: sre
+    source: pgbouncer-exporter
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.F — Redis cache (cycle 5)
+  # ────────────────────────────────────────────────────────────────────
+  - name: redis_memory_used_bytes
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [instance, role]
+    description: 'redis memory in use'
+    owner: sre
+    source: redis-exporter
+
+  - name: redis_keyspace_keys
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [instance, db]
+    description: 'total keys per redis db'
+    owner: sre
+    source: redis-exporter
+
+  - name: lw_cache_invalidation_propagation_seconds
+    kind: histogram
+    layer: L1
+    shipped_cycle: 5
+    labels: [key_kind]
+    description: 'time from invalidation event to cache eviction across instances'
+    owner: platform
+    source: contracts/meta cache library
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.I — Per-DB metrics aggregation (cycle 6 — THIS CYCLE)
+  # ────────────────────────────────────────────────────────────────────
+  - name: pg_database_size_bytes
+    kind: gauge
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'per-reality database size — bounded label set per L1.I.5 cardinality controls'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_numbackends
+    kind: gauge
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'active backends per reality DB'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_xact_commit
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'committed transactions per reality DB'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_xact_rollback
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'rolled-back transactions per reality DB'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_tup_returned
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'tuples returned (read throughput proxy)'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_tup_inserted
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'tuples inserted (write throughput proxy)'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_tup_updated
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'tuples updated'
+    owner: world-platform
+    source: postgres-exporter
+
+  # Note: pg_stat_database_tup_deleted is intentionally NOT exposed in V1.
+  # It tracks DELETE-row counts which are rarely actionable in our model
+  # (we don't issue per-row DELETEs on per-reality data — soft-delete via
+  # status enum is preferred). If a future cycle needs it, add the entry
+  # AND bump the cardinality budget here + L1.I.9 test.
+
+  # ── L1.D migration-orchestrator metrics (cycle 6)
+  - name: lw_migration_orchestrator_active_runs
+    kind: gauge
+    layer: L1
+    shipped_cycle: 6
+    labels: []
+    description: 'count of migration runs currently in-flight (cap = 10)'
+    owner: sre
+    source: services/migration-orchestrator
+
+  - name: lw_migration_orchestrator_canary_aborted_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [migration_id, reason]
+    description: 'breaking-migration canary abort count'
+    owner: sre
+    source: services/migration-orchestrator
+    cardinality_notes: 'migration_id bounded by manifest.yaml entries; reason ∈ {canary_apply_failed, canary_verification_timeout, canary_verification_*}'
+
+  - name: lw_migration_orchestrator_attempts_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [migration_id, outcome]
+    description: 'migration attempt outcomes (succeeded/failed/transient_retry)'
+    owner: sre
+    source: services/migration-orchestrator
+
+# ────────────────────────────────────────────────────────────────────
+# CARDINALITY BUDGET (V1)
+# ────────────────────────────────────────────────────────────────────
+# Per-reality metrics: 7 (size + numbackends + xact_commit + xact_rollback +
+#                       tup_returned + tup_inserted + tup_updated)
+# Per-reality budget: 7 × N realities × ~5 shard_host distinct = 7N series
+# (shard_host is 1:1 with N, so the multiplicative factor reduces to ~1.)
+#
+# At V1 = 100 realities ⇒ 700 series. At V1+30d = 1000 realities ⇒ 7000.
+# At V3 = 10K realities ⇒ 70K series — still well below 1M (the typical
+# Prometheus single-instance practical ceiling).
+#
+# tests/integration/metrics_cardinality_test.go injects 100 realities
+# and asserts series count ≤ 7 × 100 = 700.
+
+cardinality_budget:
+  per_reality_metric_count: 7
+  v1_realities: 100
+  v1_target_series: 700
+  v1_plus_30d_realities: 1000
+  v1_plus_30d_target_series: 7000
+  v3_realities: 10000
+  v3_target_series: 70000

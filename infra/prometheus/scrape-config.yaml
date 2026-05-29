@@ -1,0 +1,101 @@
+# infra/prometheus/scrape-config.yaml — L1.I.1 (RAID cycle 6)
+#
+# Dynamic Prometheus scrape configuration for the LoreWeave foundation.
+#
+# Three scrape job classes:
+#   1. meta-postgres   — static targets (Patroni primary + sync + async)
+#   2. per-reality     — DYNAMIC via file_sd_configs; the L1.C provisioner
+#                        (services/world-service) writes one target file per
+#                        reality into /etc/prometheus/targets/per-reality/*.yaml
+#                        via its `register_prometheus_scrape` Effect. The
+#                        deprovisioner removes the file. Prometheus auto-
+#                        discovers via the file watcher (no SIGHUP needed
+#                        for file_sd_configs).
+#   3. infra-services  — orchestrator + provisioner + future services
+#
+# LOCKED decisions consumed:
+#   - Q-L1I-1 (OPEN_QUESTIONS_LOCKED.md line 45): HA pair via Prometheus
+#     federation for V1+. This file declares external_labels.prom_replica
+#     so the HA pair (prom-a + prom-b) can deduplicate via federation.
+#   - Q-L1I-2 (line 46): V1 retention = 30d Prometheus native. NO Thanos
+#     sidecar in this cycle. The retention.time CLI flag (set in the
+#     prom-server systemd unit or docker-compose override) enforces 30d.
+#     Thanos sidecar ships V1+30d.
+#
+# Integration with cycle 5 provisioner:
+#   The provisioner's Effect trait already has `register_prometheus_scrape`
+#   (services/world-service/src/provisioner.rs L1.C.1 step 7). The file
+#   that the provisioner writes is named after the reality_id and lives in
+#   the directory referenced by file_sd_configs below. Cycle 7 (L1.C ↔
+#   L1.I integration) will wire the actual file-write; until then, the
+#   FakeEffects test stub records the call to verify the contract. Tracked
+#   as D-PROVISIONER-PROM-SCRAPE-WIRING in docs/deferred/DEFERRED.md.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  # External labels — every series + alert + federation chunk carries these.
+  # `prom_replica` is the HA marker (Q-L1I-1). The remote-write receiver
+  # (Thanos or VM) uses this to deduplicate.
+  external_labels:
+    cluster: lw-meta
+    prom_replica: '${PROM_REPLICA_ID}'   # set by deploy ('a' or 'b')
+    env: '${LW_ENV}'                      # dev | staging | prod
+
+rule_files:
+  - /etc/prometheus/recording-rules.yaml
+  - /etc/prometheus/alerts/per-reality.yaml
+  - /etc/prometheus/alerts/meta.yaml
+
+scrape_configs:
+  # ────────────────────────────────────────────────────────────────────
+  # 1. meta-postgres  (static — 1 primary + 1 sync + 1 async)
+  # ────────────────────────────────────────────────────────────────────
+  - job_name: meta-postgres
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - meta-postgres-primary.internal:9187
+          - meta-postgres-sync-a.internal:9187
+          - meta-postgres-async-0.internal:9187
+        labels:
+          role: meta
+          db_class: meta-postgres
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^.]+)\..*'
+        target_label: shard_host
+        replacement: '$1'
+
+  # ────────────────────────────────────────────────────────────────────
+  # 2. per-reality  (DYNAMIC — file_sd_configs, provisioner-managed)
+  # ────────────────────────────────────────────────────────────────────
+  - job_name: per-reality-postgres
+    metrics_path: /metrics
+    # Reload on file mtime change — no SIGHUP needed.
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/per-reality/*.yaml
+        refresh_interval: 30s
+    relabel_configs:
+      # Reality ID is encoded in the target file's `labels.reality_id` and
+      # `labels.shard_host` (provisioner emits both at file-write time).
+      # We drop all other labels to keep cardinality bounded — strict
+      # cardinality controls per L1.I.5 invariant (only reality_id + shard_host
+      # may carry per-reality dimensionality).
+      - source_labels: [__meta_filepath]
+        regex: '.*/([^/]+)\.yaml$'
+        target_label: reality_id
+        replacement: '$1'
+
+  # ────────────────────────────────────────────────────────────────────
+  # 3. infra-services  (orchestrator, provisioner, etc.)
+  # ────────────────────────────────────────────────────────────────────
+  - job_name: infra-services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - migration-orchestrator.internal:9090
+          - world-service.internal:9090
+        labels:
+          role: infra

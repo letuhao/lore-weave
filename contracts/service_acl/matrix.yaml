@@ -1,0 +1,55 @@
+# contracts/service_acl/matrix.yaml — service-to-DB access control matrix
+#
+# Cycle 6 (L1.D.6) seeds this file with the migration-orchestrator entry.
+# Future cycles append rows as new services are introduced.
+#
+# Schema:
+#   version: <int>
+#   services:
+#     - name: <service-name>
+#       svid_spiffe_id: <SPIFFE id>
+#       permissions:
+#         <table_name>: [<op>, ...]  # ops ∈ {SELECT, INSERT, UPDATE, DELETE}
+#       notes: <free text>
+#
+# The matrix is consumed by:
+#   1. cycle 7 L1.K admission-control lint (svid → table-set check)
+#   2. cycle 36 admin-cli for grant-management commands
+#   3. Postgres role provisioning playbooks (translated into role grants)
+#
+# Q-L1D-1 V1 corollary: migration-orchestrator does NOT need DELETE on
+# instance_schema_migrations (no auto-rollback). Append-only audit tables
+# get INSERT only.
+
+version: 1
+
+services:
+  - name: migration-orchestrator
+    svid_spiffe_id: spiffe://loreweave.dev/sa/migration-orchestrator
+    notes: |
+      L1.D.6 — minimum permissions to drive schema migrations across per-reality
+      DBs and persist outcomes in the two meta tables. NO DELETE anywhere
+      (Q-L1D-1 V1 doc-only rollback; audit tables are append-only per S04 §12T.4).
+    permissions:
+      # READ: orchestrator inspects routing to know which realities exist
+      reality_registry:
+        - SELECT
+
+      # WRITE: orchestrator marks per-(reality,migration) state on success/failure
+      # No DELETE — re-running a migration uses INSERT-ON-CONFLICT UPDATE on the
+      # composite (reality_id, migration_id) PK. Rollback is doc-only (Q-L1D-1).
+      instance_schema_migrations:
+        - SELECT
+        - INSERT
+        - UPDATE
+
+      # WRITE: append-only event audit. Every attempt records start + outcome.
+      reality_migration_audit:
+        - INSERT
+        - SELECT
+
+      # WRITE: every MetaWrite() lands a meta_write_audit row in the same TX.
+      # The library does this on the orchestrator's behalf — list it here so
+      # the lint cross-check sees the dependency.
+      meta_write_audit:
+        - INSERT
