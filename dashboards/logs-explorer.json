@@ -1,0 +1,136 @@
+{
+  "_meta": {
+    "_comment": "L7.F.5 (cycle 33) — Grafana Loki query UI for foundation services. Provisioned via infra/grafana/provisioning/dashboards/. Cycle 33 ships skeleton; cycle 34+ extends with SLO drill-down + per-service variant.",
+    "shipped_cycle": 33,
+    "owner": "platform",
+    "questions_consumed": ["Q-L7F-1"],
+    "template_conformance": "Cycle-33 baseline — full STANDARDS.md conformance enforced cycle 34+"
+  },
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki-primary"
+      },
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "dedupStrategy": "exact",
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki-primary"},
+          "expr": "{service=~\"$service\", lw_env=\"$lw_env\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Live log stream — selected service",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki-primary"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10},
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki-primary"},
+          "expr": "sum by (service) (rate({lw_env=\"$lw_env\"}[5m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Log emission rate (lines/sec) by service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki-primary"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki-primary"},
+          "expr": "sum(rate({lw_env=\"$lw_env\"} |= \"level=ERROR\" [5m]))",
+          "legendFormat": "ERROR-lines",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "loki", "uid": "loki-primary"},
+          "expr": "sum(rate({lw_env=\"$lw_env\"} |= \"level=WARN\" [5m]))",
+          "legendFormat": "WARN-lines",
+          "refId": "B"
+        }
+      ],
+      "title": "ERROR + WARN rate (foundation)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prom-primary"
+      },
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 18},
+      "id": 4,
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "sum by (kind) (rate(lw_log_redactions_total[5m]))",
+          "legendFormat": "redactions: {{kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Source-side PII redaction rate (cycle-32 logger)",
+      "description": "Counts redactions performed by contracts/logging Redactor seam. Non-zero baseline OK; spike == regression that started leaking PII into raw log lines (caught at the SOURCE before reaching Vector ingest scrubber).",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["logs", "cycle-33", "L7.F"],
+  "templating": {
+    "list": [
+      {
+        "datasource": {"type": "loki", "uid": "loki-primary"},
+        "name": "service",
+        "label": "Service",
+        "query": {"label": "service", "type": 1},
+        "type": "query",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {"text": "All", "value": "$__all"}
+      },
+      {
+        "name": "lw_env",
+        "label": "Environment",
+        "query": "dev,staging,prod",
+        "type": "custom",
+        "current": {"text": "dev", "value": "dev"}
+      }
+    ]
+  },
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Logs Explorer (cycle 33 L7.F)",
+  "uid": "logs-explorer",
+  "version": 1
+}

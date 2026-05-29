@@ -1,0 +1,50 @@
+# infra/loki/retention.yaml — L7.F.4 (RAID cycle 33)
+#
+# Loki retention policy. Foundation V1 retention = 30 days.
+#
+# Rationale:
+#   - Match short-term Prometheus retention (Q-L1I-2: 30d native Prom).
+#   - 30d covers monthly compliance review window without storing PII
+#     longer than necessary (defense in depth — logs that escape the
+#     cycle-32 logger redactor + cycle-33 vector scrubber are at most
+#     30d from auto-deletion).
+#   - V1+30d = consider extending if SRE feedback says 30d insufficient
+#     for incident retrospectives (most retros within 14d in practice).
+#
+# Loki enforces retention via the `compactor` component (see
+# loki-distributed.yaml `compactor` block) which runs the retention
+# delete sweep periodically.
+#
+# Per-tenant override mechanism: if a tenant needs longer retention,
+# add to overrides below. Foundation V1 is single-tenant (auth_enabled
+# false) so this is documentation only.
+
+overrides:
+  # Default tenant (single-tenant V1)
+  default:
+    retention_period: 720h   # 30 days
+
+  # Reserved for V3+ multi-tenant. Examples:
+  # premium-tier:
+  #   retention_period: 2160h   # 90 days
+  # compliance-archive-tenant:
+  #   retention_period: 8760h   # 365 days
+
+# Per-stream retention (Loki 2.6+) — applied via label selectors.
+# Foundation V1: no per-stream override (uniform 30d).
+stream_retention:
+  - selector: '{lw_env="prod"}'
+    period: 720h    # 30d — uniform with default
+
+  - selector: '{lw_env="dev"}'
+    period: 168h    # 7d — dev logs flushed weekly to save disk
+
+  - selector: '{service=~".*-test"}'
+    period: 24h     # 1d — test logs ephemeral
+
+# Drift guard — cycle 33 verifier asserts default retention_period
+# matches the documented 720h (30d).
+guard:
+  expected_default_retention_hours: 720
+  locked_cycle: 33
+  question_id: Q-L1I-2

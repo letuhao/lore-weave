@@ -1,0 +1,118 @@
+{
+  "_meta": {
+    "_comment": "L7.H.9 (cycle 33) — Meta HA monitor: Patroni primary/sync/async + Prometheus HA pair (Q-L1I-1 kill-one-replica visualization). Uses recording rules from L7.H.2.",
+    "shipped_cycle": 33,
+    "owner": "platform",
+    "questions_consumed": ["Q-L1I-1", "Q-L1E-2"]
+  },
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 1}
+            ]
+          }
+        }
+      },
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {"calcs": ["lastNotNull"]}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "min(lw:postgres_up:by_shard{db_class=\"meta-postgres\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "Meta-Postgres HA state (Patroni primary/sync/async)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "lw:postgres_xact_rate:by_shard{db_class=\"meta-postgres\"}",
+          "legendFormat": "{{shard_host}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Meta-Postgres transaction rate by replica",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "lw:postgres_connections:by_shard{db_class=\"meta-postgres\"}",
+          "legendFormat": "{{shard_host}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Meta-Postgres connection count by replica",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "id": 4,
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "up{job=\"prom-ha-peer\"}",
+          "legendFormat": "peer {{instance}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prom-primary"},
+          "expr": "prometheus_build_info{prom_replica=~\"a|b\"}",
+          "legendFormat": "self prom_replica={{prom_replica}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Prometheus HA pair — kill-one-replica visualization (Q-L1I-1)",
+      "description": "If prom-a goes down, prom-b's `up{job=prom-ha-peer}` for prom-a drops to 0 while its own `prometheus_build_info` stays UP. Inverse on prom-b failure. Both showing UP = healthy HA.",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["meta-ha", "cycle-33", "L7.H", "platform"],
+  "templating": {
+    "list": [
+      {
+        "name": "lw_env",
+        "label": "Environment",
+        "query": "dev,staging,prod",
+        "type": "custom",
+        "current": {"text": "dev", "value": "dev"}
+      }
+    ]
+  },
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Meta HA (cycle 33 L7.H)",
+  "uid": "platform-meta-ha",
+  "version": 1
+}

@@ -771,6 +771,39 @@ metrics:
     source: contracts/tracing/sampler.go::ProbabilisticSampler.ShouldSample (caller-side emit)
     cardinality_notes: 'decision ∈ {drop, record_and_sample} × reason ∈ {probabilistic, force, parent_sampled, hint_drop} = 8 series total.'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L7.F + L7.H — Observability infra (cycle 33)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_log_density_pii_hits_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 33
+    labels: [pattern]
+    description: 'Cycle-33 L7.F.7 — PII hits found by the periodic log-density-detector.sh scan. pattern ∈ {email, phone, ipv4, ssn, cc_pan}. This is defense-in-depth audit metric: non-zero indicates the cycle-32 source-side Redactor AND the cycle-33 Vector ingest scrubber both missed a PII pattern (real bug). A spike here is a SEV1.'
+    owner: platform
+    source: scripts/log-density-detector.sh
+    cardinality_notes: 'pattern ∈ {email, phone, ipv4, ssn, cc_pan} — 5 series total.'
+
+  - name: lw_log_density_threshold_hits_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 33
+    labels: [result]
+    description: 'Cycle-33 L7.F.7 — count of log-density-detector runs that fired the over-threshold alert. result ∈ {over, under, empty}. Used by SRE to track noisy emitter regressions before they overload Loki.'
+    owner: platform
+    source: scripts/log-density-detector.sh
+    cardinality_notes: 'result ∈ {over, under, empty} — 3 series total.'
+
+  - name: lw_obs_stack_up
+    kind: gauge
+    layer: L7
+    shipped_cycle: 33
+    labels: [instance]
+    description: 'Cycle-33 L7.H.2 recording rule — `min(up{job="observability-stack"}) by (instance)`. Self-monitoring rollup for the Vector / Loki / Grafana stack. 1 = healthy, 0 = at least one obs component down. Drives the platform SLO summary dashboard.'
+    owner: platform
+    source: infra/prometheus/recording-rules/aggregation.yaml::lw:obs_stack_up
+    cardinality_notes: 'instance label per obs-stack container — typically ≤ 5 series (vector + loki + grafana + prom-a + prom-b).'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────

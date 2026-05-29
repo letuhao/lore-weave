@@ -1,0 +1,87 @@
+# infra/vector/per_service_routing.yaml — L7.F.6 (RAID cycle 33)
+#
+# Vector routing table for log labels. Maps container_name → service label
+# that Loki will index on. Single source of truth for service names in the
+# logging pipeline.
+#
+# Drift guard: service names MUST match cycle-19 L4.H service-name regex
+# (^[a-z][a-z0-9-]+$). The verify-cycle-33.sh script asserts each entry
+# passes this regex.
+#
+# Cross-references:
+#   - CLAUDE.md "Services" table (canonical names)
+#   - contracts/observability/inventory.yaml labels.service cardinality
+#   - cycle-19 L4.H scripts/service-naming-lint.sh
+
+routing:
+  # Foundation services (cycles 1-32 shipped)
+  - container_pattern: 'world-service*'
+    service: 'world-service'
+    layer: L1
+
+  - container_pattern: 'migration-orchestrator*'
+    service: 'migration-orchestrator'
+    layer: L1
+
+  - container_pattern: 'meta-postgres*'
+    service: 'meta-postgres'
+    layer: L1
+
+  - container_pattern: 'patroni*'
+    service: 'patroni'
+    layer: L1
+
+  - container_pattern: 'etcd*'
+    service: 'etcd'
+    layer: L1
+
+  - container_pattern: 'redis-cache*'
+    service: 'redis-cache'
+    layer: L1
+
+  - container_pattern: 'pgbouncer*'
+    service: 'pgbouncer'
+    layer: L1
+
+  # Observability stack (cycle 33 — self-monitoring)
+  - container_pattern: 'prometheus*'
+    service: 'prometheus'
+    layer: L7
+
+  - container_pattern: 'grafana*'
+    service: 'grafana'
+    layer: L7
+
+  - container_pattern: 'loki*'
+    service: 'loki'
+    layer: L7
+
+  - container_pattern: 'vector*'
+    service: 'vector'
+    layer: L7
+
+  - container_pattern: 'thanos*'
+    service: 'thanos'
+    layer: L7
+    # NOTE: thanos sidecar is STUBBED V1 (Q-L1I-2 V1+30d activation).
+    # Container pattern present so when sidecar activates, no routing change.
+
+  # Default fallback
+  - container_pattern: '*'
+    service: 'unknown'
+    layer: unknown
+
+# Per-service log volume budget (lines/min average). Used by
+# scripts/log-density-detector.sh to flag runaway log emitters.
+volume_budget:
+  world-service: 5000
+  migration-orchestrator: 500
+  meta-postgres: 1000
+  patroni: 200
+  etcd: 200
+  prometheus: 100
+  grafana: 50
+  loki: 100
+  vector: 50
+  thanos: 50
+  unknown: 200

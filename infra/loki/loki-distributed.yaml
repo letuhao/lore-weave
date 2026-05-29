@@ -1,0 +1,122 @@
+# infra/loki/loki-distributed.yaml — L7.F.3 (RAID cycle 33)
+#
+# Loki self-hosted configuration. Single-binary mode for foundation V1
+# (lower ops cost than distributed). Distributed mode (separate ingester,
+# querier, distributor) ships V3+ if volume justifies — see Q-L7F-1.
+#
+# LOCKED decisions consumed:
+#   - Q-L7F-1 (OPEN_QUESTIONS_LOCKED.md line 137): Loki self-hosted V1.
+#     This config is single-binary; storage is local filesystem in dev,
+#     S3 in prod (CLAUDE.md "Hosting Model"). NOT Datadog, NOT Splunk,
+#     NOT ELK.
+#
+# Storage:
+#   - dev: filesystem at /loki (docker volume)
+#   - staging/prod: S3 bucket `lw-loki-chunks` + `lw-loki-index`
+#     (terraform plant TBD — D-LOKI-S3-TERRAFORM in DEFERRED.md)
+#
+# Retention is configured in infra/loki/retention.yaml (L7.F.4).
+#
+# Schema: TSDB v13 (Loki 2.9+) — newer, faster than boltdb-shipper.
+
+auth_enabled: false   # foundation V1 single-tenant; multi-tenant V3+ via X-Scope-OrgID
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# ─────────────────────────────────────────────────────────────────────
+# Schema — TSDB v13 (current recommended)
+# ─────────────────────────────────────────────────────────────────────
+schema_config:
+  configs:
+    - from: 2026-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# ─────────────────────────────────────────────────────────────────────
+# Ingester — accept logs via /loki/api/v1/push (Vector default sink)
+# ─────────────────────────────────────────────────────────────────────
+ingester:
+  wal:
+    enabled: true
+    dir: /loki/wal
+  chunk_idle_period: 30m
+  chunk_target_size: 1572864   # 1.5MB — Loki recommended
+  chunk_encoding: snappy
+  max_chunk_age: 2h
+  lifecycler:
+    ring:
+      replication_factor: 1
+      kvstore:
+        store: inmemory
+
+# ─────────────────────────────────────────────────────────────────────
+# Querier
+# ─────────────────────────────────────────────────────────────────────
+querier:
+  query_timeout: 1m
+  engine:
+    timeout: 1m
+
+# ─────────────────────────────────────────────────────────────────────
+# Limits — per-tenant (single-tenant V1)
+# ─────────────────────────────────────────────────────────────────────
+limits_config:
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h   # 7d — older logs are operator error
+  ingestion_rate_mb: 16   # 16 MB/s — sized for foundation dev + small staging
+  ingestion_burst_size_mb: 32
+  max_query_lookback: 30d   # matches retention (L7.F.4)
+  max_label_value_length: 2048
+  max_label_name_length: 1024
+  max_label_names_per_series: 30
+  # cardinality protection — Loki blows up if labels explode
+  retention_period: 720h   # 30d (Q-L1I-2 alignment — logs match short-term metrics)
+
+# ─────────────────────────────────────────────────────────────────────
+# Compactor — runs retention enforcement
+# ─────────────────────────────────────────────────────────────────────
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 10
+  delete_request_store: filesystem
+
+# ─────────────────────────────────────────────────────────────────────
+# Analytics — disabled (foundation does not phone home)
+# ─────────────────────────────────────────────────────────────────────
+analytics:
+  reporting_enabled: false
+
+# ─────────────────────────────────────────────────────────────────────
+# Ruler (alert rules from Loki log queries — fed into Alertmanager later)
+# ─────────────────────────────────────────────────────────────────────
+ruler:
+  alertmanager_url: http://alertmanager:9093
+  # Foundation V1: alertmanager STUB (cycle 35 L7.J). Loki ruler may
+  # be configured but with empty rule set until L7.J ships.
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-temp
+  enable_api: true
