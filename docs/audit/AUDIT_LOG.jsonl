@@ -1049,3 +1049,9 @@
 {"ts":"2026-05-29T10:02:43Z","event":"secret_scan_skipped","cycle":18,"scope":"cycle","reason":"gitleaks_not_installed"}
 {"ts": "2026-05-29T10:02:52Z", "event": "in_progress_update", "cycle": 18, "phase": "SESSION", "retry": 0}
 {"ts": "2026-05-29T10:03:52Z", "event": "in_progress_update", "cycle": 18, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-29T10:05:10Z", "event": "in_progress_archived", "cycle": 18, "archived_to": "cycle-018-state.md"}
+{"ts":"2026-05-29T10:05:12Z","event":"worktree_removed","cycle":18,"name":"cycle-18-dps-1"}
+{"ts":"2026-05-29T10:05:12Z","event":"worktree_removed","cycle":18,"name":"cycle-18-dps-2"}
+{"ts":"2026-05-29T10:05:12Z","event":"worktree_removed","cycle":18,"name":"cycle-18-dps-3"}
+{"ts":"2026-05-29T10:05:27Z","event":"recovery_halted","cycle":18,"reason":"in_progress_missing"}
+{"ts": "2026-05-29T10:05:27Z", "event": "escalation_written", "cycle": 18, "type": "p5_recovery_inconsistent", "phase": "recovery"}
