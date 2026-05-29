@@ -74,7 +74,13 @@ impl ShapeGenerator for BooleanGenerator {
 
     fn generate(&self, ctx: &ShapeContext, _caller_rng: &mut Rng) -> ShapeResult {
         let mut rng = Rng::for_stage(ctx.seed as u64, b"boolean");
-        let template = pick_template(ctx.seed);
+        // **v4.3b**: honour an LLM-decided template selection from
+        // `ctx.params` when present; otherwise fall back to the seed-driven
+        // pick. Default (None) path is byte-identical to v4.3a.
+        let template = match &ctx.params {
+            Some(crate::shape::ParamOverride::Boolean { template: Some(t) }) => *t,
+            _ => pick_template(ctx.seed),
+        };
 
         // Build sub-polygons in local f64 unit coords (roughly [-1, 1]).
         // `fallback_used` is true when the clipper op returned empty or
@@ -505,6 +511,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.10,
             vertex_count_range: (32, 48),
+            params: None,
         }
     }
 
@@ -520,6 +527,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.35,
             vertex_count_range: (24, 48),
+            params: None,
         }
     }
 

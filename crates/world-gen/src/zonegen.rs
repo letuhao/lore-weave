@@ -163,11 +163,20 @@ fn plate_subattrs(
 ) -> Vec<SubAttr> {
     let plate = &world.plates[plate_id];
     let mut out = Vec::new();
-    for (zi, subs) in plate.subzone_sites.iter().enumerate() {
+    // **v4.2c**: iterate `zones[zi].subzones[l2].center` instead of the
+    // legacy `subzone_sites[zi]` Vec. Identity-preserving rename —
+    // `zones[zi].subzones[l2].center == subzone_sites[zi][l2]` by the
+    // v4.2a parallel-population invariant (asserted at runtime by
+    // `v4_2a_subzones_parallel_to_subzone_sites`), so emitted SubAttr
+    // sites match bit-for-bit and the blended_height + outline pixels
+    // stay byte-identical. The legacy Voronoi-only `Plate::subzone_at`
+    // path that the outline overlay below still uses is migrated in
+    // v4.2d when `Plate.subzone_sites` is dropped.
+    for (zi, zone) in plate.zones.iter().enumerate() {
         let (class, base) = zone_attrs(world, master_seed, plate_id, zi, ratios);
-        for (l2, &site) in subs.iter().enumerate() {
+        for (l2, sub) in zone.subzones.iter().enumerate() {
             let salt = zone_salt(master_seed, &[plate_id as u32, zi as u32, l2 as u32]);
-            out.push(SubAttr { site, zone: zi, class, base, salt });
+            out.push(SubAttr { site: sub.center, zone: zi, class, base, salt });
         }
     }
     out

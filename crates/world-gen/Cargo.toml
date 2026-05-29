@@ -41,6 +41,13 @@ geo-clipper = "0.9"
 geo-types = "0.7"
 # blocking HTTP for the optional LLM CreativeSeed authoring (Phase 4).
 reqwest = { workspace = true, features = ["blocking"] }
+# v4.3e: optional Postgres-backed DispatchCache. Uses tokio runtime
+# internally via block_on so the sync DispatchCache trait stays sync.
+# Only constructed when a caller opts in via `PostgresDispatchCache::connect`;
+# CLI / examples don't add `--cache postgres` until the world-gen crate
+# ships into a platform service with a real Postgres available.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "json", "macros"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 # Statistical benchmark harness — `cargo bench` (see benches/generate.rs).

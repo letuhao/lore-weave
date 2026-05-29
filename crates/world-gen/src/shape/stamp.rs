@@ -133,7 +133,23 @@ impl ShapeGenerator for StampGenerator {
             result.effective_kind = ShapeKind::Ellipse;
             return result;
         }
-        let template = allowed[(rng.next_u32() as usize) % allowed.len()];
+        // **v4.3b**: honour an LLM-decided template index when present and
+        // valid for this rank; otherwise fall back to the seed-driven
+        // random pick. RNG draw stays in the default path for byte-
+        // identical determinism. Out-of-range `template_id` silently
+        // falls back to random pick rather than erroring — provider
+        // hallucinations don't break generation.
+        let llm_template = match &ctx.params {
+            Some(crate::shape::ParamOverride::Stamp {
+                template_id: Some(id),
+            }) => StampTemplate::ALL
+                .get(*id as usize)
+                .copied()
+                .filter(|t| t.allowed_ranks().contains(&ctx.size_rank)),
+            _ => None,
+        };
+        let random_pick = allowed[(rng.next_u32() as usize) % allowed.len()];
+        let template = llm_template.unwrap_or(random_pick);
 
         // Per-template emit + transform to world space.
         let unit_polys = template.emit(&mut rng);
@@ -460,6 +476,7 @@ mod tests {
             world_theme: None,
             edge_jitter: 0.30,
             vertex_count_range: (24, 48),
+            params: None,
         }
     }
 
