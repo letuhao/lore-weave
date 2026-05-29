@@ -1,0 +1,30 @@
+# L7.K.8 deploy-domain admin commands — RAID cycle 38.
+#
+# The deploy domain hosts the break-glass-deploy escape hatch (SR05 §12AH.3):
+# an emergency-class deploy may bypass an active freeze with the
+# `break-glass-deploy` PR label + tech-lead CODEOWNERS approval + an
+# incident/security reference + a mandatory ≤24h post-deploy review.
+#
+# Distinct from the `ops` domain's deploy-freeze/deploy-thaw/canary-advance
+# (cycle 36) — those manage the freeze; this OVERRIDES it for an emergency.
+# Tier-1 destructive: dry-run + double-approval both required (the dual control
+# IS the tech-lead approval the §12AH.3 break-glass demands).
+
+domain: deploy
+commands:
+  - name: deploy break-glass
+    version: "1.0.0"
+    summary: "Break-glass override of an active deploy freeze for an emergency-class deploy (SR05 §12AH.3)."
+    handler: deployBreakGlass
+    params:
+      - {name: deploy_id,           type: string, required: true,  description: "deploy_audit row being unblocked"}
+      - {name: freeze_type,         type: enum,   required: true,  description: "slo_burn|scheduled|incident|security"}
+      - {name: tech_lead_approver,  type: string, required: true,  description: "CODEOWNERS tech-lead user_ref (must differ from actor)"}
+      - {name: incident_id,         type: string, required: false, description: "Emergency justification (incident_id OR security_finding_id)"}
+      - {name: security_finding_id, type: string, required: false, description: "Emergency justification (incident_id OR security_finding_id)"}
+      - {name: reason,              type: string, required: true,  description: "Audit explanation (post-deploy review within 24h)"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "38"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L7K-1]

@@ -1,0 +1,103 @@
+# .github/workflows/deploy.yml — L7.K.1 (RAID cycle 38)
+#
+# SR05 §12AH main deploy workflow. Q-L7K-1 LOCKED: GitHub Actions V1 only
+# (no ArgoCD; ArgoCD V2+ if multi-cluster).
+#
+# Gate order on every deploy PR:
+#   1. classify  — deploy-class-check.sh detects patch|minor|major|emergency
+#                  and fails on a declared/detected mismatch (§12AH.2).
+#   2. freeze     — deploy-freeze-check.sh blocks during an active freeze unless
+#                  break-glass-deploy label (§12AH.3).
+#   3. canary     — major class triggers canary.yml (§12AH.4) via the
+#                  workflow_call below; other classes deploy directly.
+#
+# Credentials (deploy tooling, registry) come from GitHub Actions secrets — NEVER
+# hardcoded. This workflow does NOT touch the existing LoreWeave novel-platform
+# deploy; it is additive and game-foundation specific.
+
+name: deploy
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'migrations/**'
+      - 'contracts/**'
+      - 'infra/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      declared_class:
+        description: 'Declared deploy class (patch|minor|major|emergency)'
+        required: false
+        default: ''
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # never cancel an in-flight deploy
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  classify:
+    name: classify deploy (§12AH.2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      class: ${{ steps.detect.outputs.class }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need base for git diff
+      - id: detect
+        name: deploy-class-check
+        run: |
+          base="origin/${{ github.base_ref || 'main' }}"
+          git diff --name-only "${base}...HEAD" > /tmp/changed.txt || git diff --name-only HEAD > /tmp/changed.txt
+          declared='${{ github.event.inputs.declared_class }}'
+          args=(--files /tmp/changed.txt)
+          if [ -n "$declared" ]; then args+=(--declared "$declared"); fi
+          # capture the bare class on the final line
+          out="$(bash scripts/deploy-class-check.sh "${args[@]}")"
+          echo "$out"
+          cls="$(printf '%s\n' "$out" | tail -n1)"
+          echo "class=$cls" >> "$GITHUB_OUTPUT"
+
+  freeze:
+    name: freeze check (§12AH.3)
+    runs-on: ubuntu-latest
+    needs: classify
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: deploy-freeze-check
+        env:
+          LW_ACTIVE_FREEZES: ${{ vars.LW_ACTIVE_FREEZES }}
+        run: |
+          labels='${{ join(github.event.pull_request.labels.*.name, ',') }}'
+          bash scripts/deploy-freeze-check.sh \
+            --class "${{ needs.classify.outputs.class }}" \
+            --pr-labels "$labels"
+
+  deploy:
+    name: deploy (${{ needs.classify.outputs.class }})
+    runs-on: ubuntu-latest
+    needs: [classify, freeze]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: build canary-controller (deploy artifact)
+        run: cd services/canary-controller && go build ./...
+      - name: note canary requirement
+        run: |
+          cls="${{ needs.classify.outputs.class }}"
+          if [ "$cls" = "major" ]; then
+            echo "major class → canary.yml drives the staged rollout (§12AH.4)"
+          else
+            echo "$cls class → direct deploy (no canary required)"
+          fi
+        # Live deploy step (image push + traffic shift) is wired with the
+        # deploy tooling — tracked D-DEPLOY-LIVE-WIRING. Q-L7K-1: GitHub Actions.

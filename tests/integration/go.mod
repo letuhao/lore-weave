@@ -58,6 +58,9 @@ require (
 	github.com/loreweave/foundation/services/incident-bot v0.0.0
 	github.com/loreweave/foundation/services/postmortem-bot v0.0.0
 	github.com/loreweave/foundation/services/statuspage-updater v0.0.0
+
+	// Cycle 38 — L7.K canary_advance_test + deploy_freeze_test
+	github.com/loreweave/foundation/services/canary-controller v0.0.0
 )
 
 replace github.com/loreweave/foundation/services/migration-orchestrator => ../../services/migration-orchestrator
@@ -106,3 +109,6 @@ replace github.com/loreweave/foundation/services/incident-bot => ../../services/
 replace github.com/loreweave/foundation/services/postmortem-bot => ../../services/postmortem-bot
 
 replace github.com/loreweave/foundation/services/statuspage-updater => ../../services/statuspage-updater
+
+// Cycle 38 — L7.K canary-controller (canary_advance_test + cohort_router contract)
+replace github.com/loreweave/foundation/services/canary-controller => ../../services/canary-controller

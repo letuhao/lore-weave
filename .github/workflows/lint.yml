@@ -1,0 +1,66 @@
+# .github/workflows/lint.yml — L7.K.2 (RAID cycle 38)
+#
+# ADDITIVE L7-operational lint workflow. This does NOT replace or duplicate the
+# 15 foundation lints in lint-foundation.yml (L1.K.1–L1.K.15) — that workflow
+# remains the authoritative runner for the L1.K lint set and is left untouched.
+#
+# Relationship (documented per cycle-38 reconciliation):
+#   - lint-foundation.yml  → the 15 L1.K lints (meta-write-discipline, pii-classify,
+#                            transitions-validation, … prompt-assembly-discipline).
+#   - lint.yml (this file) → the L7 operational lints layered on top:
+#       * deploy-class-check       (L7.K.6, §12AH.2 classification)
+#       * deploy-freeze-check      (L7.K.7, §12AH.3 freeze)
+#       * feature-freeze-enforcer  (L7.I.7, SR1-D3 burn-rate freeze; dry-run)
+#       * runbook-verification     (L7.B SR1-D6 runbook lint, if present)
+#       * tracing-completeness     (L7.G tracing lint, if present)
+#       * logging-discipline       (L7.E logging lint, if present)
+#       * observability-inventory  (cross-cut metrics registry drift)
+#
+# Both workflows run on the same PR triggers so the full lint surface (L1.K + L7)
+# gates every change. Each lint is its own matrix leg → parallel, fail-fast off.
+
+name: lint
+
+on:
+  pull_request:
+    branches: [main, mmo-rpg/foundation-mega-task]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  l7-lint:
+    name: ${{ matrix.lint.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        lint:
+          - name: deploy-class-check
+            cmd: bash scripts/deploy-class-check.sh --files /dev/null
+          - name: deploy-freeze-check
+            cmd: bash scripts/deploy-freeze-check.sh --class patch --pr-labels ''
+          - name: feature-freeze-enforcer
+            cmd: bash scripts/feature-freeze-enforcer.sh --dry-run
+          - name: observability-inventory-lint
+            cmd: bash scripts/observability-inventory-lint.sh
+          - name: logging-discipline-lint
+            cmd: bash scripts/logging-discipline-lint.sh
+          - name: tracing-completeness-lint
+            cmd: bash scripts/tracing-completeness-lint.sh
+          - name: runbook-verification-lint
+            cmd: bash scripts/runbook-verification-lint.sh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run ${{ matrix.lint.name }}
+        run: |
+          if [ -f "scripts/${{ matrix.lint.name }}.sh" ]; then
+            ${{ matrix.lint.cmd }}
+          else
+            echo "::notice::scripts/${{ matrix.lint.name }}.sh not present; skipping (lint lands in its owning cycle)"
+          fi
