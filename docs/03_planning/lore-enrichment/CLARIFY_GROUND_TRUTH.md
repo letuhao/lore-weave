@@ -76,4 +76,6 @@ What is genuinely NEW (not in knowledge-service): **gap detection over the KG, t
 - [x] `KNOWLEDGE_SERVICE_ARCHITECTURE.md` enrichment/generation mentions → D4-03 wiki-from-KG, summaries (enrichment aligns, feeds it).
 - [x] chat-service conventions + provider-adapter location (`client/`) for the new skeleton (§2).
 
+> **Note (2026-05-30, post-merge):** an external auto-pull advanced this branch to a newer `origin/main` (+38 commits). knowledge-service moved (`pass2_orchestrator.py`, metrics, and a much-expanded `tests/quality/` **judge-ensemble** eval with Chinese fixtures). Core boundary findings above still hold, but **re-verify the integration surface at C1** against the current code, and use the new judge-ensemble as the C15 eval seam.
+>
 > **CLARIFY COMPLETE.** All 6 questions locked (§4). Next: revise [SERVICE_DESIGN.md](SERVICE_DESIGN.md) to the corrected boundary — pipeline step [1] (ingest+seed-KG) is **delegated to knowledge-service**; enrichment consumes the KG and adds the generative layer. Then PLAN → RAID decomposition.
