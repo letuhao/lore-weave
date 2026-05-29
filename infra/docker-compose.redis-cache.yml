@@ -1,0 +1,53 @@
+# infra/docker-compose.redis-cache.yml — L1.F V1 docker-compose substitute
+# for the production Terraform (deferred V1+30d per Q-L1F-1 + Q-L1C-1).
+#
+# Usage:
+#   docker compose -f infra/docker-compose.meta-ha.yml \
+#                   -f infra/docker-compose.redis-cache.yml up -d
+#
+# V1 shared single-instance Sentinel + Redis. Production V3+ ships
+# per-AZ Sentinel clusters.
+
+services:
+  redis-cache:
+    image: redis:7.4.1-alpine
+    container_name: lw-redis-cache
+    command:
+      - redis-server
+      - /etc/redis/redis.conf
+    volumes:
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+    ports:
+      - "127.0.0.1:16379:6379"
+    tmpfs:
+      # AOF on tmpfs is fine for V1 dev — wiped on container restart.
+      # Production V1+30d uses an EBS-backed volume.
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - lw-meta
+
+  redis-sentinel:
+    image: redis:7.4.1-alpine
+    container_name: lw-redis-sentinel
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+    command:
+      - redis-sentinel
+      - /etc/redis/sentinel.conf
+    volumes:
+      - ./redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    ports:
+      - "127.0.0.1:26379:26379"
+    networks:
+      - lw-meta
+
+networks:
+  lw-meta:
+    external: true
+    name: lw-meta-ha

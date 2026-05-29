@@ -65,4 +65,21 @@ var (
 	// pii_registry row at all (never existed, or row was hard-deleted in
 	// non-production tear-down).
 	ErrPIINotFound = errors.New("meta: pii_registry row not found")
+
+	// L1.G.4 (cycle 5) — DbPoolRegistry errors. Mirror the Rust enum
+	// variants in services/world-service/src/errors.rs::ProvisionerError.
+
+	// ErrDbPoolConflict is returned when Register is asked to add a key
+	// that's already present with a different config. Caller should NOT
+	// retry — config drift must be resolved by reconciling either the
+	// existing registration or the new one.
+	ErrDbPoolConflict = errors.New("meta: db_pool conflicting registration")
+
+	// ErrDbPoolMissing is returned by Lookup when the key has no entry.
+	ErrDbPoolMissing = errors.New("meta: db_pool key not registered")
+
+	// ErrDbPoolInvalid is returned by Register when the config is
+	// malformed OR aggregate per-host backend cap would exceed
+	// MaxBackendConnections (pgbouncer max_db_connections=500 default).
+	ErrDbPoolInvalid = errors.New("meta: db_pool config invalid")
 )

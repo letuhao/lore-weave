@@ -1,0 +1,36 @@
+# scripts/capacity-thresholds.yaml — L1.C.7
+#
+# Per-cluster capacity thresholds for the L1.C.3 capacity planner.
+# Consumed by:
+#   - services/world-service::capacity_planner::CapacityThresholds (loader
+#     ships when the provisioner is wired up with the live config-fetcher
+#     in cycle 6)
+#   - scripts/shard-allocation-validation.sh (L1.K.4, cycle 7) — verifies
+#     no allocator ever exceeds `full`
+#
+# Default values match R04 §12D.6:
+#   warning = 0.80 → SRE alert fires; allocation still allowed
+#   full    = 0.95 → planner refuses to allocate; provisioner errors out
+#                     with NoShardCapacity (operator must spin up a new shard)
+#
+# CHANGE PROCEDURE:
+#   1. Open a PR amending only this file.
+#   2. Run `scripts/raid/verify-cycle-5.sh` to confirm tests still pass
+#      with the new values.
+#   3. CODEOWNERS reviewers: platform + SRE leads.
+#   4. After merge, the next provisioner restart picks up the values; no
+#      hot-reload (capacity is a cold config; restart is fast).
+
+version: 1
+
+clusters:
+  # V1 default — single shard cluster (Q-L1C-1 docker-compose locked).
+  - name: default
+    warning: 0.80
+    full: 0.95
+
+  # V2+ — multi-shard prod (placeholder shape; values may be tuned
+  # against real shard rebalance latency once load tests run in cycle 17+).
+  - name: prod
+    warning: 0.75
+    full: 0.90

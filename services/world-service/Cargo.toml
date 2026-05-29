@@ -1,17 +1,37 @@
 [package]
 name = "world-service"
-version = "0.1.0-cycle0"
-description = "Geography substrate service for the LLM MMO RPG — hosts the world_geometry aggregate (GEO_001) + the POL/SET/ROUTE activation generators. Cycle 0 scaffold: no behavior; awaits the DP-kernel + Cycle 1."
+version = "0.1.0-cycle5"
+description = "Geography substrate service for the LLM MMO RPG. Cycle 5 (L1.C) adds the per-reality DB provisioner / deprovisioner / capacity_planner / orphan_scanner modules + db_pool (L1.G.3); the GEO_001 aggregate behavior still awaits the DP-kernel (cycle 17)."
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+name = "world_service"
+path = "src/lib.rs"
+
 [[bin]]
 name = "world-service"
 path = "src/main.rs"
 
-# Cycle 0 is an empty-compiling scaffold — no dependencies yet.
-# Cycle 1 (GEO_001) adds deps once the DP-kernel aggregate framework exists.
+# L1.C.4 — orphan_scanner binary. Nightly cron entry-point per R04 §12D.7.
+# Reads reality_registry; marks partial-state realities and drops after a
+# 7-day grace period.
+[[bin]]
+name = "orphan_scanner"
+path = "src/bin/orphan_scanner.rs"
+
+# L1.C provisioner core + L1.G.3 db_pool share these. All workspace-pinned.
 [dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+meta-rs = { path = "../../crates/meta-rs" }
+
+[dev-dependencies]
+# Async testing not needed yet — provisioner core is sync over a Connection
+# trait, mirroring meta-rs::Connection. Real async impls land with sqlx later.

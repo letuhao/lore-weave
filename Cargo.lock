@@ -2690,7 +2690,15 @@ dependencies = [
 
 [[package]]
 name = "world-service"
-version = "0.1.0-cycle0"
+version = "0.1.0-cycle5"
+dependencies = [
+ "meta-rs",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "writeable"
