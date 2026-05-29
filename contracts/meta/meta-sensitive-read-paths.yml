@@ -57,3 +57,29 @@ paths:
     rationale: "Bulk scans can exfiltrate; library injects LIMIT cap or audits"
     reviewers:
       - security-team
+
+  # ── Cycle 22 (L4.Q PII SDK) — single-user GetPII / ErasePII tags. ───
+  # The cycle-22 contracts/pii SDK tags every GetPII + ErasePII call with
+  # one of these ids; the row lands in meta_read_audit (migration 014).
+  # The migration 014 CHECK enum is relaxed in a V1+30d migration to
+  # include these ids; the SDK already tags reads with them so the
+  # migration is data-compatible from day 1.
+  #
+  # Q-L1B-2: platform owns initial set; security team CODEOWNERS on
+  # changes — this entry is the platform-owned cycle-22 addition.
+  - id: pii_user_get
+    description: "Single-user PII fetch via contracts/pii SDK GetPII()"
+    tables:
+      - pii_registry
+      - pii_kek
+    rationale: "Per-user PII read goes through KMS decrypt; must be audited individually (GDPR Art. 15 right of access)"
+    reviewers:
+      - security-team
+
+  - id: pii_user_erase
+    description: "Single-user PII erasure via contracts/pii SDK ErasePII()"
+    tables:
+      - pii_kek
+    rationale: "KEK destroy is the crypto-shred operation that satisfies GDPR Art. 17; auditable in perpetuity"
+    reviewers:
+      - security-team

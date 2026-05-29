@@ -21,6 +21,11 @@
 # instance_schema_migrations (no auto-rollback). Append-only audit tables
 # get INSERT only.
 
+# L4.M.1 (cycle 22): the optional per-service `rpcs:` map FORMALIZES the
+# SR11 RPC-level authorization that cycle-6's table-grant `permissions:`
+# shape could not express. Entries below add `rpcs:` additively — the
+# cycle-6 lint that consumes the table-grant shape is undisturbed.
+
 version: 1
 
 services:
@@ -211,6 +216,42 @@ services:
         - SELECT
       meta_write_audit:
         - INSERT
+
+  # ── Cycle 22 (L4.M) — RPC-level entries: meta-worker is the SOLE inbound
+  # MetaWrite() target per I7/I8. Callers are the services that perform
+  # cross-DB writes via MetaWrite RPC (we list the cycle-6/7/10 services
+  # that already declare meta_write_audit INSERT on their `permissions:`).
+  - name: meta-worker-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/meta-worker
+    notes: |
+      L4.M.1 RPC declarations for meta-worker. Separate "meta-worker-rpcs"
+      entry rather than mutating the existing `meta-worker` permissions
+      entry, so the cycle-6 grant lint sees the unchanged shape. The L4.M
+      loader merges by name when CheckRPCAllowed builds its lookup index
+      (it indexes by the entry name as the callee). Production deployment
+      will consolidate the two entries once the cycle-6 lint also reads
+      the RPC map.
+    rpcs:
+      MetaWrite:
+        allowed_callers:
+          - migration-orchestrator
+          - world-service
+          - backup-scheduler
+          - publisher
+          - admin-cli
+          - archive-worker
+          - retention-worker
+        principal_mode: either
+      MetaWriteBatch:
+        allowed_callers:
+          - migration-orchestrator
+          - world-service
+        principal_mode: either
+      MetaReadSensitive:
+        allowed_callers:
+          - admin-cli
+          - publisher
+        principal_mode: requires_user
 
   # ── Cycle 11 (L2.K) — retention-worker (SEPARATE binary from archive-worker)
   - name: retention-worker

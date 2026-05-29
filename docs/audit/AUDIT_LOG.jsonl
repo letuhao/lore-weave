@@ -1094,3 +1094,18 @@
 {"ts": "2026-05-29T11:20:46Z", "event": "in_progress_archived", "cycle": 21, "archived_to": "cycle-021-state.md"}
 {"ts":"2026-05-29T11:20:51Z","event":"recovery_halted","cycle":21,"reason":"in_progress_missing"}
 {"ts": "2026-05-29T11:20:51Z", "event": "escalation_written", "cycle": 21, "type": "p5_recovery_inconsistent", "phase": "recovery"}
+{"ts": "2026-05-29T11:22:49Z", "event": "coordinator_next_cycle_emitted", "cycle": 22}
+{"ts":"2026-05-29T11:24:05Z","event":"startup_drift_check_passed","cycle":22,"version":"v1.6"}
+{"ts":"2026-05-29T11:24:05Z","event":"startup_verifier_complete","cycle":22,"steps":6}
+{"ts": "2026-05-29T11:24:15Z", "event": "in_progress_init", "cycle": 22, "title": "L4 ACL + Chaos + Alerts + PII (M+O+P+Q)"}
+{"ts": "2026-05-29T11:26:06Z", "event": "in_progress_update", "cycle": 22, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T11:27:18Z", "event": "in_progress_update", "cycle": 22, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-05-29T11:27:32Z", "event": "in_progress_update", "cycle": 22, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-29T11:43:37Z","event":"secret_scan_skipped","cycle":22,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T11:43:47Z", "event": "in_progress_update", "cycle": 22, "phase": "VERIFY", "retry": 0}
+{"ts": "2026-05-29T11:43:47Z", "event": "in_progress_update", "cycle": 22, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T11:44:54Z", "event": "in_progress_update", "cycle": 22, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T11:44:54Z", "event": "in_progress_update", "cycle": 22, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T11:44:54Z", "event": "in_progress_update", "cycle": 22, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T11:46:26Z", "event": "in_progress_update", "cycle": 22, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T11:46:36Z", "event": "in_progress_update", "cycle": 22, "phase": "COMMIT", "retry": 0}
