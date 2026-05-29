@@ -38,14 +38,16 @@ use delaunator::{triangulate, Point};
 use crate::biome::BiomeKind;
 use crate::climate::ClimateZone;
 use crate::creative_seed::SettlementDensity;
+use crate::culture::{self, Culture};
 use crate::feature::{self, Features};
 use crate::flat_climate::{compute_zone_climate, Biome, WorldClimateParams, ZoneClimate};
 use crate::flatworld::{FlatWorld, BASE_LEVEL};
 use crate::hydrology::{self, Hydrology};
 use crate::political::{self, Political};
 use crate::rng::Rng;
+use crate::routes::{self};
 use crate::settlement::{self};
-use crate::world_map::Settlement;
+use crate::world_map::{Route, Settlement};
 
 /// A mesh-shaped view of a `FlatWorld` ready to feed into the System-A
 /// civilization stack. Lengths of every per-cell vector equal
@@ -404,6 +406,73 @@ pub fn build_settlement(
         &political,
     );
     (view, features, political, hydro, settlements)
+}
+
+/// **Civ Ship 5** — full pipeline through System-A's routes builder.
+/// Chains [`build_settlement`] then [`routes::build`] using the
+/// `Hydrology.river_threshold` for river-route detection.
+pub fn build_routes(
+    world: &FlatWorld,
+    climate_params: &WorldClimateParams,
+    ocean_target: usize,
+    seed: u64,
+    density: SettlementDensity,
+) -> (
+    CivView,
+    Features,
+    Political,
+    Hydrology,
+    Vec<Settlement>,
+    Vec<Route>,
+) {
+    let (view, features, political, hydro, settlements) =
+        build_settlement(world, climate_params, ocean_target, seed, density);
+    let routes_v = routes::build(
+        &view.centers,
+        &view.neighbors,
+        &view.biomes,
+        &view.river_flux,
+        hydro.river_threshold,
+        &view.is_coast,
+        &settlements,
+    );
+    (view, features, political, hydro, settlements, routes_v)
+}
+
+/// **Civ Ship 6** — full pipeline through System-A's culture builder.
+/// Adds [`culture::build`] on top of [`build_routes`].
+///
+/// `culture_count` is the requested number of distinct cultures
+/// (clamped 1..=16 internally by System A). 5 is the typical default.
+#[allow(clippy::too_many_arguments)]
+pub fn build_culture(
+    world: &FlatWorld,
+    climate_params: &WorldClimateParams,
+    ocean_target: usize,
+    seed: u64,
+    density: SettlementDensity,
+    culture_count: u8,
+) -> (
+    CivView,
+    Features,
+    Political,
+    Hydrology,
+    Vec<Settlement>,
+    Vec<Route>,
+    Culture,
+) {
+    let (view, features, political, hydro, settlements, routes_v) =
+        build_routes(world, climate_params, ocean_target, seed, density);
+    let culture_v = culture::build(seed, &view.centers, &view.neighbors, &view.biomes, culture_count);
+    (
+        view,
+        features,
+        political,
+        hydro,
+        settlements,
+        routes_v,
+        culture_v,
+    )
 }
 
 /// **Civ Ship 3** — full pipeline through System-A's political builder.
@@ -946,5 +1015,67 @@ mod tests {
             assert_eq!(sa.cell, sb.cell);
             assert_eq!(sa.role, sb.role);
         }
+    }
+
+    #[test]
+    fn build_routes_produces_routes_on_default_world() {
+        // Ship 5 acceptance: System-A's routes::build, fed the full civ
+        // pipeline, must produce ≥1 Route on a default-sized world.
+        let world = generate(&FlatParams::default());
+        let (_, _, _, _, _, routes_v) = build_routes(
+            &world,
+            &WorldClimateParams::default(),
+            64,
+            42,
+            SettlementDensity::Medium,
+        );
+        assert!(
+            !routes_v.is_empty(),
+            "default world should produce ≥1 route"
+        );
+    }
+
+    #[test]
+    fn build_culture_produces_multiple_regions_on_default_world() {
+        // Ship 6 acceptance: System-A's culture::build, fed the full civ
+        // pipeline, must produce ≥2 culture regions when culture_count=5
+        // is requested on a default-sized world.
+        let world = generate(&FlatParams::default());
+        let (_, _, _, _, _, _, culture_v) = build_culture(
+            &world,
+            &WorldClimateParams::default(),
+            64,
+            42,
+            SettlementDensity::Medium,
+            5,
+        );
+        assert!(
+            culture_v.culture_regions.len() >= 2,
+            "default world should produce ≥2 culture regions, got {}",
+            culture_v.culture_regions.len()
+        );
+    }
+
+    #[test]
+    fn build_culture_is_deterministic_per_seed() {
+        let world = generate(&FlatParams::default());
+        let (_, _, _, _, _, _, a) = build_culture(
+            &world,
+            &WorldClimateParams::default(),
+            32,
+            99,
+            SettlementDensity::Medium,
+            5,
+        );
+        let (_, _, _, _, _, _, b) = build_culture(
+            &world,
+            &WorldClimateParams::default(),
+            32,
+            99,
+            SettlementDensity::Medium,
+            5,
+        );
+        assert_eq!(a.culture_of, b.culture_of);
+        assert_eq!(a.culture_regions.len(), b.culture_regions.len());
     }
 }
