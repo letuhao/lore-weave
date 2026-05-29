@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"strings"
 	"testing"
 )
 
@@ -12,13 +11,23 @@ func TestValidate_Empty(t *testing.T) {
 	}
 }
 
-func TestValidate_NoDevPrefix(t *testing.T) {
-	if _, err := Validate("foo:bar"); err == nil || !strings.Contains(err.Error(), "dev:") {
-		t.Fatalf("want dev: prefix error, got %v", err)
+func TestValidate_NonDevTokenFailsClosed(t *testing.T) {
+	// A non-dev token must be REJECTED until real signed-JWT verification is
+	// wired (PRR-29/PRR-30) — never trusted unverified.
+	if _, err := Validate("eyJhbGciOi.fake.jwt"); err == nil || !errors.Is(err, ErrAuth) {
+		t.Fatalf("want ErrAuth fail-closed on unverified non-dev token, got %v", err)
+	}
+}
+
+func TestValidate_DevTokenDisabledByDefault(t *testing.T) {
+	// Without the explicit dev opt-in env, the forgeable dev token is rejected (PRR-29).
+	if _, err := Validate("dev:ops1:sre:admin:read"); err == nil || !errors.Is(err, ErrAuth) {
+		t.Fatalf("want ErrAuth when dev tokens disabled, got %v", err)
 	}
 }
 
 func TestValidate_HappyPath_PipeScopes(t *testing.T) {
+	t.Setenv("ADMIN_CLI_ALLOW_DEV_TOKENS", "1")
 	c, err := Validate("dev:ops1:sre:admin:read|admin:destructive")
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
@@ -32,6 +41,7 @@ func TestValidate_HappyPath_PipeScopes(t *testing.T) {
 }
 
 func TestValidate_BreakGlassSuffix(t *testing.T) {
+	t.Setenv("ADMIN_CLI_ALLOW_DEV_TOKENS", "1")
 	c, err := Validate("dev:ops1:founder:admin:destructive:break-glass")
 	if err != nil {
 		t.Fatalf("Validate: %v", err)

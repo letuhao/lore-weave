@@ -95,22 +95,26 @@ func run(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet(full, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		fToken       = fs.String("token", "", "admin JWT (dev:user:role:scopes[:break-glass])")
-		fReason      = fs.String("reason", "", "audit reason (>=10 chars for tier-1/2)")
-		fSecondActor = fs.String("second-actor", "", "tier-1 dual-approval secondary actor (must differ from caller)")
-		fDryRun      = fs.Bool("dry-run", false, "preview-only; no side effects")
-		fConfirm     = fs.Bool("confirm", false, "proceed with destructive run (mutually exclusive with --dry-run)")
-		fHelp        = fs.Bool("help", false, "show this command's parameters")
-		fJSON        = fs.Bool("json", false, "machine-readable output")
+		fToken            = fs.String("token", "", "admin JWT (dev:user:role:scopes[:break-glass])")
+		fReason           = fs.String("reason", "", "audit reason (>=10 chars for tier-1/2)")
+		fSecondActor      = fs.String("second-actor", "", "tier-1 dual-approval secondary actor (must differ from caller)")
+		fSecondActorToken = fs.String("second-actor-token", "", "tier-1 dual-approval: the second actor's OWN signed token")
+		fConfirmToken     = fs.String("confirm-token", "", "tier-1 typed-confirmation: re-type the target resource id")
+		fDryRun           = fs.Bool("dry-run", false, "preview-only; no side effects")
+		fConfirm          = fs.Bool("confirm", false, "proceed with destructive run (mutually exclusive with --dry-run)")
+		fHelp             = fs.Bool("help", false, "show this command's parameters")
+		fJSON             = fs.Bool("json", false, "machine-readable output")
 	)
 	// Dynamic per-param flags so each registry parameter gets a CLI flag.
 	// Skip names that collide with reserved framework flags — the
 	// framework-level flag absorbs them (e.g., `reason`, `dry_run`).
 	reserved := map[string]bool{
 		"token": true, "reason": true, "second-actor": true,
+		"second-actor-token": true, "confirm-token": true,
 		"dry-run": true, "confirm": true, "help": true, "json": true,
 		// Underscore variants in registry → take the framework flag.
 		"dry_run": true, "second_actor": true,
+		"second_actor_token": true, "confirm_token": true,
 	}
 	dynParams := make(map[string]*string)
 	for _, p := range c.Params {
@@ -155,14 +159,16 @@ func run(args []string, stdout, stderr *os.File) int {
 	mem := audit_emitter.NewMemorySink()
 	emitter := audit_emitter.New(stdoutSink{stdout: stderr, mem: mem}, nil)
 
-	handler := defaultHandlers().Get(c.Name)
+	handler := defaultHandlers().Resolve(c)
 	inv := framework.Invocation{
-		Command:     c,
-		Params:      params,
-		DryRun:      *fDryRun,
-		Confirm:     *fConfirm,
-		Reason:      *fReason,
-		SecondActor: *fSecondActor,
+		Command:          c,
+		Params:           params,
+		DryRun:           *fDryRun,
+		Confirm:          *fConfirm,
+		Reason:           *fReason,
+		SecondActor:      *fSecondActor,
+		SecondActorToken: *fSecondActorToken,
+		ConfirmToken:     *fConfirmToken,
 	}
 	ctx := context.Background()
 	out, rerr := framework.Run(ctx, c, inv, *fToken, handler, emitter)
@@ -172,10 +178,10 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 	if *fJSON {
 		_ = json.NewEncoder(stdout).Encode(map[string]any{
-			"command":      c.Name,
-			"dry_run":      *fDryRun,
-			"output":       out,
-			"audit_rows":   mem.Count(),
+			"command":    c.Name,
+			"dry_run":    *fDryRun,
+			"output":     out,
+			"audit_rows": mem.Count(),
 		})
 	} else {
 		fmt.Fprintln(stdout, out)
@@ -326,18 +332,18 @@ func (s stdoutSink) Write(ctx context.Context, a audit_emitter.Action) error {
 	}
 	enc := json.NewEncoder(s.stdout)
 	return enc.Encode(map[string]any{
-		"audit":         "admin_action",
-		"command":       a.CommandName,
-		"actor":         a.Actor,
-		"actor_role":    a.ActorRole,
-		"reason":        a.Reason,
-		"params_hash":   a.ParamsHash,
-		"impact":        a.ImpactClass,
-		"dry_run":       a.DryRun,
-		"second_actor":  a.DoubleApprovalRef,
-		"outcome":       a.Outcome,
-		"err_hash":      a.ErrorDetailHash,
-		"started_at":    a.StartedAt.UTC(),
-		"finished_at":   a.FinishedAt.UTC(),
+		"audit":        "admin_action",
+		"command":      a.CommandName,
+		"actor":        a.Actor,
+		"actor_role":   a.ActorRole,
+		"reason":       a.Reason,
+		"params_hash":  a.ParamsHash,
+		"impact":       a.ImpactClass,
+		"dry_run":      a.DryRun,
+		"second_actor": a.DoubleApprovalRef,
+		"outcome":      a.Outcome,
+		"err_hash":     a.ErrorDetailHash,
+		"started_at":   a.StartedAt.UTC(),
+		"finished_at":  a.FinishedAt.UTC(),
 	})
 }

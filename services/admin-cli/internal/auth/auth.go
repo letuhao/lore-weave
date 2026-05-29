@@ -13,6 +13,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -28,26 +29,45 @@ type Claims struct {
 	ExpiresUnix int64
 }
 
-// Validate inspects a token. V1 SKELETON: token format
+// AllowDevTokensEnv, when set to "1", enables the dev-token shortcut. It MUST
+// be unset in production: production fails closed and requires a real signed
+// JWT verified against the auth-service key (pending PRR-30 / D-ADMIN-CLI-JWT).
+// This prevents the forgeable `dev:` token from ever authenticating a real env.
+const AllowDevTokensEnv = "ADMIN_CLI_ALLOW_DEV_TOKENS"
+
+// Validate inspects an admin token and returns Claims on success.
 //
-//	dev:<user>:<role>:<scopes-csv-using-pipe-not-comma>[:break-glass]
+// Security posture (PRR-29, fail-closed):
+//   - `dev:` tokens are a LOCAL-DEV shortcut, accepted ONLY when
+//     ADMIN_CLI_ALLOW_DEV_TOKENS=1. Otherwise rejected — a forged dev token
+//     cannot authenticate in production.
+//   - Any non-`dev:` token requires real signed-JWT verification, not yet wired
+//     (PRR-30). Until then Validate FAILS CLOSED rather than trust an
+//     unverified token. Production wiring swaps in an RS256/JWS verifier reading
+//     the auth-service signing key; the CALLER (dispatcher) does not change.
 //
-// Scopes use `|` as separator (NOT `,`) because individual scope strings like
-// `admin:read` contain a colon and we use `:` as the outer field separator.
-// Example: `dev:ops1:sre:admin:read|admin:destructive`.
-//
-// Returns Claims on success.
-//
-// Production swap: replace this with a real RS256/JWS verifier reading the
-// auth-service signing key. The CALLER does not change.
+// Dev-token format (when enabled): dev:<user>:<role>:<scopes-pipe-separated>[:break-glass]
+// Scopes use `|` (NOT `,`) because scope strings like `admin:read` contain a
+// colon and `:` is the outer field separator.
 func Validate(token string) (Claims, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return Claims{}, fmt.Errorf("%w: empty token", ErrAuth)
 	}
-	if !strings.HasPrefix(token, "dev:") {
-		return Claims{}, fmt.Errorf("%w: V1 skeleton only accepts `dev:` tokens (real JWT wires in cycle 18+ auth-service)", ErrAuth)
+	if strings.HasPrefix(token, "dev:") {
+		if os.Getenv(AllowDevTokensEnv) != "1" {
+			return Claims{}, fmt.Errorf("%w: `dev:` tokens are disabled (fail-closed). Set %s=1 for LOCAL DEV only; production must present a signed JWT (real verifier pending PRR-30 / D-ADMIN-CLI-JWT)", ErrAuth, AllowDevTokensEnv)
+		}
+		return parseDevToken(token)
 	}
+	// Non-dev token: real JWT verification is not wired yet (PRR-30). Refuse
+	// rather than accept an unverified token.
+	return Claims{}, fmt.Errorf("%w: signed-JWT verification not yet wired (PRR-30 / D-ADMIN-CLI-JWT); refusing to authenticate an unverified token", ErrAuth)
+}
+
+// parseDevToken parses the dev-token shortcut. Only reached when
+// ADMIN_CLI_ALLOW_DEV_TOKENS=1 (see Validate).
+func parseDevToken(token string) (Claims, error) {
 	body := strings.TrimPrefix(token, "dev:")
 	// SplitN(":", 3) so anything after user:role is one big "rest" string
 	// (scopes may contain colons; break-glass suffix lives at the end).
@@ -57,7 +77,6 @@ func Validate(token string) (Claims, error) {
 	}
 	scopesRaw := parts[2]
 	breakGlass := false
-	// If `:break-glass` is suffixed, slice it off.
 	if strings.HasSuffix(scopesRaw, ":break-glass") {
 		scopesRaw = strings.TrimSuffix(scopesRaw, ":break-glass")
 		breakGlass = true

@@ -18,6 +18,7 @@ import (
 
 	"github.com/loreweave/foundation/services/admin-cli/internal/audit_emitter"
 	"github.com/loreweave/foundation/services/admin-cli/internal/auth"
+	"github.com/loreweave/foundation/services/admin-cli/internal/confirmation"
 	"github.com/loreweave/foundation/services/admin-cli/internal/dry_run"
 	"github.com/loreweave/foundation/services/admin-cli/internal/impact_classifier"
 )
@@ -35,6 +36,9 @@ type Invocation struct {
 	ActorRole   string
 	Reason      string
 	SecondActor string // dual-approval secondary actor (tier-1 only)
+
+	SecondActorToken string // the second actor's OWN signed token (PRR-43 dual-actor)
+	ConfirmToken     string // typed-confirmation token (PRR-44; tier-1 RequireTypedConfirm)
 }
 
 // Run is the single entry point. ALL admin commands MUST be dispatched
@@ -91,11 +95,36 @@ func Run(
 		return "", err
 	}
 
-	// 4. double approval (tier-1 only)
+	// 4. double approval (tier-1 only) — the second actor must present their
+	// OWN validated token (PRR-43); a name string alone is forgeable by a
+	// single operator.
 	if policy.RequireDoubleApproval && inv.Confirm {
 		if inv.SecondActor == "" || inv.SecondActor == inv.Actor {
 			return "", fmt.Errorf("admin-cli: tier-1 command %q requires --second-actor (different from %q)",
 				c.Name, inv.Actor)
+		}
+		secondClaims, serr := auth.Validate(inv.SecondActorToken)
+		if serr != nil {
+			return "", fmt.Errorf("admin-cli: tier-1 command %q requires a valid --second-actor-token: %w", c.Name, serr)
+		}
+		if secondClaims.Subject != inv.SecondActor {
+			return "", fmt.Errorf("admin-cli: --second-actor-token subject %q does not match --second-actor %q", secondClaims.Subject, inv.SecondActor)
+		}
+		if secondClaims.Subject == inv.Actor {
+			return "", fmt.Errorf("admin-cli: second actor must differ from primary actor %q", inv.Actor)
+		}
+		if !secondClaims.HasScope(scope) {
+			return "", fmt.Errorf("admin-cli: second actor %q lacks required scope %q", secondClaims.Subject, scope)
+		}
+	}
+
+	// 4b. typed confirmation (tier-1 RequireTypedConfirm) — operator must re-type
+	// the target resource value, proving intent on the specific target (PRR-44,
+	// R13 §12L.4). Only gates the real --confirm run, not --dry-run.
+	if policy.RequireTypedConfirm && inv.Confirm {
+		challenge := confirmChallenge(c, inv.Params)
+		if cerr := confirmation.Check(challenge, inv.ConfirmToken); cerr != nil {
+			return "", fmt.Errorf("admin-cli: %q typed-confirmation required — pass --confirm-token=%q: %w", c.Name, challenge, cerr)
 		}
 	}
 
@@ -164,3 +193,19 @@ func hashErr(e error) string {
 
 // Clock is exposed so tests can pin time.
 type Clock func() time.Time
+
+// confirmChallenge derives the typed-confirmation token an operator must
+// re-type for a destructive command (PRR-44): the value of the command's
+// primary target-resource param, falling back to the command name. Re-typing
+// the specific target prevents an accidental destructive --confirm.
+func confirmChallenge(c *Command, params map[string]string) string {
+	for _, key := range []string{
+		"reality_id", "reality", "target_id", "id", "character_id",
+		"user_ref_id", "npc_id", "shard_id", "projection",
+	} {
+		if v := strings.TrimSpace(params[key]); v != "" {
+			return v
+		}
+	}
+	return c.Name
+}

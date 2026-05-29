@@ -123,6 +123,7 @@ commands:
 // (Before + After) on successful invocation. Verifies the audit hook lives at
 // framework level (DRY) and handlers don't need to think about it.
 func TestRun_AuditEmittedBeforeAndAfter(t *testing.T) {
+	t.Setenv("ADMIN_CLI_ALLOW_DEV_TOKENS", "1")
 	c := &Command{
 		Domain:                 "reality",
 		Name:                   "reality stats",
@@ -159,6 +160,7 @@ func TestRun_AuditEmittedBeforeAndAfter(t *testing.T) {
 
 // TestRun_FailureEmitsAuditFailure — handler error => "failed" audit row.
 func TestRun_FailureEmitsAuditFailure(t *testing.T) {
+	t.Setenv("ADMIN_CLI_ALLOW_DEV_TOKENS", "1")
 	c := &Command{
 		Domain: "reality", Name: "reality stats", Verb: "stats",
 		ImpactClass: Tier3Informational, Version: "1.0.0",
@@ -185,6 +187,7 @@ func TestRun_FailureEmitsAuditFailure(t *testing.T) {
 
 // TestRun_Tier1RequiresDryRunOrConfirm — operator must pass --dry-run or --confirm.
 func TestRun_Tier1RequiresDryRunOrConfirm(t *testing.T) {
+	t.Setenv("ADMIN_CLI_ALLOW_DEV_TOKENS", "1")
 	c := &Command{
 		Domain: "reality", Name: "reality force-close", Verb: "force-close",
 		ImpactClass: Tier1Destructive, Version: "1.0.0",
@@ -206,6 +209,7 @@ func TestRun_Tier1RequiresDryRunOrConfirm(t *testing.T) {
 
 // TestRun_Tier1RequiresSecondActor — --confirm + tier-1 without --second-actor rejected.
 func TestRun_Tier1RequiresSecondActor(t *testing.T) {
+	t.Setenv("ADMIN_CLI_ALLOW_DEV_TOKENS", "1")
 	c := &Command{
 		Domain: "reality", Name: "reality force-close", Verb: "force-close",
 		ImpactClass: Tier1Destructive, Version: "1.0.0",
@@ -226,6 +230,7 @@ func TestRun_Tier1RequiresSecondActor(t *testing.T) {
 
 // TestRun_AuthRejectsBadScope — calling tier-1 with admin:read only is rejected.
 func TestRun_AuthRejectsBadScope(t *testing.T) {
+	t.Setenv("ADMIN_CLI_ALLOW_DEV_TOKENS", "1")
 	c := &Command{
 		Domain: "reality", Name: "reality force-close", Verb: "force-close",
 		ImpactClass: Tier1Destructive, Version: "1.0.0",
