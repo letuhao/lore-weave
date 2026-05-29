@@ -32,6 +32,20 @@
 //! - [`event_store_pg`] — Postgres impl of [`EventStore`]; WRAPPED `PgPool`
 //!   behind `pub(crate) pool: Arc<PgPool>` per Q-L4A-1.
 //!
+//! ### Cycle 20 / L4.C + L4.E + L4.K — entity_status + turn + errors Rust mirrors
+//! - [`entity_status`] — Rust mirror of `contracts/entity_status/` (S10 §12Z):
+//!   typed [`entity_status::GoneState`] + [`entity_status::Resolver`] 4-layer
+//!   cascade (PIIKek → reality_registry → reality_ancestry → projections) +
+//!   compound precedence + cache surface. Q-L4-1 parity.
+//! - [`turn`] — Rust mirror of `contracts/turn/` (SR11 §12AN):
+//!   typed [`turn::TurnState`] 8-variant enum + [`turn::TurnContext`] +
+//!   turn lifecycle hooks (turn_start, turn_end) integrating with cycle-18
+//!   lifecycle. Q-L4-1 parity.
+//! - [`turn_errors`] — Rust mirror of `contracts/errors/` canonical error
+//!   taxonomy ([`turn_errors::ErrorClass`] 4-variant: UserError, SystemError,
+//!   Transient, Permanent) + [`turn_errors::ErrorEnvelope`] + exhaustive
+//!   stable error codes (no "Other" catch-all).
+//!
 //! ### Cycle 19 / L4.H + L4.I + L4.J — observability + capacity + supply_chain Rust mirrors
 //! - [`observability`] — Rust mirror of `contracts/observability/` (SR12 §12AO):
 //!   typed [`observability::Inventory`] + [`observability::Admission`] +
@@ -73,6 +87,7 @@
 pub mod aggregate;
 pub mod capacity;
 pub mod dependencies;
+pub mod entity_status;
 pub mod envelope;
 pub mod errors;
 pub mod event;
@@ -89,6 +104,8 @@ pub mod resilience;
 pub mod snapshot;
 pub mod snapshot_cache;
 pub mod supply_chain;
+pub mod turn;
+pub mod turn_errors;
 pub mod upcaster;
 
 // ── Cycle 8 + 10 + 12 re-exports (unchanged from prior cycles) ────────────

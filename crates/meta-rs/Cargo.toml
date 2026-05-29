@@ -6,7 +6,7 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Rust hot-path port of contracts/meta — minimal MetaRead surface for kernel callers (Q-L1B-4)."
+description = "Rust hot-path port of contracts/meta (Q-L1B-4) — full MetaWrite + AttemptStateTransition + caching + audit surface."
 
 [lib]
 path = "src/lib.rs"

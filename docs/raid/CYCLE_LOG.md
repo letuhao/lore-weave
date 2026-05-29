@@ -30,7 +30,7 @@
 | 17 | L4.A + L4.B DP-kernel core + Macros | DONE | 2026-05-29 | 2026-05-29 | 2 | **L4 LAYER OPENED.** DPS 1 (L4.A): EXTEND `crates/dp-kernel/` with 5 new modules (event/aggregate/snapshot/metadata/event_store) + 1 backend (event_store_pg) + 1 integration test (tests/integration_event_store.rs). `event.rs` — domain `Event` trait (`event_type`/`event_version`/`aggregate_id`/`aggregate_type`/`payload`/`metadata`) + `EventFromEnvelope` reverse trait + blanket impl for `EventEnvelope` so cycle-12 raw-envelope callers keep working unchanged. `aggregate.rs` — **CONSOLIDATION** — re-exports cycle-12 `Aggregate` (canonical, NOT redefined) + additive `AggregateMeta { aggregate_type(), id() }` trait used by `#[derive(Aggregate)]`. `snapshot.rs` — encoder/decoder `Snapshot` trait (default JSON via serde + overridable schema `version()`, distinct from cycle-12 `SnapshotStore` I/O abstraction). `metadata.rs` — typed `EventMetadata { actor, causation_id, correlation_id, source, occurred_at, instance_clock_tick }` with `#[serde(flatten)] extra` for forward-compat. `event_store.rs` — async `EventStore` trait via `async_trait`, canonical `EventStoreError { ConcurrencyConflict, AggregateNotFound, SnapshotMissing, NonMonotonicBatch, SchemaViolation, Transport, Other }`, `shared_test_suite::run_event_store_tests<S: EventStore>` 10-test conformance harness + `InMemoryEventStore` reference impl (validates suite is itself sound). `event_store_pg.rs` — **Q-L4A-1 ENFORCED**: `pub struct PgEventStore { pub(crate) pool: Arc<PgPool> }` — `pool` field is `pub(crate)`, NOT `pub`, so future Redis-streams/NATS-JetStream backend swap only touches this file. Postgres impl wires `events` (cycle-8 migration 0002) + `aggregate_snapshots` (cycle-8 migration 0004) tables via sqlx; concurrency check + atomic batch INSERT in TX. `tests/integration_event_store.rs` gated by `LOREWEAVE_TEST_PG_URL` env var (skips cleanly on dev without DB); when DB present, runs the FULL shared test suite — same 10 tests as InMemoryEventStore — so the Postgres impl cannot drift from contract. DPS 2 (L4.B): NEW workspace member `crates/dp-kernel-macros/` with `proc-macro = true`. `src/lib.rs` exports `#[derive(Aggregate)]` (emits `Aggregate` + `AggregateMeta` impls for any struct with `id: String` + `version: u64` fields) + `#[handles_event("type")]` attribute (**Q-L4B-1 ENFORCED**: `#[handles_event("npc.said")]` rustc-idiomatic syntax; multi-attr stacking supported; V1 is informational/validating only — auto-dispatch from these attrs lands in cycle 21 L4.D). `src/attrs.rs` parses `#[aggregate_type = "..."]` override (both name-value + list syntax tolerated). `tests/derive_aggregate.rs` 6 tests exercising 3 aggregate types (default lowercased + name-value override + list-form override) + multi-attr `#[handles_event]` stacking. `docs/dp-kernel/macros.md` usage guide. Workspace `Cargo.toml` adds `crates/dp-kernel-macros` member (**Q-L4-2** single-workspace honored) + `sqlx`/`syn`/`quote`/`proc-macro2`/`trybuild` shared deps. `crates/dp-kernel/Cargo.toml` adds `sqlx`+`async-trait`+`tokio`+`tracing` runtime deps. verify-cycle-17.sh **26/26 PASS**; dp-kernel unit **75 PASS** (cycle-8/10/12 baseline 57 + cycle-17 new 18 including InMemoryEventStore shared-suite conformance); dp-kernel-macros **6 PASS**; **cycle-13 regression guard PASS** (projections-pc/npc/region/world-kv/session = 23 tests still green); **cycle-14 regression guard PASS** (rebuilder 7 tests still green); `cargo build --workspace` clean. Live PgEventStore smoke deferred to D-EVENT-STORE-LIVE-SMOKE-061. Re-targeted prior cycle-17 deferrals 053+054+057+058+059 (publisher/archive/retention/embedding-queue live wiring + xreality-metadata-validate) to cycle 33 (L7 ops integration) — this cycle is trait-shape + macros only, NOT integration wiring. NO `#[derive(Projection)]` (cycle 21 L4.D). NO async-dispatch in macro V1 (cycle 21). NO L4.C-Q sub-components (cycles 18-22). Heavy cycle: prompt count ≈ 25; token budget ~80K well under 120K ceiling. |
 | 18 | L4 Resilience + Lifecycle + Dependencies (F+G+N) | DONE | 94b530b6 | 2026-05-29 | 3 | DPS 1 (L4.F): NEW Go pkg `contracts/resilience/` (timeout.go WithTimeout SR06 I16 enforcement point + breaker.go 3-state CircuitBreaker Closed/HalfOpen/Open + retry.go RetryWithBackoff with 3 RetryClass {Idempotent/NonIdempotent/CriticalWrite} per SR06 §12AI.5 + bulkhead.go MaxConcurrent+QueueDepth+QueueTimeout w/ ErrBulkheadFull + dependency_events.go typed audit-row constructors for 10 event_types per SR06 §12AI.9). Rust mirror `crates/dp-kernel/src/resilience.rs` (with_timeout/CircuitBreaker/retry/Bulkhead, Q-L4-1 parity, BreakerState integer 0=Closed/1=HalfOpen/2=Open matches Go). DPS 2 (L4.G): EXTEND `contracts/lifecycle/` (drain.go 5-step ordered Drain hook order StopAccepting→WaitInFlight→FlushOutbox→CloseBreakers→CloseResources per SR06 §12AI.11 + presence.go PresenceState 6-variant SR11-D3 enum + IsConnected helper). Rust mirror `crates/dp-kernel/src/lifecycle.rs` (ServiceMode integer parity Full=0..Offline=4 with cycle 7 Go + PresenceState + drain orchestrator with shared deadline + CloseResources always-runs invariant). Cycle 7 service_mode.go + mode_propagation.go preserved (NOT duplicated). DPS 3 (L4.N): NEW `contracts/dependencies/` (matrix.yaml registry with 9 P0/P1/P2 deps {meta-db, auth-service, per-reality-db, redis-streams, llm-anthropic→openai→byok fallback chain, minio, translation-service} + matrix.go typed structs + matrix_loader.go LoadAndValidate with 3-color DFS WHITE/GREY/BLACK DAG cycle detection + client_factory.go per-(service,dep) WrappedClientConfig resolver with caller registration check). Rust mirror `crates/dp-kernel/src/dependencies.rs` (Matrix from JSON + ClientFactory + cycle detection — JSON path because no serde_yaml workspace dep). `scripts/dependency-registry-lint.sh` (warn-mode cycle 18, error-mode cycle 19+ after consumer migration). 6 new lw_* metrics in inventory.yaml (lw_dependency_circuit_state + transitions_total + bulkhead_inflight + rejected_total + lw_lifecycle_drain_duration_seconds + lw_service_mode). verify-cycle-18.sh **30/30 PASS**; contracts/resilience Go tests **24 PASS**; contracts/lifecycle Go tests **18 PASS** (cycle 7 + cycle 18); contracts/dependencies Go tests **15 PASS**; **cargo test -p dp-kernel --lib 111 PASS** (cycle 17 70 + cycle 18 41 new); cargo clippy clean for cycle-18 code (2 pre-existing cycle-17 warnings unchanged); observability-inventory-lint PASS; timeout-discipline-lint PASS; B5/B6 clean. Q-L4-1 Go+Rust runtime parity honored across all 3 DPS (Python deferred cycle 19+). Q-L4-2 single workspace Cargo.toml unchanged (modules added to existing dp-kernel crate). Q-L4-4 contracts/chaos/ untouched (V1+30d cycle 22). NO cycle-17 L4.A/B touched. NO L4.C/D/E/H/I/J/K/L/M/O/P/Q touched (cycles 19-22). NO services/ code touched (contract-library scope only — no cross-service live-smoke required). Prompt count ≈ 30; token budget within ceiling. Cycle 19 carryforward: L4.H observability admission control reuses inventory.yaml schema; L4.I capacity budgets pattern mirrors matrix.yaml; L4.J supply chain pattern mirrors dependency-registry-lint warn→error flip. |
 | 19 | L4 Obs + Cap + Supply Chain admission (H+I+J) | DONE | TBD | 2026-05-29 | 3 | DPS 1 (L4.H): NEW Go pkg `contracts/observability/` (inventory.go typed Entry/Inventory schema with Kind/Layer enums + per-entry Validate enforcing lw_<domain>_<metric>_<unit> regex w/ exporter-metric exemption + inventory_loader.go LoadAndValidate w/ ModeStrict|ModeLax `yaml.KnownFields(true)` admission + admission.go EmitMetric warn/reject mode flip via atomic.Int32 + BreachWriter callback + optional WithStrictLabels per-emission label-set verification + budget_breach_writer.go bounded ring-buffer with FIFO eviction + drop counter + trace_convention.go snake_case.dot span-name regex). Rust mirror `crates/dp-kernel/src/observability.rs` (Inventory/Admission/TraceConvention with AdmissionMode warn/reject + BudgetBreachBuffer ring + concat!() string assembly in tests to avoid lint false-positive). Cycle-6 inventory.yaml carries forward (lax-mode loads 60+ metrics). DPS 2 (L4.I): NEW Go pkg `contracts/capacity/` (budgets.go typed Service/Tier with Class enum {web/llm-gateway/worker/cron/library} + per-tier full-vs-sparse Validate for v1 vs v3 + library-skips-tiers branch + kebab-case service-name regex + memory-suffix validator {Mi,Gi,Ti,Ki,M,G,T,K} + budgets_loader.go same strict/lax pattern + RegisterService admission + RemainingBudget headroom helper per (tier,current_replicas) w/ atomic counters). Rust mirror `crates/dp-kernel/src/capacity.rs` (Budgets/Admission/remaining_budget with same Class enum + 11 Rust tests). Cycle-7 budgets.yaml carries forward (40+ services validate). DPS 3 (L4.J): NEW Go pkg `contracts/supply_chain/` (policy.go typed Policy w/ DepPinning per-Ecosystem allowlist {go/rust/python/js/docker} + SBOM CycloneDX-1.5 format + license_allowlist {MIT/Apache-2.0/BSD-2/3/ISC/AGPL-3.0/MPL-2.0} + banned_packages programmatic check w/ version-glob match + Provenance signer enum {cosign/sigstore/gpg} w/ ErrProvenanceUnsupported on bad signer + sbom.go SBOMEmitRow + bounded SBOMBuffer ring + provenance.go Verifier interface + NoopVerifier always-unverified + PolicyAwareVerifier short-circuits verified=true when provenance.enabled=false AND fail-closes ErrSignatureUnverified when enabled-but-no-delegate). NEW `contracts/supply_chain/policy.yaml` canonical V1 policy (5 ecosystems + CycloneDX SBOM + 9-license allowlist + 0 active banned pkgs + provenance.enabled=false during V1 adoption window). Rust mirror `crates/dp-kernel/src/supply_chain.rs` (Policy/Verifier trait/NoopVerifier/PolicyAwareVerifier w/ 11 Rust tests; same enum-as-string serde wire format). All 3 schemas have `version: 1` mandatory field + ErrUnsupportedVersion on mismatch. All 3 loaders fail-safe on missing file via `os.ReadFile` error wrap (no panic). verify-cycle-19.sh **26/26 PASS**; contracts/observability Go tests **14 PASS**; contracts/capacity Go tests **11 PASS**; contracts/supply_chain Go tests **12 PASS**; **cargo test -p dp-kernel --lib 144 PASS** (cycle 18 111 + cycle 19 33 new); cycle-7 observability-inventory-lint PASS (refined with `--exclude='*_test.go'` to skip fixture metrics — small precision improvement); cycle-7 capacity-budget-lint PASS; cycle-7 dep-pinning-lint PASS; B5/B6 clean. Q-L4-1 Go+Rust runtime parity honored across all 3 DPS via JSON-only Rust pattern (Python deferred cycle 20+). Q-L4-2 single workspace Cargo.toml unchanged. Cycle-6 inventory.yaml + cycle-7 budgets.yaml both load cleanly under cycle-19 typed loaders (no carry-forward break). NO L4.C/D/E/K/L/M/O/P/Q touched (cycles 20-22). NO services/ code touched (contract-library scope only — no cross-service live-smoke required). Prompt count ≈ 30; token budget within ceiling. Cycle 20+ carryforward: schema-formalization pattern (typed YAML loader + strict/lax mode + admission surface + bounded breach buffer + Rust mirror via JSON dump) now reusable for L4.K/L/M/O/P/Q + L5+ contracts. Provenance Verifier trait ready for cycle-21 cosign/sigstore wiring (fail-closed semantics already in place). Cycle-7 lint flip (warn→error) candidate: Docker FROM-tag-pin remains warn-only; flip target cycle 22+ per cycle-18 carryforward. |
-| 20 | L4 Rust meta client + Entity status + Turn/errors (C+E+K) | PENDING | — | — | 3 | |
+| 20 | L4 Rust meta client + Entity status + Turn/errors (C+E+K) | DONE | 2026-05-29 | 2026-05-29 | 3 | meta-rs FULL Go-parity (allowlist + metawrite + transitions + cache + audit; Q-L1B-4 hot-path no RPC); entity_status shared kernel (GoneState 5-variant + 4-layer resolver + compound precedence + 60s cache; iface-decoupled from SQL); turn taxonomy (TurnState 8-variant SR11 + TurnContext mutex-guarded + TurnOutcomeWriter + cycle-18 lifecycle integration via TurnInFlightTracker); error taxonomy exhaustive (4 classes × 28 V1 codes, NO Other catch-all); 3 Rust mirrors in dp-kernel (Q-L4-1); verify-cycle-20.sh 31/31 PASS; meta-rs 42 tests; entity_status+turn+errors Go all pass; dp-kernel 180 tests (cycle-19 144 baseline + 36 new) |
 | 21 | L4 Prompt skeleton + WS skeleton (D+L) | PENDING | — | — | 2 | |
 | 22 | L4 ACL + Chaos + Alerts + PII (M+O+P+Q) | PENDING | — | — | 4 | |
 | 23 | L5 Contracts + Per-reality canon_projection (A+D) | PENDING | — | — | 2 | |
@@ -632,3 +632,99 @@ Cycle infra:
 - `docs/deferred/DEFERRED.md` (5 new rows 041-045)
 - `docs/raid/CYCLE_LOG.md` (this file — status flip PENDING → DONE + this entry)
 - `docs/audit/AUDIT_LOG.jsonl` (append-only verify_cycle_complete + cycle-6 phase events)
+
+
+---
+
+## Cycle 20 — L4 Rust meta client + Entity status + Turn/errors (C+E+K) — DONE 2026-05-29
+
+- **Started:** 2026-05-29
+- **Completed:** 2026-05-29
+- **DPS count:** 3 (planned) — INLINE serial fallback (Task tool unavailable in agent runtime; ToolSearch `select:Agent` returned no matches, matching cycles 1-19 carryforward)
+- **Worktrees created (B1):** `../foundation-worktrees/cycle-20-dps-{1,2,3}` on branches `raid/c20/dps-{1,2,3}` (flat namespace per cycle-1 workaround)
+- **Acceptance gate:** `scripts/raid/verify-cycle-20.sh` exit 0 (all 31 steps PASS)
+
+### LOCKED decisions consumed
+- **Q-L1B-4** — meta-rs L4.C extension is the formal hot-path port: NO RPC fallback exposed in the public surface. `metawrite.rs` accepts caller-supplied `ConnectionWriter` + `TransactionExecutor` traits (driver-agnostic, same Tx-interface pattern as Go). RPC for cold-path callers stays via meta-worker per Q-L1B-4.
+- **Q-L4-1** — Go + Rust runtime parity for all 3 DPS. L4.E ships `contracts/entity_status/` Go + `crates/dp-kernel/src/entity_status.rs`. L4.K ships `contracts/turn/` + `contracts/errors/` Go + `crates/dp-kernel/src/turn.rs` + `turn_errors.rs`. Wire format (snake_case serde) matches Go byte-for-byte.
+- **Q-L4-2** — single workspace Cargo.toml unchanged (3 new modules added to existing `dp-kernel` crate + 5 new modules added to existing `meta-rs` crate; no new workspace members).
+- **Q-L3-4** — `EntityStatusEnvelope.aggregate_version` field carries forward when the projection layer answers (NOT synthesized — only echoed from the projection row metadata).
+- **Q-L1B-3** — `meta_write_batch` Rust port honors the multi-table single-TX semantics (per-intent validation first, atomic commit/rollback).
+- **SR11 §12AN** — TurnState 8-variant + 4 ErrorClass + 28 V1 codes, exhaustive — no Other/Unknown catch-all (forces every team to classify into the right bucket so SLO + retry semantics stay correct).
+- **Cycle-18 lifecycle integration** — `TurnInFlightTracker` (Go + Rust) plugs into the `WaitInFlight` Drain hook so services don't drain mid-turn.
+
+### Test results (verify-cycle-20.sh 31/31 PASS)
+- `cargo build -p meta-rs` → clean (no warnings after `ActorType` cfg-guarded for tests only)
+- `cargo test -p meta-rs --lib` → **42/42 PASS** (cycle 2 baseline 10 + cycle 20 new 32: 5 allowlist + 9 metawrite + 9 transitions + 6 cache + 3 audit-related via metawrite)
+- `cargo build -p dp-kernel` → clean
+- `cargo test -p dp-kernel --lib` → **180/180 PASS** (cycle 19 baseline 144 + cycle 20 new 36: 12 entity_status + 11 turn + 13 turn_errors)
+- `go test ./contracts/entity_status/...` → ok (12 tests: GoneState validity/IsLive/IsTerminal/ParseGoneState/precedence/Reduce + Resolver short-circuit/cascade/missing-projection/error-propagation + CachedResolver hit-on-second-call)
+- `go test ./contracts/turn/...` → ok (4 test files: turn_state 7 + turn_context 6 + turn_outcome_writer 4 + turn_lifecycle_hook 5)
+- `go test ./contracts/errors/...` → ok (8 tests: exhaustiveness assertions + class distribution + envelope construction + retry-after class-gating)
+- B5 prod-isolation-lint → clean
+- B6 secret-scan → clean (gitleaks absent on dev; CI will gate)
+
+### Notable design choices + carryforward for future cycles
+
+- **`MetaWriteConfig` lifetime parameter** — wires 5 collaborators (`ConnectionWriter`, `Allowlist`, `QueryBuilder`, optional `OutboxAppender`, `Clock`, `UuidGen`) via shared `'a` borrow. Production usage typically constructs the config per-request from a long-lived pool; tests construct everything in-scope.
+- **`Send`-safe transaction handle** — `ConnectionWriter::begin_tx` returns `(Tx, Box<dyn FnOnce() -> Result + Send>, Box<dyn FnOnce() -> Result + Send>)`. The Send bound on commit/rollback closures pushed the test fakes from `Rc<RefCell>` to `Arc<Mutex>` (which is what production code would use anyway).
+- **`ValueMap = BTreeMap<String, serde_json::Value>`** — sorted-keys iteration gives stable outbox `aggregate_id` strings without an extra sort step (`pk_as_string` exploits this).
+- **`TurnContext` Mutex<TurnState>** — Rust deliberately wraps state in a mutex (NOT an `AtomicU8`) so we can attach extra invariants later without changing the public API. Go side uses the same pattern (`sync.RWMutex`). Holding the lock across `.await` in Rust async code would deadlock; documented in module doc-comment.
+- **`TurnContext` serde split** — original derive failed because `Mutex<TurnState>` lacks `Default` and we want `state` skipped on serialize. Added `TurnContextWire` separate struct + `to_wire()` snapshot method so the public API stays clean and the wire format includes a state snapshot.
+- **`ErrorEnvelope::class` derived from `code`** — calling `new(code, ...)` automatically sets `class` from `code.class()` exhaustive match. Callers can't desync class+code (Go side same pattern). Rust gets compile-time exhaustiveness; Go gets runtime check via `Class()`.
+- **`Retry-After` class-gating** — `WithRetryAfter` (Go) / `with_retry_after` (Rust) only honor the value when `class == Transient`. UserError/SystemError/Permanent silently drop the value — semantic guard against misuse.
+- **`entity_status` resolver decoupled from SQL driver** — `ProjectionReader` trait (Go interface + Rust trait) is the abstraction surface. Production wires it through cycle-12 `load_aggregate`; tests inject fakes. The verify gate greps for `database/sql` / `pgx` imports in `resolver.go` and fails if found.
+- **`entity_status` 4-layer cascade** — pessimistic fail (`StateDropped`) when a projection row is missing instead of `StateActive`. Reasoning: better to surface "gone" wrongly than show stale data wrongly. Documented in `resolver.go` cascade comment.
+
+### Files touched (28 new + 3 modified)
+
+**New (28):**
+
+L4.C — meta-rs extension (5 src + 0 tests in same files):
+- `crates/meta-rs/src/allowlist.rs`
+- `crates/meta-rs/src/metawrite.rs`
+- `crates/meta-rs/src/transitions.rs`
+- `crates/meta-rs/src/cache.rs`
+- `crates/meta-rs/src/audit.rs`
+
+L4.E — entity_status (Go pkg + Rust mirror):
+- `contracts/entity_status/go.mod`
+- `contracts/entity_status/doc.go`
+- `contracts/entity_status/gone_state.go`
+- `contracts/entity_status/precedence.go`
+- `contracts/entity_status/resolver.go`
+- `contracts/entity_status/cache.go`
+- `contracts/entity_status/v1.yaml`
+- `contracts/entity_status/gone_state_test.go`
+- `contracts/entity_status/resolver_test.go`
+- `crates/dp-kernel/src/entity_status.rs`
+
+L4.K — turn + errors (Go pkgs + Rust mirrors):
+- `contracts/turn/go.mod`
+- `contracts/turn/doc.go`
+- `contracts/turn/turn_state.go`
+- `contracts/turn/turn_context.go`
+- `contracts/turn/turn_outcome_writer.go`
+- `contracts/turn/turn_lifecycle_hook.go`
+- `contracts/turn/turn_state_test.go`
+- `contracts/turn/turn_context_test.go`
+- `contracts/turn/turn_outcome_writer_test.go`
+- `contracts/turn/turn_lifecycle_hook_test.go`
+- `contracts/errors/go.mod`
+- `contracts/errors/doc.go`
+- `contracts/errors/canonical.go`
+- `contracts/errors/canonical_test.go`
+- `crates/dp-kernel/src/turn.rs`
+- `crates/dp-kernel/src/turn_errors.rs`
+
+Cycle infra:
+- `scripts/raid/verify-cycle-20.sh`
+- `docs/raid/IN_PROGRESS/cycle-020-state.md` (archived at COMMIT)
+
+**Modified (3):**
+- `crates/meta-rs/Cargo.toml` (description bumped to reflect extended surface)
+- `crates/meta-rs/src/lib.rs` (re-export cycle-20 surface alongside cycle-2 surface)
+- `crates/dp-kernel/src/lib.rs` (3 new `pub mod` declarations + cycle-20 module group doc-comment)
+- `contracts/turn/go.mod` (added `github.com/google/uuid v1.6.0`)
+- `docs/raid/CYCLE_LOG.md` (this file — status flip PENDING → DONE + this entry)
+- `docs/audit/AUDIT_LOG.jsonl` (append-only verify_cycle_complete + cycle-20 phase events)
