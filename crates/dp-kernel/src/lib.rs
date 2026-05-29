@@ -101,6 +101,7 @@
 
 pub mod aggregate;
 pub mod canon_cache;
+pub mod canon_history;
 pub mod capacity;
 pub mod dependencies;
 pub mod entity_status;

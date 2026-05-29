@@ -100,6 +100,11 @@ func (d *Dispatcher) Registered() []string {
 // MUST be the inner names — but they remain I7-compliant because the
 // only ingress is the xreality.* stream.
 //
+// Cycle 27 L5.H extended the allowlist additionally with
+// `admin.canon.override.*` (force-propagate compensating event family).
+// Same xreality ingress invariant: events are fanned via xreality
+// stream + dispatcher routes by inner event_type.
+//
 // Returns an error listing non-conforming entries. Called at startup.
 func (d *Dispatcher) ValidateAllowlist() error {
 	d.mu.RLock()
@@ -127,11 +132,16 @@ func (d *Dispatcher) ValidateAllowlist() error {
 //     the xreality.book.canon.updated stream; the dispatcher routes by
 //     inner event_type field, so the registry key is the inner name.
 //     I7 compliance preserved because the only ingress is xreality.*.
+//   - `admin.canon.override.*` (cycle 27 L5.H) — force-propagate
+//     compensating event family (admin/governance opt-in flow). Same
+//     xreality ingress invariant.
 func isAllowlistedEventType(eventType string) bool {
 	switch {
 	case strings.HasPrefix(eventType, "xreality."):
 		return true
 	case strings.HasPrefix(eventType, "canon.entry."):
+		return true
+	case strings.HasPrefix(eventType, "admin.canon.override."):
 		return true
 	}
 	return false

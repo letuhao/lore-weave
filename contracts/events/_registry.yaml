@@ -157,3 +157,57 @@ events:
     description: Canon entry retracted (no longer canonical). Q-L5A-1 sub-program handles outbox-tombstone; foundation ships schema only.
     shipped_cycle: 23
     owner: glossary-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # admin.canon.override.* — RAID cycle 27 L5.H (force-propagate
+  # compensating event mechanism, M4-D3). Q-L5H-1 24h consent timeout +
+  # default-to-consent on no-response.
+  # ────────────────────────────────────────────────────────────────────
+  - name: admin.canon.override.requested
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: AdminCanonOverrideRequestedV1
+    description: Admin/author opt-in for force-propagate (gate 1 of 3, M4 §9.8.3). Triggers consent collector with 24h timeout per Q-L5H-1.
+    shipped_cycle: 27
+    owner: meta-worker
+
+  - name: admin.canon.override.consented
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: AdminCanonOverrideConsentedV1
+    description: Reality owner ACKed force-propagate (gate 2 of 3, M4 §9.8.3). Either explicit or Q-L5H-1 default-to-consent on 24h timeout.
+    shipped_cycle: 27
+    owner: meta-worker
+
+  - name: admin.canon.override.vetoed
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: AdminCanonOverrideVetoedV1
+    description: Reality owner refused force-propagate (gate 2 of 3, M4 §9.8.3). Reality SKIPPED — no compensating event emitted.
+    shipped_cycle: 27
+    owner: meta-worker
+
+  - name: admin.canon.override.compensating
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: AdminCanonOverrideCompensatingV1
+    description: Per-reality compensating L3 event applied (force-propagate side-effect). Audit-distinguishable from canon.entry.updated; L5.J classifies as force_propagate.
+    shipped_cycle: 27
+    owner: meta-worker
+
+  # ────────────────────────────────────────────────────────────────────
+  # canon.change.* — RAID cycle 27 L5.J (per-attribute change history).
+  # APPEND-ONLY contract: NEVER edited or deleted (enforced 3 layers).
+  # ────────────────────────────────────────────────────────────────────
+  - name: canon.change.recorded
+    aggregate: canon
+    versions: [1]
+    active_version: 1
+    go_struct: CanonChangeRecordedV1
+    description: APPEND-ONLY per-attribute change history entry. Author-UI change timeline source-of-truth; emitted after canon.entry.* + admin.canon.override.compensating events. NEVER edited or deleted.
+    shipped_cycle: 27
+    owner: meta-worker

@@ -42,6 +42,13 @@ members = [
     # per-reality projection write path from canon.* events fanned out via
     # the xreality protocol (cycle 10) + meta-worker canon writer (cycle 24+).
     "crates/projections/canon",
+    # Cycle 27 — L5.I.3 full canon-guardrail implementation. Backwards-compat
+    # with cycle-25 `dp-kernel::canon_cache::CanonGuardrail` trait (Q-L5-5
+    # LOCKED). Production roleplay-service / world-service binds
+    # `contracts_prompt::YamlGuardrail` in place of cycle-25 `NoOpGuardrail`
+    # placeholder. Rules data-driven via YAML manifest
+    # (`contracts/canon/guardrail_rules.yaml`).
+    "crates/contracts-prompt",
     # Cycle 14 — L3.D per-aggregate parallel rebuilder. Consumes
     # `dp-kernel::Projection` + `ProjectionRunner` (cycle 12) to replay events
     # from the L2.A event log into the cycle-13 projection tables. Used by

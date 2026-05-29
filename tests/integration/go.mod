@@ -44,6 +44,7 @@ require (
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/loreweave/foundation/contracts/canon/timeline v0.0.0-00010101000000-000000000000
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -72,3 +73,6 @@ replace github.com/loreweave/foundation/services/retention-worker => ../../servi
 
 // Cycle 15 — integrity-checker
 replace github.com/loreweave/foundation/services/integrity-checker => ../../services/integrity-checker
+
+// Cycle 27 — L5.J change-history timeline contract
+replace github.com/loreweave/foundation/contracts/canon/timeline => ../../contracts/canon/timeline

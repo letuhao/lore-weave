@@ -1185,3 +1185,17 @@
 {"ts": "2026-05-29T13:27:10Z", "event": "in_progress_init", "cycle": 26, "title": "L5 Reality seeder (G)"}
 {"ts": "2026-05-29T13:27:10Z", "event": "in_progress_update", "cycle": 26, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T13:27:27Z", "event": "in_progress_archived", "cycle": 26, "archived_to": "cycle-026-state-20260529T132727.md"}
+{"ts": "2026-05-29T13:28:34Z", "event": "coordinator_next_cycle_emitted", "cycle": 27}
+{"ts":"2026-05-29T13:29:36Z","event":"startup_drift_check_passed","cycle":27,"version":"v1.6"}
+{"ts":"2026-05-29T13:29:36Z","event":"startup_verifier_complete","cycle":27,"steps":6}
+{"ts": "2026-05-29T13:29:47Z", "event": "in_progress_init", "cycle": 27, "title": "L5 Force-propagate + Conflict + History (H+I+J)"}
+{"ts": "2026-05-29T13:32:35Z", "event": "in_progress_update", "cycle": 27, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T13:32:58Z", "event": "in_progress_update", "cycle": 27, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T13:33:20Z", "event": "in_progress_update", "cycle": 27, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-29T13:57:45Z", "event": "in_progress_update", "cycle": 27, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T13:57:56Z","event":"secret_scan_skipped","cycle":27,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T13:58:43Z", "event": "in_progress_update", "cycle": 27, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T13:59:06Z", "event": "in_progress_update", "cycle": 27, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T13:59:06Z", "event": "in_progress_update", "cycle": 27, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T13:59:23Z", "event": "in_progress_update", "cycle": 27, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T14:01:04Z", "event": "in_progress_archived", "cycle": 27, "archived_to": "cycle-027-state.md"}

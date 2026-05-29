@@ -14,4 +14,9 @@ go 1.22
 
 replace github.com/loreweave/foundation/contracts/events => ../../contracts/events
 
-require github.com/google/uuid v1.6.0 // indirect
+replace github.com/loreweave/foundation/contracts/canon/timeline => ../../contracts/canon/timeline
+
+require (
+	github.com/google/uuid v1.6.0
+	github.com/loreweave/foundation/contracts/canon/timeline v0.0.0-00010101000000-000000000000
+)
