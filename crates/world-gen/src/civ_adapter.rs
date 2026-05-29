@@ -37,11 +37,15 @@ use delaunator::{triangulate, Point};
 
 use crate::biome::BiomeKind;
 use crate::climate::ClimateZone;
+use crate::creative_seed::SettlementDensity;
 use crate::feature::{self, Features};
 use crate::flat_climate::{compute_zone_climate, Biome, WorldClimateParams, ZoneClimate};
-use crate::flatworld::FlatWorld;
+use crate::flatworld::{FlatWorld, BASE_LEVEL};
+use crate::hydrology::{self, Hydrology};
 use crate::political::{self, Political};
 use crate::rng::Rng;
+use crate::settlement::{self};
+use crate::world_map::Settlement;
 
 /// A mesh-shaped view of a `FlatWorld` ready to feed into the System-A
 /// civilization stack. Lengths of every per-cell vector equal
@@ -330,6 +334,76 @@ pub fn extract_features(
     };
     let features = feature::extract(&view.biomes, &view.neighbors);
     (view, features)
+}
+
+/// **Civ Ship 4** — quantise the civ view's f32 elevation into the
+/// u16 grid System-A's hydrology stack expects. Returns the per-cell
+/// `Vec<u16>` and the matching `sea_level` cutoff.
+///
+/// Calibration: flatworld f32 elevation lives in `[0.0, ~0.9]` —
+/// `0.0` is void / synthetic ocean, `BASE_LEVEL = 0.35` is the
+/// interior of an uncontested plate, and collision overlap can push
+/// land cells up toward ~0.9. We linearly map `[0, 1]` → `[0, 65535]`
+/// (clamping past `1.0`) and set `sea_level_u16` halfway between
+/// void (`0`) and `BASE_LEVEL` so every void / synthetic-ocean cell
+/// (elev `0.0`) lands strictly below sea level and every plate
+/// interior (`≥ BASE_LEVEL`) lands strictly above.
+pub fn elevation_to_u16(view: &CivView) -> (Vec<u16>, u16) {
+    let elev: Vec<u16> = view
+        .elevation
+        .iter()
+        .map(|&e| (e.clamp(0.0, 1.0) * 65535.0).round() as u16)
+        .collect();
+    let sea_level = ((BASE_LEVEL * 0.5) * 65535.0).round() as u16;
+    (elev, sea_level)
+}
+
+/// **Civ Ship 4** — run System-A's hydrology pipeline (priority-flood
+/// receiver graph + flow accumulation → river flux) on the civ view.
+/// The output's `river_flux` and `is_coast` overrides the view's
+/// adjacency-only is_coast from Ship 2 — hydrology's coast detection
+/// uses real connectivity to the ocean network, not just immediate
+/// neighbors.
+pub fn build_hydrology_view(view: &CivView) -> Hydrology {
+    let (elev_u16, sea_level_u16) = elevation_to_u16(view);
+    hydrology::build(
+        &view.centers,
+        &elev_u16,
+        sea_level_u16,
+        &view.neighbors,
+        &view.climate,
+    )
+}
+
+/// **Civ Ship 4** — full pipeline through System-A's settlement
+/// builder. Chains build_political → hydrology → settlement::build so
+/// the caller gets the full (CivView, Features, Political, Hydrology,
+/// Vec<Settlement>) bundle. Hydrology output overrides the view's
+/// `river_flux` and `is_coast` since it computes both from real
+/// drainage analysis.
+pub fn build_settlement(
+    world: &FlatWorld,
+    climate_params: &WorldClimateParams,
+    ocean_target: usize,
+    seed: u64,
+    density: SettlementDensity,
+) -> (CivView, Features, Political, Hydrology, Vec<Settlement>) {
+    let (mut view, features, political) =
+        build_political(world, climate_params, ocean_target, seed);
+    let hydro = build_hydrology_view(&view);
+    view.river_flux = hydro.river_flux.clone();
+    view.is_coast = hydro.is_coast.clone();
+    let settlements = settlement::build(
+        seed,
+        &view.centers,
+        &view.biomes,
+        &view.climate,
+        &view.river_flux,
+        &view.is_coast,
+        density,
+        &political,
+    );
+    (view, features, political, hydro, settlements)
 }
 
 /// **Civ Ship 3** — full pipeline through System-A's political builder.
@@ -777,5 +851,100 @@ mod tests {
         assert_eq!(a.province_of, b.province_of);
         assert_eq!(a.provinces.len(), b.provinces.len());
         assert_eq!(a.states.len(), b.states.len());
+    }
+
+    #[test]
+    fn elevation_to_u16_keeps_void_below_sea_and_base_above() {
+        // Void/synthetic-ocean cells (elev 0.0) must end up STRICTLY
+        // below sea_level_u16; cells at BASE_LEVEL (0.35) must end up
+        // STRICTLY above. This is the contract Ship 4 relies on so
+        // hydrology's priority-flood correctly identifies ocean cells.
+        let world = generate(&FlatParams::default());
+        let view = augment_with_ocean(
+            build_civ_view(&world, &WorldClimateParams::default()),
+            &world,
+            32,
+        );
+        let (elev_u16, sea) = elevation_to_u16(&view);
+        for (i, &biome) in view.biomes.iter().enumerate() {
+            if biome == BiomeKind::Ocean {
+                assert!(
+                    elev_u16[i] < sea,
+                    "ocean cell {i} elev_u16 {} should be < sea {sea}",
+                    elev_u16[i]
+                );
+            } else {
+                assert!(
+                    elev_u16[i] >= sea,
+                    "land cell {i} (biome {biome:?}) elev_u16 {} should be ≥ sea {sea}",
+                    elev_u16[i]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn build_settlement_produces_settlements_on_default_world() {
+        // Ship 4 acceptance: System-A's settlement::build, fed the civ
+        // adapter output + hydrology-derived river_flux + is_coast,
+        // must produce ≥3 settlements on a default-sized world.
+        let world = generate(&FlatParams::default());
+        let (_view, _f, _pol, _hyd, settlements) = build_settlement(
+            &world,
+            &WorldClimateParams::default(),
+            64,
+            42,
+            SettlementDensity::Medium,
+        );
+        assert!(
+            settlements.len() >= 3,
+            "expected ≥3 settlements on default world, got {}",
+            settlements.len()
+        );
+    }
+
+    #[test]
+    fn settlements_only_land_cells_not_ocean() {
+        let world = generate(&FlatParams::default());
+        let (view, _, _, _, settlements) = build_settlement(
+            &world,
+            &WorldClimateParams::default(),
+            64,
+            7,
+            SettlementDensity::Medium,
+        );
+        for s in &settlements {
+            let cell = s.cell as usize;
+            assert_ne!(
+                view.biomes[cell],
+                BiomeKind::Ocean,
+                "settlement '{}' placed on Ocean cell {cell}",
+                s.name
+            );
+        }
+    }
+
+    #[test]
+    fn build_settlement_is_deterministic_per_seed() {
+        let world = generate(&FlatParams::default());
+        let (_, _, _, _, a) = build_settlement(
+            &world,
+            &WorldClimateParams::default(),
+            32,
+            99,
+            SettlementDensity::Medium,
+        );
+        let (_, _, _, _, b) = build_settlement(
+            &world,
+            &WorldClimateParams::default(),
+            32,
+            99,
+            SettlementDensity::Medium,
+        );
+        assert_eq!(a.len(), b.len());
+        for (sa, sb) in a.iter().zip(b.iter()) {
+            assert_eq!(sa.cell, sb.cell);
+            assert_eq!(sa.role, sb.role);
+        }
     }
 }
