@@ -30,7 +30,18 @@
 - **Per-user / per-project scoped.**
 
 ### book-service (Go) — source canon input
-- (to map in next discovery pass) books/chapters/chunks + chapter/chunk read API = the raw text enrichment ingests.
+- `chapters` / `chunks` / `parts` / `scenes` tables; internal read API `GET /internal/books/{book_id}/chapters/{chapter_id}/hierarchy` ([hierarchy.go](services/book-service/internal/api/hierarchy.go)) returns chapter + parts + scenes. Source text for enrichment ingest is reachable via internal APIs.
+
+### chat-service (Python/FastAPI) — skeleton template for the new service
+- Standard layout to mirror: `main.py`, `config.py` (fail-fast on missing secrets), `db/`, `deps.py`, `events/`, `middleware/`, `models.py`, `routers/`, **`client/`** (LLM provider adapter). knowledge-service uses `app/clients/`. → the **provider-adapter lives in per-service `client(s)/`**; copy that pattern (honours the no-direct-SDK + no-hardcoded-model invariants).
+
+### Reusable infra to ADOPT (not reinvent)
+- **Confidence / quarantine / pending_validation** model (knowledge-service extraction) → reuse for enrichment provenance/confidence.
+- **pending_facts confirm/reject + injection-defense** review gate → mirror for the enrichment proposal review gate.
+- **Extraction job state machine** (estimate/start/pause/resume/cancel/jobs) → mirror for enrichment jobs.
+- **Per-project embedding-model** selection + Neo4j **graph-stats** → reuse for retrieval + gap-detection input.
+- **CJK-aware text splitting** (`loreweave_extraction` lib) → reuse for Chinese source text.
+- **Event pipeline** (Redis Streams; `glossary.entity_updated` etc.) → enrichment subscribes/emits here.
 
 ## 3. Re-shaped boundary (the key insight)
 
@@ -48,21 +59,21 @@ lore-enrichment ★   →  the NEW layer: GENERATE missing canon
 
 What is genuinely NEW (not in knowledge-service): **gap detection over the KG, template scaffolding, external cultural retrieval, controlled fabrication, history/news re-cook, schema-governed game-ready output, per-fact provenance/confidence on GENERATED content, and the enrichment review/admission gate.**
 
-## 4. Sharpened open questions (for CLARIFY checkpoint → must lock before PLAN)
+## 4. Locked answers (CLARIFY checkpoint resolved — 2026-05-30)
 
-1. **Reuse vs rebuild the review queue.** knowledge-service already has `pending_facts` (a fact review queue). Should enrichment proposals flow through knowledge-service's `pending_facts`/extraction pipeline, or maintain their own proposal store? (Avoid two competing review queues.)
-2. **Write-back path.** Do enriched canonical results write to glossary via `extract-entities` (then `glossary_sync` propagates to Neo4j), or write to knowledge-service as facts, or both? What's the authoritative path so we don't create drift?
-3. **Scoping model.** knowledge-service is per-user/per-project. Is the Fengshen enrichment a **shared canonical world** (book-level, authored once) or **per-user/per-project**? This determines where enriched data lives and how it's shared.
-4. **Overlap with knowledge-service generation.** Does knowledge-service already do any *generation* (vs extraction)? Its `summaries`/`pass2` — are they generative? Need to confirm enrichment isn't re-treading.
-5. **Does the demo need its own game-entity schema** (the "game-ready" target), and where is that defined — is it tied to `world-service`/`game-server` (the mmo-rpg work) which we must stay isolated from?
-6. **Dependency direction & deployment order** — enrichment depends on knowledge-service being up; confirm that's acceptable and how local dev stacks it.
+1. **Review queue — own store, mirror the pattern.** Enrichment proposals are a different domain (generated lore entities/wiki) than `pending_facts` (chat memory facts), so enrichment keeps **its own proposal store** but **mirrors** knowledge-service's confirm/reject + injection-defense + confidence/quarantine pattern. No competing queue over the same data.
+2. **Write-back path — author through glossary SSOT.** Approved canonical results write to **glossary** (`POST /books/{book_id}/extract-entities` + wiki); `glossary_sync` then propagates to Neo4j (single authoritative path, no drift). Enrichment does NOT write Neo4j directly for canonical content.
+3. **✅ Scoping = per-user/per-project** (consistent with knowledge-service). Enriched data lives per-project, same as the KG it builds on. (Shared-canonical-world deferred — not now.)
+4. **No generative overlap.** knowledge-service is **EXTRACTIVE** (Pass1 CJK pattern → Pass2 LLM → K18 validator; extracts from existing text). Its planned generation (D4-03 *wiki-from-KG*, summary regeneration) only *renders* known facts. → enrichment's "generate NEW off-page canon" is distinct and **feeds** that machinery (new grounded entities/facts → glossary/KG → existing wiki-generation renders them). Enrichment does not fork the plan.
+5. **Game-entity schema — keep isolated from mmo-rpg.** "game-ready" output stays as enrichment's own schema-governed entity/wiki shape written to glossary; do NOT couple to `world-service`/`game-server` (the other agent's mmo-rpg work). Revisit only if/when a real game-engine contract is needed.
+6. **Dependency & deploy order — acceptable.** Enrichment depends on knowledge-service (KG) + glossary (SSOT) + book-service (source) being up; local dev stacks them via `infra/docker-compose.yml`. Define a thin KG-read port so enrichment degrades gracefully if KG is unavailable.
 
-## 5. Next discovery (still needed before DESIGN can finalize)
+## 5. Discovery — COMPLETE (2026-05-30)
 
-- [ ] Read `pending_facts` + `extraction` public routers to learn the existing proposal/review contract (Q1).
-- [ ] Read knowledge-service's `pass2_orchestrator` / `summaries` to confirm generative-vs-extractive boundary (Q4).
-- [ ] Map book-service read API for source text (§2 book-service).
-- [ ] Read `docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md` + `101_DATA_RE_ENGINEERING_PLAN.md` for the intended contract + roadmap (so enrichment aligns with, not forks, the plan).
-- [ ] Confirm chat-service (Python/FastAPI) conventions + provider-adapter location for the new service skeleton.
+- [x] `pending_facts` + `extraction` routers → review contract + job state machine (Q1).
+- [x] `pass2_orchestrator` / `triple_extractor` → confirmed EXTRACTIVE, not generative (Q4).
+- [x] book-service read API for source text (§2).
+- [x] `KNOWLEDGE_SERVICE_ARCHITECTURE.md` enrichment/generation mentions → D4-03 wiki-from-KG, summaries (enrichment aligns, feeds it).
+- [x] chat-service conventions + provider-adapter location (`client/`) for the new skeleton (§2).
 
-> **DESIGN cannot be finalized until §4 questions are locked.** SERVICE_DESIGN.md must then be revised: its pipeline step [1] (ingest+seed-KG) is largely **delegated to knowledge-service**, not re-implemented.
+> **CLARIFY COMPLETE.** All 6 questions locked (§4). Next: revise [SERVICE_DESIGN.md](SERVICE_DESIGN.md) to the corrected boundary — pipeline step [1] (ingest+seed-KG) is **delegated to knowledge-service**; enrichment consumes the KG and adds the generative layer. Then PLAN → RAID decomposition.
