@@ -38,12 +38,21 @@ MCP_QUERY = Path(__file__).with_name("mcp-query.py")
 # Cheap local pre-check. A match here only means "worth asking ContextHub" —
 # false positives just cost one check_guardrails call, never a wrong decision.
 # Mirrors the seeded guardrail set (see seed-amaw-guardrails.py).
+#
+# Migration-command patterns are anchored to actual TOOLS (alembic/sqlx/goose/
+# flyway/dbmate/atlas) or recognised wrappers (make/just/npm/yarn/pnpm run
+# migrate, db migrate, prisma migrate). Bare path strings like `migrations/`
+# in `git add` commands MUST NOT match — they caused false-positive prompts
+# during RAID cycles (each cycle stages dozens of files under */migrations/).
 RISKY_PATTERNS: tuple[str, ...] = (
     r"\bgit\s+push\b",
     r"\bgit\s+reset\s+--hard\b",
     r"\brm\s+-[A-Za-z]*r",  # recursive rm
     r"\bdocker(?:\s+|-)compose\s+down\b.*-v",
-    r"migrat(?:e|ion)",
+    r"\b(?:alembic|sqlx|goose|flyway|dbmate|atlas|prisma)\s+migrat",
+    r"\b(?:make|just)\s+(?:db-)?migrat(?:e|ion)\b",
+    r"\b(?:npm|yarn|pnpm)\s+run\s+migrat",
+    r"\bdb\s+migrate\b",
 )
 
 # Hard cap on the ContextHub round-trip — a slow guardrail check must not stall

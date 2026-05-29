@@ -154,3 +154,36 @@ include code diffs or test output.
 - Do NOT read chat history (you have none anyway — cold start).
 - Per-phase token budget per §12.8 — if you blow past 150K main-session tokens, write ESCALATIONS and return ESCALATED.
 - Return EXACTLY the structured summary; no commentary outside the JSON block.
+
+## Bash hygiene rules (prevent permission-prompt spam)
+
+The `amaw-guardrail-gate.py` PreToolUse hook scans EVERY Bash command for risky
+patterns and forces a user prompt on a match. Even in `bypassPermissions` mode,
+PreToolUse hook output `permissionDecision: "ask"` is honored. To keep cycles
+running fast, follow these hygiene rules:
+
+- **One command per Bash call.** Do NOT chain with `&&`, `||`, `;`, or `|`
+  unless absolutely required (e.g., piping git output to head is fine because
+  it stays inside the allowlist's `git log:*` pattern, but a compound
+  `git add ... && echo ... && git status` triggers fresh allowlist matching
+  and is more likely to false-positive the migration regex below).
+- **NEVER prepend `cd <abs-path>` to a command.** The working directory is
+  already correct. The compound `cd <path> && <real-command>` cannot match
+  any single allowlist entry and ALWAYS prompts. Use absolute paths in the
+  command arguments instead (or just relative — cwd is the project root).
+- **Avoid `2>&1` redirects and complex pipelines** unless you actually need
+  the captured stderr. Most tools log to stderr by default and the Bash tool
+  surfaces both streams. Plain `<cmd> | head -N` is fine.
+- **For staging files in a commit**, prefer explicit `git add <file1> <file2> ...`
+  over a compound; if you have >20 files, batch with multiple `git add` calls,
+  one per Bash tool invocation, rather than chaining.
+- **Migration file paths in `git add`** (e.g., `git add migrations/00x_foo.sql`)
+  are SAFE — the guardrail regex was tightened (2026-05-29) to only match
+  actual migration TOOLS (`alembic`, `sqlx migrate`, `goose`, `flyway`, `db migrate`),
+  not bare path strings. If you see a guardrail prompt on a plain `git add`
+  staging a migrations folder, escalate (regression in the guardrail script).
+- **Common dev commands now in allowlist** (`.claude/settings.local.json`):
+  `bash scripts/raid/*.sh`, `python scripts/raid/*.py`, `git add/status/diff/log/show/branch/worktree/rev-parse`,
+  `go test/build/vet/mod`, `cargo test/build/clippy/check`, `pytest`,
+  `docker compose`, `mkdir`, `ls`, `cat`, `grep`, `rg`. Stick to these and
+  you should hit ~0 prompts per cycle.
