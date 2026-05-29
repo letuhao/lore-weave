@@ -40,6 +40,7 @@ use crate::climate::ClimateZone;
 use crate::feature::{self, Features};
 use crate::flat_climate::{compute_zone_climate, Biome, WorldClimateParams, ZoneClimate};
 use crate::flatworld::FlatWorld;
+use crate::political::{self, Political};
 use crate::rng::Rng;
 
 /// A mesh-shaped view of a `FlatWorld` ready to feed into the System-A
@@ -329,6 +330,24 @@ pub fn extract_features(
     };
     let features = feature::extract(&view.biomes, &view.neighbors);
     (view, features)
+}
+
+/// **Civ Ship 3** — full pipeline through System-A's political builder.
+/// Computes the CivView, augments with synthetic ocean cells, extracts
+/// features, then derives provinces + states via [`political::build`].
+///
+/// Returns `(view, features, political)` so callers can pass any
+/// combination into the downstream settlement / route / culture
+/// builders.
+pub fn build_political(
+    world: &FlatWorld,
+    climate_params: &WorldClimateParams,
+    ocean_target: usize,
+    seed: u64,
+) -> (CivView, Features, Political) {
+    let (view, features) = extract_features(world, climate_params, ocean_target);
+    let political = political::build(seed, &view.centers, &view.neighbors, &view.biomes);
+    (view, features, political)
 }
 
 /// Build neighbor lists from a Delaunay triangulation over the 2D cell
@@ -691,5 +710,72 @@ mod tests {
         let (view_skip, _) = extract_features(&world, &WorldClimateParams::default(), 0);
         assert_eq!(view_skip.centers.len(), view_ship1.centers.len());
         assert_eq!(view_skip.biomes, view_ship1.biomes);
+    }
+
+    #[test]
+    fn build_political_produces_provinces_and_states_on_default_world() {
+        // Ship 3 acceptance: System-A's political::build, fed the civ
+        // adapter output, must produce ≥1 province AND ≥1 state on a
+        // default-sized world. Small worlds may degenerate (too few land
+        // cells for the province/state thresholds) so this MUST run
+        // against the default `FlatParams`.
+        let world = generate(&FlatParams::default());
+        let (_view, _features, political) = build_political(
+            &world,
+            &WorldClimateParams::default(),
+            64,
+            42,
+        );
+        assert!(
+            !political.provinces.is_empty(),
+            "default world should produce ≥1 province"
+        );
+        assert!(
+            !political.states.is_empty(),
+            "default world should produce ≥1 state"
+        );
+    }
+
+    #[test]
+    fn build_political_assigns_every_land_cell_to_a_province() {
+        // Every land cell must have province_of != NONE (NONE = u32::MAX
+        // by convention in world_map.rs). Ocean cells stay NONE — they
+        // belong to no province.
+        let world = generate(&FlatParams::default());
+        let (view, _features, political) = build_political(
+            &world,
+            &WorldClimateParams::default(),
+            64,
+            7,
+        );
+        let none = u32::MAX;
+        for (i, &biome) in view.biomes.iter().enumerate() {
+            let p = political.province_of[i];
+            if biome == BiomeKind::Ocean {
+                // Ocean cells should be unassigned.
+                assert_eq!(
+                    p, none,
+                    "ocean cell {i} got assigned province {p}",
+                );
+            } else {
+                assert_ne!(
+                    p, none,
+                    "land cell {i} (biome {biome:?}) has no province assignment",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn build_political_is_deterministic_per_seed() {
+        // Same (world, climate, ocean_target, seed) → same political
+        // output. Civ-layer pipeline must stay byte-deterministic to
+        // preserve the generate→export reproducibility guarantee.
+        let world = generate(&FlatParams::default());
+        let (_, _, a) = build_political(&world, &WorldClimateParams::default(), 32, 99);
+        let (_, _, b) = build_political(&world, &WorldClimateParams::default(), 32, 99);
+        assert_eq!(a.province_of, b.province_of);
+        assert_eq!(a.provinces.len(), b.provinces.len());
+        assert_eq!(a.states.len(), b.states.len());
     }
 }
