@@ -59,7 +59,7 @@ The differentiator is composing the four techniques into one governed pipeline. 
 
 1. **Semantic KG retrieval, not keyword injection.** Competitors' core weakness; we retrieve over the knowledge-service KG + embeddings, avoiding the documented context-overflow drift.
 2. **Schema-governed output, not free text.** Every enrichment is a validated entity (game-engine-ready), per G-KMS / dependency-JSON-pipeline; normalization-repair before admission.
-3. **Provenance + confidence on every fact.** Tag each enriched fact by technique (template / retrieved / fabricated / re-cooked) and ground-source + confidence. Canon trust depends on this — and no competitor does it.
+3. **★ H0 CORE INVARIANT — enriched lore ≠ original canon.** Enriched ("makeup") content is **structurally distinguishable** from authored canon at all times and NEVER enters as canon by default: written to the KG with `source_type='enriched'`, `pending_validation=true`, `confidence<1.0` (quarantined, vs `source_type='glossary'` canon). Only the **author's explicit promotion** canonizes it (`source_type='glossary'`, confidence=1.0), and a **permanent origin marker** (`origin='enrichment'` + `promoted_from_proposal_id` + `promoted_by/at` + `original_technique`) survives promotion for lifetime traceability. Aligns with the existing knowledge-service quarantine/`source_type` model. Tag every fact by technique + ground-source + confidence. See [OPEN_QUESTIONS_LOCKED H0](../../plans/2026-05-30-lore-enrichment/OPEN_QUESTIONS_LOCKED.md).
 4. **Cultural grounding as a first-class step** (CHisAgent Enricher pattern): external structured cultural/historical resources integrated for faithfulness; explicit anachronism guard.
 5. **Iterative seed → expand → refine**, not one-shot generation.
 6. **Human-in-the-loop admission gate** — enrichment proposes; human/PO approves before it becomes canon (mirrors LoreWeave's authored-SSOT philosophy).
@@ -73,7 +73,7 @@ The differentiator is composing the four techniques into one governed pipeline. 
 ## 5. Data model (first cut)
 
 - `enrichment_job` — per (book/reality, scope), status, technique policy.
-- `enrichment_proposal` — generated entity/fact, target `glossary_entity_id`, dimension, **provenance** (technique, source refs), **confidence**, review status.
+- `enrichment_proposal` — generated entity/fact, target `glossary_entity_id`, dimension, **`origin='enriched'`**, **provenance** (technique, source refs), **confidence**, **review_status** (`proposed→author_reviewing→approved→promoted|rejected` — H0 lifecycle), **`promoted_entity_id` / `promoted_by` / `promoted_at`** (set on author promotion). On KG write: `source_type='enriched'` + `pending_validation=true` (quarantined, NOT canon) until promotion.
 - `source_corpus` — registered canon + external cultural sources (Shan Hai Jing, history), with licensing/provenance.
 - `enrichment_template` — per entity-type dimension scaffolds (city, faction, cultivation-sect, deity, ...).
 - `cultural_grounding_ref` — external resource chunks + embeddings used to ground a proposal.

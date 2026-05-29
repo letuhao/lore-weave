@@ -43,7 +43,7 @@ Own store (different domain than chat-fact `pending_facts`), same proven pattern
 
 Tables (Postgres `loreweave_lore_enrichment`):
 - `enrichment_job(id, user_id, project_id, book_id, scope_json, technique_policy_json, status, cost_spent, created_at)` — status state machine: `estimated|running|paused|cancelled|done`.
-- `enrichment_proposal(id, job_id, user_id, project_id, target_glossary_entity_id NULLABLE, dimension, payload_json, technique, provenance_json, confidence, source_refs_json, review_status, created_at)` — `review_status: pending|approved|rejected|edited`.
+- `enrichment_proposal(id, job_id, user_id, project_id, target_glossary_entity_id NULLABLE, dimension, payload_json, origin DEFAULT 'enriched', technique, provenance_json, confidence, source_refs_json, review_status, promoted_entity_id NULLABLE, promoted_by NULLABLE, promoted_at NULLABLE, created_at)` — `review_status: proposed|author_reviewing|approved|promoted|rejected` (**H0 lifecycle**). On KG write: `source_type='enriched'` + `pending_validation=true` + `confidence<1.0` (quarantined, distinct from `source_type='glossary'` canon); promotion flips to canon but keeps the permanent origin marker.
 - `source_corpus(id, project_id, kind, uri, license, provenance, created_at)` — registered canon + external cultural sources.
 - `enrichment_template(id, entity_kind, dimension, scaffold_json)` — per entity-kind dimension scaffolds.
 - `cultural_grounding_ref(id, proposal_id, corpus_id, chunk_ref, embedding_ref, score)` — what grounded each proposal.
@@ -69,4 +69,11 @@ Needed before promoting P2/P3 techniques. Measures more than JSON validity:
 
 ## P6 + P7. RAID decomposition & size
 - Decomposition → [CYCLE_DECOMPOSITION.md](../../plans/2026-05-30-lore-enrichment/CYCLE_DECOMPOSITION.md). Locked questions → [OPEN_QUESTIONS_LOCKED.md](../../plans/2026-05-30-lore-enrichment/OPEN_QUESTIONS_LOCKED.md). Pre-flight → [PRE_FLIGHT_CHECKLIST.md](../../plans/2026-05-30-lore-enrichment/PRE_FLIGHT_CHECKLIST.md).
-- Size **XL**; RAID-suitable (mostly-autonomous, well-bounded cycles, evidence-gated).
+- Size **XXL** (raised from XL by the platform deferrals below); RAID-suitable (mostly-autonomous, well-bounded cycles, evidence-gated).
+
+## P8. Platform deferrals pulled in (Option B — kills long-standing drift)
+
+Conflict-checked safe (foundation branch touches 0 files in these services). Both are prerequisites for a clean enrichment write-back, so they land before the write-back cycle.
+
+- **K14 event pipeline** (glossary + knowledge-service) — glossary emits `glossary.entity_updated` on entity write (incl. `extract-entities`); knowledge-service event consumer triggers `glossary_sync` → Neo4j. **Resolves H1** (glossary→KG propagation becomes automatic, platform-wide) — replaces the manual worker-ai `scope='glossary_sync'` trigger.
+- **D4-03 wiki-from-KG** (knowledge-service / glossary) — generate rich wiki **content** (article body) from an entity's KG neighborhood, replacing the empty-body `generateWikiStubs`. **Resolves H3** — gives enriched lore a real renderer. Enriched-origin wiki carries the `source_type='enriched'` distinction (H0) until promotion.

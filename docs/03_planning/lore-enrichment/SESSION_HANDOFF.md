@@ -31,13 +31,17 @@ A new `lore-enrichment-service` that GENERATES the missing "off-page" canon a no
 - Own proposal store; **mirror** `pending_facts` confirm/reject + injection-defense + confidence/quarantine.
 - Keep game-entity schema **isolated** from world-service/game-server (mmo-rpg).
 
-## Next action — RUN RAID (CLARIFY+DESIGN+PLAN done)
-PLAN component designs (KG-read port, EnrichmentStrategy + gate, proposal store + review gate, eval harness, API surface, size=XL) are in [PLAN.md](PLAN.md). RAID is decomposed into **16 cycles C0–C15** ([CYCLE_DECOMPOSITION](../../plans/2026-05-30-lore-enrichment/CYCLE_DECOMPOSITION.md)); `.raid/active-task.yaml` validates.
+## Next action — RUN RAID (CLARIFY+DESIGN+PLAN+REVIEW done)
+PLAN component designs + the adversarial [DESIGN_PLAN_REVIEW](DESIGN_PLAN_REVIEW.md) (findings resolved). RAID decomposed into **19 cycles C0–C18** ([CYCLE_DECOMPOSITION](../../plans/2026-05-30-lore-enrichment/CYCLE_DECOMPOSITION.md)); `.raid/active-task.yaml` validates (cycle_count=19). Size **XXL**.
+
+**Two scope/design decisions baked in this session:**
+- **H0 core invariant:** enriched lore ≠ canon — enters as `source_type='enriched'`+quarantine, author-promote-only, permanent origin marker (C2/C11/C13).
+- **Option B:** pulled in long-drifting platform deferrals as cycles — **K14 event pipeline** (C4, fixes H1 sync) + **D4-03 wiki-from-KG** (C5, fixes H3 renderer). Conflict-checked safe.
 
 Before `/raid`:
-1. Work the [PRE_FLIGHT_CHECKLIST](../../plans/2026-05-30-lore-enrichment/PRE_FLIGHT_CHECKLIST.md) (confirm port 8093/8217 free, DB, dependency stack-up, secrets, Fengshen test project seeded, pre-commit-hook decision).
-2. Invoke `/raid` (or `/raid 0` to start at bootstrap C0). RAID reads `.raid/active-task.yaml` automatically.
-3. Demo milestone = after **C11** (P1 end-to-end: Fengshen source → gap-detect → template+retrieval → review → write-back to glossary).
+1. Work the [PRE_FLIGHT_CHECKLIST](../../plans/2026-05-30-lore-enrichment/PRE_FLIGHT_CHECKLIST.md) (port 8093/8217, DB, dependency stack-up, secrets, Fengshen test project seeded, pre-commit-hook decision).
+2. Invoke `/raid` (or `/raid 0` to start at bootstrap C0). RAID reads `.raid/active-task.yaml`.
+3. Demo milestone = after **C14** (P1 end-to-end: Fengshen → gap-detect → template+retrieval → review → author-promote → write-back + K14 auto-sync + D4-03 wiki).
 
 ## Reusable infra discovered (adopt, don't reinvent)
 confidence/quarantine/pending_validation · pending_facts confirm-reject + injection-defense · extraction job state machine (estimate/start/pause/resume/cancel) · per-project embedding-model · Neo4j graph-stats (gap-detect input) · CJK-aware splitting (`loreweave_extraction`) · Redis Streams event pipeline · chat-service skeleton + `client/` provider-adapter (no direct SDK, no hardcoded model).

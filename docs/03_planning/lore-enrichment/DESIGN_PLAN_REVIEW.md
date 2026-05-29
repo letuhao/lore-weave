@@ -47,3 +47,22 @@ Q3 locks **per-user/project**, but enrichment writes **canonical** entities to g
 2. **Add C1 verification sub-tasks**: confirm glossary scoping, the glossary→Neo4j sync trigger, and whether injection-defense/CJK are importable.
 3. **Split C4** into gap-model spec + engine (M1).
 4. Fix doc path strings (L4); confirm port (L3).
+
+---
+
+## Resolution status (2026-05-30 — applied)
+
+- **H0 (NEW — core invariant, raised by author):** enriched ≠ canon, source_type='enriched'+quarantine, author-promote-only, permanent origin marker. → **LOCKED** in OPEN_QUESTIONS_LOCKED H0; baked into SERVICE_DESIGN principle #3 + data model; enforced in C2/C11/C13.
+- **H1 (sync) → RESOLVED by building K14 event pipeline** (C4) — automatic glossary→KG propagation, platform-wide.
+- **H2 (scoping) → C1 verification sub-task** + H0 resolves contamination (enriched stays quarantined, not canon, until promote).
+- **H3 (wiki renderer) → RESOLVED by building D4-03 wiki-from-KG** (C5).
+- **M1 (gap-detection) → split into C6 (gap-model spec) + C7 (engine).**
+- **M2 (canon-verify limits) → C12 scoped to contradiction+anachronism;** correctness rests on human gate.
+- **M3 (output language) → added to locked defaults** (align to `users.preferred_locale`, as knowledge-service does). *(confirm exact locale source in C6.)*
+- **M4 (importability) → C1 verification sub-task.**
+- **M5 (eval cost) → folded into C14 cost-cap.**
+- **M6 (idempotency/retraction) → C13 retraction via glossary recycle-bin;** dedup against existing glossary + open proposals.
+- **L1 (serial) → parallelism note added** ({C1,C2,C3}; platform {C4,C5}∥core; {C16,C17}; C18).
+- **L2 (sizing) → split at brief time** (C6/C7 split done).
+- **L3 (port) → PRE_FLIGHT item.** **L4 (paths) → corrected** (`/internal/books/{book_id}/extract-entities`; wiki = `generateWikiStubs`→replaced by D4-03).
+- **Scope:** task raised XL → **XXL** (19 cycles C0–C18) by pulling in K14+D4-03 (Option B). `task_config.py validate` → exit 0.

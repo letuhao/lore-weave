@@ -27,9 +27,9 @@ in_progress_dir: docs/raid/IN_PROGRESS
 quota_log: docs/raid/QUOTA_LOG.jsonl
 
 # Execution parameters
-cycle_count: 16
+cycle_count: 19
 first_cycle: 0
-last_cycle: 15
+last_cycle: 18
 bootstrap_cycle: 0  # C0 = service skeleton; smoke /health gates C0->C1
 
 # Quota profile (per Q3 — see contracts/raid/quota-profile.yaml)
