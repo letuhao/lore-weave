@@ -53,9 +53,10 @@ from app.jobs.proposal_store import (
     ProposalStore,
     build_proposal_fields,
 )
-from app.jobs.stages import GapPipeline
+from app.jobs.stages import JobPipeline
 from app.jobs.state_machine import JobRecord, JobStateMachine, PersistFn
 from app.strategies.base import EnrichmentStrategy, StrategyContext
+from app.strategies.fabrication import FabricationError
 
 __all__ = [
     "JobOutcome",
@@ -101,7 +102,7 @@ class JobRunner:
         self,
         *,
         store: ProposalStore,
-        pipeline: GapPipeline,
+        pipeline: JobPipeline,
         cost_strategy: EnrichmentStrategy,
         emitter: JobEventEmitter,
         budget: JobCostBudget,
@@ -201,10 +202,13 @@ class JobRunner:
                 # ── stage pipeline (C10 → C11 → C12) ────────────────────────────
                 try:
                     stage = await self._pipeline.run_gap(gap, context, jwt=jwt)
-                except GenerationError as exc:
+                except (GenerationError, FabricationError) as exc:
                     # An ungroundable / unrepairable gap is SKIPPED (not a job
                     # failure): the pipeline refused to mint an unprovenanced
-                    # fact (H0). Record + continue; other gaps still enrich.
+                    # fact (H0). FabricationError is the P2 counterpart of
+                    # GenerationError — an ungrounded fabrication is refused the
+                    # same way (never free invention). Record + continue; other
+                    # gaps still enrich.
                     logger.info("skipping gap %s: %s", gap_ref, exc)
                     outcome.skipped_gaps.append(gap_ref)
                     continue
@@ -224,7 +228,12 @@ class JobRunner:
                     entity_kind=stage.proposal.entity_kind,
                     canonical_name=stage.proposal.canonical_name,
                     target_ref=stage.proposal.target_ref,
-                    technique=stage.proposal.technique,
+                    # The technique that actually PRODUCED the facts (the pipeline's
+                    # own), NOT the grounding proposal's — for fabrication the
+                    # grounding proposal is the C10 retrieval proposal (technique=
+                    # 'retrieval'), but the facts were fabricated (technique=
+                    # 'fabrication'). For the P1 path both agree on 'retrieval'.
+                    technique=self._pipeline.technique_value(),
                     confidence=proposal_confidence,
                     facts=stage.facts,
                     verify=stage.verify,

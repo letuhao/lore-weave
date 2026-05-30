@@ -37,6 +37,7 @@ from app.jobs.state_machine import (
     PauseReason,
 )
 from app.strategies.base import StrategyContext, Technique
+from app.strategies.registry import InactiveStrategyError, UnknownStrategyError
 
 router = APIRouter(prefix="/v1/lore-enrichment/jobs", tags=["jobs"])
 
@@ -62,6 +63,11 @@ class CreateJobBody(BaseModel):
     embedding_model_ref: UUID  # provider-registry user_model id (the embed model)
     generation_model_ref: UUID  # provider-registry user_model id (the gen model)
     targets: list[GapTarget] = Field(min_length=1)
+    # Which enrichment TECHNIQUE drives the job. Default 'retrieval' (the P1 demo
+    # path, unchanged). A P2/P3 technique (e.g. 'fabrication') is gate-enforced
+    # END-TO-END: the runner resolves the pipeline through the gate-aware factory,
+    # which REFUSES it (409) while the live eval gate is LOCKED (DEFERRED-054).
+    technique: str = Field(default=Technique.RETRIEVAL.value)
     # Cost guardrail (C8); aligns with the frozen contract's max_spend_usd. The
     # reserved eval-cost line (M5) is held back from this cap.
     max_spend_usd: float | None = Field(default=None, ge=0.0)
@@ -115,6 +121,16 @@ async def create_job(
         )
     user_id = principal.user_id
 
+    # Validate the requested technique up-front (400 on an unknown key) so an
+    # obvious typo never reaches the gate-aware factory.
+    try:
+        technique = Technique(body.technique)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"unknown technique {body.technique!r}",
+        )
+
     gaps: list[Gap] = []
     for t in body.targets:
         gap = _gap_from_target(t)
@@ -127,25 +143,54 @@ async def create_job(
         )
 
     # Persist the job row first so the runner + the event stream both key on the
-    # real DB job id (event correlation). The technique is the P1 retrieval id.
-    db_job_id = await PgProposalStore(pool).create_job(
+    # real DB job id (event correlation). The job row records the REQUESTED
+    # technique — a gate-refused fabrication job is then visible as a failed row
+    # carrying technique='fabrication' (auditable refusal, not a silent drop).
+    store = PgProposalStore(pool)
+    db_job_id = await store.create_job(
         user_id=str(user_id),
         project_id=str(body.project_id),
-        technique=Technique.RETRIEVAL.value,
+        technique=technique.value,
         entity_kind="location",
         max_spend=body.max_spend_usd,
         estimated_cost=0.0,
     )
-    bundle = await build_live_runner(
-        pool=pool,
-        job_id=db_job_id,
-        user_id=str(user_id),
-        project_id=str(body.project_id),
-        embedding_model_ref=str(body.embedding_model_ref),
-        cost_cap=body.max_spend_usd,
-        eval_reserve_fraction=body.eval_reserve_fraction,
-        top_k=body.top_k,
-    )
+    # Build the runner THROUGH the gate-aware factory: a P2/P3 technique while the
+    # live eval gate is LOCKED raises InactiveStrategyError here — the job is
+    # REFUSED (gate enforced end-to-end, DEFERRED-054). We mark the job failed
+    # (auditable) and surface a 409, never silently activating fabrication.
+    try:
+        bundle = await build_live_runner(
+            pool=pool,
+            job_id=db_job_id,
+            user_id=str(user_id),
+            project_id=str(body.project_id),
+            embedding_model_ref=str(body.embedding_model_ref),
+            cost_cap=body.max_spend_usd,
+            eval_reserve_fraction=body.eval_reserve_fraction,
+            top_k=body.top_k,
+            technique=technique.value,
+        )
+    except InactiveStrategyError as exc:
+        await store.mark_job_status(
+            job_id=db_job_id,
+            status="failed",
+            error_message=f"refused: technique {technique.value!r} gate-locked ({exc})",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"technique {technique.value!r} is gate-locked for this project — "
+                "the enrichment eval gate has not cleared (run the eval first)"
+            ),
+        )
+    except UnknownStrategyError as exc:
+        await store.mark_job_status(
+            job_id=db_job_id, status="failed", error_message=str(exc)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        )
     try:
         context = StrategyContext(
             user_id=str(user_id),

@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     provider_registry_internal_url: str = "http://provider-registry-service:8085"
     redis_url: str = "redis://redis:6379"
 
+    # Max age (seconds) of a PASSING eval run before the P2/P3 gate treats it as
+    # STALE → LOCKED (WARN-2 / DEFERRED-055, fail-closed on staleness). A passing
+    # run older than this no longer unlocks the higher-cost tier — the eval must
+    # be re-run against the current corpus. Default 7 days. 0 disables the bound
+    # (any passing run stays valid — NOT recommended in production).
+    gate_max_age_seconds: float = Field(
+        default=7 * 24 * 3600.0,
+        validation_alias="LORE_ENRICHMENT_GATE_MAX_AGE_SECONDS",
+    )
+
     port: int = 8093
 
 

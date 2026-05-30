@@ -29,19 +29,22 @@ verify step only annotates. NO write-back (C13), NO promote. NO model names.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from app.gaps.model import Gap
 from app.generation.generate import GenerationError, SchemaGovernedGenerator
 from app.generation.provenance import EnrichedFact
 from app.retrieval.strategy import GroundedProposal, RetrievalStrategy
 from app.strategies.base import StrategyContext, Technique
+from app.strategies.fabrication import FabricationError, FabricationStrategy
 from app.verify.canon_verify import CanonVerifier
 from app.verify.wiring import AnnotatedVerify, verify_and_annotate
 
 __all__ = [
     "StageResult",
+    "JobPipeline",
     "GapPipeline",
+    "FabricationPipeline",
     "source_refs_from_grounding",
 ]
 
@@ -75,6 +78,26 @@ def source_refs_from_grounding(proposal: GroundedProposal) -> list[dict[str, Any
         }
         for g in proposal.grounding
     ]
+
+
+class JobPipeline(Protocol):
+    """The per-gap pipeline contract the C14 runner drives (technique-agnostic).
+
+    The runner does not care WHICH technique produces a gap's :class:`StageResult`
+    — it only needs (1) ``run_gap`` to take one :class:`Gap` + context and return
+    one quarantined :class:`StageResult` (raising :class:`GenerationError` /
+    :class:`FabricationError` when the gap can't be grounded → the runner SKIPS it)
+    and (2) ``technique_value`` for event/provenance tagging. Both the P1
+    :class:`GapPipeline` (retrieval+generation) and the P2 :class:`FabricationPipeline`
+    satisfy this — so the SAME runner enforces cost-cap + H0 + lifecycle for either
+    technique, and the gate-aware factory (DEFERRED-054) decides which pipeline the
+    runner is handed."""
+
+    async def run_gap(
+        self, gap: Gap, context: StrategyContext, *, jwt: str = ...
+    ) -> StageResult: ...
+
+    def technique_value(self) -> str: ...
 
 
 class GapPipeline:
@@ -135,3 +158,55 @@ class GapPipeline:
         """The technique these P1 proposals carry (retrieval — it supplies the
         grounding the generation cites)."""
         return Technique.RETRIEVAL.value
+
+
+class FabricationPipeline:
+    """Run one gap through the P2 canon-grounded FABRICATION (C16).
+
+    The gate-enforced (DEFERRED-054) counterpart to :class:`GapPipeline`: it
+    ADAPTS a :class:`~app.strategies.fabrication.FabricationStrategy` to the same
+    :class:`JobPipeline` contract the C14 runner drives, so the runner enforces the
+    IDENTICAL cost-cap + H0 + lifecycle for fabrication that it does for retrieval.
+    It implements no new generation/verify logic — it delegates to the strategy
+    (which already chains retrieval → fabricate → C12 verify per gap) and projects
+    the strategy's :class:`~app.strategies.fabrication.FabricatedProposal` onto the
+    runner's :class:`StageResult` shape (same proposal/facts/verify triple).
+
+    H0: every fact leaving here is the strategy's H0-tagged
+    ``origin='enriched:fabrication'``, confidence<1.0, pending fact — quarantine is
+    untouched. An ungroundable gap raises :class:`FabricationError`, which the
+    runner treats EXACTLY like a P1 ungroundable gap (skip, never an unprovenanced
+    fact). This pipeline is ONLY constructed once the gate-aware factory has
+    confirmed the live eval gate is CLEARED — it never re-checks the gate itself
+    (one enforcement point, the factory)."""
+
+    def __init__(self, *, strategy: FabricationStrategy) -> None:
+        self._strategy = strategy
+
+    async def run_gap(
+        self, gap: Gap, context: StrategyContext, *, jwt: str = ""
+    ) -> StageResult:
+        """Fabricate one gap and project the result onto :class:`StageResult`.
+
+        Delegates to the strategy (retrieve grounding → LLM fabricate → C12 verify)
+        for the single gap, then maps its :class:`FabricatedProposal` onto the
+        runner's stage shape. Raises :class:`FabricationError` (ungroundable →
+        runner skips) — never mints an unprovenanced fact (H0)."""
+        results = await self._strategy.run([gap], context, jwt=jwt)
+        if not results:
+            raise FabricationError(
+                f"fabrication produced no proposal for {gap.canonical_name!r}"
+            )
+        fab = results[0]
+        return StageResult(
+            gap=gap,
+            proposal=fab.proposal,
+            facts=fab.facts,
+            verify=fab.verify,
+            source_refs=source_refs_from_grounding(fab.proposal),
+        )
+
+    @staticmethod
+    def technique_value() -> str:
+        """The technique these P2 proposals carry (fabrication)."""
+        return Technique.FABRICATION.value
