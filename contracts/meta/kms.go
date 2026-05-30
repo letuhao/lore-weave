@@ -40,23 +40,45 @@ type KMSClient interface {
 }
 
 // DecryptInput carries the per-call decrypt request.
+//
+// Three-tier model (S08 §12X.2, authoritative): a per-user KMS CMK (KMSKeyRef)
+// wraps the per-user KEK (KeyMaterial); the KEK directly AES-256-GCMs the
+// payload (Ciphertext = pii_registry.encrypted_blob). The adapter KMS-decrypts
+// KeyMaterial to recover the KEK, then opens Ciphertext locally with it.
 type DecryptInput struct {
 	// KEKID is the pii_kek.kek_id this decrypt is bound to. Adapter uses
 	// it for audit trail correlation.
 	KEKID uuid.UUID
 
 	// KMSKeyRef is the pii_kek.kms_key_ref value (e.g., "aws-kms:arn:aws:kms:...").
-	// Adapter routes to the right KMS based on the provider prefix.
+	// Adapter routes to the right KMS based on the provider prefix and strips
+	// the prefix to obtain the bare KMS KeyId.
 	KMSKeyRef string
 
-	// Ciphertext is the AES-256-GCM envelope: header(version+nonce+aad) | payload | auth_tag.
-	// Adapter unwraps the header to obtain the KMS-encrypted DEK, asks KMS
-	// to decrypt the DEK, then uses the DEK to decrypt the payload locally.
+	// KeyMaterial is the pii_kek.key_material value — the per-user KEK wrapped
+	// (KMS ciphertext) by the per-user CMK. The adapter KMS-decrypts THIS to
+	// recover the plaintext KEK that opens Ciphertext. Never plaintext key bytes.
+	KeyMaterial []byte
+
+	// Ciphertext is the per-user KEK's AES-256-GCM envelope of the payload:
+	// header(version+nonce) | ciphertext | auth_tag. The wrapped KEK is NOT in
+	// here — it comes from KeyMaterial (see the three-tier model above).
 	Ciphertext []byte
 
-	// AAD is the additional authenticated data — typically the user_ref_id
-	// + KEK ID — that the GCM tag covers. Mismatch = adapter error.
+	// AAD is the additional authenticated data the GCM tag covers — the raw
+	// user_ref_id ‖ kek_id bytes (build via PIIAAD). Mismatch = adapter error.
 	AAD []byte
+}
+
+// PIIAAD builds the canonical additional-authenticated-data for a PII envelope:
+// the raw user_ref_id bytes followed by the raw kek_id bytes (NOT hyphenated
+// UUID strings). Both the encrypt path (KMS adapter) and OpenPII MUST use this
+// single builder so the GCM tag binding cannot drift.
+func PIIAAD(userRefID, kekID uuid.UUID) []byte {
+	aad := make([]byte, 0, 32)
+	aad = append(aad, userRefID[:]...)
+	aad = append(aad, kekID[:]...)
+	return aad
 }
 
 // DecryptOutput is the result of a successful Decrypt.
@@ -71,11 +93,11 @@ type DecryptOutput struct {
 // PIIRecord is the in-memory tuple returned by OpenPII.
 // Fields mirror pii_registry (post-decrypt for the payload).
 type PIIRecord struct {
-	UserRefID      uuid.UUID
-	KEKID          uuid.UUID
-	BlobSchemaVer  int
-	Plaintext      []byte // decrypted from encrypted_blob
-	LastRotatedAt  int64  // unix nanos
+	UserRefID     uuid.UUID
+	KEKID         uuid.UUID
+	BlobSchemaVer int
+	Plaintext     []byte // decrypted from encrypted_blob
+	LastRotatedAt int64  // unix nanos
 }
 
 // PIIReader is what OpenPII needs to read the registry+kek rows.
@@ -95,21 +117,21 @@ type PIIReader interface {
 
 // PIIRow mirrors a pii_registry row (subset needed for decrypt).
 type PIIRow struct {
-	UserRefID      uuid.UUID
-	KEKID          uuid.UUID
-	EncryptedBlob  []byte
-	BlobSchemaVer  int
-	LastRotatedAt  int64 // unix nanos
-	ErasedAt       *int64 // nil = not erased
+	UserRefID     uuid.UUID
+	KEKID         uuid.UUID
+	EncryptedBlob []byte
+	BlobSchemaVer int
+	LastRotatedAt int64  // unix nanos
+	ErasedAt      *int64 // nil = not erased
 }
 
 // KEKRow mirrors a pii_kek row (subset needed for decrypt).
 type KEKRow struct {
-	KEKID        uuid.UUID
-	UserRefID    uuid.UUID
-	KeyMaterial  []byte // KMS ciphertext (NEVER plaintext)
-	KMSKeyRef    string
-	DestroyedAt  *int64 // nil = active; non-nil = crypto-shredded
+	KEKID       uuid.UUID
+	UserRefID   uuid.UUID
+	KeyMaterial []byte // KMS ciphertext (NEVER plaintext)
+	KMSKeyRef   string
+	DestroyedAt *int64 // nil = active; non-nil = crypto-shredded
 }
 
 // OpenPII is the canonical decrypt path. Performs the crypto-shred check
@@ -144,14 +166,12 @@ func OpenPII(ctx context.Context, kms KMSClient, db PIIReader, userRefID uuid.UU
 		return nil, ErrPIIErased
 	}
 	// AAD binding: user_ref_id || kek_id (raw bytes). Adapter verifies GCM tag.
-	aad := make([]byte, 0, 32)
-	aad = append(aad, userRefID[:]...)
-	aad = append(aad, kek.KEKID[:]...)
 	out, err := kms.Decrypt(ctx, DecryptInput{
-		KEKID:      kek.KEKID,
-		KMSKeyRef:  kek.KMSKeyRef,
-		Ciphertext: pii.EncryptedBlob,
-		AAD:        aad,
+		KEKID:       kek.KEKID,
+		KMSKeyRef:   kek.KMSKeyRef,
+		KeyMaterial: kek.KeyMaterial, // wrapped KEK — adapter KMS-decrypts it (3-tier)
+		Ciphertext:  pii.EncryptedBlob,
+		AAD:         PIIAAD(userRefID, kek.KEKID),
 	})
 	if err != nil {
 		return nil, err

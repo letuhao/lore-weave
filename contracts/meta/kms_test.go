@@ -94,6 +94,14 @@ func TestOpenPII_HappyPath(t *testing.T) {
 	if len(kms.Calls[0].AAD) != 32 {
 		t.Errorf("AAD length: got %d want 32", len(kms.Calls[0].AAD))
 	}
+	// 3-tier wiring (076 Slice B): OpenPII MUST pass the wrapped KEK
+	// (kek.KeyMaterial) into DecryptInput.KeyMaterial — a real adapter
+	// KMS-decrypts it to recover the KEK. The test KMS ignores it, so without
+	// this assertion a regression dropping the field would fail-closed only in
+	// production.
+	if string(kms.Calls[0].KeyMaterial) != "test-ciphertext-not-real-key-material" {
+		t.Errorf("OpenPII did not pass kek.KeyMaterial into DecryptInput.KeyMaterial; got %q", kms.Calls[0].KeyMaterial)
+	}
 }
 
 // TestOpenPII_CryptoShred_KEKDestroyed verifies that nulling/destroying the

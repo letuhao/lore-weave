@@ -232,7 +232,7 @@ func TestErasePII_DestroysKEK(t *testing.T) {
 	if keks.IsDestroyed(uid) {
 		t.Fatal("pre-erase: KEK must not be destroyed")
 	}
-	if err := sdk.ErasePII(context.Background(), uid); err != nil {
+	if err := sdk.ErasePII(context.Background(), uid, "INC-1", "test erasure"); err != nil {
 		t.Fatalf("ErasePII: %v", err)
 	}
 	if !keks.IsDestroyed(uid) {
@@ -253,10 +253,10 @@ func TestErasePII_DestroysKEK(t *testing.T) {
 func TestErasePII_Idempotent(t *testing.T) {
 	sdk, db, _, _, keks := wireSDK(t)
 	uid, _ := seedHappyUser(t, db)
-	if err := sdk.ErasePII(context.Background(), uid); err != nil {
+	if err := sdk.ErasePII(context.Background(), uid, "INC-1", "test erasure"); err != nil {
 		t.Fatalf("first erase: %v", err)
 	}
-	if err := sdk.ErasePII(context.Background(), uid); err != nil {
+	if err := sdk.ErasePII(context.Background(), uid, "INC-1", "test erasure"); err != nil {
 		t.Fatalf("second erase must be idempotent, got %v", err)
 	}
 	if !keks.IsDestroyed(uid) {
@@ -266,7 +266,7 @@ func TestErasePII_Idempotent(t *testing.T) {
 
 type failingKEKManager struct{}
 
-func (failingKEKManager) DestroyKEK(_ context.Context, _ uuid.UUID) error {
+func (failingKEKManager) DestroyKEK(_ context.Context, _ uuid.UUID, _, _ string) error {
 	return errors.New("kms-down")
 }
 
@@ -281,7 +281,7 @@ func TestErasePII_FailureSurfacesErrEraseFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSDK: %v", err)
 	}
-	err = sdk.ErasePII(context.Background(), uid)
+	err = sdk.ErasePII(context.Background(), uid, "INC-1", "test erasure")
 	if !errors.Is(err, ErrEraseFailed) {
 		t.Fatalf("expected ErrEraseFailed wrap, got %v", err)
 	}
@@ -299,7 +299,7 @@ func TestErasePII_AuditFailurePostDestroyReturnsHardError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSDK: %v", err)
 	}
-	err = sdk.ErasePII(context.Background(), uid)
+	err = sdk.ErasePII(context.Background(), uid, "INC-1", "test erasure")
 	if err == nil {
 		t.Fatal("audit failure post-destroy MUST surface as hard error")
 	}

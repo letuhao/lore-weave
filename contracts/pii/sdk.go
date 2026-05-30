@@ -67,13 +67,13 @@ type AuditWriter interface {
 // SensitiveReadEntry mirrors a `meta_read_audit` row (migration 014).
 // SDK fills it; AuditWriter persists.
 type SensitiveReadEntry struct {
-	AuditID         uuid.UUID
-	QueryType       SensitiveReadTag
-	Parameters      map[string]string
-	ActorID         string
-	ActorType       string // mirrors the cycle-3 meta_read_audit enum
-	ResultCount     int
-	CreatedAtNanos  int64
+	AuditID        uuid.UUID
+	QueryType      SensitiveReadTag
+	Parameters     map[string]string
+	ActorID        string
+	ActorType      string // mirrors the cycle-3 meta_read_audit enum
+	ResultCount    int
+	CreatedAtNanos int64
 }
 
 // Validate enforces migration 014 CHECK constraints in-process.
@@ -106,11 +106,12 @@ func (e *SensitiveReadEntry) Validate() error {
 // lifecycle. The SDK does NOT need rotate / read here; production
 // implementations wrap the cycle-3 meta library's pii_kek update path.
 type KEKManager interface {
-	// DestroyKEK marks pii_kek.destroyed_at non-NULL for the user's KEK.
-	// IDEMPOTENT — re-destroy of an already-destroyed KEK is a no-op
-	// (returns nil). This is the crypto-shred operation that GDPR
-	// Art. 17 leans on.
-	DestroyKEK(ctx context.Context, userRefID uuid.UUID) error
+	// DestroyKEK marks pii_kek.destroyed_at non-NULL for the user's KEK and
+	// records the GDPR ticket + reason (the pii_kek CHECK requires both
+	// non-empty when destroyed_at is set). IDEMPOTENT — re-destroy of an
+	// already-destroyed KEK is a no-op (returns nil). This is the crypto-shred
+	// operation that GDPR Art. 17 leans on.
+	DestroyKEK(ctx context.Context, userRefID uuid.UUID, ticket, reason string) error
 }
 
 // SDK is the typed PII access surface. Construct with NewSDK; reuse
@@ -210,8 +211,14 @@ func (s *SDK) GetPII(ctx context.Context, userRefID uuid.UUID) (*meta.PIIRecord,
 // with the underlying KEKManager error).
 //
 // IDEMPOTENT — re-erasing an already-erased user is a no-op.
-func (s *SDK) ErasePII(ctx context.Context, userRefID uuid.UUID) error {
-	if err := s.keks.DestroyKEK(ctx, userRefID); err != nil {
+//
+// ticket + reason are REQUIRED (GDPR audit; the pii_kek CHECK enforces both
+// non-empty when destroyed_at is set).
+func (s *SDK) ErasePII(ctx context.Context, userRefID uuid.UUID, ticket, reason string) error {
+	if ticket == "" || reason == "" {
+		return fmt.Errorf("%w: ticket and reason are required for erasure (GDPR audit)", ErrEraseFailed)
+	}
+	if err := s.keks.DestroyKEK(ctx, userRefID, ticket, reason); err != nil {
 		// Always audit even the failure — forensic invariant.
 		_ = s.audit(ctx, TagPIIUserErase, userRefID, 0)
 		return fmt.Errorf("%w: %v", ErrEraseFailed, err)
@@ -291,8 +298,9 @@ func NewInMemoryKEKManager() *InMemoryKEKManager {
 	return &InMemoryKEKManager{destroyed: make(map[uuid.UUID]int64)}
 }
 
-// DestroyKEK marks the user's KEK destroyed at now. Idempotent.
-func (m *InMemoryKEKManager) DestroyKEK(_ context.Context, userRefID uuid.UUID) error {
+// DestroyKEK marks the user's KEK destroyed at now. Idempotent. ticket/reason
+// are accepted to satisfy the KEKManager contract (recorded by real impls).
+func (m *InMemoryKEKManager) DestroyKEK(_ context.Context, userRefID uuid.UUID, _, _ string) error {
 	if _, ok := m.destroyed[userRefID]; ok {
 		return nil // idempotent
 	}
