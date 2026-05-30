@@ -12,6 +12,16 @@
   "viewAll": "View all notifications",
   "loadMore": "Load more",
   "pageTitle": "Notifications",
+  "notif": {
+    "translation": {
+      "completed": "Translation complete — {{count}} chapters of \"{{book}}\"",
+      "partial": "Translation partial — {{done}} done, {{failed}} failed",
+      "failed": "Translation failed — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} started following you"
+    }
+  },
   "event": {
     "title": "{{op}} {{status}}",
     "operation": {

@@ -351,15 +351,21 @@ async def _send_translation_notification(
 ) -> None:
     """Fire-and-forget notification to notification-service."""
     try:
+        category = "translation"
+        # `title` is the English fallback; clients localize from i18n_key + params
+        # (LW-PLAN notifications i18n Phase 2).
         if status == "completed":
             title = f"Translation complete — {completed_chapters} chapters of \"{book_title}\""
-            category = "translation"
+            i18n_key = "notif.translation.completed"
+            i18n_params = {"count": completed_chapters, "book": book_title}
         elif status == "partial":
             title = f"Translation partial — {completed_chapters} done, {failed_chapters} failed"
-            category = "translation"
+            i18n_key = "notif.translation.partial"
+            i18n_params = {"done": completed_chapters, "failed": failed_chapters}
         else:
             title = f"Translation failed — \"{book_title}\""
-            category = "translation"
+            i18n_key = "notif.translation.failed"
+            i18n_params = {"book": book_title}
 
         async with httpx.AsyncClient(timeout=5.0) as client:
             await client.post(
@@ -372,6 +378,8 @@ async def _send_translation_notification(
                         "job_id": str(job_id),
                         "status": status,
                         "type": f"translation_{status}",
+                        "i18n_key": i18n_key,
+                        "i18n_params": i18n_params,
                     },
                 },
                 headers={"X-Internal-Token": settings.internal_service_token},

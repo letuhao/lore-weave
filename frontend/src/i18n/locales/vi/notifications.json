@@ -12,6 +12,16 @@
   "viewAll": "Xem tất cả thông báo",
   "loadMore": "Tải thêm",
   "pageTitle": "Thông báo",
+  "notif": {
+    "translation": {
+      "completed": "Dịch hoàn tất — {{count}} chương của \"{{book}}\"",
+      "partial": "Dịch một phần — {{done}} xong, {{failed}} lỗi",
+      "failed": "Dịch thất bại — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} đã theo dõi bạn"
+    }
+  },
   "event": {
     "title": "{{op}} {{status}}",
     "operation": {

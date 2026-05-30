@@ -12,6 +12,16 @@
   "viewAll": "查看所有通知",
   "loadMore": "載入更多",
   "pageTitle": "通知",
+  "notif": {
+    "translation": {
+      "completed": "翻譯完成 — 「{{book}}」共 {{count}} 章",
+      "partial": "翻譯部分完成 — {{done}} 成功，{{failed}} 失敗",
+      "failed": "翻譯失敗 — 「{{book}}」"
+    },
+    "social": {
+      "followed": "{{name}} 開始追蹤你"
+    }
+  },
   "event": {
     "title": "{{op}}{{status}}",
     "operation": {

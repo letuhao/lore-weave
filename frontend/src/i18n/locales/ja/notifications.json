@@ -12,6 +12,16 @@
   "viewAll": "すべての通知を表示",
   "loadMore": "もっと読み込む",
   "pageTitle": "通知",
+  "notif": {
+    "translation": {
+      "completed": "「{{book}}」の{{count}}章の翻訳が完了しました",
+      "partial": "翻訳が一部完了 — {{done}}件成功、{{failed}}件失敗",
+      "failed": "「{{book}}」の翻訳に失敗しました"
+    },
+    "social": {
+      "followed": "{{name}}さんがあなたをフォローしました"
+    }
+  },
   "event": {
     "title": "{{op}}{{status}}",
     "operation": {
