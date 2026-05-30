@@ -9,6 +9,9 @@
   "minsAgo": "{{count}}m ago",
   "hrsAgo": "{{count}}h ago",
   "daysAgo": "{{count}}d ago",
+  "viewAll": "View all notifications",
+  "loadMore": "Load more",
+  "pageTitle": "Notifications",
   "category": {
     "all": "All",
     "translation": "Translation",

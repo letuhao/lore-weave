@@ -9,6 +9,9 @@
   "minsAgo": "{{count}}分前",
   "hrsAgo": "{{count}}時間前",
   "daysAgo": "{{count}}日前",
+  "viewAll": "すべての通知を表示",
+  "loadMore": "もっと読み込む",
+  "pageTitle": "通知",
   "category": {
     "all": "すべて",
     "translation": "翻訳",

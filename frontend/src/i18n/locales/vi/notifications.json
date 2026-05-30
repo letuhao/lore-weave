@@ -9,6 +9,9 @@
   "minsAgo": "{{count}} phút trước",
   "hrsAgo": "{{count}} giờ trước",
   "daysAgo": "{{count}} ngày trước",
+  "viewAll": "Xem tất cả thông báo",
+  "loadMore": "Tải thêm",
+  "pageTitle": "Thông báo",
   "category": {
     "all": "Tất cả",
     "translation": "Dịch thuật",

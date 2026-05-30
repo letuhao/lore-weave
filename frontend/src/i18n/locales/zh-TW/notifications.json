@@ -9,6 +9,9 @@
   "minsAgo": "{{count}}分鐘前",
   "hrsAgo": "{{count}}小時前",
   "daysAgo": "{{count}}天前",
+  "viewAll": "查看所有通知",
+  "loadMore": "載入更多",
+  "pageTitle": "通知",
   "category": {
     "all": "全部",
     "translation": "翻譯",
