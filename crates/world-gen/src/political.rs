@@ -3,7 +3,7 @@
 use crate::biome::BiomeKind;
 use crate::pathfind::{self, NONE};
 use crate::rng::{self, Rng};
-use crate::world_map::{Province, State};
+use crate::world_map::{County, Province, Realm, State, World};
 
 /// Stage-5 output.
 pub struct Political {
@@ -128,12 +128,17 @@ pub fn build(
         state_of_prov[p] = if owner == NONE { 0 } else { owner };
     }
 
+    // The flat/legacy builder has no sphere geometric hierarchy, so the C-2
+    // nesting ids are the `NONE` sentinel here. `build_nested` (the sphere
+    // builder) sets real values.
     let states: Vec<State> = seed_provs
         .iter()
         .enumerate()
         .map(|(sid, &sp)| State {
             id: sid as u32,
             capital_province: sp as u32,
+            subcontinent: NONE,
+            realm: NONE,
             name: String::new(),
         })
         .collect();
@@ -142,6 +147,7 @@ pub fn build(
             id: p as u32,
             capital_cell: seeds[p],
             state: state_of_prov[p],
+            region: NONE,
             name: String::new(),
         })
         .collect();
@@ -150,6 +156,279 @@ pub fn build(
         province_of,
         provinces,
         states,
+    }
+}
+
+/// The sphere builder's output — the 5-tier strict-nested political layer.
+pub struct PoliticalNested {
+    pub province_of: Vec<u32>,
+    pub provinces: Vec<Province>,
+    pub states: Vec<State>,
+    pub county_of: Vec<u32>,
+    pub counties: Vec<County>,
+    pub realms: Vec<Realm>,
+    pub world: World,
+}
+
+/// 3D dot product on unit-sphere cell centres (great-circle proximity surrogate).
+fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// Group cell ids (ascending) by a per-cell `u32` label; labels `>= n_groups`
+/// (e.g. the `NONE` sentinel for water) are skipped.
+fn group_cells(label_of: &[u32], n_groups: usize) -> Vec<Vec<u32>> {
+    let mut groups = vec![Vec::new(); n_groups];
+    for (c, &l) in label_of.iter().enumerate() {
+        if (l as usize) < n_groups {
+            groups[l as usize].push(c as u32);
+        }
+    }
+    groups
+}
+
+/// Group item ids (ascending) by a per-item `u32` label.
+fn group_items(label_of: &[u32], n_groups: usize) -> Vec<Vec<usize>> {
+    let mut groups = vec![Vec::new(); n_groups];
+    for (i, &l) in label_of.iter().enumerate() {
+        if (l as usize) < n_groups {
+            groups[l as usize].push(i);
+        }
+    }
+    groups
+}
+
+/// Farthest-point sampling over raw cells (ascending → lowest-index tie-break).
+fn farthest_point_cells(cells: &[u32], quota: usize, centers: &[[f32; 3]]) -> Vec<u32> {
+    let quota = quota.clamp(1, cells.len());
+    let mut chosen = vec![cells[0]];
+    while chosen.len() < quota {
+        let mut best: Option<u32> = None;
+        let mut best_min = f32::NEG_INFINITY;
+        for &c in cells {
+            if chosen.contains(&c) {
+                continue;
+            }
+            let cc = centers[c as usize];
+            let mut min_d = f32::INFINITY;
+            for &s in &chosen {
+                let d = 1.0 - dot(cc, centers[s as usize]);
+                if d < min_d {
+                    min_d = d;
+                }
+            }
+            if min_d > best_min {
+                best_min = min_d;
+                best = Some(c);
+            }
+        }
+        match best {
+            Some(c) => chosen.push(c),
+            None => break,
+        }
+    }
+    chosen
+}
+
+/// Nearest seed (max dot) among `seed_cells`, lowest index on ties.
+fn nearest_seed(cell: u32, seed_cells: &[u32], centers: &[[f32; 3]]) -> u32 {
+    let cc = centers[cell as usize];
+    let mut best = 0u32;
+    let mut best_dot = dot(cc, centers[seed_cells[0] as usize]);
+    for (i, &sc) in seed_cells.iter().enumerate().skip(1) {
+        let d = dot(cc, centers[sc as usize]);
+        if d > best_dot {
+            best_dot = d;
+            best = i as u32;
+        }
+    }
+    best
+}
+
+/// Build the 5-tier political layer **strictly nested inside the C-1a geometric
+/// hierarchy**: province ⊆ region, state ⊆ subcontinent, realm ⊆ continent,
+/// county ⊆ province. Reuses [`build`]'s flood-fill + farthest-point-cluster
+/// machinery, only scoping each tier to its geometric parent. Deterministic
+/// (no RNG — every tier is a deterministic function of the geometry).
+#[allow(clippy::too_many_arguments)]
+pub fn build_nested(
+    centers: &[[f32; 3]],
+    neighbors: &[Vec<u32>],
+    biomes: &[BiomeKind],
+    region_of: &[u32],
+    subcontinent_of: &[u32],
+    continent_of: &[u32],
+    n_regions: usize,
+    n_subcontinents: usize,
+    n_continents: usize,
+    county_subdivision: u8,
+) -> PoliticalNested {
+    let n = centers.len();
+
+    // --- PROVINCE ⊆ region: terrain-cost flood-fill confined to each region --
+    let cells_by_region = group_cells(region_of, n_regions);
+    let mut province_of = vec![NONE; n];
+    let mut prov_capital: Vec<u32> = Vec::new();
+    let mut prov_region: Vec<u32> = Vec::new();
+    for (r, cells) in cells_by_region.iter().enumerate() {
+        if cells.is_empty() {
+            continue;
+        }
+        let quota = (cells.len() / 150).clamp(1, 8);
+        let seeds = farthest_point_cells(cells, quota, centers);
+        let base = prov_capital.len() as u32;
+        let assign = pathfind::multi_source_assign(
+            &seeds,
+            |c| (region_of[c] == r as u32).then(|| biomes[c].terrain_cost()).flatten(),
+            neighbors,
+        );
+        for &c in cells {
+            let owner = assign[c as usize];
+            // A region can be disconnected (a Voronoi cell needn't be); fall
+            // back to the nearest seed so the province stays ⊆ the region.
+            let local = if owner == NONE {
+                nearest_seed(c, &seeds, centers)
+            } else {
+                owner
+            };
+            province_of[c as usize] = base + local;
+        }
+        for &sc in &seeds {
+            prov_capital.push(sc);
+            prov_region.push(r as u32);
+        }
+    }
+    let np = prov_capital.len();
+
+    // --- COUNTY ⊆ province: subdivide each province ------------------------
+    let cells_by_prov = group_cells(&province_of, np);
+    let k_county = usize::from(county_subdivision.clamp(1, 8));
+    let mut county_of = vec![NONE; n];
+    let mut counties: Vec<County> = Vec::new();
+    for (p, cells) in cells_by_prov.iter().enumerate() {
+        if cells.is_empty() {
+            continue;
+        }
+        let seeds = farthest_point_cells(cells, k_county, centers);
+        let base = counties.len() as u32;
+        let assign = pathfind::multi_source_assign(
+            &seeds,
+            |c| (province_of[c] == p as u32).then(|| biomes[c].terrain_cost()).flatten(),
+            neighbors,
+        );
+        for &c in cells {
+            let owner = assign[c as usize];
+            let local = if owner == NONE {
+                nearest_seed(c, &seeds, centers)
+            } else {
+                owner
+            };
+            county_of[c as usize] = base + local;
+        }
+        for (i, &sc) in seeds.iter().enumerate() {
+            counties.push(County {
+                id: base + i as u32,
+                capital_cell: sc,
+                province: p as u32,
+                name: String::new(),
+            });
+        }
+    }
+
+    // --- STATE (nation) ⊆ subcontinent: cluster the subcontinent's provinces -
+    let prov_subcont: Vec<u32> = (0..np)
+        .map(|p| subcontinent_of[prov_capital[p] as usize])
+        .collect();
+    let provs_by_sub = group_items(&prov_subcont, n_subcontinents);
+    let mut state_of_prov = vec![0u32; np];
+    let mut states: Vec<State> = Vec::new();
+    for (sub, provs) in provs_by_sub.iter().enumerate() {
+        if provs.is_empty() {
+            continue;
+        }
+        let quota = (provs.len() / 4).clamp(1, 6).min(provs.len());
+        let mut seed_provs = farthest_point(provs, quota, &prov_capital, centers);
+        seed_provs.sort_unstable(); // ascending province id → ascending state id
+        let base = states.len() as u32;
+        let seed_cells: Vec<u32> = seed_provs.iter().map(|&sp| prov_capital[sp]).collect();
+        let assign = pathfind::multi_source_assign(
+            &seed_cells,
+            |c| (subcontinent_of[c] == sub as u32)
+                .then(|| biomes[c].terrain_cost())
+                .flatten(),
+            neighbors,
+        );
+        for &p in provs {
+            let owner = assign[prov_capital[p] as usize];
+            let local = if owner == NONE {
+                nearest_seed(prov_capital[p], &seed_cells, centers)
+            } else {
+                owner
+            };
+            state_of_prov[p] = base + local;
+        }
+        for (i, &sp) in seed_provs.iter().enumerate() {
+            states.push(State {
+                id: base + i as u32,
+                capital_province: sp as u32,
+                subcontinent: sub as u32,
+                realm: NONE,
+                name: String::new(),
+            });
+        }
+    }
+    let ns = states.len();
+
+    // --- REALM ⊆ continent: cluster the continent's states -----------------
+    let state_cap_cell: Vec<u32> = (0..ns)
+        .map(|s| prov_capital[states[s].capital_province as usize])
+        .collect();
+    let state_cont: Vec<u32> = (0..ns)
+        .map(|s| continent_of[state_cap_cell[s] as usize])
+        .collect();
+    let states_by_cont = group_items(&state_cont, n_continents);
+    let mut realms: Vec<Realm> = Vec::new();
+    for (cont, sts) in states_by_cont.iter().enumerate() {
+        if sts.is_empty() {
+            continue;
+        }
+        let quota = (sts.len() / 3).clamp(1, 4).min(sts.len());
+        let mut seed_states = farthest_point(sts, quota, &state_cap_cell, centers);
+        seed_states.sort_unstable();
+        let base = realms.len() as u32;
+        let seed_cells: Vec<u32> = seed_states.iter().map(|&ss| state_cap_cell[ss]).collect();
+        for &s in sts {
+            let local = nearest_seed(state_cap_cell[s], &seed_cells, centers);
+            states[s].realm = base + local;
+        }
+        for (i, &ss) in seed_states.iter().enumerate() {
+            realms.push(Realm {
+                id: base + i as u32,
+                capital_state: ss as u32,
+                continent: cont as u32,
+                name: String::new(),
+            });
+        }
+    }
+
+    let provinces: Vec<Province> = (0..np)
+        .map(|p| Province {
+            id: p as u32,
+            capital_cell: prov_capital[p],
+            state: state_of_prov[p],
+            region: prov_region[p],
+            name: String::new(),
+        })
+        .collect();
+
+    PoliticalNested {
+        province_of,
+        provinces,
+        states,
+        county_of,
+        counties,
+        realms,
+        world: World::default(),
     }
 }
 

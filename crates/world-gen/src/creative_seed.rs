@@ -54,6 +54,10 @@ pub struct CreativeSeed {
     /// region per cell.
     #[serde(default = "default_region_subdivision")]
     pub region_subdivision: u8,
+    /// Target number of **counties** per province (political tier, C-2).
+    /// `#[serde(default)]` = 4; clamped to `1..=8` at use.
+    #[serde(default = "default_county_subdivision")]
+    pub county_subdivision: u8,
 }
 
 fn default_plate_count() -> u8 {
@@ -65,6 +69,10 @@ fn default_continental_fraction() -> f32 {
 }
 
 fn default_region_subdivision() -> u8 {
+    4
+}
+
+fn default_county_subdivision() -> u8 {
     4
 }
 
@@ -84,6 +92,7 @@ impl Default for CreativeSeed {
             plate_count: default_plate_count(),
             continental_fraction: default_continental_fraction(),
             region_subdivision: default_region_subdivision(),
+            county_subdivision: default_county_subdivision(),
         }
     }
 }

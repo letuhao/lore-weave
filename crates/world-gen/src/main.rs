@@ -78,6 +78,9 @@ struct GenerateArgs {
     /// geometric hierarchy (clamped 1..=12).
     #[arg(long, default_value_t = 4)]
     region_subdivision: u8,
+    /// Target number of counties per province (political tier; clamped 1..=8).
+    #[arg(long, default_value_t = 4)]
+    county_subdivision: u8,
     /// Coastline profile (only used in `--terrain-mode profile`).
     #[arg(long, value_enum, default_value_t = CoastlineArg::Coastal)]
     coastline: CoastlineArg,
@@ -286,6 +289,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             plate_count: cli.plate_count,
             continental_fraction: cli.continental_fraction,
             region_subdivision: cli.region_subdivision,
+            county_subdivision: cli.county_subdivision,
         }
     };
 

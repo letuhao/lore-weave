@@ -572,6 +572,45 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### C-2a — Political tiers, strict geometric nesting (session 99, world-gen-sdk-refactor, BE [XL]) ✅
+
+C3 arc, sub-phase C-2a (model). PO decisions: **strict nesting** (political ⊆
+geometric) + **keep `State`** as the nation tier (no rename). Spec:
+[`docs/specs/2026-05-30-c2-political-tiers.md`](../specs/2026-05-30-c2-political-tiers.md).
+
+Extended the sphere political layer from 2 tiers to 5, strictly nested in the
+C-1a frame: **world → realm⊆continent → state⊆subcontinent → province⊆region →
+county⊆province**. NEW `political::build_nested` (sphere) reuses 100% of the
+existing flood-fill + farthest-point-cluster machinery, only scoping each tier
+to its geometric parent. The old `political::build` (2-tier) is **kept verbatim
+for the frozen flat track** (`civ_adapter`); it now fills the new nesting ids
+with the `NONE` sentinel. `lib.rs::generate` reordered (hierarchy before
+political) and switched to `build_nested`; `settlement` still consumes a
+`Political` view built from the nested result (county/realm/world ride
+alongside). NEW types County/Realm/World + Province.region + State.subcontinent/
+realm + 4 WorldMap fields + compute_hash; knob `county_subdivision` (default 4,
+clamp 1..=8) + CLI `--county-subdivision`.
+
+**Files:** world_map.rs · political.rs · lib.rs · creative_seed.rs · main.rs ·
+tests/serde.rs · docs/specs/2026-05-30-c2-political-tiers.md.
+
+**VERIFY:** lib **385** passed (`political_tiers_nest_strictly_in_geometric_hierarchy`
++ `political_tiers_nest_in_profile_mode` — 4 nesting invariants/cell + non-orphan
++ non-empty + monotone counts), serde **5** (`compute_hash_covers_every_field`
+extended: province.region, state.subcontinent/realm, county_of/counties/realms +
+parent links + name carve-outs), determinism **8**, structure 20 — 0 failed.
+**Flat unchanged** (civ_adapter `build_political`/`civ_bundle_hash` determinism
+pass). Clippy-clean (4 residual pre-existing). `content_hash` re-based (run-vs-run,
+no literal pins).
+
+**`/review-impl`:** no HIGH/MED. MED-1 (Profile-mode `build_nested` untested) +
+LOW-1 (no non-empty-entity assert) **fixed**; LOW-2 (province seeds now
+farthest-point geometric, not habitability-weighted → settlement makes more/
+finer capitals) documented + accepted.
+
+**Next:** C-2b (`--realm-png` / tier-coloured political render, S) then C-2c
+(LLM naming of realms/counties, S).
+
 ### C-1b — Region hierarchy render `--region-png` (session 99, world-gen-sdk-refactor, BE [S]) ✅
 
 Visual-verification render for the C-1a hierarchy (PO chose model-first, render

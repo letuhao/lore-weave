@@ -200,6 +200,20 @@ fn compute_hash_covers_every_field() {
     tamper("subcontinents.continent", &|m| m.subcontinents[0].continent ^= 1);
     tamper("regions.subcontinent", &|m| m.regions[0].subcontinent ^= 1);
 
+    // Political tiers (C-2). The default world populates all five tiers.
+    assert!(
+        !base.counties.is_empty() && !base.realms.is_empty(),
+        "the default world has counties and realms"
+    );
+    tamper("provinces.region", &|m| m.provinces[0].region ^= 1);
+    tamper("states.subcontinent", &|m| m.states[0].subcontinent ^= 1);
+    tamper("states.realm", &|m| m.states[0].realm ^= 1);
+    tamper("county_of", &|m| m.county_of[0] ^= 1);
+    tamper("counties.province", &|m| m.counties[0].province ^= 1);
+    tamper("counties.capital_cell", &|m| m.counties[0].capital_cell ^= 1);
+    tamper("realms.continent", &|m| m.realms[0].continent ^= 1);
+    tamper("realms.capital_state", &|m| m.realms[0].capital_state ^= 1);
+
     // Names are the deliberate carve-out: `compute_hash` excludes them, so a
     // name tamper must LEAVE `verify_hash` true — proof that the naming step
     // (`crate::naming`) can never break a map's determinism digest.
@@ -221,4 +235,7 @@ fn compute_hash_covers_every_field() {
     name_tamper("continents.name", &|m| m.continents[0].name.push('x'));
     name_tamper("subcontinents.name", &|m| m.subcontinents[0].name.push('x'));
     name_tamper("regions.name", &|m| m.regions[0].name.push('x'));
+    name_tamper("counties.name", &|m| m.counties[0].name.push('x'));
+    name_tamper("realms.name", &|m| m.realms[0].name.push('x'));
+    name_tamper("world.name", &|m| m.world.name.push('x'));
 }
