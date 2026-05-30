@@ -83,6 +83,10 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
+		// Set canonical content (short_description) on an existing entity.
+		// Used by lore-enrichment promote to write enriched canon THROUGH the
+		// glossary SSOT (Q2) — extract-entities can't set this column.
+		r.Post("/books/{book_id}/entities/{entity_id}/canon-content", s.internalSetCanonContent)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

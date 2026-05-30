@@ -132,12 +132,16 @@ class WritebackPorts:
         name: str,
         attributes: dict[str, str],
     ) -> str:
-        """Upsert the entity anchor through the glossary SSOT (Q2).
+        """Upsert the entity ANCHOR through the glossary SSOT (Q2).
 
-        Returns the glossary ``entity_id``. The enriched dimension content is
-        attached as attributes (the authored SSOT record); the H0 quarantine of
-        the *facts* is enforced separately in the KG. All text is
-        injection-neutralized first (deferred 050).
+        Returns the glossary ``entity_id``. This writes the entity IDENTITY
+        (``name`` + any caller-supplied EAV attributes) via ``extract-entities``;
+        the write-back path supplies ``attributes={}`` so the anchor is created
+        identity-only (quarantine — H0 A1). The CANONICAL content
+        (``short_description``) is written separately on PROMOTE via
+        :meth:`set_glossary_canon_content`, because ``short_description`` is a
+        glossary_entities COLUMN that ``extract-entities`` cannot set. All text
+        is injection-neutralized first (deferred 050).
         """
         safe_attrs = {k: _safe(v) for k, v in attributes.items()}
         body: dict[str, Any] = {
@@ -164,6 +168,34 @@ class WritebackPorts:
                 "glossary extract-entities returned no entity_id", status_code=502
             )
         return str(ents[0]["entity_id"])
+
+    async def set_glossary_canon_content(
+        self,
+        *,
+        book_id: UUID,
+        entity_id: UUID,
+        short_description: str,
+    ) -> None:
+        """Write the approved enriched content onto an EXISTING glossary
+        entity's CANONICAL content (Q2 / DEFERRED-053).
+
+        This is the glossary SSOT write the promote flow performs to set the
+        entity's canonical ``short_description`` — the value glossary_sync (C4)
+        then propagates to Neo4j as ``source_type='glossary'`` canon. Used
+        instead of ``extract-entities`` for content, because ``short_description``
+        is a glossary_entities COLUMN (not an EAV attribute_definition), so
+        ``extract-entities`` silently no-ops on it.
+
+        H0: only called on PROMOTE (after the author-only ownership check), never
+        pre-promote — the anchor stays identity-only / quarantined until then.
+        The content is injection-neutralized first (deferred 050). Capped at the
+        glossary-side 500-rune limit defensively (the endpoint also enforces it).
+        """
+        safe = _safe(short_description)
+        if len(safe) > 500:
+            safe = safe[:500]
+        url = f"{self._gloss}/internal/books/{book_id}/entities/{entity_id}/canon-content"
+        await self._post(url, json={"short_description": safe})
 
     async def soft_delete_glossary_entity(
         self, *, book_id: UUID, entity_id: UUID, jwt: str

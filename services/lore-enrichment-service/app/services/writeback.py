@@ -328,18 +328,28 @@ class WritebackService:
         )
 
         # 5. NOW (and only now) the content is canon — flow it into the glossary
-        # canonical attribute through the SSOT (Q2). Pre-promote, write-back wrote
-        # only the entity identity; this is the point makeup becomes authored.
+        # entity's CANONICAL content through the SSOT (Q2 / DEFERRED-053).
+        # Pre-promote, write-back wrote only the entity identity (quarantine);
+        # this is the point makeup legitimately becomes authored canon.
+        #
+        # We set the glossary ``short_description`` COLUMN on the resolved
+        # entity via the internal canon-content endpoint — NOT extract-entities,
+        # which silently no-ops on short_description (it is a column, not an EAV
+        # attribute_definition). glossary_sync (C4) then propagates this content
+        # to Neo4j as source_type='glossary' canon, keeping the KG entity anchor
+        # consistent with the glossary SSOT. The per-dimension KG facts promoted
+        # in step 4 carry the structured dimensions; the short_description is the
+        # canonical summary — complementary, never divergent.
         try:
-            await self._ports.write_entity_through_glossary(
+            await self._ports.set_glossary_canon_content(
                 book_id=book_id,
-                kind_code=_location_kind_code(proposal.entity_kind),
-                name=_anchor_name(proposal),  # H0: faithful identity, never makeup
-                attributes={"short_description": proposal.content[:480]},
+                entity_id=resolved_entity_id,
+                short_description=proposal.content[:480],
             )
         except Exception:  # noqa: BLE001 — content sync is best-effort post-promote
             # The canon state already holds in the KG + proposal row; a glossary
-            # attribute write hiccup must not unwind a successful promotion.
+            # content write hiccup must not unwind a successful promotion. The
+            # glossary entity_updated reconciler / a re-promote re-converges it.
             pass
 
         return PromoteResult(

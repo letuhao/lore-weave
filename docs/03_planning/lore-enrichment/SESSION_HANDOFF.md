@@ -45,3 +45,18 @@ Before `/raid`:
 
 ## Reusable infra discovered (adopt, don't reinvent)
 confidence/quarantine/pending_validation · pending_facts confirm-reject + injection-defense · extraction job state machine (estimate/start/pause/resume/cancel) · per-project embedding-model · Neo4j graph-stats (gap-detect input) · CJK-aware splitting (`loreweave_extraction`) · Redis Streams event pipeline · chat-service skeleton + `client/` provider-adapter (no direct SDK, no hardcoded model).
+
+## Current Active Work — DEFERRED-053 fix (promote → glossary SSOT content-sync, Q2) [2026-05-30, cold-start]
+**Closed 053 the Q2 way (glossary-first, NOT KG-authoritative).** Root cause: promote step 5 called `write_entity_through_glossary` → `extract-entities`, which can't write `short_description` (it is a `glossary_entities` COLUMN, not an EAV `attribute_definition`), so the canonical content stayed NULL while the enriched content lived only in Neo4j facts.
+
+Fix (files touched, all additive):
+- `services/glossary-service/internal/api/canon_content_handler.go` (NEW) + route in `server.go`: `POST /internal/books/{book_id}/entities/{entity_id}/canon-content` — service-token-gated; sets `short_description` (≤500 runes, trims, sticky `short_description_auto=false`), book-scoped 404 guard, emits `glossary.entity_updated` → `glossary_sync` → Neo4j (Q2 path). `canon_content_test.go` (NEW): 5 unit + 2 DB-integration tests.
+- `services/lore-enrichment-service/app/clients/writeback.py`: NEW `set_glossary_canon_content()` port (injection-neutralized, rune-capped); corrected `write_entity_through_glossary` docstring (anchor = identity-only).
+- `services/lore-enrichment-service/app/services/writeback.py`: promote step 5 now calls `set_glossary_canon_content(entity_id, content)` instead of the no-op extract-entities; pre-promote write-back unchanged (identity-only / quarantine).
+- `tests/test_review_gate.py`: `FakePorts.set_glossary_canon_content` recorder + assertions (content reaches canon ONLY on promote; never pre-promote/idempotent).
+
+H0 preserved (all 6, re-tested): quarantine pre-promote · `_anchor_name` never makeup · minted-anchor born marked · permanent origin marker · author-only · quarantine distinguishable. `knowledge-service/internal_enrichment.py` UNCHANGED (KG facts path intact; complementary to the glossary `short_description` summary, both end `source_type='glossary'`).
+
+Tests: glossary `go test ./...` green; lore-enrichment 330 pass + 22 skip; ruff clean. **LIVE cross-service smoke:** fresh location entity `short_description` NULL pre → POST canon-content → POPULATED + `auto=false` + `glossary.entity_updated`(op=updated,src=glossary) outbox → Neo4j `Entity.short_description` set, `source_type='glossary'`, conf=1.0. Test entity cleaned up after.
+
+053 moved to DEFERRED "Recently cleared".

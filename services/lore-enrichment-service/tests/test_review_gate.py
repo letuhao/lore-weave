@@ -127,6 +127,7 @@ class FakePorts:
         self.retract_calls: list[dict] = []
         self.recycle_calls: list[dict] = []
         self.glossary_write_calls: list[dict] = []
+        self.canon_content_calls: list[dict] = []
 
     async def book_owner(self, *, book_id):
         return BookOwner(book_id=book_id, owner_user_id=self.owner)
@@ -136,6 +137,12 @@ class FakePorts:
             {"book_id": book_id, "kind_code": kind_code, "name": name, "attributes": attributes}
         )
         return str(GLOSS)
+
+    async def set_glossary_canon_content(self, *, book_id, entity_id, short_description):
+        # DEFERRED-053: the Q2 canon-content write performed ONLY on promote.
+        self.canon_content_calls.append(
+            {"book_id": book_id, "entity_id": entity_id, "short_description": short_description}
+        )
 
     async def writeback_enriched_facts(self, *, user_id, project_id, proposal_id, glossary_entity_id, canonical_name, entity_kind, technique, facts):
         self.writeback_calls.append({"proposal_id": proposal_id, "technique": technique, "facts": facts, "canonical_name": canonical_name})
@@ -218,11 +225,13 @@ async def test_writeback_enters_quarantined_not_canon():
     # the proposal row is still non-canon.
     assert result.proposal["review_status"] == "approved"
     assert result.proposal["promoted_entity_id"] is None
-    # H0 A1: write-back never writes enriched CONTENT into a glossary attribute
+    # H0 A1: write-back never writes enriched CONTENT into the glossary canon
     # pre-promote (only identity). Here glossary_entity_id was supplied so no
     # glossary write at all; the assertion guards the no-content-leak invariant.
     for call in ports.glossary_write_calls:
         assert "short_description" not in call.get("attributes", {})
+    # DEFERRED-053: canonical content is set ONLY on promote — never on write-back.
+    assert ports.canon_content_calls == []
 
 
 @pytest.mark.asyncio
@@ -240,12 +249,17 @@ async def test_writeback_writes_identity_only_no_content_leak():
     assert ports.glossary_write_calls, "anchor must be created when no id supplied"
     for call in ports.glossary_write_calls:
         assert call["attributes"] == {}, "no enriched content on the canon anchor pre-promote"
+    # DEFERRED-053: and no canonical-content write pre-promote either.
+    assert ports.canon_content_calls == []
 
 
 @pytest.mark.asyncio
 async def test_promote_flows_content_to_glossary_canon():
-    """H0 A1: promote (and ONLY promote) flows the enriched content into the
-    glossary canonical attribute — the point makeup legitimately becomes canon."""
+    """H0 A1 / DEFERRED-053: promote (and ONLY promote) flows the enriched content
+    into the glossary entity's CANONICAL content (short_description) through the
+    SSOT — the point makeup legitimately becomes canon. The anchor write
+    (extract-entities) stays identity-only; content goes via the dedicated
+    canon-content port (extract-entities can't set short_description)."""
     p = _proposal(status=ReviewStatus.APPROVED)
     ports = FakePorts(owner=OWNER)
     svc = WritebackService(FakeRepo(p), ports)
@@ -253,9 +267,16 @@ async def test_promote_flows_content_to_glossary_canon():
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
         glossary_entity_id=None,
     )
-    # exactly one of the glossary writes carries the content (the post-promote one).
-    content_writes = [c for c in ports.glossary_write_calls if "short_description" in c["attributes"]]
-    assert content_writes, "promote must canonize the content into the glossary attribute"
+    # The canonical content reached the glossary SSOT exactly once, on the
+    # resolved entity, carrying the proposal content (non-empty).
+    assert len(ports.canon_content_calls) == 1, "promote must canonize content into glossary canon"
+    cc = ports.canon_content_calls[0]
+    assert cc["entity_id"] == GLOSS
+    assert cc["short_description"], "canonical content must be non-empty"
+    assert cc["short_description"] == p.content[:480]
+    # The identity anchor write (extract-entities) must NOT carry content.
+    for call in ports.glossary_write_calls:
+        assert "short_description" not in call["attributes"]
 
 
 @pytest.mark.asyncio
@@ -381,6 +402,8 @@ async def test_promote_idempotent_no_duplicate_canon():
     # No second write-back of the entity anchor (no duplicate canon entity).
     assert ports.writeback_calls == []
     assert ports.glossary_write_calls == []
+    # Idempotent promote re-flips KG only — no re-write of canonical content.
+    assert ports.canon_content_calls == []
 
 
 # ── (d) retract path ──────────────────────────────────────────────────────────
@@ -479,7 +502,8 @@ async def test_writeback_null_target_ref_no_canonical_name_uses_synthetic_id():
 @pytest.mark.asyncio
 async def test_promote_null_target_ref_canonizes_faithful_name_not_makeup():
     """H0 FIX-1: even on promote (the content→canon flow), the glossary entity
-    NAME stays the faithful identity — only the short_description carries content."""
+    NAME stays the faithful identity — the canonical content carries the makeup,
+    the anchor name never does."""
     makeup = "捏造的地点描述不可作为实体名。"
     p = _proposal(
         status=ReviewStatus.APPROVED,
@@ -493,11 +517,14 @@ async def test_promote_null_target_ref_canonizes_faithful_name_not_makeup():
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
         glossary_entity_id=None,
     )
-    content_writes = [c for c in ports.glossary_write_calls if "short_description" in c["attributes"]]
-    assert content_writes, "promote must canonize content into the attribute"
+    # The makeup content reaches the canonical content (DEFERRED-053)…
+    assert ports.canon_content_calls, "promote must canonize content into glossary canon"
+    assert ports.canon_content_calls[0]["short_description"] == makeup[:480]
+    # …but the entity NAME (anchor) is always the faithful identity, never makeup.
     for c in ports.glossary_write_calls:
         assert c["name"] == "北俱蘆洲", "the entity NAME is always the faithful identity"
         assert c["name"] != makeup[:32]
+        assert "short_description" not in c["attributes"]
 
 
 # ── FIX-3 (NIT-3): retract locates the anchor of a quarantined-never-promoted ───
