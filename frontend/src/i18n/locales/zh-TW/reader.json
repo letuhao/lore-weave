@@ -92,5 +92,36 @@
       "paused": "已暫停",
       "loading": "載入中"
     }
+  },
+  "audio": {
+    "source": {
+      "attached": "附加",
+      "ai": "AI TTS",
+      "browser": "瀏覽器",
+      "inline": "音訊區塊",
+      "none": "無"
+    },
+    "coverage": "音訊涵蓋範圍",
+    "summary": "{{speakable}} 個可朗讀區塊 · {{missing}} 個使用瀏覽器 TTS",
+    "generate_missing": "生成缺少的音訊",
+    "block_chars": "{{count}} 個區塊 · 約 {{chars}} 字元",
+    "block_chars_other": "{{count}} 個區塊 · 約 {{chars}} 字元",
+    "est_cost": "預估 ${{cost}}",
+    "generating": "生成中... {{progress}}/{{total}}",
+    "select_model_alert": "請先在 TTS 設定中選擇 TTS 模型。",
+    "generate_all": "全部生成 ({{count}})",
+    "blocks": "區塊",
+    "audio_block_preview": "音訊區塊"
+  },
+  "block": {
+    "audio_unavailable": "音訊無法使用",
+    "audio_fallback": "您的瀏覽器不支援 audio 元素。",
+    "image_unavailable": "圖片無法使用",
+    "video_unavailable": "影片無法使用"
+  },
+  "indicator": {
+    "pause": "暫停",
+    "play": "播放附加音訊",
+    "mismatch": "音訊字幕與區塊文字不符"
   }
 }

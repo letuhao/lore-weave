@@ -92,5 +92,36 @@
       "paused": "一時停止",
       "loading": "読み込み中"
     }
+  },
+  "audio": {
+    "source": {
+      "attached": "添付",
+      "ai": "AI TTS",
+      "browser": "ブラウザ",
+      "inline": "音声ブロック",
+      "none": "なし"
+    },
+    "coverage": "音声カバレッジ",
+    "summary": "{{speakable}}個の読み上げ可能ブロック · {{missing}}個がブラウザTTS使用",
+    "generate_missing": "不足している音声を生成",
+    "block_chars": "{{count}}ブロック · 約{{chars}}文字",
+    "block_chars_other": "{{count}}ブロック · 約{{chars}}文字",
+    "est_cost": "推定 ${{cost}}",
+    "generating": "生成中... {{progress}}/{{total}}",
+    "select_model_alert": "先にTTS設定でTTSモデルを選択してください。",
+    "generate_all": "すべて生成 ({{count}})",
+    "blocks": "ブロック",
+    "audio_block_preview": "音声ブロック"
+  },
+  "block": {
+    "audio_unavailable": "音声を利用できません",
+    "audio_fallback": "お使いのブラウザは audio 要素に対応していません。",
+    "image_unavailable": "画像を利用できません",
+    "video_unavailable": "動画を利用できません"
+  },
+  "indicator": {
+    "pause": "一時停止",
+    "play": "添付音声を再生",
+    "mismatch": "音声字幕がブロックのテキストと異なります"
   }
 }

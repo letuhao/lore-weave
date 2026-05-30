@@ -92,5 +92,36 @@
       "paused": "tạm dừng",
       "loading": "đang tải"
     }
+  },
+  "audio": {
+    "source": {
+      "attached": "Đính kèm",
+      "ai": "AI TTS",
+      "browser": "Trình duyệt",
+      "inline": "Khối âm thanh",
+      "none": "Không"
+    },
+    "coverage": "Độ phủ âm thanh",
+    "summary": "{{speakable}} khối đọc được · {{missing}} dùng TTS trình duyệt",
+    "generate_missing": "Tạo âm thanh còn thiếu",
+    "block_chars": "{{count}} khối · ~{{chars}} ký tự",
+    "block_chars_other": "{{count}} khối · ~{{chars}} ký tự",
+    "est_cost": "ước tính ${{cost}}",
+    "generating": "Đang tạo... {{progress}}/{{total}}",
+    "select_model_alert": "Hãy chọn mô hình TTS trong Cài đặt TTS trước.",
+    "generate_all": "Tạo tất cả ({{count}})",
+    "blocks": "Khối",
+    "audio_block_preview": "Khối âm thanh"
+  },
+  "block": {
+    "audio_unavailable": "Âm thanh không khả dụng",
+    "audio_fallback": "Trình duyệt của bạn không hỗ trợ phần tử audio.",
+    "image_unavailable": "Hình ảnh không khả dụng",
+    "video_unavailable": "Video không khả dụng"
+  },
+  "indicator": {
+    "pause": "Tạm dừng",
+    "play": "Phát âm thanh đính kèm",
+    "mismatch": "Phụ đề âm thanh khác với văn bản khối"
   }
 }

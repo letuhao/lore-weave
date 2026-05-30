@@ -92,5 +92,36 @@
       "paused": "paused",
       "loading": "loading"
     }
+  },
+  "audio": {
+    "source": {
+      "attached": "Attached",
+      "ai": "AI TTS",
+      "browser": "Browser",
+      "inline": "Audio Block",
+      "none": "None"
+    },
+    "coverage": "Audio Coverage",
+    "summary": "{{speakable}} speakable blocks · {{missing}} using browser TTS",
+    "generate_missing": "Generate Missing Audio",
+    "block_chars": "{{count}} block · ~{{chars}} characters",
+    "block_chars_other": "{{count}} blocks · ~{{chars}} characters",
+    "est_cost": "est. ${{cost}}",
+    "generating": "Generating... {{progress}}/{{total}}",
+    "select_model_alert": "Select a TTS model in TTS Settings first.",
+    "generate_all": "Generate All ({{count}})",
+    "blocks": "Blocks",
+    "audio_block_preview": "Audio block"
+  },
+  "block": {
+    "audio_unavailable": "Audio not available",
+    "audio_fallback": "Your browser does not support the audio element.",
+    "image_unavailable": "Image not available",
+    "video_unavailable": "Video not available"
+  },
+  "indicator": {
+    "pause": "Pause",
+    "play": "Play attached audio",
+    "mismatch": "Audio subtitle differs from block text"
   }
 }
