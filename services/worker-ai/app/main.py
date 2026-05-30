@@ -17,6 +17,7 @@ from loreweave_obs import setup_tracing
 from app.clients import BookClient, GlossaryClient, KnowledgeClient
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
+from app.metrics import start_metrics_server
 from app.runner import (
     consume_filter_reload_signal,
     hydrate_precision_filter_config_from_redis,
@@ -39,6 +40,10 @@ async def main() -> None:
     setup_tracing("worker-ai")
 
     logger.info("worker-ai starting (poll_interval=%.1fs)", settings.poll_interval_s)
+
+    # Cycle 73h — Prometheus /metrics endpoint (daemon thread, runs
+    # alongside asyncio loop). No-op when METRICS_PORT=0.
+    start_metrics_server(settings.metrics_port)
 
     pool = await asyncpg.create_pool(
         settings.knowledge_db_url,

@@ -1870,3 +1870,153 @@ async def test_hydrate_precision_filter_config_leaves_cache_when_redis_empty(mon
         assert runner_module._PRECISION_FILTER_CONFIG is saved
     finally:
         runner_module.set_precision_filter_config(saved)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Cycle 73h — Prometheus counter regression-lock
+# (closes cycle 73f r3 M4 / cycle 73g log-only stopgap)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _worker_reload_counter_value(outcome: str) -> float:
+    """Snapshot the worker-ai filter-reload counter for delta assertions."""
+    from app.metrics import worker_ai_filter_reload_total
+    return worker_ai_filter_reload_total.labels(outcome=outcome)._value.get()
+
+
+@pytest.mark.asyncio
+async def test_worker_filter_reload_counter_bumps_on_successful_re_read(monkeypatch):
+    """Cycle 73h: pubsub-driven re-read success → bumps
+    `worker_ai_filter_reload_total{outcome=applied}`."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    new_config = PrecisionFilterConfig(
+        model_ref="counter-test-uuid",
+        categories=("event",),
+        partial_policy="drop",
+    )
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        await on_reload()
+        return
+
+    async def fake_get_filter_config(redis_client):
+        return new_config
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    pre_applied = _worker_reload_counter_value("applied")
+
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.consume_filter_reload_signal("redis://fake")
+        assert _worker_reload_counter_value("applied") == pre_applied + 1
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_worker_filter_reload_counter_bumps_failed_on_exception(monkeypatch):
+    """Cycle 73h: pubsub re-read failure → bumps
+    `worker_ai_filter_reload_total{outcome=failed}` (NOT applied)."""
+    import app.runner as runner_module
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        await on_reload()
+        return
+
+    async def fake_get_filter_config_raises(redis_client):
+        raise RuntimeError("simulated redis read failure")
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    pre_failed = _worker_reload_counter_value("failed")
+    pre_applied = _worker_reload_counter_value("applied")
+
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config_raises,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.consume_filter_reload_signal("redis://fake")
+        # Failed bumps; applied does NOT.
+        assert _worker_reload_counter_value("failed") == pre_failed + 1
+        assert _worker_reload_counter_value("applied") == pre_applied
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_worker_hydrate_counter_bumps_on_startup(monkeypatch):
+    """Cycle 73h: startup hydrate (success) → bumps
+    `worker_ai_filter_reload_total{outcome=startup}`. Distinct from
+    `applied` so dashboards can attribute "where did the cache value
+    come from"."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    persisted = PrecisionFilterConfig(
+        model_ref="hydrate-counter-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_get_filter_config(redis_client):
+        return persisted
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    pre_startup = _worker_reload_counter_value("startup")
+
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.hydrate_precision_filter_config_from_redis("redis://fake")
+        assert _worker_reload_counter_value("startup") == pre_startup + 1
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+def test_start_metrics_server_no_op_when_port_zero(caplog):
+    """Cycle 73h: METRICS_PORT=0 disables the WSGI server cleanly
+    (no port collision in tests / dev runs)."""
+    import logging
+    from app.metrics import start_metrics_server
+
+    with caplog.at_level(logging.INFO, logger="app.metrics"):
+        start_metrics_server(0)
+    assert any(
+        "metrics server disabled" in r.getMessage() for r in caplog.records
+    )

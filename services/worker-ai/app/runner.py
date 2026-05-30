@@ -117,9 +117,15 @@ async def hydrate_precision_filter_config_from_redis(redis_url: str) -> None:
     a worker container restart silently drops the ops-override and
     reverts to env defaults until next manual reload POST — defeating
     the cycle's "persistent across restart" promise (asymmetric with
-    KS r2 H1 fold which already had hydrate)."""
+    KS r2 H1 fold which already had hydrate).
+
+    Cycle 73h: bumps `worker_ai_filter_reload_total{outcome=startup}`
+    on success or `startup_failed` on exception (replaces cycle 73g
+    M4's log-only emission)."""
     import redis.asyncio as aioredis
     from loreweave_extraction import get_filter_config
+
+    from app.metrics import worker_ai_filter_reload_total
 
     redis_client = aioredis.from_url(redis_url, decode_responses=False)
     try:
@@ -127,19 +133,20 @@ async def hydrate_precision_filter_config_from_redis(redis_url: str) -> None:
         if cached is not None:
             set_precision_filter_config(cached)
             logger.info(
-                "cycle 73f: worker hydrated filter config from Redis "
-                "on startup (model_ref=%s, categories=%s)",
+                "WORKER_FILTER_RELOAD outcome=startup active=true "
+                "model_ref=%s categories=%s",
                 cached.model_ref, cached.categories,
             )
         else:
             logger.info(
-                "cycle 73f: worker Redis filter config absent — "
-                "using env defaults",
+                "WORKER_FILTER_RELOAD outcome=startup active=false "
+                "reason=redis_key_absent",
             )
+        worker_ai_filter_reload_total.labels(outcome="startup").inc()
     except Exception:
+        worker_ai_filter_reload_total.labels(outcome="startup_failed").inc()
         logger.exception(
-            "cycle 73f: worker failed to hydrate filter config from "
-            "Redis (non-fatal; using env defaults)",
+            "WORKER_FILTER_RELOAD outcome=startup_failed reason=exception"
         )
     finally:
         try:
@@ -165,13 +172,14 @@ async def consume_filter_reload_signal(redis_url: str) -> None:
     redis_client = aioredis.from_url(redis_url, decode_responses=False)
 
     async def _on_reload() -> None:
-        # r3 M4 fold: distinct structured log token so ops can grep for
-        # worker-side reload events. Worker-ai has no Prometheus infra
-        # today; greppable log is the observability surface for now.
-        # Track to D-WORKER-AI-METRICS-INFRA for a future cycle.
+        # Cycle 73h fold (closes cycle 73g M4 stopgap): bump Prometheus
+        # counter on each pubsub-driven re-read outcome. Structured log
+        # line retained for legacy ops grep tooling.
+        from app.metrics import worker_ai_filter_reload_total
         try:
             new_config = await get_filter_config(redis_client)
             set_precision_filter_config(new_config)
+            worker_ai_filter_reload_total.labels(outcome="applied").inc()
             logger.info(
                 "WORKER_FILTER_RELOAD outcome=applied active=%s "
                 "model_ref=%s",
@@ -179,6 +187,7 @@ async def consume_filter_reload_signal(redis_url: str) -> None:
                 new_config.model_ref if new_config else None,
             )
         except Exception:
+            worker_ai_filter_reload_total.labels(outcome="failed").inc()
             logger.exception(
                 "WORKER_FILTER_RELOAD outcome=failed reason=exception"
             )

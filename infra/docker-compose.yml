@@ -676,11 +676,18 @@ services:
       WORKER_AI_ENTITY_RECOVERY_MODEL_REF: ${WORKER_AI_ENTITY_RECOVERY_MODEL_REF:-}
       WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE: ${WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE:-user_model}
       WORKER_AI_ENTITY_RECOVERY_MAX_BATCH: ${WORKER_AI_ENTITY_RECOVERY_MAX_BATCH:-5}
+      # Cycle 73h — Prometheus /metrics endpoint on dedicated port.
+      # Set to 0 to disable (e.g. when running multiple worker replicas
+      # on the same host that would collide on the port).
+      METRICS_PORT: "${WORKER_AI_METRICS_PORT:-8094}"
     depends_on:
       postgres:
         condition: service_healthy
       knowledge-service:
         condition: service_healthy
+    ports:
+      # Cycle 73h — Prometheus scrape target on 8226 (host) → 8094 (container).
+      - "8226:8094"
     restart: unless-stopped
     logging:
       driver: "json-file"
