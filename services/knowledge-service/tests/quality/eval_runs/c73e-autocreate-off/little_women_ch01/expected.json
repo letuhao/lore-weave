@@ -1,0 +1,97 @@
+{
+  "entities": [
+    {
+      "name": "Jo",
+      "kind": "person",
+      "aliases": [
+        "Josephine",
+        "Jo March"
+      ]
+    },
+    {
+      "name": "Meg",
+      "kind": "person",
+      "aliases": [
+        "Margaret"
+      ]
+    },
+    {
+      "name": "Beth",
+      "kind": "person",
+      "aliases": [
+        "Elizabeth",
+        "Little Miss Tranquility",
+        "Mouse"
+      ]
+    },
+    {
+      "name": "Amy",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "Father",
+      "kind": "person",
+      "aliases": [
+        "Papa"
+      ]
+    },
+    {
+      "name": "Mother",
+      "kind": "person",
+      "aliases": []
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Meg",
+      "predicate": "sibling_of",
+      "object": "Jo",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "The four March sisters discuss not having Christmas presents because their father is away at war",
+      "participants": [
+        "Jo",
+        "Meg",
+        "Beth",
+        "Amy"
+      ]
+    },
+    {
+      "summary": "Jo and Amy quarrel about boyish behavior and ladylike manners until Beth makes peace",
+      "participants": [
+        "Jo",
+        "Amy",
+        "Beth"
+      ]
+    },
+    {
+      "summary": "Meg lectures Jo and Amy about their behavior as young ladies",
+      "participants": [
+        "Meg",
+        "Jo",
+        "Amy"
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "kind": "entity",
+      "name": "King children",
+      "reason": "Only referenced in passing comparison; do not appear or act in the chapter"
+    },
+    {
+      "kind": "entity",
+      "name": "Undine and Sintran",
+      "reason": "Title of a book Jo wants to purchase; not a character or meaningful entity"
+    },
+    {
+      "kind": "entity",
+      "name": "army sock",
+      "reason": "A prop Jo is knitting; not a first-class entity at this scale"
+    }
+  ]
+}

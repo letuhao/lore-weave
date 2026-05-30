@@ -1,11 +1,78 @@
-# Session Handoff — Session 73 (cycle 73a verify + 73b SHIPPED + 73c re-judge + 73d entity recovery NEGATIVE)
+# Session Handoff — Session 73 (cycle 73a verify + 73b SHIPPED + 73c re-judge + 73d entity recovery NEGATIVE + 73e writer autocreate)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 73 — 4 cycles: cycle 72 verify + cycle 73b relation-only ship + cycle 73c realized-F1 re-judge + cycle 73d entity recovery NEGATIVE).
-> **HEAD:** pending ship commit on top of `fc36a1a4` (cycle 73c ship).
+> **Date:** 2026-05-30 (session 73 — 5 cycles: cycle 72 verify + cycle 73b relation-only ship + cycle 73c realized-F1 re-judge + cycle 73d entity recovery NEGATIVE + cycle 73e writer autocreate).
+> **HEAD:** pending ship commits on top of `e298a723` (cycle 73d merge).
 > **Branch:** `main`.
 
-## Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED + cycle 73c realized-F1 + cycle 73d entity recovery NEGATIVE (self-reinforcement caught)
+## Session 73 summary — cycle 73e Pass2 writer Tier-A + Tier-B autocreate ship decision
+
+### Cycle 73e (L) — Pass2 writer Tier-A name repair + Tier-B autocreate — closes 73c's writer-cascade gap WITHOUT LLM (no self-reinforcement risk)
+
+Goal: close the baseline 10.7% writer-cascade gap (cycle 73c finding) by promoting unresolved relation subjects/objects via 3 mechanisms — all LLM-free, bypass-by-construction the self-reinforcement risk that blocked cycle 73d.
+
+**Three tiers:**
+
+- **Tier A.1** — chapter-local canonical-name map repair (free, always-on). Catches relation subject name matching extracted entity but with mismatched/missing IDs.
+- **Tier A.2** — anchor index pre-check (free, always-on). Catches names that match a glossary anchor.
+- **Tier B** — env-gated MERGE of new `:Entity` with `kind="concept"`, `auto_created=true`, `confidence=min(rel.confidence, 0.3)`. Per-chapter cap default 20.
+
+**Cascade simulation (c73b-drop dump input, 73 relations):**
+
+| Variant | Cascade-skip | Recovered | Verdict |
+|---|---:|---:|---|
+| c73e-autocreate-off | 13.7% (10/73) | 0 | baseline (≡ c73b-drop-realized) |
+| **c73e-autocreate-on** | **5.5% (4/73)** | **+6 relations** | mechanism works |
+
+Per-chapter detail: `journey_west_zh_ch01` recovers `仙卿` + `大海`; `tam_cam_vi` recovers `Bụt` + `cha Tấm` + `cung`; `little_women_ch01` correctly noise-skips 4 compound subjects ("fancy words and refined speech" etc.). Tier A.1 didn't fire on this fixture — all cascade-skips were due to LLM not extracting the relation subject as an entity (not ID-drift within chapter).
+
+**Realized F1 (3-judge ensemble re-judge):** **DEFERRED to D-PASS2-WRITER-AUTOCREATE-F1-EVAL.** Two ensemble attempts both killed by knowledge-service container restart mid-run (gemma judge in flight; LM Studio JIT-load triggered host memory pressure → Docker Desktop killed container, /tmp wiped on restart). Same recurring pattern as cycle 73b first run (2026-05-30 06:14 UTC). Per CLAUDE.md "No Deadline · No Defer Drift," **D-PASS2-WRITER-AUTOCREATE-F1-EVAL is added to Naturally-next-phase deferred items** — re-run when container is stable for 30+ min uninterrupted.
+
+**Ship decision: SDK ships opt-in (cycle 73d pattern); compose default OFF.** Mechanism validated via cascade simulation (+6 relations recovered, 5.5% cascade-skip vs 13.7% baseline, 0 noise false-positives). Quantitative F1 lift unevaluated. Power users can opt-in via `KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED=true` in `.env` to AB-test in their own deployments.
+
+**Ship gate D10 5-clause:** unevaluable without realized F1 — deferred to F1 eval cycle.
+
+**Deferred rows added:**
+- **D-PASS2-WRITER-AUTOCREATE-F1-EVAL** (NEW) — re-run 3-judge ensemble on c73e-autocreate-on when container stable. Expected lift ~+0.3-0.6pp 3-judge median F1 based on cycle 73c proportionality (6 supported-cascade-recovered ≈ inverse of c73b's -0.3pp / c72c's -1.3pp realized loss).
+- **D-PASS2-WRITER-CASCADE-GAP-CLOSE** (still OPEN) — mechanism shipped opt-in; activation pending F1 confirmation.
+
+**What ships regardless of ship verdict:**
+- ✅ `services/knowledge-service/app/db/neo4j_repos/entities.py` — `auto_created` property + ON MATCH promotion CASE
+- ✅ `services/knowledge-service/app/extraction/entity_resolver.py` — `auto_created` kwarg plumbed
+- ✅ `services/knowledge-service/app/extraction/pass2_writer.py` — Tier A.1 + A.2 + B logic + new `entities_autocreated` + `endpoints_repaired_by_name` Pass2WriteResult fields
+- ✅ `services/knowledge-service/app/extraction/pass2_orchestrator.py` — `_load_writer_autocreate_config()` + TypedDict + spread into 3 writer call sites
+- ✅ `services/knowledge-service/app/metrics.py` — NEW `knowledge_extraction_writer_autocreate_total{role, outcome}` counter (9 outcomes)
+- ✅ Compose envs default OFF (`KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED=false`, `MAX_PER_CHAPTER=20`)
+- ✅ Eval driver `run_c73e_writer_autocreate.py` + 2 eval fixture dirs + `c73e_compare.md`
+- ✅ 28 new unit tests (7 entities + 18 writer + 3 orchestrator env-loader)
+
+**`/review-impl` round 1 on DESIGN:** 5 HIGH + 7 MED + 5 LOW findings, all HIGHs + 6 MEDs + 4 LOWs folded inline before BUILD. Notable folds:
+- H1: kind-collision in Tier A.1 chapter map → multi-kind triggers `kind_ambiguous` outcome, skip both A and B
+- H2: word-count heuristic broken for CJK → combined char-budget(60) + word-budget(3)
+- H3: hardcoded `confidence=0.0` defeats ON MATCH ratchet → use `min(rel.confidence, 0.3)`
+- H4: anchor hit silently marked auto → pre-check separates `tier_a_anchor_repair` outcome from `tier_b_autocreated`
+- M1: ON MATCH never clears `auto_created` → CASE clause clears on legit `auto_created=False` write (promotion)
+- M7: ship gate too permissive → added clause (e) per-category regression cap
+
+**`/review-impl` round 3 on FIX delta (post-r2 folds):** 2 real HIGH + 1 false-alarm HIGH + 3 MED + 3 LOW findings. Fold:
+- H1: eval driver's `entity_names_set` raw-name shortcut bypassed fold logic → DELETED the shortcut; now every endpoint routes through fold map. **Effect:** revealed correct attribution (136 tier_a_name_repair across 9 chapters; previously under-counted as 0). Cascade-skip rate UNCHANGED (5.5% with autocreate-on, 13.7% off) — only the BOOKKEEPING was wrong, not the mechanism.
+- H2: dead `cascade_dropped` inline bump in autocreate-disabled branch → removed (recompute formula at end was correct)
+- H3: CONFIRMED OK (parity-correct, not a regression)
+- M3 + L1: strengthened 2 tests with `evidence_edges` assertion (H3 fold proof) + create_relation kwargs verification (H2 fold proof)
+- M1 + M2: deferred (SDK fallback in eval driver runs in container; evidence confidence semantic documented but not blocking)
+
+**Re-framed cycle 73c finding (via r3 H1 discovery):** the "10.7% cascade gap" is mostly Tier A.1's job — relations have `subject_id=null` because the LLM-relation-extractor never resolves them, and the writer's name-to-ID Tier A.1 catches 93% (136/146 endpoints). Only ~5% (6/146) need Tier B autocreate. Cycle 73e's real contribution: providing the structured tier-resolution path + telemetry to attribute and tune the residual.
+
+**`/review-impl` round 2 on BUILD diff (post-implementation):** 3 HIGH + 5 MED + 5 LOW findings. All HIGHs + 3 MEDs + 1 LOW folded inline before ensemble re-judge:
+- H1: fold-key drift between Step 2 (sanitized) and Step 3 (raw) silently missed Tier A.1 → moved `_sanitize` before `_fold_name` in Step 3
+- H2: `setattr(rel, ...)` mutated input Pydantic model, breaking retry semantics → refactored to use LOCAL `resolved_subject_id`/`resolved_object_id` vars
+- H3: Tier A.2 anchor repair skipped `add_evidence` for the anchor entity → added evidence accrual after anchor repair
+- M1: eval driver used SIMPLIFIED canonicalize (no honorific strip) → imported production `canonicalize_entity_name` from SDK
+- M3: counter assertions break under pytest-xdist → added `pytestmark = pytest.mark.xdist_group("c73e-writer-autocreate-metrics")` module-level
+- M4: cap_exhausted metric was mutually-exclusive with cap_exhausted_high_conf, diverging from eval driver → made additive (high_conf BOTH bumps cap_exhausted + cap_exhausted_high_conf)
+- L3: added 2 regression-lock tests (self-reference relation Tier B→A.1 propagation, input-relation-id-not-mutated)
+
+Final test count: **101 focused regression passes** (entity_auto_created 7 + entities_mutations 8 + entity_resolver 21 + pass2_writer pre-existing 19 + pass2_writer_autocreate 20 + pass2_orchestrator 26). +30 net new tests vs pre-73e baseline.
 
 ### Cycle 73d (M) — entity recovery (3-tier glossary→hints→LLM) — NEGATIVE; SDK ships opt-in, NOT activated
 
