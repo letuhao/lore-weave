@@ -501,3 +501,17 @@
 {"ts": "2026-05-30T08:37:43Z", "event": "in_progress_update", "cycle": 10, "phase": "VERIFY", "retry": 0}
 {"ts":"2026-05-30T08:39:01Z","task":"lore-enrichment","phase":"session","agent":"cycle-runner","action":"cycle_complete","cycle":10,"verify_exit":0,"adversary":"0blk/0maj/0min/2note","scope_guard":"CLEAR","note":"strategy(b) cultural retrieval; REUSE knowledge-service /internal/embed (model_ref by name, JIT-tolerant), no new RAG framework; source_corpus_chunk ingest idempotent + in-process cosine top_k (no pgvector); RetrievalStrategy populates cultural_grounding_ref on H0 GroundedProposal; live smoke: real bge-m3 embed+retrieve round-tripped (蓬萊 top-1 0.7992); 27 new unit + 3 DB, 179 unit pass + 14 DB pass; isolation clean."}
 {"ts": "2026-05-30T08:39:04Z", "event": "in_progress_update", "cycle": 10, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-30T08:40:43Z", "event": "in_progress_archived", "cycle": 10, "archived_to": "cycle-010-state.md"}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator-review","agent":"coordinator","action":"cycle_accepted","cycle":10,"commit":"bb869e2e","verify_exit":0,"note":"retrieval strategy; isolation clean (did NOT modify knowledge-service, reused /internal/embed); LIVE-SMOKE real bge-m3 embed+retrieve round-trip (蓬萊 cosine 0.7992); no RAG framework. Cross-service path live-verified -> deep independent adversary reserved for C11(H0)/C12(security)."}
+{"ts":"2026-05-30T08:43:19Z","event":"startup_drift_check_inconclusive","cycle":11,"cd":"","rw":""}
+{"ts":"2026-05-30T08:43:19Z","event":"startup_verifier_complete","cycle":11,"steps":6}
+{"ts": "2026-05-30T08:45:19Z", "event": "in_progress_init", "cycle": 11, "title": "Schema-gov gen + H0 tag"}
+{"ts": "2026-05-30T08:46:12Z", "event": "in_progress_update", "cycle": 11, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-30T08:56:13Z", "event": "in_progress_update", "cycle": 11, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-30T09:00:34Z","event":"secret_scan_skipped","cycle":11,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts":"2026-05-30T09:00:31Z","event":"verify_cycle_pass","cycle":11}
+{"ts":"2026-05-30T09:06:38Z","event":"secret_scan_skipped","cycle":11,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts":"2026-05-30T09:06:35Z","event":"verify_cycle_pass","cycle":11}
+{"ts": "2026-05-30T09:06:56Z", "event": "in_progress_update", "cycle": 11, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-30T09:07:44Z","event":"cycle_session_complete","cycle":11,"files":7,"tests":"253 pass / 14 skip","adversary":"0blk/2maj-fixed/0min","scope_guard":"CLEAR","verify_exit":0,"notable":"H0 enforcement point; closed model_construct+model_copy escape hatches"}
+{"ts": "2026-05-30T09:08:18Z", "event": "in_progress_archived", "cycle": 11, "archived_to": "cycle-011-state.md"}
