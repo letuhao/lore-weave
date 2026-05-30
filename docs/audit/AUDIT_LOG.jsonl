@@ -609,3 +609,5 @@
 {"ts": "2026-05-30T17:01:23Z", "event": "in_progress_update", "cycle": 16, "phase": "SESSION", "retry": 0}
 {"ts":"2026-05-31T00:00:00Z","cycle":16,"event":"session","result":"done","title":"strategy (c) canon-grounded fabrication (gate-enforced)","files":7,"tests":"416 pass real-DB (+19 C16)","adversary":"0blk/0maj/0min/2note","scope_guard":"CLEAR","gate_054":"ENFORCED — GateAwareStrategyFactory is the sole P2 selection path; live-observed both states (cleared→selected→real Qwen 5 H0 facts; locked→InactiveStrategyError)","h0":"every fabricated fact origin=enriched:fabrication conf<1.0 quarantined grounding-cited, NOT promoted"}
 {"ts": "2026-05-30T17:02:50Z", "event": "in_progress_update", "cycle": 16, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-30T17:03:14Z", "event": "coordinator_done_cycle", "cycle": 16, "sha": "02b95e5c79eef5389448c1e5db222c64e37acc80"}
+{"ts": "2026-05-30T17:03:23Z", "event": "in_progress_archived", "cycle": 16, "archived_to": "cycle-016-state.md"}
