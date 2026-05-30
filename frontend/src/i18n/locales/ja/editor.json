@@ -239,5 +239,65 @@
       "danger": "危険"
     },
     "title": "{{type}} — クリックしてタイプを変更"
+  },
+  "revision": {
+    "restored": "リビジョンを復元しました",
+    "header": "リビジョン履歴 · {{count}}",
+    "empty": "まだリビジョンがありません。保存して作成してください。",
+    "current": "現在",
+    "view": "表示",
+    "restore": "復元",
+    "confirm_title": "このリビジョンを復元しますか？",
+    "confirm_desc": "現在の下書きをこの古いバージョンで上書きし、新しいリビジョンエントリを作成します。元に戻せません。",
+    "close_preview": "プレビューを閉じる",
+    "preview": "リビジョンプレビュー",
+    "restore_version": "このバージョンを復元",
+    "empty_revision": "空のリビジョン。"
+  },
+  "source": {
+    "header": "Block JSON — 章構造の読み取り専用ビュー",
+    "copied": "コピーしました",
+    "copy": "JSONをコピー"
+  },
+  "version": {
+    "loading": "バージョン履歴を読み込み中...",
+    "close": "閉じる",
+    "title": "バージョン履歴",
+    "block_crumb": "ブロック",
+    "comparing": "v{{old}} → v{{new}} を比較",
+    "previous": "以前",
+    "old": "旧",
+    "no_media": "メディアなし",
+    "current": "現在",
+    "selected": "選択中",
+    "current_tag": "現在",
+    "no_media_version": "このバージョンにメディアがありません",
+    "no_versions": "まだバージョンがありません",
+    "version_count": "{{count}}バージョン",
+    "version_count_other": "{{count}}バージョン",
+    "total": "合計{{size}}",
+    "delete_confirm": "バージョン{{version}}を削除しますか？元に戻せません。",
+    "versions": "バージョン",
+    "restore_version": "v{{version}}を復元",
+    "timeago": {
+      "just_now": "たった今",
+      "mins": "{{n}}分前",
+      "hours": "{{n}}時間前",
+      "yesterday": "昨日",
+      "days": "{{n}}日前"
+    },
+    "action": {
+      "upload": "メディアをアップロード",
+      "regenerate": "改善されたプロンプトで再生成",
+      "caption_edit": "キャプションを更新",
+      "prompt_edit": "プロンプトを更新"
+    },
+    "diff_identical": "プロンプトは同一です",
+    "diff_title": "AIプロンプト差分 ({{old}} → {{new}})",
+    "diff_previous": "以前",
+    "diff_current": "現在"
+  },
+  "media_guard": {
+    "protected": "メディアブロックはクラシックモードで保護されています。編集または削除するにはAIモードに切り替えてください。"
   }
 }

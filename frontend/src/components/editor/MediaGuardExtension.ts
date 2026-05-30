@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { toast } from 'sonner';
+import i18n from '@/i18n';
 
 /**
  * Media block types that are protected in Classic mode.
@@ -20,7 +21,7 @@ function showGuardToast(isClassic: boolean) {
   if (now - lastToastTime < 2000) return; // 2s debounce
   lastToastTime = now;
   if (isClassic) {
-    toast.info('Media blocks are protected in Classic mode. Switch to AI mode to edit or delete.', {
+    toast.info(i18n.t('media_guard.protected', { ns: 'editor' }), {
       duration: 3000,
     });
   }

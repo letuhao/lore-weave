@@ -1,5 +1,6 @@
 import { Copy, Check } from 'lucide-react';
 import { useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { JSONContent } from '@tiptap/react';
 
 interface SourceViewProps {
@@ -11,6 +12,7 @@ interface SourceViewProps {
  * Shows syntax-highlighted JSON of the Tiptap document structure.
  */
 export function SourceView({ json }: SourceViewProps) {
+  const { t } = useTranslation('editor');
   const [copied, setCopied] = useState(false);
 
   const formatted = useMemo(() => {
@@ -39,16 +41,16 @@ export function SourceView({ json }: SourceViewProps) {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b bg-card px-4 py-1.5 text-[10px] text-muted-foreground">
-        <span>Block JSON — read-only view of chapter structure</span>
+        <span>{t('source.header')}</span>
         <button
           type="button"
           onClick={handleCopy}
           className="flex items-center gap-1 rounded px-2 py-0.5 transition-colors hover:bg-secondary hover:text-foreground"
         >
           {copied ? (
-            <><Check className="h-3 w-3 text-success" /> Copied</>
+            <><Check className="h-3 w-3 text-success" /> {t('source.copied')}</>
           ) : (
-            <><Copy className="h-3 w-3" /> Copy JSON</>
+            <><Copy className="h-3 w-3" /> {t('source.copy')}</>
           )}
         </button>
       </div>

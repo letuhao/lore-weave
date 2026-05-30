@@ -239,5 +239,65 @@
       "danger": "danger"
     },
     "title": "{{type}} — click to change type"
+  },
+  "revision": {
+    "restored": "Revision restored",
+    "header": "Revision History · {{count}}",
+    "empty": "No revisions yet. Save to create one.",
+    "current": "Current",
+    "view": "View",
+    "restore": "Restore",
+    "confirm_title": "Restore this revision?",
+    "confirm_desc": "This will overwrite your current draft with this older version and create a new revision entry. This cannot be undone.",
+    "close_preview": "Close preview",
+    "preview": "Revision preview",
+    "restore_version": "Restore this version",
+    "empty_revision": "Empty revision."
+  },
+  "source": {
+    "header": "Block JSON — read-only view of chapter structure",
+    "copied": "Copied",
+    "copy": "Copy JSON"
+  },
+  "version": {
+    "loading": "Loading version history...",
+    "close": "Close",
+    "title": "Version History",
+    "block_crumb": "Block",
+    "comparing": "Comparing v{{old}} → v{{new}}",
+    "previous": "Previous",
+    "old": "old",
+    "no_media": "No media",
+    "current": "Current",
+    "selected": "Selected",
+    "current_tag": "current",
+    "no_media_version": "No media in this version",
+    "no_versions": "No versions yet",
+    "version_count": "{{count}} version",
+    "version_count_other": "{{count}} versions",
+    "total": "{{size}} total",
+    "delete_confirm": "Delete version {{version}}? This cannot be undone.",
+    "versions": "Versions",
+    "restore_version": "Restore v{{version}}",
+    "timeago": {
+      "just_now": "just now",
+      "mins": "{{n}}m ago",
+      "hours": "{{n}}h ago",
+      "yesterday": "Yesterday",
+      "days": "{{n}} days ago"
+    },
+    "action": {
+      "upload": "Media uploaded",
+      "regenerate": "Re-generated with refined prompt",
+      "caption_edit": "Caption updated",
+      "prompt_edit": "Prompt updated"
+    },
+    "diff_identical": "Prompts are identical",
+    "diff_title": "AI Prompt Diff ({{old}} → {{new}})",
+    "diff_previous": "Previous",
+    "diff_current": "Current"
+  },
+  "media_guard": {
+    "protected": "Media blocks are protected in Classic mode. Switch to AI mode to edit or delete."
   }
 }

@@ -1,4 +1,6 @@
 import { RotateCcw, Download, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
 import type { MediaVersion } from '@/features/books/api';
 
@@ -22,18 +24,18 @@ const TAG_STYLES: Record<string, string> = {
   manual: 'bg-accent/10 text-accent-foreground',
 };
 
-function formatTimeAgo(dateStr: string): string {
+function formatTimeAgo(dateStr: string, t: TFunction): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
   const diff = now - then;
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t('version.timeago.just_now');
+  if (mins < 60) return t('version.timeago.mins', { n: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t('version.timeago.hours', { n: hours });
   const days = Math.floor(hours / 24);
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days} days ago`;
+  if (days === 1) return t('version.timeago.yesterday');
+  if (days < 7) return t('version.timeago.days', { n: days });
   return new Date(dateStr).toLocaleDateString();
 }
 
@@ -52,6 +54,7 @@ export function VersionTimeline({
   onDownload,
   onDelete,
 }: VersionTimelineProps) {
+  const { t } = useTranslation('editor');
   const selected = versions.find((v) => v.id === selectedId);
   const isLatest = selected?.id === versions[0]?.id;
 
@@ -60,7 +63,7 @@ export function VersionTimeline({
       {/* Header */}
       <div className="flex items-center justify-between border-b px-3.5 py-3">
         <div className="flex items-center gap-1.5 text-xs font-semibold">
-          Versions
+          {t('version.versions')}
         </div>
         <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
           {versions.length}
@@ -100,9 +103,9 @@ export function VersionTimeline({
             )}
 
             {/* Content */}
-            <div className="text-xs font-medium">{getVersionTitle(v)}</div>
+            <div className="text-xs font-medium">{getVersionTitle(v, t)}</div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-              <span>{formatTimeAgo(v.created_at)}</span>
+              <span>{formatTimeAgo(v.created_at, t)}</span>
               {v.changes.map((change) => (
                 <span
                   key={change}
@@ -151,7 +154,7 @@ export function VersionTimeline({
               className="flex flex-1 items-center justify-center gap-1.5 rounded border border-accent/30 bg-accent-muted px-2 py-1 text-[10px] font-medium text-accent-foreground transition-colors hover:bg-accent hover:text-white"
             >
               <RotateCcw className="h-3 w-3" />
-              Restore v{selected.version}
+              {t('version.restore_version', { version: selected.version })}
             </button>
           )}
           {selected.media_url && (
@@ -182,12 +185,12 @@ export function VersionTimeline({
   );
 }
 
-function getVersionTitle(v: MediaVersion): string {
+function getVersionTitle(v: MediaVersion, t: TFunction): string {
   switch (v.action) {
-    case 'upload': return 'Media uploaded';
-    case 'regenerate': return 'Re-generated with refined prompt';
-    case 'caption_edit': return 'Caption updated';
-    case 'prompt_edit': return 'Prompt updated';
+    case 'upload': return t('version.action.upload');
+    case 'regenerate': return t('version.action.regenerate');
+    case 'caption_edit': return t('version.action.caption_edit');
+    case 'prompt_edit': return t('version.action.prompt_edit');
     default: return v.action.replace(/_/g, ' ');
   }
 }

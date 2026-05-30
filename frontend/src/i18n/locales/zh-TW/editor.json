@@ -239,5 +239,65 @@
       "danger": "危險"
     },
     "title": "{{type}} — 點擊變更類型"
+  },
+  "revision": {
+    "restored": "已還原修訂版本",
+    "header": "修訂歷史 · {{count}}",
+    "empty": "尚無修訂版本。儲存以建立一個。",
+    "current": "目前",
+    "view": "檢視",
+    "restore": "還原",
+    "confirm_title": "還原此修訂版本？",
+    "confirm_desc": "這將以此較舊版本覆蓋您目前的草稿，並建立新的修訂項目。此操作無法復原。",
+    "close_preview": "關閉預覽",
+    "preview": "修訂預覽",
+    "restore_version": "還原此版本",
+    "empty_revision": "空白修訂。"
+  },
+  "source": {
+    "header": "Block JSON — 章節結構唯讀檢視",
+    "copied": "已複製",
+    "copy": "複製 JSON"
+  },
+  "version": {
+    "loading": "正在載入版本歷史...",
+    "close": "關閉",
+    "title": "版本歷史",
+    "block_crumb": "區塊",
+    "comparing": "比較 v{{old}} → v{{new}}",
+    "previous": "先前",
+    "old": "舊",
+    "no_media": "無媒體",
+    "current": "目前",
+    "selected": "已選取",
+    "current_tag": "目前",
+    "no_media_version": "此版本沒有媒體",
+    "no_versions": "尚無版本",
+    "version_count": "{{count}} 個版本",
+    "version_count_other": "{{count}} 個版本",
+    "total": "共 {{size}}",
+    "delete_confirm": "刪除版本 {{version}}？此操作無法復原。",
+    "versions": "版本",
+    "restore_version": "還原 v{{version}}",
+    "timeago": {
+      "just_now": "剛剛",
+      "mins": "{{n}} 分鐘前",
+      "hours": "{{n}} 小時前",
+      "yesterday": "昨天",
+      "days": "{{n}} 天前"
+    },
+    "action": {
+      "upload": "已上傳媒體",
+      "regenerate": "使用精修提示重新生成",
+      "caption_edit": "已更新說明",
+      "prompt_edit": "已更新提示"
+    },
+    "diff_identical": "提示相同",
+    "diff_title": "AI 提示差異 ({{old}} → {{new}})",
+    "diff_previous": "先前",
+    "diff_current": "目前"
+  },
+  "media_guard": {
+    "protected": "媒體區塊在經典模式下受保護。切換至 AI 模式以編輯或刪除。"
   }
 }

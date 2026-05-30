@@ -239,5 +239,65 @@
       "danger": "Nguy hiểm"
     },
     "title": "{{type}} — nhấp để đổi loại"
+  },
+  "revision": {
+    "restored": "Đã khôi phục bản sửa đổi",
+    "header": "Lịch sử sửa đổi · {{count}}",
+    "empty": "Chưa có bản sửa đổi nào. Lưu để tạo một bản.",
+    "current": "Hiện tại",
+    "view": "Xem",
+    "restore": "Khôi phục",
+    "confirm_title": "Khôi phục bản sửa đổi này?",
+    "confirm_desc": "Thao tác này sẽ ghi đè bản nháp hiện tại bằng phiên bản cũ hơn và tạo một mục sửa đổi mới. Không thể hoàn tác.",
+    "close_preview": "Đóng xem trước",
+    "preview": "Xem trước bản sửa đổi",
+    "restore_version": "Khôi phục phiên bản này",
+    "empty_revision": "Bản sửa đổi trống."
+  },
+  "source": {
+    "header": "Block JSON — chế độ xem chỉ đọc cấu trúc chương",
+    "copied": "Đã sao chép",
+    "copy": "Sao chép JSON"
+  },
+  "version": {
+    "loading": "Đang tải lịch sử phiên bản...",
+    "close": "Đóng",
+    "title": "Lịch sử phiên bản",
+    "block_crumb": "Khối",
+    "comparing": "So sánh v{{old}} → v{{new}}",
+    "previous": "Trước",
+    "old": "cũ",
+    "no_media": "Không có media",
+    "current": "Hiện tại",
+    "selected": "Đã chọn",
+    "current_tag": "hiện tại",
+    "no_media_version": "Không có media trong phiên bản này",
+    "no_versions": "Chưa có phiên bản nào",
+    "version_count": "{{count}} phiên bản",
+    "version_count_other": "{{count}} phiên bản",
+    "total": "{{size}} tổng cộng",
+    "delete_confirm": "Xóa phiên bản {{version}}? Không thể hoàn tác.",
+    "versions": "Phiên bản",
+    "restore_version": "Khôi phục v{{version}}",
+    "timeago": {
+      "just_now": "vừa xong",
+      "mins": "{{n}} phút trước",
+      "hours": "{{n}} giờ trước",
+      "yesterday": "Hôm qua",
+      "days": "{{n}} ngày trước"
+    },
+    "action": {
+      "upload": "Đã tải lên media",
+      "regenerate": "Đã tạo lại với prompt tinh chỉnh",
+      "caption_edit": "Đã cập nhật chú thích",
+      "prompt_edit": "Đã cập nhật prompt"
+    },
+    "diff_identical": "Các prompt giống nhau",
+    "diff_title": "Khác biệt Prompt AI ({{old}} → {{new}})",
+    "diff_previous": "Trước",
+    "diff_current": "Hiện tại"
+  },
+  "media_guard": {
+    "protected": "Khối media được bảo vệ ở chế độ Cổ điển. Chuyển sang chế độ AI để sửa hoặc xóa."
   }
 }
