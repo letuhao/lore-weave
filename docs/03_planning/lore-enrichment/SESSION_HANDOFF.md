@@ -1,8 +1,8 @@
 # Lore-Enrichment Track — Session Handoff
 
-> **Last updated:** 2026-05-31 · **Branch:** `lore-enrichment/foundation` (off `origin/main`) · **HEAD:** `b6283a21` · **PUSHED to origin** (no PR yet).
+> **Last updated:** 2026-05-31 · **Branch:** `lore-enrichment/foundation` (off `origin/main`) · **HEAD:** `8b864487` · **PUSHED to origin** (no PR yet).
 > Isolated from `mmo-rpg/foundation-mega-task` (another agent, another folder — do not touch).
-> **STATUS: RAID COMPLETE — 19/19 cycles (C0–C18) DONE, 0 escalations, ~49 commits. P1 demo validated live.**
+> **STATUS: RAID COMPLETE (19/19) + QC Step 1 (live stack-health) DONE — P1 promote→canon re-verified live this session; 3 findings (1 stale-image RESOLVED, 1 circular-import MED, 1 process LOW). QC Steps 2–5 pending → see [QC_REVIEW_C0-C18.md](QC_REVIEW_C0-C18.md).**
 
 ## What this track is
 A `lore-enrichment-service` (Python/FastAPI) that GENERATES the missing "off-page" canon a novel leaves implicit, so a book can become a game world. Demo corpus: **封神演义**. Four techniques: template scaffolding (P1), cultural retrieval (P1), canon-grounded fabrication (P2), real history/news re-cook (P3) — phased behind a cost-cap + eval gate. **H0 core invariant: enriched ≠ canon** (quarantine + author-promote-only + permanent origin marker).
@@ -43,7 +43,24 @@ Separate Python/FastAPI service; consumes knowledge-service KG (not re-extract).
 
 ---
 
-## ⏭️ NEXT SESSION — HUMAN-IN-LOOP QC REVIEW of this run (default v2.2, NOT autonomous /raid)
+## 🔵 QC REVIEW IN PROGRESS — Step 1 (live stack-health) DONE 2026-05-31
+Full QC tracking doc: **[QC_REVIEW_C0-C18.md](QC_REVIEW_C0-C18.md)**. Method (PO-chosen): risk-weighted · `/review-impl` adversarial on load-bearing cycles · live stack-health = **full demo re-run**.
+
+**Step 1 (live stack-health) — COMPLETE.** P1 demo live-verified end-to-end on 封神演义 with real Qwen; **H0 promote→canon confirmed** (DB ground-truth: `promoted | origin=enrichment | conf=0.30 | original_technique=retrieval | promoted_by✓ | promoted_entity_id✓`). Findings:
+- **F-LIVE-1 (HIGH stack-health → RESOLVED in-session):** running `knowledge-service` image was **stale** (predated C13 commit `6daa89fd`) → `enriched-writeback` 404 → promote failed. Rebuilt + recreated `knowledge-service`; re-ran smoke → PASS. *Same stale-image false-green class as last session's glossary incident.* **→ DEFERRED candidate: a stale-image/CI guard so a deployed image behind HEAD is caught automatically.**
+- **F-LIVE-2 (MED, real code bug):** circular import on the `app.clients.writeback` entry path (`writeback→verify→generation→retrieval→strategies→fabrication→verify.canon_verify`). Prod startup dodges it via `app.main` import order; verification scripts crash. **Fix: lazy-import `CanonVerifier` in `strategies/fabrication.py`.**
+- **F-LIVE-3 (LOW/process):** `tests/` not in the image + smokes hardcode host-port defaults → in-cluster demo not reproducible without copy-in + `app.main` pre-import. Ship a cluster-aware demo entrypoint.
+
+**⏭️ NEXT SESSION — run Steps 2–5 of the QC (fresh context).** See QC_REVIEW_C0-C18.md "Steps 2–5 — PENDING":
+1. **Step 2 code review (risk-weighted):** self-review C0,C1,C3,C6,C7,C8,C9 (+MED C4,C5,C10,C14,C18); `/review-impl` adversarial on **C2,C11,C12,C13,C15,C16,C17**. Fold F-LIVE-2 into C16.
+2. **Step 3 control audit:** H0 chokepoint · cost-cap on runner path · eval-gate sole-selection · licensing default-deny · isolation/scope-drift.
+3. **Step 4 defer triage:** DEFERRED 044–058 + confirm 042/043/048/049/053/054 genuinely resolved.
+4. **Step 5 synthesis:** per-cycle verdict table + go/no-go for opening a PR.
+A pre-authored multi-agent workflow for Steps 2–4 exists (Coordinator can re-issue) but the PO opted to start it in a fresh session.
+
+---
+
+## Original QC agenda (for reference)
 The run was executed autonomously (Coordinator + single-agent cycle-runners + Coordinator-run independent adversaries). Next session = **human controls the pace**; review for quality, decisions, missing, defer, drift. Agenda:
 
 1. **Quality** — per cycle, diff vs the CYCLE_DECOMPOSITION brief: did it ship the scope? any stub/placeholder-only deliverable? Spot-check riskiest: C13 (H0 write-back), C16/C17 (gated techniques), C15 (gate).
