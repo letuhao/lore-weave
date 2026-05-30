@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { lookupAt } from '@/store/viewer-store';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { lookupAt, useViewerStore } from '@/store/viewer-store';
 import type { TerrainCell, TilemapView } from '@/types/tilemap';
 
 // V2 inspector lookup — `lookupAt` must resolve `terrainCell` from the
@@ -96,5 +96,45 @@ describe('viewer-store lookupAt — V2 terrainCell', () => {
     expect(at.placementsAtTile[0]?.primitive).toBe('pickup');
     expect(at.placementsAtTile[0]?.footprint).toEqual({ width: 1, height: 1 });
     expect(at.roadHits).toBe(1);
+  });
+});
+
+describe('viewer-store showZoneRoles toggle (TMP-Q5 chunk B)', () => {
+  beforeEach(() => {
+    // Reset to default between tests so flag-flip ordering doesn't
+    // cross-contaminate.
+    useViewerStore.getState().setShowZoneRoles(false);
+    useViewerStore.getState().resetLayers();
+  });
+
+  it('showZoneRoles defaults to false (AC-ZRV-5)', () => {
+    // Default OFF: the overlay is an at-a-glance design review aid,
+    // not a default-visible polish. The author opts in.
+    expect(useViewerStore.getState().showZoneRoles).toBe(false);
+  });
+
+  it('setShowZoneRoles flips the flag (forward + reverse)', () => {
+    useViewerStore.getState().setShowZoneRoles(true);
+    expect(useViewerStore.getState().showZoneRoles).toBe(true);
+    useViewerStore.getState().setShowZoneRoles(false);
+    expect(useViewerStore.getState().showZoneRoles).toBe(false);
+  });
+
+  it('LOW-3 — showZoneRoles is independent from L0..L7 layer toggles', () => {
+    // A layer toggle must not perturb showZoneRoles. Same
+    // independence-invariant pattern as the chunk-A TMP-Q4 blend
+    // toggle (per feedback_visual_goldens_must_gate_on_content's
+    // sibling pattern).
+    useViewerStore.getState().setShowZoneRoles(true);
+    useViewerStore.getState().setLayer('foundation', false);
+    const a = useViewerStore.getState();
+    expect(a.showZoneRoles).toBe(true);
+    expect(a.visibleLayers.foundation).toBe(false);
+    // Reverse direction.
+    a.setLayer('foundation', true);
+    a.setShowZoneRoles(false);
+    const b = useViewerStore.getState();
+    expect(b.showZoneRoles).toBe(false);
+    expect(b.visibleLayers.foundation).toBe(true);
   });
 });

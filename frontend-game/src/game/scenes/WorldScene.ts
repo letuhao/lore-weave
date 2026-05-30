@@ -182,12 +182,17 @@ export class WorldScene extends Phaser.Scene {
 
   /** Apply the current viewer-store visibility flags to all live layers. */
   private applyViewerStoreVisibility(): void {
-    const v = useViewerStore.getState().visibleLayers;
+    const state = useViewerStore.getState();
+    const v = state.visibleLayers;
     if (this.foundationDisplay && 'visible' in this.foundationDisplay) {
       (this.foundationDisplay as unknown as { visible: boolean }).visible = v.foundation;
     }
     this.overlayRt?.setRtVisible(v.paths);
     this.overlayRt?.setZoneCentersVisible(v.zone_centers);
+    // TMP-Q5 chunk B — zone-role overlay is independent of L0..L7
+    // layer toggles; route the dedicated `showZoneRoles` flag straight
+    // through to the overlay-rt handle.
+    this.overlayRt?.setZoneRolesVisible(state.showZoneRoles);
     this.zoneBoundary?.setVisible(v.zone_boundaries);
     this.objectOverlay?.setEnabled(v.objects);
     if (this.player) {

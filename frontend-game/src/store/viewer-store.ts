@@ -47,6 +47,14 @@ export interface ViewerState {
   setLayer: (layer: ViewerLayer, visible: boolean) => void;
   resetLayers: () => void;
 
+  /** TMP-Q5 chunk B — zone-role overlay toggle. Default OFF: the
+   *  overlay is an at-a-glance design review aid, not a default-
+   *  visible polish. When true, WorldScene's overlay-rt paints each
+   *  zone's `assigned_tiles` mask with its role color at alpha=0.18.
+   *  Independent of L0..L7 layer toggles. */
+  showZoneRoles: boolean;
+  setShowZoneRoles: (enabled: boolean) => void;
+
   /** Last clicked tile (null = inspector closed). */
   inspector: InspectorPayload | null;
   openInspectorFor: (
@@ -134,6 +142,9 @@ export const useViewerStore = create<ViewerState>((set) => ({
       visibleLayers: { ...s.visibleLayers, [layer]: visible },
     })),
   resetLayers: () => set({ visibleLayers: { ...DEFAULT_VISIBLE } }),
+
+  showZoneRoles: false,
+  setShowZoneRoles: (enabled) => set({ showZoneRoles: enabled }),
 
   inspector: null,
   openInspectorFor: (tile, view) =>

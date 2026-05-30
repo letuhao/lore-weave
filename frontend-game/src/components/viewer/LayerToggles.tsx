@@ -24,6 +24,8 @@ const LAYERS: ReadonlyArray<{
 export function LayerToggles(): JSX.Element {
   const visibleLayers = useViewerStore((s) => s.visibleLayers);
   const setLayer = useViewerStore((s) => s.setLayer);
+  const showZoneRoles = useViewerStore((s) => s.showZoneRoles);
+  const setShowZoneRoles = useViewerStore((s) => s.setShowZoneRoles);
   return (
     <div className="bg-slate-900/90 border border-slate-700 rounded-md p-3 text-xs text-slate-200 font-mono pointer-events-auto flex flex-col gap-1.5 w-64">
       <div className="font-semibold text-sm mb-1">Layers</div>
@@ -44,6 +46,27 @@ export function LayerToggles(): JSX.Element {
           {l.hint && <span className="text-[10px] text-slate-500 ml-auto">{l.hint}</span>}
         </label>
       ))}
+      {/* TMP-Q5 chunk B — zone-role overlay toggle in a Polish section.
+          Default OFF: tints each zone with its role color for
+          at-a-glance role review. Independent of L0..L7 layer
+          toggles. (When PR #14 merges, this slots alongside TMP-Q4
+          chunk-C's "Treasure bands" + TMP-Q3 chunk-A's "Smooth
+          blend" toggles in the same Polish subsection.) */}
+      <div className="mt-3 pt-2 border-t border-slate-700 font-semibold text-sm mb-1">
+        Polish
+      </div>
+      <label
+        className="flex items-center gap-2 cursor-pointer hover:bg-slate-800/60 rounded px-1"
+        title="Translucent tint per zone reflecting its ZoneRole (Wilderness / Hub / Forbidden / Sea)."
+      >
+        <input
+          type="checkbox"
+          checked={showZoneRoles}
+          onChange={(e) => setShowZoneRoles(e.target.checked)}
+          className="accent-indigo-500"
+        />
+        <span>Zone roles</span>
+      </label>
     </div>
   );
 }

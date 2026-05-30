@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import type { TilemapView } from '@/types/tilemap';
+import { computeRoleBreakdown } from './role-breakdown';
 
 // Compact metadata readout for the current TilemapView. Bottom-left,
 // shown only when data has settled. Pure presentation — no store
@@ -85,7 +87,66 @@ export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.
           ))}
         </div>
       </details>
+      <RoleBreakdown view={view} />
     </div>
+  );
+}
+
+// TMP-Q5 chunk B — collapsible per-role breakdown.
+//
+// Reuses the `computeRoleBreakdown` pure helper that the canvas
+// overlay also consumes for color lookup (MED-1 single-source-of-truth:
+// canvas tint, panel swatch, and inspector swatch all agree per role).
+//
+// Memoized on `view` reference per chunk-C MED-2 precedent so React
+// parent re-renders (HUD updates, viewer-store flips, etc.) don't
+// re-walk all zones × all placements.
+function RoleBreakdown({ view }: { view: TilemapView }): JSX.Element {
+  const rows = useMemo(() => computeRoleBreakdown(view), [view]);
+  if (rows.length === 0) {
+    return (
+      <details className="mt-1">
+        <summary className="cursor-pointer text-slate-400 text-[10px]">
+          role breakdown
+        </summary>
+        <div className="mt-1 text-[10px] text-slate-500">
+          no zones in this view
+        </div>
+      </details>
+    );
+  }
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-slate-400 text-[10px]">
+        role breakdown ({rows.length} roles · {view.zones.length} zones)
+      </summary>
+      <div className="mt-1 max-h-32 overflow-y-auto flex flex-col gap-0.5">
+        {rows.map((row) => {
+          const hex = row.color.toString(16).padStart(6, '0');
+          return (
+            <div
+              key={row.role}
+              className="flex items-center gap-1 text-[10px]"
+            >
+              <span
+                className="inline-block w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: `#${hex}` }}
+                aria-label={`role ${row.label}`}
+                // LOW from chunk-B /review-impl — testid stays for
+                // chunk C's visual regression goldens + future DOM
+                // tests. No vitest assertion today (TileInspector
+                // pattern — chunk-C TMP-Q4 LOW-4 precedent).
+                data-testid="role-band-swatch"
+              />
+              <span className="text-slate-400 shrink-0">{row.label}</span>
+              <span className="ml-auto text-right text-[10px]">
+                {row.count}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 
