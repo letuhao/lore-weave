@@ -57,8 +57,10 @@ package canon_writer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -73,7 +75,7 @@ import (
 
 // canonLayerL1Axiom + canonLayerL2Seeded mirror Q-L5-3 LOCKED enum.
 const (
-	canonLayerL1Axiom = "L1_axiom"
+	canonLayerL1Axiom  = "L1_axiom"
 	canonLayerL2Seeded = "L2_seeded"
 )
 
@@ -94,14 +96,15 @@ const (
 // types. Field presence varies by event type; the decoder applies
 // per-event-type required-field checks.
 type CanonPayload struct {
-	CanonEntryID  uuid.UUID
-	BookID        uuid.UUID
-	AttributePath string
-	Value         []byte // canonical JSON bytes from envelope
-	CanonLayer    string
-	LockLevel     string
-	EventID       uuid.UUID // envelope event_id (Q-L3-4 VerificationMeta)
-	RecordedAt    time.Time // envelope recorded_at
+	CanonEntryID     uuid.UUID
+	BookID           uuid.UUID
+	AttributePath    string
+	Value            []byte // canonical JSON bytes from envelope
+	CanonLayer       string
+	LockLevel        string
+	EventID          uuid.UUID // envelope event_id (Q-L3-4 VerificationMeta)
+	AggregateVersion uint64    // envelope aggregate_version (Q-L3-4 VerificationMeta)
+	RecordedAt       time.Time // envelope recorded_at
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -119,7 +122,12 @@ type UpsertIntent struct {
 	CanonLayer    string
 	LockLevel     string
 	SourceEventID uuid.UUID
-	LastSyncedAt  time.Time
+	// AggregateVersion + SourceEventID populate the canon_projection
+	// VerificationMeta block (event_id + aggregate_version, NOT NULL per
+	// migration 0009 Q-L3-4). The adapter writes SourceEventID to BOTH
+	// source_event_id and the event_id VerificationMeta column.
+	AggregateVersion uint64
+	LastSyncedAt     time.Time
 }
 
 // PerRealityDB upserts a canon_projection row in the named reality's DB.
@@ -255,15 +263,16 @@ func (w *Writer) Handle(ctx context.Context, fields map[string]any) error {
 	var firstErr error
 	for _, realityID := range subs {
 		intent := UpsertIntent{
-			RealityID:     realityID,
-			CanonEntryID:  payload.CanonEntryID,
-			BookID:        payload.BookID,
-			AttributePath: payload.AttributePath,
-			Value:         payload.Value,
-			CanonLayer:    payload.CanonLayer,
-			LockLevel:     payload.LockLevel,
-			SourceEventID: payload.EventID,
-			LastSyncedAt:  now,
+			RealityID:        realityID,
+			CanonEntryID:     payload.CanonEntryID,
+			BookID:           payload.BookID,
+			AttributePath:    payload.AttributePath,
+			Value:            payload.Value,
+			CanonLayer:       payload.CanonLayer,
+			LockLevel:        payload.LockLevel,
+			SourceEventID:    payload.EventID,
+			AggregateVersion: payload.AggregateVersion,
+			LastSyncedAt:     now,
 		}
 		if err := w.db.UpsertCanon(ctx, intent); err != nil {
 			// Cycle 7 L1.J degraded mode: per-reality DB unreachable.
@@ -341,6 +350,10 @@ func decodeCanonPayload(eventType string, fields map[string]any) (CanonPayload, 
 	if v, e := uuidField(fields, "event_id"); e == nil {
 		out.EventID = v
 	}
+
+	// aggregate_version is on the envelope (publisher protocol). After the
+	// Redis round-trip it arrives as a string; tolerate string/number.
+	out.AggregateVersion = uint64Field(fields, "aggregate_version")
 
 	// recorded_at / created_at / updated_at — pick whichever the event
 	// type provided.
@@ -479,14 +492,62 @@ func timeField(fields map[string]any, key string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// anyToBytes coerces a value to []byte. For string/JSON values, returns
-// the bytes as-is; for other types, returns nil (caller treats absent).
+// uint64Field extracts a uint64 from fields[key]. Tolerates the types a
+// value can arrive as: native int/int64/uint64/float64 (in-memory dispatch)
+// or string (after a Redis Streams round-trip). Missing/unparseable → 0.
+func uint64Field(fields map[string]any, key string) uint64 {
+	v, ok := fields[key]
+	if !ok {
+		return 0
+	}
+	switch x := v.(type) {
+	case uint64:
+		return x
+	case int64:
+		if x < 0 {
+			return 0
+		}
+		return uint64(x)
+	case int:
+		if x < 0 {
+			return 0
+		}
+		return uint64(x)
+	case float64:
+		if x < 0 {
+			return 0
+		}
+		return uint64(x)
+	case string:
+		n, err := strconv.ParseUint(x, 10, 64)
+		if err != nil {
+			return 0
+		}
+		return n
+	}
+	return 0
+}
+
+// anyToBytes coerces a value to canonical JSON []byte. A []byte/string is
+// returned as-is (already JSON from the wire). Anything else — most importantly
+// a map/slice, which is what `value` decodes to AFTER the publisher's payload
+// is JSON-round-tripped through Redis Streams (the fanout nests payload as a
+// JSON string, the consumer json.Unmarshal-s it back into a Go map) — is
+// re-marshalled to JSON so the canon VALUE actually reaches canon_projection
+// instead of being silently dropped to NULL. Returns nil only on a non-
+// marshalable value (caller treats nil as absent → 'null'::jsonb).
 func anyToBytes(v any) []byte {
 	switch x := v.(type) {
+	case nil:
+		return nil
 	case []byte:
 		return x
 	case string:
 		return []byte(x)
 	}
-	return nil
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return b
 }

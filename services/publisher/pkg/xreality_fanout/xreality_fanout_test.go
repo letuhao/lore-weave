@@ -53,15 +53,56 @@ func TestTopicFor_ValidatesConvention(t *testing.T) {
 	}
 	bad := []string{
 		"",
-		"npc.said",                       // missing xreality prefix
-		"xreality.canon",                 // missing verb
-		"xreality.canon.promoted.extra",  // too many segments
-		"xreality..promoted",             // empty entity
+		"npc.said",                      // missing xreality prefix
+		"xreality.canon",                // missing verb
+		"xreality.canon.promoted.extra", // too many segments
+		"xreality..promoted",            // empty entity
 	}
 	for _, et := range bad {
 		if _, err := TopicFor(et); err == nil {
 			t.Errorf("TopicFor(%q) should error", et)
 		}
+	}
+}
+
+func TestTopicFor_CanonFamilyMapsToCanonStream(t *testing.T) {
+	canon := []string{
+		"canon.entry.created",
+		"canon.entry.updated",
+		"canon.entry.promoted",
+		"canon.entry.decanonized",
+		"canon.change.recorded",
+		"admin.canon.override.compensating",
+	}
+	for _, et := range canon {
+		topic, err := TopicFor(et)
+		if err != nil {
+			t.Errorf("TopicFor(%q) unexpected err: %v", et, err)
+		}
+		if topic != CanonFanoutTopic {
+			t.Errorf("TopicFor(%q) = %q; want %q", et, topic, CanonFanoutTopic)
+		}
+	}
+}
+
+func TestFanout_CanonEvent_UsesCanonStream_KeepsInnerEventType(t *testing.T) {
+	em := &fakeStreamEmitter{}
+	f, _ := New(em)
+	row := sampleXRealityRow()
+	row.EventType = "canon.entry.created"
+	row.Payload = map[string]any{"canon_entry_id": "ce-1", "book_id": "bk-1"}
+	if err := f.Fanout(context.Background(), row); err != nil {
+		t.Fatal(err)
+	}
+	if len(em.calls) != 1 {
+		t.Fatalf("expected 1 XAdd, got %d", len(em.calls))
+	}
+	if em.calls[0].stream != CanonFanoutTopic {
+		t.Errorf("stream=%q want %q", em.calls[0].stream, CanonFanoutTopic)
+	}
+	// The INNER event_type must be preserved for dispatch routing.
+	if em.calls[0].fields["event_type"] != "canon.entry.created" {
+		t.Errorf("inner event_type=%v want canon.entry.created", em.calls[0].fields["event_type"])
 	}
 }
 

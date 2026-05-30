@@ -46,6 +46,15 @@ var ErrNotXReality = errors.New("xreality_fanout: row is not cross_reality")
 // follow the `xreality.<entity>.<verb>` convention (Q-L2-4).
 var ErrInvalidEventType = errors.New("xreality_fanout: event_type does not follow xreality.<entity>.<verb>")
 
+// CanonFanoutTopic is the dedicated Redis Stream the canon mutation family
+// (canon.* + admin.canon.override.*) fans out to. Per the events registry
+// (_registry.yaml: "canon.entry.* … fans out as xreality.book.canon.updated")
+// the OUTER topic is fixed while the INNER domain event_type is preserved in
+// the envelope `event_type` field — the meta-worker dispatcher routes by that
+// inner type (canon_writer handles canon.entry.*). I7 stays intact: the only
+// ingress is this xreality.* stream.
+const CanonFanoutTopic = "xreality.book.canon.updated"
+
 // Fanouter is the publisher-side fanout. Implements the
 // poll_loop.XRealityFanout interface.
 type Fanouter struct {
@@ -65,6 +74,11 @@ func New(emitter StreamEmitter) (*Fanouter, error) {
 func TopicFor(eventType string) (string, error) {
 	if eventType == "" {
 		return "", fmt.Errorf("%w: empty", ErrInvalidEventType)
+	}
+	// Canon mutation family fans out via the dedicated canon stream; the
+	// INNER event_type stays in the envelope for dispatch routing.
+	if strings.HasPrefix(eventType, "canon.") || strings.HasPrefix(eventType, "admin.canon.override.") {
+		return CanonFanoutTopic, nil
 	}
 	if !strings.HasPrefix(eventType, "xreality.") {
 		return "", fmt.Errorf("%w: missing xreality. prefix: %q", ErrInvalidEventType, eventType)

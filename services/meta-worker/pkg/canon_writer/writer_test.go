@@ -212,6 +212,62 @@ func TestHandle_CanonCreated_FansOutAndAudits(t *testing.T) {
 	}
 }
 
+func TestHandle_ThreadsAggregateVersion(t *testing.T) {
+	book := mustUUID(t)
+	r1 := mustUUID(t)
+	// aggregate_version arrives as a string after a Redis round-trip, or as a
+	// native number from in-memory dispatch. Both must thread to the intent.
+	for _, av := range []any{"7", 7, int64(7), float64(7), uint64(7)} {
+		w, db, _ := newTestWriter(t, book, []uuid.UUID{r1})
+		err := w.Handle(context.Background(), map[string]any{
+			"event_type":        EventCanonCreated,
+			"event_id":          mustUUID(t).String(),
+			"canon_entry_id":    mustUUID(t).String(),
+			"book_id":           book.String(),
+			"attribute_path":    "x/y",
+			"canon_layer":       "L2_seeded",
+			"value":             `{"a":1}`,
+			"aggregate_version": av,
+		})
+		if err != nil {
+			t.Fatalf("Handle(av=%v): %v", av, err)
+		}
+		writes := db.Writes()
+		if len(writes) != 1 || writes[0].AggregateVersion != 7 {
+			t.Errorf("av=%v(%T): AggregateVersion=%d want 7", av, av, writes[0].AggregateVersion)
+		}
+	}
+}
+
+func TestHandle_ValueAsMap_MarshalsToJSON(t *testing.T) {
+	// After the Redis round-trip the consumer flattens `value` back into a Go
+	// map (not a string). The writer MUST re-marshal it so canon_projection
+	// gets the real value, not 'null'. Regression guard for the dropped-value
+	// HIGH bug found in /review-impl.
+	book := mustUUID(t)
+	r1 := mustUUID(t)
+	w, db, _ := newTestWriter(t, book, []uuid.UUID{r1})
+	err := w.Handle(context.Background(), map[string]any{
+		"event_type":     EventCanonCreated,
+		"event_id":       mustUUID(t).String(),
+		"canon_entry_id": mustUUID(t).String(),
+		"book_id":        book.String(),
+		"attribute_path": "characters/alice/race",
+		"canon_layer":    "L2_seeded",
+		"value":          map[string]any{"race": "elf"}, // a Go map, not a string
+	})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	writes := db.Writes()
+	if len(writes) != 1 {
+		t.Fatalf("writes=%d want 1", len(writes))
+	}
+	if string(writes[0].Value) != `{"race":"elf"}` {
+		t.Errorf("value=%q want %q (map dropped to null?)", string(writes[0].Value), `{"race":"elf"}`)
+	}
+}
+
 func TestHandle_CanonUpdated_NewValueOverridesValue(t *testing.T) {
 	book := mustUUID(t)
 	r1 := mustUUID(t)
