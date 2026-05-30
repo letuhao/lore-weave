@@ -79,14 +79,18 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
   const handleSaveSettings = async (lang: string, modelRef: string) => {
     if (!accessToken) return;
     try {
-      const payload: Record<string, unknown> = {};
+      // PATCH: send only the fields we're changing. The backend keeps every omitted
+      // field at its stored value (atomic COALESCE upsert), so this never clobbers
+      // custom prompts and we don't echo back the whole settings object.
+      const payload: Record<string, unknown> = { model_source: 'user_model' };
       if (lang) payload.target_language = lang;
       if (modelRef) payload.model_ref = modelRef;
-      payload.model_source = 'user_model';
       const updated = await translationApi.putBookSettings(accessToken, bookId, payload);
       setSettings(updated);
-    } catch {
-      // Silent — settings save is best-effort, job will use current values
+    } catch (e) {
+      // Persisting the book default is best-effort (the job carries its own overrides),
+      // but surface the failure instead of swallowing it.
+      toast.error(`Could not save translation settings: ${(e as Error).message}`);
     }
   };
 
@@ -108,6 +112,11 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
     try {
       await translationApi.createJob(accessToken, bookId, {
         chapter_ids: [...selectedChapters],
+        // Fix-C: pass the selection directly so the job succeeds even if the
+        // best-effort settings save above failed.
+        target_language: selectedLang,
+        model_source: 'user_model',
+        model_ref: selectedModelRef,
       });
       toast.success(`Translation job started for ${selectedChapters.size} chapter(s)`);
       onJobCreated();
