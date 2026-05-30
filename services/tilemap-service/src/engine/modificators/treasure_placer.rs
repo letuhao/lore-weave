@@ -87,8 +87,33 @@ impl Modificator for TreasurePlacer {
                 &format!("treasure_placer:{}", zone_id.0),
             ));
 
-            for tier in tiers {
-                place_tier(ctx.state, zone_idx, tier, assigned_count, &assets, &mut rng, ctx.registry);
+            // TMP-Q4 HIGH-1 — pass each tier's post-sort position as its
+            // `tier_index` for value-band visualization. `enumerate` index
+            // is 0..N where 0 is the highest-`max` band of this zone.
+            // Real authoring has 1-3 tiers per zone; if a pathological
+            // template declares more than `u8::MAX` (256) tiers, we BREAK
+            // — silent saturation would collide multiple tiers onto
+            // index 255 (lossy). The skipped tiers' piles never get
+            // placed; this is documented + accepted (template load has
+            // no validation hook to reject upstream).
+            //
+            // LOW-5 from chunk-A /review-impl — emit a tracing::warn so an
+            // author's ops dashboard surfaces the truncation rather than
+            // silently dropping tiers. Mirrors the existing
+            // `tilemap.density_reduced` info-event discipline (TMP-TR-Q4).
+            let total_tiers = tiers.len();
+            for (tier_pos, tier) in tiers.into_iter().enumerate() {
+                let Ok(tier_index) = u8::try_from(tier_pos) else {
+                    tracing::warn!(
+                        zone = %zone_id.0,
+                        declared_tiers = total_tiers,
+                        placed_tiers = tier_pos,
+                        "TMP-Q4: zone declares more than 256 treasure tiers; \
+                         only the first 256 are placed (tier_index is u8)",
+                    );
+                    break;
+                };
+                place_tier(ctx.state, zone_idx, tier, tier_index, assigned_count, &assets, &mut rng, ctx.registry);
             }
         }
         Ok(())
@@ -134,10 +159,12 @@ struct TreasureAssets {
 /// bounded at `target_count`, caps **failures only** — a successful pile never
 /// consumes budget (TMP_006 §3.3 / §4.4), so a clean zone reaches exactly
 /// `target_count` piles and the realized count is a *soft* target.
+#[allow(clippy::too_many_arguments)]
 fn place_tier(
     state: &mut TilemapBuildState,
     zone_idx: usize,
     tier: TreasureTierSpec,
+    tier_index: u8,
     assigned_count: usize,
     assets: &TreasureAssets,
     rng: &mut ChaCha8Rng,
@@ -172,6 +199,7 @@ fn place_tier(
             &assets.pile_template,
             TilemapObjectKind::Treasure,
             Some(pile.value),
+            Some(tier_index),
             &search_area,
             min_distance(pile.value),
             OptimizeType::BothDistanceAndCenter,
@@ -186,6 +214,7 @@ fn place_tier(
                         state,
                         zone_idx,
                         pile.value,
+                        tier_index,
                         &placement.footprint,
                         &assets.guard_template,
                         registry,
@@ -216,10 +245,15 @@ fn place_tier(
 /// `NoSpace` ⇒ the guard is skipped and the pile left unguarded, a valid
 /// outcome (TMP_006 §5.3). `place_guard` returns nothing, so a guard skip can
 /// never touch the caller's `emergency` budget (spec D6 / review r6 finding 1).
+#[allow(clippy::too_many_arguments)]
 fn place_guard(
     state: &mut TilemapBuildState,
     zone_idx: usize,
     pile_value: u32,
+    // TMP-Q4 LOW-1 — guard inherits the pile's tier_index so the inspector
+    // reads "tier N pile + tier N guard" as one logical unit. Without this,
+    // a lair adjacent to a tier-0 pile would show no tier on hover.
+    pile_tier_index: u8,
     pile_footprint: &TileMask,
     guard_template: &TilemapObjectTemplate,
     registry: &crate::registry::Registry,
@@ -250,6 +284,7 @@ fn place_guard(
         guard_template,
         TilemapObjectKind::MonsterLair,
         Some(guard.strength),
+        Some(pile_tier_index),
         &guard_search_area,
         0.0,
         OptimizeType::Center,
@@ -479,6 +514,182 @@ mod tests {
                 neighbors4(pile.anchor, state.grid.width, state.grid.height)
                     .any(|n| n == guard.anchor),
                 "the guard must sit 4-adjacent to its pile footprint",
+            );
+        }
+    }
+
+    #[test]
+    fn tmp_q4_pile_carries_tier_index_zero_for_single_tier() {
+        // TMP-Q4 AC-VBT-2 — a zone with one tier places piles with
+        // tier_index = Some(0) (the sort makes it the highest band).
+        let mut state = solo_state("z", 20, 20, ZoneRole::Wilderness);
+        let tmpl = template(vec![zone_spec("z", vec![tier(300, 800, 8)], None)]);
+        run_placer(&mut state, &tmpl, 5);
+        let ts = treasures(&state);
+        assert!(!ts.is_empty(), "the fixture must place piles");
+        for p in ts {
+            assert_eq!(
+                p.tier_index,
+                Some(0),
+                "single-tier zone: every pile gets tier_index=Some(0)",
+            );
+        }
+    }
+
+    #[test]
+    fn tmp_q4_pile_tier_index_follows_max_desc_sort() {
+        // TMP-Q4 AC-VBT-2 — declare two value-disjoint tiers in low-first
+        // order; the placer sorts by max desc; the high-`max` tier's piles
+        // carry tier_index=0, the low-`max` tier's piles carry tier_index=1.
+        for seed in 0..4u64 {
+            let mut state = solo_state("z", 24, 24, ZoneRole::Wilderness);
+            let tmpl = template(vec![zone_spec(
+                "z",
+                vec![tier(300, 800, 5), tier(5000, 9000, 4)],
+                None,
+            )]);
+            run_placer(&mut state, &tmpl, seed);
+            let ts = treasures(&state);
+            assert!(!ts.is_empty(), "seed {seed}: fixture must place piles");
+            for p in ts {
+                let v = p.value.expect("pile carries Some(value)");
+                let expected_tier = if v >= 5000 { 0u8 } else { 1u8 };
+                assert_eq!(
+                    p.tier_index,
+                    Some(expected_tier),
+                    "seed {seed}: pile value {v} should have tier_index {expected_tier} \
+                     (high-max tier sorts to index 0)",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tmp_q4_unreachable_mid_tier_doesnt_shift_indices() {
+        // TMP-Q4 LOW-4 from /review-impl — a 3-tier zone where the
+        // post-sort MIDDLE tier (by max desc) is value-unreachable for
+        // the engine pool. The mid tier produces zero piles but its
+        // tier_index slot (1) is RESERVED — the low tier still gets
+        // tier_index=2. A future refactor that moved enumerate inside
+        // the compose retry loop would silently shift indices and this
+        // test would fail.
+        //
+        // The engine treasure pool's object values are
+        //   {250, 500, 750, 1200, 2000, 5000, 9000}.
+        // Tier `[3001, 3001]` (min==max==3001) is genuinely unreachable
+        // for these values — the running sum can hit 2000 + 1200 = 3200
+        // (over) or 2000 + 750 = 2750 (under), but never exactly 3001.
+        // After sort by max desc: high [5000,9000] → 0; mid [3001,3001]
+        // → 1 (UNREACHABLE); low [300,800] → 2 (reachable).
+        let mut state = solo_state("z", 24, 24, ZoneRole::Wilderness);
+        let tmpl = template(vec![zone_spec(
+            "z",
+            vec![
+                tier(5000, 9000, 5),
+                tier(3001, 3001, 5),
+                tier(300, 800, 5),
+            ],
+            None,
+        )]);
+        run_placer(&mut state, &tmpl, 11);
+        let ts = treasures(&state);
+        assert!(!ts.is_empty(), "high + low tiers must place some piles");
+        // Mid tier produces nothing — no pile should have tier_index=1.
+        let mid_tier_pile_count = ts.iter().filter(|p| p.tier_index == Some(1)).count();
+        assert_eq!(
+            mid_tier_pile_count, 0,
+            "the unreachable mid tier MUST produce zero piles \
+             (tier_index=1 slot stays empty)",
+        );
+        // Crucially: low-tier piles must still carry tier_index=2,
+        // NOT 1. A regression where enumerate shifted on compose
+        // failure would land them at 1.
+        for p in ts {
+            let v = p.value.unwrap();
+            let expected = if v >= 5000 { Some(0) } else { Some(2) };
+            assert_eq!(
+                p.tier_index, expected,
+                "pile value {v}: an unreachable tier between high and \
+                 low MUST NOT shift the low tier's index from 2 to 1",
+            );
+        }
+    }
+
+    #[test]
+    fn tmp_q4_inherited_tiers_use_source_zone_tier_index() {
+        // TMP-Q4 LOW-3 from /review-impl — when zone X inherits Y's
+        // treasure_tiers via `inherit_treasure_from: Some("y")`, the
+        // tier_index of X's piles is derived from Y's (sorted) tier list,
+        // NOT X's own (REPLACE-discarded) tier list. A regression where
+        // tier_index reverted to X's own tiers would still pass
+        // `ac10a_inherit_replaces_own_tiers` (which only checks value
+        // range), so we pin the index mapping here too.
+        //
+        // Y declares two value-disjoint tiers in low-first order:
+        //   - [300, 800]    → after sort: tier_index=1
+        //   - [5000, 9000]  → after sort: tier_index=0
+        // X inherits from Y and has its own SINGLE tier [100, 200] that
+        // gets DISCARDED. If a regression used X's own list, every X
+        // pile would land at tier_index=0. With correct sourcing, X's
+        // piles split between Y's high (index 0) and low (index 1).
+        let mut state = solo_state("x", 24, 24, ZoneRole::Wilderness);
+        let tmpl = template(vec![
+            zone_spec("x", vec![tier(100, 200, 8)], Some("y")),
+            zone_spec(
+                "y",
+                vec![tier(300, 800, 5), tier(5000, 9000, 4)],
+                None,
+            ),
+        ]);
+        run_placer(&mut state, &tmpl, 13);
+        let ts = treasures(&state);
+        assert!(!ts.is_empty(), "x must inherit y's tiers and place piles");
+        // Every pile must use Y's index mapping: high → 0, low → 1.
+        // No pile should carry tier_index=Some(0) for a value in [100,200]
+        // (that would mean we used x's own tiers).
+        for p in ts {
+            let v = p.value.unwrap();
+            let expected_idx = if (5000..=9000).contains(&v) {
+                Some(0u8)
+            } else if (300..=800).contains(&v) {
+                Some(1u8)
+            } else {
+                panic!(
+                    "pile value {v} must be in Y's ranges; x's own [100,200] \
+                     is REPLACE-discarded by inherit_treasure_from"
+                );
+            };
+            assert_eq!(
+                p.tier_index, expected_idx,
+                "value {v} must use the SOURCE zone (y)'s tier_index mapping, \
+                 not x's own discarded tiers",
+            );
+        }
+    }
+
+    #[test]
+    fn tmp_q4_guard_inherits_pile_tier_index() {
+        // TMP-Q4 LOW-1 + AC-VBT-2 — the MonsterLair guard placed next to a
+        // pile inherits the pile's tier_index so the inspector reads
+        // "tier N pile + tier N guard". With a single tier [2000, 3000]
+        // (guarded), every pair (pile, guard) shares tier_index=Some(0).
+        let mut state = solo_state("z", 24, 24, ZoneRole::Wilderness);
+        let tmpl = template(vec![zone_spec("z", vec![tier(2000, 3000, 4)], None)]);
+        run_placer(&mut state, &tmpl, 7);
+        let ts = treasures(&state);
+        let ls = lairs(&state);
+        assert!(!ts.is_empty(), "fixture must place guarded piles");
+        assert_eq!(ls.len(), ts.len(), "every pile gets a guard");
+        for pair in state.object_placements.chunks(2) {
+            let [pile, guard] = pair else { unreachable!() };
+            assert_eq!(
+                pile.tier_index,
+                Some(0),
+                "single-tier zone: pile is tier 0",
+            );
+            assert_eq!(
+                guard.tier_index, pile.tier_index,
+                "guard must inherit its pile's tier_index for consistent inspector reading",
             );
         }
     }

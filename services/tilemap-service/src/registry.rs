@@ -180,6 +180,21 @@ impl Registry {
                 "registry must define at least one object kind".into(),
             ));
         }
+        // TMP-Q4 — validate per-book value-band thresholds if set.
+        // 4 strictly-ascending u32 values; any non-ascending pair (incl.
+        // equal) is rejected so every band is non-empty.
+        if let Some(thresholds) = &file.registry.value_band_thresholds {
+            for i in 0..3 {
+                if thresholds[i] >= thresholds[i + 1] {
+                    return Err(RegistryError::Validation(format!(
+                        "value_band_thresholds must be strictly ascending; got {:?} (index {} >= {})",
+                        thresholds,
+                        i,
+                        i + 1
+                    )));
+                }
+            }
+        }
         let mut terrain_by_tag = HashMap::with_capacity(file.terrain.len());
         for def in file.terrain {
             if !is_valid_id(&def.id) {
@@ -950,6 +965,94 @@ label = "Obj"
                 other => panic!("[{label}] expected Validation, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn registry_rejects_non_ascending_value_band_thresholds() {
+        // TMP-Q4 AC-VBT-7 — non-strictly-ascending thresholds reject at
+        // registry load. Each band must be non-empty.
+        for (label, bad_array) in [
+            ("equal pair (i0=i1)", "[500, 500, 5000, 12000]"),
+            ("descending pair (i1>i2)", "[500, 2000, 1500, 12000]"),
+            ("descending pair (i2>i3)", "[500, 2000, 5000, 4000]"),
+            ("all equal", "[100, 100, 100, 100]"),
+        ] {
+            let toml = format!(r#"
+[registry]
+id = "test"
+version = "0.0.1"
+value_band_thresholds = {bad_array}
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#);
+            let err = Registry::from_toml_str(&toml).expect_err(
+                &format!("expected {label} thresholds to fail"));
+            match err {
+                RegistryError::Validation(msg) => {
+                    assert!(msg.contains("value_band_thresholds") && msg.contains("ascending"),
+                        "[{label}] msg missing keywords: {msg}");
+                }
+                other => panic!("[{label}] expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn registry_accepts_strictly_ascending_value_band_thresholds() {
+        // TMP-Q4 AC-VBT-7 — strictly ascending thresholds load + flow
+        // through to RegistryRef.
+        let toml = r#"
+[registry]
+id = "xianxia"
+version = "1.0.0"
+value_band_thresholds = [1000, 5000, 15000, 50000]
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("must load");
+        assert_eq!(
+            reg.reference().value_band_thresholds,
+            Some([1_000, 5_000, 15_000, 50_000])
+        );
+    }
+
+    #[test]
+    fn registry_loads_without_value_band_thresholds() {
+        // TMP-Q4 LOW-2 — backward compat: a pre-Q4 TOML without the
+        // field loads with `value_band_thresholds = None`.
+        let toml = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("must load");
+        assert_eq!(reg.reference().value_band_thresholds, None);
     }
 
     #[test]
