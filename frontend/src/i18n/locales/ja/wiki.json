@@ -1,6 +1,7 @@
 {
   "title": "Wiki",
   "search": "Wikiを検索...",
+  "searchEntities": "名前でエンティティを検索...",
   "noArticles": "Wiki記事がまだありません",
   "noArticlesDesc": "用語集のエンティティからWiki記事を作成して、本のナレッジベースを構築しましょう。",
   "noMatch": "フィルターに一致する記事がありません",
@@ -35,5 +36,17 @@
   "selectEntity": "Wiki記事を作成するエンティティを選択",
   "deleteArticle": "記事を削除",
   "deleteConfirm": "このWiki記事とすべてのリビジョンが完全に削除されます。",
-  "deleted": "記事を削除しました"
+  "deleted": "記事を削除しました",
+  "restored": "バージョン {{version}} に復元しました",
+  "suggestionAccepted": "提案を承認しました",
+  "suggestionRejected": "提案を却下しました",
+  "unpublished": "非公開にしました",
+  "saved": "保存しました",
+  "saveFailed": "保存に失敗しました",
+  "restoreFailed": "リビジョンの復元に失敗しました",
+  "reviewFailed": "提案のレビューに失敗しました",
+  "statusFailed": "ステータスの更新に失敗しました",
+  "deleteFailed": "削除に失敗しました",
+  "createFailed": "記事の作成に失敗しました",
+  "generateFailed": "生成に失敗しました"
 }

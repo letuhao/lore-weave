@@ -219,5 +219,13 @@
     "no": "Không",
     "reset": "Đặt lại mặc định",
     "save_failed": "Lưu thất bại: {{error}}"
+  },
+  "session_toast": {
+    "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
+    "rename_failed": "Đổi tên thất bại: {{error}}",
+    "archive_failed": "Lưu trữ thất bại: {{error}}",
+    "delete_failed": "Xóa thất bại: {{error}}",
+    "chat_error": "Lỗi trò chuyện: {{error}}",
+    "context_load_failed": "Không thể tải ngữ cảnh cho \"{{label}}\" — gửi mà không có nó"
   }
 }

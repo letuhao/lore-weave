@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Plus } from 'lucide-react';
 import type { GenreGroup } from '../types';
 
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export function GenreFormModal({ genre, onSave, onClose }: Props) {
+  const { t } = useTranslation('glossaryEditor');
   const isEdit = !!genre;
   const [name, setName] = useState(genre?.name ?? '');
   const [color, setColor] = useState(genre?.color ?? COLOR_PRESETS[0]);
@@ -32,11 +34,11 @@ export function GenreFormModal({ genre, onSave, onClose }: Props) {
   const handleSubmit = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError('Name is required');
+      setError(t('genre.name_required'));
       return;
     }
     if (trimmed.length > 200) {
-      setError('Name too long (max 200 characters)');
+      setError(t('genre.name_too_long'));
       return;
     }
     setSaving(true);
@@ -44,7 +46,7 @@ export function GenreFormModal({ genre, onSave, onClose }: Props) {
     try {
       await onSave({ name: trimmed, color, description: description.trim() });
     } catch (e) {
-      setError((e as Error).message || 'Failed to save');
+      setError((e as Error).message || t('genre.save_failed'));
     } finally {
       setSaving(false);
     }
@@ -64,12 +66,12 @@ export function GenreFormModal({ genre, onSave, onClose }: Props) {
               {isEdit ? (
                 <>
                   <div className="h-3 w-3 rounded-sm" style={{ background: color }} />
-                  <span className="text-sm font-semibold">Edit Genre &mdash; {genre.name}</span>
+                  <span className="text-sm font-semibold">{t('genre.edit_title', { name: genre.name })}</span>
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4" />
-                  <span className="text-sm font-semibold">New Genre Group</span>
+                  <span className="text-sm font-semibold">{t('genre.new_title')}</span>
                 </>
               )}
             </div>
@@ -83,21 +85,21 @@ export function GenreFormModal({ genre, onSave, onClose }: Props) {
             {/* Name */}
             <div>
               <label className="mb-1.5 block text-xs font-medium">
-                Genre Name <span className="text-destructive">*</span>
+                {t('genre.name_label')} <span className="text-destructive">*</span>
               </label>
               <input
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && name.trim() && !saving) void handleSubmit(); }}
-                placeholder="e.g. Wuxia, Gothic Horror, Cyberpunk..."
+                placeholder={t('genre.name_placeholder')}
                 className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
             </div>
 
             {/* Color */}
             <div>
-              <label className="mb-1.5 block text-xs font-medium">Color</label>
+              <label className="mb-1.5 block text-xs font-medium">{t('genre.color')}</label>
               <div className="flex flex-wrap gap-2">
                 {COLOR_PRESETS.map((c) => (
                   <button
@@ -111,18 +113,18 @@ export function GenreFormModal({ genre, onSave, onClose }: Props) {
                   />
                 ))}
               </div>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">Used in badges, filter chips, and genre tag pills</p>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">{t('genre.color_hint')}</p>
             </div>
 
             {/* Description */}
             <div>
               <label className="mb-1.5 block text-xs font-medium">
-                Description <span className="font-normal text-muted-foreground">(optional)</span>
+                {t('genre.description')} <span className="font-normal text-muted-foreground">{t('genre.optional')}</span>
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Brief note about what this genre covers..."
+                placeholder={t('genre.desc_placeholder')}
                 rows={2}
                 className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30 resize-vertical"
               />
@@ -137,14 +139,14 @@ export function GenreFormModal({ genre, onSave, onClose }: Props) {
                 onClick={onClose}
                 className="rounded-md border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors"
               >
-                Cancel
+                {t('genre.cancel')}
               </button>
               <button
                 onClick={() => void handleSubmit()}
                 disabled={saving || !name.trim()}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
-                {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Genre'}
+                {saving ? t('genre.saving') : isEdit ? t('genre.save_changes') : t('genre.create')}
               </button>
             </div>
           </div>

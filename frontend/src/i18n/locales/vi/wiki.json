@@ -1,6 +1,7 @@
 {
   "title": "Wiki",
   "search": "Tim trong wiki...",
+  "searchEntities": "Tìm thực thể theo tên...",
   "noArticles": "Chua co bai wiki nao",
   "noArticlesDesc": "Tao bai wiki tu cac thuc the trong bang chu giai de xay dung co so tri thuc cho sach.",
   "noMatch": "Khong co bai nao phu hop voi bo loc",
@@ -35,5 +36,17 @@
   "selectEntity": "Chon thuc the de tao bai wiki",
   "deleteArticle": "Xoa bai viet",
   "deleteConfirm": "Hanh dong nay se xoa vinh vien bai wiki va tat ca cac phien ban.",
-  "deleted": "Da xoa bai viet"
+  "deleted": "Da xoa bai viet",
+  "restored": "Đã khôi phục về phiên bản {{version}}",
+  "suggestionAccepted": "Đã chấp nhận đề xuất",
+  "suggestionRejected": "Đã từ chối đề xuất",
+  "unpublished": "Đã hủy xuất bản",
+  "saved": "Đã lưu",
+  "saveFailed": "Không thể lưu",
+  "restoreFailed": "Không thể khôi phục phiên bản",
+  "reviewFailed": "Không thể duyệt đề xuất",
+  "statusFailed": "Không thể cập nhật trạng thái",
+  "deleteFailed": "Không thể xóa",
+  "createFailed": "Không thể tạo bài viết",
+  "generateFailed": "Không thể tạo"
 }

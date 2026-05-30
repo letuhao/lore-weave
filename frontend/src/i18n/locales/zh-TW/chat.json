@@ -219,5 +219,13 @@
     "no": "否",
     "reset": "重設為預設",
     "save_failed": "儲存失敗：{{error}}"
+  },
+  "session_toast": {
+    "create_failed": "建立聊天失敗：{{error}}",
+    "rename_failed": "重新命名失敗：{{error}}",
+    "archive_failed": "封存失敗：{{error}}",
+    "delete_failed": "刪除失敗：{{error}}",
+    "chat_error": "聊天錯誤：{{error}}",
+    "context_load_failed": "無法載入「{{label}}」的脈絡 — 將不附帶傳送"
   }
 }

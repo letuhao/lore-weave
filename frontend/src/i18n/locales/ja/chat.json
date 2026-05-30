@@ -219,5 +219,13 @@
     "no": "いいえ",
     "reset": "デフォルトにリセット",
     "save_failed": "保存に失敗しました: {{error}}"
+  },
+  "session_toast": {
+    "create_failed": "チャットの作成に失敗しました: {{error}}",
+    "rename_failed": "名前の変更に失敗しました: {{error}}",
+    "archive_failed": "アーカイブに失敗しました: {{error}}",
+    "delete_failed": "削除に失敗しました: {{error}}",
+    "chat_error": "チャットエラー: {{error}}",
+    "context_load_failed": "「{{label}}」のコンテキストを読み込めませんでした — それなしで送信します"
   }
 }

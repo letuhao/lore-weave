@@ -66,12 +66,12 @@ export function RegisterPage() {
         )}
 
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Display Name</label>
+          <label className="text-sm font-medium">{t('register.display_name')}</label>
           <input
             {...register('displayName')}
             type="text"
             autoComplete="name"
-            placeholder="Your name (optional)"
+            placeholder={t('register.display_name_placeholder')}
             className="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
           />
         </div>

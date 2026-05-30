@@ -219,5 +219,13 @@
     "no": "No",
     "reset": "Reset to Defaults",
     "save_failed": "Save failed: {{error}}"
+  },
+  "session_toast": {
+    "create_failed": "Failed to create chat: {{error}}",
+    "rename_failed": "Rename failed: {{error}}",
+    "archive_failed": "Archive failed: {{error}}",
+    "delete_failed": "Delete failed: {{error}}",
+    "chat_error": "Chat error: {{error}}",
+    "context_load_failed": "Could not load context for \"{{label}}\" — sending without it"
   }
 }
