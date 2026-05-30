@@ -49,6 +49,7 @@ fn template_for_world_zone(
         world_zone: Some(snapshot),
         decoration_density: None,
         background_biome: None,
+        decoration_family_density: None,
     }
 }
 

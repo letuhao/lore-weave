@@ -370,6 +370,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: Some("lw:biome.grassland_meadow".to_string()),
+            decoration_family_density: None,
         };
         let registry = Registry::load_default().expect("registry");
         let mut ctx = ModificatorContext {
@@ -438,6 +439,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: Some("lw:biome.grassland_meadow".to_string()),
+            decoration_family_density: None,
         };
         let registry = Registry::load_default().expect("registry");
         let mut ctx = ModificatorContext {

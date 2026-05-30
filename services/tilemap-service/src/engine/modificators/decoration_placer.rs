@@ -32,11 +32,12 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::engine::pipeline::{Modificator, ModificatorContext};
-use crate::registry::DecorationRef;
+use crate::registry::{DecorationRef, Registry};
 use crate::seed::sub_seed;
 use crate::types::object::{TilemapObjectKind, TilemapObjectPlacement};
 use crate::types::primitive::ObjectPrimitive;
-use crate::types::registry::FootprintSize;
+use crate::types::registry::{validate_decoration_family_density, FootprintSize};
+use crate::types::template::TilemapTemplate;
 use crate::types::tile::TileCoord;
 use crate::types::tile_mask::TileMask;
 use crate::types::zone::ZoneRole;
@@ -59,6 +60,47 @@ const fn role_density_multiplier(role: ZoneRole) -> f32 {
         ZoneRole::Forbidden => 0.0,
         ZoneRole::Sea => 0.0,
     }
+}
+
+/// TMP-Q6 chunk B — resolve the effective per-family decoration density
+/// multiplier for a given family at placement time.
+///
+/// Resolution chain (per spec
+/// `docs/specs/2026-05-30-decoration-family-splits.md` §4):
+/// 1. Template — `template.decoration_family_density[family]` wins per
+///    family. Sparse — an absent family falls back to registry.
+/// 2. Registry — `registry.reference().decoration_family_density[family]`
+///    is the per-book baseline. Sparse same as template.
+/// 3. Default — 1.0 (no bias) when neither layer declares the family.
+///
+/// `family == None` (the tag wasn't annotated, or this is one of the
+/// grandfathered TYPE-marker entries) returns 1.0 unconditionally —
+/// chunk B's bias only applies to entries that declared an
+/// `ObjectKindDef.family` in chunk A.
+///
+/// **Composition with role-bias (chunk-C TMP-Q5):** the role multiplier
+/// is applied to TARGET COUNT at `place_in_zone` entry; this family
+/// multiplier is applied to PER-TAG WEIGHT inside `roll_weighted_tag`.
+/// The two are independent dimensions: role bias changes how many
+/// decorations get placed, family bias changes WHICH tags get picked
+/// within the target count.
+fn resolve_family_multiplier(
+    family: Option<&str>,
+    template: &TilemapTemplate,
+    registry: &Registry,
+) -> f32 {
+    let Some(family) = family else { return 1.0 };
+    if let Some(map) = template.decoration_family_density.as_ref() {
+        if let Some(&m) = map.get(family) {
+            return m;
+        }
+    }
+    if let Some(map) = registry.reference().decoration_family_density.as_ref() {
+        if let Some(&m) = map.get(family) {
+            return m;
+        }
+    }
+    1.0
 }
 
 /// Visual-density pass. See module doc.
@@ -97,6 +139,19 @@ impl Modificator for DecorationPlacer {
                 name: "decoration_placer".to_string(),
                 reason: format!("decoration_density invalid: {e}"),
             })?;
+
+        // TMP-Q6 chunk B — validate the template-side
+        // `decoration_family_density` map at process time. Registry side
+        // already validated at `Registry::from_file`. Same helper at both
+        // layers so a malformed entry rejects identically.
+        if let Some(map) = ctx.template.decoration_family_density.as_ref() {
+            validate_decoration_family_density(map).map_err(|e| {
+                crate::Error::Modificator {
+                    name: "decoration_placer".to_string(),
+                    reason: format!("template decoration_family_density: {e}"),
+                }
+            })?;
+        }
 
         for zone_idx in 0..ctx.state.zones.len() {
             place_in_zone(zone_idx, density, ctx);
@@ -168,8 +223,24 @@ fn place_in_zone(
     let mut placed_by_tag: BTreeMap<String, Vec<TileCoord>> = BTreeMap::new();
     let mut placed: u32 = 0;
 
+    // TMP-Q6 chunk B — closure factory for the per-family multiplier
+    // lookup. Captured once per zone so `roll_weighted_tag` doesn't need
+    // template + registry refs in its signature. Closure is cheap (two
+    // HashMap lookups per call); deterministic given the template +
+    // registry stay constant across rolls.
+    let family_mult =
+        |family: Option<&str>| resolve_family_multiplier(family, ctx.template, ctx.registry);
+
     'slots: while placed < target {
-        let mut current_tag = roll_weighted_tag(&pool, &mut rng);
+        // TMP-Q6 chunk B — `roll_weighted_tag` now returns Option: every
+        // family in pool with multiplier 0.0 (e.g. author wrote
+        // `bone = 0.0` to filter the family out) produces total weight
+        // 0.0, which means "no decorations of these families here".
+        // Abandon the slot loop — under-shoot is tolerated per AC-DECO-11.
+        let Some(mut current_tag) = roll_weighted_tag(&pool, &family_mult, &mut rng)
+        else {
+            break 'slots;
+        };
         let mut fallback_attempts: u32 = 0;
         // LOW-1 from chunk-C /review-impl: `min_by_key` on the
         // `< current_tag.min_spacing` filter picks the absolute minimum
@@ -306,25 +377,48 @@ fn compute_max_tries(free_count: usize) -> u32 {
 }
 
 /// Weighted random selection of one decoration tag. Total = sum of
-/// weights; roll `[0, total)`; subtract weights until <= 0. Pool is
-/// non-empty by caller invariant. Deterministic given `(pool, rng)`.
-fn roll_weighted_tag<'a>(
+/// `density_weight × family_mult(family)`; roll `[0, total)`; subtract
+/// scaled weights until <= 0. Pool is non-empty by caller invariant.
+/// Deterministic given `(pool, family_mult, rng)`.
+///
+/// TMP-Q6 chunk B — the family multiplier closure scales each tag's
+/// effective weight by the resolved per-family bias (template > registry
+/// > 1.0). A multiplier of 0.0 filters that family from the pool. If
+/// every family in pool has multiplier 0.0, total == 0.0 and we return
+/// `None` so the caller can abandon the slot. This is the documented
+/// "no decorations of any family here" exit.
+fn roll_weighted_tag<'a, F: Fn(Option<&str>) -> f32>(
     pool: &'a [DecorationRef],
+    family_mult: &F,
     rng: &mut impl rand::Rng,
-) -> &'a DecorationRef {
-    let total: f32 = pool.iter().map(|r| r.density_weight).sum();
-    // Chunk-B validation guarantees weights are finite + positive, so
-    // `total > 0` and `gen_range(0.0..total)` won't panic.
+) -> Option<&'a DecorationRef> {
+    // Compute scaled weights once so the subtraction loop reads the
+    // same values the total summed. Avoids divergence if `family_mult`
+    // is ever non-pure (today's closure IS pure, but future versions
+    // may stamp metrics or sample from non-deterministic sources).
+    let scaled: Vec<f32> = pool
+        .iter()
+        .map(|r| r.density_weight * family_mult(r.family.as_deref()))
+        .collect();
+    let total: f32 = scaled.iter().sum();
+    if total <= 0.0 {
+        return None;
+    }
     let mut roll: f32 = rng.gen_range(0.0..total);
-    for r in pool {
-        roll -= r.density_weight;
+    for (i, r) in pool.iter().enumerate() {
+        roll -= scaled[i];
         if roll <= 0.0 {
-            return r;
+            return Some(r);
         }
     }
     // Float drift can leave a tiny positive remainder; pool's last item
-    // is the natural fallback. Pool non-empty per caller invariant.
-    pool.last().expect("pool must be non-empty per caller invariant")
+    // is the natural fallback. The precheck `total <= 0.0 ⇒ return None`
+    // guarantees we never reach here with all-zero weights, so the
+    // selected fallback always represents a family that wasn't filtered.
+    // LOW-3 fix from chunk-B /review-impl: replaced an unreachable
+    // reverse-scan loop with the chunk-A discipline (single fallback,
+    // matches pre-Q6 behavior when family bias is all 1.0).
+    Some(pool.last().expect("pool must be non-empty per caller invariant"))
 }
 
 /// Chebyshev (chessboard) min distance from `candidate` to any tile
@@ -397,15 +491,138 @@ mod tests {
         assert_eq!(chebyshev_min_distance(&placed, TileCoord::new(4, 4)), 1);
     }
 
+    /// TMP-Q6 chunk B — identity multiplier closure used in pre-Q6 tests
+    /// that don't care about family bias. Returns 1.0 for every family
+    /// so `roll_weighted_tag` reduces to the pre-Q6 behavior.
+    fn identity_family_mult(_: Option<&str>) -> f32 {
+        1.0
+    }
+
+    /// TMP-Q6 chunk B — minimal placer fixture for testing
+    /// `resolve_family_multiplier` directly. Constructs a TilemapTemplate
+    /// + Registry with the requested decoration_family_density maps so
+    /// the resolution chain can be exercised without spinning up the
+    /// full place_tilemap pipeline.
+    fn make_template_with_family_density(
+        map: Option<std::collections::HashMap<String, f32>>,
+    ) -> TilemapTemplate {
+        use crate::types::template::TilemapTemplateId;
+        TilemapTemplate {
+            template_id: TilemapTemplateId("rfm_test".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+            decoration_density: None,
+            background_biome: None,
+            decoration_family_density: map,
+        }
+    }
+
+    fn make_registry_with_family_density(
+        map: Option<std::collections::HashMap<String, f32>>,
+    ) -> Registry {
+        // Start from the default registry and rewrite its reference's map.
+        let mut registry = Registry::load_default().unwrap();
+        registry.set_reference_decoration_family_density_for_test(map);
+        registry
+    }
+
+    #[test]
+    fn resolve_family_multiplier_returns_1_0_for_none_family() {
+        // LOW-2 fix from chunk-B /review-impl — direct unit test of the
+        // "family=None ⇒ multiplier 1.0" invariant. Previously only
+        // tested transitively via `roll_weighted_tag_unfamilied_tag_uses_multiplier_1_0`
+        // which was tautological (closure under test returned 1.0 for
+        // None). Now hits resolve_family_multiplier directly.
+        //
+        // The closure setup uses a registry+template map that would
+        // resolve to 99.0 for any HIT — so if the None-family branch ever
+        // consults the maps (e.g. a future refactor that uses an empty
+        // string as a "default" key), this test fires.
+        let mut bias = std::collections::HashMap::new();
+        bias.insert("rock".to_string(), 99.0_f32);
+        let template = make_template_with_family_density(Some(bias.clone()));
+        let registry = make_registry_with_family_density(Some(bias));
+        assert_eq!(
+            resolve_family_multiplier(None, &template, &registry),
+            1.0,
+            "family=None must return 1.0 unconditionally — chunk B's bias only \
+             applies to entries that declared ObjectKindDef.family in chunk A"
+        );
+    }
+
+    #[test]
+    fn resolve_family_multiplier_template_hit_overrides_registry() {
+        // LOW-2 fix — direct test of resolution chain step 1 (template wins).
+        let mut template_map = std::collections::HashMap::new();
+        template_map.insert("rock".to_string(), 2.0_f32);
+        let mut registry_map = std::collections::HashMap::new();
+        registry_map.insert("rock".to_string(), 5.0_f32);
+        let template = make_template_with_family_density(Some(template_map));
+        let registry = make_registry_with_family_density(Some(registry_map));
+        assert_eq!(
+            resolve_family_multiplier(Some("rock"), &template, &registry),
+            2.0,
+            "template's 2.0 must override registry's 5.0 (resolution chain step 1)"
+        );
+    }
+
+    #[test]
+    fn resolve_family_multiplier_registry_fallback_when_template_absent_for_family() {
+        // LOW-2 fix — direct test of resolution chain step 2 (registry fallback
+        // for a family the template doesn't declare).
+        let mut template_map = std::collections::HashMap::new();
+        template_map.insert("rock".to_string(), 2.0_f32);
+        let mut registry_map = std::collections::HashMap::new();
+        registry_map.insert("bone".to_string(), 0.5_f32);
+        let template = make_template_with_family_density(Some(template_map));
+        let registry = make_registry_with_family_density(Some(registry_map));
+        // Template has rock but no bone; registry has bone. Bone lookup
+        // falls through to registry.
+        assert_eq!(
+            resolve_family_multiplier(Some("bone"), &template, &registry),
+            0.5,
+            "registry's 0.5 must apply when template doesn't declare 'bone' \
+             (resolution chain step 2 — sparse template falls back per-family)"
+        );
+    }
+
+    #[test]
+    fn resolve_family_multiplier_defaults_to_1_0_when_neither_layer_declares() {
+        // LOW-2 fix — direct test of resolution chain step 3 (default 1.0).
+        let template = make_template_with_family_density(None);
+        let registry = make_registry_with_family_density(None);
+        assert_eq!(
+            resolve_family_multiplier(Some("rock"), &template, &registry),
+            1.0,
+            "neither layer declares any family ⇒ default 1.0"
+        );
+
+        // Also: both layers declare maps but neither has 'rock'.
+        let mut template_map = std::collections::HashMap::new();
+        template_map.insert("bone".to_string(), 2.0_f32);
+        let mut registry_map = std::collections::HashMap::new();
+        registry_map.insert("vegetation".to_string(), 0.5_f32);
+        let template = make_template_with_family_density(Some(template_map));
+        let registry = make_registry_with_family_density(Some(registry_map));
+        assert_eq!(
+            resolve_family_multiplier(Some("rock"), &template, &registry),
+            1.0,
+            "both layers have maps but neither declares 'rock' ⇒ default 1.0 \
+             (sparse-fallthrough-to-default)"
+        );
+    }
+
     #[test]
     fn roll_weighted_tag_picks_only_member() {
         let pool = vec![DecorationRef {
             kind_id: "solo".to_string(),
             density_weight: 1.0,
             min_spacing: 0,
+            family: None,
         }];
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let picked = roll_weighted_tag(&pool, &mut rng);
+        let picked = roll_weighted_tag(&pool, &identity_family_mult, &mut rng).unwrap();
         assert_eq!(picked.kind_id, "solo");
     }
 
@@ -414,16 +631,16 @@ mod tests {
         // LOW-5 from chunk-C /review-impl. Weights at the f32 precision
         // edge could in theory cause the subtraction loop to underflow
         // before any tag matches `roll <= 0.0`. The function's
-        // `pool.last()` fallback handles this gracefully. Verify no
+        // last-non-zero fallback handles this gracefully. Verify no
         // panic; the returned tag must be a pool member.
         let pool = vec![
-            DecorationRef { kind_id: "a".to_string(), density_weight: 1e-7, min_spacing: 0 },
-            DecorationRef { kind_id: "b".to_string(), density_weight: 1e-7, min_spacing: 0 },
-            DecorationRef { kind_id: "c".to_string(), density_weight: 1e-7, min_spacing: 0 },
+            DecorationRef { kind_id: "a".to_string(), density_weight: 1e-7, min_spacing: 0, family: None },
+            DecorationRef { kind_id: "b".to_string(), density_weight: 1e-7, min_spacing: 0, family: None },
+            DecorationRef { kind_id: "c".to_string(), density_weight: 1e-7, min_spacing: 0, family: None },
         ];
         let mut rng = ChaCha8Rng::seed_from_u64(7);
         for _ in 0..100 {
-            let picked = roll_weighted_tag(&pool, &mut rng);
+            let picked = roll_weighted_tag(&pool, &identity_family_mult, &mut rng).unwrap();
             assert!(
                 ["a", "b", "c"].contains(&picked.kind_id.as_str()),
                 "fallback must return a pool member, got {}",
@@ -439,17 +656,19 @@ mod tests {
                 kind_id: "rare".to_string(),
                 density_weight: 0.1,
                 min_spacing: 0,
+                family: None,
             },
             DecorationRef {
                 kind_id: "common".to_string(),
                 density_weight: 0.9,
                 min_spacing: 0,
+                family: None,
             },
         ];
         let mut rng = ChaCha8Rng::seed_from_u64(42);
         let mut common_count = 0;
         for _ in 0..1000 {
-            let picked = roll_weighted_tag(&pool, &mut rng);
+            let picked = roll_weighted_tag(&pool, &identity_family_mult, &mut rng).unwrap();
             if picked.kind_id == "common" {
                 common_count += 1;
             }
@@ -460,5 +679,153 @@ mod tests {
             "expected ~900 common picks, got {}",
             common_count
         );
+    }
+
+    #[test]
+    fn roll_weighted_tag_family_bias_up_increases_picks_of_target_family() {
+        // TMP-Q6 chunk B AC-DFS-7 — biasing a family up shifts the
+        // weighted distribution toward that family's tags. Pool: 1 rock
+        // tag + 1 bone tag, both at density_weight 1.0. With identity
+        // closure: ~50/50 split. With rock=3.0/bone=1.0: ~75/25 split.
+        let pool = vec![
+            DecorationRef {
+                kind_id: "lw:decoration.boulder".to_string(),
+                density_weight: 1.0,
+                min_spacing: 0,
+                family: Some("rock".to_string()),
+            },
+            DecorationRef {
+                kind_id: "lw:decoration.bones".to_string(),
+                density_weight: 1.0,
+                min_spacing: 0,
+                family: Some("bone".to_string()),
+            },
+        ];
+
+        // Baseline (identity) — should be ~50/50.
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut baseline_rock = 0;
+        for _ in 0..2000 {
+            let picked = roll_weighted_tag(&pool, &identity_family_mult, &mut rng).unwrap();
+            if picked.family.as_deref() == Some("rock") {
+                baseline_rock += 1;
+            }
+        }
+        assert!(
+            (900..=1100).contains(&baseline_rock),
+            "baseline ~50/50, got {baseline_rock} rocks of 2000"
+        );
+
+        // Biased — rock=3.0, bone=1.0 → 75/25 mix.
+        let biased = |family: Option<&str>| -> f32 {
+            match family {
+                Some("rock") => 3.0,
+                Some("bone") => 1.0,
+                _ => 1.0,
+            }
+        };
+        let mut rng2 = ChaCha8Rng::seed_from_u64(42);
+        let mut biased_rock = 0;
+        for _ in 0..2000 {
+            let picked = roll_weighted_tag(&pool, &biased, &mut rng2).unwrap();
+            if picked.family.as_deref() == Some("rock") {
+                biased_rock += 1;
+            }
+        }
+        assert!(
+            biased_rock > baseline_rock,
+            "bias-up family must increase picks vs identity: biased={biased_rock} \
+             baseline={baseline_rock}"
+        );
+        assert!(
+            (1400..=1600).contains(&biased_rock),
+            "biased ~75/25, got {biased_rock} rocks of 2000"
+        );
+    }
+
+    #[test]
+    fn roll_weighted_tag_zero_multiplier_excludes_family_from_pool() {
+        // TMP-Q6 chunk B — multiplier 0.0 filters the family out of
+        // the weighted roll entirely. Pool: 1 rock + 1 bone, both
+        // density_weight 1.0. With bone=0.0, NO bone gets picked.
+        let pool = vec![
+            DecorationRef {
+                kind_id: "rock_tag".to_string(),
+                density_weight: 1.0,
+                min_spacing: 0,
+                family: Some("rock".to_string()),
+            },
+            DecorationRef {
+                kind_id: "bone_tag".to_string(),
+                density_weight: 1.0,
+                min_spacing: 0,
+                family: Some("bone".to_string()),
+            },
+        ];
+        let mult = |family: Option<&str>| -> f32 {
+            match family {
+                Some("bone") => 0.0,
+                _ => 1.0,
+            }
+        };
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        for _ in 0..500 {
+            let picked = roll_weighted_tag(&pool, &mult, &mut rng).unwrap();
+            assert_eq!(
+                picked.family.as_deref(),
+                Some("rock"),
+                "bone family must be filtered out by 0.0 multiplier"
+            );
+        }
+    }
+
+    #[test]
+    fn roll_weighted_tag_returns_none_when_all_multipliers_zero() {
+        // TMP-Q6 chunk B — every family in pool has multiplier 0.0 →
+        // total weight 0.0 → returns None. Caller breaks slot loop.
+        let pool = vec![
+            DecorationRef {
+                kind_id: "a".to_string(),
+                density_weight: 1.0,
+                min_spacing: 0,
+                family: Some("rock".to_string()),
+            },
+            DecorationRef {
+                kind_id: "b".to_string(),
+                density_weight: 1.0,
+                min_spacing: 0,
+                family: Some("bone".to_string()),
+            },
+        ];
+        let mult = |_: Option<&str>| 0.0_f32;
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        assert!(roll_weighted_tag(&pool, &mult, &mut rng).is_none());
+    }
+
+    #[test]
+    fn roll_weighted_tag_unfamilied_tag_uses_multiplier_1_0() {
+        // TMP-Q6 chunk B — an entry with family=None is unaffected by
+        // family bias (multiplier always 1.0 for None per
+        // `resolve_family_multiplier`). The closure here would return
+        // 99.0 for ANY family — but since the pool entries have
+        // family=None, closure is called with None and the test closure
+        // returns 1.0 for None.
+        let pool = vec![
+            DecorationRef {
+                kind_id: "legacy".to_string(),
+                density_weight: 1.0,
+                min_spacing: 0,
+                family: None,
+            },
+        ];
+        let mult = |family: Option<&str>| -> f32 {
+            match family {
+                None => 1.0,
+                _ => 99.0,
+            }
+        };
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let picked = roll_weighted_tag(&pool, &mult, &mut rng).unwrap();
+        assert_eq!(picked.kind_id, "legacy");
     }
 }

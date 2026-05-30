@@ -70,6 +70,7 @@ fn minimal_template() -> TilemapTemplate {
         world_zone: None,
         decoration_density: None,
         background_biome: None,
+        decoration_family_density: None,
     }
 }
 
@@ -428,6 +429,7 @@ async fn med_1_oversized_zone_count_returns_413_problem_json() {
         world_zone: None,
         decoration_density: None,
         background_biome: None,
+        decoration_family_density: None,
     };
     let base = boot_server().await;
     let client = reqwest::Client::new();

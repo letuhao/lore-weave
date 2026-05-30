@@ -177,11 +177,22 @@ pub struct Registry {
 /// per-biome index. Carries the placement-time fields the
 /// `DecorationPlacer` reads (kind_id for lookup, density_weight for
 /// weighted random selection, min_spacing for the Chebyshev gate).
+///
+/// **TMP-Q6 chunk B addition** — `family` is denormalized from
+/// `ObjectKindDef.family` at `from_file` time so the per-zone weighted
+/// roll can apply the template/registry per-family multiplier without
+/// re-querying `Registry::get_object` per-roll. `None` for entries
+/// whose `ObjectKindDef.family` was not declared (pre-Q6 fixtures +
+/// the 2 grandfathered TYPE-marker entries `lw:landmark` / bare
+/// `lw:decoration` documented in
+/// [`FAMILY_EXEMPT_DECORATION_TYPE_MARKERS`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecorationRef {
     pub kind_id: String,
     pub density_weight: f32,
     pub min_spacing: u32,
+    /// TMP-Q6 chunk B — denormalized from `ObjectKindDef.family`.
+    pub family: Option<String>,
 }
 
 /// TMP-Q5 — validation hook for `RegistryRef.zone_role_colors`.
@@ -225,6 +236,17 @@ impl Registry {
         // a named function call with documented intent makes it
         // explicit that this is a reserved validation extension point.
         validate_zone_role_colors(&file.registry.zone_role_colors)?;
+        // TMP-Q6 chunk B — validate per-book decoration_family_density if
+        // declared. Same `validate_decoration_family_density` helper is
+        // called from `DecorationPlacer::process` for the template-side
+        // map, so a malformed entry rejects identically regardless of
+        // which layer declared it.
+        if let Some(map) = file.registry.decoration_family_density.as_ref() {
+            crate::types::registry::validate_decoration_family_density(map)
+                .map_err(|e| RegistryError::Validation(format!(
+                    "registry decoration_family_density: {e}"
+                )))?;
+        }
         let mut terrain_by_tag = HashMap::with_capacity(file.terrain.len());
         for def in file.terrain {
             if !is_valid_id(&def.id) {
@@ -357,6 +379,7 @@ impl Registry {
                         kind_id: def.id.clone(),
                         density_weight: def.density_weight,
                         min_spacing: def.min_spacing,
+                        family: def.family.clone(),
                     });
             }
         }
@@ -417,6 +440,21 @@ impl Registry {
     /// frontend can detect mismatched registry assumptions.
     pub fn reference(&self) -> &RegistryRef {
         &self.reference
+    }
+
+    /// TMP-Q6 chunk B test-only — mutate the registry's
+    /// `decoration_family_density` map for unit tests of
+    /// `resolve_family_multiplier`. Skips re-running validation
+    /// (caller is responsible for passing a valid map). NOT for
+    /// production paths — `Registry::from_file` is the supported
+    /// loader.
+    #[doc(hidden)]
+    #[cfg(any(test, debug_assertions))]
+    pub fn set_reference_decoration_family_density_for_test(
+        &mut self,
+        map: Option<std::collections::HashMap<String, f32>>,
+    ) {
+        self.reference.decoration_family_density = map;
     }
 
     /// Look up a terrain kind by tag. `None` for unknown tags — engine
@@ -1666,6 +1704,7 @@ walkability_pattern = { mask = [true, false, false, false] }
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
 
         let view = place_tilemap_with_registry(

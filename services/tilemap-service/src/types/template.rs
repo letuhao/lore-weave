@@ -4,6 +4,8 @@
 //! authoring detail. Phase 0a captures only the shape needed for the
 //! `tilemap_view` reference fields; full author-editor schema lands in Phase 4+.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::types::biome::BiomeSelectionRules;
@@ -161,6 +163,20 @@ pub struct TilemapTemplate {
     /// Spec: `docs/specs/2026-05-29-biome-theme-painter.md`
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_biome: Option<String>,
+    /// TMP-Q6 chunk B — per-family decoration density multiplier override.
+    /// Sparse: only families the author wants to bias appear here. Keys
+    /// must match `^[a-z][a-z0-9_]*$` (same as `ObjectKindDef.family`);
+    /// values must be finite + non-negative (0.0 allowed: "no decorations
+    /// of this family in this template"). Resolution chain template >
+    /// registry > 1.0 — a template that omits a family falls back to the
+    /// registry's per-book baseline, then to 1.0.
+    ///
+    /// Validated at `DecorationPlacer::process` (registry-side validated
+    /// at `Registry::from_file`). Same validation function used at both
+    /// layers so a malformed multiplier rejects identically. Spec:
+    /// `docs/specs/2026-05-30-decoration-family-splits.md` AC-DFS-4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decoration_family_density: Option<HashMap<String, f32>>,
 }
 
 #[cfg(test)]
@@ -233,6 +249,7 @@ mod tests {
             world_zone: None,
             decoration_density: Some(DecorationDensity::TOWN),
             background_biome: None,
+            decoration_family_density: None,
         };
         let json = serde_json::to_string(&t).unwrap();
         assert!(json.contains("decoration_density"),
@@ -254,6 +271,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         let json = serde_json::to_string(&t).unwrap();
         assert!(!json.contains("decoration_density"),
@@ -385,6 +403,7 @@ mod tests {
             }),
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         let s = serde_json::to_string(&t).unwrap();
         let back: TilemapTemplate = serde_json::from_str(&s).unwrap();
@@ -406,6 +425,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         let s = serde_json::to_string(&t).unwrap();
         assert!(!s.contains("world_zone"), "absent world_zone must not appear in JSON: {s}");
@@ -497,6 +517,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: Some("lw:biome.grassland_meadow".to_string()),
+            decoration_family_density: None,
         };
         let json = serde_json::to_string(&t).unwrap();
         assert!(json.contains("background_biome"),
@@ -505,6 +526,72 @@ mod tests {
             "id must round-trip: {json}");
         let back: TilemapTemplate = serde_json::from_str(&json).unwrap();
         assert_eq!(t, back);
+    }
+
+    #[test]
+    fn tilemap_template_round_trips_with_decoration_family_density_some() {
+        // TMP-Q6 chunk B AC-DFS-4 — a TilemapTemplate carrying a
+        // decoration_family_density override survives a JSON round-trip
+        // and the field appears on wire. Sparse map (only one family)
+        // mirrors the typical author case where only a subset of
+        // families gets biased.
+        let mut bias = HashMap::new();
+        bias.insert("rock".to_string(), 2.0_f32);
+        bias.insert("bone".to_string(), 0.3_f32);
+        let t = TilemapTemplate {
+            template_id: TilemapTemplateId("rt".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+            decoration_density: None,
+            background_biome: None,
+            decoration_family_density: Some(bias.clone()),
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("decoration_family_density"),
+            "Some(_) must be serialized: {json}");
+        assert!(json.contains("rock"), "rock key must appear: {json}");
+        assert!(json.contains("bone"), "bone key must appear: {json}");
+        let back: TilemapTemplate = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+        let back_bias = back.decoration_family_density.unwrap();
+        assert!((back_bias["rock"] - 2.0).abs() < f32::EPSILON);
+        assert!((back_bias["bone"] - 0.3).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn tilemap_template_skip_serializes_decoration_family_density_when_none() {
+        // TMP-Q6 chunk B AC-DFS-4 — V2 byte-identical preservation:
+        // None ⇒ no key on wire. Mirrors the
+        // tilemap_template_with_decoration_density_none_omits_field_from_json
+        // discipline.
+        let t = TilemapTemplate {
+            template_id: TilemapTemplateId("rt".to_string()),
+            zones: vec![],
+            seed_offset: 0,
+            world_zone: None,
+            decoration_density: None,
+            background_biome: None,
+            decoration_family_density: None,
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(!json.contains("decoration_family_density"),
+            "None must NOT appear in JSON (skip_serializing_if discipline): {json}");
+    }
+
+    #[test]
+    fn tilemap_template_deserializes_pre_q6_chunk_b_fixture_without_decoration_family_density() {
+        // TMP-Q6 chunk B backward compat — a pre-chunk-B template JSON
+        // (no decoration_family_density field) still loads with
+        // decoration_family_density = None. Same invariant as
+        // tilemap_template_deserializes_without_decoration_density for
+        // chunk-A TMP-Q1.
+        let json = r#"{"template_id":"t","zones":[],"seed_offset":0}"#;
+        let t: TilemapTemplate = serde_json::from_str(json).unwrap();
+        assert!(t.decoration_family_density.is_none(),
+            "missing field must serde-default to None");
+        assert!(t.background_biome.is_none(), "background_biome unchanged");
+        assert!(t.decoration_density.is_none(), "decoration_density unchanged");
     }
 
     #[test]
@@ -520,6 +607,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         let json = serde_json::to_string(&t).unwrap();
         assert!(!json.contains("background_biome"),

@@ -112,7 +112,15 @@ pub struct RiverSegment {
 }
 
 /// Primary tilemap-service aggregate per TMP_001 §3.1.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// **Note on `Eq`:** dropped when `registry_ref: Option<RegistryRef>`
+/// (TMP-Q6 chunk B) gained an `Option<HashMap<String, f32>>` field via
+/// `RegistryRef.decoration_family_density` — `f32` only impls
+/// `PartialEq`. No call site uses `TilemapView` as a HashMap key or
+/// with an `Eq` bound; only `assert_eq!` (PartialEq is enough). Same
+/// reason as the `Eq` drop on `TilemapTemplate` (world_zone f32s) +
+/// `RegistryRef` (decoration_family_density f32 values).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TilemapView {
     pub channel_id: ChannelId,
     /// Denormalized tier — must NOT be `Cell` (TMP-A1).

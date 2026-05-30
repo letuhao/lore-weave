@@ -692,6 +692,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         }
     }
 
@@ -1038,6 +1039,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         run_connections(&mut state, &template);
 
@@ -1208,6 +1210,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         let mut state = three_zones(24, 9, false);
         run_connections(&mut state, &template);
@@ -1260,6 +1263,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         let mut state = two_column_state(8, 6);
         run_connections(&mut state, &template);
@@ -1309,6 +1313,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         let mut state = bordering_zones(14, 9);
         run_connections(&mut state, &template);
@@ -1417,6 +1422,7 @@ mod tests {
             world_zone: None,
             decoration_density: None,
             background_biome: None,
+            decoration_family_density: None,
         };
         run_connections(&mut state, &template);
 

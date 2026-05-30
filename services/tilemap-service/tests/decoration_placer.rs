@@ -10,6 +10,8 @@
 //! their `decoration_density: None` fixtures continue passing without
 //! rebaseline.
 
+use std::collections::HashMap;
+
 use tilemap_service::engine::place_tilemap_with_registry;
 use tilemap_service::registry::Registry;
 use tilemap_service::seed::TilemapSeed;
@@ -80,6 +82,7 @@ fn fixture(density: Option<DecorationDensity>) -> TilemapTemplate {
         world_zone: None,
         decoration_density: density,
         background_biome: None,
+        decoration_family_density: None,
     }
 }
 
@@ -655,6 +658,7 @@ fn tmp_q5_forbidden_and_sea_zones_get_zero_decorations() {
         world_zone: None,
         decoration_density: Some(DecorationDensity::TOWN),
         background_biome: None,
+        decoration_family_density: None,
     };
     let view = run(&template, 1);
     let forbidden_count = decorations_in_zone(&view, "rival").len();
@@ -666,5 +670,283 @@ fn tmp_q5_forbidden_and_sea_zones_get_zero_decorations() {
     assert_eq!(
         sea_count, 0,
         "TMP-Q5 chunk C: Sea zone must have ZERO decorations (×0 multiplier)"
+    );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// TMP-Q6 chunk B — per-family decoration density bias
+// ────────────────────────────────────────────────────────────────────
+
+/// Helper — count decorations grouped by family after a placement run.
+/// Falls back to "none" for unfamilied entries (legacy / TYPE-marker).
+fn count_decorations_by_family(view: &TilemapView, registry: &Registry) -> HashMap<String, u32> {
+    let mut by_family: HashMap<String, u32> = HashMap::new();
+    for p in &view.object_placements {
+        if p.kind != TilemapObjectKind::Decoration {
+            continue;
+        }
+        let family = p
+            .tag
+            .as_deref()
+            .and_then(|t| registry.get_object(t))
+            .and_then(|def| def.family.clone())
+            .unwrap_or_else(|| "none".to_string());
+        *by_family.entry(family).or_insert(0) += 1;
+    }
+    by_family
+}
+
+#[test]
+fn tmp_q6_unbiased_baseline_some_empty_map_byte_identical_to_none() {
+    // TMP-Q6 chunk B invariant — a template with
+    // `decoration_family_density: Some(HashMap::new())` MUST produce
+    // decoration output byte-identical to one with
+    // `decoration_family_density: None`. The resolution chain falls
+    // through 1.0 either way; this test pins SEMANTIC equivalence at
+    // the load-bearing "no bias declared ⇒ no behavior change" boundary.
+    //
+    // **Why sorted-list compare and not just count?** A count-only check
+    // would pass even if the placer reshuffled decorations across tags
+    // or tile coordinates while preserving the COUNT. The
+    // bias-resolution should be 100% transparent — same tile, same tag,
+    // same order — when the bias map is empty.
+    //
+    // The hash pin `23fe61...` in `decoration_v3_default_town_pinned_hash`
+    // ALREADY verifies the None case is byte-identical to chunk Q5.
+    // This test pins the Some(empty) case against the None case.
+    let mut template_empty = fixture(Some(DecorationDensity::TOWN));
+    template_empty.decoration_family_density = Some(HashMap::new());
+    let view_empty = run(&template_empty, 42);
+
+    let template_none = fixture(Some(DecorationDensity::TOWN));
+    let view_none = run(&template_none, 42);
+
+    let mut decos_empty: Vec<(String, u32, u32)> = view_empty
+        .object_placements
+        .iter()
+        .filter(|p| p.kind == TilemapObjectKind::Decoration)
+        .map(|p| {
+            (
+                p.tag.clone().unwrap_or_default(),
+                p.anchor.x,
+                p.anchor.y,
+            )
+        })
+        .collect();
+    decos_empty.sort();
+    let mut decos_none: Vec<(String, u32, u32)> = view_none
+        .object_placements
+        .iter()
+        .filter(|p| p.kind == TilemapObjectKind::Decoration)
+        .map(|p| {
+            (
+                p.tag.clone().unwrap_or_default(),
+                p.anchor.x,
+                p.anchor.y,
+            )
+        })
+        .collect();
+    decos_none.sort();
+    assert_eq!(
+        decos_empty, decos_none,
+        "Some(empty HashMap) and None MUST produce byte-identical decoration \
+         output (same tags at same tile coords). Resolution chain falls \
+         through 1.0 either way."
+    );
+}
+
+#[test]
+fn tmp_q6_template_family_bias_changes_decoration_tag_distribution() {
+    // TMP-Q6 chunk B AC-DFS-7 — biasing a family up vs down measurably
+    // shifts the decoration tag distribution for the same seed +
+    // template. Pool: default registry's grass/forest pool, which has
+    // entries across multiple families (rock, vegetation, structure,
+    // bone). With rock=3.0 + vegetation=0.3, the rock count rises
+    // and vegetation falls vs baseline.
+    let registry = Registry::load_default().unwrap();
+
+    // Baseline: no family bias.
+    let template_baseline = fixture(Some(DecorationDensity::TOWN));
+    let view_baseline = run(&template_baseline, 42);
+    let baseline = count_decorations_by_family(&view_baseline, &registry);
+
+    // Biased: rock × 3.0, vegetation × 0.3.
+    let mut bias = HashMap::new();
+    bias.insert("rock".to_string(), 3.0_f32);
+    bias.insert("vegetation".to_string(), 0.3_f32);
+    let mut template_biased = fixture(Some(DecorationDensity::TOWN));
+    template_biased.decoration_family_density = Some(bias);
+    let view_biased = run(&template_biased, 42);
+    let biased = count_decorations_by_family(&view_biased, &registry);
+
+    let baseline_rock = *baseline.get("rock").unwrap_or(&0);
+    let biased_rock = *biased.get("rock").unwrap_or(&0);
+    let baseline_veg = *baseline.get("vegetation").unwrap_or(&0);
+    let biased_veg = *biased.get("vegetation").unwrap_or(&0);
+
+    // Direction holds: rock can only rise/hold, vegetation can only
+    // fall/hold under this bias map.
+    assert!(
+        biased_rock >= baseline_rock,
+        "rock bias-UP must increase or hold rock count: baseline={baseline_rock} \
+         biased={biased_rock}. Note placement is constrained by min_spacing so \
+         the increase may saturate."
+    );
+    assert!(
+        biased_veg <= baseline_veg,
+        "vegetation bias-DOWN must decrease or hold vegetation count: \
+         baseline={baseline_veg} biased={biased_veg}"
+    );
+    // Sign-of-distribution-shift: at LEAST ONE of {rock-rises, veg-falls,
+    // ratio-rises} must hold strictly. A bias that produces no observable
+    // change in either family (e.g. both saturated at the per-zone
+    // ceiling) would defeat AC-DFS-7 — that's the load-bearing assertion.
+    // OR-of-evidence (MED-1 from chunk-B /review-impl) avoids the
+    // fragility of strict ratio inequality when min_spacing saturation
+    // could plausibly hold both counts on a single seed.
+    let baseline_ratio = baseline_rock as f32 / (baseline_veg.max(1) as f32);
+    let biased_ratio = biased_rock as f32 / (biased_veg.max(1) as f32);
+    let rock_rose = biased_rock > baseline_rock;
+    let veg_fell = biased_veg < baseline_veg;
+    let ratio_rose = biased_ratio > baseline_ratio;
+    assert!(
+        rock_rose || veg_fell || ratio_rose,
+        "AC-DFS-7: family bias must produce SOME observable shift. Got: \
+         rock baseline={baseline_rock} biased={biased_rock} (rose={rock_rose}); \
+         vegetation baseline={baseline_veg} biased={biased_veg} (fell={veg_fell}); \
+         ratio baseline={baseline_ratio:.3} biased={biased_ratio:.3} \
+         (rose={ratio_rose}). If all three are false the bias is being silently \
+         dropped — investigate `resolve_family_multiplier` / pool construction."
+    );
+}
+
+#[test]
+fn tmp_q6_template_family_bias_overrides_registry_per_family() {
+    // TMP-Q6 chunk B AC-DFS-6 — resolution chain pinning. When BOTH
+    // template + registry declare a family, template wins. Test uses
+    // a fixture with template={rock: 0.0} and a mocked-registry with
+    // {rock: 5.0}. The placer reads template's 0.0 → rock excluded.
+    //
+    // Mocking the registry requires loading from a TOML string with
+    // `decoration_family_density` declared under `[registry]`. Default
+    // loader doesn't expose a mutation API; we feed a custom TOML.
+    //
+    // **Fragility guard (LOW-1 from chunk-B self-review):** the
+    // mutation assumes `default.toml` opens with `[registry]` on a
+    // line of its own. If that ever moves or gets a comment-after,
+    // `replace("[registry]", ...)` silently produces wrong TOML. The
+    // assertion below verifies the substitution actually landed before
+    // we trust the registry.
+    let toml_text = include_str!("../registry/default.toml");
+    // Inject `decoration_family_density` right after the `[registry]`
+    // section header. `[registry]` (substring) is line-ending-agnostic;
+    // the post-substitution assertion below catches the case where the
+    // file's section header changes shape unexpectedly.
+    let registry_with_bias_block = toml_text.replace(
+        "[registry]",
+        "[registry]\ndecoration_family_density = { rock = 5.0 }",
+    );
+    assert!(
+        registry_with_bias_block.contains("decoration_family_density = { rock = 5.0 }"),
+        "TOML mutation must have injected the bias declaration — \
+         default.toml's [registry] section header may have moved"
+    );
+    let registry = Registry::from_toml_str(&registry_with_bias_block)
+        .expect("modified default registry must load");
+
+    // Template suppresses rock (overriding the registry bias-up).
+    let mut suppress_rock = HashMap::new();
+    suppress_rock.insert("rock".to_string(), 0.0_f32);
+    let mut template = fixture(Some(DecorationDensity::TOWN));
+    template.decoration_family_density = Some(suppress_rock);
+
+    // Run via custom registry.
+    let view = place_tilemap_with_registry(
+        &template,
+        ChannelId("ch_q6b_resolution".to_string()),
+        ChannelTier::Town,
+        GridSize { width: 48, height: 48 },
+        TilemapSeed(42),
+        &registry,
+    )
+    .expect("placer must succeed with modified registry");
+
+    let by_family = count_decorations_by_family(&view, &registry);
+    let rock_count = *by_family.get("rock").unwrap_or(&0);
+    assert_eq!(
+        rock_count, 0,
+        "TMP-Q6 chunk B AC-DFS-6: template's rock=0.0 must override registry's \
+         rock=5.0. Got {rock_count} rocks (expected 0). Resolution chain \
+         template > registry > 1.0 is the hard contract."
+    );
+}
+
+#[test]
+fn tmp_q6_registry_family_bias_applied_when_template_absent() {
+    // TMP-Q6 chunk B AC-DFS-6 — when template declares no bias for a
+    // family, the registry's per-book baseline applies. Test loads a
+    // custom registry with rock=0.0 and a template that doesn't
+    // override; rock must be filtered out.
+    let toml_text = include_str!("../registry/default.toml");
+    let registry_with_no_rock = toml_text.replace(
+        "[registry]",
+        "[registry]\ndecoration_family_density = { rock = 0.0 }",
+    );
+    assert!(
+        registry_with_no_rock.contains("rock = 0.0"),
+        "TOML mutation must have injected the rock=0.0 bias — \
+         default.toml's [registry] section header may have moved"
+    );
+    let registry = Registry::from_toml_str(&registry_with_no_rock)
+        .expect("modified default registry must load");
+
+    // Template declares nothing — registry baseline applies.
+    let template = fixture(Some(DecorationDensity::TOWN));
+
+    let view = place_tilemap_with_registry(
+        &template,
+        ChannelId("ch_q6b_reg_only".to_string()),
+        ChannelTier::Town,
+        GridSize { width: 48, height: 48 },
+        TilemapSeed(42),
+        &registry,
+    )
+    .expect("placer must succeed");
+
+    let by_family = count_decorations_by_family(&view, &registry);
+    let rock_count = *by_family.get("rock").unwrap_or(&0);
+    assert_eq!(
+        rock_count, 0,
+        "TMP-Q6 chunk B AC-DFS-6: registry's rock=0.0 must filter rocks when \
+         template doesn't override. Got {rock_count} rocks (expected 0). \
+         Registry fallback is the load-bearing per-book aesthetic baseline."
+    );
+}
+
+#[test]
+fn tmp_q6_template_invalid_family_density_returns_modificator_error() {
+    // TMP-Q6 chunk B AC-DFS-4 — a malformed template-side bias
+    // (negative multiplier) returns Error::Modificator at process
+    // time, not silent under-place.
+    let mut bad = HashMap::new();
+    bad.insert("rock".to_string(), -1.0_f32);
+    let mut template = fixture(Some(DecorationDensity::TOWN));
+    template.decoration_family_density = Some(bad);
+
+    let registry = Registry::load_default().unwrap();
+    let result = place_tilemap_with_registry(
+        &template,
+        ChannelId("ch_q6b_bad".to_string()),
+        ChannelTier::Town,
+        GridSize { width: 48, height: 48 },
+        TilemapSeed(1),
+        &registry,
+    );
+    let err = result.expect_err("negative multiplier must reject");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("decoration_family_density")
+            && msg.contains("non-negative"),
+        "error must source-pinpoint the bad field, got: {msg}"
     );
 }

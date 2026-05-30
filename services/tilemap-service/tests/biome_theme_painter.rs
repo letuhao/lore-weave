@@ -77,6 +77,7 @@ fn fixture(
         world_zone: None,
         decoration_density: None,
         background_biome: background.map(str::to_string),
+        decoration_family_density: None,
     }
 }
 
