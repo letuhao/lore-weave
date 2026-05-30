@@ -166,5 +166,26 @@
     "copy": "Sao chép",
     "to_editor": "Tới trình soạn thảo",
     "save": "Lưu"
+  },
+  "context": {
+    "context": "Ngữ cảnh",
+    "clear_all": "Xóa hết",
+    "picker_aria": "Bộ chọn ngữ cảnh",
+    "tab": {
+      "book": "Sách",
+      "chapter": "Chương",
+      "glossary": "Thuật ngữ"
+    },
+    "all_kinds": "Tất cả loại",
+    "search_books": "Tìm sách...",
+    "search_chapters": "Tìm chương...",
+    "search_entities": "Tìm thực thể...",
+    "chapters_count": "{{count}} chương",
+    "attached": "đã đính kèm",
+    "untitled": "(chưa đặt tên)",
+    "words": "{{count}} từ",
+    "unnamed": "(chưa đặt tên)",
+    "no_matches": "Không tìm thấy kết quả.",
+    "no_items": "Không có mục nào."
   }
 }

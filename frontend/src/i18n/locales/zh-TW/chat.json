@@ -166,5 +166,26 @@
     "copy": "複製",
     "to_editor": "至編輯器",
     "save": "儲存"
+  },
+  "context": {
+    "context": "情境",
+    "clear_all": "全部清除",
+    "picker_aria": "情境選擇器",
+    "tab": {
+      "book": "書籍",
+      "chapter": "章節",
+      "glossary": "詞彙表"
+    },
+    "all_kinds": "所有種類",
+    "search_books": "搜尋書籍...",
+    "search_chapters": "搜尋章節...",
+    "search_entities": "搜尋實體...",
+    "chapters_count": "{{count}} 章節",
+    "attached": "已附加",
+    "untitled": "(未命名)",
+    "words": "{{count}} 字",
+    "unnamed": "(未命名)",
+    "no_matches": "找不到符合項目。",
+    "no_items": "沒有可用項目。"
   }
 }

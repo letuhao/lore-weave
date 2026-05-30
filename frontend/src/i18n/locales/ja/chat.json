@@ -166,5 +166,26 @@
     "copy": "コピー",
     "to_editor": "エディタへ",
     "save": "保存"
+  },
+  "context": {
+    "context": "コンテキスト",
+    "clear_all": "すべてクリア",
+    "picker_aria": "コンテキストピッカー",
+    "tab": {
+      "book": "書籍",
+      "chapter": "章",
+      "glossary": "用語集"
+    },
+    "all_kinds": "すべての種類",
+    "search_books": "書籍を検索...",
+    "search_chapters": "章を検索...",
+    "search_entities": "エンティティを検索...",
+    "chapters_count": "{{count}}章",
+    "attached": "添付済み",
+    "untitled": "(無題)",
+    "words": "{{count}}語",
+    "unnamed": "(名前なし)",
+    "no_matches": "一致するものが見つかりません。",
+    "no_items": "利用可能なアイテムがありません。"
   }
 }

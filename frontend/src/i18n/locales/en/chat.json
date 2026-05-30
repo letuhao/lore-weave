@@ -166,5 +166,26 @@
     "copy": "Copy",
     "to_editor": "To Editor",
     "save": "Save"
+  },
+  "context": {
+    "context": "Context",
+    "clear_all": "Clear all",
+    "picker_aria": "Context picker",
+    "tab": {
+      "book": "Books",
+      "chapter": "Chapters",
+      "glossary": "Glossary"
+    },
+    "all_kinds": "All kinds",
+    "search_books": "Search books...",
+    "search_chapters": "Search chapters...",
+    "search_entities": "Search entities...",
+    "chapters_count": "{{count}} chapters",
+    "attached": "attached",
+    "untitled": "(untitled)",
+    "words": "{{count}} words",
+    "unnamed": "(unnamed)",
+    "no_matches": "No matches found.",
+    "no_items": "No items available."
   }
 }

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, FileText, Paperclip, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ContextPicker } from './ContextPicker';
@@ -27,6 +28,7 @@ const PILL_ICON: Record<string, React.ReactNode> = {
 };
 
 export function ContextBar({ items, onAttach, onDetach, onClearAll, externalPickerOpen, onExternalPickerClose }: ContextBarProps) {
+  const { t } = useTranslation('chat');
   const [internalPickerOpen, setInternalPickerOpen] = useState(false);
   const pickerOpen = externalPickerOpen || internalPickerOpen;
   const closePicker = () => { setInternalPickerOpen(false); onExternalPickerClose?.(); };
@@ -46,7 +48,7 @@ export function ContextBar({ items, onAttach, onDetach, onClearAll, externalPick
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             <Plus className="h-3 w-3" />
-            Context
+            {t('context.context')}
           </button>
 
           {items.map((item) => {
@@ -78,7 +80,7 @@ export function ContextBar({ items, onAttach, onDetach, onClearAll, externalPick
 
           {items.length > 1 && (
             <button type="button" onClick={onClearAll} className="text-[10px] text-muted-foreground hover:text-foreground">
-              Clear all
+              {t('context.clear_all')}
             </button>
           )}
         </div>
@@ -92,7 +94,7 @@ export function ContextBar({ items, onAttach, onDetach, onClearAll, externalPick
           onKeyDown={(e) => { if (e.key === 'Escape') closePicker(); }}
           role="dialog"
           aria-modal="true"
-          aria-label="Context picker"
+          aria-label={t('context.picker_aria')}
         >
           {/* Semi-transparent backdrop */}
           <div className="absolute inset-0 bg-black/30" />
