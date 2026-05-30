@@ -39,6 +39,9 @@
     "fiftyChapters": "50+ Chapters Translated"
   },
   "loadError": "Failed to load books.",
+  "noWiki": "No wiki contributions yet.",
+  "wikiError": "Failed to load wiki contributions.",
+  "untitled": "Untitled",
   "tabs": {
     "books": "Books",
     "translations": "Translations",

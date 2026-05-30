@@ -38,6 +38,9 @@
     "fiftyChapters": "50+章翻訳済み"
   },
   "loadError": "書籍の読み込みに失敗しました。",
+  "noWiki": "まだWiki貢献がありません。",
+  "wikiError": "Wiki貢献の読み込みに失敗しました。",
+  "untitled": "無題",
   "tabs": {
     "books": "書籍",
     "translations": "翻訳",

@@ -100,6 +100,10 @@ func (s *Server) Router() http.Handler {
 			})
 		})
 
+		// Cross-book wiki contributions for a user's public profile (UI-2a).
+		// Optional auth: self sees private/draft; others see public+published only.
+		r.Get("/users/{user_id}/wiki-contributions", s.listUserWikiContributions)
+
 		r.Route("/books/{book_id}", func(r chi.Router) {
 			r.Get("/extraction-profile", s.getExtractionProfile)
 			r.Get("/export", s.exportGlossary)

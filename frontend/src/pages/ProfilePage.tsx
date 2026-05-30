@@ -16,6 +16,7 @@ import { StatsRow } from '@/features/profile/StatsRow';
 import { AchievementBar } from '@/features/profile/AchievementBar';
 import { BooksTab } from '@/features/profile/BooksTab';
 import { TranslationsTab } from '@/features/profile/TranslationsTab';
+import { WikiTab } from '@/features/profile/WikiTab';
 import { StubTab } from '@/features/profile/StubTab';
 
 type Tab = 'books' | 'translations' | 'wiki' | 'reviews';
@@ -169,7 +170,7 @@ export function ProfilePage() {
       {/* Tab content */}
       {activeTab === 'books' && <BooksTab userId={userId!} />}
       {activeTab === 'translations' && <TranslationsTab translator={translatorStats} />}
-      {activeTab === 'wiki' && <StubTab label={t('tabs.wiki')} />}
+      {activeTab === 'wiki' && <WikiTab userId={userId!} isSelf={isSelf} />}
       {activeTab === 'reviews' && <StubTab label={t('tabs.reviews')} />}
     </div>
   );

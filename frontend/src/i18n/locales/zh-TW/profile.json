@@ -38,6 +38,9 @@
     "fiftyChapters": "50+ 章節已翻譯"
   },
   "loadError": "無法載入書籍。",
+  "noWiki": "尚無 Wiki 貢獻。",
+  "wikiError": "無法載入 Wiki 貢獻。",
+  "untitled": "未命名",
   "tabs": {
     "books": "書籍",
     "translations": "翻譯",
