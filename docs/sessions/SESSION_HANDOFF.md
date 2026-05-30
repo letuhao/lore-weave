@@ -5,6 +5,18 @@
 > **HEAD:** `bca5819a` (74d, 2-hop hotfix committed). 74e (data survey + plan) is docs/data, checkpoint-committed separately.
 > **Branch:** `main`.
 
+## Session 74 — cycle 74f: Phase A eval hygiene — disjoint-judge metric of record + bootstrap CI
+
+**Plan §3 Phase A (first implementation cycle off the 74e plan).** [compute_ensemble_macros.py](../../services/knowledge-service/tests/quality/compute_ensemble_macros.py) now:
+- discovers ALL `judge_verdicts_*.json`, reads each `judge_uuid`, and flags the **EXTRACTOR** (`019e6a20`) / **FILTER** (`019e5650`) judges by role (env-overridable `KNOWLEDGE_EXTRACTOR_MODEL`/`KNOWLEDGE_FILTER_MODEL`);
+- reports the **DISJOINT median of record** (median F1 over judges that are NEITHER extractor nor filter) alongside the historical full-panel median, with a **deterministic percentile bootstrap CI** over the common chapter set (seed `0xC74E`, `KNOWLEDGE_BOOTSTRAP_N` default 2000); warns when <2 disjoint judges.
+- **Measured:** c73b-drop-realized full-panel **0.913** vs disjoint **0.888** (gemma only → 1J warn = why phi4/qwen35 were added); c74c-clean disjoint **0.869** 95% CI **[0.842, 0.895]** (±2.6pp — proves cycle deltas of ±0.1–0.3pp are sub-noise).
+- A3 (demote external anchors): **already done** — `test_anchor_eval.py` only asserts the sanity-floor, F1 is informational. A4 (rename `claude-4.7-opus`): mitigated by the role column; full historical-filename rename deferred (low-value cosmetic).
+
+**Tests:** `test_compute_ensemble_macros.py` 4/4 (per-chapter PR, harmonic F1, disjoint exclusion by uuid, deterministic CI). Backward-compat `compute_per_judge_macros` wrapper kept.
+
+**NEXT:** Phase B/B2 capture plumbing (corrections log + config telemetry) per plan §2.1/§4. Phase A is A/B-trustworthiness; the loop is the accuracy engine.
+
 ## Session 74 — cycle 74e: eval-data survey + accuracy/eval PLAN (correction + config-telemetry loop)
 
 **Docs/data checkpoint (no code).** Resolved the production-readiness gate and reframed the eval strategy after PO feedback.
