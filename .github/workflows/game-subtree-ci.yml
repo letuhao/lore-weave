@@ -112,3 +112,97 @@ jobs:
           cache: true
 
       - run: cargo test --release -p tilemap-service
+
+  # DEFERRED #041 from TMP-Q1 chunk-D /review-impl LOW-2 (decoration-placer
+  # arc) + TMP-Q2 chunk-C /review-impl LOW-3 (biome-theme arc) — backend-
+  # integrated chromium e2e gate. The existing `frontend-game-e2e` job
+  # runs cross-browser smoke without a backend, so AC-DECO-8 +
+  # AC-BIOME-8 tests in `smoke.spec.ts` `test.skip()` when /livez fails.
+  # This job builds tilemap-service in release, starts it, and runs the
+  # SAME existing tests against chromium so the assertions actually
+  # execute in CI. The chunk-C MED-1 finding (stale docker container
+  # silently dropped biome_theme via serde-skip-unknown) is the
+  # regression class this gate catches. Chunk-D #041 also re-encountered
+  # the stale-docker pattern (see `feedback_verify_environment_before_diagnosis`),
+  # reinforcing the need for an automated wire-integration gate.
+  frontend-game-e2e-with-backend:
+    name: frontend-game backend smoke (AC-DECO-8 + AC-BIOME-8 + visual goldens)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build tilemap-service (release)
+        run: cargo build --release -p tilemap-service --bin tilemap-service
+
+      - name: Start tilemap-service in background
+        env:
+          # Matches the FE default in `frontend-game/src/config/services.ts`
+          # `SERVICES.devToken` so the smoke `Authorization: Bearer ...`
+          # header is accepted. No secret needed — this token only protects
+          # a CI-internal port that's never exposed.
+          LOREWEAVE_INTERNAL_TOKEN: dev_internal_token
+          TILEMAP_HTTP_BIND: 0.0.0.0:8220
+        run: |
+          ./target/release/tilemap-service serve &
+          echo $! > /tmp/tilemap.pid
+          # Wait for /livez (poll up to 60s). Fail-fast if backend
+          # never comes up so CI doesn't burn 30 min on a stuck job.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8220/livez > /dev/null; then
+              echo "backend ready after $((i * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend failed to bind to /livez within 60s" >&2
+          exit 1
+
+      - name: Install Playwright chromium
+        run: pnpm --filter frontend-game exec playwright install --with-deps chromium
+
+      - name: Run e2e backend smoke (chromium only — smoke.spec.ts)
+        # Filter to `smoke.spec.ts` only. The other backend-aware specs
+        # (zone-role / decoration-family visual regression) bake
+        # per-platform pixel snapshots — Windows-baked PNGs won't match
+        # Linux-rendered output, so those goldens need a separate
+        # cross-platform regen task (likely a manual workflow_dispatch
+        # job that bakes Linux snapshots OR moves visual regression to
+        # a docker image with a pinned font stack). The AC-DECO-8 +
+        # AC-BIOME-8 assertions in smoke.spec.ts use count/text
+        # assertions that are pixel-independent and gate the BE wire
+        # regression class this deferral was created for.
+        run: pnpm --filter frontend-game exec playwright test smoke --project=chromium
+
+      - name: Stop tilemap-service
+        if: always()
+        run: |
+          if [ -f /tmp/tilemap.pid ]; then
+            kill "$(cat /tmp/tilemap.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload Playwright test-results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-backend-test-results
+          path: |
+            frontend-game/playwright-report/
+            frontend-game/test-results/
+          if-no-files-found: warn
+          retention-days: 7
