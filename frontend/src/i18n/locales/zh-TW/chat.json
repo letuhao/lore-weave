@@ -1,0 +1,52 @@
+{
+  "empty": {
+    "open_conversations": "開啟對話",
+    "no_chat": "未選擇聊天",
+    "select_or_start": "從側邊欄選擇對話或開始新對話。",
+    "start_new": "開始新聊天"
+  },
+  "header": {
+    "open_conversations": "開啟對話",
+    "my_model": "我的模型",
+    "platform": "平台",
+    "messages": "{{count}} 則訊息",
+    "messages_other": "{{count}} 則訊息",
+    "archived": "已封存",
+    "voice_mode": "語音模式",
+    "voice_settings": "語音設定",
+    "export": "匯出",
+    "rename": "重新命名",
+    "session_settings": "工作階段設定"
+  },
+  "input": {
+    "format": "格式：",
+    "format_opt": {
+      "auto": "自動",
+      "concise": "簡潔",
+      "detailed": "詳細",
+      "bullets": "項目符號",
+      "table": "表格"
+    },
+    "placeholder": "詢問關於您的故事、角色、世界觀...",
+    "attach_context": "附加情境",
+    "assist": "輔助",
+    "voice_assist_on": "語音輔助開啟 — AI 回應將被朗讀",
+    "voice_assist_off": "啟用語音輔助 — 說話輸入、聆聽 AI 回應",
+    "toggle_voice_assist": "切換語音輔助",
+    "mic_starting": "正在啟動麥克風...",
+    "mic_listening": "聆聽中...（點擊停止）",
+    "mic_transcribing": "轉錄中...",
+    "mic_error": "麥克風錯誤 — 請在語音設定檢查 STT 模型",
+    "mic_speak": "說話（語音輔助）",
+    "mic_input": "語音輸入",
+    "stop_recording": "停止錄音",
+    "stop_audio": "停止音訊",
+    "think": "思考",
+    "fast": "快速",
+    "stop_generating": "停止生成 (Esc)",
+    "send": "傳送 (Enter)",
+    "context_attached": "已附加情境 · ",
+    "hint": "Enter 傳送 · Shift+Enter 換行",
+    "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速"
+  }
+}

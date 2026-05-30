@@ -1,0 +1,52 @@
+{
+  "empty": {
+    "open_conversations": "Open conversations",
+    "no_chat": "No chat selected",
+    "select_or_start": "Select a conversation from the sidebar or start a new one.",
+    "start_new": "Start New Chat"
+  },
+  "header": {
+    "open_conversations": "Open conversations",
+    "my_model": "My Model",
+    "platform": "Platform",
+    "messages": "{{count}} message",
+    "messages_other": "{{count}} messages",
+    "archived": "Archived",
+    "voice_mode": "Voice Mode",
+    "voice_settings": "Voice Settings",
+    "export": "Export",
+    "rename": "Rename",
+    "session_settings": "Session Settings"
+  },
+  "input": {
+    "format": "Format:",
+    "format_opt": {
+      "auto": "Auto",
+      "concise": "Concise",
+      "detailed": "Detailed",
+      "bullets": "Bullets",
+      "table": "Table"
+    },
+    "placeholder": "Ask about your story, characters, world-building...",
+    "attach_context": "Attach context",
+    "assist": "Assist",
+    "voice_assist_on": "Voice Assist ON — AI responses will be spoken",
+    "voice_assist_off": "Enable Voice Assist — speak to type, hear AI responses",
+    "toggle_voice_assist": "Toggle Voice Assist",
+    "mic_starting": "Starting mic...",
+    "mic_listening": "Listening... (click to stop)",
+    "mic_transcribing": "Transcribing...",
+    "mic_error": "Mic error — check STT model in Voice Settings",
+    "mic_speak": "Speak (Voice Assist)",
+    "mic_input": "Voice input",
+    "stop_recording": "Stop recording",
+    "stop_audio": "Stop Audio",
+    "think": "Think",
+    "fast": "Fast",
+    "stop_generating": "Stop generating (Esc)",
+    "send": "Send (Enter)",
+    "context_attached": "Context attached · ",
+    "hint": "Enter to send · Shift+Enter for new line",
+    "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast"
+  }
+}

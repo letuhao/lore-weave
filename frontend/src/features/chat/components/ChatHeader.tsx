@@ -1,4 +1,5 @@
 import { Download, Menu, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
 import { cn } from '@/lib/utils';
@@ -21,6 +22,7 @@ interface ChatHeaderProps {
 }
 
 export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar }: ChatHeaderProps) {
+  const { t } = useTranslation('chat');
   function handleExport(format: 'markdown' | 'json') {
     const url = chatApi.exportUrl(session.session_id, format);
     window.open(url, '_blank');
@@ -34,7 +36,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
             type="button"
             onClick={onOpenSidebar}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted md:hidden"
-            aria-label="Open conversations"
+            aria-label={t('header.open_conversations')}
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -42,11 +44,11 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         <div>
         <h2 className="text-sm font-semibold text-foreground">{session.title}</h2>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? 'My Model' : 'Platform')} &middot;{' '}
-          {messageCount ?? session.message_count} message{(messageCount ?? session.message_count) !== 1 ? 's' : ''}
+          {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? t('header.my_model') : t('header.platform'))} &middot;{' '}
+          {t('header.messages', { count: messageCount ?? session.message_count })}
           {session.status === 'archived' && (
             <span className="ml-1.5 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              Archived
+              {t('header.archived')}
             </span>
           )}
         </p>
@@ -58,8 +60,8 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
           <button
             type="button"
             onClick={onToggleVoiceMode}
-            title="Voice Mode"
-            aria-label="Voice Mode"
+            title={t('header.voice_mode')}
+            aria-label={t('header.voice_mode')}
             aria-pressed={isVoiceModeActive}
             className={cn(
               'rounded-md p-2 transition-colors',
@@ -75,7 +77,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
           <button
             type="button"
             onClick={onOpenVoiceSettings}
-            title="Voice Settings"
+            title={t('header.voice_settings')}
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <SlidersHorizontal className="h-4 w-4" />
@@ -84,7 +86,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         <button
           type="button"
           onClick={() => handleExport('markdown')}
-          title="Export"
+          title={t('header.export')}
           className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
         >
           <Download className="h-4 w-4" />
@@ -93,7 +95,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
           <button
             type="button"
             onClick={onRename}
-            title="Rename"
+            title={t('header.rename')}
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Pencil className="h-4 w-4" />
@@ -103,7 +105,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
           <button
             type="button"
             onClick={onOpenSettings}
-            title="Session Settings"
+            title={t('header.session_settings')}
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Settings className="h-4 w-4" />

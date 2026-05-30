@@ -1,0 +1,52 @@
+{
+  "empty": {
+    "open_conversations": "Mở cuộc trò chuyện",
+    "no_chat": "Chưa chọn cuộc trò chuyện",
+    "select_or_start": "Chọn một cuộc trò chuyện từ thanh bên hoặc bắt đầu cuộc mới.",
+    "start_new": "Bắt đầu trò chuyện mới"
+  },
+  "header": {
+    "open_conversations": "Mở cuộc trò chuyện",
+    "my_model": "Mô hình của tôi",
+    "platform": "Nền tảng",
+    "messages": "{{count}} tin nhắn",
+    "messages_other": "{{count}} tin nhắn",
+    "archived": "Đã lưu trữ",
+    "voice_mode": "Chế độ giọng nói",
+    "voice_settings": "Cài đặt giọng nói",
+    "export": "Xuất",
+    "rename": "Đổi tên",
+    "session_settings": "Cài đặt phiên"
+  },
+  "input": {
+    "format": "Định dạng:",
+    "format_opt": {
+      "auto": "Tự động",
+      "concise": "Ngắn gọn",
+      "detailed": "Chi tiết",
+      "bullets": "Gạch đầu dòng",
+      "table": "Bảng"
+    },
+    "placeholder": "Hỏi về truyện, nhân vật, xây dựng thế giới của bạn...",
+    "attach_context": "Đính kèm ngữ cảnh",
+    "assist": "Trợ lý",
+    "voice_assist_on": "Trợ lý giọng nói BẬT — phản hồi AI sẽ được đọc",
+    "voice_assist_off": "Bật Trợ lý giọng nói — nói để nhập, nghe phản hồi AI",
+    "toggle_voice_assist": "Bật/tắt Trợ lý giọng nói",
+    "mic_starting": "Đang khởi động mic...",
+    "mic_listening": "Đang nghe... (nhấn để dừng)",
+    "mic_transcribing": "Đang chép lời...",
+    "mic_error": "Lỗi mic — kiểm tra mô hình STT trong Cài đặt giọng nói",
+    "mic_speak": "Nói (Trợ lý giọng nói)",
+    "mic_input": "Nhập bằng giọng nói",
+    "stop_recording": "Dừng ghi âm",
+    "stop_audio": "Dừng âm thanh",
+    "think": "Suy nghĩ",
+    "fast": "Nhanh",
+    "stop_generating": "Dừng tạo (Esc)",
+    "send": "Gửi (Enter)",
+    "context_attached": "Đã đính kèm ngữ cảnh · ",
+    "hint": "Enter để gửi · Shift+Enter để xuống dòng",
+    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh"
+  }
+}

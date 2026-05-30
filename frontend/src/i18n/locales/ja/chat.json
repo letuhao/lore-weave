@@ -1,0 +1,52 @@
+{
+  "empty": {
+    "open_conversations": "会話を開く",
+    "no_chat": "チャットが選択されていません",
+    "select_or_start": "サイドバーから会話を選択するか、新しい会話を始めてください。",
+    "start_new": "新しいチャットを開始"
+  },
+  "header": {
+    "open_conversations": "会話を開く",
+    "my_model": "マイモデル",
+    "platform": "プラットフォーム",
+    "messages": "{{count}}件のメッセージ",
+    "messages_other": "{{count}}件のメッセージ",
+    "archived": "アーカイブ済み",
+    "voice_mode": "音声モード",
+    "voice_settings": "音声設定",
+    "export": "エクスポート",
+    "rename": "名前を変更",
+    "session_settings": "セッション設定"
+  },
+  "input": {
+    "format": "形式:",
+    "format_opt": {
+      "auto": "自動",
+      "concise": "簡潔",
+      "detailed": "詳細",
+      "bullets": "箇条書き",
+      "table": "表"
+    },
+    "placeholder": "ストーリー、キャラクター、世界観について質問...",
+    "attach_context": "コンテキストを添付",
+    "assist": "アシスト",
+    "voice_assist_on": "音声アシストON — AIの応答が読み上げられます",
+    "voice_assist_off": "音声アシストを有効化 — 話して入力、AI応答を聞く",
+    "toggle_voice_assist": "音声アシストを切り替え",
+    "mic_starting": "マイクを起動中...",
+    "mic_listening": "聞いています...（クリックで停止）",
+    "mic_transcribing": "文字起こし中...",
+    "mic_error": "マイクエラー — 音声設定でSTTモデルを確認",
+    "mic_speak": "話す（音声アシスト）",
+    "mic_input": "音声入力",
+    "stop_recording": "録音を停止",
+    "stop_audio": "音声を停止",
+    "think": "熟考",
+    "fast": "高速",
+    "stop_generating": "生成を停止 (Esc)",
+    "send": "送信 (Enter)",
+    "context_attached": "コンテキスト添付済み · ",
+    "hint": "Enterで送信 · Shift+Enterで改行",
+    "hint_thinking": " · Ctrl+Shift+Enterで熟考 · Ctrl+Enterで高速"
+  }
+}
