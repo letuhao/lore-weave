@@ -249,6 +249,64 @@ pub fn name_civ_via_llm(
     Ok(())
 }
 
+// ---------- COSMETIC-2: CivBundle in-place renamer helper ----------
+
+/// **COSMETIC-2 fix (review 2026-05-30)** — rename a [`CivBundle`]
+/// in-place via a [`TextProvider`], hiding the field-shuffle dance
+/// (the CLI previously inlined 8× `std::mem::take` calls + repack).
+///
+/// On success: features / political / culture vectors are renamed
+/// according to the provider's reply, then `content_hash` is
+/// recomputed so the bundle remains hash-coherent.
+///
+/// On failure (transport error / parse error / under-delivery):
+/// fields are repacked unchanged from `bundle_civ`'s synthetic-named
+/// state, `content_hash` is left untouched, and the `LlmError` is
+/// returned for the caller's fall-through to handle (typical CLI
+/// pattern: log the error and keep synthetic names).
+pub fn rename_bundle_in_place(
+    bundle: &mut super::bundle::CivBundle,
+    provider: &dyn TextProvider,
+    archetype: &str,
+) -> Result<(), LlmError> {
+    let mut features = crate::feature::Features {
+        mountain_ranges: std::mem::take(&mut bundle.mountain_ranges),
+        rivers: std::mem::take(&mut bundle.rivers),
+        water_bodies: std::mem::take(&mut bundle.water_bodies),
+    };
+    let mut political = crate::political::Political {
+        province_of: std::mem::take(&mut bundle.province_of),
+        provinces: std::mem::take(&mut bundle.provinces),
+        states: std::mem::take(&mut bundle.states),
+    };
+    let mut culture = crate::culture::Culture {
+        culture_of: std::mem::take(&mut bundle.culture_of),
+        culture_regions: std::mem::take(&mut bundle.culture_regions),
+    };
+    let result = name_civ_via_llm(
+        &mut features,
+        &mut political,
+        &mut bundle.settlements,
+        &mut culture,
+        provider,
+        archetype,
+    );
+    // Repack regardless of result so the bundle is back in a valid
+    // state for downstream renderers.
+    bundle.mountain_ranges = features.mountain_ranges;
+    bundle.rivers = features.rivers;
+    bundle.water_bodies = features.water_bodies;
+    bundle.province_of = political.province_of;
+    bundle.provinces = political.provinces;
+    bundle.states = political.states;
+    bundle.culture_of = culture.culture_of;
+    bundle.culture_regions = culture.culture_regions;
+    if result.is_ok() {
+        bundle.content_hash = super::bundle::compute_civ_hash(bundle);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

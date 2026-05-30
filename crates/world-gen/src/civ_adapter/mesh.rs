@@ -195,10 +195,18 @@ pub fn augment_with_ocean(view: CivView, world: &FlatWorld, target_count: usize)
     let min_sep = cell_area.sqrt() * 0.7;
     let min_sep2 = min_sep * min_sep;
 
-    let mut rng = Rng::for_stage(
-        ((world.width as u64) << 32) | (world.height as u64) | (target as u64),
-        b"civ-ocean",
-    );
+    // **LOW-1 fix (review 2026-05-30)**: previous seed `(w<<32) | h | target`
+    // collided whenever `target` bits subsumed into `height` bits (e.g.
+    // height=256 target=256 → same seed as height=256 target=0). Switch
+    // to a multiplicative mix with the FNV-1a 64-bit prime so distinct
+    // (w, h, target) triples produce distinct seeds with high probability.
+    const FNV_PRIME_64: u64 = 0x100_0000_01B3;
+    let seed_u64 = (world.width as u64)
+        .wrapping_mul(FNV_PRIME_64)
+        .wrapping_add(world.height as u64)
+        .wrapping_mul(FNV_PRIME_64)
+        .wrapping_add(target as u64);
+    let mut rng = Rng::for_stage(seed_u64, b"civ-ocean");
     let max_attempts = target.saturating_mul(80).max(2_000);
     let mut ocean_centers: Vec<(f32, f32)> = Vec::with_capacity(target);
     let mut attempts = 0_usize;

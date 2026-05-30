@@ -383,11 +383,31 @@ mod tests {
     }
 
     #[test]
+    fn extract_features_returns_unit_vector_centers() {
+        // **LOW-3 (review 2026-05-30)**: direct unit-vector check on
+        // `extract_features` (callable standalone). Prior coverage was
+        // transitive only via `bundle_civ_emits_sphere_centers_post_review_fix`
+        // — a refactor that removed the internal `project_to_sphere`
+        // call here would have only broken the bundle test, not this
+        // one.
+        let world = generate(&FlatParams::default());
+        let (view, _features) = extract_features(&world, &WorldClimateParams::default(), 64);
+        for (i, c) in view.centers.iter().enumerate() {
+            let mag2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
+            assert!(
+                (mag2 - 1.0).abs() < 1e-4,
+                "extract_features.centers[{i}] = {c:?} not unit; |c|² = {mag2}",
+            );
+        }
+    }
+
+    #[test]
     fn sphere_default_does_not_worsen_political_seed_spread_vs_flat() {
         // **review-impl HIGH-1 regression**: pin direction of fix.
-        use super::super::render::cell_index_to_center;
+        use super::super::render::cell_center_lookup;
         let world = generate(&FlatParams::default());
         let climate = WorldClimateParams::default();
+        let centers = cell_center_lookup(&world);
 
         let flat_view = augment_with_ocean(
             build_civ_view(&world, &climate),
@@ -411,7 +431,7 @@ mod tests {
             political
                 .provinces
                 .iter()
-                .filter_map(|p| cell_index_to_center(&world, p.capital_cell as usize))
+                .filter_map(|p| centers.get(p.capital_cell as usize).copied())
                 .collect::<Vec<_>>()
         };
         let min_pairwise = |xy: &[(f32, f32)]| {

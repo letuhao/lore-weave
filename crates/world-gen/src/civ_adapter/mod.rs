@@ -39,7 +39,7 @@ pub use mesh::{
     augment_with_ocean, build_civ_view, build_civ_view_spherical, derive_climate_zone,
     elevation_to_u16, koppen_to_biome_kind, project_to_sphere, CivView,
 };
-pub use naming::{apply_synthetic_names, name_civ_via_llm};
+pub use naming::{apply_synthetic_names, name_civ_via_llm, rename_bundle_in_place};
 pub use pipeline::{
     build_culture, build_hydrology_view, build_political, build_routes, build_settlement,
     extract_features,

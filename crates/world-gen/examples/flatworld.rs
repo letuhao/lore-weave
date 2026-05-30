@@ -506,8 +506,7 @@ fn main() {
     let civ_needed = civ_png_out.is_some() || civ_svg_out.is_some() || civ_json_out.is_some();
     if civ_needed {
         use world_gen::civ_adapter::{
-            apply_synthetic_names, bundle_civ, name_civ_via_llm, render_civ_political_png,
-            render_civ_svg,
+            bundle_civ, render_civ_political_png, render_civ_svg,
         };
         let mut bundle = bundle_civ(
             &world,
@@ -558,13 +557,23 @@ fn main() {
                     // **Ship 7e**: LM Studio exposes OpenAI-compatible
                     // /v1/chat/completions at http://localhost:1234.
                     // Reuses OpenAIProvider; dummy bearer key (LM Studio
-                    // doesn't check auth). User overrides the loaded
-                    // model via --name-model (LM Studio routes to the
-                    // single loaded model regardless of the name if no
-                    // override given).
-                    let model = name_model
-                        .clone()
-                        .unwrap_or_else(|| "local-model".to_string());
+                    // doesn't check auth). **LOW-5 fix (review 2026-05-30)**:
+                    // LM Studio requires the exact loaded model name in
+                    // the request body — there's no "auto-route to the
+                    // single loaded model" behaviour (we burned an iter
+                    // on Ship 7e discovering this). Panic with a helpful
+                    // probe command instead of silently sending
+                    // "local-model" which always rejects with
+                    // invalid_request_error.
+                    let model = name_model.clone().unwrap_or_else(|| {
+                        panic!(
+                            "--name-lmstudio requires --name-model <id>. \
+                             LM Studio rejects unknown model names with \
+                             invalid_request_error — probe the loaded model id with:\n\
+                             \n  \
+                             curl http://localhost:1234/v1/models | jq -r '.data[].id'\n"
+                        )
+                    });
                     Arc::new(OpenAIProvider::with_base_url(
                         "lm-studio",
                         world_gen::shape::openai::LMSTUDIO_BASE_URL,
@@ -572,32 +581,13 @@ fn main() {
                     ))
                 }
             };
-            // Pack into the CivBundle's flat vectors → Political /
-            // Culture / Features need separate mutable handles for
-            // name_civ_via_llm. Reconstitute them, rename, then write
-            // back. Cheaper than wrapping name_civ_via_llm to accept
-            // CivBundle directly.
-            let mut features = world_gen::feature::Features {
-                mountain_ranges: std::mem::take(&mut bundle.mountain_ranges),
-                rivers: std::mem::take(&mut bundle.rivers),
-                water_bodies: std::mem::take(&mut bundle.water_bodies),
-            };
-            let mut political = world_gen::political::Political {
-                province_of: std::mem::take(&mut bundle.province_of),
-                provinces: std::mem::take(&mut bundle.provinces),
-                states: std::mem::take(&mut bundle.states),
-            };
-            let mut culture = world_gen::culture::Culture {
-                culture_of: std::mem::take(&mut bundle.culture_of),
-                culture_regions: std::mem::take(&mut bundle.culture_regions),
-            };
-            // Settlement names come from `bundle.settlements` — pass the
-            // mutable slice.
-            match name_civ_via_llm(
-                &mut features,
-                &mut political,
-                &mut bundle.settlements,
-                &mut culture,
+            // **COSMETIC-2 fix (review 2026-05-30)**: `rename_bundle_in_place`
+            // hides the field-shuffle dance (extract → rename → repack
+            // → rehash). Err path leaves the synthetic names from
+            // `bundle_civ` intact since the MED-1 guard rejects parse
+            // failures + under-delivery BEFORE any zip-loops mutate.
+            match world_gen::civ_adapter::rename_bundle_in_place(
+                &mut bundle,
                 provider.as_ref(),
                 &civ_archetype,
             ) {
@@ -612,29 +602,8 @@ fn main() {
                 }
                 Err(e) => {
                     eprintln!("LLM naming failed ({e}); keeping synthetic names");
-                    // bundle_civ already applied synthetic names — re-run
-                    // to ensure no partial overwrite.
-                    apply_synthetic_names(
-                        &mut features,
-                        &mut political,
-                        &mut bundle.settlements,
-                        &mut culture,
-                        civ_seed,
-                    );
                 }
             }
-            // Re-pack into the bundle.
-            bundle.mountain_ranges = features.mountain_ranges;
-            bundle.rivers = features.rivers;
-            bundle.water_bodies = features.water_bodies;
-            bundle.province_of = political.province_of;
-            bundle.provinces = political.provinces;
-            bundle.states = political.states;
-            bundle.culture_of = culture.culture_of;
-            bundle.culture_regions = culture.culture_regions;
-            // Bundle hash now reflects renamed contents — recompute so
-            // downstream JSON consumers verify cleanly.
-            bundle.content_hash = world_gen::civ_adapter::compute_civ_hash(&bundle);
         }
 
         // Reconstitute Political + Settlements for the renderers.

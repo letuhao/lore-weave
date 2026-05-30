@@ -30,26 +30,35 @@ pub(crate) fn cell_index_map(
     out
 }
 
-/// Reverse-walk plate/zone/subzone tree to find a cell's pixel centre.
-/// Used by render + the pipeline sphere regression test.
-pub(crate) fn cell_index_to_center(world: &FlatWorld, target: usize) -> Option<(f32, f32)> {
-    let mut idx: usize = 0;
+/// **LOW-2 fix (review 2026-05-30)**: pre-build the full `cell_idx →
+/// center` table once so a render that emits ~1000 features doesn't
+/// walk the plate tree for every callsite. Iteration order matches
+/// [`mesh::build_civ_view`] (plates outer, zones middle, subzones inner)
+/// so the returned Vec is indexable by civ-layer cell index. The
+/// pipeline sphere regression test also consumes this lookup directly —
+/// the previous O(N) per-call `cell_index_to_center` helper was deleted
+/// alongside the render-internal callsites.
+pub(crate) fn cell_center_lookup(world: &FlatWorld) -> Vec<(f32, f32)> {
+    let mut out = Vec::new();
     for plate in &world.plates {
         for zone in &plate.zones {
             for sub in &zone.subzones {
-                if idx == target {
-                    return Some(sub.center);
-                }
-                idx += 1;
+                out.push(sub.center);
             }
         }
     }
-    None
+    out
 }
 
 /// Deterministic per-state colour from a stable HSV palette.
+///
+/// **LOW-4 fix (review 2026-05-30)**: bumped hue multiplier 57 → 137.
+/// `gcd(57, 360) = 3` aliased every 120 states (state 0 and state 120
+/// got identical hue); `gcd(137, 360) = 1` so all 360 hues are reachable.
+/// 137 is also close to the golden-angle approximation (137.5°) which
+/// maximises perceptual separation between successive ids.
 fn state_color(state_id: u32) -> [u8; 3] {
-    let hue = (state_id.wrapping_mul(57) % 360) as f32;
+    let hue = (state_id.wrapping_mul(137) % 360) as f32;
     let sat = 0.55;
     let val = 0.85;
     hsv_to_rgb(hue, sat, val)
@@ -154,10 +163,11 @@ pub fn render_civ_political_png(
         }
     }
 
+    let centers = cell_center_lookup(world);
     for s in settlements {
         let cell = s.cell as usize;
-        if let Some(center) = cell_index_to_center(world, cell) {
-            paint_disk(&mut buf, w, h, center.0 as i32, center.1 as i32, 3, [255, 255, 255]);
+        if let Some(&(cx, cy)) = centers.get(cell) {
+            paint_disk(&mut buf, w, h, cx as i32, cy as i32, 3, [255, 255, 255]);
         }
     }
 
@@ -192,6 +202,7 @@ pub fn render_civ_svg(
     ));
 
     let idx_of = cell_index_map(world);
+    let centers = cell_center_lookup(world);
     for plate in &world.plates {
         let tint = plate
             .zones
@@ -232,7 +243,7 @@ pub fn render_civ_svg(
         let pts: Vec<(f32, f32)> = r
             .path
             .iter()
-            .filter_map(|&c| cell_index_to_center(world, c as usize))
+            .filter_map(|&c| centers.get(c as usize).copied())
             .collect();
         if pts.len() < 2 {
             continue;
@@ -256,7 +267,7 @@ pub fn render_civ_svg(
     }
 
     for s in settlements {
-        if let Some((x, y)) = cell_index_to_center(world, s.cell as usize) {
+        if let Some(&(x, y)) = centers.get(s.cell as usize) {
             svg.push_str(&format!(
                 "  <circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"3\" fill=\"#fff\" stroke=\"#222\"/>\n",
                 x, y
@@ -273,7 +284,7 @@ pub fn render_civ_svg(
     }
 
     for prov in &political.provinces {
-        if let Some((x, y)) = cell_index_to_center(world, prov.capital_cell as usize) {
+        if let Some(&(x, y)) = centers.get(prov.capital_cell as usize) {
             let escaped = escape_xml(&prov.name);
             svg.push_str(&format!(
                 "  <text x=\"{:.1}\" y=\"{:.1}\" font-size=\"8\" fill=\"#eee\" \
