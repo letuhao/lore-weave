@@ -87,6 +87,10 @@ func (s *Server) Router() http.Handler {
 		// Used by lore-enrichment promote to write enriched canon THROUGH the
 		// glossary SSOT (Q2) — extract-entities can't set this column.
 		r.Post("/books/{book_id}/entities/{entity_id}/canon-content", s.internalSetCanonContent)
+		// Read the current canonical content. Used by the lore-enrichment
+		// re-promote SELF-HEAL (adversary WARN-1): if a prior canon-content
+		// write failed transiently, a re-promote reads NULL here and re-writes.
+		r.Get("/books/{book_id}/entities/{entity_id}/canon-content", s.internalGetCanonContent)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

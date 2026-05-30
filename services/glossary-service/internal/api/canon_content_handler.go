@@ -42,6 +42,8 @@ import (
 	"net/http"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/loreweave/glossary-service/internal/sanitize"
 )
 
 type canonContentRequest struct {
@@ -69,12 +71,19 @@ func (s *Server) internalSetCanonContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Normalise: trim, cap at 500 runes, empty → NULL (clears). Same rules as
-	// the patchEntity short_description branch so behaviour is identical
-	// regardless of which write path set the value.
+	// Normalise: neutralize injection, trim, cap at 500 runes, empty → NULL.
+	//
+	// WARN-2 (canon-boundary defense-in-depth, 050/C12): this endpoint exists to
+	// carry enriched LLM short_description INTO canon. Untrusted LLM text must be
+	// treated as DATA, never instructions — so we neutralize structural injection
+	// markers (chat-template / role-spoof tokens, zero-width smuggling) HERE,
+	// independent of the caller's own neutralization. NFC-safe: 封神演义 names pass
+	// through untouched. Neutralization runs BEFORE the rune-cap because the
+	// inert placeholder changes length, and the stored value must satisfy the cap.
 	var sdPtr *string
 	if req.ShortDescription != nil {
-		sd := strings.TrimSpace(*req.ShortDescription)
+		sd := sanitize.NeutralizeCanonText(*req.ShortDescription)
+		sd = strings.TrimSpace(sd)
 		if utf8.RuneCountInString(sd) > 500 {
 			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_SHORT_DESCRIPTION",
 				"short_description must be at most 500 characters")
@@ -116,5 +125,46 @@ func (s *Server) internalSetCanonContent(w http.ResponseWriter, r *http.Request)
 		"entity_id":         entityID.String(),
 		"book_id":           bookID.String(),
 		"short_description": sdPtr,
+	})
+}
+
+// internalGetCanonContent reads the canonical short_description COLUMN of an
+// existing entity.
+//
+//	GET /internal/books/{book_id}/entities/{entity_id}/canon-content
+//
+// Used by the lore-enrichment re-promote SELF-HEAL (adversary WARN-1): the
+// idempotent re-promote branch reads this to decide whether a prior
+// canon-content write actually landed. A NULL short_description (or a 404 for a
+// missing entity) signals the caller to re-write the canon content, so a
+// re-promote becomes the real recovery path for a transiently-failed write.
+func (s *Server) internalGetCanonContent(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	entityID, ok := parsePathUUID(w, r, "entity_id")
+	if !ok {
+		return
+	}
+
+	ctx := r.Context()
+	var sd *string
+	err := s.pool.QueryRow(ctx,
+		`SELECT short_description
+		   FROM glossary_entities
+		  WHERE entity_id = $1 AND book_id = $2 AND deleted_at IS NULL`,
+		entityID, bookID).Scan(&sd)
+	if err != nil {
+		// pgx returns ErrNoRows for a missing/cross-book/deleted entity → 404,
+		// mirroring the set path's not-found semantics.
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entity_id":         entityID.String(),
+		"book_id":           bookID.String(),
+		"short_description": sd,
 	})
 }

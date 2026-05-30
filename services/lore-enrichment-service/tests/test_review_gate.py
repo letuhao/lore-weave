@@ -128,6 +128,17 @@ class FakePorts:
         self.recycle_calls: list[dict] = []
         self.glossary_write_calls: list[dict] = []
         self.canon_content_calls: list[dict] = []
+        self.get_canon_content_calls: list[dict] = []
+        # The glossary-side canon content, keyed by entity_id. None => NULL (the
+        # post-write-back quarantine state); a string => already-canon content.
+        # WARN-1: the re-promote self-heal reads this to decide whether to heal.
+        self.glossary_canon_content: dict[UUID, str | None] = {}
+        # When set, get_glossary_canon_content raises this (simulate a transient
+        # glossary read failure) — used to prove the self-heal logs + stands.
+        self.get_canon_content_error: Exception | None = None
+        # When set, the FIRST set_glossary_canon_content call raises this (then
+        # clears) — simulates a transient step-5 write failure (WARN-1 repro).
+        self.set_canon_content_error: Exception | None = None
 
     async def book_owner(self, *, book_id):
         return BookOwner(book_id=book_id, owner_user_id=self.owner)
@@ -138,11 +149,25 @@ class FakePorts:
         )
         return str(GLOSS)
 
+    async def get_glossary_canon_content(self, *, book_id, entity_id):
+        # WARN-1: the re-promote self-heal reads the current canon content to
+        # decide whether a prior write landed. None/empty => needs healing.
+        self.get_canon_content_calls.append({"book_id": book_id, "entity_id": entity_id})
+        if self.get_canon_content_error is not None:
+            raise self.get_canon_content_error
+        return self.glossary_canon_content.get(entity_id)
+
     async def set_glossary_canon_content(self, *, book_id, entity_id, short_description):
-        # DEFERRED-053: the Q2 canon-content write performed ONLY on promote.
+        # DEFERRED-053: the Q2 canon-content write performed on promote (and the
+        # re-promote self-heal when the prior write did not land — WARN-1).
+        if self.set_canon_content_error is not None:
+            err = self.set_canon_content_error
+            self.set_canon_content_error = None  # transient: only the first call fails
+            raise err
         self.canon_content_calls.append(
             {"book_id": book_id, "entity_id": entity_id, "short_description": short_description}
         )
+        self.glossary_canon_content[entity_id] = short_description
 
     async def writeback_enriched_facts(self, *, user_id, project_id, proposal_id, glossary_entity_id, canonical_name, entity_kind, technique, facts):
         self.writeback_calls.append({"proposal_id": proposal_id, "technique": technique, "facts": facts, "canonical_name": canonical_name})
@@ -394,6 +419,8 @@ async def test_promote_idempotent_no_duplicate_canon():
     )
     already = replace(already, promoted_from_proposal_id=already.proposal_id)
     ports = FakePorts(owner=OWNER)
+    # The glossary entity is already HEALTHY canon (content landed on first promote).
+    ports.glossary_canon_content[GLOSS] = already.content[:480]
     svc = WritebackService(FakeRepo(already), ports)
     result = await svc.promote(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=already.proposal_id, book_id=BOOK,
@@ -402,7 +429,120 @@ async def test_promote_idempotent_no_duplicate_canon():
     # No second write-back of the entity anchor (no duplicate canon entity).
     assert ports.writeback_calls == []
     assert ports.glossary_write_calls == []
-    # Idempotent promote re-flips KG only — no re-write of canonical content.
+    # Healthy re-promote re-flips KG only — the self-heal READS canon content,
+    # finds it already populated, and does NOT re-write (idempotent no-op).
+    assert ports.get_canon_content_calls, "self-heal must read current canon content"
+    assert ports.canon_content_calls == []
+
+
+# ── WARN-1: re-promote SELF-HEALS a transiently-failed canon-content write ──────
+
+
+@pytest.mark.asyncio
+async def test_first_promote_canon_content_failure_still_promotes():
+    """WARN-1 repro half 1: a transient step-5 canon-content write failure on the
+    FIRST promote must NOT unwind the promotion — the proposal still becomes
+    PROMOTED (KG canon + proposal row hold), but the glossary short_description is
+    left empty (the DEFERRED-053 symptom that the self-heal then recovers)."""
+    p = _proposal(status=ReviewStatus.APPROVED)
+    repo = FakeRepo(p)
+    ports = FakePorts(owner=OWNER)
+    ports.set_canon_content_error = RuntimeError("transient glossary 503")
+    svc = WritebackService(repo, ports)
+    result = await svc.promote(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+    )
+    # Promotion STANDS despite the canon-content write failing.
+    assert result.canon is True
+    assert repo._p.review_status == "promoted"
+    assert repo._p.promoted_entity_id == GLOSS
+    # …but the glossary short_description is still empty (NULL) — not yet healed.
+    assert ports.canon_content_calls == [], "the failed write left no canon content"
+    assert ports.glossary_canon_content.get(GLOSS) is None
+
+
+@pytest.mark.asyncio
+async def test_repromote_self_heals_missing_canon_content():
+    """WARN-1 core: promote (step-5 write fails) leaves glossary short_description
+    NULL while the proposal is PROMOTED — then a SECOND promote (the idempotent
+    branch) detects the empty canon content and re-writes it. A re-promote is the
+    real recovery path (no reconciler exists)."""
+    p = _proposal(status=ReviewStatus.APPROVED)
+    repo = FakeRepo(p)
+    ports = FakePorts(owner=OWNER)
+    ports.set_canon_content_error = RuntimeError("transient glossary 503")
+    svc = WritebackService(repo, ports)
+
+    # First promote: canon-content write fails transiently → short_description NULL.
+    await svc.promote(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+    )
+    assert repo._p.review_status == "promoted"
+    assert ports.glossary_canon_content.get(GLOSS) is None, "first promote left it empty"
+
+    # Second promote (idempotent branch). The transient error has cleared; the
+    # self-heal reads NULL and re-writes the canon content for real.
+    result = await svc.promote(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+    )
+    assert result.canon is True
+    # The self-heal READ the empty state, then WROTE the canon content.
+    assert ports.get_canon_content_calls, "re-promote must read current canon content"
+    assert len(ports.canon_content_calls) == 1, "re-promote self-heals the canon content"
+    cc = ports.canon_content_calls[0]
+    assert cc["entity_id"] == GLOSS
+    assert cc["short_description"] == p.content[:480]
+    assert ports.glossary_canon_content.get(GLOSS) == p.content[:480], "now populated"
+
+
+@pytest.mark.asyncio
+async def test_repromote_no_reheal_when_canon_content_already_present():
+    """WARN-1 idempotency guard: a re-promote of a HEALTHY entity (canon content
+    already present) reads it, finds it populated, and does NOT re-write."""
+    already = _proposal(
+        status=ReviewStatus.PROMOTED,
+        promoted_entity_id=GLOSS,
+        promoted_by=OWNER,
+        promoted_at=datetime.now(timezone.utc),
+        original_technique="template",
+    )
+    already = replace(already, promoted_from_proposal_id=already.proposal_id)
+    ports = FakePorts(owner=OWNER)
+    ports.glossary_canon_content[GLOSS] = "已有的正典内容"
+    svc = WritebackService(FakeRepo(already), ports)
+    await svc.promote(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=already.proposal_id, book_id=BOOK,
+    )
+    assert ports.get_canon_content_calls, "self-heal must read first"
+    assert ports.canon_content_calls == [], "healthy entity: no re-write"
+    assert ports.glossary_canon_content[GLOSS] == "已有的正典内容", "unchanged"
+
+
+@pytest.mark.asyncio
+async def test_repromote_self_heal_read_failure_logs_and_stands():
+    """WARN-1 robustness: if the self-heal READ itself fails transiently on a
+    re-promote, the promotion still stands (KG re-flipped, no raise) — the error
+    is logged and the NEXT re-promote remains the retry surface (no silent
+    permanent failure, but also no crash)."""
+    already = _proposal(
+        status=ReviewStatus.PROMOTED,
+        promoted_entity_id=GLOSS,
+        promoted_by=OWNER,
+        promoted_at=datetime.now(timezone.utc),
+        original_technique="template",
+    )
+    already = replace(already, promoted_from_proposal_id=already.proposal_id)
+    ports = FakePorts(owner=OWNER)
+    ports.get_canon_content_error = RuntimeError("transient glossary read 503")
+    svc = WritebackService(FakeRepo(already), ports)
+    result = await svc.promote(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=already.proposal_id, book_id=BOOK,
+    )
+    # No raise; promotion stands; KG re-flipped.
+    assert result.canon is True
+    assert len(ports.promote_calls) == 1
+    # The read was attempted; the write never happened (read failed first).
+    assert ports.get_canon_content_calls
     assert ports.canon_content_calls == []
 
 

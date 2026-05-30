@@ -169,6 +169,43 @@ class WritebackPorts:
             )
         return str(ents[0]["entity_id"])
 
+    async def get_glossary_canon_content(
+        self,
+        *,
+        book_id: UUID,
+        entity_id: UUID,
+    ) -> str | None:
+        """Read the current canonical ``short_description`` of a glossary entity.
+
+        Used by the promote self-heal (WARN-1): the idempotent re-promote branch
+        reads this to decide whether a prior step-5 canon-content write actually
+        landed. ``None``/empty means it did NOT (or the entity is missing) → the
+        caller re-writes the canon content.
+
+        Returns the current ``short_description`` string, or ``None`` when the
+        column is NULL / the entity is not found (404). Network/contract errors
+        propagate as :class:`WritebackError` so the self-heal can log + leave the
+        re-promote retry surface intact.
+        """
+        url = f"{self._gloss}/internal/books/{book_id}/entities/{entity_id}/canon-content"
+        try:
+            resp = await self._http.get(url, headers=self._headers)
+        except httpx.TimeoutException as exc:
+            raise WritebackError(f"timeout calling {url}: {exc}", retryable=True)
+        except httpx.HTTPError as exc:
+            raise WritebackError(f"connection error calling {url}: {exc}", retryable=True)
+        if resp.status_code == 404:
+            return None
+        if resp.status_code != 200:
+            retryable = resp.status_code in (502, 503, 429)
+            raise WritebackError(
+                f"GET {url} failed ({resp.status_code})",
+                retryable=retryable,
+                status_code=resp.status_code,
+            )
+        sd = resp.json().get("short_description")
+        return str(sd) if sd is not None else None
+
     async def set_glossary_canon_content(
         self,
         *,

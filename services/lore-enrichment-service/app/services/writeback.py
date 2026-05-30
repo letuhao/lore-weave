@@ -29,6 +29,7 @@ ANNOTATION only — it cannot canonize.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -40,6 +41,8 @@ from app.services.review import (
     ProposalsRepo,
     ReviewStatus,
 )
+
+logger = logging.getLogger("lore_enrichment.writeback")
 
 __all__ = [
     "WritebackResult",
@@ -146,6 +149,55 @@ class WritebackService:
                 {"dimension": "补充", "content": proposal.content, "confidence": conf}
             )
         return facts
+
+    async def _heal_glossary_canon_content(
+        self,
+        *,
+        book_id: UUID,
+        entity_id: UUID,
+        content: str,
+        proposal_id: UUID,
+    ) -> None:
+        """Converge the glossary entity's canonical ``short_description`` to the
+        promoted content (WARN-1 / DEFERRED-053 robustness).
+
+        Called from BOTH promote paths:
+          * the first promote (step 5) — write the canon content;
+          * the idempotent re-promote branch — RE-write it IF the glossary still
+            has no canon content (a prior write failed transiently).
+
+        It first READS the current canon content; if it is already populated the
+        write is skipped (re-promote of a healthy entity is a no-op, matching the
+        idempotency contract). If it is missing/empty, it (re)writes — so a
+        re-promote is the real recovery path for a transiently-failed step 5.
+
+        Best-effort *for the success of the promote*: a transient glossary hiccup
+        is LOGGED (never swallowed silently) and does NOT unwind a promotion whose
+        canon state already holds in the KG + proposal row. The next re-promote
+        re-attempts the heal — there is no other reconciler, so this branch is the
+        guaranteed retry surface."""
+        target = content[:480]
+        try:
+            current = await self._ports.get_glossary_canon_content(
+                book_id=book_id, entity_id=entity_id
+            )
+            if current and current.strip():
+                # Already canon — nothing to heal (idempotent no-op).
+                return
+            await self._ports.set_glossary_canon_content(
+                book_id=book_id,
+                entity_id=entity_id,
+                short_description=target,
+            )
+        except Exception:  # noqa: BLE001 — promote already holds; re-promote heals
+            logger.warning(
+                "glossary canon-content write failed for proposal %s entity %s; "
+                "promotion stands (KG canon + proposal row), a re-promote will "
+                "self-heal the glossary short_description",
+                proposal_id,
+                entity_id,
+                exc_info=True,
+            )
 
     # ── write-back (quarantine) ────────────────────────────────────────────────
 
@@ -273,6 +325,12 @@ class WritebackService:
             raise LookupError("proposal not found")
 
         # Idempotent: already promoted → flip KG (no-op if already canon) + return.
+        # This branch is ALSO the real recovery path (adversary WARN-1): if the
+        # step-5 canon-content write on the FIRST promote failed transiently, the
+        # glossary short_description is still NULL while the KG facts are canon
+        # (the exact DEFERRED-053 symptom). There is no reconciler — so a
+        # re-promote MUST self-heal the canon content here, else it can never be
+        # retried (this branch returns BEFORE step 5).
         if proposal.review_status == ReviewStatus.PROMOTED:
             promoted_at = proposal.promoted_at or datetime.now(timezone.utc)
             n = await self._ports.promote_enriched_facts(
@@ -281,6 +339,14 @@ class WritebackService:
                 promoted_by=owner.owner_user_id,
                 promoted_at=promoted_at,
             )
+            resolved_entity_id = proposal.promoted_entity_id or proposal.writeback_entity_id
+            if resolved_entity_id is not None:
+                await self._heal_glossary_canon_content(
+                    book_id=book_id,
+                    entity_id=resolved_entity_id,
+                    content=proposal.content,
+                    proposal_id=proposal_id,
+                )
             return PromoteResult(
                 proposal=proposal.as_dict(),
                 promoted_entity_id=str(proposal.promoted_entity_id or ""),
@@ -340,17 +406,20 @@ class WritebackService:
         # consistent with the glossary SSOT. The per-dimension KG facts promoted
         # in step 4 carry the structured dimensions; the short_description is the
         # canonical summary — complementary, never divergent.
-        try:
-            await self._ports.set_glossary_canon_content(
-                book_id=book_id,
-                entity_id=resolved_entity_id,
-                short_description=proposal.content[:480],
-            )
-        except Exception:  # noqa: BLE001 — content sync is best-effort post-promote
-            # The canon state already holds in the KG + proposal row; a glossary
-            # content write hiccup must not unwind a successful promotion. The
-            # glossary entity_updated reconciler / a re-promote re-converges it.
-            pass
+        #
+        # WARN-1: this write is best-effort *for the success of THIS promote* (a
+        # transient glossary hiccup must not unwind a promotion whose canon state
+        # already holds in the KG + proposal row). It is NOT silently abandoned:
+        # because step 5 was skipped, the proposal is left as PROMOTED with an
+        # EMPTY glossary short_description, and the IDEMPOTENT re-promote branch
+        # above detects that empty state and re-writes the canon content. A
+        # re-promote is therefore the real recovery path — there is no reconciler.
+        await self._heal_glossary_canon_content(
+            book_id=book_id,
+            entity_id=resolved_entity_id,
+            content=proposal.content,
+            proposal_id=proposal_id,
+        )
 
         return PromoteResult(
             proposal=updated.as_dict(),
