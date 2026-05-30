@@ -14,7 +14,6 @@
   "unfollowError": "Không thể bỏ theo dõi người dùng.",
   "userNotFound": "Không tìm thấy người dùng.",
   "achievements": "Thành tựu",
-  "comingSoon": "{{feature}} — Sắp ra mắt",
   "chapters": "chương",
   "readers": "độc giả",
   "recentActivity": "Hoạt động gần đây",
@@ -44,7 +43,6 @@
   "tabs": {
     "books": "Sách",
     "translations": "Bản dịch",
-    "wiki": "Đóng góp Wiki",
-    "reviews": "Đánh giá"
+    "wiki": "Đóng góp Wiki"
   }
 }

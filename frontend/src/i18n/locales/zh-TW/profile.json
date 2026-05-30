@@ -14,7 +14,6 @@
   "unfollowError": "取消追蹤失敗。",
   "userNotFound": "找不到使用者。",
   "achievements": "成就",
-  "comingSoon": "{{feature}} — 即將推出",
   "chapters": "章節",
   "readers": "讀者",
   "recentActivity": "近期活動",
@@ -44,7 +43,6 @@
   "tabs": {
     "books": "書籍",
     "translations": "翻譯",
-    "wiki": "Wiki 貢獻",
-    "reviews": "評論"
+    "wiki": "Wiki 貢獻"
   }
 }

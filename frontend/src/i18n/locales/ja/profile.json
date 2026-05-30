@@ -14,7 +14,6 @@
   "unfollowError": "フォロー解除に失敗しました。",
   "userNotFound": "ユーザーが見つかりません。",
   "achievements": "実績",
-  "comingSoon": "{{feature}} — 近日公開",
   "chapters": "章",
   "readers": "読者",
   "recentActivity": "最近のアクティビティ",
@@ -44,7 +43,6 @@
   "tabs": {
     "books": "書籍",
     "translations": "翻訳",
-    "wiki": "Wiki貢献",
-    "reviews": "レビュー"
+    "wiki": "Wiki貢献"
   }
 }
