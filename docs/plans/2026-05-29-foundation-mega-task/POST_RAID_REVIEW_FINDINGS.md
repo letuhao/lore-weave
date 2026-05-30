@@ -38,6 +38,11 @@
 - **PRR-28** logging fail-safe: `jsonLogger.Emit` now applies a hard `piiFloorMask` to any `FieldKindPII` value the redactor declines → raw PII can no longer leak in a non-prod / NoopRedactor build (the previous passthrough leaked it). **Build-tag-agnostic** — no longer depends on `-tags=prod` for the safety floor. (`contracts/logging/logger.go`; the test that asserted the leak was rewritten to assert the floor.)
 - **PRR-01** real scrubber: implemented `RegexScrubber` — 7 patterns (email / SSN / IPv4 / IPv6 / credit-card / API-key / phone → placeholders, SHA-256 of original retained), security-first (over-redaction preferred) — replacing the test-only passthrough. (`contracts/meta/scrubber.go` + `scrubber_regex_test.go`.) — *Remaining: wire the scrubber into the metawrite audit write-path seam (PRR-01 NEW-3, needs MetaWrite injection); KMS-backed KEK manager (PRR-02) + erasure runbook (PRR-03) + integration tests (PRR-04) need KMS infra → F3/later.*
 
+### F5a — I3 language-rule enforcement + CLAUDE.md sync ✅ DONE *(`language-rule-lint.sh` PASS on real tree; negative-tested → FAILs on mismatch / `missing`-but-present / absent-row)*
+- **PRR-16 + PRR-21**: rewrote `contracts/language-rule.yaml` to map all 34 on-disk services to their real language (was ~30 mislabelled `missing`); hardened `scripts/language-rule-lint.sh` to (a) **FAIL** on a present service declared `missing` (PRR-16), (b) add a **completeness check** that FAILs on a present (toolchain-detected) service with no yaml row (PRR-21), (c) detect Python via `requirements.txt`. The lint now *enforces* I3 instead of NOTE-only — ~21 previously-unguarded services are now covered.
+- **PRR-22**: `CLAUDE.md` Language rule updated — added the **Rust** kernel-derived tier + pointed to `contracts/language-rule.yaml` as the authoritative service→language SSOT (rule book no longer drifts from the 35-service reality).
+- *Remaining F5: **PRR-24/25** WS ticket-hash wire drift (base64 vs JSON int-array) — Go+Rust change; **PRR-20** game-server gateway bypass — needs an architecture decision (front via api-gateway-bff vs formally amend invariant I1).*
+
 ---
 
 ## 🔴 MAJOR — to fix

@@ -31,7 +31,7 @@ detect_lang() {
   # is the OUTERMOST manifest. Check by glob existence.
   if [[ -f "$dir/Cargo.toml" ]]; then echo "rust"; return; fi
   if [[ -f "$dir/go.mod" ]]; then echo "go"; return; fi
-  if [[ -f "$dir/pyproject.toml" ]]; then echo "python"; return; fi
+  if [[ -f "$dir/pyproject.toml" || -f "$dir/requirements.txt" ]]; then echo "python"; return; fi
   if [[ -f "$dir/package.json" ]]; then echo "typescript"; return; fi
   # Recurse one level — some services nest under cmd/ or src/
   local nested
@@ -39,6 +39,8 @@ detect_lang() {
     if [[ -d "$nested" ]]; then
       if [[ -f "$nested/Cargo.toml" ]]; then echo "rust"; return; fi
       if [[ -f "$nested/go.mod" ]]; then echo "go"; return; fi
+      if [[ -f "$nested/pyproject.toml" || -f "$nested/requirements.txt" ]]; then echo "python"; return; fi
+      if [[ -f "$nested/package.json" ]]; then echo "typescript"; return; fi
     fi
   done
   echo "missing"
@@ -76,7 +78,8 @@ for svc in "${!expected[@]}"; do
   actual=$(detect_lang "$dir")
   if [[ "$exp" == "missing" ]]; then
     if [[ "$actual" != "missing" ]]; then
-      echo "[language-rule] NOTE — service $svc declared missing in config but appears $actual on disk; consider updating contracts/language-rule.yaml"
+      echo "[language-rule] FAIL — service $svc declared 'missing' but present on disk as $actual; set its language in contracts/language-rule.yaml (PRR-16)"
+      violations=$((violations + 1))
     fi
     continue
   fi
@@ -86,8 +89,22 @@ for svc in "${!expected[@]}"; do
   fi
 done
 
+# Completeness (PRR-21): every present service dir with a detected toolchain
+# MUST have a row in the config. Without this, a service added in the wrong
+# language with NO row would slip past I3 enforcement entirely.
+for dir in "$repo_root"/services/*/; do
+  [[ -d "$dir" ]] || continue
+  svc="$(basename "$dir")"
+  actual=$(detect_lang "$dir")
+  [[ "$actual" == "missing" ]] && continue   # empty/unscaffolded dir — not yet a service
+  if [[ -z "${expected[$svc]+set}" ]]; then
+    echo "[language-rule] FAIL — service $svc present on disk as $actual but has NO row in contracts/language-rule.yaml (PRR-21 completeness)"
+    violations=$((violations + 1))
+  fi
+done
+
 if [[ $violations -gt 0 ]]; then
-  echo "[language-rule] FAIL — $violations service(s) in wrong language (I3 amended; Q-L1K-2 LOCKED)"
+  echo "[language-rule] FAIL — $violations service(s) violate I3 (amended; Q-L1K-2 LOCKED)"
   exit 1
 fi
 echo "[language-rule] PASS"

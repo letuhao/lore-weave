@@ -39,7 +39,7 @@ Data: Postgres (per-service DBs), Redis Streams (jobs), MinIO (objects).
 - **Contract-first**: API contract frozen before frontend flow
 - **Gateway invariant**: all external traffic through `api-gateway-bff`
 - **Provider gateway invariant**: NO direct provider SDK calls — all AI calls go through adapter layer
-- **Language rule**: Go for domain services, Python for AI/LLM services, TypeScript for gateway/BFF
+- **Language rule** (I3, amended & LOCKED 2026-05-29): **Rust** for kernel-derived services (world/travel/tilemap, the DP-kernel consumers), **Go** for domain + meta services, **Python** for AI/LLM services, **TypeScript** for gateway/BFF + realtime transport. The authoritative service→language map is `contracts/language-rule.yaml`, enforced by `scripts/language-rule-lint.sh` (FAILs on mismatch, on a present service mapped `missing`, and on a present service with no row). See `docs/plans/2026-05-29-foundation-mega-task/I3_INVARIANT_AMENDMENT.md` §5.
 - Each microservice owns its own Postgres database
 - **No hardcoded secrets** — all secrets via env vars, services fail to start if missing
 - **No hardcoded model names** — model names resolved from provider-registry (user's registered config)
