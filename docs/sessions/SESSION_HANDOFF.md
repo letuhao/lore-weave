@@ -1,9 +1,48 @@
-# Session Handoff — Session 73 (cycles 73a-73f, ending 73f runtime-reload)
+# Session Handoff — Session 73 (cycles 73a-73h, ending 73h worker-ai metrics)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 73 — 6 cycles: 73a verify + 73b relation-only ship + 73c realized-F1 + 73d entity recovery NEGATIVE + 73e writer autocreate + 73f runtime reload).
-> **HEAD:** pending ship commits on top of cycle 73e shipped commits.
+> **Date:** 2026-05-30 (session 73 — 8 cycles: 73a verify + 73b relation-only ship + 73c realized-F1 + 73d entity recovery NEGATIVE + 73e writer autocreate + 73f runtime reload + 73f r3 fix + 73g r3 cleanup + 73h worker metrics infra).
+> **HEAD:** `d480a2fc` (cycle 73h).
 > **Branch:** `main`.
+
+## Session 73 summary — cycle 73h Prometheus metrics infra for worker-ai
+
+### Cycle 73h (L) — D-WORKER-AI-METRICS-INFRA
+
+Worker-ai now exposes `worker_ai_filter_reload_total{outcome}` on `:8226/metrics` (host) → `:8094` (container). Closes cycle 73f r3 M4 log-only stopgap.
+
+**What ships:**
+- `prometheus-client>=0.20` worker-ai dep
+- NEW `services/worker-ai/app/metrics.py` — dedicated CollectorRegistry + counter (4 outcomes: applied, failed, startup, startup_failed) + `start_metrics_server()` helper using built-in WSGI server (daemon thread, runs alongside asyncio)
+- `config.py` `metrics_port` setting (default 8094; set 0 to disable)
+- `main.py` starts metrics server at boot
+- `runner.py` bumps counter on hydrate (startup/startup_failed) + on_reload (applied/failed)
+- `docker-compose.yml` worker-ai ports `["8226:8094"]`
+
+**Tests:** 12/12 worker-ai cycle 73f+73h pass (+4 cycle 73h regression-locks: counter bumps on applied/failed/startup + no-op when port=0). KS 94/94 unchanged.
+
+### Cycle 73g (M) — D-CYCLE73F-r3-MEDLOW-CLEANUP
+
+Batch fold of 4 MED + 2 LOW findings from cycle 73f r3 /review-impl:
+
+- **M1** counter outcome=applied now ADDITIVE with failed (was mutually-exclusive, masked local-applied + redis-failed branch from dashboards). Matches cycle 73e M4 pattern.
+- **M3** KS subscriber task cancel block added in lifespan shutdown (was leaking redis client + pubsub connection on container shutdown).
+- **M4** worker-ai distinct structured log token `WORKER_FILTER_RELOAD` (later promoted to Prometheus counter in cycle 73h).
+- **L1** added KS hydrate function tests (2 regression-locks; previously hydrate was wired but untested).
+- **L2** added real-function mutation regression-lock for `set_precision_filter_config` (mock-only tests would have hidden a regression where the function early-returns without rebinding).
+- **L3+L4** endpoint docstring expanded with pubsub-message-loss + redis-restart documented limitations.
+
+**Tests:** 94/94 KS + 11/11 worker-ai pass after fold.
+
+### Cycle 73f r3 fix (L/FIX) — `/review-impl` round 3 catches 2 HIGH that survived rounds 1+2
+
+User invoked /review-impl r3 via slash command. Findings:
+
+- **H1** worker-ai missing startup hydrate (asymmetric with KS r2 H1 fold) → worker restart silently dropped ops-override. Added `hydrate_precision_filter_config_from_redis()` in worker-ai/app/runner.py + wired into main.py before asyncio.gather. 2 new regression-lock tests.
+- **H2** KS double-read of `_PRECISION_FILTER_CONFIG` (race window with concurrent pubsub) → AttributeError crash on `config.categories` access if reload swaps to None mid-call. Snapshot to local var at `_maybe_apply_precision_filter` entry. 1 new race-simulation regression-lock test.
+- 4 MED + 5 LOW deferred to cycle 73g (now closed).
+
+Lesson: r3 typically catches orphans from r1+r2 fixes — `feedback_review_impl_round_3_on_fix_delta` validated again.
 
 ## Session 73 summary — cycle 73f runtime filter reload (Redis-key + pubsub hybrid)
 
