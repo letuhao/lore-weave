@@ -398,8 +398,19 @@ def test_filter_reload_sets_config_from_body(client: TestClient):
     assert _counter_value("api", "applied") == pre_applied + 1
 
 
-def test_filter_reload_disable_true_sets_config_to_none(client: TestClient):
-    """disable=true → Redis DELETE + local cache None + 200."""
+def test_filter_reload_disable_true_reverts_to_env_config(client: TestClient):
+    """Cycle 74b: disable=true is a clear-the-override op — Redis DELETE +
+    local cache reverts to ENV config (NOT None) when a filter env is set,
+    matching startup-hydrate + pubsub semantics. Closes the cycle-73f
+    live-smoke finding (runtime set None while restart reloaded env)."""
+    from loreweave_extraction import PrecisionFilterConfig
+
+    env_config = PrecisionFilterConfig(
+        model_ref="env-filter-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
     mock_redis = MagicMock()
     mock_redis.delete = AsyncMock(return_value=1)
     mock_redis.publish = AsyncMock()
@@ -408,6 +419,44 @@ def test_filter_reload_disable_true_sets_config_to_none(client: TestClient):
     with patch(
         "app.routers.internal_admin.aioredis.from_url",
         return_value=mock_redis,
+    ), patch(
+        "app.extraction.pass2_orchestrator._load_precision_filter_config",
+        return_value=env_config,
+    ), patch(
+        "app.extraction.pass2_orchestrator.set_precision_filter_config",
+        side_effect=lambda cfg: cfg,  # echo input so endpoint can asdict() it
+    ) as mock_set_local:
+        resp = client.post(
+            "/internal/admin/precision-filter/reload",
+            headers=_INTERNAL_TOKEN_HEADER,
+            json={"disable": True},
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Reverted to env config, NOT None.
+    assert body["knowledge_service_config"]["model_ref"] == "env-filter-uuid"
+    assert body["knowledge_service_config"]["categories"] == ["relation"]
+    assert body["redis_publish_status"] == "published"
+    mock_redis.delete.assert_called_once()
+    mock_set_local.assert_called_once_with(env_config)
+
+
+def test_filter_reload_disable_true_none_when_no_filter_env(client: TestClient):
+    """Cycle 74b: disable=true with NO filter env set → env config is itself
+    None → local cache None + response config null. The genuinely-no-filter
+    deployment still ends disabled (the env-revert rule is uniform)."""
+    mock_redis = MagicMock()
+    mock_redis.delete = AsyncMock(return_value=1)
+    mock_redis.publish = AsyncMock()
+    mock_redis.aclose = AsyncMock()
+
+    with patch(
+        "app.routers.internal_admin.aioredis.from_url",
+        return_value=mock_redis,
+    ), patch(
+        "app.extraction.pass2_orchestrator._load_precision_filter_config",
+        return_value=None,
     ), patch(
         "app.extraction.pass2_orchestrator.set_precision_filter_config",
         side_effect=lambda cfg: cfg,  # echo input so endpoint can asdict() it
@@ -423,7 +472,6 @@ def test_filter_reload_disable_true_sets_config_to_none(client: TestClient):
     assert body["knowledge_service_config"] is None
     assert body["redis_publish_status"] == "published"
     mock_redis.delete.assert_called_once()
-    # Local cache set to None.
     mock_set_local.assert_called_once_with(None)
 
 

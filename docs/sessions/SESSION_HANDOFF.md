@@ -1,9 +1,25 @@
-# Session Handoff — Session 74 (cycle 74a — c73e writer-autocreate F1 eval, NEUTRAL)
+# Session Handoff — Session 74 (74a F1-eval NEUTRAL · 74a-smoke 73f live · 74b disable-semantics fix)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 74 — 1 cycle: 74a F1 eval of cycle-73e writer-autocreate-on; result F1-NEUTRAL, keep default OFF).
-> **HEAD:** `ab4777ec` (session 73 close) + cycle 74a (this session).
+> **Date:** 2026-05-30 (session 74 — 74a F1 eval (NEUTRAL) + 74a-smoke (73f live smoke, PASS) + 74b (disable-semantics consistency fix, found by the smoke)).
+> **HEAD:** `fc96eebe` (74a) + 74b commit (this session).
 > **Branch:** `main`.
+
+## Session 74 summary — cycle 74a-smoke + 74b: 73f live smoke + disable-semantics fix (D-CYCLE73F-LIVE-SMOKE)
+
+**Result: 73f reload happy-path PASS (cross-service) + found & fixed a MED disable-semantics divergence (74b).**
+
+**Setup gotcha:** deployed images PREDATED 73f/73h — both KS + worker-ai images were built ~2-5h before the 73f/73h commits (KS reload endpoint 404'd live; worker-ai had no `:8226` port). `compose up` doesn't rebuild. Had to `compose build knowledge-service worker-ai && up -d` first. (Lesson: `feedback_verify_deployed_image_matches_source` — caught before chasing a phantom bug.)
+
+**73f happy-path smoke (PASS, cross-service):** `POST :8216/internal/admin/precision-filter/reload` (auth `X-Internal-Token: dev_internal_token`) with a custom config → 200 `redis_publish_status=published` + echoed config → Redis key `loreweave:precision-filter-config` written with `schema_version:1` envelope → worker-ai logged `WORKER_FILTER_RELOAD outcome=applied active=True` sub-ms later → `worker_ai_filter_reload_total{outcome=applied}` bumped → 73h `:8226/metrics` reachable (`startup=1`). Empty body → 422; auth works. **Note:** worker pubsub subscriber connects ~2s after boot (SDK resilient-backoff); POSTing within that window misses the signal (documented fire-and-forget limitation #1) — re-POST converges.
+
+**74b fix — `disable=true` semantics were inconsistent (MED, found by the smoke):** the runtime pubsub path did `set(get_filter_config())` unconditionally → key-absent (after a `disable` DELETE) set the cache to **None (filter OFF)**, while startup hydrate did `if cached is not None: set(...)` → key-absent **kept env config (filter ON)**. So a runtime disable silently reverted to env-config on the NEXT restart — a cross-path divergence unit tests couldn't catch (they mock `get_filter_config` + assert `set(None)`). **Fix (user chose consistency-fix):** runtime now matches startup — on key-absent, reload `_load_precision_filter_config()` (env) instead of None, in all 3 paths: KS pubsub `_on_reload` ([pass2_orchestrator.py](../../services/knowledge-service/app/extraction/pass2_orchestrator.py)), worker pubsub `_on_reload` ([runner.py](../../services/worker-ai/app/runner.py)), KS endpoint local-apply ([internal_admin.py](../../services/knowledge-service/app/routers/internal_admin.py)) + docstrings. `disable=true` is now a **clear-the-override** op (reverts to env-config), NOT a force-off. Trade-off (accepted): can't fully disable the filter at runtime when env sets one; `_load` returns None when no filter env is set so a no-filter deployment still lands disabled.
+
+**Re-smoke after 74b (PASS):** `POST custom` → worker `active=True model_ref=custom-uuid-2`; `POST disable` → worker `active=True model_ref=019e5650…` (env config, **NOT** active=False/None) + KS response returned env config not null. Counter `applied=2`, key absent.
+
+**Tests:** KS `test_internal_admin.py` (50) + `test_pass2_orchestrator.py` — replaced the old `disable→None` lock with `disable→env-config` + added env-revert pubsub test; worker `test_runner.py` (59) — added env-revert consume test. All green on host.
+
+**D-CYCLE73F-LIVE-SMOKE → CLOSED** (smoke ran + cross-service verified). 74b folded the finding inline.
 
 ## Session 74 summary — cycle 74a: c73e writer-autocreate realized-F1 eval (D-PASS2-WRITER-AUTOCREATE-F1-EVAL)
 

@@ -1046,6 +1046,53 @@ async def test_hydrate_precision_filter_config_no_op_when_redis_empty(monkeypatc
         orch.set_precision_filter_config(saved)
 
 
+@pytest.mark.asyncio
+async def test_consume_filter_reload_reverts_to_env_when_key_absent(monkeypatch):
+    """Cycle 74b: pubsub re-read with the key absent (e.g. after a
+    disable=true DELETE) reverts to ENV config, NOT None — the runtime
+    path now matches startup hydrate. Closes the cycle-73f live-smoke
+    cross-path divergence (runtime set None while a restart reloaded env)."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.extraction.pass2_orchestrator as orch
+
+    env_config = PrecisionFilterConfig(
+        model_ref="env-revert-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        await on_reload()  # simulate one pubsub signal
+        return
+
+    async def fake_get_filter_config(redis_client):
+        return None  # key absent
+
+    saved = orch._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    monkeypatch.setattr(orch, "_load_precision_filter_config", lambda: env_config)
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await orch.consume_filter_reload_signal("redis://fake")
+        # Reverted to env config, not None.
+        assert orch._PRECISION_FILTER_CONFIG is env_config
+    finally:
+        orch.set_precision_filter_config(saved)
+
+
 def test_set_precision_filter_config_real_function_mutates_module_binding():
     """Cycle 73g L2 fold (closes r3 L2): mock-only tests verify
     mock_set_local.assert_called_once_with(None) but don't prove the

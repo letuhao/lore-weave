@@ -1802,6 +1802,55 @@ async def test_consume_filter_reload_signal_reads_redis_and_swaps_cache(monkeypa
         runner_module.set_precision_filter_config(saved)
 
 
+@pytest.mark.asyncio
+async def test_consume_filter_reload_reverts_to_env_when_key_absent(monkeypatch):
+    """Cycle 74b: pubsub re-read with the key absent (e.g. after a
+    disable=true DELETE) reverts to ENV config, NOT None — the runtime path
+    now matches startup hydrate. Closes the cycle-73f live-smoke cross-path
+    divergence (runtime set None while a restart reloaded env config)."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    env_config = PrecisionFilterConfig(
+        model_ref="env-revert-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        await on_reload()
+        return
+
+    async def fake_get_filter_config(redis_client):
+        return None  # key absent
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    monkeypatch.setattr(
+        runner_module, "_load_precision_filter_config", lambda: env_config
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.consume_filter_reload_signal("redis://fake")
+        # Reverted to env config, not None.
+        assert runner_module._PRECISION_FILTER_CONFIG is env_config
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
 # Cycle 73f r3 H1 fold — worker startup hydrate (symmetric with KS).
 
 

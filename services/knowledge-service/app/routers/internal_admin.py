@@ -209,7 +209,14 @@ class FilterReloadRequest(BaseModel):
     )
     max_items_per_batch: int | None = Field(default=None, ge=1, le=50)
     transient_retry_budget: int | None = Field(default=None, ge=0, le=10)
-    disable: bool = False
+    disable: bool = Field(
+        default=False,
+        description=(
+            "Clear the runtime override: DELETE the Redis key and revert "
+            "to env-config (cycle 74b — NOT a force-off; if filter env is "
+            "set, reverts to that). Mutually exclusive with model_ref."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_disable_xor_model_ref(self) -> "FilterReloadRequest":
@@ -272,7 +279,15 @@ def _build_filter_config_from_request(
         "(KS orchestrator + worker-ai) re-read the key and atomically swap "
         "their module-level cache.\n\n"
         "**Persistence:** the Redis key persists across container restart. "
-        "Send `{disable: true}` to DELETE the key + revert to env-config.\n\n"
+        "Send `{disable: true}` to DELETE the key and revert to env-config. "
+        "Cycle 74b: `disable` is a *clear-the-override* op, NOT a force-off — "
+        "subscribers (and this endpoint's local apply) re-read the absent key "
+        "and reload env config at runtime, identical to startup hydrate. If "
+        "the deployment sets no filter env, that env config is itself None "
+        "(filter off); if it sets one (the compose default is `relation`/"
+        "`drop`), disable reverts to THAT, not to off. This closed the "
+        "cycle-73f live-smoke finding where the runtime path set None while "
+        "a restart reloaded env config — a silent cross-path divergence.\n\n"
         "**Failure modes:** if Redis SET succeeds but PUBLISH fails, the "
         "response returns `redis_publish_status='failed'` (200, not 502, "
         "since KS-side cache is still updated). Ops MUST check the status "
@@ -294,7 +309,10 @@ def _build_filter_config_from_request(
 async def reload_precision_filter(
     body: FilterReloadRequest,
 ) -> FilterReloadResponse:
-    from app.extraction.pass2_orchestrator import set_precision_filter_config
+    from app.extraction.pass2_orchestrator import (
+        _load_precision_filter_config,
+        set_precision_filter_config,
+    )
 
     # 1. Build new config from request body (None if disable=true).
     try:
@@ -334,6 +352,14 @@ async def reload_precision_filter(
 
     # 4. Apply locally even if Redis publish failed — KS still gets the
     #    new config; worker-ai may drift until next manual reload.
+    #    Cycle 74b — on disable (new_config is None), revert to env config
+    #    instead of None so the runtime cache matches startup-hydrate +
+    #    pubsub re-read semantics: `disable=true` clears the override and
+    #    reverts to env-config (NOT "force-off until restart"). `_load`
+    #    returns None when no filter env is set, so a no-filter deployment
+    #    still lands at None.
+    if new_config is None:
+        new_config = _load_precision_filter_config()
     effective = set_precision_filter_config(new_config)
 
     # 5. Bookkeeping per /review-impl r3 M1 fold: counter outcomes are

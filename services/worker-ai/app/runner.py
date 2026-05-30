@@ -178,6 +178,16 @@ async def consume_filter_reload_signal(redis_url: str) -> None:
         from app.metrics import worker_ai_filter_reload_total
         try:
             new_config = await get_filter_config(redis_client)
+            if new_config is None:
+                # Cycle 74b — key absent (e.g. after a disable=true DELETE)
+                # reverts to env config, matching startup-hydrate semantics
+                # (hydrate keeps env config when the key is absent). Without
+                # this, the runtime path set None (filter OFF) while a restart
+                # reloads env config (filter ON) — a silent cross-path
+                # divergence surfaced by the cycle-73f live smoke. `_load`
+                # itself returns None when no filter env is set, so the
+                # genuinely-no-filter deployment still ends at None.
+                new_config = _load_precision_filter_config()
             set_precision_filter_config(new_config)
             worker_ai_filter_reload_total.labels(outcome="applied").inc()
             logger.info(
