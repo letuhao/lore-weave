@@ -176,18 +176,19 @@ jobs:
       - name: Install Playwright chromium
         run: pnpm --filter frontend-game exec playwright install --with-deps chromium
 
-      - name: Run e2e backend smoke (chromium only — smoke.spec.ts)
-        # Filter to `smoke.spec.ts` only. The other backend-aware specs
-        # (zone-role / decoration-family visual regression) bake
-        # per-platform pixel snapshots — Windows-baked PNGs won't match
-        # Linux-rendered output, so those goldens need a separate
-        # cross-platform regen task (likely a manual workflow_dispatch
-        # job that bakes Linux snapshots OR moves visual regression to
-        # a docker image with a pinned font stack). The AC-DECO-8 +
-        # AC-BIOME-8 assertions in smoke.spec.ts use count/text
-        # assertions that are pixel-independent and gate the BE wire
-        # regression class this deferral was created for.
-        run: pnpm --filter frontend-game exec playwright test smoke --project=chromium
+      - name: Run e2e backend regression (chromium — smoke + visual goldens)
+        # Runs ALL backend-aware Playwright specs against chromium —
+        # smoke.spec.ts AC-DECO-8 + AC-BIOME-8 (count/text assertions,
+        # pixel-independent) AND the zone-role / decoration-family
+        # visual regression goldens (chromium-linux PNG comparisons).
+        #
+        # Linux PNG goldens are baked via the manual `Bake Linux visual
+        # snapshots` workflow (.github/workflows/visual-snapshots-bake.yml)
+        # — see docs/runbooks/visual-snapshots.md for the bake flow.
+        # The `smoke` filter that previously scoped this step was lifted
+        # in commit "ci(visual-snapshots): activate visual regression in
+        # PR CI" once the first Linux bake landed PNGs in the repo.
+        run: pnpm --filter frontend-game exec playwright test --project=chromium
 
       - name: Stop tilemap-service
         if: always()
