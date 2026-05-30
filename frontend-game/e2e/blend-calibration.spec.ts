@@ -26,6 +26,16 @@ test('Stage-1 Blur visibly changes foundation render (AC-BLEND-2, chunk A LOW-2 
       'Run cargo run --bin tilemap-service -- serve to activate this calibration test.',
   );
 
+  // Capture console messages so we can verify which blend stage
+  // actually ran in production. Chunk B targets Stage 2; if the
+  // custom shader silently falls back to Stage 1, we want to see it.
+  const consoleEvents: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'info' || msg.type() === 'warning') {
+      consoleEvents.push(`[${msg.type()}] ${msg.text()}`);
+    }
+  });
+
   await page.goto('/play');
   // Wait for Phaser canvas to mount AND HUD to render (signals
   // foundation tilemap has been built).
@@ -82,4 +92,50 @@ test('Stage-1 Blur visibly changes foundation render (AC-BLEND-2, chunk A LOW-2 
   // Toggle back on for cleanup.
   await blendCheckbox.evaluate((el) => (el as HTMLInputElement).click());
   await expect(blendCheckbox).toBeChecked();
+
+  // Chunk B addition — diagnostic: the V2 helper logs a console.info
+  // when Stage-2 falls back to Stage-1 ("Stage-2 cross-tile blend
+  // unavailable; using Stage-1 Blur fallback"). If we see it, the
+  // custom shader didn't load; the test STILL passes (Stage 1 also
+  // produces visible blur), but we surface the fallback so anyone
+  // reading test output knows which stage was active.
+  const fellBackToStage1 = consoleEvents.some((e) =>
+    e.includes('Stage-2 cross-tile blend unavailable'),
+  );
+  const failedEntirely = consoleEvents.some((e) =>
+    e.includes('Blend filter pipeline unavailable'),
+  );
+  // Attach for visibility in test reports.
+  test.info().annotations.push({
+    type: 'blend-stage',
+    description: failedEntirely
+      ? 'BOTH STAGES FAILED — V0 hard edges'
+      : fellBackToStage1
+        ? 'STAGE-1 FALLBACK (Stage-2 shader did not compile/register)'
+        : 'STAGE-2 ACTIVE (custom cross-tile shader)',
+  });
+  // Pipeline must NOT have failed entirely — that would mean both
+  // stages broke. (V0 hard edges only.)
+  expect(
+    failedEntirely,
+    `Both blend stages failed — V0 hard edges only. Console events: ${consoleEvents.join('; ')}`,
+  ).toBe(false);
+
+  // MED-1 fix from chunk-B /review-impl: pin STAGE-2 ACTIVE as the
+  // expected state for chromium CI. Without this, a Stage-2
+  // regression (broken GLSL, Phaser API drift) would silently
+  // degrade to Stage-1 Blur and the test would still pass green
+  // because Stage-1 also produces a pixel-different render. The
+  // annotation above surfaces the actual stage but only in JSON
+  // reporter output, which most CI dashboards don't show.
+  //
+  // If a future browser environment legitimately needs Stage-1
+  // fallback (older driver, etc.), gate this assertion via
+  // test.skip() rather than relaxing it everywhere.
+  expect(
+    fellBackToStage1,
+    `Stage-2 custom shader silently fell back to Stage-1 Blur. ` +
+      `This is a regression unless Stage-2 was intentionally broken. ` +
+      `Console events: ${consoleEvents.join('; ')}`,
+  ).toBe(false);
 });

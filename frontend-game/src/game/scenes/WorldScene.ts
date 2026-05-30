@@ -4,7 +4,7 @@ import { TILE_PX } from '../config/constants';
 import { Player } from '../entities/Player';
 import { InputSystem } from '../systems/input-system';
 import { TERRAIN_TILESET_KEY } from './PreloaderScene';
-import { applyBlendFilter } from '../render/foundation-blend';
+import { applyBlendFilterV2 } from '../render/foundation-blend';
 import { buildObjectOverlay, type ObjectOverlayHandle } from '../render/object-overlay';
 import { buildOverlayRt, type OverlayRtHandle } from '../render/overlay-rt';
 import {
@@ -145,18 +145,26 @@ export class WorldScene extends Phaser.Scene {
   private applyBlendFilter(): void {
     const enabled = useViewerStore.getState().blendEnabled;
     // Phaser types declare `filters: FiltersInternalExternal | null` —
-    // narrower than our duck-typed `BlendFilterTarget`. Cast via
-    // unknown because we only call the optional surface members the
-    // helper actually invokes (enableFilters / filters.external.*).
+    // narrower than our duck-typed surface. Cast via unknown because
+    // we only call the optional members the helper actually invokes.
     const target = this.foundationDisplay as unknown as Parameters<
-      typeof applyBlendFilter
+      typeof applyBlendFilterV2
     >[0];
-    const result = applyBlendFilter(target, enabled);
+    // Try Stage 2 custom shader first. The V2 helper internally falls
+    // back to Stage 1 Blur on shader-register / controller-add failure,
+    // and to V0 hard edges if Stage 1 also fails.
+    const result = applyBlendFilterV2(target, enabled, this);
     if (!result.ok) {
       // eslint-disable-next-line no-console
-      console.warn('Stage-1 blend filter unavailable; rendering V0 hard edges', result.error);
+      console.warn('Blend filter pipeline unavailable; rendering V0 hard edges', result.error);
+      return;
+    }
+    if (result.stage === 1) {
+      // eslint-disable-next-line no-console
+      console.info('Stage-2 cross-tile blend unavailable; using Stage-1 Blur fallback');
     }
   }
+
 
   private renderTilemap(view: TilemapView): void {
     const w = view.grid_size.width;
