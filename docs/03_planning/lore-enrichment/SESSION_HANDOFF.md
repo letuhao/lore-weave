@@ -1,62 +1,59 @@
 # Lore-Enrichment Track — Session Handoff
 
-> **Last updated:** 2026-05-30 · **Branch:** `lore-enrichment/foundation` (off `origin/main`) · **HEAD:** 175fc811
+> **Last updated:** 2026-05-31 · **Branch:** `lore-enrichment/foundation` (off `origin/main`) · **HEAD:** `b6283a21` · **PUSHED to origin** (no PR yet).
 > Isolated from `mmo-rpg/foundation-mega-task` (another agent, another folder — do not touch).
+> **STATUS: RAID COMPLETE — 19/19 cycles (C0–C18) DONE, 0 escalations, ~49 commits. P1 demo validated live.**
 
 ## What this track is
-A new `lore-enrichment-service` that GENERATES the missing "off-page" canon a novel leaves implicit, so a book can become a game world. First demo corpus: **封神演义 (Fengshen Yanyi)** — culturally-dense, under-described (assumes reader knows Chinese history + 山海经). Four techniques: template scaffolding, external cultural retrieval, canon-grounded fabrication, real history/news re-cook.
+A `lore-enrichment-service` (Python/FastAPI) that GENERATES the missing "off-page" canon a novel leaves implicit, so a book can become a game world. Demo corpus: **封神演义**. Four techniques: template scaffolding (P1), cultural retrieval (P1), canon-grounded fabrication (P2), real history/news re-cook (P3) — phased behind a cost-cap + eval gate. **H0 core invariant: enriched ≠ canon** (quarantine + author-promote-only + permanent origin marker).
 
-## Phase status (bottom-up: CLARIFY → DESIGN → PLAN before RAID)
-| Phase | Status |
-|---|---|
-| RAID tooling bootstrap | ✅ `71e6a93b` |
-| Market research (3 deep-research passes) | ✅ `905df5ba`, `ff2aa392` — white space confirmed |
-| REVIEW round-1 decisions | ✅ `76974490` |
-| Bottom-up CLARIFY (code-verified, 6 Qs locked) | ✅ `0106dc1a`, `d90a1e14` |
-| DESIGN v2 (corrected boundary) | ✅ `175fc811` |
-| PLAN (component designs P1–P7) | ✅ [PLAN.md](PLAN.md) |
-| RAID decomposition + artifacts | ✅ `docs/plans/2026-05-30-lore-enrichment/` + `.raid/active-task.yaml` — **`task_config.py validate` → exit 0 (12 keys)** |
-| RAID READY TO RUN | ✅ — next action is `/raid` (after PRE_FLIGHT manual sign-off) |
+## RAID run summary (C0–C18, all DONE on `lore-enrichment/foundation`)
+| Cycle | Deliverable | Independent-adversary finding (Coordinator-run) → status |
+|---|---|---|
+| C0 | service skeleton (full default+AMAW) | — |
+| C1 | KG-read clients + port + H1/H2/M4 verifies | — |
+| C2 | data model + H0 (DB CHECKs + promote trigger) | — |
+| C3 | OpenAPI contract + stubs + author-promote | — |
+| C4 | **K14 glossary→KG event pipeline** | WARN manual-name propagation → DEFERRED-043 |
+| C5 | **D4-03 wiki-from-KG** | (053 surfaced later, fixed) |
+| C6 | gap-MODEL + LOCATION dims + Fengshen fixtures | — |
+| C7 | gap-detection engine | — |
+| C8 | strategy-core (flag-gated registry + cost guardrail + state machine) | — |
+| C9 | template strategy | — |
+| C10 | retrieval strategy (real bge-m3) | — |
+| C11 | schema-gov gen + H0 tagging | 2 WARN confidence/cjk fidelity → 045/046/047 |
+| C12 | canon-verify + injection-defense | 2 false-greens (contradiction fail-open, anachronism bypass) → **FIXED** |
+| C13 | review-gate + H0 write-back/promote/retract | self-fixed A1; adversary 2 H0 leaks (makeup-as-name, minted-anchor) → **FIXED** |
+| C14 | job orchestration (**DEMO**) | **cost-cap inert** (false-green) + unsafe resume → **FIXED**; persistence quirk (see agenda) |
+| C15 | eval-gate (judge-ensemble) | 3 forward WARN (enforcement/freshness/diversity) → 054(closed e2e)/055/056/057 |
+| C16 | fabrication (P2, gate-enforced) | gate not on runner path (false-green) → **FIXED e2e (054)** |
+| C17 | re-cook (P3, gate + licensing) | licensing ingest default-allow + un-neutralized excerpt → **FIXED** + 058 |
+| C18 | productionize (observability + /ready) | clears DEFERRED-042 |
 
-## Key docs (read in this order)
-1. [CLARIFY_GROUND_TRUTH.md](CLARIFY_GROUND_TRUTH.md) — code-verified boundary + 6 locked answers. **Most important.**
-2. [SERVICE_DESIGN.md](SERVICE_DESIGN.md) — DESIGN v2 (8-step pipeline, 4 techniques phased by cost, principles).
-3. [RESEARCH_LANDSCAPE.md](RESEARCH_LANDSCAPE.md) — 3-pass competitive/academic scan; white space + prior art (Graphify Novel, arXiv:2505.24803).
+**Demo validated live (real Qwen 3.6):** 4 locations (玉虛宮/碧遊宮/蓬萊/陳塘關) → enriched Chinese → review → promote→canon, **origin marker retained for life**. Eval composite 96.88 → P2/P3 gate cleared. Honest no-fabrication behaviour (ungrounded dims say "检索语料未及…").
 
-## Locked decisions (do not relitigate without cause)
-- Separate Python/FastAPI service; **consumes** knowledge-service KG (real, not planned) — does NOT re-extract.
-- Write-back canonical results via glossary `extract-entities` + wiki → `glossary_sync` propagates to Neo4j (single authoritative path).
-- Scoping = **per-user/project** (matches knowledge-service).
-- All 4 techniques implemented as pluggable strategies; **rollout phased by effectiveness-per-cost** (P1 template+retrieval → P2 fabrication → P3 news-recook) behind cost-cap + quality gate.
-- Own proposal store; **mirror** `pending_facts` confirm/reject + injection-defense + confidence/quarantine.
-- Keep game-entity schema **isolated** from world-service/game-server (mmo-rpg).
+## Key docs (read for the review)
+1. [CLARIFY_GROUND_TRUTH.md](CLARIFY_GROUND_TRUTH.md) + [OPEN_QUESTIONS_LOCKED.md](../../plans/2026-05-30-lore-enrichment/OPEN_QUESTIONS_LOCKED.md) — locked decisions (review basis).
+2. [CYCLE_DECOMPOSITION.md](../../plans/2026-05-30-lore-enrichment/CYCLE_DECOMPOSITION.md) — what each cycle was supposed to ship (compare vs actual diff).
+3. [docs/raid/CYCLE_LOG.md](../../raid/CYCLE_LOG.md) — per-cycle commit + verify evidence. [docs/audit/AUDIT_LOG.jsonl](../../audit/AUDIT_LOG.jsonl) — every phase + adversary verdict. `docs/audit/findings-*.md` — independent-adversary findings.
+4. [DEFERRED.md](../../deferred/DEFERRED.md) — forward backlog (042–058) to triage.
 
-## Next action — RUN RAID (CLARIFY+DESIGN+PLAN+REVIEW done)
-PLAN component designs + the adversarial [DESIGN_PLAN_REVIEW](DESIGN_PLAN_REVIEW.md) (findings resolved). RAID decomposed into **19 cycles C0–C18** ([CYCLE_DECOMPOSITION](../../plans/2026-05-30-lore-enrichment/CYCLE_DECOMPOSITION.md)); `.raid/active-task.yaml` validates (cycle_count=19). Size **XXL**.
+## Locked decisions (the review baseline — relitigate only with cause)
+Separate Python/FastAPI service; consumes knowledge-service KG (not re-extract). Write-back via glossary SSOT (extract-entities + wiki/canon-content) → `glossary_sync` → Neo4j (Q2). Per-user/project scoping (Q3). 4 techniques phased P1→P2→P3 behind cost-cap + eval gate (Q-R2). Mirror `pending_facts`. Schema isolated from mmo-rpg. Output Chinese; models via provider-registry (no hardcoded names). **H0** (enriched≠canon).
 
-**Two scope/design decisions baked in this session:**
-- **H0 core invariant:** enriched lore ≠ canon — enters as `source_type='enriched'`+quarantine, author-promote-only, permanent origin marker (C2/C11/C13).
-- **Option B:** pulled in long-drifting platform deferrals as cycles — **K14 event pipeline** (C4, fixes H1 sync) + **D4-03 wiki-from-KG** (C5, fixes H3 renderer). Conflict-checked safe.
+---
 
-Before `/raid`:
-1. Work the [PRE_FLIGHT_CHECKLIST](../../plans/2026-05-30-lore-enrichment/PRE_FLIGHT_CHECKLIST.md) (port 8093/8221, DB, dependency stack-up, secrets, Fengshen test project seeded, pre-commit-hook decision).
-2. Invoke `/raid` (or `/raid 0` to start at bootstrap C0). RAID reads `.raid/active-task.yaml`.
-3. Demo milestone = after **C14** (P1 end-to-end: Fengshen → gap-detect → template+retrieval → review → author-promote → write-back + K14 auto-sync + D4-03 wiki).
+## ⏭️ NEXT SESSION — HUMAN-IN-LOOP QC REVIEW of this run (default v2.2, NOT autonomous /raid)
+The run was executed autonomously (Coordinator + single-agent cycle-runners + Coordinator-run independent adversaries). Next session = **human controls the pace**; review for quality, decisions, missing, defer, drift. Agenda:
 
-## Reusable infra discovered (adopt, don't reinvent)
-confidence/quarantine/pending_validation · pending_facts confirm-reject + injection-defense · extraction job state machine (estimate/start/pause/resume/cancel) · per-project embedding-model · Neo4j graph-stats (gap-detect input) · CJK-aware splitting (`loreweave_extraction`) · Redis Streams event pipeline · chat-service skeleton + `client/` provider-adapter (no direct SDK, no hardcoded model).
+1. **Quality** — per cycle, diff vs the CYCLE_DECOMPOSITION brief: did it ship the scope? any stub/placeholder-only deliverable? Spot-check riskiest: C13 (H0 write-back), C16/C17 (gated techniques), C15 (gate).
+2. **Decisions** — sound? Notably: (a) Coordinator-runs-independent-adversary model (sub-agents can't nest); (b) C13 A1 + WARN fixes (makeup-as-name, minted-anchor); (c) **053 Q2 glossary-SSOT split** (glossary `short_description` summary + KG per-dimension facts — right canonical model?); (d) C14 opaque cost units (embed=1/gen=4/fab=8); (e) **κ informational, not a hard gate** (056).
+3. **Missing** — known gaps: **044** (glossary `KNOWLEDGE_SERVICE_URL` NOT wired in compose → wiki KG-sections only with override); **C14 demo** persisted only a template scaffold in a stray project until a Coordinator re-run (in-cycle promote not durably reflected — verify the API/runner persists e2e); is fabrication/recook reachable from the API now the runner is factory-routed (C16-fix)? Shang–Zhou history corpus not downloaded.
+4. **Defer** — triage open DEFERRED 044/045/046/047/050/051/052/055/056/057/058 (do-now vs keep vs won't-fix). Confirm 042/043/048/049/053/054 genuinely resolved.
+5. **Drift** — scope drift (anything outside the locked plan / H0 / isolation?), quality drift (did the bar slip late vs early?), policy drift (confirm NO human-gate crept back into the RAID flow; `raid.md` generic untouched + still untracked), and the **"built-but-not-wired false-green" pattern** (ContextHub lesson `e16b6f02`): audit ALL load-bearing controls (cost-cap, eval gate, licensing, H0 chokepoint) are actually on the PRODUCTION path, not just unit-tested.
+6. **Stack-health** — live stack had a stale glossary image + wedged KG consumer (both fixed in-run, `5e902190`); re-confirm a clean `docker compose up --build` boots healthy + the C4 event pipeline propagates end-to-end.
 
-## Current Active Work — DEFERRED-053 fix (promote → glossary SSOT content-sync, Q2) [2026-05-30, cold-start]
-**Closed 053 the Q2 way (glossary-first, NOT KG-authoritative).** Root cause: promote step 5 called `write_entity_through_glossary` → `extract-entities`, which can't write `short_description` (it is a `glossary_entities` COLUMN, not an EAV `attribute_definition`), so the canonical content stayed NULL while the enriched content lived only in Neo4j facts.
+**Tools:** `/review-impl` (deep adversarial) on C13/C15/C16/C17; or open a PR then `/code-review ultra <PR#>`. Do NOT auto-`/raid` — the run is done.
 
-Fix (files touched, all additive):
-- `services/glossary-service/internal/api/canon_content_handler.go` (NEW) + route in `server.go`: `POST /internal/books/{book_id}/entities/{entity_id}/canon-content` — service-token-gated; sets `short_description` (≤500 runes, trims, sticky `short_description_auto=false`), book-scoped 404 guard, emits `glossary.entity_updated` → `glossary_sync` → Neo4j (Q2 path). `canon_content_test.go` (NEW): 5 unit + 2 DB-integration tests.
-- `services/lore-enrichment-service/app/clients/writeback.py`: NEW `set_glossary_canon_content()` port (injection-neutralized, rune-capped); corrected `write_entity_through_glossary` docstring (anchor = identity-only).
-- `services/lore-enrichment-service/app/services/writeback.py`: promote step 5 now calls `set_glossary_canon_content(entity_id, content)` instead of the no-op extract-entities; pre-promote write-back unchanged (identity-only / quarantine).
-- `tests/test_review_gate.py`: `FakePorts.set_glossary_canon_content` recorder + assertions (content reaches canon ONLY on promote; never pre-promote/idempotent).
-
-H0 preserved (all 6, re-tested): quarantine pre-promote · `_anchor_name` never makeup · minted-anchor born marked · permanent origin marker · author-only · quarantine distinguishable. `knowledge-service/internal_enrichment.py` UNCHANGED (KG facts path intact; complementary to the glossary `short_description` summary, both end `source_type='glossary'`).
-
-Tests: glossary `go test ./...` green; lore-enrichment 330 pass + 22 skip; ruff clean. **LIVE cross-service smoke:** fresh location entity `short_description` NULL pre → POST canon-content → POPULATED + `auto=false` + `glossary.entity_updated`(op=updated,src=glossary) outbox → Neo4j `Entity.short_description` set, `source_type='glossary'`, conf=1.0. Test entity cleaned up after.
-
-053 moved to DEFERRED "Recently cleared".
+## Reusable infra (adopt, don't reinvent)
+confidence/quarantine/pending_validation · pending_facts confirm-reject + injection-defense · job state machine · per-project embedding-model · Neo4j graph-stats · CJK-aware splitting · Redis Streams (outbox→relay→consumer; consumer redis read-timeout bug fixed `5e902190`) · chat/knowledge skeleton + `loreweave_obs` (OTEL) · judge-ensemble (`tests/quality/`).
