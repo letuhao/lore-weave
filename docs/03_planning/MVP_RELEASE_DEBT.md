@@ -45,7 +45,8 @@ Legend — **State**: `SHIPPED` (done, just needs sign-off) · `PARTIAL` (built 
 
 | ID | Item | State | Evidence | Notes |
 |---|---|---|---|---|
-| WA-1 | In-editor AI assist ("AI Chat" panel + "Classic/AI" editor mode) | STUB | `pages/ChapterEditorPage.tsx:698-705` — AI Chat tab disabled "Coming soon". Live 2026-05-30: toggling editor mode **Classic↔AI changes nothing visible** (no AI affordance appears). | Dead surface in product UI. The whole in-editor AI layer is hollow. |
+| WA-1a | "Classic/AI" editor mode toggle | ✅ WORKS (my walkthrough misread) | `hooks/useEditorMode.ts` + `TiptapEditor` — mode drives mediaGuard (classic = text-only, media blocks locked, minimal slash menu; AI = full blocks + media + AI prompts). Designed in `design-drafts/screen-editor-modes.html`. | NOT a dead control — earlier "changes nothing" note was wrong (the diff is media/slash capability, not the toolbar). |
+| WA-1b | In-editor "AI Chat" assistant panel | **MISSING** (designed, not built) | `ChapterEditorPage.tsx` AI Chat tab disabled "Coming soon". Designed in `design-drafts/screen-editor-workbench.html` / `screen-editor-splitview.html`. | chat-service exists → this is wiring an existing capability into the editor panel, not net-new backend. |
 | WA-2 | Standalone chat (`/chat`) | SHIPPED | `pages/ChatPage.tsx`, `services/chat-service/`. Live: conversation list + search render; existing convo from ~33d ago. | Works, but NOT integrated into the writing/editor flow. (Last used ~late-April — matches the pivot.) |
 | WA-3 | Grammar checking | LIKELY-OK (env) | `components/editor/GrammarPlugin.ts` wired; LanguageTool in compose. Live 500 root-caused: the `languagetool` container **was not running** in the smoke (not started); product code is fine. | NOT product debt. Optional: add graceful-degrade/health surface so a missing LT service fails quietly instead of console-500 spam. |
 | WA-4 | Continuation / assisted creation (roadmap Phase 4) | NOT-BUILT | No feature folder; roadmap §Phase 4 | Large epic — decision needed whether in MVP scope |
@@ -54,9 +55,11 @@ Legend — **State**: `SHIPPED` (done, just needs sign-off) · `PARTIAL` (built 
 
 | ID | Item | State | Evidence | Notes |
 |---|---|---|---|---|
-| UI-1 | Notifications center page | STUB | `App.tsx:136` — `PlaceholderPage` "coming in P2-09" | Backend `notification-service` + `NotificationBell` exist; only the center page is missing |
-| UI-2 | Profile tabs: Wiki, Reviews | STUB | `pages/ProfilePage.tsx:172-173` — `<StubTab>` | |
-| UI-3 | Reader: auto-load next chapter, auto-scroll TTS | STUB | `components/reader/ThemeCustomizer.tsx:157-161` — "coming soon", disabled | TTS overlaps with Voice Pipeline (see OPS-2) |
+| UI-1 | Notifications center page | **MISSING** (backend-ready) | `App.tsx:136` `PlaceholderPage`; designed in `design-drafts/screen-notifications.html`. Backend `notification-service` has full CRUD (list/unread/read-all/read/delete); FE `features/notifications/{api,hooks}` + `NotificationBell` already fetch+list+mark. | Cheap wiring — a page reusing the existing api/hooks. Not a dead control. |
+| UI-2a | Profile "Wiki Contributions" tab | **MISSING** (backend-ready) | `ProfilePage.tsx:172` `<StubTab>`. Wiki backend exists (glossary `wiki_articles`). | List the user's wiki contributions. |
+| UI-2b | Profile "Reviews" tab | **DECIDE** (no backend) | `ProfilePage.tsx:173` `<StubTab>`; label "Reviews". Only review backend is wiki-suggestion review — there is NO book-review/rating system. | Define the feature (what is a "review"?) or drop the tab. |
+| UI-3a | Reader: auto-load next chapter | **MISSING** (FE-only) | `ThemeCustomizer.tsx:157` "coming soon", disabled. | Cheap FE feature. |
+| UI-3b | Reader: auto-scroll TTS | **DEFERRED** → Voice Pipeline | `ThemeCustomizer.tsx:161` "coming soon", disabled. | Tracked under OPS-2 (Voice Pipeline, Track 2). Keep disabled until then. |
 | UI-4 | Frontend V2 rebuild Phase 3+ | PARTIAL | `99_FRONTEND_V2_REBUILD_PLAN.md` "Phase 3 PAUSED" (session 12) | frontend-v2 → frontend/ rename done; most pages built; audit remaining gaps |
 | UI-5 | UI/UX consistency pass (Plan 97: unified DataTable, filters, pagination) | ⚠️ PARTIAL | `97_UI_UX_IMPROVEMENT_PLAN.md` (2026-03-28) | Completion % unknown — needs audit |
 
@@ -82,18 +85,21 @@ Legend — **State**: `SHIPPED` (done, just needs sign-off) · `PARTIAL` (built 
 
 ## 2. Proposed Prioritization (DRAFT — to be decided together)
 
-**Release target (decided 2026-05-30): local / self-host hobby; cloud "maybe later" (backlog).** So "done" = every advertised flow works end-to-end on the local Docker-Compose stack, with no dead/coming-soon controls and reasonable polish. Cloud/scale/governance items move to Track 2.
+**Release target (decided 2026-05-30): local / self-host hobby; cloud "maybe later" (backlog).** So "done" = every advertised flow works end-to-end on the local Docker-Compose stack, with the **draft-design surface implemented or consciously deferred** (not "dead controls"). Cloud/scale/governance items move to Track 2.
+
+> **Framing (PO 2026-05-30):** the "coming soon" / stub controls are NOT dead controls — they are part of the **draft design** (`design-drafts/screen-*.html`). The accurate lens is **missing / deferred / drift**, governed by CLAUDE.md "No Defer Drift" (every postponement is tracked with a target, nothing silently rots):
+> - **Missing** — designed, never implemented.
+> - **Deferred** — consciously postponed, tracked with a target/track.
+> - **Drift** — implemented but diverged from the design (or from the rest of the app).
 
 | Priority | Items | Rationale |
 |---|---|---|
-| **P0 — functional: does it actually work?** | ✅ TR-5 (done). **Live functional sweep** of the other "Closed (smoke)" flows (glossary, wiki, chat, knowledge, extraction, reading/sharing) to find more TR-5-style latent breakages. | TR-5 proved a mock-green "Closed (smoke)" module can be broken live. Honest release needs each core flow exercised on the real stack. |
-| **P1 — no dead controls** | WA-1 (in-editor AI: hide or wire), UI-1 (Notifications page), UI-2 (Profile stubs), UI-3 (reader coming-soon) | For a hobby release, simplest is hide/remove dead "coming soon" controls so nothing looks broken. |
-| **P2 — polish** | UI-6 (i18n consistency), UI-5 (Plan 97 DataTable/filters), TR-3 (verify Plan 72) | Improves feel; not blocking personal use. |
-| **Track 2 — backlog (not now)** | OPS-1 (cloud readiness), OPS-2 (voice), WA-4 (continuation) | Re-scoped: no paid infra / no platform company. Keep so a future cloud move doesn't redo work. |
+| **P0 — functional: does it actually work?** | ✅ TR-5 + full live sweep done (F-1/F-3/F-4 fixed). | TR-5 proved a mock-green "Closed (smoke)" module can be broken live. |
+| **P1 — close the designed surface (missing/deferred/drift)** | Backend-ready **missing** (cheap wiring): UI-1 Notifications page (`screen-notifications.html`), UI-2a Profile Wiki, WA-1b in-editor AI Chat panel (`screen-editor-workbench/splitview.html`). **Deferred** (track, don't build now): UI-3b reader TTS → Voice Pipeline; WA-4 continuation. **Decide**: UI-2b Profile "Reviews" (no backend — define or drop), UI-3a auto-load-next (cheap FE). | These are design-spec'd features, not dead buttons. Implement the backend-ready ones, explicitly defer the rest with a target so nothing silently rots. |
+| **P2 — polish/drift** | UI-6 (i18n drift — partial locale), UI-5 (Plan 97 DataTable/filters), TR-3 (verify Plan 72 drift) | Improves feel; not blocking personal use. |
+| **Track 2 — backlog (not now)** | OPS-1 (cloud readiness), OPS-2 (voice), WA-4 (continuation), capability_flags schema cleanup (F-4 follow-up) | Re-scoped: no paid infra / no platform company. Tracked so a future move doesn't redo work. |
 
-**Key open decision:** Is **Writing Assistant (WA-1/WA-4)** in the MVP release?
-- If **yes** → it's a multi-week epic of its own.
-- If **no** → just remove the dead "AI Chat — coming soon" tab so we don't ship a dead button; MVP then reduces to *verify/close already-coded work + finish cloud-readiness*.
+**Design-intent source of truth:** `design-drafts/screen-*.html` (e.g. `screen-notifications.html`, `screen-editor-modes/workbench/splitview.html`, `screen-chat-enhanced.html`). Classify each P1 item against its draft screen before implementing or deferring.
 
 ---
 
@@ -112,6 +118,7 @@ Legend — **State**: `SHIPPED` (done, just needs sign-off) · `PARTIAL` (built 
 | 2026-05-30 | **Release target** | Local / self-host hobby; cloud "maybe later". No paid infra, no platform company. → OPS-1 (cloud-readiness) + OPS-2 (voice) move to **Track 2 backlog**; formal acceptance packs (OPS-3) downgraded to lightweight live functional verification. "Done" = every flow works locally + no dead controls + polish. | PO |
 | 2026-05-30 | Live sweep + **F-3** | Live functional sweep found F-1 (extraction no-op) + F-2/F-3 (FE API base rot). Prioritized **F-3 first** (architecture rot — root cause of F-2 + UI-7 + the same defect-class as TR-5). Fixed by consolidating 8 divergent FE base decls onto the shared `apiBase`. F-1 still open. | PO + Lead |
 | 2026-05-30 | Pre-existing test debt (logged, not fixed) | `useEditorPanels.test.ts` has 3 failing tests; vitest is misconfigured to collect Playwright e2e specs (`tests/e2e/specs/*`) → 4 suite-collection failures. Both confirmed pre-existing via git-stash; separate test-infra task. | Lead |
+| 2026-05-30 | **Reframe P1** | The "coming soon"/stub controls are NOT dead controls — they're part of the **draft design** (`design-drafts/screen-*.html`). Correct lens = **missing / deferred / drift** (CLAUDE.md "No Defer Drift"). Reclassified: UI-1/UI-2a/WA-1b = MISSING (backend-ready, cheap wiring); UI-3a = MISSING (FE-only); UI-3b/WA-4 = DEFERRED (tracked); UI-2b Reviews = DECIDE (no backend). Corrected WA-1a (editor mode toggle WORKS — earlier walkthrough misread). | PO |
 
 ## Live functional sweep (2026-05-30) — does each flow actually work?
 
