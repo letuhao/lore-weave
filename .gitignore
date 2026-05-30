@@ -24,7 +24,11 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
+# Python sdist manifest ONLY. The bare `MANIFEST` pattern is case-insensitive
+# on Windows and matched Go/Rust source dirs named `manifest/`, silently
+# un-tracking services/migration-orchestrator/pkg/manifest/*.go and breaking
+# CI's fresh-checkout Go build. Anchor + suffix it to the real Python file.
+/MANIFEST.in
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

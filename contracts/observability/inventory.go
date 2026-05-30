@@ -86,8 +86,14 @@ var (
 // enforce the LoreWeave convention; otherwise we accept any
 // well-formed Prometheus metric name (lowercase + underscores).
 var (
-	metricNameLW         = regexp.MustCompile(`^lw_[a-z][a-z0-9]*(_[a-z0-9]+)+$`)
+	metricNameLW = regexp.MustCompile(`^lw_[a-z][a-z0-9]*(_[a-z0-9]+)+$`)
+	// Bare metric names: lowercase + underscore (Prometheus instrument names).
 	metricNamePrometheus = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	// Recording-rule names: Prometheus reserves `:` for recording rules
+	// (https://prometheus.io/docs/practices/rules/ — "level:metric:operations").
+	// The L7.I SLO recording rules ship as `lw:sli_<x>:ratio_5m`, which are
+	// valid rule names but not valid instrument names — accept the `:` form.
+	metricNameRecordingRule = regexp.MustCompile(`^[a-z][a-z0-9_]*(:[a-z0-9_]+)+$`)
 )
 
 // Validate inspects one Entry for required fields + sane values.
@@ -101,6 +107,11 @@ func (e Entry) Validate() error {
 	if strings.HasPrefix(e.Name, "lw_") {
 		if !metricNameLW.MatchString(e.Name) {
 			return fmt.Errorf("%w: name=%q does not match lw_<domain>_<metric>_<unit> (SR12 §12AO naming)", ErrInvalidEntry, e.Name)
+		}
+	} else if strings.Contains(e.Name, ":") {
+		// Recording-rule name (contains `:`) — validate against the rule grammar.
+		if !metricNameRecordingRule.MatchString(e.Name) {
+			return fmt.Errorf("%w: name=%q is not a valid recording-rule name (lowercase + _ segments joined by :)", ErrInvalidEntry, e.Name)
 		}
 	} else if !metricNamePrometheus.MatchString(e.Name) {
 		return fmt.Errorf("%w: name=%q has invalid characters (lowercase + _ only)", ErrInvalidEntry, e.Name)
