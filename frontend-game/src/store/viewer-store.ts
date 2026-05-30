@@ -40,6 +40,11 @@ export interface InspectorPayload {
   placementsAtTile: TilemapObjectPlacement[];
   roadHits: number;
   riverHit: { kind: 'tile' | 'bridge' | 'ford' } | null;
+  /** TMP-Q4 chunk B — per-book value-band thresholds copied from the
+   *  rendered tilemap's `registry_ref`. `null` when the registry omits
+   *  the field; the inspector + badge stamper fall back to
+   *  VALUE_BAND_DEFAULTS in that case. */
+  valueBandThresholds: readonly [number, number, number, number] | null;
 }
 
 export interface ViewerState {
@@ -124,6 +129,11 @@ function lookupAt(
     }
   }
 
+  // TMP-Q4 chunk B — surface the per-book value-band scale to the
+  // inspector. `null` when the registry omits the field; the inspector's
+  // `pickValueBand` call applies VALUE_BAND_DEFAULTS in that case.
+  const valueBandThresholds = view.registry_ref?.value_band_thresholds ?? null;
+
   return {
     tile,
     terrainKind,
@@ -132,6 +142,7 @@ function lookupAt(
     placementsAtTile,
     roadHits,
     riverHit,
+    valueBandThresholds,
   };
 }
 

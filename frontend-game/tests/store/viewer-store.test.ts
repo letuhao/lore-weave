@@ -99,6 +99,34 @@ describe('viewer-store lookupAt — V2 terrainCell', () => {
   });
 });
 
+describe('viewer-store lookupAt — TMP-Q4 chunk B valueBandThresholds', () => {
+  it('flows the per-book thresholds from registry_ref into inspector', () => {
+    const view = baseView({
+      registry_ref: {
+        id: 'xianxia',
+        version: '1.0.0',
+        value_band_thresholds: [1000, 5000, 15000, 50000],
+      },
+    });
+    const at = lookupAt({ x: 0, y: 0 }, view);
+    expect(at.valueBandThresholds).toEqual([1000, 5000, 15000, 50000]);
+  });
+
+  it('returns null when registry_ref omits value_band_thresholds', () => {
+    const view = baseView({
+      registry_ref: { id: 'lw', version: '1.0.0' },
+    });
+    const at = lookupAt({ x: 0, y: 0 }, view);
+    expect(at.valueBandThresholds).toBeNull();
+  });
+
+  it('returns null when registry_ref is absent (pre-V2 view)', () => {
+    const view = baseView();
+    const at = lookupAt({ x: 0, y: 0 }, view);
+    expect(at.valueBandThresholds).toBeNull();
+  });
+});
+
 describe('viewer-store blendEnabled toggle (TMP-Q3 chunk A)', () => {
   beforeEach(() => {
     // Reset to default between tests so the previous test's toggle
