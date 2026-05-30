@@ -544,6 +544,14 @@ services:
       KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF: ${KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF:-}
       KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE: ${KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE:-user_model}
       KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH: ${KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH:-5}
+      # Cycle 73e — Pass2 writer autocreate (Tier B). OFF by default
+      # until eval validates the realized-F1 lift justifies the graph-
+      # pollution risk. Tier A.1 (chapter name repair) + A.2 (anchor
+      # pre-check) always run; only Tier B (MERGE new :Entity with
+      # auto_created=true, kind=concept) is gated. Cap defaults 20/ch.
+      # Override ENABLED=true to enable; MAX_PER_CHAPTER tunes the cap.
+      KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED:-false}
+      KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER:-20}
     depends_on:
       postgres:
         condition: service_healthy

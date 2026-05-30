@@ -32,7 +32,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 from uuid import UUID
 
 from loreweave_extraction import (
@@ -165,6 +165,52 @@ def _load_entity_recovery_config() -> EntityRecoveryConfig | None:
 
 
 _ENTITY_RECOVERY_CONFIG: EntityRecoveryConfig | None = _load_entity_recovery_config()
+
+
+class _WriterAutocreateKwargs(TypedDict):
+    """Typed kwargs spreadable into ``write_pass2_extraction(**)``.
+
+    Cycle 73e — used by ``_load_writer_autocreate_config`` so the
+    ``**_WRITER_AUTOCREATE_CONFIG`` spread is mypy-clean. Matches the
+    new kwargs added to ``pass2_writer.write_pass2_extraction`` exactly.
+    """
+    autocreate_enabled: bool
+    autocreate_max: int | None
+
+
+def _load_writer_autocreate_config() -> _WriterAutocreateKwargs:
+    """Cycle 73e — read Pass2 writer autocreate env config.
+
+    Returns a TypedDict spreadable into ``write_pass2_extraction(**)``.
+    Default: disabled. Tier A.1/A.2 free repairs still run regardless;
+    only Tier B autocreate is gated.
+
+    Envs (all optional):
+        KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ``"true"`` /
+            ``"1"`` / ``"yes"`` / ``"on"`` (case-insensitive) enables
+            Tier B. Anything else (default) keeps it off.
+        KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER: int
+            cap per chapter (default 20). Empty / non-numeric also
+            defaults to 20.
+    """
+    enabled_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", "false"
+    ).strip().lower()
+    enabled = enabled_env in ("true", "1", "yes", "on")
+    max_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER", "20"
+    ).strip() or "20"
+    try:
+        max_per_chapter: int | None = max(1, int(max_env))
+    except ValueError:
+        max_per_chapter = 20
+    return {
+        "autocreate_enabled": enabled,
+        "autocreate_max": max_per_chapter,
+    }
+
+
+_WRITER_AUTOCREATE_CONFIG: _WriterAutocreateKwargs = _load_writer_autocreate_config()
 
 
 def _on_recovery_decision(decision: RecoveryDecision) -> None:
@@ -651,6 +697,7 @@ async def _run_pipeline(
             job_id=job_id,
             extraction_model=model_ref,
             anchors=anchors,
+            **_WRITER_AUTOCREATE_CONFIG,
         )
 
     started = time.perf_counter()
@@ -722,6 +769,7 @@ async def _run_pipeline(
             job_id=job_id,
             extraction_model=model_ref,
             anchors=anchors,
+            **_WRITER_AUTOCREATE_CONFIG,
         )
 
     # Steps 2-4 — relation/event/fact run concurrently. All three
@@ -851,6 +899,7 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
         hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
+        **_WRITER_AUTOCREATE_CONFIG,
     )
     write_elapsed = time.perf_counter() - write_started
     await _emit_log(

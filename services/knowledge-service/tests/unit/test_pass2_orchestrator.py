@@ -925,6 +925,84 @@ def test_load_entity_recovery_config_env_set_builds_config() -> None:
                 os.environ[k] = v
 
 
+# ── Cycle 73e writer autocreate env loader (regression-lock) ─────
+
+
+def test_load_writer_autocreate_config_env_unset_defaults_disabled() -> None:
+    """Default state: autocreate OFF + max=20 (the soft cap).
+    Pre-73e callers preserve cascade-skip behaviour."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_writer_autocreate_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED",
+            "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER",
+        )
+    }
+    try:
+        config = _load_writer_autocreate_config()
+        assert config == {
+            "autocreate_enabled": False,
+            "autocreate_max": 20,
+        }
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_load_writer_autocreate_config_env_set_enables_with_cap() -> None:
+    """ENABLED=true + MAX_PER_CHAPTER=5 → spread-ready dict for
+    write_pass2_extraction."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_writer_autocreate_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED",
+            "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER",
+        )
+    }
+    try:
+        os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED"] = "true"
+        os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER"] = "5"
+        config = _load_writer_autocreate_config()
+        assert config == {
+            "autocreate_enabled": True,
+            "autocreate_max": 5,
+        }
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_load_writer_autocreate_config_accepts_truthy_variants() -> None:
+    """1 / yes / on / TRUE are all truthy; anything else is False."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_writer_autocreate_config
+
+    saved = os.environ.pop("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", None)
+    try:
+        for truthy in ("true", "True", "TRUE", "1", "yes", "YES", "on", "On"):
+            os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED"] = truthy
+            assert _load_writer_autocreate_config()["autocreate_enabled"] is True, (
+                f"{truthy!r} should be truthy"
+            )
+        for falsy in ("false", "no", "off", "0", "", "  ", "anything-else"):
+            os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED"] = falsy
+            assert _load_writer_autocreate_config()["autocreate_enabled"] is False, (
+                f"{falsy!r} should be falsy"
+            )
+    finally:
+        os.environ.pop("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", None)
+        if saved is not None:
+            os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED"] = saved
+
+
 @pytest.mark.asyncio
 @patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
 @patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
