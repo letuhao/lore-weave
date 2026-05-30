@@ -21,14 +21,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/loreweave/foundation/contracts/incidents"
+	"github.com/loreweave/foundation/services/incident-bot/internal/breach"
 )
 
 const defaultMatrixPath = "contracts/incidents/severity_matrix.yaml"
@@ -68,7 +71,23 @@ func main() {
 		return
 	}
 
+	// GDPR Art.33 breach intake (072 D-GDPR-BREACH-WIRING): an authenticated
+	// POST /internal/breach starts the 72h clock, emits the breach lifecycle as
+	// events, and monitors the deadline. The monitor is IN-PROCESS ONLY —
+	// reminders do NOT survive a restart (D-BREACH-DURABLE-STORE; the
+	// GDPRBreachOpenedV1 event is the durable anchor a future consumer replays).
+	// Actual DPO delivery is a downstream consumer's job (D-BREACH-DELIVERY-CONSUMER).
+	emitter := breach.NewStructuredEmitter(os.Stdout)
+	monitor := breach.NewMonitor(emitter, time.Now, time.Minute)
+	go monitor.Run(context.Background())
+	internalToken := os.Getenv("INCIDENT_INTERNAL_TOKEN")
+	if internalToken == "" {
+		log.Printf("[incident-bot] WARNING: INCIDENT_INTERNAL_TOKEN unset — POST /internal/breach intake DISABLED (fail-closed)")
+	}
+	log.Printf("[incident-bot] GDPR breach deadline monitor: IN-PROCESS ONLY — reminders do NOT survive restart (D-BREACH-DURABLE-STORE)")
+
 	mux := http.NewServeMux()
+	mux.Handle("/internal/breach", breach.NewHandler(emitter, monitor, time.Now, internalToken, 0))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
