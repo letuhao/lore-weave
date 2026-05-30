@@ -124,9 +124,11 @@ Exercised on the running local stack (writer→reader), using network 4xx/5xx + 
 | Chat: create session | ✅ works | POST `/v1/chat/sessions` → 201 (relative path) |
 | **Glossary extraction (per-chapter)** | ⚠️ **F-1 (MED) no-op** | Per-chapter "Extract Glossary" → POST `/v1/extraction/.../extract-glossary` with **`chapter_ids: []`** → job "completes" over **0 chapters / 0 LLM calls / 0 entities**. The chapter row's id is never seeded into the wizard. `frontend/src/pages/book-tabs/*` (extraction wizard launch). |
 | **Chat: send message (+ 7 other features)** | ✅ **FIXED (F-3)** | Was: POST to **`http://localhost:3000`** → `net::ERR_FAILED`. Now: POST `localhost:5174/v1/chat/.../messages` → **200** (relative→proxy→gateway), 0 console errors, message persisted + stream connected. Fixed by F-3 consolidation below. |
-| Knowledge graph build · Reading/Sharing | ⏳ not yet swept | blocked partly by F-2 (reading-view tracker uses the :3000 base) — re-test after F-2 fix |
+| **Knowledge graph build** | ⚠️ **F-4 (MED) blocked** | Build dialog's LLM picker queries `GET /v1/model-registry/user-models?capability=chat` → `{"items":[]}` and embedding likewise → "グラフを構築" button permanently **disabled**. Same Qwen3 model works in chat/translation/extraction because THOSE call the same endpoint **without** the `capability` filter. Root cause: the model has no `capability_flags` set, and only Knowledge hard-gates on it → inconsistent capability enforcement + a misleading "no chat-capable models, add one" empty-state for a model that demonstrably chats. Fix is a decision: (a) populate `capability_flags` on model registration so all features agree, or (b) relax Knowledge's gate to match the others. |
+| Reading-view + stats tracker | ✅ FIXED (F-3) | `POST /v1/books/{id}/view` → 204, `GET .../stats` → 200 (was `:3000` ERR_FAILED). 0 console errors on book detail. |
+| Sharing (set visibility) | ✅ works | `PATCH /v1/sharing/books/{id}` → 200 (Unlisted), 0 errors. |
 
-**New tasks from sweep:** **F-1** (seed chapter_ids on per-chapter extraction) and **F-2** (fix the stale `:3000` base default across 8 sites). F-2 is cheap (1-line × 8) and unblocks the rest of the sweep.
+**Open tasks from sweep:** **F-1** (per-chapter extraction sends empty `chapter_ids` → no-op) and **F-4** (Knowledge build blocked by inconsistent capability gating). Both MED. F-2/UI-7 resolved by F-3.
 
 ## Recently completed
 
