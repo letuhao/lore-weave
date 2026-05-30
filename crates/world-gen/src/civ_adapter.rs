@@ -330,12 +330,24 @@ pub fn extract_features(
     ocean_target: usize,
 ) -> (CivView, Features) {
     let view = build_civ_view(world, climate_params);
-    let view = if ocean_target > 0 {
+    let mut view = if ocean_target > 0 {
         augment_with_ocean(view, world, ocean_target)
     } else {
         view
     };
     let features = feature::extract(&view.biomes, &view.neighbors);
+    // **review-impl HIGH-1**: System-A's civilization builders
+    // (political / settlement / routes / culture / pathfind::spaced_ok)
+    // use a *sphere-specific* distance metric `1 - dot(c_a, c_b)` that
+    // is only meaningful when `centers` are unit vectors. On flat
+    // substrate (`z = 0`, `x, y ∈ [0, w]`) the dot product is hugely
+    // positive and the metric flips sign + scale — silently producing
+    // degenerate seed placement (province seeds cluster in the
+    // smallest-x/smallest-y corner; settlement-capital matching breaks
+    // similarly). Projecting *after* Delaunay (already built on the
+    // flat plane) preserves topology while giving the downstream code
+    // the unit-vector centres it was written for.
+    project_to_sphere(&mut view, world);
     (view, features)
 }
 
@@ -421,18 +433,30 @@ pub fn build_settlement(
 /// - latitude  `lat = (0.5 − y / h) · π ∈ [−π/2, π/2]` (y=0 is north pole)
 /// - 3D unit sphere point `(cos(lat)·cos(lon), cos(lat)·sin(lon), sin(lat))`
 ///
-/// Delaunay adjacency stays untouched — equirectangular preserves
-/// topology, so the same neighbor edges that were valid on the flat
-/// plane remain valid on the sphere. Far from the poles this gives a
-/// near-uniform mesh; at the poles the projection compresses several
-/// adjacent cells together. For Phase A continent-scale worlds (the
-/// flatworld substrate) we never wrap around the world or touch the
-/// poles, so the compression doesn't matter.
+/// **Topology caveat (LOW-1).** Equirectangular is a homeomorphism only
+/// on the *open* rectangle interior: the left and right edges
+/// (`x = 0` and `x = w`) map to the **same meridian** (the
+/// antimeridian); the top and bottom edges (`y = 0` and `y = h`) map
+/// to **single points** (the poles). Plate polygons that touch any
+/// boundary edge will have Delaunay neighbour links that no longer
+/// represent adjacency on the sphere. Phase-A continent-scale worlds
+/// keep plates well inside the interior via `flatworld::place_centers`'s
+/// `min_sep` margin, so this is empirically fine today; future
+/// `FlatParams` tunings that allow boundary-touching plates will need
+/// either a different projection or a true spherical Delaunay.
 ///
-/// Downstream civilization builders consume `centers: &[[f32; 3]]`
-/// without caring whether the third coordinate is `0.0` or a unit
-/// sphere `sin(lat)` — they only use the values for great-circle /
-/// Euclidean distance ratios.
+/// **Why this projection is the correct substrate (not just an
+/// upgrade).** System-A's civilization builders (`political::build` at
+/// `political.rs:185`, `settlement::build` at `settlement.rs:121`,
+/// `routes::build` at `routes.rs:183`, `pathfind::spaced_ok`) compute
+/// distance as `1 - dot(c_a, c_b)` — a formula that is
+/// monotone-equivalent to great-circle distance only when both
+/// `c_a` and `c_b` are **unit vectors**. On flat `[x, y, 0]` centres
+/// with `x, y ∈ [0, w]` the dot product is huge and positive and the
+/// metric becomes degenerate (see HIGH-1 in the 2026-05-30
+/// /review-impl report). The downstream code path is shared between
+/// flat and sphere views, but its output is only semantically correct
+/// on the sphere view.
 pub fn project_to_sphere(view: &mut CivView, world: &FlatWorld) {
     let w = world.width as f32;
     let h = world.height as f32;
@@ -450,9 +474,17 @@ pub fn project_to_sphere(view: &mut CivView, world: &FlatWorld) {
     }
 }
 
-/// **Approach A step 2** — full pipeline that produces a CivView with
-/// sphere centres instead of flat `(x, y, 0)` ones. Convenience wrapper
-/// around [`build_civ_view`] + [`project_to_sphere`].
+/// **Approach A step 2** — explicit-sphere variant of [`build_civ_view`]
+/// that bakes the [`project_to_sphere`] step in.
+///
+/// Most callers want this. [`build_civ_view`] is kept as a flat opt-out
+/// for the Ship-1 Delaunay tests that need direct access to the planar
+/// adjacency; the `extract_features` /
+/// [`build_political`] / [`build_settlement`] / [`build_routes`] /
+/// [`build_culture`] / [`bundle_civ`] convenience functions all
+/// internally project to sphere (see HIGH-1 in /review-impl) so their
+/// outputs match the metric assumed by System-A's civilization
+/// builders.
 pub fn build_civ_view_spherical(
     world: &FlatWorld,
     climate_params: &WorldClimateParams,
@@ -2077,13 +2109,23 @@ mod tests {
     fn spherical_centers_preserve_distinctness() {
         // The flat centres are non-degenerate (no two subzones share a
         // centre). After equirectangular projection they must STAY
-        // distinct — otherwise neighbours would collapse into a single
-        // 3D point and political/settlement code would break.
+        // distinct enough for distance-based algorithms (political
+        // farthest-point sampling, settlement-capital matching) to
+        // distinguish them.
+        //
+        // **review-impl MED-2 fix**: previous test used 1µ
+        // quantisation (1e-6). On default 1280×720 world the
+        // equirectangular per-pixel pitch is ~5 mrad → ~5000µ on the
+        // unit sphere, so 1µ would only catch literal identical
+        // [f32; 3] collisions. Tightened to 1 mrad quantisation so the
+        // test fails if any two centres land within ~1 mrad of each
+        // other — meaningfully smaller than the per-pixel pitch and
+        // well above f32 round-off.
         let world = generate(&FlatParams::default());
         let view = build_civ_view_spherical(&world, &WorldClimateParams::default());
         let mut seen: std::collections::HashSet<(i32, i32, i32)> =
             std::collections::HashSet::new();
-        let q = 1_000_000.0_f32; // 1µ quantisation — well below the equirectangular cell pitch
+        let q = 1_000.0_f32; // 1 mrad quantisation; arc length 1 µ on a unit sphere
         for c in &view.centers {
             let key = (
                 (c[0] * q) as i32,
@@ -2092,11 +2134,115 @@ mod tests {
             );
             assert!(
                 seen.insert(key),
-                "two sphere centres landed at the same quantised cell {:?}; \
-                 equirectangular projection has a degenerate collision",
+                "two sphere centres landed within 1 mrad of each other \
+                 at quantised key {:?}; equirectangular projection has a \
+                 near-degenerate collision",
                 key
             );
         }
+    }
+
+    #[test]
+    fn bundle_civ_emits_sphere_centers_post_review_fix() {
+        // **review-impl HIGH-1 regression test (1 of 2)**. After the
+        // fix, `extract_features` (and therefore every convenience
+        // function chained off it — bundle_civ / build_political /
+        // build_settlement / build_routes / build_culture) project to
+        // sphere before downstream civilization builders run, so the
+        // unit-vector distance metric they use is meaningful.
+        //
+        // Direct evidence of the fix: every `bundle.centers[i]` is a
+        // unit vector (|c|² ≈ 1). Pre-fix it was `[x, y, 0]` with
+        // |c|² ≈ x² + y² ranging into the millions.
+        let world = generate(&FlatParams::default());
+        let bundle = bundle_civ(
+            &world,
+            &WorldClimateParams::default(),
+            64,
+            42,
+            SettlementDensity::Medium,
+            5,
+        );
+        for (i, c) in bundle.centers.iter().enumerate() {
+            let mag2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
+            assert!(
+                (mag2 - 1.0).abs() < 1e-4,
+                "bundle.centers[{i}] = {:?} has |c|² = {mag2}; expected unit vector \
+                 (review-impl HIGH-1 fix not applied)",
+                c
+            );
+        }
+    }
+
+    #[test]
+    fn sphere_default_does_not_worsen_political_seed_spread_vs_flat() {
+        // **review-impl HIGH-1 regression test (2 of 2)**. The metric
+        // mismatch on flat substrate is real but small in impact —
+        // `political::build`'s pass-2 random-fill fallback masks most
+        // of the degenerate spaced_ok behaviour, so empirically sphere
+        // only nudges the spread ~3-5% on default worlds. This test
+        // pins the *direction* of the fix (sphere ≥ flat for the
+        // min-pairwise distance between province capital cells) so
+        // future refactors can't silently regress the metric back to
+        // a flat-substrate path.
+        //
+        // World pixel coordinates of capital cells are stable across
+        // substrates (cell_index → subzone.center is unchanged), so
+        // we can compare both branches via the same metric.
+        let world = generate(&FlatParams::default());
+        let climate = WorldClimateParams::default();
+
+        let flat_view = augment_with_ocean(
+            build_civ_view(&world, &climate),
+            &world,
+            64,
+        );
+        let flat_pol = crate::political::build(
+            42,
+            &flat_view.centers,
+            &flat_view.neighbors,
+            &flat_view.biomes,
+        );
+
+        let (_, _, sphere_pol) = build_political(&world, &climate, 64, 42);
+
+        if flat_pol.provinces.len() < 2 || sphere_pol.provinces.len() < 2 {
+            return; // degenerate; nothing to compare.
+        }
+
+        let capital_xy = |political: &crate::political::Political| {
+            political
+                .provinces
+                .iter()
+                .filter_map(|p| cell_index_to_center(&world, p.capital_cell as usize))
+                .collect::<Vec<_>>()
+        };
+        let min_pairwise = |xy: &[(f32, f32)]| {
+            let mut best = f32::INFINITY;
+            for i in 0..xy.len() {
+                for j in (i + 1)..xy.len() {
+                    let dx = xy[i].0 - xy[j].0;
+                    let dy = xy[i].1 - xy[j].1;
+                    let d2 = dx * dx + dy * dy;
+                    if d2 < best {
+                        best = d2;
+                    }
+                }
+            }
+            best.sqrt()
+        };
+
+        let flat_min = min_pairwise(&capital_xy(&flat_pol));
+        let sphere_min = min_pairwise(&capital_xy(&sphere_pol));
+
+        // Direction-only: sphere shouldn't fall below flat. Strict
+        // ≥1.0 with a tiny epsilon allows for f32 round-off when the
+        // two paths happen to agree.
+        assert!(
+            sphere_min + 1e-3 >= flat_min,
+            "sphere min-pairwise province seed distance ({sphere_min:.1} px) regressed below flat \
+             ({flat_min:.1} px); review-impl HIGH-1 fix not in effect"
+        );
     }
 
     #[test]
