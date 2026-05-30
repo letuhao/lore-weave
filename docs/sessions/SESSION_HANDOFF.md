@@ -2,8 +2,20 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
 > **Date:** 2026-05-30 (session 74 — 74a F1 eval (NEUTRAL) + 74a-smoke (73f live smoke PASS) + 74b (disable-semantics fix) + 74c (relation-lever refutations + full RAG/eval architecture audit)).
-> **HEAD:** `0d456f27` (74b). 74c produced docs only (audit report + this handoff), uncommitted at time of writing.
+> **HEAD:** `bca5819a` (74d, 2-hop hotfix committed). 74e (data survey + plan) is docs/data, checkpoint-committed separately.
 > **Branch:** `main`.
+
+## Session 74 — cycle 74e: eval-data survey + accuracy/eval PLAN (correction + config-telemetry loop)
+
+**Docs/data checkpoint (no code).** Resolved the production-readiness gate and reframed the eval strategy after PO feedback.
+
+- **Clean re-judge (self-reinforcement quantified):** judges disjoint from extractor `019e6a20` + filter `019e5650` → 2 cross-arch judges (gemma `019dc3df` **0.888** + phi4 `019dc3ab-2b65` **0.851**) median **0.869** vs locked **0.913**; extractor self-grades **0.972**. → ~4–5pp self-inflation on the *relative* signal. (qwen35 3rd judge stopped — pathologically slow, conclusion already firm.) Artifacts in `eval_runs/c74c-clean-rejudge/`. Gotcha: clean judges needed a `{input_per_mtok:0,output_per_mtok:0}` pricing row in provider_registry or the gateway 402s.
+- **Public dataset survey** → [docs/reports/2026-05-31-eval-dataset-survey.md](../reports/2026-05-31-eval-dataset-survey.md): LitBank (CC-BY 4.0, en entities) usable as independent anchor; lancopku (no license, modern-zh, coarse) + NCRE (no license, Jin-Yong-copyrighted, great taxonomy) = anchor/reference only. **No drop-in relation gold exists.** LitBank alignment measured: shared-kind P≈0.80, recall low **by design** (omission) — external numbers deflated by *definition*, not model error.
+- **PO reframe (key):** genre + dynamic-taxonomy bias is a **FEATURE**, not a defect. → external benchmarks = sanity-floor only; don't grow a "neutral" gold set. Real accuracy engine = **learning-from-users loop**.
+- **PLAN** → [docs/plans/2026-05-31-extraction-accuracy-and-eval-plan.md](../plans/2026-05-31-extraction-accuracy-and-eval-plan.md): production **ship-ready**; two-axis loop (Axis 1 corrections + Axis 2 config-adjustment telemetry) on existing outbox/EAV/wiki_suggestions infra; 3-part content-addressed capture schema (config_registry + adjustment_events + runs.outcome); data-mining tier (golden prompts/model×task/default-drift) with popularity≠quality + explore/exploit guards; cheap eval hygiene (disjoint-judge metric + bootstrap CI) as near-term Phase A.
+- **5 candidate chapters** sourced (verbatim PD) in `tests/fixtures/golden_candidates/` (S&S, P&P ch3, 三國 oath, 紅樓夢 ch3, Lục Vân Tiên) — un-annotated, relation-dense; kept as small product-policy regression set.
+
+**NEXT:** Phase A — cheap eval hygiene (bake disjoint-judge metric + bootstrap CI into the locked metric; demote external anchors to sanity-floor; rename `claude-4.7-opus`). Then Phase B/B2 capture plumbing.
 
 ## Session 74 — cycle 74d: Neo4j 2-hop retrieval hotfix (audit HIGH) + clean-judge re-judge
 
