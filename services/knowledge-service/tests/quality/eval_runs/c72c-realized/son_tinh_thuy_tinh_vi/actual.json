@@ -1,0 +1,417 @@
+{
+  "entities": [
+    {
+      "name": "Mỵ Nương",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "mỵ nương",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "Sơn Tinh",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "sơn tinh",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "Thủy Tinh",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "thủy tinh",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "núi Tản Viên",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "núi tản viên",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "Đời Hùng Vương thứ mười tám",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "đời hùng vương thứ mười tám",
+      "canonical_id": "eid-loaded-4"
+    },
+    {
+      "name": "cung điện",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "cung điện",
+      "canonical_id": "eid-loaded-5"
+    },
+    {
+      "name": "gà chín cựa",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "gà chín cựa",
+      "canonical_id": "eid-loaded-6"
+    },
+    {
+      "name": "lũ lụt hằng năm ở đồng bằng Bắc Bộ",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "lũ lụt hằng năm ở đồng bằng bắc bộ",
+      "canonical_id": "eid-loaded-7"
+    },
+    {
+      "name": "một trăm nệp bánh chưng",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "một trăm nệp bánh chưng",
+      "canonical_id": "eid-loaded-8"
+    },
+    {
+      "name": "một trăm ván cơm nếp",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "một trăm ván cơm nếp",
+      "canonical_id": "eid-loaded-9"
+    },
+    {
+      "name": "ngựa chín hồng mao",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "ngựa chín hồng mao",
+      "canonical_id": "eid-loaded-10"
+    },
+    {
+      "name": "voi chín ngà",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "voi chín ngà",
+      "canonical_id": "eid-loaded-11"
+    },
+    {
+      "name": "vua cha",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "vua cha",
+      "canonical_id": "eid-loaded-12"
+    },
+    {
+      "name": "nước dâng cao",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "nước dâng cao",
+      "canonical_id": "eid-loaded-13"
+    },
+    {
+      "name": "sính lễ",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "sính lễ",
+      "canonical_id": "eid-loaded-14"
+    },
+    {
+      "name": "vùng biển sâu",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "vùng biển sâu",
+      "canonical_id": "eid-loaded-15"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Sơn Tinh",
+      "predicate": "married_to",
+      "object": "Mỵ Nương",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-0"
+    },
+    {
+      "subject": "Sơn Tinh",
+      "predicate": "lives_in",
+      "object": "núi Tản Viên",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "Đời Hùng Vương thứ mười tám",
+      "predicate": "has_daughter",
+      "object": "Mỵ Nương",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-2"
+    },
+    {
+      "subject": "Thủy Tinh",
+      "predicate": "rules",
+      "object": "vùng biển sâu",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-3"
+    },
+    {
+      "subject": "nước dâng cao",
+      "predicate": "causes",
+      "object": "lũ lụt hằng năm ở đồng bằng Bắc Bộ",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-4"
+    },
+    {
+      "subject": "vua cha",
+      "predicate": "loves",
+      "object": "Mỵ Nương",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-5"
+    },
+    {
+      "subject": "Sơn Tinh",
+      "predicate": "owns",
+      "object": "ngựa chín hồng mao",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-6"
+    },
+    {
+      "subject": "Thủy Tinh",
+      "predicate": "enemies_with",
+      "object": "Sơn Tinh",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-9"
+    },
+    {
+      "subject": "Thủy Tinh",
+      "predicate": "knows",
+      "object": "Sơn Tinh",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-10"
+    },
+    {
+      "subject": "Thủy Tinh",
+      "predicate": "follows",
+      "object": "Sơn Tinh",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-11"
+    }
+  ],
+  "events": [
+    {
+      "name": "Sơn Tinh đã mang đủ sính lễ đến cung điệ",
+      "kind": "action",
+      "participants": [
+        "Sơn Tinh"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Sơn Tinh đã mang đủ sính lễ đến cung điện và đón được Mỵ Nương về núi Tản Viên.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "Từ sau thất bại, Thủy Tinh mỗi năm lại d",
+      "kind": "action",
+      "participants": [
+        "Thủy Tinh"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Từ sau thất bại, Thủy Tinh mỗi năm lại dâng nước đánh Sơn Tinh để báo thù mối hận xưa.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "Thủy Tinh nổi cơn thịnh nộ, hô mưa gọi g",
+      "kind": "action",
+      "participants": [
+        "Thủy Tinh",
+        "Sơn Tinh"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Thủy Tinh nổi cơn thịnh nộ, hô mưa gọi gió và dâng nước cuồn cuộn để đuổi theo Sơn Tinh.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "Vua cha yêu thương con gái Mỵ Nương hết ",
+      "kind": "action",
+      "participants": [
+        "vua cha",
+        "Mỵ Nương"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Vua cha yêu thương con gái Mỵ Nương hết mực và quyết định kén chồng cho nàng.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    },
+    {
+      "name": "Sơn Tinh và Thủy Tinh đánh nhau liên tục",
+      "kind": "action",
+      "participants": [
+        "Sơn Tinh",
+        "Thủy Tinh"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Sơn Tinh và Thủy Tinh đánh nhau liên tục trong nhiều tháng.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-4"
+    },
+    {
+      "name": "Người dân cho rằng lũ lụt hằng năm ở đồn",
+      "kind": "action",
+      "participants": [
+        "người dân"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Người dân cho rằng lũ lụt hằng năm ở đồng bằng Bắc Bộ bắt nguồn từ cuộc chiến giữa Thủy Tinh và Sơn Tinh.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-5"
+    },
+    {
+      "name": "Sơn Tinh hóa phép để cho núi Tản Viên ca",
+      "kind": "action",
+      "participants": [
+        "Sơn Tinh"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Sơn Tinh hóa phép để cho núi Tản Viên cao lên theo mức nước dâng.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-6"
+    },
+    {
+      "name": "Hai vị thần, Sơn Tinh và Thủy Tinh, cùng",
+      "kind": "action",
+      "participants": [
+        "Sơn Tinh",
+        "Thủy Tinh"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Hai vị thần, Sơn Tinh và Thủy Tinh, cùng đến cầu hôn Mỵ Nương.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-7"
+    },
+    {
+      "name": "Sau nhiều tháng chiến đấu, Thủy Tinh kiệ",
+      "kind": "action",
+      "participants": [
+        "Thủy Tinh"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Sau nhiều tháng chiến đấu, Thủy Tinh kiệt sức và rút quân về biển.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-8"
+    },
+    {
+      "name": "Thủy Tinh đến cung điện sau Sơn Tinh như",
+      "kind": "action",
+      "participants": [
+        "Thủy Tinh",
+        "Mỵ Nương"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Thủy Tinh đến cung điện sau Sơn Tinh nhưng không thấy Mỵ Nương, biết rằng đã thua cuộc.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-9"
+    }
+  ],
+  "facts": []
+}

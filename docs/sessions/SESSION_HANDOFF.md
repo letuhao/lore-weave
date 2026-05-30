@@ -1,11 +1,52 @@
-# Session Handoff — Session 73 (cycle 73a verify + cycle 73b SHIPPED relation-only filter)
+# Session Handoff — Session 73 (cycle 73a verify + 73b SHIPPED + 73c realized-F1 confirmation)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 73 — cycle 72 verify + cycle 73b relation-only optimization).
-> **HEAD:** pending ship commit on top of `d19c448f` (milestone+readme polish).
+> **Date:** 2026-05-30 (session 73 — 3 cycles: cycle 72 verify + cycle 73b relation-only ship + cycle 73c realized-F1 analytics + re-judge).
+> **HEAD:** pending ship commit on top of `998e59a1` (cycle 73b SHIP) + `609e9655` (merge).
 > **Branch:** `main`.
 
-## Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win)
+## Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win) + cycle 73c realized-F1 CONFIRMS c73b ship strictly better
+
+### Cycle 73c (S→M scope-bump) — Neo4j-realized F1 cascade analysis + empirical re-judge
+
+**Question:** does the pass2_writer's relation-cascade-skip change the F1 numbers from cycle 72/73b ship decisions?
+
+**Process:**
+1. Analytics: simulated writer's cascade rule on saved filter dumps; computed supported-cascade rate per variant
+2. Scope-bump (user approved): generated "realized" `actual.json` per variant (with cascade applied) → ran 3-judge ensemble re-judge on the realized dumps (~33 min total wall-clock)
+
+**Empirical results:**
+
+| Variant | Filter-output F1 | Realized F1 | Δ from cascade | Verdict |
+|---|---:|---:|---:|---|
+| c70a baseline | 0.895 | _not re-judged_ | est ~0.88-0.89 | Pre-existing writer-cascade gap (10.7% supported-relations cascade-skip) |
+| c72c-drop (cycle-72 ship) | 0.917 | **0.904** | **-1.3pp** | Over-credited; cascade dropped supported relations |
+| **c73b-drop (current ship)** | 0.916 | **0.913** | **-0.3pp** | Validated; near-negligible cascade impact |
+
+**Key findings:**
+- On realized basis, c73b-drop is **+0.9pp ahead of c72c-drop** (vs +0.1pp on filter-output) — much stronger ship case
+- Pre-existing writer-cascade gap: even no-filter c70a has 13/121 (10.7%) judge-supported relations that would cascade-skip at write time. Root cause: LLM extracts relations with abstract/compound subjects ("civil practice", "home peace and comfort") that weren't extracted as entities
+- Filtering entities (cycle-72 approach) MAKES the cascade worse (22.5% supported-cascade rate vs baseline 10.7%); filtering only relations (cycle-73b approach) doesn't make it worse (12.3% ≈ baseline)
+
+**Ship recommendation: c73b-drop stays — now confirmed strictly better than c72c-drop on realized F1.**
+
+**Deferred rows added:**
+- **D-PASS2-WRITER-CASCADE-GAP-CLOSE** — close the baseline 10.7% cascade gap by extending entity extraction to abstract/compound subjects (option a), OR auto-creating entities at write time (option b), OR pre-filtering unresolved relations (option c). Recommend (a) for first pass.
+- **D-PASS2-CASCADE-C70A-REALIZED-REJUDGE** — re-judge c70a on realized state to complete the realized-F1 picture; expected ~0.88-0.89.
+
+**Memory lesson captured:** TBD pending RETRO.
+
+### Cycle 73a (S-verify) — cycle 72 activation confirmed in dev stack
+
+Rebuilt knowledge-service + worker-ai with cycle-72 SDK baked in; envs propagated, `_PRECISION_FILTER_CONFIG` loaded at module import in both services; end-to-end smoke filter call dropped fabricated entities + relations. No code or doc changes. Verified the cycle-72 SHIP commit actually works in production-shape compose stack.
+
+### Cycle 73b (M) — relation-only filter SHIPPED — median F1 0.916, **44% latency reduction vs c72c-drop**
+
+(see "Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win)" — kept intact below)
+
+---
+
+## Session 73 summary (legacy header — kept for grep continuity) — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win)
 
 ### Cycle 73a (S-verify) — cycle 72 activation confirmed in dev stack
 

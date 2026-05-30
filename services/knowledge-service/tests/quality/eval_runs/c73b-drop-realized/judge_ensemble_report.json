@@ -1,0 +1,269 @@
+{
+  "judges": [
+    "019dc3df-58f3-7170-bb48-f1f0c9bd604c",
+    "019e6a20-eeac-7b96-82ee-69a16d8ef68d",
+    "019e5650-eca7-78c2-985d-465aa3bce1ce"
+  ],
+  "judge_labels": {
+    "019dc3df-58f3-7170-bb48-f1f0c9bd604c": "gemma",
+    "019e6a20-eeac-7b96-82ee-69a16d8ef68d": "qwen-30b",
+    "019e5650-eca7-78c2-985d-465aa3bce1ce": "claude-4.7-opus"
+  },
+  "judge_status": {
+    "019dc3df-58f3-7170-bb48-f1f0c9bd604c": "complete",
+    "019e6a20-eeac-7b96-82ee-69a16d8ef68d": "complete",
+    "019e5650-eca7-78c2-985d-465aa3bce1ce": "complete"
+  },
+  "judge_failure_reasons": {},
+  "fleiss_kappa": 0.756176911679405,
+  "fleiss_kappa_basis": 373,
+  "fleiss_kappa_interpretation": "substantial",
+  "per_chapter_majority": {
+    "alice_ch01": {
+      "vote_count": 33,
+      "majority_count": 29,
+      "disputed_count": 4,
+      "by_category": {
+        "entity": {
+          "vote_count": 14,
+          "majority_count": 13,
+          "disputed_count": 1
+        },
+        "relation": {
+          "vote_count": 10,
+          "majority_count": 7,
+          "disputed_count": 3
+        },
+        "event": {
+          "vote_count": 9,
+          "majority_count": 9,
+          "disputed_count": 0
+        }
+      }
+    },
+    "alice_ch02": {
+      "vote_count": 41,
+      "majority_count": 38,
+      "disputed_count": 3,
+      "by_category": {
+        "entity": {
+          "vote_count": 18,
+          "majority_count": 17,
+          "disputed_count": 1
+        },
+        "relation": {
+          "vote_count": 7,
+          "majority_count": 5,
+          "disputed_count": 2
+        },
+        "event": {
+          "vote_count": 16,
+          "majority_count": 16,
+          "disputed_count": 0
+        }
+      }
+    },
+    "journey_west_zh_ch01": {
+      "vote_count": 48,
+      "majority_count": 47,
+      "disputed_count": 1,
+      "by_category": {
+        "entity": {
+          "vote_count": 26,
+          "majority_count": 26,
+          "disputed_count": 0
+        },
+        "relation": {
+          "vote_count": 13,
+          "majority_count": 12,
+          "disputed_count": 1
+        },
+        "event": {
+          "vote_count": 9,
+          "majority_count": 9,
+          "disputed_count": 0
+        }
+      }
+    },
+    "journey_west_zh_ch14": {
+      "vote_count": 59,
+      "majority_count": 53,
+      "disputed_count": 6,
+      "by_category": {
+        "entity": {
+          "vote_count": 29,
+          "majority_count": 29,
+          "disputed_count": 0
+        },
+        "relation": {
+          "vote_count": 15,
+          "majority_count": 9,
+          "disputed_count": 6
+        },
+        "event": {
+          "vote_count": 15,
+          "majority_count": 15,
+          "disputed_count": 0
+        }
+      }
+    },
+    "little_women_ch01": {
+      "vote_count": 69,
+      "majority_count": 64,
+      "disputed_count": 5,
+      "by_category": {
+        "entity": {
+          "vote_count": 24,
+          "majority_count": 23,
+          "disputed_count": 1
+        },
+        "relation": {
+          "vote_count": 4,
+          "majority_count": 2,
+          "disputed_count": 2
+        },
+        "event": {
+          "vote_count": 41,
+          "majority_count": 39,
+          "disputed_count": 2
+        }
+      }
+    },
+    "pride_prejudice_ch01": {
+      "vote_count": 33,
+      "majority_count": 32,
+      "disputed_count": 1,
+      "by_category": {
+        "entity": {
+          "vote_count": 12,
+          "majority_count": 12,
+          "disputed_count": 0
+        },
+        "relation": {
+          "vote_count": 7,
+          "majority_count": 6,
+          "disputed_count": 1
+        },
+        "event": {
+          "vote_count": 14,
+          "majority_count": 14,
+          "disputed_count": 0
+        }
+      }
+    },
+    "sherlock_scandal_ch01": {
+      "vote_count": 21,
+      "majority_count": 21,
+      "disputed_count": 0,
+      "by_category": {
+        "entity": {
+          "vote_count": 9,
+          "majority_count": 9,
+          "disputed_count": 0
+        },
+        "relation": {
+          "vote_count": 5,
+          "majority_count": 5,
+          "disputed_count": 0
+        },
+        "event": {
+          "vote_count": 7,
+          "majority_count": 7,
+          "disputed_count": 0
+        }
+      }
+    },
+    "son_tinh_thuy_tinh_vi": {
+      "vote_count": 52,
+      "majority_count": 52,
+      "disputed_count": 0,
+      "by_category": {
+        "entity": {
+          "vote_count": 22,
+          "majority_count": 22,
+          "disputed_count": 0
+        },
+        "relation": {
+          "vote_count": 15,
+          "majority_count": 15,
+          "disputed_count": 0
+        },
+        "event": {
+          "vote_count": 15,
+          "majority_count": 15,
+          "disputed_count": 0
+        }
+      }
+    },
+    "tam_cam_vi": {
+      "vote_count": 53,
+      "majority_count": 52,
+      "disputed_count": 1,
+      "by_category": {
+        "entity": {
+          "vote_count": 20,
+          "majority_count": 19,
+          "disputed_count": 1
+        },
+        "relation": {
+          "vote_count": 14,
+          "majority_count": 14,
+          "disputed_count": 0
+        },
+        "event": {
+          "vote_count": 19,
+          "majority_count": 19,
+          "disputed_count": 0
+        }
+      }
+    }
+  },
+  "bias_metrics": [
+    {
+      "judge_label": "gemma",
+      "strictness": 0.8655256723716381,
+      "strictness_gap": 0.023636889204716516,
+      "language_accept_rates": {
+        "en": 0.8274111675126904,
+        "zh": 0.8785046728971962,
+        "vi": 0.9238095238095239
+      },
+      "language_bias": 0.09639835629683347,
+      "precision_accept_rate": 0.847972972972973,
+      "recall_accept_rate": 0.911504424778761,
+      "rp_bias": -0.06353145180578801,
+      "flagged_dimensions": []
+    },
+    {
+      "judge_label": "qwen-30b",
+      "strictness": 0.9388297872340425,
+      "strictness_gap": 0.049667225657687886,
+      "language_accept_rates": {
+        "en": 0.9162011173184358,
+        "zh": 0.9693877551020408,
+        "vi": 0.9494949494949495
+      },
+      "language_bias": 0.053186637783604995,
+      "precision_accept_rate": 0.9125475285171103,
+      "recall_accept_rate": 1.0,
+      "rp_bias": -0.0874524714828897,
+      "flagged_dimensions": []
+    },
+    {
+      "judge_label": "claude-4.7-opus",
+      "strictness": 0.8891625615763546,
+      "strictness_gap": 0.0,
+      "language_accept_rates": {
+        "en": 0.868020304568528,
+        "zh": 0.8846153846153846,
+        "vi": 0.9333333333333333
+      },
+      "language_bias": 0.06531302876480538,
+      "precision_accept_rate": 0.8873720136518771,
+      "recall_accept_rate": 0.8938053097345132,
+      "rp_bias": -0.006433296082636097,
+      "flagged_dimensions": []
+    }
+  ],
+  "ensemble_acceptable": true
+}
