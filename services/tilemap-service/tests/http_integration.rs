@@ -558,3 +558,110 @@ async fn ac_http_8_world_zone_some_changes_output_through_http() {
         "world_zone Some(Ice) must change output over HTTP — bridge wiring may be a no-op"
     );
 }
+
+#[tokio::test]
+async fn tmp_q6_render_endpoint_omits_decoration_family_density_for_default_registry() {
+    // TMP-Q6 chunk C AC-DFS-5 wire-omission counterpart — the default
+    // `lw` registry does NOT declare `decoration_family_density`, so
+    // the wire-shape contract is: the field is OMITTED on
+    // registry_ref entirely (not present as `null`). Locks the V2
+    // byte-identical wire path so a regression where RegistryRef
+    // serialized `decoration_family_density: null` instead of skipping
+    // it would shift the baseline and break frontend strict-key
+    // consumers. Mirrors the chunk-Q5 zone_role_colors omission test
+    // discipline.
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{base}/internal/v1/tilemaps/render"))
+        .bearer_auth(TOKEN)
+        .json(&minimal_render_body(&minimal_template(), 31))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let view: Value = resp.json().await.expect("json");
+    let registry_ref = view["registry_ref"]
+        .as_object()
+        .expect("default registry must emit registry_ref");
+    assert_eq!(registry_ref["id"], "lw", "default is the lw registry");
+    assert!(
+        !registry_ref.contains_key("decoration_family_density"),
+        "AC-DFS-5 wire-omission: default registry omits decoration_family_density \
+         (None ⇒ skipped); got {registry_ref:?}",
+    );
+}
+
+#[tokio::test]
+async fn tmp_q6_template_decoration_family_density_flows_through_http() {
+    // TMP-Q6 chunk C AC-DFS-11 partial — the template's
+    // decoration_family_density rides the HTTP request body unchanged
+    // AND meaningfully changes the placement output. Twin requests
+    // with the same seed but different bias produce DIFFERENT decoration
+    // placement counts in the response. This is the AC-DFS-11
+    // wire-stitching guarantee at the HTTP boundary; the live-smoke
+    // step (cargo backend + pnpm dev + chromium) lands during chunk C
+    // VERIFY.
+    //
+    // Uses DecorationDensity::TOWN so the placer actually has work to
+    // do (default minimal_template has decoration_density=None which
+    // makes the placer early-return).
+    use tilemap_service::types::decoration::DecorationDensity;
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let url = format!("{base}/internal/v1/tilemaps/render");
+
+    // Baseline: density opt-in, no family bias.
+    let mut t_baseline = minimal_template();
+    t_baseline.template_id = TilemapTemplateId("http_q6_baseline".to_string());
+    t_baseline.decoration_density = Some(DecorationDensity::TOWN);
+    // Sand terrain on Wilderness zones so decoration pool is non-empty.
+    for z in &mut t_baseline.zones {
+        if z.zone_role == ZoneRole::Wilderness {
+            z.terrain_types = vec![TerrainKind::Sand];
+        }
+    }
+
+    // Biased: same density, rock UP, bone DOWN, vegetation UP.
+    let mut t_biased = t_baseline.clone();
+    let mut bias = std::collections::HashMap::new();
+    bias.insert("rock".to_string(), 3.0_f32);
+    bias.insert("bone".to_string(), 0.1_f32);
+    bias.insert("vegetation".to_string(), 0.4_f32);
+    t_biased.decoration_family_density = Some(bias);
+
+    let body_baseline = minimal_render_body(&t_baseline, 0xABCDEF);
+    let body_biased = minimal_render_body(&t_biased, 0xABCDEF);
+
+    let r_baseline = client
+        .post(&url).bearer_auth(TOKEN).json(&body_baseline).send().await.unwrap();
+    let r_biased = client
+        .post(&url).bearer_auth(TOKEN).json(&body_biased).send().await.unwrap();
+    assert_eq!(r_baseline.status(), StatusCode::OK);
+    assert_eq!(r_biased.status(), StatusCode::OK);
+
+    let v_baseline: Value = r_baseline.json().await.unwrap();
+    let v_biased: Value = r_biased.json().await.unwrap();
+
+    // Extract decoration tags from object_placements.
+    let extract_tags = |v: &Value| -> Vec<String> {
+        v["object_placements"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter(|p| p["kind"].as_str() == Some("decoration"))
+                    .filter_map(|p| p["tag"].as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let tags_baseline = extract_tags(&v_baseline);
+    let tags_biased = extract_tags(&v_biased);
+    assert_ne!(
+        tags_baseline, tags_biased,
+        "template's decoration_family_density must measurably change \
+         placement output over HTTP — bridge wiring may be a no-op. \
+         baseline_count={} biased_count={}",
+        tags_baseline.len(), tags_biased.len(),
+    );
+}

@@ -170,6 +170,20 @@ pub struct TilemapObjectPlacement {
     /// V2 prop orientation (asymmetric sprite facing). Default `S`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orientation: Option<Direction>,
+    /// TMP-Q6 chunk C — denormalized family classifier for decoration
+    /// placements. Populated from `ObjectKindDef.family` at placement
+    /// time (decoration_placer). `None` for non-decoration placements
+    /// AND for decoration entries that didn't declare a family (legacy
+    /// pre-Q6 fixtures + the 2 grandfathered TYPE-marker exempt entries).
+    ///
+    /// Lets the frontend group decoration placements by family for the
+    /// MetadataPanel breakdown WITHOUT having to ship the full registry
+    /// kind→family lookup table separately. Mirrors the V2 `tag` /
+    /// `primitive` / `footprint` discipline: derived from registry at
+    /// placement time, ridden on the wire per-placement, FE consumes
+    /// without re-querying.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
     /// V2 open property bag for per-instance overrides + per-kind data
     /// not covered by the registry's defaults. Empty by default.
     #[serde(default, skip_serializing_if = "JsonValue::is_null")]
@@ -205,6 +219,7 @@ mod tests {
             tag: Some(v2.tag),
             footprint: Some(v2.footprint),
             orientation: None,
+            family: None,
             properties: JsonValue::Null,
         };
         let back: TilemapObjectPlacement =
@@ -240,6 +255,7 @@ mod tests {
             tag: Some(v2.tag),
             footprint: Some(v2.footprint),
             orientation: None,
+            family: None,
             properties: JsonValue::Null,
         };
         let back: TilemapObjectPlacement =
@@ -263,6 +279,7 @@ mod tests {
             tag: Some(v2.tag),
             footprint: Some(v2.footprint),
             orientation: None,
+            family: None,
             properties: JsonValue::Null,
         };
         let json = serde_json::to_string(&p).unwrap();

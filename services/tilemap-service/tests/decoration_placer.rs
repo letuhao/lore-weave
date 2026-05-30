@@ -950,3 +950,99 @@ fn tmp_q6_template_invalid_family_density_returns_modificator_error() {
         "error must source-pinpoint the bad field, got: {msg}"
     );
 }
+
+#[test]
+fn tmp_q6_xianxia_registry_bias_shifts_decoration_distribution() {
+    // TMP-Q6 chunk C MED-2 fix from /review-impl — the chunk-C xianxia
+    // bias block (rock=1.8, vegetation=1.2, bone=0.3) is now loaded +
+    // validated end-to-end, but no test previously proved it
+    // MEASURABLY changes placement output. A future placer refactor
+    // that silently dropped registry-side bias (only honoring template-
+    // side) would have passed all 3 chunk-C xianxia tests because they
+    // exercise wire shape only. This test exercises the placement
+    // effect via the actual xianxia_sample.toml registry.
+    //
+    // The xianxia registry overrides the lw: decoration tags with
+    // xianxia: replacements + carries a per-book family bias. Comparing
+    // xianxia placements vs default-registry placements for the SAME
+    // template + seed surfaces the bias direction: rock count rises,
+    // bone count falls.
+    //
+    // OR-of-evidence per chunk-B MED-1 precedent — min_spacing
+    // saturation could hold one dimension constant on a given seed;
+    // the assertion accepts ANY observable shift in the right
+    // direction.
+    let xianxia_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("registry/xianxia_sample.toml");
+    let xianxia = Registry::load_from_path(&xianxia_path)
+        .expect("xianxia_sample.toml must load");
+    let lw = Registry::load_default().expect("default registry must load");
+
+    // Template with decorations enabled. terrain_types Sand on
+    // Wilderness zones so DecorationPlacer's pool is non-empty for
+    // both registries (xianxia + lw share the same lw: terrain tag set
+    // for V1 wire compat).
+    let mut template = fixture(Some(DecorationDensity::TOWN));
+    template.template_id = TilemapTemplateId("xianxia_bias_effect".to_string());
+    for z in &mut template.zones {
+        if z.zone_role == ZoneRole::Wilderness {
+            z.terrain_types = vec![TerrainKind::Sand];
+        }
+    }
+
+    // Aggregate across 5 seeds so single-seed noise doesn't dominate.
+    let mut lw_rock: u32 = 0;
+    let mut lw_bone: u32 = 0;
+    let mut xianxia_rock: u32 = 0;
+    let mut xianxia_bone: u32 = 0;
+    for &seed in &[1u64, 42, 100, 999, 0xC0FFEE] {
+        let lw_view = place_tilemap_with_registry(
+            &template,
+            ChannelId("ch_lw_baseline".to_string()),
+            ChannelTier::Town,
+            GridSize { width: 48, height: 48 },
+            TilemapSeed(seed),
+            &lw,
+        )
+        .expect("lw placement must succeed");
+        let xianxia_view = place_tilemap_with_registry(
+            &template,
+            ChannelId("ch_xianxia_biased".to_string()),
+            ChannelTier::Town,
+            GridSize { width: 48, height: 48 },
+            TilemapSeed(seed),
+            &xianxia,
+        )
+        .expect("xianxia placement must succeed");
+
+        let lw_counts = count_decorations_by_family(&lw_view, &lw);
+        let xianxia_counts = count_decorations_by_family(&xianxia_view, &xianxia);
+
+        lw_rock += lw_counts.get("rock").copied().unwrap_or(0);
+        lw_bone += lw_counts.get("bone").copied().unwrap_or(0);
+        xianxia_rock += xianxia_counts.get("rock").copied().unwrap_or(0);
+        xianxia_bone += xianxia_counts.get("bone").copied().unwrap_or(0);
+    }
+
+    // Bias direction must be observable: rock rises OR bone falls OR
+    // rock/bone ratio rises. At LEAST one must hold strictly across
+    // 5 seeds. If all 3 are equal, the registry-side bias is being
+    // silently dropped (the failure mode this test guards against).
+    let rock_rose = xianxia_rock > lw_rock;
+    let bone_fell = xianxia_bone < lw_bone;
+    // Ratio uses .max(1) to avoid div-by-zero when both bone counts
+    // are 0 (Forbidden + Sea zones never place decorations).
+    let lw_ratio = lw_rock as f32 / (lw_bone.max(1) as f32);
+    let xianxia_ratio = xianxia_rock as f32 / (xianxia_bone.max(1) as f32);
+    let ratio_rose = xianxia_ratio > lw_ratio;
+    assert!(
+        rock_rose || bone_fell || ratio_rose,
+        "xianxia bias must produce SOME observable shift vs lw baseline. Got: \
+         lw_rock={lw_rock} xianxia_rock={xianxia_rock} (rose={rock_rose}); \
+         lw_bone={lw_bone} xianxia_bone={xianxia_bone} (fell={bone_fell}); \
+         lw_ratio={lw_ratio:.3} xianxia_ratio={xianxia_ratio:.3} \
+         (rose={ratio_rose}). If all three are false the registry-side \
+         bias is being silently dropped — investigate \
+         `resolve_family_multiplier` registry-fallback branch."
+    );
+}

@@ -61,6 +61,34 @@ export interface ZoneRoleColors {
   sea?: number;
 }
 
+/** TMP-Q6 chunk C — per-book per-family decoration density bias.
+ *  Sparse: only families the book overrides appear here. Keys must
+ *  match `^[a-z][a-z0-9_]*$` (validated backend-side); values must be
+ *  finite + non-negative (0.0 explicitly allowed: "no decorations of
+ *  this family from this registry"). FE consumes this for the
+ *  MetadataPanel breakdown display (rendered as "rock ×1.8" pills) +
+ *  potential future drill-down.
+ *
+ *  LOW-7 from chunk-C /review-impl — the V1 documented family set is
+ *  `'rock' | 'vegetation' | 'structure' | 'bone' | 'water' | 'snow'`,
+ *  but the TS type accepts ANY string key (matching the per-book-
+ *  extensible design intent). Backend rejects malformed keys at
+ *  registry load, so a typo here silently no-ops at runtime rather
+ *  than failing TS compile. If your registry needs a frontend-pinned
+ *  family set later, narrow this type to a union; the chunk-A scope
+ *  decision was to keep V1 extensible.
+ *
+ *  Example:
+ *  ```ts
+ *  const xianxia: DecorationFamilyDensity = {
+ *    rock: 1.8,        // cultivators harvest spirit-stones
+ *    vegetation: 1.2,  // spirit-herbs prominent
+ *    bone: 0.3,        // xianxia rarely shows skeletons
+ *  };
+ *  ```
+ */
+export type DecorationFamilyDensity = Partial<Record<string, number>>;
+
 /** V2 — registry pin. Mirrors backend `RegistryRef`. */
 export interface RegistryRef {
   id: string;
@@ -70,6 +98,11 @@ export interface RegistryRef {
    *  Backend validates each declared color at registry load
    *  (`Registry::from_file`). */
   zone_role_colors?: ZoneRoleColors;
+  /** TMP-Q6 chunk C — per-book per-family decoration density bias.
+   *  `undefined` ⇒ no per-book bias (template's bias, if any, still
+   *  applies; fallback default is 1.0). Backend validates at registry
+   *  load via shared `validate_decoration_family_density`. */
+  decoration_family_density?: DecorationFamilyDensity;
 }
 
 /** V2 — per-tile terrain cell. Indexed by `terrain_layer` u8 values
@@ -213,6 +246,15 @@ export interface TilemapObjectPlacement {
   footprint?: FootprintSize;
   /** 8-way orientation. */
   orientation?: Direction;
+  /** TMP-Q6 chunk C — denormalized family classifier for decoration
+   *  placements. Set by the backend's decoration_placer from
+   *  `ObjectKindDef.family` (V1 set: `rock` / `vegetation` / `structure`
+   *  / `bone` / `water` / `snow`; per-book registries can add new
+   *  families). `undefined` for non-decoration placements AND for
+   *  decorations without an annotated family. Lets the FE breakdown
+   *  helper count placements by family WITHOUT requiring the full
+   *  registry kind→family lookup on the wire. */
+  family?: string;
   /** Open property bag for per-book extension (charge_count, faction, etc.). */
   properties?: Record<string, unknown> | null;
 }

@@ -1,5 +1,9 @@
 import { useMemo } from 'react';
 import type { TilemapView } from '@/types/tilemap';
+import {
+  computeDecorationFamilyBreakdown,
+  isDecorationPlacement,
+} from './decoration-family-breakdown';
 import { computeRoleBreakdown } from './role-breakdown';
 
 // Compact metadata readout for the current TilemapView. Bottom-left,
@@ -12,17 +16,11 @@ export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.
   // TMP-Q1 chunk D: count decorations separately from total placements
   // so the operator can see the visual-density pass output at a glance.
   //
-  // Filter rationale: V2+ chunk-C placer always sets BOTH primitive and
-  // kind to Decoration, so either check alone catches today's data. The
-  // OR is forward-compat for two cases:
-  // (1) pre-V2 fixtures (no primitive field) — kind match is the
-  //     fallback path
-  // (2) future per-book registries that declare new kinds with
-  //     primitive: Decoration semantics — primitive is the SoT
-  // Confirmed at LOW-4 from chunk-D /review-impl.
-  const decorations = view.object_placements.filter(
-    (p) => p.primitive === 'decoration' || p.kind === 'decoration',
-  ).length;
+  // MED-1 fix from chunk-C /review-impl — extracted to the shared
+  // `isDecorationPlacement` predicate so the family breakdown and this
+  // counter can never silently disagree on the population they count
+  // (see [[extract-cross-surface-predicate]]).
+  const decorations = view.object_placements.filter(isDecorationPlacement).length;
   // TMP-Q2 chunk C: distinct TerrainKind count across terrain_layer.
   // Used as the visible signal that BiomeThemePainter expanded the
   // single-fill-per-zone V2 baseline into multi-kind Perlin patches.
@@ -88,6 +86,7 @@ export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.
         </div>
       </details>
       <RoleBreakdown view={view} />
+      <DecorationFamilyBreakdown view={view} />
     </div>
   );
 }
@@ -145,6 +144,67 @@ function RoleBreakdown({ view }: { view: TilemapView }): JSX.Element {
             </div>
           );
         })}
+      </div>
+    </details>
+  );
+}
+
+// TMP-Q6 chunk C — collapsible per-family decoration breakdown.
+//
+// Reuses the `computeDecorationFamilyBreakdown` pure helper for the
+// row aggregation. Same `useMemo(view)` memoization discipline as
+// `RoleBreakdown` so React parent re-renders don't re-walk
+// `view.object_placements` on every HUD tick.
+//
+// Layout intentionally minimal — chunk D polish adds per-family
+// color swatches / icons. Today: family · count (percent%).
+function DecorationFamilyBreakdown({
+  view,
+}: {
+  view: TilemapView;
+}): JSX.Element {
+  const rows = useMemo(
+    () => computeDecorationFamilyBreakdown(view, view.registry_ref ?? null),
+    [view],
+  );
+  if (rows.length === 0) {
+    return (
+      <details className="mt-1">
+        <summary className="cursor-pointer text-slate-400 text-[10px]">
+          decoration families
+        </summary>
+        <div
+          className="mt-1 text-[10px] text-slate-500"
+          data-testid="decoration-family-empty-state"
+        >
+          no decorations placed yet
+        </div>
+      </details>
+    );
+  }
+  const totalDecorations = rows.reduce((sum, r) => sum + r.count, 0);
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-slate-400 text-[10px]">
+        decoration families ({rows.length} families · {totalDecorations}{' '}
+        decorations)
+      </summary>
+      <div
+        className="mt-1 max-h-32 overflow-y-auto flex flex-col gap-0.5"
+        data-testid="decoration-family-breakdown"
+      >
+        {rows.map((row) => (
+          <div
+            key={row.family}
+            className="flex items-center gap-1 text-[10px]"
+            data-testid="decoration-family-row"
+          >
+            <span className="text-slate-400 shrink-0">{row.family}</span>
+            <span className="ml-auto text-right text-[10px]">
+              {row.count} ({row.percent.toFixed(1)}%)
+            </span>
+          </div>
+        ))}
       </div>
     </details>
   );

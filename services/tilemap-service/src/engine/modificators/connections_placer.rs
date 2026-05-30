@@ -310,6 +310,7 @@ fn place_connection_object(
         tag: Some(v2.tag),
         footprint: Some(v2.footprint),
         orientation: None,
+        family: None,
         properties: serde_json::Value::Null,
     });
     let grid = state.grid;

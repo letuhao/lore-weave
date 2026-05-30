@@ -280,6 +280,11 @@ fn place_in_zone(
                         tag: Some(current_tag.kind_id.clone()),
                         footprint: Some(FootprintSize::unit()),
                         orientation: None,
+                        // TMP-Q6 chunk C — denormalize family from
+                        // DecorationRef.family (which chunk B denormalized
+                        // from ObjectKindDef.family at registry-load). FE
+                        // breakdown reads this without registry lookup.
+                        family: current_tag.family.clone(),
                         properties: serde_json::Value::Object(serde_json::Map::new()),
                     });
                     placed_for_tag.push(candidate);
